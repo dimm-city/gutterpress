@@ -5,6 +5,7 @@
  */
 
 import { createServer as createViteServer, type ViteDevServer } from 'vite';
+import { join } from 'path';
 import { info } from '../utils/logger.ts';
 import type { ServerState, ClientTracker } from './server-context.ts';
 import { createApiMiddleware } from './api-middleware.ts';
@@ -132,11 +133,6 @@ export async function createConfiguredViteServer(
       strictPort: true,
       host: '0.0.0.0',
       open: state.options.openBrowser,
-      // Note: Vite automatically sets appropriate cache headers
-      // - HTML: no-cache for instant updates
-      // - JS/CSS with ?v= hash: long-term cache with immutable
-      // - Other assets: short-term cache with revalidation
-      // We don't override headers here to let Vite handle it optimally
     },
     clearScreen: false,
     plugins: [
@@ -144,6 +140,32 @@ export async function createConfiguredViteServer(
         name: 'api-middleware',
         configureServer(server) {
           server.middlewares.use(middleware);
+        },
+      },
+      {
+        // Serve CSS as raw static files so Paged.js can parse them.
+        // Without this, Vite transforms CSS into JS modules for HMR.
+        name: 'raw-css',
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            if (req.url && req.url.endsWith('.css') && !req.url.includes('/preview/')) {
+              // Serve the CSS file directly from the temp dir
+              const filePath = join(state.tempDir, req.url);
+              const file = Bun.file(filePath);
+              file.exists().then(exists => {
+                if (exists) {
+                  file.text().then(text => {
+                    res.setHeader('Content-Type', 'text/css');
+                    res.end(text);
+                  });
+                } else {
+                  next();
+                }
+              });
+              return;
+            }
+            next();
+          });
         },
       },
     ],

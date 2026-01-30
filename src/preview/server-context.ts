@@ -1,13 +1,11 @@
 /**
  * Preview server context and state management
- *
- * Centralizes server state to avoid passing many parameters between functions
  */
 
 import type { FSWatcher } from 'chokidar';
 import type { ViteDevServer } from 'vite';
-import type { PreviewServerOptions } from '../types.ts';
-import type { ConfigurationManager } from '../config/config-state.ts';
+import type { PreviewServerOptions } from '../types';
+import type { ResolvedConfig } from '../schema/manifest.types';
 
 /**
  * Server lifecycle state
@@ -27,8 +25,8 @@ export interface ServerState {
   tempDir: string;
   /** Assets source directory */
   assetsSourceDir: string;
-  /** Configuration manager */
-  configManager: ConfigurationManager;
+  /** Resolved configuration */
+  config: ResolvedConfig;
   /** Server options */
   options: PreviewServerOptions;
 }
@@ -52,7 +50,7 @@ export function createServerState(
   inputPath: string,
   tempDir: string,
   assetsSourceDir: string,
-  configManager: ConfigurationManager,
+  config: ResolvedConfig,
   options: PreviewServerOptions
 ): ServerState {
   return {
@@ -63,7 +61,7 @@ export function createServerState(
     isShuttingDown: false,
     tempDir,
     assetsSourceDir,
-    configManager,
+    config,
     options,
   };
 }

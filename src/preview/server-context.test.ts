@@ -3,9 +3,9 @@
  */
 
 import { describe, test, expect } from 'bun:test';
-import { createServerState, createClientTracker } from './server-context.ts';
-import { ConfigurationManager } from '../config/config-state.ts';
-import type { PreviewServerOptions } from '../types.ts';
+import { createServerState, createClientTracker } from './server-context';
+import { resolveConfig } from '../lib/manifest';
+import type { PreviewServerOptions } from '../types';
 
 describe('Server Context', () => {
   describe('createServerState', () => {
@@ -13,7 +13,7 @@ describe('Server Context', () => {
       const inputPath = '/test/input';
       const tempDir = '/tmp/test';
       const assetsDir = '/assets';
-      const configManager = new ConfigurationManager(inputPath, {});
+      const config = resolveConfig({}, {});
       const options: PreviewServerOptions = {
         port: 3000,
         verbose: false,
@@ -21,12 +21,12 @@ describe('Server Context', () => {
         openBrowser: true,
       };
 
-      const state = createServerState(inputPath, tempDir, assetsDir, configManager, options);
+      const state = createServerState(inputPath, tempDir, assetsDir, config, options);
 
       expect(state.currentInputPath).toBe(inputPath);
       expect(state.tempDir).toBe(tempDir);
       expect(state.assetsSourceDir).toBe(assetsDir);
-      expect(state.configManager).toBe(configManager);
+      expect(state.config).toBe(config);
       expect(state.options).toBe(options);
       expect(state.currentWatcher).toBeNull();
       expect(state.isRebuilding).toBe(false);

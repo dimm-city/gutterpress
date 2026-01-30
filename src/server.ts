@@ -1,21 +1,12 @@
 /**
  * Preview server using Vite with custom API middleware
  *
- * REFACTORED Architecture:
- * - Modular design with separated concerns
- * - Each module is independently testable
- * - Clear separation between setup, lifecycle, and middleware
- *
- * See also:
- * - preview/server-context.ts - State management
- * - preview/lifecycle.ts - Server lifecycle
- * - preview/file-watcher.ts - File watching
- * - preview/api-middleware.ts - API endpoints
- * - preview/vite-setup.ts - Vite configuration
+ * Loads config via lib/manifest and generates HTML via lib/markdown.
+ * Vite provides HMR for live preview updates.
  */
 
-import { info } from './utils/logger.ts';
-import type { PreviewServerOptions } from './types.ts';
+import { info } from './utils/logger';
+import type { PreviewServerOptions } from './types';
 import {
   validateInputPath,
   resolveAssetsDir,
@@ -23,21 +14,13 @@ import {
   initializeConfiguration,
   restartPreview as executeRestartPreview,
   shutdownServer,
-} from './preview/lifecycle.ts';
-import { createServerState, createClientTracker } from './preview/server-context.ts';
-import { generateAndWriteHtml, startFileWatcher } from './preview/file-watcher.ts';
-import { findAvailablePort, createConfiguredViteServer } from './preview/vite-setup.ts';
+} from './preview/lifecycle';
+import { createServerState, createClientTracker } from './preview/server-context';
+import { generateAndWriteHtml, startFileWatcher } from './preview/file-watcher';
+import { findAvailablePort, createConfiguredViteServer } from './preview/vite-setup';
 
 /**
  * Start preview server with Vite as primary server
- *
- * This is a simplified orchestrator that delegates to specialized modules:
- * 1. Validates and initializes directories
- * 2. Sets up configuration
- * 3. Creates server state and client tracker
- * 4. Starts Vite server with middleware
- * 5. Sets up file watching
- * 6. Registers shutdown handlers
  */
 export async function startPreviewServer(options: PreviewServerOptions): Promise<void> {
   // Stage 1: Validate and initialize
@@ -51,18 +34,16 @@ export async function startPreviewServer(options: PreviewServerOptions): Promise
   const tempDir = await initializePreviewDirectories(inputPath, assetsSourceDir);
 
   // Stage 3: Initialize configuration
-  const configManager = await initializeConfiguration(inputPath, options);
-  const config = configManager.getConfig();
+  const config = await initializeConfiguration(inputPath, options);
 
   // Generate initial HTML
   await generateAndWriteHtml(inputPath, tempDir, config);
 
   // Stage 4: Create state and client tracker
-  const state = createServerState(inputPath, tempDir, assetsSourceDir, configManager, options);
+  const state = createServerState(inputPath, tempDir, assetsSourceDir, config, options);
   const clientTracker = createClientTracker();
 
   // Stage 5: Define restart and shutdown functions
-  // These capture state and clientTracker in closure
   const restartPreview = async (newInputPath: string): Promise<void> => {
     await executeRestartPreview(newInputPath, state);
   };

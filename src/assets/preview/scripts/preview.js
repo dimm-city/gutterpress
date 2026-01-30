@@ -10,7 +10,7 @@
 //
 // Architecture:
 // - Preview server serves content via Vite with HMR
-// - Iframe contains Vivliostyle viewer with previewAPI exposed on window
+// - Iframe contains Paged.js rendered content with previewAPI exposed on window
 // - Parent window delegates all operations to iframe API
 //
 // ============================================================================
@@ -538,7 +538,7 @@ function setZoom(zoom) {
   const api = iframeWin.previewAPI;
 
   if (zoom === "fit-width") {
-    // For Vivliostyle, fit-width is handled internally
+    // For Paged.js, fit-width is handled internally
     // Just pass a reasonable scale value
     api.setZoom(1.0);
   } else {
@@ -673,7 +673,7 @@ function onPageChanged(event) {
 
 /**
  * Handle rendering complete event from iframe
- * This fires when Vivliostyle has finished rendering all pages
+ * This fires when Paged.js has finished rendering all pages
  */
 function onRenderingComplete(event) {
   const { totalPages } = event.detail;
@@ -731,6 +731,17 @@ function setupIframeEventListeners() {
   iframeWin.addEventListener("renderingComplete", onRenderingComplete);
 
   console.log("✓ Iframe event listeners registered");
+
+  // Handle race condition: if Paged.js already finished rendering
+  // before we set up listeners, the renderingComplete event was missed.
+  // Only trigger if pages actually exist (not just the API object).
+  if (iframeWin.previewAPI) {
+    const totalPages = iframeWin.previewAPI.getTotalPages();
+    if (totalPages > 0) {
+      console.log("✓ Paged.js already rendered, triggering rendering complete");
+      onRenderingComplete({ detail: { totalPages } });
+    }
+  }
 }
 
 // ============================================================================
@@ -1034,7 +1045,7 @@ function initializeToolbarControls() {
 
 /**
  * Handle iframe load event
- * Wait for Vivliostyle to finish rendering, then initialize
+ * Wait for Paged.js to finish rendering, then initialize
  */
 function onIframeLoad() {
   // Clear any existing timeout from previous rendering
@@ -1046,7 +1057,7 @@ function onIframeLoad() {
   console.log("Iframe loaded, setting up event listeners...");
   updateLoadingMessage("Rendering pages...");
 
-  // Show loading overlay while Vivliostyle renders
+  // Show loading overlay while Paged.js renders
   const overlay = document.getElementById("loading-overlay");
   if (overlay) {
     overlay.classList.add("active");
@@ -1072,7 +1083,7 @@ function onIframeLoad() {
       printBtn.disabled = false;
     }
     renderingTimeoutId = null; // Clear ID after timeout fires
-  }, 30000);
+  }, 120000);
 
   console.log("✓ Waiting for renderingComplete event from iframe...");
 }
@@ -1089,7 +1100,7 @@ async function initializePreview() {
     console.log("Initializing preview...");
     updateLoadingMessage("Initializing preview...");
 
-    // Show loading overlay while Vivliostyle is rendering
+    // Show loading overlay while Paged.js is rendering
     const overlay = document.getElementById("loading-overlay");
     if (overlay) {
       overlay.classList.add("active");

@@ -78,13 +78,13 @@ async function handleHeartbeat(
       return;
     }
 
-    const wasEmpty = clientTracker.connectedClients.size === 0;
     clientTracker.connectedClients.add(clientId);
 
-    // Cancel auto-shutdown if this is the first client to connect
-    if (wasEmpty) {
-      debug(`First client connected: ${clientId}`);
-      // checkForAutoShutdown will cancel the timer
+    // Cancel any pending auto-shutdown timer now that a client is connected
+    if (clientTracker.autoShutdownTimer) {
+      clearTimeout(clientTracker.autoShutdownTimer);
+      clientTracker.autoShutdownTimer = null;
+      debug(`Auto-shutdown cancelled - client connected: ${clientId}`);
     }
 
     // Tell client if they are the last (and only) connected client

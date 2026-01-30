@@ -21,22 +21,12 @@ import type {
   DirectoryListResponse,
   FolderChangeResponse,
   DirectoryEntry,
-  GitHubAuthStatus,
-  GitHubCloneRequest,
-  GitHubCloneResponse,
-  GitHubLoginResponse,
-  GitHubUserInfo,
 } from "../types";
 import {
   isWithinHomeDirectory,
   getHomeDirectory,
 } from "../utils/path-security";
 import { error as logError, info } from "../utils/logger";
-import {
-  FolderChangeRequestSchema,
-  GitHubCloneRequestSchema,
-  formatApiErrors
-} from "../schemas/api.schema.ts";
 import { isErrorWithCode } from "../utils/errors";
 import {
   isGhCliInstalled,
@@ -45,6 +35,73 @@ import {
   cloneRepository,
   getCurrentUser,
 } from "../utils/gh-cli-utils";
+import { homedir } from "os";
+import { resolve as resolvePath } from "path";
+
+// GitHub-related types (previously in types.ts)
+interface GitHubAuthStatus {
+  ghCliInstalled: boolean;
+  authenticated: boolean;
+  username?: string;
+  error?: string;
+}
+
+interface GitHubCloneResponse {
+  success: boolean;
+  localPath?: string;
+  error?: string;
+}
+
+interface GitHubLoginResponse {
+  success: boolean;
+  error?: string;
+}
+
+interface GitHubUserInfo {
+  username: string;
+  name?: string;
+}
+
+/**
+ * Validate folder change request body
+ */
+function validateFolderChangeRequest(body: unknown): { valid: true; path: string } | { valid: false; error: string } {
+  if (!body || typeof body !== "object") {
+    return { valid: false, error: "Invalid request body" };
+  }
+  const { path } = body as Record<string, unknown>;
+  if (typeof path !== "string" || path.trim().length === 0) {
+    return { valid: false, error: "Path is required and must be a non-empty string" };
+  }
+  const absPath = resolvePath(path);
+  const homeDir = homedir();
+  if (!absPath.startsWith(homeDir)) {
+    return { valid: false, error: "Path must be within your home directory" };
+  }
+  return { valid: true, path };
+}
+
+/**
+ * Validate GitHub clone request body
+ */
+function validateGitHubCloneRequest(body: unknown): { valid: true; url: string; targetDir?: string } | { valid: false; error: string } {
+  if (!body || typeof body !== "object") {
+    return { valid: false, error: "Invalid request body" };
+  }
+  const { url, targetDir } = body as Record<string, unknown>;
+  if (typeof url !== "string" || url.length === 0) {
+    return { valid: false, error: "Repository URL is required" };
+  }
+  const githubPatterns = [
+    /^https?:\/\/github\.com\/[\w-]+\/[\w.-]+/,
+    /^git@github\.com:[\w-]+\/[\w.-]+\.git$/,
+    /^[\w-]+\/[\w.-]+$/,
+  ];
+  if (!githubPatterns.some((pattern) => pattern.test(url))) {
+    return { valid: false, error: "Invalid GitHub URL. Use: https://github.com/owner/repo, git@github.com:owner/repo.git, or owner/repo" };
+  }
+  return { valid: true, url, targetDir: typeof targetDir === "string" ? targetDir : undefined };
+}
 
 /**
  * Helper function to check if a path is a directory
@@ -259,7 +316,7 @@ export async function handleChangeFolder(
   onFolderChange: (newPath: string) => Promise<void>
 ): Promise<Response> {
   try {
-    // Parse and validate request body using Zod schema
+    // Parse and validate request body
     let body: unknown;
     try {
       body = await request.json();
@@ -271,20 +328,18 @@ export async function handleChangeFolder(
       return jsonResponse(response, 400);
     }
 
-    // Validate request body with Zod schema
-    const validationResult = FolderChangeRequestSchema.safeParse(body);
+    // Validate request body
+    const validationResult = validateFolderChangeRequest(body);
 
-    if (!validationResult.success) {
-      const errorDetails = formatApiErrors(validationResult.error);
+    if (!validationResult.valid) {
       const response: FolderChangeResponse = {
         success: false,
-        error: errorDetails.error,
+        error: validationResult.error,
       };
       return jsonResponse(response, 400);
     }
 
-    // Extract validated path (type-safe)
-    const { path: newPath } = validationResult.data;
+    const newPath = validationResult.path;
 
     // Validate path exists and is a directory
     if (!(await fileExists(newPath))) {
@@ -499,7 +554,7 @@ export async function handleGitHubClone(
   onFolderChange: (newPath: string) => Promise<void>
 ): Promise<Response> {
   try {
-    // Parse and validate request body using Zod schema
+    // Parse and validate request body
     let body: unknown;
     try {
       body = await request.json();
@@ -511,20 +566,18 @@ export async function handleGitHubClone(
       return jsonResponse(response, 400);
     }
 
-    // Validate request body with Zod schema
-    const validationResult = GitHubCloneRequestSchema.safeParse(body);
+    // Validate request body
+    const validationResult = validateGitHubCloneRequest(body);
 
-    if (!validationResult.success) {
-      const errorDetails = formatApiErrors(validationResult.error);
+    if (!validationResult.valid) {
       const response: GitHubCloneResponse = {
         success: false,
-        error: errorDetails.error,
+        error: validationResult.error,
       };
       return jsonResponse(response, 400);
     }
 
-    // Extract validated data (type-safe)
-    const { url: repoUrl, targetDir: targetDirectory } = validationResult.data;
+    const { url: repoUrl, targetDir: targetDirectory } = validationResult;
 
     info(`Cloning GitHub repository: ${repoUrl}${targetDirectory ? ` to ${targetDirectory}` : ''}`);
 

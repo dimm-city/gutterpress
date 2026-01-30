@@ -157,7 +157,7 @@ describe("handleChangeFolder", () => {
 
     const data = await parseJson<Record<string, unknown>>(response);
     expect(data.success).toBe(false);
-    expect(data.error).toBe("Invalid request body");
+    expect(data.error).toBe("Path is required and must be a non-empty string");
   });
 
   test("returns 400 for non-string path", async () => {
@@ -174,7 +174,7 @@ describe("handleChangeFolder", () => {
 
     const data = await parseJson<Record<string, unknown>>(response);
     expect(data.success).toBe(false);
-    expect(data.error).toBe("Invalid request body");
+    expect(data.error).toBe("Path is required and must be a non-empty string");
   });
 
   test("returns 400 for empty path", async () => {
@@ -191,7 +191,7 @@ describe("handleChangeFolder", () => {
 
     const data = await parseJson<Record<string, unknown>>(response);
     expect(data.success).toBe(false);
-    expect(data.error).toBe("Invalid request body");
+    expect(data.error).toBe("Path is required and must be a non-empty string");
   });
 
   test("returns 404 for non-existent path", async () => {
@@ -287,7 +287,7 @@ describe("handleChangeFolder", () => {
     const mockCallback = async () => {};
     const response = await handleChangeFolder(request, mockCallback);
 
-    // Should be rejected by Zod schema path security validation
+    // Should be rejected by path security validation
     expect(response.status).toBe(400);
 
     const data = await parseJson<Record<string, unknown>>(response);
