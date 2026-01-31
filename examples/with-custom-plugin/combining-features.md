@@ -1,6 +1,6 @@
 # Combining Features
 
-This page demonstrates how custom plugins work alongside built-in pagedmd features.
+This page demonstrates how custom plugins work alongside built-in print-md features.
 
 ## Using Multiple Plugins
 
@@ -113,7 +113,7 @@ To build this example project:
 
 ```bash
 cd examples/with-custom-plugin
-pagedmd build .
+print-md build .
 ```
 
 The output will include:
@@ -126,7 +126,7 @@ The output will include:
 > Try preview mode to see live updates as you edit:
 >
 > ```bash
-> pagedmd preview .
+> print-md preview .
 > ```
 
 ## Summary

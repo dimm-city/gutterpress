@@ -1,5 +1,5 @@
 /**
- * Example local plugin for pagedmd
+ * Example local plugin for print-md
  *
  * This plugin adds callout/admonition boxes with different styles:
  * - [!note] - Information callouts
@@ -96,13 +96,13 @@ export default function calloutsPlugin(md, options = {}) {
 /**
  * Plugin metadata
  *
- * This is used by pagedmd to display plugin information
+ * This is used by print-md to display plugin information
  */
 export const metadata = {
   name: 'callouts-plugin',
   version: '1.0.0',
   description: 'Adds support for callout/admonition boxes in markdown',
-  author: 'pagedmd Example',
+  author: 'print-md Example',
   keywords: ['callout', 'admonition', 'note', 'warning'],
 };
 

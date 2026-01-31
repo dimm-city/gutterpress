@@ -1,10 +1,10 @@
 # Custom Plugin Examples
 
-This directory contains example plugins for pagedmd that demonstrate how to create your own markdown-it plugins.
+This directory contains example plugins for print-md that demonstrate how to create your own markdown-it plugins.
 
 ## Plugin Structure
 
-A pagedmd plugin is a JavaScript or TypeScript file that exports:
+A print-md plugin is a JavaScript or TypeScript file that exports:
 
 1. **Plugin function** (required) - The main markdown-it plugin
 2. **Metadata** (optional) - Information about the plugin
@@ -100,7 +100,7 @@ Decide what markdown feature you want to add or modify:
 
 ### 2. Learn markdown-it API
 
-pagedmd uses [markdown-it](https://github.com/markdown-it/markdown-it) as the markdown parser. Key concepts:
+print-md uses [markdown-it](https://github.com/markdown-it/markdown-it) as the markdown parser. Key concepts:
 
 - **Core rules** - Process the entire document
 - **Block rules** - Parse block-level elements
@@ -146,13 +146,13 @@ plugins:
 Build your document to see the plugin in action:
 
 ```bash
-pagedmd build .
+print-md build .
 ```
 
 Use `--verbose` to see plugin loading details:
 
 ```bash
-pagedmd build . --verbose
+print-md build . --verbose
 ```
 
 ## Plugin Options
@@ -373,5 +373,5 @@ If plugins conflict:
 
 Have a useful plugin? Consider:
 1. Publishing it as an npm package
-2. Sharing it in pagedmd discussions
+2. Sharing it in print-md discussions
 3. Contributing to the examples directory

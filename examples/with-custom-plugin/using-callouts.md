@@ -47,7 +47,7 @@ Use danger callouts for critical information or errors:
 Info callouts are similar to notes but can be used for supplementary information:
 
 > [!info] Did you know?
-> pagedmd plugins can include CSS that gets automatically injected into your PDF output.
+> print-md plugins can include CSS that gets automatically injected into your PDF output.
 
 > [!info]
 > The plugin system supports local files, npm packages, and built-in plugins.

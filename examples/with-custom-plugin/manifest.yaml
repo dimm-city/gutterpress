@@ -1,6 +1,6 @@
 title: "Custom Plugin Example"
 authors:
-  - "pagedmd Examples"
+  - "print-md Examples"
 description: "Demonstrates using a custom local plugin for callouts/admonitions"
 
 page:

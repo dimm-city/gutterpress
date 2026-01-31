@@ -1,6 +1,6 @@
 # Custom Plugin Example
 
-This example demonstrates how to create and use custom markdown-it plugins with pagedmd.
+This example demonstrates how to create and use custom markdown-it plugins with print-md.
 
 ## What is a Plugin?
 
@@ -23,7 +23,7 @@ The plugin demonstrates:
 1. **Custom markdown syntax** - Using blockquotes with `[!type]` markers
 2. **CSS injection** - Automatically adding styled components
 3. **Plugin options** - Configurable callout types and class names
-4. **Metadata export** - Plugin information for pagedmd
+4. **Metadata export** - Plugin information for print-md
 
 ## How It Works
 
@@ -37,7 +37,7 @@ plugins:
       className: "callout"
 ```
 
-When you build this project, pagedmd:
+When you build this project, print-md:
 
 1. Loads the plugin file
 2. Registers it with markdown-it
