@@ -1,10 +1,10 @@
-# PagedMD Documentation
+# Print-md Documentation
 
 Complete documentation for creating professional print documents from markdown.
 
 ## Quick Start
 
-New to PagedMD? Start here:
+New to Print-md? Start here:
 
 - **[Getting Started](getting-started.md)** - Installation, basic workflow, and project setup
 
@@ -13,7 +13,7 @@ New to PagedMD? Start here:
 ### Essential Guides
 
 - **[Getting Started](getting-started.md)**
-  Learn the basics of PagedMD, including installation, basic commands, project structure, and manifest configuration. Start here if you're new to the tool.
+  Learn the basics of Print-md, including installation, basic commands, project structure, and manifest configuration. Start here if you're new to the tool.
 
 - **[Core Directives](core-directives.md)**
   Master page control with directives for page templates, page breaks, column layouts, and running headers. Essential for controlling document structure.
@@ -77,16 +77,16 @@ New to PagedMD? Start here:
 
 ```bash
 # Build PDF
-pagedmd build ./my-book
+print-md build ./my-book
 
 # Preview with live reload
-pagedmd preview ./my-book
+print-md preview ./my-book
 
 # Build with custom output
-pagedmd build ./my-book --output book.pdf
+print-md build ./my-book --output book.pdf
 
 # Build HTML instead of PDF
-pagedmd build ./my-book --format html
+print-md build ./my-book --format html
 ```
 
 ### Common Directives

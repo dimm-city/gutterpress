@@ -1,6 +1,6 @@
 # Core Directives Reference
 
-PagedMD provides powerful directives to control page layout and behavior. Directives are HTML comments that control print layout rendering.
+Print-md provides powerful directives to control page layout and behavior. Directives are HTML comments that control print layout rendering.
 
 ## Page Templates
 
@@ -58,7 +58,7 @@ Inserts a blank page.
 
 ### Automatic Page Breaks
 
-PagedMD provides automatic page breaks with simple markdown:
+Print-md provides automatic page breaks with simple markdown:
 
 ```markdown
 # Chapter One
@@ -152,7 +152,7 @@ Directives must follow this exact format:
 
 ### Error Handling
 
-PagedMD provides helpful error messages with suggestions:
+Print-md provides helpful error messages with suggestions:
 
 - Unknown directives suggest closest match
 - Invalid values show valid options

@@ -1,6 +1,6 @@
 # Callouts & Admonitions
 
-PagedMD supports five professional callout types for highlighting important information. These use GitHub-style syntax and are universally applicable to any document type.
+Print-md supports five professional callout types for highlighting important information. These use GitHub-style syntax and are universally applicable to any document type.
 
 ## Callout Syntax
 

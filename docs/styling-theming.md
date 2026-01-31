@@ -4,7 +4,7 @@ Comprehensive guide to customizing the visual design of your documents.
 
 ## Built-in Themes
 
-PagedMD includes professional themes you can use:
+Print-md includes professional themes you can use:
 
 ```yaml
 # manifest.yaml
@@ -390,7 +390,7 @@ h1 {
 
 ## CSS Cascade Order
 
-PagedMD loads styles in this order (later overrides earlier):
+Print-md loads styles in this order (later overrides earlier):
 
 1. **Default Styles** (if not disabled)
    - Core variables
@@ -481,7 +481,7 @@ Add responsive styles for web preview:
 Use preview mode to test styles:
 
 ```bash
-pagedmd preview ./my-book
+print-md preview ./my-book
 ```
 
 - Live reload on file changes

@@ -1,6 +1,6 @@
-# pagedmd User Guide
+# print-md User Guide
 
-Welcome to pagedmd! This guide will help you create professional print-ready PDFs from your markdown files.
+Welcome to print-md! This guide will help you create professional print-ready PDFs from your markdown files.
 
 ## Table of Contents
 
@@ -20,8 +20,8 @@ Welcome to pagedmd! This guide will help you create professional print-ready PDF
 ## Quick Start
 
 ```bash
-# Install pagedmd
-bun install -g @dimm-city/pagedmd
+# Install print-md
+bun install -g @dimm-city/print-md
 
 # Create a new project
 mkdir my-book && cd my-book
@@ -37,10 +37,10 @@ EOF
 echo "# Chapter 1\n\nHello, world!" > chapter1.md
 
 # Preview it live
-pagedmd preview
+print-md preview
 
 # Build a PDF
-pagedmd build
+print-md build
 ```
 
 ---
@@ -60,14 +60,14 @@ pagedmd build
   - Linux: Use .deb/.rpm package from website
   - Windows: Download installer from website
 
-### Install pagedmd
+### Install print-md
 
 ```bash
 # Global installation (recommended)
-bun install -g @dimm-city/pagedmd
+bun install -g @dimm-city/print-md
 
 # Verify installation
-pagedmd --version
+print-md --version
 ```
 
 ---
@@ -122,7 +122,7 @@ Create `01-introduction.md`:
 ```markdown
 # Introduction
 
-Welcome to my first book created with pagedmd!
+Welcome to my first book created with print-md!
 
 This tool makes it easy to create professional PDFs from markdown.
 
@@ -143,7 +143,7 @@ Let's dive in...
 ### 4. Preview Your Book
 
 ```bash
-pagedmd preview
+print-md preview
 ```
 
 This will:
@@ -155,10 +155,10 @@ This will:
 ### 5. Build Your PDF
 
 ```bash
-pagedmd build
+print-md build
 
 # Or specify output name
-pagedmd build --output my-book.pdf
+print-md build --output my-book.pdf
 ```
 
 Your PDF will be created as `output.pdf` (or your specified name).
@@ -249,9 +249,9 @@ extensions:                        # Enable/disable plugins
 
 ```bash
 # Build commands
-pagedmd build [input]              # Build PDF from current dir
-pagedmd build ./my-book            # Build from specific dir
-pagedmd build book.md              # Build from single file
+print-md build [input]              # Build PDF from current dir
+print-md build ./my-book            # Build from specific dir
+print-md build book.md              # Build from single file
 
 # Build options
 --output, -o <path>                # Output file path
@@ -261,7 +261,7 @@ pagedmd build book.md              # Build from single file
 --profile                          # Performance profiling
 
 # Preview commands
-pagedmd preview [input]            # Start preview server
+print-md preview [input]            # Start preview server
 --port <number>                    # Server port (default: 3579)
 --open <boolean>                   # Open browser (default: true)
 --no-watch                         # Disable file watching
@@ -273,7 +273,7 @@ pagedmd preview [input]            # Start preview server
 
 ### Standard Markdown
 
-pagedmd supports all standard markdown syntax:
+print-md supports all standard markdown syntax:
 
 ```markdown
 # Heading 1
@@ -382,7 +382,7 @@ This is a paragraph with a custom class.
 
 ### Using Built-in Themes
 
-pagedmd includes 4 built-in themes:
+print-md includes 4 built-in themes:
 
 ```yaml
 # manifest.yaml
@@ -557,19 +557,19 @@ Preview mode provides a live development environment:
 
 ```bash
 # Start from current directory
-pagedmd preview
+print-md preview
 
 # Start from specific directory
-pagedmd preview ./my-book
+print-md preview ./my-book
 
 # Custom port
-pagedmd preview --port 5000
+print-md preview --port 5000
 
 # Don't open browser automatically
-pagedmd preview --open false
+print-md preview --open false
 
 # Disable file watching
-pagedmd preview --no-watch
+print-md preview --no-watch
 ```
 
 ### Preview Features
@@ -617,7 +617,7 @@ Clone repositories directly from preview:
 
 ```bash
 # Build PDF from current directory
-pagedmd build
+print-md build
 
 # Result: output.pdf
 ```
@@ -626,20 +626,20 @@ pagedmd build
 
 ```bash
 # Specify output filename
-pagedmd build --output my-book.pdf
+print-md build --output my-book.pdf
 
 # Specify output directory
-pagedmd build --output ./dist/book.pdf
+print-md build --output ./dist/book.pdf
 ```
 
 ### Output Formats
 
 ```bash
 # PDF (default)
-pagedmd build --format pdf
+print-md build --format pdf
 
 # Standalone HTML
-pagedmd build --format html
+print-md build --format html
 # Result: output.html (self-contained)
 
 ```
@@ -649,7 +649,7 @@ pagedmd build --format html
 Auto-rebuild when files change:
 
 ```bash
-pagedmd build --watch
+print-md build --watch
 
 # Watching for changes...
 # Change detected: chapter1.md
@@ -662,7 +662,7 @@ pagedmd build --watch
 See detailed build metrics:
 
 ```bash
-pagedmd build --profile
+print-md build --profile
 
 # Performance Metrics:
 #   Configuration Loading: 45ms
@@ -681,7 +681,7 @@ pagedmd build --profile
 See detailed build information:
 
 ```bash
-pagedmd build --verbose
+print-md build --verbose
 
 # Loading configuration from manifest.yaml...
 # ✓ Configuration loaded
@@ -786,7 +786,7 @@ Format as ability block.
 
 ### Plugin System
 
-pagedmd's plugin system allows you to extend markdown syntax with custom features. Plugins can add new markdown syntax, modify rendering, and inject CSS styles automatically.
+print-md's plugin system allows you to extend markdown syntax with custom features. Plugins can add new markdown syntax, modify rendering, and inject CSS styles automatically.
 
 #### Using Built-in Plugins
 
@@ -1027,7 +1027,7 @@ Split CSS into modules:
 @import "print.css";
 ```
 
-pagedmd resolves all imports at build time (no external dependencies in output).
+print-md resolves all imports at build time (no external dependencies in output).
 
 ---
 
@@ -1044,7 +1044,7 @@ my-book/
 │   └── *.jpg
 ├── styles/               # Custom CSS
 │   └── *.css
-└── .pagedmdignore        # Files to exclude (future)
+└── .print-mdignore        # Files to exclude (future)
 ```
 
 ### Writing Tips
@@ -1144,11 +1144,11 @@ See [README.md - Troubleshooting](../README.md#troubleshooting) for common issue
 
 - **[Theme Customization Guide](./theme-customization.md)** - Deep dive into CSS styling
 - **[Examples](../examples/)** - Sample projects to learn from
-- **[Architecture](./ARCHITECTURE.md)** - How pagedmd works internally
-- **[Contributing](../CONTRIBUTING.md)** - Help improve pagedmd
+- **[Architecture](./ARCHITECTURE.md)** - How print-md works internally
+- **[Contributing](../CONTRIBUTING.md)** - Help improve print-md
 
 ---
 
-**Questions or issues?** [Open an issue on GitHub](https://github.com/dimm-city/pagedmd/issues)
+**Questions or issues?** [Open an issue on GitHub](https://github.com/dimm-city/print-md/issues)
 
 **Want to contribute?** See [CONTRIBUTING.md](../CONTRIBUTING.md)

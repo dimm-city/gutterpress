@@ -3,7 +3,7 @@
 > **Status: COMPLETED**
 > This migration has been completed. This document is preserved for historical reference and to document the architectural decisions made.
 
-This document outlines the steps that were taken to remove Paged.js from pagedmd and standardize on:
+This document outlines the steps that were taken to remove Paged.js from print-md and standardize on:
 - **Vivliostyle Viewer** for preview
 - **Prince XML** for print-ready PDF export
 
@@ -209,7 +209,7 @@ if (!validEngines.includes(engine)) {
 engine,
 
 // UPDATE help text - remove this line
-$ pagedmd preview --engine vivliostyle    # Use Vivliostyle engine
+$ print-md preview --engine vivliostyle    # Use Vivliostyle engine
 ```
 
 ---
@@ -477,10 +477,10 @@ After completing the migration:
 
 - [ ] `bun test` - All tests pass
 - [ ] `bun run type-check` - No type errors
-- [ ] `pagedmd preview` - Opens Vivliostyle viewer correctly
-- [ ] `pagedmd build --format pdf` - Generates PDF with Prince
-- [ ] `pagedmd build --format html` - Generates standalone HTML
-- [ ] `pagedmd build --format preview` - Generates offline preview
+- [ ] `print-md preview` - Opens Vivliostyle viewer correctly
+- [ ] `print-md build --format pdf` - Generates PDF with Prince
+- [ ] `print-md build --format html` - Generates standalone HTML
+- [ ] `print-md build --format preview` - Generates offline preview
 - [ ] Page navigation works in preview
 - [ ] Spread view works in preview
 - [ ] Debug mode works in preview

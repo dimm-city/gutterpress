@@ -1,13 +1,13 @@
 # JSON Schema Autocomplete for manifest.yaml
 
-pagedmd includes a JSON schema for `manifest.yaml` that provides autocomplete, validation, and documentation directly in your editor.
+print-md includes a JSON schema for `manifest.yaml` that provides autocomplete, validation, and documentation directly in your editor.
 
 ## Quick Setup
 
 Add this line to the top of your `manifest.yaml`:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/pagedmd/main/manifest.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
 
 title: "My Book"
 authors:
@@ -32,7 +32,7 @@ That's it! Your editor will now provide:
 
 2. **Add schema reference to your manifest.yaml:**
    ```yaml
-   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/pagedmd/main/manifest.schema.json
+   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
 
    title: "My Document"
    authors:
@@ -56,7 +56,7 @@ authors:
   - "Your Name"
 ```
 
-Copy `manifest.schema.json` from the pagedmd repository to your project directory.
+Copy `manifest.schema.json` from the print-md repository to your project directory.
 
 ### Global Configuration (VS Code)
 
@@ -72,7 +72,7 @@ To apply the schema automatically to all `manifest.yaml` files:
    ```json
    {
      "yaml.schemas": {
-       "https://raw.githubusercontent.com/dimm-city/pagedmd/main/manifest.schema.json": ["manifest.yaml"]
+       "https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json": ["manifest.yaml"]
      }
    }
    ```
@@ -87,7 +87,7 @@ Now all `manifest.yaml` files automatically use the schema without the header co
 
 2. **Add schema reference:**
    ```yaml
-   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/pagedmd/main/manifest.schema.json
+   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
 
    title: "My Document"
    authors:
@@ -106,8 +106,8 @@ Now all `manifest.yaml` files automatically use the schema without the header co
 2. Click `+` to add a new schema
 
 3. Configure:
-   - **Name:** pagedmd Manifest
-   - **Schema file or URL:** `https://raw.githubusercontent.com/dimm-city/pagedmd/main/manifest.schema.json`
+   - **Name:** print-md Manifest
+   - **Schema file or URL:** `https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json`
    - **Schema version:** JSON Schema version 7
 
 4. Add file path pattern: `**/manifest.yaml`
@@ -127,14 +127,14 @@ Now all `manifest.yaml` files automatically use the schema without the header co
    ```json
    {
      "yaml.schemas": {
-       "https://raw.githubusercontent.com/dimm-city/pagedmd/main/manifest.schema.json": ["manifest.yaml"]
+       "https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json": ["manifest.yaml"]
      }
    }
    ```
 
 3. **Or use file header:**
    ```yaml
-   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/pagedmd/main/manifest.schema.json
+   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
 
    title: "My Document"
    ```
@@ -150,7 +150,7 @@ Now all `manifest.yaml` files automatically use the schema without the header co
    {
      "settings": {
        "yaml.schemas": {
-         "https://raw.githubusercontent.com/dimm-city/pagedmd/main/manifest.schema.json": ["manifest.yaml"]
+         "https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json": ["manifest.yaml"]
        }
      }
    }
@@ -210,7 +210,7 @@ Document title. Must be non-empty.
 
 **Example:**
 ```yaml
-title: "The Complete Guide to pagedmd"
+title: "The Complete Guide to print-md"
 ```
 
 #### `authors` (array of strings)
@@ -304,7 +304,7 @@ extensions:
 ```
 
 #### `disableDefaultStyles` (boolean)
-Disable default foundation CSS styles. Use this to completely replace pagedmd's base styles.
+Disable default foundation CSS styles. Use this to completely replace print-md's base styles.
 
 **Default:** `false`
 
@@ -336,9 +336,9 @@ date: "2025-11-19"
 ## Complete Example
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/pagedmd/main/manifest.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
 
-title: "The Complete Guide to pagedmd"
+title: "The Complete Guide to print-md"
 authors:
   - "Technical Writing Team"
 description: "Comprehensive guide to creating professional PDFs from markdown"
@@ -382,7 +382,7 @@ disableDefaultStyles: false
 
 1. **Verify schema header is present:**
    ```yaml
-   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/pagedmd/main/manifest.schema.json
+   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
    ```
 
 2. **Check YAML extension is installed:**
@@ -401,7 +401,7 @@ disableDefaultStyles: false
    - Proper array syntax (`- item`)
 
 2. **Verify schema URL is correct:**
-   - Must be exactly: `https://raw.githubusercontent.com/dimm-city/pagedmd/main/manifest.schema.json`
+   - Must be exactly: `https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json`
 
 3. **Try local schema:**
    ```yaml
@@ -441,9 +441,9 @@ Some warnings are informational:
 
 ## Schema Maintenance
 
-The schema is maintained in sync with pagedmd's Zod validation schema. When new features are added, the JSON schema is updated to match.
+The schema is maintained in sync with print-md's Zod validation schema. When new features are added, the JSON schema is updated to match.
 
-**Latest schema:** https://raw.githubusercontent.com/dimm-city/pagedmd/main/manifest.schema.json
+**Latest schema:** https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
 
 **Local copy:** Include `manifest.schema.json` in your project for offline use.
 
@@ -451,10 +451,10 @@ The schema is maintained in sync with pagedmd's Zod validation schema. When new 
 
 ## Related Documentation
 
-- [User Guide](./user-guide.md) - Complete pagedmd usage guide
+- [User Guide](./user-guide.md) - Complete print-md usage guide
 - [Theme Customization](./theme-customization.md) - CSS styling guide
 - [README](../README.md) - Project overview and quick start
 
 ---
 
-**Questions or issues?** [Open an issue on GitHub](https://github.com/dimm-city/pagedmd/issues)
+**Questions or issues?** [Open an issue on GitHub](https://github.com/dimm-city/print-md/issues)

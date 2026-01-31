@@ -1,6 +1,6 @@
 # Theme Customization Guide
 
-This guide covers everything you need to know about customizing the appearance of your pagedmd documents using CSS.
+This guide covers everything you need to know about customizing the appearance of your print-md documents using CSS.
 
 ## Table of Contents
 
@@ -67,7 +67,7 @@ styles:
 
 ## Built-in Themes
 
-pagedmd includes 4 professionally-designed themes:
+print-md includes 4 professionally-designed themes:
 
 ### Classic Theme
 
@@ -140,7 +140,7 @@ Understanding how CSS is applied:
 
 ### 1. Foundation CSS (Default)
 
-Unless `disableDefaultStyles: true`, pagedmd includes:
+Unless `disableDefaultStyles: true`, print-md includes:
 
 - **Variables** - CSS custom properties for colors, fonts, spacing
 - **Typography** - Base font styles, line heights, headings
@@ -182,7 +182,7 @@ styles:
 
 ## CSS Variables
 
-pagedmd uses CSS custom properties for easy customization.
+print-md uses CSS custom properties for easy customization.
 
 ### Color Variables
 
@@ -1150,12 +1150,12 @@ td {
 
 1. **Use Preview Mode** - See changes instantly
    ```bash
-   pagedmd preview --watch
+   print-md preview --watch
    ```
 
 2. **Build PDF Frequently** - Preview mode approximates, PDF is final
    ```bash
-   pagedmd build
+   print-md build
    ```
 
 3. **Test Different Content** - Long pages, images, tables, code blocks
@@ -1210,10 +1210,10 @@ h1, h2, h3 {
 - **[Vivliostyle Documentation](https://docs.vivliostyle.org/)** - Preview engine guide
 - **[CSS Paged Media](https://www.w3.org/TR/css-page-3/)** - W3C specification
 - **[Print CSS Guide](https://www.smashingmagazine.com/2015/01/designing-for-print-with-css/)** - Smashing Magazine
-- **[User Guide](./user-guide.md)** - pagedmd usage guide
+- **[User Guide](./user-guide.md)** - print-md usage guide
 
 ---
 
-**Questions or issues?** [Open an issue on GitHub](https://github.com/dimm-city/pagedmd/issues)
+**Questions or issues?** [Open an issue on GitHub](https://github.com/dimm-city/print-md/issues)
 
 **Want to contribute?** See [CONTRIBUTING.md](../CONTRIBUTING.md)

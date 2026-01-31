@@ -1,18 +1,18 @@
-# Getting Started with PagedMD
+# Getting Started with Print-md
 
-PagedMD converts markdown files into professional print PDFs. It's designed for creating books, manuals, rulebooks, and any print-first documents. Uses Prince XML for PDF generation and Vivliostyle for live preview.
+Print-md converts markdown files into professional print PDFs. It's designed for creating books, manuals, rulebooks, and any print-first documents. Uses Prince XML for PDF generation and Vivliostyle for live preview.
 
 ## Basic Workflow
 
 ```bash
 # Build a PDF from markdown files
-pagedmd build ./my-book
+print-md build ./my-book
 
 # Preview with live reload
-pagedmd preview ./my-book
+print-md preview ./my-book
 
 # Build with custom output name
-pagedmd build ./my-book --output my-book.pdf
+print-md build ./my-book --output my-book.pdf
 ```
 
 ## Project Structure

@@ -1,6 +1,6 @@
 # Architecture Documentation
 
-This document describes the architecture, design decisions, and implementation details of pagedmd.
+This document describes the architecture, design decisions, and implementation details of print-md.
 
 ## Table of Contents
 
@@ -15,7 +15,7 @@ This document describes the architecture, design decisions, and implementation d
 
 ## Overview
 
-**pagedmd** is a markdown-to-PDF converter for professional print layout. It uses Prince XML for PDF generation and Vivliostyle for live preview. It's designed as a single-user local application optimized for creating print-ready documents like books, game manuals, and professional reports.
+**print-md** is a markdown-to-PDF converter for professional print layout. It uses Prince XML for PDF generation and Vivliostyle for live preview. It's designed as a single-user local application optimized for creating print-ready documents like books, game manuals, and professional reports.
 
 ### Key Features
 

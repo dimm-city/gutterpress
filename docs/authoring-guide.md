@@ -1,6 +1,6 @@
-# PagedMD Authoring Guide
+# Print-md Authoring Guide
 
-A comprehensive guide to creating beautiful print-ready documents from markdown using pagedmd.
+A comprehensive guide to creating beautiful print-ready documents from markdown using print-md.
 
 ## Table of Contents
 
@@ -20,19 +20,19 @@ A comprehensive guide to creating beautiful print-ready documents from markdown 
 
 ## Getting Started
 
-PagedMD converts markdown files into professional print PDFs. It's designed for creating books, manuals, rulebooks, and any print-first documents. Uses Prince XML for PDF generation and Vivliostyle for live preview.
+Print-md converts markdown files into professional print PDFs. It's designed for creating books, manuals, rulebooks, and any print-first documents. Uses Prince XML for PDF generation and Vivliostyle for live preview.
 
 ### Basic Workflow
 
 ```bash
 # Build a PDF from markdown files
-pagedmd build ./my-book
+print-md build ./my-book
 
 # Preview with live reload
-pagedmd preview ./my-book
+print-md preview ./my-book
 
 # Build with custom output name
-pagedmd build ./my-book --output my-book.pdf
+print-md build ./my-book --output my-book.pdf
 ```
 
 ### Project Structure
@@ -117,7 +117,7 @@ size: "148mm 210mm"
 
 ## Core Directives
 
-PagedMD provides powerful directives to control page layout and behavior. Directives are HTML comments that control print layout rendering.
+Print-md provides powerful directives to control page layout and behavior. Directives are HTML comments that control print layout rendering.
 
 ### Page Templates
 
@@ -195,7 +195,7 @@ Three columns for very dense content (use sparingly).
 
 ### Headings
 
-PagedMD provides six heading levels with automatic styling:
+Print-md provides six heading levels with automatic styling:
 
 ```markdown
 # H1 - Chapter Title (24pt, auto-starts on right page)
@@ -290,7 +290,7 @@ Tables automatically:
 
 ### Automatic Page Breaks
 
-PagedMD provides automatic page breaks with simple markdown:
+Print-md provides automatic page breaks with simple markdown:
 
 ```markdown
 # Chapter One
@@ -353,7 +353,7 @@ Or in custom CSS:
 
 ## Callouts & Admonitions
 
-PagedMD supports five professional callout types for highlighting important information. These use GitHub-style syntax and are universally applicable to any document type.
+Print-md supports five professional callout types for highlighting important information. These use GitHub-style syntax and are universally applicable to any document type.
 
 ### Callout Syntax
 
@@ -556,7 +556,7 @@ You can then style it with CSS in your custom stylesheet.
 
 ### HTML in Markdown
 
-PagedMD supports inline HTML when needed:
+Print-md supports inline HTML when needed:
 
 ```markdown
 <div class="custom-container">
@@ -751,7 +751,7 @@ Equipment or item details
 
 ### Built-in Themes
 
-PagedMD includes professional themes you can use:
+Print-md includes professional themes you can use:
 
 ```yaml
 # manifest.yaml
@@ -1071,7 +1071,7 @@ blank          - Blank page
 - **Print Design Best Practices:** Research book design principles
 - **CSS Paged Media:** https://www.w3.org/TR/css-page-3/
 
-For more examples, see the `/examples` directory in the pagedmd repository.
+For more examples, see the `/examples` directory in the print-md repository.
 
 ---
 

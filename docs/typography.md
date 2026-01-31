@@ -4,7 +4,7 @@ Professional typography options for print documents.
 
 ## Headings
 
-PagedMD provides six heading levels with automatic styling:
+Print-md provides six heading levels with automatic styling:
 
 ```markdown
 # H1 - Chapter Title (24pt, auto-starts on right page)

@@ -1,6 +1,6 @@
 # Best Practices
 
-Professional guidelines for creating high-quality print documents with PagedMD.
+Professional guidelines for creating high-quality print documents with Print-md.
 
 ## File Organization
 
@@ -177,13 +177,13 @@ my-book/
 
 ```bash
 # Fast iteration during writing
-pagedmd preview ./my-book --watch
+print-md preview ./my-book --watch
 
 # Build for review
-pagedmd build ./my-book --format preview
+print-md build ./my-book --format preview
 
 # Final production build
-pagedmd build ./my-book --output final.pdf
+print-md build ./my-book --output final.pdf
 ```
 
 ## Testing Checklist
@@ -343,7 +343,7 @@ git init
 # .gitignore
 echo "*.pdf" >> .gitignore
 echo "node_modules/" >> .gitignore
-echo ".pagedmd-cache/" >> .gitignore
+echo ".print-md-cache/" >> .gitignore
 
 # Commit source files
 git add .

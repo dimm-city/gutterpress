@@ -69,7 +69,7 @@
 
 ## Executive Summary
 
-Design a runtime plugin system that allows users to extend pagedmd's markdown processing without modifying the core codebase. This enables custom markdown syntax, directives, and transformations to be added as standalone modules.
+Design a runtime plugin system that allows users to extend print-md's markdown processing without modifying the core codebase. This enables custom markdown syntax, directives, and transformations to be added as standalone modules.
 
 **Recommended Solution:** Option 3 - Hybrid Manifest-Based System ✅ IMPLEMENTED
 
@@ -93,8 +93,8 @@ if (extensions.includes('ttrpg')) {
 ```
 
 **Problems:**
-- ❌ Plugins are hardcoded and compiled into pagedmd
-- ❌ Adding new plugins requires forking pagedmd
+- ❌ Plugins are hardcoded and compiled into print-md
+- ❌ Adding new plugins requires forking print-md
 - ❌ No way for users to create custom syntax
 - ❌ Third-party plugins impossible
 - ❌ Every new feature increases bundle size
@@ -148,7 +148,7 @@ export const metadata = {
 };
 ```
 
-**pagedmd Implementation:**
+**print-md Implementation:**
 ```typescript
 // src/markdown/plugin-loader.ts
 import { pathToFileURL } from 'url';
@@ -207,20 +207,20 @@ for (const pluginPath of manifest.plugins || []) {
 **User Workflow:**
 ```bash
 # Install plugins as npm packages
-npm install pagedmd-plugin-callouts
-npm install @mycompany/pagedmd-plugin-custom
+npm install print-md-plugin-callouts
+npm install @mycompany/print-md-plugin-custom
 ```
 
 ```yaml
 # manifest.yaml (plugins auto-discovered OR explicitly listed)
 plugins:
-  - "pagedmd-plugin-callouts"
-  - "@mycompany/pagedmd-plugin-custom"
+  - "print-md-plugin-callouts"
+  - "@mycompany/print-md-plugin-custom"
 ```
 
 **Plugin Package Structure:**
 ```
-pagedmd-plugin-callouts/
+print-md-plugin-callouts/
 ├── package.json          # Standard npm package
 ├── index.js              # Plugin entry point
 ├── styles.css            # Plugin styles (optional)
@@ -232,15 +232,15 @@ pagedmd-plugin-callouts/
 **Plugin package.json:**
 ```json
 {
-  "name": "pagedmd-plugin-callouts",
+  "name": "print-md-plugin-callouts",
   "version": "1.2.0",
-  "description": "Adds callout box syntax to pagedmd",
+  "description": "Adds callout box syntax to print-md",
   "main": "index.js",
-  "keywords": ["pagedmd", "pagedmd-plugin", "markdown-it"],
+  "keywords": ["print-md", "print-md-plugin", "markdown-it"],
   "peerDependencies": {
-    "pagedmd": "^1.0.0"
+    "print-md": "^1.0.0"
   },
-  "pagedmd": {
+  "print-md": {
     "type": "markdown-plugin",
     "css": "./styles.css",
     "priority": 100
@@ -274,7 +274,7 @@ module.exports.metadata = {
 };
 ```
 
-**pagedmd Discovery & Loading:**
+**print-md Discovery & Loading:**
 ```typescript
 // src/markdown/plugin-discovery.ts
 interface PluginPackage {
@@ -299,10 +299,10 @@ async function discoverPlugins(projectDir: string): Promise<PluginPackage[]> {
     ...packageJson.devDependencies
   };
 
-  // Find all packages with "pagedmd-plugin" prefix or keyword
+  // Find all packages with "print-md-plugin" prefix or keyword
   for (const [name, version] of Object.entries(deps)) {
-    if (name.startsWith('pagedmd-plugin-') ||
-        name.includes('/pagedmd-plugin-')) {
+    if (name.startsWith('print-md-plugin-') ||
+        name.includes('/print-md-plugin-')) {
 
       const pluginPkg = await loadPluginPackage(name, projectDir);
       if (pluginPkg) plugins.push(pluginPkg);
@@ -323,16 +323,16 @@ async function loadPluginPackage(
       await readFile(path.join(pluginPath, 'package.json'))
     );
 
-    const pagedmdConfig = pkgJson.pagedmd || {};
+    const print-mdConfig = pkgJson.print-md || {};
 
     return {
       name,
       version: pkgJson.version,
       pluginPath: path.join(pluginPath, pkgJson.main || 'index.js'),
-      css: pagedmdConfig.css
-        ? path.join(pluginPath, pagedmdConfig.css)
+      css: print-mdConfig.css
+        ? path.join(pluginPath, print-mdConfig.css)
         : undefined,
-      priority: pagedmdConfig.priority || 100
+      priority: print-mdConfig.priority || 100
     };
   } catch (error) {
     warn(`Failed to load plugin ${name}: ${error.message}`);
@@ -362,12 +362,12 @@ plugins:
 
 # OR explicitly list plugins
 plugins:
-  - name: "pagedmd-plugin-callouts"
+  - name: "print-md-plugin-callouts"
     enabled: true
     options:
       types: ["note", "warning", "tip"]
 
-  - name: "@mycompany/pagedmd-plugin-custom"
+  - name: "@mycompany/print-md-plugin-custom"
     enabled: true
     options:
       strict: false
@@ -414,7 +414,7 @@ plugins:
 
   # npm package (shared/published)
   - type: "package"
-    name: "pagedmd-plugin-callouts"
+    name: "print-md-plugin-callouts"
     version: "^1.2.0"
     enabled: true
     options:
@@ -436,7 +436,7 @@ plugins:
 ```yaml
 plugins:
   - "./plugins/my-custom.js"                    # local (auto-detected)
-  - "pagedmd-plugin-callouts"                   # package (auto-detected)
+  - "print-md-plugin-callouts"                   # package (auto-detected)
   - name: "ttrpg"                               # builtin (auto-detected)
     options: { strict: true }
 ```
@@ -641,11 +641,11 @@ class PluginLoader {
       const module = await import(pathToFileURL(pluginEntryPoint).href);
 
       // Load CSS if specified in package.json
-      const pagedmdConfig = pkgJson.pagedmd || {};
+      const print-mdConfig = pkgJson.print-md || {};
       let css: string | undefined;
 
-      if (pagedmdConfig.css) {
-        const cssPath = path.join(packagePath, pagedmdConfig.css);
+      if (print-mdConfig.css) {
+        const cssPath = path.join(packagePath, print-mdConfig.css);
         css = await readFile(cssPath);
       }
 
@@ -887,15 +887,15 @@ plugins:
 EOF
 
 # 3. Build
-pagedmd build
+print-md build
 ```
 
 **Publishing Plugin (npm Package):**
 
 ```bash
 # 1. Create plugin package
-mkdir pagedmd-plugin-callouts
-cd pagedmd-plugin-callouts
+mkdir print-md-plugin-callouts
+cd print-md-plugin-callouts
 
 # 2. Initialize package
 npm init -y
@@ -903,18 +903,18 @@ npm init -y
 # 3. Update package.json
 cat > package.json << 'EOF'
 {
-  "name": "pagedmd-plugin-callouts",
+  "name": "print-md-plugin-callouts",
   "version": "1.0.0",
-  "description": "Callout boxes for pagedmd",
+  "description": "Callout boxes for print-md",
   "main": "index.js",
-  "keywords": ["pagedmd", "pagedmd-plugin", "markdown"],
+  "keywords": ["print-md", "print-md-plugin", "markdown"],
   "peerDependencies": {
-    "pagedmd": "^1.0.0"
+    "print-md": "^1.0.0"
   },
   "dependencies": {
     "markdown-it-container": "^4.0.0"
   },
-  "pagedmd": {
+  "print-md": {
     "type": "markdown-plugin",
     "css": "./styles.css",
     "priority": 100
@@ -971,12 +971,12 @@ npm publish
 
 ```bash
 # 1. Install
-npm install pagedmd-plugin-callouts
+npm install print-md-plugin-callouts
 
 # 2. Add to manifest
 cat >> manifest.yaml << 'EOF'
 plugins:
-  - name: "pagedmd-plugin-callouts"
+  - name: "print-md-plugin-callouts"
     options:
       types: ["note", "warning", "tip"]
 EOF
@@ -993,7 +993,7 @@ This is a warning callout
 EOF
 
 # 4. Build
-pagedmd build
+print-md build
 ```
 
 ### Security Considerations
@@ -1118,23 +1118,23 @@ try {
 
 ```bash
 # Search for plugins
-pagedmd plugin search callout
+print-md plugin search callout
 
 # Install plugin
-pagedmd plugin install pagedmd-plugin-callouts
+print-md plugin install print-md-plugin-callouts
 
 # List installed plugins
-pagedmd plugin list
+print-md plugin list
 
 # Show plugin info
-pagedmd plugin info pagedmd-plugin-callouts
+print-md plugin info print-md-plugin-callouts
 ```
 
 **Plugin Template Generator:**
 
 ```bash
 # Create new plugin from template
-pagedmd plugin create my-plugin
+print-md plugin create my-plugin
 
 # Creates:
 # plugins/my-plugin/
@@ -1249,9 +1249,9 @@ pagedmd plugin create my-plugin
    - Maintain backward compatibility
 
 2. **Create Example Plugins**
-   - pagedmd-plugin-callouts
-   - pagedmd-plugin-footnotes
-   - pagedmd-plugin-mermaid
+   - print-md-plugin-callouts
+   - print-md-plugin-footnotes
+   - print-md-plugin-mermaid
 
 3. **Documentation**
    - Update user guide
@@ -1320,12 +1320,12 @@ plugins:
 ### For Plugin Developers
 
 ```javascript
-// OLD (hardcoded in pagedmd)
+// OLD (hardcoded in print-md)
 // src/markdown/plugins/my-plugin.ts
 export default function myPlugin(md) { ... }
 
 // NEW (standalone package)
-// pagedmd-plugin-my/index.js
+// print-md-plugin-my/index.js
 module.exports = function myPlugin(md) { ... };
 module.exports.metadata = {
   name: 'my-plugin',
