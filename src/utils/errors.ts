@@ -1,5 +1,5 @@
 /**
- * Simplified error classes for pagedmd
+ * Simplified error classes for print-md
  *
  * Just the basics - this is a personal tool, not enterprise software.
  * Use standard Error class for most cases.

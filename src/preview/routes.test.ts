@@ -74,7 +74,7 @@ describe("handleListDirectories", () => {
   test("lists subdirectories correctly", async () => {
     // Create temp directory within home directory
     const homeDir = getHomeDirectory();
-    const tempDir = await mkdtemp(join(homeDir, ".pagedmd-test-"));
+    const tempDir = await mkdtemp(join(homeDir, ".print-md-test-"));
     await mkdir(join(tempDir, "subdir1"));
     await mkdir(join(tempDir, "subdir2"));
     await mkdir(join(tempDir, ".hidden")); // Should be excluded
@@ -102,7 +102,7 @@ describe("handleListDirectories", () => {
   test("includes parent directory when not at home", async () => {
     // Create temp directory within home directory
     const homeDir = getHomeDirectory();
-    const tempDir = await mkdtemp(join(homeDir, ".pagedmd-test-"));
+    const tempDir = await mkdtemp(join(homeDir, ".print-md-test-"));
     const subDir = join(tempDir, "subdir");
     await mkdir(subDir);
 
@@ -216,7 +216,7 @@ describe("handleChangeFolder", () => {
   test("successfully changes folder and calls callback", async () => {
     // Create temp directory within home directory
     const homeDir = getHomeDirectory();
-    const tempDir = await mkdtemp(join(homeDir, ".pagedmd-test-"));
+    const tempDir = await mkdtemp(join(homeDir, ".print-md-test-"));
 
     try {
       let callbackCalled = false;
@@ -249,7 +249,7 @@ describe("handleChangeFolder", () => {
 
   test("returns 500 when callback throws error", async () => {
     const homeDir = getHomeDirectory();
-    const tempDir = await mkdtemp(join(homeDir, ".pagedmd-test-"));
+    const tempDir = await mkdtemp(join(homeDir, ".print-md-test-"));
 
     try {
       const mockCallback = async () => {
@@ -296,7 +296,7 @@ describe("handleChangeFolder", () => {
 
   test("returns 400 when path is a file, not a directory", async () => {
     const homeDir = getHomeDirectory();
-    const tempDir = await mkdtemp(join(homeDir, ".pagedmd-test-"));
+    const tempDir = await mkdtemp(join(homeDir, ".print-md-test-"));
     const filePath = join(tempDir, "test-file.txt");
     await writeFile(filePath, "test content");
 

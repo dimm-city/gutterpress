@@ -23,7 +23,7 @@ export async function initializePreviewDirectories(
   inputPath: string,
   assetsSourceDir: string
 ): Promise<string> {
-  const tempDirBase = path.join(tmpdir(), 'pagedmd-preview');
+  const tempDirBase = path.join(tmpdir(), 'print-md-preview');
   const tempDirSuffix = randomBytes(8).toString('hex');
   const tempDir = path.join(tempDirBase, tempDirSuffix);
   await mkdir(tempDir);

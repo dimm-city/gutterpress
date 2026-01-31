@@ -59,8 +59,8 @@ describe('generateAndWriteHtml', () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), 'pagedmd-test-input-'));
-    tempDir = await mkdtemp(join(tmpdir(), 'pagedmd-test-temp-'));
+    testDir = await mkdtemp(join(tmpdir(), 'print-md-test-input-'));
+    tempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
   });
 
   afterEach(async () => {
@@ -131,8 +131,8 @@ describe('createFileWatcher', () => {
   let state: ServerState;
 
   beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), 'pagedmd-test-input-'));
-    tempDir = await mkdtemp(join(tmpdir(), 'pagedmd-test-temp-'));
+    testDir = await mkdtemp(join(tmpdir(), 'print-md-test-input-'));
+    tempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
 
     await writeFile(join(testDir, 'chapter-01.md'), '# Initial');
 
@@ -212,8 +212,8 @@ describe('startFileWatcher', () => {
   let state: ServerState;
 
   beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), 'pagedmd-test-input-'));
-    tempDir = await mkdtemp(join(tmpdir(), 'pagedmd-test-temp-'));
+    testDir = await mkdtemp(join(tmpdir(), 'print-md-test-input-'));
+    tempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
 
     await writeFile(join(testDir, 'chapter-01.md'), '# Test');
 
@@ -249,8 +249,8 @@ describe('stopFileWatcher', () => {
   let state: ServerState;
 
   beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), 'pagedmd-test-input-'));
-    tempDir = await mkdtemp(join(tmpdir(), 'pagedmd-test-temp-'));
+    testDir = await mkdtemp(join(tmpdir(), 'print-md-test-input-'));
+    tempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
 
     await writeFile(join(testDir, 'chapter-01.md'), '# Test');
 

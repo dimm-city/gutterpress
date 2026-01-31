@@ -130,7 +130,7 @@ export async function loginWithGh(): Promise<{
  */
 export function getClonedReposDirectory(): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || "/tmp";
-  return path.join(homeDir, ".pagedmd", "cloned-repos");
+  return path.join(homeDir, ".print-md", "cloned-repos");
 }
 
 /**
@@ -196,7 +196,7 @@ export function parseGitHubUrl(url: string): {
 /**
  * Clone a GitHub repository using gh CLI
  * @param repoUrl - GitHub repository URL
- * @param targetDirectory - Optional target directory path (defaults to ~/.pagedmd/cloned-repos/owner/repo)
+ * @param targetDirectory - Optional target directory path (defaults to ~/.print-md/cloned-repos/owner/repo)
  * @returns Object with success status, local path, and any error
  */
 export async function cloneRepository(

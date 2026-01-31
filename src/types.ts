@@ -1,5 +1,5 @@
 /**
- * Shared TypeScript interfaces for pagedmd CLI
+ * Shared TypeScript interfaces for print-md CLI
  *
  * Core types used by the preview server and CLI commands.
  * Build pipeline types are in src/schema/manifest.types.ts.

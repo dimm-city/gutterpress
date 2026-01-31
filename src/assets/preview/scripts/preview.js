@@ -1,5 +1,5 @@
 // ============================================================================
-// Preview Client for pagedmd (Vite + Build Watch Architecture)
+// Preview Client for print-md (Vite + Build Watch Architecture)
 // ============================================================================
 //
 // REFACTORED VERSION:

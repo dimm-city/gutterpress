@@ -181,7 +181,7 @@ export default defineCommand({
 
     log.success(`Wrote: ${out}`);
     if (pdfxMode) {
-      log.info(`Next: pagedmd validate --pdf ${out}`);
+      log.info(`Next: print-md validate --pdf ${out}`);
     }
   },
 });
