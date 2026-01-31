@@ -1,4 +1,4 @@
-# pagedmd: Critical End-to-End Review
+# print-md: Critical End-to-End Review
 
 > **Note:** This review was conducted before the migration to Prince XML/Vivliostyle. Some architectural details may be outdated. See `docs/MIGRATION-REMOVE-PAGEDJS.md` for the migration history.
 
@@ -11,7 +11,7 @@
 
 ## Executive Summary
 
-**pagedmd** is a markdown-to-PDF converter using Prince XML for PDF generation and Vivliostyle for preview. After comprehensive code review and implementation of 15 improvement items, the project has achieved **A+ Enterprise Grade** status with:
+**print-md** is a markdown-to-PDF converter using Prince XML for PDF generation and Vivliostyle for preview. After comprehensive code review and implementation of 15 improvement items, the project has achieved **A+ Enterprise Grade** status with:
 
 - **100% completion** of all code review items (15/15)
 - **90% test coverage** (383 tests across 21 test files)
@@ -67,7 +67,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    pagedmd Architecture                      │
+│                    print-md Architecture                      │
 ├─────────────────────────────────────────────────────────────┤
 │                                                               │
 │  ┌──────────┐    ┌──────────────┐    ┌─────────────────┐   │
@@ -362,14 +362,14 @@ try {
 **Command Structure:**
 ```bash
 # Build commands
-pagedmd build [input] --output [file] --format [pdf|html|preview]
-pagedmd build --watch                    # Watch mode
-pagedmd build --profile                  # Performance profiling
+print-md build [input] --output [file] --format [pdf|html|preview]
+print-md build --watch                    # Watch mode
+print-md build --profile                  # Performance profiling
 
 # Preview commands
-pagedmd preview [input] --port [number]  # Live preview
-pagedmd preview --no-watch               # Disable file watching
-pagedmd preview --open false             # Don't open browser
+print-md preview [input] --port [number]  # Live preview
+print-md preview --no-watch               # Disable file watching
+print-md preview --open false             # Don't open browser
 ```
 
 **Strengths:**
@@ -380,9 +380,9 @@ pagedmd preview --open false             # Don't open browser
 
 **Example (Help Output):**
 ```
-$ pagedmd build --help
+$ print-md build --help
 
-Usage: pagedmd build [input] [options]
+Usage: print-md build [input] [options]
 
 Build markdown files to PDF, HTML, or preview format
 
@@ -445,7 +445,7 @@ files:
 
 **User Experience:**
 ```bash
-$ pagedmd preview examples/my-book
+$ print-md preview examples/my-book
 
 Starting preview server...
 ✓ Configuration loaded
@@ -498,7 +498,7 @@ Starting preview server...
 **Recommendations:**
 1. Add error code mapping (ENOENT → "File not found")
 2. Include context in error messages (what file, what operation)
-3. Suggest next steps ("Try running `pagedmd init`")
+3. Suggest next steps ("Try running `print-md init`")
 
 **Verdict:** Error messages are functional but could be more helpful.
 
@@ -653,7 +653,7 @@ Browser updates automatically
 - ⚠️ No image optimization
 
 **Recommendations:**
-1. Add `.pagedmdignore` support
+1. Add `.print-mdignore` support
 2. Implement image optimization (optional)
 3. Warn on large assets (>10MB)
 
@@ -689,7 +689,7 @@ Browser updates automatically
 
 **Example (Profile Output):**
 ```bash
-$ pagedmd build --profile
+$ print-md build --profile
 
 Performance Metrics:
   Configuration Loading: 45ms
@@ -950,13 +950,13 @@ Bun.write('manifest.schema.json', JSON.stringify(jsonSchema, null, 2));
 
 ### Short-Term Enhancements (Month 1)
 
-#### 4. Implement .pagedmdignore Support
+#### 4. Implement .print-mdignore Support
 **Priority:** MEDIUM
 **Effort:** 2 days
 
 **Functionality:**
 ```
-# .pagedmdignore
+# .print-mdignore
 node_modules/
 .git/
 *.log
@@ -965,7 +965,7 @@ temp/
 
 **Implementation:**
 - Use `ignore` npm package
-- Read `.pagedmdignore` during asset copying
+- Read `.print-mdignore` during asset copying
 - Respect global ignore patterns
 
 **Rationale:** Prevents copying unnecessary files during builds.
@@ -1022,7 +1022,7 @@ main: "index.ts"
 **Implementation:**
 ```typescript
 // Pseudo-code
-const cache = new BuildCache('.pagedmd/cache');
+const cache = new BuildCache('.print-md/cache');
 
 for (const mdFile of markdownFiles) {
   const cacheKey = cache.hash(mdFile, manifest, cssFiles);
@@ -1067,7 +1067,7 @@ assets:
 
 **Functionality:**
 ```bash
-$ pagedmd init --template technical-doc
+$ print-md init --template technical-doc
 
 Creating new project from template...
 ✓ manifest.yaml created
@@ -1117,7 +1117,7 @@ Creating new project from template...
 
 **Implementation:**
 ```bash
-$ pagedmd plugin install @community/custom-directives
+$ print-md plugin install @community/custom-directives
 
 Installing @community/custom-directives@1.2.3...
 ✓ Plugin installed to plugins/custom-directives/
@@ -1131,7 +1131,7 @@ Installing @community/custom-directives@1.2.3...
 **Effort:** 8 weeks
 
 **Functionality:**
-- Publish to pagedmd.com
+- Publish to print-md.com
 - Share preview links
 - Hosted PDFs
 - Analytics
@@ -1162,9 +1162,9 @@ Installing @community/custom-directives@1.2.3...
 **Effort:** 2 days per post
 
 **Topics:**
-- "Introducing pagedmd: Professional PDF Generation from Markdown"
-- "How to Create Custom Themes for pagedmd"
-- "Building TTRPG Modules with pagedmd"
+- "Introducing print-md: Professional PDF Generation from Markdown"
+- "How to Create Custom Themes for print-md"
+- "Building TTRPG Modules with print-md"
 - "Performance Tips for Large Documents"
 
 **Platforms:**
@@ -1220,7 +1220,7 @@ Installing @community/custom-directives@1.2.3...
 
 ### Overall Project Grade: A+ (Enterprise Grade)
 
-**Summary:** pagedmd is a production-ready, well-architected markdown-to-PDF converter with enterprise-grade code quality. The project successfully balances simplicity with sophistication, delivering a powerful tool without over-engineering.
+**Summary:** print-md is a production-ready, well-architected markdown-to-PDF converter with enterprise-grade code quality. The project successfully balances simplicity with sophistication, delivering a powerful tool without over-engineering.
 
 ### Strengths Summary
 1. ✅ **Excellent Architecture** - Clean patterns, clear separation, extensible
@@ -1246,7 +1246,7 @@ Installing @community/custom-directives@1.2.3...
 
 **v1.1.0 (Month 1)**
 - JSON schema for manifest.yaml
-- .pagedmdignore support
+- .print-mdignore support
 - User guide documentation
 
 **v1.2.0 (Month 2)**
@@ -1261,7 +1261,7 @@ Installing @community/custom-directives@1.2.3...
 
 ### Conclusion
 
-**pagedmd is ready for production use and 1.0.0 release.** The codebase demonstrates exceptional quality, comprehensive testing, and thoughtful architecture. With focused user documentation and community building, this project has the potential to become the go-to tool for professional markdown-to-PDF conversion.
+**print-md is ready for production use and 1.0.0 release.** The codebase demonstrates exceptional quality, comprehensive testing, and thoughtful architecture. With focused user documentation and community building, this project has the potential to become the go-to tool for professional markdown-to-PDF conversion.
 
 **Recommended Action:** Release v1.0.0 within 1 week and begin community building activities immediately.
 

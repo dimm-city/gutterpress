@@ -32,7 +32,7 @@ function Invoke-Process {
     }
 }
 
-function Invoke-Pagedmd {
+function Invoke-PrintMd {
     param(
         [pscustomobject]$Descriptor,
         [string[]]$Arguments
@@ -54,14 +54,14 @@ function Invoke-Pagedmd {
     Invoke-Process -Command $Descriptor.Command -Arguments $args
 }
 
-function Get-PagedmdDescriptor {
+function Get-PrintMdDescriptor {
     $candidates = @(
-        [pscustomobject]@{ Display = 'pagedmd'; Command = 'pagedmd'; Args = @(); UseSeparator = $false },
-        [pscustomobject]@{ Display = 'bunx @dimm-city/pagedmd'; Command = 'bunx'; Args = @('@dimm-city/pagedmd'); UseSeparator = $false },
-        [pscustomobject]@{ Display = 'bun x @dimm-city/pagedmd'; Command = 'bun'; Args = @('x', '@dimm-city/pagedmd'); UseSeparator = $false }
+        [pscustomobject]@{ Display = 'print-md'; Command = 'print-md'; Args = @(); UseSeparator = $false },
+        [pscustomobject]@{ Display = 'bunx @dimm-city/print-md'; Command = 'bunx'; Args = @('@dimm-city/print-md'); UseSeparator = $false },
+        [pscustomobject]@{ Display = 'bun x @dimm-city/print-md'; Command = 'bun'; Args = @('x', '@dimm-city/print-md'); UseSeparator = $false }
     )
 
-    $globalRoot = Join-Path $env:USERPROFILE '.bun\install\global\node_modules\@dimm-city\pagedmd'
+    $globalRoot = Join-Path $env:USERPROFILE '.bun\install\global\node_modules\@dimm-city\print-md'
     $sourceCli = Join-Path $globalRoot 'src\cli.ts'
     if (Test-Path $sourceCli) {
         $candidates += [pscustomobject]@{
@@ -83,7 +83,7 @@ function Get-PagedmdDescriptor {
     }
 
     foreach ($candidate in $candidates) {
-        $result = Invoke-Pagedmd -Descriptor $candidate -Arguments @('--version')
+        $result = Invoke-PrintMd -Descriptor $candidate -Arguments @('--version')
         if ($result.ExitCode -eq 0) {
             $versionLine = ($result.Output -split "`r?`n")[0]
             return [pscustomobject]@{
@@ -93,7 +93,7 @@ function Get-PagedmdDescriptor {
         }
     }
 
-    throw "Unable to find a working pagedmd command"
+    throw "Unable to find a working print-md command"
 }
 
 function Require-Success {
@@ -109,7 +109,7 @@ function Require-Success {
 }
 
 try {
-    Write-Section "pagedmd Windows install test"
+    Write-Section "print-md Windows install test"
 
     if ($SkipInstall) {
         Write-Host "Skipping install step"
@@ -126,31 +126,31 @@ try {
     Require-Success -Result $bunResult -FailureMessage 'Bun is not available after installation'
     Write-Host "Bun version: $($bunResult.Output)"
 
-    Write-Section "Resolving pagedmd command"
-    $pagedmd = Get-PagedmdDescriptor
-    Write-Host "Using command: $($pagedmd.Candidate.Display)"
-    Write-Host "pagedmd version: $($pagedmd.Version)"
+    Write-Section "Resolving print-md command"
+    $printmd = Get-PrintMdDescriptor
+    Write-Host "Using command: $($printmd.Candidate.Display)"
+    Write-Host "print-md version: $($printmd.Version)"
 
     if ($Quick) {
         Write-Host "Quick mode enabled; skipping extended help checks"
     } else {
-        Write-Section "Checking pagedmd --help"
-        $helpResult = Invoke-Pagedmd -Descriptor $pagedmd.Candidate -Arguments @('--help')
-        Require-Success -Result $helpResult -FailureMessage 'pagedmd --help failed'
+        Write-Section "Checking print-md --help"
+        $helpResult = Invoke-PrintMd -Descriptor $printmd.Candidate -Arguments @('--help')
+        Require-Success -Result $helpResult -FailureMessage 'print-md --help failed'
         if ($helpResult.Output -notmatch 'build' -or $helpResult.Output -notmatch 'preview') {
             throw 'Help output missing expected commands'
         }
 
-        Write-Section "Checking pagedmd build --help"
-        $buildResult = Invoke-Pagedmd -Descriptor $pagedmd.Candidate -Arguments @('build', '--help')
-        Require-Success -Result $buildResult -FailureMessage 'pagedmd build --help failed'
+        Write-Section "Checking print-md build --help"
+        $buildResult = Invoke-PrintMd -Descriptor $printmd.Candidate -Arguments @('build', '--help')
+        Require-Success -Result $buildResult -FailureMessage 'print-md build --help failed'
         if ($buildResult.Output -notmatch '--output' -or $buildResult.Output -notmatch '--format') {
             throw 'Build help output missing expected flags'
         }
 
-        Write-Section "Checking pagedmd preview --help"
-        $previewResult = Invoke-Pagedmd -Descriptor $pagedmd.Candidate -Arguments @('preview', '--help')
-        Require-Success -Result $previewResult -FailureMessage 'pagedmd preview --help failed'
+        Write-Section "Checking print-md preview --help"
+        $previewResult = Invoke-PrintMd -Descriptor $printmd.Candidate -Arguments @('preview', '--help')
+        Require-Success -Result $previewResult -FailureMessage 'print-md preview --help failed'
         if ($previewResult.Output -notmatch '--port') {
             throw 'Preview help output missing expected flags'
         }
@@ -167,7 +167,7 @@ try {
             throw 'Desktop path not available for current user'
         }
 
-        $shortcutPath = Join-Path $desktop 'Pagedmd Preview.lnk'
+        $shortcutPath = Join-Path $desktop 'Print-md Preview.lnk'
         if (-not (Test-Path $shortcutPath)) {
             throw "Desktop shortcut not found at $shortcutPath"
         }

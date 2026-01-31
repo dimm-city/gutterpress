@@ -1,7 +1,7 @@
-# Copilot Instructions for pagedmd
+# Copilot Instructions for print-md
 
 ## Project Overview
-**pagedmd** is a Bun-based CLI tool that converts markdown to professional print-ready PDFs using Prince XML for PDF generation and Vivliostyle for live preview. It features a sophisticated build pipeline with format strategies, extensible markdown plugins, and a dual-server preview architecture.
+**print-md** is a Bun-based CLI tool that converts markdown to professional print-ready PDFs using Prince XML for PDF generation and Vivliostyle for live preview. It features a sophisticated build pipeline with format strategies, extensible markdown plugins, and a dual-server preview architecture.
 
 ## Core Architecture
 
@@ -90,7 +90,7 @@ export default function myPlugin(md: MarkdownIt, options?: PluginOptions) {
 ## Critical Implementation Details
 
 ### Temporary Directory Management
-- Preview mode: `/tmp/pagedmd-preview-*` (auto-cleanup)
+- Preview mode: `/tmp/print-md-preview-*` (auto-cleanup)
 - PDF build: `.tmp/[basename]/` in working directory
 - Debug mode preserves temp files for inspection
 

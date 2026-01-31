@@ -1,6 +1,6 @@
-# Integration Testing for pagedmd
+# Integration Testing for print-md
 
-This directory contains Docker-based integration tests for validating the pagedmd installation process across different platforms.
+This directory contains Docker-based integration tests for validating the print-md installation process across different platforms.
 
 ## Windows Installation Testing
 
@@ -25,12 +25,12 @@ Switch Docker Desktop to Windows containers (if needed):
 
 Build the Windows test image:
 ```bash
-docker build -f tests/integration/Dockerfile.windows -t pagedmd-windows-test .
+docker build -f tests/integration/Dockerfile.windows -t print-md-windows-test .
 ```
 
 Run the full test suite:
 ```bash
-docker run -it pagedmd-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1
+docker run -it print-md-windows-test powershell -File C:\print-md\tests\integration\run-install-test.ps1
 ```
 
 ### Available Test Modes
@@ -38,27 +38,27 @@ docker run -it pagedmd-windows-test powershell -File C:\pagedmd\tests\integratio
 #### 1. Full Test Suite (Recommended)
 Runs complete installation and validation:
 ```bash
-docker run -it pagedmd-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1
+docker run -it print-md-windows-test powershell -File C:\print-md\tests\integration\run-install-test.ps1
 ```
 
 Tests performed:
-- ✅ Install script execution
-- ✅ Bun installation verification
-- ✅ pagedmd global installation
-- ✅ Command availability checks
-- ✅ Desktop shortcut creation
-- ✅ Version output validation
+- Check Install script execution
+- Check Bun installation verification
+- Check print-md global installation
+- Check Command availability checks
+- Check Desktop shortcut creation
+- Check Version output validation
 
 #### 2. Quick Test (Faster Iteration)
 Runs basic installation without extensive validation:
 ```bash
-docker run -it pagedmd-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1 -Quick
+docker run -it print-md-windows-test powershell -File C:\print-md\tests\integration\run-install-test.ps1 -Quick
 ```
 
 #### 3. Interactive Shell
 Open PowerShell session for manual testing:
 ```bash
-docker run -it pagedmd-windows-test
+docker run -it print-md-windows-test
 ```
 
 Inside the container, you can run:
@@ -74,19 +74,19 @@ Inside the container, you can run:
 
 # Manual validation
 bun --version
-pagedmd --version
-pagedmd --help
-pagedmd build --help
+print-md --version
+print-md --help
+print-md build --help
 ```
 
 #### 4. Test Modified Install Script
 To test local changes to `install.ps1`:
 ```bash
 # Rebuild image with your changes
-docker build -f tests/integration/Dockerfile.windows -t pagedmd-windows-test .
+docker build -f tests/integration/Dockerfile.windows -t print-md-windows-test .
 
 # Run tests
-docker run -it pagedmd-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1
+docker run -it print-md-windows-test powershell -File C:\print-md\tests\integration\run-install-test.ps1
 ```
 
 ### Test Environment Details
@@ -96,7 +96,7 @@ The Docker container provides:
 - **PowerShell**: Version 5.1 (Windows PowerShell)
 - **Git**: Pre-installed for repository operations
 - **User Simulation**: Test user directories at `C:\Users\TestUser\`
-- **Working Directory**: `C:\pagedmd` (contains repository code)
+- **Working Directory**: `C:\print-md` (contains repository code)
 
 ### Troubleshooting
 
@@ -109,7 +109,7 @@ Error: "image operating system "windows" cannot be used on this platform"
 #### Installation fails in container
 1. Run interactive mode for debugging:
    ```bash
-   docker run -it pagedmd-windows-test
+   docker run -it print-md-windows-test
    ```
 
 2. Check detailed logs:
@@ -138,15 +138,15 @@ For automated testing in CI/CD pipelines:
 ```yaml
 # GitHub Actions example (requires Windows runner)
 - name: Build Windows test image
-  run: docker build -f tests/integration/Dockerfile.windows -t pagedmd-windows-test .
+  run: docker build -f tests/integration/Dockerfile.windows -t print-md-windows-test .
 
 - name: Run installation tests
   run: |
-      docker run pagedmd-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1
+      docker run print-md-windows-test powershell -File C:\print-md\tests\integration\run-install-test.ps1
 
 - name: Capture test logs
   if: failure()
-  run: docker logs pagedmd-windows-test > test-logs.txt
+  run: docker logs print-md-windows-test > test-logs.txt
 ```
 
 **Note**: This requires a Windows-based CI runner. For GitHub Actions, use `runs-on: windows-latest`.
@@ -159,22 +159,22 @@ Typical workflow for testing install script changes:
 
 2. **Rebuild image**:
    ```bash
-   docker build -f tests/integration/Dockerfile.windows -t pagedmd-windows-test .
+   docker build -f tests/integration/Dockerfile.windows -t print-md-windows-test .
    ```
 
 3. **Run quick test**:
    ```bash
-   docker run -it pagedmd-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1 -Quick
+   docker run -it print-md-windows-test powershell -File C:\print-md\tests\integration\run-install-test.ps1 -Quick
    ```
 
 4. **Run full test suite**:
    ```bash
-   docker run -it pagedmd-windows-test powershell -File C:\pagedmd\tests\integration\run-install-test.ps1
+   docker run -it print-md-windows-test powershell -File C:\print-md\tests\integration\run-install-test.ps1
    ```
 
 5. **Interactive debugging** (if needed):
    ```bash
-   docker run -it pagedmd-windows-test
+   docker run -it print-md-windows-test
    ```
 
 ### Cleaning Up
@@ -185,7 +185,7 @@ Remove test containers and images:
 docker container prune
 
 # Remove test image
-docker rmi pagedmd-windows-test
+docker rmi print-md-windows-test
 
 # Remove all Windows images (careful!)
 docker images --filter "label=os=windows" -q | ForEach-Object { docker rmi $_ }

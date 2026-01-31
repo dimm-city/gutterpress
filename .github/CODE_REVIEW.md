@@ -1,12 +1,12 @@
-# Comprehensive Code Review - pagedmd
+# Comprehensive Code Review - print-md
 
 **Date:** 2025-11-18
 **Reviewer:** Claude Code (AI Assistant)
-**Project:** pagedmd - Markdown-to-PDF converter using Prince XML and Vivliostyle
+**Project:** print-md - Markdown-to-PDF converter using Prince XML and Vivliostyle
 
 ## Executive Summary
 
-This comprehensive review evaluated the pagedmd codebase across multiple dimensions: architecture, code quality, TypeScript best practices, error handling, testing, documentation, and security. The project demonstrates **strong foundational quality** with excellent TypeScript configuration, well-organized architecture, and comprehensive type definitions.
+This comprehensive review evaluated the print-md codebase across multiple dimensions: architecture, code quality, TypeScript best practices, error handling, testing, documentation, and security. The project demonstrates **strong foundational quality** with excellent TypeScript configuration, well-organized architecture, and comprehensive type definitions.
 
 ### Overall Assessment: **B+ (Very Good)**
 
@@ -47,7 +47,7 @@ The codebase is well-structured and maintainable, with room for improvement in t
 
 **Evidence:**
 ```
-pagedmd/
+print-md/
 ├── src/
 │   ├── build/          # Build orchestration
 │   ├── markdown/       # Markdown processing
@@ -266,9 +266,9 @@ function startPreviewServer(options: PreviewServerOptions) {
 ```
 
 **b) Naming Inconsistency**
-- CLI comments reference "dc-book" but package is "pagedmd"
-- `cli.ts:4`: "Simplified CLI for dc-book" should be "pagedmd"
-- `cli.ts:143`: `.name('dc-book')` should be `.name('pagedmd')`
+- CLI comments reference "dc-book" but package is "print-md"
+- `cli.ts:4`: "Simplified CLI for dc-book" should be "print-md"
+- `cli.ts:143`: `.name('dc-book')` should be `.name('print-md')`
 
 **Evidence:**
 ```typescript
@@ -281,7 +281,7 @@ function startPreviewServer(options: PreviewServerOptions) {
 **Fix Required:**
 ```typescript
 /**
- * Simplified CLI for pagedmd  // ✅ Correct
+ * Simplified CLI for print-md  // ✅ Correct
  */
 ```
 
@@ -393,7 +393,7 @@ jobs:
    - Request body size limits
 
 3. **Fix Naming Inconsistencies**
-   - Replace "dc-book" with "pagedmd" throughout
+   - Replace "dc-book" with "print-md" throughout
    - Update CLI name and descriptions
 
 4. **Dependency Security**
@@ -458,7 +458,7 @@ jobs:
 
 ## Conclusion
 
-The pagedmd project demonstrates **excellent foundational code quality** with strong TypeScript practices, clean architecture, and comprehensive type definitions. The improvements implemented during this review have strengthened the project's maintainability, security, and consistency.
+The print-md project demonstrates **excellent foundational code quality** with strong TypeScript practices, clean architecture, and comprehensive type definitions. The improvements implemented during this review have strengthened the project's maintainability, security, and consistency.
 
 ### Key Achievements
 ✅ Added automated code quality enforcement (ESLint + Prettier)

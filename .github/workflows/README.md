@@ -1,16 +1,16 @@
 # GitHub Actions Workflows
 
-This directory contains automated workflows for testing and validation of the pagedmd project.
+This directory contains automated workflows for testing and validation of the print-md project.
 
 ## Available Workflows
 
 ### Windows Installation Test (`windows-install-test.yml`)
 
-Tests the Windows PowerShell installation script to ensure end users can successfully install pagedmd.
+Tests the Windows PowerShell installation script to ensure end users can successfully install print-md.
 
 **Purpose:**
 - Validates the install script works on multiple Windows versions
-- Ensures Bun and pagedmd are correctly installed
+- Ensures Bun and print-md are correctly installed
 - Verifies all CLI commands function as expected
 - Can be integrated into release validation pipelines
 
@@ -27,11 +27,11 @@ Tests the Windows PowerShell installation script to ensure end users can success
 **What It Tests:**
 1. ✅ PowerShell script execution without errors
 2. ✅ Bun runtime installation and availability
-3. ✅ pagedmd global installation
-4. ✅ Version commands (`pagedmd --version`)
-5. ✅ Help commands (`pagedmd --help`)
-6. ✅ Build command help (`pagedmd build --help`)
-7. ✅ Preview command help (`pagedmd preview --help`)
+3. ✅ print-md global installation
+4. ✅ Version commands (`print-md --version`)
+5. ✅ Help commands (`print-md --help`)
+6. ✅ Build command help (`print-md build --help`)
+7. ✅ Preview command help (`print-md preview --help`)
 8. ✅ Desktop shortcut creation
 9. ✅ Debug log collection on failures
 
