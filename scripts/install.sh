@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# pagedmd Installation Script for Linux
-# This script installs Bun and pagedmd globally for end users
+# print-md Installation Script for Linux
+# This script installs Bun and print-md globally for end users
 
 set -e
 
 # Configuration
-PAGEDMD_REPO="https://github.com/dimm-city/pagedmd.git"
-PAGEDMD_PACKAGE="@dimm-city/pagedmd"
+PRINTMD_REPO="https://github.com/dimm-city/print-md.git"
+PRINTMD_PACKAGE="@dimm-city/print-md"
 
 # Color output functions
 print_success() {
@@ -60,20 +60,20 @@ install_bun() {
     fi
 }
 
-# Install pagedmd globally
-install_pagedmd() {
-    print_step "Installing pagedmd..."
+# Install print-md globally
+install_printmd() {
+    print_step "Installing print-md..."
     print_info "This may take a minute..."
 
     # Make sure Bun is in PATH
     export BUN_INSTALL="$HOME/.bun"
     export PATH="$BUN_INSTALL/bin:$PATH"
 
-    if bun add -g "$PAGEDMD_REPO"; then
-        print_success "pagedmd installed successfully!"
+    if bun add -g "$PRINTMD_REPO"; then
+        print_success "print-md installed successfully!"
         return 0
     else
-        print_error "Failed to install pagedmd"
+        print_error "Failed to install print-md"
         return 1
     fi
 }
@@ -86,12 +86,12 @@ test_installation() {
     export BUN_INSTALL="$HOME/.bun"
     export PATH="$BUN_INSTALL/bin:$PATH"
 
-    if command -v pagedmd &> /dev/null; then
-        local version=$(pagedmd --version 2>/dev/null || echo "unknown")
-        print_success "pagedmd is working! (version $version)"
+    if command -v print-md &> /dev/null; then
+        local version=$(print-md --version 2>/dev/null || echo "unknown")
+        print_success "print-md is working! (version $version)"
         return 0
     else
-        print_error "pagedmd command not found"
+        print_error "print-md command not found"
         print_info "You may need to restart your terminal"
         return 1
     fi
@@ -111,19 +111,19 @@ create_desktop_shortcut() {
         return 0
     fi
 
-    # Find pagedmd installation path
-    local pagedmd_path=$(command -v pagedmd)
+    # Find print-md installation path
+    local printmd_path=$(command -v print-md)
     local bun_path=$(command -v bun)
 
-    if [ -z "$pagedmd_path" ] || [ -z "$bun_path" ]; then
-        print_error "Could not locate pagedmd or bun binary"
+    if [ -z "$printmd_path" ] || [ -z "$bun_path" ]; then
+        print_error "Could not locate print-md or bun binary"
         return 1
     fi
 
     # Find icon file
     local icon_path=""
-    local global_modules_path="$HOME/.bun/install/global/node_modules/@dimm-city/pagedmd/dist/assets/favicon.ico"
-    local package_icon_path="$(dirname "$pagedmd_path")/assets/favicon.ico"
+    local global_modules_path="$HOME/.bun/install/global/node_modules/@dimm-city/print-md/dist/assets/favicon.ico"
+    local package_icon_path="$(dirname "$printmd_path")/assets/favicon.ico"
 
     if [ -f "$global_modules_path" ]; then
         icon_path="$global_modules_path"
@@ -134,19 +134,19 @@ create_desktop_shortcut() {
     fi
 
     # Create .desktop file
-    local desktop_file="$DESKTOP_DIR/pagedmd-preview.desktop"
+    local desktop_file="$DESKTOP_DIR/print-md-preview.desktop"
 
-    cat > "$desktop_file" << EOF
+    cat > "$desktop_file" << DESKTOPEOF
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Pagedmd Preview
-Comment=Start Pagedmd Preview Server
-Exec=$bun_path run pagedmd preview --open true
+Name=Print-md Preview
+Comment=Start Print-md Preview Server
+Exec=$bun_path run print-md preview --open true
 Path=$HOME/Documents
 Terminal=true
 StartupNotify=true
-EOF
+DESKTOPEOF
 
     # Add icon if found
     if [ -n "$icon_path" ]; then
@@ -163,7 +163,7 @@ EOF
     fi
 
     print_success "Desktop shortcut created: $desktop_file"
-    print_info "Double-click 'Pagedmd Preview' on your desktop to start the preview server"
+    print_info "Double-click 'Print-md Preview' on your desktop to start the preview server"
     return 0
 }
 
@@ -171,10 +171,10 @@ EOF
 main() {
     echo ""
     echo "========================================"
-    echo "  pagedmd Installation"
+    echo "  print-md Installation"
     echo "========================================"
     echo ""
-    print_info "This will install pagedmd globally on your system"
+    print_info "This will install print-md globally on your system"
     echo ""
 
     # Step 1: Install Bun
@@ -183,8 +183,8 @@ main() {
         exit 1
     fi
 
-    # Step 2: Install pagedmd globally
-    if ! install_pagedmd; then
+    # Step 2: Install print-md globally
+    if ! install_printmd; then
         print_error "Installation failed. Please try again."
         exit 1
     fi
@@ -192,7 +192,7 @@ main() {
     # Step 3: Verify
     if ! test_installation; then
         print_info "Installation completed but verification failed"
-        print_info "Try closing this terminal and running 'pagedmd --version' in a new terminal"
+        print_info "Try closing this terminal and running 'print-md --version' in a new terminal"
         exit 0
     fi
 
@@ -205,12 +205,12 @@ main() {
     echo "  Installation Complete!"
     echo "========================================"
     echo ""
-    print_success "pagedmd is ready to use!"
+    print_success "print-md is ready to use!"
     echo ""
     print_info "Quick Start Options:"
     echo ""
     echo "  Option 1: Use Desktop Shortcut"
-    echo "    - Double-click 'Pagedmd Preview' on your desktop"
+    echo "    - Double-click 'Print-md Preview' on your desktop"
     echo "    - This will open the preview server in your browser"
     echo ""
     echo "  Option 2: Use Command Line"
@@ -218,11 +218,11 @@ main() {
     echo "    2. Open a terminal in that folder"
     echo "    3. Run:"
     echo ""
-    echo "       pagedmd build"
+    echo "       print-md build"
     echo ""
     print_info "This will create a PDF from your markdown files."
     echo ""
-    print_info "For more options: pagedmd --help"
+    print_info "For more options: print-md --help"
     echo ""
 }
 

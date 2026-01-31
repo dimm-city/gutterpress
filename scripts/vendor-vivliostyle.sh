@@ -1,5 +1,5 @@
 #!/bin/bash
-# Vendor Vivliostyle Viewer into pagedmd assets
+# Vendor Vivliostyle Viewer into print-md assets
 #
 # This script downloads the Vivliostyle Viewer distribution and
 # extracts it to src/assets/vendor/vivliostyle/

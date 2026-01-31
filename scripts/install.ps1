@@ -1,11 +1,11 @@
-# pagedmd Installation Script for Windows 11
-# This script installs Bun and pagedmd globally for end users
+# print-md Installation Script for Windows 11
+# This script installs Bun and print-md globally for end users
 
 $ErrorActionPreference = "Stop"
 
 # Configuration
-$PAGEDMD_REPO = "https://github.com/itlackey/pagedmd.git"
-$PAGEDMD_PACKAGE = "@dimm-city/pagedmd"
+$PRINTMD_REPO = "https://github.com/dimm-city/print-md.git"
+$PRINTMD_PACKAGE = "@dimm-city/print-md"
 
 # Color output functions
 function Write-Success {
@@ -69,26 +69,26 @@ function Install-Bun {
     }
 }
 
-# Install pagedmd globally
-function Install-Pagedmd {
-    Write-Step "Installing pagedmd..."
+# Install print-md globally
+function Install-PrintMd {
+    Write-Step "Installing print-md..."
     Write-Info "This may take a minute..."
 
     try {
         # Install from npm registry (when published) or from GitHub
         # For now, using GitHub installation
         Write-Info "Installing from GitHub repository..."
-        bun add -g $PAGEDMD_REPO
+        bun add -g $PRINTMD_REPO
 
         if ($LASTEXITCODE -eq 0) {
-            Write-Success "pagedmd installed successfully!"
+            Write-Success "print-md installed successfully!"
             return $true
         } else {
-            Write-Error "Failed to install pagedmd"
+            Write-Error "Failed to install print-md"
             return $false
         }
     } catch {
-        Write-Error "Failed to install pagedmd: $_"
+        Write-Error "Failed to install print-md: $_"
         return $false
     }
 }
@@ -98,17 +98,17 @@ function Test-Installation {
     Write-Step "Verifying installation..."
 
     try {
-        $version = pagedmd --version 2>$null
+        $version = print-md --version 2>$null
         if ($LASTEXITCODE -eq 0) {
-            Write-Success "pagedmd is working! (version $version)"
+            Write-Success "print-md is working! (version $version)"
             return $true
         } else {
-            Write-Error "pagedmd command not found"
+            Write-Error "print-md command not found"
             Write-Info "You may need to restart your terminal"
             return $false
         }
     } catch {
-        Write-Error "pagedmd command not found"
+        Write-Error "print-md command not found"
         Write-Info "You may need to restart your terminal"
         return $false
     }
@@ -121,19 +121,19 @@ function New-DesktopShortcut {
     try {
         # Get desktop path
         $desktopPath = [Environment]::GetFolderPath("Desktop")
-        $shortcutPath = Join-Path $desktopPath "Pagedmd Preview.lnk"
+        $shortcutPath = Join-Path $desktopPath "Print-md Preview.lnk"
 
-        # Find pagedmd installation path
-        $pagedmdPath = (Get-Command pagedmd -ErrorAction Stop).Source
+        # Find print-md installation path
+        $printmdPath = (Get-Command print-md -ErrorAction Stop).Source
         $bunPath = (Get-Command bun -ErrorAction Stop).Source
 
         # Find icon file (should be in node_modules after global install)
-        $globalModulesPath = Split-Path (Split-Path $pagedmdPath -Parent) -Parent
-        $iconPath = Join-Path $globalModulesPath "node_modules\@dimm-city\pagedmd\dist\assets\favicon.ico"
+        $globalModulesPath = Split-Path (Split-Path $printmdPath -Parent) -Parent
+        $iconPath = Join-Path $globalModulesPath "node_modules\@dimm-city\print-md\dist\assets\favicon.ico"
 
         # Fallback: try to find icon in package installation
         if (-not (Test-Path $iconPath)) {
-            $packagePath = Split-Path $pagedmdPath -Parent
+            $packagePath = Split-Path $printmdPath -Parent
             $iconPath = Join-Path $packagePath "assets\favicon.ico"
         }
 
@@ -143,9 +143,9 @@ function New-DesktopShortcut {
 
         # Set shortcut properties
         $shortcut.TargetPath = $bunPath
-        $shortcut.Arguments = "run pagedmd preview --open true"
+        $shortcut.Arguments = "run print-md preview --open true"
         $shortcut.WorkingDirectory = [Environment]::GetFolderPath("MyDocuments")
-        $shortcut.Description = "Start Pagedmd Preview Server"
+        $shortcut.Description = "Start Print-md Preview Server"
 
         # Set icon if found
         if (Test-Path $iconPath) {
@@ -159,12 +159,12 @@ function New-DesktopShortcut {
         $shortcut.Save()
 
         Write-Success "Desktop shortcut created: $shortcutPath"
-        Write-Info "Double-click 'Pagedmd Preview' on your desktop to start the preview server"
+        Write-Info "Double-click 'Print-md Preview' on your desktop to start the preview server"
         return $true
 
     } catch {
         Write-Error "Failed to create desktop shortcut: $_"
-        Write-Info "You can manually create a shortcut to run: bun run pagedmd preview --open true"
+        Write-Info "You can manually create a shortcut to run: bun run print-md preview --open true"
         return $false
     }
 }
@@ -173,10 +173,10 @@ function New-DesktopShortcut {
 function Main {
     Write-Host ""
     Write-Host "========================================" -ForegroundColor Magenta
-    Write-Host "  pagedmd Installation" -ForegroundColor Magenta
+    Write-Host "  print-md Installation" -ForegroundColor Magenta
     Write-Host "========================================" -ForegroundColor Magenta
     Write-Host ""
-    Write-Info "This will install pagedmd globally on your system"
+    Write-Info "This will install print-md globally on your system"
     Write-Host ""
 
     # Step 1: Install Bun
@@ -185,8 +185,8 @@ function Main {
         exit 1
     }
 
-    # Step 2: Install pagedmd globally
-    if (-not (Install-Pagedmd)) {
+    # Step 2: Install print-md globally
+    if (-not (Install-PrintMd)) {
         Write-Error "Installation failed. Please try again."
         exit 1
     }
@@ -194,7 +194,7 @@ function Main {
     # Step 3: Verify
     if (-not (Test-Installation)) {
         Write-Info "Installation completed but verification failed"
-        Write-Info "Try closing this window and running 'pagedmd --version' in a new terminal"
+        Write-Info "Try closing this window and running 'print-md --version' in a new terminal"
         exit 0
     }
 
@@ -207,12 +207,12 @@ function Main {
     Write-Host "  Installation Complete!" -ForegroundColor Green
     Write-Host "========================================" -ForegroundColor Green
     Write-Host ""
-    Write-Success "pagedmd is ready to use!"
+    Write-Success "print-md is ready to use!"
     Write-Host ""
     Write-Info "Quick Start Options:"
     Write-Host ""
     Write-Host "  Option 1: Use Desktop Shortcut" -ForegroundColor Yellow
-    Write-Host "    - Double-click 'Pagedmd Preview' on your desktop" -ForegroundColor White
+    Write-Host "    - Double-click 'Print-md Preview' on your desktop" -ForegroundColor White
     Write-Host "    - This will open the preview server in your browser" -ForegroundColor White
     Write-Host ""
     Write-Host "  Option 2: Use Command Line" -ForegroundColor Yellow
@@ -220,11 +220,11 @@ function Main {
     Write-Host "    2. Open PowerShell in that folder" -ForegroundColor White
     Write-Host "    3. Run:" -ForegroundColor White
     Write-Host ""
-    Write-Host "       pagedmd build" -ForegroundColor Cyan
+    Write-Host "       print-md build" -ForegroundColor Cyan
     Write-Host ""
     Write-Info "This will create a PDF from your markdown files."
     Write-Host ""
-    Write-Info "For more options: pagedmd --help"
+    Write-Info "For more options: print-md --help"
     Write-Host ""
 }
 
