@@ -51,7 +51,7 @@
 - `src/markdown/markdown.ts` - Plugin integration
 - `src/types.ts` - Added plugins field to Manifest
 - `src/schemas/manifest.schema.ts` - Zod validation for plugins
-- `manifest.schema.json` - JSON Schema for editor autocomplete
+- `src/assets/manifest.schema.json` - JSON Schema for editor autocomplete
 - `README.md` - Plugin system documentation
 - `docs/user-guide.md` - Plugin usage guide
 - `CLAUDE.md` - Architecture documentation

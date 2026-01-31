@@ -7,7 +7,7 @@ print-md includes a JSON schema for `manifest.yaml` that provides autocomplete, 
 Add this line to the top of your `manifest.yaml`:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/src/assets/manifest.schema.json
 
 title: "My Book"
 authors:
@@ -32,7 +32,7 @@ That's it! Your editor will now provide:
 
 2. **Add schema reference to your manifest.yaml:**
    ```yaml
-   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
+   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/src/assets/manifest.schema.json
 
    title: "My Document"
    authors:
@@ -49,14 +49,14 @@ That's it! Your editor will now provide:
 If you prefer to use a local schema file:
 
 ```yaml
-# yaml-language-server: $schema=./manifest.schema.json
+# yaml-language-server: $schema=./src/assets/manifest.schema.json
 
 title: "My Document"
 authors:
   - "Your Name"
 ```
 
-Copy `manifest.schema.json` from the print-md repository to your project directory.
+Copy `src/assets/manifest.schema.json` from the print-md repository to your project directory.
 
 ### Global Configuration (VS Code)
 
@@ -72,7 +72,7 @@ To apply the schema automatically to all `manifest.yaml` files:
    ```json
    {
      "yaml.schemas": {
-       "https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json": ["manifest.yaml"]
+       "https://raw.githubusercontent.com/dimm-city/print-md/main/src/assets/manifest.schema.json": ["manifest.yaml"]
      }
    }
    ```
@@ -87,7 +87,7 @@ Now all `manifest.yaml` files automatically use the schema without the header co
 
 2. **Add schema reference:**
    ```yaml
-   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
+   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/src/assets/manifest.schema.json
 
    title: "My Document"
    authors:
@@ -107,7 +107,7 @@ Now all `manifest.yaml` files automatically use the schema without the header co
 
 3. Configure:
    - **Name:** print-md Manifest
-   - **Schema file or URL:** `https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json`
+   - **Schema file or URL:** `https://raw.githubusercontent.com/dimm-city/print-md/main/src/assets/manifest.schema.json`
    - **Schema version:** JSON Schema version 7
 
 4. Add file path pattern: `**/manifest.yaml`
@@ -127,14 +127,14 @@ Now all `manifest.yaml` files automatically use the schema without the header co
    ```json
    {
      "yaml.schemas": {
-       "https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json": ["manifest.yaml"]
+       "https://raw.githubusercontent.com/dimm-city/print-md/main/src/assets/manifest.schema.json": ["manifest.yaml"]
      }
    }
    ```
 
 3. **Or use file header:**
    ```yaml
-   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
+   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/src/assets/manifest.schema.json
 
    title: "My Document"
    ```
@@ -150,7 +150,7 @@ Now all `manifest.yaml` files automatically use the schema without the header co
    {
      "settings": {
        "yaml.schemas": {
-         "https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json": ["manifest.yaml"]
+         "https://raw.githubusercontent.com/dimm-city/print-md/main/src/assets/manifest.schema.json": ["manifest.yaml"]
        }
      }
    }
@@ -336,7 +336,7 @@ date: "2025-11-19"
 ## Complete Example
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/src/assets/manifest.schema.json
 
 title: "The Complete Guide to print-md"
 authors:
@@ -382,7 +382,7 @@ disableDefaultStyles: false
 
 1. **Verify schema header is present:**
    ```yaml
-   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
+   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/src/assets/manifest.schema.json
    ```
 
 2. **Check YAML extension is installed:**
@@ -401,11 +401,11 @@ disableDefaultStyles: false
    - Proper array syntax (`- item`)
 
 2. **Verify schema URL is correct:**
-   - Must be exactly: `https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json`
+   - Must be exactly: `https://raw.githubusercontent.com/dimm-city/print-md/main/src/assets/manifest.schema.json`
 
 3. **Try local schema:**
    ```yaml
-   # yaml-language-server: $schema=./manifest.schema.json
+   # yaml-language-server: $schema=./src/assets/manifest.schema.json
    ```
 
 ### Schema Shows Warnings
@@ -443,9 +443,9 @@ Some warnings are informational:
 
 The schema is maintained in sync with print-md's Zod validation schema. When new features are added, the JSON schema is updated to match.
 
-**Latest schema:** https://raw.githubusercontent.com/dimm-city/print-md/main/manifest.schema.json
+**Latest schema:** https://raw.githubusercontent.com/dimm-city/print-md/main/src/assets/manifest.schema.json
 
-**Local copy:** Include `manifest.schema.json` in your project for offline use.
+**Local copy:** Include `src/assets/manifest.schema.json` in your project for offline use.
 
 ---
 
