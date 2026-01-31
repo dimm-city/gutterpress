@@ -42,3 +42,7 @@ dist/
 # Code index and reference files (can be regenerated)
 .references/
 examples/field-guide/
+tests/
+.reviews/
+*.zip
+*.skill

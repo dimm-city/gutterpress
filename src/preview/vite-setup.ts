@@ -127,6 +127,7 @@ export async function createConfiguredViteServer(
 
   const viteServer = await createViteServer({
     configFile: false,
+    appType: 'mpa',
     root: state.tempDir,
     server: {
       port,

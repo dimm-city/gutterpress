@@ -2,9 +2,9 @@ export interface PrintMdManifest {
   title?: string;
   authors?: string[];
   preset?: "dtrpg";
+  styles?: string[];
   source?: {
     chapters?: string;
-    css?: string;
     assets?: string[];
   };
   output?: {
@@ -36,9 +36,9 @@ export interface PrintMdManifest {
 export interface ResolvedConfig {
   title: string;
   authors: string[];
+  styles: string[];
   source: {
     chapters: string;
-    css: string;
     assets: string[];
   };
   output: {

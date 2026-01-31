@@ -22,9 +22,9 @@ export default defineCommand({
       type: "string",
       description: "Document title",
     },
-    "css-path": {
+    styles: {
       type: "string",
-      description: "CSS path to use in HTML link tag",
+      description: "Comma-separated CSS paths to use in HTML link tags",
     },
     manifest: {
       type: "string",
@@ -36,7 +36,7 @@ export default defineCommand({
     const config = resolveConfig(
       {
         title: args.title,
-        source: args["css-path"] ? { css: args["css-path"] } : undefined,
+        styles: args.styles ? args.styles.split(",") : undefined,
         output: args.out ? { dir: args.out } : undefined,
       },
       manifest
@@ -49,7 +49,7 @@ export default defineCommand({
 
     const outFile = await renderChaptersToFile(inputDir, outDir, {
       title: config.title,
-      cssPath: config.source.css,
+      styles: config.styles,
       outFilename: config.output.html,
     });
 

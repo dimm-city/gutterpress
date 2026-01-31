@@ -71,7 +71,7 @@ export default defineCommand({
         "--input", inputDir,
         "--out", outDir,
         "--title", config.title,
-        "--css-path", config.source.css,
+        "--styles", config.styles.join(","),
         ...(args.manifest ? ["--manifest", args.manifest] : []),
       ],
     });

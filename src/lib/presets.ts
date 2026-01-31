@@ -3,9 +3,9 @@ import type { ResolvedConfig } from "../schema/manifest.types";
 export type VendorPreset = Omit<ResolvedConfig, "title" | "authors">;
 
 export const DTRPG_PRESET: VendorPreset = {
+  styles: ["css/print.css"],
   source: {
     chapters: "chapter-*.md",
-    css: "css/print.css",
     assets: ["css", "fonts", "images"],
   },
   output: {

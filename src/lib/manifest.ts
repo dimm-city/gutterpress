@@ -49,9 +49,9 @@ export function resolveConfig(
   return {
     title: c.title ?? m.title ?? "Document",
     authors: c.authors ?? m.authors ?? [],
+    styles: c.styles ?? m.styles ?? preset.styles,
     source: {
       chapters: c.source?.chapters ?? m.source?.chapters ?? preset.source.chapters,
-      css: c.source?.css ?? m.source?.css ?? preset.source.css,
       assets: c.source?.assets ?? m.source?.assets ?? preset.source.assets,
     },
     output: {

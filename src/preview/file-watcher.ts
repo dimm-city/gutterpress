@@ -21,11 +21,11 @@ import type { ServerState } from './server-context';
 export async function generateAndWriteHtml(
   inputPath: string,
   tempDir: string,
-  config: { title?: string; source?: { css?: string } }
+  config: { title?: string; styles?: string[] }
 ): Promise<void> {
   const html = await renderChapters(inputPath, {
     title: config.title ?? "Document",
-    cssPath: config.source?.css,
+    styles: config.styles,
   });
 
   // Inject interface script before Paged.js polyfill so PagedConfig.after is set first
@@ -66,20 +66,14 @@ export function createFileWatcher(state: ServerState): FSWatcher {
       try {
         info('Regenerating preview...');
 
-        // Re-copy changed file if relevant
-        if (
-          filePath.endsWith('.md') ||
-          filePath.endsWith('.yaml') ||
-          filePath.endsWith('.yml')
-        ) {
-          if (filePath.startsWith(state.currentInputPath)) {
-            const relativePath = path.relative(state.currentInputPath, filePath);
-            const destPath = path.join(state.tempDir, relativePath);
-            const { mkdir } = await import('node:fs/promises');
-            await mkdir(path.dirname(destPath), { recursive: true });
-            await Bun.write(destPath, Bun.file(filePath));
-            debug(`Updated: ${relativePath}`);
-          }
+        // Re-copy changed file to temp directory
+        if (filePath.startsWith(state.currentInputPath)) {
+          const relativePath = path.relative(state.currentInputPath, filePath);
+          const destPath = path.join(state.tempDir, relativePath);
+          const { mkdir } = await import('node:fs/promises');
+          await mkdir(path.dirname(destPath), { recursive: true });
+          await Bun.write(destPath, Bun.file(filePath));
+          debug(`Updated: ${relativePath}`);
         }
 
         // Reload config and regenerate

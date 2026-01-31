@@ -65,22 +65,17 @@ export function createMarkdownRenderer(): MarkdownIt {
 }
 
 /**
- * Resolve which CSS file to link. Uses the explicit value if it exists,
+ * Resolve which CSS files to link. Uses the explicit list if provided,
  * otherwise tries common names in the input directory.
  */
-function resolveCssPath(inputDir: string, configured?: string): string {
-  const candidates = [
-    configured,
-    "css/print.css",
-    "css/index.css",
-    "css/style.css",
-    "css/main.css",
-  ].filter(Boolean) as string[];
+function resolveStyles(inputDir: string, configured?: string[]): string[] {
+  if (configured && configured.length > 0) return configured;
 
-  for (const c of candidates) {
-    if (existsSync(join(inputDir, c))) return c;
+  const fallbacks = ["css/print.css", "css/index.css", "css/style.css", "css/main.css"];
+  for (const c of fallbacks) {
+    if (existsSync(join(inputDir, c))) return [c];
   }
-  return configured ?? "css/print.css";
+  return ["css/print.css"];
 }
 
 /**
@@ -90,12 +85,12 @@ export async function renderChapters(
   inputDir: string,
   opts: {
     title?: string;
-    cssPath?: string;
+    styles?: string[];
     chapterGlob?: string;
   } = {}
 ): Promise<string> {
   const title = opts.title ?? "Document";
-  const cssPath = resolveCssPath(inputDir, opts.cssPath);
+  const styles = resolveStyles(inputDir, opts.styles);
 
   const md = createMarkdownRenderer();
 
@@ -121,7 +116,7 @@ export async function renderChapters(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
-  <link rel="stylesheet" href="${cssPath}">
+  ${styles.map(s => `<link rel="stylesheet" href="${s}">`).join('\n  ')}
   <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>
 </head>
 <body>
@@ -138,7 +133,7 @@ export async function renderChaptersToFile(
   outDir: string,
   opts: {
     title?: string;
-    cssPath?: string;
+    styles?: string[];
     outFilename?: string;
   } = {}
 ): Promise<string> {
