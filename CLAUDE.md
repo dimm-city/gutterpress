@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**pagedmd** is a markdown-to-PDF converter for professional print layout. It converts markdown files to HTML using markdown-it with hardcoded container directives, then renders to PDF using **Chromium + Paged.js**. Optional PDF/X conversion (CMYK) is available via Ghostscript with the `--pdfx` flag. The preview mode uses Vite with HMR for live development.
+**print-md** is a markdown-to-PDF converter for professional print layout. It converts markdown files to HTML using markdown-it with hardcoded container directives, then renders to PDF using **Chromium + Paged.js**. Optional PDF/X conversion (CMYK) is available via Ghostscript with the `--pdfx` flag. The preview mode uses Vite with HMR for live development.
 
 ## Architecture
 

@@ -1,6 +1,6 @@
-# pagedmd
+# print-md
 
-A powerful CLI tool and live preview UI for creating professional print-ready PDFs from markdown. Write your content in markdown and let pagedmd handle the complex CSS Paged Media layout. Uses Prince XML for PDF generation and Vivliostyle for live preview.
+A powerful CLI tool and live preview UI for creating professional print-ready PDFs from markdown. Write your content in markdown and let print-md handle the complex CSS Paged Media layout. Uses Prince XML for PDF generation and Vivliostyle for live preview.
 
 ## Features
 
@@ -15,27 +15,27 @@ A powerful CLI tool and live preview UI for creating professional print-ready PD
 
 ### Recommended: One-Line Install
 
-The easiest way to install pagedmd is using our installation scripts, which handle all dependencies automatically:
+The easiest way to install print-md is using our installation scripts, which handle all dependencies automatically:
 
 **Windows (PowerShell):**
 ```powershell
-curl -o install.ps1 https://raw.githubusercontent.com/dimm-city/pagedmd/main/scripts/install.ps1; .\install.ps1
+curl -o install.ps1 https://raw.githubusercontent.com/dimm-city/print-md/main/scripts/install.ps1; .\install.ps1
 ```
 
 **Linux/macOS:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dimm-city/pagedmd/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/dimm-city/print-md/main/scripts/install.sh | bash
 ```
 
 The installation script will:
 - Install Bun runtime (if not already installed)
-- Install pagedmd globally
+- Install print-md globally
 - Create a desktop shortcut (Windows/Linux) with custom icon
 - Configure auto-browser opening for preview mode
 
-**Windows users:** After installation, double-click the **"Pagedmd Preview"** shortcut on your desktop to launch instantly!
+**Windows users:** After installation, double-click the **"Print-md Preview"** shortcut on your desktop to launch instantly!
 
-**Linux users:** Find the "Pagedmd Preview" shortcut in your applications menu or desktop.
+**Linux users:** Find the "Print-md Preview" shortcut in your applications menu or desktop.
 
 ### Alternative: Package Manager Installation
 
@@ -45,14 +45,14 @@ If you prefer manual installation or already have Bun installed:
 # Install Bun first (if needed)
 curl -fsSL https://bun.sh/install | bash
 
-# Install pagedmd globally
-bun install -g @dimm-city/pagedmd
+# Install print-md globally
+bun install -g @dimm-city/print-md
 
 # Or with npm
-npm install -g @dimm-city/pagedmd
+npm install -g @dimm-city/print-md
 ```
 
-Once installed, the `pagedmd` command will be available globally.
+Once installed, the `print-md` command will be available globally.
 
 ## Documentation
 
@@ -74,29 +74,29 @@ For comprehensive guides and references, see the [/docs](./docs) directory:
 
 ```bash
 # Build from current directory
-pagedmd build
+print-md build
 
 # Build from specific directory
-pagedmd build ./my-book
+print-md build ./my-book
 
 # Build with custom output
-pagedmd build --output my-book.pdf
+print-md build --output my-book.pdf
 
 # Watch mode (auto-rebuild on changes)
-pagedmd build --watch
+print-md build --watch
 ```
 
 ### Live Preview
 
 ```bash
 # Start preview server with live reload
-pagedmd preview
+print-md preview
 
 # Custom port
-pagedmd preview --port 5000
+print-md preview --port 5000
 
 # Don't auto-open browser
-pagedmd preview --open false
+print-md preview --open false
 ```
 
 The preview UI provides:
@@ -113,7 +113,7 @@ The preview UI includes built-in support for cloning GitHub repositories:
 
 ```bash
 # Start preview (no GitHub CLI installation needed yet)
-pagedmd preview
+print-md preview
 ```
 
 In the preview UI:
@@ -169,7 +169,7 @@ files:  # Optional - control file order
 plugins:
   - ttrpg                      # Built-in TTRPG plugin
   - ./plugins/my-plugin.js     # Local custom plugin
-  - name: pagedmd-plugin-name  # npm package plugin
+  - name: print-md-plugin-name  # npm package plugin
     version: "^1.0.0"
     options:
       customOption: true
@@ -182,7 +182,7 @@ extensions:
 
 ## Markdown Directives
 
-pagedmd extends markdown with special directives for print layout:
+print-md extends markdown with special directives for print layout:
 
 ### Page Control
 
@@ -416,7 +416,7 @@ pagedmd preview --no-watch
 ## Project Structure
 
 ```
-pagedmd/
+print-md/
 ├── src/
 │   ├── cli.ts              # CLI entry point
 │   ├── build/              # Build orchestration and format strategies
@@ -441,8 +441,8 @@ This project uses [Bun](https://bun.com) runtime v1.3.1 or later.
 
 ```bash
 # Clone the repository
-git clone https://github.com/dimm-city/pagedmd.git
-cd pagedmd
+git clone https://github.com/dimm-city/print-md.git
+cd print-md
 
 # Install dependencies
 bun install
@@ -760,11 +760,11 @@ Check for syntax errors in your markdown:
 
 If you're still stuck:
 
-1. **Check existing issues:** https://github.com/dimm-city/pagedmd/issues
+1. **Check existing issues:** https://github.com/dimm-city/print-md/issues
 2. **Enable verbose output:**
    ```bash
-   pagedmd build --verbose
-   pagedmd preview --verbose
+   print-md build --verbose
+   print-md preview --verbose
    ```
 3. **Create a minimal reproduction:**
    - Single markdown file

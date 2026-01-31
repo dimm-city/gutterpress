@@ -1,6 +1,6 @@
-# Contributing to pagedmd
+# Contributing to print-md
 
-Thank you for your interest in contributing to pagedmd! This document provides guidelines and instructions for contributing to the project.
+Thank you for your interest in contributing to print-md! This document provides guidelines and instructions for contributing to the project.
 
 ## Table of Contents
 
@@ -23,8 +23,8 @@ Thank you for your interest in contributing to pagedmd! This document provides g
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/dimm-city/pagedmd.git
-   cd pagedmd
+   git clone https://github.com/dimm-city/print-md.git
+   cd print-md
    ```
 
 2. **Install dependencies**
@@ -66,7 +66,7 @@ bun run type-check
 ## Project Structure
 
 ```
-pagedmd/
+print-md/
 ├── src/
 │   ├── cli.ts              # CLI entry point
 │   ├── types.ts            # TypeScript type definitions
@@ -437,14 +437,14 @@ test(config): add tests for manifest validation
 
 ## Getting Help
 
-- **Issues**: [GitHub Issues](https://github.com/dimm-city/pagedmd/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/dimm-city/pagedmd/discussions)
+- **Issues**: [GitHub Issues](https://github.com/dimm-city/print-md/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/dimm-city/print-md/discussions)
 - **Documentation**: [/docs](./docs)
 
 ## License
 
-By contributing to pagedmd, you agree that your contributions will be licensed under the [CC-BY-4.0 License](./LICENSE).
+By contributing to print-md, you agree that your contributions will be licensed under the [CC-BY-4.0 License](./LICENSE).
 
 ---
 
-Thank you for contributing to pagedmd! 🎉
+Thank you for contributing to print-md! 🎉

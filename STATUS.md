@@ -96,7 +96,7 @@ This document tracks the implementation status of all items identified in the co
 - **Status:** COMPLETED
 - **Commit:** `1a3b9d4` - feat: fix naming, add tests, and comprehensive documentation
 - **Implementation:**
-  - Replaced "dc-book" with "pagedmd" across entire codebase
+  - Replaced "dc-book" with "print-md" across entire codebase
   - Updated CLI name and descriptions
   - Fixed temp directory naming
   - Updated JSDoc headers
@@ -321,13 +321,13 @@ The following items were identified in the code review but are **excluded from t
 - ❌ Request body size limits
 - ❌ CORS configuration
 
-**Rationale:** pagedmd is a single-user local development tool that binds to localhost. These security measures are designed for multi-user web applications exposed to the internet. For a local CLI tool:
+**Rationale:** print-md is a single-user local development tool that binds to localhost. These security measures are designed for multi-user web applications exposed to the internet. For a local CLI tool:
 - No external users to rate limit
 - CSRF attacks require cross-site requests (N/A for localhost)
 - Local users have full system access anyway
 - Performance overhead not justified for single-user use
 
-If pagedmd evolves into a hosted service or multi-user application, these items should be reconsidered.
+If print-md evolves into a hosted service or multi-user application, these items should be reconsidered.
 
 ---
 

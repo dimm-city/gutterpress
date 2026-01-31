@@ -89,7 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Main `server.ts` reduced from 580 to 95 lines
   - Improved testability and maintainability
   - Single responsibility principle enforced
-- **Naming Consistency** - Replaced "dc-book" with "pagedmd" across codebase
+- **Naming Consistency** - Replaced "dc-book" with "print-md" across codebase
   - Updated CLI name and descriptions
   - Fixed temp directory naming
   - Consistent JSDoc headers
@@ -179,8 +179,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Page format configuration (size, margins, bleed)
 
 - **CLI Interface**
-  - `pagedmd build` - Build PDF/HTML/Preview
-  - `pagedmd preview` - Live preview server
+  - `print-md build` - Build PDF/HTML/Preview
+  - `print-md preview` - Live preview server
   - Watch mode (`--watch` flag)
   - Verbose mode (`--verbose` flag)
   - Custom output paths (`--output` flag)
@@ -220,7 +220,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-No unreleased changes at this time. See [GitHub Issues](https://github.com/dimm-city/pagedmd/issues) for planned features.
+No unreleased changes at this time. See [GitHub Issues](https://github.com/dimm-city/print-md/issues) for planned features.
 
 ---
 

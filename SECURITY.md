@@ -2,7 +2,7 @@
 
 ## Overview
 
-While pagedmd is primarily designed as a single-user local application, we take security seriously. This document outlines our security practices, how to report vulnerabilities, and recommendations for secure usage.
+While print-md is primarily designed as a single-user local application, we take security seriously. This document outlines our security practices, how to report vulnerabilities, and recommendations for secure usage.
 
 ## Supported Versions
 
@@ -22,7 +22,7 @@ We appreciate responsible disclosure of security vulnerabilities. While this is 
 ### How to Report
 
 **For non-critical issues:**
-- Open a GitHub issue: https://github.com/dimm-city/pagedmd/issues
+- Open a GitHub issue: https://github.com/dimm-city/print-md/issues
 - Label it with `security` tag
 - Provide detailed reproduction steps
 
@@ -60,10 +60,10 @@ We appreciate responsible disclosure of security vulnerabilities. While this is 
 1. **Keep Updated**
    ```bash
    # Check your version
-   pagedmd --version
+   print-md --version
 
    # Update to latest
-   bun update -g @dimm-city/pagedmd
+   bun update -g @dimm-city/print-md
    ```
 
 2. **Trusted Content Only**
@@ -72,7 +72,7 @@ We appreciate responsible disclosure of security vulnerabilities. While this is 
    - Be cautious with user-submitted markdown (XSS risk in HTML output)
 
 3. **File System Access**
-   - pagedmd reads markdown files from your file system
+   - print-md reads markdown files from your file system
    - Preview mode serves files from specified directories
    - Ensure you trust the directory you're previewing
 
@@ -140,7 +140,7 @@ See [CONTRIBUTING.md - Security and Dependency Management](./CONTRIBUTING.md#sec
 
 ### 1. Local File System Access
 
-**Risk**: pagedmd reads files from your file system
+**Risk**: print-md reads files from your file system
 **Mitigation**:
 - Path traversal protection implemented (`src/utils/path-validation.ts`)
 - Validation prevents accessing files outside specified directories
@@ -210,16 +210,16 @@ Future security enhancements being considered:
 - **Security Documentation**: This file
 - **Contributing Guidelines**: [CONTRIBUTING.md](./CONTRIBUTING.md)
 - **Code of Conduct**: [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) (if available)
-- **Issue Tracker**: https://github.com/dimm-city/pagedmd/issues
-- **Discussions**: https://github.com/dimm-city/pagedmd/discussions
+- **Issue Tracker**: https://github.com/dimm-city/print-md/issues
+- **Discussions**: https://github.com/dimm-city/print-md/discussions
 
 ## Acknowledgments
 
-We thank all security researchers and contributors who help keep pagedmd secure.
+We thank all security researchers and contributors who help keep print-md secure.
 
 ## License
 
-This security policy is part of the pagedmd project and licensed under [CC-BY-4.0](./LICENSE).
+This security policy is part of the print-md project and licensed under [CC-BY-4.0](./LICENSE).
 
 ---
 
