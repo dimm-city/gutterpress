@@ -11,7 +11,7 @@ import preview from "./commands/preview";
 
 const main = defineCommand({
   meta: {
-    name: "pagedmd",
+    name: "print-md",
     version: "2.0.0",
     description: "Markdown to print-ready PDF pipeline using Chromium + Paged.js",
   },

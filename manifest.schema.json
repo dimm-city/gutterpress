@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/dimm-city/pagedmd/manifest.schema.json",
-  "title": "pagedmd Manifest",
-  "description": "Configuration file for pagedmd markdown-to-PDF converter",
+  "$id": "https://github.com/dimm-city/print-md/manifest.schema.json",
+  "title": "print-md Manifest",
+  "description": "Configuration file for print-md markdown-to-PDF converter",
   "type": "object",
   "required": ["title", "authors"],
   "properties": {
@@ -145,7 +145,7 @@
             "examples": [
               "./plugins/my-plugin.js",
               "ttrpg",
-              "pagedmd-plugin-callouts"
+              "print-md-plugin-callouts"
             ]
           },
           {
@@ -208,7 +208,7 @@
         ["ttrpg", "./plugins/my-plugin.js"],
         [
           {
-            "name": "pagedmd-plugin-callouts",
+            "name": "print-md-plugin-callouts",
             "version": "^1.0.0",
             "options": {
               "types": ["note", "warning"]
