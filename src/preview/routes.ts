@@ -8,7 +8,6 @@
  * Route handlers:
  * - handleListDirectories: GET /api/directories - List subdirectories with navigation
  * - handleChangeFolder: POST /api/change-folder - Switch working directory
- * - handleShutdown: POST /api/shutdown - Gracefully shutdown the server
  * - handleGitHubStatus: GET /api/gh/status - Check GitHub CLI status and authentication
  * - handleGitHubLogin: POST /api/gh/login - Initiate GitHub authentication
  * - handleGitHubClone: POST /api/gh/clone - Clone repository and switch to it
@@ -384,56 +383,6 @@ export async function handleChangeFolder(
       error: `Failed to change folder: ${message}`,
     };
     return jsonResponse(response, 500);
-  }
-}
-
-/**
- * Handle POST /api/shutdown - Gracefully shutdown the server
- *
- * Triggers server cleanup and exit. This is called when the user clicks
- * the exit button in the preview UI.
- *
- * Callback:
- * - Calls onShutdown() to trigger graceful shutdown
- *
- * Success response:
- * - success: true
- * - message: "Server shutting down"
- *
- * @param request - HTTP POST request
- * @param onShutdown - Callback to trigger server shutdown
- * @returns JSON response confirming shutdown
- */
-export async function handleShutdown(
-  request: Request,
-  onShutdown: () => Promise<void>
-): Promise<Response> {
-  try {
-    // Trigger shutdown asynchronously (don't await - let response send first)
-    setTimeout(async () => {
-      try {
-        await onShutdown();
-      } catch (error) {
-        logError(`Error during shutdown: ${(error as Error).message}`);
-      }
-    }, 100); // Small delay to ensure response is sent
-
-    // Return success response immediately
-    return jsonResponse({
-      success: true,
-      message: "Server shutting down",
-    });
-  } catch (error) {
-    // Type-safe error handling
-    const message = error instanceof Error ? error.message : String(error);
-    logError(`Error in handleShutdown: ${message}`);
-    return jsonResponse(
-      {
-        success: false,
-        error: `Failed to shutdown: ${message}`,
-      },
-      500
-    );
   }
 }
 

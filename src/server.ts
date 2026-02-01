@@ -15,7 +15,7 @@ import {
   restartPreview as executeRestartPreview,
   shutdownServer,
 } from './preview/lifecycle';
-import { createServerState, createClientTracker } from './preview/server-context';
+import { createServerState } from './preview/server-context';
 import { generateAndWriteHtml, startFileWatcher } from './preview/file-watcher';
 import { findAvailablePort, createConfiguredViteServer } from './preview/vite-setup';
 
@@ -39,17 +39,12 @@ export async function startPreviewServer(options: PreviewServerOptions): Promise
   // Generate initial HTML
   await generateAndWriteHtml(inputPath, tempDir, config);
 
-  // Stage 4: Create state and client tracker
+  // Stage 4: Create state
   const state = createServerState(inputPath, tempDir, assetsSourceDir, config, options);
-  const clientTracker = createClientTracker();
 
-  // Stage 5: Define restart and shutdown functions
+  // Stage 5: Define restart function
   const restartPreview = async (newInputPath: string): Promise<void> => {
     await executeRestartPreview(newInputPath, state);
-  };
-
-  const shutdown = async (): Promise<void> => {
-    await shutdownServer(state, clientTracker);
   };
 
   // Stage 6: Find available port
@@ -61,16 +56,17 @@ export async function startPreviewServer(options: PreviewServerOptions): Promise
   // Stage 7: Create Vite server with middleware
   state.viteServer = await createConfiguredViteServer(
     state,
-    clientTracker,
     availablePort,
-    restartPreview,
-    shutdown
+    restartPreview
   );
 
   // Stage 8: Start file watching if enabled
   startFileWatcher(state);
 
   // Stage 9: Register signal handlers for Ctrl+C and SIGTERM
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  const handleShutdown = async () => {
+    await shutdownServer(state);
+  };
+  process.on('SIGINT', handleShutdown);
+  process.on('SIGTERM', handleShutdown);
 }

@@ -1,7 +1,7 @@
  /* CSS for preview interface – v0.5 */
 
  /* Change the look */
- .preview-container{
+ .preview-container {
      --color-background: whitesmoke;
      --color-pageSheet: #cfcfcf;
      --color-pageBox: transparent;
@@ -16,17 +16,15 @@
  @media screen,
  pagedjs-ignore {
      body {
-         background-color: var(--preview-container-bg);
+
          margin: 0;
          padding: 0;
-         overflow-x: hidden;
-         overflow-y: hidden;
          height: 100vh;
      }
 
      .pagedjs_pages {
          display: flex;
-         width: calc(var(--pagedjs-width) * 2);
+         width: calc(var(--pagedjs-width) * 2 + 5mm);
          flex: 0;
          flex-wrap: wrap;
          margin: 0 auto !important;
@@ -34,13 +32,16 @@
      }
 
      .pagedjs_page {
-         background-color: white !important;
          box-shadow: 0 0 0 1px var(--color-pageSheet);
+         background-color: var(--color-background);
          margin: 0;
          flex-shrink: 0;
          flex-grow: 0;
          margin-top: 10mm;
          transition: all 0.3s ease;
+         .pagedjs_sheet{
+            background-color: var(--page-background-color);
+         }
      }
 
      .pagedjs_first_page {
@@ -58,6 +59,10 @@
      .pagedjs_left_page {
          z-index: 20;
          width: calc(var(--pagedjs-bleed-left) + var(--pagedjs-pagebox-width)) !important;
+
+         .pagedjs_sheet {
+             margin-left: 5mm;
+         }
      }
 
      .pagedjs_left_page .pagedjs_bleed-right .pagedjs_marks-crop {
@@ -71,7 +76,7 @@
      .pagedjs_right_page {
          z-index: 10;
          position: relative;
-         left: calc(var(--pagedjs-bleed-left)*-1);
+         left: calc(var(--pagedjs-bleed-left)*-1 + 5mm);
      }
 
      /* show the margin-box */
@@ -198,7 +203,8 @@
  /* Debug console in toolbar */
  #debug-console {
      font-size: 11px;
-     color: #6ee7b7; /* Emerald-300 - WCAG AA compliant (4.7:1 contrast ratio) */
+     color: #6ee7b7;
+     /* Emerald-300 - WCAG AA compliant (4.7:1 contrast ratio) */
      max-width: 200px;
      overflow: hidden;
      text-overflow: ellipsis;
@@ -206,7 +212,8 @@
  }
 
  #debug-console.error {
-     color: #fca5a5; /* Red-300 - WCAG AA compliant (5.1:1 contrast ratio) */
+     color: #fca5a5;
+     /* Red-300 - WCAG AA compliant (5.1:1 contrast ratio) */
  }
 
  /* Preview container styles */
@@ -244,7 +251,7 @@
  /* SPREAD MODE: Show two pages side-by-side like an open book */
  body.view-spread .pagedjs_pages {
      flex-direction: row !important;
-     width: calc(var(--pagedjs-width) * 2) !important;
+     width: calc(var(--pagedjs-width) * 2 + 5mm) !important;
      max-height: calc(100vh - 70px);
      gap: 1rem;
      /* Let Paged.js control the width, but ensure it has space for 2 columns */
@@ -332,7 +339,7 @@
      }
 
      body:not(.view-single):not(.view-spread) .pagedjs_right_page {
-         left: 0;
+         left: 5mm !important;
      }
  }
 
@@ -352,7 +359,8 @@
  .loading-overlay {
      position: absolute;
      inset: 0;
-     top: 56px; /* Below toolbar */
+     top: 56px;
+     /* Below toolbar */
      background: var(--color-background);
      display: none;
      align-items: center;
@@ -362,6 +370,7 @@
 
  .loading-overlay.active {
      display: flex;
+     justify-content: center;
  }
 
  .loading-spinner {
@@ -506,7 +515,8 @@
      border-radius: 6px;
      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
      font-size: 13px;
-     color: #d1d5db; /* Gray-300 - WCAG AA compliant (7.1:1 contrast ratio) */
+     color: #d1d5db;
+     /* Gray-300 - WCAG AA compliant (7.1:1 contrast ratio) */
      word-break: break-all;
  }
 
@@ -578,7 +588,8 @@
 
  .folder-item-path {
      font-size: 12px;
-     color: #9ca3af; /* Gray-400 - WCAG AA compliant (4.8:1 contrast ratio) */
+     color: #9ca3af;
+     /* Gray-400 - WCAG AA compliant (4.8:1 contrast ratio) */
      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
  }
 
@@ -627,7 +638,8 @@
  }
 
  .folder-item.selected:focus {
-     outline: 2px solid #60a5fa; /* Lighter blue for selected items */
+     outline: 2px solid #60a5fa;
+     /* Lighter blue for selected items */
      outline-offset: -2px;
  }
 
@@ -638,6 +650,7 @@
 
  /* High contrast mode support */
  @media (prefers-contrast: high) {
+
      .toolbar-btn:focus,
      .folder-item:focus,
      .folder-modal-close:focus,
@@ -688,297 +701,201 @@
      }
  }
 
-/* Shutdown overlay - Full-screen modal indicating server has stopped */
-.shutdown-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.95);
-    backdrop-filter: blur(8px);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    z-index: 100000; /* Above everything else */
-    animation: fadeIn 0.3s ease-in-out;
-}
 
-.shutdown-overlay.active {
-    display: flex;
-}
+ #btn-exit:disabled:hover {
+     background: transparent;
+     border-color: #4a4a4a;
+     transform: none;
+     box-shadow: none;
+ }
 
-.shutdown-content {
-    text-align: center;
-    color: #ffffff;
-    max-width: 500px;
-    padding: 48px;
-    animation: slideUp 0.4s ease-out;
-}
+ /* GitHub Clone Modal Specific Styles */
+ .gh-status-section {
+     margin-bottom: 20px;
+     padding: 12px;
+     background: #2a2a2a;
+     border-radius: 6px;
+     border: 1px solid #3a3a3a;
+ }
 
-.shutdown-icon {
-    color: #9ca3af;
-    margin-bottom: 24px;
-    opacity: 0.8;
-}
+ .gh-status-info {
+     display: flex;
+     align-items: center;
+     gap: 10px;
+     color: #e0e0e0;
+     font-size: 14px;
+ }
 
-.shutdown-title {
-    font-size: 28px;
-    font-weight: 600;
-    margin: 0 0 16px 0;
-    color: #ffffff;
-    letter-spacing: -0.01em;
-}
+ .gh-status-loading {
+     color: #9ca3af;
+ }
 
-.shutdown-message {
-    font-size: 16px;
-    line-height: 1.6;
-    color: #d1d5db;
-    margin: 0;
-}
+ .gh-status-authenticated {
+     color: #10b981;
+     display: flex;
+     align-items: center;
+     gap: 8px;
+ }
 
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
-}
+ .gh-status-not-authenticated {
+     color: #f59e0b;
+     display: flex;
+     align-items: center;
+     gap: 8px;
+ }
 
-@keyframes slideUp {
-    from {
-        transform: translateY(20px);
-        opacity: 0;
-    }
-    to {
-        transform: translateY(0);
-        opacity: 1;
-    }
-}
+ .gh-status-error {
+     color: #ef4444;
+ }
 
-/* Exit button - Last client warning state */
-#btn-exit.last-client {
-    background: linear-gradient(to bottom, #b85555 0%, #a04444 100%);
-    border-color: #8a3333;
-    color: #ffffff;
-    box-shadow: 
-        0 2px 4px rgba(176, 68, 68, 0.3),
-        0 1px 0 rgba(255, 255, 255, 0.1) inset;
-}
+ .gh-status-icon {
+     width: 20px;
+     height: 20px;
+     flex-shrink: 0;
+ }
 
-#btn-exit.last-client:hover {
-    background: linear-gradient(to bottom, #c96666 0%, #b85555 100%);
-    border-color: #a04444;
-    box-shadow: 
-        0 3px 6px rgba(176, 68, 68, 0.4),
-        0 1px 0 rgba(255, 255, 255, 0.15) inset;
-}
+ .gh-username {
+     font-weight: 600;
+     color: #60a5fa;
+ }
 
-/* Exit button - Disabled state (when not last client) */
-#btn-exit:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-    background: transparent;
-    border-color: #4a4a4a;
-    color: #6b6b6b;
-}
+ .gh-input-section {
+     margin-bottom: 20px;
+ }
 
-#btn-exit:disabled:hover {
-    background: transparent;
-    border-color: #4a4a4a;
-    transform: none;
-    box-shadow: none;
-}
+ .gh-label {
+     display: block;
+     font-size: 14px;
+     font-weight: 500;
+     color: #e0e0e0;
+     margin-bottom: 8px;
+ }
 
-/* GitHub Clone Modal Specific Styles */
-.gh-status-section {
-    margin-bottom: 20px;
-    padding: 12px;
-    background: #2a2a2a;
-    border-radius: 6px;
-    border: 1px solid #3a3a3a;
-}
+ .gh-input {
+     width: 100%;
+     padding: 10px 12px;
+     background: #2a2a2a;
+     border: 1px solid #4a4a4a;
+     border-radius: 6px;
+     color: #e0e0e0;
+     font-size: 14px;
+     font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+     transition: all 0.15s ease-out;
+ }
 
-.gh-status-info {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: #e0e0e0;
-    font-size: 14px;
-}
+ .gh-input:focus {
+     outline: 2px solid #0066cc;
+     outline-offset: 2px;
+     border-color: #0066cc;
+     background: #333;
+ }
 
-.gh-status-loading {
-    color: #9ca3af;
-}
+ .gh-input::placeholder {
+     color: #6b7280;
+ }
 
-.gh-status-authenticated {
-    color: #10b981;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
+ .gh-hint {
+     margin-top: 6px;
+     font-size: 12px;
+     color: #9ca3af;
+ }
 
-.gh-status-not-authenticated {
-    color: #f59e0b;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
+ .gh-message {
+     padding: 12px;
+     border-radius: 6px;
+     font-size: 14px;
+     margin-bottom: 16px;
+ }
 
-.gh-status-error {
-    color: #ef4444;
-}
+ .gh-message.success {
+     background: rgba(16, 185, 129, 0.1);
+     border: 1px solid rgba(16, 185, 129, 0.3);
+     color: #10b981;
+ }
 
-.gh-status-icon {
-    width: 20px;
-    height: 20px;
-    flex-shrink: 0;
-}
+ .gh-message.error {
+     background: rgba(239, 68, 68, 0.1);
+     border: 1px solid rgba(239, 68, 68, 0.3);
+     color: #ef4444;
+ }
 
-.gh-username {
-    font-weight: 600;
-    color: #60a5fa;
-}
+ .gh-message.info {
+     background: rgba(96, 165, 250, 0.1);
+     border: 1px solid rgba(96, 165, 250, 0.3);
+     color: #60a5fa;
+ }
 
-.gh-input-section {
-    margin-bottom: 20px;
-}
+ .gh-message.warning {
+     background: rgba(245, 158, 11, 0.1);
+     border: 1px solid rgba(245, 158, 11, 0.3);
+     color: #f59e0b;
+ }
 
-.gh-label {
-    display: block;
-    font-size: 14px;
-    font-weight: 500;
-    color: #e0e0e0;
-    margin-bottom: 8px;
-}
+ /* GitHub Input Group Styles */
+ .gh-input-group {
+     display: flex;
+     gap: 8px;
+     align-items: center;
+ }
 
-.gh-input {
-    width: 100%;
-    padding: 10px 12px;
-    background: #2a2a2a;
-    border: 1px solid #4a4a4a;
-    border-radius: 6px;
-    color: #e0e0e0;
-    font-size: 14px;
-    font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
-    transition: all 0.15s ease-out;
-}
+ .gh-input-group .gh-input {
+     flex: 1;
+ }
 
-.gh-input:focus {
-    outline: 2px solid #0066cc;
-    outline-offset: 2px;
-    border-color: #0066cc;
-    background: #333;
-}
+ .gh-browse-btn {
+     flex-shrink: 0;
+     padding: 10px 12px;
+     min-width: auto;
+ }
 
-.gh-input::placeholder {
-    color: #6b7280;
-}
+ /* GitHub Progress Indicator */
+ .gh-progress {
+     margin-bottom: 20px;
+     padding: 16px;
+     background: #2a2a2a;
+     border-radius: 6px;
+     border: 1px solid #3a3a3a;
+ }
 
-.gh-hint {
-    margin-top: 6px;
-    font-size: 12px;
-    color: #9ca3af;
-}
+ .gh-progress-bar {
+     width: 100%;
+     height: 6px;
+     background: #3a3a3a;
+     border-radius: 3px;
+     overflow: hidden;
+     margin-bottom: 12px;
+ }
 
-.gh-message {
-    padding: 12px;
-    border-radius: 6px;
-    font-size: 14px;
-    margin-bottom: 16px;
-}
+ .gh-progress-fill {
+     height: 100%;
+     width: 0%;
+     background: linear-gradient(90deg,
+             #0077dd 0%,
+             #0088ee 50%,
+             #0077dd 100%);
+     background-size: 200% 100%;
+     animation: progress-animation 1.5s ease-in-out infinite;
+     border-radius: 3px;
+     transition: width 0.3s ease;
+ }
 
-.gh-message.success {
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.3);
-    color: #10b981;
-}
+ @keyframes progress-animation {
+     0% {
+         background-position: 200% 0;
+     }
 
-.gh-message.error {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #ef4444;
-}
+     100% {
+         background-position: -200% 0;
+     }
+ }
 
-.gh-message.info {
-    background: rgba(96, 165, 250, 0.1);
-    border: 1px solid rgba(96, 165, 250, 0.3);
-    color: #60a5fa;
-}
+ .gh-progress-text {
+     text-align: center;
+     font-size: 13px;
+     color: #9ca3af;
+     font-weight: 500;
+ }
 
-.gh-message.warning {
-    background: rgba(245, 158, 11, 0.1);
-    border: 1px solid rgba(245, 158, 11, 0.3);
-    color: #f59e0b;
-}
-
-/* GitHub Input Group Styles */
-.gh-input-group {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-}
-
-.gh-input-group .gh-input {
-    flex: 1;
-}
-
-.gh-browse-btn {
-    flex-shrink: 0;
-    padding: 10px 12px;
-    min-width: auto;
-}
-
-/* GitHub Progress Indicator */
-.gh-progress {
-    margin-bottom: 20px;
-    padding: 16px;
-    background: #2a2a2a;
-    border-radius: 6px;
-    border: 1px solid #3a3a3a;
-}
-
-.gh-progress-bar {
-    width: 100%;
-    height: 6px;
-    background: #3a3a3a;
-    border-radius: 3px;
-    overflow: hidden;
-    margin-bottom: 12px;
-}
-
-.gh-progress-fill {
-    height: 100%;
-    width: 0%;
-    background: linear-gradient(
-        90deg,
-        #0077dd 0%,
-        #0088ee 50%,
-        #0077dd 100%
-    );
-    background-size: 200% 100%;
-    animation: progress-animation 1.5s ease-in-out infinite;
-    border-radius: 3px;
-    transition: width 0.3s ease;
-}
-
-@keyframes progress-animation {
-    0% {
-        background-position: 200% 0;
-    }
-    100% {
-        background-position: -200% 0;
-    }
-}
-
-.gh-progress-text {
-    text-align: center;
-    font-size: 13px;
-    color: #9ca3af;
-    font-weight: 500;
-}
-
-.gh-progress.active .gh-progress-fill {
-    width: 100%;
-}
+ .gh-progress.active .gh-progress-fill {
+     width: 100%;
+ }

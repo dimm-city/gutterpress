@@ -9,7 +9,6 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import type { HeadersInit } from 'bun';
 import { debug } from '../utils/logger.ts';
 import {
-  handleShutdown,
   handleListDirectories,
   handleChangeFolder,
   handleGitHubStatus,
@@ -17,8 +16,7 @@ import {
   handleGitHubClone,
   handleGitHubUser,
 } from './routes.ts';
-import type { ServerState, ClientTracker } from './server-context.ts';
-import { checkForAutoShutdown } from './lifecycle.ts';
+import type { ServerState } from './server-context.ts';
 
 /**
  * Max request body size (1MB)
@@ -60,91 +58,17 @@ async function sendResponse(res: ServerResponse, response: Response): Promise<vo
 }
 
 /**
- * Handle /api/heartbeat - Client connection tracking
- */
-async function handleHeartbeat(
-  req: IncomingMessage,
-  res: ServerResponse,
-  clientTracker: ClientTracker
-): Promise<void> {
-  try {
-    const body = await readRequestBody(req);
-    const { clientId } = JSON.parse(body);
-
-    if (!clientId) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Missing clientId' }));
-      return;
-    }
-
-    clientTracker.connectedClients.add(clientId);
-
-    // Cancel any pending auto-shutdown timer now that a client is connected
-    if (clientTracker.autoShutdownTimer) {
-      clearTimeout(clientTracker.autoShutdownTimer);
-      clientTracker.autoShutdownTimer = null;
-      debug(`Auto-shutdown cancelled - client connected: ${clientId}`);
-    }
-
-    // Tell client if they are the last (and only) connected client
-    const isLastClient = clientTracker.connectedClients.size === 1;
-
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ success: true, isLastClient }));
-  } catch (error) {
-    res.statusCode = 400;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: 'Invalid request' }));
-  }
-}
-
-/**
- * Handle /api/disconnect - Client disconnection tracking
- */
-async function handleDisconnect(
-  req: IncomingMessage,
-  res: ServerResponse,
-  clientTracker: ClientTracker,
-  shutdownFn: () => Promise<void>
-): Promise<void> {
-  try {
-    const body = await readRequestBody(req);
-    const { clientId } = JSON.parse(body);
-
-    if (clientId) {
-      clientTracker.connectedClients.delete(clientId);
-      debug(`Client disconnected: ${clientId}. Active clients: ${clientTracker.connectedClients.size}`);
-      checkForAutoShutdown(clientTracker, shutdownFn);
-    }
-
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ success: true }));
-  } catch (error) {
-    res.statusCode = 400;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: 'Invalid request' }));
-  }
-}
-
-/**
  * Create API middleware handler
  *
  * Routes /api/* requests to appropriate handlers
  *
  * @param state Server state
- * @param clientTracker Client connection tracker
  * @param restartPreviewFn Function to restart preview
- * @param shutdownFn Function to shutdown server
  * @returns Middleware function
  */
 export function createApiMiddleware(
   state: ServerState,
-  clientTracker: ClientTracker,
-  restartPreviewFn: (newPath: string) => Promise<void>,
-  shutdownFn: () => Promise<void>
+  restartPreviewFn: (newPath: string) => Promise<void>
 ) {
   return async (
     req: IncomingMessage,
@@ -152,18 +76,6 @@ export function createApiMiddleware(
     next: () => void
   ): Promise<void> => {
     const url = new URL(req.url!, `http://${req.headers.host}`);
-
-    // Handle /api/heartbeat
-    if (url.pathname === '/api/heartbeat' && req.method === 'POST') {
-      await handleHeartbeat(req, res, clientTracker);
-      return;
-    }
-
-    // Handle /api/disconnect
-    if (url.pathname === '/api/disconnect' && req.method === 'POST') {
-      await handleDisconnect(req, res, clientTracker, shutdownFn);
-      return;
-    }
 
     // Handle /api/directories
     if (url.pathname === '/api/directories') {
@@ -197,20 +109,7 @@ export function createApiMiddleware(
       return;
     }
 
-    // Handle /api/shutdown
-    if (url.pathname === '/api/shutdown' && req.method === 'POST') {
-      const response = await handleShutdown(
-        new Request(url.toString(), {
-          method: 'POST',
-          headers: req.headers as HeadersInit,
-        }),
-        shutdownFn
-      );
-      await sendResponse(res, response);
-      return;
-    }
-
-    // Handle /api/gh/status
+// Handle /api/gh/status
     if (url.pathname === '/api/gh/status' && req.method === 'GET') {
       const response = await handleGitHubStatus(
         new Request(url.toString(), {

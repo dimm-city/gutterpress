@@ -8,7 +8,6 @@ import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import {
   handleListDirectories,
   handleChangeFolder,
-  handleShutdown,
   handleGitHubStatus,
   handleGitHubLogin,
   handleGitHubClone,
@@ -318,74 +317,6 @@ describe("handleChangeFolder", () => {
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
-  });
-});
-
-describe("handleShutdown", () => {
-  test("triggers shutdown and returns success", async () => {
-    let shutdownCalled = false;
-    const mockShutdown = async () => {
-      shutdownCalled = true;
-    };
-
-    const request = new Request("http://localhost:3000/api/shutdown", {
-      method: "POST",
-    });
-
-    const response = await handleShutdown(request, mockShutdown);
-
-    expect(response.status).toBe(200);
-
-    const data = await parseJson<Record<string, unknown>>(response);
-    expect(data.success).toBe(true);
-    expect(data.message).toContain("shutting down");
-
-    // Wait for async shutdown to trigger (100ms delay + buffer)
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(shutdownCalled).toBe(true);
-  });
-
-  test("returns success even if shutdown callback throws error", async () => {
-    const mockShutdown = async () => {
-      throw new Error("Shutdown error");
-    };
-
-    const request = new Request("http://localhost:3000/api/shutdown", {
-      method: "POST",
-    });
-
-    const response = await handleShutdown(request, mockShutdown);
-
-    // Response should still be successful (error is logged but not returned)
-    expect(response.status).toBe(200);
-
-    const data = await parseJson<Record<string, unknown>>(response);
-    expect(data.success).toBe(true);
-  });
-
-  test("sends response before triggering shutdown", async () => {
-    let shutdownStartTime = 0;
-    const mockShutdown = async () => {
-      shutdownStartTime = Date.now();
-    };
-
-    const request = new Request("http://localhost:3000/api/shutdown", {
-      method: "POST",
-    });
-
-    const beforeRequest = Date.now();
-    const response = await handleShutdown(request, mockShutdown);
-    const afterResponse = Date.now();
-
-    // Response should return immediately
-    expect(response.status).toBe(200);
-    expect(afterResponse - beforeRequest).toBeLessThan(50);
-
-    // Wait for shutdown to trigger
-    await new Promise((resolve) => setTimeout(resolve, 200));
-
-    // Shutdown should be triggered after response was sent
-    expect(shutdownStartTime).toBeGreaterThan(afterResponse);
   });
 });
 

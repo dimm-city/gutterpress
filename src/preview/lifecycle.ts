@@ -13,7 +13,7 @@ import { info, debug } from '../utils/logger';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import type { PreviewServerOptions } from '../types';
 import type { ResolvedConfig } from '../schema/manifest.types';
-import type { ServerState, ClientTracker } from './server-context';
+import type { ServerState } from './server-context';
 import { generateAndWriteHtml, stopFileWatcher, startFileWatcher } from './file-watcher';
 
 /**
@@ -91,45 +91,11 @@ export async function restartPreview(newInputPath: string, state: ServerState): 
 }
 
 /**
- * Check client connections and schedule automatic server shutdown if needed
- */
-export function checkForAutoShutdown(
-  clientTracker: ClientTracker,
-  shutdownFn: () => Promise<void>
-): void {
-  if (clientTracker.connectedClients.size === 0) {
-    if (clientTracker.autoShutdownTimer) {
-      clearTimeout(clientTracker.autoShutdownTimer);
-    }
-
-    info(
-      `All clients disconnected. Server will shutdown in ${clientTracker.AUTO_SHUTDOWN_DELAY / 1000}s...`
-    );
-    clientTracker.autoShutdownTimer = setTimeout(() => {
-      if (clientTracker.connectedClients.size === 0) {
-        info('No clients reconnected. Shutting down...');
-        void shutdownFn();
-      }
-    }, clientTracker.AUTO_SHUTDOWN_DELAY);
-  } else {
-    if (clientTracker.autoShutdownTimer) {
-      clearTimeout(clientTracker.autoShutdownTimer);
-      clientTracker.autoShutdownTimer = null;
-    }
-  }
-}
-
-/**
  * Perform graceful server shutdown and cleanup
  */
-export async function shutdownServer(state: ServerState, clientTracker: ClientTracker): Promise<void> {
+export async function shutdownServer(state: ServerState): Promise<void> {
   if (state.isShuttingDown) return;
   state.isShuttingDown = true;
-
-  if (clientTracker.autoShutdownTimer) {
-    clearTimeout(clientTracker.autoShutdownTimer);
-    clientTracker.autoShutdownTimer = null;
-  }
 
   info('\nShutting down preview server...');
   await stopFileWatcher(state);

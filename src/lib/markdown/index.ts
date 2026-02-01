@@ -1,6 +1,7 @@
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import MarkdownIt from "markdown-it";
 import markdownItAttrs from "markdown-it-attrs";
 import markdownItContainer from "markdown-it-container";
@@ -11,6 +12,22 @@ import {
   createSidebarContainer,
 } from "./containers";
 import { convertStyledImages, fixImagePaths } from "./images";
+
+/**
+ * Get the preview CSS content
+ * Reads the preview.css file and returns its content for inlining
+ */
+async function getPreviewCss(): Promise<string> {
+  try {
+    const thisDir = dirname(fileURLToPath(import.meta.url));
+    const projectRoot = dirname(dirname(dirname(thisDir))); // src/lib/markdown -> src -> project root
+    const cssPath = join(projectRoot, 'src', 'assets', 'preview', 'styles', 'preview.css');
+    return await readFile(cssPath, 'utf-8');
+  } catch (error) {
+    console.warn('Failed to load preview.css:', error);
+    return '';
+  }
+}
 
 /**
  * Create a fully-configured MarkdownIt instance with all container plugins.
@@ -60,6 +77,7 @@ export function createMarkdownRenderer(): MarkdownIt {
   );
   md.use(markdownItContainer, "container", createNamedContainer("container"));
   md.use(markdownItContainer, "aug", createNamedContainer("aug"));
+  md.use(markdownItContainer, "two-column", createNamedContainer("two-column"));
 
   return md;
 }
@@ -91,6 +109,7 @@ export async function renderChapters(
 ): Promise<string> {
   const title = opts.title ?? "Document";
   const styles = resolveStyles(inputDir, opts.styles);
+  const previewCss = await getPreviewCss();
 
   const md = createMarkdownRenderer();
 
@@ -117,6 +136,7 @@ export async function renderChapters(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
   ${styles.map(s => `<link rel="stylesheet" href="${s}">`).join('\n  ')}
+  ${previewCss ? `<style>\n${previewCss}\n</style>` : ''}
   <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>
 </head>
 <body>

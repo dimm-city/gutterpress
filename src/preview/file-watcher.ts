@@ -29,7 +29,7 @@ export async function generateAndWriteHtml(
   });
 
   // Inject interface script before Paged.js polyfill so PagedConfig.after is set first
-  const iface = '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  ';
+  const iface = '<script src="/preview/scripts/pagedjs-interface.js"></script>\n   <link rel="stylesheet" href="/preview/styles/preview.css">\n  ';
   const output = html.replace(
     '<script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>',
     iface + '<script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>'

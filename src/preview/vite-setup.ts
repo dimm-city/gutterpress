@@ -7,7 +7,7 @@
 import { createServer as createViteServer, type ViteDevServer } from 'vite';
 import { join } from 'path';
 import { info } from '../utils/logger.ts';
-import type { ServerState, ClientTracker } from './server-context.ts';
+import type { ServerState } from './server-context.ts';
 import { createApiMiddleware } from './api-middleware.ts';
 
 /**
@@ -96,7 +96,6 @@ export async function findAvailablePort(startPort: number): Promise<number> {
  * directory boundary enforcement in the API middleware.
  *
  * @param state - Server state containing temp directory and options
- * @param clientTracker - Client connection tracker for heartbeat/disconnect
  * @param port - Port number to bind the server to
  * @param restartPreviewFn - Callback function to restart preview with new directory
  * @param shutdownFn - Callback function to gracefully shutdown the server
@@ -107,10 +106,9 @@ export async function findAvailablePort(startPort: number): Promise<number> {
  * ```typescript
  * const viteServer = await createConfiguredViteServer(
  *   serverState,
- *   clientTracker,
  *   3000,
  *   async (newPath) => await restartPreview(newPath, serverState),
- *   async () => await shutdownServer(serverState, clientTracker)
+ *   async () => await shutdownServer(serverState)
  * );
  * // Logs: "Preview server running at http://localhost:3000"
  * // Server is ready to handle requests
@@ -118,12 +116,10 @@ export async function findAvailablePort(startPort: number): Promise<number> {
  */
 export async function createConfiguredViteServer(
   state: ServerState,
-  clientTracker: ClientTracker,
   port: number,
-  restartPreviewFn: (newPath: string) => Promise<void>,
-  shutdownFn: () => Promise<void>
+  restartPreviewFn: (newPath: string) => Promise<void>
 ): Promise<ViteDevServer> {
-  const middleware = createApiMiddleware(state, clientTracker, restartPreviewFn, shutdownFn);
+  const middleware = createApiMiddleware(state, restartPreviewFn);
 
   const viteServer = await createViteServer({
     configFile: false,

@@ -32,18 +32,6 @@ export interface ServerState {
 }
 
 /**
- * Client connection tracking
- */
-export interface ClientTracker {
-  /** Set of connected client IDs */
-  connectedClients: Set<string>;
-  /** Auto-shutdown timer */
-  autoShutdownTimer: NodeJS.Timeout | null;
-  /** Delay before auto-shutdown (ms) */
-  AUTO_SHUTDOWN_DELAY: number;
-}
-
-/**
  * Create initial server state
  */
 export function createServerState(
@@ -66,13 +54,3 @@ export function createServerState(
   };
 }
 
-/**
- * Create client tracker
- */
-export function createClientTracker(): ClientTracker {
-  return {
-    connectedClients: new Set<string>(),
-    autoShutdownTimer: null,
-    AUTO_SHUTDOWN_DELAY: 5000, // 5 seconds
-  };
-}
