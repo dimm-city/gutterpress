@@ -21,11 +21,12 @@ import type { ServerState } from './server-context';
 export async function generateAndWriteHtml(
   inputPath: string,
   tempDir: string,
-  config: { title?: string; styles?: string[] }
+  config: { title?: string; styles?: string[]; source?: { files?: string[] | null } }
 ): Promise<void> {
   const html = await renderChapters(inputPath, {
     title: config.title ?? "Document",
     styles: config.styles,
+    files: config.source?.files ?? null,
   });
 
   // Inject interface script before Paged.js polyfill so PagedConfig.after is set first

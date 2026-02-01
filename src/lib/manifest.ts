@@ -51,7 +51,7 @@ export function resolveConfig(
     authors: c.authors ?? m.authors ?? [],
     styles: c.styles ?? m.styles ?? preset.styles,
     source: {
-      chapters: c.source?.chapters ?? m.source?.chapters ?? preset.source.chapters,
+      files: c.source?.files ?? m.source?.files ?? preset.source.files,
       assets: c.source?.assets ?? m.source?.assets ?? preset.source.assets,
     },
     output: {

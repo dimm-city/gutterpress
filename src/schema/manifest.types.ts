@@ -4,7 +4,7 @@ export interface PrintMdManifest {
   preset?: "dtrpg";
   styles?: string[];
   source?: {
-    chapters?: string;
+    files?: string[] | null;
     assets?: string[];
   };
   output?: {
@@ -38,7 +38,7 @@ export interface ResolvedConfig {
   authors: string[];
   styles: string[];
   source: {
-    chapters: string;
+    files: string[] | null;
     assets: string[];
   };
   output: {

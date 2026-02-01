@@ -5,7 +5,7 @@ export type VendorPreset = Omit<ResolvedConfig, "title" | "authors">;
 export const DTRPG_PRESET: VendorPreset = {
   styles: ["css/print.css"],
   source: {
-    chapters: "chapter-*.md",
+    files: null,
     assets: ["css", "fonts", "images"],
   },
   output: {

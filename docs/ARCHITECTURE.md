@@ -345,27 +345,39 @@ title: My Book Title
 authors:
   - Author Name
 
-# Page format
-format:
-  size: "6in 9in"
-  margins: "0.75in"
-  bleed: "0.125in"
-
 # Styles (processed in order)
 styles:
-  - themes/classic.css
-  - custom-overrides.css
+  - css/print.css
+  - css/custom.css
 
-# File ordering (optional)
-files:
-  - intro.md
-  - chapter-01.md
-  - chapter-02.md
+# Source files (optional)
+source:
+  files:                    # If specified, only these files are included in order
+    - intro.md
+    - chapter-01.md
+    - chapter-02.md
+  assets:                   # Directories to copy as assets
+    - css
+    - fonts
+    - images
 
-# Extensions (optional)
-extensions:
-  - ttrpg
-  - dimm-city
+# Output configuration
+output:
+  dir: dist
+  filename: book.pdf
+  html: book.html
+
+# Page dimensions
+page:
+  width: 621
+  height: 810
+  tolerance: 0.5
+
+# PDF/X settings
+pdfx:
+  flavor: x1a
+  icc: profiles/color-profile.icc
+  stripAnnotations: true
 ```
 
 ### Validation

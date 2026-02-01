@@ -69,7 +69,7 @@ describe('generateAndWriteHtml', () => {
   }, 60000);
 
   test('generates preview.html with proper doctype', async () => {
-    // Create test chapter file (must start with "chapter-" for renderChapters)
+    // Create test markdown file
     await writeFile(join(testDir, 'chapter-01.md'), '# Test Heading\n\nTest content.');
 
     const config = resolveConfig({ title: 'Test' }, {});

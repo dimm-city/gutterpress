@@ -11,7 +11,9 @@ import {
   createAliasedContainer,
   createSidebarContainer,
 } from "./containers";
-import { convertStyledImages, fixImagePaths } from "./images";
+import { fixImagePaths } from "./images";
+import { registerCustomHrRule } from "./page-marker-hr";
+import { pageMarkerPlugin } from "./page-marker-plugin";
 
 /**
  * Get the preview CSS content
@@ -79,6 +81,10 @@ export function createMarkdownRenderer(): MarkdownIt {
   md.use(markdownItContainer, "aug", createNamedContainer("aug"));
   md.use(markdownItContainer, "two-column", createNamedContainer("two-column"));
 
+  // Register page marker support (order matters: hr rule first, then plugin)
+  registerCustomHrRule(md);
+  md.use(pageMarkerPlugin);
+
   return md;
 }
 
@@ -98,13 +104,16 @@ function resolveStyles(inputDir: string, configured?: string[]): string[] {
 
 /**
  * Render all chapter markdown files to a single HTML string.
+ *
+ * If files are specified, they will be included in the provided order.
+ * If files are not specified, all .md files in the directory will be included in alphabetical order.
  */
 export async function renderChapters(
   inputDir: string,
   opts: {
     title?: string;
     styles?: string[];
-    chapterGlob?: string;
+    files?: string[] | null;
   } = {}
 ): Promise<string> {
   const title = opts.title ?? "Document";
@@ -113,18 +122,36 @@ export async function renderChapters(
 
   const md = createMarkdownRenderer();
 
-  const files = (await readdir(inputDir))
-    .filter((f: string) => f.endsWith(".md") && f.startsWith("chapter-"))
-    .sort();
+  // Determine which files to process
+  let files: string[];
+  if (opts.files && opts.files.length > 0) {
+    // Use explicit files in the provided order
+    files = opts.files;
+  } else {
+    // Fallback to all .md files in alphabetical order
+    files = (await readdir(inputDir))
+      .filter((f: string) => f.endsWith(".md"))
+      .sort();
+  }
+
+  // Validate that files exist
+  if (files.length === 0) {
+    throw new Error(`No markdown files found in ${inputDir}`);
+  }
 
   let bodyContent = "";
   for (const file of files) {
-    const content = await readFile(join(inputDir, file), "utf-8");
-    const normalizedMarkdown = convertStyledImages(content);
-    let html = md.render(normalizedMarkdown);
-    const id = file.replace(".md", "");
-    html = `<section class="chapter" id="${id}">\n${html}\n</section>`;
-    bodyContent += html + "\n";
+    const filePath = join(inputDir, file);
+    try {
+      const content = await readFile(filePath, "utf-8");
+      let html = md.render(content);
+      const id = file.replace(/\.md$/, "").replace(/\//g, "-");
+      html = `<section class="chapter" id="${id}">\n${html}\n</section>`;
+      bodyContent += html + "\n";
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to read file ${file}: ${errorMsg}`);
+    }
   }
 
   bodyContent = fixImagePaths(bodyContent);
@@ -154,11 +181,16 @@ export async function renderChaptersToFile(
   opts: {
     title?: string;
     styles?: string[];
+    files?: string[] | null;
     outFilename?: string;
   } = {}
 ): Promise<string> {
   await mkdir(outDir, { recursive: true });
-  const html = await renderChapters(inputDir, opts);
+  const html = await renderChapters(inputDir, {
+    title: opts.title,
+    styles: opts.styles,
+    files: opts.files,
+  });
   const outFile = join(outDir, opts.outFilename ?? "index.html");
   await writeFile(outFile, html);
   return outFile;

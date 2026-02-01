@@ -12,7 +12,7 @@ export default defineCommand({
   args: {
     input: {
       type: "string",
-      description: "Input directory containing chapter-*.md files",
+      description: "Input directory containing markdown files",
     },
     out: {
       type: "string",
@@ -47,9 +47,18 @@ export default defineCommand({
 
     log.info(`Converting chapters from ${inputDir}`);
 
+    // Log file selection for debugging
+    if (config.source.files && config.source.files.length > 0) {
+      log.info(`Using specified files (${config.source.files.length} total):`);
+      config.source.files.forEach(f => log.info(`  - ${f}`));
+    } else {
+      log.info(`Using all .md files in alphabetical order (no files specified in manifest)`);
+    }
+
     const outFile = await renderChaptersToFile(inputDir, outDir, {
       title: config.title,
       styles: config.styles,
+      files: config.source.files,
       outFilename: config.output.html,
     });
 
