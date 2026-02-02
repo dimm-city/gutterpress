@@ -85,5 +85,7 @@ module.exports = {
     "at-rule-descriptor-no-unknown": null,
     "font-family-name-quotes": null,
     "hue-degree-notation": null,
+    "selector-not-notation": null,
+    "declaration-property-value-keyword-no-deprecated": null,
   }
 };

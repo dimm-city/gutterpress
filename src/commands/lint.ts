@@ -73,6 +73,7 @@ export default defineCommand({
     const result = await stylelint.lint({
       files,
       config: stylelintConfig,
+      configBasedir: resolve(join(import.meta.dir, "..")),
       formatter: "string",
     });
 
@@ -86,7 +87,20 @@ export default defineCommand({
     );
 
     if (hasRealErrors) {
-      log.error("CSS lint errors found (see above)");
+      if (!result.output?.trim()) {
+        for (const r of result.results) {
+          const errors = r.warnings.filter(
+            (w) => w.severity === "error" && !w.rule?.startsWith("printsafe/no-risky")
+          );
+          if (errors.length > 0) {
+            log.error(`  ${r.source}`);
+            for (const w of errors) {
+              log.error(`    ${w.line}:${w.column}  ${w.text}  (${w.rule})`);
+            }
+          }
+        }
+      }
+      log.error("CSS lint errors found");
       process.exit(2);
     }
 

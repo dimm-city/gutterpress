@@ -110,8 +110,8 @@ export default defineCommand({
     const out = args.out!;
     const pdfxMode = args.pdfx as "x1a" | "x3" | undefined;
 
-    // Stage build directory
-    const stage = path.resolve(".build");
+    // Stage build directory (use unique name to avoid conflicting with output under .build/)
+    const stage = path.resolve(".print-md-stage");
     await fsp.rm(stage, { recursive: true, force: true });
     await fsp.mkdir(stage, { recursive: true });
 

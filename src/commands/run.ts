@@ -27,6 +27,10 @@ export default defineCommand({
       type: "string",
       description: "PDF/X flavor (x1a or x3). Omit for plain Chromium PDF.",
     },
+    icc: {
+      type: "string",
+      description: "Path to ICC profile (required for --pdfx)",
+    },
     manifest: {
       type: "string",
       description: "Path to manifest.yaml",
@@ -42,13 +46,21 @@ export default defineCommand({
   },
   async run({ args }) {
     const inputDir = resolve(args.input!);
-    const manifest = await loadManifest(args.manifest ?? inputDir);
+    const manifestPath = typeof args.manifest === "string" ? args.manifest : undefined;
+    const manifest = await loadManifest(manifestPath ?? inputDir);
     const config = resolveConfig(
       {
         output: args.out ? { dir: args.out } : undefined,
       },
       manifest
     );
+
+    // Resolve pdfx: accept --pdfx <flavor> or bare --pdfx (falls back to manifest/preset default)
+    const pdfxFlavor = typeof args.pdfx === "string"
+      ? args.pdfx
+      : args.pdfx
+        ? config.pdfx.flavor
+        : undefined;
 
     const outDir = resolve(args.out ?? config.output.dir);
     const htmlFile = join(outDir, config.output.html);
@@ -59,7 +71,7 @@ export default defineCommand({
     // 1. Lint
     if (!args["skip-lint"] && config.lint.enabled) {
       log.info("Step 1/5: Linting CSS");
-      await runCommand(lintCmd, { rawArgs: ["--manifest", args.manifest ?? inputDir] });
+      await runCommand(lintCmd, { rawArgs: ["--manifest", manifestPath ?? inputDir] });
     } else {
       log.info("Step 1/5: Lint (skipped)");
     }
@@ -70,9 +82,9 @@ export default defineCommand({
       rawArgs: [
         "--input", inputDir,
         "--out", outDir,
-        "--title", config.title,
+        "--title", String(config.title),
         "--styles", config.styles.join(","),
-        ...(args.manifest ? ["--manifest", args.manifest] : []),
+        ...(manifestPath ? ["--manifest", manifestPath] : []),
       ],
     });
 
@@ -82,7 +94,7 @@ export default defineCommand({
       rawArgs: [
         "--input", inputDir,
         "--out", outDir,
-        ...(args.manifest ? ["--manifest", args.manifest] : []),
+        ...(manifestPath ? ["--manifest", manifestPath] : []),
       ],
     });
 
@@ -92,18 +104,19 @@ export default defineCommand({
       rawArgs: [
         "--input", htmlFile,
         "--out", pdfFile,
-        ...(args.pdfx ? ["--pdfx", args.pdfx] : []),
-        ...(args.manifest ? ["--manifest", args.manifest] : []),
+        ...(pdfxFlavor ? ["--pdfx", pdfxFlavor] : []),
+        ...(typeof args.icc === "string" ? ["--icc", args.icc] : []),
+        ...(manifestPath ? ["--manifest", manifestPath] : []),
       ],
     });
 
     // 5. Validate (only if pdfx mode)
-    if (!args["skip-validate"] && args.pdfx) {
+    if (!args["skip-validate"] && pdfxFlavor) {
       log.info("Step 5/5: Validating PDF");
       await runCommand(validateCmd, {
         rawArgs: [
           "--pdf", pdfFile,
-          ...(args.manifest ? ["--manifest", args.manifest] : []),
+          ...(manifestPath ? ["--manifest", manifestPath] : []),
         ],
       });
     } else {
