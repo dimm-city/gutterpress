@@ -21,7 +21,8 @@ import { generateAndWriteHtml, stopFileWatcher, startFileWatcher } from './file-
  */
 export async function initializePreviewDirectories(
   inputPath: string,
-  assetsSourceDir: string
+  assetsSourceDir: string,
+  config?: ResolvedConfig
 ): Promise<string> {
   const tempDirBase = path.join(tmpdir(), 'print-md-preview');
   const tempDirSuffix = randomBytes(8).toString('hex');
@@ -34,6 +35,22 @@ export async function initializePreviewDirectories(
 
   await copyDirectory(assetsSourceDir, tempDir);
   debug(`Copied preview assets to ${tempDir}`);
+
+  // Copy manifest assets (e.g., ../_shared directories)
+  if (config?.source?.assets) {
+    for (const assetPath of config.source.assets) {
+      const srcPath = path.resolve(inputPath, assetPath);
+      const destName = path.basename(assetPath);
+      const destPath = path.join(tempDir, destName);
+
+      if (await fileExists(srcPath)) {
+        await copyDirectory(srcPath, destPath);
+        debug(`Copied manifest asset: ${assetPath} -> ${destName}`);
+      } else {
+        debug(`Manifest asset not found: ${srcPath} (skipping)`);
+      }
+    }
+  }
 
   return tempDir;
 }

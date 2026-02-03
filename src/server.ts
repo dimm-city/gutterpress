@@ -29,12 +29,12 @@ export async function startPreviewServer(options: PreviewServerOptions): Promise
 
   info(`Starting preview server for: ${inputPath}`);
 
-  // Stage 2: Setup directories
-  const assetsSourceDir = resolveAssetsDir();
-  const tempDir = await initializePreviewDirectories(inputPath, assetsSourceDir);
-
-  // Stage 3: Initialize configuration
+  // Stage 2: Initialize configuration (needed for manifest assets)
   const config = await initializeConfiguration(inputPath, options);
+
+  // Stage 3: Setup directories (with config for manifest assets)
+  const assetsSourceDir = resolveAssetsDir();
+  const tempDir = await initializePreviewDirectories(inputPath, assetsSourceDir, config);
 
   // Generate initial HTML
   await generateAndWriteHtml(inputPath, tempDir, config);
