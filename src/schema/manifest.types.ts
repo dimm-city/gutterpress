@@ -1,8 +1,17 @@
+export interface PluginConfig {
+  path?: string;
+  name?: string;
+  version?: string;
+  priority?: number;
+  options?: Record<string, unknown>;
+}
+
 export interface PrintMdManifest {
   title?: string;
   authors?: string[];
   preset?: "dtrpg";
   styles?: string[];
+  plugins?: (string | PluginConfig)[];
   source?: {
     files?: string[] | null;
     assets?: string[];
@@ -32,11 +41,20 @@ export interface PrintMdManifest {
   };
 }
 
+export interface ResolvedPluginConfig {
+  path?: string;
+  name?: string;
+  version?: string;
+  priority: number;
+  options: Record<string, unknown>;
+}
+
 /** Fully-resolved config with no optional fields. */
 export interface ResolvedConfig {
   title: string;
   authors: string[];
   styles: string[];
+  plugins: ResolvedPluginConfig[];
   source: {
     files: string[] | null;
     assets: string[];

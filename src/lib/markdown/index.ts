@@ -14,6 +14,8 @@ import {
 import { fixImagePaths } from "./images";
 import { registerCustomHrRule } from "./page-marker-hr";
 import { pageMarkerPlugin } from "./page-marker-plugin";
+import type { LoadedPlugin } from "./plugins";
+import { applyPlugins } from "./plugins";
 
 /**
  * Get the preview CSS content
@@ -33,8 +35,10 @@ async function getPreviewCss(): Promise<string> {
 
 /**
  * Create a fully-configured MarkdownIt instance with all container plugins.
+ *
+ * @param customPlugins - Optional array of custom plugins to load
  */
-export function createMarkdownRenderer(): MarkdownIt {
+export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
   const md = new MarkdownIt({
     html: true,
     linkify: true,
@@ -81,6 +85,11 @@ export function createMarkdownRenderer(): MarkdownIt {
   md.use(markdownItContainer, "aug", createNamedContainer("aug"));
   md.use(markdownItContainer, "two-column", createNamedContainer("two-column"));
 
+  // Apply custom plugins from manifest
+  if (customPlugins && customPlugins.length > 0) {
+    applyPlugins(md, customPlugins);
+  }
+
   // Register page marker support (order matters: hr rule first, then plugin)
   registerCustomHrRule(md);
   md.use(pageMarkerPlugin);
@@ -114,13 +123,16 @@ export async function renderChapters(
     title?: string;
     styles?: string[];
     files?: string[] | null;
+    plugins?: LoadedPlugin[];
+    pluginCss?: string;
   } = {}
 ): Promise<string> {
   const title = opts.title ?? "Document";
   const styles = resolveStyles(inputDir, opts.styles);
   const previewCss = await getPreviewCss();
+  const pluginCss = opts.pluginCss ?? '';
 
-  const md = createMarkdownRenderer();
+  const md = createMarkdownRenderer(opts.plugins);
 
   // Determine which files to process
   let files: string[];
@@ -164,6 +176,7 @@ export async function renderChapters(
   <title>${title}</title>
   ${styles.map(s => `<link rel="stylesheet" href="${s}">`).join('\n  ')}
   ${previewCss ? `<style>\n${previewCss}\n</style>` : ''}
+  ${pluginCss ? `<style>\n/* Plugin CSS */\n${pluginCss}\n</style>` : ''}
   <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>
 </head>
 <body>
@@ -183,6 +196,8 @@ export async function renderChaptersToFile(
     styles?: string[];
     files?: string[] | null;
     outFilename?: string;
+    plugins?: LoadedPlugin[];
+    pluginCss?: string;
   } = {}
 ): Promise<string> {
   await mkdir(outDir, { recursive: true });
@@ -190,6 +205,8 @@ export async function renderChaptersToFile(
     title: opts.title,
     styles: opts.styles,
     files: opts.files,
+    plugins: opts.plugins,
+    pluginCss: opts.pluginCss,
   });
   const outFile = join(outDir, opts.outFilename ?? "index.html");
   await writeFile(outFile, html);

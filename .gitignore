@@ -46,3 +46,4 @@ tests/
 .reviews/
 *.zip
 *.skill
+.print-md-stage/

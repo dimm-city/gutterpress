@@ -11,6 +11,7 @@ import { info, debug, error as logError } from '../utils/logger';
 import { DEBOUNCE } from '../constants';
 import { renderChapters } from '../lib/markdown/index';
 import { loadManifest, resolveConfig } from '../lib/manifest';
+import { loadPlugins, collectPluginCss } from '../lib/markdown/plugins';
 import type { ServerState } from './server-context';
 
 /**
@@ -21,12 +22,22 @@ import type { ServerState } from './server-context';
 export async function generateAndWriteHtml(
   inputPath: string,
   tempDir: string,
-  config: { title?: string; styles?: string[]; source?: { files?: string[] | null } }
+  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: any[] }
 ): Promise<void> {
+  // Load plugins if configured
+  let plugins;
+  let pluginCss = '';
+  if (config.plugins && config.plugins.length > 0) {
+    plugins = await loadPlugins(config.plugins, inputPath);
+    pluginCss = collectPluginCss(plugins);
+  }
+
   const html = await renderChapters(inputPath, {
     title: config.title ?? "Document",
     styles: config.styles,
     files: config.source?.files ?? null,
+    plugins,
+    pluginCss,
   });
 
   // Inject interface script before Paged.js polyfill so PagedConfig.after is set first

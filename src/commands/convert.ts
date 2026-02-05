@@ -1,7 +1,8 @@
 import { defineCommand } from "citty";
-import { resolve } from "node:path";
-import { loadManifest, resolveConfig } from "../lib/manifest";
+import { resolve, dirname } from "node:path";
+import { loadManifestWithPath, resolveConfig } from "../lib/manifest";
 import { renderChaptersToFile } from "../lib/markdown/index";
+import { loadPlugins, collectPluginCss } from "../lib/markdown/plugins";
 import { log } from "../lib/logger";
 
 export default defineCommand({
@@ -32,7 +33,7 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const manifest = await loadManifest(args.manifest ?? args.input);
+    const { manifest, manifestDir } = await loadManifestWithPath(args.manifest ?? args.input);
     const config = resolveConfig(
       {
         title: args.title,
@@ -55,11 +56,28 @@ export default defineCommand({
       log.info(`Using all .md files in alphabetical order (no files specified in manifest)`);
     }
 
+    // Load plugins if configured
+    let plugins;
+    let pluginCss = '';
+    if (config.plugins.length > 0) {
+      log.info(`Loading ${config.plugins.length} plugin(s)...`);
+
+      // Plugins paths are relative to the manifest directory
+      plugins = await loadPlugins(config.plugins, manifestDir);
+      pluginCss = collectPluginCss(plugins);
+
+      if (plugins.length > 0) {
+        log.success(`Loaded ${plugins.length} plugin(s)`);
+      }
+    }
+
     const outFile = await renderChaptersToFile(inputDir, outDir, {
       title: config.title,
       styles: config.styles,
       files: config.source.files,
       outFilename: config.output.html,
+      plugins,
+      pluginCss,
     });
 
     log.success(`Wrote ${outFile}`);
