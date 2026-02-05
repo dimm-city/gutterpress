@@ -64,13 +64,39 @@ export async function loadManifestWithPath(
 }
 
 /**
+ * Check if a string looks like a file path (vs npm package name).
+ * File paths start with './', '../', '/', or contain path separators with extensions.
+ */
+function isFilePath(str: string): boolean {
+  return (
+    str.startsWith('./') ||
+    str.startsWith('../') ||
+    str.startsWith('/') ||
+    // Windows absolute paths
+    /^[a-zA-Z]:[\\/]/.test(str)
+  );
+}
+
+/**
  * Normalize a plugin configuration entry from manifest.
- * Accepts either a string path or a PluginConfig object.
+ * Accepts either a string path/name or a PluginConfig object.
+ *
+ * String detection:
+ * - Starts with './', '../', '/' → treated as local file path
+ * - Otherwise → treated as npm package name
  */
 function normalizePluginConfig(plugin: string | PluginConfig): ResolvedPluginConfig {
   if (typeof plugin === 'string') {
+    if (isFilePath(plugin)) {
+      return {
+        path: plugin,
+        priority: 100,
+        options: {},
+      };
+    }
+    // Treat as npm package name
     return {
-      path: plugin,
+      name: plugin,
       priority: 100,
       options: {},
     };
