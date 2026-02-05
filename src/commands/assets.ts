@@ -1,9 +1,8 @@
 import { defineCommand } from "citty";
-import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { loadManifest, resolveConfig } from "../lib/manifest";
-import { copyDir } from "../lib/exec";
+import { copyAssets, resolveAssetDestName } from "../lib/assets";
 import { log } from "../lib/logger";
 
 export default defineCommand({
@@ -59,16 +58,17 @@ export default defineCommand({
       images: args["skip-images"],
     };
 
-    for (const dir of config.source.assets) {
-      if (skipMap[dir]) continue;
-      const src = join(inputDir, dir);
-      if (existsSync(src)) {
-        log.info(`Copying ${dir}/`);
-        await copyDir(src, join(outDir, dir));
-      } else {
-        log.warn(`${dir}/ not found at ${src} (skipping)`);
-      }
-    }
+    // Filter out skipped assets
+    const assetsToProcess = config.source.assets.filter((dir) => {
+      const destName = resolveAssetDestName(dir);
+      return !skipMap[destName];
+    });
+
+    await copyAssets(inputDir, outDir, assetsToProcess, {
+      onCopy: (assetPath) => log.info(`Copying ${assetPath}/`),
+      onSkip: (assetPath, srcPath) =>
+        log.warn(`${assetPath}/ not found at ${srcPath} (skipping)`),
+    });
 
     log.success("Asset copy complete");
   },

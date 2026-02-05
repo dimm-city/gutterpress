@@ -11,6 +11,7 @@ import { randomBytes } from 'crypto';
 import { mkdir, remove, copyDirectory, fileExists } from '../utils/file-utils';
 import { info, debug } from '../utils/logger';
 import { loadManifest, resolveConfig } from '../lib/manifest';
+import { copyAssets } from '../lib/assets';
 import type { PreviewServerOptions } from '../types';
 import type { ResolvedConfig } from '../schema/manifest.types';
 import type { ServerState } from './server-context';
@@ -38,18 +39,10 @@ export async function initializePreviewDirectories(
 
   // Copy manifest assets (e.g., ../_shared directories)
   if (config?.source?.assets) {
-    for (const assetPath of config.source.assets) {
-      const srcPath = path.resolve(inputPath, assetPath);
-      const destName = path.basename(assetPath);
-      const destPath = path.join(tempDir, destName);
-
-      if (await fileExists(srcPath)) {
-        await copyDirectory(srcPath, destPath);
-        debug(`Copied manifest asset: ${assetPath} -> ${destName}`);
-      } else {
-        debug(`Manifest asset not found: ${srcPath} (skipping)`);
-      }
-    }
+    await copyAssets(inputPath, tempDir, config.source.assets, {
+      onCopy: (assetPath) => debug(`Copied manifest asset: ${assetPath}`),
+      onSkip: (assetPath, srcPath) => debug(`Manifest asset not found: ${srcPath} (skipping)`),
+    });
   }
 
   return tempDir;

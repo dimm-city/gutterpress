@@ -5,6 +5,7 @@ import fsp from "node:fs/promises";
 import { chromium } from "playwright";
 import { loadManifest, resolveConfig } from "../lib/manifest";
 import { copyDir } from "../lib/exec";
+import { copyAssets, DEFAULT_ASSETS } from "../lib/assets";
 import { resolveChromiumExecutable } from "../lib/chromium";
 import { patchHtmlForPagedjs } from "../lib/pagedjs";
 import { convertToPdfxCmyk, stripAnnotations } from "../lib/ghostscript";
@@ -120,12 +121,9 @@ export default defineCommand({
     const htmlFilename = path.basename(inputHtml);
 
     await fsp.copyFile(inputHtml, path.join(stage, htmlFilename));
-    for (const dir of ["styles", "css", "images", "fonts"]) {
-      const src = path.join(inputRoot, dir);
-      if (fs.existsSync(src) && fs.statSync(src).isDirectory()) {
-        await copyDir(src, path.join(stage, dir));
-      }
-    }
+    // Copy assets from manifest (with fallback to default dirs)
+    const assetDirs = config.source?.assets ?? DEFAULT_ASSETS;
+    await copyAssets(inputRoot, stage, assetDirs);
 
     // Vendor paged.js
     const pagedSrc = path.resolve(
