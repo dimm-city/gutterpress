@@ -13,6 +13,7 @@ import { renderChapters } from '../lib/markdown/index';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import { loadPlugins, collectPluginCss } from '../lib/markdown/plugins';
 import type { ServerState } from './server-context';
+import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
 
 /**
  * Generate HTML from markdown and write preview.html to temp directory.
@@ -40,11 +41,11 @@ export async function generateAndWriteHtml(
     pluginCss,
   });
 
-  // Inject interface script before Paged.js polyfill so PagedConfig.after is set first
+  // Inject interface script + break-inside polyfill before Paged.js polyfill
   const iface = '<script src="/preview/scripts/pagedjs-interface.js"></script>\n   <link rel="stylesheet" href="/preview/styles/preview.css">\n  ';
   const output = html.replace(
     '<script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>',
-    iface + '<script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>'
+    iface + BREAK_INSIDE_HANDLER + '\n  <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>'
   );
 
   await Bun.write(path.join(tempDir, 'preview.html'), output);
