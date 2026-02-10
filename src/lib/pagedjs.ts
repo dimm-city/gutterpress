@@ -18,48 +18,6 @@ export const BREAK_INSIDE_HANDLER = `
   window.PagedConfig = window.PagedConfig || {};
   var origBefore = window.PagedConfig.before;
   window.PagedConfig.before = function() {
-    // Pre-scan: remove data-break-inside="avoid" from cards taller than the
-    // page content area. These cards MUST be allowed to split — otherwise
-    // Paged.js's CSS column layout wraps overflow to the top of the page,
-    // hiding text content behind the card header.
-    // Measures each card inside an off-screen container matching page content
-    // width so :only-child cards get measured at their paginated width.
-    (function() {
-      // Read page dimensions from @page rules via Paged.js CSS vars or stylesheet
-      var root = document.documentElement;
-      var cs = getComputedStyle(root);
-      var pageH = parseFloat(cs.getPropertyValue('--pagedjs-height')) || 0;
-      var mTop = parseFloat(cs.getPropertyValue('--pagedjs-margin-top')) || 0;
-      var mBot = parseFloat(cs.getPropertyValue('--pagedjs-margin-bottom')) || 0;
-      var pageW = parseFloat(cs.getPropertyValue('--pagedjs-width')) || 0;
-      var mLeft = parseFloat(cs.getPropertyValue('--pagedjs-margin-left')) || 0;
-      var mRight = parseFloat(cs.getPropertyValue('--pagedjs-margin-right')) || 0;
-      // Convert inches to pixels (96dpi CSS reference pixel)
-      var contentH = (pageH - mTop - mBot) * 96;
-      var contentW = (pageW - mLeft - mRight) * 96;
-      if (contentH <= 0) contentH = 920;
-      if (contentW <= 0) contentW = 732;
-      // Create off-screen measurement container at page content width
-      var measure = document.createElement('div');
-      measure.style.cssText = 'position:absolute;left:-99999px;top:0;width:' + contentW + 'px;overflow:visible;visibility:hidden;';
-      document.body.appendChild(measure);
-      var cards = document.querySelectorAll('[data-break-inside="avoid"]');
-      for (var k = 0; k < cards.length; k++) {
-        var card = cards[k];
-        var parent = card.parentNode;
-        var next = card.nextSibling;
-        // Move into measurement container (card becomes :only-child → full width)
-        measure.appendChild(card);
-        var h = card.scrollHeight;
-        // Move back to original position
-        if (next) parent.insertBefore(card, next);
-        else parent.appendChild(card);
-        if (h > contentH) {
-          card.setAttribute('data-break-inside', 'split');
-        }
-      }
-      document.body.removeChild(measure);
-    })();
     if (typeof Paged !== 'undefined' && Paged.Handler && Paged.registerHandlers) {
       class BreakInsideAvoidHandler extends Paged.Handler {
         constructor(chunker, polisher, caller) {
