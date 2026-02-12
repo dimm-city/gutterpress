@@ -54,11 +54,7 @@ print-md build
   curl -fsSL https://bun.sh/install | bash
   ```
 
-- **Prince XML** - Required for PDF generation
-  - Download from https://www.princexml.com/download/
-  - macOS: `brew install prince` or download installer
-  - Linux: Use .deb/.rpm package from website
-  - Windows: Download installer from website
+- **Chromium + Paged.js** - Integrated PDF generation (built-in, no separate installation needed)
 
 ### Install print-md
 
@@ -106,13 +102,10 @@ styles:
   - "custom.css"           # Your custom CSS
 
 # Page format (optional)
-pageFormat:
-  size: "letter"           # or "a4", "a5", "legal", etc.
-  margins:
-    top: "1in"
-    bottom: "1in"
-    left: "1in"
-    right: "1in"
+page:
+  width: 612
+  height: 792
+  tolerance: 0.5
 ```
 
 ### 3. Write Your Content
@@ -158,7 +151,7 @@ This will:
 print-md build
 
 # Or specify output name
-print-md build --output my-book.pdf
+print-md build --out my-book.pdf
 ```
 
 Your PDF will be created as `output.pdf` (or your specified name).
@@ -210,29 +203,20 @@ styles:                            # CSS files (in order)
                                    #   - parchment
   - "custom.css"                   # Your custom CSS
 
-disableDefaultStyles: false        # Set true to replace
-                                   # foundation CSS
-
 # ============================================
 # PAGE FORMAT
 # ============================================
 
-pageFormat:
-  size: "letter"                   # Page size:
-                                   #   letter, a4, a5, legal
-                                   #   or custom: "8.5in 11in"
+page:
+  width: 612                       # Page width in points
+  height: 792                      # Page height in points (letter = 612x792)
+  tolerance: 0.5                   # Tolerance for page size validation
 
-  margins:                         # Page margins
-    top: "1in"
-    bottom: "1in"
-    left: "1in"
-    right: "1in"
-    inside: "1.25in"               # For two-sided books
-    outside: "0.75in"
-
-  bleed: "0.125in"                 # For printing
-
-  orientation: "portrait"          # or "landscape"
+# Common page sizes (width x height in points):
+  # Letter: 612 x 792
+  # A4: 595 x 842
+  # A5: 420 x 595
+  # Legal: 612 x 1008
 
 # ============================================
 # MARKDOWN EXTENSIONS
@@ -461,7 +445,7 @@ styles:
 
 Styles are applied in this order:
 
-1. **Default foundation CSS** (unless `disableDefaultStyles: true`)
+1. **Default foundation CSS**
    - Variables
    - Typography
    - Layout
@@ -634,69 +618,22 @@ print-md build
 
 ```bash
 # Specify output filename
-print-md build --output my-book.pdf
+print-md build --out my-book.pdf
 
 # Specify output directory
-print-md build --output ./dist/book.pdf
+print-md build --out ./dist/book.pdf
 ```
 
-### Output Formats
+### Output Format
 
-```bash
-# PDF (default)
-print-md build --format pdf
-
-# Standalone HTML
-print-md build --format html
-# Result: output.html (self-contained)
-
-```
-
-### Watch Mode
-
-Auto-rebuild when files change:
-
-```bash
-print-md build --watch
-
-# Watching for changes...
-# Change detected: chapter1.md
-# Rebuilding...
-# ✓ Build complete: output.pdf
-```
-
-### Performance Profiling
-
-See detailed build metrics:
-
-```bash
-print-md build --profile
-
-# Performance Metrics:
-#   Configuration Loading: 45ms
-#   Markdown Processing: 230ms
-#   PDF Generation: 3.25s
-#   Total Build Time: 3.52s
-#
-# Memory Usage:
-#   Peak Heap: 156.34 MB
-#   Peak RSS: 245.67 MB
-#   Delta: +12.45 MB
-```
+print-md currently builds PDF output only. HTML output is not supported.
 
 ### Verbose Output
 
-See detailed build information:
+Verbose output is available for preview mode:
 
 ```bash
-print-md build --verbose
-
-# Loading configuration from manifest.yaml...
-# ✓ Configuration loaded
-# Processing markdown files...
-# ✓ Processed 15 files
-# Generating PDF...
-# ✓ PDF generated: output.pdf (2.4 MB)
+print-md preview --verbose
 ```
 
 ---
@@ -1167,13 +1104,13 @@ h1 {
 
 **For Large Projects:**
 - Split content into multiple markdown files
-- Use `--profile` to identify bottlenecks
+- Use preview mode to identify performance issues
 - Optimize images (compress, resize)
 - Consider removing unused CSS
 
 **For Slow Builds:**
-- PDF generation is the bottleneck (Puppeteer)
-- Use `--format html` for faster iteration
+- PDF generation is the bottleneck
+- Use preview mode during development for faster iteration
 - Use preview mode during development
 - Only build PDF for final output
 

@@ -2,7 +2,15 @@ title: "Fantasy Adventure Module"
 authors:
   - "Jane Doe"
   - "John Smith"
-extensions:
+
+plugins:
   - ttrpg
+
 styles:
   - themes/classic.css
+
+# Page dimensions (6x9 inches)
+page:
+  width: 432
+  height: 648
+  tolerance: 0.5

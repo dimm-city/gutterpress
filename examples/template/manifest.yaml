@@ -1,5 +1,12 @@
 title: My Book Title
 authors:
   - Author Name
+
 styles:
   - styles/main.css
+
+# Page dimensions (Letter: 8.5" x 11")
+page:
+  width: 612
+  height: 792
+  tolerance: 0.5

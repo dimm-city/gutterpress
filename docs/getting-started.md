@@ -1,6 +1,6 @@
 # Getting Started with Print-md
 
-Print-md converts markdown files into professional print PDFs. It's designed for creating books, manuals, rulebooks, and any print-first documents. Uses Prince XML for PDF generation and Vivliostyle for live preview.
+Print-md converts markdown files into professional print PDFs. It's designed for creating books, manuals, rulebooks, and any print-first documents. Uses Chromium + Paged.js for PDF generation and Paged.js for live preview.
 
 ## Basic Workflow
 
@@ -12,7 +12,7 @@ print-md build ./my-book
 print-md preview ./my-book
 
 # Build with custom output name
-print-md build ./my-book --output my-book.pdf
+print-md build ./my-book --out my-book.pdf
 ```
 
 ## Project Structure
@@ -44,14 +44,17 @@ authors:
 description: "A comprehensive guide to..."
 
 # Page format
-format:
-  size: "6in 9in"          # Digest size (default)
-  margins:
-    top: "0.75in"
-    bottom: "0.75in"
-    inner: "0.75in"        # Binding edge
-    outer: "0.5in"         # Trim edge
-  bleed: "0.125in"         # Print bleed zone
+page:
+  width: 432
+  height: 648
+  tolerance: 0.5
+
+# Margins (optional)
+margins:
+  top: 54
+  bottom: 54
+  inner: 54
+  outer: 36
 
 # Styling (CSS cascade)
 styles:
@@ -64,31 +67,41 @@ files:
   - "02-mechanics.md"
   - "03-combat.md"
 
-# Enable extensions (optional)
-extensions:
+# Enable plugins (optional)
+plugins:
   - "ttrpg"                # Stat blocks, dice notation, etc.
   - "dimm-city"            # District badges, roll prompts
 ```
 
 ### Page Format Options
 
-Common book sizes:
+Common book sizes (width x height in points):
 
 ```yaml
-# Trade paperback
-size: "6in 9in"
+# Trade paperback (6in x 9in)
+page:
+  width: 432
+  height: 648
 
-# Standard novel
-size: "5.5in 8.5in"
+# Standard novel (5.5in x 8.5in)
+page:
+  width: 396
+  height: 612
 
-# Large format
-size: "8.5in 11in"
+# Large format (8.5in x 11in)
+page:
+  width: 612
+  height: 792
 
-# A4
-size: "210mm 297mm"
+# A4 (210mm x 297mm)
+page:
+  width: 595
+  height: 842
 
-# A5
-size: "148mm 210mm"
+# A5 (148mm x 210mm)
+page:
+  width: 420
+  height: 595
 ```
 
 ## File Organization

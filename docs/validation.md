@@ -15,6 +15,12 @@ When using the `run` pipeline, validation is automatically integrated:
 lint → validate:pre-build → convert → assets → build → validate:post-build
 ```
 
+The validation phase is determined implicitly by which input flags you provide:
+- Use `--pdf` alone for post-build checks
+- Use `--input` alone for pre-build checks
+- Use both `--pdf` and `--input` to run all checks
+- Optionally use `--phase` to override and run checks for a specific phase only
+
 ## Automatic Tool Detection
 
 Before running any checks, the validate command probes the system for required external tools (e.g. `qpdf`, `pdfinfo`, `identify`). If a tool is missing, print-md warns you which checks will be skipped:
@@ -79,7 +85,7 @@ print-md validate --pdf dist/book.pdf --only pdf.print.page-size
 # Run all checks except specific ones
 print-md validate --pdf dist/book.pdf --skip pdf.nav.cross-refs,pdf.nav.page-labels
 
-# Only pre-build phase
+# Only pre-build phase (overrides implicit phase detection)
 print-md validate --input ./my-book --phase pre-build
 ```
 
@@ -117,7 +123,7 @@ print-md run --input ./my-book --pdfx x1a --skip-validate
 | `--only` | string | Run only these check IDs (comma-separated) |
 | `--skip` | string | Skip these check IDs (comma-separated) |
 | `--format` | string | Output: `text` (default) or `json` |
-| `--phase` | string | `pre-build` or `post-build` |
+| `--phase` | string | Optional: `pre-build` or `post-build` (overrides implicit phase detection) |
 
 ## Manifest Configuration
 

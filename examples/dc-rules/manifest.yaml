@@ -2,12 +2,16 @@ title: Dimm City Core Rules
 authors:
   - founder4
   - founder3
-files:
-  - 01-chapter.md
-  - 02-chapter.md
-  - 99-skill-trees.md
-extensions:
+
+source:
+  files:
+    - 01-chapter.md
+    - 02-chapter.md
+    - 99-skill-trees.md
+
+plugins:
   - dimmCity
+
 styles:
   - plugins/dimm-city-components.css
   - themes/bw.css

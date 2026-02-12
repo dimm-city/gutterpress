@@ -12,11 +12,11 @@ The print-md installation scripts create a desktop shortcut that automatically:
 ### Windows (install.ps1)
 
 **Shortcut Details:**
-- **File**: `Pagedmd Preview.lnk` (created on Desktop)
+- **File**: `Print-md Preview.lnk` (created on Desktop)
 - **Target**: `bun run print-md preview --open true`
 - **Working Directory**: User's Documents folder
 - **Icon**: `favicon.ico` from package installation
-- **Description**: "Start Pagedmd Preview Server"
+- **Description**: "Start Print-md Preview Server"
 
 **Icon Resolution:**
 1. First tries: `%APPDATA%\npm\node_modules\@dimm-city\print-md\dist\assets\favicon.ico`
@@ -42,8 +42,8 @@ The print-md installation scripts create a desktop shortcut that automatically:
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Pagedmd Preview
-Comment=Start Pagedmd Preview Server
+Name=Print-md Preview
+Comment=Start Print-md Preview Server
 Exec=/path/to/bun run print-md preview --open true
 Path=/home/user/Documents
 Terminal=true
@@ -66,7 +66,7 @@ Currently, macOS users install manually via Bun. Desktop shortcuts are not autom
 4. User sees success message with instructions
 
 ### Daily Use
-1. User double-clicks "Pagedmd Preview" shortcut
+1. User double-clicks "Print-md Preview" shortcut
 2. Terminal/PowerShell window opens showing server logs
 3. Browser automatically opens to `http://localhost:3000`
 4. User can select a folder containing markdown files

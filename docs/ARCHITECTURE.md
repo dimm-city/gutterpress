@@ -15,7 +15,7 @@ This document describes the architecture, design decisions, and implementation d
 
 ## Overview
 
-**print-md** is a markdown-to-PDF converter for professional print layout. It uses Prince XML for PDF generation and Vivliostyle for live preview. It's designed as a single-user local application optimized for creating print-ready documents like books, game manuals, and professional reports.
+**print-md** is a markdown-to-PDF converter for professional print layout. It uses Chromium + Paged.js for PDF generation and Paged.js for live preview. It's designed as a single-user local application optimized for creating print-ready documents like books, game manuals, and professional reports.
 
 ### Key Features
 
@@ -256,9 +256,10 @@ interface FormatStrategy {
 **Implementations**:
 
 1. **PdfFormatStrategy** (`pdf-format.ts`)
-   - Spawns `pagedjs-cli` subprocess
-   - Passes HTML via stdin
-   - Monitors for timeout/errors
+   - Launches Chromium via Playwright API
+   - Serves HTML via Bun.serve on ephemeral port
+   - Waits for Paged.js render lifecycle
+   - Calls `page.pdf()` to generate PDF output
 
 2. **HtmlFormatStrategy** (`html-format.ts`)
    - Writes standalone HTML file
@@ -528,7 +529,20 @@ export default function ttrpgDirectivesPlugin(
 - Modern APIs (fetch, WebSocket)
 - Better DX for single-user tools
 
-### 2. Why Vite for Preview?
+### 2. Why Playwright + Chromium for PDF?
+
+**Chosen over**: Prince XML, Puppeteer, pagedjs-cli subprocess
+
+**Reasons**:
+- Open-source and cross-platform (macOS, Linux, Windows)
+- Chromium engine supports full CSS Paged Media
+- Playwright API is more modern than Puppeteer
+- Direct page rendering eliminates subprocess overhead
+- Built-in PDF generation with `page.pdf()`
+- Better TypeScript support
+- Predictable rendering with Paged.js polyfill
+
+### 3. Why Vite for Preview?
 
 **Chosen over**: Custom server, webpack-dev-server
 
@@ -539,7 +553,7 @@ export default function ttrpgDirectivesPlugin(
 - Strong TypeScript support
 - Battle-tested in production
 
-### 3. Why Strategy Pattern for Formats?
+### 4. Why Strategy Pattern for Formats?
 
 **Chosen over**: Switch statements, Factory pattern
 
@@ -549,7 +563,7 @@ export default function ttrpgDirectivesPlugin(
 - Testable in isolation
 - Clear interface contract
 
-### 4. Why Global Markdown Engine?
+### 5. Why Global Markdown Engine?
 
 **Chosen over**: Create new instance per render
 
