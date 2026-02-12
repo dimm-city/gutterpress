@@ -7,8 +7,8 @@ Specialized markdown syntax for tabletop RPG content.
 In `manifest.yaml`:
 
 ```yaml
-extensions:
-  - "ttrpg"
+plugins:
+  - ttrpg
 ```
 
 This enables all TTRPG-specific markdown features.
@@ -224,8 +224,8 @@ All TTRPG features are optimized for print:
 TTRPG extensions work seamlessly with:
 
 ```markdown
-<!-- Use with page templates -->
-<!-- @page: body -->
+<!-- Use with page markers -->
+--- {page}
 
 ## Monsters
 

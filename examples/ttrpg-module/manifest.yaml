@@ -7,7 +7,7 @@ plugins:
   - ttrpg
 
 styles:
-  - themes/classic.css
+  - ttrpg.css
 
 # Page dimensions (6x9 inches)
 page:

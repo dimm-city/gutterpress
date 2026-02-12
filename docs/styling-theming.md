@@ -4,12 +4,12 @@ Comprehensive guide to customizing the visual design of your documents.
 
 ## Built-in Themes
 
-Print-md includes professional themes you can use:
+Print-md does not bundle pre-built themes. Theme files are project-local CSS files that you create yourself or source from the community. Below are examples of themes you might create and reference in your manifest:
 
 ```yaml
 # manifest.yaml
 styles:
-  - "themes/classic.css"    # Warm cream, burgundy (default)
+  - "themes/classic.css"    # Warm cream, burgundy
   - "themes/modern.css"      # Clean white, blue accents
   - "themes/dark.css"        # Dark backgrounds, light text
   - "themes/parchment.css"   # Aged paper texture
@@ -17,6 +17,8 @@ styles:
   - "themes/zine.css"        # Bold, DIY aesthetic
   - "themes/bw.css"          # Pure black & white
 ```
+
+> **Note:** These theme files are not included with print-md. You must create them in your project's directory (or obtain them from the community) and reference them via the `styles:` array in your manifest.
 
 ### Theme Descriptions
 
@@ -221,7 +223,8 @@ Create custom page templates for special sections:
 Usage in markdown:
 
 ```markdown
-<!-- @page: gallery -->
+--- {page gallery}
+
 # Art Gallery
 
 <div class="gallery-section">
@@ -292,19 +295,17 @@ ul > li::marker {
 }
 ```
 
-## Disabling Default Styles
+## Controlling Default Styles
 
-For complete control, disable default styles:
+Style control is managed through the `styles:` array in the manifest. The order of entries determines the CSS cascade, so your custom styles can override any defaults:
 
 ```yaml
 # manifest.yaml
-disableDefaultStyles: true
-
 styles:
   - "styles/my-complete-stylesheet.css"
 ```
 
-**Warning:** You must provide ALL necessary CSS including:
+If you provide your own complete stylesheet, it should include ALL necessary CSS:
 - Page setup and margins
 - Typography and font loading
 - Layout and positioning

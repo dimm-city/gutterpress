@@ -20,19 +20,19 @@ A comprehensive guide to creating beautiful print-ready documents from markdown 
 
 ## Getting Started
 
-Print-md converts markdown files into professional print PDFs. It's designed for creating books, manuals, rulebooks, and any print-first documents. Uses Prince XML for PDF generation and Vivliostyle for live preview.
+Print-md converts markdown files into professional print PDFs. It's designed for creating books, manuals, rulebooks, and any print-first documents. Uses Chromium + Paged.js for PDF generation and Vite + Paged.js for live preview.
 
 ### Basic Workflow
 
 ```bash
-# Build a PDF from markdown files
-print-md build ./my-book
+# Run the full pipeline (lint, validate, convert, build)
+print-md run ./my-book
 
 # Preview with live reload
 print-md preview ./my-book
 
-# Build with custom output name
-print-md build ./my-book --output my-book.pdf
+# Run with custom output directory
+print-md run ./my-book --out ./output
 ```
 
 ### Project Structure
@@ -63,131 +63,135 @@ title: "My Awesome Book"
 authors:
   - "Jane Doe"
   - "John Smith"
-description: "A comprehensive guide to..."
 
-# Page format
-format:
-  size: "6in 9in"          # Digest size (default)
-  margins:
-    top: "0.75in"
-    bottom: "0.75in"
-    inner: "0.75in"        # Binding edge
-    outer: "0.5in"         # Trim edge
-  bleed: "0.125in"         # Print bleed zone
+# Page dimensions (in points)
+page:
+  width: 432              # 6in = 432pt
+  height: 648             # 9in = 648pt
+  tolerance: 1            # Allowed deviation in points
 
 # Styling (CSS cascade)
 styles:
   - "themes/classic.css"   # Bundled theme
   - "styles/custom.css"    # Your custom styles
 
-# File ordering (optional - defaults to alphabetical)
-files:
-  - "01-introduction.md"
-  - "02-mechanics.md"
-  - "03-combat.md"
+# Source file ordering (optional - defaults to alphabetical)
+source:
+  files:
+    - "01-introduction.md"
+    - "02-mechanics.md"
+    - "03-combat.md"
 
-# Enable extensions (optional)
-extensions:
-  - "ttrpg"                # Stat blocks, dice notation, etc.
-  - "dimm-city"            # District badges, roll prompts
+# Enable plugins (optional)
+plugins:
+  - ttrpg                  # Stat blocks, dice notation, etc.
+  - dimm-city              # District badges, roll prompts
 ```
 
-### Page Format Options
+### Page Dimensions
 
-Common book sizes:
+Page dimensions are specified in points (1 inch = 72 points). Common book sizes:
 
 ```yaml
-# Trade paperback
-size: "6in 9in"
+# Trade paperback (6in x 9in)
+page:
+  width: 432
+  height: 648
 
-# Standard novel
-size: "5.5in 8.5in"
+# Standard novel (5.5in x 8.5in)
+page:
+  width: 396
+  height: 612
 
-# Large format
-size: "8.5in 11in"
+# Large format (8.5in x 11in)
+page:
+  width: 612
+  height: 792
 
-# A4
-size: "210mm 297mm"
+# A4 (210mm x 297mm)
+page:
+  width: 595
+  height: 842
 
-# A5
-size: "148mm 210mm"
+# A5 (148mm x 210mm)
+page:
+  width: 420
+  height: 595
 ```
 
 ---
 
 ## Core Directives
 
-Print-md provides powerful directives to control page layout and behavior. Directives are HTML comments that control print layout rendering.
-
-### Page Templates
-
-Apply named page templates to sections of your document:
-
-```markdown
-<!-- @page: chapter -->
-# Chapter One: The Beginning
-
-This content will use the chapter page template with extra top margin
-and special header/footer treatment.
-
-<!-- @page: body -->
-Regular content continues here with standard body template.
-
-<!-- @page: appendix -->
-# Appendix A: Reference Tables
-
-Back matter content uses appendix styling.
-```
-
-### Available Page Templates
-
-- `chapter` - Chapter opening pages (right-hand, extra top margin, minimal headers)
-- `body` - Standard body content (default)
-- `art` - Full-bleed artwork (zero margins, no headers/footers)
-- `appendix` - Back matter (appendix header in page margins)
-- `frontmatter` - Front matter pages (title, credits, etc.)
-- `cover` - Book cover (full bleed)
-- `title-page` - Title page (centered, no page numbers)
-- `credits` - Credits/copyright page (roman numerals)
-- `toc` - Table of contents (roman numerals)
-- `glossary` - Glossary/index (reduced margins for multi-column)
-- `blank` - Blank pages (with "intentionally left blank" note)
+Print-md provides directives to control page layout and behavior using markdown syntax. Page breaks use horizontal rule syntax with optional attributes, and layout blocks use fenced container syntax.
 
 ### Page Breaks
 
-Control when and where page breaks occur:
+Control when and where page breaks occur using horizontal rule (`---`) syntax:
 
 ```markdown
-<!-- @break -->
-Content after this directive starts on a new page.
+# Chapter One
 
-<!-- @spread: right -->
-Forces the next content to start on a right-hand page (odd number).
+Content here...
 
-<!-- @spread: left -->
-Forces the next content to start on a left-hand page (even number).
+---
 
-<!-- @spread: blank -->
-Inserts a blank page.
+This horizontal rule becomes a simple page break.
+
+--- {page}
+
+This creates a page break with a page marker.
+
+--- {page chapter}
+
+This creates a page break with a "chapter" class applied.
+
+--- {page .custom-class}
+
+This creates a page break with a custom CSS class.
 ```
 
-### Column Layouts
+### Container Blocks
 
-Set multi-column layouts for specific sections:
+Use fenced container syntax (`::: name ... :::`) for layout blocks:
 
 ```markdown
-<!-- @columns: 2 -->
+::: container
+This content gets wrapped in a container div.
+:::
+
+::: two-column
 This content will flow in a two-column layout, perfect for
 glossaries, indexes, or dense reference material.
+:::
 
-<!-- @columns: 1 -->
-Back to single column layout.
+::: sidebar
+Sidebar content goes here.
+:::
 
-<!-- @columns: 3 -->
-Three columns for very dense content (use sparingly).
+::: wrapper
+Generic wrapper for custom styling.
+:::
+
+::: page
+Content treated as a distinct page block.
+:::
 ```
 
-**Important:** Columns apply to subsequent content until changed by another `@columns` directive or reset by a chapter heading (H1).
+### Built-in Containers
+
+The following container names are built-in:
+
+- `page` - Page-level content block
+- `container` - Generic container
+- `two-column` - Two-column layout
+- `wrapper` - Generic wrapper for styling
+- `sidebar` - Sidebar content
+- `ability` - Ability description block
+- `ability-continued` - Continued ability block
+- `specialty` - Specialty content block
+- `learning-path` - Learning path content
+- `aug` - Augmentation content block
 
 ---
 
@@ -307,14 +311,18 @@ New content starts on the next page.
 
 ### Manual Page Breaks
 
-For more control, use explicit directives:
+For more control, use page break directives with attributes:
 
 ```markdown
 Some content here.
 
-<!-- @break -->
+--- {page}
 
-This starts on a new page.
+This starts on a new page with a page marker.
+
+--- {page chapter}
+
+This starts a new chapter page.
 ```
 
 ### Chapter Starts
@@ -508,7 +516,7 @@ Best practices for print images:
 
 1. **Resolution:** 300 DPI minimum for print quality
 2. **Format:** JPEG for photos, PNG for graphics with transparency
-3. **Color space:** RGB (Prince XML handles CMYK conversion)
+3. **Color space:** RGB (Ghostscript handles CMYK conversion)
 4. **Size:** Pre-size images to final dimensions to reduce PDF file size
 5. **Bleed:** For full-bleed images, add 0.125in to all edges
 
@@ -589,15 +597,15 @@ This sets the running header for subsequent pages.
 
 ## TTRPG Extensions
 
-When `ttrpg` extension is enabled in manifest, you get specialized markdown syntax for tabletop RPG content.
+When the `ttrpg` plugin is enabled in manifest, you get specialized markdown syntax for tabletop RPG content.
 
 ### Enable TTRPG Features
 
 In `manifest.yaml`:
 
 ```yaml
-extensions:
-  - "ttrpg"
+plugins:
+  - ttrpg
 ```
 
 ### Stat Blocks (Inline)
@@ -681,13 +689,13 @@ Automatically styled with:
 
 ## Dimm City Extensions
 
-When `dimm-city` extension is enabled, you get specialized syntax for the Dimm City Operations Manual.
+When the `dimm-city` plugin is enabled, you get specialized syntax for the Dimm City Operations Manual.
 
 ### Enable Dimm City Features
 
 ```yaml
-extensions:
-  - "dimm-city"
+plugins:
+  - dimm-city
 ```
 
 ### District Badges
@@ -871,19 +879,17 @@ td {
 }
 ```
 
-### Disabling Default Styles
+### Custom Stylesheets
 
-For complete control, disable default styles:
+For complete control, provide your own stylesheet:
 
 ```yaml
 # manifest.yaml
-disableDefaultStyles: true
-
 styles:
   - "styles/my-complete-stylesheet.css"
 ```
 
-**Warning:** You must provide ALL necessary CSS including:
+**Note:** Your custom styles are applied after the defaults, so you can override any built-in styling. If you want full control, provide comprehensive CSS covering:
 - Page setup and margins
 - Typography and font loading
 - Layout and positioning
@@ -1017,12 +1023,13 @@ Before final print:
 ### Common Directives
 
 ```markdown
-<!-- @page: template -->    Apply named page template
-<!-- @break -->             Force page break
-<!-- @spread: right -->     Start on right page
-<!-- @spread: left -->      Start on left page
-<!-- @spread: blank -->     Insert blank page
-<!-- @columns: 2 -->        Set column layout
+---                         Simple page break
+--- {page}                  Page break with marker
+--- {page chapter}          Page break with class
+--- {page .custom-class}    Page break with CSS class
+::: container ... :::       Container block
+::: two-column ... :::      Two-column layout
+::: sidebar ... :::         Sidebar block
 ```
 
 ### Common Callouts
@@ -1045,28 +1052,12 @@ Before final print:
 {.float-left .rounded}      Multiple classes
 ```
 
-### Page Templates
-
-```
-chapter        - Chapter opening (right page, extra margin)
-body           - Standard content (default)
-art            - Full-bleed artwork (no margins)
-appendix       - Back matter
-frontmatter    - Front matter (title, credits)
-cover          - Book cover
-title-page     - Title page
-credits        - Copyright page
-toc            - Table of contents
-glossary       - Index/glossary (narrow margins)
-blank          - Blank page
-```
-
 ---
 
 ## Additional Resources
 
-- **Prince XML Documentation:** https://www.princexml.com/doc/
-- **Vivliostyle Documentation:** https://docs.vivliostyle.org/
+- **Paged.js Documentation:** https://www.pagedjs.org/
+- **Playwright Documentation:** https://playwright.dev/
 - **Markdown Guide:** https://www.markdownguide.org/
 - **Print Design Best Practices:** Research book design principles
 - **CSS Paged Media:** https://www.w3.org/TR/css-page-3/
@@ -1075,5 +1066,5 @@ For more examples, see the `/examples` directory in the print-md repository.
 
 ---
 
-**Version:** 1.0
-**Last Updated:** 2025-11-07
+**Version:** 1.1
+**Last Updated:** 2026-02-12

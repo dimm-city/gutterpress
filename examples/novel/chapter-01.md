@@ -10,7 +10,7 @@ A notification pinged on her phone. Another rejection. The email was polite, pro
 
 Sarah closed her laptop with more force than necessary. The characters could wait another day. Maybe forever.
 
-@page-break
+--- {page}
 
 The coffee shop was crowded despite the rain—or perhaps because of it. People huddled over steaming mugs, seeking warmth and the comfort of being surrounded by strangers who expected nothing from them.
 

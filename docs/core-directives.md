@@ -97,23 +97,24 @@ Sidebar with a title and custom class.
 
 ## Plugin Directives
 
-When plugins are loaded via the manifest configuration, they provide additional directives. For example, the TTRPG plugin provides:
+When plugins are loaded via the manifest configuration, they can provide additional directives. The examples below are **hypothetical** -- they illustrate what a plugin *could* provide, not what is built-in. The built-in ways to create page breaks are `--- {page}` and `::: page`.
 
 ```markdown
 @page-break
 
-Forces a page break (plugin-specific directive).
+Hypothetical plugin directive that forces a page break.
+(Built-in alternative: use `--- {page}` or `::: page ... :::`)
 
 @roll{Skill DC 15}
 
-Renders a dice roll with modifiers.
+Hypothetical plugin directive that renders a dice roll.
 
 @table{2d6 damage}
 
-Renders a formatted table.
+Hypothetical plugin directive that renders a formatted table.
 ```
 
-Plugin directives vary by plugin. Check plugin documentation for available syntax.
+> **Note:** None of the directives above (`@page-break`, `@roll{...}`, `@table{...}`) are built-in. They would need to be provided by a plugin. See your plugin's documentation for its actual syntax.
 
 ## Preventing Page Breaks
 

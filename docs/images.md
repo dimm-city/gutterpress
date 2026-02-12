@@ -117,7 +117,7 @@ that accompany text.
 ### Color Space
 
 - **Use:** RGB color space
-- **Why:** Prince XML handles CMYK conversion
+- **Why:** Ghostscript handles CMYK conversion via the PDF/X pipeline
 - **Test:** Preview in grayscale if printing B&W
 
 ### File Size Optimization

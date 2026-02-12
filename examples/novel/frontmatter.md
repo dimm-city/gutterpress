@@ -1,6 +1,6 @@
 # The Markdown Chronicles
 
-@page-break
+--- {page}
 
 ## Copyright
 
@@ -15,13 +15,13 @@ www.example-publishing.com
 
 ISBN: 978-0-123456-78-9
 
-@page-break
+--- {page}
 
 ### Dedication
 
 *For all the writers who dare to dream in plain text.*
 
-@page-break
+--- {page}
 
 ## Table of Contents
 

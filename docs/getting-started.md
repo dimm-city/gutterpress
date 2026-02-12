@@ -41,7 +41,6 @@ title: "My Awesome Book"
 authors:
   - "Jane Doe"
   - "John Smith"
-description: "A comprehensive guide to..."
 
 # Page format
 page:
@@ -49,23 +48,17 @@ page:
   height: 648
   tolerance: 0.5
 
-# Margins (optional)
-margins:
-  top: 54
-  bottom: 54
-  inner: 54
-  outer: 36
-
 # Styling (CSS cascade)
 styles:
   - "themes/classic.css"   # Bundled theme
   - "styles/custom.css"    # Your custom styles
 
 # File ordering (optional - defaults to alphabetical)
-files:
-  - "01-introduction.md"
-  - "02-mechanics.md"
-  - "03-combat.md"
+source:
+  files:
+    - "01-introduction.md"
+    - "02-mechanics.md"
+    - "03-combat.md"
 
 # Enable plugins (optional)
 plugins:

@@ -85,15 +85,14 @@ For comprehensive guides and references, see the [/docs](./docs) directory:
 ### Build a PDF
 
 ```bash
-# Build from current directory
-print-md build
+# Run full pipeline from current directory
+print-md run .
 
-# Build from specific directory
-print-md build ./my-book
+# Run from specific directory
+print-md run ./my-book
 
-# Build with custom output
-print-md build --out my-book.pdf
-
+# Run with custom output
+print-md run ./my-book --out dist/
 ```
 
 ### Live Preview
@@ -155,27 +154,22 @@ Create a `manifest.yaml` in your project directory:
 title: My Book Title
 authors:
   - Author Name
-description: Book description
 
 page:
-  size: letter      # or 'a4', '6x9', custom dimensions
-  margins:
-    top: 0.75in
-    bottom: 0.75in
-    inside: 0.875in
-    outside: 0.625in
-  bleed: 0.125in    # for print bleed
+  width: 612        # page width in points (612pt = 8.5in)
+  height: 792       # page height in points (792pt = 11in)
+  tolerance: 0.5    # page dimension tolerance in points
 
 styles:
   - themes/my-theme.css
   - custom-styles.css
 
-files:  # Optional - control file order
-  - chapter-01.md
-  - chapter-02.md
-  - chapter-03.md
+source:
+  files:              # Optional - control file order
+    - chapter-01.md
+    - chapter-02.md
+    - chapter-03.md
 
-# Plugin system (new approach - recommended)
 plugins:
   - ttrpg                      # Built-in TTRPG plugin
   - ./plugins/my-plugin.js     # Local custom plugin
@@ -183,11 +177,6 @@ plugins:
     version: "^1.0.0"
     options:
       customOption: true
-
-# Legacy extensions (deprecated - use plugins instead)
-extensions:
-  - ttrpg      # Stat blocks, dice notation
-  - dimmCity   # Custom game syntax
 ```
 
 ## Markdown Directives
@@ -259,7 +248,6 @@ Content in here avoids breaking across pages.
 :::
 ```
 
-## Plugin System
 ## Plugin System
 
 print-md supports a powerful plugin system that lets you extend markdown syntax with custom features. Plugins can add new markdown syntax, modify rendering, and inject CSS styles.
@@ -383,22 +371,54 @@ h1 {
 
 ## CLI Reference
 
-### Build Command
+### Run Command (Full Pipeline)
 
 ```bash
-print-md build [input] [options]
+print-md run <input-dir> [options]
 ```
 
 **Options:**
-- `--out <file>` - Output file path (default: output.pdf)
+- `--out <dir>` - Output directory path
+- `--pdfx` - Enable PDF/X compliance
+- `--icc` - ICC color profile path
+- `--manifest` - Path to manifest.yaml
+- `--skip-lint` - Skip the lint step
+- `--skip-validate` - Skip post-build validation
+- `--skip-pre-validate` - Skip pre-build validation
 
 **Examples:**
 
 ```bash
-# Build PDF with custom output
-print-md build ./book --out book.pdf
+# Run full pipeline from current directory
+print-md run .
 
+# Run from specific directory with custom output
+print-md run ./my-book --out dist/
 
+# Run with PDF/X compliance
+print-md run ./my-book --pdfx
+```
+
+### Build Command (HTML to PDF Only)
+
+```bash
+print-md build <input-html> <output-pdf> [options]
+```
+
+**Options:**
+- `--pdfx` - Enable PDF/X compliance
+- `--icc` - ICC color profile path
+- `--manifest` - Path to manifest.yaml
+- `--strip-annotations` - Strip PDF annotations
+
+**Examples:**
+
+```bash
+# Build PDF from HTML file
+print-md build output.html book.pdf
+
+# Build with PDF/X compliance
+print-md build output.html book.pdf --pdfx
 ```
 
 ### Preview Command
@@ -456,15 +476,17 @@ print-md preview --no-watch
 print-md/
 ├── src/
 │   ├── cli.ts              # CLI entry point
-│   ├── build/              # Build orchestration and format strategies
-│   ├── markdown/           # Markdown processing and plugins
-│   ├── server.ts           # Preview server
-│   ├── utils/              # Utilities (config, file ops, CSS)
-│   └── assets/
-│       ├── core/           # Base Print CSS
-│       ├── themes/         # Bundled themes
-│       ├── plugins/        # Plugin CSS
-│       └── preview/        # Preview UI assets
+│   ├── commands/            # Command implementations
+│   ├── lib/                 # Core libraries
+│   │   ├── markdown/        # Markdown processing and plugins
+│   │   ├── manifest.ts      # Config resolution
+│   │   ├── presets.ts       # Vendor presets
+│   │   ├── ghostscript.ts   # PDF/X conversion
+│   │   └── chromium.ts      # Chromium resolution
+│   ├── checks/              # Validation check system
+│   ├── preview/             # Preview server
+│   ├── schema/              # Type definitions
+│   └── utils/               # Shared utilities
 └── README.md
 ```
 
@@ -516,15 +538,16 @@ source ~/.bashrc  # or ~/.zshrc
 
 #### Build Issues
 
-**Problem: PDF Generation Fails with "Prince Not Found"**
+**Problem: PDF Generation Fails**
 
-Ensure Chromium + Paged.js is installed and accessible:
+Ensure Chromium is installed and accessible. print-md uses Playwright to manage Chromium:
 
 ```bash
-# Chromium is automatically installed with Playwright
-# If issues persist, verify it's in PATH:
-which chromium      # Linux/macOS
-where chromium.exe  # Windows
+# Install Playwright browsers (Chromium)
+bunx playwright install chromium
+
+# If issues persist, verify Chromium is available:
+bunx playwright install --dry-run
 
 
 **Problem: Build Fails with "manifest.yaml not found"**
@@ -580,8 +603,8 @@ Large images or complex CSS can slow down PDF generation:
 Port might be in use:
 
 ```bash
-# Check what's using the default port (3000)
-lsof -i :3000          # Linux/macOS
+# Check what's using the default port (3579)
+lsof -i :3579          # Linux/macOS
 netstat -ano | findstr :3579  # Windows
 
 # Use a different port
@@ -769,16 +792,19 @@ bun install
 Check paths in manifest.yaml are relative to project root:
 ```yaml
 # If manifest.yaml is in /home/user/project/
-files:
-  - "chapters/intro.md"  # Looks for /home/user/project/chapters/intro.md
+source:
+  files:
+    - "chapters/intro.md"  # Looks for /home/user/project/chapters/intro.md
 ```
 
-**"Invalid manifest.yaml: title is required"**
+**"Invalid manifest.yaml: unknown field"**
 
-Ensure required fields are present:
+Check that your manifest only uses valid top-level fields:
 ```yaml
-title: "Your Title"    # Required
-authors:               # Required
+# Valid top-level fields: title, authors, preset, styles, plugins,
+# source, output, pdfx, page, ink, lint, validate
+title: "Your Title"
+authors:
   - "Your Name"
 ```
 

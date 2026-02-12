@@ -101,10 +101,10 @@ print-md validate --pdf dist/book.pdf
 ### Common Directives
 
 ```markdown
-<!-- @page: chapter -->     Apply chapter template
-<!-- @break -->             Force page break
-<!-- @spread: right -->     Start on right page
-<!-- @columns: 2 -->        Two-column layout
+--- {page chapter}          Page break with chapter class
+--- {page}                  Simple page break with marker
+::: two-column ... :::      Two-column layout
+::: sidebar ... :::         Sidebar content block
 ```
 
 ### Common Callouts

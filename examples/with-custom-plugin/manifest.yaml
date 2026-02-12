@@ -15,8 +15,7 @@ plugins:
     options:
       types: ["note", "tip", "warning", "danger", "info"]
       className: "callout"
-
-# Also load built-in TTRPG plugin for comparison
+  # Also load built-in TTRPG plugin for comparison
   - name: "ttrpg"
     priority: 50
 

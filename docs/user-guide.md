@@ -20,8 +20,10 @@ Welcome to print-md! This guide will help you create professional print-ready PD
 ## Quick Start
 
 ```bash
-# Install print-md
-bun install -g @dimm-city/print-md
+# Clone the repository
+git clone https://github.com/dimm-city/print-md.git
+cd print-md
+bun install
 
 # Create a new project
 mkdir my-book && cd my-book
@@ -37,10 +39,10 @@ EOF
 echo "# Chapter 1\n\nHello, world!" > chapter1.md
 
 # Preview it live
-print-md preview
+bun src/cli.ts preview
 
-# Build a PDF
-print-md build
+# Run the full pipeline to build a PDF
+bun src/cli.ts run .
 ```
 
 ---
@@ -58,12 +60,17 @@ print-md build
 
 ### Install print-md
 
-```bash
-# Global installation (recommended)
-bun install -g @dimm-city/print-md
+print-md is not yet published to npm. Install from source:
 
-# Verify installation
-print-md --version
+```bash
+# Clone the repository
+git clone https://github.com/dimm-city/print-md.git
+cd print-md
+bun install
+
+# Run directly
+bun src/cli.ts preview
+bun src/cli.ts run ./my-book
 ```
 
 ---
@@ -87,14 +94,12 @@ title: "My First Book"
 authors:
   - "Your Name"
 
-# Optional fields
-description: "A short description of your book"
-
 # Specify file order (optional - defaults to alphabetical)
-files:
-  - "01-introduction.md"
-  - "02-chapter1.md"
-  - "03-chapter2.md"
+source:
+  files:
+    - "01-introduction.md"
+    - "02-chapter1.md"
+    - "03-chapter2.md"
 
 # Add custom styles (optional)
 styles:
@@ -148,13 +153,14 @@ This will:
 ### 5. Build Your PDF
 
 ```bash
-print-md build
+# Run the full pipeline
+print-md run .
 
-# Or specify output name
-print-md build --out my-book.pdf
+# Or specify output directory
+print-md run . --out dist/
 ```
 
-Your PDF will be created as `output.pdf` (or your specified name).
+Your PDF will be created in the output directory.
 
 ---
 
@@ -173,23 +179,16 @@ authors:                           # List of authors
   - "Author Two"
 
 # ============================================
-# OPTIONAL METADATA
-# ============================================
-
-description: "Book description"    # Document description
-version: "1.0"                     # Version number
-date: "2025-11-19"                # Publication date
-
-# ============================================
 # FILE ORDERING
 # ============================================
 
-files:                             # Explicit file order
-  - "frontmatter/title-page.md"    # (omit for alphabetical)
-  - "frontmatter/copyright.md"
-  - "chapters/01-intro.md"
-  - "chapters/02-chapter1.md"
-  - "appendix/glossary.md"
+source:
+  files:                           # Explicit file order
+    - "frontmatter/title-page.md"  # (omit for alphabetical)
+    - "frontmatter/copyright.md"
+    - "chapters/01-intro.md"
+    - "chapters/02-chapter1.md"
+    - "appendix/glossary.md"
 
 # ============================================
 # STYLING
@@ -219,21 +218,22 @@ page:
   # Legal: 612 x 1008
 
 # ============================================
-# MARKDOWN EXTENSIONS
+# PLUGINS
 # ============================================
 
-extensions:                        # Enable/disable plugins
-  - "ttrpg"                        # TTRPG directives
-  - "dimmCity"                     # Dimm City extensions
-  - "containers"                   # Legacy containers
-                                   # (empty = all enabled)
+plugins:                           # Enable/disable plugins
+  - ttrpg                          # TTRPG directives
+  - dimm-city                      # Dimm City extensions
+                                   # Note: containers are built-in
 ```
 
 ### CLI Options
 
 ```bash
-# Full pipeline
-print-md run --input ./my-book --pdfx x1a
+# Full pipeline (run)
+print-md run <input-dir> [options]
+  --out <dir>                      # Output directory
+  --pdfx <x1a|x3>                 # PDF/X flavor
   --skip-lint                      # Skip CSS linting step
   --skip-pre-validate              # Skip pre-build validation
   --skip-validate                  # Skip post-build validation
@@ -248,15 +248,19 @@ print-md validate --input . --pdf dist/book.pdf  # Both
   --format json                    # JSON output for CI
   --phase pre-build                # Run specific phase
 
-# Build options
-print-md build --input <html> --out <pdf>
+# Build (HTML to PDF only, two positional args)
+print-md build <html-file> <pdf-output> [options]
   --pdfx <x1a|x3>                 # Enable PDF/X conversion
   --icc <path>                     # ICC profile path
+  --manifest <path>                # Path to manifest.yaml
 
 # Preview commands
 print-md preview [input]            # Start preview server
   --port <number>                  # Server port (default: 3579)
   --no-watch                       # Disable file watching
+  --open                           # Open browser automatically
+  --verbose                        # Verbose output
+  --debug                          # Debug mode
 ```
 
 ---
@@ -374,7 +378,7 @@ This is a paragraph with a custom class.
 
 ### Using Built-in Themes
 
-print-md includes 4 built-in themes:
+print-md supports theme CSS files. These theme files need to exist in your project directory or be created by you -- they are not bundled with print-md:
 
 ```yaml
 # manifest.yaml
@@ -384,6 +388,8 @@ styles:
   - "themes/dark.css"      # Dark mode for screens
   - "themes/parchment.css" # Aged paper look
 ```
+
+**Note:** You must create these theme CSS files yourself or copy them from an existing project. print-md does not ship with pre-built themes.
 
 ### Creating Custom CSS
 
@@ -607,26 +613,26 @@ Clone repositories directly from preview:
 
 ### Basic Build
 
-```bash
-# Build PDF from current directory
-print-md build
+Use the `run` command for the full pipeline (markdown to PDF):
 
-# Result: output.pdf
+```bash
+# Full pipeline from current directory
+print-md run .
+
+# Full pipeline with output directory
+print-md run ./my-book --out dist/
 ```
 
-### Custom Output
+The `build` command is for converting a single HTML file to PDF (not for the full pipeline):
 
 ```bash
-# Specify output filename
-print-md build --out my-book.pdf
-
-# Specify output directory
-print-md build --out ./dist/book.pdf
+# Convert HTML to PDF directly
+print-md build output.html output.pdf
 ```
 
 ### Output Format
 
-print-md currently builds PDF output only. HTML output is not supported.
+The `convert` command produces standalone HTML. The `run` pipeline produces PDF.
 
 ### Verbose Output
 
@@ -646,8 +652,8 @@ Enable TTRPG-specific directives:
 
 ```yaml
 # manifest.yaml
-extensions:
-  - "ttrpg"
+plugins:
+  - ttrpg
 ```
 
 **Stat Blocks:**
@@ -686,8 +692,8 @@ Enable Dimm City-specific syntax:
 
 ```yaml
 # manifest.yaml
-extensions:
-  - "dimmCity"
+plugins:
+  - dimm-city
 ```
 
 **District Badges:**
@@ -702,13 +708,7 @@ extensions:
 
 ### Container Syntax
 
-Enable legacy container blocks:
-
-```yaml
-# manifest.yaml
-extensions:
-  - "containers"
-```
+Container blocks are built-in to print-md. No plugin configuration is needed.
 
 **Available Containers:**
 ```markdown
@@ -741,10 +741,8 @@ Enable built-in plugins in your manifest:
 # manifest.yaml
 plugins:
   - ttrpg      # TTRPG features (stat blocks, dice notation, cross-refs)
-  - dimmCity   # Dimm City game syntax (district badges, roll prompts)
+  - dimm-city  # Dimm City game syntax (district badges, roll prompts)
 ```
-
-**Note:** The `extensions` array is deprecated. Use `plugins` instead for all new projects.
 
 #### Creating Local Plugins
 
@@ -939,7 +937,7 @@ print-md validate --input ./my-book
 print-md validate --pdf dist/book.pdf --manifest manifest.yaml
 
 # Full pipeline with validation
-print-md run --input ./my-book --pdfx x1a
+print-md run ./my-book --pdfx x1a
 ```
 
 **Configure in manifest.yaml:**
@@ -987,13 +985,14 @@ my-book/
 Specify order in manifest:
 
 ```yaml
-files:
-  - "frontmatter/title-page.md"
-  - "frontmatter/copyright.md"
-  - "chapters/01-introduction.md"
-  - "chapters/02-chapter1.md"
-  - "chapters/03-chapter2.md"
-  - "appendix/glossary.md"
+source:
+  files:
+    - "frontmatter/title-page.md"
+    - "frontmatter/copyright.md"
+    - "chapters/01-introduction.md"
+    - "chapters/02-chapter1.md"
+    - "chapters/03-chapter2.md"
+    - "appendix/glossary.md"
 ```
 
 ### CSS @import

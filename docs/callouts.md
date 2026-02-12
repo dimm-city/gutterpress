@@ -1,6 +1,8 @@
 # Callouts & Admonitions
 
-Print-md supports five professional callout types for highlighting important information. These use GitHub-style syntax and are universally applicable to any document type.
+> **Plugin Required:** The `> [!note]` GitHub-style callout syntax shown below is **not built-in** to print-md. It requires a callout plugin (see `examples/with-custom-plugin/callouts-plugin.js` for a reference implementation). The built-in container syntax for highlighted content uses `::: sidebar`, `::: ability`, and other container blocks documented in [Core Directives](core-directives.md).
+
+Print-md can support five professional callout types for highlighting important information when a callout plugin is loaded. These use GitHub-style syntax and are universally applicable to any document type.
 
 ## Callout Syntax
 
