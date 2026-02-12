@@ -44,7 +44,7 @@ curl https://api.example.com/v2/users/user-123 \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-@page-break
+@break
 
 ### Create User
 
@@ -110,7 +110,7 @@ DELETE /users/:id
 }
 ```
 
-@page-break
+@break
 
 ## Data Operations
 

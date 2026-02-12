@@ -63,6 +63,7 @@
     "markdown-it-attrs": "^4.3.0",
     "markdown-it-container": "^4.0.0",
     "markdown-it-footnote": "^4.0.0",
+    "markdown-it-paged": "^0.1.2",
     "pagedjs": "^0.4.3",
     "pagedjs-cli": "^0.4.3",
     "playwright": "^1.58.0",

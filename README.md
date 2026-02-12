@@ -181,22 +181,23 @@ plugins:
 
 ## Markdown Directives
 
-print-md extends markdown with special directives for layout control through three systems:
+print-md extends markdown with special directives for layout control:
 
-### Page Markers (Markdown)
+### Layout Markers
 
-Create page breaks using markdown horizontal rules with optional styling:
+The primary page layout system uses `@` markers (provided by [`markdown-it-paged`](https://github.com/itlackey/markdown-it-paged)):
 
 ```markdown
----                          Simple page break
---- {page}                   Page break with page marker
---- {page chapter}           Page break with chapter styling
---- {page .custom-class}     Page break with custom CSS class
+@page              Start a new page
+@page chapter      New page with "chapter" CSS class
+@break             Force a page break (no wrapper)
+@spread            Start a two-page spread group
+@section           Group content (avoid page breaks within)
 ```
 
 ### Container Blocks
 
-Group content with container syntax:
+Group content with container syntax for styling:
 
 ```markdown
 ::: container
@@ -212,18 +213,15 @@ Sidebar or callout box content.
 :::
 ```
 
-### Plugin Directives
+### Page Markers (Legacy)
 
-When plugins are enabled, they provide additional directives. Example with TTRPG plugin:
+> **Deprecated:** Use `@page` and `@break` instead.
+
+The older horizontal-rule syntax still works for backward compatibility:
 
 ```markdown
-@page-break
-
-Forces a page break
-
-@roll{2d6+3}
-
-Renders a dice roll notation
+--- {page}                   Page break with page marker
+--- {page chapter}           Page break with chapter styling
 ```
 
 ### Example Usage
@@ -233,19 +231,18 @@ Renders a dice roll notation
 
 This is the first paragraph.
 
---- {page}
+@page
 
 # Chapter Two
 
-This chapter starts on a new page with the page marker applied.
+This chapter starts on a new page.
 
 ::: two-column
 This content flows in two columns until the container ends.
 :::
 
-::: container
+@section
 Content in here avoids breaking across pages.
-:::
 ```
 
 ## Plugin System

@@ -123,32 +123,32 @@ page:
 
 ## Core Directives
 
-Print-md provides directives to control page layout and behavior using markdown syntax. Page breaks use horizontal rule syntax with optional attributes, and layout blocks use fenced container syntax.
+Print-md provides directives to control page layout using `@` markers (primary) and fenced container blocks.
 
-### Page Breaks
+### Layout Markers
 
-Control when and where page breaks occur using horizontal rule (`---`) syntax:
+The primary page layout system uses `@` markers from the `markdown-it-paged` plugin:
 
 ```markdown
-# Chapter One
+@page
 
-Content here...
+Start a new page.
 
----
+@page chapter
 
-This horizontal rule becomes a simple page break.
+Start a new page with the "chapter" CSS class.
 
---- {page}
+@break
 
-This creates a page break with a page marker.
+Force a hard page break.
 
---- {page chapter}
+@spread
 
-This creates a page break with a "chapter" class applied.
+Start a two-page spread group.
 
---- {page .custom-class}
+@section
 
-This creates a page break with a custom CSS class.
+Group content to avoid page breaks within.
 ```
 
 ### Container Blocks
@@ -172,17 +172,12 @@ Sidebar content goes here.
 ::: wrapper
 Generic wrapper for custom styling.
 :::
-
-::: page
-Content treated as a distinct page block.
-:::
 ```
 
 ### Built-in Containers
 
 The following container names are built-in:
 
-- `page` - Page-level content block
 - `container` - Generic container
 - `two-column` - Two-column layout
 - `wrapper` - Generic wrapper for styling
@@ -192,6 +187,17 @@ The following container names are built-in:
 - `specialty` - Specialty content block
 - `learning-path` - Learning path content
 - `aug` - Augmentation content block
+
+### Legacy Page Breaks
+
+> **Deprecated:** Use `@page` and `@break` instead.
+
+The older horizontal-rule syntax still works for backward compatibility:
+
+```markdown
+--- {page}                   Page break with marker
+--- {page chapter}           Page break with chapter class
+```
 
 ---
 
@@ -292,38 +298,25 @@ Tables automatically:
 
 ## Page Control
 
-### Automatic Page Breaks
+### Page Breaks
 
-Print-md provides automatic page breaks with simple markdown:
+Use `@break` for a hard page break, or `@page` to start a new styled page:
 
 ```markdown
 # Chapter One
 
 Content here...
 
----
+@break
 
-This horizontal rule becomes a page break.
-New content starts on the next page.
+This starts on the next page.
+
+@page chapter
+
+This starts a new chapter-styled page.
 ```
 
-**Auto-rule:** Any horizontal rule (`---`, `***`, `___`) becomes a page break.
-
-### Manual Page Breaks
-
-For more control, use page break directives with attributes:
-
-```markdown
-Some content here.
-
---- {page}
-
-This starts on a new page with a page marker.
-
---- {page chapter}
-
-This starts a new chapter page.
-```
+**Auto-rule:** H1 headings (`#`) automatically start on a right-hand page.
 
 ### Chapter Starts
 
@@ -339,12 +332,19 @@ This H1 heading automatically:
 
 ### Preventing Page Breaks
 
-Use CSS classes to control breaking behavior:
+Use `@section` or CSS classes to keep content together:
+
+```markdown
+@section
+This content will try to stay together on one page
+and avoid breaking across pages.
+```
+
+Or with container syntax:
 
 ```markdown
 ::: container
-This content will try to stay together on one page
-and avoid breaking across pages.
+This content stays together.
 :::
 ```
 
@@ -753,6 +753,8 @@ Equipment or item details
 :::
 ```
 
+> **Tip:** You can also use `@section ability` as an alternative to `::: ability ... :::` for flat (non-nested) ability blocks.
+
 ---
 
 ## Styling & Theming
@@ -1023,13 +1025,15 @@ Before final print:
 ### Common Directives
 
 ```markdown
----                         Simple page break
---- {page}                  Page break with marker
---- {page chapter}          Page break with class
---- {page .custom-class}    Page break with CSS class
+@page                       Start a new page
+@page chapter               New page with chapter class
+@break                      Force a page break
+@spread                     Start a two-page spread
+@section                    Group content (avoid breaks)
 ::: container ... :::       Container block
 ::: two-column ... :::      Two-column layout
 ::: sidebar ... :::         Sidebar block
+--- {page}                  Page break (legacy)
 ```
 
 ### Common Callouts

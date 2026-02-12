@@ -18,7 +18,7 @@ Sarah nodded, not trusting her voice.
 
 James laughed. "That's how you know it's real. If it felt good, you'd have written the wrong ending."
 
---- {page}
+@page
 
 The publishing industry, Sarah discovered, moved at a glacial pace. Queries went unanswered. Agents requested pages, then vanished. The few rejections she received were form letters, identical except for the signature.
 
@@ -42,7 +42,7 @@ Sarah's heart stopped. Started. Raced.
 
 "I'd like to represent you."
 
---- {page}
+@page
 
 The celebration was quiet—just Sarah and James, the same coffee shop, the same corner table.
 
@@ -88,4 +88,4 @@ To Margaret—sorry I made you suffer, but that's what made you interesting.
 
 And to anyone reading this who's staring at their own blinking cursor: just write. The words will come.
 
---- {page}
+@page

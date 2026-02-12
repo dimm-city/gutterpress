@@ -2,7 +2,7 @@
 
 The party arrives in Thornhaven on a gray autumn morning. The village seems normal at first glance—a dozen buildings clustered around a small green, smoke rising from chimneys, chickens pecking in yards. But something feels wrong. The villagers hurry about their business with heads down, avoiding eye contact. Children play in whispers. The whole place has the feel of somewhere holding its breath.
 
-@page-break
+@break
 
 ## Area 1: The Chapel
 
@@ -45,7 +45,7 @@ Success reveals:
 - Faint scratch marks on the stones suggest something climbed OUT, not fell in
 - A cold breeze carries the smell of decay
 
-@page-break
+@break
 
 ## Area 2: The Village Green
 
@@ -79,7 +79,7 @@ Success reveals strange scratch marks on the inner wall, as if something with cl
 
 A character who descends the well (Athletics DC 10) discovers that the well connects to the catacombs through a narrow tunnel at the 20-foot mark. The tunnel is barely wide enough for a Medium creature to squeeze through.
 
-@page-break
+@break
 
 ## Area 3: Thom's Smithy
 
@@ -104,7 +104,7 @@ Thom produces an old iron key, rust-pitted but serviceable.
 
 The key opens a locked door in area 8 of the catacombs (Part 2).
 
-@page-break
+@break
 
 ## Area 4: Elder Miriam's Home
 
@@ -131,7 +131,7 @@ If the party succeeds on a @roll{Persuasion DC 15} check or demonstrates genuine
 
 **Important:** The journal gives the party advantage on checks to navigate the catacombs and reveals that the cult worshipped "The Whispering Dark," an entity from the Shadowfell.
 
-@page-break
+@break
 
 ## Moving Forward
 

@@ -29,7 +29,7 @@ Characters who fail 3+ saves see fleeting images:
 
 These visions provide no mechanical penalty but should create unease.
 
-@page-break
+@break
 
 ## Area 5: The Broken Seal
 
@@ -66,7 +66,7 @@ Success finds:
 - A torn piece of black cloth (from cultist robes)
 - Footprints leading deeper into the catacombs (3-4 people, medium humanoids)
 
-@page-break
+@break
 
 ## Area 6: The Burial Hall
 
@@ -110,7 +110,7 @@ Contains a hidden compartment behind a loose stone.
 
 Success finds: *Potion of Greater Healing* and 25 gp in ancient coins
 
-@page-break
+@break
 
 ## Encounter 1: Zombie Ambush
 
@@ -154,7 +154,7 @@ At the end of the burial hall, 6 zombies emerge from the alcoves and attack.
 
 Zombies carry nothing of value, but one wears a key around its neck. The key opens the locked gate in area 9.
 
-@page-break
+@break
 
 ## Area 7: The Collapsed Chapel
 
@@ -196,7 +196,7 @@ Success finds a hidden compartment in the altar's base containing:
 - *Spell Scroll of Cure Wounds*
 - A silver dagger (not magical, worth 10 gp)
 
-@page-break
+@break
 
 ## Area 8: The Locked Sanctuary
 
@@ -220,7 +220,7 @@ Failure: The character hears their name whispered from below, in a voice that so
 
 **When the party descends the stairs, continue to Part 3: The Depths.**
 
-@page-break
+@break
 
 ## DM Notes: Pacing and Tension
 

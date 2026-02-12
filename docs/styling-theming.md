@@ -223,13 +223,37 @@ Create custom page templates for special sections:
 Usage in markdown:
 
 ```markdown
---- {page gallery}
+@page gallery
 
 # Art Gallery
 
 <div class="gallery-section">
 Images here...
 </div>
+```
+
+## Layout Marker CSS Classes
+
+The `markdown-it-paged` plugin emits these CSS classes from `@` markers:
+
+| Marker | CSS Class | Default Style |
+|--------|-----------|---------------|
+| `@page` | `.page` | `break-before: page` |
+| `@spread` | `.spread` | `break-before: page` |
+| `@section` | `.region` | `break-inside: avoid` |
+| `@break` | `.md-break` | `break-before: page` |
+
+These classes can be extended in your custom CSS:
+
+```css
+/* Example: add spacing to page starts */
+.page { padding-top: 2em; }
+
+/* Example: spread always starts on left page */
+.spread { break-before: left; }
+
+/* Example: region with visual border */
+.region { border: 1px solid #ccc; padding: 1em; }
 ```
 
 ## Component Customization

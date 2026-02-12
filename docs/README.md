@@ -101,10 +101,14 @@ print-md validate --pdf dist/book.pdf
 ### Common Directives
 
 ```markdown
---- {page chapter}          Page break with chapter class
---- {page}                  Simple page break with marker
+@page                       Start a new page
+@page chapter               New page with chapter class
+@break                      Force a page break
+@spread                     Start a two-page spread
+@section                    Group content (avoid breaks)
 ::: two-column ... :::      Two-column layout
 ::: sidebar ... :::         Sidebar content block
+--- {page}                  Page break (legacy syntax)
 ```
 
 ### Common Callouts

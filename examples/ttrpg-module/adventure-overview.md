@@ -22,7 +22,7 @@ One character receives a letter from a relative in Thornhaven, begging for help.
 
 A notice on the tavern board offers 200 gold pieces for anyone who can stop the "disturbances" in Thornhaven. The notice is signed by the village council and has been posted for three weeks with no takers.
 
-@page-break
+@break
 
 ## Important NPCs
 
@@ -59,7 +59,7 @@ A notice on the tavern board offers 200 gold pieces for anyone who can stop the 
 
 **Quote:** *"Problems don't fix themselves. You either hammer them into shape or toss them back in the forge."*
 
-@page-break
+@break
 
 ## Adventure Structure
 
@@ -91,7 +91,7 @@ The party descends deeper into the catacombs, confronting the cult and their dar
 - Boss fight with cult leader and shadow demon
 - Choice: destroy the temple or seal it again
 
-@page-break
+@break
 
 ## Rewards
 

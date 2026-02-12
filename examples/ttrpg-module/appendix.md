@@ -48,7 +48,7 @@
     10: Sealed Sanctum
 ```
 
-@page-break
+@break
 
 ## Handouts
 
@@ -77,7 +77,7 @@
 >
 > *Tomorrow, three priests from the capital arrive to help us seal the catacombs. Thom says the seal must last forever, or at least until people forget the danger below. May future generations heed this warning: what lies beneath must never be disturbed.*
 
-@page-break
+@break
 
 ## Random Encounters
 
@@ -92,7 +92,7 @@ If the party spends more than 4 hours in the catacombs, roll 1d6 every hour. On 
 | 5    | Discover a hidden cache containing 1d4 healing potions |
 | 6    | Meet the ghost of a plague victim (not hostile, wants help) |
 
-@page-break
+@break
 
 ## Magic Items
 
@@ -124,7 +124,7 @@ Lost for ages in the catacombs, this sword glows with inner light. While you hol
 
 When you hit an undead with it, that target takes an extra 1d8 radiant damage.
 
-@page-break
+@break
 
 ## NPCs Quick Reference
 
@@ -156,7 +156,7 @@ When you hit an undead with it, that target takes an extra 1d8 radiant damage.
 - **Goal:** Summon the Whispering Dark, gain power
 - **Secret:** Believes he can control the entity (he can't)
 
-@page-break
+@break
 
 ## Running the Adventure: DM Tips
 
@@ -233,7 +233,7 @@ Allow creative solutions:
 - Remove consequences of poor choices
 - Skip important investigation
 
-@page-break
+@break
 
 ## Sequel Hooks
 

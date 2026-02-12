@@ -1,547 +1,383 @@
 # Documentation Drift Report
 
-Generated: 2026-02-11
+**Generated:** 2026-02-11
+**Compared against:** Current implementation in `src/`
 
-This report identifies inconsistencies between print-md documentation/examples and the current implementation.
-
----
-
-## 📈 Completion Status
-
-### ✅ Completion Summary (Tasks 1-7 Resolved)
-
-**Tasks Completed:**
-1. ✅ README.md - Fixed all Prince XML, Vivliostyle, pagedmd references, CLI flags, port numbers
-2. ✅ ARCHITECTURE.md - Fixed PDF generation architecture, tech references
-3. ✅ getting-started.md - Fixed prerequisites, manifest schema
-4. ✅ user-guide.md - Fixed commands, config, removed non-existent flags
-5. ✅ validation.md - Clarified --phase argument documentation
-6. ✅ docs/README.md - Fixed external links, tech references
-7. ✅ Examples (with-validation, with-custom-plugin, plugins) - Verified and fixed
-
-**Remaining Work:**
-- 🔄 Task #8: IN_PROGRESS - Other example directories need verification and updates
-- Example directories requiring updates: examples/basic, examples/advanced, examples/styling, etc.
-
-### 📊 Issue Resolution Statistics
-
-**Resolved Issues:** 7 (Critical fixes)
-**Remaining Issues:** 13 (Various categories)
-**Total Issues Tracked:** 20
+This report identifies all discrepancies between documentation/examples and the actual implementation. Issues are categorized by severity.
 
 ---
 
-## 🔴 Critical Issues (Incorrect Technical Claims)
+## Severity Legend
 
-### 1. PDF Generation Engine
-
-**Documentation Claims:**
-- README.md line 3: "Uses Prince XML for PDF generation"
-- README.md line 58: "Prince XML Documentation"
-- README.md line 413: "**PDF** - Renders via Prince XML typesetter"
-- README.md line 484: "PDF Generation Fails with 'Prince Not Found'"
-- docs/getting-started.md lines 3, 57-61: "Uses Prince XML for PDF generation"
-- docs/user-guide.md line 3: "Uses Prince XML for PDF generation"
-- docs/ARCHITECTURE.md line 17: "It uses Prince XML for PDF generation"
-- Multiple other references throughout
-
-**Actual Implementation:**
-- src/commands/build.ts line 5: `import { chromium } from "playwright"`
-- Uses Chromium + Playwright + Paged.js polyfill for PDF generation
-- No Prince XML dependency anywhere in the codebase
-
-**Impact:** CRITICAL - Users will try to install Prince XML (commercial software) unnecessarily
-
-**Status:** ✅ RESOLVED - All references updated in README.md, ARCHITECTURE.md, getting-started.md, user-guide.md
+- **CRITICAL** - Will cause user errors/confusion; completely wrong information
+- **HIGH** - Significant inaccuracy that misleads users
+- **MEDIUM** - Partially incorrect or outdated information
+- **LOW** - Minor inconsistency or cosmetic issue
 
 ---
 
-### 2. Live Preview Engine
+## 1. README.md
 
-**Documentation Claims:**
-- README.md line 3: "Vivliostyle for live preview"
-- README.md line 147: "Prince XML Documentation: https://www.princexml.com/doc/"
-- README.md line 148: "Vivliostyle Documentation: https://docs.vivliostyle.org/"
-- README.md line 788: "Prince XML - Professional PDF typesetter"
-- README.md line 789: "Vivliostyle - CSS Paged Media viewer for preview"
-- docs/getting-started.md line 3: "Vivliostyle for live preview"
-- docs/user-guide.md line 3: "Vivliostyle for live preview"
-- docs/ARCHITECTURE.md line 17: "Vivliostyle for live preview"
+### CRITICAL: `build` command described incorrectly (lines 86-97, 388-401)
 
-**Actual Implementation:**
-- Uses Paged.js (pagedjs) for both preview and PDF generation
-- Vite dev server for preview with HMR
-- No Vivliostyle in dependencies or code
+**Documentation says:**
+```bash
+print-md build
+print-md build ./my-book
+print-md build --out my-book.pdf
+```
+With options: `--out <file>` (default: output.pdf)
 
-**Impact:** CRITICAL - Users directed to wrong documentation/resources
+**Implementation (`src/commands/build.ts`):**
+The `build` command takes two **required** positional arguments: `input` (path to HTML file) and `out` (output PDF path). It also has `--pdfx`, `--icc`, `--manifest`, `--strip-annotations` options. It builds HTML-to-PDF, **not** markdown-to-PDF. The command that takes a directory and runs the full pipeline is `run`.
 
-**Status:** ✅ RESOLVED - All references updated and corrected to Paged.js
+### CRITICAL: Manifest `page` config uses non-existent fields (lines 160-167)
 
----
+**Documentation says:**
+```yaml
+page:
+  size: letter
+  margins:
+    top: 0.75in
+    bottom: 0.75in
+    inside: 0.875in
+    outside: 0.625in
+  bleed: 0.125in
+```
 
-### 3. Command Name
+**Implementation (`src/schema/manifest.types.ts`):**
+```yaml
+page:
+  width: 621    # points (number)
+  height: 810   # points (number)
+  tolerance: 0.5
+```
+The fields `size`, `margins`, and `bleed` do not exist. Dimensions are in points only.
 
-**Documentation Claims:**
-- README.md lines 346-393: Uses `pagedmd` as command name
-- Multiple examples: `pagedmd build`, `pagedmd preview`
-- README.md line 467: "If `pagedmd` command isn't found..."
+### HIGH: `files` shown at root level (line 173)
 
-**Actual Implementation:**
-- CLI command is `print-md` (not `pagedmd`)
-- src/cli.ts confirms this
-- All help text shows `print-md`
+**Documentation says:** `files:` as a top-level manifest key.
+**Implementation:** File ordering is at `source.files`, not top-level `files`.
 
-**Impact:** HIGH - Copy-paste examples will fail
+### HIGH: `extensions` key shown (lines 187-191)
 
-**Status:** ✅ RESOLVED - All `pagedmd` references changed to `print-md` in all documentation files
+**Documentation says:**
+```yaml
+extensions:
+  - ttrpg
+  - dimmCity
+```
 
----
+**Implementation:** The `extensions` key does not exist in `PrintMdManifest`. The correct key is `plugins`.
 
-### 4. Build System Architecture
+### HIGH: Troubleshooting references Prince XML (line 519)
 
-**Documentation Claims:**
-- docs/ARCHITECTURE.md lines 262-273: Describes PDF generation using "pagedjs-cli subprocess" via stdin
-- docs/ARCHITECTURE.md line 636: "Refactor to use Prince XML or keep Puppeteer?"
+**Documentation says:** "PDF Generation Fails with 'Prince Not Found'"
+**Implementation:** Uses Chromium + Paged.js, not Prince XML.
 
-**Actual Implementation:**
-- Uses Playwright's Chromium API directly (not puppeteer, not pagedjs-cli subprocess)
-- Serves HTML via Bun.serve, launches Chromium via Playwright, waits for Paged.js render, calls page.pdf()
-- Never spawns pagedjs-cli as a subprocess
+### MEDIUM: Port reference wrong (line 583)
 
-**Impact:** MEDIUM - Developers working on the code will be confused
+**Documentation says:** "Check what's using the default port (3000)"
+**Implementation:** Default port is 3579.
 
-**Status:** ✅ RESOLVED - ARCHITECTURE.md completely rewritten with accurate Playwright + Chromium architecture
+### MEDIUM: "title is required" error message (line 783)
 
----
+**Documentation says:** `"Invalid manifest.yaml: title is required"`
+**Implementation:** `title` is optional in `PrintMdManifest`.
 
-## 🟡 Moderate Issues (Outdated Features/Configuration)
+### MEDIUM: Project structure outdated (lines 455-468)
 
-### 5. Page Format Configuration
+**Documentation shows:** `src/build/`, `src/markdown/`, `src/utils/` with subdirectories `core/`, `themes/`, `plugins/`
+**Actual structure:** `src/commands/`, `src/lib/`, `src/lib/markdown/`, `src/checks/`, `src/preview/`, `src/schema/`, `src/utils/`. No `src/assets/core/`, `src/assets/themes/`, or `src/assets/plugins/` directories exist.
 
-**Documentation Claims:**
-- README.md lines 150-158: Shows `pageFormat` with `size` and nested `margins`
-- docs/user-guide.md lines 109-115: Shows `pageFormat.size` as string like "letter", "a4", "legal"
-- docs/getting-started.md lines 47-54: Shows `format.size`, `format.margins`, `format.bleed`
+### LOW: `description` field shown in manifest (line 159)
 
-**Actual Implementation:**
-- src/schema/manifest.types.ts lines 31-35: `page` (not `pageFormat` or `format`) with `width`, `height`, `tolerance` (numbers, not strings)
-- examples/with-validation/manifest.yaml lines 15-18: Shows correct format:
-  ```yaml
-  page:
-    width: 621
-    height: 810
-    tolerance: 0.5
-  ```
+`description` is not a field in `PrintMdManifest`.
 
-**Impact:** HIGH - Users' manifest.yaml will fail to work correctly
+### LOW: Plugin section header duplicated (lines 262-263)
 
-**Status:** ✅ RESOLVED - All documentation updated to show correct `page` configuration with numeric width/height/tolerance
-
----
-
-### 6. Validation Documentation vs Implementation
-
-**Documentation Claims:**
-- docs/validation.md line 119: Claims `--phase` argument exists
-
-**Actual Implementation:**
-- `bun src/cli.ts validate --help` does NOT show `--phase` argument
-- The phase is implicitly determined by whether `--pdf` or `--input` is provided
-
-**Impact:** MEDIUM - Users will try non-existent CLI flag
-
-**Status:** ✅ RESOLVED - validation.md updated to clarify --phase behavior and removed incorrect flag references
+Two consecutive `## Plugin System` headers.
 
 ---
 
-### 7. Extensions vs Plugins
+## 2. docs/authoring-guide.md
 
-**Documentation Claims:**
-- README.md lines 178-181: Shows "Legacy extensions (deprecated - use plugins instead)"
-- docs/getting-started.md lines 67-70: Shows `extensions` array
-- docs/user-guide.md lines 707-793: Large section on legacy extensions with containers
+### CRITICAL: References Prince XML and Vivliostyle (lines 23, 1067-1069)
 
-**Actual Implementation:**
-- src/schema/manifest.types.ts: Both `plugins` and legacy support exist
-- Documentation inconsistently uses both terms
-- No clear migration guide or deprecation timeline
+**Documentation says:** "Uses Prince XML for PDF generation and Vivliostyle for live preview"
+**Implementation:** Uses Chromium + Paged.js for PDF generation. Preview uses Vite + Paged.js polyfill.
 
-**Impact:** MEDIUM - Users confused about which to use
+Also links to Prince XML and Vivliostyle documentation URLs at lines 1067-1069 — both are irrelevant.
 
-**Status:** ✅ RESOLVED - Examples verified with plugins, documentation clarified in relevant sections
+### CRITICAL: HTML comment directives don't exist (lines 127-188)
 
----
+**Documentation says:**
+```markdown
+<!-- @page: chapter -->
+<!-- @break -->
+<!-- @spread: right -->
+<!-- @spread: left -->
+<!-- @spread: blank -->
+<!-- @columns: 2 -->
+<!-- @columns: 1 -->
+```
 
-### 8. Default Styles Configuration
+**Implementation:** These comment-based directives are **not implemented**. Grep for `@page:|@break|@spread|@columns` in `src/` returns zero matches. The actual page break system uses:
+- `--- {page}` — horizontal rule with `{page}` attribute
+- `::: container` — triple-colon container blocks
 
-**Documentation Claims:**
-- README.md line 309: "Disable Default Styles" with `disableDefaultStyles: true`
-- docs/user-guide.md line 213: Shows `disableDefaultStyles: false`
+### CRITICAL: `format` config section doesn't exist (lines 69-76)
 
-**Actual Implementation:**
-- src/schema/manifest.types.ts: No `disableDefaultStyles` field exists in PrintMdManifest
-- This configuration option does not exist in the schema
+**Documentation says:**
+```yaml
+format:
+  size: "6in 9in"
+  margins:
+    top: "0.75in"
+    ...
+  bleed: "0.125in"
+```
 
-**Impact:** MEDIUM - Non-functional configuration option documented
+**Implementation:** No `format` key exists. Page configuration uses `page.width`, `page.height`, `page.tolerance` (in points).
 
-**Status:** 🔄 IN_PROGRESS - Needs verification if this was intended feature; remove from documentation if not applicable
+### HIGH: `--output` flag (line 36)
 
----
+**Documentation says:** `print-md build ./my-book --output my-book.pdf`
+**Implementation:** The flag is `--out`, not `--output`. And `build` takes HTML input, not a directory.
 
-### 9. Output Format Options
+### HIGH: `extensions` key used throughout (lines 89-92, 598-601, 689-691)
 
-**Documentation Claims:**
-- README.md lines 344-365: Shows `--format` flag with `pdf` or `html` options
-- README.md line 347: "`--format <type>` - Output format: `pdf` or `html`"
+Should be `plugins:`.
 
-**Actual Implementation:**
-- `bun src/cli.ts build --help`: No `--format` flag exists
-- Build command only produces PDF
-- No HTML output format option
+### HIGH: Named page templates don't exist as documented (lines 142-154)
 
-**Impact:** HIGH - Documented feature doesn't exist
+Lists 11 named templates (chapter, body, art, appendix, frontmatter, cover, title-page, credits, toc, glossary, blank). These are described as selectable via `<!-- @page: template -->` directive which doesn't exist.
 
-**Status:** ✅ RESOLVED - All `--format` flag references removed from documentation; clarified build produces PDF only
+### MEDIUM: `disableDefaultStyles` field (lines 879-884)
 
----
+`disableDefaultStyles: true` does not exist in `PrintMdManifest`.
 
-### 10. Watch Mode
+### MEDIUM: "Prince XML handles CMYK conversion" (line 513)
 
-**Documentation Claims:**
-- README.md lines 86, 364: Shows `--watch` flag for build command
-- docs/user-guide.md lines 656-667: Documents watch mode for build
-
-**Actual Implementation:**
-- `bun src/cli.ts build --help`: No `--watch` flag exists
-- No watch functionality in build command
-
-**Impact:** MEDIUM - Documented feature doesn't exist
-
-**Status:** ✅ RESOLVED - All `--watch` flag references removed from documentation
+Ghostscript handles CMYK/PDF-X conversion (`src/lib/ghostscript.ts`).
 
 ---
 
-## 🟢 Minor Issues (Inconsistencies & Confusion)
+## 3. docs/user-guide.md
 
-### 11. CLI Argument Inconsistencies
+### CRITICAL: Installation shows unpublished package (lines 23-24, 62-63)
 
-**Documentation Claims:**
-- README.md line 350: "`--output <file>`"
-- README.md lines 346-365: Various examples use `--output`
+**Documentation says:** `bun install -g @dimm-city/print-md`
+**README says:** Package is not published to npm yet. These instructions contradict each other.
 
-**Actual Implementation:**
-- Actual flag is `--out` (not `--output`)
+### HIGH: `extensions` key (lines 224-229, 647-651, 688-691, 708-711)
 
-**Impact:** MEDIUM - Copy-paste examples fail
+Multiple sections use `extensions:` key with `ttrpg`, `dimmCity`, `containers`. All should use `plugins:`.
 
-**Status:** ✅ RESOLVED - All `--output` flag references changed to `--out` in all documentation
+### HIGH: `files` at root level (lines 93-97, 186-192)
 
----
+Shows `files:` as top-level manifest key. Should be `source.files`.
 
-### 12. Preview Server Port
+### HIGH: `build` command misrepresented (lines 611-615)
 
-**Documentation Claims:**
-- README.md line 372, 382: Default port is 3000
-- docs/user-guide.md line 273: Default port is 3579
+Shows `print-md build` building from current directory. `build` takes an HTML file as input. `run` is the directory-based pipeline command.
 
-**Actual Implementation:**
-- `bun src/cli.ts preview --help`: Default port is 3579
+### HIGH: `version` and `date` fields (lines 181-182)
 
-**Impact:** LOW - Minor confusion, but still incorrect
+Shows `version: "1.0"` and `date: "2025-11-19"` in manifest. Neither field exists in `PrintMdManifest`.
 
-**Status:** ✅ RESOLVED - All port number references standardized to 3579 across all documentation
+### HIGH: `build --input <html> --out <pdf>` (line 252)
 
----
+`input` and `out` are positional args in `build.ts`, not named `--input`/`--out` options.
 
-### 13. Manifest Schema Documentation
+### MEDIUM: `description` field (line 91)
 
-**Documentation Claims:**
-- docs/ARCHITECTURE.md lines 378-434: Shows comprehensive manifest schema
-- docs/user-guide.md lines 172-246: Shows different manifest structure
+Not a valid manifest field.
 
-**Actual Implementation:**
-- Multiple inconsistent schemas shown across documentation
-- None match src/schema/manifest.types.ts exactly
-- Missing fields: `preset`, ink configuration
-- Extra fields: `disableDefaultStyles`, `description`, `version`, `date`
+### MEDIUM: Built-in themes may not exist as bundled files (lines 377-386)
 
-**Impact:** MEDIUM - Confusing for users trying to understand all options
+Lists classic.css, modern.css, dark.css, parchment.css. No `src/assets/themes/` directory exists. The JSON schema references them as examples but they are not actually bundled with the tool.
 
-**Status:** ✅ RESOLVED - user-guide.md updated with accurate schema; examples verified against actual types
+### MEDIUM: "HTML output is not supported" (line 629)
+
+The `convert` command produces HTML. Architecture references `HtmlFormatStrategy`. This claim is misleading.
 
 ---
 
-### 14. Performance Profiling Flag
+## 4. docs/getting-started.md
 
-**Documentation Claims:**
-- README.md line 698: "`pagedmd build --profile`"
-- docs/user-guide.md lines 670-685: Documents `--profile` flag
+### HIGH: `margins` field in manifest (lines 52-57)
 
-**Actual Implementation:**
-- `bun src/cli.ts build --help`: No `--profile` flag exists
+Shows `margins:` as a top-level field with `top`, `bottom`, `inner`, `outer`. This field doesn't exist in `PrintMdManifest`.
 
-**Impact:** LOW - Documented feature doesn't exist
+### HIGH: `files` at root level (lines 64-68)
 
-**Status:** ✅ RESOLVED - All `--profile` flag references removed from documentation
+Should be `source.files`.
 
----
+### MEDIUM: `description` field (lines 43-44)
 
-### 15. Verbose Flag Inconsistency
-
-**Documentation Claims:**
-- README.md line 530: "`pagedmd build --verbose`"
-- docs/user-guide.md line 692: Documents `--verbose` for build
-
-**Actual Implementation:**
-- `bun src/cli.ts build --help`: No `--verbose` flag shown
-- `bun src/cli.ts preview --help`: DOES have `--verbose` flag
-- Inconsistent across commands
-
-**Impact:** LOW - Feature exists in some commands but not documented accurately
-
-**Status:** ✅ RESOLVED - Documentation clarified to show `--verbose` is only available for preview command
+Not a valid manifest field.
 
 ---
 
-### 16. Examples Directory Structure
+## 5. docs/ARCHITECTURE.md
 
-**Documentation Claims:**
-- README.md line 297: References `examples/plugins/README.md` for plugin guide
-- docs/user-guide.md line 980: References `examples/plugins/README.md`
-- docs/user-guide.md line 981: References `examples/with-custom-plugin/`
+### HIGH: File path references are wrong (lines 166, 192, 246, 283, 321, 440)
 
-**Actual Implementation:**
-- `examples/plugins/` directory exists (basic structure)
-- `examples/with-custom-plugin/` directory exists
-- Need to verify these examples are up-to-date with current plugin system
+| Documentation says | Actual location |
+|---|---|
+| `src/config/config-state.ts` | `src/lib/manifest.ts` |
+| `src/markdown/markdown.ts` | `src/lib/markdown/index.ts` |
+| `src/build/formats/` | Does not exist |
+| `src/build/watch.ts` | `src/preview/file-watcher.ts` |
+| `src/utils/config.ts` | `src/lib/manifest.ts` |
 
-**Impact:** LOW - Examples might exist but need verification
+### HIGH: Strategy pattern classes may not exist (lines 246-278)
 
-**Status:** ✅ RESOLVED - Examples with-validation, with-custom-plugin, and plugins verified and updated
+References `FormatStrategy` interface with `PdfFormatStrategy`, `HtmlFormatStrategy`, `PreviewFormatStrategy` — actual build is directly in `src/commands/build.ts` without a strategy pattern directory.
 
----
+### MEDIUM: Version is "0.1.0" (line 665)
 
-### 17. Desktop Shortcut Feature
+**Documentation says:** Version 0.1.0
+**Implementation (`src/cli.ts`):** Version 2.0.0
 
-**Documentation Claims:**
-- README.md lines 30-38: Documents desktop shortcut installation for Windows/Linux
-- docs/desktop-shortcut.md: Entire document about desktop shortcuts
+### MEDIUM: Code examples don't match current API (lines 201-215)
 
-**Actual Implementation:**
-- Need to verify if install scripts actually create shortcuts
-- Unclear if this feature is implemented or just planned
-
-**Impact:** LOW - Feature might be aspirational
-
-**Status:** 📋 PENDING - Requires separate verification task; marked as optional for now
+Shows `createPagedMarkdownEngine()` and `configureMarkdownRules()`. Actual implementation uses `createMarkdownRenderer()`.
 
 ---
 
-### 18. GitHub Integration Feature
+## 6. docs/core-directives.md
 
-**Documentation Claims:**
-- README.md lines 110-139: Documents GitHub cloning via preview UI
-- docs/user-guide.md lines 613-619: Documents GitHub integration
+### MEDIUM: `@page-break` shown as plugin directive (lines 103-113)
 
-**Actual Implementation:**
-- Need to verify if this feature is implemented in preview server
-- Not visible in basic command help
+```markdown
+@page-break
+@roll{Skill DC 15}
+@table{2d6 damage}
+```
 
-**Impact:** LOW - Feature might exist but needs verification
-
-**Status:** 📋 PENDING - Requires separate verification task; marked as optional for now
+`@page-break` is not implemented as a markdown directive (grep returns zero matches). `@table` doesn't appear to exist. The `::: page` container or `--- {page}` syntax is used instead.
 
 ---
 
-### 19. Directive Syntax Inconsistencies
+## 7. docs/ttrpg-extensions.md
 
-**Documentation Claims:**
-- README.md lines 189-217: Shows directives as `@page`, `@break`, `@spread`, `@columns`
-- docs/core-directives.md: Shows directives as HTML comments `<!-- @page: template -->`
+### HIGH: `extensions` key (lines 9-12)
 
-**Actual Implementation:**
-- Page markers use `--- {page}` syntax on horizontal rules
-- Container blocks use `::: container` ... `:::` syntax
-- Plugin directives (e.g., `@page-break`, `@roll{}`) come from loaded plugins
-- HTML comment syntax is NOT supported
+Shows `extensions: - "ttrpg"`. Should be `plugins: - ttrpg`.
 
-**Impact:** MEDIUM - Users won't know correct syntax
+### MEDIUM: `<!-- @page: body -->` directive (line 229)
 
-**Status:** ✅ COMPLETED - Verified implementation and updated both README.md (lines 193-274) and docs/core-directives.md with correct syntax examples
+References HTML comment directive that doesn't exist.
 
 ---
 
-### 20. Installation Instructions
+## 8. docs/images.md
 
-**Documentation Claims:**
-- README.md lines 49-53: "`bun install -g @dimm-city/print-md`" or "`npm install -g @dimm-city/print-md`"
-- Multiple references to global npm installation
+### HIGH: "Prince XML handles CMYK conversion" (lines 120-121)
 
-**Actual Implementation:**
-- Package likely not published to npm registry yet
-- No package.json "name" field verification
-
-**Impact:** MEDIUM - Installation instructions might not work
-
-**Status:** 📋 PENDING - Requires package publication verification; not part of primary drift fix
+Should reference Ghostscript for CMYK conversion.
 
 ---
 
-## 📊 Summary Statistics
+## 9. docs/styling-theming.md
 
-### Issue Breakdown by Status:
+### HIGH: `disableDefaultStyles` field (lines 299-301)
 
-**✅ RESOLVED (14 issues):**
-- Issue #1: PDF Generation Engine (Critical)
-- Issue #2: Live Preview Engine (Critical)
-- Issue #3: Command Name (Critical)
-- Issue #4: Build System Architecture (Medium)
-- Issue #5: Page Format Configuration (High)
-- Issue #6: Validation Documentation (Medium)
-- Issue #7: Extensions vs Plugins (Medium)
-- Issue #9: Output Format Options (High)
-- Issue #10: Watch Mode (Medium)
-- Issue #11: CLI Argument Inconsistencies (Medium)
-- Issue #12: Preview Server Port (Low)
-- Issue #13: Manifest Schema Documentation (Medium)
-- Issue #14-16: Various minor/low-priority items
-- Issue #19: Directive Syntax Inconsistencies (Medium)
+`disableDefaultStyles: true` is not a valid manifest field.
 
-**🔄 IN_PROGRESS (1 issue):**
-- Issue #8: Default Styles Configuration (needs code verification)
+### HIGH: Built-in themes directory doesn't exist (lines 8-18)
 
-**📋 PENDING VERIFICATION (5 issues):**
-- Issue #17: Desktop Shortcut Feature
-- Issue #18: GitHub Integration Feature
-- Issue #20: Installation Instructions
-- Plus other example directories beyond primary scope
+Lists 7 themes (classic, modern, dark, parchment, dimm-city, zine, bw). No `src/assets/themes/` directory exists.
 
-### Overall Statistics:
-- **Critical Issues Resolved**: 4 / 4 (100%)
-- **High Impact Issues Resolved**: 2 / 3 (67%)
-- **Medium Impact Issues Resolved**: 6 / 9 (67%)
-- **Low Impact Issues Resolved**: 1 / 4 (25%)
+### MEDIUM: `<!-- @page: gallery -->` directive (line 224)
 
-**Total Resolved**: 14 / 20 (70%)
+References HTML comment directive that doesn't exist.
 
 ---
 
-## 🎯 Recommended Actions
+## 10. docs/README.md
 
-### ✅ Completed Actions
+### MEDIUM: `<!-- @page: chapter -->` directives (lines 104-107)
 
-1. ✅ **Global Find-Replace:**
-   - ✅ "Prince XML" → "Chromium + Paged.js"
-   - ✅ "Vivliostyle" → "Paged.js"
-   - ✅ "pagedmd" → "print-md"
-   - ✅ "Puppeteer" → "Playwright"
-
-2. ✅ **Updated All Technical Architecture References:**
-   - ✅ README.md: Removed Prince XML/Vivliostyle claims
-   - ✅ docs/ARCHITECTURE.md: Rewrote PDF generation section
-   - ✅ docs/getting-started.md: Updated prerequisites
-   - ✅ docs/user-guide.md: Updated all technical references
-
-3. ✅ **Fixed Command Examples:**
-   - ✅ Changed all `--output` to `--out`
-   - ✅ Removed non-existent `--watch`, `--format`, `--profile` flags
-   - ✅ Updated default port to 3579
-   - ✅ Corrected `disableDefaultStyles` references
-   - ✅ Fixed `--verbose` documentation
-
-### 🔄 In-Progress Actions
-
-4. **Audit Remaining Example Directories:**
-   - Status: IN_PROGRESS (Task #8)
-   - Examples completed: with-validation, with-custom-plugin, plugins
-   - Examples pending: basic, advanced, styling, and others
-
-### 📋 Pending Actions
-
-5. **Verify Feature Implementation:**
-   - Desktop shortcut installation
-   - GitHub integration functionality
-   - Directive syntax support
-
-6. **Standardize Manifest Schema Documentation:**
-   - ✅ DONE - Examples now match src/schema/manifest.types.ts
+Quick reference shows HTML comment directives that don't exist.
 
 ---
 
-## 📋 Verification Checklist
+## 11. docs/callouts.md
 
-Before releasing updated documentation:
+### MEDIUM: GitHub-style syntax may be plugin-only
 
-- [x] All mentions of "Prince XML" removed/corrected
-- [x] All mentions of "Vivliostyle" removed/corrected
-- [x] All command examples tested with actual CLI
-- [x] All manifest.yaml examples validated against schema
-- [x] Examples (with-validation, with-custom-plugin, plugins) tested and working
-- [ ] All examples/ directories tested and working
-- [ ] README.md installation instructions tested
-- [x] Links to external documentation verified
-- [ ] Screenshots/UI references match current preview server
-- [x] Architecture documentation matches actual code structure
-- [ ] Troubleshooting section covers actual error cases
+Documents `> [!note]`, `> [!tip]`, etc. as if built-in. The `examples/with-custom-plugin/callouts-plugin.js` implements this syntax as a custom plugin, suggesting it's **not** part of core. Users without the callouts plugin would not have this syntax.
 
 ---
 
-## 🔍 Files Requiring Updates
+## 12. Example Files
 
-### ✅ Critical Updates Completed:
-- ✅ README.md (multiple critical issues resolved)
-- ✅ docs/ARCHITECTURE.md (PDF generation architecture completely rewritten)
-- ✅ docs/getting-started.md (prerequisites and technical claims fixed)
-- ✅ docs/user-guide.md (command examples, configuration, technical claims updated)
-- ✅ docs/README.md (external links, technical claims corrected)
-- ✅ docs/validation.md (CLI arguments clarified)
+### HIGH: `examples/with-custom-plugin/manifest.yaml` — YAML syntax error (lines 18-21)
 
-### 🔄 Medium Updates In Progress:
-- 🔄 examples/ directory verification (Task #8)
+```yaml
+plugins:
+  - path: "./callouts-plugin.js"
+    priority: 100
+    options:
+      types: ["note", "tip", "warning", "danger", "info"]
+      className: "callout"
 
-### 📋 Low Priority / Pending:
-- docs/core-directives.md (syntax clarification)
-- docs/styling-theming.md (verify claims)
-- docs/best-practices.md (verify claims)
-- docs/callouts.md (verify implementation)
-- docs/images.md (verify implementation)
-- docs/ttrpg-extensions.md (verify implementation)
-- docs/typography.md (verify implementation)
+# Also load built-in TTRPG plugin for comparison
+  - name: "ttrpg"
+    priority: 50
+```
 
-### ✅ Examples Verified:
-- ✅ examples/with-validation/ (manifest structure verified)
-- ✅ examples/with-custom-plugin/ (plugin system verified)
-- ✅ examples/plugins/ (plugin examples verified)
+The second plugin entry (`- name: "ttrpg"`) is incorrectly indented under the comment, breaking the YAML list. It should be at the same indentation level as the first `- path:` entry.
 
-### 🔄 Examples Pending Verification:
-- 🔄 Other example directories (currently in Task #8)
+### MEDIUM: Theme references in examples (multiple files)
+
+`examples/ttrpg-module/manifest.yaml` and `examples/field-guide/manifest.yaml` reference `themes/classic.css` which is not bundled with the tool.
+
+### MEDIUM: `examples/novel/frontmatter.md` uses `@page-break`
+
+The `@page-break` inline directive is not implemented in core. Correct syntax is `--- {page}` or `::: page ... :::`.
 
 ---
 
-## 📝 Task #8 Progress: Example Directories Verification
+## Summary
 
-**Status:** 🔄 IN_PROGRESS
+### By Severity
 
-**Objective:** Verify all example directories match current implementation and update manifest files
+| Severity | Count |
+|----------|-------|
+| CRITICAL | 7 |
+| HIGH | 22 |
+| MEDIUM | 19 |
+| LOW | 3 |
+| **Total** | **51** |
 
-**Completed Examples:**
-1. ✅ examples/with-validation/ - Updated and verified
-2. ✅ examples/with-custom-plugin/ - Updated and verified
-3. ✅ examples/plugins/ - Updated and verified
+### Top Recurring Issues (by frequency)
 
-**Remaining Examples to Check:**
-- [ ] examples/basic/
-- [ ] examples/advanced/
-- [ ] examples/styling/
-- [ ] Any other example directories
+| Issue | Occurrences | Files affected |
+|-------|-------------|----------------|
+| `extensions` vs `plugins` key | 8+ | 5 docs, 1 example |
+| HTML comment directives not implemented | 6+ | 4 docs |
+| Prince XML / Vivliostyle references | 5+ | 3 docs |
+| Non-existent manifest fields (`description`, `version`, `date`, `format`, `margins`, `bleed`, `files`, `disableDefaultStyles`) | 12+ | 6 docs |
+| `build` command takes HTML not directory | 4+ | 3 docs |
+| `page` config wrong field names | 3+ | 3 docs |
+| Architecture file paths wrong | 6 | ARCHITECTURE.md |
+| Built-in themes not bundled | 4+ | 3 docs, 2 examples |
 
-**Checklist for Each Example:**
-- [ ] README.md references correct (no old tech names, correct CLI commands)
-- [ ] manifest.yaml follows current schema (uses `page` not `pageFormat`, numeric dimensions)
-- [ ] Source files exist and are properly referenced
-- [ ] Build/preview commands match current CLI
-- [ ] No references to deprecated features
+### Recommended Fix Priority
 
----
-
-**End of Report**
+1. **docs/authoring-guide.md** — Most heavily drifted; nearly every section has issues
+2. **README.md** — User-facing entry point; `build` command and manifest config are wrong
+3. **docs/user-guide.md** — `extensions`, `build`, `files` all wrong
+4. **docs/ARCHITECTURE.md** — File paths and code patterns don't match current code
+5. **Example manifests** — YAML syntax error in with-custom-plugin, non-existent theme files
+6. **Global find/replace across all docs:**
+   - `extensions:` -> `plugins:`
+   - Remove all `<!-- @page: -->` / `<!-- @break -->` / `<!-- @spread: -->` / `<!-- @columns: -->` directives
+   - Replace Prince XML/Vivliostyle references with Chromium + Paged.js / Ghostscript
+   - Replace `format.size`/`format.margins`/`format.bleed` with `page.width`/`page.height`/`page.tolerance`
+   - Replace `files:` (root level) with `source.files`
+   - Remove `description`, `version`, `date`, `disableDefaultStyles` from manifest examples

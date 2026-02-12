@@ -159,6 +159,15 @@ At 300 DPI:
 :::
 ```
 
+Or using the `@section` marker to keep the gallery together on one page:
+
+```markdown
+@section
+![Image 1](assets/1.jpg){width="30%"}
+![Image 2](assets/2.jpg){width="30%"}
+![Image 3](assets/3.jpg){width="30%"}
+```
+
 ### Figure with Caption
 
 ```markdown

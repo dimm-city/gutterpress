@@ -131,7 +131,7 @@ This tool makes it easy to create professional PDFs from markdown.
 - Easy to write and maintain
 - Supports images, tables, and code
 
-@page-break
+@break
 
 ## Getting Started
 
@@ -322,31 +322,26 @@ function hello() {
 ![Alt text](images/photo.jpg =800x)
 ```
 
-### Layout Directives
+### Layout Markers
 
-Control page layout with special directives:
+Control page layout with `@` markers (provided by `markdown-it-paged`):
 
 ```markdown
 <!-- Force page break -->
-@page-break
+@break
 
-<!-- Two-page spread -->
+<!-- Start a new page with a CSS class -->
+@page chapter
+
+<!-- Start a two-page spread -->
 @spread
-![Map](images/large-map.png)
-@spread-end
 
-<!-- Multi-column layout -->
-@columns 2
-This text will flow across two columns, like a newspaper.
-You can use any number of columns.
-@columns-end
-
-<!-- Page-specific CSS -->
-@page {
-  size: landscape;
-  margin: 0.5in;
-}
+<!-- Group content (avoid page breaks within) -->
+@section
+Content stays together on one page.
 ```
+
+These markers emit semantic HTML (`<div class="page">`, `<div class="spread">`, etc.) compatible with Paged.js and CSS Paged Media.
 
 ### Cross-References
 
@@ -1040,7 +1035,7 @@ my-book/
 # Chapter 1
 Content here...
 
-@page-break
+@break
 
 # Chapter 2
 New chapter on new page

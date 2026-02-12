@@ -225,7 +225,7 @@ TTRPG extensions work seamlessly with:
 
 ```markdown
 <!-- Use with page markers -->
---- {page}
+@page
 
 ## Monsters
 

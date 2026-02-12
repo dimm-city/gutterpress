@@ -23,7 +23,7 @@ Base URL: `https://api.example.com/v2`
 - **Documentation:** https://docs.example.com
 - **Status Page:** https://status.example.com
 
-@page-break
+@break
 
 ## Quick Start
 

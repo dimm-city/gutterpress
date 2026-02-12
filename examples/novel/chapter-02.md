@@ -22,7 +22,7 @@ Sarah sat back, considering. "That's either brilliant or insane."
 
 "Most good ideas are both."
 
---- {page}
+@page
 
 That night, Sarah couldn't sleep. James's words echoed in her mind. *The story isn't about him anymore.*
 
@@ -38,7 +38,7 @@ Sarah opened a new document and started writing. Not about the journalist. About
 
 The words flowed like they hadn't in months. By 3 AM, she had fifteen thousand words of backstory, of history, of a character who'd been waiting in the wings for someone to notice her.
 
---- {page}
+@page
 
 "I think I need to rewrite everything," Sarah told James the next day.
 

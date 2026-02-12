@@ -26,7 +26,7 @@ pip install example-api-client
 
 No installation needed - use your system's curl command.
 
-@page-break
+@break
 
 ## Your First Request
 

@@ -1,40 +1,83 @@
 # Core Directives Reference
 
-Print-md provides three systems for controlling page layout and behavior:
+Print-md provides three systems for controlling page layout:
 
-1. **Markdown page markers** - Using horizontal rules with `{page}` attributes
-2. **Container blocks** - Using triple-colon syntax for layouts
-3. **Plugin directives** - Custom syntax from loaded plugins (e.g., TTRPG)
+1. **Layout Markers** - `@` markers for page breaks and content grouping (primary)
+2. **Container Blocks** - Triple-colon `:::` syntax for styling blocks
+3. **Legacy Page Markers** - Horizontal rules with `{page}` attributes (deprecated)
 
-## Page Breaks & Markers
+## Layout Markers
 
-### Markdown Page Markers
+The primary way to control page layout uses `@` markers provided by the `markdown-it-paged` plugin. These emit clean, semantic HTML compatible with Paged.js and CSS Paged Media.
 
-The primary way to create page breaks and apply page styling is using markdown horizontal rules with optional class names:
+### @page
+
+Starts a new page. Optionally accepts CSS class names:
 
 ```markdown
----
+@page
 
-This creates a simple page break.
+Content starts on a new page.
 
---- {page}
+@page chapter
 
-This also creates a page break and wraps content in a page marker section.
+Content starts on a new page with the "chapter" CSS class.
 
---- {page chapter}
-
-Page break with the "chapter" class applied.
-
---- {page .my-custom-class}
-
-Page break with custom CSS class (dot prefix optional).
-
---- {page chapter .right-align}
+@page chapter right-align
 
 Multiple classes can be combined.
 ```
 
-The `{page ...}` syntax creates a page break and wraps subsequent content in a `<section>` with the `page` class plus any additional classes you specify. Content continues until the next page marker.
+Emits: `<div class="page">` (or `<div class="page chapter">`, etc.)
+
+### @break
+
+Forces a hard page break without wrapping content:
+
+```markdown
+Some content here.
+
+@break
+
+This starts on the next page.
+```
+
+Emits: `<div class="md-break"></div>`
+
+### @spread
+
+Starts a two-page spread group. Content within a spread is logically grouped:
+
+```markdown
+@spread
+
+## Map Section
+
+![World Map](assets/map.png){.full-width}
+
+Additional map details...
+```
+
+Emits: `<div class="spread">`
+
+### @section
+
+Groups content to avoid page breaks within the section:
+
+```markdown
+@section
+
+## Character Stats
+
+| Stat | Value |
+|------|-------|
+| HP   | 45    |
+| AC   | 16    |
+
+This table and heading stay together on one page.
+```
+
+Emits: `<div class="region">`
 
 ### Chapter Starts
 
@@ -78,7 +121,7 @@ Available containers:
 - `two-column` - Two-column layout
 - `wrapper` - Generic wrapper
 - `sidebar` - Sidebar/callout styling
-- `page` - Manual page container (alternative to `--- {page}`)
+- `page` - Manual page container (legacy, use `@page` instead)
 - `ability` - Ability/feature block (TTRPG)
 - `specialty` - Specialty/skill block (TTRPG)
 - `learning-path` - Learning path block (TTRPG)
@@ -91,39 +134,49 @@ Highlighted content in a container.
 :::
 
 ::: sidebar: Optional Title
-Sidebar with a title and custom class.
+Sidebar with a title.
 :::
 ```
 
-## Plugin Directives
+## Legacy Page Markers
 
-When plugins are loaded via the manifest configuration, they can provide additional directives. The examples below are **hypothetical** -- they illustrate what a plugin *could* provide, not what is built-in. The built-in ways to create page breaks are `--- {page}` and `::: page`.
+> **Deprecated:** Use `@page` and `@break` instead. The legacy syntax is kept for backward compatibility.
+
+The older horizontal-rule syntax still works:
 
 ```markdown
-@page-break
+--- {page}
 
-Hypothetical plugin directive that forces a page break.
-(Built-in alternative: use `--- {page}` or `::: page ... :::`)
+This creates a page break with a page marker.
 
-@roll{Skill DC 15}
+--- {page chapter}
 
-Hypothetical plugin directive that renders a dice roll.
+Page break with the "chapter" class applied.
 
-@table{2d6 damage}
+--- {page .my-custom-class}
 
-Hypothetical plugin directive that renders a formatted table.
+Page break with custom CSS class (dot prefix optional).
+
+--- {page chapter .right-align}
+
+Multiple classes can be combined.
 ```
-
-> **Note:** None of the directives above (`@page-break`, `@roll{...}`, `@table{...}`) are built-in. They would need to be provided by a plugin. See your plugin's documentation for its actual syntax.
 
 ## Preventing Page Breaks
 
-Use the `container` class or CSS to keep content together:
+Use `@section` or the `container` class to keep content together:
+
+```markdown
+@section
+This content will try to stay together on one page
+and avoid breaking across pages.
+```
+
+Or with container syntax:
 
 ```markdown
 ::: container
-This content will try to stay together on one page
-and avoid breaking across pages.
+This content will try to stay together on one page.
 :::
 ```
 
@@ -138,13 +191,14 @@ Or in custom CSS:
 
 ## Quick Syntax Reference
 
-### Page Markers (Markdown)
+### Layout Markers (Primary)
 
 ```markdown
----                           Simple page break
---- {page}                    Page break with page marker
---- {page chapter}            Page break with page class and chapter class
---- {page .my-custom-class}   Page break with custom CSS class
+@page                         Start a new page
+@page chapter                 New page with CSS class
+@break                        Hard page break
+@spread                       Start a two-page spread
+@section                      Group content (avoid breaks)
 ```
 
 ### Container Blocks
@@ -158,20 +212,19 @@ Or in custom CSS:
 ::: specialty                TTRPG specialty block
 ```
 
-### Plugin Directives
-
-Plugin directives depend on the plugins loaded in your manifest. Common examples:
+### Legacy Page Markers
 
 ```markdown
-@page-break                   TTRPG plugin page break
-@roll{2d6}                   TTRPG plugin dice roll
+--- {page}                    Page break with marker (deprecated)
+--- {page chapter}            Page break with class (deprecated)
+--- {page .custom-class}      Page break with CSS class (deprecated)
 ```
 
 ## Implementation Notes
 
-- Page markers use the `{page ...}` syntax on horizontal rules
-- Classes can be specified with or without the dot prefix (`.class` or `class`)
-- Multiple classes are space-separated
+- Layout markers (`@page`, `@break`, `@spread`, `@section`) are provided by the `markdown-it-paged` plugin
+- The `implicitPage` option is enabled, so a bare `@page` starts a new page div
+- CSS classes `.page`, `.spread`, `.region`, `.md-break` are auto-injected from `markdown-it-paged/css/paged.css`
 - Container blocks use `::: name ... :::` syntax with colon markers
-- Plugin directives depend on which plugins are loaded in your manifest
+- Legacy `--- {page}` syntax is still processed for backward compatibility
 - H1 headings automatically create page breaks and set running headers

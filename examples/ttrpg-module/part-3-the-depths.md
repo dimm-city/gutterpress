@@ -19,7 +19,7 @@ The cult has been conducting this ritual nightly for a week, feeding the Whisper
 - Each round, another villager falls into the sleeping sickness
 - At 10 rounds, the shadow demon manifests
 
-@page-break
+@break
 
 ## Encounter 2: Cult Fanatics
 
@@ -64,7 +64,7 @@ The cult has been conducting this ritual nightly for a week, feeding the Whisper
 - At 50% health, ritual chanters abandon the ritual to fight
 - They fight to the death (won't surrender or flee)
 
-@page-break
+@break
 
 ## The Cult Leader
 
@@ -130,7 +130,7 @@ Once all four fanatics are defeated, the cult leader reveals himself. He emerges
 - Spell components worth 75 gp
 - A journal detailing the ritual (important for re-sealing)
 
-@page-break
+@break
 
 ## Interrupting the Ritual
 
@@ -157,7 +157,7 @@ If the party stops the ritual before completion:
 - Must be cast at 4th level or higher
 - Prevents shadow demon summoning
 
-@page-break
+@break
 
 ## If the Ritual Completes
 
@@ -206,7 +206,7 @@ If the party takes too long or fails to stop the ritual:
 - Vulnerable to radiant damage (takes double)
 - If reduced to 0 HP, dissipates with an ear-splitting shriek
 
-@page-break
+@break
 
 ## After the Battle
 
@@ -234,7 +234,7 @@ Malachi's journal reveals:
 - The entity is contained in a deeper chamber (area 10)
 - Complete destruction requires destroying its anchor
 
-@page-break
+@break
 
 ## Area 10: The Sealed Sanctum
 
@@ -280,7 +280,7 @@ This is the anchor point for the Whispering Dark. Destroying it will banish the 
 - Can be done with the obelisk intact
 - Makes the entity dormant for centuries (not destroyed)
 
-@page-break
+@break
 
 ## Concluding the Adventure
 

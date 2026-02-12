@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import MarkdownIt from "markdown-it";
 import markdownItAttrs from "markdown-it-attrs";
 import markdownItContainer from "markdown-it-container";
+import markdownItPaged from "markdown-it-paged";
 import {
   renderContainerOpen,
   createNamedContainer,
@@ -34,6 +35,28 @@ async function getPreviewCss(): Promise<string> {
 }
 
 /**
+ * Get the paged CSS content from markdown-it-paged
+ * Provides CSS hooks for @spread, @page, @section, @break markers
+ */
+async function getPagedCss(): Promise<string> {
+  try {
+    const pagedCssPath = require.resolve('markdown-it-paged/css/paged.css');
+    return await readFile(pagedCssPath, 'utf-8');
+  } catch {
+    // Fallback: try relative path from project root
+    try {
+      const thisDir = dirname(fileURLToPath(import.meta.url));
+      const projectRoot = dirname(dirname(dirname(thisDir)));
+      const cssPath = join(projectRoot, 'node_modules', 'markdown-it-paged', 'css', 'paged.css');
+      return await readFile(cssPath, 'utf-8');
+    } catch {
+      console.warn('Failed to load markdown-it-paged CSS');
+      return '';
+    }
+  }
+}
+
+/**
  * Create a fully-configured MarkdownIt instance with all container plugins.
  *
  * @param customPlugins - Optional array of custom plugins to load
@@ -46,6 +69,9 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   });
 
   md.use(markdownItAttrs);
+  md.use(markdownItPaged, { implicitPage: true });
+
+  // DEPRECATED: Legacy container-based page markers (use @page instead)
   md.use(markdownItContainer, "page", {
     marker: ":",
     render(tokens: any, idx: number) {
@@ -90,7 +116,8 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
     applyPlugins(md, customPlugins);
   }
 
-  // Register page marker support (order matters: hr rule first, then plugin)
+  // DEPRECATED: Legacy HR-based page markers (use @page/@break instead)
+  // Kept for backward compatibility with --- {page} syntax
   registerCustomHrRule(md);
   md.use(pageMarkerPlugin);
 
@@ -130,6 +157,7 @@ export async function renderChapters(
   const title = opts.title ?? "Document";
   const styles = resolveStyles(inputDir, opts.styles);
   const previewCss = await getPreviewCss();
+  const pagedCss = await getPagedCss();
   const pluginCss = opts.pluginCss ?? '';
 
   const md = createMarkdownRenderer(opts.plugins);
@@ -176,6 +204,7 @@ export async function renderChapters(
   <title>${title}</title>
   ${styles.map(s => `<link rel="stylesheet" href="${s}">`).join('\n  ')}
   ${previewCss ? `<style>\n${previewCss}\n</style>` : ''}
+  ${pagedCss ? `<style>\n/* markdown-it-paged layout CSS */\n${pagedCss}\n</style>` : ''}
   ${pluginCss ? `<style>\n/* Plugin CSS */\n${pluginCss}\n</style>` : ''}
   <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>
 </head>

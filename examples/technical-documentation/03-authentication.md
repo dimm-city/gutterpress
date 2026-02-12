@@ -28,7 +28,7 @@ curl https://api.example.com/v2/users/me \
   -H "Authorization: Bearer sk_live_abc123def456"
 ```
 
-@page-break
+@break
 
 ## Key Types
 
