@@ -166,5 +166,53 @@ export function resolveConfig(
           ? m.lint.configPath
           : preset.lint.configPath,
     },
+    validate: {
+      enabled: c.validate?.enabled ?? m.validate?.enabled ?? preset.validate.enabled,
+      checks: { ...preset.validate.checks, ...m.validate?.checks, ...c.validate?.checks },
+      source: {
+        markdownlint: c.validate?.source?.markdownlint !== undefined
+          ? c.validate.source.markdownlint
+          : m.validate?.source?.markdownlint !== undefined
+            ? m.validate.source.markdownlint
+            : preset.validate.source.markdownlint,
+        htmlhint: c.validate?.source?.htmlhint !== undefined
+          ? c.validate.source.htmlhint
+          : m.validate?.source?.htmlhint !== undefined
+            ? m.validate.source.htmlhint
+            : preset.validate.source.htmlhint,
+        stylelint: c.validate?.source?.stylelint !== undefined
+          ? c.validate.source.stylelint
+          : m.validate?.source?.stylelint !== undefined
+            ? m.validate.source.stylelint
+            : preset.validate.source.stylelint,
+        allowedCallouts: c.validate?.source?.allowedCallouts
+          ?? m.validate?.source?.allowedCallouts
+          ?? preset.validate.source.allowedCallouts,
+      },
+      assets: {
+        maxImageSize: c.validate?.assets?.maxImageSize ?? m.validate?.assets?.maxImageSize ?? preset.validate.assets.maxImageSize,
+        minImageDpi: c.validate?.assets?.minImageDpi ?? m.validate?.assets?.minImageDpi ?? preset.validate.assets.minImageDpi,
+        allowedColorSpaces: c.validate?.assets?.allowedColorSpaces ?? m.validate?.assets?.allowedColorSpaces ?? preset.validate.assets.allowedColorSpaces,
+        allowAlpha: c.validate?.assets?.allowAlpha ?? m.validate?.assets?.allowAlpha ?? preset.validate.assets.allowAlpha,
+        approvedFontFiles: c.validate?.assets?.approvedFontFiles ?? m.validate?.assets?.approvedFontFiles ?? preset.validate.assets.approvedFontFiles,
+        requireFontLicense: c.validate?.assets?.requireFontLicense ?? m.validate?.assets?.requireFontLicense ?? preset.validate.assets.requireFontLicense,
+      },
+      pdf: {
+        requireBookmarks: c.validate?.pdf?.requireBookmarks ?? m.validate?.pdf?.requireBookmarks ?? preset.validate.pdf.requireBookmarks,
+        requireTocLinks: c.validate?.pdf?.requireTocLinks ?? m.validate?.pdf?.requireTocLinks ?? preset.validate.pdf.requireTocLinks,
+        minImageResolution: c.validate?.pdf?.minImageResolution ?? m.validate?.pdf?.minImageResolution ?? preset.validate.pdf.minImageResolution,
+        forbidTransparency: c.validate?.pdf?.forbidTransparency ?? m.validate?.pdf?.forbidTransparency ?? preset.validate.pdf.forbidTransparency,
+        requireBleed: c.validate?.pdf?.requireBleed ?? m.validate?.pdf?.requireBleed ?? preset.validate.pdf.requireBleed,
+        bleedSize: c.validate?.pdf?.bleedSize ?? m.validate?.pdf?.bleedSize ?? preset.validate.pdf.bleedSize,
+      },
+      heuristics: {
+        maxDecorativeLayers: c.validate?.heuristics?.maxDecorativeLayers ?? m.validate?.heuristics?.maxDecorativeLayers ?? preset.validate.heuristics.maxDecorativeLayers,
+        textDensityRange: {
+          min: c.validate?.heuristics?.textDensityRange?.min ?? m.validate?.heuristics?.textDensityRange?.min ?? preset.validate.heuristics.textDensityRange.min,
+          max: c.validate?.heuristics?.textDensityRange?.max ?? m.validate?.heuristics?.textDensityRange?.max ?? preset.validate.heuristics.textDensityRange.max,
+        },
+        maxParagraphsPerSection: c.validate?.heuristics?.maxParagraphsPerSection ?? m.validate?.heuristics?.maxParagraphsPerSection ?? preset.validate.heuristics.maxParagraphsPerSection,
+      },
+    },
   };
 }

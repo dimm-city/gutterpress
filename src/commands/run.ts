@@ -11,7 +11,7 @@ import validateCmd from "./validate";
 export default defineCommand({
   meta: {
     name: "run",
-    description: "Run the full pipeline: lint -> convert -> assets -> build -> validate",
+    description: "Run the full pipeline: lint -> validate:pre -> convert -> assets -> build -> validate:post",
   },
   args: {
     input: {
@@ -41,7 +41,11 @@ export default defineCommand({
     },
     "skip-validate": {
       type: "boolean",
-      description: "Skip PDF validation",
+      description: "Skip PDF validation (post-build)",
+    },
+    "skip-pre-validate": {
+      type: "boolean",
+      description: "Skip pre-build validation",
     },
   },
   async run({ args }) {
@@ -70,14 +74,28 @@ export default defineCommand({
 
     // 1. Lint
     if (!args["skip-lint"] && config.lint.enabled) {
-      log.info("Step 1/5: Linting CSS");
+      log.info("Step 1/6: Linting CSS");
       await runCommand(lintCmd, { rawArgs: ["--manifest", manifestPath ?? inputDir] });
     } else {
-      log.info("Step 1/5: Lint (skipped)");
+      log.info("Step 1/6: Lint (skipped)");
     }
 
-    // 2. Convert
-    log.info("Step 2/5: Converting Markdown to HTML");
+    // 2. Pre-build validation
+    if (!args["skip-pre-validate"] && config.validate.enabled) {
+      log.info("Step 2/6: Pre-build validation");
+      await runCommand(validateCmd, {
+        rawArgs: [
+          "--input", inputDir,
+          "--phase", "pre-build",
+          ...(manifestPath ? ["--manifest", manifestPath] : []),
+        ],
+      });
+    } else {
+      log.info("Step 2/6: Pre-build validation (skipped)");
+    }
+
+    // 3. Convert
+    log.info("Step 3/6: Converting Markdown to HTML");
     await runCommand(convertCmd, {
       rawArgs: [
         "--input", inputDir,
@@ -88,8 +106,8 @@ export default defineCommand({
       ],
     });
 
-    // 3. Assets
-    log.info("Step 3/5: Copying assets");
+    // 4. Assets
+    log.info("Step 4/6: Copying assets");
     await runCommand(assetsCmd, {
       rawArgs: [
         "--input", inputDir,
@@ -98,8 +116,8 @@ export default defineCommand({
       ],
     });
 
-    // 4. Build
-    log.info("Step 4/5: Building PDF");
+    // 5. Build
+    log.info("Step 5/6: Building PDF");
     await runCommand(buildCmd, {
       rawArgs: [
         "--input", htmlFile,
@@ -110,17 +128,18 @@ export default defineCommand({
       ],
     });
 
-    // 5. Validate (only if pdfx mode)
+    // 6. Post-build validation (only if pdfx mode)
     if (!args["skip-validate"] && pdfxFlavor) {
-      log.info("Step 5/5: Validating PDF");
+      log.info("Step 6/6: Validating PDF");
       await runCommand(validateCmd, {
         rawArgs: [
           "--pdf", pdfFile,
+          "--phase", "post-build",
           ...(manifestPath ? ["--manifest", manifestPath] : []),
         ],
       });
     } else {
-      log.info("Step 5/5: Validation (skipped)");
+      log.info("Step 6/6: Validation (skipped)");
     }
 
     log.success(`Pipeline complete: ${pdfFile}`);

@@ -60,68 +60,95 @@ As a personal/single-user tool, we prioritize:
 
 ```
 src/
-├── cli.ts                  # CLI entry point (Commander.js)
+├── cli.ts                  # CLI entry point (citty framework)
 ├── types.ts                # Central type definitions
 ├── constants.ts            # Application constants
 │
-├── build/                  # Build orchestration
-│   ├── build.ts            # Main build function
-│   ├── watch.ts            # File watching for auto-rebuild
-│   ├── asset-copier.ts     # Asset management
-│   ├── build-validator.ts # Input validation
-│   └── formats/            # Format strategies
-│       ├── pdf-format.ts   # PDF generation via pagedjs-cli
-│       ├── html-format.ts  # Standalone HTML output
-│       └── preview-format.ts # Offline viewer bundle
+├── commands/               # CLI command implementations
+│   ├── run.ts              # Full pipeline orchestration (6 steps)
+│   ├── validate.ts         # Print validation command
+│   ├── convert.ts          # Markdown → HTML
+│   ├── build.ts            # HTML → PDF via Chromium + Paged.js
+│   ├── lint.ts             # CSS linting
+│   ├── assets.ts           # Asset copying
+│   └── preview.ts          # Live preview server
 │
-├── markdown/               # Markdown processing
-│   ├── markdown.ts         # Main processor
-│   ├── core/               # Core functionality
-│   │   ├── core-directives-plugin.ts
-│   │   └── assets.ts       # Default CSS bundling
-│   └── plugins/            # Extension plugins
-│       ├── ttrpg-directives-plugin.ts
-│       ├── dimm-city-plugin.ts
-│       └── ...
+├── checks/                 # Validation check system
+│   ├── types.ts            # Check, CheckResult, CheckContext interfaces
+│   ├── registry.ts         # Self-registration pattern + getChecks()
+│   ├── runner.ts           # Orchestrates check execution + filtering
+│   ├── formatter.ts        # Text/JSON output formatting
+│   ├── source/             # Pre-build: tool wrappers (markdownlint, etc.)
+│   ├── pdf/                # Post-build: PDF structural/print checks
+│   ├── asset/              # Pre-build: image/font validation
+│   └── heuristic/          # Post-build: quality proxy checks
+│
+├── lib/                    # Core libraries
+│   ├── exec.ts             # Process execution (run, execCapture)
+│   ├── manifest.ts         # Manifest loading + config resolution
+│   ├── presets.ts           # Vendor presets (DTRPG)
+│   ├── pdf-parse.ts        # PDF parsing utilities
+│   ├── ghostscript.ts      # PDF/X CMYK conversion
+│   ├── logger.ts           # Colored console output
+│   └── markdown/           # Markdown processing + plugins
+│
+├── schema/                 # Type definitions
+│   └── manifest.types.ts   # PrintMdManifest + ResolvedConfig
 │
 ├── preview/                # Preview server
 │   ├── routes.ts           # API route handlers
 │   └── ...
 │
-├── config/                 # Configuration management
-│   └── config-state.ts     # ConfigurationManager class
-│
-├── server.ts               # Preview server (Vite + Bun)
-│
 └── utils/                  # Shared utilities
-    ├── logger.ts           # Logging utility
-    ├── errors.ts           # Custom error classes
+    ├── logger.ts           # Preview logger
     ├── file-utils.ts       # File operations
-    ├── config.ts           # Config loading/validation
-    ├── path-validation.ts  # Security validation
-    └── ...
+    └── path-security.ts    # Path security validation
 ```
 
 ### Data Flow
 
 ```
-User Input (CLI/Preview UI)
+User Input (CLI)
     ↓
-Configuration Manager (loads manifest.yaml)
+Configuration Manager (loads manifest.yaml + resolveConfig)
     ↓
-Build Orchestrator (build.ts)
+Pipeline Orchestrator (run.ts — 6 steps)
+    │
+    ├── 1. CSS Linting (stylelint)
+    ├── 2. Pre-build Validation (source + asset checks)
+    ├── 3. Markdown → HTML Conversion
+    ├── 4. Asset Copying (css, fonts, images)
+    ├── 5. HTML → PDF Build (Chromium + Paged.js)
+    └── 6. Post-build Validation (PDF + heuristic checks)
     ↓
-Markdown Processor (markdown.ts)
-    ├── Core Directives Plugin
-    ├── TTRPG Plugin (optional)
-    └── Dimm City Plugin (optional)
-    ↓
-HTML Generation
-    ↓
-Format Strategy (PDF/HTML/Preview)
-    ↓
-Output File(s)
+Output (PDF + validation report)
 ```
+
+### Validation Architecture
+
+The check system uses a **self-registering pattern**: each check module calls `registerCheck()` at import time. Barrel index files in each category directory trigger registration on import.
+
+```
+Check Registry ← registerCheck() at import time
+    ↓
+Runner (runner.ts)
+    ├── Get checks from registry (filtered by category/phase/IDs)
+    ├── Apply manifest enable/disable (validate.checks map)
+    ├── Apply CLI --only/--skip filters
+    ├── Execute each check → CheckResult[]
+    ├── Apply severity overrides from manifest
+    └── Build RunnerReport (errors/warnings/infos/passed)
+    ↓
+Formatter (formatter.ts)
+    ├── Text format (human-readable, default)
+    └── JSON format (structured, for CI)
+```
+
+**31 checks across 4 categories:**
+- **Source (4)**: Tool wrappers for markdownlint, htmlhint, stylelint + callout validation
+- **PDF (15)**: Structure, page size, color spaces, fonts, ink coverage, transparency, bleed, bookmarks, etc.
+- **Asset (8)**: Image size/DPI/color space/alpha, font references/licenses
+- **Heuristic (4)**: Text density, section density, layer count, placement variance
 
 ## Build Pipeline
 
@@ -378,7 +405,25 @@ pdfx:
   flavor: x1a
   icc: profiles/color-profile.icc
   stripAnnotations: true
+
+# Validation settings
+validate:
+  enabled: true
+  checks:                   # Per-check overrides
+    pdf.structure.qpdf: false
+  source:
+    markdownlint: ".markdownlint.yaml"
+    allowedCallouts: ["sidebar", "ability"]
+  assets:
+    maxImageSize: 10000000
+    minImageDpi: 300
+  pdf:
+    forbidTransparency: true
+  heuristics:
+    textDensityRange: { min: 200, max: 5000 }
 ```
+
+See the [Validation Guide](validation.md) for full configuration reference.
 
 ### Validation
 

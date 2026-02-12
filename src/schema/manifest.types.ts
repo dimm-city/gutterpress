@@ -1,3 +1,5 @@
+export type CheckSeverity = "error" | "warning" | "info";
+
 export interface PluginConfig {
   path?: string;
   name?: string;
@@ -38,6 +40,41 @@ export interface PrintMdManifest {
   lint?: {
     enabled?: boolean;
     configPath?: string | null;
+  };
+  validate?: {
+    enabled?: boolean;
+    checks?: Record<string, boolean | {
+      enabled?: boolean;
+      severity?: CheckSeverity;
+      options?: Record<string, unknown>;
+    }>;
+    source?: {
+      markdownlint?: string | false;
+      htmlhint?: string | false;
+      stylelint?: string | false;
+      allowedCallouts?: string[];
+    };
+    assets?: {
+      maxImageSize?: number;
+      minImageDpi?: number;
+      allowedColorSpaces?: string[];
+      allowAlpha?: boolean;
+      approvedFontFiles?: string[];
+      requireFontLicense?: boolean;
+    };
+    pdf?: {
+      requireBookmarks?: boolean;
+      requireTocLinks?: boolean;
+      minImageResolution?: number;
+      forbidTransparency?: boolean;
+      requireBleed?: boolean;
+      bleedSize?: number;
+    };
+    heuristics?: {
+      maxDecorativeLayers?: number;
+      textDensityRange?: { min?: number; max?: number };
+      maxParagraphsPerSection?: number;
+    };
   };
 }
 
@@ -81,5 +118,40 @@ export interface ResolvedConfig {
   lint: {
     enabled: boolean;
     configPath: string | null;
+  };
+  validate: {
+    enabled: boolean;
+    checks: Record<string, boolean | {
+      enabled?: boolean;
+      severity?: CheckSeverity;
+      options?: Record<string, unknown>;
+    }>;
+    source: {
+      markdownlint: string | false | null;
+      htmlhint: string | false | null;
+      stylelint: string | false | null;
+      allowedCallouts: string[];
+    };
+    assets: {
+      maxImageSize: number;
+      minImageDpi: number;
+      allowedColorSpaces: string[];
+      allowAlpha: boolean;
+      approvedFontFiles: string[];
+      requireFontLicense: boolean;
+    };
+    pdf: {
+      requireBookmarks: boolean;
+      requireTocLinks: boolean;
+      minImageResolution: number;
+      forbidTransparency: boolean;
+      requireBleed: boolean;
+      bleedSize: number;
+    };
+    heuristics: {
+      maxDecorativeLayers: number;
+      textDensityRange: { min: number; max: number };
+      maxParagraphsPerSection: number;
+    };
   };
 }

@@ -32,6 +32,37 @@ export const DTRPG_PRESET: VendorPreset = {
     enabled: true,
     configPath: null,
   },
+  validate: {
+    enabled: true,
+    checks: {},
+    source: {
+      markdownlint: null,
+      htmlhint: null,
+      stylelint: null,
+      allowedCallouts: ["sidebar", "ability", "specialty", "container", "aug"],
+    },
+    assets: {
+      maxImageSize: 10_000_000,
+      minImageDpi: 300,
+      allowedColorSpaces: ["CMYK", "Grayscale"],
+      allowAlpha: false,
+      approvedFontFiles: [],
+      requireFontLicense: false,
+    },
+    pdf: {
+      requireBookmarks: false,
+      requireTocLinks: false,
+      minImageResolution: 300,
+      forbidTransparency: true,
+      requireBleed: false,
+      bleedSize: 9,
+    },
+    heuristics: {
+      maxDecorativeLayers: 5,
+      textDensityRange: { min: 200, max: 5000 },
+      maxParagraphsPerSection: 10,
+    },
+  },
 };
 
 export const PRESETS: Record<string, VendorPreset> = {

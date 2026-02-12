@@ -1,0 +1,73 @@
+title: "Validation Example"
+authors:
+  - "Print-md Team"
+
+styles:
+  - styles/main.css
+
+source:
+  assets:
+    - styles
+    - images
+    - fonts
+
+# Page dimensions (DTRPG standard)
+page:
+  width: 621
+  height: 810
+  tolerance: 0.5
+
+# ---------- Validation Configuration ----------
+# This section demonstrates all validation options.
+# When omitted, the DTRPG preset defaults apply automatically.
+
+validate:
+  enabled: true
+
+  # Per-check overrides: disable or change severity
+  checks:
+    # Disable a check entirely
+    pdf.structure.qpdf: false
+    # Downgrade a check from "warning" to "info"
+    heuristic.whitespace.text-density:
+      severity: info
+
+  # Source validation — points to external tool config files
+  source:
+    markdownlint: ".markdownlint.yaml"   # Path to markdownlint config
+    htmlhint: ".htmlhintrc"              # Path to htmlhint config
+    # stylelint: false                   # Uncomment to disable CSS linting
+    allowedCallouts:
+      - sidebar
+      - note
+      - warning
+      - tip
+
+  # Asset validation
+  assets:
+    maxImageSize: 5000000          # 5 MB per image
+    minImageDpi: 300               # Print-quality minimum
+    allowedColorSpaces:
+      - CMYK
+      - Grayscale
+    allowAlpha: false              # No transparency for print
+    approvedFontFiles:
+      - "fonts/**/*.{woff2,otf,ttf}"
+    requireFontLicense: false
+
+  # PDF / print production checks
+  pdf:
+    requireBookmarks: false
+    requireTocLinks: false
+    minImageResolution: 300
+    forbidTransparency: true
+    requireBleed: false
+    bleedSize: 9                   # 0.125 in (points)
+
+  # Heuristic quality proxies
+  heuristics:
+    maxDecorativeLayers: 5         # Max images per page
+    textDensityRange:
+      min: 200                     # Min characters per page
+      max: 5000                    # Max characters per page
+    maxParagraphsPerSection: 10

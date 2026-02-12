@@ -29,6 +29,9 @@ New to Print-md? Start here:
 
 ### Advanced Features
 
+- **[Validation](validation.md)**
+  Validate source files, assets, and PDFs for print compliance. 31 checks across four categories (source, PDF, asset, heuristic) with per-project configuration.
+
 - **[TTRPG Extensions](ttrpg-extensions.md)**
   Specialized markdown syntax for tabletop RPG content, including stat blocks, dice notation, cross-references, trait callouts, and challenge ratings.
 
@@ -68,6 +71,9 @@ New to Print-md? Start here:
 **Customize colors and fonts**
 → [Styling & Theming](styling-theming.md)
 
+**Validate my project for print**
+→ [Validation](validation.md)
+
 **Prepare for professional printing**
 → [Best Practices](best-practices.md)
 
@@ -82,11 +88,14 @@ print-md build ./my-book
 # Preview with live reload
 print-md preview ./my-book
 
-# Build with custom output
-print-md build ./my-book --output book.pdf
+# Full pipeline (lint, validate, convert, build, validate)
+print-md run --input ./my-book --pdfx x1a
 
-# Build HTML instead of PDF
-print-md build ./my-book --format html
+# Validate source files
+print-md validate --input ./my-book
+
+# Validate a built PDF
+print-md validate --pdf dist/book.pdf
 ```
 
 ### Common Directives
@@ -119,6 +128,7 @@ docs/
 ├── typography.md               # Text formatting
 ├── callouts.md                 # Callouts and admonitions
 ├── images.md                   # Image handling
+├── validation.md               # Print validation system
 ├── ttrpg-extensions.md         # TTRPG features
 ├── styling-theming.md          # Customization
 └── best-practices.md           # Professional guidelines

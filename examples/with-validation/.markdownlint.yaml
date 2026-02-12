@@ -1,0 +1,35 @@
+# markdownlint configuration
+# See: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+# Heading hierarchy (no skipping levels)
+MD001: true
+
+# Line length — relaxed for print content
+MD013:
+  line_length: 120
+  heading_line_length: 120
+  code_block_line_length: 120
+
+# No duplicate headings
+MD024: true
+
+# Single top-level heading per file
+MD025: true
+
+# Ordered list prefix style
+MD029:
+  style: "ordered"
+
+# Blanks around lists
+MD032: true
+
+# No bare URLs
+MD034: true
+
+# Emphasis style consistency
+MD049:
+  style: "asterisk"
+
+# Strong style consistency
+MD050:
+  style: "asterisk"

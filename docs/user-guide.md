@@ -248,23 +248,31 @@ extensions:                        # Enable/disable plugins
 ### CLI Options
 
 ```bash
-# Build commands
-print-md build [input]              # Build PDF from current dir
-print-md build ./my-book            # Build from specific dir
-print-md build book.md              # Build from single file
+# Full pipeline
+print-md run --input ./my-book --pdfx x1a
+  --skip-lint                      # Skip CSS linting step
+  --skip-pre-validate              # Skip pre-build validation
+  --skip-validate                  # Skip post-build validation
+
+# Validate
+print-md validate --pdf dist/book.pdf   # Validate PDF for print
+print-md validate --input ./my-book     # Validate source/assets
+print-md validate --input . --pdf dist/book.pdf  # Both
+  --category source,pdf            # Filter by category
+  --only pdf.print.page-size       # Run specific check(s)
+  --skip pdf.nav.cross-refs        # Skip specific check(s)
+  --format json                    # JSON output for CI
+  --phase pre-build                # Run specific phase
 
 # Build options
---output, -o <path>                # Output file path
---format, -f <type>                # Output format (pdf|html|preview)
---watch, -w                        # Watch for changes
---verbose                          # Show detailed output
---profile                          # Performance profiling
+print-md build --input <html> --out <pdf>
+  --pdfx <x1a|x3>                 # Enable PDF/X conversion
+  --icc <path>                     # ICC profile path
 
 # Preview commands
 print-md preview [input]            # Start preview server
---port <number>                    # Server port (default: 3579)
---open <boolean>                   # Open browser (default: true)
---no-watch                         # Disable file watching
+  --port <number>                  # Server port (default: 3579)
+  --no-watch                       # Disable file watching
 ```
 
 ---
@@ -979,6 +987,39 @@ Plugins are subject to security restrictions:
 - Local plugins must use relative paths (no `../` or absolute paths)
 - All plugin files are validated before loading
 - Remote plugins (future feature) will require integrity hashes
+
+### Validation
+
+print-md includes a comprehensive validation system for checking print-readiness. See the [Validation Guide](validation.md) for full details.
+
+**Quick start:**
+
+```bash
+# Validate source files and assets
+print-md validate --input ./my-book
+
+# Validate a PDF for print compliance
+print-md validate --pdf dist/book.pdf --manifest manifest.yaml
+
+# Full pipeline with validation
+print-md run --input ./my-book --pdfx x1a
+```
+
+**Configure in manifest.yaml:**
+
+```yaml
+validate:
+  source:
+    markdownlint: ".markdownlint.yaml"  # Use your existing config
+    allowedCallouts: ["sidebar", "ability", "specialty"]
+  assets:
+    maxImageSize: 10000000              # 10MB per image
+    minImageDpi: 300
+  pdf:
+    forbidTransparency: true
+```
+
+The validation system runs 31 checks across four categories: source (markdownlint, htmlhint, stylelint, callout types), PDF (structure, page size, colors, fonts, ink coverage, transparency, bleed), assets (image size/DPI/color space, font refs), and heuristics (text density, layout analysis).
 
 ### Multi-File Projects
 

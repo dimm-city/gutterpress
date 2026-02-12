@@ -1,179 +1,206 @@
 import { defineCommand } from "citty";
 import { existsSync } from "node:fs";
+import { resolve, join } from "node:path";
 import { loadManifest, resolveConfig } from "../lib/manifest";
-import { execCapture } from "../lib/exec";
-import {
-  parsePdfInfoBox,
-  parsePdfFonts,
-  parseCmykFromPdf,
-  parsePdfImages,
-  filterRasterized,
-} from "../lib/pdf-parse";
 import { log } from "../lib/logger";
+import { runChecks } from "../checks/runner";
+import { formatReport } from "../checks/formatter";
+import type { CheckCategory, CheckPhase, CheckContext } from "../checks/types";
+import type { OutputFormat } from "../checks/formatter";
+
+// Import check modules to trigger self-registration
+import "../checks/pdf/index";
+import "../checks/source/index";
+import "../checks/asset/index";
+import "../checks/heuristic/index";
 
 export default defineCommand({
   meta: {
     name: "validate",
-    description: "Validate a PDF for print compliance",
+    description: "Validate source files and/or PDF for print compliance",
   },
   args: {
     pdf: {
       type: "string",
-      description: "Path to the PDF file to validate",
-      required: true,
+      description: "Path to the PDF file to validate (post-build checks)",
+    },
+    input: {
+      type: "string",
+      description: "Source directory for pre-build checks",
     },
     manifest: {
       type: "string",
       description: "Path to manifest.yaml",
     },
+    category: {
+      type: "string",
+      description:
+        "Comma-separated categories: source, pdf, asset, heuristic",
+    },
+    only: {
+      type: "string",
+      description: "Run only these check IDs (comma-separated)",
+    },
+    skip: {
+      type: "string",
+      description: "Skip these check IDs (comma-separated)",
+    },
+    format: {
+      type: "string",
+      description: "Output format: text (default) or json",
+    },
+    phase: {
+      type: "string",
+      description: "Run checks for phase: pre-build or post-build",
+    },
   },
   async run({ args }) {
-    const manifest = await loadManifest(args.manifest);
+    const manifestPath =
+      typeof args.manifest === "string" ? args.manifest : undefined;
+    const manifest = await loadManifest(
+      manifestPath ?? args.input ?? undefined
+    );
     const config = resolveConfig({}, manifest);
 
-    const pdf = args.pdf!;
-    if (!existsSync(pdf)) {
-      log.error(`File not found: ${pdf}`);
+    const pdfPath = typeof args.pdf === "string" ? args.pdf : undefined;
+    const inputDir = typeof args.input === "string"
+      ? resolve(args.input)
+      : undefined;
+
+    // Backward compat: --pdf alone = post-build only
+    // --input alone = pre-build only
+    // both = all phases
+    if (pdfPath && !existsSync(pdfPath)) {
+      log.error(`File not found: ${pdfPath}`);
       process.exit(2);
     }
 
-    const errors: string[] = [];
-    const warnings: string[] = [];
+    // Determine output format
+    const format: OutputFormat =
+      args.format === "json" ? "json" : "text";
 
-    // qpdf structure check
-    try {
-      await execCapture("qpdf", ["--check", pdf]);
-    } catch {
-      warnings.push("qpdf reported structural issues in the PDF.");
+    // Parse categories
+    let categories: CheckCategory[] | undefined;
+    if (typeof args.category === "string") {
+      categories = args.category
+        .split(",")
+        .map((s) => s.trim()) as CheckCategory[];
     }
 
-    // Page size
-    const info = await execCapture("pdfinfo", ["-box", pdf]);
-    const size = parsePdfInfoBox(info.stdout);
-    if (!size) {
-      errors.push("Could not parse PDF page size.");
-    } else if (
-      Math.abs(size.w - config.page.width) >= config.page.tolerance ||
-      Math.abs(size.h - config.page.height) >= config.page.tolerance
-    ) {
-      errors.push(
-        `Page size mismatch: expected ~${config.page.width}x${config.page.height} pts, got ${size.w}x${size.h} pts.`
+    // Parse only/skip
+    const only =
+      typeof args.only === "string"
+        ? args.only.split(",").map((s) => s.trim())
+        : undefined;
+    const skip =
+      typeof args.skip === "string"
+        ? args.skip.split(",").map((s) => s.trim())
+        : undefined;
+
+    // Determine phase
+    let phase: CheckPhase | undefined;
+    if (typeof args.phase === "string") {
+      phase = args.phase as CheckPhase;
+    } else if (pdfPath && !inputDir) {
+      phase = "post-build";
+    } else if (inputDir && !pdfPath) {
+      phase = "pre-build";
+    }
+
+    // Collect markdown and CSS files for source/asset checks
+    let markdownFiles: string[] | undefined;
+    let cssFiles: string[] | undefined;
+    let assetDirs: string[] | undefined;
+    let htmlPath: string | undefined;
+
+    if (inputDir) {
+      const { glob } = await import("glob");
+      markdownFiles = await glob("**/*.md", {
+        cwd: inputDir,
+        absolute: true,
+      });
+      cssFiles = await glob("**/*.css", {
+        cwd: inputDir,
+        absolute: true,
+      });
+      assetDirs = config.source.assets.map((a) =>
+        resolve(inputDir, a)
       );
+      // Check for generated HTML
+      const outDir = resolve(config.output.dir);
+      const possibleHtml = join(outDir, config.output.html);
+      if (existsSync(possibleHtml)) {
+        htmlPath = possibleHtml;
+      }
     }
 
-    // PDF/X markers
-    const pdfxCheck = await execCapture("grep", [
-      "-ao",
-      "GTS_PDFX\\|PDF/X-",
-      pdf,
-    ]).catch(() => ({ stdout: "", stderr: "" }));
-    if (
-      !pdfxCheck.stdout.includes("GTS_PDFX") &&
-      !pdfxCheck.stdout.includes("PDF/X-")
-    ) {
-      errors.push("PDF/X markers not found (GTS_PDFXVersion / OutputIntent).");
-    }
+    const ctx: CheckContext = {
+      config,
+      inputDir: inputDir ?? process.cwd(),
+      outputDir: resolve(config.output.dir),
+      pdfPath,
+      htmlPath,
+      markdownFiles,
+      cssFiles,
+      assetDirs,
+    };
 
-    // Color spaces
-    const colorCheck = await execCapture("grep", [
-      "-ao",
-      "/DeviceRGB\\|/Lab\\b\\|/Separation\\|/DeviceN",
-      pdf,
-    ]).catch(() => ({ stdout: "", stderr: "" }));
-    if (colorCheck.stdout.includes("/DeviceRGB")) {
-      errors.push("DeviceRGB found (interior must be CMYK or grayscale only).");
-    }
-    if (colorCheck.stdout.includes("/Lab")) {
-      errors.push("Lab color space found (not allowed).");
-    }
-    if (colorCheck.stdout.includes("/Separation")) {
-      errors.push("Spot color (Separation) found (not allowed).");
-    }
-    if (colorCheck.stdout.includes("/DeviceN")) {
-      errors.push("Spot color (DeviceN) found (not allowed).");
-    }
+    const report = await runChecks(ctx, {
+      category: categories,
+      phase,
+      only,
+      skip,
+    });
 
-    // Embedded fonts
-    const fonts = await execCapture("pdffonts", [pdf]);
-    const rows = parsePdfFonts(fonts.stdout);
-    if (rows.length === 0) {
-      warnings.push("No fonts detected (unexpected).");
-    } else if (!rows.every((r) => r.embedded)) {
-      errors.push(
-        "Not all fonts are embedded. Check @font-face and Chromium output."
+    formatReport(report, format);
+
+    // Extra summary info for text format (backward compat with old output)
+    if (format === "text" && pdfPath) {
+      // Show TAC and font info from individual check results
+      const tacResults = report.results.filter(
+        (r) => r.checkId === "pdf.print.ink-coverage"
       );
-    }
+      const fontResults = report.results.filter(
+        (r) => r.checkId === "pdf.print.embedded-fonts"
+      );
+      const rasterResults = report.results.filter(
+        (r) => r.checkId === "pdf.print.rasterized-pages"
+      );
 
-    // TAC check
-    const cmykData = await parseCmykFromPdf(pdf);
-    const maxTac = cmykData.maxTac;
-    const tacWarning = maxTac > config.ink.maxTac + config.ink.tacTolerance;
-    if (tacWarning) {
-      warnings.push(
-        `Total ink coverage too high (max ${maxTac.toFixed(1)}%, recommended <=${config.ink.maxTac}%)`
+      // Parse TAC from results
+      const tacMsg = tacResults.find((r) =>
+        r.message.startsWith("Total ink coverage")
       );
-      warnings.push(
-        "Some pages may have issues with commercial print. Consider lightening dark backgrounds."
-      );
-      if (cmykData.colors.length > 0) {
-        const offending = cmykData.colors
-          .slice(0, 3)
-          .filter((c) => c.tac > config.ink.maxTac);
-        for (const color of offending) {
-          warnings.push(
-            `  C:${color.c.toFixed(1)}% M:${color.m.toFixed(1)}% Y:${color.y.toFixed(1)}% K:${color.k.toFixed(1)}% = ${color.tac.toFixed(1)}% TAC`
-          );
+      if (tacMsg) {
+        const tacMatch = tacMsg.message.match(/max\s+([\d.]+)%/);
+        if (tacMatch) {
+          log.info(`Max TAC: ${tacMatch[1]}% (high!)`);
         }
+      } else {
+        log.info("Max TAC: within limits");
       }
-    }
 
-    // Rasterized page detection
-    const rasterizedPages: number[] = [];
-    if (size) {
-      const images = await execCapture("pdfimages", ["-list", pdf]);
-      const candidates = parsePdfImages(images.stdout, size);
-      rasterizedPages.push(
-        ...(await filterRasterized(candidates, pdf, images.stdout))
+      // Font count from passed/results
+      const fontWarning = fontResults.find((r) =>
+        r.message.includes("No fonts detected")
       );
-      if (rasterizedPages.length > 0) {
-        warnings.push(
-          `Possible rasterized pages detected: ${rasterizedPages.join(", ")}`
-        );
-        warnings.push(
-          "This may indicate CSS filters, blend modes, or transparency that forced flattening."
-        );
-        warnings.push(
-          "Text on these pages may not be selectable and quality may be reduced."
-        );
+      const fontError = fontResults.find((r) =>
+        r.message.includes("Not all fonts")
+      );
+      if (!fontWarning && !fontError) {
+        log.info("Fonts: all embedded");
       }
+
+      // Rasterized pages
+      const rasterMsg = rasterResults.find((r) =>
+        r.message.startsWith("Possible rasterized")
+      );
+      log.info(
+        `Rasterized pages: ${rasterMsg ? rasterMsg.message.replace("Possible rasterized pages detected: ", "") : "none"}`
+      );
     }
 
-    // --- Report ---
-    for (const w of warnings) {
-      log.warn(w);
-    }
-    for (const e of errors) {
-      log.error(e);
-    }
-
-    const hasErrors = errors.length > 0;
-    const hasWarnings = warnings.length > 0;
-
-    if (hasErrors) {
-      log.error(`VALIDATION FAILED (${errors.length} error${errors.length > 1 ? "s" : ""})`);
-    } else if (hasWarnings) {
-      log.warn("VALIDATION PASSED (with warnings)");
-    } else {
-      log.success("VALIDATION PASSED");
-    }
-
-    log.info(`Max TAC: ${maxTac.toFixed(1)}%${tacWarning ? " (high!)" : ""}`);
-    log.info(`Fonts embedded: ${rows.length}`);
-    log.info(
-      `Rasterized pages: ${rasterizedPages.length > 0 ? rasterizedPages.join(", ") : "none"}`
-    );
-
-    if (hasErrors) {
+    if (report.summary.errors > 0) {
       process.exit(1);
     }
   },
