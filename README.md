@@ -192,40 +192,74 @@ extensions:
 
 ## Markdown Directives
 
-print-md extends markdown with special directives for print layout:
+print-md extends markdown with special directives for layout control through three systems:
 
-### Page Control
+### Page Markers (Markdown)
+
+Create page breaks using markdown horizontal rules with optional styling:
 
 ```markdown
-@page         # Force page break before this line
-@break        # Force column break (in multi-column layouts)
-@spread       # Force content to start on a right-hand page
-@columns 2    # Switch to 2-column layout
-@columns 1    # Switch back to single column
+---                          Simple page break
+--- {page}                   Page break with page marker
+--- {page chapter}           Page break with chapter styling
+--- {page .custom-class}     Page break with custom CSS class
 ```
 
-### Example
+### Container Blocks
+
+Group content with container syntax:
+
+```markdown
+::: container
+Keep this content together on one page.
+:::
+
+::: two-column
+This section uses two-column layout.
+:::
+
+::: sidebar
+Sidebar or callout box content.
+:::
+```
+
+### Plugin Directives
+
+When plugins are enabled, they provide additional directives. Example with TTRPG plugin:
+
+```markdown
+@page-break
+
+Forces a page break
+
+@roll{2d6+3}
+
+Renders a dice roll notation
+```
+
+### Example Usage
 
 ```markdown
 # Chapter One
 
 This is the first paragraph.
 
-@page
+--- {page}
 
 # Chapter Two
 
-This chapter starts on a new page.
+This chapter starts on a new page with the page marker applied.
 
-@columns 2
+::: two-column
+This content flows in two columns until the container ends.
+:::
 
-This content flows in two columns.
-
-@columns 1
-
-Back to single column.
+::: container
+Content in here avoids breaking across pages.
+:::
 ```
 
+## Plugin System
 ## Plugin System
 
 print-md supports a powerful plugin system that lets you extend markdown syntax with custom features. Plugins can add new markdown syntax, modify rendering, and inject CSS styles.

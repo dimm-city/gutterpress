@@ -1,93 +1,123 @@
 # Core Directives Reference
 
-Print-md provides powerful directives to control page layout and behavior. Directives are HTML comments that control print layout rendering.
+Print-md provides three systems for controlling page layout and behavior:
 
-## Page Templates
+1. **Markdown page markers** - Using horizontal rules with `{page}` attributes
+2. **Container blocks** - Using triple-colon syntax for layouts
+3. **Plugin directives** - Custom syntax from loaded plugins (e.g., TTRPG)
 
-Apply named page templates to sections of your document:
+## Page Breaks & Markers
 
-```markdown
-<!-- @page: chapter -->
-# Chapter One: The Beginning
+### Markdown Page Markers
 
-This content will use the chapter page template with extra top margin
-and special header/footer treatment.
-
-<!-- @page: body -->
-Regular content continues here with standard body template.
-
-<!-- @page: appendix -->
-# Appendix A: Reference Tables
-
-Back matter content uses appendix styling.
-```
-
-### Available Page Templates
-
-- `chapter` - Chapter opening pages (right-hand, extra top margin, minimal headers)
-- `body` - Standard body content (default)
-- `art` - Full-bleed artwork (zero margins, no headers/footers)
-- `appendix` - Back matter (appendix header in page margins)
-- `frontmatter` - Front matter pages (title, credits, etc.)
-- `cover` - Book cover (full bleed)
-- `title-page` - Title page (centered, no page numbers)
-- `credits` - Credits/copyright page (roman numerals)
-- `toc` - Table of contents (roman numerals)
-- `glossary` - Glossary/index (reduced margins for multi-column)
-- `blank` - Blank pages (with "intentionally left blank" note)
-
-## Page Breaks
-
-### Manual Page Breaks
-
-Control when and where page breaks occur:
+The primary way to create page breaks and apply page styling is using markdown horizontal rules with optional class names:
 
 ```markdown
-<!-- @break -->
-Content after this directive starts on a new page.
-
-<!-- @spread: right -->
-Forces the next content to start on a right-hand page (odd number).
-
-<!-- @spread: left -->
-Forces the next content to start on a left-hand page (even number).
-
-<!-- @spread: blank -->
-Inserts a blank page.
-```
-
-### Automatic Page Breaks
-
-Print-md provides automatic page breaks with simple markdown:
-
-```markdown
-# Chapter One
-
-Content here...
-
 ---
 
-This horizontal rule becomes a page break.
-New content starts on the next page.
+This creates a simple page break.
+
+--- {page}
+
+This also creates a page break and wraps content in a page marker section.
+
+--- {page chapter}
+
+Page break with the "chapter" class applied.
+
+--- {page .my-custom-class}
+
+Page break with custom CSS class (dot prefix optional).
+
+--- {page chapter .right-align}
+
+Multiple classes can be combined.
 ```
 
-**Auto-rule:** Any horizontal rule (`---`, `***`, `___`) becomes a page break.
+The `{page ...}` syntax creates a page break and wraps subsequent content in a `<section>` with the `page` class plus any additional classes you specify. Content continues until the next page marker.
 
 ### Chapter Starts
+
+H1 headings automatically start on a right-hand (odd-numbered) page:
 
 ```markdown
 # Chapter Title
 
-This H1 heading automatically:
+This heading automatically:
 - Starts on a right-hand (odd-numbered) page
 - Adds extra top margin for dramatic impact
 - Removes headers to let the chapter title stand alone
 - Sets the section title for subsequent page headers
 ```
 
-### Preventing Page Breaks
+## Container Blocks
 
-Use CSS classes to control breaking behavior:
+Use container syntax to apply layouts and styling to sections of content:
+
+```markdown
+::: container
+This content will try to stay together on one page
+and avoid breaking across pages.
+:::
+
+::: two-column
+Content in this section flows in a two-column layout.
+:::
+
+::: wrapper
+A generic wrapper for grouping content.
+:::
+
+::: sidebar
+Content for a sidebar or callout box.
+:::
+```
+
+Available containers:
+- `container` - General grouping with `break-inside: avoid`
+- `two-column` - Two-column layout
+- `wrapper` - Generic wrapper
+- `sidebar` - Sidebar/callout styling
+- `page` - Manual page container (alternative to `--- {page}`)
+- `ability` - Ability/feature block (TTRPG)
+- `specialty` - Specialty/skill block (TTRPG)
+- `learning-path` - Learning path block (TTRPG)
+
+Containers can accept classes and attributes:
+
+```markdown
+::: container .highlight
+Highlighted content in a container.
+:::
+
+::: sidebar: Optional Title
+Sidebar with a title and custom class.
+:::
+```
+
+## Plugin Directives
+
+When plugins are loaded via the manifest configuration, they provide additional directives. For example, the TTRPG plugin provides:
+
+```markdown
+@page-break
+
+Forces a page break (plugin-specific directive).
+
+@roll{Skill DC 15}
+
+Renders a dice roll with modifiers.
+
+@table{2d6 damage}
+
+Renders a formatted table.
+```
+
+Plugin directives vary by plugin. Check plugin documentation for available syntax.
+
+## Preventing Page Breaks
+
+Use the `container` class or CSS to keep content together:
 
 ```markdown
 ::: container
@@ -105,90 +135,42 @@ Or in custom CSS:
 }
 ```
 
-## Column Layouts
+## Quick Syntax Reference
 
-Set multi-column layouts for specific sections:
-
-```markdown
-<!-- @columns: 2 -->
-This content will flow in a two-column layout, perfect for
-glossaries, indexes, or dense reference material.
-
-<!-- @columns: 1 -->
-Back to single column layout.
-
-<!-- @columns: 3 -->
-Three columns for very dense content (use sparingly).
-```
-
-**Important:** Columns apply to subsequent content until changed by another `@columns` directive or reset by a chapter heading (H1).
-
-## Running Headers
-
-Set custom running headers for page margins:
+### Page Markers (Markdown)
 
 ```markdown
-<!-- H1 automatically sets section title -->
-# Chapter Title
-
-This sets the running header for subsequent pages.
-
-<!-- Override with manual directive -->
-<h1 style="string-set: section-title 'Custom Header';">Section</h1>
+---                           Simple page break
+--- {page}                    Page break with page marker
+--- {page chapter}            Page break with page class and chapter class
+--- {page .my-custom-class}   Page break with custom CSS class
 ```
 
-## Directive Syntax
-
-### Valid Directive Format
-
-Directives must follow this exact format:
+### Container Blocks
 
 ```markdown
-<!-- @directive -->           ✓ Correct
-<!-- @directive: value -->    ✓ Correct
-<!--@directive-->             ✗ Wrong (no space)
-<!-- @ directive -->          ✗ Wrong (space in directive)
+::: container                 General grouping
+::: two-column               Two-column layout
+::: wrapper                  Generic wrapper
+::: sidebar                  Sidebar/callout
+::: ability                  TTRPG ability block
+::: specialty                TTRPG specialty block
 ```
 
-### Error Handling
+### Plugin Directives
 
-Print-md provides helpful error messages with suggestions:
-
-- Unknown directives suggest closest match
-- Invalid values show valid options
-- Missing required values show usage examples
-- Line numbers included for easy debugging
-
-## Quick Reference
-
-### All Directives
+Plugin directives depend on the plugins loaded in your manifest. Common examples:
 
 ```markdown
-<!-- @page: template -->    Apply named page template
-<!-- @break -->             Force page break
-<!-- @spread: right -->     Start on right page
-<!-- @spread: left -->      Start on left page
-<!-- @spread: blank -->     Insert blank page
-<!-- @columns: 1 -->        Single column layout
-<!-- @columns: 2 -->        Two column layout
-<!-- @columns: 3 -->        Three column layout
+@page-break                   TTRPG plugin page break
+@roll{2d6}                   TTRPG plugin dice roll
 ```
 
-### Valid Page Template Names
+## Implementation Notes
 
-```
-chapter, body, art, appendix, frontmatter, cover,
-title-page, credits, toc, glossary, blank
-```
-
-### Valid Spread Values
-
-```
-left, right, blank
-```
-
-### Valid Column Counts
-
-```
-1, 2, 3
-```
+- Page markers use the `{page ...}` syntax on horizontal rules
+- Classes can be specified with or without the dot prefix (`.class` or `class`)
+- Multiple classes are space-separated
+- Container blocks use `::: name ... :::` syntax with colon markers
+- Plugin directives depend on which plugins are loaded in your manifest
+- H1 headings automatically create page breaks and set running headers
