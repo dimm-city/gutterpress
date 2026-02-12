@@ -8,6 +8,7 @@ const check: Check = {
   description: "Checks for alpha channels in PNG/TIFF images",
   category: "asset",
   phase: "pre-build",
+  requiredTools: ["identify"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (ctx.config.validate.assets.allowAlpha) return [];
 

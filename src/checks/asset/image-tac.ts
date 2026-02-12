@@ -8,6 +8,7 @@ const check: Check = {
   description: "Rasterizes and checks TAC per image using Ghostscript",
   category: "asset",
   phase: "pre-build",
+  requiredTools: ["gs"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     const maxTac = ctx.config.ink.maxTac;
     if (!maxTac) return [];

@@ -8,6 +8,7 @@ const check: Check = {
   description: "Checks characters-per-page ratio via pdftotext",
   category: "heuristic",
   phase: "post-build",
+  requiredTools: ["pdfinfo", "pdftotext"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
 

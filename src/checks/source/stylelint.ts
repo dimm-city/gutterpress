@@ -11,6 +11,7 @@ const check: Check = {
     "Runs stylelint to validate CSS files, integrating with existing lint infrastructure",
   category: "source",
   phase: "pre-build",
+  requiredTools: ["stylelint"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     const sourceConfig = ctx.config.validate.source;
     if (sourceConfig.stylelint === false) return [];

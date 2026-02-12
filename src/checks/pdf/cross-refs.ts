@@ -8,6 +8,7 @@ const check: Check = {
   description: "Counts and verifies internal link annotations",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["qpdf"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
 

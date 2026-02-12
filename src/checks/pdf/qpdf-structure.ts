@@ -8,6 +8,7 @@ const check: Check = {
   description: "Validates PDF structural integrity using qpdf --check",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["qpdf"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     try {

@@ -9,6 +9,7 @@ const check: Check = {
   description: "Verifies all fonts in the PDF are embedded",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["pdffonts"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     const fonts = await execCapture("pdffonts", [ctx.pdfPath]);

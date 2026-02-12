@@ -9,6 +9,7 @@ const check: Check = {
     "Checks total area coverage (TAC) against maximum ink limits",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["qpdf", "strings"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     const cmykData = await parseCmykFromPdf(ctx.pdfPath);

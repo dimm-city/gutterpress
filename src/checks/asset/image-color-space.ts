@@ -8,6 +8,7 @@ const check: Check = {
   description: "Validates image color spaces against allowed list",
   category: "asset",
   phase: "pre-build",
+  requiredTools: ["identify"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     const allowed = ctx.config.validate.assets.allowedColorSpaces;
     if (!allowed || allowed.length === 0) return [];

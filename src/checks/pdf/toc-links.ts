@@ -8,6 +8,7 @@ const check: Check = {
   description: "Detects link annotations on TOC pages",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["qpdf"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     if (!ctx.config.validate.pdf.requireTocLinks) return [];

@@ -24,6 +24,7 @@ const check: Check = {
   description: "Runs htmlhint with project config to validate generated HTML",
   category: "source",
   phase: "pre-build",
+  requiredTools: ["htmlhint"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     const sourceConfig = ctx.config.validate.source;
     if (sourceConfig.htmlhint === false) return [];

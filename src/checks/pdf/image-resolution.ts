@@ -8,6 +8,7 @@ const check: Check = {
   description: "Checks DPI of images embedded in the PDF",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["pdfimages"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     const minDpi = ctx.config.validate.pdf.minImageResolution;

@@ -9,6 +9,7 @@ const check: Check = {
     "Checks for forbidden color spaces (DeviceRGB, Lab, Separation, DeviceN)",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["grep"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     const colorCheck = await execCapture("grep", [

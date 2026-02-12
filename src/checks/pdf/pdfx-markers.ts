@@ -8,6 +8,7 @@ const check: Check = {
   description: "Checks for GTS_PDFXVersion and OutputIntent markers",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["grep"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     const pdfxCheck = await execCapture("grep", [

@@ -8,6 +8,7 @@ const check: Check = {
   description: "Checks source image DPI using ImageMagick identify",
   category: "asset",
   phase: "pre-build",
+  requiredTools: ["identify"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     const minDpi = ctx.config.validate.assets.minImageDpi;
     if (!minDpi) return [];

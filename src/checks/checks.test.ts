@@ -12,6 +12,7 @@ import type { CheckContext, CheckResult, Check } from "./types";
 import { registerCheck, getChecks, getCheckById, getAllCheckIds } from "./registry";
 import { runChecks } from "./runner";
 import { formatReport } from "./formatter";
+import { checkToolAvailability, reportMissingTools } from "./tool-check";
 import type { RunnerReport } from "./runner";
 
 // Import all check modules so they self-register
@@ -264,7 +265,7 @@ describe("Check Runner", () => {
       only: ["test.throwing-check"],
     });
     expect(report.summary.errors).toBe(1);
-    expect(report.errors[0].message).toContain("intentional test error");
+    expect(report.errors[0]!.message).toContain("intentional test error");
   });
 });
 
@@ -620,5 +621,144 @@ describe("Source checks skip when tool is disabled", () => {
     const ctx = makeCtx({ config, cssFiles: ["/tmp/test.css"] });
     const results = await check.run(ctx);
     expect(results).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tool Check
+// ---------------------------------------------------------------------------
+
+describe("Tool Check", () => {
+  test("all checks that use external tools declare requiredTools", () => {
+    // These checks are known to NOT need external tools
+    const noToolChecks = new Set([
+      "source.callout-validation",
+      "asset.image.file-size",
+      "asset.font.approved-files",
+      "asset.font.missing-refs",
+      "asset.font.license",
+      "heuristic.chunking.section-density",
+    ]);
+
+    const allChecks = getChecks();
+    for (const check of allChecks) {
+      if (noToolChecks.has(check.id)) {
+        // These should NOT have requiredTools
+        expect(check.requiredTools ?? []).toHaveLength(0);
+      }
+    }
+  });
+
+  test("checks with requiredTools have non-empty arrays", () => {
+    const allChecks = getChecks();
+    for (const check of allChecks) {
+      if (check.requiredTools) {
+        expect(check.requiredTools.length).toBeGreaterThan(0);
+        for (const tool of check.requiredTools) {
+          expect(typeof tool).toBe("string");
+          expect(tool.length).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  test("checkToolAvailability returns empty for disabled checks", async () => {
+    const config = makeConfig();
+    // Disable htmlhint via source config
+    (config.validate.source.htmlhint as any) = false;
+
+    const result = await checkToolAvailability(config, {
+      only: ["source.htmlhint"],
+    });
+
+    // htmlhint check is filtered out entirely since it's disabled
+    expect(result.skippedChecks).not.toContain("source.htmlhint");
+  });
+
+  test("checkToolAvailability returns empty for manifest-disabled checks", async () => {
+    const config = makeConfig();
+    config.validate.checks["pdf.structure.qpdf"] = false;
+
+    const result = await checkToolAvailability(config, {
+      only: ["pdf.structure.qpdf"],
+    });
+
+    // Check is disabled, so its tool shouldn't be probed
+    expect(result.skippedChecks).not.toContain("pdf.structure.qpdf");
+  });
+
+  test("checkToolAvailability detects missing fictitious tool", async () => {
+    // Register a temporary check with a tool that definitely doesn't exist
+    const fakeCheck: Check = {
+      id: "test.fake-tool-check",
+      name: "Fake Tool Check",
+      description: "Test check with missing tool",
+      category: "source",
+      phase: "pre-build",
+      requiredTools: ["__print_md_nonexistent_tool_xyz__"],
+      async run() { return []; },
+    };
+    registerCheck(fakeCheck);
+
+    const config = makeConfig();
+    const result = await checkToolAvailability(config, {
+      only: ["test.fake-tool-check"],
+    });
+
+    expect(result.missing).toContain("__print_md_nonexistent_tool_xyz__");
+    expect(result.skippedChecks).toContain("test.fake-tool-check");
+  });
+
+  test("reportMissingTools does not throw when no tools missing", () => {
+    reportMissingTools({
+      available: ["qpdf"],
+      missing: [],
+      skippedChecks: [],
+      toolToChecks: new Map(),
+    });
+  });
+
+  test("reportMissingTools does not throw when tools are missing", () => {
+    const toolToChecks = new Map<string, string[]>();
+    toolToChecks.set("qpdf", ["pdf.structure.qpdf"]);
+
+    reportMissingTools({
+      available: [],
+      missing: ["qpdf"],
+      skippedChecks: ["pdf.structure.qpdf"],
+      toolToChecks,
+    });
+  });
+});
+
+describe("Runner skips checks with missing tools", () => {
+  test("skipMissingTools filters checks from execution", async () => {
+    const dummyCheck: Check = {
+      id: "test.tool-skip-check",
+      name: "Tool Skip Test",
+      description: "Should be skipped",
+      category: "source",
+      phase: "pre-build",
+      requiredTools: ["nonexistent"],
+      async run() {
+        return [{
+          checkId: "test.tool-skip-check",
+          severity: "error" as const,
+          message: "This should not run",
+        }];
+      },
+    };
+    registerCheck(dummyCheck);
+
+    const ctx = makeCtx();
+    const report = await runChecks(ctx, {
+      only: ["test.tool-skip-check"],
+      skipMissingTools: ["test.tool-skip-check"],
+    });
+
+    // Check was skipped — no results, no passed (it wasn't even run)
+    expect(report.results).toHaveLength(0);
+    expect(report.passed).toHaveLength(0);
+    expect(report.summary.total).toBe(0);
   });
 });

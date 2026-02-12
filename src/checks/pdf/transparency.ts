@@ -9,6 +9,7 @@ const check: Check = {
     "Checks for transparency markers (/Transparency, /SMask, /BM) in the PDF",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["grep"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     if (!ctx.config.validate.pdf.forbidTransparency) return [];

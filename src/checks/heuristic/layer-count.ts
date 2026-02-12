@@ -8,6 +8,7 @@ const check: Check = {
   description: "Counts image objects per page from pdfimages output",
   category: "heuristic",
   phase: "post-build",
+  requiredTools: ["pdfimages"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
 

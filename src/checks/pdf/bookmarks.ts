@@ -8,6 +8,7 @@ const check: Check = {
   description: "Checks for PDF outline (bookmarks) tree",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["qpdf"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     if (!ctx.config.validate.pdf.requireBookmarks) return [];

@@ -14,6 +14,8 @@ export interface RunnerOptions {
   phase?: CheckPhase;
   only?: string[];
   skip?: string[];
+  /** Check IDs to skip due to missing tools (set by tool-check) */
+  skipMissingTools?: string[];
 }
 
 export interface RunnerReport {
@@ -76,6 +78,12 @@ export async function runChecks(
     return emptyReport();
   }
   checks = checks.filter((c) => isCheckEnabled(c.id, ctx.config));
+
+  // Filter out checks skipped due to missing tools
+  if (opts.skipMissingTools && opts.skipMissingTools.length > 0) {
+    const toolSkipSet = new Set(opts.skipMissingTools);
+    checks = checks.filter((c) => !toolSkipSet.has(c.id));
+  }
 
   const allResults: CheckResult[] = [];
   const passed: string[] = [];

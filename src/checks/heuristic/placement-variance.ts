@@ -8,6 +8,7 @@ const check: Check = {
   description: "Analyzes PDF content stream coordinates for layout consistency",
   category: "heuristic",
   phase: "post-build",
+  requiredTools: ["qpdf"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
 

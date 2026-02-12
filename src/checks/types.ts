@@ -31,5 +31,7 @@ export interface Check {
   description: string;
   category: CheckCategory;
   phase: CheckPhase;
+  /** External CLI tools this check requires (e.g. ["qpdf", "pdfinfo"]) */
+  requiredTools?: string[];
   run(ctx: CheckContext): Promise<CheckResult[]>;
 }

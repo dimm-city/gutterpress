@@ -8,6 +8,7 @@ const check: Check = {
   description: "Verifies XMP metadata and output intent profile",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["qpdf"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
 

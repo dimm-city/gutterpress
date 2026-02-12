@@ -9,6 +9,7 @@ const check: Check = {
   description: "Validates PDF page dimensions match expected size from config",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["pdfinfo"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     const info = await execCapture("pdfinfo", ["-box", ctx.pdfPath]);

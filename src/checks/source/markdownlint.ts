@@ -33,6 +33,7 @@ const check: Check = {
     "Runs markdownlint-cli2 with project config to validate Markdown files",
   category: "source",
   phase: "pre-build",
+  requiredTools: ["markdownlint-cli2"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     const sourceConfig = ctx.config.validate.source;
     if (sourceConfig.markdownlint === false) return [];

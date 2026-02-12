@@ -9,6 +9,7 @@ const check: Check = {
     "Compares MediaBox vs TrimBox/BleedBox to verify bleed area",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["pdfinfo"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     if (!ctx.config.validate.pdf.requireBleed) return [];

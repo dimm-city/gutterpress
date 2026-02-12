@@ -14,6 +14,7 @@ const check: Check = {
     "Detects pages that appear to be fully rasterized (CSS filters, blend modes, transparency)",
   category: "pdf",
   phase: "post-build",
+  requiredTools: ["pdfinfo", "pdfimages", "pdftotext"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
 

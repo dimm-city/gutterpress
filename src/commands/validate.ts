@@ -5,6 +5,7 @@ import { loadManifest, resolveConfig } from "../lib/manifest";
 import { log } from "../lib/logger";
 import { runChecks } from "../checks/runner";
 import { formatReport } from "../checks/formatter";
+import { checkToolAvailability, reportMissingTools } from "../checks/tool-check";
 import type { CheckCategory, CheckPhase, CheckContext } from "../checks/types";
 import type { OutputFormat } from "../checks/formatter";
 
@@ -145,11 +146,22 @@ export default defineCommand({
       assetDirs,
     };
 
-    const report = await runChecks(ctx, {
+    // Check for missing external tools before running checks
+    const runnerOpts = {
       category: categories,
       phase,
       only,
       skip,
+    };
+
+    const toolResult = await checkToolAvailability(config, runnerOpts);
+    if (format === "text") {
+      reportMissingTools(toolResult);
+    }
+
+    const report = await runChecks(ctx, {
+      ...runnerOpts,
+      skipMissingTools: toolResult.skippedChecks,
     });
 
     formatReport(report, format);
