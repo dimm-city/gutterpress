@@ -1,6 +1,6 @@
 # print-md
 
-A powerful CLI tool and live preview UI for creating professional print-ready PDFs from markdown. Write your content in markdown and let print-md handle the complex CSS Paged Media layout. Uses Prince XML for PDF generation and Vivliostyle for live preview.
+A powerful CLI tool and live preview UI for creating professional print-ready PDFs from markdown. Write your content in markdown and let print-md handle the complex CSS Paged Media layout. Uses Chromium + Paged.js for PDF generation and Paged.js for live preview.
 
 ## Features
 
@@ -13,46 +13,58 @@ A powerful CLI tool and live preview UI for creating professional print-ready PD
 
 ## Installation
 
-### Recommended: One-Line Install
+**Package Status:** print-md is currently in development and not yet published to npm. 
 
-The easiest way to install print-md is using our installation scripts, which handle all dependencies automatically:
+### Development Installation (From Source)
 
-**Windows (PowerShell):**
-```powershell
-curl -o install.ps1 https://raw.githubusercontent.com/dimm-city/print-md/main/scripts/install.ps1; .\install.ps1
-```
-
-**Linux/macOS:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/dimm-city/print-md/main/scripts/install.sh | bash
-```
-
-The installation script will:
-- Install Bun runtime (if not already installed)
-- Install print-md globally
-- Create a desktop shortcut (Windows/Linux) with custom icon
-- Configure auto-browser opening for preview mode
-
-**Windows users:** After installation, double-click the **"Print-md Preview"** shortcut on your desktop to launch instantly!
-
-**Linux users:** Find the "Print-md Preview" shortcut in your applications menu or desktop.
-
-### Alternative: Package Manager Installation
-
-If you prefer manual installation or already have Bun installed:
+Until the package is published to npm, install from the GitHub repository:
 
 ```bash
-# Install Bun first (if needed)
+# Clone the repository
+git clone https://github.com/dimm-city/print-md.git
+cd print-md
+
+# Install Bun (if not already installed)
 curl -fsSL https://bun.sh/install | bash
 
-# Install print-md globally
+# Install dependencies
+bun install
+
+# Link globally for development
+bun link
+
+# Now the print-md command is available globally
+print-md build
+print-md preview
+```
+
+### Using from Source Without Global Link
+
+If you prefer not to link globally:
+
+```bash
+git clone https://github.com/dimm-city/print-md.git
+cd print-md
+bun install
+
+# Run directly
+bun src/cli.ts build
+bun src/cli.ts preview
+```
+
+### Future: Published Package Installation
+
+Once @dimm-city/print-md is published to npm, you'll be able to install it with:
+
+```bash
+# With Bun
 bun install -g @dimm-city/print-md
 
-# Or with npm
+# With npm
 npm install -g @dimm-city/print-md
 ```
 
-Once installed, the `print-md` command will be available globally.
+Check back soon for the published release!
 
 ## Documentation
 
@@ -80,10 +92,8 @@ print-md build
 print-md build ./my-book
 
 # Build with custom output
-print-md build --output my-book.pdf
+print-md build --out my-book.pdf
 
-# Watch mode (auto-rebuild on changes)
-print-md build --watch
 ```
 
 ### Live Preview
@@ -124,7 +134,7 @@ In the preview UI:
    - `git@github.com:owner/repo.git`
    - `owner/repo` (shorthand)
 4. Click "Clone Repository"
-5. The repository is cloned to `~/.pagedmd/cloned-repos/owner/repo`
+5. The repository is cloned to `~/.print-md/cloned-repos/owner/repo`
 6. Preview automatically switches to the cloned repository
 
 **Prerequisites:**
@@ -218,7 +228,7 @@ Back to single column.
 
 ## Plugin System
 
-pagedmd supports a powerful plugin system that lets you extend markdown syntax with custom features. Plugins can add new markdown syntax, modify rendering, and inject CSS styles.
+print-md supports a powerful plugin system that lets you extend markdown syntax with custom features. Plugins can add new markdown syntax, modify rendering, and inject CSS styles.
 
 ### Built-in Plugins
 
@@ -309,7 +319,6 @@ Styles are applied in order:
 ### Disable Default Styles
 
 ```yaml
-disableDefaultStyles: true
 styles:
   - my-complete-theme.css
 ```
@@ -343,52 +352,46 @@ h1 {
 ### Build Command
 
 ```bash
-pagedmd build [input] [options]
+print-md build [input] [options]
 ```
 
 **Options:**
-- `--output <file>` - Output file path (default: output.pdf)
-- `--format <type>` - Output format: `pdf` or `html` (default: pdf)
-- `--watch` - Watch for changes and rebuild automatically
+- `--out <file>` - Output file path (default: output.pdf)
 
 **Examples:**
 
 ```bash
 # Build PDF with custom output
-pagedmd build ./book --output book.pdf
+print-md build ./book --out book.pdf
 
-# Build standalone HTML
-pagedmd build --format html --output book.html
 
-# Watch mode
-pagedmd build --watch
 ```
 
 ### Preview Command
 
 ```bash
-pagedmd preview [input] [options]
+print-md preview [input] [options]
 ```
 
 **Options:**
-- `--port <number>` - Server port (default: 3000)
+- `--port <number>` - Server port (default: 3579)
 - `--open <boolean>` - Auto-open browser (default: true)
 - `--no-watch` - Disable file watching
 
 **Examples:**
 
 ```bash
-# Start preview on default port (3000)
-pagedmd preview
+# Start preview on default port (3579)
+print-md preview
 
 # Custom port
-pagedmd preview --port 8080
+print-md preview --port 8080
 
 # Don't open browser automatically
-pagedmd preview --open false
+print-md preview --open false
 
 # Preview without file watching
-pagedmd preview --no-watch
+print-md preview --no-watch
 ```
 
 ## Architecture
@@ -410,7 +413,7 @@ pagedmd preview --no-watch
 
 ### Output Formats
 
-- **PDF** - Renders via Prince XML typesetter for professional print quality
+- **PDF** - Renders via Chromium + Paged.js typesetter for professional print quality
 - **HTML** - Standalone HTML file for web viewing
 
 ## Project Structure
@@ -464,7 +467,7 @@ bun test
 
 **Problem: Command Not Found After Installation**
 
-If `pagedmd` command isn't found after global installation:
+If `print-md` command isn't found after global installation:
 
 ```bash
 # Check if bun's global bin directory is in PATH
@@ -481,15 +484,14 @@ source ~/.bashrc  # or ~/.zshrc
 
 **Problem: PDF Generation Fails with "Prince Not Found"**
 
-Ensure Prince XML is installed and accessible:
+Ensure Chromium + Paged.js is installed and accessible:
 
 ```bash
-# Verify Prince installation
-which prince      # Linux/macOS
-where prince.exe  # Windows
+# Chromium is automatically installed with Playwright
+# If issues persist, verify it's in PATH:
+which chromium      # Linux/macOS
+where chromium.exe  # Windows
 
-# Install Prince from https://www.princexml.com/download/
-```
 
 **Problem: Build Fails with "manifest.yaml not found"**
 
@@ -529,7 +531,7 @@ Large images or complex CSS can slow down PDF generation:
 
 2. **Use `--verbose` to see where it's stuck:**
    ```bash
-   pagedmd build --verbose
+   print-md build --verbose
    ```
 
 3. **Check for circular CSS imports:**
@@ -546,10 +548,10 @@ Port might be in use:
 ```bash
 # Check what's using the default port (3000)
 lsof -i :3000          # Linux/macOS
-netstat -ano | findstr :3000  # Windows
+netstat -ano | findstr :3579  # Windows
 
 # Use a different port
-pagedmd preview --port 8080
+print-md preview --port 8080
 ```
 
 **Problem: Changes Not Reflecting in Preview**
@@ -566,7 +568,7 @@ File watching might have failed:
 2. **Restart preview server:**
    ```bash
    # Ctrl+C to stop
-   pagedmd preview
+   print-md preview
    ```
 
 3. **Hard refresh browser:**
@@ -579,8 +581,8 @@ The dual-server architecture requires both servers to start:
 
 1. **Check if ports are available:**
    ```bash
-   # Main server (3000 default)
-   lsof -i :3000
+# Main server (3579 default)
+lsof -i :3579          # Linux/macOS
 
    # Vite server (auto-assigned, usually 5173)
    lsof -i :5173
@@ -592,7 +594,7 @@ The dual-server architecture requires both servers to start:
 
 3. **Check logs for errors:**
    ```bash
-   pagedmd preview --verbose
+   print-md preview --verbose
    ```
 
 #### Content Issues
@@ -602,10 +604,10 @@ The dual-server architecture requires both servers to start:
 Ensure directives are on their own line:
 
 ```markdown
-<!-- ❌ Wrong -->
+<!-- Not Working -->
 Some text @page More text
 
-<!-- ✓ Correct -->
+<!-- Correct -->
 Some text
 
 @page
@@ -695,9 +697,7 @@ gh auth status
 
 **Problem: Build is Slow**
 
-1. **Use `--profile` to identify bottlenecks:**
    ```bash
-   pagedmd build --profile
    ```
 
 2. **Common slow operations:**
@@ -708,7 +708,6 @@ gh auth status
 
 3. **Try HTML format first (faster):**
    ```bash
-   pagedmd build --format html
    ```
 
 **Problem: Preview Uses Too Much Memory**
@@ -719,7 +718,7 @@ gh auth status
 
 3. **Disable file watching if not needed:**
    ```bash
-   pagedmd preview --no-watch
+   print-md preview --no-watch
    ```
 
 #### Common Error Messages
@@ -773,18 +772,18 @@ If you're still stuck:
 4. **Open an issue:** Include:
    - Operating system and version
    - Bun/Node version (`bun --version`)
-   - pagedmd version (`pagedmd --version`)
+   - print-md version (`print-md --version`)
    - Full error message
    - Steps to reproduce
 
-**Note**: PDF generation requires Prince XML to be installed. See https://www.princexml.com/download/ for installation instructions.
+**Note**: PDF generation uses Chromium + Paged.js (automatically installed with Playwright).
 
 ### Contributing
 
 This project uses:
 - [Bun](https://bun.com) - Fast all-in-one JavaScript runtime
-- [Prince XML](https://www.princexml.com/) - Professional PDF typesetter
-- [Vivliostyle](https://vivliostyle.org/) - CSS Paged Media viewer for preview
+- [Playwright](https://playwright.dev/) - Browser automation for PDF rendering
+- [Paged.js](https://pagedjs.org/) - CSS Paged Media polyfill and layout engine
 - [markdown-it](https://github.com/markdown-it/markdown-it) - Markdown parser
 
 Contributions are welcome! Please feel free to submit a Pull Request.
