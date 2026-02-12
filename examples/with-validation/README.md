@@ -55,18 +55,42 @@ Running source validation on this example will:
 3. **Skip** `pdf.structure.qpdf` (disabled in manifest via `checks` override)
 4. **Downgrade** text-density warnings to `info` severity (configured in manifest)
 
+## Automatic Tool Detection
+
+Before running checks, print-md probes for required external tools. If any are
+missing you'll see warnings like:
+
+```
+warn  Tool "qpdf" not found — skipping: pdf.print.ink-coverage, pdf.nav.bookmarks, ...
+warn  Tool "identify" not found — skipping: asset.image.resolution, asset.image.color-space, asset.image.alpha-channel
+```
+
+Checks that don't need the missing tool still run normally.
+
+**Suppressed warnings:** Because this example disables `pdf.structure.qpdf` in
+the manifest, you will **not** see a warning about `qpdf` for that check — even
+if `qpdf` isn't installed. Warnings only appear for checks that would have run
+but can't.
+
 ## System Dependencies
 
-Source checks require these tools installed:
+You don't need every tool installed to use validation — missing tools are
+detected automatically and their checks are skipped with a clear warning. Install
+the ones you need:
+
+**Source checks:**
 
 - `markdownlint-cli2` — `npm install -g markdownlint-cli2`
 - `htmlhint` — `npm install -g htmlhint`
+- `stylelint` — `npm install -g stylelint`
 
-PDF checks require:
+**PDF checks:**
 
-- `qpdf`, `pdfinfo`, `pdffonts`, `pdfimages`, `pdftotext` (poppler-utils)
-- `gs` (Ghostscript)
+- `qpdf` — `apt install qpdf` or `brew install qpdf`
+- `pdfinfo`, `pdffonts`, `pdfimages`, `pdftotext` — `apt install poppler-utils` or `brew install poppler`
+- `gs` (Ghostscript) — `apt install ghostscript` or `brew install ghostscript`
 
-Asset checks require:
+**Asset checks:**
 
-- `identify` (ImageMagick)
+- `identify` (ImageMagick) — `apt install imagemagick` or `brew install imagemagick`
+- `gs` (Ghostscript) — shared with PDF checks above

@@ -15,6 +15,29 @@ When using the `run` pipeline, validation is automatically integrated:
 lint → validate:pre-build → convert → assets → build → validate:post-build
 ```
 
+## Automatic Tool Detection
+
+Before running any checks, the validate command probes the system for required external tools (e.g. `qpdf`, `pdfinfo`, `identify`). If a tool is missing, print-md warns you which checks will be skipped:
+
+```
+warn  Tool "qpdf" not found — skipping: pdf.structure.qpdf, pdf.print.ink-coverage, pdf.nav.bookmarks, ...
+warn  Tool "identify" not found — skipping: asset.image.resolution, asset.image.color-space, asset.image.alpha-channel
+```
+
+Checks that don't need the missing tool continue to run normally. This means you can use validation immediately without installing every system dependency — you'll get results for whatever tools you do have, and clear guidance on what you're missing.
+
+**Suppressed warnings**: If a check is explicitly disabled (via `validate.checks` in the manifest, or by setting a source tool to `false`), no warning is shown for its missing tool. For example, if your manifest has:
+
+```yaml
+validate:
+  checks:
+    pdf.structure.qpdf: false    # Disabled — no warning about missing qpdf
+  source:
+    htmlhint: false              # Disabled — no warning about missing htmlhint
+```
+
+Then `qpdf` and `htmlhint` will not appear in the missing-tool warnings even if they aren't installed.
+
 ## CLI Usage
 
 ### Validate a PDF (post-build checks)
@@ -173,7 +196,7 @@ validate:
 
 Setting a tool to `false` disables it entirely. Setting to `null` (or omitting) enables auto-detection of config files in the project root.
 
-**System dependencies**: `markdownlint-cli2` and `htmlhint` must be installed (globally or project-local) for their respective checks to run.
+**System dependencies**: `markdownlint-cli2`, `htmlhint`, and `stylelint` must be installed (globally or project-local) for their respective checks to run. Missing tools are detected automatically and their checks are skipped with a warning (see [Automatic Tool Detection](#automatic-tool-detection)).
 
 ### PDF Checks (post-build)
 
@@ -197,7 +220,17 @@ PDF checks inspect the generated PDF for print production compliance.
 | `pdf.nav.cross-refs` | Internal link annotation count |
 | `pdf.nav.page-labels` | PDF page label numbering |
 
-**System dependencies**: `qpdf`, `pdfinfo`, `pdffonts`, `pdfimages`, `pdftotext`, `strings`, `grep`, `gs` (Ghostscript).
+**System dependencies** (missing tools are detected automatically — see [Automatic Tool Detection](#automatic-tool-detection)):
+
+| Tool | Checks that require it | Install |
+|------|----------------------|---------|
+| `qpdf` | qpdf structure, ink-coverage, bookmarks, toc-links, cross-refs, page-labels, pdfx-metadata, placement-variance | `apt install qpdf` or `brew install qpdf` |
+| `pdfinfo` | page-size, rasterized-pages, bleed, text-density | `apt install poppler-utils` or `brew install poppler` |
+| `pdffonts` | embedded-fonts | (included in poppler-utils) |
+| `pdfimages` | rasterized-pages, image-resolution, layer-count | (included in poppler-utils) |
+| `pdftotext` | rasterized-pages, text-density | (included in poppler-utils) |
+| `strings` | ink-coverage | (usually pre-installed) |
+| `grep` | pdfx-markers, color-spaces, transparency | (usually pre-installed) |
 
 ### Asset Checks (pre-build)
 
@@ -214,7 +247,12 @@ Asset checks validate source images and fonts before they enter the build.
 | `asset.font.missing-refs` | CSS @font-face src files exist on disk |
 | `asset.font.license` | License files present in font directories |
 
-**System dependencies**: `identify` (ImageMagick) for image checks, `gs` (Ghostscript) for TAC.
+**System dependencies** (missing tools are detected automatically — see [Automatic Tool Detection](#automatic-tool-detection)):
+
+| Tool | Checks that require it | Install |
+|------|----------------------|---------|
+| `identify` (ImageMagick) | image resolution, color-space, alpha-channel | `apt install imagemagick` or `brew install imagemagick` |
+| `gs` (Ghostscript) | image TAC | `apt install ghostscript` or `brew install ghostscript` |
 
 ### Heuristic Checks (post-build)
 
@@ -278,6 +316,10 @@ const myCheck: Check = {
   description: "Validates something project-specific",
   category: "source",
   phase: "pre-build",
+  // Declare external tools your check needs (optional).
+  // If listed, the tool-check step will verify they are installed
+  // and skip your check with a warning if they are missing.
+  requiredTools: ["my-cli-tool"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     // Your validation logic here
     return [];
@@ -286,3 +328,5 @@ const myCheck: Check = {
 
 registerCheck(myCheck);
 ```
+
+If your check doesn't need any external CLI tools (e.g. it only reads files or uses built-in Node/Bun APIs), omit `requiredTools` entirely.

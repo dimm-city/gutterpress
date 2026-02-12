@@ -20,6 +20,10 @@ page:
 # ---------- Validation Configuration ----------
 # This section demonstrates all validation options.
 # When omitted, the DTRPG preset defaults apply automatically.
+#
+# Missing external tools are detected automatically before checks run.
+# Checks whose tools aren't installed are skipped with a warning.
+# Disabled checks (below) suppress the missing-tool warning entirely.
 
 validate:
   enabled: true

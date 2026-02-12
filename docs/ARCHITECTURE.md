@@ -78,6 +78,7 @@ src/
 │   ├── registry.ts         # Self-registration pattern + getChecks()
 │   ├── runner.ts           # Orchestrates check execution + filtering
 │   ├── formatter.ts        # Text/JSON output formatting
+│   ├── tool-check.ts       # Pre-run tool availability detection
 │   ├── source/             # Pre-build: tool wrappers (markdownlint, etc.)
 │   ├── pdf/                # Post-build: PDF structural/print checks
 │   ├── asset/              # Pre-build: image/font validation
@@ -131,10 +132,18 @@ The check system uses a **self-registering pattern**: each check module calls `r
 ```
 Check Registry ← registerCheck() at import time
     ↓
+Tool Check (tool-check.ts)
+    ├── Collect requiredTools from active checks
+    ├── Filter out disabled checks (manifest + source tool config)
+    ├── Probe system for each tool via `which`
+    ├── Warn about missing tools → list affected check IDs
+    └── Pass skipped check IDs to runner
+    ↓
 Runner (runner.ts)
     ├── Get checks from registry (filtered by category/phase/IDs)
     ├── Apply manifest enable/disable (validate.checks map)
     ├── Apply CLI --only/--skip filters
+    ├── Skip checks with missing tools (from tool-check)
     ├── Execute each check → CheckResult[]
     ├── Apply severity overrides from manifest
     └── Build RunnerReport (errors/warnings/infos/passed)

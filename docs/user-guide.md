@@ -1021,6 +1021,8 @@ validate:
 
 The validation system runs 31 checks across four categories: source (markdownlint, htmlhint, stylelint, callout types), PDF (structure, page size, colors, fonts, ink coverage, transparency, bleed), assets (image size/DPI/color space, font refs), and heuristics (text density, layout analysis).
 
+Missing external tools (e.g. `qpdf`, `identify`) are detected automatically before checks run. You'll see a warning listing which checks are skipped, while all other checks proceed normally. Warnings are suppressed for checks you've explicitly disabled in your manifest.
+
 ### Multi-File Projects
 
 Organize large projects:
