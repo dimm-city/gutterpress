@@ -41,8 +41,18 @@ export async function generateAndWriteHtml(
     pluginCss,
   });
 
-  // Inject interface script + break-inside polyfill before Paged.js polyfill
-  const iface = '<script src="/preview/scripts/pagedjs-interface.js"></script>\n   <link rel="stylesheet" href="/preview/styles/preview.css">\n  ';
+  // Read debug CSS to inline it (Vite's <link> transformation breaks CSS in iframes)
+  const debugCssPath = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'assets', 'preview', 'styles', 'debug.css');
+  let debugCss = '';
+  try {
+    debugCss = await Bun.file(debugCssPath).text();
+  } catch { /* debug CSS is optional */ }
+
+  // Inject interface script + debug CSS + break-inside polyfill before Paged.js polyfill
+  // Debug CSS is injected via JS to bypass Vite's <style> tag transformation which strips CSS
+  const escapedDebugCss = debugCss.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+  const iface = '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
+    + (debugCss ? `<script>(function(){var s=document.createElement("style");s.setAttribute("data-debug-css","true");s.textContent=\`${escapedDebugCss}\`;document.head.appendChild(s)})()</script>\n  ` : '');
   const output = html.replace(
     '<script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>',
     iface + BREAK_INSIDE_HANDLER + '\n  <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>'

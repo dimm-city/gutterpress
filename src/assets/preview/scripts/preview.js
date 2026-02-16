@@ -409,11 +409,12 @@ function setZoom(zoom) {
 }
 
 /**
- * Toggle debug mode (show/hide crop marks and page boxes)
+ * Toggle debug mode (show/hide crop marks, page boxes, bleed/safe areas)
+ * Directly toggles the 'debug' class on the iframe body for CSS-driven indicators
  */
 function toggleDebugMode() {
   const iframeWin = getIframeWindow();
-  if (!iframeWin || !iframeWin.previewAPI) {
+  if (!iframeWin || !iframeWin.document || !iframeWin.document.body) {
     showError(
       "Preview Not Ready",
       "Please wait for preview to finish loading.",
@@ -421,17 +422,13 @@ function toggleDebugMode() {
     return;
   }
 
-  const api = iframeWin.previewAPI;
-  const isDebug = api.toggleDebugMode();
+  // Toggle debug class directly on iframe body (CSS-driven debug indicators)
+  const isDebug = iframeWin.document.body.classList.toggle("debug");
 
   // Update button state
   const debugBtn = document.getElementById("btn-debug");
   if (debugBtn) {
-    if (isDebug) {
-      debugBtn.classList.add("active");
-    } else {
-      debugBtn.classList.remove("active");
-    }
+    debugBtn.classList.toggle("active", isDebug);
   }
 
   showInfo("Debug Mode", `Debug mode ${isDebug ? "enabled" : "disabled"}`);

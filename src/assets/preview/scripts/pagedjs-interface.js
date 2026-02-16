@@ -44,8 +44,7 @@
     },
     toggleDebugMode: function () {
       debugMode = !debugMode;
-      refreshPages();
-      pages.forEach(function (p) { p.style.outline = debugMode ? '2px solid red' : ''; });
+      document.body.classList.toggle('debug', debugMode);
       return debugMode;
     },
     notifyPageChange: function () {
