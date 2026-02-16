@@ -121,11 +121,20 @@ ${markerScript}`.trim();
       patched = inject + "\n" + patched;
     }
   } else if (!patched.includes("__PAGED_RENDERED__")) {
-    // Paged.js already present — inject handler + marker only
-    const inject = `${BREAK_INSIDE_HANDLER}\n${markerScript}`;
-    if (patched.includes("</head>")) {
+    // Paged.js already present — inject handler BEFORE the Paged.js script
+    // so PagedConfig.before is set before the polyfill executes.
+    // Replace the existing script tag with handler + local vendor copy.
+    const pagedScriptRegex = /<script[^>]*src=["'][^"']*paged[^"']*["'][^>]*><\/script>/i;
+    const match = patched.match(pagedScriptRegex);
+
+    if (match) {
+      const inject = `${BREAK_INSIDE_HANDLER}\n<script src="${vendorPath.replace(/\\/g, "/")}"></script>`;
+      patched = patched.replace(match[0], inject);
+    } else if (patched.includes("</head>")) {
+      const inject = `${BREAK_INSIDE_HANDLER}\n${markerScript}`;
       patched = patched.replace("</head>", `${inject}\n</head>`);
     } else {
+      const inject = `${BREAK_INSIDE_HANDLER}\n${markerScript}`;
       patched = inject + "\n" + patched;
     }
   }

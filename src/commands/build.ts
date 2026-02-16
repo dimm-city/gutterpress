@@ -35,11 +35,17 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
 
   try {
     const browser = await chromium.launch({ headless: true, executablePath });
-    const page = await browser.newPage();
+    const page = await browser.newPage({
+      // Match a wide viewport so Paged.js has room for spread layout
+      viewport: { width: 1920, height: 1080 },
+    });
 
     await page.goto(`http://localhost:${port}/${htmlFilename}`, {
       waitUntil: "networkidle",
     });
+
+    // Ensure all web fonts are fully loaded before Paged.js paginates
+    await page.evaluate(() => document.fonts.ready);
 
     await page
       .waitForFunction(
@@ -48,10 +54,31 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
       )
       .catch(() => {});
 
+    // Log Paged.js page count for diagnostics
+    const pagedInfo = await page.evaluate(() => {
+      const pages = document.querySelectorAll('.pagedjs_page');
+      const el = pages[0] as HTMLElement | null;
+      const s = el ? getComputedStyle(el) : null;
+      return {
+        pageCount: pages.length,
+        width: s?.width,
+        height: s?.height,
+      };
+    });
+    log.info(`Paged.js rendered ${pagedInfo.pageCount} pages (${pagedInfo.width} × ${pagedInfo.height})`);
+
+    // Paged.js already handles @page size and margins internally — each
+    // .pagedjs_page div is the full page size with content positioned inside
+    // the margin area.  Using preferCSSPageSize would re-apply the @page
+    // margins, shrinking the PDF content area and causing page-count drift.
+    // Set explicit dimensions matching @page size with zero margins so each
+    // Paged.js page maps 1:1 to a PDF page.
     await page.pdf({
       path: outPdf,
       printBackground: true,
-      preferCSSPageSize: true,
+      width: pagedInfo.width ?? '8.625in',
+      height: pagedInfo.height ?? '11.25in',
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
     });
 
     await browser.close();
