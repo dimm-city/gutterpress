@@ -48,9 +48,15 @@ export async function copyAssets(
     const src = join(inputDir, assetPath);
     const destName = resolveAssetDestName(assetPath);
 
-    if (existsSync(src)) {
+    // Fallback: when a relative path like "../_shared" doesn't exist (e.g. during
+    // build re-staging from the output dir), check the flattened basename ("_shared")
+    // directly inside inputDir — the run command's asset step already copied it there.
+    const fallbackSrc = join(inputDir, destName);
+    const resolvedSrc = existsSync(src) ? src : existsSync(fallbackSrc) ? fallbackSrc : null;
+
+    if (resolvedSrc) {
       options?.onCopy?.(assetPath);
-      await copyDir(src, join(outDir, destName));
+      await copyDir(resolvedSrc, join(outDir, destName));
       copied.push(destName);
     } else {
       options?.onSkip?.(assetPath, src);

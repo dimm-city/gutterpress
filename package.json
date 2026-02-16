@@ -50,6 +50,8 @@
   "devDependencies": {
     "@types/bun": "latest",
     "glob": "^13.0.0",
+    "htmlhint": "^1.1.4",
+    "markdownlint-cli2": "^0.17.0",
     "stylelint": "^17.0.0",
     "stylelint-config-standard": "^40.0.0"
   },

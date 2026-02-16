@@ -1,6 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { parseCmykFromPdf } from "../../lib/pdf-parse";
+import { getPerPageInkCoverage } from "../../lib/pdf-parse";
 
 const check: Check = {
   id: "pdf.print.ink-coverage",
@@ -9,20 +9,23 @@ const check: Check = {
     "Checks total area coverage (TAC) against maximum ink limits",
   category: "pdf",
   phase: "post-build",
-  requiredTools: ["qpdf", "strings"],
+  requiredTools: ["gs"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
-    const cmykData = await parseCmykFromPdf(ctx.pdfPath);
-    const maxTac = cmykData.maxTac;
+    const pages = await getPerPageInkCoverage(ctx.pdfPath);
     const limit = ctx.config.ink.maxTac + ctx.config.ink.tacTolerance;
+    const offending = pages
+      .filter((p) => p.tac > limit)
+      .sort((a, b) => b.tac - a.tac);
 
-    if (maxTac <= limit) return [];
+    if (offending.length === 0) return [];
 
+    const maxTac = offending[0]!.tac;
     const results: CheckResult[] = [
       {
         checkId: check.id,
         severity: "warning",
-        message: `Total ink coverage too high (max ${maxTac.toFixed(1)}%, recommended <=${ctx.config.ink.maxTac}%)`,
+        message: `Total ink coverage too high on ${offending.length} page(s) (max ${maxTac.toFixed(1)}%, recommended <=${ctx.config.ink.maxTac}%)`,
         file: ctx.pdfPath,
       },
       {
@@ -34,18 +37,22 @@ const check: Check = {
       },
     ];
 
-    if (cmykData.colors.length > 0) {
-      const offending = cmykData.colors
-        .slice(0, 3)
-        .filter((c) => c.tac > ctx.config.ink.maxTac);
-      for (const color of offending) {
-        results.push({
-          checkId: check.id,
-          severity: "warning",
-          message: `  C:${color.c.toFixed(1)}% M:${color.m.toFixed(1)}% Y:${color.y.toFixed(1)}% K:${color.k.toFixed(1)}% = ${color.tac.toFixed(1)}% TAC`,
-          file: ctx.pdfPath,
-        });
-      }
+    for (const page of offending.slice(0, 5)) {
+      results.push({
+        checkId: check.id,
+        severity: "warning",
+        message: `  Page ${page.page}: C:${page.c.toFixed(1)}% M:${page.m.toFixed(1)}% Y:${page.y.toFixed(1)}% K:${page.k.toFixed(1)}% = ${page.tac.toFixed(1)}% TAC`,
+        file: ctx.pdfPath,
+      });
+    }
+
+    if (offending.length > 5) {
+      results.push({
+        checkId: check.id,
+        severity: "warning",
+        message: `  ...and ${offending.length - 5} more page(s) over ${ctx.config.ink.maxTac}% TAC`,
+        file: ctx.pdfPath,
+      });
     }
 
     return results;

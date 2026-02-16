@@ -1,6 +1,10 @@
 import { spawn } from "node:child_process";
 import { readdir, mkdir, copyFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
+
+/** print-md's own node_modules/.bin so locally installed tools are found */
+const localBin = resolvePath(join(import.meta.dir, "..", "..", "node_modules", ".bin"));
+const enhancedEnv = { ...process.env, PATH: `${localBin}:${process.env.PATH ?? ""}` };
 
 /**
  * Spawn a child process, inherit stdio, reject on non-zero exit.
@@ -11,7 +15,7 @@ export function run(
   opts: { cwd?: string } = {}
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { stdio: "inherit", cwd: opts.cwd });
+    const p = spawn(cmd, args, { stdio: "inherit", cwd: opts.cwd, env: enhancedEnv });
     p.on("error", reject);
     p.on("exit", (code) => {
       if (code === 0) return resolve();
@@ -29,7 +33,7 @@ export function execCapture(
   args: string[]
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], env: enhancedEnv });
     let stdout = "";
     let stderr = "";
     p.stdout.on("data", (d: Buffer) => (stdout += d.toString()));

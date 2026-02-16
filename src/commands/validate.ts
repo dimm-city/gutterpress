@@ -119,10 +119,12 @@ export default defineCommand({
       markdownFiles = await glob("**/*.md", {
         cwd: inputDir,
         absolute: true,
+        ignore: ["**/node_modules/**"],
       });
       cssFiles = await glob("**/*.css", {
         cwd: inputDir,
         absolute: true,
+        ignore: ["**/node_modules/**"],
       });
       assetDirs = config.source.assets.map((a) =>
         resolve(inputDir, a)

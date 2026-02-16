@@ -1,17 +1,25 @@
 import { spawn } from "node:child_process";
+import { resolve as resolvePath, join } from "node:path";
 import { getChecks } from "./registry";
 import { log } from "../lib/logger";
 import type { ResolvedConfig } from "../schema/manifest.types";
 import type { CheckCategory, CheckPhase } from "./types";
 import type { RunnerOptions } from "./runner";
 
+/** print-md's own node_modules/.bin so locally installed tools are found */
+const localBin = resolvePath(join(import.meta.dir, "..", "..", "node_modules", ".bin"));
+const enhancedPath = `${localBin}:${process.env.PATH ?? ""}`;
+
 /**
  * Test whether a CLI command is available on the system.
- * Uses `which` (Unix) to check, falling back to a direct spawn test.
+ * Checks both the system PATH and print-md's local node_modules/.bin.
  */
 async function isToolAvailable(tool: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const p = spawn("which", [tool], { stdio: ["ignore", "ignore", "ignore"] });
+    const p = spawn("which", [tool], {
+      stdio: ["ignore", "ignore", "ignore"],
+      env: { ...process.env, PATH: enhancedPath },
+    });
     p.on("error", () => resolve(false));
     p.on("exit", (code) => resolve(code === 0));
   });

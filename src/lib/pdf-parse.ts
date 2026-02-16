@@ -1,7 +1,3 @@
-import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { execCapture } from "./exec";
 
 /**
@@ -65,75 +61,31 @@ export function parseInkCov(out: string) {
 }
 
 /**
- * Extract CMYK color values directly from PDF content streams (async).
+ * Get per-page ink coverage using Ghostscript's inkcov device.
+ * Returns an array of per-page CMYK coverage values (in percentages).
  */
-export async function parseCmykFromPdf(
+export async function getPerPageInkCoverage(
   pdfPath: string
-): Promise<{
-  maxTac: number;
-  colors: Array<{ c: number; m: number; y: number; k: number; tac: number }>;
-}> {
+): Promise<Array<{ page: number; c: number; m: number; y: number; k: number; tac: number }>> {
   try {
-    const tmpDir = await mkdtemp(join(tmpdir(), "validate-tac-"));
-    const qdfPath = join(tmpDir, "decompressed.pdf");
-
-    try {
-      try {
-        await execCapture("qpdf", [
-          "--qdf",
-          "--no-original-object-ids",
-          pdfPath,
-          qdfPath,
-        ]);
-      } catch {
-        if (!existsSync(qdfPath)) throw new Error("qpdf failed and produced no output");
-      }
-
-      const { stdout: output } = await execCapture("strings", [qdfPath]);
-
-      const cmykPattern =
-        /^([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+[kK]$/gm;
-      const colors: Array<{
-        c: number;
-        m: number;
-        y: number;
-        k: number;
-        tac: number;
-      }> = [];
-      const seen = new Set<string>();
-
-      let match;
-      while ((match = cmykPattern.exec(output)) !== null) {
-        const c = parseFloat(match[1]);
-        const m = parseFloat(match[2]);
-        const y = parseFloat(match[3]);
-        const k = parseFloat(match[4]);
-
-        if ([c, m, y, k].some((v) => isNaN(v) || v < 0 || v > 1)) continue;
-
-        const tac = (c + m + y + k) * 100;
-        const key = `${c.toFixed(3)},${m.toFixed(3)},${y.toFixed(3)},${k.toFixed(3)}`;
-
-        if (!seen.has(key)) {
-          seen.add(key);
-          colors.push({
-            c: c * 100,
-            m: m * 100,
-            y: y * 100,
-            k: k * 100,
-            tac,
-          });
-        }
-      }
-
-      colors.sort((a, b) => b.tac - a.tac);
-      const maxTac = colors.length > 0 ? colors[0].tac : 0;
-      return { maxTac, colors };
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-    }
+    const { stdout } = await execCapture("gs", [
+      "-q",
+      "-dBATCH",
+      "-dNOPAUSE",
+      "-sDEVICE=inkcov",
+      pdfPath,
+    ]);
+    const pages = parseInkCov(stdout);
+    return pages.map((p, i) => ({
+      page: i + 1,
+      c: p.c * 100,
+      m: p.m * 100,
+      y: p.y * 100,
+      k: p.k * 100,
+      tac: p.sum * 100,
+    }));
   } catch {
-    return { maxTac: 0, colors: [] };
+    return [];
   }
 }
 
