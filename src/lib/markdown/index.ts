@@ -6,6 +6,7 @@ import MarkdownIt from "markdown-it";
 import markdownItAttrs from "markdown-it-attrs";
 import markdownItContainer from "markdown-it-container";
 import markdownItPaged from "markdown-it-paged";
+import markdownItSourceMap from "markdown-it-source-map";
 import {
   renderContainerOpen,
   createNamedContainer,
@@ -69,6 +70,7 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   });
 
   md.use(markdownItAttrs);
+  md.use(markdownItSourceMap);
   md.use(markdownItPaged, { implicitPage: true });
 
   // DEPRECATED: Legacy container-based page markers (use @page instead)
@@ -186,7 +188,7 @@ export async function renderChapters(
       const content = await readFile(filePath, "utf-8");
       let html = md.render(content);
       const id = file.replace(/\.md$/, "").replace(/\//g, "-");
-      html = `<section class="chapter" id="${id}">\n${html}\n</section>`;
+      html = `<section class="chapter" id="${id}" data-source-file="${file}">\n${html}\n</section>`;
       bodyContent += html + "\n";
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);

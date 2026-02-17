@@ -12,6 +12,7 @@
         "markdown-it-container": "^4.0.0",
         "markdown-it-footnote": "^4.0.0",
         "markdown-it-paged": "^0.1.2",
+        "markdown-it-source-map": "^0.1.1",
         "pagedjs": "^0.4.3",
         "pagedjs-cli": "^0.4.3",
         "playwright": "^1.58.0",
@@ -563,6 +564,8 @@
     "markdown-it-footnote": ["markdown-it-footnote@4.0.0", "", {}, "sha512-WYJ7urf+khJYl3DqofQpYfEYkZKbmXmwxQV8c8mO/hGIhgZ1wOe7R4HLFNwqx7TjILbnC98fuyeSsin19JdFcQ=="],
 
     "markdown-it-paged": ["markdown-it-paged@0.1.2", "", {}, "sha512-m9IHx6zW0WkWrp7fHJq/G1NUCUcqReO6UKxe89bZr2Dwma/xTA5E7pYhBoAw+L0gi9ncFCSjO8iVZFCaKvOZmQ=="],
+
+    "markdown-it-source-map": ["markdown-it-source-map@0.1.1", "", {}, "sha512-q4+ij82K/0C6O8rw/NnWogcgp3AeQykZZ5954yyxY8pcX8Rago8uAS7e+4Ogd6rERf/tDAen73KwT+Sb7dP/6w=="],
 
     "markdownlint": ["markdownlint@0.37.4", "", { "dependencies": { "markdown-it": "14.1.0", "micromark": "4.0.1", "micromark-core-commonmark": "2.0.2", "micromark-extension-directive": "3.0.2", "micromark-extension-gfm-autolink-literal": "2.1.0", "micromark-extension-gfm-footnote": "2.1.0", "micromark-extension-gfm-table": "2.1.0", "micromark-extension-math": "3.1.0", "micromark-util-types": "2.0.1" } }, "sha512-u00joA/syf3VhWh6/ybVFkib5Zpj2e5KB/cfCei8fkSRuums6nyisTWGqjTWIOFoFwuXoTBQQiqlB4qFKp8ncQ=="],
 
