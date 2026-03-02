@@ -8,7 +8,7 @@ import { copyDir } from "../lib/exec";
 import { copyAssets, DEFAULT_ASSETS } from "../lib/assets";
 import { resolveChromiumExecutable } from "../lib/chromium";
 import { patchHtmlForPagedjs } from "../lib/pagedjs";
-import { convertToPdfxCmyk, stripAnnotations } from "../lib/ghostscript";
+import { convertToPdfxCmyk, stampCreator, stripAnnotations } from "../lib/ghostscript";
 import { writeBuildFingerprint } from "../lib/build-fingerprint";
 import { log } from "../lib/logger";
 
@@ -177,6 +177,11 @@ export default defineCommand({
     log.info("Rendering HTML to PDF via Chromium+Paged.js");
     await fsp.mkdir(path.dirname(path.resolve(out)), { recursive: true });
     await renderHtmlToPdf(path.join(stage, htmlFilename), rawPdf);
+
+    // Stamp Creator metadata on the plain Chromium PDF (PDF/X path sets it via pdfmark)
+    if (!pdfxMode) {
+      await stampCreator(rawPdf);
+    }
 
     let effectiveIccPath: string | null = null;
     let shouldStripAnnotations: boolean | null = null;

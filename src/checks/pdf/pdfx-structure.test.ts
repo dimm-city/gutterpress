@@ -22,6 +22,7 @@ describe("PDF/X structural inspection", () => {
       "5 0 R": {
         "/GTS_PDFXVersion": "PDF/X-1:2001",
         "/GTS_PDFXConformance": "PDF/X-1a:2001",
+        "/Trapped": "/False",
       },
       trailer: {
         "/Root": "1 0 R",

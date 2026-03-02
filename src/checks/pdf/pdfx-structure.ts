@@ -39,8 +39,9 @@ function getInfoDict(objects: JsonObject): JsonObject | null {
   return resolveRef(objects, trailer["/Info"]);
 }
 
-function expectedVersionMarker(flavor: PdfxFlavor): string {
-  return flavor === "x3" ? "PDF/X-3" : "PDF/X-1";
+function expectedVersionMarkers(flavor: PdfxFlavor): string[] {
+  if (flavor === "x3") return ["PDF/X-3"];
+  return ["PDF/X-1a", "PDF/X-1"];
 }
 
 export function parseQpdfObjectsJson(stdout: string): JsonObject | null {
@@ -108,7 +109,7 @@ export function getPdfxMetadataIssues(
   const version = info["/GTS_PDFXVersion"];
   if (typeof version !== "string" || version.length === 0) {
     issues.push("DOCINFO is missing /GTS_PDFXVersion.");
-  } else if (!version.includes(expectedVersionMarker(flavor))) {
+  } else if (!expectedVersionMarkers(flavor).some((marker) => version.includes(marker))) {
     issues.push(`DOCINFO /GTS_PDFXVersion (${version}) does not match requested ${flavor}.`);
   }
 
@@ -121,6 +122,11 @@ export function getPdfxMetadataIssues(
         `DOCINFO /GTS_PDFXConformance (${conformance}) does not match requested x1a.`
       );
     }
+  }
+
+  const trapped = info["/Trapped"];
+  if (trapped !== "/True" && trapped !== "/False" && trapped !== "/Unknown") {
+    issues.push("DOCINFO is missing /Trapped (required for PDF/X conformance).");
   }
 
   return issues;

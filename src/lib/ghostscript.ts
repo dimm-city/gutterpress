@@ -29,7 +29,8 @@ export function makePdfxDefPs(params: {
 }): string {
   const pdfxVersion = params.pdfx === "x3" ? "PDF/X-3:2002" : "PDF/X-1:2001";
   const pdfxConformance = params.pdfx === "x1a" ? "PDF/X-1a:2001" : null;
-  const outputConditionId = "CGATS21_CRPC1";
+  const outputCondition = "CGATS21_CRPC1";
+  const outputConditionId = params.pdfx === "x1a" ? "CGATS TR001" : outputCondition;
   const maxTacNorm = ((params.maxTac ?? 240) / 100).toFixed(1);
   const normalizedIccPath = params.iccPath.replace(/\\/g, "/");
   const iccComponents = 4;
@@ -68,7 +69,9 @@ export function makePdfxDefPs(params: {
 << /UCRFunction { UCR } /BGFunction { BG } >> setpagedevice
 
 [/Title (${params.title})
+/Creator (print-md)
 /GTS_PDFXVersion (${pdfxVersion})
+/Trapped /False
 ${docInfoConformance}/DOCINFO pdfmark
 
 [/_objdef {icc_PDFX} /type /stream /OBJ pdfmark
@@ -81,14 +84,33 @@ ${docInfoConformance}/DOCINFO pdfmark
   /Type /OutputIntent
   /S /GTS_PDFX
   /OutputConditionIdentifier (${outputConditionId})
-  /OutputCondition (${outputConditionId})
-  /Info (${params.title})
+  /OutputCondition (${outputCondition})
+  /Info (${outputCondition})
   /RegistryName (http://www.color.org)
   /DestOutputProfile {icc_PDFX}
 >> /PUT pdfmark
 
 [{Catalog} << /OutputIntents [ {OutputIntent_PDFX} ] >> /PUT pdfmark
 `;
+}
+
+/**
+ * Stamp the Creator metadata field on an existing PDF using Ghostscript.
+ */
+export async function stampCreator(pdfPath: string): Promise<void> {
+  const tmp = `${pdfPath}.stamped.pdf`;
+  await run("gs", [
+    "-dBATCH",
+    "-dNOPAUSE",
+    "-dSAFER",
+    "-sDEVICE=pdfwrite",
+    `-sOutputFile=${tmp}`,
+    "-c",
+    "[/Creator (print-md) /DOCINFO pdfmark",
+    "-f",
+    pdfPath,
+  ]);
+  await rename(tmp, pdfPath);
 }
 
 /**
