@@ -1,38 +1,55 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { execCapture } from "../../lib/exec";
+import {
+  getPdfxOutputIntentIssues,
+  parseQpdfObjectsJson,
+} from "./pdfx-structure";
 
 const check: Check = {
   id: "pdf.print.pdfx-markers",
   name: "PDF/X Markers",
-  description: "Checks for GTS_PDFXVersion and OutputIntent markers",
+  description: "Checks PDF/X OutputIntent structure via qpdf JSON",
   category: "pdf",
   phase: "post-build",
-  requiredTools: ["grep"],
+  requiredTools: ["qpdf"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
-    const pdfxCheck = await execCapture("grep", [
-      "-ao",
-      "GTS_PDFX\\|PDF/X-",
-      ctx.pdfPath,
-    ]).catch(() => ({ stdout: "", stderr: "" }));
+    try {
+      const { stdout } = await execCapture("qpdf", [
+        "--json",
+        "--json-key=objects",
+        ctx.pdfPath,
+      ]);
+      const objects = parseQpdfObjectsJson(stdout);
 
-    if (
-      !pdfxCheck.stdout.includes("GTS_PDFX") &&
-      !pdfxCheck.stdout.includes("PDF/X-")
-    ) {
+      if (!objects) {
+        return [
+          {
+            checkId: check.id,
+            severity: "error",
+            message: "Unable to parse qpdf JSON output for PDF/X checks.",
+            file: ctx.pdfPath,
+          },
+        ];
+      }
+
+      return getPdfxOutputIntentIssues(objects).map((message) => ({
+        checkId: check.id,
+        severity: "error" as const,
+        message,
+        file: ctx.pdfPath,
+      }));
+    } catch {
       return [
         {
           checkId: check.id,
           severity: "error",
-          message:
-            "PDF/X markers not found (GTS_PDFXVersion / OutputIntent).",
+          message: "Failed to inspect PDF objects with qpdf for PDF/X markers.",
           file: ctx.pdfPath,
         },
       ];
     }
-
-    return [];
   },
 };
 

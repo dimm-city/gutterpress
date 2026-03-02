@@ -1,11 +1,15 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { execCapture } from "../../lib/exec";
+import {
+  getPdfxMetadataIssues,
+  parseQpdfObjectsJson,
+} from "./pdfx-structure";
 
 const check: Check = {
   id: "pdf.print.pdfx-metadata",
   name: "PDF/X Metadata",
-  description: "Verifies XMP metadata and output intent profile",
+  description: "Verifies PDF/X DOCINFO metadata via qpdf JSON",
   category: "pdf",
   phase: "post-build",
   requiredTools: ["qpdf"],
@@ -14,37 +18,38 @@ const check: Check = {
 
     try {
       const { stdout } = await execCapture("qpdf", [
-        "--list-all-objects",
+        "--json",
+        "--json-key=objects",
         ctx.pdfPath,
       ]);
 
-      const results: CheckResult[] = [];
-
-      // Check for output intent
-      const hasOutputIntent = /\/OutputIntent/.test(stdout);
-      if (!hasOutputIntent) {
-        results.push({
-          checkId: check.id,
-          severity: "info",
-          message: "No OutputIntent found in PDF metadata.",
-          file: ctx.pdfPath,
-        });
+      const objects = parseQpdfObjectsJson(stdout);
+      if (!objects) {
+        return [
+          {
+            checkId: check.id,
+            severity: "error",
+            message: "Unable to parse qpdf JSON output for PDF/X metadata checks.",
+            file: ctx.pdfPath,
+          },
+        ];
       }
 
-      // Check for XMP metadata stream
-      const hasXmp = /\/Metadata/.test(stdout);
-      if (!hasXmp) {
-        results.push({
-          checkId: check.id,
-          severity: "info",
-          message: "No XMP metadata stream found in PDF.",
-          file: ctx.pdfPath,
-        });
-      }
-
-      return results;
+      return getPdfxMetadataIssues(objects, ctx.config.pdfx.flavor).map((message) => ({
+        checkId: check.id,
+        severity: "error" as const,
+        message,
+        file: ctx.pdfPath,
+      }));
     } catch {
-      return [];
+      return [
+        {
+          checkId: check.id,
+          severity: "error",
+          message: "Failed to inspect PDF objects with qpdf for PDF/X metadata.",
+          file: ctx.pdfPath,
+        },
+      ];
     }
   },
 };
