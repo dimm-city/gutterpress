@@ -2,6 +2,7 @@ import { defineCommand, runCommand } from "citty";
 import { resolve, join } from "node:path";
 import { loadManifest, resolveConfig } from "../lib/manifest";
 import { log } from "../lib/logger";
+import { writeBuildFingerprint } from "../lib/build-fingerprint";
 import lintCmd from "./lint";
 import convertCmd from "./convert";
 import assetsCmd from "./assets";
@@ -142,6 +143,20 @@ export default defineCommand({
       log.info("Step 6/6: Validation (skipped)");
     }
 
+    const fingerprintPath = await writeBuildFingerprint({
+      command: "run",
+      outputDir: outDir,
+      sourceDir: inputDir,
+      args,
+      pdfx: {
+        requestedFlavor: (pdfxFlavor as "x1a" | "x3" | undefined) ?? null,
+        resolvedFlavor: config.pdfx.flavor,
+        iccPath: pdfxFlavor ? resolve(args.icc ?? config.pdfx.icc) : null,
+        stripAnnotations: pdfxFlavor ? config.pdfx.stripAnnotations : null,
+      },
+    });
+
     log.success(`Pipeline complete: ${pdfFile}`);
+    log.info(`Fingerprint: ${fingerprintPath}`);
   },
 });

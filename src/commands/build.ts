@@ -9,6 +9,7 @@ import { copyAssets, DEFAULT_ASSETS } from "../lib/assets";
 import { resolveChromiumExecutable } from "../lib/chromium";
 import { patchHtmlForPagedjs } from "../lib/pagedjs";
 import { convertToPdfxCmyk, stripAnnotations } from "../lib/ghostscript";
+import { writeBuildFingerprint } from "../lib/build-fingerprint";
 import { log } from "../lib/logger";
 
 async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
@@ -177,9 +178,13 @@ export default defineCommand({
     await fsp.mkdir(path.dirname(path.resolve(out)), { recursive: true });
     await renderHtmlToPdf(path.join(stage, htmlFilename), rawPdf);
 
+    let effectiveIccPath: string | null = null;
+    let shouldStripAnnotations: boolean | null = null;
+
     // If --pdfx is specified, run full Ghostscript CMYK pipeline
     if (pdfxMode) {
       const icc = args.icc ?? config.pdfx.icc;
+      effectiveIccPath = path.resolve(icc);
 
       if (!fs.existsSync(icc)) {
         log.error(`Missing ICC profile at ${icc}`);
@@ -189,6 +194,7 @@ export default defineCommand({
 
       // Strip Chromium-generated link annotations (not permitted in PDF/X)
       const shouldStrip = args["strip-annotations"] ?? config.pdfx.stripAnnotations;
+      shouldStripAnnotations = shouldStrip;
       if (shouldStrip) {
         log.info("Stripping annotations for PDF/X compliance");
         await stripAnnotations(rawPdf);
@@ -204,7 +210,21 @@ export default defineCommand({
       });
     }
 
+    const fingerprintPath = await writeBuildFingerprint({
+      command: "build",
+      outputDir: path.dirname(path.resolve(out)),
+      sourceDir: path.dirname(path.resolve(input)),
+      args,
+      pdfx: {
+        requestedFlavor: pdfxMode ?? null,
+        resolvedFlavor: config.pdfx.flavor,
+        iccPath: effectiveIccPath,
+        stripAnnotations: shouldStripAnnotations,
+      },
+    });
+
     log.success(`Wrote: ${out}`);
+    log.info(`Fingerprint: ${fingerprintPath}`);
     if (pdfxMode) {
       log.info(`Next: print-md validate --pdf ${out}`);
     }

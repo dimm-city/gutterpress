@@ -6,6 +6,9 @@
  */
 
 import { describe, test, expect, beforeEach } from "bun:test";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { resolveConfig } from "../lib/manifest";
 import type { ResolvedConfig } from "../schema/manifest.types";
 import type { CheckContext, CheckResult, Check } from "./types";
@@ -70,6 +73,9 @@ describe("Check Registry", () => {
     expect(sourceIds).toContain("source.htmlhint");
     expect(sourceIds).toContain("source.stylelint");
     expect(sourceIds).toContain("source.callout-validation");
+    expect(sourceIds).toContain("source.links.local-refs");
+    expect(sourceIds).toContain("source.accessibility.alt-text");
+    expect(sourceIds).toContain("source.accessibility.heading-order");
   });
 
   test("all expected asset checks are registered", () => {
@@ -155,8 +161,8 @@ describe("Check Registry", () => {
 
   test("total registered check count", () => {
     const all = getAllCheckIds();
-    // 15 pdf + 4 source + 8 asset + 4 heuristic = 31
-    expect(all.length).toBe(31);
+    // 15 pdf + 7 source + 8 asset + 4 heuristic = 34
+    expect(all.length).toBe(34);
   });
 });
 
@@ -199,6 +205,18 @@ describe("Check Runner", () => {
     expect(report.summary.total).toBe(1);
   });
 
+  test("only filter supports wildcard selectors", async () => {
+    const ctx = makeCtx();
+    const report = await runChecks(ctx, {
+      only: ["source.accessibility.*"],
+    });
+    expect(report.summary.total).toBe(2);
+    expect(report.passed.slice().sort()).toEqual([
+      "source.accessibility.alt-text",
+      "source.accessibility.heading-order",
+    ]);
+  });
+
   test("skip filter excludes checks", async () => {
     const ctx = makeCtx();
     const allReport = await runChecks(ctx, { category: ["heuristic"] });
@@ -207,6 +225,16 @@ describe("Check Runner", () => {
       skip: ["heuristic.whitespace.text-density"],
     });
     expect(skipReport.summary.total).toBe(allReport.summary.total - 1);
+  });
+
+  test("skip filter supports wildcard selectors", async () => {
+    const ctx = makeCtx();
+    const allReport = await runChecks(ctx, { category: ["source"] });
+    const skipReport = await runChecks(ctx, {
+      category: ["source"],
+      skip: ["source.accessibility.*"],
+    });
+    expect(skipReport.summary.total).toBe(allReport.summary.total - 2);
   });
 
   test("manifest check disable works", async () => {
@@ -347,7 +375,14 @@ describe("Manifest validate section", () => {
     const config = resolveConfig({}, {});
     expect(config.validate).toBeDefined();
     expect(config.validate.enabled).toBe(true);
-    expect(config.validate.checks).toEqual({});
+    expect(config.validate.checks["pdf.structure.qpdf"]).toEqual({
+      enabled: true,
+      severity: "error",
+    });
+    expect(config.validate.checks["pdf.print.pdfx-markers"]).toEqual({
+      enabled: true,
+      severity: "error",
+    });
     expect(config.validate.source.allowedCallouts).toContain("sidebar");
     expect(config.validate.assets.maxImageSize).toBe(10_000_000);
     expect(config.validate.pdf.forbidTransparency).toBe(true);
@@ -454,6 +489,72 @@ describe("Callout validation check", () => {
     const ctx = makeCtx({ config, markdownFiles: ["/tmp/test.md"] });
     const results = await check.run(ctx);
     expect(results).toHaveLength(0);
+  });
+});
+
+describe("Local markdown refs check", () => {
+  test("reports missing local link and image refs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-local-refs-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(join(dir, "ok.md"), "# ok\n");
+    await writeFile(
+      mainFile,
+      [
+        "[ok](./ok.md)",
+        "[missing](./missing.md)",
+        "![img](./missing.png)",
+        "[ref]: ./also-missing.md",
+        "[external](https://example.com)",
+      ].join("\n")
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+
+    expect(results).toHaveLength(3);
+    expect(results.every((r) => r.severity === "error")).toBe(true);
+  });
+});
+
+describe("Source accessibility checks", () => {
+  test("alt-text reports empty image alt text", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-alt-text-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "![ ](./image.png)",
+        "![ok](./image.png)",
+      ].join("\n")
+    );
+
+    const check = getCheckById("source.accessibility.alt-text")!;
+    const ctx = makeCtx({ markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+
+    expect(results).toHaveLength(1);
+    expect(results[0]!.severity).toBe("warning");
+  });
+
+  test("heading-order reports heading level jumps", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-heading-order-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "# H1",
+        "### H3 jump",
+        "## H2",
+      ].join("\n")
+    );
+
+    const check = getCheckById("source.accessibility.heading-order")!;
+    const ctx = makeCtx({ markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+
+    expect(results).toHaveLength(1);
+    expect(results[0]!.severity).toBe("warning");
   });
 });
 
@@ -633,6 +734,9 @@ describe("Tool Check", () => {
     // These checks are known to NOT need external tools
     const noToolChecks = new Set([
       "source.callout-validation",
+      "source.links.local-refs",
+      "source.accessibility.alt-text",
+      "source.accessibility.heading-order",
       "asset.image.file-size",
       "asset.font.approved-files",
       "asset.font.missing-refs",

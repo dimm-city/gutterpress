@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { resolve as resolvePath, join } from "node:path";
-import { getChecks } from "./registry";
+import { getChecks, resolveCheckSelectors } from "./registry";
 import { log } from "../lib/logger";
 import type { ResolvedConfig } from "../schema/manifest.types";
 import type { CheckCategory, CheckPhase } from "./types";
@@ -47,12 +47,12 @@ export async function checkToolAvailability(
 ): Promise<ToolCheckResult> {
   // Get the same set of checks the runner would use (before tool filtering)
   let checks = opts.only?.length
-    ? getChecks({ ids: opts.only })
+    ? getChecks({ ids: resolveCheckSelectors(opts.only) })
     : getChecks({ category: opts.category, phase: opts.phase });
 
   // Apply skip filter
   if (opts.skip?.length) {
-    const skipSet = new Set(opts.skip);
+    const skipSet = new Set(resolveCheckSelectors(opts.skip));
     checks = checks.filter((c) => !skipSet.has(c.id));
   }
 

@@ -1,19 +1,9 @@
 import { defineCommand } from "citty";
-import { existsSync } from "node:fs";
-import { resolve, join } from "node:path";
-import { loadManifest, resolveConfig } from "../lib/manifest";
 import { log } from "../lib/logger";
-import { runChecks } from "../checks/runner";
 import { formatReport } from "../checks/formatter";
-import { checkToolAvailability, reportMissingTools } from "../checks/tool-check";
-import type { CheckCategory, CheckPhase, CheckContext } from "../checks/types";
 import type { OutputFormat } from "../checks/formatter";
-
-// Import check modules to trigger self-registration
-import "../checks/pdf/index";
-import "../checks/source/index";
-import "../checks/asset/index";
-import "../checks/heuristic/index";
+import { reportMissingTools } from "../checks/tool-check";
+import { executeValidation } from "../lib/validation-exec";
 
 export default defineCommand({
   meta: {
@@ -40,11 +30,11 @@ export default defineCommand({
     },
     only: {
       type: "string",
-      description: "Run only these check IDs (comma-separated)",
+      description: "Run only these check IDs/selectors (comma-separated)",
     },
     skip: {
       type: "string",
-      description: "Skip these check IDs (comma-separated)",
+      description: "Skip these check IDs/selectors (comma-separated)",
     },
     format: {
       type: "string",
@@ -54,122 +44,45 @@ export default defineCommand({
       type: "string",
       description: "Run checks for phase: pre-build or post-build",
     },
+    profile: {
+      type: "string",
+      description: "Validation profile lock (currently: dtrpg)",
+    },
   },
   async run({ args }) {
-    const manifestPath =
-      typeof args.manifest === "string" ? args.manifest : undefined;
-    const manifest = await loadManifest(
-      manifestPath ?? args.input ?? undefined
-    );
-    const config = resolveConfig({}, manifest);
-
-    const pdfPath = typeof args.pdf === "string" ? args.pdf : undefined;
-    const inputDir = typeof args.input === "string"
-      ? resolve(args.input)
-      : undefined;
-
-    // Backward compat: --pdf alone = post-build only
-    // --input alone = pre-build only
-    // both = all phases
-    if (pdfPath && !existsSync(pdfPath)) {
-      log.error(`File not found: ${pdfPath}`);
-      process.exit(2);
-    }
-
     // Determine output format
     const format: OutputFormat =
       args.format === "json" ? "json" : "text";
 
-    // Parse categories
-    let categories: CheckCategory[] | undefined;
-    if (typeof args.category === "string") {
-      categories = args.category
-        .split(",")
-        .map((s) => s.trim()) as CheckCategory[];
-    }
-
-    // Parse only/skip
-    const only =
-      typeof args.only === "string"
-        ? args.only.split(",").map((s) => s.trim())
-        : undefined;
-    const skip =
-      typeof args.skip === "string"
-        ? args.skip.split(",").map((s) => s.trim())
-        : undefined;
-
-    // Determine phase
-    let phase: CheckPhase | undefined;
-    if (typeof args.phase === "string") {
-      phase = args.phase as CheckPhase;
-    } else if (pdfPath && !inputDir) {
-      phase = "post-build";
-    } else if (inputDir && !pdfPath) {
-      phase = "pre-build";
-    }
-
-    // Collect markdown and CSS files for source/asset checks
-    let markdownFiles: string[] | undefined;
-    let cssFiles: string[] | undefined;
-    let assetDirs: string[] | undefined;
-    let htmlPath: string | undefined;
-
-    if (inputDir) {
-      const { glob } = await import("glob");
-      markdownFiles = await glob("**/*.md", {
-        cwd: inputDir,
-        absolute: true,
-        ignore: ["**/node_modules/**"],
+    let execution;
+    try {
+      execution = await executeValidation({
+        manifest: typeof args.manifest === "string" ? args.manifest : undefined,
+        pdf: typeof args.pdf === "string" ? args.pdf : undefined,
+        input: typeof args.input === "string" ? args.input : undefined,
+        category: typeof args.category === "string" ? args.category : undefined,
+        only: typeof args.only === "string" ? args.only : undefined,
+        skip: typeof args.skip === "string" ? args.skip : undefined,
+        phase: typeof args.phase === "string" ? args.phase : undefined,
+        profile: typeof args.profile === "string" ? args.profile : undefined,
       });
-      cssFiles = await glob("**/*.css", {
-        cwd: inputDir,
-        absolute: true,
-        ignore: ["**/node_modules/**"],
-      });
-      assetDirs = config.source.assets.map((a) =>
-        resolve(inputDir, a)
-      );
-      // Check for generated HTML
-      const outDir = resolve(config.output.dir);
-      const possibleHtml = join(outDir, config.output.html);
-      if (existsSync(possibleHtml)) {
-        htmlPath = possibleHtml;
-      }
+    } catch (error) {
+      log.error(error instanceof Error ? error.message : String(error));
+      process.exit(2);
     }
 
-    const ctx: CheckContext = {
-      config,
-      inputDir: inputDir ?? process.cwd(),
-      outputDir: resolve(config.output.dir),
-      pdfPath,
-      htmlPath,
-      markdownFiles,
-      cssFiles,
-      assetDirs,
-    };
+    if (!execution) return;
 
-    // Check for missing external tools before running checks
-    const runnerOpts = {
-      category: categories,
-      phase,
-      only,
-      skip,
-    };
+    const { report, tools, context } = execution;
 
-    const toolResult = await checkToolAvailability(config, runnerOpts);
     if (format === "text") {
-      reportMissingTools(toolResult);
+      reportMissingTools(tools);
     }
-
-    const report = await runChecks(ctx, {
-      ...runnerOpts,
-      skipMissingTools: toolResult.skippedChecks,
-    });
 
     formatReport(report, format);
 
     // Extra summary info for text format (backward compat with old output)
-    if (format === "text" && pdfPath) {
+    if (format === "text" && context.pdfPath) {
       // Show TAC and font info from individual check results
       const tacResults = report.results.filter(
         (r) => r.checkId === "pdf.print.ink-coverage"

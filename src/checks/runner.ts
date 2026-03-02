@@ -6,7 +6,7 @@ import type {
   CheckResult,
   CheckSeverity,
 } from "./types";
-import { getChecks } from "./registry";
+import { getChecks, resolveCheckSelectors } from "./registry";
 import type { ResolvedConfig } from "../schema/manifest.types";
 
 export interface RunnerOptions {
@@ -59,7 +59,8 @@ export async function runChecks(
   // Get all checks matching the filter
   let checks: Check[];
   if (opts.only && opts.only.length > 0) {
-    checks = getChecks({ ids: opts.only });
+    const onlyIds = resolveCheckSelectors(opts.only);
+    checks = getChecks({ ids: onlyIds });
   } else {
     checks = getChecks({
       category: opts.category,
@@ -69,7 +70,7 @@ export async function runChecks(
 
   // Apply skip filter
   if (opts.skip && opts.skip.length > 0) {
-    const skipSet = new Set(opts.skip);
+    const skipSet = new Set(resolveCheckSelectors(opts.skip));
     checks = checks.filter((c) => !skipSet.has(c.id));
   }
 

@@ -41,3 +41,34 @@ export function getCheckById(id: string): Check | undefined {
 export function getAllCheckIds(): string[] {
   return Array.from(checks.keys());
 }
+
+export function resolveCheckSelectors(selectors: string[]): string[] {
+  const allChecks = Array.from(checks.values());
+  const resolved: string[] = [];
+  const seen = new Set<string>();
+
+  for (const rawSelector of selectors) {
+    const selector = rawSelector.trim();
+    if (!selector) continue;
+
+    const matcher = selector.includes("*")
+      ? selectorToRegex(selector)
+      : undefined;
+
+    for (const check of allChecks) {
+      const matched = matcher ? matcher.test(check.id) : check.id === selector;
+      if (!matched || seen.has(check.id)) continue;
+      seen.add(check.id);
+      resolved.push(check.id);
+    }
+  }
+
+  return resolved;
+}
+
+function selectorToRegex(selector: string): RegExp {
+  const escaped = selector
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\\\*/g, ".*");
+  return new RegExp(`^${escaped}$`);
+}

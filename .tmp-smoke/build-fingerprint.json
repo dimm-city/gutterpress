@@ -1,0 +1,36 @@
+{
+  "command": "build",
+  "commandArgs": {
+    "_": [],
+    "icc": "profiles/CGATS21_CRPC1.icc",
+    "input": "examples/v12-self-contained.html",
+    "out": ".tmp-smoke/smoke.pdf",
+    "pdfx": "x1a"
+  },
+  "keyConfig": {
+    "outputDir": "/home/founder3/code/dimm-city/print-md/.tmp-smoke",
+    "pdfx": {
+      "iccPath": "/home/founder3/code/dimm-city/print-md/profiles/CGATS21_CRPC1.icc",
+      "requestedFlavor": "x1a",
+      "resolvedFlavor": "x1a",
+      "stripAnnotations": true
+    }
+  },
+  "schemaVersion": 1,
+  "sourceRevision": {
+    "commit": "96a5cb4b52827ec877b8fa8a479d284aba898292",
+    "dirty": true,
+    "root": "/home/founder3/code/dimm-city/print-md",
+    "shortCommit": "96a5cb4"
+  },
+  "tools": {
+    "bun": "1.3.5",
+    "chromium": "Google Chrome 145.0.7632.116",
+    "ghostscript": "9.55.0",
+    "node": "24.3.0",
+    "pagedjs": "^0.4.3",
+    "playwright": "^1.58.0",
+    "print-md": "0.1.3",
+    "qpdf": "qpdf version 10.6.3"
+  }
+}

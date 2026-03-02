@@ -34,7 +34,24 @@ export const DTRPG_PRESET: VendorPreset = {
   },
   validate: {
     enabled: true,
-    checks: {},
+    checks: {
+      "pdf.structure.qpdf": {
+        enabled: true,
+        severity: "error",
+      },
+      "pdf.print.pdfx-markers": {
+        enabled: true,
+        severity: "error",
+      },
+      "pdf.print.pdfx-metadata": {
+        enabled: true,
+        severity: "error",
+      },
+      "pdf.print.embedded-fonts": {
+        enabled: true,
+        severity: "error",
+      },
+    },
     source: {
       markdownlint: null,
       htmlhint: null,

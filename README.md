@@ -418,6 +418,14 @@ print-md build output.html book.pdf
 print-md build output.html book.pdf --pdfx
 ```
 
+### Build Fingerprint Artifact
+
+Every successful `print-md build` and `print-md run` writes a deterministic fingerprint artifact to the output directory:
+
+- `build-fingerprint.json`
+
+The fingerprint includes command args, key PDF/X config (flavor/profile path), tool versions, and git source revision metadata when available.
+
 ### Preview Command
 
 ```bash

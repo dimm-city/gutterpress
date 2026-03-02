@@ -6,8 +6,10 @@ import validate from "./commands/validate";
 import convert from "./commands/convert";
 import lint from "./commands/lint";
 import assets from "./commands/assets";
+import audit from "./commands/audit";
 import run from "./commands/run";
 import preview from "./commands/preview";
+import preflight from "./commands/preflight";
 
 const main = defineCommand({
   meta: {
@@ -21,8 +23,10 @@ const main = defineCommand({
     convert,
     lint,
     assets,
+    audit,
     run,
     preview,
+    preflight,
   },
 });
 

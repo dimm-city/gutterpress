@@ -54,6 +54,19 @@ print-md validate --pdf dist/book.pdf
 
 # With a manifest for project-specific settings
 print-md validate --pdf dist/book.pdf --manifest ./manifest.yaml
+
+# Lock deterministic DTRPG thresholds/check set
+print-md validate --pdf dist/book.pdf --profile dtrpg
+```
+
+### Preflight report command
+
+```bash
+# Runs post-build checks and writes deterministic JSON + markdown reports
+print-md preflight --pdf dist/book.pdf --profile dtrpg
+
+# Custom report destination/base filename
+print-md preflight --pdf dist/book.pdf --report-dir .reviews --name release-preflight
 ```
 
 ### Validate source files (pre-build checks)
@@ -81,6 +94,9 @@ print-md validate --input ./my-book --category source,asset
 
 # Run a single specific check
 print-md validate --pdf dist/book.pdf --only pdf.print.page-size
+
+# Run check groups with wildcard selectors
+print-md validate --input ./my-book --only source.links.*,source.accessibility.*
 
 # Run all checks except specific ones
 print-md validate --pdf dist/book.pdf --skip pdf.nav.cross-refs,pdf.nav.page-labels
@@ -120,10 +136,11 @@ print-md run --input ./my-book --pdfx x1a --skip-validate
 | `--input` | string | Source directory (enables pre-build checks) |
 | `--manifest` | string | Path to manifest.yaml |
 | `--category` | string | Comma-separated: `source`, `pdf`, `asset`, `heuristic` |
-| `--only` | string | Run only these check IDs (comma-separated) |
-| `--skip` | string | Skip these check IDs (comma-separated) |
+| `--only` | string | Run only these check IDs/selectors (comma-separated, supports `*`) |
+| `--skip` | string | Skip these check IDs/selectors (comma-separated, supports `*`) |
 | `--format` | string | Output: `text` (default) or `json` |
 | `--phase` | string | Optional: `pre-build` or `post-build` (overrides implicit phase detection) |
+| `--profile` | string | Optional profile lock. `dtrpg` enforces strict PDF/X checks + TAC defaults |
 
 ## Manifest Configuration
 
@@ -190,6 +207,9 @@ Source checks validate your markdown, HTML, and CSS files by delegating to estab
 | `source.htmlhint` | htmlhint | HTML validity, inline styles, tag correctness |
 | `source.stylelint` | stylelint | CSS rule violations, forbidden properties |
 | `source.callout-validation` | (built-in) | Container types vs `allowedCallouts` list |
+| `source.links.local-refs` | (built-in) | Local markdown links/image refs exist |
+| `source.accessibility.alt-text` | (built-in) | Image markdown has non-empty alt text |
+| `source.accessibility.heading-order` | (built-in) | Heading levels do not jump (e.g. H1 -> H3) |
 
 **Tool config files**: Instead of defining rules in the manifest, point to each tool's native config file:
 
@@ -201,6 +221,8 @@ validate:
 ```
 
 Setting a tool to `false` disables it entirely. Setting to `null` (or omitting) enables auto-detection of config files in the project root.
+
+Wildcard selectors in `--only/--skip` match full check IDs. For example: `source.accessibility.*` or `source.links.*`.
 
 **System dependencies**: `markdownlint-cli2`, `htmlhint`, and `stylelint` must be installed (globally or project-local) for their respective checks to run. Missing tools are detected automatically and their checks are skipped with a warning (see [Automatic Tool Detection](#automatic-tool-detection)).
 
@@ -252,6 +274,18 @@ Asset checks validate source images and fonts before they enter the build.
 | `asset.font.approved-files` | Fonts match approved file patterns |
 | `asset.font.missing-refs` | CSS @font-face src files exist on disk |
 | `asset.font.license` | License files present in font directories |
+
+### Asset-Only Audit Command
+
+Use `audit` when you want just asset checks without running full source/PDF validation:
+
+```bash
+# Audit one asset directory
+print-md audit ./images
+
+# JSON output with selectors
+print-md audit ./images --format json --only asset.image.*
+```
 
 **System dependencies** (missing tools are detected automatically — see [Automatic Tool Detection](#automatic-tool-detection)):
 

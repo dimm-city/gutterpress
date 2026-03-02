@@ -100,6 +100,54 @@ jobs:
       - name: Run TypeScript compiler
         run: bunx tsc --noEmit
 
+  pdfx-smoke:
+    name: PDF/X Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install OS tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ghostscript qpdf
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Configure Chromium path
+        run: echo "CHROMIUM_PATH=$(which google-chrome)" >> $GITHUB_ENV
+
+      - name: Build sample PDF/X artifact
+        run: |
+          mkdir -p .ci-smoke
+          bun src/cli.ts build \
+            --input examples/v12-self-contained.html \
+            --out .ci-smoke/smoke.pdf \
+            --pdfx x1a \
+            --icc profiles/CGATS21_CRPC1.icc
+
+      - name: Strict PDF/X structural validation
+        run: |
+          qpdf --check .ci-smoke/smoke.pdf
+          bun src/cli.ts validate \
+            --pdf .ci-smoke/smoke.pdf \
+            --phase post-build \
+            --only pdf.print.pdfx-markers,pdf.print.pdfx-metadata
+
+      - name: Verify fingerprint artifact emitted
+        run: test -f .ci-smoke/build-fingerprint.json
+
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest
