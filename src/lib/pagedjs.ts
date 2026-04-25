@@ -23,6 +23,11 @@ export const BREAK_INSIDE_HANDLER = `
         constructor(chunker, polisher, caller) {
           super(chunker, polisher, caller);
           this._lastRef = null;
+          // Cards we've already approved to split internally — never try to
+          // keep them whole again. Without this, an oversized card whose first
+          // internal break is allowed will be re-trapped on subsequent breaks
+          // (table cells, paragraphs, list items inside it) and Paged.js loops.
+          this._splitAllowed = new Set();
         }
         onBreakToken(breakToken) {
           if (!breakToken || !breakToken.node) return breakToken;
@@ -33,11 +38,18 @@ export const BREAK_INSIDE_HANDLER = `
               // Check data-break-inside attribute instead.
               if (node.getAttribute && node.getAttribute('data-break-inside') === 'avoid') {
                 var ref = node.getAttribute('data-ref');
+                // Permanent split-allowed flag: once we let a card split,
+                // every subsequent break inside it is approved without
+                // re-trying the move-before-card dance.
+                if (ref && this._splitAllowed.has(ref)) {
+                  return breakToken;
+                }
                 // Only skip if this is the same element we just moved AND it
                 // has no previous sibling — meaning it's first on the page and
                 // truly too tall to fit. If it has siblings, content before it
                 // can be moved to make room, so always allow the move.
                 if (ref && ref === this._lastRef && !node.previousElementSibling) {
+                  this._splitAllowed.add(ref);
                   this._lastRef = null;
                   return breakToken;
                 }
@@ -67,6 +79,16 @@ export const BREAK_INSIDE_HANDLER = `
       // instance of each card and removing earlier empty/duplicate copies.
       var pages = document.querySelectorAll('.pagedjs_page');
       var seen = new Map();
+      // Helper: an "empty shell" is a duplicate left behind by move-break with
+      // no real content. Real split fragments (tagged data-split-from) and
+      // cards with substantive text/headings must NEVER be removed, even
+      // when they share a data-ref with another fragment.
+      var isEmptyShell = function (card) {
+        if (card.hasAttribute('data-split-from')) return false;
+        var hasHeading = !!card.querySelector('h4, .tab-title');
+        var text = (card.textContent || '').trim();
+        return !hasHeading && text.length < 30;
+      };
       for (var i = pages.length - 1; i >= 0; i--) {
         var content = pages[i].querySelector('.pagedjs_page_content');
         if (!content) continue;
@@ -76,7 +98,9 @@ export const BREAK_INSIDE_HANDLER = `
           var ref = card.getAttribute('data-ref');
           if (!ref) continue;
           if (seen.has(ref)) {
-            card.parentNode.removeChild(card);
+            if (isEmptyShell(card)) {
+              card.parentNode.removeChild(card);
+            }
           } else {
             seen.set(ref, true);
           }
