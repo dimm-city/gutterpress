@@ -87,10 +87,14 @@ export const BREAK_INSIDE_HANDLER = `
       // in reverse we see a continuation first (added to seen), then the start
       // fragment (no data-split-from, ref in seen) — which we must NOT remove
       // because it is the genuine first half of the split, not a polyfill ghost.
-      // Track refs seen WITH data-split-from so the start fragment is kept.
+      // Track refs seen WITH data-split-from so the start fragment is kept,
+      // AND track refs seen WITH data-split-original which marks the genuine
+      // first half of a Paged.js native split. Anything else with the same
+      // ref is a polyfill ghost and is removed.
       var pages = document.querySelectorAll('.pagedjs_page');
       var seen = new Set();
-      var splitContinuations = new Set(); // refs whose continuation was already seen
+      var splitContinuations = new Set();
+      var splitOriginals = new Set();
       for (var i = pages.length - 1; i >= 0; i--) {
         var content = pages[i].querySelector('.pagedjs_page_content');
         if (!content) continue;
@@ -100,15 +104,16 @@ export const BREAK_INSIDE_HANDLER = `
           var ref = card.getAttribute('data-ref');
           if (!ref) continue;
           var hasSplitFrom = card.hasAttribute('data-split-from');
-          if (hasSplitFrom) {
-            splitContinuations.add(ref);
-          }
+          var isSplitOriginal = card.getAttribute('data-split-original') === 'true';
+          if (hasSplitFrom) splitContinuations.add(ref);
+          if (isSplitOriginal) splitOriginals.add(ref);
           if (seen.has(ref)) {
-            // Earlier occurrence of a card we already kept — remove it only
-            // if it is a polyfill ghost (no data-split-from AND the ref has
-            // no known split continuation). If a continuation exists, this is
-            // the legitimate start fragment of a multi-page split — keep it.
-            if (!hasSplitFrom && !splitContinuations.has(ref)) {
+            // Earlier occurrence of a card we already kept. A polyfill ghost
+            // has NEITHER data-split-from (continuation) NOR data-split-original
+            // (genuine start of a Paged.js native split). If both attributes
+            // are absent, this earlier occurrence is the residue from the
+            // polyfill's break-before-card move and must be removed.
+            if (!hasSplitFrom && !isSplitOriginal) {
               card.parentNode.removeChild(card);
             }
           } else {
