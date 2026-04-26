@@ -76,19 +76,21 @@ export const BREAK_INSIDE_HANDLER = `
       // The onBreakToken handler moves breaks before cards, but Paged.js
       // doesn't remove the already-rendered clone from the current page.
       // This pass deduplicates by keeping only the LAST (most complete)
-      // instance of each card and removing earlier empty/duplicate copies.
+      // instance of each card and removing earlier occurrences.
+      // Walk pages in reverse: the last occurrence of each data-ref is seen
+      // first and kept. Any earlier occurrence with the same ref is a split
+      // fragment left by the break-inside handler and is always removed.
+      //
+      // Special case — legitimately split cards: when a card is too tall to
+      // fit on one page, Paged.js splits it and marks continuations with
+      // data-split-from. The START fragment has no data-split-from. Walking
+      // in reverse we see a continuation first (added to seen), then the start
+      // fragment (no data-split-from, ref in seen) — which we must NOT remove
+      // because it is the genuine first half of the split, not a polyfill ghost.
+      // Track refs seen WITH data-split-from so the start fragment is kept.
       var pages = document.querySelectorAll('.pagedjs_page');
-      var seen = new Map();
-      // Helper: an "empty shell" is a duplicate left behind by move-break with
-      // no real content. Real split fragments (tagged data-split-from) and
-      // cards with substantive text/headings must NEVER be removed, even
-      // when they share a data-ref with another fragment.
-      var isEmptyShell = function (card) {
-        if (card.hasAttribute('data-split-from')) return false;
-        var hasHeading = !!card.querySelector('h4, .tab-title');
-        var text = (card.textContent || '').trim();
-        return !hasHeading && text.length < 30;
-      };
+      var seen = new Set();
+      var splitContinuations = new Set(); // refs whose continuation was already seen
       for (var i = pages.length - 1; i >= 0; i--) {
         var content = pages[i].querySelector('.pagedjs_page_content');
         if (!content) continue;
@@ -97,12 +99,20 @@ export const BREAK_INSIDE_HANDLER = `
           var card = cards[j];
           var ref = card.getAttribute('data-ref');
           if (!ref) continue;
+          var hasSplitFrom = card.hasAttribute('data-split-from');
+          if (hasSplitFrom) {
+            splitContinuations.add(ref);
+          }
           if (seen.has(ref)) {
-            if (isEmptyShell(card)) {
+            // Earlier occurrence of a card we already kept — remove it only
+            // if it is a polyfill ghost (no data-split-from AND the ref has
+            // no known split continuation). If a continuation exists, this is
+            // the legitimate start fragment of a multi-page split — keep it.
+            if (!hasSplitFrom && !splitContinuations.has(ref)) {
               card.parentNode.removeChild(card);
             }
           } else {
-            seen.set(ref, true);
+            seen.add(ref);
           }
         }
       }
