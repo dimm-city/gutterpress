@@ -29,15 +29,34 @@ export const BREAK_INSIDE_HANDLER = `
           // (table cells, paragraphs, list items inside it) and Paged.js loops.
           this._splitAllowed = new Set();
         }
-        onBreakToken(breakToken) {
+        onBreakToken(breakToken, overflow, rendered) {
           if (!breakToken || !breakToken.node) return breakToken;
           var node = breakToken.node;
+          // DEBUG: log every break event with rendered/overflow context
+          window.__BREAK_LOG__ = window.__BREAK_LOG__ || [];
+          var srcNode = breakToken.node;
+          var ctx = {
+            srcTag: srcNode && srcNode.tagName,
+            srcCls: srcNode && srcNode.className,
+            offset: breakToken.offset,
+            renderedKeys: rendered ? Object.keys(rendered).slice(0, 8) : null,
+            overflowKeys: overflow ? Object.keys(overflow).slice(0, 8) : null,
+            overflowProto: overflow && Object.getPrototypeOf(overflow) ? Object.getOwnPropertyNames(Object.getPrototypeOf(overflow)).slice(0, 10) : null,
+            argCount: arguments.length,
+            argsTypes: Array.from(arguments).map(function(a) { return typeof a; }),
+          };
+          window.__BREAK_LOG__.push(ctx);
           while (node && node.nodeType !== undefined) {
             if (node.nodeType === 1) {
               // Source nodes are disconnected so getComputedStyle won't work.
               // Check data-break-inside attribute instead.
               if (node.getAttribute && node.getAttribute('data-break-inside') === 'avoid') {
                 var ref = node.getAttribute('data-ref');
+                ctx.matchedRef = ref;
+                ctx.matchedTag = node.tagName;
+                ctx.matchedCls = node.className;
+                ctx.hasPrevSibling = !!node.previousElementSibling;
+                ctx.lastRef = this._lastRef;
                 // Permanent split-allowed flag: once we let a card split,
                 // every subsequent break inside it is approved without
                 // re-trying the move-before-card dance.
