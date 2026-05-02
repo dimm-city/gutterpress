@@ -23,52 +23,21 @@ export const BREAK_INSIDE_HANDLER = `
         constructor(chunker, polisher, caller) {
           super(chunker, polisher, caller);
           this._lastRef = null;
-          // Cards we've already approved to split internally — never try to
-          // keep them whole again. Without this, an oversized card whose first
-          // internal break is allowed will be re-trapped on subsequent breaks
-          // (table cells, paragraphs, list items inside it) and Paged.js loops.
-          this._splitAllowed = new Set();
         }
-        onBreakToken(breakToken, overflow, rendered) {
+        onBreakToken(breakToken) {
           if (!breakToken || !breakToken.node) return breakToken;
           var node = breakToken.node;
-          // DEBUG: log every break event with rendered/overflow context
-          window.__BREAK_LOG__ = window.__BREAK_LOG__ || [];
-          var srcNode = breakToken.node;
-          var ctx = {
-            srcTag: srcNode && srcNode.tagName,
-            srcCls: srcNode && srcNode.className,
-            offset: breakToken.offset,
-            renderedKeys: rendered ? Object.keys(rendered).slice(0, 8) : null,
-            overflowKeys: overflow ? Object.keys(overflow).slice(0, 8) : null,
-            overflowProto: overflow && Object.getPrototypeOf(overflow) ? Object.getOwnPropertyNames(Object.getPrototypeOf(overflow)).slice(0, 10) : null,
-            argCount: arguments.length,
-            argsTypes: Array.from(arguments).map(function(a) { return typeof a; }),
-          };
-          window.__BREAK_LOG__.push(ctx);
           while (node && node.nodeType !== undefined) {
             if (node.nodeType === 1) {
               // Source nodes are disconnected so getComputedStyle won't work.
               // Check data-break-inside attribute instead.
               if (node.getAttribute && node.getAttribute('data-break-inside') === 'avoid') {
                 var ref = node.getAttribute('data-ref');
-                ctx.matchedRef = ref;
-                ctx.matchedTag = node.tagName;
-                ctx.matchedCls = node.className;
-                ctx.hasPrevSibling = !!node.previousElementSibling;
-                ctx.lastRef = this._lastRef;
-                // Permanent split-allowed flag: once we let a card split,
-                // every subsequent break inside it is approved without
-                // re-trying the move-before-card dance.
-                if (ref && this._splitAllowed.has(ref)) {
-                  return breakToken;
-                }
                 // Only skip if this is the same element we just moved AND it
                 // has no previous sibling — meaning it's first on the page and
                 // truly too tall to fit. If it has siblings, content before it
                 // can be moved to make room, so always allow the move.
                 if (ref && ref === this._lastRef && !node.previousElementSibling) {
-                  this._splitAllowed.add(ref);
                   this._lastRef = null;
                   return breakToken;
                 }
@@ -91,29 +60,13 @@ export const BREAK_INSIDE_HANDLER = `
     // (inside before()) because all scripts have loaded by this point.
     var origAfter = window.PagedConfig.after;
     window.PagedConfig.after = function(flow) {
-      // Remove duplicated and empty-shell cards.
-      // The onBreakToken handler moves breaks before cards, but Paged.js
-      // doesn't remove the already-rendered clone from the current page.
-      // This pass deduplicates by keeping only the LAST (most complete)
-      // instance of each card and removing earlier occurrences.
-      // Walk pages in reverse: the last occurrence of each data-ref is seen
-      // first and kept. Any earlier occurrence with the same ref is a split
-      // fragment left by the break-inside handler and is always removed.
-      //
-      // Special case — legitimately split cards: when a card is too tall to
-      // fit on one page, Paged.js splits it and marks continuations with
-      // data-split-from. The START fragment has no data-split-from. Walking
-      // in reverse we see a continuation first (added to seen), then the start
-      // fragment (no data-split-from, ref in seen) — which we must NOT remove
-      // because it is the genuine first half of the split, not a polyfill ghost.
-      // Track refs seen WITH data-split-from so the start fragment is kept,
-      // AND track refs seen WITH data-split-original which marks the genuine
-      // first half of a Paged.js native split. Anything else with the same
-      // ref is a polyfill ghost and is removed.
+      // Remove duplicated cards left behind by the onBreakToken handler.
+      // When the handler moves a break to before a card, Paged.js leaves a
+      // ghost copy of the card on the current page. This pass walks pages in
+      // reverse (so the last/most-complete occurrence is seen first and kept)
+      // and removes all earlier duplicates unconditionally.
       var pages = document.querySelectorAll('.pagedjs_page');
-      var seen = new Set();
-      var splitContinuations = new Set();
-      var splitOriginals = new Set();
+      var seen = new Map();
       for (var i = pages.length - 1; i >= 0; i--) {
         var content = pages[i].querySelector('.pagedjs_page_content');
         if (!content) continue;
@@ -122,21 +75,10 @@ export const BREAK_INSIDE_HANDLER = `
           var card = cards[j];
           var ref = card.getAttribute('data-ref');
           if (!ref) continue;
-          var hasSplitFrom = card.hasAttribute('data-split-from');
-          var isSplitOriginal = card.getAttribute('data-split-original') === 'true';
-          if (hasSplitFrom) splitContinuations.add(ref);
-          if (isSplitOriginal) splitOriginals.add(ref);
           if (seen.has(ref)) {
-            // Earlier occurrence of a card we already kept. A polyfill ghost
-            // has NEITHER data-split-from (continuation) NOR data-split-original
-            // (genuine start of a Paged.js native split). If both attributes
-            // are absent, this earlier occurrence is the residue from the
-            // polyfill's break-before-card move and must be removed.
-            if (!hasSplitFrom && !isSplitOriginal) {
-              card.parentNode.removeChild(card);
-            }
+            card.parentNode.removeChild(card);
           } else {
-            seen.add(ref);
+            seen.set(ref, true);
           }
         }
       }
