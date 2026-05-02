@@ -82,6 +82,28 @@ export const BREAK_INSIDE_HANDLER = `
           }
         }
       }
+      // Remove pages whose only meaningful content is an empty cards-row
+      // (or other empty container) left behind by the break handler. This
+      // happens when the polyfill pushes a card's break to the next page —
+      // Paged.js leaves an empty parent fragment on the previous page.
+      for (var k = 0; k < pages.length; k++) {
+        var pc = pages[k].querySelector('.pagedjs_page_content');
+        if (!pc) continue;
+        // Walk down through single-child wrappers to find the deepest content
+        var node = pc;
+        while (node && node.children && node.children.length === 1) {
+          node = node.children[0];
+        }
+        // If we ended up at an empty container that was meant to hold cards
+        // (or any element with no text content and no images/cards inside),
+        // mark the page as orphaned.
+        var text = (pc.innerText || '').trim();
+        var hasContent = pc.querySelector('img, table, h1, h2, h3, h4, [data-break-inside="avoid"]');
+        if (text.length === 0 && !hasContent) {
+          pages[k].setAttribute('data-orphan-page', 'true');
+          pages[k].style.display = 'none';
+        }
+      }
       // Signal completion for the build pipeline
       window.__PAGED_RENDERED__ = true;
       if (origAfter) return origAfter(flow);
