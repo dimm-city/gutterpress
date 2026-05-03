@@ -8,6 +8,7 @@
 import path from 'path';
 import { tmpdir } from 'os';
 import { randomBytes } from 'crypto';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { mkdir, remove, copyDirectory, fileExists } from '../utils/file-utils';
 import { info, debug } from '../utils/logger';
 import { loadManifest, resolveConfig } from '../lib/manifest';
@@ -17,6 +18,56 @@ import type { ResolvedConfig } from '../schema/manifest.types';
 import type { ServerState } from './server-context';
 import { generateAndWriteHtml, stopFileWatcher, startFileWatcher } from './file-watcher';
 
+const TEMP_DIR_BASE = path.join(tmpdir(), 'print-md-preview');
+const PID_FILE_NAME = '.print-md.pid';
+
+/**
+ * Check whether a process is alive by sending signal 0.
+ * Returns false for any error (ESRCH = no such process, EPERM = exists but
+ * not ours, which we treat as "not ours, leave alone").
+ */
+function isProcessAlive(pid: number): boolean {
+  if (!Number.isFinite(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Best-effort cleanup of orphan preview temp dirs left behind by previous
+ * runs that didn't shut down cleanly (SIGKILL, terminal hangup, crash, etc).
+ *
+ * Each live preview writes its PID to `<tempDir>/.print-md.pid` after setup.
+ * On startup we walk the base dir and remove any subdirectory whose recorded
+ * PID is no longer alive. Dirs without a PID file are conservatively kept
+ * (they may belong to an older print-md version still in flight).
+ */
+async function cleanupOrphanTempDirs(): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await readdir(TEMP_DIR_BASE);
+  } catch {
+    return; // base dir doesn't exist yet — nothing to clean
+  }
+  for (const entry of entries) {
+    const dir = path.join(TEMP_DIR_BASE, entry);
+    const pidFile = path.join(dir, PID_FILE_NAME);
+    try {
+      const raw = await readFile(pidFile, 'utf8');
+      const pid = parseInt(raw.trim(), 10);
+      if (!isProcessAlive(pid)) {
+        debug(`Removing orphan temp dir ${dir} (pid ${pid} not alive)`);
+        await remove(dir);
+      }
+    } catch {
+      // No PID file — leave it alone to be safe.
+    }
+  }
+}
+
 /**
  * Initialize preview directories and copy source files
  */
@@ -25,11 +76,16 @@ export async function initializePreviewDirectories(
   assetsSourceDir: string,
   config?: ResolvedConfig
 ): Promise<string> {
-  const tempDirBase = path.join(tmpdir(), 'print-md-preview');
+  // Reap any orphan temp dirs from previous runs before creating ours.
+  await cleanupOrphanTempDirs();
+
   const tempDirSuffix = randomBytes(8).toString('hex');
-  const tempDir = path.join(tempDirBase, tempDirSuffix);
+  const tempDir = path.join(TEMP_DIR_BASE, tempDirSuffix);
   await mkdir(tempDir);
   debug(`Created temporary directory: ${tempDir}`);
+
+  // Mark this dir as ours so a future startup can detect orphan-ship.
+  await writeFile(path.join(tempDir, PID_FILE_NAME), `${process.pid}\n`, 'utf8');
 
   await copyDirectory(inputPath, tempDir);
   debug(`Copied input files to ${tempDir}`);
@@ -101,16 +157,58 @@ export async function restartPreview(newInputPath: string, state: ServerState): 
 }
 
 /**
- * Perform graceful server shutdown and cleanup
+ * Wrap a promise with a timeout so a misbehaving close step (Vite/chokidar
+ * occasionally hang on close) cannot prevent the temp-dir cleanup from running.
+ */
+async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T | undefined> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => {
+      debug(`shutdownServer: ${label} exceeded ${ms}ms — continuing`);
+      resolve(undefined);
+    }, ms);
+  });
+  try {
+    return (await Promise.race([p, timeout])) as T | undefined;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * Perform graceful server shutdown and cleanup.
+ *
+ * Each step runs independently so that a hang or throw in one (e.g.
+ * `viteServer.close()` blocking on a stuck WebSocket client) cannot
+ * prevent the temp-dir from being removed. Without this discipline,
+ * SIGTERM during a wedged close leaks ~1GB of `/tmp` per session.
  */
 export async function shutdownServer(state: ServerState): Promise<void> {
   if (state.isShuttingDown) return;
   state.isShuttingDown = true;
 
   info('\nShutting down preview server...');
-  await stopFileWatcher(state);
-  if (state.viteServer) await state.viteServer.close();
-  await remove(state.tempDir);
+
+  try {
+    await withTimeout(stopFileWatcher(state), 2000, 'stopFileWatcher');
+  } catch (err) {
+    debug(`stopFileWatcher failed during shutdown: ${err}`);
+  }
+
+  if (state.viteServer) {
+    try {
+      await withTimeout(state.viteServer.close(), 2000, 'viteServer.close');
+    } catch (err) {
+      debug(`viteServer.close failed during shutdown: ${err}`);
+    }
+  }
+
+  try {
+    await remove(state.tempDir);
+  } catch (err) {
+    debug(`Failed to remove temp dir ${state.tempDir}: ${err}`);
+  }
+
   info('Server stopped. You can close this browser window.');
   process.exit(0);
 }
