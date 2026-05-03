@@ -6,14 +6,65 @@
  */
 
 import { watch, type FSWatcher } from 'chokidar';
+import { existsSync } from 'node:fs';
 import path from 'path';
 import { info, debug, error as logError } from '../utils/logger';
 import { DEBOUNCE } from '../constants';
 import { renderChapters } from '../lib/markdown/index';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import { loadPlugins, collectPluginCss } from '../lib/markdown/plugins';
+import { resolveAssetDestName } from '../lib/assets';
 import type { ServerState } from './server-context';
 import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
+
+/**
+ * Build the list of asset roots that live outside the input path and need
+ * their own file watcher (e.g. a `../_shared` directory shared across books).
+ *
+ * Each entry maps an absolute source root on disk to the basename used as its
+ * directory inside the temp dir — matching the layout produced by
+ * `copyAssets` at startup.
+ */
+function resolveExternalAssetRoots(
+  inputPath: string,
+  assets: string[] | undefined | null
+): { src: string; destName: string }[] {
+  if (!assets || assets.length === 0) return [];
+  const inputResolved = path.resolve(inputPath);
+  const roots: { src: string; destName: string }[] = [];
+  for (const assetPath of assets) {
+    const src = path.resolve(path.join(inputPath, assetPath));
+    if (!existsSync(src)) continue;
+    // Skip assets that live inside inputPath — already covered by the main watcher.
+    if (src === inputResolved || src.startsWith(inputResolved + path.sep)) continue;
+    roots.push({ src, destName: resolveAssetDestName(assetPath) });
+  }
+  return roots;
+}
+
+/**
+ * Find which watch root a changed file belongs to and compute the
+ * corresponding destination path inside the temp dir.
+ */
+function resolveDestinationForChange(
+  filePath: string,
+  inputPath: string,
+  tempDir: string,
+  externalRoots: { src: string; destName: string }[]
+): { destPath: string; relativePath: string } | null {
+  if (filePath === inputPath || filePath.startsWith(inputPath + path.sep)) {
+    const relativePath = path.relative(inputPath, filePath);
+    return { destPath: path.join(tempDir, relativePath), relativePath };
+  }
+  for (const root of externalRoots) {
+    if (filePath === root.src || filePath.startsWith(root.src + path.sep)) {
+      const relInRoot = path.relative(root.src, filePath);
+      const relativePath = path.join(root.destName, relInRoot);
+      return { destPath: path.join(tempDir, relativePath), relativePath };
+    }
+  }
+  return null;
+}
 
 /**
  * Generate HTML from markdown and write preview.html to temp directory.
@@ -62,10 +113,25 @@ export async function generateAndWriteHtml(
 }
 
 /**
- * Create and configure a file watcher for the input directory
+ * Create and configure a file watcher for the input directory.
+ *
+ * Watches the project's input path AND any manifest-declared asset roots
+ * that live outside it (e.g. a sibling `../_shared` directory). Without the
+ * external roots, edits to shared CSS like `_shared/css/core/05-components.css`
+ * are never mirrored into the temp dir and Vite never sees the change.
  */
 export function createFileWatcher(state: ServerState): FSWatcher {
-  const watcher = watch(state.currentInputPath, {
+  const inputResolved = path.resolve(state.currentInputPath);
+  const externalRoots = resolveExternalAssetRoots(
+    state.currentInputPath,
+    state.config?.source?.assets
+  );
+  for (const root of externalRoots) {
+    debug(`Also watching external asset root: ${root.src} -> ${root.destName}/`);
+  }
+
+  const watchTargets = [inputResolved, ...externalRoots.map((r) => r.src)];
+  const watcher = watch(watchTargets, {
     persistent: true,
     ignoreInitial: true,
     ignored: /(^|[\/\\])\../, // Ignore dot files
@@ -89,14 +155,19 @@ export function createFileWatcher(state: ServerState): FSWatcher {
       try {
         info('Regenerating preview...');
 
-        // Re-copy changed file to temp directory
-        if (filePath.startsWith(state.currentInputPath)) {
-          const relativePath = path.relative(state.currentInputPath, filePath);
-          const destPath = path.join(state.tempDir, relativePath);
+        // Re-copy changed file to temp directory — handles both files inside
+        // the input path and files inside any external asset root.
+        const dest = resolveDestinationForChange(
+          filePath,
+          inputResolved,
+          state.tempDir,
+          externalRoots
+        );
+        if (dest) {
           const { mkdir } = await import('node:fs/promises');
-          await mkdir(path.dirname(destPath), { recursive: true });
-          await Bun.write(destPath, Bun.file(filePath));
-          debug(`Updated: ${relativePath}`);
+          await mkdir(path.dirname(dest.destPath), { recursive: true });
+          await Bun.write(dest.destPath, Bun.file(filePath));
+          debug(`Updated: ${dest.relativePath}`);
         }
 
         // Reload config and regenerate
