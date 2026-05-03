@@ -142,6 +142,16 @@ export async function createConfiguredViteServer(
       {
         // Serve CSS as raw static files so Paged.js can parse them.
         // Without this, Vite transforms CSS into JS modules for HMR.
+        //
+        // TODO: this middleware is currently bypassed for any URL Vite has
+        // rewritten with a query string (e.g. `/css/index.css?import`,
+        // `?direct`, `?t=<timestamp>`) — `endsWith('.css')` fails on those, so
+        // the request falls through to Vite's CSS-as-JS-module pipeline. The
+        // proper fix is to strip the query before checking the suffix and to
+        // register this handler with `enforce: 'pre'` (or via a `transform`
+        // hook) so it actually intercepts before Vite's built-in CSS plugin.
+        // For now, the `css-full-reload-on-change` plugin below works around
+        // the resulting HMR staleness for `@import`-ed CSS.
         name: 'raw-css',
         configureServer(server) {
           server.middlewares.use((req, res, next) => {
@@ -163,6 +173,27 @@ export async function createConfiguredViteServer(
             }
             next();
           });
+        },
+      },
+      {
+        // Workaround: when an `@import`-ed CSS leaf is edited, Vite's CSS
+        // module graph sometimes fails to re-emit the importer (the file
+        // arrives in the temp dir mid-session via an external write, so the
+        // module-id lookup misses). The result: served CSS keeps its stale
+        // baked-in `url(...)` references until the server restarts.
+        // Force a full reload on every CSS change instead — coarser than HMR
+        // but reliable, and acceptable for a print-preview workflow where
+        // CSS edits already trigger Paged.js to re-paginate the document.
+        name: 'css-full-reload-on-change',
+        handleHotUpdate({ file, server }) {
+          if (file.endsWith('.css')) {
+            const mods = server.moduleGraph.getModulesByFile(file);
+            if (mods) {
+              for (const m of mods) server.moduleGraph.invalidateModule(m);
+            }
+            server.ws.send({ type: 'full-reload' });
+            return [];
+          }
         },
       },
     ],
