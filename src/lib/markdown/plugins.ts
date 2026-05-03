@@ -138,8 +138,11 @@ export async function loadPlugin(
         throw new Error(`Plugin file not found: ${pluginPath}`);
       }
 
-      // Import the plugin module using file URL
-      const fileUrl = pathToFileURL(pluginPath).href;
+      // Import the plugin module using file URL.
+      // Append a timestamp query param so Bun's ESM module cache is bypassed
+      // on each hot-reload — without this, edits to plugin files are silently
+      // ignored because Bun returns the cached module for the same file URL.
+      const fileUrl = pathToFileURL(pluginPath).href + `?v=${Date.now()}`;
       pluginModule = await import(fileUrl);
       pluginName = config.name ?? config.path;
     } else if (config.name) {
