@@ -512,7 +512,7 @@ function buildViewerStyleSheet(bg) {
   return `
 /* Injected by preview.js after Paged.js render — not in preview.css to avoid pagedjs stripping */
 
-/* ── Canvas ── */
+/* ── Canvas (space around pages) ── */
 html, body {
   background-color: ${bg} !important;
   min-height: 100% !important;
@@ -520,6 +520,17 @@ html, body {
 body {
   margin: 0 !important;
   padding: 0 !important;
+}
+
+/*
+ * Page paper background — Paged.js sets NO background on .pagedjs_sheet so the
+ * transparent page boxes inherit the canvas colour above, making all pages grey
+ * when canvas != white. We explicitly apply --color-paper here (WITHOUT !important)
+ * so the document's own CSS can still override it, while the canvas injection above
+ * never bleeds onto the visible page surface.
+ */
+.pagedjs_sheet {
+  background-color: var(--color-paper, white);
 }
 
 /* ── Spread container (two-page side-by-side default) ── */

@@ -193,6 +193,12 @@ body {
   widows: 3;
 }
 
+/* Paged.js generates transparent .pagedjs_sheet elements — explicitly set the paper
+   colour here so the viewer canvas colour never bleeds onto the visible page surface. */
+.pagedjs_sheet {
+  background-color: var(--color-paper);
+}
+
 /* H1: chapter title — page-breaks before, uses chapter @page */
 h1 {
   font-family: var(--font-display);
