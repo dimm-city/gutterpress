@@ -38,25 +38,25 @@ import { homedir } from "os";
 import { resolve as resolvePath } from "path";
 
 // GitHub-related types (previously in types.ts)
-interface GitHubAuthStatus {
+export interface GitHubAuthStatus {
   ghCliInstalled: boolean;
   authenticated: boolean;
   username?: string;
   error?: string;
 }
 
-interface GitHubCloneResponse {
+export interface GitHubCloneResponse {
   success: boolean;
   localPath?: string;
   error?: string;
 }
 
-interface GitHubLoginResponse {
+export interface GitHubLoginResponse {
   success: boolean;
   error?: string;
 }
 
-interface GitHubUserInfo {
+export interface GitHubUserInfo {
   username: string;
   name?: string;
 }

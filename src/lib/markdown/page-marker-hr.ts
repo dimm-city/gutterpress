@@ -1,5 +1,19 @@
 import type MarkdownIt from "markdown-it";
-import type { StateBlock } from "markdown-it/lib/rules_block/state_block";
+
+// Minimal local shim for the markdown-it block parser state, so we don't
+// depend on a deep, version-specific path inside the markdown-it package
+// (e.g. `markdown-it/lib/rules_block/state_block.mjs`). Only the fields
+// this rule actually reads are typed here.
+interface StateBlock {
+  src: string;
+  bMarks: number[];
+  eMarks: number[];
+  line: number;
+  push(type: string, tag: string, nesting: number): {
+    map: [number, number] | null;
+    attrSet(name: string, value: string): void;
+  };
+}
 
 /**
  * Custom hr (horizontal rule / thematic break) rule that extracts {page} attributes.
@@ -10,8 +24,11 @@ import type { StateBlock } from "markdown-it/lib/rules_block/state_block";
  * - `--- {page .class1 .class2}` → hr with page marker and modifiers
  */
 const customHrRule = (state: StateBlock, startLine: number, endLine: number, silent: boolean) => {
-  let pos = state.bMarks[startLine] + ((state.tIndent?.[startLine]) || 0);
-  const maximum = state.eMarks[startLine];
+  // tIndent isn't on the public StateBlock type but exists at runtime on
+  // markdown-it's block parser state — read it through a loose cast.
+  const tIndent = (state as unknown as { tIndent?: number[] }).tIndent;
+  let pos = (state.bMarks[startLine] ?? 0) + (tIndent?.[startLine] ?? 0);
+  const maximum = state.eMarks[startLine] ?? 0;
 
   // Check if line is too indented
   if (pos + 3 > maximum) return false;
@@ -62,7 +79,7 @@ const customHrRule = (state: StateBlock, startLine: number, endLine: number, sil
     token.attrSet("page", "true");
 
     // Parse modifiers (classes)
-    const modifiersStr = pageMatch[1].trim();
+    const modifiersStr = (pageMatch[1] ?? "").trim();
     if (modifiersStr) {
       // Extract class names from the modifier string
       // Supports: .class1 .class2 or just class1 class2

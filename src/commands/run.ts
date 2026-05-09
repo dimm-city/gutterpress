@@ -3,16 +3,25 @@ import { resolve, join } from "node:path";
 import { loadManifest, resolveConfig } from "../lib/manifest";
 import { log } from "../lib/logger";
 import { writeBuildFingerprint } from "../lib/build-fingerprint";
+import { BOOK_HTML_FILENAME } from "../lib/viewer";
 import lintCmd from "./lint";
-import convertCmd from "./convert";
-import assetsCmd from "./assets";
 import buildCmd from "./build";
 import validateCmd from "./validate";
 
+/**
+ * `run` is the validated print-ready PDF pipeline:
+ *
+ *   lint -> validate(pre-build) -> build (PDF) -> validate(post-build)
+ *
+ * For HTML output (a static-site design guide preview), use `build --format
+ * html` directly — the validation phases here check PDF/X conformance and
+ * do not apply to HTML.
+ */
 export default defineCommand({
   meta: {
     name: "run",
-    description: "Run the full pipeline: lint -> validate:pre -> convert -> assets -> build -> validate:post",
+    description:
+      "Run the full validated PDF pipeline: lint -> validate:pre -> build -> validate:post",
   },
   args: {
     input: {
@@ -68,22 +77,21 @@ export default defineCommand({
         : undefined;
 
     const outDir = resolve(args.out ?? config.output.dir);
-    const htmlFile = join(outDir, config.output.html);
     const pdfFile = join(outDir, config.output.filename);
 
     log.info(`Pipeline: ${inputDir} -> ${outDir}`);
 
     // 1. Lint
     if (!args["skip-lint"] && config.lint.enabled) {
-      log.info("Step 1/6: Linting CSS");
+      log.info("Step 1/4: Linting CSS");
       await runCommand(lintCmd, { rawArgs: ["--manifest", manifestPath ?? inputDir] });
     } else {
-      log.info("Step 1/6: Lint (skipped)");
+      log.info("Step 1/4: Lint (skipped)");
     }
 
     // 2. Pre-build validation
     if (!args["skip-pre-validate"] && config.validate.enabled) {
-      log.info("Step 2/6: Pre-build validation");
+      log.info("Step 2/4: Pre-build validation");
       await runCommand(validateCmd, {
         rawArgs: [
           "--input", inputDir,
@@ -92,46 +100,27 @@ export default defineCommand({
         ],
       });
     } else {
-      log.info("Step 2/6: Pre-build validation (skipped)");
+      log.info("Step 2/4: Pre-build validation (skipped)");
     }
 
-    // 3. Convert
-    log.info("Step 3/6: Converting Markdown to HTML");
-    await runCommand(convertCmd, {
-      rawArgs: [
-        "--input", inputDir,
-        "--out", outDir,
-        "--title", String(config.title),
-        "--styles", config.styles.join(","),
-        ...(manifestPath ? ["--manifest", manifestPath] : []),
-      ],
-    });
-
-    // 4. Assets
-    log.info("Step 4/6: Copying assets");
-    await runCommand(assetsCmd, {
-      rawArgs: [
-        "--input", inputDir,
-        "--out", outDir,
-        ...(manifestPath ? ["--manifest", manifestPath] : []),
-      ],
-    });
-
-    // 5. Build
-    log.info("Step 5/6: Building PDF");
+    // 3. Build (markdown -> book.html + assets + viewer chrome -> book.pdf).
+    //    The unified build command does convert, asset copy, viewer emission,
+    //    and Chromium/Ghostscript PDF rendering in one pass.
+    log.info("Step 3/4: Building PDF");
     await runCommand(buildCmd, {
       rawArgs: [
-        "--input", htmlFile,
-        "--out", pdfFile,
+        inputDir,
+        "--out", outDir,
+        "--format", "pdf",
         ...(pdfxFlavor ? ["--pdfx", pdfxFlavor] : []),
         ...(typeof args.icc === "string" ? ["--icc", args.icc] : []),
         ...(manifestPath ? ["--manifest", manifestPath] : []),
       ],
     });
 
-    // 6. Post-build validation (only if pdfx mode)
+    // 4. Post-build validation (only if pdfx mode)
     if (!args["skip-validate"] && pdfxFlavor) {
-      log.info("Step 6/6: Validating PDF");
+      log.info("Step 4/4: Validating PDF");
       await runCommand(validateCmd, {
         rawArgs: [
           "--pdf", pdfFile,
@@ -140,7 +129,7 @@ export default defineCommand({
         ],
       });
     } else {
-      log.info("Step 6/6: Validation (skipped)");
+      log.info("Step 4/4: Validation (skipped)");
     }
 
     const fingerprintPath = await writeBuildFingerprint({
@@ -157,6 +146,7 @@ export default defineCommand({
     });
 
     log.success(`Pipeline complete: ${pdfFile}`);
+    log.info(`HTML viewer: ${join(outDir, "index.html")} (loads ${BOOK_HTML_FILENAME})`);
     log.info(`Fingerprint: ${fingerprintPath}`);
   },
 });

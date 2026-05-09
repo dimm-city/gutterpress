@@ -24,7 +24,7 @@ export const parseContainerMeta = (
   if (!params) return { classes: [], attrs: {} };
 
   const braceMatch = params.match(/\{([\s\S]*)\}/);
-  const raw = (braceMatch ? braceMatch[1] : params).trim();
+  const raw = (braceMatch ? braceMatch[1]! : params).trim();
   if (!raw) return { classes: [], attrs: {} };
 
   const classes: string[] = [];
@@ -43,7 +43,7 @@ export const parseContainerMeta = (
     const classMatch = cleaned.match(/^class=(['"])(.*?)\1$/);
     if (classMatch) {
       classes.push(
-        ...classMatch[2]
+        ...classMatch[2]!
           .split(/\s+/)
           .map((c) => c.trim())
           .filter(Boolean)
@@ -53,9 +53,9 @@ export const parseContainerMeta = (
 
     const attrMatch = cleaned.match(/^([a-zA-Z_][\w:-]*)=(['"])(.*?)\2$/);
     if (attrMatch) {
-      const key = attrMatch[1];
+      const key = attrMatch[1]!;
       if (key === "style") continue;
-      attrs[key] = attrMatch[3];
+      attrs[key] = attrMatch[3]!;
     }
   }
 

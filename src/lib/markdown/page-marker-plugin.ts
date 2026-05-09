@@ -55,7 +55,7 @@ const getMarkerMatch = (
 const registerRenderers = (md: MarkdownIt) => {
   if (!md.renderer.rules.page_section_open) {
     md.renderer.rules.page_section_open = (tokens, idx) => {
-      const token = tokens[idx];
+      const token = tokens[idx]!;
       const classAttr = token.attrGet("class");
       const tag = token.tag || "section";
       if (!classAttr) {
@@ -67,7 +67,7 @@ const registerRenderers = (md: MarkdownIt) => {
 
   if (!md.renderer.rules.page_section_close) {
     md.renderer.rules.page_section_close = (tokens, idx) => {
-      const tag = tokens[idx].tag || "section";
+      const tag = tokens[idx]!.tag || "section";
       return `</${tag}>`;
     };
   }

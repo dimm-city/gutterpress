@@ -14,6 +14,7 @@ import { renderChapters } from '../lib/markdown/index';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import { loadPlugins, collectPluginCss } from '../lib/markdown/plugins';
 import { resolveAssetDestName } from '../lib/assets';
+import { BOOK_HTML_FILENAME } from '../lib/viewer';
 import type { ServerState } from './server-context';
 import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
 
@@ -67,9 +68,10 @@ function resolveDestinationForChange(
 }
 
 /**
- * Generate HTML from markdown and write preview.html to temp directory.
- * renderChapters() does all the work (CSS, Paged.js script).
- * We only inject the toolbar interface script.
+ * Generate HTML from markdown and write book.html to the temp directory.
+ * renderChapters() does all the work (CSS, Paged.js script). We only inject
+ * the toolbar interface script. The viewer's iframe loads `book.html` via
+ * a relative URL — same name in dev and in published static-site builds.
  */
 export async function generateAndWriteHtml(
   inputPath: string,
@@ -109,7 +111,7 @@ export async function generateAndWriteHtml(
     iface + BREAK_INSIDE_HANDLER + '\n  <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>'
   );
 
-  await Bun.write(path.join(tempDir, 'preview.html'), output);
+  await Bun.write(path.join(tempDir, BOOK_HTML_FILENAME), output);
 }
 
 /**

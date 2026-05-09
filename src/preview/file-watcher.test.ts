@@ -68,7 +68,7 @@ describe('generateAndWriteHtml', () => {
     await rm(tempDir, { recursive: true, force: true });
   }, 60000);
 
-  test('generates preview.html with proper doctype', async () => {
+  test('generates book.html with proper doctype', async () => {
     // Create test markdown file
     await writeFile(join(testDir, 'chapter-01.md'), '# Test Heading\n\nTest content.');
 
@@ -76,8 +76,8 @@ describe('generateAndWriteHtml', () => {
 
     await generateAndWriteHtml(testDir, tempDir, config);
 
-    // Check that preview.html was created
-    const outputPath = join(tempDir, 'preview.html');
+    // Check that book.html was created
+    const outputPath = join(tempDir, 'book.html');
     const file = Bun.file(outputPath);
     const exists = await file.exists();
     expect(exists).toBe(true);
@@ -91,14 +91,14 @@ describe('generateAndWriteHtml', () => {
     expect(content.toLowerCase()).toContain('<!doctype');
   }, 60000);
 
-  test('overwrites existing preview.html', async () => {
+  test('overwrites existing book.html', async () => {
     await writeFile(join(testDir, 'chapter-01.md'), '# First Version');
 
     const config = resolveConfig({ title: 'Test' }, {});
 
     // First generation
     await generateAndWriteHtml(testDir, tempDir, config);
-    const outputPath = join(tempDir, 'preview.html');
+    const outputPath = join(tempDir, 'book.html');
     let content = await Bun.file(outputPath).text();
     expect(content).toContain('First Version');
 
@@ -119,7 +119,7 @@ describe('generateAndWriteHtml', () => {
 
     await generateAndWriteHtml(testDir, tempDir, config);
 
-    const content = await Bun.file(join(tempDir, 'preview.html')).text();
+    const content = await Bun.file(join(tempDir, 'book.html')).text();
     expect(content).toContain('Chapter 1');
     expect(content).toContain('Chapter 2');
   }, 60000);

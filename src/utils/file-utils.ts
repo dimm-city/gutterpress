@@ -4,7 +4,7 @@
  * Provides essential file operations: read, write, resolve paths, check existence
  */
 
-import { promises as fs } from 'fs';
+import { promises as fs, type Dirent } from 'fs';
 import path from 'path';
 import { BuildError } from './errors.ts';
 
@@ -77,7 +77,7 @@ export async function isDirectory(targetPath: string): Promise<boolean> {
  * @param dirPath Directory path to read
  * @returns Array of directory entries
  */
-export async function readDirectory(dirPath: string): Promise<fs.Dirent[]> {
+export async function readDirectory(dirPath: string): Promise<Dirent[]> {
   return await fs.readdir(dirPath, { withFileTypes: true });
 }
 

@@ -77,9 +77,9 @@ export default defineCommand({
         : undefined;
     const format: OutputFormat = args.format === "json" ? "json" : "text";
 
-    const runnerOpts = {
-      category: ["asset"] as const,
-      phase: "pre-build" as const,
+    const runnerOpts: import("../checks/runner").RunnerOptions = {
+      category: ["asset"],
+      phase: "pre-build",
       only,
       skip,
     };

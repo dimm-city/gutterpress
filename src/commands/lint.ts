@@ -77,7 +77,7 @@ export default defineCommand({
       formatter: "string",
     });
 
-    if (result.output?.trim()) console.log(result.output);
+    if (result.report?.trim()) console.log(result.report);
 
     const hasRealErrors = result.results.some((r) =>
       r.warnings.some(
@@ -87,7 +87,7 @@ export default defineCommand({
     );
 
     if (hasRealErrors) {
-      if (!result.output?.trim()) {
+      if (!result.report?.trim()) {
         for (const r of result.results) {
           const errors = r.warnings.filter(
             (w) => w.severity === "error" && !w.rule?.startsWith("printsafe/no-risky")

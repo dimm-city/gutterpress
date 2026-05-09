@@ -16,6 +16,28 @@
 // ============================================================================
 
 // ============================================================================
+// Operating Mode
+// ============================================================================
+//
+// `live`    a print-md server is backing the UI (preview command). API
+//           routes for folder picker / GitHub clone / exit are reachable.
+// `static`  the viewer is being served as plain files (GitHub Pages, S3,
+//           file://). No API. Server-coupled buttons are hidden.
+//
+// Read once at module load — `<html data-mode="...">` is set by the build
+// pipeline (`emitViewer` in src/lib/viewer.ts) or shipped as `live` for the
+// preview server. Use documentElement (not document.body) so this works
+// when the script is loaded from <head> non-defer — body doesn't exist yet
+// at that point, but documentElement always does during head parsing.
+
+const MODE =
+  (typeof document !== "undefined" &&
+    document.documentElement &&
+    document.documentElement.dataset.mode) ||
+  "live";
+const IS_LIVE = MODE === "live";
+
+// ============================================================================
 // Client-Side State Management (Folder Selection Only)
 // ============================================================================
 
@@ -618,100 +640,113 @@ function exitPreviewServer() {
 
 /**
  * Initialize toolbar button event listeners
+ *
+ * Live-only buttons (folder picker, GitHub clone, exit) are wired up only
+ * when MODE === "live". In static mode the buttons are hidden entirely so
+ * authors browsing a published design guide aren't shown features that
+ * would 404 against the static host.
  */
 function initializeToolbarControls() {
-  // Exit button
-  const exitBtn = document.getElementById("btn-exit");
-  if (exitBtn) {
-    exitBtn.addEventListener("click", exitPreviewServer);
-  }
+  if (IS_LIVE) {
+    // Exit button
+    const exitBtn = document.getElementById("btn-exit");
+    if (exitBtn) {
+      exitBtn.addEventListener("click", exitPreviewServer);
+    }
 
-  // Folder selection button
-  const folderBtn = document.getElementById("btn-folder");
-  if (folderBtn) {
-    folderBtn.addEventListener("click", openFolderModal);
-  }
+    // Folder selection button
+    const folderBtn = document.getElementById("btn-folder");
+    if (folderBtn) {
+      folderBtn.addEventListener("click", openFolderModal);
+    }
 
-  // Modal close button
-  const closeBtn = document.getElementById("modal-close");
-  if (closeBtn) {
-    closeBtn.addEventListener("click", closeFolderModal);
-  }
+    // Modal close button
+    const closeBtn = document.getElementById("modal-close");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", closeFolderModal);
+    }
 
-  // "Open This Folder" button
-  const openBtn = document.getElementById("btn-open-folder");
-  if (openBtn) {
-    openBtn.addEventListener("click", () => {
-      // Check if we're in folder browser mode for GitHub clone
-      if (githubState.selectedTargetDirectory !== null) {
-        selectFolderForCloning(currentPath);
-      } else {
-        switchToFolder(currentPath);
-      }
-    });
-  }
-
-  // GitHub button
-  const githubBtn = document.getElementById("btn-github");
-  if (githubBtn) {
-    githubBtn.addEventListener("click", openGitHubModal);
-  }
-
-  // GitHub modal close button
-  const githubCloseBtn = document.getElementById("github-modal-close");
-  if (githubCloseBtn) {
-    githubCloseBtn.addEventListener("click", closeGitHubModal);
-  }
-
-  // GitHub login button
-  const githubLoginBtn = document.getElementById("btn-gh-login");
-  if (githubLoginBtn) {
-    githubLoginBtn.addEventListener("click", handleGitHubLogin);
-  }
-
-  // GitHub clone button
-  const githubCloneBtn = document.getElementById("btn-gh-clone");
-  if (githubCloneBtn) {
-    githubCloneBtn.addEventListener("click", handleGitHubClone);
-  }
-
-  // Browse folder button
-  const browseFolderBtn = document.getElementById("btn-browse-folder");
-  if (browseFolderBtn) {
-    browseFolderBtn.addEventListener("click", openFolderBrowser);
-  }
-
-  // Allow Enter key in repo URL input to trigger clone
-  const repoUrlInput = document.getElementById("repo-url-input");
-  if (repoUrlInput) {
-    repoUrlInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        handleGitHubClone();
-      }
-    });
-  }
-
-  // Close modals on Escape key
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      const folderModal = document.getElementById("folder-modal");
-      if (folderModal && folderModal.style.display === "flex") {
-        // If folder modal is open and GitHub modal was the source, restore GitHub modal
-        const githubModal = document.getElementById("github-modal");
+    // "Open This Folder" button
+    const openBtn = document.getElementById("btn-open-folder");
+    if (openBtn) {
+      openBtn.addEventListener("click", () => {
+        // Check if we're in folder browser mode for GitHub clone
         if (githubState.selectedTargetDirectory !== null) {
-          closeFolderModal();
-          if (githubModal) githubModal.style.display = "flex";
+          selectFolderForCloning(currentPath);
         } else {
-          closeFolderModal();
+          switchToFolder(currentPath);
+        }
+      });
+    }
+
+    // GitHub button
+    const githubBtn = document.getElementById("btn-github");
+    if (githubBtn) {
+      githubBtn.addEventListener("click", openGitHubModal);
+    }
+
+    // GitHub modal close button
+    const githubCloseBtn = document.getElementById("github-modal-close");
+    if (githubCloseBtn) {
+      githubCloseBtn.addEventListener("click", closeGitHubModal);
+    }
+
+    // GitHub login button
+    const githubLoginBtn = document.getElementById("btn-gh-login");
+    if (githubLoginBtn) {
+      githubLoginBtn.addEventListener("click", handleGitHubLogin);
+    }
+
+    // GitHub clone button
+    const githubCloneBtn = document.getElementById("btn-gh-clone");
+    if (githubCloneBtn) {
+      githubCloneBtn.addEventListener("click", handleGitHubClone);
+    }
+
+    // Browse folder button
+    const browseFolderBtn = document.getElementById("btn-browse-folder");
+    if (browseFolderBtn) {
+      browseFolderBtn.addEventListener("click", openFolderBrowser);
+    }
+
+    // Allow Enter key in repo URL input to trigger clone
+    const repoUrlInput = document.getElementById("repo-url-input");
+    if (repoUrlInput) {
+      repoUrlInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          handleGitHubClone();
+        }
+      });
+    }
+
+    // Close modals on Escape key
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        const folderModal = document.getElementById("folder-modal");
+        if (folderModal && folderModal.style.display === "flex") {
+          // If folder modal is open and GitHub modal was the source, restore GitHub modal
+          const githubModal = document.getElementById("github-modal");
+          if (githubState.selectedTargetDirectory !== null) {
+            closeFolderModal();
+            if (githubModal) githubModal.style.display = "flex";
+          } else {
+            closeFolderModal();
+          }
+        }
+
+        const githubModal = document.getElementById("github-modal");
+        if (githubModal && githubModal.style.display === "flex") {
+          closeGitHubModal();
         }
       }
-
-      const githubModal = document.getElementById("github-modal");
-      if (githubModal && githubModal.style.display === "flex") {
-        closeGitHubModal();
-      }
+    });
+  } else {
+    // Static mode: hide buttons whose actions need a print-md server.
+    for (const id of ["btn-folder", "btn-github", "btn-exit"]) {
+      const el = document.getElementById(id);
+      if (el) el.hidden = true;
     }
-  });
+  }
 
   // Page navigation buttons
   const firstBtn = document.getElementById("btn-first");

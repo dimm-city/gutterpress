@@ -11,7 +11,7 @@ export function parsePdfInfoBox(
   if (!sizeLine) return null;
   const m = sizeLine.match(/Page size:\s*([0-9.]+)\s*x\s*([0-9.]+)\s*pts/i);
   if (!m) return null;
-  return { w: Number(m[1]), h: Number(m[2]) };
+  return { w: Number(m[1]!), h: Number(m[2]!) };
 }
 
 /**
@@ -23,7 +23,7 @@ export function parsePdfFonts(
   const lines = pdffontsOut.split(/\r?\n/).filter(Boolean);
   const headerIdx = lines.findIndex((l) => l.toLowerCase().startsWith("name"));
   if (headerIdx < 0) return [];
-  const header = lines[headerIdx];
+  const header = lines[headerIdx]!;
   const embPos = header.indexOf(" emb");
   if (embPos < 0) return [];
   const rows = lines
@@ -32,7 +32,7 @@ export function parsePdfFonts(
   return rows.map((r) => {
     const embValue = r.substring(embPos + 1, embPos + 4).trim();
     return {
-      name: r.split(/\s+/)[0],
+      name: r.split(/\s+/)[0] ?? "",
       embedded: embValue === "yes",
     };
   });
@@ -53,8 +53,8 @@ export function parseInkCov(out: string) {
   for (const line of lines) {
     const nums = line.trim().split(/\s+/).slice(0, 4).map(Number);
     if (nums.length === 4 && nums.every((n) => Number.isFinite(n))) {
-      const sum = nums[0] + nums[1] + nums[2] + nums[3];
-      pages.push({ c: nums[0], m: nums[1], y: nums[2], k: nums[3], sum });
+      const [c, m, y, k] = nums as [number, number, number, number];
+      pages.push({ c, m, y, k, sum: c + m + y + k });
     }
   }
   return pages;
@@ -106,11 +106,11 @@ export function parsePdfImages(
 
   for (const line of lines) {
     const cols = line.trim().split(/\s+/);
-    const pageNum = parseInt(cols[0], 10);
-    const width = parseInt(cols[3], 10);
-    const height = parseInt(cols[4], 10);
-    const xppi = parseInt(cols[12], 10);
-    const yppi = parseInt(cols[13], 10);
+    const pageNum = parseInt(cols[0] ?? "", 10);
+    const width = parseInt(cols[3] ?? "", 10);
+    const height = parseInt(cols[4] ?? "", 10);
+    const xppi = parseInt(cols[12] ?? "", 10);
+    const yppi = parseInt(cols[13] ?? "", 10);
 
     if (isNaN(width) || isNaN(height) || isNaN(xppi) || isNaN(yppi)) continue;
     if (xppi <= 0 || yppi <= 0) continue;
@@ -146,7 +146,7 @@ export async function filterRasterized(
     .filter((l) => /^\s*\d+\s+\d+/.test(l));
   const imagesPerPage = new Map<number, number>();
   for (const line of imageLines) {
-    const pageNum = parseInt(line.trim().split(/\s+/)[0], 10);
+    const pageNum = parseInt(line.trim().split(/\s+/)[0] ?? "", 10);
     if (!isNaN(pageNum)) {
       imagesPerPage.set(pageNum, (imagesPerPage.get(pageNum) || 0) + 1);
     }

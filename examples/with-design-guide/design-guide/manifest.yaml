@@ -1,0 +1,30 @@
+title: My Book Title — Design Guide
+authors:
+  - Author Name
+
+# Pull in the same stylesheet the book uses, plus a small guide-only sheet
+# for swatches and component labels.
+#
+# print-md's asset copy flattens any "../" parents to a single basename in
+# the output (e.g. `../shared` → `shared/`), so the `styles` paths below
+# reference that flattened location, not the manifest-relative source path.
+styles:
+  - shared/styles/main.css
+  - styles/guide.css
+
+source:
+  files:
+    - 00-overview.md
+    - 01-typography.md
+    - 02-callouts.md
+    - 03-page-templates.md
+    - 04-palette.md
+  assets:
+    - ../shared
+    - styles
+
+# Same page geometry as the book so the guide's screenshots match.
+page:
+  width: 612
+  height: 792
+  tolerance: 0.5

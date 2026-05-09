@@ -21,6 +21,11 @@ export interface PrintMdManifest {
   output?: {
     dir?: string;
     filename?: string;
+    /**
+     * @deprecated Removed in favor of the fixed filename `book.html`. If set,
+     * the value is ignored and a deprecation warning is logged. Kept on the
+     * type so existing manifests parse without error.
+     */
     html?: string;
   };
   pdfx?: {
@@ -99,7 +104,6 @@ export interface ResolvedConfig {
   output: {
     dir: string;
     filename: string;
-    html: string;
   };
   pdfx: {
     flavor: "x1a" | "x3";

@@ -169,31 +169,30 @@ source:
     - conclusion.md
 ```
 
-## Using the Convert Command
+## Using the Build Command
+
+The standalone `convert` command was removed; `print-md build` now runs
+markdown → HTML rendering, asset copy, and viewer emission in a single
+step (and adds a Chromium PDF render with `--format pdf`).
 
 ### With Files Specified
 
 ```bash
 # manifest.yaml has source.files list
-print-md convert ./my-book -o ./dist
+print-md build ./my-book --format html --out ./_site
 
 # Output shows which files are being used:
-# INFO: Using specified files (5 total):
-#   - intro.md
-#   - chapter-01.md
-#   - chapter-02.md
-#   - chapter-03.md
-#   - appendix.md
+# INFO: Using specified files (5 total)
 ```
 
 ### Without Files (Fallback)
 
 ```bash
 # manifest.yaml omits source.files
-print-md convert ./my-book -o ./dist
+print-md build ./my-book --format html --out ./_site
 
 # Output shows fallback:
-# INFO: Using all .md files in alphabetical order (no files specified in manifest)
+# INFO: Using all .md files in alphabetical order
 ```
 
 ## Debugging

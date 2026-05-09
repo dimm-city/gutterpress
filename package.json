@@ -35,20 +35,23 @@
   ],
   "scripts": {
     "lint:css": "bun src/cli.ts lint",
-    "convert:md": "bun src/cli.ts convert",
-    "copy:assets": "bun src/cli.ts assets",
+    "build": "bun build src/cli.ts --outdir dist --target bun --packages external && cp -r src/assets dist/assets",
     "build:pdf": "bun src/cli.ts build",
+    "build:html": "bun src/cli.ts build --format html",
     "validate:pdf": "bun src/cli.ts validate",
     "preview": "bun src/cli.ts preview",
     "test": "bun test",
     "test:watch": "bun test --watch",
-    "test:coverage": "bun test --coverage --coverage-reporter=text"
+    "test:coverage": "bun test --coverage --coverage-reporter=text",
+    "typecheck": "tsc --noEmit"
   },
   "engines": {
     "bun": ">=1.0.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/markdown-it": "^14.1.2",
+    "@types/markdown-it-container": "^4.0.0",
     "glob": "^13.0.0",
     "htmlhint": "^1.1.4",
     "markdownlint-cli2": "^0.17.0",

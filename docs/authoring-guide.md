@@ -1068,6 +1068,10 @@ Before final print:
 
 For more examples, see the `/examples` directory in the print-md repository.
 
+## See also
+
+- [**Companion design guides**](./design-guides.md) — author and publish an HTML styleguide alongside your book.
+
 ---
 
 **Version:** 1.1
