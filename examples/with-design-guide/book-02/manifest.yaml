@@ -1,4 +1,4 @@
-title: My Book Title
+title: My Book (part 2)
 authors:
   - Author Name
 
@@ -7,11 +7,11 @@ authors:
 # path here matches the flattened asset destination (the `shared/` folder
 # is copied directly into the output dir).
 styles:
-  - shared/styles/main.css
+  - ../guide/styles/main.css
 
 source:
   assets:
-    - shared
+    - guide/styles/
 
 # Letter (8.5" x 11"). Match this to your design-guide manifest so the guide's
 # screenshots and dimensions reflect the book's real page geometry.

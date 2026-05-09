@@ -1,62 +1,45 @@
  /* CSS for preview interface – v0.5 */
+ /*
+  * NOTE: Paged.js strips @media pagedjs-ignore rules from the browser CSSOM.
+  * Canvas background, page shadows, and row-gap on .pagedjs_* elements are
+  * injected via JavaScript in preview.js (injectViewerStyles) AFTER rendering.
+  * Only rules that Paged.js must see for layout belong here.
+  */
 
  /* To define how the book look on the screen: */
  @media screen,
  pagedjs-ignore {
-     /* html/:root covers the full scrollable area — body stops at its own height
-        (100vh) so backgrounds set there produce a white gap below when scrolled.
-        Setting it on html ensures the canvas color extends behind all pages.
-        Overridable at runtime: document.documentElement.style.setProperty('--preview-canvas-bg', color) */
-     html {
-         --preview-canvas-bg: #5a5a5a;
-         background-color: var(--preview-canvas-bg);
-     }
-
      body {
-         /* CSS variables for page appearance — declared on body so they inherit
-            to all paged.js elements. */
-         --color-background: white;
-         --color-pageSheet: rgba(0, 0, 0, 0.15);
+         /* Paged.js reads these variables for crop mark display control */
          --color-pageBox: transparent;
          --pagedjs-mark-cross-display: none;
          --pagedjs-mark-crop-display: none;
-         --color-paper: white;
          --color-marginBox: transparent;
 
          margin: 0;
          padding: 0;
-         height: 100vh;
-         /* No background here — html handles the canvas */
      }
 
+     /* ─── Spread container — Paged.js needs these for page sizing ─────────── */
      .pagedjs_pages {
          display: flex;
-         width: calc(var(--pagedjs-width) * 2 + 5mm);
-         flex: 0;
+         width: calc(var(--pagedjs-width) * 2 + 8mm);
+         flex: 0 0 auto;
          flex-wrap: wrap;
          margin: 0 auto !important;
          transition: all 0.3s ease;
      }
 
+     /* ─── Individual pages ────────────────────────────────────────────────── */
      .pagedjs_page {
-         box-shadow: 0 0 0 1px var(--color-pageSheet);
-         background-color: var(--color-background);
          margin: 0;
          flex-shrink: 0;
          flex-grow: 0;
-         margin-top: 10mm;
          transition: all 0.3s ease;
-         .pagedjs_sheet{
-            background-color: var(--page-background-color);
-         }
      }
 
      .pagedjs_first_page {
          margin-left: 0;
-     }
-
-     .pagedjs_page:last-of-type {
-         margin-bottom: 10mm;
      }
 
      .pagedjs_pagebox {
@@ -224,7 +207,7 @@
      display: flex;
      justify-content: center;
      padding: 0;
-     background-color: var(--preview-canvas-bg, #5a5a5a);
+     background-color: var(--preview-canvas-bg, #e0e0e0);
  }
 
  /* SPREAD MODE: Container handles scrolling only */
@@ -246,28 +229,18 @@
      min-height: 100%;
  }
 
- /* Layout mode classes - controlled by user toggle */
- /* SPREAD MODE: Show two pages side-by-side like an open book */
+ /* Layout mode classes — structural rules that Paged.js must see for page geometry.
+  * NOTE: row-gap, margin, and box-shadow on .pagedjs_* are injected via JS (injectViewerStyles).
+  */
+
+ /* SPREAD MODE: full-bleed side-by-side */
  body.view-spread .pagedjs_pages {
      flex-direction: row !important;
      width: calc(var(--pagedjs-width) * 2 + 5mm) !important;
-     max-height: calc(100vh - 70px);
-     gap: 1rem;
-     /* Let Paged.js control the width, but ensure it has space for 2 columns */
-     min-width: fit-content;
-     /* Add balanced padding to match wrapper - ensures first and last pages have equal margins */
-     padding-inline: 2rem !important;
  }
 
- body.view-spread .pagedjs_first_page {
-     margin-left: 0 !important;
- }
-
- body.view-spread .pagedjs_page {
-     /* Remove auto margin - let wrapper handle centering */
-     margin: 0 !important;
-     margin-top: 10mm !important;
- }
+ body.view-spread .pagedjs_first_page { margin-left: 0 !important; }
+ body.view-spread .pagedjs_page { margin: 0 !important; }
 
  body.view-spread .pagedjs_left_page {
      width: calc(var(--pagedjs-bleed-left) + var(--pagedjs-pagebox-width) + var(--pagedjs-bleed-left)) !important;
@@ -281,39 +254,41 @@
      width: var(--pagedjs-cross-size) !important;
  }
 
- body.view-spread .pagedjs_right_page {
-     left: 0 !important;
- }
+ body.view-spread .pagedjs_right_page { left: 0 !important; }
 
- /* Center the last page if it's alone (left page without a partner) */
- body.view-spread .pagedjs_pages .pagedjs_page.pagedjs_left_page:last-child {
-     margin: 10mm auto 0 auto !important;
- }
-
- /* SINGLE MODE: Show one page at a time in vertical scroll */
+ /* SINGLE MODE: One page per row, vertically scrolled */
  body.view-single .pagedjs_pages {
      flex-direction: column !important;
-     width: 100% !important;
+     width: fit-content !important;
+     align-items: center;
+     row-gap: 16mm !important;
  }
 
  body.view-single .pagedjs_page {
      margin: 0 !important;
-     margin-top: 10mm !important;
  }
 
  body.view-single .pagedjs_first_page {
      margin-left: 0 !important;
  }
 
+ body.view-single .pagedjs_left_page {
+     width: calc(var(--pagedjs-bleed-left) + var(--pagedjs-pagebox-width) + var(--pagedjs-bleed-right)) !important;
+ }
+
  body.view-single .pagedjs_right_page {
-     left: calc(var(--pagedjs-bleed-left)*-1) !important;
+     left: 0 !important;
+     position: relative !important;
  }
 
  /* Responsive: Default to single column only if NO explicit view mode is set */
+ /* Narrow viewport: auto single-column when no explicit mode is active */
  @media screen and (max-width: 1700px) {
      body:not(.view-single):not(.view-spread) .pagedjs_pages {
-         flex-direction: column;
-         width: 100% !important;
+         flex-direction: column !important;
+         width: fit-content !important;
+         align-items: center;
+         row-gap: 16mm !important;
      }
 
      body:not(.view-single):not(.view-spread) .pagedjs_first_page {
@@ -321,8 +296,7 @@
      }
 
      body:not(.view-single):not(.view-spread) .pagedjs_page {
-         margin: 0 auto;
-         margin-top: 10mm;
+         margin: 0 !important;
      }
 
      body:not(.view-single):not(.view-spread) .pagedjs_left_page {
@@ -338,7 +312,8 @@
      }
 
      body:not(.view-single):not(.view-spread) .pagedjs_right_page {
-         left: 5mm !important;
+         left: 0 !important;
+         position: relative !important;
      }
  }
 
@@ -360,7 +335,7 @@
      inset: 0;
      top: 56px;
      /* Below toolbar */
-     background: var(--color-background);
+     background: #404040;
      display: none;
      align-items: center;
      justify-content: center;

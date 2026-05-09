@@ -101,10 +101,17 @@ export async function generateAndWriteHtml(
     debugCss = await Bun.file(debugCssPath).text();
   } catch { /* debug CSS is optional */ }
 
-  // Inject interface script + debug CSS + break-inside polyfill before Paged.js polyfill
-  // Debug CSS is injected via JS to bypass Vite's <style> tag transformation which strips CSS
+  // Inject viewer chrome before the Paged.js polyfill:
+  //   1. <link> to preview.css — viewer-only styles (canvas bg, shadows, spacing).
+  //      Served as a URL so it is NEVER baked into book.html and never affects the
+  //      PDF build pipeline, which renders book.html without this server.
+  //   2. pagedjs-interface.js — toolbar ↔ iframe API bridge
+  //   3. debug.css (inlined via JS — Vite strips <style> tags in iframes)
+  //   4. BREAK_INSIDE_HANDLER — polyfill for break-inside: avoid
   const escapedDebugCss = debugCss.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
-  const iface = '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
+  const iface =
+    '<link rel="stylesheet" href="/preview/styles/preview.css">\n  '
+    + '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
     + (debugCss ? `<script>(function(){var s=document.createElement("style");s.setAttribute("data-debug-css","true");s.textContent=\`${escapedDebugCss}\`;document.head.appendChild(s)})()</script>\n  ` : '');
   const output = html.replace(
     '<script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>',

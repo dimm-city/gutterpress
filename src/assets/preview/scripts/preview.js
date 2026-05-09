@@ -497,23 +497,107 @@ function printPreview() {
   }
 }
 
+// ============================================================================
+// Viewer Canvas Styles — injected after Paged.js renders
+// ============================================================================
+//
+// Paged.js strips @media pagedjs-ignore rules from the browser's CSSOM, so
+// canvas background, page shadows, and row spacing cannot be set via preview.css
+// on pagedjs_* elements. Instead, we inject a <style> block after rendering.
+
+const VIEWER_CANVAS_DEFAULT_BG = "#e0e0e0";
+let _currentCanvasBg = VIEWER_CANVAS_DEFAULT_BG;
+
+function buildViewerStyleSheet(bg) {
+  return `
+/* Injected by preview.js after Paged.js render — not in preview.css to avoid pagedjs stripping */
+
+/* ── Canvas ── */
+html, body {
+  background-color: ${bg} !important;
+  min-height: 100% !important;
+}
+body {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* ── Spread container (two-page side-by-side default) ── */
+.pagedjs_pages {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  /* Width = two pages + column-gap so flex-wrap breaks into proper spread rows */
+  width: calc(var(--pagedjs-width) * 2 + 8mm) !important;
+  margin: 20mm auto !important;
+  row-gap: 20mm !important;
+  column-gap: 8mm !important;
+}
+
+/* ── Page shadows ── */
+.pagedjs_page {
+  margin: 0 !important;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.40),
+    0 8px 28px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* ── Reset any Paged.js bleed offsets so column-gap controls the gutter ── */
+.pagedjs_left_page .pagedjs_sheet {
+  margin-left: 0 !important;
+}
+.pagedjs_right_page {
+  position: relative !important;
+  left: 0 !important;
+}
+
+/* ── Single-page mode ── */
+body.view-single .pagedjs_pages {
+  flex-direction: column !important;
+  width: fit-content !important;
+  align-items: center !important;
+  row-gap: 16mm !important;
+}
+body.view-single .pagedjs_right_page {
+  left: 0 !important;
+  position: relative !important;
+}
+body.view-single .pagedjs_left_page .pagedjs_sheet {
+  margin-left: 0 !important;
+}
+`.trim();
+}
+
+/**
+ * Inject (or update) the viewer canvas styles into the iframe after Paged.js renders.
+ * Paged.js strips @media pagedjs-ignore from the CSSOM, so these must be injected via JS.
+ */
+function injectViewerStyles(iframeWin, bg) {
+  if (!iframeWin?.document) return;
+  bg = bg || _currentCanvasBg;
+  _currentCanvasBg = bg;
+
+  let block = iframeWin.document.querySelector('style[data-viewer-canvas]');
+  if (!block) {
+    block = iframeWin.document.createElement('style');
+    block.setAttribute('data-viewer-canvas', 'true');
+    iframeWin.document.head.appendChild(block);
+  }
+  block.textContent = buildViewerStyleSheet(bg);
+}
+
 /**
  * Change the background color of the preview canvas (area surrounding pages)
  */
 function changeBackgroundColor(color) {
   const iframeWin = getIframeWindow();
-  if (!iframeWin) {
-    return;
-  }
+  if (!iframeWin) return;
 
   try {
-    if (iframeWin.document && iframeWin.document.documentElement) {
-      // --preview-canvas-bg is declared on html in preview.css.
-      // html covers the full scrollable area; body stops at 100vh.
-      // Setting via inline style on documentElement overrides the stylesheet.
-      iframeWin.document.documentElement.style.setProperty('--preview-canvas-bg', color);
-      console.log(`Background color changed to ${color}`);
-    }
+    // Update the injected viewer-canvas style block (preview.css canvas rules are
+    // stripped by Paged.js, so we inject/update them via JS instead).
+    injectViewerStyles(iframeWin, color);
+    console.log(`Background color changed to ${color}`);
   } catch (error) {
     console.error("Failed to change background color:", error);
   }
@@ -579,6 +663,10 @@ function onRenderingComplete(event) {
 
   // Update UI with initial page state
   updatePageDisplay();
+
+  // Inject viewer canvas styles (background, shadows, row spacing).
+  // Must be done AFTER Paged.js renders because Paged.js strips @media pagedjs-ignore rules.
+  injectViewerStyles(getIframeWindow());
 
   // Apply default view mode (two-column)
   setViewMode("two-column");

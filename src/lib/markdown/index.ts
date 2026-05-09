@@ -24,18 +24,6 @@ import { applyPlugins } from "./plugins";
  * Get the preview CSS content
  * Reads the preview.css file and returns its content for inlining
  */
-async function getPreviewCss(): Promise<string> {
-  try {
-    const thisDir = dirname(fileURLToPath(import.meta.url));
-    const projectRoot = dirname(dirname(dirname(thisDir))); // src/lib/markdown -> src -> project root
-    const cssPath = join(projectRoot, 'src', 'assets', 'preview', 'styles', 'preview.css');
-    return await readFile(cssPath, 'utf-8');
-  } catch (error) {
-    console.warn('Failed to load preview.css:', error);
-    return '';
-  }
-}
-
 /**
  * Get the paged CSS content from markdown-it-paged
  * Provides CSS hooks for @spread, @page, @section, @break markers
@@ -159,7 +147,6 @@ export async function renderChapters(
 ): Promise<string> {
   const title = opts.title ?? "Document";
   const styles = resolveStyles(inputDir, opts.styles);
-  const previewCss = await getPreviewCss();
   const pagedCss = await getPagedCss();
   const pluginCss = opts.pluginCss ?? '';
 
@@ -206,7 +193,6 @@ export async function renderChapters(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
   ${styles.map(s => `<link rel="stylesheet" href="${s}">`).join('\n  ')}
-  ${previewCss ? `<style>\n${previewCss}\n</style>` : ''}
   ${pagedCss ? `<style>\n/* markdown-it-paged layout CSS */\n${pagedCss}\n</style>` : ''}
   ${pluginCss ? `<style>\n/* Plugin CSS */\n${pluginCss}\n</style>` : ''}
   <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>
