@@ -1,0 +1,210 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 1.2.3 or 1.2.3-beta.1). Bumps package.json, optionally publishes to npm, builds cross-platform binaries, and creates a GitHub release."
+        required: true
+        type: string
+      skip_npm_publish:
+        description: "Skip publishing to npm (useful for pre-releases or testing the workflow)"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PUPPETEER_SKIP_DOWNLOAD: 'true'
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run tests
+        run: bun test
+
+  version:
+    name: Bump Version & Tag
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Ensure workflow runs from default branch
+        if: ${{ github.ref_name != github.event.repository.default_branch }}
+        run: |
+          echo "Releases must be dispatched from ${{ github.event.repository.default_branch }}."
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Bump version in package.json
+        run: |
+          VERSION="${{ inputs.version }}"
+          VERSION="$VERSION" node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = process.env.VERSION;
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Commit and tag
+        id: tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: bump version to ${{ inputs.version }}"
+            git push
+          fi
+
+          if git rev-parse -q --verify "refs/tags/v${{ inputs.version }}" >/dev/null; then
+            git tag -d "v${{ inputs.version }}"
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/v${{ inputs.version }}" >/dev/null; then
+            git push origin ":refs/tags/v${{ inputs.version }}"
+          fi
+
+          git tag "v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+          echo "tag=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+
+  build-binaries:
+    name: Build / ${{ matrix.artifact }}
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            artifact: print-md-linux-x64
+          - os: ubuntu-latest
+            target: bun-linux-arm64
+            artifact: print-md-linux-arm64
+          - os: macos-13
+            target: bun-darwin-x64
+            artifact: print-md-macos-x64
+          - os: macos-latest
+            target: bun-darwin-arm64
+            artifact: print-md-macos-arm64
+          - os: windows-latest
+            target: bun-windows-x64
+            artifact: print-md-windows-x64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --omit optional
+
+      - name: Build standalone binary
+        run: bun build src/cli.ts --compile --target ${{ matrix.target }} --outfile ${{ matrix.artifact }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  publish-npm:
+    name: Publish to npm
+    needs: version
+    if: ${{ !inputs.skip_npm_publish }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Skip if already published
+        run: |
+          if npm view "@dimm-city/print-md@${{ inputs.version }}" version &>/dev/null; then
+            echo "Version ${{ inputs.version }} already published — skipping."
+            echo "ALREADY_PUBLISHED=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Publish to npm
+        if: ${{ env.ALREADY_PUBLISHED != 'true' }}
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  github-release:
+    name: Create GitHub Release
+    needs: [version, build-binaries, publish-npm]
+    if: |
+      always() &&
+      needs.version.result == 'success' &&
+      needs.build-binaries.result == 'success' &&
+      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Create GitHub release
+        run: |
+          PRERELEASE_FLAG=""
+          if [[ "${{ inputs.version }}" == *"-"* ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          gh release create "${{ needs.version.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --title "print-md ${{ needs.version.outputs.tag }}" \
+            --generate-notes \
+            $PRERELEASE_FLAG \
+            dist/*
+        env:
+          GH_TOKEN: ${{ github.token }}
