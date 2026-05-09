@@ -371,7 +371,15 @@ describe("handleGitHubStatus", () => {
   });
 });
 
-describe("handleGitHubLogin", () => {
+// `handleGitHubLogin` shells out to `gh auth login --web`, which opens an
+// interactive browser flow and blocks until completion. The tests time out
+// in any non-interactive environment (CI, Bun test runner). Skip when CI=true
+// or when the `gh` CLI isn't on PATH; keep runnable for local investigation.
+const skipGhLoginTests =
+  process.env.CI === "true" || !Bun.which("gh");
+const describeGhLogin = skipGhLoginTests ? describe.skip : describe;
+
+describeGhLogin("handleGitHubLogin", () => {
   test("returns proper response structure", async () => {
     const request = new Request("http://localhost:3000/api/gh/login", {
       method: "POST",
