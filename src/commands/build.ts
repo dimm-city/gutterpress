@@ -55,27 +55,33 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
       waitUntil: "networkidle",
     });
 
-    // Ensure all web fonts are fully loaded before Paged.js paginates
-    await page.evaluate(() => document.fonts.ready);
+    // Ensure all web fonts are fully loaded before Paged.js paginates.
+    // The callbacks below execute in the Chromium page context, not Node,
+    // so DOM globals (document/window/getComputedStyle) are available there
+    // even though the Node tsconfig doesn't include the DOM lib.
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    await page.evaluate(() => (globalThis as any).document.fonts.ready);
 
     await page
       .waitForFunction(
-        () => (window as any).__PAGED_RENDERED__ === true,
+        () => (globalThis as any).__PAGED_RENDERED__ === true,
         { timeout: 180_000 }
       )
       .catch(() => {});
 
     // Log Paged.js page count for diagnostics
     const pagedInfo = await page.evaluate(() => {
-      const pages = document.querySelectorAll('.pagedjs_page');
-      const el = pages[0] as HTMLElement | null;
-      const s = el ? getComputedStyle(el) : null;
+      const g = globalThis as any;
+      const pages = g.document.querySelectorAll('.pagedjs_page');
+      const el = pages[0] ?? null;
+      const s = el ? g.getComputedStyle(el) : null;
       return {
-        pageCount: pages.length,
-        width: s?.width,
-        height: s?.height,
+        pageCount: pages.length as number,
+        width: s?.width as string | undefined,
+        height: s?.height as string | undefined,
       };
     });
+    /* eslint-enable @typescript-eslint/no-explicit-any */
     log.info(`Paged.js rendered ${pagedInfo.pageCount} pages (${pagedInfo.width} × ${pagedInfo.height})`);
 
     // Paged.js already handles @page size and margins internally — each

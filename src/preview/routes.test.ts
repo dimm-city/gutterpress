@@ -17,7 +17,16 @@ import { getHomeDirectory } from "../utils/path-security";
 import { mkdtemp, rm, mkdir, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import type { DirectoryListResponse, FolderChangeResponse, GitHubAuthStatus, GitHubUserInfo, GitHubLoginResponse, GitHubCloneResponse } from "../types";
+import type {
+  DirectoryListResponse,
+  FolderChangeResponse,
+} from "../types";
+import type {
+  GitHubAuthStatus,
+  GitHubUserInfo,
+  GitHubLoginResponse,
+  GitHubCloneResponse,
+} from "./routes";
 
 // Helper to parse JSON response with proper typing
 async function parseJson<T>(response: Response): Promise<T> {
@@ -88,11 +97,11 @@ describe("handleListDirectories", () => {
 
       expect(response.status).toBe(200);
 
-      const data = await parseJson<Record<string, unknown>>(response);
+      const data = await parseJson<DirectoryListResponse>(response);
       expect(data.currentPath).toBe(tempDir);
       expect(data.directories.length).toBe(2);
-      expect(data.directories[0].name).toBe("subdir1");
-      expect(data.directories[1].name).toBe("subdir2");
+      expect(data.directories[0]!.name).toBe("subdir1");
+      expect(data.directories[1]!.name).toBe("subdir2");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -339,11 +348,11 @@ describe("handleGitHubStatus", () => {
     const request = new Request("http://localhost:3000/api/gh/status");
     const response = await handleGitHubStatus(request);
 
-    const data = await parseJson<Record<string, unknown>>(response);
+    const data = await parseJson<GitHubAuthStatus>(response);
 
     if (data.authenticated) {
       expect(typeof data.username).toBe("string");
-      expect(data.username.length).toBeGreaterThan(0);
+      expect((data.username ?? "").length).toBeGreaterThan(0);
     }
   });
 
@@ -575,7 +584,7 @@ describe("handleGitHubUser", () => {
 
     expect(response.headers.get("Content-Type")).toBe("application/json");
 
-    const data = await parseJson<Record<string, unknown>>(response);
+    const data = await parseJson<GitHubUserInfo>(response);
 
     if (response.status === 200) {
       expect(data).toHaveProperty("username");

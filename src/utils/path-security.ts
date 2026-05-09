@@ -14,6 +14,7 @@
 
 import path from 'path';
 import { homedir } from 'os';
+import { realpath as fsRealpath } from 'fs/promises';
 
 /**
  * Result of path validation
@@ -140,13 +141,11 @@ export async function validateStaticPath(
   // This prevents attacks where a symlink inside the allowed directory
   // points to a file outside it (e.g., symlink to /etc/passwd)
   try {
-    // Use Bun's native file API for symlink resolution
-    const bunFile = Bun.file(resolvedPath);
-    const realPath = await bunFile.realpath();
-
-    // Resolve the allowed directory's real path too
-    const allowedDirFile = Bun.file(normalizedAllowedDir);
-    const realAllowedDir = await allowedDirFile.realpath();
+    // Resolve symlinks using node:fs/promises.realpath — works on
+    // both Bun and Node, unlike Bun's old `BunFile.realpath()` which
+    // was removed in newer Bun versions.
+    const realPath = await fsRealpath(resolvedPath);
+    const realAllowedDir = await fsRealpath(normalizedAllowedDir);
 
     // Check if the real path (following symlinks) is still within the allowed directory
     if (realPath !== realAllowedDir &&

@@ -160,7 +160,7 @@ export function parseGitHubUrl(url: string): {
     // Only accept github.com as the domain, not as a substring
     else if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) {
       const httpsMatch = cleanUrl.match(/^https?:\/\/github\.com\/(.+)$/);
-      if (httpsMatch) {
+      if (httpsMatch && httpsMatch[1]) {
         cleanUrl = httpsMatch[1];
       } else {
         // It's an HTTP(S) URL but not github.com - reject it
