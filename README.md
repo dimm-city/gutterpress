@@ -87,14 +87,17 @@ For comprehensive guides and references, see the [/docs](./docs) directory:
 ### Build a PDF
 
 ```bash
-# Run full pipeline from current directory
-print-md run .
+# Build a plain PDF from current directory
+print-md build .
 
-# Run from specific directory
-print-md run ./my-book
+# Build from specific directory
+print-md build ./my-book
 
-# Run with custom output
-print-md run ./my-book --out dist/
+# Build with custom output
+print-md build ./my-book --out dist/
+
+# Print-ready PDF/X (lint + pre/post validation enabled by default)
+print-md build ./my-book --format pdfx --icc ./profiles/CGATS21_CRPC1.icc
 ```
 
 ### Live Preview
@@ -370,52 +373,35 @@ h1 {
 
 ## CLI Reference
 
-### Run Command (Full Pipeline)
+### Build Command (unified pipeline)
 
 ```bash
-print-md run <input-dir> [options]
+print-md build [input-dir] [--format <html|pdf|pdfx>] [options]
 ```
+
+`build` produces a single artifact end-to-end: it renders the markdown, copies user assets, and emits the print-md viewer chrome (`index.html` + `preview/`) into the output directory.
+
+The `--format` flag controls how far the pipeline runs and what validation phases are enabled by default:
+
+| Format | Pipeline                              | Lint | Pre-validate | Post-validate |
+|--------|---------------------------------------|------|--------------|---------------|
+| `html` | Markdown → HTML viewer site           | off  | off          | off           |
+| `pdf`  | Above → Chromium + Paged.js → `book.pdf` | on   | on           | off           |
+| `pdfx` | Above → Ghostscript CMYK + PDF/X      | on   | on           | on            |
+
+Use `--skip-lint`, `--skip-pre-validate`, `--skip-post-validate` to disable individual phases. Manifest fields `lint.enabled` / `validate.enabled` can also force them off.
 
 **Options:**
-- `--out <dir>` - Output directory path
-- `--pdfx` - Enable PDF/X compliance
-- `--icc` - ICC color profile path
-- `--manifest` - Path to manifest.yaml
-- `--skip-lint` - Skip the lint step
-- `--skip-validate` - Skip post-build validation
-- `--skip-pre-validate` - Skip pre-build validation
-
-**Examples:**
-
-```bash
-# Run full pipeline from current directory
-print-md run .
-
-# Run from specific directory with custom output
-print-md run ./my-book --out dist/
-
-# Run with PDF/X compliance
-print-md run ./my-book --pdfx
-```
-
-### Build Command (single-step output)
-
-```bash
-print-md build [input-dir] --format <html|pdf> [options]
-```
-
-`build` produces a single artifact end-to-end: it renders the markdown, copies user assets, and emits the print-md viewer chrome (`index.html` + `preview/`) into the output directory. With `--format pdf` it also runs Chromium + Paged.js to produce `book.pdf`. With `--format html` it stops after the viewer is in place — perfect for publishing a [companion design guide](./docs/design-guides.md).
-
-`build` does not run lint or validation; for the full validated PDF pipeline, use `run`.
-
-**Options:**
-- `--format <html|pdf>` - Output format (default: pdf)
-- `--out <path>` - Output directory (or `.pdf` file path with `--format pdf`)
+- `--format <html|pdf|pdfx>` - Output format (default: `pdf`)
+- `--out <path>` - Output directory (or `.pdf` file path with `--format pdf|pdfx`)
 - `--title <title>` - Document title (overrides manifest)
-- `--pdfx <flavor>` - Enable PDF/X compliance (`x1a` or `x3`); `--format pdf` only
-- `--icc <path>` - ICC color profile path (required with `--pdfx`)
+- `--pdfx-flavor <x1a|x3>` - PDF/X flavor (`--format pdfx` only); defaults to manifest `pdfx.flavor` (preset: `x1a`)
+- `--icc <path>` - ICC color profile path (required with `--format pdfx`)
 - `--manifest <path>` - Path to manifest.yaml
-- `--strip-annotations` - Strip PDF annotations (default: true with `--pdfx`)
+- `--strip-annotations` - Strip PDF annotations (default: true with `--format pdfx`)
+- `--skip-lint` - Skip CSS linting (otherwise runs for `pdf`/`pdfx`)
+- `--skip-pre-validate` - Skip pre-build validation (otherwise runs for `pdf`/`pdfx`)
+- `--skip-post-validate` - Skip post-build PDF/X validation (otherwise runs for `pdfx`)
 
 **Examples:**
 
@@ -423,16 +409,19 @@ print-md build [input-dir] --format <html|pdf> [options]
 # Build a deployable HTML site (with viewer chrome)
 print-md build ./my-book --format html --out ./_site
 
-# Quick PDF for review
+# Quick PDF for review (lint + pre-validate run; post-validate skipped)
 print-md build ./my-book --out ./dist
 
-# PDF/X-compliant
-print-md build ./my-book --pdfx x1a --icc ./profiles/CGATS21_CRPC1.icc
+# Print-ready PDF/X-1a (full validated pipeline)
+print-md build ./my-book --format pdfx --icc ./profiles/CGATS21_CRPC1.icc
+
+# PDF/X-3 with explicit flavor
+print-md build ./my-book --format pdfx --pdfx-flavor x3 --icc ./profiles/Coated_GRACoL_2006.icc
 ```
 
 ### Build Fingerprint Artifact
 
-Every successful `print-md build` and `print-md run` writes a deterministic fingerprint artifact to the output directory:
+Every successful `print-md build` writes a deterministic fingerprint artifact to the output directory:
 
 - `build-fingerprint.json`
 
@@ -484,7 +473,7 @@ print-md preview --no-watch
 
 ### Output Formats
 
-- **PDF** - Renders via Chromium + Paged.js typesetter for professional print quality (`build --format pdf`, or `run` for the validated PDF/X pipeline)
+- **PDF** - Renders via Chromium + Paged.js typesetter for professional print quality. Use `build --format pdf` for a quick PDF or `build --format pdfx` for a print-ready PDF/X-1a/X-3 with the full validated pipeline.
 - **HTML static site** - `build --format html` produces a directory whose `index.html` is the print-md viewer chrome wrapping the rendered book. Drop it on GitHub Pages or any static host. See [docs/design-guides.md](./docs/design-guides.md).
 
 ## Project Structure

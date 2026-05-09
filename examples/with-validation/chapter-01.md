@@ -13,8 +13,8 @@ print-md validate --input .
 # Validate a built PDF (post-build)
 print-md validate --pdf dist/book.pdf
 
-# Full pipeline with validation at both phases
-print-md run --input .
+# Full validated PDF/X pipeline (validates at both phases)
+print-md build . --format pdfx
 ```
 
 ## How Validation Works

@@ -9,7 +9,7 @@ The validation system runs checks at two phases of the pipeline:
 - **Pre-build** — Source, asset, and some heuristic checks run before PDF generation
 - **Post-build** — PDF structural, print compliance, and quality checks run after PDF generation
 
-When using the `run` pipeline, validation is automatically integrated:
+When using `print-md build --format pdf` or `--format pdfx`, validation is automatically integrated:
 
 ```
 lint → validate:pre-build → convert → assets → build → validate:post-build
@@ -119,13 +119,13 @@ print-md validate --pdf dist/book.pdf --format json
 
 ```bash
 # Full pipeline with validation at both phases
-print-md run --input ./my-book --pdfx x1a
+print-md build ./my-book --format pdfx
 
 # Skip pre-build validation
-print-md run --input ./my-book --pdfx x1a --skip-pre-validate
+print-md build ./my-book --format pdfx --skip-pre-validate
 
 # Skip post-build validation
-print-md run --input ./my-book --pdfx x1a --skip-validate
+print-md build ./my-book --format pdfx --skip-post-validate
 ```
 
 ## CLI Arguments

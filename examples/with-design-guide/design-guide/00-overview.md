@@ -15,14 +15,16 @@ components you see here are what the book actually ships.
 
 ## How this is built
 
-This guide is a normal print-md project. `print-md preview ./design-guide`
-runs it locally with hot reload; `print-md build ./design-guide --format
-html --out ./_site` produces a static-site directory you can drop on
-GitHub Pages or any static host. The same `book.pdf` print-ready download
-is produced by `print-md run` (see "Download").
+This guide is a normal print-md project.
+`print-md preview ./design-guide` runs it locally with hot reload;
+`print-md build ./design-guide --format html --out ./_site` produces a
+static-site directory you can drop on GitHub Pages or any static host.
+The same `book.pdf` print-ready download is produced by
+`print-md build --format pdfx` (see "Download").
 
 ## Download
 
-If the published guide also includes the print-ready PDF (run `print-md
-run ./design-guide` before publishing), it will be at `book.pdf` next to
-this page. [Download the PDF](book.pdf){.download}
+If the published guide also includes the print-ready PDF (run
+`print-md build ./design-guide --format pdfx` before publishing), it
+will be at `book.pdf` next to this page.
+[Download the PDF](book.pdf){.download}

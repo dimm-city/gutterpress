@@ -64,14 +64,13 @@ src/
 ├── types.ts                # Central type definitions
 ├── constants.ts            # Application constants
 ├── server.ts               # Preview server main
-├── commands/               # CLI command implementations
-│   ├── run.ts              # Full pipeline (6 steps)
+├── commands/               # CLI command implementations (thin citty wrappers)
+│   ├── build.ts            # Unified pipeline: html | pdf | pdfx
+│   ├── preview.ts          # Live HTML preview (HMR), or build+open for pdf|pdfx
 │   ├── validate.ts         # Print validation
-│   ├── convert.ts          # Markdown → HTML
-│   ├── build.ts            # HTML → PDF via Chromium + Paged.js
 │   ├── lint.ts             # CSS linting
-│   ├── assets.ts           # Asset copying
-│   └── preview.ts          # Live preview server
+│   ├── audit.ts            # Asset-only validation
+│   └── preflight.ts        # Structured CI preflight payload
 ├── checks/                 # Validation check system
 │   ├── types.ts            # Check interfaces
 │   ├── registry.ts         # Self-registration + getChecks()

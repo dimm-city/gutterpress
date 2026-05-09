@@ -50,7 +50,7 @@ export async function copyAssets(
 
     // Fallback: when a relative path like "../_shared" doesn't exist (e.g. during
     // build re-staging from the output dir), check the flattened basename ("_shared")
-    // directly inside inputDir — the run command's asset step already copied it there.
+    // directly inside inputDir — a prior asset step already copied it there.
     const fallbackSrc = join(inputDir, destName);
     const resolvedSrc = existsSync(src) ? src : existsSync(fallbackSrc) ? fallbackSrc : null;
 

@@ -25,14 +25,17 @@ Print-md converts markdown files into professional print PDFs. It's designed for
 ### Basic Workflow
 
 ```bash
-# Run the full pipeline (lint, validate, convert, build)
-print-md run ./my-book
+# Build a quick PDF (lint + pre-build validation run by default)
+print-md build ./my-book
 
 # Preview with live reload
 print-md preview ./my-book
 
-# Run with custom output directory
-print-md run ./my-book --out ./output
+# Build with a custom output directory
+print-md build ./my-book --out ./output
+
+# Print-ready PDF/X (full validated pipeline)
+print-md build ./my-book --format pdfx
 ```
 
 ### Project Structure

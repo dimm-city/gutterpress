@@ -153,11 +153,14 @@ This will:
 ### 5. Build Your PDF
 
 ```bash
-# Run the full pipeline
-print-md run .
+# Build a PDF (lint + pre-validate run by default)
+print-md build .
 
 # Or specify output directory
-print-md run . --out dist/
+print-md build . --out dist/
+
+# Print-ready PDF/X with the full validated pipeline
+print-md build . --format pdfx
 ```
 
 Your PDF will be created in the output directory.
@@ -230,13 +233,17 @@ plugins:                           # Enable/disable plugins
 ### CLI Options
 
 ```bash
-# Full pipeline (run)
-print-md run <input-dir> [options]
-  --out <dir>                      # Output directory
-  --pdfx <x1a|x3>                 # PDF/X flavor
+# Build (unified pipeline)
+print-md build [input-dir] [options]
+  --format <html|pdf|pdfx>         # Output format (default: pdf)
+  --out <path>                     # Output directory or .pdf path
+  --pdfx-flavor <x1a|x3>           # PDF/X flavor (only with --format pdfx)
+  --icc <path>                     # ICC profile path (required for --format pdfx)
+  --manifest <path>                # Path to manifest.yaml
+  --strip-annotations              # Strip annotations (default true with --format pdfx)
   --skip-lint                      # Skip CSS linting step
   --skip-pre-validate              # Skip pre-build validation
-  --skip-validate                  # Skip post-build validation
+  --skip-post-validate             # Skip post-build PDF/X validation
 
 # Validate
 print-md validate --pdf dist/book.pdf   # Validate PDF for print
@@ -247,12 +254,6 @@ print-md validate --input . --pdf dist/book.pdf  # Both
   --skip pdf.nav.cross-refs        # Skip specific check(s)
   --format json                    # JSON output for CI
   --phase pre-build                # Run specific phase
-
-# Build (HTML to PDF only, two positional args)
-print-md build <html-file> <pdf-output> [options]
-  --pdfx <x1a|x3>                 # Enable PDF/X conversion
-  --icc <path>                     # ICC profile path
-  --manifest <path>                # Path to manifest.yaml
 
 # Preview commands
 print-md preview [input]            # Start preview server
@@ -608,26 +609,25 @@ Clone repositories directly from preview:
 
 ### Basic Build
 
-Use the `run` command for the full pipeline (markdown to PDF):
+Use `print-md build` for the full pipeline (markdown to PDF):
 
 ```bash
-# Full pipeline from current directory
-print-md run .
+# Build from current directory (lint + pre-validate run by default)
+print-md build .
 
-# Full pipeline with output directory
-print-md run ./my-book --out dist/
-```
+# Build with output directory
+print-md build ./my-book --out dist/
 
-The `build` command is for converting a single HTML file to PDF (not for the full pipeline):
+# Static-site HTML output (viewer chrome only, no validation)
+print-md build ./my-book --format html --out _site/
 
-```bash
-# Convert HTML to PDF directly
-print-md build output.html output.pdf
+# Print-ready PDF/X with full validated pipeline
+print-md build ./my-book --format pdfx
 ```
 
 ### Output Format
 
-The `convert` command produces standalone HTML. The `run` pipeline produces PDF.
+`print-md build --format html` produces a standalone static-site directory. `--format pdf` produces a quick PDF; `--format pdfx` produces a CMYK PDF/X with full validation.
 
 ### Verbose Output
 
@@ -931,8 +931,8 @@ print-md validate --input ./my-book
 # Validate a PDF for print compliance
 print-md validate --pdf dist/book.pdf --manifest manifest.yaml
 
-# Full pipeline with validation
-print-md run ./my-book --pdfx x1a
+# Full validated PDF/X pipeline
+print-md build ./my-book --format pdfx
 ```
 
 **Configure in manifest.yaml:**
