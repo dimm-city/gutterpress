@@ -19,7 +19,7 @@ type PdfxFingerprintConfig = {
 };
 
 export type BuildFingerprintInput = {
-  command: "build" | "run";
+  command: "build";
   outputDir: string;
   sourceDir?: string;
   args: Record<string, unknown>;

@@ -1,0 +1,117 @@
+import { glob } from "glob";
+import stylelint from "stylelint";
+import { resolve, join } from "node:path";
+import { loadManifest, resolveConfig } from "./manifest";
+import { log } from "./logger";
+
+export interface LintRunnerOptions {
+  files?: string;
+  configPath?: string;
+  manifest?: string;
+}
+
+export interface LintRunnerResult {
+  ok: boolean;
+  riskyCount: number;
+  filesLinted: number;
+}
+
+export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerResult> {
+  const manifest = await loadManifest(opts.manifest);
+  const resolvedConfig = resolveConfig(
+    {
+      lint: opts.configPath ? { configPath: opts.configPath } : undefined,
+    },
+    manifest
+  );
+
+  const configPath = resolvedConfig.lint.configPath;
+
+  let stylelintConfig: unknown;
+  if (configPath) {
+    stylelintConfig = require(resolve(configPath));
+  } else {
+    stylelintConfig = require(
+      resolve(join(import.meta.dir, "..", "stylelint", "stylelint.config.cjs"))
+    );
+  }
+
+  let files: string[];
+  if (opts.files) {
+    files = await glob([opts.files], { nodir: true, ignore: ["**/*.min.css"] });
+  } else {
+    const stageGlob = ".build/**/*.css";
+    const stageFiles = await glob([stageGlob], {
+      nodir: true,
+      ignore: ["**/*.min.css"],
+    });
+    files =
+      stageFiles.length > 0
+        ? stageFiles
+        : await glob(["example/**/*.css", "demos/**/*.css"], {
+            ignore: ["node_modules/**", "dist/**"],
+          });
+  }
+
+  if (files.length === 0) {
+    log.warn("No CSS files found to lint");
+    return { ok: true, riskyCount: 0, filesLinted: 0 };
+  }
+
+  log.info(`Linting ${files.length} CSS file(s)`);
+
+  const result = await stylelint.lint({
+    files,
+    config: stylelintConfig as stylelint.Config,
+    configBasedir: resolve(join(import.meta.dir, "..")),
+    formatter: "string",
+  });
+
+  if (result.report?.trim()) console.log(result.report);
+
+  const hasRealErrors = result.results.some((r) =>
+    r.warnings.some(
+      (w) =>
+        w.severity === "error" && !w.rule?.startsWith("printsafe/no-risky")
+    )
+  );
+
+  if (hasRealErrors) {
+    if (!result.report?.trim()) {
+      for (const r of result.results) {
+        const errors = r.warnings.filter(
+          (w) => w.severity === "error" && !w.rule?.startsWith("printsafe/no-risky")
+        );
+        if (errors.length > 0) {
+          log.error(`  ${r.source}`);
+          for (const w of errors) {
+            log.error(`    ${w.line}:${w.column}  ${w.text}  (${w.rule})`);
+          }
+        }
+      }
+    }
+    log.error("CSS lint errors found");
+    return { ok: false, riskyCount: 0, filesLinted: files.length };
+  }
+
+  const riskyCount = result.results.reduce(
+    (sum, r) =>
+      sum +
+      r.warnings.filter((w) => w.rule?.startsWith("printsafe/no-risky"))
+        .length,
+    0
+  );
+
+  if (riskyCount > 0) {
+    log.warn(
+      `${riskyCount} risky print properties found (may cause rasterization)`
+    );
+    log.warn(
+      "The validator will check for actual rasterized pages after PDF generation."
+    );
+  } else {
+    log.success("CSS lint passed");
+  }
+
+  return { ok: true, riskyCount, filesLinted: files.length };
+}

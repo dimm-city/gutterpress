@@ -5,7 +5,6 @@ import build from "./commands/build";
 import validate from "./commands/validate";
 import lint from "./commands/lint";
 import audit from "./commands/audit";
-import run from "./commands/run";
 import preview from "./commands/preview";
 import preflight from "./commands/preflight";
 
@@ -18,9 +17,8 @@ const main = defineCommand({
   },
   subCommands: {
     // Primary author commands:
-    preview,   // live preview (interactive authoring loop)
-    build,     // produce output (HTML site or PDF) — see --format
-    run,       // full validated PDF pipeline (lint + validate + build + post-validate)
+    preview, // live HTML preview (default) or one-shot build+open for pdf|pdfx
+    build,   // unified pipeline: html | pdf | pdfx with format-aware lint/validate
     // CI / advanced:
     lint,
     validate,

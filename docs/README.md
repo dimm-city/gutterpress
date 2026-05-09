@@ -88,8 +88,8 @@ print-md build ./my-book
 # Preview with live reload
 print-md preview ./my-book
 
-# Full pipeline (lint, validate, convert, build, validate)
-print-md run --input ./my-book --pdfx x1a
+# Full validated print-ready PDF/X pipeline
+print-md build ./my-book --format pdfx
 
 # Validate source files
 print-md validate --input ./my-book

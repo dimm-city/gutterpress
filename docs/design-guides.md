@@ -165,7 +165,7 @@ For a fully validated PDF/X (CMYK, embedded fonts, post-build checks),
 use:
 
 ```sh
-print-md run ./design-guide --pdfx x1a --icc path/to/profile.icc
+print-md build ./design-guide --format pdfx --icc path/to/profile.icc
 ```
 
 ## Side-manifest variant

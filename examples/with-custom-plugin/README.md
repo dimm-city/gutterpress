@@ -21,8 +21,8 @@ print-md build .
 # Preview in browser with live reload
 print-md preview .
 
-# Full validation and build pipeline
-print-md run .
+# Full validated PDF/X pipeline
+print-md build . --format pdfx
 ```
 
 ## Plugin Configuration

@@ -1,10 +1,13 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { loadManifest, resolveConfig } from "./manifest";
+import { log } from "./logger";
 import { BOOK_HTML_FILENAME } from "./viewer";
+import { formatReport, type OutputFormat } from "../checks/formatter";
 import { runChecks, type RunnerOptions, type RunnerReport } from "../checks/runner";
 import {
   checkToolAvailability,
+  reportMissingTools,
   type ToolCheckResult,
 } from "../checks/tool-check";
 import type { CheckCategory, CheckContext, CheckPhase, CheckResult } from "../checks/types";
@@ -188,4 +191,71 @@ export async function executeValidation(
     tools,
     report,
   };
+}
+
+export interface ReportAndCheckResult {
+  ok: boolean;
+  execution: ValidationExecutionResult;
+}
+
+/**
+ * Run validation and emit the standard text/json report. Returns ok=false when
+ * the report contains errors so callers can decide how to surface failure
+ * (process.exit for the CLI; throw for the build runner).
+ */
+export async function executeAndReport(
+  args: ValidationExecutionArgs,
+  format: OutputFormat = "text"
+): Promise<ReportAndCheckResult> {
+  const execution = await executeValidation(args);
+  const { report, tools, context } = execution;
+
+  if (format === "text") {
+    reportMissingTools(tools);
+  }
+
+  formatReport(report, format);
+
+  if (format === "text" && context.pdfPath) {
+    const tacResults = report.results.filter(
+      (r) => r.checkId === "pdf.print.ink-coverage"
+    );
+    const fontResults = report.results.filter(
+      (r) => r.checkId === "pdf.print.embedded-fonts"
+    );
+    const rasterResults = report.results.filter(
+      (r) => r.checkId === "pdf.print.rasterized-pages"
+    );
+
+    const tacMsg = tacResults.find((r) =>
+      r.message.startsWith("Total ink coverage")
+    );
+    if (tacMsg) {
+      const tacMatch = tacMsg.message.match(/max\s+([\d.]+)%/);
+      if (tacMatch) {
+        log.info(`Max TAC: ${tacMatch[1]}% (high!)`);
+      }
+    } else {
+      log.info("Max TAC: within limits");
+    }
+
+    const fontWarning = fontResults.find((r) =>
+      r.message.includes("No fonts detected")
+    );
+    const fontError = fontResults.find((r) =>
+      r.message.includes("Not all fonts")
+    );
+    if (!fontWarning && !fontError) {
+      log.info("Fonts: all embedded");
+    }
+
+    const rasterMsg = rasterResults.find((r) =>
+      r.message.startsWith("Possible rasterized")
+    );
+    log.info(
+      `Rasterized pages: ${rasterMsg ? rasterMsg.message.replace("Possible rasterized pages detected: ", "") : "none"}`
+    );
+  }
+
+  return { ok: report.summary.errors === 0, execution };
 }

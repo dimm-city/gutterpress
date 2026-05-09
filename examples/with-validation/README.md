@@ -24,8 +24,8 @@ print-md validate --pdf dist/book.pdf
 # All checks together
 print-md validate --input . --pdf dist/book.pdf
 
-# Full pipeline (includes validation at both phases)
-print-md run --input .
+# Full validated PDF/X pipeline (includes validation at both phases)
+print-md build . --format pdfx
 
 # JSON output for CI
 print-md validate --input . --format json
