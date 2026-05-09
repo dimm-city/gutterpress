@@ -129,19 +129,21 @@ jobs:
         run: echo "CHROMIUM_PATH=$(which google-chrome)" >> $GITHUB_ENV
 
       - name: Build sample PDF/X artifact
+        # `build` now operates on a markdown directory and produces book.pdf
+        # (and the static viewer chrome) in --out. Passing a directory for
+        # --out is the new shape; the previous `--input <htmlFile> --out
+        # <pdfFile>` form was removed when build absorbed convert+assets.
         run: |
-          mkdir -p .ci-smoke
-          bun src/cli.ts build \
-            --input examples/v12-self-contained.html \
-            --out .ci-smoke/smoke.pdf \
+          bun src/cli.ts build examples/with-validation \
+            --out .ci-smoke \
             --pdfx x1a \
             --icc profiles/CGATS21_CRPC1.icc
 
       - name: Strict PDF/X structural validation
         run: |
-          qpdf --check .ci-smoke/smoke.pdf
+          qpdf --check .ci-smoke/book.pdf
           bun src/cli.ts validate \
-            --pdf .ci-smoke/smoke.pdf \
+            --pdf .ci-smoke/book.pdf \
             --phase post-build \
             --only pdf.print.pdfx-markers,pdf.print.pdfx-metadata
 
