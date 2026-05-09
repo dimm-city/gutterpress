@@ -1,12 +1,12 @@
 import path from "node:path";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
-import { chromium } from "playwright";
+import puppeteer from "puppeteer-core";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
 import { loadPlugins, collectPluginCss } from "./markdown/plugins";
 import { copyAssets, resolveAssetDestName } from "./assets";
-import { resolveChromiumExecutable } from "./chromium";
+import { requireChromiumExecutable } from "./chromium";
 import { patchHtmlForPagedjs } from "./pagedjs";
 import {
   convertToPdfxCmyk,
@@ -112,7 +112,7 @@ function computeGates(
 }
 
 async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
-  const executablePath = resolveChromiumExecutable();
+  const executablePath = requireChromiumExecutable();
   const stageDir = path.dirname(path.resolve(inputHtml));
   const htmlFilename = path.basename(inputHtml);
 
@@ -141,14 +141,13 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
   const port = server.port;
 
   try {
-    const browser = await chromium.launch({ headless: true, executablePath });
+    const browser = await puppeteer.launch({ headless: true, executablePath });
     try {
-      const page = await browser.newPage({
-        viewport: { width: 1920, height: 1080 },
-      });
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1920, height: 1080 });
 
       await page.goto(`http://127.0.0.1:${port}/${htmlFilename}`, {
-        waitUntil: "networkidle",
+        waitUntil: "networkidle0",
       });
 
       /* eslint-disable @typescript-eslint/no-explicit-any */
