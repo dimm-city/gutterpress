@@ -114,17 +114,23 @@ function computeGates(
 async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
   const executablePath = resolveChromiumExecutable();
   const stageDir = path.dirname(path.resolve(inputHtml));
-  const port = 9222 + Math.floor(Math.random() * 1000);
   const htmlFilename = path.basename(inputHtml);
 
   const server = Bun.serve({
-    port,
+    port: 0,
+    hostname: "127.0.0.1",
     async fetch(req) {
       const url = new URL(req.url);
-      const filePath = path.join(
-        stageDir,
-        url.pathname === "/" ? htmlFilename : url.pathname
-      );
+      // Strip leading slashes so url.pathname doesn't escape stageDir,
+      // then enforce the resolved path stays inside it (block ../ traversal).
+      const relative =
+        url.pathname === "/"
+          ? htmlFilename
+          : decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+      const filePath = path.resolve(stageDir, relative);
+      if (filePath !== stageDir && !filePath.startsWith(stageDir + path.sep)) {
+        return new Response("Forbidden", { status: 403 });
+      }
       const file = Bun.file(filePath);
       if (await file.exists()) {
         return new Response(file);
@@ -132,52 +138,55 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
       return new Response("Not found", { status: 404 });
     },
   });
+  const port = server.port;
 
   try {
     const browser = await chromium.launch({ headless: true, executablePath });
-    const page = await browser.newPage({
-      viewport: { width: 1920, height: 1080 },
-    });
+    try {
+      const page = await browser.newPage({
+        viewport: { width: 1920, height: 1080 },
+      });
 
-    await page.goto(`http://localhost:${port}/${htmlFilename}`, {
-      waitUntil: "networkidle",
-    });
+      await page.goto(`http://127.0.0.1:${port}/${htmlFilename}`, {
+        waitUntil: "networkidle",
+      });
 
-    /* eslint-disable @typescript-eslint/no-explicit-any */
-    await page.evaluate(() => (globalThis as any).document.fonts.ready);
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      await page.evaluate(() => (globalThis as any).document.fonts.ready);
 
-    await page
-      .waitForFunction(
-        () => (globalThis as any).__PAGED_RENDERED__ === true,
-        { timeout: 180_000 }
-      )
-      .catch(() => {});
+      await page
+        .waitForFunction(
+          () => (globalThis as any).__PAGED_RENDERED__ === true,
+          { timeout: 180_000 }
+        )
+        .catch(() => {});
 
-    const pagedInfo = await page.evaluate(() => {
-      const g = globalThis as any;
-      const pages = g.document.querySelectorAll(".pagedjs_page");
-      const el = pages[0] ?? null;
-      const s = el ? g.getComputedStyle(el) : null;
-      return {
-        pageCount: pages.length as number,
-        width: s?.width as string | undefined,
-        height: s?.height as string | undefined,
-      };
-    });
-    /* eslint-enable @typescript-eslint/no-explicit-any */
-    log.info(
-      `Paged.js rendered ${pagedInfo.pageCount} pages (${pagedInfo.width} × ${pagedInfo.height})`
-    );
+      const pagedInfo = await page.evaluate(() => {
+        const g = globalThis as any;
+        const pages = g.document.querySelectorAll(".pagedjs_page");
+        const el = pages[0] ?? null;
+        const s = el ? g.getComputedStyle(el) : null;
+        return {
+          pageCount: pages.length as number,
+          width: s?.width as string | undefined,
+          height: s?.height as string | undefined,
+        };
+      });
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+      log.info(
+        `Paged.js rendered ${pagedInfo.pageCount} pages (${pagedInfo.width} × ${pagedInfo.height})`
+      );
 
-    await page.pdf({
-      path: outPdf,
-      printBackground: true,
-      width: pagedInfo.width ?? "8.625in",
-      height: pagedInfo.height ?? "11.25in",
-      margin: { top: "0", right: "0", bottom: "0", left: "0" },
-    });
-
-    await browser.close();
+      await page.pdf({
+        path: outPdf,
+        printBackground: true,
+        width: pagedInfo.width ?? "8.625in",
+        height: pagedInfo.height ?? "11.25in",
+        margin: { top: "0", right: "0", bottom: "0", left: "0" },
+      });
+    } finally {
+      await browser.close();
+    }
   } finally {
     server.stop();
   }

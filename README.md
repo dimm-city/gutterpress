@@ -376,7 +376,7 @@ h1 {
 ### Build Command (unified pipeline)
 
 ```bash
-print-md build [input-dir] --format <html|pdf|pdfx> [options]
+print-md build [input-dir] [--format <html|pdf|pdfx>] [options]
 ```
 
 `build` produces a single artifact end-to-end: it renders the markdown, copies user assets, and emits the print-md viewer chrome (`index.html` + `preview/`) into the output directory.

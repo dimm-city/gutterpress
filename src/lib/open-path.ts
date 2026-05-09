@@ -22,8 +22,10 @@ export function openPath(filePath: string): Promise<void> {
         args = [filePath];
     }
     const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
-    child.on("error", reject);
-    child.unref();
-    resolve();
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
   });
 }

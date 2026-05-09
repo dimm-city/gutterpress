@@ -227,6 +227,10 @@ export async function executeAndReport(
       (r) => r.checkId === "pdf.print.rasterized-pages"
     );
 
+    // Only emit the summary lines when the corresponding check actually ran
+    // (a result for that checkId exists). Otherwise the check was skipped due
+    // to missing tools / category filter / --skip, and "within limits" /
+    // "all embedded" / "none" would be misleading.
     const tacMsg = tacResults.find((r) =>
       r.message.startsWith("Total ink coverage")
     );
@@ -235,26 +239,30 @@ export async function executeAndReport(
       if (tacMatch) {
         log.info(`Max TAC: ${tacMatch[1]}% (high!)`);
       }
-    } else {
+    } else if (tacResults.length > 0) {
       log.info("Max TAC: within limits");
     }
 
-    const fontWarning = fontResults.find((r) =>
-      r.message.includes("No fonts detected")
-    );
-    const fontError = fontResults.find((r) =>
-      r.message.includes("Not all fonts")
-    );
-    if (!fontWarning && !fontError) {
-      log.info("Fonts: all embedded");
+    if (fontResults.length > 0) {
+      const fontWarning = fontResults.find((r) =>
+        r.message.includes("No fonts detected")
+      );
+      const fontError = fontResults.find((r) =>
+        r.message.includes("Not all fonts")
+      );
+      if (!fontWarning && !fontError) {
+        log.info("Fonts: all embedded");
+      }
     }
 
-    const rasterMsg = rasterResults.find((r) =>
-      r.message.startsWith("Possible rasterized")
-    );
-    log.info(
-      `Rasterized pages: ${rasterMsg ? rasterMsg.message.replace("Possible rasterized pages detected: ", "") : "none"}`
-    );
+    if (rasterResults.length > 0) {
+      const rasterMsg = rasterResults.find((r) =>
+        r.message.startsWith("Possible rasterized")
+      );
+      log.info(
+        `Rasterized pages: ${rasterMsg ? rasterMsg.message.replace("Possible rasterized pages detected: ", "") : "none"}`
+      );
+    }
   }
 
   return { ok: report.summary.errors === 0, execution };
