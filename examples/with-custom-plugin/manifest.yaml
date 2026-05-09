@@ -10,7 +10,7 @@ page:
 
 # Load custom callouts plugin (local copy)
 plugins:
-  - path: "./callouts-plugin.js"
+  - path: "./plugins/callouts-plugin.js"
     priority: 100
     options:
       types: ["note", "tip", "warning", "danger", "info"]
