@@ -111,6 +111,13 @@ function normalizePluginConfig(plugin: string | PluginConfig): ResolvedPluginCon
 }
 
 /**
+ * Tracks manifests we've already warned about so the deprecation notice for
+ * `output.html` fires once per process even if `resolveConfig` is called
+ * repeatedly (e.g. on every preview regen).
+ */
+let outputHtmlDeprecationWarned = false;
+
+/**
  * Merge CLI args > manifest > preset defaults into a fully-resolved config.
  * Any field explicitly set in `cliOverrides` wins, then manifest, then preset.
  */
@@ -123,6 +130,21 @@ export function resolveConfig(
 
   const m = manifest;
   const c = cliOverrides;
+
+  // Deprecation: `output.html` is no longer configurable — the rendered book
+  // HTML is always written as `book.html` and the viewer's iframe loads it
+  // by that fixed name. Warn once per process if a manifest still sets it.
+  if (
+    !outputHtmlDeprecationWarned &&
+    (m.output?.html !== undefined || c.output?.html !== undefined)
+  ) {
+    outputHtmlDeprecationWarned = true;
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[print-md] manifest field `output.html` is deprecated and ignored. " +
+        "The rendered book HTML is always written as `book.html`."
+    );
+  }
 
   // Resolve plugins from CLI overrides or manifest
   const rawPlugins = c.plugins ?? m.plugins ?? [];
@@ -142,7 +164,6 @@ export function resolveConfig(
     output: {
       dir: c.output?.dir ?? m.output?.dir ?? preset.output.dir,
       filename: c.output?.filename ?? m.output?.filename ?? preset.output.filename,
-      html: c.output?.html ?? m.output?.html ?? preset.output.html,
     },
     pdfx: {
       flavor: c.pdfx?.flavor ?? m.pdfx?.flavor ?? preset.pdfx.flavor,

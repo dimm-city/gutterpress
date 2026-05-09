@@ -12,7 +12,6 @@ export const DTRPG_PRESET: VendorPreset = {
   output: {
     dir: "dist",
     filename: "book.pdf",
-    html: "book.html",
   },
   pdfx: {
     flavor: "x1a",

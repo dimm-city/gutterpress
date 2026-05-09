@@ -3,8 +3,8 @@
     <head>
         <meta charset="UTF-8" />
 
-        <script type="module" src="/preview/scripts/toast.js"></script>
-        <script src="/preview/scripts/preview.js"></script>
+        <script type="module" src="preview/scripts/toast.js"></script>
+        <script src="preview/scripts/preview.js"></script>
         <style>
             /* Toolbar styles - Enhanced visual hierarchy */
             .toolbar {
@@ -246,11 +246,11 @@
                 opacity: 1;
             }
         </style>
-        <link rel="stylesheet" href="/preview/styles/preview.css" />
-        <link rel="stylesheet" href="/preview/styles/toast.css" />
+        <link rel="stylesheet" href="preview/styles/preview.css" />
+        <link rel="stylesheet" href="preview/styles/toast.css" />
     </head>
 
-    <body>
+    <body data-mode="live">
         <div class="toolbar" style="width: stretch">
             <!-- Left section: Title and Folder Selector -->
             <div class="toolbar-section">
@@ -721,10 +721,10 @@
             </div>
         </div>
 
-        <!-- Preview iframe - Paged.js renders the preview content -->
+        <!-- Preview iframe - Paged.js renders the book HTML -->
         <iframe
             id="preview-iframe"
-            src="/preview.html"
+            src="book.html"
             style="
                 position: fixed;
                 top: 56px;

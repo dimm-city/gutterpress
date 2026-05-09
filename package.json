@@ -35,9 +35,8 @@
   ],
   "scripts": {
     "lint:css": "bun src/cli.ts lint",
-    "convert:md": "bun src/cli.ts convert",
-    "copy:assets": "bun src/cli.ts assets",
     "build:pdf": "bun src/cli.ts build",
+    "build:html": "bun src/cli.ts build --format html",
     "validate:pdf": "bun src/cli.ts validate",
     "preview": "bun src/cli.ts preview",
     "test": "bun test",

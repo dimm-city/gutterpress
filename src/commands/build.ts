@@ -3,13 +3,23 @@ import path from "node:path";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import { chromium } from "playwright";
-import { loadManifest, resolveConfig } from "../lib/manifest";
-import { copyDir } from "../lib/exec";
-import { copyAssets, DEFAULT_ASSETS } from "../lib/assets";
+import { loadManifestWithPath, resolveConfig } from "../lib/manifest";
+import { renderChaptersToFile } from "../lib/markdown/index";
+import { loadPlugins, collectPluginCss } from "../lib/markdown/plugins";
+import {
+  copyAssets,
+  DEFAULT_ASSETS,
+  resolveAssetDestName,
+} from "../lib/assets";
 import { resolveChromiumExecutable } from "../lib/chromium";
 import { patchHtmlForPagedjs } from "../lib/pagedjs";
-import { convertToPdfxCmyk, stampCreator, stripAnnotations } from "../lib/ghostscript";
+import {
+  convertToPdfxCmyk,
+  stampCreator,
+  stripAnnotations,
+} from "../lib/ghostscript";
 import { writeBuildFingerprint } from "../lib/build-fingerprint";
+import { emitViewer, BOOK_HTML_FILENAME } from "../lib/viewer";
 import { log } from "../lib/logger";
 
 async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
@@ -91,22 +101,31 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
 export default defineCommand({
   meta: {
     name: "build",
-    description: "Build HTML into PDF via Chromium+Paged.js (optionally PDF/X with --pdfx)",
+    description:
+      "Build the book to HTML (static-site viewer) or PDF. Use --format to select. Default: pdf.",
   },
   args: {
     input: {
+      type: "positional",
+      description: "Input directory containing markdown files (default: cwd)",
+      required: false,
+    },
+    format: {
       type: "string",
-      description: "Path to the source HTML file",
-      required: true,
+      description: "Output format: html or pdf (default: pdf)",
     },
     out: {
       type: "string",
-      description: "Output PDF path",
-      required: true,
+      description:
+        "Output directory. For --format pdf, --out may also be a .pdf file path.",
+    },
+    title: {
+      type: "string",
+      description: "Document title (overrides manifest)",
     },
     pdfx: {
       type: "string",
-      description: "PDF/X flavor (x1a or x3). Omit for plain Chromium PDF.",
+      description: "PDF/X flavor (x1a or x3). --format pdf only.",
     },
     icc: {
       type: "string",
@@ -123,9 +142,32 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const manifest = await loadManifest(args.manifest);
+    const format = args.format === "html" ? "html" : "pdf";
+
+    const { manifest, manifestDir } = await loadManifestWithPath(
+      args.manifest ?? args.input
+    );
+
+    // Resolve --out: for pdf format, the legacy form `--out path/book.pdf`
+    // is still accepted (back-compat with run.ts callers and external scripts).
+    // We split it into outDir + pdfFileOverride. For html format, --out is
+    // always a directory.
+    let outDirArg: string | undefined;
+    let pdfFileOverride: string | null = null;
+    if (typeof args.out === "string" && args.out.length > 0) {
+      const resolved = path.resolve(args.out);
+      if (format === "pdf" && resolved.toLowerCase().endsWith(".pdf")) {
+        outDirArg = path.dirname(resolved);
+        pdfFileOverride = resolved;
+      } else {
+        outDirArg = resolved;
+      }
+    }
+
     const config = resolveConfig(
       {
+        title: typeof args.title === "string" ? args.title : undefined,
+        output: outDirArg ? { dir: outDirArg } : undefined,
         pdfx: {
           flavor: (args.pdfx as "x1a" | "x3") ?? undefined,
           icc: args.icc ?? undefined,
@@ -135,23 +177,100 @@ export default defineCommand({
       manifest
     );
 
-    const input = args.input!;
-    const out = args.out!;
-    const pdfxMode = args.pdfx as "x1a" | "x3" | undefined;
+    const inputDir = path.resolve(args.input ?? ".");
+    const outDir = outDirArg ?? path.resolve(config.output.dir);
+
+    log.info(`Build (${format}): ${inputDir} -> ${outDir}`);
+    await fsp.mkdir(outDir, { recursive: true });
+
+    // 1. Markdown → book.html
+    if (config.source.files && config.source.files.length > 0) {
+      log.info(`Using specified files (${config.source.files.length} total)`);
+    } else {
+      log.info("Using all .md files in alphabetical order");
+    }
+
+    let plugins;
+    let pluginCss = "";
+    if (config.plugins.length > 0) {
+      log.info(`Loading ${config.plugins.length} plugin(s)...`);
+      plugins = await loadPlugins(config.plugins, manifestDir);
+      pluginCss = collectPluginCss(plugins);
+      if (plugins.length > 0) {
+        log.success(`Loaded ${plugins.length} plugin(s)`);
+      }
+    }
+
+    const htmlFile = await renderChaptersToFile(inputDir, outDir, {
+      title: config.title,
+      styles: config.styles,
+      files: config.source.files,
+      plugins,
+      pluginCss,
+    });
+    log.success(`Wrote ${htmlFile}`);
+
+    // 2. Copy user assets (css, fonts, images, etc.) into outDir
+    if (config.source.assets.length > 0) {
+      log.info("Copying assets");
+      await copyAssets(inputDir, outDir, config.source.assets, {
+        onCopy: (assetPath) => log.info(`  Copied ${assetPath}/`),
+        onSkip: (assetPath, srcPath) =>
+          log.warn(`  ${assetPath}/ not found at ${srcPath} (skipping)`),
+      });
+    }
+
+    // 3. Always emit the print-md viewer chrome alongside the book HTML.
+    //    Result: every output dir is a self-hostable static site whose
+    //    landing page (index.html) is the same UI shown by `print-md preview`.
+    await emitViewer(outDir);
+    log.info(`Emitted viewer chrome (${path.join(outDir, "index.html")})`);
+
+    if (format === "html") {
+      const fingerprintPath = await writeBuildFingerprint({
+        command: "build",
+        outputDir: outDir,
+        sourceDir: inputDir,
+        args,
+        pdfx: {
+          requestedFlavor: null,
+          resolvedFlavor: config.pdfx.flavor,
+          iccPath: null,
+          stripAnnotations: null,
+        },
+      });
+      log.success(`Wrote: ${path.join(outDir, "index.html")}`);
+      log.info(`Fingerprint: ${fingerprintPath}`);
+      return;
+    }
+
+    // === format === "pdf" =============================================
+    const pdfxMode =
+      typeof args.pdfx === "string"
+        ? (args.pdfx as "x1a" | "x3")
+        : args.pdfx
+          ? config.pdfx.flavor
+          : undefined;
+
+    const pdfFile = pdfFileOverride ?? path.join(outDir, config.output.filename);
 
     // Stage build directory (use unique name to avoid conflicting with output under .build/)
     const stage = path.resolve(".print-md-stage");
     await fsp.rm(stage, { recursive: true, force: true });
     await fsp.mkdir(stage, { recursive: true });
 
-    const inputHtml = path.resolve(input);
-    const inputRoot = path.dirname(inputHtml);
-    const htmlFilename = path.basename(inputHtml);
+    const stagedHtml = path.join(stage, BOOK_HTML_FILENAME);
+    await fsp.copyFile(htmlFile, stagedHtml);
 
-    await fsp.copyFile(inputHtml, path.join(stage, htmlFilename));
-    // Copy assets from manifest (with fallback to default dirs)
-    const assetDirs = config.source?.assets ?? DEFAULT_ASSETS;
-    await copyAssets(inputRoot, stage, assetDirs);
+    // Re-stage assets next to the book HTML so its relative paths resolve
+    // when Chromium navigates the staged file. Source from outDir (where
+    // copyAssets just placed them with already-flattened destination names).
+    const assetSourceDirs =
+      config.source.assets.length > 0 ? config.source.assets : DEFAULT_ASSETS;
+    const flattenedAssetDirs = Array.from(
+      new Set(assetSourceDirs.map(resolveAssetDestName))
+    );
+    await copyAssets(outDir, stage, flattenedAssetDirs);
 
     // Vendor paged.js
     const pagedSrc = path.resolve(
@@ -167,16 +286,13 @@ export default defineCommand({
       path.join(stage, "vendor/paged.polyfill.js")
     );
 
-    await patchHtmlForPagedjs(
-      path.join(stage, htmlFilename),
-      "./vendor/paged.polyfill.js"
-    );
+    await patchHtmlForPagedjs(stagedHtml, "./vendor/paged.polyfill.js");
 
     // Render HTML to PDF via Chromium
-    const rawPdf = pdfxMode ? path.join(stage, "raw.pdf") : path.resolve(out);
+    const rawPdf = pdfxMode ? path.join(stage, "raw.pdf") : path.resolve(pdfFile);
     log.info("Rendering HTML to PDF via Chromium+Paged.js");
-    await fsp.mkdir(path.dirname(path.resolve(out)), { recursive: true });
-    await renderHtmlToPdf(path.join(stage, htmlFilename), rawPdf);
+    await fsp.mkdir(path.dirname(path.resolve(pdfFile)), { recursive: true });
+    await renderHtmlToPdf(stagedHtml, rawPdf);
 
     // Stamp Creator metadata on the plain Chromium PDF (PDF/X path sets it via pdfmark)
     if (!pdfxMode) {
@@ -207,7 +323,7 @@ export default defineCommand({
 
       // Convert to CMYK + PDF/X
       log.info(`Converting to CMYK PDF/X (${pdfxMode})`);
-      await convertToPdfxCmyk(rawPdf, path.resolve(out), {
+      await convertToPdfxCmyk(rawPdf, path.resolve(pdfFile), {
         iccPath: path.resolve(icc),
         pdfx: pdfxMode,
         title: config.title,
@@ -217,8 +333,8 @@ export default defineCommand({
 
     const fingerprintPath = await writeBuildFingerprint({
       command: "build",
-      outputDir: path.dirname(path.resolve(out)),
-      sourceDir: path.dirname(path.resolve(input)),
+      outputDir: outDir,
+      sourceDir: inputDir,
       args,
       pdfx: {
         requestedFlavor: pdfxMode ?? null,
@@ -228,10 +344,10 @@ export default defineCommand({
       },
     });
 
-    log.success(`Wrote: ${out}`);
+    log.success(`Wrote: ${pdfFile}`);
     log.info(`Fingerprint: ${fingerprintPath}`);
     if (pdfxMode) {
-      log.info(`Next: print-md validate --pdf ${out}`);
+      log.info(`Next: print-md validate --pdf ${pdfFile}`);
     }
   },
 });

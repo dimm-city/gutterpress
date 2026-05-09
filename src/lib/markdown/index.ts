@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import MarkdownIt from "markdown-it";
+import { BOOK_HTML_FILENAME } from "../viewer";
 import markdownItAttrs from "markdown-it-attrs";
 import markdownItContainer from "markdown-it-container";
 import markdownItPaged from "markdown-it-paged";
@@ -218,6 +219,9 @@ ${bodyContent}
 
 /**
  * Render chapters and write the result to a file.
+ *
+ * The output filename is fixed at `book.html` (BOOK_HTML_FILENAME) — the
+ * print-md viewer (`index.html`) loads this via a relative iframe `src`.
  */
 export async function renderChaptersToFile(
   inputDir: string,
@@ -226,7 +230,6 @@ export async function renderChaptersToFile(
     title?: string;
     styles?: string[];
     files?: string[] | null;
-    outFilename?: string;
     plugins?: LoadedPlugin[];
     pluginCss?: string;
   } = {}
@@ -239,7 +242,7 @@ export async function renderChaptersToFile(
     plugins: opts.plugins,
     pluginCss: opts.pluginCss,
   });
-  const outFile = join(outDir, opts.outFilename ?? "index.html");
+  const outFile = join(outDir, BOOK_HTML_FILENAME);
   await writeFile(outFile, html);
   return outFile;
 }

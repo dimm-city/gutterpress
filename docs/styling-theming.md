@@ -551,3 +551,7 @@ print-md preview ./my-book
 - Avoid pure black (#000) and white (#fff)
 - Test font embedding in final PDF
 - Verify page breaks look correct
+
+## See also
+
+- [**Companion design guides**](./design-guides.md) — publish a living HTML styleguide that documents the CSS this book ships with.

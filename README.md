@@ -6,6 +6,7 @@ A powerful CLI tool and live preview UI for creating professional print-ready PD
 
 - **Markdown to PDF** - Convert markdown files to professional print layouts
 - **Live Preview** - Interactive browser-based preview with Hot Module Replacement
+- **HTML static-site output** - `print-md build --format html` produces a deployable directory whose `index.html` is the same viewer the preview server uses. Ideal for [companion design guides](./docs/design-guides.md).
 - **Custom Styling** - Full control over typography, layout, and print design with CSS
 - **Page Control** - Fine-grained control over page breaks, spreads, and multi-column layouts
 - **Extensible** - Plugin system for custom markdown syntax and directives
@@ -79,6 +80,7 @@ For comprehensive guides and references, see the [/docs](./docs) directory:
 - **[Styling & Theming](./docs/styling-theming.md)** - Customization and CSS
 - **[Best Practices](./docs/best-practices.md)** - Professional print guidelines
 - **[Complete Guide](./docs/authoring-guide.md)** - All-in-one reference
+- **[Design Guides](./docs/design-guides.md)** - Author and publish a companion HTML styleguide
 
 ## Quick Start
 
@@ -396,26 +398,36 @@ print-md run ./my-book --out dist/
 print-md run ./my-book --pdfx
 ```
 
-### Build Command (HTML to PDF Only)
+### Build Command (single-step output)
 
 ```bash
-print-md build <input-html> <output-pdf> [options]
+print-md build [input-dir] --format <html|pdf> [options]
 ```
 
+`build` produces a single artifact end-to-end: it renders the markdown, copies user assets, and emits the print-md viewer chrome (`index.html` + `preview/`) into the output directory. With `--format pdf` it also runs Chromium + Paged.js to produce `book.pdf`. With `--format html` it stops after the viewer is in place — perfect for publishing a [companion design guide](./docs/design-guides.md).
+
+`build` does not run lint or validation; for the full validated PDF pipeline, use `run`.
+
 **Options:**
-- `--pdfx` - Enable PDF/X compliance
-- `--icc` - ICC color profile path
-- `--manifest` - Path to manifest.yaml
-- `--strip-annotations` - Strip PDF annotations
+- `--format <html|pdf>` - Output format (default: pdf)
+- `--out <path>` - Output directory (or `.pdf` file path with `--format pdf`)
+- `--title <title>` - Document title (overrides manifest)
+- `--pdfx <flavor>` - Enable PDF/X compliance (`x1a` or `x3`); `--format pdf` only
+- `--icc <path>` - ICC color profile path (required with `--pdfx`)
+- `--manifest <path>` - Path to manifest.yaml
+- `--strip-annotations` - Strip PDF annotations (default: true with `--pdfx`)
 
 **Examples:**
 
 ```bash
-# Build PDF from HTML file
-print-md build output.html book.pdf
+# Build a deployable HTML site (with viewer chrome)
+print-md build ./my-book --format html --out ./_site
 
-# Build with PDF/X compliance
-print-md build output.html book.pdf --pdfx
+# Quick PDF for review
+print-md build ./my-book --out ./dist
+
+# PDF/X-compliant
+print-md build ./my-book --pdfx x1a --icc ./profiles/CGATS21_CRPC1.icc
 ```
 
 ### Build Fingerprint Artifact
@@ -472,8 +484,8 @@ print-md preview --no-watch
 
 ### Output Formats
 
-- **PDF** - Renders via Chromium + Paged.js typesetter for professional print quality
-- **HTML** - Standalone HTML file for web viewing
+- **PDF** - Renders via Chromium + Paged.js typesetter for professional print quality (`build --format pdf`, or `run` for the validated PDF/X pipeline)
+- **HTML static site** - `build --format html` produces a directory whose `index.html` is the print-md viewer chrome wrapping the rendered book. Drop it on GitHub Pages or any static host. See [docs/design-guides.md](./docs/design-guides.md).
 
 ## Project Structure
 

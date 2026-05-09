@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { loadManifest, resolveConfig } from "./manifest";
+import { BOOK_HTML_FILENAME } from "./viewer";
 import { runChecks, type RunnerOptions, type RunnerReport } from "../checks/runner";
 import {
   checkToolAvailability,
@@ -147,7 +148,7 @@ export async function executeValidation(
     assetDirs = config.source.assets.map((assetDir) => resolve(inputDir, assetDir));
 
     const outDir = resolve(config.output.dir);
-    const possibleHtml = join(outDir, config.output.html);
+    const possibleHtml = join(outDir, BOOK_HTML_FILENAME);
     if (existsSync(possibleHtml)) {
       htmlPath = possibleHtml;
     }
