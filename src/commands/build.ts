@@ -6,11 +6,7 @@ import { chromium } from "playwright";
 import { loadManifestWithPath, resolveConfig } from "../lib/manifest";
 import { renderChaptersToFile } from "../lib/markdown/index";
 import { loadPlugins, collectPluginCss } from "../lib/markdown/plugins";
-import {
-  copyAssets,
-  DEFAULT_ASSETS,
-  resolveAssetDestName,
-} from "../lib/assets";
+import { copyAssets, resolveAssetDestName } from "../lib/assets";
 import { resolveChromiumExecutable } from "../lib/chromium";
 import { patchHtmlForPagedjs } from "../lib/pagedjs";
 import {
@@ -148,7 +144,20 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const format = args.format === "html" ? "html" : "pdf";
+    // Validate --format explicitly so a typo (e.g. `--format html5`) fails
+    // loud instead of silently falling back to `pdf` and surprising the user.
+    const formatArg = args.format;
+    let format: "html" | "pdf";
+    if (formatArg === undefined || formatArg === "") {
+      format = "pdf";
+    } else if (formatArg === "html" || formatArg === "pdf") {
+      format = formatArg;
+    } else {
+      log.error(
+        `Invalid --format value: "${formatArg}". Expected "html" or "pdf".`
+      );
+      process.exit(2);
+    }
 
     const { manifest, manifestDir } = await loadManifestWithPath(
       args.manifest ?? args.input
@@ -216,10 +225,15 @@ export default defineCommand({
     });
     log.success(`Wrote ${htmlFile}`);
 
-    // 2. Copy user assets (css, fonts, images, etc.) into outDir
-    if (config.source.assets.length > 0) {
+    // 2. Copy user assets (css, fonts, images, etc.) into outDir.
+    //    Use a single resolved list for both this step and the PDF staging
+    //    copy below so they stay consistent. If the manifest explicitly
+    //    sets `source.assets: []` we honor that and skip the copy entirely
+    //    rather than falling back to DEFAULT_ASSETS.
+    const assetDirs = config.source.assets;
+    if (assetDirs.length > 0) {
       log.info("Copying assets");
-      await copyAssets(inputDir, outDir, config.source.assets, {
+      await copyAssets(inputDir, outDir, assetDirs, {
         onCopy: (assetPath) => log.info(`  Copied ${assetPath}/`),
         onSkip: (assetPath, srcPath) =>
           log.warn(`  ${assetPath}/ not found at ${srcPath} (skipping)`),
@@ -270,13 +284,16 @@ export default defineCommand({
 
     // Re-stage assets next to the book HTML so its relative paths resolve
     // when Chromium navigates the staged file. Source from outDir (where
-    // copyAssets just placed them with already-flattened destination names).
-    const assetSourceDirs =
-      config.source.assets.length > 0 ? config.source.assets : DEFAULT_ASSETS;
-    const flattenedAssetDirs = Array.from(
-      new Set(assetSourceDirs.map(resolveAssetDestName))
-    );
-    await copyAssets(outDir, stage, flattenedAssetDirs);
+    // step 2 just placed them with already-flattened destination names).
+    // Same resolved list as step 2 — if the manifest says `assets: []` we
+    // copy nothing here either. No silent DEFAULT_ASSETS fallback that
+    // would mismatch what's actually in outDir.
+    if (assetDirs.length > 0) {
+      const flattenedAssetDirs = Array.from(
+        new Set(assetDirs.map(resolveAssetDestName))
+      );
+      await copyAssets(outDir, stage, flattenedAssetDirs);
+    }
 
     // Vendor paged.js
     const pagedSrc = path.resolve(

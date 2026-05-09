@@ -6,7 +6,7 @@
  * `print-md build`, the same chrome is emitted as `index.html` next to the
  * rendered book HTML, so the output directory is a self-hostable site.
  *
- * Two operating modes for the viewer (encoded as `<body data-mode="...">`):
+ * Two operating modes for the viewer (encoded as `<html data-mode="...">`):
  *
  * - `live`     a print-md server is backing the UI; folder picker / GitHub
  *              clone / exit / API polling are active.

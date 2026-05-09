@@ -14,7 +14,7 @@
 
 import path from 'path';
 import { homedir } from 'os';
-import { realpath as fsRealpath } from 'fs/promises';
+import { realpath as fsRealpath } from 'node:fs/promises';
 
 /**
  * Result of path validation

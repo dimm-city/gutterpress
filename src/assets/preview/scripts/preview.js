@@ -24,14 +24,16 @@
 // `static`  the viewer is being served as plain files (GitHub Pages, S3,
 //           file://). No API. Server-coupled buttons are hidden.
 //
-// Read once at module load — `<body data-mode="...">` is set by the build
+// Read once at module load — `<html data-mode="...">` is set by the build
 // pipeline (`emitViewer` in src/lib/viewer.ts) or shipped as `live` for the
-// preview server.
+// preview server. Use documentElement (not document.body) so this works
+// when the script is loaded from <head> non-defer — body doesn't exist yet
+// at that point, but documentElement always does during head parsing.
 
 const MODE =
   (typeof document !== "undefined" &&
-    document.body &&
-    document.body.dataset.mode) ||
+    document.documentElement &&
+    document.documentElement.dataset.mode) ||
   "live";
 const IS_LIVE = MODE === "live";
 

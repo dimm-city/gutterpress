@@ -373,10 +373,11 @@ describe("handleGitHubStatus", () => {
 
 // `handleGitHubLogin` shells out to `gh auth login --web`, which opens an
 // interactive browser flow and blocks until completion. The tests time out
-// in any non-interactive environment (CI, Bun test runner). Skip when CI=true
+// in any non-interactive environment (CI, Bun test runner). Skip when any
+// truthy CI env var is set (most providers set `CI=true` but some use `1`)
 // or when the `gh` CLI isn't on PATH; keep runnable for local investigation.
 const skipGhLoginTests =
-  process.env.CI === "true" || !Bun.which("gh");
+  Boolean(process.env.CI) || !Bun.which("gh");
 const describeGhLogin = skipGhLoginTests ? describe.skip : describe;
 
 describeGhLogin("handleGitHubLogin", () => {

@@ -1,5 +1,19 @@
 import type MarkdownIt from "markdown-it";
-import type StateBlock from "markdown-it/lib/rules_block/state_block.mjs";
+
+// Minimal local shim for the markdown-it block parser state, so we don't
+// depend on a deep, version-specific path inside the markdown-it package
+// (e.g. `markdown-it/lib/rules_block/state_block.mjs`). Only the fields
+// this rule actually reads are typed here.
+interface StateBlock {
+  src: string;
+  bMarks: number[];
+  eMarks: number[];
+  line: number;
+  push(type: string, tag: string, nesting: number): {
+    map: [number, number] | null;
+    attrSet(name: string, value: string): void;
+  };
+}
 
 /**
  * Custom hr (horizontal rule / thematic break) rule that extracts {page} attributes.
