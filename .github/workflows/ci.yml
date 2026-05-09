@@ -126,21 +126,38 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Configure Chromium path
-        run: echo "CHROMIUM_PATH=$(which google-chrome)" >> $GITHUB_ENV
+        # setup-chrome installs `google-chrome` (a wrapper); fall back to
+        # `google-chrome-stable` and the bundled chromium-browser if the
+        # canonical path isn't present.
+        run: |
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            path="$(command -v "$candidate" || true)"
+            if [ -n "$path" ]; then
+              echo "CHROMIUM_PATH=$path" >> "$GITHUB_ENV"
+              echo "Resolved CHROMIUM_PATH=$path"
+              exit 0
+            fi
+          done
+          echo "No Chromium binary found on PATH" >&2
+          exit 1
 
       - name: Build sample PDF/X artifact
         # `build` now operates on a markdown directory and produces book.pdf
-        # (and the static viewer chrome) in --out. Passing a directory for
-        # --out is the new shape; the previous `--input <htmlFile> --out
-        # <pdfFile>` form was removed when build absorbed convert+assets.
+        # in --out (the static viewer chrome is also emitted alongside). The
+        # previous `--input <htmlFile> --out <pdfFile>` form was removed when
+        # build absorbed convert+assets. Use the minimal `template` example
+        # for the smoke test — simple letter-size pages, no plugins.
         run: |
-          bun src/cli.ts build examples/with-validation \
+          set -x
+          bun src/cli.ts build examples/template \
             --out .ci-smoke \
             --pdfx x1a \
             --icc profiles/CGATS21_CRPC1.icc
+          ls -la .ci-smoke/
 
       - name: Strict PDF/X structural validation
         run: |
+          set -x
           qpdf --check .ci-smoke/book.pdf
           bun src/cli.ts validate \
             --pdf .ci-smoke/book.pdf \
