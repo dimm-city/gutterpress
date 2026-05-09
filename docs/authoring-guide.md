@@ -191,17 +191,6 @@ The following container names are built-in:
 - `learning-path` - Learning path content
 - `aug` - Augmentation content block
 
-### Legacy Page Breaks
-
-> **Deprecated:** Use `@page` and `@break` instead.
-
-The older horizontal-rule syntax still works for backward compatibility:
-
-```markdown
---- {page}                   Page break with marker
---- {page chapter}           Page break with chapter class
-```
-
 ---
 
 ## Typography & Formatting
@@ -1036,7 +1025,6 @@ Before final print:
 ::: container ... :::       Container block
 ::: two-column ... :::      Two-column layout
 ::: sidebar ... :::         Sidebar block
---- {page}                  Page break (legacy)
 ```
 
 ### Common Callouts

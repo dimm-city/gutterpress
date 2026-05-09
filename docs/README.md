@@ -108,7 +108,6 @@ print-md validate --pdf dist/book.pdf
 @section                    Group content (avoid breaks)
 ::: two-column ... :::      Two-column layout
 ::: sidebar ... :::         Sidebar content block
---- {page}                  Page break (legacy syntax)
 ```
 
 ### Common Callouts

@@ -1,10 +1,9 @@
 # Core Directives Reference
 
-Print-md provides three systems for controlling page layout:
+Print-md provides two systems for controlling page layout:
 
-1. **Layout Markers** - `@` markers for page breaks and content grouping (primary)
+1. **Layout Markers** - `@` markers for page breaks and content grouping
 2. **Container Blocks** - Triple-colon `:::` syntax for styling blocks
-3. **Legacy Page Markers** - Horizontal rules with `{page}` attributes (deprecated)
 
 ## Layout Markers
 
@@ -121,7 +120,7 @@ Available containers:
 - `two-column` - Two-column layout
 - `wrapper` - Generic wrapper
 - `sidebar` - Sidebar/callout styling
-- `page` - Manual page container (legacy, use `@page` instead)
+- `page` - Manual page container
 - `ability` - Ability/feature block (TTRPG)
 - `specialty` - Specialty/skill block (TTRPG)
 - `learning-path` - Learning path block (TTRPG)
@@ -136,30 +135,6 @@ Highlighted content in a container.
 ::: sidebar: Optional Title
 Sidebar with a title.
 :::
-```
-
-## Legacy Page Markers
-
-> **Deprecated:** Use `@page` and `@break` instead. The legacy syntax is kept for backward compatibility.
-
-The older horizontal-rule syntax still works:
-
-```markdown
---- {page}
-
-This creates a page break with a page marker.
-
---- {page chapter}
-
-Page break with the "chapter" class applied.
-
---- {page .my-custom-class}
-
-Page break with custom CSS class (dot prefix optional).
-
---- {page chapter .right-align}
-
-Multiple classes can be combined.
 ```
 
 ## Preventing Page Breaks
@@ -212,19 +187,10 @@ Or in custom CSS:
 ::: specialty                TTRPG specialty block
 ```
 
-### Legacy Page Markers
-
-```markdown
---- {page}                    Page break with marker (deprecated)
---- {page chapter}            Page break with class (deprecated)
---- {page .custom-class}      Page break with CSS class (deprecated)
-```
-
 ## Implementation Notes
 
 - Layout markers (`@page`, `@break`, `@spread`, `@section`) are provided by the `markdown-it-paged` plugin
 - The `implicitPage` option is enabled, so a bare `@page` starts a new page div
 - CSS classes `.page`, `.spread`, `.region`, `.md-break` are auto-injected from `markdown-it-paged/css/paged.css`
 - Container blocks use `::: name ... :::` syntax with colon markers
-- Legacy `--- {page}` syntax is still processed for backward compatibility
 - H1 headings automatically create page breaks and set running headers

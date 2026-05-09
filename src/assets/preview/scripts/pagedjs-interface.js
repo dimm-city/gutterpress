@@ -37,7 +37,10 @@
     prevPage: function () { api.goToPage(currentIndex); },
     nextPage: function () { api.goToPage(currentIndex + 2); },
     lastPage: function () { api.goToPage(pages.length); },
-    setViewMode: function () {},
+    setViewMode: function (mode) {
+      document.body.classList.remove('view-single', 'view-spread', 'view-two-column');
+      if (mode) document.body.classList.add('view-' + mode);
+    },
     setZoom: function (z) {
       document.body.style.transformOrigin = 'top center';
       document.body.style.transform = 'scale(' + z + ')';

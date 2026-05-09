@@ -215,7 +215,7 @@ function resolveConfig(
 
 #### Plugin Architecture
 
-The `createMarkdownRenderer()` factory function creates a fully-configured MarkdownIt instance with the `markdown-it-paged` layout plugin, built-in container plugins, attribute support, and legacy page markers. Custom plugins from the manifest are applied at creation time via `applyPlugins()` from `src/lib/markdown/plugins.ts`:
+The `createMarkdownRenderer()` factory function creates a fully-configured MarkdownIt instance with the `markdown-it-paged` layout plugin, built-in container plugins, and attribute support. Custom plugins from the manifest are applied at creation time via `applyPlugins()` from `src/lib/markdown/plugins.ts`:
 
 ```typescript
 // Creates a new MarkdownIt instance with all built-in plugins
@@ -225,7 +225,6 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
   md.use(markdownItAttrs);
   md.use(markdownItPaged, { implicitPage: true }); // Primary layout: @spread, @page, @section, @break
 
-  // DEPRECATED: Legacy container-based page markers (use @page instead)
   md.use(markdownItContainer, "page", { /* ... */ });
   md.use(markdownItContainer, "sidebar", createSidebarContainer(md));
   // ... more built-in containers (wrapper, ability, specialty, etc.)
@@ -235,7 +234,6 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
     applyPlugins(md, customPlugins);
   }
 
-  // DEPRECATED: Legacy HR-based page markers (use @page/@break instead)
   registerCustomHrRule(md);
   md.use(pageMarkerPlugin);
 
@@ -246,7 +244,6 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
 **Design Rationale**:
 - Factory function creates fresh instance per render call
 - `markdown-it-paged` registered early as the primary layout plugin (`@page`, `@break`, `@spread`, `@section`)
-- Legacy container and HR-based page markers kept for backward compatibility
 - Plugin loading is separate (`plugins.ts`) from renderer creation (`index.ts`)
 
 #### CSS Cascade

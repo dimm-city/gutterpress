@@ -224,7 +224,6 @@ All TTRPG features are optimized for print:
 TTRPG extensions work seamlessly with:
 
 ```markdown
-<!-- Use with page markers -->
 @page
 
 ## Monsters
@@ -265,7 +264,7 @@ You can selectively disable features in custom CSS:
 }
 ```
 
-## Migration from Legacy Syntax
+## Syntax Migration
 
 If migrating from older TTRPG markdown systems:
 

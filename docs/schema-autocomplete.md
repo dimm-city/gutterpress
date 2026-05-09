@@ -294,7 +294,7 @@ Markdown extensions to enable. Empty array enables all extensions.
 **Allowed values:**
 - `"ttrpg"` - TTRPG directives (stat blocks, dice notation)
 - `"dimmCity"` - Dimm City game syntax
-- `"containers"` - Legacy container syntax
+- `"containers"` - Container syntax
 
 **Example:**
 ```yaml

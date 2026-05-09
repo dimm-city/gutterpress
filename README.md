@@ -218,17 +218,6 @@ Sidebar or callout box content.
 :::
 ```
 
-### Page Markers (Legacy)
-
-> **Deprecated:** Use `@page` and `@break` instead.
-
-The older horizontal-rule syntax still works for backward compatibility:
-
-```markdown
---- {page}                   Page break with page marker
---- {page chapter}           Page break with chapter styling
-```
-
 ### Example Usage
 
 ```markdown

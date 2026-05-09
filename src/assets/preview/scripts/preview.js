@@ -498,7 +498,7 @@ function printPreview() {
 }
 
 /**
- * Change the background color of the iframe body
+ * Change the background color of the preview canvas (area surrounding pages)
  */
 function changeBackgroundColor(color) {
   const iframeWin = getIframeWindow();
@@ -507,9 +507,11 @@ function changeBackgroundColor(color) {
   }
 
   try {
-    // Update the body background color
-    if (iframeWin.document && iframeWin.document.body) {
-      iframeWin.document.body.style.backgroundColor = color;
+    if (iframeWin.document && iframeWin.document.documentElement) {
+      // --preview-canvas-bg is declared on html in preview.css.
+      // html covers the full scrollable area; body stops at 100vh.
+      // Setting via inline style on documentElement overrides the stylesheet.
+      iframeWin.document.documentElement.style.setProperty('--preview-canvas-bg', color);
       console.log(`Background color changed to ${color}`);
     }
   } catch (error) {

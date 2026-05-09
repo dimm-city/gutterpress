@@ -1,25 +1,32 @@
  /* CSS for preview interface – v0.5 */
 
- /* Change the look */
- .preview-container {
-     --color-background: whitesmoke;
-     --color-pageSheet: #cfcfcf;
-     --color-pageBox: transparent;
-     --pagedjs-mark-cross-display: none;
-     --pagedjs-mark-crop-display: none;
-     --color-paper: white;
-     --color-marginBox: transparent;
-     --preview-container-bg: #c4c4c4;
- }
-
  /* To define how the book look on the screen: */
  @media screen,
  pagedjs-ignore {
+     /* html/:root covers the full scrollable area — body stops at its own height
+        (100vh) so backgrounds set there produce a white gap below when scrolled.
+        Setting it on html ensures the canvas color extends behind all pages.
+        Overridable at runtime: document.documentElement.style.setProperty('--preview-canvas-bg', color) */
+     html {
+         --preview-canvas-bg: #5a5a5a;
+         background-color: var(--preview-canvas-bg);
+     }
+
      body {
+         /* CSS variables for page appearance — declared on body so they inherit
+            to all paged.js elements. */
+         --color-background: white;
+         --color-pageSheet: rgba(0, 0, 0, 0.15);
+         --color-pageBox: transparent;
+         --pagedjs-mark-cross-display: none;
+         --pagedjs-mark-crop-display: none;
+         --color-paper: white;
+         --color-marginBox: transparent;
 
          margin: 0;
          padding: 0;
          height: 100vh;
+         /* No background here — html handles the canvas */
      }
 
      .pagedjs_pages {
@@ -217,7 +224,7 @@
      display: flex;
      justify-content: center;
      padding: 0;
-     background-color: var(--preview-container-bg);
+     background-color: var(--preview-canvas-bg, #5a5a5a);
  }
 
  /* SPREAD MODE: Container handles scrolling only */
