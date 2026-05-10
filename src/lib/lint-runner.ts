@@ -1,5 +1,5 @@
 import { glob } from "glob";
-import stylelint from "stylelint";
+import type { Config } from "stylelint";
 import { resolve, join } from "node:path";
 import { loadManifest, resolveConfig } from "./manifest";
 import { log } from "./logger";
@@ -60,9 +60,10 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
 
   log.info(`Linting ${files.length} CSS file(s)`);
 
+  const { default: stylelint } = await import("stylelint");
   const result = await stylelint.lint({
     files,
-    config: stylelintConfig as stylelint.Config,
+    config: stylelintConfig as Config,
     configBasedir: resolve(join(import.meta.dir, "..")),
     formatter: "string",
   });
