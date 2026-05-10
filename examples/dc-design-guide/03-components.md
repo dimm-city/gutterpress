@@ -316,6 +316,156 @@ Fenced code blocks for CSS snippets, stat expressions, or any literal syntax. Re
 
 ---
 
+## Visit Callout
+
+An in-world location description written in present tense, as if the reader is arriving on-site. Use on location pages and before encounter content to establish place before mechanics begin.
+
+**Syntax** — `::: wrapper {.visit-callout}` … `:::` in markdown, or raw `<div class="visit-callout">` in HTML
+
+<div class="visit-callout"><p>The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers brush shoulders between stalls selling augment cartridges, black-market permits, and fried synthetic crab. If someone's selling it somewhere in Dimm City, it started here.</p></div>
+
+```html
+<div class="visit-callout">
+  <p>The Neon Bazaar doesn't close. Day shift workers and third-shift
+  scavengers brush shoulders between stalls selling augment cartridges,
+  black-market permits, and fried synthetic crab.</p>
+</div>
+```
+
+---
+
+## Admonition Block
+
+A Dream Master–addressed instruction block, visually distinct from player-facing notes. Use for GM guidance, scene hooks, and pacing advice that should not be read aloud at the table.
+
+**Syntax** — raw HTML `<div class="note-callout">` with a `<strong class="note-label">` header followed by the body paragraph
+
+<div class="note-callout">
+  <strong class="note-label">Dream Master Note</strong>
+  <p>If a player hasn't chosen their starting gear by the end of session zero, hand them a Scavenger Pack and move on. Gear anxiety is real but the game shouldn't wait for it.</p>
+</div>
+
+```html
+<div class="note-callout">
+  <strong class="note-label">Dream Master Note</strong>
+  <p>If a player hasn't chosen their starting gear by the end of session zero,
+  hand them a Scavenger Pack and move on.</p>
+</div>
+```
+
+---
+
+## Glossary / Term List
+
+A definition list of game terms rendered as a styled block. Use for rules glossaries, jargon indexes, and any list of named concepts that need consistent, scannable formatting.
+
+**Syntax** — raw HTML `.terms` wrapper containing one or more `.terms.item` children, each with a `<strong>` term label and a `<p>` definition
+
+<div class="terms">
+  <div class="terms item">
+    <strong>Augmerc</strong>
+    <p>A specialist who combines cybernetic augmentation with close-range combat training. Chrome bones, reflex implants, and licensed edge.</p>
+  </div>
+  <div class="terms item">
+    <strong>Dream Master</strong>
+    <p>The facilitating player who narrates the world, controls adversaries, and adjudicates outcomes. Not the enemy. Usually.</p>
+  </div>
+  <div class="terms item">
+    <strong>Hard Choice</strong>
+    <p>A roll result where the fiction advances but at a cost. Something breaks, something reveals itself, someone gets hurt.</p>
+  </div>
+</div>
+
+```html
+<div class="terms">
+  <div class="terms item">
+    <strong>Augmerc</strong>
+    <p>A specialist who combines cybernetic augmentation with close-range
+    combat training.</p>
+  </div>
+  <div class="terms item">
+    <strong>Hard Choice</strong>
+    <p>A roll result where the fiction advances but at a cost.</p>
+  </div>
+</div>
+```
+
+---
+
+## Numbered Procedure
+
+A zero-padded ordered list for sequential rules — character creation, contract resolution, scene framing. Each step is kept together across page breaks by Paged.js.
+
+**Syntax** — raw HTML `<ol class="dc-steps">` with `<li><span class="dc-step-no">01</span><span>content</span></li>` for each step; zero-pad all step numbers
+
+<ol class="dc-steps flush">
+  <li><span class="dc-step-no">01</span><span><strong>Pick a Spec.</strong> Augmerc, Proxy, Streetwarden — one of eight. Your spec sets your starting paths and signature gear.</span></li>
+  <li><span class="dc-step-no">02</span><span><strong>Spend 6 Spec Points.</strong> Distribute across paths. Each point unlocks one tier. You may not exceed tier 3 at character creation.</span></li>
+  <li><span class="dc-step-no">03</span><span><strong>Take a Signature Augment.</strong> Pulled from your spec's gear list. Free at start. Replaceable later only by a Cybersurgeon contact.</span></li>
+  <li><span class="dc-step-no">04</span><span><strong>Roll your Heat.</strong> d20 + Spec modifier. Heat is what the city already has against you when play begins.</span></li>
+  <li><span class="dc-step-no">05</span><span><strong>Name a Debt.</strong> One contract you owe, one person you owe it to. The Dream Master may call it in.</span></li>
+</ol>
+
+```html
+<ol class="dc-steps flush">
+  <li>
+    <span class="dc-step-no">01</span>
+    <span><strong>Pick a Spec.</strong> Augmerc, Proxy, Streetwarden —
+    one of eight.</span>
+  </li>
+  <li>
+    <span class="dc-step-no">02</span>
+    <span><strong>Spend 6 Spec Points.</strong> Distribute across paths.</span>
+  </li>
+</ol>
+```
+
+---
+
+## Outcome Ladder
+
+The five-rung d20 result table used for all rolls in Dimm City. Each row is color-coded by result severity via a modifier class on the row element.
+
+**Syntax** — raw HTML `.dc-outcomes` wrapper containing `.dc-outcome-row.{crit|hit|mixed|miss|fail}` rows, each with `.dc-outcome-key` (holding `.dc-outcome-name` and `.dc-outcome-roll`) and `.dc-outcome-text`
+
+<div class="dc-outcomes flush">
+  <div class="dc-outcome-row crit">
+    <div class="dc-outcome-key"><span class="dc-outcome-name">Crit</span><span class="dc-outcome-roll">20</span></div>
+    <div class="dc-outcome-text">You flow. Automatic success — no further roll needed. If dealing damage, check your weapon's bonus stats. Your next die roll: <span class="roll-lucid">ROLL LUCID.</span></div>
+  </div>
+  <div class="dc-outcome-row hit">
+    <div class="dc-outcome-key"><span class="dc-outcome-name">Hit</span><span class="dc-outcome-roll">11–19</span></div>
+    <div class="dc-outcome-text">You succeed at what you were trying to do without a hitch. If attacking, deal standard damage based on your weapon's stats.</div>
+  </div>
+  <div class="dc-outcome-row mixed">
+    <div class="dc-outcome-key"><span class="dc-outcome-name">Hard Choice</span><span class="dc-outcome-roll">6–10</span></div>
+    <div class="dc-outcome-text">You succeed, but at a cost. Weapon overheats, ammo burns, or something else gives. The DM offers two impactful options — pick one.</div>
+  </div>
+  <div class="dc-outcome-row miss">
+    <div class="dc-outcome-key"><span class="dc-outcome-name">Miss</span><span class="dc-outcome-roll">2–5</span></div>
+    <div class="dc-outcome-text">You fail. The only consequence is what you had riding on the roll. Miss an opponent in a duel? They get to attack you on their turn.</div>
+  </div>
+  <div class="dc-outcome-row fail">
+    <div class="dc-outcome-key"><span class="dc-outcome-name">Catastrophe</span><span class="dc-outcome-roll">1</span></div>
+    <div class="dc-outcome-text">Dark. Automatic fail with a severe setback — broken gear, cyberware malfunction, or friendly fire. Your next die roll: <span class="roll-surreal">ROLL SURREAL.</span></div>
+  </div>
+</div>
+
+```html
+<div class="dc-outcomes flush">
+  <div class="dc-outcome-row crit">
+    <div class="dc-outcome-key">
+      <span class="dc-outcome-name">Crit</span>
+      <span class="dc-outcome-roll">20</span>
+    </div>
+    <div class="dc-outcome-text">Automatic success…</div>
+  </div>
+  <!-- repeat for hit / mixed / miss / fail -->
+</div>
+```
+
+---
+
 ## Component Token Reference
 
 | Class | Element | Purpose |
@@ -335,6 +485,13 @@ Fenced code blocks for CSS snippets, stat expressions, or any literal syntax. Re
 | `.origin-callout` | `<div>` | Second-person backstory block for origin and background entries |
 | `.human-callout` | `<div>` (inside `.sidebar`) | NPC stat block nested in a sidebar float |
 | `.gear-callout` | `<div>` | Named equipment or item panel |
+| `.visit-callout` | `<div>` | Present-tense in-world location description |
+| `.note-callout` | `<div>` | Dream Master–addressed admonition block with `.note-label` header |
+| `.terms` | `<div>` | Glossary wrapper containing one or more `.terms.item` children |
+| `.terms.item` | `<div>` | Individual term definition with `<strong>` label and `<p>` body |
+| `.dc-steps` | `<ol>` | Zero-padded numbered procedure list with `.dc-step-no` spans |
+| `.dc-outcomes` | `<div>` | Outcome ladder wrapper for five-rung d20 result table |
+| `.dc-outcome-row.{crit\|hit\|mixed\|miss\|fail}` | `<div>` | Single outcome row, color-coded by severity modifier class |
 | `.item` (wrapper) | `::: wrapper {.item}` | Self-contained rules item block, break-inside avoided |
 | *(auto)* | markdown table | DC-styled table: colored header, alternating rows, small type |
 | *(auto)* | `> blockquote` | Accent-border block quote for epigraphs and attribution |

@@ -1,5 +1,15 @@
 /* =============================================================================
-   DIMM CITY — Colors + Type tokens
+   DC-BRAND.CSS — Dimm City brand layer
+   All DC design tokens, webfonts, and component styles live here.
+   This is the first stylesheet imported by index.css, establishing the full
+   DC visual language: color tokens, type scale, spacing, shapes, and every
+   reusable component (cards, banners, callouts, stat blocks, etc.).
+
+   Import order (index.css):
+     1. dc-brand.css  ←  this file: all DC tokens, fonts, and components
+     2. page-rules.css   @page declarations, named pages, footer chrome
+     3. guide.css        design-guide specimen scaffolding only
+
    PRINT ZINE on light gray pages, cream/paper card surfaces, dark ink.
    Cyberpunk creaturepunk: rust orange, blood crimson, HUD blue, amber.
    ============================================================================= */
@@ -2695,13 +2705,13 @@ body::after {
   border: 1.5px solid var(--paper-aged);
   background: var(--paper-cream);
   padding: 0.65rem 0.75rem;
-  /* folded from legacy/callouts.css PARTIAL — layout gap props */
   float: none;
   width: 90%;
   margin: 0.12in auto 0.18in;
   font-size: max(var(--small-font-size), 11pt);
   line-height: var(--lh-normal);
-  min-height: 3.5in;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .note-callout {

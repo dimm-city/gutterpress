@@ -1,14 +1,19 @@
 /* =============================================================================
-   GUIDE.CSS — Design-guide-specific overrides
+   GUIDE.CSS — Design-guide specimen scaffolding
    =============================================================================
-   This file is imported LAST by index.css (after shared.css and page-rules.css).
-   It should only contain rules that apply to the design guide itself — not to
-   the book design system it documents.
+   Imported AFTER dc-brand.css and page-rules.css by index.css (third and last).
 
-   Layer responsibility:
-     shared.css      — brand tokens (:root), base type, all DC components
-     page-rules.css  — @page declarations, named pages, footer chrome
-     guide.css  ←    — this file: specimen scaffolding, code blocks, @chapter
+   This file contains ONLY rules that exist to present and organize the design
+   guide document itself: specimen wrappers, code blocks, table styles used
+   within the guide, and @chapter layout scaffolding.
+
+   This file must NOT contain any DC brand rules — all brand tokens, webfonts,
+   and component styles belong in dc-brand.css.
+
+   Import order (index.css):
+     1. dc-brand.css  — all DC tokens, fonts, and components
+     2. page-rules.css  — @page declarations, named pages, footer chrome
+     3. guide.css  ←   — this file: specimen scaffolding only
    ============================================================================= */
 
 /* ── @chapter wrapper ────────────────────────────────────────────────────────
@@ -61,12 +66,15 @@ body {
    Prevent h2/h3/h4 from stranding at the bottom of a page.
    ─────────────────────────────────────────────────────────────────────────── */
 h2, h3, h4 {
+  break-before: auto;
   break-after: avoid;
+  break-inside: avoid;
   page-break-after: avoid;
+  page-break-inside: avoid;
 }
 
-h2 + p, h2 + ul, h2 + ol, h2 + pre, h2 + blockquote,
-h3 + p, h3 + ul, h3 + ol, h3 + pre,
+h2 + p, h2 + ul, h2 + ol, h2 + pre, h2 + blockquote, h2 + table,
+h3 + p, h3 + ul, h3 + ol, h3 + pre, h3 + table,
 h4 + p, h4 + ul, h4 + ol {
   break-before: avoid;
   page-break-before: avoid;
