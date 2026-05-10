@@ -99,7 +99,7 @@ jobs:
           - os: ubuntu-latest
             target: bun-linux-x64
             artifact: print-md-linux-x64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             target: bun-linux-arm64
             artifact: print-md-linux-arm64
           - os: macos-13
@@ -122,10 +122,10 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile --omit optional
+        run: bun install --frozen-lockfile
 
       - name: Build standalone binary
-        run: bun build src/cli.ts --compile --target ${{ matrix.target }} --outfile ${{ matrix.artifact }}
+        run: bun scripts/compile.ts ${{ matrix.target }} ${{ matrix.artifact }}
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
