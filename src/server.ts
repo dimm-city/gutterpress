@@ -1,8 +1,10 @@
 /**
- * Preview server using Vite with custom API middleware
+ * Preview server entry point.
  *
- * Loads config via lib/manifest and generates HTML via lib/markdown.
- * Vite provides HMR for live preview updates.
+ * Loads config via lib/manifest, generates HTML via lib/markdown, and serves
+ * the preview through a Bun-native HTTP+WebSocket server (see
+ * `src/preview/http-server.ts`). Live reload is handled by broadcasting
+ * `full-reload` over the HMR WebSocket whenever the file watcher fires.
  */
 
 import { info } from './utils/logger';
@@ -17,10 +19,10 @@ import {
 } from './preview/lifecycle';
 import { createServerState } from './preview/server-context';
 import { generateAndWriteHtml, startFileWatcher } from './preview/file-watcher';
-import { findAvailablePort, createConfiguredViteServer } from './preview/vite-setup';
+import { findAvailablePort, createPreviewServer } from './preview/http-server';
 
 /**
- * Start preview server with Vite as primary server
+ * Start the preview server backed by a Bun-native HTTP/WebSocket server.
  */
 export async function startPreviewServer(options: PreviewServerOptions): Promise<void> {
   // Stage 1: Validate and initialize
@@ -53,8 +55,8 @@ export async function startPreviewServer(options: PreviewServerOptions): Promise
     info(`Port ${options.port} is in use, using port ${availablePort} instead`);
   }
 
-  // Stage 7: Create Vite server with middleware
-  state.viteServer = await createConfiguredViteServer(
+  // Stage 7: Create preview HTTP/WebSocket server
+  state.previewServer = await createPreviewServer(
     state,
     availablePort,
     restartPreview

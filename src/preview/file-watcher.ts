@@ -128,7 +128,8 @@ export async function generateAndWriteHtml(
  * Watches the project's input path AND any manifest-declared asset roots
  * that live outside it (e.g. a sibling `../_shared` directory). Without the
  * external roots, edits to shared CSS like `_shared/css/core/05-components.css`
- * are never mirrored into the temp dir and Vite never sees the change.
+ * are never mirrored into the temp dir and the preview server never broadcasts
+ * a reload.
  */
 export function createFileWatcher(state: ServerState): FSWatcher {
   const inputResolved = path.resolve(state.currentInputPath);
@@ -185,6 +186,10 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         const updatedConfig = resolveConfig({}, manifest);
         state.config = updatedConfig;
         await generateAndWriteHtml(state.currentInputPath, state.tempDir, updatedConfig);
+
+        // Tell every connected HMR client to reload. The Bun preview server
+        // owns the WebSocket pub/sub topic — we just ask it to publish.
+        state.previewServer?.broadcastReload();
 
         info('Preview updated');
       } catch (err) {

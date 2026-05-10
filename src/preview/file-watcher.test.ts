@@ -41,7 +41,7 @@ function createTestServerState(
     },
     currentWatcher: null,
     isRebuilding: false,
-    viteServer: null,
+    previewServer: null,
     isShuttingDown: false,
     assetsSourceDir: tempDir,
   };

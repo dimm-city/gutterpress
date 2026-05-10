@@ -3,9 +3,9 @@
  */
 
 import type { FSWatcher } from 'chokidar';
-import type { ViteDevServer } from 'vite';
 import type { PreviewServerOptions } from '../types';
 import type { ResolvedConfig } from '../schema/manifest.types';
+import type { PreviewServer } from './http-server';
 
 /**
  * Server lifecycle state
@@ -17,8 +17,8 @@ export interface ServerState {
   currentWatcher: FSWatcher | null;
   /** Is currently rebuilding? (prevents overlapping builds) */
   isRebuilding: boolean;
-  /** Vite dev server instance */
-  viteServer: ViteDevServer | null;
+  /** Bun-native preview HTTP/WebSocket server instance */
+  previewServer: PreviewServer | null;
   /** Is server shutting down? (prevents multiple shutdown calls) */
   isShuttingDown: boolean;
   /** Temporary directory for preview files */
@@ -45,7 +45,7 @@ export function createServerState(
     currentInputPath: inputPath,
     currentWatcher: null,
     isRebuilding: false,
-    viteServer: null,
+    previewServer: null,
     isShuttingDown: false,
     tempDir,
     assetsSourceDir,
@@ -53,4 +53,3 @@ export function createServerState(
     options,
   };
 }
-

@@ -30,7 +30,7 @@ describe('Server Context', () => {
       expect(state.options).toBe(options);
       expect(state.currentWatcher).toBeNull();
       expect(state.isRebuilding).toBe(false);
-      expect(state.viteServer).toBeNull();
+      expect(state.previewServer).toBeNull();
       expect(state.isShuttingDown).toBe(false);
     });
   });
