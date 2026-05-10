@@ -3,7 +3,7 @@
   "version": "0.2.0-beta.5",
   "description": "Markdown-to-PDF converter for professional print layout using Paged.js and Ghostscript.",
   "author": "itlackey",
-  "license": "CC-BY-4.0",
+  "license": "MPL-2.0",
   "keywords": [
     "markdown",
     "pdf",
