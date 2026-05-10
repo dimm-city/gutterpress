@@ -65,6 +65,37 @@
 - Paper surfaces are for raised elements (cards, callouts). The page background (`--bg`) is the canvas; cream is the surface.
 - `--text-darkred` #a82818 for ability name text. `--card-header-color` #f0ece8 for card tab backgrounds.
 
+## Page Background
+
+The page background uses `--bg: #d4d4d4` — a light cool gray that provides contrast for cream paper surfaces (cards, callouts, panels) and gives the document a tactile, printed-on-paper feel distinct from a pure white page.
+
+### Brick Texture Overlay
+
+The Dimm City aesthetic adds a subtle aged-brick texture over the page background. The texture is a 200×200px RGBA PNG tile (`img/brick-bg-02.png`) applied to the `.pagedjs_sheet` wrapper — the layer that Paged.js renders behind page content. This ensures the texture appears in both the screen preview and the exported PDF.
+
+**Syntax** — in your book's CSS layer file (equivalent to `field-guide/css/book-print.css`):
+
+```css
+/* Apply to .pagedjs_sheet, not @page — Paged.js maps @page backgrounds to
+   .pagedjs_page, which .pagedjs_sheet then covers. */
+.pagedjs_sheet {
+  background-image: url("../img/brick-bg-02.png");
+  background-repeat: repeat;
+}
+```
+
+The texture is intentionally subtle — the PNG uses RGBA with very low opacity so the `#d4d4d4` page gray reads through cleanly. Do not scale or crop the tile; let it repeat naturally at native size.
+
+**Token:**
+
+| Token | Value | Purpose |
+|---|---|---|
+| `--bg` | `#d4d4d4` | Page background — cool gray canvas |
+| `--bg-deep` | `#b8b8b8` | Gutter shadow between spread pages |
+| `--page-background-color` | `var(--bg)` | Alias consumed by `@page` and `.pagedjs_sheet` rules |
+
+---
+
 ## Print Considerations
 
 CMYK approximations for the four primary colors:

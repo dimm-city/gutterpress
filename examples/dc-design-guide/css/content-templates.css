@@ -24,9 +24,17 @@
 
 /* Ensure page background renders in PDF (not just screen preview).
    The preview template sets this inside @media screen, so print mode misses it.
-   This rule applies unconditionally so Chromium's page.pdf() captures it. */
+   This rule applies unconditionally so Chromium's page.pdf() captures it.
+
+   Brick texture: applied here (not on @page) because Paged.js maps @page
+   backgrounds to .pagedjs_page — which .pagedjs_sheet then covers. By setting
+   the texture on .pagedjs_sheet, it appears both in the screen preview and in
+   the exported PDF. The 200×200 RGBA PNG tiles seamlessly at all print sizes.
+   Source: field-guide/images/brick-bg-02.png */
 .pagedjs_sheet {
   background-color: var(--page-background-color);
+  background-image: url("../img/brick-bg-02.png");
+  background-repeat: repeat;
 }
 
 .page,
