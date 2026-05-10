@@ -7,7 +7,6 @@
  * helpers (`text()` / `json()`), so the middleware glue shrinks significantly.
  */
 
-import { debug } from '../utils/logger.ts';
 import {
   handleListDirectories,
   handleChangeFolder,
@@ -75,12 +74,10 @@ export async function handleApiRequest(
     if (exceedsBodyLimit(request)) {
       return jsonError('Request body too large', 413);
     }
-    try {
-      return await handleChangeFolder(request, restartPreviewFn);
-    } catch (err) {
-      debug(`handleChangeFolder threw: ${err}`);
-      return jsonError('Request body too large', 413);
-    }
+    // Body-size check is the precheck above; let any other thrown error
+    // propagate to Bun.serve's `error()` handler (returns 500) rather than
+    // misclassifying every failure as 413.
+    return handleChangeFolder(request, restartPreviewFn);
   }
 
   // GET /api/gh/status

@@ -214,7 +214,7 @@ export async function createPreviewServer(
 ): Promise<PreviewServer> {
   const server: Server<undefined> = Bun.serve<undefined>({
     port,
-    hostname: '0.0.0.0',
+    hostname: state.options.host,
     async fetch(req, srv) {
       const url = new URL(req.url);
 
@@ -261,6 +261,9 @@ export async function createPreviewServer(
 
   const serverUrl = `http://localhost:${port}`;
   info(`Preview server running at ${serverUrl}`);
+  if (state.options.host !== '127.0.0.1' && state.options.host !== 'localhost') {
+    info(`Bound on ${state.options.host}:${port} (reachable from the network)`);
+  }
   info('Press Ctrl+C to stop');
 
   if (state.options.openBrowser) {

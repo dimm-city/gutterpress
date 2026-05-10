@@ -16,6 +16,7 @@ describe('Server Context', () => {
       const config = resolveConfig({}, {});
       const options: PreviewServerOptions = {
         port: 3000,
+        host: '127.0.0.1',
         verbose: false,
         noWatch: false,
         openBrowser: true,

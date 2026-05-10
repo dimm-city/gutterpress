@@ -192,8 +192,11 @@ async function listDirectories(basePath: string): Promise<DirectoryEntry[]> {
  * Handle GET /api/directories - List subdirectories with navigation
  *
  * Query parameters:
- * - path: Directory to list (optional, defaults to ~/Documents/print-md if it
- *   exists, otherwise the home directory)
+ * - path: Directory to list (optional). When omitted, defaults to the first
+ *   existing entry from `getDefaultBrowseDirectory()`:
+ *     1. ~/Documents/print-md   (created by the installers and seeded with examples)
+ *     2. ~/Documents
+ *     3. the home directory
  *
  * Security:
  * - Path must be within home directory boundary

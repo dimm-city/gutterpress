@@ -202,9 +202,13 @@ ensure_path() {
 
     local line
     if [[ "${SHELL:-}" == */fish ]]; then
-        line="set -gx PATH $PRINTMD_PREFIX \$PATH"
+        # printf with a single-quoted format string preserves $PATH literally,
+        # so config.fish receives an unescaped $PATH that fish itself expands
+        # at load time. Earlier `"\$PATH"` style worked but was repeatedly
+        # mis-flagged because the bash escape mechanics aren't obvious.
+        line=$(printf 'set -gx PATH %s $PATH' "$PRINTMD_PREFIX")
     else
-        line="export PATH=\"$PRINTMD_PREFIX:\$PATH\""
+        line=$(printf 'export PATH="%s:$PATH"' "$PRINTMD_PREFIX")
     fi
 
     if [ -f "$rc" ] && grep -qF "$line" "$rc"; then
@@ -256,7 +260,7 @@ setup_print_md_directory() {
     if gh_download application/octet-stream -o "$tmp_dir/source.tar.gz" "$archive_url"; then
         if tar -xzf "$tmp_dir/source.tar.gz" -C "$tmp_dir"; then
             local extracted
-            extracted="$(find "$tmp_dir" -maxdepth 1 -type d -name '*-print-md-*' -o -maxdepth 1 -type d -name 'print-md-*' | head -1)"
+            extracted="$(find "$tmp_dir" -maxdepth 1 -type d \( -name '*-print-md-*' -o -name 'print-md-*' \) | head -1)"
             if [ -n "$extracted" ] && [ -d "$extracted/examples" ]; then
                 mkdir -p "$examples_dir"
                 cp -R "$extracted/examples/." "$examples_dir/"

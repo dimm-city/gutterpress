@@ -59,6 +59,11 @@ export default defineCommand({
       type: "string",
       description: "Port number (default: 3579, html only)",
     },
+    host: {
+      type: "string",
+      description:
+        "Bind host (default: 127.0.0.1). Pass 0.0.0.0 to expose on the LAN.",
+    },
     "no-watch": {
       type: "boolean",
       description: "Disable file watching (html only)",
@@ -124,9 +129,11 @@ export default defineCommand({
 
     if (format === "html") {
       const port = Number(args.port) || 3579;
+      const host = (args.host as string | undefined) || "127.0.0.1";
       await startPreviewServer({
         input: inputPath,
         port,
+        host,
         noWatch: !!args["no-watch"],
         verbose: !!args.verbose,
         openBrowser: openFlag,
