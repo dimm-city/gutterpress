@@ -14,6 +14,7 @@
 
 import path from 'path';
 import { homedir } from 'os';
+import { statSync } from 'node:fs';
 import { realpath as fsRealpath } from 'node:fs/promises';
 
 /**
@@ -191,4 +192,26 @@ export function isWithinHomeDirectory(checkPath: string, homeDirectory: string):
  */
 export function getHomeDirectory(): string {
   return homedir();
+}
+
+/**
+ * Get the default directory shown when the viewer opens its folder picker.
+ *
+ * Prefers `~/Documents/print-md` (created by the install scripts and seeded
+ * with the bundled examples), then `~/Documents`, finally the home directory.
+ */
+export function getDefaultBrowseDirectory(): string {
+  const home = homedir();
+  const candidates = [
+    path.join(home, 'Documents', 'print-md'),
+    path.join(home, 'Documents'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (statSync(candidate).isDirectory()) return candidate;
+    } catch {
+      // doesn't exist — try next
+    }
+  }
+  return home;
 }

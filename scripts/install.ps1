@@ -114,6 +114,71 @@ function Test-Installation {
     }
 }
 
+# Create the user's print-md directory and seed it with the bundled examples
+# so the viewer's "Open Project" picker has something to show out of the box.
+function Initialize-PrintMdDirectory {
+    Write-Step "Setting up print-md directory..."
+
+    try {
+        $documentsPath = [Environment]::GetFolderPath("MyDocuments")
+        if ([string]::IsNullOrEmpty($documentsPath)) {
+            $documentsPath = Join-Path $env:USERPROFILE "Documents"
+        }
+
+        $script:PrintMdDir = Join-Path $documentsPath "print-md"
+        if (-not (Test-Path $script:PrintMdDir)) {
+            New-Item -ItemType Directory -Path $script:PrintMdDir -Force | Out-Null
+        }
+        Write-Info "print-md directory: $script:PrintMdDir"
+
+        $examplesDir = Join-Path $script:PrintMdDir "examples"
+        if (Test-Path $examplesDir) {
+            $existing = Get-ChildItem -Path $examplesDir -Force -ErrorAction SilentlyContinue
+            if ($existing -and $existing.Count -gt 0) {
+                Write-Info "Examples already present at $examplesDir (skipping)"
+                return $true
+            }
+        }
+
+        $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+        if (-not $gitCmd) {
+            Write-Info "git not found - skipping examples download"
+            Write-Info "You can clone examples manually from $PRINTMD_REPO"
+            return $true
+        }
+
+        Write-Info "Cloning examples from $PRINTMD_REPO..."
+        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("print-md-install-" + [System.Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+        try {
+            $repoDir = Join-Path $tempDir "repo"
+            git clone --depth 1 --quiet $PRINTMD_REPO $repoDir 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Info "Could not clone repository for examples"
+                return $true
+            }
+
+            $sourceExamples = Join-Path $repoDir "examples"
+            if (Test-Path $sourceExamples) {
+                if (-not (Test-Path $examplesDir)) {
+                    New-Item -ItemType Directory -Path $examplesDir -Force | Out-Null
+                }
+                Copy-Item -Path (Join-Path $sourceExamples "*") -Destination $examplesDir -Recurse -Force
+                Write-Success "Examples installed to $examplesDir"
+            } else {
+                Write-Info "No examples directory found in repository"
+            }
+        } finally {
+            Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        return $true
+    } catch {
+        Write-Info "Could not set up print-md directory: $_"
+        return $false
+    }
+}
+
 # Create desktop shortcut
 function New-DesktopShortcut {
     Write-Step "Creating desktop shortcut..."
@@ -141,10 +206,17 @@ function New-DesktopShortcut {
         $WScriptShell = New-Object -ComObject WScript.Shell
         $shortcut = $WScriptShell.CreateShortcut($shortcutPath)
 
+        # Determine working directory: prefer the print-md folder we created
+        $workingDir = if ($script:PrintMdDir -and (Test-Path $script:PrintMdDir)) {
+            $script:PrintMdDir
+        } else {
+            [Environment]::GetFolderPath("MyDocuments")
+        }
+
         # Set shortcut properties
         $shortcut.TargetPath = $bunPath
         $shortcut.Arguments = "run print-md preview --open true"
-        $shortcut.WorkingDirectory = [Environment]::GetFolderPath("MyDocuments")
+        $shortcut.WorkingDirectory = $workingDir
         $shortcut.Description = "Start Print-md Preview Server"
 
         # Set icon if found
@@ -198,7 +270,10 @@ function Main {
         exit 0
     }
 
-    # Step 4: Create desktop shortcut
+    # Step 4: Set up Documents\print-md and seed examples
+    Initialize-PrintMdDirectory | Out-Null
+
+    # Step 5: Create desktop shortcut
     New-DesktopShortcut
 
     # Success!
@@ -209,11 +284,16 @@ function Main {
     Write-Host ""
     Write-Success "print-md is ready to use!"
     Write-Host ""
+    if ($script:PrintMdDir) {
+        Write-Info "Examples are available at: $(Join-Path $script:PrintMdDir 'examples')"
+        Write-Host ""
+    }
     Write-Info "Quick Start Options:"
     Write-Host ""
     Write-Host "  Option 1: Use Desktop Shortcut" -ForegroundColor Yellow
     Write-Host "    - Double-click 'Print-md Preview' on your desktop" -ForegroundColor White
-    Write-Host "    - This will open the preview server in your browser" -ForegroundColor White
+    Write-Host "    - The viewer's 'Open Project' picker starts in $script:PrintMdDir" -ForegroundColor White
+    Write-Host "      so you can browse the bundled examples right away" -ForegroundColor White
     Write-Host ""
     Write-Host "  Option 2: Use Command Line" -ForegroundColor Yellow
     Write-Host "    1. Create a folder with your markdown files" -ForegroundColor White
