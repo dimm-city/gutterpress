@@ -6,6 +6,26 @@
 
 ---
 
+## Page Geometry
+
+Physical dimensions for the print output. These values are declared in `manifest.yaml` and reflect the US Letter format used by this guide.
+
+| Dimension | Value | Notes |
+|-----------|-------|-------|
+| Trim size | 8.5 × 11 in | US Letter — change in `manifest.yaml` |
+| Top margin | 0.875 in | Increased to 2.5in on chapter opener pages |
+| Bottom margin | 1 in | Folio sits in this space |
+| Inner margin (gutter) | 0.75 in | Left on recto, right on verso — binding side |
+| Outer margin | 1 in | Right on recto, left on verso |
+| Bleed | 0.125 in | Extend backgrounds to the page edge; keep text 0.125in inside the trim |
+| Safe area | Trim − 0.125in | Keep all critical content inside this boundary |
+
+**Bleed** is the extra area beyond the trim edge that backgrounds and images must extend into, so trimming variation doesn't leave a white sliver. **Safe area** is the inset boundary inside which all text, logos, and critical art must remain.
+
+To add bleed to your project, extend any full-bleed background color or image 0.125in past each edge using negative margins or `padding: 0.125in` offsets on the container.
+
+---
+
 ## Default Body Page
 
 The default page is active for all content that doesn't use a named `@page` directive. It provides:
@@ -136,3 +156,59 @@ And placed in the margin via:
 | Full-bleed | `@page full-bleed` | `page: full-bleed` | 0 | None |
 
 To add a new template, define a new `@page name { … }` rule in `guide.css § 2`, then set `page: name` on the appropriate block element in CSS or as an inline style in the markdown.
+
+---
+
+## Extended Named Page Reference
+
+Named page types beyond the four defaults. Add these to `@page` rules in `styles/guide.css` when your book needs them.
+
+| Template | CSS class | `page:` value | Top margin | Chrome |
+|----------|-----------|--------------|------------|--------|
+| Default | — | `@page` | 0.875 in | Running header + folio |
+| Chapter opener | `.chapter-opener` | `chapter` | 2.5 in | Folio only |
+| Cover | `.cover-page` | `cover` | 0 | None |
+| Full-bleed | `page: full-bleed` | `full-bleed` | 0 | None |
+| Front matter | `.front-matter` | `front-matter` | 0.875 in | None (footers suppressed) |
+| Colophon | `.colophon` | `colophon` | 0.875 in | None |
+| Blank | `@page :blank` | `:blank` | — | None (auto-inserted) |
+
+Define new named pages in `styles/guide.css § 2 PAGE SETUP` following the existing `@page chapter { … }` pattern.
+
+---
+
+## Facing-Page Spread Layout
+
+Use `@spread` to group content into a logical two-page spread — the left and right pages are authored as a unit and Paged.js keeps them paired.
+
+```markdown
+@spread #sp-intro .intro-spread
+
+@page .left-page
+
+Left page content goes here. Use `---{.column-break}` for columns within a page.
+
+@page .right-page
+
+Right page content goes here. Both pages render side-by-side in the preview.
+
+@break
+```
+
+The `@spread` marker emits `<div class="spread">`. The `@page` markers inside it emit `<div class="page">` children. Use `@break` after the spread to return to normal single-page flow. CSS targets the spread with `.spread.intro-spread` and individual pages with `.spread .page.left-page`.
+
+---
+
+## Internal Anchor Cross-References
+
+Because every chapter opens with `@chapter #ch-name`, you can link directly to any chapter from anywhere in the document using a standard markdown link:
+
+```markdown
+See the [Typography chapter](#ch-typography) for body text specifications.
+
+[Jump to Color Palette](#ch-palette)
+
+[CLI Reference](#ch-cli)
+```
+
+The `#ch-*` IDs are set by the `@chapter #id` marker at the top of each source file. In the PDF viewer, these render as clickable hyperlinks. In a printed PDF, the `a[href]::after` CSS rule in `guide.css` prints the URL fragment in parentheses — suppress this for internal links with `a[href^="#"]::after { content: none; }` (already set in the stylesheet).

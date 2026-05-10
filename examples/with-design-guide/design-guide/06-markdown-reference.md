@@ -71,7 +71,11 @@ Wraps content in `<div class="page">`. Use inside a chapter or spread for explic
 
 ### @break — Hard Break
 
-Forces a page break without generating a wrapper element.
+Forces a page break **without** generating a `<div class="page">` wrapper element. Use `@break` when you need a page change but don't want a targetable `page` div — for example, inside a `@spread` to separate the left and right pages, or to end a `@section` block.
+
+**Key distinction from `@page`:**
+- `@page` wraps all following content in `<div class="page [class]">` — CSS rules targeting `.page` apply to it.
+- `@break` emits `<div class="md-break" aria-hidden="true"></div>` and closes the nearest open scope (section, page, or spread). No wrapper for content to live inside.
 
 **Syntax** — `@break` on its own line.
 
@@ -108,6 +112,15 @@ Wraps content in `<div class="region">`. Use to group a logical block within a p
 
 Specimen content here...
 ```
+
+**Live example** — this callout is inside a `@section` and will stay on one page:
+
+@section
+
+::: callout-note
+<span class="callout-label">Note</span>
+This callout and any content immediately following it are wrapped in a `@section` block. Paged.js will push the entire block to the next page rather than split it mid-block.
+:::
 
 ---
 
@@ -174,6 +187,41 @@ Large centered excerpt with decorative rules above and below.
 The measure of good design is whether the reader notices the design at all.
 
 <span class="attribution">— Design Guide, Chapter 3</span>
+:::
+
+### ::: wrapper — Generic Wrapper with Classes
+
+The most flexible container — applies any CSS class from the stylesheet to a content block. Use when no named container fits your need.
+
+**Syntax** — `::: wrapper {.class-name}` … `:::`
+
+::: wrapper {.callout}
+<span class="callout-label">Generic wrapper</span>
+This block uses `::: wrapper {.callout}` — applying the `.callout` class without registering a new named container. Any CSS class from `guide.css` or `§ 8 YOUR BOOK LAYER` can be passed this way.
+:::
+
+```markdown
+::: wrapper {.callout}
+Content inside gets `class="callout"` on its div.
+:::
+
+::: wrapper {.my-custom-class key="value"}
+Accepts classes, IDs, and data attributes.
+:::
+```
+
+For side-by-side blocks that don't share text flow, use `.grid`:
+
+::: wrapper {.grid}
+
+::: wrapper {.example}
+**Left block** — independent content, does not flow into the right block.
+:::
+
+::: wrapper {.example}
+**Right block** — equal width, aligned to the top of the left block.
+:::
+
 :::
 
 ---
@@ -277,3 +325,25 @@ Left column content. The break below pushes everything after it into the right c
 Right column content. This paragraph begins here because of the column break directive above it.
 
 :::
+
+---
+
+## Footnotes
+
+Footnotes are supported via the `markdown-it-footnote` plugin. References appear inline at the point of use; definitions can be placed anywhere in the file and render at the end of the content flow.
+
+**Syntax** — `[^label]` in text + `[^label]: definition` anywhere in the file.
+
+Here is a sentence with a footnote reference.[^demo] And here is a second reference to the same note.[^demo]
+
+A different footnote uses a different label.[^second]
+
+[^demo]: This is the footnote definition. It renders at the end of the page or document context. Definitions can be placed anywhere in the source file — they do not need to follow the reference immediately.
+
+[^second]: A second, independent footnote. Labels can be any string — numbers, words, or abbreviations.
+
+```markdown
+Here is a sentence with a footnote.[^fn-1]
+
+[^fn-1]: The footnote definition. Can go anywhere in the file.
+```

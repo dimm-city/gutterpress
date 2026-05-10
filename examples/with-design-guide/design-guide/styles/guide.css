@@ -23,6 +23,30 @@
 
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   § 0  CUSTOM FONTS   (optional — delete if using system fonts only)
+   ───────────────────────────────────────────────────────────────────────────── */
+/* Uncomment and edit to load custom local fonts. Place font files in a
+   fonts/ directory alongside this stylesheet and update the urls below.
+   Repeat the @font-face block once per weight/style combination.
+
+@font-face {
+  font-family: "YourBodyFont";
+  src: url("../fonts/your-body-font-regular.woff2") format("woff2"),
+       url("../fonts/your-body-font-regular.ttf")  format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+
+@font-face {
+  font-family: "YourDisplayFont";
+  src: url("../fonts/your-display-font-bold.woff2") format("woff2"),
+       url("../fonts/your-display-font-bold.ttf")  format("truetype");
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+
+   Then update --font-body and --font-display in § 1 BRAND TOKENS below.
+*/
+
+/* ─────────────────────────────────────────────────────────────────────────────
    § 1  BRAND TOKENS   ←  CUSTOMIZE HERE
    ───────────────────────────────────────────────────────────────────────────── */
 
@@ -156,9 +180,9 @@ h1 { string-set: chapter-title content(); }
 /* ── Chapter opener: large top margin, no running header ── */
 @page chapter {
   margin-top: 2.5in;
-  @top-left   { content: none; }
-  @top-center { content: none; }
-  @top-right  { content: none; }
+  @top-left   { content: none; border: none; padding: 0; }
+  @top-center { content: none; border: none; padding: 0; }
+  @top-right  { content: none; border: none; padding: 0; }
 }
 
 /* ── Cover: full page, no chrome ── */
@@ -206,8 +230,8 @@ body {
   background-color: var(--color-paper);
   margin: 0;
   hyphens: auto;
-  orphans: 3;
-  widows: 3;
+  orphans: 4;
+  widows: 4;
   counter-reset: chapter;
 }
 
@@ -298,6 +322,14 @@ p {
 }
 
 h1 + p, h2 + p, h3 + p, h4 + p { text-indent: 0; }
+
+/* Keep the first block after each heading on the same page as the heading */
+h2 + p, h2 + ul, h2 + ol, h2 + pre, h2 + .callout, h2 + blockquote,
+h3 + p, h3 + ul, h3 + ol, h3 + pre,
+h4 + p, h4 + ul, h4 + ol {
+  break-before: avoid;
+  page-break-before: avoid;
+}
 
 strong { font-weight: 700; }
 em     { font-style: italic; }
@@ -598,6 +630,54 @@ figcaption {
   letter-spacing: -0.04em;
 }
 
+/* ── Numbered step list ── */
+.steps {
+  list-style: none;
+  margin: 0.8em 0 1.2em;
+  padding: 0;
+  counter-reset: steps;
+}
+
+.steps li {
+  display: flex;
+  gap: 0.75em;
+  align-items: baseline;
+  margin-bottom: 0.5em;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  counter-increment: steps;
+}
+
+.steps li::before {
+  content: counter(steps, decimal-leading-zero);
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--color-accent);
+  min-width: 2em;
+  flex-shrink: 0;
+}
+
+/* ── Glossary / term list ── */
+.glossary {
+  margin: 0.8em 0 1.2em;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.glossary-term {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--color-accent);
+  margin: 0.8em 0 0.15em;
+}
+
+.glossary-def {
+  margin: 0 0 0.2em 1.2em;
+  color: var(--color-ink);
+}
+
 
 /* ─────────────────────────────────────────────────────────────────────────────
    § 5  LAYOUT UTILITIES
@@ -670,6 +750,18 @@ figcaption {
   letter-spacing: 0.07em;
   text-transform: uppercase;
   margin: 4em 0 0;
+}
+
+/* ── CSS grid — two equal columns, independent flow ── */
+/* Unlike .two-column (CSS columns, text flows between), .grid keeps
+   each child independent. Use for side-by-side blocks, comparison tables,
+   or any layout where left and right don't share a single text flow. */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4in;
+  align-items: start;
+  margin: 0.8em 0 1.2em;
 }
 
 
@@ -834,6 +926,12 @@ a.download::after { content: none; }
   width: 100%;
 }
 
+/* ── TOC: first chapter needs no forced page break (nothing precedes it) ── */
+#ch-toc h1 {
+  break-before: auto;
+  page-break-before: auto;
+}
+
 /* ── CLI Reference: fix flag-table column proportioning ── */
 .chapter#ch-cli table {
   table-layout: fixed;
@@ -890,3 +988,21 @@ a.download::after { content: none; }
    ───────────────────────────────────────────────────────────────────────────── */
 
 /* your book rules go here */
+
+/* ── Custom callout variant pattern ── */
+/* To create a new callout type (e.g. a "DM Note" callout):
+   1. Add a tint token to § 1: --color-tint-dm: #f5eeff;
+   2. Add a border token: --border-dm: 3pt solid #7b2fbe;
+   3. Add a label color: (or use an existing accent variable)
+   4. Add CSS rules here:
+
+.callout-dm {
+  border-left: var(--border-dm);
+  background: var(--color-tint-dm);
+}
+.callout-dm .callout-label { color: #7b2fbe; }
+
+   5. Register the container in src/lib/markdown/index.ts:
+      md.use(markdownItContainer, "callout-dm", createNamedContainer("callout-dm"));
+   6. Use in markdown: ::: callout-dm ... :::
+*/
