@@ -304,29 +304,29 @@ Five clip-path shapes for the card tab and body corners. Set `variant="N"` on th
 
 **Syntax** — `variant="N"` on `@skill` macro; or add class `v1`–`v5` to `.dc-card-tab` and `.dc-card-body`
 
-<div style="display:flex;flex-wrap:wrap;gap:12px;margin:0.1in 0;">
+<div style="display:flex;flex-wrap:wrap;gap:16px;margin:0.1in 0;">
 
-<div class="dc-skill-card" style="width:180px;">
+<div class="dc-skill-card" style="width:330px;flex-shrink:0;">
   <div class="card-tab dc-card-tab v1"><span class="tab-title dc-tab-title">Variant 1</span><span class="tab-tier dc-tab-tier">V1</span></div>
-  <div class="card-body dc-card-body v1"><div class="card-inner dc-card-inner"><div class="ability dc-ability"><span class="ap-tag dc-ap">2 AP</span><p class="ability-text dc-ability-text dc-prose"><strong>Default.</strong> Right-diagonal tab, bottom-right notch body.</p></div></div></div>
+  <div class="card-body dc-card-body v1"><div class="card-inner dc-card-inner"><div class="ability dc-ability"><span class="ap-tag dc-ap">2 AP</span><p class="ability-text dc-ability-text dc-prose"><strong>Default.</strong> Right-diagonal tab, bottom-right notch body. The standard shape used on all @skill cards unless overridden.</p></div></div></div>
 </div>
 
-<div class="dc-skill-card" style="width:180px;">
+<div class="dc-skill-card" style="width:330px;flex-shrink:0;">
   <div class="card-tab dc-card-tab v2"><span class="tab-title dc-tab-title">Variant 2</span><span class="tab-tier dc-tab-tier">V2</span></div>
   <div class="card-body dc-card-body v2"><div class="card-inner dc-card-inner"><div class="ability dc-ability"><span class="ap-tag dc-ap">2 AP</span><p class="ability-text dc-ability-text dc-prose"><strong>Sharp angular.</strong> Diagonal cuts on all four tab corners and both body bottom corners.</p></div></div></div>
 </div>
 
-<div class="dc-skill-card" style="width:180px;">
+<div class="dc-skill-card" style="width:330px;flex-shrink:0;">
   <div class="card-tab dc-card-tab v3"><span class="tab-title dc-tab-title">Variant 3</span><span class="tab-tier dc-tab-tier">V3</span></div>
   <div class="card-body dc-card-body v3"><div class="card-inner dc-card-inner"><div class="ability dc-ability"><span class="ap-tag dc-ap">2 AP</span><p class="ability-text dc-ability-text dc-prose"><strong>Asymmetric tech.</strong> Top-left step on tab, large single diagonal on body.</p></div></div></div>
 </div>
 
-<div class="dc-skill-card" style="width:180px;">
+<div class="dc-skill-card" style="width:330px;flex-shrink:0;">
   <div class="card-tab dc-card-tab v4"><span class="tab-title dc-tab-title">Variant 4</span><span class="tab-tier dc-tab-tier">V4</span></div>
   <div class="card-body dc-card-body v4"><div class="card-inner dc-card-inner"><div class="ability dc-ability"><span class="ap-tag dc-ap">2 AP</span><p class="ability-text dc-ability-text dc-prose"><strong>Soft angular.</strong> Shallow corner cuts, more restrained than v1/v2.</p></div></div></div>
 </div>
 
-<div class="dc-skill-card" style="width:180px;">
+<div class="dc-skill-card" style="width:330px;flex-shrink:0;">
   <div class="card-tab dc-card-tab v5"><span class="tab-title dc-tab-title">Variant 5</span><span class="tab-tier dc-tab-tier">V5</span></div>
   <div class="card-body dc-card-body v5"><div class="card-inner dc-card-inner"><div class="ability dc-ability"><span class="ap-tag dc-ap">2 AP</span><p class="ability-text dc-ability-text dc-prose"><strong>Scooped futuristic.</strong> Center notch on tab top, pinched bottom corners on body.</p></div></div></div>
 </div>
@@ -363,8 +363,4 @@ Five clip-path shapes for the card tab and body corners. Set `variant="N"` on th
 | Sub-header Sticker | auto via `@skill`; raw HTML fallback | `dc-sub-header`, `flush` |
 | Stamp — Default | `<span class="dc-stamp">TEXT</span>` | `dc-stamp` |
 | Stamp — Classified | `<span class="dc-stamp classified">TEXT</span>` | `dc-stamp`, `classified` |
-| Clip-Path v1 | `variant="1"` on `@skill`; or `.v1` on tab/body | `dc-card-tab v1`, `dc-card-body v1` |
-| Clip-Path v2 | `variant="2"` on `@skill`; or `.v2` on tab/body | `dc-card-tab v2`, `dc-card-body v2` |
-| Clip-Path v3 | `variant="3"` on `@skill`; or `.v3` on tab/body | `dc-card-tab v3`, `dc-card-body v3` |
-| Clip-Path v4 | `variant="4"` on `@skill`; or `.v4` on tab/body | `dc-card-tab v4`, `dc-card-body v4` |
-| Clip-Path v5 | `variant="5"` on `@skill`; or `.v5` on tab/body | `dc-card-tab v5`, `dc-card-body v5` |
+| Clip-Path v1–v5 | `variant="1"` through `variant="5"` on `@skill` | `dc-card-tab v1`…`v5`, `dc-card-body v1`…`v5` |
