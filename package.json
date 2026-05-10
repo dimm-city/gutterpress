@@ -68,7 +68,7 @@
     "markdown-it-attrs": "^4.3.0",
     "markdown-it-container": "^4.0.0",
     "markdown-it-footnote": "^4.0.0",
-    "markdown-it-paged": "^0.1.2",
+    "markdown-it-paged": "^0.2.0",
     "markdown-it-source-map": "^0.1.1",
     "pagedjs": "^0.4.3",
     "puppeteer-core": "^24.43.0",
