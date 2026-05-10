@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 
 import { defineCommand, runMain } from "citty";
-import build from "./commands/build";
-import validate from "./commands/validate";
-import lint from "./commands/lint";
-import audit from "./commands/audit";
-import preview from "./commands/preview";
-import preflight from "./commands/preflight";
 
+// Subcommands are loaded lazily so `--version` and `--help` (and any single
+// subcommand) only pay the import cost of what they actually use. Notably
+// keeps stylelint, vite, and other heavy deps out of the startup path,
+// which matters for `bun build --compile` standalone binaries — some of
+// those deps use createRequire/readFileSync patterns that bun --compile
+// can't statically resolve.
 const main = defineCommand({
   meta: {
     name: "print-md",
@@ -17,13 +17,13 @@ const main = defineCommand({
   },
   subCommands: {
     // Primary author commands:
-    preview, // live HTML preview (default) or one-shot build+open for pdf|pdfx
-    build,   // unified pipeline: html | pdf | pdfx with format-aware lint/validate
+    preview: () => import("./commands/preview").then((m) => m.default),
+    build: () => import("./commands/build").then((m) => m.default),
     // CI / advanced:
-    lint,
-    validate,
-    audit,
-    preflight,
+    lint: () => import("./commands/lint").then((m) => m.default),
+    validate: () => import("./commands/validate").then((m) => m.default),
+    audit: () => import("./commands/audit").then((m) => m.default),
+    preflight: () => import("./commands/preflight").then((m) => m.default),
   },
 });
 

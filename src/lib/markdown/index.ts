@@ -58,9 +58,19 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
     typographer: true,
   });
 
-  md.use(markdownItAttrs);
-  md.use(markdownItSourceMap);
-  md.use(markdownItPaged, { implicitPage: true });
+  // Some of these plugins ship as `exports.default = fn` (webpack-style CJS
+  // with `__esModule: true`). Bun's runtime auto-unwraps `{ default: fn }`
+  // to the function in dev mode; the standalone-binary loader does not, so
+  // the import surfaces as `{ default: fn }` and `md.use` blows up with
+  // "plugin.apply is not a function". Unwrap defensively.
+  const unwrap = <T>(plugin: T): T =>
+    (plugin && typeof plugin === "object" && "default" in (plugin as object)
+      ? (plugin as { default: T }).default
+      : plugin);
+
+  md.use(unwrap(markdownItAttrs));
+  md.use(unwrap(markdownItSourceMap));
+  md.use(unwrap(markdownItPaged), { implicitPage: true });
 
   // DEPRECATED: Legacy container-based page markers (use @page instead)
   md.use(markdownItContainer, "page", {

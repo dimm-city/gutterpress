@@ -105,11 +105,13 @@ export async function initializePreviewDirectories(
 }
 
 /**
- * Resolve the preview assets directory path
+ * Resolve the preview assets directory path. In dev this is `src/assets`;
+ * in the standalone binary the assets are extracted to a temp dir so they
+ * can be served from a real filesystem path.
  */
-export function resolveAssetsDir(): string {
-  const thisFileDir = path.dirname(new URL(import.meta.url).pathname);
-  return path.join(thisFileDir, '..', 'assets');
+export async function resolveAssetsDir(): Promise<string> {
+  const { getAssetsDir } = await import('../lib/embedded-assets');
+  return getAssetsDir();
 }
 
 /**

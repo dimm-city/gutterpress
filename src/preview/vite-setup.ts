@@ -4,7 +4,13 @@
  * Creates and configures Vite dev server with custom middleware
  */
 
-import { createServer as createViteServer, type ViteDevServer } from 'vite';
+// Vite is heavy and is only needed when the preview server actually starts.
+// Importing it eagerly drags rollup + its native bindings into the startup
+// path, which breaks `print-md preview --help` in the standalone binary
+// (bun --compile resolves rollup's `__dirname` to the bunfs root and
+// rollup's native loader can't find its `.node` binding there). The dynamic
+// import below is awaited inside `createConfiguredViteServer` only.
+import type { ViteDevServer } from 'vite';
 import { join } from 'path';
 import { info } from '../utils/logger.ts';
 import type { ServerState } from './server-context.ts';
@@ -120,6 +126,8 @@ export async function createConfiguredViteServer(
   restartPreviewFn: (newPath: string) => Promise<void>
 ): Promise<ViteDevServer> {
   const middleware = createApiMiddleware(state, restartPreviewFn);
+
+  const { createServer: createViteServer } = await import('vite');
 
   const viteServer = await createViteServer({
     configFile: false,

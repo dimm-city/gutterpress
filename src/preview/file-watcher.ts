@@ -95,7 +95,8 @@ export async function generateAndWriteHtml(
   });
 
   // Read debug CSS to inline it (Vite's <link> transformation breaks CSS in iframes)
-  const debugCssPath = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'assets', 'preview', 'styles', 'debug.css');
+  const { getAssetPath } = await import('../lib/embedded-assets');
+  const debugCssPath = await getAssetPath('preview/styles/debug.css');
   let debugCss = '';
   try {
     debugCss = await Bun.file(debugCssPath).text();

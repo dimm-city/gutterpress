@@ -33,7 +33,7 @@ export async function startPreviewServer(options: PreviewServerOptions): Promise
   const config = await initializeConfiguration(inputPath, options);
 
   // Stage 3: Setup directories (with config for manifest assets)
-  const assetsSourceDir = resolveAssetsDir();
+  const assetsSourceDir = await resolveAssetsDir();
   const tempDir = await initializePreviewDirectories(inputPath, assetsSourceDir, config);
 
   // Generate initial HTML
