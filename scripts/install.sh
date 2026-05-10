@@ -6,8 +6,19 @@ set -e
 
 # Configuration
 PRINTMD_REPO="https://github.com/dimm-city/print-md.git"
-PRINTMD_BUN_TARGET="github:dimm-city/print-md"
 PRINTMD_PACKAGE="@dimm-city/print-md"
+
+# Working clone of the repo, populated by clone_print_md_repo and reused by
+# both install_printmd and setup_print_md_directory.
+PRINTMD_CLONE_DIR=""
+PRINTMD_CLONE_PARENT=""
+
+cleanup_clone() {
+    if [ -n "$PRINTMD_CLONE_PARENT" ] && [ -d "$PRINTMD_CLONE_PARENT" ]; then
+        rm -rf "$PRINTMD_CLONE_PARENT"
+    fi
+}
+trap cleanup_clone EXIT
 
 # Color output functions
 print_success() {
@@ -61,6 +72,32 @@ install_bun() {
     fi
 }
 
+# Clone the repository to a temp directory once and reuse it for both the
+# global install and the examples seed. Going through a local path bypasses
+# bun's GitHub tarball-API fallback, which was returning 404 for empty refs.
+clone_print_md_repo() {
+    if [ -n "$PRINTMD_CLONE_DIR" ] && [ -d "$PRINTMD_CLONE_DIR/.git" ]; then
+        return 0
+    fi
+
+    if ! command -v git &> /dev/null; then
+        print_error "git is required to install print-md"
+        print_info "Install git from https://git-scm.com/ and run this script again"
+        return 1
+    fi
+
+    PRINTMD_CLONE_PARENT="$(mktemp -d)"
+    PRINTMD_CLONE_DIR="$PRINTMD_CLONE_PARENT/print-md"
+
+    print_info "Cloning $PRINTMD_REPO..."
+    if ! git clone --depth 1 --quiet "$PRINTMD_REPO" "$PRINTMD_CLONE_DIR"; then
+        print_error "Failed to clone print-md repository"
+        PRINTMD_CLONE_DIR=""
+        return 1
+    fi
+    return 0
+}
+
 # Install print-md globally
 install_printmd() {
     print_step "Installing print-md..."
@@ -70,10 +107,11 @@ install_printmd() {
     export BUN_INSTALL="$HOME/.bun"
     export PATH="$BUN_INSTALL/bin:$PATH"
 
-    # Use the github:owner/repo shorthand: bun installs straight from git and
-    # avoids the GitHub tarball API path, which was returning 404 for empty
-    # refs and breaking `bun add -g <https URL>` installs in CI.
-    if bun add -g "$PRINTMD_BUN_TARGET"; then
+    if ! clone_print_md_repo; then
+        return 1
+    fi
+
+    if bun add -g "$PRINTMD_CLONE_DIR"; then
         print_success "print-md installed successfully!"
         return 0
     else
@@ -129,27 +167,22 @@ setup_print_md_directory() {
         return 0
     fi
 
-    if ! command -v git &> /dev/null; then
-        print_info "git not found — skipping examples download"
-        print_info "You can clone examples manually from $PRINTMD_REPO"
-        return 0
+    # Reuse the clone made by install_printmd if it's still around; otherwise
+    # try to clone now.
+    if [ -z "$PRINTMD_CLONE_DIR" ] || [ ! -d "$PRINTMD_CLONE_DIR" ]; then
+        if ! clone_print_md_repo; then
+            print_info "Could not clone repository for examples"
+            return 0
+        fi
     fi
 
-    print_info "Cloning examples from $PRINTMD_REPO..."
-    local tmp_dir
-    tmp_dir="$(mktemp -d)"
-    if git clone --depth 1 --quiet "$PRINTMD_REPO" "$tmp_dir/repo"; then
-        if [ -d "$tmp_dir/repo/examples" ]; then
-            mkdir -p "$examples_dir"
-            cp -R "$tmp_dir/repo/examples/." "$examples_dir/"
-            print_success "Examples installed to $examples_dir"
-        else
-            print_info "No examples directory found in repository"
-        fi
+    if [ -d "$PRINTMD_CLONE_DIR/examples" ]; then
+        mkdir -p "$examples_dir"
+        cp -R "$PRINTMD_CLONE_DIR/examples/." "$examples_dir/"
+        print_success "Examples installed to $examples_dir"
     else
-        print_info "Could not clone repository for examples"
+        print_info "No examples directory found in repository"
     fi
-    rm -rf "$tmp_dir"
     return 0
 }
 

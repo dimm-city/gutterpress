@@ -5,8 +5,12 @@ $ErrorActionPreference = "Stop"
 
 # Configuration
 $PRINTMD_REPO = "https://github.com/dimm-city/print-md.git"
-$PRINTMD_BUN_TARGET = "github:dimm-city/print-md"
 $PRINTMD_PACKAGE = "@dimm-city/print-md"
+
+# Working clone of the repo, populated by Get-PrintMdClone and reused by
+# both Install-PrintMd and Initialize-PrintMdDirectory.
+$script:PrintMdCloneDir = $null
+$script:PrintMdCloneParent = $null
 
 # Color output functions
 function Write-Success {
@@ -70,18 +74,55 @@ function Install-Bun {
     }
 }
 
+# Clone the repository to a temp directory once and reuse it for both the
+# global install and the examples seed. Going through a local path bypasses
+# bun's GitHub tarball-API fallback, which was returning 404 for empty refs.
+function Get-PrintMdClone {
+    if ($script:PrintMdCloneDir -and (Test-Path (Join-Path $script:PrintMdCloneDir '.git'))) {
+        return $true
+    }
+
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $gitCmd) {
+        Write-Error "git is required to install print-md"
+        Write-Info "Install Git for Windows from https://git-scm.com/download/win and run this script again"
+        return $false
+    }
+
+    $script:PrintMdCloneParent = Join-Path ([System.IO.Path]::GetTempPath()) ("print-md-install-" + [System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $script:PrintMdCloneParent -Force | Out-Null
+    $script:PrintMdCloneDir = Join-Path $script:PrintMdCloneParent "print-md"
+
+    Write-Info "Cloning $PRINTMD_REPO..."
+    & git clone --depth 1 --quiet $PRINTMD_REPO $script:PrintMdCloneDir 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to clone print-md repository (exit $LASTEXITCODE)"
+        $script:PrintMdCloneDir = $null
+        return $false
+    }
+    return $true
+}
+
+function Remove-PrintMdClone {
+    if ($script:PrintMdCloneParent -and (Test-Path $script:PrintMdCloneParent)) {
+        Remove-Item -Path $script:PrintMdCloneParent -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    $script:PrintMdCloneDir = $null
+    $script:PrintMdCloneParent = $null
+}
+
 # Install print-md globally
 function Install-PrintMd {
     Write-Step "Installing print-md..."
     Write-Info "This may take a minute..."
 
     try {
-        # Install from npm registry (when published) or from GitHub
-        # For now, using GitHub installation. The github:owner/repo shorthand
-        # makes bun install via git directly and avoids the GitHub tarball API
-        # path that was returning 404 for empty refs in CI.
-        Write-Info "Installing from GitHub repository..."
-        bun add -g $PRINTMD_BUN_TARGET
+        if (-not (Get-PrintMdClone)) {
+            return $false
+        }
+
+        Write-Info "Installing from cloned repository..."
+        bun add -g $script:PrintMdCloneDir
 
         if ($LASTEXITCODE -eq 0) {
             Write-Success "print-md installed successfully!"
@@ -143,36 +184,24 @@ function Initialize-PrintMdDirectory {
             }
         }
 
-        $gitCmd = Get-Command git -ErrorAction SilentlyContinue
-        if (-not $gitCmd) {
-            Write-Info "git not found - skipping examples download"
-            Write-Info "You can clone examples manually from $PRINTMD_REPO"
-            return $true
-        }
-
-        Write-Info "Cloning examples from $PRINTMD_REPO..."
-        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("print-md-install-" + [System.Guid]::NewGuid().ToString("N"))
-        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-        try {
-            $repoDir = Join-Path $tempDir "repo"
-            git clone --depth 1 --quiet $PRINTMD_REPO $repoDir 2>&1 | Out-Null
-            if ($LASTEXITCODE -ne 0) {
+        # Reuse the clone made by Install-PrintMd if it's still around;
+        # otherwise try to clone now.
+        if (-not $script:PrintMdCloneDir -or -not (Test-Path $script:PrintMdCloneDir)) {
+            if (-not (Get-PrintMdClone)) {
                 Write-Info "Could not clone repository for examples"
                 return $true
             }
+        }
 
-            $sourceExamples = Join-Path $repoDir "examples"
-            if (Test-Path $sourceExamples) {
-                if (-not (Test-Path $examplesDir)) {
-                    New-Item -ItemType Directory -Path $examplesDir -Force | Out-Null
-                }
-                Copy-Item -Path (Join-Path $sourceExamples "*") -Destination $examplesDir -Recurse -Force
-                Write-Success "Examples installed to $examplesDir"
-            } else {
-                Write-Info "No examples directory found in repository"
+        $sourceExamples = Join-Path $script:PrintMdCloneDir "examples"
+        if (Test-Path $sourceExamples) {
+            if (-not (Test-Path $examplesDir)) {
+                New-Item -ItemType Directory -Path $examplesDir -Force | Out-Null
             }
-        } finally {
-            Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+            Copy-Item -Path (Join-Path $sourceExamples "*") -Destination $examplesDir -Recurse -Force
+            Write-Success "Examples installed to $examplesDir"
+        } else {
+            Write-Info "No examples directory found in repository"
         }
 
         return $true
@@ -312,4 +341,8 @@ function Main {
 }
 
 # Run main installation
-Main
+try {
+    Main
+} finally {
+    Remove-PrintMdClone
+}
