@@ -148,6 +148,16 @@ If your project uses a `package.json`, add these as convenience scripts:
 
 The guide is reachable at `https://<owner>.github.io/<repo>/`. The viewer uses relative paths, so subpath hosting works without configuration.
 
+### Publish to Azure Static Web Apps
+
+1. Copy the same workflow into your repo.
+2. In Azure, create a Static Web App and copy its deployment token.
+3. Add the token to your repository as **Settings → Secrets and variables → Actions → `AZURE_STATIC_WEB_APPS_API_TOKEN`**.
+4. In `.github/workflows/publish-design-guide.yml`, uncomment the **Deploy to Azure Static Web Apps** step.
+5. If you are only deploying to Azure, remove or comment out the GitHub Pages upload/deploy pieces.
+
+The Azure deployment uses the already-built `design-guide-site/` directory, so Static Web Apps serves the exact same `index.html` + `book.html` viewer bundle produced by `print-md build --format html`.
+
 ### Include a downloadable PDF
 
 To publish a PDF alongside the HTML guide:
