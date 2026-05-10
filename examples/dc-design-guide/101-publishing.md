@@ -98,6 +98,6 @@ The HTML viewer (`--format html`) produces the same toolbar and page-nav chrome 
 With the design guide authored and building cleanly, here are the next steps for adapting it to a new book:
 
 - **Add chapters** — create numbered markdown files (`01-`, `02-`, …) in the project directory and register them in `manifest.yaml` under `files`. The pipeline processes them in filename order.
-- **Customize design tokens** — edit `css/shared.css` to override `--color-*`, `--font-*`, and `--fs-*` custom properties for the new book's brand. Changes cascade to all components that use the tokens.
+- **Customize design tokens** — edit `css/dc-brand.css` to override `--color-*`, `--font-*`, and `--fs-*` custom properties for the new book's brand. Changes cascade to all components that use the tokens.
 - **Register new containers** — add custom `:::` container types in `manifest.yaml` under `containers`, then define matching CSS rules in a book-layer stylesheet. Any class from the stylesheet can also be applied via `:::wrapper {.class}`.
 - **Commit the guide alongside book source** — keep the design guide in the same repository as the book content. This ensures the guide always reflects the CSS and plugin versions in use, and CI can build both the guide and the book PDF from the same workflow run.

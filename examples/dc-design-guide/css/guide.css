@@ -27,7 +27,7 @@
 }
 
 /* ── Chapter page breaks ─────────────────────────────────────────────────────
-   The DC shared.css does not set break-before on h1 (the book uses explicit
+   The DC dc-brand.css does not set break-before on h1 (the book uses explicit
    page-break markers instead). The design guide drives chapter breaks via the
    @chapter marker → h1 pattern, so we add the break here.
 
@@ -100,8 +100,8 @@ body {
 }
 
 /* ── Fenced code blocks (specimen display) ───────────────────────────────────
-   Override shared.css code defaults with design-guide-appropriate sizing.
-   Uses DC tokens — no fallback values needed since shared.css is always loaded first.
+   Override dc-brand.css code defaults with design-guide-appropriate sizing.
+   Uses DC tokens — no fallback values needed since dc-brand.css is always loaded first.
    ─────────────────────────────────────────────────────────────────────────── */
 pre {
   background: var(--paper-aged);
@@ -137,7 +137,7 @@ pre code {
 
 /* ── Tables ──────────────────────────────────────────────────────────────────
    Ensure design-guide reference tables are readable at the design-guide
-   print size. Inherits DC color tokens from shared.css.
+   print size. Inherits DC color tokens from dc-brand.css.
    ─────────────────────────────────────────────────────────────────────────── */
 table {
   width: 100%;
@@ -184,5 +184,5 @@ tr:nth-child(even) td {
 
 /* ── YOUR DESIGN GUIDE LAYER ─────────────────────────────────────────────────
    Add project-specific design-guide overrides below this line.
-   Do NOT add book design system rules here — those belong in shared.css.
+   Do NOT add book design system rules here — those belong in dc-brand.css.
    ─────────────────────────────────────────────────────────────────────────── */

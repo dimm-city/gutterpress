@@ -2,7 +2,7 @@
 
 # Design System Overview
 
-<div class="dc-intro">This guide is both the living documentation of the Dimm City design system <em>and</em> a working demonstration. Every specimen on these pages is live — rendered through the same <code>css/index.css</code> as the Field Guide. Change a token in <code>shared.css</code> and the specimen updates on the next preview refresh.</div>
+<div class="dc-intro">This guide is both the living documentation of the Dimm City design system <em>and</em> a working demonstration. Every specimen on these pages is live — rendered through the same <code>css/index.css</code> as the Field Guide. Change a token in <code>dc-brand.css</code> and the specimen updates on the next preview refresh.</div>
 
 ## Design Philosophy
 
@@ -14,11 +14,11 @@
 
 | File | Purpose |
 |------|---------|
-| `css/shared.css` | Brand tokens, font faces, base typography, and all DC component styles |
+| `css/dc-brand.css` | Brand tokens, font faces, base typography, and all DC component styles |
 | `css/page-rules.css` | `@page` rules, named pages, Paged.js chrome, and chapter counter resets |
 | `css/guide.css` | Design-guide-specific overrides: fenced code blocks and syntax callout styles |
 
-All three are imported in order by `css/index.css`. The book-layer (`field-guide/css/`) can import `shared.css` and `page-rules.css` directly and add only its own delta on top.
+All three are imported in order by `css/index.css`. The book-layer (`field-guide/css/`) can import `dc-brand.css` and `page-rules.css` directly and add only its own delta on top.
 
 ## How Components Work
 
@@ -42,7 +42,7 @@ Cost: 2 AP — Boost your next action die by one step.
 
 ## Customizing the Brand
 
-`css/shared.css §1` contains all `:root` tokens. Change any of the variables below to retheme the entire system — every rule in shared.css, page-rules.css, and guide.css inherits from these.
+`css/dc-brand.css §1` contains all `:root` tokens. Change any of the variables below to retheme the entire system — every rule in dc-brand.css, page-rules.css, and guide.css inherits from these.
 
 **Before (default DC palette):**
 
@@ -70,4 +70,4 @@ Cost: 2 AP — Boost your next action die by one step.
 
 ## Keeping the Guide in Sync
 
-This guide re-renders every time `print-md preview` is running. If a component style changes in `shared.css`, its specimen on these pages updates automatically — there is no separate stylesheet to maintain, and no manual sync step required.
+This guide re-renders every time `print-md preview` is running. If a component style changes in `dc-brand.css`, its specimen on these pages updates automatically — there is no separate stylesheet to maintain, and no manual sync step required.
