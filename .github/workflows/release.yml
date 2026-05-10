@@ -99,9 +99,6 @@ jobs:
           - os: ubuntu-latest
             target: bun-linux-x64
             artifact: print-md-linux-x64
-          - os: ubuntu-24.04-arm
-            target: bun-linux-arm64
-            artifact: print-md-linux-arm64
           - os: macos-13
             target: bun-darwin-x64
             artifact: print-md-macos-x64
