@@ -495,4 +495,3 @@ The five-rung d20 result table used for all rolls in Dimm City. Each row is colo
 | `.item` (wrapper) | `::: wrapper {.item}` | Self-contained rules item block, break-inside avoided |
 | *(auto)* | markdown table | DC-styled table: colored header, alternating rows, small type |
 | *(auto)* | `> blockquote` | Accent-border block quote for epigraphs and attribution |
-| *(auto)* | ` ``` ` fenced block | Code block: orange border, cream background, Tomorrow mono |
