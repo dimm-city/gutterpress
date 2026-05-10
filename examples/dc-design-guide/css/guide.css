@@ -1,0 +1,180 @@
+/* =============================================================================
+   GUIDE.CSS — Design-guide-specific overrides
+   =============================================================================
+   This file is imported LAST by index.css (after shared.css and page-rules.css).
+   It should only contain rules that apply to the design guide itself — not to
+   the book design system it documents.
+
+   Layer responsibility:
+     shared.css      — brand tokens (:root), base type, all DC components
+     page-rules.css  — @page declarations, named pages, footer chrome
+     guide.css  ←    — this file: specimen scaffolding, code blocks, @chapter
+   ============================================================================= */
+
+/* ── @chapter wrapper ────────────────────────────────────────────────────────
+   markdown-it-paged converts `@chapter #id .class` into:
+     <div class="chapter id class">…</div>
+   The default div behaviour is fine; we just ensure no width side-effects.
+   ─────────────────────────────────────────────────────────────────────────── */
+.chapter {
+  display: block;
+  width: 100%;
+}
+
+/* ── Chapter page breaks ─────────────────────────────────────────────────────
+   The DC shared.css does not set break-before on h1 (the book uses explicit
+   page-break markers instead). The design guide drives chapter breaks via the
+   @chapter marker → h1 pattern, so we add the break here.
+
+   IMPORTANT: scope to `div.chapter > h1:first-of-type` only — the FIRST h1
+   inside each @chapter wrapper is the real chapter title. Later h1 elements
+   in the same chapter are live specimens and must NOT trigger page breaks.
+   ─────────────────────────────────────────────────────────────────────────── */
+div.chapter > h1:first-of-type {
+  break-before: page;
+  page-break-before: always;
+  counter-increment: chapter;
+}
+
+/* Specimen h1s (not the first in their @chapter wrapper) — flow normally. */
+div.chapter > h1:not(:first-of-type) {
+  break-before: auto;
+  page-break-before: auto;
+  counter-increment: none;
+}
+
+/* First chapter (TOC) — no forced break, nothing precedes it in the document. */
+#ch-toc h1:first-of-type {
+  break-before: auto;
+  page-break-before: auto;
+}
+
+/* ── Chapter counter init ────────────────────────────────────────────────────
+   The page-rules.css footer shows `c.N` (chapter counter). Reset it on body
+   so the counter starts at 0; each chapter h1 (scoped above) increments it.
+   ─────────────────────────────────────────────────────────────────────────── */
+body {
+  counter-reset: chapter;
+}
+
+/* ── Headings: keep with following content ───────────────────────────────────
+   Prevent h2/h3/h4 from stranding at the bottom of a page.
+   ─────────────────────────────────────────────────────────────────────────── */
+h2, h3, h4 {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+h2 + p, h2 + ul, h2 + ol, h2 + pre, h2 + blockquote,
+h3 + p, h3 + ul, h3 + ol, h3 + pre,
+h4 + p, h4 + ul, h4 + ol {
+  break-before: avoid;
+  page-break-before: avoid;
+}
+
+/* ── Orphans / widows ────────────────────────────────────────────────────────
+   Raise the default (2) to reduce stranded lines on page boundaries.
+   ─────────────────────────────────────────────────────────────────────────── */
+body {
+  orphans: 4;
+  widows: 4;
+}
+
+/* ── @page chapter — suppress phantom border on chapter opener pages ─────────
+   When h1 uses `page: chapter`, the @page chapter margin-boxes may render
+   their `border-bottom` even when `content: none` is set. This override
+   suppresses the phantom rule.
+   ─────────────────────────────────────────────────────────────────────────── */
+@page chapter {
+  @top-left   { content: none; border: none; padding: 0; }
+  @top-center { content: none; border: none; padding: 0; }
+  @top-right  { content: none; border: none; padding: 0; }
+}
+
+/* ── Fenced code blocks (specimen display) ───────────────────────────────────
+   Override shared.css code defaults with design-guide-appropriate sizing.
+   Uses DC tokens — no fallback values needed since shared.css is always loaded first.
+   ─────────────────────────────────────────────────────────────────────────── */
+pre {
+  background: var(--paper-aged);
+  border-left: 3px solid var(--orange);
+  border-radius: 2px;
+  margin: 0.15in 0;
+  padding: 10px 14px;
+  overflow-x: auto;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+pre code {
+  font-family: var(--font-mono);
+  font-size: 8.5pt;
+  line-height: 1.55;
+  color: var(--ink);
+  background: none;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Inline code (not inside pre) */
+:not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 9pt;
+  color: var(--orange);
+  background: rgba(242, 77, 0, 0.08);
+  border-radius: 2px;
+  padding: 1px 4px;
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────────────
+   Ensure design-guide reference tables are readable at the design-guide
+   print size. Inherits DC color tokens from shared.css.
+   ─────────────────────────────────────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+  margin: 0.1in 0;
+  break-inside: avoid;
+}
+
+th {
+  background: var(--crimson);
+  color: var(--paper-cream);
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  text-align: left;
+}
+
+td {
+  border-bottom: 1px solid var(--border-hairline);
+  padding: 4px 8px;
+  vertical-align: top;
+}
+
+tr:nth-child(even) td {
+  background: var(--surface-tint-3);
+}
+
+/* ── Specimen scaffolding ────────────────────────────────────────────────────
+   Light wrapper for live specimens in the guide — adds a subtle inset so
+   specimens are visually distinct from prose. Apply `.specimen` to a wrapping
+   div when you want an explicit boundary around a rendered component.
+   ─────────────────────────────────────────────────────────────────────────── */
+.specimen {
+  border: 1px solid var(--border-hairline);
+  border-left: 3px solid var(--hud-blue);
+  padding: 0.1in 0.15in;
+  margin: 0.1in 0;
+  background: var(--paper-cream);
+  break-inside: avoid;
+}
+
+/* ── YOUR DESIGN GUIDE LAYER ─────────────────────────────────────────────────
+   Add project-specific design-guide overrides below this line.
+   Do NOT add book design system rules here — those belong in shared.css.
+   ─────────────────────────────────────────────────────────────────────────── */

@@ -1,0 +1,36 @@
+title: "Dimm City — Design Guide"
+authors:
+  - "IT Lackey"
+
+# Dimm City plugin: @skill, @specialty, @learning-path markers
+plugins:
+  - path: ".plugins/dimm-city-plugin.js"
+    priority: 100
+
+# DC brand stylesheet (shared tokens → page-rules → guide overrides)
+styles:
+  - css/index.css
+
+source:
+  files:
+    - 00-toc.md
+    - 00-overview.md
+    - 01-typography.md
+    - 02-palette.md
+    - 03-components.md
+    - 04-dc-components.md
+    - 05-page-templates.md
+    - 06-layout.md
+    - 07-markdown-reference.md
+    - 101-publishing.md
+  assets:
+    - css
+    - fonts
+    - img
+    - .plugins
+
+# US Letter — 8.5 × 11 in
+page:
+  width: 612
+  height: 792
+  tolerance: 0.5

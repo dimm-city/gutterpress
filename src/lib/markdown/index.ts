@@ -225,6 +225,17 @@ export async function renderChapters(
     class RectoChapterHandler extends Paged.Handler {
       constructor(c, p, caller) { super(c, p, caller); }
 
+      // beforeParsed runs on the original source DOM before Paged.js clones
+      // content into per-page boxes. Mark the FIRST h1 in each div.chapter
+      // so afterRendered can reliably identify real chapter openers even after
+      // cloning (Paged.js clones content, making position-based detection fail).
+      beforeParsed(content) {
+        content.querySelectorAll('div.chapter').forEach(ch => {
+          const firstH1 = ch.querySelector('h1');
+          if (firstH1) firstH1.setAttribute('data-chapter-opener', 'true');
+        });
+      }
+
       afterRendered(pages) {
         this._fixRectoAlignment();
         window.__PAGED_RENDERED__ = true;
@@ -251,16 +262,17 @@ export async function renderChapters(
       }
 
       _fixRectoAlignment() {
-        // Iteratively insert blank pages before even-page chapter openers.
-        // Repeat up to 4 times to handle cascade from prior insertions.
-        for (let pass = 0; pass < 4; pass++) {
-          const evenH1Pages = Array.from(document.querySelectorAll('.pagedjs_page'))
-            .filter(pg => {
+        // Insert one blank at a time (in DOM order) to avoid cascade parity interference.
+        // Inserting all even-page chapters simultaneously creates new even-page chapters
+        // in subsequent passes; processing one-at-a-time converges cleanly.
+        for (let pass = 0; pass < 20; pass++) {
+          const first = Array.from(document.querySelectorAll('.pagedjs_page'))
+            .find(pg => {
               const n = parseInt(pg.getAttribute('data-page-number') || '0');
-              return n % 2 === 0 && pg.querySelector('h1');
+              return n % 2 === 0 && !!pg.querySelector('h1[data-chapter-opener]');
             });
-          if (evenH1Pages.length === 0) break;
-          evenH1Pages.forEach(pg => this._insertBlankBefore(pg));
+          if (!first) break;
+          this._insertBlankBefore(first);
           this._renumber();
         }
       }
