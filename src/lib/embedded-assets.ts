@@ -24,6 +24,7 @@ import { dirname, join } from "node:path";
 import indexHtml from "../assets/index.html" with { type: "file" };
 import favicon from "../assets/favicon.ico" with { type: "file" };
 import manifestSchema from "../assets/manifest.schema.json" with { type: "file" };
+// @ts-expect-error -- with { type: "file" } yields a path string; TS resolves the JS module and toast.js has only named exports
 import toastJs from "../assets/preview/scripts/toast.js" with { type: "file" };
 import pagedjsInterfaceJs from "../assets/preview/scripts/pagedjs-interface.js" with { type: "file" };
 import previewJs from "../assets/preview/scripts/preview.js" with { type: "file" };
@@ -33,15 +34,20 @@ import debugCss from "../assets/preview/styles/debug.css" with { type: "file" };
 import viewSingleCss from "../assets/preview/styles/view-single.css" with { type: "file" };
 import viewTwoColumnCss from "../assets/preview/styles/view-two-column.css" with { type: "file" };
 
+// `with { type: "file" }` returns a string path at build time, but TS does
+// not model the type-attribute — extensions with TS-known shapes (.html,
+// .json, .js) come in as their content type. Cast at use to a path string.
+const filePath = (v: unknown): string => v as string;
+
 // Manifest of asset path → embedded source. Keys are paths relative to the
 // extracted assets dir; values are paths into the bundle.
 const EMBEDDED_ASSETS: Record<string, string> = {
-  "index.html": indexHtml,
+  "index.html": filePath(indexHtml),
   "favicon.ico": favicon,
-  "manifest.schema.json": manifestSchema,
-  "preview/scripts/toast.js": toastJs,
-  "preview/scripts/pagedjs-interface.js": pagedjsInterfaceJs,
-  "preview/scripts/preview.js": previewJs,
+  "manifest.schema.json": filePath(manifestSchema),
+  "preview/scripts/toast.js": filePath(toastJs),
+  "preview/scripts/pagedjs-interface.js": filePath(pagedjsInterfaceJs),
+  "preview/scripts/preview.js": filePath(previewJs),
   "preview/styles/preview.css": previewCss,
   "preview/styles/toast.css": toastCss,
   "preview/styles/debug.css": debugCss,

@@ -66,7 +66,7 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   // "plugin.apply is not a function". Unwrap defensively.
   const unwrap = <T>(plugin: T): T =>
     (plugin && typeof plugin === "object" && "default" in (plugin as object)
-      ? (plugin as { default: T }).default
+      ? ((plugin as unknown as { default: T }).default)
       : plugin);
 
   md.use(unwrap(markdownItAttrs));

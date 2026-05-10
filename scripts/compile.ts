@@ -29,7 +29,7 @@ const result = await Bun.build({
   entrypoints: ["src/cli.ts"],
   plugins: [inlinePackageJsonReads],
   compile: {
-    target: target as `bun-${string}`,
+    target: target as import("bun").Build.Target,
     outfile,
   },
 });

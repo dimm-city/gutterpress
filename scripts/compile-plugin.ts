@@ -57,10 +57,10 @@ export const inlinePackageJsonReads: BunPlugin = {
     build.onLoad({ filter: /node_modules.+\.(m?js|cjs)$/ }, (args) => {
       const normalized = args.path.replace(/\\/g, "/");
       const rewrite = REWRITES.find((r) => normalized.endsWith(r.fileMatch));
-      if (!rewrite) return null;
+      if (!rewrite) return undefined;
 
       const source = readFileSync(args.path, "utf8");
-      if (!rewrite.pattern.test(source)) return null;
+      if (!rewrite.pattern.test(source)) return undefined;
       // RegExp with /g flag carries lastIndex state; reset before re-using.
       rewrite.pattern.lastIndex = 0;
 

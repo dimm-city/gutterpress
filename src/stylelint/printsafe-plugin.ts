@@ -31,7 +31,7 @@ function extractUrls(value: string): string[] {
   const urls: string[] = [];
   const re = /url\(\s*(['"]?)(.*?)\1\s*\)/gi;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(value))) urls.push(m[2]);
+  while ((m = re.exec(value))) urls.push(m[2] ?? "");
   return urls;
 }
 
