@@ -5,8 +5,6 @@
  * Build pipeline types are in src/schema/manifest.types.ts.
  */
 
-import type { ServerWebSocket } from 'bun';
-
 // Re-export manifest types for convenience
 export type { PrintMdManifest, ResolvedConfig } from './schema/manifest.types';
 

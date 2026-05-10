@@ -212,7 +212,7 @@ export async function createPreviewServer(
   port: number,
   restartPreviewFn: (newPath: string) => Promise<void>
 ): Promise<PreviewServer> {
-  const server: Server = Bun.serve<unknown, unknown>({
+  const server: Server<undefined> = Bun.serve<undefined>({
     port,
     hostname: '0.0.0.0',
     async fetch(req, srv) {
@@ -244,13 +244,13 @@ export async function createPreviewServer(
       return serveStatic(absPath);
     },
     websocket: {
-      open(ws: ServerWebSocket<unknown>) {
+      open(ws: ServerWebSocket<undefined>) {
         ws.subscribe(HMR_TOPIC);
       },
       message() {
         // Server doesn't expect inbound messages from HMR clients.
       },
-      close(ws: ServerWebSocket<unknown>) {
+      close(ws: ServerWebSocket<undefined>) {
         ws.unsubscribe(HMR_TOPIC);
       },
     },
