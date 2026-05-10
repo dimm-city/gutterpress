@@ -62,7 +62,7 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "chokidar": "^4.0.3",
+    "chokidar": "^5.0.0",
     "citty": "^0.2.0",
     "markdown-it": "^14.1.0",
     "markdown-it-attrs": "^4.3.0",
