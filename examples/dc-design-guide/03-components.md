@@ -359,9 +359,9 @@ A Dream Master–addressed instruction block, visually distinct from player-faci
 
 A definition list of game terms rendered as a styled block. Use for rules glossaries, jargon indexes, and any list of named concepts that need consistent, scannable formatting.
 
-**Syntax** — raw HTML `.terms` wrapper containing one or more `.terms.item` children, each with a `<strong>` term label and a `<p>` definition
+**Syntax** — raw HTML `.dc-terms` wrapper (alias: `.terms`) containing one or more `.dc-terms-list` items (alias: `.terms-list`), each with a `<strong>` term label and a `<p>` definition
 
-<div class="terms">
+<div class="dc-terms terms">
   <div class="terms item">
     <strong>Augmerc</strong>
     <p>A specialist who combines cybernetic augmentation with close-range combat training. Chrome bones, reflex implants, and licensed edge.</p>
@@ -377,7 +377,7 @@ A definition list of game terms rendered as a styled block. Use for rules glossa
 </div>
 
 ```html
-<div class="terms">
+<div class="dc-terms terms">
   <div class="terms item">
     <strong>Augmerc</strong>
     <p>A specialist who combines cybernetic augmentation with close-range
@@ -431,7 +431,7 @@ The five-rung d20 result table used for all rolls in Dimm City. Each row is colo
 <div class="dc-outcomes flush">
   <div class="dc-outcome-row crit">
     <div class="dc-outcome-key"><span class="dc-outcome-name">Crit</span><span class="dc-outcome-roll">20</span></div>
-    <div class="dc-outcome-text">You flow. Automatic success — no further roll needed. If dealing damage, check your weapon's bonus stats. Your next die roll: <span class="roll-lucid">ROLL LUCID.</span></div>
+    <div class="dc-outcome-text">You flow. Automatic success — no further roll needed. If dealing damage, check your weapon's bonus stats. Your next die roll: <span class="dc-roll-lucid roll-lucid">ROLL LUCID.</span></div>
   </div>
   <div class="dc-outcome-row hit">
     <div class="dc-outcome-key"><span class="dc-outcome-name">Hit</span><span class="dc-outcome-roll">11–19</span></div>
@@ -447,7 +447,7 @@ The five-rung d20 result table used for all rolls in Dimm City. Each row is colo
   </div>
   <div class="dc-outcome-row fail">
     <div class="dc-outcome-key"><span class="dc-outcome-name">Catastrophe</span><span class="dc-outcome-roll">1</span></div>
-    <div class="dc-outcome-text">Dark. Automatic fail with a severe setback — broken gear, cyberware malfunction, or friendly fire. Your next die roll: <span class="roll-surreal">ROLL SURREAL.</span></div>
+    <div class="dc-outcome-text">Dark. Automatic fail with a severe setback — broken gear, cyberware malfunction, or friendly fire. Your next die roll: <span class="dc-roll-surreal roll-surreal">ROLL SURREAL.</span></div>
   </div>
 </div>
 
@@ -483,15 +483,17 @@ The five-rung d20 result table used for all rolls in Dimm City. Each row is colo
 | `.dc-section-h3` | `<h3>` | Compact reference H3 for multi-column dense layouts |
 | `.dc-vibe-callout` | `<div>` | Full-width atmospheric callout for in-world voice |
 | `.dc-origin-callout` | `<div>` | Second-person backstory block for origin and background entries |
-| `.dc-human-callout` | `<div>` (inside `.sidebar`) | NPC stat block nested in a sidebar float |
+| `.dc-human-callout` | `<div>` (inside `.sidebar` / `.dc-sidebar`) | NPC stat block nested in a sidebar float |
 | `.dc-gear-callout` | `<div>` | Named equipment or item panel |
 | `.dc-visit-callout` | `<div>` | Present-tense in-world location description |
 | `.dc-note-callout` | `<div>` | Dream Master–addressed admonition block with `.dc-note-label` header |
-| `.terms` | `<div>` | Glossary wrapper containing one or more `.terms.item` children |
-| `.terms.item` | `<div>` | Individual term definition with `<strong>` label and `<p>` body |
+| `.dc-terms` (alias: `.terms`) | `<div>` | Glossary wrapper containing one or more `.dc-terms-list` children |
+| `.dc-terms-list` (alias: `.terms-list`) | `<div>` | Individual term definition with `<strong>` label and `<p>` body |
 | `.dc-steps` | `<ol>` | Zero-padded numbered procedure list with `.dc-step-no` spans |
 | `.dc-outcomes` | `<div>` | Outcome ladder wrapper for five-rung d20 result table |
 | `.dc-outcome-row.{crit\|hit\|mixed\|miss\|fail}` | `<div>` | Single outcome row, color-coded by severity modifier class |
+| `.dc-roll-lucid` (alias: `.roll-lucid`) | `<span>` | Inline badge for "ROLL LUCID" state on a critical hit result |
+| `.dc-roll-surreal` (alias: `.roll-surreal`) | `<span>` | Inline badge for "ROLL SURREAL" state on a catastrophe result |
 | `.item` (wrapper) | `::: wrapper {.item}` | Self-contained rules item block, break-inside avoided |
 | *(auto)* | markdown table | DC-styled table: colored header, alternating rows, small type |
 | *(auto)* | `> blockquote` | Accent-border block quote for epigraphs and attribution |

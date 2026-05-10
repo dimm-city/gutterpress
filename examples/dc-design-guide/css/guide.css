@@ -183,9 +183,11 @@ tr:nth-child(even) td {
 }
 
 /* ── Page-break utility ──────────────────────────────────────────────────────
-   Apply {.break-before} to any heading to force a page break before it.
+   Apply {.break-before} or {.pmd-break-before} to any heading to force a
+   page break before it. The pmd- prefix is the canonical name for distribution;
+   .break-before is the backward-compatible alias.
    ─────────────────────────────────────────────────────────────────────────── */
-.break-before {
+.break-before, .pmd-break-before {
   break-before: page;
   page-break-before: always;
 }

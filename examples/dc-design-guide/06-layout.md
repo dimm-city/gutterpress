@@ -40,7 +40,7 @@ The `:::two-column` container divides its content into two equal CSS columns wit
 
 ## Image Floats
 
-Float an image alongside body text using `.img-float-right` or `.img-float-left`. The floated image occupies 44% of the column width; body text wraps around the remaining 56%.
+Float an image alongside body text using `.img-float-right` (canonical: `.pmd-float-right`) or `.img-float-left` (canonical: `.pmd-float-left`). The floated image occupies 44% of the column width; body text wraps around the remaining 56%.
 
 **Syntax** — apply via markdown-it-attrs on the image:
 
@@ -62,7 +62,7 @@ After the float clears, text returns to full column width. Add a blank line or a
 
 ## Sidebar Wrapper
 
-The `:::sidebar` container floats content as a right-aligned aside at 38% of the text column width. Body text wraps to the left of the sidebar until it clears the bottom of the sidebar element.
+The `:::sidebar` container floats content as a right-aligned aside at 38% of the text column width. Body text wraps to the left of the sidebar until it clears the bottom of the sidebar element. The `:::sidebar` container generates a `.sidebar` element, aliased to `.dc-sidebar`. Use `.dc-sidebar` as the canonical class name when authoring raw HTML.
 
 ```markdown
 :::sidebar
@@ -118,10 +118,10 @@ Control page breaking with class attributes on headings and containers.
 |----------------|-------------|--------|
 | `:::two-column` | container | Two equal columns with column rule |
 | `:::three-column` | container | Three narrow columns for dense lists |
-| `.img-float-right` | `![]{.img-float-right}` | Float image right, 44% width |
-| `.img-float-left` | `![]{.img-float-left}` | Float image left, 44% width |
+| `.img-float-right` (canonical: `.pmd-float-right`) | `![]{.img-float-right}` | Float image right, 44% width |
+| `.img-float-left` (canonical: `.pmd-float-left`) | `![]{.img-float-left}` | Float image left, 44% width |
 | `.no-break` | `:::container {.no-break}` | Prevent block splitting across pages |
-| `.break-before` | `## Heading {.break-before}` | Force new page before element |
+| `.break-before` (canonical: `.pmd-break-before`) | `## Heading {.break-before}` | Force new page before element |
 | `---{.column-break}` | Inside column block | Force remaining content to next column |
 
 **Prevent page split** — wrap any block that must stay together:
@@ -132,8 +132,8 @@ Content that must not split across a page break.
 :::
 ```
 
-**Force new page** — add `.break-before` to any heading:
+**Force new page** — add `.pmd-break-before` (alias: `.break-before`) to any heading:
 
 ```markdown
-## New Section {.break-before}
+## New Section {.pmd-break-before}
 ```
