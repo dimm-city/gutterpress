@@ -78,8 +78,25 @@ function Install-Bun {
 # global install and the examples seed. Going through a local path bypasses
 # bun's GitHub tarball-API fallback, which was returning 404 for empty refs.
 function Get-PrintMdClone {
-    if ($script:PrintMdCloneDir -and (Test-Path (Join-Path $script:PrintMdCloneDir '.git'))) {
+    if ($script:PrintMdCloneDir -and (Test-Path $script:PrintMdCloneDir)) {
         return $true
+    }
+
+    # If the script is being run from inside a checkout of the repo (e.g. in
+    # CI, where actions/checkout has already authenticated and cloned), use
+    # that working copy directly instead of doing a fresh public clone.
+    if ($PSScriptRoot) {
+        $localRepo = Split-Path -Parent $PSScriptRoot
+        $localPackageJson = Join-Path $localRepo "package.json"
+        if (Test-Path $localPackageJson) {
+            $packageJsonContent = Get-Content -Raw -Path $localPackageJson -ErrorAction SilentlyContinue
+            if ($packageJsonContent -and $packageJsonContent -match '"@dimm-city/print-md"') {
+                $script:PrintMdCloneDir = $localRepo
+                $script:PrintMdCloneParent = $null  # not a temp dir, leave it alone
+                Write-Info "Using local repository at $localRepo"
+                return $true
+            }
+        }
     }
 
     $gitCmd = Get-Command git -ErrorAction SilentlyContinue

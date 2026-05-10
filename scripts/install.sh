@@ -76,8 +76,29 @@ install_bun() {
 # global install and the examples seed. Going through a local path bypasses
 # bun's GitHub tarball-API fallback, which was returning 404 for empty refs.
 clone_print_md_repo() {
-    if [ -n "$PRINTMD_CLONE_DIR" ] && [ -d "$PRINTMD_CLONE_DIR/.git" ]; then
+    if [ -n "$PRINTMD_CLONE_DIR" ] && [ -d "$PRINTMD_CLONE_DIR" ]; then
         return 0
+    fi
+
+    # If the script is being run from inside a checkout of the repo (e.g. in
+    # CI, where actions/checkout has already authenticated and cloned), use
+    # that working copy directly instead of doing a fresh public clone.
+    local script_path=""
+    if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+        script_path="${BASH_SOURCE[0]}"
+    fi
+    if [ -n "$script_path" ]; then
+        local script_dir
+        script_dir="$(cd "$(dirname "$script_path")" && pwd)"
+        local local_repo
+        local_repo="$(dirname "$script_dir")"
+        if [ -f "$local_repo/package.json" ] \
+            && grep -q '"@dimm-city/print-md"' "$local_repo/package.json" 2>/dev/null; then
+            PRINTMD_CLONE_DIR="$local_repo"
+            PRINTMD_CLONE_PARENT=""  # not a temp dir, leave it alone on exit
+            print_info "Using local repository at $local_repo"
+            return 0
+        fi
     fi
 
     if ! command -v git &> /dev/null; then
