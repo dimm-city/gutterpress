@@ -180,8 +180,11 @@
   margin-right: 0.75in;
   margin-left: 0.5in;
 
-
+  /* Left (verso) pages use default inner-margin inheritance.
+     Add margin-left: 0.75in here if binding-side offset is needed. */
 }
+
+.page.citizen-file, .page-break.citizen-file { page: citizen-file; }
 
 /* ---------------------------------------------------------------------------
    Page Template: Front Matter (no page/chapter footers)
@@ -232,7 +235,12 @@
   page: front-matter;
 }
 
-/* Credits page uses full-bleed @page template (no margins, no footers). */
+/* TOC and full-bleed pages use the full @page template (no margins, no footers). */
+.page-break.toc,
+.page.toc,
+.page.page-full-bleed,
+.page.cover,
+.page.back-cover,
 .page-break.credits,
 .page.credits {
   page: full;
@@ -413,6 +421,8 @@
   }
 }
 
+/* @page clean — reserved: suppresses headers/footers for blank insert pages.
+   Assign with: .page.clean { page: clean; } when needed. */
 @page clean {
   @bottom-right {
     content: none;
@@ -457,6 +467,7 @@
   margin-right: 0.1in;
 }
 
+.aug, .page-aug { page: aug; }
 
 /* ---------------------------------------------------------------------------
    Page Wrapper Base

@@ -1,7 +1,8 @@
 /* =============================================================================
    GUIDE.CSS — Design-guide specimen scaffolding
    =============================================================================
-   Imported AFTER dc-brand.css and page-rules.css by index.css (third and last).
+   Imported AFTER dc-brand.css, page-rules.css, and content-templates.css by
+   index.css (fourth and last).
 
    This file contains ONLY rules that exist to present and organize the design
    guide document itself: specimen wrappers, code blocks, table styles used
@@ -11,9 +12,10 @@
    and component styles belong in dc-brand.css.
 
    Import order (index.css):
-     1. dc-brand.css  — all DC tokens, fonts, and components
-     2. page-rules.css  — @page declarations, named pages, footer chrome
-     3. guide.css  ←   — this file: specimen scaffolding only
+     1. dc-brand.css          — all DC tokens, fonts, and components
+     2. page-rules.css        — @page declarations, named pages, footer chrome
+     3. content-templates.css — page content layouts and print density rules
+     4. guide.css  ←          — this file: specimen scaffolding only
    ============================================================================= */
 
 /* ── @chapter wrapper ────────────────────────────────────────────────────────
@@ -54,12 +56,15 @@ div.chapter > h1:not(:first-of-type) {
   page-break-before: auto;
 }
 
-/* ── Chapter counter init ────────────────────────────────────────────────────
-   The page-rules.css footer shows `c.N` (chapter counter). Reset it on body
-   so the counter starts at 0; each chapter h1 (scoped above) increments it.
+/* ── Body: counter init + orphan/widow control ──────────────────────────────
+   counter-reset initializes the chapter counter used by the footer chrome
+   (page-rules.css overrides per-page via .page.chapter-NN selectors).
+   orphans/widows raised above dc-brand.css defaults for better page breaks.
    ─────────────────────────────────────────────────────────────────────────── */
 body {
   counter-reset: chapter;
+  orphans: 4;
+  widows: 4;
 }
 
 /* ── Headings: keep with following content ───────────────────────────────────
@@ -73,30 +78,17 @@ h2, h3, h4 {
   page-break-inside: avoid;
 }
 
-h2 + p, h2 + ul, h2 + ol, h2 + pre, h2 + blockquote, h2 + table, h2 + div,
-h3 + p, h3 + ul, h3 + ol, h3 + pre, h3 + table, h3 + div,
-h4 + p, h4 + ul, h4 + ol, h4 + div {
+/* NOTE: h2/h3/h4 + div is scoped to div.chapter to avoid suppressing breaks
+   before plugin-generated containers (TOC entries, skill cards, etc.) that
+   happen to follow a heading outside a chapter context. */
+h2 + p, h2 + ul, h2 + ol, h2 + pre, h2 + blockquote, h2 + table,
+div.chapter h2 + div,
+h3 + p, h3 + ul, h3 + ol, h3 + pre, h3 + table,
+div.chapter h3 + div,
+h4 + p, h4 + ul, h4 + ol,
+div.chapter h4 + div {
   break-before: avoid;
   page-break-before: avoid;
-}
-
-/* ── Orphans / widows ────────────────────────────────────────────────────────
-   Raise the default (2) to reduce stranded lines on page boundaries.
-   ─────────────────────────────────────────────────────────────────────────── */
-body {
-  orphans: 4;
-  widows: 4;
-}
-
-/* ── @page chapter — suppress phantom border on chapter opener pages ─────────
-   When h1 uses `page: chapter`, the @page chapter margin-boxes may render
-   their `border-bottom` even when `content: none` is set. This override
-   suppresses the phantom rule.
-   ─────────────────────────────────────────────────────────────────────────── */
-@page chapter {
-  @top-left   { content: none; border: none; padding: 0; }
-  @top-center { content: none; border: none; padding: 0; }
-  @top-right  { content: none; border: none; padding: 0; }
 }
 
 /* ── Fenced code blocks (specimen display) ───────────────────────────────────
@@ -172,6 +164,7 @@ tr:nth-child(even) td {
    Light wrapper for live specimens in the guide — adds a subtle inset so
    specimens are visually distinct from prose. Apply `.specimen` to a wrapping
    div when you want an explicit boundary around a rendered component.
+   overflow:hidden clips floated images that would otherwise escape the parent.
    ─────────────────────────────────────────────────────────────────────────── */
 .specimen {
   border: 1px solid var(--border-hairline);
@@ -180,6 +173,7 @@ tr:nth-child(even) td {
   margin: 0.1in 0;
   background: var(--paper-cream);
   break-inside: avoid;
+  overflow: hidden;
 }
 
 /* ── Page-break utility ──────────────────────────────────────────────────────
@@ -198,19 +192,12 @@ tr:nth-child(even) td {
    ─────────────────────────────────────────────────────────────────────────── */
 
 /* ── TOC chapter: disable the book .toc two-column layout ───────────────────
-   The book .toc CSS (page-rules.css) sets columns:2 for the specialty TOC
-   template. The design guide uses a simple flat list — reset to single column
-   so the right column doesn't overflow the pagebox.
+   The book .toc CSS (content-templates.css) sets columns:2 for the specialty
+   TOC template. The design guide uses a simple flat list — reset to single
+   column so the right column doesn't overflow the pagebox.
    ─────────────────────────────────────────────────────────────────────────── */
-#ch-toc.toc {
+div.ch-toc.toc {
   columns: 1;
-  padding-right: 0.5in; /* match left margin; prevents right-column overflow */
+  padding-right: 0.5in; /* prevents right-column overflow in single-column TOC layout */
   box-sizing: border-box;
-}
-
-/* ── Specimen image containers: clip overflowing floated art ─────────────────
-   Floated images in the layout-chapter specimens can escape their parent.
-   ─────────────────────────────────────────────────────────────────────────── */
-.specimen {
-  overflow: hidden;
 }

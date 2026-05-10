@@ -30,17 +30,12 @@
    Extracted from page-rules.css to content-templates.css on 2026-05-10.
    =========================================================================== */
 
-:root {
-  --page-height: var(--pagedjs-height);
-}
-
 /* ---------------------------------------------------------------------------
    TABLE OF CONTENTS
    --------------------------------------------------------------------------- */
 
-/* TOC two-column layout. page-rules.css only assigns page:front-matter; geometry here. */
+/* TOC two-column layout. page-rules.css assigns page:full; geometry here. */
 .toc {
-  page: full;
   margin: var(--gutter);
   margin-inline: var(--page-margin);
   columns: 2;
@@ -52,6 +47,8 @@
   padding-bottom: 0.6in;
   counter-reset: toc-section;
   text-wrap: pretty;
+  /* Creates separation above abs-positioned decorative art. */
+  padding-bottom: 0.9in;
 }
 
 /* TOC chapter-entry block — spacing and break rules. */
@@ -154,13 +151,8 @@
   padding-bottom: 0.06in;
 }
 
-/* TOC bottom padding — creates separation above abs-positioned decorative art. */
-.toc {
-  padding-bottom: 0.9in;
-}
-
 /* Fix D2: Restore dc-toc text color — shared.css `.page.page-toc li { color: var(--ink) }` (0,2,1)
-   overrides page-rules.css `.dc-toc ol > li { color: var(--text-secondary) }` (0,1,2).
+   overrides content-templates.css `.dc-toc ol > li { color: var(--text-secondary) }` (0,1,2).
    Fix D3: Restore dc-toc list indent and counter — same specificity fight zeroes padding-left
    and suppresses the list-item counter via `li::before { content: none }`. */
 .page.page-toc .dc-toc ol > li {
@@ -376,7 +368,6 @@ article {
 .page.full-page,
 .page.cover,
 .page.back-cover {
-  page: full;
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -675,10 +666,6 @@ article {
 }
 
 /* --- Ability cards: tighten spacing --- */
-.specialty .dc-ability {
-  margin-bottom: 0.1in;
-}
-
 .specialty .dc-ability h4 {
   margin-bottom: 0.04in;
 }

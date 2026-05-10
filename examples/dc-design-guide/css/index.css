@@ -1,4 +1,9 @@
-@import url("./dc-brand.css");
-@import url("./page-rules.css");
-@import url("./content-templates.css");
-@import url("./guide.css");
+/* =============================================================================
+   DC Design Guide — CSS Entry Point
+   Import order matters: tokens first, page rules second, content third, scaffold last.
+   ============================================================================= */
+
+@import url("./dc-brand.css");       /* DC brand tokens, fonts, and all UI components */
+@import url("./page-rules.css");     /* @page declarations, named pages, Paged.js counter fixes */
+@import url("./content-templates.css"); /* Page content layouts, specialty system, print density */
+@import url("./guide.css");          /* Design-guide scaffold: specimens, code blocks, chapter breaks */

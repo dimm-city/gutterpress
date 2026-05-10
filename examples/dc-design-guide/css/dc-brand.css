@@ -178,9 +178,6 @@
   /* Signal red foreground — high-contrast on light page */
   --text-darkred:          #a82818;
 
-  /* Card header foreground — off-white on saturated card header bg */
-  --card-header-color:     #f0ece8;
-
   /* ═══════════════════════════════════════════════════════════════════════════
      BORDERS — ink-on-cream
      ═══════════════════════════════════════════════════════════════════════════ */
@@ -351,15 +348,19 @@ body {
   orphans: 3;
 }
 
-/* Print grain — fixed overlay so it never tiles */
-.grain::before,
-body.grain::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 50;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.025'/%3E%3C/svg%3E");
+/* Screen-only grain overlay — body::after is the unconditional grain used in PDF.
+   This rule fires only in screen preview so the noise doesn't double when body
+   has the .grain class (which would activate both pseudo-elements at once). */
+@media screen {
+  .grain::before,
+  body.grain::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 50;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.025'/%3E%3C/svg%3E");
+  }
 }
 
 /* ============================================================================
@@ -557,7 +558,7 @@ body::after {
 /* ───────── CHEVRON BANNER ───────── */
 .dc-chevron {
   font-family: var(--font-display);
-  font-size: clamp(16px, 2.4vw, 26px);
+  font-size: 20pt; /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
   letter-spacing: 0.06em;
   color: var(--paper-cream);
   text-transform: uppercase;
@@ -606,7 +607,7 @@ body::after {
   width: 45%; height: 5px;
   background: var(--hud-magenta);
   opacity: 0.08;
-  filter: blur(4px);
+  /* filter: blur(4px) removed — silently ignored by Paged.js in PDF output */
 }
 
 /* ───────── PATH SUBTITLE ───────── */
@@ -1110,6 +1111,8 @@ body::after {
   padding: 0 0 0 16px;
   margin: 14px 0;
   border-left: 2px solid var(--hud-blue-dim);
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 .dc-steps > li {
   display: grid;
@@ -1245,14 +1248,14 @@ body::after {
    Migrated from _shared/css/specialty-variants.css (field-guide/css/specialty-accents.css deleted Phase 1a).
    ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  --augmerc-accent:      var(--accent-color1, #ff6a3d);
-  --proxy-accent:        var(--accent-color2, #6fc2d0);
-  --streetwarden-accent: var(--accent-color3, #6fc24a);
-  --gutterdruid-accent:  var(--accent-color4, #b3884f);
-  --cybersurgeon-accent: var(--accent-color5, #c0c0c0);
-  --wirephreak-accent:   var(--accent-color6, #b34fb3);
-  --technosorcerer-accent: var(--accent-color7, #4f6fc2);
-  --etherlock-accent:    var(--accent-color8, #d4af37);
+  --augmerc-accent:      var(--accent-color1, #ff6a3d);  /* accent-color1 is defined in :root above */
+  --proxy-accent:        var(--accent-color2, #6fc2d0);  /* accent-color2 is defined in :root above */
+  --streetwarden-accent: #6fc24a;  /* was var(--accent-color3, …) — color3-8 not defined here, indirection removed */
+  --gutterdruid-accent:  #b3884f;  /* was var(--accent-color4, …) */
+  --cybersurgeon-accent: #c0c0c0;  /* was var(--accent-color5, …) */
+  --wirephreak-accent:   #b34fb3;  /* was var(--accent-color6, …) */
+  --technosorcerer-accent: #4f6fc2;  /* was var(--accent-color7, …) */
+  --etherlock-accent:    #d4af37;  /* was var(--accent-color8, …) */
 }
 
 .specialty.augmerc       .dc-skill-card .dc-card-tab { border-color: var(--augmerc-accent); }
@@ -1379,16 +1382,11 @@ body::after {
   margin-right: 28px;
   white-space: nowrap;
 }
+/* Merged: layout + typography properties consolidated from two formerly split rule blocks */
 .dc-toc-title {
   flex: 1 1 auto;
   min-width: 0;
-}
-.dc-toc-page {
-  flex: 0 0 auto;
-  margin-left: 18px;
-}
-.dc-toc-title {
-  font-family: 'Titillium Web', sans-serif;
+  font-family: var(--font-body);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -1405,7 +1403,10 @@ body::after {
   color: var(--ink-smoke);
   margin-top: 2px;
 }
+/* Merged: layout + typography properties consolidated from two formerly split rule blocks */
 .dc-toc-page {
+  flex: 0 0 auto;
+  margin-left: 18px;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 2px;
@@ -1539,7 +1540,7 @@ body::after {
 }
 .dc-cover-bigword {
   font-family: var(--font-display);
-  font-size: clamp(48px, 9vw, 88px);
+  font-size: 66pt; /* was clamp(48px, 9vw, 88px) — vw resolves to min in Paged.js */
   line-height: 1.1;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1680,6 +1681,8 @@ body::after {
   grid-template-columns: 1.4fr 1fr;
   gap: 32px;
   align-items: start;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 /* Pullquote with top margin */
@@ -1750,7 +1753,7 @@ body::after {
 .page.page-toc > h1 {
   display: inline-block;
   font-family: var(--font-display);
-  font-size: clamp(16px, 2.4vw, 26px);
+  font-size: 20pt; /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
   letter-spacing: 0.06em;
   color: var(--paper-cream);
   text-transform: uppercase;
@@ -1768,7 +1771,7 @@ body::after {
 
 .page.page-toc > .wrapper > h2 {
   margin: 0 0 8px;
-  font-family: 'Titillium Web', sans-serif;
+  font-family: var(--font-body);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -1823,7 +1826,7 @@ body::after {
 .page.page-chapter-start.chapter-start > h1 {
   display: inline-block;
   font-family: var(--font-display);
-  font-size: clamp(16px, 2.4vw, 26px);
+  font-size: 20pt; /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
   letter-spacing: 0.06em;
   color: var(--paper-cream);
   text-transform: uppercase;
@@ -1873,7 +1876,7 @@ body::after {
 .wrapper.specialty-intro > h2 {
   display: inline-block;
   font-family: var(--font-display);
-  font-size: clamp(16px, 2.4vw, 26px);
+  font-size: 20pt; /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
   letter-spacing: 0.06em;
   color: var(--paper-cream);
   text-transform: uppercase;
@@ -2270,7 +2273,7 @@ body::after {
 .page.page-info-sidebar.citizen-file h3.at-a-glance-heading {
   display: inline-block;
   font-family: var(--font-display);
-  font-size: clamp(16px, 2.4vw, 26px);
+  font-size: 20pt; /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
   letter-spacing: 0.06em;
   color: var(--paper-cream);
   text-transform: uppercase;
@@ -2441,6 +2444,8 @@ body::after {
   gap: 18px;
   align-items: flex-start;
   margin-bottom: 4px;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 /* Portrait column — holds the 120×120 image or placeholder */
@@ -2628,6 +2633,8 @@ body::after {
   grid-template-columns: 45fr 55fr;
   gap: var(--space-md);
   align-items: start;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 @media screen and (max-width: 900px) {
   .dc-options-layout { grid-template-columns: 1fr; }
@@ -2679,6 +2686,8 @@ body::after {
   grid-template-columns: 1fr 1fr;
   gap: 20px;
   align-items: start;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 .dc-ability-2col .dc-skill-card { margin-bottom: 20px; }
 .dc-ability-2col .dc-skill-card:last-of-type { margin-bottom: 0; }
@@ -2690,6 +2699,8 @@ body::after {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   align-items: start;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 .dc-ability-grid .dc-skill-card          { margin-bottom: 0; }
 .dc-ability-grid .dc-skill-card.span-row { grid-column: 1 / -1; }
