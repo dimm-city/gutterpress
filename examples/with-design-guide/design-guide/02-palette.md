@@ -137,3 +137,7 @@ If the book is heading to offset print:
 - Avoid pure RGB black (`#000`) for body text. A near-black with a slight cool or warm cast reproduces more richly on coated stock.
 - Test thin strokes (rules, callout borders) at press resolution. A 0.5pt rule can disappear at 300 dpi on uncoated paper.
 - Check `--color-tint` tints have ≥ 5% distinguishable difference from `--color-paper` on the intended paper stock.
+- Saturated accent colors (`--color-accent` #1b4f8a, `--color-accent-alt` #c0532a) should be converted to CMYK equivalents before offset print — RGB-to-CMYK conversion is not one-to-one for deep blues and warm oranges.
+- Request a physical proof before the full print run. Colors that look correct on screen and in the PDF preview can shift significantly on uncoated or cream-tinted paper stock.
+- On cream stock (approximately #f5f0e8), re-test `--color-tint` (#f0f4fa) to confirm it remains distinguishable from the background; the contrast may fall below the 5% threshold.
+- Verify `--color-ink` (#1a1a2e) total ink coverage does not exceed your print provider's TAC limit — near-black with full-color channels can exceed 280% on some offset workflows.

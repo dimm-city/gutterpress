@@ -121,24 +121,6 @@ Content that must not split across a page break.
 
 ---
 
-## Intro / Lede Paragraph
-
-Use `.lede` on the opening paragraph of a chapter for a larger, italic introductory paragraph that sets the stage before the body begins.
-
-<div class="example">
-<div class="lede">This is a lede paragraph. It is set in the display font at 13pt italic, in <code>--color-ink-muted</code>. Use it once per chapter, immediately after the H1, to give the reader a one- or two-sentence preview of what follows.</div>
-</div>
-
-```markdown
-# Chapter Title
-
-<div class="lede">One or two sentences that frame the chapter for the reader.</div>
-
-First body paragraph begins here...
-```
-
----
-
 ## Layout Class Reference
 
 <table class="token-table">
@@ -155,3 +137,21 @@ First body paragraph begins here...
 <tr><td>---{.column-break}</td><td>Inside two/three-column block</td><td>Force remaining content to next column</td></tr>
 </tbody>
 </table>
+
+---
+
+## Intro / Lede Paragraph
+
+Use `.lede` on the opening paragraph of a chapter for a larger, italic introductory paragraph that sets the stage before the body begins.
+
+<div class="example">
+<div class="lede">This is a lede paragraph. It is set in the display font at 13pt italic, in <code>--color-ink-muted</code>. Use it once per chapter, immediately after the H1, to give the reader a one- or two-sentence preview of what follows.</div>
+</div>
+
+```markdown
+# Chapter Title
+
+<div class="lede">One or two sentences that frame the chapter for the reader.</div>
+
+First body paragraph begins here...
+```

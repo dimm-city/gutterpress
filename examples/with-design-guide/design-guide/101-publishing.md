@@ -177,13 +177,12 @@ Link to it from `00-toc.md`: `[Download PDF](book.pdf){.download}`.
 
 ---
 
-## Deleted Commands (v2.0.0) {#deprecated}
+## Next steps
 
-The following commands were removed in v2.0.0:
+With the design guide published and the PDF generated, you're ready to ship:
 
-| Old command | Replacement |
-|-------------|-------------|
-| `print-md assets` | Assets are now copied automatically during `build` |
-| `print-md convert` | Use `build --format html` or `build --format pdf` |
+1. **Proof the PDF** — open the built PDF in Acrobat or Preview and page through it at 100%. Check running headers, folios, page breaks, and component rendering.
+2. **Preflight** — run `print-md preflight your-book.pdf` to validate trim, bleed, font embedding, and ink limits before sending to the printer.
+3. **Submit** — upload the preflighted PDF to your print provider (DriveThruRPG, IngramSpark, Lulu, or your offset print partner).
 
-If any scripts reference `print-md assets` or `print-md convert`, update them to use `build` with the appropriate `--format` flag.
+*Design guide · print-md · MPL-2.0*

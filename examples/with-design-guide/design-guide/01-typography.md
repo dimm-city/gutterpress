@@ -1,3 +1,5 @@
+@chapter typography
+
 # Typography
 
 <div class="lede">The type system uses two families: a serif for body text and a sans-serif for headings and UI labels. Adjust <code>--font-body</code> and <code>--font-display</code> in <code>guide.css</code> to swap both at once.</div>

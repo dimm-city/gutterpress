@@ -76,3 +76,18 @@ design-guide/
 ## Download
 
 [Download PDF](guide.pdf){.download}
+
+---
+
+## Keeping the guide in sync
+
+The design guide shares a single stylesheet with the book. When you update `§ 1 BRAND TOKENS` in `styles/guide.css`, both the guide and the book PDF update on the next build — there is no separate stylesheet to maintain.
+
+Recommended workflow:
+
+1. Update tokens in `guide.css`
+2. Run `print-md preview design-guide` to confirm the guide looks right
+3. Run `print-md preview your-book` to confirm the book inherits the change
+4. Commit both files together
+
+This keeps the guide as a living document: it always reflects the active state of the book's design system.

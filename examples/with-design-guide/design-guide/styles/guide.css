@@ -191,6 +191,7 @@ body {
   hyphens: auto;
   orphans: 3;
   widows: 3;
+  counter-reset: chapter;
 }
 
 /* Paged.js generates transparent .pagedjs_sheet elements — explicitly set the paper
@@ -211,15 +212,24 @@ h1 {
   padding-top: 0.6in;
   break-before: page;
   page: chapter;
+  counter-increment: chapter;
 }
 
+/* Automatic chapter number — CSS counter, no HTML required */
 h1::before {
-  content: '';
+  content: counter(chapter, decimal-leading-zero);
   display: block;
-  height: 4pt;
-  width: 1.25in;
-  background: var(--color-accent);
-  margin-bottom: 0.5em;
+  font-family: var(--font-display);
+  font-size: 72pt;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-rule);
+  letter-spacing: -0.04em;
+  margin: 0 0 0.2em;
+  padding-bottom: 0.15em;
+  border-bottom: 4pt solid var(--color-accent);
+  height: auto;
+  background: none;
 }
 
 /* Inline specimen — same visual as h1 but no page break or named page */
@@ -242,6 +252,7 @@ h2 {
   padding-bottom: 0.2em;
   margin: 1.6em 0 0.5em;
   break-after: avoid;
+  page-break-after: avoid;
 }
 
 h3 {
@@ -342,13 +353,14 @@ hr {
 table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   margin: 0.8em 0 1.2em;
   font-size: var(--fs-small);
   break-inside: avoid;
   page-break-inside: avoid;
 }
 
-thead { background-color: var(--color-accent); color: #fff; }
+thead { background-color: var(--color-accent); color: #fff; display: table-header-group; }
 
 th {
   font-family: var(--font-display);
@@ -359,7 +371,7 @@ th {
 }
 
 td {
-  padding: 4pt 8pt;
+  padding: 4pt 12pt 4pt 8pt;
   border-bottom: var(--border-thin);
   vertical-align: top;
 }
@@ -554,6 +566,8 @@ figcaption {
   color: var(--color-ink-muted);
   font-style: italic;
   margin: 0 0 1.2em;
+  break-before: avoid;
+  page-break-before: avoid;
 }
 
 /* ── Chapter number decoration ── */
@@ -773,8 +787,8 @@ figcaption {
 
 .color-chip {
   display: inline-block;
-  width: 12pt;
-  height: 12pt;
+  width: 14pt;
+  height: 14pt;
   border-radius: 2pt;
   border: var(--border-thin);
   vertical-align: middle;
@@ -792,6 +806,8 @@ a.download {
   font-family: var(--font-display);
   font-size: var(--fs-small);
   font-weight: 600;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
 }
 
 a.download::after { content: none; }
