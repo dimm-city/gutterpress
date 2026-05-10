@@ -34,6 +34,11 @@ jobs:
 
       - name: Run install script
         shell: pwsh
+        env:
+          # The repo is private during the beta; pass the workflow token so
+          # the installer can fetch the release asset. End users on a public
+          # repo don't need this.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./scripts/install.ps1
 
       - name: Verify installation

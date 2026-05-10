@@ -56,29 +56,19 @@ function Invoke-PrintMd {
 
 function Get-PrintMdDescriptor {
     $candidates = @(
-        [pscustomobject]@{ Display = 'print-md'; Command = 'print-md'; Args = @(); UseSeparator = $false },
-        [pscustomobject]@{ Display = 'bunx @dimm-city/print-md'; Command = 'bunx'; Args = @('@dimm-city/print-md'); UseSeparator = $false },
-        [pscustomobject]@{ Display = 'bun x @dimm-city/print-md'; Command = 'bun'; Args = @('x', '@dimm-city/print-md'); UseSeparator = $false }
+        [pscustomobject]@{ Display = 'print-md'; Command = 'print-md'; Args = @(); UseSeparator = $false }
     )
 
-    $globalRoot = Join-Path $env:USERPROFILE '.bun\install\global\node_modules\@dimm-city\print-md'
-    $sourceCli = Join-Path $globalRoot 'src\cli.ts'
-    if (Test-Path $sourceCli) {
+    # The standalone installer drops the binary in a known location. Fall
+    # back to invoking it by absolute path so a missing PATH entry doesn't
+    # mask a successful install.
+    $installedExe = Join-Path $env:LOCALAPPDATA "Programs\print-md\print-md.exe"
+    if (Test-Path $installedExe) {
         $candidates += [pscustomobject]@{
-            Display = "bun run $sourceCli"
-            Command = 'bun'
-            Args = @('run', $sourceCli)
-            UseSeparator = $true
-        }
-    }
-
-    $distCli = Join-Path $globalRoot 'dist\cli.js'
-    if (Test-Path $distCli) {
-        $candidates += [pscustomobject]@{
-            Display = "bun run $distCli"
-            Command = 'bun'
-            Args = @('run', $distCli)
-            UseSeparator = $true
+            Display = $installedExe
+            Command = $installedExe
+            Args = @()
+            UseSeparator = $false
         }
     }
 
@@ -120,11 +110,6 @@ try {
     }
 
     Refresh-UserPath
-
-    Write-Section "Checking Bun"
-    $bunResult = Invoke-Process -Command 'bun' -Arguments @('--version')
-    Require-Success -Result $bunResult -FailureMessage 'Bun is not available after installation'
-    Write-Host "Bun version: $($bunResult.Output)"
 
     Write-Section "Resolving print-md command"
     $printmd = Get-PrintMdDescriptor
