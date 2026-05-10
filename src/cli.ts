@@ -4,10 +4,10 @@ import { defineCommand, runMain } from "citty";
 
 // Subcommands are loaded lazily so `--version` and `--help` (and any single
 // subcommand) only pay the import cost of what they actually use. Notably
-// keeps stylelint, vite, and other heavy deps out of the startup path,
-// which matters for `bun build --compile` standalone binaries — some of
-// those deps use createRequire/readFileSync patterns that bun --compile
-// can't statically resolve.
+// keeps stylelint and other heavy deps out of the startup path, which
+// matters for `bun build --compile` standalone binaries — some of those
+// deps use createRequire/readFileSync patterns that bun --compile can't
+// statically resolve.
 const main = defineCommand({
   meta: {
     name: "print-md",

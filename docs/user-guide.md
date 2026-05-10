@@ -579,7 +579,7 @@ print-md preview --no-watch
 - Edit markdown files → browser updates automatically
 - Edit CSS → instant style changes
 - Edit manifest.yaml → configuration reloads
-- No manual refresh needed (Hot Module Replacement)
+- No manual refresh needed (WebSocket-driven full-page reload on file change)
 
 **Keyboard Shortcuts:**
 - `←` / `→` - Previous/Next page

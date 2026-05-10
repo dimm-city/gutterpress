@@ -20,7 +20,7 @@ A comprehensive guide to creating beautiful print-ready documents from markdown 
 
 ## Getting Started
 
-Print-md converts markdown files into professional print PDFs. It's designed for creating books, manuals, rulebooks, and any print-first documents. Uses Chromium + Paged.js for PDF generation and Vite + Paged.js for live preview.
+Print-md converts markdown files into professional print PDFs. It's designed for creating books, manuals, rulebooks, and any print-first documents. Uses Chromium + Paged.js for PDF generation and a Bun-native preview server (with WebSocket-driven live reload) + Paged.js for live preview.
 
 ### Basic Workflow
 

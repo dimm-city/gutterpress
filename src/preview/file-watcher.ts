@@ -94,7 +94,7 @@ export async function generateAndWriteHtml(
     pluginCss,
   });
 
-  // Read debug CSS to inline it (Vite's <link> transformation breaks CSS in iframes)
+  // Read debug CSS so we can inline it via JS — see iface block below for why.
   const { getAssetPath } = await import('../lib/embedded-assets');
   const debugCssPath = await getAssetPath('preview/styles/debug.css');
   let debugCss = '';
@@ -107,7 +107,9 @@ export async function generateAndWriteHtml(
   //      Served as a URL so it is NEVER baked into book.html and never affects the
   //      PDF build pipeline, which renders book.html without this server.
   //   2. pagedjs-interface.js — toolbar ↔ iframe API bridge
-  //   3. debug.css (inlined via JS — Vite strips <style> tags in iframes)
+  //   3. debug.css (inlined via JS so a parent toolbar can inject debug styles
+  //      into the rendered iframe document at runtime via DOM, rather than
+  //      relying on a network <link> resolved inside the iframe)
   //   4. BREAK_INSIDE_HANDLER — polyfill for break-inside: avoid
   const escapedDebugCss = debugCss.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
   const iface =
