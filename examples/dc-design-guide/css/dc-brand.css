@@ -93,11 +93,7 @@
   --paper-aged:   #ddd6c6;  /* deeper aged — emphasis aside */
   --paper-stain:  #d0c8b5;  /* dirty paper / inset wells */
 
-  /* Aliases used by some components */
-  --bk-cream:  var(--paper-cream);
-  --bk-paper:  var(--paper-light);
-  --bk-aged:   var(--paper-aged);
-  --bk-stain:  var(--paper-stain);
+  /* --bk-cream/paper/aged/stain aliases removed — duplicated --paper-* tokens, never consumed */
 
   /* ═══════════════════════════════════════════════════════════════════════════
      INK & TEXT — dark on cream
@@ -107,10 +103,7 @@
   --ink-smoke:  #4a4540;  /* body emphasis, italics on cream */
   --ink-dust:   #8a8378;  /* muted labels, subtitles */
 
-  --bk-ink:    var(--ink);
-  --bk-dark:   var(--ink-dark);
-  --bk-smoke:  var(--ink-smoke);
-  --bk-dust:   var(--ink-dust);
+  /* --bk-ink/dark/smoke/dust aliases removed — duplicated --ink-* tokens, never consumed */
 
   /* Text hierarchy aliases */
   --fg1: var(--ink);
@@ -130,13 +123,7 @@
   --amber:      #e89200;   /* amber — vivid golden amber (was #cc7a1a, muted) */
   --deep-rust:  #761800;   /* shadow rust — vivid deep rust (was #5c2d12, dark brown) */
 
-  --bk-crimson:   var(--crimson);
-  --bk-blood:     var(--blood);
-  --bk-orange:    var(--orange);
-  --bk-ember:     var(--ember);
-  --bk-rust:      var(--rust);
-  --bk-amber:     var(--amber);
-  --bk-deep-rust: var(--deep-rust);
+  /* --bk-crimson/blood/orange/ember/rust/amber/deep-rust aliases removed — duplicated accent tokens, never consumed */
 
   /* ═══════════════════════════════════════════════════════════════════════════
      HUD COLORS — digital tooling chrome
@@ -309,6 +296,31 @@
   /* Border radii are RARELY used — this is a print zine. */
   --radius-card: 0;
   --radius-tab:  0;
+
+  /* ── Stubs: tokens inherited from shared design system ──────────────────────
+     These were referenced in the original field-guide system but not defined
+     here. Set them to their intended values when adapting for a new book.
+     ─────────────────────────────────────────────────────────────────────────── */
+  --secondary-color:            var(--crimson);
+  --accent-color1:              var(--hud-blue);
+  --accent-color2:              var(--orange);
+  --header-font-family:         var(--font-display);
+  --hud-blue-border:            2px solid var(--hud-blue);
+  --callout-border-width-small: 2px;
+  --hud-border-soft:            1px solid var(--border-blue);
+  --base-font-size:             10pt;
+  --small-font-size:            8.5pt;
+  --small-gap:                  0.08in;
+  --card-bg:                    var(--paper-cream);
+  --card-header-bg:             var(--crimson);
+  --card-header-color:          var(--paper-cream);
+  --card-border-color:          var(--ink);
+  --card-border-width:          2px;
+  --card-font-size:             9pt;
+  --card-body-height:           auto;
+  --quote-font-size:            11pt;
+  --line-height-tight:          1.25;
+  --line-height-normal:         1.5;
 }
 
 /* ============================================================================
@@ -617,21 +629,6 @@ ul li::before {
   font-weight: var(--fw-semibold);
 }
 
-/* Field Guide UI Kit — print-faithful rulebook recreation */
-/* Inherits all base styling from ../../colors_and_type.css */
-
-body {
-  background: var(--bg);
-  font-family: var(--font-body);
-  color: var(--ink);
-  margin: 0;
-  position: relative;
-}
-
-@media screen {
-  body { padding: 30px 40px; }
-}
-
 /* Paper grain — fixed overlay */
 body::after {
   content: '';
@@ -806,9 +803,17 @@ body::after {
 
 /* ───────── ABILITY CARD ───────── */
 .dc-skill-card {
+  /* break-inside: intentionally unset — cards may flow across pages in column
+     layouts; .allow-split modifier controls inner list behavior */
   position: relative;
   margin-bottom: 24px;
   max-width: 100%;
+  filter:
+    drop-shadow(2px 0 0 var(--ink))
+    drop-shadow(-2px 0 0 var(--ink))
+    drop-shadow(0 2px 0 var(--ink))
+    drop-shadow(0 -2px 0 var(--ink))
+    drop-shadow(4px 6px 8px rgba(0,0,0,0.18));
 }
 .dc-card-tab {
   display: inline-flex;
@@ -902,14 +907,6 @@ body::after {
   padding: 22px 20px 36px;
   position: relative;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 44px) 100%, 0 100%);
-}
-.dc-skill-card {
-  filter:
-    drop-shadow(2px 0 0 var(--ink))
-    drop-shadow(-2px 0 0 var(--ink))
-    drop-shadow(0 2px 0 var(--ink))
-    drop-shadow(0 -2px 0 var(--ink))
-    drop-shadow(4px 6px 8px rgba(0,0,0,0.18));
 }
 .dc-card-body::before {
   content: '';
@@ -1012,6 +1009,8 @@ body::after {
   border-left: 4px solid var(--crimson);
   font-size: 11pt;
   color: var(--ink-smoke);
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 .dc-note p { margin: 0; font-style: italic; }
 .dc-note-label {
@@ -1112,6 +1111,8 @@ body::after {
   line-height: 1.4;
   color: var(--ink-smoke);
   margin: 18px 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 .dc-pullquote::before {
   content: '"';
@@ -1145,6 +1146,8 @@ body::after {
   padding: 14px 16px 16px;
   position: relative;
   margin: 18px 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 .dc-stat::after {
   content: '';
@@ -1262,6 +1265,8 @@ body::after {
   border: 2px solid var(--ink);
   background: var(--paper-cream);
   position: relative;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 .dc-outcomes::after {
   content: '';
@@ -1452,6 +1457,8 @@ body::after {
   background: var(--paper-aged);
   padding: 4px 12px;
   box-shadow: 1px 1px 0 rgba(0,0,0,0.15);
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 .dc-tape::before, .dc-tape::after {
   content: '';
@@ -1464,6 +1471,11 @@ body::after {
 /* ────────────────────────────────────────────────────────────
    NEW: Index/TOC row
    ──────────────────────────────────────────────────────────── */
+/* NOTE: A second .dc-toc rule set lives in page-rules.css — that version handles
+   Paged.js target-counter() auto-numbering for print output.
+   This dc-brand.css version is the screen-preview layout (.dc-toc-row flex rows).
+   Both use the class name .dc-toc; they are compatible because screen vs print
+   context separates them. See page-rules.css for the print-counter version. */
 .dc-toc {
   font-family: var(--font-body);
 }
@@ -1475,9 +1487,9 @@ body::after {
   border-bottom: 1px solid var(--hud-blue-dim);
 }
 .dc-toc .dc-toc-no {
-  font-family: var(--font-mono) !important;
+  font-family: var(--font-mono);
   font-weight: 700;
-  font-size: 14px !important;
+  font-size: 14px;
   letter-spacing: 2px;
   color: var(--hud-blue);
   flex: 0 0 auto;
@@ -2889,7 +2901,7 @@ body::after {
   gap: 32px;
   align-items: start;
 }
-@media (max-width: 1100px) {
+@media screen and (max-width: 1100px) {
   .dc-roll-table-compare-stage { grid-template-columns: 1fr; }
 }
 .dc-roll-table-col { min-width: 0; }
@@ -2938,7 +2950,7 @@ body::after {
   gap: var(--space-md);
   align-items: start;
 }
-@media (max-width: 900px) {
+@media screen and (max-width: 900px) {
   .dc-options-layout { grid-template-columns: 1fr; }
 }
 

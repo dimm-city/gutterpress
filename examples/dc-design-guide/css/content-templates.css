@@ -1,0 +1,836 @@
+/* =============================================================================
+   CONTENT-TEMPLATES.CSS — Page-content layout and print density rules
+   =============================================================================
+   Imported AFTER page-rules.css and BEFORE guide.css by index.css.
+
+   Contains layout rules for content page types (.page.*), the Paged.js
+   target-counter TOC system (.dc-toc), specialty-page density overrides
+   (.specialty *), and other component-layer print rules.
+
+   Extracted from page-rules.css on 2026-05-10. page-rules.css now contains
+   ONLY @page declarations and Paged.js counter workarounds.
+
+   Import order (index.css):
+     1. dc-brand.css          — all DC tokens, fonts, and components
+     2. page-rules.css        — @page declarations, named pages, counter fixes
+     3. content-templates.css — page content layouts and print density rules ← this file
+     4. guide.css             — design-guide scaffolding only
+   ============================================================================= */
+
+/* ===========================================================================
+   PAGE TEMPLATES — .page.* selector rules
+   Carved from _shared/css/core/10-page-templates.css during Phase F2 of the
+   legacy CSS migration (2026-05-03). Sprawl-prevention check against
+   .design/css/shared.css found no exact duplicates: shared.css
+   covers `.page` base, `.page > *`, `.page img`, `.page.page-toc*` family,
+   and `.page.page-credits/.page-intro/.page-chapter-start` h1/p (all
+   typography). The 10-page-templates rules cover orthogonal column-layout
+   and break-control concerns. Carved verbatim, 0 duplicates dropped.
+
+   Extracted from page-rules.css to content-templates.css on 2026-05-10.
+   =========================================================================== */
+
+:root {
+  --page-height: var(--pagedjs-height);
+}
+
+/* ---------------------------------------------------------------------------
+   TABLE OF CONTENTS
+   --------------------------------------------------------------------------- */
+
+/* TOC two-column layout. page-rules.css only assigns page:front-matter; geometry here. */
+.toc {
+  page: full;
+  margin: var(--gutter);
+  margin-inline: var(--page-margin);
+  columns: 2;
+  column-gap: 0.35in;
+  column-fill: balance;
+  column-rule: none;
+  position: relative;
+  padding-top: 0.25in;
+  padding-bottom: 0.6in;
+  counter-reset: toc-section;
+  text-wrap: pretty;
+}
+
+/* TOC chapter-entry block — spacing and break rules. */
+.toc > div {
+  padding: 0.12in 0.2in 0.18in;
+  padding-left: 0.38in;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  margin-bottom: 0.35in;
+}
+
+/* TOC heading and hr — column-span, centered, bottom margin. */
+.toc h1,
+.toc hr {
+  column-span: all;
+  margin-bottom: 0.15in;
+  text-align: center;
+}
+
+/* Top spacing for TOC heading. */
+.toc h1 {
+  margin-top: 0.3in;
+  padding-top: 0.15in;
+}
+
+/* Chapter entry heading with decimal-leading-zero counter. .toc is hand-authored; .dc-toc is plugin-generated — no conflict. */
+.toc h2 {
+  margin-bottom: 0.08in;
+  margin-top: 0.04in;
+  text-wrap: balance;
+  counter-increment: toc-section;
+  position: relative;
+}
+
+/* Decimal-leading-zero chapter counter. .toc and .dc-toc are separate — no conflict. Typography in _backup. */
+.toc h2::before {
+  content: counter(toc-section, decimal-leading-zero);
+  position: absolute;
+  left: -0.36in;
+  top: 0.02in;
+}
+
+/* Reset paragraph margin inside TOC entries. */
+.toc p {
+  margin: 0;
+}
+
+/* Border-left accent for TOC sub-entries. CSS nesting (ul { border: none }) supported by Paged.js;
+   flat fallback `.toc ul ul { border: none }` below. */
+.toc ol, .toc ul {
+  margin-bottom: var(--gutter);
+  border-left: var(--callout-border-width) solid var(--secondary-color);
+  ul{
+    border: none;
+  }
+}
+
+/* TOC sub-entry layout — padding, position. Typography (line-height, font-size, font-weight, letter-spacing) in _backup. */
+.toc ul li {
+  margin-bottom: 0.08in;
+  padding-left: 0.2in;
+  position: relative;
+  text-wrap: pretty;
+}
+
+/* Indent reset for TOC sub-entry list. */
+.toc ul {
+  padding-left: 0.12in;
+  margin-left: 0;
+}
+
+/* Right-chevron bullet for TOC sub-entries. .toc and .dc-toc are separate — no conflict. Palette in _backup. */
+.toc ul li::before {
+  content: "\203A";
+  position: absolute;
+  left: 0;
+  top: 0.02in;
+}
+
+/* Nested specialty sub-list — removes the border-left from the parent .toc ul rule. */
+.toc ul ul {
+  border-left: none;
+  margin-top: 0.04in;
+  margin-bottom: 0.04in;
+  padding-left: 0.18in;
+}
+
+/* Nested specialty entry — layout spacing. Typography (font-size, font-weight, line-height) in _backup. */
+.toc ul ul li {
+  margin-bottom: 0.04in;
+}
+
+/* Nested specialty bullet. Palette (font-size, color) in _backup. */
+.toc ul ul li::before {
+  content: "\203A";
+}
+
+/* TOC h2 padding — layout. Border and letter-spacing moved to _backup (palette/typography). */
+.toc h2 {
+  padding-bottom: 0.06in;
+}
+
+/* TOC bottom padding — creates separation above abs-positioned decorative art. */
+.toc {
+  padding-bottom: 0.9in;
+}
+
+/* Fix D2: Restore dc-toc text color — shared.css `.page.page-toc li { color: var(--ink) }` (0,2,1)
+   overrides page-rules.css `.dc-toc ol > li { color: var(--text-secondary) }` (0,1,2).
+   Fix D3: Restore dc-toc list indent and counter — same specificity fight zeroes padding-left
+   and suppresses the list-item counter via `li::before { content: none }`. */
+.page.page-toc .dc-toc ol > li {
+  color: var(--text-secondary, #a8b0bc);
+  padding-left: 3.5rem;
+}
+.page.page-toc .dc-toc ol > li::before {
+  content: counter(list-item, decimal-leading-zero) ". ";
+}
+
+/* ---------------------------------------------------------------------------
+   Title / Section Opener
+   --------------------------------------------------------------------------- */
+
+.page.page-title,
+.page.page-title-full {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+/* Fix D5: Credits bold text should be ink, not orange — shared.css `strong { color: var(--orange) }` is global */
+.page.credits strong {
+  color: var(--ink);
+}
+
+/* ---------------------------------------------------------------------------
+   Intro / Opening Narrative
+   --------------------------------------------------------------------------- */
+
+.page.page-intro,
+.page.intro {
+  max-width: 6.7in;
+  margin: 0 auto;
+}
+
+/* Binding-side clearance on the intro page — prevents text from running into
+   the gutter on left-hand recto pages. */
+.page.intro,
+.intro {
+  padding-left: 0.5in;
+}
+
+/* H2 text backing on intro — keeps heading readable over the floated art image. */
+.page > h2 {
+  text-shadow: 0 0 0.08in var(--page-background-color);
+}
+
+/* ---------------------------------------------------------------------------
+   Chapter Start
+   --------------------------------------------------------------------------- */
+
+/* Each chapter article forces a clean page break. */
+article {
+  break-after: always;
+  page-break-after: always;
+}
+
+.page.page-chapter-start,
+.page.chapter-start {
+  max-width: 6.7in;
+  margin: 0 auto;
+}
+
+/* Chapter-opening drop cap.
+   Uses .dc-chapter-opener-no (the @chapter-opener span) as the anchor —
+   unique to chapter openers, source-level only, no Paged.js classes needed.
+   h1 + p targets the first paragraph immediately after the chapter heading.
+   Avoids :first-of-type entirely (Paged.js NthOfType handler silently breaks
+   any rule whose selector contains :(first|last|nth)-of-type + ::first-letter). */
+.dc-chapter-opener-no + h1 + p::first-letter {
+  -webkit-initial-letter: 3;
+  initial-letter: 3;
+  font-weight: var(--fw-bold, 700);
+  color: var(--amber);
+  margin-right: 0.05em;
+}
+
+/* ---------------------------------------------------------------------------
+   Rules / General Content
+   --------------------------------------------------------------------------- */
+
+.page.page-rules,
+.page.init,
+.page.call-home,
+.page.dream,
+.page.da-devil {
+  columns: 2;
+  column-gap: var(--space-2xl);
+  column-fill: balance;
+}
+
+/* Prevent tables from splitting across page breaks in rules pages */
+.page.page-rules table {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Chapter 02 general content pages - two-column layout */
+.page.chapter-02:not(.full-page):not(.chapter-start):not(.init):not(.outcome-table):not(.rolling-die) {
+  columns: 2;
+  column-gap: var(--space-2xl);
+  column-fill: balance;
+}
+
+/* ---------------------------------------------------------------------------
+   Chapter-02 typography (moved from field-guide/css/chapter-02-overrides.css
+   during Wave 1 cleanup, 2026-05-03). Quarantined since Batch 4 (markdown
+   structure puts 5+ h3 banners per page, demoting h3 prevents fatigue).
+   Now lives with other chapter-scoped page-template rules.
+   --------------------------------------------------------------------------- */
+
+/* h3: demote from full-weight chevron banner to a thin accent line.
+   Scoped narrowly to chapter-02 *content* pages so specialty/full-page
+   layouts and the existing `.dc-chevron` explicit class are untouched. */
+.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.choose-specialty) h3 {
+  font-size: var(--fs-body); /* was --fs-body-sm; downsize compared to base h3 */
+  font-weight: var(--fw-semibold);
+  border-top: var(--bw-thin) solid var(--accent-color1); /* was medium */
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* h4: definition-header treatment for DREAM/DREAMER/PC/DM (these live as
+   h4 in the chapter-02 markdown). Keep readable but not banner-weight. */
+.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.choose-specialty) h4 {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-color3);
+  border-top: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Info + Sidebar (Citizen File / Character Sheet)
+   --------------------------------------------------------------------------- */
+
+.page.page-info-sidebar,
+.page.citizen-file {
+  columns: 2;
+  column-gap: var(--space-2xl);
+  column-fill: balance;
+}
+
+/* ---------------------------------------------------------------------------
+   Ability Catalog
+   --------------------------------------------------------------------------- */
+
+.page.page-ability-catalog,
+.page.choose-specialty {
+  columns: 2;
+  column-gap: var(--space-2xl);
+  column-fill: auto;
+}
+
+.page.page-ability-catalog .learning-path,
+.page.choose-specialty .learning-path {
+  column-span: all;
+  -webkit-column-span: all;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.page.page-ability-catalog .ability,
+.page.page-ability-catalog .ability-card,
+.page.choose-specialty .ability,
+.page.choose-specialty .ability-card {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ---------------------------------------------------------------------------
+   Item Grid / Gear Lists
+   --------------------------------------------------------------------------- */
+
+.page.page-item-grid {
+  columns: 2;
+  column-gap: var(--space-2xl);
+  column-fill: balance;
+}
+
+/* Ideal / Flaw pages: single-column page with 3-column card grid inside
+   the list wrapper.  Header stays full-width above, art at bottom. */
+.page.ideal,
+.page.flaw {
+  columns: unset;
+  column-gap: unset;
+  column-fill: unset;
+}
+
+.page.page-item-grid h3 {
+  break-after: avoid;
+  page-break-after: avoid;
+  margin-top: 0.12in;
+  margin-bottom: 0.06in;
+}
+
+.page.ideal h3,
+.page.flaw h3 {
+  break-after: avoid;
+  page-break-after: avoid;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ---------------------------------------------------------------------------
+   Full Bleed / Art Pages
+   --------------------------------------------------------------------------- */
+
+.page.page-full-bleed,
+.page.full-page,
+.page.cover,
+.page.back-cover {
+  page: full;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ---------------------------------------------------------------------------
+   Global Break / Orphan Prevention
+   --------------------------------------------------------------------------- */
+
+.page p {
+  orphans: 3;
+  widows: 3;
+}
+
+.page h2,
+.page h3 {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+/* ---------------------------------------------------------------------------
+   TOC List Spacing
+   --------------------------------------------------------------------------- */
+
+.page.toc li {
+  margin-bottom: 0.06in;
+  line-height: var(--line-height-normal);
+}
+
+/* ---------------------------------------------------------------------------
+   Universal Print — Page Wrapper Reset
+   Cancels shared.css screen-preview values for .page (min-height, padding)
+   so chapter wrappers take their natural Paged.js dimensions in print.
+   --------------------------------------------------------------------------- */
+.page {
+  background: transparent;
+  min-height: 0;
+  padding: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Universal Print — Card-Splitting Continuation Indicators
+   .card-cont-marker and .card-fwd-marker are injected by the print-md
+   PagedConfig.after hook as real DOM nodes (not ::before/::after).
+   --------------------------------------------------------------------------- */
+.card-cont-marker {
+  display: block;
+  font-family: var(--font-mono, 'Tomorrow', monospace);
+  font-size: 9pt;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--orange, #f24d00);
+  opacity: 0.85;
+  margin: 0 0 0.5rem 0.5rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px dashed var(--orange, #f24d00);
+  width: fit-content;
+}
+
+.card-fwd-marker {
+  position: absolute;
+  bottom: 4px;
+  right: 18px;
+  font-family: var(--font-display, 'lixdu', sans-serif);
+  font-size: 22px;
+  color: var(--orange, #f24d00);
+  opacity: 0.65;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Universal Print — TOC with Paged.js target-counter page numbers
+   Any book using ::: wrapper {.dc-toc} gets automatic page numbers via
+   target-counter(attr(href), page). Book-layer can override colors/fonts.
+   --------------------------------------------------------------------------- */
+.dc-toc {
+  counter-reset: dc-toc;
+  padding: 0;
+  margin: 0;
+}
+.dc-toc ol {
+  list-style: none;
+  counter-reset: dc-toc;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.dc-toc ol > li {
+  position: relative;
+  padding: 12px 0 12px 56px;
+  border-bottom: 1px solid var(--hud-blue-dim, #c9d6e2);
+  counter-increment: dc-toc;
+  font-family: var(--font-body, 'Titillium Web', sans-serif);
+  font-size: 11pt;
+  line-height: 1.4;
+  color: var(--text-secondary, #a8b0bc);
+  font-style: italic;
+  list-style: none;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+.dc-toc ol > li::before {
+  content: counter(dc-toc, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 14px;
+  font-family: var(--font-mono, 'Tomorrow', monospace);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: var(--hud-blue, #3f7aa9);
+  font-style: normal;
+}
+.dc-toc ol > li > strong {
+  color: var(--hud-blue, #2a6a8a);
+}
+.dc-toc ol > li > a {
+  font-family: 'Titillium Web', sans-serif;
+  font-size: 13pt;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink, #1a1715);
+  text-decoration: none;
+  border-bottom: 0;
+  font-style: normal;
+}
+.dc-toc ol > li > a::after {
+  content: ' p.' target-counter(attr(href), page);
+  font-family: var(--font-mono, 'Tomorrow', monospace);
+  font-size: 10pt;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: var(--hud-blue, #3f7aa9);
+  font-style: normal;
+  margin-left: 0.6em;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Universal Print — Learning Path Break Control
+   Prevents LP banners from being orphaned at bottom of page without their
+   first card following them.
+   --------------------------------------------------------------------------- */
+.dc-learning-path {
+  page-break-before: auto;
+  break-before: auto;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+/* ---------------------------------------------------------------------------
+   Shared Specialty Print Layer — Specialty Break / Orphan Handling
+   Overrides any upstream `page-break-before: always` on .specialty so
+   specialties flow naturally; keeps h2 with following content.
+   --------------------------------------------------------------------------- */
+.specialty {
+  page-break-before: auto;
+  break-before: auto;
+}
+
+.specialty h2 {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+/* ---------------------------------------------------------------------------
+   Shared Specialty Print Layer — Skill-Card Tail-Row Guard
+   Glues second-to-last .dc-ability to its successor so no lone row strands
+   on a near-empty page. Only inside skill-card bodies.
+   --------------------------------------------------------------------------- */
+.dc-skill-card .dc-card-body .dc-ability:nth-last-of-type(2):not(:only-of-type) {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.dc-skill-card .dc-card-body .dc-ability:last-of-type:not(:only-of-type) {
+  break-before: avoid;
+  page-break-before: avoid;
+}
+
+/* ---------------------------------------------------------------------------
+   Shared Specialty Density — Print-Rescue Layer
+   These rules are promoted from field-guide/css/book-sections.css.
+   They are deliberately print-specific and hand-tuned for Paged.js column
+   budgets and specialty page density. They override shared.css component
+   defaults within .specialty context.
+   --------------------------------------------------------------------------- */
+
+/* --- Learning paths: start each on a new page ---
+   05-components.css sets page-break-before: always on .dc-learning-path.
+   Override break-inside and overflow for card layout flexibility. */
+.specialty .dc-learning-path {
+  page-break-before: always;
+  break-before: page;
+  page-break-inside: auto;
+  break-inside: auto;
+  /* Override .dc-learning-path { break-after: avoid } — that rule now matches
+     because the plugin adds dc-learning-path to the section class. Within specialties,
+     page-break-before: always on each LP already prevents orphan banners, so
+     break-after: avoid is redundant and causes a loop at the last LP / next chapter. */
+  break-after: auto;
+  page-break-after: auto;
+  overflow: visible;
+  margin-top: 0.1in;
+  margin-bottom: 0.06in;
+}
+
+/* Tighten learning path internal spacing */
+.specialty .dc-learning-path h3 {
+  padding-top: 0.06in;
+  margin-bottom: 0.04in;
+}
+
+/* --- Interior-whitespace fix: compress H2 → path-subtitle → sticker-chain → P gap ---
+   The interior-whitespace validator measures H2 (leaf) to the first P inside the
+   first skill-card on the page, skipping non-leaf DIV elements (path-subtitle,
+   sticker-chain) and the card-tab header. The gap spans:
+     H2 margin-bottom
+     + .dc-intro (margins + height)
+     + .dc-stickers (height)
+     + LP padding-bottom  [30px from .dc-path-block in shared.css]
+     + LP margin-bottom   [11.52px from .page.chapter-02 .dc-learning-path]
+     + card-tab height    [~27px]
+   Total before fix: ~224-248px. Target: < 96px.
+
+   Key overrides needed (use .specialty .dc-learning-path.dc-path-block for
+   specificity 0,3,0 to beat shared.css .dc-learning-path.dc-path-block at 0,2,0): */
+
+/* H2 spray-banner: cap margin-bottom in specialty sections.
+   .page.chapter-02 h2 sets 0.15in (spec 0,2,1); we match with specialty context. */
+.specialty .dc-learning-path h2 {
+  margin-bottom: 0.04in;
+}
+
+/* Path subtitle: minimal margins + compact font to compress H2→P gap.
+   Subtitles that wrap to 2 lines add ~17px vs 1-line (94px vs 112px gap).
+   Reducing font-size to 0.65rem keeps most subtitles single-line at 708px. */
+.specialty .dc-learning-path .dc-intro {
+  margin-top: 0.03in;
+  margin-bottom: 0;
+  padding-top: 1px;
+  padding-bottom: 1px;
+  line-height: 1.1;
+  font-size: 0.65rem;
+}
+
+/* Sticker chain: override shared.css .dc-stickers { margin-bottom: 22px; gap: 8px }.
+   Our selector has specificity 0,3,0 vs .dc-stickers 0,1,0 → we win.
+   Reduce gap and row-gap to minimize 2-row sticker chain height;
+   two-row chains add ~22px vs single-row, which pushes H2→P gap above threshold.
+   Also compact sticker padding: shared.css .dc-sticker sets 5px 10px (0,1,0);
+   our 0,4,0 selector wins. */
+.specialty .dc-learning-path .dc-stickers {
+  margin-bottom: 0;
+  gap: 4px;
+  row-gap: 0;
+}
+.specialty .dc-learning-path .dc-stickers .dc-sticker {
+  padding: 0.1rem 0.4rem;
+  line-height: 1.2;
+}
+
+/* LP shell spacing: after moving path chrome into .dc-path-shell, the old
+   padding-bottom override must target the shell itself or we reintroduce the
+   dead space that pushes the first ability card onto the next page. */
+.specialty .dc-path-shell {
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+
+
+/* Card tab padding is consolidated in the rule at .specialty .dc-card-tab below.
+   The main rule sets 0.1rem top/bottom to keep the interior-whitespace gap
+   from H2 to first skill-card P below the 96px threshold. */
+
+/* Compress LP lore content (paragraphs after the sticker chain) by tightening
+   margins so the LP banner stays short enough that the first ability card
+   fits on the same page below it. */
+.specialty .dc-learning-path > p {
+  margin-block: 0.06in;
+  font-size: var(--fs-body-sm);
+  line-height: 1.35;
+}
+
+.specialty .dc-learning-path ul {
+  margin-block: 0.06in;
+}
+
+.specialty .dc-learning-path ul li {
+  margin-bottom: 0.03in;
+}
+
+/* --- Ability cards: tighten spacing --- */
+.specialty .dc-ability {
+  margin-bottom: 0.1in;
+}
+
+.specialty .dc-ability h4 {
+  margin-bottom: 0.04in;
+}
+
+.specialty .dc-ability blockquote {
+  margin: 0.04in 0 0.06in;
+}
+
+.specialty .dc-ability table {
+  margin-top: 0.04in;
+  margin-bottom: 0.06in;
+}
+
+.specialty .dc-ability table td,
+.specialty .dc-ability table th {
+  padding-top: 0.04in;
+  padding-bottom: 0.04in;
+}
+
+/* Tighten ability-card margins */
+.specialty .dc-ability-card {
+  margin-bottom: 0.1in;
+}
+
+/* Reduce gap between consecutive abilities */
+.specialty .dc-ability+.dc-ability,
+.specialty .dc-ability-card+.dc-ability-card {
+  padding-top: 0.02in;
+}
+
+/* Tighten specialty description paragraph */
+.specialty h2+p {
+  margin-bottom: 0.06in;
+}
+
+/* --- Skill card internals: tighten spacing to fill pages better --- */
+
+/* AUDIT: .specialty .dc-card-body, .dc-card-inner, .dc-card-tab, .dc-flavor,
+   .dc-ability, .dc-ability-text, .dc-ap — these override shared.css component
+   defaults (.dc-skill-card, .dc-card-body etc. defined in .design/css/shared.css).
+   The values are print-density tuned (e.g. padding: 0 1.25rem vs shared.css
+   default). Could PROMOTE by adding a .specialty context selector to shared.css,
+   but since the values are fine-tuned to Paged.js rendering metrics, keeping
+   them here avoids polluting the shared design system with print-only hacks.
+   KEEP — but these are the best candidates for eventual PROMOTE if/when a
+   separate print-specific shared layer is created. */
+/* Card body: use compact padding matching v12-styles .dc-skill-card .dc-card-body.
+   The previous 1rem top + 0.85rem bottom added ~30px of vertical overhead
+   that the polyfill's loop-guard was counting against the 965px column budget.
+   Keeping horizontal padding (1.25rem) for visual breathing room. */
+.specialty .dc-card-body {
+  padding: 0 1.25rem;
+}
+
+/* Card inner: tighten vertical padding inside specialty cards.
+   v12-styles.css sets .dc-skill-card .dc-card-body .dc-card-inner { padding: 0.75rem 0 }
+   (via nested CSS). Override here to reclaim ~12px top + 12px bottom per card. */
+.specialty .dc-skill-card .dc-card-body .dc-card-inner {
+  padding: 0.5rem 0;
+}
+
+/* Contain floated art images inside card inner */
+.specialty .dc-card-inner::after {
+  content: '';
+  display: table;
+  clear: both;
+}
+
+/* Card tab: reduce vertical padding.
+   0.1rem top/bottom reduces card-tab height by ~6px vs 0.3rem,
+   contributing to reducing the H2→first-P interior-whitespace gap. */
+.specialty .dc-card-tab {
+  padding: 0.1rem 1.5rem 0.1rem 0.75rem;
+}
+
+/* Flavor text: reduce padding and margin */
+.specialty .dc-flavor {
+  padding: 0.4rem 0.85rem;
+  margin-bottom: 0.45rem;
+  line-height: var(--lh-normal);
+}
+
+/* Flavor separator: reduce spacing */
+.specialty .dc-flavor::after {
+  margin-top: 0.25rem;
+}
+
+/* Abilities in v12 skill cards: tighten */
+.specialty .dc-ability {
+  margin-bottom: 0.35rem;
+  gap: 0.55rem;
+}
+
+.specialty .dc-ability-text {
+  line-height: var(--lh-normal);
+  font-size: var(--fs-body-sm);
+  /* QA: was 0.9rem (10.8pt) — raised to meet 11pt floor */
+}
+
+/* AP tag: slightly smaller */
+.specialty .dc-ap {
+  padding: 0.35rem 0.55rem;
+  min-width: 50px;
+  font-size: var(--fs-body-sm);
+  /* QA: was 0.9rem (10.8pt) — raised to meet 11pt floor */
+}
+
+/* Tables in skill cards: tighten row padding */
+.specialty table td,
+.specialty table th {
+  padding: 0.06in 0.08in;
+  line-height: var(--line-height-tight);
+}
+
+/* Learning path inside cards: already overridden above,
+   but also tighten sticker chain spacing */
+.specialty .dc-learning-path .dc-ability,
+.specialty .dc-learning-path .dc-ability-card {
+  margin-bottom: 0.06in;
+}
+
+/* Sub-headers in skill cards */
+.specialty .dc-sub-header {
+  margin-top: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+/* AUDIT: .specialty .page, .specialty .dc-skill-card break rules — book-specific
+   Paged.js behavior fixes for specialty card layout. KEEP. */
+/* Allow .page divs inside specialties to break across physical pages.
+   03-paged.css sets .page { page-break-inside: avoid } which conflicts
+   with card-level break avoidance — Paged.js can't honor both when
+   the .page is taller than a physical page. */
+.specialty .page {
+  page-break-inside: auto;
+  break-inside: auto;
+}
+
+/* Keep entire skill cards together — no splits across pages.
+   Enforced by print-md's break-inside polyfill for Paged.js.
+   Accepts dead space as trade-off for readable card layout. */
+.specialty .dc-skill-card {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.specialty .dc-skill-card.allow-split {
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+/* NOTE: CSS break-inside: auto on skill cards has no effect on the
+   BreakInsideAvoidHandler polyfill, which reads data-break-inside="avoid"
+   (the HTML attribute). The polyfill's _splitAllowed Set handles the case
+   where a card is too tall to fit on one page and must be split. */
