@@ -6,6 +6,7 @@ set -e
 
 # Configuration
 PRINTMD_REPO="https://github.com/dimm-city/print-md.git"
+PRINTMD_BUN_TARGET="github:dimm-city/print-md"
 PRINTMD_PACKAGE="@dimm-city/print-md"
 
 # Color output functions
@@ -69,7 +70,10 @@ install_printmd() {
     export BUN_INSTALL="$HOME/.bun"
     export PATH="$BUN_INSTALL/bin:$PATH"
 
-    if bun add -g "$PRINTMD_REPO"; then
+    # Use the github:owner/repo shorthand: bun installs straight from git and
+    # avoids the GitHub tarball API path, which was returning 404 for empty
+    # refs and breaking `bun add -g <https URL>` installs in CI.
+    if bun add -g "$PRINTMD_BUN_TARGET"; then
         print_success "print-md installed successfully!"
         return 0
     else

@@ -5,6 +5,7 @@ $ErrorActionPreference = "Stop"
 
 # Configuration
 $PRINTMD_REPO = "https://github.com/dimm-city/print-md.git"
+$PRINTMD_BUN_TARGET = "github:dimm-city/print-md"
 $PRINTMD_PACKAGE = "@dimm-city/print-md"
 
 # Color output functions
@@ -76,9 +77,11 @@ function Install-PrintMd {
 
     try {
         # Install from npm registry (when published) or from GitHub
-        # For now, using GitHub installation
+        # For now, using GitHub installation. The github:owner/repo shorthand
+        # makes bun install via git directly and avoids the GitHub tarball API
+        # path that was returning 404 for empty refs in CI.
         Write-Info "Installing from GitHub repository..."
-        bun add -g $PRINTMD_REPO
+        bun add -g $PRINTMD_BUN_TARGET
 
         if ($LASTEXITCODE -eq 0) {
             Write-Success "print-md installed successfully!"
