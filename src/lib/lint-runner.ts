@@ -36,7 +36,7 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
   if (configPath) {
     stylelintConfig = require(resolve(configPath));
   } else {
-    stylelintConfig = (await import("../stylelint/stylelint.config.cjs")).default;
+    stylelintConfig = (await import("../stylelint/stylelint.config")).default;
   }
 
   let files: string[];
