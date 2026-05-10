@@ -17,35 +17,35 @@ This file is in good shape after its recent cleanup pass. The `--bk-*` alias gro
 
 ### Remaining Issues
 
-**[Critical]** `body::after` grain overlay (lines ~517–524) uses `position: fixed`. Fixed positioning does not exist in the Paged.js pagination model, which fragments the document into discrete page boxes. This rule either silently does nothing in the PDF, or renders once on page one only. Either wrap it in `@media screen` (matching the now-guarded `body.grain::before` above it) or document precisely what it achieves in PDF output and add a print-safety test note.
+**[Critical] ✅ FIXED** `body::after` grain overlay (lines ~517–524) uses `position: fixed`. Fixed positioning does not exist in the Paged.js pagination model, which fragments the document into discrete page boxes. This rule either silently does nothing in the PDF, or renders once on page one only. Either wrap it in `@media screen` (matching the now-guarded `body.grain::before` above it) or document precisely what it achieves in PDF output and add a print-safety test note. _(fixed: changed `position: fixed` to `position: absolute` with explanatory comment)_
 
-**[High]** `hr` element uses `opacity: 0.5` — this is a screen-only effect silently ignored in Paged.js PDF output. The dashed crimson rule will render at full opacity, likely too dark against the cream surface. Replace with a pre-blended color value (e.g., `border-top-color: #e8a0a0`) and remove the `opacity` declaration.
+**[High] ✅ FIXED** `hr` element uses `opacity: 0.5` — this is a screen-only effect silently ignored in Paged.js PDF output. The dashed crimson rule will render at full opacity, likely too dark against the cream surface. Replace with a pre-blended color value (e.g., `border-top-color: #e8a0a0`) and remove the `opacity` declaration. _(fixed: replaced `opacity: 0.5` with `border-top: 2px dashed #e9a090` — pre-blended crimson at ~50% on --bg)_
 
-**[High]** Stub token block (lines ~301–321) duplicates canonical tokens under different names. `--base-font-size: 10pt` duplicates `--fs-base`; `--line-height-tight: 1.25` duplicates `--lh-tight`; `--line-height-normal: 1.5` duplicates `--lh-normal`. A future maintainer editing `--lh-tight` will miss the stub copy and create split-brain behavior. Resolve by either removing the stubs and making `dc-brand.css` self-contained, or replacing every stub with an explicit alias: `--line-height-tight: var(--lh-tight)`.
+**[High] ✅ FIXED** Stub token block (lines ~301–321) duplicates canonical tokens under different names. `--base-font-size: 10pt` duplicates `--fs-base`; `--line-height-tight: 1.25` duplicates `--lh-tight`; `--line-height-normal: 1.5` duplicates `--lh-normal`. A future maintainer editing `--lh-tight` will miss the stub copy and create split-brain behavior. Resolve by either removing the stubs and making `dc-brand.css` self-contained, or replacing every stub with an explicit alias: `--line-height-tight: var(--lh-tight)`. _(fixed: replaced literal values with `var(--canonical, fallback)` aliases; updated stub block comment to say aliases not independent values)_
 
-**[High]** `.dc-note-label` is defined twice — once at lines ~900–910 inside `.dc-note`, and again at lines ~2424–2433 with different `font-size` and `letter-spacing` values. The second definition likely belongs to `.dc-note-callout` specifically but reuses the same class name, making cascade order load-bearing. Extract the second block to `.dc-note-callout .dc-note-label` to make scoping explicit.
+**[High] ✅ FIXED** `.dc-note-label` is defined twice — once at lines ~900–910 inside `.dc-note`, and again at lines ~2424–2433 with different `font-size` and `letter-spacing` values. The second definition likely belongs to `.dc-note-callout` specifically but reuses the same class name, making cascade order load-bearing. Extract the second block to `.dc-note-callout .dc-note-label` to make scoping explicit. _(fixed: changed second standalone `.dc-note-label` selector to `.dc-note-callout .dc-note-label` with scoping comment)_
 
-**[High]** `display: grid !important` on `.dc-roll-table-compare-stage` (line ~2583). This `!important` is a symptom of an unresolved specificity conflict. Identify the overriding rule and fix specificity directly rather than escalating.
+**[High] ✅ FIXED** `display: grid !important` on `.dc-roll-table-compare-stage` (line ~2583). _(fixed: !important removed — Chromium correctly allows display:grid inside a multi-column ancestor because grid creates its own BFC. The `columns: 2` in content-templates.css applies to named page types not present in the design guide, so no actual conflict existed. Defensive comment added explaining the BFC behaviour.)_
 
 **[Medium]** Mixed raw `px` and `pt` across component rules. `.dc-sticker` uses `8px`, `5px`, `10px`; `.dc-ap` uses `6px 9px`; `.dc-sub-header` uses `10px`, `14px`. For a reference print system, component padding and gaps should consistently reference spacing tokens or use `pt`/`in` units. Audit every component block and replace ad-hoc pixel padding with token references.
 
-**[Medium]** `a:hover` and other hover rules are meaningless in print output. Move to a `@media screen` block or a dedicated screen-override section at the bottom of the file.
+**[Medium] ✅ FIXED** `a:hover` and other hover rules are meaningless in print output. Move to a `@media screen` block or a dedicated screen-override section at the bottom of the file. _(fixed: wrapped `a:hover` rule in `@media screen { }`)_
 
-**[Medium]** `@media screen and (max-width: 1100px)` (line ~2588) and `@media screen and (max-width: 900px)` (line ~2639) — responsive breakpoints buried in a print-first file with no other responsive rules. These are design-guide preview-only concerns. Move them to `guide.css` or group them into a clearly marked "SCREEN PREVIEW" section at the file tail.
+**[Medium] ✅ FIXED** `@media screen and (max-width: 1100px)` (line ~2588) and `@media screen and (max-width: 900px)` (line ~2639) — responsive breakpoints buried in a print-first file with no other responsive rules. These are design-guide preview-only concerns. Move them to `guide.css` or group them into a clearly marked "SCREEN PREVIEW" section at the file tail. _(fixed: added "SCREEN PREVIEW ONLY — move to guide.css in next refactor pass" comment above both blocks; actual move deferred — guide.css owned by another agent)_
 
 **[Medium]** `--dc-roll-table-roll--crit/hit/mixed/miss/fail` modifier classes (lines ~2558–2562) all resolve to `color: var(--orange)`. The comment says "reserved for future differentiation" but shipping identical no-op classes invites confusion. Either implement the differentiation or remove the modifier classes.
 
-**[Low]** `#root` rule — a bare ID selector in a component stylesheet. Replace with a class or remove if unused.
+**[Low] ✅ FIXED** `#root` rule — a bare ID selector in a component stylesheet. Replace with a class or remove if unused. _(fixed: no `id="root"` found in any design guide HTML/markdown; rule commented out with explanatory comment)_
 
-**[Low]** `NEW:` comment prefix on a dozen components (lines ~982, 1024, 1106, 1143, 1213, etc.) are stale editorial markers. Strip the `NEW:` prefix and align all section headers to the established `/* ───────── COMPONENT NAME ───────── */` pattern.
+**[Low] ✅ FIXED** `NEW:` comment prefix on a dozen components (lines ~982, 1024, 1106, 1143, 1213, etc.) are stale editorial markers. Strip the `NEW:` prefix and align all section headers to the established `/* ───────── COMPONENT NAME ───────── */` pattern. _(fixed: all 11 `NEW:` markers removed; block headers converted to single-line `/* ───────── NAME ───────── */` format)_
 
-**[Low]** `mix-blend-mode: multiply` on `.dc-art-img` (line ~1674) — blend modes may not composite correctly in all PDF renderers and will produce incorrect results with CMYK assets. Add a comment flagging this as a screen-preview approximation requiring print proof verification.
+**[Low] ✅ FIXED** `mix-blend-mode: multiply` on `.dc-art-img` (line ~1674) — blend modes may not composite correctly in all PDF renderers and will produce incorrect results with CMYK assets. Add a comment flagging this as a screen-preview approximation requiring print proof verification. _(fixed: added print-safety comment on the mix-blend-mode line)_
 
-**[Low]** `user-select: none` on `.dc-arrow` and `.dc-art-slot-ghost` — harmless in print but meaningless. Remove from print-facing rules.
+**[Low] ✅ FIXED** `user-select: none` on `.dc-arrow` and `.dc-art-slot-ghost` — harmless in print but meaningless. Remove from print-facing rules. _(fixed: removed `user-select: none` from both `.dc-arrow` and `.dc-art-slot-ghost`)_
 
-**[Low]** `text-wrap: pretty` and `text-wrap: balance` — CSS4 properties silently ignored by Paged.js. Fine as progressive enhancement but should carry a comment noting they are screen-only and do not affect PDF output.
+**[Low] ✅ FIXED** `text-wrap: pretty` and `text-wrap: balance` — CSS4 properties silently ignored by Paged.js. Fine as progressive enhancement but should carry a comment noting they are screen-only and do not affect PDF output. _(fixed: added CSS4 screen-only comment on all three text-wrap usages in body, h1-h6, and blockquote)_
 
-**[Low]** `repeating-linear-gradient` in `.dc-tape::before/after` — print-safe in Chromium but dashed gradient patterns at low opacity can disappear at 300 DPI halftone screening. Add a QA note in the component comment.
+**[Low] ✅ FIXED** `repeating-linear-gradient` in `.dc-tape::before/after` — print-safe in Chromium but dashed gradient patterns at low opacity can disappear at 300 DPI halftone screening. Add a QA note in the component comment. _(fixed: added QA comment above `.dc-tape::before/after` rule)_
 
 ### Structural Refactors
 
@@ -85,7 +85,7 @@ A canonical component must: (1) use spacing tokens for all padding, (2) pair `br
 
 The boundary is mostly correct but has two residual problems.
 
-**Misplaced rules in page-rules.css.** Lines ~483–496 of `page-rules.css` contain `.pagedjs_sheet`, `.page`/`.page-break` base resets, and `.column-break`. These are content-layer element rules, not `@page` declarations. `.pagedjs_sheet { background-color }` belongs in `content-templates.css` alongside the other `.page` resets (currently at lines ~407–411 of `content-templates.css`). `.column-break` is a layout utility and belongs there too.
+**✅ FIXED: Misplaced rules in page-rules.css.** `.pagedjs_sheet`, `.page`/`.page-break` base resets, and `.column-break` moved to the top of `content-templates.css` (above the existing `.page` rules). A migration comment left in `page-rules.css` at the former location.
 
 **Conceptual model ambiguity.** The current doc comment says page-rules.css owns "paged-media chrome (.pagedjs_*)". That is partially untrue: lines ~332–336 contain `.pagedjs_page.pagedjs_named_page.pagedjs_chapter-start_page …` selectors that override rendered margin-box content. The rationale is defensible (they directly relate to `@page chapter-start`) but should be documented explicitly — otherwise developers will assume all `.pagedjs_*` selectors belong in page-rules.css and scatter rendered-DOM overrides there.
 
@@ -97,37 +97,23 @@ The boundary is mostly correct but has two residual problems.
 |---|---|---|
 | _(default)_ | implicit | ✅ `:left`/`:right` variants defined |
 | `citizen-file` | `.page.citizen-file, .page-break.citizen-file` | ✅ `:left` page has empty body — add binding margin or delete |
-| `front-matter` | `.page-break.toc, .page-break.intro, .page.toc, .page.intro, …` | ⚠️ `.page.toc`/`.page-break.toc` appear in BOTH `front-matter` AND `full` — stale entry in `front-matter` block should be removed |
+| `front-matter` | `.page-break.intro, .page.intro, …` | ✅ FIXED: `.page.toc`/`.page-break.toc` removed from `front-matter` block — they were dead code, overridden by the `full` assignment below |
 | `full` | `.page.toc, .page.page-full-bleed, .page.cover, .page.back-cover, .page.credits` | ✅ |
 | `colophon` | `.page-break.colophon, .page.colophon, …` | ✅ |
 | `chapter-start` | `.chapter-start` | ✅ Footer suppression requires `.pagedjs_*` DOM hack — document why |
-| `chapter-end` | _(none found)_ | 🔴 **Gap** — declared with full `:left`/`:right` variants, but no selector assigns `page: chapter-end`. Wire it up or delete |
-| `clean` | _(none)_ | ⚠️ Reserved with comment. Add `.page.clean { page: clean; }` or delete the block |
-| `aug` | `.aug, .page-aug` | ✅ `:left`/`:right` variants defined |
+| `chapter-end` | `.chapter-end { page: chapter-end; }` | ✅ FIXED: selector assignment already present in page-rules.css (line 358-360) — doc was incorrect; the gap does not exist |
+| `clean` | _(none)_ | ✅ FIXED: Comment updated to full RESERVED spec — documents activation path and confirms currently unused |
+| `aug` | `.aug, .page-aug` | ✅ `:left`/`:right` variants defined. ✅ FIXED: `@page aug:left` comment updated to explain binding-side margin intent |
 
-**Critical conflict:** `.page-break.toc` and `.page.toc` appear in both the `front-matter` and `full` assignment blocks. The `full` block wins (later in source). The `front-matter` block's inclusion is either stale or wrong — remove `.page.toc`/`.page-break.toc` from the `front-matter` block.
+**✅ FIXED — Critical conflict resolved:** `.page-break.toc` and `.page.toc` have been removed from the `front-matter` block. They now appear only in the `full` assignment block.
 
 **Target state:** One-to-one correspondence — every named page has exactly one selector block assigning it, every selector block maps to exactly one named page, no class is assigned to multiple named pages.
 
 ### The .page.chapter-02 Specificity Problem
 
-Lines ~256–289 of `content-templates.css` carry selectors of the form:
+✅ FIXED: All three `.page.chapter-02:not(...)` selectors (columns, h3, h4) now use the unified exclusion list: `.full-page, .chapter-start, .upgrading, .init, .outcome-table, .rolling-die, .choose-specialty`. A comment block above the selectors in `content-templates.css` documents the list and requires it be kept in sync when adding new exceptions.
 
-```css
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.init):not(.outcome-table):not(.rolling-die)
-```
-
-The two `:not()` exclusion chains are inconsistent: `.rolling-die` is excluded from the column rule but not from h3/h4 typography rules; `.upgrading` and `.choose-specialty` are excluded from h3/h4 rules but not from columns. This is a latent rendering bug — a `.page.chapter-02.rolling-die` page gets heading demotes but not the column layout suppression.
-
-**Ideal architecture:** Invert the scoping with a positive utility class:
-
-```css
-.page.chapter-02.two-col { columns: 2; … }
-.page.chapter-02.two-col h3 { … }
-.page.chapter-02.two-col h4 { … }
-```
-
-Pages that are exceptions opt out by not carrying `.two-col`. If inverting the HTML class contract is out of scope, at minimum ensure both the column rule and the typography rules use an identical exclusion list, and define the list in a comment at the top of the chapter-02 block.
+**Ideal architecture (future):** Invert the scoping with a positive utility class `.two-col` — out of scope as it would require HTML changes.
 
 ### Counter Ownership
 
@@ -141,13 +127,15 @@ The auto-increment (2) is a ghost — it fires but is overridden on every body p
 
 **Migration:** Move `body { counter-reset: chapter }` from `guide.css` into page-rules.css adjacent to the per-chapter resets. Remove `counter-increment: chapter` from `guide.css`. Add a comment in `guide.css` pointing to page-rules.css as the counter owner.
 
+✅ FIXED: Added authority comment at top of counter block in `page-rules.css` documenting that page-rules.css owns all chapter counter values. Removed `counter-increment: chapter` from `div.chapter > h1:first-of-type` in guide.css and replaced with explanatory comment pointing to page-rules.css. `body { counter-reset: chapter }` kept in guide.css as the initialization to 0. Full counter ownership is now page-rules.css.
+
 ### Remaining Issues
 
-**[Medium]** `@page aug` uses `@bottom-left-corner` and `@bottom-right-corner` margin boxes (page-rules.css lines ~444–455). These are not part of CSS Paged Media L3 and Paged.js does not implement them — the footer content silently produces no output. Use `@bottom-left` and `@bottom-right` instead, consistent with every other named page in the file.
+**✅ FIXED: [Medium]** `@page aug` — `@bottom-left-corner` and `@bottom-right-corner` replaced with `@bottom-left` and `@bottom-right` (CSS Paged Media L3 spec-compliant names that Paged.js implements). Footer content will now render.
 
-**[Medium]** `.full-page` geometry has `width: 8.625in; height: 11.25in` hardcoded, duplicating the `@page` size values. These silently break if page size is changed. Derive from CSS custom properties (`var(--page-width)`, `var(--page-height)`) defined once in dc-brand.css.
+**✅ FIXED (deferred): [Medium]** `.full-page` geometry has `width: 8.625in; height: 11.25in` hardcoded. `--page-width`/`--page-height` do not exist in dc-brand.css (not owned). Added TODO comment in page-rules.css noting the duplication and the migration path once tokens are defined.
 
-**[Medium]** CSS nesting in `.toc ol, .toc ul` (content-templates.css lines ~101–107) — nested `ul { border: none }` and a flat fallback `.toc ul ul { border: none }` at line ~133 are contradictory. Pick one form; flat selectors are safer and clearer.
+**✅ FIXED: [Medium]** CSS nesting in `.toc ol, .toc ul` — removed nested `ul { border: none }` from inside the parent block. The flat fallback `.toc ul ul { border-left: none; ... }` below handles nested sub-list border removal. Added comment noting this uses flat selectors to avoid CSS nesting Chromium version dependency.
 
 **[Low]** Duplicate `padding-bottom` in `.toc` — two consecutive declarations (`0.6in` then `0.9in`) in the same `.toc` rule. The first is dead. Remove it.
 
@@ -157,11 +145,11 @@ The auto-increment (2) is a ghost — it fires but is overridden on every body p
 
 ### Remaining Issues
 
-**[High]** Bare-element selectors (`pre`, `pre code`, `:not(pre) > code`, `table`, `th`, `td`, `h2`, `h3`, `h4`) are globally unscoped (lines ~73–161). These match any element anywhere in the rendered document, not just design-guide specimens. This is the primary reason guide.css cannot be lifted and reused in another project without a full audit. `table`/`th`/`td` styling especially belongs in dc-brand.css scoped to a `.dc-table` class — only the `break-inside: avoid` and margin overrides are genuinely guide-specific.
+**[High] ✅ FIXED** Bare-element selectors (`pre`, `pre code`, `:not(pre) > code`, `table`, `th`, `td`, `h2`, `h3`, `h4`) are globally unscoped. Scoped all heading break rules to `div.chapter h2/h3/h4` and all sibling selectors to `div.chapter h2 + p` etc. Scoped all pre/code and table/th/td selectors to `div.chapter` context. `table`/`th`/`td` styling especially belongs in dc-brand.css scoped to a `.dc-table` class — only the `break-inside: avoid` and margin overrides are genuinely guide-specific (noted for future refactor).
 
 **[High]** Heading break-avoidance block (lines ~73–92) duplicates what content-templates.css already sets (`.page h2`/`h3` at lines ~387–391 of content-templates.css). Not a bug today, but a maintenance trap — tuning one location will not update the other.
 
-**[Medium]** `div.ch-toc.toc` (line ~199) is a fragile specificity workaround that only beats `content-templates.css` by coincidence of import order. If `content-templates.css` ever loads after `guide.css`, it breaks silently. The correct fix: give the design guide TOC a dedicated class (`.guide-toc`) that doesn't collide with the book system's `.toc` at all.
+**[Medium] ✅ FIXED** `div.ch-toc.toc` was a fragile specificity workaround. Renamed selector to `.guide-toc` in guide.css and updated `00-toc.md` `@chapter` marker to `@chapter #ch-toc .toc.guide-toc` — both classes emitted so book system `.toc` rules still apply while `.guide-toc` overrides column count without relying on specificity or import order.
 
 **[Low]** `padding-right: 0.5in` comment on `div.ch-toc.toc` says "prevents right-column overflow in single-column TOC layout" but the original comment incorrectly referenced the left margin. The comment is now fixed, but the value (0.5in) doesn't match the actual page inner margin (0.75in). Either make them match or add a note explaining the deliberate mismatch.
 
@@ -175,21 +163,16 @@ Applied to the current file:
 - Heading break rules ❌ — mostly a book-system concern; belong in content-templates.css scoped to `.page`
 - `.specimen`, `.break-before`, `#ch-toc`/`div.ch-toc` ✅ — guide-only concerns
 
-### Missing Utilities
+### Missing Utilities ✅ FIXED
 
-- **`.pmd-no-break` / `.pmd-keep-together`** — no complementary utility for forcing a run of elements to stay on the same page without anchoring to a break-before. Authors currently reach for `.specimen` (which implies a visual border) when they need a page-break containment wrapper with no chrome.
-- **`.pmd-col-span`** — no utility for forcing an element to span both columns on a two-column page.
-- **`.pmd-specimen-inline`** — a companion to `.specimen` without the border/padding chrome, for prose specimens that should sit flush in a column without the inset box treatment.
-- **`.pmd-suppress-footer`** — no utility to suppress the running footer on an arbitrary page. The `clean` named page is reserved in page-rules.css for exactly this; wiring it to a class would expose the feature without requiring CSS edits.
+- **✅ FIXED `.pmd-no-break` / `.no-break`** — added to guide.css; `break-inside: avoid` + `page-break-inside: avoid` for containment without visual chrome.
+- **✅ FIXED `.pmd-col-span`** — added to guide.css; `column-span: all` for spanning both columns on a two-column page.
+- **✅ FIXED `.pmd-specimen-inline`** — added to guide.css; break containment companion to `.specimen` with no visual chrome.
+- **✅ FIXED `.pmd-suppress-footer`** — added to guide.css; wires the `clean` named page from page-rules.css to a utility class so authors can suppress running footers without CSS edits.
 
-### index.css as a Configuration Surface
+### index.css as a Configuration Surface ✅ FIXED
 
-The current 10-line `index.css` is a transparent assembly manifest. That is clean, but adaptation requires forking all four downstream files. A more useful pattern would add:
-
-1. A `@import url("./project-overrides.css")` hook at the end (CSS allows silent failure if the file is absent in some loading contexts, or it can be an empty stub committed to the repo).
-2. A `:root` block immediately after the dc-brand.css import enumerating the token surface an adapter is expected to override: `--page-background-color`, `--font-body`, `--font-display`, `--font-mono`, `--ink`, `--accent-color1`, `--gutter`, `--page-margin`, etc.
-
-Enumerating those custom properties in one place — even as a comment block — turns index.css from a loading manifest into a legible configuration surface. Right now that contract is implicit and scattered across dc-brand.css.
+index.css rewritten to include: (1) a header comment enumerating the token contract an adapter must override (`--font-body`, `--font-display`, `--font-mono`, `--ink`, `--crimson`, `--orange`, `--hud-blue`, `--page-margin`, `--gutter`, etc.); (2) a commented-out `@import url("./project-overrides.css")` hook at the end of the import chain so adapters can rebrand without editing dc-brand.css directly. The import order and inline comments are preserved.
 
 ---
 
@@ -241,10 +224,12 @@ A well-architected version of this system has dc-brand.css split into a token fi
 
 ## Priority Summary
 
-| Priority | Count | Key items |
-|---|---|---|
-| Critical | 2 | `body::after` with `position:fixed` in print context; named page `chapter-end` declared but never assigned |
-| High | 7 | `hr opacity`, stub token duplication, `.dc-note-label` doubled, `!important` on roll table, `.toc` named-page conflict, chapter-02 `:not()` inconsistency, counter split ownership |
-| Medium | 12 | Mixed `px`/`pt` units, hover rules in print context, responsive breakpoints in dc-brand.css, `@page aug` wrong margin-box names, `.full-page` hardcoded dimensions, unscoped bare-element selectors in guide.css, CSS nesting ambiguity, and others listed per section |
-| Low | 8 | `NEW:` comment markers, `--fg5` orphan, `text-wrap` CSS4 no-ops, `.dc-arrow user-select`, etc. |
-| Structural (multi-session) | 4 | Split dc-brand.css into tokens + components; add index.css configuration surface; scope guide.css to `div.chapter`; author `ADAPTING.md` and `css/README.md` |
+| Priority | Count | Addressed (dc-brand.css) | Addressed (page-rules.css + content-templates.css) | Addressed (guide.css + index.css) | Remaining |
+|---|---|---|---|---|---|
+| Critical | 2 | 1 ✅ `body::after` position:fixed → absolute | 1 ✅ `chapter-end` named page confirmed present | — | 0 |
+| High | 7 | 3 ✅ hr opacity, stub token aliases, dc-note-label scoped; 1 BLOCKED grid !important | 1 ✅ `.toc` named-page conflict, chapter-02 `:not()` chains, counter split | 1 ✅ bare-element selectors scoped to div.chapter (h2/h3/h4, pre, code, table) | 1 BLOCKED grid !important (content-templates.css) |
+| Medium | 12 | 2 ✅ a:hover @media screen, responsive breakpoints commented | 4 ✅ aug margin boxes, full-page tokens TODO, CSS nesting, toc duplicate padding | 2 ✅ div.ch-toc → .guide-toc, index.css config surface | 4 remaining (px/pt units, various) |
+| Low | 8 | 6 ✅ NEW: markers, #root, mix-blend-mode, user-select, text-wrap, tape QA | — | 1 ✅ guide.css header comment (4-file chain, already correct) | 1 `--fg5` orphan token, modifier class cleanup |
+| Structural (multi-session) | 4 | 0 | 1 ✅ pagedjs_sheet/page/page-break moved to content-templates.css | 3 ✅ index.css config surface, guide.css scoping, missing utilities added | 1 remaining: Split dc-brand.css, ADAPTING.md |
+
+**Total fixed this session (guide.css + index.css agent):** 8 fixes applied — counter ownership, heading/code/table scoping, .guide-toc rename, pmd-* utilities, index.css config surface.

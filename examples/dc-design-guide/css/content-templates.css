@@ -18,6 +18,32 @@
    ============================================================================= */
 
 /* ===========================================================================
+   PAGE WRAPPER BASE — moved from page-rules.css 2026-05-10
+   These are content-layer element rules, not @page declarations.
+   =========================================================================== */
+
+/* Ensure page background renders in PDF (not just screen preview).
+   The preview template sets this inside @media screen, so print mode misses it.
+   This rule applies unconditionally so Chromium's page.pdf() captures it. */
+.pagedjs_sheet {
+  background-color: var(--page-background-color);
+}
+
+.page,
+.page-break {
+  z-index: 1;
+  page-break-after: always;
+  page-break-inside: avoid;
+}
+
+.column-break {
+  color: var(--hud-magenta);
+  visibility: hidden;
+  break-after: column;
+  -webkit-column-break-after: always;
+}
+
+/* ===========================================================================
    PAGE TEMPLATES — .page.* selector rules
    Carved from _shared/css/core/10-page-templates.css during Phase F2 of the
    legacy CSS migration (2026-05-03). Sprawl-prevention check against
@@ -96,14 +122,12 @@
   margin: 0;
 }
 
-/* Border-left accent for TOC sub-entries. CSS nesting (ul { border: none }) supported by Paged.js;
-   flat fallback `.toc ul ul { border: none }` below. */
+/* Border-left accent for TOC sub-entries.
+   Nested sub-lists have border removed via flat selector `.toc ul ul` below. */
+/* flat selector — avoids CSS nesting dependency on Chromium version */
 .toc ol, .toc ul {
   margin-bottom: var(--gutter);
   border-left: var(--callout-border-width) solid var(--secondary-color);
-  ul{
-    border: none;
-  }
 }
 
 /* TOC sub-entry layout — padding, position. Typography (line-height, font-size, font-weight, letter-spacing) in _backup. */
@@ -252,8 +276,12 @@ article {
   page-break-inside: avoid;
 }
 
+/* Exclusions must be identical across all chapter-02 selectors below.
+   Current list: .full-page, .chapter-start, .upgrading, .init, .outcome-table,
+   .rolling-die, .choose-specialty — update all selectors if adding a new exception. */
+
 /* Chapter 02 general content pages - two-column layout */
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.init):not(.outcome-table):not(.rolling-die) {
+.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.rolling-die):not(.choose-specialty) {
   columns: 2;
   column-gap: var(--space-2xl);
   column-fill: balance;
@@ -269,7 +297,7 @@ article {
 /* h3: demote from full-weight chevron banner to a thin accent line.
    Scoped narrowly to chapter-02 *content* pages so specialty/full-page
    layouts and the existing `.dc-chevron` explicit class are untouched. */
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.choose-specialty) h3 {
+.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.rolling-die):not(.choose-specialty) h3 {
   font-size: var(--fs-body); /* was --fs-body-sm; downsize compared to base h3 */
   font-weight: var(--fw-semibold);
   border-top: var(--bw-thin) solid var(--accent-color1); /* was medium */
@@ -279,7 +307,7 @@ article {
 
 /* h4: definition-header treatment for DREAM/DREAMER/PC/DM (these live as
    h4 in the chapter-02 markdown). Keep readable but not banner-weight. */
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.choose-specialty) h4 {
+.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.rolling-die):not(.choose-specialty) h4 {
   font-size: var(--fs-body-sm);
   font-weight: var(--fw-bold);
   text-transform: uppercase;

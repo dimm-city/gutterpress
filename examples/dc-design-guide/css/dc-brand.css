@@ -294,9 +294,11 @@
   --radius-card: 0;
   --radius-tab:  0;
 
-  /* ── Stubs: tokens inherited from shared design system ──────────────────────
-     These were referenced in the original field-guide system but not defined
-     here. Set them to their intended values when adapting for a new book.
+  /* ── Stubs: aliases to canonical tokens from shared design system ────────────
+     These names were referenced in the original field-guide system. Each is now
+     an explicit alias of its canonical peer — editing the canonical token
+     (e.g. --fs-base) automatically updates the stub. Do NOT set independent
+     literal values here; use the canonical token name instead.
      ─────────────────────────────────────────────────────────────────────────── */
   --secondary-color:            var(--crimson);
   --accent-color1:              var(--hud-blue);
@@ -305,8 +307,8 @@
   --hud-blue-border:            2px solid var(--hud-blue);
   --callout-border-width-small: 2px;
   --hud-border-soft:            1px solid var(--border-blue);
-  --base-font-size:             10pt;
-  --small-font-size:            8.5pt;
+  --base-font-size:             var(--fs-base, 10pt);     /* alias of canonical --fs-base */
+  --small-font-size:            var(--fs-body-sm, 8.5pt); /* alias of canonical --fs-body-sm */
   --small-gap:                  0.08in;
   --card-bg:                    var(--paper-cream);
   --card-header-bg:             var(--crimson);
@@ -316,8 +318,8 @@
   --card-font-size:             9pt;
   --card-body-height:           auto;
   --quote-font-size:            11pt;
-  --line-height-tight:          1.25;
-  --line-height-normal:         1.5;
+  --line-height-tight:          var(--lh-tight, 1.25);   /* alias of canonical --lh-tight */
+  --line-height-normal:         var(--lh-normal, 1.5);   /* alias of canonical --lh-normal */
 }
 
 /* ============================================================================
@@ -340,7 +342,7 @@ body {
   font-family: var(--font-body);
   font-size: var(--fs-base);
   line-height: var(--lh-normal);
-  text-wrap: pretty;
+  text-wrap: pretty; /* text-wrap: CSS4 — silently ignored by Paged.js; effective in screen preview only */
   position: relative;
   hyphens: auto;
   -webkit-hyphens: auto;
@@ -371,7 +373,7 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: var(--ls-display);
   line-height: var(--lh-tight);
   text-transform: uppercase;
-  text-wrap: balance;
+  text-wrap: balance; /* text-wrap: CSS4 — silently ignored by Paged.js; effective in screen preview only */
   margin: 1.5em 0 0.5em;
   /* --blood (#a30900) gives 5.46:1 on the light-grey page bg (#d4d4d4).
      --orange (#f24d00) only reaches 2.43:1 — fails WCAG AA. */
@@ -421,13 +423,14 @@ code, kbd, samp {
 
 hr {
   border: 0;
-  border-top: 2px dashed var(--crimson);
-  opacity: 0.5;
+  border-top: 2px dashed #e9a090; /* pre-blended value: --crimson at ~50% on --bg; opacity not PDF-safe */
   margin: 1em 0;
 }
 
 a { color: var(--crimson); text-decoration: none; border-bottom: 1px dotted var(--crimson); }
-a:hover { color: var(--orange); border-bottom-color: var(--orange); }
+@media screen {
+  a:hover { color: var(--orange); border-bottom-color: var(--orange); }
+}
 
 blockquote {
   font-family: var(--font-quote);
@@ -437,7 +440,7 @@ blockquote {
   background: var(--paper-light);
   padding: 0.5rem 0.75rem;
   margin: 0.75rem 0;
-  text-wrap: balance;
+  text-wrap: balance; /* text-wrap: CSS4 — silently ignored by Paged.js; effective in screen preview only */
 }
 
 ul { padding-left: 0.25in; }
@@ -516,14 +519,15 @@ ul li::before {
 /* Paper grain — fixed overlay */
 body::after {
   content: '';
-  position: fixed;
+  position: absolute; /* position: absolute — fixed is meaningless in Paged.js page-box context */
   inset: 0;
   pointer-events: none;
   z-index: 50;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.025'/%3E%3C/svg%3E");
 }
 
-#root { max-width: 950px; margin: 0 auto; }
+/* #root — ID selector removed; use a class if this element needs styling */
+/* #root { max-width: 950px; margin: 0 auto; } */
 
 /* ───────── PAGE ───────── */
 .dc-page {
@@ -655,7 +659,6 @@ body::after {
   color: var(--orange);
   font-size: 14px;
   font-weight: 700;
-  user-select: none;
 }
 
 /* ───────── BODY PROSE ───────── */
@@ -979,9 +982,7 @@ body::after {
 
 /* Gallery viewer chrome (gx-* classes) extracted to gallery.css — not loaded by book builds. */
 
-/* ────────────────────────────────────────────────────────────
-   NEW: Pull-quote / sidebar callouts
-   ──────────────────────────────────────────────────────────── */
+/* ───────── PULL-QUOTE / SIDEBAR CALLOUTS ───────── */
 .dc-pullquote {
   background: var(--paper-light);
   border-left: 4px solid var(--orange);
@@ -1021,9 +1022,7 @@ body::after {
 }
 .dc-pullquote-attr::before { content: "— "; color: var(--orange); }
 
-/* ────────────────────────────────────────────────────────────
-   NEW: Stat block (compact creature/NPC reference)
-   ──────────────────────────────────────────────────────────── */
+/* ───────── STAT BLOCK (compact creature/NPC reference) ───────── */
 .dc-stat {
   background: var(--paper-cream);
   border: 2px solid var(--ink);
@@ -1103,9 +1102,7 @@ body::after {
 }
 .dc-stat-line strong { color: var(--crimson); font-weight: 700; }
 
-/* ────────────────────────────────────────────────────────────
-   NEW: Procedure / numbered steps
-   ──────────────────────────────────────────────────────────── */
+/* ───────── PROCEDURE / NUMBERED STEPS ───────── */
 .dc-steps {
   list-style: none;
   padding: 0 0 0 16px;
@@ -1140,9 +1137,7 @@ body::after {
 }
 .dc-steps li strong { color: var(--crimson); font-weight: 700; }
 
-/* ────────────────────────────────────────────────────────────
-   NEW: Outcome ladder (failure → catastrophe)
-   ──────────────────────────────────────────────────────────── */
+/* ───────── OUTCOME LADDER (failure → catastrophe) ───────── */
 /* d20 outcome ladder — use for the Roll/Result ladder only.
    For character-creation attribute tables (Origins, Ideals, etc.), use standard <table> markdown
    or the @options-table plugin marker instead. */
@@ -1210,9 +1205,7 @@ body::after {
   align-self: center;
 }
 
-/* ────────────────────────────────────────────────────────────
-   NEW: Class-tag pill (specialty marker)
-   ──────────────────────────────────────────────────────────── */
+/* ───────── CLASS-TAG PILL (specialty marker) ───────── */
 .dc-classtag {
   display: inline-flex;
   align-items: center;
@@ -1277,9 +1270,7 @@ body::after {
 .specialty.technosorcerer .dc-learning-path h2.dc-spray { color: var(--technosorcerer-accent); }
 .specialty.etherlock      .dc-learning-path h2.dc-spray { color: var(--etherlock-accent); }
 
-/* ────────────────────────────────────────────────────────────
-   NEW: Margin sticker / corner stamp
-   ──────────────────────────────────────────────────────────── */
+/* ───────── MARGIN STICKER / CORNER STAMP ───────── */
 .dc-stamp {
   display: inline-block;
   font-family: var(--font-display);
@@ -1304,9 +1295,7 @@ body::after {
 .dc-stamp.classified { color: var(--orange); border-color: var(--orange); transform: rotate(2deg); }
 .dc-stamp.classified::before, .dc-stamp.classified::after { background: var(--orange); }
 
-/* ────────────────────────────────────────────────────────────
-   NEW: Dice expression pill
-   ──────────────────────────────────────────────────────────── */
+/* ───────── DICE EXPRESSION PILL ───────── */
 .dc-dice {
   display: inline-flex;
   align-items: center;
@@ -1327,9 +1316,7 @@ body::after {
   line-height: 1;
 }
 
-/* ────────────────────────────────────────────────────────────
-   NEW: Section divider — torn-tape rule
-   ──────────────────────────────────────────────────────────── */
+/* ───────── SECTION DIVIDER — TORN-TAPE RULE ───────── */
 .dc-tape {
   display: flex;
   align-items: center;
@@ -1346,6 +1333,7 @@ body::after {
   break-inside: avoid;
   page-break-inside: avoid;
 }
+/* QA: repeating-linear-gradient at low opacity may drop out at 300 DPI — verify in print proof */
 .dc-tape::before, .dc-tape::after {
   content: '';
   flex: 1;
@@ -1354,9 +1342,7 @@ body::after {
   opacity: 0.35;
 }
 
-/* ────────────────────────────────────────────────────────────
-   NEW: Index/TOC row
-   ──────────────────────────────────────────────────────────── */
+/* ───────── INDEX / TOC ROW ───────── */
 /* NOTE: A second .dc-toc rule set lives in page-rules.css — that version handles
    Paged.js target-counter() auto-numbering for print output.
    This dc-brand.css version is the screen-preview layout (.dc-toc-row flex rows).
@@ -1474,7 +1460,6 @@ body::after {
   opacity: 0.55;
   text-transform: uppercase;
   pointer-events: none;
-  user-select: none;
   white-space: nowrap;
   transform: rotate(-4deg);
 }
@@ -1671,7 +1656,7 @@ body::after {
   height: 100%;
   object-fit: cover;
   object-position: 65% center;
-  mix-blend-mode: multiply;
+  mix-blend-mode: multiply; /* mix-blend-mode: screen-preview only — verify blend output in print proof; CMYK assets will composite incorrectly */
   opacity: 0.95;
 }
 
@@ -2421,7 +2406,8 @@ body::after {
   font-style: italic;
 }
 
-.dc-note-label {
+/* Scoped to .dc-note-callout context — different font-size/letter-spacing than .dc-note .dc-note-label */
+.dc-note-callout .dc-note-label {
   display: block;
   font-family: var(--font-mono);
   font-size: 8pt;
@@ -2482,11 +2468,9 @@ body::after {
   line-height: var(--lh-tight);
 }
 
-/* ────────────────────────────────────────────────────────────
-   NEW: Chapter opener number display
+/* ───────── CHAPTER OPENER NUMBER DISPLAY ─────────
    Large chapter identifier that sits above dc-spray on rules-chapter openers.
-   Not to be confused with .dc-chapter-num (the footer page reference at bottom-right).
-   ──────────────────────────────────────────────────────────── */
+   Not to be confused with .dc-chapter-num (the footer page reference at bottom-right). */
 .dc-chapter-opener-no {
   font-family: var(--font-display);
   font-size: var(--fs-chapter);   /* 26pt */
@@ -2498,11 +2482,9 @@ body::after {
   margin: 0 0 var(--space-sm);
 }
 
-/* ────────────────────────────────────────────────────────────
-   NEW: Roll result table — compact tabular d20 ladder
+/* ───────── ROLL RESULT TABLE — compact tabular d20 ladder ─────────
    Used inline within rules text as a compact reference; contrast
-   with .dc-outcomes (full styled component for teaching the system).
-   ──────────────────────────────────────────────────────────── */
+   with .dc-outcomes (full styled component for teaching the system). */
 .dc-roll-table {
   width: 100%;
   border-collapse: collapse;
@@ -2579,12 +2561,16 @@ body::after {
 .dc-roll-table-name--fail  { color: var(--blood); }
 
 /* ── Design-guide only: side-by-side comparison stage layout ─────── */
+/* Design-guide only: side-by-side comparison stage layout.
+   Chromium correctly allows display:grid inside a multi-column ancestor
+   (grid creates its own BFC), so !important is not needed. */
 .dc-roll-table-compare-stage {
-  display: grid !important;
+  display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 32px;
   align-items: start;
 }
+/* SCREEN PREVIEW ONLY — move to guide.css in next refactor pass */
 @media screen and (max-width: 1100px) {
   .dc-roll-table-compare-stage { grid-template-columns: 1fr; }
 }
@@ -2636,6 +2622,7 @@ body::after {
   break-inside: avoid;
   page-break-inside: avoid;
 }
+/* SCREEN PREVIEW ONLY — move to guide.css in next refactor pass */
 @media screen and (max-width: 900px) {
   .dc-options-layout { grid-template-columns: 1fr; }
 }

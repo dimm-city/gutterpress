@@ -1,4 +1,4 @@
-@chapter #ch-toc .toc
+@chapter #ch-toc .toc.guide-toc
 
 # Dimm City Design Guide
 

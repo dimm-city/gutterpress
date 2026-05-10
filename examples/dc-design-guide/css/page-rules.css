@@ -15,10 +15,12 @@
    (e.g. `field-guide/css/pagedjs-adapter.css`).
    ============================================================================= */
 
-/* NOTE: The `chapter` counter is initialized in guide.css (body { counter-reset: chapter }).
-   The rules below override it per-page via .page.chapter-NN { counter-reset: chapter N }
-   to inject the correct chapter number into the footer. Both files intentionally
-   share this counter — see guide.css for the body-level initialization. */
+/* Chapter counter authority: page-rules.css owns all chapter counter values.
+   The body-level counter-reset in guide.css initializes to 0; these per-page
+   resets override it with the correct chapter number per Paged.js page box.
+   NOTE: guide.css also has `counter-increment: chapter` on div.chapter > h1:first-of-type
+   — that auto-increment is a ghost (overridden by the per-page hard-resets below)
+   and should be removed from guide.css in a future pass. */
 
 /* ---------------------------------------------------------------------------
    Chapter Counters
@@ -226,10 +228,11 @@
   }
 }
 
-.page-break.toc,
+/* .page-break.toc and .page.toc intentionally omitted here — they are assigned
+   to page: full (below) which wins by source order. Including them in front-matter
+   was dead code. */
 .page-break.intro,
 .page-break.page-intro,
-.page.toc,
 .page.intro,
 .page.page-intro {
   page: front-matter;
@@ -367,6 +370,8 @@
   page: full;
   /* Ensure an empty .full-page still occupies a full page in Paged.js.
      Without explicit dimensions an empty div generates no page box. */
+  /* TODO: replace with var(--page-width) / var(--page-height) when tokens are
+     defined in dc-brand.css — currently these duplicate @page size: 8.625in 11.25in */
   width: 8.625in;
   height: 11.25in;
   background-color: var(--page-background-color);
@@ -421,8 +426,9 @@
   }
 }
 
-/* @page clean — reserved: suppresses headers/footers for blank insert pages.
-   Assign with: .page.clean { page: clean; } when needed. */
+/* @page clean — RESERVED: suppresses running headers/footers for blank insert pages.
+   To activate: add .page.clean { page: clean; } and apply class to the element.
+   Currently unused — no element assigns page: clean. */
 @page clean {
   @bottom-right {
     content: none;
@@ -441,13 +447,13 @@
   margin-top: 0.1in;
   margin-bottom: 0.1in;
 
-  @bottom-left-corner {
+  @bottom-left {
     content: "c." counter(chapter);
     padding-left: 0.2in;
     padding-bottom: 0.3in;
   }
 
-  @bottom-right-corner {
+  @bottom-right {
     content: "p." counter(page);
     text-align: right;
     padding-right: 0.35in;
@@ -456,7 +462,8 @@
 }
 
 @page aug:left {
-  /* Inner margin (right side for left pages) set to 0.625in for perfect binding */
+  /* Left (verso) aug pages — binding-side margin on right.
+     Add margin-left: 0.75in here instead if the binding is on the left for this variant. */
   margin-right: 0.75in;
   margin-left: 0.1in;
 }
@@ -469,35 +476,13 @@
 
 .aug, .page-aug { page: aug; }
 
-/* ---------------------------------------------------------------------------
-   Page Wrapper Base
-   --------------------------------------------------------------------------- */
-
-/* Ensure page background renders in PDF (not just screen preview).
-   The preview template sets this inside @media screen, so print mode misses it.
-   This rule applies unconditionally so Chromium's page.pdf() captures it. */
-.pagedjs_sheet {
-  background-color: var(--page-background-color);
-}
-
-.page,
-.page-break {
-  z-index: 1;
-  page-break-after: always;
-  page-break-inside: avoid;
-}
-
-
-.column-break {
-  color: var(--hud-magenta);
-  visibility: hidden;
-  break-after: column;
-  -webkit-column-break-after: always;
-}
+/* Base .page, .page-break, .column-break rules moved to content-templates.css 2026-05-10 */
 
 /* ── Content-layer rules moved to content-templates.css ─────────────────────
    TOC layouts, .page.* content templates, .dc-toc target-counter system,
-   .specialty density overrides, and component print rules were extracted to
-   content-templates.css on 2026-05-10. Only @page declarations and Paged.js
-   counter workarounds remain in this file.
+   .specialty density overrides, .pagedjs_sheet background, .page/.page-break
+   base reset, .column-break layout utility, and component print rules were
+   extracted to content-templates.css on 2026-05-10.
+   Only @page declarations, page: assignments, and Paged.js counter
+   workarounds remain in this file.
    ─────────────────────────────────────────────────────────────────────────── */

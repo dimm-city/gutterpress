@@ -40,7 +40,7 @@
 div.chapter > h1:first-of-type {
   break-before: page;
   page-break-before: always;
-  counter-increment: chapter;
+  /* counter-increment removed — page-rules.css hard-resets the chapter counter per-page via .page.chapter-NN rules; auto-increment is unreliable in Paged.js */
 }
 
 /* Specimen h1s (not the first in their @chapter wrapper) — flow normally. */
@@ -67,10 +67,11 @@ body {
   widows: 4;
 }
 
+/* Scoped to div.chapter — prevents break suppression on headings outside chapter context */
 /* ── Headings: keep with following content ───────────────────────────────────
    Prevent h2/h3/h4 from stranding at the bottom of a page.
    ─────────────────────────────────────────────────────────────────────────── */
-h2, h3, h4 {
+div.chapter h2, div.chapter h3, div.chapter h4 {
   break-before: auto;
   break-after: avoid;
   break-inside: avoid;
@@ -78,24 +79,23 @@ h2, h3, h4 {
   page-break-inside: avoid;
 }
 
-/* NOTE: h2/h3/h4 + div is scoped to div.chapter to avoid suppressing breaks
-   before plugin-generated containers (TOC entries, skill cards, etc.) that
-   happen to follow a heading outside a chapter context. */
-h2 + p, h2 + ul, h2 + ol, h2 + pre, h2 + blockquote, h2 + table,
+/* Scoped to div.chapter — prevents break suppression on headings outside chapter context */
+div.chapter h2 + p, div.chapter h2 + ul, div.chapter h2 + ol, div.chapter h2 + pre, div.chapter h2 + blockquote, div.chapter h2 + table,
 div.chapter h2 + div,
-h3 + p, h3 + ul, h3 + ol, h3 + pre, h3 + table,
+div.chapter h3 + p, div.chapter h3 + ul, div.chapter h3 + ol, div.chapter h3 + pre, div.chapter h3 + table,
 div.chapter h3 + div,
-h4 + p, h4 + ul, h4 + ol,
+div.chapter h4 + p, div.chapter h4 + ul, div.chapter h4 + ol,
 div.chapter h4 + div {
   break-before: avoid;
   page-break-before: avoid;
 }
 
+/* Scoped to div.chapter — code block styles are design-guide-specific; DC book code uses dc-brand.css defaults */
 /* ── Fenced code blocks (specimen display) ───────────────────────────────────
    Override dc-brand.css code defaults with design-guide-appropriate sizing.
    Uses DC tokens — no fallback values needed since dc-brand.css is always loaded first.
    ─────────────────────────────────────────────────────────────────────────── */
-pre {
+div.chapter pre {
   background: var(--paper-aged);
   border-left: 3px solid var(--orange);
   border-radius: 2px;
@@ -106,7 +106,7 @@ pre {
   page-break-inside: avoid;
 }
 
-pre code {
+div.chapter pre code {
   font-family: var(--font-mono);
   font-size: 8.5pt;
   line-height: 1.55;
@@ -118,7 +118,7 @@ pre code {
 }
 
 /* Inline code (not inside pre) */
-:not(pre) > code {
+div.chapter :not(pre) > code {
   font-family: var(--font-mono);
   font-size: 9pt;
   color: var(--orange);
@@ -127,11 +127,12 @@ pre code {
   padding: 1px 4px;
 }
 
+/* Scoped to div.chapter — table styles are design-guide-specific; DC book tables use dc-brand.css */
 /* ── Tables ──────────────────────────────────────────────────────────────────
    Ensure design-guide reference tables are readable at the design-guide
    print size. Inherits DC color tokens from dc-brand.css.
    ─────────────────────────────────────────────────────────────────────────── */
-table {
+div.chapter table {
   width: 100%;
   border-collapse: collapse;
   font-size: 9pt;
@@ -139,7 +140,7 @@ table {
   break-inside: avoid;
 }
 
-th {
+div.chapter th {
   background: var(--crimson);
   color: var(--paper-cream);
   font-family: var(--font-mono);
@@ -150,13 +151,13 @@ th {
   text-align: left;
 }
 
-td {
+div.chapter td {
   border-bottom: 1px solid var(--border-hairline);
   padding: 4px 8px;
   vertical-align: top;
 }
 
-tr:nth-child(even) td {
+div.chapter tr:nth-child(even) td {
   background: var(--surface-tint-3);
 }
 
@@ -191,12 +192,45 @@ tr:nth-child(even) td {
    Do NOT add book design system rules here — those belong in dc-brand.css.
    ─────────────────────────────────────────────────────────────────────────── */
 
+/* ── Additional pmd-* layout utilities ──────────────────────────────────────
+   Standard print-md utilities available in any project using this scaffold.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Prevent an element from breaking across pages — use when .specimen chrome
+   is not wanted but page-break containment is needed. */
+.pmd-no-break, .no-break {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Force an element to span both columns in a two-column layout. */
+.pmd-col-span {
+  column-span: all;
+}
+
+/* Inline specimen — same break containment as .specimen but no visual chrome. */
+.pmd-specimen-inline {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Wire up the 'clean' named page (defined in page-rules.css) to suppress
+   running headers/footers on any element. */
+.pmd-suppress-footer {
+  page: clean;
+}
+
 /* ── TOC chapter: disable the book .toc two-column layout ───────────────────
    The book .toc CSS (content-templates.css) sets columns:2 for the specialty
    TOC template. The design guide uses a simple flat list — reset to single
    column so the right column doesn't overflow the pagebox.
+
+   .guide-toc is the dedicated class that avoids colliding with the book
+   system's .toc selector entirely. The @chapter marker in 00-toc.md emits
+   both .toc (book system) and .guide-toc (design-guide override) so this
+   selector wins without relying on specificity or import order.
    ─────────────────────────────────────────────────────────────────────────── */
-div.ch-toc.toc {
+.guide-toc {
   columns: 1;
   padding-right: 0.5in; /* prevents right-column overflow in single-column TOC layout */
   box-sizing: border-box;
