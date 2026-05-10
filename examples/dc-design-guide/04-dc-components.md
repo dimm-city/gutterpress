@@ -40,43 +40,33 @@ H3 heading for optional mechanics and variant rules. The `.no-top` modifier remo
 
 ## Ability Cards
 
-The `@skill` / `@end-skill` macro generates the card HTML automatically. Use `variant="1"` through `variant="5"` to select clip-path shapes for the card tab. The macro accepts an `id` attribute for anchor linking and internal cross-references.
+The `@skill` / `@end-skill` macro generates the full card HTML automatically. Use `variant="1"` through `variant="5"` to select clip-path shapes. Two live cards below — same macro, different variants:
 
-### Standard Card
+@skill variant="1" id="punishing-counter"
+#### Punishing Counter | AUG1.1
+> See an opening, ya take it.
+1. **0 AP** *Steel Says No:* When an enemy in reach makes a basic attack, your Backbiters knock the strike off line.
+2. **2 AP** *Bullet to Blood:* When an enemy you can see makes a ranged basic attack, you slip the shot.
+##### Openings are invitations to take a chunk out 'em
+@end-skill
 
-The rendered HTML output the macro produces:
+@skill variant="2" id="wire-tap"
+#### Wire Tap | AUG1.2
+> You don't need access — you need patience and a good antenna.
+1. **1 AP** *Signal Ghost:* Until your next turn, you are invisible to surveillance cameras and smart-weapon targeting.
+2. **3 AP** *Hostile Takeover:* Seize control of one networked device within reach until the end of the scene.
+##### Chrome sees everything. You see through chrome.
+@end-skill
 
-<div class="dc-skill-card">
-  <div class="card-tab dc-card-tab">
-    <span class="tab-title dc-tab-title">Punishing Counter</span>
-    <span class="tab-tier dc-tab-tier">AUG1.1</span>
-  </div>
-  <div class="card-body dc-card-body">
-    <div class="card-inner dc-card-inner">
-      <p class="flavor dc-flavor">See an opening, ya take it.</p>
-      <div class="ability dc-ability">
-        <span class="ap-tag free dc-ap">0 AP</span>
-        <p class="ability-text dc-ability-text dc-prose"><strong>Steel Says No:</strong> When an enemy in reach makes a basic attack, your Backbiters knock the strike off line.</p>
-      </div>
-      <div class="ability dc-ability">
-        <span class="ap-tag dc-ap">2 AP</span>
-        <p class="ability-text dc-ability-text dc-prose"><strong>Bullet to Blood:</strong> When an enemy you can see makes a ranged basic attack, you slip the shot.</p>
-      </div>
-      <div class="sub-header dc-sub-header">— Openings are invitations to take a chunk out 'em —</div>
-    </div>
-  </div>
-</div>
-
-Macro authoring syntax:
+**Macro syntax** — tier after `|` in the heading, sub-header as `#####`:
 
 ```
-@skill variant="1" id="punishing-counter"
-#### Punishing Counter
-AUG1.1
-> See an opening, ya take it.
-1. **0 AP** *Steel Says No:* Description…
-2. **2 AP** *Bullet to Blood:* Description…
-— Openings are invitations to take a chunk out 'em —
+@skill variant="1" id="ability-id"
+#### Ability Title | AUG1.N
+> Flavor line.
+1. **0 AP** *Action Name:* Effect description.
+2. **2 AP** *Action Name:* Effect description.
+##### Sub-header text
 @end-skill
 ```
 
@@ -188,33 +178,60 @@ Same structure as the creature block. Social-facing NPCs swap combat stats for s
 
 A learning path wraps a set of skill cards under a named spray header with an intro flavor line. The `@learning-path` macro generates the outer shell; each `@skill` block inside it produces a card.
 
-Macro authoring syntax:
+**Macro syntax:**
 
 ```
 @learning-path specialty="augmerc" index="1"
-### Breach Protocols
-> Close enough to count teeth. Far enough to keep yours.
+### Path Title
+> Path flavor line.
+- Skill A
+- Skill B
+- Skill C
 
-@skill variant="1" id="breach-and-clear"
-#### Breach and Clear
-AUG1.1
-1. **0 AP** *Stack Up:* Position one ally in reach without spending AP.
-2. **2 AP** *Dynamic Entry:* Move through a door and make a basic attack in the same action.
+@skill variant="1" id="skill-id"
+#### Skill Name | AUG1.1
+> Skill flavor.
+1. **0 AP** *Action Name:* Effect description.
+2. **2 AP** *Action Name:* Effect description.
+##### Sub-header text
 @end-skill
 @end-learning-path
 ```
 
-Rendered output HTML (simplified specimen):
+Live rendered learning path — three cards using variants 1, 2, and 3:
 
-```html
-<section class="dc-learning-path dc-path-block" data-path-ref="AUG1">
-  <div class="dc-path-shell">
-    <h2 class="dc-spray"><span class="dc-path-sticker">AUG1</span>Breach Protocols</h2>
-    <div class="dc-intro">Close enough to count teeth. Far enough to keep yours.</div>
-    <!-- skill cards follow -->
-  </div>
-</section>
-```
+@learning-path specialty="augmerc" index="1"
+### Breach Protocols
+> Close enough to count teeth. Far enough to keep yours.
+- Breach and Clear
+- Suppression Fire
+- Ghost Protocol
+
+@skill variant="1" id="breach-and-clear-lp"
+#### Breach and Clear | AUG1.1
+> The door opens inward. You don't.
+1. **0 AP** *Stack Up:* Position one ally in reach without spending AP.
+2. **2 AP** *Dynamic Entry:* Move through a door and make a basic attack in the same action. The attack gains advantage.
+##### Door's just a wall that didn't commit.
+@end-skill
+
+@skill variant="2" id="suppression-fire-lp"
+#### Suppression Fire | AUG1.2
+> They stop moving. You start.
+1. **2 AP** *Pin Down:* One enemy in range cannot move or take reactions until the start of your next turn.
+2. **VAR AP** *Sustained Pressure:* Spend 1 additional AP per round to extend pin-down.
+##### Keep their heads down long enough to matter.
+@end-skill
+
+@skill variant="3" id="ghost-protocol-lp"
+#### Ghost Protocol | AUG1.3
+> You were never there. The bodies disagree.
+1. **1 AP** *Fade:* Move up to your speed without triggering opportunity attacks.
+2. **3 AP** *Vanishing Act:* Become undetectable to all sensors and cameras until you attack or the scene ends.
+##### The best breach is the one they never see.
+@end-skill
+
+@end-learning-path
 
 ---
 
