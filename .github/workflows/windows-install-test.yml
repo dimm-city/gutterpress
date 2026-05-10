@@ -45,6 +45,21 @@ jobs:
         shell: pwsh
         run: bun scripts/compile.ts bun-windows-x64 print-md-windows-x64.exe
 
+      - name: Smoke-test binary directly
+        shell: pwsh
+        # Run the freshly-built binary BEFORE install.ps1 wraps anything.
+        # This surfaces the raw stderr in the CI step output if it crashes,
+        # rather than being masked by run-install-test.ps1's error handling.
+        run: |
+          $exe = "${{ github.workspace }}\print-md-windows-x64.exe"
+          Write-Host "Binary: $exe"
+          Write-Host "Size: $((Get-Item $exe).Length) bytes"
+          Write-Host "---- print-md --version ----"
+          & $exe --version
+          $code = $LASTEXITCODE
+          Write-Host "---- exit=$code ----"
+          if ($code -ne 0) { throw "print-md --version exited $code" }
+
       - name: Run install script (with local binary)
         shell: pwsh
         env:

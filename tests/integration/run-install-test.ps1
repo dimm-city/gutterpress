@@ -129,7 +129,7 @@ try {
         Write-Section "Checking print-md build --help"
         $buildResult = Invoke-PrintMd -Descriptor $printmd.Candidate -Arguments @('build', '--help')
         Require-Success -Result $buildResult -FailureMessage 'print-md build --help failed'
-        if ($buildResult.Output -notmatch '--output' -or $buildResult.Output -notmatch '--format') {
+        if ($buildResult.Output -notmatch '--out\b' -or $buildResult.Output -notmatch '--format') {
             throw 'Build help output missing expected flags'
         }
 
