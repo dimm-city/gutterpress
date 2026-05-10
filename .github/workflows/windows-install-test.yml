@@ -32,12 +32,27 @@ jobs:
         with:
           ref: ${{ inputs.script_ref || github.ref }}
 
-      - name: Run install script
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        shell: pwsh
+        run: bun install --frozen-lockfile
+
+      - name: Build standalone binary for windows-x64
+        shell: pwsh
+        run: bun scripts/compile.ts bun-windows-x64 print-md-windows-x64.exe
+
+      - name: Run install script (with local binary)
         shell: pwsh
         env:
-          # The repo is private during the beta; pass the workflow token so
-          # the installer can fetch the release asset. End users on a public
-          # repo don't need this.
+          # Skip the GitHub Release download — verify the binary this branch
+          # actually produces, not whatever is in the latest published release.
+          PRINTMD_LOCAL_BINARY: ${{ github.workspace }}\print-md-windows-x64.exe
+          # Still set the workflow token in case anything still needs it
+          # (e.g. future installer steps that talk to the API).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./scripts/install.ps1
 

@@ -7,10 +7,14 @@
 #   irm https://raw.githubusercontent.com/dimm-city/print-md/main/scripts/install.ps1 | iex
 #
 # Optional environment variables:
-#   PRINTMD_VERSION   override the version to install (e.g. v0.2.0-beta.5)
-#   GITHUB_TOKEN      auth token (only needed while the repo is private)
-#   PRINTMD_PREFIX    install dir override
-#                     (default: %LOCALAPPDATA%\Programs\print-md)
+#   PRINTMD_VERSION        override the version to install (e.g. v0.2.0-beta.5)
+#   GITHUB_TOKEN           auth token (only needed while the repo is private)
+#   PRINTMD_PREFIX         install dir override
+#                          (default: %LOCALAPPDATA%\Programs\print-md)
+#   PRINTMD_LOCAL_BINARY   path to a locally-built print-md.exe. When set,
+#                          the script skips the GitHub Release download and
+#                          installs from this path instead. Used by CI to
+#                          verify the binary produced by the current branch.
 
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -229,6 +233,13 @@ function Initialize-PrintMdDirectory {
         }
     }
 
+    # "local" tag = installed from a local binary (no published release to
+    # pull a zipball from). Skip the examples download cleanly.
+    if ($Tag -eq "local") {
+        Write-Info "Local binary install — skipping examples download"
+        return
+    }
+
     # Pull the source archive for the same tag and extract just `examples/`.
     $archiveUrl = "https://api.github.com/repos/$Repo/zipball/$Tag"
     $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("print-md-archive-" + [System.Guid]::NewGuid().ToString("N"))
@@ -315,14 +326,29 @@ function Main {
     $assetName = Get-PrintMdAsset
     Write-Info "Detected platform: windows-x64"
 
-    Write-Step "Resolving release..."
-    $release = Resolve-Release
-    $tag = $release.tag_name
-    Write-Info "Release: $tag"
+    $localBinary = $env:PRINTMD_LOCAL_BINARY
+    if ($localBinary) {
+        Write-Step "Installing local binary..."
+        if (-not (Test-Path -LiteralPath $localBinary -PathType Leaf)) {
+            throw "PRINTMD_LOCAL_BINARY is set but the file does not exist: $localBinary"
+        }
+        if (-not (Test-Path $InstallPrefix)) {
+            New-Item -ItemType Directory -Path $InstallPrefix -Force | Out-Null
+        }
+        $script:PrintMdBin = Join-Path $InstallPrefix "print-md.exe"
+        Copy-Item -LiteralPath $localBinary -Destination $script:PrintMdBin -Force
+        Write-Success "Installed binary to $($script:PrintMdBin)"
+        $tag = "local"
+    } else {
+        Write-Step "Resolving release..."
+        $release = Resolve-Release
+        $tag = $release.tag_name
+        Write-Info "Release: $tag"
 
-    $assetUrl = Get-AssetUrl -Release $release -AssetName $assetName
+        $assetUrl = Get-AssetUrl -Release $release -AssetName $assetName
 
-    Install-Binary -Url $assetUrl -Tag $tag -AssetName $assetName
+        Install-Binary -Url $assetUrl -Tag $tag -AssetName $assetName
+    }
     Test-Install
     Add-ToUserPath -Dir $InstallPrefix
     try { Initialize-PrintMdDirectory -Tag $tag } catch { Write-Info "Examples setup failed: $_" }
