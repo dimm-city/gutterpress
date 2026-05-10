@@ -147,12 +147,12 @@ A compact, high-contrast H3 heading for use inside dense multi-column reference 
 
 A full-width atmospheric block for in-world voice that establishes the emotional or cultural register of a section. Typically placed at the top of a chapter or faction entry before the rules content begins.
 
-**Syntax** — `::: wrapper {.vibe-callout}` … `:::` in markdown, or raw `<div class="vibe-callout">` in HTML
+**Syntax** — `::: wrapper {.dc-vibe-callout}` … `:::` in markdown, or raw `<div class="dc-vibe-callout">` in HTML
 
-<div class="vibe-callout"><p>The Gutterdruid doesn't fight because they have to — they fight because something feral in them still remembers what it felt like to be free.</p></div>
+<div class="dc-vibe-callout"><p>The Gutterdruid doesn't fight because they have to — they fight because something feral in them still remembers what it felt like to be free.</p></div>
 
 ```markdown
-::: wrapper {.vibe-callout}
+::: wrapper {.dc-vibe-callout}
 The Gutterdruid doesn't fight because they have to — they fight because
 something feral in them still remembers what it felt like to be free.
 :::
@@ -164,12 +164,12 @@ something feral in them still remembers what it felt like to be free.
 
 A second-person backstory block that addresses the reader as their character, used for origin and background entries. Draws the reader into the fiction by making them the subject of the narrative.
 
-**Syntax** — `<div class="origin-callout">…</div>`
+**Syntax** — `<div class="dc-origin-callout">…</div>`
 
-<div class="origin-callout"><p>You didn't choose the street — the street chose you. Before the grafts, before the crew, there was just hunger and the particular talent for surviving what should have killed you. That's enough. That's always been enough.</p></div>
+<div class="dc-origin-callout"><p>You didn't choose the street — the street chose you. Before the grafts, before the crew, there was just hunger and the particular talent for surviving what should have killed you. That's enough. That's always been enough.</p></div>
 
 ```html
-<div class="origin-callout">
+<div class="dc-origin-callout">
   <p>You didn't choose the street — the street chose you. Before the
   grafts, before the crew, there was just hunger and the particular talent
   for surviving what should have killed you. That's enough. That's always
@@ -183,13 +183,13 @@ A second-person backstory block that addresses the reader as their character, us
 
 A compact NPC stat block nested inside a `.sidebar` float. Displays name, role, and key stats in a tight format suited for margin or column-gutter placement.
 
-**Syntax** — `<div class="sidebar"><div class="human-callout">…</div></div>`
+**Syntax** — `<div class="sidebar"><div class="dc-human-callout">…</div></div>`
 
-<div class="sidebar"><div class="human-callout"><p><strong>Rennick "Two-Tab" Farrow</strong></p><p>Fixer. HP 8 | DEF 11 | Intimidate +4.</p></div></div>
+<div class="sidebar"><div class="dc-human-callout"><p><strong>Rennick "Two-Tab" Farrow</strong></p><p>Fixer. HP 8 | DEF 11 | Intimidate +4.</p></div></div>
 
 ```html
 <div class="sidebar">
-  <div class="human-callout">
+  <div class="dc-human-callout">
     <p><strong>Rennick "Two-Tab" Farrow</strong></p>
     <p>Fixer. HP 8 | DEF 11 | Intimidate +4.</p>
   </div>
@@ -202,12 +202,12 @@ A compact NPC stat block nested inside a `.sidebar` float. Displays name, role, 
 
 A named equipment block for weapons, armor, and notable items. Groups the item name, type, and mechanical properties in a scannable panel distinct from body prose.
 
-**Syntax** — `<div class="gear-callout">…</div>`
+**Syntax** — `<div class="dc-gear-callout">…</div>`
 
-<div class="gear-callout"><p><strong>Ripper Blades (Mk II)</strong></p><p>Melee. Damage 1d8+STR. <em>Serrated:</em> on a critical hit, the target bleeds for 1d4 damage at the start of their next turn.</p></div>
+<div class="dc-gear-callout"><p><strong>Ripper Blades (Mk II)</strong></p><p>Melee. Damage 1d8+STR. <em>Serrated:</em> on a critical hit, the target bleeds for 1d4 damage at the start of their next turn.</p></div>
 
 ```html
-<div class="gear-callout">
+<div class="dc-gear-callout">
   <p><strong>Ripper Blades (Mk II)</strong></p>
   <p>Melee. Damage 1d8+STR. <em>Serrated:</em> on a critical hit, the
   target bleeds for 1d4 damage at the start of their next turn.</p>
@@ -320,12 +320,12 @@ Fenced code blocks for CSS snippets, stat expressions, or any literal syntax. Re
 
 An in-world location description written in present tense, as if the reader is arriving on-site. Use on location pages and before encounter content to establish place before mechanics begin.
 
-**Syntax** — `::: wrapper {.visit-callout}` … `:::` in markdown, or raw `<div class="visit-callout">` in HTML
+**Syntax** — `::: wrapper {.dc-visit-callout}` … `:::` in markdown, or raw `<div class="dc-visit-callout">` in HTML
 
-<div class="visit-callout"><p>The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers brush shoulders between stalls selling augment cartridges, black-market permits, and fried synthetic crab. If someone's selling it somewhere in Dimm City, it started here.</p></div>
+<div class="dc-visit-callout"><p>The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers brush shoulders between stalls selling augment cartridges, black-market permits, and fried synthetic crab. If someone's selling it somewhere in Dimm City, it started here.</p></div>
 
 ```html
-<div class="visit-callout">
+<div class="dc-visit-callout">
   <p>The Neon Bazaar doesn't close. Day shift workers and third-shift
   scavengers brush shoulders between stalls selling augment cartridges,
   black-market permits, and fried synthetic crab.</p>
@@ -338,16 +338,16 @@ An in-world location description written in present tense, as if the reader is a
 
 A Dream Master–addressed instruction block, visually distinct from player-facing notes. Use for GM guidance, scene hooks, and pacing advice that should not be read aloud at the table.
 
-**Syntax** — raw HTML `<div class="note-callout">` with a `<strong class="note-label">` header followed by the body paragraph
+**Syntax** — raw HTML `<div class="dc-note-callout">` with a `<strong class="dc-note-label">` header followed by the body paragraph
 
-<div class="note-callout">
-  <strong class="note-label">Dream Master Note</strong>
+<div class="dc-note-callout">
+  <strong class="dc-note-label">Dream Master Note</strong>
   <p>If a player hasn't chosen their starting gear by the end of session zero, hand them a Scavenger Pack and move on. Gear anxiety is real but the game shouldn't wait for it.</p>
 </div>
 
 ```html
-<div class="note-callout">
-  <strong class="note-label">Dream Master Note</strong>
+<div class="dc-note-callout">
+  <strong class="dc-note-label">Dream Master Note</strong>
   <p>If a player hasn't chosen their starting gear by the end of session zero,
   hand them a Scavenger Pack and move on.</p>
 </div>
@@ -481,12 +481,12 @@ The five-rung d20 result table used for all rolls in Dimm City. Each row is colo
 | `.dc-tape` | `<div>` | Tape-strip section divider for within-page breaks |
 | `.dc-tape.flush` | `<div>` | Tape divider extended edge to edge |
 | `.dc-section-h3` | `<h3>` | Compact reference H3 for multi-column dense layouts |
-| `.vibe-callout` | `<div>` | Full-width atmospheric callout for in-world voice |
-| `.origin-callout` | `<div>` | Second-person backstory block for origin and background entries |
-| `.human-callout` | `<div>` (inside `.sidebar`) | NPC stat block nested in a sidebar float |
-| `.gear-callout` | `<div>` | Named equipment or item panel |
-| `.visit-callout` | `<div>` | Present-tense in-world location description |
-| `.note-callout` | `<div>` | Dream Master–addressed admonition block with `.note-label` header |
+| `.dc-vibe-callout` | `<div>` | Full-width atmospheric callout for in-world voice |
+| `.dc-origin-callout` | `<div>` | Second-person backstory block for origin and background entries |
+| `.dc-human-callout` | `<div>` (inside `.sidebar`) | NPC stat block nested in a sidebar float |
+| `.dc-gear-callout` | `<div>` | Named equipment or item panel |
+| `.dc-visit-callout` | `<div>` | Present-tense in-world location description |
+| `.dc-note-callout` | `<div>` | Dream Master–addressed admonition block with `.dc-note-label` header |
 | `.terms` | `<div>` | Glossary wrapper containing one or more `.terms.item` children |
 | `.terms.item` | `<div>` | Individual term definition with `<strong>` label and `<p>` body |
 | `.dc-steps` | `<ol>` | Zero-padded numbered procedure list with `.dc-step-no` spans |

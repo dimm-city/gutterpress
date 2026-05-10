@@ -76,11 +76,11 @@ The `@skill` / `@end-skill` macro generates the full card HTML automatically. Us
 
 AP chips appear inline inside ability blocks. Three variants signal cost type at a glance:
 
-<span class="ap-tag free dc-ap">0 AP</span> — Free action (crimson fill).
+<span class="dc-ap free">0 AP</span> — Free action (crimson fill).
 
-<span class="ap-tag dc-ap">2 AP</span> — Standard cost (HUD green).
+<span class="dc-ap">2 AP</span> — Standard cost (HUD green).
 
-<span class="ap-tag var dc-ap">VAR</span> — Variable cost (magenta fill).
+<span class="dc-ap var">VAR</span> — Variable cost (magenta fill).
 
 ---
 
@@ -307,28 +307,28 @@ Five clip-path shapes for the card tab and body corners. Set `variant="N"` on th
 <div style="display:flex;flex-wrap:wrap;gap:16px;margin:0.1in 0;">
 
 <div class="dc-skill-card" style="width:330px;flex-shrink:0;">
-  <div class="card-tab dc-card-tab v1"><span class="tab-title dc-tab-title">Variant 1</span><span class="tab-tier dc-tab-tier">V1</span></div>
-  <div class="card-body dc-card-body v1"><div class="card-inner dc-card-inner"><div class="ability dc-ability"><span class="ap-tag dc-ap">2 AP</span><p class="ability-text dc-ability-text dc-prose"><strong>Default.</strong> Right-diagonal tab, bottom-right notch body. The standard shape used on all @skill cards unless overridden.</p></div></div></div>
+  <div class="dc-card-tab v1"><span class="dc-tab-title">Variant 1</span><span class="dc-tab-tier">V1</span></div>
+  <div class="dc-card-body v1"><div class="dc-card-inner"><div class="dc-ability"><span class="dc-ap">2 AP</span><p class="dc-ability-text dc-prose"><strong>Default.</strong> Right-diagonal tab, bottom-right notch body. The standard shape used on all @skill cards unless overridden.</p></div></div></div>
 </div>
 
 <div class="dc-skill-card" style="width:330px;flex-shrink:0;">
-  <div class="card-tab dc-card-tab v2"><span class="tab-title dc-tab-title">Variant 2</span><span class="tab-tier dc-tab-tier">V2</span></div>
-  <div class="card-body dc-card-body v2"><div class="card-inner dc-card-inner"><div class="ability dc-ability"><span class="ap-tag dc-ap">2 AP</span><p class="ability-text dc-ability-text dc-prose"><strong>Sharp angular.</strong> Diagonal cuts on all four tab corners and both body bottom corners.</p></div></div></div>
+  <div class="dc-card-tab v2"><span class="dc-tab-title">Variant 2</span><span class="dc-tab-tier">V2</span></div>
+  <div class="dc-card-body v2"><div class="dc-card-inner"><div class="dc-ability"><span class="dc-ap">2 AP</span><p class="dc-ability-text dc-prose"><strong>Sharp angular.</strong> Diagonal cuts on all four tab corners and both body bottom corners.</p></div></div></div>
 </div>
 
 <div class="dc-skill-card" style="width:330px;flex-shrink:0;">
-  <div class="card-tab dc-card-tab v3"><span class="tab-title dc-tab-title">Variant 3</span><span class="tab-tier dc-tab-tier">V3</span></div>
-  <div class="card-body dc-card-body v3"><div class="card-inner dc-card-inner"><div class="ability dc-ability"><span class="ap-tag dc-ap">2 AP</span><p class="ability-text dc-ability-text dc-prose"><strong>Asymmetric tech.</strong> Top-left step on tab, large single diagonal on body.</p></div></div></div>
+  <div class="dc-card-tab v3"><span class="dc-tab-title">Variant 3</span><span class="dc-tab-tier">V3</span></div>
+  <div class="dc-card-body v3"><div class="dc-card-inner"><div class="dc-ability"><span class="dc-ap">2 AP</span><p class="dc-ability-text dc-prose"><strong>Asymmetric tech.</strong> Top-left step on tab, large single diagonal on body.</p></div></div></div>
 </div>
 
 <div class="dc-skill-card" style="width:330px;flex-shrink:0;">
-  <div class="card-tab dc-card-tab v4"><span class="tab-title dc-tab-title">Variant 4</span><span class="tab-tier dc-tab-tier">V4</span></div>
-  <div class="card-body dc-card-body v4"><div class="card-inner dc-card-inner"><div class="ability dc-ability"><span class="ap-tag dc-ap">2 AP</span><p class="ability-text dc-ability-text dc-prose"><strong>Soft angular.</strong> Shallow corner cuts, more restrained than v1/v2.</p></div></div></div>
+  <div class="dc-card-tab v4"><span class="dc-tab-title">Variant 4</span><span class="dc-tab-tier">V4</span></div>
+  <div class="dc-card-body v4"><div class="dc-card-inner"><div class="dc-ability"><span class="dc-ap">2 AP</span><p class="dc-ability-text dc-prose"><strong>Soft angular.</strong> Shallow corner cuts, more restrained than v1/v2.</p></div></div></div>
 </div>
 
 <div class="dc-skill-card" style="width:330px;flex-shrink:0;">
-  <div class="card-tab dc-card-tab v5"><span class="tab-title dc-tab-title">Variant 5</span><span class="tab-tier dc-tab-tier">V5</span></div>
-  <div class="card-body dc-card-body v5"><div class="card-inner dc-card-inner"><div class="ability dc-ability"><span class="ap-tag dc-ap">2 AP</span><p class="ability-text dc-ability-text dc-prose"><strong>Scooped futuristic.</strong> Center notch on tab top, pinched bottom corners on body.</p></div></div></div>
+  <div class="dc-card-tab v5"><span class="dc-tab-title">Variant 5</span><span class="dc-tab-tier">V5</span></div>
+  <div class="dc-card-body v5"><div class="dc-card-inner"><div class="dc-ability"><span class="dc-ap">2 AP</span><p class="dc-ability-text dc-prose"><strong>Scooped futuristic.</strong> Center notch on tab top, pinched bottom corners on body.</p></div></div></div>
 </div>
 
 </div>
@@ -343,14 +343,14 @@ Five clip-path shapes for the card tab and body corners. Set `variant="N"` on th
 | Spray Banner | `## Title {.dc-spray}` | `dc-spray` |
 | Spec Tweak Rule | `### Title {.dc-spec-tweak .no-top}` | `dc-spec-tweak`, `no-top` |
 | Skill Card (outer) | `@skill … @end-skill` macro | `dc-skill-card` |
-| Card Tab | Generated by macro | `card-tab`, `dc-card-tab` |
-| Tab Title | Generated by macro | `tab-title`, `dc-tab-title` |
-| Tab Tier | Generated by macro | `tab-tier`, `dc-tab-tier` |
-| Flavor Text | Generated by macro | `flavor`, `dc-flavor` |
-| Ability Row | Generated by macro | `ability`, `dc-ability` |
-| AP Chip — Free | `<span class="ap-tag free dc-ap">` | `ap-tag free dc-ap` |
-| AP Chip — Standard | `<span class="ap-tag dc-ap">` | `ap-tag dc-ap` |
-| AP Chip — Variable | `<span class="ap-tag var dc-ap">` | `ap-tag var dc-ap` |
+| Card Tab | Generated by macro | `dc-card-tab` |
+| Tab Title | Generated by macro | `dc-tab-title` |
+| Tab Tier | Generated by macro | `dc-tab-tier` |
+| Flavor Text | Generated by macro | `dc-flavor` |
+| Ability Row | Generated by macro | `dc-ability` |
+| AP Chip — Free | `<span class="dc-ap free">` | `dc-ap free` |
+| AP Chip — Standard | `<span class="dc-ap">` | `dc-ap` |
+| AP Chip — Variable | `<span class="dc-ap var">` | `dc-ap var` |
 | At-a-Glance Cards | Raw HTML | `at-a-glance-cards`, `at-a-glance-card` |
 | Class Tag | `<span class="tag">Label</span>` | `tag` |
 | DC Path Sticker | `<span class="dc-path-sticker">AUG1</span>` | `dc-path-sticker` |
@@ -363,4 +363,4 @@ Five clip-path shapes for the card tab and body corners. Set `variant="N"` on th
 | Sub-header Sticker | auto via `@skill`; raw HTML fallback | `dc-sub-header`, `flush` |
 | Stamp — Default | `<span class="dc-stamp">TEXT</span>` | `dc-stamp` |
 | Stamp — Classified | `<span class="dc-stamp classified">TEXT</span>` | `dc-stamp`, `classified` |
-| Clip-Path v1–v5 | `variant="1"` through `variant="5"` on `@skill` | `dc-card-tab v1`…`v5`, `dc-card-body v1`…`v5` |
+| Clip-Path v1–v5 | `variant="1"` through `variant="5"` on `@skill` | `dc-card-tab v1`–`v5`, `dc-card-body v1`–`v5` |

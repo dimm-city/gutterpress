@@ -501,29 +501,7 @@ ul li::before {
 }
 .roll-surreal::before { content: '∿ '; opacity: 1; }
 
-/* ============================================================================
-   CARD-BODY — the canonical rulebook ability card surface
-   ============================================================================ */
-.card {
-  background: var(--paper-cream);
-  border: 2px solid var(--ink);
-  padding: 1.25rem 1rem;
-  position: relative;
-  margin-bottom: 1rem;
-  /* folded from legacy/cards.css PARTIAL */
-  padding-bottom: 1px;
-}
-.card::after {
-  content: '';
-  position: absolute;
-  inset: 4px;
-  border: 1px solid var(--paper-aged);
-  pointer-events: none;
-  z-index: 0;
-}
-.card > * { position: relative; z-index: 1; }
-
-/* field-guide: folded from legacy/cards.css */
+/* .card / .card-group legacy block removed — dc-card-body / dc-card-inner carry these styles */
 
 /* Chapter-opening epigraph styling. No shared.css peer. */
 .chapter-start>blockquote:first-of-type {
@@ -532,101 +510,6 @@ ul li::before {
   text-transform: uppercase;
   margin-top: 0;
   margin-bottom: 0.2in;
-}
-
-/* Adjacent card spacing. */
-.card+.card {
-  margin-top: 0.15in;
-}
-
-/* .card-group GAP — not covered by shared.css .card rule. */
-.card-group {
-  position: relative;
-  margin-bottom: var(--space-2xl);
-  padding-bottom: 1px;
-  background-color: var(--card-bg);
-}
-
-/* Card/group header styling. LIVE in chapter-02.md old-style content. */
-.card>h3,
-.card>h4,
-.card-group h3,
-.card-group h4 {
-  color: var(--card-header-color);
-  font-size: var(--base-font-size);
-  margin-bottom: 0;
-  padding-left: var(--space-2xl);
-  padding-block: 0.25em;
-  position: relative;
-  background-color: var(--card-header-bg);
-}
-
-/* Card body paragraph. LIVE in chapter-02.md. */
-.card>p {
-  padding: 0.15in;
-  margin: 0;
-  font-size: var(--card-font-size);
-  height: var(--card-body-height);
-  background-color: var(--card-bg);
-}
-
-/* Card-group body paragraph. */
-.card-group h3+p,
-.card-group h4+p {
-  border: var(--card-border-color) var(--card-border-width) solid;
-  margin-top: -1px;
-  padding-inline: var(--space-sm);
-  padding-bottom: var(--space-sm);
-  margin-bottom: var(--space-2xl);
-  font-size: var(--card-font-size);
-  height: var(--card-body-height);
-}
-
-/* Horizontal rule inside card. */
-.card hr {
-  width: 95%;
-  border-width: 1px;
-  border-collapse: collapse;
-  z-index: -2;
-}
-
-/* Sub-section heading inside card. */
-.card h5 {
-  width: 95%;
-  margin-inline: auto;
-  padding-left: var(--space-2xl);
-  border-bottom: 1px solid var(--card-border-color);
-}
-
-/* Table inside card. */
-.card table {
-  width: 90%;
-  margin-inline: var(--space-2xl);
-  font-size: var(--fs-body-sm);
-  margin-bottom: var(--space-2xl);
-}
-
-/* Table header inside card. */
-.card table th {
-  text-align: left;
-  padding: 5pt 8pt;
-}
-
-/* First table column centered. */
-.card table th:first-of-type {
-  text-align: center;
-}
-
-/* Table data cell inside card. */
-.card table td {
-  padding: 5pt 8pt;
-}
-
-/* First body column — secondary-color accent, centered. */
-.card table tbody tr td:first-of-type {
-  color: var(--secondary-color);
-  text-align: center;
-  font-weight: var(--fw-semibold);
 }
 
 /* Paper grain — fixed overlay */
@@ -1962,14 +1845,16 @@ body::after {
 
 .page.page-intro.intro blockquote,
 .page.page-chapter-start.chapter-start blockquote,
-.visit-callout {
+.dc-visit-callout {
   font-family: var(--font-quote);
   font-style: italic;
   color: var(--ink-smoke);
   border-left: 3px solid var(--crimson);
   background: var(--paper-light);
-  padding: 0.5rem 0.75rem;
-  margin: 0.75rem 0;
+  padding: 8pt 9pt;
+  margin: 9pt 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 /* ---------------------------------------------------------------------------
@@ -2304,244 +2189,7 @@ body::after {
   padding: 0;
 }
 
-/* field-guide: folded from legacy/learning-path.css */
-/* ---------------------------------------------------------------------------
-   ABILITY CARD — .ability wrappers in chapter-02.md (255 instances)
-   All rules below are GAP vs shared.css (shared uses .dc-ability, not .ability).
-   Dead selector halves (.ability-card) retained as harmless where noted.
-   --------------------------------------------------------------------------- */
-
-/* LIVE via chapter-02.md "::: ability" wrappers. .ability-card harmless. */
-.ability,
-.ability-card {
-  position: relative;
-  break-inside: auto;
-  page-break-inside: auto;
-}
-
-/* Keep-together override for individual abilities. */
-.ability.keep-together,
-.ability-card.keep-together {
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-
-/* Adjacent ability spacing. .ability+.ability LIVE in chapter-02.md.
-   .ability-card combinations harmless. */
-.ability+.ability,
-.ability-card+.ability-card,
-.ability+.ability-card,
-.ability-card+.ability {
-  border-top: var(--bw-medium) solid var(--accent-color2);
-  padding-top: 0.1in;
-}
-
-/* Counter increment for the "TIER N" badge in .ability h4::after. LIVE. */
-.ability:not(.continued)::before {
-  content: "";
-  counter-increment: ability-level;
-}
-
-/* LIVE in chapter-02.md. */
-.ability blockquote {
-  text-align: center;
-  font-size: var(--base-font-size);
-  margin-block: var(--small-gap);
-  padding-left: 0.1in;
-}
-
-/* .ability h4 LIVE in chapter-02.md. shared.css has .dc-ability h4 (different selector). */
-.ability h4,
-.ability-card h4 {
-  font-size: 18pt;
-  font-weight: var(--fw-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--card-header-color);
-  background-color: var(--card-header-bg);
-  padding-left: var(--space-2xl);
-  padding-block: 0.25em;
-  margin-bottom: 0;
-  border-left: 5px solid var(--secondary-color);
-}
-
-/* "TIER N" badge using ability-level counter. LIVE. */
-.ability h4::after {
-  content: "TIER " counter(ability-level);
-  color: var(--page-background-color);
-  background: var(--secondary-color);
-  display: inline-block;
-  position: absolute;
-  z-index: 10;
-  font-size: 13pt;
-  font-weight: var(--fw-bold);
-  padding: 0.08in 0.15in;
-  border-radius: 0.04in;
-  top: var(--small-gap);
-  right: var(--space-2xl);
-}
-
-/* Continued ability marker. LIVE in chapter-02.md and Wirephreak. */
-.ability.continued h4::before {
-  content: "cont'd:> ";
-}
-
-/* Sub-section heading inside ability. LIVE. */
-.ability h5 {
-  margin-top: 0.08in;
-  padding-top: 0.06in;
-  margin-bottom: 0.04in;
-  font-size: 13pt;
-  font-weight: var(--fw-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--secondary-color);
-  border-top: 1px solid var(--hud-border-soft);
-}
-
-/* Accent color for strong inside abilities. LIVE. */
-.ability strong {
-  color: var(--secondary-color);
-}
-
-/* AP cost badge styling. LIVE. shared.css uses .dc-ap (different vocab). */
-.ability ol li>strong:first-of-type,
-.ability p>strong:first-child {
-  font-size: 14pt;
-  font-weight: var(--fw-bold);
-  color: var(--secondary-color);
-  background: var(--surface-tint-2);
-  padding: 0.04in 0.08in;
-  border-radius: 0.03in;
-  display: inline-block;
-}
-
-/* .ability>p LIVE. .ability-card>p harmless. */
-.ability>p,
-.ability-card>p {
-  max-width: 95%;
-  box-sizing: content-box;
-  margin-bottom: 0.04in;
-  padding-block: 0.08in !important;
-  padding-bottom: 0.08in !important;
-  line-height: 1.5;
-}
-
-/* Trailing padding for ability body. LIVE. */
-.ability ul,
-.ability>p:last-of-type {
-  padding-bottom: var(--small-gap);
-}
-
-/* Horizontal indentation for ability list. LIVE. */
-.ability ul {
-  margin-inline: var(--small-gap);
-}
-
-/* LIVE. */
-.ability ol {
-  font-size: var(--base-font-size);
-  width: 95%;
-  display: table;
-  list-style: none;
-  padding-top: var(--small-gap);
-}
-
-/* LIVE. */
-.ability ol li {
-  position: relative;
-  display: table-row;
-}
-
-/* Top-border separator above each list item. LIVE. */
-.ability ol li::before {
-  border-top: 1px solid var(--accent-color2);
-  content: "";
-  display: block;
-  position: absolute;
-  left: 0;
-  top: -5px;
-  width: 100%;
-}
-
-/* Suppress default list marker. LIVE. */
-.ability ol li::marker {
-  display: none;
-}
-
-/* AP label cell — table-cell layout. LIVE. */
-.ability ol li strong:first-of-type {
-  display: table-cell;
-  text-wrap: nowrap;
-  padding-right: var(--space-2xl);
-}
-
-/* Row bottom gap. LIVE. */
-.ability ol li::after {
-  content: "";
-  display: block;
-  margin-bottom: 0.04in;
-}
-
-/* Nested list inside ability row. LIVE. */
-.ability ol li>ul {
-  margin-top: var(--space-2xl);
-  padding-left: 0;
-  margin-left: 0;
-}
-
-/* Two-column ability list. LIVE. shared.css uses .dc-skill-card .two-column-list (different parent). */
-.ability .two-column-list ol,
-.two-col-list ol {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  column-gap: var(--small-gap);
-}
-
-/* .ability table LIVE. .ability-card table and .ability-table harmless. */
-.ability table,
-.ability-card table,
-.ability-table {
-  margin-top: 0.08in;
-  margin-bottom: 0.08in;
-  padding-top: 0;
-  width: fit-content;
-  padding-inline: var(--small-gap);
-  font-size: var(--base-font-size);
-  border-collapse: collapse;
-}
-
-/* Table thead. .ability version LIVE. */
-.ability table thead,
-.ability-table thead {
-  margin-top: 0;
-  padding-top: 0;
-  height: min-content;
-}
-
-/* Table header. .ability version LIVE. */
-.ability table th,
-.ability-card table th,
-.ability-table th {
-  padding: 5pt 8pt;
-  border-bottom: 1px solid var(--accent-color2);
-}
-
-/* Table data. .ability version LIVE. */
-.ability table td,
-.ability-card table td,
-.ability-table td {
-  padding: 5pt 8pt;
-  height: min-content;
-}
-
-/* First body column — accent color. .ability version LIVE. */
-.ability table tbody>tr>td:first-of-type,
-.ability-table tbody>tr>td:first-of-type {
-  color: var(--secondary-color);
-  text-align: center;
-  font-weight: var(--fw-semibold);
-}
+/* .ability / .ability-card legacy block removed — dc-ability / dc-card-inner carry these styles in the dc-design-guide */
 
 /* Layout mode modifiers — opt-in classes that pin all skill-cards inside the
    ancestor to a specific width.
@@ -2690,33 +2338,39 @@ body::after {
   letter-spacing: 0.04em;
 }
 
-.human-callout {
+.dc-human-callout {
   background: var(--paper-cream);
   border: 2px solid var(--ink);
-  padding: 10px 12px;
-  margin-top: 14px;
+  padding: 8pt 9pt;
+  margin-top: 11pt;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
-.vibe-callout {
-  padding: 0.12rem 0.18rem;
+.dc-vibe-callout {
+  padding: var(--space-sm) var(--space-md);
   border-left: 3px solid var(--orange);
   background: var(--paper-light);
   font-style: italic;
-  font-size: 0.92rem;
+  font-size: 11pt;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
-.origin-callout {
-  padding: 0.5rem 0.75rem;
+.dc-origin-callout {
+  padding: 6pt 9pt;
   border-left: 3px solid var(--crimson);
   background: var(--paper-light);
   font-style: italic;
   color: var(--ink-smoke);
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
-.gear-callout {
-  border: 1.5px solid var(--paper-aged);
+.dc-gear-callout {
+  border: 1.5px solid var(--border-hairline);
   background: var(--paper-cream);
-  padding: 0.65rem 0.75rem;
+  padding: var(--space-lg) var(--space-xl);
   float: none;
   width: 90%;
   margin: 0.12in auto 0.18in;
@@ -2726,28 +2380,30 @@ body::after {
   page-break-inside: avoid;
 }
 
-.note-callout {
-  margin-top: 0.75rem;
-  padding: 0.65rem 0.75rem;
+.dc-note-callout {
+  margin-top: 9pt;
+  padding: var(--space-lg) var(--space-xl);
   background: var(--paper-cream);
   border-left: 3px solid var(--crimson);
-  font-size: 0.9rem;
+  font-size: 9pt;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
-.note-callout p {
+.dc-note-callout p {
   margin: 0;
   font-style: italic;
 }
 
-.note-label {
+.dc-note-label {
   display: block;
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 8pt;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--crimson);
   font-weight: 600;
-  margin-bottom: 0.3rem;
+  margin-bottom: 4pt;
 }
 
 /* ────────────────────────────────────────────────────────────
