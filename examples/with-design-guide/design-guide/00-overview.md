@@ -1,3 +1,5 @@
+@chapter #ch-overview .overview
+
 # Design Guide
 
 <div class="lede">This is the visual reference for <em>Your Book Title</em>. It documents the typography, color palette, components, and page templates — a single source of truth for authors, editors, and designers.</div>

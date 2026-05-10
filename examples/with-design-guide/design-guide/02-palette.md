@@ -1,3 +1,5 @@
+@chapter #ch-palette .palette
+
 # Color Palette
 
 <div class="lede">The book uses a small, intentional palette defined entirely in CSS custom properties. Change any token in <code>§ 1 BRAND TOKENS</code> of <code>guide.css</code> and every rule that references it updates automatically.</div>

@@ -1,15 +1,24 @@
 /* =============================================================================
    YOUR BOOK — Design Guide Stylesheet  (guide.css)
+   ─────────────────────────────────────────────────────────────────────────────
+   This single file powers both your book PDF and the published design guide.
+   It is structured in eight sections — only § 1 and § 8 need to be edited
+   for most projects. The rest is a battle-tested print system you inherit.
 
-   This file powers both your book PDF and the published design guide.
-   Customize § 1 BRAND TOKENS to apply your project's branding — every
-   other rule references those variables, so a full visual rebrand is
-   one section edit away.
+   § 1  BRAND TOKENS       ← Start here. Change colors, fonts, type scale.
+   § 2  PAGE SETUP         ← Page geometry, running headers, folios.
+   § 3  BASE TYPOGRAPHY    ← Headings, body, links, code, tables.
+   § 4  COMPONENTS         ← Callouts, sidebars, pull quotes, spec blocks.
+   § 5  LAYOUT UTILITIES   ← Columns, floats, page breaks, cover page.
+   § 6  DESIGN GUIDE CHROME← Swatches, specimen labels, example frames.
+   § 7  CHAPTER OVERRIDES  ← Chapter-scoped rules via @chapter markers.
+   § 8  YOUR BOOK LAYER    ← Add your book-specific rules here.
 
-   Workflow:
-     1. Edit the custom properties in § 1 BRAND TOKENS.
+   Quick start:
+     1. Edit § 1 BRAND TOKENS — colors, fonts, type scale.
      2. Run `print-md preview design-guide` to see changes live.
-     3. Commit — book and guide stay in sync automatically.
+     3. Add book-specific rules to § 8 YOUR BOOK LAYER.
+     4. Commit — book and guide stay in sync automatically.
    ============================================================================= */
 
 
@@ -52,6 +61,13 @@
   --border-tip:    3pt solid #2a8a56;
   --radius-sm:     3pt;
   --radius-md:     5pt;
+
+  /* ── Spacing scale ──────────────────────────────────────────── */
+  --space-xs:  0.35em;  /* tight: callout label gap, chip margin  */
+  --space-sm:  0.65em;  /* standard: callout padding, list gap    */
+  --space-md:  1em;     /* paragraph: callout/spec margins        */
+  --space-lg:  1.5em;   /* generous: pull quote, section margin   */
+  --space-xl:  2em;     /* wide: hr margin, section separation    */
 }
 
 
@@ -59,7 +75,8 @@
    § 2  PAGE SETUP   — geometry, running headers, folios
    ───────────────────────────────────────────────────────────────────────────── */
 
-/* Capture chapter title for running header margin boxes */
+/* string-set captures h1 text into a named string for @page margin boxes below.
+   Paged.js reads this before pagination, so it's always the current chapter. */
 h1 { string-set: chapter-title content(); }
 
 /* ── Default body pages ── */
@@ -228,8 +245,6 @@ h1::before {
   margin: 0 0 0.2em;
   padding-bottom: 0.15em;
   border-bottom: 4pt solid var(--color-accent);
-  height: auto;
-  background: none;
 }
 
 /* Inline specimen — same visual as h1 but no page break or named page */
@@ -262,6 +277,7 @@ h3 {
   color: var(--color-ink);
   margin: 1.3em 0 0.35em;
   break-after: avoid;
+  page-break-after: avoid;
 }
 
 h4 {
@@ -273,6 +289,7 @@ h4 {
   letter-spacing: 0.06em;
   margin: 1.1em 0 0.3em;
   break-after: avoid;
+  page-break-after: avoid;
 }
 
 p {
@@ -308,6 +325,7 @@ pre {
   border-left: var(--border-accent);
   padding: 0.75em 1em;
   margin: 0.75em 0 1.1em;
+  /* both properties required — break-* is spec, page-break-* is Paged.js legacy */
   break-inside: avoid;
   page-break-inside: avoid;
 }
@@ -353,14 +371,13 @@ hr {
 table {
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
   margin: 0.8em 0 1.2em;
   font-size: var(--fs-small);
   break-inside: avoid;
   page-break-inside: avoid;
 }
 
-thead { background-color: var(--color-accent); color: #fff; display: table-header-group; }
+thead { background-color: var(--color-accent); color: #fff; }
 
 th {
   font-family: var(--font-display);
@@ -418,36 +435,36 @@ figcaption {
    Use via container blocks:  ::: callout-note … :::
    ───────────────────────────────────────────────────────────────────────────── */
 
-/* ── Callout: Note / Info ── */
+/* ── Callout base — shared by all variants ── */
 .callout,
-.callout-note {
-  border-left: var(--border-accent);
-  background: var(--color-tint);
+.callout-note,
+.callout-warning,
+.callout-caution,
+.callout-tip {
   padding: 0.65em 0.9em;
   margin: 1em 0;
   break-inside: avoid;
   page-break-inside: avoid;
 }
 
-/* ── Callout: Warning ── */
+/* ── Callout: Note / Info ── */
+.callout,
+.callout-note {
+  border-left: var(--border-accent);
+  background: var(--color-tint);
+}
+
+/* ── Callout: Warning / Caution ── */
 .callout-warning,
 .callout-caution {
   border-left: var(--border-alt);
   background: var(--color-tint-warn);
-  padding: 0.65em 0.9em;
-  margin: 1em 0;
-  break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 /* ── Callout: Tip / Success ── */
 .callout-tip {
   border-left: var(--border-tip);
   background: var(--color-tint-tip);
-  padding: 0.65em 0.9em;
-  margin: 1em 0;
-  break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 /* Callout label — add a <span class="callout-label">NOTE</span> */
@@ -602,17 +619,13 @@ figcaption {
 .break-before { break-before: page;  page-break-before: always; }
 .keep-next    { break-after: avoid;  page-break-after: avoid; }
 
-.img-float-right {
-  float: right;
+.img-float-right,
+.img-float-left {
   width: 44%;
-  margin: 0 0 0.8em 1em;
 }
 
-.img-float-left {
-  float: left;
-  width: 44%;
-  margin: 0 1em 0.8em 0;
-}
+.img-float-right { float: right; margin: 0 0 0.8em 1em; }
+.img-float-left  { float: left;  margin: 0 1em 0.8em 0; }
 
 /* ── Cover page (used on the first page) ── */
 .cover-page {
@@ -699,20 +712,15 @@ figcaption {
   color: var(--color-ink);
 }
 
-.swatch-var {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 7pt;
-  color: var(--color-accent);
-  margin-top: 2pt;
-}
-
+.swatch-var,
 .swatch-hex {
   display: block;
   font-family: var(--font-mono);
   font-size: 7pt;
-  color: var(--color-ink-faint);
 }
+
+.swatch-var { color: var(--color-accent); margin-top: 2pt; }
+.swatch-hex { color: var(--color-ink-faint); }
 
 /* ── Specimen label ── */
 .spec-label {
@@ -811,3 +819,74 @@ a.download {
 }
 
 a.download::after { content: none; }
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 7  CHAPTER-SPECIFIC OVERRIDES
+   Scoped rules using markdown-it-paged @chapter markers.
+   Each chapter wraps its content in <div class="chapter" id="ch-name">.
+   These rules override or extend §3–§6 for a single chapter only.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Chapter wrapper base — transparent block, no width/display side-effects ── */
+.chapter {
+  display: block;
+  width: 100%;
+}
+
+/* ── CLI Reference: fix flag-table column proportioning ── */
+.chapter#ch-cli table {
+  table-layout: fixed;
+}
+
+.chapter#ch-cli td:first-child  { width: 26%; }  /* Flag column */
+.chapter#ch-cli td:nth-child(2) { width: 13%; }  /* Default column */
+/* Description column fills the remaining 61% automatically */
+
+/* ── Palette: ensure swatch grids never split across a page break ── */
+.chapter#ch-palette .palette {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ── Components: keep example frames fully contained ── */
+.chapter#ch-components .example {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ── Markdown Reference: tighten code block spacing for dense reference pages ── */
+.chapter#ch-reference pre {
+  margin: 0.5em 0 0.8em;
+}
+
+/* ── Layout: keep the layout class reference table on one page ── */
+.chapter#ch-layout .token-table {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ── Overview: indent the "Keeping in sync" workflow list ── */
+.chapter#ch-overview ol {
+  margin-left: 1.6em;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 8  YOUR BOOK LAYER
+   Add book-specific rules here. This section is intentionally empty in the
+   starter kit — it's where your customizations live.
+
+   Design principles for this section:
+   • Override only what differs from the defaults in §3–§5.
+   • Prefer scoping to your @chapter IDs: .chapter#ch-name selector
+   • Use tokens from §1 rather than raw values: var(--color-accent)
+   • Keep rules small — if a pattern repeats across chapters, promote it to §4.
+
+   Examples:
+     .chapter#ch-worldbuilding h2 { border-color: var(--color-accent-alt); }
+     .chapter#ch-bestiary table  { font-size: var(--fs-micro); }
+     .cover-page                 { background: var(--color-ink); }
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* your book rules go here */

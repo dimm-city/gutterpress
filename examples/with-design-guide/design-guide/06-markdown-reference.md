@@ -1,3 +1,5 @@
+@chapter #ch-reference .reference
+
 # Markdown Reference
 
 <div class="lede">Every print-md syntax feature with live examples. This chapter is a complete reference — consult it when you can't remember which directive, container, or attribute to use.</div>
@@ -6,23 +8,70 @@
 
 ## Page Layout Markers
 
-The `@` marker system is the primary way to control page flow.
+The `@` marker system controls page flow and generates semantic HTML wrappers. Markers accept `#id`, `.class`, and `key=value` attributes — enabling chapter-scoped CSS rules without touching any selector in the global stylesheet.
+
+**Full attribute syntax** — `@marker #id .class key=value`
+
+```markdown
+@chapter #ch-typography .typography
+@page #pg-intro .opener template=chapter
+@section #sec-scale .type-scale region=main
+```
+
+Generated HTML:
+```html
+<div class="chapter typography" id="ch-typography">
+<div class="page opener" id="pg-intro" data-page="..." data-template="chapter">
+<div class="region type-scale" id="sec-scale" data-section="..." data-region="main">
+```
+
+Chapter IDs unlock precise CSS targeting without specificity battles:
+
+```css
+/* Only affects the CLI chapter's tables — zero global side-effects */
+.chapter#ch-cli table      { table-layout: fixed; }
+.chapter#ch-cli td:first-child { width: 26%; }
+```
+
+---
+
+### @chapter — Chapter Wrapper
+
+Wraps all following content in `<div class="chapter">` until the next `@chapter` or end of document. The h1 inside still drives the CSS page break and running header — `@chapter` provides the structural ID for CSS scoping.
+
+**Syntax** — `@chapter #id .class` before the chapter h1.
+
+```markdown
+@chapter #ch-typography .typography
+
+# Typography
+
+Content of this chapter...
+```
 
 ### @page — New Page
 
-Starts a new page. Optionally accepts CSS class names.
+Wraps content in `<div class="page">`. Use inside a chapter or spread for explicit page-level containers with named CSS targets.
 
-**Syntax** — `@page` alone, or `@page chapter-class` with class names.
+**Syntax** — `@page #id .class` or `@page` alone.
 
 ```markdown
-@page
+@chapter #ch-palette .palette
 
-# New Chapter Title
+# Color Palette
+
+@page #pg-swatches .swatches
+
+## Primary Colors
+
+@page #pg-token-ref .token-ref
+
+## Token Reference
 ```
 
 ### @break — Hard Break
 
-Forces a page break without the `<div class="page">` wrapper.
+Forces a page break without generating a wrapper element.
 
 **Syntax** — `@break` on its own line.
 
@@ -36,30 +85,28 @@ Content starts on the next page.
 
 ### @spread — Two-Page Spread
 
-Groups content into a two-page spread. Use for facing-page layouts where left and right content must stay paired.
+Wraps content in `<div class="spread">`. Use for facing-page layouts where left and right pages must stay paired.
 
-**Syntax** — `@spread` on its own line.
+**Syntax** — `@spread #id .class` before the spread content.
 
 ```markdown
-@spread
+@spread #sp-palette-intro .fullbleed
 
 Content that spans both pages of a spread.
 ```
 
-### @section — Keep Together
+### @section — Region Block
 
-Groups content to prevent page breaks within the block. Equivalent to `break-inside: avoid` in CSS.
+Wraps content in `<div class="region">`. Use to group a logical block within a page — equivalent to `break-inside: avoid` plus an addressable ID.
 
-**Syntax** — `@section` on its own line.
+**Syntax** — `@section #id .class region=name`
 
 ```markdown
-@section
+@section #sec-type-scale .type-scale region=main
 
-This entire block will try to stay on one page.
+## Type Scale
 
-- Item A
-- Item B
-- Item C
+Specimen content here...
 ```
 
 ---

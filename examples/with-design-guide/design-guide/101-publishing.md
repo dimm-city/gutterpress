@@ -1,3 +1,5 @@
+@chapter #ch-cli .cli
+
 # Print-md CLI Reference {#cli-reference}
 
 <div class="lede">Commands for authoring, building, and publishing — updated for print-md v2.0.0. The design guide itself is a first-class output target alongside the book.</div>

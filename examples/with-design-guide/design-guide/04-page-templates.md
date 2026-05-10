@@ -1,3 +1,5 @@
+@chapter #ch-templates .templates
+
 # Page Templates
 
 <div class="lede">Three named page types control the visual treatment and margin box content. Each maps to a CSS <code>@page</code> rule and is triggered by a directive in the markdown source.</div>

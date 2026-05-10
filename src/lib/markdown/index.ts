@@ -101,6 +101,15 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   md.use(markdownItContainer, "container", createNamedContainer("container"));
   md.use(markdownItContainer, "aug", createNamedContainer("aug"));
   md.use(markdownItContainer, "two-column", createNamedContainer("two-column"));
+  md.use(markdownItContainer, "three-column", createNamedContainer("three-column"));
+  /* specific callout variants must be registered before the generic "callout"
+     because markdown-it-container tests in order and "^callout\b" matches all variants */
+  md.use(markdownItContainer, "callout-note", createNamedContainer("callout-note"));
+  md.use(markdownItContainer, "callout-warning", createNamedContainer("callout-warning"));
+  md.use(markdownItContainer, "callout-caution", createNamedContainer("callout-caution"));
+  md.use(markdownItContainer, "callout-tip", createNamedContainer("callout-tip"));
+  md.use(markdownItContainer, "callout", createNamedContainer("callout"));
+  md.use(markdownItContainer, "pull-quote", createNamedContainer("pull-quote"));
 
   // Apply custom plugins from manifest
   if (customPlugins && customPlugins.length > 0) {

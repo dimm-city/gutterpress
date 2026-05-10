@@ -1,3 +1,5 @@
+@chapter #ch-layout .layout
+
 # Layout
 
 <div class="lede">Utilities for multi-column text, image placement, and page-break control. All are CSS classes that can be applied via markdown attributes or container blocks.</div>

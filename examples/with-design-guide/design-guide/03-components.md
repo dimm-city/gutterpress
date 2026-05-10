@@ -1,3 +1,5 @@
+@chapter #ch-components .components
+
 # Components
 
 <div class="lede">Reusable layout blocks authored with triple-colon container syntax. Each section shows the markdown source, a live rendered example, and the CSS class that controls the styling.</div>
