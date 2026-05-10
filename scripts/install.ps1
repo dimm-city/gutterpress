@@ -138,10 +138,36 @@ function Install-PrintMd {
             return $false
         }
 
-        Write-Info "Installing from cloned repository..."
-        bun add -g $script:PrintMdCloneDir
+        # Pack the package into a tarball, then install from the tarball.
+        # Going directory -> bun add directly hits Windows file-lock EBUSY
+        # errors when bun's cache copies the source tree; a tarball
+        # sidesteps that entirely.
+        Write-Info "Packing print-md..."
+        Push-Location $script:PrintMdCloneDir
+        try {
+            & bun pm pack 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "Failed to pack print-md (exit $LASTEXITCODE)"
+                return $false
+            }
+        } finally {
+            Pop-Location
+        }
 
-        if ($LASTEXITCODE -eq 0) {
+        $tarball = Get-ChildItem -Path $script:PrintMdCloneDir -Filter "*.tgz" -ErrorAction SilentlyContinue |
+            Sort-Object -Property LastWriteTime -Descending |
+            Select-Object -First 1
+        if (-not $tarball) {
+            Write-Error "Tarball not found after packing"
+            return $false
+        }
+
+        Write-Info "Installing from tarball: $($tarball.Name)"
+        & bun add -g $tarball.FullName
+        $bunExitCode = $LASTEXITCODE
+        Remove-Item -Path $tarball.FullName -Force -ErrorAction SilentlyContinue
+
+        if ($bunExitCode -eq 0) {
             Write-Success "print-md installed successfully!"
             return $true
         } else {

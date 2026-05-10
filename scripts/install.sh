@@ -132,10 +132,28 @@ install_printmd() {
         return 1
     fi
 
-    if bun add -g "$PRINTMD_CLONE_DIR"; then
+    # Pack the package into a tarball, then install from the tarball. Going
+    # directory -> bun add directly hits Windows file-lock EBUSY errors when
+    # bun's cache copies the source tree; a tarball sidesteps that entirely.
+    print_info "Packing print-md..."
+    if ! (cd "$PRINTMD_CLONE_DIR" && bun pm pack >/dev/null 2>&1); then
+        print_error "Failed to pack print-md"
+        return 1
+    fi
+    local tarball
+    tarball=$(ls -1t "$PRINTMD_CLONE_DIR"/*.tgz 2>/dev/null | head -1)
+    if [ -z "$tarball" ] || [ ! -f "$tarball" ]; then
+        print_error "Tarball not found after packing"
+        return 1
+    fi
+
+    print_info "Installing from tarball: $(basename "$tarball")"
+    if bun add -g "$tarball"; then
+        rm -f "$tarball"
         print_success "print-md installed successfully!"
         return 0
     else
+        rm -f "$tarball"
         print_error "Failed to install print-md"
         return 1
     fi
