@@ -16,6 +16,7 @@ describe('Server Context', () => {
       const config = resolveConfig({}, {});
       const options: PreviewServerOptions = {
         port: 3000,
+        host: '127.0.0.1',
         verbose: false,
         noWatch: false,
         openBrowser: true,
@@ -30,7 +31,7 @@ describe('Server Context', () => {
       expect(state.options).toBe(options);
       expect(state.currentWatcher).toBeNull();
       expect(state.isRebuilding).toBe(false);
-      expect(state.viteServer).toBeNull();
+      expect(state.previewServer).toBeNull();
       expect(state.isShuttingDown).toBe(false);
     });
   });

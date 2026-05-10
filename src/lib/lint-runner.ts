@@ -1,6 +1,6 @@
 import { glob } from "glob";
-import stylelint from "stylelint";
-import { resolve, join } from "node:path";
+import type { Config } from "stylelint";
+import { resolve, dirname } from "node:path";
 import { loadManifest, resolveConfig } from "./manifest";
 import { log } from "./logger";
 
@@ -27,13 +27,16 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
 
   const configPath = resolvedConfig.lint.configPath;
 
+  // User-supplied configPath is a runtime path on the host filesystem;
+  // dynamic require() is the right call. The default config is dynamically
+  // imported so that the bundler embeds it (survives `bun build --compile`)
+  // *and* its transitive printsafe-plugin require chain only evaluates on
+  // the `print-md lint` command path — not on cold startup of preview/build.
   let stylelintConfig: unknown;
   if (configPath) {
     stylelintConfig = require(resolve(configPath));
   } else {
-    stylelintConfig = require(
-      resolve(join(import.meta.dir, "..", "stylelint", "stylelint.config.cjs"))
-    );
+    stylelintConfig = (await import("../stylelint/stylelint.config")).default;
   }
 
   let files: string[];
@@ -60,10 +63,16 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
 
   log.info(`Linting ${files.length} CSS file(s)`);
 
+  const { default: stylelint } = await import("stylelint");
   const result = await stylelint.lint({
     files,
-    config: stylelintConfig as stylelint.Config,
-    configBasedir: resolve(join(import.meta.dir, "..")),
+    config: stylelintConfig as Config,
+    // For user-supplied configs, resolve `extends`/plugin paths relative to
+    // the config file. For the bundled default, stylelint resolves against
+    // cwd (its built-in fallback) — fine because the default config's
+    // `extends: ["stylelint-config-standard"]` gets resolved through the
+    // bundled module graph.
+    configBasedir: configPath ? dirname(resolve(configPath)) : undefined,
     formatter: "string",
   });
 

@@ -5,7 +5,7 @@ A powerful CLI tool and live preview UI for creating professional print-ready PD
 ## Features
 
 - **Markdown to PDF** - Convert markdown files to professional print layouts
-- **Live Preview** - Interactive browser-based preview with Hot Module Replacement
+- **Live Preview** - Interactive browser-based preview with WebSocket-driven full-reload on file changes
 - **HTML static-site output** - `print-md build --format html` produces a deployable directory whose `index.html` is the same viewer the preview server uses. Ideal for [companion design guides](./docs/design-guides.md).
 - **Custom Styling** - Full control over typography, layout, and print design with CSS
 - **Page Control** - Fine-grained control over page breaks, spreads, and multi-column layouts
@@ -454,11 +454,14 @@ print-md preview --no-watch
 
 ### Preview Mode
 
-- **Dual-Server Architecture**:
-  - Bun server (user port) - Toolbar UI and API endpoints
-  - Vite server (auto port) - Preview content with HMR
-- **Live Reload** - File changes trigger automatic HTML regeneration
-- **Reverse Proxy** - Seamless integration between servers
+- **Single Bun.serve instance** - Static files, `/api/*` routes, and a
+  `/__print-md-hmr` WebSocket are all served by one `Bun.serve` process
+  (see `src/preview/http-server.ts`). No bundler runs at preview time.
+- **Live Reload** - File changes regenerate `book.html` and broadcast a
+  `{ type: "full-reload" }` message over the WebSocket; a tiny client
+  snippet injected into served HTML reloads the page on receipt.
+- **No bundler at runtime** - See `docs/adr/0001-no-bundlers-at-runtime.md`
+  for the full rationale.
 
 ### Output Formats
 
@@ -627,24 +630,27 @@ File watching might have failed:
    - Chrome/Edge: Ctrl+Shift+R (Windows/Linux) or Cmd+Shift+R (macOS)
    - Firefox: Ctrl+F5 (Windows/Linux) or Cmd+Shift+R (macOS)
 
-**Problem: Preview Shows "Cannot Connect to Vite Server"**
+**Problem: Preview Won't Connect or Live Reload Doesn't Fire**
 
-The dual-server architecture requires both servers to start:
+The preview server is a single `Bun.serve` instance handling HTTP, the
+`/api/*` routes, and the `/__print-md-hmr` WebSocket on one port.
 
-1. **Check if ports are available:**
+1. **Check if the port is available:**
    ```bash
-# Main server (3579 default)
-lsof -i :3579          # Linux/macOS
-
-   # Vite server (auto-assigned, usually 5173)
-   lsof -i :5173
+   # Default preview port: 3579 (auto-increments if in use)
+   lsof -i :3579          # Linux/macOS
    ```
 
 2. **Check firewall settings:**
    - Ensure localhost connections are allowed
    - Try disabling firewall temporarily to test
 
-3. **Check logs for errors:**
+3. **Check the live-reload WebSocket:**
+   - In DevTools → Network → WS, you should see a connection to
+     `ws://localhost:<port>/__print-md-hmr`. If it's missing or 4xx,
+     a proxy or extension is likely interfering.
+
+4. **Check logs for errors:**
    ```bash
    print-md preview --verbose
    ```

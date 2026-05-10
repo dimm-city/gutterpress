@@ -24,6 +24,7 @@ import type {
 import {
   isWithinHomeDirectory,
   getHomeDirectory,
+  getDefaultBrowseDirectory,
 } from "../utils/path-security";
 import { error as logError, info } from "../utils/logger";
 import { isErrorWithCode } from "../utils/errors";
@@ -191,7 +192,11 @@ async function listDirectories(basePath: string): Promise<DirectoryEntry[]> {
  * Handle GET /api/directories - List subdirectories with navigation
  *
  * Query parameters:
- * - path: Directory to list (optional, defaults to home directory)
+ * - path: Directory to list (optional). When omitted, defaults to the first
+ *   existing entry from `getDefaultBrowseDirectory()`:
+ *     1. ~/Documents/print-md   (created by the installers and seeded with examples)
+ *     2. ~/Documents
+ *     3. the home directory
  *
  * Security:
  * - Path must be within home directory boundary
@@ -219,7 +224,7 @@ export async function handleListDirectories(
   try {
     // Extract path from query parameters
     const url = new URL(request.url);
-    let basePath = url.searchParams.get("path") || getHomeDirectory();
+    let basePath = url.searchParams.get("path") || getDefaultBrowseDirectory();
 
     // Security check: ensure path is within home directory
     const homeDir = getHomeDirectory();

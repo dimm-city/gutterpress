@@ -105,11 +105,13 @@ export async function initializePreviewDirectories(
 }
 
 /**
- * Resolve the preview assets directory path
+ * Resolve the preview assets directory path. In dev this is `src/assets`;
+ * in the standalone binary the assets are extracted to a temp dir so they
+ * can be served from a real filesystem path.
  */
-export function resolveAssetsDir(): string {
-  const thisFileDir = path.dirname(new URL(import.meta.url).pathname);
-  return path.join(thisFileDir, '..', 'assets');
+export async function resolveAssetsDir(): Promise<string> {
+  const { getAssetsDir } = await import('../lib/embedded-assets');
+  return getAssetsDir();
 }
 
 /**
@@ -142,8 +144,9 @@ export async function restartPreview(newInputPath: string, state: ServerState): 
 
   state.currentInputPath = newInputPath;
 
-  // Only re-copy the input content — preview assets are already in the temp dir
-  // and re-copying them triggers Vite to full-reload index.html, killing the browser session
+  // Only re-copy the input content — preview assets are already in the temp dir.
+  // Re-copying them would force a top-level reload of index.html and kill the
+  // browser session.
   await copyDirectory(newInputPath, state.tempDir);
 
   const manifest = await loadManifest(newInputPath);
@@ -153,12 +156,16 @@ export async function restartPreview(newInputPath: string, state: ServerState): 
 
   startFileWatcher(state);
 
+  // The browser is on the old index — push a reload so it picks up the
+  // new directory's content immediately.
+  state.previewServer?.broadcastReload();
+
   info('Preview restarted successfully');
 }
 
 /**
- * Wrap a promise with a timeout so a misbehaving close step (Vite/chokidar
- * occasionally hang on close) cannot prevent the temp-dir cleanup from running.
+ * Wrap a promise with a timeout so a misbehaving close step (chokidar
+ * occasionally hangs on close) cannot prevent the temp-dir cleanup from running.
  */
 async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T | undefined> {
   let timer: NodeJS.Timeout | undefined;
@@ -179,7 +186,7 @@ async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise
  * Perform graceful server shutdown and cleanup.
  *
  * Each step runs independently so that a hang or throw in one (e.g.
- * `viteServer.close()` blocking on a stuck WebSocket client) cannot
+ * `previewServer.close()` blocking on a stuck WebSocket client) cannot
  * prevent the temp-dir from being removed. Without this discipline,
  * SIGTERM during a wedged close leaks ~1GB of `/tmp` per session.
  */
@@ -195,11 +202,11 @@ export async function shutdownServer(state: ServerState): Promise<void> {
     debug(`stopFileWatcher failed during shutdown: ${err}`);
   }
 
-  if (state.viteServer) {
+  if (state.previewServer) {
     try {
-      await withTimeout(state.viteServer.close(), 2000, 'viteServer.close');
+      await withTimeout(state.previewServer.close(), 2000, 'previewServer.close');
     } catch (err) {
-      debug(`viteServer.close failed during shutdown: ${err}`);
+      debug(`previewServer.close failed during shutdown: ${err}`);
     }
   }
 

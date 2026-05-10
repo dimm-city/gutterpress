@@ -20,7 +20,7 @@ This document describes the architecture, design decisions, and implementation d
 ### Key Features
 
 - **Multi-format output**: PDF, HTML, and preview bundles
-- **Live preview server**: Hot reload with Vite
+- **Live preview server**: Bun-native HTTP+WebSocket with full-reload on file change
 - **Extensible markdown**: Plugin system for custom syntax
 - **CSS Paged Media**: Full control over print layout
 - **Bun-native**: Fast runtime with native TypeScript support
@@ -103,7 +103,7 @@ src/
 ├── preview/                # Preview server modules
 │   ├── routes.ts           # API route handlers
 │   ├── server-context.ts   # Server context
-│   ├── vite-setup.ts       # Vite integration
+│   ├── http-server.ts      # Bun.serve + WebSocket dev server
 │   ├── file-watcher.ts     # File change detection
 │   ├── api-middleware.ts    # API middleware
 │   └── lifecycle.ts        # Server lifecycle
@@ -299,45 +299,44 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
 
 ## Preview Server
 
-### Dual-Server Architecture
+### Bun-native HTTP + WebSocket
 
-**Location**: `src/server.ts`, `src/preview/routes.ts`
+**Location**: `src/preview/http-server.ts`, `src/preview/api-middleware.ts`,
+`src/preview/routes.ts`
 
-Preview mode uses **two servers** working together:
+Preview mode runs a single `Bun.serve` instance that handles static files,
+the `/api/*` route table, and a `/__print-md-hmr` WebSocket for full-reload
+broadcasts.
 
 ```
 User Browser → http://localhost:{port}
     ↓
-Vite Dev Server
-    ├─→ Serves preview.html with Paged.js
-    ├─→ Hot Module Replacement (HMR)
-    ├─→ API Middleware (handled by Bun, routes in src/preview/routes.ts)
+Bun.serve (src/preview/http-server.ts)
+    ├─→ /__print-md-hmr  WebSocket → broadcastReload()
+    │    (subscribers receive {type:"full-reload"} on file change)
+    ├─→ /api/*           handleApiRequest (api-middleware.ts → routes.ts)
     │    ├─→ GET  /api/directories      (handleListDirectories)
     │    ├─→ POST /api/change-folder     (handleChangeFolder)
     │    ├─→ GET  /api/gh/status         (handleGitHubStatus)
     │    ├─→ POST /api/gh/login          (handleGitHubLogin)
     │    ├─→ POST /api/gh/clone          (handleGitHubClone)
     │    └─→ GET  /api/gh/user           (handleGitHubUser)
-    └─→ Static assets
+    └─→ /*               Bun.file from state.tempDir
+         (HTML responses get a tiny inline HMR client injected
+          before </body>; `..` traversal returns 404)
 ```
 
-**Components**:
-
-1. **Vite Server** (auto-assigned port)
-   - Serves preview content
-   - Provides HMR for instant updates
-   - Asset bundling and transformations
-
-2. **API Middleware** (Bun-powered)
-   - Directory navigation
-   - Folder switching (triggers rebuild)
-   - Client connection tracking
-   - Server shutdown
-
 **Design Rationale**:
-- Vite provides best-in-class HMR
-- Bun handles API logic efficiently
-- Single port for user (Vite auto-assigns its own)
+- The previous Vite-based dev server was the wrong shape: print-md doesn't
+  bundle anything at preview time, it serves a pre-rendered `book.html`. Vite's
+  CSS-as-JS-module pipeline and module-graph HMR were actively bypassed by
+  custom plugins.
+- `Bun.serve` provides static serving, WebSockets (with built-in pub/sub via
+  `server.publish(topic, data)`), and request routing natively — exactly the
+  surface print-md needs, with no native bindings to extract under
+  `bun build --compile`.
+- See `docs/adr/0001-no-bundlers-at-runtime.md` for the full rationale and
+  links to the upstream Bun issues that motivated the change.
 
 ### File Watching
 
@@ -594,16 +593,22 @@ Plugins are resolved in this order:
 - Better TypeScript support
 - Predictable rendering with Paged.js polyfill
 
-### 3. Why Vite for Preview?
+### 3. Why Bun.serve for Preview (not Vite)?
 
-**Chosen over**: Custom server, webpack-dev-server
+**Chosen over**: Vite, webpack-dev-server, custom Node http server.
 
 **Reasons**:
-- Best-in-class HMR experience
-- Fast rebuild times
-- Minimal configuration
-- Strong TypeScript support
-- Battle-tested in production
+- print-md does not bundle code at preview time — it serves a pre-rendered
+  `book.html` and triggers full-reload on file change. A bundler-based dev
+  server is the wrong tool.
+- `Bun.serve` provides everything needed (static files, WebSocket pub/sub,
+  request routing) without the transitive native bindings (rollup,
+  lightningcss, fsevents) that break under `bun build --compile`.
+- The previous Vite setup required two custom plugins solely to *bypass*
+  Vite's CSS pipeline and module graph, plus a compile-time regex plugin to
+  rewrite `package.json` reads in `node_modules/vite`. Removing Vite
+  removed both layers of workarounds.
+- See `docs/adr/0001-no-bundlers-at-runtime.md`.
 
 ### 4. Why Direct Build Pipeline (Not Strategy Pattern)?
 
@@ -671,7 +676,8 @@ export function validateSafePath(targetPath: string, basePath: string): boolean 
 ### Preview Performance
 
 - **Debouncing**: File changes debounced (100ms) to prevent excessive rebuilds
-- **Incremental Updates**: Vite's HMR updates only changed modules
+- **Full-Reload over WebSocket**: every file change publishes one `full-reload`
+  message; clients refresh and receive freshly-rendered HTML
 - **Connection Tracking**: Auto-shutdown prevents resource leaks
 
 ## Testing Strategy

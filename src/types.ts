@@ -5,8 +5,6 @@
  * Build pipeline types are in src/schema/manifest.types.ts.
  */
 
-import type { ServerWebSocket } from 'bun';
-
 // Re-export manifest types for convenience
 export type { PrintMdManifest, ResolvedConfig } from './schema/manifest.types';
 
@@ -20,6 +18,13 @@ export interface PreviewServerOptions {
   debug?: boolean;
   /** Port for preview server */
   port: number;
+  /**
+   * Hostname to bind to. Defaults to `127.0.0.1` (localhost only).
+   * Pass `0.0.0.0` to expose the server on the local network — opt-in
+   * because the preview serves whatever the user is editing, which may
+   * include unfinished or private content.
+   */
+  host: string;
   /** Enable verbose logging */
   verbose: boolean;
   /** Disable file watching */

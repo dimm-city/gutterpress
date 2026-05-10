@@ -1,7 +1,11 @@
 import { spawn } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { resolveChromiumExecutable } from "./chromium";
+// Static JSON import — Bun inlines this at bundle time so the compiled
+// binary doesn't try to read package.json off disk (where it resolves to
+// `/package.json` via `import.meta.dir` inside `/$bunfs/`).
+import packageJson from "../../package.json";
 
 type JsonValue =
   | string
@@ -34,7 +38,12 @@ type PackageMeta = {
 const FINGERPRINT_FILENAME = "build-fingerprint.json";
 const VERSION_TIMEOUT_MS = 4000;
 
-let packageMetaPromise: Promise<PackageMeta> | null = null;
+const PACKAGE_META: PackageMeta = {
+  version: (packageJson as { version?: string }).version ?? "unknown",
+  dependencies:
+    (packageJson as { dependencies?: Record<string, string> }).dependencies ??
+    {},
+};
 
 function toJsonValue(value: unknown): JsonValue {
   if (value === null) return null;
@@ -64,26 +73,6 @@ function toJsonValue(value: unknown): JsonValue {
 
 function stableJsonStringify(value: JsonValue): string {
   return `${JSON.stringify(toJsonValue(value), null, 2)}\n`;
-}
-
-async function loadPackageMeta(): Promise<PackageMeta> {
-  if (!packageMetaPromise) {
-    packageMetaPromise = (async () => {
-      const packagePath = path.resolve(import.meta.dir, "..", "..", "package.json");
-      const raw = await readFile(packagePath, "utf8");
-      const parsed = JSON.parse(raw) as {
-        version?: string;
-        dependencies?: Record<string, string>;
-      };
-
-      return {
-        version: parsed.version ?? "unknown",
-        dependencies: parsed.dependencies ?? {},
-      };
-    })();
-  }
-
-  return packageMetaPromise;
 }
 
 function runCapture(
@@ -201,7 +190,6 @@ async function getGitRevision(sourceDir?: string): Promise<{
 }
 
 async function getToolVersions(): Promise<Record<string, string | null>> {
-  const packageMeta = await loadPackageMeta();
   const chromiumPath = resolveChromiumExecutable();
 
   const [gsVersion, qpdfVersion, chromiumVersion] = await Promise.all([
@@ -211,11 +199,11 @@ async function getToolVersions(): Promise<Record<string, string | null>> {
   ]);
 
   return {
-    "print-md": packageMeta.version,
+    "print-md": PACKAGE_META.version,
     bun: Bun.version,
     node: process.versions.node,
-    playwright: packageMeta.dependencies.playwright ?? null,
-    pagedjs: packageMeta.dependencies.pagedjs ?? null,
+    playwright: PACKAGE_META.dependencies.playwright ?? null,
+    pagedjs: PACKAGE_META.dependencies.pagedjs ?? null,
     ghostscript: gsVersion,
     qpdf: qpdfVersion,
     chromium: chromiumVersion,

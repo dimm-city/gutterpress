@@ -1,13 +1,12 @@
 /**
- * API middleware for preview server
+ * API request dispatcher for the preview server.
  *
- * Handles all /api/* endpoints including directory navigation,
- * folder switching, client tracking, and GitHub integration
+ * Bun-native: takes a `Request`, returns either a `Response` (matched a known
+ * /api/* route) or `null` (let the static handler take it). The Vite/connect
+ * `(req, res, next)` shape is gone — `Request` already exposes async body
+ * helpers (`text()` / `json()`), so the middleware glue shrinks significantly.
  */
 
-import type { IncomingMessage, ServerResponse } from 'http';
-import type { HeadersInit } from 'bun';
-import { debug } from '../utils/logger.ts';
 import {
   handleListDirectories,
   handleChangeFolder,
@@ -19,148 +18,90 @@ import {
 import type { ServerState } from './server-context.ts';
 
 /**
- * Max request body size (1MB)
+ * Max request body size (1MB).
  */
 const MAX_BODY_SIZE = 1024 * 1024;
 
 /**
- * Read request body with size limit
+ * Build a JSON error Response.
  */
-async function readRequestBody(req: IncomingMessage, maxSize = MAX_BODY_SIZE): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let body = '';
-    let totalSize = 0;
-
-    req.on('data', (chunk) => {
-      totalSize += chunk.length;
-      if (totalSize > maxSize) {
-        req.destroy();
-        reject(new Error('Request body too large'));
-        return;
-      }
-      body += chunk;
-    });
-
-    req.on('end', () => resolve(body));
-    req.on('error', reject);
+function jsonError(message: string, status: number): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
   });
 }
 
 /**
- * Send Response to client
+ * Reject early when an inbound request advertises a body larger than our
+ * cap. We can't always trust `Content-Length`, but it's a fast first check
+ * that avoids buffering huge payloads only to reject them later.
  */
-async function sendResponse(res: ServerResponse, response: Response): Promise<void> {
-  res.statusCode = response.status;
-  response.headers.forEach((value, key) => {
-    res.setHeader(key, value);
-  });
-  res.end(await response.text());
+function exceedsBodyLimit(request: Request): boolean {
+  const lenHeader = request.headers.get('content-length');
+  if (!lenHeader) return false;
+  const len = Number.parseInt(lenHeader, 10);
+  if (!Number.isFinite(len)) return false;
+  return len > MAX_BODY_SIZE;
 }
 
 /**
- * Create API middleware handler
+ * Dispatch a single inbound request.
  *
- * Routes /api/* requests to appropriate handlers
- *
- * @param state Server state
- * @param restartPreviewFn Function to restart preview
- * @returns Middleware function
+ * @returns The Response to send, or `null` if no /api/* route matched and
+ *          the caller should fall through to the static handler.
  */
-export function createApiMiddleware(
-  state: ServerState,
+export async function handleApiRequest(
+  request: Request,
+  _state: ServerState,
   restartPreviewFn: (newPath: string) => Promise<void>
-) {
-  return async (
-    req: IncomingMessage,
-    res: ServerResponse,
-    next: () => void
-  ): Promise<void> => {
-    const url = new URL(req.url!, `http://${req.headers.host}`);
+): Promise<Response | null> {
+  const url = new URL(request.url);
+  const { pathname } = url;
+  const { method } = request;
 
-    // Handle /api/directories
-    if (url.pathname === '/api/directories') {
-      const response = await handleListDirectories(
-        new Request(url.toString(), {
-          method: req.method,
-          headers: req.headers as HeadersInit,
-        })
-      );
-      await sendResponse(res, response);
-      return;
+  if (!pathname.startsWith('/api/')) {
+    return null;
+  }
+
+  // GET /api/directories
+  if (pathname === '/api/directories' && method === 'GET') {
+    return handleListDirectories(request);
+  }
+
+  // POST /api/change-folder
+  if (pathname === '/api/change-folder' && method === 'POST') {
+    if (exceedsBodyLimit(request)) {
+      return jsonError('Request body too large', 413);
     }
+    // Body-size check is the precheck above; let any other thrown error
+    // propagate to Bun.serve's `error()` handler (returns 500) rather than
+    // misclassifying every failure as 413.
+    return handleChangeFolder(request, restartPreviewFn);
+  }
 
-    // Handle /api/change-folder
-    if (url.pathname === '/api/change-folder' && req.method === 'POST') {
-      try {
-        const body = await readRequestBody(req);
-        const response = await handleChangeFolder(
-          new Request(url.toString(), {
-            method: 'POST',
-            headers: req.headers as HeadersInit,
-            body,
-          }),
-          restartPreviewFn
-        );
-        await sendResponse(res, response);
-      } catch (error) {
-        res.statusCode = 413;
-        res.end(JSON.stringify({ error: 'Request body too large' }));
-      }
-      return;
+  // GET /api/gh/status
+  if (pathname === '/api/gh/status' && method === 'GET') {
+    return handleGitHubStatus(request);
+  }
+
+  // POST /api/gh/login
+  if (pathname === '/api/gh/login' && method === 'POST') {
+    return handleGitHubLogin(request);
+  }
+
+  // POST /api/gh/clone
+  if (pathname === '/api/gh/clone' && method === 'POST') {
+    if (exceedsBodyLimit(request)) {
+      return jsonError('Request body too large', 413);
     }
+    return handleGitHubClone(request, restartPreviewFn);
+  }
 
-// Handle /api/gh/status
-    if (url.pathname === '/api/gh/status' && req.method === 'GET') {
-      const response = await handleGitHubStatus(
-        new Request(url.toString(), {
-          method: req.method,
-          headers: req.headers as HeadersInit,
-        })
-      );
-      await sendResponse(res, response);
-      return;
-    }
+  // GET /api/gh/user
+  if (pathname === '/api/gh/user' && method === 'GET') {
+    return handleGitHubUser(request);
+  }
 
-    // Handle /api/gh/login
-    if (url.pathname === '/api/gh/login' && req.method === 'POST') {
-      const response = await handleGitHubLogin(
-        new Request(url.toString(), {
-          method: req.method,
-          headers: req.headers as HeadersInit,
-        })
-      );
-      await sendResponse(res, response);
-      return;
-    }
-
-    // Handle /api/gh/clone
-    if (url.pathname === '/api/gh/clone' && req.method === 'POST') {
-      const body = await readRequestBody(req);
-      const response = await handleGitHubClone(
-        new Request(url.toString(), {
-          method: 'POST',
-          headers: req.headers as HeadersInit,
-          body,
-        }),
-        restartPreviewFn
-      );
-      await sendResponse(res, response);
-      return;
-    }
-
-    // Handle /api/gh/user
-    if (url.pathname === '/api/gh/user' && req.method === 'GET') {
-      const response = await handleGitHubUser(
-        new Request(url.toString(), {
-          method: req.method,
-          headers: req.headers as HeadersInit,
-        })
-      );
-      await sendResponse(res, response);
-      return;
-    }
-
-    // Let Vite handle everything else
-    next();
-  };
+  return null;
 }

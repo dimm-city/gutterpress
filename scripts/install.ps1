@@ -1,232 +1,372 @@
-# print-md Installation Script for Windows 11
-# This script installs Bun and print-md globally for end users
+# print-md installer for Windows
+#
+# Downloads the standalone print-md binary for the current platform from
+# GitHub Releases and drops it in %LOCALAPPDATA%\Programs\print-md. No bun,
+# node, or git required.
+#
+#   irm https://raw.githubusercontent.com/dimm-city/print-md/main/scripts/install.ps1 | iex
+#
+# Optional environment variables:
+#   PRINTMD_VERSION        override the version to install (e.g. v0.2.0-beta.5)
+#   GITHUB_TOKEN           auth token (only needed while the repo is private)
+#   PRINTMD_PREFIX         install dir override
+#                          (default: %LOCALAPPDATA%\Programs\print-md)
+#   PRINTMD_LOCAL_BINARY   path to a locally-built print-md.exe. When set,
+#                          the script skips the GitHub Release download and
+#                          installs from this path instead. Used by CI to
+#                          verify the binary produced by the current branch.
 
 $ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# Configuration
-$PRINTMD_REPO = "https://github.com/dimm-city/print-md.git"
-$PRINTMD_PACKAGE = "@dimm-city/print-md"
+# ---- configuration ---------------------------------------------------------
 
-# Color output functions
-function Write-Success {
-    param([string]$Message)
-    Write-Host "[OK] $Message" -ForegroundColor Green
-}
+$Repo = "dimm-city/print-md"
+$GithubToken = $env:GITHUB_TOKEN
+$RequestedVersion = $env:PRINTMD_VERSION
+$DefaultPrefix = Join-Path $env:LOCALAPPDATA "Programs\print-md"
+$InstallPrefix = if ($env:PRINTMD_PREFIX) { $env:PRINTMD_PREFIX } else { $DefaultPrefix }
 
-function Write-Info {
-    param([string]$Message)
-    Write-Host "[INFO] $Message" -ForegroundColor Cyan
-}
+# ---- output helpers --------------------------------------------------------
 
-function Write-Error {
-    param([string]$Message)
-    Write-Host "[ERROR] $Message" -ForegroundColor Red
-}
-
-function Write-Step {
+function Write-Success { param([string]$Message) Write-Host "[OK] $Message" -ForegroundColor Green }
+function Write-Info    { param([string]$Message) Write-Host "[INFO] $Message" -ForegroundColor Cyan }
+function Write-Err     { param([string]$Message) Write-Host "[ERROR] $Message" -ForegroundColor Red }
+function Write-Step    {
     param([string]$Message)
     Write-Host ""
     Write-Host ">>> $Message" -ForegroundColor Yellow
 }
 
-# Check and install Bun
-function Install-Bun {
-    Write-Step "Checking for Bun..."
+# ---- platform detection ----------------------------------------------------
+#
+# Bun's --target=bun-windows-x64 is currently the only Windows target the
+# release workflow builds. ARM64 Windows runs x64 binaries via emulation, so
+# we ship the same asset there.
 
-    try {
-        $bunVersion = bun --version 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Bun is already installed (version $bunVersion)"
-            return $true
-        }
-    } catch {
-        # Bun not found, continue to installation
+function Get-PrintMdAsset {
+    return "print-md-windows-x64.exe"
+}
+
+# ---- HTTP helpers ----------------------------------------------------------
+#
+# All GitHub fetches go through Invoke-GhRest / Invoke-GhDownload so the same
+# code path covers public and private repos: when GITHUB_TOKEN is set, the
+# token is sent on the Authorization header (the only path that works for
+# private repos).
+
+function New-GhHeaders {
+    param([string]$Accept = "application/vnd.github+json")
+    $headers = @{
+        "Accept" = $Accept
+        "X-GitHub-Api-Version" = "2022-11-28"
+        "User-Agent" = "print-md-installer"
     }
+    if ($GithubToken) {
+        $headers["Authorization"] = "Bearer $GithubToken"
+    }
+    return $headers
+}
 
-    Write-Info "Bun not found. Installing now..."
-    Write-Info "This will download and install Bun from bun.sh"
+function Invoke-GhRest {
+    param([string]$Url, [string]$Accept = "application/vnd.github+json")
+    return Invoke-RestMethod -Uri $Url -Headers (New-GhHeaders $Accept)
+}
 
+function Invoke-GhDownload {
+    param(
+        [string]$Url,
+        [string]$OutFile,
+        [string]$Accept = "application/octet-stream"
+    )
+    $progressBackup = $ProgressPreference
     try {
-        irm bun.sh/install.ps1 | iex
-
-        # Refresh PATH in current session
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-
-        # Verify installation
-        $bunVersion = bun --version 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Bun installed successfully!"
-            return $true
-        } else {
-            Write-Error "Installation completed but Bun is not available yet"
-            Write-Info "Please close this window and open a new PowerShell window, then run this script again"
-            return $false
-        }
-    } catch {
-        Write-Error "Failed to install Bun: $_"
-        Write-Info "Visit https://bun.sh for manual installation instructions"
-        return $false
+        # Continue keeps the progress bar visible; SilentlyContinue is much
+        # faster on PS 5.x but we're on PS 7+ where the difference is small.
+        $ProgressPreference = "Continue"
+        Invoke-WebRequest -Uri $Url `
+                          -Headers (New-GhHeaders $Accept) `
+                          -OutFile $OutFile `
+                          -UseBasicParsing
+    } finally {
+        $ProgressPreference = $progressBackup
     }
 }
 
-# Install print-md globally
-function Install-PrintMd {
-    Write-Step "Installing print-md..."
-    Write-Info "This may take a minute..."
+# ---- release resolution ----------------------------------------------------
 
+function Resolve-Release {
+    if ($RequestedVersion) {
+        $tag = $RequestedVersion.TrimStart('v')
+        $tag = "v$tag"
+        $url = "https://api.github.com/repos/$Repo/releases/tags/$tag"
+        try {
+            return Invoke-GhRest $url
+        } catch {
+            throw "Could not fetch release $tag from $Repo : $_"
+        }
+    }
+
+    # /releases/latest skips prereleases — fall back to /releases?per_page=1
+    # for repos whose only published release is still a prerelease.
+    $latestUrl = "https://api.github.com/repos/$Repo/releases/latest"
     try {
-        # Install from npm registry (when published) or from GitHub
-        # For now, using GitHub installation
-        Write-Info "Installing from GitHub repository..."
-        bun add -g $PRINTMD_REPO
+        return Invoke-GhRest $latestUrl
+    } catch {
+        # 404 or similar — try the listing endpoint
+    }
 
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "print-md installed successfully!"
-            return $true
-        } else {
-            Write-Error "Failed to install print-md"
-            return $false
+    $listUrl = "https://api.github.com/repos/$Repo/releases?per_page=1"
+    try {
+        $list = Invoke-GhRest $listUrl
+        if ($list -and $list.Count -gt 0) {
+            return $list[0]
         }
     } catch {
-        Write-Error "Failed to install print-md: $_"
-        return $false
+        if (-not $GithubToken) {
+            throw "Could not fetch releases from $Repo. If the repository is private, set `$env:GITHUB_TOKEN."
+        }
+        throw "Could not fetch releases from $Repo : $_"
     }
+    throw "No releases found in $Repo"
 }
 
-# Verify installation
-function Test-Installation {
+function Get-AssetUrl {
+    param($Release, [string]$AssetName)
+    $asset = $Release.assets | Where-Object { $_.name -eq $AssetName } | Select-Object -First 1
+    if (-not $asset) {
+        throw "Release $($Release.tag_name) has no asset named $AssetName"
+    }
+    # Use the API URL (works for both public and private repos when paired
+    # with Accept: application/octet-stream).
+    return $asset.url
+}
+
+# ---- install steps ---------------------------------------------------------
+
+function Install-Binary {
+    param([string]$Url, [string]$Tag, [string]$AssetName)
+
+    Write-Step "Downloading print-md $Tag (windows-x64)..."
+
+    if (-not (Test-Path $InstallPrefix)) {
+        New-Item -ItemType Directory -Path $InstallPrefix -Force | Out-Null
+    }
+    $script:PrintMdBin = Join-Path $InstallPrefix "print-md.exe"
+    $tempPath = "$($script:PrintMdBin).download"
+
+    try {
+        Invoke-GhDownload -Url $Url -OutFile $tempPath
+    } catch {
+        if (Test-Path $tempPath) { Remove-Item $tempPath -Force -ErrorAction SilentlyContinue }
+        throw "Failed to download binary: $_"
+    }
+
+    if (Test-Path $script:PrintMdBin) {
+        Remove-Item $script:PrintMdBin -Force
+    }
+    Move-Item -Path $tempPath -Destination $script:PrintMdBin -Force
+    Write-Success "Installed binary to $($script:PrintMdBin)"
+}
+
+function Test-Install {
     Write-Step "Verifying installation..."
-
     try {
-        $version = print-md --version 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "print-md is working! (version $version)"
-            return $true
-        } else {
-            Write-Error "print-md command not found"
-            Write-Info "You may need to restart your terminal"
-            return $false
+        $version = & $script:PrintMdBin --version 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "print-md --version failed with exit code $LASTEXITCODE"
         }
+        Write-Success "print-md is working! ($version)"
     } catch {
-        Write-Error "print-md command not found"
-        Write-Info "You may need to restart your terminal"
-        return $false
+        throw "print-md installed but failed to run: $_"
     }
 }
 
-# Create desktop shortcut
+# Add the install dir to the user PATH (persistent) and to the current
+# session's $env:Path. setx caps user PATH at 1024 chars on some systems, so
+# write the registry value directly.
+function Add-ToUserPath {
+    param([string]$Dir)
+
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if (-not $userPath) { $userPath = "" }
+    $entries = $userPath -split ';' | Where-Object { $_ -ne '' }
+
+    if ($entries -contains $Dir) {
+        Write-Info "$Dir already on user PATH"
+    } else {
+        $newPath = if ($userPath) { "$userPath;$Dir" } else { $Dir }
+        [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+        Write-Success "Added $Dir to your user PATH"
+    }
+
+    if (($env:Path -split ';') -notcontains $Dir) {
+        $env:Path = "$Dir;$env:Path"
+    }
+}
+
+# Create %USERPROFILE%\Documents\print-md and seed it with the bundled
+# examples so the viewer's "Open Project" picker has something to show out of
+# the box.
+function Initialize-PrintMdDirectory {
+    param([string]$Tag)
+
+    Write-Step "Setting up print-md directory..."
+
+    $documentsPath = [Environment]::GetFolderPath("MyDocuments")
+    if ([string]::IsNullOrEmpty($documentsPath)) {
+        $documentsPath = Join-Path $env:USERPROFILE "Documents"
+    }
+
+    $script:PrintMdDir = Join-Path $documentsPath "print-md"
+    if (-not (Test-Path $script:PrintMdDir)) {
+        New-Item -ItemType Directory -Path $script:PrintMdDir -Force | Out-Null
+    }
+    Write-Info "print-md directory: $($script:PrintMdDir)"
+
+    $examplesDir = Join-Path $script:PrintMdDir "examples"
+    if (Test-Path $examplesDir) {
+        $existing = @(Get-ChildItem -Path $examplesDir -Force -ErrorAction SilentlyContinue)
+        if ($existing.Count -gt 0) {
+            Write-Info "Examples already present at $examplesDir (skipping)"
+            return
+        }
+    }
+
+    # "local" tag = installed from a local binary (no published release to
+    # pull a zipball from). Skip the examples download cleanly.
+    if ($Tag -eq "local") {
+        Write-Info "Local binary install — skipping examples download"
+        return
+    }
+
+    # Pull the source archive for the same tag and extract just `examples/`.
+    $archiveUrl = "https://api.github.com/repos/$Repo/zipball/$Tag"
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("print-md-archive-" + [System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+    Write-Info "Downloading examples..."
+    try {
+        $zipPath = Join-Path $tempDir "source.zip"
+        try {
+            Invoke-GhDownload -Url $archiveUrl -OutFile $zipPath
+        } catch {
+            Write-Info "Could not download source archive (skipping examples)"
+            return
+        }
+
+        $extractDir = Join-Path $tempDir "extracted"
+        New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+        Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+
+        # GitHub zipballs unpack to a single directory named like
+        # <owner>-<repo>-<sha>. Find it.
+        $extracted = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
+        if (-not $extracted) {
+            Write-Info "Source archive was empty"
+            return
+        }
+
+        $sourceExamples = Join-Path $extracted.FullName "examples"
+        if (Test-Path $sourceExamples) {
+            if (-not (Test-Path $examplesDir)) {
+                New-Item -ItemType Directory -Path $examplesDir -Force | Out-Null
+            }
+            Copy-Item -Path (Join-Path $sourceExamples '*') -Destination $examplesDir -Recurse -Force
+            Write-Success "Examples installed to $examplesDir"
+        } else {
+            Write-Info "examples/ not found in source archive"
+        }
+    } finally {
+        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function New-DesktopShortcut {
     Write-Step "Creating desktop shortcut..."
 
     try {
-        # Get desktop path
         $desktopPath = [Environment]::GetFolderPath("Desktop")
+        if ([string]::IsNullOrEmpty($desktopPath) -or -not (Test-Path $desktopPath)) {
+            Write-Info "Desktop directory not found, skipping shortcut"
+            return
+        }
         $shortcutPath = Join-Path $desktopPath "Print-md Preview.lnk"
 
-        # Find print-md installation path
-        $printmdPath = (Get-Command print-md -ErrorAction Stop).Source
-        $bunPath = (Get-Command bun -ErrorAction Stop).Source
-
-        # Find icon file (should be in node_modules after global install)
-        $globalModulesPath = Split-Path (Split-Path $printmdPath -Parent) -Parent
-        $iconPath = Join-Path $globalModulesPath "node_modules\@dimm-city\print-md\dist\assets\favicon.ico"
-
-        # Fallback: try to find icon in package installation
-        if (-not (Test-Path $iconPath)) {
-            $packagePath = Split-Path $printmdPath -Parent
-            $iconPath = Join-Path $packagePath "assets\favicon.ico"
+        $workingDir = if ($script:PrintMdDir -and (Test-Path $script:PrintMdDir)) {
+            $script:PrintMdDir
+        } else {
+            [Environment]::GetFolderPath("MyDocuments")
         }
 
-        # Create WScript Shell object
         $WScriptShell = New-Object -ComObject WScript.Shell
         $shortcut = $WScriptShell.CreateShortcut($shortcutPath)
-
-        # Set shortcut properties
-        $shortcut.TargetPath = $bunPath
-        $shortcut.Arguments = "run print-md preview --open true"
-        $shortcut.WorkingDirectory = [Environment]::GetFolderPath("MyDocuments")
+        $shortcut.TargetPath = $script:PrintMdBin
+        $shortcut.Arguments = "preview --open true"
+        $shortcut.WorkingDirectory = $workingDir
+        $shortcut.IconLocation = "$($script:PrintMdBin),0"
         $shortcut.Description = "Start Print-md Preview Server"
-
-        # Set icon if found
-        if (Test-Path $iconPath) {
-            $shortcut.IconLocation = $iconPath
-            Write-Info "Using icon: $iconPath"
-        } else {
-            Write-Info "Icon not found at $iconPath, using default"
-        }
-
-        # Save shortcut
         $shortcut.Save()
 
         Write-Success "Desktop shortcut created: $shortcutPath"
-        Write-Info "Double-click 'Print-md Preview' on your desktop to start the preview server"
-        return $true
-
     } catch {
-        Write-Error "Failed to create desktop shortcut: $_"
-        Write-Info "You can manually create a shortcut to run: bun run print-md preview --open true"
-        return $false
+        Write-Info "Could not create desktop shortcut: $_"
     }
 }
 
-# Main installation flow
+# ---- main ------------------------------------------------------------------
+
 function Main {
     Write-Host ""
     Write-Host "========================================" -ForegroundColor Magenta
     Write-Host "  print-md Installation" -ForegroundColor Magenta
     Write-Host "========================================" -ForegroundColor Magenta
     Write-Host ""
-    Write-Info "This will install print-md globally on your system"
-    Write-Host ""
 
-    # Step 1: Install Bun
-    if (-not (Install-Bun)) {
-        Write-Error "Installation failed. Please try again."
-        exit 1
+    $assetName = Get-PrintMdAsset
+    Write-Info "Detected platform: windows-x64"
+
+    $localBinary = $env:PRINTMD_LOCAL_BINARY
+    if ($localBinary) {
+        Write-Step "Installing local binary..."
+        if (-not (Test-Path -LiteralPath $localBinary -PathType Leaf)) {
+            throw "PRINTMD_LOCAL_BINARY is set but the file does not exist: $localBinary"
+        }
+        if (-not (Test-Path $InstallPrefix)) {
+            New-Item -ItemType Directory -Path $InstallPrefix -Force | Out-Null
+        }
+        $script:PrintMdBin = Join-Path $InstallPrefix "print-md.exe"
+        Copy-Item -LiteralPath $localBinary -Destination $script:PrintMdBin -Force
+        Write-Success "Installed binary to $($script:PrintMdBin)"
+        $tag = "local"
+    } else {
+        Write-Step "Resolving release..."
+        $release = Resolve-Release
+        $tag = $release.tag_name
+        Write-Info "Release: $tag"
+
+        $assetUrl = Get-AssetUrl -Release $release -AssetName $assetName
+
+        Install-Binary -Url $assetUrl -Tag $tag -AssetName $assetName
     }
+    Test-Install
+    Add-ToUserPath -Dir $InstallPrefix
+    try { Initialize-PrintMdDirectory -Tag $tag } catch { Write-Info "Examples setup failed: $_" }
+    try { New-DesktopShortcut } catch { Write-Info "Shortcut creation failed: $_" }
 
-    # Step 2: Install print-md globally
-    if (-not (Install-PrintMd)) {
-        Write-Error "Installation failed. Please try again."
-        exit 1
-    }
-
-    # Step 3: Verify
-    if (-not (Test-Installation)) {
-        Write-Info "Installation completed but verification failed"
-        Write-Info "Try closing this window and running 'print-md --version' in a new terminal"
-        exit 0
-    }
-
-    # Step 4: Create desktop shortcut
-    New-DesktopShortcut
-
-    # Success!
     Write-Host ""
     Write-Host "========================================" -ForegroundColor Green
     Write-Host "  Installation Complete!" -ForegroundColor Green
     Write-Host "========================================" -ForegroundColor Green
     Write-Host ""
     Write-Success "print-md is ready to use!"
+    if ($script:PrintMdDir) {
+        Write-Host ""
+        Write-Info "Examples are at: $(Join-Path $script:PrintMdDir 'examples')"
+    }
     Write-Host ""
-    Write-Info "Quick Start Options:"
-    Write-Host ""
-    Write-Host "  Option 1: Use Desktop Shortcut" -ForegroundColor Yellow
-    Write-Host "    - Double-click 'Print-md Preview' on your desktop" -ForegroundColor White
-    Write-Host "    - This will open the preview server in your browser" -ForegroundColor White
-    Write-Host ""
-    Write-Host "  Option 2: Use Command Line" -ForegroundColor Yellow
-    Write-Host "    1. Create a folder with your markdown files" -ForegroundColor White
-    Write-Host "    2. Open PowerShell in that folder" -ForegroundColor White
-    Write-Host "    3. Run:" -ForegroundColor White
-    Write-Host ""
-    Write-Host "       print-md build" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Info "This will create a PDF from your markdown files."
-    Write-Host ""
-    Write-Info "For more options: print-md --help"
+    Write-Info "Double-click 'Print-md Preview' on your desktop to start the viewer."
     Write-Host ""
 }
 
-# Run main installation
 Main

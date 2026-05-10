@@ -15,8 +15,9 @@
  */
 
 import { readFile, writeFile, mkdir, cp } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+
+import { getAssetsDir } from "./embedded-assets";
 
 /**
  * Filename used for the rendered book HTML in every output (preview server
@@ -24,16 +25,6 @@ import { fileURLToPath } from "node:url";
  * via a relative `src="book.html"`.
  */
 export const BOOK_HTML_FILENAME = "book.html";
-
-/**
- * Resolve the directory that contains the bundled viewer assets
- * (`index.html` + the `preview/` directory of scripts and styles).
- */
-function resolveAssetsDir(): string {
-  const thisDir = dirname(fileURLToPath(import.meta.url));
-  // src/lib/viewer.ts → src/lib → src → src/assets
-  return join(thisDir, "..", "assets");
-}
 
 /**
  * Emit the viewer chrome into `outDir` so the directory becomes a
@@ -46,7 +37,7 @@ function resolveAssetsDir(): string {
  * Idempotent — safe to call repeatedly.
  */
 export async function emitViewer(outDir: string): Promise<void> {
-  const assetsDir = resolveAssetsDir();
+  const assetsDir = await getAssetsDir();
   await mkdir(outDir, { recursive: true });
 
   const templatePath = join(assetsDir, "index.html");

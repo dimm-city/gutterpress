@@ -13,7 +13,7 @@ import {
   handleGitHubClone,
   handleGitHubUser,
 } from "./routes";
-import { getHomeDirectory } from "../utils/path-security";
+import { getHomeDirectory, getDefaultBrowseDirectory } from "../utils/path-security";
 import { mkdtemp, rm, mkdir, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -34,16 +34,16 @@ async function parseJson<T>(response: Response): Promise<T> {
 }
 
 describe("handleListDirectories", () => {
-  test("returns home directory when no path parameter provided", async () => {
+  test("returns default browse directory when no path parameter provided", async () => {
     const request = new Request("http://localhost:3000/api/directories");
     const response = await handleListDirectories(request);
 
     expect(response.status).toBe(200);
 
     const data = await parseJson<Record<string, unknown>>(response);
-    expect(data.currentPath).toBe(getHomeDirectory());
-    expect(data.isAtHome).toBe(true);
-    expect(data.parent).toBeUndefined();
+    const expectedPath = getDefaultBrowseDirectory();
+    expect(data.currentPath).toBe(expectedPath);
+    expect(data.isAtHome).toBe(expectedPath === getHomeDirectory());
     expect(Array.isArray(data.directories)).toBe(true);
   });
 

@@ -1,16 +1,17 @@
-const plugin = require("./printsafe-plugin.cjs");
+import type { Config } from "stylelint";
+import mainPlugin, { riskyRule, ruleRemoteUrls, ruleRiskyProps } from "./printsafe-plugin";
 
-module.exports = {
+const config: Config = {
   extends: ["stylelint-config-standard"],
-  plugins: [plugin, plugin.riskyRule],
+  plugins: [mainPlugin, riskyRule],
   ignoreFiles: ["**/*.min.css"],
   rules: {
     // Keep the baseline sane
     "no-descending-specificity": null,
 
     // Print safety rules
-    [plugin.ruleRemoteUrls]: [true],
-    [plugin.ruleRiskyProps]: [true],
+    [ruleRemoteUrls]: [true],
+    [ruleRiskyProps]: [true],
 
     // Allow Paged Media + margin boxes
     "at-rule-no-unknown": [true, {
@@ -89,3 +90,5 @@ module.exports = {
     "declaration-property-value-keyword-no-deprecated": null,
   }
 };
+
+export default config;

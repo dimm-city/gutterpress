@@ -34,6 +34,7 @@ function createTestServerState(
     config,
     options: {
       port: 3000,
+      host: '127.0.0.1',
       verbose: false,
       noWatch: false,
       openBrowser: false,
@@ -41,7 +42,7 @@ function createTestServerState(
     },
     currentWatcher: null,
     isRebuilding: false,
-    viteServer: null,
+    previewServer: null,
     isShuttingDown: false,
     assetsSourceDir: tempDir,
   };
