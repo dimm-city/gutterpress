@@ -2,21 +2,20 @@
  * Bundler plugin that rewrites runtime `package.json` reads in third-party
  * deps so they survive `bun build --compile`.
  *
- * Some upstream packages (currently vite + stylelint) read their own
- * `package.json` at module-load time using patterns like:
+ * Some upstream packages read their own `package.json` at module-load time:
  *
  *   JSON.parse(readFileSync(new URL("../../package.json", import.meta.url)))
- *   createRequire(import.meta.url); require("../package.json")
  *
  * `bun build --compile` can't statically embed these — at runtime
  * `import.meta.url` resolves to the binary path inside `/$bunfs`, the
  * relative `package.json` resolves to a nonexistent location, and the
- * binary crashes on startup before the CLI ever sees argv.
- *
- * To avoid maintaining real `bun patch` files (which would need touch-ups
- * on every dep version bump), this plugin transforms the small set of
- * affected files at bundle time, replacing the runtime read with a
+ * binary crashes. Rather than maintaining real `bun patch` files (which
+ * would need touch-ups on every dep version bump), this plugin transforms
+ * the affected files at bundle time, replacing the runtime read with a
  * statically-inlined JSON literal.
+ *
+ * Each rewrite is surgical: matched by exact file path inside `node_modules`
+ * and guarded by an exact source pattern.
  */
 
 import path from "node:path";
@@ -32,19 +31,10 @@ type Rewrite = {
   jsonPath: string;
 };
 
-// Each entry handles one specific upstream pattern. New entries should be
-// surgical so we don't accidentally rewrite unrelated code that happens to
-// match.
 const REWRITES: Rewrite[] = [
-  // vite/dist/node/chunks/logger.js — version constant.
-  {
-    fileMatch: "/vite/dist/node/chunks/logger.js",
-    pattern:
-      /JSON\.parse\(readFileSync\(new URL\("\.\.\/\.\.\/package\.json",\s*new URL\("\.\.\/\.\.\/\.\.\/src\/node\/constants\.ts",\s*import\.meta\.url\)\)\)\.toString\(\)\)/g,
-    jsonPath: "../../../package.json",
-  },
   // stylelint/lib/utils/FileCache.mjs — pulls stylelint's version into the
-  // cache key.
+  // cache key. Lazy-loaded at the lint command path (see ADR 0001 rule 2),
+  // but still bundled, so the rewrite is required.
   {
     fileMatch: "/stylelint/lib/utils/FileCache.mjs",
     pattern:
@@ -76,12 +66,7 @@ export const inlinePackageJsonReads: BunPlugin = {
 
       const inlined = loadPackageJson(args.path, rewrite.jsonPath);
       const contents = source.replace(rewrite.pattern, inlined);
-      const loader = args.path.endsWith(".cjs")
-        ? "js"
-        : args.path.endsWith(".mjs")
-          ? "js"
-          : "js";
-      return { contents, loader };
+      return { contents, loader: "js" };
     });
   },
 };
