@@ -1,3 +1,5 @@
+@chapter #ch-components .components
+
 # Components
 
 <div class="lede">Reusable layout blocks authored with triple-colon container syntax. Each section shows the markdown source, a live rendered example, and the CSS class that controls the styling.</div>
@@ -228,3 +230,97 @@ Content after the break always starts in the
 right column regardless of left column height.
 :::
 ```
+
+---
+
+## Numbered Steps
+
+A zero-padded ordered list for sequential procedures — character creation, workflow steps, setup instructions. Each step is prevented from splitting across a page break.
+
+**Syntax** — `<ol class="steps">` with `<li>` children. The CSS counter handles numbering automatically; do not add numbers in the HTML.
+
+<div class="example">
+<ol class="steps">
+<li>Pick a typeface for your book. Update <code>--font-body</code> and <code>--font-display</code> in <code>§ 1 BRAND TOKENS</code>.</li>
+<li>Set your accent color. Change <code>--color-accent</code> to your primary brand hue.</li>
+<li>Run <code>print-md preview design-guide</code> to see all changes live in the browser.</li>
+<li>Delete any component chapter you don't use. Keep the guide focused on what your book ships.</li>
+<li>Commit both the guide and the book stylesheet together — they share the same CSS file.</li>
+</ol>
+</div>
+
+```html
+<ol class="steps">
+  <li>First step — the CSS counter adds the number automatically.</li>
+  <li>Second step — each item avoids splitting across a page break.</li>
+  <li>Third step — no need to number items in the HTML source.</li>
+</ol>
+```
+
+---
+
+## Glossary
+
+A definition list for rules terms, jargon, and key concepts. Use at the end of a chapter or as a standalone reference section.
+
+**Syntax** — `<div class="glossary">` containing `<div class="glossary-term">` / `<div class="glossary-def">` pairs.
+
+<div class="example">
+<div class="glossary">
+<div class="glossary-term">Trim size</div>
+<div class="glossary-def">The final dimensions of the printed page after cutting. All content must stay within the safe area inside the trim boundary.</div>
+<div class="glossary-term">Bleed</div>
+<div class="glossary-def">Extra artwork that extends 0.125in beyond the trim edge. Required for any element that touches the page boundary so trimming variation does not leave a white sliver.</div>
+<div class="glossary-term">Running header</div>
+<div class="glossary-def">The chapter title that appears in the top margin of every body page. Captured automatically from each H1 via CSS <code>string-set</code>.</div>
+</div>
+</div>
+
+```html
+<div class="glossary">
+  <div class="glossary-term">Term</div>
+  <div class="glossary-def">Definition of the term goes here.</div>
+  <div class="glossary-term">Another Term</div>
+  <div class="glossary-def">Its definition.</div>
+</div>
+```
+
+---
+
+## Creating Custom Callout Variants
+
+The callout component is designed to be extended. To add a project-specific callout type (for example, a "Game Master Note" callout):
+
+**Step 1 — Add tokens to `§ 1 BRAND TOKENS` in `styles/guide.css`:**
+
+```css
+--color-tint-gm:  #f0f0ff;   /* GM note fill  */
+--border-gm:      3pt solid #5050c0;
+```
+
+**Step 2 — Add CSS rules to `§ 8 YOUR BOOK LAYER`:**
+
+```css
+.callout-gm {
+  border-left: var(--border-gm);
+  background: var(--color-tint-gm);
+}
+.callout-gm .callout-label { color: #5050c0; }
+```
+
+**Step 3 — Register the container** in `src/lib/markdown/index.ts`:
+
+```typescript
+md.use(markdownItContainer, "callout-gm", createNamedContainer("callout-gm"));
+```
+
+**Step 4 — Use in markdown:**
+
+```markdown
+::: callout-gm
+<span class="callout-label">Game Master</span>
+This note is only for the GM. Players should not read past this point.
+:::
+```
+
+The same pattern works for any named container — `callout-lore`, `callout-safety`, `callout-example`, etc.

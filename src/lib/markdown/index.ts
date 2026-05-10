@@ -6,6 +6,7 @@ import MarkdownIt from "markdown-it";
 import { BOOK_HTML_FILENAME } from "../viewer";
 import markdownItAttrs from "markdown-it-attrs";
 import markdownItContainer from "markdown-it-container";
+import markdownItFootnote from "markdown-it-footnote";
 import markdownItPaged from "markdown-it-paged";
 import markdownItSourceMap from "markdown-it-source-map";
 import {
@@ -69,6 +70,7 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
       : plugin);
 
   md.use(unwrap(markdownItAttrs));
+  md.use(unwrap(markdownItFootnote));
   md.use(unwrap(markdownItSourceMap));
   md.use(unwrap(markdownItPaged), { implicitPage: true });
 
@@ -111,6 +113,15 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   md.use(markdownItContainer, "container", createNamedContainer("container"));
   md.use(markdownItContainer, "aug", createNamedContainer("aug"));
   md.use(markdownItContainer, "two-column", createNamedContainer("two-column"));
+  md.use(markdownItContainer, "three-column", createNamedContainer("three-column"));
+  /* specific callout variants must be registered before the generic "callout"
+     because markdown-it-container tests in order and "^callout\b" matches all variants */
+  md.use(markdownItContainer, "callout-note", createNamedContainer("callout-note"));
+  md.use(markdownItContainer, "callout-warning", createNamedContainer("callout-warning"));
+  md.use(markdownItContainer, "callout-caution", createNamedContainer("callout-caution"));
+  md.use(markdownItContainer, "callout-tip", createNamedContainer("callout-tip"));
+  md.use(markdownItContainer, "callout", createNamedContainer("callout"));
+  md.use(markdownItContainer, "pull-quote", createNamedContainer("pull-quote"));
 
   // Apply custom plugins from manifest
   if (customPlugins && customPlugins.length > 0) {
@@ -206,6 +217,56 @@ export async function renderChapters(
   ${pagedCss ? `<style>\n/* markdown-it-paged layout CSS */\n${pagedCss}\n</style>` : ''}
   ${pluginCss ? `<style>\n/* Plugin CSS */\n${pluginCss}\n</style>` : ''}
   <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>
+  <script>
+    // Post-render DOM injection: Paged.js ignores break-before:right/left/recto
+    // for named-page transitions, so we register an afterRendered handler that
+    // detects chapter h1s on even (verso) pages and splices blank pages into the
+    // rendered DOM so every chapter opener appears on an odd (recto/left-visual) page.
+    class RectoChapterHandler extends Paged.Handler {
+      constructor(c, p, caller) { super(c, p, caller); }
+
+      afterRendered(pages) {
+        this._fixRectoAlignment();
+        window.__PAGED_RENDERED__ = true;
+      }
+
+      _insertBlankBefore(pg) {
+        const blankPage = document.createElement('div');
+        blankPage.className = 'pagedjs_page pagedjs_blank_page';
+        blankPage.setAttribute('data-page-number', '0');
+        blankPage.setAttribute('aria-hidden', 'true');
+        const blankContent = document.createElement('div');
+        blankContent.className = 'pagedjs_page_content';
+        blankPage.appendChild(blankContent);
+        pg.before(blankPage);
+      }
+
+      _renumber() {
+        Array.from(document.querySelectorAll('.pagedjs_page')).forEach((pg, i) => {
+          const n = i + 1;
+          pg.setAttribute('data-page-number', String(n));
+          pg.classList.remove('pagedjs_left_page', 'pagedjs_right_page');
+          pg.classList.add(n % 2 === 1 ? 'pagedjs_right_page' : 'pagedjs_left_page');
+        });
+      }
+
+      _fixRectoAlignment() {
+        // Iteratively insert blank pages before even-page chapter openers.
+        // Repeat up to 4 times to handle cascade from prior insertions.
+        for (let pass = 0; pass < 4; pass++) {
+          const evenH1Pages = Array.from(document.querySelectorAll('.pagedjs_page'))
+            .filter(pg => {
+              const n = parseInt(pg.getAttribute('data-page-number') || '0');
+              return n % 2 === 0 && pg.querySelector('h1');
+            });
+          if (evenH1Pages.length === 0) break;
+          evenH1Pages.forEach(pg => this._insertBlankBefore(pg));
+          this._renumber();
+        }
+      }
+    }
+    Paged.registerHandlers(RectoChapterHandler);
+  </script>
 </head>
 <body>
 ${bodyContent}

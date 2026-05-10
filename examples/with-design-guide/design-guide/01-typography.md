@@ -1,3 +1,5 @@
+@chapter #ch-typography .typography
+
 # Typography
 
 <div class="lede">The type system uses two families: a serif for body text and a sans-serif for headings and UI labels. Adjust <code>--font-body</code> and <code>--font-display</code> in <code>guide.css</code> to swap both at once.</div>
@@ -98,3 +100,48 @@ Ordered lists:
 <tr><td>--fs-micro</td><td>8pt</td><td>Running headers, folios</td></tr>
 </tbody>
 </table>
+
+---
+
+## Smart Typography
+
+The markdown renderer has `typographer: true` enabled, which automatically converts common ASCII shortcuts to proper typographic characters. No special syntax required.
+
+| You type | Renders as | Character |
+|----------|------------|-----------|
+| `(c)` | (c) | Copyright © |
+| `(tm)` | (tm) | Trademark ™ |
+| `(R)` | (R) | Registered ® |
+| `--` | -- | En dash – |
+| `---` | --- | Em dash — |
+| `...` | ... | Ellipsis … |
+| `"quoted"` | "quoted" | Curly double quotes |
+| `'quoted'` | 'quoted' | Curly single quotes |
+
+Hyphens in words are left as-is. The `hyphens: auto` CSS property handles automatic hyphenation for justified body text — this is separate from the typographer plugin.
+
+---
+
+## Custom Fonts
+
+The stylesheet's `§ 0 CUSTOM FONTS` section (at the top of `styles/guide.css`) contains a commented `@font-face` template. To load a custom font:
+
+1. Add your font files to a `fonts/` directory alongside `guide.css`.
+2. Uncomment and edit the `@font-face` blocks in `§ 0`, updating the file paths and family name.
+3. Update `--font-body` or `--font-display` in `§ 1 BRAND TOKENS` to reference your new family name.
+
+```css
+/* In § 0 CUSTOM FONTS — uncomment and edit */
+@font-face {
+  font-family: "YourBodyFont";
+  src: url("../fonts/your-body-font-regular.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+
+/* In § 1 BRAND TOKENS — update the variable */
+:root {
+  --font-body: "YourBodyFont", Georgia, serif;
+}
+```
+
+Include one `@font-face` block per weight and style combination (regular, bold, italic, bold-italic). Use `woff2` as the primary format with a `ttf` fallback for broadest compatibility. The `font-display: swap` value prevents invisible text during font loading in the preview.
