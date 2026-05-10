@@ -7,55 +7,55 @@
 ## Paper & Ink
 
 <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.1in 0;">
-  <div style="width:72px;height:56px;background:var(--bg);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>BG</span><span>#d4d4d4<br>--bg</span></div>
-  <div style="width:72px;height:56px;background:var(--paper-cream);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Paper Cream</span><span>#f5f0e6<br>--paper-cream</span></div>
-  <div style="width:72px;height:56px;background:var(--paper-light);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Paper Light</span><span>#ebe5d8<br>--paper-light</span></div>
-  <div style="width:72px;height:56px;background:var(--paper-aged);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Paper Aged</span><span>#ddd6c6<br>--paper-aged</span></div>
-  <div style="width:72px;height:56px;background:var(--ink);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Ink</span><span>#1a1715<br>--ink</span></div>
-  <div style="width:72px;height:56px;background:var(--ink-smoke);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Ink Smoke</span><span>#4a4540<br>--ink-smoke</span></div>
-  <div style="width:72px;height:56px;background:var(--ink-dust);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Ink Dust</span><span>#8a8378<br>--ink-dust</span></div>
+  <div style="width:72px;height:68px;background:var(--bg);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>BG</span><span>#d4d4d4<br>--bg</span></div>
+  <div style="width:72px;height:68px;background:var(--paper-cream);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Paper Cream</span><span>#f5f0e6<br>--paper-cream</span></div>
+  <div style="width:72px;height:68px;background:var(--paper-light);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Paper Light</span><span>#ebe5d8<br>--paper-light</span></div>
+  <div style="width:72px;height:68px;background:var(--paper-aged);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Paper Aged</span><span>#ddd6c6<br>--paper-aged</span></div>
+  <div style="width:72px;height:68px;background:var(--ink);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Ink</span><span>#1a1715<br>--ink</span></div>
+  <div style="width:72px;height:68px;background:var(--ink-smoke);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Ink Smoke</span><span>#4a4540<br>--ink-smoke</span></div>
+  <div style="width:72px;height:68px;background:var(--ink-dust);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Ink Dust</span><span>#8a8378<br>--ink-dust</span></div>
 </div>
 
 ## Creaturepunk Fire
 
 <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.1in 0;">
-  <div style="width:72px;height:56px;background:var(--crimson);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Crimson</span><span>#d41200<br>--crimson</span></div>
-  <div style="width:72px;height:56px;background:var(--blood);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Blood</span><span>#a30900<br>--blood</span></div>
-  <div style="width:72px;height:56px;background:var(--orange);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Orange</span><span>#f24d00<br>--orange</span></div>
-  <div style="width:72px;height:56px;background:var(--ember);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Ember</span><span>#de3a00<br>--ember</span></div>
-  <div style="width:72px;height:56px;background:var(--rust);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Rust</span><span>#c23000<br>--rust</span></div>
-  <div style="width:72px;height:56px;background:var(--amber);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Amber</span><span>#e89200<br>--amber</span></div>
-  <div style="width:72px;height:56px;background:var(--deep-rust);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Deep Rust</span><span>#761800<br>--deep-rust</span></div>
+  <div style="width:72px;height:68px;background:var(--crimson);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Crimson</span><span>#d41200<br>--crimson</span></div>
+  <div style="width:72px;height:68px;background:var(--blood);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Blood</span><span>#a30900<br>--blood</span></div>
+  <div style="width:72px;height:68px;background:var(--orange);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Orange</span><span>#f24d00<br>--orange</span></div>
+  <div style="width:72px;height:68px;background:var(--ember);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Ember</span><span>#de3a00<br>--ember</span></div>
+  <div style="width:72px;height:68px;background:var(--rust);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Rust</span><span>#c23000<br>--rust</span></div>
+  <div style="width:72px;height:68px;background:var(--amber);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Amber</span><span>#e89200<br>--amber</span></div>
+  <div style="width:72px;height:68px;background:var(--deep-rust);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Deep Rust</span><span>#761800<br>--deep-rust</span></div>
 </div>
 
 ## HUD Digital
 
 <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.1in 0;">
-  <div style="width:72px;height:56px;background:var(--hud-blue);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>HUD Blue</span><span>#2a6a8a<br>--hud-blue</span></div>
-  <div style="width:72px;height:56px;background:var(--hud-blue-bright);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>HUD Bright</span><span>#48a4e0<br>--hud-blue-bright</span></div>
-  <div style="width:72px;height:56px;background:var(--hud-blue-dim);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>HUD Dim</span><span>#c9d6e2<br>--hud-blue-dim</span></div>
-  <div style="width:72px;height:56px;background:var(--hud-magenta);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>HUD Magenta</span><span>#b85820<br>--hud-magenta</span></div>
+  <div style="width:72px;height:68px;background:var(--hud-blue);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>HUD Blue</span><span>#2a6a8a<br>--hud-blue</span></div>
+  <div style="width:72px;height:68px;background:var(--hud-blue-bright);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>HUD Bright</span><span>#48a4e0<br>--hud-blue-bright</span></div>
+  <div style="width:72px;height:68px;background:var(--hud-blue-dim);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>HUD Dim</span><span>#c9d6e2<br>--hud-blue-dim</span></div>
+  <div style="width:72px;height:68px;background:var(--hud-magenta);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>HUD Magenta</span><span>#b85820<br>--hud-magenta</span></div>
 </div>
 
 ## Surface Tokens
 
 <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.1in 0;">
-  <div style="width:72px;height:56px;background:var(--hud-panel);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>HUD Panel</span><span>#eeece8<br>--hud-panel</span></div>
-  <div style="width:72px;height:56px;background:var(--surface-tint-1);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Surface 1</span><span>#e4e2e0<br>--surface-tint-1</span></div>
-  <div style="width:72px;height:56px;background:var(--surface-tint-2);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Surface 2</span><span>#eae8e5<br>--surface-tint-2</span></div>
-  <div style="width:72px;height:56px;background:var(--surface-tint-3);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Surface 3</span><span>#f2f0ec<br>--surface-tint-3</span></div>
-  <div style="width:72px;height:56px;background:var(--inlay-blue-tint);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Inlay Blue</span><span>#b8c8d0<br>--inlay-blue-tint</span></div>
-  <div style="width:72px;height:56px;background:var(--surface-orange-tint);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Orange Tint</span><span>#dcd4bc<br>--surface-orange-tint</span></div>
+  <div style="width:72px;height:68px;background:var(--hud-panel);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>HUD Panel</span><span>#eeece8<br>--hud-panel</span></div>
+  <div style="width:72px;height:68px;background:var(--surface-tint-1);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Surface 1</span><span>#e4e2e0<br>--surface-tint-1</span></div>
+  <div style="width:72px;height:68px;background:var(--surface-tint-2);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Surface 2</span><span>#eae8e5<br>--surface-tint-2</span></div>
+  <div style="width:72px;height:68px;background:var(--surface-tint-3);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Surface 3</span><span>#f2f0ec<br>--surface-tint-3</span></div>
+  <div style="width:72px;height:68px;background:var(--inlay-blue-tint);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Inlay Blue</span><span>#b8c8d0<br>--inlay-blue-tint</span></div>
+  <div style="width:72px;height:68px;background:var(--surface-orange-tint);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Orange Tint</span><span>#dcd4bc<br>--surface-orange-tint</span></div>
 </div>
 
 ## Border Tokens
 
 <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.1in 0;">
-  <div style="width:72px;height:56px;background:var(--border-hairline);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Hairline</span><span>#d0c8b5<br>--border-hairline</span></div>
-  <div style="width:72px;height:56px;background:var(--border-light);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Light</span><span>#b8b0a0<br>--border-light</span></div>
-  <div style="width:72px;height:56px;background:var(--border-medium);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Medium</span><span>#8a8378<br>--border-medium</span></div>
-  <div style="width:72px;height:56px;background:var(--border-rule);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Rule</span><span>#4a4540<br>--border-rule</span></div>
-  <div style="width:72px;height:56px;background:var(--border-strong);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Strong</span><span>#1a1715<br>--border-strong</span></div>
+  <div style="width:72px;height:68px;background:var(--border-hairline);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Hairline</span><span>#d0c8b5<br>--border-hairline</span></div>
+  <div style="width:72px;height:68px;background:var(--border-light);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Light</span><span>#b8b0a0<br>--border-light</span></div>
+  <div style="width:72px;height:68px;background:var(--border-medium);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Medium</span><span>#8a8378<br>--border-medium</span></div>
+  <div style="width:72px;height:68px;background:var(--border-rule);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Rule</span><span>#4a4540<br>--border-rule</span></div>
+  <div style="width:72px;height:68px;background:var(--border-strong);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Strong</span><span>#1a1715<br>--border-strong</span></div>
 </div>
 
 ## Usage Rules

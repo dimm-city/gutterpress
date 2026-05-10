@@ -2292,6 +2292,27 @@ body::after {
   padding: 14px 16px;
 }
 
+/* ── Image floats ────────────────────────────────────────────────────────────
+   Float an image alongside body text using markdown-it-attrs:
+     ![Alt](img/photo.png){.img-float-right}
+   The image occupies 44% of the column; body text wraps the remaining 56%.
+   ─────────────────────────────────────────────────────────────────────────── */
+.img-float-right {
+  float: right;
+  width: 44%;
+  max-width: 44%;
+  margin: 0 0 0.15in 0.2in;
+  display: block;
+}
+
+.img-float-left {
+  float: left;
+  width: 44%;
+  max-width: 44%;
+  margin: 0 0.2in 0.15in 0;
+  display: block;
+}
+
 .sidebar {
   background: var(--paper-light);
   border-left: 4px solid var(--orange);

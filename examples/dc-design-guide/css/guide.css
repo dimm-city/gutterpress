@@ -73,9 +73,9 @@ h2, h3, h4 {
   page-break-inside: avoid;
 }
 
-h2 + p, h2 + ul, h2 + ol, h2 + pre, h2 + blockquote, h2 + table,
-h3 + p, h3 + ul, h3 + ol, h3 + pre, h3 + table,
-h4 + p, h4 + ul, h4 + ol {
+h2 + p, h2 + ul, h2 + ol, h2 + pre, h2 + blockquote, h2 + table, h2 + div,
+h3 + p, h3 + ul, h3 + ol, h3 + pre, h3 + table, h3 + div,
+h4 + p, h4 + ul, h4 + ol, h4 + div {
   break-before: avoid;
   page-break-before: avoid;
 }
@@ -180,6 +180,14 @@ tr:nth-child(even) td {
   margin: 0.1in 0;
   background: var(--paper-cream);
   break-inside: avoid;
+}
+
+/* ── Page-break utility ──────────────────────────────────────────────────────
+   Apply {.break-before} to any heading to force a page break before it.
+   ─────────────────────────────────────────────────────────────────────────── */
+.break-before {
+  break-before: page;
+  page-break-before: always;
 }
 
 /* ── YOUR DESIGN GUIDE LAYER ─────────────────────────────────────────────────

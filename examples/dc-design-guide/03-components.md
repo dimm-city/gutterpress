@@ -466,7 +466,7 @@ The five-rung d20 result table used for all rolls in Dimm City. Each row is colo
 
 ---
 
-## Component Token Reference
+## Component Token Reference {.break-before}
 
 | Class | Element | Purpose |
 |-------|---------|---------|
