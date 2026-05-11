@@ -289,8 +289,8 @@ body {
   position: relative;
   hyphens: auto;
   -webkit-hyphens: auto;
-  widows: 3;
-  orphans: 3;
+  widows: 2;   /* Fix 5: reduced from 3 — less aggressive, fewer forced breaks */
+  orphans: 2;  /* Fix 5: reduced from 3 */
 }
 
 
@@ -326,7 +326,7 @@ h1 {
    Production book-sections.css overrides h2 color per chapter context
    (e.g. orange for action chapters). This base value is the default only.
    --hud-blue-dark (#1f5a7a): 5.06:1 on #d4d4d4 — WCAG AA pass. --hud-blue (#2a6a8a) was 4.02:1. */
-h2 { font-size: var(--fs-h2); color: var(--hud-blue-dark); letter-spacing: var(--ls-heading); margin-top: 22pt; }
+h2 { font-size: var(--fs-h2); color: var(--hud-blue-dark); letter-spacing: var(--ls-heading); margin-top: 22pt; border-bottom: 2.5pt solid var(--hud-blue-dark); padding-bottom: 0.1em; }
 h3 { font-size: var(--fs-h3); color: var(--rust); letter-spacing: var(--ls-heading); margin-top: 18pt; }
 h4 { font-size: var(--fs-h4); color: var(--blood); letter-spacing: 0.06em; margin-top: 15pt; }
 h5 { font-size: var(--fs-h5); color: var(--blood); margin-top: 14pt; }
@@ -343,10 +343,11 @@ em     { color: var(--ink-smoke); font-style: italic; }
 
 code, kbd, samp {
   font-family: var(--font-mono);
-  color: var(--blood);
-  font-size: 0.95em;
-  background: var(--paper-light);
-  padding: 0.05em 0.3em; /* em intentional — inline element padding scales with font-size */
+  color: var(--ink);                          /* strong ink — was --blood; improves contrast for syntax labels */
+  font-size: 0.92em;
+  background: var(--paper-aged);             /* slightly darker than paper-light — was paper-light */
+  padding: 1pt 4pt;
+  border-radius: 2pt;
   border: 1px solid var(--paper-aged);
 }
 
@@ -371,6 +372,11 @@ ul li::before {
   font-weight: 700;
   padding-right: 0.1em; /* em intentional — bullet gap scales with list font-size */
 }
+
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 5pt 10pt; vertical-align: top; text-align: left; }
+th { font-family: var(--font-mono); font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-dark); border-bottom: 2px solid var(--ink); }
+td { border-bottom: 1px solid var(--paper-aged); }
 
 /* ============================================================================
    UTILITY CLASSES
@@ -601,8 +607,9 @@ ul li::before {
 
 /* ───────── ABILITY CARD ───────── */
 .dc-skill-card {
-  /* break-inside: intentionally unset — cards may flow across pages in column
-     layouts; .allow-split modifier controls inner list behavior */
+  /* Fix 1: Prevent skill cards from splitting across page breaks (tab/tier lost on fragment) */
+  break-inside: avoid;
+  page-break-inside: avoid;
   position: relative;
   margin-bottom: 24px;
   max-width: 100%;
@@ -618,7 +625,7 @@ ul li::before {
   align-items: center;
   gap: 12px;
   padding: 6px 26px 6px 12px;
-  background: var(--paper-cream);
+  background: var(--ink-dark);              /* was paper-cream — dark tab distinguishes from card body */
   border: 2px solid var(--ink);
   border-bottom: 0;
   margin-left: 14px;
@@ -632,7 +639,7 @@ ul li::before {
 .dc-tab-title {
   font-family: var(--font-tab);
   font-size: 15px;
-  color: var(--ink);
+  color: var(--paper-cream);               /* was --ink — light text on dark tab background */
   text-transform: uppercase;
   letter-spacing: 0.05em;
   line-height: 1.2;
@@ -1045,6 +1052,9 @@ hr,
    CSS class: dc-gear-entry (wrapper) */
 .dc-gear-entry {
   margin: 0.1in 0;
+  padding: 10pt 14pt;
+  background: var(--paper-light);
+  border-left: 3pt solid var(--orange);
   break-inside: avoid;
   page-break-inside: avoid;
 }
@@ -2183,6 +2193,8 @@ hr,
   padding: 14px 18px;
   /* folded from legacy/sidebar.css PARTIAL — layout gap props */
   float: right;
+  clear: right;           /* Fix 2: prevent stacking into adjacent floats */
+  shape-outside: margin-box; /* Fix 2: body text wraps cleanly around margin-box */
   width: var(--sidebar-width);
   margin: 0 0 0.15in 0.2in;
   /* Full border: top/right/bottom from legacy; border-left above from shared.css */
@@ -2241,6 +2253,18 @@ hr,
   break-inside: avoid;
   page-break-inside: avoid;
 }
+.dc-vibe-callout::before {
+  content: "Vibe";
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--crimson);
+  margin-bottom: 6pt;
+  font-style: normal;
+}
 
 .dc-origin-callout {
   padding: 6pt 9pt;
@@ -2250,6 +2274,18 @@ hr,
   color: var(--ink-smoke);
   break-inside: avoid;
   page-break-inside: avoid;
+}
+.dc-origin-callout::before {
+  content: "Origin";
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--crimson);
+  margin-bottom: 6pt;
+  font-style: normal;
 }
 
 /* ───────── VISIT CALLOUT ───────── */
@@ -2266,6 +2302,18 @@ hr,
   break-inside: avoid;
   page-break-inside: avoid;
 }
+.dc-visit-callout::before {
+  content: "Visit";
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--hud-blue-dark);
+  margin-bottom: 6pt;
+  font-style: normal;
+}
 .dc-visit-callout p { margin: 0; }
 .dc-visit-callout p + p { margin-top: 6pt; }
 
@@ -2280,6 +2328,18 @@ hr,
   line-height: var(--lh-normal);
   break-inside: avoid;
   page-break-inside: avoid;
+}
+.dc-gear-callout::before {
+  content: "Gear";
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--orange);
+  margin-bottom: 6pt;
+  font-style: normal;
 }
 
 .dc-note-callout {
@@ -2634,6 +2694,13 @@ hr,
   transform: translateX(-50%);
   z-index: -1;
   pointer-events: none;
+}
+
+/* Fix 3: Two-column container — :::two-column markdown shorthand */
+.two-column {
+  column-count: 2;
+  column-gap: 0.25in;
+  column-rule: 1pt solid var(--border-hairline);
 }
 
 /* Base two-column list utility — scoped card overrides below take precedence */
