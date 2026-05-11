@@ -246,6 +246,13 @@ export async function renderChapters(
         blankPage.className = 'pagedjs_page pagedjs_blank_page';
         blankPage.setAttribute('data-page-number', '0');
         blankPage.setAttribute('aria-hidden', 'true');
+        // Mirror .pagedjs_sheet so CSS background-image rules apply.
+        const srcSheet = pg.querySelector('.pagedjs_sheet');
+        if (srcSheet) {
+          const blankSheet = document.createElement('div');
+          blankSheet.className = srcSheet.className;
+          blankPage.appendChild(blankSheet);
+        }
         const blankContent = document.createElement('div');
         blankContent.className = 'pagedjs_page_content';
         blankPage.appendChild(blankContent);
