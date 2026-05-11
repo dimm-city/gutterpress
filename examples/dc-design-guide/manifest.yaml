@@ -23,6 +23,9 @@ source:
     - 06-layout.md
     - 07-markdown-reference.md
     - 08-field-guide-components.md
+    - 200-fg-specialty-overview.md
+    - 201-fg-specialty-profile.md
+    - 202-fg-rules-spreads.md
     - 101-publishing.md
   assets:
     - css
