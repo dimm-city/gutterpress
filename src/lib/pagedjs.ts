@@ -114,6 +114,72 @@ export const BREAK_INSIDE_HANDLER = `
 </script>`.trim();
 
 /**
+ * Inline script that forces every chapter opener (first h1 in a chapter
+ * section) onto a recto (odd/right-hand) page by inserting blank verso pages
+ * after rendering.
+ *
+ * Only injected for PDF builds — the HTML viewer is screen-only so the
+ * print convention of recto chapter starts doesn't apply.
+ */
+export const RECTO_CHAPTER_HANDLER = `
+<script>
+(function() {
+  window.PagedConfig = window.PagedConfig || {};
+  var origBefore = window.PagedConfig.before;
+  window.PagedConfig.before = function() {
+    if (typeof Paged !== 'undefined' && Paged.Handler && Paged.registerHandlers) {
+      class RectoChapterHandler extends Paged.Handler {
+        constructor(c, p, caller) { super(c, p, caller); }
+        beforeParsed(content) {
+          content.querySelectorAll('section.chapter').forEach(function(ch) {
+            var h1 = ch.querySelector('h1');
+            if (h1) h1.setAttribute('data-chapter-opener', 'true');
+          });
+        }
+        afterRendered(pages) { this._fixRectoAlignment(); }
+        _insertBlankBefore(pg) {
+          var blank = document.createElement('div');
+          blank.className = 'pagedjs_page pagedjs_blank_page';
+          blank.setAttribute('data-page-number', '0');
+          blank.setAttribute('aria-hidden', 'true');
+          var srcSheet = pg.querySelector('.pagedjs_sheet');
+          if (srcSheet) {
+            var blankSheet = document.createElement('div');
+            blankSheet.className = srcSheet.className;
+            blank.appendChild(blankSheet);
+          }
+          blank.appendChild(document.createElement('div')).className = 'pagedjs_page_content';
+          pg.before(blank);
+        }
+        _renumber() {
+          Array.from(document.querySelectorAll('.pagedjs_page')).forEach(function(pg, i) {
+            var n = i + 1;
+            pg.setAttribute('data-page-number', String(n));
+            pg.classList.remove('pagedjs_left_page', 'pagedjs_right_page');
+            pg.classList.add(n % 2 === 1 ? 'pagedjs_right_page' : 'pagedjs_left_page');
+          });
+        }
+        _fixRectoAlignment() {
+          for (var pass = 0; pass < 20; pass++) {
+            var pages = Array.from(document.querySelectorAll('.pagedjs_page'));
+            var target = pages.find(function(pg) {
+              var n = parseInt(pg.getAttribute('data-page-number') || '0');
+              return n % 2 === 0 && !!pg.querySelector('h1[data-chapter-opener]');
+            });
+            if (!target) break;
+            this._insertBlankBefore(target);
+            this._renumber();
+          }
+        }
+      }
+      Paged.registerHandlers(RectoChapterHandler);
+    }
+    if (origBefore) return origBefore();
+  };
+})();
+</script>`.trim();
+
+/**
  * Inject the Paged.js polyfill + render-complete marker into an HTML file.
  * Modifies the file in-place.
  */
@@ -131,33 +197,29 @@ export async function patchHtmlForPagedjs(
 
   let patched = html;
 
-  if (!hasPaged) {
-    const inject = `
-${BREAK_INSIDE_HANDLER}
-<script src="${vendorPath.replace(/\\/g, "/")}"></script>
-${markerScript}`.trim();
+  // Handlers injected before the Paged.js polyfill for all PDF builds.
+  const pdfHandlers = `${RECTO_CHAPTER_HANDLER}\n${BREAK_INSIDE_HANDLER}`;
 
+  if (!hasPaged) {
+    const inject = `${pdfHandlers}\n<script src="${vendorPath.replace(/\\/g, "/")}"></script>`;
     if (patched.includes("</head>")) {
       patched = patched.replace("</head>", `${inject}\n</head>`);
     } else {
       patched = inject + "\n" + patched;
     }
-  } else if (!patched.includes("__PAGED_RENDERED__")) {
-    // Paged.js already present — inject handler BEFORE the Paged.js script
-    // so PagedConfig.before is set before the polyfill executes.
-    // Replace the existing script tag with handler + local vendor copy.
+  } else {
+    // Paged.js already present — replace the polyfill tag with handlers +
+    // local vendor copy so PagedConfig.before is set before execution.
     const pagedScriptRegex = /<script[^>]*src=["'][^"']*paged[^"']*["'][^>]*><\/script>/i;
     const match = patched.match(pagedScriptRegex);
 
     if (match) {
-      const inject = `${BREAK_INSIDE_HANDLER}\n<script src="${vendorPath.replace(/\\/g, "/")}"></script>`;
+      const inject = `${pdfHandlers}\n<script src="${vendorPath.replace(/\\/g, "/")}"></script>`;
       patched = patched.replace(match[0], inject);
     } else if (patched.includes("</head>")) {
-      const inject = `${BREAK_INSIDE_HANDLER}\n${markerScript}`;
-      patched = patched.replace("</head>", `${inject}\n</head>`);
+      patched = patched.replace("</head>", `${pdfHandlers}\n</head>`);
     } else {
-      const inject = `${BREAK_INSIDE_HANDLER}\n${markerScript}`;
-      patched = inject + "\n" + patched;
+      patched = pdfHandlers + "\n" + patched;
     }
   }
 
