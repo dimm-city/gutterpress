@@ -873,3 +873,9 @@
  .gh-progress.active .gh-progress-fill {
      width: 100%;
  }
+ /* Static mode: hide buttons that require a live print-md server. */
+ html[data-mode="static"] #btn-folder,
+ html[data-mode="static"] #btn-github,
+ html[data-mode="static"] #btn-exit {
+     display: none;
+ }

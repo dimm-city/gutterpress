@@ -842,11 +842,8 @@ function initializeToolbarControls() {
       }
     });
   } else {
-    // Static mode: hide buttons whose actions need a print-md server.
-    for (const id of ["btn-folder", "btn-github", "btn-exit"]) {
-      const el = document.getElementById(id);
-      if (el) el.style.display = "none";
-    }
+    // Static mode: server-coupled buttons are hidden via CSS
+    // (html[data-mode="static"] rules in preview.css).
   }
 
   // Page navigation buttons
