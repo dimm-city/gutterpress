@@ -26,6 +26,11 @@ source:
     - 200-fg-specialty-overview.md
     - 201-fg-specialty-profile.md
     - 202-fg-rules-spreads.md
+    - 203-fg-front-matter.md
+    - 204-fg-citizen-file.md
+    - 205-fg-character-creation.md
+    - 206-fg-npc-dm-spreads.md
+    - 207-fg-gear-tech.md
     - 101-publishing.md
   assets:
     - css
