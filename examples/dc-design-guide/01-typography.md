@@ -2,7 +2,9 @@
 
 # Typography
 
-<div class="dc-intro">Three font families, each with a specific role. lixdu anchors display and banner headings; Tomorrow handles tab labels and mono chrome; Titillium Web carries all body, flavor, and quote copy.</div>
+::: wrapper {.dc-intro}
+Three font families, each with a specific role. lixdu anchors display and banner headings; Tomorrow handles tab labels and mono chrome; Titillium Web carries all body, flavor, and quote copy.
+:::
 
 ## H1 — lixdu
 
@@ -10,7 +12,7 @@
 
 **Spec:** 20.7pt (1.728rem at 12pt base) · bold · lixdu · one per chapter or specialty opener
 
-<h1>Augmerc</h1>
+# Augmerc
 
 ---
 
@@ -20,7 +22,7 @@
 
 **Spec:** 17.3pt (1.44rem at 12pt base) · lixdu · major topic breaks
 
-<h2>Spec Tweak</h2>
+## Spec Tweak
 
 ---
 
@@ -30,7 +32,7 @@
 
 **Spec:** 14.4pt (1.2rem at 12pt base) · lixdu · reference column labels
 
-<h3>Wired to Kill</h3>
+### Wired to Kill
 
 ---
 
@@ -40,7 +42,7 @@
 
 **Spec:** Wider tracking, crimson accent bar. Used on learning paths.
 
-<h2 class="dc-spray">Biting Distance</h2>
+## Biting Distance {.dc-spray}
 
 ---
 
@@ -50,23 +52,25 @@
 
 **Spec:** Primary chapter/specialty opener banner with angled crimson clip-path.
 
-<h1 class="dc-chevron">Augmerc</h1>
+# Augmerc {.dc-chevron}
 
 ---
 
 ## Body — Titillium Web
 
-**Spec:** Standard paragraph. Titillium Web, body copy.
+**Spec:** Standard paragraph. Titillium Web, body copy. No special syntax required.
 
-<p class="dc-prose">When an enemy falters, you may trigger one of the following counters.</p>
+When an enemy falters, you may trigger one of the following counters.
 
 ---
 
 ## Flavor — Titillium Web italic
 
-**Spec:** Italic, used in card bodies.
+**Spec:** Italic, used in card bodies. Inside `@skill` cards, generated from the `>` blockquote line. Standalone: `::: wrapper {.dc-prose.flavor}`.
 
-<p class="dc-prose flavor">See an opening, ya take it.</p>
+::: wrapper {.dc-prose.flavor}
+See an opening, ya take it.
+:::
 
 ---
 

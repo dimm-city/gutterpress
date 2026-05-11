@@ -2,7 +2,9 @@
 
 # Color Palette
 
-<div class="dc-intro">Two accent registers on cream substrate. Creaturepunk fire (crimson, rust, orange, amber) for printed content. HUD digital (blue, magenta) for cybernetics and tech. The page is never black.</div>
+::: wrapper {.dc-intro}
+Two accent registers on cream substrate. Creaturepunk fire (crimson, rust, orange, amber) for printed content. HUD digital (blue, magenta) for cybernetics and tech. The page is never black.
+:::
 
 ## Paper & Ink
 

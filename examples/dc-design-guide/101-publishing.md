@@ -2,7 +2,9 @@
 
 # Print-md CLI Reference
 
-<div class="dc-intro">Commands for authoring, building, and publishing the Dimm City Field Guide.</div>
+::: wrapper {.dc-intro}
+Commands for authoring, building, and publishing the Dimm City Field Guide.
+:::
 
 ---
 

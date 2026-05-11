@@ -2,7 +2,9 @@
 
 # Dimm City Design Guide
 
-<div class="dc-intro">This is the Dimm City print design system — cyberpunk and creaturepunk, built on print-md. Everything in these pages is live: the type, color, and components you see here are rendered through the same CSS as the Field Guide. Use this guide to understand, customize, and extend the system.</div>
+::: wrapper {.dc-intro}
+This is the Dimm City print design system — cyberpunk and creaturepunk, built on print-md. Everything in these pages is live: the type, color, and components you see here are rendered through the same CSS as the Field Guide. Use this guide to understand, customize, and extend the system.
+:::
 
 <div class="dc-toc">
 <ol>

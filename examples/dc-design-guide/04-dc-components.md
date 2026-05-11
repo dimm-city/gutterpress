@@ -2,7 +2,9 @@
 
 # DC Component Library
 
-<div class="dc-intro">Dimm City-specific components. Ability cards, banners, stat blocks, AP chips, tags, and path chains — the chrome that makes the Field Guide look like Dimm City.</div>
+::: wrapper {.dc-intro}
+Dimm City-specific components. Ability cards, banners, stat blocks, AP chips, tags, and path chains — the chrome that makes the Field Guide look like Dimm City.
+:::
 
 ---
 
@@ -14,7 +16,7 @@ The primary H1 opener for chapter and specialty pages. Renders with the DC chevr
 
 **Syntax** — `# Title {.dc-chevron}`
 
-<h1 class="dc-chevron">Augmerc</h1>
+# Augmerc {.dc-chevron}
 
 ---
 
@@ -24,7 +26,7 @@ H2 section opener for learning paths and major topic breaks. The spray treatment
 
 **Syntax** — `## Title {.dc-spray}`
 
-<h2 class="dc-spray">Biting Distance</h2>
+## Biting Distance {.dc-spray}
 
 ---
 
@@ -34,7 +36,7 @@ H3 heading for optional mechanics and variant rules. The `.no-top` modifier remo
 
 **Syntax** — `### Title {.dc-spec-tweak .no-top}`
 
-<h3 class="dc-spec-tweak no-top">Spec Tweak: Wired to Kill</h3>
+### Spec Tweak: Wired to Kill {.dc-spec-tweak .no-top}
 
 ---
 

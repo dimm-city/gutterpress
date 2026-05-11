@@ -2,7 +2,9 @@
 
 # Layout & Composition
 
-<div class="dc-intro">Multi-column splits, floated art, sidebar wrappers, and page-break utilities.</div>
+::: wrapper {.dc-intro}
+Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
+:::
 
 ---
 

@@ -2,37 +2,41 @@
 
 # Core Components
 
-<div class="dc-intro">The base prose and callout layer. These components work in all chapter types without needing a specialty or learning-path wrapper.</div>
+::: wrapper {.dc-intro}
+The base prose and callout layer. These components work in all chapter types without needing a specialty or learning-path wrapper.
+:::
 
 ---
 
 ## Body Prose
 
-The default text wrapper for all narrative and rules content. Apply `.dc-prose` to any paragraph or block of body text to inherit the DC type scale, leading, and color.
+The default text style for all narrative and rules content. Standard markdown paragraphs automatically inherit the DC type scale, leading, and color — no class or wrapper required.
 
-**Syntax** — `<p class="dc-prose">…</p>` or `<div class="dc-prose">…</div>`
+**Syntax** — plain markdown paragraph
 
-<p class="dc-prose">When an enemy falters, you may trigger one of the following counters. <strong>Backbiters</strong> are simply part of what makes an Augmerc dangerous.</p>
+When an enemy falters, you may trigger one of the following counters. **Backbiters** are simply part of what makes an Augmerc dangerous.
 
-```html
-<p class="dc-prose">When an enemy falters, you may trigger one of the
-following counters. <strong>Backbiters</strong> are simply part of what
-makes an Augmerc dangerous.</p>
+```markdown
+When an enemy falters, you may trigger one of the following counters.
+**Backbiters** are simply part of what makes an Augmerc dangerous.
 ```
 
 ---
 
 ## Flavor Text
 
-An italic variant of body prose used for in-world voice, atmospheric quotes, and short dramatic lines. Add the `.flavor` modifier to `.dc-prose`.
+An italic variant of body prose used for in-world voice, atmospheric quotes, and short dramatic lines. Inside `@skill` cards, flavor text is automatically styled from the `>` blockquote line. For standalone flavor paragraphs, use the `.dc-prose.flavor` wrapper.
 
-**Syntax** — `<p class="dc-prose flavor">…</p>`
+**Syntax** — `::: wrapper {.dc-prose.flavor}` … `:::`
 
-<p class="dc-prose flavor">See an opening, ya take it. Best time to hit 'em is when they think it's over.</p>
+::: wrapper {.dc-prose.flavor}
+See an opening, ya take it. Best time to hit 'em is when they think it's over.
+:::
 
-```html
-<p class="dc-prose flavor">See an opening, ya take it. Best time to hit
-'em is when they think it's over.</p>
+```markdown
+::: wrapper {.dc-prose.flavor}
+See an opening, ya take it. Best time to hit 'em is when they think it's over.
+:::
 ```
 
 ---
@@ -41,14 +45,18 @@ An italic variant of body prose used for in-world voice, atmospheric quotes, and
 
 A slightly larger, heavier opening paragraph used at the top of a chapter or major section. The `.flush` modifier removes the default top margin so it sits immediately under the chapter title.
 
-**Syntax** — `<div class="dc-intro flush">…</div>`
+**Syntax** — `::: wrapper {.dc-intro.flush}` … `:::`
 
-<div class="dc-intro flush">An Augmerc is muscle for hire. Street thugs, corporate bodyguards, deniable enforcers — the difference is gear, grafts, and how much of them is still original.</div>
+::: wrapper {.dc-intro.flush}
+An Augmerc is muscle for hire. Street thugs, corporate bodyguards, deniable enforcers — the difference is gear, grafts, and how much of them is still original.
+:::
 
-```html
-<div class="dc-intro flush">An Augmerc is muscle for hire. Street thugs,
-corporate bodyguards, deniable enforcers — the difference is gear, grafts,
-and how much of them is still original.</div>
+```markdown
+::: wrapper {.dc-intro.flush}
+An Augmerc is muscle for hire. Street thugs, corporate bodyguards,
+deniable enforcers — the difference is gear, grafts, and how much
+of them is still original.
+:::
 ```
 
 ---
@@ -57,18 +65,20 @@ and how much of them is still original.</div>
 
 A boxed aside for rules clarifications, reminders, and supplementary information. Uses a distinct left-border accent and a labeled header to separate it from body prose.
 
-**Syntax** — `<div class="dc-note">…</div>` with an inner `<span class="dc-note-label">` for the label
+**Syntax** — `::: wrapper {.dc-note}` … `:::` with `**Label**{.dc-note-label}` for the label
 
-<div class="dc-note">
-  <span class="dc-note-label">Note</span>
-  <p>Free counters trigger only once per round. Pick the one that hurts most.</p>
-</div>
+::: wrapper {.dc-note}
+**Note**{.dc-note-label}
 
-```html
-<div class="dc-note">
-  <span class="dc-note-label">Note</span>
-  <p>Free counters trigger only once per round. Pick the one that hurts most.</p>
-</div>
+Free counters trigger only once per round. Pick the one that hurts most.
+:::
+
+```markdown
+::: wrapper {.dc-note}
+**Note**{.dc-note-label}
+
+Free counters trigger only once per round. Pick the one that hurts most.
+:::
 ```
 
 ---
@@ -77,20 +87,22 @@ A boxed aside for rules clarifications, reminders, and supplementary information
 
 A high-visibility callout for rules that have critical consequences or are frequently misread. Uses the same structure as `.dc-note` but renders in amber to signal elevated importance.
 
-**Syntax** — `<div class="dc-note warning">…</div>`
+**Syntax** — `::: wrapper {.dc-note.warning}` … `:::` with `**Label**{.dc-note-label}` for the label
 
-<div class="dc-note warning">
-  <span class="dc-note-label">Warning</span>
-  <p>Trauma Patches stabilize a dying character but do not restore HP. A character at 0 HP with a Patch applied is still incapacitated — they can take no actions until healed above 0.</p>
-</div>
+::: wrapper {.dc-note.warning}
+**Warning**{.dc-note-label}
 
-```html
-<div class="dc-note warning">
-  <span class="dc-note-label">Warning</span>
-  <p>Trauma Patches stabilize a dying character but do not restore HP.
-  A character at 0 HP with a Patch applied is still incapacitated — they
-  can take no actions until healed above 0.</p>
-</div>
+Trauma Patches stabilize a dying character but do not restore HP. A character at 0 HP with a Patch applied is still incapacitated — they can take no actions until healed above 0.
+:::
+
+```markdown
+::: wrapper {.dc-note.warning}
+**Warning**{.dc-note-label}
+
+Trauma Patches stabilize a dying character but do not restore HP. A character
+at 0 HP with a Patch applied is still incapacitated — they can take no actions
+until healed above 0.
+:::
 ```
 
 ---
@@ -99,18 +111,20 @@ A high-visibility callout for rules that have critical consequences or are frequ
 
 A large-format excerpt set off with accent rules above and below. Use sparingly — one per chapter or major section at most. The `.flush` modifier removes the default side margins for full-column impact.
 
-**Syntax** — `<div class="dc-pullquote flush">…</div>` with an optional `<span class="dc-pullquote-attr">` for attribution
+**Syntax** — `::: wrapper {.dc-pullquote.flush}` … `:::` with `**Attribution**{.dc-pullquote-attr}` for the credit line
 
-<div class="dc-pullquote flush">
-  The rig braces and answers every swing.
-  <span class="dc-pullquote-attr">Field manual, second draft</span>
-</div>
+::: wrapper {.dc-pullquote.flush}
+The rig braces and answers every swing.
 
-```html
-<div class="dc-pullquote flush">
-  The rig braces and answers every swing.
-  <span class="dc-pullquote-attr">Field manual, second draft</span>
-</div>
+**Field manual, second draft**{.dc-pullquote-attr}
+:::
+
+```markdown
+::: wrapper {.dc-pullquote.flush}
+The rig braces and answers every swing.
+
+**Field manual, second draft**{.dc-pullquote-attr}
+:::
 ```
 
 ---
@@ -133,12 +147,12 @@ A horizontal section break styled as a piece of torn tape or a label strip. Use 
 
 A compact, high-contrast H3 heading for use inside dense multi-column reference layouts. Designed to remain legible at narrow column widths without the decorative weight of a full chapter subhead.
 
-**Syntax** — `<h3 class="dc-section-h3">…</h3>`
+**Syntax** — `### Heading {.dc-section-h3}`
 
-<h3 class="dc-section-h3">Cybernetics & Augments</h3>
+### Cybernetics & Augments {.dc-section-h3}
 
-```html
-<h3 class="dc-section-h3">Cybernetics & Augments</h3>
+```markdown
+### Cybernetics & Augments {.dc-section-h3}
 ```
 
 ---
@@ -147,9 +161,11 @@ A compact, high-contrast H3 heading for use inside dense multi-column reference 
 
 A full-width atmospheric block for in-world voice that establishes the emotional or cultural register of a section. Typically placed at the top of a chapter or faction entry before the rules content begins.
 
-**Syntax** — `::: wrapper {.dc-vibe-callout}` … `:::` in markdown, or raw `<div class="dc-vibe-callout">` in HTML
+**Syntax** — `::: wrapper {.dc-vibe-callout}` … `:::`
 
-<div class="dc-vibe-callout"><p>The Gutterdruid doesn't fight because they have to — they fight because something feral in them still remembers what it felt like to be free.</p></div>
+::: wrapper {.dc-vibe-callout}
+The Gutterdruid doesn't fight because they have to — they fight because something feral in them still remembers what it felt like to be free.
+:::
 
 ```markdown
 ::: wrapper {.dc-vibe-callout}
@@ -164,17 +180,19 @@ something feral in them still remembers what it felt like to be free.
 
 A second-person backstory block that addresses the reader as their character, used for origin and background entries. Draws the reader into the fiction by making them the subject of the narrative.
 
-**Syntax** — `<div class="dc-origin-callout">…</div>`
+**Syntax** — `::: wrapper {.dc-origin-callout}` … `:::`
 
-<div class="dc-origin-callout"><p>You didn't choose the street — the street chose you. Before the grafts, before the crew, there was just hunger and the particular talent for surviving what should have killed you. That's enough. That's always been enough.</p></div>
+::: wrapper {.dc-origin-callout}
+You didn't choose the street — the street chose you. Before the grafts, before the crew, there was just hunger and the particular talent for surviving what should have killed you. That's enough. That's always been enough.
+:::
 
-```html
-<div class="dc-origin-callout">
-  <p>You didn't choose the street — the street chose you. Before the
-  grafts, before the crew, there was just hunger and the particular talent
-  for surviving what should have killed you. That's enough. That's always
-  been enough.</p>
-</div>
+```markdown
+::: wrapper {.dc-origin-callout}
+You didn't choose the street — the street chose you. Before the grafts,
+before the crew, there was just hunger and the particular talent for
+surviving what should have killed you. That's enough. That's always
+been enough.
+:::
 ```
 
 ---
@@ -202,16 +220,21 @@ A compact NPC stat block nested inside a `.sidebar` float. Displays name, role, 
 
 A named equipment block for weapons, armor, and notable items. Groups the item name, type, and mechanical properties in a scannable panel distinct from body prose.
 
-**Syntax** — `<div class="dc-gear-callout">…</div>`
+**Syntax** — `::: wrapper {.dc-gear-callout}` … `:::`
 
-<div class="dc-gear-callout"><p><strong>Ripper Blades (Mk II)</strong></p><p>Melee. Damage 1d8+STR. <em>Serrated:</em> on a critical hit, the target bleeds for 1d4 damage at the start of their next turn.</p></div>
+::: wrapper {.dc-gear-callout}
+**Ripper Blades (Mk II)**
 
-```html
-<div class="dc-gear-callout">
-  <p><strong>Ripper Blades (Mk II)</strong></p>
-  <p>Melee. Damage 1d8+STR. <em>Serrated:</em> on a critical hit, the
-  target bleeds for 1d4 damage at the start of their next turn.</p>
-</div>
+Melee. Damage 1d8+STR. *Serrated:* on a critical hit, the target bleeds for 1d4 damage at the start of their next turn.
+:::
+
+```markdown
+::: wrapper {.dc-gear-callout}
+**Ripper Blades (Mk II)**
+
+Melee. Damage 1d8+STR. *Serrated:* on a critical hit, the target bleeds
+for 1d4 damage at the start of their next turn.
+:::
 ```
 
 ---
@@ -320,16 +343,19 @@ Fenced code blocks for CSS snippets, stat expressions, or any literal syntax. Re
 
 An in-world location description written in present tense, as if the reader is arriving on-site. Use on location pages and before encounter content to establish place before mechanics begin.
 
-**Syntax** — `::: wrapper {.dc-visit-callout}` … `:::` in markdown, or raw `<div class="dc-visit-callout">` in HTML
+**Syntax** — `::: wrapper {.dc-visit-callout}` … `:::`
 
-<div class="dc-visit-callout"><p>The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers brush shoulders between stalls selling augment cartridges, black-market permits, and fried synthetic crab. If someone's selling it somewhere in Dimm City, it started here.</p></div>
+::: wrapper {.dc-visit-callout}
+The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers brush shoulders between stalls selling augment cartridges, black-market permits, and fried synthetic crab. If someone's selling it somewhere in Dimm City, it started here.
+:::
 
-```html
-<div class="dc-visit-callout">
-  <p>The Neon Bazaar doesn't close. Day shift workers and third-shift
-  scavengers brush shoulders between stalls selling augment cartridges,
-  black-market permits, and fried synthetic crab.</p>
-</div>
+```markdown
+::: wrapper {.dc-visit-callout}
+The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers
+brush shoulders between stalls selling augment cartridges, black-market
+permits, and fried synthetic crab. If someone's selling it somewhere in
+Dimm City, it started here.
+:::
 ```
 
 ---
@@ -338,19 +364,22 @@ An in-world location description written in present tense, as if the reader is a
 
 A Dream Master–addressed instruction block, visually distinct from player-facing notes. Use for GM guidance, scene hooks, and pacing advice that should not be read aloud at the table.
 
-**Syntax** — raw HTML `<div class="dc-note-callout">` with a `<strong class="dc-note-label">` header followed by the body paragraph
+**Syntax** — `::: wrapper {.dc-note-callout}` … `:::` with `**Label**{.dc-note-label}` for the header
 
-<div class="dc-note-callout">
-  <strong class="dc-note-label">Dream Master Note</strong>
-  <p>If a player hasn't chosen their starting gear by the end of session zero, hand them a Scavenger Pack and move on. Gear anxiety is real but the game shouldn't wait for it.</p>
-</div>
+::: wrapper {.dc-note-callout}
+**Dream Master Note**{.dc-note-label}
 
-```html
-<div class="dc-note-callout">
-  <strong class="dc-note-label">Dream Master Note</strong>
-  <p>If a player hasn't chosen their starting gear by the end of session zero,
-  hand them a Scavenger Pack and move on.</p>
-</div>
+If a player hasn't chosen their starting gear by the end of session zero, hand them a Scavenger Pack and move on. Gear anxiety is real but the game shouldn't wait for it.
+:::
+
+```markdown
+::: wrapper {.dc-note-callout}
+**Dream Master Note**{.dc-note-label}
+
+If a player hasn't chosen their starting gear by the end of session zero,
+hand them a Scavenger Pack and move on. Gear anxiety is real but the game
+shouldn't wait for it.
+:::
 ```
 
 ---

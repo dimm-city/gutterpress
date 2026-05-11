@@ -2,7 +2,9 @@
 
 # Markdown Reference
 
-<div class="dc-intro">All markdown-it syntax features with live DC examples.</div>
+::: wrapper {.dc-intro}
+All markdown-it syntax features with live DC examples.
+:::
 
 ---
 

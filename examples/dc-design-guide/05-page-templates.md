@@ -2,7 +2,9 @@
 
 # Page Templates
 
-<div class="dc-intro">Named page types control margin geometry, footer chrome, and running headers. Each maps to a `@page` rule in `css/page-rules.css`.</div>
+::: wrapper {.dc-intro}
+Named page types control margin geometry, footer chrome, and running headers. Each maps to a `@page` rule in `css/page-rules.css`.
+:::
 
 ---
 
