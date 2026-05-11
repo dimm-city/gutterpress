@@ -148,7 +148,7 @@ Every dreamer's got a sharp edge — your specialty is where it starts. It's the
 
 > Cybernetic Commando
 
-Heavily armed and wired for war, Augmercs are the blunt force of any squad. They charge the front, soak the pain, and unload hell using brute strength and brutal tech. Combat-born, augged to kill, and never outgunned.
+Heavily armed and wired for war, Augmercs are the blunt force of any squad. Combat-born, augged to kill, and never outgunned.
 
 :::
 
@@ -157,7 +157,7 @@ Heavily armed and wired for war, Augmercs are the blunt force of any squad. They
 
 > Militant Monolith
 
-Marked by something higher — god, ghost, code, or conviction — Proxies walk the line between zealot and judge. They wield divine force like a weapon, bending battles and conversations alike with power that burns louder than faith.
+Marked by something higher — god, ghost, code, or conviction — Proxies wield divine force like a weapon, bending battles and conversations alike.
 
 :::
 
@@ -166,7 +166,7 @@ Marked by something higher — god, ghost, code, or conviction — Proxies walk 
 
 > Sprawl Sentinel
 
-They don't wear badges — they are the law when no one else shows. Streetwardens guard the city's broken places with fists, grit, and a code all their own. Defile their turf, and justice comes fast.
+They don't wear badges — they are the law when no one else shows. Defile their turf, and justice comes fast.
 
 :::
 
@@ -175,25 +175,7 @@ They don't wear badges — they are the law when no one else shows. Streetwarden
 
 > Wold Witch
 
-They walk the alleys like sacred ground — feeding the hungry, tending weeds, raising the forgotten. Gutterdruids draw power from the pulse beneath the pavement, shaping the raw, primal force that keeps the city alive even as it rots.
-
-:::
-
-::: wrapper {class="specialty-card cybersurgeon"}
-### Cybersurgeon {#specialty-cybersurgeon-demo}
-
-> Mech Medic
-
-Life is flexible. Cybersurgeons prove it daily — cutting, splicing, upgrading flesh into something more. Whether back-alley butchers or elite biomech specialists, these med-techs push the edge of evolution, one implant at a time.
-
-:::
-
-::: wrapper {class="specialty-card wirephreak"}
-### Wirephreak {#specialty-wirephreak-demo}
-
-> Ping Predator
-
-Killers, thieves, forgers — Wirephreaks specialize in slipping past locks, firewalls, and people. Whether the job calls for stealth, sabotage, or sleight-of-hand, a Wirephreak on the crew means the job gets done.
+They walk the alleys like sacred ground. Gutterdruids draw power from the pulse beneath the pavement, keeping the city alive even as it rots.
 
 :::
 

@@ -373,10 +373,6 @@ ul li::before {
   padding-right: 0.1em; /* em intentional — bullet gap scales with list font-size */
 }
 
-table { border-collapse: collapse; width: 100%; }
-th, td { padding: 5pt 10pt; vertical-align: top; text-align: left; }
-th { font-family: var(--font-mono); font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-dark); border-bottom: 2px solid var(--ink); }
-td { border-bottom: 1px solid var(--paper-aged); }
 
 /* ============================================================================
    UTILITY CLASSES

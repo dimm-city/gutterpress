@@ -205,44 +205,11 @@ div.chapter tr:nth-child(even) td {
    Do NOT add book design system rules here — those belong in dc-brand.css.
    ─────────────────────────────────────────────────────────────────────────── */
 
-/* ── Syntax / Specimen label contrast ───────────────────────────────────────
-   "Syntax" labels: paragraphs where <strong> is the first child and the
-   paragraph has additional text after it (e.g. "— …").
-   "Specimen:" labels: paragraphs that contain ONLY a <strong> with no sibling
-   text nodes (the standalone label before a live specimen block).
-
-   Both use --font-mono + --orange to visually distinguish them from regular
-   bold prose text. :has() is not used (Paged.js does not support it).
-
-   Syntax: target strong:first-child inside .chapter p. This matches all
-   instances where <strong>Syntax</strong> opens the paragraph. Because
-   dc-prose strong uses --rust (overridden separately) we must scope here to
-   override that global color.
-   ─────────────────────────────────────────────────────────────────────────── */
-
-/* Syntax label — strong that opens a paragraph (has siblings after it) */
-.chapter p > strong:first-child {
-  color: var(--orange);
-  font-family: var(--font-mono);
-  font-size: 9pt;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-/* Specimen / standalone label — paragraph whose only element child is a strong.
-   We target strong:first-child:last-child (last *element* child, per CSS spec).
-   This matches both <p><strong>Specimen:</strong></p> AND labels like
-   <p><strong>:::two-column</strong> — trailing text…</p> because text nodes
-   are not element children. We therefore keep this purely inline (no
-   display:block or border-bottom) so trailing text continues on the same line.
-   The crimson + mono treatment is enough to distinguish these from prose bold. */
-.chapter p > strong:first-child:last-child {
-  color: var(--crimson);
-  font-family: var(--font-mono);
-  font-size: 8.5pt;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
+/* Syntax / Specimen label contrast — intentionally minimal.
+   These are plain **bold** markdown labels. No CSS targeting needed:
+   the code blocks that follow Syntax labels have the orange left border,
+   and Specimen labels are distinguished by position above live content.
+   Do NOT add structural selectors here — they over-match and break prose. */
 
 /* ── Additional pmd-* layout utilities ──────────────────────────────────────
    Standard print-md utilities available in any project using this scaffold.
