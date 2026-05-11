@@ -124,13 +124,13 @@ When your cybernetics take damage, malfunction, or are subjected to hostile intr
 
 ## Pattern: Weapons Reference Page
 
-Weapons use a `:::two-column` layout with `:::aug` cards in each column. Each weapon card is an `#### H4` name followed by plain prose stat lines. No pipe tables for individual items — the card format keeps each weapon scannable without table overhead.
+Weapons use a `:::: two-column` layout (four colons) with `:::aug` cards (three colons) in each column. Each weapon card is an `#### H4` name followed by plain prose stat lines. No pipe tables for individual items — the card format keeps each weapon scannable without table overhead.
 
 @page .blasters .fg-examples
 
 ### Firearms and Blasters
 
-:::two-column
+:::: two-column
 
 :::aug
 
@@ -174,7 +174,7 @@ Disposable single-use sidearm. Untraceable, inaccurate, and cheap enough to leav
 
 :::
 
-:::
+::::
 
 ---
 
@@ -189,4 +189,4 @@ Disposable single-use sidearm. Untraceable, inaccurate, and cheap enough to leav
 | SysFAIL warning | `> [!WARNING]` | Amber alert variant |
 | DM guidance | `> [!DM]` | Dream Master addressed content |
 | Procedure list | `:::procedure` + ordered list | Zero-padded steps via CSS counter |
-| Weapon column | `:::two-column` + `:::aug` cards | Column break with `---{.column-break}` |
+| Weapon column | `:::: two-column` + `:::aug` cards | Four colons outer, three inner; column break with `---{.column-break}` |

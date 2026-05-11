@@ -2636,8 +2636,18 @@ hr,
 /* Generic grid utility — LIVE in chapter-05.md (wrapper {".grid"}). No shared.css peer. */
 .grid {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2xl);
   align-items: start;
+}
+
+/* When .aug is used as an item card inside a grid or two-column layout,
+   cancel the page: aug assignment from page-rules.css so cards flow normally. */
+.grid .aug,
+.two-column .aug {
+  page: auto;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 /* field-guide: folded from legacy/header-terms.css */

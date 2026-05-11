@@ -349,13 +349,32 @@ article {
   column-fill: balance;
 }
 
-/* Ideal / Flaw pages: single-column page with 3-column card grid inside
+/* Ideal / Flaw pages: single-column page with 2-column layout inside
    the list wrapper.  Header stays full-width above, art at bottom. */
 .page.ideal,
 .page.flaw {
   columns: unset;
   column-gap: unset;
   column-fill: unset;
+}
+
+/* Two-column flow for ideal/flaw entry lists so 2-3 entries appear per page */
+.page.ideal .ideal-list,
+.page.flaw .flaw-list {
+  column-count: 2;
+  column-gap: var(--space-2xl, 0.3in);
+  column-fill: balance;
+}
+
+/* Keep each individual entry together within its column */
+.page.ideal .ideal-list > h3,
+.page.ideal .ideal-list > p,
+.page.ideal .ideal-list > blockquote,
+.page.flaw .flaw-list > h3,
+.page.flaw .flaw-list > p,
+.page.flaw .flaw-list > blockquote {
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .page.page-item-grid h3 {
