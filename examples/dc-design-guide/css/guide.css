@@ -107,8 +107,8 @@ div.chapter pre {
 
 div.chapter pre code {
   font-family: var(--font-mono);
-  font-size: 8.5pt;
-  line-height: 1.55;
+  font-size: 9pt;    /* was 8.5pt — raised to ISO 9241-3 / O'Reilly 9pt minimum for monospaced technical type */
+  line-height: 1.5;  /* was 1.55 — 13.5pt leading at 9pt is consistent with body leading rhythm */
   color: var(--ink);
   background: none;
   padding: 0;
@@ -169,11 +169,25 @@ div.chapter tr:nth-child(even) td {
 .specimen {
   border: 1px solid var(--border-hairline);
   border-left: 3px solid var(--hud-blue);
-  padding: 0.1in 0.15in;
-  margin: 0.1in 0;
-  background: var(--paper-cream);
+  border-top: 3px solid var(--hud-blue);   /* top accent distinguishes specimen frame from dc-sidebar-box (also left-bordered, cream bg) */
+  padding: 0.15in 0.20in;                  /* was 0.1in 0.15in — increased for breathing room at print scale */
+  margin: 0.15in 0;                         /* was 0.1in 0 */
+  background: var(--paper-aged);            /* was --paper-cream — distinct surface; components inside still render on their own cream */
   break-inside: avoid;
+  page-break-inside: avoid;
   overflow: hidden;
+}
+
+.specimen::before {
+  content: "SPECIMEN";
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--hud-blue-dark);
+  margin-bottom: 0.1in;
+  opacity: 0.7;
 }
 
 /* ── Page-break utility ──────────────────────────────────────────────────────

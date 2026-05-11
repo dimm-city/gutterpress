@@ -110,20 +110,19 @@ body { counter-reset: chapter; }
 
 @page {
   size: 8.625in 11.25in;
-  /* Bottom margin increased from 0.625in to 0.70in for text clipping safety */
-  /* QA: outer margins at 0.5in for breathing room */
-  margin: var(--page-margin) var(--page-margin) 0.70in var(--page-margin);
+  margin: 0.5in 0.625in 0.75in 0.625in;
+  /* top: 0.5in (unchanged), outer: 0.625in (was 0.5in), bottom: 0.75in (was 0.70in), left: 0.625in (binding override below) */
   background-color: var(--bg);
 }
 
 @page :left {
   /* Inner margin (right side for left pages) for perfect binding */
-  margin-right: var(--binding-margin, 0.75in);
-  margin-left: var(--page-margin);
+  margin-right: var(--binding-margin, 0.75in);   /* binding side — unchanged */
+  margin-left: 0.625in;                           /* outer side — was implicit from base @page */
 
   @bottom-left {
     content: "p." counter(page);
-    color: var(--amber);
+    color: var(--blood);   /* was --amber (1.66:1 on bg — invisible in print) → --blood (5.46:1 — clear) */
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
     letter-spacing: 0.08em;
@@ -131,7 +130,7 @@ body { counter-reset: chapter; }
 
   @bottom-right {
     content: "c." counter(chapter);
-    color: var(--amber);
+    color: var(--blood);   /* was --amber (1.66:1 on bg — invisible in print) → --blood (5.46:1 — clear) */
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
     letter-spacing: 0.08em;
@@ -140,12 +139,12 @@ body { counter-reset: chapter; }
 
 @page :right {
   /* Inner margin (left side for right pages) for perfect binding */
-  margin-left: var(--binding-margin, 0.75in);
-  margin-right: var(--page-margin);
+  margin-left: var(--binding-margin, 0.75in);    /* binding side — unchanged */
+  margin-right: 0.625in;                          /* outer side — was implicit from base @page */
 
   @bottom-left {
     content: "c." counter(chapter);
-    color: var(--amber);
+    color: var(--blood);   /* was --amber (1.66:1 on bg — invisible in print) → --blood (5.46:1 — clear) */
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
     letter-spacing: 0.08em;
@@ -153,7 +152,7 @@ body { counter-reset: chapter; }
 
   @bottom-right {
     content: "p." counter(page);
-    color: var(--amber);
+    color: var(--blood);   /* was --amber (1.66:1 on bg — invisible in print) → --blood (5.46:1 — clear) */
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
     letter-spacing: 0.08em;
@@ -256,7 +255,7 @@ body { counter-reset: chapter; }
    named page and assign it via the same `.<class> { page: <name> }`
    pattern that works for chapter-start. */
 @page colophon {
-  margin: var(--page-margin) var(--page-margin) 0.70in var(--page-margin);
+  margin: 0.5in 0.625in 0.75in 0.625in;
   background-color: var(--bg);
   @bottom-left  { content: none; }
   @bottom-right { content: none; }
@@ -265,14 +264,14 @@ body { counter-reset: chapter; }
 
 @page colophon:left {
   margin-right: var(--binding-margin, 0.75in);
-  margin-left: var(--page-margin);
+  margin-left: 0.625in;
   @bottom-left  { content: none; }
   @bottom-right { content: none; }
 }
 
 @page colophon:right {
   margin-left: var(--binding-margin, 0.75in);
-  margin-right: var(--page-margin);
+  margin-right: 0.625in;
   @bottom-left  { content: none; }
   @bottom-right { content: none; }
 }

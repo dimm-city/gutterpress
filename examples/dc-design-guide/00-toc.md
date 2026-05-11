@@ -4,6 +4,7 @@
 
 <div class="dc-intro">This is the Dimm City print design system — cyberpunk and creaturepunk, built on print-md. Everything in these pages is live: the type, color, and components you see here are rendered through the same CSS as the Field Guide. Use this guide to understand, customize, and extend the system.</div>
 
+<div class="dc-toc">
 <ol>
 <li><a href="#ch-overview">Design System Overview</a> — how to use this guide and customize it for your book</li>
 <li><a href="#ch-typography">Typography</a> — lixdu display, Tomorrow mono, Titillium Web body; the full type scale</li>
@@ -16,6 +17,7 @@
 <li><a href="#ch-fg-components">Field Guide Components</a> — dashed rules, definition blocks, sidebar boxes, gear entries, and colophon</li>
 <li><a href="#ch-cli">CLI Reference</a> — build, preview, and publish commands</li>
 </ol>
+</div>
 
 ---
 

@@ -192,7 +192,7 @@
    The .page.page-toc prefix CANNOT be dropped — .dc-toc ol > li alone (0,1,2) would lose.
    See also the comment on .page.page-toc li in the BOOK PREVIEW MAPPINGS block below. */
 .page.page-toc .dc-toc ol > li {
-  color: var(--text-secondary, #a8b0bc);
+  color: var(--ink-smoke);    /* was --text-secondary (#a8b0bc, ~3.2:1) → ink-smoke (#4a4540, ~6.8:1) */
   padding-left: 3.5rem;
 }
 .page.page-toc .dc-toc ol > li::before {
@@ -261,10 +261,10 @@ article {
    Avoids :first-of-type entirely (Paged.js NthOfType handler silently breaks
    any rule whose selector contains :(first|last|nth)-of-type + ::first-letter). */
 .dc-chapter-opener-no + h1 + p::first-letter {
-  -webkit-initial-letter: 3;
-  initial-letter: 3;
+  -webkit-initial-letter: 2;
+  initial-letter: 2;          /* was 3 — 2-line correct for 6.875in single column width */
   font-weight: var(--fw-bold, 700);
-  color: var(--amber);
+  color: var(--crimson);      /* was --amber (2.16:1 on cream — invisible) → --crimson (4.76:1 — commanding) */
   margin-right: 0.05em;
 }
 
@@ -634,7 +634,7 @@ article {
   font-family: var(--font-body, 'Titillium Web', sans-serif);
   font-size: var(--fs-body-sm);
   line-height: 1.4;
-  color: var(--text-secondary, #a8b0bc);
+  color: var(--ink-smoke);    /* was --text-secondary (#a8b0bc, ~3.2:1) → ink-smoke (#4a4540, ~6.8:1) */
   font-style: italic;
   list-style: none;
   page-break-inside: avoid;
@@ -657,9 +657,9 @@ article {
 }
 .dc-toc ol > li > a {
   font-family: var(--font-body);
-  font-size: 13pt;
+  font-size: 15pt;           /* was 13pt — clear primary navigation landmark */
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;    /* wider tracking appropriate at larger display size */
   color: var(--ink, #1a1715);
   text-decoration: none;
   border-bottom: 0;

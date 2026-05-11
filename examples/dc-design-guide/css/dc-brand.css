@@ -86,7 +86,7 @@
   /* ═══════════════════════════════════════════════════════════════════════════
      PAGE & PAPER — light print substrate
      ═══════════════════════════════════════════════════════════════════════════ */
-  --bg:                    #d4d4d4;  /* page background — light cool gray */
+  --bg:                    #d3cec6;  /* page background — warm light gray; pre-warmed for CMYK print shift on uncoated stock */
   --paper-cream:  #f5f0e6;  /* warm cream — primary card surface */
   --paper-light:  #ebe5d8;  /* paper — aside / sticker / quote */
   --paper-aged:   #ddd6c6;  /* deeper aged — emphasis aside */
@@ -100,7 +100,7 @@
   --ink:        #1a1715;  /* primary text — near-black with warm cast */
   --ink-dark:   #2a2622;  /* secondary headings */
   --ink-smoke:  #4a4540;  /* body emphasis, italics on cream */
-  --ink-dust:   #8a8378;  /* muted labels, subtitles */
+  --ink-dust:   #6e6860;  /* muted labels, subtitles — darkened to 4.85:1 on paper-cream */
 
   /* --bk-ink/dark/smoke/dust aliases removed — duplicated --ink-* tokens, never consumed */
 
@@ -185,11 +185,11 @@
   --fs-h1:      1.728rem;   /* 20.7pt */
   --fs-h2:      1.44rem;    /* 17.3pt */
   --fs-h3:      1.2rem;     /* 14.4pt */
-  --fs-h4:      1rem;       /* 12pt */
+  --fs-h4:      1.1rem;     /* 13.2pt — 10% step above body; restores perceptible h4 hierarchy */
   --fs-h5:      0.95rem;
   --fs-h6:      0.85rem;
   --fs-chapter: 26pt;       /* chapter openers */
-  --fs-pullquote: 14pt;       /* pull-quote display size — between body and h4 */
+  --fs-pullquote: 17pt;       /* pull-quote display size — punches above h2 (17.3pt), arrests the eye */
 
   --fw-semibold: 600;
   --fw-bold:     700;
@@ -259,6 +259,10 @@
   --wirephreak-accent:     #b34fb3;
   --technosorcerer-accent: #4f6fc2;
   --etherlock-accent:      #d4af37;
+
+  --amber-dark:  #b87400;   /* darkened amber — 3.22:1 on paper-cream; for drop cap and accent use */
+  --outer-margin: 0.625in;  /* outer (non-binding) page margin — wider than --page-margin for visual breathing room */
+  --space-xs:    0.0833in;  /* 6pt — 1 baseline unit; tight internal component padding floor */
 }
 
 /* ============================================================================
@@ -299,7 +303,7 @@ h1, h2, h3, h4, h5, h6 {
   line-height: var(--lh-tight);
   text-transform: uppercase;
   text-wrap: balance; /* text-wrap: CSS4 — silently ignored by Paged.js; effective in screen preview only */
-  margin: 1.5em 0 0.5em; /* em intentional — typographic rhythm scales with each heading's own font-size */
+  margin-bottom: 0.5em; /* em intentional — typographic rhythm scales with heading font-size */
   /* --blood (#a30900) gives 5.46:1 on the light-grey page bg (#d4d4d4).
      --orange (#f24d00) only reaches 2.43:1 — fails WCAG AA. */
   color: var(--blood);
@@ -322,11 +326,11 @@ h1 {
    Production book-sections.css overrides h2 color per chapter context
    (e.g. orange for action chapters). This base value is the default only.
    --hud-blue-dark (#1f5a7a): 5.06:1 on #d4d4d4 — WCAG AA pass. --hud-blue (#2a6a8a) was 4.02:1. */
-h2 { font-size: var(--fs-h2); color: var(--hud-blue-dark); letter-spacing: var(--ls-heading); }
-h3 { font-size: var(--fs-h3); color: var(--blood); letter-spacing: var(--ls-heading); }
-h4 { font-size: var(--fs-h4); color: var(--blood); letter-spacing: 0.06em; }
-h5 { font-size: var(--fs-h5); color: var(--blood); }
-h6 { font-size: var(--fs-h6); color: var(--blood); }
+h2 { font-size: var(--fs-h2); color: var(--hud-blue-dark); letter-spacing: var(--ls-heading); margin-top: 22pt; }
+h3 { font-size: var(--fs-h3); color: var(--rust); letter-spacing: var(--ls-heading); margin-top: 18pt; }
+h4 { font-size: var(--fs-h4); color: var(--blood); letter-spacing: 0.06em; margin-top: 15pt; }
+h5 { font-size: var(--fs-h5); color: var(--blood); margin-top: 14pt; }
+h6 { font-size: var(--fs-h6); color: var(--blood); margin-top: 12pt; }
 
 /* Print paragraph rhythm — 0.08in between paragraphs in the narrow 6×9 column */
 p {
@@ -352,9 +356,9 @@ blockquote {
   font-family: var(--font-quote);
   font-style: italic;
   color: var(--ink-smoke);
-  border-left: 3px solid var(--crimson);
-  background: var(--paper-light);
-  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--ink-smoke);
+  background: none;
+  padding: var(--space-sm) var(--space-md) var(--space-sm) var(--space-xl);
   margin: 0.75rem 0;
   text-wrap: balance; /* text-wrap: CSS4 — silently ignored by Paged.js; effective in screen preview only */
 }
@@ -406,9 +410,9 @@ ul li::before {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--hud-blue);
+  color: var(--hud-blue-dark);
 }
-.roll-lucid::before, .dc-roll-lucid::before { content: '◈ '; opacity: 0.85; }
+.roll-lucid::before, .dc-roll-lucid::before { content: '◈ '; opacity: 1; }
 
 /* Surreal: reality distortion, altered state — magenta, ∿ prefix */
 .roll-surreal, .dc-roll-surreal {
@@ -576,7 +580,7 @@ ul li::before {
   color: var(--ink);
   margin-bottom: 12px;
 }
-.dc-prose strong { color: var(--orange); font-weight: 700; }
+.dc-prose strong { color: var(--rust); font-weight: 700; }   /* was --orange (3.17:1 fail) → --rust (4.25:1 pass) */
 .dc-prose em { color: var(--ink-smoke); }
 .dc-prose .scream {
   font-family: var(--font-tab);
@@ -586,8 +590,8 @@ ul li::before {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.dc-prose .roll-lucid  { font-family: var(--font-tab); font-size: 0.75em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--hud-blue); }
-.dc-prose .roll-lucid::before  { content: '◈ '; opacity: 0.85; }
+.dc-prose .roll-lucid  { font-family: var(--font-tab); font-size: 0.75em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--hud-blue-dark); }
+.dc-prose .roll-lucid::before  { content: '◈ '; opacity: 1; }
 .dc-prose .roll-surreal { font-family: var(--font-tab); font-size: 0.75em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--hud-magenta); }
 .dc-prose .roll-surreal::before { content: '∿ '; opacity: 1; }
 .dc-prose .ability-name {
@@ -804,7 +808,7 @@ ul li::before {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: var(--ls-cap-sm);
-  color: var(--hud-blue);
+  color: var(--hud-blue-dark);
   border-bottom: var(--bw-thin) solid var(--hud-blue-dim);
   padding-bottom: 4px;
   margin: 0.15in 0 0.08in;
@@ -814,8 +818,8 @@ ul li::before {
 
 /* ───────── NOTE CALLOUT ───────── */
 .dc-note {
-  margin-top: 14px;
-  padding: 10px 12px;
+  margin-top: var(--space-lg);       /* was 14px — align to token system */
+  padding: var(--space-lg) var(--space-xl);  /* was 10px 12px — increase internal breathing room */
   background: var(--paper-light);
   border-left: 4px solid var(--crimson);
   font-size: var(--fs-body-sm);
@@ -832,7 +836,7 @@ ul li::before {
   color: var(--crimson);
   font-weight: 700;
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-xs);
   font-style: normal;
 }
 
@@ -917,8 +921,9 @@ ul li::before {
   font-family: var(--font-body);
   font-style: italic;
   font-size: var(--fs-pullquote);
-  line-height: 1.4;
-  color: var(--ink-smoke);
+  line-height: 1.3;
+  color: var(--ink-dark);
+  letter-spacing: -0.01em;
   margin: 18px 0;
   break-inside: avoid;
   page-break-inside: avoid;
@@ -958,7 +963,7 @@ hr,
 .dc-dashed-rule {
   border: none;
   border-top: 2px dashed var(--blood);
-  margin: 0.18in 0;
+  margin: var(--space-xl) 0;   /* was 0.18in → 0.20in; aligns to spacing token */
 }
 
 /* ───────── DEFINITION BLOCK ───────── */
@@ -1096,7 +1101,7 @@ hr,
   font-size: var(--fs-caption);
   letter-spacing: var(--ls-cap-sm);
   text-transform: uppercase;
-  color: var(--orange);
+  color: var(--rust);   /* was --orange (3.17:1 fail at 10pt) → --rust (4.25:1 pass) */
   float: left;
   clear: left;
   width: 1.2in;
@@ -1226,7 +1231,7 @@ hr,
   font-weight: 700;
   font-size: 16px;
   letter-spacing: 2px;
-  color: var(--hud-blue);
+  color: var(--hud-blue-dark);
   line-height: 1;
   white-space: nowrap;
   align-self: center;
@@ -1759,9 +1764,12 @@ hr,
 /* Pullquote with top margin */
 .dc-pullquote.mt { margin-top: 18px; }
 
-/* Warning note — amber border variant */
-.dc-note.warning { border-left-color: var(--amber); }
-.dc-note.warning .dc-note-label { color: var(--amber); }
+/* Warning note — visually distinct from base dc-note */
+.dc-note.warning {
+  background: var(--surface-orange-tint);   /* distinct surface from paper-light dc-note */
+  border-left-color: var(--rust);           /* was --amber (invisible at 1.66:1) → --rust (4.30:1 on surface) */
+}
+.dc-note.warning .dc-note-label { color: var(--rust); }   /* was --amber */
 
 /* Note spacing variants */
 .dc-note.mt-sm { margin-top: 14px; }
@@ -2191,7 +2199,7 @@ hr,
 
 .dc-vibe-callout {
   padding: var(--space-sm) var(--space-md);
-  border-left: 3px solid var(--orange);
+  border-left: 4px solid var(--hud-magenta);   /* was orange — distinct from pullquote; signals "atmosphere/world" register */
   background: var(--paper-light);
   font-style: italic;
   font-size: var(--fs-body-sm);
@@ -2201,8 +2209,8 @@ hr,
 
 .dc-origin-callout {
   padding: 6pt 9pt;
-  border-left: 3px solid var(--crimson);
-  background: var(--paper-light);
+  border-left: 3px solid var(--blood);       /* was crimson — darker, still crimson family, distinct from dc-note */
+  background: var(--surface-orange-tint);   /* was paper-light — distinct surface; signals "character" content */
   font-style: italic;
   color: var(--ink-smoke);
   break-inside: avoid;
