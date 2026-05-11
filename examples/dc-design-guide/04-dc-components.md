@@ -360,38 +360,55 @@ The tier badge on each card tab (`AUG1.1`, `AUG1.2`, …) is generated automatic
 
 **Specimen**
 
-@learning-path specialty="augmerc" index="1"
-### Breach Protocols
-> Close enough to count teeth. Far enough to keep yours.
-- Breach and Clear
-- Suppression Fire
-- Ghost Protocol
+@specialty {.augmerc}
 
-@skill variant="1" id="breach-and-clear-lp"
-#### Breach and Clear | AUG1.1
-> The door opens inward. You don't.
-1. **0 AP** *Stack Up:* Position one ally in reach without spending AP.
-2. **2 AP** *Dynamic Entry:* Move through a door and make a basic attack in the same action. The attack gains advantage.
-##### Door's just a wall that didn't commit.
-@end-skill
+@learning-path
+### Biting Distance
+> If you can touch it, you can maul it. When things get close, they bleed.
+- Punishing Counter
+- Rage Hit
+- Dirty Work
 
-@skill variant="2" id="suppression-fire-lp"
-#### Suppression Fire | AUG1.2
-> They stop moving. You start.
-1. **2 AP** *Pin Down:* One enemy in range cannot move or take reactions until the start of your next turn.
-2. **VAR AP** *Sustained Pressure:* Spend 1 additional AP per round to extend pin-down.
-##### Keep their heads down long enough to matter.
-@end-skill
+Augmercs on the Biting Distance path install reactive Backbiter Spines — hardware rigged beneath the skin that blooms outward on contact. Spending an action doing nothing but defending, the rig braces and answers every swing, letting you resist 2 damage from all melee attacks and dealing 1 damage to all creatures in reach at the start of your turn.
 
-@skill variant="3" id="ghost-protocol-lp"
-#### Ghost Protocol | AUG1.3
-> You were never there. The bodies disagree.
-1. **1 AP** *Fade:* Move up to your speed without triggering opportunity attacks.
-2. **3 AP** *Vanishing Act:* Become undetectable to all sensors and cameras until you attack or the scene ends.
-##### The best breach is the one they never see.
+@skill variant="2"
+#### Punishing Counter
+> See an opening, ya take it. Best time to hit 'em is when they think it's over.
+
+When an enemy falters, you may trigger one of the following counters:
+
+1. **0 AP** *Steel Says No:* When an enemy in reach makes a basic attack and rolls a hard choice or worse, your Backbiters knock the strike off line. No damage. Free counter, once per round.
+2. **2 AP** *Bullet to Blood:* When an enemy you can see makes a ranged basic attack and rolls a hard choice or worse, you slip the shot as it screams past. No damage. Free counter, once per round.
+3. **2 AP** *Bad Timing:* When an enemy in reach rolls a hard choice or worse on a basic attack against you, your Backbiters snap out and steal the moment. No damage and you have their weapon. Free counter, once per round.
+
+Openings are invitations to take a chunk out 'em.
+
+@skill variant="2"
+#### Rage Hit
+> In some situations, it's best to risk it, swing wild, and hit hard!
+
+1. **0 AP** *Full Send:* You throw everything into a reckless attack. Describe the chaos and **ROLL THE DIE!** On a Hit you deal double damage; on a Hard Choice you deal double damage but the target immediately counters; on a Miss the target immediately counters with a Lucid attack.
+2. **2 AP** *All Gas, No Brakes:* **ROLL THE DIE TWICE!** Make two basic attacks against one target. If either roll is a 1, both attacks catastrophically fail.
+
+Until the start of your next turn, any enemy that starts their turn in reach takes 1 damage as your Backbiters stick anything that moves too close.
+
+@skill variant="2"
+#### Dirty Work
+> Fair fights are for nice mercs who lose. Never fight clean. Fight to finish.
+
+Once per round, outside your turn, you exploit a target in reach. Choose one technique:
+
+1. **0 AP** *Off-Hand Insurance:* Slip in a hidden strike. Make an attack that deals 1 damage.
+2. **1 AP** *Street Tricks:* Snag their balance or misdirect their focus. Gain Lucidity on your next roll against the target and deal +1 damage on hit.
+3. **2 AP** *Cheap Shot:* Break something important — sight, breath, balance, or nerve. **ROLL THE DIE!** On a hit, the target rolls. On 10 or less, they are Blinded or Stunned until the end of their next turn.
+
+You don't need an opening. You make one.
+
 @end-skill
 
 @end-learning-path
+
+@end-specialty
 
 ---
 
