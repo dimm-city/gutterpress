@@ -845,7 +845,7 @@ function initializeToolbarControls() {
     // Static mode: hide buttons whose actions need a print-md server.
     for (const id of ["btn-folder", "btn-github", "btn-exit"]) {
       const el = document.getElementById(id);
-      if (el) el.hidden = true;
+      if (el) el.style.display = "none";
     }
   }
 
