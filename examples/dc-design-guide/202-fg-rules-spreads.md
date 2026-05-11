@@ -93,11 +93,13 @@ A full-page Table of Outcomes using the `@outcome` / `@end-outcome` macro. The f
 ### Table of Outcomes {.dc-section-h3}
 
 @outcome
+
 20 | Crit | You flow. Automatic success — no further roll needed. If dealing damage, check your weapon's bonus stats. Your next die roll: ROLL LUCID.
 11–19 | Hit | You succeed at what you were trying to do without a hitch. If attacking, deal standard damage based on your weapon's stats.
 6–10 | Hard Choice | You succeed, but at a cost. Weapon overheats, ammo burns, or the situation complicates. The DM offers two impactful options — pick one. Both should hurt.
 2–5 | Miss | You fail. The only consequence is what you had riding on the roll. Miss an opponent in a duel? They get to attack you on their turn.
 1 | Catastrophe | Dark. Automatic fail with a severe setback — broken gear, cyberware malfunction, or friendly fire. Your next die roll: ROLL SURREAL.
+
 @end-outcome
 
 > [!FLAVOR]

@@ -156,6 +156,17 @@ div.chapter td {
   vertical-align: top;
 }
 
+/* ── Compact table density for the DC Components authoring quick reference ──
+   The Component Authoring Quick Reference table has ~35 rows and would otherwise
+   orphan 3 rows on a sparse page. Reduced padding keeps the full table on one page.
+   ─────────────────────────────────────────────────────────────────────────── */
+div.chapter.dc-components table td,
+div.chapter.dc-components table th {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  font-size: 8.5pt;
+}
+
 div.chapter tr:nth-child(even) td {
   background: var(--surface-tint-3);
 }
@@ -200,16 +211,30 @@ div.chapter tr:nth-child(even) td {
   page-break-before: always;
 }
 
+/* ── Section separators (HR) ─────────────────────────────────────────────────
+   The --- markdown rule creates <hr> elements. In guide chapters these act as
+   section dividers between documented components. Give them visible weight so
+   sections breathe and the page has rhythm.
+   ─────────────────────────────────────────────────────────────────────────── */
+div.chapter hr {
+  border: none;
+  border-top: 2px solid var(--border-hairline);
+  margin: 0.25in 0;
+}
+
+/* ── H2 spacing — more room before each section ──────────────────────────────
+   Guide chapters use H2 for every documented component. Extra space above each
+   H2 gives the page a clear visual rhythm between sections.
+   ─────────────────────────────────────────────────────────────────────────── */
+div.chapter h2 {
+  margin-top: 0.25in;
+  padding-top: 0.1in;
+}
+
 /* ── YOUR DESIGN GUIDE LAYER ─────────────────────────────────────────────────
    Add project-specific design-guide overrides below this line.
    Do NOT add book design system rules here — those belong in dc-brand.css.
    ─────────────────────────────────────────────────────────────────────────── */
-
-/* Syntax / Specimen label contrast — intentionally minimal.
-   These are plain **bold** markdown labels. No CSS targeting needed:
-   the code blocks that follow Syntax labels have the orange left border,
-   and Specimen labels are distinguished by position above live content.
-   Do NOT add structural selectors here — they over-match and break prose. */
 
 /* ── Additional pmd-* layout utilities ──────────────────────────────────────
    Standard print-md utilities available in any project using this scaffold.

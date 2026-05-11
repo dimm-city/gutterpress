@@ -10,11 +10,13 @@ Three font families, each with a specific role. lixdu anchors display and banner
 
 **Syntax** — `# Chapter Title`
 
-**Spec:** 20.7pt (1.728rem at 12pt base) · bold · lixdu · one per chapter or specialty opener
+**Spec:** 20.7pt · bold · lixdu · chapter and specialty openers only
 
-**Specimen**
-
+::: wrapper {.specimen}
 # Augmerc
+
+*20.7pt / lixdu / used once per chapter opener*
+:::
 
 ---
 
@@ -22,11 +24,13 @@ Three font families, each with a specific role. lixdu anchors display and banner
 
 **Syntax** — `## Section Heading`
 
-**Spec:** 17.3pt (1.44rem at 12pt base) · lixdu · major topic breaks
+**Spec:** 17.3pt · lixdu · major topic and section breaks
 
-**Specimen**
-
+::: wrapper {.specimen}
 ## Spec Tweak
+
+*17.3pt / lixdu / major section label*
+:::
 
 ---
 
@@ -34,11 +38,13 @@ Three font families, each with a specific role. lixdu anchors display and banner
 
 **Syntax** — `### Sub-section`
 
-**Spec:** 14.4pt (1.2rem at 12pt base) · lixdu · reference column labels
+**Spec:** 14.4pt · lixdu · reference column labels and sub-sections
 
-**Specimen**
-
+::: wrapper {.specimen}
 ### Wired to Kill
+
+*14.4pt / lixdu / sub-section and card labels*
+:::
 
 ---
 
@@ -46,33 +52,35 @@ Three font families, each with a specific role. lixdu anchors display and banner
 
 **Syntax** — `## Title {.dc-spray}`
 
-**Spec:** Wider tracking, crimson accent bar. Used on learning paths.
+**Spec:** Wider tracking, crimson underbar. Used on learning path headers.
 
-**Specimen**
-
+::: wrapper {.specimen}
 ## Biting Distance {.dc-spray}
+:::
 
 ---
 
 ## Chevron Banner — dc-chevron
 
-**Syntax** — `# Title {.dc-chevron}`
+**Syntax** — `# Title {.dc-chevron}` or `## Title {.dc-chevron}`
 
-**Spec:** Primary chapter/specialty opener banner with angled crimson clip-path.
+**Spec:** Angled crimson clip-path. Primary chapter and specialty opener banner.
 
-**Specimen**
-
-# Augmerc {.dc-chevron}
+::: wrapper {.specimen}
+## Augmerc {.dc-chevron}
+:::
 
 ---
 
 ## Body — Titillium Web
 
-**Spec:** Standard paragraph. Titillium Web, body copy. No special syntax required.
+**Syntax** — plain paragraph (no class)
 
-**Specimen**
+**Spec:** 12pt · Titillium Web · base reading type for all prose
 
-When an enemy falters, you may trigger one of the following counters.
+::: wrapper {.specimen}
+When an enemy falters, you may trigger one of the following counters. Each response costs 0 AP — free actions that fire in the space between their move and yours.
+:::
 
 ---
 
@@ -80,12 +88,12 @@ When an enemy falters, you may trigger one of the following counters.
 
 **Syntax** — `> [!FLAVOR]` blockquote alert
 
-**Spec:** Italic, used in card bodies. Inside `@skill` cards, generated from the `>` blockquote line. Standalone: `> [!FLAVOR]` blockquote alert.
+**Spec:** Italic body size · in-world voice, card flavor, and atmospheric prose
 
-**Specimen**
-
+::: wrapper {.specimen}
 > [!FLAVOR]
-> See an opening, ya take it.
+> See an opening, ya take it. The crew that hesitates leaves work on the table — and the table tends to push back.
+:::
 
 ---
 
@@ -93,11 +101,11 @@ When an enemy falters, you may trigger one of the following counters.
 
 **Syntax** — `<span class="font-tab">Label</span>`
 
-**Spec:** Monospaced, used in skill card tabs.
+**Spec:** 9pt · Tomorrow monospace · skill card tab labels
 
-**Specimen**
-
+::: wrapper {.specimen}
 <span class="font-tab">Punishing Counter</span>
+:::
 
 ---
 
@@ -105,11 +113,11 @@ When an enemy falters, you may trigger one of the following counters.
 
 **Syntax** — `<span class="tag">Label</span>`
 
-**Spec:** Monospaced tag line, stance and timing labels.
+**Spec:** 8pt · Tomorrow monospace · stance and timing chips
 
-**Specimen**
-
-<span class="tag">— Stance · Free counter —</span>
+::: wrapper {.specimen}
+<span class="tag">— Stance · Free Counter —</span>
+:::
 
 ---
 

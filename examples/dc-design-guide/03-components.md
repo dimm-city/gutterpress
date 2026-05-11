@@ -474,11 +474,13 @@ The five-rung d20 result table used for all rolls in Dimm City. Each row is colo
 **Specimen**
 
 @outcome
+
 20 | Crit | You flow. Automatic success — no further roll needed. If dealing damage, check your weapon's bonus stats. Your next die roll: ROLL LUCID.
 11–19 | Hit | You succeed at what you were trying to do without a hitch. If attacking, deal standard damage based on your weapon's stats.
 6–10 | Hard Choice | You succeed, but at a cost. Weapon overheats, ammo burns, or something else gives. The DM offers two impactful options — pick one.
 2–5 | Miss | You fail. The only consequence is what you had riding on the roll. Miss an opponent in a duel? They get to attack you on their turn.
 1 | Catastrophe | Dark. Automatic fail with a severe setback — broken gear, cyberware malfunction, or friendly fire. Your next die roll: ROLL SURREAL.
+
 @end-outcome
 
 ---
