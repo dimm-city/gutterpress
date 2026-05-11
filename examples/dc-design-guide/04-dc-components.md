@@ -16,6 +16,12 @@ The primary H1 opener for chapter and specialty pages. Renders with the DC chevr
 
 **Syntax** — `# Title {.dc-chevron}`
 
+```
+# Augmerc {.dc-chevron}
+```
+
+**Specimen**
+
 # Augmerc {.dc-chevron}
 
 ---
@@ -25,6 +31,12 @@ The primary H1 opener for chapter and specialty pages. Renders with the DC chevr
 H2 section opener for learning paths and major topic breaks. The spray treatment sets the heading apart from generic H2s and signals a structural shift in the content.
 
 **Syntax** — `## Title {.dc-spray}`
+
+```
+## Biting Distance {.dc-spray}
+```
+
+**Specimen**
 
 ## Biting Distance {.dc-spray}
 
@@ -36,6 +48,12 @@ H3 heading for optional mechanics and variant rules. The `.no-top` modifier remo
 
 **Syntax** — `### Title {.dc-spec-tweak .no-top}`
 
+```
+### Spec Tweak: Wired to Kill {.dc-spec-tweak .no-top}
+```
+
+**Specimen**
+
 ### Spec Tweak: Wired to Kill {.dc-spec-tweak .no-top}
 
 ---
@@ -43,6 +61,20 @@ H3 heading for optional mechanics and variant rules. The `.no-top` modifier remo
 ## Ability Cards
 
 The `@skill` / `@end-skill` macro generates the full card HTML automatically. Use `variant="1"` through `variant="5"` to select clip-path shapes. Two live cards below — same macro, different variants:
+
+**Macro syntax** — tier after `|` in the heading, sub-header as `#####`:
+
+```
+@skill variant="1" id="ability-id"
+#### Ability Title | AUG1.N
+> Flavor line.
+1. **0 AP** *Action Name:* Effect description.
+2. **2 AP** *Action Name:* Effect description.
+##### Sub-header text
+@end-skill
+```
+
+**Specimen**
 
 @skill variant="1" id="punishing-counter"
 #### Punishing Counter | AUG1.1
@@ -60,18 +92,6 @@ The `@skill` / `@end-skill` macro generates the full card HTML automatically. Us
 ##### Chrome sees everything. You see through chrome.
 @end-skill
 
-**Macro syntax** — tier after `|` in the heading, sub-header as `#####`:
-
-```
-@skill variant="1" id="ability-id"
-#### Ability Title | AUG1.N
-> Flavor line.
-1. **0 AP** *Action Name:* Effect description.
-2. **2 AP** *Action Name:* Effect description.
-##### Sub-header text
-@end-skill
-```
-
 ---
 
 ### Skill Card Continuation
@@ -81,17 +101,6 @@ When an ability description is too long to fit on one card, use `@continue` insi
 `@continue` must appear between `@skill` and `@end-skill`. No closing marker is needed for the continuation itself — the next `@skill`, `@end-skill`, or end of file closes it automatically.
 
 **Syntax** — place `@continue` anywhere inside an active `@skill` block:
-
-@skill variant="3" id="deep-scan-demo"
-#### Deep Scan | AUG2.4
-> Every system has a back door. Yours is already open.
-1. **0 AP** *Passive Sweep:* At the start of each scene, you automatically detect all networked devices within Near range.
-2. **2 AP** *Root Access:* Until your next turn, you read all incoming and outgoing signals on one target device.
-@continue
-3. **3 AP** *Kill Switch:* Immediately shut down one networked device in Near range. If the device is a smart weapon, the wielder loses their next attack action.
-4. **VAR AP** *Cascade Wipe:* Spend 2 AP per additional device to extend Kill Switch to a chain of linked targets.
-##### Every door has a hinge. You are the hinge.
-@end-skill
 
 ```
 @skill variant="3" id="deep-scan"
@@ -106,6 +115,19 @@ When an ability description is too long to fit on one card, use `@continue` insi
 @end-skill
 ```
 
+**Specimen**
+
+@skill variant="3" id="deep-scan-demo"
+#### Deep Scan | AUG2.4
+> Every system has a back door. Yours is already open.
+1. **0 AP** *Passive Sweep:* At the start of each scene, you automatically detect all networked devices within Near range.
+2. **2 AP** *Root Access:* Until your next turn, you read all incoming and outgoing signals on one target device.
+@continue
+3. **3 AP** *Kill Switch:* Immediately shut down one networked device in Near range. If the device is a smart weapon, the wielder loses their next attack action.
+4. **VAR AP** *Cascade Wipe:* Spend 2 AP per additional device to extend Kill Switch to a chain of linked targets.
+##### Every door has a hinge. You are the hinge.
+@end-skill
+
 The continuation tab renders as **"Deep Scan ▸"** — the original title with the `▸` suffix appended automatically. Both cards use the same variant clip-path so the pair reads as a matched set.
 
 ---
@@ -113,6 +135,16 @@ The continuation tab renders as **"Deep Scan ▸"** — the original title with 
 ### AP Chip Variants
 
 AP chips appear inline inside ability blocks. Three variants signal cost type at a glance:
+
+**Syntax** — inline HTML span inside `@skill` ability text
+
+```html
+<span class="dc-ap free">0 AP</span>
+<span class="dc-ap">2 AP</span>
+<span class="dc-ap var">VAR</span>
+```
+
+**Specimen**
 
 <span class="dc-ap free">0 AP</span> — Free action (crimson fill).
 
@@ -125,6 +157,18 @@ AP chips appear inline inside ability blocks. Three variants signal cost type at
 ### At-a-Glance Cards
 
 Quick stat grid for character sheets, specialty summaries, and creature previews. Each card holds one label and one value.
+
+**Syntax** — raw HTML
+
+```html
+<div class="at-a-glance-cards">
+  <div class="at-a-glance-card"><h4>HP</h4><p>14</p></div>
+  <div class="at-a-glance-card"><h4>Speed</h4><p>Near</p></div>
+  <div class="at-a-glance-card"><h4>Edge</h4><p>+2</p></div>
+</div>
+```
+
+**Specimen**
 
 <div class="at-a-glance-cards">
   <div class="at-a-glance-card"><h4>HP</h4><p>14</p></div>
@@ -142,6 +186,12 @@ Inline pill for specialty names and cost labels. Renders with a pill border in t
 
 **Syntax** — `<span class="tag">Label</span>`
 
+```html
+<span class="tag">Augmerc</span>
+```
+
+**Specimen**
+
 <span class="tag">Augmerc</span>
 
 ---
@@ -151,6 +201,12 @@ Inline pill for specialty names and cost labels. Renders with a pill border in t
 Badge code displayed inside learning-path spray headers. Identifies the path index (e.g., `AUG1`, `AUG2`) so readers can navigate multi-path specialties at a glance.
 
 **Syntax** — `<span class="dc-path-sticker">AUG1</span>`
+
+```html
+<span class="dc-path-sticker">AUG1</span>
+```
+
+**Specimen**
 
 <span class="dc-path-sticker">AUG1</span>
 
@@ -162,6 +218,12 @@ Full-width tape strip that separates major sections within a specialty or chapte
 
 **Syntax** — `<div class="dc-tape flush">Label</div>`
 
+```html
+<div class="dc-tape flush">Section Break</div>
+```
+
+**Specimen**
+
 <div class="dc-tape flush">Section Break</div>
 
 ---
@@ -171,6 +233,28 @@ Full-width tape strip that separates major sections within a specialty or chapte
 ### Creature Stat Block
 
 Full creature entry: name, archetype line, stat grid (HP / DEF / AP / DMG), and a list of named abilities. Add `.flush` to remove the default side margins for bleed-edge placement.
+
+**Syntax** — raw HTML
+
+```html
+<div class="dc-stat flush">
+  <div class="dc-stat-head">
+    <div class="dc-stat-name">Wirewolf, Pack-Beta</div>
+    <div class="dc-stat-class">— Threat · Hunter —</div>
+  </div>
+  <div class="dc-stat-grid">
+    <div class="dc-stat-cell"><div class="dc-stat-cell-key">HP</div><div class="dc-stat-cell-val">22</div></div>
+    <div class="dc-stat-cell"><div class="dc-stat-cell-key">DEF</div><div class="dc-stat-cell-val">14</div></div>
+    <div class="dc-stat-cell"><div class="dc-stat-cell-key">AP</div><div class="dc-stat-cell-val">3</div></div>
+    <div class="dc-stat-cell"><div class="dc-stat-cell-key">DMG</div><div class="dc-stat-cell-val">d20</div></div>
+  </div>
+  <div class="dc-stat-line"><strong>Bite:</strong> Melee, basic. On a hit, drag target 1 square toward the pack.</div>
+  <div class="dc-stat-line"><strong>Pack Tactic:</strong> While 2+ wirewolves are in reach, all gain advantage on bite rolls.</div>
+  <div class="dc-stat-line"><strong>Falter:</strong> When below half HP, howls. Every wirewolf within 6 squares gains 1 AP.</div>
+</div>
+```
+
+**Specimen**
 
 <div class="dc-stat flush">
   <div class="dc-stat-head">
@@ -193,6 +277,28 @@ Full creature entry: name, archetype line, stat grid (HP / DEF / AP / DMG), and 
 ### NPC Stat Block
 
 Same structure as the creature block. Social-facing NPCs swap combat stats for social stats: REP (reputation floor), HEAT (threat threshold), FEE (base price), and TURN (disposition shift on failed roll).
+
+**Syntax** — raw HTML
+
+```html
+<div class="dc-stat flush">
+  <div class="dc-stat-head">
+    <div class="dc-stat-name">Doc Solenn</div>
+    <div class="dc-stat-class">— Contact · Fixer —</div>
+  </div>
+  <div class="dc-stat-grid">
+    <div class="dc-stat-cell"><div class="dc-stat-cell-key">REP</div><div class="dc-stat-cell-val">4</div></div>
+    <div class="dc-stat-cell"><div class="dc-stat-cell-key">HEAT</div><div class="dc-stat-cell-val">2</div></div>
+    <div class="dc-stat-cell"><div class="dc-stat-cell-key">FEE</div><div class="dc-stat-cell-val">×1.5</div></div>
+    <div class="dc-stat-cell"><div class="dc-stat-cell-key">TURN</div><div class="dc-stat-cell-val">−1</div></div>
+  </div>
+  <div class="dc-stat-line"><strong>Patch Job:</strong> Treat wounds between scenes. Costs FEE × severity. No questions asked.</div>
+  <div class="dc-stat-line"><strong>Under the Counter:</strong> Carries one random augmentation part per session. Price doubles if HEAT is active.</div>
+  <div class="dc-stat-line"><strong>Cold Shoulder:</strong> If HEAT fires, Solenn goes dark for one full session before contacts can reach her again.</div>
+</div>
+```
+
+**Specimen**
 
 <div class="dc-stat flush">
   <div class="dc-stat-head">
@@ -236,7 +342,7 @@ A learning path wraps a set of skill cards under a named spray header with an in
 @end-learning-path
 ```
 
-Live rendered learning path — three cards using variants 1, 2, and 3:
+**Specimen**
 
 @learning-path specialty="augmerc" index="1"
 ### Breach Protocols
@@ -283,6 +389,22 @@ A horizontal chain of skill-name stickers showing progression order within a lea
 
 **Syntax** — auto-generated by `@learning-path`; or raw HTML `<div class="dc-stickers flush">` with `<span class="dc-sticker">` and `<span class="dc-arrow">»</span>` separators
 
+```html
+<div class="dc-stickers flush">
+  <span class="dc-sticker active">Punishing Counter</span>
+  <span class="dc-arrow">»</span>
+  <span class="dc-sticker">Rage Hit</span>
+  <span class="dc-arrow">»</span>
+  <span class="dc-sticker">Dirty Work</span>
+  <span class="dc-arrow">»</span>
+  <span class="dc-sticker">Pain Compliance</span>
+  <span class="dc-arrow">»</span>
+  <span class="dc-sticker">It's Personal</span>
+</div>
+```
+
+**Specimen**
+
 <div class="dc-stickers flush">
   <span class="dc-sticker active">Punishing Counter</span>
   <span class="dc-arrow">»</span>
@@ -303,6 +425,12 @@ A secondary label rendered below the sticker chain, naming the path and its choi
 
 **Syntax** — auto-generated by `@learning-path`; or raw HTML `<div class="dc-path-subtitle flush">text</div>`
 
+```html
+<div class="dc-path-subtitle flush">— Path · Choose your specialty —</div>
+```
+
+**Specimen**
+
 <div class="dc-path-subtitle flush">— Path · Choose your specialty —</div>
 
 ---
@@ -312,6 +440,12 @@ A secondary label rendered below the sticker chain, naming the path and its choi
 A mono-cap label at the bottom of a skill card summarizing the stance, trigger, or cost type. Auto-generated by `@skill`/`@end-skill` from the final `type | AP cost` line; can also be authored directly inside a `.card-inner` body.
 
 **Syntax** — auto-generated by `@skill`/`@end-skill`; or raw HTML `<div class="dc-sub-header flush">text</div>`
+
+```html
+<div class="dc-sub-header flush">Stance · Free counter · Once per round</div>
+```
+
+**Specimen**
 
 <div class="dc-sub-header flush">Stance · Free counter · Once per round</div>
 
@@ -323,16 +457,18 @@ Rotated monospaced label chips used to mark content status — draft, deprecated
 
 **Syntax** — raw HTML `<span class="dc-stamp">TEXT</span>`; add `.classified` for the orange-border variant
 
+```html
+<span class="dc-stamp">DREAM MASTER</span>
+<span class="dc-stamp classified">PRE-RELEASE</span>
+```
+
+**Specimen**
+
 <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:0.1in 0;">
   <span class="dc-stamp">DREAM MASTER</span>
   <span class="dc-stamp classified">PRE-RELEASE</span>
   <span class="dc-stamp">DEPRECATED</span>
 </div>
-
-```html
-<span class="dc-stamp">DREAM MASTER</span>
-<span class="dc-stamp classified">PRE-RELEASE</span>
-```
 
 ---
 
@@ -341,6 +477,15 @@ Rotated monospaced label chips used to mark content status — draft, deprecated
 Five clip-path shapes for the card tab and body corners. Set `variant="N"` on the `@skill` macro to choose, or apply class `v1`–`v5` directly to `.dc-card-tab` and `.dc-card-body` in raw HTML. Variant 1 is the default right-diagonal; variants 2–5 offer progressively distinct tech silhouettes.
 
 **Syntax** — `variant="N"` on `@skill` macro; or add class `v1`–`v5` to `.dc-card-tab` and `.dc-card-body`
+
+```html
+<div class="dc-skill-card">
+  <div class="dc-card-tab v1">…</div>
+  <div class="dc-card-body v1">…</div>
+</div>
+```
+
+**Specimen**
 
 <div style="display:flex;flex-wrap:wrap;gap:16px;margin:0.1in 0;">
 

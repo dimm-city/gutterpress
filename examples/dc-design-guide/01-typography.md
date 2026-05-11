@@ -8,9 +8,11 @@ Three font families, each with a specific role. lixdu anchors display and banner
 
 ## H1 — lixdu
 
-**Syntax:** `# Chapter Title`
+**Syntax** — `# Chapter Title`
 
 **Spec:** 20.7pt (1.728rem at 12pt base) · bold · lixdu · one per chapter or specialty opener
+
+**Specimen**
 
 # Augmerc
 
@@ -18,9 +20,11 @@ Three font families, each with a specific role. lixdu anchors display and banner
 
 ## H2 — lixdu
 
-**Syntax:** `## Section Heading`
+**Syntax** — `## Section Heading`
 
 **Spec:** 17.3pt (1.44rem at 12pt base) · lixdu · major topic breaks
+
+**Specimen**
 
 ## Spec Tweak
 
@@ -28,9 +32,11 @@ Three font families, each with a specific role. lixdu anchors display and banner
 
 ## H3 — lixdu
 
-**Syntax:** `### Sub-section`
+**Syntax** — `### Sub-section`
 
 **Spec:** 14.4pt (1.2rem at 12pt base) · lixdu · reference column labels
+
+**Specimen**
 
 ### Wired to Kill
 
@@ -38,9 +44,11 @@ Three font families, each with a specific role. lixdu anchors display and banner
 
 ## Spray Banner — dc-spray
 
-**Syntax:** `## Title {.dc-spray}`
+**Syntax** — `## Title {.dc-spray}`
 
 **Spec:** Wider tracking, crimson accent bar. Used on learning paths.
+
+**Specimen**
 
 ## Biting Distance {.dc-spray}
 
@@ -48,9 +56,11 @@ Three font families, each with a specific role. lixdu anchors display and banner
 
 ## Chevron Banner — dc-chevron
 
-**Syntax:** `# Title {.dc-chevron}`
+**Syntax** — `# Title {.dc-chevron}`
 
 **Spec:** Primary chapter/specialty opener banner with angled crimson clip-path.
+
+**Specimen**
 
 # Augmerc {.dc-chevron}
 
@@ -60,13 +70,19 @@ Three font families, each with a specific role. lixdu anchors display and banner
 
 **Spec:** Standard paragraph. Titillium Web, body copy. No special syntax required.
 
+**Specimen**
+
 When an enemy falters, you may trigger one of the following counters.
 
 ---
 
 ## Flavor — Titillium Web italic
 
+**Syntax** — `::: wrapper {.dc-prose.flavor}`
+
 **Spec:** Italic, used in card bodies. Inside `@skill` cards, generated from the `>` blockquote line. Standalone: `::: wrapper {.dc-prose.flavor}`.
+
+**Specimen**
 
 ::: wrapper {.dc-prose.flavor}
 See an opening, ya take it.
@@ -76,7 +92,11 @@ See an opening, ya take it.
 
 ## Card Tab — Tomorrow
 
+**Syntax** — `<span class="font-tab">Label</span>`
+
 **Spec:** Monospaced, used in skill card tabs.
+
+**Specimen**
 
 <span class="font-tab">Punishing Counter</span>
 
@@ -84,7 +104,11 @@ See an opening, ya take it.
 
 ## Mono Cap Tag — Tomorrow
 
+**Syntax** — `<span class="tag">Label</span>`
+
 **Spec:** Monospaced tag line, stance and timing labels.
+
+**Specimen**
 
 <span class="tag">— Stance · Free counter —</span>
 

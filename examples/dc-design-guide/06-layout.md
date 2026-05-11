@@ -12,6 +12,8 @@ Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
 
 The `:::two-column` container divides its content into two equal CSS columns with a hairline column rule. Use it for glossaries, reference lists, FAQ entries, and any content with short items that benefit from side-by-side flow.
 
+**Syntax** — `:::two-column` … `:::`
+
 ```markdown
 :::two-column
 
@@ -23,6 +25,8 @@ The `:::two-column` container divides its content into two equal CSS columns wit
 
 :::
 ```
+
+**Specimen**
 
 :::two-column
 
@@ -66,6 +70,8 @@ After the float clears, text returns to full column width. Add a blank line or a
 
 The `:::sidebar` container floats content as a right-aligned aside at 38% of the text column width. Body text wraps to the left of the sidebar until it clears the bottom of the sidebar element. The `:::sidebar` container generates a `.sidebar` element, aliased to `.dc-sidebar`. Use `.dc-sidebar` as the canonical class name when authoring raw HTML.
 
+**Syntax** — `:::sidebar` … `:::`
+
 ```markdown
 :::sidebar
 
@@ -78,6 +84,8 @@ The `:::sidebar` container floats content as a right-aligned aside at 38% of the
 
 A body paragraph flows to the left of the sidebar. The text wraps around the floated aside automatically and returns to full width once the sidebar clears.
 ```
+
+**Specimen**
 
 :::sidebar
 

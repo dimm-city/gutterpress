@@ -14,12 +14,14 @@ The default text style for all narrative and rules content. Standard markdown pa
 
 **Syntax** — plain markdown paragraph
 
-When an enemy falters, you may trigger one of the following counters. **Backbiters** are simply part of what makes an Augmerc dangerous.
-
 ```markdown
 When an enemy falters, you may trigger one of the following counters.
 **Backbiters** are simply part of what makes an Augmerc dangerous.
 ```
+
+**Specimen**
+
+When an enemy falters, you may trigger one of the following counters. **Backbiters** are simply part of what makes an Augmerc dangerous.
 
 ---
 
@@ -29,15 +31,17 @@ An italic variant of body prose used for in-world voice, atmospheric quotes, and
 
 **Syntax** — `::: wrapper {.dc-prose.flavor}` … `:::`
 
-::: wrapper {.dc-prose.flavor}
-See an opening, ya take it. Best time to hit 'em is when they think it's over.
-:::
-
 ```markdown
 ::: wrapper {.dc-prose.flavor}
 See an opening, ya take it. Best time to hit 'em is when they think it's over.
 :::
 ```
+
+**Specimen**
+
+::: wrapper {.dc-prose.flavor}
+See an opening, ya take it. Best time to hit 'em is when they think it's over.
+:::
 
 ---
 
@@ -47,10 +51,6 @@ A slightly larger, heavier opening paragraph used at the top of a chapter or maj
 
 **Syntax** — `::: wrapper {.dc-intro.flush}` … `:::`
 
-::: wrapper {.dc-intro.flush}
-An Augmerc is muscle for hire. Street thugs, corporate bodyguards, deniable enforcers — the difference is gear, grafts, and how much of them is still original.
-:::
-
 ```markdown
 ::: wrapper {.dc-intro.flush}
 An Augmerc is muscle for hire. Street thugs, corporate bodyguards,
@@ -58,6 +58,12 @@ deniable enforcers — the difference is gear, grafts, and how much
 of them is still original.
 :::
 ```
+
+**Specimen**
+
+::: wrapper {.dc-intro.flush}
+An Augmerc is muscle for hire. Street thugs, corporate bodyguards, deniable enforcers — the difference is gear, grafts, and how much of them is still original.
+:::
 
 ---
 
@@ -67,12 +73,6 @@ A boxed aside for rules clarifications, reminders, and supplementary information
 
 **Syntax** — `::: wrapper {.dc-note}` … `:::` with `**Label**{.dc-note-label}` for the label
 
-::: wrapper {.dc-note}
-**Note**{.dc-note-label}
-
-Free counters trigger only once per round. Pick the one that hurts most.
-:::
-
 ```markdown
 ::: wrapper {.dc-note}
 **Note**{.dc-note-label}
@@ -81,6 +81,14 @@ Free counters trigger only once per round. Pick the one that hurts most.
 :::
 ```
 
+**Specimen**
+
+::: wrapper {.dc-note}
+**Note**{.dc-note-label}
+
+Free counters trigger only once per round. Pick the one that hurts most.
+:::
+
 ---
 
 ## Warning
@@ -88,12 +96,6 @@ Free counters trigger only once per round. Pick the one that hurts most.
 A high-visibility callout for rules that have critical consequences or are frequently misread. Uses the same structure as `.dc-note` but renders in amber to signal elevated importance.
 
 **Syntax** — `::: wrapper {.dc-note.warning}` … `:::` with `**Label**{.dc-note-label}` for the label
-
-::: wrapper {.dc-note.warning}
-**Warning**{.dc-note-label}
-
-Trauma Patches stabilize a dying character but do not restore HP. A character at 0 HP with a Patch applied is still incapacitated — they can take no actions until healed above 0.
-:::
 
 ```markdown
 ::: wrapper {.dc-note.warning}
@@ -105,6 +107,14 @@ until healed above 0.
 :::
 ```
 
+**Specimen**
+
+::: wrapper {.dc-note.warning}
+**Warning**{.dc-note-label}
+
+Trauma Patches stabilize a dying character but do not restore HP. A character at 0 HP with a Patch applied is still incapacitated — they can take no actions until healed above 0.
+:::
+
 ---
 
 ## Pull Quote
@@ -113,12 +123,6 @@ A large-format excerpt set off with accent rules above and below. Use sparingly 
 
 **Syntax** — `::: wrapper {.dc-pullquote.flush}` … `:::` with `**Attribution**{.dc-pullquote-attr}` for the credit line
 
-::: wrapper {.dc-pullquote.flush}
-The rig braces and answers every swing.
-
-**Field manual, second draft**{.dc-pullquote-attr}
-:::
-
 ```markdown
 ::: wrapper {.dc-pullquote.flush}
 The rig braces and answers every swing.
@@ -126,6 +130,14 @@ The rig braces and answers every swing.
 **Field manual, second draft**{.dc-pullquote-attr}
 :::
 ```
+
+**Specimen**
+
+::: wrapper {.dc-pullquote.flush}
+The rig braces and answers every swing.
+
+**Field manual, second draft**{.dc-pullquote-attr}
+:::
 
 ---
 
@@ -135,11 +147,13 @@ A horizontal section break styled as a piece of torn tape or a label strip. Use 
 
 **Syntax** — `<div class="dc-tape flush">…</div>`
 
-<div class="dc-tape flush">Section Break</div>
-
 ```html
 <div class="dc-tape flush">Section Break</div>
 ```
+
+**Specimen**
+
+<div class="dc-tape flush">Section Break</div>
 
 ---
 
@@ -149,11 +163,13 @@ A compact, high-contrast H3 heading for use inside dense multi-column reference 
 
 **Syntax** — `### Heading {.dc-section-h3}`
 
-### Cybernetics & Augments {.dc-section-h3}
-
 ```markdown
 ### Cybernetics & Augments {.dc-section-h3}
 ```
+
+**Specimen**
+
+### Cybernetics & Augments {.dc-section-h3}
 
 ---
 
@@ -163,16 +179,18 @@ A full-width atmospheric block for in-world voice that establishes the emotional
 
 **Syntax** — `::: wrapper {.dc-vibe-callout}` … `:::`
 
-::: wrapper {.dc-vibe-callout}
-The Gutterdruid doesn't fight because they have to — they fight because something feral in them still remembers what it felt like to be free.
-:::
-
 ```markdown
 ::: wrapper {.dc-vibe-callout}
 The Gutterdruid doesn't fight because they have to — they fight because
 something feral in them still remembers what it felt like to be free.
 :::
 ```
+
+**Specimen**
+
+::: wrapper {.dc-vibe-callout}
+The Gutterdruid doesn't fight because they have to — they fight because something feral in them still remembers what it felt like to be free.
+:::
 
 ---
 
@@ -181,10 +199,6 @@ something feral in them still remembers what it felt like to be free.
 A second-person backstory block that addresses the reader as their character, used for origin and background entries. Draws the reader into the fiction by making them the subject of the narrative.
 
 **Syntax** — `::: wrapper {.dc-origin-callout}` … `:::`
-
-::: wrapper {.dc-origin-callout}
-You didn't choose the street — the street chose you. Before the grafts, before the crew, there was just hunger and the particular talent for surviving what should have killed you. That's enough. That's always been enough.
-:::
 
 ```markdown
 ::: wrapper {.dc-origin-callout}
@@ -195,6 +209,12 @@ been enough.
 :::
 ```
 
+**Specimen**
+
+::: wrapper {.dc-origin-callout}
+You didn't choose the street — the street chose you. Before the grafts, before the crew, there was just hunger and the particular talent for surviving what should have killed you. That's enough. That's always been enough.
+:::
+
 ---
 
 ## Human Callout (NPC Sidebar)
@@ -202,8 +222,6 @@ been enough.
 A compact NPC stat block nested inside a `.sidebar` float. Displays name, role, and key stats in a tight format suited for margin or column-gutter placement.
 
 **Syntax** — `<div class="sidebar"><div class="dc-human-callout">…</div></div>`
-
-<div class="sidebar"><div class="dc-human-callout"><p><strong>Rennick "Two-Tab" Farrow</strong></p><p>Fixer. HP 8 | DEF 11 | Intimidate +4.</p></div></div>
 
 ```html
 <div class="sidebar">
@@ -214,6 +232,10 @@ A compact NPC stat block nested inside a `.sidebar` float. Displays name, role, 
 </div>
 ```
 
+**Specimen**
+
+<div class="sidebar"><div class="dc-human-callout"><p><strong>Rennick "Two-Tab" Farrow</strong></p><p>Fixer. HP 8 | DEF 11 | Intimidate +4.</p></div></div>
+
 ---
 
 ## Gear Callout
@@ -221,12 +243,6 @@ A compact NPC stat block nested inside a `.sidebar` float. Displays name, role, 
 A named equipment block for weapons, armor, and notable items. Groups the item name, type, and mechanical properties in a scannable panel distinct from body prose.
 
 **Syntax** — `::: wrapper {.dc-gear-callout}` … `:::`
-
-::: wrapper {.dc-gear-callout}
-**Ripper Blades (Mk II)**
-
-Melee. Damage 1d8+STR. *Serrated:* on a critical hit, the target bleeds for 1d4 damage at the start of their next turn.
-:::
 
 ```markdown
 ::: wrapper {.dc-gear-callout}
@@ -237,6 +253,14 @@ for 1d4 damage at the start of their next turn.
 :::
 ```
 
+**Specimen**
+
+::: wrapper {.dc-gear-callout}
+**Ripper Blades (Mk II)**
+
+Melee. Damage 1d8+STR. *Serrated:* on a critical hit, the target bleeds for 1d4 damage at the start of their next turn.
+:::
+
 ---
 
 ## Item Block
@@ -244,14 +268,6 @@ for 1d4 damage at the start of their next turn.
 A self-contained rules item — ability, move, or equipment entry — wrapped in a fenced container with a structured heading. The `.item` wrapper keeps the block together across page breaks.
 
 **Syntax** — `::: wrapper {.item}` … `:::` with a `###` title inside
-
-::: wrapper {.item}
-### Hardline Graft
-
-**Passive.** Your cybernetic frame absorbs the first 2 points of physical damage you take each round. This reduction applies before armor.
-
-*When you're fully wired, hits just feel like feedback.*
-:::
 
 ```markdown
 ::: wrapper {.item}
@@ -264,6 +280,16 @@ damage you take each round. This reduction applies before armor.
 :::
 ```
 
+**Specimen**
+
+::: wrapper {.item}
+### Hardline Graft
+
+**Passive.** Your cybernetic frame absorbs the first 2 points of physical damage you take each round. This reduction applies before armor.
+
+*When you're fully wired, hits just feel like feedback.*
+:::
+
 ---
 
 ## Table
@@ -271,13 +297,6 @@ damage you take each round. This reduction applies before armor.
 Standard markdown tables automatically receive DC styling: a colored header row, alternating row fills, and body text set at the small type scale. No extra syntax required.
 
 **Syntax** — Standard markdown pipe table
-
-| Augment | Slot | Effect |
-|---------|------|--------|
-| Reflex Booster | Legs | +2 to initiative rolls |
-| Subdermal Plating | Torso | Reduce incoming damage by 1 |
-| Optic Splice | Head | Ignore darkness penalties |
-| Neural Tap | Head | +1 die on Hack and Interface checks |
 
 ```markdown
 | Augment          | Slot   | Effect                              |
@@ -288,6 +307,15 @@ Standard markdown tables automatically receive DC styling: a colored header row,
 | Neural Tap       | Head   | +1 die on Hack and Interface checks |
 ```
 
+**Specimen**
+
+| Augment | Slot | Effect |
+|---------|------|--------|
+| Reflex Booster | Legs | +2 to initiative rolls |
+| Subdermal Plating | Torso | Reduce incoming damage by 1 |
+| Optic Splice | Head | Ignore darkness penalties |
+| Neural Tap | Head | +1 die on Hack and Interface checks |
+
 ---
 
 ## Blockquote
@@ -296,16 +324,18 @@ For epigraphs, thematic quotes, and attributed in-world text. Styled with an acc
 
 **Syntax** — Standard markdown `>` blockquote
 
-> Every city has a language. Dimm City's is neon, static, and the sound of someone's implants glitching at 3am.
->
-> — Hollis Vance, *Street Anthropology Vol. 4*
-
 ```markdown
 > Every city has a language. Dimm City's is neon, static, and the sound
 > of someone's implants glitching at 3am.
 >
 > — Hollis Vance, *Street Anthropology Vol. 4*
 ```
+
+**Specimen**
+
+> Every city has a language. Dimm City's is neon, static, and the sound of someone's implants glitching at 3am.
+>
+> — Hollis Vance, *Street Anthropology Vol. 4*
 
 ---
 
@@ -314,6 +344,16 @@ For epigraphs, thematic quotes, and attributed in-world text. Styled with an acc
 Fenced code blocks for CSS snippets, stat expressions, or any literal syntax. Rendered with an orange left border, cream background, and Tomorrow monospace. No extra class required.
 
 **Syntax** — Triple-backtick fenced block with an optional language hint
+
+````markdown
+```css
+.dc-note {
+  border-left: 3pt solid var(--color-accent);
+}
+```
+````
+
+**Specimen**
 
 ```css
 :root {
@@ -329,14 +369,6 @@ Fenced code blocks for CSS snippets, stat expressions, or any literal syntax. Re
 }
 ```
 
-````markdown
-```css
-.dc-note {
-  border-left: 3pt solid var(--color-accent);
-}
-```
-````
-
 ---
 
 ## Visit Callout
@@ -344,10 +376,6 @@ Fenced code blocks for CSS snippets, stat expressions, or any literal syntax. Re
 An in-world location description written in present tense, as if the reader is arriving on-site. Use on location pages and before encounter content to establish place before mechanics begin.
 
 **Syntax** — `::: wrapper {.dc-visit-callout}` … `:::`
-
-::: wrapper {.dc-visit-callout}
-The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers brush shoulders between stalls selling augment cartridges, black-market permits, and fried synthetic crab. If someone's selling it somewhere in Dimm City, it started here.
-:::
 
 ```markdown
 ::: wrapper {.dc-visit-callout}
@@ -358,6 +386,12 @@ Dimm City, it started here.
 :::
 ```
 
+**Specimen**
+
+::: wrapper {.dc-visit-callout}
+The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers brush shoulders between stalls selling augment cartridges, black-market permits, and fried synthetic crab. If someone's selling it somewhere in Dimm City, it started here.
+:::
+
 ---
 
 ## Admonition Block
@@ -365,12 +399,6 @@ Dimm City, it started here.
 A Dream Master–addressed instruction block, visually distinct from player-facing notes. Use for GM guidance, scene hooks, and pacing advice that should not be read aloud at the table.
 
 **Syntax** — `::: wrapper {.dc-note-callout}` … `:::` with `**Label**{.dc-note-label}` for the header
-
-::: wrapper {.dc-note-callout}
-**Dream Master Note**{.dc-note-label}
-
-If a player hasn't chosen their starting gear by the end of session zero, hand them a Scavenger Pack and move on. Gear anxiety is real but the game shouldn't wait for it.
-:::
 
 ```markdown
 ::: wrapper {.dc-note-callout}
@@ -382,6 +410,14 @@ shouldn't wait for it.
 :::
 ```
 
+**Specimen**
+
+::: wrapper {.dc-note-callout}
+**Dream Master Note**{.dc-note-label}
+
+If a player hasn't chosen their starting gear by the end of session zero, hand them a Scavenger Pack and move on. Gear anxiety is real but the game shouldn't wait for it.
+:::
+
 ---
 
 ## Glossary / Term List
@@ -389,6 +425,22 @@ shouldn't wait for it.
 A definition list of game terms rendered as a styled block. Use for rules glossaries, jargon indexes, and any list of named concepts that need consistent, scannable formatting.
 
 **Syntax** — raw HTML `.dc-terms` wrapper (alias: `.terms`) containing one or more `.dc-terms-list` items (alias: `.terms-list`), each with a `<strong>` term label and a `<p>` definition
+
+```html
+<div class="dc-terms terms">
+  <div class="terms item">
+    <strong>Augmerc</strong>
+    <p>A specialist who combines cybernetic augmentation with close-range
+    combat training.</p>
+  </div>
+  <div class="terms item">
+    <strong>Hard Choice</strong>
+    <p>A roll result where the fiction advances but at a cost.</p>
+  </div>
+</div>
+```
+
+**Specimen**
 
 <div class="dc-terms terms">
   <div class="terms item">
@@ -405,20 +457,6 @@ A definition list of game terms rendered as a styled block. Use for rules glossa
   </div>
 </div>
 
-```html
-<div class="dc-terms terms">
-  <div class="terms item">
-    <strong>Augmerc</strong>
-    <p>A specialist who combines cybernetic augmentation with close-range
-    combat training.</p>
-  </div>
-  <div class="terms item">
-    <strong>Hard Choice</strong>
-    <p>A roll result where the fiction advances but at a cost.</p>
-  </div>
-</div>
-```
-
 ---
 
 ## Numbered Procedure
@@ -426,14 +464,6 @@ A definition list of game terms rendered as a styled block. Use for rules glossa
 A zero-padded ordered list for sequential rules — character creation, contract resolution, scene framing. Each step is kept together across page breaks by Paged.js.
 
 **Syntax** — raw HTML `<ol class="dc-steps">` with `<li><span class="dc-step-no">01</span><span>content</span></li>` for each step; zero-pad all step numbers
-
-<ol class="dc-steps flush">
-  <li><span class="dc-step-no">01</span><span><strong>Pick a Spec.</strong> Augmerc, Proxy, Streetwarden — one of eight. Your spec sets your starting paths and signature gear.</span></li>
-  <li><span class="dc-step-no">02</span><span><strong>Spend 6 Spec Points.</strong> Distribute across paths. Each point unlocks one tier. You may not exceed tier 3 at character creation.</span></li>
-  <li><span class="dc-step-no">03</span><span><strong>Take a Signature Augment.</strong> Pulled from your spec's gear list. Free at start. Replaceable later only by a Cybersurgeon contact.</span></li>
-  <li><span class="dc-step-no">04</span><span><strong>Roll your Heat.</strong> d20 + Spec modifier. Heat is what the city already has against you when play begins.</span></li>
-  <li><span class="dc-step-no">05</span><span><strong>Name a Debt.</strong> One contract you owe, one person you owe it to. The Dream Master may call it in.</span></li>
-</ol>
 
 ```html
 <ol class="dc-steps flush">
@@ -449,6 +479,16 @@ A zero-padded ordered list for sequential rules — character creation, contract
 </ol>
 ```
 
+**Specimen**
+
+<ol class="dc-steps flush">
+  <li><span class="dc-step-no">01</span><span><strong>Pick a Spec.</strong> Augmerc, Proxy, Streetwarden — one of eight. Your spec sets your starting paths and signature gear.</span></li>
+  <li><span class="dc-step-no">02</span><span><strong>Spend 6 Spec Points.</strong> Distribute across paths. Each point unlocks one tier. You may not exceed tier 3 at character creation.</span></li>
+  <li><span class="dc-step-no">03</span><span><strong>Take a Signature Augment.</strong> Pulled from your spec's gear list. Free at start. Replaceable later only by a Cybersurgeon contact.</span></li>
+  <li><span class="dc-step-no">04</span><span><strong>Roll your Heat.</strong> d20 + Spec modifier. Heat is what the city already has against you when play begins.</span></li>
+  <li><span class="dc-step-no">05</span><span><strong>Name a Debt.</strong> One contract you owe, one person you owe it to. The Dream Master may call it in.</span></li>
+</ol>
+
 ---
 
 ## Outcome Ladder
@@ -456,6 +496,21 @@ A zero-padded ordered list for sequential rules — character creation, contract
 The five-rung d20 result table used for all rolls in Dimm City. Each row is color-coded by result severity via a modifier class on the row element.
 
 **Syntax** — raw HTML `.dc-outcomes` wrapper containing `.dc-outcome-row.{crit|hit|mixed|miss|fail}` rows, each with `.dc-outcome-key` (holding `.dc-outcome-name` and `.dc-outcome-roll`) and `.dc-outcome-text`
+
+```html
+<div class="dc-outcomes flush">
+  <div class="dc-outcome-row crit">
+    <div class="dc-outcome-key">
+      <span class="dc-outcome-name">Crit</span>
+      <span class="dc-outcome-roll">20</span>
+    </div>
+    <div class="dc-outcome-text">Automatic success…</div>
+  </div>
+  <!-- repeat for hit / mixed / miss / fail -->
+</div>
+```
+
+**Specimen**
 
 <div class="dc-outcomes flush">
   <div class="dc-outcome-row crit">
@@ -479,19 +534,6 @@ The five-rung d20 result table used for all rolls in Dimm City. Each row is colo
     <div class="dc-outcome-text">Dark. Automatic fail with a severe setback — broken gear, cyberware malfunction, or friendly fire. Your next die roll: <span class="dc-roll-surreal roll-surreal">ROLL SURREAL.</span></div>
   </div>
 </div>
-
-```html
-<div class="dc-outcomes flush">
-  <div class="dc-outcome-row crit">
-    <div class="dc-outcome-key">
-      <span class="dc-outcome-name">Crit</span>
-      <span class="dc-outcome-roll">20</span>
-    </div>
-    <div class="dc-outcome-text">Automatic success…</div>
-  </div>
-  <!-- repeat for hit / mixed / miss / fail -->
-</div>
-```
 
 ---
 
