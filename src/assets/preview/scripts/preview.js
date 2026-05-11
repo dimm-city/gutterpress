@@ -426,9 +426,22 @@ function setZoom(zoom) {
     const containerWidth = iframeEl ? iframeEl.clientWidth : window.innerWidth;
     const page = iframeWin.document.querySelector(".pagedjs_page");
     const pageWidth = page ? page.offsetWidth : 0;
-    // Scale to fit container, but never zoom above 100% — only scale down when needed
-    const scale = pageWidth > 0 ? Math.min((containerWidth - 32) / pageWidth, 1.0) : 1.0;
-    api.setZoom(scale);
+
+    if (pageWidth > 0 && pageWidth > containerWidth) {
+      // Page wider than viewport: margin:auto fails so the page left-aligns.
+      // Compute a transform-origin that visually centers the scaled page.
+      // Derivation: newLeft = origin + (0 - origin)*scale = containerWidth/2 - scaledWidth/2
+      // Solving for origin: origin = (containerWidth/2 - pageWidth*scale/2) / (1 - scale)
+      const scale = (containerWidth - 32) / pageWidth;
+      const originX = (containerWidth / 2 - (pageWidth * scale) / 2) / (1 - scale);
+      const body = iframeWin.document.body;
+      body.style.transformOrigin = `${originX}px top`;
+      body.style.transform = `scale(${scale})`;
+    } else {
+      // Page fits: margin:auto centers it, standard 100% zoom
+      api.setZoom(1.0);
+    }
+
     const zoomSelect = document.getElementById("zoom-select");
     if (zoomSelect) zoomSelect.value = "fit-width";
   } else {
