@@ -15,6 +15,7 @@ import {
   createAliasedContainer,
   createSidebarContainer,
 } from "./containers";
+import { dcAlertsPlugin } from "./alerts";
 import { fixImagePaths } from "./images";
 import { registerCustomHrRule } from "./page-marker-hr";
 import { pageMarkerPlugin } from "./page-marker-plugin";
@@ -69,6 +70,9 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
       ? ((plugin as unknown as { default: T }).default)
       : plugin);
 
+  // DC alert plugin must run before markdownItAttrs so attrs don't interfere
+  // with blockquote detection (e.g. `> [!NOTE]{.something}` edge cases).
+  md.use(dcAlertsPlugin);
   md.use(unwrap(markdownItAttrs));
   md.use(unwrap(markdownItFootnote));
   md.use(unwrap(markdownItSourceMap));
@@ -122,6 +126,9 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   md.use(markdownItContainer, "callout-tip", createNamedContainer("callout-tip"));
   md.use(markdownItContainer, "callout", createNamedContainer("callout"));
   md.use(markdownItContainer, "pull-quote", createNamedContainer("pull-quote"));
+  md.use(markdownItContainer, "procedure", createNamedContainer("procedure"));
+  md.use(markdownItContainer, "item", createNamedContainer("item"));
+  md.use(markdownItContainer, "lede", createNamedContainer("lede"));
 
   // Apply custom plugins from manifest
   if (customPlugins && customPlugins.length > 0) {

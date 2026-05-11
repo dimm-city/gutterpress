@@ -27,32 +27,30 @@ When an enemy falters, you may trigger one of the following counters. **Backbite
 
 ## Flavor Text
 
-An italic variant of body prose used for in-world voice, atmospheric quotes, and short dramatic lines. Inside `@skill` cards, flavor text is automatically styled from the `>` blockquote line. For standalone flavor paragraphs, use the `.dc-prose.flavor` wrapper.
+An italic variant of body prose used for in-world voice, atmospheric quotes, and short dramatic lines. Inside `@skill` cards, flavor text is automatically styled from the `>` blockquote line. For standalone flavor paragraphs, use the `> [!FLAVOR]` alert.
 
-**Syntax** — `::: wrapper {.dc-prose.flavor}` … `:::`
+**Syntax** — `> [!FLAVOR]` blockquote alert
 
 ```markdown
-::: wrapper {.dc-prose.flavor}
-See an opening, ya take it. Best time to hit 'em is when they think it's over.
-:::
+> [!FLAVOR]
+> See an opening, ya take it. Best time to hit 'em is when they think it's over.
 ```
 
 **Specimen**
 
-::: wrapper {.dc-prose.flavor}
-See an opening, ya take it. Best time to hit 'em is when they think it's over.
-:::
+> [!FLAVOR]
+> See an opening, ya take it. Best time to hit 'em is when they think it's over.
 
 ---
 
 ## Intro Lede
 
-A slightly larger, heavier opening paragraph used at the top of a chapter or major section. The `.flush` modifier removes the default top margin so it sits immediately under the chapter title.
+A slightly larger, heavier opening paragraph used at the top of a chapter or major section. Wrap the opening paragraph in `:::lede` — CSS applies the larger type scale automatically.
 
-**Syntax** — `::: wrapper {.dc-intro.flush}` … `:::`
+**Syntax** — `:::lede` … `:::`
 
 ```markdown
-::: wrapper {.dc-intro.flush}
+:::lede
 An Augmerc is muscle for hire. Street thugs, corporate bodyguards,
 deniable enforcers — the difference is gear, grafts, and how much
 of them is still original.
@@ -61,7 +59,7 @@ of them is still original.
 
 **Specimen**
 
-::: wrapper {.dc-intro.flush}
+:::lede
 An Augmerc is muscle for hire. Street thugs, corporate bodyguards, deniable enforcers — the difference is gear, grafts, and how much of them is still original.
 :::
 
@@ -69,75 +67,61 @@ An Augmerc is muscle for hire. Street thugs, corporate bodyguards, deniable enfo
 
 ## Note
 
-A boxed aside for rules clarifications, reminders, and supplementary information. Uses a distinct left-border accent and a labeled header to separate it from body prose.
+A boxed aside for rules clarifications, reminders, and supplementary information. Uses a distinct left-border accent and a labeled header to separate it from body prose. No label boilerplate needed — the alert type sets the label automatically.
 
-**Syntax** — `::: wrapper {.dc-note}` … `:::` with `**Label**{.dc-note-label}` for the label
+**Syntax** — `> [!NOTE]` blockquote alert
 
 ```markdown
-::: wrapper {.dc-note}
-**Note**{.dc-note-label}
-
-Free counters trigger only once per round. Pick the one that hurts most.
-:::
+> [!NOTE]
+> Free counters trigger only once per round. Pick the one that hurts most.
 ```
 
 **Specimen**
 
-::: wrapper {.dc-note}
-**Note**{.dc-note-label}
-
-Free counters trigger only once per round. Pick the one that hurts most.
-:::
+> [!NOTE]
+> Free counters trigger only once per round. Pick the one that hurts most.
 
 ---
 
 ## Warning
 
-A high-visibility callout for rules that have critical consequences or are frequently misread. Uses the same structure as `.dc-note` but renders in amber to signal elevated importance.
+A high-visibility callout for rules that have critical consequences or are frequently misread. Renders in amber to signal elevated importance.
 
-**Syntax** — `::: wrapper {.dc-note.warning}` … `:::` with `**Label**{.dc-note-label}` for the label
+**Syntax** — `> [!WARNING]` blockquote alert
 
 ```markdown
-::: wrapper {.dc-note.warning}
-**Warning**{.dc-note-label}
-
-Trauma Patches stabilize a dying character but do not restore HP. A character
-at 0 HP with a Patch applied is still incapacitated — they can take no actions
-until healed above 0.
-:::
+> [!WARNING]
+> Trauma Patches stabilize a dying character but do not restore HP. A character
+> at 0 HP with a Patch applied is still incapacitated — they can take no actions
+> until healed above 0.
 ```
 
 **Specimen**
 
-::: wrapper {.dc-note.warning}
-**Warning**{.dc-note-label}
-
-Trauma Patches stabilize a dying character but do not restore HP. A character at 0 HP with a Patch applied is still incapacitated — they can take no actions until healed above 0.
-:::
+> [!WARNING]
+> Trauma Patches stabilize a dying character but do not restore HP. A character at 0 HP with a Patch applied is still incapacitated — they can take no actions until healed above 0.
 
 ---
 
 ## Pull Quote
 
-A large-format excerpt set off with accent rules above and below. Use sparingly — one per chapter or major section at most. The `.flush` modifier removes the default side margins for full-column impact.
+A large-format excerpt set off with accent rules above and below. Use sparingly — one per chapter or major section at most. Attribution goes as the last paragraph inside the blockquote.
 
-**Syntax** — `::: wrapper {.dc-pullquote.flush}` … `:::` with `**Attribution**{.dc-pullquote-attr}` for the credit line
+**Syntax** — `> [!PULLQUOTE]` blockquote alert
 
 ```markdown
-::: wrapper {.dc-pullquote.flush}
-The rig braces and answers every swing.
-
-**Field manual, second draft**{.dc-pullquote-attr}
-:::
+> [!PULLQUOTE]
+> The rig braces and answers every swing.
+>
+> Field manual, second draft
 ```
 
 **Specimen**
 
-::: wrapper {.dc-pullquote.flush}
-The rig braces and answers every swing.
-
-**Field manual, second draft**{.dc-pullquote-attr}
-:::
+> [!PULLQUOTE]
+> The rig braces and answers every swing.
+>
+> Field manual, second draft
 
 ---
 
@@ -177,20 +161,18 @@ A compact, high-contrast H3 heading for use inside dense multi-column reference 
 
 A full-width atmospheric block for in-world voice that establishes the emotional or cultural register of a section. Typically placed at the top of a chapter or faction entry before the rules content begins.
 
-**Syntax** — `::: wrapper {.dc-vibe-callout}` … `:::`
+**Syntax** — `> [!VIBE]` blockquote alert
 
 ```markdown
-::: wrapper {.dc-vibe-callout}
-The Gutterdruid doesn't fight because they have to — they fight because
-something feral in them still remembers what it felt like to be free.
-:::
+> [!VIBE]
+> The Gutterdruid doesn't fight because they have to — they fight because
+> something feral in them still remembers what it felt like to be free.
 ```
 
 **Specimen**
 
-::: wrapper {.dc-vibe-callout}
-The Gutterdruid doesn't fight because they have to — they fight because something feral in them still remembers what it felt like to be free.
-:::
+> [!VIBE]
+> The Gutterdruid doesn't fight because they have to — they fight because something feral in them still remembers what it felt like to be free.
 
 ---
 
@@ -198,22 +180,20 @@ The Gutterdruid doesn't fight because they have to — they fight because someth
 
 A second-person backstory block that addresses the reader as their character, used for origin and background entries. Draws the reader into the fiction by making them the subject of the narrative.
 
-**Syntax** — `::: wrapper {.dc-origin-callout}` … `:::`
+**Syntax** — `> [!ORIGIN]` blockquote alert
 
 ```markdown
-::: wrapper {.dc-origin-callout}
-You didn't choose the street — the street chose you. Before the grafts,
-before the crew, there was just hunger and the particular talent for
-surviving what should have killed you. That's enough. That's always
-been enough.
-:::
+> [!ORIGIN]
+> You didn't choose the street — the street chose you. Before the grafts,
+> before the crew, there was just hunger and the particular talent for
+> surviving what should have killed you. That's enough. That's always
+> been enough.
 ```
 
 **Specimen**
 
-::: wrapper {.dc-origin-callout}
-You didn't choose the street — the street chose you. Before the grafts, before the crew, there was just hunger and the particular talent for surviving what should have killed you. That's enough. That's always been enough.
-:::
+> [!ORIGIN]
+> You didn't choose the street — the street chose you. Before the grafts, before the crew, there was just hunger and the particular talent for surviving what should have killed you. That's enough. That's always been enough.
 
 ---
 
@@ -240,26 +220,24 @@ A compact NPC stat block nested inside a `.sidebar` float. Displays name, role, 
 
 ## Gear Callout
 
-A named equipment block for weapons, armor, and notable items. Groups the item name, type, and mechanical properties in a scannable panel distinct from body prose.
+A named equipment block for weapons, armor, and notable items. Groups the item name, type, and mechanical properties in a scannable panel distinct from body prose. The bold item name is the first line inside the alert.
 
-**Syntax** — `::: wrapper {.dc-gear-callout}` … `:::`
+**Syntax** — `> [!GEAR]` blockquote alert
 
 ```markdown
-::: wrapper {.dc-gear-callout}
-**Ripper Blades (Mk II)**
-
-Melee. Damage 1d8+STR. *Serrated:* on a critical hit, the target bleeds
-for 1d4 damage at the start of their next turn.
-:::
+> [!GEAR]
+> **Ripper Blades (Mk II)**
+>
+> Melee. Damage 1d8+STR. *Serrated:* on a critical hit, the target bleeds
+> for 1d4 damage at the start of their next turn.
 ```
 
 **Specimen**
 
-::: wrapper {.dc-gear-callout}
-**Ripper Blades (Mk II)**
-
-Melee. Damage 1d8+STR. *Serrated:* on a critical hit, the target bleeds for 1d4 damage at the start of their next turn.
-:::
+> [!GEAR]
+> **Ripper Blades (Mk II)**
+>
+> Melee. Damage 1d8+STR. *Serrated:* on a critical hit, the target bleeds for 1d4 damage at the start of their next turn.
 
 ---
 
@@ -267,10 +245,10 @@ Melee. Damage 1d8+STR. *Serrated:* on a critical hit, the target bleeds for 1d4 
 
 A self-contained rules item — ability, move, or equipment entry — wrapped in a fenced container with a structured heading. The `.item` wrapper keeps the block together across page breaks.
 
-**Syntax** — `::: wrapper {.item}` … `:::` with a `###` title inside
+**Syntax** — `:::item` … `:::` with a `###` title inside
 
 ```markdown
-::: wrapper {.item}
+:::item
 ### Hardline Graft
 
 **Passive.** Your cybernetic frame absorbs the first 2 points of physical
@@ -282,7 +260,7 @@ damage you take each round. This reduction applies before armor.
 
 **Specimen**
 
-::: wrapper {.item}
+:::item
 ### Hardline Graft
 
 **Passive.** Your cybernetic frame absorbs the first 2 points of physical damage you take each round. This reduction applies before armor.
@@ -375,48 +353,40 @@ Fenced code blocks for CSS snippets, stat expressions, or any literal syntax. Re
 
 An in-world location description written in present tense, as if the reader is arriving on-site. Use on location pages and before encounter content to establish place before mechanics begin.
 
-**Syntax** — `::: wrapper {.dc-visit-callout}` … `:::`
+**Syntax** — `> [!VISIT]` blockquote alert
 
 ```markdown
-::: wrapper {.dc-visit-callout}
-The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers
-brush shoulders between stalls selling augment cartridges, black-market
-permits, and fried synthetic crab. If someone's selling it somewhere in
-Dimm City, it started here.
-:::
+> [!VISIT]
+> The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers
+> brush shoulders between stalls selling augment cartridges, black-market
+> permits, and fried synthetic crab. If someone's selling it somewhere in
+> Dimm City, it started here.
 ```
 
 **Specimen**
 
-::: wrapper {.dc-visit-callout}
-The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers brush shoulders between stalls selling augment cartridges, black-market permits, and fried synthetic crab. If someone's selling it somewhere in Dimm City, it started here.
-:::
+> [!VISIT]
+> The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers brush shoulders between stalls selling augment cartridges, black-market permits, and fried synthetic crab. If someone's selling it somewhere in Dimm City, it started here.
 
 ---
 
-## Admonition Block
+## Dream Master Note
 
 A Dream Master–addressed instruction block, visually distinct from player-facing notes. Use for GM guidance, scene hooks, and pacing advice that should not be read aloud at the table.
 
-**Syntax** — `::: wrapper {.dc-note-callout}` … `:::` with `**Label**{.dc-note-label}` for the header
+**Syntax** — `> [!DM]` blockquote alert
 
 ```markdown
-::: wrapper {.dc-note-callout}
-**Dream Master Note**{.dc-note-label}
-
-If a player hasn't chosen their starting gear by the end of session zero,
-hand them a Scavenger Pack and move on. Gear anxiety is real but the game
-shouldn't wait for it.
-:::
+> [!DM]
+> If a player hasn't chosen their starting gear by the end of session zero,
+> hand them a Scavenger Pack and move on. Gear anxiety is real but the game
+> shouldn't wait for it.
 ```
 
 **Specimen**
 
-::: wrapper {.dc-note-callout}
-**Dream Master Note**{.dc-note-label}
-
-If a player hasn't chosen their starting gear by the end of session zero, hand them a Scavenger Pack and move on. Gear anxiety is real but the game shouldn't wait for it.
-:::
+> [!DM]
+> If a player hasn't chosen their starting gear by the end of session zero, hand them a Scavenger Pack and move on. Gear anxiety is real but the game shouldn't wait for it.
 
 ---
 
@@ -461,110 +431,82 @@ A definition list of game terms rendered as a styled block. Use for rules glossa
 
 ## Numbered Procedure
 
-A zero-padded ordered list for sequential rules — character creation, contract resolution, scene framing. Each step is kept together across page breaks by Paged.js.
+A zero-padded ordered list for sequential rules — character creation, contract resolution, scene framing. Wrap a standard ordered list in `:::procedure` — CSS applies zero-padded numbering automatically.
 
-**Syntax** — raw HTML `<ol class="dc-steps">` with `<li><span class="dc-step-no">01</span><span>content</span></li>` for each step; zero-pad all step numbers
+**Syntax** — `:::procedure` … `:::` with a standard ordered list inside
 
-```html
-<ol class="dc-steps flush">
-  <li>
-    <span class="dc-step-no">01</span>
-    <span><strong>Pick a Spec.</strong> Augmerc, Proxy, Streetwarden —
-    one of eight.</span>
-  </li>
-  <li>
-    <span class="dc-step-no">02</span>
-    <span><strong>Spend 6 Spec Points.</strong> Distribute across paths.</span>
-  </li>
-</ol>
+```markdown
+:::procedure
+1. **Pick a Spec.** Augmerc, Proxy, Streetwarden — one of eight.
+2. **Spend 6 Spec Points.** Distribute across paths.
+3. **Take a Signature Augment.** Free at character creation.
+:::
 ```
 
 **Specimen**
 
-<ol class="dc-steps flush">
-  <li><span class="dc-step-no">01</span><span><strong>Pick a Spec.</strong> Augmerc, Proxy, Streetwarden — one of eight. Your spec sets your starting paths and signature gear.</span></li>
-  <li><span class="dc-step-no">02</span><span><strong>Spend 6 Spec Points.</strong> Distribute across paths. Each point unlocks one tier. You may not exceed tier 3 at character creation.</span></li>
-  <li><span class="dc-step-no">03</span><span><strong>Take a Signature Augment.</strong> Pulled from your spec's gear list. Free at start. Replaceable later only by a Cybersurgeon contact.</span></li>
-  <li><span class="dc-step-no">04</span><span><strong>Roll your Heat.</strong> d20 + Spec modifier. Heat is what the city already has against you when play begins.</span></li>
-  <li><span class="dc-step-no">05</span><span><strong>Name a Debt.</strong> One contract you owe, one person you owe it to. The Dream Master may call it in.</span></li>
-</ol>
+:::procedure
+1. **Pick a Spec.** Augmerc, Proxy, Streetwarden — one of eight. Your spec sets your starting paths and signature gear.
+2. **Spend 6 Spec Points.** Distribute across paths. Each point unlocks one tier. You may not exceed tier 3 at character creation.
+3. **Take a Signature Augment.** Pulled from your spec's gear list. Free at start. Replaceable later only by a Cybersurgeon contact.
+4. **Roll your Heat.** d20 + Spec modifier. Heat is what the city already has against you when play begins.
+5. **Name a Debt.** One contract you owe, one person you owe it to. The Dream Master may call it in.
+:::
 
 ---
 
 ## Outcome Ladder
 
-The five-rung d20 result table used for all rolls in Dimm City. Each row is color-coded by result severity via a modifier class on the row element.
+The five-rung d20 result table used for all rolls in Dimm City. Each row is color-coded by result severity. Use the `@outcome` / `@end-outcome` macro — one pipe-delimited row per result.
 
-**Syntax** — raw HTML `.dc-outcomes` wrapper containing `.dc-outcome-row.{crit|hit|mixed|miss|fail}` rows, each with `.dc-outcome-key` (holding `.dc-outcome-name` and `.dc-outcome-roll`) and `.dc-outcome-text`
+**Syntax** — `@outcome` … `@end-outcome` macro; columns are `roll | name | description`
 
-```html
-<div class="dc-outcomes flush">
-  <div class="dc-outcome-row crit">
-    <div class="dc-outcome-key">
-      <span class="dc-outcome-name">Crit</span>
-      <span class="dc-outcome-roll">20</span>
-    </div>
-    <div class="dc-outcome-text">Automatic success…</div>
-  </div>
-  <!-- repeat for hit / mixed / miss / fail -->
-</div>
+```
+@outcome
+20 | Crit | You flow. Automatic success — no further roll needed.
+11–19 | Hit | You succeed at what you were trying to do without a hitch.
+6–10 | Hard Choice | You succeed, but at a cost.
+2–5 | Miss | You fail. The only consequence is what you had riding on the roll.
+1 | Catastrophe | Dark. Automatic fail with a severe setback.
+@end-outcome
 ```
 
 **Specimen**
 
-<div class="dc-outcomes flush">
-  <div class="dc-outcome-row crit">
-    <div class="dc-outcome-key"><span class="dc-outcome-name">Crit</span><span class="dc-outcome-roll">20</span></div>
-    <div class="dc-outcome-text">You flow. Automatic success — no further roll needed. If dealing damage, check your weapon's bonus stats. Your next die roll: <span class="dc-roll-lucid roll-lucid">ROLL LUCID.</span></div>
-  </div>
-  <div class="dc-outcome-row hit">
-    <div class="dc-outcome-key"><span class="dc-outcome-name">Hit</span><span class="dc-outcome-roll">11–19</span></div>
-    <div class="dc-outcome-text">You succeed at what you were trying to do without a hitch. If attacking, deal standard damage based on your weapon's stats.</div>
-  </div>
-  <div class="dc-outcome-row mixed">
-    <div class="dc-outcome-key"><span class="dc-outcome-name">Hard Choice</span><span class="dc-outcome-roll">6–10</span></div>
-    <div class="dc-outcome-text">You succeed, but at a cost. Weapon overheats, ammo burns, or something else gives. The DM offers two impactful options — pick one.</div>
-  </div>
-  <div class="dc-outcome-row miss">
-    <div class="dc-outcome-key"><span class="dc-outcome-name">Miss</span><span class="dc-outcome-roll">2–5</span></div>
-    <div class="dc-outcome-text">You fail. The only consequence is what you had riding on the roll. Miss an opponent in a duel? They get to attack you on their turn.</div>
-  </div>
-  <div class="dc-outcome-row fail">
-    <div class="dc-outcome-key"><span class="dc-outcome-name">Catastrophe</span><span class="dc-outcome-roll">1</span></div>
-    <div class="dc-outcome-text">Dark. Automatic fail with a severe setback — broken gear, cyberware malfunction, or friendly fire. Your next die roll: <span class="dc-roll-surreal roll-surreal">ROLL SURREAL.</span></div>
-  </div>
-</div>
+@outcome
+20 | Crit | You flow. Automatic success — no further roll needed. If dealing damage, check your weapon's bonus stats. Your next die roll: ROLL LUCID.
+11–19 | Hit | You succeed at what you were trying to do without a hitch. If attacking, deal standard damage based on your weapon's stats.
+6–10 | Hard Choice | You succeed, but at a cost. Weapon overheats, ammo burns, or something else gives. The DM offers two impactful options — pick one.
+2–5 | Miss | You fail. The only consequence is what you had riding on the roll. Miss an opponent in a duel? They get to attack you on their turn.
+1 | Catastrophe | Dark. Automatic fail with a severe setback — broken gear, cyberware malfunction, or friendly fire. Your next die roll: ROLL SURREAL.
+@end-outcome
 
 ---
 
 ## Component Token Reference {.break-before}
 
-| Class | Element | Purpose |
-|-------|---------|---------|
-| `.dc-prose` | `<p>`, `<div>` | Base body text with DC type scale and leading |
-| `.dc-prose.flavor` | `<p>` | Italic atmospheric or in-world voice text |
-| `.dc-intro` | `<div>` | Larger opening lede paragraph for chapters or sections |
-| `.dc-intro.flush` | `<div>` | Lede with top margin removed for tight chapter openers |
-| `.dc-note` | `<div>` | Rules clarification or supplementary aside, accent border |
-| `.dc-note.warning` | `<div>` | High-priority rules note in amber, same structure as `.dc-note` |
-| `.dc-pullquote` | `<div>` | Large-format excerpt with accent rules above and below |
-| `.dc-pullquote.flush` | `<div>` | Pull quote extended to full column width |
-| `.dc-tape` | `<div>` | Tape-strip section divider for within-page breaks |
-| `.dc-tape.flush` | `<div>` | Tape divider extended edge to edge |
-| `.dc-section-h3` | `<h3>` | Compact reference H3 for multi-column dense layouts |
-| `.dc-vibe-callout` | `<div>` | Full-width atmospheric callout for in-world voice |
-| `.dc-origin-callout` | `<div>` | Second-person backstory block for origin and background entries |
-| `.dc-human-callout` | `<div>` (inside `.sidebar` / `.dc-sidebar`) | NPC stat block nested in a sidebar float |
-| `.dc-gear-callout` | `<div>` | Named equipment or item panel |
-| `.dc-visit-callout` | `<div>` | Present-tense in-world location description |
-| `.dc-note-callout` | `<div>` | Dream Master–addressed admonition block with `.dc-note-label` header |
-| `.dc-terms` (alias: `.terms`) | `<div>` | Glossary wrapper containing one or more `.dc-terms-list` children |
-| `.dc-terms-list` (alias: `.terms-list`) | `<div>` | Individual term definition with `<strong>` label and `<p>` body |
-| `.dc-steps` | `<ol>` | Zero-padded numbered procedure list with `.dc-step-no` spans |
-| `.dc-outcomes` | `<div>` | Outcome ladder wrapper for five-rung d20 result table |
-| `.dc-outcome-row.{crit\|hit\|mixed\|miss\|fail}` | `<div>` | Single outcome row, color-coded by severity modifier class |
-| `.dc-roll-lucid` (alias: `.roll-lucid`) | `<span>` | Inline badge for "ROLL LUCID" state on a critical hit result |
-| `.dc-roll-surreal` (alias: `.roll-surreal`) | `<span>` | Inline badge for "ROLL SURREAL" state on a catastrophe result |
-| `.item` (wrapper) | `::: wrapper {.item}` | Self-contained rules item block, break-inside avoided |
-| *(auto)* | markdown table | DC-styled table: colored header, alternating rows, small type |
-| *(auto)* | `> blockquote` | Accent-border block quote for epigraphs and attribution |
+| Component | Authoring method | CSS class / output |
+|-----------|-----------------|-------------------|
+| Body Prose | Plain markdown paragraph | `.dc-prose` (auto) |
+| Flavor Text | `> [!FLAVOR]` blockquote alert | `.dc-prose.flavor` |
+| Intro Lede | `:::lede` … `:::` | `.dc-intro` |
+| Note | `> [!NOTE]` blockquote alert | `.dc-note` |
+| Warning | `> [!WARNING]` blockquote alert | `.dc-note.warning` |
+| Pull Quote | `> [!PULLQUOTE]` blockquote alert | `.dc-pullquote.flush` |
+| Tape Divider | `<div class="dc-tape flush">…</div>` | `.dc-tape`, `.flush` |
+| Section H3 Divider | `### Heading {.dc-section-h3}` | `.dc-section-h3` |
+| Vibe Callout | `> [!VIBE]` blockquote alert | `.dc-vibe-callout` |
+| Origin Callout | `> [!ORIGIN]` blockquote alert | `.dc-origin-callout` |
+| Human Callout | Raw HTML inside `.sidebar` | `.dc-human-callout` |
+| Gear Callout | `> [!GEAR]` blockquote alert | `.dc-gear-callout` |
+| Item Block | `:::item` … `:::` with `###` title | `.item` |
+| Table | Standard markdown pipe table | *(auto)* |
+| Blockquote | Standard markdown `>` blockquote | *(auto)* |
+| Code Block | Triple-backtick fenced block | *(auto)* |
+| Visit Callout | `> [!VISIT]` blockquote alert | `.dc-visit-callout` |
+| Dream Master Note | `> [!DM]` blockquote alert | `.dc-note-callout` |
+| Glossary / Term List | Raw HTML `.dc-terms` wrapper | `.dc-terms`, `.terms-list` |
+| Numbered Procedure | `:::procedure` … `:::` ordered list | `.dc-steps` |
+| Outcome Ladder | `@outcome` … `@end-outcome` macro | `.dc-outcomes`, `.dc-outcome-row` |
+| Roll Lucid badge | auto via `@outcome` Crit row | `.dc-roll-lucid` |
+| Roll Surreal badge | auto via `@outcome` Catastrophe row | `.dc-roll-surreal` |

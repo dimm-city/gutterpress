@@ -570,6 +570,9 @@ export default function dimmCityPlugin(md, options = {}) {
      let rollTableItems = [];
      let inOptionsTable = false;
      let optionsTableItems = [];
+     let inOutcomeBlock = false;
+     let outcomeBlockItems = [];
+     let outcomeBlockFlush = false;
      let inClassEntry = false;
      let classEntryName = '';
      let classEntryTokens = [];
@@ -727,6 +730,73 @@ export default function dimmCityPlugin(md, options = {}) {
           continue;
         }
         // Skip other tokens inside @options-table
+        continue;
+      }
+
+      // --- @outcome / @end-outcome ---
+      // Collects pipe-separated rows and emits a styled dc-outcomes block.
+      // Syntax:
+      //   @outcome [flush]
+      //   20 | Crit | You flow. Automatic success — no roll needed.
+      //   11–19 | Hit | You succeed cleanly.
+      //   @end-outcome
+      // Row ordering determines tier class: crit, hit, mixed, miss, fail.
+      if (isMarker(tok, tokens, i, '@outcome')) {
+        inOutcomeBlock = true;
+        outcomeBlockItems = [];
+        // Check for flush modifier
+        const ocInline = tokens[i + 1];
+        const ocContent = ocInline ? ocInline.content.trim() : '';
+        outcomeBlockFlush = /\bflush\b/.test(ocContent.replace('@outcome', ''));
+        i += 2;
+        continue;
+      }
+
+      if (inOutcomeBlock) {
+        // Collect inline tokens (each inline contains one or more lines)
+        if (tok.type === 'inline') {
+          // Each inline token can have newlines — split into lines
+          const lines = tok.content.split('\n');
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed && !trimmed.startsWith('#')) {
+              outcomeBlockItems.push(trimmed);
+            }
+          }
+          continue;
+        }
+        // @end-outcome — emit the block
+        if (isMarker(tok, tokens, i, '@end-outcome')) {
+          inOutcomeBlock = false;
+          const tierClasses = ['crit', 'hit', 'mixed', 'miss', 'fail'];
+          const wrapperClass = 'dc-outcomes' + (outcomeBlockFlush ? ' flush' : '');
+          let html = '<div class="' + wrapperClass + '">\n';
+          html += '  <div class="outcomes-label">Outcomes</div>\n';
+          outcomeBlockItems.forEach((line, idx) => {
+            const parts = line.split('|').map(s => s.trim());
+            const range = parts[0] || '';
+            const name  = parts[1] || '';
+            const desc  = parts[2] || '';
+            const tier  = tierClasses[idx] || 'hit';
+            html += '  <div class="dc-outcome-row ' + tier + '">\n';
+            html += '    <span class="dc-outcome-key tier-' + tier + '">';
+            html += '<span class="dc-outcome-name">' + esc(name) + '</span>';
+            html += '<span class="dc-outcome-roll">' + esc(range) + '</span>';
+            html += '</span>\n';
+            html += '    <span class="dc-outcome-text">' + md.renderInline(desc) + '</span>\n';
+            html += '  </div>\n';
+          });
+          html += '</div>\n';
+          newTokens.push(makeToken('html_block', html));
+          outcomeBlockItems = [];
+          i += 2;
+          continue;
+        }
+        // Skip paragraph open/close wrapper tokens — we only want inline content
+        if (tok.type === 'paragraph_open' || tok.type === 'paragraph_close') {
+          continue;
+        }
+        // Pass through anything else (shouldn't normally occur)
         continue;
       }
 

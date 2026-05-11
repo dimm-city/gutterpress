@@ -78,15 +78,14 @@ When an enemy falters, you may trigger one of the following counters.
 
 ## Flavor — Titillium Web italic
 
-**Syntax** — `::: wrapper {.dc-prose.flavor}`
+**Syntax** — `> [!FLAVOR]` blockquote alert
 
-**Spec:** Italic, used in card bodies. Inside `@skill` cards, generated from the `>` blockquote line. Standalone: `::: wrapper {.dc-prose.flavor}`.
+**Spec:** Italic, used in card bodies. Inside `@skill` cards, generated from the `>` blockquote line. Standalone: `> [!FLAVOR]` blockquote alert.
 
 **Specimen**
 
-::: wrapper {.dc-prose.flavor}
-See an opening, ya take it.
-:::
+> [!FLAVOR]
+> See an opening, ya take it.
 
 ---
 

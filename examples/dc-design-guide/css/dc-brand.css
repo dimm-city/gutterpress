@@ -1238,6 +1238,41 @@ hr,
 }
 .dc-steps li strong { color: var(--crimson); font-weight: 700; }
 
+/* ───────── PROCEDURE CONTAINER ───────── */
+/* :::procedure wraps an ordered list into a numbered-step layout.
+   Paged.js note: decimal-leading-zero is supported in most modern browsers
+   and Chromium-based Paged.js; counter(procedure-step) is the safe fallback. */
+.procedure > ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  counter-reset: procedure-step;
+}
+.procedure > ol > li {
+  counter-increment: procedure-step;
+  display: flex;
+  gap: 0.75em;
+  align-items: baseline;
+  padding: 0.5em 0;
+  border-top: 1px dashed var(--border-hairline);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.procedure > ol > li:first-child {
+  border-top: 0;
+}
+.procedure > ol > li::before {
+  /* decimal-leading-zero: pads 1-9 as 01-09; Paged.js/Chromium handles this correctly.
+     If output shows unstyled counters, fall back to: counter(procedure-step) */
+  content: counter(procedure-step, decimal-leading-zero);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--crimson);
+  min-width: 2.5ch;
+  flex-shrink: 0;
+}
+
 /* ───────── OUTCOME LADDER (failure → catastrophe) ───────── */
 /* d20 outcome ladder — use for the Roll/Result ladder only.
    For character-creation attribute tables (Origins, Ideals, etc.), use standard <table> markdown
