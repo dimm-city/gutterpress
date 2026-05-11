@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
 
         <script type="module" src="preview/scripts/toast.js"></script>
-        <script src="preview/scripts/preview.js"></script>
+        <script src="preview/scripts/preview.js" defer></script>
         <style>
             /* Toolbar styles - Enhanced visual hierarchy */
             .toolbar {
@@ -26,7 +26,6 @@
                 align-items: center;
                 padding: 0 24px;
                 z-index: 10000;
-                overflow: hidden;
                 box-shadow:
                     0 2px 12px rgba(0, 0, 0, 0.5),
                     0 1px 0 rgba(255, 255, 255, 0.05) inset;
@@ -45,6 +44,8 @@
                 display: flex;
                 align-items: center;
                 gap: 12px;
+                min-width: 0;
+                overflow: hidden;
             }
 
             .toolbar-section:last-child {

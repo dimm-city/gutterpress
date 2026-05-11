@@ -432,13 +432,28 @@ function setZoom(zoom) {
       // Apply zoom to .pagedjs_pages (not body transform) so the scroll area
       // shrinks proportionally — body transform leaves full layout height intact.
       const scale = (containerWidth - 32) / pageWidth;
-      if (pages) pages.style.zoom = scale;
+      if (pages) {
+        pages.style.zoom = scale;
+        // margin:auto fails when zoomed width > body width, so set explicit margins.
+        // scale = (containerWidth - 32) / pageWidth → zoomed width = containerWidth - 32
+        // → 16px margin each side.
+        pages.style.marginLeft = "16px";
+        pages.style.marginRight = "16px";
+      }
       // Reset any previous body transform
-      iframeWin.document.body.style.transform = "none";
-      iframeWin.document.body.style.transformOrigin = "";
+      const body = iframeWin.document.body;
+      body.style.transform = "none";
+      body.style.transformOrigin = "";
+      // Add scroll padding so the last page doesn't abut the bottom edge
+      body.style.paddingBottom = "32px";
     } else {
       // Page fits: clear any fit-width zoom and show at 100%
-      if (pages) pages.style.zoom = "";
+      if (pages) {
+        pages.style.zoom = "";
+        pages.style.marginLeft = "";
+        pages.style.marginRight = "";
+      }
+      iframeWin.document.body.style.paddingBottom = "32px";
       api.setZoom(1.0);
     }
 
