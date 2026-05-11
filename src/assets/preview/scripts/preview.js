@@ -422,11 +422,21 @@ function setZoom(zoom) {
   const api = iframeWin.previewAPI;
 
   if (zoom === "fit-width") {
-    // For Paged.js, fit-width is handled internally
-    // Just pass a reasonable scale value
-    api.setZoom(1.0);
+    const iframeEl = document.getElementById("preview-iframe");
+    const containerWidth = iframeEl ? iframeEl.clientWidth : window.innerWidth;
+    const page = iframeWin.document.querySelector(".pagedjs_page");
+    const pageWidth = page ? page.offsetWidth : 0;
+    // Scale to fit container, but never zoom above 100% — only scale down when needed
+    const scale = pageWidth > 0 ? Math.min((containerWidth - 32) / pageWidth, 1.0) : 1.0;
+    api.setZoom(scale);
+    const zoomSelect = document.getElementById("zoom-select");
+    if (zoomSelect) zoomSelect.value = "fit-width";
   } else {
     api.setZoom(zoom);
+    const zoomSelect = document.getElementById("zoom-select");
+    if (zoomSelect && zoomSelect.querySelector(`option[value="${zoom}"]`)) {
+      zoomSelect.value = String(zoom);
+    }
   }
 }
 
@@ -671,8 +681,9 @@ function onRenderingComplete(event) {
   // Apply default view mode — single page for better readability at varied viewport widths
   setViewMode("single");
 
-  // Apply default zoom
-  setZoom(1.0);
+  // Apply default zoom — fit-width scales the page down to fill the viewport on
+  // narrow screens (mobile) while capping at 100% on wider displays
+  setZoom("fit-width");
 
   // Enable print button now that rendering is complete
   const printBtn = document.getElementById("btn-print");
