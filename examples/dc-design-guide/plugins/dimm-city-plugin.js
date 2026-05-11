@@ -741,6 +741,8 @@ export default function dimmCityPlugin(md, options = {}) {
       //   11–19 | Hit | You succeed cleanly.
       //   @end-outcome
       // Row ordering determines tier class: crit, hit, mixed, miss, fail.
+      // Also handles the compact form where @outcome, rows, and @end-outcome
+      // are all in one paragraph block (no blank lines between them).
       if (isMarker(tok, tokens, i, '@outcome')) {
         inOutcomeBlock = true;
         outcomeBlockItems = [];
@@ -750,6 +752,52 @@ export default function dimmCityPlugin(md, options = {}) {
         outcomeBlockFlush = /\bflush\b/.test(ocContent.replace('@outcome', ''));
         i += 2;
         continue;
+      }
+
+      // Handle compact multiline @outcome block: all rows + @end-outcome in one paragraph
+      if (tok.type === 'paragraph_open' && !inOutcomeBlock) {
+        const inlineTok = tokens[i + 1];
+        if (inlineTok && inlineTok.type === 'inline') {
+          const firstLine = inlineTok.content.split('\n')[0].trim();
+          if (firstLine === '@outcome' || firstLine.startsWith('@outcome ')) {
+            // This is a compact outcome block — process all lines inline
+            inOutcomeBlock = false; // We'll handle it fully here
+            const isFlush = /\bflush\b/.test(firstLine.replace('@outcome', ''));
+            const rows = [];
+            const allLines = inlineTok.content.split('\n');
+            let inBlock = false;
+            for (const line of allLines) {
+              const trimmed = line.trim();
+              if (trimmed === '@outcome' || trimmed.startsWith('@outcome ')) { inBlock = true; continue; }
+              if (trimmed === '@end-outcome') { inBlock = false; continue; }
+              if (inBlock && trimmed && !trimmed.startsWith('#')) rows.push(trimmed);
+            }
+            if (rows.length > 0) {
+              const tierClasses = ['crit', 'hit', 'mixed', 'miss', 'fail'];
+              const wrapperClass = 'dc-outcomes' + (isFlush ? ' flush' : '');
+              let html = '<div class="' + wrapperClass + '">\n';
+              html += '  <div class="outcomes-label">Outcomes</div>\n';
+              rows.forEach((line, idx) => {
+                const parts = line.split('|').map(s => s.trim());
+                const range = parts[0] || '';
+                const name  = parts[1] || '';
+                const desc  = parts[2] || '';
+                const tier  = tierClasses[idx] || 'hit';
+                html += '  <div class="dc-outcome-row ' + tier + '">\n';
+                html += '    <span class="dc-outcome-key tier-' + tier + '">';
+                html += '<span class="dc-outcome-name">' + esc(name) + '</span>';
+                html += '<span class="dc-outcome-roll">' + esc(range) + '</span>';
+                html += '</span>\n';
+                html += '    <span class="dc-outcome-text">' + md.renderInline(desc) + '</span>\n';
+                html += '  </div>\n';
+              });
+              html += '</div>\n';
+              newTokens.push(makeToken('html_block', html));
+              i += 2; // skip inline + paragraph_close
+              continue;
+            }
+          }
+        }
       }
 
       if (inOutcomeBlock) {

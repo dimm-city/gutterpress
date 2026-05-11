@@ -47,3 +47,4 @@ tests/
 *.zip
 *.skill
 .trash/
+review/

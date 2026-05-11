@@ -14,9 +14,7 @@ The gear chapter opens with a `:::: wrapper {class="grid"}` outer container that
 
 **Authoring note:** `:::aug` is a registered named container (maps to `class="aug"`). The outer `:::: wrapper {class="grid"}` uses four colons and a quoted class attribute to create the grid shell. Items do not need a separate H3 tagline paragraph — unlike `:::gear-entry` (which expects italic taglines), `:::aug` items are pure prose descriptions.
 
-@page .chapter-start .useful-items .fg-examples
-
-### Useful Items
+@page .useful-items .fg-examples
 
 :::: wrapper {class="grid"}
 
@@ -128,8 +126,6 @@ Weapons use a `:::: two-column` layout (four colons) with `:::aug` cards (three 
 
 @page .blasters .fg-examples
 
-### Firearms and Blasters
-
 :::: two-column
 
 :::aug
@@ -151,8 +147,6 @@ Standard sidearm. Compact, reliable, and street-legal in three of five districts
 Single-shot scatter blast. Devastating at intimate range; nearly useless past arm's length. Reload takes a full action. Operators who carry these want the conversation short.
 
 :::
-
----{.column-break}
 
 :::aug
 
