@@ -189,6 +189,7 @@
   --fs-h5:      0.95rem;
   --fs-h6:      0.85rem;
   --fs-chapter: 26pt;       /* chapter openers */
+  --fs-pullquote: 14pt;       /* pull-quote display size — between body and h4 */
 
   --fw-semibold: 600;
   --fw-bold:     700;
@@ -245,6 +246,19 @@
      SHAPES — reusable clip-path tokens
      ═══════════════════════════════════════════════════════════════════════════ */
   --clip-banner: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%); /* standard 22px chevron banner cut */
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     SPECIALTY ACCENT COLORS — per-specialty card-tab and spray-banner accents
+     Override in project-overrides.css to restyle individual specialties.
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --augmerc-accent:        var(--hud-blue);
+  --proxy-accent:          var(--orange);
+  --streetwarden-accent:   #6fc24a;
+  --gutterdruid-accent:    #b3884f;
+  --cybersurgeon-accent:   #c0c0c0;
+  --wirephreak-accent:     #b34fb3;
+  --technosorcerer-accent: #4f6fc2;
+  --etherlock-accent:      #d4af37;
 }
 
 /* ============================================================================
@@ -418,15 +432,6 @@ ul li::before {
   margin-bottom: 0.2in;
 }
 
-/* Paper grain — fixed overlay */
-body::after {
-  content: '';
-  position: absolute; /* position: absolute — fixed is meaningless in Paged.js page-box context */
-  inset: 0;
-  pointer-events: none;
-  z-index: 50;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.025'/%3E%3C/svg%3E");
-}
 
 /* #root — ID selector removed; use a class if this element needs styling */
 /* #root { max-width: 950px; margin: 0 auto; } */
@@ -790,6 +795,23 @@ body::after {
   border-top: 1px solid var(--hud-blue-dim);
 }
 
+/* ───────── SECTION H3 DIVIDER ───────── */
+/* Compact, high-contrast H3 for dense multi-column reference layouts.
+   Remains legible at narrow column widths without banner weight. */
+.dc-section-h3 {
+  font-family: var(--font-mono);
+  font-size: var(--fs-body-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--ls-cap-sm);
+  color: var(--hud-blue);
+  border-bottom: var(--bw-thin) solid var(--hud-blue-dim);
+  padding-bottom: 4px;
+  margin: 0.15in 0 0.08in;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
 /* ───────── NOTE CALLOUT ───────── */
 .dc-note {
   margin-top: 14px;
@@ -894,7 +916,7 @@ body::after {
   position: relative;
   font-family: var(--font-body);
   font-style: italic;
-  font-size: 14pt;
+  font-size: var(--fs-pullquote);
   line-height: 1.4;
   color: var(--ink-smoke);
   margin: 18px 0;
@@ -1313,18 +1335,8 @@ hr,
 /* ── SPECIALTY ACCENT VARIANTS ─────────────────────────────────────────────
    Per-specialty accent color tokens and card-tab border-color overrides.
    Migrated from _shared/css/specialty-variants.css (field-guide/css/specialty-accents.css deleted Phase 1a).
+   Tokens moved to :root block above (2026-05-10).
    ─────────────────────────────────────────────────────────────────────────── */
-:root {
-  --augmerc-accent:      var(--hud-blue);
-  --proxy-accent:        var(--orange);
-  --streetwarden-accent: #6fc24a;  /* was var(--accent-color3, …) — color3-8 not defined here, indirection removed */
-  --gutterdruid-accent:  #b3884f;  /* was var(--accent-color4, …) */
-  --cybersurgeon-accent: #c0c0c0;  /* was var(--accent-color5, …) */
-  --wirephreak-accent:   #b34fb3;  /* was var(--accent-color6, …) */
-  --technosorcerer-accent: #4f6fc2;  /* was var(--accent-color7, …) */
-  --etherlock-accent:    #d4af37;  /* was var(--accent-color8, …) */
-}
-
 .specialty.augmerc       .dc-skill-card .dc-card-tab { border-color: var(--augmerc-accent); }
 .specialty.proxy         .dc-skill-card .dc-card-tab { border-color: var(--proxy-accent); }
 .specialty.streetwarden  .dc-skill-card .dc-card-tab { border-color: var(--streetwarden-accent); }
@@ -2196,6 +2208,23 @@ hr,
   break-inside: avoid;
   page-break-inside: avoid;
 }
+
+/* ───────── VISIT CALLOUT ───────── */
+/* Present-tense in-world location description — what the character sees on arrival. */
+.dc-visit-callout {
+  background: var(--paper-light);
+  border-left: 4px solid var(--hud-blue);
+  padding: 12px 16px;
+  margin: 0.12in 0;
+  font-style: italic;
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  color: var(--ink-smoke);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.dc-visit-callout p { margin: 0; }
+.dc-visit-callout p + p { margin-top: 6pt; }
 
 .dc-gear-callout {
   border: 1.5px solid var(--border-hairline);

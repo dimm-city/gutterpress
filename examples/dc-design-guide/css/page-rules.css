@@ -20,10 +20,7 @@ body { counter-reset: chapter; }
 
 /* Chapter counter authority: page-rules.css owns all chapter counter values.
    The body-level counter-reset above initializes to 0; these per-page
-   resets override it with the correct chapter number per Paged.js page box.
-   NOTE: guide.css also has `counter-increment: chapter` on div.chapter > h1:first-of-type
-   — that auto-increment is a ghost (overridden by the per-page hard-resets below)
-   and should be removed from guide.css in a future pass. */
+   resets override it with the correct chapter number per Paged.js page box. */
 
 /* ---------------------------------------------------------------------------
    Chapter Counters
@@ -426,7 +423,7 @@ body { counter-reset: chapter; }
 
 /* @page clean — RESERVED: suppresses running headers/footers for blank insert pages.
    To activate: add .page.clean { page: clean; } and apply class to the element.
-   Currently unused — no element assigns page: clean. */
+   Wired via `.pmd-suppress-footer { page: clean; }` in guide.css. */
 @page clean {
   @bottom-right {
     content: none;

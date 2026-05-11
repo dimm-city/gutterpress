@@ -14,7 +14,7 @@ engine via Paged.js, and every rule must survive that pipeline unchanged.
 
 **Physical units everywhere.** All sizing uses `pt` or `in` — units that map directly
 to physical paper. `px` appears only for border widths where sub-point precision is
-useful (`--bw-thin: 1px`, `--callout-border-width-small: 2px`). Avoid `em` for layout
+useful (`--bw-thin: 1px`, `--callout-border-width-small: 2px`). Component chrome dimensions (tab labels, icon badges, stat-cell keys) also use `px` where visual relationship to the surrounding layout matters more than physical print size — `9px` for a label superscript reads consistently at all print zoom levels. Avoid `em` for layout
 geometry (column widths, gutters, card padding) — use `0.25in` not `1.5em`. The
 exception is typographic rhythm: heading margins and padding that should scale
 proportionally with the heading's own font-size (`h1, h2, h3 { margin: 1.5em 0 0.5em }`)

@@ -8,7 +8,7 @@
 
 **Syntax:** `# Chapter Title`
 
-**Spec:** 36pt · bold · lixdu · one per chapter or specialty opener
+**Spec:** 20.7pt (1.728rem at 12pt base) · bold · lixdu · one per chapter or specialty opener
 
 <h1>Augmerc</h1>
 
@@ -18,7 +18,7 @@
 
 **Syntax:** `## Section Heading`
 
-**Spec:** 24pt · lixdu · major topic breaks
+**Spec:** 17.3pt (1.44rem at 12pt base) · lixdu · major topic breaks
 
 <h2>Spec Tweak</h2>
 
@@ -28,7 +28,7 @@
 
 **Syntax:** `### Sub-section`
 
-**Spec:** 18pt · lixdu · reference column labels
+**Spec:** 14.4pt (1.2rem at 12pt base) · lixdu · reference column labels
 
 <h3>Wired to Kill</h3>
 

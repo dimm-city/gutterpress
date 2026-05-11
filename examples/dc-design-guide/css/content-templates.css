@@ -80,7 +80,6 @@
   column-rule: none;
   position: relative;
   padding-top: 0.25in;
-  padding-bottom: 0.6in;
   counter-reset: toc-section;
   text-wrap: pretty;
   /* Creates separation above abs-positioned decorative art. */
@@ -414,8 +413,8 @@ article {
    --------------------------------------------------------------------------- */
 
 .page p {
-  orphans: 3;
-  widows: 3;
+  orphans: 4;
+  widows: 4;
 }
 
 .page h2,

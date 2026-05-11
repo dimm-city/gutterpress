@@ -30,7 +30,9 @@ source:
     - img
     - plugins
 
-# US Letter — 8.5 × 11 in
+# US Letter trim size (8.5 × 11 in = 612 × 792 pt) — drives print-md validation bounds.
+# NOTE: The @page CSS uses 8.625 × 11.25 in (Letter + bleed) for DTRPG POD output.
+# These differ intentionally: manifest = validation tolerance, CSS = actual PDF size.
 page:
   width: 612
   height: 792
