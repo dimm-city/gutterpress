@@ -668,8 +668,8 @@ function onRenderingComplete(event) {
   // Must be done AFTER Paged.js renders because Paged.js strips @media pagedjs-ignore rules.
   injectViewerStyles(getIframeWindow());
 
-  // Apply default view mode (two-column)
-  setViewMode("two-column");
+  // Apply default view mode — single page for better readability at varied viewport widths
+  setViewMode("single");
 
   // Apply default zoom
   setZoom(1.0);

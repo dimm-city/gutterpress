@@ -236,6 +236,56 @@
                 /* Gray-400 - WCAG AA compliant (4.6:1 contrast ratio) */
             }
 
+            /* ── Responsive toolbar ───────────────────────────────────────────
+               Progressively collapses non-essential controls as the viewport
+               narrows. Core navigation (prev/next/page input) is always visible.
+               ─────────────────────────────────────────────────────────────── */
+
+            /* ≤1200px — tighten spacing, compress buttons */
+            @media screen and (max-width: 1200px) {
+                .toolbar {
+                    padding: 0 12px;
+                    gap: 8px;
+                }
+                .toolbar-section { gap: 6px; }
+                .toolbar-btn { padding: 6px 10px; }
+                .zoom-select { padding: 5px 6px; }
+                .page-input { width: 42px; }
+            }
+
+            /* ≤900px — hide title and secondary tools */
+            @media screen and (max-width: 900px) {
+                .toolbar-title { display: none; }
+                #btn-debug { display: none; }
+                #btn-bg-color { display: none; }
+                /* Hide the separator that directly follows the hidden bg-color button */
+                #btn-bg-color + .toolbar-separator { display: none; }
+            }
+
+            /* ≤700px — strip first/last nav and github, compress zoom */
+            @media screen and (max-width: 700px) {
+                #btn-github { display: none; }
+                #btn-first { display: none; }
+                #btn-last { display: none; }
+                .zoom-select { max-width: 72px; font-size: 11px; }
+                .page-input { width: 36px; font-size: 12px; }
+                .status-text { font-size: 11px; }
+            }
+
+            /* ≤520px — single-column toolbar: hide folder, exit, print, all separators */
+            @media screen and (max-width: 520px) {
+                .toolbar {
+                    grid-template-columns: auto 1fr auto;
+                    gap: 4px;
+                    padding: 0 8px;
+                }
+                .toolbar-section { gap: 4px; }
+                #btn-folder { display: none; }
+                #btn-exit { display: none; }
+                #btn-print { display: none; }
+                .toolbar-separator { display: none; }
+            }
+
             /* Iframe fade transitions */
             #preview-iframe {
                 opacity: 0;
@@ -396,7 +446,7 @@
                 </button>
                 <div class="toolbar-separator"></div>
                 <button
-                    class="toolbar-btn"
+                    class="toolbar-btn active"
                     id="btn-single"
                     title="Single page view"
                 >
@@ -417,7 +467,7 @@
                     </svg>
                 </button>
                 <button
-                    class="toolbar-btn active"
+                    class="toolbar-btn"
                     id="btn-two-column"
                     title="Two column view"
                 >
