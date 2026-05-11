@@ -38,8 +38,8 @@
    in the same chapter are live specimens and must NOT trigger page breaks.
    ─────────────────────────────────────────────────────────────────────────── */
 div.chapter > h1:first-of-type {
-  break-before: page;
-  page-break-before: always;
+  break-before: right;         /* force chapter to start on recto (right-hand) page */
+  page-break-before: right;   /* Paged.js reads page-break-before, converts to break-before */
   /* counter-increment removed — page-rules.css hard-resets the chapter counter per-page via .page.chapter-NN rules; auto-increment is unreliable in Paged.js */
 }
 
