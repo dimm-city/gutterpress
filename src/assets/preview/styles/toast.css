@@ -9,7 +9,7 @@
 
 /* Container positioned in bottom-right corner */
 .toast-container {
-	position: absolute;
+	position: fixed;
 	bottom: 24px;
 	right: 24px;
 	z-index: 10001;

@@ -42,8 +42,7 @@
       if (mode) document.body.classList.add('view-' + mode);
     },
     setZoom: function (z) {
-      document.body.style.transformOrigin = 'top center';
-      document.body.style.transform = 'scale(' + z + ')';
+      document.documentElement.style.setProperty('--pmd-zoom', z);
     },
     toggleDebugMode: function () {
       debugMode = !debugMode;

@@ -331,7 +331,7 @@
 
  /* Loading overlay */
  .loading-overlay {
-     position: absolute;
+     position: fixed;
      inset: 0;
      top: 56px;
      /* Below toolbar */

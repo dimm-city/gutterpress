@@ -413,61 +413,33 @@ function setViewMode(mode) {
 }
 
 /**
- * Change zoom level via iframe API
+ * Change zoom level via iframe API.
+ * "fit-width" computes a scale so the page fills the iframe width; all other
+ * values are passed directly to api.setZoom. The CSS in buildViewerStyleSheet
+ * applies zoom via `zoom: var(--pmd-zoom)` — JS only supplies the number.
  */
 function setZoom(zoom) {
   const iframeWin = getIframeWindow();
-  if (!iframeWin || !iframeWin.previewAPI) return;
+  if (!iframeWin?.previewAPI) return;
 
-  const api = iframeWin.previewAPI;
-
+  let scale;
   if (zoom === "fit-width") {
     const iframeEl = document.getElementById("preview-iframe");
     const containerWidth = iframeEl ? iframeEl.clientWidth : window.innerWidth;
     const page = iframeWin.document.querySelector(".pagedjs_page");
     const pageWidth = page ? page.offsetWidth : 0;
-    const pages = iframeWin.document.querySelector(".pagedjs_pages");
-
-    if (pageWidth > 0 && pageWidth > containerWidth) {
-      // Apply zoom to .pagedjs_pages (not body transform) so the scroll area
-      // shrinks proportionally — body transform leaves full layout height intact.
-      const scale = (containerWidth - 32) / pageWidth;
-      if (pages) {
-        pages.style.zoom = scale;
-        // margin:auto fails when zoomed width > body width, so set explicit margins.
-        // scale = (containerWidth - 32) / pageWidth → zoomed width = containerWidth - 32
-        // → 16px margin each side.
-        pages.style.marginLeft = "16px";
-        pages.style.marginRight = "16px";
-      }
-      // Reset any previous body transform
-      const body = iframeWin.document.body;
-      body.style.transform = "none";
-      body.style.transformOrigin = "";
-      // Add scroll padding so the last page doesn't abut the bottom edge
-      body.style.paddingBottom = "32px";
-    } else {
-      // Page fits: clear any fit-width zoom and show at 100%
-      if (pages) {
-        pages.style.zoom = "";
-        pages.style.marginLeft = "";
-        pages.style.marginRight = "";
-      }
-      iframeWin.document.body.style.paddingBottom = "32px";
-      api.setZoom(1.0);
-    }
-
-    const zoomSelect = document.getElementById("zoom-select");
-    if (zoomSelect) zoomSelect.value = "fit-width";
+    scale = (pageWidth > 0 && pageWidth > containerWidth)
+      ? (containerWidth - 32) / pageWidth
+      : 1;
   } else {
-    // Clear any fit-width zoom before applying transform-based zoom
-    const pages = iframeWin.document.querySelector(".pagedjs_pages");
-    if (pages) pages.style.zoom = "";
-    api.setZoom(zoom);
-    const zoomSelect = document.getElementById("zoom-select");
-    if (zoomSelect && zoomSelect.querySelector(`option[value="${zoom}"]`)) {
-      zoomSelect.value = String(zoom);
-    }
+    scale = parseFloat(zoom) || 1;
+  }
+
+  iframeWin.previewAPI.setZoom(scale);
+
+  const zoomSelect = document.getElementById("zoom-select");
+  if (zoomSelect) {
+    zoomSelect.value = (zoom === "fit-width") ? "fit-width" : String(zoom);
   }
 }
 
@@ -553,6 +525,10 @@ function buildViewerStyleSheet(bg) {
   return `
 /* Injected by preview.js after Paged.js render — not in preview.css to avoid pagedjs stripping */
 
+/* ── Zoom — set via --pmd-zoom CSS custom property (JS only sets the number) ── */
+html { --pmd-zoom: 1; }
+.pagedjs_pages { zoom: var(--pmd-zoom) !important; }
+
 /* ── Canvas (space around pages) ── */
 html, body {
   background-color: ${bg} !important;
@@ -560,7 +536,7 @@ html, body {
 }
 body {
   margin: 0 !important;
-  padding: 0 !important;
+  padding: 0 0 32px !important;
 }
 
 /* ── Spread container (two-page side-by-side default) ── */
@@ -687,34 +663,28 @@ function onRenderingComplete(event) {
   const { totalPages } = event.detail;
   console.log(`✓ Rendering complete: ${totalPages} pages`);
 
-  // Hide loading overlay now that rendering is complete
+  // While iframe is still hidden: inject CSS, set view mode, set zoom.
+  // This ensures the iframe is at its final layout state before becoming visible —
+  // no flash of wrong zoom or wrong view mode during the fade-in.
+  injectViewerStyles(getIframeWindow());
+  setViewMode("single");
+  setZoom("fit-width");
+
+  // Update document title and page counter
+  updateDocumentTitle();
+  updatePageDisplay();
+
+  // Hide loading overlay
   const overlay = document.getElementById("loading-overlay");
   if (overlay) {
     overlay.classList.remove("active");
   }
 
-  // Fade in the iframe now that content is ready
+  // Fade in the iframe — content is fully laid out at correct zoom
   const iframe = document.getElementById("preview-iframe");
   if (iframe) {
     iframe.classList.add("ready");
   }
-
-  // Update document title from iframe
-  updateDocumentTitle();
-
-  // Update UI with initial page state
-  updatePageDisplay();
-
-  // Inject viewer canvas styles (background, shadows, row spacing).
-  // Must be done AFTER Paged.js renders because Paged.js strips @media pagedjs-ignore rules.
-  injectViewerStyles(getIframeWindow());
-
-  // Apply default view mode — single page for better readability at varied viewport widths
-  setViewMode("single");
-
-  // Apply default zoom — fit-width scales the page down to fill the viewport on
-  // narrow screens (mobile) while capping at 100% on wider displays
-  setZoom("fit-width");
 
   // Enable print button now that rendering is complete
   const printBtn = document.getElementById("btn-print");
