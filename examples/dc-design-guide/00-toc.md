@@ -13,6 +13,7 @@
 <li><a href="#ch-templates">Page Templates</a> — named page types, chapter openers, and full-bleed spreads</li>
 <li><a href="#ch-layout">Layout &amp; Composition</a> — columns, floats, page markers, and break utilities</li>
 <li><a href="#ch-reference">Markdown Reference</a> — all syntax with live examples</li>
+<li><a href="#ch-fg-components">Field Guide Components</a> — dashed rules, definition blocks, sidebar boxes, gear entries, and colophon</li>
 <li><a href="#ch-cli">CLI Reference</a> — build, preview, and publish commands</li>
 </ol>
 

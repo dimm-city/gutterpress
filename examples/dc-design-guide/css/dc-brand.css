@@ -6,9 +6,10 @@
    reusable component (cards, banners, callouts, stat blocks, etc.).
 
    Import order (index.css):
-     1. dc-brand.css  ←  this file: all DC tokens, fonts, and components
-     2. page-rules.css   @page declarations, named pages, footer chrome
-     3. guide.css        design-guide specimen scaffolding only
+     1. dc-brand.css          ←  this file (tokens + components)
+     2. page-rules.css            (page geometry + @page rules)
+     3. content-templates.css     (Paged.js structural wrappers)
+     4. guide.css                 (specimen + chapter overrides)
 
    PRINT ZINE on light gray pages, cream/paper card surfaces, dark ink.
    Cyberpunk creaturepunk: rust orange, blood crimson, HUD blue, amber.
@@ -85,9 +86,8 @@
   /* ═══════════════════════════════════════════════════════════════════════════
      PAGE & PAPER — light print substrate
      ═══════════════════════════════════════════════════════════════════════════ */
-  --bg:           #d4d4d4;  /* page background — light cool gray */
-  --bg-deep:      #b8b8b8;  /* gutter shadow */
-  --page-background-color: var(--bg, #d4d4d4);  /* used by page-rules.css @page rules */
+  --bg:                    #d4d4d4;  /* page background — light cool gray */
+  --pmd-viewer-sheet-bg:   var(--bg);  /* print-md viewer hook — sets .pagedjs_sheet color */
   --paper-cream:  #f5f0e6;  /* warm cream — primary card surface */
   --paper-light:  #ebe5d8;  /* paper — aside / sticker / quote */
   --paper-aged:   #ddd6c6;  /* deeper aged — emphasis aside */
@@ -105,20 +105,12 @@
 
   /* --bk-ink/dark/smoke/dust aliases removed — duplicated --ink-* tokens, never consumed */
 
-  /* Text hierarchy aliases */
-  --fg1: var(--ink);
-  --fg2: var(--ink-dark);
-  --fg3: var(--ink-smoke);
-  --fg4: var(--ink-dust);
-  --fg5: #a8a097;
-
   /* ═══════════════════════════════════════════════════════════════════════════
      ACCENTS — creaturepunk fire + blood
      ═══════════════════════════════════════════════════════════════════════════ */
   --crimson:    #d41200;   /* primary accent — vivid banner red (was #c23a2b, earthy) */
   --blood:      #a30900;   /* deep crimson — vivid dark red (was #9b2520, brownish) */
   --orange:     #f24d00;   /* spray orange — vivid saturated orange (was #e85d24, earthy) */
-  --ember:      #de3a00;   /* hot ember — vivid red-orange (was #d44a20, earthy) */
   --rust:       #c23000;   /* rust — vivid warm red-orange (was #8b4513, Saddle Brown) */
   --amber:      #e89200;   /* amber — vivid golden amber (was #cc7a1a, muted) */
   --deep-rust:  #761800;   /* shadow rust — vivid deep rust (was #5c2d12, dark brown) */
@@ -133,12 +125,7 @@
   --hud-blue-dark:      #1f5a7a;   /* darkened for 5:1 contrast on #d4d4d4 page bg */
   --hud-blue-bright:    #48a4e0;
   --hud-blue-dim:       #c9d6e2;   /* very light HUD blue panel on cream */
-  --hud-blue-tint:      #e6edf3;   /* subtle blue paper */
-  --hud-orange-dim:     #dfcd9e;   /* 30% hud-orange on light page bg #dadada */
   --hud-magenta:        #b85820;
-  --hud-magenta-dim:    #d0b3a2;   /* 30% hud-magenta on light page bg #dadada */
-  --hud-magenta-border: #7f408c;
-  --hud-crimson-dim:    #c8a8a0;   /* 30% hud-crimson on light page bg #dadada */
 
   /* ═══════════════════════════════════════════════════════════════════════════
      LIGHT-MODE PEERS — surface/panel/inlay tokens (Round 17, 2026-05-03)
@@ -151,74 +138,25 @@
   --hud-panel:             #eeece8;   /* was #464b5e (dark navy) */
 
   /* Surface tint scale — whiter panels for contrast on light bg */
-  --surface-tint-1:        #e4e2e0;   /* was #464b5e */
-  --surface-tint-2:        #eae8e5;   /* was #525768 */
   --surface-tint-3:        #f2f0ec;   /* was #5e6372 */
-
-  /* Inlay tint — light blue paper for blockquote chrome */
-  --inlay-blue-tint:       #b8c8d0;   /* was #3e4d63 */
 
   /* Accent surface tints — pre-blended on #dadada */
   --surface-orange-tint:   #dcd4bc;   /* gold @ 15% on #dadada */
-  --surface-orange-mid:    #dfcd9e;   /* gold @ 30% on #dadada */
-  --surface-orange-strong: #e0c98a;   /* gold @ 40% on #dadada */
-  --surface-red-tint:      #d0c0b8;   /* red @ 12% on #dadada */
-  --surface-purple-tint:   #d7cdc7;   /* rust @ 10% on #dadada */
-
-  /* ═══════════════════════════════════════════════════════════════════════════
-     LIGHT-MODE PEERS — border-heavy + foreground accents (Round 18, 2026-05-03)
-     The existing --border-hairline / -light / -medium / -rule / -strong
-     "ink-on-cream" values at lines 639-643 are the spec and stand. Round 18
-     adds only the genuinely missing peers.
-     ═══════════════════════════════════════════════════════════════════════════ */
-
-  /* Heaviest border weight — extends the existing ink-on-cream scale */
-  --border-heavy:          #504840;
-
-  /* Signal red foreground — high-contrast on light page */
-  --text-darkred:          #a82818;
 
   /* ═══════════════════════════════════════════════════════════════════════════
      BORDERS — ink-on-cream
      ═══════════════════════════════════════════════════════════════════════════ */
   --border-hairline: #d0c8b5;   /* same as paper-stain */
-  --border-light:    #b8b0a0;
-  --border-medium:   #8a8378;
-  --border-rule:     #4a4540;
-  --border-strong:   var(--ink);
-  --border-soft:     var(--paper-aged);
-  --border-card:     var(--ink);
   --border-blue:     var(--hud-blue);
 
   --bw-thin:   1px;
-  --bw-medium: 2px;
-  --bw-thick:  3px;
 
   /* ═══════════════════════════════════════════════════════════════════════════
      SHADOWS — solid hex, print-safe
      ═══════════════════════════════════════════════════════════════════════════ */
   --shadow-light:  #b8b3a8;
-  --shadow-medium: #8a8378;
-  --shadow-strong: #4a4540;
-  --shadow-dark:   var(--ink);
   --shadow-ink-border: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink))
                        drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink));
-
-  /* ═══════════════════════════════════════════════════════════════════════════
-     SEMANTIC + OUTCOMES
-     ═══════════════════════════════════════════════════════════════════════════ */
-  --highlight:    var(--orange);   /* inline emphasis / strong */
-  --link:         var(--crimson);
-  --warn-border:  var(--amber);
-  --warn-text:    var(--deep-rust);
-  --on-accent:    var(--paper-cream);
-  --on-light:     var(--ink);
-
-  --outcome-crit:  var(--blood);
-  --outcome-hit:   var(--crimson);
-  --outcome-mixed: var(--amber);
-  --outcome-miss:  var(--orange);
-  --outcome-fail:  var(--ink);
 
   /* Production aliases: --font-body = --font-family, --font-display = --header-font-family, --font-mono = --code-font-family (01-tokens.css) */
 
@@ -227,7 +165,7 @@
      ═══════════════════════════════════════════════════════════════════════════ */
   --font-display:  'lixdu', 'Tomorrow', sans-serif;                      /* HEAVY blocky cyberpunk display (h1–h6) */
   --font-tab:      'Tomorrow', 'lixdu', sans-serif;                      /* card tabs, banner labels, stat names */
-  --font-banner:   'lixdu', 'Tomorrow', sans-serif;                      /* spray-banner section headers */
+  /* --font-banner removed — was identical to --font-display; consumers updated to var(--font-display) */
   --font-body:     'Titillium Web', Georgia, sans-serif;                 /* primary body — clean sans */
   --font-sans:     'Titillium Web', 'Inter', system-ui, sans-serif;      /* alternate sans body */
   --font-mono:     'Tomorrow', 'Titillium Web', ui-monospace, monospace; /* labels, AP tags, micro-caps */
@@ -241,35 +179,32 @@
   --fs-base:    12pt;
   --fs-body:    12pt;
   --fs-body-sm: 11pt;       /* design floor — never below this for prose */
+  --fs-body-xs: 11.5pt;     /* between body-sm and body — outcome text, cover body */
   --fs-caption: 10pt;       /* credits / fine print exceptions */
+  --fs-footer:  9.5pt;      /* @page margin box footer text */
+  --fs-chevron: 20pt;       /* banner/chevron heading — h1 on chapter-start, specialty pages */
   --fs-h1:      1.728rem;   /* 20.7pt */
   --fs-h2:      1.44rem;    /* 17.3pt */
   --fs-h3:      1.2rem;     /* 14.4pt */
   --fs-h4:      1rem;       /* 12pt */
   --fs-h5:      0.95rem;
   --fs-h6:      0.85rem;
-  --fs-display: 16pt;
   --fs-chapter: 26pt;       /* chapter openers */
 
-  --fw-normal:   400;
   --fw-semibold: 600;
   --fw-bold:     700;
 
   --lh-tight:  1.35;
   --lh-normal: 1.5;
-  --lh-loose:  1.6;
-  --lh-body:   var(--lh-normal);
+  /* --lh-body removed — was 1:1 alias of --lh-normal; consumer updated 2026-05-10 */
 
   --ls-display: 0.1em;
   --ls-heading: 0.08em;
-  --ls-tag:     0.18em;
   --ls-cap-sm:  3px;        /* mono micro-caps */
 
   /* ═══════════════════════════════════════════════════════════════════════════
      SPACING — print units (inches) for predictable PDF output
      ═══════════════════════════════════════════════════════════════════════════ */
-  --space-xxs: 0.04in;   /* ~3pt */
-  --space-xs:  0.06in;   /* ~4.5pt */
   --space-sm:  0.08in;   /* ~6pt */
   --space-md:  0.12in;   /* ~9pt */
   --space-lg:  0.15in;   /* ~11pt */
@@ -279,20 +214,20 @@
   --gutter:        0.25in;
   --page-margin:   0.5in;
   --sidebar-width: 3.05in;
-  --callout-pad:   0.15in;
 
   /* ═══════════════════════════════════════════════════════════════════════════
-     SHAPES — clip-paths reused across components
+     PAGE GEOMETRY — bleed dimensions and binding margin
      ═══════════════════════════════════════════════════════════════════════════ */
-  --clip-banner:  polygon(0 0, 100% 0, 100% 100%, 25px 100%, 0 calc(100% - 15px));
-  --clip-tl:      polygon(33px 0, 100% 0, 100% 100%, 0 100%, 0 22px);
-  --clip-tr:      polygon(0 0, calc(100% - 33px) 0, 100% 22px, 100% 100%, 0 100%);
-  --clip-chevron: polygon(100% 0, 95% 50%, 100% 100%, 0.25in 100%, 0 50%, 0.25in 0);
-  --clip-tab:     polygon(0 0, calc(100% - 28px) 0, 100% 100%, 0 100%);
+  --page-width:     8.625in;  /* US Letter bleed — matches @page size declaration */
+  --page-height:    11.25in;  /* US Letter bleed — matches @page size declaration */
+  --binding-margin: 0.75in;   /* spine-side margin in @page :left/:right rules */
 
-  /* Border radii are RARELY used — this is a print zine. */
-  --radius-card: 0;
-  --radius-tab:  0;
+  /* ═══════════════════════════════════════════════════════════════════════════
+     SEMANTIC COLORS — text roles and specialty dot colors
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --text-secondary:        #a8b0bc;  /* secondary/muted link text in TOC */
+  --classtag-gutterdruid:  #4a7c3a;  /* gutterdruid specialty dot color */
+  --classtag-technosorc:   #8a3aa9;  /* technosorc specialty dot color */
 
   /* ── Stubs: aliases to canonical tokens from shared design system ────────────
      These names were referenced in the original field-guide system. Each is now
@@ -300,26 +235,17 @@
      (e.g. --fs-base) automatically updates the stub. Do NOT set independent
      literal values here; use the canonical token name instead.
      ─────────────────────────────────────────────────────────────────────────── */
-  --secondary-color:            var(--crimson);
-  --accent-color1:              var(--hud-blue);
-  --accent-color2:              var(--orange);
-  --header-font-family:         var(--font-display);
-  --hud-blue-border:            2px solid var(--hud-blue);
+  /* --header-font-family removed — was 1:1 alias of --font-display; 3 consumers updated */
   --callout-border-width-small: 2px;
-  --hud-border-soft:            1px solid var(--border-blue);
-  --base-font-size:             var(--fs-base, 10pt);     /* alias of canonical --fs-base */
-  --small-font-size:            var(--fs-body-sm, 8.5pt); /* alias of canonical --fs-body-sm */
-  --small-gap:                  0.08in;
-  --card-bg:                    var(--paper-cream);
-  --card-header-bg:             var(--crimson);
-  --card-header-color:          var(--paper-cream);
-  --card-border-color:          var(--ink);
-  --card-border-width:          2px;
-  --card-font-size:             9pt;
-  --card-body-height:           auto;
-  --quote-font-size:            11pt;
-  --line-height-tight:          var(--lh-tight, 1.25);   /* alias of canonical --lh-tight */
-  --line-height-normal:         var(--lh-normal, 1.5);   /* alias of canonical --lh-normal */
+  /* --secondary-color, --accent-color1, --accent-color2, --small-font-size, --small-gap,
+     --line-height-tight, --line-height-normal, --lh-body removed — all consumers updated
+     to canonical tokens (--crimson, --hud-blue, --orange, --fs-body-sm, --space-sm,
+     --lh-tight, --lh-normal) on 2026-05-10 */
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     SHAPES — reusable clip-path tokens
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --clip-banner: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%); /* standard 22px chevron banner cut */
 }
 
 /* ============================================================================
@@ -350,20 +276,6 @@ body {
   orphans: 3;
 }
 
-/* Screen-only grain overlay — body::after is the unconditional grain used in PDF.
-   This rule fires only in screen preview so the noise doesn't double when body
-   has the .grain class (which would activate both pseudo-elements at once). */
-@media screen {
-  .grain::before,
-  body.grain::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 50;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.025'/%3E%3C/svg%3E");
-  }
-}
 
 /* ============================================================================
    HEADINGS — chunky cyberpunk display (lixdu)
@@ -421,16 +333,7 @@ code, kbd, samp {
   border: 1px solid var(--paper-aged);
 }
 
-hr {
-  border: 0;
-  border-top: 2px dashed #e9a090; /* pre-blended value: --crimson at ~50% on --bg; opacity not PDF-safe */
-  margin: 1em 0;
-}
-
 a { color: var(--crimson); text-decoration: none; border-bottom: 1px dotted var(--crimson); }
-@media screen {
-  a:hover { color: var(--orange); border-bottom-color: var(--orange); }
-}
 
 blockquote {
   font-family: var(--font-quote);
@@ -467,7 +370,7 @@ ul li::before {
 .accent-rust    { color: var(--rust); }
 
 .font-display { font-family: var(--font-display); letter-spacing: var(--ls-display); text-transform: uppercase; }
-.font-banner  { font-family: var(--font-banner); letter-spacing: 0.05em; text-transform: uppercase; }
+.font-banner  { font-family: var(--font-display); letter-spacing: 0.05em; text-transform: uppercase; }
 .font-tab     { font-family: var(--font-tab); letter-spacing: 0.05em; text-transform: uppercase; }
 .font-body    { font-family: var(--font-body); }
 .font-sans    { font-family: var(--font-sans); }
@@ -509,7 +412,7 @@ ul li::before {
 
 /* Chapter-opening epigraph styling. No shared.css peer. */
 .chapter-start>blockquote:first-of-type {
-  font-size: calc(var(--quote-font-size) * 1.1);
+  font-size: calc(var(--fs-body-sm) * 1.1);
   letter-spacing: 0.25em;
   text-transform: uppercase;
   margin-top: 0;
@@ -562,7 +465,7 @@ body::after {
 /* ───────── CHEVRON BANNER ───────── */
 .dc-chevron {
   font-family: var(--font-display);
-  font-size: 20pt; /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
+  font-size: var(--fs-chevron); /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
   letter-spacing: 0.06em;
   color: var(--paper-cream);
   text-transform: uppercase;
@@ -571,7 +474,7 @@ body::after {
   display: inline-block;
   max-width: 100%;
   box-sizing: border-box;
-  clip-path: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
+  clip-path: var(--clip-banner);
   margin: 0 0 18px;
   line-height: 1.2;
   word-break: break-word;
@@ -579,7 +482,7 @@ body::after {
 
 /* ───────── SPRAY BANNER (h2 path header) ───────── */
 .dc-spray {
-  font-family: var(--font-banner);
+  font-family: var(--font-display);
   font-size: 22px;
   color: var(--paper-cream);
   text-transform: uppercase;
@@ -664,7 +567,7 @@ body::after {
 /* ───────── BODY PROSE ───────── */
 .dc-prose {
   font-family: var(--font-body);
-  font-size: 12pt;
+  font-size: var(--fs-body);
   line-height: 1.6;
   color: var(--ink);
   margin-bottom: 12px;
@@ -835,7 +738,7 @@ body::after {
   font-family: var(--font-body);
   font-style: italic;
   color: var(--ink-smoke);
-  font-size: 11pt;
+  font-size: var(--fs-body-sm);
   padding-bottom: 10px;
   margin-bottom: 12px;
   position: relative;
@@ -870,7 +773,7 @@ body::after {
 .dc-ap.var  { background: var(--hud-magenta); color: var(--paper-cream); }
 .dc-ability-text {
   font-family: var(--font-body);
-  font-size: 12pt;
+  font-size: var(--fs-body);
   line-height: 1.5;
   color: var(--ink);
 }
@@ -894,7 +797,7 @@ body::after {
   padding: 10px 12px;
   background: var(--paper-light);
   border-left: 4px solid var(--crimson);
-  font-size: 11pt;
+  font-size: var(--fs-body-sm);
   color: var(--ink-smoke);
   break-inside: avoid;
   page-break-inside: avoid;
@@ -957,7 +860,7 @@ body::after {
 /* ───────── INTRO LINE ───────── */
 .dc-intro {
   font-family: var(--font-body);
-  font-size: 12pt;
+  font-size: var(--fs-body);
   font-style: italic;
   color: var(--ink-smoke);
   line-height: 1.5;
@@ -1021,6 +924,178 @@ body::after {
   color: var(--ink-dust);
 }
 .dc-pullquote-attr::before { content: "— "; color: var(--orange); }
+
+/* ───────── DASHED RULE DIVIDER ───────── */
+/* Red dashed separator — use between gear entries, NPC blocks, and rules sections.
+   In markdown: --- (horizontal rule) inherits this style globally.
+   Raw HTML: <hr class="dc-dashed-rule">
+   ADAPTING: This global hr rule means every --- in your document renders with
+   the red dashed style. If you want structural --- dividers to remain neutral,
+   scope this rule to specific parents instead:
+     .dc-gear-entry hr, .dc-sidebar-box hr, .dc-dashed-rule { ... } */
+hr,
+.dc-dashed-rule {
+  border: none;
+  border-top: 2px dashed var(--blood);
+  margin: 0.18in 0;
+}
+
+/* ───────── DEFINITION BLOCK ───────── */
+/* Short italic definitional callout — NPC types, item categories, ability class summaries.
+   Use when content is a 1–3 sentence category definition, not a rules note.
+   Container syntax: ::: wrapper {.dc-definition-block} … :::
+   CSS class: dc-definition-block */
+.dc-definition-block {
+  background: var(--surface-orange-tint);    /* warm cream, distinct from paper-light */
+  border-left: 4px solid var(--crimson);
+  padding: 10px 14px;
+  margin: 0.12in 0;
+  font-style: italic;
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  color: var(--ink);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.dc-definition-block p {
+  margin: 0;
+}
+
+.dc-definition-block p + p {
+  margin-top: 6pt;
+}
+
+/* ───────── SIDEBAR BOX ───────── */
+/* Self-contained informational box with heading — rules etiquette, definitions, reference.
+   Use when content needs its own labeled section header inside a callout boundary.
+   Container syntax: ::: wrapper {.dc-sidebar-box} … :::
+   CSS class: dc-sidebar-box */
+.dc-sidebar-box {
+  background: var(--paper-cream);
+  border: 1.5px solid var(--border-hairline);
+  border-left: 4px solid var(--blood);
+  padding: 14px 18px;
+  margin: 0.15in 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Box heading — bold red stencil-style label above the internal divider */
+.dc-sidebar-box-title,
+.dc-sidebar-box > h3:first-child,
+.dc-sidebar-box > h4:first-child {
+  font-family: var(--font-display);
+  font-size: var(--fs-h4);
+  letter-spacing: var(--ls-display);
+  color: var(--blood);
+  text-transform: uppercase;
+  margin: 0 0 10px;
+  font-style: italic;
+}
+
+/* Internal dashed divider — separates the heading area from body content */
+.dc-sidebar-box hr,
+.dc-sidebar-box .dc-sidebar-box-divider {
+  border: none;
+  border-top: 1px dashed var(--blood);
+  margin: 7.5pt 0;
+}
+
+.dc-sidebar-box p {
+  margin: 0;
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-normal);
+}
+
+.dc-sidebar-box p + p {
+  margin-top: 6pt;
+}
+
+/* ───────── GEAR ENTRY ───────── */
+/* Named item entry — weapons, gear, equipment. h3 name + italic tagline + body.
+   Separate entries with --- (dc-dashed-rule).
+   In markdown: ### Item Name followed immediately by italic tagline paragraph.
+   CSS class: dc-gear-entry (wrapper) */
+.dc-gear-entry {
+  margin: 0.1in 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.dc-gear-entry h3,
+.dc-gear-entry > h3:first-child {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  letter-spacing: var(--ls-display);
+  color: var(--crimson);
+  text-transform: uppercase;
+  margin: 0 0 4px;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+/* Italic tagline — the one-line flavor sentence immediately after the h3 */
+.dc-gear-entry-tagline,
+.dc-gear-entry > p:first-of-type em:only-child,
+.dc-gear-entry > p.dc-flavor:first-of-type {
+  font-style: italic;
+  font-size: var(--fs-body-sm);
+  color: var(--ink-smoke);
+  margin: 0 0 8px;
+  display: block;
+}
+
+.dc-gear-entry p {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+}
+
+.dc-gear-entry p + p {
+  margin-top: 6pt;
+}
+
+/* ───────── COLOPHON DATA BLOCK ───────── */
+/* Back matter data block — edition info, imprint, build credits.
+   Use on the final page or credits section.
+   Markup: <dl> with <dt> (label) and <dd> (value) pairs.
+   CSS class: dc-colophon */
+.dc-colophon {
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-normal);
+  margin: 0.15in 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.dc-colophon dt {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: var(--fs-caption);
+  letter-spacing: var(--ls-cap-sm);
+  text-transform: uppercase;
+  color: var(--orange);
+  float: left;
+  clear: left;
+  width: 1.2in;
+  margin: 0;
+  padding: 2pt 0;
+  border-top: 1px solid var(--border-hairline);
+}
+
+.dc-colophon dd {
+  margin-left: 1.3in;
+  padding: 2pt 0;
+  color: var(--ink);
+  border-top: 1px solid var(--border-hairline);
+}
+
+.dc-colophon::after {
+  content: '';
+  display: table;
+  clear: both;
+}
 
 /* ───────── STAT BLOCK (compact creature/NPC reference) ───────── */
 .dc-stat {
@@ -1094,7 +1169,7 @@ body::after {
 }
 .dc-stat-line {
   font-family: var(--font-body);
-  font-size: 11pt;
+  font-size: var(--fs-body-sm);
   line-height: 1.45;
   margin: 6px 0;
   position: relative;
@@ -1118,7 +1193,7 @@ body::after {
   padding: 12px 0 12px 4px;
   border-top: 1px dashed var(--paper-aged);
   font-family: var(--font-body);
-  font-size: 12pt;
+  font-size: var(--fs-body);
   line-height: 1.5;
   color: var(--ink);
   align-items: baseline;
@@ -1199,7 +1274,7 @@ body::after {
 .dc-outcome-text {
   padding: 14px 18px;
   font-family: var(--font-body);
-  font-size: 11.5pt;
+  font-size: var(--fs-body-xs);
   line-height: 1.55;
   color: var(--ink);
   align-self: center;
@@ -1229,10 +1304,10 @@ body::after {
 .dc-classtag.augmerc      { --c: var(--rust); }
 .dc-classtag.proxy        { --c: var(--hud-magenta); }
 .dc-classtag.streetwarden { --c: var(--hud-blue); }
-.dc-classtag.gutterdruid  { --c: #4a7c3a; }
+.dc-classtag.gutterdruid  { --c: var(--classtag-gutterdruid); }
 .dc-classtag.cybersurgeon { --c: var(--blood); }
 .dc-classtag.wirephreak   { --c: var(--hud-blue-bright); }
-.dc-classtag.technosorc   { --c: #8a3aa9; }
+.dc-classtag.technosorc   { --c: var(--classtag-technosorc); }
 .dc-classtag.etherlock    { --c: var(--amber); }
 
 /* Specialty accent tokens — book-layer colors for each specialty class */
@@ -1241,8 +1316,8 @@ body::after {
    Migrated from _shared/css/specialty-variants.css (field-guide/css/specialty-accents.css deleted Phase 1a).
    ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  --augmerc-accent:      var(--accent-color1, #ff6a3d);  /* accent-color1 is defined in :root above */
-  --proxy-accent:        var(--accent-color2, #6fc2d0);  /* accent-color2 is defined in :root above */
+  --augmerc-accent:      var(--hud-blue);
+  --proxy-accent:        var(--orange);
   --streetwarden-accent: #6fc24a;  /* was var(--accent-color3, …) — color3-8 not defined here, indirection removed */
   --gutterdruid-accent:  #b3884f;  /* was var(--accent-color4, …) */
   --cybersurgeon-accent: #c0c0c0;  /* was var(--accent-color5, …) */
@@ -1382,7 +1457,7 @@ body::after {
 .dc-toc-title small {
   display: block;
   font-family: var(--font-body);
-  font-size: 11pt;
+  font-size: var(--fs-body-sm);
   font-style: italic;
   letter-spacing: 0;
   text-transform: none;
@@ -1412,7 +1487,7 @@ body::after {
   column-rule: 1px dashed var(--paper-aged);
 }
 .dc-2col > * { break-inside: avoid; }
-.dc-2col p { margin: 0 0 10px; font-family: var(--font-body); font-size: 11pt; line-height: 1.5; }
+.dc-2col p { margin: 0 0 10px; font-family: var(--font-body); font-size: var(--fs-body-sm); line-height: 1.5; }
 .dc-2col.dc-2col-mt { margin-top: 8px; }
 
 /* Hero head for class-opener template */
@@ -1442,7 +1517,7 @@ body::after {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at 65% 55%, rgba(232,93,36,0.18) 0%, transparent 55%),
+    radial-gradient(ellipse at 65% 55%, rgba(242, 77, 0, 0.18) 0%, transparent 55%), /* var(--orange) at 18% opacity */
     linear-gradient(180deg, var(--paper-light) 0%, var(--paper-aged) 100%);
   display: flex;
   align-items: center;
@@ -1472,7 +1547,7 @@ body::after {
   letter-spacing: 3px;
   text-transform: uppercase;
   color: var(--ink-dust);
-  background: rgba(245, 240, 230, 0.85);
+  background: rgba(245, 240, 230, 0.85) /* --paper-cream at 85% opacity */;
   padding: 4px 8px;
   z-index: 2;
 }
@@ -1490,8 +1565,8 @@ body::after {
   background:
     radial-gradient(ellipse at 8% 10%, rgba(0,0,0,0.55), transparent 62%),
     radial-gradient(ellipse at 82% 88%, rgba(0,0,0,0.30), transparent 55%),
-    radial-gradient(ellipse at 80% 18%, rgba(232,93,36,0.14), transparent 50%),
-    radial-gradient(ellipse at 60% 55%, rgba(72,164,224,0.16), transparent 60%),
+    radial-gradient(ellipse at 80% 18%, rgba(242, 77, 0, 0.14) /* var(--orange) at 14% opacity */, transparent 50%),
+    radial-gradient(ellipse at 60% 55%, rgba(72, 164, 224, 0.16) /* --hud-blue-bright at 16% opacity */, transparent 60%),
     var(--hud-blue);
 }
 .dc-cover-page .dc-cover-bg::after {
@@ -1551,7 +1626,7 @@ body::after {
   gap: 14px;
   margin-top: auto;
   padding-top: 24px;
-  border-top: 1px solid rgba(201,214,226,0.35);
+  border-top: 1px solid rgba(201, 214, 226, 0.35) /* --hud-blue-dim at 35% opacity */;
 }
 /* Element flush/reset variants */
 .dc-stat.flush     { margin: 0; }
@@ -1589,7 +1664,7 @@ body::after {
 /* Cover body text */
 .dc-cover-body {
   font-family: var(--font-body);
-  font-size: 11.5pt;
+  font-size: var(--fs-body-xs);
   line-height: 1.6;
   color: var(--hud-blue-dim);
   max-width: 46ch;
@@ -1604,7 +1679,7 @@ body::after {
 .dc-outcome-row.fail  { --row-color: var(--ink); }
 
 /* Specimen table — replaces inline styles on the prose page text specimen table */
-.dc-specimen-table { border-collapse: collapse; width: 100%; font-family: var(--font-body); font-size: 11.5pt; color: var(--ink); }
+.dc-specimen-table { border-collapse: collapse; width: 100%; font-family: var(--font-body); font-size: var(--fs-body-xs); color: var(--ink); }
 .dc-specimen-row   { border-bottom: 1px solid var(--hud-blue-dim); }
 .dc-specimen-label { padding: 8px 14px 8px 0; width: 140px; font-family: var(--font-mono); font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--hud-blue); vertical-align: middle; }
 .dc-specimen-value { padding: 8px 0; vertical-align: middle; }
@@ -1624,7 +1699,7 @@ body::after {
 /* Bestiary portrait / art slot inline styles */
 .dc-portrait-inner {
   aspect-ratio: 3/4;
-  background: radial-gradient(ellipse at 50% 35%, rgba(232,93,36,0.25), transparent 55%),
+  background: radial-gradient(ellipse at 50% 35%, rgba(242, 77, 0, 0.25) /* var(--orange) at 25% opacity */, transparent 55%),
               linear-gradient(180deg, var(--paper-light), var(--paper-stain));
   display: flex;
   align-items: center;
@@ -1696,268 +1771,13 @@ body::after {
 /* dc-prose with bottom margin */
 .dc-prose.mb { margin-bottom: 18px; }
 
-/* =============================================================================
-   BOOK PREVIEW MAPPINGS
-
-   These rules let the live field-guide preview use this stylesheet directly.
-   Keep all preview-facing visual work here so the design guide and preview stay
-   in sync without a second CSS layer.
-   ============================================================================= */
-
-/* ---------------------------------------------------------------------------
-   Preview page baseline
-   --------------------------------------------------------------------------- */
-
-@media screen {
-  .page { background: var(--paper-cream); }
-}
-
-.page {
-  color: var(--ink);
-  position: relative;
-  padding: 32px 36px 60px;
-  min-height: 1100px;
-  box-sizing: border-box;
-}
-
-.page > * {
-  position: relative;
-  z-index: 1;
-}
-
-.page img {
-  max-width: 100%;
-  height: auto;
-}
-
-/* ---------------------------------------------------------------------------
-   Front matter
-   --------------------------------------------------------------------------- */
-
-
-.page.page-toc > h1 {
-  display: inline-block;
-  font-family: var(--font-display);
-  font-size: 20pt; /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
-  letter-spacing: 0.06em;
-  color: var(--paper-cream);
-  text-transform: uppercase;
-  background: var(--rust);
-  border: 0;
-  padding: 10px 28px 10px 14px;
-  clip-path: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
-  margin: 0 0 18px;
-}
-
-.page.page-toc > .wrapper {
-  margin-bottom: 18px;
-  break-inside: avoid;
-}
-
-.page.page-toc > .wrapper > h2 {
-  margin: 0 0 8px;
-  font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: none;
-  color: var(--ink);
-}
-
-.page.page-toc > .wrapper > h2::before {
-  content: none;
-}
-
-.page.page-toc > .wrapper > h2 a {
-  color: inherit;
-  border-bottom: 0;
-}
-
-.page.page-toc > .wrapper > ul,
-.page.page-toc > .wrapper > ul ul {
-  margin: 0;
-  padding: 0;
-  border-left: 0;
-}
-
-.page.page-toc li {
-  list-style: none;
-  margin: 0;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--hud-blue-dim);
-  font-family: var(--font-body);
-  font-size: 11.5pt;
-  line-height: 1.5;
-  /* color intentionally omitted — dc-toc handles list item color via --text-secondary */
-}
-
-/* Only suppress ::before bullets for non-dc-toc TOC lists */
-.page.page-toc:not(.dc-toc) li::before {
-  content: none;
-}
-
-.page.page-toc li a {
-  color: inherit;
-  border-bottom: 0;
-}
-
-.page.page-toc li > ul {
-  margin-top: 8px;
-  padding-left: 18px;
-}
-
-.page.page-credits.credits > h1,
-.page.page-intro.intro > h1,
-.page.page-chapter-start.chapter-start > h1 {
-  display: inline-block;
-  font-family: var(--font-display);
-  font-size: 20pt; /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
-  letter-spacing: 0.06em;
-  color: var(--paper-cream);
-  text-transform: uppercase;
-  background: var(--rust);
-  border: 0;
-  padding: 10px 28px 10px 14px;
-  clip-path: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
-  margin: 0 0 18px;
-}
-
-.page.page-credits.credits p,
-.page.page-intro.intro p,
-.page.page-chapter-start.chapter-start p {
-  font-family: var(--font-body);
-  font-size: 12pt;
-  line-height: 1.6;
-  color: var(--ink);
-}
-
-.page.page-intro.intro blockquote,
-.page.page-chapter-start.chapter-start blockquote,
-.dc-visit-callout {
-  font-family: var(--font-quote);
-  font-style: italic;
-  color: var(--ink-smoke);
-  border-left: 3px solid var(--crimson);
-  background: var(--paper-light);
-  padding: 8pt 9pt;
-  margin: 9pt 0;
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-
-/* ---------------------------------------------------------------------------
-   Specialty opener mapping
-   --------------------------------------------------------------------------- */
-
-.specialty {
-  break-before: auto;
-  page-break-before: auto;
-}
-
-.wrapper.specialty-intro {
-  margin: 0 0 22px;
-}
-
-.wrapper.specialty-intro > h2 {
-  display: inline-block;
-  font-family: var(--font-display);
-  font-size: 20pt; /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
-  letter-spacing: 0.06em;
-  color: var(--paper-cream);
-  text-transform: uppercase;
-  background: var(--rust);
-  border: 0;
-  padding: 10px 28px 10px 14px;
-  clip-path: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
-  margin: 0 0 18px;
-}
-
-.wrapper.specialty-intro > h3 {
-  font-family: var(--font-display);
-  font-size: 22px;
-  letter-spacing: 0.08em;
-  color: var(--orange);
-  text-transform: uppercase;
-  border-bottom: 2px solid var(--orange);
-  border-left: 3px solid var(--crimson);
-  padding-bottom: 6px;
-  padding-left: 10px;
-  margin: 20px 0 14px;
-}
-
-.wrapper.specialty-intro > p {
-  font-family: var(--font-body);
-  font-size: 12pt;
-  line-height: 1.6;
-  color: var(--ink);
-}
-
-.wrapper.specialty-intro > p strong {
-  color: var(--orange);
-  font-weight: 700;
-}
-
-.wrapper.specialty-intro > p em,
-.wrapper.specialty-intro > p ins {
-  color: var(--ink-smoke);
-}
-
-.wrapper.specialty-intro > ul {
-  margin: 0 0 18px 1.2rem;
-  padding: 0;
-  font-family: var(--font-body);
-  font-size: 12pt;
-  line-height: 1.6;
-  color: var(--ink);
-}
-
-.wrapper.specialty-intro > ul li {
-  margin: 0 0 6px;
-}
-
 /* field-guide: folded from legacy/specialty.css */
 /* ---------------------------------------------------------------------------
    SPECIALTY — full-page art, intro panels, specialty cards, spread layout
    All rules below are GAP vs shared.css unless noted as PARTIAL.
    --------------------------------------------------------------------------- */
 
-/* Prevents double page-break when .specialty is followed by .page-break. */
-.specialty+.page-break {
-  page-break-before: auto;
-  break-before: auto;
-}
-
-/* Full-bleed art page. LIVE in chapter-02 Augmerc/Proxy/Streetwarden. */
-.specialty-art, .dc-specialty-art {
-  page: full;
-  break-before: page;
-  page-break-before: always;
-  break-inside: avoid;
-  page-break-inside: avoid;
-  width: 8.625in;
-  height: 11.25in;
-  margin: 0;
-  padding: 0;
-}
-
-/* Stretch paragraph to fill the art page. */
-.specialty-art > p, .dc-specialty-art > p {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  line-height: 0;
-}
-
-/* Full-bleed object-fit cover for the full-page art image. */
-.specialty-art img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  margin: 0;
-  padding: 0;
-}
+/* .specialty-art geometry and page assignment moved to content-templates.css and page-rules.css — see CSS-AUDIT.md L4 */
 
 /* PARTIAL — bare .specialty-intro (without .wrapper) fallback.
    shared.css .wrapper.specialty-intro (above) handles the compound case.
@@ -1979,10 +1799,10 @@ body::after {
    (same specificity) wins by load order for wrapped elements.
    This rule provides fallback for bare .specialty-intro without .wrapper. */
 .specialty-intro > h2:first-child, .dc-specialty-intro > h2:first-child {
-  font-family: var(--header-font-family);
+  font-family: var(--font-display);
   font-size: 2rem;
   font-weight: var(--fw-bold, 700);
-  color: var(--page-background-color);
+  color: var(--bg);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -1996,14 +1816,14 @@ body::after {
 
 /* PARTIAL — bare .specialty-intro > h3. Complementary to shared.css compound version. */
 .specialty-intro > h3, .dc-specialty-intro > h3 {
-  color: var(--secondary-color);
-  font-family: var(--header-font-family);
+  color: var(--crimson);
+  font-family: var(--font-display);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-top: 1.1rem;
   margin-bottom: 0.4rem;
   padding-bottom: 0.25rem;
-  border-bottom: 1px solid var(--secondary-color);
+  border-bottom: 1px solid var(--crimson);
   border-top: none;
 }
 
@@ -2029,8 +1849,8 @@ body::after {
 
 /* LIVE inside plugin-emitted <section class="specialty ...">. */
 .specialty h2 {
-  color: var(--secondary-color);
-  border-bottom: thin var(--secondary-color) solid;
+  color: var(--crimson);
+  border-bottom: thin var(--crimson) solid;
   margin-bottom: 0.12in;
 }
 
@@ -2049,13 +1869,13 @@ body::after {
 .specialty h3 {
   margin-top: 0.18in;
   padding-top: 0.08in;
-  border-top: var(--bw-thin) solid var(--accent-color2);
+  border-top: var(--bw-thin) solid var(--orange);
 }
 
 /* LIVE in chapter-01.md (10 specialty cards). */
 .specialty-card, .dc-specialty-card {
-  border: 1.5px solid var(--hud-blue-border);
-  border-left: var(--callout-border-width-small) solid var(--secondary-color);
+  border: 1.5px solid var(--hud-blue);
+  border-left: var(--callout-border-width-small) solid var(--crimson);
   padding: var(--space-2xl);
   break-inside: avoid;
   page-break-inside: avoid;
@@ -2063,7 +1883,7 @@ body::after {
   position: relative;
   margin: 0 0 0.1in 0;
   overflow: visible;
-  line-height: var(--line-height-tight);
+  line-height: var(--lh-tight);
   background: var(--hud-panel);
 }
 
@@ -2108,8 +1928,8 @@ body::after {
 
 /* Even cards flip the border accent to the right. */
 .specialty-card:nth-child(even) {
-  border-left: 1.5px solid var(--hud-blue-border);
-  border-right: var(--callout-border-width-small) solid var(--secondary-color);
+  border-left: 1.5px solid var(--hud-blue);
+  border-right: var(--callout-border-width-small) solid var(--crimson);
 }
 
 /* Even cards float image to the right. */
@@ -2258,14 +2078,14 @@ body::after {
 .page.page-info-sidebar.citizen-file h3.at-a-glance-heading {
   display: inline-block;
   font-family: var(--font-display);
-  font-size: 20pt; /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
+  font-size: var(--fs-chevron); /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
   letter-spacing: 0.06em;
   color: var(--paper-cream);
   text-transform: uppercase;
   background: var(--rust);
   border: 0;
   padding: 10px 28px 10px 14px;
-  clip-path: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
+  clip-path: var(--clip-banner);
   margin: 0 0 18px;
 }
 
@@ -2312,7 +2132,7 @@ body::after {
   width: var(--sidebar-width);
   margin: 0 0 0.15in 0.2in;
   /* Full border: top/right/bottom from legacy; border-left above from shared.css */
-  border: 1.5px solid var(--hud-blue-border);
+  border: 1.5px solid var(--hud-blue);
   font-size: var(--fs-body-sm);
   line-height: var(--lh-normal);
   position: relative;
@@ -2331,8 +2151,8 @@ body::after {
 .sidebar-title, .dc-sidebar-label {
   margin: 0 0 0.1in 0;
   padding-bottom: 0.06in;
-  border-bottom: 1.5px solid var(--hud-blue-border);
-  font-family: var(--header-font-family);
+  border-bottom: 1.5px solid var(--hud-blue);
+  font-family: var(--font-display);
   letter-spacing: 0.08em;
   color: var(--hud-blue-bright);
 }
@@ -2363,7 +2183,7 @@ body::after {
   border-left: 3px solid var(--orange);
   background: var(--paper-light);
   font-style: italic;
-  font-size: 11pt;
+  font-size: var(--fs-body-sm);
   break-inside: avoid;
   page-break-inside: avoid;
 }
@@ -2385,7 +2205,7 @@ body::after {
   float: none;
   width: 90%;
   margin: 0.12in auto 0.18in;
-  font-size: max(var(--small-font-size), 11pt);
+  font-size: var(--fs-body-sm);
   line-height: var(--lh-normal);
   break-inside: avoid;
   page-break-inside: avoid;
@@ -2490,7 +2310,7 @@ body::after {
   border-collapse: collapse;
   margin: 14px 0;
   font-family: var(--font-body);
-  font-size: 12pt;
+  font-size: var(--fs-body);
   color: var(--ink);
 }
 
@@ -2527,7 +2347,7 @@ body::after {
 .dc-roll-table-roll {
   font-family: var(--font-mono);
   font-weight: 700;
-  font-size: 12pt;
+  font-size: var(--fs-body);
   color: var(--orange);
   width: 60px;
   text-align: center;
@@ -2569,10 +2389,6 @@ body::after {
   grid-template-columns: 1fr 1fr;
   gap: 32px;
   align-items: start;
-}
-/* SCREEN PREVIEW ONLY — move to guide.css in next refactor pass */
-@media screen and (max-width: 1100px) {
-  .dc-roll-table-compare-stage { grid-template-columns: 1fr; }
 }
 .dc-roll-table-col { min-width: 0; }
 .dc-roll-table-col-label {
@@ -2622,10 +2438,6 @@ body::after {
   break-inside: avoid;
   page-break-inside: avoid;
 }
-/* SCREEN PREVIEW ONLY — move to guide.css in next refactor pass */
-@media screen and (max-width: 900px) {
-  .dc-options-layout { grid-template-columns: 1fr; }
-}
 
 /* The options table itself */
 .dc-options-table {
@@ -2633,7 +2445,7 @@ body::after {
   border-collapse: collapse;
   font-family: var(--font-body);
   font-size: var(--fs-body);
-  line-height: var(--lh-body);
+  line-height: var(--lh-normal);
   border-top: 2px solid var(--ink);
   border-bottom: 2px solid var(--ink);
 }
@@ -2718,20 +2530,20 @@ body::after {
 /* term label accent color */
 .terms-list .card strong, .dc-terms-list .card strong,
 .terms .item strong, .dc-terms .item strong {
-  color: var(--secondary-color);
+  color: var(--crimson);
 }
 
 /* term paragraph spacing */
 .terms-list .card p, .dc-terms-list .card p,
 .terms .item p, .dc-terms .item p {
-  padding-block: var(--small-gap);
+  padding-block: var(--space-sm);
 }
 
 /* first term paragraph — border-bottom separator, no top padding */
 .terms-list .card p:first-of-type, .dc-terms-list .card p:first-of-type,
 .terms .item p:first-of-type, .dc-terms .item p:first-of-type {
   padding-block: 0;
-  border-bottom: 1px var(--accent-color1) solid;
+  border-bottom: 1px var(--hud-blue) solid;
 }
 
 /* .header LIVE in chapter-01.md (lines 451, 514); .section-header harmless, no markdown usage. */

@@ -16,9 +16,10 @@
 |------|---------|
 | `css/dc-brand.css` | Brand tokens, font faces, base typography, and all DC component styles |
 | `css/page-rules.css` | `@page` rules, named pages, Paged.js chrome, and chapter counter resets |
+| `css/content-templates.css` | Shared content templates: covers, TOC, stat blocks, and learning-path chrome |
 | `css/guide.css` | Design-guide-specific overrides: fenced code blocks and syntax callout styles |
 
-All three are imported in order by `css/index.css`. The book-layer (`field-guide/css/`) can import `dc-brand.css` and `page-rules.css` directly and add only its own delta on top.
+All four are imported in order by `css/index.css`. The book-layer (`field-guide/css/`) can import `dc-brand.css`, `page-rules.css`, and `content-templates.css` directly and add only its own delta on top.
 
 ## How Components Work
 
@@ -42,7 +43,7 @@ Cost: 2 AP — Boost your next action die by one step.
 
 ## Customizing the Brand
 
-`css/dc-brand.css §1` contains all `:root` tokens. Change any of the variables below to retheme the entire system — every rule in dc-brand.css, page-rules.css, and guide.css inherits from these.
+`css/dc-brand.css §1` contains all `:root` tokens. Change any of the variables below to retheme the entire system — every rule in dc-brand.css, page-rules.css, content-templates.css, and guide.css inherits from these.
 
 **Before (default DC palette):**
 

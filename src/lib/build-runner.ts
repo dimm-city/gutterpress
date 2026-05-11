@@ -297,6 +297,16 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
 
   // === HTML format: stop here ============================================
   if (format === "html") {
+    // Inject pagedjs-interface.js so the viewer toolbar can communicate with
+    // the iframe (sets window.previewAPI and dispatches renderingComplete).
+    // Must run after emitViewer so preview/scripts/pagedjs-interface.js exists.
+    const bookSource = await fsp.readFile(htmlFile, "utf-8");
+    const bookWithInterface = bookSource.replace(
+      '<script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>',
+      '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>'
+    );
+    await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
+
     const fingerprintPath = await writeBuildFingerprint({
       command: "build",
       outputDir: outDir,

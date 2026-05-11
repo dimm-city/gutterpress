@@ -32,7 +32,7 @@
    the exported PDF. The 200×200 RGBA PNG tiles seamlessly at all print sizes.
    Source: field-guide/images/brick-bg-02.png */
 .pagedjs_sheet {
-  background-color: var(--page-background-color);
+  background-color: var(--bg);
   background-image: url("../img/brick-bg-02.png");
   background-repeat: repeat;
 }
@@ -135,7 +135,7 @@
 /* flat selector — avoids CSS nesting dependency on Chromium version */
 .toc ol, .toc ul {
   margin-bottom: var(--gutter);
-  border-left: var(--callout-border-width) solid var(--secondary-color);
+  border-left: var(--callout-border-width-small, 2px) solid var(--crimson);
 }
 
 /* TOC sub-entry layout — padding, position. Typography (line-height, font-size, font-weight, letter-spacing) in _backup. */
@@ -183,10 +183,13 @@
   padding-bottom: 0.06in;
 }
 
-/* Fix D2: Restore dc-toc text color — shared.css `.page.page-toc li { color: var(--ink) }` (0,2,1)
-   overrides content-templates.css `.dc-toc ol > li { color: var(--text-secondary) }` (0,1,2).
-   Fix D3: Restore dc-toc list indent and counter — same specificity fight zeroes padding-left
-   and suppresses the list-item counter via `li::before { content: none }`. */
+/* Fix D2: Restore dc-toc text color — `.page.page-toc li` (0,2,1) in this file
+   overrides `.dc-toc ol > li { color: var(--text-secondary) }` (0,1,2).
+   Fix D3: Restore dc-toc list indent and counter — same intra-file specificity fight
+   zeroes padding-left and suppresses the list-item counter via `li::before { content: none }`.
+   Specificity: .page.page-toc .dc-toc ol > li = 0,3,2, which beats .page.page-toc li (0,2,1).
+   The .page.page-toc prefix CANNOT be dropped — .dc-toc ol > li alone (0,1,2) would lose.
+   See also the comment on .page.page-toc li in the BOOK PREVIEW MAPPINGS block below. */
 .page.page-toc .dc-toc ol > li {
   color: var(--text-secondary, #a8b0bc);
   padding-left: 3.5rem;
@@ -231,7 +234,7 @@
 
 /* H2 text backing on intro — keeps heading readable over the floated art image. */
 .page > h2 {
-  text-shadow: 0 0 0.08in var(--page-background-color);
+  text-shadow: 0 0 0.08in var(--bg);
 }
 
 /* ---------------------------------------------------------------------------
@@ -295,34 +298,7 @@ article {
   column-fill: balance;
 }
 
-/* ---------------------------------------------------------------------------
-   Chapter-02 typography (moved from field-guide/css/chapter-02-overrides.css
-   during Wave 1 cleanup, 2026-05-03). Quarantined since Batch 4 (markdown
-   structure puts 5+ h3 banners per page, demoting h3 prevents fatigue).
-   Now lives with other chapter-scoped page-template rules.
-   --------------------------------------------------------------------------- */
-
-/* h3: demote from full-weight chevron banner to a thin accent line.
-   Scoped narrowly to chapter-02 *content* pages so specialty/full-page
-   layouts and the existing `.dc-chevron` explicit class are untouched. */
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.rolling-die):not(.choose-specialty) h3 {
-  font-size: var(--fs-body); /* was --fs-body-sm; downsize compared to base h3 */
-  font-weight: var(--fw-semibold);
-  border-top: var(--bw-thin) solid var(--accent-color1); /* was medium */
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-/* h4: definition-header treatment for DREAM/DREAMER/PC/DM (these live as
-   h4 in the chapter-02 markdown). Keep readable but not banner-weight. */
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.rolling-die):not(.choose-specialty) h4 {
-  font-size: var(--fs-body-sm);
-  font-weight: var(--fw-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--accent-color3);
-  border-top: none;
-}
+/* Chapter-02 h3/h4 overrides moved to guide.css — see CSS-AUDIT.md L6 */
 
 /* ---------------------------------------------------------------------------
    Info + Sidebar (Citizen File / Character Sheet)
@@ -411,6 +387,26 @@ article {
   page-break-inside: avoid;
 }
 
+/* .full-page layout geometry (moved from page-rules.css — see CSS-AUDIT.md L7).
+   Ensures an empty .full-page occupies a full page in Paged.js (no layout box
+   otherwise). background-color applied here so it renders in Chromium PDF export. */
+.full-page {
+  width: var(--page-width, 8.625in);
+  height: var(--page-height, 11.25in);
+  background-color: var(--bg);
+  break-before: always;
+  page-break-before: always;
+}
+
+/* .specialty-art / .dc-specialty-art geometry (received from dc-brand.css L4).
+   page: full is set in page-rules.css; geometry lives here per layer contract. */
+.specialty-art, .dc-specialty-art {
+  width: var(--page-width, 8.625in);
+  height: var(--page-height, 11.25in);
+  break-before: page;
+  page-break-before: always;
+}
+
 /* ---------------------------------------------------------------------------
    Global Break / Orphan Prevention
    --------------------------------------------------------------------------- */
@@ -432,13 +428,146 @@ article {
 
 .page.toc li {
   margin-bottom: 0.06in;
-  line-height: var(--line-height-normal);
+  line-height: var(--lh-normal);
+}
+
+/* ── Page-type layout — base .page structure and front-matter page variants ── */
+/* Received from dc-brand.css BOOK PREVIEW MAPPINGS block (L1 fix, 2026-05-10).
+   These were in dc-brand.css (token+component layer) but belong here as
+   structural Paged.js wrappers. The @media screen { .page { background } }
+   rule is intentionally NOT migrated — this is a print-only project. */
+
+/* Base page layout — provides fallback geometry for screen preview;
+   overridden unconditionally below by the print reset. */
+.page {
+  color: var(--ink);
+  position: relative;
+  padding: 32px 36px 60px;
+  min-height: 1100px;
+  box-sizing: border-box;
+}
+
+.page > * {
+  position: relative;
+  z-index: 1;
+}
+
+.page img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* TOC page heading — banner treatment */
+.page.page-toc > h1 {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: var(--fs-chevron); /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
+  letter-spacing: 0.06em;
+  color: var(--paper-cream);
+  text-transform: uppercase;
+  background: var(--rust);
+  border: 0;
+  padding: 10px 28px 10px 14px;
+  clip-path: var(--clip-banner);
+  margin: 0 0 18px;
+}
+
+.page.page-toc > .wrapper {
+  margin-bottom: 18px;
+  break-inside: avoid;
+}
+
+.page.page-toc > .wrapper > h2 {
+  margin: 0 0 8px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ink);
+}
+
+.page.page-toc > .wrapper > h2::before {
+  content: none;
+}
+
+.page.page-toc > .wrapper > h2 a {
+  color: inherit;
+  border-bottom: 0;
+}
+
+.page.page-toc > .wrapper > ul,
+.page.page-toc > .wrapper > ul ul {
+  margin: 0;
+  padding: 0;
+  border-left: 0;
+}
+
+/* Base TOC list item — font, spacing, border.
+   NOTE: The dc-toc overrides at .page.page-toc .dc-toc ol > li (below) use
+   a higher-specificity selector (0,3,2) to win over this rule (0,2,1).
+   Now that both rules live in the same file, the specificity escalation is
+   still needed because .page.page-toc li (0,2,1) would otherwise override
+   .dc-toc ol > li (0,1,2). Keeping the .page.page-toc prefix on the dc-toc
+   selector is intentional — do not simplify. */
+.page.page-toc li {
+  list-style: none;
+  margin: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hud-blue-dim);
+  font-family: var(--font-body);
+  font-size: var(--fs-body-xs);
+  line-height: 1.5;
+  /* color intentionally omitted — dc-toc handles list item color via --text-secondary */
+}
+
+/* Only suppress ::before bullets for non-dc-toc TOC lists */
+.page.page-toc:not(.dc-toc) li::before {
+  content: none;
+}
+
+.page.page-toc li a {
+  color: inherit;
+  border-bottom: 0;
+}
+
+.page.page-toc li > ul {
+  margin-top: 8px;
+  padding-left: 18px;
+}
+
+/* Front-matter page headings — credits, intro, chapter-start */
+.page.page-credits.credits > h1,
+.page.page-intro.intro > h1,
+.page.page-chapter-start.chapter-start > h1 {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: var(--fs-chevron); /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
+  letter-spacing: 0.06em;
+  color: var(--paper-cream);
+  text-transform: uppercase;
+  background: var(--rust);
+  border: 0;
+  padding: 10px 28px 10px 14px;
+  clip-path: var(--clip-banner);
+  margin: 0 0 18px;
+}
+
+.page.page-credits.credits p,
+.page.page-intro.intro p,
+.page.page-chapter-start.chapter-start p {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  color: var(--ink);
 }
 
 /* ---------------------------------------------------------------------------
    Universal Print — Page Wrapper Reset
    Cancels shared.css screen-preview values for .page (min-height, padding)
    so chapter wrappers take their natural Paged.js dimensions in print.
+   Also cancels the screen-geometry .page block immediately above — these
+   values only apply in the live preview; Paged.js sizing takes over in print.
    --------------------------------------------------------------------------- */
 .page {
   background: transparent;
@@ -501,7 +630,7 @@ article {
   border-bottom: 1px solid var(--hud-blue-dim, #c9d6e2);
   counter-increment: dc-toc;
   font-family: var(--font-body, 'Titillium Web', sans-serif);
-  font-size: 11pt;
+  font-size: var(--fs-body-sm);
   line-height: 1.4;
   color: var(--text-secondary, #a8b0bc);
   font-style: italic;
@@ -518,14 +647,14 @@ article {
   font-weight: 700;
   font-size: 14px;
   letter-spacing: 2px;
-  color: var(--hud-blue, #3f7aa9);
+  color: var(--hud-blue, #2a6a8a);
   font-style: normal;
 }
 .dc-toc ol > li > strong {
   color: var(--hud-blue, #2a6a8a);
 }
 .dc-toc ol > li > a {
-  font-family: 'Titillium Web', sans-serif;
+  font-family: var(--font-body);
   font-size: 13pt;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -540,7 +669,7 @@ article {
   font-size: 10pt;
   font-weight: 600;
   letter-spacing: 1.5px;
-  color: var(--hud-blue, #3f7aa9);
+  color: var(--hud-blue, #2a6a8a);
   font-style: normal;
   margin-left: 0.6em;
   white-space: nowrap;
@@ -813,7 +942,7 @@ article {
 .specialty table td,
 .specialty table th {
   padding: 0.06in 0.08in;
-  line-height: var(--line-height-tight);
+  line-height: var(--lh-tight);
 }
 
 /* Learning path inside cards: already overridden above,

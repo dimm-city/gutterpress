@@ -31,7 +31,7 @@ This file is in good shape after its recent cleanup pass. The `--bk-*` alias gro
 
 **[Medium] ✅ FIXED** `a:hover` and other hover rules are meaningless in print output. Move to a `@media screen` block or a dedicated screen-override section at the bottom of the file. _(fixed: wrapped `a:hover` rule in `@media screen { }`)_
 
-**[Medium] ✅ FIXED** `@media screen and (max-width: 1100px)` (line ~2588) and `@media screen and (max-width: 900px)` (line ~2639) — responsive breakpoints buried in a print-first file with no other responsive rules. These are design-guide preview-only concerns. Move them to `guide.css` or group them into a clearly marked "SCREEN PREVIEW" section at the file tail. _(fixed: added "SCREEN PREVIEW ONLY — move to guide.css in next refactor pass" comment above both blocks; actual move deferred — guide.css owned by another agent)_
+**[Medium] ✅ FIXED** `@media screen and (max-width: 1100px)` (line ~2588) and `@media screen and (max-width: 900px)` (line ~2639) — responsive breakpoints buried in a print-first file with no other responsive rules. These are design-guide preview-only concerns. Move them to `guide.css` or group them into a clearly marked "SCREEN PREVIEW" section at the file tail. _(fixed 2026-05-09: added comment above both blocks; fixed 2026-05-10: both blocks moved to guide.css)_
 
 **[Medium]** `--dc-roll-table-roll--crit/hit/mixed/miss/fail` modifier classes (lines ~2558–2562) all resolve to `color: var(--orange)`. The comment says "reserved for future differentiation" but shipping identical no-op classes invites confusion. Either implement the differentiation or remove the modifier classes.
 
@@ -49,9 +49,9 @@ This file is in good shape after its recent cleanup pass. The `--bk-*` alias gro
 
 ### Structural Refactors
 
-**Split the "BOOK PREVIEW MAPPINGS" section into its own file.** Lines ~1714–2769 are a parallel design vocabulary layered on top of the DC component vocabulary — `.page`, `.wrapper`, `.specialty`, `.sidebar`, `.terms`, `.header`, and their descendants. This material targets the live field-guide preview and the legacy content layer, not the DC brand itself. Moving it to `preview-mappings.css` would reduce `dc-brand.css` from ~2,750 lines to roughly 1,700 and make it clear which rules ship with a new book project vs. which are specific to this design guide.
+**Split the "BOOK PREVIEW MAPPINGS" section into its own file.** Lines ~1714–2769 are a parallel design vocabulary layered on top of the DC component vocabulary — `.page`, `.wrapper`, `.specialty`, `.sidebar`, `.terms`, `.header`, and their descendants. This material targets the live field-guide preview and the legacy content layer, not the DC brand itself. Moving it to `preview-mappings.css` would reduce `dc-brand.css` from ~2,750 lines to roughly 1,700 and make it clear which rules ship with a new book project vs. which are specific to this design guide. _(L1 — deferred: complex, multi-session effort)_
 
-**Move responsive `@media` queries to `guide.css`.** The two `@media screen and (max-width: …)` blocks at the file tail have no business being in a print-first brand file.
+**✅ FIXED Move responsive `@media` queries to `guide.css`.** _(fixed 2026-05-10: both `@media screen and (max-width: …)` blocks moved from dc-brand.css to guide.css)_
 
 ### Token Architecture Improvements
 
@@ -59,11 +59,11 @@ This file is in good shape after its recent cleanup pass. The `--bk-*` alias gro
 
 **Bridge `--fs-body-sm` and stub `--small-font-size`.** These represent the same concept. Add `--fs-body-sm: var(--small-font-size, 11pt)` and document the bridge.
 
-**Remove or promote `--fg5: #a8a097`** — only `--fg*` token without a named `--ink-*` peer. Either delete it or add a companion `--ink-fog: #a8a097` to the ink scale.
+**✅ FIXED Remove or promote `--fg5: #a8a097`** — all `--fg*` tokens removed in the 2026-05-10 dead token sweep; `--fg5` was confirmed caught by the sweep.
 
 **Rename `--border-soft` and `--border-card`** — ambiguous names. Rename to `--border-paper-edge` and `--border-card-outline` and audit all usages.
 
-**Remove six stub tokens that have no callers:** `--hud-border-soft`, `--card-header-bg`, `--card-border-width`, `--card-font-size`, `--card-body-height` — declared in the stub block, never consumed in any rule. Either use them in component rules or document them as extension points in a separate configuration block, not mixed into the working `:root`.
+**✅ FIXED Remove six stub tokens that have no callers:** `--hud-border-soft`, `--card-header-bg`, `--card-border-width`, `--card-font-size`, `--card-body-height` — removed in the 2026-05-10 dead token sweep (all `--card-*` stub tokens removed). _(Also removed: all `--fg*`, `--outcome-*`, `--clip-*`, `--border-*` aliases except `--border-hairline`/`--border-blue`, `--shadow-*`, surface tint orphans — ~55 tokens total.)_
 
 ### Component Pattern Standardization
 
@@ -86,6 +86,16 @@ A canonical component must: (1) use spacing tokens for all padding, (2) pair `br
 The boundary is mostly correct but has two residual problems.
 
 **✅ FIXED: Misplaced rules in page-rules.css.** `.pagedjs_sheet`, `.page`/`.page-break` base resets, and `.column-break` moved to the top of `content-templates.css` (above the existing `.page` rules). A migration comment left in `page-rules.css` at the former location.
+
+**✅ FIXED (2026-05-10): Layer boundary violations resolved (8 total):**
+- `.specialty` duplicate break rule removed from dc-brand.css (was a duplicate of the canonical rule in content-templates.css)
+- `.specialty-art` named-page assignment moved from dc-brand.css to page-rules.css; geometry moved to content-templates.css
+- `@media screen` responsive blocks moved from dc-brand.css to guide.css
+- Chapter-02 h3/h4 overrides moved from content-templates.css to guide.css
+- `.full-page` geometry moved from page-rules.css to content-templates.css
+- `counter-reset: chapter` moved from guide.css to page-rules.css
+- Header comment in dc-brand.css updated to show correct 4-file import chain
+- `'Titillium Web'` font-family hardcode in content-templates.css replaced with `var(--font-body)`
 
 **Conceptual model ambiguity.** The current doc comment says page-rules.css owns "paged-media chrome (.pagedjs_*)". That is partially untrue: lines ~332–336 contain `.pagedjs_page.pagedjs_named_page.pagedjs_chapter-start_page …` selectors that override rendered margin-box content. The rationale is defensible (they directly relate to `@page chapter-start`) but should be documented explicitly — otherwise developers will assume all `.pagedjs_*` selectors belong in page-rules.css and scatter rendered-DOM overrides there.
 
@@ -127,17 +137,35 @@ The auto-increment (2) is a ghost — it fires but is overridden on every body p
 
 **Migration:** Move `body { counter-reset: chapter }` from `guide.css` into page-rules.css adjacent to the per-chapter resets. Remove `counter-increment: chapter` from `guide.css`. Add a comment in `guide.css` pointing to page-rules.css as the counter owner.
 
-✅ FIXED: Added authority comment at top of counter block in `page-rules.css` documenting that page-rules.css owns all chapter counter values. Removed `counter-increment: chapter` from `div.chapter > h1:first-of-type` in guide.css and replaced with explanatory comment pointing to page-rules.css. `body { counter-reset: chapter }` kept in guide.css as the initialization to 0. Full counter ownership is now page-rules.css.
+✅ FIXED: Added authority comment at top of counter block in `page-rules.css` documenting that page-rules.css owns all chapter counter values. Removed `counter-increment: chapter` from `div.chapter > h1:first-of-type` in guide.css and replaced with explanatory comment pointing to page-rules.css. ✅ FIXED (2026-05-10): `body { counter-reset: chapter }` moved from guide.css to page-rules.css adjacent to per-chapter resets. Full counter ownership — init and hard-resets — now lives in page-rules.css.
 
 ### Remaining Issues
 
 **✅ FIXED: [Medium]** `@page aug` — `@bottom-left-corner` and `@bottom-right-corner` replaced with `@bottom-left` and `@bottom-right` (CSS Paged Media L3 spec-compliant names that Paged.js implements). Footer content will now render.
 
-**✅ FIXED (deferred): [Medium]** `.full-page` geometry has `width: 8.625in; height: 11.25in` hardcoded. `--page-width`/`--page-height` do not exist in dc-brand.css (not owned). Added TODO comment in page-rules.css noting the duplication and the migration path once tokens are defined.
+**✅ FIXED: [Medium]** `.full-page` geometry was `width: 8.625in; height: 11.25in` hardcoded. `--page-width: 8.625in` and `--page-height: 11.25in` added to dc-brand.css `:root` (2026-05-10). `.full-page` geometry moved from page-rules.css to content-templates.css; hardcoded values replaced with `var(--page-width)` / `var(--page-height)`. Also: `0.5in` → `var(--page-margin)`, `0.75in` → `var(--binding-margin, 0.75in)`, `9.5pt` → `var(--fs-footer, 9.5pt)` throughout page-rules.css.
 
 **✅ FIXED: [Medium]** CSS nesting in `.toc ol, .toc ul` — removed nested `ul { border: none }` from inside the parent block. The flat fallback `.toc ul ul { border-left: none; ... }` below handles nested sub-list border removal. Added comment noting this uses flat selectors to avoid CSS nesting Chromium version dependency.
 
 **[Low]** Duplicate `padding-bottom` in `.toc` — two consecutive declarations (`0.6in` then `0.9in`) in the same `.toc` rule. The first is dead. Remove it.
+
+### Viewer Layer Fixes (2026-05-10) ✅ FIXED
+
+All viewer-specific CSS variable names normalized to the `--pmd-viewer-*` convention:
+
+- `--color-paper` renamed to `--pmd-viewer-sheet-bg` (now `var(--bg)`) in dc-brand.css `:root` and preview.js
+- `--page-background-color` eliminated; dc-brand.css and all CSS files now reference `--bg` directly
+- `--preview-canvas-bg` renamed to `--pmd-viewer-canvas-bg` in preview.css
+- Fallbacks added to all `var(--pagedjs-crop-shadow)` calls in preview.css
+- Dead `--pagedjs-crop-stroke` token removed from debug.css
+
+### Undefined Variable Fixes (2026-05-10) ✅ FIXED
+
+- `--accent-color3` in content-templates.css replaced with `var(--ink-dust)`
+- `--callout-border-width` replaced with `var(--callout-border-width-small, 2px)` (token was absent from `:root`)
+- `--text-secondary: #a8b0bc` added to dc-brand.css `:root` (was used but never declared)
+- `--hud-blue-border` shorthand nesting (invalid CSS) fixed: `border: 1.5px solid var(--hud-blue-border)` replaced with `var(--hud-blue)` directly across all 4 usages in content-templates.css
+- Inconsistent `--hud-blue` fallbacks in content-templates.css normalized to `#2a6a8a`
 
 ---
 
@@ -227,9 +255,45 @@ A well-architected version of this system has dc-brand.css split into a token fi
 | Priority | Count | Addressed (dc-brand.css) | Addressed (page-rules.css + content-templates.css) | Addressed (guide.css + index.css) | Remaining |
 |---|---|---|---|---|---|
 | Critical | 2 | 1 ✅ `body::after` position:fixed → absolute | 1 ✅ `chapter-end` named page confirmed present | — | 0 |
-| High | 7 | 3 ✅ hr opacity, stub token aliases, dc-note-label scoped; 1 BLOCKED grid !important | 1 ✅ `.toc` named-page conflict, chapter-02 `:not()` chains, counter split | 1 ✅ bare-element selectors scoped to div.chapter (h2/h3/h4, pre, code, table) | 1 BLOCKED grid !important (content-templates.css) |
-| Medium | 12 | 2 ✅ a:hover @media screen, responsive breakpoints commented | 4 ✅ aug margin boxes, full-page tokens TODO, CSS nesting, toc duplicate padding | 2 ✅ div.ch-toc → .guide-toc, index.css config surface | 4 remaining (px/pt units, various) |
-| Low | 8 | 6 ✅ NEW: markers, #root, mix-blend-mode, user-select, text-wrap, tape QA | — | 1 ✅ guide.css header comment (4-file chain, already correct) | 1 `--fg5` orphan token, modifier class cleanup |
-| Structural (multi-session) | 4 | 0 | 1 ✅ pagedjs_sheet/page/page-break moved to content-templates.css | 3 ✅ index.css config surface, guide.css scoping, missing utilities added | 1 remaining: Split dc-brand.css, ADAPTING.md |
+| High | 7 | 3 ✅ hr opacity, stub token aliases, dc-note-label scoped; ✅ grid !important resolved | 1 ✅ `.toc` named-page conflict, chapter-02 `:not()` chains, counter split | 1 ✅ bare-element selectors scoped to div.chapter (h2/h3/h4, pre, code, table) | 0 |
+| Medium | 12 | 3 ✅ a:hover @media screen, responsive breakpoints moved to guide.css, dead tokens swept | 4 ✅ aug margin boxes, full-page tokenized, CSS nesting, toc duplicate padding | 2 ✅ div.ch-toc → .guide-toc, index.css config surface | 3 remaining (px/pt units, modifier classes, toc padding value mismatch) |
+| Low | 8 | 6 ✅ NEW: markers, #root, mix-blend-mode, user-select, text-wrap, tape QA | — | 1 ✅ guide.css header comment (4-file chain, already correct) | 1 modifier class cleanup (dc-roll-table-roll no-ops) |
+| Structural (multi-session) | 4 | 0 | 2 ✅ pagedjs_sheet/page/page-break moved; 8 layer boundary violations fixed | 3 ✅ index.css config surface, guide.css scoping, missing utilities added | 1 remaining: Split dc-brand.css into dc-tokens.css + dc-components.css; ADAPTING.md |
+| Viewer/Token hygiene (new 2026-05-10) | 5 | 2 ✅ --pmd-viewer-sheet-bg, --text-secondary added; ~55 dead tokens removed | 2 ✅ undefined vars fixed (--accent-color3, --callout-border-width, --hud-blue-border) | — | 1 remaining: H7 inline clip polygons, H8 stale rgba gradient, H9–H12 rgba() values, A1–A25 alias chains |
 
-**Total fixed this session (guide.css + index.css agent):** 8 fixes applied — counter ownership, heading/code/table scoping, .guide-toc rename, pmd-* utilities, index.css config surface.
+**Total fixed across all sessions:** Critical 2/2, High 7/7, Medium 9/12, Low 7/8, Structural 5/6 (L1 deferred), Viewer/Token 4/5.
+
+**Open items (do not mark fixed until resolved):**
+- L1: Split dc-brand.css "BOOK PREVIEW MAPPINGS" block — deferred (complex)
+- H4: `11pt` h4 font-size — token exists but rule not yet updated
+- H5: `12pt` h5 font-size — token exists but rule not yet updated
+- H7: `22px` clip-path polygons — `--clip-*` tokens removed; inline polygons remain
+- H8: Old `rgba(232,93,36)` gradient stops — stale color value
+- H9–H12: Various `rgba()` values not using tokens
+- A1–A25: Token alias chains — documented, not yet consolidated
+
+---
+
+## Session History
+
+### 2026-05-10 — Dead Token Sweep, Layer Boundaries, Viewer Naming Convention
+
+**Dead token sweep (~55 tokens removed from dc-brand.css `:root`):**
+All `--fg*` alias tokens removed (including `--fg5`). All `--outcome-*`, `--clip-*`, `--border-*` (except `--border-hairline` and `--border-blue`), `--shadow-*`, and `--card-*` stub tokens removed. All surface tint orphans removed. Three tokens originally flagged for removal were found to be active and retained: `--small-font-size`, `--lh-body`, `--small-gap`.
+
+**New tokens added to dc-brand.css `:root`:**
+`--fs-chevron: 20pt`, `--fs-body-xs: 11.5pt`, `--fs-footer: 9.5pt` (typography); `--page-width: 8.625in`, `--page-height: 11.25in`, `--binding-margin: 0.75in` (geometry); `--text-secondary: #a8b0bc` (color); `--classtag-gutterdruid: #4a7c3a`, `--classtag-technosorc: #8a3aa9` (class tags); `--pmd-viewer-sheet-bg: var(--bg)` (replaces `--color-paper` and `--page-background-color`).
+
+**Layer boundary violations resolved (8):**
+`.specialty` duplicate break rule removed from dc-brand.css; `.specialty-art` named-page assignment moved to page-rules.css and geometry to content-templates.css; `@media screen` responsive blocks moved from dc-brand.css to guide.css; chapter-02 h3/h4 overrides moved from content-templates.css to guide.css; `.full-page` geometry moved from page-rules.css to content-templates.css; `counter-reset: chapter` moved from guide.css to page-rules.css; dc-brand.css header comment updated to show correct 4-file import chain.
+
+**Hardcoded values tokenized:**
+In page-rules.css: `0.5in` → `var(--page-margin)`, `0.75in` → `var(--binding-margin, 0.75in)`, `9.5pt` → `var(--fs-footer, 9.5pt)`, `8.625in`/`11.25in` → `var(--page-width)`/`var(--page-height)`. In content-templates.css: `'Titillium Web'` → `var(--font-body)`.
+
+**Viewer variable naming convention established (`--pmd-viewer-*`):**
+`--color-paper` → `--pmd-viewer-sheet-bg`; `--preview-canvas-bg` → `--pmd-viewer-canvas-bg`; `--page-background-color` eliminated; fallbacks added to `var(--pagedjs-crop-shadow)` calls in preview.css; dead `--pagedjs-crop-stroke` removed from debug.css.
+
+**Undefined variables fixed:**
+`--accent-color3` replaced with `var(--ink-dust)`; `--callout-border-width` replaced with `var(--callout-border-width-small, 2px)`; `--text-secondary` added to `:root`; `--hud-blue-border` shorthand nesting (invalid CSS) fixed across 4 usages; inconsistent `--hud-blue` fallbacks normalized to `#2a6a8a`.
+
+**Still open after this session:** L1 (BOOK PREVIEW MAPPINGS split), H4/H5 hardcoded font sizes, H7 inline clip polygons, H8/H9–H12 stale rgba() values, A1–A25 alias chain consolidation.

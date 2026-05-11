@@ -11,10 +11,10 @@
  pagedjs-ignore {
      body {
          /* Paged.js reads these variables for crop mark display control */
-         --color-pageBox: transparent;
+         --color-pageBox: transparent; /* viewer-internal — do not set from document CSS */
          --pagedjs-mark-cross-display: none;
          --pagedjs-mark-crop-display: none;
-         --color-marginBox: transparent;
+         --color-marginBox: transparent; /* viewer-internal — do not set from document CSS */
 
          margin: 0;
          padding: 0;
@@ -164,22 +164,22 @@
 
  .pagedjs_bleed-top .pagedjs_marks-crop,
  .pagedjs_bleed-bottom .pagedjs_marks-crop {
-     box-shadow: 1px 0px 0px 0px var(--pagedjs-crop-shadow);
+     box-shadow: 1px 0px 0px 0px var(--pagedjs-crop-shadow, transparent);
  }
 
  .pagedjs_bleed-top .pagedjs_marks-crop:last-child,
  .pagedjs_bleed-bottom .pagedjs_marks-crop:last-child {
-     box-shadow: -1px 0px 0px 0px var(--pagedjs-crop-shadow);
+     box-shadow: -1px 0px 0px 0px var(--pagedjs-crop-shadow, transparent);
  }
 
  .pagedjs_bleed-left .pagedjs_marks-crop,
  .pagedjs_bleed-right .pagedjs_marks-crop {
-     box-shadow: 0px 1px 0px 0px var(--pagedjs-crop-shadow);
+     box-shadow: 0px 1px 0px 0px var(--pagedjs-crop-shadow, transparent);
  }
 
  .pagedjs_bleed-left .pagedjs_marks-crop:last-child,
  .pagedjs_bleed-right .pagedjs_marks-crop:last-child {
-     box-shadow: 0px -1px 0px 0px var(--pagedjs-crop-shadow);
+     box-shadow: 0px -1px 0px 0px var(--pagedjs-crop-shadow, transparent);
  }
 
  /* Debug console in toolbar */
@@ -207,7 +207,7 @@
      display: flex;
      justify-content: center;
      padding: 0;
-     background-color: var(--preview-canvas-bg, #e0e0e0);
+     background-color: var(--pmd-viewer-canvas-bg, #e0e0e0);
  }
 
  /* SPREAD MODE: Container handles scrolling only */
