@@ -36,21 +36,17 @@ The DC print system uses named page types to control margin geometry, footer chr
 | `.full-page` | Zero margins, no footers — full-bleed art |
 | `.aug` | Reduced margins 0.1 in — specialty spreads |
 | `.citizen-file` | Running header "Citizen File" — NPC records |
+| `.page-ability-catalog .choose-specialty` | 2-column auto-fill layout for the specialty overview/selection page |
+| `.page-info-sidebar` | 2-column balanced layout shell for info sidebar pages |
 | `.colophon` | End-of-book, all chrome suppressed |
 
-Named pages are declared in the markdown source using either the legacy page marker or the `@page` directive from markdown-it-paged.
-
-**Legacy page marker** (raw HTML fence):
-
-```markdown
---- {page .page .chapter-start}
-```
-
-**`@page` directive** (markdown-it-paged):
+Named pages are declared in the markdown source using the `@page` directive:
 
 ```markdown
 @page chapter-start
 ```
+
+The longer form `--- {page .page .chapter-start}` (raw HTML fence) also works and is equivalent.
 
 ---
 
@@ -168,6 +164,19 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 </div>
 ```
 
+**Markdown equivalents for specialty wrapper elements:**
+
+The raw HTML `<div>` wrappers shown above can be written using `::: wrapper` syntax in markdown-it-paged source. The following forms are interchangeable with their HTML equivalents:
+
+| Markdown shorthand | HTML equivalent | Purpose |
+|--------------------|----------------|---------|
+| `::: wrapper {.specialty-intro}` | `<div class="specialty-intro">` | Intro panel — prose and class tag chips |
+| `::: wrapper {.specialty-art}` | `<div class="specialty-art">` | Full-bleed art plate (right page) |
+| `::: wrapper {.specialty-spread}` | `<div class="specialty-spread">` | Specialty-card grid container |
+| `::: wrapper {class="specialty-card augmerc"}` | `<div class="specialty-card augmerc">` | Individual specialty card |
+
+The specialty name on `.specialty-card` (e.g. `augmerc`) is a layout hook that identifies the card in the grid — it is not a palette modifier and does not apply color variables.
+
 ---
 
 ### Specialty Listing
@@ -204,6 +213,94 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 </div>
 
 <div class="dc-tape">— § —</div>
+```
+
+---
+
+### Choose Specialty Page
+
+"Choose your specialty" catalog page using a 2-column auto-fill layout. Each `.specialty-card` stays together (no mid-card breaks), and the `.specialty-spread` container spans all columns so the grid can breathe across the full text area. Use this immediately before the individual specialty opener spreads.
+
+**Components:**
+- `.page-ability-catalog` — named page class for the catalog layout
+- `.choose-specialty` — activates 2-column `column-fill: auto` on the page
+- `## Intro Heading` — plain H2 introduces the selection prompt
+- `::: wrapper {.specialty-spread}` — grid container that spans all columns
+- `::: wrapper {class="specialty-card [name]"}` — one card per specialty; `break-inside: avoid` keeps each intact
+
+**Page class:** `--- {page .page-ability-catalog .choose-specialty}`
+
+```markdown
+--- {page .page-ability-catalog .choose-specialty}
+
+## Choose Your Specialty
+
+Opening sentence orienting the player — what a specialty is and how to pick one.
+
+::: wrapper {.specialty-spread}
+
+::: wrapper {class="specialty-card augmerc"}
+
+### Augmerc
+
+Brief specialty description — two sentences maximum.
+
+:::
+
+::: wrapper {class="specialty-card secondspec"}
+
+### Second Specialty
+
+Brief specialty description — two sentences maximum.
+
+:::
+
+:::
+```
+
+The specialty name on the `.specialty-card` wrapper is a layout hook only — it does not apply a color palette or CSS variable override. Cards are sized by the column grid, not by individual card CSS.
+
+---
+
+### Info Sidebar Page
+
+Two-column balanced body page with a floating character-file sidebar. `.page-info-sidebar` provides the layout shell (balanced columns, sidebar float region). `.citizen-file` adds the character-file content skin: at-a-glance stat cards, framed portrait, and field-notes sidebar. The two classes are always paired.
+
+**Components:**
+- `.page-info-sidebar` — layout shell: 2-column balanced text, sidebar float
+- `.citizen-file` — content skin: at-a-glance cards, sidebar float styling, running header "Citizen File"
+- `# Name {.dc-chevron}` — subject name banner
+- `<div class="dc-intro">` — atmospheric lede
+- `.citizen-at-a-glance` — stat card row (HP, DEF, AP, threat tier)
+- `.citizen-sidebar` — right-column float with portrait + tape label
+- Body prose fills the left column below the stat cards
+
+**Page class:** `--- {page .page-info-sidebar .citizen-file}`
+
+Note: `.page-info-sidebar` is the layout shell; `.citizen-file` is the field-guide content skin. Use both together — neither works fully without the other.
+
+```markdown
+--- {page .page-info-sidebar .citizen-file}
+
+# Subject Name {.dc-chevron}
+
+<div class="dc-intro">One atmospheric lede — role, threat posture, district affiliation. Under twenty words.</div>
+
+<div class="citizen-at-a-glance">
+  <div class="citizen-stat"><div class="citizen-stat-key">HP</div><div class="citizen-stat-val">22</div></div>
+  <div class="citizen-stat"><div class="citizen-stat-key">DEF</div><div class="citizen-stat-val">14</div></div>
+  <div class="citizen-stat"><div class="citizen-stat-key">AP</div><div class="citizen-stat-val">3</div></div>
+  <div class="citizen-stat"><div class="citizen-stat-key">TIER</div><div class="citizen-stat-val">2</div></div>
+</div>
+
+<div class="citizen-sidebar">
+  <div class="dc-portrait">
+    <img src="img/subject.png" alt="Subject Name">
+  </div>
+  <div class="dc-tape margin-sm">— Field Record —</div>
+</div>
+
+Body prose fills the left column. Two to four paragraphs covering background, methods, and encounter role.
 ```
 
 ---

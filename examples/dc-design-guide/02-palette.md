@@ -84,8 +84,7 @@ The texture is intentionally subtle — the PNG uses RGBA with very low opacity 
 
 | Token | Value | Purpose |
 |---|---|---|
-| `--bg` | `#d4d4d4` | Page background — cool gray canvas |
-| `--pmd-viewer-sheet-bg` | `var(--bg)` | print-md viewer hook — sets `.pagedjs_sheet` background color |
+| `--bg` | `#d4d4d4` | Page background — set this on `.pagedjs_sheet` in your project CSS to control the page surface color in both preview and PDF |
 
 ---
 

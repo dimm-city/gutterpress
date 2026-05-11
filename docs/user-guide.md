@@ -908,7 +908,7 @@ This project uses #javascript and #markdown-it
 
 For comprehensive plugin development documentation, see:
 - **[examples/plugins/README.md](../examples/plugins/README.md)** - Complete plugin development guide
-- **[examples/with-custom-plugin/](../examples/with-custom-plugin/)** - Working example project
+- **[examples/with-custom-plugin/](../.tmp/with-custom-plugin)** - Working example project
 - **[markdown-it documentation](https://markdown-it.github.io/)** - markdown-it API reference
 
 #### Security

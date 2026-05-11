@@ -87,7 +87,6 @@
      PAGE & PAPER — light print substrate
      ═══════════════════════════════════════════════════════════════════════════ */
   --bg:                    #d4d4d4;  /* page background — light cool gray */
-  --pmd-viewer-sheet-bg:   var(--bg);  /* print-md viewer hook — sets .pagedjs_sheet color */
   --paper-cream:  #f5f0e6;  /* warm cream — primary card surface */
   --paper-light:  #ebe5d8;  /* paper — aside / sticker / quote */
   --paper-aged:   #ddd6c6;  /* deeper aged — emphasis aside */
@@ -286,7 +285,7 @@ h1, h2, h3, h4, h5, h6 {
   line-height: var(--lh-tight);
   text-transform: uppercase;
   text-wrap: balance; /* text-wrap: CSS4 — silently ignored by Paged.js; effective in screen preview only */
-  margin: 1.5em 0 0.5em;
+  margin: 1.5em 0 0.5em; /* em intentional — typographic rhythm scales with each heading's own font-size */
   /* --blood (#a30900) gives 5.46:1 on the light-grey page bg (#d4d4d4).
      --orange (#f24d00) only reaches 2.43:1 — fails WCAG AA. */
   color: var(--blood);
@@ -299,10 +298,10 @@ h1 {
   font-size: var(--fs-h1);
   font-weight: var(--fw-bold);
   margin-top: 0;
-  margin-bottom: 0.75em;
+  margin-bottom: 0.75em; /* em intentional — h1 bottom gap scales with h1 size */
   /* --blood (#a30900): 5.46:1 on #d4d4d4 — WCAG AA pass. --orange (#f24d00) was 2.43:1. */
   border-bottom: 2px solid var(--blood);
-  padding-bottom: 0.15em;
+  padding-bottom: 0.15em; /* em intentional — underline gap scales with h1 size */
   color: var(--blood);
 }
 /* h2 base color is HUD blue in the design guide.
@@ -329,7 +328,7 @@ code, kbd, samp {
   color: var(--blood);
   font-size: 0.95em;
   background: var(--paper-light);
-  padding: 0.05em 0.3em;
+  padding: 0.05em 0.3em; /* em intentional — inline element padding scales with font-size */
   border: 1px solid var(--paper-aged);
 }
 
@@ -352,7 +351,7 @@ ul li::before {
   content: "» ";
   color: var(--orange);
   font-weight: 700;
-  padding-right: 0.1em;
+  padding-right: 0.1em; /* em intentional — bullet gap scales with list font-size */
 }
 
 /* ============================================================================
@@ -598,7 +597,7 @@ body::after {
   position: relative;
   margin-bottom: 24px;
   max-width: 100%;
-  filter:
+  filter: /* screen preview only — drops in Paged.js PDF export */
     drop-shadow(2px 0 0 var(--ink))
     drop-shadow(-2px 0 0 var(--ink))
     drop-shadow(0 2px 0 var(--ink))
@@ -645,7 +644,7 @@ body::after {
 /* ───────── PATH BLOCK — clipped container (top-left + bottom-right corners) ───────── */
 /* Clip pattern differs from .dc-card-body (bottom-right only): both diagonal corners  */
 .dc-path-block-wrap {
-  filter:
+  filter: /* screen preview only — drops in Paged.js PDF export */
     drop-shadow(2px 0 0 var(--ink))
     drop-shadow(-2px 0 0 var(--ink))
     drop-shadow(0 2px 0 var(--ink))
@@ -1974,7 +1973,7 @@ hr,
   padding: 24px 26px 30px;
   position: relative;
   margin: 0 0 22px;
-  filter:
+  filter: /* screen preview only — drops in Paged.js PDF export */
     drop-shadow(2px 0 0 var(--ink))
     drop-shadow(-2px 0 0 var(--ink))
     drop-shadow(0 2px 0 var(--ink))
@@ -2518,6 +2517,7 @@ hr,
 .terms-list, .dc-terms-list,
 .terms, .dc-terms {
   break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 /* .terms .item LIVE in chapter-04.md; .terms-list .card harmless. */
@@ -2525,6 +2525,7 @@ hr,
 .terms .item, .dc-terms .item {
   --card-border-color: transparent;
   break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 /* term label accent color */
@@ -2551,6 +2552,23 @@ hr,
 .header {
   page-break-after: avoid;
   margin-bottom: var(--space-2xl);
+}
+
+/* Art pinned to page bottom-center — use on images or wrapper divs */
+.dc-art-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Base two-column list utility — scoped card overrides below take precedence */
+.two-column-list {
+  column-count: 2;
+  column-gap: var(--space-md, 0.25in);
+  column-fill: balance;
 }
 
 /* ============================================================================

@@ -73,6 +73,7 @@ div.chapter h2, div.chapter h3, div.chapter h4 {
   break-before: auto;
   break-after: avoid;
   break-inside: avoid;
+  page-break-before: auto;
   page-break-after: avoid;
   page-break-inside: avoid;
 }

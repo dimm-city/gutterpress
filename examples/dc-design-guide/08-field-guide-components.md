@@ -163,6 +163,24 @@ A back-matter data block for edition info, legal notices, and production credits
 
 ---
 
+## Callout Class Names — Field Guide vs Design Guide
+
+The design guide documents four callout components using `dc-` prefixed class names: `dc-vibe-callout`, `dc-origin-callout`, `dc-human-callout`, and `dc-gear-callout`. These are the canonical API — use them for all new content. They are documented fully in `03-components.md`.
+
+Short-form names without the prefix — `vibe-callout`, `origin-callout`, `human-callout`, and `gear-callout` — are defined in `shared.css` as parallel definitions and render similarly but with slightly different padding values. Use the `dc-` prefix forms for all new content; migrate existing uses when editing those files.
+
+**Important difference:** `.gear-callout` (short form) applies `min-height: 3.5in` unconditionally. `.dc-gear-callout` does not — use `.dc-gear-callout` with an explicit inline style when a minimum height is needed:
+
+```markdown
+::: wrapper {.dc-gear-callout style="min-height:3.5in"}
+...
+:::
+```
+
+Field-guide source files should be migrated to the `dc-` prefix forms. See `docs/field-guide-cleanup.md` for the full list of files requiring updates.
+
+---
+
 ## Component Authoring Quick Reference
 
 | Component | Authoring method | CSS class |
@@ -172,3 +190,5 @@ A back-matter data block for edition info, legal notices, and production credits
 | Sidebar Box | `::: wrapper {.dc-sidebar-box}` | `dc-sidebar-box` |
 | Gear Entry | `::: wrapper {.dc-gear-entry}` | `dc-gear-entry` |
 | Colophon Block | Raw HTML `<dl class="dc-colophon">` | `dc-colophon` |
+| Art Bottom Pin | `![img](path){.dc-art-bottom}` or `::: wrapper {.dc-art-bottom}` | `dc-art-bottom` |
+| Legacy note: Ability Container | Use `@skill` instead — `:::: ability` has no active CSS | — |

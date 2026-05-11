@@ -522,17 +522,6 @@ body {
   padding: 0 !important;
 }
 
-/*
- * Page paper background — Paged.js sets NO background on .pagedjs_sheet so the
- * transparent page boxes inherit the canvas colour above, making all pages grey
- * when canvas != white. We explicitly apply --pmd-viewer-sheet-bg here (WITHOUT !important)
- * so the document's own CSS can still override it, while the canvas injection above
- * never bleeds onto the visible page surface.
- */
-.pagedjs_sheet {
-  background-color: var(--pmd-viewer-sheet-bg, white);
-}
-
 /* ── Spread container (two-page side-by-side default) ── */
 .pagedjs_pages {
   display: flex !important;

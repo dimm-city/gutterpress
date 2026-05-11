@@ -42,6 +42,8 @@
   z-index: 1;
   page-break-after: always;
   page-break-inside: avoid;
+  break-after: always;
+  break-inside: avoid;
 }
 
 .column-break {
@@ -475,6 +477,7 @@ article {
 .page.page-toc > .wrapper {
   margin-bottom: 18px;
   break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .page.page-toc > .wrapper > h2 {
