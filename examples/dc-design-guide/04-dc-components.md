@@ -60,19 +60,23 @@ H3 heading for optional mechanics and variant rules. The `.no-top` modifier remo
 
 ## Ability Cards
 
-The `@skill` / `@end-skill` macro generates the full card HTML automatically. Use `variant="1"` through `variant="5"` to select clip-path shapes. Two live cards below — same macro, different variants:
+The `@skill` macro generates the full card HTML automatically. Use `variant="1"` through `variant="5"` to select clip-path shapes. The next `@skill` or `@end-skill` closes the current card — no closing marker is needed between consecutive cards.
 
-**Macro syntax** — tier after `|` in the heading, sub-header as `#####`:
+**Macro syntax** — H4 for the title, blockquote for flavor, ordered list for abilities, optional H5 for sub-header:
 
 ```
-@skill variant="1" id="ability-id"
-#### Ability Title | AUG1.N
+@skill variant="1"
+#### Ability Title
 > Flavor line.
 1. **0 AP** *Action Name:* Effect description.
 2. **2 AP** *Action Name:* Effect description.
 ##### Sub-header text
 @end-skill
 ```
+
+**Tier badge** — When used inside a `@learning-path`, the tab tier (`AUG1.1`, `AUG1.2`, …) is auto-generated from the path context. For standalone cards or a custom label, append ` | Badge` to the H4: `#### Ability Title | AUG1.1`.
+
+**Optional attributes** — `id="slug"` sets the card's `name` attribute for anchor links. `{.allow-split}` permits Paged.js to split a tall card across a page break (prefer `@continue` instead for long abilities).
 
 **Specimen**
 
@@ -103,7 +107,7 @@ When an ability description is too long to fit on one card, use `@continue` insi
 **Syntax** — place `@continue` anywhere inside an active `@skill` block:
 
 ```
-@skill variant="3" id="deep-scan"
+@skill variant="3"
 #### Deep Scan | AUG2.4
 > Every system has a back door. Yours is already open.
 1. **0 AP** *Passive Sweep:* Detect all networked devices within Near range at scene start.
@@ -320,27 +324,39 @@ Same structure as the creature block. Social-facing NPCs swap combat stats for s
 
 ## Learning Path
 
-A learning path wraps a set of skill cards under a named spray header with an intro flavor line. The `@learning-path` macro generates the outer shell; each `@skill` block inside it produces a card.
+A learning path wraps a set of skill cards under a named spray banner with a sticker chain and flavor line. Use `@learning-path` after `@specialty {.classname}` — the path index and specialty code (e.g., `AUG1`) are auto-computed from context. No attributes required.
 
 **Macro syntax:**
 
 ```
-@learning-path specialty="augmerc" index="1"
+@specialty {.augmerc}
+
+@learning-path
 ### Path Title
 > Path flavor line.
 - Skill A
 - Skill B
 - Skill C
 
-@skill variant="1" id="skill-id"
-#### Skill Name | AUG1.1
+Description text about the path's signature augment or theme.
+
+@skill variant="1"
+#### Skill Name
 > Skill flavor.
 1. **0 AP** *Action Name:* Effect description.
 2. **2 AP** *Action Name:* Effect description.
 ##### Sub-header text
+
+@skill variant="2"
+#### Next Skill Name
+> Flavor.
+1. **1 AP** *Action:* Description.
 @end-skill
+
 @end-learning-path
 ```
+
+The tier badge on each card tab (`AUG1.1`, `AUG1.2`, …) is generated automatically from the specialty code and skill sequence. Use `#### Skill Name | Custom` only when overriding the auto-generated badge.
 
 **Specimen**
 

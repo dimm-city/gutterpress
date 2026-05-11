@@ -53,34 +53,45 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 
 | Marker | Closes on | Purpose |
 |--------|-----------|---------|
-| `@specialty` | Next `@specialty` or `@end-specialty` | Wraps a full specialty section (name, intro, paths) |
+| `@specialty {.classname}` | Next `@specialty` or `@end-specialty` | Wraps a full specialty section; class sets the specialty code (`.augmerc` → `AUG`) |
 | `@end-specialty` | — | Explicitly closes the current specialty block |
-| `@learning-path specialty="name" index="N"` | Next `@learning-path` or `@end-learning-path` | Groups skill cards under a spray header |
+| `@learning-path` | Next `@learning-path` or `@end-learning-path` | Groups skill cards under a spray header; path index and code auto-increment |
 | `@end-learning-path` | — | Explicitly closes the current learning-path block |
-| `@skill variant="N" id="slug"` | Next `@skill` or `@end-skill` | Starts a skill card; content becomes card body |
+| `@skill variant="N"` | Next `@skill` or `@end-skill` | Starts a skill card; content becomes card body |
 | `@end-skill` | — | Closes the current skill card |
 
 **Variant values** — `variant="1"` through `variant="5"` select different clip-path shapes for the card tab.
 
+**Optional skill attributes** — `id="slug"` sets an anchor on the card wrapper. `{.allow-split}` permits a page split on tall cards (prefer `@continue` for long abilities).
+
 **Example — skill card:**
 
 ```markdown
-@skill variant="1" id="punishing-counter"
-**Punishing Counter** · AUG1.1
-
-*See an opening, ya take it.*
-
-<span class="ap-tag free">0 AP</span> When an enemy in reach makes a basic attack, your Backbiters knock the strike off line.
+@skill variant="1"
+#### Punishing Counter
+> See an opening, ya take it.
+1. **0 AP** *Steel Says No:* When an enemy in reach makes a basic attack, your Backbiters knock the strike off line.
+2. **2 AP** *Bullet to Blood:* When an enemy you can see makes a ranged basic attack, you slip the shot.
+##### Openings are invitations to take a chunk out 'em.
 @end-skill
 ```
 
 **Example — learning path:**
 
 ```markdown
-@learning-path specialty="augmerc" index="1"
+@specialty {.augmerc}
 
-@skill variant="1" id="breach-and-clear"
-...
+@learning-path
+### Biting Distance
+> If you can touch it, you can maul it.
+- Punishing Counter
+- Rage Hit
+- Dirty Work
+
+@skill variant="1"
+#### Punishing Counter
+> See an opening, ya take it.
+1. **0 AP** *Steel Says No:* When an enemy in reach attacks, your Backbiters knock the strike off line.
 @end-skill
 
 @end-learning-path
