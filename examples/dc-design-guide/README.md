@@ -46,18 +46,16 @@ css/
 └── guide.css              ← specimen styles scoped to div.chapter
 ```
 
-See [`CSS-PATTERNS.md`](CSS-PATTERNS.md) for the full architecture reference —
-layer contracts, token conventions, markdown-friendly selector strategies, and
-Paged.js-specific patterns. See [`CSS-AUDIT.md`](CSS-AUDIT.md) for the audit
-history and outstanding items.
+See [`docs/CSS-PATTERNS.md`](docs/CSS-PATTERNS.md) for the full architecture
+reference — layer contracts, token conventions, markdown-friendly selector strategies,
+and Paged.js-specific patterns.
 
 ## Reference Documents
 
 | Document | Purpose |
 |---|---|
-| [`CSS-PATTERNS.md`](CSS-PATTERNS.md) | Normative CSS architecture and authoring patterns |
-| [`CSS-AUDIT.md`](CSS-AUDIT.md) | Token hygiene, layer violations, and compliance history |
-| [`CSS-ARCHITECTURE.md`](CSS-ARCHITECTURE.md) | Structural refactor roadmap and session history |
+| [`docs/CSS-PATTERNS.md`](docs/CSS-PATTERNS.md) | Normative CSS architecture and authoring patterns |
+| [`docs/field-guide-cleanup.md`](docs/field-guide-cleanup.md) | Field-guide migration notes — dc-* prefix adoption |
 
 ## Adapting This Design Guide
 
@@ -66,15 +64,15 @@ To start a new project based on the DC brand:
 1. Copy the `css/` folder into your project.
 2. Create `css/project-overrides.css` and add it as the last import in `index.css`.
 3. Override tokens in `project-overrides.css` — do not edit `dc-brand.css` directly.
-4. The `--pmd-viewer-sheet-bg` token controls the page background color in the
-   print-md preview; set it to your page background color.
+4. Override `--bg` to change the page background color. `content-templates.css` sets
+   `.pagedjs_sheet { background-color: var(--bg) }` directly — no additional hook
+   variable is needed.
 
 ```css
 /* css/project-overrides.css */
 :root {
-  --bg:                  #1a1715;  /* dark page background */
-  --pmd-viewer-sheet-bg: var(--bg);
-  --paper-cream:         #e8e0d0;  /* adjusted cream for dark substrate */
+  --bg:          #1a1715;  /* dark page background */
+  --paper-cream: #e8e0d0;  /* adjusted cream for dark substrate */
 }
 ```
 

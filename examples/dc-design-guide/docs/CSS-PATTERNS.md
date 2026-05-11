@@ -164,18 +164,23 @@ token name, not scattered across heading rules.
 --binding-margin: 0.75in;  /* spine-side in @page :left/:right */
 ```
 
-### Viewer Integration Tokens
+### Page Background and the Viewer
 
-The print-md CLI reads one CSS variable from document stylesheets. It must be prefixed
-`--pmd-viewer-` to make the cross-boundary coupling visible:
+The page background color is controlled entirely within `content-templates.css` — no
+viewer hook token is needed:
 
 ```css
---pmd-viewer-sheet-bg: var(--bg);  /* sets .pagedjs_sheet background in preview */
+/* content-templates.css */
+.pagedjs_sheet {
+  background-color: var(--bg);
+  background-image: url("../img/brick-bg-02.png");
+  background-repeat: repeat;
+}
 ```
 
-Any variable the CLI reads from document CSS must follow this prefix convention. An
-unprefixed name creates invisible coupling — document authors have no way to discover
-it without reading CLI source code.
+To change the page background in an adapted project, override `--bg` in
+`project-overrides.css`. The viewer picks it up automatically because
+`.pagedjs_sheet` reads it directly — there is no intermediate viewer hook variable.
 
 ### What Makes a Good Token
 
