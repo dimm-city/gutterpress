@@ -36,7 +36,7 @@ export const parseContainerMeta = (
     if (!cleaned) continue;
 
     if (cleaned.startsWith(".")) {
-      classes.push(cleaned.slice(1));
+      classes.push(...cleaned.split(".").filter(Boolean));
       continue;
     }
 
@@ -75,7 +75,14 @@ export const renderContainerOpen = (
   paramsRemainder: string | undefined
 ): string => {
   const meta = parseContainerMeta(paramsRemainder);
-  const tokenClass = token.attrGet ? token.attrGet("class") : "";
+  const rawTokenClass: string = token.attrGet ? (token.attrGet("class") ?? "") : "";
+  // markdown-it-attrs may deliver dot-chained tokens (e.g. "dc-prose.flavor") as a
+  // single class string. Expand every space-separated token by splitting on dots so
+  // {.dc-note.warning} becomes ["dc-note", "warning"] rather than ["dc-note.warning"].
+  const tokenClass = rawTokenClass
+    .split(/\s+/)
+    .flatMap((tok) => (tok.includes(".") ? tok.split(".").filter(Boolean) : tok ? [tok] : []))
+    .join(" ");
   const classes = mergeClasses(baseClass, meta.classes.join(" "), tokenClass);
 
   const tokenAttrs: Array<[string, string]> = Array.isArray(token.attrs)
