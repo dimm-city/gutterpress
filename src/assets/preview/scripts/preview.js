@@ -426,25 +426,28 @@ function setZoom(zoom) {
     const containerWidth = iframeEl ? iframeEl.clientWidth : window.innerWidth;
     const page = iframeWin.document.querySelector(".pagedjs_page");
     const pageWidth = page ? page.offsetWidth : 0;
+    const pages = iframeWin.document.querySelector(".pagedjs_pages");
 
     if (pageWidth > 0 && pageWidth > containerWidth) {
-      // Page wider than viewport: margin:auto fails so the page left-aligns.
-      // Compute a transform-origin that visually centers the scaled page.
-      // Derivation: newLeft = origin + (0 - origin)*scale = containerWidth/2 - scaledWidth/2
-      // Solving for origin: origin = (containerWidth/2 - pageWidth*scale/2) / (1 - scale)
+      // Apply zoom to .pagedjs_pages (not body transform) so the scroll area
+      // shrinks proportionally — body transform leaves full layout height intact.
       const scale = (containerWidth - 32) / pageWidth;
-      const originX = (containerWidth / 2 - (pageWidth * scale) / 2) / (1 - scale);
-      const body = iframeWin.document.body;
-      body.style.transformOrigin = `${originX}px top`;
-      body.style.transform = `scale(${scale})`;
+      if (pages) pages.style.zoom = scale;
+      // Reset any previous body transform
+      iframeWin.document.body.style.transform = "none";
+      iframeWin.document.body.style.transformOrigin = "";
     } else {
-      // Page fits: margin:auto centers it, standard 100% zoom
+      // Page fits: clear any fit-width zoom and show at 100%
+      if (pages) pages.style.zoom = "";
       api.setZoom(1.0);
     }
 
     const zoomSelect = document.getElementById("zoom-select");
     if (zoomSelect) zoomSelect.value = "fit-width";
   } else {
+    // Clear any fit-width zoom before applying transform-based zoom
+    const pages = iframeWin.document.querySelector(".pagedjs_pages");
+    if (pages) pages.style.zoom = "";
     api.setZoom(zoom);
     const zoomSelect = document.getElementById("zoom-select");
     if (zoomSelect && zoomSelect.querySelector(`option[value="${zoom}"]`)) {
