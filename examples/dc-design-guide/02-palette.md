@@ -1,4 +1,4 @@
-@chapter #ch-palette .palette .chapter-01 data-ch="1"
+@chapter #ch-palette .palette .chapter-01 ch="1"
 
 # Color Palette
 

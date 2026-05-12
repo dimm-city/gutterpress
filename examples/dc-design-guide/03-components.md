@@ -1,4 +1,4 @@
-@chapter #ch-components .components .chapter-01 data-ch="1"
+@chapter #ch-components .components .chapter-01 ch="1"
 
 # Core Components
 

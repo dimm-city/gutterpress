@@ -1,4 +1,4 @@
-@chapter #ch-dc-components .dc-components .chapter-01 data-ch="1"
+@chapter #ch-dc-components .dc-components .chapter-01 ch="1"
 
 # DC Component Library
 

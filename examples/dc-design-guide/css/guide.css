@@ -325,6 +325,13 @@ div.chapter h2 {
    ignored by the Paged.js polyfill (it only handles Function and Identifier nodes
    in the CSS AST, not String nodes). Use attr(data-ch) to read the data-ch="N"
    attribute placed on each div.chapter by the @chapter directive.
+
+   IMPORTANT authoring note: write `ch="N"` (NOT `data-ch="N"`) in the @chapter
+   directive. The markdown-it-paged plugin's attachDataAttrs() function prepends
+   "data-" to every key that is not id/class/template/region, so:
+     @chapter ... ch="1"   →   <div class="chapter ..." data-ch="1">   ✓
+     @chapter ... data-ch="1" →  <div class="chapter ..." data-data-ch="1">  ✗
+
    Paged.js clones wrapper divs on every page, so data-ch is reachable on all pages
    of a chapter — not just the first. One rule covers all three chapters. */
 div.chapter[data-ch] { string-set: guideSection attr(data-ch); }

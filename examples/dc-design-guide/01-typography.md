@@ -1,4 +1,4 @@
-@chapter #ch-typography .typography .chapter-01 data-ch="1"
+@chapter #ch-typography .typography .chapter-01 ch="1"
 
 # Typography
 
