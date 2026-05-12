@@ -2448,6 +2448,10 @@ hr,
   margin: 0 0 var(--space-sm);
 }
 
+/* DEPRECATED 2026-05-12 — dc-roll-table HTML table replaced by @outcome macro.
+   Any visual improvements were merged into .dc-outcomes (canonical system).
+   This block can be removed once dc-op-manual confirms no direct HTML usage.
+   See REDUNDANCY-AUDIT.md Category 1. */
 /* ───────── ROLL RESULT TABLE — compact tabular d20 ladder ─────────
    Used inline within rules text as a compact reference; contrast
    with .dc-outcomes (full styled component for teaching the system). */

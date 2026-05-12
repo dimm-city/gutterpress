@@ -202,11 +202,11 @@ Recommendation: audit which of these produce meaningfully different column width
 
 Systems 1 and 3 are structurally similar (grid of labelled value cells). If the visual treatment is close enough, they could share a base class with a variant modifier. System 2 is citizen-file-specific and may intentionally differ.
 
-**Two outcome table systems (complete, parallel, overlapping):**
-1. `@outcome` macro → `.dc-outcomes` / `.dc-outcome-row` + modifiers — the macro-based authoring path
-2. Raw HTML `.dc-roll-table` / `.dc-roll-table-row` + parallel modifier classes — the hand-rolled HTML path
+**Two outcome table systems (complete, parallel, overlapping):** ✅ DONE 2026-05-12
+1. `@outcome` macro → `.dc-outcomes` / `.dc-outcome-row` + modifiers — the macro-based authoring path (**canonical**)
+2. Raw HTML `.dc-roll-table` / `.dc-roll-table-row` + parallel modifier classes — the hand-rolled HTML path (**deprecated**)
 
-Both systems produce outcome/roll tables. The macro path is the intended future state; the raw HTML path is the legacy approach. The design guide should mark the raw HTML path as deprecated and recommend the `@outcome` macro exclusively.
+The HTML `<table class="dc-roll-table">` in `05-page-templates.md` was replaced with a full five-rung `@outcome` macro example. The `.dc-roll-table` CSS block in `dc-brand.css` was annotated with a deprecation comment. No visual properties from `.dc-roll-table` required porting — the color-coded name labels only function on a light background and do not translate to `.dc-outcomes` (dark key panel). The CSS block is retained until the dc-op-manual field guide CSS layer is confirmed clear of direct HTML usage.
 
 **Two numbered procedure systems:**
 1. `:::procedure` container → `.dc-steps` — macro/container authoring path
@@ -334,7 +334,7 @@ Same issue: H1 and banner heading tokens are nearly identical. If the banner hea
 | `.at-a-glance-heading` | 4 — DROP FROM DOCS | LOW | One-off page class |
 | Six two-column layout mechanisms | 5 — RATIONALIZE | MEDIUM | Audit for true visual differences |
 | Three stat-grid patterns | 5 — RATIONALIZE | MEDIUM | Systems 1 and 3 structurally similar |
-| Two outcome table systems | 5 — RATIONALIZE | HIGH | Macro path vs legacy HTML; deprecate legacy |
+| Two outcome table systems | 5 — RATIONALIZE | ~~HIGH~~ **DONE 2026-05-12** | `@outcome` macro is now canonical; HTML replaced in `05-page-templates.md`; `.dc-roll-table` CSS deprecated |
 | Two numbered procedure systems | 5 — RATIONALIZE | MEDIUM | Container vs legacy `.procedure > ol` |
 | Two pull-quote authoring paths | 5 — RATIONALIZE | LOW | Keep `:::pull-quote`; drop alert path |
 | `.dc-note-callout` vs `.dc-note` naming | 5 — RATIONALIZE | HIGH | Opposite audiences, near-identical names |

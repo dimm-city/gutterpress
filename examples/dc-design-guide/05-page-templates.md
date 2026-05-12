@@ -480,7 +480,7 @@ Continued prose with the floated image wrapping left.
 
 Workhorse template for mechanics chapters. H2 banners, H3 sub-headings, body prose, note callouts, tape dividers, roll tables, option tables. **Page class:** normal body page, no break marker needed.
 
-**Components:** `## ◈ Title {.dc-chevron}` (◈ optional) · `### Sub-Heading` · `**MECHANIC NAME**` · `<span class="scream">ROLL THE DIE!</span>` · `<span class="roll-lucid">ROLL LUCID.</span>` · `<span class="ability-name">Name</span>` · `!!! Note` / `!!! Dream Master` · `<div class="dc-tape">— § —</div>` · `<table class="dc-roll-table">` · `::: wrapper {.dc-options-layout}`
+**Components:** `## ◈ Title {.dc-chevron}` (◈ optional) · `### Sub-Heading` · `**MECHANIC NAME**` · `<span class="scream">ROLL THE DIE!</span>` · `<span class="roll-lucid">ROLL LUCID.</span>` · `<span class="ability-name">Name</span>` · `!!! Note` / `!!! Dream Master` · `<div class="dc-tape">— § —</div>` · `@outcome` macro · `::: wrapper {.dc-options-layout}`
 
 ```markdown
 ## ◈ Rule Category {.dc-chevron}
@@ -498,25 +498,25 @@ Inverse condition note — common edge case or clarification.
 ## ◈ Resolution Table {.dc-chevron}
 ```
 
-```html
-<table class="dc-roll-table">
-  <thead>
-    <tr>
-      <th class="dc-roll-table-th dc-roll-table-th--roll">Roll</th>
-      <th class="dc-roll-table-th dc-roll-table-th--result">Result</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr class="dc-roll-table-row">
-      <td class="dc-roll-table-roll dc-roll-table-roll--crit">20</td>
-      <td class="dc-roll-table-result"><strong class="dc-roll-table-name dc-roll-table-name--crit">Crit</strong> — Automatic success plus additional benefit.</td>
-    </tr>
-    <tr class="dc-roll-table-row dc-roll-table-row--last">
-      <td class="dc-roll-table-roll dc-roll-table-roll--fail">1</td>
-      <td class="dc-roll-table-result"><strong class="dc-roll-table-name dc-roll-table-name--fail">Catastrophe</strong> — Fail, and something else goes wrong.</td>
-    </tr>
-  </tbody>
-</table>
+```markdown
+@outcome
+
+#### 20 | Crit
+Automatic success plus additional benefit of the DM's choice.
+
+#### 11–19 | Hit
+Success — the action works as intended.
+
+#### 6–10 | Mixed
+Partial success — the action works but with a cost or complication.
+
+#### 2–5 | Miss
+Failure — the action does not succeed.
+
+#### 1 | Catastrophe
+Fail, and something else goes wrong.
+
+@end-outcome
 ```
 
 ---
