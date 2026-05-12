@@ -85,21 +85,13 @@ body { counter-reset: chapter; }
 .page.chapter-04, .page-break.chapter-04 { counter-reset: chapter 4; }
 .page.chapter-05, .page-break.chapter-05 { counter-reset: chapter 5; }
 
-/* Design guide chapter counters — the guide uses named chapter classes
-   (.overview, .typography, .palette, etc.) rather than numbered .chapter-NN
-   classes. These resets target .chapter.<name> divs which are rendered layout
-   boxes (non-zero size), so Paged.js fires them reliably per page. */
-.chapter.overview     { counter-reset: chapter 1; }
-.chapter.typography   { counter-reset: chapter 2; }
-.chapter.palette      { counter-reset: chapter 3; }
-.chapter.components   { counter-reset: chapter 4; }
-.chapter.dc-components { counter-reset: chapter 5; }
-.chapter.templates    { counter-reset: chapter 6; }
-.chapter.layout       { counter-reset: chapter 7; }
-.chapter.reference    { counter-reset: chapter 8; }
-.chapter.fg-components { counter-reset: chapter 9; }
-.chapter.fg-examples  { counter-reset: chapter 10; }
-.chapter.cli          { counter-reset: chapter 11; }
+/* NOTE: counter-reset on div.chapter.* content wrappers does NOT work for
+   Paged.js margin boxes. The .chapter.overview etc. divs only appear on the
+   first page of each chapter — subsequent pages have no such element in their
+   cloned content, so the reset never fires. Additionally, CSS counters inside
+   .pagedjs_area cannot reach sibling .pagedjs_margin-* boxes.
+   The correct Paged.js approach is string-set on chapter headings.
+   See docs: pagedjs.org/en/documentation/ — "Named strings" section. */
 
 /* ---------------------------------------------------------------------------
    Counter-set redundancy on the page-break / page-start element itself.
