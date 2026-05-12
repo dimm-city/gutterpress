@@ -480,7 +480,7 @@ Continued prose with the floated image wrapping left.
 
 Workhorse template for mechanics chapters. H2 banners, H3 sub-headings, body prose, note callouts, tape dividers, roll tables, option tables. **Page class:** normal body page, no break marker needed.
 
-**Components:** `## ◈ Title {.dc-chevron}` (◈ optional) · `### Sub-Heading` · `**MECHANIC NAME**` · `<span class="scream">ROLL THE DIE!</span>` · `<span class="roll-lucid">ROLL LUCID.</span>` · `<span class="ability-name">Name</span>` · `!!! Note` / `!!! Dream Master` · `<div class="dc-tape">— § —</div>` · `@outcome` macro · `::: wrapper {.dc-options-layout}`
+**Components:** `## ◈ Title {.dc-chevron}` (◈ optional) · `### Sub-Heading` · `**MECHANIC NAME**` · `<span class="scream">ROLL THE DIE!</span>` · `<span class="dc-roll-lucid">ROLL LUCID.</span>` · `<span class="ability-name">Name</span>` · `!!! Note` / `!!! Dream Master` · `<div class="dc-tape">— § —</div>` · `@outcome` macro · `::: wrapper {.dc-options-layout}`
 
 ```markdown
 ## ◈ Rule Category {.dc-chevron}

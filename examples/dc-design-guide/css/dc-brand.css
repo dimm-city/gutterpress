@@ -408,7 +408,7 @@ ul li::before {
 .accent-rust    { color: var(--rust); }
 
 .font-display { font-family: var(--font-display); letter-spacing: var(--ls-display); text-transform: uppercase; }
-.font-banner  { font-family: var(--font-display); letter-spacing: 0.05em; text-transform: uppercase; }
+/* .font-banner removed 2026-05-12 — references removed --font-banner token; use .font-display instead */
 .font-tab     { font-family: var(--font-tab); letter-spacing: 0.05em; text-transform: uppercase; }
 .font-body    { font-family: var(--font-body); }
 .font-sans    { font-family: var(--font-sans); }
@@ -461,35 +461,7 @@ ul li::before {
 /* #root — ID selector removed; use a class if this element needs styling */
 /* #root { max-width: 950px; margin: 0 auto; } */
 
-/* ───────── PAGE ───────── */
-.dc-page {
-  background: var(--paper-cream);
-  border: 1px solid var(--paper-aged);
-  padding: 32px 36px 60px;
-  position: relative;
-  min-height: 1100px;
-  box-shadow: 0 2px 0 var(--shadow-light), 0 6px 20px rgba(0,0,0,0.08);
-}
-.dc-page-num {
-  position: absolute;
-  bottom: 20px;
-  left: 36px;
-  font-family: var(--font-display);
-  font-size: 13px;
-  letter-spacing: 0.08em;
-  color: var(--orange);
-  text-transform: uppercase;
-}
-.dc-chapter-num {
-  position: absolute;
-  bottom: 20px;
-  right: 36px;
-  font-family: var(--font-display);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  color: var(--hud-blue);
-  text-transform: uppercase;
-}
+/* .dc-page, .dc-page-num, .dc-chapter-num removed 2026-05-12 — screen-preview chrome, zero usage in print content */
 
 /* ───────── CHEVRON BANNER ───────── */
 .dc-chevron {
@@ -673,15 +645,7 @@ ul li::before {
 }
 
 /* ───────── PATH BLOCK — clipped container (top-left + bottom-right corners) ───────── */
-/* Clip pattern differs from .dc-card-body (bottom-right only): both diagonal corners  */
-.dc-path-block-wrap {
-  filter: /* screen preview only — drops in Paged.js PDF export */
-    drop-shadow(2px 0 0 var(--ink))
-    drop-shadow(-2px 0 0 var(--ink))
-    drop-shadow(0 2px 0 var(--ink))
-    drop-shadow(0 -2px 0 var(--ink));
-  margin: 0 0 22px;
-}
+/* .dc-path-block-wrap removed 2026-05-12 — superseded by .dc-path-shell */
 .dc-path-block {
   background: var(--paper-cream);
   clip-path: polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px);
@@ -877,32 +841,7 @@ ul li::before {
   display: block;
 }
 
-/* ───────── SPREAD LAYOUT ───────── */
-.dc-spread {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0;
-  background: var(--paper-cream);
-  border: 1px solid var(--paper-aged);
-  position: relative;
-}
-.dc-spread::before {
-  content: '';
-  position: absolute;
-  top: 0; bottom: 0; left: 50%;
-  width: 1px;
-  background: var(--paper-aged);
-  z-index: 0;
-}
-.dc-spread .dc-page {
-  border: 0;
-  box-shadow: none;
-  background: transparent;
-  min-height: auto;
-  min-width: 0;
-  overflow: hidden;
-  padding: 28px 28px 56px;
-}
+/* .dc-spread removed 2026-05-12 — screen-preview spread chrome, zero usage in print content */
 
 /* ───────── INTRO LINE ───────── */
 .dc-intro {
@@ -1600,34 +1539,9 @@ hr,
   font-weight: 400;
 }
 
-/* Two-column body layout used by templates */
-.dc-2col {
-  column-count: 2;
-  column-gap: 22px;
-  column-rule: 1px dashed var(--paper-aged);
-}
-.dc-2col > * { break-inside: avoid; }
-.dc-2col p { margin: 0 0 10px; font-family: var(--font-body); font-size: var(--fs-body-sm); line-height: 1.5; }
-.dc-2col.dc-2col-mt { margin-top: 8px; }
+/* .dc-2col and .dc-2col.dc-2col-mt removed 2026-05-12 — zero usage; canonical is .two-column */
 
-/* Hero head for class-opener template */
-.dc-class-hero {
-  position: relative;
-  margin-bottom: 18px;
-}
-.dc-class-hero-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 6px;
-}
-.dc-class-hero-no {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 4px;
-  text-transform: uppercase;
-  color: var(--ink-dust);
-}
+/* .dc-class-hero, .dc-class-hero-row, .dc-class-hero-no removed 2026-05-12 — zero usage in print content */
 
 /* Stat-cell glyphs use lixdu too — contain them. */
 .dc-stat-cell-val { min-width: 0; overflow: hidden; }

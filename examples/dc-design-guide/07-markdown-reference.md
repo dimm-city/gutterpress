@@ -94,7 +94,7 @@ Triple-colon fences wrap content in a styled `<div>`. The word after `:::` sets 
 | `:::three-column` | Three narrow columns — best for short reference entries |
 | `:::sidebar` | Right-floated aside at 38% width |
 | `:::callout` | Styled information panel with labeled type |
-| `:::pull-quote` | Large centered excerpt with decorative rules |
+| `:::pull-quote` | Large centered excerpt with decorative rules — **deprecated:** use `> [!PULLQUOTE]` instead |
 | `:::wrapper {.class}` | Generic wrapper — applies any CSS class |
 
 ```markdown
@@ -113,16 +113,18 @@ Right column content.
 Standard informational callout.
 :::
 
-:::pull-quote
-The measure of good design is whether the reader notices the design at all.
-<span class="attribution">— Design Guide</span>
-:::
+> [!PULLQUOTE]
+> The measure of good design is whether the reader notices the design at all.
+>
+> — Design Guide
 
 :::wrapper {.dc-note}
 <span class="dc-note-label">Note</span>
 <p>Content gets the `.dc-note` class on its wrapping div.</p>
 :::
 ```
+
+> **Note:** `:::pull-quote` is the legacy container path. Use `> [!PULLQUOTE]` (GFM alert syntax) as the preferred authoring form — it is shorter and consistent with other callout types.
 
 ---
 

@@ -97,12 +97,12 @@ Quick stat grid for character sheets, specialty summaries, and creature previews
 
 | Element | Syntax | Role |
 |---|---|---|
-| Class Tag | `<span class="tag">Label</span>` | Inline pill for specialty names and cost labels |
+| Class Tag | `<span class="dc-tag">Label</span>` | Inline pill for specialty names and cost labels |
 | DC Path Sticker | `<span class="dc-path-sticker">AUG1</span>` | Badge inside learning-path spray headers |
 | Tape Divider | `<div class="dc-tape flush">Label</div>` | Full-width tape strip separating major sections |
 
 ```html
-<span class="tag">Augmerc</span>
+<span class="dc-tag">Augmerc</span>
 <span class="dc-path-sticker">AUG1</span>
 <div class="dc-tape flush">Section Break</div>
 ```
@@ -315,7 +315,7 @@ Badge in the top-left corner of specialty chapter opener pages. Auto-generated b
 | AP Chip — Standard | `<span class="dc-ap">` | `dc-ap` |
 | AP Chip — Variable | `<span class="dc-ap var">` | `dc-ap var` |
 | At-a-Glance Cards | Raw HTML | `at-a-glance-cards`, `at-a-glance-card` |
-| Class Tag | `<span class="tag">Label</span>` | `tag` |
+| Class Tag | `<span class="dc-tag">Label</span>` | `dc-tag` |
 | DC Path Sticker | `<span class="dc-path-sticker">AUG1</span>` | `dc-path-sticker` |
 | Tape Divider | `<div class="dc-tape flush">Label</div>` | `dc-tape`, `flush` |
 | Creature Stat Block | Raw HTML | `dc-stat`, `dc-stat-head`, `dc-stat-grid`, `dc-stat-cell` |

@@ -10,7 +10,7 @@ This section shows how the Table of Contents, Credits, and Introduction pages lo
 
 ## Table of Contents Page
 
-**Page template** — `@page .page-toc` — activates the `.dc-toc` numbered list layout with bold chapter numbers. The intro blurb uses the `.dc-intro` wrapper. See [Components](#ch-components) for wrapper syntax and [Page Templates](#ch-templates) for the `page-toc` spec.
+**Page template** — `@page .page-toc` — activates the `.dc-toc` numbered list layout with bold chapter numbers. The intro blurb uses `:::wrapper {.dc-intro}` (legacy path — prefer `:::lede` in new content). See [Components](#ch-components) for lede syntax and [Page Templates](#ch-templates) for the `page-toc` spec.
 
 @page .page-toc
 

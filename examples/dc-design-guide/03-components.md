@@ -32,7 +32,7 @@ Italic in-world voice for card flavor and atmospheric lines. Inside `@skill` car
 
 ## Intro Lede
 
-Slightly larger opening paragraph at the top of a chapter or major section. **Syntax** — `:::lede` … `:::`
+Slightly larger opening paragraph at the top of a chapter or major section. **Syntax** — `:::lede` … `:::` (canonical)
 
 ```markdown
 :::lede
@@ -41,6 +41,8 @@ deniable enforcers — the difference is gear, grafts, and how much
 of them is still original.
 :::
 ```
+
+> **Legacy path:** `:::wrapper {.dc-intro}` … `:::` produces the same `.dc-intro` class and is used in some older example pages. Prefer `:::lede` — it is the canonical shorthand and the form to use in new content.
 
 ---
 
@@ -69,7 +71,7 @@ High-visibility callout in amber for rules with critical consequences. **Syntax*
 
 ## Pull Quote
 
-Large-format excerpt with accent rules above and below. Use sparingly — one per chapter. **Syntax** — `> [!PULLQUOTE]`
+Large-format excerpt with accent rules above and below. Use sparingly — one per chapter. **Syntax** — `> [!PULLQUOTE]` (preferred)
 
 ```markdown
 > [!PULLQUOTE]
@@ -77,6 +79,8 @@ Large-format excerpt with accent rules above and below. Use sparingly — one pe
 >
 > Field manual, second draft
 ```
+
+> **Legacy path:** `:::pull-quote` … `:::` is an older container form that produces the same output. Prefer the GFM alert syntax above for consistency with other callout types.
 
 ---
 
@@ -127,10 +131,10 @@ Second-person backstory block addressing the reader as their character. **Syntax
 
 ## Human Callout (NPC Sidebar)
 
-Compact NPC stat block inside a `.sidebar` float. **Syntax** — `<div class="sidebar"><div class="dc-human-callout">…</div></div>`
+Compact NPC stat block inside a `.dc-sidebar` float. **Syntax** — `<div class="dc-sidebar"><div class="dc-human-callout">…</div></div>`
 
 ```html
-<div class="sidebar">
+<div class="dc-sidebar">
   <div class="dc-human-callout">
     <p><strong>Rennick "Two-Tab" Farrow</strong></p>
     <p>Fixer. HP 8 | DEF 11 | Intimidate +4.</p>
@@ -240,15 +244,15 @@ Dream Master–addressed instruction block for GM guidance and scene hooks, visu
 
 ## Glossary / Term List
 
-Definition list of game terms rendered as a styled block. **Syntax** — raw HTML `.dc-terms` wrapper with `.terms-list` items
+Definition list of game terms rendered as a styled block. **Syntax** — raw HTML `.dc-terms` wrapper
 
 ```html
-<div class="dc-terms terms">
-  <div class="terms item">
+<div class="dc-terms">
+  <div class="dc-terms-item">
     <strong>Augmerc</strong>
     <p>A specialist who combines cybernetic augmentation with close-range combat training.</p>
   </div>
-  <div class="terms item">
+  <div class="dc-terms-item">
     <strong>Hard Choice</strong>
     <p>A roll result where the fiction advances but at a cost.</p>
   </div>
@@ -287,7 +291,7 @@ Five-rung d20 result table for all rolls. Each row is color-coded by result seve
 
 ---
 
-## Component Token Reference {.break-before}
+## Component Token Reference {.pmd-break-before}
 
 | Component | Authoring method | CSS class / output |
 |-----------|-----------------|-------------------|
@@ -308,8 +312,8 @@ Five-rung d20 result table for all rolls. Each row is color-coded by result seve
 | Blockquote | Standard markdown `>` blockquote | *(auto)* |
 | Code Block | Triple-backtick fenced block | *(auto)* |
 | Visit Callout | `> [!VISIT]` blockquote alert | `.dc-visit-callout` |
-| Dream Master Note | `> [!DM]` blockquote alert | `.dc-note-callout` |
-| Glossary / Term List | Raw HTML `.dc-terms` wrapper | `.dc-terms`, `.terms-list` |
+| Dream Master Note | `> [!DM]` blockquote alert | `.dc-dm-note` |
+| Glossary / Term List | Raw HTML `.dc-terms` wrapper | `.dc-terms` |
 | Numbered Procedure | `:::procedure` … `:::` ordered list | `.dc-steps` |
 | Outcome Ladder | `@outcome` … `@end-outcome` macro | `.dc-outcomes`, `.dc-outcome-row` |
 | Roll Lucid badge | auto via `@outcome` Crit row | `.dc-roll-lucid` |
