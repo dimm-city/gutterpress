@@ -256,6 +256,7 @@ At 12pt base, `1.44rem` = 17.28pt. A pullquote and an H2 are the same visual wei
 **`--fs-h1: 1.728rem (~20.7pt)` and `--fs-chevron: 20pt` — within 0.7pt.**
 Same issue: H1 and banner heading tokens are nearly identical. If the banner heading should match H1 weight, use `--fs-h1` directly rather than a separate `--fs-chevron` token.
 
+✅ FIXED 2026-05-12
 **`--bg` documentation mismatch:**
 `02-palette.md` documents `--bg` as `#d4d4d4`. The actual definition in `dc-brand.css` is `#d3cec6`. These are visually different (the CSS value is warmer/more beige). Fix: update `02-palette.md` to reflect the actual CSS value. Until fixed, any author who copies the hex from the palette doc will get a mismatch.
 
@@ -269,9 +270,9 @@ Same issue: H1 and banner heading tokens are nearly identical. If the banner hea
 | Item | Category | Priority | Notes |
 |---|---|---|---|
 | `.note-callout` / `.dc-note-callout` plugin mismatch | 2 — FIX | CRITICAL | ✅ FIXED 2026-05-12 — plugin updated to emit `dc-note-callout` |
-| `--bg` hex mismatch in docs vs CSS | 2 — FIX | HIGH | Palette doc shows wrong value |
+| `--bg` hex mismatch in docs vs CSS | 2 — FIX | HIGH | ✅ FIXED 2026-05-12 — palette doc corrected to #d3cec6 |
 | `@chapter-opener` bypass in chapter-02 | 2 — FIX | MEDIUM | ✅ FIXED 2026-05-12 — macro used; HTML fragments converted to markdown |
-| Malformed container syntax (quoted class names) | 2 — FIX | MEDIUM | May silently drop class attributes |
+| Malformed container syntax (quoted class names) | 2 — FIX | MEDIUM | ✅ FIXED 2026-05-12 — 14 occurrences normalized in chapter-01, 03, 05 |
 | `.dc-art-slot` | 1 — REMOVE | HIGH | Zero usage, no CSS consumer |
 | `.dc-art-slot-ghost` | 1 — REMOVE | HIGH | Zero usage, no CSS consumer |
 | `.dc-spread` | 1 — REMOVE | HIGH | Zero usage |
