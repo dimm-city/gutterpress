@@ -9,7 +9,7 @@ Two accent registers on cream substrate. Creaturepunk fire (crimson, rust, orang
 ## Paper & Ink
 
 <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.1in 0;">
-  <div style="width:72px;height:68px;background:var(--bg);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>BG</span><span>#d4d4d4<br>--bg</span></div>
+  <div style="width:72px;height:68px;background:var(--bg);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>BG</span><span>#d3cec6<br>--bg</span></div>
   <div style="width:72px;height:68px;background:var(--paper-cream);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Paper Cream</span><span>#f5f0e6<br>--paper-cream</span></div>
   <div style="width:72px;height:68px;background:var(--paper-light);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Paper Light</span><span>#ebe5d8<br>--paper-light</span></div>
   <div style="width:72px;height:68px;background:var(--paper-aged);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Paper Aged</span><span>#ddd6c6<br>--paper-aged</span></div>
@@ -63,7 +63,7 @@ Additional border values come directly from ink-scale tokens (`--ink`, `--ink-sm
 
 ## Page Background & Brick Texture
 
-The page background uses `--bg: #d4d4d4` — a light cool gray that contrasts cream paper surfaces (cards, callouts, panels). The Dimm City aesthetic adds a subtle aged-brick texture over this background via a 200×200px RGBA PNG tile (`img/brick-bg-02.png`) applied to `.pagedjs_sheet`. Apply it in your book's CSS layer file:
+The page background uses `--bg: #d3cec6` — a light cool gray that contrasts cream paper surfaces (cards, callouts, panels). The Dimm City aesthetic adds a subtle aged-brick texture over this background via a 200×200px RGBA PNG tile (`img/brick-bg-02.png`) applied to `.pagedjs_sheet`. Apply it in your book's CSS layer file:
 
 ```css
 /* Apply to .pagedjs_sheet, not @page — Paged.js maps @page backgrounds to
@@ -74,11 +74,11 @@ The page background uses `--bg: #d4d4d4` — a light cool gray that contrasts cr
 }
 ```
 
-The PNG uses RGBA with very low opacity so the `#d4d4d4` gray reads through cleanly. Do not scale or crop the tile — let it repeat at native size.
+The PNG uses RGBA with very low opacity so the `#d3cec6` gray reads through cleanly. Do not scale or crop the tile — let it repeat at native size.
 
 | Token | Value | Purpose |
 |---|---|---|
-| `--bg` | `#d4d4d4` | Page background — set on `.pagedjs_sheet` to control page surface color in both preview and PDF |
+| `--bg` | `#d3cec6` | Page background — set on `.pagedjs_sheet` to control page surface color in both preview and PDF |
 
 ---
 
