@@ -11,7 +11,7 @@ Three font families, each with a specific role. lixdu anchors display and banner
 | Element | Syntax | Size · Weight · Font | Role |
 |---|---|---|---|
 | H1 | `# Chapter Title` | 20.7pt · bold · lixdu | Chapter and specialty openers only |
-| H2 | `## Section Heading` | 17.3pt · lixdu | Major topic and section breaks |
+| H2 | `## Section Heading` | 17.3pt · bold · lixdu | Major topic and section breaks |
 | H3 | `### Sub-section` | 14.4pt · lixdu | Reference column labels and sub-sections |
 | Spray Banner | `## Title {.dc-spray}` | Wider tracking, crimson underbar | Learning path headers |
 | Chevron Banner | `# Title {.dc-chevron}` | Angled crimson clip-path | Primary chapter and specialty opener banner |

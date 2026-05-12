@@ -169,8 +169,8 @@ Auto-converts common ASCII sequences to proper typographic characters. No manual
 
 | Input | Output | Name |
 |-------|--------|------|
-| `--` | — | Em dash |
-| `---` | – | En dash |
+| `--` | – | En dash |
+| `---` | — | Em dash |
 | `...` | … | Ellipsis |
 | `"text"` | "text" | Curly double quotes |
 | `'text'` | 'text' | Curly single quotes |

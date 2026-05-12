@@ -156,17 +156,6 @@ div.chapter td {
   vertical-align: top;
 }
 
-/* ── Compact table density for the DC Components authoring quick reference ──
-   The Component Authoring Quick Reference table has ~35 rows and would otherwise
-   orphan 3 rows on a sparse page. Reduced padding keeps the full table on one page.
-   ─────────────────────────────────────────────────────────────────────────── */
-div.chapter.dc-components table td,
-div.chapter.dc-components table th {
-  padding-top: 2px;
-  padding-bottom: 2px;
-  font-size: 8.5pt;
-}
-
 div.chapter tr:nth-child(even) td {
   background: var(--surface-tint-3);
 }
@@ -237,33 +226,51 @@ div.chapter h2 {
    ─────────────────────────────────────────────────────────────────────────── */
 
 /* ── Part 1 density overrides — same content, fewer pages ───────────────────
-   Scoped to Part 1 reference chapters. Reduces specimen and code margins
-   without touching body text leading or table readability.
-   NOTE: Specimen padding/margin override is now consolidated in the
-   comprehensive Part 1 Reference Density block below. ─────────────────────── */
+   Scoped to all Part 1 chapters (chapters 01 and 02). H3, p+pre, and ul li
+   density applies to all; broader margin/padding reductions are in the
+   Reference Density block below.
+   ─────────────────────────────────────────────────────────────────────────── */
 
-/* H3 sections inside guide chapters — tighten vertical rhythm */
+/* H3 sections inside guide chapters — tighten vertical rhythm (all Part 1 chapters) */
 div.chapter.typography h3,
 div.chapter.palette h3,
 div.chapter.components h3,
-div.chapter.dc-components h3 {
+div.chapter.dc-components h3,
+div.chapter.templates h3,
+div.chapter.layout h3,
+div.chapter.reference h3,
+div.chapter.fg-components h3,
+div.chapter.overview h3,
+div.chapter.cli h3 {
   margin-top: 0.1in;
   margin-bottom: 0.04in;
 }
 
-/* Description paragraphs immediately before code blocks — less gap */
+/* Description paragraphs immediately before code blocks — less gap (all Part 1 chapters) */
 div.chapter.typography p + pre,
 div.chapter.palette p + pre,
 div.chapter.components p + pre,
-div.chapter.dc-components p + pre {
+div.chapter.dc-components p + pre,
+div.chapter.templates p + pre,
+div.chapter.layout p + pre,
+div.chapter.reference p + pre,
+div.chapter.fg-components p + pre,
+div.chapter.overview p + pre,
+div.chapter.cli p + pre {
   margin-top: 0.06in;
 }
 
-/* Tighten the "See It In Action" link lists */
+/* Tighten the "See It In Action" link lists (all Part 1 chapters) */
 div.chapter.typography ul li,
 div.chapter.palette ul li,
 div.chapter.components ul li,
-div.chapter.dc-components ul li {
+div.chapter.dc-components ul li,
+div.chapter.templates ul li,
+div.chapter.layout ul li,
+div.chapter.reference ul li,
+div.chapter.fg-components ul li,
+div.chapter.overview ul li,
+div.chapter.cli ul li {
   margin-bottom: 1px;
   line-height: 1.35;
 }
@@ -274,9 +281,8 @@ div.chapter.dc-components ul li {
    .cli). Part 2 examples (.fg-examples, .chapter-03) inherit default spacing.
    ──────────────────────────────────────────────────────────────────────────── */
 
-/* 1. Tighter pre/code blocks in Part 1
-      div.chapter pre baseline is already 0.1in/8px 12px; shave to 0.08in to
-      reclaim a few lines per chapter without crowding code specimens. */
+/* 1. Tighter pre/code blocks in Part 1 — shave margin from 0.1in to 0.08in
+      to reclaim a few lines per chapter without crowding code specimens. */
 div.chapter.typography pre,
 div.chapter.palette pre,
 div.chapter.components pre,
@@ -288,7 +294,6 @@ div.chapter.fg-components pre,
 div.chapter.overview pre,
 div.chapter.cli pre {
   margin: 0.08in 0;
-  padding: 8px 12px;
 }
 
 /* 2. Tighter HR section dividers in Part 1
@@ -324,36 +329,24 @@ div.chapter.cli h2 {
   padding-top: 0.03in;
 }
 
-/* 4. Compact table padding in Part 1
-      Extends the existing .dc-components compact rule to all Part 1 chapters.
-      div.chapter td baseline is already 2px vertical — this adds font-size
-      reduction to the chapters not yet covered by the dc-components rule above. */
-div.chapter.typography table td,
-div.chapter.typography table th,
-div.chapter.palette table td,
-div.chapter.palette table th,
-div.chapter.components table td,
-div.chapter.components table th,
-div.chapter.templates table td,
-div.chapter.templates table th,
-div.chapter.layout table td,
-div.chapter.layout table th,
-div.chapter.reference table td,
-div.chapter.reference table th,
-div.chapter.fg-components table td,
-div.chapter.fg-components table th,
-div.chapter.overview table td,
-div.chapter.overview table th,
-div.chapter.cli table td,
-div.chapter.cli table th {
+/* 4. Compact table padding in all Part 1 chapters — smaller font keeps dense
+      reference tables on one page; 2px vertical padding matches the base td rule. */
+div.chapter.typography table td, div.chapter.typography table th,
+div.chapter.palette table td, div.chapter.palette table th,
+div.chapter.components table td, div.chapter.components table th,
+div.chapter.dc-components table td, div.chapter.dc-components table th,
+div.chapter.templates table td, div.chapter.templates table th,
+div.chapter.layout table td, div.chapter.layout table th,
+div.chapter.reference table td, div.chapter.reference table th,
+div.chapter.fg-components table td, div.chapter.fg-components table th,
+div.chapter.overview table td, div.chapter.overview table th,
+div.chapter.cli table td, div.chapter.cli table th {
   padding-top: 2px;
   padding-bottom: 2px;
   font-size: 8.5pt;
 }
 
-/* 5. Tighter specimen boxes in Part 1
-      Extends existing .typography/.palette/.components/.dc-components rule
-      to all remaining Part 1 chapters. Saves ~0.1in per specimen. */
+/* 5. Tighter specimen boxes in Part 1 — saves ~0.1in per specimen box. */
 div.chapter.typography .specimen,
 div.chapter.palette .specimen,
 div.chapter.components .specimen,
