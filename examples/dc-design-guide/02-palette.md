@@ -1,4 +1,4 @@
-@chapter #ch-palette .palette
+@chapter #ch-palette .palette .chapter-01
 
 # Color Palette
 

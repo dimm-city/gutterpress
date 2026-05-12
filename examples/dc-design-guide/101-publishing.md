@@ -1,4 +1,4 @@
-@chapter #ch-cli .cli
+@chapter #ch-cli .cli .chapter-02
 
 # Print-md CLI Reference
 

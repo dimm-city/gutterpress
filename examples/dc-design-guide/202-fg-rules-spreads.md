@@ -1,4 +1,4 @@
-@chapter #ch-fg-rules-spreads .fg-examples
+@chapter #ch-fg-rules-spreads .fg-examples .chapter-03
 
 # Field Guide: Rules Spreads {.dc-chevron}
 

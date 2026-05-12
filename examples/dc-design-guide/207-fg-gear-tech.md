@@ -1,4 +1,4 @@
-@chapter #ch-fg-gear-tech .fg-examples
+@chapter #ch-fg-gear-tech .fg-examples .chapter-03
 
 # Field Guide: Gear & Tech {.dc-chevron}
 

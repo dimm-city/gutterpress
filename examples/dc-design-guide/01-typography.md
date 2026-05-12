@@ -1,4 +1,4 @@
-@chapter #ch-typography .typography
+@chapter #ch-typography .typography .chapter-01
 
 # Typography
 

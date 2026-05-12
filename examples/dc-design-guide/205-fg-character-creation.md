@@ -1,4 +1,4 @@
-@chapter #ch-fg-character-creation .fg-examples
+@chapter #ch-fg-character-creation .fg-examples .chapter-03
 
 # Field Guide: Character Creation {.dc-chevron}
 

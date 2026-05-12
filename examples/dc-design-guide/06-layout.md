@@ -1,4 +1,4 @@
-@chapter #ch-layout .layout
+@chapter #ch-layout .layout .chapter-02
 
 # Layout & Composition
 

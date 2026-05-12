@@ -1,4 +1,4 @@
-@chapter #ch-templates .templates
+@chapter #ch-templates .templates .chapter-02
 
 # Page Templates
 

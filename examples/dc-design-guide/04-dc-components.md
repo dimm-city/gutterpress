@@ -1,4 +1,4 @@
-@chapter #ch-dc-components .dc-components
+@chapter #ch-dc-components .dc-components .chapter-01
 
 # DC Component Library
 

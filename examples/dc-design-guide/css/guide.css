@@ -310,3 +310,40 @@ div.chapter h2 {
    project; @media screen rules are not permitted in any CSS layer. The two
    rules that were here (.dc-roll-table-compare-stage and .dc-options-layout
    single-column overrides at max-width:1100px/900px) are deleted permanently. */
+
+/* ── Design Guide 3-Chapter Footer Labels ───────────────────────────────────
+   string-set fires when Paged.js encounters the first H1 of each chapter
+   wrapper and stores the value as a CSS custom property on the page box.
+   The string() function in margin boxes reads the most-recently-set value,
+   so it propagates correctly across all pages of each chapter.
+
+   Chapter 1 — Design System  (files 00-overview through 04-dc-components)
+   Chapter 2 — Authoring       (files 05-page-templates through 101-publishing)
+   Chapter 3 — Field Guide     (files 200-fg-* through 207-fg-gear-tech)
+   ─────────────────────────────────────────────────────────────────────────── */
+div.chapter.chapter-01 h1:first-of-type { string-set: guideSection "Design System"; }
+div.chapter.chapter-02 h1:first-of-type { string-set: guideSection "Authoring"; }
+div.chapter.chapter-03 h1:first-of-type { string-set: guideSection "Field Guide"; }
+
+/* Override @page footer chapter label: replace counter(chapter) with the
+   named string. page-rules.css sets @bottom-right/:left and @bottom-left/:right
+   to counter(chapter); these blocks override just those margin boxes. */
+@page :left {
+  @bottom-right {
+    content: string(guideSection, first);
+    color: var(--blood);
+    font-family: var(--font-display);
+    font-size: var(--fs-footer, 9.5pt);
+    letter-spacing: 0.08em;
+  }
+}
+
+@page :right {
+  @bottom-left {
+    content: string(guideSection, first);
+    color: var(--blood);
+    font-family: var(--font-display);
+    font-size: var(--fs-footer, 9.5pt);
+    letter-spacing: 0.08em;
+  }
+}

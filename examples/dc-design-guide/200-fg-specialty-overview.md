@@ -1,4 +1,4 @@
-@chapter #ch-fg-specialty-overview .fg-examples
+@chapter #ch-fg-specialty-overview .fg-examples .chapter-03
 
 # Field Guide: Specialty Overview {.dc-chevron}
 

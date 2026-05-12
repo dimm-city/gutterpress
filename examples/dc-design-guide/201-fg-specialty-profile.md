@@ -1,4 +1,4 @@
-@chapter #ch-fg-specialty-profile .fg-examples
+@chapter #ch-fg-specialty-profile .fg-examples .chapter-03
 
 # Field Guide: Specialty Profile
 

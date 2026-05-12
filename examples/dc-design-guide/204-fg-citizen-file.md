@@ -1,4 +1,4 @@
-@chapter #ch-fg-citizen-file .fg-examples
+@chapter #ch-fg-citizen-file .fg-examples .chapter-03
 
 # Field Guide: Citizen File {.dc-chevron}
 

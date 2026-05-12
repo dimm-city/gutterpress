@@ -1,4 +1,4 @@
-@chapter #ch-fg-npc-dm-spreads .fg-examples
+@chapter #ch-fg-npc-dm-spreads .fg-examples .chapter-03
 
 # Field Guide: NPC & Dream Master Spreads {.dc-chevron}
 

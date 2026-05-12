@@ -1,4 +1,4 @@
-@chapter #ch-fg-components .fg-components
+@chapter #ch-fg-components .fg-components .chapter-02
 
 # Field Guide Components
 

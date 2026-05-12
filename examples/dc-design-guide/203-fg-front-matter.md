@@ -1,4 +1,4 @@
-@chapter #ch-fg-front-matter .fg-examples
+@chapter #ch-fg-front-matter .fg-examples .chapter-03
 
 # Field Guide: Front Matter {.dc-chevron}
 
