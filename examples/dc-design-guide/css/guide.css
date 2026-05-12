@@ -65,9 +65,9 @@ body {
   widows: 2;
 }
 
-/* Scoped to div.chapter — prevents break suppression on headings outside chapter context */
 /* ── Headings: keep with following content ───────────────────────────────────
-   Prevent h2/h3/h4 from stranding at the bottom of a page.
+   Prevent h2/h3/h4 from stranding at the bottom of a page. Scoped to
+   div.chapter so this doesn't suppress breaks outside the chapter context.
    ─────────────────────────────────────────────────────────────────────────── */
 div.chapter h2, div.chapter h3, div.chapter h4 {
   break-before: auto;
@@ -78,7 +78,6 @@ div.chapter h2, div.chapter h3, div.chapter h4 {
   page-break-inside: avoid;
 }
 
-/* Scoped to div.chapter — prevents break suppression on headings outside chapter context */
 div.chapter h2 + p, div.chapter h2 + ul, div.chapter h2 + ol, div.chapter h2 + pre, div.chapter h2 + blockquote, div.chapter h2 + table,
 div.chapter h2 + div,
 div.chapter h3 + p, div.chapter h3 + ul, div.chapter h3 + ol, div.chapter h3 + pre, div.chapter h3 + table,
@@ -89,10 +88,9 @@ div.chapter h4 + div {
   page-break-before: avoid;
 }
 
-/* Scoped to div.chapter — code block styles are design-guide-specific; DC book code uses dc-brand.css defaults */
 /* ── Fenced code blocks (specimen display) ───────────────────────────────────
-   Override dc-brand.css code defaults with design-guide-appropriate sizing.
-   Uses DC tokens — no fallback values needed since dc-brand.css is always loaded first.
+   Design-guide-specific overrides for dc-brand.css code defaults. DC book code
+   inherits dc-brand.css; guide code blocks get distinct background and sizing.
    ─────────────────────────────────────────────────────────────────────────── */
 div.chapter pre {
   background: var(--paper-aged);
@@ -126,10 +124,9 @@ div.chapter :not(pre) > code {
   padding: 1px 4px;
 }
 
-/* Scoped to div.chapter — table styles are design-guide-specific; DC book tables use dc-brand.css */
 /* ── Tables ──────────────────────────────────────────────────────────────────
-   Ensure design-guide reference tables are readable at the design-guide
-   print size. Inherits DC color tokens from dc-brand.css.
+   Design-guide reference table styles. DC book tables use dc-brand.css;
+   these rules only apply inside div.chapter wrappers.
    ─────────────────────────────────────────────────────────────────────────── */
 div.chapter table {
   width: 100%;
