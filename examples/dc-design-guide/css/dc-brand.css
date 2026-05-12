@@ -15,6 +15,25 @@
    Cyberpunk creaturepunk: rust orange, blood crimson, HUD blue, amber.
    ============================================================================= */
 
+/* ── ARCHITECTURAL CONTRACT ───────────────────────────────────────────────────
+   OWNS:
+   - CSS custom property tokens (--color-*, --fs-*, --fw-*, --lh-*, etc.)
+   - @font-face declarations
+   - Shared component styles (.dc-skill-card, .dc-stat, .dc-banner, etc.)
+   - Global element resets scoped to the book context
+
+   MUST NOT CONTAIN:
+   - @page declarations (→ page-rules.css)
+   - Named page assignments (page: <name>) (→ page-rules.css)
+   - .page.* layout rules (→ content-templates.css)
+   - div.chapter scaffolding (→ guide.css)
+   - @media screen rules (print-only project)
+
+   AGENT RULE: Before adding any rule here, verify it is a token, font,
+   or shared component style. If it targets .page.* or @page, stop and
+   use the correct file.
+   ─────────────────────────────────────────────────────────────────────────── */
+
 /* --- WEBFONTS (local) --- */
 @font-face {
   font-family: 'Titillium Web';

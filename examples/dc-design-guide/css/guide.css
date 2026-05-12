@@ -18,6 +18,30 @@
      4. guide.css  ←          — this file: specimen scaffolding only
    ============================================================================= */
 
+/* ── ARCHITECTURAL CONTRACT ───────────────────────────────────────────────────
+   OWNS:
+   - div.chapter wrapper rules (display, width, page breaks)
+   - div.chapter > h1 chapter-break scaffolding
+   - div.chapter pre, table, td, th — guide-specific code/table overrides
+   - .specimen and .specimen::before — guide specimen chrome
+   - div.chapter.chapter-NN { columns } — guide chapter layout
+   - Guide-specific @page footer overrides (string-set, footer labels)
+   - .guide-toc override (defeats content-templates.css .toc columns)
+
+   MUST NOT CONTAIN:
+   - .page.* layout or element rules (→ content-templates.css)
+   - @page declarations except guide-specific footer overrides (→ page-rules.css)
+   - DC brand tokens or component styles (→ dc-brand.css)
+   - General print utilities like .pmd-*, .break-before (→ content-templates.css)
+   - body-level rules unless overriding a guide-specific inherited value
+   - @media screen rules (print-only project)
+
+   AGENT RULE: Every selector must start with div.chapter, .specimen,
+   .guide-toc, or target the guide-specific @page footer. If it starts
+   with .page.*, body, or a general utility class, it belongs elsewhere.
+   Always read this contract before adding any rule.
+   ─────────────────────────────────────────────────────────────────────────── */
+
 /* ── @chapter wrapper ────────────────────────────────────────────────────────
    markdown-it-paged converts `@chapter #id .class` into:
      <div class="chapter id class">…</div>

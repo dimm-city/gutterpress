@@ -15,6 +15,24 @@
    (e.g. `field-guide/css/pagedjs-adapter.css`).
    ============================================================================= */
 
+/* ── ARCHITECTURAL CONTRACT ───────────────────────────────────────────────────
+   OWNS:
+   - All @page declarations (default, :left, :right, named pages)
+   - Named page type definitions (@page front-matter, @page full, etc.)
+   - Paged.js counter workarounds (counter-reset on .page.chapter-NN)
+   - @page margin box content (running headers/footers via @bottom-*)
+
+   MUST NOT CONTAIN:
+   - Content element layout rules (.page.* { columns: N }) (→ content-templates.css)
+   - Component styles (→ dc-brand.css)
+   - div.chapter scaffolding (→ guide.css)
+   - @media screen rules (print-only project)
+
+   AGENT RULE: Every rule in this file must be either an @page block or a
+   Paged.js counter workaround on a .page.* or .page-break.* selector.
+   If a rule targets a content element directly, it belongs elsewhere.
+   ─────────────────────────────────────────────────────────────────────────── */
+
 /* chapter counter initialized here; per-page increments via .page.chapter-NN selectors below */
 body { counter-reset: chapter; }
 

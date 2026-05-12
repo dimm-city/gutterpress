@@ -17,6 +17,25 @@
      4. guide.css             — design-guide scaffolding only
    ============================================================================= */
 
+/* ── ARCHITECTURAL CONTRACT ───────────────────────────────────────────────────
+   OWNS:
+   - .page.* content layout rules (columns, flex, grid on page content divs)
+   - Print density rules for page-level elements (.specialty *, .toc *, etc.)
+   - Paged.js page wrapper resets (.page base, .pagedjs_sheet background)
+   - General print utilities (.column-break, .pmd-*, .break-before, etc.)
+   - Named page element wiring (.page.citizen-file { page: citizen-file })
+
+   MUST NOT CONTAIN:
+   - @page declarations (→ page-rules.css)
+   - div.chapter scaffolding (→ guide.css)
+   - DC brand tokens or component styles (→ dc-brand.css)
+   - @media screen rules (print-only project)
+
+   AGENT RULE: Selectors here target .page.*, .pagedjs_*, .specialty *,
+   or general utility classes. If a selector targets div.chapter or a
+   design-guide-specific element, it belongs in guide.css.
+   ─────────────────────────────────────────────────────────────────────────── */
+
 /* ===========================================================================
    PAGE WRAPPER BASE — moved from page-rules.css 2026-05-10
    These are content-layer element rules, not @page declarations.
