@@ -6,75 +6,19 @@
 Three font families, each with a specific role. lixdu anchors display and banner headings; Tomorrow handles tab labels and mono chrome; Titillium Web carries all body, flavor, and quote copy.
 :::
 
-## H1 — lixdu
+## Type Scale Reference
 
-**Syntax** — `# Chapter Title`
-
-**Spec:** 20.7pt · bold · lixdu · chapter and specialty openers only
-
----
-
-## H2 — lixdu
-
-**Syntax** — `## Section Heading`
-
-**Spec:** 17.3pt · lixdu · major topic and section breaks
-
----
-
-## H3 — lixdu
-
-**Syntax** — `### Sub-section`
-
-**Spec:** 14.4pt · lixdu · reference column labels and sub-sections
-
----
-
-## Spray Banner — dc-spray
-
-**Syntax** — `## Title {.dc-spray}`
-
-**Spec:** Wider tracking, crimson underbar. Used on learning path headers.
-
----
-
-## Chevron Banner — dc-chevron
-
-**Syntax** — `# Title {.dc-chevron}` or `## Title {.dc-chevron}`
-
-**Spec:** Angled crimson clip-path. Primary chapter and specialty opener banner.
-
----
-
-## Body — Titillium Web
-
-**Syntax** — plain paragraph (no class)
-
-**Spec:** 12pt · Titillium Web · base reading type for all prose
-
----
-
-## Flavor — Titillium Web italic
-
-**Syntax** — `> [!FLAVOR]` blockquote alert
-
-**Spec:** Italic body size · in-world voice, card flavor, and atmospheric prose
-
----
-
-## Card Tab — Tomorrow
-
-**Syntax** — `<span class="font-tab">Label</span>`
-
-**Spec:** 9pt · Tomorrow monospace · skill card tab labels
-
----
-
-## Mono Cap Tag — Tomorrow
-
-**Syntax** — `<span class="tag">Label</span>`
-
-**Spec:** 8pt · Tomorrow monospace · stance and timing chips
+| Element | Syntax | Size · Weight · Font | Role |
+|---|---|---|---|
+| H1 | `# Chapter Title` | 20.7pt · bold · lixdu | Chapter and specialty openers only |
+| H2 | `## Section Heading` | 17.3pt · lixdu | Major topic and section breaks |
+| H3 | `### Sub-section` | 14.4pt · lixdu | Reference column labels and sub-sections |
+| Spray Banner | `## Title {.dc-spray}` | Wider tracking, crimson underbar | Learning path headers |
+| Chevron Banner | `# Title {.dc-chevron}` | Angled crimson clip-path | Primary chapter and specialty opener banner |
+| Body | plain paragraph | 12pt · Titillium Web | Base reading type for all prose |
+| Flavor | `> [!FLAVOR]` | Italic body size · Titillium Web | In-world voice, card flavor, atmospheric prose |
+| Card Tab | `<span class="font-tab">` | 9pt · Tomorrow monospace | Skill card tab labels |
+| Mono Cap Tag | `<span class="tag">` | 8pt · Tomorrow monospace | Stance and timing chips |
 
 ---
 

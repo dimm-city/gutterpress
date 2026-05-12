@@ -10,19 +10,13 @@ Components used in the Dimm City Field Guide — gear entries, definition blocks
 
 ## Dashed Rule Divider
 
-A red dashed horizontal rule. Lightweight entry separator for gear lists, NPC blocks, and rules section breaks. Distinct from tape dividers, which carry text labels and span the full column.
-
-**Syntax** — standard markdown `---`. The CSS applies the red dashed style globally to all `<hr>` elements.
+Red dashed `<hr>` for gear lists, NPC blocks, and rules section breaks. CSS applies the style globally to all `<hr>` elements. **Use:** gear entries, NPC separators, rules section breaks.
 
 ```markdown
 Field Rations × 3
-
 ---
-
 Trauma Kit
-
 ---
-
 Signal Jammer (single-use)
 ```
 
@@ -30,9 +24,7 @@ Signal Jammer (single-use)
 
 ## Definition Block
 
-A short 1–3 sentence italic definition callout for NPC type summaries, item category descriptions, and ability class definitions. Has a warm-cream background and a red left border. Distinct from `dc-note` (rules clarification, paper-light background) and `dc-pullquote` (decorative excerpt with no structural role).
-
-**Syntax** — container wrapper with `.dc-definition-block`:
+1–3 sentence italic callout: warm-cream background + red left border. **Use:** NPC type summaries, item category descriptions, ability class definitions. (Distinct from `dc-note` — no heading; `dc-pullquote` — decorative only.)
 
 ```markdown
 ::: wrapper {.dc-definition-block}
@@ -46,9 +38,7 @@ of them is still original flesh.
 
 ## Sidebar Box
 
-A self-contained informational callout with its own bold heading, an internal dashed divider, and a cream background. Use for rules etiquette sections, standalone reference blocks, and any callout that needs its own visual boundary and a labeled header. Distinct from `dc-note` (no heading) and `dc-pullquote` (decorative, no heading).
-
-**Syntax** — container wrapper with `.dc-sidebar-box`. Place an H4 heading at the top, follow it with `---`, then the body text:
+Callout with H4 heading + internal dashed divider + cream background. **Use:** rules etiquette, standalone reference blocks, any callout needing its own visual boundary. (Distinct from `dc-note` — no heading; `dc-pullquote` — decorative only.) H4 at top, then `---`, then body:
 
 ```markdown
 ::: wrapper {.dc-sidebar-box}
@@ -66,9 +56,7 @@ lands off the table, reroll it.
 
 ## Gear Entry
 
-A named equipment or item entry used in appendices, gear chapters, and weapon lists. Each entry consists of an H3 item name in the crimson display font, an italic one-liner flavor tagline immediately below, and body mechanics text. Entries are separated by `---` dashed rules.
-
-**Syntax** — container wrapper with `.dc-gear-entry`. H3 for the name, italic paragraph for the tagline, plain paragraph for mechanics. The tagline paragraph must contain only italic text (`*...*` with no text outside the asterisks); add class `dc-gear-entry-tagline` if you need the styling without that constraint:
+H3 item name (crimson display font) + italic tagline + mechanics prose. Entries separated by `---`. Tagline paragraph must be purely italic (`*...*`); use `.dc-gear-entry-tagline` if you need the style without that constraint. **Use:** appendices, gear chapters, weapon lists.
 
 ```markdown
 ::: wrapper {.dc-gear-entry}
@@ -97,11 +85,7 @@ concealable under a jacket. Cuts non-powered barriers on a hit of 10+.
 
 ## Colophon Block
 
-A back-matter data block for edition info, legal notices, and production credits. Uses `<dl>`/`<dt>`/`<dd>` semantics — bold orange monospace labels in a fixed left column, inline values in the right column, separated by hairline rules.
-
-**Note:** This component requires raw HTML for proper `dl`/`dt`/`dd` semantics. In the Field Guide, this usage is acceptable only on the colophon or credits page.
-
-**Syntax** — raw HTML `<dl class="dc-colophon">`:
+`<dl>`/`<dt>`/`<dd>` data block: bold orange monospace labels left column, values right, hairline rule separators. **Raw HTML only** — use solely on colophon or credits page. **Use:** edition info, legal notices, production credits.
 
 ```html
 <dl class="dc-colophon">
@@ -116,19 +100,12 @@ A back-matter data block for edition info, legal notices, and production credits
 
 ## Callout Class Names — Field Guide vs Design Guide
 
-The design guide documents four callout components using `dc-` prefixed class names: `dc-vibe-callout`, `dc-origin-callout`, `dc-human-callout`, and `dc-gear-callout`. These are the canonical API — use them for all new content. They are documented fully in `03-components.md`.
-
-Short-form names without the prefix — `vibe-callout`, `origin-callout`, `human-callout`, and `gear-callout` — are defined in `shared.css` as parallel definitions and render similarly but with slightly different padding values. Use the `dc-` prefix forms for all new content; migrate existing uses when editing those files.
-
-**Important difference:** `.gear-callout` (short form) applies `min-height: 3.5in` unconditionally. `.dc-gear-callout` does not — use `.dc-gear-callout` with an explicit inline style when a minimum height is needed:
+Always use `dc-` prefixed forms (`dc-vibe-callout`, `dc-origin-callout`, `dc-human-callout`, `dc-gear-callout`) — documented fully in `03-components.md`. Short forms (`vibe-callout` etc.) exist in `shared.css` but have slightly different padding. **Key difference:** `.gear-callout` applies `min-height: 3.5in` unconditionally; `.dc-gear-callout` does not — add inline style when needed:
 
 ```markdown
 ::: wrapper {.dc-gear-callout style="min-height:3.5in"}
-...
 :::
 ```
-
-Field-guide source files should be migrated to the `dc-` prefix forms. See `docs/field-guide-cleanup.md` for the full list of files requiring updates.
 
 ---
 

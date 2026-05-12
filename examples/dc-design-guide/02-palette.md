@@ -48,11 +48,11 @@ Two accent registers on cream substrate. Creaturepunk fire (crimson, rust, orang
 
 ## Border Tokens
 
-<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.1in 0;">
+<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.08in 0;">
   <div style="width:72px;height:68px;background:var(--border-hairline);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Hairline</span><span>#d0c8b5<br>--border-hairline</span></div>
 </div>
 
-Additional border values are provided directly by ink-scale tokens (`--ink`, `--ink-smoke`, `--ink-dust`) rather than dedicated border aliases.
+Additional border values come directly from ink-scale tokens (`--ink`, `--ink-smoke`, `--ink-dust`) — no dedicated border aliases for those.
 
 ## Usage Rules
 
@@ -61,15 +61,9 @@ Additional border values are provided directly by ink-scale tokens (`--ink`, `--
 - Paper surfaces are for raised elements (cards, callouts). The page background (`--bg`) is the canvas; cream is the surface.
 
 
-## Page Background
+## Page Background & Brick Texture
 
-The page background uses `--bg: #d4d4d4` — a light cool gray that provides contrast for cream paper surfaces (cards, callouts, panels) and gives the document a tactile, printed-on-paper feel distinct from a pure white page.
-
-### Brick Texture Overlay
-
-The Dimm City aesthetic adds a subtle aged-brick texture over the page background. The texture is a 200×200px RGBA PNG tile (`img/brick-bg-02.png`) applied to the `.pagedjs_sheet` wrapper — the layer that Paged.js renders behind page content. This ensures the texture appears in both the screen preview and the exported PDF.
-
-**Syntax** — in your book's CSS layer file (equivalent to `field-guide/css/book-print.css`):
+The page background uses `--bg: #d4d4d4` — a light cool gray that contrasts cream paper surfaces (cards, callouts, panels). The Dimm City aesthetic adds a subtle aged-brick texture over this background via a 200×200px RGBA PNG tile (`img/brick-bg-02.png`) applied to `.pagedjs_sheet`. Apply it in your book's CSS layer file:
 
 ```css
 /* Apply to .pagedjs_sheet, not @page — Paged.js maps @page backgrounds to
@@ -80,13 +74,11 @@ The Dimm City aesthetic adds a subtle aged-brick texture over the page backgroun
 }
 ```
 
-The texture is intentionally subtle — the PNG uses RGBA with very low opacity so the `#d4d4d4` page gray reads through cleanly. Do not scale or crop the tile; let it repeat naturally at native size.
-
-**Token:**
+The PNG uses RGBA with very low opacity so the `#d4d4d4` gray reads through cleanly. Do not scale or crop the tile — let it repeat at native size.
 
 | Token | Value | Purpose |
 |---|---|---|
-| `--bg` | `#d4d4d4` | Page background — set this on `.pagedjs_sheet` in your project CSS to control the page surface color in both preview and PDF |
+| `--bg` | `#d4d4d4` | Page background — set on `.pagedjs_sheet` to control page surface color in both preview and PDF |
 
 ---
 

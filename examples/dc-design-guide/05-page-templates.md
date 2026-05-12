@@ -10,7 +10,7 @@ Named page types control margin geometry, footer chrome, and running headers. Ea
 
 ## Page Geometry
 
-Physical dimensions for the DC Field Guide print output. These values are declared in `manifest.yaml` and reflect the US Letter format with binding gutter for a perfect-bound book.
+Dimensions for DC Field Guide print output — declared in `manifest.yaml`, US Letter, perfect-bound.
 
 | Dimension | Value | Notes |
 |-----------|-------|-------|
@@ -21,7 +21,7 @@ Physical dimensions for the DC Field Guide print output. These values are declar
 | Binding gutter | 0.75 in | Inner margin — swaps left↔right per recto/verso |
 | Outside margin | 0.5 in | |
 
-**Bleed** is the extra area beyond the trim edge that backgrounds and full-page images must extend into, so trimming variation doesn't leave a white sliver. Extend any full-bleed background color or image by 0.125 in past each edge using negative margins or a padding offset on the container.
+Extend any full-bleed background or image by 0.125 in past each edge so trimming variation doesn't leave a white sliver.
 
 ---
 
@@ -54,23 +54,15 @@ The longer form `--- {page .page .chapter-start}` (raw HTML fence) also works an
 
 ## Book Page Templates
 
-The eleven templates below cover every page type in the DC Field Guide. Each template is a named pattern combining a page class, key CSS classes, and a content structure. Use the minimal examples as starting skeletons.
+Eleven templates cover every DC Field Guide page type. Use the minimal examples as starting skeletons.
 
 ---
 
 ### Chapter Cover
 
-Full-page specialty chapter cover with display title, strap line, body copy, and a meta-row stat strip. Footers are suppressed. Use at the start of every specialty chapter — one per specialty.
+Full-page specialty chapter cover. Footers suppressed. One per specialty chapter. **Page class:** `--- {page .page-chapter-start .chapter-start}` — raw HTML only.
 
-**Components:**
-- `.dc-cover-bg` — full-bleed page tint
-- `.dc-cover-num` — "— Chapter N / Name —" label
-- `.dc-cover-bigword` — large display title (H1)
-- `.dc-cover-strap` — punchy strap line (under 15 words)
-- `.dc-cover-body` — 1–2 sentences of onboarding prose
-- `.dc-cover-meta-row` — 3-column grid of PATHS / ABILITIES / PAGES counts
-
-**Page class:** `--- {page .page-chapter-start .chapter-start}`
+**Components:** `.dc-cover-bg` (full-bleed tint) · `.dc-cover-num` ("— Ch N / Name —") · `.dc-cover-bigword` (H1 display title) · `.dc-cover-strap` (strap line, ≤15 words) · `.dc-cover-body` (1–2 onboarding sentences) · `.dc-cover-meta-row` (3-column PATHS / ABILITIES / PAGES grid)
 
 ```html
 --- {page .page-chapter-start .chapter-start}
@@ -91,22 +83,13 @@ Full-page specialty chapter cover with display title, strap line, body copy, and
 </div>
 ```
 
-Raw HTML only — no markdown shorthand for the cover layout.
-
 ---
 
 ### Chapter Opener
 
-Two-column rules chapter opener for non-specialty chapters. Left column: chapter badge + spray banner + fiction paragraphs. Right column: chevron section banner + rules prose + DM callout. Footers suppressed.
+Two-column rules opener for non-specialty chapters. Left: badge + spray banner + fiction. Right: chevron + rules prose + DM callout. Footers suppressed. **Page class:** `--- {page .page-chapter-start .chapter-start}`
 
-**Components:**
-- `@chapter-opener C.N` — emits the `.dc-chapter-opener-no` badge
-- `## Title {.dc-spray}` — spray banner heading
-- `---{.column-break}` — splits left/right columns
-- `# Title {.dc-chevron}` — right-column rules section opener
-- `!!! Label` — note callout admonition
-
-**Page class:** `--- {page .page-chapter-start .chapter-start}`
+**Components:** `@chapter-opener C.N` (badge) · `## Title {.dc-spray}` (banner) · `---{.column-break}` (split) · `# Title {.dc-chevron}` (right-col opener) · `!!! Label` (callout)
 
 ```markdown
 --- {page .page-chapter-start .chapter-start}
@@ -132,16 +115,11 @@ Facilitator guidance goes here. Indented lines are the callout body.
 
 ### Specialty Opener
 
-Two-page spread opening a specialty section. Left page: chevron H1, prose overview, spec-tweak H3, class tag chips. Right page: full-bleed character art plate. Always lands footer-free on a visual-left page.
-
-**Components:**
-- `# Specialty Name {.dc-chevron}` — banner heading
-- `### Spec Tweak: Name {.dc-spec-tweak}` — inset spec-tweak header
-- `<span class="dc-classtag [specialty]">` — class tag chip
-- `--- {page .full-page}` — zero-margin art page
-- `.specialty-art` wrapper — contains the portrait image
+Two-page spread: left page has chevron H1 + prose + spec-tweak H3 + class tag chips; right page is full-bleed art. Always footer-free on a visual-left page.
 
 **Page classes:** left: `--- {page .page-chapter-start .chapter-start}` · right: `--- {page .full-page}`
+
+**Components:** `# Name {.dc-chevron}` · `### Spec Tweak {.dc-spec-tweak}` · `<span class="dc-classtag [specialty]">` · `.specialty-art` wrapper
 
 ```markdown
 --- {page .page-chapter-start .chapter-start}
@@ -166,35 +144,22 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 </div>
 ```
 
-**Markdown equivalents for specialty wrapper elements:**
+**Markdown `:::wrapper` equivalents** — all four `<div>` wrappers can use `:::wrapper` syntax:
 
-The raw HTML `<div>` wrappers shown above can be written using `::: wrapper` syntax in markdown-it-paged source. The following forms are interchangeable with their HTML equivalents:
-
-| Markdown shorthand | HTML equivalent | Purpose |
-|--------------------|----------------|---------|
-| `::: wrapper {.specialty-intro}` | `<div class="specialty-intro">` | Intro panel — prose and class tag chips |
-| `::: wrapper {.specialty-art}` | `<div class="specialty-art">` | Full-bleed art plate (right page) |
-| `::: wrapper {.specialty-spread}` | `<div class="specialty-spread">` | Specialty-card grid container |
-| `::: wrapper {class="specialty-card augmerc"}` | `<div class="specialty-card augmerc">` | Individual specialty card |
-
-The specialty name on `.specialty-card` (e.g. `augmerc`) is a layout hook that identifies the card in the grid — it is not a palette modifier and does not apply color variables.
+| Shorthand | Purpose |
+|-----------|---------|
+| `::: wrapper {.specialty-intro}` | Intro panel — prose and class tag chips |
+| `::: wrapper {.specialty-art}` | Full-bleed art plate (right page) |
+| `::: wrapper {.specialty-spread}` | Specialty-card grid container |
+| `::: wrapper {class="specialty-card augmerc"}` | Individual card — name is a layout hook only, not a palette modifier |
 
 ---
 
 ### Specialty Listing
 
-"Choose your specialty" overview page. Two to three specialty entries each with a portrait image, class tag chip, prose description, and flavor quote. Entries are separated by tape dividers. Flows as a normal body page — no break marker required.
+2–3 specialty entries per page: portrait, class tag chip, prose description, flavor quote. Separated by tape dividers. **Page class:** normal body page, no break marker needed.
 
-**Components:**
-- `.dc-class-entry` — outer entry wrapper
-- `.dc-class-entry-portrait` > `.dc-portrait` — framed portrait
-- `.dc-class-entry-name` — H3 specialty name
-- `.dc-class-entry-tags` > `<span class="dc-classtag [specialty]">` — tag chip
-- `.dc-prose` — description paragraphs
-- `.dc-flavor` — flavor quote with `<em>` attribution
-- `<div class="dc-tape">— § —</div>` — entry separator (not `<hr>`)
-
-**Page class:** normal body page, no break marker needed.
+**Components:** `.dc-class-entry` (outer) · `.dc-class-entry-portrait > .dc-portrait` · `.dc-class-entry-name` (H3) · `.dc-class-entry-tags > span.dc-classtag` · `.dc-prose` · `.dc-flavor` · `<div class="dc-tape">— § —</div>` (separator — not `<hr>`)
 
 ```html
 <div class="dc-class-entry">
@@ -221,16 +186,9 @@ The specialty name on `.specialty-card` (e.g. `augmerc`) is a layout hook that i
 
 ### Choose Specialty Page
 
-"Choose your specialty" catalog page using a 2-column auto-fill layout. Each `.specialty-card` stays together (no mid-card breaks), and the `.specialty-spread` container spans all columns so the grid can breathe across the full text area. Use this immediately before the individual specialty opener spreads.
+2-column auto-fill catalog page. Each `.specialty-card` has `break-inside: avoid`; `.specialty-spread` spans all columns. Use immediately before individual specialty opener spreads. **Page class:** `--- {page .page-ability-catalog .choose-specialty}`
 
-**Components:**
-- `.page-ability-catalog` — named page class for the catalog layout
-- `.choose-specialty` — activates 2-column `column-fill: auto` on the page
-- `## Intro Heading` — plain H2 introduces the selection prompt
-- `::: wrapper {.specialty-spread}` — grid container that spans all columns
-- `::: wrapper {class="specialty-card [name]"}` — one card per specialty; `break-inside: avoid` keeps each intact
-
-**Page class:** `--- {page .page-ability-catalog .choose-specialty}`
+**Components:** `.page-ability-catalog` (layout) · `.choose-specialty` (2-col `column-fill: auto`) · `## Intro Heading` · `::: wrapper {.specialty-spread}` (grid) · `::: wrapper {class="specialty-card [name]"}` (one card per specialty)
 
 ```markdown
 --- {page .page-ability-catalog .choose-specialty}
@@ -260,26 +218,15 @@ Brief specialty description — two sentences maximum.
 :::
 ```
 
-The specialty name on the `.specialty-card` wrapper is a layout hook only — it does not apply a color palette or CSS variable override. Cards are sized by the column grid, not by individual card CSS.
-
 ---
 
 ### Info Sidebar Page
 
-Two-column balanced body page with a floating character-file sidebar. `.page-info-sidebar` provides the layout shell (balanced columns, sidebar float region). `.citizen-file` adds the character-file content skin: at-a-glance stat cards, framed portrait, and field-notes sidebar. The two classes are always paired.
-
-**Components:**
-- `.page-info-sidebar` — layout shell: 2-column balanced text, sidebar float
-- `.citizen-file` — content skin: at-a-glance cards, sidebar float styling, running header "Citizen File"
-- `# Name {.dc-chevron}` — subject name banner
-- `<div class="dc-intro">` — atmospheric lede
-- `.citizen-at-a-glance` — stat card row (HP, DEF, AP, threat tier)
-- `.citizen-sidebar` — right-column float with portrait + tape label
-- Body prose fills the left column below the stat cards
+2-column balanced body page with floating character-file sidebar. Always pair `.page-info-sidebar` (layout shell: balanced columns + sidebar float) with `.citizen-file` (content skin: stat cards, portrait float, "Citizen File" running header) — neither works fully without the other.
 
 **Page class:** `--- {page .page-info-sidebar .citizen-file}`
 
-Note: `.page-info-sidebar` is the layout shell; `.citizen-file` is the field-guide content skin. Use both together — neither works fully without the other.
+**Components:** `# Name {.dc-chevron}` · `<div class="dc-intro">` (lede) · `.citizen-at-a-glance` (HP/DEF/AP/TIER row) · `.citizen-sidebar` (portrait + tape label float)
 
 ```markdown
 --- {page .page-info-sidebar .citizen-file}
@@ -309,18 +256,9 @@ Body prose fills the left column. Two to four paragraphs covering background, me
 
 ### Learning Path
 
-A complete learning path block for specialty spreads: spray banner with sticker code badge, intro lede, sticker chain of skill names, signature augment description, and a sequence of `@skill` cards. Reduced margins via `.aug` gain column width for dense card layout.
+Specialty spread with spray banner, sticker chain, signature augment, and `@skill` cards. Reduced margins via `.aug` maximize column width for dense card layout. **Page class:** `--- {page .page-aug .aug}`
 
-**Components:**
-- `@learning-path specialty="…" index="N"` — opens path block (no closing marker)
-- `### Path Name` — becomes the `.dc-spray` banner
-- `> Subtitle lede` — blockquote becomes `.dc-intro`
-- Bullet list — becomes `.dc-stickers` skill chain
-- `<div class="dc-tape">` — tape divider before signature augment detail
-- `@skill variant="N" id="…"` / `@end-skill` — individual skill cards
-- `<span class="dc-ap">N AP</span>` — AP cost chip (use `.free` or `.var` variants)
-
-**Page class:** `--- {page .page-aug .aug}`
+**Components:** `@learning-path specialty="…" index="N"` (opens block) · `### Path Name` (spray banner) · `> Subtitle` (lede) · bullet list (sticker chain) · `<div class="dc-tape">` (divider) · `@skill variant="N" id="…"` / `@end-skill` · `<span class="dc-ap">N AP</span>`
 
 ```markdown
 --- {page .page-aug .aug}
@@ -352,20 +290,9 @@ Active | <span class="dc-ap">2 AP</span>
 
 ### Ability Spread
 
-A facing-page ability spread. Left column: spray banner + path subtitle + skill card(s). Right column: field notes, pull quote, DM callout, tape divider, class tags. Uses `.aug` named page for reduced margins.
+Facing-page spread. Left: spray banner + path subtitle + `@skill` cards. Right: field notes + pull quote + DM callout + tape divider + class tags. **Page class:** `--- {page .page-aug .aug}`
 
-**Components:**
-- `## Skill Title {.dc-spray}` — left-column spray banner
-- `<div class="dc-path-subtitle">` — path code and name line
-- `@skill` / `@end-skill` — one or more skill cards
-- `---{.column-break}` — splits left/right columns
-- `### Field Notes {.dc-spec-tweak .no-top}` — right-column header (`.no-top` removes top spacing)
-- `> pull quote` — blockquote pull quote
-- `!!! Dream Master` — facilitator callout
-- `<div class="dc-tape">` — section divider
-- `<span class="dc-classtag">` chips — specialty tags
-
-**Page class:** `--- {page .page-aug .aug}`
+**Components:** `## Title {.dc-spray}` · `<div class="dc-path-subtitle">` · `@skill` / `@end-skill` · `---{.column-break}` · `### Field Notes {.dc-spec-tweak .no-top}` · `> pull quote` · `!!! Dream Master` · `<div class="dc-tape">` · `<span class="dc-classtag">`
 
 ```markdown
 --- {page .page-aug .aug}
@@ -402,18 +329,9 @@ Facilitator note.
 
 ### Bestiary Entry
 
-Two-column creature or NPC entry. Left column: chevron banner, intro lede, stat block, encounter notes. Right column: portrait in aged-paper frame, tape label, caption, optional stamp. Footers restored via `.chapter-end`.
+Two-column creature/NPC entry. Left: chevron banner + lede + stat block + encounter notes. Right: aged-paper portrait + tape label + caption + optional stamp. **Page class:** `--- {page .page .chapter-end}`
 
-**Components:**
-- Inline flex `<div style="display:flex;gap:24px;align-items:start;">` — outer two-column split (no named class)
-- `<h1 class="dc-chevron">` — creature name banner
-- `<div class="dc-intro">` — atmospheric lede (under 20 words)
-- `<div class="dc-stat">` — stat block (`.dc-stat-head`, `.dc-stat-grid`, `.dc-stat-line`)
-- `<div class="dc-portrait">` — aged-paper portrait frame
-- `<div class="dc-tape">` — tape label under portrait
-- `<span class="dc-stamp">` — optional stamp overlay
-
-**Page class:** `--- {page .page .chapter-end}`
+**Components:** `<div style="display:flex;gap:24px;align-items:start;">` (two-col split) · `<h1 class="dc-chevron">` · `<div class="dc-intro">` (≤20 words) · `<div class="dc-stat">` (with `.dc-stat-head` / `.dc-stat-grid` / `.dc-stat-line`) · `<div class="dc-portrait">` · `<div class="dc-tape">` · `<span class="dc-stamp">` (optional)
 
 ```html
 --- {page .page .chapter-end}
@@ -459,18 +377,9 @@ Two-column creature or NPC entry. Left column: chevron banner, intro lede, stat 
 
 ### Table of Contents
 
-Front-matter TOC page. Chevron banner, intro lede, and a structured row list with auto-resolved page numbers via `target-counter()`. Footers suppressed. Each `<a href="#heading-id">` link is resolved to its page number by Paged.js at layout time.
+Front-matter TOC: chevron banner + lede + structured rows with `target-counter()`-resolved page numbers. Footers suppressed. Each `<a href="#id">` resolves to its page number at layout time. **Page class:** `--- {page .page .front-matter}`
 
-**Components:**
-- `# Contents {.dc-chevron}` — banner heading
-- `<div class="dc-intro">` — orienting lede
-- `<div class="dc-toc">` — TOC container
-- `<div class="dc-toc-row">` — one row per entry
-- `<div class="dc-toc-no">` — zero-padded chapter number
-- `<div class="dc-toc-title">` — title with `<small>` subtitle
-- `<div class="dc-toc-page">` — static placeholder or `target-counter()`-resolved number
-
-**Page class:** `--- {page .page .front-matter}`
+**Components:** `# Contents {.dc-chevron}` · `<div class="dc-intro">` · `<div class="dc-toc">` (container) · `<div class="dc-toc-row">` (one per entry) · `<div class="dc-toc-no">` (zero-padded ch#) · `<div class="dc-toc-title">` (with `<small>` subtitle) · `<div class="dc-toc-page">` (resolved number)
 
 ```html
 --- {page .page .front-matter}
@@ -493,24 +402,15 @@ Front-matter TOC page. Chevron banner, intro lede, and a structured row list wit
 </div>
 ```
 
-Each `href` must point to an `id` on a heading or `<span id="…">` anchor in the rendered document. Paged.js replaces the link text with the resolved page number automatically.
+Each `href` must point to an `id` on a heading or `<span id="…">` anchor. Paged.js resolves page numbers automatically.
 
 ---
 
 ### Procedure Page
 
-Numbered step-by-step procedure with a two-column layout: steps list on the left, optional sidebar callout and pull quote on the right. A tape divider introduces closing prose below the grid. Flows as a normal body page — no break marker required.
+Numbered procedure with two-column layout: steps list left, callout + pull quote right. Tape divider introduces closing prose. **Page class:** normal body page, no break marker needed.
 
-**Components:**
-- `# Title {.dc-chevron}` — section banner
-- `<div class="dc-intro">` — orienting lede
-- `::: wrapper {.dc-procedure-grid}` — two-column flex container
-- `<ol class="dc-steps">` — ordered steps list; each `<li>` uses `<span class="dc-step-no">` for zero-padded number
-- `!!! Sidebar` — facilitator guidance callout in right column
-- `<div class="dc-pullquote">` — pull quote in right column
-- `<div class="dc-tape">` — section divider below grid
-
-**Page class:** normal body page, no break marker needed.
+**Components:** `# Title {.dc-chevron}` · `<div class="dc-intro">` · `::: wrapper {.dc-procedure-grid}` (flex container) · `<ol class="dc-steps">` (each `<li>` uses `<span class="dc-step-no">` for zero-padded number) · `!!! Sidebar` · `<div class="dc-pullquote">` · `<div class="dc-tape">`
 
 ```markdown
 # Procedure Title {.dc-chevron}
@@ -552,16 +452,9 @@ Optional closing prose for variant rules or table preferences.
 
 ### Fiction / Narrative Prose
 
-Full-column narrative fiction for chapter openers, vignettes, and dream-scenario intros. No structural UI elements — prose, floated art, and a closing pull quote only. First-line indent is applied by print CSS. Flows as a normal body page — no break marker required.
+Full-column narrative for chapter openers, vignettes, dream intros. Prose + floated art + pull quote only — no structural UI. First-line indent applied by print CSS. **Page class:** normal body page, no break marker needed.
 
-**Components:**
-- `### Scene Label {.dc-spec-tweak .no-top}` — optional vignette label (omit for pure prose)
-- `*italic opener*` — scene-setting italic sentence
-- `![alt](img/file.png){.dc-art-float-right}` — floated art (use `.dc-art-float-left` for opposite)
-- `<div class="dc-pullquote">` — closing pull quote
-- `<span class="dc-pullquote-attr">` — attribution inside the quote div
-
-**Page class:** normal body page, no break marker needed.
+**Components:** `### Scene Label {.dc-spec-tweak .no-top}` (optional) · `*italic opener*` · `![alt](img/file.png){.dc-art-float-right}` (or `.dc-art-float-left`) · `<div class="dc-pullquote">` + `<span class="dc-pullquote-attr">`
 
 ```markdown
 ### Scene Label {.dc-spec-tweak .no-top}
@@ -585,21 +478,9 @@ Continued prose with the floated image wrapping left.
 
 ### Rules Reference
 
-Standard interior rules page. Major section banners via `{.dc-chevron}`, H3 sub-headings, body prose, note callouts, tape dividers, roll tables, and pick-one option tables. The workhorse template for mechanics chapters. Flows as a normal body page — no break marker required.
+Workhorse template for mechanics chapters. H2 banners, H3 sub-headings, body prose, note callouts, tape dividers, roll tables, option tables. **Page class:** normal body page, no break marker needed.
 
-**Components:**
-- `## ◈ Section Title {.dc-chevron}` — major section banner (◈ prefix optional)
-- `### Sub-Heading` — H3 for mechanic terms (no class needed)
-- `**MECHANIC NAME**` — bold caps for mechanic names in prose
-- `<span class="scream">ROLL THE DIE!</span>` — die-roll prompt chip
-- `<span class="roll-lucid">ROLL LUCID.</span>` — lucid roll chip
-- `<span class="ability-name">Name</span>` — ability name inline
-- `!!! Note` / `!!! Dream Master` — note callout admonitions
-- `<div class="dc-tape">— § —</div>` — section divider
-- `<table class="dc-roll-table">` — outcome resolution table
-- `::: wrapper {.dc-options-layout}` — two-column pick-one table layout
-
-**Page class:** normal body page, no break marker needed.
+**Components:** `## ◈ Title {.dc-chevron}` (◈ optional) · `### Sub-Heading` · `**MECHANIC NAME**` · `<span class="scream">ROLL THE DIE!</span>` · `<span class="roll-lucid">ROLL LUCID.</span>` · `<span class="ability-name">Name</span>` · `!!! Note` / `!!! Dream Master` · `<div class="dc-tape">— § —</div>` · `<table class="dc-roll-table">` · `::: wrapper {.dc-options-layout}`
 
 ```markdown
 ## ◈ Rule Category {.dc-chevron}
@@ -642,22 +523,15 @@ Inverse condition note — common edge case or clarification.
 
 ## Running Headers and Footers
 
-The DC footer model places two counters in opposing bottom corners of every body page:
+Two counters in opposing bottom corners of every body page: **`p.N`** (page number) and **`c.N`** (chapter counter). Recto: `p.N` bottom-left · `c.N` bottom-right. Verso: swapped. `.chapter-start`, `.front-matter`, and `.colophon` suppress all footer chrome.
 
-- **`p.N`** — page number, rendered by `counter(page)` in the `@page :right @bottom-right` and `@page :left @bottom-left` margin boxes.
-- **`c.N`** — chapter counter, rendered by `counter(chapter)` in the opposing corner.
-
-On recto (right) pages the layout is `p.N` bottom-left · `c.N` bottom-right. On verso (left) pages these swap: `c.N` bottom-left · `p.N` bottom-right.
-
-The chapter counter is incremented by the `.page.chapter-NN` class applied to the first `.page-break` div of each chapter. This guarantees the running footer reads the correct chapter number on every page, including the chapter-start page itself.
+The chapter counter resets via `.page.chapter-NN` on the first `.page-break` div of each chapter:
 
 ```css
 /* page-rules.css — counter reset per chapter */
 .page.chapter-01, .page-break.chapter-01 { counter-reset: chapter 1; }
 .page.chapter-02, .page-break.chapter-02 { counter-reset: chapter 2; }
 ```
-
-`.chapter-start` pages suppress both footer counters entirely. `.front-matter` and `.colophon` pages also suppress all footer chrome.
 
 ---
 

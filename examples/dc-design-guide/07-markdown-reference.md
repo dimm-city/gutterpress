@@ -22,28 +22,13 @@ The `@` marker system controls page flow and generates semantic HTML wrappers. M
 | `@section #id .class` | `<div class="region [class]" id="id">` | Region block — groups content, avoids page split |
 | `@spread #id .class` | `<div class="spread [class]" id="id">` | Two-page spread — keeps left and right pages paired |
 
-**Example usage:**
-
 ```markdown
-@chapter #ch-augmerc .augmerc
-
-# Augmerc {.dc-chevron}
-
-@page #pg-skills .skills
-
-## Core Skills
-
-@section #sec-counters .counters
-
-### Counter Abilities
+@chapter #ch-augmerc .augmerc   → <div class="chapter augmerc" id="ch-augmerc">
+@page #pg-skills .skills        → <div class="page skills" id="pg-skills">
+@section #sec-counters .counters → <div class="region counters" id="sec-counters">
 ```
 
-Chapter IDs enable precise CSS scoping without specificity battles:
-
-```css
-/* Only affects the Augmerc chapter's skill tables */
-.chapter#ch-augmerc table { table-layout: fixed; }
-```
+Chapter IDs enable precise CSS scoping without specificity battles: `.chapter#ch-augmerc table { table-layout: fixed; }`
 
 ---
 
@@ -101,62 +86,38 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 
 ## Container Blocks
 
-Triple-colon fences wrap content in a styled `<div>`. The word after `:::` sets the container type; the optional `{.class}` attribute applies additional classes.
+Triple-colon fences wrap content in a styled `<div>`. The word after `:::` sets the container type; `{.class}` applies additional classes.
 
-**`:::two-column`** — two equal CSS columns with a column rule:
+| Container | Effect |
+|-----------|--------|
+| `:::two-column` | Two equal CSS columns with column rule |
+| `:::three-column` | Three narrow columns — best for short reference entries |
+| `:::sidebar` | Right-floated aside at 38% width |
+| `:::callout` | Styled information panel with labeled type |
+| `:::pull-quote` | Large centered excerpt with decorative rules |
+| `:::wrapper {.class}` | Generic wrapper — applies any CSS class |
 
 ```markdown
 :::two-column
-
 Left column content.
-
 ---{.column-break}
-
 Right column content.
-
 :::
-```
 
-**`:::three-column`** — three narrow columns, best for short reference entries:
-
-```markdown
-:::three-column
-
-Alpha · first.  Beta · second.  Gamma · third.
-
-:::
-```
-
-**`:::sidebar`** — right-floated aside at 38% width:
-
-```markdown
 :::sidebar
 **Sidebar note.** Supplementary content that doesn't interrupt the body flow.
 :::
-```
 
-**`:::callout`** — styled information panel with a labeled type:
-
-```markdown
 :::callout
 <span class="callout-label">Note</span>
 Standard informational callout.
 :::
-```
 
-**`:::pull-quote`** — large centered excerpt with decorative rules:
-
-```markdown
 :::pull-quote
 The measure of good design is whether the reader notices the design at all.
-
 <span class="attribution">— Design Guide</span>
 :::
-```
 
-**`:::wrapper {.class}`** — generic wrapper, applies any CSS class:
-
-```markdown
 :::wrapper {.dc-note}
 <span class="dc-note-label">Note</span>
 <p>Content gets the `.dc-note` class on its wrapping div.</p>
@@ -167,83 +128,36 @@ The measure of good design is whether the reader notices the design at all.
 
 ## Element Attributes
 
-The `markdown-it-attrs` plugin adds `{#id .class attr="value"}` to most markdown elements. The attribute block must immediately follow the element with no space.
-
-**Headings:**
+`markdown-it-attrs` adds `{#id .class attr="value"}` to most elements. Attribute block must immediately follow the element with no space.
 
 ```markdown
 ## Section Heading {#my-anchor .custom-class}
-```
-
-**Images:**
-
-```markdown
 ![Alt text](image.png){.img-float-right}
-```
-
-**Inline spans** — wrap with `**` or `*` then add attributes:
-
-```markdown
 This sentence has a **key term**{.custom-span} highlighted.
 ```
-
-The attribute `{.img-float-right}` is appended directly after the closing `)` of the image syntax with no space between them.
 
 ---
 
 ## Standard Markdown
 
-All standard GFM features are available. Smart typography is enabled by default.
+All GFM features are available. Smart typography is enabled by default.
 
-**Bold** — `**text**` · *Italic* — `*text*` · ***Bold italic*** — `***text***` · `code` — `` `text` ``
+**Inline:** `**bold**` · `*italic*` · `***bold italic***` · `` `code` ``
 
-**Headings:**
-
-```markdown
-# H1 — chapter title (dc-chevron or plain)
-## H2 — section heading (accent border-bottom)
-### H3 — sub-section
-#### H4 — item heading (uppercase small)
-```
-
-**Unordered list:**
+**Headings:** `# H1` (chapter title) · `## H2` (section, accent border) · `### H3` (sub-section) · `#### H4` (item heading, uppercase small)
 
 ```markdown
-- First item
-- Second item
-  - Nested A
-  - Nested B
+- Unordered list item      1. Ordered list item
+  - Nested item               2. Second item
+
+> Blockquote text.         | Col A | Col B |
+> — Attribution            |-------|-------|
+                           | A     | B     |
 ```
-
-**Ordered list:**
-
-```markdown
-1. Step one
-2. Step two
-3. Step three
-```
-
-**Blockquote:**
-
-```markdown
-> Quote text.
->
-> — Attribution
-```
-
-**Table:**
-
-```markdown
-| Left | Center | Right |
-|:-----|:------:|------:|
-| A    | B      | C     |
-```
-
-**Fenced code block:**
 
 ````markdown
 ```language
-code here
+Fenced code block.
 ```
 ````
 

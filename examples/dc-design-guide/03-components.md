@@ -10,9 +10,7 @@ The base prose and callout layer. These components work in all chapter types wit
 
 ## Body Prose
 
-The default text style for all narrative and rules content. Standard markdown paragraphs automatically inherit the DC type scale, leading, and color — no class or wrapper required.
-
-**Syntax** — plain markdown paragraph
+Default text style for all narrative and rules content. Standard markdown paragraphs automatically inherit the DC type scale, leading, and color — no class or wrapper required.
 
 ```markdown
 When an enemy falters, you may trigger one of the following counters.
@@ -23,9 +21,7 @@ When an enemy falters, you may trigger one of the following counters.
 
 ## Flavor Text
 
-An italic variant of body prose used for in-world voice, atmospheric quotes, and short dramatic lines. Inside `@skill` cards, flavor text is automatically styled from the `>` blockquote line. For standalone flavor paragraphs, use the `> [!FLAVOR]` alert.
-
-**Syntax** — `> [!FLAVOR]` blockquote alert
+Italic in-world voice for card flavor and atmospheric lines. Inside `@skill` cards the `>` blockquote line is auto-styled; for standalone flavor paragraphs use `> [!FLAVOR]`.
 
 ```markdown
 > [!FLAVOR]
@@ -36,9 +32,7 @@ An italic variant of body prose used for in-world voice, atmospheric quotes, and
 
 ## Intro Lede
 
-A slightly larger, heavier opening paragraph used at the top of a chapter or major section. Wrap the opening paragraph in `:::lede` — CSS applies the larger type scale automatically.
-
-**Syntax** — `:::lede` … `:::`
+Slightly larger opening paragraph at the top of a chapter or major section. **Syntax** — `:::lede` … `:::`
 
 ```markdown
 :::lede
@@ -52,9 +46,7 @@ of them is still original.
 
 ## Note
 
-A boxed aside for rules clarifications, reminders, and supplementary information. Uses a distinct left-border accent and a labeled header to separate it from body prose. No label boilerplate needed — the alert type sets the label automatically.
-
-**Syntax** — `> [!NOTE]` blockquote alert
+Boxed rules clarification with a labeled header and left-border accent. **Syntax** — `> [!NOTE]`
 
 ```markdown
 > [!NOTE]
@@ -65,24 +57,19 @@ A boxed aside for rules clarifications, reminders, and supplementary information
 
 ## Warning
 
-A high-visibility callout for rules that have critical consequences or are frequently misread. Renders in amber to signal elevated importance.
-
-**Syntax** — `> [!WARNING]` blockquote alert
+High-visibility callout in amber for rules with critical consequences. **Syntax** — `> [!WARNING]`
 
 ```markdown
 > [!WARNING]
 > Trauma Patches stabilize a dying character but do not restore HP. A character
-> at 0 HP with a Patch applied is still incapacitated — they can take no actions
-> until healed above 0.
+> at 0 HP with a Patch applied is still incapacitated.
 ```
 
 ---
 
 ## Pull Quote
 
-A large-format excerpt set off with accent rules above and below. Use sparingly — one per chapter or major section at most. Attribution goes as the last paragraph inside the blockquote.
-
-**Syntax** — `> [!PULLQUOTE]` blockquote alert
+Large-format excerpt with accent rules above and below. Use sparingly — one per chapter. **Syntax** — `> [!PULLQUOTE]`
 
 ```markdown
 > [!PULLQUOTE]
@@ -95,9 +82,7 @@ A large-format excerpt set off with accent rules above and below. Use sparingly 
 
 ## Tape Divider
 
-A horizontal section break styled as a piece of torn tape or a label strip. Use to visually separate major sections within a page without starting a new chapter. The `.flush` modifier extends the tape edge to edge.
-
-**Syntax** — `<div class="dc-tape flush">…</div>`
+Horizontal section break styled as a torn-tape strip. `.flush` extends edge to edge. **Syntax** — `<div class="dc-tape flush">…</div>`
 
 ```html
 <div class="dc-tape flush">Section Break</div>
@@ -107,9 +92,7 @@ A horizontal section break styled as a piece of torn tape or a label strip. Use 
 
 ## Section H3 Divider
 
-A compact, high-contrast H3 heading for use inside dense multi-column reference layouts. Designed to remain legible at narrow column widths without the decorative weight of a full chapter subhead.
-
-**Syntax** — `### Heading {.dc-section-h3}`
+Compact high-contrast H3 for dense multi-column reference layouts. **Syntax** — `### Heading {.dc-section-h3}`
 
 ```markdown
 ### Cybernetics & Augments {.dc-section-h3}
@@ -119,9 +102,7 @@ A compact, high-contrast H3 heading for use inside dense multi-column reference 
 
 ## Vibe Callout
 
-A full-width atmospheric block for in-world voice that establishes the emotional or cultural register of a section. Typically placed at the top of a chapter or faction entry before the rules content begins.
-
-**Syntax** — `> [!VIBE]` blockquote alert
+Full-width atmospheric block for in-world voice at the top of a chapter or faction entry. **Syntax** — `> [!VIBE]`
 
 ```markdown
 > [!VIBE]
@@ -133,25 +114,20 @@ A full-width atmospheric block for in-world voice that establishes the emotional
 
 ## Origin Callout
 
-A second-person backstory block that addresses the reader as their character, used for origin and background entries. Draws the reader into the fiction by making them the subject of the narrative.
-
-**Syntax** — `> [!ORIGIN]` blockquote alert
+Second-person backstory block addressing the reader as their character. **Syntax** — `> [!ORIGIN]`
 
 ```markdown
 > [!ORIGIN]
 > You didn't choose the street — the street chose you. Before the grafts,
 > before the crew, there was just hunger and the particular talent for
-> surviving what should have killed you. That's enough. That's always
-> been enough.
+> surviving what should have killed you.
 ```
 
 ---
 
 ## Human Callout (NPC Sidebar)
 
-A compact NPC stat block nested inside a `.sidebar` float. Displays name, role, and key stats in a tight format suited for margin or column-gutter placement.
-
-**Syntax** — `<div class="sidebar"><div class="dc-human-callout">…</div></div>`
+Compact NPC stat block inside a `.sidebar` float. **Syntax** — `<div class="sidebar"><div class="dc-human-callout">…</div></div>`
 
 ```html
 <div class="sidebar">
@@ -166,9 +142,7 @@ A compact NPC stat block nested inside a `.sidebar` float. Displays name, role, 
 
 ## Gear Callout
 
-A named equipment block for weapons, armor, and notable items. Groups the item name, type, and mechanical properties in a scannable panel distinct from body prose. The bold item name is the first line inside the alert.
-
-**Syntax** — `> [!GEAR]` blockquote alert
+Named equipment block for weapons, armor, and notable items. **Syntax** — `> [!GEAR]`
 
 ```markdown
 > [!GEAR]
@@ -182,9 +156,7 @@ A named equipment block for weapons, armor, and notable items. Groups the item n
 
 ## Item Block
 
-A self-contained rules item — ability, move, or equipment entry — wrapped in a fenced container with a structured heading. The `.item` wrapper keeps the block together across page breaks.
-
-**Syntax** — `:::item` … `:::` with a `###` title inside
+Self-contained rules item (ability, move, or equipment) kept together across page breaks. **Syntax** — `:::item` … `:::` with a `###` title inside
 
 ```markdown
 :::item
@@ -201,9 +173,7 @@ damage you take each round. This reduction applies before armor.
 
 ## Table
 
-Standard markdown tables automatically receive DC styling: a colored header row, alternating row fills, and body text set at the small type scale. No extra syntax required.
-
-**Syntax** — Standard markdown pipe table
+Standard markdown tables receive DC styling automatically: colored header row, alternating fills, small type scale. **Syntax** — standard markdown pipe table
 
 ```markdown
 | Augment          | Slot   | Effect                              |
@@ -218,9 +188,7 @@ Standard markdown tables automatically receive DC styling: a colored header row,
 
 ## Blockquote
 
-For epigraphs, thematic quotes, and attributed in-world text. Styled with an accent-alt left border and italic body text. Attribution goes on its own line prefixed with an em dash.
-
-**Syntax** — Standard markdown `>` blockquote
+Epigraphs and attributed in-world text with accent-alt left border and italic body. **Syntax** — standard markdown `>` blockquote
 
 ```markdown
 > Every city has a language. Dimm City's is neon, static, and the sound
@@ -233,9 +201,7 @@ For epigraphs, thematic quotes, and attributed in-world text. Styled with an acc
 
 ## Code Blocks
 
-Fenced code blocks for CSS snippets, stat expressions, or any literal syntax. Rendered with an orange left border, cream background, and Tomorrow monospace. No extra class required.
-
-**Syntax** — Triple-backtick fenced block with an optional language hint
+Fenced code blocks with orange left border, cream background, and Tomorrow monospace. **Syntax** — triple-backtick fenced block with optional language hint
 
 ````markdown
 ```css
@@ -249,47 +215,38 @@ Fenced code blocks for CSS snippets, stat expressions, or any literal syntax. Re
 
 ## Visit Callout
 
-An in-world location description written in present tense, as if the reader is arriving on-site. Use on location pages and before encounter content to establish place before mechanics begin.
-
-**Syntax** — `> [!VISIT]` blockquote alert
+In-world location description in present tense, placed before encounter content. **Syntax** — `> [!VISIT]`
 
 ```markdown
 > [!VISIT]
 > The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers
 > brush shoulders between stalls selling augment cartridges, black-market
-> permits, and fried synthetic crab. If someone's selling it somewhere in
-> Dimm City, it started here.
+> permits, and fried synthetic crab.
 ```
 
 ---
 
 ## Dream Master Note
 
-A Dream Master–addressed instruction block, visually distinct from player-facing notes. Use for GM guidance, scene hooks, and pacing advice that should not be read aloud at the table.
-
-**Syntax** — `> [!DM]` blockquote alert
+Dream Master–addressed instruction block for GM guidance and scene hooks, visually distinct from player-facing notes. **Syntax** — `> [!DM]`
 
 ```markdown
 > [!DM]
 > If a player hasn't chosen their starting gear by the end of session zero,
-> hand them a Scavenger Pack and move on. Gear anxiety is real but the game
-> shouldn't wait for it.
+> hand them a Scavenger Pack and move on.
 ```
 
 ---
 
 ## Glossary / Term List
 
-A definition list of game terms rendered as a styled block. Use for rules glossaries, jargon indexes, and any list of named concepts that need consistent, scannable formatting.
-
-**Syntax** — raw HTML `.dc-terms` wrapper (alias: `.terms`) containing one or more `.dc-terms-list` items (alias: `.terms-list`), each with a `<strong>` term label and a `<p>` definition
+Definition list of game terms rendered as a styled block. **Syntax** — raw HTML `.dc-terms` wrapper with `.terms-list` items
 
 ```html
 <div class="dc-terms terms">
   <div class="terms item">
     <strong>Augmerc</strong>
-    <p>A specialist who combines cybernetic augmentation with close-range
-    combat training.</p>
+    <p>A specialist who combines cybernetic augmentation with close-range combat training.</p>
   </div>
   <div class="terms item">
     <strong>Hard Choice</strong>
@@ -302,9 +259,7 @@ A definition list of game terms rendered as a styled block. Use for rules glossa
 
 ## Numbered Procedure
 
-A zero-padded ordered list for sequential rules — character creation, contract resolution, scene framing. Wrap a standard ordered list in `:::procedure` — CSS applies zero-padded numbering automatically.
-
-**Syntax** — `:::procedure` … `:::` with a standard ordered list inside
+Zero-padded ordered list for sequential rules. **Syntax** — `:::procedure` … `:::` with a standard ordered list inside
 
 ```markdown
 :::procedure
@@ -318,9 +273,7 @@ A zero-padded ordered list for sequential rules — character creation, contract
 
 ## Outcome Ladder
 
-The five-rung d20 result table used for all rolls in Dimm City. Each row is color-coded by result severity. Use the `@outcome` / `@end-outcome` macro — one pipe-delimited row per result.
-
-**Syntax** — `@outcome` … `@end-outcome` macro; columns are `roll | name | description`
+Five-rung d20 result table for all rolls. Each row is color-coded by result severity. **Syntax** — `@outcome` … `@end-outcome` macro; columns: `roll | name | description`
 
 ```
 @outcome
