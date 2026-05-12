@@ -22,45 +22,45 @@ The **Summary Table** at the end provides a single flat list of every item with 
 
 Items with zero usage anywhere in the field guide AND no CSS consumer, or confirmed functional bugs that make the item inoperative as written.
 
-**`.dc-art-slot`** — Defined in CSS, never referenced in any markdown file or field guide chapter. Dead art-placeholder class.
+✅ REMOVED 2026-05-12 **`.dc-art-slot`** — CSS block removed (replaced with removal comment).
 
-**`.dc-art-slot-ghost`** — Same. Companion to `.dc-art-slot`, zero usage. Dead.
+✅ REMOVED 2026-05-12 **`.dc-art-slot-ghost`** — CSS block removed.
 
-**`.dc-spread`** — Defined in CSS. Zero usage in field guide. The un-prefixed `.specialty-spread` (or its alias `.dc-specialty-spread`) is used instead where applicable.
+✅ REMOVED 2026-05-12 **`.dc-spread`** — CSS block removed.
 
-**`.dc-class-hero`** — Dead CSS class. No field guide file uses it.
+✅ REMOVED 2026-05-12 **`.dc-class-hero`** — CSS block removed.
 
-**`.dc-class-hero-row`** — Dead CSS class. No field guide file uses it.
+✅ REMOVED 2026-05-12 **`.dc-class-hero-row`** — CSS block removed.
 
-**`.dc-class-hero-no`** — Dead CSS class. No field guide file uses it.
+✅ REMOVED 2026-05-12 **`.dc-class-hero-no`** — CSS block removed.
 
-**`.dc-page`** — Defined in CSS, never used. Not to be confused with `@page` at-rules.
+✅ REMOVED 2026-05-12 **`.dc-page`** — CSS block removed.
 
-**`.dc-page-num`** — Dead CSS class. Page numbers are handled by `@page` counter rules, not this class.
+✅ REMOVED 2026-05-12 **`.dc-page-num`** — CSS block removed.
 
-**`.dc-chapter-num`** — Dead CSS class. Chapter numbering is done via the `@chapter-opener` macro or raw HTML `<span class="dc-chapter-opener-no">`, not this class.
+✅ REMOVED 2026-05-12 **`.dc-chapter-num`** — CSS block removed.
 
-**`.dc-path-block-wrap`** — Superseded by `.dc-path-shell`. Dead. The replacement is actively used; this is a leftover rename artifact.
+✅ REMOVED 2026-05-12 **`.dc-path-block-wrap`** — CSS block removed (superseded by `.dc-path-shell`).
 
-**`.font-banner`** — CSS class referencing a removed token. The token no longer exists; any element using this class silently falls back to an undefined font. Dead and misleading.
+✅ REMOVED 2026-05-12 **`.font-banner`** — CSS block removed (referenced a removed token).
 
-**`.dc-p`** — Dead CSS class. No markdown or field guide usage found.
+✅ REMOVED 2026-05-12 **`.dc-p`** — CSS block removed.
 
-**`.dc-display-char`** — Dead CSS class. Zero field guide usage.
+✅ REMOVED 2026-05-12 **`.dc-display-char`** — CSS block removed.
 
-**`.dc-quote-label`** — Dead CSS class. Zero field guide usage.
+✅ REMOVED 2026-05-12 **`.dc-quote-label`** — CSS block removed.
 
-**`.dc-art-credit`** — Dead CSS class. Zero field guide usage.
+✅ REMOVED 2026-05-12 **`.dc-art-credit`** — CSS block removed.
 
-**`.dc-art-img`** — Dead CSS class. Zero field guide usage. Image float classes are used instead.
+✅ REMOVED 2026-05-12 **`.dc-art-img`** — CSS block removed.
 
-**`.dc-portrait-inner`** — Dead CSS class. Zero field guide usage.
+✅ REMOVED 2026-05-12 **`.dc-portrait-inner`** — CSS block removed.
 
-**`.dc-2col`** — Dead CSS class. Zero field guide usage. The un-prefixed `.two-column` or the ability-specific grid variants are used instead.
+✅ REMOVED 2026-05-12 **`.dc-2col`** — CSS block removed.
 
-**`.dc-2col.dc-2col-mt`** — Dead compound selector. Both the base class and this modifier are unused.
+✅ REMOVED 2026-05-12 **`.dc-2col.dc-2col-mt`** — CSS block removed.
 
-**`.two-col-list`** — Referenced in CSS but the *defined* name is `.two-column-list`. The CSS rule for `.two-col-list` is orphaned — nothing generates this class. (Note: this is a different issue from the alias pair documented in Category 3 — the alias itself exists in CSS but no markdown generates the un-suffixed form.)
+✅ REMOVED 2026-05-12 **`.two-col-list`** — Orphan CSS rule removed; canonical form is `.two-column-list`.
 
 **Empty/placeholder elements in source:**
 - One completely empty `::: wrapper {.full-page}:::` block in the Streetwarden file. No content, no purpose. Should be removed from source.
@@ -78,11 +78,11 @@ The markdown-it plugin that handles `!!! Label` admonition syntax emits `class="
 **`@chapter-opener` macro — inconsistent usage and bypass** ✅ FIXED 2026-05-12
 Only 2 of the 10+ chapters use the `@chapter-opener` macro (`C.01` and `C.11`). Chapter-02 bypasses the macro entirely with raw HTML `<span class="dc-chapter-opener-no">C.02</span>`. The 8 specialty files use no opener at all. **Fixed:** `chapter-02 0.md` updated to use `@chapter-opener C.02`. The `dc-note` div block and `dc-sidebar` div block in chapter-02 have also been converted to `> [!NOTE]` alert syntax and `:::wrapper {.dc-sidebar}` container syntax respectively.
 
-**Malformed container syntax in field guide**
-Several containers use quoted class names (`{".specialty-spread"}`, `{".human-callout"}`) and mixed `class=` / `.class` attribute syntax. Depending on the markdown-it-container parser version, these may silently fail to apply the intended class, resulting in unstyled containers. Each case should be audited and normalized to unquoted dot-notation (e.g., `{.specialty-spread}`).
+**Malformed container syntax in field guide** ✅ FIXED 2026-05-12
+Normalized 14 occurrences across chapter-01.md, chapter-03.md, chapter-05.md. All `{".class"}` patterns changed to `{.class}`.
 
-**`--bg` token value mismatch**
-`02-palette.md` documents `--bg` as `#d4d4d4`. The actual definition in `dc-brand.css` is `#d3cec6`. Any author who reads the design guide and hard-codes `#d4d4d4` expecting it to match `--bg` will get a visible colour mismatch. Fix: update `02-palette.md` to show the true hex value, or update `dc-brand.css` to match the documented value.
+**`--bg` token value mismatch** ✅ FIXED 2026-05-12
+`02-palette.md` updated to show correct value `#d3cec6`.
 
 ---
 
@@ -137,8 +137,8 @@ Keep **`.columns`** as the base; `.dense` as a modifier is fine if it changes de
 **Terms list — four names, one pattern:**
 `.dc-terms`, `.dc-terms-list`, `.terms`, `.terms-list` — all produce the same terms/glossary list. Keep **`.dc-terms`** as canonical, retire the other three. Before retiring: `grep -r "dc-terms-list\|\"terms\"\|terms-list" field-guide/ design-guide/ plugins/`
 
-**`.pmd-specimen-inline` duplicates `.pmd-no-break`:**
-Both are `break-inside: avoid` with no other rules. Keep **`.pmd-no-break`** (semantic name for the behaviour), retire **`.pmd-specimen-inline`** or repurpose it with additional rules that justify a distinct name. Before retiring: `grep -r "pmd-specimen-inline" field-guide/ design-guide/ plugins/`
+**`.pmd-specimen-inline`** ✅ REMOVED 2026-05-12
+Identical to `.pmd-no-break`; CSS rule removed from `content-templates.css`. Use `.pmd-no-break` instead.
 
 **`.lede` / `.dc-intro` — two authoring paths for one element:**
 `:::lede` container and `:::wrapper {.dc-intro}` both produce `.dc-intro`. Keep **`:::lede`** as the canonical authoring form (it is the macro-style shorthand the rest of the system uses), retire the `:::wrapper {.dc-intro}` pattern. Document `:::lede` as the single source of truth. Before retiring: `grep -r "dc-intro" field-guide/ design-guide/ plugins/`
@@ -235,8 +235,8 @@ The CSS for `.procedure > ol` suggests an older pattern. If no field guide file 
 
 `> [!PULLQUOTE]` is now the preferred authoring form. `:::pull-quote` remains valid but `> [!PULLQUOTE]` should be promoted as the primary path. Update design guide docs to reflect this preference.
 
-**`.dc-note-callout` (DM Note) vs `.dc-note` (player Note):**
-Nearly identical names, opposite intended audiences. A field guide author who confuses them will apply DM-facing styling to player-facing content or vice versa. Recommendation: rename one to increase visual distance — e.g., `.dc-dm-note` for the DM-facing variant, `.dc-player-note` for the player-facing variant.
+**`.dc-note-callout` → `.dc-dm-note` (DM Note):** ✅ RENAMED 2026-05-12
+Plugin now emits `dc-dm-note`; CSS selector renamed; design guide markdown updated. `.dc-note` remains for player-facing notes.
 
 **`.dc-gear-callout` vs `.gear-callout` naming confusion:**
 `shared.css` defines a `.gear-callout` (no prefix) with `min-height: 3.5in` applied unconditionally. `.dc-gear-callout` does not have this `min-height`. Two nearly identical class names with subtly different box sizing. The un-prefixed `.gear-callout` may produce a very tall box when there is little content. Audit whether both are intentional or whether `.gear-callout` is a stale variant of `.dc-gear-callout`.
@@ -246,8 +246,8 @@ Nearly identical names, opposite intended audiences. A field guide author who co
 **Atmospheric callout cluster — three near-identical classes:**
 `.dc-vibe-callout`, `.dc-origin-callout`, `.dc-visit-callout` share identical structure and differ only by border colour and `::before` label text. They could be consolidated into a single `.dc-flavor-callout` class with a `data-label` attribute and a CSS custom property for accent colour — or remain as separate classes if the authoring ergonomics of named classes is preferred. Either is valid; what matters is the decision is explicit.
 
-**Banner heading repetition — `.dc-chevron` vs five hard-coded selectors:**
-`.dc-chevron` in CSS produces `background: var(--rust)` + `clip-path: var(--clip-banner)` + `color: var(--paper-cream)` + `font-family: var(--font-display)`. Five additional selectors in `content-templates.css` hard-code the same four declarations independently. Those five selectors could instead extend or compose `.dc-chevron`, eliminating the duplication and ensuring that changing the banner treatment only requires editing one rule.
+**Banner heading repetition — `.dc-chevron` vs five hard-coded selectors:** ⚠️ DOCUMENTED 2026-05-12
+Cannot reduce without adding `{.dc-chevron}` to markup. Duplication annotated with comments in `content-templates.css`. Future refactor: add class to h1 elements in markdown, then trim duplicated declarations to only `border: 0`.
 
 ---
 
@@ -258,8 +258,8 @@ Duplicate values, documentation mismatches, and near-identical tokens that creat
 **`--paper-stain: #d0c8b5` and `--border-hairline: #d0c8b5` — exact same hex value.**
 These are semantically different concepts (a texture colour vs. a rule colour) but they happen to share the same value today. If the design evolves and one changes, the other should not follow automatically. The coincidence is not a problem unless authors start using one where the other is semantically correct. Document the coincidence explicitly, or give one a distinct value.
 
-**`--fs-base: 12pt` and `--fs-body: 12pt` — exact same value.**
-Two tokens for the same size. Determine which is the canonical body-text font size token and retire the other. All CSS that references the retired token must be updated to use the canonical one.
+**`--fs-base` retired** ✅ DONE 2026-05-12
+`--fs-base` token removed from `:root`; `body { font-size }` updated to use `--fs-body`. `--fs-body: 12pt` is now the sole canonical body size token.
 
 **`--space-2xl: 0.25in` and `--gutter: 0.25in` — exact same value.**
 `--gutter` is a layout concept (column gutter); `--space-2xl` is a spacing-scale step. They happen to be the same today. Same risk as above: if gutter changes, spacing scale should not, and vice versa. Fine to keep both tokens if their semantics are truly distinct, but document the relationship explicitly.
@@ -277,8 +277,8 @@ Same issue: H1 and banner heading tokens are nearly identical. If the banner hea
 **`--bg` documentation mismatch:**
 `02-palette.md` documents `--bg` as `#d4d4d4`. The actual definition in `dc-brand.css` is `#d3cec6`. These are visually different (the CSS value is warmer/more beige). Fix: update `02-palette.md` to reflect the actual CSS value. Until fixed, any author who copies the hex from the palette doc will get a mismatch.
 
-**Three undocumented font tokens:**
-`--font-tab`, `--font-sans`, `--font-quote` appear in CSS but are not mentioned in `01-typography.md`. Authors cannot know these tokens exist, cannot use them intentionally, and cannot predict what will happen if they need to change the font assignment for tab labels, sans-serif prose, or quotes. Add all three to the typography spec, or if they are internal implementation details, prefix them with `--_` to signal they are private.
+**Three undocumented font tokens:** ✅ DOCUMENTED 2026-05-12
+`--font-tab`, `--font-sans`, `--font-quote` added to the Font Token Reference table in `01-typography.md`.
 
 ---
 
