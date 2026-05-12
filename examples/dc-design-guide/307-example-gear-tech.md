@@ -2,7 +2,7 @@
 
 # Gear & Tech — Real-World Example {.dc-chevron}
 
-::: wrapper {.dc-intro}
+:::lede
 This section shows how gear, aug cards, and cybernetics pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 05. Gear pages use the `.aug` card inside a `.grid` wrapper for multi-column card layout. Cybernetics pages use dense prose with tables. Images replaced with design guide placeholder.
 :::
 

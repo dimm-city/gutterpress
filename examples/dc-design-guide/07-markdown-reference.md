@@ -2,7 +2,7 @@
 
 # Markdown Reference
 
-::: wrapper {.dc-intro}
+:::lede
 All markdown-it syntax features with DC authoring context.
 :::
 

@@ -2,7 +2,7 @@
 
 # Field Guide Components
 
-::: wrapper {.dc-intro}
+:::lede
 Components used in the Dimm City Field Guide — gear entries, definition blocks, sidebar boxes, colophon data, and the dashed rule divider. These elements handle the prose-heavy, reference-dense pages that the core DC component library does not cover.
 :::
 

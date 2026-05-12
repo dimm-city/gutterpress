@@ -2,7 +2,7 @@
 
 # Core Components
 
-::: wrapper {.dc-intro}
+:::lede
 The base prose and callout layer. These components work in all chapter types without needing a specialty or learning-path wrapper.
 :::
 
@@ -305,7 +305,7 @@ Five-rung d20 result table for all rolls. Each row is color-coded by result seve
 | Section H3 Divider | `### Heading {.dc-section-h3}` | `.dc-section-h3` |
 | Vibe Callout | `> [!VIBE]` blockquote alert | `.dc-vibe-callout` |
 | Origin Callout | `> [!ORIGIN]` blockquote alert | `.dc-origin-callout` |
-| Human Callout | Raw HTML inside `.sidebar` | `.dc-human-callout` |
+| Human Callout | Raw HTML inside `.dc-sidebar` | `.dc-human-callout` |
 | Gear Callout | `> [!GEAR]` blockquote alert | `.dc-gear-callout` |
 | Item Block | `:::item` … `:::` with `###` title | `.item` |
 | Table | Standard markdown pipe table | *(auto)* |

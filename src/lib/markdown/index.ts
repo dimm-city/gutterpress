@@ -128,7 +128,7 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   md.use(markdownItContainer, "pull-quote", createNamedContainer("pull-quote"));
   md.use(markdownItContainer, "procedure", createNamedContainer("procedure"));
   md.use(markdownItContainer, "item", createNamedContainer("item"));
-  md.use(markdownItContainer, "lede", createNamedContainer("lede"));
+  md.use(markdownItContainer, "lede", createAliasedContainer("lede", "dc-intro"));
 
   // Apply custom plugins from manifest
   if (customPlugins && customPlugins.length > 0) {

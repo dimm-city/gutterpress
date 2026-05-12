@@ -109,7 +109,7 @@
   --paper-cream:  #f5f0e6;  /* warm cream — primary card surface */
   --paper-light:  #ebe5d8;  /* paper — aside / sticker / quote */
   --paper-aged:   #ddd6c6;  /* deeper aged — emphasis aside */
-  --paper-stain:  #d0c8b5;  /* dirty paper / inset wells */
+  --paper-stain:  #d0c8b5;  /* dirty paper / inset wells */ /* coincides with --border-hairline; semantically distinct — do not assume they track together */
 
   /* --bk-cream/paper/aged/stain aliases removed — duplicated --paper-* tokens, never consumed */
 
@@ -164,7 +164,7 @@
   /* ═══════════════════════════════════════════════════════════════════════════
      BORDERS — ink-on-cream
      ═══════════════════════════════════════════════════════════════════════════ */
-  --border-hairline: #d0c8b5;   /* same as paper-stain */
+  --border-hairline: #d0c8b5;   /* same as paper-stain */ /* coincides with --paper-stain; semantically distinct — do not assume they track together */
   --border-blue:     var(--hud-blue);
 
   --bw-thin:   1px;
@@ -197,7 +197,7 @@
   --fs-body-xs: 11.5pt;     /* between body-sm and body — outcome text, cover body */
   --fs-caption: 10pt;       /* credits / fine print exceptions */
   --fs-footer:  9.5pt;      /* @page margin box footer text */
-  --fs-chevron: 20pt;       /* banner/chevron heading — h1 on chapter-start, specialty pages */
+  --fs-chevron: 20pt;       /* banner/chevron heading — h1 on chapter-start, specialty pages */ /* near --fs-h1 (20.7pt); if intentional, consider using var(--fs-h1) directly */
   --fs-h1:      1.728rem;   /* 20.7pt */
   --fs-h2:      1.44rem;    /* 17.3pt */
   --fs-h3:      1.2rem;     /* 14.4pt */
@@ -205,7 +205,7 @@
   --fs-h5:      0.95rem;
   --fs-h6:      0.85rem;
   --fs-chapter: 26pt;       /* chapter openers */
-  --fs-pullquote: 17pt;       /* pull-quote display size — punches above h2 (17.3pt), arrests the eye */
+  --fs-pullquote: 17pt;       /* pull-quote display size — punches above h2 (17.3pt), arrests the eye */ /* intentionally near --fs-h2; pullquotes read at section-heading weight */
 
   --fw-semibold: 600;
   --fw-bold:     700;
@@ -225,7 +225,7 @@
   --space-md:  0.12in;   /* ~9pt */
   --space-lg:  0.15in;   /* ~11pt */
   --space-xl:  0.20in;   /* ~14pt */
-  --space-2xl: 0.25in;   /* ~18pt — equals default gutter */
+  --space-2xl: 0.25in;   /* ~18pt — equals default gutter */ /* coincides with --gutter; layout vs. spacing-scale — do not assume they track together */
 
   --gutter:        0.25in;
   --page-margin:   0.5in;
@@ -278,7 +278,7 @@
 
   --amber-dark:  #b87400;   /* darkened amber — 3.22:1 on paper-cream; for drop cap and accent use */
   --outer-margin: 0.625in;  /* outer (non-binding) page margin — wider than --page-margin for visual breathing room */
-  --space-xs:    0.0833in;  /* 6pt — 1 baseline unit; tight internal component padding floor */
+  --space-xs:    0.0833in;  /* 6pt — 1 baseline unit; tight internal component padding floor */ /* visually indistinguishable from --space-sm (0.08in) at print scale; consider merging */
 }
 
 /* ============================================================================
@@ -411,7 +411,7 @@ ul li::before {
 .font-sans    { font-family: var(--font-sans); }
 .font-mono    { font-family: var(--font-mono); }
 
-.tag, .dc-tag {
+.dc-tag {
   font-family: var(--font-mono);
   font-size: 0.62rem;
   text-transform: uppercase;
@@ -422,7 +422,7 @@ ul li::before {
 
 /* ───────── LUCID / SURREAL ROLL VARIANTS ───────── */
 /* Lucid: clear mental state, precision roll — HUD blue, ◈ prefix */
-.roll-lucid, .dc-roll-lucid {
+.dc-roll-lucid {
   font-family: var(--font-tab);
   font-size: 0.75em;
   font-weight: 600;
@@ -430,10 +430,10 @@ ul li::before {
   letter-spacing: 0.06em;
   color: var(--hud-blue-dark);
 }
-.roll-lucid::before, .dc-roll-lucid::before { content: '◈ '; opacity: 1; }
+.dc-roll-lucid::before { content: '◈ '; opacity: 1; }
 
 /* Surreal: reality distortion, altered state — magenta, ∿ prefix */
-.roll-surreal, .dc-roll-surreal {
+.dc-roll-surreal {
   font-family: var(--font-tab);
   font-size: 0.75em;
   font-weight: 600;
@@ -441,7 +441,7 @@ ul li::before {
   letter-spacing: 0.06em;
   color: var(--hud-magenta);
 }
-.roll-surreal::before, .dc-roll-surreal::before { content: '∿ '; opacity: 1; }
+.dc-roll-surreal::before { content: '∿ '; opacity: 1; }
 
 /* .card / .card-group legacy block removed — dc-card-body / dc-card-inner carry these styles */
 
@@ -580,10 +580,10 @@ ul li::before {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.dc-prose .roll-lucid  { font-family: var(--font-tab); font-size: 0.75em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--hud-blue-dark); }
-.dc-prose .roll-lucid::before  { content: '◈ '; opacity: 1; }
-.dc-prose .roll-surreal { font-family: var(--font-tab); font-size: 0.75em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--hud-magenta); }
-.dc-prose .roll-surreal::before { content: '∿ '; opacity: 1; }
+.dc-prose .dc-roll-lucid  { font-family: var(--font-tab); font-size: 0.75em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--hud-blue-dark); }
+.dc-prose .dc-roll-lucid::before  { content: '◈ '; opacity: 1; }
+.dc-prose .dc-roll-surreal { font-family: var(--font-tab); font-size: 0.75em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--hud-magenta); }
+.dc-prose .dc-roll-surreal::before { content: '∿ '; opacity: 1; }
 .dc-prose .ability-name {
   color: var(--crimson);
   font-weight: 700;
@@ -1738,7 +1738,7 @@ hr,
 /* PARTIAL — bare .specialty-intro (without .wrapper) fallback.
    shared.css .wrapper.specialty-intro (above) handles the compound case.
    These properties are unique to legacy and not set by shared.css. */
-.specialty-intro, .dc-specialty-intro {
+.specialty-intro {
   background: var(--hud-panel);
   padding: 1.5rem 1.5rem 1.25rem;
   margin: 0;
@@ -1754,7 +1754,7 @@ hr,
 /* PARTIAL — bare .specialty-intro > h2. shared.css .wrapper.specialty-intro > h2
    (same specificity) wins by load order for wrapped elements.
    This rule provides fallback for bare .specialty-intro without .wrapper. */
-.specialty-intro > h2:first-child, .dc-specialty-intro > h2:first-child {
+.specialty-intro > h2:first-child {
   font-family: var(--font-display);
   font-size: 2rem;
   font-weight: var(--fw-bold, 700);
@@ -1771,7 +1771,7 @@ hr,
 }
 
 /* PARTIAL — bare .specialty-intro > h3. Complementary to shared.css compound version. */
-.specialty-intro > h3, .dc-specialty-intro > h3 {
+.specialty-intro > h3 {
   color: var(--crimson);
   font-family: var(--font-display);
   text-transform: uppercase;
@@ -1784,22 +1784,20 @@ hr,
 }
 
 /* PARTIAL — bare .specialty-intro > p. Complementary to shared.css compound version. */
-.specialty-intro > p, .dc-specialty-intro > p {
+.specialty-intro > p {
   margin-block: 0.45rem;
   line-height: 1.5;
 }
 
 /* PARTIAL — bare .specialty-intro > ul/ol. Complementary to shared.css compound version. */
 .specialty-intro > ul,
-.specialty-intro > ol,
-.dc-specialty-intro > ul,
-.dc-specialty-intro > ol {
+.specialty-intro > ol {
   margin-block: 0.45rem;
   padding-left: 1.2rem;
 }
 
 /* Collapses trailing margin. GAP — no shared.css peer. */
-.specialty-intro > :last-child, .dc-specialty-intro > :last-child {
+.specialty-intro > :last-child {
   margin-bottom: 0;
 }
 
@@ -1829,7 +1827,7 @@ hr,
 }
 
 /* LIVE in chapter-01.md (10 specialty cards). */
-.specialty-card, .dc-specialty-card {
+.specialty-card {
   border: 1.5px solid var(--hud-blue);
   border-left: var(--callout-border-width-small) solid var(--crimson);
   padding: var(--space-2xl);
@@ -1904,7 +1902,7 @@ hr,
 }
 
 /* LIVE in chapter-01.md line 226. */
-.specialty-spread, .dc-specialty-spread {
+.specialty-spread {
   display: block;
 }
 
@@ -1959,11 +1957,13 @@ hr,
 
 /* Layout mode modifiers — opt-in classes that pin all skill-cards inside the
    ancestor to a specific width.
-   .columns / .dense — always narrow (3.5in), packs 2 per visual row.
-   .rows             — always wide (full content area), stacks vertically. */
+   .columns — always narrow (3.5in), packs 2 per visual row.
+   .dense   — DEPRECATED: identical to .columns; use .columns instead.
+   .rows    — always wide (full content area), stacks vertically. */
 .columns .dc-skill-card,
 .columns .dc-skill-card:only-child,
 .columns .dc-skill-card.wide,
+/* DEPRECATED — use .columns */
 .dense .dc-skill-card,
 .dense .dc-skill-card:only-child,
 .dense .dc-skill-card.wide {
@@ -2061,7 +2061,7 @@ hr,
      ![Alt](img/photo.png){.img-float-right}
    The image occupies 44% of the column; body text wraps the remaining 56%.
    ─────────────────────────────────────────────────────────────────────────── */
-.img-float-right, .pmd-float-right {
+.img-float-right {
   float: right;
   width: 44%;
   max-width: 44%;
@@ -2077,7 +2077,7 @@ hr,
   display: block;
 }
 
-.sidebar, .dc-sidebar {
+.dc-sidebar {
   background: var(--paper-light);
   border-left: 4px solid var(--orange);
   padding: 14px 18px;
@@ -2098,8 +2098,8 @@ hr,
 }
 
 /* folded from legacy/sidebar.css GAP rules */
-/* Hides empty {.sidebar} wrappers. */
-.sidebar:empty, .dc-sidebar:empty {
+/* Hides empty .dc-sidebar wrappers. */
+.dc-sidebar:empty {
   display: none;
 }
 
@@ -2114,12 +2114,12 @@ hr,
 }
 
 /* Sidebar paragraph spacing. */
-.sidebar p, .dc-sidebar p {
+.dc-sidebar p {
   margin: 0 0 0.1in 0;
 }
 
 /* Sidebar h3 — LIVE in chapter-01.md sidebar blocks. */
-.sidebar h3, .dc-sidebar h3 {
+.dc-sidebar h3 {
   margin: 0.12in 0 0.06in;
   font-size: 1em;
   letter-spacing: 0.04em;
@@ -2440,18 +2440,7 @@ hr,
    FICTION PROSE — inline art float
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* Floats an inline image to the right of flowing fiction prose.
-   Wrap the <img> in a <p class="dc-art-float-right"> inside fiction text. */
-.dc-art-float-right {
-  float: right;
-  width: 44%;
-  margin: 0 0 12px 18px;
-  line-height: 0;
-}
-.dc-art-float-right img {
-  width: 100%;
-  display: block;
-}
+/* .dc-art-float-right removed 2026-05-12 — deprecated alias for .img-float-right; use .img-float-right instead */
 
 /* ══════════════════════════════════════════════════════════════════════════
    OPTIONS TABLE — character creation pick-one tables
@@ -2552,43 +2541,37 @@ hr,
 }
 
 /* field-guide: folded from legacy/header-terms.css */
-/* .terms LIVE in chapter-04.md; .terms-list harmless, no markdown usage. */
-.terms-list, .dc-terms-list,
-.terms, .dc-terms {
+/* .dc-terms-list/.terms/.terms-list removed 2026-05-12 — deprecated aliases; use .dc-terms */
+.dc-terms {
   break-inside: avoid;
   page-break-inside: avoid;
 }
 
-/* .terms .item LIVE in chapter-04.md; .terms-list .card harmless. */
-.terms-list .card, .dc-terms-list .card,
-.terms .item, .dc-terms .item {
+/* .dc-terms-list .card/.terms .item/.terms-list .card removed 2026-05-12 — deprecated; use .dc-terms .item */
+.dc-terms .item {
   --card-border-color: transparent;
   break-inside: avoid;
   page-break-inside: avoid;
 }
 
 /* term label accent color */
-.terms-list .card strong, .dc-terms-list .card strong,
-.terms .item strong, .dc-terms .item strong {
+.dc-terms .item strong {
   color: var(--crimson);
 }
 
 /* term paragraph spacing */
-.terms-list .card p, .dc-terms-list .card p,
-.terms .item p, .dc-terms .item p {
+.dc-terms .item p {
   padding-block: var(--space-sm);
 }
 
 /* first term paragraph — border-bottom separator, no top padding */
-.terms-list .card p:first-of-type, .dc-terms-list .card p:first-of-type,
-.terms .item p:first-of-type, .dc-terms .item p:first-of-type {
+.dc-terms .item p:first-of-type {
   padding-block: 0;
   border-bottom: 1px var(--hud-blue) solid;
 }
 
-/* .header LIVE in chapter-01.md (lines 451, 514); .section-header harmless, no markdown usage. */
-.section-header,
-.header {
+/* .header removed 2026-05-12 — deprecated alias; use .section-header (was LIVE in chapter-01.md lines 451, 514 — requires find-replace in markdown) */
+.section-header {
   page-break-after: avoid;
   margin-bottom: var(--space-2xl);
 }

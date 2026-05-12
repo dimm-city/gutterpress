@@ -84,6 +84,15 @@ Normalized 14 occurrences across chapter-01.md, chapter-03.md, chapter-05.md. Al
 **`--bg` token value mismatch** ✅ FIXED 2026-05-12
 `02-palette.md` updated to show correct value `#d3cec6`.
 
+**`dc-skill-card-cont` — plugin emits class with no CSS rule (HIGH)**
+The `@continue` macro (plugin line 1052) emits `dc-skill-card-cont` on continuation skill cards. No CSS rule exists in `dc-brand.css` or `content-templates.css`. The continuation card renders identically to a base `dc-skill-card` with no visual indicator that it is a continuation. *Fix needed:* add a CSS rule to `dc-brand.css` that visually distinguishes continuation cards (e.g., a dashed border, a continuation label, or suppressed top padding to indicate flow continuity).
+
+**`dc-card-tab-cont` — plugin emits class with no CSS rule (HIGH)**
+The `@continue` macro (plugin line 1056) emits `dc-card-tab-cont` on the continuation card tab element. No CSS rule exists. The tab chrome on continuation cards has no specific styling. *Fix needed:* add a CSS rule to `dc-brand.css` alongside the `dc-skill-card-cont` fix to style the continuation tab (e.g., different background or a "cont'd" label via `::before`).
+
+**`img-wrapper` — plugin emits class with no design-guide CSS rule (MEDIUM)**
+The plugin (line 1154) wraps image-only paragraphs with `class="img-wrapper"`. No rule exists in the design guide CSS files. This class may be handled by per-page inline `<style>` blocks in individual markdown files, or it may be intentionally unstyled (the wrapper exists to avoid `:has()` usage per an inline comment). *Investigation needed:* verify whether `img-wrapper` needs a base CSS rule or is correctly handled at the page level.
+
 ---
 
 ## Category 3: CONSOLIDATE — Alias pairs and duplicates
@@ -92,32 +101,32 @@ Items where two or more names produce identical CSS output. One name should be d
 
 **IMPORTANT: Any consolidation (retiring an alias) requires a full find-replace across ALL of: field guide markdown files, design guide markdown files, AND the Dimm City plugin JS. Renaming a class in CSS only is not sufficient — the plugin may be emitting the old class name, and field guide/design guide markdown may contain the old class name as explicit attributes. Before retiring any alias, run: `grep -r "old-class" field-guide/ design-guide/ plugins/` and update every occurrence.**
 
-**Float image classes — three names, one behaviour:**
-Keep **`.img-float-right`**, retire **`.pmd-float-right`** and **`.dc-art-float-right`** — all three float images right with identical rules. The un-prefixed form is most readable in markdown. Similarly for left-float if a `.dc-art-float-left` counterpart exists. Before retiring: `grep -r "pmd-float-right\|dc-art-float-right" field-guide/ design-guide/ plugins/`
+**Float image classes — three names, one behaviour:** ✅ CONSOLIDATED 2026-05-12
+Keep **`.img-float-right`**, retire **`.pmd-float-right`** and **`.dc-art-float-right`** — all three float images right with identical rules. The un-prefixed form is most readable in markdown. Similarly for left-float if a `.dc-art-float-left` counterpart exists. Design guide markdown updated; no occurrences of deprecated forms found in field guide markdown.
 
-**`.roll-lucid` / `.dc-roll-lucid`:**
-Keep **`.dc-roll-lucid`** (consistent with DC namespace), retire **`.roll-lucid`** — identical CSS. Before retiring: `grep -r "roll-lucid" field-guide/ design-guide/ plugins/`
+**`.roll-lucid` / `.dc-roll-lucid`:** ✅ CONSOLIDATED 2026-05-12
+Keep **`.dc-roll-lucid`** (consistent with DC namespace), retire **`.roll-lucid`** — identical CSS. Design guide markdown confirmed to use only `.dc-roll-lucid`; no bare `.roll-lucid` occurrences found.
 
-**`.roll-surreal` / `.dc-roll-surreal`:**
-Keep **`.dc-roll-surreal`**, retire **`.roll-surreal`** — identical CSS. Before retiring: `grep -r "roll-surreal" field-guide/ design-guide/ plugins/`
+**`.roll-surreal` / `.dc-roll-surreal`:** ✅ CONSOLIDATED 2026-05-12
+Keep **`.dc-roll-surreal`**, retire **`.roll-surreal`** — identical CSS. Design guide markdown confirmed to use only `.dc-roll-surreal`; no bare `.roll-surreal` occurrences found.
 
-**`.tag` / `.dc-tag`:**
-Keep **`.dc-tag`**, retire **`.tag`** — identical CSS, DC namespace is the project convention. Before retiring: `grep -r '"tag"\|\.tag' field-guide/ design-guide/ plugins/`
+**`.tag` / `.dc-tag`:** ✅ CONSOLIDATED 2026-05-12
+Keep **`.dc-tag`**, retire **`.tag`** — identical CSS, DC namespace is the project convention. No bare `{.tag}` or `class="tag"` occurrences found in design guide markdown.
 
-**`.break-before` / `.pmd-break-before`:**
-Keep **`.pmd-break-before`** (vendor-scoped), retire **`.break-before`** — identical CSS. Prefixed form avoids collision with any browser or Paged.js internal. Before retiring: `grep -r "break-before" field-guide/ design-guide/ plugins/`
+**`.break-before` / `.pmd-break-before`:** ✅ CONSOLIDATED 2026-05-12
+Keep **`.pmd-break-before`** (vendor-scoped), retire **`.break-before`** — identical CSS. No bare `.break-before` attribute occurrences found in design guide markdown (only appears in audit prose).
 
-**`.no-break` / `.pmd-no-break`:**
-Keep **`.pmd-no-break`**, retire **`.no-break`** — identical CSS. Before retiring: `grep -r '"no-break"\|\.no-break' field-guide/ design-guide/ plugins/`
+**`.no-break` / `.pmd-no-break`:** ✅ CONSOLIDATED 2026-05-12
+Keep **`.pmd-no-break`**, retire **`.no-break`** — identical CSS. No bare `.no-break` attribute occurrences found in design guide markdown (only appears in audit prose).
 
-**`.sidebar` / `.dc-sidebar`:**
-Keep **`.dc-sidebar`**, retire **`.sidebar`** — identical CSS. Before retiring: `grep -r '"sidebar"\|\.sidebar' field-guide/ design-guide/ plugins/`
+**`.sidebar` / `.dc-sidebar`:** ✅ CONSOLIDATED 2026-05-12
+Keep **`.dc-sidebar`**, retire **`.sidebar`** — identical CSS. No bare `{.sidebar}` or `class="sidebar"` occurrences found in design guide markdown.
 
 **`.two-column-list` / `.two-col-list`:**
 Keep **`.two-column-list`** (the form that actually has a CSS definition), retire **`.two-col-list`** — identical intent. Note: `.two-col-list` as a markdown-generated class appears to be the dead reference documented in Category 1; the CSS alias in this pair refers to a separate rule that does exist. Before retiring: `grep -r "two-col-list" field-guide/ design-guide/ plugins/`
 
-**`.section-header` / `.header`:**
-Keep **`.section-header`** (descriptive), retire **`.header`** — identical CSS. Before retiring: `grep -r '"header"\|\.header' field-guide/ design-guide/ plugins/`
+**`.section-header` / `.header`:** ✅ CONSOLIDATED 2026-05-12
+Keep **`.section-header`** (descriptive), retire **`.header`** — identical CSS. No bare `{.header}` or `class="header"` occurrences found in design guide markdown.
 
 **`.specialty-intro` / `.dc-specialty-intro`:**
 Keep **`.specialty-intro`** (the un-prefixed form is used in field guide), retire **`.dc-specialty-intro`** — identical CSS. Alternatively, adopt the `dc-` prefix consistently and update all field guide usage. Before retiring: `grep -r "dc-specialty-intro" field-guide/ design-guide/ plugins/`
@@ -134,14 +143,14 @@ Keep **`.specialty-art`** (used in field guide), retire **`.dc-specialty-art`** 
 **`.columns` / `.dense`:**
 Keep **`.columns`** as the base; `.dense` as a modifier is fine if it changes density. If both produce *identical* output, retire **`.dense`**. Audit whether they are truly identical or if `.dense` changes column-gap/font-size. Before retiring: `grep -r '"dense"\|\.dense' field-guide/ design-guide/ plugins/`
 
-**Terms list — four names, one pattern:**
-`.dc-terms`, `.dc-terms-list`, `.terms`, `.terms-list` — all produce the same terms/glossary list. Keep **`.dc-terms`** as canonical, retire the other three. Before retiring: `grep -r "dc-terms-list\|\"terms\"\|terms-list" field-guide/ design-guide/ plugins/`
+**Terms list — four names, one pattern:** ✅ CONSOLIDATED 2026-05-12
+`.dc-terms`, `.dc-terms-list`, `.terms`, `.terms-list` — all produce the same terms/glossary list. Keep **`.dc-terms`** as canonical, retire the other three. No deprecated forms found in design guide markdown; `03-components.md` uses only `.dc-terms`.
 
 **`.pmd-specimen-inline`** ✅ REMOVED 2026-05-12
 Identical to `.pmd-no-break`; CSS rule removed from `content-templates.css`. Use `.pmd-no-break` instead.
 
-**`.lede` / `.dc-intro` — two authoring paths for one element:**
-`:::lede` container and `:::wrapper {.dc-intro}` both produce `.dc-intro`. Keep **`:::lede`** as the canonical authoring form (it is the macro-style shorthand the rest of the system uses), retire the `:::wrapper {.dc-intro}` pattern. Document `:::lede` as the single source of truth. Before retiring: `grep -r "dc-intro" field-guide/ design-guide/ plugins/`
+**`.lede` / `.dc-intro` — two authoring paths for one element:** ✅ CONSOLIDATED 2026-05-12
+`:::lede` container and `:::wrapper {.dc-intro}` both produce `.dc-intro`. Keep **`:::lede`** as the canonical authoring form. All 19 design guide markdown files updated to use `:::lede`; `:::wrapper {.dc-intro}` is documented as the legacy path only in `03-components.md` and `07-markdown-reference.md` prose notes. Field guide markdown scope is separate.
 
 ---
 
@@ -290,45 +299,48 @@ Same issue: H1 and banner heading tokens are nearly identical. If the banner hea
 | `--bg` hex mismatch in docs vs CSS | 2 — FIX | HIGH | ✅ FIXED 2026-05-12 — palette doc corrected to #d3cec6 |
 | `@chapter-opener` bypass in chapter-02 | 2 — FIX | MEDIUM | ✅ FIXED 2026-05-12 — macro used; HTML fragments converted to markdown |
 | Malformed container syntax (quoted class names) | 2 — FIX | MEDIUM | ✅ FIXED 2026-05-12 — 14 occurrences normalized in chapter-01, 03, 05 |
-| `.dc-art-slot` | 1 — REMOVE | HIGH | Zero usage, no CSS consumer (agent completing) |
-| `.dc-art-slot-ghost` | 1 — REMOVE | HIGH | Zero usage, no CSS consumer (agent completing) |
-| `.dc-spread` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
-| `.dc-class-hero` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
-| `.dc-class-hero-row` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
-| `.dc-class-hero-no` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
-| `.dc-page` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
-| `.dc-page-num` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
-| `.dc-chapter-num` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
-| `.dc-path-block-wrap` | 1 — REMOVE | HIGH | Superseded by `.dc-path-shell` (agent completing) |
-| `.font-banner` | 1 — REMOVE | HIGH | References removed token, silent fallback (agent completing) |
-| `.dc-p` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
-| `.dc-display-char` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
-| `.dc-quote-label` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
-| `.dc-art-credit` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
-| `.dc-art-img` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
-| `.dc-portrait-inner` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
-| `.dc-2col` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
-| `.dc-2col.dc-2col-mt` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
-| `.two-col-list` (orphan CSS rule) | 1 — REMOVE | MEDIUM | Defined class is `.two-column-list`; this rule is unreachable (agent completing) |
-| Empty `:::wrapper {.full-page}:::` in Streetwarden | 1 — REMOVE | LOW | Placeholder with no content (agent completing) |
-| Empty `.item` slots in chapter-05 | 1 — REMOVE | LOW | Dead placeholder markup (agent completing) |
-| `.img-float-right` / `.pmd-float-right` / `.dc-art-float-right` | 3 — CONSOLIDATE | HIGH | Three names, one float behaviour (agent completing) |
-| `.roll-lucid` / `.dc-roll-lucid` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
-| `.roll-surreal` / `.dc-roll-surreal` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
-| `.tag` / `.dc-tag` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
-| `.break-before` / `.pmd-break-before` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
-| `.no-break` / `.pmd-no-break` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
-| `.sidebar` / `.dc-sidebar` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
-| `.two-column-list` / `.two-col-list` (alias) | 3 — CONSOLIDATE | MEDIUM | Alias pair (agent completing) |
-| `.section-header` / `.header` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
-| `.specialty-intro` / `.dc-specialty-intro` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
-| `.specialty-spread` / `.dc-specialty-spread` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
-| `.specialty-card` / `.dc-specialty-card` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
-| `.specialty-art` / `.dc-specialty-art` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
-| `.columns` / `.dense` | 3 — CONSOLIDATE | LOW | Possibly identical output — verify first (agent completing) |
-| `.dc-terms` / `.dc-terms-list` / `.terms` / `.terms-list` | 3 — CONSOLIDATE | MEDIUM | Four names, one pattern (agent completing) |
-| `.pmd-specimen-inline` duplicates `.pmd-no-break` | 3 — CONSOLIDATE | LOW | Both are `break-inside: avoid` only (agent completing) |
-| `:::lede` / `:::wrapper {.dc-intro}` | 3 — CONSOLIDATE | MEDIUM | Two authoring paths for `.dc-intro` (agent completing) |
+| `dc-skill-card-cont` — no CSS rule | 2 — FIX | HIGH | Plugin emits class; no matching CSS in dc-brand.css |
+| `dc-card-tab-cont` — no CSS rule | 2 — FIX | HIGH | Plugin emits class; no matching CSS in dc-brand.css |
+| `img-wrapper` — no CSS rule | 2 — FIX | MEDIUM | Plugin emits class; per-page inline styles may handle it — verify |
+| `.dc-art-slot` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
+| `.dc-art-slot-ghost` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
+| `.dc-spread` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
+| `.dc-class-hero` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
+| `.dc-class-hero-row` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
+| `.dc-class-hero-no` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
+| `.dc-page` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
+| `.dc-page-num` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
+| `.dc-chapter-num` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
+| `.dc-path-block-wrap` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
+| `.font-banner` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
+| `.dc-p` | 1 — REMOVE | MEDIUM | ✅ REMOVED 2026-05-12 |
+| `.dc-display-char` | 1 — REMOVE | MEDIUM | ✅ REMOVED 2026-05-12 |
+| `.dc-quote-label` | 1 — REMOVE | MEDIUM | ✅ REMOVED 2026-05-12 |
+| `.dc-art-credit` | 1 — REMOVE | MEDIUM | ✅ REMOVED 2026-05-12 |
+| `.dc-art-img` | 1 — REMOVE | MEDIUM | ✅ REMOVED 2026-05-12 |
+| `.dc-portrait-inner` | 1 — REMOVE | MEDIUM | ✅ REMOVED 2026-05-12 |
+| `.dc-2col` | 1 — REMOVE | MEDIUM | ✅ REMOVED 2026-05-12 |
+| `.dc-2col.dc-2col-mt` | 1 — REMOVE | MEDIUM | ✅ REMOVED 2026-05-12 |
+| `.two-col-list` (orphan CSS rule) | 1 — REMOVE | MEDIUM | ✅ REMOVED 2026-05-12 |
+| Empty `:::wrapper {.full-page}:::` in Streetwarden | 1 — REMOVE | LOW | ✅ REMOVED 2026-05-12 |
+| Empty `.item` slots in chapter-05 | 1 — REMOVE | LOW | ✅ REMOVED 2026-05-12 |
+| `.img-float-right` / `.pmd-float-right` / `.dc-art-float-right` | 3 — CONSOLIDATE | HIGH | ✅ CONSOLIDATED 2026-05-12 — CSS aliases removed; field guide 0 occurrences; design guide `.dc-art-float-right` fixed |
+| `.roll-lucid` / `.dc-roll-lucid` | 3 — CONSOLIDATE | MEDIUM | ✅ CONSOLIDATED 2026-05-12 — CSS alias removed; 0 markdown occurrences |
+| `.roll-surreal` / `.dc-roll-surreal` | 3 — CONSOLIDATE | MEDIUM | ✅ CONSOLIDATED 2026-05-12 — CSS alias removed; 0 markdown occurrences |
+| `.tag` / `.dc-tag` | 3 — CONSOLIDATE | MEDIUM | ✅ CONSOLIDATED 2026-05-12 — CSS alias removed; 0 markdown occurrences |
+| `.break-before` / `.pmd-break-before` | 3 — CONSOLIDATE | MEDIUM | ✅ CONSOLIDATED 2026-05-12 — CSS alias removed; 0 markdown occurrences |
+| `.no-break` / `.pmd-no-break` | 3 — CONSOLIDATE | MEDIUM | ✅ CONSOLIDATED 2026-05-12 — CSS alias removed; 0 markdown occurrences |
+| `.sidebar` / `.dc-sidebar` | 3 — CONSOLIDATE | MEDIUM | ✅ CONSOLIDATED 2026-05-12 — CSS alias removed; 1 field guide occurrence fixed |
+| `.two-column-list` / `.two-col-list` (alias) | 3 — CONSOLIDATE | MEDIUM | Alias pair (pending CSS + field guide pass) |
+| `.section-header` / `.header` | 3 — CONSOLIDATE | MEDIUM | ✅ CONSOLIDATED 2026-05-12 — CSS alias removed; 0 markdown occurrences (also fixed in tests/field-guide-input/chapter-01.md:443,519 and chapter-05.md:91) |
+| `.specialty-intro` / `.dc-specialty-intro` | 3 — CONSOLIDATE | MEDIUM | ✅ CONSOLIDATED 2026-05-12 — CSS aliases removed; 0 markdown occurrences |
+| `.specialty-spread` / `.dc-specialty-spread` | 3 — CONSOLIDATE | MEDIUM | ✅ CONSOLIDATED 2026-05-12 — CSS aliases removed; 0 markdown occurrences |
+| `.specialty-card` / `.dc-specialty-card` | 3 — CONSOLIDATE | MEDIUM | ✅ CONSOLIDATED 2026-05-12 — CSS aliases removed; 0 markdown occurrences |
+| `.specialty-art` / `.dc-specialty-art` | 3 — CONSOLIDATE | MEDIUM | ✅ CONSOLIDATED 2026-05-12 — CSS aliases removed; 0 markdown occurrences |
+| `.columns` / `.dense` | 3 — CONSOLIDATE | LOW | ⚠️ CSS DEPRECATED 2026-05-12 — markdown find-replace applied (Task 1 above) |
+| `.dc-terms` / `.dc-terms-list` / `.terms` / `.terms-list` | 3 — CONSOLIDATE | MEDIUM | ✅ CONSOLIDATED 2026-05-12 — CSS aliases removed; markdown updated (also fixed in tests/field-guide-input/chapter-04.md:624,742) |
+| `.pmd-specimen-inline` duplicates `.pmd-no-break` | 3 — CONSOLIDATE | LOW | ✅ REMOVED 2026-05-12 — CSS rule removed from `content-templates.css` |
+| `:::lede` / `:::wrapper {.dc-intro}` | 3 — CONSOLIDATE | MEDIUM | ✅ CONSOLIDATED 2026-05-12 — 21 design guide + 1 field guide occurrences converted |
 | All `> [!TYPE]` callout variants (9 types) | 4 — KEEP + PROMOTE | HIGH | GFM alert syntax is now PREFERRED over ::: container equivalents. These should stay in docs as the primary callout authoring path. |
 | `@section` macro | 4b — PLANNED MIGRATION | HIGH | Currently unused in field guide; field guide to adopt as macro usage expands |
 | `@spread` macro | 4b — PLANNED MIGRATION | HIGH | Currently unused in field guide; field guide to adopt as macro usage expands |
@@ -350,7 +362,7 @@ Same issue: H1 and banner heading tokens are nearly identical. If the banner hea
 | Two numbered procedure systems | 5 — RATIONALIZE | MEDIUM | Container vs legacy `.procedure > ol` |
 | Two pull-quote authoring paths | 5 — RATIONALIZE | LOW | `> [!PULLQUOTE]` now PREFERRED; `:::pull-quote` still valid but secondary |
 | `.dc-note-callout` vs `.dc-note` naming | 5 — RATIONALIZE | ~~HIGH~~ **RENAMED 2026-05-12** | Renamed to `dc-dm-note` to increase visual distance from player-facing `.dc-note` |
-| `.dc-gear-callout` vs `.gear-callout` | 5 — RATIONALIZE | HIGH | Near-identical names, different `min-height` behaviour — investigation needed (see Category 5 note) |
+| `.dc-gear-callout` vs `.gear-callout` | 5 — RATIONALIZE | HIGH | ✅ CLOSED 2026-05-12 — investigation found no bare `.gear-callout` class; only `.dc-gear-callout` exists |
 | Atmospheric callout cluster | 5 — RATIONALIZE | LOW | `.dc-vibe-callout`, `.dc-origin-callout`, `.dc-visit-callout` |
 | Banner heading repetition | 5 — RATIONALIZE | MEDIUM | 5 hard-coded selector blocks duplicate `.dc-chevron` |
 | `--paper-stain` / `--border-hairline` same hex | 6 — TOKEN CLEANUP | LOW | Coincidental value match; document relationship |

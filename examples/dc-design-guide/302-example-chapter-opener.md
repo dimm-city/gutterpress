@@ -2,7 +2,7 @@
 
 # Chapter Opener — Real-World Example {.dc-chevron}
 
-::: wrapper {.dc-intro}
+:::lede
 This section shows how chapter-start spreads look in the actual Dimm City Field Guide, rendered using real book content. The chapter opener is a two-column layout: fiction narrative on the left, rules or character content on the right, separated by a column break. These pages use the `page-chapter-start` template.
 :::
 

@@ -456,9 +456,10 @@ article {
   page-break-before: always;
 }
 
-/* .specialty-art / .dc-specialty-art geometry (received from dc-brand.css L4).
+/* .specialty-art geometry (received from dc-brand.css L4).
    page: full is set in page-rules.css; geometry lives here per layer contract. */
-.specialty-art, .dc-specialty-art {
+/* .dc-specialty-art removed 2026-05-12 — deprecated alias; use .specialty-art */
+.specialty-art {
   width: var(--page-width, 8.625in);
   height: var(--page-height, 11.25in);
   break-before: page;
@@ -1059,15 +1060,15 @@ article {
    --------------------------------------------------------------------------- */
 
 /* Force a page break before any element. */
-.break-before,
+/* .break-before removed 2026-05-12 — deprecated alias; use .pmd-break-before */
 .pmd-break-before {
   break-before: page;
   page-break-before: always;
 }
 
 /* Prevent an element from breaking across pages. */
-.pmd-no-break,
-.no-break {
+/* .no-break removed 2026-05-12 — deprecated alias; use .pmd-no-break */
+.pmd-no-break {
   break-inside: avoid;
   page-break-inside: avoid;
 }

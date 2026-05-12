@@ -2,7 +2,7 @@
 
 # Specialty Overview — Real-World Example {.dc-chevron}
 
-::: wrapper {.dc-intro}
+:::lede
 This section shows how the "Choose a Specialty" spread looks in the actual Dimm City Field Guide, rendered using real book content. It covers two page types: a chapter-start opener with fiction and ability primer, followed by an ability-catalog page with the specialty card grid.
 :::
 

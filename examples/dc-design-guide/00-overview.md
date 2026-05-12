@@ -2,7 +2,7 @@
 
 # Design System Overview
 
-::: wrapper {.dc-intro}
+:::lede
 This guide is both the living documentation of the Dimm City design system *and* a working demonstration. Every specimen on these pages is live — rendered through the same `css/index.css` as the Field Guide. Change a token in `dc-brand.css` and the specimen updates on the next preview refresh.
 :::
 

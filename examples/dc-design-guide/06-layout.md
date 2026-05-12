@@ -2,7 +2,7 @@
 
 # Layout & Composition
 
-::: wrapper {.dc-intro}
+:::lede
 Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
 :::
 
@@ -16,8 +16,8 @@ Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
 | `:::three-column` … `:::` | Three narrow columns | Best for short reference entries |
 | `:::sidebar` … `:::` | Right-floated aside at 38% width | Generates `.dc-sidebar` |
 | `---{.column-break}` | Force next column (no space before `{`) | Use inside `:::two-column` / `:::three-column` |
-| `![]{.img-float-right}` (canonical: `.pmd-float-right`) | Float image right, 44% width | Text wraps left |
-| `![]{.img-float-left}` (canonical: `.pmd-float-left`) | Float image left, 44% width | Text wraps right |
+| `![]{.img-float-right}` | Float image right, 44% width | Text wraps left |
+| `![]{.img-float-left}` | Float image left, 44% width | Text wraps right |
 | `:::container {.pmd-no-break}` | Prevent block splitting across pages | — |
 | `## Heading {.pmd-break-before}` | Force new page before element | — |
 

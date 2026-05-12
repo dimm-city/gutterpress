@@ -2,7 +2,7 @@
 
 # Front Matter — Real-World Example {.dc-chevron}
 
-::: wrapper {.dc-intro}
+:::lede
 This section shows how the Table of Contents, Credits, and Introduction pages look in the actual Dimm City Field Guide, rendered using real book content. These are the first pages a reader encounters — `page-toc`, `page-credits`, and `page-intro` templates applied to the `chapter-00` content.
 :::
 
@@ -10,13 +10,13 @@ This section shows how the Table of Contents, Credits, and Introduction pages lo
 
 ## Table of Contents Page
 
-**Page template** — `@page .page-toc` — activates the `.dc-toc` numbered list layout with bold chapter numbers. The intro blurb uses `:::wrapper {.dc-intro}` (legacy path — prefer `:::lede` in new content). See [Components](#ch-components) for lede syntax and [Page Templates](#ch-templates) for the `page-toc` spec.
+**Page template** — `@page .page-toc` — activates the `.dc-toc` numbered list layout with bold chapter numbers. The intro blurb uses `:::lede` (canonical form). See [Components](#ch-components) for lede syntax and [Page Templates](#ch-templates) for the `page-toc` spec.
 
 @page .page-toc
 
 ## Contents {.dc-chevron}
 
-::: wrapper {.dc-intro}
+:::lede
 Twelve chapters of dreams, dirt, and what bites back. Read them in any order — the city doesn't care where you start.
 :::
 

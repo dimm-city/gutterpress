@@ -2,7 +2,7 @@
 
 # Page Templates
 
-::: wrapper {.dc-intro}
+:::lede
 Named page types control margin geometry, footer chrome, and running headers. Each maps to a `@page` rule in `css/page-rules.css`.
 :::
 
@@ -454,7 +454,7 @@ Optional closing prose for variant rules or table preferences.
 
 Full-column narrative for chapter openers, vignettes, dream intros. Prose + floated art + pull quote only — no structural UI. First-line indent applied by print CSS. **Page class:** normal body page, no break marker needed.
 
-**Components:** `### Scene Label {.dc-spec-tweak .no-top}` (optional) · `*italic opener*` · `![alt](img/file.png){.dc-art-float-right}` (or `.dc-art-float-left`) · `<div class="dc-pullquote">` + `<span class="dc-pullquote-attr">`
+**Components:** `### Scene Label {.dc-spec-tweak .no-top}` (optional) · `*italic opener*` · `![alt](img/file.png){.img-float-right}` (or `.img-float-left`) · `<div class="dc-pullquote">` + `<span class="dc-pullquote-attr">`
 
 ```markdown
 ### Scene Label {.dc-spec-tweak .no-top}
@@ -464,7 +464,7 @@ Full-column narrative for chapter openers, vignettes, dream intros. Prose + floa
 Narrative prose body. Keep paragraphs short and sensory — what the
 operator sees, hears, or smells. Each paragraph earns the next.
 
-![Alt text](img/scene-art.png){.dc-art-float-right}
+![Alt text](img/scene-art.png){.img-float-right}
 
 Continued prose with the floated image wrapping left.
 

@@ -2,7 +2,7 @@
 
 # DC Component Library
 
-::: wrapper {.dc-intro}
+:::lede
 Dimm City-specific components. Ability cards, banners, stat blocks, AP chips, tags, and path chains — the chrome that makes the Field Guide look like Dimm City.
 :::
 
