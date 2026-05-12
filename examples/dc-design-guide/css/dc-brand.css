@@ -189,13 +189,10 @@
   --font-mono:     'Tomorrow', 'Titillium Web', ui-monospace, monospace; /* labels, AP tags, micro-caps */
   --font-quote:    'Titillium Web', 'Tomorrow', serif;                   /* italic flavor quotes */
 
-  /* Production aliases: --fs-base = --base-font-size, --fs-body = --font-size-body, --fs-body-sm = --font-size-body-sm (01-tokens.css) */
-
   /* ═══════════════════════════════════════════════════════════════════════════
      TYPE SCALE — 12pt body floor (print)
      ═══════════════════════════════════════════════════════════════════════════ */
-  --fs-base:    12pt;
-  --fs-body:    12pt;
+  --fs-body:    12pt;  /* canonical body size — was also --fs-base (retired 2026-05-12) */
   --fs-body-sm: 11pt;       /* design floor — never below this for prose */
   --fs-body-xs: 11.5pt;     /* between body-sm and body — outcome text, cover body */
   --fs-caption: 10pt;       /* credits / fine print exceptions */
@@ -302,7 +299,7 @@ html, body {
 body {
   margin: 0;
   font-family: var(--font-body);
-  font-size: var(--fs-base);
+  font-size: var(--fs-body);
   line-height: var(--lh-normal);
   text-wrap: pretty; /* text-wrap: CSS4 — silently ignored by Paged.js; effective in screen preview only */
   position: relative;

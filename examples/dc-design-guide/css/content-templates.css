@@ -515,7 +515,11 @@ article {
   height: auto;
 }
 
-/* TOC page heading — banner treatment */
+/* TOC page heading — banner treatment.
+   Declarations duplicate .dc-chevron (dc-brand.css). Cannot reduce to the
+   class alone because the markup does not add .dc-chevron to these h1 elements.
+   Future refactor: add {.dc-chevron} to the h1 in the markdown and remove these
+   duplicated declarations, keeping only `border: 0`. */
 .page.page-toc > h1 {
   display: inline-block;
   font-family: var(--font-display);
@@ -595,7 +599,8 @@ article {
   padding-left: 18px;
 }
 
-/* Front-matter page headings — credits, intro, chapter-start */
+/* Front-matter page headings — credits, intro, chapter-start.
+   Same .dc-chevron duplication as .page.page-toc > h1 above. */
 .page.page-credits.credits > h1,
 .page.page-intro.intro > h1,
 .page.page-chapter-start.chapter-start > h1 {
