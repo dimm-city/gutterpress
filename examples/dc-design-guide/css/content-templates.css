@@ -1072,11 +1072,7 @@ article {
   column-span: all;
 }
 
-/* Break containment without specimen visual chrome. */
-.pmd-specimen-inline {
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
+/* .pmd-specimen-inline removed 2026-05-12 — identical to .pmd-no-break; use .pmd-no-break instead */
 
 /* Assign element to the 'clean' named page to suppress running headers/footers.
    The 'clean' @page declaration lives in page-rules.css. */

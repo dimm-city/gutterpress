@@ -1546,45 +1546,7 @@ hr,
 /* Stat-cell glyphs use lixdu too — contain them. */
 .dc-stat-cell-val { min-width: 0; overflow: hidden; }
 
-/* Right-page full-bleed art slot */
-.dc-art-slot {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse at 65% 55%, rgba(242, 77, 0, 0.18) 0%, transparent 55%), /* var(--orange) at 18% opacity */
-    linear-gradient(180deg, var(--paper-light) 0%, var(--paper-aged) 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-.dc-art-slot img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.dc-art-slot-ghost {
-  position: absolute;
-  font-family: var(--font-display);
-  font-size: 240px;
-  line-height: 0.85;
-  letter-spacing: 0.04em;
-  color: var(--paper-stain);
-  opacity: 0.55;
-  text-transform: uppercase;
-  pointer-events: none;
-  white-space: nowrap;
-  transform: rotate(-4deg);
-}
-.dc-art-credit {
-  position: absolute;
-  bottom: 16px;
-  right: 36px;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: var(--ink-dust);
-  background: rgba(245, 240, 230, 0.85) /* --paper-cream at 85% opacity */;
-  padding: 4px 8px;
-  z-index: 2;
-}
+/* .dc-art-slot, .dc-art-slot-ghost, .dc-art-credit removed 2026-05-12 — zero usage in print content */
 
 /* Cover-style chapter opener */
 .dc-cover-page {
@@ -1679,14 +1641,7 @@ hr,
 .dc-prose.flavor  { font-style: italic; color: var(--ink-smoke); max-width: 64ch; }
 .dc-prose.grid-2  { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
 
-/* Inline display characters (chapter num, page num in misc) */
-.dc-display-char {
-  font-family: var(--font-display);
-  font-size: 18px;
-  letter-spacing: 0.08em;
-  color: var(--orange);
-  text-transform: uppercase;
-}
+/* .dc-display-char removed 2026-05-12 — zero usage in print content */
 
 /* Cover page layout override (flex column with more padding) */
 .dc-cover-layout {
@@ -1720,29 +1675,8 @@ hr,
 .dc-specimen-head  { padding: 8px 0; vertical-align: middle; font-family: var(--font-mono); font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--hud-blue); }
 .dc-prose.mt-sm { margin-top: 14px; }
 
-/* Flavor quote label in prose tile */
-.dc-quote-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--hud-blue);
-  margin-bottom: 8px;
-}
-
-/* Bestiary portrait / art slot inline styles */
-.dc-portrait-inner {
-  aspect-ratio: 3/4;
-  background: radial-gradient(ellipse at 50% 35%, rgba(242, 77, 0, 0.25) /* var(--orange) at 25% opacity */, transparent 55%),
-              linear-gradient(180deg, var(--paper-light), var(--paper-stain));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-display);
-  font-size: 64px;
-  color: var(--paper-stain);
-  letter-spacing: 0.04em;
-}
+/* .dc-quote-label removed 2026-05-12 — zero usage in print content */
+/* .dc-portrait-inner removed 2026-05-12 — zero usage in print content */
 
 /* Bestiary prose caption variant */
 .dc-prose.caption { font-size: 10pt; color: var(--ink-smoke); }
@@ -1756,18 +1690,7 @@ hr,
 /* Toc margin-top override */
 .dc-toc.mt { margin-top: 18px; }
 
-/* Art image positioning */
-.dc-art-img {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: 65% center;
-  mix-blend-mode: multiply; /* mix-blend-mode: screen-preview only — verify blend output in print proof; CMYK assets will composite incorrectly */
-  opacity: 0.95;
-}
+/* .dc-art-img removed 2026-05-12 — zero usage in print content; use .img-float-right or .dc-art-float-right instead */
 
 /* Procedure page two-column aside section */
 .dc-procedure-grid {
@@ -1802,8 +1725,7 @@ hr,
 /* dc-sub-header no-top variant (same as .flush but only margin) */
 .dc-sub-header.no-top { margin-top: 0; }
 
-/* Inline paragraph with no margin */
-.dc-p.flush { margin: 6px 0 0; }
+/* .dc-p and .dc-p.flush removed 2026-05-12 — zero usage in print content */
 
 /* dc-prose with bottom margin */
 .dc-prose.mb { margin-bottom: 18px; }
@@ -2075,17 +1997,15 @@ hr,
 
 /* Two-column list inside cards: switch to column-width so narrow split
    fragments drop to 1 column instead of collapsing to 1-word-per-line. */
+/* .two-col-list aliases removed 2026-05-12 — orphan class, canonical is .two-column-list */
 .dc-skill-card .two-column-list,
-.dc-skill-card .two-col-list,
-.dc-card-body .two-column-list,
-.dc-card-body .two-col-list {
+.dc-card-body .two-column-list {
   column-count: auto;
   column-width: 14em;
   column-fill: balance;
 }
 
-.dc-skill-card.allow-split .two-column-list ol,
-.dc-skill-card.allow-split .two-col-list ol {
+.dc-skill-card.allow-split .two-column-list ol {
   grid-template-columns: repeat(auto-fit, minmax(12em, 1fr));
 }
 
@@ -2315,7 +2235,10 @@ hr,
   font-style: normal;
 }
 
-.dc-note-callout {
+/* ───────── DM NOTE CALLOUT ───────── */
+/* Dream Master (DM-facing) note box — distinct from .dc-note (player-facing).
+   Renamed from .dc-note-callout 2026-05-12 for clarity. */
+.dc-dm-note {
   margin-top: 9pt;
   padding: var(--space-lg) var(--space-xl);
   background: var(--paper-cream);
@@ -2325,13 +2248,13 @@ hr,
   page-break-inside: avoid;
 }
 
-.dc-note-callout p {
+.dc-dm-note p {
   margin: 0;
   font-style: italic;
 }
 
-/* Scoped to .dc-note-callout context — different font-size/letter-spacing than .dc-note .dc-note-label */
-.dc-note-callout .dc-note-label {
+/* Scoped to .dc-dm-note context — different font-size/letter-spacing than .dc-note .dc-note-label */
+.dc-dm-note .dc-note-label {
   display: block;
   font-family: var(--font-mono);
   font-size: 8pt;
