@@ -12,6 +12,12 @@ This section shows how gear, aug cards, and cybernetics pages look in the actual
 
 **Page template** — `@page .chapter-start .useful-items .chapter-05` — chapter-start layout for the gear chapter opener. The card grid uses `:::: wrapper {class="grid"}` containing multiple `::: aug` containers. Each `.aug` block renders as a bordered card with the item name as an H4 heading and prose description below. No macros — this is pure markdown-it-attrs container syntax. See [Field Guide Components](#ch-fg-components) for the `.aug` card spec and [Layout](#ch-layout) for the grid system.
 
+**Card anatomy** — The `.aug` card has two zones: a crimson header strip (h4 text, all-caps, `--font-display`) and a cream body (`--paper-cream`) with `--font-body` prose. The card border is `--border-hairline` on three sides with a `--crimson` left accent. Height is content-driven — cards in the same grid row do not equalise height, so card order matters for visual balance.
+
+**Grid behaviour** — The `:::: wrapper {class="grid"}` sets `display: grid` with `auto-fill` columns at a minimum of `2.5in`. On a standard 8.5×11 page with margins, this yields 2 columns. Cards that overflow a single page break to the next — the grid does not guarantee column alignment across page boundaries. For long items, consider splitting them into separate grids per page rather than one continuous grid.
+
+**Authoring note** — The `@page` directive on gear pages drives the chapter-start banner at top. The `.chapter-05` class provides the chapter-specific background texture and colour accents defined in `dc-brand.css`. All images on this page use the design guide placeholder — in production, each card may carry a small inline image using `.aug > img` targeting.
+
 @page .chapter-start .useful-items .chapter-05
 
 ### Useful Items
@@ -74,6 +80,10 @@ Life on the streets is hard, but it can be 100% easier with the right gear. The 
 
 **Page template** — `@page .useful-items .second-page .chapter-05` — continues the gear chapter on a new page using the same `.aug` card format. Individual items without a surrounding grid render as single full-width cards.
 
+**Single-card vs. grid** — When a page contains only one or two items, omit the `:::: wrapper {class="grid"}` wrapper and write each `::: aug` directly. Without the grid wrapper, each card stretches to full column width — better suited to items with long descriptions that would be cramped at half-width. This page deliberately mixes full-width cards with a bottom-anchored image placeholder to demonstrate how art placement interacts with card flow.
+
+**Image placement** — The `![medkit](img/placeholder-plate.png){.bottom-center .art-medkit}` at the bottom demonstrates `p.img-wrapper` positioning. The `.bottom-center` class anchors the image to the page bottom using absolute positioning defined in the `@page .useful-items` rule; `.art-medkit` is a one-off class for per-page size tuning. This is the intended pattern for decorative chapter art — not floated inline, but anchored at the page level via `@page .my-class` CSS.
+
 @page .useful-items .second-page .chapter-05
 
 ### Useful Items
@@ -109,6 +119,10 @@ Most augmercs have at least two or three members of their squad carrying a full 
 ## Tech and Cybernetics Page
 
 **Page template** — `@page .tech-cybernetics .second-page .chapter-05` — applies the cybernetics rules layout. This page uses dense prose with bold key terms and a full rules table for the Ego Points system. The blockquote introduces the section concept. The `SysChk` table uses standard markdown table syntax. See [Components](#ch-components) for table rendering.
+
+**Prose + table pattern** — This is the most common rules-page structure in the field guide: a section opener in bold flavour prose, a `> blockquote` for an in-world voice line, body prose explaining the mechanic, then a reference table. The Ego Points table is pure GFM markdown — no class attributes needed for basic alternating-row styling (dc-brand.css applies it universally). If a table needs a custom header colour, add `{.dc-table-crimson}` or similar variant class.
+
+**Inline code in prose** — Note `SysChk` rendered as inline code — this is intentional for game-mechanic terms that double as class names or keywords. It keeps the text visually distinct without a callout box. The dc-brand.css inline code style (orange text, faint orange background) reads clearly against cream body text at 12pt body size.
 
 @page .tech-cybernetics .second-page .chapter-05
 
