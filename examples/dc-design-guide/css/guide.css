@@ -449,7 +449,7 @@ div.chapter.fg-components .specimen {
 
    Chapter 1 — Design System  (files 00-overview through 04-dc-components)
    Chapter 2 — Authoring       (files 05-page-templates through 101-publishing)
-   Chapter 3 — Field Guide     (files 200-fg-* through 207-fg-gear-tech)
+   Chapter 3 — Examples        (files 300-example-overview through 307-example-gear-tech)
    ─────────────────────────────────────────────────────────────────────────── */
 /* string-set: must use content() or attr() — bare string literals are silently
    ignored by the Paged.js polyfill (it only handles Function and Identifier nodes
