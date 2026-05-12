@@ -391,7 +391,7 @@ function admonitionRule(state, startLine, endLine, silent) {
   }
 
   let tok = state.push('admonition_open', 'div', 1);
-  tok.attrSet('class', 'note-callout');
+  tok.attrSet('class', 'dc-note-callout');
   tok.block = true;
   tok.map = [startLine, nextLine];
 

@@ -70,11 +70,11 @@ Items with zero usage anywhere in the field guide AND no CSS consumer, or confir
 
 Items that are actively broken in the current implementation and will not render correctly until fixed.
 
-**`.note-callout` vs `.dc-note-callout` — plugin/CSS naming mismatch (CRITICAL)**
-The markdown-it plugin that handles `!!! Label` admonition syntax emits `class="note-callout"` (no prefix). The CSS file defines `.dc-note-callout` (with `dc-` prefix). The class `note-callout` has no CSS rule. Result: every `!!!` admonition in the field guide renders completely unstyled. Fix: either update the plugin to emit `dc-note-callout`, or add a `.note-callout` rule that aliases `.dc-note-callout`. The canonical name should be decided first (see Category 3).
+**`.note-callout` vs `.dc-note-callout` — plugin/CSS naming mismatch (CRITICAL)** ✅ FIXED 2026-05-12
+The markdown-it plugin that handles `!!! Label` admonition syntax emits `class="note-callout"` (no prefix). The CSS file defines `.dc-note-callout` (with `dc-` prefix). The class `note-callout` has no CSS rule. Result: every `!!!` admonition in the field guide renders completely unstyled. **Fixed:** plugin updated to emit `dc-note-callout` (`dimm-city-plugin.js` line 394).
 
-**`@chapter-opener` macro — inconsistent usage and bypass**
-Only 2 of the 10+ chapters use the `@chapter-opener` macro (`C.01` and `C.11`). Chapter-02 bypasses the macro entirely with raw HTML `<span class="dc-chapter-opener-no">C.02</span>`. The 8 specialty files use no opener at all. This is not a CSS bug but a content consistency bug — the macro exists precisely to avoid hand-rolled HTML, yet the primary chapter using it most prominently (chapter-02) works around it. Either the macro has a known limitation that should be documented, or chapter-02 should be updated to use the macro.
+**`@chapter-opener` macro — inconsistent usage and bypass** ✅ FIXED 2026-05-12
+Only 2 of the 10+ chapters use the `@chapter-opener` macro (`C.01` and `C.11`). Chapter-02 bypasses the macro entirely with raw HTML `<span class="dc-chapter-opener-no">C.02</span>`. The 8 specialty files use no opener at all. **Fixed:** `chapter-02 0.md` updated to use `@chapter-opener C.02`. The `dc-note` div block and `dc-sidebar` div block in chapter-02 have also been converted to `> [!NOTE]` alert syntax and `:::wrapper {.dc-sidebar}` container syntax respectively.
 
 **Malformed container syntax in field guide**
 Several containers use quoted class names (`{".specialty-spread"}`, `{".human-callout"}`) and mixed `class=` / `.class` attribute syntax. Depending on the markdown-it-container parser version, these may silently fail to apply the intended class, resulting in unstyled containers. Each case should be audited and normalized to unquoted dot-notation (e.g., `{.specialty-spread}`).
@@ -268,9 +268,9 @@ Same issue: H1 and banner heading tokens are nearly identical. If the banner hea
 
 | Item | Category | Priority | Notes |
 |---|---|---|---|
-| `.note-callout` / `.dc-note-callout` plugin mismatch | 2 — FIX | CRITICAL | Every `!!!` admonition renders unstyled |
+| `.note-callout` / `.dc-note-callout` plugin mismatch | 2 — FIX | CRITICAL | ✅ FIXED 2026-05-12 — plugin updated to emit `dc-note-callout` |
 | `--bg` hex mismatch in docs vs CSS | 2 — FIX | HIGH | Palette doc shows wrong value |
-| `@chapter-opener` bypass in chapter-02 | 2 — FIX | MEDIUM | Raw HTML used instead of macro |
+| `@chapter-opener` bypass in chapter-02 | 2 — FIX | MEDIUM | ✅ FIXED 2026-05-12 — macro used; HTML fragments converted to markdown |
 | Malformed container syntax (quoted class names) | 2 — FIX | MEDIUM | May silently drop class attributes |
 | `.dc-art-slot` | 1 — REMOVE | HIGH | Zero usage, no CSS consumer |
 | `.dc-art-slot-ghost` | 1 — REMOVE | HIGH | Zero usage, no CSS consumer |
