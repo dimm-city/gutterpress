@@ -88,6 +88,30 @@ Certain moments twist the Dream — pushing you closer to extreme success or tip
 
 A full-page Table of Outcomes using the `@outcome` / `@end-outcome` macro. The five rungs are color-coded by result severity and auto-labeled by the plugin. This is the canonical way to present d20 result ranges in the Field Guide — never use a plain markdown table for outcomes.
 
+**Page class** — `@page .outcome-table .fg-examples`
+
+**Tier mapping** — rows are assigned tier classes in order: crit → hit → mixed → miss → fail
+
+```markdown
+@page .outcome-table .fg-examples
+
+### Table of Outcomes {.dc-section-h3}
+
+@outcome
+
+20 | Crit | Automatic success. No further roll needed.
+11–19 | Hit | You succeed cleanly.
+6–10 | Hard Choice | You succeed, but the DM offers two costly options.
+2–5 | Miss | You fail. The consequence is what you had riding on it.
+1 | Catastrophe | Automatic fail with a severe setback.
+
+@end-outcome
+```
+
+Add `> [!DM]` callouts after the table for facilitator guidance on each tier.
+
+**Live specimen:**
+
 @page .outcome-table .fg-examples
 
 ### Table of Outcomes {.dc-section-h3}

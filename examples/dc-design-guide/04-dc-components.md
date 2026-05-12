@@ -602,7 +602,29 @@ A badge element rendered in the top-left corner of specialty chapter opener page
 <div class="dc-chapter-opener-no">AUG1</div>
 ```
 
-The badge floats to the upper corner of the page. Use the specialty slug as the value (`AUG1`, `PRX1`, `SWD1`, etc.) or a chapter number.
+**Macro shorthand** — the `@chapter-opener C.N` macro emits this badge automatically:
+
+```markdown
+@chapter-opener C.02
+```
+
+**Slug values by specialty:**
+
+| Specialty | Slug |
+|---|---|
+| Augmerc | `AUG1` |
+| Proxy | `PRX1` |
+| Streetwarden | `SWD1` |
+| Gutterdruid | `GDR1` |
+| Cybersurgeon | `CYB1` |
+| Wirephreak | `WPK1` |
+| Technosorcerer | `TCS1` |
+| Etherlock | `ETH1` |
+| Non-specialty chapters | `C.01`, `C.02`, etc. |
+
+**Specimen** — badge at print scale:
+
+<div class="dc-chapter-opener-no">AUG1</div>
 
 **CSS class:** `.dc-chapter-opener-no` — no prefix variants; this is always DC-specific.
 

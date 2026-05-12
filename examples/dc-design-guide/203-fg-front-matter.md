@@ -44,6 +44,33 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 
 The credits page uses `.page-credits` combined with `.credits` and a chapter class. The `## Credits {.dc-chevron}` heading gets the chevron treatment. Credits blocks are plain bold-label paragraphs — no special containers. The dedication is freestanding prose. A founders-house image anchors the bottom with `.art-founders-house`.
 
+**Page class** — `@page .page-credits .credits .chapter-NN`
+
+**Required elements:**
+- `## Credits {.dc-chevron}` — chevron banner heading
+- `**Role:** Name(s)` — plain bold-label credit blocks (Designer, Artist, etc.)
+- `**Dedicated to…**` — dedication paragraph (freestanding prose)
+- `![alt](img/founders-house.png){.art-founders-house}` — art anchored to bottom
+
+```markdown
+@page .page-credits .credits .chapter-00
+
+## Credits {.dc-chevron}
+
+**Designers:** Name and Name
+
+**Artist:** Name
+
+**Play Testers:** Name, Name, Name
+
+**Dedicated to the memory of Name.**
+One or two sentences of memorial prose.
+
+![founders-house](img/founders-house.png){.art-founders-house}
+```
+
+**Live specimen:**
+
 @page .page-credits .credits .chapter-00
 
 ## Credits {.dc-chevron}
@@ -68,6 +95,39 @@ Don was a player in our 2E AD&D group throughout our youth and was a dear friend
 ## Pattern: Introduction
 
 The intro spread uses `--- {page .page-intro .intro .chapter-00}` (dash-marker syntax). It opens with a `:::wrapper {.dc-pullquote}` for the chapter's hook quote, followed by opening fiction prose, an art image, and then genre-description sections using `### Sub-heading` (no chevron class at H3). The fiction excerpt and genre sections run on the same spread without additional page breaks.
+
+**Page class** — `--- {page .page-intro .intro .chapter-00}`
+
+**Structure — left column:**
+- `:::wrapper {.dc-pullquote}` — hook quote (1–2 sentences)
+- Opening fiction paragraphs (150–250 words)
+- `![alt](img/intro.png){.art-intro-image}` — full-column art
+
+**Structure — right column (same page, flows after art):**
+- Genre overview paragraphs
+- `### Sub-heading` — H3 section labels (no `.dc-chevron` class at H3)
+
+```markdown
+--- {page .page-intro .intro .chapter-00}
+
+## Introduction {.dc-chevron}
+
+::: wrapper {.dc-pullquote}
+"Hook quote — punchy, in-world, under 20 words."
+:::
+
+Opening fiction paragraph. Keep it vivid and short.
+
+![alt](img/intro-art.png){.art-intro-image}
+
+Genre context paragraph. Explain the world briefly.
+
+### What You'll Find Here
+
+A short orientation to the book's structure.
+```
+
+**Live specimen:**
 
 --- {page .page-intro .intro .chapter-00}
 
