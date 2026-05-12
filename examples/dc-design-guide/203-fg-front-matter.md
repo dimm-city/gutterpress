@@ -22,19 +22,16 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 
 ::: wrapper {.dc-toc}
 
-1. **01** &nbsp; [Who Do You Dream to Be?](#chapter-01) — Citizen file, vibe, origins, ideals, flaws.
-2. **02** &nbsp; [What Do You Dream of Doing?](#chapter-02) — How abilities work. Choose a specialty.
-3. **03** &nbsp; [The Augmerc](#ch-augmerc) — Muscle for hire. Backbiters and worse.
-4. **04** &nbsp; [The Proxy](#ch-proxy) — Bodies for hire. Divine force as a weapon.
-5. **05** &nbsp; [The Streetwarden](#ch-streetwarden) — The closest thing to law in the alleys.
-6. **06** &nbsp; [The Gutterdruid](#ch-gutterdruid) — Sacred ground in broken pavement.
-7. **07** &nbsp; [The Cybersurgeon](#ch-cybersurgeon) — Cutting, splicing, upgrading flesh.
-8. **08** &nbsp; [The Wirephreak](#ch-wirephreak) — Killers, thieves, forgers — clean or loud.
-9. **09** &nbsp; [The Technosorcerer](#ch-technosorcerer) — Code that bites. Magic with root access.
-10. **10** &nbsp; [The Etherlock](#ch-etherlock) — Secrets as currency. Power has a price.
-11. **11** &nbsp; [Are You Lucid Yet?](#chapter-03) — Core rules, scenes, distances, rolling the die.
-12. **12** &nbsp; [Dream Mastery & Cosmology](#chapter-04) — NPCs, traits, time, districts.
-13. **13** &nbsp; [Cybernetics, Weapons, and Gear](#chapter-05) — Useful items, tech, blasters, blades.
+1. **01** &nbsp; [Design System Overview](#ch-overview) — How to use this guide and customize it for your book.
+2. **02** &nbsp; [Typography](#ch-typography) — lixdu display, Tomorrow mono, Titillium Web body; the full type scale.
+3. **03** &nbsp; [Color Palette](#ch-palette) — paper, fire, HUD, surface, and border tokens with usage rules.
+4. **04** &nbsp; [Core Components](#ch-components) — prose, callouts, notes, pull quotes, and tables.
+5. **05** &nbsp; [DC Component Library](#ch-dc-components) — banners, ability cards, tags, stickers, stat blocks.
+6. **06** &nbsp; [Page Templates](#ch-templates) — named page types, chapter openers, and full-bleed spreads.
+7. **07** &nbsp; [Layout & Composition](#ch-layout) — columns, floats, page markers, and break utilities.
+8. **08** &nbsp; [Markdown Reference](#ch-reference) — all syntax with live examples.
+9. **09** &nbsp; [Field Guide Components](#ch-fg-components) — dashed rules, definition blocks, gear entries.
+10. **10** &nbsp; [CLI Reference](#ch-cli) — build, preview, and publish commands.
 
 :::
 
