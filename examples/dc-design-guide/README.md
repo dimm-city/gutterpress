@@ -8,6 +8,11 @@ This is not just documentation — it is the gold-standard example of a custom
 design guide in print-md. Every pattern, token, and component documented here is
 live-rendered from the same CSS that would ship with a production Dimm City book.
 
+**This design guide is the source of truth for the DC print system.** Any
+discrepancy between what is documented here and what the CSS or plugin produces
+means the code is wrong. Once the guide is complete, all CSS, plugin, and field
+guide changes must be validated against it.
+
 ## Preview
 
 ```sh
@@ -32,6 +37,15 @@ browser.
 | `07-markdown-reference.md` | Container syntax, `@chapter` macro, plugin markers |
 | `08-field-guide-components.md` | Field-guide-specific components (gear entries, definition blocks, colophon) |
 | `101-publishing.md` | PDF export, print preflight, CMYK notes |
+| **Part 2 — Field Guide in Action** | |
+| `300-example-overview.md` | Part 2 intro — how to read the real-world examples |
+| `301-example-front-matter.md` | Credits, TOC, intro pages — real field guide content |
+| `302-example-chapter-opener.md` | Chapter start spreads |
+| `303-example-specialty-overview.md` | Specialty chapter intro and card grid |
+| `304-example-specialty-profile.md` | Full specialty profile with skills |
+| `305-example-rules.md` | Rules and mechanics pages |
+| `306-example-dm-npcs.md` | Dream Master pages, NPC stat blocks |
+| `307-example-gear-tech.md` | Gear, aug cards, cybernetics |
 
 ## CSS Architecture
 
@@ -84,18 +98,55 @@ To start a new project based on the DC brand:
 | Heading | `--blood` | `#a30900` |
 | Banner background | `--rust` | `#c23000` |
 | HUD chrome | `--hud-blue` | `#2a6a8a` |
-| Page canvas | `--bg` | `#d4d4d4` |
+| Page canvas | `--bg` | `#d3cec6` |
 | Card surface | `--paper-cream` | `#f5f0e6` |
 | Primary text | `--ink` | `#1a1715` |
 
 ## Plugin
 
-The `dimm-city-plugin.js` in `plugins/` processes three custom markers:
+`plugins/dimm-city-plugin.js` is a server-side markdown-it plugin that extends
+print-md with Dimm City-specific authoring macros. It processes markers in the
+markdown source during the build step and emits structured HTML.
 
-- `@skill` — wraps skill-card content blocks
-- `@specialty` — wraps specialty opener pages
-- `@learning-path` — wraps learning path card sequences
+### Implemented macros
 
-These markers are specific to the Dimm City Field Guide. A plain print-md project
-does not need them — remove the `plugins:` entry from `manifest.yaml` and the
-`dimm-city-plugin.js` reference.
+| Marker | Emits | Purpose |
+|---|---|---|
+| `@chapter #id .class` | `<div class="chapter ...">` | Chapter wrapper with CSS class and data attributes |
+| `@page .class` | `<div class="page ...">` | Named page break with CSS classes |
+| `@section .class` | `<div class="region ...">` | Grouped content region |
+| `@spread .class` | `<div class="spread ...">` | Two-page spread container |
+| `@break` | `<div class="md-break">` | Hard page break |
+| `@specialty {.class}` | Specialty section wrapper | Chapter-02 specialty opener and skill card sequence |
+| `@learning-path` | Learning path banner + card group | Groups `@skill` cards under a spray-banner header |
+| `@skill variant="N"` | Skill card (clip-path variant 1–5) | Individual skill card with tab, flavor, and abilities |
+| `@continue` | Card continuation marker | Splits an oversized skill card across a page break |
+| `@outcome` | Five-rung d20 outcome ladder | Crit / Hit / Mixed / Miss / Catastrophe table |
+| `@chapter-opener C.N` | Chapter number badge | Opener spread chapter number for non-specialty chapters |
+
+### Planned macros (triple-colon containers to be replaced)
+
+These `:::` container patterns work today but will be replaced by named macros
+in a future plugin update:
+
+| Current syntax | Planned macro |
+|---|---|
+| `:::sidebar` | `@sidebar` |
+| `:::lede` | `@lede` |
+| `:::pull-quote` | `@pullquote` |
+| `:::procedure` | `@procedure` |
+| `:::two-column` / `:::: two-column` | `@two-column` |
+| `:::wrapper {.dc-definition-block}` | `@definition` |
+| `:::wrapper {.dc-sidebar-box}` | `@sidebar-box` |
+
+### Class naming convention
+
+All classes emitted by the plugin use the `dc-` prefix. The only exception is
+`.scream` (the ROLL THE DIE! inline span), which is intentionally unprefixed.
+When adding new output, always verify a matching CSS rule exists before shipping.
+
+### Per-page styling
+
+Use `@page .class-name` for layout specifics unique to a single page — image
+position, column arrangement, decorative placement. A class used only once is
+correct and intentional; it is not an anti-pattern.

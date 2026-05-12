@@ -54,6 +54,74 @@ pattern are the **canonical** way to ship the viewer chrome (HTML/CSS/JS)
 inside the binary. This pattern works under `bun build --compile` and should
 not be rewritten.
 
+## DC Design Guide
+
+The `examples/dc-design-guide/` folder is the **canonical design reference** for
+the Dimm City print system. Once complete, it is the single source of truth for:
+
+- Every CSS component, token, and layout rule
+- The Dimm City plugin's macro system and emitted class names
+- Authoring patterns for the Field Guide and any future DC book
+
+### Design guide as source of truth
+
+Any change to `css/dc-brand.css`, `css/page-rules.css`, `css/content-templates.css`,
+or `plugins/dimm-city-plugin.js` should be reflected in the design guide documentation.
+If the design guide documents one behaviour and the code does another, the code is wrong.
+
+### Macro-first authoring direction
+
+The system is moving from triple-colon container syntax toward named macros:
+
+**Already implemented:**
+`@chapter`, `@page`, `@section`, `@spread`, `@break`, `@specialty`, `@learning-path`,
+`@skill`, `@continue`, `@outcome`, `@chapter-opener`
+
+**Planned — `:::` containers that need macros built:**
+`:::sidebar` → `@sidebar`, `:::lede` → `@lede`, `:::pull-quote` → `@pullquote`,
+`:::procedure` → `@procedure`, `:::two-column` → `@two-column`,
+`:::wrapper {.dc-definition-block}` → `@definition`,
+`:::wrapper {.dc-sidebar-box}` → `@sidebar-box`
+
+New components should always start as a named macro in the plugin, not a
+triple-colon container wrapper.
+
+### Per-page styling via `@page` named classes
+
+Individual page layout — image position, column arrangement, decorative elements
+specific to one spread — is done via `@page .class-name` in markdown. A class used
+only once is not an anti-pattern; it is the intended mechanism. Do not generalise
+one-off page classes into reusable components unless the pattern genuinely recurs.
+
+### Plugin class naming convention
+
+All classes emitted by `plugins/dimm-city-plugin.js` must use the `dc-` prefix
+(e.g. `dc-note-callout`, `dc-outcomes-label`). The only exception is `.scream`,
+which is intentionally unprefixed as a semantic name. When adding new plugin output,
+always check that the emitted class name has a matching CSS rule before shipping.
+
+### CSS layer contract (four-file hierarchy)
+
+Each CSS file has a strict ownership boundary. Read the ARCHITECTURAL CONTRACT
+comment in the first 50 lines of each file before adding any rule.
+
+| File | Owns |
+|---|---|
+| `dc-brand.css` | Tokens, `@font-face`, shared `.dc-*` components |
+| `page-rules.css` | `@page` declarations, named pages, Paged.js counter fixes |
+| `content-templates.css` | `.page.*` layouts, general print utilities (`.pmd-*`) |
+| `guide.css` | `div.chapter` scaffolding, specimen chrome, guide-specific footer |
+
+### Class alias consolidation rule
+
+When retiring a deprecated alias class name, a full find-replace is required across:
+1. All field guide markdown (`dc-op-manual/field-guide/*.md`)
+2. All design guide markdown (`examples/dc-design-guide/*.md`)
+3. The plugin JS (`examples/dc-design-guide/plugins/dimm-city-plugin.js`)
+4. All CSS files
+
+Renaming only in CSS is not sufficient.
+
 ## Background reading
 
 - ADR `docs/adr/0001-no-bundlers-at-runtime.md`
