@@ -431,6 +431,39 @@ div.chapter.fg-components .specimen {
    rules that were here (.dc-roll-table-compare-stage and .dc-options-layout
    single-column overrides at max-width:1100px/900px) are deleted permanently. */
 
+/* ── Part 1: Two-column reference layout ─────────────────────────────────────
+   Chapters 1 & 2 (design system reference + authoring reference) use a
+   two-column layout so token tables, class lists, and short code snippets
+   pack 2× as much content per page. This is the single biggest density win —
+   padding changes are invisible; column layout is structural.
+
+   Pre, table, h1, hr, .specimen, and .dc-toc span both columns so they stay
+   readable and don't get split mid-element. H2/H3 do NOT span — they start
+   in whichever column they land in, which is correct for a reference guide.
+   ─────────────────────────────────────────────────────────────────────────── */
+div.chapter.chapter-01,
+div.chapter.chapter-02 {
+  columns: 2;
+  column-gap: 0.22in;
+  column-fill: auto;
+}
+
+/* These elements must span both columns or they break badly */
+div.chapter.chapter-01 h1,
+div.chapter.chapter-02 h1,
+div.chapter.chapter-01 pre,
+div.chapter.chapter-02 pre,
+div.chapter.chapter-01 table,
+div.chapter.chapter-02 table,
+div.chapter.chapter-01 hr,
+div.chapter.chapter-02 hr,
+div.chapter.chapter-01 .specimen,
+div.chapter.chapter-02 .specimen,
+div.chapter.chapter-01 .dc-toc,
+div.chapter.chapter-02 .dc-toc {
+  column-span: all;
+}
+
 /* ── Design Guide 3-Chapter Footer Labels ───────────────────────────────────
    string-set fires when Paged.js encounters the first H1 of each chapter
    wrapper and stores the value as a CSS custom property on the page box.
