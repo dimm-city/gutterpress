@@ -269,11 +269,12 @@ div.chapter.chapter-02 {
   column-fill: auto;
 }
 
-/* Column-span: all ensures these elements break across columns cleanly in the two-column layout above. */
+/* Column-span: all for structural break elements in the two-column layout.
+   pre (code blocks) intentionally excluded — they flow within their column
+   to maximise information density. Add .pmd-col-span to a specific code block
+   if a full-width span is needed on a case-by-case basis. */
 div.chapter.chapter-01 h1,
 div.chapter.chapter-02 h1,
-div.chapter.chapter-01 pre,
-div.chapter.chapter-02 pre,
 div.chapter.chapter-01 table,
 div.chapter.chapter-02 table,
 div.chapter.chapter-01 hr,
