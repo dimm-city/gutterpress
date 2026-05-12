@@ -299,7 +299,26 @@ article {
   column-fill: balance;
 }
 
-/* Chapter-02 h3/h4 overrides moved to guide.css — see CSS-AUDIT.md L6 */
+/* chapter-02 h3: demote from full-weight chevron banner to a thin accent line.
+   Scoped to content pages only — specialty/full-page layouts and explicit
+   .dc-chevron classes are excluded. */
+.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.rolling-die):not(.choose-specialty) h3 {
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  border-top: var(--bw-thin) solid var(--hud-blue);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* chapter-02 h4: definition-header treatment for DREAM/DREAMER/PC/DM entries. */
+.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.rolling-die):not(.choose-specialty) h4 {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-dust);
+  border-top: none;
+}
 
 /* ---------------------------------------------------------------------------
    Info + Sidebar (Citizen File / Character Sheet)
@@ -1007,3 +1026,41 @@ article {
    BreakInsideAvoidHandler polyfill, which reads data-break-inside="avoid"
    (the HTML attribute). The polyfill's _splitAllowed Set handles the case
    where a card is too tall to fit on one page and must be split. */
+
+/* ---------------------------------------------------------------------------
+   Print Utilities — pmd-* classes
+   General-purpose print layout utilities available to any document using
+   this stylesheet. Moved from guide.css (2026-05-11) — they are not
+   guide-specific and must be available without importing guide.css.
+   --------------------------------------------------------------------------- */
+
+/* Force a page break before any element. */
+.break-before,
+.pmd-break-before {
+  break-before: page;
+  page-break-before: always;
+}
+
+/* Prevent an element from breaking across pages. */
+.pmd-no-break,
+.no-break {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Force an element to span all columns in a multi-column layout. */
+.pmd-col-span {
+  column-span: all;
+}
+
+/* Break containment without specimen visual chrome. */
+.pmd-specimen-inline {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Assign element to the 'clean' named page to suppress running headers/footers.
+   The 'clean' @page declaration lives in page-rules.css. */
+.pmd-suppress-footer {
+  page: clean;
+}
