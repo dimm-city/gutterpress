@@ -56,15 +56,6 @@ div.chapter > h1:not(:first-of-type) {
   page-break-before: auto;
 }
 
-/* ── Body: orphan/widow control ─────────────────────────────────────────────
-   counter-reset: chapter moved to page-rules.css (see CSS-AUDIT.md L8).
-   orphans/widows raised above dc-brand.css defaults for better page breaks.
-   ─────────────────────────────────────────────────────────────────────────── */
-body {
-  orphans: 2;
-  widows: 2;
-}
-
 /* ── Headings: keep with following content ───────────────────────────────────
    Prevent h2/h3/h4 from stranding at the bottom of a page. Scoped to
    div.chapter so this doesn't suppress breaks outside the chapter context.
@@ -196,16 +187,6 @@ div.chapter tr:nth-child(even) td {
   opacity: 0.7;
 }
 
-/* ── Page-break utility ──────────────────────────────────────────────────────
-   Apply {.break-before} or {.pmd-break-before} to any heading to force a
-   page break before it. The pmd- prefix is the canonical name for distribution;
-   .break-before is the backward-compatible alias.
-   ─────────────────────────────────────────────────────────────────────────── */
-.break-before, .pmd-break-before {
-  break-before: page;
-  page-break-before: always;
-}
-
 /* ── Section separators (HR) ─────────────────────────────────────────────────
    The --- markdown rule creates <hr> elements. In guide chapters these act as
    section dividers between documented components. Give them visible weight so
@@ -226,52 +207,10 @@ div.chapter h2 {
   padding-top: 0.1in;
 }
 
-/* ── Column-span defaults for div.chapter ─────────────────────────────────────
-   Any time columns:N is applied to a div.chapter, these elements must span all
-   columns to stay readable. Applies globally — not scoped to Part 1 only — so
-   any chapter using a two-column layout gets correct behaviour automatically.
-   ─────────────────────────────────────────────────────────────────────────── */
-div.chapter h1,
-div.chapter pre,
-div.chapter table,
-div.chapter hr,
-div.chapter .specimen,
-div.chapter .dc-toc {
-  column-span: all;
-}
-
 /* ── YOUR DESIGN GUIDE LAYER ─────────────────────────────────────────────────
    Add project-specific design-guide overrides below this line.
    Do NOT add book design system rules here — those belong in dc-brand.css.
    ─────────────────────────────────────────────────────────────────────────── */
-
-/* ── Additional pmd-* layout utilities ──────────────────────────────────────
-   Standard print-md utilities available in any project using this scaffold.
-   ─────────────────────────────────────────────────────────────────────────── */
-
-/* Prevent an element from breaking across pages — use when .specimen chrome
-   is not wanted but page-break containment is needed. */
-.pmd-no-break, .no-break {
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-
-/* Force an element to span both columns in a two-column layout. */
-.pmd-col-span {
-  column-span: all;
-}
-
-/* Inline specimen — same break containment as .specimen but no visual chrome. */
-.pmd-specimen-inline {
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-
-/* Wire up the 'clean' named page (defined in page-rules.css) to suppress
-   running headers/footers on any element. */
-.pmd-suppress-footer {
-  page: clean;
-}
 
 /* ── TOC chapter: disable the book .toc two-column layout ───────────────────
    The book .toc CSS (content-templates.css) sets columns:2 for the specialty
@@ -289,32 +228,6 @@ div.chapter .dc-toc {
   box-sizing: border-box;
 }
 
-/* ── Chapter-02 typography overrides (moved from content-templates.css) ── */
-/* Quarantined block: chapter-scoped h3/h4 demotions are guide-specific overrides,
-   not structural page-template rules. Moved here per CSS-AUDIT.md L6. */
-
-/* h3: demote from full-weight chevron banner to a thin accent line.
-   Scoped narrowly to chapter-02 *content* pages so specialty/full-page
-   layouts and the existing .dc-chevron explicit class are untouched. */
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.rolling-die):not(.choose-specialty) h3 {
-  font-size: var(--fs-body); /* was --fs-body-sm; downsize compared to base h3 */
-  font-weight: var(--fw-semibold);
-  border-top: var(--bw-thin) solid var(--hud-blue); /* was medium */
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-/* h4: definition-header treatment for DREAM/DREAMER/PC/DM (these live as
-   h4 in the chapter-02 markdown). Keep readable but not banner-weight. */
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.rolling-die):not(.choose-specialty) h4 {
-  font-size: var(--fs-body-sm);
-  font-weight: var(--fw-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ink-dust);
-  border-top: none;
-}
-
 /* Responsive screen-only overrides removed 2026-05-10 — this is a print-only
    project; @media screen rules are not permitted in any CSS layer. The two
    rules that were here (.dc-roll-table-compare-stage and .dc-options-layout
@@ -323,13 +236,29 @@ div.chapter .dc-toc {
 /* ── Part 1: Two-column reference layout ─────────────────────────────────────
    Matches the column-gap token used by content-templates.css page templates
    (.page.page-rules, .page.chapter-02, etc.) for visual consistency.
-   Column-span defaults are set globally on div.chapter above.
+   Column-span rules follow immediately below.
    ─────────────────────────────────────────────────────────────────────────── */
 div.chapter.chapter-01,
 div.chapter.chapter-02 {
   columns: 2;
   column-gap: var(--space-2xl);
   column-fill: auto;
+}
+
+/* Column-span: all ensures these elements break across columns cleanly in the two-column layout above. */
+div.chapter.chapter-01 h1,
+div.chapter.chapter-02 h1,
+div.chapter.chapter-01 pre,
+div.chapter.chapter-02 pre,
+div.chapter.chapter-01 table,
+div.chapter.chapter-02 table,
+div.chapter.chapter-01 hr,
+div.chapter.chapter-02 hr,
+div.chapter.chapter-01 .specimen,
+div.chapter.chapter-02 .specimen,
+div.chapter.chapter-01 .dc-toc,
+div.chapter.chapter-02 .dc-toc {
+  column-span: all;
 }
 
 /* ── Design Guide 3-Chapter Footer Labels ───────────────────────────────────
