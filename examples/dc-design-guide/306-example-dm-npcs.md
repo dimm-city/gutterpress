@@ -93,6 +93,8 @@ UniArm 100 / Redi-Mobile Cyberleg / RedEye Optical Prosthetic (could be just one
 
 ---
 
+@break
+
 ## NPC Stat Block: Operator
 
 **Format** — Operator stat blocks follow the same structure as Fodder but with higher HP/Damage and more complex Traits and Equipment entries. The format is identical — H4 name, blockquote intro, type line, H5 Traits / Equipment / Cybernetics.
@@ -125,6 +127,8 @@ Operator — Medium
 UniArm 100 Cyberarm w/Optalanges TechMech kit and Smuggler's Stash Level 1, Light Blaster Pistol
 
 ---
+
+@break
 
 ## NPC Stat Block: Master
 

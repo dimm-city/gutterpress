@@ -125,7 +125,7 @@ Abilities don't just deal damage. They disrupt momentum, break positioning, and 
 | **Silenced** | The creature cannot speak or use abilities requiring speech. |
 | **Stunned** | The creature cannot move, act, or speak. |
 
-#### Ending Conditions
+#### Ending Conditions {.pmd-break-before}
 
 A creature suffering a condition may attempt to end it at the time specified by the effect, usually at the start or end of its turn, by rolling 11 or higher on a d20.
 

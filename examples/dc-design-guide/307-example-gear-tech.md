@@ -8,7 +8,7 @@ This section shows how gear, aug cards, and cybernetics pages look in the actual
 
 ---
 
-## Useful Items Page — Aug Card Grid
+## Useful Items Page — Aug Card Grid {.pmd-break-before}
 
 **Page template** — `@page .chapter-start .useful-items .chapter-05` — chapter-start layout for the gear chapter opener. The card grid uses `:::: wrapper {class="grid"}` containing multiple `::: aug` containers. Each `.aug` block renders as a bordered card with the item name as an H4 heading and prose description below. No macros — this is pure markdown-it-attrs container syntax. See [Field Guide Components](#ch-fg-components) for the `.aug` card spec and [Layout](#ch-layout) for the grid system.
 
