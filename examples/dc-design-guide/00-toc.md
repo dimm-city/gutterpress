@@ -1,5 +1,3 @@
-<script src="plugins/dimm-city-runtime.js"></script>
-
 @chapter #ch-toc .toc.guide-toc
 
 # Dimm City Design Guide
