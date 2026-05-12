@@ -14,7 +14,7 @@ Two-column prose introduction to a core rules concept. Uses `:::two-column` with
 
 @page .rolling-die .fg-examples
 
-::: wrapper
+:::: wrapper
 
 ## ROLLING THE DIE!
 
@@ -32,7 +32,7 @@ But it ain't all just violence. You ROLL THE DIE! when you:
 
 Anytime the stakes are real, anytime failure would hurt — that's when the Dream Master points at you and says: **"ROLL THE DIE!"**
 
-:::
+::::
 
 :::sidebar
 
@@ -145,7 +145,7 @@ A reference spread combining a definition-list layout with short keyword entries
 > [!FLAVOR]
 > You tell the Dream Master you want to slash it with your claws. The DM gauges where you are in the scene and tells you where you stand.
 
-:::two-column
+:::: two-column
 
 :::item
 ### In Reach
@@ -177,7 +177,7 @@ They're hanging back behind a rusted wreck or flickering vending machine. You ca
 Might as well be on the other side of the ether. Too far to touch this turn even with a sprint. Burn your move and your action just to scrape into range — and expect they'll move again if they're not dumb as a box of rocks.
 :::
 
-:::
+::::
 
 > [!NOTE]
 > Targets move. Battlefields shift. If you want to close on something at Too Far, expect two full turns of bad ground. Nothing stays still.

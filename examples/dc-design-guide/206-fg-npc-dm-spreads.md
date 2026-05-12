@@ -151,7 +151,7 @@ A DM-facing spread presenting multiple adventure hooks for an NPC or district. U
 > [!DM]
 > Adventure hooks are the sparks that ignite a session. Offering multiple gives players a variety of paths — wanted posters, desperate NPCs, brewing gang wars, eerie rumors. Not every hook lands, so always have backups. A good hook is intriguing, actionable, and personal.
 
-:::two-column
+:::: two-column
 
 ### Region: Etherwave Transit Hub
 
@@ -201,7 +201,7 @@ Wraith 17 pulls a dreamer aside and offers a clean way out of the Hub — if the
 **Hook:** Trust the merc, find a third option, or let the others know.
 :::
 
-:::
+::::
 
 > [!DM]
 > Balance hope and fear across these hooks. Hope: tapping that server could buy the pack real breathing room — maybe even their own bolt hole in Tetherpoint. Fear: someone is hunting passengers trapped in the Hub, and one of the dreamers might be next on the list. Use both levers. Make victories feel earned and setbacks hit harder.
