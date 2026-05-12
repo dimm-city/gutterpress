@@ -7,8 +7,10 @@ This document catalogues every redundant, dead, broken, or overlapping design el
 
 - **REMOVE** — Zero usage confirmed OR confirmed functional bug that makes the item useless as-written. Safe to delete.
 - **FIX** — Actively broken in the current implementation. Must be corrected before the item can be used.
-- **CONSOLIDATE** — Two or more names that produce identical output. One should be declared canonical; the rest retired.
-- **DROP FROM DESIGN GUIDE DOCS** — Documented in the spec but never used in the actual field guide book. These inflate the authoring reference without providing value to field guide authors.
+- **CONSOLIDATE** — Two or more names that produce identical output. One should be declared canonical; the rest retired. Requires find-replace across field guide, design guide, AND plugin JS — not CSS only.
+- **DROP FROM DESIGN GUIDE DOCS** — Documented in the spec but never used in the actual field guide book, and not planned for future adoption. These inflate the authoring reference without providing value to field guide authors.
+- **PLANNED MIGRATION (4b)** — Currently undocumented or unused in the field guide, but the project is moving TOWARD these patterns. Keep in design guide docs; field guide adoption is planned.
+- **MIGRATION TARGET (4c)** — Triple-colon `:::` container patterns that lack macro equivalents. The project is moving away from `:::wrapper {.class}` toward dedicated macros. Each needs a macro created.
 - **CONSIDER RATIONALIZING** — Parallel systems that serve overlapping purposes through different mechanisms. Not urgent, but worth a deliberate decision.
 - **TOKEN CLEANUP** — CSS custom property issues: duplicate values, near-identical tokens, documentation mismatches.
 
@@ -88,56 +90,58 @@ Several containers use quoted class names (`{".specialty-spread"}`, `{".human-ca
 
 Items where two or more names produce identical CSS output. One name should be declared canonical; all aliases should be deprecated and eventually removed. Where the field guide already has a clear preference, that is noted.
 
+**IMPORTANT: Any consolidation (retiring an alias) requires a full find-replace across ALL of: field guide markdown files, design guide markdown files, AND the Dimm City plugin JS. Renaming a class in CSS only is not sufficient — the plugin may be emitting the old class name, and field guide/design guide markdown may contain the old class name as explicit attributes. Before retiring any alias, run: `grep -r "old-class" field-guide/ design-guide/ plugins/` and update every occurrence.**
+
 **Float image classes — three names, one behaviour:**
-Keep **`.img-float-right`**, retire **`.pmd-float-right`** and **`.dc-art-float-right`** — all three float images right with identical rules. The un-prefixed form is most readable in markdown. Similarly for left-float if a `.dc-art-float-left` counterpart exists.
+Keep **`.img-float-right`**, retire **`.pmd-float-right`** and **`.dc-art-float-right`** — all three float images right with identical rules. The un-prefixed form is most readable in markdown. Similarly for left-float if a `.dc-art-float-left` counterpart exists. Before retiring: `grep -r "pmd-float-right\|dc-art-float-right" field-guide/ design-guide/ plugins/`
 
 **`.roll-lucid` / `.dc-roll-lucid`:**
-Keep **`.dc-roll-lucid`** (consistent with DC namespace), retire **`.roll-lucid`** — identical CSS.
+Keep **`.dc-roll-lucid`** (consistent with DC namespace), retire **`.roll-lucid`** — identical CSS. Before retiring: `grep -r "roll-lucid" field-guide/ design-guide/ plugins/`
 
 **`.roll-surreal` / `.dc-roll-surreal`:**
-Keep **`.dc-roll-surreal`**, retire **`.roll-surreal`** — identical CSS.
+Keep **`.dc-roll-surreal`**, retire **`.roll-surreal`** — identical CSS. Before retiring: `grep -r "roll-surreal" field-guide/ design-guide/ plugins/`
 
 **`.tag` / `.dc-tag`:**
-Keep **`.dc-tag`**, retire **`.tag`** — identical CSS, DC namespace is the project convention.
+Keep **`.dc-tag`**, retire **`.tag`** — identical CSS, DC namespace is the project convention. Before retiring: `grep -r '"tag"\|\.tag' field-guide/ design-guide/ plugins/`
 
 **`.break-before` / `.pmd-break-before`:**
-Keep **`.pmd-break-before`** (vendor-scoped), retire **`.break-before`** — identical CSS. Prefixed form avoids collision with any browser or Paged.js internal.
+Keep **`.pmd-break-before`** (vendor-scoped), retire **`.break-before`** — identical CSS. Prefixed form avoids collision with any browser or Paged.js internal. Before retiring: `grep -r "break-before" field-guide/ design-guide/ plugins/`
 
 **`.no-break` / `.pmd-no-break`:**
-Keep **`.pmd-no-break`**, retire **`.no-break`** — identical CSS.
+Keep **`.pmd-no-break`**, retire **`.no-break`** — identical CSS. Before retiring: `grep -r '"no-break"\|\.no-break' field-guide/ design-guide/ plugins/`
 
 **`.sidebar` / `.dc-sidebar`:**
-Keep **`.dc-sidebar`**, retire **`.sidebar`** — identical CSS.
+Keep **`.dc-sidebar`**, retire **`.sidebar`** — identical CSS. Before retiring: `grep -r '"sidebar"\|\.sidebar' field-guide/ design-guide/ plugins/`
 
 **`.two-column-list` / `.two-col-list`:**
-Keep **`.two-column-list`** (the form that actually has a CSS definition), retire **`.two-col-list`** — identical intent. Note: `.two-col-list` as a markdown-generated class appears to be the dead reference documented in Category 1; the CSS alias in this pair refers to a separate rule that does exist.
+Keep **`.two-column-list`** (the form that actually has a CSS definition), retire **`.two-col-list`** — identical intent. Note: `.two-col-list` as a markdown-generated class appears to be the dead reference documented in Category 1; the CSS alias in this pair refers to a separate rule that does exist. Before retiring: `grep -r "two-col-list" field-guide/ design-guide/ plugins/`
 
 **`.section-header` / `.header`:**
-Keep **`.section-header`** (descriptive), retire **`.header`** — identical CSS.
+Keep **`.section-header`** (descriptive), retire **`.header`** — identical CSS. Before retiring: `grep -r '"header"\|\.header' field-guide/ design-guide/ plugins/`
 
 **`.specialty-intro` / `.dc-specialty-intro`:**
-Keep **`.specialty-intro`** (the un-prefixed form is used in field guide), retire **`.dc-specialty-intro`** — identical CSS. Alternatively, adopt the `dc-` prefix consistently and update all field guide usage.
+Keep **`.specialty-intro`** (the un-prefixed form is used in field guide), retire **`.dc-specialty-intro`** — identical CSS. Alternatively, adopt the `dc-` prefix consistently and update all field guide usage. Before retiring: `grep -r "dc-specialty-intro" field-guide/ design-guide/ plugins/`
 
 **`.specialty-spread` / `.dc-specialty-spread`:**
-Keep **`.specialty-spread`** (used in field guide), retire **`.dc-specialty-spread`** — identical CSS.
+Keep **`.specialty-spread`** (used in field guide), retire **`.dc-specialty-spread`** — identical CSS. Before retiring: `grep -r "dc-specialty-spread" field-guide/ design-guide/ plugins/`
 
 **`.specialty-card` / `.dc-specialty-card`:**
-Keep **`.specialty-card`** (used in field guide), retire **`.dc-specialty-card`** — identical CSS.
+Keep **`.specialty-card`** (used in field guide), retire **`.dc-specialty-card`** — identical CSS. Before retiring: `grep -r "dc-specialty-card" field-guide/ design-guide/ plugins/`
 
 **`.specialty-art` / `.dc-specialty-art`:**
-Keep **`.specialty-art`** (used in field guide), retire **`.dc-specialty-art`** — identical CSS.
+Keep **`.specialty-art`** (used in field guide), retire **`.dc-specialty-art`** — identical CSS. Before retiring: `grep -r "dc-specialty-art" field-guide/ design-guide/ plugins/`
 
 **`.columns` / `.dense`:**
-Keep **`.columns`** as the base; `.dense` as a modifier is fine if it changes density. If both produce *identical* output, retire **`.dense`**. Audit whether they are truly identical or if `.dense` changes column-gap/font-size.
+Keep **`.columns`** as the base; `.dense` as a modifier is fine if it changes density. If both produce *identical* output, retire **`.dense`**. Audit whether they are truly identical or if `.dense` changes column-gap/font-size. Before retiring: `grep -r '"dense"\|\.dense' field-guide/ design-guide/ plugins/`
 
 **Terms list — four names, one pattern:**
-`.dc-terms`, `.dc-terms-list`, `.terms`, `.terms-list` — all produce the same terms/glossary list. Keep **`.dc-terms`** as canonical, retire the other three.
+`.dc-terms`, `.dc-terms-list`, `.terms`, `.terms-list` — all produce the same terms/glossary list. Keep **`.dc-terms`** as canonical, retire the other three. Before retiring: `grep -r "dc-terms-list\|\"terms\"\|terms-list" field-guide/ design-guide/ plugins/`
 
 **`.pmd-specimen-inline` duplicates `.pmd-no-break`:**
-Both are `break-inside: avoid` with no other rules. Keep **`.pmd-no-break`** (semantic name for the behaviour), retire **`.pmd-specimen-inline`** or repurpose it with additional rules that justify a distinct name.
+Both are `break-inside: avoid` with no other rules. Keep **`.pmd-no-break`** (semantic name for the behaviour), retire **`.pmd-specimen-inline`** or repurpose it with additional rules that justify a distinct name. Before retiring: `grep -r "pmd-specimen-inline" field-guide/ design-guide/ plugins/`
 
 **`.lede` / `.dc-intro` — two authoring paths for one element:**
-`:::lede` container and `:::wrapper {.dc-intro}` both produce `.dc-intro`. Keep **`:::lede`** as the canonical authoring form (it is the macro-style shorthand the rest of the system uses), retire the `:::wrapper {.dc-intro}` pattern. Document `:::lede` as the single source of truth.
+`:::lede` container and `:::wrapper {.dc-intro}` both produce `.dc-intro`. Keep **`:::lede`** as the canonical authoring form (it is the macro-style shorthand the rest of the system uses), retire the `:::wrapper {.dc-intro}` pattern. Document `:::lede` as the single source of truth. Before retiring: `grep -r "dc-intro" field-guide/ design-guide/ plugins/`
 
 ---
 
@@ -145,39 +149,48 @@ Both are `break-inside: avoid` with no other rules. Keep **`.pmd-no-break`** (se
 
 Items fully documented in the design guide spec but absent from every field guide source file. These inflate the authoring reference and create a false impression of what authors need to learn. They should be removed from the spec docs (or moved to an appendix of "available but unused" features) until the field guide actually adopts them.
 
+**NOTE on one-off `@page .class` names:** One-off `@page .class` classes are intentional and correct — they are the mechanism for per-page styling in this system. Do not remove them from the design guide. Even if a class appears only once in the book, documenting it teaches authors how `@page` naming works for custom page styling. The entries below are exclusively for items that are genuinely undocumented patterns, broken aliases, or systems with zero usage — not for named pages.
+
 **All `> [!TYPE]` callout variants — entire callout alert system:**
 `> [!NOTE]`, `> [!DM]`, `> [!VIBE]`, `> [!ORIGIN]`, `> [!GEAR]`, `> [!VISIT]`, `> [!FLAVOR]`, `> [!WARNING]`, `> [!PULLQUOTE]` — zero occurrences anywhere in the field guide. Authors exclusively use plain `>` blockquotes, paragraph-level `.class` attributes, and `!!! Label` admonitions instead. The entire alert-callout variant table in the design guide documents a system that has never been used in production.
 
-**`@section` macro** — documented in `07-markdown-reference.md`, zero usage in the field guide.
-
-**`@spread` macro** — documented in `07-markdown-reference.md`, zero usage in the field guide.
-
-**`@break` macro** — documented, but the field guide uses `---` HR syntax exclusively for page breaks. The macro is never called.
-
 **`> [!PULLQUOTE]` variant specifically** — also covered under Category 5 (two pull-quote authoring paths), but worth calling out here: neither pull-quote path is used via the alert syntax. The `:::pull-quote` container path is the only one with any usage.
-
-**One-off structural classes (used once, no pattern):**
-These classes appear exactly once in the field guide, attached to a single unique page. Documenting them as reusable components is misleading; they are effectively page-specific IDs masquerading as classes. They do not need to be in the design guide spec:
-- **`.page-toc`** — table of contents page, one instance
-- **`.page-credits`** — credits page, one instance
-- **`.page-intro`** — intro page, one instance
-- **`.page-ability-catalog`** — ability catalog page, one instance
-- **`.the-players`** — one instance
-- **`.things-you-need`** — one instance
-- **`.dream-economy`** — one instance
-- **`.upgrading`** — one instance
-- **`.abilities-overview`** — one instance
-- **`.outcome-table`** — one instance
-- **`.deadly-scenes`** — one instance
-- **`.page-colophon`** — one instance
-- **`.distances`** — one instance
-- **`.call-home`** — one instance
-- **`.dc-spray`** — one instance
-- **`.at-a-glance-heading`** — one instance
 
 **`@chapter-opener` numbering** — the macro is documented as the canonical way to inject a chapter number, but 8 of the 10 chapters don't use it (specialty files use none; chapter-02 uses raw HTML). Until usage becomes consistent, the design guide should note the macro's actual adoption rate rather than presenting it as a universal pattern.
 
 **`@specialty`, `@learning-path`, `@skill` macros in specialty chapters** — these *are* used (all 8 specialty files), so they stay in the docs. Listed here for completeness: they are the primary layout mechanism for specialty chapters and require zero `@page` directives, which is worth noting explicitly in the design guide.
+
+---
+
+## Category 4b: PLANNED MIGRATION — Field guide to adopt these macros
+
+These items are currently undocumented or underused in the field guide, but the project is moving TOWARD more macro usage, not away from it. The field guide will be updated to use these as macro adoption expands. Do NOT remove them from the design guide; instead, mark them as "coming to field guide" and ensure they are well-documented.
+
+**`@section` macro** — documented in `07-markdown-reference.md`, zero usage in the field guide currently. Intended for adoption in the field guide as a structural section delimiter macro. Keep in design guide docs; add a note that field guide migration is planned.
+
+**`@spread` macro** — documented in `07-markdown-reference.md`, zero usage in the field guide currently. Intended for adoption in the field guide for two-page spread layouts. Keep in design guide docs; add a note that field guide migration is planned.
+
+**`@break` macro** — the field guide uses `---` HR syntax exclusively for page breaks today. `@break` is the macro-based equivalent and is intended to replace raw HR usage as macro adoption expands. Keep in design guide docs; add a note that field guide migration from `---` to `@break` is planned.
+
+---
+
+## Category 4c: MIGRATION TARGET — Triple-colon containers needing macro equivalents
+
+The project is moving away from the `:::wrapper {.class}` and `:::container {.class}` authoring patterns toward either dedicated macros (verb-first, no class syntax) or standardized Dimm City plugin extension syntax. Each item below currently lacks a macro equivalent and needs one created.
+
+Macros that already exist (`@skill`, `@learning-path`, `@specialty`, `@outcome`, `@chapter-opener`, `@chapter`, `@page`, `@section`, `@spread`, `@break`) are NOT listed here — they are covered or planned elsewhere.
+
+- **`:::sidebar` / `:::wrapper {.dc-sidebar}`** → needs `@sidebar` macro
+- **`:::lede` / `:::wrapper {.dc-intro}`** → needs `@lede` macro (or `@intro`); `:::lede` is the current canonical form but should eventually become `@lede`
+- **`:::pull-quote` / `:::wrapper {.dc-pullquote}`** → needs `@pullquote` macro
+- **`:::procedure`** → needs `@procedure` macro
+- **`:::item`** → needs scoping decision (currently used inside `@learning-path`, `:::two-column`, etc.); may become context-aware or require a namespaced form
+- **`:::two-column` / `:::: two-column`** → needs `@two-column` macro or a page template equivalent
+- **`:::three-column`** → needs `@three-column` macro
+- **`:::wrapper {.dc-definition-block}`** → needs `@definition` macro
+- **`:::wrapper {.dc-sidebar-box}`** → needs `@sidebar-box` macro
+- **`:::wrapper {.dc-toc}`** → the TOC is auto-generated; this wrapper may stay as a structural container or be absorbed into the chapter template; decision deferred
+- **Generic `:::wrapper {.arbitrary-class}`** → should become `@wrap .class` or a dedicated macro per class; the open-ended wrapper pattern is an escape hatch, not an authoring primitive
 
 ---
 
@@ -313,26 +326,20 @@ Same issue: H1 and banner heading tokens are nearly identical. If the banner hea
 | `.pmd-specimen-inline` duplicates `.pmd-no-break` | 3 — CONSOLIDATE | LOW | Both are `break-inside: avoid` only |
 | `:::lede` / `:::wrapper {.dc-intro}` | 3 — CONSOLIDATE | MEDIUM | Two authoring paths for `.dc-intro` |
 | All `> [!TYPE]` callout variants (9 types) | 4 — DROP FROM DOCS | HIGH | Zero usage in field guide |
-| `@section` macro | 4 — DROP FROM DOCS | HIGH | Zero usage in field guide |
-| `@spread` macro | 4 — DROP FROM DOCS | HIGH | Zero usage in field guide |
-| `@break` macro | 4 — DROP FROM DOCS | MEDIUM | Field guide uses `---` exclusively |
-| `.page-toc` | 4 — DROP FROM DOCS | LOW | One-off page class, not a reusable pattern |
-| `.page-credits` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.page-intro` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.page-ability-catalog` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.the-players` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.things-you-need` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.dream-economy` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.upgrading` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.abilities-overview` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.outcome-table` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.deadly-scenes` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.full-page` (documented pattern) | 4 — DROP FROM DOCS | LOW | One-off page class; only instance is empty placeholder |
-| `.page-colophon` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.distances` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.call-home` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.dc-spray` | 4 — DROP FROM DOCS | LOW | One-off page class |
-| `.at-a-glance-heading` | 4 — DROP FROM DOCS | LOW | One-off page class |
+| `@section` macro | 4b — PLANNED MIGRATION | HIGH | Currently unused in field guide; field guide to adopt as macro usage expands |
+| `@spread` macro | 4b — PLANNED MIGRATION | HIGH | Currently unused in field guide; field guide to adopt as macro usage expands |
+| `@break` macro | 4b — PLANNED MIGRATION | MEDIUM | Field guide uses `---` today; `@break` is the intended replacement |
+| `:::sidebar` / `:::wrapper {.dc-sidebar}` | 4c — MIGRATION TARGET | MEDIUM | Needs `@sidebar` macro |
+| `:::lede` / `:::wrapper {.dc-intro}` | 4c — MIGRATION TARGET | MEDIUM | Needs `@lede` or `@intro` macro |
+| `:::pull-quote` / `:::wrapper {.dc-pullquote}` | 4c — MIGRATION TARGET | MEDIUM | Needs `@pullquote` macro |
+| `:::procedure` | 4c — MIGRATION TARGET | MEDIUM | Needs `@procedure` macro |
+| `:::item` | 4c — MIGRATION TARGET | LOW | Needs scoping decision; used inside multiple parent containers |
+| `:::two-column` / `:::: two-column` | 4c — MIGRATION TARGET | MEDIUM | Needs `@two-column` macro or page template |
+| `:::three-column` | 4c — MIGRATION TARGET | LOW | Needs `@three-column` macro |
+| `:::wrapper {.dc-definition-block}` | 4c — MIGRATION TARGET | MEDIUM | Needs `@definition` macro |
+| `:::wrapper {.dc-sidebar-box}` | 4c — MIGRATION TARGET | LOW | Needs `@sidebar-box` macro |
+| `:::wrapper {.dc-toc}` | 4c — MIGRATION TARGET | LOW | TOC is auto-generated; wrapper fate TBD |
+| Generic `:::wrapper {.arbitrary-class}` | 4c — MIGRATION TARGET | LOW | Should become `@wrap .class` or dedicated macro per class |
 | Six two-column layout mechanisms | 5 — RATIONALIZE | MEDIUM | Audit for true visual differences |
 | Three stat-grid patterns | 5 — RATIONALIZE | MEDIUM | Systems 1 and 3 structurally similar |
 | Two outcome table systems | 5 — RATIONALIZE | ~~HIGH~~ **DONE 2026-05-12** | `@outcome` macro is now canonical; HTML replaced in `05-page-templates.md`; `.dc-roll-table` CSS deprecated |
