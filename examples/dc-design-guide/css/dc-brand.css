@@ -2024,6 +2024,41 @@ hr,
   max-width: 7.25in;
 }
 
+/* ── @CONTINUE CONTINUATION CARDS ──────────────────────────────────────────
+   .dc-skill-card-cont / .dc-card-tab-cont are emitted by the @continue macro
+   in dimm-city-plugin.js. A continuation card is the second (or further)
+   fragment of a multi-page ability — it carries the same chrome as a normal
+   card but must signal visually that the reader is mid-ability.
+
+   Visual intent:
+   - No top margin on the card itself: flows directly under the preceding card
+     so the pair reads as one unit with a page break between them.
+   - Tab background stays dark but the title already includes a ▸ suffix
+     (added by the plugin); style the tab with a dashed top border to
+     reinforce the "flow continues" metaphor without adding loud decoration.
+   ─────────────────────────────────────────────────────────────────────────── */
+.dc-skill-card-cont {
+  margin-top: 0;
+}
+
+.dc-card-tab-cont {
+  border-top-style: dashed;
+  border-top-color: var(--hud-blue);
+}
+
+/* ── IMAGE-ONLY PARAGRAPH WRAPPER ──────────────────────────────────────────
+   .img-wrapper is added by dimm-city-plugin.js to any <p> that contains
+   a single <img> and nothing else. This is a selector hook that replaces
+   the unsupported p:has(img) pattern (Paged.js drops :has() silently).
+   Zero out the default paragraph block margins so images sit flush inside
+   their containing layout box. Per-page rules may further position
+   individual images via .page.my-class p.img-wrapper.
+   ─────────────────────────────────────────────────────────────────────────── */
+p.img-wrapper {
+  padding: 0;
+  margin: 0;
+}
+
 /* ---------------------------------------------------------------------------
    Citizen file / misc existing preview content
    --------------------------------------------------------------------------- */

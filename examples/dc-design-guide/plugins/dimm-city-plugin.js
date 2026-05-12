@@ -1141,8 +1141,10 @@ export default function dimmCityPlugin(md, options = {}) {
         continue;
       }
 
-      // Mark image-only paragraphs so preview layout rules can target them
-      // without relying on unsupported selectors like :has().
+      // Mark image-only paragraphs so layout rules can target them without
+      // relying on p:has(img), which Paged.js drops silently. The base CSS
+      // rule (p.img-wrapper { padding:0; margin:0 }) lives in dc-brand.css.
+      // Per-page rules can further refine position via .page.my-class p.img-wrapper.
       if (tok.type === 'paragraph_open') {
         const inlineTok = tokens[i + 1];
         const closeTok = tokens[i + 2];

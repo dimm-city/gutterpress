@@ -84,14 +84,14 @@ Normalized 14 occurrences across chapter-01.md, chapter-03.md, chapter-05.md. Al
 **`--bg` token value mismatch** ✅ FIXED 2026-05-12
 `02-palette.md` updated to show correct value `#d3cec6`.
 
-**`dc-skill-card-cont` — plugin emits class with no CSS rule (HIGH)**
-The `@continue` macro (plugin line 1052) emits `dc-skill-card-cont` on continuation skill cards. No CSS rule exists in `dc-brand.css` or `content-templates.css`. The continuation card renders identically to a base `dc-skill-card` with no visual indicator that it is a continuation. *Fix needed:* add a CSS rule to `dc-brand.css` that visually distinguishes continuation cards (e.g., a dashed border, a continuation label, or suppressed top padding to indicate flow continuity).
+**`dc-skill-card-cont` — plugin emits class with no CSS rule (HIGH)** ✅ FIXED 2026-05-12
+The `@continue` macro is actively used (2 occurrences in field-guide `chapter-02 3 Streetwarden.md`) and is the documented preferred pattern over `.allow-split`. CSS rules added to `dc-brand.css`: `.dc-skill-card-cont { margin-top: 0 }` (continuation card flows flush after the preceding card) and `.dc-card-tab-cont { border-top-style: dashed; border-top-color: var(--hud-blue) }` (visual cue alongside the plugin-inserted ▸ suffix).
 
-**`dc-card-tab-cont` — plugin emits class with no CSS rule (HIGH)**
-The `@continue` macro (plugin line 1056) emits `dc-card-tab-cont` on the continuation card tab element. No CSS rule exists. The tab chrome on continuation cards has no specific styling. *Fix needed:* add a CSS rule to `dc-brand.css` alongside the `dc-skill-card-cont` fix to style the continuation tab (e.g., different background or a "cont'd" label via `::before`).
+**`dc-card-tab-cont` — plugin emits class with no CSS rule (HIGH)** ✅ FIXED 2026-05-12
+Resolved alongside `dc-skill-card-cont` above — see that entry for details.
 
-**`img-wrapper` — plugin emits class with no design-guide CSS rule (MEDIUM)**
-The plugin (line 1154) wraps image-only paragraphs with `class="img-wrapper"`. No rule exists in the design guide CSS files. This class may be handled by per-page inline `<style>` blocks in individual markdown files, or it may be intentionally unstyled (the wrapper exists to avoid `:has()` usage per an inline comment). *Investigation needed:* verify whether `img-wrapper` needs a base CSS rule or is correctly handled at the page level.
+**`img-wrapper` — plugin emits class with no design-guide CSS rule (MEDIUM)** ✅ FIXED 2026-05-12
+`img-wrapper` is a structural selector hook, not a decorative class — it replaces the unsupported `p:has(img)` pattern that Paged.js drops silently. Investigation confirmed the field-guide backup CSS (`book-art.css`) contained exactly the intended rule: `p.img-wrapper { padding: 0; margin: 0 }`. That base rule is now present in `dc-brand.css`. Plugin comment updated to explain the `:has()` rationale and point to the CSS rule location. Per-page rules can still refine individual image positions via `.page.my-class p.img-wrapper`.
 
 ---
 
@@ -299,9 +299,9 @@ Same issue: H1 and banner heading tokens are nearly identical. If the banner hea
 | `--bg` hex mismatch in docs vs CSS | 2 — FIX | HIGH | ✅ FIXED 2026-05-12 — palette doc corrected to #d3cec6 |
 | `@chapter-opener` bypass in chapter-02 | 2 — FIX | MEDIUM | ✅ FIXED 2026-05-12 — macro used; HTML fragments converted to markdown |
 | Malformed container syntax (quoted class names) | 2 — FIX | MEDIUM | ✅ FIXED 2026-05-12 — 14 occurrences normalized in chapter-01, 03, 05 |
-| `dc-skill-card-cont` — no CSS rule | 2 — FIX | HIGH | Plugin emits class; no matching CSS in dc-brand.css |
-| `dc-card-tab-cont` — no CSS rule | 2 — FIX | HIGH | Plugin emits class; no matching CSS in dc-brand.css |
-| `img-wrapper` — no CSS rule | 2 — FIX | MEDIUM | Plugin emits class; per-page inline styles may handle it — verify |
+| `dc-skill-card-cont` — no CSS rule | 2 — FIX | HIGH | ✅ FIXED 2026-05-12 — margin-top:0 added to dc-brand.css |
+| `dc-card-tab-cont` — no CSS rule | 2 — FIX | HIGH | ✅ FIXED 2026-05-12 — dashed hud-blue top border added to dc-brand.css |
+| `img-wrapper` — no CSS rule | 2 — FIX | MEDIUM | ✅ FIXED 2026-05-12 — base p.img-wrapper rule added to dc-brand.css; plugin comment updated |
 | `.dc-art-slot` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
 | `.dc-art-slot-ghost` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
 | `.dc-spread` | 1 — REMOVE | HIGH | ✅ REMOVED 2026-05-12 |
