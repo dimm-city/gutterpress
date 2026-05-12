@@ -243,7 +243,7 @@ function buildOutcomesBlock(rows, md, needsAvoid = true) {
   // card-body on one page and the outcomes-only continuation on the next.
   const avoidAttr = needsAvoid ? ' data-break-inside="avoid"' : '';
   let html = '<div class="dc-outcomes"' + avoidAttr + '>\n';
-  html += '  <div class="outcomes-label">Outcomes</div>\n';
+  html += '  <div class="dc-outcomes-label">Outcomes</div>\n';
 
   rows.forEach(row => {
     if (row.length < 2) return;
@@ -274,7 +274,7 @@ function buildOutcomesBlock(rows, md, needsAvoid = true) {
 
 function buildDistanceTags(rows, md) {
   let html = '<div class="dc-sub-header">AP Cost × Distance</div>\n';
-  html += '<div class="distance-tags">\n';
+  html += '<div class="dc-distance-tags">\n';
 
   rows.forEach(row => {
     if (row.length < 2) return;
@@ -285,9 +285,9 @@ function buildDistanceTags(rows, md) {
     const renderedDistance = md.renderInline(distance);
     const renderedCost = md.renderInline(cost);
 
-    html += '  <span class="dist-tag">\n';
-    html += '    <span class="dist-ap">' + renderedCost + '</span>\n';
-    html += '    <span class="dist-name">' + renderedDistance + '</span>\n';
+    html += '  <span class="dc-dist-tag">\n';
+    html += '    <span class="dc-dist-ap">' + renderedCost + '</span>\n';
+    html += '    <span class="dc-dist-name">' + renderedDistance + '</span>\n';
     html += '  </span>\n';
   });
 
@@ -396,7 +396,7 @@ function admonitionRule(state, startLine, endLine, silent) {
   tok.map = [startLine, nextLine];
 
   tok = state.push('html_block', '', 0);
-  tok.content = '<strong class="note-label">' + esc(label) + '</strong>\n';
+  tok.content = '<strong class="dc-note-label">' + esc(label) + '</strong>\n';
   tok.block = true;
 
   if (contentLines.length > 0) {
@@ -776,7 +776,7 @@ export default function dimmCityPlugin(md, options = {}) {
               const tierClasses = ['crit', 'hit', 'mixed', 'miss', 'fail'];
               const wrapperClass = 'dc-outcomes' + (isFlush ? ' flush' : '');
               let html = '<div class="' + wrapperClass + '">\n';
-              html += '  <div class="outcomes-label">Outcomes</div>\n';
+              html += '  <div class="dc-outcomes-label">Outcomes</div>\n';
               rows.forEach((line, idx) => {
                 const parts = line.split('|').map(s => s.trim());
                 const range = parts[0] || '';
@@ -819,7 +819,7 @@ export default function dimmCityPlugin(md, options = {}) {
           const tierClasses = ['crit', 'hit', 'mixed', 'miss', 'fail'];
           const wrapperClass = 'dc-outcomes' + (outcomeBlockFlush ? ' flush' : '');
           let html = '<div class="' + wrapperClass + '">\n';
-          html += '  <div class="outcomes-label">Outcomes</div>\n';
+          html += '  <div class="dc-outcomes-label">Outcomes</div>\n';
           outcomeBlockItems.forEach((line, idx) => {
             const parts = line.split('|').map(s => s.trim());
             const range = parts[0] || '';

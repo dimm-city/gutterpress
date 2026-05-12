@@ -1317,6 +1317,18 @@ hr,
   border: 1px solid var(--paper-aged);
   pointer-events: none;
 }
+.dc-outcomes-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--hud-blue);
+  padding: 8px 16px 6px;
+  border-bottom: 1px solid var(--hud-blue-dim);
+  position: relative;
+  z-index: 1;
+}
 .dc-outcome-row {
   display: grid;
   grid-template-columns: 155px 1fr;
@@ -1364,6 +1376,38 @@ hr,
   line-height: 1.55;
   color: var(--ink);
   align-self: center;
+}
+
+/* ───────── DISTANCE TAGS (AP cost × distance block) ───────── */
+.dc-distance-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+.dc-dist-tag {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--paper-light);
+  border: 1px solid var(--hud-blue-dim);
+  padding: 6px 10px;
+  min-width: 52px;
+}
+.dc-dist-ap {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+}
+.dc-dist-name {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--hud-blue);
+  margin-top: 3px;
 }
 
 /* ───────── CLASS-TAG PILL (specialty marker) ───────── */
