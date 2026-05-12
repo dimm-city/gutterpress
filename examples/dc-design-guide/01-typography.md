@@ -18,7 +18,7 @@ Three font families, each with a specific role. lixdu anchors display and banner
 | Body | plain paragraph | 12pt · Titillium Web | Base reading type for all prose |
 | Flavor | `> [!FLAVOR]` | Italic body size · Titillium Web | In-world voice, card flavor, atmospheric prose |
 | Card Tab | `<span class="font-tab">` | 9pt · Tomorrow monospace | Skill card tab labels |
-| Mono Cap Tag | `<span class="tag">` | 8pt · Tomorrow monospace | Stance and timing chips |
+| Mono Cap Tag | `<span class="dc-tag">` | 8pt · Tomorrow monospace | Stance and timing chips |
 
 ---
 
@@ -28,7 +28,13 @@ Three font families, each with a specific role. lixdu anchors display and banner
 |---|---|---|---|
 | `--font-display` | lixdu | serif | H1–H3, banners, card tabs |
 | `--font-body` | Titillium Web | sans-serif | Body prose, flavor text, quotes |
-| `--font-mono` | Tomorrow | monospace | Tab labels, inline code, mono chrome |
+| `--font-mono` | Tomorrow | monospace | Code, counters, and monospaced tabular data |
+| `--font-tab` | Tomorrow | lixdu / sans-serif | Card tab labels, banner labels, stat names — Tomorrow preferred for readability at small sizes |
+| `--font-sans` | Titillium Web | Inter / system-ui | Alternate sans-serif body; use when Titillium Web weight needs a fallback |
+| `--font-quote` | Titillium Web | Tomorrow / serif | Italic flavor quotes and pullquote attribution lines |
+
+> [!NOTE]
+> `--font-tab` and `--font-mono` both resolve to Tomorrow as first choice. The distinction: `--font-tab` is for short label text (tab chips, stat labels); `--font-mono` is for code, counters, and monospaced tabular data.
 
 ---
 

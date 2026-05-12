@@ -151,10 +151,12 @@ Items fully documented in the design guide spec but absent from every field guid
 
 **NOTE on one-off `@page .class` names:** One-off `@page .class` classes are intentional and correct — they are the mechanism for per-page styling in this system. Do not remove them from the design guide. Even if a class appears only once in the book, documenting it teaches authors how `@page` naming works for custom page styling. The entries below are exclusively for items that are genuinely undocumented patterns, broken aliases, or systems with zero usage — not for named pages.
 
-**All `> [!TYPE]` callout variants — entire callout alert system:**
-`> [!NOTE]`, `> [!DM]`, `> [!VIBE]`, `> [!ORIGIN]`, `> [!GEAR]`, `> [!VISIT]`, `> [!FLAVOR]`, `> [!WARNING]`, `> [!PULLQUOTE]` — zero occurrences anywhere in the field guide. Authors exclusively use plain `>` blockquotes, paragraph-level `.class` attributes, and `!!! Label` admonitions instead. The entire alert-callout variant table in the design guide documents a system that has never been used in production.
+**GFM alert preference:** For callout-style components (boxed notes, DM instructions, flavor text, pull quotes), `> [!TYPE]` GFM alert syntax is preferred over `:::container` syntax when both exist for the same component. `> [!PULLQUOTE]` is preferred over `:::pull-quote`. Layout primitives (sidebar, two-column, procedure) still use `:::` until their macro equivalents are built.
 
-**`> [!PULLQUOTE]` variant specifically** — also covered under Category 5 (two pull-quote authoring paths), but worth calling out here: neither pull-quote path is used via the alert syntax. The `:::pull-quote` container path is the only one with any usage.
+**All `> [!TYPE]` callout variants — entire callout alert system:** *(Status: KEEP + PROMOTE — GFM alert syntax is now the preferred authoring path for callout components)*
+`> [!NOTE]`, `> [!DM]`, `> [!VIBE]`, `> [!ORIGIN]`, `> [!GEAR]`, `> [!VISIT]`, `> [!FLAVOR]`, `> [!WARNING]`, `> [!PULLQUOTE]` — previously zero occurrences in the field guide, but GFM alert syntax is now the preferred authoring path for callout-style components. The `> [!TYPE]` form is preferred over `:::container` equivalents. These must remain in the design guide docs as the primary callout authoring reference.
+
+**`> [!PULLQUOTE]` variant specifically** — also covered under Category 5 (two pull-quote authoring paths): `> [!PULLQUOTE]` is now the preferred form over `:::pull-quote`. Update the pull-quote section in design guide docs to reflect this preference.
 
 **`@chapter-opener` numbering** — the macro is documented as the canonical way to inject a chapter number, but 8 of the 10 chapters don't use it (specialty files use none; chapter-02 uses raw HTML). Until usage becomes consistent, the design guide should note the macro's actual adoption rate rather than presenting it as a universal pattern.
 
@@ -229,15 +231,17 @@ The CSS for `.procedure > ol` suggests an older pattern. If no field guide file 
 
 **Two pull-quote authoring paths:**
 1. `:::pull-quote` container — the container/macro path
-2. `> [!PULLQUOTE]` alert — the alert/callout path (zero field guide usage — see Category 4)
+2. `> [!PULLQUOTE]` alert — the alert/callout path (now PREFERRED — see GFM alert preference note in Category 4)
 
-Keep `:::pull-quote` as the canonical path. The `> [!PULLQUOTE]` alert path can be dropped from documentation since it is never used.
+`> [!PULLQUOTE]` is now the preferred authoring form. `:::pull-quote` remains valid but `> [!PULLQUOTE]` should be promoted as the primary path. Update design guide docs to reflect this preference.
 
 **`.dc-note-callout` (DM Note) vs `.dc-note` (player Note):**
 Nearly identical names, opposite intended audiences. A field guide author who confuses them will apply DM-facing styling to player-facing content or vice versa. Recommendation: rename one to increase visual distance — e.g., `.dc-dm-note` for the DM-facing variant, `.dc-player-note` for the player-facing variant.
 
 **`.dc-gear-callout` vs `.gear-callout` naming confusion:**
 `shared.css` defines a `.gear-callout` (no prefix) with `min-height: 3.5in` applied unconditionally. `.dc-gear-callout` does not have this `min-height`. Two nearly identical class names with subtly different box sizing. The un-prefixed `.gear-callout` may produce a very tall box when there is little content. Audit whether both are intentional or whether `.gear-callout` is a stale variant of `.dc-gear-callout`.
+
+*Investigation needed:* Check `shared.css` in the DC design system for the `.gear-callout` (no prefix) rule with `min-height: 3.5in`. If this is a stale override, remove it. If intentional, document the distinction in the design guide.
 
 **Atmospheric callout cluster — three near-identical classes:**
 `.dc-vibe-callout`, `.dc-origin-callout`, `.dc-visit-callout` share identical structure and differ only by border colour and `::before` label text. They could be consolidated into a single `.dc-flavor-callout` class with a `data-label` attribute and a CSS custom property for accent colour — or remain as separate classes if the authoring ergonomics of named classes is preferred. Either is valid; what matters is the decision is explicit.
@@ -286,46 +290,46 @@ Same issue: H1 and banner heading tokens are nearly identical. If the banner hea
 | `--bg` hex mismatch in docs vs CSS | 2 — FIX | HIGH | ✅ FIXED 2026-05-12 — palette doc corrected to #d3cec6 |
 | `@chapter-opener` bypass in chapter-02 | 2 — FIX | MEDIUM | ✅ FIXED 2026-05-12 — macro used; HTML fragments converted to markdown |
 | Malformed container syntax (quoted class names) | 2 — FIX | MEDIUM | ✅ FIXED 2026-05-12 — 14 occurrences normalized in chapter-01, 03, 05 |
-| `.dc-art-slot` | 1 — REMOVE | HIGH | Zero usage, no CSS consumer |
-| `.dc-art-slot-ghost` | 1 — REMOVE | HIGH | Zero usage, no CSS consumer |
-| `.dc-spread` | 1 — REMOVE | HIGH | Zero usage |
-| `.dc-class-hero` | 1 — REMOVE | HIGH | Zero usage |
-| `.dc-class-hero-row` | 1 — REMOVE | HIGH | Zero usage |
-| `.dc-class-hero-no` | 1 — REMOVE | HIGH | Zero usage |
-| `.dc-page` | 1 — REMOVE | HIGH | Zero usage |
-| `.dc-page-num` | 1 — REMOVE | HIGH | Zero usage |
-| `.dc-chapter-num` | 1 — REMOVE | HIGH | Zero usage |
-| `.dc-path-block-wrap` | 1 — REMOVE | HIGH | Superseded by `.dc-path-shell` |
-| `.font-banner` | 1 — REMOVE | HIGH | References removed token, silent fallback |
-| `.dc-p` | 1 — REMOVE | MEDIUM | Zero usage |
-| `.dc-display-char` | 1 — REMOVE | MEDIUM | Zero usage |
-| `.dc-quote-label` | 1 — REMOVE | MEDIUM | Zero usage |
-| `.dc-art-credit` | 1 — REMOVE | MEDIUM | Zero usage |
-| `.dc-art-img` | 1 — REMOVE | MEDIUM | Zero usage |
-| `.dc-portrait-inner` | 1 — REMOVE | MEDIUM | Zero usage |
-| `.dc-2col` | 1 — REMOVE | MEDIUM | Zero usage |
-| `.dc-2col.dc-2col-mt` | 1 — REMOVE | MEDIUM | Zero usage |
-| `.two-col-list` (orphan CSS rule) | 1 — REMOVE | MEDIUM | Defined class is `.two-column-list`; this rule is unreachable |
-| Empty `:::wrapper {.full-page}:::` in Streetwarden | 1 — REMOVE | LOW | Placeholder with no content |
-| Empty `.item` slots in chapter-05 | 1 — REMOVE | LOW | Dead placeholder markup |
-| `.img-float-right` / `.pmd-float-right` / `.dc-art-float-right` | 3 — CONSOLIDATE | HIGH | Three names, one float behaviour |
-| `.roll-lucid` / `.dc-roll-lucid` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair |
-| `.roll-surreal` / `.dc-roll-surreal` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair |
-| `.tag` / `.dc-tag` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair |
-| `.break-before` / `.pmd-break-before` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair |
-| `.no-break` / `.pmd-no-break` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair |
-| `.sidebar` / `.dc-sidebar` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair |
-| `.two-column-list` / `.two-col-list` (alias) | 3 — CONSOLIDATE | MEDIUM | Alias pair |
-| `.section-header` / `.header` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair |
-| `.specialty-intro` / `.dc-specialty-intro` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair |
-| `.specialty-spread` / `.dc-specialty-spread` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair |
-| `.specialty-card` / `.dc-specialty-card` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair |
-| `.specialty-art` / `.dc-specialty-art` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair |
-| `.columns` / `.dense` | 3 — CONSOLIDATE | LOW | Possibly identical output — verify first |
-| `.dc-terms` / `.dc-terms-list` / `.terms` / `.terms-list` | 3 — CONSOLIDATE | MEDIUM | Four names, one pattern |
-| `.pmd-specimen-inline` duplicates `.pmd-no-break` | 3 — CONSOLIDATE | LOW | Both are `break-inside: avoid` only |
-| `:::lede` / `:::wrapper {.dc-intro}` | 3 — CONSOLIDATE | MEDIUM | Two authoring paths for `.dc-intro` |
-| All `> [!TYPE]` callout variants (9 types) | 4 — DROP FROM DOCS | HIGH | Zero usage in field guide |
+| `.dc-art-slot` | 1 — REMOVE | HIGH | Zero usage, no CSS consumer (agent completing) |
+| `.dc-art-slot-ghost` | 1 — REMOVE | HIGH | Zero usage, no CSS consumer (agent completing) |
+| `.dc-spread` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
+| `.dc-class-hero` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
+| `.dc-class-hero-row` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
+| `.dc-class-hero-no` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
+| `.dc-page` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
+| `.dc-page-num` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
+| `.dc-chapter-num` | 1 — REMOVE | HIGH | Zero usage (agent completing) |
+| `.dc-path-block-wrap` | 1 — REMOVE | HIGH | Superseded by `.dc-path-shell` (agent completing) |
+| `.font-banner` | 1 — REMOVE | HIGH | References removed token, silent fallback (agent completing) |
+| `.dc-p` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
+| `.dc-display-char` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
+| `.dc-quote-label` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
+| `.dc-art-credit` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
+| `.dc-art-img` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
+| `.dc-portrait-inner` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
+| `.dc-2col` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
+| `.dc-2col.dc-2col-mt` | 1 — REMOVE | MEDIUM | Zero usage (agent completing) |
+| `.two-col-list` (orphan CSS rule) | 1 — REMOVE | MEDIUM | Defined class is `.two-column-list`; this rule is unreachable (agent completing) |
+| Empty `:::wrapper {.full-page}:::` in Streetwarden | 1 — REMOVE | LOW | Placeholder with no content (agent completing) |
+| Empty `.item` slots in chapter-05 | 1 — REMOVE | LOW | Dead placeholder markup (agent completing) |
+| `.img-float-right` / `.pmd-float-right` / `.dc-art-float-right` | 3 — CONSOLIDATE | HIGH | Three names, one float behaviour (agent completing) |
+| `.roll-lucid` / `.dc-roll-lucid` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
+| `.roll-surreal` / `.dc-roll-surreal` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
+| `.tag` / `.dc-tag` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
+| `.break-before` / `.pmd-break-before` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
+| `.no-break` / `.pmd-no-break` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
+| `.sidebar` / `.dc-sidebar` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
+| `.two-column-list` / `.two-col-list` (alias) | 3 — CONSOLIDATE | MEDIUM | Alias pair (agent completing) |
+| `.section-header` / `.header` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
+| `.specialty-intro` / `.dc-specialty-intro` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
+| `.specialty-spread` / `.dc-specialty-spread` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
+| `.specialty-card` / `.dc-specialty-card` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
+| `.specialty-art` / `.dc-specialty-art` | 3 — CONSOLIDATE | MEDIUM | Exact alias pair (agent completing) |
+| `.columns` / `.dense` | 3 — CONSOLIDATE | LOW | Possibly identical output — verify first (agent completing) |
+| `.dc-terms` / `.dc-terms-list` / `.terms` / `.terms-list` | 3 — CONSOLIDATE | MEDIUM | Four names, one pattern (agent completing) |
+| `.pmd-specimen-inline` duplicates `.pmd-no-break` | 3 — CONSOLIDATE | LOW | Both are `break-inside: avoid` only (agent completing) |
+| `:::lede` / `:::wrapper {.dc-intro}` | 3 — CONSOLIDATE | MEDIUM | Two authoring paths for `.dc-intro` (agent completing) |
+| All `> [!TYPE]` callout variants (9 types) | 4 — KEEP + PROMOTE | HIGH | GFM alert syntax is now PREFERRED over ::: container equivalents. These should stay in docs as the primary callout authoring path. |
 | `@section` macro | 4b — PLANNED MIGRATION | HIGH | Currently unused in field guide; field guide to adopt as macro usage expands |
 | `@spread` macro | 4b — PLANNED MIGRATION | HIGH | Currently unused in field guide; field guide to adopt as macro usage expands |
 | `@break` macro | 4b — PLANNED MIGRATION | MEDIUM | Field guide uses `---` today; `@break` is the intended replacement |
@@ -344,9 +348,9 @@ Same issue: H1 and banner heading tokens are nearly identical. If the banner hea
 | Three stat-grid patterns | 5 — RATIONALIZE | MEDIUM | Systems 1 and 3 structurally similar |
 | Two outcome table systems | 5 — RATIONALIZE | ~~HIGH~~ **DONE 2026-05-12** | `@outcome` macro is now canonical; HTML replaced in `05-page-templates.md`; `.dc-roll-table` CSS deprecated |
 | Two numbered procedure systems | 5 — RATIONALIZE | MEDIUM | Container vs legacy `.procedure > ol` |
-| Two pull-quote authoring paths | 5 — RATIONALIZE | LOW | Keep `:::pull-quote`; drop alert path |
-| `.dc-note-callout` vs `.dc-note` naming | 5 — RATIONALIZE | HIGH | Opposite audiences, near-identical names |
-| `.dc-gear-callout` vs `.gear-callout` | 5 — RATIONALIZE | HIGH | Near-identical names, different `min-height` behaviour |
+| Two pull-quote authoring paths | 5 — RATIONALIZE | LOW | `> [!PULLQUOTE]` now PREFERRED; `:::pull-quote` still valid but secondary |
+| `.dc-note-callout` vs `.dc-note` naming | 5 — RATIONALIZE | ~~HIGH~~ **RENAMED 2026-05-12** | Renamed to `dc-dm-note` to increase visual distance from player-facing `.dc-note` |
+| `.dc-gear-callout` vs `.gear-callout` | 5 — RATIONALIZE | HIGH | Near-identical names, different `min-height` behaviour — investigation needed (see Category 5 note) |
 | Atmospheric callout cluster | 5 — RATIONALIZE | LOW | `.dc-vibe-callout`, `.dc-origin-callout`, `.dc-visit-callout` |
 | Banner heading repetition | 5 — RATIONALIZE | MEDIUM | 5 hard-coded selector blocks duplicate `.dc-chevron` |
 | `--paper-stain` / `--border-hairline` same hex | 6 — TOKEN CLEANUP | LOW | Coincidental value match; document relationship |

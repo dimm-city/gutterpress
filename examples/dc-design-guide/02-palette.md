@@ -54,6 +54,14 @@ Two accent registers on cream substrate. Creaturepunk fire (crimson, rust, orang
 
 Additional border values come directly from ink-scale tokens (`--ink`, `--ink-smoke`, `--ink-dust`) — no dedicated border aliases for those.
 
+> [!NOTE]
+> `--paper-stain` and `--border-hairline` share the same hex value (`#d0c8b5`). `--paper-stain` is for textured-background fills; `--border-hairline` is for rule lines. Use each semantically — if the design evolves, these may diverge.
+
+## Spacing Token Notes
+
+> [!NOTE]
+> `--gutter` and `--space-2xl` share the same value today (`0.25in`). `--gutter` is a layout concept (column gap); `--space-2xl` is a spacing-scale step. Use each in its semantic context — do not substitute one for the other.
+
 ## Usage Rules
 
 - Crimson is the dominant accent. One crimson element per composition; stack additional emphasis with orange.
@@ -94,6 +102,16 @@ CMYK approximations for the four primary colors:
 | Ink | #1a1715 | ~0/5/10/90 |
 
 Keep total ink coverage under 280% for coated stock and under 240% for uncoated stock. RGB-to-CMYK conversion is not one-to-one for saturated colors — request a physical proof before the full print run.
+
+---
+
+## Font Size Token Notes
+
+> [!NOTE]
+> Pull-quote size (`--fs-pullquote: 17pt`) intentionally matches H2 weight (`--fs-h2: 1.44rem ≈ 17.3pt`). Pull quotes are designed to read as visual anchors at section-heading weight.
+
+> [!NOTE]
+> `--fs-chevron: 20pt` is the banner heading size. `--fs-h1: 1.728rem (~20.7pt)` is the body H1. The 0.7pt difference is intentional — chevron banners use a fixed point size for print stability; H1 uses rem for flexibility.
 
 ---
 
