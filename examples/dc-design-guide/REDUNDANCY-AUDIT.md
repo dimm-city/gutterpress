@@ -185,18 +185,18 @@ These items are currently undocumented or underused in the field guide, but the 
 
 ---
 
-## Category 4c: MIGRATION TARGET — Triple-colon containers needing macro equivalents
+## Category 4c: MIGRATION TARGET — Triple-colon containers needing replacement paths
 
-The project is moving away from the `:::wrapper {.class}` and `:::container {.class}` authoring patterns toward either dedicated macros (verb-first, no class syntax) or standardized Dimm City plugin extension syntax. Each item below currently lacks a macro equivalent and needs one created.
+The project is moving away from the `:::wrapper {.class}` and `:::container {.class}` authoring patterns toward either dedicated macros, GFM alerts, or `@section` wrappers with class modifiers. Not every old container needs a new macro.
 
 Macros that already exist (`@skill`, `@learning-path`, `@specialty`, `@outcome`, `@chapter-opener`, `@chapter`, `@page`, `@section`, `@spread`, `@break`) are NOT listed here — they are covered or planned elsewhere.
 
 - **`:::sidebar` / `:::wrapper {.dc-sidebar}`** → needs `@sidebar` macro
 - **`:::lede` / `:::wrapper {.dc-intro}`** → needs `@lede` macro (or `@intro`); `:::lede` is the current canonical form but should eventually become `@lede`
-- **`:::pull-quote` / `:::wrapper {.dc-pullquote}`** → needs `@pullquote` macro
+- **`:::pull-quote` / `:::wrapper {.dc-pullquote}`** → migrate to `> [!PULLQUOTE]` GFM alert
 - **`:::procedure`** → needs `@procedure` macro
 - **`:::item`** → needs scoping decision (currently used inside `@learning-path`, `:::two-column`, etc.); may become context-aware or require a namespaced form
-- **`:::two-column` / `:::: two-column`** → needs `@two-column` macro or a page template equivalent
+- **`:::two-column` / `:::: two-column`** → migrate to `@section` with a two-column class modifier
 - **`:::three-column`** → needs `@three-column` macro
 - **`:::wrapper {.dc-definition-block}`** → needs `@definition` macro
 - **`:::wrapper {.dc-sidebar-box}`** → needs `@sidebar-box` macro
@@ -347,10 +347,10 @@ Same issue: H1 and banner heading tokens are nearly identical. If the banner hea
 | `@break` macro | 4b — PLANNED MIGRATION | MEDIUM | Field guide uses `---` today; `@break` is the intended replacement |
 | `:::sidebar` / `:::wrapper {.dc-sidebar}` | 4c — MIGRATION TARGET | MEDIUM | Needs `@sidebar` macro |
 | `:::lede` / `:::wrapper {.dc-intro}` | 4c — MIGRATION TARGET | MEDIUM | Needs `@lede` or `@intro` macro |
-| `:::pull-quote` / `:::wrapper {.dc-pullquote}` | 4c — MIGRATION TARGET | MEDIUM | Needs `@pullquote` macro |
+| `:::pull-quote` / `:::wrapper {.dc-pullquote}` | 4c — MIGRATION TARGET | MEDIUM | Replace with `> [!PULLQUOTE]` |
 | `:::procedure` | 4c — MIGRATION TARGET | MEDIUM | Needs `@procedure` macro |
 | `:::item` | 4c — MIGRATION TARGET | LOW | Needs scoping decision; used inside multiple parent containers |
-| `:::two-column` / `:::: two-column` | 4c — MIGRATION TARGET | MEDIUM | Needs `@two-column` macro or page template |
+| `:::two-column` / `:::: two-column` | 4c — MIGRATION TARGET | MEDIUM | Replace with `@section` + two-column class modifier |
 | `:::three-column` | 4c — MIGRATION TARGET | LOW | Needs `@three-column` macro |
 | `:::wrapper {.dc-definition-block}` | 4c — MIGRATION TARGET | MEDIUM | Needs `@definition` macro |
 | `:::wrapper {.dc-sidebar-box}` | 4c — MIGRATION TARGET | LOW | Needs `@sidebar-box` macro |

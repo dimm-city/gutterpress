@@ -126,16 +126,16 @@ markdown source during the build step and emits structured HTML.
 
 ### Planned macros (triple-colon containers to be replaced)
 
-These `:::` container patterns work today but will be replaced by named macros
-in a future plugin update:
+These authoring patterns are the planned canonical replacements for older
+container-heavy field-guide source:
 
 | Current syntax | Planned macro |
 |---|---|
 | `:::sidebar` | `@sidebar` |
 | `:::lede` | `@lede` |
-| `:::pull-quote` | `@pullquote` |
+| `:::pull-quote` / `:::wrapper {.dc-pullquote}` | `> [!PULLQUOTE]` |
 | `:::procedure` | `@procedure` |
-| `:::two-column` / `:::: two-column` | `@two-column` |
+| `:::wrapper {.two-column...}` / `:::wrapper {.two-column-list}` | `@section .two-column ...` |
 | `:::wrapper {.dc-definition-block}` | `@definition` |
 | `:::wrapper {.dc-sidebar-box}` | `@sidebar-box` |
 

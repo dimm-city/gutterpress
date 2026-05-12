@@ -3,7 +3,7 @@
 # Chapter Opener — Real-World Example {.dc-chevron}
 
 :::lede
-This section shows how chapter-start spreads look in the actual Dimm City Field Guide, rendered using real book content. The chapter opener is a two-column layout: fiction narrative on the left, rules or character content on the right, separated by a column break. These pages use the `page-chapter-start` template.
+This section shows how chapter-start spreads look in the actual Dimm City Field Guide, rendered using real book content. The chapter opener uses the `page-chapter-start` page template to create a two-column layout: fiction narrative on the left, rules or character content on the right, separated by a column break.
 :::
 
 ---
@@ -16,7 +16,7 @@ This section shows how chapter-start spreads look in the actual Dimm City Field 
 
 @chapter-opener C.01
 
-# Who Do You Dream to Be? {#c2-who-do-you-dream}
+# Who Do You Dream to Be? {#c2-who-do-you-dream .dc-chevron}
 
 "It's hard being me, but I guess it's the same for anyting sentient in the monoverse, ay?! Tag's Thump, an I'm a rabbit outta dee EntD here in Dimm City. Lemme post ya a tale about life here in da middle 'o dee ether.
 

@@ -197,7 +197,7 @@
   --fs-body-xs: 11.5pt;     /* between body-sm and body — outcome text, cover body */
   --fs-caption: 10pt;       /* credits / fine print exceptions */
   --fs-footer:  9.5pt;      /* @page margin box footer text */
-  --fs-chevron: 20pt;       /* banner/chevron heading — h1 on chapter-start, specialty pages */ /* near --fs-h1 (20.7pt); if intentional, consider using var(--fs-h1) directly */
+  /* banner/chevron headings use --fs-h1 directly */
   --fs-h1:      1.728rem;   /* 20.7pt */
   --fs-h2:      1.44rem;    /* 17.3pt */
   --fs-h3:      1.2rem;     /* 14.4pt */
@@ -205,7 +205,6 @@
   --fs-h5:      0.95rem;
   --fs-h6:      0.85rem;
   --fs-chapter: 26pt;       /* chapter openers */
-  --fs-pullquote: 17pt;       /* pull-quote display size — punches above h2 (17.3pt), arrests the eye */ /* intentionally near --fs-h2; pullquotes read at section-heading weight */
 
   --fw-semibold: 600;
   --fw-bold:     700;
@@ -225,9 +224,9 @@
   --space-md:  0.12in;   /* ~9pt */
   --space-lg:  0.15in;   /* ~11pt */
   --space-xl:  0.20in;   /* ~14pt */
-  --space-2xl: 0.25in;   /* ~18pt — equals default gutter */ /* coincides with --gutter; layout vs. spacing-scale — do not assume they track together */
+  --space-2xl: 0.25in;   /* ~18pt spacing step */
 
-  --gutter:        0.25in;
+  --gutter:        0.15in;   /* two-column structural gutter; update in tandem with guide/content template column-gap rules */
   --page-margin:   0.5in;
   --sidebar-width: 3.05in;
 
@@ -278,7 +277,6 @@
 
   --amber-dark:  #b87400;   /* darkened amber — 3.22:1 on paper-cream; for drop cap and accent use */
   --outer-margin: 0.625in;  /* outer (non-binding) page margin — wider than --page-margin for visual breathing room */
-  --space-xs:    0.0833in;  /* 6pt — 1 baseline unit; tight internal component padding floor */ /* visually indistinguishable from --space-sm (0.08in) at print scale; consider merging */
 }
 
 /* ============================================================================
@@ -463,7 +461,7 @@ ul li::before {
 /* ───────── CHEVRON BANNER ───────── */
 .dc-chevron {
   font-family: var(--font-display);
-  font-size: var(--fs-chevron); /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
+  font-size: var(--fs-h1); /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
   letter-spacing: 0.06em;
   color: var(--paper-cream);
   text-transform: uppercase;
@@ -819,7 +817,7 @@ ul li::before {
   color: var(--crimson);
   font-weight: 700;
   display: block;
-  margin-bottom: var(--space-xs);
+  margin-bottom: var(--space-sm);
   font-style: normal;
 }
 
@@ -878,7 +876,7 @@ ul li::before {
   position: relative;
   font-family: var(--font-body);
   font-style: italic;
-  font-size: var(--fs-pullquote);
+  font-size: var(--fs-h2);
   line-height: 1.3;
   color: var(--ink-dark);
   letter-spacing: -0.01em;
@@ -1203,36 +1201,6 @@ hr,
 /* :::procedure wraps an ordered list into a numbered-step layout.
    Paged.js note: decimal-leading-zero is supported in most modern browsers
    and Chromium-based Paged.js; counter(procedure-step) is the safe fallback. */
-.procedure > ol {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  counter-reset: procedure-step;
-}
-.procedure > ol > li {
-  counter-increment: procedure-step;
-  display: flex;
-  gap: 0.75em;
-  align-items: baseline;
-  padding: 0.5em 0;
-  border-top: 1px dashed var(--border-hairline);
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-.procedure > ol > li:first-child {
-  border-top: 0;
-}
-.procedure > ol > li::before {
-  /* decimal-leading-zero: pads 1-9 as 01-09; Paged.js/Chromium handles this correctly.
-     If output shows unstyled counters, fall back to: counter(procedure-step) */
-  content: counter(procedure-step, decimal-leading-zero);
-  font-family: var(--font-mono);
-  font-size: var(--fs-small);
-  font-weight: 700;
-  color: var(--crimson);
-  min-width: 2.5ch;
-  flex-shrink: 0;
-}
 
 /* ───────── OUTCOME LADDER (failure → catastrophe) ───────── */
 /* d20 outcome ladder — use for the Roll/Result ladder only.
@@ -2067,7 +2035,7 @@ p.img-wrapper {
 .page.page-info-sidebar.citizen-file h3.at-a-glance-heading {
   display: inline-block;
   font-family: var(--font-display);
-  font-size: var(--fs-chevron); /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
+  font-size: var(--fs-h1); /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
   letter-spacing: 0.06em;
   color: var(--paper-cream);
   text-transform: uppercase;

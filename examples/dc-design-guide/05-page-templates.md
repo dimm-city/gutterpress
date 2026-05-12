@@ -410,7 +410,7 @@ Each `href` must point to an `id` on a heading or `<span id="…">` anchor. Page
 
 Numbered procedure with two-column layout: steps list left, callout + pull quote right. Tape divider introduces closing prose. **Page class:** normal body page, no break marker needed.
 
-**Components:** `# Title {.dc-chevron}` · `<div class="dc-intro">` · `::: wrapper {.dc-procedure-grid}` (flex container) · `<ol class="dc-steps">` (each `<li>` uses `<span class="dc-step-no">` for zero-padded number) · `!!! Sidebar` · `<div class="dc-pullquote">` · `<div class="dc-tape">`
+**Components:** `# Title {.dc-chevron}` · `<div class="dc-intro">` · `::: wrapper {.dc-procedure-grid}` (flex container) · `<ol class="dc-steps">` (each `<li>` uses `<span class="dc-step-no">` for zero-padded number) · `!!! Sidebar` · `> [!PULLQUOTE]` · `<div class="dc-tape">`
 
 ```markdown
 # Procedure Title {.dc-chevron}
@@ -434,10 +434,10 @@ Numbered procedure with two-column layout: steps list left, callout + pull quote
 !!! Sidebar
 Guidance for common mistakes or variant rules.
 
-<div class="dc-pullquote mt">
-  A resonant line capturing the procedure's purpose.
-  <span class="dc-pullquote-attr">Source attribution</span>
-</div>
+> [!PULLQUOTE]
+> A resonant line capturing the procedure's purpose.
+>
+> Source attribution
 
 :::
 
@@ -454,7 +454,7 @@ Optional closing prose for variant rules or table preferences.
 
 Full-column narrative for chapter openers, vignettes, dream intros. Prose + floated art + pull quote only — no structural UI. First-line indent applied by print CSS. **Page class:** normal body page, no break marker needed.
 
-**Components:** `### Scene Label {.dc-spec-tweak .no-top}` (optional) · `*italic opener*` · `![alt](img/file.png){.img-float-right}` (or `.img-float-left`) · `<div class="dc-pullquote">` + `<span class="dc-pullquote-attr">`
+**Components:** `### Scene Label {.dc-spec-tweak .no-top}` (optional) · `*italic opener*` · `![alt](img/file.png){.img-float-right}` (or `.img-float-left`) · `> [!PULLQUOTE]`
 
 ```markdown
 ### Scene Label {.dc-spec-tweak .no-top}
@@ -468,10 +468,10 @@ operator sees, hears, or smells. Each paragraph earns the next.
 
 Continued prose with the floated image wrapping left.
 
-<div class="dc-pullquote">
-  A resonant line that closes the scene.
-  <span class="dc-pullquote-attr">Field debrief, post-run</span>
-</div>
+> [!PULLQUOTE]
+> A resonant line that closes the scene.
+>
+> Field debrief, post-run
 ```
 
 ---

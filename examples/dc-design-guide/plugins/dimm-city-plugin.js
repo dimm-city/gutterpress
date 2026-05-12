@@ -9,6 +9,8 @@
  *                          learning-path, or skill so each chapter-02 file can open
  *                          cleanly without legacy fenced-div containers)
  *   @end-specialty      → Manually end a specialty section
+ *   @sidebar-box        → Start a dc-sidebar-box wrapper
+ *   @end-sidebar-box    → End sidebar-box wrapper
  *   @learning-path      → Start a learning path section (auto-closes previous sections)
  *   @end-learning-path  → Manually end a learning path section
  *   @skill              → Start skill cards section (auto-closes previous sections)
@@ -570,10 +572,11 @@ export default function dimmCityPlugin(md, options = {}) {
      let rollTableItems = [];
      let inOptionsTable = false;
      let optionsTableItems = [];
-     let inOutcomeBlock = false;
-     let outcomeBlockItems = [];
-     let outcomeBlockFlush = false;
-     let inClassEntry = false;
+      let inOutcomeBlock = false;
+      let outcomeBlockItems = [];
+      let outcomeBlockFlush = false;
+      let inSidebarBox = false;
+      let inClassEntry = false;
      let classEntryName = '';
      let classEntryTokens = [];
      let learningPathHasTitle = false;
@@ -595,10 +598,14 @@ export default function dimmCityPlugin(md, options = {}) {
 
      // Helper to close all open structures EXCEPT specialty (specialty
      // wraps the entire chapter section and is closed separately).
-     function closeAll() {
-       if (inSkillCard) {
-         newTokens.push(makeToken('html_block', '</div></div></div>\n'));
-         inSkillCard = false;
+      function closeAll() {
+        if (inSidebarBox) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inSidebarBox = false;
+        }
+        if (inSkillCard) {
+          newTokens.push(makeToken('html_block', '</div></div></div>\n'));
+          inSkillCard = false;
        }
        if (inLearningPathShell) {
          newTokens.push(makeToken('html_block', '</div>\n'));
@@ -938,6 +945,35 @@ export default function dimmCityPlugin(md, options = {}) {
 
       // Check for @specialty marker (must come before @learning-path/@skill
       // since it auto-closes everything else)
+      const sidebarBoxMarker = parseMarker(tok, tokens, i, '@sidebar-box');
+      if (sidebarBoxMarker.matched) {
+        if (inSidebarBox) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inSidebarBox = false;
+        }
+        const userAttrs = sidebarBoxMarker.attrs;
+        let boxClass = 'dc-sidebar-box' + (userAttrs['class'] ? ' ' + userAttrs['class'] : '');
+        let boxAttrs = '';
+        for (const [key, val] of Object.entries(userAttrs)) {
+          if (key !== 'class') {
+            boxAttrs += ' ' + key + '="' + esc(val) + '"';
+          }
+        }
+        newTokens.push(makeToken('html_block', '<div class="' + boxClass + '"' + boxAttrs + '>\n'));
+        inSidebarBox = true;
+        i += 2;
+        continue;
+      }
+
+      if (isMarker(tok, tokens, i, '@end-sidebar-box')) {
+        if (inSidebarBox) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inSidebarBox = false;
+        }
+        i += 2;
+        continue;
+      }
+
       const specialtyMarker = parseMarker(tok, tokens, i, '@specialty');
       if (specialtyMarker.matched) {
         closeSpecialty();

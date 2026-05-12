@@ -109,7 +109,7 @@ div.chapter.chapter-01 h2,
 div.chapter.chapter-02 h2 {
   overflow-wrap: break-word;
   word-break: break-word;
-  font-size: 14.5pt; /* reduced from ~17.3pt (--fs-h2) — ixdu bold + letter-spacing overflows a ~3.4in column at full size */
+  font-size: var(--fs-h2);
 }
 
 div.chapter h2 + p, div.chapter h2 + ul, div.chapter h2 + ol, div.chapter h2 + pre, div.chapter h2 + blockquote, div.chapter h2 + table,
@@ -279,14 +279,15 @@ div.chapter h2 {
    single-column overrides at max-width:1100px/900px) are deleted permanently. */
 
 /* ── Part 1: Two-column reference layout ─────────────────────────────────────
-   Matches the column-gap token used by content-templates.css page templates
-   (.page.page-rules, .page.chapter-02, etc.) for visual consistency.
+   Uses the structural gutter token shared with content-templates.css page
+   templates. Narrowed to 0.15in to preserve full-size h2 in two-column
+   chapters without overflow.
    Column-span rules follow immediately below.
    ─────────────────────────────────────────────────────────────────────────── */
 div.chapter.chapter-01,
 div.chapter.chapter-02 {
   columns: 2;
-  column-gap: var(--space-2xl);
+  column-gap: var(--gutter);
   column-fill: auto;
 }
 

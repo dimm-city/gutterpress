@@ -258,7 +258,7 @@ Three modifier classes control how `.dc-skill-card` elements pack on a page when
 | Modifier | Width | Layout |
 |----------|-------|--------|
 | `.columns` | 3.5 in | Two cards per visual row (default for specialty sections) |
-| `.dense` | 3.5 in | Synonym for `.columns` — use for tighter packs |
+| `.dense` | 3.5 in | Deprecated alias for `.columns` — use `.columns` |
 | `.rows` | Full column width | One card per row, stacked vertically |
 
 **Syntax** — apply to the `.dc-specialty` wrapper or any parent container:
@@ -327,7 +327,7 @@ Badge in the top-left corner of specialty chapter opener pages. Auto-generated b
 | Stamp — Default | `<span class="dc-stamp">TEXT</span>` | `dc-stamp` |
 | Stamp — Classified | `<span class="dc-stamp classified">TEXT</span>` | `dc-stamp`, `classified` |
 | Clip-Path v1–v5 | `variant="1"` through `variant="5"` on `@skill` | `dc-card-tab v1`–`v5`, `dc-card-body v1`–`v5` |
-| `.columns` / `.dense` / `.rows` | modifier class on specialty wrapper | `columns`, `dense`, `rows` |
+| `.columns` / `.rows` | modifier class on specialty wrapper (`.dense` deprecated) | `columns`, `rows` |
 | `.dc-chapter-opener-no` | Raw HTML | `dc-chapter-opener-no` |
 
 ---

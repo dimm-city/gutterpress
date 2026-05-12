@@ -48,3 +48,4 @@ tests/
 *.skill
 .trash/
 review/
+review_screenshots/

@@ -75,25 +75,24 @@ Files to audit for remaining `:::: ability` / `:::: ability-continued` usage:
 
 | Container | Action |
 |---|---|
-| `:::: aug` (content container) | Delete — produces `.aug` div with no CSS; `.aug` is a page-class name only |
+| `:::: aug` (content container) | Keep until chapter-05 migration is redesigned; no `@aug` macro is planned |
 | `:::: ability-continued` | Migrate to `@continue` (see §2) |
 | `::: wrapper {".call-home-img"}` | Delete the wrapper; the image inside is already commented out (`chapter-01.md` line ~393) |
 
 ---
 
-## 4. Two-column layout — use design guide syntax
+## 4. Two-column layout — use `@section` with class modifiers
 
-The field-guide uses `::: wrapper {.two-column-list}` and
-`::: wrapper {.two-column}` as layout containers. The design guide canonical
-form is the `:::two-column` shorthand (documented in `03-components.md`).
+The field guide uses `::: wrapper {.two-column-list}` and
+`:::: wrapper {.two-column .dc-terms}` as layout containers. The canonical
+replacement path is `@section` with the same layout classes attached.
 
 | Find | Replace with |
 |---|---|
-| `::: wrapper {.two-column-list}` | `:::two-column` |
-| `:::::  wrapper {.two-column .terms}` | `:::two-column` with `dc-definition-block` children |
+| `::: wrapper {.two-column-list}` | `@section .two-column-list` |
+| `:::: wrapper {.two-column .dc-terms}` | `@section .two-column .dc-terms` |
 
-**Note:** `.two-column-list` inside `@skill` blocks is produced automatically
-by the plugin — do not add manual wrappers inside `@skill` content.
+Use `@break` or a following `@page` marker to close the region when needed.
 
 ---
 

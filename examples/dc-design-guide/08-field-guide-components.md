@@ -41,7 +41,7 @@ of them is still original flesh.
 Callout with H4 heading + internal dashed divider + cream background. **Use:** rules etiquette, standalone reference blocks, any callout needing its own visual boundary. (Distinct from `dc-note` — no heading; `dc-pullquote` — decorative only.) H4 at top, then `---`, then body:
 
 ```markdown
-::: wrapper {.dc-sidebar-box}
+@sidebar-box
 #### Dice Etiquette
 
 ---
@@ -49,7 +49,7 @@ Callout with H4 heading + internal dashed divider + cream background. **Use:** r
 Roll your dice in the open. Both players should be able to see every
 roll clearly — hidden dice undermine the shared fiction. If a die
 lands off the table, reroll it.
-:::
+@end-sidebar-box
 ```
 
 ---
@@ -115,7 +115,7 @@ Always use `dc-` prefixed forms (`dc-vibe-callout`, `dc-origin-callout`, `dc-hum
 |---|---|---|
 | Dashed Rule Divider | `---` (standard markdown) | `dc-dashed-rule` (auto) |
 | Definition Block | `::: wrapper {.dc-definition-block}` | `dc-definition-block` |
-| Sidebar Box | `::: wrapper {.dc-sidebar-box}` | `dc-sidebar-box` |
+| Sidebar Box | `@sidebar-box ... @end-sidebar-box` | `dc-sidebar-box` |
 | Gear Entry | `::: wrapper {.dc-gear-entry}` | `dc-gear-entry` |
 | Colophon Block | Raw HTML `<dl class="dc-colophon">` | `dc-colophon` |
 | Art Bottom Pin | `![img](path){.dc-art-bottom}` or `::: wrapper {.dc-art-bottom}` | `dc-art-bottom` |

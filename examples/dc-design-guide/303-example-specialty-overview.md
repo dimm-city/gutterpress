@@ -10,7 +10,7 @@ This section shows how the "Choose a Specialty" spread looks in the actual Dimm 
 
 ## Chapter-Start: What Do You Dream of Doing?
 
-**Page template** — `--- {page .page-chapter-start .chapter-start .chapter-02}` — two-column layout. Chapter 02 uses a raw `<span class="dc-chapter-opener-no">` badge instead of the `@chapter-opener` macro (both are equivalent; see [DC Components](#ch-dc-components)). The heading uses `.dc-spray` for the spray-banner treatment. The `dc-note` and `dc-sidebar` raw HTML blocks render rules callouts with labeled headers. Images replaced with design guide placeholder.
+**Page template** — `--- {page .page-chapter-start .chapter-start .chapter-02}` — the page template provides the two-column layout. Chapter 02 uses a raw `<span class="dc-chapter-opener-no">` badge instead of the `@chapter-opener` macro (both are equivalent; see [DC Components](#ch-dc-components)). The heading uses `.dc-spray` for the spray-banner treatment. The `dc-note` and `dc-sidebar` raw HTML blocks render rules callouts with labeled headers. Images replaced with design guide placeholder.
 
 --- {page .page-chapter-start .chapter-start .chapter-02}
 

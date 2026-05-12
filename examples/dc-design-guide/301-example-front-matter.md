@@ -14,7 +14,7 @@ This section shows how the Table of Contents, Credits, and Introduction pages lo
 
 @page .page-toc
 
-## Contents {.dc-chevron}
+# Contents {.dc-chevron}
 
 :::lede
 Twelve chapters of dreams, dirt, and what bites back. Read them in any order — the city doesn't care where you start.
@@ -46,7 +46,7 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 
 @page .page-credits .credits .chapter-00
 
-## Credits {.dc-chevron}
+# Credits {.dc-chevron}
 
 **Designers:** TWard and ITLackey
 
@@ -67,15 +67,14 @@ Don was a player in our 2E AD&D group throughout our youth and was a dear friend
 
 ## Introduction Page
 
-**Page template** — `--- {page .page-intro .intro .chapter-00}` — `page-intro` applies the narrative intro layout. The `.dc-pullquote` wrapper renders the opening quote as a large pull-quote band. The full-column fiction block follows with inline art. Image replaced with design guide placeholder. See [DC Components](#ch-dc-components) for `.dc-pullquote` and [Field Guide Components](#ch-fg-components) for the intro prose style.
+**Page template** — `--- {page .page-intro .intro .chapter-00}` — `page-intro` applies the narrative intro layout. The opening quote is authored as `> [!PULLQUOTE]` and renders as the large pull-quote band. The full-column fiction block follows with inline art. Image replaced with design guide placeholder. See [Components](#ch-components) for pull-quote authoring and [Field Guide Components](#ch-fg-components) for the intro prose style.
 
 --- {page .page-intro .intro .chapter-00}
 
-## Introduction {.dc-chevron}
+# Introduction {.dc-chevron}
 
-::: wrapper {.dc-pullquote}
-"How bright's it ay?!"
-:::
+> [!PULLQUOTE]
+> "How bright's it ay?!"
 
 The city didn't go quiet—it got loud. That feline snarl tore through the alley speakers, chased hard by the thundercrack of gunfire.
 

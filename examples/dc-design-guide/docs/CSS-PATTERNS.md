@@ -134,7 +134,6 @@ token name, not scattered across heading rules.
 --fs-body:    12pt;
 --fs-body-sm: 11pt;    /* design floor — never go below this for prose */
 --fs-body-xs: 11.5pt;  /* between sm and body — outcome text, cover body, TOC items */
---fs-chevron: 20pt;    /* banner/chevron headings, chapter-start h1 */
 --fs-footer:  9.5pt;   /* @page margin-box footer text */
 
 /* Line height */
@@ -154,8 +153,8 @@ token name, not scattered across heading rules.
 --space-md:  0.12in;
 --space-lg:  0.15in;
 --space-xl:  0.20in;
---gutter:    0.25in;    /* column gap, structural section margins */
---space-2xl: 0.25in;   /* equals --gutter; used for column-gap in multi-column layouts */
+--gutter:    0.15in;    /* column gap, structural section margins */
+--space-2xl: 0.25in;    /* spacing-scale step; do not substitute for --gutter */
 
 /* Page geometry — must match @page size declaration exactly */
 --page-width:     8.625in;
@@ -188,7 +187,7 @@ To change the page background in an adapted project, override `--bg` in
 (letter-spacing for micro-cap labels). Has no alias.
 
 **Good — `--gutter`**: The column gap appears in grid declarations and structural
-margins. One change reflows all of them.
+margins. One change reflows all of them without changing the spacing scale.
 
 **Anti-pattern — removed `--secondary-color`**: Was a 1:1 alias of `--crimson` with
 no additional meaning. All eight consumers were updated to `var(--crimson)` directly.
@@ -271,14 +270,14 @@ the structural hook; specialized classes extend it:
 .page.page-rules,
 .page.da-devil {
   columns: 2;
-  column-gap: var(--space-2xl);
+  column-gap: var(--gutter);
   column-fill: balance;
 }
 
 /* Ability catalog — auto fill so cards stack contiguously */
 .page.page-ability-catalog {
   columns: 2;
-  column-gap: var(--space-2xl);
+  column-gap: var(--gutter);
   column-fill: auto;
 }
 

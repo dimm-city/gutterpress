@@ -297,7 +297,7 @@ article {
 .page.dream,
 .page.da-devil {
   columns: 2;
-  column-gap: var(--space-2xl);
+  column-gap: var(--gutter);
   column-fill: balance;
 }
 
@@ -314,7 +314,7 @@ article {
 /* Chapter 02 general content pages - two-column layout */
 .page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.rolling-die):not(.choose-specialty) {
   columns: 2;
-  column-gap: var(--space-2xl);
+  column-gap: var(--gutter);
   column-fill: balance;
 }
 
@@ -346,7 +346,7 @@ article {
 .page.page-info-sidebar,
 .page.citizen-file {
   columns: 2;
-  column-gap: var(--space-2xl);
+  column-gap: var(--gutter);
   column-fill: balance;
 }
 
@@ -357,7 +357,7 @@ article {
 .page.page-ability-catalog,
 .page.choose-specialty {
   columns: 2;
-  column-gap: var(--space-2xl);
+  column-gap: var(--gutter);
   column-fill: auto;
 }
 
@@ -383,7 +383,7 @@ article {
 
 .page.page-item-grid {
   columns: 2;
-  column-gap: var(--space-2xl);
+  column-gap: var(--gutter);
   column-fill: balance;
 }
 
@@ -400,7 +400,7 @@ article {
 .page.ideal .ideal-list,
 .page.flaw .flaw-list {
   column-count: 2;
-  column-gap: var(--space-2xl, 0.3in);
+  column-gap: var(--gutter, 0.15in);
   column-fill: balance;
 }
 
@@ -522,17 +522,7 @@ article {
    Future refactor: add {.dc-chevron} to the h1 in the markdown and remove these
    duplicated declarations, keeping only `border: 0`. */
 .page.page-toc > h1 {
-  display: inline-block;
-  font-family: var(--font-display);
-  font-size: var(--fs-chevron); /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
-  letter-spacing: 0.06em;
-  color: var(--paper-cream);
-  text-transform: uppercase;
-  background: var(--rust);
   border: 0;
-  padding: 10px 28px 10px 14px;
-  clip-path: var(--clip-banner);
-  margin: 0 0 18px;
 }
 
 .page.page-toc > .wrapper {
@@ -605,17 +595,185 @@ article {
 .page.page-credits.credits > h1,
 .page.page-intro.intro > h1,
 .page.page-chapter-start.chapter-start > h1 {
-  display: inline-block;
-  font-family: var(--font-display);
-  font-size: var(--fs-chevron); /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
-  letter-spacing: 0.06em;
-  color: var(--paper-cream);
-  text-transform: uppercase;
-  background: var(--rust);
   border: 0;
-  padding: 10px 28px 10px 14px;
-  clip-path: var(--clip-banner);
-  margin: 0 0 18px;
+}
+
+/* ---------------------------------------------------------------------------
+   Chapter 03 bespoke layouts promoted from legacy field-guide CSS
+   These page hooks replace deprecated positional container classes in source.
+   --------------------------------------------------------------------------- */
+
+.page.surviving-the-sprawl {
+  position: relative;
+}
+
+.page.surviving-the-sprawl::after {
+  content: "";
+  position: absolute;
+  left: 1.5in;
+  right: 0;
+  bottom: 0;
+  height: 3.5in;
+  background: url("../img/rat-vs-rabbit.png") no-repeat left bottom / contain;
+  pointer-events: none;
+}
+
+.page.rolling-die {
+  columns: 1;
+  column-fill: auto;
+  position: relative;
+}
+
+.page.rolling-die > .wrapper:first-of-type {
+  width: 4.25in;
+  min-height: 10.4in;
+}
+
+.page.rolling-die p.img-wrapper img[alt="Acorn Dice"] {
+  position: absolute;
+  left: 0.25in;
+  bottom: 0;
+  height: 3in;
+  width: auto;
+  margin: 0;
+  z-index: 0;
+}
+
+.page.rolling-die .dc-sidebar {
+  position: absolute;
+  top: 0;
+  right: -0.15in;
+  width: 3in;
+  height: 100%;
+  padding: 0.2in 0.2in 0.15in;
+  margin: 0;
+  float: none;
+  clear: none;
+  border-left: none;
+  background: transparent;
+}
+
+.page.rolling-die .dc-sidebar h3:first-child {
+  margin-top: 0.05in;
+  margin-bottom: 0.1in;
+  padding-bottom: 0.06in;
+  border-bottom: 1px solid var(--orange);
+  font-size: 1.05em;
+}
+
+.page.rolling-die .dc-sidebar p {
+  margin-bottom: 0.09in;
+  line-height: var(--lh-normal);
+}
+
+.page.rolling-die .dc-sidebar hr {
+  margin: 0.12in 0;
+  border-color: var(--orange);
+}
+
+.page.rolling-die .dc-sidebar strong,
+.page.rolling-die > .wrapper:first-of-type strong {
+  color: var(--crimson);
+  letter-spacing: 0.02em;
+}
+
+.page.rolling-die > .wrapper:first-of-type p {
+  margin-bottom: 0.1in;
+  line-height: var(--lh-normal);
+}
+
+.page.rolling-die > .wrapper:first-of-type ul + p {
+  margin-top: 0.14in;
+  padding-top: 0.08in;
+  border-top: 1px solid var(--border-hairline);
+}
+
+.page.rolling-die .dc-sidebar hr + p {
+  padding-top: 0.1in;
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.06em;
+  color: var(--hud-blue);
+}
+
+.page.rolling-die .dc-sidebar hr ~ p {
+  background: rgba(42, 106, 138, 0.08);
+  border-left: 3px solid var(--hud-blue);
+  margin-left: -0.1in;
+  margin-right: -0.1in;
+  padding: 0.06in 0.1in;
+}
+
+.page.rolling-die .dc-sidebar > p:last-child {
+  margin-top: 0.1in;
+  margin-bottom: 0;
+  padding-top: 0.08in;
+  border-top: 1px solid var(--orange);
+  font-family: var(--font-display);
+  font-size: 0.95em;
+  letter-spacing: 0.05em;
+  text-align: center;
+  color: var(--orange);
+}
+
+.page.chapter-03 .rolling-die ul,
+.page.chapter-03 .dream-economy ul,
+.page.chapter-03 .scenes ul {
+  margin-top: 0.08in;
+  margin-bottom: 0.12in;
+}
+
+.page.chapter-03 .rolling-die ul li::before,
+.page.chapter-03 .dream-economy ul li::before,
+.page.chapter-03 .scenes ul li::before,
+.page.chapter-03 .the-players ul li::before {
+  content: "- ";
+  padding-right: 0.25em;
+}
+
+.page.outcome-table .outcome-table {
+  margin-top: var(--gutter);
+}
+
+.page.outcome-table .outcome-table h3 {
+  margin-bottom: var(--gutter);
+  border-bottom: 0;
+}
+
+.page.outcome-table .outcome-table table {
+  border-spacing: 8px;
+  font-size: 0.95em;
+}
+
+.page.outcome-table .outcome-table th {
+  text-align: left;
+}
+
+.page.outcome-table .outcome-table td {
+  padding-top: 0.06in;
+  padding-bottom: 0.06in;
+  vertical-align: top;
+}
+
+.page.outcome-table .outcome-table table tr > td:first-of-type {
+  width: 0.8in;
+  white-space: nowrap;
+  font-weight: var(--fw-bold);
+  color: var(--crimson);
+}
+
+.page.outcome-table .outcome-table table tbody tr:first-child {
+  background: rgba(242, 77, 0, 0.08);
+  border-bottom: 1px solid rgba(242, 77, 0, 0.35);
+}
+
+.page.outcome-table .outcome-table table tbody tr:last-child {
+  background: rgba(212, 18, 0, 0.08);
+  border-top: 2px solid rgba(212, 18, 0, 0.35);
+}
+
+.page.outcome-table .outcome-table table tbody tr:last-child td {
+  padding-bottom: 0.1in;
 }
 
 .page.page-credits.credits p,

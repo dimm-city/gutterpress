@@ -60,7 +60,7 @@ Additional border values come directly from ink-scale tokens (`--ink`, `--ink-sm
 ## Spacing Token Notes
 
 > [!NOTE]
-> `--gutter` and `--space-2xl` share the same value today (`0.25in`). `--gutter` is a layout concept (column gap); `--space-2xl` is a spacing-scale step. Use each in its semantic context — do not substitute one for the other.
+> `--gutter` is the structural two-column gap (`0.15in`). `--space-2xl` remains the `0.25in` spacing-scale step. Keep them separate: gutter changes reflow layouts, spacing-scale changes adjust component rhythm.
 
 ## Usage Rules
 
@@ -108,10 +108,10 @@ Keep total ink coverage under 280% for coated stock and under 240% for uncoated 
 ## Font Size Token Notes
 
 > [!NOTE]
-> Pull-quote size (`--fs-pullquote: 17pt`) intentionally matches H2 weight (`--fs-h2: 1.44rem ≈ 17.3pt`). Pull quotes are designed to read as visual anchors at section-heading weight.
+> Pull quotes use `--fs-h2` directly. They are intentionally set at section-heading weight rather than a separate display scale.
 
 > [!NOTE]
-> `--fs-chevron: 20pt` is the banner heading size. `--fs-h1: 1.728rem (~20.7pt)` is the body H1. The 0.7pt difference is intentional — chevron banners use a fixed point size for print stability; H1 uses rem for flexibility.
+> Chevron banners use `--fs-h1` directly. This keeps banner headings and body H1s on the same display scale.
 
 ---
 

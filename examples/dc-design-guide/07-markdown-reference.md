@@ -40,6 +40,8 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 |--------|-----------|---------|
 | `@specialty {.classname}` | Next `@specialty` or `@end-specialty` | Wraps a full specialty section; class sets the specialty code (`.augmerc` → `AUG`) |
 | `@end-specialty` | — | Explicitly closes the current specialty block |
+| `@sidebar-box` | `@end-sidebar-box` | Wraps content in a `dc-sidebar-box` callout |
+| `@end-sidebar-box` | — | Explicitly closes the current sidebar box |
 | `@learning-path` | Next `@learning-path` or `@end-learning-path` | Groups skill cards under a spray header; path index and code auto-increment |
 | `@end-learning-path` | — | Explicitly closes the current learning-path block |
 | `@skill variant="N"` | Next `@skill` or `@end-skill` | Starts a skill card; content becomes card body |
