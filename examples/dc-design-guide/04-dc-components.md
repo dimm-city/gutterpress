@@ -20,10 +20,6 @@ The primary H1 opener for chapter and specialty pages. Renders with the DC chevr
 # Augmerc {.dc-chevron}
 ```
 
-**Specimen**
-
-# Augmerc {.dc-chevron}
-
 ---
 
 ### Spray Banner
@@ -36,10 +32,6 @@ H2 section opener for learning paths and major topic breaks. The spray treatment
 ## Biting Distance {.dc-spray}
 ```
 
-**Specimen**
-
-## Biting Distance {.dc-spray}
-
 ---
 
 ### Spec Tweak Rule
@@ -51,10 +43,6 @@ H3 heading for optional mechanics and variant rules. The `.no-top` modifier remo
 ```
 ### Spec Tweak: Wired to Kill {.dc-spec-tweak .no-top}
 ```
-
-**Specimen**
-
-### Spec Tweak: Wired to Kill {.dc-spec-tweak .no-top}
 
 ---
 
@@ -77,24 +65,6 @@ The `@skill` macro generates the full card HTML automatically. Use `variant="1"`
 **Tier badge** — When used inside a `@learning-path`, the tab tier (`AUG1.1`, `AUG1.2`, …) is auto-generated from the path context. For standalone cards or a custom label, append ` | Badge` to the H4: `#### Ability Title | AUG1.1`.
 
 **Optional attributes** — `id="slug"` sets the card's `name` attribute for anchor links. `{.allow-split}` permits Paged.js to split a tall card across a page break (prefer `@continue` instead for long abilities).
-
-**Specimen**
-
-@skill variant="1" id="punishing-counter"
-#### Punishing Counter | AUG1.1
-> See an opening, ya take it.
-1. **0 AP** *Steel Says No:* When an enemy in reach makes a basic attack, your Backbiters knock the strike off line.
-2. **2 AP** *Bullet to Blood:* When an enemy you can see makes a ranged basic attack, you slip the shot.
-##### Openings are invitations to take a chunk out 'em
-@end-skill
-
-@skill variant="2" id="wire-tap"
-#### Wire Tap | AUG1.2
-> You don't need access — you need patience and a good antenna.
-1. **1 AP** *Signal Ghost:* Until your next turn, you are invisible to surveillance cameras and smart-weapon targeting.
-2. **3 AP** *Hostile Takeover:* Seize control of one networked device within reach until the end of the scene.
-##### Chrome sees everything. You see through chrome.
-@end-skill
 
 ---
 
@@ -119,19 +89,6 @@ When an ability description is too long to fit on one card, use `@continue` insi
 @end-skill
 ```
 
-**Specimen**
-
-@skill variant="3" id="deep-scan-demo"
-#### Deep Scan | AUG2.4
-> Every system has a back door. Yours is already open.
-1. **0 AP** *Passive Sweep:* At the start of each scene, you automatically detect all networked devices within Near range.
-2. **2 AP** *Root Access:* Until your next turn, you read all incoming and outgoing signals on one target device.
-@continue
-3. **3 AP** *Kill Switch:* Immediately shut down one networked device in Near range. If the device is a smart weapon, the wielder loses their next attack action.
-4. **VAR AP** *Cascade Wipe:* Spend 2 AP per additional device to extend Kill Switch to a chain of linked targets.
-##### Every door has a hinge. You are the hinge.
-@end-skill
-
 The continuation tab renders as **"Deep Scan ▸"** — the original title with the `▸` suffix appended automatically. Both cards use the same variant clip-path so the pair reads as a matched set.
 
 ---
@@ -148,13 +105,9 @@ AP chips appear inline inside ability blocks. Three variants signal cost type at
 <span class="dc-ap var">VAR</span>
 ```
 
-**Specimen**
-
-<span class="dc-ap free">0 AP</span> — Free action (crimson fill).
-
-<span class="dc-ap">2 AP</span> — Standard cost (HUD green).
-
-<span class="dc-ap var">VAR</span> — Variable cost (magenta fill).
+- `free` — Free action (crimson fill)
+- *(no modifier)* — Standard cost (HUD green)
+- `var` — Variable cost (magenta fill)
 
 ---
 
@@ -172,14 +125,6 @@ Quick stat grid for character sheets, specialty summaries, and creature previews
 </div>
 ```
 
-**Specimen**
-
-<div class="at-a-glance-cards">
-  <div class="at-a-glance-card"><h4>HP</h4><p>14</p></div>
-  <div class="at-a-glance-card"><h4>Speed</h4><p>Near</p></div>
-  <div class="at-a-glance-card"><h4>Edge</h4><p>+2</p></div>
-</div>
-
 ---
 
 ## Tags & Chips
@@ -194,10 +139,6 @@ Inline pill for specialty names and cost labels. Renders with a pill border in t
 <span class="tag">Augmerc</span>
 ```
 
-**Specimen**
-
-<span class="tag">Augmerc</span>
-
 ---
 
 ### DC Path Sticker
@@ -210,10 +151,6 @@ Badge code displayed inside learning-path spray headers. Identifies the path ind
 <span class="dc-path-sticker">AUG1</span>
 ```
 
-**Specimen**
-
-<span class="dc-path-sticker">AUG1</span>
-
 ---
 
 ### Tape Divider
@@ -225,10 +162,6 @@ Full-width tape strip that separates major sections within a specialty or chapte
 ```html
 <div class="dc-tape flush">Section Break</div>
 ```
-
-**Specimen**
-
-<div class="dc-tape flush">Section Break</div>
 
 ---
 
@@ -258,24 +191,6 @@ Full creature entry: name, archetype line, stat grid (HP / DEF / AP / DMG), and 
 </div>
 ```
 
-**Specimen**
-
-<div class="dc-stat flush">
-  <div class="dc-stat-head">
-    <div class="dc-stat-name">Wirewolf, Pack-Beta</div>
-    <div class="dc-stat-class">— Threat · Hunter —</div>
-  </div>
-  <div class="dc-stat-grid">
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">HP</div><div class="dc-stat-cell-val">22</div></div>
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">DEF</div><div class="dc-stat-cell-val">14</div></div>
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">AP</div><div class="dc-stat-cell-val">3</div></div>
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">DMG</div><div class="dc-stat-cell-val">d20</div></div>
-  </div>
-  <div class="dc-stat-line"><strong>Bite:</strong> Melee, basic. On a hit, drag target 1 square toward the pack.</div>
-  <div class="dc-stat-line"><strong>Pack Tactic:</strong> While 2+ wirewolves are in reach, all gain advantage on bite rolls.</div>
-  <div class="dc-stat-line"><strong>Falter:</strong> When below half HP, howls. Every wirewolf within 6 squares gains 1 AP.</div>
-</div>
-
 ---
 
 ### NPC Stat Block
@@ -301,24 +216,6 @@ Same structure as the creature block. Social-facing NPCs swap combat stats for s
   <div class="dc-stat-line"><strong>Cold Shoulder:</strong> If HEAT fires, Solenn goes dark for one full session before contacts can reach her again.</div>
 </div>
 ```
-
-**Specimen**
-
-<div class="dc-stat flush">
-  <div class="dc-stat-head">
-    <div class="dc-stat-name">Doc Solenn</div>
-    <div class="dc-stat-class">— Contact · Fixer —</div>
-  </div>
-  <div class="dc-stat-grid">
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">REP</div><div class="dc-stat-cell-val">4</div></div>
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">HEAT</div><div class="dc-stat-cell-val">2</div></div>
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">FEE</div><div class="dc-stat-cell-val">×1.5</div></div>
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">TURN</div><div class="dc-stat-cell-val">−1</div></div>
-  </div>
-  <div class="dc-stat-line"><strong>Patch Job:</strong> Treat wounds between scenes. Costs FEE × severity. No questions asked.</div>
-  <div class="dc-stat-line"><strong>Under the Counter:</strong> Carries one random augmentation part per session. Price doubles if HEAT is active.</div>
-  <div class="dc-stat-line"><strong>Cold Shoulder:</strong> If HEAT fires, Solenn goes dark for one full session before contacts can reach her again.</div>
-</div>
 
 ---
 
@@ -358,58 +255,6 @@ Description text about the path's signature augment or theme.
 
 The tier badge on each card tab (`AUG1.1`, `AUG1.2`, …) is generated automatically from the specialty code and skill sequence. Use `#### Skill Name | Custom` only when overriding the auto-generated badge.
 
-**Specimen**
-
-@specialty {.augmerc}
-
-@learning-path
-### Biting Distance
-> If you can touch it, you can maul it. When things get close, they bleed.
-- Punishing Counter
-- Rage Hit
-- Dirty Work
-
-Augmercs on the Biting Distance path install reactive Backbiter Spines — hardware rigged beneath the skin that blooms outward on contact. Spending an action doing nothing but defending, the rig braces and answers every swing, letting you resist 2 damage from all melee attacks and dealing 1 damage to all creatures in reach at the start of your turn.
-
-@skill variant="2"
-#### Punishing Counter
-> See an opening, ya take it. Best time to hit 'em is when they think it's over.
-
-When an enemy falters, you may trigger one of the following counters:
-
-1. **0 AP** *Steel Says No:* When an enemy in reach makes a basic attack and rolls a hard choice or worse, your Backbiters knock the strike off line. No damage. Free counter, once per round.
-2. **2 AP** *Bullet to Blood:* When an enemy you can see makes a ranged basic attack and rolls a hard choice or worse, you slip the shot as it screams past. No damage. Free counter, once per round.
-3. **2 AP** *Bad Timing:* When an enemy in reach rolls a hard choice or worse on a basic attack against you, your Backbiters snap out and steal the moment. No damage and you have their weapon. Free counter, once per round.
-
-Openings are invitations to take a chunk out 'em.
-
-@skill variant="2"
-#### Rage Hit
-> In some situations, it's best to risk it, swing wild, and hit hard!
-
-1. **0 AP** *Full Send:* You throw everything into a reckless attack. Describe the chaos and **ROLL THE DIE!** On a Hit you deal double damage; on a Hard Choice you deal double damage but the target immediately counters; on a Miss the target immediately counters with a Lucid attack.
-2. **2 AP** *All Gas, No Brakes:* **ROLL THE DIE TWICE!** Make two basic attacks against one target. If either roll is a 1, both attacks catastrophically fail.
-
-Until the start of your next turn, any enemy that starts their turn in reach takes 1 damage as your Backbiters stick anything that moves too close.
-
-@skill variant="2"
-#### Dirty Work
-> Fair fights are for nice mercs who lose. Never fight clean. Fight to finish.
-
-Once per round, outside your turn, you exploit a target in reach. Choose one technique:
-
-1. **0 AP** *Off-Hand Insurance:* Slip in a hidden strike. Make an attack that deals 1 damage.
-2. **1 AP** *Street Tricks:* Snag their balance or misdirect their focus. Gain Lucidity on your next roll against the target and deal +1 damage on hit.
-3. **2 AP** *Cheap Shot:* Break something important — sight, breath, balance, or nerve. **ROLL THE DIE!** On a hit, the target rolls. On 10 or less, they are Blinded or Stunned until the end of their next turn.
-
-You don't need an opening. You make one.
-
-@end-skill
-
-@end-learning-path
-
-@end-specialty
-
 ---
 
 ## Stickers & Path Chains
@@ -436,20 +281,6 @@ A horizontal chain of skill-name stickers showing progression order within a lea
 </div>
 ```
 
-**Specimen**
-
-<div class="dc-stickers flush">
-  <span class="dc-sticker active">Punishing Counter</span>
-  <span class="dc-arrow">»</span>
-  <span class="dc-sticker">Rage Hit</span>
-  <span class="dc-arrow">»</span>
-  <span class="dc-sticker">Dirty Work</span>
-  <span class="dc-arrow">»</span>
-  <span class="dc-sticker">Pain Compliance</span>
-  <span class="dc-arrow">»</span>
-  <span class="dc-sticker">It's Personal</span>
-</div>
-
 ---
 
 ### Path Subtitle
@@ -461,10 +292,6 @@ A secondary label rendered below the sticker chain, naming the path and its choi
 ```html
 <div class="dc-path-subtitle flush">— Path · Choose your specialty —</div>
 ```
-
-**Specimen**
-
-<div class="dc-path-subtitle flush">— Path · Choose your specialty —</div>
 
 ---
 
@@ -478,10 +305,6 @@ A mono-cap label at the bottom of a skill card summarizing the stance, trigger, 
 <div class="dc-sub-header flush">Stance · Free counter · Once per round</div>
 ```
 
-**Specimen**
-
-<div class="dc-sub-header flush">Stance · Free counter · Once per round</div>
-
 ---
 
 ## Stamps
@@ -494,14 +317,6 @@ Rotated monospaced label chips used to mark content status — draft, deprecated
 <span class="dc-stamp">DREAM MASTER</span>
 <span class="dc-stamp classified">PRE-RELEASE</span>
 ```
-
-**Specimen**
-
-<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:0.1in 0;">
-  <span class="dc-stamp">DREAM MASTER</span>
-  <span class="dc-stamp classified">PRE-RELEASE</span>
-  <span class="dc-stamp">DEPRECATED</span>
-</div>
 
 ---
 
@@ -518,36 +333,13 @@ Five clip-path shapes for the card tab and body corners. Set `variant="N"` on th
 </div>
 ```
 
-**Specimen**
-
-<div style="display:flex;flex-wrap:wrap;gap:16px;margin:0.1in 0;">
-
-<div class="dc-skill-card" style="width:330px;flex-shrink:0;">
-  <div class="dc-card-tab v1"><span class="dc-tab-title">Variant 1</span><span class="dc-tab-tier">V1</span></div>
-  <div class="dc-card-body v1"><div class="dc-card-inner"><div class="dc-ability"><span class="dc-ap">2 AP</span><p class="dc-ability-text dc-prose"><strong>Default.</strong> Right-diagonal tab, bottom-right notch body. The standard shape used on all @skill cards unless overridden.</p></div></div></div>
-</div>
-
-<div class="dc-skill-card" style="width:330px;flex-shrink:0;">
-  <div class="dc-card-tab v2"><span class="dc-tab-title">Variant 2</span><span class="dc-tab-tier">V2</span></div>
-  <div class="dc-card-body v2"><div class="dc-card-inner"><div class="dc-ability"><span class="dc-ap">2 AP</span><p class="dc-ability-text dc-prose"><strong>Sharp angular.</strong> Diagonal cuts on all four tab corners and both body bottom corners.</p></div></div></div>
-</div>
-
-<div class="dc-skill-card" style="width:330px;flex-shrink:0;">
-  <div class="dc-card-tab v3"><span class="dc-tab-title">Variant 3</span><span class="dc-tab-tier">V3</span></div>
-  <div class="dc-card-body v3"><div class="dc-card-inner"><div class="dc-ability"><span class="dc-ap">2 AP</span><p class="dc-ability-text dc-prose"><strong>Asymmetric tech.</strong> Top-left step on tab, large single diagonal on body.</p></div></div></div>
-</div>
-
-<div class="dc-skill-card" style="width:330px;flex-shrink:0;">
-  <div class="dc-card-tab v4"><span class="dc-tab-title">Variant 4</span><span class="dc-tab-tier">V4</span></div>
-  <div class="dc-card-body v4"><div class="dc-card-inner"><div class="dc-ability"><span class="dc-ap">2 AP</span><p class="dc-ability-text dc-prose"><strong>Soft angular.</strong> Shallow corner cuts, more restrained than v1/v2.</p></div></div></div>
-</div>
-
-<div class="dc-skill-card" style="width:330px;flex-shrink:0;">
-  <div class="dc-card-tab v5"><span class="dc-tab-title">Variant 5</span><span class="dc-tab-tier">V5</span></div>
-  <div class="dc-card-body v5"><div class="dc-card-inner"><div class="dc-ability"><span class="dc-ap">2 AP</span><p class="dc-ability-text dc-prose"><strong>Scooped futuristic.</strong> Center notch on tab top, pinched bottom corners on body.</p></div></div></div>
-</div>
-
-</div>
+| Variant | Shape |
+|---------|-------|
+| `v1` | Default right-diagonal tab, bottom-right notch body |
+| `v2` | Sharp angular — diagonal cuts on all four tab corners and both body bottom corners |
+| `v3` | Asymmetric tech — top-left step on tab, large single diagonal on body |
+| `v4` | Soft angular — shallow corner cuts, more restrained than v1/v2 |
+| `v5` | Scooped futuristic — center notch on tab top, pinched bottom corners on body |
 
 ---
 
@@ -576,19 +368,6 @@ Or in raw HTML as a modifier on a container:
   <!-- skill cards pack 2-per-row -->
 </div>
 ```
-
-**Live specimen — two-column pack:**
-
-<div style="display:flex;flex-wrap:wrap;gap:14px;margin:0.1in 0;">
-<div class="dc-skill-card" style="width:280px;flex-shrink:0;">
-  <div class="dc-card-tab v1"><span class="dc-tab-title">Punishing Counter</span><span class="dc-tab-tier">AUG1.1</span></div>
-  <div class="dc-card-body v1"><div class="dc-card-inner"><div class="dc-ability"><span class="dc-ap free">0 AP</span><p class="dc-ability-text dc-prose"><em>Steel Says No:</em> When an enemy in reach attacks, your Backbiters knock the strike off line.</p></div></div></div>
-</div>
-<div class="dc-skill-card" style="width:280px;flex-shrink:0;">
-  <div class="dc-card-tab v1"><span class="dc-tab-title">Wire Tap</span><span class="dc-tab-tier">AUG1.2</span></div>
-  <div class="dc-card-body v1"><div class="dc-card-inner"><div class="dc-ability"><span class="dc-ap">2 AP</span><p class="dc-ability-text dc-prose"><em>Signal Ghost:</em> Until your next turn, you are invisible to surveillance cameras and smart-weapon targeting.</p></div></div></div>
-</div>
-</div>
 
 ---
 
@@ -621,10 +400,6 @@ A badge element rendered in the top-left corner of specialty chapter opener page
 | Technosorcerer | `TCS1` |
 | Etherlock | `ETH1` |
 | Non-specialty chapters | `C.01`, `C.02`, etc. |
-
-**Specimen** — badge at print scale:
-
-<div class="dc-chapter-opener-no">AUG1</div>
 
 **CSS class:** `.dc-chapter-opener-no` — no prefix variants; this is always DC-specific.
 
@@ -662,3 +437,14 @@ A badge element rendered in the top-left corner of specialty chapter opener page
 | Clip-Path v1–v5 | `variant="1"` through `variant="5"` on `@skill` | `dc-card-tab v1`–`v5`, `dc-card-body v1`–`v5` |
 | `.columns` / `.dense` / `.rows` | modifier class on specialty wrapper | `columns`, `dense`, `rows` |
 | `.dc-chapter-opener-no` | Raw HTML | `dc-chapter-opener-no` |
+
+---
+
+## See It In Action
+
+These examples show the above components rendered in real book pages using actual Dimm City Field Guide content.
+
+- [Specialty Overview](#ch-example-specialty-overview) — chevron banners, class tags, and specialty listing cards
+- [Specialty Profile](#ch-example-specialty-profile) — full learning path: spray banner, sticker chain, skill cards with AP chips and clip-path variants
+- [Dream Master Pages](#ch-example-dm) — creature and NPC stat blocks, DM stamps, encounter hooks
+- [Gear & Tech](#ch-example-gear) — aug cards, weapon tables, classified stamps, cybernetics entries

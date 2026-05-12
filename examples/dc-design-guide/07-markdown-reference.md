@@ -3,7 +3,7 @@
 # Markdown Reference
 
 ::: wrapper {.dc-intro}
-All markdown-it syntax features with live DC examples.
+All markdown-it syntax features with DC authoring context.
 :::
 
 ---
@@ -187,11 +187,7 @@ The `markdown-it-attrs` plugin adds `{#id .class attr="value"}` to most markdown
 This sentence has a **key term**{.custom-span} highlighted.
 ```
 
-**Live specimen — float right:**
-
-![Placeholder art](img/placeholder-plate.png){.img-float-right}
-
-The body text wraps to the left of this floated image. The attribute `{.img-float-right}` is appended directly after the closing `)` of the image syntax with no space between them.
+The attribute `{.img-float-right}` is appended directly after the closing `)` of the image syntax with no space between them.
 
 ---
 
@@ -212,16 +208,20 @@ All standard GFM features are available. Smart typography is enabled by default.
 
 **Unordered list:**
 
+```markdown
 - First item
 - Second item
   - Nested A
   - Nested B
+```
 
 **Ordered list:**
 
+```markdown
 1. Step one
 2. Step two
 3. Step three
+```
 
 **Blockquote:**
 
@@ -233,9 +233,11 @@ All standard GFM features are available. Smart typography is enabled by default.
 
 **Table:**
 
+```markdown
 | Left | Center | Right |
 |:-----|:------:|------:|
 | A    | B      | C     |
+```
 
 **Fenced code block:**
 
@@ -276,6 +278,14 @@ A second sentence references a different note.[^fn-2]
 [^fn-2]: A second, independent footnote. Labels can be numbers, words, or abbreviations.
 ```
 
-Here is a sentence with a footnote reference.[^demo]
+---
 
-[^demo]: This is the footnote definition. It renders at the bottom of the page in print output and at the end of the content block in HTML preview.
+## See It In Action
+
+These examples show the above markdown syntax and plugin markers used in real book pages using actual Dimm City Field Guide content.
+
+- [Front Matter & TOC](#ch-example-front-matter) — page markers, `@chapter`, front-matter class
+- [Chapter Openers](#ch-example-chapter-opener) — `@chapter-opener`, `@specialty`, two-column with column-break
+- [Specialty Profile](#ch-example-specialty-profile) — `@learning-path`, `@skill`, `@continue` in context
+- [Rules & Mechanics](#ch-example-rules) — container blocks, element attributes, outcome macro
+- [Dream Master Pages](#ch-example-dm) — `@section`, sidebar containers, NPC stat block authoring

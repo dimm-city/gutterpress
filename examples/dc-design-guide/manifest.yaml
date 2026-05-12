@@ -23,15 +23,15 @@ source:
     - 06-layout.md
     - 07-markdown-reference.md
     - 08-field-guide-components.md
-    - 200-fg-specialty-overview.md
-    - 201-fg-specialty-profile.md
-    - 202-fg-rules-spreads.md
-    - 203-fg-front-matter.md
-    - 204-fg-citizen-file.md
-    - 205-fg-character-creation.md
-    - 206-fg-npc-dm-spreads.md
-    - 207-fg-gear-tech.md
     - 101-publishing.md
+    - 300-example-overview.md
+    - 301-example-front-matter.md
+    - 302-example-chapter-opener.md
+    - 303-example-specialty-overview.md
+    - 304-example-specialty-profile.md
+    - 305-example-rules.md
+    - 306-example-dm-npcs.md
+    - 307-example-gear-tech.md
   assets:
     - css
     - fonts

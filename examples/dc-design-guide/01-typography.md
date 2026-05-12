@@ -12,12 +12,6 @@ Three font families, each with a specific role. lixdu anchors display and banner
 
 **Spec:** 20.7pt · bold · lixdu · chapter and specialty openers only
 
-::: wrapper {.specimen}
-# Augmerc
-
-*20.7pt / lixdu / used once per chapter opener*
-:::
-
 ---
 
 ## H2 — lixdu
@@ -25,12 +19,6 @@ Three font families, each with a specific role. lixdu anchors display and banner
 **Syntax** — `## Section Heading`
 
 **Spec:** 17.3pt · lixdu · major topic and section breaks
-
-::: wrapper {.specimen}
-## Spec Tweak
-
-*17.3pt / lixdu / major section label*
-:::
 
 ---
 
@@ -40,12 +28,6 @@ Three font families, each with a specific role. lixdu anchors display and banner
 
 **Spec:** 14.4pt · lixdu · reference column labels and sub-sections
 
-::: wrapper {.specimen}
-### Wired to Kill
-
-*14.4pt / lixdu / sub-section and card labels*
-:::
-
 ---
 
 ## Spray Banner — dc-spray
@@ -53,10 +35,6 @@ Three font families, each with a specific role. lixdu anchors display and banner
 **Syntax** — `## Title {.dc-spray}`
 
 **Spec:** Wider tracking, crimson underbar. Used on learning path headers.
-
-::: wrapper {.specimen}
-## Biting Distance {.dc-spray}
-:::
 
 ---
 
@@ -66,10 +44,6 @@ Three font families, each with a specific role. lixdu anchors display and banner
 
 **Spec:** Angled crimson clip-path. Primary chapter and specialty opener banner.
 
-::: wrapper {.specimen}
-## Augmerc {.dc-chevron}
-:::
-
 ---
 
 ## Body — Titillium Web
@@ -77,10 +51,6 @@ Three font families, each with a specific role. lixdu anchors display and banner
 **Syntax** — plain paragraph (no class)
 
 **Spec:** 12pt · Titillium Web · base reading type for all prose
-
-::: wrapper {.specimen}
-When an enemy falters, you may trigger one of the following counters. Each response costs 0 AP — free actions that fire in the space between their move and yours.
-:::
 
 ---
 
@@ -90,11 +60,6 @@ When an enemy falters, you may trigger one of the following counters. Each respo
 
 **Spec:** Italic body size · in-world voice, card flavor, and atmospheric prose
 
-::: wrapper {.specimen}
-> [!FLAVOR]
-> See an opening, ya take it. The crew that hesitates leaves work on the table — and the table tends to push back.
-:::
-
 ---
 
 ## Card Tab — Tomorrow
@@ -103,10 +68,6 @@ When an enemy falters, you may trigger one of the following counters. Each respo
 
 **Spec:** 9pt · Tomorrow monospace · skill card tab labels
 
-::: wrapper {.specimen}
-<span class="font-tab">Punishing Counter</span>
-:::
-
 ---
 
 ## Mono Cap Tag — Tomorrow
@@ -114,10 +75,6 @@ When an enemy falters, you may trigger one of the following counters. Each respo
 **Syntax** — `<span class="tag">Label</span>`
 
 **Spec:** 8pt · Tomorrow monospace · stance and timing chips
-
-::: wrapper {.specimen}
-<span class="tag">— Stance · Free Counter —</span>
-:::
 
 ---
 
@@ -141,3 +98,17 @@ The markdown renderer has `typographer: true` enabled, which automatically conve
 - `"quoted"` renders as curly double quotes "quoted"
 
 No special syntax required for these conversions.
+
+---
+
+## See It In Action
+
+These examples show the above type styles rendered in real book pages using actual Dimm City Field Guide content.
+
+- [Front Matter & TOC](#ch-example-front-matter) — credits, TOC, intro pages
+- [Chapter Openers](#ch-example-chapter-opener) — chapter start spreads with chevron and spray banners in context
+- [Specialty Overview](#ch-example-specialty-overview) — chapter-02 specialty intro pages
+- [Specialty Profile](#ch-example-specialty-profile) — full specialty spread with skill card tabs and ability text
+- [Rules & Mechanics](#ch-example-rules) — rolling, outcomes, body prose at density
+- [Dream Master Pages](#ch-example-dm) — NPC stat blocks, encounter hooks
+- [Gear & Tech](#ch-example-gear) — aug cards, weapon tables, cybernetics

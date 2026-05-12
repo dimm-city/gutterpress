@@ -102,3 +102,17 @@ CMYK approximations for the four primary colors:
 | Ink | #1a1715 | ~0/5/10/90 |
 
 Keep total ink coverage under 280% for coated stock and under 240% for uncoated stock. RGB-to-CMYK conversion is not one-to-one for saturated colors — request a physical proof before the full print run.
+
+---
+
+## See It In Action
+
+These examples show the DC palette applied to real book pages using actual Dimm City Field Guide content.
+
+- [Front Matter & TOC](#ch-example-front-matter) — cream paper and ink-dust on credits and TOC pages
+- [Chapter Openers](#ch-example-chapter-opener) — crimson chevron banners and brick-texture background in context
+- [Specialty Overview](#ch-example-specialty-overview) — specialty palette in action across intro pages
+- [Specialty Profile](#ch-example-specialty-profile) — fire palette on skill cards and spray banners
+- [Rules & Mechanics](#ch-example-rules) — HUD blue on outcome tables and roll chips
+- [Dream Master Pages](#ch-example-dm) — amber warnings and ink-smoke secondary text
+- [Gear & Tech](#ch-example-gear) — aug card clip-paths with fire-palette AP chips

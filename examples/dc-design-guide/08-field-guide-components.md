@@ -26,18 +26,6 @@ Trauma Kit
 Signal Jammer (single-use)
 ```
 
-**Specimen**
-
-Field Rations × 3
-
----
-
-Trauma Kit
-
----
-
-Signal Jammer (single-use)
-
 ---
 
 ## Definition Block
@@ -53,12 +41,6 @@ close-combat specialists — the difference is gear, grafts, and how much
 of them is still original flesh.
 :::
 ```
-
-**Specimen**
-
-::: wrapper {.dc-definition-block}
-Augmercs are muscle for hire. Street enforcers, deniable contractors, close-combat specialists — the difference is gear, grafts, and how much of them is still original flesh.
-:::
 
 ---
 
@@ -79,16 +61,6 @@ roll clearly — hidden dice undermine the shared fiction. If a die
 lands off the table, reroll it.
 :::
 ```
-
-**Specimen**
-
-::: wrapper {.dc-sidebar-box}
-#### Dice Etiquette
-
----
-
-Roll your dice in the open. Both players should be able to see every roll clearly — hidden dice undermine the shared fiction. If a die lands off the table, reroll it.
-:::
 
 ---
 
@@ -121,26 +93,6 @@ concealable under a jacket. Cuts non-powered barriers on a hit of 10+.
 :::
 ```
 
-**Specimen**
-
-::: wrapper {.dc-gear-entry}
-### Ripper Blades Mk.II
-
-*Melee. Cyberware implant. Pair.*
-
-Damage 1d8+STR. On a crit, the target bleeds for 1d4 at the start of their next turn. Retractable — no visible profile when sheathed. Requires Cybersurgeon installation.
-:::
-
----
-
-::: wrapper {.dc-gear-entry}
-### Ghost-Wire Whip
-
-*Melee. Monofilament. Reach 2.*
-
-Damage 1d6+AGI. Ignores armor on a roll of 5+. Folding grip — concealable under a jacket. Cuts non-powered barriers on a hit of 10+.
-:::
-
 ---
 
 ## Colophon Block
@@ -159,15 +111,6 @@ A back-matter data block for edition info, legal notices, and production credits
   <dt>License</dt><dd>MPL-2.0</dd>
 </dl>
 ```
-
-**Specimen**
-
-<dl class="dc-colophon">
-  <dt>Edition</dt><dd>First Printing, 2026</dd>
-  <dt>Imprint</dt><dd>Dimm City Press</dd>
-  <dt>Built with</dt><dd>print-md + Paged.js</dd>
-  <dt>License</dt><dd>MPL-2.0</dd>
-</dl>
 
 ---
 
@@ -200,3 +143,15 @@ Field-guide source files should be migrated to the `dc-` prefix forms. See `docs
 | Colophon Block | Raw HTML `<dl class="dc-colophon">` | `dc-colophon` |
 | Art Bottom Pin | `![img](path){.dc-art-bottom}` or `::: wrapper {.dc-art-bottom}` | `dc-art-bottom` |
 | Legacy note: Ability Container | Use `@skill` instead — `:::: ability` has no active CSS | — |
+
+---
+
+## See It In Action
+
+These examples show the above field guide components rendered in real book pages using actual Dimm City Field Guide content.
+
+- [Front Matter & TOC](#ch-example-front-matter) — colophon block on credits page
+- [Specialty Overview](#ch-example-specialty-overview) — definition blocks and sidebar boxes in specialty intros
+- [Rules & Mechanics](#ch-example-rules) — sidebar boxes for rules etiquette, dashed rule dividers between entries
+- [Dream Master Pages](#ch-example-dm) — definition blocks for NPC type summaries
+- [Gear & Tech](#ch-example-gear) — gear entries, dashed rule separators, gear callouts in weapon lists

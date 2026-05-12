@@ -6,6 +6,14 @@
 This guide is both the living documentation of the Dimm City design system *and* a working demonstration. Every specimen on these pages is live — rendered through the same `css/index.css` as the Field Guide. Change a token in `dc-brand.css` and the specimen updates on the next preview refresh.
 :::
 
+## How This Guide Is Organized
+
+The guide is split into two parts.
+
+**Part 1 — Implementation Reference** covers the token tables, CSS specifications, syntax reference, and code examples. This is what you reach for when building: look up a color token, copy a component pattern, or check what markdown syntax a container expects.
+
+**Part 2 — Field Guide in Action** shows real Field Guide pages rendered through the same CSS. Rather than fabricated specimens, these are actual book pages — chapter openers, specialty profiles, gear spreads, stat block pages — so you can see how all the pieces come together in a real book layout.
+
 ## Design Philosophy
 
 - **Cream pages, dark ink** — the substrate is print, not screen. All spacing, color, and type decisions are validated against paper, not a monitor.

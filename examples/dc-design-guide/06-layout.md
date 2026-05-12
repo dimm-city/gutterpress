@@ -26,21 +26,11 @@ The `:::two-column` container divides its content into two equal CSS columns wit
 :::
 ```
 
-**Specimen**
-
-:::two-column
-
-**Column flow** — text fills the left column top-to-bottom and overflows into the right column automatically.
-
-**Column break** — add `---{.column-break}` (no space before `{`) to push subsequent content into the right column unconditionally.
-
----{.column-break}
-
-**Headings inside** — H3 and H4 work inside two-column blocks. H1 and H2 span both columns because they carry a full-width border rule.
-
-**Page breaks** — a two-column block can break across pages. Wrap the block in `:::container` to keep it together.
-
-:::
+Notes on two-column behavior:
+- **Column flow** — text fills the left column top-to-bottom and overflows into the right column automatically.
+- **Column break** — add `---{.column-break}` (no space before `{`) to push subsequent content into the right column unconditionally.
+- **Headings inside** — H3 and H4 work inside two-column blocks. H1 and H2 span both columns because they carry a full-width border rule.
+- **Page breaks** — a two-column block can break across pages. Wrap the block in `:::container` to keep it together.
 
 ---
 
@@ -84,19 +74,6 @@ The `:::sidebar` container floats content as a right-aligned aside at 38% of the
 
 A body paragraph flows to the left of the sidebar. The text wraps around the floated aside automatically and returns to full width once the sidebar clears.
 ```
-
-**Specimen**
-
-:::sidebar
-
-<div class="dc-note">
-  <span class="dc-note-label">Sidebar</span>
-  <p>Floated right at 38% width. Use for supplementary notes, cross-references, or rules clarifications that support but don't interrupt the body flow.</p>
-</div>
-
-:::
-
-A body paragraph flows to the left of the sidebar. Use sidebars for rules reminders, cross-reference pointers, or any short block that relates to but doesn't interrupt the surrounding prose.
 
 ---
 
@@ -147,3 +124,15 @@ Content that must not split across a page break.
 ```markdown
 ## New Section {.pmd-break-before}
 ```
+
+---
+
+## See It In Action
+
+These examples show the above layout utilities applied to real book pages using actual Dimm City Field Guide content.
+
+- [Chapter Openers](#ch-example-chapter-opener) — two-column opener layout with column-break between fiction and rules columns
+- [Specialty Profile](#ch-example-specialty-profile) — two-column ability spreads and image floats alongside skill cards
+- [Rules & Mechanics](#ch-example-rules) — sidebar wrappers with rules callouts beside body prose
+- [Dream Master Pages](#ch-example-dm) — sidebar float with portrait and field notes in citizen-file pages
+- [Gear & Tech](#ch-example-gear) — three-column gear tables and floated art plates

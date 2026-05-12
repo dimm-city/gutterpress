@@ -1,0 +1,168 @@
+@chapter #ch-example-dm-npcs .example-dm-npcs .chapter-03 ch="3"
+
+# DM & NPC Pages — Real-World Example {.dc-chevron}
+
+::: wrapper {.dc-intro}
+This section shows how Dream Mastery and NPC pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 04. DM pages combine prose, callout blocks, and example sidebars. NPC pages use the stat block format: type line, HP/Damage, Traits, Equipment, and Cybernetics sections.
+:::
+
+---
+
+## Dream Mastery Chapter Page
+
+**Page template** — `--- {page .chapter-04}` — standard body page with the chapter-04 identifier. The DM chapter uses long-form prose with bullet-list guidance blocks. The nested structure (Core Elements → Listen + Respond → Focus on the Fantascape) uses standard H2/H3/H4 hierarchy. See [Typography](#ch-typography) for heading levels and [Components](#ch-components) for list and prose styling.
+
+--- {page .chapter-04}
+
+## Dream Mastery
+
+Every Dream needs someone to light the fuse. That's you—the Dream Master.
+
+You're not just the voice behind the curtain. You are the curtain. The smoke. The shadows in the alley. You set the tone, build the streets, throw curveballs, and breathe fire into the frame.
+
+You're the storyteller, the scene-builder, and chaos coordinator. You spin Dimm City's razorwire threads into something raw, real, and just barely holding together.
+
+---
+
+You play every lowlife, every beast, every storm creeping in off the skyline. You decide what hits. What hurts. What haunts.
+
+Most of all? You make every dreamer's choices matter.
+
+Crank up the tension—then let it breathe. When they win, make 'em feel it. When they fall, make 'em remember.
+
+You're not here to run a game. You're here to make the Dream burn bright.
+
+### Core Elements
+
+Dream Mastery ain't just running the game. It's breathing life into the Dream—then handing the knife to your players.
+
+Your job? Guide, don't control. Shape the chaos without strangling it. Keep the world alive, twitching, and ready to bite back.
+
+* Talk loud, listen harder: Speak with confidence when you're narrating—but really listen when your players talk. Their ideas, fears, and chaos fuel the Dream.
+
++ Flex your weird: Dimm City runs on strangeness. Lean into the bizarre. If it feels too odd, you're probably close to gold.
+
+- Keep your dreamers safe—but never too safe: Protect your players, not their characters. Let the city be lethal. Let them bleed. Just make sure the players always feel supported at the table, even when their PCs get wrecked.
+
+#### Focus on the Fantascape
+
+Create immersion by turning game mechanics into vivid fiction. Avoid blunt mechanics like "You deal 4 damage" and instead paint scenes with sensory details, keeping the rules behind the curtain.
+
+* Instead of saying "You rolled an 11, you dodge the blast," you could say, "You dive behind a cracked ferrocrete pillar as the plasma spray explodes over your head, searing the wall black."
+
++ When a player scores a critical hit, don't just say "double damage"—say, "Your blade sinks deep into the enforcer's side, the force of the blow dropping him to one knee with a wet grunt."
+
+- If a dreamer fails a Surreal roll while climbing, describe it as, "Your hands slip on the rain-slick metal rungs. Your foot scrapes for a hold, heart hammering, as you dangle above the alley's neon smear a 100 meters below!"
+
+Bury the math inside the moment and build scenes that hit harder than the dice ever could.
+
+---
+
+## NPC Stat Block: Fodder
+
+**Format** — NPC stat blocks use a short italic definition quote, a type/size line, and H5/H6 subsections for Traits, Equipment, and Cybernetics. The `---` dashed rule (see [Field Guide Components](#ch-fg-components)) separates NPC entries. The HP/Damage values appear as bold inline text after the quote. All content verbatim from `chapter-04.md`.
+
+### Fodder
+
+> Everyday creatures, not usually a combat threat but can become dangerous in mobs or with special roles.
+
+Fodder are common, fringe threats—barely worth noticing on their own. But with the right numbers, traits, or upgrades, they can turn lethal fast. Fodder can be desperate civilians, low-tier gang members, kamikaze drones, or even mutated vermin. They're not tough or deadly solo—the danger comes from quantity or context.
+
+HP 2 — Damage 1
+
+---
+
+#### Patchhead
+
+> See a Patchhead comin' at you, you best move. Ain't no reasoning with 'em — minds melted and muscles twitchin' like they're about to burst. You can smell the burnt plastic and sweat long before they get close.
+
+2 HP — 1 Damage
+Fodder — Usually Small to Medium
+
+##### Traits
+
+**Bloodlust:** Patchheads add 1 to their Damage value whenever they hit a creature that is currently missing Hit Points.
+
+##### Equipment
+
+Patchheads will sometimes carry makeshift weapons like weighted chains, shivs, or knuckle dusters for brutal close-quarters combat, along with junk shields/crash helmets for basic protection. May also have a Shadowbit token with no more than 50-100 Dream Creds worth of crypto on it along with some other sketchy paraphernalia.
+
+##### Cybernetics
+
+UniArm 100 / Redi-Mobile Cyberleg / RedEye Optical Prosthetic (could be just one or all)
+
+---
+
+## NPC Stat Block: Operator
+
+**Format** — Operator stat blocks follow the same structure as Fodder but with higher HP/Damage and more complex Traits and Equipment entries. The format is identical — H4 name, blockquote intro, type line, H5 Traits / Equipment / Cybernetics.
+
+### Operators
+
+*Tougher opponents that serve as grunts or support for their Master. Deadly in small groups or with traits that allow for tactical positioning.*
+
+HP 4 — Damage 2
+
+---
+
+#### Grease Monkey
+
+> You need something fixed, hacked, or turned into a weapon? Find a Grease Monkey. You need a battlefield rigged with enough traps to make a squad of cyborg mercs cry? Definitely find a Grease Monkey.
+
+HP 4 — Damage: 2
+Operator — Medium
+
+###### Traits
+
+**Climb:** Grease Monkeys have the ability to scale walls and other vertical surfaces with the same speed as they would otherwise move.
+
+##### Equipment
+
+**Monkey Wrench:** A handheld device that can be used once per encounter that scrambles wireless communications and disrupts cybernetic signals within a small radius. When activated, it forces all augmented targets nearby to perform a SysCheck at the next higher difficulty level, as the jammer destabilizes the delicate balance between biological and cybernetic systems.
+
+##### Cybernetics
+
+UniArm 100 Cyberarm w/Optalanges TechMech kit and Smuggler's Stash Level 1, Light Blaster Pistol
+
+---
+
+## NPC Stat Block: Master
+
+**Format** — Master stat blocks use the same structure but carry multiple Traits, higher HP/Damage values, and unique named abilities. Masters are the boss-level threats — encounters against them require strategy and teamwork.
+
+### Masters
+
+> Major characters with significant influence. These NPCs often require strategy and teamwork to defeat and may have additional special abilities or resistances.
+
+HP 10 — Damage 4
+
+---
+
+#### Undertow
+
+> Ain't no one sees Undertow comin'. One minute, you're walking the flooded alleys, thinkin' you're safe. Next thing you know, the water's draggin' you under, and you hear that low, rumbling laugh from somewhere in the dark. Undertow don't kill quick — they likes to watch you struggle before you sink!
+
+HP 10 — Damage 4
+Master — Medium
+
+###### Traits
+
+**Amphibious:** Undertow can breathe water or air and swim as fast as they move on land.
+
+**Brineborne:** Undertow regenerates 1 Hit Point per round spent in salt water up to their max of 10.
+
+**Stranglehold:** Undertow can attack one nearby target per round and grapple them on a successful hit, dealing 4 damage, locking their limbs, and preventing movement. Constricted targets must ROLL A DIE! (11+) to break free or suffer Surreal rolls anytime they ROLL A DIE! while grappled. Undertow maintains control for free, dealing 1 damage each round while the target remains trapped. However, while holding a target, Undertow can only make one basic attack against any other target within reach.
+
+**Swim:** Undertow has the ability to move through water with the same speed as they would otherwise move on land.
+
+---
+
+### Size Modifiers
+
+Size affects both hit points and damage output, scaling up or down based on how physically imposing the NPC is:
+
+- **Tiny:** -1 HP, representing small or frail creatures.
+- **Small/Medium:** No modification; the default for most humanoid or animal NPCs.
+- **Big:** +10 HP, +1 Damage. Ideal for large beasts or physically imposing foes.
+- **Huge:** +20 HP, +2 Damage. Represents truly massive creatures like dragons or mechs.
+- **Colossal:** +40 HP, +4 Damage. These are the titanic creatures that dominate the battlefield.

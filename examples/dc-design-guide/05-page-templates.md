@@ -658,3 +658,17 @@ The chapter counter is incremented by the `.page.chapter-NN` class applied to th
 ```
 
 `.chapter-start` pages suppress both footer counters entirely. `.front-matter` and `.colophon` pages also suppress all footer chrome.
+
+---
+
+## See It In Action
+
+These examples show the above page templates rendered with actual Dimm City Field Guide content.
+
+- [Front Matter & TOC](#ch-example-front-matter) — front-matter page class, TOC template, credits page structure
+- [Chapter Openers](#ch-example-chapter-opener) — chapter-start page class, chapter opener template in context
+- [Specialty Overview](#ch-example-specialty-overview) — specialty listing, choose-specialty catalog page
+- [Specialty Profile](#ch-example-specialty-profile) — specialty opener spread (left + full-page art), learning path template, ability spread
+- [Rules & Mechanics](#ch-example-rules) — standard body pages, procedure page, rules reference template
+- [Dream Master Pages](#ch-example-dm) — bestiary entry, citizen-file page class, info sidebar template
+- [Gear & Tech](#ch-example-gear) — gear and tech pages, colophon template
