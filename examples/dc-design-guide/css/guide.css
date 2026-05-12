@@ -321,16 +321,20 @@ div.chapter h2 {
    Chapter 2 — Authoring       (files 05-page-templates through 101-publishing)
    Chapter 3 — Field Guide     (files 200-fg-* through 207-fg-gear-tech)
    ─────────────────────────────────────────────────────────────────────────── */
-div.chapter.chapter-01 h1:first-of-type { string-set: guideSection "Design System"; }
-div.chapter.chapter-02 h1:first-of-type { string-set: guideSection "Authoring"; }
-div.chapter.chapter-03 h1:first-of-type { string-set: guideSection "Field Guide"; }
+/* string-set: must use content() or attr() — bare string literals are silently
+   ignored by the Paged.js polyfill (it only handles Function and Identifier nodes
+   in the CSS AST, not String nodes). Use attr(data-ch) to read the data-ch="N"
+   attribute placed on each div.chapter by the @chapter directive.
+   Paged.js clones wrapper divs on every page, so data-ch is reachable on all pages
+   of a chapter — not just the first. One rule covers all three chapters. */
+div.chapter[data-ch] { string-set: guideSection attr(data-ch); }
 
-/* Override @page footer chapter label: replace counter(chapter) with the
-   named string. page-rules.css sets @bottom-right/:left and @bottom-left/:right
-   to counter(chapter); these blocks override just those margin boxes. */
+/* Override @page footer chapter label: replace counter(chapter) (which was stuck
+   at c.0 because div.chapter counter-resets don't propagate to margin boxes) with
+   string(guideSection, first), which reads the data-ch value captured above. */
 @page :left {
   @bottom-right {
-    content: string(guideSection, first);
+    content: "c." string(guideSection, first);
     color: var(--blood);
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
@@ -340,7 +344,7 @@ div.chapter.chapter-03 h1:first-of-type { string-set: guideSection "Field Guide"
 
 @page :right {
   @bottom-left {
-    content: string(guideSection, first);
+    content: "c." string(guideSection, first);
     color: var(--blood);
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
