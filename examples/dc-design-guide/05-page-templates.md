@@ -544,5 +544,5 @@ These examples show the above page templates rendered with actual Dimm City Fiel
 - [Specialty Overview](#ch-example-specialty-overview) — specialty listing, choose-specialty catalog page
 - [Specialty Profile](#ch-example-specialty-profile) — specialty opener spread (left + full-page art), learning path template, ability spread
 - [Rules & Mechanics](#ch-example-rules) — standard body pages, procedure page, rules reference template
-- [Dream Master Pages](#ch-example-dm) — bestiary entry, citizen-file page class, info sidebar template
-- [Gear & Tech](#ch-example-gear) — gear and tech pages, colophon template
+- [Dream Master Pages](#ch-example-dm-npcs) — bestiary entry, citizen-file page class, info sidebar template
+- [Gear & Tech](#ch-example-gear-tech) — gear and tech pages, colophon template

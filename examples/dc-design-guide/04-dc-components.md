@@ -338,5 +338,5 @@ These examples show the above components rendered in real book pages using actua
 
 - [Specialty Overview](#ch-example-specialty-overview) — chevron banners, class tags, and specialty listing cards
 - [Specialty Profile](#ch-example-specialty-profile) — full learning path: spray banner, sticker chain, skill cards with AP chips and clip-path variants
-- [Dream Master Pages](#ch-example-dm) — creature and NPC stat blocks, DM stamps, encounter hooks
-- [Gear & Tech](#ch-example-gear) — aug cards, weapon tables, classified stamps, cybernetics entries
+- [Dream Master Pages](#ch-example-dm-npcs) — creature and NPC stat blocks, DM stamps, encounter hooks
+- [Gear & Tech](#ch-example-gear-tech) — aug cards, weapon tables, classified stamps, cybernetics entries

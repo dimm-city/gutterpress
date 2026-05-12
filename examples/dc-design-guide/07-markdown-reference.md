@@ -202,4 +202,4 @@ These examples show the above markdown syntax and plugin markers used in real bo
 - [Chapter Openers](#ch-example-chapter-opener) — `@chapter-opener`, `@specialty`, two-column with column-break
 - [Specialty Profile](#ch-example-specialty-profile) — `@learning-path`, `@skill`, `@continue` in context
 - [Rules & Mechanics](#ch-example-rules) — container blocks, element attributes, outcome macro
-- [Dream Master Pages](#ch-example-dm) — `@section`, sidebar containers, NPC stat block authoring
+- [Dream Master Pages](#ch-example-dm-npcs) — `@section`, sidebar containers, NPC stat block authoring

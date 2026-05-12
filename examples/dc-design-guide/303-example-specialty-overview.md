@@ -70,7 +70,7 @@ Every dreamer's got a sharp edge — your specialty is where it starts.
 
 It's the skillset that sets you apart, defines what you bring to the crew, and shapes the wild ways you survive the Dream.
 
-::::: wrapper {".specialty-spread"}
+::::: wrapper {.specialty-spread}
 
 ::: wrapper {class="specialty-card augmerc"}
 ### Augmerc {#specialty-augmerc}

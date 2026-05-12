@@ -32,8 +32,8 @@ This is the Dimm City print design system — cyberpunk and creaturepunk, built 
 <li><a href="#ch-example-specialty-overview">Specialty Overview</a> — chapter intro pages</li>
 <li><a href="#ch-example-specialty-profile">Specialty Profile</a> — full specialty spread</li>
 <li><a href="#ch-example-rules">Rules &amp; Mechanics</a> — dice, outcomes, distances</li>
-<li><a href="#ch-example-dm">Dream Master Pages</a> — NPC stat blocks, encounter hooks</li>
-<li><a href="#ch-example-gear">Gear &amp; Tech</a> — aug cards, weapons, cybernetics</li>
+<li><a href="#ch-example-dm-npcs">Dream Master Pages</a> — NPC stat blocks, encounter hooks</li>
+<li><a href="#ch-example-gear-tech">Gear &amp; Tech</a> — aug cards, weapons, cybernetics</li>
 </ol>
 </div>
 

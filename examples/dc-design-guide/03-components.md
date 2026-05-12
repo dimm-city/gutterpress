@@ -326,5 +326,5 @@ These examples show the above components rendered in real book pages using actua
 - [Specialty Overview](#ch-example-specialty-overview) — chapter-02 specialty intro pages with vibe callouts and origin blocks
 - [Specialty Profile](#ch-example-specialty-profile) — full specialty spread with flavor text and pull quotes
 - [Rules & Mechanics](#ch-example-rules) — outcome ladder, notes, warnings, numbered procedures in context
-- [Dream Master Pages](#ch-example-dm) — DM notes, NPC sidebars, encounter hooks
-- [Gear & Tech](#ch-example-gear) — gear callouts, item blocks, tables
+- [Dream Master Pages](#ch-example-dm-npcs) — DM notes, NPC sidebars, encounter hooks
+- [Gear & Tech](#ch-example-gear-tech) — gear callouts, item blocks, tables

@@ -130,5 +130,5 @@ These examples show the above field guide components rendered in real book pages
 - [Front Matter & TOC](#ch-example-front-matter) — colophon block on credits page
 - [Specialty Overview](#ch-example-specialty-overview) — definition blocks and sidebar boxes in specialty intros
 - [Rules & Mechanics](#ch-example-rules) — sidebar boxes for rules etiquette, dashed rule dividers between entries
-- [Dream Master Pages](#ch-example-dm) — definition blocks for NPC type summaries
-- [Gear & Tech](#ch-example-gear) — gear entries, dashed rule separators, gear callouts in weapon lists
+- [Dream Master Pages](#ch-example-dm-npcs) — definition blocks for NPC type summaries
+- [Gear & Tech](#ch-example-gear-tech) — gear entries, dashed rule separators, gear callouts in weapon lists

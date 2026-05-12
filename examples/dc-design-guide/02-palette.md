@@ -106,5 +106,5 @@ These examples show the DC palette applied to real book pages using actual Dimm 
 - [Specialty Overview](#ch-example-specialty-overview) — specialty palette in action across intro pages
 - [Specialty Profile](#ch-example-specialty-profile) — fire palette on skill cards and spray banners
 - [Rules & Mechanics](#ch-example-rules) — HUD blue on outcome tables and roll chips
-- [Dream Master Pages](#ch-example-dm) — amber warnings and ink-smoke secondary text
-- [Gear & Tech](#ch-example-gear) — aug card clip-paths with fire-palette AP chips
+- [Dream Master Pages](#ch-example-dm-npcs) — amber warnings and ink-smoke secondary text
+- [Gear & Tech](#ch-example-gear-tech) — aug card clip-paths with fire-palette AP chips

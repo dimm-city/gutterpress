@@ -67,5 +67,5 @@ These examples show the above layout utilities applied to real book pages using 
 - [Chapter Openers](#ch-example-chapter-opener) — two-column opener layout with column-break between fiction and rules columns
 - [Specialty Profile](#ch-example-specialty-profile) — two-column ability spreads and image floats alongside skill cards
 - [Rules & Mechanics](#ch-example-rules) — sidebar wrappers with rules callouts beside body prose
-- [Dream Master Pages](#ch-example-dm) — sidebar float with portrait and field notes in citizen-file pages
-- [Gear & Tech](#ch-example-gear) — three-column gear tables and floated art plates
+- [Dream Master Pages](#ch-example-dm-npcs) — sidebar float with portrait and field notes in citizen-file pages
+- [Gear & Tech](#ch-example-gear-tech) — three-column gear tables and floated art plates
