@@ -85,6 +85,13 @@ content, where `content: none !important` is required because Paged.js generates
 belongs in `dc-brand.css`. If you are writing a rule for `.pagedjs_sheet`, it belongs
 in `content-templates.css`. A `.dc-*` selector in `page-rules.css` is a bug.
 
+**Repeated component families use a base plus variants.** For shared UI systems
+like alerts, callouts, cards, banners, and stat grids, the base class owns
+structure, spacing, typography, and break behavior. Variant classes should
+primarily set component-scoped CSS custom properties rather than duplicate the
+entire component rule. The alert/callout family in `dc-brand.css` is the
+reference implementation for this pattern.
+
 ---
 
 ## 3. The Token System

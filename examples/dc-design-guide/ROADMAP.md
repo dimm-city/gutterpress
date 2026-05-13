@@ -111,25 +111,43 @@ Total remaining `:::wrapper` containers in active field guide files: still macro
 
 ---
 
-## Phase 4: Rationalization Decisions
-*Deliberate design choices — cannot be automated. Each needs a decision before implementation.*
+## Phase 4: Rationalization and Base-System Refactors
+*The project standard is now explicit: shared component families use a base rule plus CSS custom-property variants. Refactors in this phase should move repeated component families onto that pattern while preserving author-facing syntax where practical.*
+
+### Repository-wide component standard
+
+- Every repeated component family should have one shared base rule for structure, spacing, typography, layout, and break behavior.
+- Variants should primarily override CSS custom properties instead of duplicating full rule blocks.
+- Existing authoring syntax may stay in place as thin wrappers that set variables on top of the base.
+- This applies to alerts/callouts, skill cards, learning paths, banners, sidebars/panels, stat grids, and related repeated systems.
+- New visual variants should be cheap to add: set variables, avoid copy-paste CSS.
 
 ### Two-column layout mechanisms (6 exist)
 `.two-column`, `.dc-ability-2col`, `.dc-ability-grid`, `.dc-procedure-grid`, `.columns`, `.dense` (deprecated)
 
-→ Audit which produce meaningfully different column widths, gaps, or breakpoints. Consolidate any that are visually identical into one class with optional modifiers.
+→ Build a common two-column base with layout variables where possible. Consolidate any visually identical variants into one base plus modifiers/custom properties.
 
 ### Stat-grid patterns (3 exist)
 1. `.dc-stat` + `.dc-stat-grid` + `.dc-stat-cell` — general NPC/creature stat blocks
 2. `.citizen-at-a-glance` + `.citizen-stat` + `.citizen-stat-key` / `.citizen-stat-val` — citizen-file specific
 3. `.at-a-glance-cards` + `.at-a-glance-card` — generic summary cards
 
-→ Systems 1 and 3 are structurally similar. If visually identical, share a base class with a variant modifier. System 2 may intentionally differ (citizen-file format).
+→ Systems 1 and 3 are structurally similar. Refactor toward a shared stat-grid base plus variable-driven variants. System 2 may intentionally remain separate if the citizen-file format needs a different structure.
 
-### Atmospheric callout cluster
-`.dc-vibe-callout`, `.dc-origin-callout`, `.dc-visit-callout` — identical structure, differ only by border colour and `::before` label.
+### Alert / Callout family
+`.dc-note`, `.dc-dm-note`, `.dc-vibe-callout`, `.dc-origin-callout`, `.dc-visit-callout`, `.dc-gear-callout` — overlapping panel/callout patterns with repeated chrome.
 
-→ Decision: consolidate into `.dc-flavor-callout` with `data-label` attribute and CSS custom property for accent colour, OR keep as named classes if authoring ergonomics matter more than CSS elegance.
+→ Decision made: refactor to a shared alert/callout base with CSS custom-property variants. Keep current author-facing class names and alert syntax where helpful, but make them thin variant wrappers over the shared base. Use this family as the gold standard for later card/panel refactors.
+
+### Card family refactor direction
+`@skill` cards, continuation cards, learning-path blocks, and similar repeated card shells currently share substantial chrome patterns.
+
+→ Refactor toward shared card bases with variant-level custom properties for tab shape, accent, surface, and title treatment. Preserve macro syntax; reduce duplicated CSS.
+
+### Sidebar / panel family
+`dc-sidebar`, `dc-sidebar-box`, `dc-definition-block`, `dc-human-callout`, and related inset panels overlap structurally.
+
+→ Audit for a shared panel base with variants for border treatment, background, label, and heading style.
 
 ### Four identical `@page` declarations
 `front-matter`, `colophon`, `chapter-start`, `clean` — all produce identical visual output.
@@ -152,6 +170,6 @@ Five page templates in `content-templates.css` hard-code the chevron banner trea
 | 3 — Macro-gated migrations | After each macro | Needs macros | Brings 74 wrapper containers to macro form |
 | 3 — Safe syntax cleanup | Completed | No | `@page` normalization and canonical class shorthand in active field-guide sources |
 | 3 — Bulk `---` → `@break` | Re-audit required | No | Earlier count/automation assumption did not hold in active source |
-| 4 — Rationalization | Ongoing | No | System coherence; maintenance reduction |
+| 4 — Rationalization | Ongoing | No | Establishes reusable base systems and lowers variant cost |
 
-**Recommended next session:** Migrate remaining field-guide `@sidebar`, `@sidebar-box`, `@procedure`, and `@definition` sites, then continue the `@section`/GFM pullquote cleanup. Leave chapter-05 `:::aug` content out of the macro plan.
+**Recommended next session:** Continue the shared-base refactor family by family: finish alerts/callouts, then move to card families (`@skill`, learning-path, continuation), then panel/sidebar families. Keep field-guide migrations aligned with those shared bases. Leave chapter-05 `:::aug` content out of the macro plan.

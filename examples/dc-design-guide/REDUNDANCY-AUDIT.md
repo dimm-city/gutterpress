@@ -253,7 +253,7 @@ Plugin now emits `dc-dm-note`; CSS selector renamed; design guide markdown updat
 *Investigation needed:* Check `shared.css` in the DC design system for the `.gear-callout` (no prefix) rule with `min-height: 3.5in`. If this is a stale override, remove it. If intentional, document the distinction in the design guide.
 
 **Atmospheric callout cluster — three near-identical classes:**
-`.dc-vibe-callout`, `.dc-origin-callout`, `.dc-visit-callout` share identical structure and differ only by border colour and `::before` label text. They could be consolidated into a single `.dc-flavor-callout` class with a `data-label` attribute and a CSS custom property for accent colour — or remain as separate classes if the authoring ergonomics of named classes is preferred. Either is valid; what matters is the decision is explicit.
+`.dc-vibe-callout`, `.dc-origin-callout`, `.dc-visit-callout` share identical structure and differ only by border colour and label treatment. **Decision made:** keep the existing author-facing class names if they help readability, but refactor them to thin variable-setting wrappers over a shared callout base. This pattern is now the repository standard for overlapping component families.
 
 **Banner heading repetition — `.dc-chevron` vs five hard-coded selectors:** ⚠️ DOCUMENTED 2026-05-12
 Cannot reduce without adding `{.dc-chevron}` to markup. Duplication annotated with comments in `content-templates.css`. Future refactor: add class to h1 elements in markdown, then trim duplicated declarations to only `border: 0`.

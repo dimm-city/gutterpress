@@ -797,18 +797,120 @@ ul li::before {
   page-break-after: avoid;
 }
 
-/* ───────── NOTE CALLOUT ───────── */
-.dc-note {
-  margin-top: var(--space-lg);       /* was 14px — align to token system */
-  padding: var(--space-lg) var(--space-xl);  /* was 10px 12px — increase internal breathing room */
-  background: var(--paper-light);
-  border-left: 4px solid var(--crimson);
-  font-size: var(--fs-body-sm);
-  color: var(--ink-smoke);
+/* ───────── ALERT / CALLOUT BASE ───────── */
+/* Shared panel chrome for alert-like components. Variant classes should set
+   component-scoped custom properties instead of re-declaring the full shell. */
+.dc-alert {
+  --dc-alert-margin-top: 0;
+  --dc-alert-margin-right: 0;
+  --dc-alert-margin-bottom: 0;
+  --dc-alert-margin-left: 0;
+  --dc-alert-padding-y: var(--space-lg);
+  --dc-alert-padding-x: var(--space-xl);
+  --dc-alert-bg: var(--paper-light);
+  --dc-alert-border-width: 4px;
+  --dc-alert-border-color: var(--crimson);
+  --dc-alert-font-size: var(--fs-body-sm);
+  --dc-alert-line-height: var(--lh-normal);
+  --dc-alert-color: var(--ink-smoke);
+  --dc-alert-width: auto;
+  --dc-alert-max-width: none;
+  --dc-alert-label-text: "";
+  --dc-alert-label-display: none;
+  --dc-alert-label-font-size: 8pt;
+  --dc-alert-label-letter-spacing: 0.12em;
+  --dc-alert-label-color: var(--crimson);
+  --dc-alert-label-weight: 700;
+  --dc-alert-label-margin-bottom: 6pt;
+
+  margin: var(--dc-alert-margin-top) var(--dc-alert-margin-right) var(--dc-alert-margin-bottom) var(--dc-alert-margin-left);
+  padding: var(--dc-alert-padding-y) var(--dc-alert-padding-x);
+  background: var(--dc-alert-bg);
+  border-left: var(--dc-alert-border-width) solid var(--dc-alert-border-color);
+  font-size: var(--dc-alert-font-size);
+  line-height: var(--dc-alert-line-height);
+  color: var(--dc-alert-color);
+  width: var(--dc-alert-width);
+  max-width: var(--dc-alert-max-width);
   break-inside: avoid;
   page-break-inside: avoid;
 }
-.dc-note p { margin: 0; font-style: italic; }
+
+.dc-alert p {
+  margin: 0;
+  font-style: italic;
+}
+
+.dc-alert p + p {
+  margin-top: 6pt;
+}
+
+/* ───────── NOTE CALLOUT ───────── */
+.dc-note {
+  --dc-alert-margin-top: var(--space-lg);      /* was 14px — align to token system */
+  --dc-alert-padding-y: var(--space-lg);       /* was 10px 12px — increase internal breathing room */
+  --dc-alert-padding-x: var(--space-xl);
+  --dc-alert-bg: var(--paper-light);
+  --dc-alert-border-width: 4px;
+  --dc-alert-border-color: var(--crimson);
+  --dc-alert-font-size: var(--fs-body-sm);
+  --dc-alert-color: var(--ink-smoke);
+}
+
+.dc-note,
+.dc-dm-note,
+.dc-vibe-callout,
+.dc-origin-callout,
+.dc-visit-callout,
+.dc-gear-callout {
+  margin: var(--dc-alert-margin-top) var(--dc-alert-margin-right) var(--dc-alert-margin-bottom) var(--dc-alert-margin-left);
+  padding: var(--dc-alert-padding-y) var(--dc-alert-padding-x);
+  background: var(--dc-alert-bg);
+  border-left: var(--dc-alert-border-width) solid var(--dc-alert-border-color);
+  font-size: var(--dc-alert-font-size);
+  line-height: var(--dc-alert-line-height);
+  color: var(--dc-alert-color);
+  width: var(--dc-alert-width);
+  max-width: var(--dc-alert-max-width);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.dc-vibe-callout::before,
+.dc-origin-callout::before,
+.dc-visit-callout::before,
+.dc-gear-callout::before {
+  content: var(--dc-alert-label-text);
+  display: var(--dc-alert-label-display);
+  font-family: var(--font-mono);
+  font-size: var(--dc-alert-label-font-size);
+  font-weight: var(--dc-alert-label-weight);
+  text-transform: uppercase;
+  letter-spacing: var(--dc-alert-label-letter-spacing);
+  color: var(--dc-alert-label-color);
+  margin-bottom: var(--dc-alert-label-margin-bottom);
+  font-style: normal;
+}
+
+.dc-note p,
+.dc-dm-note p,
+.dc-vibe-callout p,
+.dc-origin-callout p,
+.dc-visit-callout p,
+.dc-gear-callout p {
+  margin: 0;
+  font-style: italic;
+}
+
+.dc-note p + p,
+.dc-dm-note p + p,
+.dc-vibe-callout p + p,
+.dc-origin-callout p + p,
+.dc-visit-callout p + p,
+.dc-gear-callout p + p {
+  margin-top: 6pt;
+}
+
 .dc-note-label {
   font-family: var(--font-mono);
   font-size: 9px;
@@ -1672,8 +1774,8 @@ hr,
 
 /* Warning note — visually distinct from base dc-note */
 .dc-note.warning {
-  background: var(--surface-orange-tint);   /* distinct surface from paper-light dc-note */
-  border-left-color: var(--rust);           /* was --amber (invisible at 1.66:1) → --rust (4.30:1 on surface) */
+  --dc-alert-bg: var(--surface-orange-tint);   /* distinct surface from paper-light dc-note */
+  --dc-alert-border-color: var(--rust);        /* was --amber (invisible at 1.66:1) → --rust (4.30:1 on surface) */
 }
 .dc-note.warning .dc-note-label { color: var(--rust); }   /* was --amber */
 
@@ -2138,119 +2240,74 @@ p.img-wrapper {
 }
 
 .dc-vibe-callout {
-  padding: var(--space-sm) var(--space-md);
-  border-left: 4px solid var(--hud-magenta);   /* was orange — distinct from pullquote; signals "atmosphere/world" register */
-  background: var(--paper-light);
-  font-style: italic;
-  font-size: var(--fs-body-sm);
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-.dc-vibe-callout::before {
-  content: "Vibe";
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 8pt;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--crimson);
-  margin-bottom: 6pt;
-  font-style: normal;
+  --dc-alert-padding-y: var(--space-sm);
+  --dc-alert-padding-x: var(--space-md);
+  --dc-alert-bg: var(--paper-light);
+  --dc-alert-border-width: 4px;
+  --dc-alert-border-color: var(--hud-magenta);   /* was orange — distinct from pullquote; signals "atmosphere/world" register */
+  --dc-alert-font-size: var(--fs-body-sm);
+  --dc-alert-label-text: "Vibe";
+  --dc-alert-label-display: block;
 }
 
 .dc-origin-callout {
-  padding: 6pt 9pt;
-  border-left: 3px solid var(--blood);       /* was crimson — darker, still crimson family, distinct from dc-note */
-  background: var(--surface-orange-tint);   /* was paper-light — distinct surface; signals "character" content */
-  font-style: italic;
-  color: var(--ink-smoke);
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-.dc-origin-callout::before {
-  content: "Origin";
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 8pt;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--crimson);
-  margin-bottom: 6pt;
-  font-style: normal;
+  --dc-alert-padding-y: 6pt;
+  --dc-alert-padding-x: 9pt;
+  --dc-alert-bg: var(--surface-orange-tint);   /* was paper-light — distinct surface; signals "character" content */
+  --dc-alert-border-width: 3px;
+  --dc-alert-border-color: var(--blood);       /* was crimson — darker, still crimson family, distinct from dc-note */
+  --dc-alert-color: var(--ink-smoke);
+  --dc-alert-label-text: "Origin";
+  --dc-alert-label-display: block;
 }
 
 /* ───────── VISIT CALLOUT ───────── */
 /* Present-tense in-world location description — what the character sees on arrival. */
 .dc-visit-callout {
-  background: var(--paper-light);
-  border-left: 4px solid var(--hud-blue);
-  padding: 12px 16px;
-  margin: 0.12in 0;
-  font-style: italic;
-  font-size: var(--fs-body);
-  line-height: var(--lh-normal);
-  color: var(--ink-smoke);
-  break-inside: avoid;
-  page-break-inside: avoid;
+  --dc-alert-margin-top: 0.12in;
+  --dc-alert-margin-bottom: 0.12in;
+  --dc-alert-padding-y: 12px;
+  --dc-alert-padding-x: 16px;
+  --dc-alert-bg: var(--paper-light);
+  --dc-alert-border-width: 4px;
+  --dc-alert-border-color: var(--hud-blue);
+  --dc-alert-font-size: var(--fs-body);
+  --dc-alert-line-height: var(--lh-normal);
+  --dc-alert-color: var(--ink-smoke);
+  --dc-alert-label-text: "Visit";
+  --dc-alert-label-display: block;
+  --dc-alert-label-color: var(--hud-blue-dark);
 }
-.dc-visit-callout::before {
-  content: "Visit";
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 8pt;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--hud-blue-dark);
-  margin-bottom: 6pt;
-  font-style: normal;
-}
-.dc-visit-callout p { margin: 0; }
-.dc-visit-callout p + p { margin-top: 6pt; }
-
 .dc-gear-callout {
-  border: 1.5px solid var(--border-hairline);
-  background: var(--paper-cream);
-  padding: var(--space-lg) var(--space-xl);
+  --dc-alert-margin-top: 0.12in;
+  --dc-alert-margin-right: auto;
+  --dc-alert-margin-bottom: 0.18in;
+  --dc-alert-margin-left: auto;
+  --dc-alert-padding-y: var(--space-lg);
+  --dc-alert-padding-x: var(--space-xl);
+  --dc-alert-bg: var(--paper-cream);
+  --dc-alert-border-width: 1.5px;
+  --dc-alert-border-color: var(--border-hairline);
+  --dc-alert-font-size: var(--fs-body-sm);
+  --dc-alert-line-height: var(--lh-normal);
+  --dc-alert-width: 90%;
+  --dc-alert-label-text: "Gear";
+  --dc-alert-label-display: block;
+  --dc-alert-label-color: var(--orange);
   float: none;
-  width: 90%;
-  margin: 0.12in auto 0.18in;
-  font-size: var(--fs-body-sm);
-  line-height: var(--lh-normal);
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-.dc-gear-callout::before {
-  content: "Gear";
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 8pt;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--orange);
-  margin-bottom: 6pt;
-  font-style: normal;
 }
 
 /* ───────── DM NOTE CALLOUT ───────── */
 /* Dream Master (DM-facing) note box — distinct from .dc-note (player-facing).
    Renamed from .dc-note-callout 2026-05-12 for clarity. */
 .dc-dm-note {
-  margin-top: 9pt;
-  padding: var(--space-lg) var(--space-xl);
-  background: var(--paper-cream);
-  border-left: 3px solid var(--crimson);
-  font-size: 9pt;
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-
-.dc-dm-note p {
-  margin: 0;
-  font-style: italic;
+  --dc-alert-margin-top: 9pt;
+  --dc-alert-padding-y: var(--space-lg);
+  --dc-alert-padding-x: var(--space-xl);
+  --dc-alert-bg: var(--paper-cream);
+  --dc-alert-border-width: 3px;
+  --dc-alert-border-color: var(--crimson);
+  --dc-alert-font-size: 9pt;
 }
 
 /* Scoped to .dc-dm-note context — different font-size/letter-spacing than .dc-note .dc-note-label */

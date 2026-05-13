@@ -137,6 +137,18 @@ container-heavy field-guide source:
 |---|---|
 | `:::sidebar` | `@sidebar` |
 | `:::lede` | `@lede` |
+
+### Component System Rule
+
+Shared component families should be implemented as a base rule plus CSS custom-property variants.
+
+- Base rules own structure, spacing, typography, borders, layout, and pagination behavior.
+- Variant classes should mostly set component-scoped variables such as accent, label, surface, or title colors.
+- Existing markdown/macros can remain stable while emitted classes become thin wrappers over the shared base.
+- Alerts/callouts are the first explicit gold-standard refactor for this pattern; the same approach should extend to skill cards, learning paths, banners, stat grids, and panels.
+
+Current reference implementation:
+- The alert/callout family in `css/dc-brand.css` uses shared alert-shell styling with per-variant custom-property overrides.
 | `:::pull-quote` / `:::wrapper {.dc-pullquote}` | `> [!PULLQUOTE]` |
 | `:::wrapper {.two-column...}` / `:::wrapper {.two-column-list}` | `@section .two-column ...` |
 | `:::three-column` | `@three-column` |

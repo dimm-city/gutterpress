@@ -50,6 +50,8 @@ of them is still original.
 
 Boxed rules clarification with a labeled header and left-border accent. **Syntax** — `> [!NOTE]`
 
+> **Component pattern:** `dc-note`, `dc-vibe-callout`, `dc-origin-callout`, `dc-visit-callout`, `dc-gear-callout`, and `dc-dm-note` now follow the repository standard for repeated UI families: one shared alert/panel base with variant-specific overrides driven primarily by CSS custom properties.
+
 ```markdown
 > [!NOTE]
 > Free counters trigger only once per round. Pick the one that hurts most.

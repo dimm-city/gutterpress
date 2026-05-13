@@ -112,6 +112,23 @@ comment in the first 50 lines of each file before adding any rule.
 | `content-templates.css` | `.page.*` layouts, general print utilities (`.pmd-*`) |
 | `guide.css` | `div.chapter` scaffolding, specimen chrome, guide-specific footer |
 
+### Component consolidation rule
+
+Shared component families must be built as a base rule plus variable-driven
+variants.
+
+- The base class owns structure, spacing, typography, borders, layout, and break behavior.
+- Variant classes should primarily set CSS custom properties such as `--accent`,
+  `--surface`, `--label`, `--label-color`, `--title-color`, `--tab-bg`, or other
+  component-scoped tokens.
+- New variants should avoid copy-pasting full component rules when a base pattern
+  already exists.
+- This rule applies to alerts/callouts, skill cards, learning paths, sidebars,
+  stat grids, banners, and similar repeated design systems.
+- When refactoring an existing family, preserve authoring ergonomics where possible:
+  existing markdown syntax and emitted class names may remain as thin variant wrappers
+  over a shared base.
+
 ### Class alias consolidation rule
 
 When retiring a deprecated alias class name, a full find-replace is required across:
