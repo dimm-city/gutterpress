@@ -82,11 +82,9 @@ Life on the streets is hard, but it can be 100% easier with the right gear. The 
 
 **Single-card vs. grid** — When a page contains only one or two items, omit the `:::: wrapper {.grid}` wrapper and write each `::: aug` directly. Without the grid wrapper, each card stretches to full column width — better suited to items with long descriptions that would be cramped at half-width. This page deliberately mixes full-width cards with a bottom-anchored image placeholder to demonstrate how art placement interacts with card flow.
 
-**Image placement** — The `![medkit](img/placeholder-plate.png){.bottom-center .art-medkit}` at the bottom demonstrates `p.img-wrapper` positioning. The `.bottom-center` class anchors the image to the page bottom using absolute positioning defined in the `@page .useful-items` rule; `.art-medkit` is a one-off class for per-page size tuning. This is the intended pattern for decorative chapter art — not floated inline, but anchored at the page level via `@page .my-class` CSS.
+**Image placement** — The `![medkit](img/placeholder-plate.png){.dc-art-bottom .art-medkit}` at the bottom demonstrates `p.img-wrapper` positioning. The `.dc-art-bottom` utility anchors the image to the page bottom using absolute positioning from the shared DC brand layer; `.art-medkit` is a one-off class for per-page size tuning. This is the intended pattern for decorative chapter art — not floated inline, but anchored at the page level.
 
 @page .useful-items .second-page .chapter-05
-
-### Useful Items
 
 ::: aug
 
@@ -112,7 +110,7 @@ Most augmercs have at least two or three members of their squad carrying a full 
 
 :::
 
-![medkit](https://placehold.co/1349x842/png?text=Medkit){.bottom-center .art-medkit}
+![medkit](https://placehold.co/1349x842/png?text=Medkit){.dc-art-bottom .art-medkit}
 
 ---
 

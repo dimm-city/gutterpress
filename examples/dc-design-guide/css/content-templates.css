@@ -1246,3 +1246,21 @@ article {
 .pmd-suppress-footer {
   page: clean;
 }
+
+/* Gear example: mirror the working Acorn Dice pattern so the medkit image
+   becomes a visible page anchor instead of an inline orphan. */
+.example-gear-tech p.img-wrapper {
+  position: relative;
+  min-height: 4.75in;
+}
+
+.example-gear-tech img.bottom-center.art-medkit {
+  position: absolute !important;
+  left: 50% !important;
+  bottom: 0 !important;
+  transform: translateX(-50%) !important;
+  width: 58% !important;
+  height: auto !important;
+  margin: 0 !important;
+  z-index: 0 !important;
+}
