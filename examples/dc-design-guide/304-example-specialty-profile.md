@@ -24,7 +24,7 @@ This heavy fights with skill, weapons, and tuned augmentation. The best are trai
 
 If you want to start quickly, choose these abilities: Punishing Counter, Rage Hit, Spit Flame, Bodycover, Rub Some Dirt on It!, and Size Up.
 
-### Spec Tweak: **Wired to Kill**
+### Spec Tweak: **Wired to Kill** {.dc-spec-tweak}
 
 Augmerc techniques are partly natural.
 

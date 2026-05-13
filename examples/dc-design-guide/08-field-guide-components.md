@@ -6,6 +6,8 @@
 Components used in the Dimm City Field Guide — gear entries, definition blocks, sidebar boxes, colophon data, and the dashed rule divider. These elements handle the prose-heavy, reference-dense pages that the core DC component library does not cover.
 :::
 
+> **Component pattern:** `.dc-prose-panel` is the small shared shell for compact prose boxes in this family. `.dc-definition-block` and `.dc-sidebar-box` are thin concrete variants layered on top of it. `.dc-sidebar` and `.dc-human-callout` remain separate components with their own layout/content rules.
+
 ---
 
 ## Dashed Rule Divider
@@ -100,11 +102,13 @@ concealable under a jacket. Cuts non-powered barriers on a hit of 10+.
 
 ## Callout Class Names — Field Guide vs Design Guide
 
-Always use `dc-` prefixed forms (`dc-vibe-callout`, `dc-origin-callout`, `dc-human-callout`, `dc-gear-callout`) — documented fully in `03-components.md`. Short forms (`vibe-callout` etc.) exist in `shared.css` but have slightly different padding. **Key difference:** `.gear-callout` applies `min-height: 3.5in` unconditionally; `.dc-gear-callout` does not — if the full-height treatment is needed, add a book-specific CSS rule rather than inline style.
+Use the design-guide forms documented in `03-components.md`: `.dc-alert` is the alert shell, and dc-prefixed variants such as `.dc-vibe-callout`, `.dc-origin-callout`, `.dc-gear-callout`, and `.dc-dm-note` layer on top of it. Avoid unprefixed legacy callout names in new guide examples. If a field-guide page still needs book-specific treatment such as a forced full-height gear box, add that as a book-level rule rather than switching back to a legacy class.
 
 ```markdown
-:::wrapper {.dc-gear-callout}
-:::
+> [!GEAR]
+> **Ripper Blades (Mk II)**
+>
+> Melee. Damage 1d8+STR.
 ```
 
 ---
@@ -114,8 +118,8 @@ Always use `dc-` prefixed forms (`dc-vibe-callout`, `dc-origin-callout`, `dc-hum
 | Component | Authoring method | CSS class |
 |---|---|---|
 | Dashed Rule Divider | `---` (standard markdown) | `dc-dashed-rule` (auto) |
-| Definition Block | `@definition ... @end-definition` | `dc-definition-block` |
-| Sidebar Box | `@sidebar-box ... @end-sidebar-box` | `dc-sidebar-box` |
+| Definition Block | `@definition ... @end-definition` | `dc-prose-panel dc-definition-block` |
+| Sidebar Box | `@sidebar-box ... @end-sidebar-box` | `dc-prose-panel dc-sidebar-box` |
 | Sidebar | `@sidebar ... @end-sidebar` | `dc-sidebar` |
 | Procedure | `@procedure ... @end-procedure` | `dc-steps` |
 | Gear Entry | `:::wrapper {.dc-gear-entry}` | `dc-gear-entry` |

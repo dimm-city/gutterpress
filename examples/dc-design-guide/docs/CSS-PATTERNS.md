@@ -85,12 +85,20 @@ content, where `content: none !important` is required because Paged.js generates
 belongs in `dc-brand.css`. If you are writing a rule for `.pagedjs_sheet`, it belongs
 in `content-templates.css`. A `.dc-*` selector in `page-rules.css` is a bug.
 
-**Repeated component families use a base plus variants.** For shared UI systems
-like alerts, callouts, cards, banners, and stat grids, the base class owns
-structure, spacing, typography, and break behavior. Variant classes should
-primarily set component-scoped CSS custom properties rather than duplicate the
-entire component rule. The alert/callout family in `dc-brand.css` is the
-reference implementation for this pattern.
+**Reusable components use a real base class plus thin variants.** For shared UI
+systems like alerts, banners, panels, and stat grids, the canonical dc-prefixed
+base class owns the full default shell. Variant classes should only override the
+few properties that actually change.
+
+Use CSS custom properties only when they form a small documented public API for a
+component, such as surface, accent, foreground, label text, or title color.
+Do not expose internal layout details like padding, margin, width, line-height,
+break behavior, or label typography as broad variable APIs by default.
+
+Important: visually related components are not automatically one component
+family. In the dc-design-guide, `.dc-skill-card`, `.dc-path-shell`, and
+`.dc-specialty-card` are distinct components and should not be forced into one
+large variable-driven abstraction.
 
 ---
 
@@ -464,6 +472,13 @@ alternatives: `:::two-column`, `:::sidebar`, `:::callout`, `:::pull-quote` — e
 generates a `<div>` with the corresponding class without requiring `{.class}` syntax.
 Prefer named containers over `:::wrapper {.class}` when a built-in type matches your
 intent.
+
+When two prose-box components genuinely share the same shell behavior, give them a
+real base class and emit it in markup. In the dc-design-guide, `@definition` and
+`@sidebar-box` can share a tiny `.dc-prose-panel` shell for common padding/margin/
+break behavior, while `.dc-definition-block` and `.dc-sidebar-box` keep their own
+surface, accent, heading, and text rules. Do not use that base for unrelated inset
+layout components like `.dc-sidebar`.
 
 **Anti-pattern:**
 

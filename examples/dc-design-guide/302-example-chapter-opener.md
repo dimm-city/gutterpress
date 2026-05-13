@@ -74,10 +74,10 @@ Before reputation comes recognition. Before recognition comes a glance. Dimmers 
 
 ---{.column-break}
 
-> Before You Fill Anything In:
-Don't start with numbers. Start with a body, a vibe, and a reason you're still breathing in Dimm City. This file isn't about optimization, it's about creating a CREATUREPUNK. If a choice would make Dimm City react to you, it belongs here. If it only makes you stronger, it probably comes later.
-Visit **dimm.city** for a form-fillable PDF version of the Citizen File.
-{.visit-callout}
+> [!VISIT]
+> **Before You Fill Anything In:**
+> Don't start with numbers. Start with a body, a vibe, and a reason you're still breathing in Dimm City. This file isn't about optimization, it's about creating a CREATUREPUNK. If a choice would make Dimm City react to you, it belongs here. If it only makes you stronger, it probably comes later.
+> Visit **dimm.city** for a form-fillable PDF version of the Citizen File.
 
 #### What's Yr Handle?
 

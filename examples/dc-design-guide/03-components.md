@@ -50,12 +50,15 @@ of them is still original.
 
 Boxed rules clarification with a labeled header and left-border accent. **Syntax** — `> [!NOTE]`
 
-> **Component pattern:** `dc-note`, `dc-vibe-callout`, `dc-origin-callout`, `dc-visit-callout`, `dc-gear-callout`, and `dc-dm-note` now follow the repository standard for repeated UI families: one shared alert/panel base with variant-specific overrides driven primarily by CSS custom properties.
+> **Component pattern:** `.dc-alert` is the alert shell. `dc-note`, `dc-vibe-callout`, `dc-origin-callout`, `dc-visit-callout`, `dc-gear-callout`, and `dc-dm-note` are thin variants layered on top of that shell, overriding only the properties that actually change.
 
 ```markdown
 > [!NOTE]
 > Free counters trigger only once per round. Pick the one that hurts most.
 ```
+
+> [!NOTE]
+> Free counters trigger only once per round. Pick the one that hurts most.
 
 ---
 
@@ -69,6 +72,10 @@ High-visibility callout in amber for rules with critical consequences. **Syntax*
 > at 0 HP with a Patch applied is still incapacitated.
 ```
 
+> [!WARNING]
+> Trauma Patches stabilize a dying character but do not restore HP. A character
+> at 0 HP with a Patch applied is still incapacitated.
+
 ---
 
 ## Pull Quote
@@ -81,6 +88,11 @@ Large-format excerpt with accent rules above and below. Use sparingly — one pe
 >
 > Field manual, second draft
 ```
+
+> [!PULLQUOTE]
+> The rig braces and answers every swing.
+>
+> Field manual, second draft
 
 > **Legacy path:** `:::pull-quote` … `:::` is the older container form. Prefer `> [!PULLQUOTE]` for consistency with other callout types.
 
@@ -116,6 +128,10 @@ Full-width atmospheric block for in-world voice at the top of a chapter or facti
 > something feral in them still remembers what it felt like to be free.
 ```
 
+> [!VIBE]
+> The Gutterdruid doesn't fight because they have to — they fight because
+> something feral in them still remembers what it felt like to be free.
+
 ---
 
 ## Origin Callout
@@ -128,6 +144,11 @@ Second-person backstory block addressing the reader as their character. **Syntax
 > before the crew, there was just hunger and the particular talent for
 > surviving what should have killed you.
 ```
+
+> [!ORIGIN]
+> You didn't choose the street — the street chose you. Before the grafts,
+> before the crew, there was just hunger and the particular talent for
+> surviving what should have killed you.
 
 ---
 
@@ -157,6 +178,12 @@ Named equipment block for weapons, armor, and notable items. **Syntax** — `> [
 > Melee. Damage 1d8+STR. *Serrated:* on a critical hit, the target bleeds
 > for 1d4 damage at the start of their next turn.
 ```
+
+> [!GEAR]
+> **Ripper Blades (Mk II)**
+>
+> Melee. Damage 1d8+STR. *Serrated:* on a critical hit, the target bleeds
+> for 1d4 damage at the start of their next turn.
 
 ---
 
@@ -230,6 +257,11 @@ In-world location description in present tense, placed before encounter content.
 > permits, and fried synthetic crab.
 ```
 
+> [!VISIT]
+> The Neon Bazaar doesn't close. Day shift workers and third-shift scavengers
+> brush shoulders between stalls selling augment cartridges, black-market
+> permits, and fried synthetic crab.
+
 ---
 
 ## Dream Master Note
@@ -241,6 +273,10 @@ Dream Master–addressed instruction block for GM guidance and scene hooks, visu
 > If a player hasn't chosen their starting gear by the end of session zero,
 > hand them a Scavenger Pack and move on.
 ```
+
+> [!DM]
+> If a player hasn't chosen their starting gear by the end of session zero,
+> hand them a Scavenger Pack and move on.
 
 ---
 

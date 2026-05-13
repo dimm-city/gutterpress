@@ -361,8 +361,17 @@ article {
   column-fill: auto;
 }
 
+.specialty-spread {
+  columns: 2;
+  column-gap: var(--gutter);
+  column-fill: auto;
+}
+
 .page.page-ability-catalog .learning-path,
-.page.choose-specialty .learning-path {
+.page.page-ability-catalog .dc-learning-path,
+.page.choose-specialty .learning-path,
+.page.choose-specialty .dc-learning-path,
+.specialty-spread {
   column-span: all;
   -webkit-column-span: all;
   break-inside: avoid;
@@ -371,8 +380,11 @@ article {
 
 .page.page-ability-catalog .ability,
 .page.page-ability-catalog .ability-card,
+.page.page-ability-catalog .dc-skill-card,
 .page.choose-specialty .ability,
-.page.choose-specialty .ability-card {
+.page.choose-specialty .ability-card,
+.specialty-spread .dc-specialty-card,
+.page.choose-specialty .dc-skill-card {
   break-inside: avoid;
   page-break-inside: avoid;
 }
@@ -1042,17 +1054,17 @@ article {
 /* Compress LP lore content (paragraphs after the sticker chain) by tightening
    margins so the LP banner stays short enough that the first ability card
    fits on the same page below it. */
-.specialty .dc-learning-path > p {
+.specialty .dc-path-shell > p {
   margin-block: 0.06in;
   font-size: var(--fs-body-sm);
   line-height: 1.35;
 }
 
-.specialty .dc-learning-path ul {
+.specialty .dc-path-shell ul {
   margin-block: 0.06in;
 }
 
-.specialty .dc-learning-path ul li {
+.specialty .dc-path-shell ul li {
   margin-bottom: 0.03in;
 }
 

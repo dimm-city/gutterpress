@@ -145,14 +145,15 @@ function specialtyCodeFromClass(className) {
 }
 
 /**
- * Skill card variant presets — CSS modifier classes applied to tab and body elements
+ * Skill card variant presets — root-level CSS modifier classes applied to the
+ * skill card shell so the component owns its variant state.
  */
 const SKILL_VARIANTS = {
-  '1': { tabClass: 'v1', bodyClass: 'v1' },
-  '2': { tabClass: 'v2', bodyClass: 'v2' },
-  '3': { tabClass: 'v3', bodyClass: 'v3' },
-  '4': { tabClass: 'v4', bodyClass: 'v4' },
-  '5': { tabClass: 'v5', bodyClass: 'v5' },
+  '1': 'variant-1',
+  '2': 'variant-2',
+  '3': 'variant-3',
+  '4': 'variant-4',
+  '5': 'variant-5',
 };
 
 function getSkillVariant(variantNum) {
@@ -399,12 +400,12 @@ function admonitionRule(state, startLine, endLine, silent) {
   }
 
   let tok = state.push('admonition_open', 'div', 1);
-  tok.attrSet('class', 'dc-dm-note');
+  tok.attrSet('class', 'dc-alert dc-dm-note');
   tok.block = true;
   tok.map = [startLine, nextLine];
 
   tok = state.push('html_block', '', 0);
-  tok.content = '<strong class="dc-note-label">' + esc(label) + '</strong>\n';
+  tok.content = '<strong class="dc-alert-label">' + esc(label) + '</strong>\n';
   tok.block = true;
 
   if (contentLines.length > 0) {
@@ -1027,7 +1028,7 @@ export default function dimmCityPlugin(md, options = {}) {
           newTokens.push(makeToken('html_block', '</div>\n'));
           inDefinition = false;
         }
-        newTokens.push(makeToken('html_block', '<div' + buildAttrs(sidebarBoxMarker.attrs, 'dc-sidebar-box') + '>\n'));
+        newTokens.push(makeToken('html_block', '<div' + buildAttrs(sidebarBoxMarker.attrs, 'dc-prose-panel dc-sidebar-box') + '>\n'));
         inSidebarBox = true;
         i += 2;
         continue;
@@ -1056,7 +1057,7 @@ export default function dimmCityPlugin(md, options = {}) {
           newTokens.push(makeToken('html_block', '</div>\n'));
           inSidebarBox = false;
         }
-        newTokens.push(makeToken('html_block', '<div' + buildAttrs(definitionMarker.attrs, 'dc-definition-block') + '>\n'));
+        newTokens.push(makeToken('html_block', '<div' + buildAttrs(definitionMarker.attrs, 'dc-prose-panel dc-definition-block') + '>\n'));
         inDefinition = true;
         i += 2;
         continue;
@@ -1179,8 +1180,6 @@ export default function dimmCityPlugin(md, options = {}) {
           // Re-derive variant class from currentSkillAttrs (same as the card
           // construction path above).
           const variant = getSkillVariant(currentSkillAttrs['variant'] || '1');
-          const tabVariantClassCont = variant.tabClass || 'v1';
-          const bodyVariantClassCont = variant.bodyClass || 'v1';
 
           let cardAttrs = '';
           for (const [key, val] of Object.entries(currentSkillAttrs)) {
@@ -1195,18 +1194,18 @@ export default function dimmCityPlugin(md, options = {}) {
           const userClassList = (currentSkillAttrs['class'] || '').split(/\s+/).filter(Boolean);
           const allowSplitCont = userClassList.includes('allow-split');
           const userClass = userClassList.join(' ');
-          const cardClass = 'dc-skill-card dc-skill-card-cont' + (userClass ? ' ' + userClass : '');
+          const cardClass = 'dc-skill-card dc-skill-card-cont ' + variant + (userClass ? ' ' + userClass : '');
           const breakInsideContAttr = allowSplitCont ? '' : ' data-break-inside="avoid"';
 
           let cardHtml = '<div class="' + cardClass + '" name="' + esc(slugify(lastCardTitle)) + '"' + breakInsideContAttr + cardAttrs + '>\n';
-          const fullTabClassCont = 'dc-card-tab dc-card-tab-cont' + (tabVariantClassCont ? ' ' + tabVariantClassCont : '');
+          const fullTabClassCont = 'dc-card-tab dc-card-tab-cont';
           cardHtml += '  <div class="' + fullTabClassCont + '">\n';
           cardHtml += '    <span class="dc-tab-title">' + esc(lastCardTitle) + ' ▸</span>\n';
           if (lastCardTier) {
             cardHtml += '    <span class="dc-tab-tier">' + esc(lastCardTier) + '</span>\n';
           }
           cardHtml += '  </div>\n';
-          const fullBodyClassCont = 'dc-card-body' + (bodyVariantClassCont ? ' ' + bodyVariantClassCont : '');
+          const fullBodyClassCont = 'dc-card-body';
           cardHtml += '  <div class="' + fullBodyClassCont + '">\n';
           cardHtml += '    <div class="dc-card-inner">\n';
 
@@ -1318,10 +1317,8 @@ export default function dimmCityPlugin(md, options = {}) {
           const parsed = parseSkillTitle(h4Text);
           currentSkillIndex++;
 
-          // Determine variant CSS modifier classes
+          // Determine root-level variant CSS modifier class
           const variant = getSkillVariant(currentSkillAttrs['variant'] || '1');
-          const tabVariantClass = variant.tabClass || 'v1';
-          const bodyVariantClass = variant.bodyClass || 'v1';
 
           // Collect extra attributes for skill-card wrapper (exclude variant and class)
           let cardAttrs = '';
@@ -1332,7 +1329,7 @@ export default function dimmCityPlugin(md, options = {}) {
           }
 
           // Build card class: "skill-card" + any custom classes from {.foo .bar}
-          const cardClass = 'dc-skill-card' + (currentSkillAttrs['class'] ? ' ' + currentSkillAttrs['class'] : '');
+          const cardClass = 'dc-skill-card ' + variant + (currentSkillAttrs['class'] ? ' ' + currentSkillAttrs['class'] : '');
 
           // Card splitting strategy:
           //   - `.allow-split`: omit `data-break-inside="avoid"` so the card
@@ -1352,16 +1349,14 @@ export default function dimmCityPlugin(md, options = {}) {
           // Build card structure
           let cardHtml = '<div class="' + cardClass + '" name="' + esc(slugify(parsed.name)) + '"' + breakInsideAttr + cardAttrs + '>\n';
           const tabBaseClass = 'dc-card-tab' + (parsed.highlight ? ' highlight' : '');
-          const fullTabClass = tabBaseClass + (tabVariantClass ? ' ' + tabVariantClass : '');
-          cardHtml += '  <div class="' + fullTabClass + '">\n';
+          cardHtml += '  <div class="' + tabBaseClass + '">\n';
           const autoTier = currentLearningPathRef ? currentLearningPathRef + '.' + currentSkillIndex : '';
           cardHtml += '    <span class="dc-tab-title">' + esc(parsed.name) + '</span>\n';
           cardHtml += '    <span class="dc-tab-tier">' + esc(parsed.tier || autoTier) + '</span>\n';
           cardHtml += '  </div>\n';
 
           const bodyBaseClass = 'dc-card-body' + (parsed.highlight ? ' highlight-body' : '');
-          const fullBodyClass = bodyBaseClass + (bodyVariantClass ? ' ' + bodyVariantClass : '');
-          cardHtml += '  <div class="' + fullBodyClass + '">\n';
+          cardHtml += '  <div class="' + bodyBaseClass + '">\n';
           cardHtml += '    <div class="dc-card-inner">\n';
 
           newTokens.push(makeToken('html_block', cardHtml));

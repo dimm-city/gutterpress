@@ -4,6 +4,8 @@
 
 :::lede
 This section shows how the "Choose a Specialty" spread looks in the actual Dimm City Field Guide, rendered using real book content. It covers two page types: a chapter-start opener with fiction and ability primer, followed by an ability-catalog page with the specialty card grid.
+:::
+
 ---
 
 ## Chapter-Start: What Do You Dream of Doing?
@@ -56,7 +58,7 @@ In Dimm City, abilities aren't just what you can do. They're learned techniques,
 
 ## Ability-Catalog Page: Choose a Specialty
 
-**Page template** — `@page .page-ability-catalog .choose-specialty .chapter-01` — activates the two-column auto-fill specialty card grid. The grid is authored with `@spread .specialty-spread`; each specialty uses a `:::wrapper` with a `.specialty-card` class plus the specialty name (e.g. `.augmerc`, `.proxy`). Art images replaced with design guide placeholder. See [Page Templates](#ch-templates) for the `page-ability-catalog` spec and [Layout](#ch-layout) for the card grid system.
+**Page template** — `@page .page-ability-catalog .choose-specialty .chapter-01` — activates the two-column auto-fill specialty card grid. The grid is authored with `@spread .specialty-spread`; each specialty uses a `:::wrapper` with a `.dc-specialty-card` class plus the specialty name (e.g. `.augmerc`, `.proxy`). Art images replaced with design guide placeholder. See [Page Templates](#ch-templates) for the `page-ability-catalog` spec and [Layout](#ch-layout) for the card grid system.
 
 @page .page-ability-catalog .choose-specialty .chapter-01
 
@@ -72,7 +74,7 @@ It's the skillset that sets you apart, defines what you bring to the crew, and s
 
 @spread .specialty-spread
 
-:::wrapper {.specialty-card .augmerc}
+:::wrapper {.dc-specialty-card .augmerc}
 ### Augmerc {#specialty-augmerc}
 
 ![Augmerc](https://placehold.co/1349x842/png?text=Augmerc){.art-specialty}
@@ -81,7 +83,9 @@ It's the skillset that sets you apart, defines what you bring to the crew, and s
 
 Heavily armed and wired for war, Augmercs are the blunt force of any squad. They charge the front, soak the pain, and unload hell using brute strength and brutal tech. Combat-born, augged to kill, and never outgunned.
 
-:::wrapper {.specialty-card .proxy}
+:::
+
+:::wrapper {.dc-specialty-card .proxy}
 ### Proxy {#specialty-proxy}
 
 ![Proxy](https://placehold.co/1349x842/png?text=Proxy){.art-specialty}
@@ -90,8 +94,10 @@ Heavily armed and wired for war, Augmercs are the blunt force of any squad. They
 
 Marked by something higher—god, ghost, code, or conviction—Proxies walk the line between zealot and judge. They wield divine force like a weapon, bending battles and conversations alike with power that burns louder than faith.
 
+:::
 
-:::wrapper {.specialty-card .streetwarden}
+
+:::wrapper {.dc-specialty-card .streetwarden}
 ### Streetwarden {#specialty-streetwarden}
 
 ![Streetwarden](https://placehold.co/1349x842/png?text=Streetwarden){.art-specialty}
@@ -102,7 +108,7 @@ They don't wear badges—they are the law when no one else shows. Streetwardens 
 
 :::
 
-:::wrapper {.specialty-card .gutterdruid}
+:::wrapper {.dc-specialty-card .gutterdruid}
 ### Gutterdruid {#specialty-gutterdruid}
 
 ![Gutterdruid](https://placehold.co/1349x842/png?text=Gutterdruid){.art-specialty}
@@ -113,7 +119,7 @@ They walk the alleys like sacred ground—feeding the hungry, tending weeds, rai
 
 :::
 
-:::wrapper {.specialty-card .cybersurgeon}
+:::wrapper {.dc-specialty-card .cybersurgeon}
 ### Cybersurgeon {#specialty-cybersurgeon}
 
 ![Cybersurgeon](https://placehold.co/1349x842/png?text=Cybersurgeon){.art-specialty}
@@ -124,7 +130,7 @@ Life is flexible. Cybersurgeons prove it daily—cutting, splicing, upgrading fl
 
 :::
 
-:::wrapper {.specialty-card .wirephreak}
+:::wrapper {.dc-specialty-card .wirephreak}
 ### Wirephreak {#specialty-wirephreak}
 
 ![Wirephreak](https://placehold.co/1349x842/png?text=Wirephreak){.art-specialty}
@@ -135,7 +141,7 @@ Killers, thieves, forgers—Wirephreaks specialize in slipping past locks, firew
 
 :::
 
-:::wrapper {.specialty-card .technosorcerer}
+:::wrapper {.dc-specialty-card .technosorcerer}
 ### Technosorcerer {#specialty-technosorcerer}
 
 ![Technosorcerer](https://placehold.co/1349x842/png?text=Technosorcerer){.art-specialty}
@@ -146,7 +152,7 @@ Technosorcerers walk on the razor's edge between magic and technology. They beli
 
 :::
 
-:::wrapper {.specialty-card .etherlock}
+:::wrapper {.dc-specialty-card .etherlock}
 ### Etherlock {#specialty-etherlock}
 
 ![Etherlock](https://placehold.co/1349x842/png?text=Etherlock){.art-specialty}
@@ -154,7 +160,5 @@ Technosorcerers walk on the razor's edge between magic and technology. They beli
 > Manifold Magus
 
 Secrets are currency—and Etherlocks are rich in them. Tapping into elemental forces, spirit echoes, and the buried laws of the monoverse, they wield magic that slips through cracks in reality.
-
-:::
 
 :::

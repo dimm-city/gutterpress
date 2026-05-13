@@ -18,13 +18,13 @@ type AlertConfig = {
 };
 
 const DC_ALERT_TYPES: Record<string, AlertConfig> = {
-  NOTE:      { classes: "dc-note",             label: "Note" },
-  WARNING:   { classes: "dc-note warning",     label: "Warning" },
-  DM:        { classes: "dc-note-callout",     label: "Dream Master Note" },
-  VIBE:      { classes: "dc-vibe-callout" },
-  ORIGIN:    { classes: "dc-origin-callout" },
-  VISIT:     { classes: "dc-visit-callout" },
-  GEAR:      { classes: "dc-gear-callout" },
+  NOTE:      { classes: "dc-alert dc-note",                 label: "Note" },
+  WARNING:   { classes: "dc-alert dc-note warning",         label: "Warning" },
+  DM:        { classes: "dc-alert dc-dm-note",              label: "Dream Master Note" },
+  VIBE:      { classes: "dc-alert dc-vibe-callout",         label: "Vibe" },
+  ORIGIN:    { classes: "dc-alert dc-origin-callout",       label: "Origin" },
+  VISIT:     { classes: "dc-alert dc-visit-callout",        label: "Visit" },
+  GEAR:      { classes: "dc-alert dc-gear-callout",         label: "Gear" },
   FLAVOR:    { classes: "dc-prose flavor" },
   PULLQUOTE: { classes: "dc-pullquote flush" },
 };
@@ -97,7 +97,7 @@ export function dcAlertsPlugin(md: MarkdownIt): void {
       openTok.block = true;
       let openHtml = `<div class="${config.classes}">`;
       if (config.label) {
-        openHtml += `<span class="dc-note-label">${config.label}</span>`;
+        openHtml += `<span class="dc-alert-label">${config.label}</span>`;
       }
       openHtml += "\n";
       openTok.content = openHtml;

@@ -153,7 +153,7 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 | `:::lede` | Intro panel — prose and class tag chips |
 | `:::wrapper {.specialty-art}` | Full-bleed art plate (right page) |
 | `@spread .specialty-spread` | Specialty-card grid container |
-| `:::wrapper {.specialty-card .augmerc}` | Individual card — name is a layout hook only, not a palette modifier |
+| `:::wrapper {.dc-specialty-card .augmerc}` | Individual card — name is a layout hook only, not a palette modifier |
 
 ---
 
@@ -188,9 +188,9 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 
 ### Choose Specialty Page
 
-2-column auto-fill catalog page. Each `.specialty-card` has `break-inside: avoid`; `.specialty-spread` spans all columns. Use immediately before individual specialty opener spreads. **Page class:** `@page .page-ability-catalog .choose-specialty`
+2-column auto-fill catalog page. Each `.dc-specialty-card` has `break-inside: avoid`; `.specialty-spread` spans all columns. Use immediately before individual specialty opener spreads. **Page class:** `@page .page-ability-catalog .choose-specialty`
 
-**Components:** `.page-ability-catalog` (layout) · `.choose-specialty` (2-col `column-fill: auto`) · `## Intro Heading` · `@spread .specialty-spread` (grid) · `:::wrapper {.specialty-card .name}` (one card per specialty)
+**Components:** `.page-ability-catalog` (layout) · `.choose-specialty` (2-col `column-fill: auto`) · `## Intro Heading` · `@spread .specialty-spread` (grid) · `:::wrapper {.dc-specialty-card .name}` (one card per specialty)
 
 ```markdown
 @page .page-ability-catalog .choose-specialty
@@ -201,7 +201,7 @@ Opening sentence orienting the player — what a specialty is and how to pick on
 
 @spread .specialty-spread
 
-:::wrapper {.specialty-card .augmerc}
+:::wrapper {.dc-specialty-card .augmerc}
 
 ### Augmerc
 
@@ -209,7 +209,7 @@ Brief specialty description — two sentences maximum.
 
 :::
 
-:::wrapper {.specialty-card .secondspec}
+:::wrapper {.dc-specialty-card .secondspec}
 
 ### Second Specialty
 
@@ -264,7 +264,7 @@ Body prose fills the left column. Two to four paragraphs covering background, me
 
 Specialty spread with spray banner, sticker chain, signature augment, and `@skill` cards. Reduced margins via `.aug` maximize column width for dense card layout. **Page class:** `@page .page-aug .aug`
 
-**Components:** `@learning-path specialty="…" index="N"` (opens block) · `### Path Name` (spray banner) · `> Subtitle` (lede) · bullet list (sticker chain) · `<div class="dc-tape">` (divider) · `@skill variant="N" id="…"` / `@end-skill` · `<span class="dc-ap">N AP</span>`
+**Components:** `@learning-path specialty="…" index="N"` (opens block) · `### Path Name` (spray banner) · `> Subtitle` (lede) · bullet list (sticker chain) · `<div class="dc-tape">` (divider) · `@skill variant="N" id="…"` / `@end-skill` (root-owned skill-card shape variant) · `<span class="dc-ap">N AP</span>`
 
 ```markdown
 @page .page-aug .aug

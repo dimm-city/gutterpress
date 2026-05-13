@@ -42,9 +42,9 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 | `@end-sidebar` | — | Explicitly closes the current sidebar |
 | `@specialty {.classname}` | Next `@specialty` or `@end-specialty` | Wraps a full specialty section; class sets the specialty code (`.augmerc` → `AUG`) |
 | `@end-specialty` | — | Explicitly closes the current specialty block |
-| `@sidebar-box` | `@end-sidebar-box` | Wraps content in a `dc-sidebar-box` callout |
+| `@sidebar-box` | `@end-sidebar-box` | Wraps content in a `dc-prose-panel dc-sidebar-box` callout |
 | `@end-sidebar-box` | — | Explicitly closes the current sidebar box |
-| `@definition` | `@end-definition` | Wraps content in a `dc-definition-block` definition callout |
+| `@definition` | `@end-definition` | Wraps content in a `dc-prose-panel dc-definition-block` definition callout |
 | `@end-definition` | — | Explicitly closes the current definition block |
 | `@procedure` | `@end-procedure` | Wraps an ordered list in a `dc-steps` procedure block |
 | `@end-procedure` | — | Explicitly closes the current procedure block |
@@ -53,7 +53,7 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 | `@skill variant="N"` | Next `@skill` or `@end-skill` | Starts a skill card; content becomes card body |
 | `@end-skill` | — | Closes the current skill card |
 
-**Variant values** — `variant="1"` through `variant="5"` select different clip-path shapes for the card tab.
+**Variant values** — `variant="1"` through `variant="5"` select different clip-path shapes for the skill-card shell.
 
 **Optional skill attributes** — `id="slug"` sets an anchor on the card wrapper. For long abilities, use `@continue`.
 
@@ -127,7 +127,7 @@ Standard informational callout.
 > — Design Guide
 
 :::wrapper {.dc-note}
-<span class="dc-note-label">Note</span>
+<span class="dc-alert-label">Note</span>
 <p>Content gets the `.dc-note` class on its wrapping div.</p>
 :::
 ```

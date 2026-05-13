@@ -112,15 +112,15 @@ Total remaining `:::wrapper` containers in active field guide files: still macro
 ---
 
 ## Phase 4: Rationalization and Base-System Refactors
-*The project standard is now explicit: shared component families use a base rule plus CSS custom-property variants. Refactors in this phase should move repeated component families onto that pattern while preserving author-facing syntax where practical.*
+*The project standard is now explicit: reusable Dimm City components use dc-prefixed base classes with thin variants. Refactors in this phase should move legacy/example slop toward that pattern while preserving author-facing syntax where practical.*
 
 ### Repository-wide component standard
 
-- Every repeated component family should have one shared base rule for structure, spacing, typography, layout, and break behavior.
-- Variants should primarily override CSS custom properties instead of duplicating full rule blocks.
-- Existing authoring syntax may stay in place as thin wrappers that set variables on top of the base.
-- This applies to alerts/callouts, skill cards, learning paths, banners, sidebars/panels, stat grids, and related repeated systems.
-- New visual variants should be cheap to add: set variables, avoid copy-paste CSS.
+- Every reusable component should have one real dc-prefixed base class that owns the full default shell.
+- Variant classes should only override the few properties that actually change.
+- CSS custom properties are allowed only when they form a small documented public API.
+- Do not expose internal layout details like padding, margin, width, line-height, break behavior, or label typography as broad internal variable APIs by default.
+- Existing authoring syntax may stay in place while emitted HTML becomes thin wrappers over canonical dc-prefixed component classes.
 
 ### Two-column layout mechanisms (6 exist)
 `.two-column`, `.dc-ability-2col`, `.dc-ability-grid`, `.dc-procedure-grid`, `.columns`, `.dense` (deprecated)
@@ -137,12 +137,17 @@ Total remaining `:::wrapper` containers in active field guide files: still macro
 ### Alert / Callout family
 `.dc-note`, `.dc-dm-note`, `.dc-vibe-callout`, `.dc-origin-callout`, `.dc-visit-callout`, `.dc-gear-callout` — overlapping panel/callout patterns with repeated chrome.
 
-→ Decision made: refactor to a shared alert/callout base with CSS custom-property variants. Keep current author-facing class names and alert syntax where helpful, but make them thin variant wrappers over the shared base. Use this family as the gold standard for later card/panel refactors.
+→ Decision made: use `.dc-alert` as the only alert shell. Keep current author-facing class names and alert syntax where helpful, but make them thin variants layered on top of `.dc-alert`. Use this family as the gold standard for later refactors.
 
 ### Card family refactor direction
-`@skill` cards, continuation cards, learning-path blocks, and similar repeated card shells currently share substantial chrome patterns.
+`@skill` cards, learning-path shells, and specialty cards currently share some visual language, but they are not one component.
 
-→ Refactor toward shared card bases with variant-level custom properties for tab shape, accent, surface, and title treatment. Preserve macro syntax; reduce duplicated CSS. **In progress:** specialty accent overrides now flow through card/path variables instead of direct per-selector styling.
+→ Treat these as three distinct components:
+- `.dc-skill-card`
+- `.dc-path-shell`
+- `.dc-specialty-card` (rename from legacy `.specialty-card`)
+
+Only extract shared base styling when it stays extremely small and visual. Do not create a broad internal token surface to force them into one abstraction.
 
 ### Sidebar / panel family
 `dc-sidebar`, `dc-sidebar-box`, `dc-definition-block`, `dc-human-callout`, and related inset panels overlap structurally.
@@ -172,4 +177,4 @@ Five page templates in `content-templates.css` hard-code the chevron banner trea
 | 3 — Bulk `---` → `@break` | Re-audit required | No | Earlier count/automation assumption did not hold in active source |
 | 4 — Rationalization | Ongoing | No | Establishes reusable base systems and lowers variant cost |
 
-**Recommended next session:** Continue the shared-base refactor family by family: finish alerts/callouts, then move to card families (`@skill`, learning-path, continuation), then panel/sidebar families. Keep field-guide migrations aligned with those shared bases. Leave chapter-05 `:::aug` content out of the macro plan.
+**Recommended next session:** Fix visual regressions first, then continue aggressive cleanup using the dc-prefixed base-plus-thin-variants standard: finish alerts/callouts, then clean up `dc-skill-card`, `dc-path-shell`, and `dc-specialty-card` as separate components, then move to panel/sidebar families. Leave chapter-05 `:::aug` content out of the macro plan.

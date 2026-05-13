@@ -135,7 +135,7 @@ Keep **`.specialty-intro`** (the un-prefixed form is used in field guide), retir
 Keep **`.specialty-spread`** (used in field guide), retire **`.dc-specialty-spread`** — identical CSS. Before retiring: `grep -r "dc-specialty-spread" field-guide/ design-guide/ plugins/`
 
 **`.specialty-card` / `.dc-specialty-card`:**
-Keep **`.specialty-card`** (used in field guide), retire **`.dc-specialty-card`** — identical CSS. Before retiring: `grep -r "dc-specialty-card" field-guide/ design-guide/ plugins/`
+Refactor direction has changed: keep **`.dc-specialty-card`** as the canonical reusable component name and migrate legacy `.specialty-card` usage to it during the design-guide cleanup. Before completing the rename: `grep -r "specialty-card\|dc-specialty-card" field-guide/ design-guide/ plugins/`
 
 **`.specialty-art` / `.dc-specialty-art`:**
 Keep **`.specialty-art`** (used in field guide), retire **`.dc-specialty-art`** — identical CSS. Before retiring: `grep -r "dc-specialty-art" field-guide/ design-guide/ plugins/`

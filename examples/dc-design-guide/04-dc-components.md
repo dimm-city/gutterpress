@@ -28,7 +28,7 @@ Dimm City-specific components. Ability cards, banners, stat blocks, AP chips, ta
 
 The `@skill` macro generates the full card HTML automatically. Use `variant="1"` through `variant="5"` to select clip-path shapes. The next `@skill` or `@end-skill` closes the current card.
 
-> **Component pattern:** skill cards, continuation cards, and learning-path shells are being refactored to the same shared-base model as alerts. The card shell owns structure and break behavior; specialty and variant differences should increasingly flow through component-scoped CSS custom properties.
+> **Component pattern:** `.dc-skill-card`, `.dc-path-shell`, and `.dc-specialty-card` are distinct components. They may share some visual language, but each owns its own shell, spacing, break behavior, and layout rules. Do not collapse them into one broad variable-driven family.
 
 **Macro syntax** — H4 title, blockquote flavor, ordered list abilities, optional H5 sub-header:
 
@@ -157,7 +157,7 @@ Both block types use the same `.dc-stat` structure. Creature blocks use combat s
 
 ## Learning Path
 
-A learning path wraps skill cards under a named spray banner with a sticker chain and flavor line. Use `@learning-path` after `@specialty {.classname}` — the path index and specialty code (e.g., `AUG1`) are auto-computed. Tab tiers (`AUG1.1`, `AUG1.2`, …) are generated automatically from position; use `#### Skill Name | Custom` only to override.
+A learning path wraps skill cards under a named spray banner with a sticker chain and flavor line. Use `@learning-path` after `@specialty {.classname}` — the path index and specialty code (e.g., `AUG1`) are auto-computed. Tab tiers (`AUG1.1`, `AUG1.2`, …) are generated automatically from position; use `#### Skill Name | Custom` only to override. The emitted path shell is its own component (`.dc-path-shell`) with its own notched shape and spacing rules; `.dc-path-block` is only the structural section hook.
 
 **Macro syntax:**
 
@@ -232,24 +232,24 @@ Rotated monospaced label chips for content status (draft, deprecated, classified
 
 ## Clip-Path Card Variants (v1–v5)
 
-Five clip-path shapes for the card tab and body corners. Set `variant="N"` on the `@skill` macro to choose, or apply class `v1`–`v5` directly to `.dc-card-tab` and `.dc-card-body` in raw HTML. Variant 1 is the default right-diagonal; variants 2–5 offer progressively distinct tech silhouettes.
+Five clip-path shapes for the skill-card shell. Set `variant="N"` on the `@skill` macro to choose. The emitted `.dc-skill-card` owns the variant, and its internal tab/body shapes inherit from that root state. Variant 1 is the default right-diagonal; variants 2–5 offer progressively distinct tech silhouettes.
 
-**Syntax** — `variant="N"` on `@skill` macro; or add class `v1`–`v5` to `.dc-card-tab` and `.dc-card-body`
+**Syntax** — `variant="N"` on `@skill` macro; raw HTML fallback uses a root modifier on `.dc-skill-card`
 
 ```html
-<div class="dc-skill-card">
-  <div class="dc-card-tab v1">…</div>
-  <div class="dc-card-body v1">…</div>
+<div class="dc-skill-card variant-1">
+  <div class="dc-card-tab">…</div>
+  <div class="dc-card-body">…</div>
 </div>
 ```
 
 | Variant | Shape |
 |---------|-------|
-| `v1` | Default right-diagonal tab, bottom-right notch body |
-| `v2` | Sharp angular — diagonal cuts on all four tab corners and both body bottom corners |
-| `v3` | Asymmetric tech — top-left step on tab, large single diagonal on body |
-| `v4` | Soft angular — shallow corner cuts, more restrained than v1/v2 |
-| `v5` | Scooped futuristic — center notch on tab top, pinched bottom corners on body |
+| `variant-1` | Default right-diagonal tab, bottom-right notch body |
+| `variant-2` | Sharp angular — diagonal cuts on all four tab corners and both body bottom corners |
+| `variant-3` | Asymmetric tech — top-left step on tab, large single diagonal on body |
+| `variant-4` | Soft angular — shallow corner cuts, more restrained than variant-1/2 |
+| `variant-5` | Scooped futuristic — center notch on tab top, pinched bottom corners on body |
 
 ---
 
@@ -322,13 +322,13 @@ Badge in the top-left corner of specialty chapter opener pages. Auto-generated b
 | Tape Divider | `<div class="dc-tape flush">Label</div>` | `dc-tape`, `flush` |
 | Creature Stat Block | Raw HTML | `dc-stat`, `dc-stat-head`, `dc-stat-grid`, `dc-stat-cell` |
 | NPC Stat Block | Raw HTML (social stats) | `dc-stat`, `dc-stat-head`, `dc-stat-grid`, `dc-stat-cell` |
-| Learning Path | `@learning-path … @end-learning-path` macro | `dc-learning-path`, `dc-path-block`, `dc-path-shell` |
+| Learning Path | `@learning-path … @end-learning-path` macro | `dc-learning-path`, `dc-path-block` (structural), `dc-path-shell` (visual shell) |
 | Path Step Chain | auto via `@learning-path`; raw HTML fallback | `dc-stickers`, `dc-sticker`, `dc-sticker.active`, `dc-arrow` |
 | Path Subtitle | auto via `@learning-path`; raw HTML fallback | `dc-path-subtitle`, `flush` |
 | Sub-header Sticker | auto via `@skill`; raw HTML fallback | `dc-sub-header`, `flush` |
 | Stamp — Default | `<span class="dc-stamp">TEXT</span>` | `dc-stamp` |
 | Stamp — Classified | `<span class="dc-stamp classified">TEXT</span>` | `dc-stamp`, `classified` |
-| Clip-Path v1–v5 | `variant="1"` through `variant="5"` on `@skill` | `dc-card-tab v1`–`v5`, `dc-card-body v1`–`v5` |
+| Clip-Path v1–v5 | `variant="1"` through `variant="5"` on `@skill` | `dc-skill-card variant-1`–`variant-5` |
 | `.columns` / `.rows` | modifier class on specialty wrapper (`.dense` deprecated) | `columns`, `rows` |
 | `.dc-chapter-opener-no` | Raw HTML | `dc-chapter-opener-no` |
 
@@ -342,3 +342,5 @@ These examples show the above components rendered in real book pages using actua
 - [Specialty Profile](#ch-example-specialty-profile) — full learning path: spray banner, sticker chain, skill cards with AP chips and clip-path variants
 - [Dream Master Pages](#ch-example-dm-npcs) — creature and NPC stat blocks, DM stamps, encounter hooks
 - [Gear & Tech](#ch-example-gear-tech) — aug cards, weapon tables, classified stamps, cybernetics entries
+
+**Cleanup note:** legacy `.specialty-card` should be renamed to `.dc-specialty-card` during the ongoing CSS cleanup so all reusable Dimm City components follow the `dc-` prefix convention.

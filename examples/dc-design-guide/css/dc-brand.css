@@ -597,18 +597,19 @@ ul li::before {
   --dc-card-tier-color: var(--hud-magenta);
   --dc-card-tier-border: var(--hud-magenta);
   --dc-card-body-mark: var(--crimson);
+  --dc-skill-tab-shape: polygon(0 0, calc(100% - 18px) 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 44px) 100%, 0 100%);
 
+  position: relative;
   break-inside: avoid;
   page-break-inside: avoid;
-  position: relative;
   margin-bottom: 24px;
   max-width: 100%;
-  filter: /* screen preview only — drops in Paged.js PDF export */
-    drop-shadow(2px 0 0 var(--ink))
+  filter: drop-shadow(2px 0 0 var(--ink))
     drop-shadow(-2px 0 0 var(--ink))
     drop-shadow(0 2px 0 var(--ink))
     drop-shadow(0 -2px 0 var(--ink))
-    drop-shadow(4px 6px 8px rgba(0,0,0,0.18));
+    drop-shadow(4px 6px 8px rgba(0,0,0,0.18)); /* screen preview only — drops in Paged.js PDF export */
 }
 .dc-card-tab {
   display: inline-flex;
@@ -624,7 +625,7 @@ ul li::before {
   z-index: 2;
   max-width: calc(100% - 28px);
   box-sizing: border-box;
-  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 100%, 0 100%);
+  clip-path: var(--dc-skill-tab-shape);
 }
 .dc-tab-title {
   font-family: var(--font-tab);
@@ -647,12 +648,11 @@ ul li::before {
   white-space: nowrap;
 }
 
-/* ───────── PATH BLOCK — clipped container (top-left + bottom-right corners) ───────── */
-/* .dc-path-block-wrap removed 2026-05-12 — superseded by .dc-path-shell */
+/* ───────── PATH BLOCK — structural learning-path section hook ───────── */
+/* .dc-path-block-wrap removed 2026-05-12 — superseded by .dc-path-shell.
+   .dc-path-block is now structural only; the visual shell belongs on
+   .dc-path-shell, which is the actual path component. */
 .dc-path-block {
-  background: var(--dc-card-surface);
-  clip-path: polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px);
-  padding: 24px 26px 30px;
   position: relative;
 }
 
@@ -693,7 +693,7 @@ ul li::before {
   background: var(--dc-card-surface);
   padding: 22px 20px 36px;
   position: relative;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 44px) 100%, 0 100%);
+  clip-path: var(--dc-skill-body-shape);
 }
 .dc-card-body::before {
   content: '';
@@ -708,26 +708,34 @@ ul li::before {
 .dc-card-inner { position: relative; z-index: 1; }
 
 /* ── SKILL CARD CLIP-PATH VARIANTS ──────────────────────────────────────────
-   Variant 1 is the default dc-card-tab / dc-card-body clip-path.
-   Variants 2–5 override the clip-path with a modifier class.
-   Drop-shadow (the ink border) stays on .dc-skill-card and traces all shapes.
+   The skill-card shell owns the variant state. Tab/body shapes read from the
+   root card's shape aliases so the component keeps one real base class plus
+   thin root-level variants.
    ─────────────────────────────────────────────────────────────────────────── */
 
-/* V2 — Sharp angular: diagonal cuts on all four tab corners + both body bottom corners */
-.dc-card-tab.v2  { clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px); }
-.dc-card-body.v2 { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px)); }
+/* Variant 2 — Sharp angular: diagonal cuts on all four tab corners + both body bottom corners */
+.dc-skill-card.variant-2 {
+  --dc-skill-tab-shape: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
+  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px));
+}
 
-/* V3 — Asymmetric tech: top-left step on tab, large single diagonal on body */
-.dc-card-tab.v3  { clip-path: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%); }
-.dc-card-body.v3 { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 36px), calc(100% - 52px) 100%, 0 100%); }
+/* Variant 3 — Asymmetric tech: top-left step on tab, large single diagonal on body */
+.dc-skill-card.variant-3 {
+  --dc-skill-tab-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 36px), calc(100% - 52px) 100%, 0 100%);
+}
 
-/* V4 — Soft angular: shallow corner cuts, more restrained than V1/V2 */
-.dc-card-tab.v4  { clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%); }
-.dc-card-body.v4 { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 22px) 100%, 22px 100%, 0 calc(100% - 18px)); }
+/* Variant 4 — Soft angular: shallow corner cuts, more restrained than variant 1/2 */
+.dc-skill-card.variant-4 {
+  --dc-skill-tab-shape: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 22px) 100%, 22px 100%, 0 calc(100% - 18px));
+}
 
-/* V5 — Scooped futuristic: center notch on tab top, pinched bottom on body */
-.dc-card-tab.v5  { clip-path: polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%); }
-.dc-card-body.v5 { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 24px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 24px)); }
+/* Variant 5 — Scooped futuristic: center notch on tab top, pinched bottom on body */
+.dc-skill-card.variant-5 {
+  --dc-skill-tab-shape: polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 24px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 24px));
+}
 
 
 /* ───────── FLAVOR ───────── */
@@ -806,40 +814,20 @@ ul li::before {
 }
 
 /* ───────── ALERT / CALLOUT BASE ───────── */
-/* Shared panel chrome for alert-like components. Variant classes should set
-   component-scoped custom properties instead of re-declaring the full shell. */
+/* Shared alert shell. Variants should read as thin overrides on top of this
+   full default treatment rather than rebuilding the shell through many tokens. */
 .dc-alert {
-  --dc-alert-margin-top: 0;
-  --dc-alert-margin-right: 0;
-  --dc-alert-margin-bottom: 0;
-  --dc-alert-margin-left: 0;
-  --dc-alert-padding-y: var(--space-lg);
-  --dc-alert-padding-x: var(--space-xl);
   --dc-alert-bg: var(--paper-light);
-  --dc-alert-border-width: 4px;
-  --dc-alert-border-color: var(--crimson);
-  --dc-alert-font-size: var(--fs-body-sm);
-  --dc-alert-line-height: var(--lh-normal);
-  --dc-alert-color: var(--ink-smoke);
-  --dc-alert-width: auto;
-  --dc-alert-max-width: none;
-  --dc-alert-label-text: "";
-  --dc-alert-label-display: none;
-  --dc-alert-label-font-size: 8pt;
-  --dc-alert-label-letter-spacing: 0.12em;
-  --dc-alert-label-color: var(--crimson);
-  --dc-alert-label-weight: 700;
-  --dc-alert-label-margin-bottom: 6pt;
+  --dc-alert-border: var(--crimson);
+  --dc-alert-fg: var(--ink-smoke);
+  --dc-alert-label-color: var(--dc-alert-border);
 
-  margin: var(--dc-alert-margin-top) var(--dc-alert-margin-right) var(--dc-alert-margin-bottom) var(--dc-alert-margin-left);
-  padding: var(--dc-alert-padding-y) var(--dc-alert-padding-x);
   background: var(--dc-alert-bg);
-  border-left: var(--dc-alert-border-width) solid var(--dc-alert-border-color);
-  font-size: var(--dc-alert-font-size);
-  line-height: var(--dc-alert-line-height);
-  color: var(--dc-alert-color);
-  width: var(--dc-alert-width);
-  max-width: var(--dc-alert-max-width);
+  border-left: 4px solid var(--dc-alert-border);
+  color: var(--dc-alert-fg);
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-normal);
+  padding: var(--space-lg) var(--space-xl);
   break-inside: avoid;
   page-break-inside: avoid;
 }
@@ -853,78 +841,44 @@ ul li::before {
   margin-top: 6pt;
 }
 
+.dc-alert ul,
+.dc-alert ol {
+  margin: 6pt 0 0;
+  padding-left: 0.2in;
+}
+
+.dc-alert li {
+  margin-bottom: 0.04in;
+}
+
+.dc-alert li::before {
+  color: var(--dc-alert-border);
+}
+
+.dc-alert-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 6pt;
+  font-style: normal;
+  color: var(--dc-alert-label-color, var(--dc-alert-border));
+}
+
 /* ───────── NOTE CALLOUT ───────── */
 .dc-note {
-  --dc-alert-margin-top: var(--space-lg);      /* was 14px — align to token system */
-  --dc-alert-padding-y: var(--space-lg);       /* was 10px 12px — increase internal breathing room */
-  --dc-alert-padding-x: var(--space-xl);
-  --dc-alert-bg: var(--paper-light);
-  --dc-alert-border-width: 4px;
-  --dc-alert-border-color: var(--crimson);
-  --dc-alert-font-size: var(--fs-body-sm);
-  --dc-alert-color: var(--ink-smoke);
+  margin-top: var(--space-lg);      /* was 14px — align to token system */
 }
 
-.dc-note,
-.dc-dm-note,
-.dc-vibe-callout,
-.dc-origin-callout,
-.dc-visit-callout,
-.dc-gear-callout {
-  margin: var(--dc-alert-margin-top) var(--dc-alert-margin-right) var(--dc-alert-margin-bottom) var(--dc-alert-margin-left);
-  padding: var(--dc-alert-padding-y) var(--dc-alert-padding-x);
-  background: var(--dc-alert-bg);
-  border-left: var(--dc-alert-border-width) solid var(--dc-alert-border-color);
-  font-size: var(--dc-alert-font-size);
-  line-height: var(--dc-alert-line-height);
-  color: var(--dc-alert-color);
-  width: var(--dc-alert-width);
-  max-width: var(--dc-alert-max-width);
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-
-.dc-vibe-callout::before,
-.dc-origin-callout::before,
-.dc-visit-callout::before,
-.dc-gear-callout::before {
-  content: var(--dc-alert-label-text);
-  display: var(--dc-alert-label-display);
-  font-family: var(--font-mono);
-  font-size: var(--dc-alert-label-font-size);
-  font-weight: var(--dc-alert-label-weight);
-  text-transform: uppercase;
-  letter-spacing: var(--dc-alert-label-letter-spacing);
-  color: var(--dc-alert-label-color);
-  margin-bottom: var(--dc-alert-label-margin-bottom);
-  font-style: normal;
-}
-
-.dc-note p,
-.dc-dm-note p,
-.dc-vibe-callout p,
-.dc-origin-callout p,
-.dc-visit-callout p,
-.dc-gear-callout p {
-  margin: 0;
-  font-style: italic;
-}
-
-.dc-note p + p,
-.dc-dm-note p + p,
-.dc-vibe-callout p + p,
-.dc-origin-callout p + p,
-.dc-visit-callout p + p,
-.dc-gear-callout p + p {
-  margin-top: 6pt;
-}
-
-.dc-note-label {
+.dc-note .dc-alert-label,
+.dc-note.warning .dc-alert-label {
   font-family: var(--font-mono);
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 2px;
-  color: var(--crimson);
+  color: var(--dc-alert-label-color, var(--crimson));
   font-weight: 700;
   display: block;
   margin-bottom: var(--space-sm);
@@ -1032,6 +986,16 @@ hr,
   margin: var(--space-xl) 0;   /* was 0.18in → 0.20in; aligns to spacing token */
 }
 
+/* ───────── PROSE PANEL BASE ───────── */
+/* Shared prose-box shell for compact field-guide reference panels.
+   Concrete components still own their own surface, accent, heading, and text tone. */
+.dc-prose-panel {
+  padding: 10px 14px;
+  margin: 0.12in 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
 /* ───────── DEFINITION BLOCK ───────── */
 /* Short italic definitional callout — NPC types, item categories, ability class summaries.
    Use when content is a 1–3 sentence category definition, not a rules note.
@@ -1040,14 +1004,10 @@ hr,
 .dc-definition-block {
   background: var(--surface-orange-tint);    /* warm cream, distinct from paper-light */
   border-left: 4px solid var(--crimson);
-  padding: 10px 14px;
-  margin: 0.12in 0;
   font-style: italic;
   font-size: var(--fs-body);
   line-height: var(--lh-normal);
   color: var(--ink);
-  break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 .dc-definition-block p {
@@ -1069,8 +1029,6 @@ hr,
   border-left: 4px solid var(--blood);
   padding: 14px 18px;
   margin: 0.15in 0;
-  break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 /* Box heading — bold red stencil-style label above the internal divider */
@@ -1776,9 +1734,8 @@ hr,
 /* Warning note — visually distinct from base dc-note */
 .dc-note.warning {
   --dc-alert-bg: var(--surface-orange-tint);   /* distinct surface from paper-light dc-note */
-  --dc-alert-border-color: var(--rust);        /* was --amber (invisible at 1.66:1) → --rust (4.30:1 on surface) */
+  --dc-alert-border: var(--rust);        /* was --amber (invisible at 1.66:1) → --rust (4.30:1 on surface) */
 }
-.dc-note.warning .dc-note-label { color: var(--rust); }   /* was --amber */
 
 /* Note spacing variants */
 .dc-note.mt-sm { margin-top: 14px; }
@@ -1898,27 +1855,24 @@ hr,
 }
 
 /* LIVE in chapter-01.md (10 specialty cards). */
-.specialty-card {
-  border: 1.5px solid var(--hud-blue);
-  border-left: var(--callout-border-width-small) solid var(--crimson);
-  padding: var(--space-2xl);
-  break-inside: avoid;
-  page-break-inside: avoid;
+.dc-specialty-card {
+  --dc-card-surface: var(--hud-panel);
+
+  background: var(--dc-card-surface);
   display: block;
-  position: relative;
-  margin: 0 0 0.1in 0;
   overflow: visible;
   line-height: var(--lh-tight);
-  background: var(--hud-panel);
-}
-
-/* Forces a page break after the 5th card in the choose-specialty spread. */
-.specialty-spread .specialty-card:nth-of-type(5) {
-  break-after: page;
+  margin: 0 0 0.1in 0;
+  padding: var(--space-2xl);
+  position: relative;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  border: 1.5px solid var(--hud-blue);
+  border-left: var(--callout-border-width-small) solid var(--crimson);
 }
 
 /* Portrait image floated in specialty card. */
-.specialty-card img {
+.dc-specialty-card img {
   height: calc(100% - 0.12in);
   object-fit: contain;
   border: none;
@@ -1928,7 +1882,7 @@ hr,
 }
 
 /* Specialty name heading — right-aligned, no-wrap. */
-.specialty-card h3 {
+.dc-specialty-card h3 {
   margin: 0;
   font-size: 1.15em;
   text-align: right;
@@ -1936,7 +1890,7 @@ hr,
 }
 
 /* Subtitle tagline — right-aligned, no-wrap. */
-.specialty-card blockquote {
+.dc-specialty-card blockquote {
   margin: 0;
   padding: 0 0.06in;
   font-size: 0.95em;
@@ -1945,30 +1899,25 @@ hr,
 }
 
 /* Card body paragraph spacing. */
-.specialty-card p {
+.dc-specialty-card p {
   margin-top: 0.02in;
   margin-bottom: 0;
   line-height: 1.35;
 }
 
-/* Even cards flip the border accent to the right. */
-.specialty-card:nth-child(even) {
+/* Even cards flip the border accent to the right. Use nth-of-type because
+   specialty spreads include interleaved wrapper blocks in the same parent. */
+.dc-specialty-card:nth-of-type(even) {
   border-left: 1.5px solid var(--hud-blue);
   border-right: var(--callout-border-width-small) solid var(--crimson);
 }
 
-/* Even cards float image to the right. */
-.specialty-card:nth-child(even) img {
+.dc-specialty-card:nth-of-type(even) img {
   float: right;
 }
 
-/* Even cards align heading to the left. */
-.specialty-card:nth-child(even) h3 {
-  text-align: left;
-}
-
-/* Even cards align tagline to the left. */
-.specialty-card:nth-child(even) blockquote {
+.dc-specialty-card:nth-of-type(even) h3,
+.dc-specialty-card:nth-of-type(even) blockquote {
   text-align: left;
 }
 
@@ -1983,34 +1932,41 @@ hr,
 
 .dc-learning-path.dc-path-block {
   --dc-path-accent: var(--crimson);
-  /* Reset .dc-path-block visual chrome — it belongs on .dc-path-shell, not the section.
-     The section is a layout container only; background/clip/padding/filter would create
-     a stacking context that prevents Paged.js from splitting the LP across pages. */
-  background: none;
-  clip-path: none;
-  padding: 0;
-  filter: none;
   position: relative;
   margin: 0 0 22px;
 }
 
 .dc-path-shell {
+  --dc-card-surface: var(--paper-cream);
+
   background: var(--dc-card-surface);
-  clip-path: polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px);
+  margin: 0 0 22px;
   padding: 24px 26px 30px;
   position: relative;
-  margin: 0 0 22px;
-  filter: /* screen preview only — drops in Paged.js PDF export */
-    drop-shadow(2px 0 0 var(--ink))
+  clip-path: polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px);
+  filter: drop-shadow(2px 0 0 var(--ink))
     drop-shadow(-2px 0 0 var(--ink))
     drop-shadow(0 2px 0 var(--ink))
-    drop-shadow(0 -2px 0 var(--ink));
+    drop-shadow(0 -2px 0 var(--ink)); /* screen preview only — drops in Paged.js PDF export */
 }
 
-/* Font size inheritance reset — decorative text elements inside cards should
-   use their own sizes, not the minimum-enforcement floor. */
-.dc-learning-path *,
-.dc-skill-card * {
+/* Keep prose inside path shells and skill cards on the parent text size without
+   flattening banner, sticker, or tab typography that sets its own size. */
+.dc-learning-path p,
+.dc-learning-path ul,
+.dc-learning-path ol,
+.dc-learning-path li,
+.dc-skill-card p,
+.dc-skill-card ul,
+.dc-skill-card ol,
+.dc-skill-card li,
+.dc-skill-card table,
+.dc-skill-card tbody,
+.dc-skill-card thead,
+.dc-skill-card tr,
+.dc-skill-card td,
+.dc-skill-card th,
+.dc-skill-card blockquote {
   font-size: inherit;
 }
 
@@ -2242,60 +2198,36 @@ p.img-wrapper {
 }
 
 .dc-vibe-callout {
-  --dc-alert-padding-y: var(--space-sm);
-  --dc-alert-padding-x: var(--space-md);
-  --dc-alert-bg: var(--paper-light);
-  --dc-alert-border-width: 4px;
-  --dc-alert-border-color: var(--hud-magenta);   /* was orange — distinct from pullquote; signals "atmosphere/world" register */
-  --dc-alert-font-size: var(--fs-body-sm);
-  --dc-alert-label-text: "Vibe";
-  --dc-alert-label-display: block;
+  --dc-alert-border: var(--hud-magenta);
+  --dc-alert-label-color: var(--hud-magenta);
+  padding: var(--space-sm) var(--space-md);
 }
 
 .dc-origin-callout {
-  --dc-alert-padding-y: 6pt;
-  --dc-alert-padding-x: 9pt;
   --dc-alert-bg: var(--surface-orange-tint);   /* was paper-light — distinct surface; signals "character" content */
-  --dc-alert-border-width: 3px;
-  --dc-alert-border-color: var(--blood);       /* was crimson — darker, still crimson family, distinct from dc-note */
-  --dc-alert-color: var(--ink-smoke);
-  --dc-alert-label-text: "Origin";
-  --dc-alert-label-display: block;
+  --dc-alert-border: var(--blood);       /* was crimson — darker, still crimson family, distinct from dc-note */
+  --dc-alert-label-color: var(--crimson);
+  padding: 6pt 9pt;
+  border-left-width: 3px;
 }
 
 /* ───────── VISIT CALLOUT ───────── */
 /* Present-tense in-world location description — what the character sees on arrival. */
 .dc-visit-callout {
-  --dc-alert-margin-top: 0.12in;
-  --dc-alert-margin-bottom: 0.12in;
-  --dc-alert-padding-y: 12px;
-  --dc-alert-padding-x: 16px;
-  --dc-alert-bg: var(--paper-light);
-  --dc-alert-border-width: 4px;
-  --dc-alert-border-color: var(--hud-blue);
-  --dc-alert-font-size: var(--fs-body);
-  --dc-alert-line-height: var(--lh-normal);
-  --dc-alert-color: var(--ink-smoke);
-  --dc-alert-label-text: "Visit";
-  --dc-alert-label-display: block;
+  margin: 0.12in 0;
+  padding: 12px 16px;
+  --dc-alert-border: var(--hud-blue);
   --dc-alert-label-color: var(--hud-blue-dark);
+  font-size: var(--fs-body);
 }
 .dc-gear-callout {
-  --dc-alert-margin-top: 0.12in;
-  --dc-alert-margin-right: auto;
-  --dc-alert-margin-bottom: 0.18in;
-  --dc-alert-margin-left: auto;
-  --dc-alert-padding-y: var(--space-lg);
-  --dc-alert-padding-x: var(--space-xl);
   --dc-alert-bg: var(--paper-cream);
-  --dc-alert-border-width: 1.5px;
-  --dc-alert-border-color: var(--border-hairline);
-  --dc-alert-font-size: var(--fs-body-sm);
-  --dc-alert-line-height: var(--lh-normal);
-  --dc-alert-width: 90%;
-  --dc-alert-label-text: "Gear";
-  --dc-alert-label-display: block;
+  --dc-alert-border: var(--border-hairline);
   --dc-alert-label-color: var(--orange);
+  margin: 0.12in auto 0.18in;
+  padding: var(--space-lg) var(--space-xl);
+  border-left-width: 1.5px;
+  width: 90%;
   float: none;
 }
 
@@ -2303,23 +2235,20 @@ p.img-wrapper {
 /* Dream Master (DM-facing) note box — distinct from .dc-note (player-facing).
    Renamed from .dc-note-callout 2026-05-12 for clarity. */
 .dc-dm-note {
-  --dc-alert-margin-top: 9pt;
-  --dc-alert-padding-y: var(--space-lg);
-  --dc-alert-padding-x: var(--space-xl);
   --dc-alert-bg: var(--paper-cream);
-  --dc-alert-border-width: 3px;
-  --dc-alert-border-color: var(--crimson);
-  --dc-alert-font-size: 9pt;
+  margin-top: 9pt;
+  border-left-width: 3px;
+  font-size: 9pt;
 }
 
-/* Scoped to .dc-dm-note context — different font-size/letter-spacing than .dc-note .dc-note-label */
-.dc-dm-note .dc-note-label {
+/* Scoped to .dc-dm-note context — different font-size/letter-spacing than note/warning labels */
+.dc-dm-note .dc-alert-label {
   display: block;
   font-family: var(--font-mono);
   font-size: 8pt;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--crimson);
+  color: var(--dc-alert-label-color, var(--crimson));
   font-weight: 600;
   margin-bottom: 4pt;
 }

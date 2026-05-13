@@ -121,7 +121,7 @@ markdown source during the build step and emits structured HTML.
 | `@sidebar` | Sidebar callout | Floating reference/sidebar content |
 | `@sidebar-box` | Sidebar box callout | Cream boxed aside with heading + dashed divider |
 | `@learning-path` | Learning path banner + card group | Groups `@skill` cards under a spray-banner header |
-| `@skill variant="N"` | Skill card (clip-path variant 1–5) | Individual skill card with tab, flavor, and abilities |
+| `@skill variant="N"` | Skill card (root-owned clip-path variant 1–5) | Individual skill card with tab, flavor, and abilities |
 | `@procedure` | Numbered procedure block | Ordered list rendered as `dc-steps` |
 | `@definition` | Definition callout | Italic definition block with left rule |
 | `@continue` | Card continuation marker | Splits an oversized skill card across a page break |
@@ -140,15 +140,19 @@ container-heavy field-guide source:
 
 ### Component System Rule
 
-Shared component families should be implemented as a base rule plus CSS custom-property variants.
+Reusable Dimm City components should be implemented as dc-prefixed base classes with thin variant overrides.
 
-- Base rules own structure, spacing, typography, borders, layout, and pagination behavior.
-- Variant classes should mostly set component-scoped variables such as accent, label, surface, or title colors.
-- Existing markdown/macros can remain stable while emitted classes become thin wrappers over the shared base.
-- Alerts/callouts are the first explicit gold-standard refactor for this pattern; the same approach should extend to skill cards, learning paths, banners, stat grids, and panels.
+- One real base class owns the full default shell for a component.
+- Variant classes should only override the few properties that actually change, such as surface, accent, border color, label text, or title treatment.
+- CSS custom properties are allowed only when they form a small documented public API.
+- Do not expose internal layout details like margin, padding, width, line-height, or break behavior as broad variable APIs by default.
+- Existing markdown/macros can remain stable while emitted classes become thin wrappers over the canonical dc-prefixed base class.
 
 Current reference implementation:
-- The alert/callout family in `css/dc-brand.css` uses shared alert-shell styling with per-variant custom-property overrides.
+- The alert/callout family should use `.dc-alert` as the shell and thin variant classes layered on top.
+
+Important distinction:
+- `.dc-skill-card`, `.dc-path-shell`, and `.dc-specialty-card` are three different components. They may share visual language, but they should not be collapsed into one fake component family with a large internal variable API.
 | `:::pull-quote` / `:::wrapper {.dc-pullquote}` | `> [!PULLQUOTE]` |
 | `:::wrapper {.two-column...}` / `:::wrapper {.two-column-list}` | `@section .two-column ...` |
 | `:::three-column` | `@three-column` |

@@ -152,7 +152,7 @@ syntax as the canonical form.
   internal CSS, not owned by design guide
 - `@page` annotations with chapter-specific classes (`.chapter-01`, `.ideal`,
   `.flaw`, `.citizen-file`, etc.) — chapter layout, not design system
-- `.specialty-spread` / `.specialty-card [specialty-name]` — keep as-is;
+- `.specialty-spread` / `.dc-specialty-card.[specialty-name]` — keep as-is;
   the per-specialty names are layout hooks for `book-sections.css`
 - `.ideal-list` / `.flaw-list` — chapter-01 specific page template; stays in
   `book-sections.css` scope, not a design guide element
