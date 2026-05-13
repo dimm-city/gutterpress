@@ -313,6 +313,65 @@ div.chapter.chapter-02 .dc-toc {
   column-span: all;
 }
 
+/* Palette swatch specimen grid — guide-only presentation for token chips.
+   Uses markdown wrapper blocks instead of inline style attributes in the guide. */
+div.chapter .dc-palette-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0.1in 0;
+}
+
+div.chapter .dc-palette-swatch {
+  width: 72px;
+  min-height: 68px;
+  padding: 4px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 8pt;
+  line-height: 1.2;
+}
+
+div.chapter .dc-palette-swatch p {
+  margin: 0;
+}
+
+div.chapter .dc-palette-swatch strong {
+  display: block;
+}
+
+div.chapter .dc-palette-swatch.border {
+  border: 1px solid var(--border-hairline);
+}
+
+div.chapter .dc-palette-swatch.on-light {
+  color: var(--ink);
+}
+
+div.chapter .dc-palette-swatch.on-dark {
+  color: var(--paper-cream);
+}
+
+div.chapter .dc-palette-swatch.bg-ink { background: var(--ink); }
+div.chapter .dc-palette-swatch.bg-ink-smoke { background: var(--ink-smoke); }
+div.chapter .dc-palette-swatch.bg-ink-dust { background: var(--ink-dust); }
+div.chapter .dc-palette-swatch.bg-crimson { background: var(--crimson); }
+div.chapter .dc-palette-swatch.bg-blood { background: var(--blood); }
+div.chapter .dc-palette-swatch.bg-orange { background: var(--orange); }
+div.chapter .dc-palette-swatch.bg-rust { background: var(--rust); }
+div.chapter .dc-palette-swatch.bg-amber { background: var(--amber); }
+div.chapter .dc-palette-swatch.bg-deep-rust { background: var(--deep-rust); }
+div.chapter .dc-palette-swatch.bg-hud-blue { background: var(--hud-blue); }
+div.chapter .dc-palette-swatch.bg-hud-blue-bright { background: var(--hud-blue-bright); }
+div.chapter .dc-palette-swatch.bg-hud-blue-dim { background: var(--hud-blue-dim); }
+div.chapter .dc-palette-swatch.bg-hud-magenta { background: var(--hud-magenta); }
+div.chapter .dc-palette-swatch.bg-hud-panel { background: var(--hud-panel); }
+div.chapter .dc-palette-swatch.bg-surface-tint-3 { background: var(--surface-tint-3); }
+div.chapter .dc-palette-swatch.bg-surface-orange-tint { background: var(--surface-orange-tint); }
+div.chapter .dc-palette-swatch.bg-border-hairline { background: var(--border-hairline); }
+
 /* ── Design Guide 3-Chapter Footer Labels ───────────────────────────────────
    string-set fires when Paged.js encounters the first H1 of each chapter
    wrapper and stores the value as a CSS custom property on the page box.

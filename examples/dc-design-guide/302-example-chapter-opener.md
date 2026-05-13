@@ -10,9 +10,9 @@ This section shows how chapter-start spreads look in the actual Dimm City Field 
 
 ## Chapter-Start Spread: Who Do You Dream to Be?
 
-**Page template** — `--- {page .page-chapter-start .chapter-start .chapter-01}` — two-column layout defined in `page-rules.css`. The `@chapter-opener C.01` macro injects the chapter number badge into the left column. The fiction narrative fills the left column up to the column break. The H2 heading on the right side uses `.dc-chevron`. Art image replaced with design guide placeholder. See [Page Templates](#ch-templates) for the `page-chapter-start` spec and [DC Components](#ch-dc-components) for `@chapter-opener`.
+**Page template** — `@page .page-chapter-start .chapter-start .chapter-01` — two-column layout defined in `page-rules.css`. The `@chapter-opener C.01` macro injects the chapter number badge into the left column. The fiction narrative fills the left column up to the column break. The H1 heading on the right side uses `.dc-chevron`. Art image replaced with design guide placeholder. See [Page Templates](#ch-templates) for the `page-chapter-start` spec and [DC Components](#ch-dc-components) for `@chapter-opener`.
 
---- {page .page-chapter-start .chapter-start .chapter-01}
+@page .page-chapter-start .chapter-start .chapter-01
 
 @chapter-opener C.01
 
@@ -56,9 +56,9 @@ I locked in da hack, jacked out, an leapt clean onto a passing airbus like I mea
 
 ## Info Sidebar Page: Citizen File
 
-**Page template** — `--- {page .page-info-sidebar .citizen-file .chapter-01}` — sidebar layout with a main column and an inset sidebar. The right column's sidebar block (`.sidebar`) holds DM/design advice. Column breaks (`---{.column-break}`) split content across the two columns. Callout blocks (`.visit-callout`) use the bordered callout style. See [Layout](#ch-layout) for column-break syntax and [Components](#ch-components) for the callout component.
+**Page template** — `@page .page-info-sidebar .citizen-file .chapter-01` — sidebar layout with a main column and an inset sidebar. The right column's sidebar block uses `.dc-sidebar`. Column breaks (`---{.column-break}`) split content across the two columns. Callout blocks use `> [!VISIT]` for the bordered callout style. See [Layout](#ch-layout) for column-break syntax and [Components](#ch-components) for the callout component.
 
---- {page .page-info-sidebar .citizen-file .chapter-01}
+@page .page-info-sidebar .citizen-file .chapter-01
 
 ## Citizen File {#c2-character-profile}
 

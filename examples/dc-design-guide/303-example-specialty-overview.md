@@ -4,17 +4,17 @@
 
 :::lede
 This section shows how the "Choose a Specialty" spread looks in the actual Dimm City Field Guide, rendered using real book content. It covers two page types: a chapter-start opener with fiction and ability primer, followed by an ability-catalog page with the specialty card grid.
-:::
+@break
 
 ---
 
 ## Chapter-Start: What Do You Dream of Doing?
 
-**Page template** — `--- {page .page-chapter-start .chapter-start .chapter-02}` — the page template provides the two-column layout. Chapter 02 uses a raw `<span class="dc-chapter-opener-no">` badge instead of the `@chapter-opener` macro (both are equivalent; see [DC Components](#ch-dc-components)). The heading uses `.dc-spray` for the spray-banner treatment. The `dc-note` and `dc-sidebar` raw HTML blocks render rules callouts with labeled headers. Images replaced with design guide placeholder.
+**Page template** — `@page .page-chapter-start .chapter-start .chapter-02` — the page template provides the two-column layout. Chapter 02 now uses the `@chapter-opener C.02` macro for the badge. The heading uses `.dc-spray` for the spray-banner treatment. The rules callout uses `> [!NOTE]` instead of raw HTML. Images replaced with design guide placeholder.
 
---- {page .page-chapter-start .chapter-start .chapter-02}
+@page .page-chapter-start .chapter-start .chapter-02
 
-<span class="dc-chapter-opener-no">C.02</span>
+@chapter-opener C.02
 
 ## What Do You Dream of Doing? {.dc-spray}
 
@@ -41,28 +41,26 @@ How that pack works wasn't luck. It was abilities firing in sequence. Each move 
 
 In Dimm City, abilities aren't just what you can do. They're learned techniques, invasive augments, practiced rituals, and raw instinct working as one.
 
-<div class="dc-note">
-<span class="dc-note-label">The Core Loop of a Dream</span>
-
-Every moment in Dimm City runs on the same simple rhythm:
-
-- The Dream Master describes the situation.
-- A Dreamer declares an action.
-- If the outcome is uncertain, you ROLL THE DIE or activate an ability.
-- The result determines what happens next.
-- The scene evolves and the Dream continues.
-
-Everything in this chapter exists to support that loop. Abilities bend it. Dice decide it. Dreamers drive it. The Monoverse responds.
-
-</div>
+> [!NOTE]
+> **The Core Loop of a Dream**
+>
+> Every moment in Dimm City runs on the same simple rhythm:
+>
+> - The Dream Master describes the situation.
+> - A Dreamer declares an action.
+> - If the outcome is uncertain, you ROLL THE DIE or activate an ability.
+> - The result determines what happens next.
+> - The scene evolves and the Dream continues.
+>
+> Everything in this chapter exists to support that loop. Abilities bend it. Dice decide it. Dreamers drive it. The Monoverse responds.
 
 ---
 
 ## Ability-Catalog Page: Choose a Specialty
 
-**Page template** — `--- {page .page-ability-catalog .choose-specialty .chapter-01}` — activates the two-column auto-fill specialty card grid. Each specialty uses a `.wrapper` with a `.specialty-card` class plus the specialty name (e.g. `.augmerc`, `.proxy`). Art images replaced with design guide placeholder. See [Page Templates](#ch-templates) for the `page-ability-catalog` spec and [Layout](#ch-layout) for the card grid system.
+**Page template** — `@page .page-ability-catalog .choose-specialty .chapter-01` — activates the two-column auto-fill specialty card grid. The grid is authored with `@spread .specialty-spread`; each specialty uses a `:::wrapper` with a `.specialty-card` class plus the specialty name (e.g. `.augmerc`, `.proxy`). Art images replaced with design guide placeholder. See [Page Templates](#ch-templates) for the `page-ability-catalog` spec and [Layout](#ch-layout) for the card grid system.
 
---- {page .page-ability-catalog .choose-specialty .chapter-01}
+@page .page-ability-catalog .choose-specialty .chapter-01
 
 ## 1. Choose a specialty {#c2-choose-a-role}
 
@@ -70,9 +68,9 @@ Every dreamer's got a sharp edge — your specialty is where it starts.
 
 It's the skillset that sets you apart, defines what you bring to the crew, and shapes the wild ways you survive the Dream.
 
-::::: wrapper {.specialty-spread}
+@spread .specialty-spread
 
-::: wrapper {class="specialty-card augmerc"}
+:::wrapper {.specialty-card .augmerc}
 ### Augmerc {#specialty-augmerc}
 
 ![Augmerc](img/placeholder-plate.png){.art-specialty}
@@ -81,9 +79,9 @@ It's the skillset that sets you apart, defines what you bring to the crew, and s
 
 Heavily armed and wired for war, Augmercs are the blunt force of any squad. They charge the front, soak the pain, and unload hell using brute strength and brutal tech. Combat-born, augged to kill, and never outgunned.
 
-:::
+@break
 
-::: wrapper {class="specialty-card proxy"}
+:::wrapper {.specialty-card .proxy}
 ### Proxy {#specialty-proxy}
 
 ![Proxy](img/placeholder-plate.png){.art-specialty}
@@ -92,9 +90,8 @@ Heavily armed and wired for war, Augmercs are the blunt force of any squad. They
 
 Marked by something higher—god, ghost, code, or conviction—Proxies walk the line between zealot and judge. They wield divine force like a weapon, bending battles and conversations alike with power that burns louder than faith.
 
-:::
 
-::: wrapper {class="specialty-card streetwarden"}
+:::wrapper {.specialty-card .streetwarden}
 ### Streetwarden {#specialty-streetwarden}
 
 ![Streetwarden](img/placeholder-plate.png){.art-specialty}
@@ -105,7 +102,7 @@ They don't wear badges—they are the law when no one else shows. Streetwardens 
 
 :::
 
-::: wrapper {class="specialty-card gutterdruid"}
+:::wrapper {.specialty-card .gutterdruid}
 ### Gutterdruid {#specialty-gutterdruid}
 
 ![Gutterdruid](img/placeholder-plate.png){.art-specialty}
@@ -116,7 +113,7 @@ They walk the alleys like sacred ground—feeding the hungry, tending weeds, rai
 
 :::
 
-::: wrapper {class="specialty-card cybersurgeon"}
+:::wrapper {.specialty-card .cybersurgeon}
 ### Cybersurgeon {#specialty-cybersurgeon}
 
 ![Cybersurgeon](img/placeholder-plate.png){.art-specialty}
@@ -127,7 +124,7 @@ Life is flexible. Cybersurgeons prove it daily—cutting, splicing, upgrading fl
 
 :::
 
-::: wrapper {class="specialty-card wirephreak"}
+:::wrapper {.specialty-card .wirephreak}
 ### Wirephreak {#specialty-wirephreak}
 
 ![Wirephreak](img/placeholder-plate.png){.art-specialty}
@@ -138,7 +135,7 @@ Killers, thieves, forgers—Wirephreaks specialize in slipping past locks, firew
 
 :::
 
-::: wrapper {class="specialty-card technosorcerer"}
+:::wrapper {.specialty-card .technosorcerer}
 ### Technosorcerer {#specialty-technosorcerer}
 
 ![Technosorcerer](img/placeholder-plate.png){.art-specialty}
@@ -149,7 +146,7 @@ Technosorcerers walk on the razor's edge between magic and technology. They beli
 
 :::
 
-::: wrapper {class="specialty-card etherlock"}
+:::wrapper {.specialty-card .etherlock}
 ### Etherlock {#specialty-etherlock}
 
 ![Etherlock](img/placeholder-plate.png){.art-specialty}
@@ -160,4 +157,4 @@ Secrets are currency—and Etherlocks are rich in them. Tapping into elemental f
 
 :::
 
-:::::
+:::

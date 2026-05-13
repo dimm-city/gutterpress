@@ -38,10 +38,16 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 
 | Marker | Closes on | Purpose |
 |--------|-----------|---------|
+| `@sidebar` | `@end-sidebar` | Wraps content in a `dc-sidebar` sidebar |
+| `@end-sidebar` | — | Explicitly closes the current sidebar |
 | `@specialty {.classname}` | Next `@specialty` or `@end-specialty` | Wraps a full specialty section; class sets the specialty code (`.augmerc` → `AUG`) |
 | `@end-specialty` | — | Explicitly closes the current specialty block |
 | `@sidebar-box` | `@end-sidebar-box` | Wraps content in a `dc-sidebar-box` callout |
 | `@end-sidebar-box` | — | Explicitly closes the current sidebar box |
+| `@definition` | `@end-definition` | Wraps content in a `dc-definition-block` definition callout |
+| `@end-definition` | — | Explicitly closes the current definition block |
+| `@procedure` | `@end-procedure` | Wraps an ordered list in a `dc-steps` procedure block |
+| `@end-procedure` | — | Explicitly closes the current procedure block |
 | `@learning-path` | Next `@learning-path` or `@end-learning-path` | Groups skill cards under a spray header; path index and code auto-increment |
 | `@end-learning-path` | — | Explicitly closes the current learning-path block |
 | `@skill variant="N"` | Next `@skill` or `@end-skill` | Starts a skill card; content becomes card body |
@@ -49,7 +55,7 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 
 **Variant values** — `variant="1"` through `variant="5"` select different clip-path shapes for the card tab.
 
-**Optional skill attributes** — `id="slug"` sets an anchor on the card wrapper. `{.allow-split}` permits a page split on tall cards (prefer `@continue` for long abilities).
+**Optional skill attributes** — `id="slug"` sets an anchor on the card wrapper. For long abilities, use `@continue`.
 
 **Example — skill card:**
 
@@ -94,7 +100,7 @@ Triple-colon fences wrap content in a styled `<div>`. The word after `:::` sets 
 |-----------|--------|
 | `:::two-column` | Two equal CSS columns with column rule |
 | `:::three-column` | Three narrow columns — best for short reference entries |
-| `:::sidebar` | Right-floated aside at 38% width |
+| `@sidebar` | Right-floated aside at 38% width |
 | `:::callout` | Styled information panel with labeled type |
 | `:::pull-quote` | Large centered excerpt with decorative rules — **deprecated:** use `> [!PULLQUOTE]` instead |
 | `:::wrapper {.class}` | Generic wrapper — applies any CSS class |
@@ -106,9 +112,9 @@ Left column content.
 Right column content.
 :::
 
-:::sidebar
+@sidebar
 **Sidebar note.** Supplementary content that doesn't interrupt the body flow.
-:::
+@end-sidebar
 
 :::callout
 <span class="callout-label">Note</span>

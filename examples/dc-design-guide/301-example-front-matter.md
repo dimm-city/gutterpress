@@ -20,7 +20,7 @@ This section shows how the Table of Contents, Credits, and Introduction pages lo
 Twelve chapters of dreams, dirt, and what bites back. Read them in any order — the city doesn't care where you start.
 :::
 
-::: wrapper {.dc-toc}
+:::wrapper {.dc-toc}
 
 1. **01** &nbsp; [Who Do You Dream to Be?](#chapter-01) — Citizen file, vibe, origins, ideals, flaws.
 2. **02** &nbsp; What Do You Dream of Doing? — How abilities work. Choose a specialty.
@@ -67,9 +67,9 @@ Don was a player in our 2E AD&D group throughout our youth and was a dear friend
 
 ## Introduction Page
 
-**Page template** — `--- {page .page-intro .intro .chapter-00}` — `page-intro` applies the narrative intro layout. The opening quote is authored as `> [!PULLQUOTE]` and renders as the large pull-quote band. The full-column fiction block follows with inline art. Image replaced with design guide placeholder. See [Components](#ch-components) for pull-quote authoring and [Field Guide Components](#ch-fg-components) for the intro prose style.
+**Page template** — `@page .page-intro .intro .chapter-00` — `page-intro` applies the narrative intro layout. The opening quote is authored as `> [!PULLQUOTE]` and renders as the large pull-quote band. The full-column fiction block follows with inline art. Image replaced with design guide placeholder. See [Components](#ch-components) for pull-quote authoring and [Field Guide Components](#ch-fg-components) for the intro prose style.
 
---- {page .page-intro .intro .chapter-00}
+@page .page-intro .intro .chapter-00
 
 # Introduction {.dc-chevron}
 

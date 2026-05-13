@@ -10,11 +10,11 @@ This section shows how gear, aug cards, and cybernetics pages look in the actual
 
 ## Useful Items Page — Aug Card Grid {.pmd-break-before}
 
-**Page template** — `@page .chapter-start .useful-items .chapter-05` — chapter-start layout for the gear chapter opener. The card grid uses `:::: wrapper {class="grid"}` containing multiple `::: aug` containers. Each `.aug` block renders as a bordered card with the item name as an H4 heading and prose description below. No macros — this is pure markdown-it-attrs container syntax. See [Field Guide Components](#ch-fg-components) for the `.aug` card spec and [Layout](#ch-layout) for the grid system.
+**Page template** — `@page .chapter-start .useful-items .chapter-05` — chapter-start layout for the gear chapter opener. The card grid still uses the legacy `.grid` / `.aug` wrapper pattern from the live field-guide source. It remains documented here as a migration target, not a new canonical form. See [Field Guide Components](#ch-fg-components) for the `.aug` card spec and [Layout](#ch-layout) for the grid system.
 
 **Card anatomy** — The `.aug` card has two zones: a crimson header strip (h4 text, all-caps, `--font-display`) and a cream body (`--paper-cream`) with `--font-body` prose. The card border is `--border-hairline` on three sides with a `--crimson` left accent. Height is content-driven — cards in the same grid row do not equalise height, so card order matters for visual balance.
 
-**Grid behaviour** — The `:::: wrapper {class="grid"}` sets `display: grid` with `auto-fill` columns at a minimum of `2.5in`. On a standard 8.5×11 page with margins, this yields 2 columns. Cards that overflow a single page break to the next — the grid does not guarantee column alignment across page boundaries. For long items, consider splitting them into separate grids per page rather than one continuous grid.
+**Grid behaviour** — The legacy `:::: wrapper {.grid}` sets `display: grid` with `auto-fill` columns at a minimum of `2.5in`. On a standard 8.5×11 page with margins, this yields 2 columns. Cards that overflow a single page break to the next — the grid does not guarantee column alignment across page boundaries. For long items, consider splitting them into separate grids per page rather than one continuous grid.
 
 **Authoring note** — The `@page` directive on gear pages drives the chapter-start banner at top. The `.chapter-05` class provides the chapter-specific background texture and colour accents defined in `dc-brand.css`. All images on this page use the design guide placeholder — in production, each card may carry a small inline image using `.aug > img` targeting.
 
@@ -22,7 +22,7 @@ This section shows how gear, aug cards, and cybernetics pages look in the actual
 
 ### Useful Items
 
-:::: wrapper {class="grid"}
+:::: wrapper {.grid}
 
 ::: aug
 
@@ -80,7 +80,7 @@ Life on the streets is hard, but it can be 100% easier with the right gear. The 
 
 **Page template** — `@page .useful-items .second-page .chapter-05` — continues the gear chapter on a new page using the same `.aug` card format. Individual items without a surrounding grid render as single full-width cards.
 
-**Single-card vs. grid** — When a page contains only one or two items, omit the `:::: wrapper {class="grid"}` wrapper and write each `::: aug` directly. Without the grid wrapper, each card stretches to full column width — better suited to items with long descriptions that would be cramped at half-width. This page deliberately mixes full-width cards with a bottom-anchored image placeholder to demonstrate how art placement interacts with card flow.
+**Single-card vs. grid** — When a page contains only one or two items, omit the `:::: wrapper {.grid}` wrapper and write each `::: aug` directly. Without the grid wrapper, each card stretches to full column width — better suited to items with long descriptions that would be cramped at half-width. This page deliberately mixes full-width cards with a bottom-anchored image placeholder to demonstrate how art placement interacts with card flow.
 
 **Image placement** — The `![medkit](img/placeholder-plate.png){.bottom-center .art-medkit}` at the bottom demonstrates `p.img-wrapper` positioning. The `.bottom-center` class anchors the image to the page bottom using absolute positioning defined in the `@page .useful-items` rule; `.art-medkit` is a one-off class for per-page size tuning. This is the intended pattern for decorative chapter art — not floated inline, but anchored at the page level via `@page .my-class` CSS.
 

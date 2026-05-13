@@ -36,7 +36,7 @@ Each chapter in Part 2 covers one type of page. The annotation above the rendere
 
 Each example chapter follows the same structure:
 
-**Annotation paragraph** — a short paragraph naming the active page template, the CSS classes applied to `@page` or `--- {page ...}`, and any macro directives (`@specialty`, `@learning-path`, `@skill`, `@chapter-opener`). Cross-references point to the spec chapters for token details.
+**Annotation paragraph** — a short paragraph naming the active page template, the CSS classes applied to `@page`, and any macro directives (`@specialty`, `@learning-path`, `@skill`, `@chapter-opener`). Cross-references point to the spec chapters for token details.
 
 **Live rendered block** — the actual Field Guide markdown that follows the annotation. Images reference `img/placeholder-plate.png` in place of the book's original artwork paths (which don't resolve in the design guide context). All class attributes, macros, and prose are verbatim from the source.
 

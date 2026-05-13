@@ -22,8 +22,8 @@ source files:
 
 **Note on `.gear-callout`:** the short form adds `min-height: 3.5in` which
 `.dc-gear-callout` intentionally omits. After renaming, verify the gear callout
-pages still render at the intended height — a `style="min-height:3.5in"` inline
-override may be needed for the specific full-column usage in chapter-01.
+pages still render at the intended height — if chapter-01 needs extra height,
+add a book-specific CSS rule instead of an inline style.
 
 Files to update: `chapter-01.md` (vibe, origin, human, gear), `chapter-05.md`
 (gear).
@@ -34,7 +34,8 @@ Files to update: `chapter-01.md` (vibe, origin, human, gear), `chapter-05.md`
 
 `:::: ability` and `:::: ability-continued` are the pre-plugin authoring
 pattern. They produce `.ability` divs with **no active CSS** in the current
-stack. Every remaining use must migrate to the plugin macros.
+stack. Every remaining use must migrate to the plugin macros; prefer
+`@continue` over the legacy continuation block.
 
 ### `:::: ability` → `@skill`
 
@@ -96,10 +97,10 @@ Use `@break` or a following `@page` marker to close the region when needed.
 
 ---
 
-## 5. Glossary entries — use `dc-definition-block`
+## 5. Glossary entries — use `@definition`
 
 The `.terms .item` pattern produces a glossary entry with a bold term and
-definition paragraph. The design guide equivalent is `dc-definition-block`.
+definition paragraph. The design guide equivalent is `@definition`.
 
 Old pattern (chapter-04, chapter-05 glossary pages):
 ```markdown
@@ -110,9 +111,9 @@ Old pattern (chapter-04, chapter-05 glossary pages):
 
 New pattern:
 ```markdown
-::: wrapper {.dc-definition-block}
+@definition
 **Term:** Definition text here.
-:::
+@end-definition
 ```
 
 The `.item.violet` modifier has no CSS backing — it is currently invisible. If
@@ -130,7 +131,7 @@ to `dc-brand.css` (tracked in design guide CSS work).
 
 | Find | Replace after CSS lands |
 |---|---|
-| `![img](path){.bottom-center}` | `![img](path){.dc-art-bottom}` |
+| `![img](../img/placeholder-plate.png){.bottom-center}` | `![img](../img/placeholder-plate.png){.dc-art-bottom}` |
 | `::: wrapper {.bottom-center}` | `::: wrapper {.dc-art-bottom}` |
 
 Files: `chapter-01.md`, `chapter-03.md`, `chapter-05.md`.

@@ -10,9 +10,9 @@ This section shows how Dream Mastery and NPC pages look in the actual Dimm City 
 
 ## Dream Mastery Chapter Page
 
-**Page template** — `--- {page .chapter-04}` — standard body page with the chapter-04 identifier. The DM chapter uses long-form prose with bullet-list guidance blocks. The nested structure (Core Elements → Listen + Respond → Focus on the Fantascape) uses standard H2/H3/H4 hierarchy. See [Typography](#ch-typography) for heading levels and [Components](#ch-components) for list and prose styling.
+**Page template** — `@page .chapter-04` — standard body page with the chapter-04 identifier. The DM chapter uses long-form prose with bullet-list guidance blocks. The nested structure (Core Elements → Listen + Respond → Focus on the Fantascape) uses standard H2/H3/H4 hierarchy. See [Typography](#ch-typography) for heading levels and [Components](#ch-components) for list and prose styling.
 
---- {page .chapter-04}
+@page .chapter-04
 
 ## Dream Mastery
 

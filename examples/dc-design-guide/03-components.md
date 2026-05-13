@@ -42,7 +42,7 @@ of them is still original.
 :::
 ```
 
-> **Legacy path:** `:::wrapper {.dc-intro}` … `:::` produces the same `.dc-intro` class and is used in some older example pages. Prefer `:::lede` — it is the canonical shorthand and the form to use in new content.
+> **Canonical path:** `:::lede` … `:::` is the preferred shorthand for intro text. Older documents may still mention `.dc-intro`, but new authoring should use `:::lede`.
 
 ---
 
@@ -80,7 +80,7 @@ Large-format excerpt with accent rules above and below. Use sparingly — one pe
 > Field manual, second draft
 ```
 
-> **Legacy path:** `:::pull-quote` … `:::` is an older container form that produces the same output. Prefer the GFM alert syntax above for consistency with other callout types.
+> **Legacy path:** `:::pull-quote` … `:::` is the older container form. Prefer `> [!PULLQUOTE]` for consistency with other callout types.
 
 ---
 
@@ -263,14 +263,14 @@ Definition list of game terms rendered as a styled block. **Syntax** — raw HTM
 
 ## Numbered Procedure
 
-Zero-padded ordered list for sequential rules. **Syntax** — `:::procedure` … `:::` with a standard ordered list inside
+Zero-padded ordered list for sequential rules. **Syntax** — `@procedure` … `@end-procedure` with a standard ordered list inside
 
 ```markdown
-:::procedure
+@procedure
 1. **Pick a Spec.** Augmerc, Proxy, Streetwarden — one of eight.
 2. **Spend 6 Spec Points.** Distribute across paths.
 3. **Take a Signature Augment.** Free at character creation.
-:::
+@end-procedure
 ```
 
 ---
@@ -314,7 +314,7 @@ Five-rung d20 result table for all rolls. Each row is color-coded by result seve
 | Visit Callout | `> [!VISIT]` blockquote alert | `.dc-visit-callout` |
 | Dream Master Note | `> [!DM]` blockquote alert | `.dc-dm-note` |
 | Glossary / Term List | Raw HTML `.dc-terms` wrapper | `.dc-terms` |
-| Numbered Procedure | `:::procedure` … `:::` ordered list | `.dc-steps` |
+| Numbered Procedure | `@procedure` … `@end-procedure` ordered list | `.dc-steps` |
 | Outcome Ladder | `@outcome` … `@end-outcome` macro | `.dc-outcomes`, `.dc-outcome-row` |
 | Roll Lucid badge | auto via `@outcome` Crit row | `.dc-roll-lucid` |
 | Roll Surreal badge | auto via `@outcome` Catastrophe row | `.dc-roll-surreal` |

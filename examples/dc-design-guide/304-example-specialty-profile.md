@@ -10,11 +10,11 @@ This section shows how a full specialty profile looks in the actual Dimm City Fi
 
 ## Specialty Intro Block
 
-**Macros** — `@specialty {.augmerc}` wraps the entire specialty section and applies specialty-scoped CSS. The `.specialty-intro` wrapper holds the name, definition, and Spec Tweak. The `.specialty-art` wrapper holds the character illustration. `@learning-path` injects the path header and path sequence list. Each ability uses `@skill variant="2" {.allow-split}`. See [DC Components](#ch-dc-components) for the full `@specialty` / `@learning-path` / `@skill` macro reference.
+**Macros** — `@specialty {.augmerc}` wraps the entire specialty section and applies specialty-scoped CSS. The `.specialty-intro` wrapper holds the name, definition, and Spec Tweak. The `.specialty-art` wrapper holds the character illustration. `@learning-path` injects the path header and path sequence list. Long abilities should use `@continue` inside `@skill`. See [DC Components](#ch-dc-components) for the full `@specialty` / `@learning-path` / `@skill` macro reference.
 
 @specialty {.augmerc}
 
-::: wrapper {.specialty-intro}
+:::wrapper {.specialty-intro}
 
 ## Augmerc
 
@@ -38,7 +38,7 @@ They are simply part of what makes an Augmerc dangerous.
 
 :::
 
-::: wrapper {.specialty-art}
+:::wrapper {.specialty-art}
 
 ![Augmerc](img/placeholder-plate.png){.augmerc}
 
@@ -48,7 +48,7 @@ They are simply part of what makes an Augmerc dangerous.
 
 ## Learning Path: Biting Distance
 
-**Macro** — `@learning-path` renders the path header banner and the ability sequence list. The Signature Augment block follows the path list as prose. Each `@skill variant="2" {.allow-split}` card renders a titled ability card with AP cost options and outcome tables. See [DC Components](#ch-dc-components) for full `@learning-path` and `@skill` syntax.
+**Macro** — `@learning-path` renders the path header banner and the ability sequence list. The Signature Augment block follows the path list as prose. Each `@skill variant="2"` card renders a titled ability card with AP cost options and outcome tables. Use `@continue` when a card needs to flow onto the next page. See [DC Components](#ch-dc-components) for full `@learning-path` and `@skill` syntax.
 
 @learning-path
 
@@ -66,7 +66,7 @@ They are simply part of what makes an Augmerc dangerous.
 
 When creatures crowd into reach, you can trigger the system to bloom outward in a form you choose upon implant: blades, spikes, studs, or writhing polyalloy pseudopods. Spending an action doing nothing but defending, the rig braces and answers every swing, letting you resist 2 damage from all melee attacks and dealing 1 damage to all creatures in reach at the start of your turn.
 
-@skill variant="2" {.allow-split}
+@skill variant="2"
 
 #### Punishing Counter
 
@@ -80,7 +80,7 @@ When an enemy falters, you may trigger one of the following counters:
 
 Openings are invitations to take a chunk out 'em.
 
-@skill variant="2" {.allow-split}
+@skill variant="2"
 
 #### Rage Hit
 
@@ -103,7 +103,7 @@ Until the start of your next turn, any enemy that starts their turn in reach of 
 
 Full send or full regret.
 
-@skill variant="2" {.allow-split}
+@skill variant="2"
 
 #### Dirty Work
 

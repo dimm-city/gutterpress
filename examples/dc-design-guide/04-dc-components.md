@@ -42,13 +42,13 @@ The `@skill` macro generates the full card HTML automatically. Use `variant="1"`
 
 **Tier badge** — Inside `@learning-path` the tab tier (`AUG1.1`, `AUG1.2`, …) is auto-generated. For standalone cards or custom labels, append ` | Badge` to the H4.
 
-**Optional attributes** — `id="slug"` sets the card's `name` for anchor links. `{.allow-split}` permits Paged.js to split a tall card across a page break (prefer `@continue` instead).
+**Optional attributes** — `id="slug"` sets the card's `name` for anchor links. For long abilities, use `@continue`.
 
 ---
 
 ### Skill Card Continuation
 
-When an ability is too long for one card, use `@continue` inside the active `@skill` block. It closes the current card and opens a new continuation card with the same variant and a `▸` suffix on the tab title. Prefer `@continue` over `.allow-split` — the continuation gets its own proper tab and frame.
+When an ability is too long for one card, use `@continue` inside the active `@skill` block. It closes the current card and opens a new continuation card with the same variant and a `▸` suffix on the tab title.
 
 `@continue` must appear between `@skill` and `@end-skill`. The next `@skill`, `@end-skill`, or end of file closes the continuation automatically.
 

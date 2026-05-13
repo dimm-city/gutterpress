@@ -27,11 +27,11 @@ Signal Jammer (single-use)
 1–3 sentence italic callout: warm-cream background + red left border. **Use:** NPC type summaries, item category descriptions, ability class definitions. (Distinct from `dc-note` — no heading; `dc-pullquote` — decorative only.)
 
 ```markdown
-::: wrapper {.dc-definition-block}
+@definition
 Augmercs are muscle for hire. Street enforcers, deniable contractors,
 close-combat specialists — the difference is gear, grafts, and how much
 of them is still original flesh.
-:::
+@end-definition
 ```
 
 ---
@@ -59,7 +59,7 @@ lands off the table, reroll it.
 H3 item name (crimson display font) + italic tagline + mechanics prose. Entries separated by `---`. Tagline paragraph must be purely italic (`*...*`); use `.dc-gear-entry-tagline` if you need the style without that constraint. **Use:** appendices, gear chapters, weapon lists.
 
 ```markdown
-::: wrapper {.dc-gear-entry}
+:::wrapper {.dc-gear-entry}
 ### Ripper Blades Mk.II
 
 *Melee. Cyberware implant. Pair.*
@@ -71,7 +71,7 @@ Requires Cybersurgeon installation.
 
 ---
 
-::: wrapper {.dc-gear-entry}
+:::wrapper {.dc-gear-entry}
 ### Ghost-Wire Whip
 
 *Melee. Monofilament. Reach 2.*
@@ -100,10 +100,10 @@ concealable under a jacket. Cuts non-powered barriers on a hit of 10+.
 
 ## Callout Class Names — Field Guide vs Design Guide
 
-Always use `dc-` prefixed forms (`dc-vibe-callout`, `dc-origin-callout`, `dc-human-callout`, `dc-gear-callout`) — documented fully in `03-components.md`. Short forms (`vibe-callout` etc.) exist in `shared.css` but have slightly different padding. **Key difference:** `.gear-callout` applies `min-height: 3.5in` unconditionally; `.dc-gear-callout` does not — add inline style when needed:
+Always use `dc-` prefixed forms (`dc-vibe-callout`, `dc-origin-callout`, `dc-human-callout`, `dc-gear-callout`) — documented fully in `03-components.md`. Short forms (`vibe-callout` etc.) exist in `shared.css` but have slightly different padding. **Key difference:** `.gear-callout` applies `min-height: 3.5in` unconditionally; `.dc-gear-callout` does not — if the full-height treatment is needed, add a book-specific CSS rule rather than inline style.
 
 ```markdown
-::: wrapper {.dc-gear-callout style="min-height:3.5in"}
+:::wrapper {.dc-gear-callout}
 :::
 ```
 
@@ -114,11 +114,13 @@ Always use `dc-` prefixed forms (`dc-vibe-callout`, `dc-origin-callout`, `dc-hum
 | Component | Authoring method | CSS class |
 |---|---|---|
 | Dashed Rule Divider | `---` (standard markdown) | `dc-dashed-rule` (auto) |
-| Definition Block | `::: wrapper {.dc-definition-block}` | `dc-definition-block` |
+| Definition Block | `@definition ... @end-definition` | `dc-definition-block` |
 | Sidebar Box | `@sidebar-box ... @end-sidebar-box` | `dc-sidebar-box` |
-| Gear Entry | `::: wrapper {.dc-gear-entry}` | `dc-gear-entry` |
+| Sidebar | `@sidebar ... @end-sidebar` | `dc-sidebar` |
+| Procedure | `@procedure ... @end-procedure` | `dc-steps` |
+| Gear Entry | `:::wrapper {.dc-gear-entry}` | `dc-gear-entry` |
 | Colophon Block | Raw HTML `<dl class="dc-colophon">` | `dc-colophon` |
-| Art Bottom Pin | `![img](path){.dc-art-bottom}` or `::: wrapper {.dc-art-bottom}` | `dc-art-bottom` |
+| Art Bottom Pin | `![img](img/placeholder-plate.png){.dc-art-bottom}` or `:::wrapper {.dc-art-bottom}` | `dc-art-bottom` |
 | Legacy note: Ability Container | Use `@skill` instead — `:::: ability` has no active CSS | — |
 
 ---

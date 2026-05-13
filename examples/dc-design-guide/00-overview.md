@@ -33,22 +33,23 @@ All four are imported in order by `css/index.css`. The book-layer (`field-guide/
 
 ## How Components Work
 
-Most DC components are raw HTML blocks authored directly in markdown. A few use markdown-it-container `:::` shorthand. The Dimm City print-md plugin adds `@skill`, `@learning-path`, and `@specialty` block markers for structured game content.
+Most DC components are authored with markdown containers or plugin markers. Raw HTML is reserved for structures that do not have a markdown/plugin form yet, such as specific stat-block or colophon markup. The Dimm City print-md plugin adds `@skill`, `@learning-path`, `@specialty`, `@sidebar`, `@procedure`, and related block markers for structured game content.
 
 ```markdown
-<!-- 1. Raw HTML block — most DC components -->
-<div class="dc-callout">
-  <strong>Reminder:</strong> You can always spend 1 AP to delay.
-</div>
+<!-- 1. GFM alert / markdown component -->
+> [!NOTE]
+> You can always spend 1 AP to delay.
 
 <!-- 2. markdown-it-container shorthand -->
-::: dc-note
-This is a note rendered via the container plugin.
+:::lede
+This is a lede rendered via the container plugin.
 :::
 
 <!-- 3. Dimm City plugin markers -->
-@skill Overclock {.dc-ability}
-Cost: 2 AP — Boost your next action die by one step.
+@procedure
+1. Spend 2 AP.
+2. Boost your next action die by one step.
+@end-procedure
 ```
 
 ## Customizing the Brand

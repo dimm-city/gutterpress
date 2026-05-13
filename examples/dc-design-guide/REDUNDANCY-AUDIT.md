@@ -85,7 +85,7 @@ Normalized 14 occurrences across chapter-01.md, chapter-03.md, chapter-05.md. Al
 `02-palette.md` updated to show correct value `#d3cec6`.
 
 **`dc-skill-card-cont` — plugin emits class with no CSS rule (HIGH)** ✅ FIXED 2026-05-12
-The `@continue` macro is actively used (2 occurrences in field-guide `chapter-02 3 Streetwarden.md`) and is the documented preferred pattern over `.allow-split`. CSS rules added to `dc-brand.css`: `.dc-skill-card-cont { margin-top: 0 }` (continuation card flows flush after the preceding card) and `.dc-card-tab-cont { border-top-style: dashed; border-top-color: var(--hud-blue) }` (visual cue alongside the plugin-inserted ▸ suffix).
+The `@continue` macro is actively used (2 occurrences in field-guide `chapter-02 3 Streetwarden.md`) and is the preferred pattern. CSS rules added to `dc-brand.css`: `.dc-skill-card-cont { margin-top: 0 }` (continuation card flows flush after the preceding card) and `.dc-card-tab-cont { border-top-style: dashed; border-top-color: var(--hud-blue) }` (visual cue alongside the plugin-inserted ▸ suffix).
 
 **`dc-card-tab-cont` — plugin emits class with no CSS rule (HIGH)** ✅ FIXED 2026-05-12
 Resolved alongside `dc-skill-card-cont` above — see that entry for details.
@@ -191,15 +191,15 @@ The project is moving away from the `:::wrapper {.class}` and `:::container {.cl
 
 Macros that already exist (`@skill`, `@learning-path`, `@specialty`, `@outcome`, `@chapter-opener`, `@chapter`, `@page`, `@section`, `@spread`, `@break`) are NOT listed here — they are covered or planned elsewhere.
 
-- **`:::sidebar` / `:::wrapper {.dc-sidebar}`** → needs `@sidebar` macro
+- **`:::sidebar` / `:::wrapper {.dc-sidebar}`** → migrate to `@sidebar`
 - **`:::lede` / `:::wrapper {.dc-intro}`** → needs `@lede` macro (or `@intro`); `:::lede` is the current canonical form but should eventually become `@lede`
 - **`:::pull-quote` / `:::wrapper {.dc-pullquote}`** → migrate to `> [!PULLQUOTE]` GFM alert
-- **`:::procedure`** → needs `@procedure` macro
+- **`:::procedure`** → migrate to `@procedure`
 - **`:::item`** → needs scoping decision (currently used inside `@learning-path`, `:::two-column`, etc.); may become context-aware or require a namespaced form
 - **`:::two-column` / `:::: two-column`** → migrate to `@section` with a two-column class modifier
 - **`:::three-column`** → needs `@three-column` macro
-- **`:::wrapper {.dc-definition-block}`** → needs `@definition` macro
-- **`:::wrapper {.dc-sidebar-box}`** → needs `@sidebar-box` macro
+- **`:::wrapper {.dc-definition-block}`** → migrate to `@definition`
+- **`:::wrapper {.dc-sidebar-box}`** → migrate to `@sidebar-box`
 - **`:::wrapper {.dc-toc}`** → the TOC is auto-generated; this wrapper may stay as a structural container or be absorbed into the chapter template; decision deferred
 - **Generic `:::wrapper {.arbitrary-class}`** → should become `@wrap .class` or a dedicated macro per class; the open-ended wrapper pattern is an escape hatch, not an authoring primitive
 
@@ -345,15 +345,15 @@ Same issue: H1 and banner heading tokens are nearly identical. If the banner hea
 | `@section` macro | 4b — PLANNED MIGRATION | HIGH | Currently unused in field guide; field guide to adopt as macro usage expands |
 | `@spread` macro | 4b — PLANNED MIGRATION | HIGH | Currently unused in field guide; field guide to adopt as macro usage expands |
 | `@break` macro | 4b — PLANNED MIGRATION | MEDIUM | Field guide uses `---` today; `@break` is the intended replacement |
-| `:::sidebar` / `:::wrapper {.dc-sidebar}` | 4c — MIGRATION TARGET | MEDIUM | Needs `@sidebar` macro |
+| `:::sidebar` / `:::wrapper {.dc-sidebar}` | 4c — MIGRATION TARGET | MEDIUM | Replace with `@sidebar` |
 | `:::lede` / `:::wrapper {.dc-intro}` | 4c — MIGRATION TARGET | MEDIUM | Needs `@lede` or `@intro` macro |
 | `:::pull-quote` / `:::wrapper {.dc-pullquote}` | 4c — MIGRATION TARGET | MEDIUM | Replace with `> [!PULLQUOTE]` |
-| `:::procedure` | 4c — MIGRATION TARGET | MEDIUM | Needs `@procedure` macro |
+| `:::procedure` | 4c — MIGRATION TARGET | MEDIUM | Replace with `@procedure` |
 | `:::item` | 4c — MIGRATION TARGET | LOW | Needs scoping decision; used inside multiple parent containers |
 | `:::two-column` / `:::: two-column` | 4c — MIGRATION TARGET | MEDIUM | Replace with `@section` + two-column class modifier |
 | `:::three-column` | 4c — MIGRATION TARGET | LOW | Needs `@three-column` macro |
-| `:::wrapper {.dc-definition-block}` | 4c — MIGRATION TARGET | MEDIUM | Needs `@definition` macro |
-| `:::wrapper {.dc-sidebar-box}` | 4c — MIGRATION TARGET | LOW | Needs `@sidebar-box` macro |
+| `:::wrapper {.dc-definition-block}` | 4c — MIGRATION TARGET | MEDIUM | Replace with `@definition` |
+| `:::wrapper {.dc-sidebar-box}` | 4c — MIGRATION TARGET | LOW | Replace with `@sidebar-box` |
 | `:::wrapper {.dc-toc}` | 4c — MIGRATION TARGET | LOW | TOC is auto-generated; wrapper fate TBD |
 | Generic `:::wrapper {.arbitrary-class}` | 4c — MIGRATION TARGET | LOW | Should become `@wrap .class` or dedicated macro per class |
 | Six two-column layout mechanisms | 5 — RATIONALIZE | MEDIUM | Audit for true visual differences |

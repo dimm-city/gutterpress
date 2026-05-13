@@ -114,19 +114,23 @@ markdown source during the build step and emits structured HTML.
 |---|---|---|
 | `@chapter #id .class` | `<div class="chapter ...">` | Chapter wrapper with CSS class and data attributes |
 | `@page .class` | `<div class="page ...">` | Named page break with CSS classes |
-| `@section .class` | `<div class="region ...">` | Grouped content region |
-| `@spread .class` | `<div class="spread ...">` | Two-page spread container |
+| `@section #id .class` | `<div class="region ...">` | Grouped content region |
+| `@spread #id .class` | `<div class="spread ...">` | Two-page spread container |
 | `@break` | `<div class="md-break">` | Hard page break |
 | `@specialty {.class}` | Specialty section wrapper | Chapter-02 specialty opener and skill card sequence |
+| `@sidebar` | Sidebar callout | Floating reference/sidebar content |
+| `@sidebar-box` | Sidebar box callout | Cream boxed aside with heading + dashed divider |
 | `@learning-path` | Learning path banner + card group | Groups `@skill` cards under a spray-banner header |
 | `@skill variant="N"` | Skill card (clip-path variant 1–5) | Individual skill card with tab, flavor, and abilities |
+| `@procedure` | Numbered procedure block | Ordered list rendered as `dc-steps` |
+| `@definition` | Definition callout | Italic definition block with left rule |
 | `@continue` | Card continuation marker | Splits an oversized skill card across a page break |
 | `@outcome` | Five-rung d20 outcome ladder | Crit / Hit / Mixed / Miss / Catastrophe table |
 | `@chapter-opener C.N` | Chapter number badge | Opener spread chapter number for non-specialty chapters |
 
-### Planned macros (triple-colon containers to be replaced)
+### Remaining planned migrations
 
-These authoring patterns are the planned canonical replacements for older
+These authoring patterns still have migration work remaining in older
 container-heavy field-guide source:
 
 | Current syntax | Planned macro |
@@ -134,10 +138,8 @@ container-heavy field-guide source:
 | `:::sidebar` | `@sidebar` |
 | `:::lede` | `@lede` |
 | `:::pull-quote` / `:::wrapper {.dc-pullquote}` | `> [!PULLQUOTE]` |
-| `:::procedure` | `@procedure` |
 | `:::wrapper {.two-column...}` / `:::wrapper {.two-column-list}` | `@section .two-column ...` |
-| `:::wrapper {.dc-definition-block}` | `@definition` |
-| `:::wrapper {.dc-sidebar-box}` | `@sidebar-box` |
+| `:::three-column` | `@three-column` |
 
 ### Class naming convention
 

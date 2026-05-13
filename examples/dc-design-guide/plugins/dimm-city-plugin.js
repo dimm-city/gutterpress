@@ -5,12 +5,18 @@
  * Regular markdown content passes through unchanged.
  *
  * MARKERS (support optional key="value" attributes):
+ *   @sidebar            → Start a dc-sidebar wrapper
+ *   @end-sidebar        → End sidebar wrapper
  *   @specialty          → Start a specialty section (auto-closes any prior specialty,
  *                          learning-path, or skill so each chapter-02 file can open
  *                          cleanly without legacy fenced-div containers)
  *   @end-specialty      → Manually end a specialty section
- *   @sidebar-box        → Start a dc-sidebar-box wrapper
- *   @end-sidebar-box    → End sidebar-box wrapper
+  *   @sidebar-box        → Start a dc-sidebar-box wrapper
+  *   @end-sidebar-box    → End sidebar-box wrapper
+ *   @definition         → Start a dc-definition-block wrapper
+ *   @end-definition     → End definition wrapper
+ *   @procedure          → Start a dc-steps procedure wrapper
+ *   @end-procedure      → End procedure wrapper
  *   @learning-path      → Start a learning path section (auto-closes previous sections)
  *   @end-learning-path  → Manually end a learning path section
  *   @skill              → Start skill cards section (auto-closes previous sections)
@@ -549,6 +555,26 @@ function collectOrderedListItems(tokens, startIndex, md) {
   return { items: items, endIndex: i };
 }
 
+function buildAttrs(userAttrs, baseClass) {
+  let attrs = ' class="' + esc(baseClass + (userAttrs['class'] ? ' ' + userAttrs['class'] : '')) + '"';
+  for (const [key, val] of Object.entries(userAttrs)) {
+    if (key !== 'class') {
+      attrs += ' ' + key + '="' + esc(val) + '"';
+    }
+  }
+  return attrs;
+}
+
+function buildProcedureList(items) {
+  let html = '<ol class="dc-steps">\n';
+  items.forEach((itemHtml, idx) => {
+    const stepNo = String(idx + 1).padStart(2, '0');
+    html += '  <li><span class="dc-step-no">' + esc(stepNo) + '</span><span>' + itemHtml + '</span></li>\n';
+  });
+  html += '</ol>\n';
+  return html;
+}
+
 /**
  * Main plugin function - default export for print-md
  */
@@ -575,10 +601,13 @@ export default function dimmCityPlugin(md, options = {}) {
       let inOutcomeBlock = false;
       let outcomeBlockItems = [];
       let outcomeBlockFlush = false;
+      let inSidebar = false;
       let inSidebarBox = false;
+      let inDefinition = false;
+      let inProcedure = false;
       let inClassEntry = false;
-     let classEntryName = '';
-     let classEntryTokens = [];
+      let classEntryName = '';
+      let classEntryTokens = [];
      let learningPathHasTitle = false;
      let inLearningPathShell = false;
      let currentSkillAttrs = {};
@@ -599,9 +628,17 @@ export default function dimmCityPlugin(md, options = {}) {
      // Helper to close all open structures EXCEPT specialty (specialty
      // wraps the entire chapter section and is closed separately).
       function closeAll() {
+        if (inSidebar) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inSidebar = false;
+        }
         if (inSidebarBox) {
           newTokens.push(makeToken('html_block', '</div>\n'));
           inSidebarBox = false;
+        }
+        if (inDefinition) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inDefinition = false;
         }
         if (inSkillCard) {
           newTokens.push(makeToken('html_block', '</div></div></div>\n'));
@@ -611,13 +648,14 @@ export default function dimmCityPlugin(md, options = {}) {
          newTokens.push(makeToken('html_block', '</div>\n'));
          inLearningPathShell = false;
        }
-       if (inLearningPath) {
-         newTokens.push(makeToken('html_block', '</section>\n'));
-         inLearningPath = false;
-       }
-       learningPathHasTitle = false;
-       inSkillMode = false;
-       currentSkillAttrs = {};
+        if (inLearningPath) {
+          newTokens.push(makeToken('html_block', '</section>\n'));
+          inLearningPath = false;
+        }
+        inProcedure = false;
+        learningPathHasTitle = false;
+        inSkillMode = false;
+        currentSkillAttrs = {};
        currentCardCanSplit = false;
        currentLearningPathRef = '';
        currentLearningPathName = '';
@@ -636,6 +674,36 @@ export default function dimmCityPlugin(md, options = {}) {
 
     for (let i = 0; i < tokens.length; i++) {
       const tok = tokens[i];
+
+      // --- @sidebar / @end-sidebar ---
+      const sidebarMarker = parseMarker(tok, tokens, i, '@sidebar');
+      if (sidebarMarker.matched) {
+        if (inSidebar) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inSidebar = false;
+        }
+        if (inSidebarBox) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inSidebarBox = false;
+        }
+        if (inDefinition) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inDefinition = false;
+        }
+        newTokens.push(makeToken('html_block', '<div' + buildAttrs(sidebarMarker.attrs, 'dc-sidebar') + '>\n'));
+        inSidebar = true;
+        i += 2;
+        continue;
+      }
+
+      if (isMarker(tok, tokens, i, '@end-sidebar')) {
+        if (inSidebar) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inSidebar = false;
+        }
+        i += 2;
+        continue;
+      }
 
       // --- @chapter-opener ---
       // Syntax: @chapter-opener C.02
@@ -951,15 +1019,15 @@ export default function dimmCityPlugin(md, options = {}) {
           newTokens.push(makeToken('html_block', '</div>\n'));
           inSidebarBox = false;
         }
-        const userAttrs = sidebarBoxMarker.attrs;
-        let boxClass = 'dc-sidebar-box' + (userAttrs['class'] ? ' ' + userAttrs['class'] : '');
-        let boxAttrs = '';
-        for (const [key, val] of Object.entries(userAttrs)) {
-          if (key !== 'class') {
-            boxAttrs += ' ' + key + '="' + esc(val) + '"';
-          }
+        if (inSidebar) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inSidebar = false;
         }
-        newTokens.push(makeToken('html_block', '<div class="' + boxClass + '"' + boxAttrs + '>\n'));
+        if (inDefinition) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inDefinition = false;
+        }
+        newTokens.push(makeToken('html_block', '<div' + buildAttrs(sidebarBoxMarker.attrs, 'dc-sidebar-box') + '>\n'));
         inSidebarBox = true;
         i += 2;
         continue;
@@ -970,6 +1038,48 @@ export default function dimmCityPlugin(md, options = {}) {
           newTokens.push(makeToken('html_block', '</div>\n'));
           inSidebarBox = false;
         }
+        i += 2;
+        continue;
+      }
+
+      const definitionMarker = parseMarker(tok, tokens, i, '@definition');
+      if (definitionMarker.matched) {
+        if (inDefinition) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inDefinition = false;
+        }
+        if (inSidebar) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inSidebar = false;
+        }
+        if (inSidebarBox) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inSidebarBox = false;
+        }
+        newTokens.push(makeToken('html_block', '<div' + buildAttrs(definitionMarker.attrs, 'dc-definition-block') + '>\n'));
+        inDefinition = true;
+        i += 2;
+        continue;
+      }
+
+      if (isMarker(tok, tokens, i, '@end-definition')) {
+        if (inDefinition) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inDefinition = false;
+        }
+        i += 2;
+        continue;
+      }
+
+      const procedureMarker = parseMarker(tok, tokens, i, '@procedure');
+      if (procedureMarker.matched) {
+        inProcedure = true;
+        i += 2;
+        continue;
+      }
+
+      if (isMarker(tok, tokens, i, '@end-procedure')) {
+        inProcedure = false;
         i += 2;
         continue;
       }
@@ -1334,6 +1444,19 @@ export default function dimmCityPlugin(md, options = {}) {
 
         // Pass through other tokens in skill mode
         newTokens.push(tok);
+        continue;
+      }
+
+      if (inProcedure && tok.type === 'ordered_list_open') {
+        const { items, endIndex } = collectOrderedListItems(tokens, i, md);
+        if (items.length > 0) {
+          newTokens.push(makeToken('html_block', buildProcedureList(items)));
+        }
+        i = endIndex;
+        continue;
+      }
+
+      if (inProcedure && tok.type === 'ordered_list_close') {
         continue;
       }
 

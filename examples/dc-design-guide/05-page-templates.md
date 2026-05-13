@@ -45,10 +45,10 @@ The DC print system uses named page types to control margin geometry, footer chr
 Named pages are declared in the markdown source using the `@page` directive:
 
 ```markdown
-@page chapter-start
+@page .chapter-start
 ```
 
-The longer form `--- {page .page .chapter-start}` (raw HTML fence) also works and is equivalent.
+Legacy `--- {page ...}` fences remain supported for compatibility, but the design guide treats `@page` as the canonical authoring form.
 
 ---
 
@@ -60,12 +60,12 @@ Eleven templates cover every DC Field Guide page type. Use the minimal examples 
 
 ### Chapter Cover
 
-Full-page specialty chapter cover. Footers suppressed. One per specialty chapter. **Page class:** `--- {page .page-chapter-start .chapter-start}` — raw HTML only.
+Full-page specialty chapter cover. Footers suppressed. One per specialty chapter. **Page class:** `@page .page-chapter-start .chapter-start`.
 
 **Components:** `.dc-cover-bg` (full-bleed tint) · `.dc-cover-num` ("— Ch N / Name —") · `.dc-cover-bigword` (H1 display title) · `.dc-cover-strap` (strap line, ≤15 words) · `.dc-cover-body` (1–2 onboarding sentences) · `.dc-cover-meta-row` (3-column PATHS / ABILITIES / PAGES grid)
 
 ```html
---- {page .page-chapter-start .chapter-start}
+@page .page-chapter-start .chapter-start
 
 <div class="dc-cover-page dc-cover-layout">
   <div class="dc-cover-bg"></div>
@@ -87,12 +87,12 @@ Full-page specialty chapter cover. Footers suppressed. One per specialty chapter
 
 ### Chapter Opener
 
-Two-column rules opener for non-specialty chapters. Left: badge + spray banner + fiction. Right: chevron + rules prose + DM callout. Footers suppressed. **Page class:** `--- {page .page-chapter-start .chapter-start}`
+Two-column rules opener for non-specialty chapters. Left: badge + spray banner + fiction. Right: chevron + rules prose + Dream Master callout. Footers suppressed. **Page class:** `@page .page-chapter-start .chapter-start`
 
-**Components:** `@chapter-opener C.N` (badge) · `## Title {.dc-spray}` (banner) · `---{.column-break}` (split) · `# Title {.dc-chevron}` (right-col opener) · `!!! Label` (callout)
+**Components:** `@chapter-opener C.N` (badge) · `## Title {.dc-spray}` (banner) · `---{.column-break}` (split) · `# Title {.dc-chevron}` (right-col opener) · `> [!DM]` (callout)
 
 ```markdown
---- {page .page-chapter-start .chapter-start}
+@page .page-chapter-start .chapter-start
 
 @chapter-opener C.01
 
@@ -107,8 +107,8 @@ Continue fiction until the column is comfortably full.
 
 Rules prose fills the right column.
 
-!!! Dream Master
-Facilitator guidance goes here. Indented lines are the callout body.
+> [!DM]
+> Facilitator guidance goes here.
 ```
 
 ---
@@ -117,12 +117,14 @@ Facilitator guidance goes here. Indented lines are the callout body.
 
 Two-page spread: left page has chevron H1 + prose + spec-tweak H3 + class tag chips; right page is full-bleed art. Always footer-free on a visual-left page.
 
-**Page classes:** left: `--- {page .page-chapter-start .chapter-start}` · right: `--- {page .full-page}`
+**Page classes:** left: `@page .page-chapter-start .chapter-start` · right: `@page .full-page`
 
 **Components:** `# Name {.dc-chevron}` · `### Spec Tweak {.dc-spec-tweak}` · `<span class="dc-classtag [specialty]">` · `.specialty-art` wrapper
 
 ```markdown
---- {page .page-chapter-start .chapter-start}
+@spread .specialty-opener
+
+@page .page-chapter-start .chapter-start
 
 # Specialty Name {.dc-chevron}
 
@@ -135,23 +137,23 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 
 <p><span class="dc-classtag augmerc"><span class="dc-classtag-dot"></span>Specialty Name</span></p>
 
---- {page .full-page}
+@page .full-page
 
-<div class="specialty-art">
+:::wrapper {.specialty-art}
 
 ![Character art](img/specialty-plate.png)
 
-</div>
+@break
 ```
 
-**Markdown `:::wrapper` equivalents** — all four `<div>` wrappers can use `:::wrapper` syntax:
+**Markdown `@spread` / `:::wrapper` equivalents** — the specialty grid now uses `@spread` for the spread wrapper, while the card items remain `:::wrapper` blocks:
 
 | Shorthand | Purpose |
 |-----------|---------|
-| `::: wrapper {.specialty-intro}` | Intro panel — prose and class tag chips |
-| `::: wrapper {.specialty-art}` | Full-bleed art plate (right page) |
-| `::: wrapper {.specialty-spread}` | Specialty-card grid container |
-| `::: wrapper {class="specialty-card augmerc"}` | Individual card — name is a layout hook only, not a palette modifier |
+| `:::lede` | Intro panel — prose and class tag chips |
+| `:::wrapper {.specialty-art}` | Full-bleed art plate (right page) |
+| `@spread .specialty-spread` | Specialty-card grid container |
+| `:::wrapper {.specialty-card .augmerc}` | Individual card — name is a layout hook only, not a palette modifier |
 
 ---
 
@@ -186,20 +188,20 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 
 ### Choose Specialty Page
 
-2-column auto-fill catalog page. Each `.specialty-card` has `break-inside: avoid`; `.specialty-spread` spans all columns. Use immediately before individual specialty opener spreads. **Page class:** `--- {page .page-ability-catalog .choose-specialty}`
+2-column auto-fill catalog page. Each `.specialty-card` has `break-inside: avoid`; `.specialty-spread` spans all columns. Use immediately before individual specialty opener spreads. **Page class:** `@page .page-ability-catalog .choose-specialty`
 
-**Components:** `.page-ability-catalog` (layout) · `.choose-specialty` (2-col `column-fill: auto`) · `## Intro Heading` · `::: wrapper {.specialty-spread}` (grid) · `::: wrapper {class="specialty-card [name]"}` (one card per specialty)
+**Components:** `.page-ability-catalog` (layout) · `.choose-specialty` (2-col `column-fill: auto`) · `## Intro Heading` · `@spread .specialty-spread` (grid) · `:::wrapper {.specialty-card .name}` (one card per specialty)
 
 ```markdown
---- {page .page-ability-catalog .choose-specialty}
+@page .page-ability-catalog .choose-specialty
 
 ## Choose Your Specialty
 
 Opening sentence orienting the player — what a specialty is and how to pick one.
 
-::: wrapper {.specialty-spread}
+@spread .specialty-spread
 
-::: wrapper {class="specialty-card augmerc"}
+:::wrapper {.specialty-card .augmerc}
 
 ### Augmerc
 
@@ -207,7 +209,7 @@ Brief specialty description — two sentences maximum.
 
 :::
 
-::: wrapper {class="specialty-card secondspec"}
+:::wrapper {.specialty-card .secondspec}
 
 ### Second Specialty
 
@@ -216,6 +218,8 @@ Brief specialty description — two sentences maximum.
 :::
 
 :::
+
+@break
 ```
 
 ---
@@ -224,16 +228,18 @@ Brief specialty description — two sentences maximum.
 
 2-column balanced body page with floating character-file sidebar. Always pair `.page-info-sidebar` (layout shell: balanced columns + sidebar float) with `.citizen-file` (content skin: stat cards, portrait float, "Citizen File" running header) — neither works fully without the other.
 
-**Page class:** `--- {page .page-info-sidebar .citizen-file}`
+**Page class:** `@page .page-info-sidebar .citizen-file`
 
-**Components:** `# Name {.dc-chevron}` · `<div class="dc-intro">` (lede) · `.citizen-at-a-glance` (HP/DEF/AP/TIER row) · `.citizen-sidebar` (portrait + tape label float)
+**Components:** `# Name {.dc-chevron}` · `:::lede` (lede) · `.citizen-at-a-glance` (HP/DEF/AP/TIER row) · `.citizen-sidebar` (portrait + tape label float)
 
 ```markdown
---- {page .page-info-sidebar .citizen-file}
+@page .page-info-sidebar .citizen-file
 
 # Subject Name {.dc-chevron}
 
-<div class="dc-intro">One atmospheric lede — role, threat posture, district affiliation. Under twenty words.</div>
+:::lede
+One atmospheric lede — role, threat posture, district affiliation. Under twenty words.
+:::
 
 <div class="citizen-at-a-glance">
   <div class="citizen-stat"><div class="citizen-stat-key">HP</div><div class="citizen-stat-val">22</div></div>
@@ -256,12 +262,12 @@ Body prose fills the left column. Two to four paragraphs covering background, me
 
 ### Learning Path
 
-Specialty spread with spray banner, sticker chain, signature augment, and `@skill` cards. Reduced margins via `.aug` maximize column width for dense card layout. **Page class:** `--- {page .page-aug .aug}`
+Specialty spread with spray banner, sticker chain, signature augment, and `@skill` cards. Reduced margins via `.aug` maximize column width for dense card layout. **Page class:** `@page .page-aug .aug`
 
 **Components:** `@learning-path specialty="…" index="N"` (opens block) · `### Path Name` (spray banner) · `> Subtitle` (lede) · bullet list (sticker chain) · `<div class="dc-tape">` (divider) · `@skill variant="N" id="…"` / `@end-skill` · `<span class="dc-ap">N AP</span>`
 
 ```markdown
---- {page .page-aug .aug}
+@page .page-aug .aug
 
 @learning-path specialty="augmerc" index="1"
 
@@ -290,12 +296,12 @@ Active | <span class="dc-ap">2 AP</span>
 
 ### Ability Spread
 
-Facing-page spread. Left: spray banner + path subtitle + `@skill` cards. Right: field notes + pull quote + DM callout + tape divider + class tags. **Page class:** `--- {page .page-aug .aug}`
+Facing-page spread. Left: spray banner + path subtitle + `@skill` cards. Right: field notes + pull quote + DM callout + tape divider + class tags. **Page class:** `@page .page-aug .aug`
 
-**Components:** `## Title {.dc-spray}` · `<div class="dc-path-subtitle">` · `@skill` / `@end-skill` · `---{.column-break}` · `### Field Notes {.dc-spec-tweak .no-top}` · `> pull quote` · `!!! Dream Master` · `<div class="dc-tape">` · `<span class="dc-classtag">`
+**Components:** `## Title {.dc-spray}` · `<div class="dc-path-subtitle">` · `@skill` / `@end-skill` · `---{.column-break}` · `### Field Notes {.dc-spec-tweak .no-top}` · `> [!PULLQUOTE]` · `> [!DM]` · `<div class="dc-tape">` · `<span class="dc-classtag">`
 
 ```markdown
---- {page .page-aug .aug}
+@page .page-aug .aug
 
 ## Skill Title {.dc-spray}
 
@@ -314,11 +320,13 @@ Stance | <span class="dc-ap">0 AP</span>–<span class="dc-ap">2 AP</span>
 
 Tactical context and table guidance. Two to three short paragraphs.
 
+> [!PULLQUOTE]
 > Pull quote — one resonant line.
-> — Attribution
+>
+> Attribution
 
-!!! Dream Master
-Facilitator note.
+> [!DM]
+> Facilitator note.
 
 <div class="dc-tape">— § —</div>
 
@@ -329,19 +337,22 @@ Facilitator note.
 
 ### Bestiary Entry
 
-Two-column creature/NPC entry. Left: chevron banner + lede + stat block + encounter notes. Right: aged-paper portrait + tape label + caption + optional stamp. **Page class:** `--- {page .page .chapter-end}`
+Two-column creature/NPC entry. Left: chevron banner + lede + stat block + encounter notes. Right: aged-paper portrait + tape label + caption + optional stamp. **Page class:** `@page .page .chapter-end`
 
-**Components:** `<div style="display:flex;gap:24px;align-items:start;">` (two-col split) · `<h1 class="dc-chevron">` · `<div class="dc-intro">` (≤20 words) · `<div class="dc-stat">` (with `.dc-stat-head` / `.dc-stat-grid` / `.dc-stat-line`) · `<div class="dc-portrait">` · `<div class="dc-tape">` · `<span class="dc-stamp">` (optional)
+**Components:** `:::two-column` (two-col split) · `# Title {.dc-chevron}` · `:::lede` (≤20 words) · `.dc-stat` · `.dc-portrait` · `.dc-tape` · `.dc-stamp` (optional)
 
-```html
---- {page .page .chapter-end}
+```markdown
+@page .page .chapter-end
 
-<div style="display:flex;gap:24px;align-items:start;">
+@section .two-column
 
-<div>
-<h1 class="dc-chevron">Creature Name</h1>
-<div class="dc-intro">One punchy atmospheric line. Under twenty words.</div>
-<p>Flavor prose — appearance, behavior, threat type.</p>
+# Creature Name {.dc-chevron}
+
+:::lede
+One punchy atmospheric line. Under twenty words.
+:::
+
+Flavor prose — appearance, behavior, threat type.
 
 <div class="dc-stat">
   <div class="dc-stat-head">
@@ -357,32 +368,31 @@ Two-column creature/NPC entry. Left: chevron banner + lede + stat block + encoun
   <div class="dc-stat-line"><strong>Signature Attack:</strong> Description.</div>
 </div>
 
-<p><strong>Encounter Notes</strong></p>
-<p>Encounter guidance for the Dream Master.</p>
-</div>
+**Encounter Notes**
 
-<div>
-<div class="dc-portrait">
-  <img src="img/creature.png" alt="Creature Name">
-</div>
+Encounter guidance for the Dream Master.
+
+---{.column-break}
+
+![Creature Name](img/creature.png){.img-float-right}
+
 <div class="dc-tape margin-sm">— Field Plate —</div>
-<div class="dc-prose caption">Caption text.</div>
-<span class="dc-stamp mt">GROUP · 2D4+1</span>
-</div>
 
-</div>
+Caption text.
+
+<span class="dc-stamp mt">GROUP · 2D4+1</span>
 ```
 
 ---
 
 ### Table of Contents
 
-Front-matter TOC: chevron banner + lede + structured rows with `target-counter()`-resolved page numbers. Footers suppressed. Each `<a href="#id">` resolves to its page number at layout time. **Page class:** `--- {page .page .front-matter}`
+Front-matter TOC: chevron banner + lede + structured rows with `target-counter()`-resolved page numbers. Footers suppressed. Each `<a href="#id">` resolves to its page number at layout time. **Page class:** `@page .page .front-matter`
 
 **Components:** `# Contents {.dc-chevron}` · `<div class="dc-intro">` · `<div class="dc-toc">` (container) · `<div class="dc-toc-row">` (one per entry) · `<div class="dc-toc-no">` (zero-padded ch#) · `<div class="dc-toc-title">` (with `<small>` subtitle) · `<div class="dc-toc-page">` (resolved number)
 
 ```html
---- {page .page .front-matter}
+@page .page .front-matter
 
 # Contents {.dc-chevron}
 
@@ -410,38 +420,34 @@ Each `href` must point to an `id` on a heading or `<span id="…">` anchor. Page
 
 Numbered procedure with two-column layout: steps list left, callout + pull quote right. Tape divider introduces closing prose. **Page class:** normal body page, no break marker needed.
 
-**Components:** `# Title {.dc-chevron}` · `<div class="dc-intro">` · `::: wrapper {.dc-procedure-grid}` (flex container) · `<ol class="dc-steps">` (each `<li>` uses `<span class="dc-step-no">` for zero-padded number) · `!!! Sidebar` · `> [!PULLQUOTE]` · `<div class="dc-tape">`
+**Components:** `# Title {.dc-chevron}` · `:::lede` · `@procedure` (ordered list rendered as `<ol class="dc-steps">`) · `@sidebar` · `> [!PULLQUOTE]` · `<div class="dc-tape">`
 
 ```markdown
 # Procedure Title {.dc-chevron}
 
-<div class="dc-intro">One orienting sentence — what this procedure produces and roughly how long it takes.</div>
-
-:::: wrapper {.dc-procedure-grid}
-
-::: wrapper {}
-
-<ol class="dc-steps">
-  <li><span class="dc-step-no">01</span><span><strong>Step One.</strong> Description. One outcome only.</span></li>
-  <li><span class="dc-step-no">02</span><span><strong>Step Two.</strong> Description. Reference step one where relevant.</span></li>
-  <li><span class="dc-step-no">03</span><span><strong>Step Three.</strong> Description. Name any tables or rolls explicitly.</span></li>
-</ol>
-
+:::lede
+One orienting sentence — what this procedure produces and roughly how long it takes.
 :::
 
-::: wrapper {}
+@procedure
 
-!!! Sidebar
+1. **Step One.** Description. One outcome only.
+2. **Step Two.** Description. Reference step one where relevant.
+3. **Step Three.** Description. Name any tables or rolls explicitly.
+
+@end-procedure
+
+@sidebar
+### Sidebar
+
 Guidance for common mistakes or variant rules.
+
+@end-sidebar
 
 > [!PULLQUOTE]
 > A resonant line capturing the procedure's purpose.
 >
 > Source attribution
-
-:::
-
-::::
 
 <div class="dc-tape">— Variant rules begin overleaf —</div>
 
@@ -454,7 +460,7 @@ Optional closing prose for variant rules or table preferences.
 
 Full-column narrative for chapter openers, vignettes, dream intros. Prose + floated art + pull quote only — no structural UI. First-line indent applied by print CSS. **Page class:** normal body page, no break marker needed.
 
-**Components:** `### Scene Label {.dc-spec-tweak .no-top}` (optional) · `*italic opener*` · `![alt](img/file.png){.img-float-right}` (or `.img-float-left`) · `> [!PULLQUOTE]`
+**Components:** `### Scene Label {.dc-spec-tweak .no-top}` (optional) · `*italic opener*` · `![alt](img/placeholder-plate.png){.img-float-right}` (or `.img-float-left`) · `> [!PULLQUOTE]`
 
 ```markdown
 ### Scene Label {.dc-spec-tweak .no-top}
@@ -464,7 +470,7 @@ Full-column narrative for chapter openers, vignettes, dream intros. Prose + floa
 Narrative prose body. Keep paragraphs short and sensory — what the
 operator sees, hears, or smells. Each paragraph earns the next.
 
-![Alt text](img/scene-art.png){.img-float-right}
+![Alt text](img/placeholder-plate.png){.img-float-right}
 
 Continued prose with the floated image wrapping left.
 
@@ -480,7 +486,7 @@ Continued prose with the floated image wrapping left.
 
 Workhorse template for mechanics chapters. H2 banners, H3 sub-headings, body prose, note callouts, tape dividers, roll tables, option tables. **Page class:** normal body page, no break marker needed.
 
-**Components:** `## ◈ Title {.dc-chevron}` (◈ optional) · `### Sub-Heading` · `**MECHANIC NAME**` · `<span class="scream">ROLL THE DIE!</span>` · `<span class="dc-roll-lucid">ROLL LUCID.</span>` · `<span class="ability-name">Name</span>` · `!!! Note` / `!!! Dream Master` · `<div class="dc-tape">— § —</div>` · `@outcome` macro · `::: wrapper {.dc-options-layout}`
+**Components:** `## ◈ Title {.dc-chevron}` (◈ optional) · `### Sub-Heading` · `**MECHANIC NAME**` · `<span class="scream">ROLL THE DIE!</span>` · `<span class="dc-roll-lucid">ROLL LUCID.</span>` · `<span class="ability-name">Name</span>` · `> [!NOTE]` / `> [!DM]` · `<div class="dc-tape">— § —</div>` · `@outcome` macro
 
 ```markdown
 ## ◈ Rule Category {.dc-chevron}
@@ -490,8 +496,8 @@ Workhorse template for mechanics chapters. H2 banners, H3 sub-headings, body pro
 A **MECHANIC TERM** is a defined element of play with a resolution path.
 When an ability says <span class="scream">ROLL THE DIE!</span>, roll d20.
 
-!!! Note
-Inverse condition note — common edge case or clarification.
+> [!NOTE]
+> Inverse condition note — common edge case or clarification.
 
 <div class="dc-tape">— § —</div>
 

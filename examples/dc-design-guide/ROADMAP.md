@@ -52,12 +52,12 @@ The chapter-start example H1 now carries `{.dc-chevron}`, and the shared page-te
 | # | Macro | Replaces | Emits | Complexity | Field guide scope |
 |---|---|---|---|---|---|
 | 1 | `@lede` | `:::lede` (already canonical) | `dc-intro` | Simple | Already converted — macro formalises it |
-| 2 | `@sidebar` | `:::sidebar` / `:::wrapper {.dc-sidebar}` | `dc-sidebar` | Simple | 2 files, 2 sites |
-| 3 | `@sidebar-box` | `:::wrapper {.dc-sidebar-box}` | `dc-sidebar-box` | Simple | 2 files, 2 sites |
-| 4 | `@procedure` | `:::procedure` | `dc-steps > ol` | Medium | Rationalises two-procedure-system Category 5 item |
-| 5 | `@definition` | `:::wrapper {.dc-definition-block}` | `dc-definition-block` | Simple | Low usage |
+| 2 | `@sidebar` | `:::sidebar` / `:::wrapper {.dc-sidebar}` | `dc-sidebar` | Completed | Design-guide docs updated; field-guide migration remains |
+| 3 | `@sidebar-box` | `:::wrapper {.dc-sidebar-box}` | `dc-sidebar-box` | Completed | Design-guide docs updated; field-guide migration remains |
+| 4 | `@procedure` | `:::procedure` | `dc-steps > ol` | Completed | Design-guide docs updated; field-guide migration remains |
+| 5 | `@definition` | `:::wrapper {.dc-definition-block}` | `dc-definition-block` | Completed | Design-guide docs updated; field-guide migration remains |
 | 6 | `@three-column` | `:::three-column` | `three-column` | Medium | Low usage |
-| 7 | `@item` | `:::item` | TBD — context-aware | Complex | Deferred — scoping decision required |
+| 7 | `@item` | `:::item` | TBD — context-aware | Deferred | Scoping decision required |
 
 **Implementation notes:**
 - Simple macros = wrap content in a named div, no special parsing; pattern follows existing `@lede` implementation
@@ -87,7 +87,10 @@ Completed this session, plus a follow-up syntax cleanup pass (`@page` normalizat
 
 | Macro needed | Pattern in field guide | Files | Sites |
 |---|---|---|---|
+| `@sidebar` | `:::sidebar` / `:::wrapper {.dc-sidebar}` | Multiple | pending field-guide audit |
 | `@sidebar-box` | `:::wrapper {.dc-sidebar-box}` | Multiple | 2 |
+| `@procedure` | `:::procedure` | Multiple | pending field-guide audit |
+| `@definition` | `:::wrapper {.dc-definition-block}` | Multiple | pending field-guide audit |
 | `@section` migration | `:::: wrapper {.two-column .dc-terms}`, `:::wrapper {.two-column-list}` | `chapter-04.md`, `chapter-02 *` | 5 |
 | GFM alert migration | `:::wrapper {.dc-pullquote}` | `chapter-00.md`, `chapter-05.md` | 2 |
 
@@ -151,4 +154,4 @@ Five page templates in `content-templates.css` hard-code the chevron banner trea
 | 3 — Bulk `---` → `@break` | Re-audit required | No | Earlier count/automation assumption did not hold in active source |
 | 4 — Rationalization | Ongoing | No | System coherence; maintenance reduction |
 
-**Recommended next session:** Implement `@sidebar-box`, then migrate pullquotes to GFM alert syntax and two-column wrappers to `@section` with class modifiers. Leave chapter-05 `:::aug` content out of the macro plan.
+**Recommended next session:** Migrate remaining field-guide `@sidebar`, `@sidebar-box`, `@procedure`, and `@definition` sites, then continue the `@section`/GFM pullquote cleanup. Leave chapter-05 `:::aug` content out of the macro plan.

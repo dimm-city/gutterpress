@@ -8,48 +8,48 @@ Two accent registers on cream substrate. Creaturepunk fire (crimson, rust, orang
 
 ## Paper & Ink
 
-<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.1in 0;">
-  <div style="width:72px;height:68px;background:var(--bg);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>BG</span><span>#d3cec6<br>--bg</span></div>
-  <div style="width:72px;height:68px;background:var(--paper-cream);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Paper Cream</span><span>#f5f0e6<br>--paper-cream</span></div>
-  <div style="width:72px;height:68px;background:var(--paper-light);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Paper Light</span><span>#ebe5d8<br>--paper-light</span></div>
-  <div style="width:72px;height:68px;background:var(--paper-aged);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Paper Aged</span><span>#ddd6c6<br>--paper-aged</span></div>
-  <div style="width:72px;height:68px;background:var(--ink);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Ink</span><span>#1a1715<br>--ink</span></div>
-  <div style="width:72px;height:68px;background:var(--ink-smoke);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Ink Smoke</span><span>#4a4540<br>--ink-smoke</span></div>
-  <div style="width:72px;height:68px;background:var(--ink-dust);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Ink Dust</span><span>#8a8378<br>--ink-dust</span></div>
+<div class="dc-palette-grid">
+  <div class="dc-palette-swatch border on-light"><strong>BG</strong><code>#d3cec6</code><code>--bg</code></div>
+  <div class="dc-palette-swatch border on-light"><strong>Paper Cream</strong><code>#f5f0e6</code><code>--paper-cream</code></div>
+  <div class="dc-palette-swatch border on-light"><strong>Paper Light</strong><code>#ebe5d8</code><code>--paper-light</code></div>
+  <div class="dc-palette-swatch border on-light"><strong>Paper Aged</strong><code>#ddd6c6</code><code>--paper-aged</code></div>
+  <div class="dc-palette-swatch bg-ink on-dark"><strong>Ink</strong><code>#1a1715</code><code>--ink</code></div>
+  <div class="dc-palette-swatch bg-ink-smoke on-dark"><strong>Ink Smoke</strong><code>#4a4540</code><code>--ink-smoke</code></div>
+  <div class="dc-palette-swatch bg-ink-dust on-light"><strong>Ink Dust</strong><code>#8a8378</code><code>--ink-dust</code></div>
 </div>
 
 ## Creaturepunk Fire
 
-<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.1in 0;">
-  <div style="width:72px;height:68px;background:var(--crimson);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Crimson</span><span>#d41200<br>--crimson</span></div>
-  <div style="width:72px;height:68px;background:var(--blood);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Blood</span><span>#a30900<br>--blood</span></div>
-  <div style="width:72px;height:68px;background:var(--orange);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Orange</span><span>#f24d00<br>--orange</span></div>
-  <div style="width:72px;height:68px;background:var(--rust);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Rust</span><span>#c23000<br>--rust</span></div>
-  <div style="width:72px;height:68px;background:var(--amber);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Amber</span><span>#e89200<br>--amber</span></div>
-  <div style="width:72px;height:68px;background:var(--deep-rust);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>Deep Rust</span><span>#761800<br>--deep-rust</span></div>
+<div class="dc-palette-grid">
+  <div class="dc-palette-swatch bg-crimson on-dark"><strong>Crimson</strong><code>#d41200</code><code>--crimson</code></div>
+  <div class="dc-palette-swatch bg-blood on-dark"><strong>Blood</strong><code>#a30900</code><code>--blood</code></div>
+  <div class="dc-palette-swatch bg-orange on-dark"><strong>Orange</strong><code>#f24d00</code><code>--orange</code></div>
+  <div class="dc-palette-swatch bg-rust on-dark"><strong>Rust</strong><code>#c23000</code><code>--rust</code></div>
+  <div class="dc-palette-swatch bg-amber on-light"><strong>Amber</strong><code>#e89200</code><code>--amber</code></div>
+  <div class="dc-palette-swatch bg-deep-rust on-dark"><strong>Deep Rust</strong><code>#761800</code><code>--deep-rust</code></div>
 </div>
 
 ## HUD Digital
 
-<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.1in 0;">
-  <div style="width:72px;height:68px;background:var(--hud-blue);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>HUD Blue</span><span>#2a6a8a<br>--hud-blue</span></div>
-  <div style="width:72px;height:68px;background:var(--hud-blue-bright);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>HUD Bright</span><span>#48a4e0<br>--hud-blue-bright</span></div>
-  <div style="width:72px;height:68px;background:var(--hud-blue-dim);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>HUD Dim</span><span>#c9d6e2<br>--hud-blue-dim</span></div>
-  <div style="width:72px;height:68px;background:var(--hud-magenta);padding:4px;font-size:8pt;color:var(--paper-cream);display:flex;flex-direction:column;justify-content:space-between;"><span>HUD Magenta</span><span>#b85820<br>--hud-magenta</span></div>
+<div class="dc-palette-grid">
+  <div class="dc-palette-swatch bg-hud-blue on-dark"><strong>HUD Blue</strong><code>#2a6a8a</code><code>--hud-blue</code></div>
+  <div class="dc-palette-swatch bg-hud-blue-bright on-light"><strong>HUD Bright</strong><code>#48a4e0</code><code>--hud-blue-bright</code></div>
+  <div class="dc-palette-swatch bg-hud-blue-dim border on-light"><strong>HUD Dim</strong><code>#c9d6e2</code><code>--hud-blue-dim</code></div>
+  <div class="dc-palette-swatch bg-hud-magenta on-dark"><strong>HUD Magenta</strong><code>#b85820</code><code>--hud-magenta</code></div>
 </div>
 
 ## Surface Tokens
 
-<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.1in 0;">
-  <div style="width:72px;height:68px;background:var(--hud-panel);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>HUD Panel</span><span>#eeece8<br>--hud-panel</span></div>
-  <div style="width:72px;height:68px;background:var(--surface-tint-3);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Surface 3</span><span>#f2f0ec<br>--surface-tint-3</span></div>
-  <div style="width:72px;height:68px;background:var(--surface-orange-tint);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border-hairline);"><span>Orange Tint</span><span>#dcd4bc<br>--surface-orange-tint</span></div>
+<div class="dc-palette-grid">
+  <div class="dc-palette-swatch bg-hud-panel border on-light"><strong>HUD Panel</strong><code>#eeece8</code><code>--hud-panel</code></div>
+  <div class="dc-palette-swatch bg-surface-tint-3 border on-light"><strong>Surface 3</strong><code>#f2f0ec</code><code>--surface-tint-3</code></div>
+  <div class="dc-palette-swatch bg-surface-orange-tint border on-light"><strong>Orange Tint</strong><code>#dcd4bc</code><code>--surface-orange-tint</code></div>
 </div>
 
 ## Border Tokens
 
-<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0.08in 0;">
-  <div style="width:72px;height:68px;background:var(--border-hairline);padding:4px;font-size:8pt;color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;"><span>Hairline</span><span>#d0c8b5<br>--border-hairline</span></div>
+<div class="dc-palette-grid">
+  <div class="dc-palette-swatch bg-border-hairline on-light"><strong>Hairline</strong><code>#d0c8b5</code><code>--border-hairline</code></div>
 </div>
 
 Additional border values come directly from ink-scale tokens (`--ink`, `--ink-smoke`, `--ink-dust`) — no dedicated border aliases for those.
