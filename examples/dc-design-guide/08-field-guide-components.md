@@ -120,7 +120,7 @@ Always use `dc-` prefixed forms (`dc-vibe-callout`, `dc-origin-callout`, `dc-hum
 | Procedure | `@procedure ... @end-procedure` | `dc-steps` |
 | Gear Entry | `:::wrapper {.dc-gear-entry}` | `dc-gear-entry` |
 | Colophon Block | Raw HTML `<dl class="dc-colophon">` | `dc-colophon` |
-| Art Bottom Pin | `![img](img/placeholder-plate.png){.dc-art-bottom}` or `:::wrapper {.dc-art-bottom}` | `dc-art-bottom` |
+| Art Bottom Pin | `![img](https://placehold.co/1349x842/png?text=Art){.dc-art-bottom}` or `:::wrapper {.dc-art-bottom}` | `dc-art-bottom` |
 | Legacy note: Ability Container | Use `@skill` instead — `:::: ability` has no active CSS | — |
 
 ---

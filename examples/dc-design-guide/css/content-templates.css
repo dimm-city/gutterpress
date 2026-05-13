@@ -49,7 +49,7 @@
    backgrounds to .pagedjs_page — which .pagedjs_sheet then covers. By setting
    the texture on .pagedjs_sheet, it appears both in the screen preview and in
    the exported PDF. The 200×200 RGBA PNG tiles seamlessly at all print sizes.
-   Source: field-guide/images/brick-bg-02.png */
+   Source: placeholder brick tile via placehold.co */
 .pagedjs_sheet {
   background-color: var(--bg);
   background-image: url("../img/brick-bg-02.png");
@@ -682,7 +682,10 @@ article {
   line-height: var(--lh-normal);
 }
 
-.page.rolling-die > .wrapper:first-of-type ul + p {
+/* Avoid :first-of-type + adjacent sibling here.
+   Paged.js runs separate selector-rewrite passes for both patterns and can
+   double-remove the same rule from its CSS AST, crashing preview render. */
+.page.rolling-die > .wrapper ul + p {
   margin-top: 0.14in;
   padding-top: 0.08in;
   border-top: 1px solid var(--border-hairline);

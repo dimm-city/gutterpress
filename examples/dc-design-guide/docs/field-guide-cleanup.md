@@ -131,7 +131,7 @@ to `dc-brand.css` (tracked in design guide CSS work).
 
 | Find | Replace after CSS lands |
 |---|---|
-| `![img](../img/placeholder-plate.png){.bottom-center}` | `![img](../img/placeholder-plate.png){.dc-art-bottom}` |
+| `![img](https://placehold.co/1349x842/png?text=Art){.bottom-center}` | `![img](https://placehold.co/1349x842/png?text=Art){.dc-art-bottom}` |
 | `::: wrapper {.bottom-center}` | `::: wrapper {.dc-art-bottom}` |
 
 Files: `chapter-01.md`, `chapter-03.md`, `chapter-05.md`.

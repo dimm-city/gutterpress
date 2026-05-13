@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import type { Config } from "stylelint";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { execCapture } from "../../lib/exec";
 
 const check: Check = {
   id: "source.stylelint",
@@ -11,7 +11,6 @@ const check: Check = {
     "Runs stylelint to validate CSS files, integrating with existing lint infrastructure",
   category: "source",
   phase: "pre-build",
-  requiredTools: ["stylelint"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     const sourceConfig = ctx.config.validate.source;
     if (sourceConfig.stylelint === false) return [];
@@ -31,14 +30,26 @@ const check: Check = {
       configPath = null;
     }
 
-    const args: string[] = ["--formatter", "json"];
-    if (configPath) {
-      args.push("--config", configPath);
-    }
-    args.push(...files);
-
     try {
-      await execCapture("stylelint", args);
+      let stylelintConfig: unknown;
+      if (configPath) {
+        stylelintConfig = require(configPath);
+      } else {
+        stylelintConfig = (await import("../../stylelint/stylelint.config")).default;
+      }
+
+      const { default: stylelint } = await import("stylelint");
+      const result = await stylelint.lint({
+        files,
+        config: stylelintConfig as Config,
+        configBasedir: configPath ? dirname(configPath) : undefined,
+        formatter: "json",
+      });
+
+      if (result.errored) {
+        return parseStylelintOutput(result.report ?? "", check.id);
+      }
+
       return [];
     } catch (err) {
       const output =

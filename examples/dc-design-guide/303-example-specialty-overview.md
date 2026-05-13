@@ -73,7 +73,7 @@ It's the skillset that sets you apart, defines what you bring to the crew, and s
 :::wrapper {.specialty-card .augmerc}
 ### Augmerc {#specialty-augmerc}
 
-![Augmerc](img/placeholder-plate.png){.art-specialty}
+![Augmerc](https://placehold.co/1349x842/png?text=Augmerc){.art-specialty}
 
 > Cybernetic Commando
 
@@ -84,7 +84,7 @@ Heavily armed and wired for war, Augmercs are the blunt force of any squad. They
 :::wrapper {.specialty-card .proxy}
 ### Proxy {#specialty-proxy}
 
-![Proxy](img/placeholder-plate.png){.art-specialty}
+![Proxy](https://placehold.co/1349x842/png?text=Proxy){.art-specialty}
 
 > Militant Monolith
 
@@ -94,7 +94,7 @@ Marked by something higher—god, ghost, code, or conviction—Proxies walk the 
 :::wrapper {.specialty-card .streetwarden}
 ### Streetwarden {#specialty-streetwarden}
 
-![Streetwarden](img/placeholder-plate.png){.art-specialty}
+![Streetwarden](https://placehold.co/1349x842/png?text=Streetwarden){.art-specialty}
 
 > Sprawl Sentinel
 
@@ -105,7 +105,7 @@ They don't wear badges—they are the law when no one else shows. Streetwardens 
 :::wrapper {.specialty-card .gutterdruid}
 ### Gutterdruid {#specialty-gutterdruid}
 
-![Gutterdruid](img/placeholder-plate.png){.art-specialty}
+![Gutterdruid](https://placehold.co/1349x842/png?text=Gutterdruid){.art-specialty}
 
 > Wold Witch
 
@@ -116,7 +116,7 @@ They walk the alleys like sacred ground—feeding the hungry, tending weeds, rai
 :::wrapper {.specialty-card .cybersurgeon}
 ### Cybersurgeon {#specialty-cybersurgeon}
 
-![Cybersurgeon](img/placeholder-plate.png){.art-specialty}
+![Cybersurgeon](https://placehold.co/1349x842/png?text=Cybersurgeon){.art-specialty}
 
 > Mech Medic
 
@@ -127,7 +127,7 @@ Life is flexible. Cybersurgeons prove it daily—cutting, splicing, upgrading fl
 :::wrapper {.specialty-card .wirephreak}
 ### Wirephreak {#specialty-wirephreak}
 
-![Wirephreak](img/placeholder-plate.png){.art-specialty}
+![Wirephreak](https://placehold.co/1349x842/png?text=Wirephreak){.art-specialty}
 
 > Ping Predator
 
@@ -138,7 +138,7 @@ Killers, thieves, forgers—Wirephreaks specialize in slipping past locks, firew
 :::wrapper {.specialty-card .technosorcerer}
 ### Technosorcerer {#specialty-technosorcerer}
 
-![Technosorcerer](img/placeholder-plate.png){.art-specialty}
+![Technosorcerer](https://placehold.co/1349x842/png?text=Technosorcerer){.art-specialty}
 
 > Modular Magician
 
@@ -149,7 +149,7 @@ Technosorcerers walk on the razor's edge between magic and technology. They beli
 :::wrapper {.specialty-card .etherlock}
 ### Etherlock {#specialty-etherlock}
 
-![Etherlock](img/placeholder-plate.png){.art-specialty}
+![Etherlock](https://placehold.co/1349x842/png?text=Etherlock){.art-specialty}
 
 > Manifold Magus
 

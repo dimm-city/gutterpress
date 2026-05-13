@@ -61,7 +61,7 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 **Dedicated to the memory of Donovan Henry Callender.**
 Don was a player in our 2E AD&D group throughout our youth and was a dear friend for even longer. He was taken too soon from us and we wish he were here to dream in Dimm City with us today.
 
-![founders-house](img/placeholder-plate.png){.art-founders-house}
+![founders-house](https://placehold.co/1349x842/png?text=Founders+House){.art-founders-house}
 
 ---
 
@@ -80,13 +80,13 @@ The city didn't go quiet—it got loud. That feline snarl tore through the alley
 
 A crew of geared-up cats—sleek fur, feral eyes, lenses pulsing with kill-code—came screaming down the block, pulse cannons humming an evil dirge. They wore glossy slab-armor that flexed like chitin and burned like synthlight. Opposite them? A pack of ragged rabbits with wiry limbs and twitch-fast reflexes, zipping through the sprawl with street-born magic and muscle memory. Then the world erupted.
 
-![intro-image](img/placeholder-plate.png){.art-intro-image}
+![intro-image](https://placehold.co/1349x842/png?text=Intro+Image){.art-intro-image}
 
 Blasts lit the dusk like glitchfire. Bolts and teeth and claws tangled mid-air. Neon signs cracked. Alleyways bled smoke. Debris rained in bursts. This wasn't about glory—it was turf. It was pride. It was blood memory, raw and ugly, of family torn away by their rival.
 
 DimmCitz scattered, vanished into bolted dens and reinforced rooftops. Some just slinked into a corner, shut their eyes, and hoped the riot passed them by. The air stank of scorched fur, ozone, and cordite. Concrete buckled under pulsefire and the ground groaned like it wanted no part of any of it.
 
-### Metropolis in the Mist
+## Metropolis in the Mist
 
 Dimm City is a place of crushing lows and exuberant highs known to all within. The citizens of the five districts commonly refer to each other as "Dimmers". Light is impermanent, as just as darkness is, but both are in constant flux. Life in DimmC is the same.
 
@@ -94,7 +94,7 @@ You and your party make the dream come alive. Without you, it doesn't exist. The
 
 These dreams you share will last in your consciousness for life. The joys you found and the laughs you shared coupled with tragedy, sadness or even guilt can impact you in unexpected ways. Be "ready 'n' wary" as adventure in Dimm City is hard, fast, and not for the faint of heart.
 
-### CREATUREPUNK
+## CREATUREPUNK
 
 It ain't chrome. It ain't clean. It's coagulated blood in the wire, hairballs in the circuitry, a roar tearing through static.
 

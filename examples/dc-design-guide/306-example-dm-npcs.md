@@ -114,7 +114,7 @@ HP 4 — Damage 2
 HP 4 — Damage: 2
 Operator — Medium
 
-###### Traits
+##### Traits
 
 **Climb:** Grease Monkeys have the ability to scale walls and other vertical surfaces with the same speed as they would otherwise move.
 
@@ -149,7 +149,7 @@ HP 10 — Damage 4
 HP 10 — Damage 4
 Master — Medium
 
-###### Traits
+##### Traits
 
 **Amphibious:** Undertow can breathe water or air and swim as fast as they move on land.
 

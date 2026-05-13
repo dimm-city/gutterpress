@@ -71,13 +71,13 @@ Additional border values come directly from ink-scale tokens (`--ink`, `--ink-sm
 
 ## Page Background & Brick Texture
 
-The page background uses `--bg: #d3cec6` — a light cool gray that contrasts cream paper surfaces (cards, callouts, panels). The Dimm City aesthetic adds a subtle aged-brick texture over this background via a 200×200px RGBA PNG tile (`img/brick-bg-02.png`) applied to `.pagedjs_sheet`. Apply it in your book's CSS layer file:
+The page background uses `--bg: #d3cec6` — a light cool gray that contrasts cream paper surfaces (cards, callouts, panels). The Dimm City aesthetic adds a subtle aged-brick texture over this background via a 200×200px placeholder tile (`https://placehold.co/200x200/png?text=Brick`) applied to `.pagedjs_sheet`. Apply it in your book's CSS layer file:
 
 ```css
 /* Apply to .pagedjs_sheet, not @page — Paged.js maps @page backgrounds to
    .pagedjs_page, which .pagedjs_sheet then covers. */
 .pagedjs_sheet {
-  background-image: url("../img/brick-bg-02.png");
+  background-image: url("https://placehold.co/200x200/png?text=Brick");
   background-repeat: repeat;
 }
 ```

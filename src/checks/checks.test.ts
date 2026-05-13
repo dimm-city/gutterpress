@@ -6,7 +6,7 @@
  */
 
 import { describe, test, expect, beforeEach } from "bun:test";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfig } from "../lib/manifest";
@@ -490,6 +490,37 @@ describe("Callout validation check", () => {
     const results = await check.run(ctx);
     expect(results).toHaveLength(0);
   });
+
+  test("accepts builtin containers and 4-colon wrapper syntax", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-callouts-"));
+    try {
+      const file = join(dir, "containers.md");
+      await writeFile(
+        file,
+        [
+          ":::lede",
+          "Intro text",
+          ":::",
+          "",
+          ":::item",
+          "Card body",
+          ":::",
+          "",
+          ":::: wrapper {.grid}",
+          "Wrapped content",
+          "::::",
+        ].join("\n")
+      );
+
+      const check = getCheckById("source.callout-validation")!;
+      const ctx = makeCtx({ markdownFiles: [file] });
+      const results = await check.run(ctx);
+
+      expect(results).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("Local markdown refs check", () => {
@@ -722,6 +753,43 @@ describe("Source checks skip when tool is disabled", () => {
     const ctx = makeCtx({ config, cssFiles: ["/tmp/test.css"] });
     const results = await check.run(ctx);
     expect(results).toHaveLength(0);
+  });
+
+  test("stylelint uses in-process config resolution for validate.source.stylelint", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-stylelint-"));
+
+    try {
+      const cssFile = join(dir, "test.css");
+      const configFile = join(dir, "stylelint.config.cjs");
+
+      await writeFile(cssFile, "a { color: red }");
+      await writeFile(
+        configFile,
+        [
+          "module.exports = {",
+          "  rules: {",
+          '    "color-named": "never"',
+          "  }",
+          "};",
+        ].join("\n")
+      );
+
+      const config = makeConfig({
+        validate: {
+          source: { stylelint: "./stylelint.config.cjs" },
+        },
+      } as Partial<ResolvedConfig>);
+
+      const check = getCheckById("source.stylelint")!;
+      const ctx = makeCtx({ config, inputDir: dir, cssFiles: [cssFile] });
+      const results = await check.run(ctx);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.checkId).toBe("source.stylelint");
+      expect(results[0]!.message).toContain("color-named");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

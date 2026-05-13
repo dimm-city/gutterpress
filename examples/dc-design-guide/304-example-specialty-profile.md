@@ -40,7 +40,7 @@ They are simply part of what makes an Augmerc dangerous.
 
 :::wrapper {.specialty-art}
 
-![Augmerc](img/placeholder-plate.png){.augmerc}
+![Augmerc](https://placehold.co/600x800/png?text=Augmerc){.augmerc}
 
 :::
 

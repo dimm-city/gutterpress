@@ -5,7 +5,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -124,6 +124,17 @@ describe('generateAndWriteHtml', () => {
     expect(content).toContain('Chapter 1');
     expect(content).toContain('Chapter 2');
   }, 60000);
+
+  test('design guide stylesheet avoids the crash-prone selector combination', async () => {
+    const cssPath = join(
+      process.cwd(),
+      'examples/dc-design-guide/css/content-templates.css'
+    );
+    const css = await readFile(cssPath, 'utf8');
+
+    expect(css).not.toContain('.page.rolling-die > .wrapper:first-of-type ul + p');
+    expect(css).toContain('.page.rolling-die > .wrapper ul + p');
+  });
 });
 
 describe('createFileWatcher', () => {

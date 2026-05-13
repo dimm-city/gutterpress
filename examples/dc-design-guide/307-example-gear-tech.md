@@ -112,7 +112,7 @@ Most augmercs have at least two or three members of their squad carrying a full 
 
 :::
 
-![medkit](img/placeholder-plate.png){.bottom-center .art-medkit}
+![medkit](https://placehold.co/1349x842/png?text=Medkit){.bottom-center .art-medkit}
 
 ---
 

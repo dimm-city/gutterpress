@@ -141,7 +141,7 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 
 :::wrapper {.specialty-art}
 
-![Character art](img/specialty-plate.png)
+![Character art](https://placehold.co/1349x842/png?text=Character+Art)
 
 @break
 ```
@@ -250,7 +250,7 @@ One atmospheric lede — role, threat posture, district affiliation. Under twent
 
 <div class="citizen-sidebar">
   <div class="dc-portrait">
-    <img src="img/subject.png" alt="Subject Name">
+    <img src="https://placehold.co/600x800/png?text=Subject" alt="Subject Name">
   </div>
   <div class="dc-tape margin-sm">— Field Record —</div>
 </div>
@@ -374,7 +374,7 @@ Encounter guidance for the Dream Master.
 
 ---{.column-break}
 
-![Creature Name](img/creature.png){.img-float-right}
+![Creature Name](https://placehold.co/600x800/png?text=Creature){.img-float-right}
 
 <div class="dc-tape margin-sm">— Field Plate —</div>
 
@@ -460,7 +460,7 @@ Optional closing prose for variant rules or table preferences.
 
 Full-column narrative for chapter openers, vignettes, dream intros. Prose + floated art + pull quote only — no structural UI. First-line indent applied by print CSS. **Page class:** normal body page, no break marker needed.
 
-**Components:** `### Scene Label {.dc-spec-tweak .no-top}` (optional) · `*italic opener*` · `![alt](img/placeholder-plate.png){.img-float-right}` (or `.img-float-left`) · `> [!PULLQUOTE]`
+**Components:** `### Scene Label {.dc-spec-tweak .no-top}` (optional) · `*italic opener*` · `![alt](https://placehold.co/1349x842/png?text=Scene){.img-float-right}` (or `.img-float-left`) · `> [!PULLQUOTE]`
 
 ```markdown
 ### Scene Label {.dc-spec-tweak .no-top}
@@ -470,7 +470,7 @@ Full-column narrative for chapter openers, vignettes, dream intros. Prose + floa
 Narrative prose body. Keep paragraphs short and sensory — what the
 operator sees, hears, or smells. Each paragraph earns the next.
 
-![Alt text](img/placeholder-plate.png){.img-float-right}
+![Alt text](https://placehold.co/1349x842/png?text=Scene){.img-float-right}
 
 Continued prose with the floated image wrapping left.
 

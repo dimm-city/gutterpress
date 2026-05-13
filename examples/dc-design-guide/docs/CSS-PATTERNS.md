@@ -172,7 +172,7 @@ viewer hook token is needed:
 /* content-templates.css */
 .pagedjs_sheet {
   background-color: var(--bg);
-  background-image: url("../img/brick-bg-02.png");
+  background-image: url("https://placehold.co/200x200/png?text=Brick");
   background-repeat: repeat;
 }
 ```
