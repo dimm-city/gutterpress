@@ -18,6 +18,7 @@ const { utils, createPlugin } = stylelint;
 
 export const ruleRemoteUrls = "printsafe/no-remote-urls";
 export const ruleRiskyProps = "printsafe/no-risky-print-effects";
+export const rulePagedjsCrashSelectors = "printsafe/no-pagedjs-crash-selectors";
 
 const messages = utils.ruleMessages(ruleRemoteUrls, {
   rejected: (url: string) => `Remote URL is not allowed in print CSS: ${url}`
@@ -25,6 +26,11 @@ const messages = utils.ruleMessages(ruleRemoteUrls, {
 
 const riskyMessages = utils.ruleMessages(ruleRiskyProps, {
   rejected: (prop: string) => `Property is high-risk for print/PDF (can force rasterization): ${prop}`
+});
+
+const pagedjsCrashMessages = utils.ruleMessages(rulePagedjsCrashSelectors, {
+  rejected: (selector: string) =>
+    `Selector can crash Paged.js preview: avoid combining :first-of-type/:last-of-type/:nth-of-type with adjacent sibling (+) in ${selector}`
 });
 
 function extractUrls(value: string): string[] {
@@ -47,6 +53,52 @@ const riskyProperties = new Set([
   "will-change",
   "clip-path"
 ]);
+
+function splitSelectorList(selectorList: string): string[] {
+  const selectors: string[] = [];
+  let current = "";
+  let depth = 0;
+  let quote: string | null = null;
+
+  for (let i = 0; i < selectorList.length; i += 1) {
+    const char = selectorList[i]!;
+    const prev = i > 0 ? selectorList[i - 1] : "";
+
+    current += char;
+
+    if (quote) {
+      if (char === quote && prev !== "\\") quote = null;
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+
+    if (char === "(" || char === "[") {
+      depth += 1;
+      continue;
+    }
+
+    if ((char === ")" || char === "]") && depth > 0) {
+      depth -= 1;
+      continue;
+    }
+
+    if (char === "," && depth === 0) {
+      selectors.push(current.slice(0, -1).trim());
+      current = "";
+    }
+  }
+
+  if (current.trim()) selectors.push(current.trim());
+  return selectors;
+}
+
+function isPagedjsCrashProneSelector(selector: string): boolean {
+  return /:(?:first|last|nth)-of-type\b/i.test(selector) && selector.includes("+");
+}
 
 const remoteUrlsRule = function(primaryOption: unknown) {
   return function(root: import("postcss").Root, result: import("stylelint").PostcssResult) {
@@ -98,13 +150,35 @@ const riskyPropsRule = function(primaryOption: unknown) {
   };
 };
 
+const pagedjsCrashSelectorRule = function(primaryOption: unknown) {
+  return function(root: import("postcss").Root, result: import("stylelint").PostcssResult) {
+    if (!primaryOption) return;
+    root.walkRules((rule) => {
+      for (const selector of splitSelectorList(rule.selector)) {
+        if (!isPagedjsCrashProneSelector(selector)) continue;
+        utils.report({
+          message: pagedjsCrashMessages.rejected(selector),
+          node: rule,
+          result,
+          ruleName: rulePagedjsCrashSelectors,
+        });
+      }
+    });
+  };
+};
+
 // Cast: stylelint's `Rule` type expects `ruleName`/`messages` properties on
 // the function itself; runtime is happy without them (just like the original
 // CJS implementation).
 const mainPlugin = createPlugin(ruleRemoteUrls, remoteUrlsRule as unknown as import("stylelint").Rule);
 export const riskyRule = createPlugin(ruleRiskyProps, riskyPropsRule as unknown as import("stylelint").Rule);
+export const pagedjsCrashSelectorRulePlugin = createPlugin(
+  rulePagedjsCrashSelectors,
+  pagedjsCrashSelectorRule as unknown as import("stylelint").Rule
+);
 
 export const messagesRemoteUrls = messages;
 export const messagesRiskyProps = riskyMessages;
+export const messagesPagedjsCrashSelectors = pagedjsCrashMessages;
 
 export default mainPlugin;

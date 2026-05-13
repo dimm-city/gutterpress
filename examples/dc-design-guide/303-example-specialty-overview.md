@@ -60,11 +60,15 @@ In Dimm City, abilities aren't just what you can do. They're learned techniques,
 
 @page .page-ability-catalog .choose-specialty .chapter-01
 
+:::wrapper {.learning-path}
+
 ## 1. Choose a specialty {#c2-choose-a-role}
 
 Every dreamer's got a sharp edge — your specialty is where it starts.
 
 It's the skillset that sets you apart, defines what you bring to the crew, and shapes the wild ways you survive the Dream.
+
+:::
 
 @spread .specialty-spread
 
@@ -76,8 +80,6 @@ It's the skillset that sets you apart, defines what you bring to the crew, and s
 > Cybernetic Commando
 
 Heavily armed and wired for war, Augmercs are the blunt force of any squad. They charge the front, soak the pain, and unload hell using brute strength and brutal tech. Combat-born, augged to kill, and never outgunned.
-
-@break
 
 :::wrapper {.specialty-card .proxy}
 ### Proxy {#specialty-proxy}

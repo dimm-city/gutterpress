@@ -791,6 +791,31 @@ describe("Source checks skip when tool is disabled", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test("stylelint flags selectors that can crash Paged.js preview", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-stylelint-"));
+
+    try {
+      const cssFile = join(dir, "test.css");
+
+      await writeFile(
+        cssFile,
+        ".page.rolling-die > .wrapper:first-of-type ul + p { margin-top: 0; }\n"
+      );
+
+      const check = getCheckById("source.stylelint")!;
+      const ctx = makeCtx({ inputDir: dir, cssFiles: [cssFile] });
+      const results = await check.run(ctx);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.checkId).toBe("source.stylelint");
+      expect(results[0]!.message).toContain("printsafe/no-pagedjs-crash-selectors");
+      expect(results[0]!.message).toContain("Paged.js preview");
+      expect(results[0]!.file).toBe(cssFile);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

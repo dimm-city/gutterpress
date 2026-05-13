@@ -1,9 +1,15 @@
 import type { Config } from "stylelint";
-import mainPlugin, { riskyRule, ruleRemoteUrls, ruleRiskyProps } from "./printsafe-plugin";
+import mainPlugin, {
+  pagedjsCrashSelectorRulePlugin,
+  riskyRule,
+  rulePagedjsCrashSelectors,
+  ruleRemoteUrls,
+  ruleRiskyProps,
+} from "./printsafe-plugin";
 
 const config: Config = {
   extends: ["stylelint-config-standard"],
-  plugins: [mainPlugin, riskyRule],
+  plugins: [mainPlugin, riskyRule, pagedjsCrashSelectorRulePlugin],
   ignoreFiles: ["**/*.min.css"],
   rules: {
     // Keep the baseline sane
@@ -12,6 +18,7 @@ const config: Config = {
     // Print safety rules
     [ruleRemoteUrls]: [true],
     [ruleRiskyProps]: [true],
+    [rulePagedjsCrashSelectors]: [true],
 
     // Allow Paged Media + margin boxes
     "at-rule-no-unknown": [true, {
