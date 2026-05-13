@@ -590,6 +590,14 @@ ul li::before {
 /* ───────── ABILITY CARD ───────── */
 .dc-skill-card {
   /* Fix 1: Prevent skill cards from splitting across page breaks (tab/tier lost on fragment) */
+  --dc-card-accent: var(--ink);
+  --dc-card-surface: var(--paper-cream);
+  --dc-card-tab-bg: var(--ink-dark);
+  --dc-card-tab-title-color: var(--paper-cream);
+  --dc-card-tier-color: var(--hud-magenta);
+  --dc-card-tier-border: var(--hud-magenta);
+  --dc-card-body-mark: var(--crimson);
+
   break-inside: avoid;
   page-break-inside: avoid;
   position: relative;
@@ -607,8 +615,8 @@ ul li::before {
   align-items: center;
   gap: 12px;
   padding: 6px 26px 6px 12px;
-  background: var(--ink-dark);              /* was paper-cream — dark tab distinguishes from card body */
-  border: 2px solid var(--ink);
+  background: var(--dc-card-tab-bg);              /* was paper-cream — dark tab distinguishes from card body */
+  border: 2px solid var(--dc-card-accent);
   border-bottom: 0;
   margin-left: 14px;
   margin-bottom: -2px;
@@ -621,7 +629,7 @@ ul li::before {
 .dc-tab-title {
   font-family: var(--font-tab);
   font-size: 15px;
-  color: var(--paper-cream);               /* was --ink — light text on dark tab background */
+  color: var(--dc-card-tab-title-color);   /* was --ink — light text on dark tab background */
   text-transform: uppercase;
   letter-spacing: 0.05em;
   line-height: 1.2;
@@ -633,8 +641,8 @@ ul li::before {
   font-weight: 700;
   padding: 2px 7px;
   background: transparent;
-  border: 1px solid var(--hud-magenta);
-  color: var(--hud-magenta);
+  border: 1px solid var(--dc-card-tier-border);
+  color: var(--dc-card-tier-color);
   letter-spacing: 1.5px;
   white-space: nowrap;
 }
@@ -642,7 +650,7 @@ ul li::before {
 /* ───────── PATH BLOCK — clipped container (top-left + bottom-right corners) ───────── */
 /* .dc-path-block-wrap removed 2026-05-12 — superseded by .dc-path-shell */
 .dc-path-block {
-  background: var(--paper-cream);
+  background: var(--dc-card-surface);
   clip-path: polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px);
   padding: 24px 26px 30px;
   position: relative;
@@ -682,7 +690,7 @@ ul li::before {
    which `border` cannot do. Four 2px shadows in cardinal directions = uniform
    2px stroke around the entire silhouette. Print-safe; no JS, no SVG. */
 .dc-card-body {
-  background: var(--paper-cream);
+  background: var(--dc-card-surface);
   padding: 22px 20px 36px;
   position: relative;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 44px) 100%, 0 100%);
@@ -692,7 +700,7 @@ ul li::before {
   position: absolute;
   top: 10px; right: 16px;
   width: 28px; height: 2px;
-  background: var(--crimson);
+  background: var(--dc-card-body-mark);
   opacity: 0.15;
   transform: rotate(-3deg);
   z-index: 2;
@@ -1452,24 +1460,17 @@ hr,
    Migrated from _shared/css/specialty-variants.css (field-guide/css/specialty-accents.css deleted Phase 1a).
    Tokens moved to :root block above (2026-05-10).
    ─────────────────────────────────────────────────────────────────────────── */
-.specialty.augmerc       .dc-skill-card .dc-card-tab { border-color: var(--augmerc-accent); }
-.specialty.proxy         .dc-skill-card .dc-card-tab { border-color: var(--proxy-accent); }
-.specialty.streetwarden  .dc-skill-card .dc-card-tab { border-color: var(--streetwarden-accent); }
-.specialty.gutterdruid   .dc-skill-card .dc-card-tab { border-color: var(--gutterdruid-accent); }
-.specialty.cybersurgeon  .dc-skill-card .dc-card-tab { border-color: var(--cybersurgeon-accent); }
-.specialty.wirephreak    .dc-skill-card .dc-card-tab { border-color: var(--wirephreak-accent); }
-.specialty.technosorcerer .dc-skill-card .dc-card-tab { border-color: var(--technosorcerer-accent); }
-.specialty.etherlock     .dc-skill-card .dc-card-tab { border-color: var(--etherlock-accent); }
+.specialty.augmerc       { --dc-card-accent: var(--augmerc-accent); --dc-path-accent: var(--augmerc-accent); }
+.specialty.proxy         { --dc-card-accent: var(--proxy-accent); --dc-path-accent: var(--proxy-accent); }
+.specialty.streetwarden  { --dc-card-accent: var(--streetwarden-accent); --dc-path-accent: var(--streetwarden-accent); }
+.specialty.gutterdruid   { --dc-card-accent: var(--gutterdruid-accent); --dc-path-accent: var(--gutterdruid-accent); }
+.specialty.cybersurgeon  { --dc-card-accent: var(--cybersurgeon-accent); --dc-path-accent: var(--cybersurgeon-accent); }
+.specialty.wirephreak    { --dc-card-accent: var(--wirephreak-accent); --dc-path-accent: var(--wirephreak-accent); }
+.specialty.technosorcerer { --dc-card-accent: var(--technosorcerer-accent); --dc-path-accent: var(--technosorcerer-accent); }
+.specialty.etherlock     { --dc-card-accent: var(--etherlock-accent); --dc-path-accent: var(--etherlock-accent); }
 
 /* canonical path title: plugin emits h2.dc-spray inside .dc-learning-path */
-.specialty.augmerc        .dc-learning-path h2.dc-spray { color: var(--augmerc-accent); }
-.specialty.proxy          .dc-learning-path h2.dc-spray { color: var(--proxy-accent); }
-.specialty.streetwarden   .dc-learning-path h2.dc-spray { color: var(--streetwarden-accent); }
-.specialty.gutterdruid    .dc-learning-path h2.dc-spray { color: var(--gutterdruid-accent); }
-.specialty.cybersurgeon   .dc-learning-path h2.dc-spray { color: var(--cybersurgeon-accent); }
-.specialty.wirephreak     .dc-learning-path h2.dc-spray { color: var(--wirephreak-accent); }
-.specialty.technosorcerer .dc-learning-path h2.dc-spray { color: var(--technosorcerer-accent); }
-.specialty.etherlock      .dc-learning-path h2.dc-spray { color: var(--etherlock-accent); }
+.dc-learning-path h2.dc-spray { color: var(--dc-path-accent, inherit); }
 
 /* ───────── MARGIN STICKER / CORNER STAMP ───────── */
 .dc-stamp {
@@ -1981,6 +1982,7 @@ hr,
    --------------------------------------------------------------------------- */
 
 .dc-learning-path.dc-path-block {
+  --dc-path-accent: var(--crimson);
   /* Reset .dc-path-block visual chrome — it belongs on .dc-path-shell, not the section.
      The section is a layout container only; background/clip/padding/filter would create
      a stacking context that prevents Paged.js from splitting the LP across pages. */
@@ -1993,7 +1995,7 @@ hr,
 }
 
 .dc-path-shell {
-  background: var(--paper-cream);
+  background: var(--dc-card-surface);
   clip-path: polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px);
   padding: 24px 26px 30px;
   position: relative;

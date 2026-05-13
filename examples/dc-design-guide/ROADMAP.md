@@ -142,7 +142,7 @@ Total remaining `:::wrapper` containers in active field guide files: still macro
 ### Card family refactor direction
 `@skill` cards, continuation cards, learning-path blocks, and similar repeated card shells currently share substantial chrome patterns.
 
-→ Refactor toward shared card bases with variant-level custom properties for tab shape, accent, surface, and title treatment. Preserve macro syntax; reduce duplicated CSS.
+→ Refactor toward shared card bases with variant-level custom properties for tab shape, accent, surface, and title treatment. Preserve macro syntax; reduce duplicated CSS. **In progress:** specialty accent overrides now flow through card/path variables instead of direct per-selector styling.
 
 ### Sidebar / panel family
 `dc-sidebar`, `dc-sidebar-box`, `dc-definition-block`, `dc-human-callout`, and related inset panels overlap structurally.

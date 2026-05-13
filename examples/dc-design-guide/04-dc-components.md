@@ -28,6 +28,8 @@ Dimm City-specific components. Ability cards, banners, stat blocks, AP chips, ta
 
 The `@skill` macro generates the full card HTML automatically. Use `variant="1"` through `variant="5"` to select clip-path shapes. The next `@skill` or `@end-skill` closes the current card.
 
+> **Component pattern:** skill cards, continuation cards, and learning-path shells are being refactored to the same shared-base model as alerts. The card shell owns structure and break behavior; specialty and variant differences should increasingly flow through component-scoped CSS custom properties.
+
 **Macro syntax** — H4 title, blockquote flavor, ordered list abilities, optional H5 sub-header:
 
 ```
