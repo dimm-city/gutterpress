@@ -108,16 +108,6 @@ Horizontal section break styled as a torn-tape strip. `.flush` extends edge to e
 
 ---
 
-## Section H3 Divider
-
-Compact high-contrast H3 for dense multi-column reference layouts. **Syntax** — `### Heading {.dc-section-h3}`
-
-```markdown
-### Cybernetics & Augments {.dc-section-h3}
-```
-
----
-
 ## Vibe Callout
 
 Full-width atmospheric block for in-world voice at the top of a chapter or faction entry. **Syntax** — `> [!VIBE]`
@@ -184,23 +174,6 @@ Named equipment block for weapons, armor, and notable items. **Syntax** — `> [
 >
 > Melee. Damage 1d8+STR. *Serrated:* on a critical hit, the target bleeds
 > for 1d4 damage at the start of their next turn.
-
----
-
-## Item Block
-
-Self-contained rules item (ability, move, or equipment) kept together across page breaks. **Syntax** — `:::item` … `:::` with a `###` title inside
-
-```markdown
-:::item
-### Hardline Graft
-
-**Passive.** Your cybernetic frame absorbs the first 2 points of physical
-damage you take each round. This reduction applies before armor.
-
-*When you're fully wired, hits just feel like feedback.*
-:::
-```
 
 ---
 
@@ -333,19 +306,17 @@ Five-rung d20 result table for all rolls. Each row is color-coded by result seve
 
 | Component | Authoring method | CSS class / output |
 |-----------|-----------------|-------------------|
-| Body Prose | Plain markdown paragraph | `.dc-prose` (auto) |
-| Flavor Text | `> [!FLAVOR]` blockquote alert | `.dc-prose.flavor` |
+| Body Prose | Plain markdown paragraph | *(auto)* |
+| Flavor Text | `> [!FLAVOR]` blockquote alert | `.dc-alert`, `.dc-flavor` |
 | Intro Lede | `:::lede` … `:::` | `.dc-intro` |
 | Note | `> [!NOTE]` blockquote alert | `.dc-note` |
 | Warning | `> [!WARNING]` blockquote alert | `.dc-note.warning` |
 | Pull Quote | `> [!PULLQUOTE]` blockquote alert | `.dc-pullquote.flush` |
 | Tape Divider | `<div class="dc-tape flush">…</div>` | `.dc-tape`, `.flush` |
-| Section H3 Divider | `### Heading {.dc-section-h3}` | `.dc-section-h3` |
 | Vibe Callout | `> [!VIBE]` blockquote alert | `.dc-vibe-callout` |
 | Origin Callout | `> [!ORIGIN]` blockquote alert | `.dc-origin-callout` |
 | Human Callout | Raw HTML inside `.dc-sidebar` | `.dc-human-callout` |
 | Gear Callout | `> [!GEAR]` blockquote alert | `.dc-gear-callout` |
-| Item Block | `:::item` … `:::` with `###` title | `.item` |
 | Table | Standard markdown pipe table | *(auto)* |
 | Blockquote | Standard markdown `>` blockquote | *(auto)* |
 | Code Block | Triple-backtick fenced block | *(auto)* |
@@ -369,4 +340,4 @@ These examples show the above components rendered in real book pages using actua
 - [Specialty Profile](#ch-example-specialty-profile) — full specialty spread with flavor text and pull quotes
 - [Rules & Mechanics](#ch-example-rules) — outcome ladder, notes, warnings, numbered procedures in context
 - [Dream Master Pages](#ch-example-dm-npcs) — DM notes, NPC sidebars, encounter hooks
-- [Gear & Tech](#ch-example-gear-tech) — gear callouts, item blocks, tables
+- [Gear & Tech](#ch-example-gear-tech) — gear callouts, tables, and cybernetics rules

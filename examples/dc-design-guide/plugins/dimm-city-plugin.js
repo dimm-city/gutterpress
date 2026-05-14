@@ -988,7 +988,7 @@ export default function dimmCityPlugin(md, options = {}) {
             // Inline token in a paragraph → prose
             if (ctok.type === 'inline' && ctok.content.trim() !== '') {
               const renderedProse = md.renderInline(ctok.content);
-              bodyPartsHtml += '<p class="dc-prose">' + renderedProse + '</p>\n';
+              bodyPartsHtml += '<p>' + renderedProse + '</p>\n';
             }
           }
 
@@ -1277,7 +1277,7 @@ export default function dimmCityPlugin(md, options = {}) {
           const closeTok = tokens[i + 2];
           if (inlineTok && inlineTok.type === 'inline' && closeTok && closeTok.type === 'paragraph_close') {
             const bodyHtml = processRollDie(renderInlineChildren(inlineTok, md));
-            newTokens.push(makeToken('html_block', '<p class="dc-prose">' + bodyHtml + '</p>\n'));
+            newTokens.push(makeToken('html_block', '<p>' + bodyHtml + '</p>\n'));
             i += 2;
             continue;
           }
@@ -1403,7 +1403,7 @@ export default function dimmCityPlugin(md, options = {}) {
             if (ability) {
               let output = '<div class="dc-ability">\n';
               output += '  <span class="' + ability.apClass + '">' + esc(ability.apVal) + '</span>\n';
-              output += '  <p class="dc-ability-text dc-prose">' + processRollDie(ability.text) + '</p>\n';
+              output += '  <p class="dc-ability-text">' + processRollDie(ability.text) + '</p>\n';
               output += '</div>\n';
               newTokens.push(makeToken('html_block', output));
             } else {
@@ -1539,7 +1539,7 @@ export default function dimmCityPlugin(md, options = {}) {
           continue;
         }
         if (ctok.type === 'inline' && ctok.content.trim() !== '') {
-          bodyPartsHtml += '<p class="dc-prose">' + md.renderInline(ctok.content) + '</p>\n';
+          bodyPartsHtml += '<p>' + md.renderInline(ctok.content) + '</p>\n';
         }
       }
       let html = '<div class="dc-class-entry">\n';

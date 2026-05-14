@@ -3,7 +3,7 @@
 # Field Guide Components
 
 :::lede
-Components used in the Dimm City Field Guide — gear entries, definition blocks, sidebar boxes, colophon data, and the dashed rule divider. These elements handle the prose-heavy, reference-dense pages that the core DC component library does not cover.
+Components used in the Dimm City Field Guide — gear entries, definition blocks, sidebar boxes, and the dashed rule divider. These elements handle the prose-heavy, reference-dense pages that the core DC component library does not cover.
 :::
 
 > **Component pattern:** `.dc-prose-panel` is the small shared shell for compact prose boxes in this family. `.dc-definition-block` and `.dc-sidebar-box` are thin concrete variants layered on top of it. `.dc-sidebar` and `.dc-human-callout` remain separate components with their own layout/content rules.
@@ -85,21 +85,6 @@ concealable under a jacket. Cuts non-powered barriers on a hit of 10+.
 
 ---
 
-## Colophon Block
-
-`<dl>`/`<dt>`/`<dd>` data block: bold orange monospace labels left column, values right, hairline rule separators. **Raw HTML only** — use solely on colophon or credits page. **Use:** edition info, legal notices, production credits.
-
-```html
-<dl class="dc-colophon">
-  <dt>Edition</dt><dd>First Printing, 2026</dd>
-  <dt>Imprint</dt><dd>Dimm City Press</dd>
-  <dt>Built with</dt><dd>print-md + Paged.js</dd>
-  <dt>License</dt><dd>MPL-2.0</dd>
-</dl>
-```
-
----
-
 ## Callout Class Names — Field Guide vs Design Guide
 
 Use the design-guide forms documented in `03-components.md`: `.dc-alert` is the alert shell, and dc-prefixed variants such as `.dc-vibe-callout`, `.dc-origin-callout`, `.dc-gear-callout`, and `.dc-dm-note` layer on top of it. Avoid unprefixed legacy callout names in new guide examples. If a field-guide page still needs book-specific treatment such as a forced full-height gear box, add that as a book-level rule rather than switching back to a legacy class.
@@ -123,7 +108,6 @@ Use the design-guide forms documented in `03-components.md`: `.dc-alert` is the 
 | Sidebar | `@sidebar ... @end-sidebar` | `dc-sidebar` |
 | Procedure | `@procedure ... @end-procedure` | `dc-steps` |
 | Gear Entry | `:::wrapper {.dc-gear-entry}` | `dc-gear-entry` |
-| Colophon Block | Raw HTML `<dl class="dc-colophon">` | `dc-colophon` |
 | Art Bottom Pin | `![img](https://placehold.co/1349x842/png?text=Art){.dc-art-bottom}` or `:::wrapper {.dc-art-bottom}` | `dc-art-bottom` |
 | Legacy note: Ability Container | Use `@skill` instead — `:::: ability` has no active CSS | — |
 
@@ -133,7 +117,6 @@ Use the design-guide forms documented in `03-components.md`: `.dc-alert` is the 
 
 These examples show the above field guide components rendered in real book pages using actual Dimm City Field Guide content.
 
-- [Front Matter & TOC](#ch-example-front-matter) — colophon block on credits page
 - [Specialty Overview](#ch-example-specialty-overview) — definition blocks and sidebar boxes in specialty intros
 - [Rules & Mechanics](#ch-example-rules) — sidebar boxes for rules etiquette, dashed rule dividers between entries
 - [Dream Master Pages](#ch-example-dm-npcs) — definition blocks for NPC type summaries

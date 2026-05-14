@@ -274,43 +274,6 @@ body { counter-reset: chapter; }
   page: full;
 }
 
-/* Colophon / end-of-book pages: own named page so the chunker reliably
-   picks up the footer-suppression. The .page.colophon → page: front-matter
-   approach was unreliable for the trailing colophon (the chunker didn't
-   stamp pagedjs_named_page on it), so we define a dedicated `colophon`
-   named page and assign it via the same `.<class> { page: <name> }`
-   pattern that works for chapter-start. */
-@page colophon {
-  margin: 0.5in 0.625in 0.75in 0.625in;
-  background-color: var(--bg);
-  @bottom-left  { content: none; }
-  @bottom-right { content: none; }
-  @bottom-center { content: none; }
-}
-
-@page colophon:left {
-  margin-right: var(--binding-margin, 0.75in);
-  margin-left: 0.625in;
-  @bottom-left  { content: none; }
-  @bottom-right { content: none; }
-}
-
-@page colophon:right {
-  margin-left: var(--binding-margin, 0.75in);
-  margin-right: 0.625in;
-  @bottom-left  { content: none; }
-  @bottom-right { content: none; }
-}
-
-.page-break.colophon,
-.page-break.end-of-book,
-.page-break.page-colophon,
-.page.colophon,
-.page.end-of-book,
-.page.page-colophon {
-  page: colophon;
-}
-
 /* ---------------------------------------------------------------------------
    Page Template: Chapter Start/End
    --------------------------------------------------------------------------- */
@@ -458,43 +421,6 @@ body { counter-reset: chapter; }
     content: none;
   }
 }
-
-/* ---------------------------------------------------------------------------
-   Page Template: Augmented UI (decorative borders)
-   --------------------------------------------------------------------------- */
-
-@page aug {
-  margin-top: 0.1in;
-  margin-bottom: 0.1in;
-
-  @bottom-left {
-    content: "c." counter(chapter);
-    padding-left: 0.2in;
-    padding-bottom: 0.3in;
-  }
-
-  @bottom-right {
-    content: "p." counter(page);
-    text-align: right;
-    padding-right: 0.35in;
-    padding-bottom: 0.35in;
-  }
-}
-
-@page aug:left {
-  /* Left (verso) aug pages — binding-side margin on right.
-     Add margin-left: var(--binding-margin, 0.75in) here instead if the binding is on the left for this variant. */
-  margin-right: var(--binding-margin, 0.75in);
-  margin-left: 0.1in;
-}
-
-@page aug:right {
-  /* Inner margin (left side for right pages) set to 0.625in for perfect binding */
-  margin-left: var(--binding-margin, 0.75in);
-  margin-right: 0.1in;
-}
-
-.aug, .page-aug { page: aug; }
 
 /* Base .page, .page-break, .column-break rules moved to content-templates.css 2026-05-10 */
 

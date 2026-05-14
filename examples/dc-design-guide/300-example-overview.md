@@ -26,7 +26,7 @@ Each chapter in Part 2 covers one type of page. The annotation above the rendere
 <li><a href="#ch-example-specialty-profile">Specialty Profile</a> — full Augmerc specialty block with learning paths and skill cards</li>
 <li><a href="#ch-example-rules">Rules Pages</a> — core rules prose: dice, distances, conditions, NPC types</li>
 <li><a href="#ch-example-dm-npcs">DM &amp; NPC Pages</a> — Dream Mastery chapter, NPC stat blocks, Fodder / Operator / Master examples</li>
-<li><a href="#ch-example-gear-tech">Gear &amp; Tech</a> — useful items, aug cards, Ego Points table, and cybernetics rules</li>
+<li><a href="#ch-example-gear-tech">Gear &amp; Tech</a> — useful items, Ego Points table, and cybernetics rules</li>
 </ol>
 </div>
 

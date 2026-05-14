@@ -61,4 +61,4 @@ These examples show the above type styles rendered in real book pages using actu
 - [Specialty Profile](#ch-example-specialty-profile) — full specialty spread with skill card tabs and ability text
 - [Rules & Mechanics](#ch-example-rules) — rolling, outcomes, body prose at density
 - [Dream Master Pages](#ch-example-dm-npcs) — NPC stat blocks, encounter hooks
-- [Gear & Tech](#ch-example-gear-tech) — aug cards, weapon tables, cybernetics
+- [Gear & Tech](#ch-example-gear-tech) — weapon tables and cybernetics

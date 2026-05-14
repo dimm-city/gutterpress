@@ -56,9 +56,9 @@ I locked in da hack, jacked out, an leapt clean onto a passing airbus like I mea
 
 ## Info Sidebar Page: Citizen File
 
-**Page template** — `@page .page-info-sidebar .citizen-file .chapter-01` — sidebar layout with a main column and an inset sidebar. The right column's sidebar block uses `.dc-sidebar`. Column breaks (`---{.column-break}`) split content across the two columns. Callout blocks use `> [!VISIT]` for the bordered callout style. See [Layout](#ch-layout) for column-break syntax and [Components](#ch-components) for the callout component.
+**Page template** — `@page .citizen-file .chapter-01` — citizen-file layout with a main column and a sidebar-oriented record treatment. The right column's sidebar block uses `.dc-sidebar`. Column breaks (`---{.column-break}`) split content across the two columns. Callout blocks use `> [!VISIT]` for the bordered callout style. See [Layout](#ch-layout) for column-break syntax and [Components](#ch-components) for the callout component.
 
-@page .page-info-sidebar .citizen-file .chapter-01
+@page .citizen-file .chapter-01
 
 ## Citizen File {#c2-character-profile}
 

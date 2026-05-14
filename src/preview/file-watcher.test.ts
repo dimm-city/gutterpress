@@ -133,7 +133,7 @@ describe('generateAndWriteHtml', () => {
     const css = await readFile(cssPath, 'utf8');
 
     expect(css).not.toContain('.page.rolling-die > .wrapper:first-of-type ul + p');
-    expect(css).toContain('.page.rolling-die > .wrapper ul + p');
+    expect(css).not.toContain('.page.rolling-die > .wrapper ul + p');
   });
 });
 

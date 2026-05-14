@@ -3,7 +3,7 @@
 # Specialty Overview — Real-World Example {.dc-chevron}
 
 :::lede
-This section shows how the "Choose a Specialty" spread looks in the actual Dimm City Field Guide, rendered using real book content. It covers two page types: a chapter-start opener with fiction and ability primer, followed by an ability-catalog page with the specialty card grid.
+This section shows how the "Choose a Specialty" spread looks in the actual Dimm City Field Guide, rendered using real book content. It covers two page types: a chapter-start opener with fiction and ability primer, followed by a specialty overview spread with the specialty card grid.
 :::
 
 ---
@@ -56,25 +56,21 @@ In Dimm City, abilities aren't just what you can do. They're learned techniques,
 
 ---
 
-## Ability-Catalog Page: Choose a Specialty
+## Specialty Overview Spread: Choose a Specialty
 
-**Page template** — `@page .page-ability-catalog .choose-specialty .chapter-01` — activates the two-column auto-fill specialty card grid. The grid is authored with `@spread .specialty-spread`; each specialty uses a `:::wrapper` with a `.dc-specialty-card` class plus the specialty name (e.g. `.augmerc`, `.proxy`). Art images replaced with design guide placeholder. See [Page Templates](#ch-templates) for the `page-ability-catalog` spec and [Layout](#ch-layout) for the card grid system.
+**Page template** — `@page .choose-specialty .chapter-01` — activates the specialty overview spread with a two-column specialty card grid. The grid is owned by the page template; each specialty uses a `:::wrapper` with a `.dc-specialty-card` class plus the specialty name (e.g. `.augmerc`, `.proxy`). Art images replaced with design guide placeholder.
 
-@page .page-ability-catalog .choose-specialty .chapter-01
+@page .choose-specialty
 
-:::wrapper {.learning-path}
-
-## 1. Choose a specialty {#c2-choose-a-role}
+@section intro
+## Choose a specialty
 
 Every dreamer's got a sharp edge — your specialty is where it starts.
 
-It's the skillset that sets you apart, defines what you bring to the crew, and shapes the wild ways you survive the Dream.
+It's the skill set that sets you apart, defines what you bring to the crew, and shapes the wild ways you survive the Dream.
+@end-section
 
-:::
-
-@spread .specialty-spread
-
-:::wrapper {.dc-specialty-card .augmerc}
+:::wrapper {.dc-specialty-card .variant-2 .augmerc}
 ### Augmerc {#specialty-augmerc}
 
 ![Augmerc](https://placehold.co/1349x842/png?text=Augmerc){.art-specialty}
@@ -85,7 +81,7 @@ Heavily armed and wired for war, Augmercs are the blunt force of any squad. They
 
 :::
 
-:::wrapper {.dc-specialty-card .proxy}
+:::wrapper {.dc-specialty-card .variant-3 .proxy}
 ### Proxy {#specialty-proxy}
 
 ![Proxy](https://placehold.co/1349x842/png?text=Proxy){.art-specialty}
@@ -97,7 +93,7 @@ Marked by something higher—god, ghost, code, or conviction—Proxies walk the 
 :::
 
 
-:::wrapper {.dc-specialty-card .streetwarden}
+:::wrapper {.dc-specialty-card .variant-4 .streetwarden}
 ### Streetwarden {#specialty-streetwarden}
 
 ![Streetwarden](https://placehold.co/1349x842/png?text=Streetwarden){.art-specialty}
@@ -108,7 +104,7 @@ They don't wear badges—they are the law when no one else shows. Streetwardens 
 
 :::
 
-:::wrapper {.dc-specialty-card .gutterdruid}
+:::wrapper {.dc-specialty-card .variant-5 .gutterdruid}
 ### Gutterdruid {#specialty-gutterdruid}
 
 ![Gutterdruid](https://placehold.co/1349x842/png?text=Gutterdruid){.art-specialty}
@@ -119,7 +115,7 @@ They walk the alleys like sacred ground—feeding the hungry, tending weeds, rai
 
 :::
 
-:::wrapper {.dc-specialty-card .cybersurgeon}
+:::wrapper {.dc-specialty-card .variant-2 .cybersurgeon}
 ### Cybersurgeon {#specialty-cybersurgeon}
 
 ![Cybersurgeon](https://placehold.co/1349x842/png?text=Cybersurgeon){.art-specialty}
@@ -130,7 +126,7 @@ Life is flexible. Cybersurgeons prove it daily—cutting, splicing, upgrading fl
 
 :::
 
-:::wrapper {.dc-specialty-card .wirephreak}
+:::wrapper {.dc-specialty-card .variant-3 .wirephreak}
 ### Wirephreak {#specialty-wirephreak}
 
 ![Wirephreak](https://placehold.co/1349x842/png?text=Wirephreak){.art-specialty}
@@ -141,7 +137,7 @@ Killers, thieves, forgers—Wirephreaks specialize in slipping past locks, firew
 
 :::
 
-:::wrapper {.dc-specialty-card .technosorcerer}
+:::wrapper {.dc-specialty-card .variant-4 .technosorcerer}
 ### Technosorcerer {#specialty-technosorcerer}
 
 ![Technosorcerer](https://placehold.co/1349x842/png?text=Technosorcerer){.art-specialty}
@@ -152,7 +148,7 @@ Technosorcerers walk on the razor's edge between magic and technology. They beli
 
 :::
 
-:::wrapper {.dc-specialty-card .etherlock}
+:::wrapper {.dc-specialty-card .variant-5 .etherlock}
 ### Etherlock {#specialty-etherlock}
 
 ![Etherlock](https://placehold.co/1349x842/png?text=Etherlock){.art-specialty}

@@ -363,6 +363,6 @@ These examples show the above components rendered in real book pages using actua
 - [Specialty Overview](#ch-example-specialty-overview) — chevron banners, class tags, and specialty listing cards
 - [Specialty Profile](#ch-example-specialty-profile) — full learning path: spray banner, sticker chain, skill cards with AP chips and clip-path variants
 - [Dream Master Pages](#ch-example-dm-npcs) — creature and NPC stat blocks, DM stamps, encounter hooks
-- [Gear & Tech](#ch-example-gear-tech) — aug cards, weapon tables, classified stamps, cybernetics entries
+- [Gear & Tech](#ch-example-gear-tech) — weapon tables, classified stamps, and cybernetics reference
 
-**Cleanup note:** legacy `.specialty-card` should be renamed to `.dc-specialty-card` during the ongoing CSS cleanup so all reusable Dimm City components follow the `dc-` prefix convention.
+**Cleanup note:** Completed 2026-05-12 — legacy `.specialty-card` usage in the design guide was consolidated onto `.dc-specialty-card` so reusable Dimm City components follow the `dc-` prefix convention.

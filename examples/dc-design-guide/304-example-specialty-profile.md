@@ -12,6 +12,8 @@ This section shows how a full specialty profile looks in the actual Dimm City Fi
 
 **Macros** — `@specialty {.augmerc}` wraps the entire specialty section and applies specialty-scoped CSS. The `.specialty-intro` wrapper holds the name, definition, and Spec Tweak. The `.specialty-art` wrapper holds the character illustration. `@learning-path` injects the path header and path sequence list. Long abilities should use `@continue` inside `@skill`. See [DC Components](#ch-dc-components) for the full `@specialty` / `@learning-path` / `@skill` macro reference.
 
+@page
+
 @specialty {.augmerc}
 
 :::wrapper {.specialty-intro .variant-2}

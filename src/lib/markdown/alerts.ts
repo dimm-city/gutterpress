@@ -25,7 +25,7 @@ const DC_ALERT_TYPES: Record<string, AlertConfig> = {
   ORIGIN:    { classes: "dc-alert dc-origin-callout",       label: "Origin" },
   VISIT:     { classes: "dc-alert dc-visit-callout",        label: "Visit" },
   GEAR:      { classes: "dc-alert dc-gear-callout",         label: "Gear" },
-  FLAVOR:    { classes: "dc-prose flavor" },
+  FLAVOR:    { classes: "dc-flavor" },
   PULLQUOTE: { classes: "dc-pullquote flush" },
 };
 

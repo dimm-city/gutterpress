@@ -15,7 +15,7 @@ This is the Dimm City print design system — cyberpunk and creaturepunk, built 
 <li><a href="#ch-typography">Typography</a> — display, mono, body; type scale</li>
 <li><a href="#ch-palette">Color Palette</a> — paper, fire, HUD, surface tokens</li>
 <li><a href="#ch-components">Core Components</a> — callouts, pull quotes, tables</li>
-<li><a href="#ch-dc-components">DC Component Library</a> — aug cards, stat blocks, banners</li>
+<li><a href="#ch-dc-components">DC Component Library</a> — skill cards, stat blocks, banners</li>
 <li><a href="#ch-templates">Page Templates</a> — named page types, chapter openers</li>
 <li><a href="#ch-layout">Layout &amp; Composition</a> — columns, floats, break utilities</li>
 <li><a href="#ch-reference">Markdown Reference</a> — all syntax with examples</li>
@@ -33,7 +33,7 @@ This is the Dimm City print design system — cyberpunk and creaturepunk, built 
 <li><a href="#ch-example-specialty-profile">Specialty Profile</a> — full specialty spread</li>
 <li><a href="#ch-example-rules">Rules &amp; Mechanics</a> — dice, outcomes, distances</li>
 <li><a href="#ch-example-dm-npcs">Dream Master Pages</a> — NPC stat blocks, encounter hooks</li>
-<li><a href="#ch-example-gear-tech">Gear &amp; Tech</a> — aug cards, weapons, cybernetics</li>
+<li><a href="#ch-example-gear-tech">Gear &amp; Tech</a> — weapons, tables, cybernetics</li>
 </ol>
 </div>
 

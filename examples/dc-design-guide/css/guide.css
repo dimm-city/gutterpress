@@ -61,14 +61,14 @@
    inside each @chapter wrapper is the real chapter title. Later h1 elements
    in the same chapter are live specimens and must NOT trigger page breaks.
    ─────────────────────────────────────────────────────────────────────────── */
-div.chapter > h1:first-of-type {
+div.chapter>h1:first-of-type {
   break-before: page;
   page-break-before: always;
   /* counter-increment removed — page-rules.css hard-resets the chapter counter per-page via .page.chapter-NN rules; auto-increment is unreliable in Paged.js */
 }
 
 /* Specimen h1s (not the first in their @chapter wrapper) — flow normally. */
-div.chapter > h1:not(:first-of-type) {
+div.chapter>h1:not(:first-of-type) {
   break-before: auto;
   page-break-before: auto;
   counter-increment: none;
@@ -84,7 +84,9 @@ div.chapter > h1:not(:first-of-type) {
    Prevent h2/h3/h4 from stranding at the bottom of a page. Scoped to
    div.chapter so this doesn't suppress breaks outside the chapter context.
    ─────────────────────────────────────────────────────────────────────────── */
-div.chapter h2, div.chapter h3, div.chapter h4 {
+div.chapter h2,
+div.chapter h3,
+div.chapter h4 {
   break-before: auto;
   break-after: avoid;
   break-inside: avoid;
@@ -112,12 +114,23 @@ div.chapter.chapter-02 h2 {
   font-size: var(--fs-h2);
 }
 
-div.chapter h2 + p, div.chapter h2 + ul, div.chapter h2 + ol, div.chapter h2 + pre, div.chapter h2 + blockquote, div.chapter h2 + table,
-div.chapter h2 + div,
-div.chapter h3 + p, div.chapter h3 + ul, div.chapter h3 + ol, div.chapter h3 + pre, div.chapter h3 + table,
-div.chapter h3 + div,
-div.chapter h4 + p, div.chapter h4 + ul, div.chapter h4 + ol,
-div.chapter h4 + div {
+div.chapter h2+p,
+div.chapter h2+ul,
+div.chapter h2+ol,
+div.chapter h2+pre,
+div.chapter h2+blockquote,
+div.chapter h2+table,
+div.chapter h2+div,
+div.chapter h3+p,
+div.chapter h3+ul,
+div.chapter h3+ol,
+div.chapter h3+pre,
+div.chapter h3+table,
+div.chapter h3+div,
+div.chapter h4+p,
+div.chapter h4+ul,
+div.chapter h4+ol,
+div.chapter h4+div {
   break-before: avoid;
   page-break-before: avoid;
 }
@@ -139,8 +152,10 @@ div.chapter pre {
 
 div.chapter pre code {
   font-family: var(--font-mono);
-  font-size: 9pt;    /* was 8.5pt — raised to ISO 9241-3 / O'Reilly 9pt minimum for monospaced technical type */
-  line-height: 1.5;  /* was 1.55 — 13.5pt leading at 9pt is consistent with body leading rhythm */
+  font-size: 9pt;
+  /* was 8.5pt — raised to ISO 9241-3 / O'Reilly 9pt minimum for monospaced technical type */
+  line-height: 1.5;
+  /* was 1.55 — 13.5pt leading at 9pt is consistent with body leading rhythm */
   color: var(--ink);
   background: none;
   padding: 0;
@@ -149,44 +164,18 @@ div.chapter pre code {
 }
 
 /* Inline code (not inside pre) */
-div.chapter :not(pre) > code {
+div.chapter :not(pre)>code {
   font-family: var(--font-mono);
   font-size: 9pt;
   color: var(--orange);
-  background: rgba(242, 77, 0, 0.08) /* --orange at 8% opacity */;
+  background: rgba(242, 77, 0, 0.08)
+    /* --orange at 8% opacity */
+  ;
   border-radius: 2px;
   padding: 1px 4px;
-  overflow-wrap: break-word;  /* prevent long token names from escaping container bounds */
+  overflow-wrap: break-word;
+  /* prevent long token names from escaping container bounds */
   word-break: break-word;
-}
-
-/* ── Tables ──────────────────────────────────────────────────────────────────
-   Design-guide reference table styles. DC book tables use dc-brand.css;
-   these rules only apply inside div.chapter wrappers.
-   ─────────────────────────────────────────────────────────────────────────── */
-div.chapter table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 9pt;
-  margin: 0.1in 0;
-  break-inside: avoid;
-}
-
-div.chapter th {
-  background: var(--crimson);
-  color: var(--paper-cream);
-  font-family: var(--font-mono);
-  font-size: 8pt;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 4px 8px;
-  text-align: left;
-}
-
-div.chapter td {
-  border-bottom: 1px solid var(--border-hairline);
-  padding: 4px 8px;
-  vertical-align: top;
 }
 
 /* Compact table density for the DC Components authoring quick reference —
@@ -198,9 +187,7 @@ div.chapter.dc-components table th {
   font-size: 8.5pt;
 }
 
-div.chapter tr:nth-child(even) td {
-  background: var(--surface-tint-3);
-}
+
 
 /* ── Specimen scaffolding ────────────────────────────────────────────────────
    Light wrapper for live specimens in the guide — adds a subtle inset so
@@ -211,10 +198,14 @@ div.chapter tr:nth-child(even) td {
 .specimen {
   border: 1px solid var(--border-hairline);
   border-left: 3px solid var(--hud-blue);
-  border-top: 3px solid var(--hud-blue);   /* top accent distinguishes specimen frame from dc-sidebar-box (also left-bordered, cream bg) */
-  padding: 0.15in 0.20in;                  /* was 0.1in 0.15in — increased for breathing room at print scale */
-  margin: 0.15in 0;                         /* was 0.1in 0 */
-  background: var(--paper-aged);            /* was --paper-cream — distinct surface; components inside still render on their own cream */
+  border-top: 3px solid var(--hud-blue);
+  /* top accent distinguishes specimen frame from dc-sidebar-box (also left-bordered, cream bg) */
+  padding: 0.15in 0.20in;
+  /* was 0.1in 0.15in — increased for breathing room at print scale */
+  margin: 0.15in 0;
+  /* was 0.1in 0 */
+  background: var(--paper-aged);
+  /* was --paper-cream — distinct surface; components inside still render on their own cream */
   break-inside: avoid;
   page-break-inside: avoid;
   overflow: hidden;
@@ -269,14 +260,10 @@ div.chapter h2 {
    ─────────────────────────────────────────────────────────────────────────── */
 .guide-toc {
   columns: 1;
-  padding-right: 0.5in; /* prevents right-column overflow in single-column TOC layout */
+  padding-right: 0.5in;
+  /* prevents right-column overflow in single-column TOC layout */
   box-sizing: border-box;
 }
-
-/* Responsive screen-only overrides removed 2026-05-10 — this is a print-only
-   project; @media screen rules are not permitted in any CSS layer. The two
-   rules that were here (.dc-roll-table-compare-stage and .dc-options-layout
-   single-column overrides at max-width:1100px/900px) are deleted permanently. */
 
 /* ── Part 1: Two-column reference layout ─────────────────────────────────────
    Uses the structural gutter token shared with content-templates.css page
@@ -354,23 +341,73 @@ div.chapter .dc-palette-swatch.on-dark {
   color: var(--paper-cream);
 }
 
-div.chapter .dc-palette-swatch.bg-ink { background: var(--ink); }
-div.chapter .dc-palette-swatch.bg-ink-smoke { background: var(--ink-smoke); }
-div.chapter .dc-palette-swatch.bg-ink-dust { background: var(--ink-dust); }
-div.chapter .dc-palette-swatch.bg-crimson { background: var(--crimson); }
-div.chapter .dc-palette-swatch.bg-blood { background: var(--blood); }
-div.chapter .dc-palette-swatch.bg-orange { background: var(--orange); }
-div.chapter .dc-palette-swatch.bg-rust { background: var(--rust); }
-div.chapter .dc-palette-swatch.bg-amber { background: var(--amber); }
-div.chapter .dc-palette-swatch.bg-deep-rust { background: var(--deep-rust); }
-div.chapter .dc-palette-swatch.bg-hud-blue { background: var(--hud-blue); }
-div.chapter .dc-palette-swatch.bg-hud-blue-bright { background: var(--hud-blue-bright); }
-div.chapter .dc-palette-swatch.bg-hud-blue-dim { background: var(--hud-blue-dim); }
-div.chapter .dc-palette-swatch.bg-hud-magenta { background: var(--hud-magenta); }
-div.chapter .dc-palette-swatch.bg-hud-panel { background: var(--hud-panel); }
-div.chapter .dc-palette-swatch.bg-surface-tint-3 { background: var(--surface-tint-3); }
-div.chapter .dc-palette-swatch.bg-surface-orange-tint { background: var(--surface-orange-tint); }
-div.chapter .dc-palette-swatch.bg-border-hairline { background: var(--border-hairline); }
+div.chapter .dc-palette-swatch.bg-ink {
+  background: var(--ink);
+}
+
+div.chapter .dc-palette-swatch.bg-ink-smoke {
+  background: var(--ink-smoke);
+}
+
+div.chapter .dc-palette-swatch.bg-ink-dust {
+  background: var(--ink-dust);
+}
+
+div.chapter .dc-palette-swatch.bg-crimson {
+  background: var(--crimson);
+}
+
+div.chapter .dc-palette-swatch.bg-blood {
+  background: var(--blood);
+}
+
+div.chapter .dc-palette-swatch.bg-orange {
+  background: var(--orange);
+}
+
+div.chapter .dc-palette-swatch.bg-rust {
+  background: var(--rust);
+}
+
+div.chapter .dc-palette-swatch.bg-amber {
+  background: var(--amber);
+}
+
+div.chapter .dc-palette-swatch.bg-deep-rust {
+  background: var(--deep-rust);
+}
+
+div.chapter .dc-palette-swatch.bg-hud-blue {
+  background: var(--hud-blue);
+}
+
+div.chapter .dc-palette-swatch.bg-hud-blue-bright {
+  background: var(--hud-blue-bright);
+}
+
+div.chapter .dc-palette-swatch.bg-hud-blue-dim {
+  background: var(--hud-blue-dim);
+}
+
+div.chapter .dc-palette-swatch.bg-hud-magenta {
+  background: var(--hud-magenta);
+}
+
+div.chapter .dc-palette-swatch.bg-hud-panel {
+  background: var(--hud-panel);
+}
+
+div.chapter .dc-palette-swatch.bg-surface-tint-3 {
+  background: var(--surface-tint-3);
+}
+
+div.chapter .dc-palette-swatch.bg-surface-orange-tint {
+  background: var(--surface-orange-tint);
+}
+
+div.chapter .dc-palette-swatch.bg-border-hairline {
+  background: var(--border-hairline);
+}
 
 /* ── Design Guide 3-Chapter Footer Labels ───────────────────────────────────
    string-set fires when Paged.js encounters the first H1 of each chapter
@@ -395,7 +432,9 @@ div.chapter .dc-palette-swatch.bg-border-hairline { background: var(--border-hai
 
    Paged.js clones wrapper divs on every page, so data-ch is reachable on all pages
    of a chapter — not just the first. One rule covers all three chapters. */
-div.chapter[data-ch] { string-set: guideSection attr(data-ch); }
+div.chapter[data-ch] {
+  string-set: guideSection attr(data-ch);
+}
 
 /* Override @page footer chapter label: replace counter(chapter) (which was stuck
    at c.0 because div.chapter counter-resets don't propagate to margin boxes) with

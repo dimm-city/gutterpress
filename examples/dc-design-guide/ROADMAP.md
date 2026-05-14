@@ -1,5 +1,4 @@
 # DC Design Guide & Field Guide — Master Roadmap
-*Generated 2026-05-12 from 4-agent research pass (session logs, AKM memories, git history, CSS audit, field guide migration audit, plugin audit)*
 
 ---
 
@@ -14,7 +13,7 @@
 | `cb08a88` | Page breaks between NPC tiers; orphan heading fixes in Part 2 examples |
 | `13c36f8` | Gear & Tech annotation pages expanded to fill sparse layout |
 
-Prior sessions: 19 dead CSS classes removed; 7 functional bugs fixed (critical: `note-callout` plugin mismatch, `dc-dm-note` rename); all font tokens documented; `--bg` corrected; `--fs-base` retired.
+Prior sessions established the current baseline: dead CSS classes removed, critical plugin/CSS mismatches fixed, font tokens documented, and the body/page token docs aligned with the CSS.
 
 ---
 
@@ -51,23 +50,22 @@ The chapter-start example H1 now carries `{.dc-chevron}`, and the shared page-te
 
 | # | Macro | Replaces | Emits | Complexity | Field guide scope |
 |---|---|---|---|---|---|
-| 1 | `@lede` | `:::lede` (already canonical) | `dc-intro` | Simple | Already converted — macro formalises it |
+| 1 | `@lede` | `:::lede` (already canonical) | `dc-intro` | Deferred | `:::lede` remains canonical; no shipped `@lede` macro yet |
 | 2 | `@sidebar` | `:::sidebar` / `:::wrapper {.dc-sidebar}` | `dc-sidebar` | Completed | Design-guide docs updated; field-guide migration remains |
 | 3 | `@sidebar-box` | `:::wrapper {.dc-sidebar-box}` | `dc-sidebar-box` | Completed | Design-guide docs updated; field-guide migration remains |
 | 4 | `@procedure` | `:::procedure` | `dc-steps > ol` | Completed | Design-guide docs updated; field-guide migration remains |
 | 5 | `@definition` | `:::wrapper {.dc-definition-block}` | `dc-definition-block` | Completed | Design-guide docs updated; field-guide migration remains |
 | 6 | `@three-column` | `:::three-column` | `three-column` | Medium | Low usage |
-| 7 | `@item` | `:::item` | TBD — context-aware | Deferred | Scoping decision required |
 
 **Implementation notes:**
-- Simple macros = wrap content in a named div, no special parsing; pattern follows existing `@lede` implementation
+- Simple macros = wrap content in a named div, no special parsing; follow the existing completed wrapper macros (`@sidebar`, `@sidebar-box`, `@definition`) rather than assuming a shipped `@lede` macro
 - Medium macros = structured sub-blocks or ordered list detection; follow `@skill` / `@outcome` patterns
 - All emitted classes must use `dc-` prefix per CLAUDE.md (exception: `.scream` intentionally unprefixed)
 - Each new macro needs a matching CSS rule in `dc-brand.css` before shipping
 - Each new macro needs a design guide specimen in the appropriate `03-components.md` or `08-field-guide-components.md` section
 - `dc-pullquote` should migrate to GFM alert syntax, not a new macro
 - Two-column field-guide wrappers should migrate to `@section` with class modifiers, not a new macro
-- No `@aug` macro is planned; chapter-05 needs a separate migration design
+- Legacy chapter-05 `.aug` content is no longer documented in the design guide; no `@aug` macro is planned.
 
 ---
 
@@ -102,10 +100,10 @@ Completed this session, plus a follow-up syntax cleanup pass (`@page` normalizat
 
 These patterns exist in the field guide but have no planned macro yet. Do not migrate until the macro is designed and the CSS class is confirmed:
 
-- `.specialty-intro`, `.specialty-art`, `.specialty-spread` — 8 occurrences in `chapter-02 *` specialty files
+- `.specialty-intro`, `.specialty-art` — active field-guide specialty wrappers; keep current syntax until a deliberate specialty-opener migration exists
 - `.at-a-glance-card*` — used in `chapter-01.md`
 - `.weapon-01` — used in `chapter-05.md`
-- `.grid` / `.item` wrappers — widespread in `chapter-01.md` (26 wrappers) and `chapter-05.md` (17 wrappers)
+- `.item` wrappers — still present in field-guide source, but no longer documented in the design guide
 
 Total remaining `:::wrapper` containers in active field guide files: still macro/deferred work, not part of the completed Phase 3 immediate/syntax pass.
 
@@ -152,10 +150,10 @@ Only extract shared base styling when it stays extremely small and visual. Do no
 ### Sidebar / panel family
 `dc-sidebar`, `dc-sidebar-box`, `dc-definition-block`, `dc-human-callout`, and related inset panels overlap structurally.
 
-→ Audit for a shared panel base with variants for border treatment, background, label, and heading style.
+→ Partially resolved: `.dc-definition-block` and `.dc-sidebar-box` now share the small `.dc-prose-panel` shell. Remaining audit scope is whether any further shared base should include `dc-sidebar` or `dc-human-callout` without over-generalizing them.
 
 ### Four identical `@page` declarations
-`front-matter`, `colophon`, `chapter-start`, `clean` — all produce identical visual output.
+`front-matter`, `chapter-start`, and `clean` produce the same visual footer-suppression behavior in the guide.
 
 → Verify each is load-bearing for Paged.js chunker reliability (existing comment claims they are). If confirmed, add explicit documentation; if not, consolidate.
 
@@ -168,8 +166,8 @@ Five page templates in `content-templates.css` hard-code the chevron banner trea
 
 | Phase | Estimated effort | Blocking? | Value |
 |---|---|---|---|
-| 1 — Quick wins | 1–2 sessions | No | Eliminates contradictory docs; resolves token ambiguity |
-| 2 — Macros 1–4 | ~1 session each | Blocks Phase 3 batches | Makes field guide authoring canonical |
+| 1 — Quick wins | Completed | No | Contradictory docs, token ambiguity, and stale guide-surface patterns were cleaned up |
+| 2 — Completed macros | Completed | Unblocked corresponding Phase 3 batches | `@sidebar`, `@sidebar-box`, `@procedure`, and `@definition` are now shipped and documented |
 | 2 — Macros 5–9 | 1–2 sessions total | Blocks remaining Phase 3 | Lower urgency |
 | 3 — Immediate migrations | Completed | No | Chapter opener coverage; chapter-03 container cleanup |
 | 3 — Macro-gated migrations | After each macro | Needs macros | Brings 74 wrapper containers to macro form |
@@ -177,4 +175,4 @@ Five page templates in `content-templates.css` hard-code the chevron banner trea
 | 3 — Bulk `---` → `@break` | Re-audit required | No | Earlier count/automation assumption did not hold in active source |
 | 4 — Rationalization | Ongoing | No | Establishes reusable base systems and lowers variant cost |
 
-**Recommended next session:** Fix visual regressions first, then continue aggressive cleanup using the dc-prefixed base-plus-thin-variants standard: finish alerts/callouts, then clean up `dc-skill-card`, `dc-path-shell`, and `dc-specialty-card` as separate components, then move to panel/sidebar families. Leave chapter-05 `:::aug` content out of the macro plan.
+**Recommended next session:** Continue from the remaining architecture targets rather than doc-sync work: review `@class-entry` portrait/shell alignment, then finish the remaining panel/sidebar-family cleanup beyond the new `.dc-prose-panel` base. Leave chapter-05 `:::aug` content out of the macro plan.

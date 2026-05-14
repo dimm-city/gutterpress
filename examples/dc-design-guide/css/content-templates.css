@@ -12,7 +12,7 @@
 
    Import order (index.css):
      1. dc-brand.css          — all DC tokens, fonts, and components
-     2. page-rules.css        — @page declarations, named pages, counter fixes
+   2. page-rules.css        — @page declarations, named pages, wrapper scaffolding
      3. content-templates.css — page content layouts and print density rules ← this file
      4. guide.css             — design-guide scaffolding only
    ============================================================================= */
@@ -21,12 +21,13 @@
    OWNS:
    - .page.* content layout rules (columns, flex, grid on page content divs)
    - Print density rules for page-level elements (.specialty *, .toc *, etc.)
-   - Paged.js page wrapper resets (.page base, .pagedjs_sheet background)
+   - General content-layer .page structure and layout rules
    - General print utilities (.column-break, .pmd-*, .break-before, etc.)
    - Named page element wiring (.page.citizen-file { page: citizen-file })
 
    MUST NOT CONTAIN:
    - @page declarations (→ page-rules.css)
+   - Paged-media wrapper scaffolding (.pagedjs_sheet, .page/.page-break base break rules, .column-break, print-only .page reset) (→ page-rules.css)
    - div.chapter scaffolding (→ guide.css)
    - DC brand tokens or component styles (→ dc-brand.css)
    - @media screen rules (print-only project)
@@ -35,42 +36,6 @@
    or general utility classes. If a selector targets div.chapter or a
    design-guide-specific element, it belongs in guide.css.
    ─────────────────────────────────────────────────────────────────────────── */
-
-/* ===========================================================================
-   PAGE WRAPPER BASE — moved from page-rules.css 2026-05-10
-   These are content-layer element rules, not @page declarations.
-   =========================================================================== */
-
-/* Ensure page background renders in PDF (not just screen preview).
-   The preview template sets this inside @media screen, so print mode misses it.
-   This rule applies unconditionally so Chromium's page.pdf() captures it.
-
-   Brick texture: applied here (not on @page) because Paged.js maps @page
-   backgrounds to .pagedjs_page — which .pagedjs_sheet then covers. By setting
-   the texture on .pagedjs_sheet, it appears both in the screen preview and in
-   the exported PDF. The 200×200 RGBA PNG tiles seamlessly at all print sizes.
-   Source: placeholder brick tile via placehold.co */
-.pagedjs_sheet {
-  background-color: var(--bg);
-  background-image: url("../img/brick-bg-02.png");
-  background-repeat: repeat;
-}
-
-.page,
-.page-break {
-  z-index: 1;
-  page-break-after: always;
-  page-break-inside: avoid;
-  break-after: always;
-  break-inside: avoid;
-}
-
-.column-break {
-  color: var(--hud-magenta);
-  visibility: hidden;
-  break-after: column;
-  -webkit-column-break-after: always;
-}
 
 /* ===========================================================================
    PAGE TEMPLATES — .page.* selector rules
@@ -308,11 +273,11 @@ article {
 }
 
 /* Exclusions must be identical across all chapter-02 selectors below.
-   Current list: .full-page, .chapter-start, .upgrading, .init, .outcome-table,
-   .rolling-die, .choose-specialty — update all selectors if adding a new exception. */
+   Current list: .full-page, .chapter-start, .upgrading, .init, .outcome-table
+   — update all selectors if adding a new exception. */
 
 /* Chapter 02 general content pages - two-column layout */
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.rolling-die):not(.choose-specialty) {
+.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table) {
   columns: 2;
   column-gap: var(--gutter);
   column-fill: balance;
@@ -321,7 +286,7 @@ article {
 /* chapter-02 h3: demote from full-weight chevron banner to a thin accent line.
    Scoped to content pages only — specialty/full-page layouts and explicit
    .dc-chevron classes are excluded. */
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.rolling-die):not(.choose-specialty) h3 {
+.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table) h3 {
   font-size: var(--fs-body);
   font-weight: var(--fw-semibold);
   border-top: var(--bw-thin) solid var(--hud-blue);
@@ -330,7 +295,7 @@ article {
 }
 
 /* chapter-02 h4: definition-header treatment for DREAM/DREAMER/PC/DM entries. */
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table):not(.rolling-die):not(.choose-specialty) h4 {
+.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table) h4 {
   font-size: var(--fs-body-sm);
   font-weight: var(--fw-bold);
   text-transform: uppercase;
@@ -339,64 +304,20 @@ article {
   border-top: none;
 }
 
-/* ---------------------------------------------------------------------------
-   Info + Sidebar (Citizen File / Character Sheet)
-   --------------------------------------------------------------------------- */
-
-.page.page-info-sidebar,
-.page.citizen-file {
-  columns: 2;
-  column-gap: var(--gutter);
-  column-fill: balance;
-}
-
-/* ---------------------------------------------------------------------------
-   Ability Catalog
-   --------------------------------------------------------------------------- */
-
-.page.page-ability-catalog,
 .page.choose-specialty {
   columns: 2;
   column-gap: var(--gutter);
   column-fill: auto;
 }
 
-.specialty-spread {
-  columns: 2;
-  column-gap: var(--gutter);
-  column-fill: auto;
-}
-
-.page.page-ability-catalog .learning-path,
-.page.page-ability-catalog .dc-learning-path,
-.page.choose-specialty .learning-path,
-.page.choose-specialty .dc-learning-path,
-.specialty-spread {
+.page.choose-specialty > .wrapper.learning-path {
   column-span: all;
   -webkit-column-span: all;
-  break-inside: avoid;
-  page-break-inside: avoid;
 }
 
-.page.page-ability-catalog .ability,
-.page.page-ability-catalog .ability-card,
-.page.page-ability-catalog .dc-skill-card,
-.page.choose-specialty .ability,
-.page.choose-specialty .ability-card,
-.specialty-spread .dc-specialty-card,
-.page.choose-specialty .dc-skill-card {
+.page.choose-specialty .dc-specialty-card {
   break-inside: avoid;
   page-break-inside: avoid;
-}
-
-/* ---------------------------------------------------------------------------
-   Item Grid / Gear Lists
-   --------------------------------------------------------------------------- */
-
-.page.page-item-grid {
-  columns: 2;
-  column-gap: var(--gutter);
-  column-fill: balance;
 }
 
 /* Ideal / Flaw pages: single-column page with 2-column layout inside
@@ -457,20 +378,8 @@ article {
   page-break-inside: avoid;
 }
 
-/* .full-page layout geometry (moved from page-rules.css — see CSS-AUDIT.md L7).
-   Ensures an empty .full-page occupies a full page in Paged.js (no layout box
-   otherwise). background-color applied here so it renders in Chromium PDF export. */
-.full-page {
-  width: var(--page-width, 8.625in);
-  height: var(--page-height, 11.25in);
-  background-color: var(--bg);
-  break-before: always;
-  page-break-before: always;
-}
-
-/* .specialty-art geometry (received from dc-brand.css L4).
+/* .specialty-art geometry.
    page: full is set in page-rules.css; geometry lives here per layer contract. */
-/* .dc-specialty-art removed 2026-05-12 — deprecated alias; use .specialty-art */
 .specialty-art {
   width: var(--page-width, 8.625in);
   height: var(--page-height, 11.25in);
@@ -639,114 +548,6 @@ article {
   pointer-events: none;
 }
 
-.page.rolling-die {
-  columns: 1;
-  column-fill: auto;
-  position: relative;
-}
-
-.page.rolling-die > .wrapper:first-of-type {
-  width: 4.25in;
-  min-height: 10.4in;
-}
-
-.page.rolling-die p.img-wrapper img[alt="Acorn Dice"] {
-  position: absolute;
-  left: 0.25in;
-  bottom: 0;
-  height: 3in;
-  width: auto;
-  margin: 0;
-  z-index: 0;
-}
-
-.page.rolling-die .dc-sidebar,
-.page.rolling-die .dc-sidebar.inset {
-  position: absolute;
-  top: 0;
-  right: -0.15in;
-  width: 3in;
-  height: 100%;
-  padding: 0.2in 0.2in 0.15in;
-  margin: 0;
-  float: none;
-  clear: none;
-  border-left: none;
-  background: transparent;
-}
-
-.page.rolling-die .dc-sidebar h3:first-child,
-.page.rolling-die .dc-sidebar.inset h3:first-child {
-  margin-top: 0.05in;
-  margin-bottom: 0.1in;
-  padding-bottom: 0.06in;
-  border-bottom: 1px solid var(--orange);
-  font-size: 1.05em;
-}
-
-.page.rolling-die .dc-sidebar p,
-.page.rolling-die .dc-sidebar.inset p {
-  margin-bottom: 0.09in;
-  line-height: var(--lh-normal);
-}
-
-.page.rolling-die .dc-sidebar hr,
-.page.rolling-die .dc-sidebar.inset hr {
-  margin: 0.12in 0;
-  border-color: var(--orange);
-}
-
-.page.rolling-die .dc-sidebar strong,
-.page.rolling-die > .wrapper:first-of-type strong {
-  color: var(--crimson);
-  letter-spacing: 0.02em;
-}
-
-.page.rolling-die > .wrapper:first-of-type p {
-  margin-bottom: 0.1in;
-  line-height: var(--lh-normal);
-}
-
-/* Avoid :first-of-type + adjacent sibling here.
-   Paged.js runs separate selector-rewrite passes for both patterns and can
-   double-remove the same rule from its CSS AST, crashing preview render. */
-.page.rolling-die > .wrapper ul + p {
-  margin-top: 0.14in;
-  padding-top: 0.08in;
-  border-top: 1px solid var(--border-hairline);
-}
-
-.page.rolling-die .dc-sidebar hr + p,
-.page.rolling-die .dc-sidebar.inset hr + p {
-  padding-top: 0.1in;
-  font-size: var(--fs-body-sm);
-  font-weight: var(--fw-bold);
-  letter-spacing: 0.06em;
-  color: var(--hud-blue);
-}
-
-.page.rolling-die .dc-sidebar hr ~ p,
-.page.rolling-die .dc-sidebar.inset hr ~ p {
-  background: rgba(42, 106, 138, 0.08);
-  border-left: 3px solid var(--hud-blue);
-  margin-left: -0.1in;
-  margin-right: -0.1in;
-  padding: 0.06in 0.1in;
-}
-
-.page.rolling-die .dc-sidebar > p:last-child,
-.page.rolling-die .dc-sidebar.inset > p:last-child {
-  margin-top: 0.1in;
-  margin-bottom: 0;
-  padding-top: 0.08in;
-  border-top: 1px solid var(--orange);
-  font-family: var(--font-display);
-  font-size: 0.95em;
-  letter-spacing: 0.05em;
-  text-align: center;
-  color: var(--orange);
-}
-
 .page.chapter-03 .rolling-die ul,
 .page.chapter-03 .dream-economy ul,
 .page.chapter-03 .scenes ul {
@@ -814,19 +615,6 @@ article {
   font-size: var(--fs-body);
   line-height: 1.6;
   color: var(--ink);
-}
-
-/* ---------------------------------------------------------------------------
-   Universal Print — Page Wrapper Reset
-   Cancels shared.css screen-preview values for .page (min-height, padding)
-   so chapter wrappers take their natural Paged.js dimensions in print.
-   Also cancels the screen-geometry .page block immediately above — these
-   values only apply in the live preview; Paged.js sizing takes over in print.
-   --------------------------------------------------------------------------- */
-.page {
-  background: transparent;
-  min-height: 0;
-  padding: 0;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1252,14 +1040,12 @@ article {
    --------------------------------------------------------------------------- */
 
 /* Force a page break before any element. */
-/* .break-before removed 2026-05-12 — deprecated alias; use .pmd-break-before */
 .pmd-break-before {
   break-before: page;
   page-break-before: always;
 }
 
 /* Prevent an element from breaking across pages. */
-/* .no-break removed 2026-05-12 — deprecated alias; use .pmd-no-break */
 .pmd-no-break {
   break-inside: avoid;
   page-break-inside: avoid;
@@ -1269,8 +1055,6 @@ article {
 .pmd-col-span {
   column-span: all;
 }
-
-/* .pmd-specimen-inline removed 2026-05-12 — identical to .pmd-no-break; use .pmd-no-break instead */
 
 /* Assign element to the 'clean' named page to suppress running headers/footers.
    The 'clean' @page declaration lives in page-rules.css. */

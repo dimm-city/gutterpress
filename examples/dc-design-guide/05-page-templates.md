@@ -36,11 +36,7 @@ The DC print system uses named page types to control margin geometry, footer chr
 | `.chapter-start` | Footer-free chapter opener spread |
 | `.chapter-end` | Footer restored: `c.N` left, `p.N` right |
 | `.full-page` | Zero margins, no footers — full-bleed art |
-| `.aug` | Reduced margins 0.1 in — specialty spreads |
 | `.citizen-file` | Running header "Citizen File" — NPC records |
-| `.page-ability-catalog .choose-specialty` | 2-column auto-fill layout for the specialty overview/selection page |
-| `.page-info-sidebar` | 2-column balanced layout shell for info sidebar pages |
-| `.colophon` | End-of-book, all chrome suppressed |
 
 Named pages are declared in the markdown source using the `@page` directive:
 
@@ -146,13 +142,12 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 @break
 ```
 
-**Markdown `@spread` / `:::wrapper` equivalents** — the specialty grid now uses `@spread` for the spread wrapper, while the card items remain `:::wrapper` blocks:
+**Markdown `:::wrapper` equivalents** — the specialty grid is now page-template-owned, while the card items remain `:::wrapper` blocks:
 
 | Shorthand | Purpose |
 |-----------|---------|
 | `:::lede` | Intro panel — prose and class tag chips |
 | `:::wrapper {.specialty-art}` | Full-bleed art plate (right page) |
-| `@spread .specialty-spread` | Specialty-card grid container |
 | `:::wrapper {.dc-specialty-card .augmerc}` | Individual card — name is a layout hook only, not a palette modifier |
 
 ---
@@ -161,7 +156,7 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 
 2–3 specialty entries per page: portrait, class tag chip, prose description, flavor quote. Separated by tape dividers. **Page class:** normal body page, no break marker needed.
 
-**Components:** `.dc-class-entry` (outer) · `.dc-class-entry-portrait > .dc-portrait` · `.dc-class-entry-name` (H3) · `.dc-class-entry-tags > span.dc-classtag` · `.dc-prose` · `.dc-flavor` · `<div class="dc-tape">— § —</div>` (separator — not `<hr>`)
+**Components:** `.dc-class-entry` (outer) · `.dc-class-entry-portrait > .dc-portrait` · `.dc-class-entry-name` (H3) · `.dc-class-entry-tags > span.dc-classtag` · plain body paragraphs · `.dc-flavor` · `<div class="dc-tape">— § —</div>` (separator — not `<hr>`)
 
 ```html
 <div class="dc-class-entry">
@@ -175,8 +170,8 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
     <div class="dc-class-entry-tags">
       <span class="dc-classtag augmerc"><span class="dc-classtag-dot"></span>Specialty Name</span>
     </div>
-    <p class="dc-prose">Description paragraph one.</p>
-    <p class="dc-prose">Description paragraph two — when to choose this specialty.</p>
+    <p>Description paragraph one.</p>
+    <p>Description paragraph two — when to choose this specialty.</p>
     <div class="dc-flavor">"Flavor quote."<br><em>— Operator Name, Role, District</em></div>
   </div>
 </div>
@@ -186,89 +181,13 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 
 ---
 
-### Choose Specialty Page
-
-2-column auto-fill catalog page. Each `.dc-specialty-card` has `break-inside: avoid`; `.specialty-spread` spans all columns. Use immediately before individual specialty opener spreads. **Page class:** `@page .page-ability-catalog .choose-specialty`
-
-**Components:** `.page-ability-catalog` (layout) · `.choose-specialty` (2-col `column-fill: auto`) · `## Intro Heading` · `@spread .specialty-spread` (grid) · `:::wrapper {.dc-specialty-card .name}` (one card per specialty)
-
-```markdown
-@page .page-ability-catalog .choose-specialty
-
-## Choose Your Specialty
-
-Opening sentence orienting the player — what a specialty is and how to pick one.
-
-@spread .specialty-spread
-
-:::wrapper {.dc-specialty-card .augmerc}
-
-### Augmerc
-
-Brief specialty description — two sentences maximum.
-
-:::
-
-:::wrapper {.dc-specialty-card .secondspec}
-
-### Second Specialty
-
-Brief specialty description — two sentences maximum.
-
-:::
-
-:::
-
-@break
-```
-
----
-
-### Info Sidebar Page
-
-2-column balanced body page with floating character-file sidebar. Always pair `.page-info-sidebar` (layout shell: balanced columns + sidebar float) with `.citizen-file` (content skin: stat cards, portrait float, "Citizen File" running header) — neither works fully without the other.
-
-**Page class:** `@page .page-info-sidebar .citizen-file`
-
-**Components:** `# Name {.dc-chevron}` · `:::lede` (lede) · `.citizen-at-a-glance` (HP/DEF/AP/TIER row) · `.citizen-sidebar` (portrait + tape label float)
-
-```markdown
-@page .page-info-sidebar .citizen-file
-
-# Subject Name {.dc-chevron}
-
-:::lede
-One atmospheric lede — role, threat posture, district affiliation. Under twenty words.
-:::
-
-<div class="citizen-at-a-glance">
-  <div class="citizen-stat"><div class="citizen-stat-key">HP</div><div class="citizen-stat-val">22</div></div>
-  <div class="citizen-stat"><div class="citizen-stat-key">DEF</div><div class="citizen-stat-val">14</div></div>
-  <div class="citizen-stat"><div class="citizen-stat-key">AP</div><div class="citizen-stat-val">3</div></div>
-  <div class="citizen-stat"><div class="citizen-stat-key">TIER</div><div class="citizen-stat-val">2</div></div>
-</div>
-
-<div class="citizen-sidebar">
-  <div class="dc-portrait">
-    <img src="https://placehold.co/600x800/png?text=Subject" alt="Subject Name">
-  </div>
-  <div class="dc-tape margin-sm">— Field Record —</div>
-</div>
-
-Body prose fills the left column. Two to four paragraphs covering background, methods, and encounter role.
-```
-
----
-
 ### Learning Path
 
-Specialty spread with spray banner, sticker chain, signature augment, and `@skill` cards. Reduced margins via `.aug` maximize column width for dense card layout. **Page class:** `@page .page-aug .aug`
+Specialty spread with spray banner, sticker chain, signature augment, and `@skill` cards. Use the standard specialty spread layout and let the learning-path and skill-card shells manage their own chrome.
 
 **Components:** `@learning-path variant="N" specialty="…" index="N"` (opens block) · `### Path Name` (spray banner) · `> Subtitle` (lede) · bullet list (sticker chain) · `<div class="dc-tape">` (divider) · `@skill variant="N" id="…"` / `@end-skill` (root-owned skill-card shape variant) · `<span class="dc-ap">N AP</span>`
 
 ```markdown
-@page .page-aug .aug
-
 @learning-path variant="2" specialty="augmerc" index="1"
 
 ### Path Name
@@ -296,13 +215,11 @@ Active | <span class="dc-ap">2 AP</span>
 
 ### Ability Spread
 
-Facing-page spread. Left: spray banner + path subtitle + `@skill` cards. Right: field notes + pull quote + DM callout + tape divider + class tags. **Page class:** `@page .page-aug .aug`
+Facing-page spread. Left: spray banner + path subtitle + `@skill` cards. Right: field notes + pull quote + DM callout + tape divider + class tags.
 
 **Components:** `## Title {.dc-spray}` · `<div class="dc-path-subtitle">` · `@skill` / `@end-skill` · `---{.column-break}` · `### Field Notes {.dc-spec-tweak .no-top}` · `> [!PULLQUOTE]` · `> [!DM]` · `<div class="dc-tape">` · `<span class="dc-classtag">`
 
 ```markdown
-@page .page-aug .aug
-
 ## Skill Title {.dc-spray}
 
 <div class="dc-path-subtitle">— SP1 · Path Name —</div>
@@ -529,7 +446,7 @@ Fail, and something else goes wrong.
 
 ## Running Headers and Footers
 
-Two counters in opposing bottom corners of every body page: **`p.N`** (page number) and **`c.N`** (chapter counter). Recto: `p.N` bottom-left · `c.N` bottom-right. Verso: swapped. `.chapter-start`, `.front-matter`, and `.colophon` suppress all footer chrome.
+Two counters in opposing bottom corners of every body page: **`p.N`** (page number) and **`c.N`** (chapter counter). Recto: `p.N` bottom-left · `c.N` bottom-right. Verso: swapped. `.chapter-start` and `.front-matter` suppress all footer chrome.
 
 The chapter counter resets via `.page.chapter-NN` on the first `.page-break` div of each chapter:
 
@@ -551,4 +468,4 @@ These examples show the above page templates rendered with actual Dimm City Fiel
 - [Specialty Profile](#ch-example-specialty-profile) — specialty opener spread (left + full-page art), learning path template, ability spread
 - [Rules & Mechanics](#ch-example-rules) — standard body pages, procedure page, rules reference template
 - [Dream Master Pages](#ch-example-dm-npcs) — bestiary entry, citizen-file page class, info sidebar template
-- [Gear & Tech](#ch-example-gear-tech) — gear and tech pages, colophon template
+- [Gear & Tech](#ch-example-gear-tech) — gear and tech pages, rules tables, cybernetics reference

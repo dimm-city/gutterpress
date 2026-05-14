@@ -268,7 +268,7 @@ a CSS class to that named page in the same file:
 > Without this, chapter-start pages will show running footers.
 
 Named pages in this codebase: `chapter-start`, `chapter-end`, `front-matter`, `full`,
-`aug`, `citizen-file`, `colophon`, `clean` (reserved). `@page :blank` is applied by
+`aug`, `citizen-file`, `clean` (reserved). `@page :blank` is applied by
 Paged.js to blank pages inserted by `RectoChapterHandler` — use it to suppress footers
 on programmatically inserted blank pages.
 
@@ -287,13 +287,6 @@ the structural hook; specialized classes extend it:
   columns: 2;
   column-gap: var(--gutter);
   column-fill: balance;
-}
-
-/* Ability catalog — auto fill so cards stack contiguously */
-.page.page-ability-catalog {
-  columns: 2;
-  column-gap: var(--gutter);
-  column-fill: auto;
 }
 
 /* Full-bleed art pages */
@@ -519,10 +512,8 @@ cannot separate them. That is the correct moment to add `{.classname}` to the
 markdown element.
 
 The escape hatch is `{.classname}` on the markdown element. Raw HTML is a last
-resort, permitted only when markdown cannot produce the required semantic structure —
-the `<dl class="dc-colophon">` component is the documented exception, where
-`<dt>`/`<dd>` semantics cannot be expressed in markdown. Document any raw HTML
-exception explicitly in the component's documentation.
+resort, permitted only when markdown cannot produce the required semantic structure.
+Document any raw HTML exception explicitly in the component's documentation.
 
 The `:has()` relational pseudo-class is supported in Chromium (Paged.js's renderer)
 and enables parent-aware targeting — for example, `li:has(> strong:first-child)`

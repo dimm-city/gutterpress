@@ -33,7 +33,7 @@ All four are imported in order by `css/index.css`. The book-layer (`field-guide/
 
 ## How Components Work
 
-Most DC components are authored with markdown containers or plugin markers. Raw HTML is reserved for structures that do not have a markdown/plugin form yet, such as specific stat-block or colophon markup. The Dimm City print-md plugin adds `@skill`, `@learning-path`, `@specialty`, `@sidebar`, `@procedure`, and related block markers for structured game content.
+Most DC components are authored with markdown containers or plugin markers. Raw HTML is reserved for the rare structures that still do not have a markdown/plugin form. The Dimm City print-md plugin adds `@skill`, `@learning-path`, `@specialty`, `@sidebar`, `@procedure`, and related block markers for structured game content.
 
 ```markdown
 <!-- 1. GFM alert / markdown component -->

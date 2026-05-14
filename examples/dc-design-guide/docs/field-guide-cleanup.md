@@ -76,7 +76,7 @@ Files to audit for remaining `:::: ability` / `:::: ability-continued` usage:
 
 | Container | Action |
 |---|---|
-| `:::: aug` (content container) | Keep until chapter-05 migration is redesigned; no `@aug` macro is planned |
+| `:::: aug` (content container) | Legacy field-guide content only; no design-guide specimen or `@aug` macro is planned |
 | `:::: ability-continued` | Migrate to `@continue` (see §2) |
 | `::: wrapper {".call-home-img"}` | Delete the wrapper; the image inside is already commented out (`chapter-01.md` line ~393) |
 
@@ -144,6 +144,10 @@ The specialty opener (`.specialty-intro`, `.specialty-art`) already works. No
 markdown change required. The design guide will document the `::: wrapper`
 syntax as the canonical form.
 
+The choose-specialty catalog is also stable: keep the per-specialty
+`:::wrapper {.dc-specialty-card .specialty-name}` blocks. In the guide, that
+grid is owned directly by the `.page.choose-specialty` page template.
+
 ---
 
 ## What does NOT change
@@ -152,7 +156,7 @@ syntax as the canonical form.
   internal CSS, not owned by design guide
 - `@page` annotations with chapter-specific classes (`.chapter-01`, `.ideal`,
   `.flaw`, `.citizen-file`, etc.) — chapter layout, not design system
-- `.specialty-spread` / `.dc-specialty-card.[specialty-name]` — keep as-is;
+- `.dc-specialty-card.[specialty-name]` on the choose-specialty page — keep as-is; the grid now belongs to the page template, not a separate spread wrapper;
   the per-specialty names are layout hooks for `book-sections.css`
 - `.ideal-list` / `.flaw-list` — chapter-01 specific page template; stays in
   `book-sections.css` scope, not a design guide element

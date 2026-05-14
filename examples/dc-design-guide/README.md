@@ -32,10 +32,10 @@ browser.
 | `02-palette.md` | Color tokens, surface tokens, border tokens, usage rules |
 | `03-components.md` | Core print-md components (callouts, tables, pull quotes) |
 | `04-dc-components.md` | DC-brand components (skill cards, stat blocks, AP tags, specialty system) |
-| `05-page-templates.md` | Page type system — TOC, chapter-start, citizen file, full-bleed |
+| `05-page-templates.md` | Page type system — TOC, chapter-start, specialty spreads, full-bleed |
 | `06-layout.md` | Multi-column layout, grid patterns, card arrays |
 | `07-markdown-reference.md` | Container syntax, `@chapter` macro, plugin markers |
-| `08-field-guide-components.md` | Field-guide-specific components (gear entries, definition blocks, colophon) |
+| `08-field-guide-components.md` | Field-guide-specific components (gear entries, definition blocks, sidebar boxes) |
 | `101-publishing.md` | PDF export, print preflight, CMYK notes |
 | **Part 2 — Field Guide in Action** | |
 | `300-example-overview.md` | Part 2 intro — how to read the real-world examples |
@@ -45,7 +45,7 @@ browser.
 | `304-example-specialty-profile.md` | Full specialty profile with skills |
 | `305-example-rules.md` | Rules and mechanics pages |
 | `306-example-dm-npcs.md` | Dream Master pages, NPC stat blocks |
-| `307-example-gear-tech.md` | Gear, aug cards, cybernetics |
+| `307-example-gear-tech.md` | Gear, cybernetics, and rules tables |
 
 ## CSS Architecture
 
@@ -69,6 +69,7 @@ and Paged.js-specific patterns.
 | Document | Purpose |
 |---|---|
 | [`docs/CSS-PATTERNS.md`](docs/CSS-PATTERNS.md) | Normative CSS architecture and authoring patterns |
+| [`docs/ADDING-MACROS.md`](docs/adding-macros.md) | Short how-to for adding plugin macros and matching dc-prefixed component CSS |
 | [`docs/field-guide-cleanup.md`](docs/field-guide-cleanup.md) | Field-guide migration notes — dc-* prefix adoption |
 
 ## Adapting This Design Guide
@@ -128,18 +129,25 @@ markdown source during the build step and emits structured HTML.
 | `@outcome` | Five-rung d20 outcome ladder | Crit / Hit / Mixed / Miss / Catastrophe table |
 | `@chapter-opener C.N` | Chapter number badge | Opener spread chapter number for non-specialty chapters |
 
-### Remaining planned migrations
+### Remaining migration work
 
 These authoring patterns still have migration work remaining in older
 container-heavy field-guide source:
 
-| Current syntax | Planned macro |
+| Current syntax | Canonical replacement path |
 |---|---|
-| `:::sidebar` | `@sidebar` |
-| `:::lede` | `@lede` |
+| `:::sidebar` / `:::wrapper {.dc-sidebar}` | `@sidebar` |
+| `:::wrapper {.dc-sidebar-box}` | `@sidebar-box` |
+| `:::procedure` | `@procedure` |
+| `:::wrapper {.dc-definition-block}` | `@definition` |
 | `:::pull-quote` / `:::wrapper {.dc-pullquote}` | `> [!PULLQUOTE]` |
 | `:::wrapper {.two-column...}` / `:::wrapper {.two-column-list}` | `@section .two-column ...` |
+| `:::lede` | Keep `:::lede` for now; no shipped `@lede` macro yet |
 | `:::three-column` | `@three-column` |
+
+Note: `@spread` is still available for real two-page spread layouts, but the
+choose-specialty catalog no longer uses a dedicated spread wrapper. That grid is
+now owned directly by `.page.choose-specialty`.
 
 ### Component System Rule
 
