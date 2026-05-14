@@ -1194,7 +1194,7 @@ export default function dimmCityPlugin(md, options = {}) {
         const userAttrs = { ...specialtyIntroMarker.attrs };
         const extraClass = userAttrs['class'] ? ' ' + userAttrs['class'] : '';
         delete userAttrs['class'];
-        newTokens.push(makeToken('html_block', '<div class="specialty-intro' + extraClass + '">\n'));
+        newTokens.push(makeToken('html_block', '<div class="dc-specialty-intro' + extraClass + '">\n'));
         i += 2;
         continue;
       }
@@ -1206,14 +1206,14 @@ export default function dimmCityPlugin(md, options = {}) {
       }
 
       // --- @specialty-art / @end-specialty-art ---
-      // Full-page art plate. Emits .specialty-art wrapper.
+      // Full-page art plate. Emits .dc-specialty-art wrapper.
       const specialtyArtMarker = parseMarker(tok, tokens, i, '@specialty-art');
       if (specialtyArtMarker.matched) {
         closeAll();
         const userAttrs = { ...specialtyArtMarker.attrs };
         const extraClass = userAttrs['class'] ? ' ' + userAttrs['class'] : '';
         delete userAttrs['class'];
-        newTokens.push(makeToken('html_block', '<div class="specialty-art' + extraClass + '">\n'));
+        newTokens.push(makeToken('html_block', '<div class="dc-specialty-art' + extraClass + '">\n'));
         i += 2;
         continue;
       }
@@ -1525,8 +1525,8 @@ export default function dimmCityPlugin(md, options = {}) {
 
       // Mark image-only paragraphs so layout rules can target them without
       // relying on p:has(img), which Paged.js drops silently. The base CSS
-      // rule (p.img-wrapper { padding:0; margin:0 }) lives in dc-brand.css.
-      // Per-page rules can further refine position via .page.my-class p.img-wrapper.
+      // rule (p.dc-img-wrapper { padding:0; margin:0 }) lives in components.css.
+      // Per-page rules can further refine position via .page.my-class p.dc-img-wrapper.
       if (tok.type === 'paragraph_open') {
         const inlineTok = tokens[i + 1];
         const closeTok = tokens[i + 2];
@@ -1535,7 +1535,7 @@ export default function dimmCityPlugin(md, options = {}) {
             && inlineTok.children.length === 1
             && inlineTok.children[0].type === 'image';
           if (hasOnlyImage) {
-            tok.attrSet('class', 'img-wrapper');
+            tok.attrSet('class', 'dc-img-wrapper');
           }
         }
       }

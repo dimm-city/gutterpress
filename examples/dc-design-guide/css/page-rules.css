@@ -350,7 +350,7 @@ body { counter-reset: chapter; }
    Page Template: Full (no margins, no footers)
    --------------------------------------------------------------------------- */
 
-.specialty-art { page: full; }
+.dc-specialty-art { page: full; }
 
 @page full {
   @bottom-right {

@@ -223,7 +223,7 @@ Active | <span class="dc-ap">2 AP</span>
 
 Facing-page spread. Left: spray banner + path subtitle + `@skill` cards. Right: field notes + pull quote + DM callout + tape divider + class tags.
 
-**Components:** `## Title {.dc-spray}` · `<div class="dc-path-subtitle">` · `@skill` / `@end-skill` · `---{.column-break}` · `### Field Notes {.dc-spec-tweak .no-top}` · `> [!PULLQUOTE]` · `> [!DM]` · `<div class="dc-tape">` · `<span class="dc-classtag">`
+**Components:** `## Title {.dc-spray}` · `<div class="dc-path-subtitle">` · `@skill` / `@end-skill` · `---{.column-break}` · `### Field Notes {.dc-spec-tweak .dc-no-top}` · `> [!PULLQUOTE]` · `> [!DM]` · `<div class="dc-tape">` · `<span class="dc-classtag">`
 
 ```markdown
 ## Skill Title {.dc-spray}
@@ -239,7 +239,7 @@ Stance | <span class="dc-ap">0 AP</span>–<span class="dc-ap">2 AP</span>
 
 ---{.column-break}
 
-### Field Notes {.dc-spec-tweak .no-top}
+### Field Notes {.dc-spec-tweak .dc-no-top}
 
 Tactical context and table guidance. Two to three short paragraphs.
 
@@ -297,9 +297,9 @@ Encounter guidance for the Dream Master.
 
 ---{.column-break}
 
-![Creature Name](https://placehold.co/600x800/png?text=Creature){.img-float-right}
+![Creature Name](https://placehold.co/600x800/png?text=Creature){.dc-img-float-right}
 
-<div class="dc-tape margin-sm">— Field Plate —</div>
+<div class="dc-tape dc-margin-sm">— Field Plate —</div>
 
 Caption text.
 
@@ -383,17 +383,17 @@ Optional closing prose for variant rules or table preferences.
 
 Full-column narrative for chapter openers, vignettes, dream intros. Prose + floated art + pull quote only — no structural UI. First-line indent applied by print CSS. **Page class:** normal body page, no break marker needed.
 
-**Components:** `### Scene Label {.dc-spec-tweak .no-top}` (optional) · `*italic opener*` · `![alt](https://placehold.co/1349x842/png?text=Scene){.img-float-right}` (or `.img-float-left`) · `> [!PULLQUOTE]`
+**Components:** `### Scene Label {.dc-spec-tweak .dc-no-top}` (optional) · `*italic opener*` · `![alt](https://placehold.co/1349x842/png?text=Scene){.dc-img-float-right}` (or `.dc-img-float-left`) · `> [!PULLQUOTE]`
 
 ```markdown
-### Scene Label {.dc-spec-tweak .no-top}
+### Scene Label {.dc-spec-tweak .dc-no-top}
 
 *Italic opener — one sentence that sets tone before the prose begins.*
 
 Narrative prose body. Keep paragraphs short and sensory — what the
 operator sees, hears, or smells. Each paragraph earns the next.
 
-![Alt text](https://placehold.co/1349x842/png?text=Scene){.img-float-right}
+![Alt text](https://placehold.co/1349x842/png?text=Scene){.dc-img-float-right}
 
 Continued prose with the floated image wrapping left.
 

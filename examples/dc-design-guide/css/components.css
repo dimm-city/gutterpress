@@ -166,12 +166,12 @@
    SPECIALTY PARENT-CONTAINER VARIANT SYSTEM
    ═══════════════════════════════════════════════════════════════════════════
    Authors wrap a specialty section in @specialty .<name>. Every component
-   inside — skill-card, path-shell, specialty-card, specialty-intro — inherits
+   inside — skill-card, path-shell, specialty-card, dc-specialty-intro — inherits
    its silhouette and accent color from that parent automatically.
 
    Structure:
    - Bases (.dc-skill-card, .dc-path-shell, .dc-specialty-card,
-     .specialty-intro) remain in dc-brand.css until full Phase 5 migration.
+     .dc-specialty-intro) remain in dc-brand.css until full Phase 5 migration.
    - Each specialty block here overrides ONLY:
        • custom properties (--dc-card-accent, --dc-card-tab-bg, shapes)
        • background for the specialty's surface
@@ -204,7 +204,7 @@
   --dc-specialty-card-accent: var(--augmerc-accent);
   --dc-specialty-card-shell-shape: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
 }
-.specialty.augmerc .specialty-intro {
+.specialty.augmerc .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    var(--hud-blue-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
   --dc-specialty-intro-title-shape: polygon(14px 0, calc(100% - 20px) 0, 100% 16px, 100% 100%, 0 100%, 0 14px);
@@ -233,7 +233,7 @@
   --dc-specialty-card-accent: var(--cybersurgeon-accent);
   --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
 }
-.specialty.cybersurgeon .specialty-intro {
+.specialty.cybersurgeon .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    #606060;
   --dc-specialty-intro-title-color: var(--paper-cream);
   --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
@@ -261,7 +261,7 @@
   --dc-specialty-card-accent: var(--proxy-accent);
   --dc-specialty-card-shell-shape: polygon(0 16px, 16px 0, 100% 0, 100% calc(100% - 24px), calc(100% - 36px) 100%, 0 100%);
 }
-.specialty.proxy .specialty-intro {
+.specialty.proxy .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    var(--ink-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
   --dc-specialty-intro-title-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
@@ -290,7 +290,7 @@
   --dc-specialty-card-accent: var(--wirephreak-accent);
   --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 12px));
 }
-.specialty.wirephreak .specialty-intro {
+.specialty.wirephreak .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    #7a3a7a;
   --dc-specialty-intro-title-color: var(--paper-cream);
   --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
@@ -319,7 +319,7 @@
   --dc-specialty-card-accent: var(--streetwarden-accent);
   --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 16px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 16px));
 }
-.specialty.streetwarden .specialty-intro {
+.specialty.streetwarden .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    var(--crimson);
   --dc-specialty-intro-title-color: var(--paper-cream);
   --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%);
@@ -348,7 +348,7 @@
   --dc-specialty-card-accent: var(--technosorcerer-accent);
   --dc-specialty-card-shell-shape: polygon(0 0, calc(50% - 16px) 0, 50% 10px, calc(50% + 16px) 0, 100% 0, 100% calc(100% - 16px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 16px));
 }
-.specialty.technosorcerer .specialty-intro {
+.specialty.technosorcerer .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    #2a3a6a;
   --dc-specialty-intro-title-color: var(--paper-cream);
   --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 24px) 0, 50% 14px, calc(50% + 24px) 0, 100% 0, 100% 100%, 0 100%);
@@ -377,7 +377,7 @@
   --dc-specialty-card-accent: var(--gutterdruid-accent);
   --dc-specialty-card-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 20px));
 }
-.specialty.gutterdruid .specialty-intro {
+.specialty.gutterdruid .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    var(--orange);
   --dc-specialty-intro-title-color: var(--ink-dark);
   --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
@@ -406,7 +406,7 @@
   --dc-specialty-card-accent: var(--etherlock-accent);
   --dc-specialty-card-shell-shape: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 16px 100%, 0 calc(100% - 18px));
 }
-.specialty.etherlock .specialty-intro {
+.specialty.etherlock .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    #6a5200;
   --dc-specialty-intro-title-color: var(--paper-cream);
   --dc-specialty-intro-title-shape: polygon(0 14px, 14px 0, 100% 0, 100% 100%, 0 100%);
@@ -702,7 +702,7 @@ hr,
 .dc-classtag.gutterdruid  { --c: var(--classtag-gutterdruid); }
 .dc-classtag.cybersurgeon { --c: var(--blood); }
 .dc-classtag.wirephreak   { --c: var(--hud-blue-bright); }
-.dc-classtag.technosorc   { --c: var(--classtag-technosorc); }
+.dc-classtag.dc-technosorc   { --c: var(--classtag-technosorc); }
 .dc-classtag.etherlock    { --c: var(--amber); }
 
 
@@ -728,8 +728,8 @@ hr,
 }
 .dc-stamp::before { top: -1px; left: 4px; right: 4px; height: 1px; }
 .dc-stamp::after  { bottom: -1px; left: 4px; right: 4px; height: 1px; }
-.dc-stamp.classified { color: var(--orange); border-color: var(--orange); transform: rotate(2deg); }
-.dc-stamp.classified::before, .dc-stamp.classified::after { background: var(--orange); }
+.dc-stamp.dc-classified { color: var(--orange); border-color: var(--orange); transform: rotate(2deg); }
+.dc-stamp.dc-classified::before, .dc-stamp.dc-classified::after { background: var(--orange); }
 
 /* ── Tape (torn-tape divider) ─────────────────────────────────────────── */
 .dc-tape {
@@ -783,9 +783,9 @@ hr,
   border-top: 0;
 }
 
-.dc-spec-tweak.no-top { margin-top: 0; }
+.dc-spec-tweak.dc-no-top { margin-top: 0; }
 
-.dc-tape.margin-sm { margin: 14px 0 8px; }
+.dc-tape.dc-margin-sm { margin: 14px 0 8px; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CARD SYSTEM — migrated from dc-brand.css (Stage 5)
@@ -816,7 +816,7 @@ hr,
 }
 
 /* ── Continuation markers ─────────────────────────────────────────────── */
-.card-cont-marker {
+.dc-card-cont-marker {
   display: block;
   font-family: var(--font-mono);
   font-size: 9pt;
@@ -831,7 +831,7 @@ hr,
   width: fit-content;
 }
 
-.card-fwd-marker {
+.dc-card-fwd-marker {
   position: absolute;
   bottom: 4px;
   right: 18px;
@@ -982,7 +982,7 @@ hr,
   break-inside: avoid;
 }
 .dc-ability-grid .dc-skill-card          { margin-bottom: 0; }
-.dc-ability-grid .dc-skill-card.span-row { grid-column: 1 / -1; }
+.dc-ability-grid .dc-skill-card.dc-span-row { grid-column: 1 / -1; }
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -992,7 +992,7 @@ hr,
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Specialty intro shell + element overrides ────────────────────────── */
-.specialty-intro {
+.dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--hud-magenta);
   --dc-specialty-intro-title-color: var(--bg);
   --dc-specialty-intro-title-shape: polygon(0 0, 100% 0, 100% 100%, 22px 100%, 0 calc(100% - 14px));
@@ -1009,9 +1009,9 @@ hr,
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
 }
 
-/* .specialty-intro.variant-N — migrated to parent-container model in components.css (Phase 4) */
+/* .dc-specialty-intro.variant-N — migrated to parent-container model in components.css (Phase 4) */
 
-.specialty-intro > h2:first-child {
+.dc-specialty-intro > h2:first-child {
   font-family: var(--font-display);
   font-size: 2rem;
   font-weight: var(--fw-bold);
@@ -1027,8 +1027,8 @@ hr,
   border: none;
 }
 
-/* PARTIAL — bare .specialty-intro > h3. Complementary to shared.css compound version. */
-.specialty-intro > h3 {
+/* PARTIAL — bare .dc-specialty-intro > h3. Complementary to shared.css compound version. */
+.dc-specialty-intro > h3 {
   color: var(--crimson);
   font-family: var(--font-display);
   text-transform: uppercase;
@@ -1040,25 +1040,25 @@ hr,
   border-top: none;
 }
 
-/* PARTIAL — bare .specialty-intro > p. Complementary to shared.css compound version. */
-.specialty-intro > p {
+/* PARTIAL — bare .dc-specialty-intro > p. Complementary to shared.css compound version. */
+.dc-specialty-intro > p {
   margin-block: 0.45rem;
   line-height: 1.5;
 }
 
-.specialty-intro > h2:first-child + p {
+.dc-specialty-intro > h2:first-child + p {
   margin-top: 0.2rem;
 }
 
-/* PARTIAL — bare .specialty-intro > ul/ol. Complementary to shared.css compound version. */
-.specialty-intro > ul,
-.specialty-intro > ol {
+/* PARTIAL — bare .dc-specialty-intro > ul/ol. Complementary to shared.css compound version. */
+.dc-specialty-intro > ul,
+.dc-specialty-intro > ol {
   margin-block: 0.45rem;
   padding-left: 1.2rem;
 }
 
 /* Collapses trailing margin. GAP — no shared.css peer. */
-.specialty-intro > :last-child {
+.dc-specialty-intro > :last-child {
   margin-bottom: 0;
 }
 
@@ -1405,8 +1405,8 @@ hr,
    STAGE 9 BULK MIGRATION — remaining .dc-* components from dc-brand.css
    Includes: pullquote, prose-panel, definition-block, sidebar-box, gear-entry,
    stat, toc, cover, sidebar, human-callout, class-entry, options, terms,
-   section-header, art-bottom, two-column, skill-card orphan rules,
-   roll-lucid/surreal, chapter-start blockquote, at-a-glance, img-float, more
+   dc-section-header, art-bottom, two-column, skill-card orphan rules,
+   roll-lucid/surreal, chapter-start blockquote, dc-at-a-glance, dc-img-float, more
    ═══════════════════════════════════════════════════════════════════════════ */
      .pmd-* print utilities — canonical in page-templates.css (Stage 2) ── */
 
@@ -1970,7 +1970,7 @@ hr,
 /* Element flush/reset variants used by shared examples and specialty output */
 /* .dc-stat.flush, .dc-steps.flush, .dc-outcomes.flush, .dc-pullquote.flush — kept here pending Stages 8/9.
    .dc-stickers.flush, .dc-path-subtitle.flush, .dc-intro.flush, .dc-tape.flush,
-   .dc-sub-header.flush, .dc-spec-tweak.no-top — migrated to components.css (Stage 4) */
+   .dc-sub-header.flush, .dc-spec-tweak.dc-no-top — migrated to components.css (Stage 4) */
 .dc-stat.flush,
 .dc-steps.flush,
 .dc-outcomes.flush,
@@ -2005,7 +2005,7 @@ hr,
    All rules below are GAP vs shared.css unless noted as PARTIAL.
    --------------------------------------------------------------------------- */
 
-/* .specialty-art geometry and page assignment moved to guide.css and page-rules.css. */
+/* .dc-specialty-art geometry and page assignment moved to guide.css and page-rules.css. */
 
 /* Specialty intro shell.
    The root owns the silhouette and the small public variant API; the title band
@@ -2042,19 +2042,19 @@ hr,
 
 /* Layout mode modifiers — specialty wrappers can pin every descendant card to
    a fixed width without touching the component chrome itself.
-   .columns — always narrow (3.5in), packs 2 per visual row.
-   .rows    — always wide (full content area), stacks vertically. */
-.columns .dc-skill-card {
+   .dc-columns — always narrow (3.5in), packs 2 per visual row.
+   .dc-rows    — always wide (full content area), stacks vertically. */
+.dc-columns .dc-skill-card {
   width: 3.5in;
   max-width: 3.5in;
 }
 
-.rows .dc-skill-card {
+.dc-rows .dc-skill-card {
   width: 100%;
   max-width: 7.25in;
 }
 
-.dc-skill-card:is(:only-child, .wide) {
+.dc-skill-card:is(:only-child, .dc-wide) {
   width: 100%;
   max-width: 7.25in;
 }
@@ -2110,26 +2110,26 @@ hr,
    ─────────────────────────────────────────────────────────────────────────── */
 
 /* ── IMAGE-ONLY PARAGRAPH WRAPPER ──────────────────────────────────────────
-   .img-wrapper is added by dimm-city-plugin.js to any <p> that contains
+   .dc-img-wrapper is added by dimm-city-plugin.js to any <p> that contains
    a single <img> and nothing else. This is a selector hook that replaces
    the unsupported p:has(img) pattern (Paged.js drops :has() silently).
    Zero out the default paragraph block margins so images sit flush inside
    their containing layout box. Per-page rules may further position
-   individual images via .page.my-class p.img-wrapper.
+   individual images via .page.my-class p.dc-img-wrapper.
    ─────────────────────────────────────────────────────────────────────────── */
-p.img-wrapper {
+p.dc-img-wrapper {
   padding: 0;
   margin: 0;
 }
 
-.at-a-glance-cards {
+.dc-at-a-glance-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 18px;
   margin: 0 0 18px;
 }
 
-.at-a-glance-card {
+.dc-at-a-glance-card {
   background: var(--paper-light);
   border: 1px solid var(--paper-aged);
   padding: 14px 16px;
@@ -2137,10 +2137,10 @@ p.img-wrapper {
 
 /* ── Image floats ────────────────────────────────────────────────────────────
    Float an image alongside body text using markdown-it-attrs:
-     ![Alt](img/photo.png){.img-float-right}
+     ![Alt](img/photo.png){.dc-img-float-right}
    The image occupies 44% of the column; body text wraps the remaining 56%.
    ─────────────────────────────────────────────────────────────────────────── */
-.img-float-right {
+.dc-img-float-right {
   float: right;
   width: 44%;
   max-width: 44%;
@@ -2148,7 +2148,7 @@ p.img-wrapper {
   display: block;
 }
 
-.img-float-left {
+.dc-img-float-left {
   float: left;
   width: 44%;
   max-width: 44%;
@@ -2200,7 +2200,7 @@ p.img-wrapper {
 }
 
 /* Sidebar title heading. Not confirmed in markdown but harmless. */
-.sidebar-title {
+.dc-sidebar-title {
   margin: 0 0 0.1in 0;
   padding-bottom: 0.06in;
   border-bottom: 1.5px solid var(--hud-blue);
@@ -2395,28 +2395,28 @@ p.img-wrapper {
   break-inside: avoid;
 }
 
-.dc-terms .item {
+.dc-terms .dc-item {
   --card-border-color: transparent;
   break-inside: avoid;
 }
 
 /* term label accent color */
-.dc-terms .item strong {
+.dc-terms .dc-item strong {
   color: var(--crimson);
 }
 
 /* term paragraph spacing */
-.dc-terms .item p {
+.dc-terms .dc-item p {
   padding-block: var(--space-sm);
 }
 
 /* first term paragraph — border-bottom separator, no top padding */
-.dc-terms .item p:first-of-type {
+.dc-terms .dc-item p:first-of-type {
   padding-block: 0;
   border-bottom: 1px var(--hud-blue) solid;
 }
 
-.section-header {
+.dc-section-header {
   page-break-after: avoid;
   margin-bottom: var(--space-2xl);
 }

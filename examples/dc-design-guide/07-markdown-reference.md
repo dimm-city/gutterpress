@@ -153,7 +153,7 @@ Second paragraph without extra markup.
 
 ```markdown
 ## Section Heading {#my-anchor .custom-class}
-![Alt text](image.png){.img-float-right}
+![Alt text](image.png){.dc-img-float-right}
 This sentence has a **key term**{.custom-span} highlighted.
 ```
 

@@ -19,16 +19,16 @@
   function injectCardSplitMarkers() {
     try {
       document.querySelectorAll('.card-fillable[data-split-from]').forEach(function (card) {
-        if (card.querySelector(':scope > .card-cont-marker')) return;
+        if (card.querySelector(':scope > .dc-card-cont-marker')) return;
         var m = document.createElement('div');
-        m.className = 'card-cont-marker';
+        m.className = 'dc-card-cont-marker';
         m.textContent = '▸ continued';
         card.insertBefore(m, card.firstChild);
       });
       document.querySelectorAll('.card-fillable[data-split-to]:not([data-split-from])').forEach(function (card) {
-        if (card.querySelector(':scope > .card-fwd-marker')) return;
+        if (card.querySelector(':scope > .dc-card-fwd-marker')) return;
         var m = document.createElement('div');
-        m.className = 'card-fwd-marker';
+        m.className = 'dc-card-fwd-marker';
         m.textContent = '▸';
         card.appendChild(m);
       });

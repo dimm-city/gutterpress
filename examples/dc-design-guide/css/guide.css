@@ -265,8 +265,8 @@ article {
 /* .toc layout, .page.* template rules, .specialty density overrides:
    all migrated to page-templates.css (Phase 2) */
 
-/* .specialty-art geometry stays here temporarily until Phase 4 */
-.specialty-art {
+/* .dc-specialty-art geometry stays here temporarily until Phase 4 */
+.dc-specialty-art {
   width: var(--page-width, 8.625in);
   height: var(--page-height, 11.25in);
   break-before: page;
@@ -274,7 +274,7 @@ article {
   overflow: hidden;
 }
 
-.specialty-art img {
+.dc-specialty-art img {
   display: block;
   width: 100%;
   height: 100%;

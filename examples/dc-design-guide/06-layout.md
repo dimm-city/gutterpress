@@ -18,8 +18,8 @@ Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
 | `:::three-column` … `:::` | Three narrow columns | Best for short reference entries |
 | `@sidebar` … `@end-sidebar` | Right-floated aside at 38% width | Emits `.dc-sidebar`; add `class="inset"` for full-height page-inset treatment |
 | `---{.column-break}` | Force next column (no space before `{`) | Use inside `:::two-column` / `:::three-column` |
-| `![]{.img-float-right}` | Float image right, 44% width | Text wraps left |
-| `![]{.img-float-left}` | Float image left, 44% width | Text wraps right |
+| `![]{.dc-img-float-right}` | Float image right, 44% width | Text wraps left |
+| `![]{.dc-img-float-left}` | Float image left, 44% width | Text wraps right |
 | `:::container {.pmd-no-break}` | Prevent block splitting across pages | — |
 | `## Heading {.pmd-break-before}` | Force new page before element | — |
 
