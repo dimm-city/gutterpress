@@ -1,7 +1,7 @@
 /* =============================================================================
    GUIDE.CSS — Design-guide scaffolding and demo page templates
    =============================================================================
-   Imported AFTER dc-brand.css and page-rules.css by index.css (third and last).
+   Imported LAST by index.css (fifth and final CSS file).
 
    This file contains rules that exist to present and organize the design guide
    document itself: specimen wrappers, code blocks, table styles used within
@@ -9,12 +9,14 @@
    rules for rendered examples in Part 2.
 
    This file must NOT contain any DC brand rules — all brand tokens, webfonts,
-   and component styles belong in dc-brand.css.
+   and component styles belong in components.css.
 
    Import order (index.css):
-     1. dc-brand.css    — all DC tokens, fonts, and components
-     2. page-rules.css  — @page declarations, named pages, footer chrome
-     3. guide.css  ←    — this file: scaffolding and guide-only demos
+     1. tokens.css          — :root tokens, @font-face, baseline resets
+     2. components.css      — all .dc-* and .pmd-* components
+     3. page-templates.css  — .page.* layouts, columns, print utilities
+     4. page-rules.css      — @page declarations, named pages, footer chrome
+     5. guide.css  ←        — this file: guide-only scaffolding and demos
    ============================================================================= */
 
 /* ── ARCHITECTURAL CONTRACT ───────────────────────────────────────────────────
@@ -263,9 +265,9 @@ article {
 /* .page p orphans/widows, .page > h2, .page h2/.page h3 break rules: migrated to page-templates.css */
 
 /* .toc layout, .page.* template rules, .specialty density overrides:
-   all migrated to page-templates.css (Phase 2) */
+   all migrated to page-templates.css */
 
-/* .dc-specialty-art geometry stays here temporarily until Phase 4 */
+/* .dc-specialty-art base geometry — guide-only, not in components.css */
 .dc-specialty-art {
   width: var(--page-width, 8.625in);
   height: var(--page-height, 11.25in);

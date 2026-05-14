@@ -205,6 +205,15 @@
   --wirephreak-accent:     #b34fb3;
   --technosorcerer-accent: #4f6fc2;
   --etherlock-accent:      #d4af37;
+
+  /* ── Specialty Dark Colors (title/tab backgrounds) ──────────────────── */
+  --cybersurgeon-mid:      #707070;  /* card tab background */
+  --cybersurgeon-dark:     #606060;  /* path title + intro title background */
+  --wirephreak-dark:       #7a3a7a;  /* skill/path/intro dark purple */
+  --streetwarden-dark:     #2a5a1a;  /* skill card tab dark green */
+  --technosorcerer-dark:   #2a3a6a;  /* skill/path/intro dark indigo */
+  --gutterdruid-dark:      #5a3810;  /* skill card tab dark brown */
+  --etherlock-dark:        #6a5200;  /* skill/path/intro dark gold */
 }
 
 /* ── GLOBAL PRINT ACCURACY ────────────────────────────────────────────────── */

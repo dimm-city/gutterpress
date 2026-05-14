@@ -87,7 +87,6 @@
   width: var(--page-width, 8.625in);
   height: var(--page-height, 11.25in);
   background-color: var(--bg);
-  break-before: always;
   break-before: page;
 }
 

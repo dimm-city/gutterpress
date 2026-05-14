@@ -22,14 +22,11 @@
  *   @skill              → Start skill cards section (auto-closes previous sections)
  *   @end-skill          → End skill transformation mode
  *
- * SKILL VARIANTS:
- *   Use variant="N" to select a preset style (1-5):
- *
- *   @skill variant="1"  (default)
- *   @skill variant="2"  (sharp angular)
- *   @skill variant="3"  (asymmetric tech)
- *   @skill variant="4"  (rounded soft)
- *   @skill variant="5"  (scooped futuristic)
+ * SPECIALTY VARIANTS:
+ *   Skill card and learning-path variants are controlled by the .specialty.<name>
+ *   parent container (CSS parent-selector model), not per-card attributes.
+ *   Authors wrap the entire specialty section in @specialty .augmerc and every
+ *   card inside automatically inherits the shape and accent colors.
  *
  * ATTRIBUTE SUPPORT:
  *   Markers can include key="value", key='value', or key=value pairs:
@@ -40,8 +37,8 @@
  *   @skill id="my-skill" data-category="combat"
  *     → Extra attributes added to skill-card wrapper
  *
- *   @skill variant="2" {.pain-compliance}
- *     → <div class="dc-skill-card pain-compliance" ...>
+ *   @skill {.allow-split}
+ *     → <div class="dc-skill-card allow-split" ...>
  *
  *   @learning-path {.custom-path}
  *     → <section class="dc-learning-path dc-path-block custom-path" ...>

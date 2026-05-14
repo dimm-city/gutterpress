@@ -168,13 +168,13 @@
 
    Structure:
    - Bases (.dc-skill-card, .dc-path-shell, .dc-specialty-card,
-     .dc-specialty-intro) remain in dc-brand.css until full Phase 5 migration.
+     .dc-specialty-intro) own structural rules; specialty blocks override only custom properties.
    - Each specialty block here overrides ONLY:
        • custom properties (--dc-card-accent, --dc-card-tab-bg, shapes)
        • background for the specialty's surface
      No structural properties are repeated from the base.
 
-   New silhouettes designed in Phase 4:
+   Specialty silhouettes:
    - cybersurgeon: top-right single diagonal (precision, surgical)
    - wirephreak:   asymmetric cross-cuts (hacker, all-angles)
    - technosorcerer: center top notch (arcane gate)
@@ -414,11 +414,8 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    AP TAGS — full variant set
    ═══════════════════════════════════════════════════════════════════════════
-   Base .dc-ap is in dc-brand.css (migrates to components.css in full
-   Phase 5 migration). These variants extend the existing base.
-   ─────────────────────────────────────────────────────────────────────────── */
-
-/* Existing in dc-brand.css: .dc-ap.free (crimson) and .dc-ap.var (hud-magenta) */
+   Base .dc-ap and all variants live here.
+   ───────────────────────────────────────────────────────────────────── */
 
 /* Standard action point — default blue; explicit class for documentation clarity */
 .dc-ap.standard {
@@ -443,10 +440,7 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Phase 5 — component migrations from dc-brand.css pending
-   ═══════════════════════════════════════════════════════════════════════════ */
-/* ═══════════════════════════════════════════════════════════════════════════
-   SIMPLE COMPONENTS — migrated from dc-brand.css (Stage 4)
+   SIMPLE COMPONENTS
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Tag ──────────────────────────────────────────────────────────────── */
@@ -766,7 +760,7 @@ hr,
 }
 
 
-/* ── Modifier variants for Stage 4 components ─────────────────────────── */
+/* ── Modifier variants — .flush removes margin ─────────────────────────── */
 .dc-stickers.flush,
 .dc-path-subtitle.flush,
 .dc-intro.flush,
@@ -785,7 +779,7 @@ hr,
 .dc-tape.dc-margin-sm { margin: 14px 0 8px; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   CARD SYSTEM — migrated from dc-brand.css (Stage 5)
+   CARD SYSTEM
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Skill card shell ─────────────────────────────────────────────────── */
@@ -902,6 +896,14 @@ hr,
 }
 .dc-card-inner { position: relative; z-index: 1; }
 
+/* ── Highlight variant — featured skill card (| highlight suffix in title) */
+.dc-skill-card.highlight .dc-card-tab {
+  box-shadow: 0 0 0 3px var(--crimson);
+}
+.dc-skill-card.highlight .highlight-body {
+  background: linear-gradient(to bottom, rgba(180,40,40,0.06) 0%, transparent 40%);
+}
+
 /* ── Continuation card variants ───────────────────────────────────────── */
 .dc-skill-card-cont {
   margin-top: 0;
@@ -914,9 +916,7 @@ hr,
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   ABILITY ROW + AP SYSTEM — migrated from dc-brand.css (Stage 6)
-   Note: .dc-ap.free/.var/.standard/.reduced/.increased/.special variants
-         migrated in Phase 5; base .dc-ap migrated here.
+   ABILITY ROW + AP SYSTEM
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Ability row + ability text ───────────────────────────────────────── */
@@ -934,6 +934,17 @@ hr,
   color: var(--ink);
 }
 .dc-ability-text strong { color: var(--crimson); font-weight: 600; }
+
+/* ROLL THE DIE! emphasis span — intentionally unprefixed per CLAUDE.md */
+.scream {
+  font-family:    var(--font-display);
+  font-size:      var(--fs-h3);
+  font-weight:    700;
+  color:          var(--crimson);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  display:        inline-block;
+}
 
 /* ── AP base + author-facing variants ─────────────────────────────────── */
 .dc-ap {
@@ -983,7 +994,7 @@ hr,
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   LEARNING PATH + SPECIALTY INTRO + SPECIALTY CARD — Stage 7 (highest risk)
+   LEARNING PATH + SPECIALTY INTRO + SPECIALTY CARD
    Specialty parent-container overrides (above) supply variant tokens; these
    are the bases that consume them.
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -1006,7 +1017,7 @@ hr,
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
 }
 
-/* .dc-specialty-intro.variant-N — migrated to parent-container model in components.css (Phase 4) */
+/* .dc-specialty-intro uses parent-container (.specialty.<name>) for variant styling */
 
 .dc-specialty-intro > h2:first-child {
   font-family: var(--font-display);
@@ -1192,7 +1203,7 @@ hr,
     drop-shadow(0 -2px 0 var(--ink)); /* screen preview only — drops in Paged.js PDF export */
 }
 
-/* .dc-path-shell.variant-N — migrated to parent-container model in components.css (Phase 4) */
+/* .dc-path-shell uses parent-container (.specialty.<name>) for variant styling */
 
 .dc-path-shell > h2.dc-spray:first-child {
   color: var(--dc-path-title-color);
@@ -1215,7 +1226,7 @@ hr,
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   OUTCOMES + STEPS + PROCEDURE + DISTANCE + DICE — Stage 8
+   OUTCOMES + STEPS + PROCEDURE + DISTANCE + DICE
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Procedure / numbered steps ───────────────────────────────────────── */
@@ -1336,6 +1347,67 @@ hr,
 .dc-outcome-row.miss  { --row-color: var(--orange); }
 .dc-outcome-row.fail  { --row-color: var(--ink); }
 
+/* ── Roll table (@roll-table macro) ───────────────────────────────────── */
+.dc-roll-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-body-sm);
+  background: var(--paper-cream);
+  break-inside: avoid;
+  border: 1px solid var(--ink-dust);
+}
+.dc-roll-table-th {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  background: var(--ink);
+  color: var(--paper-cream);
+  padding: 4px 6px;
+  text-align: left;
+}
+.dc-roll-table-th--roll   { width: 22%; }
+.dc-roll-table-th--result { width: 78%; }
+.dc-roll-table-row {
+  border-bottom: 1px solid var(--paper-aged);
+}
+.dc-roll-table-row:last-child { border-bottom: 0; }
+.dc-roll-table-roll {
+  font-family:    var(--font-mono);
+  font-weight:    700;
+  font-size:      var(--fs-body-sm);
+  padding:        4px 6px;
+  color:          var(--paper-cream);
+  text-align:     center;
+  background:     var(--ink-smoke);
+  white-space:    nowrap;
+}
+.dc-roll-table-roll--crit  { background: var(--blood); }
+.dc-roll-table-roll--hit   { background: var(--crimson); }
+.dc-roll-table-roll--mixed { background: var(--amber);   color: var(--ink); }
+.dc-roll-table-roll--miss  { background: var(--orange);  color: var(--ink); }
+.dc-roll-table-roll--fail  { background: var(--ink); }
+.dc-roll-table-name {
+  font-family:    var(--font-mono);
+  font-weight:    700;
+  font-size:      9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  display:        block;
+  margin-bottom:  1px;
+}
+.dc-roll-table-name--crit  { color: var(--blood); }
+.dc-roll-table-name--hit   { color: var(--crimson); }
+.dc-roll-table-name--mixed { color: var(--amber); }
+.dc-roll-table-name--miss  { color: var(--orange); }
+.dc-roll-table-name--fail  { color: var(--ink); }
+.dc-roll-table-result {
+  padding:     4px 8px;
+  color:       var(--ink-smoke);
+  line-height: 1.4;
+}
+
 /* ── Distance tags (AP cost × distance block) ─────────────────────────── */
 .dc-distance-tags {
   display: flex;
@@ -1400,13 +1472,12 @@ hr,
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STAGE 9 BULK MIGRATION — remaining .dc-* components from dc-brand.css
+   REMAINING COMPONENTS
    Includes: pullquote, prose-panel, definition-block, sidebar-box, gear-entry,
    stat, toc, cover, sidebar, human-callout, class-entry, options, terms,
    dc-section-header, art-bottom, two-column, skill-card orphan rules,
    roll-lucid/surreal, chapter-start blockquote, dc-at-a-glance, dc-img-float, more
-   ═══════════════════════════════════════════════════════════════════════════ */
-     .pmd-* print utilities — canonical in page-templates.css (Stage 2) ── */
+   ═══════════════════════════════════════════════════════════════════════════ */ */
 
 
 /* ───────── LUCID / SURREAL ROLL VARIANTS ───────── */
@@ -1461,14 +1532,14 @@ hr,
    which `border` cannot do. Four 2px shadows in cardinal directions = uniform
    2px stroke around the entire silhouette. Print-safe; no JS, no SVG. */
 
-/* .dc-skill-card.variant-N — migrated to parent-container model in components.css (Phase 4) */
+/* .dc-skill-card uses parent-container (.specialty.<name>) for variant styling */
 
 
 /* ───────── FLAVOR ───────── */
 /* ───────── ABILITY ROW ───────── */
 
 /* ───────── SUB-HEADER ───────── */
-/* .dc-alert family migrated to components.css (Phase 3) */
+/* .dc-alert family lives here */
 
 /* ───────── PORTRAIT PANEL ───────── */
 /* ───────── INTRO LINE ───────── */
@@ -1751,11 +1822,11 @@ hr,
 /* Specialty accent tokens — book-layer colors for each specialty class */
 /* ── SPECIALTY ACCENT VARIANTS ─────────────────────────────────────────────
    Per-specialty accent color tokens and card-tab border-color overrides.
-   Migrated from _shared/css/specialty-variants.css (field-guide/css/specialty-accents.css deleted Phase 1a).
+   Specialty variant overrides for parent-container model.
    Tokens moved to :root block above (2026-05-10).
    ─────────────────────────────────────────────────────────────────────────── */
 /* .specialty.<name> parent-level accent tokens — redundant subset of full
-   parent-container overrides in components.css; deleted in Stage 3.
+   parent-container overrides live here.
    Consumers: .dc-card-tab (inside .dc-skill-card, where components.css sets
    --dc-card-accent) and .dc-learning-path h2.dc-spray (inside .dc-path-shell,
    where components.css sets --dc-path-accent). Both inherit correctly. */
@@ -1971,9 +2042,9 @@ hr,
   border-top: 1px solid rgba(201, 214, 226, 0.35) /* --hud-blue-dim at 35% opacity */;
 }
 /* Element flush/reset variants used by shared examples and specialty output */
-/* .dc-stat.flush, .dc-steps.flush, .dc-outcomes.flush, .dc-pullquote.flush — kept here pending Stages 8/9.
+/* .dc-stat.flush, .dc-steps.flush, .dc-outcomes.flush, .dc-pullquote.flush — kept here.
    .dc-stickers.flush, .dc-path-subtitle.flush, .dc-intro.flush, .dc-tape.flush,
-   .dc-sub-header.flush, .dc-spec-tweak.dc-no-top — migrated to components.css (Stage 4) */
+   .dc-sub-header.flush, .dc-spec-tweak.dc-no-top — live here */
 .dc-stat.flush,
 .dc-steps.flush,
 .dc-outcomes.flush,
@@ -2000,7 +2071,7 @@ hr,
 
 }
 
-/* .dc-note.warning migrated to components.css (Phase 3) */
+/* .dc-note.warning lives here */
 
 /* field-guide: folded from legacy/specialty.css */
 /* ---------------------------------------------------------------------------
@@ -2018,7 +2089,7 @@ hr,
 
 /* LIVE in chapter-01.md (10 specialty cards). */
 
-/* .dc-specialty-card.variant-N — migrated to parent-container model in components.css (Phase 4) */
+/* .dc-specialty-card uses parent-container (.specialty.<name>) for variant styling */
 
 /* ---------------------------------------------------------------------------
    Plugin-generated learning paths and cards
@@ -2279,7 +2350,7 @@ p.dc-img-wrapper {
 }
 
 /* .dc-vibe-callout, .dc-origin-callout, .dc-visit-callout, .dc-gear-callout,
-   .dc-dm-note — all migrated to components.css (Phase 3) */
+   .dc-dm-note — lives here */
 
 /* ────────────────────────────────────────────────────────────
    SPECIALTY LISTING — class entry block (tpl-specialty-listing)
