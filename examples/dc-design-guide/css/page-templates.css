@@ -12,7 +12,7 @@
    - Named-page element wiring (.page.full-bleed { page: full }, etc.)
    - General print utilities (.pmd-no-break, .pmd-break-before, .pmd-col-span,
      .pmd-suppress-footer, .dc-art-top, .dc-art-bottom, .column-break)
-   - Print density overrides scoped to a page type (.specialty * density rules)
+   - Break/overflow control scoped to a page type (.specialty break rules)
    - Page-level typography constraints (orphans/widows, heading break rules)
      scoped to .page context
 
@@ -339,48 +339,15 @@ div.chapter:is(.chapter-01, .chapter-02) :is(h1, .dc-intro, table, hr, .specimen
   box-sizing: border-box;
 }
 
-/* ── SPECIALTY PAGE DENSITY OVERRIDES ─────────────────────────────────────── */
-/* These rules tune component spacing specifically when rendered inside a
-   .specialty page type. They are page-layout concerns, not component defaults.
-   Note: will be refactored in Phase 4 to use .specialty.<name> parent selectors. */
+/* ── SPECIALTY PAGE BREAK CONTROL ─────────────────────────────────────────── */
+/* Break and overflow rules for specialty page type. Components own their own
+   sizing; only break-control and snap geometry belong here. */
 .specialty .dc-learning-path {
   break-before: page;
   break-inside: auto;
   break-after: auto;
   overflow: visible;
-  margin-top: 0.1in;
-  margin-bottom: 0.06in;
 }
 
-.specialty .dc-learning-path :is(h2, h3) { margin-bottom: 0.04in; }
-.specialty .dc-learning-path h3 { padding-top: 0.06in; }
-
-
-.specialty .dc-learning-path .dc-stickers { margin-bottom: 0; gap: 4px; row-gap: 0; }
-.specialty .dc-learning-path .dc-sticker  { padding: 0.1rem 0.4rem; line-height: 1.2; }
-
-.specialty .dc-path-shell { padding-bottom: 0; margin-bottom: 0; }
-.specialty .dc-path-shell > :is(p, ul) { margin-block: 0.06in; }
-.specialty .dc-path-shell > p { font-size: var(--fs-body-sm); line-height: 1.35; }
-.specialty .dc-path-shell ul li { margin-bottom: 0.03in; }
-
-.specialty .dc-ability h4         { margin-bottom: 0.04in; }
-.specialty .dc-ability blockquote  { margin: 0.04in 0 0.06in; }
-.specialty .dc-ability table       { margin-top: 0.04in; margin-bottom: 0.06in; }
-.specialty .dc-ability table :is(td, th) { padding-top: 0.04in; padding-bottom: 0.04in; }
-.specialty .dc-ability + .dc-ability    { padding-top: 0.02in; }
-
-.specialty .dc-card-body { padding: 0 1.25rem; }
-.specialty .dc-skill-card .dc-card-body .dc-card-inner { padding: 0.5rem 0; }
-.specialty .dc-card-tab   { padding: 0.1rem 1.5rem 0.1rem 0.75rem; }
-
-.specialty .dc-flavor { padding: 0.4rem 0.85rem; margin-bottom: 0.45rem; line-height: var(--lh-normal); }
-
-.specialty .dc-ability       { margin-bottom: 0.35rem; gap: 0.55rem; }
-.specialty .dc-ability-text  { font-size: var(--fs-body-sm); }
-.specialty .dc-ap            { padding: 0.35rem 0.55rem; font-size: var(--fs-body-sm); }
-
-.specialty table :is(td, th) { padding: 0.06in 0.08in; line-height: var(--lh-tight); }
-.specialty .dc-learning-path .dc-ability { margin-bottom: 0.06in; }
-.specialty .dc-sub-header    { margin-top: 0.5rem; margin-bottom: 0.3rem; }
+.specialty .dc-path-shell { padding-top: 0; padding-bottom: 16px; margin-bottom: 0; }
 .specialty .dc-skill-card.allow-split { break-inside: auto; }
