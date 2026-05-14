@@ -137,6 +137,9 @@ container-heavy field-guide source:
 |---|---|
 | `:::sidebar` | `@sidebar` |
 | `:::lede` | `@lede` |
+| `:::pull-quote` / `:::wrapper {.dc-pullquote}` | `> [!PULLQUOTE]` |
+| `:::wrapper {.two-column...}` / `:::wrapper {.two-column-list}` | `@section .two-column ...` |
+| `:::three-column` | `@three-column` |
 
 ### Component System Rule
 
@@ -153,9 +156,6 @@ Current reference implementation:
 
 Important distinction:
 - `.dc-skill-card`, `.dc-path-shell`, and `.dc-specialty-card` are three different components. They may share visual language, but they should not be collapsed into one fake component family with a large internal variable API.
-| `:::pull-quote` / `:::wrapper {.dc-pullquote}` | `> [!PULLQUOTE]` |
-| `:::wrapper {.two-column...}` / `:::wrapper {.two-column-list}` | `@section .two-column ...` |
-| `:::three-column` | `@three-column` |
 
 ### Class naming convention
 

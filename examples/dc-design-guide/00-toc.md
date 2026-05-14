@@ -43,5 +43,5 @@ This is the Dimm City print design system — cyberpunk and creaturepunk, built 
 
 1. Edit brand tokens in `css/dc-brand.css` — colors, fonts, and spacing all live in the `:root` block at the top of that file.
 2. Run `print-md preview dc-design-guide` to see your changes live in the browser.
-3. Add book-specific rules at the end of `css/dc-brand.css` — one file, one source of truth.
+3. Add book-specific token overrides in `css/project-overrides.css` so the shared `dc-brand.css` base stays reusable.
 4. Remove or add chapters to `manifest.yaml` as needed — the guide only documents what you actually ship.

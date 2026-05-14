@@ -3,7 +3,7 @@
 # Design System Overview
 
 :::lede
-This guide is both the living documentation of the Dimm City design system *and* a working demonstration. Every specimen on these pages is live — rendered through the same `css/index.css` as the Field Guide. Change a token in `dc-brand.css` and the specimen updates on the next preview refresh.
+This guide is both the living documentation of the Dimm City design system *and* a working demonstration. Every specimen on these pages is live — rendered through the same `css/index.css` as the Field Guide. Change a token in `project-overrides.css` (or `dc-brand.css` when evolving the shared base theme) and the specimen updates on the next preview refresh.
 :::
 
 ## How This Guide Is Organized
@@ -54,7 +54,7 @@ This is a lede rendered via the container plugin.
 
 ## Customizing the Brand
 
-`css/dc-brand.css §1` contains all `:root` tokens. Change any of the variables below to retheme the entire system — every rule in dc-brand.css, page-rules.css, content-templates.css, and guide.css inherits from these.
+`css/dc-brand.css §1` contains the canonical `:root` token list. For project-specific retheming, copy the tokens you need into `css/project-overrides.css` and let that file import last through `css/index.css`.
 
 **Before (default DC palette):**
 
