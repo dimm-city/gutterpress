@@ -449,11 +449,10 @@ the continuation tab renders correctly in preview.
 | `::::: wrapper {.specialty-spread}` | `chapter-01.md` | 226 | Replace with raw HTML wrapper or remove (see §6) |
 | `:::: wrapper {.call-home-img}` | `chapter-01.md` | 393 | Delete — the image inside is already commented out |
 | `::::: wrapper {.item .ability .continued}` | `chapter-02 6 Wirephreak.md` | 188 | Remove outer wrapper (see §10) |
-| `:::: aug` (9 containers) | `chapter-05.md` | 9, 17, 24, 32, 39, 47, 61, 68, 76 | **No replacement planned — keep as-is** |
+| `:::: aug` (9 containers) | `chapter-05.md` | — | **DONE — replaced with `@section .aug`** |
 
 **Risk:** The `.call-home-img` delete is safe (no live content). The
-`.specialty-spread` change requires visual review (§6). The `:::: aug` blocks
-are intentionally preserved.
+`.specialty-spread` change requires visual review (§6).
 
 ---
 
@@ -470,8 +469,7 @@ are intentionally preserved.
   `book-sections.css` scope, not a design guide element
 - `.weapon-01`, `.item.right-side` — chapter-05 layout hacks; stay in
   `book-sections.css`
-- `:::: aug` containers in `chapter-05.md` — field-guide content only; no
-  replacement macro planned
+- `:::: wrapper {.weapon-01}` and `:::: wrapper {.item .schraphose}` in `chapter-05.md` — book-specific layout containers; keep in field-guide CSS scope
 - `:::: wrapper {.dc-toc}` in `chapter-00.md` — already uses `dc-` prefix;
   migrate to `@toc` / `@end-toc` only if reworking `chapter-00.md` anyway
 - `:::: wrapper {.dc-sidebar}` in `chapter-02 0.md` and `chapter-01.md` —
