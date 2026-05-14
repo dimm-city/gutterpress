@@ -14,6 +14,10 @@ This section shows how a full specialty profile looks in the actual Dimm City Fi
 
 **Macros** — `@specialty .augmerc` wraps the entire specialty section and applies specialty-scoped CSS. The `.specialty-intro` wrapper holds the name, definition, and Spec Tweak. The `.specialty-art` wrapper holds the character illustration. `@learning-path` injects the path header and path sequence list. Long abilities should use `@continue` inside `@skill`. See [DC Components](#ch-dc-components) for the full `@specialty` / `@learning-path` / `@skill` macro reference.
 
+## Learning Path: Biting Distance
+
+**Macro** — `@specialty .augmerc` wraps the entire specialty section. `@specialty-intro` wraps the intro block. `@learning-path` renders the path header banner. Each `@skill` card renders without a variant attribute; the augmerc silhouette and accent come from the parent `@specialty .augmerc` container. Use `@continue` when a card needs to flow onto the next page.
+
 @page
 
 @specialty .augmerc
@@ -41,18 +45,6 @@ You do not need to track these implants as separate equipment unless the Dream M
 They are simply part of what makes an Augmerc dangerous.
 
 @end-specialty-intro
-
-@specialty-art
-
-![Augmerc](https://placehold.co/600x800/png?text=Augmerc){.augmerc}
-
-@end-specialty-art
-
----
-
-## Learning Path: Biting Distance
-
-**Macro** — `@specialty .augmerc` wraps the entire specialty section and applies specialty-scoped CSS — no `variant=` attribute needed. `@specialty-intro` wraps the intro block; `@specialty-art` wraps the art panel. `@learning-path` renders the path header banner. Each `@skill` card renders without a variant attribute; the augmerc silhouette and accent come from the parent `@specialty .augmerc` container. Use `@continue` when a card needs to flow onto the next page.
 
 @learning-path
 
@@ -125,5 +117,33 @@ Once per round, outside your turn, you exploit a target in reach. Choose one tec
 | **2** | **Cheap Shot**         | Break something important. Sight, breath, balance, or nerve. **ROLL THE DIE!** If you hit, the target must **ROLL THE DIE!** On a result of **10 or less**, they are **Blinded** or **Stunned** until the end of their next turn. **CHOOSE ONE EFFECT!**|
 
 You don't need an opening. You make one.
+
+@skill
+
+#### Pain Compliance
+
+> They want to keep moving? Make that cost more than they're willing to pay.
+
+You lock down a target in reach, exploiting pain and leverage over raw force. The target must spend an action to break free or accept the consequence.
+
+1. **1 AP** *Joint Lock:* Grab a limb and apply pressure. The target is **Immobilized** until the end of your next turn, or until they spend 1 AP to break free. On a Catastrophe, the limb is damaged — they take a **−1 penalty** to rolls using it until treated.
+2. **2 AP** *Nerve Strike:* Hit a pressure point. **ROLL THE DIE!** On a 6 or better, the target drops whatever they're holding and loses their next action. On a 10 or better, they also stumble prone.
+3. **2 AP** *Throat Control:* Get a grip on throat or collar. The target is **Silenced** and **Slowed** until the end of their next turn. If they try to cast, activate tech, or call for help, they fail automatically.
+
+Pain is a language everyone understands.
+
+@skill
+
+#### It's Personal
+
+> This one ain't for the job. This one's for you.
+
+Once per combat, when a target has hit you, an ally, or someone you're protecting, you can declare It's Personal. This state lasts until the target is downed or the scene ends.
+
+1. **0 AP** *Fixate:* Declare the target. You gain **Lucidity** on all rolls against them for the rest of the scene. You cannot Fixate a second target while the first is still standing.
+2. **1 AP** *Don't Look Away:* While Fixated, if the target tries to disengage, flee, or break line of sight, you can immediately move up to your full speed as a free action. No opportunity cost.
+3. **3 AP** *End It:* Make a basic attack against your Fixated target. If it hits, deal **double damage**. If it downs them, you immediately clear any negative conditions affecting you and regain 2 AP on your next turn.
+
+Some jobs are work. Some jobs are justice.
 
 @end-specialty
