@@ -55,17 +55,27 @@
 
 /* ── Base shell ─────────────────────────────────────────────────────────── */
 .dc-alert {
-  --dc-alert-bg:          var(--paper-light);
-  --dc-alert-border:      var(--crimson);
-  --dc-alert-fg:          var(--ink-smoke);
-  --dc-alert-label-color: var(--dc-alert-border);
+  --dc-alert-bg:              var(--paper-light);
+  --dc-alert-border:          var(--crimson);
+  --dc-alert-fg:              var(--ink-smoke);
+  --dc-alert-label-color:     var(--dc-alert-border);
+
+  /* Structural overrides via custom properties for variant use */
+  --dc-alert-body-size:       var(--fs-body-sm);
+  --dc-alert-border-width:    4px;
+  --dc-alert-label-size:      8pt;
+  --dc-alert-label-weight:    700;
+  --dc-alert-label-spacing:   0.12em;
+  --dc-alert-label-margin:    8pt;
+  --dc-alert-margin-top:      0;
 
   background:    var(--dc-alert-bg);
-  border-left:   4px solid var(--dc-alert-border);
+  border-left:   var(--dc-alert-border-width) solid var(--dc-alert-border);
   color:         var(--dc-alert-fg);
-  font-size:     var(--fs-body-sm);
+  font-size:     var(--dc-alert-body-size);
   line-height:   var(--lh-normal);
   padding:       var(--space-lg) var(--space-xl);
+  margin-top:    var(--dc-alert-margin-top);
   break-inside:  avoid;
   page-break-inside: avoid;
 }
@@ -85,26 +95,21 @@
 .dc-alert-label {
   display:        block;
   font-family:    var(--font-mono);
-  font-size:      8pt;
-  font-weight:    700;
+  font-size:      var(--dc-alert-label-size);
+  font-weight:    var(--dc-alert-label-weight);
   font-style:     normal;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  margin-bottom:  8pt;
+  letter-spacing: var(--dc-alert-label-spacing);
+  margin-bottom:  var(--dc-alert-label-margin);
   color:          var(--dc-alert-label-color);
 }
 
 /* ── Variant: Note (player-facing, default) ─────────────────────────────── */
 .dc-note {
-  margin-top: var(--space-lg);
-}
-
-/* Note label is slightly smaller/tighter than base — distinguishes note
-   "sticker" from the heavier callout labels. */
-.dc-note .dc-alert-label {
-  font-size:      9px;
-  letter-spacing: 2px;
-  margin-bottom:  var(--space-sm);
+  --dc-alert-label-size:      9px;
+  --dc-alert-label-spacing:   2px;
+  --dc-alert-label-margin:    var(--space-sm);
+  --dc-alert-margin-top:      var(--space-lg);
 }
 
 /* ── Variant: Warning (note with distinct surface) ──────────────────────── */
@@ -115,17 +120,12 @@
 
 /* ── Variant: DM Note (Dream Master-facing) ─────────────────────────────── */
 .dc-dm-note {
-  --dc-alert-bg: var(--paper-cream);
-  margin-top:        9pt;
-  border-left-width: 3px;
-  font-size:         9pt;
-}
-
-/* DM label: lighter weight + tighter spacing — intentionally distinct from
-   player-facing note labels. */
-.dc-dm-note .dc-alert-label {
-  font-weight:    600;
-  letter-spacing: 0.1em;
+  --dc-alert-bg:              var(--paper-cream);
+  --dc-alert-body-size:       9pt;
+  --dc-alert-border-width:    3px;
+  --dc-alert-label-weight:    600;
+  --dc-alert-label-spacing:   0.1em;
+  --dc-alert-margin-top:      9pt;
 }
 
 /* ── Variant: Vibe Callout ──────────────────────────────────────────────── */
@@ -135,18 +135,18 @@
 
 /* ── Variant: Origin Callout ────────────────────────────────────────────── */
 .dc-origin-callout {
-  --dc-alert-bg:          var(--surface-orange-tint);
-  --dc-alert-border:      var(--blood);
-  --dc-alert-label-color: var(--crimson);
-  border-left-width: 3px;
+  --dc-alert-bg:              var(--surface-orange-tint);
+  --dc-alert-border:          var(--blood);
+  --dc-alert-label-color:     var(--crimson);
+  --dc-alert-border-width:    3px;
 }
 
 /* ── Variant: Visit Callout ─────────────────────────────────────────────── */
 .dc-visit-callout {
   --dc-alert-border:      var(--hud-blue);
   --dc-alert-label-color: var(--hud-blue-dark);
+  --dc-alert-body-size:   var(--fs-body);
   margin:    0.12in 0;
-  font-size: var(--fs-body);
 }
 
 /* ── Variant: Gear Callout ──────────────────────────────────────────────── */
