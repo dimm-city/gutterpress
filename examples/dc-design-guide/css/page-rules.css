@@ -27,96 +27,29 @@
    .pagedjs_* override?" — if NO, use another file.
    ──────────────────────────────────────────────────────────────────────── */
 
-/* chapter counter initialized here; per-page increments via .page.chapter-NN selectors below */
 body { counter-reset: chapter; }
-
-/* Chapter counter authority: page-rules.css owns all chapter counter values.
-   The body-level counter-reset above initializes to 0; these per-page
-   resets override it with the correct chapter number per Paged.js page box. */
 
 /* ---------------------------------------------------------------------------
    Chapter Counters
    ---------------------------------------------------------------------------
-   QA FIX R2 Spread 20 (ISSUE 1/2): Fixed broken counter selectors.
-   Previous selectors (.page.chapter-00::before etc.) never matched because
-   the chapter-XX class lives on the wrapping <section>, not on individual
-   .page / .page-break divs. Retargeted to section#chapter-XX which is the
-   actual element in the built HTML.
-
-   NOTE on R2 BLOCKER (Issues 1-2): The reviewer flagged Credits/TOC
-   appearing at pages 39-40. This is a screenshot capture error, not a
-   pagination regression. The manifest (manifest.yaml) and built HTML
-   (book.html) confirm chapter-00 content (credits, TOC, intro) is
-   correctly positioned at the start of the book before chapter-01. */
-
-/* ---------------------------------------------------------------------------
-   Chapter counter — set via attribute prefix selectors because section IDs
-   include the specialty name with spaces (e.g. "chapter-02 1 Augmerc"),
-   which makes CSS ID selectors (#chapter-02) fail to match.
-   `counter-set` on the section element itself (not ::before) is used here
-   because Paged.js processes element styles in layout order, making element-
-   level counter-set reliable while pseudo-element approaches on cloned nodes
-   are not guaranteed to propagate into margin boxes.
+   PAGED.JS: counter-set is silently ignored; use counter-reset only.
+   counter-reset is applied to .page.chapter-NN (the first rendered page-break
+   div per chapter) rather than the wrapping <section> because Paged.js clones
+   content per page — the section element only appears on the first page,
+   so resets on it do not propagate. The per-page .chapter-NN class IS present
+   on every body page, guaranteeing the running footer reads the correct number.
+   Page counter reset is only on .chapter-start.chapter-01 (the front-matter →
+   body transition) to avoid zeroing target-counter() snapshots in the TOC.
    --------------------------------------------------------------------------- */
-
-/* QA FIX 2026-05-03 (D1, D11 in visual-design-audit-2026-05-03-r2):
-   Two related counter bugs:
-
-   D1 — TOC chapter-1..10 entries showed "p.0" because the section element
-   wrapping each chapter (auto-generated from the filename) carried
-   `counter-set: page 0`. `target-counter(href, page)` snapshots the page
-   counter at the target element's position, and the counter-set on the
-   target itself zeroes that snapshot. Page-reset is now ONLY on
-   `.chapter-start.chapter-01` (the front-matter -> body transition).
-
-   D11 — Footer chapter counter was stuck on "c.0" on body pages because
-   `counter-set: chapter N` on the wrapping <section> element does not
-   propagate across Paged.js page breaks reliably (Paged.js clones content
-   per page; the section element only appears on the first page that
-   contains it, so subsequent pages inherit no counter-set). Counter is
-   now applied to the per-page `.chapter-NN` class, which IS present on
-   every body page of that chapter, guaranteeing the running footer reads
-   the correct chapter number on every page. */
-/* IMPORTANT: Paged.js polyfill (vendor/paged.polyfill.js) does NOT handle
-   `counter-set` — only `counter-reset` and `counter-increment`. Using
-   counter-set silently fails: the chapter counter stays at 0 for every
-   page, which is exactly what D11 reported (footer reads "C.0" book-wide).
-   Use `counter-reset` (which Paged.js converts into per-element
-   counter-increment rules) instead.
-
-   FURTHER NOTE: Paged.js generates `[data-ref]:not([data-split-from])`
-   selectors for the increments, which only fire on elements with
-   non-zero layout boxes. The wrapping section[id="chapter-NN"] elements
-   often render with zero size because their first child is a page-break
-   div that consumes the whole top-of-chapter spread. Targeting the
-   FIRST RENDERED page-break div per chapter via .page.chapter-NN ensures
-   every chapter's counter-reset fires on a real layout box. */
 .page.chapter-01, .page-break.chapter-01 { counter-reset: chapter 1; }
 .page.chapter-02, .page-break.chapter-02 { counter-reset: chapter 2; }
 .page.chapter-03, .page-break.chapter-03 { counter-reset: chapter 3; }
 .page.chapter-04, .page-break.chapter-04 { counter-reset: chapter 4; }
 .page.chapter-05, .page-break.chapter-05 { counter-reset: chapter 5; }
 
-/* NOTE: counter-reset on div.chapter.* content wrappers does NOT work for
-   Paged.js margin boxes. The .chapter.overview etc. divs only appear on the
-   first page of each chapter — subsequent pages have no such element in their
-   cloned content, so the reset never fires. Additionally, CSS counters inside
-   .pagedjs_area cannot reach sibling .pagedjs_margin-* boxes.
-   The correct Paged.js approach is string-set on chapter headings.
-   See docs: pagedjs.org/en/documentation/ — "Named strings" section. */
-
-/* ---------------------------------------------------------------------------
-   Counter-set redundancy on the page-break / page-start element itself.
-   Paged.js applies counters as it lays out pages; the section-level reset
-   above can be missed for the first chapter-start page because Paged.js
-   walks the page-break elements (.page, .chapter-start) directly rather
-   than the wrapping <section>. Setting counters on the chapter-start page
-   element guarantees the running footer counter is correct on every
-   chapter's first page.
-   --------------------------------------------------------------------------- */
-/* counter-reset (NOT counter-set — Paged.js polyfill ignores counter-set).
-   The page counter is also reset on chapter-01's first page so the first
-   body folio reads "p.1" after front-matter is suppressed. */
+/* Also reset on .chapter-start elements so the running footer is correct
+   on each chapter's first page. Page counter reset only on chapter-01
+   so that body folios begin at p.1 after front-matter. */
 .chapter-start.chapter-01 { counter-reset: chapter 1 page 0; }
 .chapter-start.chapter-02 { counter-reset: chapter 2; }
 .chapter-start.chapter-03 { counter-reset: chapter 3; }
@@ -131,18 +64,16 @@ body { counter-reset: chapter; }
 @page {
   size: 8.625in 11.25in;
   margin: 0.5in 0.625in 0.75in 0.625in;
-  /* top: 0.5in (unchanged), outer: 0.625in (was 0.5in), bottom: 0.75in (was 0.70in), left: 0.625in (binding override below) */
   background-color: var(--bg);
 }
 
 @page :left {
-  /* Inner margin (right side for left pages) for perfect binding */
-  margin-right: var(--binding-margin, 0.75in);   /* binding side — unchanged */
-  margin-left: 0.625in;                           /* outer side — was implicit from base @page */
+  margin-right: var(--binding-margin, 0.75in);
+  margin-left: 0.625in;
 
   @bottom-left {
     content: "p." counter(page);
-    color: var(--blood);   /* was --amber (1.66:1 on bg — invisible in print) → --blood (5.46:1 — clear) */
+    color: var(--blood);
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
     letter-spacing: 0.08em;
@@ -150,7 +81,7 @@ body { counter-reset: chapter; }
 
   @bottom-right {
     content: "c." counter(chapter);
-    color: var(--blood);   /* was --amber (1.66:1 on bg — invisible in print) → --blood (5.46:1 — clear) */
+    color: var(--blood);
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
     letter-spacing: 0.08em;
@@ -158,13 +89,12 @@ body { counter-reset: chapter; }
 }
 
 @page :right {
-  /* Inner margin (left side for right pages) for perfect binding */
-  margin-left: var(--binding-margin, 0.75in);    /* binding side — unchanged */
-  margin-right: 0.625in;                          /* outer side — was implicit from base @page */
+  margin-left: var(--binding-margin, 0.75in);
+  margin-right: 0.625in;
 
   @bottom-left {
     content: "c." counter(chapter);
-    color: var(--blood);   /* was --amber (1.66:1 on bg — invisible in print) → --blood (5.46:1 — clear) */
+    color: var(--blood);
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
     letter-spacing: 0.08em;
@@ -172,7 +102,7 @@ body { counter-reset: chapter; }
 
   @bottom-right {
     content: "p." counter(page);
-    color: var(--blood);   /* was --amber (1.66:1 on bg — invisible in print) → --blood (5.46:1 — clear) */
+    color: var(--blood);
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
     letter-spacing: 0.08em;
@@ -197,59 +127,16 @@ body { counter-reset: chapter; }
   }
 }
 
-@page citizen-file:left {
-  margin-right: var(--binding-margin, 0.75in);
-  margin-left: var(--page-margin);
-
-  /* Left (verso) pages use default inner-margin inheritance.
-     Add margin-left: 0.75in here if binding-side offset is needed. */
-}
-
 .page.citizen-file, .page-break.citizen-file { page: citizen-file; }
 
 /* ---------------------------------------------------------------------------
-   Page Template: Front Matter (no page/chapter footers)
-   ---------------------------------------------------------------------------
-   QA FIX R2 Spread 20 (ISSUE 1): Front-matter pages (credits, TOC, intro)
-   should not display body page numbers or chapter counters. Assign these
-   pages to the "front-matter" named page to suppress footer content. */
-
+   Page Template: Front Matter (no footers; binding margins from @page :left/:right)
+   --------------------------------------------------------------------------- */
 @page front-matter {
-  @bottom-left {
-    content: none;
-  }
-  @bottom-right {
-    content: none;
-  }
+  @bottom-left  { content: none; }
+  @bottom-right { content: none; }
 }
 
-@page front-matter:left {
-  margin-right: var(--binding-margin, 0.75in);
-  margin-left: var(--page-margin);
-
-  @bottom-left {
-    content: none;
-  }
-  @bottom-right {
-    content: none;
-  }
-}
-
-@page front-matter:right {
-  margin-left: var(--binding-margin, 0.75in);
-  margin-right: var(--page-margin);
-
-  @bottom-left {
-    content: none;
-  }
-  @bottom-right {
-    content: none;
-  }
-}
-
-/* .page-break.toc and .page.toc intentionally omitted here — they are assigned
-   to page: full (below) which wins by source order. Including them in front-matter
-   was dead code. */
 .page-break.intro,
 .page-break.page-intro,
 .page.intro,
@@ -272,17 +159,10 @@ body { counter-reset: chapter; }
    Page Template: Chapter Start/End
    --------------------------------------------------------------------------- */
 
-/* Chapter-start pages: footer is SUPPRESSED. The full-width chevron banner
-   IS the page's visual identity; a small `c.0X` corner counter is noise on
-   top of it. Body pages of the chapter still show `c.X p.Y` from the default
-   @page :left/:right rules.
-   IMPLEMENTATION NOTE: Paged.js transforms @page named-page rules into
-   element-level selectors but DROPS `@bottom-X { content: none }` declarations
-   during that transform — leaving the default @page :left/:right rule's
-   ::after content intact. So the @page named-page approach below is kept
-   for spec compliance, but the actual override that ships is the
-   high-specificity selector targeting the rendered margin-content::after
-   directly (after this block). */
+/* Chapter-start pages: footers suppressed. The chevron banner IS the visual identity.
+   PAGED.JS: @page named-page blocks drop `content: none` declarations during
+   its transform, so the high-specificity .pagedjs_* selector below is the
+   actual working override; the @page block is kept for spec compliance. */
 @page chapter-start {
   @bottom-left  { content: none; }
   @bottom-right { content: none; }
@@ -306,14 +186,9 @@ body { counter-reset: chapter; }
   page: chapter-start;
 }
 
-/* Override the default @page :left/:right ::after content for chapter-start
-   pages. Paged.js's @page transformer specializes the default @page :left
-   rule for every named page, generating
-   `.pagedjs_page.pagedjs_named_page.pagedjs_chapter-start_page .pagedjs_margin-bottom-left > .pagedjs_margin-content::after { content: "c." counter(chapter); }`
-   So an @page chapter-start { @bottom-left { content: none }} declaration
-   is silently dropped (Paged.js doesn't emit class-based rules for
-   `content: none`). This selector matches the same shape with !important
-   to suppress the inherited default. */
+/* Paged.js specializes @page :left/:right for every named page, generating
+   margin-content::after rules that override content:none. Force-suppress
+   inherited footer content on chapter-start pages with !important. */
 .pagedjs_page.pagedjs_named_page.pagedjs_chapter-start_page .pagedjs_margin-bottom-left > .pagedjs_margin-content::after,
 .pagedjs_page.pagedjs_named_page.pagedjs_chapter-start_page .pagedjs_margin-bottom-right > .pagedjs_margin-content::after {
   content: none !important;
@@ -327,16 +202,6 @@ body { counter-reset: chapter; }
   @bottom-right {
     content: "p." counter(page);
   }
-}
-
-@page chapter-end:left {
-  margin-right: var(--binding-margin, 0.75in);
-  margin-left: var(--page-margin);
-}
-
-@page chapter-end:right {
-  margin-left: var(--binding-margin, 0.75in);
-  margin-right: var(--page-margin);
 }
 
 .chapter-end {
@@ -361,8 +226,7 @@ body { counter-reset: chapter; }
   margin: 0;
 }
 
-/* QA FIX Spread 28, P0-3/P0-4: Ensure full-page footer suppression
-   overrides :left/:right page pseudo-class content */
+/* :left/:right variants needed to override inherited footer content from @page :left/:right */
 @page full:left {
   margin: 0;
 
@@ -397,9 +261,7 @@ body { counter-reset: chapter; }
   }
 }
 
-/* @page clean — RESERVED: suppresses running headers/footers for blank insert pages.
-   To activate: add .page.clean { page: clean; } and apply class to the element.
-   Wired via `.pmd-suppress-footer { page: clean; }` outside this file. */
+/* @page clean — suppresses footers. Wired via .pmd-suppress-footer in page-templates.css. */
 @page clean {
   @bottom-right {
     content: none;
