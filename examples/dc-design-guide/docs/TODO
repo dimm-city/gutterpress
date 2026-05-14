@@ -1,5 +1,13 @@
 - Augmerc specialty profile image should be full bleed page
 
+## Page Templates Checklist
+
+- Full bleed - primarily for images
+- Chapter Intro - used to set chapter counters
+- Image page - display image with no horizontal margins across the entire top or bottom of a page
+- Card Grid - displays cards in columns
+
+
 ## Component Checklist
 
 - Chapter Intro Page
@@ -8,7 +16,7 @@
 - Table
 - List
 - Tape Divider
-- Procedure - Macro
+- Procedure
 - Outcome Ladder
 - Sidebar
   - Alert Variants
@@ -23,18 +31,29 @@
 - AP Tags - Variants
 - Stat Block
 - Specialty (Summary) Card
-- Specialty Profile Spread - Macro
+- Specialty Profile Spread
   - Specialty Description Title
     - Description
     - Spec Tweak
   - Specialty Image
-  - Learning Path - Macro
+  - Learning Path
     - Title
     - Path
     - Flavor
     - Details
-    - Skill Card - Macro
+    - Skill Card
       - Title
       - ID
       - Flavor
       - Content
+
+
+## Template/Components/Rules to Remove
+
+- Section H3 divider
+- Item Block
+- .dc-prose - investigate why this is not the default style for body or p
+- .aug page template and related styles
+- .page-ability-catalog page template
+- .page-info-sidebar
+- .colophon

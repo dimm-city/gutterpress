@@ -38,7 +38,7 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 
 | Marker | Closes on | Purpose |
 |--------|-----------|---------|
-| `@sidebar` | `@end-sidebar` | Wraps content in a `dc-sidebar` sidebar |
+| `@sidebar class="…"` | `@end-sidebar` | Wraps content in a `dc-sidebar` sidebar |
 | `@end-sidebar` | — | Explicitly closes the current sidebar |
 | `@specialty {.classname}` | Next `@specialty` or `@end-specialty` | Wraps a full specialty section; class sets the specialty code (`.augmerc` → `AUG`) |
 | `@end-specialty` | — | Explicitly closes the current specialty block |
@@ -112,7 +112,7 @@ Left column content.
 Right column content.
 :::
 
-@sidebar
+@sidebar class="inset"
 **Sidebar note.** Supplementary content that doesn't interrupt the body flow.
 @end-sidebar
 

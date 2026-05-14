@@ -14,7 +14,7 @@ Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
 |--------|--------|-------|
 | `:::two-column` … `:::` | Two equal columns with column rule | H1/H2 span both cols; H3/H4 flow inside |
 | `:::three-column` … `:::` | Three narrow columns | Best for short reference entries |
-| `@sidebar` … `@end-sidebar` | Right-floated aside at 38% width | Emits `.dc-sidebar` |
+| `@sidebar` … `@end-sidebar` | Right-floated aside at 38% width | Emits `.dc-sidebar`; add `class="inset"` for full-height page-inset treatment |
 | `---{.column-break}` | Force next column (no space before `{`) | Use inside `:::two-column` / `:::three-column` |
 | `![]{.img-float-right}` | Float image right, 44% width | Text wraps left |
 | `![]{.img-float-left}` | Float image left, 44% width | Text wraps right |
@@ -25,7 +25,7 @@ Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
 
 **Image float behavior:** floated image occupies 44% of column width; after the float clears, text returns to full width. Add a blank line below the float to clear it explicitly if following content crowds the image.
 
-**Sidebar wrapper:** `@sidebar` emits `.dc-sidebar`. Use raw HTML only when you need a structure the sidebar contains, not to author the sidebar shell itself.
+**Sidebar wrapper:** `@sidebar` emits `.dc-sidebar`. Use `@sidebar class="inset"` when the page template needs the full-height inset sidebar treatment. Use raw HTML only when you need a structure the sidebar contains, not to author the sidebar shell itself.
 
 ```markdown
 :::two-column
@@ -47,6 +47,14 @@ Right column content.
 @end-sidebar
 
 Body text wraps to the left of the sidebar automatically.
+```
+
+```markdown
+@sidebar class="inset"
+### Sidebar
+
+Inset sidebar content for page templates like rules references.
+@end-sidebar
 ```
 
 ```markdown

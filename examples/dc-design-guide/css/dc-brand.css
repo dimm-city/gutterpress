@@ -2240,8 +2240,12 @@ p.img-wrapper {
 }
 
 .dc-sidebar {
+  --dc-sidebar-surface: var(--paper-light);
+  --dc-sidebar-border: var(--hud-blue);
+  --dc-sidebar-accent: var(--orange);
+
   background: var(--paper-light);
-  border-left: 4px solid var(--orange);
+  border-left: 4px solid var(--dc-sidebar-accent);
   padding: 14px 18px;
   /* folded from legacy/sidebar.css PARTIAL — layout gap props */
   float: right;
@@ -2250,13 +2254,29 @@ p.img-wrapper {
   width: var(--sidebar-width);
   margin: 0 0 0.15in 0.2in;
   /* Full border: top/right/bottom from legacy; border-left above from shared.css */
-  border: 1.5px solid var(--hud-blue);
+  background: var(--dc-sidebar-surface);
+  border: 1.5px solid var(--dc-sidebar-border);
   font-size: var(--fs-body-sm);
   line-height: var(--lh-normal);
   position: relative;
   z-index: 2;
   page-break-inside: avoid;
   break-inside: avoid;
+}
+
+.dc-sidebar.inset {
+  --dc-sidebar-surface: transparent;
+
+  position: absolute;
+  top: 0;
+  right: -0.15in;
+  width: 3in;
+  height: 100%;
+  padding: 0.2in 0.2in 0.15in;
+  margin: 0;
+  float: none;
+  clear: none;
+  border-left: none;
 }
 
 /* folded from legacy/sidebar.css GAP rules */
@@ -2285,6 +2305,52 @@ p.img-wrapper {
   margin: 0.12in 0 0.06in;
   font-size: 1em;
   letter-spacing: 0.04em;
+}
+
+.dc-sidebar.inset h3:first-child {
+  margin-top: 0.05in;
+  margin-bottom: 0.1in;
+  padding-bottom: 0.06in;
+  border-bottom: 1px solid var(--dc-sidebar-accent);
+  font-size: 1.05em;
+}
+
+.dc-sidebar.inset p {
+  margin-bottom: 0.09in;
+  line-height: var(--lh-normal);
+}
+
+.dc-sidebar.inset hr {
+  margin: 0.12in 0;
+  border-color: var(--dc-sidebar-accent);
+}
+
+.dc-sidebar.inset hr + p {
+  padding-top: 0.1in;
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.06em;
+  color: var(--hud-blue);
+}
+
+.dc-sidebar.inset hr ~ p {
+  background: rgba(42, 106, 138, 0.08);
+  border-left: 3px solid var(--hud-blue);
+  margin-left: -0.1in;
+  margin-right: -0.1in;
+  padding: 0.06in 0.1in;
+}
+
+.dc-sidebar.inset > p:last-child {
+  margin-top: 0.1in;
+  margin-bottom: 0;
+  padding-top: 0.08in;
+  border-top: 1px solid var(--dc-sidebar-accent);
+  font-family: var(--font-display);
+  font-size: 0.95em;
+  letter-spacing: 0.05em;
+  text-align: center;
+  color: var(--dc-sidebar-accent);
 }
 
 .dc-human-callout {

@@ -660,7 +660,8 @@ article {
   z-index: 0;
 }
 
-.page.rolling-die .dc-sidebar {
+.page.rolling-die .dc-sidebar,
+.page.rolling-die .dc-sidebar.inset {
   position: absolute;
   top: 0;
   right: -0.15in;
@@ -674,7 +675,8 @@ article {
   background: transparent;
 }
 
-.page.rolling-die .dc-sidebar h3:first-child {
+.page.rolling-die .dc-sidebar h3:first-child,
+.page.rolling-die .dc-sidebar.inset h3:first-child {
   margin-top: 0.05in;
   margin-bottom: 0.1in;
   padding-bottom: 0.06in;
@@ -682,12 +684,14 @@ article {
   font-size: 1.05em;
 }
 
-.page.rolling-die .dc-sidebar p {
+.page.rolling-die .dc-sidebar p,
+.page.rolling-die .dc-sidebar.inset p {
   margin-bottom: 0.09in;
   line-height: var(--lh-normal);
 }
 
-.page.rolling-die .dc-sidebar hr {
+.page.rolling-die .dc-sidebar hr,
+.page.rolling-die .dc-sidebar.inset hr {
   margin: 0.12in 0;
   border-color: var(--orange);
 }
@@ -712,7 +716,8 @@ article {
   border-top: 1px solid var(--border-hairline);
 }
 
-.page.rolling-die .dc-sidebar hr + p {
+.page.rolling-die .dc-sidebar hr + p,
+.page.rolling-die .dc-sidebar.inset hr + p {
   padding-top: 0.1in;
   font-size: var(--fs-body-sm);
   font-weight: var(--fw-bold);
@@ -720,7 +725,8 @@ article {
   color: var(--hud-blue);
 }
 
-.page.rolling-die .dc-sidebar hr ~ p {
+.page.rolling-die .dc-sidebar hr ~ p,
+.page.rolling-die .dc-sidebar.inset hr ~ p {
   background: rgba(42, 106, 138, 0.08);
   border-left: 3px solid var(--hud-blue);
   margin-left: -0.1in;
@@ -728,7 +734,8 @@ article {
   padding: 0.06in 0.1in;
 }
 
-.page.rolling-die .dc-sidebar > p:last-child {
+.page.rolling-die .dc-sidebar > p:last-child,
+.page.rolling-die .dc-sidebar.inset > p:last-child {
   margin-top: 0.1in;
   margin-bottom: 0;
   padding-top: 0.08in;
