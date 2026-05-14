@@ -158,7 +158,6 @@
 }
 .specialty.augmerc .dc-path-shell {
   --dc-path-title-bg:      var(--hud-blue-dark);
-  --dc-path-title-color:   var(--paper-cream);
   --dc-path-title-shape:   polygon(14px 0, calc(100% - 24px) 0, 100% 18px, 100% 100%, 0 100%, 0 14px);
   --dc-path-accent:        var(--augmerc-accent);
   background:              var(--paper-light);
@@ -187,7 +186,6 @@
 }
 .specialty.cybersurgeon .dc-path-shell {
   --dc-path-title-bg:      #606060;
-  --dc-path-title-color:   var(--paper-cream);
   --dc-path-title-shape:   polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
   --dc-path-accent:        var(--cybersurgeon-accent);
   background:              var(--paper-cream);
@@ -215,7 +213,6 @@
 }
 .specialty.proxy .dc-path-shell {
   --dc-path-title-bg:      var(--ink-dark);
-  --dc-path-title-color:   var(--paper-cream);
   --dc-path-title-shape:   polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
   --dc-path-accent:        var(--proxy-accent);
   background:              var(--surface-orange-tint);
@@ -244,7 +241,6 @@
 }
 .specialty.wirephreak .dc-path-shell {
   --dc-path-title-bg:      #7a3a7a;
-  --dc-path-title-color:   var(--paper-cream);
   --dc-path-title-shape:   polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 0 100%);
   --dc-path-accent:        var(--wirephreak-accent);
   background:              var(--paper-cream);
@@ -273,7 +269,6 @@
 }
 .specialty.streetwarden .dc-path-shell {
   --dc-path-title-bg:      var(--crimson);
-  --dc-path-title-color:   var(--paper-cream);
   --dc-path-title-shape:   polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
   --dc-path-accent:        var(--streetwarden-accent);
   background:              var(--paper-cream);
@@ -302,7 +297,6 @@
 }
 .specialty.technosorcerer .dc-path-shell {
   --dc-path-title-bg:      #2a3a6a;
-  --dc-path-title-color:   var(--paper-cream);
   --dc-path-title-shape:   polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
   --dc-path-accent:        var(--technosorcerer-accent);
   background:              var(--paper-light);
@@ -360,7 +354,6 @@
 }
 .specialty.etherlock .dc-path-shell {
   --dc-path-title-bg:      #6a5200;
-  --dc-path-title-color:   var(--paper-cream);
   --dc-path-title-shape:   polygon(0 12px, 12px 0, 100% 0, 100% 100%, 0 100%);
   --dc-path-accent:        var(--etherlock-accent);
   background:              var(--paper-light);
@@ -926,23 +919,18 @@ hr,
 .dc-ap.var  { --dc-ap-bg: var(--hud-magenta); }
 
 /* ── Ability layout utilities (2col, grid) ────────────────────────────── */
-.dc-ability-2col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  align-items: start;
-  break-inside: avoid;
-}
-.dc-ability-2col .dc-skill-card { margin-bottom: 20px; }
-.dc-ability-2col .dc-skill-card:last-of-type { margin-bottom: 0; }
-
+.dc-ability-2col,
 .dc-ability-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
   align-items: start;
   break-inside: avoid;
 }
+.dc-ability-2col { gap: 20px; }
+.dc-ability-2col .dc-skill-card { margin-bottom: 20px; }
+.dc-ability-2col .dc-skill-card:last-of-type { margin-bottom: 0; }
+
+.dc-ability-grid { gap: 16px; }
 .dc-ability-grid .dc-skill-card          { margin-bottom: 0; }
 .dc-ability-grid .dc-skill-card.dc-span-row { grid-column: 1 / -1; }
 
@@ -1115,11 +1103,6 @@ hr,
 .dc-specialty-card:nth-of-type(even) img {
   float: right;
   margin: 0 0 0.08in 0.14in;
-}
-
-.dc-specialty-card:nth-of-type(even) h3,
-.dc-specialty-card:nth-of-type(even) blockquote {
-  text-align: left;
 }
 
 /* ── Learning path structural + path shell + title overrides ──────────── */
@@ -1381,24 +1364,17 @@ hr,
 }
 
 /* ───────── LUCID / SURREAL ROLL VARIANTS ───────── */
-.dc-roll-lucid {
-  font-family: var(--font-tab);
-  font-size: 0.75em;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--hud-blue-dark);
-}
-.dc-roll-lucid::before { content: '◈ '; opacity: 1; }
-
+.dc-roll-lucid,
 .dc-roll-surreal {
   font-family: var(--font-tab);
   font-size: 0.75em;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--hud-magenta);
 }
+.dc-roll-lucid   { color: var(--hud-blue-dark); }
+.dc-roll-lucid::before { content: '◈ '; opacity: 1; }
+.dc-roll-surreal { color: var(--hud-magenta); }
 .dc-roll-surreal::before { content: '∿ '; opacity: 1; }
 
 .chapter-start>blockquote:first-of-type {
@@ -1659,9 +1635,6 @@ hr,
   list-style: none;
   break-inside: avoid;
 }
-.dc-toc ol > li::marker {
-  content: none;
-}
 .dc-toc ol > li::before {
   content: counter(dc-toc, decimal-leading-zero);
   position: absolute;
@@ -1860,11 +1833,11 @@ hr,
   padding: 0;
 }
 
-.dc-skill-card .dc-card-body .dc-ability:nth-last-of-type(2):not(:only-of-type) {
+.dc-card-body .dc-ability:nth-last-of-type(2):not(:only-of-type) {
   break-after: avoid;
 }
 
-.dc-skill-card .dc-card-body .dc-ability:last-of-type:not(:only-of-type) {
+.dc-card-body .dc-ability:last-of-type:not(:only-of-type) {
   break-before: avoid;
 }
 
@@ -1943,21 +1916,14 @@ p.dc-img-wrapper {
 }
 
 /* ── Image floats — use markdown-it-attrs: ![Alt](img){.dc-img-float-right} ── */
-.dc-img-float-right {
-  float: right;
-  width: 44%;
-  max-width: 44%;
-  margin: 0 0 0.15in 0.2in;
-  display: block;
-}
-
+.dc-img-float-right,
 .dc-img-float-left {
-  float: left;
   width: 44%;
   max-width: 44%;
-  margin: 0 0.2in 0.15in 0;
   display: block;
 }
+.dc-img-float-right { float: right; margin: 0 0 0.15in 0.2in; }
+.dc-img-float-left  { float: left;  margin: 0 0.2in 0.15in 0; }
 
 .dc-sidebar {
   --dc-sidebar-surface: var(--paper-light);
