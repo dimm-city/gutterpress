@@ -14,7 +14,7 @@ This section shows how a full specialty profile looks in the actual Dimm City Fi
 
 @specialty {.augmerc}
 
-:::wrapper {.specialty-intro}
+:::wrapper {.specialty-intro .variant-2}
 
 ## Augmerc
 
@@ -50,7 +50,7 @@ They are simply part of what makes an Augmerc dangerous.
 
 **Macro** — `@learning-path` renders the path header banner and the ability sequence list. The Signature Augment block follows the path list as prose. Each `@skill variant="2"` card renders a titled ability card with AP cost options and outcome tables. Use `@continue` when a card needs to flow onto the next page. See [DC Components](#ch-dc-components) for full `@learning-path` and `@skill` syntax.
 
-@learning-path
+@learning-path variant="2"
 
 ### Biting Distance
 

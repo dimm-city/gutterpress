@@ -1126,13 +1126,15 @@ export default function dimmCityPlugin(md, options = {}) {
         // Build opening tag with any custom attributes
         let lpAttrs = '';
         const lpUserAttrs = learningPathMarker.attrs;
+        const lpVariant = lpUserAttrs['variant'] ? 'variant-' + esc(lpUserAttrs['variant']) : '';
         for (const [key, val] of Object.entries(lpUserAttrs)) {
-          if (key !== 'class') {
+          if (key !== 'class' && key !== 'variant') {
             lpAttrs += ' ' + key + '="' + esc(val) + '"';
           }
         }
         const lpClass = 'dc-learning-path dc-path-block' + (lpUserAttrs['class'] ? ' ' + lpUserAttrs['class'] : '');
-        newTokens.push(makeToken('html_block', '<section class="' + lpClass + '" data-path-ref="' + esc(currentLearningPathRef) + '"' + lpAttrs + '>\n<div class="dc-path-shell">\n'));
+        const lpShellClass = 'dc-path-shell' + (lpVariant ? ' ' + lpVariant : '');
+        newTokens.push(makeToken('html_block', '<section class="' + lpClass + '" data-path-ref="' + esc(currentLearningPathRef) + '"' + lpAttrs + '>\n<div class="' + lpShellClass + '">\n'));
         i += 2; // Skip paragraph_open, inline, paragraph_close
         continue;
       }

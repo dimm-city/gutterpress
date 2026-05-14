@@ -476,6 +476,15 @@ article {
   height: var(--page-height, 11.25in);
   break-before: page;
   page-break-before: always;
+  margin: 0;
+  overflow: hidden;
+}
+
+.specialty-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* ---------------------------------------------------------------------------
@@ -875,6 +884,9 @@ article {
   list-style: none;
   page-break-inside: avoid;
   break-inside: avoid;
+}
+.dc-toc ol > li::marker {
+  content: none;
 }
 .dc-toc ol > li::before {
   content: counter(dc-toc, decimal-leading-zero);

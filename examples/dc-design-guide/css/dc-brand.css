@@ -962,6 +962,12 @@ ul li::before {
   opacity: 0.25;
   line-height: 1;
 }
+.dc-pullquote p {
+  margin: 0;
+}
+.dc-pullquote p + p {
+  margin-top: 10px;
+}
 .dc-pullquote-attr {
   display: block;
   margin-top: 10px;
@@ -1314,7 +1320,7 @@ hr,
 .dc-outcome-key {
   background: var(--row-color, var(--ink));
   color: var(--paper-cream);
-  padding: 12px 16px 10px;
+  padding: 10px 16px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1343,7 +1349,7 @@ hr,
   order: -1;
 }
 .dc-outcome-text {
-  padding: 14px 18px;
+  padding: 12px 18px;
   font-family: var(--font-body);
   font-size: var(--fs-body-xs);
   line-height: 1.55;
@@ -1764,11 +1770,17 @@ hr,
 
 /* .specialty-art geometry and page assignment moved to content-templates.css and page-rules.css — see CSS-AUDIT.md L4 */
 
-/* PARTIAL — bare .specialty-intro (without .wrapper) fallback.
-   shared.css .wrapper.specialty-intro (above) handles the compound case.
-   These properties are unique to legacy and not set by shared.css. */
+/* Specialty intro shell.
+   The root owns the silhouette and the small public variant API; the title band
+   reads from that root state instead of carrying its own independent shell. */
 .specialty-intro {
-  background: var(--hud-panel);
+  --dc-specialty-intro-bg: var(--hud-panel);
+  --dc-specialty-intro-title-bg: var(--hud-magenta);
+  --dc-specialty-intro-title-color: var(--bg);
+  --dc-specialty-intro-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
+  --dc-specialty-intro-title-shape: polygon(0 0, 100% 0, 100% 100%, 22px 100%, 0 calc(100% - 14px));
+
+  background: var(--dc-specialty-intro-bg);
   padding: 1.5rem 1.5rem 1.25rem;
   margin: 0;
   position: relative;
@@ -1778,24 +1790,54 @@ hr,
   min-height: 10in;
   box-sizing: border-box;
   border: none;
+  clip-path: var(--dc-specialty-intro-shell-shape);
 }
 
-/* PARTIAL — bare .specialty-intro > h2. shared.css .wrapper.specialty-intro > h2
-   (same specificity) wins by load order for wrapped elements.
-   This rule provides fallback for bare .specialty-intro without .wrapper. */
+.specialty-intro.variant-2 {
+  --dc-specialty-intro-bg: var(--paper-light);
+  --dc-specialty-intro-title-bg: var(--hud-blue-dark);
+  --dc-specialty-intro-title-color: var(--paper-cream);
+  --dc-specialty-intro-shell-shape: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  --dc-specialty-intro-title-shape: polygon(14px 0, calc(100% - 20px) 0, 100% 16px, 100% 100%, 0 100%, 0 14px);
+}
+
+.specialty-intro.variant-3 {
+  --dc-specialty-intro-bg: var(--surface-orange-tint);
+  --dc-specialty-intro-title-bg: var(--ink-dark);
+  --dc-specialty-intro-title-color: var(--paper-cream);
+  --dc-specialty-intro-shell-shape: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 36px), calc(100% - 56px) 100%, 0 100%);
+  --dc-specialty-intro-title-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
+}
+
+.specialty-intro.variant-4 {
+  --dc-specialty-intro-bg: var(--paper-cream);
+  --dc-specialty-intro-title-bg: var(--crimson);
+  --dc-specialty-intro-title-color: var(--paper-cream);
+  --dc-specialty-intro-shell-shape: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
+  --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+}
+
+.specialty-intro.variant-5 {
+  --dc-specialty-intro-bg: var(--paper-light);
+  --dc-specialty-intro-title-bg: var(--orange);
+  --dc-specialty-intro-title-color: var(--ink-dark);
+  --dc-specialty-intro-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
+  --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
+}
+
 .specialty-intro > h2:first-child {
   font-family: var(--font-display);
   font-size: 2rem;
   font-weight: var(--fw-bold, 700);
-  color: var(--bg);
+  color: var(--dc-specialty-intro-title-color);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   line-height: 1;
-  background: var(--hud-magenta);
+  background: var(--dc-specialty-intro-title-bg);
   display: block;
   padding: 0.85rem 1.75rem;
   margin: -1.5rem -1.5rem 1rem -1.5rem;
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 22px 100%, 0 calc(100% - 14px));
+  clip-path: var(--dc-specialty-intro-title-shape);
   border: none;
 }
 
@@ -1816,6 +1858,10 @@ hr,
 .specialty-intro > p {
   margin-block: 0.45rem;
   line-height: 1.5;
+}
+
+.specialty-intro > h2:first-child + p {
+  margin-top: 0.2rem;
 }
 
 /* PARTIAL — bare .specialty-intro > ul/ol. Complementary to shared.css compound version. */
@@ -1938,17 +1984,69 @@ hr,
 }
 
 .dc-path-shell {
-  --dc-card-surface: var(--paper-cream);
+  --dc-path-shell-bg: var(--paper-cream);
+  --dc-path-shell-shape: polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px);
+  --dc-path-title-bg: var(--hud-magenta);
+  --dc-path-title-color: var(--paper-cream);
+  --dc-path-title-shape: polygon(0 0, 100% 0, 100% 100%, 25px 100%, 0 calc(100% - 15px));
+  --dc-path-title-shadow-bg: var(--dc-path-title-bg);
 
-  background: var(--dc-card-surface);
+  background: var(--dc-path-shell-bg);
   margin: 0 0 22px;
   padding: 24px 26px 30px;
   position: relative;
-  clip-path: polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px);
+  clip-path: var(--dc-path-shell-shape);
   filter: drop-shadow(2px 0 0 var(--ink))
     drop-shadow(-2px 0 0 var(--ink))
     drop-shadow(0 2px 0 var(--ink))
     drop-shadow(0 -2px 0 var(--ink)); /* screen preview only — drops in Paged.js PDF export */
+}
+
+.dc-path-shell.variant-2 {
+  --dc-path-shell-bg: var(--paper-light);
+  --dc-path-title-bg: var(--hud-blue-dark);
+  --dc-path-title-color: var(--paper-cream);
+  --dc-path-shell-shape: polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
+  --dc-path-title-shape: polygon(14px 0, calc(100% - 24px) 0, 100% 18px, 100% 100%, 0 100%, 0 14px);
+}
+
+.dc-path-shell.variant-3 {
+  --dc-path-shell-bg: var(--surface-orange-tint);
+  --dc-path-title-bg: var(--ink-dark);
+  --dc-path-title-color: var(--paper-cream);
+  --dc-path-shell-shape: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 34px), calc(100% - 56px) 100%, 0 100%);
+  --dc-path-title-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
+}
+
+.dc-path-shell.variant-4 {
+  --dc-path-shell-bg: var(--paper-cream);
+  --dc-path-title-bg: var(--crimson);
+  --dc-path-title-color: var(--paper-cream);
+  --dc-path-shell-shape: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
+  --dc-path-title-shape: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+}
+
+.dc-path-shell.variant-5 {
+  --dc-path-shell-bg: var(--paper-light);
+  --dc-path-title-bg: var(--orange);
+  --dc-path-title-color: var(--ink-dark);
+  --dc-path-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
+  --dc-path-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
+}
+
+.dc-path-shell > h2.dc-spray:first-child {
+  color: var(--dc-path-title-color);
+  background: var(--dc-path-title-bg);
+  clip-path: var(--dc-path-title-shape);
+}
+
+.dc-path-shell > h2.dc-spray:first-child::before,
+.dc-path-shell > h2.dc-spray:first-child::after {
+  background: var(--dc-path-title-shadow-bg);
+}
+
+.dc-path-shell > h2.dc-spray:first-child {
+  margin-bottom: 12px;
 }
 
 /* Keep prose inside path shells and skill cards on the parent text size without
@@ -2251,7 +2349,7 @@ p.img-wrapper {
   letter-spacing: 0.1em;
   color: var(--dc-alert-label-color, var(--crimson));
   font-weight: 600;
-  margin-bottom: 4pt;
+  margin-bottom: 6pt;
 }
 
 /* ────────────────────────────────────────────────────────────

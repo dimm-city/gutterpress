@@ -264,12 +264,12 @@ Body prose fills the left column. Two to four paragraphs covering background, me
 
 Specialty spread with spray banner, sticker chain, signature augment, and `@skill` cards. Reduced margins via `.aug` maximize column width for dense card layout. **Page class:** `@page .page-aug .aug`
 
-**Components:** `@learning-path specialty="…" index="N"` (opens block) · `### Path Name` (spray banner) · `> Subtitle` (lede) · bullet list (sticker chain) · `<div class="dc-tape">` (divider) · `@skill variant="N" id="…"` / `@end-skill` (root-owned skill-card shape variant) · `<span class="dc-ap">N AP</span>`
+**Components:** `@learning-path variant="N" specialty="…" index="N"` (opens block) · `### Path Name` (spray banner) · `> Subtitle` (lede) · bullet list (sticker chain) · `<div class="dc-tape">` (divider) · `@skill variant="N" id="…"` / `@end-skill` (root-owned skill-card shape variant) · `<span class="dc-ap">N AP</span>`
 
 ```markdown
 @page .page-aug .aug
 
-@learning-path specialty="augmerc" index="1"
+@learning-path variant="2" specialty="augmerc" index="1"
 
 ### Path Name
 

@@ -48,12 +48,12 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 | `@end-definition` | — | Explicitly closes the current definition block |
 | `@procedure` | `@end-procedure` | Wraps an ordered list in a `dc-steps` procedure block |
 | `@end-procedure` | — | Explicitly closes the current procedure block |
-| `@learning-path` | Next `@learning-path` or `@end-learning-path` | Groups skill cards under a spray header; path index and code auto-increment |
+| `@learning-path variant="N"` | Next `@learning-path` or `@end-learning-path` | Groups skill cards under a spray header; path index and code auto-increment |
 | `@end-learning-path` | — | Explicitly closes the current learning-path block |
 | `@skill variant="N"` | Next `@skill` or `@end-skill` | Starts a skill card; content becomes card body |
 | `@end-skill` | — | Closes the current skill card |
 
-**Variant values** — `variant="1"` through `variant="5"` select different clip-path shapes for the skill-card shell.
+**Variant values** — `variant="1"` through `variant="5"` select different clip-path shapes for the skill-card shell and the learning-path shell.
 
 **Optional skill attributes** — `id="slug"` sets an anchor on the card wrapper. For long abilities, use `@continue`.
 
@@ -74,7 +74,7 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 ```markdown
 @specialty {.augmerc}
 
-@learning-path
+@learning-path variant="2"
 ### Biting Distance
 > If you can touch it, you can maul it.
 - Punishing Counter

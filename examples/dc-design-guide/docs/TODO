@@ -1,0 +1,40 @@
+- Augmerc specialty profile image should be full bleed page
+
+## Component Checklist
+
+- Chapter Intro Page
+  - Intro Alert
+- TOC
+- Table
+- List
+- Tape Divider
+- Procedure - Macro
+- Outcome Ladder
+- Sidebar
+  - Alert Variants
+- Gear Card
+- Alerts
+  - DM Notes
+- Glossary
+- Definition
+- Roll modifier
+  - Lucid
+  - Surreal
+- AP Tags - Variants
+- Stat Block
+- Specialty (Summary) Card
+- Specialty Profile Spread - Macro
+  - Specialty Description Title
+    - Description
+    - Spec Tweak
+  - Specialty Image
+  - Learning Path - Macro
+    - Title
+    - Path
+    - Flavor
+    - Details
+    - Skill Card - Macro
+      - Title
+      - ID
+      - Flavor
+      - Content

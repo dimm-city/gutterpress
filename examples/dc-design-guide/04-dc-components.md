@@ -157,14 +157,14 @@ Both block types use the same `.dc-stat` structure. Creature blocks use combat s
 
 ## Learning Path
 
-A learning path wraps skill cards under a named spray banner with a sticker chain and flavor line. Use `@learning-path` after `@specialty {.classname}` — the path index and specialty code (e.g., `AUG1`) are auto-computed. Tab tiers (`AUG1.1`, `AUG1.2`, …) are generated automatically from position; use `#### Skill Name | Custom` only to override. The emitted path shell is its own component (`.dc-path-shell`) with its own notched shape and spacing rules; `.dc-path-block` is only the structural section hook.
+A learning path wraps skill cards under a named spray banner with a sticker chain and flavor line. Use `@learning-path` after `@specialty {.classname}` — the path index and specialty code (e.g., `AUG1`) are auto-computed. Tab tiers (`AUG1.1`, `AUG1.2`, …) are generated automatically from position; use `#### Skill Name | Custom` only to override. The emitted path shell is its own component (`.dc-path-shell`) with its own notched shape and spacing rules; `.dc-path-block` is only the structural section hook. Like `.specialty-intro` and `.dc-skill-card`, the root path shell owns its variant state and title chrome.
 
 **Macro syntax:**
 
 ```
 @specialty {.augmerc}
 
-@learning-path
+@learning-path variant="2"
 ### Path Title
 > Path flavor line.
 - Skill A
@@ -180,6 +180,28 @@ A learning path wraps skill cards under a named spray banner with a sticker chai
 
 @end-learning-path
 ```
+
+---
+
+## Learning Path Variants (v1-v5)
+
+Five clip-path shapes for the learning-path shell and its spray-banner title. Set `variant="N"` on the `@learning-path` macro to choose. The emitted `.dc-path-shell` owns the variant, and the inner `h2.dc-spray` reads its shape, title color, and background from that root state.
+
+**Syntax** — `variant="N"` on `@learning-path`; raw HTML fallback uses a root modifier on `.dc-path-shell`
+
+```html
+<div class="dc-path-shell variant-1">
+  <h2 class="dc-spray">…</h2>
+</div>
+```
+
+| Variant | Shape |
+|---------|-------|
+| `variant-1` | Default corner-notched shell with diagonal spray banner |
+| `variant-2` | Sharp angular shell with clipped-corner banner |
+| `variant-3` | Asymmetric stepped shell with left-cut banner |
+| `variant-4` | Soft angular shell with shallow-corner banner |
+| `variant-5` | Pinched shell with centered-notch banner |
 
 ---
 
