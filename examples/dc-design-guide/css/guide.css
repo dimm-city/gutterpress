@@ -98,8 +98,7 @@ div.chapter h1 {
   overflow-wrap: break-word;
 }
 
-div.chapter.chapter-01 h2,
-div.chapter.chapter-02 h2 {
+div.chapter:is(.chapter-01, .chapter-02) h2 {
   overflow-wrap: break-word;
   font-size: var(--fs-h2);
 }
@@ -215,11 +214,6 @@ div.chapter h2 {
   padding-top: 0.1in;
 }
 
-/* ── YOUR DESIGN GUIDE LAYER ─────────────────────────────────────────────────
-   Add project-specific design-guide overrides below this line.
-   Do NOT add book design system rules here — those belong in dc-brand.css.
-   ─────────────────────────────────────────────────────────────────────────── */
-
 /* ---------------------------------------------------------------------------
    Guide-only page-template and demo layouts
    --------------------------------------------------------------------------- */
@@ -267,11 +261,7 @@ article {
   break-after: avoid;
 }
 
-.page.page-rules,
-.page.init,
-.page.call-home,
-.page.dream,
-.page.da-devil {
+.page:is(.page-rules, .init, .call-home, .dream, .da-devil) {
   columns: 2;
   column-gap: var(--gutter);
   column-fill: balance;
@@ -281,13 +271,13 @@ article {
   break-inside: avoid;
 }
 
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table) {
+.page.chapter-02:not(:is(.full-page, .chapter-start, .upgrading, .init, .outcome-table)) {
   columns: 2;
   column-gap: var(--gutter);
   column-fill: balance;
 }
 
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table) h3 {
+.page.chapter-02:not(:is(.full-page, .chapter-start, .upgrading, .init, .outcome-table)) h3 {
   font-size: var(--fs-body);
   font-weight: var(--fw-semibold);
   border-top: var(--bw-thin) solid var(--hud-blue);
@@ -295,7 +285,7 @@ article {
   text-transform: uppercase;
 }
 
-.page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table) h4 {
+.page.chapter-02:not(:is(.full-page, .chapter-start, .upgrading, .init, .outcome-table)) h4 {
   font-size: var(--fs-body-sm);
   font-weight: var(--fw-bold);
   text-transform: uppercase;
@@ -304,26 +294,19 @@ article {
   border-top: none;
 }
 
-.page.ideal,
-.page.flaw {
+.page:is(.ideal, .flaw) {
   columns: unset;
   column-gap: unset;
   column-fill: unset;
 }
 
-.page.ideal .ideal-list,
-.page.flaw .flaw-list {
+.page:is(.ideal, .flaw) :is(.ideal-list, .flaw-list) {
   column-count: 2;
   column-gap: var(--gutter);
   column-fill: balance;
 }
 
-.page.ideal .ideal-list > h3,
-.page.ideal .ideal-list > p,
-.page.ideal .ideal-list > blockquote,
-.page.flaw .flaw-list > h3,
-.page.flaw .flaw-list > p,
-.page.flaw .flaw-list > blockquote {
+.page:is(.ideal, .flaw) :is(.ideal-list, .flaw-list) > :is(h3, p, blockquote) {
   break-inside: avoid;
 }
 
@@ -333,8 +316,7 @@ article {
   margin-bottom: 0.06in;
 }
 
-.page.ideal h3,
-.page.flaw h3 {
+.page:is(.ideal, .flaw) h3 {
   break-after: avoid;
   break-inside: avoid;
 }
@@ -457,10 +439,7 @@ article {
   text-align: center;
 }
 
-.page.page-intro,
-.page.intro,
-.page.page-chapter-start,
-.page.chapter-start {
+.page:is(.page-intro, .intro, .page-chapter-start, .chapter-start) {
   max-width: 6.7in;
   margin: 0 auto;
 }
@@ -534,15 +513,11 @@ article {
   padding-left: 18px;
 }
 
-.page.page-credits.credits > h1,
-.page.page-intro.intro > h1,
-.page.page-chapter-start.chapter-start > h1 {
+.page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) > h1 {
   border: 0;
 }
 
-.page.page-credits.credits p,
-.page.page-intro.intro p,
-.page.page-chapter-start.chapter-start p {
+.page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) p {
   font-family: var(--font-body);
   font-size: var(--fs-body);
   line-height: 1.6;
@@ -563,17 +538,12 @@ article {
   break-inside: avoid;
 }
 
-.page.chapter-03 .rolling-die ul,
-.page.chapter-03 .dream-economy ul,
-.page.chapter-03 .scenes ul {
+.page.chapter-03 :is(.rolling-die, .dream-economy, .scenes) ul {
   margin-top: 0.08in;
   margin-bottom: 0.12in;
 }
 
-.page.chapter-03 .rolling-die ul li::before,
-.page.chapter-03 .dream-economy ul li::before,
-.page.chapter-03 .scenes ul li::before,
-.page.chapter-03 .the-players ul li::before {
+.page.chapter-03 :is(.rolling-die, .dream-economy, .scenes, .the-players) ul li::before {
   content: "- ";
   padding-right: 0.25em;
 }
@@ -719,8 +689,7 @@ article {
   margin-bottom: 0.06in;
 }
 
-.specialty .dc-ability table td,
-.specialty .dc-ability table th {
+.specialty .dc-ability table :is(td, th) {
   padding-top: 0.04in;
   padding-bottom: 0.04in;
 }
@@ -782,14 +751,12 @@ article {
   font-size: var(--fs-body-sm);
 }
 
-.specialty table td,
-.specialty table th {
+.specialty table :is(td, th) {
   padding: 0.06in 0.08in;
   line-height: var(--lh-tight);
 }
 
-.specialty .dc-learning-path .dc-ability,
-.specialty .dc-learning-path .dc-ability-card {
+.specialty .dc-learning-path :is(.dc-ability, .dc-ability-card) {
   margin-bottom: 0.06in;
 }
 
@@ -848,8 +815,7 @@ article {
    chapters without overflow.
    Column-span rules follow immediately below.
    ─────────────────────────────────────────────────────────────────────────── */
-div.chapter.chapter-01,
-div.chapter.chapter-02 {
+div.chapter:is(.chapter-01, .chapter-02) {
   columns: 2;
   column-gap: var(--gutter);
   column-fill: auto;
@@ -862,18 +828,7 @@ div.chapter.chapter-02 {
    pre (code blocks) intentionally excluded — they flow within their column
    to maximise information density. Add .pmd-col-span to a specific code block
    if a full-width span is needed on a case-by-case basis. */
-div.chapter.chapter-01 h1,
-div.chapter.chapter-02 h1,
-div.chapter.chapter-01 .dc-intro,
-div.chapter.chapter-02 .dc-intro,
-div.chapter.chapter-01 table,
-div.chapter.chapter-02 table,
-div.chapter.chapter-01 hr,
-div.chapter.chapter-02 hr,
-div.chapter.chapter-01 .specimen,
-div.chapter.chapter-02 .specimen,
-div.chapter.chapter-01 .dc-toc,
-div.chapter.chapter-02 .dc-toc {
+div.chapter:is(.chapter-01, .chapter-02) :is(h1, .dc-intro, table, hr, .specimen, .dc-toc) {
   column-span: all;
 }
 

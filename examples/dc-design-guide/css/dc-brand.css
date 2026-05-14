@@ -897,8 +897,7 @@ td {
   margin-top: var(--space-lg);      /* was 14px — align to token system */
 }
 
-.dc-note .dc-alert-label,
-.dc-note.warning .dc-alert-label {
+.dc-note .dc-alert-label {
   font-family: var(--font-mono);
   font-size: 9px;
   text-transform: uppercase;
@@ -2264,8 +2263,6 @@ p.img-wrapper {
   --dc-sidebar-border: var(--hud-blue);
   --dc-sidebar-accent: var(--orange);
 
-  background: var(--paper-light);
-  border-left: 4px solid var(--dc-sidebar-accent);
   padding: 14px 18px;
   /* folded from legacy/sidebar.css PARTIAL — layout gap props */
   float: right;
@@ -2382,7 +2379,6 @@ p.img-wrapper {
 
 .dc-vibe-callout {
   --dc-alert-border: var(--hud-magenta);
-  --dc-alert-label-color: var(--hud-magenta);
   padding: var(--space-sm) var(--space-md);
 }
 
@@ -2408,7 +2404,6 @@ p.img-wrapper {
   --dc-alert-border: var(--border-hairline);
   --dc-alert-label-color: var(--orange);
   margin: 0.12in auto 0.18in;
-  padding: var(--space-lg) var(--space-xl);
   border-left-width: 1.5px;
   width: 90%;
   float: none;
