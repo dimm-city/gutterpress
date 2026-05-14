@@ -264,15 +264,20 @@ h2 {
   font-size: var(--fs-h2);
   color: var(--hud-blue-dark);
   letter-spacing: var(--ls-heading);
-  margin-top: 22pt;
   border-bottom: 2.5pt solid var(--hud-blue-dark);
   padding-bottom: 0.1em;
 }
 
-h3 { font-size: var(--fs-h3); color: var(--rust);  letter-spacing: var(--ls-heading); margin-top: 18pt; }
-h4 { font-size: var(--fs-h4); color: var(--blood); letter-spacing: 0.06em; margin-top: 15pt; }
-h5 { font-size: var(--fs-h5); color: var(--blood); margin-top: 14pt; }
-h6 { font-size: var(--fs-h6); color: var(--blood); margin-top: 12pt; }
+h3 { font-size: var(--fs-h3); color: var(--rust);  letter-spacing: var(--ls-heading); }
+h4 { font-size: var(--fs-h4); color: var(--blood); letter-spacing: 0.06em; }
+h5 { font-size: var(--fs-h5); color: var(--blood); }
+h6 { font-size: var(--fs-h6); color: var(--blood); }
+
+.pagedjs_page_content h2 { margin-top: 1.4em; }
+.pagedjs_page_content h3 { margin-top: 1.2em; }
+.pagedjs_page_content h4,
+.pagedjs_page_content h5,
+.pagedjs_page_content h6 { margin-top: 1em; }
 
 /* ── INLINE ELEMENTS ──────────────────────────────────────────────────────── */
 p   { margin-bottom: 0.08in; }
