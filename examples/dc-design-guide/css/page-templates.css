@@ -42,35 +42,13 @@
 /* ── PAGE WRAPPER BASE GEOMETRY ────────────────────────────────────────────── */
 .page,
 .page-break {
-  z-index: 1;
   break-after: always;
   break-inside: avoid;
-}
-
-/* Screen-preview geometry (cancelled by the print reset below). */
-.page {
-  color: var(--ink);
-  position: relative;
-  padding: 32px 36px 60px;
-  min-height: 1100px;
-  box-sizing: border-box;
-}
-
-.page > * {
-  position: relative;
-  z-index: 1;
 }
 
 .page img {
   max-width: 100%;
   height: auto;
-}
-
-/* Print reset — cancels preview geometry so Paged.js controls the page area. */
-.page {
-  background: transparent;
-  min-height: 0;
-  padding: 0;
 }
 
 /* ── COLUMN BREAK MARKER ──────────────────────────────────────────────────── */
@@ -155,7 +133,6 @@
 /* Full bleed — primarily for full-page art. Zero margins, no footers.
    @page full (in page-rules.css) suppresses all margin-box content. */
 .page.full-bleed,
-.page.page-full-bleed,  /* legacy alias — keep until markdown is updated */
 .page.full-page,
 .page.cover,
 .page.back-cover {
@@ -200,11 +177,8 @@
 }
 
 /* ── PAGE TEMPLATE: CARD GRID ──────────────────────────────────────────────── */
-/* Specialty card grid — two columns, auto-fill. Cards carry break-inside:avoid.
-   Canonical class is .page.card-grid; .page.choose-specialty is the legacy alias
-   that will be removed once 303-example-specialty-overview.md is updated. */
-.page.card-grid,
-.page.choose-specialty {
+/* Specialty card grid — two columns, auto-fill. Cards carry break-inside:avoid. */
+.page.card-grid {
   columns: 2;
   column-gap: var(--gutter);
   column-fill: balance;
@@ -213,18 +187,15 @@
 /* Column-span: all for card-grid header/intro content. */
 .page.card-grid > .dc-intro,
 .page.card-grid > h1,
-.page.card-grid > h2,
-.page.choose-specialty > .wrapper.learning-path {  /* legacy .wrapper — remove in Phase 6 */
+.page.card-grid > h2 {
   column-span: all;
 }
 
-.page.card-grid .specialty,
-.page.choose-specialty .specialty {
+.page.card-grid .specialty {
   break-inside: avoid;
 }
 
-.page.card-grid .dc-specialty-card,
-.page.choose-specialty .dc-specialty-card {
+.page.card-grid .dc-specialty-card {
   break-inside: avoid;
   --dc-specialty-card-media-height: 0.85in;
   --dc-specialty-card-media-width: 0.75in;

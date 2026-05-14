@@ -142,9 +142,7 @@ div.chapter pre {
 div.chapter pre code {
   font-family: var(--font-mono);
   font-size: 9pt;
-  /* was 8.5pt — raised to ISO 9241-3 / O'Reilly 9pt minimum for monospaced technical type */
   line-height: 1.5;
-  /* was 1.55 — 13.5pt leading at 9pt is consistent with body leading rhythm */
   color: var(--ink);
   background: none;
   padding: 0;
@@ -189,11 +187,8 @@ div.chapter.dc-components table th {
   border-top: 3px solid var(--hud-blue);
   /* top accent distinguishes specimen frame from dc-sidebar-box (also left-bordered, cream bg) */
   padding: 0.15in 0.20in;
-  /* was 0.1in 0.15in — increased for breathing room at print scale */
   margin: 0.15in 0;
-  /* was 0.1in 0 */
   background: var(--paper-aged);
-  /* was --paper-cream — distinct surface; components inside still render on their own cream */
   break-inside: avoid;
   overflow: hidden;
 }
@@ -225,11 +220,6 @@ div.chapter hr {
 /* ---------------------------------------------------------------------------
    Guide-only page-template and demo layouts
    --------------------------------------------------------------------------- */
-
-/* Each source article ends cleanly before the next one begins. */
-article {
-  break-after: always;
-}
 
 /* Restore the dc-toc component row treatment on the rendered TOC page. */
 .page.page-toc .dc-toc ol > li {
@@ -271,12 +261,6 @@ article {
   object-fit: cover;
 }
 
-/* Table of contents page styling — section wrappers with dividers. */
-.page.toc li {
-  margin-bottom: 0.06in;
-  line-height: var(--lh-normal);
-}
-
 .page.page-toc > h1 { border: 0; }
 
 .page.page-toc > .wrapper           { margin-bottom: 18px; break-inside: avoid; }
@@ -291,7 +275,7 @@ article {
 .page.page-toc li > ul              { margin-top: 8px; padding-left: 18px; }
 
 .page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) > h1 { border: 0; }
-.page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) p   { font-family: var(--font-body); font-size: var(--fs-body); line-height: 1.6; color: var(--ink); }
+.page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) p   { line-height: 1.6; }
 
 /* Palette swatch specimen grid — guide-only presentation for token chips.
    Uses markdown wrapper blocks instead of inline style attributes in the guide. */
