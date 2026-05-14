@@ -103,9 +103,23 @@ div.chapter:is(.chapter-01, .chapter-02) h2 {
   font-size: var(--fs-h2);
 }
 
-div.chapter :is(h2, h3, h4)+:is(p, ul, ol, div),
-div.chapter :is(h2, h3)+:is(pre, table),
-div.chapter h2+blockquote {
+div.chapter h2 + p,
+div.chapter h2 + ul,
+div.chapter h2 + ol,
+div.chapter h2 + div,
+div.chapter h3 + p,
+div.chapter h3 + ul,
+div.chapter h3 + ol,
+div.chapter h3 + div,
+div.chapter h4 + p,
+div.chapter h4 + ul,
+div.chapter h4 + ol,
+div.chapter h4 + div,
+div.chapter h2 + pre,
+div.chapter h2 + table,
+div.chapter h3 + pre,
+div.chapter h3 + table,
+div.chapter h2 + blockquote {
   break-before: avoid;
 }
 
@@ -261,66 +275,6 @@ article {
   break-after: avoid;
 }
 
-.page:is(.page-rules, .init, .call-home, .dream, .da-devil) {
-  columns: 2;
-  column-gap: var(--gutter);
-  column-fill: balance;
-}
-
-.page.page-rules table {
-  break-inside: avoid;
-}
-
-.page.chapter-02:not(:is(.full-page, .chapter-start, .upgrading, .init, .outcome-table)) {
-  columns: 2;
-  column-gap: var(--gutter);
-  column-fill: balance;
-}
-
-.page.chapter-02:not(:is(.full-page, .chapter-start, .upgrading, .init, .outcome-table)) h3 {
-  font-size: var(--fs-body);
-  font-weight: var(--fw-semibold);
-  border-top: var(--bw-thin) solid var(--hud-blue);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.page.chapter-02:not(:is(.full-page, .chapter-start, .upgrading, .init, .outcome-table)) h4 {
-  font-size: var(--fs-body-sm);
-  font-weight: var(--fw-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ink-dust);
-  border-top: none;
-}
-
-.page:is(.ideal, .flaw) {
-  columns: unset;
-  column-gap: unset;
-  column-fill: unset;
-}
-
-.page:is(.ideal, .flaw) :is(.ideal-list, .flaw-list) {
-  column-count: 2;
-  column-gap: var(--gutter);
-  column-fill: balance;
-}
-
-.page:is(.ideal, .flaw) :is(.ideal-list, .flaw-list) > :is(h3, p, blockquote) {
-  break-inside: avoid;
-}
-
-.page.page-item-grid h3 {
-  break-after: avoid;
-  margin-top: 0.12in;
-  margin-bottom: 0.06in;
-}
-
-.page:is(.ideal, .flaw) h3 {
-  break-after: avoid;
-  break-inside: avoid;
-}
-
 .specialty-art {
   width: var(--page-width, 8.625in);
   height: var(--page-height, 11.25in);
@@ -430,21 +384,11 @@ article {
   content: "\203A";
 }
 
-.page.page-title,
-.page.page-title-full {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-}
-
 .page:is(.page-intro, .intro, .page-chapter-start, .chapter-start) {
   max-width: 6.7in;
   margin: 0 auto;
 }
 
-.page.intro,
 .intro {
   padding-left: 0.5in;
 }
@@ -499,7 +443,7 @@ article {
   line-height: 1.5;
 }
 
-.page.page-toc:not(.dc-toc) li::before {
+.page.page-toc li::before {
   content: none;
 }
 
@@ -538,86 +482,9 @@ article {
   break-inside: avoid;
 }
 
-.page.chapter-03 :is(.rolling-die, .dream-economy, .scenes) ul {
-  margin-top: 0.08in;
-  margin-bottom: 0.12in;
-}
-
-.page.chapter-03 :is(.rolling-die, .dream-economy, .scenes, .the-players) ul li::before {
-  content: "- ";
-  padding-right: 0.25em;
-}
-
-.page.surviving-the-sprawl {
-  position: relative;
-}
-
-.page.surviving-the-sprawl::after {
-  content: "";
-  position: absolute;
-  left: 1.5in;
-  right: 0;
-  bottom: 0;
-  height: 3.5in;
-  background: url("../img/rat-vs-rabbit.png") no-repeat left bottom / contain;
-  pointer-events: none;
-}
-
-.page.outcome-table .outcome-table {
-  margin-top: var(--gutter);
-}
-
-.page.outcome-table .outcome-table h3 {
-  margin-bottom: var(--gutter);
-  border-bottom: 0;
-}
-
-.page.outcome-table .outcome-table table {
-  border-spacing: 8px;
-  font-size: 0.95em;
-}
-
-.page.outcome-table .outcome-table th {
-  text-align: left;
-}
-
-.page.outcome-table .outcome-table td {
-  padding-top: 0.06in;
-  padding-bottom: 0.06in;
-  vertical-align: top;
-}
-
-.page.outcome-table .outcome-table table tr > td:first-of-type {
-  width: 0.8in;
-  white-space: nowrap;
-  font-weight: var(--fw-bold);
-  color: var(--crimson);
-}
-
-.page.outcome-table .outcome-table table tbody tr:first-child {
-  background: rgba(242, 77, 0, 0.08);
-  border-bottom: 1px solid rgba(242, 77, 0, 0.35);
-}
-
-.page.outcome-table .outcome-table table tbody tr:last-child {
-  background: rgba(212, 18, 0, 0.08);
-  border-top: 2px solid rgba(212, 18, 0, 0.35);
-}
-
-.page.outcome-table .outcome-table table tbody tr:last-child td {
-  padding-bottom: 0.1in;
-}
-
 /* Specialty example flow and density tuning remain guide-owned print rescue
    rules until the specialty profile examples are re-authored around simpler
    component defaults. */
-.specialty {
-  break-before: auto;
-}
-
-.specialty h2 {
-  break-after: avoid;
-}
 
 .specialty .dc-learning-path {
   break-before: page;
@@ -628,13 +495,12 @@ article {
   margin-bottom: 0.06in;
 }
 
-.specialty .dc-learning-path h3 {
-  padding-top: 0.06in;
+.specialty .dc-learning-path :is(h2, h3) {
   margin-bottom: 0.04in;
 }
 
-.specialty .dc-learning-path h2 {
-  margin-bottom: 0.04in;
+.specialty .dc-learning-path h3 {
+  padding-top: 0.06in;
 }
 
 .specialty .dc-learning-path .dc-intro {
@@ -652,7 +518,7 @@ article {
   row-gap: 0;
 }
 
-.specialty .dc-learning-path .dc-stickers .dc-sticker {
+.specialty .dc-learning-path .dc-sticker {
   padding: 0.1rem 0.4rem;
   line-height: 1.2;
 }
@@ -662,14 +528,13 @@ article {
   margin-bottom: 0;
 }
 
-.specialty .dc-path-shell > p {
+.specialty .dc-path-shell > :is(p, ul) {
   margin-block: 0.06in;
-  font-size: var(--fs-body-sm);
-  line-height: 1.35;
 }
 
-.specialty .dc-path-shell ul {
-  margin-block: 0.06in;
+.specialty .dc-path-shell > p {
+  font-size: var(--fs-body-sm);
+  line-height: 1.35;
 }
 
 .specialty .dc-path-shell ul li {
@@ -694,12 +559,7 @@ article {
   padding-bottom: 0.04in;
 }
 
-.specialty .dc-ability-card {
-  margin-bottom: 0.1in;
-}
-
-.specialty .dc-ability + .dc-ability,
-.specialty .dc-ability-card + .dc-ability-card {
+.specialty .dc-ability + .dc-ability {
   padding-top: 0.02in;
 }
 
@@ -713,12 +573,6 @@ article {
 
 .specialty .dc-skill-card .dc-card-body .dc-card-inner {
   padding: 0.5rem 0;
-}
-
-.specialty .dc-card-inner::after {
-  content: '';
-  display: table;
-  clear: both;
 }
 
 .specialty .dc-card-tab {
@@ -741,13 +595,11 @@ article {
 }
 
 .specialty .dc-ability-text {
-  line-height: var(--lh-normal);
   font-size: var(--fs-body-sm);
 }
 
 .specialty .dc-ap {
   padding: 0.35rem 0.55rem;
-  min-width: 50px;
   font-size: var(--fs-body-sm);
 }
 
@@ -756,7 +608,7 @@ article {
   line-height: var(--lh-tight);
 }
 
-.specialty .dc-learning-path :is(.dc-ability, .dc-ability-card) {
+.specialty .dc-learning-path .dc-ability {
   margin-bottom: 0.06in;
 }
 
@@ -765,32 +617,8 @@ article {
   margin-bottom: 0.3rem;
 }
 
-.specialty .page {
-  break-inside: auto;
-}
-
-.specialty .dc-skill-card {
-  break-inside: avoid;
-}
-
 .specialty .dc-skill-card.allow-split {
   break-inside: auto;
-}
-
-.example-gear-tech p.img-wrapper {
-  position: relative;
-  min-height: 4.75in;
-}
-
-.example-gear-tech img.bottom-center.art-medkit {
-  position: absolute !important;
-  left: 50% !important;
-  bottom: 0 !important;
-  transform: translateX(-50%) !important;
-  width: 58% !important;
-  height: auto !important;
-  margin: 0 !important;
-  z-index: 0 !important;
 }
 
 /* ── TOC chapter: disable the guide TOC two-column layout ───────────────────

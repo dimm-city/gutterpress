@@ -50,3 +50,4 @@ tests/
 review/
 review_screenshots/
 _site/dc-design-guide-migration-check/
+.print-md-stage/

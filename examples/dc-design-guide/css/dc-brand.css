@@ -898,15 +898,10 @@ td {
 }
 
 .dc-note .dc-alert-label {
-  font-family: var(--font-mono);
   font-size: 9px;
-  text-transform: uppercase;
   letter-spacing: 2px;
   color: var(--dc-alert-label-color, var(--crimson));
-  font-weight: 700;
-  display: block;
   margin-bottom: var(--space-sm);
-  font-style: normal;
 }
 
 /* ───────── PORTRAIT PANEL ───────── */
@@ -1681,17 +1676,25 @@ hr,
   padding-top: 24px;
   border-top: 1px solid rgba(201, 214, 226, 0.35) /* --hud-blue-dim at 35% opacity */;
 }
-/* Element flush/reset variants */
-.dc-stat.flush     { margin: 0; }
-.dc-steps.flush    { margin: 0; }
-.dc-outcomes.flush { margin: 0; }
-.dc-stickers.flush { margin: 0; }
-.dc-sub-header.flush { margin: 0; padding-top: 0; border-top: 0; }
-.dc-path-subtitle.flush { margin: 0; }
+/* Element flush/reset variants used by shared examples and specialty output */
+.dc-stat.flush,
+.dc-steps.flush,
+.dc-outcomes.flush,
+.dc-stickers.flush,
+.dc-path-subtitle.flush,
+.dc-pullquote.flush,
+.dc-intro.flush,
+.dc-tape.flush {
+  margin: 0;
+}
+
+.dc-sub-header.flush {
+  margin: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .dc-spec-tweak.no-top { margin-top: 0; }
-.dc-pullquote.flush { margin: 0; }
-.dc-intro.flush { margin: 0; }
-.dc-tape.flush { margin: 0; }
 
 /* Cover page layout override (flex column with more padding) */
 .dc-cover-layout {
@@ -1723,14 +1726,8 @@ hr,
 .dc-specimen-label { padding: 8px 14px 8px 0; width: 140px; font-family: var(--font-mono); font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--hud-blue); vertical-align: middle; }
 .dc-specimen-value { padding: 8px 0; vertical-align: middle; }
 .dc-specimen-head  { padding: 8px 0; vertical-align: middle; font-family: var(--font-mono); font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--hud-blue); }
-/* Bestiary stamp spacing */
-.dc-stamp.mt { margin-top: 14px; }
-
 /* Bestiary tape spacing */
 .dc-tape.margin-sm { margin: 14px 0 8px; }
-
-/* Toc margin-top override */
-.dc-toc.mt { margin-top: 18px; }
 
 /* Procedure page two-column aside section */
 .dc-procedure-grid {
@@ -1741,27 +1738,11 @@ hr,
   break-inside: avoid;
 }
 
-/* Pullquote with top margin */
-.dc-pullquote.mt { margin-top: 18px; }
-
 /* Warning note — visually distinct from base dc-note */
 .dc-note.warning {
   --dc-alert-bg: var(--surface-orange-tint);   /* distinct surface from paper-light dc-note */
   --dc-alert-border: var(--rust);        /* was --amber (invisible at 1.66:1) → --rust (4.30:1 on surface) */
 }
-
-/* Note spacing variants */
-.dc-note.mt-sm { margin-top: 14px; }
-.dc-note.mt-lg { margin-top: 22px; }
-
-/* Note width constraint for template usage notes */
-.dc-note.narrow { max-width: 900px; }
-
-/* Learning path intro with top margin */
-.dc-intro.mt { margin-top: 12px; }
-
-/* dc-sub-header no-top variant (same as .flush but only margin) */
-.dc-sub-header.no-top { margin-top: 0; }
 
 /* field-guide: folded from legacy/specialty.css */
 /* ---------------------------------------------------------------------------
@@ -1775,13 +1756,11 @@ hr,
    The root owns the silhouette and the small public variant API; the title band
    reads from that root state instead of carrying its own independent shell. */
 .specialty-intro {
-  --dc-specialty-intro-bg: var(--hud-panel);
   --dc-specialty-intro-title-bg: var(--hud-magenta);
   --dc-specialty-intro-title-color: var(--bg);
-  --dc-specialty-intro-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
   --dc-specialty-intro-title-shape: polygon(0 0, 100% 0, 100% 100%, 22px 100%, 0 calc(100% - 14px));
 
-  background: var(--dc-specialty-intro-bg);
+  background: var(--hud-panel);
   padding: 1.5rem 1.5rem 1.25rem;
   margin: 0;
   position: relative;
@@ -1790,38 +1769,38 @@ hr,
   min-height: 10in;
   box-sizing: border-box;
   border: none;
-  clip-path: var(--dc-specialty-intro-shell-shape);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
 }
 
 .specialty-intro.variant-2 {
-  --dc-specialty-intro-bg: var(--paper-light);
   --dc-specialty-intro-title-bg: var(--hud-blue-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-shell-shape: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  background: var(--paper-light);
+  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
   --dc-specialty-intro-title-shape: polygon(14px 0, calc(100% - 20px) 0, 100% 16px, 100% 100%, 0 100%, 0 14px);
 }
 
 .specialty-intro.variant-3 {
-  --dc-specialty-intro-bg: var(--surface-orange-tint);
   --dc-specialty-intro-title-bg: var(--ink-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-shell-shape: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 36px), calc(100% - 56px) 100%, 0 100%);
+  background: var(--surface-orange-tint);
+  clip-path: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 36px), calc(100% - 56px) 100%, 0 100%);
   --dc-specialty-intro-title-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
 }
 
 .specialty-intro.variant-4 {
-  --dc-specialty-intro-bg: var(--paper-cream);
   --dc-specialty-intro-title-bg: var(--crimson);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-shell-shape: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
+  background: var(--paper-cream);
+  clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
   --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
 }
 
 .specialty-intro.variant-5 {
-  --dc-specialty-intro-bg: var(--paper-light);
   --dc-specialty-intro-title-bg: var(--orange);
   --dc-specialty-intro-title-color: var(--ink-dark);
-  --dc-specialty-intro-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
+  background: var(--paper-light);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
   --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
 }
 
@@ -2017,18 +1996,15 @@ hr,
 }
 
 .dc-path-shell {
-  --dc-path-shell-bg: var(--paper-cream);
-  --dc-path-shell-shape: polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px);
   --dc-path-title-bg: var(--hud-magenta);
   --dc-path-title-color: var(--paper-cream);
   --dc-path-title-shape: polygon(0 0, 100% 0, 100% 100%, 25px 100%, 0 calc(100% - 15px));
-  --dc-path-title-shadow-bg: var(--dc-path-title-bg);
 
-  background: var(--dc-path-shell-bg);
+  background: var(--paper-cream);
   margin: 0 0 22px;
   padding: 24px 26px 30px;
   position: relative;
-  clip-path: var(--dc-path-shell-shape);
+  clip-path: polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px);
   filter: drop-shadow(2px 0 0 var(--ink))
     drop-shadow(-2px 0 0 var(--ink))
     drop-shadow(0 2px 0 var(--ink))
@@ -2036,34 +2012,34 @@ hr,
 }
 
 .dc-path-shell.variant-2 {
-  --dc-path-shell-bg: var(--paper-light);
   --dc-path-title-bg: var(--hud-blue-dark);
   --dc-path-title-color: var(--paper-cream);
-  --dc-path-shell-shape: polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
+  background: var(--paper-light);
+  clip-path: polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
   --dc-path-title-shape: polygon(14px 0, calc(100% - 24px) 0, 100% 18px, 100% 100%, 0 100%, 0 14px);
 }
 
 .dc-path-shell.variant-3 {
-  --dc-path-shell-bg: var(--surface-orange-tint);
   --dc-path-title-bg: var(--ink-dark);
   --dc-path-title-color: var(--paper-cream);
-  --dc-path-shell-shape: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 34px), calc(100% - 56px) 100%, 0 100%);
+  background: var(--surface-orange-tint);
+  clip-path: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 34px), calc(100% - 56px) 100%, 0 100%);
   --dc-path-title-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
 }
 
 .dc-path-shell.variant-4 {
-  --dc-path-shell-bg: var(--paper-cream);
   --dc-path-title-bg: var(--crimson);
   --dc-path-title-color: var(--paper-cream);
-  --dc-path-shell-shape: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
+  background: var(--paper-cream);
+  clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
   --dc-path-title-shape: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
 }
 
 .dc-path-shell.variant-5 {
-  --dc-path-shell-bg: var(--paper-light);
   --dc-path-title-bg: var(--orange);
   --dc-path-title-color: var(--ink-dark);
-  --dc-path-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
+  background: var(--paper-light);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
   --dc-path-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
 }
 
@@ -2071,34 +2047,18 @@ hr,
   color: var(--dc-path-title-color);
   background: var(--dc-path-title-bg);
   clip-path: var(--dc-path-title-shape);
+  margin-bottom: 12px;
 }
 
 .dc-path-shell > h2.dc-spray:first-child::before,
 .dc-path-shell > h2.dc-spray:first-child::after {
-  background: var(--dc-path-title-shadow-bg);
-}
-
-.dc-path-shell > h2.dc-spray:first-child {
-  margin-bottom: 12px;
+  background: var(--dc-path-title-bg);
 }
 
 /* Keep prose inside path shells and skill cards on the parent text size without
    flattening banner, sticker, or tab typography that sets its own size. */
-.dc-learning-path p,
-.dc-learning-path ul,
-.dc-learning-path ol,
-.dc-learning-path li,
-.dc-skill-card p,
-.dc-skill-card ul,
-.dc-skill-card ol,
-.dc-skill-card li,
-.dc-skill-card table,
-.dc-skill-card tbody,
-.dc-skill-card thead,
-.dc-skill-card tr,
-.dc-skill-card td,
-.dc-skill-card th,
-.dc-skill-card blockquote {
+.dc-learning-path :is(p, ul, ol, li),
+.dc-skill-card :is(p, ul, ol, li, table, tbody, thead, tr, td, th, blockquote) {
   font-size: inherit;
 }
 
@@ -2106,8 +2066,7 @@ hr,
    the paragraph's block display + margins push the text below the marker.
    Inline the paragraph so it flows directly after the bullet/number. */
 .dc-skill-card li > p:only-child,
-.dc-ability li > p:only-child,
-.dc-ability-card li > p:only-child {
+.dc-ability li > p:only-child {
   display: inline;
   margin: 0;
   padding: 0;
@@ -2121,47 +2080,35 @@ hr,
   break-before: avoid;
 }
 
-/* Layout mode modifiers — opt-in classes that pin all skill-cards inside the
-   ancestor to a specific width.
+/* Layout mode modifiers — specialty wrappers can pin every descendant card to
+   a fixed width without touching the component chrome itself.
    .columns — always narrow (3.5in), packs 2 per visual row.
-   .dense   — DEPRECATED: identical to .columns; use .columns instead.
    .rows    — always wide (full content area), stacks vertically. */
-.columns .dc-skill-card,
-.columns .dc-skill-card:only-child,
-.columns .dc-skill-card.wide,
-/* DEPRECATED — use .columns */
-.dense .dc-skill-card,
-.dense .dc-skill-card:only-child,
-.dense .dc-skill-card.wide {
+.columns .dc-skill-card {
   width: 3.5in;
   max-width: 3.5in;
 }
 
-.rows .dc-skill-card,
-.rows .dc-skill-card:only-child,
-.rows .dc-skill-card.wide {
+.rows .dc-skill-card {
   width: 100%;
   max-width: 7.25in;
 }
 
-.dc-skill-card:only-child,
-.dc-skill-card.wide {
+.dc-skill-card:is(:only-child, .wide) {
   width: 100%;
   max-width: 7.25in;
 }
 
 /* Universal card layout fixes — apply to any book using dc-skill-card. */
 
-.dc-skill-card,
-.dc-skill-card .dc-card-body {
+:is(.dc-skill-card, .dc-skill-card .dc-card-body) {
   height: auto;
   min-height: 0;
 }
 
 /* Two-column list inside cards: switch to column-width so narrow split
    fragments drop to 1 column instead of collapsing to 1-word-per-line. */
-.dc-skill-card .two-column-list,
-.dc-card-body .two-column-list {
+:is(.dc-skill-card, .dc-card-body) .two-column-list {
   column-count: auto;
   column-width: 14em;
   column-fill: balance;
@@ -2183,8 +2130,7 @@ hr,
 /* Paged.js split-fragment width fix: continuation fragments keep their
    original width, which causes the next sibling to flex-wrap beside them
    at half width. Force full-row width on any split fragment. */
-.dc-skill-card[data-split-from],
-.dc-skill-card[data-split-to] {
+.dc-skill-card:is([data-split-from], [data-split-to]) {
   width: 100%;
   max-width: 7.25in;
 }
@@ -2250,7 +2196,7 @@ p.img-wrapper {
   display: block;
 }
 
-.img-float-left, .pmd-float-left {
+.img-float-left {
   float: left;
   width: 44%;
   max-width: 44%;
@@ -2302,7 +2248,7 @@ p.img-wrapper {
 }
 
 /* Sidebar title heading. Not confirmed in markdown but harmless. */
-.sidebar-title, .dc-sidebar-label {
+.sidebar-title {
   margin: 0 0 0.1in 0;
   padding-bottom: 0.06in;
   border-bottom: 1.5px solid var(--hud-blue);

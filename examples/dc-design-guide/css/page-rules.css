@@ -324,8 +324,7 @@ body { counter-reset: chapter; }
    `content: none`). This selector matches the same shape with !important
    to suppress the inherited default. */
 .pagedjs_page.pagedjs_named_page.pagedjs_chapter-start_page .pagedjs_margin-bottom-left > .pagedjs_margin-content::after,
-.pagedjs_page.pagedjs_named_page.pagedjs_chapter-start_page .pagedjs_margin-bottom-right > .pagedjs_margin-content::after,
-.pagedjs_page.pagedjs_named_page.pagedjs_chapter-start_page .pagedjs_margin-bottom-center > .pagedjs_margin-content::after {
+.pagedjs_page.pagedjs_named_page.pagedjs_chapter-start_page .pagedjs_margin-bottom-right > .pagedjs_margin-content::after {
   content: none !important;
 }
 
@@ -357,7 +356,7 @@ body { counter-reset: chapter; }
    Page Template: Full (no margins, no footers)
    --------------------------------------------------------------------------- */
 
-.specialty-art, .dc-specialty-art { page: full; }
+.specialty-art { page: full; }
 
 @page full {
   @bottom-right {
