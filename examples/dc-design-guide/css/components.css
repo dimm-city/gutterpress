@@ -1995,11 +1995,6 @@ hr,
   margin-bottom: auto;
 }
 
-/* Outcome row colors — replaces inline --row-color CSS variable */
-
-/* Specimen table — replaces inline styles on the prose page text specimen table */
-/* .dc-tape.margin-sm — migrated to components.css (Stage 4) */
-
 }
 
 /* .dc-note.warning migrated to components.css (Phase 3) */
@@ -2335,31 +2330,6 @@ p.img-wrapper {
 /* ───────── CHAPTER OPENER NUMBER DISPLAY ─────────
    Large chapter identifier that sits above dc-spray on rules-chapter openers.
    Not to be confused with .dc-chapter-num (the footer page reference at bottom-right). */
-
-/* DEPRECATED 2026-05-12 — dc-roll-table HTML table replaced by @outcome macro.
-   Any visual improvements were merged into .dc-outcomes (canonical system).
-   This block can be removed once dc-op-manual confirms no direct HTML usage.
-   See REDUNDANCY-AUDIT.md Category 1. */
-/* ───────── ROLL RESULT TABLE — compact tabular d20 ladder ─────────
-   Used inline within rules text as a compact reference; contrast
-   with .dc-outcomes (full styled component for teaching the system). */
-
-/* Header row */
-
-/* Body rows */
-
-/* Roll number cell — left column */
-
-/* All roll number variants use orange; modifiers reserved for future differentiation */
-
-/* Result cell — right column */
-
-/* Outcome name — bold inline label at start of result cell */
-
-/* ── Design-guide only: side-by-side comparison stage layout ─────── */
-/* Design-guide only: side-by-side comparison stage layout.
-   Chromium correctly allows display:grid inside a multi-column ancestor
-   (grid creates its own BFC), so !important is not needed. */
 
 /* ══════════════════════════════════════════════════════════════════════════
    FICTION PROSE — inline art float

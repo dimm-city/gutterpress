@@ -167,3 +167,23 @@ Continue using this policy for future cleanup:
 7. Re-run computed-style checks and console/page-count verification.
 
 If a candidate cannot pass that bar cheaply, keep it in manual review.
+
+---
+
+## Status: Migration Complete (2026-05-14)
+
+`dc-brand.css` has been deleted. It no longer exists in the repository.
+
+The CSS surface is now exactly **five files**, imported in this order via `index.css`:
+
+| File | Owns |
+|---|---|
+| `tokens.css` | `:root` tokens, `@font-face`, html/body baseline, global element resets |
+| `components.css` | Every `.dc-*` and `.pmd-*` component (base + thin variants), specialty parent-container overrides |
+| `page-templates.css` | ALL `columns:N` rules (exclusive), `.page.*` layouts, paged wrapper scaffolding, print utilities |
+| `page-rules.css` | `@page` declarations, named pages, Paged.js counter fixes |
+| `guide.css` | `div.chapter` scaffolding, `.specimen` chrome, guide-specific footer |
+
+All `.dc-*` component rules that previously lived in `dc-brand.css` now live in `components.css`. There is no sixth file, no `dc-brand.css` stub, and no legacy import alias. Any future rule for a `.dc-*` component belongs in `components.css`.
+
+This ledger is now **frozen / archived**. The cleanup work it tracked is complete.

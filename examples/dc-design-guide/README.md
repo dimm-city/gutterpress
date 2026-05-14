@@ -49,15 +49,19 @@ browser.
 
 ## CSS Architecture
 
-The stylesheet cascade now uses three files with clear ownership:
+The stylesheet cascade uses a five-file stack with strict layer ownership:
 
 ```
 css/
 ├── index.css              ← imports in layer order
-├── dc-brand.css           ← tokens (:root), fonts, all .dc-* components
-├── page-rules.css         ← @page rules, named pages, counters
-└── guide.css              ← specimen styles plus guide-only demo/page-template rules
+├── tokens.css             ← :root tokens, @font-face, html/body baseline, element resets
+├── components.css         ← every .dc-* and .pmd-* component (base + thin variants)
+├── page-templates.css     ← all columns:N rules (exclusive), .page.* layouts, paged wrapper scaffolding
+├── page-rules.css         ← @page declarations, named pages, Paged.js counter fixes
+└── guide.css              ← div.chapter scaffolding, .specimen chrome, guide-only rules
 ```
+
+`dc-brand.css` no longer exists. All `.dc-*` component rules live in `components.css`.
 
 See [`docs/CSS-PATTERNS.md`](docs/css-architecture.md) for the full architecture
 reference — layer contracts, token conventions, markdown-friendly selector strategies,
@@ -77,7 +81,7 @@ To start a new project based on the DC brand:
 
 1. Copy the `css/` folder into your project.
 2. Create `css/project-overrides.css` and add it as the last import in `index.css`.
-3. Override tokens in `project-overrides.css` — do not edit `dc-brand.css` directly.
+3. Override tokens in `project-overrides.css` — do not edit `tokens.css` directly.
 4. Override `--bg` to change the page background color. `page-rules.css` sets
    `.pagedjs_sheet { background-color: var(--bg) }` directly — no additional hook
    variable is needed.

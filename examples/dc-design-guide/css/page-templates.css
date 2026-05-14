@@ -411,7 +411,6 @@ div.chapter:is(.chapter-01, .chapter-02) :is(h1, .dc-intro, table, hr, .specimen
 .specialty .dc-card-tab   { padding: 0.1rem 1.5rem 0.1rem 0.75rem; }
 
 .specialty .dc-flavor { padding: 0.4rem 0.85rem; margin-bottom: 0.45rem; line-height: var(--lh-normal); }
-.specialty .dc-flavor::after { margin-top: 0.25rem; }
 
 .specialty .dc-ability       { margin-bottom: 0.35rem; gap: 0.55rem; }
 .specialty .dc-ability-text  { font-size: var(--fs-body-sm); }

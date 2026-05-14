@@ -31,6 +31,38 @@ Card variants (skill cards, path shells, specialty cards, specialty intros) are 
 `@gear-card`, `@end-gear-card`, `@tape`, `@lede`, `@end-lede`,
 `@glossary`, `@end-glossary`
 
+## Blank-line requirement for markers
+
+Macro open and close markers **must** be separated from surrounding content by blank lines. Without the blank lines, markdown-it merges the marker line into the preceding or following paragraph and the macro is silently ignored.
+
+Correct:
+
+```markdown
+@callout
+This is the callout body.
+
+More content here.
+
+@end-callout
+```
+
+Wrong (markers merged into paragraph — macro never fires):
+
+```markdown
+@callout
+This is the callout body.
+@end-callout
+```
+
+The rule applies to every open marker (`@macro-name`) and every close marker (`@end-macro-name`):
+
+- Open marker: must have a blank line **after** it before the first content line.
+- Close marker: must have a blank line **before** it after the last content line.
+
+When two macros appear back-to-back (e.g. multiple `@skill` cards inside a `@learning-path`), each open/close pair must still follow this rule — no two markers should share the same paragraph block.
+
+This is a markdown-it parsing constraint, not a plugin limitation. If a macro appears to render nothing, missing blank lines around its markers are the first thing to check.
+
 ## 1. Design the emitted HTML first
 
 Before touching the parser, decide the exact root class and inner hooks.
@@ -107,7 +139,7 @@ That is usually better than asking authors to write raw HTML.
 
 If the macro is just a shell around normal markdown content, do less: open the wrapper, let standard markdown render `h3`, `p`, `ul`, and `li`, then close the wrapper. That keeps the parser logic small and avoids creating extra internal hook classes you do not really need.
 
-## 3. Add CSS in `css/dc-brand.css`
+## 3. Add CSS in `css/components.css`
 
 The root class owns the shell. Inner parts are descendants.
 
@@ -251,7 +283,7 @@ If you want the macro to behave more like `@skill`, document the intended struct
 ## 6. Validate it in the guide
 
 - Add a specimen in the appropriate guide chapter.
-- Confirm the emitted class has a matching rule in `dc-brand.css`.
+- Confirm the emitted class has a matching rule in `components.css`.
 - Keep the component root-owned: one `.dc-*` shell, thin root variants, descendant selectors underneath.
 
 ## Skill Card Checklist

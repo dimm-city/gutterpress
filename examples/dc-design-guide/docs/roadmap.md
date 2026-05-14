@@ -40,6 +40,9 @@ legacy code from the print-md framework.
 | `8f695cc` | Lede column-span, H2 word-break + 14.5pt in two-column, inline code overflow-wrap |
 | `cb08a88` | Page breaks between NPC tiers; orphan heading fixes in Part 2 examples |
 | `13c36f8` | Gear & Tech annotation pages expanded to fill sparse layout |
+| *(macro fixes)* | Fixed `@lede`/`@end-lede` blank-line bug across all 19 chapter files — markers were missing required blank lines, causing markdown-it to merge them into surrounding paragraphs and silently drop the macro |
+| *(macro fixes)* | Fixed `@callout`, `@dm-note`, and `@end-section` close markers in `03-components.md` and `303-example-specialty-overview.md` with correct blank-line separation |
+| *(plugin fix)* | Plugin now tracks `inLede` state so `closeAll()` properly closes any unclosed lede div at end-of-file |
 
 Prior sessions established the current baseline: dead CSS classes removed, critical plugin/CSS mismatches fixed, font tokens documented, and the body/page token docs aligned with the CSS.
 
@@ -89,7 +92,7 @@ The chapter-start example H1 now carries `{.dc-chevron}`, and the shared page-te
 - Simple macros = wrap content in a named div, no special parsing; follow the existing completed wrapper macros (`@sidebar`, `@sidebar-box`, `@definition`) rather than assuming a shipped `@lede` macro
 - Medium macros = structured sub-blocks or ordered list detection; follow `@skill` / `@outcome` patterns
 - All emitted classes must use `dc-` prefix per CLAUDE.md (exception: `.scream` intentionally unprefixed)
-- Each new macro needs a matching CSS rule in `dc-brand.css` before shipping
+- Each new macro needs a matching CSS rule in `components.css` before shipping
 - Each new macro needs a design guide specimen in the appropriate `03-components.md` or `08-field-guide-components.md` section
 - `dc-pullquote` should migrate to GFM alert syntax, not a new macro
 - Two-column field-guide wrappers should migrate to `@section` with class modifiers, not a new macro
@@ -203,4 +206,4 @@ Five guide-only page templates still hard-code the chevron banner treatment rath
 | 3 — Bulk `---` → `@break` | Re-audit required | No | Earlier count/automation assumption did not hold in active source |
 | 4 — Rationalization | Ongoing | No | Establishes reusable base systems and lowers variant cost |
 
-**Recommended next session:** Continue from the remaining architecture targets rather than doc-sync work: review `@class-entry` portrait/shell alignment, then finish the remaining panel/sidebar-family cleanup beyond the new `.dc-prose-panel` base. Leave chapter-05 `:::aug` content out of the macro plan.
+**Recommended next session:** The 5-file CSS architecture is complete and all macro blank-line bugs are fixed. Continue with remaining architecture targets: review `@class-entry` portrait/shell alignment, then finish the remaining panel/sidebar-family cleanup beyond the new `.dc-prose-panel` base. Begin Phase 3 macro-gated field-guide migrations for `@sidebar`, `@sidebar-box`, `@procedure`, and `@definition`. Leave chapter-05 `:::aug` content out of the macro plan.

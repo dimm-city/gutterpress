@@ -77,9 +77,9 @@ through `index.css`.
 ### Layer Contract Rules
 
 **Tokens flow downward only.** The `:root` block is the exclusive property of
-`dc-brand.css`. No other layer defines custom properties on `:root`. All layers
+`tokens.css`. No other layer defines custom properties on `:root`. All layers
 consume tokens via `var(--token)`. A `project-overrides.css` imported last is the
-only sanctioned override path — do not edit `dc-brand.css` for project-specific
+only sanctioned override path — do not edit `tokens.css` for project-specific
 changes.
 
 **No upward `!important` fights.** Layers do not override each other with
@@ -88,7 +88,7 @@ content, where `content: none !important` is required because Paged.js generates
 `@page` rules at higher specificity than author stylesheets can normally reach.
 
 **Selector ownership is exclusive.** If you are writing a rule for `.dc-callout`, it
-belongs in `dc-brand.css`. If you are writing a rule for `.pagedjs_sheet`, it belongs
+belongs in `components.css`. If you are writing a rule for `.pagedjs_sheet`, it belongs
 in `page-rules.css`. If you are writing a selector that only exists for a rendered
 design-guide example, it belongs in `guide.css`. A `.dc-*` selector in `page-rules.css`
 is a bug.
@@ -113,7 +113,7 @@ large variable-driven abstraction.
 ## 3. The Token System
 
 All design decisions that recur in two or more rules are expressed as custom
-properties in the `:root` block of `dc-brand.css`. The taxonomy follows a strict
+properties in the `:root` block of `tokens.css`. The taxonomy follows a strict
 hierarchy: color → typography → spacing → geometry.
 
 ### Color Tokens
@@ -396,7 +396,7 @@ conventions. The gear entry tagline is always an italic paragraph immediately af
 an h3:
 
 ```css
-/* dc-brand.css */
+/* components.css */
 .dc-gear-entry-tagline,
 .dc-gear-entry > p:first-of-type em:only-child,
 .dc-gear-entry > p.dc-flavor:first-of-type {
@@ -448,7 +448,7 @@ The triple-class specificity ensures this wins without `!important`.
 by element type:
 
 ```css
-/* dc-brand.css — children addressed by type, not by class */
+/* components.css — children addressed by type, not by class */
 .dc-definition-block {
   background: var(--surface-orange-tint);
   border-left: 4px solid var(--crimson);
@@ -704,7 +704,7 @@ For one-off elements that must not split across pages without having a component
 class:
 
 ```css
-/* dc-brand.css */
+/* components.css */
 .pmd-no-break {
   break-inside: avoid;
   page-break-inside: avoid;

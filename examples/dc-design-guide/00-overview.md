@@ -4,7 +4,7 @@
 
 @lede
 
-This guide is both the living documentation of the Dimm City design system *and* a working demonstration. Every specimen on these pages is live — rendered through the same `css/index.css` as the Field Guide. Change a token in `project-overrides.css` (or `dc-brand.css` when evolving the shared base theme) and the specimen updates on the next preview refresh.
+This guide is both the living documentation of the Dimm City design system *and* a working demonstration. Every specimen on these pages is live — rendered through the same `css/index.css` as the Field Guide. Change a token in `css/tokens.css` (or `css/project-overrides.css` for project-specific overrides) and the specimen updates on the next preview refresh.
 
 @end-lede
 
@@ -26,11 +26,13 @@ The guide is split into two parts.
 
 | File | Purpose |
 |------|---------|
-| `css/dc-brand.css` | Brand tokens, font faces, base typography, and all DC component styles |
-| `css/page-rules.css` | `@page` rules, named pages, Paged.js chrome, and chapter counter resets |
-| `css/guide.css` | Design-guide-specific overrides, specimens, and guide-only example page-template styling |
+| `css/tokens.css` | `:root` tokens, `@font-face` declarations, html/body baseline, and global element resets |
+| `css/components.css` | All `.dc-*` and `.pmd-*` component styles — base rules plus variant overrides |
+| `css/page-templates.css` | All `columns:N` rules, `.page.*` layout shells, paged wrapper scaffolding, and print utilities |
+| `css/page-rules.css` | `@page` declarations, named pages, Paged.js counter fixes |
+| `css/guide.css` | Design-guide-specific scaffolding, specimen chrome, and guide-only footer |
 
-All three are imported in order by `css/index.css`: `dc-brand.css` + `page-rules.css` + `guide.css`.
+All five are imported in order by `css/index.css`: `tokens.css` → `components.css` → `page-templates.css` → `page-rules.css` → `guide.css`.
 
 ## How Components Work
 
@@ -55,7 +57,7 @@ This is a lede rendered via the container plugin.
 
 ## Customizing the Brand
 
-`css/dc-brand.css §1` contains the canonical `:root` token list. For project-specific retheming, copy the tokens you need into `css/project-overrides.css` and let that file import last through `css/index.css`.
+`css/tokens.css` contains the canonical `:root` token list. For project-specific retheming, copy the tokens you need into `css/project-overrides.css` and let that file import last through `css/index.css`.
 
 **Before (default DC palette):**
 
@@ -83,4 +85,4 @@ This is a lede rendered via the container plugin.
 
 ## Keeping the Guide in Sync
 
-This guide re-renders every time `print-md preview` is running. If a component style changes in `dc-brand.css`, its specimen on these pages updates automatically — there is no separate stylesheet to maintain, and no manual sync step required.
+This guide re-renders every time `print-md preview` is running. If a component style changes in `css/components.css`, its specimen on these pages updates automatically — there is no separate stylesheet to maintain, and no manual sync step required.

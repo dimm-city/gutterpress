@@ -14,9 +14,9 @@ This section shows how gear and cybernetics pages look in the actual Dimm City F
 
 **Page template** — `@page .tech-cybernetics .second-page .chapter-05` — applies the cybernetics rules layout. This page uses dense prose with bold key terms and a full rules table for the Ego Points system. The blockquote introduces the section concept. The `SysChk` table uses standard markdown table syntax. See [Components](#ch-components) for table rendering.
 
-**Prose + table pattern** — This is the most common rules-page structure in the field guide: a section opener in bold flavour prose, a `> blockquote` for an in-world voice line, body prose explaining the mechanic, then a reference table. The Ego Points table is pure GFM markdown — no class attributes needed for basic alternating-row styling (dc-brand.css applies it universally). If a table needs a custom header colour, add `{.dc-table-crimson}` or similar variant class.
+**Prose + table pattern** — This is the most common rules-page structure in the field guide: a section opener in bold flavour prose, a `> blockquote` for an in-world voice line, body prose explaining the mechanic, then a reference table. The Ego Points table is pure GFM markdown — no class attributes needed for basic alternating-row styling (components.css applies it universally). If a table needs a custom header colour, add `{.dc-table-crimson}` or similar variant class.
 
-**Inline code in prose** — Note `SysChk` rendered as inline code — this is intentional for game-mechanic terms that double as class names or keywords. It keeps the text visually distinct without a callout box. The dc-brand.css inline code style (orange text, faint orange background) reads clearly against cream body text at 12pt body size.
+**Inline code in prose** — Note `SysChk` rendered as inline code — this is intentional for game-mechanic terms that double as class names or keywords. It keeps the text visually distinct without a callout box. The components.css inline code style (orange text, faint orange background) reads clearly against cream body text at 12pt body size.
 
 @page .tech-cybernetics .second-page .chapter-05
 
