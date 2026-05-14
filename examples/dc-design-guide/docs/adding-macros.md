@@ -239,7 +239,9 @@ Variants should override only the small public API or a truly exceptional proper
 }
 ```
 
-Use semantic variant names when they represent meaning. Numeric `variant="N"` is fine when the variants are just preset visual shells, which is how `@skill` and `@learning-path` work now.
+Use semantic variant names when they represent meaning. Numeric `variant="N"` is a valid pattern for new macros when the variants are just preset visual shells.
+
+> **DC-specific rule:** Do NOT use `variant=` on `@skill`, `@continue`, or `@learning-path`. Those macros derive their visual shape entirely from the `.specialty.<name>` parent container — a `@specialty .augmerc` wrapper applies the correct clip-path and accent to every card inside automatically. `variant=` on a skill or path card is a no-op and must be removed.
 
 ## 5. Add markdown examples
 

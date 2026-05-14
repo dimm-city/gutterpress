@@ -1,109 +1,108 @@
 
 **What Good Component CSS Looks Like**
 1. One real base class owns structure and defaults.
-2. Variant classes only override a small public API.
-3. Don’t expose internal layout as a variable API unless consumers genuinely need it.
-4. Prefer direct properties for one-off exceptions over creating 12 custom properties.
-5. Keep selectors flat and predictable.
-6. Use semantic variants, not implementation variants.
+2. Variant classes only override a small documented public API (custom properties).
+3. Direct property overrides on variants only for truly distinct structural exceptions.
+4. Keep selectors flat and predictable.
+5. Use semantic variants, not implementation variants.
 
-**Good Pattern**
+**Good Pattern — `.dc-alert` base + thin variants**
 ```css
-.alert {
-  --alert-bg: var(--paper-light);
-  --alert-border: var(--crimson);
-  --alert-text: var(--ink-smoke);
+/* Base: owns structure, spacing, typography, break behavior, and the public API */
+.dc-alert {
+  --dc-alert-bg:          var(--paper-light);
+  --dc-alert-border:      var(--crimson);
+  --dc-alert-fg:          var(--ink-smoke);
+  --dc-alert-label-color: var(--dc-alert-border);
 
-  background: var(--alert-bg);
-  border-left: 4px solid var(--alert-border);
-  color: var(--alert-text);
-  font-size: var(--fs-body-sm);
-  line-height: var(--lh-normal);
-  padding: var(--space-lg) var(--space-xl);
+  background:   var(--dc-alert-bg);
+  border-left:  4px solid var(--dc-alert-border);
+  color:        var(--dc-alert-fg);
+  font-size:    var(--fs-body-sm);
+  line-height:  var(--lh-normal);
+  padding:      var(--space-lg) var(--space-xl);
   break-inside: avoid;
   page-break-inside: avoid;
 }
 
-.alert p {
-  margin: 0;
-  font-style: italic;
-}
-
-.alert p + p {
-  margin-top: 6pt;
-}
+.dc-alert p             { margin: 0; font-style: italic; }
+.dc-alert p + p         { margin-top: 6pt; }
 ```
 
 ```css
-.alert--vibe {
-  --alert-border: var(--hud-magenta);
-  padding: var(--space-sm) var(--space-md);
+/* Thin variants: override only the public API */
+.dc-vibe-callout {
+  --dc-alert-border: var(--hud-magenta);
 }
 
-.alert--origin {
-  --alert-bg: var(--surface-orange-tint);
-  --alert-border: var(--blood);
-  border-left-width: 3px;
-  padding: 6pt 9pt;
+.dc-origin-callout {
+  --dc-alert-bg:           var(--surface-orange-tint);
+  --dc-alert-border:       var(--blood);
+  --dc-alert-label-color:  var(--crimson);
+  --dc-alert-border-width: 3px;
 }
 ```
 
-That is the model we should follow.
+The public API for `.dc-alert` variants is: `--dc-alert-bg`, `--dc-alert-border`,
+`--dc-alert-fg`, `--dc-alert-label-color`. Direct property overrides (e.g. `margin`,
+`border-left-width`, `width`) are acceptable on individual variants when the value is
+truly exceptional and not shared.
 
-**Bad Pattern**
-- Base class with 15 to 20 variables for:
-  - margin-top/right/bottom/left
-  - padding-x/y
-  - width/max-width
-  - label font size/weight/spacing/display
-  - line-height
-  - border width/color split into many knobs
-- This turns CSS into an internal configuration engine instead of a maintainable component.
+**Bad Pattern — direct structural overrides on variants**
+```css
+/* Don't do this — variants copy structural rules from the base */
+.dc-alert--vibe {
+  --dc-alert-border: var(--hud-magenta);
+  padding: var(--space-sm) var(--space-md);   /* ← structural, not API */
+  font-size: 10pt;                             /* ← structural, not API */
+}
 
-**How This Applies Here**
+.dc-alert--origin {
+  --dc-alert-bg: var(--surface-orange-tint);
+  --dc-alert-border: var(--blood);
+  border-left-width: 3px;
+  padding: 6pt 9pt;                            /* ← duplicates base padding logic */
+  font-size: 9.5pt;                            /* ← duplicates base font-size */
+}
+```
 
-For alerts:
-- Keep `.dc-alert` as the only shell.
-- Let `.dc-note`, `.dc-vibe-callout`, `.dc-origin-callout`, `.dc-visit-callout`, `.dc-gear-callout`, `.dc-dm-note` only override:
-  - surface/background
-  - accent/border color
-  - border width if truly different
-  - label text/color
-  - exceptional spacing only when needed
+Padding and font-size are structural. When variants start overriding them directly,
+you end up with parallel copies of the component shell that diverge silently over time.
 
-For cards:
-- Treat `.dc-skill-card`, `.dc-path-shell`, and `.dc-specialty-card` as distinct components.
-- If they share anything, keep it limited to a tiny alias layer only:
-  - surface
-  - accent
-- Each concrete component should own:
-  - spacing
-  - break behavior
-  - clip-path
-  - layout quirks
-  - odd/even specialty flipping
+**Bad Pattern — over-engineered internal variable API**
+```css
+/* Don't do this — exposes every internal dimension as a configurable knob */
+.dc-alert {
+  --alert-margin-top: …;
+  --alert-margin-right: …;
+  --alert-margin-bottom: …;
+  --alert-margin-left: …;
+  --alert-padding-x: …;
+  --alert-padding-y: …;
+  --alert-label-size: …;
+  --alert-label-weight: …;
+  --alert-label-spacing: …;
+  --alert-label-display: …;
+  --alert-border-width: …;
+  --alert-border-color: …;
+  …
+}
+```
 
-**Practical Rules I Should Follow Next**
-1. No more “margin-top/right/bottom/left” variable APIs.
-2. No more variable APIs for label typography unless multiple variants truly share them.
-3. If only one variant needs a different padding, set `padding` on that variant directly.
-4. If only one variant needs a different border width, set it directly.
-5. Use custom properties only for the values that are genuinely shared across variants:
-   - background
-   - accent/border color
-   - foreground/text color
-   - label text
-   - sometimes title/tab color
+This turns the component into a configuration engine. Variants no longer look like
+thin overrides — they look like full re-declarations. Use direct properties for
+one-off exceptions; use custom properties only for the small shared API.
+
+**How This Applies to Alert Variants**
+
+Keep `.dc-alert` as the only shell. Let variant classes `.dc-note`, `.dc-vibe-callout`,
+`.dc-origin-callout`, `.dc-visit-callout`, `.dc-gear-callout`, `.dc-dm-note` override:
+- surface/background (`--dc-alert-bg`)
+- accent/border color (`--dc-alert-border`)
+- label color (`--dc-alert-label-color`)
+- exceptional spacing only when truly needed (direct property, not a new variable)
 
 **Reference Methodologies**
-- BEM:
-  - base block + modifier classes
-- CUBE CSS:
-  - composition/layout separate from component block
-- Design-token layering:
-  - global tokens -> component aliases -> variant overrides
-
-**What I should do from here**
-1. Fix visual regressions first.
-2. Then simplify toward this exact base-plus-thin-variants model.
-3. Avoid introducing any new internal token surface unless we can justify it.
+- BEM: base block + modifier classes
+- CUBE CSS: composition/layout separate from component block
+- Design-token layering: global tokens → component aliases → variant overrides

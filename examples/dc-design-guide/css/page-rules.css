@@ -8,10 +8,7 @@
    - Named-page type definitions (@page front-matter, @page full, etc.)
    - @page margin box content (running headers/footers via @bottom-*)
    - Paged.js counter workarounds (counter-reset on .page.chapter-NN)
-   - Minimal paged-media wrapper scaffolding (.pagedjs_sheet, .page/.page-break
-     base geometry, .column-break, .full-page geometry) — TRANSITIONAL NOTE:
-     these wrapper rules move to page-templates.css in Phase 2; they remain
-     here until that migration completes
+   - Named-page element wiring (.page.citizen-file { page: citizen-file }, etc.)
 
    MUST NOT CONTAIN:
    - Content layout rules (.page.* { columns: N }) — EXCLUSIVELY in

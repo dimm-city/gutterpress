@@ -30,7 +30,7 @@
    - guide-only page-template and demo selectors for current rendered examples
 
    MUST NOT CONTAIN:
-   - reusable component styles that belong in dc-brand.css
+   - reusable component styles that belong in components.css
    - structural paged-media wrappers that belong in page-rules.css
    - general print utilities like .pmd-* that must ship outside the guide
    - body-level rules unless overriding a guide-specific inherited value

@@ -441,11 +441,12 @@ A rule scoped to `section#ch-name` is guaranteed not to bleed into adjacent chap
 
 The triple-class specificity ensures this wins without `!important`.
 
-### Strategy 4 — The `:::` Container Wrapper Pattern
+### Strategy 4 — Wrapper Containers and the `@macro` Pattern
 
-`::: wrapper {.dc-definition-block}` wraps content in
-`<div class="dc-definition-block">`. Once you have the wrapper class, target children
-by element type:
+The design guide uses `@macros` exclusively — `:::` container syntax has been removed
+from all design guide source files. When a macro like `@definition` emits a wrapper
+`<div class="dc-definition-block">`, target children by element type without requiring
+authors to annotate every element:
 
 ```css
 /* components.css — children addressed by type, not by class */
@@ -460,22 +461,22 @@ by element type:
 .dc-definition-block p + p { margin-top: 6pt; }
 ```
 
-The markdown author writes:
+The macro author writes:
 
 ```markdown
-::: wrapper {.dc-definition-block}
+@definition
 Augmercs are muscle for hire.
-:::
+
+@end-definition
 ```
 
 No `.dc-definition-block-paragraph` class is needed. The `p + p` selector handles
 multi-paragraph definitions automatically.
 
-The `wrapper` keyword is the generic form. Named containers are first-class
-alternatives: `:::two-column`, `:::sidebar`, `:::callout`, `:::pull-quote` — each
-generates a `<div>` with the corresponding class without requiring `{.class}` syntax.
-Prefer named containers over `:::wrapper {.class}` when a built-in type matches your
-intent.
+> **Note on `:::` containers:** The `:::wrapper {.class}`, `:::sidebar`, `:::callout`
+> forms are still supported by the markdown-it pipeline and remain in some field guide
+> files awaiting migration. For new content, always use a named `@macro`. Do not add
+> new `:::` container usages in the design guide.
 
 When two prose-box components genuinely share the same shell behavior, give them a
 real base class and emit it in markup. In the dc-design-guide, `@definition` and
@@ -711,7 +712,7 @@ class:
 }
 ```
 
-Apply via `{.pmd-no-break}` on a markdown element or `::: wrapper {.pmd-no-break}`.
+Apply via `{.pmd-no-break}` on a markdown element, or use the `@no-break` / `@end-no-break` macro to wrap a block without needing inline attrs.
 
 ### Recto Chapter Starts
 
