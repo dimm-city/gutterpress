@@ -1,0 +1,349 @@
+/* =============================================================================
+   TOKENS.CSS — DC Design Guide Brand Tokens
+   =============================================================================
+
+   ── ARCHITECTURAL CONTRACT ────────────────────────────────────────────────
+   OWNS:
+   - The :root custom property block (all design tokens)
+   - @font-face declarations
+   - * { print-color-adjust } global print accuracy rule
+   - html / body baseline (color, font-family, font-size, line-height)
+   - Global element resets driven by tokens: h1–h6, p, em, code, a,
+     blockquote, ul/li, table/th/td
+
+   MUST NOT CONTAIN:
+   - @page declarations or named-page assignments (→ page-rules.css)
+   - .page.* layout or column rules (→ page-templates.css)
+   - .dc-* or .pmd-* component/utility styles (→ components.css /
+     page-templates.css)
+   - div.chapter scaffolding or guide-specific rules (→ guide.css)
+   - @media screen rules (print-only project)
+
+   AGENT RULE: "Is this a token, font, or html/body/element baseline?" —
+   if NO, use another file.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* ── WEBFONTS (local) ─────────────────────────────────────────────────────── */
+@font-face {
+  font-family: 'Titillium Web';
+  src: url("../fonts/38dcb9f3-3f6b-43e7-a6e8-5a97ef802e82.ttf") format('truetype');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Titillium Web';
+  src: url("../fonts/a93310d1-a148-464e-8c85-746c77508a8a.ttf") format('truetype');
+  font-weight: 400; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'Titillium Web';
+  src: url("../fonts/7b4f7b04-2845-4d0b-8c29-85fdce943f80.ttf") format('truetype');
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Titillium Web';
+  src: url("../fonts/e3e8f5e7-0be8-40df-b620-2903775720f3.ttf") format('truetype');
+  font-weight: 600; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'Titillium Web';
+  src: url("../fonts/5cad57df-20fe-4f98-9a77-57b186c0036a.ttf") format('truetype');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Titillium Web';
+  src: url("../fonts/65a5470d-946a-4d4e-9716-348247cbc5e5.ttf") format('truetype');
+  font-weight: 700; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'Tomorrow';
+  src: url("../fonts/3f123b7e-edc3-4c66-af31-f98e2478e403.ttf") format('truetype');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Tomorrow';
+  src: url("../fonts/a603947f-3a54-4c1f-b607-027f691714f8.ttf") format('truetype');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Tomorrow';
+  src: url("../fonts/61b22bd1-24fc-4adb-8ba4-ca9aed38d2f8.ttf") format('truetype');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Tomorrow';
+  src: url("../fonts/tomorrow-400-italic.ttf") format('truetype');
+  font-weight: 400; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'Tomorrow';
+  src: url("../fonts/tomorrow-500-italic.ttf") format('truetype');
+  font-weight: 500; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'Tomorrow';
+  src: url("../fonts/tomorrow-700-italic.ttf") format('truetype');
+  font-weight: 700; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'lixdu';
+  src: url("../fonts/45430441-7b0c-4467-adb7-e459c5178e0d.woff") format('woff');
+  font-weight: normal; font-style: normal; font-display: swap;
+}
+
+/* ── DESIGN TOKENS ────────────────────────────────────────────────────────── */
+:root {
+
+  /* ── Page & Paper ─────────────────────────────────────────────────────── */
+  --bg:           #d3cec6;  /* page background — warm light gray */
+  --paper-cream:  #f5f0e6;  /* warm cream — primary card surface */
+  --paper-light:  #ebe5d8;  /* aside / sticker / quote */
+  --paper-aged:   #ddd6c6;  /* deeper aged — emphasis aside */
+  --paper-stain:  #d0c8b5;  /* dirty paper / inset wells */
+
+  /* ── Ink & Text ───────────────────────────────────────────────────────── */
+  --ink:        #1a1715;  /* primary text — near-black with warm cast */
+  --ink-dark:   #2a2622;  /* secondary headings */
+  --ink-smoke:  #4a4540;  /* body emphasis, italics on cream */
+  --ink-dust:   #6e6860;  /* muted labels — 4.85:1 on paper-cream */
+
+  /* ── Accents — creaturepunk fire + blood ─────────────────────────────── */
+  --crimson:    #d41200;  /* primary accent — vivid banner red */
+  --blood:      #a30900;  /* deep crimson — 5.46:1 on --bg */
+  --orange:     #f24d00;  /* spray orange — vivid saturated */
+  --rust:       #c23000;  /* rust — warm red-orange */
+  --amber:      #e89200;  /* amber — vivid golden */
+  --deep-rust:  #761800;  /* shadow rust */
+  --amber-dark: #b87400;  /* darkened amber — 3.22:1 on paper-cream */
+
+  /* ── HUD Colors — digital chrome ─────────────────────────────────────── */
+  --hud-blue:        #2a6a8a;  /* primary HUD chrome border */
+  --hud-blue-dark:   #1f5a7a;  /* 5.06:1 on --bg */
+  --hud-blue-bright: #48a4e0;
+  --hud-blue-dim:    #c9d6e2;  /* very light HUD panel on cream */
+  --hud-magenta:     #b85820;
+  --hud-panel:       #eeece8;  /* neutral light cream — callouts, note bars */
+
+  /* ── Surface Tints ────────────────────────────────────────────────────── */
+  --surface-tint-3:      #f2f0ec;
+  --surface-orange-tint: #dcd4bc;  /* gold @ 15% on --bg */
+
+  /* ── Borders ──────────────────────────────────────────────────────────── */
+  --border-hairline: #d0c8b5;
+  --border-blue:     var(--hud-blue);
+  --bw-thin:         1px;
+  --callout-border-width-small: 2px;
+
+  /* ── Shadows ──────────────────────────────────────────────────────────── */
+  --shadow-light: #b8b3a8;
+  --shadow-ink-border:
+    drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink))
+    drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink));
+
+  /* ── Type Families ────────────────────────────────────────────────────── */
+  --font-display: 'lixdu', 'Tomorrow', sans-serif;
+  --font-tab:     'Tomorrow', 'lixdu', sans-serif;
+  --font-body:    'Titillium Web', Georgia, sans-serif;
+  --font-sans:    'Titillium Web', 'Inter', system-ui, sans-serif;
+  --font-mono:    'Tomorrow', 'Titillium Web', ui-monospace, monospace;
+  --font-quote:   'Titillium Web', 'Tomorrow', serif;
+
+  /* ── Type Scale — 12pt body floor ────────────────────────────────────── */
+  --fs-body:    12pt;
+  --fs-body-sm: 11pt;    /* design floor — never below this for prose */
+  --fs-body-xs: 11.5pt;  /* between sm and body */
+  --fs-caption: 10pt;    /* credits / fine print */
+  --fs-footer:  9.5pt;   /* @page margin box footer */
+  --fs-h1:      1.5rem;
+  --fs-h2:      1.25rem;
+  --fs-h3:      1.2rem;  /* ~14.4pt */
+  --fs-h4:      1.1rem;  /* ~13.2pt */
+  --fs-h5:      0.95rem;
+  --fs-h6:      0.85rem;
+  --fs-chapter: 26pt;    /* chapter openers */
+
+  --fw-semibold: 600;
+  --fw-bold:     700;
+
+  --lh-tight:  1.35;
+  --lh-normal: 1.5;
+
+  --ls-display: 0.1em;
+  --ls-heading: 0.08em;
+  --ls-cap-sm:  3px;  /* mono micro-caps */
+
+  /* ── Spacing — print units ────────────────────────────────────────────── */
+  --space-sm:  0.08in;  /* ~6pt */
+  --space-md:  0.12in;  /* ~9pt */
+  --space-lg:  0.15in;  /* ~11pt */
+  --space-xl:  0.20in;  /* ~14pt */
+  --space-2xl: 0.25in;  /* ~18pt */
+
+  --gutter:        0.15in;  /* two-column structural gutter */
+  --page-margin:   0.5in;
+  --outer-margin:  0.625in; /* outer (non-binding) page margin */
+  --sidebar-width: 3.05in;
+
+  /* ── Page Geometry ────────────────────────────────────────────────────── */
+  --page-width:     8.625in;
+  --page-height:    11.25in;
+  --binding-margin: 0.75in;
+
+  /* ── Semantic / Role Colors ───────────────────────────────────────────── */
+  --text-secondary:       #a8b0bc;  /* muted TOC link text */
+  --classtag-gutterdruid: #4a7c3a;
+  --classtag-technosorc:  #8a3aa9;
+
+  /* ── Shapes ───────────────────────────────────────────────────────────── */
+  --clip-banner: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
+
+  /* ── Specialty Accent Colors ──────────────────────────────────────────── */
+  --augmerc-accent:        var(--hud-blue);
+  --proxy-accent:          var(--orange);
+  --streetwarden-accent:   #6fc24a;
+  --gutterdruid-accent:    #b3884f;
+  --cybersurgeon-accent:   #c0c0c0;
+  --wirephreak-accent:     #b34fb3;
+  --technosorcerer-accent: #4f6fc2;
+  --etherlock-accent:      #d4af37;
+}
+
+/* ── GLOBAL PRINT ACCURACY ────────────────────────────────────────────────── */
+* {
+  print-color-adjust: exact;
+}
+
+/* ── BASELINE ─────────────────────────────────────────────────────────────── */
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  text-wrap: pretty; /* CSS4 — silently ignored by Paged.js; screen preview only */
+  position: relative;
+  hyphens: auto;
+  widows: 2;
+  orphans: 2;
+}
+
+/* ── HEADINGS ─────────────────────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  letter-spacing: var(--ls-display);
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+  text-wrap: balance; /* CSS4 — silently ignored by Paged.js */
+  margin-bottom: 0.5em;
+  color: var(--blood);
+  break-after: avoid;
+}
+
+h1 {
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-bold);
+  margin-top: 0;
+  margin-bottom: 0.75em;
+  border-bottom: 2px solid var(--blood);
+  padding-bottom: 0.15em;
+}
+
+h2 {
+  font-size: var(--fs-h2);
+  color: var(--hud-blue-dark);
+  letter-spacing: var(--ls-heading);
+  margin-top: 22pt;
+  border-bottom: 2.5pt solid var(--hud-blue-dark);
+  padding-bottom: 0.1em;
+}
+
+h3 { font-size: var(--fs-h3); color: var(--rust);  letter-spacing: var(--ls-heading); margin-top: 18pt; }
+h4 { font-size: var(--fs-h4); color: var(--blood); letter-spacing: 0.06em; margin-top: 15pt; }
+h5 { font-size: var(--fs-h5); color: var(--blood); margin-top: 14pt; }
+h6 { font-size: var(--fs-h6); color: var(--blood); margin-top: 12pt; }
+
+/* ── INLINE ELEMENTS ──────────────────────────────────────────────────────── */
+p   { margin-bottom: 0.08in; }
+em  { color: var(--ink-smoke); font-style: italic; }
+a   { color: var(--crimson); text-decoration: none; border-bottom: 1px dotted var(--crimson); }
+
+code, kbd, samp {
+  font-family: var(--font-mono);
+  color: var(--ink);
+  font-size: 0.92em;
+  background: var(--paper-aged);
+  padding: 1pt 4pt;
+  border-radius: 2pt;
+  border: 1px solid var(--paper-aged);
+}
+
+blockquote {
+  font-family: var(--font-quote);
+  font-style: italic;
+  color: var(--ink-smoke);
+  border-left: 3px solid var(--ink-smoke);
+  background: none;
+  padding: var(--space-sm) var(--space-md) var(--space-sm) var(--space-xl);
+  margin: 0.75rem 0;
+  text-wrap: balance;
+}
+
+/* ── GLOBAL LIST STYLES (kept as-is per plan) ─────────────────────────────── */
+ul { padding-left: 0.25in; }
+ul li { list-style: none; margin-bottom: 0.06in; }
+ul li::before {
+  content: "» ";
+  color: var(--orange);
+  font-weight: 700;
+  padding-right: 0.1em;
+}
+
+/* ── GLOBAL TABLE STYLES (kept as-is per plan) ────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+  margin: 0.1in 0;
+  break-inside: avoid;
+}
+
+tr:nth-child(even) td { background: var(--surface-tint-3); }
+tr:nth-child(odd)  td { background: var(--paper-light); }
+
+th {
+  background: var(--crimson);
+  color: var(--paper-cream);
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  text-align: left;
+}
+
+td {
+  border-bottom: 1px solid var(--border-hairline);
+  padding: 4px 8px;
+  vertical-align: top;
+}
+
+/* ── SEMANTIC COLOR UTILITIES ─────────────────────────────────────────────── */
+.fg1 { color: var(--ink); }
+.fg2 { color: var(--ink-dark); }
+.fg3 { color: var(--ink-smoke); }
+.fg4 { color: var(--ink-dust); }
+.accent-orange  { color: var(--orange); }
+.accent-crimson { color: var(--crimson); }
+.accent-blood   { color: var(--blood); }
+.accent-blue    { color: var(--hud-blue); }
+.accent-amber   { color: var(--amber); }
+.accent-rust    { color: var(--rust); }
+
+.font-display { font-family: var(--font-display); letter-spacing: var(--ls-display); text-transform: uppercase; }
+.font-tab     { font-family: var(--font-tab); letter-spacing: 0.05em; text-transform: uppercase; }
+.font-body    { font-family: var(--font-body); }
+.font-sans    { font-family: var(--font-sans); }
+.font-mono    { font-family: var(--font-mono); }

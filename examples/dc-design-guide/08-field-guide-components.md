@@ -2,9 +2,9 @@
 
 # Field Guide Components
 
-:::lede
+@lede
 Components used in the Dimm City Field Guide — gear entries, definition blocks, sidebar boxes, and the dashed rule divider. These elements handle the prose-heavy, reference-dense pages that the core DC component library does not cover.
-:::
+-lede
 
 > **Component pattern:** `.dc-prose-panel` is the small shared shell for compact prose boxes in this family. `.dc-definition-block` and `.dc-sidebar-box` are thin concrete variants layered on top of it. `.dc-sidebar` and `.dc-human-callout` remain separate components with their own layout/content rules.
 
@@ -61,7 +61,7 @@ lands off the table, reroll it.
 H3 item name (crimson display font) + italic tagline + mechanics prose. Entries separated by `---`. Tagline paragraph must be purely italic (`*...*`); use `.dc-gear-entry-tagline` if you need the style without that constraint. **Use:** appendices, gear chapters, weapon lists.
 
 ```markdown
-:::wrapper {.dc-gear-entry}
+@gear-card
 ### Ripper Blades Mk.II
 
 *Melee. Cyberware implant. Pair.*
@@ -69,18 +69,18 @@ H3 item name (crimson display font) + italic tagline + mechanics prose. Entries 
 Damage 1d8+STR. On a crit, the target bleeds for 1d4 at the start of
 their next turn. Retractable — no visible profile when sheathed.
 Requires Cybersurgeon installation.
-:::
+@end-gear-card
 
 ---
 
-:::wrapper {.dc-gear-entry}
+@gear-card
 ### Ghost-Wire Whip
 
 *Melee. Monofilament. Reach 2.*
 
 Damage 1d6+AGI. Ignores armor on a roll of 5+. Folding grip —
 concealable under a jacket. Cuts non-powered barriers on a hit of 10+.
-:::
+@end-gear-card
 ```
 
 ---
@@ -107,8 +107,8 @@ Use the design-guide forms documented in `03-components.md`: `.dc-alert` is the 
 | Sidebar Box | `@sidebar-box ... @end-sidebar-box` | `dc-prose-panel dc-sidebar-box` |
 | Sidebar | `@sidebar ... @end-sidebar` | `dc-sidebar` |
 | Procedure | `@procedure ... @end-procedure` | `dc-steps` |
-| Gear Entry | `:::wrapper {.dc-gear-entry}` | `dc-gear-entry` |
-| Art Bottom Pin | `![img](https://placehold.co/1349x842/png?text=Art){.dc-art-bottom}` or `:::wrapper {.dc-art-bottom}` | `dc-art-bottom` |
+| Gear Entry | `@gear-card` … `@end-gear-card` | `dc-gear-entry` |
+| Art Bottom Pin | `![img](https://placehold.co/1349x842/png?text=Art){.dc-art-bottom}` or `@no-break` wrapper | `dc-art-bottom` |
 | Legacy note: Ability Container | Use `@skill` instead — `:::: ability` has no active CSS | — |
 
 ---

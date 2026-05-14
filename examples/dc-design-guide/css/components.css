@@ -1,0 +1,450 @@
+/* =============================================================================
+   COMPONENTS.CSS — DC Design Guide Component Library
+   =============================================================================
+
+   ── ARCHITECTURAL CONTRACT ────────────────────────────────────────────────
+   OWNS:
+   - Every .dc-* component class (base + thin variants)
+   - Every .pmd-* utility class
+   - Specialty parent-scoped overrides:
+       .specialty.<name> .dc-skill-card { … }
+       .specialty.<name> .dc-path-shell { … }
+       .specialty.<name> .dc-specialty-card { … }
+     These live HERE adjacent to the component they modify.
+   - Break control (break-inside/break-before/break-after) for individual
+     components
+   - Component-scoped public custom properties (--dc-alert-bg, etc.)
+
+   MUST NOT CONTAIN:
+   - columns:N rules of any kind (→ page-templates.css)
+   - @page declarations or named-page assignments (→ page-rules.css)
+   - div.chapter scaffolding (→ guide.css)
+   - :root token definitions (→ tokens.css)
+   - @media screen rules (print-only project)
+
+   COMPONENT PATTERN:
+   One dc-prefixed base class owns the full default shell (structure, spacing,
+   typography, borders, break behavior). Variant classes (including specialty
+   parent-container overrides) override ONLY the documented public API:
+     --dc-[component]-surface / --dc-[component]-accent /
+     --dc-[component]-fg / --dc-[component]-label-color /
+     --dc-[component]-title-color
+   Do not expose internal layout dimensions as a variable API.
+
+   AGENT RULE: "Is this a .dc-* or .pmd-* component style, or a
+   .specialty.<name> scope block for a component?" — if NO, use another file.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ALERTS — gold-standard exemplar of base+thin-variant pattern
+   ═══════════════════════════════════════════════════════════════════════════
+   Structure:
+   - .dc-alert        — the ONLY alert shell. Owns all structure, spacing,
+                        typography, break behavior, and the public API.
+   - .dc-alert-label  — label chrome (applies to all alerts via descendant).
+   - Variants         — thin classes that override ONLY the documented
+                        public API: --dc-alert-bg, --dc-alert-border,
+                        --dc-alert-fg, --dc-alert-label-color.
+                        Direct property overrides only for truly distinct
+                        spacing, border-width, or font-size.
+
+   Authoring: GFM syntax  >  [!NOTE] / [!WARNING] / [!DM] / [!VIBE] /
+              [!ORIGIN] / [!VISIT] / [!GEAR]
+              Block macro: @callout variant="…" / @dm-note
+   ─────────────────────────────────────────────────────────────────────── */
+
+/* ── Base shell ─────────────────────────────────────────────────────────── */
+.dc-alert {
+  --dc-alert-bg:          var(--paper-light);
+  --dc-alert-border:      var(--crimson);
+  --dc-alert-fg:          var(--ink-smoke);
+  --dc-alert-label-color: var(--dc-alert-border);
+
+  background:    var(--dc-alert-bg);
+  border-left:   4px solid var(--dc-alert-border);
+  color:         var(--dc-alert-fg);
+  font-size:     var(--fs-body-sm);
+  line-height:   var(--lh-normal);
+  padding:       var(--space-lg) var(--space-xl);
+  break-inside:  avoid;
+  page-break-inside: avoid;
+}
+
+.dc-alert p {
+  margin: 0;
+  font-style: italic;
+}
+
+.dc-alert p + p      { margin-top: 6pt; }
+.dc-alert ul,
+.dc-alert ol         { margin: 6pt 0 0; padding-left: 0.2in; }
+.dc-alert li         { margin-bottom: 0.04in; }
+.dc-alert li::before { color: var(--dc-alert-border); }
+
+/* ── Label chrome ───────────────────────────────────────────────────────── */
+.dc-alert-label {
+  display:        block;
+  font-family:    var(--font-mono);
+  font-size:      8pt;
+  font-weight:    700;
+  font-style:     normal;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom:  6pt;
+  color:          var(--dc-alert-label-color);
+}
+
+/* ── Variant: Note (player-facing, default) ─────────────────────────────── */
+.dc-note {
+  margin-top: var(--space-lg);
+}
+
+/* Note label is slightly smaller/tighter than base — distinguishes note
+   "sticker" from the heavier callout labels. */
+.dc-note .dc-alert-label {
+  font-size:      9px;
+  letter-spacing: 2px;
+  margin-bottom:  var(--space-sm);
+}
+
+/* ── Variant: Warning (note with distinct surface) ──────────────────────── */
+.dc-note.warning {
+  --dc-alert-bg:     var(--surface-orange-tint);
+  --dc-alert-border: var(--rust);
+}
+
+/* ── Variant: DM Note (Dream Master-facing) ─────────────────────────────── */
+.dc-dm-note {
+  --dc-alert-bg: var(--paper-cream);
+  margin-top:        9pt;
+  border-left-width: 3px;
+  font-size:         9pt;
+}
+
+/* DM label: lighter weight + tighter spacing — intentionally distinct from
+   player-facing note labels. */
+.dc-dm-note .dc-alert-label {
+  font-weight:    600;
+  letter-spacing: 0.1em;
+}
+
+/* ── Variant: Vibe Callout ──────────────────────────────────────────────── */
+.dc-vibe-callout {
+  --dc-alert-border: var(--hud-magenta);
+  padding: var(--space-sm) var(--space-md);
+}
+
+/* ── Variant: Origin Callout ────────────────────────────────────────────── */
+.dc-origin-callout {
+  --dc-alert-bg:          var(--surface-orange-tint);
+  --dc-alert-border:      var(--blood);
+  --dc-alert-label-color: var(--crimson);
+  padding:           6pt 9pt;
+  border-left-width: 3px;
+}
+
+/* ── Variant: Visit Callout ─────────────────────────────────────────────── */
+.dc-visit-callout {
+  --dc-alert-border:      var(--hud-blue);
+  --dc-alert-label-color: var(--hud-blue-dark);
+  margin:    0.12in 0;
+  padding:   12px 16px;
+  font-size: var(--fs-body);
+}
+
+/* ── Variant: Gear Callout ──────────────────────────────────────────────── */
+.dc-gear-callout {
+  --dc-alert-bg:          var(--paper-cream);
+  --dc-alert-border:      var(--border-hairline);
+  --dc-alert-label-color: var(--orange);
+  margin:            0.12in auto 0.18in;
+  border-left-width: 1.5px;
+  width:             90%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SPECIALTY PARENT-CONTAINER VARIANT SYSTEM
+   ═══════════════════════════════════════════════════════════════════════════
+   Authors wrap a specialty section in @specialty .<name>. Every component
+   inside — skill-card, path-shell, specialty-card, specialty-intro — inherits
+   its silhouette and accent color from that parent automatically.
+
+   Structure:
+   - Bases (.dc-skill-card, .dc-path-shell, .dc-specialty-card,
+     .specialty-intro) remain in dc-brand.css until full Phase 5 migration.
+   - Each specialty block here overrides ONLY:
+       • custom properties (--dc-card-accent, --dc-card-tab-bg, shapes)
+       • background for the specialty's surface
+     No structural properties are repeated from the base.
+
+   New silhouettes designed in Phase 4:
+   - cybersurgeon: top-right single diagonal (precision, surgical)
+   - wirephreak:   asymmetric cross-cuts (hacker, all-angles)
+   - technosorcerer: center top notch (arcane gate)
+   - etherlock:    parallelogram-like (ethereal, fluid)
+   ─────────────────────────────────────────────────────────────────────── */
+
+/* ── Augmerc — hardened military, HUD blue, hex cuts ───────────────────── */
+.specialty.augmerc .dc-skill-card {
+  --dc-card-accent:        var(--augmerc-accent);
+  --dc-card-tab-bg:        var(--hud-blue-dark);
+  --dc-skill-tab-shape:    polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
+  --dc-skill-body-shape:   polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px));
+}
+.specialty.augmerc .dc-path-shell {
+  --dc-path-title-bg:      var(--hud-blue-dark);
+  --dc-path-title-color:   var(--paper-cream);
+  --dc-path-title-shape:   polygon(14px 0, calc(100% - 24px) 0, 100% 18px, 100% 100%, 0 100%, 0 14px);
+  --dc-path-accent:        var(--augmerc-accent);
+  background:              var(--paper-light);
+  clip-path: polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
+}
+.specialty.augmerc .dc-specialty-card {
+  --dc-specialty-card-bg:     var(--paper-light);
+  --dc-specialty-card-accent: var(--augmerc-accent);
+  --dc-specialty-card-shell-shape: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+}
+.specialty.augmerc .specialty-intro {
+  --dc-specialty-intro-title-bg:    var(--hud-blue-dark);
+  --dc-specialty-intro-title-color: var(--paper-cream);
+  --dc-specialty-intro-title-shape: polygon(14px 0, calc(100% - 20px) 0, 100% 16px, 100% 100%, 0 100%, 0 14px);
+  background:  var(--paper-light);
+  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+}
+
+/* ── Cybersurgeon — precision surgical, silver, top-right diagonal ──────── */
+.specialty.cybersurgeon .dc-skill-card {
+  --dc-card-accent:        var(--cybersurgeon-accent);
+  --dc-card-tab-bg:        #707070;
+  --dc-card-tab-title-color: var(--paper-cream);
+  --dc-skill-tab-shape:    polygon(0 0, calc(100% - 30px) 0, 100% 30px, 100% 100%, 0 100%);
+  --dc-skill-body-shape:   polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
+}
+.specialty.cybersurgeon .dc-path-shell {
+  --dc-path-title-bg:      #606060;
+  --dc-path-title-color:   var(--paper-cream);
+  --dc-path-title-shape:   polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
+  --dc-path-accent:        var(--cybersurgeon-accent);
+  background:              var(--paper-cream);
+  clip-path: polygon(0 0, calc(100% - 26px) 0, 100% 26px, 100% 100%, 0 100%);
+}
+.specialty.cybersurgeon .dc-specialty-card {
+  --dc-specialty-card-bg:     var(--paper-cream);
+  --dc-specialty-card-accent: var(--cybersurgeon-accent);
+  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
+}
+.specialty.cybersurgeon .specialty-intro {
+  --dc-specialty-intro-title-bg:    #606060;
+  --dc-specialty-intro-title-color: var(--paper-cream);
+  --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
+  background:  var(--hud-panel);
+  clip-path: polygon(0 0, calc(100% - 32px) 0, 100% 32px, 100% 100%, 0 100%);
+}
+
+/* ── Proxy — covert, orange, top-left step + diagonal bottom ────────────── */
+.specialty.proxy .dc-skill-card {
+  --dc-card-accent:        var(--proxy-accent);
+  --dc-card-tab-bg:        var(--rust);
+  --dc-skill-tab-shape:    polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape:   polygon(0 0, 100% 0, 100% calc(100% - 36px), calc(100% - 52px) 100%, 0 100%);
+}
+.specialty.proxy .dc-path-shell {
+  --dc-path-title-bg:      var(--ink-dark);
+  --dc-path-title-color:   var(--paper-cream);
+  --dc-path-title-shape:   polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
+  --dc-path-accent:        var(--proxy-accent);
+  background:              var(--surface-orange-tint);
+  clip-path: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 34px), calc(100% - 56px) 100%, 0 100%);
+}
+.specialty.proxy .dc-specialty-card {
+  --dc-specialty-card-bg:     var(--paper-cream);
+  --dc-specialty-card-accent: var(--proxy-accent);
+  --dc-specialty-card-shell-shape: polygon(0 16px, 16px 0, 100% 0, 100% calc(100% - 24px), calc(100% - 36px) 100%, 0 100%);
+}
+.specialty.proxy .specialty-intro {
+  --dc-specialty-intro-title-bg:    var(--ink-dark);
+  --dc-specialty-intro-title-color: var(--paper-cream);
+  --dc-specialty-intro-title-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
+  background:  var(--surface-orange-tint);
+  clip-path: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 36px), calc(100% - 56px) 100%, 0 100%);
+}
+
+/* ── Wirephreak — hacker, magenta, asymmetric cross-cuts ───────────────── */
+.specialty.wirephreak .dc-skill-card {
+  --dc-card-accent:        var(--wirephreak-accent);
+  --dc-card-tab-bg:        #7a3a7a;
+  --dc-card-tab-title-color: var(--paper-cream);
+  --dc-skill-tab-shape:    polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 24px 100%, 0 calc(100% - 10px));
+  --dc-skill-body-shape:   polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 22px 100%, 0 calc(100% - 14px));
+}
+.specialty.wirephreak .dc-path-shell {
+  --dc-path-title-bg:      #7a3a7a;
+  --dc-path-title-color:   var(--paper-cream);
+  --dc-path-title-shape:   polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 0 100%);
+  --dc-path-accent:        var(--wirephreak-accent);
+  background:              var(--paper-cream);
+  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% calc(100% - 10px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px));
+}
+.specialty.wirephreak .dc-specialty-card {
+  --dc-specialty-card-bg:     var(--paper-light);
+  --dc-specialty-card-accent: var(--wirephreak-accent);
+  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 12px));
+}
+.specialty.wirephreak .specialty-intro {
+  --dc-specialty-intro-title-bg:    #7a3a7a;
+  --dc-specialty-intro-title-color: var(--paper-cream);
+  --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
+  background:  var(--hud-panel);
+  clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% calc(100% - 12px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px));
+}
+
+/* ── Streetwarden — community defender, green, soft diamond cuts ────────── */
+.specialty.streetwarden .dc-skill-card {
+  --dc-card-accent:        var(--streetwarden-accent);
+  --dc-card-tab-bg:        #2a5a1a;
+  --dc-card-tab-title-color: var(--paper-cream);
+  --dc-skill-tab-shape:    polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+  --dc-skill-body-shape:   polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 22px) 100%, 22px 100%, 0 calc(100% - 18px));
+}
+.specialty.streetwarden .dc-path-shell {
+  --dc-path-title-bg:      var(--crimson);
+  --dc-path-title-color:   var(--paper-cream);
+  --dc-path-title-shape:   polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  --dc-path-accent:        var(--streetwarden-accent);
+  background:              var(--paper-cream);
+  clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
+}
+.specialty.streetwarden .dc-specialty-card {
+  --dc-specialty-card-bg:     var(--surface-orange-tint);
+  --dc-specialty-card-accent: var(--streetwarden-accent);
+  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 16px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 16px));
+}
+.specialty.streetwarden .specialty-intro {
+  --dc-specialty-intro-title-bg:    var(--crimson);
+  --dc-specialty-intro-title-color: var(--paper-cream);
+  --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%);
+  background:  var(--paper-cream);
+  clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
+}
+
+/* ── Technosorcerer — arcane + tech, indigo, top-center gate notch ──────── */
+.specialty.technosorcerer .dc-skill-card {
+  --dc-card-accent:        var(--technosorcerer-accent);
+  --dc-card-tab-bg:        #2a3a6a;
+  --dc-card-tab-title-color: var(--paper-cream);
+  --dc-skill-tab-shape:    polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape:   polygon(0 0, calc(50% - 18px) 0, 50% 10px, calc(50% + 18px) 0, 100% 0, 100% calc(100% - 20px), calc(100% - 24px) 100%, 24px 100%, 0 calc(100% - 20px));
+}
+.specialty.technosorcerer .dc-path-shell {
+  --dc-path-title-bg:      #2a3a6a;
+  --dc-path-title-color:   var(--paper-cream);
+  --dc-path-title-shape:   polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-path-accent:        var(--technosorcerer-accent);
+  background:              var(--paper-light);
+  clip-path: polygon(0 0, calc(50% - 22px) 0, 50% 14px, calc(50% + 22px) 0, 100% 0, 100% calc(100% - 22px), calc(100% - 26px) 100%, 26px 100%, 0 calc(100% - 22px));
+}
+.specialty.technosorcerer .dc-specialty-card {
+  --dc-specialty-card-bg:     var(--paper-light);
+  --dc-specialty-card-accent: var(--technosorcerer-accent);
+  --dc-specialty-card-shell-shape: polygon(0 0, calc(50% - 16px) 0, 50% 10px, calc(50% + 16px) 0, 100% 0, 100% calc(100% - 16px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 16px));
+}
+.specialty.technosorcerer .specialty-intro {
+  --dc-specialty-intro-title-bg:    #2a3a6a;
+  --dc-specialty-intro-title-color: var(--paper-cream);
+  --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 24px) 0, 50% 14px, calc(50% + 24px) 0, 100% 0, 100% 100%, 0 100%);
+  background:  var(--paper-light);
+  clip-path: polygon(0 0, calc(50% - 24px) 0, 50% 16px, calc(50% + 24px) 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
+}
+
+/* ── Gutterdruid — street nature, amber-brown, center bottom pinch ──────── */
+.specialty.gutterdruid .dc-skill-card {
+  --dc-card-accent:        var(--gutterdruid-accent);
+  --dc-card-tab-bg:        #5a3810;
+  --dc-card-tab-title-color: var(--paper-cream);
+  --dc-skill-tab-shape:    polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape:   polygon(0 0, 100% 0, 100% calc(100% - 24px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 24px));
+}
+.specialty.gutterdruid .dc-path-shell {
+  --dc-path-title-bg:      var(--orange);
+  --dc-path-title-color:   var(--ink-dark);
+  --dc-path-title-shape:   polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-path-accent:        var(--gutterdruid-accent);
+  background:              var(--paper-light);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
+}
+.specialty.gutterdruid .dc-specialty-card {
+  --dc-specialty-card-bg:     var(--paper-light);
+  --dc-specialty-card-accent: var(--gutterdruid-accent);
+  --dc-specialty-card-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 20px));
+}
+.specialty.gutterdruid .specialty-intro {
+  --dc-specialty-intro-title-bg:    var(--orange);
+  --dc-specialty-intro-title-color: var(--ink-dark);
+  --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
+  background:  var(--paper-light);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
+}
+
+/* ── Etherlock — ethereal, gold, parallelogram cross-cuts ──────────────── */
+.specialty.etherlock .dc-skill-card {
+  --dc-card-accent:        var(--etherlock-accent);
+  --dc-card-tab-bg:        #6a5200;
+  --dc-card-tab-title-color: var(--paper-cream);
+  --dc-skill-tab-shape:    polygon(0 10px, 10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+  --dc-skill-body-shape:   polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 18px 100%, 0 calc(100% - 20px));
+}
+.specialty.etherlock .dc-path-shell {
+  --dc-path-title-bg:      #6a5200;
+  --dc-path-title-color:   var(--paper-cream);
+  --dc-path-title-shape:   polygon(0 12px, 12px 0, 100% 0, 100% 100%, 0 100%);
+  --dc-path-accent:        var(--etherlock-accent);
+  background:              var(--paper-light);
+  clip-path: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 18px 100%, 0 calc(100% - 22px));
+}
+.specialty.etherlock .dc-specialty-card {
+  --dc-specialty-card-bg:     var(--paper-light);
+  --dc-specialty-card-accent: var(--etherlock-accent);
+  --dc-specialty-card-shell-shape: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 16px 100%, 0 calc(100% - 18px));
+}
+.specialty.etherlock .specialty-intro {
+  --dc-specialty-intro-title-bg:    #6a5200;
+  --dc-specialty-intro-title-color: var(--paper-cream);
+  --dc-specialty-intro-title-shape: polygon(0 14px, 14px 0, 100% 0, 100% 100%, 0 100%);
+  background:  var(--paper-light);
+  clip-path: polygon(0 14px, 14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 18px) 100%, 20px 100%, 0 calc(100% - 24px));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AP TAGS — full variant set
+   ═══════════════════════════════════════════════════════════════════════════
+   Base .dc-ap is in dc-brand.css (migrates to components.css in full
+   Phase 5 migration). These variants extend the existing base.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Existing in dc-brand.css: .dc-ap.free (crimson) and .dc-ap.var (hud-magenta) */
+
+/* Standard action point — default blue; explicit class for documentation clarity */
+.dc-ap.standard {
+  --dc-ap-bg: var(--hud-blue);
+}
+
+/* Reduced-cost action */
+.dc-ap.reduced {
+  --dc-ap-bg: var(--hud-blue-dim);
+  --dc-ap-fg: var(--ink);
+}
+
+/* Increased-cost action */
+.dc-ap.increased {
+  --dc-ap-bg: var(--blood);
+}
+
+/* Special action — amber */
+.dc-ap.special {
+  --dc-ap-bg: var(--amber);
+  --dc-ap-fg: var(--ink);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Phase 5 — component migrations from dc-brand.css pending
+   ═══════════════════════════════════════════════════════════════════════════ */

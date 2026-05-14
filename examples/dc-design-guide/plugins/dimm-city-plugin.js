@@ -145,20 +145,10 @@ function specialtyCodeFromClass(className) {
 }
 
 /**
- * Skill card variant presets — root-level CSS modifier classes applied to the
- * skill card shell so the component owns its variant state.
+ * Skill card variants are now controlled by the .specialty.<name> parent
+ * container (CSS parent-selector model). The variant= attribute on @skill,
+ * @continue, and @learning-path has been removed. No SKILL_VARIANTS map.
  */
-const SKILL_VARIANTS = {
-  '1': 'variant-1',
-  '2': 'variant-2',
-  '3': 'variant-3',
-  '4': 'variant-4',
-  '5': 'variant-5',
-};
-
-function getSkillVariant(variantNum) {
-  return SKILL_VARIANTS[variantNum] || SKILL_VARIANTS['1'];
-}
 
 function buildStickerChain(items) {
   let html = '<div class="dc-stickers">';
@@ -606,6 +596,8 @@ export default function dimmCityPlugin(md, options = {}) {
       let inSidebarBox = false;
       let inDefinition = false;
       let inProcedure = false;
+      let inCallout = false;
+      let inDmNote = false;
       let inClassEntry = false;
       let classEntryName = '';
       let classEntryTokens = [];
@@ -652,6 +644,14 @@ export default function dimmCityPlugin(md, options = {}) {
         if (inLearningPath) {
           newTokens.push(makeToken('html_block', '</section>\n'));
           inLearningPath = false;
+        }
+        if (inCallout) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inCallout = false;
+        }
+        if (inDmNote) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inDmNote = false;
         }
         inProcedure = false;
         learningPathHasTitle = false;
@@ -1085,6 +1085,229 @@ export default function dimmCityPlugin(md, options = {}) {
         continue;
       }
 
+      // --- @callout / @end-callout ---
+      // Block-level alert wrapper. variant="note|warning|dm|vibe|origin|visit|gear"
+      const calloutMarker = parseMarker(tok, tokens, i, '@callout');
+      if (calloutMarker.matched) {
+        closeAll();
+        const variant = (calloutMarker.attrs['variant'] || 'note').toLowerCase();
+        const CALLOUT_VARIANTS = {
+          'note':    { classes: 'dc-note',           label: 'Note' },
+          'warning': { classes: 'dc-note warning',   label: 'Warning' },
+          'dm':      { classes: 'dc-dm-note',        label: 'Dream Master Note' },
+          'vibe':    { classes: 'dc-vibe-callout',   label: 'Vibe' },
+          'origin':  { classes: 'dc-origin-callout', label: 'Origin' },
+          'visit':   { classes: 'dc-visit-callout',  label: 'Visit' },
+          'gear':    { classes: 'dc-gear-callout',   label: 'Gear' },
+        };
+        const cfg = CALLOUT_VARIANTS[variant] || CALLOUT_VARIANTS['note'];
+        const labelOverride = calloutMarker.attrs['label'];
+        const labelText = labelOverride ? esc(labelOverride) : cfg.label;
+        newTokens.push(makeToken('html_block',
+          '<div class="dc-alert ' + cfg.classes + '">\n' +
+          '<span class="dc-alert-label">' + labelText + '</span>\n'
+        ));
+        inCallout = true;
+        i += 2;
+        continue;
+      }
+
+      if (isMarker(tok, tokens, i, '@end-callout')) {
+        if (inCallout) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inCallout = false;
+        }
+        i += 2;
+        continue;
+      }
+
+      // --- @dm-note / @end-dm-note ---
+      // Block-level DM note wrapper. Equivalent to > [!DM] but supports multi-paragraph content.
+      const dmNoteMarker = parseMarker(tok, tokens, i, '@dm-note');
+      if (dmNoteMarker.matched) {
+        closeAll();
+        const labelOverride = dmNoteMarker.attrs['label'];
+        const labelText = labelOverride ? esc(labelOverride) : 'Dream Master Note';
+        newTokens.push(makeToken('html_block',
+          '<div class="dc-alert dc-dm-note">\n' +
+          '<span class="dc-alert-label">' + labelText + '</span>\n'
+        ));
+        inDmNote = true;
+        i += 2;
+        continue;
+      }
+
+      if (isMarker(tok, tokens, i, '@end-dm-note')) {
+        if (inDmNote) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inDmNote = false;
+        }
+        i += 2;
+        continue;
+      }
+
+      // --- @specialty-card / @end-specialty-card ---
+      // Summary card used in the choose-specialty overview grid.
+      // Shape and color inherited from .specialty.<name> parent container.
+      const specialtyCardMarker = parseMarker(tok, tokens, i, '@specialty-card');
+      if (specialtyCardMarker.matched) {
+        closeAll();
+        const userAttrs = { ...specialtyCardMarker.attrs };
+        const extraClass = userAttrs['class'] ? ' ' + userAttrs['class'] : '';
+        delete userAttrs['class'];
+        let extraAttrs = '';
+        for (const [key, val] of Object.entries(userAttrs)) {
+          extraAttrs += ' ' + key + '="' + esc(val) + '"';
+        }
+        newTokens.push(makeToken('html_block', '<div class="dc-specialty-card' + extraClass + '"' + extraAttrs + '>\n'));
+        i += 2;
+        continue;
+      }
+
+      if (isMarker(tok, tokens, i, '@end-specialty-card')) {
+        newTokens.push(makeToken('html_block', '</div>\n'));
+        i += 2;
+        continue;
+      }
+
+      // --- @specialty-intro / @end-specialty-intro ---
+      // Full-page specialty intro panel. Shape/color from .specialty.<name> parent.
+      const specialtyIntroMarker = parseMarker(tok, tokens, i, '@specialty-intro');
+      if (specialtyIntroMarker.matched) {
+        closeAll();
+        const userAttrs = { ...specialtyIntroMarker.attrs };
+        const extraClass = userAttrs['class'] ? ' ' + userAttrs['class'] : '';
+        delete userAttrs['class'];
+        newTokens.push(makeToken('html_block', '<div class="specialty-intro' + extraClass + '">\n'));
+        i += 2;
+        continue;
+      }
+
+      if (isMarker(tok, tokens, i, '@end-specialty-intro')) {
+        newTokens.push(makeToken('html_block', '</div>\n'));
+        i += 2;
+        continue;
+      }
+
+      // --- @specialty-art / @end-specialty-art ---
+      // Full-page art plate. Emits .specialty-art wrapper.
+      const specialtyArtMarker = parseMarker(tok, tokens, i, '@specialty-art');
+      if (specialtyArtMarker.matched) {
+        closeAll();
+        const userAttrs = { ...specialtyArtMarker.attrs };
+        const extraClass = userAttrs['class'] ? ' ' + userAttrs['class'] : '';
+        delete userAttrs['class'];
+        newTokens.push(makeToken('html_block', '<div class="specialty-art' + extraClass + '">\n'));
+        i += 2;
+        continue;
+      }
+
+      if (isMarker(tok, tokens, i, '@end-specialty-art')) {
+        newTokens.push(makeToken('html_block', '</div>\n'));
+        i += 2;
+        continue;
+      }
+
+      // --- @toc / @end-toc ---
+      const tocMarker = parseMarker(tok, tokens, i, '@toc');
+      if (tocMarker.matched) {
+        closeAll();
+        newTokens.push(makeToken('html_block', '<div class="dc-toc">\n'));
+        i += 2; continue;
+      }
+      if (isMarker(tok, tokens, i, '@end-toc')) {
+        newTokens.push(makeToken('html_block', '</div>\n'));
+        i += 2; continue;
+      }
+
+      // --- @two-column / @end-two-column ---
+      const twoColMarker = parseMarker(tok, tokens, i, '@two-column');
+      if (twoColMarker.matched) {
+        closeAll();
+        newTokens.push(makeToken('html_block', '<div class="two-column">\n'));
+        i += 2; continue;
+      }
+      if (isMarker(tok, tokens, i, '@end-two-column')) {
+        newTokens.push(makeToken('html_block', '</div>\n'));
+        i += 2; continue;
+      }
+
+      // --- @three-column / @end-three-column ---
+      const threeColMarker = parseMarker(tok, tokens, i, '@three-column');
+      if (threeColMarker.matched) {
+        closeAll();
+        newTokens.push(makeToken('html_block', '<div class="three-column">\n'));
+        i += 2; continue;
+      }
+      if (isMarker(tok, tokens, i, '@end-three-column')) {
+        newTokens.push(makeToken('html_block', '</div>\n'));
+        i += 2; continue;
+      }
+
+      // --- @no-break / @end-no-break ---
+      const noBreakMarker = parseMarker(tok, tokens, i, '@no-break');
+      if (noBreakMarker.matched) {
+        closeAll();
+        newTokens.push(makeToken('html_block', '<div class="pmd-no-break">\n'));
+        i += 2; continue;
+      }
+      if (isMarker(tok, tokens, i, '@end-no-break')) {
+        newTokens.push(makeToken('html_block', '</div>\n'));
+        i += 2; continue;
+      }
+
+      // --- @gear-card / @end-gear-card ---
+      const gearCardMarker = parseMarker(tok, tokens, i, '@gear-card');
+      if (gearCardMarker.matched) {
+        closeAll();
+        const userAttrs = { ...gearCardMarker.attrs };
+        const extraClass = userAttrs['class'] ? ' ' + userAttrs['class'] : '';
+        delete userAttrs['class'];
+        let extraAttrs = '';
+        for (const [key, val] of Object.entries(userAttrs)) {
+          extraAttrs += ' ' + key + '="' + esc(val) + '"';
+        }
+        newTokens.push(makeToken('html_block', '<div class="dc-gear-entry' + extraClass + '"' + extraAttrs + '>\n'));
+        i += 2; continue;
+      }
+      if (isMarker(tok, tokens, i, '@end-gear-card')) {
+        newTokens.push(makeToken('html_block', '</div>\n'));
+        i += 2; continue;
+      }
+
+      // --- @tape (single-line tape divider) ---
+      const tapeMarker = parseMarker(tok, tokens, i, '@tape');
+      if (tapeMarker.matched) {
+        const labelAttr = tapeMarker.attrs['label'] || '';
+        const extraClass = tapeMarker.attrs['class'] ? ' ' + esc(tapeMarker.attrs['class']) : '';
+        newTokens.push(makeToken('html_block', '<div class="dc-tape' + extraClass + '">' + esc(labelAttr) + '</div>\n'));
+        i += 2; continue;
+      }
+
+      // --- @lede / @end-lede ---
+      const ledeMarker = parseMarker(tok, tokens, i, '@lede');
+      if (ledeMarker.matched) {
+        closeAll();
+        newTokens.push(makeToken('html_block', '<div class="dc-intro lede">\n'));
+        i += 2; continue;
+      }
+      if (isMarker(tok, tokens, i, '@end-lede')) {
+        newTokens.push(makeToken('html_block', '</div>\n'));
+        i += 2; continue;
+      }
+
+      // --- @glossary / @end-glossary ---
+      const glossaryMarker = parseMarker(tok, tokens, i, '@glossary');
+      if (glossaryMarker.matched) {
+        closeAll();
+        newTokens.push(makeToken('html_block', '<div class="dc-terms">\n'));
+        i += 2; continue;
+      }
+      if (isMarker(tok, tokens, i, '@end-glossary')) {
+        newTokens.push(makeToken('html_block', '</div>\n'));
+        i += 2; continue;
+      }
+
       const specialtyMarker = parseMarker(tok, tokens, i, '@specialty');
       if (specialtyMarker.matched) {
         closeSpecialty();
@@ -1123,18 +1346,16 @@ export default function dimmCityPlugin(md, options = {}) {
         currentLearningPathName = '';
         currentSkillIndex = 0;
 
-        // Build opening tag with any custom attributes
+        // Build opening tag with any custom attributes (no variant= — use .specialty.<name> parent)
         let lpAttrs = '';
         const lpUserAttrs = learningPathMarker.attrs;
-        const lpVariant = lpUserAttrs['variant'] ? 'variant-' + esc(lpUserAttrs['variant']) : '';
         for (const [key, val] of Object.entries(lpUserAttrs)) {
-          if (key !== 'class' && key !== 'variant') {
+          if (key !== 'class') {
             lpAttrs += ' ' + key + '="' + esc(val) + '"';
           }
         }
         const lpClass = 'dc-learning-path dc-path-block' + (lpUserAttrs['class'] ? ' ' + lpUserAttrs['class'] : '');
-        const lpShellClass = 'dc-path-shell' + (lpVariant ? ' ' + lpVariant : '');
-        newTokens.push(makeToken('html_block', '<section class="' + lpClass + '" data-path-ref="' + esc(currentLearningPathRef) + '"' + lpAttrs + '>\n<div class="' + lpShellClass + '">\n'));
+        newTokens.push(makeToken('html_block', '<section class="' + lpClass + '" data-path-ref="' + esc(currentLearningPathRef) + '"' + lpAttrs + '>\n<div class="dc-path-shell">\n'));
         i += 2; // Skip paragraph_open, inline, paragraph_close
         continue;
       }
@@ -1179,24 +1400,20 @@ export default function dimmCityPlugin(md, options = {}) {
           newTokens.push(makeToken('html_block', '</div></div></div>\n'));
           inSkillCard = false;
 
-          // Re-derive variant class from currentSkillAttrs (same as the card
-          // construction path above).
-          const variant = getSkillVariant(currentSkillAttrs['variant'] || '1');
+          // No variant class — shape inherited from .specialty.<name> parent container
 
           let cardAttrs = '';
           for (const [key, val] of Object.entries(currentSkillAttrs)) {
-            if (key !== 'variant' && key !== 'class') {
+            if (key !== 'class') {
               cardAttrs += ' ' + key + '="' + esc(val) + '"';
             }
           }
 
-          // Honor allow-split on continuation cards too — when the polyfill
-          // can't fit a tall continuation card, allowing it to split is
-          // safer than looping until Paged.js bails out.
+          // Honor allow-split on continuation cards too
           const userClassList = (currentSkillAttrs['class'] || '').split(/\s+/).filter(Boolean);
           const allowSplitCont = userClassList.includes('allow-split');
           const userClass = userClassList.join(' ');
-          const cardClass = 'dc-skill-card dc-skill-card-cont ' + variant + (userClass ? ' ' + userClass : '');
+          const cardClass = 'dc-skill-card dc-skill-card-cont' + (userClass ? ' ' + userClass : '');
           const breakInsideContAttr = allowSplitCont ? '' : ' data-break-inside="avoid"';
 
           let cardHtml = '<div class="' + cardClass + '" name="' + esc(slugify(lastCardTitle)) + '"' + breakInsideContAttr + cardAttrs + '>\n';
@@ -1319,19 +1536,18 @@ export default function dimmCityPlugin(md, options = {}) {
           const parsed = parseSkillTitle(h4Text);
           currentSkillIndex++;
 
-          // Determine root-level variant CSS modifier class
-          const variant = getSkillVariant(currentSkillAttrs['variant'] || '1');
+          // No variant class — shape is inherited from .specialty.<name> parent container
 
-          // Collect extra attributes for skill-card wrapper (exclude variant and class)
+          // Collect extra attributes for skill-card wrapper (exclude class)
           let cardAttrs = '';
           for (const [key, val] of Object.entries(currentSkillAttrs)) {
-            if (key !== 'variant' && key !== 'class') {
+            if (key !== 'class') {
               cardAttrs += ' ' + key + '="' + esc(val) + '"';
             }
           }
 
-          // Build card class: "skill-card" + any custom classes from {.foo .bar}
-          const cardClass = 'dc-skill-card ' + variant + (currentSkillAttrs['class'] ? ' ' + currentSkillAttrs['class'] : '');
+          // Build card class: "dc-skill-card" + any custom classes from {.foo .bar}
+          const cardClass = 'dc-skill-card' + (currentSkillAttrs['class'] ? ' ' + currentSkillAttrs['class'] : '');
 
           // Card splitting strategy:
           //   - `.allow-split`: omit `data-break-inside="avoid"` so the card

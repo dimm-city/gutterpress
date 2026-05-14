@@ -1,40 +1,34 @@
 /* =============================================================================
-   PAGE-RULES.CSS — Field Guide Paged Media & Print Layout
+   PAGE-RULES.CSS — Paged Media Declarations & Counter System
    =============================================================================
-   Purpose: Page-shape rules for the field guide. Owns @page declarations,
-   named-page templates, minimal paged-media wrapper scaffolding, and chapter
-   counter resets. Per architectural directive (2026-05-03): page templates
-   live in the design guide, not in book-local CSS.
 
-   Origin: Carved from `_shared/css/core/03-paged.css` during Phase E
-   (2026-05-03) of the shared-css migration. Phase F2 will append the
-   `.page.*` selector rules from `_shared/css/core/10-page-templates.css`.
-
-   Load order: imported AFTER `.design/css/shared.css` so its values
-   cascade through; loaded BEFORE any book-local CSS that targets `.pagedjs_*`
-   (e.g. `field-guide/css/pagedjs-adapter.css`).
-   ============================================================================= */
-
-/* ── ARCHITECTURAL CONTRACT ───────────────────────────────────────────────────
+   ── ARCHITECTURAL CONTRACT ────────────────────────────────────────────────
    OWNS:
    - All @page declarations (default, :left, :right, named pages)
-   - Named page type definitions (@page front-matter, @page full, etc.)
-    - Paged.js counter workarounds (counter-reset on .page.chapter-NN)
-    - Minimal paged-media wrapper scaffolding (.pagedjs_sheet, .page/.page-break,
-      .column-break, print-only .page reset, full-page geometry)
+   - Named-page type definitions (@page front-matter, @page full, etc.)
    - @page margin box content (running headers/footers via @bottom-*)
+   - Paged.js counter workarounds (counter-reset on .page.chapter-NN)
+   - Minimal paged-media wrapper scaffolding (.pagedjs_sheet, .page/.page-break
+     base geometry, .column-break, .full-page geometry) — TRANSITIONAL NOTE:
+     these wrapper rules move to page-templates.css in Phase 2; they remain
+     here until that migration completes
 
    MUST NOT CONTAIN:
-    - Content element layout rules (.page.* { columns: N }) (→ guide.css)
-   - Component styles (→ dc-brand.css)
+   - Content layout rules (.page.* { columns: N }) — EXCLUSIVELY in
+     page-templates.css
+   - Component styles (→ components.css)
+   - :root token definitions (→ tokens.css)
    - div.chapter scaffolding (→ guide.css)
    - @media screen rules (print-only project)
 
-    AGENT RULE: Every rule in this file must be either an @page block, a
-    Paged.js counter workaround, or minimal paged-media wrapper scaffolding.
-    If a rule targets content layout or example styling directly, it belongs
-    elsewhere.
-   ─────────────────────────────────────────────────────────────────────────── */
+   CRITICAL PAGED.JS CONSTRAINT:
+   Only `counter-reset` and `counter-increment` are honored by the Paged.js
+   polyfill. `counter-set` is silently ignored. All counter assignments here
+   use `counter-reset` only.
+
+   AGENT RULE: "Is this an @page block, a counter workaround, or a
+   .pagedjs_* override?" — if NO, use another file.
+   ──────────────────────────────────────────────────────────────────────── */
 
 /* chapter counter initialized here; per-page increments via .page.chapter-NN selectors below */
 body { counter-reset: chapter; }
@@ -419,84 +413,4 @@ body { counter-reset: chapter; }
   }
 }
 
-/* ---------------------------------------------------------------------------
-   Minimal Paged-Media Wrapper Scaffolding
-   Structural wrapper behavior that belongs with named pages and paged output.
-   --------------------------------------------------------------------------- */
-
-/* Ensure page background renders in PDF (not just screen preview).
-   Brick texture belongs on .pagedjs_sheet because it visually sits above the
-   @page box that Paged.js generates. */
-.pagedjs_sheet {
-  background-color: var(--bg);
-  background-image: url("../img/brick-bg-02.png");
-  background-repeat: repeat;
-}
-
-.page,
-.page-break {
-  z-index: 1;
-  break-after: always;
-  break-inside: avoid;
-}
-
-.column-break {
-  color: var(--hud-magenta);
-  visibility: hidden;
-  break-after: column;
-}
-
-/* Base page wrapper geometry keeps the browser preview readable; the print reset
-   below cancels the box metrics so Paged.js controls final page layout. */
-.page {
-  color: var(--ink);
-  position: relative;
-  padding: 32px 36px 60px;
-  min-height: 1100px;
-  box-sizing: border-box;
-}
-
-.page > * {
-  position: relative;
-  z-index: 1;
-}
-
-.page img {
-  max-width: 100%;
-  height: auto;
-}
-
-/* Full-page wrappers need explicit geometry so empty full-bleed pages still
-   occupy a physical page in Paged.js. */
-.full-page {
-  page: full;
-  width: var(--page-width, 8.625in);
-  height: var(--page-height, 11.25in);
-  background-color: var(--bg);
-  break-before: always;
-}
-
-.page.page-full-bleed,
-.page.full-page,
-.page.cover,
-.page.back-cover {
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  break-inside: avoid;
-}
-
-/* Print reset: cancel preview-only page box geometry so Paged.js controls the
-   rendered page area. Keep this here with wrapper behavior rather than content layouts. */
-.page {
-  background: transparent;
-  min-height: 0;
-  padding: 0;
-}
-
-/* ── Content-layer rules live in guide.css ──────────────────────────────────
-   TOC layouts, .page.* content templates, specialty density overrides, and
-   example-specific print tuning live in guide.css.
-   This file keeps @page declarations, page assignments, counter workarounds,
-   and minimal paged-media wrapper scaffolding.
-   ─────────────────────────────────────────────────────────────────────────── */
+/* ── Page wrapper scaffolding migrated to page-templates.css (Phase 2) ───── */

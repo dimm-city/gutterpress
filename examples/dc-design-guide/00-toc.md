@@ -2,9 +2,9 @@
 
 # Dimm City Design Guide
 
-:::lede
+@lede
 This is the Dimm City print design system — cyberpunk and creaturepunk, built on print-md. Everything in these pages is live: the type, color, and components you see here are rendered through the same CSS as the Field Guide. The guide has two parts: **Part 1** is the implementation reference — token tables, CSS specs, and syntax you reach for while building. **Part 2** is real Field Guide pages rendered through that same CSS — see how all the pieces come together in an actual book.
-:::
+-lede
 
 <div class="dc-toc">
 

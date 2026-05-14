@@ -747,35 +747,7 @@ td {
 }
 .dc-card-inner { position: relative; z-index: 1; }
 
-/* ── SKILL CARD CLIP-PATH VARIANTS ──────────────────────────────────────────
-   The skill-card shell owns the variant state. Tab/body shapes read from the
-   root card's shape aliases so the component keeps one real base class plus
-   thin root-level variants.
-   ─────────────────────────────────────────────────────────────────────────── */
-
-/* Variant 2 — Sharp angular: diagonal cuts on all four tab corners + both body bottom corners */
-.dc-skill-card.variant-2 {
-  --dc-skill-tab-shape: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
-  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px));
-}
-
-/* Variant 3 — Asymmetric tech: top-left step on tab, large single diagonal on body */
-.dc-skill-card.variant-3 {
-  --dc-skill-tab-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
-  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 36px), calc(100% - 52px) 100%, 0 100%);
-}
-
-/* Variant 4 — Soft angular: shallow corner cuts, more restrained than variant 1/2 */
-.dc-skill-card.variant-4 {
-  --dc-skill-tab-shape: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
-  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 22px) 100%, 22px 100%, 0 calc(100% - 18px));
-}
-
-/* Variant 5 — Scooped futuristic: center notch on tab top, pinched bottom on body */
-.dc-skill-card.variant-5 {
-  --dc-skill-tab-shape: polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%);
-  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 24px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 24px));
-}
+/* .dc-skill-card.variant-N — migrated to parent-container model in components.css (Phase 4) */
 
 
 /* ───────── FLAVOR ───────── */
@@ -839,70 +811,7 @@ td {
   border-top: 1px solid var(--hud-blue-dim);
 }
 
-/* ───────── ALERT / CALLOUT BASE ───────── */
-/* Shared alert shell. Variants should read as thin overrides on top of this
-   full default treatment rather than rebuilding the shell through many tokens. */
-.dc-alert {
-  --dc-alert-bg: var(--paper-light);
-  --dc-alert-border: var(--crimson);
-  --dc-alert-fg: var(--ink-smoke);
-  --dc-alert-label-color: var(--dc-alert-border);
-
-  background: var(--dc-alert-bg);
-  border-left: 4px solid var(--dc-alert-border);
-  color: var(--dc-alert-fg);
-  font-size: var(--fs-body-sm);
-  line-height: var(--lh-normal);
-  padding: var(--space-lg) var(--space-xl);
-  break-inside: avoid;
-}
-
-.dc-alert p {
-  margin: 0;
-  font-style: italic;
-}
-
-.dc-alert p + p {
-  margin-top: 6pt;
-}
-
-.dc-alert ul,
-.dc-alert ol {
-  margin: 6pt 0 0;
-  padding-left: 0.2in;
-}
-
-.dc-alert li {
-  margin-bottom: 0.04in;
-}
-
-.dc-alert li::before {
-  color: var(--dc-alert-border);
-}
-
-.dc-alert-label {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 8pt;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  margin-bottom: 6pt;
-  font-style: normal;
-  color: var(--dc-alert-label-color, var(--dc-alert-border));
-}
-
-/* ───────── NOTE CALLOUT ───────── */
-.dc-note {
-  margin-top: var(--space-lg);      /* was 14px — align to token system */
-}
-
-.dc-note .dc-alert-label {
-  font-size: 9px;
-  letter-spacing: 2px;
-  color: var(--dc-alert-label-color, var(--crimson));
-  margin-bottom: var(--space-sm);
-}
+/* .dc-alert family migrated to components.css (Phase 3) */
 
 /* ───────── PORTRAIT PANEL ───────── */
 .dc-portrait {
@@ -1738,11 +1647,7 @@ hr,
   break-inside: avoid;
 }
 
-/* Warning note — visually distinct from base dc-note */
-.dc-note.warning {
-  --dc-alert-bg: var(--surface-orange-tint);   /* distinct surface from paper-light dc-note */
-  --dc-alert-border: var(--rust);        /* was --amber (invisible at 1.66:1) → --rust (4.30:1 on surface) */
-}
+/* .dc-note.warning migrated to components.css (Phase 3) */
 
 /* field-guide: folded from legacy/specialty.css */
 /* ---------------------------------------------------------------------------
@@ -1772,37 +1677,7 @@ hr,
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
 }
 
-.specialty-intro.variant-2 {
-  --dc-specialty-intro-title-bg: var(--hud-blue-dark);
-  --dc-specialty-intro-title-color: var(--paper-cream);
-  background: var(--paper-light);
-  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
-  --dc-specialty-intro-title-shape: polygon(14px 0, calc(100% - 20px) 0, 100% 16px, 100% 100%, 0 100%, 0 14px);
-}
-
-.specialty-intro.variant-3 {
-  --dc-specialty-intro-title-bg: var(--ink-dark);
-  --dc-specialty-intro-title-color: var(--paper-cream);
-  background: var(--surface-orange-tint);
-  clip-path: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 36px), calc(100% - 56px) 100%, 0 100%);
-  --dc-specialty-intro-title-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
-}
-
-.specialty-intro.variant-4 {
-  --dc-specialty-intro-title-bg: var(--crimson);
-  --dc-specialty-intro-title-color: var(--paper-cream);
-  background: var(--paper-cream);
-  clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
-  --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
-}
-
-.specialty-intro.variant-5 {
-  --dc-specialty-intro-title-bg: var(--orange);
-  --dc-specialty-intro-title-color: var(--ink-dark);
-  background: var(--paper-light);
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
-  --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
-}
+/* .specialty-intro.variant-N — migrated to parent-container model in components.css (Phase 4) */
 
 .specialty-intro > h2:first-child {
   font-family: var(--font-display);
@@ -1963,25 +1838,7 @@ hr,
   text-align: left;
 }
 
-.dc-specialty-card.variant-2 {
-  --dc-specialty-card-bg: var(--paper-light);
-  --dc-specialty-card-shell-shape: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
-}
-
-.dc-specialty-card.variant-3 {
-  --dc-specialty-card-bg: var(--paper-cream);
-  --dc-specialty-card-shell-shape: polygon(0 16px, 16px 0, 100% 0, 100% calc(100% - 24px), calc(100% - 36px) 100%, 0 100%);
-}
-
-.dc-specialty-card.variant-4 {
-  --dc-specialty-card-bg: var(--surface-orange-tint);
-  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 16px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 16px));
-}
-
-.dc-specialty-card.variant-5 {
-  --dc-specialty-card-bg: var(--paper-light);
-  --dc-specialty-card-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 20px));
-}
+/* .dc-specialty-card.variant-N — migrated to parent-container model in components.css (Phase 4) */
 
 /* ---------------------------------------------------------------------------
    Plugin-generated learning paths and cards
@@ -2011,37 +1868,7 @@ hr,
     drop-shadow(0 -2px 0 var(--ink)); /* screen preview only — drops in Paged.js PDF export */
 }
 
-.dc-path-shell.variant-2 {
-  --dc-path-title-bg: var(--hud-blue-dark);
-  --dc-path-title-color: var(--paper-cream);
-  background: var(--paper-light);
-  clip-path: polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
-  --dc-path-title-shape: polygon(14px 0, calc(100% - 24px) 0, 100% 18px, 100% 100%, 0 100%, 0 14px);
-}
-
-.dc-path-shell.variant-3 {
-  --dc-path-title-bg: var(--ink-dark);
-  --dc-path-title-color: var(--paper-cream);
-  background: var(--surface-orange-tint);
-  clip-path: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 34px), calc(100% - 56px) 100%, 0 100%);
-  --dc-path-title-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
-}
-
-.dc-path-shell.variant-4 {
-  --dc-path-title-bg: var(--crimson);
-  --dc-path-title-color: var(--paper-cream);
-  background: var(--paper-cream);
-  clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
-  --dc-path-title-shape: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
-}
-
-.dc-path-shell.variant-5 {
-  --dc-path-title-bg: var(--orange);
-  --dc-path-title-color: var(--ink-dark);
-  background: var(--paper-light);
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
-  --dc-path-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
-}
+/* .dc-path-shell.variant-N — migrated to parent-container model in components.css (Phase 4) */
 
 .dc-path-shell > h2.dc-spray:first-child {
   color: var(--dc-path-title-color);
@@ -2323,59 +2150,8 @@ p.img-wrapper {
   break-inside: avoid;
 }
 
-.dc-vibe-callout {
-  --dc-alert-border: var(--hud-magenta);
-  padding: var(--space-sm) var(--space-md);
-}
-
-.dc-origin-callout {
-  --dc-alert-bg: var(--surface-orange-tint);   /* was paper-light — distinct surface; signals "character" content */
-  --dc-alert-border: var(--blood);       /* was crimson — darker, still crimson family, distinct from dc-note */
-  --dc-alert-label-color: var(--crimson);
-  padding: 6pt 9pt;
-  border-left-width: 3px;
-}
-
-/* ───────── VISIT CALLOUT ───────── */
-/* Present-tense in-world location description — what the character sees on arrival. */
-.dc-visit-callout {
-  margin: 0.12in 0;
-  padding: 12px 16px;
-  --dc-alert-border: var(--hud-blue);
-  --dc-alert-label-color: var(--hud-blue-dark);
-  font-size: var(--fs-body);
-}
-.dc-gear-callout {
-  --dc-alert-bg: var(--paper-cream);
-  --dc-alert-border: var(--border-hairline);
-  --dc-alert-label-color: var(--orange);
-  margin: 0.12in auto 0.18in;
-  border-left-width: 1.5px;
-  width: 90%;
-  float: none;
-}
-
-/* ───────── DM NOTE CALLOUT ───────── */
-/* Dream Master (DM-facing) note box — distinct from .dc-note (player-facing).
-   Renamed from .dc-note-callout 2026-05-12 for clarity. */
-.dc-dm-note {
-  --dc-alert-bg: var(--paper-cream);
-  margin-top: 9pt;
-  border-left-width: 3px;
-  font-size: 9pt;
-}
-
-/* Scoped to .dc-dm-note context — different font-size/letter-spacing than note/warning labels */
-.dc-dm-note .dc-alert-label {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 8pt;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--dc-alert-label-color, var(--crimson));
-  font-weight: 600;
-  margin-bottom: 6pt;
-}
+/* .dc-vibe-callout, .dc-origin-callout, .dc-visit-callout, .dc-gear-callout,
+   .dc-dm-note — all migrated to components.css (Phase 3) */
 
 /* ────────────────────────────────────────────────────────────
    SPECIALTY LISTING — class entry block (tpl-specialty-listing)

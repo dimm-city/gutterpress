@@ -2,9 +2,9 @@
 
 # Design System Overview
 
-:::lede
+@lede
 This guide is both the living documentation of the Dimm City design system *and* a working demonstration. Every specimen on these pages is live — rendered through the same `css/index.css` as the Field Guide. Change a token in `project-overrides.css` (or `dc-brand.css` when evolving the shared base theme) and the specimen updates on the next preview refresh.
-:::
+-lede
 
 ## How This Guide Is Organized
 
@@ -40,7 +40,7 @@ Most DC components are authored with markdown containers or plugin markers. Raw 
 > You can always spend 1 AP to delay.
 
 <!-- 2. markdown-it-container shorthand -->
-:::lede
+@lede
 This is a lede rendered via the container plugin.
 :::
 

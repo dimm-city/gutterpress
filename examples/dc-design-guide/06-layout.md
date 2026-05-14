@@ -2,9 +2,9 @@
 
 # Layout & Composition
 
-:::lede
+@lede
 Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
-:::
+-lede
 
 ---
 
@@ -28,7 +28,7 @@ Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
 **Sidebar wrapper:** `@sidebar` emits `.dc-sidebar`. Use `@sidebar class="inset"` when the page template needs the full-height inset sidebar treatment. Use raw HTML only when you need a structure the sidebar contains, not to author the sidebar shell itself.
 
 ```markdown
-:::two-column
+@two-column
 
 Left column content.
 
@@ -36,7 +36,7 @@ Left column content.
 
 Right column content.
 
-:::
+@end-two-column
 ```
 
 ```markdown
@@ -58,9 +58,9 @@ Inset sidebar content for page templates like rules references.
 ```
 
 ```markdown
-:::container {.pmd-no-break}
+@no-break
 Content that must not split across a page break.
-:::
+@end-no-break
 
 ## New Section {.pmd-break-before}
 ```

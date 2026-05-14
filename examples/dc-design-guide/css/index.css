@@ -1,20 +1,35 @@
 /* =============================================================================
    DC Design Guide — CSS Entry Point
-   Import order matters: tokens first, page rules second, guide scaffold last.
+   Import order matters — tokens first, page rules last.
+
+   TARGET 5-FILE STACK (greenfield rewrite in progress — see roadmap.md):
+     tokens.css         :root tokens, @font-face, html/body baseline
+     components.css     every .dc-* and .pmd-* component (base + thin variants)
+     page-templates.css every .page.* layout rule — sole home of columns:N
+     page-rules.css     @page declarations, .pagedjs_* overrides, counter resets
+     guide.css          div.chapter scaffolding, .specimen chrome (guide-only)
 
    ADAPTING FOR A NEW PROJECT
-   Override these custom properties in your project-overrides.css to rebrand:
-     --font-body, --font-display, --font-mono, --font-banner, --font-tab
-     --ink, --paper-cream, --paper-light, --paper-aged, --bg
-     --crimson, --orange, --amber, --hud-blue
-     --page-margin (inner/outer), --gutter
-   See css/dc-brand.css :root for the full token list.
+   Copy tokens.css + components.css + page-templates.css + page-rules.css.
+   Override tokens via project-overrides.css (imported last, silent if absent).
+   See tokens.css :root for the full token list.
    ============================================================================= */
 
-@import url("./dc-brand.css");   /* DC brand tokens, fonts, and all UI components */
-@import url("./page-rules.css"); /* @page declarations, named pages, and paged wrapper behavior */
-@import url("./guide.css");      /* Design-guide scaffold and guide-only example/demo layouts */
+/* ── TRANSITION: legacy dc-brand.css active until Phases 3–5 complete ─────
+   tokens.css is now active and provides the canonical token/font/baseline
+   layer. dc-brand.css follows it — identical :root values; harmless cascade.
+   dc-brand.css will be deleted after all components are migrated to
+   components.css. ─────────────────────────────────────────────────────── */
+@import url("./tokens.css");     /* tokens, @font-face, html/body baseline — Phase 1 */
+@import url("./dc-brand.css");   /* LEGACY components — will be deleted after Phase 5 */
 
-/* Project overrides — create this file to customize tokens without editing dc-brand.css.
-   Intentionally last so overrides win the cascade. Silently absent = no-op. */
+/* ── TARGET IMPORT ORDER (uncommented progressively as phases land) ──────── */
+@import url("./components.css");     /* .dc-* and .pmd-* components — Phase 3–5 (alerts active) */
+@import url("./page-templates.css"); /* .page.* layouts, columns:N, paged wrapper — Phase 2 */
+
+@import url("./page-rules.css"); /* @page declarations, named pages, counter resets */
+@import url("./guide.css");      /* div.chapter scaffold, .specimen chrome */
+
+/* Project overrides — create to customize tokens without editing source files.
+   Intentionally last so it wins the cascade. Silently absent = no-op. */
 /* @import url("./project-overrides.css"); */

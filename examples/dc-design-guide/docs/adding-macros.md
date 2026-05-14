@@ -2,13 +2,34 @@
 
 This is the shortest safe path for adding a new Dimm City plugin macro.
 
-Use the existing `@skill` implementation in `plugins/dimm-city-plugin.js` as the main reference. It already follows the right model:
+Use the existing `@skill` implementation in `plugins/dimm-city-plugin.js` as the main reference. It follows the right model:
 
 - one real root class: `.dc-skill-card`
-- root-owned variant state: `.dc-skill-card.variant-2`
+- **no per-card variant** — shapes come from the `.specialty.<name>` parent container (CSS parent-selector model, not card-level attributes)
 - internal styling through descendant selectors: `.dc-skill-card .dc-card-tab`, `.dc-skill-card .dc-card-body`, `.dc-skill-card .dc-ability`
 
 For new macros, prefer the simplest version that works. In many cases you do not need extra child classes at all. A root shell plus descendant element selectors is often enough, which keeps both the plugin and the markdown simpler.
+
+## Variant system note
+
+Card variants (skill cards, path shells, specialty cards, specialty intros) are controlled entirely by the `.specialty.<name>` parent container, not by `variant=` attributes. The `@specialty .augmerc` wrapper applies the augmerc clip-path and accent color to every card inside automatically. Do NOT add `variant=` attributes to `@skill`, `@continue`, or `@learning-path`.
+
+## Currently registered macros
+
+`@chapter`, `@page`, `@section`, `@spread`, `@break`, `@specialty`, `@end-specialty`,
+`@specialty-intro`, `@end-specialty-intro`, `@specialty-art`, `@end-specialty-art`,
+`@specialty-card`, `@end-specialty-card`,
+`@learning-path`, `@end-learning-path`, `@skill`, `@end-skill`, `@continue`,
+`@outcome`, `@end-outcome`, `@chapter-opener`,
+`@class-entry`, `@end-class-entry`, `@roll-table`, `@end-roll-table`,
+`@options-table`, `@end-options-table`,
+`@sidebar`, `@end-sidebar`, `@sidebar-box`, `@end-sidebar-box`,
+`@definition`, `@end-definition`, `@procedure`, `@end-procedure`,
+`@callout`, `@end-callout`, `@dm-note`, `@end-dm-note`,
+`@toc`, `@end-toc`, `@two-column`, `@end-two-column`,
+`@three-column`, `@end-three-column`, `@no-break`, `@end-no-break`,
+`@gear-card`, `@end-gear-card`, `@tape`, `@lede`, `@end-lede`,
+`@glossary`, `@end-glossary`
 
 ## 1. Design the emitted HTML first
 

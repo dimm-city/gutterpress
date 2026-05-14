@@ -2,9 +2,9 @@
 
 # Markdown Reference
 
-:::lede
+@lede
 All markdown-it syntax features with DC authoring context.
-:::
+-lede
 
 ---
 
@@ -40,7 +40,7 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 |--------|-----------|---------|
 | `@sidebar class="…"` | `@end-sidebar` | Wraps content in a `dc-sidebar` sidebar |
 | `@end-sidebar` | — | Explicitly closes the current sidebar |
-| `@specialty {.classname}` | Next `@specialty` or `@end-specialty` | Wraps a full specialty section; class sets the specialty code (`.augmerc` → `AUG`) |
+| `@specialty .classname` | Next `@specialty` or `@end-specialty` | Wraps a full specialty section; class sets the specialty code (`.augmerc` → `AUG`) |
 | `@end-specialty` | — | Explicitly closes the current specialty block |
 | `@sidebar-box` | `@end-sidebar-box` | Wraps content in a `dc-prose-panel dc-sidebar-box` callout |
 | `@end-sidebar-box` | — | Explicitly closes the current sidebar box |
@@ -48,19 +48,22 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 | `@end-definition` | — | Explicitly closes the current definition block |
 | `@procedure` | `@end-procedure` | Wraps an ordered list in a `dc-steps` procedure block |
 | `@end-procedure` | — | Explicitly closes the current procedure block |
-| `@learning-path variant="N"` | Next `@learning-path` or `@end-learning-path` | Groups skill cards under a spray header; path index and code auto-increment |
+| `@learning-path` | Next `@learning-path` or `@end-learning-path` | Groups skill cards under a spray header; path index and code auto-increment |
 | `@end-learning-path` | — | Explicitly closes the current learning-path block |
-| `@skill variant="N"` | Next `@skill` or `@end-skill` | Starts a skill card; content becomes card body |
+| `@skill` | Next `@skill` or `@end-skill` | Starts a skill card; content becomes card body |
 | `@end-skill` | — | Closes the current skill card |
+| `@specialty-intro` | `@end-specialty-intro` | Wraps the specialty intro panel |
+| `@specialty-art` | `@end-specialty-art` | Wraps the full-page specialty art plate |
+| `@specialty-card` | `@end-specialty-card` | Summary card in the choose-specialty grid |
 
-**Variant values** — `variant="1"` through `variant="5"` select different clip-path shapes for the skill-card shell and the learning-path shell.
+**Specialty parent-container model** — Card silhouette and accent color come from the `@specialty .<name>` wrapper, not from `variant=` attributes. Wrap a full specialty section in `@specialty .augmerc` and every card inside inherits the augmerc shape and color automatically. No per-card variant needed.
 
-**Optional skill attributes** — `id="slug"` sets an anchor on the card wrapper. For long abilities, use `@continue`.
+**Optional skill attributes** — `id="slug"` sets an anchor on the card wrapper. `{.allow-split}` allows tall cards to split across pages. For long abilities, use `@continue`.
 
 **Example — skill card:**
 
 ```markdown
-@skill variant="1"
+@skill
 #### Punishing Counter
 > See an opening, ya take it.
 1. **0 AP** *Steel Says No:* When an enemy in reach makes a basic attack, your Backbiters knock the strike off line.
@@ -72,16 +75,16 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 **Example — learning path:**
 
 ```markdown
-@specialty {.augmerc}
+@specialty .augmerc
 
-@learning-path variant="2"
+@learning-path
 ### Biting Distance
 > If you can touch it, you can maul it.
 - Punishing Counter
 - Rage Hit
 - Dirty Work
 
-@skill variant="1"
+@skill
 #### Punishing Counter
 > See an opening, ya take it.
 1. **0 AP** *Steel Says No:* When an enemy in reach attacks, your Backbiters knock the strike off line.
@@ -98,41 +101,47 @@ Triple-colon fences wrap content in a styled `<div>`. The word after `:::` sets 
 
 | Container | Effect |
 |-----------|--------|
-| `:::two-column` | Two equal CSS columns with column rule |
-| `:::three-column` | Three narrow columns — best for short reference entries |
-| `@sidebar` | Right-floated aside at 38% width |
-| `:::callout` | Styled information panel with labeled type |
-| `:::pull-quote` | Large centered excerpt with decorative rules — **deprecated:** use `> [!PULLQUOTE]` instead |
-| `:::wrapper {.class}` | Generic wrapper — applies any CSS class |
+| `@two-column` … `@end-two-column` | Two equal CSS columns |
+| `@three-column` … `@end-three-column` | Three narrow columns — best for short reference entries |
+| `@sidebar` … `@end-sidebar` | Right-floated aside at 38% width |
+| `@callout variant="…"` … `@end-callout` | Styled alert box (block-level, supports multi-paragraph) |
+| `@dm-note` … `@end-dm-note` | Dream Master note box (multi-paragraph) |
+| `> [!TYPE]` | Inline GFM alert — preferred for single-paragraph callouts |
+
+**Alert type values** for `@callout variant="…"` and `> [!TYPE]`:
+
+| Type | Class | Label |
+|------|-------|-------|
+| `note` | `dc-note` | Note |
+| `warning` | `dc-note warning` | Warning |
+| `dm` | `dc-dm-note` | Dream Master Note |
+| `vibe` | `dc-vibe-callout` | Vibe |
+| `origin` | `dc-origin-callout` | Origin |
+| `visit` | `dc-visit-callout` | Visit |
+| `gear` | `dc-gear-callout` | Gear |
 
 ```markdown
-:::two-column
+@two-column
 Left column content.
 ---{.column-break}
 Right column content.
-:::
+@end-two-column
 
 @sidebar class="inset"
 **Sidebar note.** Supplementary content that doesn't interrupt the body flow.
 @end-sidebar
 
-:::callout
-<span class="callout-label">Note</span>
-Standard informational callout.
-:::
+@callout variant="note"
+Standard informational callout. Supports **bold**, *italic*, and multiple paragraphs.
 
-> [!PULLQUOTE]
-> The measure of good design is whether the reader notices the design at all.
->
-> — Design Guide
+Second paragraph without extra markup.
+@end-callout
 
-:::wrapper {.dc-note}
-<span class="dc-alert-label">Note</span>
-<p>Content gets the `.dc-note` class on its wrapping div.</p>
-:::
+> [!NOTE]
+> Single-paragraph note using GFM blockquote syntax.
 ```
 
-> **Note:** `:::pull-quote` is the legacy container path. Use `> [!PULLQUOTE]` (GFM alert syntax) as the preferred authoring form — it is shorter and consistent with other callout types.
+> **Choosing between `@callout` and `> [!NOTE]`:** Use `> [!TYPE]` for single short paragraphs — it's shorter and reads naturally in source. Use `@callout` when you need multiple paragraphs, lists, or nested content that can't cleanly fit in a blockquote.
 
 ---
 

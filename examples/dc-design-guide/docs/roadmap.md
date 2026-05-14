@@ -1,5 +1,26 @@
 # DC Design Guide & Field Guide — Master Roadmap
 
+## Greenfield CSS & Macro Rewrite — Completed
+
+This rewrite replaced the legacy 3-file CSS stack with a 5-file layered architecture,
+migrated all `:::` container syntax to `@macros`, replaced the `.variant-N` card
+system with a parent-container specialty model, and removed proof-of-concept
+legacy code from the print-md framework.
+
+| Phase | What | Status |
+|---|---|---|
+| Phase 0 | Scaffold 4 new CSS files with contract headers | ✓ Done |
+| Phase 1 | Migrate tokens → `tokens.css`; update `page-rules.css` contract | ✓ Done |
+| Phase 2 | Build `page-templates.css`; migrate `columns:N` rules; add 3-col template | ✓ Done |
+| Phase 3 | Alert family in `components.css`; ship `@callout`, `@dm-note` macros | ✓ Done |
+| Phase 4 | Parent-container specialty variant system; 8 specialty classes; remove `variant=` | ✓ Done |
+| Phase 5 | Ship `@toc`, `@two-column`, `@three-column`, `@no-break`, `@gear-card`, `@tape`, `@lede`, `@glossary`, `@specialty-card`, `@specialty-intro`, `@specialty-art`; AP Tags variants | ✓ Done |
+| Phase 6 | Migrate all 24 `:::lede` → `@lede`; zero live `:::` in design guide | ✓ Done |
+| Phase 7 | Remove deprecated containers from `src/lib/markdown/index.ts`; archive TODO; update docs | ✓ Done |
+| **Remaining** | **Full base component migration** (dc-brand.css → components.css): `.dc-skill-card`, `.dc-path-shell`, `.dc-specialty-card`, `.specialty-intro`, `.dc-gear-entry`, `.dc-toc`, `.dc-tape`, `.dc-outcomes` and all other base component CSS. dc-brand.css can be deleted once complete. | Pending |
+
+---
+
 ---
 
 ## What was completed this session

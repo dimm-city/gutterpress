@@ -71,20 +71,26 @@ If the design guide documents one behaviour and the code does another, the code 
 
 ### Macro-first authoring direction
 
-The system is moving from triple-colon container syntax toward named macros:
+The design guide uses **only `@macros`** — all `:::` container syntax has been
+removed from the design guide source. New content should always use a named macro,
+not a triple-colon container wrapper.
 
-**Already implemented:**
-`@chapter`, `@page`, `@section`, `@spread`, `@break`, `@specialty`, `@learning-path`,
-`@skill`, `@continue`, `@outcome`, `@chapter-opener`
+**All shipped macros:**
+`@chapter`, `@page`, `@section`, `@spread`, `@break`, `@specialty`, `@end-specialty`,
+`@specialty-intro`, `@end-specialty-intro`, `@specialty-art`, `@end-specialty-art`,
+`@specialty-card`, `@end-specialty-card`, `@learning-path`, `@end-learning-path`,
+`@skill`, `@end-skill`, `@continue`, `@outcome`, `@end-outcome`, `@chapter-opener`,
+`@class-entry`, `@end-class-entry`, `@roll-table`, `@options-table`,
+`@sidebar`, `@end-sidebar`, `@sidebar-box`, `@end-sidebar-box`,
+`@definition`, `@end-definition`, `@procedure`, `@end-procedure`,
+`@callout`, `@end-callout`, `@dm-note`, `@end-dm-note`,
+`@toc`, `@end-toc`, `@two-column`, `@end-two-column`,
+`@three-column`, `@end-three-column`, `@no-break`, `@end-no-break`,
+`@gear-card`, `@end-gear-card`, `@tape`, `@lede`, `@end-lede`,
+`@glossary`, `@end-glossary`
 
-**Planned — `:::` containers that need macros built:**
-`:::sidebar` → `@sidebar`, `:::lede` → `@lede`, `:::pull-quote` → `@pullquote`,
-`:::procedure` → `@procedure`, `:::two-column` → `@two-column`,
-`:::wrapper {.dc-definition-block}` → `@definition`,
-`:::wrapper {.dc-sidebar-box}` → `@sidebar-box`
-
-New components should always start as a named macro in the plugin, not a
-triple-colon container wrapper.
+**Removed `:::` containers (framework):** `:::page`, `:::wrapper`, `:::ability`,
+`:::ability-continued`, `:::aug`, `:::lede` — all replaced by macros above.
 
 ### Per-page styling via `@page` named classes
 
@@ -100,17 +106,28 @@ All classes emitted by `plugins/dimm-city-plugin.js` must use the `dc-` prefix
 which is intentionally unprefixed as a semantic name. When adding new plugin output,
 always check that the emitted class name has a matching CSS rule before shipping.
 
-### CSS layer contract (four-file hierarchy)
+### CSS layer contract (five-file hierarchy)
 
 Each CSS file has a strict ownership boundary. Read the ARCHITECTURAL CONTRACT
 comment in the first 50 lines of each file before adding any rule.
 
 | File | Owns |
 |---|---|
-| `dc-brand.css` | Tokens, `@font-face`, shared `.dc-*` components |
+| `tokens.css` | `:root` tokens, `@font-face`, html/body baseline, global element resets |
+| `components.css` | Every `.dc-*` + `.pmd-*` component (base + thin variants), specialty parent-container overrides |
+| `page-templates.css` | **ALL `columns:N` rules** (exclusive), `.page.*` layouts, paged wrapper scaffolding, print utilities |
 | `page-rules.css` | `@page` declarations, named pages, Paged.js counter fixes |
-| `content-templates.css` | `.page.*` layouts, general print utilities (`.pmd-*`) |
-| `guide.css` | `div.chapter` scaffolding, specimen chrome, guide-specific footer |
+| `guide.css` | `div.chapter` scaffolding, `.specimen` chrome, guide-specific footer |
+
+**IMPORTANT:** `dc-brand.css` is legacy (still loaded; contains base component CSS not yet migrated to `components.css`). It will be deleted once the full base component migration is complete. Do not add new rules to `dc-brand.css`.
+
+### Specialty variant system
+
+Card variants (skill cards, path shells, specialty cards) are controlled by the
+`.specialty.<name>` parent container. Authors wrap the full specialty section in
+`@specialty .augmerc` and every card inside inherits the augmerc shape and accent
+automatically. Do NOT add `variant=` attributes to `@skill`, `@continue`, or
+`@learning-path` macros.
 
 ### Component consolidation rule
 

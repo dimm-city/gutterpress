@@ -1,0 +1,423 @@
+/* =============================================================================
+   PAGE-TEMPLATES.CSS — Content Layout Templates
+   =============================================================================
+
+   ── ARCHITECTURAL CONTRACT ────────────────────────────────────────────────
+   OWNS:
+   - ALL columns:N rules — this is the ONLY file that may set columns on any
+     selector. Components are always single-flow.
+   - .page.* content layout rules (columns, flex, grid on page content divs)
+   - .pagedjs_sheet background, .page/.page-break base geometry, .column-break
+   - .full-page full-bleed geometry
+   - Named-page element wiring (.page.full-bleed { page: full }, etc.)
+   - General print utilities (.pmd-no-break, .pmd-break-before, .pmd-col-span,
+     .pmd-suppress-footer, .dc-art-top, .dc-art-bottom, .column-break)
+   - Print density overrides scoped to a page type (.specialty * density rules)
+   - Page-level typography constraints (orphans/widows, heading break rules)
+     scoped to .page context
+
+   MUST NOT CONTAIN:
+   - @page declarations or named-page geometry (→ page-rules.css)
+   - .dc-* component styles (→ components.css)
+   - :root token definitions (→ tokens.css)
+   - div.chapter scaffolding unrelated to columns/layout (→ guide.css)
+   - @media screen rules (print-only project)
+
+   COLUMN OWNERSHIP RULE: If a rule sets columns:N anywhere in this project,
+   it belongs here and ONLY here. Any columns:N found in another file is a bug.
+
+   AGENT RULE: "Does this selector start with .page.*, .pagedjs_*, a general
+   print utility, or a div.chapter layout rule that sets columns?" — if NO,
+   use another file.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* ── PAGED.JS SHEET BACKGROUND ────────────────────────────────────────────── */
+/* Brick texture on .pagedjs_sheet so it visually sits above the @page box. */
+.pagedjs_sheet {
+  background-color: var(--bg);
+  background-image: url("../img/brick-bg-02.png");
+  background-repeat: repeat;
+}
+
+/* ── PAGE WRAPPER BASE GEOMETRY ────────────────────────────────────────────── */
+.page,
+.page-break {
+  z-index: 1;
+  break-after: always;
+  break-inside: avoid;
+}
+
+/* Screen-preview geometry (cancelled by the print reset below). */
+.page {
+  color: var(--ink);
+  position: relative;
+  padding: 32px 36px 60px;
+  min-height: 1100px;
+  box-sizing: border-box;
+}
+
+.page > * {
+  position: relative;
+  z-index: 1;
+}
+
+.page img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Print reset — cancels preview geometry so Paged.js controls the page area. */
+.page {
+  background: transparent;
+  min-height: 0;
+  padding: 0;
+}
+
+/* ── COLUMN BREAK MARKER ──────────────────────────────────────────────────── */
+.column-break {
+  color: var(--hud-magenta);
+  visibility: hidden;
+  break-after: column;
+}
+
+/* ── FULL-PAGE GEOMETRY ────────────────────────────────────────────────────── */
+/* Empty full-bleed pages need explicit geometry so Paged.js allocates a page. */
+.full-page {
+  page: full;
+  width: var(--page-width, 8.625in);
+  height: var(--page-height, 11.25in);
+  background-color: var(--bg);
+  break-before: always;
+  break-before: page;
+}
+
+/* ── PAGE-LEVEL TYPOGRAPHY CONSTRAINTS ────────────────────────────────────── */
+.page p {
+  orphans: 4;
+  widows: 4;
+}
+
+.page h2,
+.page h3 {
+  break-after: avoid;
+}
+
+.page > h2 {
+  text-shadow: 0 0 0.08in var(--bg);
+}
+
+/* ── PRINT UTILITY CLASSES ─────────────────────────────────────────────────── */
+.pmd-no-break {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.pmd-break-before {
+  break-before: page;
+  page-break-before: always;
+}
+
+.pmd-col-span {
+  column-span: all;
+}
+
+.pmd-suppress-footer {
+  page: clean;
+}
+
+/* ── ART PLACEMENT UTILITIES ──────────────────────────────────────────────── */
+.dc-art-top {
+  display: block;
+  width: calc(100% + 1.25in);  /* extends past both horizontal margins */
+  margin-left: -0.625in;
+  margin-right: -0.625in;
+  margin-top: -0.5in;
+  max-height: 3.5in;
+  overflow: hidden;
+  break-inside: avoid;
+}
+
+.dc-art-top img,
+.dc-art-bottom img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dc-art-bottom {
+  display: block;
+  width: calc(100% + 1.25in);
+  margin-left: -0.625in;
+  margin-right: -0.625in;
+  margin-bottom: -0.75in;
+  max-height: 3.5in;
+  overflow: hidden;
+  break-inside: avoid;
+}
+
+/* ── PAGE TEMPLATE: FULL BLEED ─────────────────────────────────────────────── */
+/* Full bleed — primarily for full-page art. Zero margins, no footers.
+   @page full (in page-rules.css) suppresses all margin-box content. */
+.page.full-bleed,
+.page.page-full-bleed,  /* legacy alias — keep until markdown is updated */
+.page.full-page,
+.page.cover,
+.page.back-cover {
+  page: full;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  break-inside: avoid;
+}
+
+/* ── PAGE TEMPLATE: CHAPTER START ─────────────────────────────────────────── */
+/* Single-column centered layout. @page chapter-start suppresses footers.
+   Per the plan, columns:N is never set here — chapter-start is single-flow.
+   Width and centering only. */
+.page:is(.page-intro, .intro, .page-chapter-start, .chapter-start) {
+  max-width: 6.7in;
+  margin: 0 auto;
+}
+
+.intro {
+  padding-left: 0.5in;
+}
+
+/* ── PAGE TEMPLATE: TWO-COLUMN ─────────────────────────────────────────────── */
+/* Standard two-column body pages. column-fill: balance gives equal columns.
+   Author applies via @page .two-column in markdown. */
+.page.two-column,
+.two-column {
+  columns: 2;
+  column-gap: var(--gutter);
+  column-fill: balance;
+}
+
+/* ── PAGE TEMPLATE: THREE-COLUMN (NEW) ─────────────────────────────────────── */
+/* Three narrow columns. Best for short reference entries, gear tables.
+   Author applies via @page .three-column in markdown. */
+.page.three-column,
+.three-column {
+  columns: 3;
+  column-gap: 0.18in;
+  column-fill: balance;
+}
+
+/* ── PAGE TEMPLATE: CARD GRID ──────────────────────────────────────────────── */
+/* Specialty card grid — two columns, auto-fill. Cards carry break-inside:avoid.
+   Canonical class is .page.card-grid; .page.choose-specialty is the legacy alias
+   that will be removed once 303-example-specialty-overview.md is updated. */
+.page.card-grid,
+.page.choose-specialty {
+  columns: 2;
+  column-gap: var(--gutter);
+  column-fill: auto;
+}
+
+/* Column-span: all for card-grid header/intro content. */
+.page.card-grid > .dc-intro,
+.page.card-grid > h1,
+.page.card-grid > h2,
+.page.choose-specialty > .wrapper.learning-path {  /* legacy .wrapper — remove in Phase 6 */
+  column-span: all;
+}
+
+.page.card-grid .dc-specialty-card,
+.page.choose-specialty .dc-specialty-card {
+  break-inside: avoid;
+}
+
+/* ── PAGE TEMPLATE: IMAGE (NEW) ────────────────────────────────────────────── */
+/* Image page — full-width image at the top or bottom with no horizontal margin
+   extension at the top/bottom edge. Default page margins apply on the sides.
+   Content flows below (image-top) or above (image-bottom) the image. */
+.page.image-top {
+  display: flex;
+  flex-direction: column;
+}
+
+.page.image-top > .dc-art-top:first-child {
+  flex-shrink: 0;
+}
+
+.page.image-bottom {
+  display: flex;
+  flex-direction: column;
+}
+
+.page.image-bottom > .dc-art-bottom:last-child {
+  flex-shrink: 0;
+  margin-top: auto;
+}
+
+/* ── GUIDE-CHAPTER COLUMN LAYOUTS ─────────────────────────────────────────── */
+/* Design-guide Part 1 chapters (overview, palette, components, DC components)
+   use a two-column layout for reference density.
+   div.chapter is a guide-specific container so this selector is guide-scoped,
+   but columns:N ownership requires it to live here. */
+div.chapter:is(.chapter-01, .chapter-02) {
+  columns: 2;
+  column-gap: var(--gutter);
+  column-fill: auto;
+}
+
+/* Column-span: all for structural break elements in two-column chapters.
+   .dc-intro / .lede spans both columns so intro paragraphs read full-width
+   before two-column content begins.
+   pre (code blocks) intentionally excluded — they flow within their column. */
+div.chapter:is(.chapter-01, .chapter-02) :is(h1, .dc-intro, table, hr, .specimen, .dc-toc) {
+  column-span: all;
+}
+
+/* ── TOC LAYOUT ─────────────────────────────────────────────────────────────── */
+/* The design-guide TOC page uses a hand-authored two-column layout with
+   section counters and entry lists. These rules own the layout; typography
+   details co-located for readability. */
+.toc {
+  margin: var(--gutter);
+  margin-inline: var(--page-margin);
+  columns: 2;
+  column-gap: 0.35in;
+  column-fill: balance;
+  column-rule: none;
+  position: relative;
+  padding-top: 0.25in;
+  counter-reset: toc-section;
+  text-wrap: pretty;
+  padding-bottom: 0.9in;
+}
+
+.toc > div {
+  padding: 0.12in 0.2in 0.18in;
+  padding-left: 0.38in;
+  break-inside: avoid;
+  margin-bottom: 0.35in;
+}
+
+.toc h1,
+.toc hr {
+  column-span: all;
+  margin-bottom: 0.15in;
+  text-align: center;
+}
+
+.toc h1 { margin-top: 0.3in; padding-top: 0.15in; }
+
+.toc h2 {
+  margin-top: 0.04in;
+  margin-bottom: 0.08in;
+  padding-bottom: 0.06in;
+  text-wrap: balance;
+  counter-increment: toc-section;
+  position: relative;
+}
+
+.toc h2::before {
+  content: counter(toc-section, decimal-leading-zero);
+  position: absolute;
+  left: -0.36in;
+  top: 0.02in;
+}
+
+.toc p { margin: 0; }
+
+.toc ol,
+.toc ul {
+  margin-bottom: var(--gutter);
+  border-left: var(--callout-border-width-small, 2px) solid var(--crimson);
+}
+
+.toc ul {
+  padding-left: 0.12in;
+  margin-left: 0;
+}
+
+.toc ul li {
+  margin-bottom: 0.08in;
+  padding-left: 0.2in;
+  position: relative;
+  text-wrap: pretty;
+}
+
+.toc ul li::before {
+  content: "\203A";
+  position: absolute;
+  left: 0;
+  top: 0.02in;
+}
+
+.toc ul ul {
+  border-left: none;
+  margin-top: 0.04in;
+  margin-bottom: 0.04in;
+  padding-left: 0.18in;
+}
+
+.toc ul ul li { margin-bottom: 0.04in; }
+.toc ul ul li::before { content: "\203A"; }
+
+/* Guide's overview TOC — overrides the two-column layout above for a simple
+   flat single-column list. .guide-toc is emitted alongside .toc so specificity
+   from this single-class selector beats the .toc { columns } rule above. */
+.guide-toc {
+  columns: 1;
+  padding-right: 0.5in;
+  box-sizing: border-box;
+}
+
+/* ── SPECIALTY PAGE DENSITY OVERRIDES ─────────────────────────────────────── */
+/* These rules tune component spacing specifically when rendered inside a
+   .specialty page type. They are page-layout concerns, not component defaults.
+   Note: will be refactored in Phase 4 to use .specialty.<name> parent selectors. */
+.specialty .dc-learning-path {
+  break-before: page;
+  break-inside: auto;
+  break-after: auto;
+  overflow: visible;
+  margin-top: 0.1in;
+  margin-bottom: 0.06in;
+}
+
+.specialty .dc-learning-path :is(h2, h3) { margin-bottom: 0.04in; }
+.specialty .dc-learning-path h3 { padding-top: 0.06in; }
+
+.specialty .dc-learning-path .dc-intro {
+  margin-top: 0.03in;
+  margin-bottom: 0;
+  padding-top: 1px;
+  padding-bottom: 1px;
+  line-height: 1.1;
+  font-size: 0.65rem;
+}
+
+.specialty .dc-learning-path .dc-stickers { margin-bottom: 0; gap: 4px; row-gap: 0; }
+.specialty .dc-learning-path .dc-sticker  { padding: 0.1rem 0.4rem; line-height: 1.2; }
+
+.specialty .dc-path-shell { padding-bottom: 0; margin-bottom: 0; }
+.specialty .dc-path-shell > :is(p, ul) { margin-block: 0.06in; }
+.specialty .dc-path-shell > p { font-size: var(--fs-body-sm); line-height: 1.35; }
+.specialty .dc-path-shell ul li { margin-bottom: 0.03in; }
+
+.specialty .dc-ability h4         { margin-bottom: 0.04in; }
+.specialty .dc-ability blockquote  { margin: 0.04in 0 0.06in; }
+.specialty .dc-ability table       { margin-top: 0.04in; margin-bottom: 0.06in; }
+.specialty .dc-ability table :is(td, th) { padding-top: 0.04in; padding-bottom: 0.04in; }
+.specialty .dc-ability + .dc-ability    { padding-top: 0.02in; }
+.specialty h2 + p { margin-bottom: 0.06in; }
+
+.specialty .dc-card-body { padding: 0 1.25rem; }
+.specialty .dc-skill-card .dc-card-body .dc-card-inner { padding: 0.5rem 0; }
+.specialty .dc-card-tab   { padding: 0.1rem 1.5rem 0.1rem 0.75rem; }
+
+.specialty .dc-flavor { padding: 0.4rem 0.85rem; margin-bottom: 0.45rem; line-height: var(--lh-normal); }
+.specialty .dc-flavor::after { margin-top: 0.25rem; }
+
+.specialty .dc-ability       { margin-bottom: 0.35rem; gap: 0.55rem; }
+.specialty .dc-ability-text  { font-size: var(--fs-body-sm); }
+.specialty .dc-ap            { padding: 0.35rem 0.55rem; font-size: var(--fs-body-sm); }
+
+.specialty table :is(td, th) { padding: 0.06in 0.08in; line-height: var(--lh-tight); }
+.specialty .dc-learning-path .dc-ability { margin-bottom: 0.06in; }
+.specialty .dc-sub-header    { margin-top: 0.5rem; margin-bottom: 0.3rem; }
+.specialty .dc-skill-card.allow-split { break-inside: auto; }

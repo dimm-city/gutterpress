@@ -124,23 +124,6 @@ export const createNamedContainer = (name: string) => {
   };
 };
 
-export const createAliasedContainer = (alias: string, baseClass: string) => {
-  const safeAlias = escapeRegExp(alias);
-  return {
-    marker: ":",
-    validate: (params: string) =>
-      new RegExp(`^${safeAlias}\\b`).test(params.trim()),
-    render: (tokens: any, idx: number) => {
-      const token = tokens[idx];
-      if (token.nesting === 1) {
-        const info = token.info.trim();
-        const match = info.match(new RegExp(`^${safeAlias}\\s*(.*)$`));
-        return renderContainerOpen(`${baseClass} ${alias}`, token, match?.[1]);
-      }
-      return "</div>\n";
-    },
-  };
-};
 
 export const createSidebarContainer = (md: MarkdownIt) => {
   const validate = (params: string) =>

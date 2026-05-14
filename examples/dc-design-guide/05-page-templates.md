@@ -2,9 +2,9 @@
 
 # Page Templates
 
-:::lede
+@lede
 Named page types control margin geometry, footer chrome, and running headers. Each maps to a `@page` rule in `css/page-rules.css`.
-:::
+-lede
 
 ---
 
@@ -185,10 +185,12 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 
 Specialty spread with spray banner, sticker chain, signature augment, and `@skill` cards. Use the standard specialty spread layout and let the learning-path and skill-card shells manage their own chrome.
 
-**Components:** `@learning-path variant="N" specialty="…" index="N"` (opens block) · `### Path Name` (spray banner) · `> Subtitle` (lede) · bullet list (sticker chain) · `<div class="dc-tape">` (divider) · `@skill variant="N" id="…"` / `@end-skill` (root-owned skill-card shape variant) · `<span class="dc-ap">N AP</span>`
+**Components:** `@specialty .<slug>` (parent container) · `@learning-path` (opens block) · `### Path Name` (spray banner) · `> Subtitle` (lede) · bullet list (sticker chain) · `<div class="dc-tape">` (divider) · `@skill id="…"` / `@end-skill` · `<span class="dc-ap">N AP</span>`. Silhouette and accent come from the `@specialty` parent — no `variant=` needed.
 
 ```markdown
-@learning-path variant="2" specialty="augmerc" index="1"
+@specialty .augmerc
+
+@learning-path
 
 ### Path Name
 
@@ -202,13 +204,15 @@ Specialty spread with spray banner, sticker chain, signature augment, and `@skil
 
 <div class="dc-tape">— Signature Augment / Augment Name —</div>
 
-@skill variant="1" id="skill-unique-id"
+@skill id="skill-unique-id"
 **Skill Title**
 Flavor line. Operator voice.
 Ability body text. When the trigger fires, you may:
 **Option Alpha:** Description. <span class="scream">ROLL THE DIE!</span>
 Active | <span class="dc-ap">2 AP</span>
 @end-skill
+
+@end-specialty
 ```
 
 ---
@@ -224,7 +228,7 @@ Facing-page spread. Left: spray banner + path subtitle + `@skill` cards. Right: 
 
 <div class="dc-path-subtitle">— SP1 · Path Name —</div>
 
-@skill variant="1" id="skill-id"
+@skill id="skill-id"
 **Skill Title**
 Flavor line.
 Ability body and options.
@@ -265,7 +269,7 @@ Two-column creature/NPC entry. Left: chevron banner + lede + stat block + encoun
 
 # Creature Name {.dc-chevron}
 
-:::lede
+@lede
 One punchy atmospheric line. Under twenty words.
 :::
 
@@ -342,7 +346,7 @@ Numbered procedure with two-column layout: steps list left, callout + pull quote
 ```markdown
 # Procedure Title {.dc-chevron}
 
-:::lede
+@lede
 One orienting sentence — what this procedure produces and roughly how long it takes.
 :::
 

@@ -2,9 +2,9 @@
 
 # DC Component Library
 
-:::lede
+@lede
 Dimm City-specific components. Ability cards, banners, stat blocks, AP chips, tags, and path chains — the chrome that makes the Field Guide look like Dimm City.
-:::
+-lede
 
 ---
 
@@ -33,7 +33,7 @@ The `@skill` macro generates the full card HTML automatically. Use `variant="1"`
 **Macro syntax** — H4 title, blockquote flavor, ordered list abilities, optional H5 sub-header:
 
 ```
-@skill variant="1"
+@skill
 #### Ability Title | AUG1.1
 > Flavor line.
 1. **0 AP** *Action Name:* Effect description.
@@ -55,7 +55,7 @@ When an ability is too long for one card, use `@continue` inside the active `@sk
 `@continue` must appear between `@skill` and `@end-skill`. The next `@skill`, `@end-skill`, or end of file closes the continuation automatically.
 
 ```
-@skill variant="3"
+@skill
 #### Deep Scan | AUG2.4
 > Every system has a back door. Yours is already open.
 1. **0 AP** *Passive Sweep:* Detect networked devices within Near at scene start.
@@ -157,21 +157,21 @@ Both block types use the same `.dc-stat` structure. Creature blocks use combat s
 
 ## Learning Path
 
-A learning path wraps skill cards under a named spray banner with a sticker chain and flavor line. Use `@learning-path` after `@specialty {.classname}` — the path index and specialty code (e.g., `AUG1`) are auto-computed. Tab tiers (`AUG1.1`, `AUG1.2`, …) are generated automatically from position; use `#### Skill Name | Custom` only to override. The emitted path shell is its own component (`.dc-path-shell`) with its own notched shape and spacing rules; `.dc-path-block` is only the structural section hook. Like `.specialty-intro` and `.dc-skill-card`, the root path shell owns its variant state and title chrome.
+A learning path wraps skill cards under a named spray banner with a sticker chain and flavor line. Use `@learning-path` after `@specialty .classname` — the path index and specialty code (e.g., `AUG1`) are auto-computed. Tab tiers (`AUG1.1`, `AUG1.2`, …) are generated automatically from position; use `#### Skill Name | Custom` only to override. The emitted path shell is its own component (`.dc-path-shell`) with its own notched shape and spacing rules; `.dc-path-block` is only the structural section hook. Like `.specialty-intro` and `.dc-skill-card`, the root path shell owns its variant state and title chrome.
 
 **Macro syntax:**
 
 ```
-@specialty {.augmerc}
+@specialty .augmerc
 
-@learning-path variant="2"
+@learning-path
 ### Path Title
 > Path flavor line.
 - Skill A
 - Skill B
 - Skill C
 
-@skill variant="1"
+@skill
 #### Skill Name
 > Skill flavor.
 1. **0 AP** *Action:* Effect.

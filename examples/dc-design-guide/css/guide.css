@@ -252,11 +252,6 @@ article {
   color: var(--ink);
 }
 
-/* H2 text backing on intro pages keeps headings readable over floated art. */
-.page > h2 {
-  text-shadow: 0 0 0.08in var(--bg);
-}
-
 /* Chapter-opening drop cap for example openers. */
 .dc-chapter-opener-no + h1 + p::first-letter {
   initial-letter: 2;
@@ -265,16 +260,12 @@ article {
   margin-right: 0.05em;
 }
 
-.page p {
-  orphans: 4;
-  widows: 4;
-}
+/* .page p orphans/widows, .page > h2, .page h2/.page h3 break rules: migrated to page-templates.css */
 
-.page h2,
-.page h3 {
-  break-after: avoid;
-}
+/* .toc layout, .page.* template rules, .specialty density overrides:
+   all migrated to page-templates.css (Phase 2) */
 
+/* .specialty-art geometry stays here temporarily until Phase 4 */
 .specialty-art {
   width: var(--page-width, 8.625in);
   height: var(--page-height, 11.25in);
@@ -290,375 +281,31 @@ article {
   object-fit: cover;
 }
 
-/* Hand-authored guide TOC layout. page-rules.css assigns page:full. */
-.toc {
-  margin: var(--gutter);
-  margin-inline: var(--page-margin);
-  columns: 2;
-  column-gap: 0.35in;
-  column-fill: balance;
-  column-rule: none;
-  position: relative;
-  padding-top: 0.25in;
-  counter-reset: toc-section;
-  text-wrap: pretty;
-  padding-bottom: 0.9in;
-}
-
-.toc > div {
-  padding: 0.12in 0.2in 0.18in;
-  padding-left: 0.38in;
-  break-inside: avoid;
-  margin-bottom: 0.35in;
-}
-
-.toc h1,
-.toc hr {
-  column-span: all;
-  margin-bottom: 0.15in;
-  text-align: center;
-}
-
-.toc h1 {
-  margin-top: 0.3in;
-  padding-top: 0.15in;
-}
-
-.toc h2 {
-  margin-top: 0.04in;
-  margin-bottom: 0.08in;
-  padding-bottom: 0.06in;
-  text-wrap: balance;
-  counter-increment: toc-section;
-  position: relative;
-}
-
-.toc h2::before {
-  content: counter(toc-section, decimal-leading-zero);
-  position: absolute;
-  left: -0.36in;
-  top: 0.02in;
-}
-
-.toc p {
-  margin: 0;
-}
-
-.toc ol,
-.toc ul {
-  margin-bottom: var(--gutter);
-  border-left: var(--callout-border-width-small, 2px) solid var(--crimson);
-}
-
-.toc ul {
-  padding-left: 0.12in;
-  margin-left: 0;
-}
-
-.toc ul li {
-  margin-bottom: 0.08in;
-  padding-left: 0.2in;
-  position: relative;
-  text-wrap: pretty;
-}
-
-.toc ul li::before {
-  content: "\203A";
-  position: absolute;
-  left: 0;
-  top: 0.02in;
-}
-
-.toc ul ul {
-  border-left: none;
-  margin-top: 0.04in;
-  margin-bottom: 0.04in;
-  padding-left: 0.18in;
-}
-
-.toc ul ul li {
-  margin-bottom: 0.04in;
-}
-
-.toc ul ul li::before {
-  content: "\203A";
-}
-
-.page:is(.page-intro, .intro, .page-chapter-start, .chapter-start) {
-  max-width: 6.7in;
-  margin: 0 auto;
-}
-
-.intro {
-  padding-left: 0.5in;
-}
-
+/* Keep these .page.page-toc rules here until .wrapper is replaced with @toc macro in Phase 6 */
 .page.toc li {
   margin-bottom: 0.06in;
   line-height: var(--lh-normal);
 }
 
-.page.page-toc > h1 {
-  border: 0;
-}
+.page.page-toc > h1 { border: 0; }
 
-.page.page-toc > .wrapper {
-  margin-bottom: 18px;
-  break-inside: avoid;
-}
-
-.page.page-toc > .wrapper > h2 {
-  margin: 0 0 8px;
-  font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: none;
-  color: var(--ink);
-}
-
-.page.page-toc > .wrapper > h2::before {
-  content: none;
-}
-
-.page.page-toc > .wrapper > h2 a {
-  color: inherit;
-  border-bottom: 0;
-}
-
+.page.page-toc > .wrapper           { margin-bottom: 18px; break-inside: avoid; }
+.page.page-toc > .wrapper > h2      { margin: 0 0 8px; font-family: var(--font-body); font-size: 13px; font-weight: 600; letter-spacing: 0.02em; text-transform: none; color: var(--ink); }
+.page.page-toc > .wrapper > h2::before { content: none; }
+.page.page-toc > .wrapper > h2 a    { color: inherit; border-bottom: 0; }
 .page.page-toc > .wrapper > ul,
-.page.page-toc > .wrapper > ul ul {
-  margin: 0;
-  padding: 0;
-  border-left: 0;
-}
+.page.page-toc > .wrapper > ul ul   { margin: 0; padding: 0; border-left: 0; }
+.page.page-toc li                   { list-style: none; margin: 0; padding: 10px 0; border-bottom: 1px solid var(--hud-blue-dim); font-family: var(--font-body); font-size: var(--fs-body-xs); line-height: 1.5; }
+.page.page-toc li::before           { content: none; }
+.page.page-toc li a                 { color: inherit; border-bottom: 0; }
+.page.page-toc li > ul              { margin-top: 8px; padding-left: 18px; }
 
-.page.page-toc li {
-  list-style: none;
-  margin: 0;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--hud-blue-dim);
-  font-family: var(--font-body);
-  font-size: var(--fs-body-xs);
-  line-height: 1.5;
-}
+.page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) > h1 { border: 0; }
+.page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) p   { font-family: var(--font-body); font-size: var(--fs-body); line-height: 1.6; color: var(--ink); }
 
-.page.page-toc li::before {
-  content: none;
-}
+/* .specialty * density overrides migrated to page-templates.css (Phase 2) */
 
-.page.page-toc li a {
-  color: inherit;
-  border-bottom: 0;
-}
-
-.page.page-toc li > ul {
-  margin-top: 8px;
-  padding-left: 18px;
-}
-
-.page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) > h1 {
-  border: 0;
-}
-
-.page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) p {
-  font-family: var(--font-body);
-  font-size: var(--fs-body);
-  line-height: 1.6;
-  color: var(--ink);
-}
-
-.page.choose-specialty {
-  columns: 2;
-  column-gap: var(--gutter);
-  column-fill: auto;
-}
-
-.page.choose-specialty > .wrapper.learning-path {
-  column-span: all;
-}
-
-.page.choose-specialty .dc-specialty-card {
-  break-inside: avoid;
-}
-
-/* Specialty example flow and density tuning remain guide-owned print rescue
-   rules until the specialty profile examples are re-authored around simpler
-   component defaults. */
-
-.specialty .dc-learning-path {
-  break-before: page;
-  break-inside: auto;
-  break-after: auto;
-  overflow: visible;
-  margin-top: 0.1in;
-  margin-bottom: 0.06in;
-}
-
-.specialty .dc-learning-path :is(h2, h3) {
-  margin-bottom: 0.04in;
-}
-
-.specialty .dc-learning-path h3 {
-  padding-top: 0.06in;
-}
-
-.specialty .dc-learning-path .dc-intro {
-  margin-top: 0.03in;
-  margin-bottom: 0;
-  padding-top: 1px;
-  padding-bottom: 1px;
-  line-height: 1.1;
-  font-size: 0.65rem;
-}
-
-.specialty .dc-learning-path .dc-stickers {
-  margin-bottom: 0;
-  gap: 4px;
-  row-gap: 0;
-}
-
-.specialty .dc-learning-path .dc-sticker {
-  padding: 0.1rem 0.4rem;
-  line-height: 1.2;
-}
-
-.specialty .dc-path-shell {
-  padding-bottom: 0;
-  margin-bottom: 0;
-}
-
-.specialty .dc-path-shell > :is(p, ul) {
-  margin-block: 0.06in;
-}
-
-.specialty .dc-path-shell > p {
-  font-size: var(--fs-body-sm);
-  line-height: 1.35;
-}
-
-.specialty .dc-path-shell ul li {
-  margin-bottom: 0.03in;
-}
-
-.specialty .dc-ability h4 {
-  margin-bottom: 0.04in;
-}
-
-.specialty .dc-ability blockquote {
-  margin: 0.04in 0 0.06in;
-}
-
-.specialty .dc-ability table {
-  margin-top: 0.04in;
-  margin-bottom: 0.06in;
-}
-
-.specialty .dc-ability table :is(td, th) {
-  padding-top: 0.04in;
-  padding-bottom: 0.04in;
-}
-
-.specialty .dc-ability + .dc-ability {
-  padding-top: 0.02in;
-}
-
-.specialty h2 + p {
-  margin-bottom: 0.06in;
-}
-
-.specialty .dc-card-body {
-  padding: 0 1.25rem;
-}
-
-.specialty .dc-skill-card .dc-card-body .dc-card-inner {
-  padding: 0.5rem 0;
-}
-
-.specialty .dc-card-tab {
-  padding: 0.1rem 1.5rem 0.1rem 0.75rem;
-}
-
-.specialty .dc-flavor {
-  padding: 0.4rem 0.85rem;
-  margin-bottom: 0.45rem;
-  line-height: var(--lh-normal);
-}
-
-.specialty .dc-flavor::after {
-  margin-top: 0.25rem;
-}
-
-.specialty .dc-ability {
-  margin-bottom: 0.35rem;
-  gap: 0.55rem;
-}
-
-.specialty .dc-ability-text {
-  font-size: var(--fs-body-sm);
-}
-
-.specialty .dc-ap {
-  padding: 0.35rem 0.55rem;
-  font-size: var(--fs-body-sm);
-}
-
-.specialty table :is(td, th) {
-  padding: 0.06in 0.08in;
-  line-height: var(--lh-tight);
-}
-
-.specialty .dc-learning-path .dc-ability {
-  margin-bottom: 0.06in;
-}
-
-.specialty .dc-sub-header {
-  margin-top: 0.5rem;
-  margin-bottom: 0.3rem;
-}
-
-.specialty .dc-skill-card.allow-split {
-  break-inside: auto;
-}
-
-/* ── TOC chapter: disable the guide TOC two-column layout ───────────────────
-   The guide TOC demo above defaults to columns:2. The design guide overview
-   TOC uses a simple flat list — reset to single column so the right column
-   doesn't overflow the pagebox.
-
-   .guide-toc is the dedicated class that avoids colliding with the book
-   system's .toc selector entirely. The @chapter marker in 00-toc.md emits
-   both .toc (book system) and .guide-toc (design-guide override) so this
-   selector wins without relying on specificity or import order.
-   ─────────────────────────────────────────────────────────────────────────── */
-.guide-toc {
-  columns: 1;
-  padding-right: 0.5in;
-  /* prevents right-column overflow in single-column TOC layout */
-  box-sizing: border-box;
-}
-
-/* ── Part 1: Two-column reference layout ─────────────────────────────────────
-   Uses the shared structural gutter token. Narrowed to 0.15in to preserve full-size h2 in two-column
-   chapters without overflow.
-   Column-span rules follow immediately below.
-   ─────────────────────────────────────────────────────────────────────────── */
-div.chapter:is(.chapter-01, .chapter-02) {
-  columns: 2;
-  column-gap: var(--gutter);
-  column-fill: auto;
-}
-
-/* Column-span: all for structural break elements in the two-column layout.
-   .dc-intro/.lede spans both columns so intro paragraphs read across the
-   full width before the two-column content begins — prevents the lede from
-   being trapped in only the left column.
-   pre (code blocks) intentionally excluded — they flow within their column
-   to maximise information density. Add .pmd-col-span to a specific code block
-   if a full-width span is needed on a case-by-case basis. */
-div.chapter:is(.chapter-01, .chapter-02) :is(h1, .dc-intro, table, hr, .specimen, .dc-toc) {
-  column-span: all;
-}
+/* .guide-toc and div.chapter column layouts migrated to page-templates.css (Phase 2) */
 
 /* Palette swatch specimen grid — guide-only presentation for token chips.
    Uses markdown wrapper blocks instead of inline style attributes in the guide. */

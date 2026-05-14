@@ -12,7 +12,6 @@ import markdownItSourceMap from "markdown-it-source-map";
 import {
   renderContainerOpen,
   createNamedContainer,
-  createAliasedContainer,
   createSidebarContainer,
 } from "./containers";
 import { dcAlertsPlugin } from "./alerts";
@@ -78,36 +77,10 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   md.use(unwrap(markdownItSourceMap));
   md.use(unwrap(markdownItPaged), { implicitPage: true });
 
-  // DEPRECATED: Legacy container-based page markers (use @page instead)
-  md.use(markdownItContainer, "page", {
-    marker: ":",
-    render(tokens: any, idx: number) {
-      const token = tokens[idx];
-      if (token.nesting === 1) {
-        const m = token.info.trim().match(/^page\s*(.*)$/);
-        return renderContainerOpen("page-break", token, m?.[1]);
-      }
-      return "</div>\n";
-    },
-  });
+  // Removed: :::page (deprecated — use @page), :::wrapper (use named macros),
+  // :::ability / :::ability-continued (use @skill / @continue),
+  // :::aug (no replacement), :::lede (use @lede macro)
   md.use(markdownItContainer, "sidebar", createSidebarContainer(md));
-  md.use(markdownItContainer, "wrapper", {
-    marker: ":",
-    render(tokens: any, idx: number) {
-      const token = tokens[idx];
-      if (token.nesting === 1) {
-        const m = token.info.trim().match(/^wrapper\s*(.*)$/);
-        return renderContainerOpen("wrapper", token, m?.[1]);
-      }
-      return "</div>\n";
-    },
-  });
-  md.use(markdownItContainer, "ability", createNamedContainer("ability"));
-  md.use(
-    markdownItContainer,
-    "ability-continued",
-    createAliasedContainer("ability-continued", "ability")
-  );
   md.use(markdownItContainer, "specialty", createNamedContainer("specialty"));
   md.use(
     markdownItContainer,
@@ -115,7 +88,6 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
     createNamedContainer("learning-path")
   );
   md.use(markdownItContainer, "container", createNamedContainer("container"));
-  md.use(markdownItContainer, "aug", createNamedContainer("aug"));
   md.use(markdownItContainer, "two-column", createNamedContainer("two-column"));
   md.use(markdownItContainer, "three-column", createNamedContainer("three-column"));
   /* specific callout variants must be registered before the generic "callout"
@@ -128,7 +100,6 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   md.use(markdownItContainer, "pull-quote", createNamedContainer("pull-quote"));
   md.use(markdownItContainer, "procedure", createNamedContainer("procedure"));
   md.use(markdownItContainer, "item", createNamedContainer("item"));
-  md.use(markdownItContainer, "lede", createAliasedContainer("lede", "dc-intro"));
 
   // Apply custom plugins from manifest
   if (customPlugins && customPlugins.length > 0) {

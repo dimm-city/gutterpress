@@ -1,0 +1,54 @@
+## Rules
+
+- column count should typically be controlled by the page template
+- migrate away from .wrapper and all remaining ::: markdown containers and use macros or existing components instead unless there are no reasonable options
+- 
+
+## Page Templates Checklist
+
+- Full bleed - primarily for images
+- Chapter Intro - used to set chapter counters
+- Image page - display image with no horizontal margins across the entire top or bottom of a page
+- Card Grid - displays cards in columns
+- Two Column
+- Three Column
+
+## Component Checklist
+
+- Chapter Intro Page
+  - Intro Alert
+- TOC
+- Table
+- List
+- Tape Divider
+- Procedure
+- Outcome Ladder
+- Sidebar
+  - Alert Variants
+- Gear Card
+- Alerts
+  - DM Notes
+- Glossary
+- Definition
+- Roll modifier
+  - Lucid
+  - Surreal
+- AP Tags - Variants
+- Stat Block
+- Specialty (Summary) Card
+- Specialty Profile Spread
+  - Specialty Description Title
+    - Description
+    - Spec Tweak
+  - Specialty Image
+  - Learning Path
+    - Title
+    - Path
+    - Flavor
+    - Details
+    - Skill Card
+      - Title
+      - ID
+      - Flavor
+      - Content
+

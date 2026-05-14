@@ -2,9 +2,9 @@
 
 # Typography
 
-:::lede
+@lede
 Three font families, each with a specific role. lixdu anchors display and banner headings; Tomorrow handles tab labels and mono chrome; Titillium Web carries all body, flavor, and quote copy.
-:::
+-lede
 
 ## Type Scale Reference
 

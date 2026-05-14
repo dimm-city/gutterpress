@@ -41,19 +41,21 @@ assume browser behavior matches Paged.js behavior.
 
 ---
 
-## 2. The Current Layer Stack
+## 2. The CSS Layer Stack
 
-The stylesheet cascade is a three-file stack imported in explicit order. Later
+The stylesheet cascade is a **five-file stack** imported in explicit order. Later
 files win specificity ties. No file imports another directly — all imports flow
 through `index.css`.
 
 ```css
 /* css/index.css */
-@import url("./dc-brand.css");   /* tokens, fonts, all DC components */
-@import url("./page-rules.css"); /* @page rules, named pages, counters */
-@import url("./guide.css");      /* design-guide specimens and example layouts */
+@import url("./tokens.css");         /* tokens, @font-face, html/body baseline */
+@import url("./components.css");     /* every .dc-* and .pmd-* component (base + thin variants) */
+@import url("./page-templates.css"); /* .page.* layouts — sole home of columns:N */
+@import url("./page-rules.css");     /* @page rules, named pages, counters */
+@import url("./guide.css");          /* div.chapter scaffolding, .specimen chrome */
 
-/* Project overrides — create this file to customize tokens without editing dc-brand.css.
+/* Project overrides — create this file to customize tokens without editing source.
    Intentionally last so overrides win the cascade. Silently absent = no-op. */
 /* @import url("./project-overrides.css"); */
 ```
@@ -62,9 +64,15 @@ through `index.css`.
 
 | Layer | Owns | Must NOT contain |
 |---|---|---|
-| `dc-brand.css` | `:root` token block, `@font-face`, element resets, all `.dc-*` and `.pmd-*` component classes | `@page` rules, `.pagedjs_*` selectors, chapter-scoped overrides |
-| `page-rules.css` | Every `@page` declaration, named-page geometry, margin-box content, counter resets. Exception: may contain direct `.pagedjs_*` selector overrides when Paged.js's own generated rules cannot be defeated any other way. | Component styles, token definitions, `.page.*` layout rules |
-| `guide.css` | Specimen layout scoped to `div.chapter`, code block formatting, chapter-break display rules, and guide-only page-template/example styling | Reusable production component rules that should ship outside the design guide |
+| `tokens.css` | `:root` token block, `@font-face`, html/body baseline, global element resets | `@page` rules, `.dc-*` components, `.page.*` layout rules |
+| `components.css` | Every `.dc-*` and `.pmd-*` component class (base + thin variants), specialty parent-container overrides | `columns:N` rules, `@page` declarations, `div.chapter` scaffolding |
+| `page-templates.css` | ALL `columns:N` rules (exclusive ownership), `.page.*` content layout, paged wrapper scaffolding, `.pagedjs_sheet`, print utilities | `@page` declarations, `.dc-*` component styles, `:root` tokens |
+| `page-rules.css` | Every `@page` declaration, named-page geometry, margin-box content, counter resets, `.pagedjs_*` overrides | Component styles, token definitions, `columns:N` rules |
+| `guide.css` | `div.chapter` scaffolding, `.specimen` chrome, palette grid, guide-only code/table overrides | Reusable production component rules, `columns:N` rules |
+
+### COLUMNS:N Ownership Rule
+
+`columns:N` lives **exclusively** in `page-templates.css`. Every other file is single-flow. If you find `columns:` in `components.css`, `guide.css`, or `page-rules.css`, it is a bug.
 
 ### Layer Contract Rules
 

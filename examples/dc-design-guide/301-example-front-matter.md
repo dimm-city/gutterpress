@@ -2,9 +2,9 @@
 
 # Front Matter — Real-World Example {.dc-chevron}
 
-:::lede
+@lede
 This section shows how the Table of Contents, Credits, and Introduction pages look in the actual Dimm City Field Guide, rendered using real book content. These are the first pages a reader encounters — `page-toc`, `page-credits`, and `page-intro` templates applied to the `chapter-00` content.
-:::
+-lede
 
 ---
 
@@ -16,11 +16,11 @@ This section shows how the Table of Contents, Credits, and Introduction pages lo
 
 # Contents {.dc-chevron}
 
-:::lede
+@lede
 Twelve chapters of dreams, dirt, and what bites back. Read them in any order — the city doesn't care where you start.
-:::
+@end-lede
 
-:::wrapper {.dc-toc}
+@toc
 
 1. **01** &nbsp; [Who Do You Dream to Be?](#chapter-01) — Citizen file, vibe, origins, ideals, flaws.
 2. **02** &nbsp; What Do You Dream of Doing? — How abilities work. Choose a specialty.
@@ -36,7 +36,7 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 12. **12** &nbsp; Dream Mastery & Cosmology — NPCs, traits, time, districts.
 13. **13** &nbsp; Cybernetics, Weapons, and Gear — Useful items, tech, blasters, blades.
 
-:::
+@end-toc
 
 ---
 

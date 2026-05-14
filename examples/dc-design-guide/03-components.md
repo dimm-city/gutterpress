@@ -2,9 +2,9 @@
 
 # Core Components
 
-:::lede
+@lede
 The base prose and callout layer. These components work in all chapter types without needing a specialty or learning-path wrapper.
-:::
+-lede
 
 ---
 
@@ -35,7 +35,7 @@ Italic in-world voice for card flavor and atmospheric lines. Inside `@skill` car
 Slightly larger opening paragraph at the top of a chapter or major section. **Syntax** — `:::lede` … `:::` (canonical)
 
 ```markdown
-:::lede
+@lede
 An Augmerc is muscle for hire. Street thugs, corporate bodyguards,
 deniable enforcers — the difference is gear, grafts, and how much
 of them is still original.
@@ -250,6 +250,44 @@ Dream Master–addressed instruction block for GM guidance and scene hooks, visu
 > [!DM]
 > If a player hasn't chosen their starting gear by the end of session zero,
 > hand them a Scavenger Pack and move on.
+
+---
+
+## Block Callout Macros
+
+Multi-paragraph versions of GFM alert types. Use `@callout variant="…"` when the note needs multiple paragraphs, lists, or nested content. **Syntax** — `@callout variant="note|warning|dm|vibe|origin|visit|gear"`
+
+```markdown
+@callout variant="warning"
+**Trauma Patches** stabilize a dying character but do not restore HP.
+
+A character at 0 HP with a Patch applied is still incapacitated. Apply Injury
+Track consequences at the end of the scene, not immediately.
+@end-callout
+```
+
+@callout variant="warning"
+**Trauma Patches** stabilize a dying character but do not restore HP.
+
+A character at 0 HP with a Patch applied is still incapacitated. Apply Injury Track consequences at the end of the scene, not immediately.
+@end-callout
+
+`@dm-note` is the block form of `> [!DM]`.
+
+```markdown
+@dm-note label="Scene Hook"
+The contact doesn't know the job is a setup.
+
+If players investigate further before accepting, they can discover the trap with a
+Streetwise roll DC 14.
+@end-dm-note
+```
+
+@dm-note label="Scene Hook"
+The contact doesn't know the job is a setup.
+
+If players investigate further before accepting, they can discover the trap with a Streetwise roll DC 14.
+@end-dm-note
 
 ---
 

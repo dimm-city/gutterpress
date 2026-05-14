@@ -2,9 +2,9 @@
 
 # Rules Pages — Real-World Example {.dc-chevron}
 
-:::lede
+@lede
 This section shows how core rules pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 03. Rules pages use the `page-rules` template and rely on standard prose, outcome tables, status condition tables, and rule-break callouts. No special macros — clean prose layout with DC typography.
-:::
+-lede
 
 ---
 

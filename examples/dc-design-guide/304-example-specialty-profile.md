@@ -2,21 +2,21 @@
 
 # Specialty Profile — Real-World Example {.dc-chevron}
 
-:::lede
+@lede
 This section shows how a full specialty profile looks in the actual Dimm City Field Guide, rendered using real book content from the Augmerc chapter. A specialty profile combines the `@specialty` macro, intro block, art panel, `@learning-path` macro, and a sequence of `@skill` cards — all live DC components.
-:::
+-lede
 
 ---
 
 ## Specialty Intro Block
 
-**Macros** — `@specialty {.augmerc}` wraps the entire specialty section and applies specialty-scoped CSS. The `.specialty-intro` wrapper holds the name, definition, and Spec Tweak. The `.specialty-art` wrapper holds the character illustration. `@learning-path` injects the path header and path sequence list. Long abilities should use `@continue` inside `@skill`. See [DC Components](#ch-dc-components) for the full `@specialty` / `@learning-path` / `@skill` macro reference.
+**Macros** — `@specialty .augmerc` wraps the entire specialty section and applies specialty-scoped CSS. The `.specialty-intro` wrapper holds the name, definition, and Spec Tweak. The `.specialty-art` wrapper holds the character illustration. `@learning-path` injects the path header and path sequence list. Long abilities should use `@continue` inside `@skill`. See [DC Components](#ch-dc-components) for the full `@specialty` / `@learning-path` / `@skill` macro reference.
 
 @page
 
-@specialty {.augmerc}
+@specialty .augmerc
 
-:::wrapper {.specialty-intro .variant-2}
+@specialty-intro
 
 ## Augmerc
 
@@ -38,21 +38,21 @@ You do not need to track these implants as separate equipment unless the Dream M
 
 They are simply part of what makes an Augmerc dangerous.
 
-:::
+@end-specialty-intro
 
-:::wrapper {.specialty-art}
+@specialty-art
 
 ![Augmerc](https://placehold.co/600x800/png?text=Augmerc){.augmerc}
 
-:::
+@end-specialty-art
 
 ---
 
 ## Learning Path: Biting Distance
 
-**Macro** — `@learning-path` renders the path header banner and the ability sequence list. The Signature Augment block follows the path list as prose. Each `@skill variant="2"` card renders a titled ability card with AP cost options and outcome tables. Use `@continue` when a card needs to flow onto the next page. See [DC Components](#ch-dc-components) for full `@learning-path` and `@skill` syntax.
+**Macro** — `@specialty .augmerc` wraps the entire specialty section and applies specialty-scoped CSS — no `variant=` attribute needed. `@specialty-intro` wraps the intro block; `@specialty-art` wraps the art panel. `@learning-path` renders the path header banner. Each `@skill` card renders without a variant attribute; the augmerc silhouette and accent come from the parent `@specialty .augmerc` container. Use `@continue` when a card needs to flow onto the next page.
 
-@learning-path variant="2"
+@learning-path
 
 ### Biting Distance
 
@@ -68,7 +68,7 @@ They are simply part of what makes an Augmerc dangerous.
 
 When creatures crowd into reach, you can trigger the system to bloom outward in a form you choose upon implant: blades, spikes, studs, or writhing polyalloy pseudopods. Spending an action doing nothing but defending, the rig braces and answers every swing, letting you resist 2 damage from all melee attacks and dealing 1 damage to all creatures in reach at the start of your turn.
 
-@skill variant="2"
+@skill
 
 #### Punishing Counter
 
@@ -82,7 +82,7 @@ When an enemy falters, you may trigger one of the following counters:
 
 Openings are invitations to take a chunk out 'em.
 
-@skill variant="2"
+@skill
 
 #### Rage Hit
 
@@ -105,7 +105,7 @@ Until the start of your next turn, any enemy that starts their turn in reach of 
 
 Full send or full regret.
 
-@skill variant="2"
+@skill
 
 #### Dirty Work
 
@@ -123,3 +123,5 @@ Once per round, outside your turn, you exploit a target in reach. Choose one tec
 | **2** | **Cheap Shot**         | Break something important. Sight, breath, balance, or nerve. **ROLL THE DIE!** If you hit, the target must **ROLL THE DIE!** On a result of **10 or less**, they are **Blinded** or **Stunned** until the end of their next turn. **CHOOSE ONE EFFECT!**|
 
 You don't need an opening. You make one.
+
+@end-specialty
