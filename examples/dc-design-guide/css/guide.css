@@ -221,14 +221,6 @@ div.chapter hr {
   margin: 0.25in 0;
 }
 
-/* ── H2 spacing — more room before each section ──────────────────────────────
-   Guide chapters use H2 for every documented component. Extra space above each
-   H2 gives the page a clear visual rhythm between sections.
-   ─────────────────────────────────────────────────────────────────────────── */
-div.chapter h2 {
-  margin-top: 0.25in;
-  padding-top: 0.1in;
-}
 
 /* ---------------------------------------------------------------------------
    Guide-only page-template and demo layouts

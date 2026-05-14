@@ -273,11 +273,6 @@ h4 { font-size: var(--fs-h4); color: var(--blood); letter-spacing: 0.06em; }
 h5 { font-size: var(--fs-h5); color: var(--blood); }
 h6 { font-size: var(--fs-h6); color: var(--blood); }
 
-.pagedjs_page_content h2 { margin-top: 1.4em; }
-.pagedjs_page_content h3 { margin-top: 1.2em; }
-.pagedjs_page_content h4,
-.pagedjs_page_content h5,
-.pagedjs_page_content h6 { margin-top: 1em; }
 
 /* ── INLINE ELEMENTS ──────────────────────────────────────────────────────── */
 p   { margin-bottom: 0.08in; }

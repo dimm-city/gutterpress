@@ -388,14 +388,6 @@ div.chapter:is(.chapter-01, .chapter-02) :is(h1, .dc-intro, table, hr, .specimen
 .specialty .dc-learning-path :is(h2, h3) { margin-bottom: 0.04in; }
 .specialty .dc-learning-path h3 { padding-top: 0.06in; }
 
-.specialty .dc-learning-path .dc-intro {
-  margin-top: 0.03in;
-  margin-bottom: 0;
-  padding-top: 1px;
-  padding-bottom: 1px;
-  line-height: 1.1;
-  font-size: 0.65rem;
-}
 
 .specialty .dc-learning-path .dc-stickers { margin-bottom: 0; gap: 4px; row-gap: 0; }
 .specialty .dc-learning-path .dc-sticker  { padding: 0.1rem 0.4rem; line-height: 1.2; }

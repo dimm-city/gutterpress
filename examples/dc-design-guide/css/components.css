@@ -527,7 +527,7 @@
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
-  margin-bottom: 22px;
+  margin: 4px 0 22px;
 }
 .dc-sticker {
   font-family: var(--font-mono);
@@ -639,8 +639,8 @@
   color: var(--ink-smoke);
   line-height: 1.5;
   border-left: 3px solid var(--orange);
-  padding: 4px 12px;
-  margin-bottom: 18px;
+  padding: 8px 12px;
+  margin: 14px 0 16px;
 }
 
 /* ── Spec tweak section header ────────────────────────────────────────── */
