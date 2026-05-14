@@ -759,14 +759,17 @@ ul li::before {
 }
 .dc-ability:last-child { margin-bottom: 0; }
 .dc-ap {
+  --dc-ap-bg: var(--hud-blue);
+  --dc-ap-fg: var(--paper-cream);
+
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
   padding: 6px 9px;
   min-width: 50px;
   text-align: center;
-  background: var(--hud-blue);
-  color: var(--paper-cream);
+  background: var(--dc-ap-bg);
+  color: var(--dc-ap-fg);
   transform: rotate(-1deg);
   box-shadow: 2px 2px 0 rgba(0,0,0,0.12);
   letter-spacing: 1px;
@@ -774,8 +777,8 @@ ul li::before {
   align-self: flex-start;
   margin-top: 1px;
 }
-.dc-ap.free { background: var(--crimson); }
-.dc-ap.var  { background: var(--hud-magenta); color: var(--paper-cream); }
+.dc-ap.free { --dc-ap-bg: var(--crimson); }
+.dc-ap.var  { --dc-ap-bg: var(--hud-magenta); }
 .dc-ability-text {
   font-family: var(--font-body);
   font-size: var(--fs-body);
@@ -1027,8 +1030,6 @@ hr,
   background: var(--paper-cream);
   border: 1.5px solid var(--border-hairline);
   border-left: 4px solid var(--blood);
-  padding: 14px 18px;
-  margin: 0.15in 0;
 }
 
 /* Box heading — bold red stencil-style label above the internal divider */
