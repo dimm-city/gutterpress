@@ -5,11 +5,10 @@
    DC visual language: color tokens, type scale, spacing, shapes, and every
    reusable component (cards, banners, callouts, stat blocks, etc.).
 
-   Import order (index.css):
-     1. dc-brand.css          ←  this file (tokens + components)
-     2. page-rules.css            (page geometry + @page rules)
-     3. content-templates.css     (Paged.js structural wrappers)
-     4. guide.css                 (specimen + chapter overrides)
+    Import order (index.css):
+      1. dc-brand.css   ← this file (tokens + components)
+      2. page-rules.css   (page geometry + @page rules)
+      3. guide.css        (specimen + guide-only example overrides)
 
    PRINT ZINE on light gray pages, cream/paper card surfaces, dark ink.
    Cyberpunk creaturepunk: rust orange, blood crimson, HUD blue, amber.
@@ -25,7 +24,7 @@
    MUST NOT CONTAIN:
    - @page declarations (→ page-rules.css)
    - Named page assignments (page: <name>) (→ page-rules.css)
-   - .page.* layout rules (→ content-templates.css)
+    - .page.* layout rules (→ guide.css)
    - div.chapter scaffolding (→ guide.css)
    - @media screen rules (print-only project)
 
@@ -198,8 +197,8 @@
   --fs-caption: 10pt;       /* credits / fine print exceptions */
   --fs-footer:  9.5pt;      /* @page margin box footer text */
   /* banner/chevron headings use --fs-h1 directly */
-  --fs-h1:      1.728rem;   /* 20.7pt */
-  --fs-h2:      1.44rem;    /* 17.3pt */
+  --fs-h1:      1.5rem;   
+  --fs-h2:      1.25rem;    
   --fs-h3:      1.2rem;     /* 14.4pt */
   --fs-h4:      1.1rem;     /* 13.2pt — 10% step above body; restores perceptible h4 hierarchy */
   --fs-h5:      0.95rem;
@@ -445,6 +444,24 @@ td {
 .font-sans    { font-family: var(--font-sans); }
 .font-mono    { font-family: var(--font-mono); }
 
+.pmd-break-before {
+  break-before: page;
+  page-break-before: always;
+}
+
+.pmd-no-break {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.pmd-col-span {
+  column-span: all;
+}
+
+.pmd-suppress-footer {
+  page: clean;
+}
+
 .dc-tag {
   font-family: var(--font-mono);
   font-size: 0.62rem;
@@ -615,6 +632,33 @@ td {
     drop-shadow(0 2px 0 var(--ink))
     drop-shadow(0 -2px 0 var(--ink))
     drop-shadow(4px 6px 8px rgba(0,0,0,0.18)); /* screen preview only — drops in Paged.js PDF export */
+}
+
+.card-cont-marker {
+  display: block;
+  font-family: var(--font-mono, 'Tomorrow', monospace);
+  font-size: 9pt;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--orange, #f24d00);
+  opacity: 0.85;
+  margin: 0 0 0.5rem 0.5rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px dashed var(--orange, #f24d00);
+  width: fit-content;
+}
+
+.card-fwd-marker {
+  position: absolute;
+  bottom: 4px;
+  right: 18px;
+  font-family: var(--font-display, 'lixdu', sans-serif);
+  font-size: 22px;
+  color: var(--orange, #f24d00);
+  opacity: 0.65;
+  z-index: 5;
+  pointer-events: none;
 }
 .dc-card-tab {
   display: inline-flex;
@@ -1453,13 +1497,74 @@ hr,
 }
 
 /* ───────── INDEX / TOC ROW ───────── */
-/* NOTE: A second .dc-toc rule set lives in page-rules.css — that version handles
-   Paged.js target-counter() auto-numbering for print output.
-   This dc-brand.css version is the screen-preview layout (.dc-toc-row flex rows).
-   Both use the class name .dc-toc; they are compatible because screen vs print
-   context separates them. See page-rules.css for the print-counter version. */
+/* .dc-toc owns both the screen-preview row layout and the print target-counter
+   list treatment. Page-template-specific TOC wrappers still live outside the
+   component layer. */
 .dc-toc {
   font-family: var(--font-body);
+  counter-reset: dc-toc;
+  padding: 0;
+  margin: 0;
+}
+.dc-toc ol {
+  list-style: none;
+  counter-reset: dc-toc;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.dc-toc ol > li {
+  position: relative;
+  padding: 12px 0 12px 56px;
+  border-bottom: 1px solid var(--hud-blue-dim, #c9d6e2);
+  counter-increment: dc-toc;
+  font-family: var(--font-body, 'Titillium Web', sans-serif);
+  font-size: var(--fs-body-sm);
+  line-height: 1.4;
+  color: var(--ink-smoke);
+  font-style: italic;
+  list-style: none;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+.dc-toc ol > li::marker {
+  content: none;
+}
+.dc-toc ol > li::before {
+  content: counter(dc-toc, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 14px;
+  font-family: var(--font-mono, 'Tomorrow', monospace);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: var(--hud-blue, #2a6a8a);
+  font-style: normal;
+}
+.dc-toc ol > li > strong {
+  color: var(--hud-blue, #2a6a8a);
+}
+.dc-toc ol > li > a {
+  font-family: var(--font-body);
+  font-size: 15pt;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--ink, #1a1715);
+  text-decoration: none;
+  border-bottom: 0;
+  font-style: normal;
+}
+.dc-toc ol > li > a::after {
+  content: ' p.' target-counter(attr(href), page);
+  font-family: var(--font-mono, 'Tomorrow', monospace);
+  font-size: 10pt;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: var(--hud-blue, #2a6a8a);
+  font-style: normal;
+  margin-left: 0.6em;
+  white-space: nowrap;
 }
 .dc-toc-row {
   display: flex;
@@ -1683,7 +1788,7 @@ hr,
    All rules below are GAP vs shared.css unless noted as PARTIAL.
    --------------------------------------------------------------------------- */
 
-/* .specialty-art geometry and page assignment moved to content-templates.css and page-rules.css — see CSS-AUDIT.md L4 */
+/* .specialty-art geometry and page assignment moved to guide.css and page-rules.css. */
 
 /* Specialty intro shell.
    The root owns the silhouette and the small public variant API; the title band
@@ -1928,6 +2033,10 @@ hr,
   --dc-path-accent: var(--crimson);
   position: relative;
   margin: 0 0 22px;
+  page-break-before: auto;
+  break-before: auto;
+  break-after: avoid;
+  page-break-after: avoid;
 }
 
 .dc-path-shell {
@@ -2025,6 +2134,16 @@ hr,
   display: inline;
   margin: 0;
   padding: 0;
+}
+
+.dc-skill-card .dc-card-body .dc-ability:nth-last-of-type(2):not(:only-of-type) {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.dc-skill-card .dc-card-body .dc-ability:last-of-type:not(:only-of-type) {
+  break-before: avoid;
+  page-break-before: avoid;
 }
 
 /* Layout mode modifiers — opt-in classes that pin all skill-cards inside the

@@ -41,18 +41,17 @@ assume browser behavior matches Paged.js behavior.
 
 ---
 
-## 2. The Four-Layer Architecture
+## 2. The Current Layer Stack
 
-The stylesheet cascade is a strict four-file hierarchy imported in explicit order.
-Later files win specificity ties. No file imports another directly — all imports flow
+The stylesheet cascade is a three-file stack imported in explicit order. Later
+files win specificity ties. No file imports another directly — all imports flow
 through `index.css`.
 
 ```css
 /* css/index.css */
-@import url("./dc-brand.css");          /* tokens, fonts, all DC components */
-@import url("./page-rules.css");        /* @page rules, named pages, counters */
-@import url("./content-templates.css"); /* Paged.js wrappers, page-type layout */
-@import url("./guide.css");             /* design-guide specimens and overrides */
+@import url("./dc-brand.css");   /* tokens, fonts, all DC components */
+@import url("./page-rules.css"); /* @page rules, named pages, counters */
+@import url("./guide.css");      /* design-guide specimens and example layouts */
 
 /* Project overrides — create this file to customize tokens without editing dc-brand.css.
    Intentionally last so overrides win the cascade. Silently absent = no-op. */
@@ -65,8 +64,7 @@ through `index.css`.
 |---|---|---|
 | `dc-brand.css` | `:root` token block, `@font-face`, element resets, all `.dc-*` and `.pmd-*` component classes | `@page` rules, `.pagedjs_*` selectors, chapter-scoped overrides |
 | `page-rules.css` | Every `@page` declaration, named-page geometry, margin-box content, counter resets. Exception: may contain direct `.pagedjs_*` selector overrides when Paged.js's own generated rules cannot be defeated any other way. | Component styles, token definitions, `.page.*` layout rules |
-| `content-templates.css` | Paged.js structural wrappers (`.pagedjs_sheet`, `.page`, `.page-break`), page-type content layout (`.page.chapter-start` etc.), column structure | Brand tokens, `@page` at-rules, specimen styles |
-| `guide.css` | Specimen layout scoped to `div.chapter`, code block formatting, chapter-break display rules, chapter-scoped overrides | Rules that would affect a production book build outside the design guide |
+| `guide.css` | Specimen layout scoped to `div.chapter`, code block formatting, chapter-break display rules, and guide-only page-template/example styling | Reusable production component rules that should ship outside the design guide |
 
 ### Layer Contract Rules
 
@@ -83,7 +81,9 @@ content, where `content: none !important` is required because Paged.js generates
 
 **Selector ownership is exclusive.** If you are writing a rule for `.dc-callout`, it
 belongs in `dc-brand.css`. If you are writing a rule for `.pagedjs_sheet`, it belongs
-in `content-templates.css`. A `.dc-*` selector in `page-rules.css` is a bug.
+in `page-rules.css`. If you are writing a selector that only exists for a rendered
+design-guide example, it belongs in `guide.css`. A `.dc-*` selector in `page-rules.css`
+is a bug.
 
 **Reusable components use a real base class plus thin variants.** For shared UI
 systems like alerts, banners, panels, and stat grids, the canonical dc-prefixed
@@ -180,11 +180,11 @@ token name, not scattered across heading rules.
 
 ### Page Background and the Viewer
 
-The page background color is controlled entirely within `content-templates.css` — no
+The page background color is controlled entirely within `page-rules.css` — no
 viewer hook token is needed:
 
 ```css
-/* content-templates.css */
+/* page-rules.css */
 .pagedjs_sheet {
   background-color: var(--bg);
   background-image: url("https://placehold.co/200x200/png?text=Brick");
@@ -272,14 +272,15 @@ Named pages in this codebase: `chapter-start`, `chapter-end`, `front-matter`, `f
 Paged.js to blank pages inserted by `RectoChapterHandler` — use it to suppress footers
 on programmatically inserted blank pages.
 
-### Axis 2 — `.page.*` Content Templates (`content-templates.css`)
+### Axis 2 — Content Layout Selectors
 
 While `@page` controls the physical box, `.page.*` selectors control what happens
-inside it: column count, column-fill strategy, break behavior. The `.page` class is
-the structural hook; specialized classes extend it:
+inside it: column count, column-fill strategy, break behavior. Those selectors live
+in `guide.css` for the design guide. The `.page` class is the structural hook;
+specialized classes extend it:
 
 ```css
-/* content-templates.css */
+/* shared or guide-owned content layout */
 
 /* Two-column rules pages — balanced fill */
 .page.page-rules,
@@ -302,6 +303,9 @@ The double-class pattern (`.page.chapter-start`, `.page.page-toc`) is intentiona
 `.page` provides the base reset; the second class carries the page-type identity.
 Specificity (0,2,0) beats single-class overrides from upstream CSS without
 `!important`.
+
+Guide-only examples should live in `guide.css` even when they use `.page.*`
+selectors.
 
 ### Chapter Counter System
 
@@ -337,7 +341,7 @@ Paged.js polyfill — it silently no-ops.
 Paged.js supports `target-counter()` for automatic cross-reference page numbers:
 
 ```css
-/* content-templates.css */
+/* shared content layer */
 .dc-toc ol > li > a::after {
   content: target-counter(attr(href), page);
 }
@@ -418,7 +422,7 @@ The `div.chapter` and `.page.*` parent selectors scope rules to their context.
 A rule scoped to `section#ch-name` is guaranteed not to bleed into adjacent chapters:
 
 ```css
-/* content-templates.css */
+/* guide.css */
 .page.page-credits.credits > h1,
 .page.page-intro.intro > h1,
 .page.page-chapter-start.chapter-start > h1 {
@@ -579,7 +583,7 @@ level increases compiled-selector specificity and makes future overrides harder.
 The specialty density overrides stay flat deliberately:
 
 ```css
-/* content-templates.css — flat, not nested chains */
+/* shared print-density layer — flat, not nested chains */
 .specialty .dc-learning-path       { page-break-before: always; }
 .specialty .dc-learning-path h3    { padding-top: 0.06in; }
 .specialty .dc-learning-path .dc-intro { font-size: 0.65rem; }
@@ -654,7 +658,7 @@ div.chapter h4 + p, div.chapter h4 + ul {
 ### Orphans and Widows
 
 ```css
-/* content-templates.css — baseline */
+/* shared content baseline */
 .page p {
   orphans: 4;
   widows: 4;
@@ -671,7 +675,7 @@ Prevent the second-to-last item in a list from being stranded without its final
 sibling:
 
 ```css
-/* content-templates.css */
+/* shared print-density layer */
 .dc-skill-card .dc-card-body .dc-ability:nth-last-of-type(2):not(:only-of-type) {
   break-after: avoid;
   page-break-after: avoid;
@@ -693,7 +697,7 @@ For one-off elements that must not split across pages without having a component
 class:
 
 ```css
-/* guide.css */
+/* dc-brand.css */
 .pmd-no-break {
   break-inside: avoid;
   page-break-inside: avoid;

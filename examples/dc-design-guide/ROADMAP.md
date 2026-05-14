@@ -158,7 +158,7 @@ Only extract shared base styling when it stays extremely small and visual. Do no
 → Verify each is load-bearing for Paged.js chunker reliability (existing comment claims they are). If confirmed, add explicit documentation; if not, consolidate.
 
 ### Banner heading markup (longer-term)
-Five page templates in `content-templates.css` hard-code the chevron banner treatment rather than relying on `.dc-chevron`. Fix requires adding `{.dc-chevron}` to H1 elements in markdown, which touches multiple field guide chapter openers. Coordinate with field guide migration work.
+Five guide-only page templates still hard-code the chevron banner treatment rather than relying on `.dc-chevron`. Fix requires adding `{.dc-chevron}` to H1 elements in markdown, which touches multiple field guide chapter openers. Coordinate with field guide migration work.
 
 ---
 

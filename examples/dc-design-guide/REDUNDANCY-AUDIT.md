@@ -165,3 +165,14 @@ The migration is complete when all of the following are true:
 - every surviving selector from that file has a clear owner in `dc-brand.css`, `page-rules.css`, or `guide.css`
 - the verification matrix passes in preview/build output
 - no required guide behavior depends on preserving historical reference CSS
+
+## Status
+
+Completed 2026-05-13.
+
+- `content-templates.css` was removed from `css/index.css`
+- the file itself was deleted
+- surviving paged wrapper rules now live in `page-rules.css`
+- surviving guide/demo and specialty-profile rescue rules now live in `guide.css`
+- reusable component and utility rules had already been moved into `dc-brand.css`
+- verification build passed: `bun src/cli.ts build examples/dc-design-guide --format html --out /tmp/dc-design-guide-verify --manifest examples/dc-design-guide/manifest.yaml`

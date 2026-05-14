@@ -26,10 +26,9 @@ The guide is split into two parts.
 |------|---------|
 | `css/dc-brand.css` | Brand tokens, font faces, base typography, and all DC component styles |
 | `css/page-rules.css` | `@page` rules, named pages, Paged.js chrome, and chapter counter resets |
-| `css/content-templates.css` | Shared content templates: covers, TOC, stat blocks, and learning-path chrome |
-| `css/guide.css` | Design-guide-specific overrides: fenced code blocks and syntax callout styles |
+| `css/guide.css` | Design-guide-specific overrides, specimens, and guide-only example page-template styling |
 
-All four are imported in order by `css/index.css`. The book-layer (`field-guide/css/`) can import `dc-brand.css`, `page-rules.css`, and `content-templates.css` directly and add only its own delta on top.
+All three are imported in order by `css/index.css`: `dc-brand.css` + `page-rules.css` + `guide.css`.
 
 ## How Components Work
 

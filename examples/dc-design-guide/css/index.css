@@ -1,6 +1,6 @@
 /* =============================================================================
    DC Design Guide — CSS Entry Point
-   Import order matters: tokens first, page rules second, content third, scaffold last.
+   Import order matters: tokens first, page rules second, guide scaffold last.
 
    ADAPTING FOR A NEW PROJECT
    Override these custom properties in your project-overrides.css to rebrand:
@@ -11,10 +11,9 @@
    See css/dc-brand.css :root for the full token list.
    ============================================================================= */
 
-@import url("./dc-brand.css");          /* DC brand tokens, fonts, and all UI components */
-@import url("./page-rules.css");        /* @page declarations, named pages, Paged.js counter fixes */
-@import url("./content-templates.css"); /* Page content layouts, specialty system, print density */
-@import url("./guide.css");             /* Design-guide scaffold: specimens, code blocks, chapter breaks */
+@import url("./dc-brand.css");   /* DC brand tokens, fonts, and all UI components */
+@import url("./page-rules.css"); /* @page declarations, named pages, and paged wrapper behavior */
+@import url("./guide.css");      /* Design-guide scaffold and guide-only example/demo layouts */
 
 /* Project overrides — create this file to customize tokens without editing dc-brand.css.
    Intentionally last so overrides win the cascade. Silently absent = no-op. */

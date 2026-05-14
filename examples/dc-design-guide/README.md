@@ -49,15 +49,14 @@ browser.
 
 ## CSS Architecture
 
-The stylesheet cascade is a strict four-file hierarchy:
+The stylesheet cascade now uses three files with clear ownership:
 
 ```
 css/
 ├── index.css              ← imports in layer order
 ├── dc-brand.css           ← tokens (:root), fonts, all .dc-* components
 ├── page-rules.css         ← @page rules, named pages, counters
-├── content-templates.css  ← Paged.js wrappers, .page.* layout
-└── guide.css              ← specimen styles scoped to div.chapter
+└── guide.css              ← specimen styles plus guide-only demo/page-template rules
 ```
 
 See [`docs/CSS-PATTERNS.md`](docs/CSS-PATTERNS.md) for the full architecture
@@ -79,7 +78,7 @@ To start a new project based on the DC brand:
 1. Copy the `css/` folder into your project.
 2. Create `css/project-overrides.css` and add it as the last import in `index.css`.
 3. Override tokens in `project-overrides.css` — do not edit `dc-brand.css` directly.
-4. Override `--bg` to change the page background color. `content-templates.css` sets
+4. Override `--bg` to change the page background color. `page-rules.css` sets
    `.pagedjs_sheet { background-color: var(--bg) }` directly — no additional hook
    variable is needed.
 

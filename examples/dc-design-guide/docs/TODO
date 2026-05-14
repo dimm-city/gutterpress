@@ -1,4 +1,8 @@
-- Augmerc specialty profile image should be full bleed page
+## Rules
+
+- column count should typically be controlled by the page template
+- migrate away from .wrapper and all remaining ::: markdown containers and use macros or existing components instead unless there are no reasonable options
+- 
 
 ## Page Templates Checklist
 
@@ -6,7 +10,8 @@
 - Chapter Intro - used to set chapter counters
 - Image page - display image with no horizontal margins across the entire top or bottom of a page
 - Card Grid - displays cards in columns
-
+- Two Column
+- Three Column
 
 ## Component Checklist
 
@@ -48,7 +53,9 @@
       - Content
 
 
-## Template/Components/Rules to Remove
+## DONE
+
+### Template/Components/Rules to Remove
 
 - Section H3 divider
 - Item Block
