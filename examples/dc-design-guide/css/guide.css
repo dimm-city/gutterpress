@@ -262,10 +262,6 @@ article {
   margin-right: 0.05em;
 }
 
-/* .page p orphans/widows, .page > h2, .page h2/.page h3 break rules: migrated to page-templates.css */
-
-/* .toc layout, .page.* template rules, .specialty density overrides:
-   all migrated to page-templates.css */
 
 /* .dc-specialty-art base geometry — guide-only, not in components.css */
 .dc-specialty-art {
@@ -283,7 +279,7 @@ article {
   object-fit: cover;
 }
 
-/* Keep these .page.page-toc rules here until .wrapper is replaced with @toc macro in Phase 6 */
+/* Table of contents page styling — section wrappers with dividers. */
 .page.toc li {
   margin-bottom: 0.06in;
   line-height: var(--lh-normal);
@@ -304,10 +300,6 @@ article {
 
 .page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) > h1 { border: 0; }
 .page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) p   { font-family: var(--font-body); font-size: var(--fs-body); line-height: 1.6; color: var(--ink); }
-
-/* .specialty * density overrides migrated to page-templates.css (Phase 2) */
-
-/* .guide-toc and div.chapter column layouts migrated to page-templates.css (Phase 2) */
 
 /* Palette swatch specimen grid — guide-only presentation for token chips.
    Uses markdown wrapper blocks instead of inline style attributes in the guide. */

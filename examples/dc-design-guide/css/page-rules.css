@@ -412,5 +412,3 @@ body { counter-reset: chapter; }
     content: none;
   }
 }
-
-/* ── Page wrapper scaffolding migrated to page-templates.css (Phase 2) ───── */

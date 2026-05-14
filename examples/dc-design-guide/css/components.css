@@ -1035,7 +1035,6 @@ hr,
   border: none;
 }
 
-/* PARTIAL — bare .dc-specialty-intro > h3. Complementary to shared.css compound version. */
 .dc-specialty-intro > h3 {
   color: var(--crimson);
   font-family: var(--font-display);
@@ -1048,7 +1047,6 @@ hr,
   border-top: none;
 }
 
-/* PARTIAL — bare .dc-specialty-intro > p. Complementary to shared.css compound version. */
 .dc-specialty-intro > p {
   margin-block: 0.45rem;
   line-height: 1.5;
@@ -1058,14 +1056,12 @@ hr,
   margin-top: 0.2rem;
 }
 
-/* PARTIAL — bare .dc-specialty-intro > ul/ol. Complementary to shared.css compound version. */
 .dc-specialty-intro > ul,
 .dc-specialty-intro > ol {
   margin-block: 0.45rem;
   padding-left: 1.2rem;
 }
 
-/* Collapses trailing margin. GAP — no shared.css peer. */
 .dc-specialty-intro > :last-child {
   margin-bottom: 0;
 }
@@ -1503,7 +1499,6 @@ hr,
 }
 .dc-roll-surreal::before { content: '∿ '; opacity: 1; }
 
-/* Chapter-opening epigraph styling. No shared.css peer. */
 .chapter-start>blockquote:first-of-type {
   font-size: calc(var(--fs-body-sm) * 1.1);
   letter-spacing: 0.25em;
@@ -2073,10 +2068,8 @@ hr,
 
 /* .dc-note.warning lives here */
 
-/* field-guide: folded from legacy/specialty.css */
 /* ---------------------------------------------------------------------------
    SPECIALTY — full-page art, intro panels, specialty cards, spread layout
-   All rules below are GAP vs shared.css unless noted as PARTIAL.
    --------------------------------------------------------------------------- */
 
 /* .dc-specialty-art geometry and page assignment moved to guide.css and page-rules.css. */
@@ -2236,7 +2229,6 @@ p.dc-img-wrapper {
   --dc-sidebar-accent: var(--orange);
 
   padding: 14px 18px;
-  /* folded from legacy/sidebar.css PARTIAL — layout gap props */
   float: right;
   clear: right;           /* Fix 2: prevent stacking into adjacent floats */
   shape-outside: margin-box; /* Fix 2: body text wraps cleanly around margin-box */
@@ -2267,7 +2259,6 @@ p.dc-img-wrapper {
   border-left: none;
 }
 
-/* folded from legacy/sidebar.css GAP rules */
 /* Hides empty .dc-sidebar wrappers. */
 .dc-sidebar:empty {
   display: none;
