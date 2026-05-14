@@ -90,7 +90,7 @@
   font-style:     normal;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  margin-bottom:  6pt;
+  margin-bottom:  8pt;
   color:          var(--dc-alert-label-color);
 }
 
@@ -131,7 +131,6 @@
 /* ── Variant: Vibe Callout ──────────────────────────────────────────────── */
 .dc-vibe-callout {
   --dc-alert-border: var(--hud-magenta);
-  padding: var(--space-sm) var(--space-md);
 }
 
 /* ── Variant: Origin Callout ────────────────────────────────────────────── */
@@ -139,7 +138,6 @@
   --dc-alert-bg:          var(--surface-orange-tint);
   --dc-alert-border:      var(--blood);
   --dc-alert-label-color: var(--crimson);
-  padding:           6pt 9pt;
   border-left-width: 3px;
 }
 
@@ -148,7 +146,6 @@
   --dc-alert-border:      var(--hud-blue);
   --dc-alert-label-color: var(--hud-blue-dark);
   margin:    0.12in 0;
-  padding:   12px 16px;
   font-size: var(--fs-body);
 }
 
@@ -1297,7 +1294,8 @@ hr,
   padding: 10px 16px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
   gap: 3px;
 }
 .dc-outcome-name {
@@ -1703,6 +1701,11 @@ hr,
   border-right: 1px dashed var(--paper-aged);
   padding: 4px 8px 6px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
 }
 .dc-stat-cell:last-child { border-right: 0; }
 .dc-stat-cell-key {
