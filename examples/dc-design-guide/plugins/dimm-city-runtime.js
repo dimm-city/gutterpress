@@ -18,14 +18,14 @@
 
   function injectCardSplitMarkers() {
     try {
-      document.querySelectorAll('.card-fillable[data-split-from]').forEach(function (card) {
+      document.querySelectorAll('.dc-skill-card[data-split-from]').forEach(function (card) {
         if (card.querySelector(':scope > .dc-card-cont-marker')) return;
         var m = document.createElement('div');
         m.className = 'dc-card-cont-marker';
         m.textContent = '▸ continued';
         card.insertBefore(m, card.firstChild);
       });
-      document.querySelectorAll('.card-fillable[data-split-to]:not([data-split-from])').forEach(function (card) {
+      document.querySelectorAll('.dc-skill-card[data-split-to]:not([data-split-from])').forEach(function (card) {
         if (card.querySelector(':scope > .dc-card-fwd-marker')) return;
         var m = document.createElement('div');
         m.className = 'dc-card-fwd-marker';
