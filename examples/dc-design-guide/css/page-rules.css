@@ -437,8 +437,6 @@ body { counter-reset: chapter; }
 .page,
 .page-break {
   z-index: 1;
-  page-break-after: always;
-  page-break-inside: avoid;
   break-after: always;
   break-inside: avoid;
 }
@@ -447,7 +445,6 @@ body { counter-reset: chapter; }
   color: var(--hud-magenta);
   visibility: hidden;
   break-after: column;
-  -webkit-column-break-after: always;
 }
 
 /* Base page wrapper geometry keeps the browser preview readable; the print reset
@@ -478,7 +475,6 @@ body { counter-reset: chapter; }
   height: var(--page-height, 11.25in);
   background-color: var(--bg);
   break-before: always;
-  page-break-before: always;
 }
 
 .page.page-full-bleed,
@@ -489,7 +485,6 @@ body { counter-reset: chapter; }
   padding: 0;
   overflow: hidden;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 /* Print reset: cancel preview-only page box geometry so Paged.js controls the

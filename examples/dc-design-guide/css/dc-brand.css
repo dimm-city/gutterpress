@@ -285,7 +285,6 @@
 /* Print color accuracy — prevents Chromium from stripping colored backgrounds in PDF export */
 * {
   print-color-adjust: exact;
-  -webkit-print-color-adjust: exact;
 }
 
 html, body {
@@ -301,7 +300,6 @@ body {
   text-wrap: pretty; /* text-wrap: CSS4 — silently ignored by Paged.js; effective in screen preview only */
   position: relative;
   hyphens: auto;
-  -webkit-hyphens: auto;
   widows: 2;   /* Fix 5: reduced from 3 — less aggressive, fewer forced breaks */
   orphans: 2;  /* Fix 5: reduced from 3 */
 }
@@ -322,7 +320,6 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--blood);
   /* Prevent orphaned headings across page breaks */
   break-after: avoid;
-  page-break-after: avoid;
 }
 
 h1 {
@@ -333,7 +330,6 @@ h1 {
   /* --blood (#a30900): 5.46:1 on #d4d4d4 — WCAG AA pass. --orange (#f24d00) was 2.43:1. */
   border-bottom: 2px solid var(--blood);
   padding-bottom: 0.15em; /* em intentional — underline gap scales with h1 size */
-  color: var(--blood);
 }
 /* h2 base color is HUD blue in the design guide.
    Production book-sections.css overrides h2 color per chapter context
@@ -446,12 +442,10 @@ td {
 
 .pmd-break-before {
   break-before: page;
-  page-break-before: always;
 }
 
 .pmd-no-break {
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 .pmd-col-span {
@@ -624,7 +618,6 @@ td {
 
   position: relative;
   break-inside: avoid;
-  page-break-inside: avoid;
   margin-bottom: 24px;
   max-width: 100%;
   filter: drop-shadow(2px 0 0 var(--ink))
@@ -636,16 +629,16 @@ td {
 
 .card-cont-marker {
   display: block;
-  font-family: var(--font-mono, 'Tomorrow', monospace);
+  font-family: var(--font-mono);
   font-size: 9pt;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--orange, #f24d00);
+  color: var(--orange);
   opacity: 0.85;
   margin: 0 0 0.5rem 0.5rem;
   padding-bottom: 0.3rem;
-  border-bottom: 1px dashed var(--orange, #f24d00);
+  border-bottom: 1px dashed var(--orange);
   width: fit-content;
 }
 
@@ -653,9 +646,9 @@ td {
   position: absolute;
   bottom: 4px;
   right: 18px;
-  font-family: var(--font-display, 'lixdu', sans-serif);
+  font-family: var(--font-display);
   font-size: 22px;
-  color: var(--orange, #f24d00);
+  color: var(--orange);
   opacity: 0.65;
   z-index: 5;
   pointer-events: none;
@@ -862,7 +855,6 @@ td {
   line-height: var(--lh-normal);
   padding: var(--space-lg) var(--space-xl);
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 .dc-alert p {
@@ -977,7 +969,6 @@ td {
   letter-spacing: -0.01em;
   margin: 18px 0;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 .dc-pullquote::before {
   content: '"';
@@ -1030,7 +1021,6 @@ hr,
   padding: 10px 14px;
   margin: 0.12in 0;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 /* ───────── DEFINITION BLOCK ───────── */
@@ -1108,7 +1098,6 @@ hr,
   background: var(--paper-light);
   border-left: 3pt solid var(--orange);
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 .dc-gear-entry h3,
@@ -1120,7 +1109,6 @@ hr,
   text-transform: uppercase;
   margin: 0 0 4px;
   break-after: avoid;
-  page-break-after: avoid;
 }
 
 /* Italic tagline — the one-line flavor sentence immediately after the h3 */
@@ -1152,7 +1140,6 @@ hr,
   position: relative;
   margin: 18px 0;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 .dc-stat::after {
   content: '';
@@ -1231,7 +1218,6 @@ hr,
   margin: 14px 0;
   border-left: 2px solid var(--hud-blue-dim);
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 .dc-steps > li {
   display: grid;
@@ -1274,7 +1260,6 @@ hr,
   background: var(--paper-cream);
   position: relative;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 .dc-outcomes::after {
   content: '';
@@ -1485,7 +1470,6 @@ hr,
   padding: 4px 12px;
   box-shadow: 1px 1px 0 rgba(0,0,0,0.15);
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 /* QA: repeating-linear-gradient at low opacity may drop out at 300 DPI — verify in print proof */
 .dc-tape::before, .dc-tape::after {
@@ -1516,15 +1500,14 @@ hr,
 .dc-toc ol > li {
   position: relative;
   padding: 12px 0 12px 56px;
-  border-bottom: 1px solid var(--hud-blue-dim, #c9d6e2);
+  border-bottom: 1px solid var(--hud-blue-dim);
   counter-increment: dc-toc;
-  font-family: var(--font-body, 'Titillium Web', sans-serif);
+  font-family: var(--font-body);
   font-size: var(--fs-body-sm);
   line-height: 1.4;
   color: var(--ink-smoke);
   font-style: italic;
   list-style: none;
-  page-break-inside: avoid;
   break-inside: avoid;
 }
 .dc-toc ol > li::marker {
@@ -1535,33 +1518,33 @@ hr,
   position: absolute;
   left: 0;
   top: 14px;
-  font-family: var(--font-mono, 'Tomorrow', monospace);
+  font-family: var(--font-mono);
   font-weight: 700;
   font-size: 14px;
   letter-spacing: 2px;
-  color: var(--hud-blue, #2a6a8a);
+  color: var(--hud-blue);
   font-style: normal;
 }
 .dc-toc ol > li > strong {
-  color: var(--hud-blue, #2a6a8a);
+  color: var(--hud-blue);
 }
 .dc-toc ol > li > a {
   font-family: var(--font-body);
   font-size: 15pt;
   font-weight: 700;
   letter-spacing: 0.03em;
-  color: var(--ink, #1a1715);
+  color: var(--ink);
   text-decoration: none;
   border-bottom: 0;
   font-style: normal;
 }
 .dc-toc ol > li > a::after {
   content: ' p.' target-counter(attr(href), page);
-  font-family: var(--font-mono, 'Tomorrow', monospace);
+  font-family: var(--font-mono);
   font-size: 10pt;
   font-weight: 600;
   letter-spacing: 1.5px;
-  color: var(--hud-blue, #2a6a8a);
+  color: var(--hud-blue);
   font-style: normal;
   margin-left: 0.6em;
   white-space: nowrap;
@@ -1757,7 +1740,6 @@ hr,
   gap: 32px;
   align-items: start;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 /* Pullquote with top margin */
@@ -1806,7 +1788,6 @@ hr,
   position: relative;
   z-index: 1;
   break-inside: avoid;
-  page-break-inside: avoid;
   min-height: 10in;
   box-sizing: border-box;
   border: none;
@@ -1848,7 +1829,7 @@ hr,
 .specialty-intro > h2:first-child {
   font-family: var(--font-display);
   font-size: 2rem;
-  font-weight: var(--fw-bold, 700);
+  font-weight: var(--fw-bold);
   color: var(--dc-specialty-intro-title-color);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1939,7 +1920,6 @@ hr,
   padding: var(--space-2xl);
   position: relative;
   break-inside: avoid;
-  page-break-inside: avoid;
   border: 1.5px solid var(--dc-specialty-card-border);
   border-left: var(--callout-border-width-small) solid var(--dc-specialty-card-accent);
   clip-path: var(--dc-specialty-card-shell-shape);
@@ -2033,10 +2013,8 @@ hr,
   --dc-path-accent: var(--crimson);
   position: relative;
   margin: 0 0 22px;
-  page-break-before: auto;
   break-before: auto;
   break-after: avoid;
-  page-break-after: avoid;
 }
 
 .dc-path-shell {
@@ -2138,12 +2116,10 @@ hr,
 
 .dc-skill-card .dc-card-body .dc-ability:nth-last-of-type(2):not(:only-of-type) {
   break-after: avoid;
-  page-break-after: avoid;
 }
 
 .dc-skill-card .dc-card-body .dc-ability:last-of-type:not(:only-of-type) {
   break-before: avoid;
-  page-break-before: avoid;
 }
 
 /* Layout mode modifiers — opt-in classes that pin all skill-cards inside the
@@ -2304,7 +2280,6 @@ p.img-wrapper {
   line-height: var(--lh-normal);
   position: relative;
   z-index: 2;
-  page-break-inside: avoid;
   break-inside: avoid;
 }
 
@@ -2403,7 +2378,6 @@ p.img-wrapper {
   padding: 8pt 9pt;
   margin-top: 11pt;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 .dc-vibe-callout {
@@ -2475,7 +2449,6 @@ p.img-wrapper {
   align-items: flex-start;
   margin-bottom: 4px;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 /* Portrait column — holds the 120×120 image or placeholder */
@@ -2651,7 +2624,6 @@ p.img-wrapper {
   gap: var(--space-md);
   align-items: start;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 /* The options table itself */
@@ -2701,7 +2673,6 @@ p.img-wrapper {
   gap: 20px;
   align-items: start;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 .dc-ability-2col .dc-skill-card { margin-bottom: 20px; }
 .dc-ability-2col .dc-skill-card:last-of-type { margin-bottom: 0; }
@@ -2714,7 +2685,6 @@ p.img-wrapper {
   gap: 16px;
   align-items: start;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 .dc-ability-grid .dc-skill-card          { margin-bottom: 0; }
 .dc-ability-grid .dc-skill-card.span-row { grid-column: 1 / -1; }
@@ -2722,13 +2692,11 @@ p.img-wrapper {
 
 .dc-terms {
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 .dc-terms .item {
   --card-border-color: transparent;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 /* term label accent color */
@@ -2772,7 +2740,7 @@ p.img-wrapper {
 /* Base two-column list utility — scoped card overrides below take precedence */
 .two-column-list {
   column-count: 2;
-  column-gap: var(--space-md, 0.25in);
+  column-gap: var(--space-md);
   column-fill: balance;
 }
 

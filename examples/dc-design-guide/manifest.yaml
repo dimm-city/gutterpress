@@ -11,6 +11,7 @@ plugins:
 styles:
   - css/index.css
 
+# Debugging, visual review, and design quality review tip: comment out files to isolate issues/pages/components and speed up build iterations. Search akm for print-md manifest tips.
 source:
   files:
     - 00-toc.md

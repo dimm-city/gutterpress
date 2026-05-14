@@ -59,7 +59,7 @@ css/
 └── guide.css              ← specimen styles plus guide-only demo/page-template rules
 ```
 
-See [`docs/CSS-PATTERNS.md`](docs/CSS-PATTERNS.md) for the full architecture
+See [`docs/CSS-PATTERNS.md`](docs/css-architecture.md) for the full architecture
 reference — layer contracts, token conventions, markdown-friendly selector strategies,
 and Paged.js-specific patterns.
 
@@ -67,7 +67,7 @@ and Paged.js-specific patterns.
 
 | Document | Purpose |
 |---|---|
-| [`docs/CSS-PATTERNS.md`](docs/CSS-PATTERNS.md) | Normative CSS architecture and authoring patterns |
+| [`docs/CSS-PATTERNS.md`](docs/css-architecture.md) | Normative CSS architecture and authoring patterns |
 | [`docs/ADDING-MACROS.md`](docs/adding-macros.md) | Short how-to for adding plugin macros and matching dc-prefixed component CSS |
 | [`docs/field-guide-cleanup.md`](docs/field-guide-cleanup.md) | Field-guide migration notes — dc-* prefix adoption |
 

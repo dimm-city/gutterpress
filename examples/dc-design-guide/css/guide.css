@@ -61,21 +61,18 @@
    ─────────────────────────────────────────────────────────────────────────── */
 div.chapter>h1:first-of-type {
   break-before: page;
-  page-break-before: always;
   /* counter-increment removed — page-rules.css hard-resets the chapter counter per-page via .page.chapter-NN rules; auto-increment is unreliable in Paged.js */
 }
 
 /* Specimen h1s (not the first in their @chapter wrapper) — flow normally. */
 div.chapter>h1:not(:first-of-type) {
   break-before: auto;
-  page-break-before: auto;
   counter-increment: none;
 }
 
 /* First chapter (TOC) — no forced break, nothing precedes it in the document. */
 #ch-toc h1:first-of-type {
   break-before: auto;
-  page-break-before: auto;
 }
 
 /* ── Headings: keep with following content ───────────────────────────────────
@@ -88,49 +85,29 @@ div.chapter h4 {
   break-before: auto;
   break-after: avoid;
   break-inside: avoid;
-  page-break-before: auto;
-  page-break-after: avoid;
-  page-break-inside: avoid;
 }
 
 /* ── Heading word-wrap in column layouts ─────────────────────────────────────
    ixdu display font at h1/h2 sizes can overflow narrow columns. Allow words
-   to break rather than clip. overflow-wrap covers most cases; word-break:
-   break-word handles long unbreakable strings (URLs, class names, one-word
-   caps titles like CREATUREPUNK). Font-size is clamped on h2 so it scales
+   to break rather than clip. overflow-wrap handles long unbreakable strings
+   (URLs, class names, one-word caps titles like CREATUREPUNK). Font-size is
+   clamped on h2 so it scales
    down when column width is tight without affecting full-width h1 banners.
    ─────────────────────────────────────────────────────────────────────────── */
 div.chapter h1 {
   overflow-wrap: break-word;
-  word-break: break-word;
 }
 
 div.chapter.chapter-01 h2,
 div.chapter.chapter-02 h2 {
   overflow-wrap: break-word;
-  word-break: break-word;
   font-size: var(--fs-h2);
 }
 
-div.chapter h2+p,
-div.chapter h2+ul,
-div.chapter h2+ol,
-div.chapter h2+pre,
-div.chapter h2+blockquote,
-div.chapter h2+table,
-div.chapter h2+div,
-div.chapter h3+p,
-div.chapter h3+ul,
-div.chapter h3+ol,
-div.chapter h3+pre,
-div.chapter h3+table,
-div.chapter h3+div,
-div.chapter h4+p,
-div.chapter h4+ul,
-div.chapter h4+ol,
-div.chapter h4+div {
+div.chapter :is(h2, h3, h4)+:is(p, ul, ol, div),
+div.chapter :is(h2, h3)+:is(pre, table),
+div.chapter h2+blockquote {
   break-before: avoid;
-  page-break-before: avoid;
 }
 
 /* ── Fenced code blocks (specimen display) ───────────────────────────────────
@@ -145,7 +122,6 @@ div.chapter pre {
   padding: 10px 14px;
   overflow-x: auto;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 div.chapter pre code {
@@ -173,7 +149,6 @@ div.chapter :not(pre)>code {
   padding: 1px 4px;
   overflow-wrap: break-word;
   /* prevent long token names from escaping container bounds */
-  word-break: break-word;
 }
 
 /* Compact table density for the DC Components authoring quick reference —
@@ -205,7 +180,6 @@ div.chapter.dc-components table th {
   background: var(--paper-aged);
   /* was --paper-cream — distinct surface; components inside still render on their own cream */
   break-inside: avoid;
-  page-break-inside: avoid;
   overflow: hidden;
 }
 
@@ -253,7 +227,6 @@ div.chapter h2 {
 /* Each source article ends cleanly before the next one begins. */
 article {
   break-after: always;
-  page-break-after: always;
 }
 
 /* Restore the dc-toc component row treatment on the rendered TOC page. */
@@ -278,7 +251,6 @@ article {
 
 /* Chapter-opening drop cap for example openers. */
 .dc-chapter-opener-no + h1 + p::first-letter {
-  -webkit-initial-letter: 2;
   initial-letter: 2;
   font-weight: var(--fw-bold, 700);
   color: var(--crimson);
@@ -293,7 +265,6 @@ article {
 .page h2,
 .page h3 {
   break-after: avoid;
-  page-break-after: avoid;
 }
 
 .page.page-rules,
@@ -308,7 +279,6 @@ article {
 
 .page.page-rules table {
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 .page.chapter-02:not(.full-page):not(.chapter-start):not(.upgrading):not(.init):not(.outcome-table) {
@@ -344,7 +314,7 @@ article {
 .page.ideal .ideal-list,
 .page.flaw .flaw-list {
   column-count: 2;
-  column-gap: var(--gutter, 0.15in);
+  column-gap: var(--gutter);
   column-fill: balance;
 }
 
@@ -355,12 +325,10 @@ article {
 .page.flaw .flaw-list > p,
 .page.flaw .flaw-list > blockquote {
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 .page.page-item-grid h3 {
   break-after: avoid;
-  page-break-after: avoid;
   margin-top: 0.12in;
   margin-bottom: 0.06in;
 }
@@ -368,16 +336,13 @@ article {
 .page.ideal h3,
 .page.flaw h3 {
   break-after: avoid;
-  page-break-after: avoid;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 .specialty-art {
   width: var(--page-width, 8.625in);
   height: var(--page-height, 11.25in);
   break-before: page;
-  page-break-before: always;
   margin: 0;
   overflow: hidden;
 }
@@ -408,7 +373,6 @@ article {
   padding: 0.12in 0.2in 0.18in;
   padding-left: 0.38in;
   break-inside: avoid;
-  page-break-inside: avoid;
   margin-bottom: 0.35in;
 }
 
@@ -518,7 +482,6 @@ article {
 .page.page-toc > .wrapper {
   margin-bottom: 18px;
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 .page.page-toc > .wrapper > h2 {
@@ -594,12 +557,10 @@ article {
 
 .page.choose-specialty > .wrapper.learning-path {
   column-span: all;
-  -webkit-column-span: all;
 }
 
 .page.choose-specialty .dc-specialty-card {
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 .page.chapter-03 .rolling-die ul,
@@ -681,22 +642,17 @@ article {
    rules until the specialty profile examples are re-authored around simpler
    component defaults. */
 .specialty {
-  page-break-before: auto;
   break-before: auto;
 }
 
 .specialty h2 {
   break-after: avoid;
-  page-break-after: avoid;
 }
 
 .specialty .dc-learning-path {
-  page-break-before: always;
   break-before: page;
-  page-break-inside: auto;
   break-inside: auto;
   break-after: auto;
-  page-break-after: auto;
   overflow: visible;
   margin-top: 0.1in;
   margin-bottom: 0.06in;
@@ -843,18 +799,15 @@ article {
 }
 
 .specialty .page {
-  page-break-inside: auto;
   break-inside: auto;
 }
 
 .specialty .dc-skill-card {
   break-inside: avoid;
-  page-break-inside: avoid;
 }
 
 .specialty .dc-skill-card.allow-split {
   break-inside: auto;
-  page-break-inside: auto;
 }
 
 .example-gear-tech p.img-wrapper {

@@ -283,15 +283,14 @@ specialized classes extend it:
 /* shared or guide-owned content layout */
 
 /* Two-column rules pages — balanced fill */
-.page.page-rules,
-.page.da-devil {
+.page.two-column {
   columns: 2;
   column-gap: var(--gutter);
   column-fill: balance;
 }
 
 /* Full-bleed art pages */
-.full-page {
+.page.full-page {
   width:  var(--page-width, 8.625in);
   height: var(--page-height, 11.25in);
   break-before: page;
