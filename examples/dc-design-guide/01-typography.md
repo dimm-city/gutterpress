@@ -55,7 +55,54 @@ No special syntax required for these conversions.
 
 ## See It In Action
 
-These examples show the above type styles rendered in real book pages using actual Dimm City Field Guide content.
+### Heading Hierarchy
+
+Each heading level below is rendered live at its actual print size using the lixdu display font.
+
+# Chapter Title
+
+## Section Heading
+
+### Sub-section Label
+
+#### Card Tab / Tier Label
+
+---
+
+### Chevron and Spray Banners
+
+# Augmerc {.dc-chevron}
+
+## Biting Distance {.dc-spray}
+
+@no-break
+
+### Body Prose
+
+Twelve-point Titillium Web carries all running narrative. The quick dark fox leaped over the lazy augmerc's rig. Corporate enforcers earn their grafts in blood and overtime; street muscle runs cheaper and lasts longer than anyone admits. Read a full paragraph here --- notice the leading, the x-height, and how weight shifts when a word is **bolded** or *italicized* mid-sentence.
+
+@end-no-break
+
+---
+
+@no-break
+
+### Flavor Text
+
+> [!FLAVOR]
+> See an opening, ya take it. Best time to hit 'em is when they think it's over.
+
+@end-no-break
+
+---
+
+### Smart Typography
+
+The typographer converts ASCII shortcuts automatically --- no special syntax needed. Dashes: en -- and em --- . Ellipsis: ... . Double quotes: "quoted phrase" . Single quotes: 'abbreviated'.
+
+---
+
+### Real-World Examples
 
 - [Front Matter & TOC](#ch-example-front-matter) — credits, TOC, intro pages
 - [Chapter Openers](#ch-example-chapter-opener) — chapter start spreads with chevron and spray banners in context

@@ -10,6 +10,8 @@ This section shows how chapter-start spreads look in the actual Dimm City Field 
 
 ---
 
+@tape Chapter-Start Spread
+
 ## Chapter-Start Spread: Who Do You Dream to Be?
 
 **Page template** — `@page .page-chapter-start .chapter-start .chapter-01` — two-column layout defined in `page-rules.css`. The `@chapter-opener C.01` macro injects the chapter number badge into the left column. The fiction narrative fills the left column up to the column break. The H1 heading on the right side uses `.dc-chevron`. Art image replaced with design guide placeholder. See [Page Templates](#ch-templates) for the `page-chapter-start` spec and [DC Components](#ch-dc-components) for `@chapter-opener`.

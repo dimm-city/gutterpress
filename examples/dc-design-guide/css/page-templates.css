@@ -211,7 +211,7 @@
 .page.choose-specialty {
   columns: 2;
   column-gap: var(--gutter);
-  column-fill: auto;
+  column-fill: balance;
 }
 
 /* Column-span: all for card-grid header/intro content. */
@@ -222,9 +222,16 @@
   column-span: all;
 }
 
+.page.card-grid .specialty,
+.page.choose-specialty .specialty {
+  break-inside: avoid;
+}
+
 .page.card-grid .dc-specialty-card,
 .page.choose-specialty .dc-specialty-card {
   break-inside: avoid;
+  --dc-specialty-card-media-height: 0.85in;
+  --dc-specialty-card-media-width: 0.75in;
 }
 
 /* ── PAGE TEMPLATE: IMAGE (NEW) ────────────────────────────────────────────── */

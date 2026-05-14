@@ -729,12 +729,13 @@ hr,
   gap: 12px;
   margin: 28px 0 22px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 4px;
   text-transform: uppercase;
   color: var(--ink-dust);
-  background: var(--paper-aged);
-  padding: 4px 12px;
+  background: #b8af9e;
+  padding: 14px 14px;
+  border: 2px solid rgba(212, 18, 0, 0.60);
   box-shadow: 1px 1px 0 rgba(0,0,0,0.15);
   break-inside: avoid;
 }
@@ -742,9 +743,9 @@ hr,
 .dc-tape::before, .dc-tape::after {
   content: '';
   flex: 1;
-  height: 2px;
+  height: 4px;
   background: repeating-linear-gradient(90deg, var(--crimson) 0 6px, transparent 6px 10px);
-  opacity: 0.35;
+  opacity: 0.85;
 }
 
 /* ── Chapter opener number badge ──────────────────────────────────────── */
