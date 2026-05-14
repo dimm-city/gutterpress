@@ -101,10 +101,6 @@
   break-after: avoid;
 }
 
-.page > h2 {
-  text-shadow: 0 0 0.08in var(--bg);
-}
-
 /* ── PRINT UTILITY CLASSES ─────────────────────────────────────────────────── */
 .pmd-no-break {
   break-inside: avoid;
@@ -402,7 +398,6 @@ div.chapter:is(.chapter-01, .chapter-02) :is(h1, .dc-intro, table, hr, .specimen
 .specialty .dc-ability table       { margin-top: 0.04in; margin-bottom: 0.06in; }
 .specialty .dc-ability table :is(td, th) { padding-top: 0.04in; padding-bottom: 0.04in; }
 .specialty .dc-ability + .dc-ability    { padding-top: 0.02in; }
-.specialty h2 + p { margin-bottom: 0.06in; }
 
 .specialty .dc-card-body { padding: 0 1.25rem; }
 .specialty .dc-skill-card .dc-card-body .dc-card-inner { padding: 0.5rem 0; }
