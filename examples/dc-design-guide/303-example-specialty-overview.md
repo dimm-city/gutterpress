@@ -3,8 +3,10 @@
 # Specialty Overview — Real-World Example {.dc-chevron}
 
 @lede
+
 This section shows how the "Choose a Specialty" spread looks in the actual Dimm City Field Guide, rendered using real book content. It covers two page types: a chapter-start opener with fiction and ability primer, followed by a specialty overview spread with the specialty card grid.
--lede
+
+@end-lede
 
 ---
 
@@ -62,15 +64,14 @@ In Dimm City, abilities aren't just what you can do. They're learned techniques,
 
 @page .card-grid
 
-@section intro
 ## Choose a specialty
 
 Every dreamer's got a sharp edge — your specialty is where it starts.
 
 It's the skill set that sets you apart, defines what you bring to the crew, and shapes the wild ways you survive the Dream.
-@end-section
 
 @specialty .augmerc
+
 @specialty-card #specialty-augmerc
 
 ### Augmerc
@@ -82,9 +83,11 @@ It's the skill set that sets you apart, defines what you bring to the crew, and 
 Heavily armed and wired for war, Augmercs are the blunt force of any squad. They charge the front, soak the pain, and unload hell using brute strength and brutal tech. Combat-born, augged to kill, and never outgunned.
 
 @end-specialty-card
+
 @end-specialty
 
 @specialty .proxy
+
 @specialty-card #specialty-proxy
 
 ### Proxy
@@ -96,9 +99,11 @@ Heavily armed and wired for war, Augmercs are the blunt force of any squad. They
 Marked by something higher—god, ghost, code, or conviction—Proxies walk the line between zealot and judge. They wield divine force like a weapon, bending battles and conversations alike with power that burns louder than faith.
 
 @end-specialty-card
+
 @end-specialty
 
 @specialty .streetwarden
+
 @specialty-card #specialty-streetwarden
 
 ### Streetwarden
@@ -110,9 +115,11 @@ Marked by something higher—god, ghost, code, or conviction—Proxies walk the 
 They don't wear badges—they are the law when no one else shows. Streetwardens guard the city's broken places with fists, grit, and a code all their own. They know the alleys like arteries and protect the forgotten.
 
 @end-specialty-card
+
 @end-specialty
 
 @specialty .gutterdruid
+
 @specialty-card #specialty-gutterdruid
 
 ### Gutterdruid
@@ -124,9 +131,11 @@ They don't wear badges—they are the law when no one else shows. Streetwardens 
 They walk the alleys like sacred ground—feeding the hungry, tending weeds, raising the forgotten. Gutterdruids draw power from the pulse beneath the pavement, shaping the raw, primal force that keeps the city alive even as it rots.
 
 @end-specialty-card
+
 @end-specialty
 
 @specialty .cybersurgeon
+
 @specialty-card #specialty-cybersurgeon
 
 ### Cybersurgeon
@@ -138,9 +147,11 @@ They walk the alleys like sacred ground—feeding the hungry, tending weeds, rai
 Life is flexible. Cybersurgeons prove it daily—cutting, splicing, upgrading flesh into something more. Whether they're back-alley butchers or elite biomech specialists, these med-techs push the edge of evolution, one implant at a time.
 
 @end-specialty-card
+
 @end-specialty
 
 @specialty .wirephreak
+
 @specialty-card #specialty-wirephreak
 
 ### Wirephreak
@@ -152,9 +163,11 @@ Life is flexible. Cybersurgeons prove it daily—cutting, splicing, upgrading fl
 Killers, thieves, forgers—Wirephreaks specialize in slipping past locks, firewalls, and people. Some work clean, some loud, all lethal. Whether the job calls for stealth, sabotage, or sleight-of-hand, a Wirephreak on the crew means the job gets done.
 
 @end-specialty-card
+
 @end-specialty
 
 @specialty .technosorcerer
+
 @specialty-card #specialty-technosorcerer
 
 ### Technosorcerer
@@ -166,9 +179,11 @@ Killers, thieves, forgers—Wirephreaks specialize in slipping past locks, firew
 Technosorcerers walk on the razor's edge between magic and technology. They believe one to be no different than the other and use the strengths of each to help nullify the other's weaknesses.
 
 @end-specialty-card
+
 @end-specialty
 
 @specialty .etherlock
+
 @specialty-card #specialty-etherlock
 
 ### Etherlock
@@ -180,4 +195,5 @@ Technosorcerers walk on the razor's edge between magic and technology. They beli
 Secrets are currency—and Etherlocks are rich in them. Tapping into elemental forces, spirit echoes, and the buried laws of the monoverse, they wield magic that slips through cracks in reality.
 
 @end-specialty-card
+
 @end-specialty

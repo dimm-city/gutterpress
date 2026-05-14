@@ -3,8 +3,10 @@
 # Gear & Tech — Real-World Example {.dc-chevron}
 
 @lede
+
 This section shows how gear and cybernetics pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 05. This example now focuses on the rules-heavy reference page pattern and standard gear prose. Images replaced with design guide placeholder.
--lede
+
+@end-lede
 
 ---
 

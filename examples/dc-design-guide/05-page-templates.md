@@ -3,8 +3,10 @@
 # Page Templates
 
 @lede
+
 Named page types control margin geometry, footer chrome, and running headers. Each maps to a `@page` rule in `css/page-rules.css`.
--lede
+
+@end-lede
 
 ---
 

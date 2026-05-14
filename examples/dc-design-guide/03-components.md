@@ -3,8 +3,10 @@
 # Core Components
 
 @lede
+
 The base prose and callout layer. These components work in all chapter types without needing a specialty or learning-path wrapper.
--lede
+
+@end-lede
 
 ---
 
@@ -267,9 +269,11 @@ Track consequences at the end of the scene, not immediately.
 ```
 
 @callout variant="warning"
+
 **Trauma Patches** stabilize a dying character but do not restore HP.
 
 A character at 0 HP with a Patch applied is still incapacitated. Apply Injury Track consequences at the end of the scene, not immediately.
+
 @end-callout
 
 `@dm-note` is the block form of `> [!DM]`.
@@ -284,9 +288,11 @@ Streetwise roll DC 14.
 ```
 
 @dm-note label="Scene Hook"
+
 The contact doesn't know the job is a setup.
 
 If players investigate further before accepting, they can discover the trap with a Streetwise roll DC 14.
+
 @end-dm-note
 
 ---

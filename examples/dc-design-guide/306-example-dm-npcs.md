@@ -3,8 +3,10 @@
 # DM & NPC Pages — Real-World Example {.dc-chevron}
 
 @lede
+
 This section shows how Dream Mastery and NPC pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 04. DM pages combine prose, callout blocks, and example sidebars. NPC pages use the stat block format: type line, HP/Damage, Traits, Equipment, and Cybernetics sections.
--lede
+
+@end-lede
 
 ---
 

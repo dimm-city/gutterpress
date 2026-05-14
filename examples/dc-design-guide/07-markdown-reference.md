@@ -3,8 +3,10 @@
 # Markdown Reference
 
 @lede
+
 All markdown-it syntax features with DC authoring context.
--lede
+
+@end-lede
 
 ---
 

@@ -17,7 +17,14 @@ legacy code from the print-md framework.
 | Phase 5 | Ship `@toc`, `@two-column`, `@three-column`, `@no-break`, `@gear-card`, `@tape`, `@lede`, `@glossary`, `@specialty-card`, `@specialty-intro`, `@specialty-art`; AP Tags variants | ✓ Done |
 | Phase 6 | Migrate all 24 `:::lede` → `@lede`; zero live `:::` in design guide | ✓ Done |
 | Phase 7 | Remove deprecated containers from `src/lib/markdown/index.ts`; archive TODO; update docs | ✓ Done |
-| **Remaining** | **Full base component migration** (dc-brand.css → components.css): `.dc-skill-card`, `.dc-path-shell`, `.dc-specialty-card`, `.specialty-intro`, `.dc-gear-entry`, `.dc-toc`, `.dc-tape`, `.dc-outcomes` and all other base component CSS. dc-brand.css can be deleted once complete. | Pending |
+| Phase 8 (dc-brand migration, Stages 1–10) | Full base component migration: every `.dc-*` rule moved from dc-brand.css to components.css; `dc-brand.css` deleted; `index.css` imports exactly 5 files | ✓ Done |
+
+### True improvements made during migration
+
+- Plugin `parseAttrs` extended to recognize bare `.class`/`#id` tokens (e.g. `@specialty .augmerc`) matching `@page .card-grid` style. Fixes a pre-existing regression where `@specialty .augmerc` was silently emitting `<section class="specialty">` without the specialty-name class.
+- 303-example-specialty-overview.md restructured with blank lines between consecutive `@macro` calls (otherwise they were parsed as a single paragraph and inner macros ignored).
+- @media print h1 rule migrated to tokens.css (preserved across the migration).
+- Audited and confirmed `.dc-roll-table*`, `.dc-specimen-*`, `.dc-learning-path h2.dc-spray` as zero-usage in markdown source and rendered output (would be deleted in a follow-up cleanup; currently in components.css via Stage 9 bulk migration).
 
 ---
 

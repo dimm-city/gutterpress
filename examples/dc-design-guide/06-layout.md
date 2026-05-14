@@ -3,8 +3,10 @@
 # Layout & Composition
 
 @lede
+
 Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
--lede
+
+@end-lede
 
 ---
 

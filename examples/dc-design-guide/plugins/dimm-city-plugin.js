@@ -413,40 +413,51 @@ function admonitionRule(state, startLine, endLine, silent) {
   return true;
 }
 
-// Parse key="value", key='value', key=value, and {.class #id} attribute pairs from a string
+// Parse key="value", key='value', key=value, bare .class / #id tokens,
+// and {.class #id} attribute blocks from a string.
+// Supports both markdown-it-paged style (`@page .card-grid #id`) and brace
+// style (`@specialty {.augmerc}`) for consistency across all DC macros.
 function parseAttrs(str) {
   const attrs = {};
-  // Match {.class1 .class2 #id} blocks (markdown-it attr style)
-  const braceRegex = /\{([^}]+)\}/g;
+  const classes = [];
   let match;
+
+  // 1) Brace blocks {.class1 .class2 #id}
+  const braceRegex = /\{([^}]+)\}/g;
   while ((match = braceRegex.exec(str)) !== null) {
     const inside = match[1].trim();
-    const parts = inside.split(/\s+/);
-    const classes = [];
-    for (const part of parts) {
-      if (part.startsWith('.')) {
-        classes.push(part.slice(1));
-      } else if (part.startsWith('#')) {
-        attrs['id'] = part.slice(1);
-      }
-    }
-    if (classes.length > 0) {
-      attrs['class'] = (attrs['class'] ? attrs['class'] + ' ' : '') + classes.join(' ');
+    for (const part of inside.split(/\s+/)) {
+      if (part.startsWith('.')) classes.push(part.slice(1));
+      else if (part.startsWith('#')) attrs['id'] = part.slice(1);
     }
   }
-  // Strip brace blocks before parsing key=value pairs
-  const strNoBraces = str.replace(/\{[^}]+\}/g, '');
-  // Match key="value" or key='value' (quoted)
+
+  // 2) Bare .class / #id tokens (markdown-it-paged style, e.g. `@page .card-grid`)
+  //    Match dot/hash followed by identifier chars, surrounded by whitespace or start/end.
+  const bareRegex = /(?:^|\s)([.#][A-Za-z][\w-]*)/g;
+  while ((match = bareRegex.exec(str)) !== null) {
+    const part = match[1];
+    if (part.startsWith('.')) classes.push(part.slice(1));
+    else if (part.startsWith('#')) attrs['id'] = part.slice(1);
+  }
+
+  if (classes.length > 0) {
+    attrs['class'] = (attrs['class'] ? attrs['class'] + ' ' : '') + classes.join(' ');
+  }
+
+  // 3) Strip brace blocks and bare class/id tokens before parsing key=value pairs
+  let strNoBraces = str.replace(/\{[^}]+\}/g, '');
+  strNoBraces = strNoBraces.replace(/(?:^|\s)([.#][A-Za-z][\w-]*)/g, ' ');
+
+  // 4) Quoted key="value" / key='value'
   const quotedRegex = /(\S+?)=["']([^"']*?)["']/g;
   while ((match = quotedRegex.exec(strNoBraces)) !== null) {
     attrs[match[1]] = match[2];
   }
-  // Match key=value (unquoted, no spaces in value)
+  // 5) Unquoted key=value
   const unquotedRegex = /(\S+?)=(\S+)/g;
   while ((match = unquotedRegex.exec(strNoBraces)) !== null) {
-    // Only add if not already set by quoted regex (quoted takes precedence)
     if (!(match[1] in attrs)) {
-      // Strip any quotes that might have been partially matched
       const val = match[2].replace(/^["']|["']$/g, '');
       attrs[match[1]] = val;
     }
@@ -592,6 +603,7 @@ export default function dimmCityPlugin(md, options = {}) {
       let inOutcomeBlock = false;
       let outcomeBlockItems = [];
       let outcomeBlockFlush = false;
+      let inLede = false;
       let inSidebar = false;
       let inSidebarBox = false;
       let inDefinition = false;
@@ -621,6 +633,10 @@ export default function dimmCityPlugin(md, options = {}) {
      // Helper to close all open structures EXCEPT specialty (specialty
      // wraps the entire chapter section and is closed separately).
       function closeAll() {
+        if (inLede) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inLede = false;
+        }
         if (inSidebar) {
           newTokens.push(makeToken('html_block', '</div>\n'));
           inSidebar = false;
@@ -1289,10 +1305,12 @@ export default function dimmCityPlugin(md, options = {}) {
       if (ledeMarker.matched) {
         closeAll();
         newTokens.push(makeToken('html_block', '<div class="dc-intro lede">\n'));
+        inLede = true;
         i += 2; continue;
       }
       if (isMarker(tok, tokens, i, '@end-lede')) {
         newTokens.push(makeToken('html_block', '</div>\n'));
+        inLede = false;
         i += 2; continue;
       }
 

@@ -448,3 +448,2036 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    Phase 5 — component migrations from dc-brand.css pending
    ═══════════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   SIMPLE COMPONENTS — migrated from dc-brand.css (Stage 4)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Tag ──────────────────────────────────────────────────────────────── */
+.dc-tag {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: var(--ls-cap-sm);
+  color: var(--ink-dust);
+  font-weight: 600;
+}
+
+/* ── Chevron banner ───────────────────────────────────────────────────── */
+.dc-chevron {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1); /* was clamp(16px, 2.4vw, 26px) — vw resolves to min in Paged.js */
+  letter-spacing: 0.06em;
+  color: var(--paper-cream);
+  text-transform: uppercase;
+  background: var(--rust);
+  padding: 10px 28px 10px 14px;
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  clip-path: var(--clip-banner);
+  margin: 0 0 18px;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+
+/* ── Spray banner (h2 path header) ────────────────────────────────────── */
+.dc-spray {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--paper-cream);
+  text-transform: uppercase;
+  line-height: 1.5;
+  background: var(--hud-magenta);
+  display: inline-block;
+  max-width: calc(100% - 18px);
+  box-sizing: border-box;
+  padding: 16px 22px 18px;
+  position: relative;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 25px 100%, 0 calc(100% - 15px));
+  margin: 4px 0 16px;
+  word-break: break-word;
+  overflow: visible;
+}
+.dc-spray::before {
+  content: '';
+  position: absolute;
+  top: -3px; right: -8px; bottom: -3px;
+  width: 14px;
+  background: var(--hud-magenta);
+  transform: skewX(-8deg);
+  z-index: -1;
+}
+.dc-spray::after {
+  content: '';
+  position: absolute;
+  bottom: -6px; left: 8%;
+  width: 45%; height: 5px;
+  background: var(--hud-magenta);
+  opacity: 0.08;
+  /* filter: blur(4px) removed — silently ignored by Paged.js in PDF output */
+}
+
+
+/* ── Path subtitle ────────────────────────────────────────────────────── */
+.dc-path-subtitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  color: var(--ink-dust);
+  margin: 14px 0 8px;
+}
+
+
+/* ── Stickers / Arrow ─────────────────────────────────────────────────── */
+.dc-stickers {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 22px;
+}
+.dc-sticker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  background: var(--paper-light);
+  color: var(--ink-smoke);
+  border: 1px solid var(--paper-aged);
+  transform: rotate(-0.5deg);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.22);
+}
+.dc-sticker:nth-child(4n+3) { transform: rotate(0.7deg); }
+.dc-sticker:nth-child(4n+5) { transform: rotate(-0.9deg); }
+.dc-sticker.active {
+  background: var(--crimson);
+  color: var(--paper-cream);
+  border-color: var(--crimson);
+  transform: rotate(-1.5deg);
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.28);
+}
+.dc-arrow {
+  font-family: var(--font-mono);
+  color: var(--orange);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+
+/* ── Path sticker / Sticker tier ref ──────────────────────────────────── */
+.dc-path-sticker {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  background: var(--paper-cream);
+  color: var(--hud-blue);
+  padding: 3px 7px 2px;
+  transform: rotate(-2.5deg);
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+  margin-right: 10px;
+  box-shadow: 1px 2px 0 rgba(0,0,0,0.30);
+}
+
+/* ───────── STICKER TIER REF ───────── */
+.dc-sticker-ref {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: inherit;
+  opacity: 0.55;
+  margin-right: 5px;
+  letter-spacing: 0.5px;
+}
+
+/* ── Flavor (italic flavor text) ──────────────────────────────────────── */
+.dc-flavor {
+  font-family: var(--font-body);
+  font-style: italic;
+  color: var(--ink-smoke);
+  font-size: var(--fs-body-sm);
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  position: relative;
+  border-left: 3px solid var(--orange);
+  padding-left: 10px;
+}
+
+/* ── Sub-header ───────────────────────────────────────────────────────── */
+.dc-sub-header {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  color: var(--hud-blue);
+  margin: 14px 0 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hud-blue-dim);
+}
+
+
+/* ── Portrait panel ───────────────────────────────────────────────────── */
+.dc-portrait {
+  background: var(--paper-cream);
+  border: 1px solid var(--paper-aged);
+  padding: 14px;
+  position: relative;
+  overflow: hidden;
+  height: fit-content;
+}
+.dc-portrait img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+
+/* ── Intro / Lede line ────────────────────────────────────────────────── */
+.dc-intro {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  font-style: italic;
+  color: var(--ink-smoke);
+  line-height: 1.5;
+  border-left: 3px solid var(--orange);
+  padding: 4px 12px;
+  margin-bottom: 18px;
+}
+
+/* ── Spec tweak section header ────────────────────────────────────────── */
+.dc-spec-tweak {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.08em;
+  color: var(--orange);
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--orange);
+  border-left: 3px solid var(--crimson);
+  padding-bottom: 6px;
+  padding-left: 10px;
+  margin: 20px 0 14px;
+}
+
+/* ── Dashed rule divider (hr) ─────────────────────────────────────────── */
+hr,
+.dc-dashed-rule {
+  border: none;
+  border-top: 2px dashed var(--blood);
+  margin: var(--space-xl) 0;   /* was 0.18in → 0.20in; aligns to spacing token */
+}
+
+
+/* ── Class tag pill + specialty color variants ────────────────────────── */
+.dc-classtag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  background: var(--paper-light);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  padding: 4px 10px 4px 6px;
+  font-weight: 600;
+}
+.dc-classtag-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--c, var(--orange));
+  display: inline-block;
+}
+.dc-classtag.augmerc      { --c: var(--rust); }
+.dc-classtag.proxy        { --c: var(--hud-magenta); }
+.dc-classtag.streetwarden { --c: var(--hud-blue); }
+.dc-classtag.gutterdruid  { --c: var(--classtag-gutterdruid); }
+.dc-classtag.cybersurgeon { --c: var(--blood); }
+.dc-classtag.wirephreak   { --c: var(--hud-blue-bright); }
+.dc-classtag.technosorc   { --c: var(--classtag-technosorc); }
+.dc-classtag.etherlock    { --c: var(--amber); }
+
+
+/* ── Stamp ────────────────────────────────────────────────────────────── */
+.dc-stamp {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--blood);
+  border: 2px solid var(--blood);
+  padding: 6px 10px;
+  transform: rotate(-4deg);
+  background: var(--paper-cream);
+  position: relative;
+}
+.dc-stamp::before, .dc-stamp::after {
+  content: '';
+  position: absolute;
+  background: var(--blood);
+  opacity: 0.5;
+}
+.dc-stamp::before { top: -1px; left: 4px; right: 4px; height: 1px; }
+.dc-stamp::after  { bottom: -1px; left: 4px; right: 4px; height: 1px; }
+.dc-stamp.classified { color: var(--orange); border-color: var(--orange); transform: rotate(2deg); }
+.dc-stamp.classified::before, .dc-stamp.classified::after { background: var(--orange); }
+
+/* ── Tape (torn-tape divider) ─────────────────────────────────────────── */
+.dc-tape {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 28px 0 22px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--ink-dust);
+  background: var(--paper-aged);
+  padding: 4px 12px;
+  box-shadow: 1px 1px 0 rgba(0,0,0,0.15);
+  break-inside: avoid;
+}
+/* QA: repeating-linear-gradient at low opacity may drop out at 300 DPI — verify in print proof */
+.dc-tape::before, .dc-tape::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: repeating-linear-gradient(90deg, var(--crimson) 0 6px, transparent 6px 10px);
+  opacity: 0.35;
+}
+
+/* ── Chapter opener number badge ──────────────────────────────────────── */
+.dc-chapter-opener-no {
+  font-family: var(--font-display);
+  font-size: var(--fs-chapter);   /* 26pt */
+  letter-spacing: var(--ls-display);
+  text-transform: uppercase;
+  color: var(--crimson);
+  line-height: 1;
+  display: block;
+  margin: 0 0 var(--space-sm);
+}
+
+
+/* ── Modifier variants for Stage 4 components ─────────────────────────── */
+.dc-stickers.flush,
+.dc-path-subtitle.flush,
+.dc-intro.flush,
+.dc-tape.flush {
+  margin: 0;
+}
+
+.dc-sub-header.flush {
+  margin: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.dc-spec-tweak.no-top { margin-top: 0; }
+
+.dc-tape.margin-sm { margin: 14px 0 8px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CARD SYSTEM — migrated from dc-brand.css (Stage 5)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Skill card shell ─────────────────────────────────────────────────── */
+.dc-skill-card {
+  /* Fix 1: Prevent skill cards from splitting across page breaks (tab/tier lost on fragment) */
+  --dc-card-accent: var(--ink);
+  --dc-card-surface: var(--paper-cream);
+  --dc-card-tab-bg: var(--ink-dark);
+  --dc-card-tab-title-color: var(--paper-cream);
+  --dc-card-tier-color: var(--hud-magenta);
+  --dc-card-tier-border: var(--hud-magenta);
+  --dc-card-body-mark: var(--crimson);
+  --dc-skill-tab-shape: polygon(0 0, calc(100% - 18px) 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 44px) 100%, 0 100%);
+
+  position: relative;
+  break-inside: avoid;
+  margin-bottom: 24px;
+  max-width: 100%;
+  filter: drop-shadow(2px 0 0 var(--ink))
+    drop-shadow(-2px 0 0 var(--ink))
+    drop-shadow(0 2px 0 var(--ink))
+    drop-shadow(0 -2px 0 var(--ink))
+    drop-shadow(4px 6px 8px rgba(0,0,0,0.18)); /* screen preview only — drops in Paged.js PDF export */
+}
+
+/* ── Continuation markers ─────────────────────────────────────────────── */
+.card-cont-marker {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9pt;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--orange);
+  opacity: 0.85;
+  margin: 0 0 0.5rem 0.5rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px dashed var(--orange);
+  width: fit-content;
+}
+
+.card-fwd-marker {
+  position: absolute;
+  bottom: 4px;
+  right: 18px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--orange);
+  opacity: 0.65;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* ── Card tab ─────────────────────────────────────────────────────────── */
+.dc-card-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 26px 6px 12px;
+  background: var(--dc-card-tab-bg);              /* was paper-cream — dark tab distinguishes from card body */
+  border: 2px solid var(--dc-card-accent);
+  border-bottom: 0;
+  margin-left: 14px;
+  margin-bottom: -2px;
+  position: relative;
+  z-index: 2;
+  max-width: calc(100% - 28px);
+  box-sizing: border-box;
+  clip-path: var(--dc-skill-tab-shape);
+}
+.dc-tab-title {
+  font-family: var(--font-tab);
+  font-size: 15px;
+  color: var(--dc-card-tab-title-color);   /* was --ink — light text on dark tab background */
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+  word-break: break-word;
+}
+.dc-tab-tier {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  background: transparent;
+  border: 1px solid var(--dc-card-tier-border);
+  color: var(--dc-card-tier-color);
+  letter-spacing: 1.5px;
+  white-space: nowrap;
+}
+
+/* ── Path block (structural section hook) ─────────────────────────────── */
+.dc-path-block {
+  position: relative;
+}
+
+/* ── Card body + decorative mark ──────────────────────────────────────── */
+.dc-card-body {
+  background: var(--dc-card-surface);
+  padding: 22px 20px 36px;
+  position: relative;
+  clip-path: var(--dc-skill-body-shape);
+}
+.dc-card-body::before {
+  content: '';
+  position: absolute;
+  top: 10px; right: 16px;
+  width: 28px; height: 2px;
+  background: var(--dc-card-body-mark);
+  opacity: 0.15;
+  transform: rotate(-3deg);
+  z-index: 2;
+}
+.dc-card-inner { position: relative; z-index: 1; }
+
+/* ── Continuation card variants ───────────────────────────────────────── */
+.dc-skill-card-cont {
+  margin-top: 0;
+}
+
+.dc-card-tab-cont {
+  border-top-style: dashed;
+  border-top-color: var(--hud-blue);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ABILITY ROW + AP SYSTEM — migrated from dc-brand.css (Stage 6)
+   Note: .dc-ap.free/.var/.standard/.reduced/.increased/.special variants
+         migrated in Phase 5; base .dc-ap migrated here.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Ability row + ability text ───────────────────────────────────────── */
+.dc-ability {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  align-items: flex-start;
+}
+.dc-ability:last-child { margin-bottom: 0; }
+.dc-ability-text {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--ink);
+}
+.dc-ability-text strong { color: var(--crimson); font-weight: 600; }
+
+/* ── AP base + author-facing variants ─────────────────────────────────── */
+.dc-ap {
+  --dc-ap-bg: var(--hud-blue);
+  --dc-ap-fg: var(--paper-cream);
+
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 9px;
+  min-width: 50px;
+  text-align: center;
+  background: var(--dc-ap-bg);
+  color: var(--dc-ap-fg);
+  transform: rotate(-1deg);
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.12);
+  letter-spacing: 1px;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 1px;
+}
+.dc-ap.free { --dc-ap-bg: var(--crimson); }
+.dc-ap.var  { --dc-ap-bg: var(--hud-magenta); }
+
+/* ── Ability layout utilities (2col, grid) ────────────────────────────── */
+.dc-ability-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+  break-inside: avoid;
+}
+.dc-ability-2col .dc-skill-card { margin-bottom: 20px; }
+.dc-ability-2col .dc-skill-card:last-of-type { margin-bottom: 0; }
+
+.dc-ability-col { display: contents; }
+
+.dc-ability-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+  break-inside: avoid;
+}
+.dc-ability-grid .dc-skill-card          { margin-bottom: 0; }
+.dc-ability-grid .dc-skill-card.span-row { grid-column: 1 / -1; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LEARNING PATH + SPECIALTY INTRO + SPECIALTY CARD — Stage 7 (highest risk)
+   Specialty parent-container overrides (above) supply variant tokens; these
+   are the bases that consume them.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Specialty intro shell + element overrides ────────────────────────── */
+.specialty-intro {
+  --dc-specialty-intro-title-bg: var(--hud-magenta);
+  --dc-specialty-intro-title-color: var(--bg);
+  --dc-specialty-intro-title-shape: polygon(0 0, 100% 0, 100% 100%, 22px 100%, 0 calc(100% - 14px));
+
+  background: var(--hud-panel);
+  padding: 1.5rem 1.5rem 1.25rem;
+  margin: 0;
+  position: relative;
+  z-index: 1;
+  break-inside: avoid;
+  min-height: 10in;
+  box-sizing: border-box;
+  border: none;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
+}
+
+/* .specialty-intro.variant-N — migrated to parent-container model in components.css (Phase 4) */
+
+.specialty-intro > h2:first-child {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: var(--fw-bold);
+  color: var(--dc-specialty-intro-title-color);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  background: var(--dc-specialty-intro-title-bg);
+  display: block;
+  padding: 0.85rem 1.75rem;
+  margin: -1.5rem -1.5rem 1rem -1.5rem;
+  clip-path: var(--dc-specialty-intro-title-shape);
+  border: none;
+}
+
+/* PARTIAL — bare .specialty-intro > h3. Complementary to shared.css compound version. */
+.specialty-intro > h3 {
+  color: var(--crimson);
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 1.1rem;
+  margin-bottom: 0.4rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--crimson);
+  border-top: none;
+}
+
+/* PARTIAL — bare .specialty-intro > p. Complementary to shared.css compound version. */
+.specialty-intro > p {
+  margin-block: 0.45rem;
+  line-height: 1.5;
+}
+
+.specialty-intro > h2:first-child + p {
+  margin-top: 0.2rem;
+}
+
+/* PARTIAL — bare .specialty-intro > ul/ol. Complementary to shared.css compound version. */
+.specialty-intro > ul,
+.specialty-intro > ol {
+  margin-block: 0.45rem;
+  padding-left: 1.2rem;
+}
+
+/* Collapses trailing margin. GAP — no shared.css peer. */
+.specialty-intro > :last-child {
+  margin-bottom: 0;
+}
+
+/* ── Specialty section content (.specialty > h2/h3/blockquote, h2+p) ─── */
+.specialty h2 {
+  color: var(--crimson);
+  border-bottom: thin var(--crimson) solid;
+  margin-bottom: 0.12in;
+}
+
+/* Spacing after the specialty name heading. LIVE. */
+.specialty h2+p {
+  margin-bottom: 0.12in;
+}
+
+/* LIVE inside plugin-emitted specialty sections. */
+.specialty blockquote {
+  margin: 0.12in 0;
+  padding: 0.08in 0.12in;
+}
+
+/* LIVE inside plugin-emitted specialty sections. */
+.specialty h3 {
+  margin-top: 0.18in;
+  padding-top: 0.08in;
+  border-top: var(--bw-thin) solid var(--orange);
+}
+
+/* ── Specialty card (.dc-specialty-card + descendants + nth-of-type(even)) */
+.dc-specialty-card {
+  --dc-specialty-card-bg: var(--hud-panel);
+  --dc-specialty-card-border: var(--hud-blue);
+  --dc-specialty-card-accent: var(--crimson);
+  --dc-specialty-card-media-width: 0.95in;
+  --dc-specialty-card-media-height: 1.2in;
+  --dc-specialty-card-title-align: right;
+  --dc-specialty-card-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 24px) 100%, 0 100%);
+
+  background: var(--dc-specialty-card-bg);
+  display: flow-root;
+  overflow: hidden;
+  line-height: var(--lh-tight);
+  margin: 0 0 0.1in 0;
+  padding: var(--space-2xl);
+  position: relative;
+  break-inside: avoid;
+  border: 1.5px solid var(--dc-specialty-card-border);
+  border-left: var(--callout-border-width-small) solid var(--dc-specialty-card-accent);
+  clip-path: var(--dc-specialty-card-shell-shape);
+}
+
+/* Portrait image floated in specialty card. */
+.dc-specialty-card img {
+  width: var(--dc-specialty-card-media-width);
+  height: var(--dc-specialty-card-media-height);
+  object-fit: cover;
+  border: none;
+  padding: 0;
+  box-sizing: border-box;
+  float: left;
+  margin: 0 0.14in 0.08in 0;
+  border-radius: 2px;
+}
+
+/* Specialty name heading — aligned away from the portrait, allow wrapping. */
+.dc-specialty-card h3 {
+  margin: 0;
+  font-size: 1.15em;
+  text-align: var(--dc-specialty-card-title-align);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+/* Subtitle tagline — aligned away from the portrait, allow wrapping. */
+.dc-specialty-card blockquote {
+  margin: 0.04in 0 0;
+  padding: 0 0.06in;
+  font-size: 0.95em;
+  text-align: var(--dc-specialty-card-title-align);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Card body paragraph spacing. */
+.dc-specialty-card p {
+  margin-top: 0.02in;
+  margin-bottom: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+/* Even cards flip the border accent to the right. Use nth-of-type because
+   specialty spreads include interleaved wrapper blocks in the same parent. */
+.dc-specialty-card:nth-of-type(even) {
+  --dc-specialty-card-title-align: left;
+
+  border-left: 1.5px solid var(--dc-specialty-card-border);
+  border-right: var(--callout-border-width-small) solid var(--dc-specialty-card-accent);
+}
+
+.dc-specialty-card:nth-of-type(even) img {
+  float: right;
+  margin: 0 0 0.08in 0.14in;
+}
+
+.dc-specialty-card:nth-of-type(even) h3,
+.dc-specialty-card:nth-of-type(even) blockquote {
+  text-align: left;
+}
+
+/* ── Learning path structural + path shell + title overrides ──────────── */
+.dc-learning-path.dc-path-block {
+  --dc-path-accent: var(--crimson);
+  position: relative;
+  margin: 0 0 22px;
+  break-before: auto;
+  break-after: avoid;
+}
+
+.dc-path-shell {
+  --dc-path-title-bg: var(--hud-magenta);
+  --dc-path-title-color: var(--paper-cream);
+  --dc-path-title-shape: polygon(0 0, 100% 0, 100% 100%, 25px 100%, 0 calc(100% - 15px));
+
+  background: var(--paper-cream);
+  margin: 0 0 22px;
+  padding: 24px 26px 30px;
+  position: relative;
+  clip-path: polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px);
+  filter: drop-shadow(2px 0 0 var(--ink))
+    drop-shadow(-2px 0 0 var(--ink))
+    drop-shadow(0 2px 0 var(--ink))
+    drop-shadow(0 -2px 0 var(--ink)); /* screen preview only — drops in Paged.js PDF export */
+}
+
+/* .dc-path-shell.variant-N — migrated to parent-container model in components.css (Phase 4) */
+
+.dc-path-shell > h2.dc-spray:first-child {
+  color: var(--dc-path-title-color);
+  background: var(--dc-path-title-bg);
+  clip-path: var(--dc-path-title-shape);
+  margin-bottom: 12px;
+}
+
+.dc-path-shell > h2.dc-spray:first-child::before,
+.dc-path-shell > h2.dc-spray:first-child::after {
+  background: var(--dc-path-title-bg);
+}
+
+/* Keep prose inside path shells and skill cards on the parent text size without
+   flattening banner, sticker, or tab typography that sets its own size. */
+.dc-learning-path :is(p, ul, ol, li),
+.dc-skill-card :is(p, ul, ol, li, table, tbody, thead, tr, td, th, blockquote) {
+  font-size: inherit;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   OUTCOMES + STEPS + PROCEDURE + DISTANCE + DICE — Stage 8
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Procedure / numbered steps ───────────────────────────────────────── */
+.dc-steps {
+  list-style: none;
+  padding: 0 0 0 16px;
+  margin: 14px 0;
+  border-left: 2px solid var(--hud-blue-dim);
+  break-inside: avoid;
+}
+.dc-steps > li {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 22px;
+  padding: 12px 0 12px 4px;
+  border-top: 1px dashed var(--paper-aged);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--ink);
+  align-items: baseline;
+}
+.dc-steps > li:first-child { border-top: 0; padding-top: 0; }
+.dc-steps > li::before { content: none; }   /* defang any inherited bullets */
+.dc-steps .dc-step-no {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 2px;
+  color: var(--hud-blue-dark);
+  line-height: 1;
+  white-space: nowrap;
+  align-self: center;
+}
+.dc-steps li strong { color: var(--crimson); font-weight: 700; }
+
+/* ── Outcome ladder ───────────────────────────────────────────────────── */
+.dc-outcomes {
+  margin: 14px 0;
+  border: 2px solid var(--ink);
+  background: var(--paper-cream);
+  position: relative;
+  break-inside: avoid;
+}
+.dc-outcomes::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 1px solid var(--paper-aged);
+  pointer-events: none;
+}
+.dc-outcomes-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--hud-blue);
+  padding: 8px 16px 6px;
+  border-bottom: 1px solid var(--hud-blue-dim);
+  position: relative;
+  z-index: 1;
+}
+.dc-outcome-row {
+  display: grid;
+  grid-template-columns: 155px 1fr;
+  gap: 0;
+  border-bottom: 1px solid var(--hud-blue-dim);
+  position: relative;
+  z-index: 1;
+}
+.dc-outcome-row:last-child { border-bottom: 0; }
+.dc-outcome-key {
+  background: var(--row-color, var(--ink));
+  color: var(--paper-cream);
+  padding: 10px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+.dc-outcome-name {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--paper-cream);
+  opacity: 0.65;
+  line-height: 1;
+}
+.dc-outcome-key .dc-outcome-roll {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--paper-cream);
+  opacity: 1;
+  display: block;
+  line-height: 1;
+  white-space: nowrap;
+  order: -1;
+}
+.dc-outcome-text {
+  padding: 12px 18px;
+  font-family: var(--font-body);
+  font-size: var(--fs-body-xs);
+  line-height: 1.55;
+  color: var(--ink);
+  align-self: center;
+}
+
+/* ── Outcome row color modifiers ──────────────────────────────────────── */
+.dc-outcome-row.crit  { --row-color: var(--blood); }
+.dc-outcome-row.hit   { --row-color: var(--crimson); }
+.dc-outcome-row.mixed { --row-color: var(--amber); }
+.dc-outcome-row.miss  { --row-color: var(--orange); }
+.dc-outcome-row.fail  { --row-color: var(--ink); }
+
+/* ── Distance tags (AP cost × distance block) ─────────────────────────── */
+.dc-distance-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+.dc-dist-tag {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--paper-light);
+  border: 1px solid var(--hud-blue-dim);
+  padding: 6px 10px;
+  min-width: 52px;
+}
+.dc-dist-ap {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+}
+.dc-dist-name {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--hud-blue);
+  margin-top: 3px;
+}
+
+/* ── Dice expression pill ─────────────────────────────────────────────── */
+.dc-dice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  background: var(--ink);
+  color: var(--paper-cream);
+  padding: 3px 8px;
+  border: 1px solid var(--ink);
+}
+.dc-dice-glyph {
+  font-family: var(--font-display);
+  color: var(--orange);
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* ── Procedure grid (two-column aside) ────────────────────────────────── */
+/* Procedure page two-column aside section */
+.dc-procedure-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 32px;
+  align-items: start;
+  break-inside: avoid;
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STAGE 9 BULK MIGRATION — remaining .dc-* components from dc-brand.css
+   Includes: pullquote, prose-panel, definition-block, sidebar-box, gear-entry,
+   stat, toc, cover, sidebar, human-callout, class-entry, options, terms,
+   section-header, art-bottom, two-column, skill-card orphan rules,
+   roll-lucid/surreal, chapter-start blockquote, at-a-glance, img-float, more
+   ═══════════════════════════════════════════════════════════════════════════ */
+     .pmd-* print utilities — canonical in page-templates.css (Stage 2) ── */
+
+
+/* ───────── LUCID / SURREAL ROLL VARIANTS ───────── */
+/* Lucid: clear mental state, precision roll — HUD blue, ◈ prefix */
+.dc-roll-lucid {
+  font-family: var(--font-tab);
+  font-size: 0.75em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--hud-blue-dark);
+}
+.dc-roll-lucid::before { content: '◈ '; opacity: 1; }
+
+/* Surreal: reality distortion, altered state — magenta, ∿ prefix */
+.dc-roll-surreal {
+  font-family: var(--font-tab);
+  font-size: 0.75em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--hud-magenta);
+}
+.dc-roll-surreal::before { content: '∿ '; opacity: 1; }
+
+/* Chapter-opening epigraph styling. No shared.css peer. */
+.chapter-start>blockquote:first-of-type {
+  font-size: calc(var(--fs-body-sm) * 1.1);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  margin-top: 0;
+  margin-bottom: 0.2in;
+}
+
+
+/* #root — ID selector removed; use a class if this element needs styling */
+/* #root { max-width: 950px; margin: 0 auto; } */
+
+/* ───────── CHEVRON BANNER ───────── */
+/* ───────── SPRAY BANNER (h2 path header) ───────── */
+/* ───────── PATH SUBTITLE ───────── */
+/* ───────── STICKERS ───────── */
+/* ───────── ABILITY CARD ───────── */
+
+
+/* ───────── PATH BLOCK — structural learning-path section hook ───────── */
+/* .dc-path-block is structural only; the visual shell belongs on .dc-path-shell. */
+
+/* ───────── PATH STICKER — ID label embedded in spray banner ───────── */
+/* Card body — clip-path for the notched silhouette, drop-shadow stack for the
+   ink outline. drop-shadow follows clip-path edges including the diagonal,
+   which `border` cannot do. Four 2px shadows in cardinal directions = uniform
+   2px stroke around the entire silhouette. Print-safe; no JS, no SVG. */
+
+/* .dc-skill-card.variant-N — migrated to parent-container model in components.css (Phase 4) */
+
+
+/* ───────── FLAVOR ───────── */
+/* ───────── ABILITY ROW ───────── */
+
+/* ───────── SUB-HEADER ───────── */
+/* .dc-alert family migrated to components.css (Phase 3) */
+
+/* ───────── PORTRAIT PANEL ───────── */
+/* ───────── INTRO LINE ───────── */
+
+/* ───────── SPEC TWEAK SECTION HEADER ───────── */
+
+/* Gallery viewer chrome (gx-* classes) extracted to gallery.css — not loaded by book builds. */
+
+/* ───────── PULL-QUOTE / SIDEBAR CALLOUTS ───────── */
+.dc-pullquote {
+  background: var(--paper-light);
+  border-left: 4px solid var(--orange);
+  border-top: 2px solid var(--paper-aged);
+  border-bottom: 1px solid var(--paper-aged);
+  padding: 14px 20px 12px;
+  position: relative;
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: var(--fs-h2);
+  line-height: 1.3;
+  color: var(--ink-dark);
+  letter-spacing: -0.01em;
+  margin: 18px 0;
+  break-inside: avoid;
+}
+.dc-pullquote::before {
+  content: '"';
+  position: absolute;
+  top: -8px;
+  left: 8px;
+  font-family: var(--font-display);
+  font-size: 60px;
+  color: var(--orange);
+  opacity: 0.25;
+  line-height: 1;
+}
+.dc-pullquote p {
+  margin: 0;
+}
+.dc-pullquote p + p {
+  margin-top: 10px;
+}
+.dc-pullquote-attr {
+  display: block;
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: normal;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--ink-dust);
+}
+.dc-pullquote-attr::before { content: "— "; color: var(--orange); }
+
+/* ───────── DASHED RULE DIVIDER ───────── */
+/* Red dashed separator — use between gear entries, NPC blocks, and rules sections.
+   In markdown: --- (horizontal rule) inherits this style globally.
+   Raw HTML: <hr class="dc-dashed-rule">
+   ADAPTING: This global hr rule means every --- in your document renders with
+   the red dashed style. If you want structural --- dividers to remain neutral,
+   scope this rule to specific parents instead:
+     .dc-gear-entry hr, .dc-sidebar-box hr, .dc-dashed-rule { ... } */
+/* ───────── PROSE PANEL BASE ───────── */
+/* Shared prose-box shell for compact field-guide reference panels.
+   Concrete components still own their own surface, accent, heading, and text tone. */
+.dc-prose-panel {
+  padding: 10px 14px;
+  margin: 0.12in 0;
+  break-inside: avoid;
+}
+
+/* ───────── DEFINITION BLOCK ───────── */
+/* Short italic definitional callout — NPC types, item categories, ability class summaries.
+   Use when content is a 1–3 sentence category definition, not a rules note.
+   Container syntax: ::: wrapper {.dc-definition-block} … :::
+   CSS class: dc-definition-block */
+.dc-definition-block {
+  background: var(--surface-orange-tint);    /* warm cream, distinct from paper-light */
+  border-left: 4px solid var(--crimson);
+  font-style: italic;
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  color: var(--ink);
+}
+
+.dc-definition-block p {
+  margin: 0;
+}
+
+.dc-definition-block p + p {
+  margin-top: 6pt;
+}
+
+/* ───────── SIDEBAR BOX ───────── */
+/* Self-contained informational box with heading — rules etiquette, definitions, reference.
+   Use when content needs its own labeled section header inside a callout boundary.
+   Container syntax: ::: wrapper {.dc-sidebar-box} … :::
+   CSS class: dc-sidebar-box */
+.dc-sidebar-box {
+  background: var(--paper-cream);
+  border: 1.5px solid var(--border-hairline);
+  border-left: 4px solid var(--blood);
+}
+
+/* Box heading — bold red stencil-style label above the internal divider */
+.dc-sidebar-box-title,
+.dc-sidebar-box > h3:first-child,
+.dc-sidebar-box > h4:first-child {
+  font-family: var(--font-display);
+  font-size: var(--fs-h4);
+  letter-spacing: var(--ls-display);
+  color: var(--blood);
+  text-transform: uppercase;
+  margin: 0 0 10px;
+  font-style: italic;
+}
+
+/* Internal dashed divider — separates the heading area from body content */
+.dc-sidebar-box hr,
+.dc-sidebar-box .dc-sidebar-box-divider {
+  border: none;
+  border-top: 1px dashed var(--blood);
+  margin: 7.5pt 0;
+}
+
+.dc-sidebar-box p {
+  margin: 0;
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-normal);
+}
+
+.dc-sidebar-box p + p {
+  margin-top: 6pt;
+}
+
+/* ───────── GEAR ENTRY ───────── */
+/* Named item entry — weapons, gear, equipment. h3 name + italic tagline + body.
+   Separate entries with --- (dc-dashed-rule).
+   In markdown: ### Item Name followed immediately by italic tagline paragraph.
+   CSS class: dc-gear-entry (wrapper) */
+.dc-gear-entry {
+  margin: 0.1in 0;
+  padding: 10pt 14pt;
+  background: var(--paper-light);
+  border-left: 3pt solid var(--orange);
+  break-inside: avoid;
+}
+
+.dc-gear-entry h3,
+.dc-gear-entry > h3:first-child {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  letter-spacing: var(--ls-display);
+  color: var(--crimson);
+  text-transform: uppercase;
+  margin: 0 0 4px;
+  break-after: avoid;
+}
+
+/* Italic tagline — the one-line flavor sentence immediately after the h3 */
+.dc-gear-entry-tagline,
+.dc-gear-entry > p:first-of-type em:only-child,
+.dc-gear-entry > p.dc-flavor:first-of-type {
+  font-style: italic;
+  font-size: var(--fs-body-sm);
+  color: var(--ink-smoke);
+  margin: 0 0 8px;
+  display: block;
+}
+
+.dc-gear-entry p {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+}
+
+.dc-gear-entry p + p {
+  margin-top: 6pt;
+}
+
+/* ───────── STAT BLOCK (compact creature/NPC reference) ───────── */
+.dc-stat {
+  background: var(--paper-cream);
+  border: 2px solid var(--ink);
+  padding: 14px 16px 16px;
+  position: relative;
+  margin: 18px 0;
+  break-inside: avoid;
+}
+.dc-stat::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 1px solid var(--paper-aged);
+  pointer-events: none;
+}
+.dc-stat-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  position: relative;
+  z-index: 1;
+}
+.dc-stat-name {
+  font-family: var(--font-tab);
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.dc-stat-class {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--hud-blue);
+}
+.dc-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  margin-bottom: 10px;
+  position: relative;
+  z-index: 1;
+}
+.dc-stat-cell {
+  border-right: 1px dashed var(--paper-aged);
+  padding: 4px 8px 6px;
+  text-align: center;
+}
+.dc-stat-cell:last-child { border-right: 0; }
+.dc-stat-cell-key {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--hud-blue);
+  margin-bottom: 2px;
+}
+.dc-stat-cell-val {
+  font-family: var(--font-display);
+  font-size: 26px;
+  letter-spacing: 0.04em;
+  color: var(--orange);
+  line-height: 1;
+}
+.dc-stat-line {
+  font-family: var(--font-body);
+  font-size: var(--fs-body-sm);
+  line-height: 1.45;
+  margin: 6px 0;
+  position: relative;
+  z-index: 1;
+}
+.dc-stat-line strong { color: var(--crimson); font-weight: 700; }
+
+/* ───────── PROCEDURE / NUMBERED STEPS ───────── */
+
+/* ───────── PROCEDURE CONTAINER ───────── */
+/* :::procedure wraps an ordered list into a numbered-step layout.
+   Paged.js note: decimal-leading-zero is supported in most modern browsers
+   and Chromium-based Paged.js; counter(procedure-step) is the safe fallback. */
+
+/* ───────── OUTCOME LADDER (failure → catastrophe) ───────── */
+/* d20 outcome ladder — use for the Roll/Result ladder only.
+   For character-creation attribute tables (Origins, Ideals, etc.), use standard <table> markdown
+   or the @options-table plugin marker instead. */
+
+/* ───────── DISTANCE TAGS (AP cost × distance block) ───────── */
+
+/* ───────── CLASS-TAG PILL (specialty marker) ───────── */
+/* Specialty accent tokens — book-layer colors for each specialty class */
+/* ── SPECIALTY ACCENT VARIANTS ─────────────────────────────────────────────
+   Per-specialty accent color tokens and card-tab border-color overrides.
+   Migrated from _shared/css/specialty-variants.css (field-guide/css/specialty-accents.css deleted Phase 1a).
+   Tokens moved to :root block above (2026-05-10).
+   ─────────────────────────────────────────────────────────────────────────── */
+/* .specialty.<name> parent-level accent tokens — redundant subset of full
+   parent-container overrides in components.css; deleted in Stage 3.
+   Consumers: .dc-card-tab (inside .dc-skill-card, where components.css sets
+   --dc-card-accent) and .dc-learning-path h2.dc-spray (inside .dc-path-shell,
+   where components.css sets --dc-path-accent). Both inherit correctly. */
+
+/* canonical path title: plugin emits h2.dc-spray inside .dc-learning-path */
+
+/* ───────── MARGIN STICKER / CORNER STAMP ───────── */
+
+/* ───────── DICE EXPRESSION PILL ───────── */
+
+/* ───────── SECTION DIVIDER — TORN-TAPE RULE ───────── */
+
+/* ───────── INDEX / TOC ROW ───────── */
+/* .dc-toc owns both the screen-preview row layout and the print target-counter
+   list treatment. Page-template-specific TOC wrappers still live outside the
+   component layer. */
+.dc-toc {
+  font-family: var(--font-body);
+  counter-reset: dc-toc;
+  padding: 0;
+  margin: 0;
+}
+.dc-toc ol {
+  list-style: none;
+  counter-reset: dc-toc;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.dc-toc ol > li {
+  position: relative;
+  padding: 12px 0 12px 56px;
+  border-bottom: 1px solid var(--hud-blue-dim);
+  counter-increment: dc-toc;
+  font-family: var(--font-body);
+  font-size: var(--fs-body-sm);
+  line-height: 1.4;
+  color: var(--ink-smoke);
+  font-style: italic;
+  list-style: none;
+  break-inside: avoid;
+}
+.dc-toc ol > li::marker {
+  content: none;
+}
+.dc-toc ol > li::before {
+  content: counter(dc-toc, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 14px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: var(--hud-blue);
+  font-style: normal;
+}
+.dc-toc ol > li > strong {
+  color: var(--hud-blue);
+}
+.dc-toc ol > li > a {
+  font-family: var(--font-body);
+  font-size: 15pt;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 0;
+  font-style: normal;
+}
+.dc-toc ol > li > a::after {
+  content: ' p.' target-counter(attr(href), page);
+  font-family: var(--font-mono);
+  font-size: 10pt;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: var(--hud-blue);
+  font-style: normal;
+  margin-left: 0.6em;
+  white-space: nowrap;
+}
+.dc-toc-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hud-blue-dim);
+}
+.dc-toc .dc-toc-no {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: var(--hud-blue);
+  flex: 0 0 auto;
+  margin-right: 28px;
+  white-space: nowrap;
+}
+/* Merged: layout + typography properties consolidated from two formerly split rule blocks */
+.dc-toc-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ink);
+}
+.dc-toc-title small {
+  display: block;
+  font-family: var(--font-body);
+  font-size: var(--fs-body-sm);
+  font-style: italic;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-smoke);
+  margin-top: 2px;
+}
+/* Merged: layout + typography properties consolidated from two formerly split rule blocks */
+.dc-toc-page {
+  flex: 0 0 auto;
+  margin-left: 18px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--hud-blue);
+  font-weight: 600;
+}
+.dc-toc-page::before {
+  content: '— ';
+  color: var(--ink-dust);
+  font-weight: 400;
+}
+
+/* Stat-cell glyphs use lixdu too — contain them. */
+.dc-stat-cell-val { min-width: 0; overflow: hidden; }
+
+/* Cover-style chapter opener */
+.dc-cover-page {
+  background: var(--hud-blue);
+  color: var(--paper-cream);
+  position: relative;
+  overflow: hidden;
+}
+.dc-cover-page .dc-cover-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 8% 10%, rgba(0,0,0,0.55), transparent 62%),
+    radial-gradient(ellipse at 82% 88%, rgba(0,0,0,0.30), transparent 55%),
+    radial-gradient(ellipse at 80% 18%, rgba(242, 77, 0, 0.14) /* var(--orange) at 14% opacity */, transparent 50%),
+    radial-gradient(ellipse at 60% 55%, rgba(72, 164, 224, 0.16) /* --hud-blue-bright at 16% opacity */, transparent 60%),
+    var(--hud-blue);
+}
+.dc-cover-page .dc-cover-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.04'/%3E%3C/svg%3E");
+}
+/* HUD scanline overlay — horizontal lines at low opacity */
+.dc-cover-page .dc-cover-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 3px,
+    rgba(0,0,0,0.04) 3px,
+    rgba(0,0,0,0.04) 4px
+  );
+  pointer-events: none;
+}
+.dc-cover-page > * { position: relative; z-index: 1; }
+.dc-cover-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: var(--hud-blue-dim);
+  margin-bottom: 18px;
+}
+.dc-cover-bigword {
+  font-family: var(--font-display);
+  font-size: 66pt; /* was clamp(48px, 9vw, 88px) — vw resolves to min in Paged.js */
+  line-height: 1.1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--orange);
+  margin: 0 0 16px;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+.dc-cover-strap {
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: 14pt;
+  line-height: 1.4;
+  color: var(--paper-cream);
+  max-width: 24ch;
+  margin: 0 0 28px;
+  padding-left: 12px;
+  border-left: 3px solid var(--hud-magenta);
+}
+.dc-cover-meta-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-top: auto;
+  padding-top: 24px;
+  border-top: 1px solid rgba(201, 214, 226, 0.35) /* --hud-blue-dim at 35% opacity */;
+}
+/* Element flush/reset variants used by shared examples and specialty output */
+/* .dc-stat.flush, .dc-steps.flush, .dc-outcomes.flush, .dc-pullquote.flush — kept here pending Stages 8/9.
+   .dc-stickers.flush, .dc-path-subtitle.flush, .dc-intro.flush, .dc-tape.flush,
+   .dc-sub-header.flush, .dc-spec-tweak.no-top — migrated to components.css (Stage 4) */
+.dc-stat.flush,
+.dc-steps.flush,
+.dc-outcomes.flush,
+.dc-pullquote.flush {
+  margin: 0;
+}
+
+/* Cover page layout override (flex column with more padding) */
+.dc-cover-layout {
+  display: flex;
+  flex-direction: column;
+  padding: 60px 56px;
+}
+
+/* Cover body text */
+.dc-cover-body {
+  font-family: var(--font-body);
+  font-size: var(--fs-body-xs);
+  line-height: 1.6;
+  color: var(--hud-blue-dim);
+  max-width: 46ch;
+  margin-bottom: auto;
+}
+
+/* Outcome row colors — replaces inline --row-color CSS variable */
+
+/* Specimen table — replaces inline styles on the prose page text specimen table */
+/* .dc-tape.margin-sm — migrated to components.css (Stage 4) */
+
+}
+
+/* .dc-note.warning migrated to components.css (Phase 3) */
+
+/* field-guide: folded from legacy/specialty.css */
+/* ---------------------------------------------------------------------------
+   SPECIALTY — full-page art, intro panels, specialty cards, spread layout
+   All rules below are GAP vs shared.css unless noted as PARTIAL.
+   --------------------------------------------------------------------------- */
+
+/* .specialty-art geometry and page assignment moved to guide.css and page-rules.css. */
+
+/* Specialty intro shell.
+   The root owns the silhouette and the small public variant API; the title band
+   reads from that root state instead of carrying its own independent shell. */
+
+/* LIVE inside plugin-emitted <section class="specialty ...">. */
+
+/* LIVE in chapter-01.md (10 specialty cards). */
+
+/* .dc-specialty-card.variant-N — migrated to parent-container model in components.css (Phase 4) */
+
+/* ---------------------------------------------------------------------------
+   Plugin-generated learning paths and cards
+   --------------------------------------------------------------------------- */
+
+
+/* When markdown wraps a list-item's text in a <p> (loose-list rendering),
+   the paragraph's block display + margins push the text below the marker.
+   Inline the paragraph so it flows directly after the bullet/number. */
+.dc-skill-card li > p:only-child,
+.dc-ability li > p:only-child {
+  display: inline;
+  margin: 0;
+  padding: 0;
+}
+
+.dc-skill-card .dc-card-body .dc-ability:nth-last-of-type(2):not(:only-of-type) {
+  break-after: avoid;
+}
+
+.dc-skill-card .dc-card-body .dc-ability:last-of-type:not(:only-of-type) {
+  break-before: avoid;
+}
+
+/* Layout mode modifiers — specialty wrappers can pin every descendant card to
+   a fixed width without touching the component chrome itself.
+   .columns — always narrow (3.5in), packs 2 per visual row.
+   .rows    — always wide (full content area), stacks vertically. */
+.columns .dc-skill-card {
+  width: 3.5in;
+  max-width: 3.5in;
+}
+
+.rows .dc-skill-card {
+  width: 100%;
+  max-width: 7.25in;
+}
+
+.dc-skill-card:is(:only-child, .wide) {
+  width: 100%;
+  max-width: 7.25in;
+}
+
+/* Universal card layout fixes — apply to any book using dc-skill-card. */
+
+:is(.dc-skill-card, .dc-skill-card .dc-card-body) {
+  height: auto;
+  min-height: 0;
+}
+
+/* Two-column list inside cards: switch to column-width so narrow split
+   fragments drop to 1 column instead of collapsing to 1-word-per-line. */
+:is(.dc-skill-card, .dc-card-body) .two-column-list {
+  column-count: auto;
+  column-width: 14em;
+  column-fill: balance;
+}
+
+.dc-skill-card.allow-split .two-column-list ol {
+  grid-template-columns: repeat(auto-fit, minmax(12em, 1fr));
+}
+
+/* AP cell: prevent table-layout from over-allocating width to the cost
+   pill, which collapses the ability description column. */
+.dc-ability ol li strong:first-of-type {
+  width: 1%;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
+
+/* Paged.js split-fragment width fix: continuation fragments keep their
+   original width, which causes the next sibling to flex-wrap beside them
+   at half width. Force full-row width on any split fragment. */
+.dc-skill-card:is([data-split-from], [data-split-to]) {
+  width: 100%;
+  max-width: 7.25in;
+}
+
+/* ── @CONTINUE CONTINUATION CARDS ──────────────────────────────────────────
+   .dc-skill-card-cont / .dc-card-tab-cont are emitted by the @continue macro
+   in dimm-city-plugin.js. A continuation card is the second (or further)
+   fragment of a multi-page ability — it carries the same chrome as a normal
+   card but must signal visually that the reader is mid-ability.
+
+   Visual intent:
+   - No top margin on the card itself: flows directly under the preceding card
+     so the pair reads as one unit with a page break between them.
+   - Tab background stays dark but the title already includes a ▸ suffix
+     (added by the plugin); style the tab with a dashed top border to
+     reinforce the "flow continues" metaphor without adding loud decoration.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* ── IMAGE-ONLY PARAGRAPH WRAPPER ──────────────────────────────────────────
+   .img-wrapper is added by dimm-city-plugin.js to any <p> that contains
+   a single <img> and nothing else. This is a selector hook that replaces
+   the unsupported p:has(img) pattern (Paged.js drops :has() silently).
+   Zero out the default paragraph block margins so images sit flush inside
+   their containing layout box. Per-page rules may further position
+   individual images via .page.my-class p.img-wrapper.
+   ─────────────────────────────────────────────────────────────────────────── */
+p.img-wrapper {
+  padding: 0;
+  margin: 0;
+}
+
+.at-a-glance-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin: 0 0 18px;
+}
+
+.at-a-glance-card {
+  background: var(--paper-light);
+  border: 1px solid var(--paper-aged);
+  padding: 14px 16px;
+}
+
+/* ── Image floats ────────────────────────────────────────────────────────────
+   Float an image alongside body text using markdown-it-attrs:
+     ![Alt](img/photo.png){.img-float-right}
+   The image occupies 44% of the column; body text wraps the remaining 56%.
+   ─────────────────────────────────────────────────────────────────────────── */
+.img-float-right {
+  float: right;
+  width: 44%;
+  max-width: 44%;
+  margin: 0 0 0.15in 0.2in;
+  display: block;
+}
+
+.img-float-left {
+  float: left;
+  width: 44%;
+  max-width: 44%;
+  margin: 0 0.2in 0.15in 0;
+  display: block;
+}
+
+.dc-sidebar {
+  --dc-sidebar-surface: var(--paper-light);
+  --dc-sidebar-border: var(--hud-blue);
+  --dc-sidebar-accent: var(--orange);
+
+  padding: 14px 18px;
+  /* folded from legacy/sidebar.css PARTIAL — layout gap props */
+  float: right;
+  clear: right;           /* Fix 2: prevent stacking into adjacent floats */
+  shape-outside: margin-box; /* Fix 2: body text wraps cleanly around margin-box */
+  width: var(--sidebar-width);
+  margin: 0 0 0.15in 0.2in;
+  /* Full border: top/right/bottom from legacy; border-left above from shared.css */
+  background: var(--dc-sidebar-surface);
+  border: 1.5px solid var(--dc-sidebar-border);
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-normal);
+  position: relative;
+  z-index: 2;
+  break-inside: avoid;
+}
+
+.dc-sidebar.inset {
+  --dc-sidebar-surface: transparent;
+
+  position: absolute;
+  top: 0;
+  right: -0.15in;
+  width: 3in;
+  height: 100%;
+  padding: 0.2in 0.2in 0.15in;
+  margin: 0;
+  float: none;
+  clear: none;
+  border-left: none;
+}
+
+/* folded from legacy/sidebar.css GAP rules */
+/* Hides empty .dc-sidebar wrappers. */
+.dc-sidebar:empty {
+  display: none;
+}
+
+/* Sidebar title heading. Not confirmed in markdown but harmless. */
+.sidebar-title {
+  margin: 0 0 0.1in 0;
+  padding-bottom: 0.06in;
+  border-bottom: 1.5px solid var(--hud-blue);
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+  color: var(--hud-blue-bright);
+}
+
+/* Sidebar paragraph spacing. */
+.dc-sidebar p {
+  margin: 0 0 0.1in 0;
+}
+
+/* Sidebar h3 — LIVE in chapter-01.md sidebar blocks. */
+.dc-sidebar h3 {
+  margin: 0.12in 0 0.06in;
+  font-size: 1em;
+  letter-spacing: 0.04em;
+}
+
+.dc-sidebar.inset h3:first-child {
+  margin-top: 0.05in;
+  margin-bottom: 0.1in;
+  padding-bottom: 0.06in;
+  border-bottom: 1px solid var(--dc-sidebar-accent);
+  font-size: 1.05em;
+}
+
+.dc-sidebar.inset p {
+  margin-bottom: 0.09in;
+  line-height: var(--lh-normal);
+}
+
+.dc-sidebar.inset hr {
+  margin: 0.12in 0;
+  border-color: var(--dc-sidebar-accent);
+}
+
+.dc-sidebar.inset hr + p {
+  padding-top: 0.1in;
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.06em;
+  color: var(--hud-blue);
+}
+
+.dc-sidebar.inset hr ~ p {
+  background: rgba(42, 106, 138, 0.08);
+  border-left: 3px solid var(--hud-blue);
+  margin-left: -0.1in;
+  margin-right: -0.1in;
+  padding: 0.06in 0.1in;
+}
+
+.dc-sidebar.inset > p:last-child {
+  margin-top: 0.1in;
+  margin-bottom: 0;
+  padding-top: 0.08in;
+  border-top: 1px solid var(--dc-sidebar-accent);
+  font-family: var(--font-display);
+  font-size: 0.95em;
+  letter-spacing: 0.05em;
+  text-align: center;
+  color: var(--dc-sidebar-accent);
+}
+
+.dc-human-callout {
+  background: var(--paper-cream);
+  border: 2px solid var(--ink);
+  padding: 8pt 9pt;
+  margin-top: 11pt;
+  break-inside: avoid;
+}
+
+/* .dc-vibe-callout, .dc-origin-callout, .dc-visit-callout, .dc-gear-callout,
+   .dc-dm-note — all migrated to components.css (Phase 3) */
+
+/* ────────────────────────────────────────────────────────────
+   SPECIALTY LISTING — class entry block (tpl-specialty-listing)
+   Used on the "Choose Your Specialty" overview page to show each
+   class with a side-by-side portrait + prose layout.
+   ──────────────────────────────────────────────────────────── */
+
+/* Outer row wrapper — portrait left, prose body right */
+.dc-class-entry {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 4px;
+  break-inside: avoid;
+}
+
+/* Portrait column — holds the 120×120 image or placeholder */
+.dc-class-entry-portrait {
+  flex-shrink: 0;
+}
+
+/* Prose column — takes remaining horizontal space */
+.dc-class-entry-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.dc-class-entry-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+/* Class name inside an entry — lixdu display, crimson, no underline border.
+   Deliberately overrides the default h3 orange + border to read as a
+   proper name header rather than a section divider. */
+.dc-class-entry-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  letter-spacing: var(--ls-heading);
+  color: var(--crimson);
+  text-transform: uppercase;
+  margin: 0 0 8px;
+  border: 0;
+  padding: 0;
+  line-height: var(--lh-tight);
+}
+
+/* ───────── CHAPTER OPENER NUMBER DISPLAY ─────────
+   Large chapter identifier that sits above dc-spray on rules-chapter openers.
+   Not to be confused with .dc-chapter-num (the footer page reference at bottom-right). */
+
+/* DEPRECATED 2026-05-12 — dc-roll-table HTML table replaced by @outcome macro.
+   Any visual improvements were merged into .dc-outcomes (canonical system).
+   This block can be removed once dc-op-manual confirms no direct HTML usage.
+   See REDUNDANCY-AUDIT.md Category 1. */
+/* ───────── ROLL RESULT TABLE — compact tabular d20 ladder ─────────
+   Used inline within rules text as a compact reference; contrast
+   with .dc-outcomes (full styled component for teaching the system). */
+
+/* Header row */
+
+/* Body rows */
+
+/* Roll number cell — left column */
+
+/* All roll number variants use orange; modifiers reserved for future differentiation */
+
+/* Result cell — right column */
+
+/* Outcome name — bold inline label at start of result cell */
+
+/* ── Design-guide only: side-by-side comparison stage layout ─────── */
+/* Design-guide only: side-by-side comparison stage layout.
+   Chromium correctly allows display:grid inside a multi-column ancestor
+   (grid creates its own BFC), so !important is not needed. */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   FICTION PROSE — inline art float
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   OPTIONS TABLE — character creation pick-one tables
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Two-column page layout: prose explanation left (~45%), options table right (~55%) */
+.dc-options-layout {
+  display: grid;
+  grid-template-columns: 45fr 55fr;
+  gap: var(--space-md);
+  align-items: start;
+  break-inside: avoid;
+}
+
+/* The options table itself */
+.dc-options-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  border-top: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+}
+.dc-options-table tr + tr {
+  border-top: 1px solid var(--border-hairline);
+}
+.dc-options-table td {
+  padding: 6px 8px;
+  vertical-align: top;
+}
+
+/* Left cell: shrink-to-fit label in crimson mono uppercase */
+.dc-options-label {
+  width: 1%;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: var(--ls-cap-sm);
+  text-transform: uppercase;
+  color: var(--crimson);
+  padding-right: 14px;
+}
+
+/* Right cell: body description text */
+.dc-options-desc {
+  color: var(--ink);
+}
+
+/* ── ABILITY CARD LAYOUT VARIANTS (tpl-ability-stack) ─────────────────────
+   Two layout utilities for use inside .gx-page-frame:
+   .dc-ability-2col  — balanced two-column grid (medium-density)
+   .dc-ability-grid  — 2+1 grid: two cards top row, one wide card bottom row
+   ───────────────────────────────────────────────────────────────────────── */
+.dc-ability-grid .dc-tab-title           { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.dc-terms {
+  break-inside: avoid;
+}
+
+.dc-terms .item {
+  --card-border-color: transparent;
+  break-inside: avoid;
+}
+
+/* term label accent color */
+.dc-terms .item strong {
+  color: var(--crimson);
+}
+
+/* term paragraph spacing */
+.dc-terms .item p {
+  padding-block: var(--space-sm);
+}
+
+/* first term paragraph — border-bottom separator, no top padding */
+.dc-terms .item p:first-of-type {
+  padding-block: 0;
+  border-bottom: 1px var(--hud-blue) solid;
+}
+
+.section-header {
+  page-break-after: avoid;
+  margin-bottom: var(--space-2xl);
+}
+
+/* Art pinned to page bottom-center — use on images or wrapper divs */
+.dc-art-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Fix 3: Two-column container — :::two-column markdown shorthand */
+.two-column {
+  column-count: 2;
+  column-gap: 0.25in;
+  column-rule: 1pt solid var(--border-hairline);
+}
+
+/* Base two-column list utility — scoped card overrides below take precedence */
+.two-column-list {
+  column-count: 2;
+  column-gap: var(--space-md);
+  column-fill: balance;
+}
+
+/* ============================================================================
+   PRINT OVERRIDES
+   ============================================================================ */
+
+/* H1 print size override — shared.css h1 uses clamp() viewport formula which
+   renders ~26px in Paged.js instead of 26pt. Override with explicit print sizes. */

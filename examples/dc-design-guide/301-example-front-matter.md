@@ -3,8 +3,10 @@
 # Front Matter — Real-World Example {.dc-chevron}
 
 @lede
+
 This section shows how the Table of Contents, Credits, and Introduction pages look in the actual Dimm City Field Guide, rendered using real book content. These are the first pages a reader encounters — `page-toc`, `page-credits`, and `page-intro` templates applied to the `chapter-00` content.
--lede
+
+@end-lede
 
 ---
 
@@ -17,7 +19,9 @@ This section shows how the Table of Contents, Credits, and Introduction pages lo
 # Contents {.dc-chevron}
 
 @lede
+
 Twelve chapters of dreams, dirt, and what bites back. Read them in any order — the city doesn't care where you start.
+
 @end-lede
 
 @toc

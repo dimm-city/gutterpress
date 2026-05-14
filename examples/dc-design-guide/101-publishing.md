@@ -3,8 +3,10 @@
 # Publishing
 
 @lede
+
 Three commands cover the full authoring lifecycle: preview for live editing, build for output, run for print-ready PDFs.
--lede
+
+@end-lede
 
 ---
 

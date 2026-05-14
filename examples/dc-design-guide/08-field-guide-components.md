@@ -3,8 +3,10 @@
 # Field Guide Components
 
 @lede
+
 Components used in the Dimm City Field Guide — gear entries, definition blocks, sidebar boxes, and the dashed rule divider. These elements handle the prose-heavy, reference-dense pages that the core DC component library does not cover.
--lede
+
+@end-lede
 
 > **Component pattern:** `.dc-prose-panel` is the small shared shell for compact prose boxes in this family. `.dc-definition-block` and `.dc-sidebar-box` are thin concrete variants layered on top of it. `.dc-sidebar` and `.dc-human-callout` remain separate components with their own layout/content rules.
 

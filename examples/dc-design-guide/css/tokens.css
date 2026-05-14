@@ -347,3 +347,13 @@ td {
 .font-body    { font-family: var(--font-body); }
 .font-sans    { font-family: var(--font-sans); }
 .font-mono    { font-family: var(--font-mono); }
+
+/* ── PRINT OVERRIDES ────────────────────────────────────────────────────── */
+/* H1 print size override — Paged.js clamp() falls back to ~26px; explicit
+   26pt restores the design-intended size for PDF rendering. */
+@media print {
+  h1 {
+    font-size: 26pt;
+    letter-spacing: 0.2em;
+  }
+}

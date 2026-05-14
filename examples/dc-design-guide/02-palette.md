@@ -3,8 +3,10 @@
 # Color Palette
 
 @lede
+
 Two accent registers on cream substrate. Creaturepunk fire (crimson, rust, orange, amber) for printed content. HUD digital (blue, magenta) for cybernetics and tech. The page is never black.
--lede
+
+@end-lede
 
 ## Paper & Ink
 

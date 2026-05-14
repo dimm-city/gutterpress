@@ -119,7 +119,7 @@ comment in the first 50 lines of each file before adding any rule.
 | `page-rules.css` | `@page` declarations, named pages, Paged.js counter fixes |
 | `guide.css` | `div.chapter` scaffolding, `.specimen` chrome, guide-specific footer |
 
-**IMPORTANT:** `dc-brand.css` is legacy (still loaded; contains base component CSS not yet migrated to `components.css`). It will be deleted once the full base component migration is complete. Do not add new rules to `dc-brand.css`.
+**`dc-brand.css` no longer exists.** It was deleted as part of the final dc-brand.css migration. Every CSS rule now lives in one of the five canonical files above. Do not recreate dc-brand.css.
 
 ### Specialty variant system
 

@@ -3,8 +3,10 @@
 # Specialty Profile — Real-World Example {.dc-chevron}
 
 @lede
+
 This section shows how a full specialty profile looks in the actual Dimm City Field Guide, rendered using real book content from the Augmerc chapter. A specialty profile combines the `@specialty` macro, intro block, art panel, `@learning-path` macro, and a sequence of `@skill` cards — all live DC components.
--lede
+
+@end-lede
 
 ---
 

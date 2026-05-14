@@ -3,8 +3,10 @@
 # Field Guide in Action {.dc-chevron}
 
 @lede
+
 Real pages from the Dimm City Field Guide rendered through the DC print system. Every spread in Part 2 uses actual book content — no placeholder text, no fabricated specimens. What you see here is what the published book looks like, built from the same markdown and CSS.
--lede
+
+@end-lede
 
 ---
 
