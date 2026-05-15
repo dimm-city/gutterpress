@@ -10,7 +10,9 @@ Components used in the Dimm City Field Guide — gear entries, definition blocks
 
 > **Component pattern:** `.dc-prose-panel` is the small shared shell for compact prose boxes in this family. `.dc-definition-block` and `.dc-sidebar-box` are thin concrete variants layered on top of it. `.dc-sidebar` and `.dc-human-callout` remain separate components with their own layout/content rules.
 
----
+@page
+
+@section .two-column
 
 ## Dashed Rule Divider
 
@@ -24,8 +26,6 @@ Trauma Kit
 Signal Jammer (single-use)
 ```
 
----
-
 ## Definition Block
 
 1–3 sentence italic callout: warm-cream background + red left border. **Use:** NPC type summaries, item category descriptions, ability class definitions. (Distinct from `dc-note` — no heading; `dc-pullquote` — decorative only.)
@@ -38,7 +38,9 @@ of them is still original flesh.
 @end-definition
 ```
 
----
+@end-section
+
+@page
 
 ## Sidebar Box
 
@@ -56,7 +58,7 @@ lands off the table, reroll it.
 @end-sidebar-box
 ```
 
----
+@page
 
 ## Gear Entry
 
@@ -85,7 +87,9 @@ concealable under a jacket. Cuts non-powered barriers on a hit of 10+.
 @end-gear-card
 ```
 
----
+@page
+
+@section .two-column
 
 ## Callout Class Names — Field Guide vs Design Guide
 
@@ -98,7 +102,18 @@ Use the design-guide forms documented in `03-components.md`: `.dc-alert` is the 
 > Melee. Damage 1d8+STR.
 ```
 
----
+## See It In Action
+
+These examples show the above field guide components rendered in real book pages using actual Dimm City Field Guide content.
+
+- [Specialty Overview](#ch-example-specialty-overview) — definition blocks and sidebar boxes in specialty intros
+- [Rules & Mechanics](#ch-example-rules) — sidebar boxes for rules etiquette, dashed rule dividers between entries
+- [Dream Master Pages](#ch-example-dm-npcs) — definition blocks for NPC type summaries
+- [Gear & Tech](#ch-example-gear-tech) — gear entries, dashed rule separators, gear callouts in weapon lists
+
+@end-section
+
+@page
 
 ## Component Authoring Quick Reference
 
@@ -112,14 +127,3 @@ Use the design-guide forms documented in `03-components.md`: `.dc-alert` is the 
 | Gear Entry | `@gear-card` … `@end-gear-card` | `dc-gear-entry` |
 | Art Bottom Pin | `![img](https://placehold.co/1349x842/png?text=Art){.dc-art-bottom}` or `@no-break` wrapper | `dc-art-bottom` |
 | Legacy note: Ability Container | Use `@skill` instead — `:::: ability` has no active CSS | — |
-
----
-
-## See It In Action
-
-These examples show the above field guide components rendered in real book pages using actual Dimm City Field Guide content.
-
-- [Specialty Overview](#ch-example-specialty-overview) — definition blocks and sidebar boxes in specialty intros
-- [Rules & Mechanics](#ch-example-rules) — sidebar boxes for rules etiquette, dashed rule dividers between entries
-- [Dream Master Pages](#ch-example-dm-npcs) — definition blocks for NPC type summaries
-- [Gear & Tech](#ch-example-gear-tech) — gear entries, dashed rule separators, gear callouts in weapon lists

@@ -1,4 +1,4 @@
-@chapter #ch-cli .cli .chapter-02 ch="2"
+@chapter #ch-cli .cli ch="2"
 
 # Publishing
 
@@ -8,7 +8,7 @@ Three commands cover the full authoring lifecycle: preview for live editing, bui
 
 @end-lede
 
----
+@page
 
 ## Essential Commands
 
@@ -20,7 +20,7 @@ Three commands cover the full authoring lifecycle: preview for live editing, bui
 | `print-md run <project>` | Full validated pipeline: lint → validate → convert → build → validate |
 | `print-md validate <project>` | Run checks against source files or a built PDF |
 
----
+@page
 
 ## Common Usage
 
@@ -38,15 +38,22 @@ print-md build examples/dc-design-guide --format html --out ./_site
 print-md run examples/dc-design-guide --out ./dist/
 ```
 
----
+@page
 
 ## Key Flags
+
+@section .two-column
 
 | Flag | Commands | Purpose |
 |------|----------|---------|
 | `--port N` | preview | Port to listen on (default: 3579) |
 | `--format` | build | `pdf` or `html` |
 | `--out` | build, run | Output path |
+
+| Flag | Commands | Purpose |
+|------|----------|---------|
 | `--pdfx` | build, run | PDF/X flavor: `x1a` or `x3` |
 | `--icc` | build, run | ICC profile path (required with `--pdfx`) |
 | `--category` | validate | `source`, `pdf`, `asset`, or `heuristic` |
+
+@end-section
