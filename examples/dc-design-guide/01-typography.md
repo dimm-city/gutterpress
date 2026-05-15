@@ -1,4 +1,4 @@
-@chapter #ch-typography .typography .chapter-01 ch="1"
+@chapter #ch-typography .typography ch="1"
 
 # Typography
 
@@ -53,7 +53,7 @@ No special syntax required for these conversions.
 
 ---
 
-## See It In Action {.pmd-break-before}
+## See It In Action
 
 @no-break
 
@@ -99,8 +99,6 @@ The typographer converts ASCII shortcuts automatically --- no special syntax nee
 
 > [!NOTE]
 > **Body vs. flavor:** Body prose is Titillium Web at 12pt with `--lh-normal` (1.5) leading. Flavor text inherits the same size but switches to italic and `--ink-smoke` for a visual register shift. Never use bold italic for flavor — it reads as urgency, not voice.
-
-<div class="column-break"></div>
 
 ### Heading Hierarchy
 
