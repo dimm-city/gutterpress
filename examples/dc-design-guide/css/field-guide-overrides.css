@@ -1,0 +1,236 @@
+/* =============================================================================
+   FIELD-GUIDE-OVERRIDES.CSS — DC Design Guide project-specific overrides
+   =============================================================================
+   Imported LAST by index.css. Wins the cascade for all project-specific tweaks.
+   ============================================================================= */
+
+/* ═══ CARD-GRID SPREAD: keep header + intro + first cards together ══
+   The h2 heading had column-span: all which forced a page break after
+   it in Paged.js, leaving the heading alone on a page. Remove column-span
+   so the heading flows into the card grid with the intro and cards. */
+
+.page.card-grid > h2 {
+  column-span: none;
+  break-after: avoid;
+}
+
+.page.card-grid > .dc-intro {
+  column-span: none;
+  break-after: avoid;
+}
+
+/* Keep first specialty block with the intro */
+.page.card-grid .dc-specialty:first-of-type {
+  break-before: avoid;
+}
+
+/* ═══ SKILL CARD PAGE DENSITY ═══
+   Tighten spacing on skill cards and learning paths so more content fits
+   per page — aiming for learning path header + 2-3 skill cards on one page. */
+
+/* Reduce skill card bottom margin significantly */
+.dc-skill-card {
+  margin-bottom: 10px;
+}
+
+/* Tighten card body padding — the 36px bottom padding was excessive */
+.dc-card-body {
+  padding: 12px 14px 20px;
+}
+
+/* Reduce card tab padding */
+.dc-card-tab {
+  padding: 3px 18px 3px 8px;
+  margin-left: 10px;
+}
+
+/* Slightly reduce tab title font */
+.dc-tab-title {
+  font-size: 13px;
+}
+
+/* Reduce tier badge padding */
+.dc-tab-tier {
+  padding: 1px 5px;
+  font-size: 9px;
+}
+
+/* Tighten learning path block margin */
+.dc-learning-path.dc-path-block {
+  margin: 0 0 10px;
+}
+
+/* Tighten path shell margin */
+.dc-path-shell {
+  margin: 0 0 10px;
+}
+
+/* Reduce path shell body content margins */
+.dc-path-shell > p,
+.dc-path-shell > div,
+.dc-path-shell > div.dc-intro {
+  margin-inline: var(--space-sm);
+}
+
+/* Tighten ability row spacing */
+.dc-ability {
+  margin-bottom: 6px;
+}
+
+/* Reduce AP badge padding and size */
+.dc-ap {
+  padding: 3px 6px;
+  min-width: 38px;
+  font-size: 10px;
+}
+
+/* Tighten flavor text margin */
+.dc-flavor {
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+  padding-left: 8px;
+}
+
+/* Reduce sub-header margin */
+.dc-sub-header {
+  margin: 6px 0 3px;
+  padding-top: 4px;
+}
+
+/* Tighten outcome table */
+.dc-outcomes {
+  margin: 8px 0;
+}
+
+.dc-outcome-row {
+  grid-template-columns: 130px 1fr;
+}
+
+.dc-outcome-key {
+  padding: 6px 10px;
+}
+
+.dc-outcome-key .dc-outcome-roll {
+  font-size: 16px;
+}
+
+.dc-outcome-text {
+  padding: 8px 12px;
+  font-size: 8.5pt;
+}
+
+.dc-outcomes-label {
+  padding: 4px 12px 3px;
+  font-size: 8px;
+}
+
+/* Tighten steps list */
+.dc-steps {
+  margin: 8px 0;
+  padding: 0 0 0 12px;
+}
+
+.dc-steps > li {
+  padding: 8px 0 8px 2px;
+  gap: 14px;
+  font-size: 9pt;
+}
+
+.dc-steps .dc-step-no {
+  font-size: 13px;
+}
+
+/* ═══ SPECIALTY CARD GRID DENSITY ═══
+   Tighten specialty cards on the card-grid page so all 8 fit comfortably. */
+
+.page.card-grid .dc-specialty-card {
+  padding: var(--space-md);
+  margin: 0 0 0.04in 0;
+}
+
+.page.card-grid .dc-specialty-card p {
+  line-height: 1.25;
+  font-size: 9pt;
+}
+
+.page.card-grid .dc-specialty-card h3 {
+  font-size: 1em;
+}
+
+.page.card-grid .dc-specialty-card blockquote {
+  font-size: 0.9em;
+  margin: 0.02in 0 0;
+}
+
+/* ══ LEARNING PATH: keep path header with its first skill card ═══ */
+
+.dc-path-shell > h2.dc-spray:first-child {
+  break-after: avoid;
+}
+
+.dc-path-shell > h2.dc-spray:first-child + * {
+  break-before: avoid;
+}
+
+/* ══ SPECIALTY INTRO: remove excessive min-height ═══
+   The dc-specialty-intro had min-height: 10in which forced it to occupy
+   nearly a full page. Remove this so it only takes the space it needs. */
+
+.dc-specialty-intro {
+  min-height: auto;
+  padding: 1rem 1.25rem 0.75rem;
+}
+
+.dc-specialty-intro > h2:first-child {
+  padding: 0.6rem 1.25rem;
+  margin: -1rem -1.25rem 0.6rem -1.25rem;
+  font-size: 1.6rem;
+}
+
+.dc-specialty-intro > p {
+  margin-block: 0.3rem;
+  font-size: 9.5pt;
+}
+
+.dc-specialty-intro > h3 {
+  margin-top: 0.6rem;
+  margin-bottom: 0.2rem;
+  font-size: 1rem;
+}
+
+/* ═══ PATH SHELL: tighten internal spacing ═══ */
+
+.dc-path-shell > h2.dc-spray:first-child {
+  padding: 10px 16px 12px;
+  font-size: 18px;
+}
+
+.dc-path-shell > h2.dc-spray:first-child::before {
+  right: -5px;
+}
+
+.dc-path-shell > h2.dc-spray:first-child::after {
+  bottom: -3px;
+  height: 3px;
+}
+
+/* Tighten path subtitle */
+.dc-path-subtitle {
+  font-size: 9px;
+  letter-spacing: 3px;
+  margin: 8px 0 4px;
+}
+
+/* Tighten path sticker */
+.dc-path-sticker {
+  font-size: 8px;
+  padding: 2px 5px 1px;
+}
+
+/* ═══ CARD CONTINUATION MARKERS ═══ */
+
+.dc-card-cont-marker {
+  font-size: 8pt;
+  margin: 0 0 0.25rem 0.25rem;
+  padding-bottom: 0.15rem;
+}
