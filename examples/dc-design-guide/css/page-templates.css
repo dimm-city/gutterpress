@@ -42,6 +42,7 @@
 /* ── PAGE WRAPPER BASE GEOMETRY ────────────────────────────────────────────── */
 .page,
 .page-break {
+  columns: unset;
   break-after: always;
   break-inside: avoid;
 }
@@ -132,10 +133,7 @@
 /* ── PAGE TEMPLATE: FULL BLEED ─────────────────────────────────────────────── */
 /* Full bleed — primarily for full-page art. Zero margins, no footers.
    @page full (in page-rules.css) suppresses all margin-box content. */
-.page.full-bleed,
-.page.full-page,
-.page.cover,
-.page.back-cover {
+.page.full-bleed{
   page: full;
   margin: 0;
   padding: 0;
@@ -143,18 +141,6 @@
   break-inside: avoid;
 }
 
-/* ── PAGE TEMPLATE: CHAPTER START ─────────────────────────────────────────── */
-/* Single-column centered layout. @page chapter-start suppresses footers.
-   Per the plan, columns:N is never set here — chapter-start is single-flow.
-   Width and centering only. */
-.page:is(.page-intro, .intro, .page-chapter-start, .chapter-start) {
-  max-width: 6.7in;
-  margin: 0 auto;
-}
-
-.intro {
-  padding-left: 0.5in;
-}
 
 /* ── PAGE TEMPLATE: TWO-COLUMN ─────────────────────────────────────────────── */
 /* Standard two-column body pages. column-fill: balance gives equal columns.

@@ -1,4 +1,6 @@
-@chapter #ch-overview .overview .chapter-01 ch="1"
+@chapter #ch-overview ch="1"
+
+@page
 
 # Design System Overview
 
@@ -7,6 +9,8 @@
 This guide is both the living documentation of the Dimm City design system *and* a working demonstration. Every specimen on these pages is live — rendered through the same `css/index.css` as the Field Guide. Change a token in `css/tokens.css` (or `css/project-overrides.css` for project-specific overrides) and the specimen updates on the next preview refresh.
 
 @end-lede
+
+@section .two-column
 
 ## How This Guide Is Organized
 
@@ -22,9 +26,11 @@ The guide is split into two parts.
 - **Two accent registers** — Creaturepunk fire (`--crimson`, `--orange`, `--rust`) for physical content, lore, and danger; HUD digital (`--hud-blue`, `--hud-magenta`) for cybernetics, tech overlays, and system chrome.
 - **Components are additive** — the base prose layer needs no class; every component class adds chrome on top of clean flowing text.
 
-## CSS Architecture
+@end-section
 
-@no-break
+@page
+
+## CSS Architecture
 
 | File | Purpose |
 |------|---------|
@@ -36,22 +42,26 @@ The guide is split into two parts.
 
 All five are imported in order by `css/index.css`: `tokens.css` → `components.css` → `page-templates.css` → `page-rules.css` → `guide.css`.
 
-@end-no-break
-
 ## How Components Work
 
 Most DC components are authored with markdown containers or plugin markers. Raw HTML is reserved for the rare structures that still do not have a markdown/plugin form. The Dimm City print-md plugin adds `@skill`, `@learning-path`, `@specialty`, `@sidebar`, `@procedure`, and related block markers for structured game content.
+
+@section .three-column
 
 ```markdown
 <!-- 1. GFM alert / markdown component -->
 > [!NOTE]
 > You can always spend 1 AP to delay.
+```
 
+```markdown
 <!-- 2. markdown-it-container shorthand -->
 @lede
 This is a lede rendered via the container plugin.
-:::
+@end-lede
+```
 
+```markdown
 <!-- 3. Dimm City plugin markers -->
 @procedure
 1. Spend 2 AP.
@@ -59,11 +69,13 @@ This is a lede rendered via the container plugin.
 @end-procedure
 ```
 
+@page
+
 ## Customizing the Brand
 
-@no-break
-
 `css/tokens.css` contains the canonical `:root` token list. For project-specific retheming, copy the tokens you need into `css/project-overrides.css` and let that file import last through `css/index.css`.
+
+@section .two-column
 
 **Before (default DC palette):**
 
@@ -89,7 +101,7 @@ This is a lede rendered via the container plugin.
 }
 ```
 
-@end-no-break
+@section
 
 > [!NOTE]
 > This guide re-renders every time `print-md preview` is running. If a component style changes in `css/components.css`, its specimen updates on the next preview refresh — no separate stylesheet to maintain.

@@ -1,4 +1,4 @@
-@chapter #ch-templates .templates .chapter-02 ch="2"
+@chapter #ch-templates .templates ch="2"
 
 # Page Templates
 
@@ -25,7 +25,7 @@ Dimensions for DC Field Guide print output — declared in `manifest.yaml`, US L
 
 Extend any full-bleed background or image by 0.125 in past each edge so trimming variation doesn't leave a white sliver.
 
----
+@page
 
 ## Named Page Types
 
@@ -48,7 +48,7 @@ Named pages are declared in the markdown source using the `@page` directive:
 
 Legacy `--- {page ...}` fences remain supported for compatibility, but the design guide treats `@page` as the canonical authoring form.
 
----
+@page
 
 ## Book Page Templates
 
@@ -448,7 +448,7 @@ Fail, and something else goes wrong.
 @end-outcome
 ```
 
----
+@page
 
 ## Running Headers and Footers
 
@@ -462,7 +462,7 @@ The chapter counter resets via `.page.chapter-NN` on the first `.page-break` div
 .page.chapter-02, .page-break.chapter-02 { counter-reset: chapter 2; }
 ```
 
----
+@page
 
 ## See It In Action
 

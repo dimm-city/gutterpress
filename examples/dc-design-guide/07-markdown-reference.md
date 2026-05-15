@@ -1,4 +1,4 @@
-@chapter #ch-reference .reference .chapter-02 ch="2"
+@chapter #ch-reference .reference ch="2"
 
 # Markdown Reference
 
@@ -8,7 +8,7 @@ All markdown-it syntax features with DC authoring context.
 
 @end-lede
 
----
+@page
 
 ## Page Layout Markers
 
@@ -32,7 +32,7 @@ The `@` marker system controls page flow and generates semantic HTML wrappers. M
 
 Chapter IDs enable precise CSS scoping without specificity battles: `.chapter#ch-augmerc table { table-layout: fixed; }`
 
----
+@page
 
 ## Dimm City Plugin Markers
 
@@ -95,7 +95,7 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 @end-learning-path
 ```
 
----
+@page
 
 ## Container Blocks
 
@@ -145,7 +145,9 @@ Second paragraph without extra markup.
 
 > **Choosing between `@callout` and `> [!NOTE]`:** Use `> [!TYPE]` for single short paragraphs — it's shorter and reads naturally in source. Use `@callout` when you need multiple paragraphs, lists, or nested content that can't cleanly fit in a blockquote.
 
----
+@page
+
+@section .two-column
 
 ## Element Attributes
 
@@ -156,8 +158,6 @@ Second paragraph without extra markup.
 ![Alt text](image.png){.dc-img-float-right}
 This sentence has a **key term**{.custom-span} highlighted.
 ```
-
----
 
 ## Standard Markdown
 
@@ -182,7 +182,9 @@ Fenced code block.
 ```
 ````
 
----
+@end-section
+
+@section .two-column
 
 ## Smart Typography
 
@@ -195,8 +197,6 @@ Auto-converts common ASCII sequences to proper typographic characters. No manual
 | `...` | … | Ellipsis |
 | `"text"` | "text" | Curly double quotes |
 | `'text'` | 'text' | Curly single quotes |
-
----
 
 ## Footnotes
 
@@ -213,7 +213,9 @@ A second sentence references a different note.[^fn-2]
 [^fn-2]: A second, independent footnote. Labels can be numbers, words, or abbreviations.
 ```
 
----
+@end-section
+
+@page
 
 ## See It In Action
 

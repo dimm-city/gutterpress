@@ -1,4 +1,4 @@
-@chapter #ch-layout .layout .chapter-02 ch="2"
+@chapter #ch-layout .layout ch="2"
 
 # Layout & Composition
 
@@ -8,7 +8,7 @@ Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
 
 @end-lede
 
----
+@page
 
 ## Layout Utilities Reference
 
@@ -23,11 +23,17 @@ Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
 | `:::container {.pmd-no-break}` | Prevent block splitting across pages | — |
 | `## Heading {.pmd-break-before}` | Force new page before element | — |
 
+@section .two-column
+
 **Two-column behavior:** text fills the left column top-to-bottom and overflows right automatically. A two-column block can break across pages — wrap in `:::container` to keep it together.
 
 **Image float behavior:** floated image occupies 44% of column width; after the float clears, text returns to full width. Add a blank line below the float to clear it explicitly if following content crowds the image.
 
 **Sidebar wrapper:** `@sidebar` emits `.dc-sidebar`. Use `@sidebar class="inset"` when the page template needs the full-height inset sidebar treatment. Use raw HTML only when you need a structure the sidebar contains, not to author the sidebar shell itself.
+
+@end-section
+
+@section .two-column
 
 ```markdown
 @two-column
@@ -51,6 +57,10 @@ Right column content.
 Body text wraps to the left of the sidebar automatically.
 ```
 
+@end-section
+
+@section .two-column
+
 ```markdown
 @sidebar class="inset"
 ### Sidebar
@@ -67,7 +77,9 @@ Content that must not split across a page break.
 ## New Section {.pmd-break-before}
 ```
 
----
+@end-section
+
+@page
 
 ## See It In Action
 

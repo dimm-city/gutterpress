@@ -615,6 +615,7 @@
   font-size: var(--fs-body);
   font-style: italic;
   color: var(--ink-smoke);
+  background-color: var(--paper-aged);
   line-height: 1.5;
   border-left: 3px solid var(--orange);
   padding: 8px 12px;

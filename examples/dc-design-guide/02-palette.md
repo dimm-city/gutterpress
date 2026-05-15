@@ -1,4 +1,4 @@
-@chapter #ch-palette .palette .chapter-01 ch="1"
+@chapter #ch-palette .palette ch="1"
 
 # Color Palette
 
@@ -7,6 +7,8 @@
 Two accent registers on cream substrate. Creaturepunk fire (crimson, rust, orange, amber) for printed content. HUD digital (blue, magenta) for cybernetics and tech. The page is never black.
 
 @end-lede
+
+@page
 
 > [!NOTE]
 > **Register rule:** Use fire palette (crimson, orange, rust) for printed lore, ability text, and danger. Use HUD digital (blue, magenta) for cybernetics, tech overlays, and system chrome. Never mix fire and HUD on the same UI element.
@@ -43,6 +45,8 @@ Two accent registers on cream substrate. Creaturepunk fire (crimson, rust, orang
   <div class="dc-palette-swatch bg-hud-magenta on-dark"><strong>HUD Magenta</strong><code>#b85820</code><code>--hud-magenta</code></div>
 </div>
 
+@section .two-column
+
 ## Surface Tokens
 
 <div class="dc-palette-grid">
@@ -62,6 +66,10 @@ Additional border values come directly from ink-scale tokens (`--ink`, `--ink-sm
 > [!NOTE]
 > `--paper-stain` and `--border-hairline` share the same hex value (`#d0c8b5`). `--paper-stain` is for textured-background fills; `--border-hairline` is for rule lines. Use each semantically — if the design evolves, these may diverge.
 
+@end-section
+
+@section .two-column
+
 ## Spacing Token Notes
 
 > [!NOTE]
@@ -73,6 +81,9 @@ Additional border values come directly from ink-scale tokens (`--ink`, `--ink-sm
 - HUD blue and magenta signal cybernetic or tech-flavored content. Never mix fire and HUD accents on the same UI element.
 - Paper surfaces are for raised elements (cards, callouts). The page background (`--bg`) is the canvas; cream is the surface.
 
+@end-section
+
+@page
 
 ## Page Background & Brick Texture
 
@@ -110,6 +121,8 @@ Keep total ink coverage under 280% for coated stock and under 240% for uncoated 
 
 ---
 
+@section .two-column
+
 ## Font Size Token Notes
 
 > [!NOTE]
@@ -117,10 +130,6 @@ Keep total ink coverage under 280% for coated stock and under 240% for uncoated 
 
 > [!NOTE]
 > Chevron banners use `--fs-h1` directly. This keeps banner headings and body H1s on the same display scale.
-
----
-
-<div class="column-break"></div>
 
 ## See It In Action
 
@@ -136,3 +145,5 @@ These examples show the DC palette applied to real book pages using actual Dimm 
 
 > [!NOTE]
 > **Ink coverage cap:** Keep total CMYK coverage under 280 % for coated stock and under 240 % for uncoated. Saturated fire palette colors run high — request a physical proof before full print run.
+
+@end-section

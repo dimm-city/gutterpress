@@ -1,4 +1,4 @@
-@chapter #ch-components .components .chapter-01 ch="1"
+@chapter #ch-components ch="1"
 
 # Core Components
 
@@ -34,17 +34,15 @@ Italic in-world voice for card flavor and atmospheric lines. Inside `@skill` car
 
 ## Intro Lede
 
-Slightly larger opening paragraph at the top of a chapter or major section. **Syntax** — `:::lede` … `:::` (canonical)
+Slightly larger opening paragraph at the top of a chapter or major section.
 
 ```markdown
 @lede
 An Augmerc is muscle for hire. Street thugs, corporate bodyguards,
 deniable enforcers — the difference is gear, grafts, and how much
 of them is still original.
-:::
+@end-lede
 ```
-
-> **Canonical path:** `:::lede` … `:::` is the preferred shorthand for intro text. Older documents may still mention `.dc-intro`, but new authoring should use `:::lede`.
 
 ---
 
@@ -82,7 +80,7 @@ High-visibility callout in amber for rules with critical consequences. **Syntax*
 
 ## Pull Quote
 
-Large-format excerpt with accent rules above and below. Use sparingly — one per chapter. **Syntax** — `> [!PULLQUOTE]` (preferred)
+Large-format excerpt with accent rules above and below. Use sparingly — one per chapter. **Syntax** — `> [!PULLQUOTE]`
 
 ```markdown
 > [!PULLQUOTE]
@@ -96,7 +94,6 @@ Large-format excerpt with accent rules above and below. Use sparingly — one pe
 >
 > Field manual, second draft
 
-> **Legacy path:** `:::pull-quote` … `:::` is the older container form. Prefer `> [!PULLQUOTE]` for consistency with other callout types.
 
 ---
 

@@ -294,7 +294,7 @@ blockquote {
   font-style: italic;
   color: var(--ink-smoke);
   border-left: 3px solid var(--ink-smoke);
-  background: none;
+  background: var(--paper-light);
   padding: var(--space-sm) var(--space-md) var(--space-sm) var(--space-xl);
   margin: 0.75rem 0;
   text-wrap: balance;
