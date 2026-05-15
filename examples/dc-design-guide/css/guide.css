@@ -100,10 +100,6 @@ div.chapter h1 {
   overflow-wrap: break-word;
 }
 
-div.chapter:is(.chapter-01, .chapter-02) h2 {
-  overflow-wrap: break-word;
-  font-size: var(--fs-h2);
-}
 
 div.chapter h2 + p,
 div.chapter h2 + ul,

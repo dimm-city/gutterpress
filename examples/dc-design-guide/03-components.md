@@ -236,8 +236,6 @@ In-world location description in present tense, placed before encounter content.
 
 ---
 
-<div class="column-break"></div>
-
 ## Dream Master Note
 
 Dream Master–addressed instruction block for GM guidance and scene hooks, visually distinct from player-facing notes. **Syntax** — `> [!DM]`
@@ -295,8 +293,6 @@ If players investigate further before accepting, they can discover the trap with
 @end-dm-note
 
 ---
-
-<div class="column-break"></div>
 
 ## Glossary / Term List
 

@@ -210,25 +210,6 @@
   margin-top: auto;
 }
 
-/* ── GUIDE-CHAPTER COLUMN LAYOUTS ─────────────────────────────────────────── */
-/* Design-guide Part 1 chapters (overview, palette, components, DC components)
-   use a two-column layout for reference density.
-   div.chapter is a guide-specific container so this selector is guide-scoped,
-   but columns:N ownership requires it to live here. */
-div.chapter:is(.chapter-01, .chapter-02) {
-  columns: 2;
-  column-gap: var(--gutter);
-  column-fill: auto;
-}
-
-/* Column-span: all for structural break elements in two-column chapters.
-   .dc-intro / .lede spans both columns so intro paragraphs read full-width
-   before two-column content begins.
-   pre (code blocks) intentionally excluded — they flow within their column. */
-div.chapter:is(.chapter-01, .chapter-02) :is(h1, .dc-intro, table, hr, .specimen, .dc-toc) {
-  column-span: all;
-}
-
 /* ── TOC LAYOUT ─────────────────────────────────────────────────────────────── */
 /* The design-guide TOC page uses a hand-authored two-column layout with
    section counters and entry lists. These rules own the layout; typography
