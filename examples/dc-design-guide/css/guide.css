@@ -105,8 +105,22 @@ div.chapter:is(.chapter-01, .chapter-02) h2 {
   font-size: var(--fs-h2);
 }
 
-div.chapter :is(h2, h3, h4) + :is(p, ul, ol, div),
-div.chapter :is(h2, h3) + :is(pre, table),
+div.chapter h2 + p,
+div.chapter h2 + ul,
+div.chapter h2 + ol,
+div.chapter h2 + div,
+div.chapter h3 + p,
+div.chapter h3 + ul,
+div.chapter h3 + ol,
+div.chapter h3 + div,
+div.chapter h4 + p,
+div.chapter h4 + ul,
+div.chapter h4 + ol,
+div.chapter h4 + div,
+div.chapter h2 + pre,
+div.chapter h2 + table,
+div.chapter h3 + pre,
+div.chapter h3 + table,
 div.chapter h2 + blockquote {
   break-before: avoid;
 }
