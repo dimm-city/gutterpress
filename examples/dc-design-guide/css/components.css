@@ -956,11 +956,8 @@ hr,
 }
 
 .dc-specialty-intro > h2:first-child {
-  font-family: var(--font-display);
   font-size: 2rem;
-  font-weight: var(--fw-bold);
   color: var(--dc-specialty-intro-title-color);
-  text-transform: uppercase;
   letter-spacing: 0.04em;
   line-height: 1;
   background: var(--dc-specialty-intro-title-bg);
@@ -973,14 +970,11 @@ hr,
 
 .dc-specialty-intro > h3 {
   color: var(--crimson);
-  font-family: var(--font-display);
-  text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-top: 1.1rem;
   margin-bottom: 0.4rem;
   padding-bottom: 0.25rem;
   border-bottom: 1px solid var(--crimson);
-  border-top: none;
 }
 
 .dc-specialty-intro > p {
@@ -1142,14 +1136,6 @@ hr,
   background: var(--dc-path-title-bg);
 }
 
-/* Keep prose inside path shells and skill cards on the parent text size without
-   flattening banner, sticker, or tab typography that sets its own size. */
-.dc-learning-path :is(p, ul, ol, li),
-.dc-skill-card :is(p, ul, ol, li, table, tbody, thead, tr, td, th, blockquote) {
-  font-size: inherit;
-}
-
-
 /* ═══ OUTCOMES + STEPS + DISTANCE ═══ */
 
 /* ── Procedure / numbered steps ───────────────────────────────────────── */
@@ -1269,67 +1255,6 @@ hr,
 .dc-outcome-row.mixed { --row-color: var(--amber); }
 .dc-outcome-row.miss  { --row-color: var(--orange); }
 .dc-outcome-row.fail  { --row-color: var(--ink); }
-
-/* ── Roll table (@roll-table macro) ───────────────────────────────────── */
-.dc-roll-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--fs-body-sm);
-  background: var(--paper-cream);
-  break-inside: avoid;
-  border: 1px solid var(--ink-dust);
-}
-.dc-roll-table-th {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  background: var(--ink);
-  color: var(--paper-cream);
-  padding: 4px 6px;
-  text-align: left;
-}
-.dc-roll-table-th--roll   { width: 22%; }
-.dc-roll-table-th--result { width: 78%; }
-.dc-roll-table-row {
-  border-bottom: 1px solid var(--paper-aged);
-}
-.dc-roll-table-row:last-child { border-bottom: 0; }
-.dc-roll-table-roll {
-  font-family:    var(--font-mono);
-  font-weight:    700;
-  font-size:      var(--fs-body-sm);
-  padding:        4px 6px;
-  color:          var(--paper-cream);
-  text-align:     center;
-  background:     var(--ink-smoke);
-  white-space:    nowrap;
-}
-.dc-roll-table-roll--crit  { background: var(--blood); }
-.dc-roll-table-roll--hit   { background: var(--crimson); }
-.dc-roll-table-roll--mixed { background: var(--amber);   color: var(--ink); }
-.dc-roll-table-roll--miss  { background: var(--orange);  color: var(--ink); }
-.dc-roll-table-roll--fail  { background: var(--ink); }
-.dc-roll-table-name {
-  font-family:    var(--font-mono);
-  font-weight:    700;
-  font-size:      9px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  display:        block;
-  margin-bottom:  1px;
-}
-.dc-roll-table-name--crit  { color: var(--blood); }
-.dc-roll-table-name--hit   { color: var(--crimson); }
-.dc-roll-table-name--mixed { color: var(--amber); }
-.dc-roll-table-name--miss  { color: var(--orange); }
-.dc-roll-table-name--fail  { color: var(--ink); }
-.dc-roll-table-result {
-  padding:     4px 8px;
-  color:       var(--ink-smoke);
-  line-height: 1.4;
-}
 
 /* ── Distance tags (AP cost × distance block) ─────────────────────────── */
 .dc-distance-tags {
@@ -2073,42 +1998,6 @@ p.dc-img-wrapper {
   border: 0;
   padding: 0;
   line-height: var(--lh-tight);
-}
-
-/* ───────── OPTIONS TABLE ───────── */
-.dc-options-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--font-body);
-  font-size: var(--fs-body);
-  line-height: var(--lh-normal);
-  border-top: 2px solid var(--ink);
-  border-bottom: 2px solid var(--ink);
-}
-.dc-options-table tr + tr {
-  border-top: 1px solid var(--border-hairline);
-}
-.dc-options-table td {
-  padding: 6px 8px;
-  vertical-align: top;
-}
-
-/* Left cell: shrink-to-fit label in crimson mono uppercase */
-.dc-options-label {
-  width: 1%;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: var(--ls-cap-sm);
-  text-transform: uppercase;
-  color: var(--crimson);
-  padding-right: 14px;
-}
-
-/* Right cell: body description text */
-.dc-options-desc {
-  color: var(--ink);
 }
 
 .dc-ability-grid .dc-tab-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

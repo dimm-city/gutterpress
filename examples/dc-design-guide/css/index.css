@@ -1,21 +1,16 @@
 /* =============================================================================
    DC Design Guide — CSS Entry Point
-   Import order matters — tokens first, page rules last.
 
-   TARGET 5-FILE STACK (greenfield rewrite in progress — see roadmap.md):
+   5-file stack — import order: tokens first, guide scaffolding last:
      tokens.css         :root tokens, @font-face, html/body baseline
      components.css     every .dc-* and .pmd-* component (base + thin variants)
      page-templates.css every .page.* layout rule — sole home of columns:N
      page-rules.css     @page declarations, .pagedjs_* overrides, counter resets
      guide.css          div.chapter scaffolding, .specimen chrome (guide-only)
 
-   ADAPTING FOR A NEW PROJECT
-   Copy tokens.css + components.css + page-templates.css + page-rules.css.
-   Override tokens via project-overrides.css (imported last, silent if absent).
-   See tokens.css :root for the full token list.
+   To adapt for a new project, copy the first four files and add
+   project-overrides.css (last import, silently absent if missing).
    ============================================================================= */
-
-/* ── Production 5-file CSS stack (migration complete) ─────────────────── */
 @import url("./tokens.css");         /* tokens, @font-face, html/body baseline */
 @import url("./components.css");     /* every .dc-* and .pmd-* component (base + thin variants) */
 @import url("./page-templates.css"); /* .page.* layouts — sole home of columns:N */
