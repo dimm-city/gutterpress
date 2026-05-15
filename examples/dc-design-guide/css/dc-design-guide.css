@@ -52,17 +52,16 @@
   width: 100%;
 }
 
-/* ── Chapter page breaks ─────────────────────────────────────────────────────
-   The DC dc-brand.css does not set break-before on h1 (the book uses explicit
-   page-break markers instead). The design guide drives chapter breaks via the
-   @chapter marker → h1 pattern, so we add the break here.
+/* ── Chapter page breaks (disabled) ──────────────────────────────────────────
+   Previously: `break-before: page` forced every chapter to start on a new page.
+   This created blank verso pages before each chapter recto — disabled per design
+   preference to allow chapters to flow naturally after preceding content.
 
-   IMPORTANT: scope to `div.chapter > h1:first-of-type` only — the FIRST h1
-   inside each @chapter wrapper is the real chapter title. Later h1 elements
-   in the same chapter are live specimens and must NOT trigger page breaks.
+   Chapters now flow with no forced page breaks. Use explicit @page-break markers
+   in markdown if page breaks are needed for specific chapter sequences.
    ─────────────────────────────────────────────────────────────────────────── */
 div.chapter>h1:first-of-type {
-  break-before: page;
+  break-before: auto;
   /* counter-increment removed — page-rules.css hard-resets the chapter counter per-page via .page.chapter-NN rules; auto-increment is unreliable in Paged.js */
 }
 
