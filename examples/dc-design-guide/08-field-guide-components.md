@@ -40,8 +40,6 @@ of them is still original flesh.
 
 @end-section
 
-@page
-
 ## Sidebar Box
 
 Callout with H4 heading + internal dashed divider + cream background. **Use:** rules etiquette, standalone reference blocks, any callout needing its own visual boundary. (Distinct from `dc-note` — no heading; `dc-pullquote` — decorative only.) H4 at top, then `---`, then body:
@@ -58,7 +56,7 @@ lands off the table, reroll it.
 @end-sidebar-box
 ```
 
-@page
+@page-break
 
 ## Gear Entry
 

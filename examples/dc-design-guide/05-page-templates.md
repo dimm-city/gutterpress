@@ -25,8 +25,6 @@ Dimensions for DC Field Guide print output — declared in `manifest.yaml`, US L
 
 Extend any full-bleed background or image by 0.125 in past each edge so trimming variation doesn't leave a white sliver.
 
-@page
-
 ## Named Page Types
 
 The DC print system uses named page types to control margin geometry, footer chrome, and running headers. Each class maps to a `@page` rule in `css/page-rules.css`.
@@ -448,7 +446,7 @@ Fail, and something else goes wrong.
 @end-outcome
 ```
 
-@page
+@page-break
 
 ## Running Headers and Footers
 
@@ -462,7 +460,7 @@ The chapter counter resets via `.page.chapter-NN` on the first `.page-break` div
 .page.chapter-02, .page-break.chapter-02 { counter-reset: chapter 2; }
 ```
 
-@page
+@page-break
 
 ## See It In Action
 
