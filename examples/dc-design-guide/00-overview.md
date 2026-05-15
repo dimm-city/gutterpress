@@ -91,6 +91,5 @@ This is a lede rendered via the container plugin.
 
 @end-no-break
 
-## Keeping the Guide in Sync
-
-This guide re-renders every time `print-md preview` is running. If a component style changes in `css/components.css`, its specimen on these pages updates automatically — there is no separate stylesheet to maintain, and no manual sync step required.
+> [!NOTE]
+> This guide re-renders every time `print-md preview` is running. If a component style changes in `css/components.css`, its specimen updates on the next preview refresh — no separate stylesheet to maintain.

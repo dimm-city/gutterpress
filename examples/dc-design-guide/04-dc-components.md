@@ -165,6 +165,8 @@ Both block types use the same `.dc-stat` structure. Creature blocks use combat s
 
 ---
 
+<div class="column-break"></div>
+
 ## Learning Path
 
 A learning path wraps skill cards under a named spray banner with a sticker chain and flavor line. Use `@learning-path` after `@specialty .classname` — the path index and specialty code (e.g., `AUG1`) are auto-computed. Tab tiers (`AUG1.1`, `AUG1.2`, …) are generated automatically from position; use `#### Skill Name | Custom` only to override. The emitted path shell is its own component (`.dc-path-shell`) with its own notched shape and spacing rules; `.dc-path-block` is only the structural section hook. Like `.specialty-intro` and `.dc-skill-card`, the root path shell owns its variant state and title chrome.
@@ -262,6 +264,8 @@ Rotated monospaced label chips for content status (draft, deprecated, classified
 
 ---
 
+<div class="column-break"></div>
+
 ## Clip-Path Card Variants (v1–v5)
 
 Five clip-path shapes for the skill-card shell. Set `variant="N"` on the `@skill` macro to choose. The emitted `.dc-skill-card` owns the variant, and its internal tab/body shapes inherit from that root state. Variant 1 is the default right-diagonal; variants 2–5 offer progressively distinct tech silhouettes.
@@ -312,6 +316,8 @@ Or in raw HTML as a modifier on a container:
 ```
 
 ---
+
+<div class="column-break"></div>
 
 ## Chapter Opener Number
 

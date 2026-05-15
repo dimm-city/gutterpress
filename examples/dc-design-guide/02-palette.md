@@ -120,6 +120,8 @@ Keep total ink coverage under 280% for coated stock and under 240% for uncoated 
 
 ---
 
+<div class="column-break"></div>
+
 ## See It In Action
 
 These examples show the DC palette applied to real book pages using actual Dimm City Field Guide content.
