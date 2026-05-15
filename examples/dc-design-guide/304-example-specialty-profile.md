@@ -10,15 +10,26 @@ This section shows how a full specialty profile looks in the actual Dimm City Fi
 
 ---
 
+## About Specialty Profile Pages
+
+Every specialty in the Field Guide gets a two-page spread: the specialty intro block on the first page, followed by learning paths and skill cards flowing across as many pages as needed. The structure is always the same, but the silhouette shapes, accent colors, and ability content differ for each specialty.
+
+| Component | Macro / class | Renders as |
+|-----------|---------------|------------|
+| Specialty wrapper | `@specialty .augmerc` | Parent container with accent + shape tokens |
+| Intro block | `@specialty-intro` / `@end-specialty-intro` | Title banner + definition + spec tweak |
+| Path header | `@learning-path` | Path shell with path title, skill list, signature augment |
+| Skill cards | `@skill` (one per ability) | Tabbed card with tier, flavor, and AP options |
+
+The `@specialty .augmerc` wrapper defines all 7 shape variables (`--dc-skill-tab-shape`, `--dc-skill-body-shape`, `--dc-path-title-shape`, `--dc-path-shell-clip`, `--dc-specialty-card-shell-shape`, `--dc-specialty-intro-title-shape`, `--dc-specialty-intro-clip`). Every nested component inherits these through CSS custom property cascade — the component base rules use `var(--token, fallback)` so that specialty shapes override without requiring new selectors.
+
+---
+
 ## Specialty Intro Block
 
-**Macros** — `@specialty .augmerc` wraps the entire specialty section and applies specialty-scoped CSS. The `.specialty-intro` wrapper holds the name, definition, and Spec Tweak. The `.specialty-art` wrapper holds the character illustration. `@learning-path` injects the path header and path sequence list. Long abilities should use `@continue` inside `@skill`. See [DC Components](#ch-dc-components) for the full `@specialty` / `@learning-path` / `@skill` macro reference.
+**Macros** — `@specialty .augmerc` wraps the entire specialty section and applies specialty-scoped CSS. `@specialty-intro` holds the name, definition, and Spec Tweak. `@learning-path` injects the path header and path sequence list. Each `@skill` card follows the path declaration. See [DC Components](#ch-dc-components) for the full macro reference.
 
-## Learning Path: Biting Distance
-
-**Macro** — `@specialty .augmerc` wraps the entire specialty section. `@specialty-intro` wraps the intro block. `@learning-path` renders the path header banner. Each `@skill` card renders without a variant attribute; the augmerc silhouette and accent come from the parent `@specialty .augmerc` container. Use `@continue` when a card needs to flow onto the next page.
-
-@page
+@page-break
 
 @specialty .augmerc
 
@@ -64,7 +75,7 @@ When creatures crowd into reach, you can trigger the system to bloom outward in 
 
 @skill
 
-#### Punishing Counter
+#### Punishing Counter | AUG1.1
 
 > See an opening, ya take it. Best time to hit 'em is when they think it's over.
 
@@ -78,7 +89,7 @@ Openings are invitations to take a chunk out 'em.
 
 @skill
 
-#### Rage Hit
+#### Rage Hit | AUG1.2
 
 > In some situations, it's best to risk it, swing wild, an hit hard!
 
@@ -101,7 +112,7 @@ Full send or full regret.
 
 @skill
 
-#### Dirty Work
+#### Dirty Work | AUG1.3
 
 > Fair fights are for nice mercs who lose.
 > Never fight clean. Fight to finish.
@@ -120,7 +131,7 @@ You don't need an opening. You make one.
 
 @skill
 
-#### Pain Compliance
+#### Pain Compliance | AUG1.4
 
 > They want to keep moving? Make that cost more than they're willing to pay.
 
@@ -134,7 +145,7 @@ Pain is a language everyone understands.
 
 @skill
 
-#### It's Personal
+#### It's Personal | AUG1.5
 
 > This one ain't for the job. This one's for you.
 
@@ -147,3 +158,46 @@ Once per combat, when a target has hit you, an ally, or someone you're protectin
 Some jobs are work. Some jobs are justice.
 
 @end-specialty
+
+---
+
+## Combining Specialties
+
+The Field Guide allows Dreamers to expand beyond a single specialty over the course of a campaign. After a significant story milestone — completing a major job, surviving an encounter that changes your character, or finding a mentor — the Dream Master may allow you to begin learning from a second specialty.
+
+Combining specialties is not multi-classing. You don't split your focus at character creation. You begin as a pure specialist and add breadth through experience. A Wirephreak who survives three jobs with a Cybersurgeon crew might start picking up the basics of how to keep a body functional under pressure. That's how specialties bleed into each other in Dimm City.
+
+### Rules for Cross-Specialty Learning
+
+When you add a second specialty, choose one of its learning paths. You gain access to the first ability in that path. To learn further abilities, you must:
+
+- Spend time in the Dream practicing the techniques (at least one scene dedicated to training or use)
+- Have access to a mentor or relevant environment
+- Meet the AP requirement for the next tier
+
+You cannot access Spec Tweaks from a second specialty. Those abilities are hard-wired to years of dedicated augmentation. What you gain is range, not depth — a taste of another crew's toolkit.
+
+> [!NOTE]
+> **Design note:** The specialty system is intentionally resistant to optimization. Cross-specialty learning is a story event, not a character sheet checkbox. The DM controls the gates. The city controls what you're exposed to.
+
+---
+
+### Example: Augmerc + Wirephreak
+
+An Augmerc who spends three jobs embedded with a Wirephreak crew starts picking up how doors open from the inside. After a major job where stealth was the only play, the DM allows them to access the first ability in Wirephreak's *Clean In, Loud Out* path.
+
+They don't become a Wirephreak. They become an Augmerc who knows one trick that a Wirephreak would recognize.
+
+This is the DC cross-specialty model. You stay rooted. You grow edges.
+
+### What Makes a Good Cross-Specialty Moment
+
+The DM should look for three conditions before granting cross-specialty access:
+
+1. **Exposure** — the Dreamer has spent meaningful time around operatives who use those techniques
+2. **Need** — the Dreamer attempted something outside their specialty and succeeded by improvising
+3. **Commitment** — the Dreamer actively seeks out the knowledge (spends downtime, finds a teacher, risks something to learn it)
+
+All three should be present. One alone is a coincidence. Three is a turning point.
+
+A Dreamer who trains with an Augmerc but never fights should not gain Augmerc abilities. A Dreamer who picks up a skill mid-combat without context should not retain it. The city teaches the desperate, not the curious.

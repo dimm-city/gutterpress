@@ -14,7 +14,7 @@ Real pages from the Dimm City Field Guide rendered through the DC print system. 
 
 The spec chapters (01–08) explain the design system in terms of tokens, syntax, and components. Part 2 is the payoff: real Field Guide pages rendered live, showing how those components combine under actual conditions.
 
-Each chapter in Part 2 covers one type of page. The annotation above the rendered content names the page template, CSS classes, and any macros in use. The rendered block beneath it is the actual book markdown — same source, same stylesheet, same output.
+Each chapter in Part 2 covers one type of page. The annotation above the rendered content names the active page template, CSS classes, and any macros in use. The rendered block beneath it is the actual book markdown — same source, same stylesheet, same output.
 
 ---
 
@@ -34,12 +34,26 @@ Each chapter in Part 2 covers one type of page. The annotation above the rendere
 
 ---
 
+## Page Templates at a Glance
+
+| Chapter | Templates applied | Key macros |
+|---------|-------------------|------------|
+| Front Matter | `page-toc`, `page-credits`, `page-intro` | `@toc`, `@lede` |
+| Chapter Opener | `page-chapter-start` | `@chapter-opener`, `---{.column-break}` |
+| Specialty Overview | `card-grid` | `@specialty`, `@specialty-card` |
+| Specialty Profile | `@page` (bare) | `@specialty`, `@learning-path`, `@skill` |
+| Rules Pages | `chapter-start`, `the-players` | `@chapter-opener`, markdown tables |
+| DM & NPC Pages | `chapter-04` | H4/H5/H6 stat block format |
+| Gear & Tech | `tech-cybernetics` | EP table, `SysChk` inline code |
+
+---
+
 ## How to Read These Examples
 
 Each example chapter follows the same structure:
 
-**Annotation paragraph** — a short paragraph naming the active page template, the CSS classes applied to `@page`, and any macro directives (`@specialty`, `@learning-path`, `@skill`, `@chapter-opener`). Cross-references point to the spec chapters for token details.
+**Annotation block** — a boxed `> [!NOTE]` callout naming the active page template, the CSS classes applied to `@page`, and any macro directives in use. The annotation appears at the top of the rendered page — it is part of the design guide, not part of the Field Guide source. Cross-references point to the spec chapters for token details.
 
-**Live rendered block** — the actual Field Guide markdown that follows the annotation. Images reference `https://placehold.co/1349x842/png?text=Placeholder+Art` in place of the book's original artwork paths (which don't resolve in the design guide context). All class attributes, macros, and prose are verbatim from the source.
+**Live rendered block** — the actual Field Guide markdown that follows the annotation. Images reference `https://placehold.co/1349x842/png` in place of the book's original artwork paths, which don't resolve in the design guide context. All class attributes, macros, and prose are verbatim from the source.
 
 The rendered output is the design system working as-shipped. If something looks wrong here, it's a real bug — not a specimen issue.

@@ -10,9 +10,18 @@ This section shows how the "Choose a Specialty" spread looks in the actual Dimm 
 
 ---
 
-## Chapter-Start: What Do You Dream of Doing?
+## About These Pages
 
-**Page template** — `@page .page-chapter-start .chapter-start .chapter-02` — the page template provides the two-column layout. Chapter 02 now uses the `@chapter-opener C.02` macro for the badge. The heading uses `.dc-spray` for the spray-banner treatment. The rules callout uses `> [!NOTE]` instead of raw HTML. Images replaced with design guide placeholder.
+The specialty section of the Field Guide has two distinct spreads. The chapter-start spread (Chapter 02) pairs an opening fiction vignette with the ability primer — the rules overview for how the whole system works. The specialty overview spread (the `card-grid` template) follows it with the 8 specialty cards side by side.
+
+| Page | Template | Purpose |
+|------|----------|---------|
+| Chapter opener | `page-chapter-start .chapter-02` | Fiction left, ability rules right |
+| Specialty grid | `card-grid` | 8 specialty cards in two-column layout |
+
+The two-column structure on both pages is deliberate: the reader gets fiction and mechanics together on the opener, then a clean visual grid for the specialty choices. Every specialty gets equal visual weight in the card grid.
+
+---
 
 @page .page-chapter-start .chapter-start .chapter-02
 
@@ -37,6 +46,8 @@ The door didn't explode. It failed. Metal screamed, folded, and vanished inward 
 
 Five shadows moved as one, already inside, already gone.
 
+---{.column-break}
+
 ## How Abilities Work
 
 How that pack works wasn't luck. It was abilities firing in sequence. Each move opened space. Each ability set up the next.
@@ -56,19 +67,17 @@ In Dimm City, abilities aren't just what you can do. They're learned techniques,
 >
 > Everything in this chapter exists to support that loop. Abilities bend it. Dice decide it. Dreamers drive it. The Monoverse responds.
 
----
+## Choose Your Specialty
 
-## Specialty Overview Spread: Choose a Specialty
+A specialty is your primary ability set — the collection of learned techniques, augments, and practices that defines what you bring to the crew. Every specialty has three learning paths, each containing five abilities. You don't pick a path at character creation. You grow into it.
 
-**Page template** — `@page .card-grid .chapter-01` — activates the specialty overview spread with a two-column specialty card grid. Each specialty wraps its card in `@specialty .<slug>`, which applies the specialty's silhouette and accent color to the nested `@specialty-card`. Art images replaced with design guide placeholder.
-
-@page .card-grid
-
-## Choose a specialty
+Each specialty produces a different kind of operative. The Augmerc hits hard in close range. The Wirephreak slides through systems undetected. The Proxy bends probability and conviction into force. What you choose here shapes how the Dream plays.
 
 Every dreamer's got a sharp edge — your specialty is where it starts.
 
-It's the skill set that sets you apart, defines what you bring to the crew, and shapes the wild ways you survive the Dream.
+---
+
+@page .card-grid
 
 @specialty .augmerc
 
@@ -199,3 +208,9 @@ Secrets are currency—and Etherlocks are rich in them. Tapping into elemental f
 @end-specialty-card
 
 @end-specialty
+
+## Choosing by Playstyle
+
+**Want to hit things hard?** Augmerc. **Want to control the battlefield?** Streetwarden or Proxy. **Want to slide through systems undetected?** Wirephreak. **Want raw arcane force?** Technosorcerer, Gutterdruid, or Etherlock. **Want to rebuild your body as your toolkit?** Cybersurgeon.
+
+Every specialty excels at one thing and has a path toward a second. Your first specialty is your identity. What you pick up later is your legend.

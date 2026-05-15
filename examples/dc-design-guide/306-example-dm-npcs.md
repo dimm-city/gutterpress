@@ -10,11 +10,30 @@ This section shows how Dream Mastery and NPC pages look in the actual Dimm City 
 
 ---
 
-## Dream Mastery Chapter Page
+## About DM and NPC Pages
 
-**Page template** — `@page .chapter-04` — standard body page with the chapter-04 identifier. The DM chapter uses long-form prose with bullet-list guidance blocks. The nested structure (Core Elements → Listen + Respond → Focus on the Fantascape) uses standard H2/H3/H4 hierarchy. See [Typography](#ch-typography) for heading levels and [Components](#ch-components) for list and prose styling.
+The Dream Mastery chapter of the Field Guide is written entirely in second-person directed at the DM. It's the most voice-forward section of the book — not a neutral referee guide, but a manifesto for how to run Dimm City. The layout reflects this: long-form prose with frequent subheadings, bullet-list guidance blocks, and callout boxes for specific techniques.
+
+NPC pages use a consistent three-tier format:
+
+| Tier | HP | Damage | Role |
+|------|----|--------|------|
+| **Fodder** | 2 | 1 | Cannon fodder, civilian threats, mob encounters |
+| **Operator** | 4 | 2 | Skilled grunts, tactical support, mini-bosses |
+| **Master** | 10 | 4 | Main antagonists, unique threats, boss encounters |
+
+Each NPC entry follows the same structure: a blockquote flavor line (in-world voice), a type/size designation, then H5 subsections for Traits, Equipment, and Cybernetics. The `---` dashed rule separates individual NPC entries within a tier. The tier headers are H3, individual NPC names are H4.
+
+The stat block format is intentionally minimal — no special macro required. The `dc-components.css` styles H4/H5 headings inside the NPC sections automatically using the `chapter-04` page class.
+
+---
 
 @page .chapter-04
+
+> [!NOTE]
+> **Dream Mastery Chapter Page** — `@page .chapter-04` — standard body page with the chapter-04 identifier. The DM chapter uses long-form prose with bullet-list guidance blocks. The nested structure (Core Elements → Listen + Respond → Focus on the Fantascape) uses standard H2/H3/H4 hierarchy. See [Typography](#ch-typography) for heading levels and [Components](#ch-components) for list and prose styling.
+
+---
 
 ## Dream Mastery
 
@@ -62,7 +81,8 @@ Bury the math inside the moment and build scenes that hit harder than the dice e
 
 ## NPC Stat Block: Fodder
 
-**Format** — NPC stat blocks use a short italic definition quote, a type/size line, and H5/H6 subsections for Traits, Equipment, and Cybernetics. The `---` dashed rule (see [Field Guide Components](#ch-fg-components)) separates NPC entries. The HP/Damage values appear as bold inline text after the quote. All content verbatim from `chapter-04.md`.
+> [!NOTE]
+> **NPC Stat Block Format** — NPC stat blocks use a short italic definition quote, a type/size line, and H5/H6 subsections for Traits, Equipment, and Cybernetics. The `---` dashed rule separates NPC entries. The HP/Damage values appear as bold inline text after the quote. All content verbatim from `chapter-04.md`.
 
 ### Fodder
 
@@ -95,11 +115,7 @@ UniArm 100 / Redi-Mobile Cyberleg / RedEye Optical Prosthetic (could be just one
 
 ---
 
-@break
-
 ## NPC Stat Block: Operator
-
-**Format** — Operator stat blocks follow the same structure as Fodder but with higher HP/Damage and more complex Traits and Equipment entries. The format is identical — H4 name, blockquote intro, type line, H5 Traits / Equipment / Cybernetics.
 
 ### Operators
 
@@ -130,11 +146,7 @@ UniArm 100 Cyberarm w/Optalanges TechMech kit and Smuggler's Stash Level 1, Ligh
 
 ---
 
-@break
-
 ## NPC Stat Block: Master
-
-**Format** — Master stat blocks use the same structure but carry multiple Traits, higher HP/Damage values, and unique named abilities. Masters are the boss-level threats — encounters against them require strategy and teamwork.
 
 ### Masters
 
@@ -167,8 +179,45 @@ Master — Medium
 
 Size affects both hit points and damage output, scaling up or down based on how physically imposing the NPC is:
 
-- **Tiny:** -1 HP, representing small or frail creatures.
-- **Small/Medium:** No modification; the default for most humanoid or animal NPCs.
-- **Big:** +10 HP, +1 Damage. Ideal for large beasts or physically imposing foes.
-- **Huge:** +20 HP, +2 Damage. Represents truly massive creatures like dragons or mechs.
-- **Colossal:** +40 HP, +4 Damage. These are the titanic creatures that dominate the battlefield.
+| Size | HP Modifier | Damage Modifier | Notes |
+|------|-------------|-----------------|-------|
+| **Tiny** | −1 HP | None | Small or frail creatures |
+| **Small/Medium** | None | None | Default for most humanoids |
+| **Big** | +10 HP | +1 Damage | Large beasts or imposing foes |
+| **Huge** | +20 HP | +2 Damage | Truly massive creatures |
+| **Colossal** | +40 HP | +4 Damage | Titanic creatures that dominate the battlefield |
+
+Size is a narrative choice as much as a mechanical one. A Colossal creature changes the encounter architecture — the DM should treat them like a location, not just a big target.
+
+---
+
+### Building Your Own NPCs
+
+Every NPC in Dimm City is built from the same chassis: a tier, a flavor quote, a size, HP/Damage, and a list of Traits. The Traits are where NPC personality lives.
+
+A good Trait does one of three things:
+
+1. **Creates positioning pressure** — forces Dreamers to fight at a disadvantage unless they account for it (see: Stranglehold, Bloodlust)
+2. **Changes the environment** — Undertow in a flood district isn't just dangerous, they're regenerating while you're slowing down
+3. **Rewards specific counters** — a Patchhead mob with Bloodlust rewards hitting hard fast; a Grease Monkey rewards disrupting their tech before they rig the battlefield
+
+Equipment and Cybernetics add texture and loot. They don't need to be tracked unless the DM decides they matter to the story.
+
+---
+
+### Quick NPC Builder
+
+When you need an NPC fast, answer these four questions:
+
+**Who are they in one sentence?** (A junked-out Patchhead mob guard with nothing to lose.)
+
+**What do they want in this scene?** (Drive the Dreamers out of the warehouse or die trying.)
+
+**What Trait makes them dangerous?** (Bloodlust — the more the Dreamers hurt, the more the mob escalates.)
+
+**What happens if the Dreamers handle them cleverly?** (Offer the Patchheads something worth more than the job. They scatter.)
+
+That's it. That's an NPC. Stat it if combat is likely. Leave it sketched if it's just atmosphere.
+
+> [!NOTE]
+> **DM tip:** Most NPCs the Dreamers never fight don't need stats at all. A shopkeeper, a frightened courier, a bystander who saw something — these are scene dressing, not encounters. Save the full stat block for NPCs who will put pressure on the table. The city is full of people. Only a few of them are threats.

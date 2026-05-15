@@ -4,17 +4,34 @@
 
 @lede
 
-This section shows how core rules pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 03. Rules pages use the `page-rules` template and rely on standard prose, outcome tables, status condition tables, and rule-break callouts. No special macros — clean prose layout with DC typography.
+This section shows how core rules pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 03. Rules pages use standard prose, outcome tables, status condition tables, and rule-break callouts. No special macros — clean prose layout with DC typography.
 
 @end-lede
 
 ---
 
-## Chapter-Start: Are You Lucid Yet?
+## About Rules Page Layouts
 
-**Page template** — `@page .chapter-start .chapter-03` — applies the chapter-start page layout. The `@chapter-opener C.11` macro injects the chapter badge. The opening fiction block uses standard prose. The art image is replaced with the design guide placeholder. See [Page Templates](#ch-templates) for `chapter-start` and [DC Components](#ch-dc-components) for `@chapter-opener`.
+Rules pages are the workhorse of any RPG book. In Dimm City they follow a consistent structure across three page templates:
+
+| Template | Chapter class | Contents |
+|----------|--------------|----------|
+| `page-chapter-start` | `.chapter-03` | Chapter opener fiction + intro prose (two-column) |
+| `the-players` | `.chapter-03` | Dreams, Dreamers, Dream Master + ROLL A DIE! section |
+| bare `@page` | `.chapter-03` | Status conditions table, AP rules, outcome ladder |
+
+Rules prose in DC uses a deliberately aggressive voice. The Dream Master section, for instance, isn't a neutral referee description — it's confrontational, second-person, and assumes the reader is ready to run something rough. The tone is part of the system.
+
+Tables use standard GFM markdown syntax. The status conditions table and outcome ladder table are both authored as plain `|---|---|` tables with no extra class attributes — `dc-components.css` applies alternating row backgrounds universally. For a custom header color, add a variant class like `{.dc-table-crimson}` after the opening `|`.
+
+---
 
 @page .chapter-start .chapter-03
+
+> [!NOTE]
+> **Chapter-Start: Are You Lucid Yet?** — `@page .chapter-start .chapter-03` — applies the chapter-start page layout. The `@chapter-opener C.11` macro injects the chapter badge. The opening fiction block uses standard prose. The art image is replaced with the design guide placeholder. See [Page Templates](#ch-templates) for `chapter-start` and [DC Components](#ch-dc-components) for `@chapter-opener`.
+
+---
 
 @chapter-opener C.11
 
@@ -34,17 +51,26 @@ Behind him, a chorus of giggles breaks from the shadows moving closer.
 
 What's your next move?
 
----
+---{.column-break}
 
 In Dimm City, stakes is high and the death rate is higher. The scenario, like the one above, is presented to you by the Dream Master. Your role as the dreamer is to act how your character would act. The more fun you make for yourself and your friends through playing your characters well, the better the experience will be for everyone.
 
+## How to Play
+
+Each player takes on the role of a Dreamer — a character living and scraping through Dimm City. One player takes on the role of Dream Master and runs the world, its inhabitants, and its consequences.
+
+The rules in this chapter govern how the Dream plays out: when you roll dice, how outcomes are interpreted, what it costs to push harder, and what conditions your character can suffer. These aren't restrictions — they're the physics of the Dream.
+
+Learn the core loop first. Everything else builds on it.
+
 ---
 
-## Rules Body Page: Dreams and Rolling the Die
-
-**Page template** — `@page .the-players .chapter-03` — standard rules body layout. The H2 headings use plain style. The `### ROLL A DIE!` section introduces the core mechanic. See [Typography](#ch-typography) for heading hierarchy and [Components](#ch-components) for standard prose blocks.
-
 @page .the-players .chapter-03
+
+> [!NOTE]
+> **Rules Body Page: Dreams and Rolling the Die** — `@page .the-players .chapter-03` — standard rules body layout. The H2 headings use plain style. The `### ROLL A DIE!` section introduces the core mechanic. See [Typography](#ch-typography) for heading hierarchy and [Components](#ch-components) for standard prose blocks.
+
+---
 
 ## Dreams {#c1-dreams}
 
@@ -86,11 +112,12 @@ No dead rolls. No vanilla outcomes. If the dice show you teeth, you better bite 
 
 ---
 
-## Rules Table Page: Status Conditions
-
-**Page template** — `@page .chapter-03` — standard body page. The Status Conditions table is a core rules reference table using standard markdown table syntax. The Lucid/Surreal and AP sections use short H3 subheadings. See [Components](#ch-components) for table rendering and [Field Guide Components](#ch-fg-components) for the dashed rule divider between sections.
-
 @page .chapter-03
+
+> [!NOTE]
+> **Rules Table Page: Status Conditions** — `@page .chapter-03` — standard body page. The Status Conditions table is a core rules reference table using standard markdown table syntax. The Lucid/Surreal and AP sections use short H3 subheadings. See [Components](#ch-components) for table rendering and [Field Guide Components](#ch-fg-components) for the dashed rule divider between sections.
+
+---
 
 ### Lucid & Surreal
 
@@ -127,7 +154,7 @@ Abilities don't just deal damage. They disrupt momentum, break positioning, and 
 | **Silenced** | The creature cannot speak or use abilities requiring speech. |
 | **Stunned** | The creature cannot move, act, or speak. |
 
-#### Ending Conditions {.pmd-break-before}
+#### Ending Conditions
 
 A creature suffering a condition may attempt to end it at the time specified by the effect, usually at the start or end of its turn, by rolling 11 or higher on a d20.
 
@@ -142,3 +169,10 @@ On a success, the condition ends. Conditions usually end when the encounter ends
 | 6–10  | **Hard Choice** — you succeed, but it costs you |
 | 2–5   | **Failure** — you don't get what you wanted     |
 | 1     | **Catastrophe** — it goes bad, and then worse   |
+
+### Distance Tags
+
+Distance in Dimm City is measured in three zones: **Reach** (adjacent, close enough to touch), **Near** (same room, line of sight), and **Far** (across a street, different room). Most abilities specify which distances they work at. When in doubt, ask if you could throw something at it and hit — that's Near.
+
+> [!NOTE]
+> **Ranges in Dimm City aren't exact.** The city is too loud and too crowded for precise measurement. If you're in Reach, you're in someone's space. If you're Near, you're in their fight. If you're Far, you're still in danger — just slower to get there.

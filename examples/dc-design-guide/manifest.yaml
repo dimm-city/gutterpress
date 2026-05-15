@@ -14,17 +14,19 @@ styles:
 # Debugging, visual review, and design quality review tip: comment out files to isolate issues/pages/components and speed up build iterations. Search akm for print-md manifest tips.
 source:
   files:
-    - 00-toc.md
-    - 00-overview.md
-    - 01-typography.md
-    - 02-palette.md
-    - 03-components.md
-    - 04-dc-components.md
-    - 05-page-templates.md
-    - 06-layout.md
-    - 07-markdown-reference.md
-    - 08-field-guide-components.md
-    - 101-publishing.md
+    # Part 1 — commented out for Part 2 spread review
+    # - 00-toc.md
+    # - 00-overview.md
+    # - 01-typography.md
+    # - 02-palette.md
+    # - 03-components.md
+    # - 04-dc-components.md
+    # - 05-page-templates.md
+    # - 06-layout.md
+    # - 07-markdown-reference.md
+    # - 08-field-guide-components.md
+    # - 101-publishing.md
+    # Part 2 — Field Guide in Action examples
     - 300-example-overview.md
     - 301-example-front-matter.md
     - 302-example-chapter-opener.md

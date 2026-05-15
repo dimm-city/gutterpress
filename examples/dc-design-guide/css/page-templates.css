@@ -52,6 +52,14 @@
   height: auto;
 }
 
+/* Specialty card images must be constrained to prevent full-size external images
+   from breaking break-inside:avoid. More specific than .page img. */
+.page .dc-specialty-card img {
+  width: var(--dc-specialty-card-media-width);
+  height: var(--dc-specialty-card-media-height);
+  object-fit: cover;
+}
+
 /* ── COLUMN BREAK MARKER ──────────────────────────────────────────────────── */
 .column-break {
   color: var(--hud-magenta);
@@ -310,7 +318,7 @@
 /* Break and overflow rules for specialty page type. Components own their own
    sizing; only break-control and snap geometry belong here. */
 .dc-specialty .dc-learning-path {
-  break-before: page;
+  break-before: auto;
   break-inside: auto;
   break-after: auto;
   overflow: visible;

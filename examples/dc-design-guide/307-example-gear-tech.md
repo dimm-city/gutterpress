@@ -4,21 +4,35 @@
 
 @lede
 
-This section shows how gear and cybernetics pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 05. This example now focuses on the rules-heavy reference page pattern and standard gear prose. Images replaced with design guide placeholder.
+This section shows how gear and cybernetics pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 05. This example focuses on the rules-heavy reference page pattern and standard gear prose.
 
 @end-lede
 
 ---
 
-## Tech and Cybernetics Page
+## About Gear & Tech Pages
 
-**Page template** — `@page .tech-cybernetics .second-page .chapter-05` — applies the cybernetics rules layout. This page uses dense prose with bold key terms and a full rules table for the Ego Points system. The blockquote introduces the section concept. The `SysChk` table uses standard markdown table syntax. See [Components](#ch-components) for table rendering.
+Gear pages in the Field Guide follow a consistent structure: an in-world voice opener (blockquote), a mechanical explanation in plain prose, then a reference table. The pattern repeats for every subsystem — cybernetics, weapons, utilities.
 
-**Prose + table pattern** — This is the most common rules-page structure in the field guide: a section opener in bold flavour prose, a `> blockquote` for an in-world voice line, body prose explaining the mechanic, then a reference table. The Ego Points table is pure GFM markdown — no class attributes needed for basic alternating-row styling (components.css applies it universally). If a table needs a custom header colour, add `{.dc-table-crimson}` or similar variant class.
+| Pattern | Element | Authoring |
+|---------|---------|----------|
+| Voice opener | `> blockquote` | In-world character speaking about the gear |
+| Mechanical rules | Standard prose | Bold key terms, inline code for mechanic names |
+| Reference table | GFM table | Standard `|---|---|` — no class needed for alternating rows |
+| Inline code | \`SysChk\` | Game-mechanic terms that are also keywords appear in code style |
 
-**Inline code in prose** — Note `SysChk` rendered as inline code — this is intentional for game-mechanic terms that double as class names or keywords. It keeps the text visually distinct without a callout box. The components.css inline code style (orange text, faint orange background) reads clearly against cream body text at 12pt body size.
+**Prose + table pattern** — This is the most common rules-page structure in the Field Guide: a section opener in bold flavour prose, a `> blockquote` for an in-world voice line, body prose explaining the mechanic, then a reference table. The Ego Points table is pure GFM markdown — no class attributes needed for basic alternating-row styling (`dc-components.css` applies it universally).
+
+**Inline code in prose** — `SysChk` rendered as inline code is intentional for game-mechanic terms that double as class names or keywords. The `dc-components.css` inline code style (orange text, faint orange background) reads clearly against cream body text at 12pt body size.
+
+---
 
 @page .tech-cybernetics .second-page .chapter-05
+
+> [!NOTE]
+> **Tech and Cybernetics Page** — `@page .tech-cybernetics .second-page .chapter-05` — applies the cybernetics rules layout. This page uses dense prose with bold key terms and a full rules table for the Ego Points system. See [Components](#ch-components) for table rendering.
+
+---
 
 ### Tech and Cybernetics
 
@@ -85,3 +99,33 @@ Consequences of a SysFAIL can range from temporary ability loss to total system 
 - Total system shutdown lasting for a quicktick (one combat round) or more.
 
 The affected PC rolls each round to regain functionality or control. Specialties like the Cybersurgeon, Technosorcerer, or Wirephreak can assist in recovery by spending their action or using an ability that deals specifically with this problem. Assistance grants Lucidity to the next SysChk, allowing the affected PC to roll two dice and use the better result.
+
+---
+
+## Example Gear Entries
+
+> [!NOTE]
+> **Gear entry format** — gear items use the `.dc-gear-entry` component. Each entry has a name (H4), a tagline (`.dc-gear-entry-tagline` class applied via `{.dc-gear-entry-tagline}`), a cost and stats line, and a short description. Gear tables use `{.dc-table-crimson}` if the header row needs accent color.
+
+### Useful Items
+
+| Item | Cost (DC) | Weight | Notes |
+|------|-----------|--------|-------|
+| **Shadowbit Token** | 20-500 | Nil | Encrypted Dream Credits chip, untraceable |
+| **Patchkit** | 80 | 0.5kg | Restores 2 HP when used as an action |
+| **Signal Jammer** | 200 | 1kg | Kills wireless in Near range for 3 rounds |
+| **Glow Stick (×6)** | 15 | Nil | Chemical light, 4 hours, bright Near radius |
+| **Breaching Charge** | 350 | 2kg | Destroys standard doors and locks; loud |
+| **Nano-Seal Spray** | 120 | 0.3kg | Closes wounds, stops bleeding — 1 HP, no roll |
+| **Burner Comm** | 60 | 0.1kg | One-use encrypted comm device |
+
+### Common Cybernetics
+
+| Implant | EP Cost | Effect |
+|---------|---------|--------|
+| **UniArm 100** | 1 | Cybernetic arm. Full functionality, +1 to Reach attacks. |
+| **RedEye Optical** | 1 | Enhanced vision. Night vision + zoom to Far range. |
+| **Redi-Mobile Cyberleg** | 1 | Cybernetic leg. +1 movement speed, silent movement. |
+| **Neurolink Mk2** | 2 | Neural interface. Connect to systems at Near range. |
+| **SubDerm Armor Mesh** | 2 | Subdermal plating. Resist 1 damage from physical attacks. |
+| **Reflex Accelerator** | 3 | Combat processor. +1 AP per round, cannot be Stunned. |

@@ -10,11 +10,22 @@ This section shows how chapter-start spreads look in the actual Dimm City Field 
 
 ---
 
-@tape Chapter-Start Spread
+## About Chapter Opener Spreads
 
-## Chapter-Start Spread: Who Do You Dream to Be?
+A chapter opener spread is the reader's first encounter with each chapter's world. DC openers are always two-column: the left column carries a short fiction vignette establishing the vibe and stakes of the chapter, and the right column launches directly into the rules or character creation content.
 
-**Page template** — `@page .page-chapter-start .chapter-start .chapter-01` — two-column layout defined in `page-rules.css`. The `@chapter-opener C.01` macro injects the chapter number badge into the left column. The fiction narrative fills the left column up to the column break. The H1 heading on the right side uses `.dc-chevron`. Art image replaced with design guide placeholder. See [Page Templates](#ch-templates) for the `page-chapter-start` spec and [DC Components](#ch-dc-components) for `@chapter-opener`.
+The two-column split is authored with a `---{.column-break}` marker. Everything before the column break flows into the left column; everything after flows into the right. The `@chapter-opener C.NN` macro injects the chapter number badge over the left column's top edge.
+
+| Element | Authoring pattern | Rendered as |
+|---------|------------------|-------------|
+| Chapter badge | `@chapter-opener C.01` | Stacked chapter code + large number overlay |
+| Left column | Fiction vignette + art | Narrative prose with inline image |
+| Column break | `---{.column-break}` | Layout split between columns |
+| Right column | Rules intro + content | Standard heading hierarchy |
+
+The `page-chapter-start` template in `page-rules.css` creates the column structure and applies chapter-specific accent colors via the `chapter-01`, `chapter-02` class selectors.
+
+---
 
 @page .page-chapter-start .chapter-start .chapter-01
 
@@ -56,13 +67,7 @@ I locked in da hack, jacked out, an leapt clean onto a passing airbus like I mea
 
 ![Lil Thump](https://placehold.co/1349x842/png?text=Lil+Thump){.art-lil-thump}
 
----
-
-## Info Sidebar Page: Citizen File
-
-**Page template** — `@page .citizen-file .chapter-01` — citizen-file layout with a main column and a sidebar-oriented record treatment. The right column's sidebar block uses `.dc-sidebar`. Column breaks (`---{.column-break}`) split content across the two columns. Callout blocks use `> [!VISIT]` for the bordered callout style. See [Layout](#ch-layout) for column-break syntax and [Components](#ch-components) for the callout component.
-
-@page .citizen-file .chapter-01
+---{.column-break}
 
 ## Citizen File {#c2-character-profile}
 
@@ -76,12 +81,14 @@ Before reputation comes recognition. Before recognition comes a glance. Dimmers 
 
 ![Image is everything](https://placehold.co/1349x842/png?text=Portrait){.art-portrait}
 
----{.column-break}
-
 > [!VISIT]
 > **Before You Fill Anything In:**
 > Don't start with numbers. Start with a body, a vibe, and a reason you're still breathing in Dimm City. This file isn't about optimization, it's about creating a CREATUREPUNK. If a choice would make Dimm City react to you, it belongs here. If it only makes you stronger, it probably comes later.
 > Visit **dimm.city** for a form-fillable PDF version of the Citizen File.
+
+---
+
+@page .citizen-file .chapter-01
 
 #### What's Yr Handle?
 
@@ -129,3 +136,19 @@ Size carries no mechanical advantage. It's a narrative choice that shapes how yo
 |  |**Small:** About 1–1.5 meters tall. You fit where the city pinches.|
 |  |**Medium:** About 1.6–2.5 meters tall. The city is built for bodies like yours.|
 |  |**Big:** Over 2.5 to 4 meters tall. Your presence fills rooms and draws eyes.|
+
+---{.column-break}
+
+#### Species
+
+In Dimm City, you're not human—you never were. Every Dreamer is an anthropomorphic creature: a splice of animal instinct, street survival, and whatever the corps, gods, or bad luck bolted on afterward.
+
+Choose a species that fits your vibe. Species carries no mechanical weight — it shapes your look, your voice, and how Dimm City reads you. The city has seen it all: cats and rabbits, rats and ravens, wolves and worse things with no clean name left.
+
+#### Origins
+
+Where did you start, and how far is that from where you are now?
+
+Origins tell the Dream Master how your character fits the city's grid. A corporate-born Dreamer walks alleys differently than someone who grew up in the Flats. They know different people, owe different debts, and have different reasons to still be breathing.
+
+Choose one: **EntD rat**, **Corp exile**, **District-born**, **Offworld arrival**, **Street-raised**, or **Something the city made and hasn't claimed yet**.

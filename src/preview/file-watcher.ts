@@ -116,9 +116,22 @@ export async function generateAndWriteHtml(
     '<link rel="stylesheet" href="/preview/styles/preview.css">\n  '
     + '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
     + (debugCss ? `<script>(function(){var s=document.createElement("style");s.setAttribute("data-debug-css","true");s.textContent=\`${escapedDebugCss}\`;document.head.appendChild(s)})()</script>\n  ` : '');
+  // Copy the local paged.polyfill.js so the preview works without internet access.
+  const pagedSrcPath = path.resolve('node_modules/pagedjs/dist/paged.polyfill.js');
+  const pagedDestDir = path.join(tempDir, 'vendor');
+  const pagedDestPath = path.join(pagedDestDir, 'paged.polyfill.js');
+  try {
+    await import('node:fs/promises').then(fsp => fsp.mkdir(pagedDestDir, { recursive: true }));
+    await Bun.write(pagedDestPath, Bun.file(pagedSrcPath));
+  } catch { /* fall back to CDN if local copy unavailable */ }
+
+  const pagedSrc = (await import('node:fs').then(fs => fs.existsSync(pagedDestPath)))
+    ? './vendor/paged.polyfill.js'
+    : 'https://unpkg.com/pagedjs/dist/paged.polyfill.js';
+
   const output = html.replace(
     '<script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>',
-    iface + BREAK_INSIDE_HANDLER + '\n  <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>'
+    iface + BREAK_INSIDE_HANDLER + `\n  <script src="${pagedSrc}"></script>`
   );
 
   await Bun.write(path.join(tempDir, BOOK_HTML_FILENAME), output);
