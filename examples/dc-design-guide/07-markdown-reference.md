@@ -215,8 +215,6 @@ A second sentence references a different note.[^fn-2]
 
 @end-section
 
-@page
-
 ## See It In Action
 
 These examples show the above markdown syntax and plugin markers used in real book pages using actual Dimm City Field Guide content.

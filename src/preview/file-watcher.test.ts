@@ -126,14 +126,20 @@ describe('generateAndWriteHtml', () => {
   }, 60000);
 
   test('design guide stylesheet avoids the crash-prone selector combination', async () => {
-    const cssPath = join(
-      process.cwd(),
-      'examples/dc-design-guide/css/content-templates.css'
-    );
-    const css = await readFile(cssPath, 'utf8');
+    // content-templates.css was merged into guide.css (and other files) during
+    // the CSS refactor in bdc64ef. Scan all CSS files in the directory so this
+    // regression guard stays valid regardless of future file renames.
+    const { readdir } = await import('fs/promises');
+    const cssDir = join(process.cwd(), 'examples/dc-design-guide/css');
+    const cssFiles = (await readdir(cssDir)).filter((f) => f.endsWith('.css'));
 
-    expect(css).not.toContain('.page.rolling-die > .wrapper:first-of-type ul + p');
-    expect(css).not.toContain('.page.rolling-die > .wrapper ul + p');
+    let allCss = '';
+    for (const file of cssFiles) {
+      allCss += await readFile(join(cssDir, file), 'utf8');
+    }
+
+    expect(allCss).not.toContain('.page.rolling-die > .wrapper:first-of-type ul + p');
+    expect(allCss).not.toContain('.page.rolling-die > .wrapper ul + p');
   });
 });
 

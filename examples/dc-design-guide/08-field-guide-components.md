@@ -10,8 +10,6 @@ Components used in the Dimm City Field Guide — gear entries, definition blocks
 
 > **Component pattern:** `.dc-prose-panel` is the small shared shell for compact prose boxes in this family. `.dc-definition-block` and `.dc-sidebar-box` are thin concrete variants layered on top of it. `.dc-sidebar` and `.dc-human-callout` remain separate components with their own layout/content rules.
 
-@page
-
 @section .two-column
 
 ## Dashed Rule Divider
@@ -85,8 +83,6 @@ concealable under a jacket. Cuts non-powered barriers on a hit of 10+.
 @end-gear-card
 ```
 
-@page
-
 @section .two-column
 
 ## Callout Class Names — Field Guide vs Design Guide
@@ -110,8 +106,6 @@ These examples show the above field guide components rendered in real book pages
 - [Gear & Tech](#ch-example-gear-tech) — gear entries, dashed rule separators, gear callouts in weapon lists
 
 @end-section
-
-@page
 
 ## Component Authoring Quick Reference
 

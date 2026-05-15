@@ -125,8 +125,6 @@ Quick stat grid for character sheets, specialty summaries, and creature previews
 
 Both block types use the same `.dc-stat` structure. Creature blocks use combat stats (HP / DEF / AP / DMG); NPC blocks use social stats (REP / HEAT / FEE / TURN). Add `.flush` to remove default side margins.
 
-@section .two-column
-
 ### Creature Stat Block
 
 **Syntax** — raw HTML
@@ -138,12 +136,27 @@ Both block types use the same `.dc-stat` structure. Creature blocks use combat s
     <div class="dc-stat-class">— Threat · Hunter —</div>
   </div>
   <div class="dc-stat-grid">
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">HP</div><div class="dc-stat-cell-val">22</div></div>
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">DEF</div><div class="dc-stat-cell-val">14</div></div>
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">AP</div><div class="dc-stat-cell-val">3</div></div>
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">DMG</div><div class="dc-stat-cell-val">d20</div></div>
+    <div class="dc-stat-cell">
+      <div class="dc-stat-cell-key">HP</div>
+      <div class="dc-stat-cell-val">22</div>
+    </div>
+    <div class="dc-stat-cell">
+      <div class="dc-stat-cell-key">DEF</div>
+      <div class="dc-stat-cell-val">14</div>
+    </div>
+    <div class="dc-stat-cell">
+      <div class="dc-stat-cell-key">AP</div>
+      <div class="dc-stat-cell-val">3</div>
+    </div>
+    <div class="dc-stat-cell">
+      <div class="dc-stat-cell-key">DMG</div>
+      <div class="dc-stat-cell-val">d20</div>
+    </div>
   </div>
-  <div class="dc-stat-line"><strong>Pack Tactic:</strong> While 2+ wirewolves are in reach, all gain advantage.</div>
+  <div class="dc-stat-line">
+    <strong>Pack Tactic:</strong> While 2+ wirewolves
+    are in reach, all gain advantage.
+  </div>
 </div>
 ```
 
@@ -156,20 +169,31 @@ Both block types use the same `.dc-stat` structure. Creature blocks use combat s
     <div class="dc-stat-class">— Contact · Fixer —</div>
   </div>
   <div class="dc-stat-grid">
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">REP</div><div class="dc-stat-cell-val">4</div></div>
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">HEAT</div><div class="dc-stat-cell-val">2</div></div>
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">FEE</div><div class="dc-stat-cell-val">×1.5</div></div>
-    <div class="dc-stat-cell"><div class="dc-stat-cell-key">TURN</div><div class="dc-stat-cell-val">−1</div></div>
+    <div class="dc-stat-cell">
+      <div class="dc-stat-cell-key">REP</div>
+      <div class="dc-stat-cell-val">4</div>
+    </div>
+    <div class="dc-stat-cell">
+      <div class="dc-stat-cell-key">HEAT</div>
+      <div class="dc-stat-cell-val">2</div>
+    </div>
+    <div class="dc-stat-cell">
+      <div class="dc-stat-cell-key">FEE</div>
+      <div class="dc-stat-cell-val">×1.5</div>
+    </div>
+    <div class="dc-stat-cell">
+      <div class="dc-stat-cell-key">TURN</div>
+      <div class="dc-stat-cell-val">−1</div>
+    </div>
   </div>
-  <div class="dc-stat-line"><strong>Patch Job:</strong> Treat wounds between scenes. Costs FEE × severity.</div>
+  <div class="dc-stat-line">
+    <strong>Patch Job:</strong> Treat wounds between
+    scenes. Costs FEE × severity.
+  </div>
 </div>
 ```
 
-@end-section
-
 ---
-
-@page
 
 ## Learning Path
 
@@ -272,8 +296,6 @@ Rotated monospaced label chips for content status (draft, deprecated, classified
 
 ---
 
-@page
-
 ## Clip-Path Card Variants (v1–v5)
 
 Five clip-path shapes for the skill-card shell. Set `variant="N"` on the `@skill` macro to choose. The emitted `.dc-skill-card` owns the variant, and its internal tab/body shapes inherit from that root state. Variant 1 is the default right-diagonal; variants 2–5 offer progressively distinct tech silhouettes.
@@ -321,6 +343,8 @@ Three modifier classes control how `.dc-skill-card` elements pack on a page when
 @end-specialty
 ```
 
+@column-break
+
 Or in raw HTML as a modifier on a container:
 
 ```html
@@ -351,7 +375,7 @@ Badge in the top-left corner of specialty chapter opener pages. Auto-generated b
 
 ---
 
-## Component Authoring Quick Reference {.pmd-break-before}
+## Component Authoring Quick Reference
 
 | Component | Authoring method | CSS class(es) |
 |---|---|---|

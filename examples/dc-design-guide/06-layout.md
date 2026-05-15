@@ -79,7 +79,7 @@ Content that must not split across a page break.
 
 @end-section
 
-@page
+---
 
 ## See It In Action
 

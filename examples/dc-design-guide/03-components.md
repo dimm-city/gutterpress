@@ -343,7 +343,7 @@ Five-rung d20 result table for all rolls. Each row is color-coded by result seve
 
 ---
 
-## Component Token Reference {.pmd-break-before}
+## Component Token Reference
 
 **Prose & Callouts**
 

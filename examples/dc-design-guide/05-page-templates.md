@@ -46,7 +46,7 @@ Named pages are declared in the markdown source using the `@page` directive:
 
 Legacy `--- {page ...}` fences remain supported for compatibility, but the design guide treats `@page` as the canonical authoring form.
 
-@page
+---
 
 ## Book Page Templates
 
@@ -446,7 +446,7 @@ Fail, and something else goes wrong.
 @end-outcome
 ```
 
-@page-break
+---
 
 ## Running Headers and Footers
 
@@ -460,7 +460,7 @@ The chapter counter resets via `.page.chapter-NN` on the first `.page-break` div
 .page.chapter-02, .page-break.chapter-02 { counter-reset: chapter 2; }
 ```
 
-@page-break
+---
 
 ## See It In Action
 

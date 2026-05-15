@@ -1,5 +1,7 @@
 @chapter #ch-typography .typography ch="1"
 
+@page
+
 # Typography
 
 @lede
@@ -38,7 +40,9 @@ Three font families, each with a specific role. lixdu anchors display and banner
 > [!NOTE]
 > `--font-tab` and `--font-mono` both resolve to Tomorrow as first choice. The distinction: `--font-tab` is for short label text (tab chips, stat labels); `--font-mono` is for code, counters, and monospaced tabular data.
 
----
+@page
+
+@section .two-column
 
 ## Smart Typography
 
@@ -51,28 +55,20 @@ The markdown renderer has `typographer: true` enabled, which automatically conve
 
 No special syntax required for these conversions.
 
----
-
 ## See It In Action
 
 ### Body Prose
 
 Twelve-point Titillium Web carries all running narrative. The quick dark fox leaped over the lazy augmerc's rig. Corporate enforcers earn their grafts in blood and overtime; street muscle runs cheaper and lasts longer than anyone admits. Read a full paragraph here --- notice the leading, the x-height, and how weight shifts when a word is **bolded** or *italicized* mid-sentence.
 
----
-
 ### Flavor Text
 
 > [!FLAVOR]
 > See an opening, ya take it. Best time to hit 'em is when they think it's over.
 
----
-
 ### Smart Typography
 
 The typographer converts ASCII shortcuts automatically --- no special syntax needed. Dashes: en -- and em --- . Ellipsis: ... . Double quotes: "quoted phrase" . Single quotes: 'abbreviated'.
-
----
 
 ### Real-World Examples
 
@@ -84,13 +80,13 @@ The typographer converts ASCII shortcuts automatically --- no special syntax nee
 - [Dream Master Pages](#ch-example-dm-npcs) — NPC stat blocks, encounter hooks
 - [Gear & Tech](#ch-example-gear-tech) — weapon tables and cybernetics
 
----
-
 > [!NOTE]
 > **Column-safe headings:** H3 and H4 only. H1 and H2 at full print size exceed 3.5-inch column width — reserve them for full-width chapter openers, section breaks, and specimen pages. In two-column reference layouts, H3 is the workhorse heading.
 
 > [!NOTE]
 > **Body vs. flavor:** Body prose is Titillium Web at 12pt with `--lh-normal` (1.5) leading. Flavor text inherits the same size but switches to italic and `--ink-smoke` for a visual register shift. Never use bold italic for flavor — it reads as urgency, not voice.
+
+@end-section
 
 ### Heading Hierarchy
 

@@ -69,7 +69,7 @@ This is a lede rendered via the container plugin.
 @end-procedure
 ```
 
-@page
+@end-section
 
 ## Customizing the Brand
 
@@ -101,7 +101,7 @@ This is a lede rendered via the container plugin.
 }
 ```
 
-@section
-
 > [!NOTE]
 > This guide re-renders every time `print-md preview` is running. If a component style changes in `css/components.css`, its specimen updates on the next preview refresh — no separate stylesheet to maintain.
+
+@end-section
