@@ -221,3 +221,26 @@ That's it. That's an NPC. Stat it if combat is likely. Leave it sketched if it's
 
 > [!NOTE]
 > **DM tip:** Most NPCs the Dreamers never fight don't need stats at all. A shopkeeper, a frightened courier, a bystander who saw something — these are scene dressing, not encounters. Save the full stat block for NPCs who will put pressure on the table. The city is full of people. Only a few of them are threats.
+
+---
+
+### Common Traits Reference
+
+The traits you create for an NPC should fit its role and make the encounter interesting. Here are some templates:
+
+**Positioning Pressure traits** force the Dreamers to move or reposition:
+
+- **Territorial:** When a Dreamer ends their turn more than [distance] away from this NPC, the NPC moves toward them on its next turn and attacks for free.
+- **Overwatch:** This NPC can make a basic attack against any Dreamer who moves to a position in its line of sight.
+
+**Environment-changing traits** alter the battlefield itself:
+
+- **Rigged Terrain:** At the start of combat, roll the die. On 11+, the NPC has prepared the location — difficult terrain covers half the battlefield (Dreamers move half-speed).
+- **Toxic Cloud:** When this NPC takes damage, it vents a noxious gas in a radius. Dreamers in the cloud make a SysChk on 11+ or are Poisoned until the start of the NPC's next turn.
+
+**Counter-reward traits** make clever plays shine:
+
+- **Predictable Pattern:** Dreamers who watch this NPC's combat tactics for one round can ROLL THE DIE! on their next attack with Lucidity.
+- **Mechanical Weakness:** If a Dreamer disables [specific system] via hacking or damage, this NPC loses its signature ability until repaired.
+
+Build traits that reward table talk, clever positioning, and specialist abilities. The best NPCs feel dangerous but beatable through smart play.
