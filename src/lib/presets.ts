@@ -55,7 +55,7 @@ export const DTRPG_PRESET: VendorPreset = {
       markdownlint: null,
       htmlhint: null,
       stylelint: null,
-      allowedCallouts: ["sidebar", "ability", "specialty", "container", "aug"],
+      allowedCallouts: ["sidebar", "ability", "dc-specialty", "container", "aug"],
     },
     assets: {
       maxImageSize: 10_000_000,

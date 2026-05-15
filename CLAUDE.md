@@ -106,7 +106,7 @@ comment in the first 50 lines of each file before adding any rule.
 ### Specialty variant system
 
 Card variants (skill cards, path shells, specialty cards) are controlled by the
-`.specialty.<name>` parent container. Authors wrap the full specialty section in
+`.dc-specialty.<name>` parent container. Authors wrap the full specialty section in
 `@specialty .augmerc` and every card inside inherits the augmerc shape and accent
 automatically. Do NOT add `variant=` attributes to `@skill`, `@continue`, or
 `@learning-path` macros.

@@ -1327,7 +1327,7 @@ export default function dimmCityPlugin(md, options = {}) {
       if (specialtyMarker.matched) {
         closeSpecialty();
         const userAttrs = specialtyMarker.attrs;
-        let specClass = 'specialty' + (userAttrs['class'] ? ' ' + userAttrs['class'] : '');
+        let specClass = 'dc-specialty' + (userAttrs['class'] ? ' ' + userAttrs['class'] : '');
         let specAttrs = '';
         for (const [key, val] of Object.entries(userAttrs)) {
           if (key !== 'class') {

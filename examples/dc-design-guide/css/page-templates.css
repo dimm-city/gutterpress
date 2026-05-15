@@ -12,7 +12,7 @@
    - Named-page element wiring (.page.full-bleed { page: full }, etc.)
    - General print utilities (.pmd-no-break, .pmd-break-before, .pmd-col-span,
      .pmd-suppress-footer, .dc-art-top, .dc-art-bottom, .column-break)
-   - Break/overflow control scoped to a page type (.specialty break rules)
+   - Break/overflow control scoped to a page type (.dc-specialty break rules)
    - Page-level typography constraints (orphans/widows, heading break rules)
      scoped to .page context
 
@@ -191,7 +191,7 @@
   column-span: all;
 }
 
-.page.card-grid .specialty {
+.page.card-grid .dc-specialty {
   break-inside: avoid;
 }
 
@@ -342,12 +342,12 @@ div.chapter:is(.chapter-01, .chapter-02) :is(h1, .dc-intro, table, hr, .specimen
 /* ── SPECIALTY PAGE BREAK CONTROL ─────────────────────────────────────────── */
 /* Break and overflow rules for specialty page type. Components own their own
    sizing; only break-control and snap geometry belong here. */
-.specialty .dc-learning-path {
+.dc-specialty .dc-learning-path {
   break-before: page;
   break-inside: auto;
   break-after: auto;
   overflow: visible;
 }
 
-.specialty .dc-path-shell { padding-top: 0; padding-bottom: 16px; margin-bottom: 0; }
-.specialty .dc-skill-card.allow-split { break-inside: auto; }
+.dc-specialty .dc-path-shell { padding-top: 0; padding-bottom: 16px; margin-bottom: 0; }
+.dc-specialty .dc-skill-card.allow-split { break-inside: auto; }

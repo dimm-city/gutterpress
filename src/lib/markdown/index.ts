@@ -81,7 +81,7 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   // :::ability / :::ability-continued (use @skill / @continue),
   // :::aug (no replacement), :::lede (use @lede macro)
   md.use(markdownItContainer, "sidebar", createSidebarContainer(md));
-  md.use(markdownItContainer, "specialty", createNamedContainer("specialty"));
+  md.use(markdownItContainer, "dc-specialty", createNamedContainer("dc-specialty"));
   md.use(
     markdownItContainer,
     "learning-path",

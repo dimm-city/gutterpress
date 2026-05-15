@@ -7,7 +7,7 @@ const BUILTIN_CONTAINERS = [
   "wrapper",
   "ability",
   "ability-continued",
-  "specialty",
+  "dc-specialty",
   "learning-path",
   "container",
   "aug",
