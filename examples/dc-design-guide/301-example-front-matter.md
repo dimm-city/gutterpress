@@ -130,4 +130,10 @@ Good. That makes you dangerous.
 
 This is a genre where dreams are loud, limbs are optional, and survival's the last sacred act.
 
+### What You Bring to the Dream
+
+Every Dreamer in Dimm City is an *actor*—a furry, scaled, chitin-armored, or impossible thing that exists at the intersection of evolution, magic, and violence. You're not restrained by human fragility. You're not bound by human morality. Your instincts run hot, your augmentations run hotter, and your choices shape the city's heartbeat.
+
+You don't need permission. You don't need approval. You just need to be too dangerous to ignore.
+
 Welcome to Creaturepunk. Get weird or get wrecked.
