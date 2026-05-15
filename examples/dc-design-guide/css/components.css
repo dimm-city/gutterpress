@@ -918,23 +918,6 @@ hr,
 .dc-ap.free { --dc-ap-bg: var(--crimson); }
 .dc-ap.var  { --dc-ap-bg: var(--hud-magenta); }
 
-/* ── Ability layout utilities (2col, grid) ────────────────────────────── */
-.dc-ability-2col,
-.dc-ability-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: start;
-  break-inside: avoid;
-}
-.dc-ability-2col { gap: 20px; }
-.dc-ability-2col .dc-skill-card { margin-bottom: 20px; }
-.dc-ability-2col .dc-skill-card:last-of-type { margin-bottom: 0; }
-
-.dc-ability-grid { gap: 16px; }
-.dc-ability-grid .dc-skill-card          { margin-bottom: 0; }
-.dc-ability-grid .dc-skill-card.dc-span-row { grid-column: 1 / -1; }
-
-
 /* ═══ LEARNING PATH + SPECIALTY INTRO + SPECIALTY CARD ═══ */
 
 /* ── Specialty intro shell + element overrides ────────────────────────── */
@@ -996,18 +979,7 @@ hr,
   margin-bottom: 0;
 }
 
-/* ── Specialty section content (.specialty > h2/h3/blockquote, h2+p) ─── */
-.specialty h2 {
-  color: var(--crimson);
-  border-bottom: thin var(--crimson) solid;
-  margin-bottom: 0.12in;
-}
-
-/* Spacing after the specialty name heading. LIVE. */
-.specialty h2+p {
-  margin-bottom: 0.12in;
-}
-
+/* ── Specialty section content (blockquote, h3 — component rules win for h2) ─── */
 /* LIVE inside plugin-emitted specialty sections. */
 .specialty blockquote {
   margin: 0.12in 0;
@@ -1999,8 +1971,6 @@ p.dc-img-wrapper {
   padding: 0;
   line-height: var(--lh-tight);
 }
-
-.dc-ability-grid .dc-tab-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .dc-terms {
   break-inside: avoid;
