@@ -145,231 +145,256 @@
 }
 
 /* ═══ SPECIALTY PARENT-CONTAINER VARIANTS ═══
-   @specialty .<name> wrapper drives per-specialty clip-path shapes and accent tokens
-   for .dc-skill-card, .dc-path-shell, .dc-specialty-card, .dc-specialty-intro.
-   Each block overrides only custom properties; no structural rules repeated. */
+   Each .specialty.<name> parent defines the FULL SHAPE FAMILY for that specialty
+   as CSS custom properties. All shape variables cascade to descendant components.
+   Component sub-blocks set only color/accent tokens.
+
+   Shape variable inventory (defined at parent, consumed by components):
+     --dc-skill-tab-shape            → .dc-card-tab clip-path
+     --dc-skill-body-shape           → .dc-card-body clip-path
+     --dc-path-title-shape           → .dc-path-shell h2.dc-spray clip-path
+     --dc-path-shell-clip            → .dc-path-shell clip-path
+     --dc-specialty-card-shell-shape → .dc-specialty-card clip-path
+     --dc-specialty-intro-title-shape → .dc-specialty-intro > h2 clip-path
+     --dc-specialty-intro-clip       → .dc-specialty-intro clip-path */
 
 /* ── Augmerc — hardened military, HUD blue, hex cuts ───────────────────── */
+.specialty.augmerc {
+  --dc-skill-tab-shape:             polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
+  --dc-skill-body-shape:            polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px));
+  --dc-path-title-shape:            polygon(14px 0, calc(100% - 24px) 0, 100% 18px, 100% 100%, 0 100%, 0 14px);
+  --dc-path-shell-clip:             polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
+  --dc-specialty-card-shell-shape:  polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+  --dc-specialty-intro-title-shape: polygon(14px 0, calc(100% - 20px) 0, 100% 16px, 100% 100%, 0 100%, 0 14px);
+  --dc-specialty-intro-clip:        polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+}
 .specialty.augmerc .dc-skill-card {
-  --dc-card-accent:        var(--augmerc-accent);
-  --dc-card-tab-bg:        var(--hud-blue-dark);
-  --dc-skill-tab-shape:    polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
-  --dc-skill-body-shape:   polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px));
+  --dc-card-accent:   var(--augmerc-accent);
+  --dc-card-tab-bg:   var(--hud-blue-dark);
 }
 .specialty.augmerc .dc-path-shell {
-  --dc-path-title-bg:      var(--hud-blue-dark);
-  --dc-path-title-shape:   polygon(14px 0, calc(100% - 24px) 0, 100% 18px, 100% 100%, 0 100%, 0 14px);
-  --dc-path-accent:        var(--augmerc-accent);
-  background:              var(--paper-light);
-  clip-path: polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
+  --dc-path-title-bg:  var(--hud-blue-dark);
+  --dc-path-accent:    var(--augmerc-accent);
+  background:          var(--paper-light);
 }
 .specialty.augmerc .dc-specialty-card {
   --dc-specialty-card-bg:     var(--paper-light);
   --dc-specialty-card-accent: var(--augmerc-accent);
-  --dc-specialty-card-shell-shape: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
 }
 .specialty.augmerc .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    var(--hud-blue-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-title-shape: polygon(14px 0, calc(100% - 20px) 0, 100% 16px, 100% 100%, 0 100%, 0 14px);
-  background:  var(--paper-light);
-  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  background:                       var(--paper-light);
 }
 
 /* ── Cybersurgeon — precision surgical, silver, top-right diagonal ──────── */
+.specialty.cybersurgeon {
+  --dc-skill-tab-shape:             polygon(0 0, calc(100% - 30px) 0, 100% 30px, 100% 100%, 0 100%);
+  --dc-skill-body-shape:            polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
+  --dc-path-title-shape:            polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
+  --dc-path-shell-clip:             polygon(0 0, calc(100% - 26px) 0, 100% 26px, 100% 100%, 0 100%);
+  --dc-specialty-card-shell-shape:  polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
+  --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
+  --dc-specialty-intro-clip:        polygon(0 0, calc(100% - 32px) 0, 100% 32px, 100% 100%, 0 100%);
+}
 .specialty.cybersurgeon .dc-skill-card {
-  --dc-card-accent:        var(--cybersurgeon-accent);
-  --dc-card-tab-bg:        #707070;
+  --dc-card-accent:          var(--cybersurgeon-accent);
+  --dc-card-tab-bg:          #707070;
   --dc-card-tab-title-color: var(--paper-cream);
-  --dc-skill-tab-shape:    polygon(0 0, calc(100% - 30px) 0, 100% 30px, 100% 100%, 0 100%);
-  --dc-skill-body-shape:   polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
 }
 .specialty.cybersurgeon .dc-path-shell {
-  --dc-path-title-bg:      #606060;
-  --dc-path-title-shape:   polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
-  --dc-path-accent:        var(--cybersurgeon-accent);
-  background:              var(--paper-cream);
-  clip-path: polygon(0 0, calc(100% - 26px) 0, 100% 26px, 100% 100%, 0 100%);
+  --dc-path-title-bg:  #606060;
+  --dc-path-accent:    var(--cybersurgeon-accent);
+  background:          var(--paper-cream);
 }
 .specialty.cybersurgeon .dc-specialty-card {
   --dc-specialty-card-bg:     var(--paper-cream);
   --dc-specialty-card-accent: var(--cybersurgeon-accent);
-  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
 }
 .specialty.cybersurgeon .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    #606060;
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
-  background:  var(--hud-panel);
-  clip-path: polygon(0 0, calc(100% - 32px) 0, 100% 32px, 100% 100%, 0 100%);
+  background:                       var(--hud-panel);
 }
 
 /* ── Proxy — covert, orange, top-left step + diagonal bottom ────────────── */
+.specialty.proxy {
+  --dc-skill-tab-shape:             polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape:            polygon(0 0, 100% 0, 100% calc(100% - 36px), calc(100% - 52px) 100%, 0 100%);
+  --dc-path-title-shape:            polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
+  --dc-path-shell-clip:             polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 34px), calc(100% - 56px) 100%, 0 100%);
+  --dc-specialty-card-shell-shape:  polygon(0 16px, 16px 0, 100% 0, 100% calc(100% - 24px), calc(100% - 36px) 100%, 0 100%);
+  --dc-specialty-intro-title-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
+  --dc-specialty-intro-clip:        polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 36px), calc(100% - 56px) 100%, 0 100%);
+}
 .specialty.proxy .dc-skill-card {
-  --dc-card-accent:        var(--proxy-accent);
-  --dc-card-tab-bg:        var(--rust);
-  --dc-skill-tab-shape:    polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
-  --dc-skill-body-shape:   polygon(0 0, 100% 0, 100% calc(100% - 36px), calc(100% - 52px) 100%, 0 100%);
+  --dc-card-accent:   var(--proxy-accent);
+  --dc-card-tab-bg:   var(--rust);
 }
 .specialty.proxy .dc-path-shell {
-  --dc-path-title-bg:      var(--ink-dark);
-  --dc-path-title-shape:   polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
-  --dc-path-accent:        var(--proxy-accent);
-  background:              var(--surface-orange-tint);
-  clip-path: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 34px), calc(100% - 56px) 100%, 0 100%);
+  --dc-path-title-bg:  var(--ink-dark);
+  --dc-path-accent:    var(--proxy-accent);
+  background:          var(--surface-orange-tint);
 }
 .specialty.proxy .dc-specialty-card {
   --dc-specialty-card-bg:     var(--paper-cream);
   --dc-specialty-card-accent: var(--proxy-accent);
-  --dc-specialty-card-shell-shape: polygon(0 16px, 16px 0, 100% 0, 100% calc(100% - 24px), calc(100% - 36px) 100%, 0 100%);
 }
 .specialty.proxy .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    var(--ink-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-title-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
-  background:  var(--surface-orange-tint);
-  clip-path: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 36px), calc(100% - 56px) 100%, 0 100%);
+  background:                       var(--surface-orange-tint);
 }
 
 /* ── Wirephreak — hacker, magenta, asymmetric cross-cuts ───────────────── */
+.specialty.wirephreak {
+  --dc-skill-tab-shape:             polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 24px 100%, 0 calc(100% - 10px));
+  --dc-skill-body-shape:            polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 22px 100%, 0 calc(100% - 14px));
+  --dc-path-title-shape:            polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 0 100%);
+  --dc-path-shell-clip:             polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% calc(100% - 10px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px));
+  --dc-specialty-card-shell-shape:  polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 12px));
+  --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
+  --dc-specialty-intro-clip:        polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% calc(100% - 12px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px));
+}
 .specialty.wirephreak .dc-skill-card {
-  --dc-card-accent:        var(--wirephreak-accent);
-  --dc-card-tab-bg:        #7a3a7a;
+  --dc-card-accent:          var(--wirephreak-accent);
+  --dc-card-tab-bg:          #7a3a7a;
   --dc-card-tab-title-color: var(--paper-cream);
-  --dc-skill-tab-shape:    polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 24px 100%, 0 calc(100% - 10px));
-  --dc-skill-body-shape:   polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 22px 100%, 0 calc(100% - 14px));
 }
 .specialty.wirephreak .dc-path-shell {
-  --dc-path-title-bg:      #7a3a7a;
-  --dc-path-title-shape:   polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 0 100%);
-  --dc-path-accent:        var(--wirephreak-accent);
-  background:              var(--paper-cream);
-  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% calc(100% - 10px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px));
+  --dc-path-title-bg:  #7a3a7a;
+  --dc-path-accent:    var(--wirephreak-accent);
+  background:          var(--paper-cream);
 }
 .specialty.wirephreak .dc-specialty-card {
   --dc-specialty-card-bg:     var(--paper-light);
   --dc-specialty-card-accent: var(--wirephreak-accent);
-  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 12px));
 }
 .specialty.wirephreak .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    #7a3a7a;
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
-  background:  var(--hud-panel);
-  clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% calc(100% - 12px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px));
+  background:                       var(--hud-panel);
 }
 
 /* ── Streetwarden — community defender, green, soft diamond cuts ────────── */
+.specialty.streetwarden {
+  --dc-skill-tab-shape:             polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+  --dc-skill-body-shape:            polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 22px) 100%, 22px 100%, 0 calc(100% - 18px));
+  --dc-path-title-shape:            polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  --dc-path-shell-clip:             polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
+  --dc-specialty-card-shell-shape:  polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 16px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 16px));
+  --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%);
+  --dc-specialty-intro-clip:        polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
+}
 .specialty.streetwarden .dc-skill-card {
-  --dc-card-accent:        var(--streetwarden-accent);
-  --dc-card-tab-bg:        #2a5a1a;
+  --dc-card-accent:          var(--streetwarden-accent);
+  --dc-card-tab-bg:          #2a5a1a;
   --dc-card-tab-title-color: var(--paper-cream);
-  --dc-skill-tab-shape:    polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
-  --dc-skill-body-shape:   polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 22px) 100%, 22px 100%, 0 calc(100% - 18px));
 }
 .specialty.streetwarden .dc-path-shell {
-  --dc-path-title-bg:      var(--crimson);
-  --dc-path-title-shape:   polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
-  --dc-path-accent:        var(--streetwarden-accent);
-  background:              var(--paper-cream);
-  clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
+  --dc-path-title-bg:  var(--crimson);
+  --dc-path-accent:    var(--streetwarden-accent);
+  background:          var(--paper-cream);
 }
 .specialty.streetwarden .dc-specialty-card {
   --dc-specialty-card-bg:     var(--surface-orange-tint);
   --dc-specialty-card-accent: var(--streetwarden-accent);
-  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 16px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 16px));
 }
 .specialty.streetwarden .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    var(--crimson);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%);
-  background:  var(--paper-cream);
-  clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
+  background:                       var(--paper-cream);
 }
 
 /* ── Technosorcerer — arcane + tech, indigo, top-center gate notch ──────── */
+.specialty.technosorcerer {
+  --dc-skill-tab-shape:             polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape:            polygon(0 0, calc(50% - 18px) 0, 50% 10px, calc(50% + 18px) 0, 100% 0, 100% calc(100% - 20px), calc(100% - 24px) 100%, 24px 100%, 0 calc(100% - 20px));
+  --dc-path-title-shape:            polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-path-shell-clip:             polygon(0 0, calc(50% - 22px) 0, 50% 14px, calc(50% + 22px) 0, 100% 0, 100% calc(100% - 22px), calc(100% - 26px) 100%, 26px 100%, 0 calc(100% - 22px));
+  --dc-specialty-card-shell-shape:  polygon(0 0, calc(50% - 16px) 0, 50% 10px, calc(50% + 16px) 0, 100% 0, 100% calc(100% - 16px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 16px));
+  --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 24px) 0, 50% 14px, calc(50% + 24px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-specialty-intro-clip:        polygon(0 0, calc(50% - 24px) 0, 50% 16px, calc(50% + 24px) 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
+}
 .specialty.technosorcerer .dc-skill-card {
-  --dc-card-accent:        var(--technosorcerer-accent);
-  --dc-card-tab-bg:        #2a3a6a;
+  --dc-card-accent:          var(--technosorcerer-accent);
+  --dc-card-tab-bg:          #2a3a6a;
   --dc-card-tab-title-color: var(--paper-cream);
-  --dc-skill-tab-shape:    polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%);
-  --dc-skill-body-shape:   polygon(0 0, calc(50% - 18px) 0, 50% 10px, calc(50% + 18px) 0, 100% 0, 100% calc(100% - 20px), calc(100% - 24px) 100%, 24px 100%, 0 calc(100% - 20px));
 }
 .specialty.technosorcerer .dc-path-shell {
-  --dc-path-title-bg:      #2a3a6a;
-  --dc-path-title-shape:   polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
-  --dc-path-accent:        var(--technosorcerer-accent);
-  background:              var(--paper-light);
-  clip-path: polygon(0 0, calc(50% - 22px) 0, 50% 14px, calc(50% + 22px) 0, 100% 0, 100% calc(100% - 22px), calc(100% - 26px) 100%, 26px 100%, 0 calc(100% - 22px));
+  --dc-path-title-bg:  #2a3a6a;
+  --dc-path-accent:    var(--technosorcerer-accent);
+  background:          var(--paper-light);
 }
 .specialty.technosorcerer .dc-specialty-card {
   --dc-specialty-card-bg:     var(--paper-light);
   --dc-specialty-card-accent: var(--technosorcerer-accent);
-  --dc-specialty-card-shell-shape: polygon(0 0, calc(50% - 16px) 0, 50% 10px, calc(50% + 16px) 0, 100% 0, 100% calc(100% - 16px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 16px));
 }
 .specialty.technosorcerer .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    #2a3a6a;
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 24px) 0, 50% 14px, calc(50% + 24px) 0, 100% 0, 100% 100%, 0 100%);
-  background:  var(--paper-light);
-  clip-path: polygon(0 0, calc(50% - 24px) 0, 50% 16px, calc(50% + 24px) 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
+  background:                       var(--paper-light);
 }
 
 /* ── Gutterdruid — street nature, amber-brown, center bottom pinch ──────── */
+.specialty.gutterdruid {
+  --dc-skill-tab-shape:             polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape:            polygon(0 0, 100% 0, 100% calc(100% - 24px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 24px));
+  --dc-path-title-shape:            polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-path-shell-clip:             polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
+  --dc-specialty-card-shell-shape:  polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 20px));
+  --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-specialty-intro-clip:        polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
+}
 .specialty.gutterdruid .dc-skill-card {
-  --dc-card-accent:        var(--gutterdruid-accent);
-  --dc-card-tab-bg:        #5a3810;
+  --dc-card-accent:          var(--gutterdruid-accent);
+  --dc-card-tab-bg:          #5a3810;
   --dc-card-tab-title-color: var(--paper-cream);
-  --dc-skill-tab-shape:    polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%);
-  --dc-skill-body-shape:   polygon(0 0, 100% 0, 100% calc(100% - 24px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 24px));
 }
 .specialty.gutterdruid .dc-path-shell {
-  --dc-path-title-bg:      var(--orange);
-  --dc-path-title-color:   var(--ink-dark);
-  --dc-path-title-shape:   polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
-  --dc-path-accent:        var(--gutterdruid-accent);
-  background:              var(--paper-light);
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
+  --dc-path-title-bg:    var(--orange);
+  --dc-path-title-color: var(--ink-dark);
+  --dc-path-accent:      var(--gutterdruid-accent);
+  background:            var(--paper-light);
 }
 .specialty.gutterdruid .dc-specialty-card {
   --dc-specialty-card-bg:     var(--paper-light);
   --dc-specialty-card-accent: var(--gutterdruid-accent);
-  --dc-specialty-card-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 20px));
 }
 .specialty.gutterdruid .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    var(--orange);
   --dc-specialty-intro-title-color: var(--ink-dark);
-  --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
-  background:  var(--paper-light);
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
+  background:                       var(--paper-light);
 }
 
 /* ── Etherlock — ethereal, gold, parallelogram cross-cuts ──────────────── */
+.specialty.etherlock {
+  --dc-skill-tab-shape:             polygon(0 10px, 10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+  --dc-skill-body-shape:            polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 18px 100%, 0 calc(100% - 20px));
+  --dc-path-title-shape:            polygon(0 12px, 12px 0, 100% 0, 100% 100%, 0 100%);
+  --dc-path-shell-clip:             polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 18px 100%, 0 calc(100% - 22px));
+  --dc-specialty-card-shell-shape:  polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 16px 100%, 0 calc(100% - 18px));
+  --dc-specialty-intro-title-shape: polygon(0 14px, 14px 0, 100% 0, 100% 100%, 0 100%);
+  --dc-specialty-intro-clip:        polygon(0 14px, 14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 18px) 100%, 20px 100%, 0 calc(100% - 24px));
+}
 .specialty.etherlock .dc-skill-card {
-  --dc-card-accent:        var(--etherlock-accent);
-  --dc-card-tab-bg:        #6a5200;
+  --dc-card-accent:          var(--etherlock-accent);
+  --dc-card-tab-bg:          #6a5200;
   --dc-card-tab-title-color: var(--paper-cream);
-  --dc-skill-tab-shape:    polygon(0 10px, 10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
-  --dc-skill-body-shape:   polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 18px 100%, 0 calc(100% - 20px));
 }
 .specialty.etherlock .dc-path-shell {
-  --dc-path-title-bg:      #6a5200;
-  --dc-path-title-shape:   polygon(0 12px, 12px 0, 100% 0, 100% 100%, 0 100%);
-  --dc-path-accent:        var(--etherlock-accent);
-  background:              var(--paper-light);
-  clip-path: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 18px 100%, 0 calc(100% - 22px));
+  --dc-path-title-bg:  #6a5200;
+  --dc-path-accent:    var(--etherlock-accent);
+  background:          var(--paper-light);
 }
 .specialty.etherlock .dc-specialty-card {
   --dc-specialty-card-bg:     var(--paper-light);
   --dc-specialty-card-accent: var(--etherlock-accent);
-  --dc-specialty-card-shell-shape: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 16px 100%, 0 calc(100% - 18px));
 }
 .specialty.etherlock .dc-specialty-intro {
   --dc-specialty-intro-title-bg:    #6a5200;
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-title-shape: polygon(0 14px, 14px 0, 100% 0, 100% 100%, 0 100%);
-  background:  var(--paper-light);
-  clip-path: polygon(0 14px, 14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 18px) 100%, 20px 100%, 0 calc(100% - 24px));
+  background:                       var(--paper-light);
 }
 
 /* ───────── AP TAGS ───────── */
@@ -436,12 +461,11 @@
   line-height: 1.5;
   background: var(--hud-magenta);
   display: inline-block;
-  max-width: calc(100% - 18px);
   box-sizing: border-box;
   padding: 16px 22px 18px;
   position: relative;
   clip-path: polygon(0 0, 100% 0, 100% 100%, 25px 100%, 0 calc(100% - 15px));
-  margin: 4px 0 16px;
+  margin: 0;
   word-break: break-word;
   overflow: visible;
 }
@@ -594,7 +618,7 @@
   line-height: 1.5;
   border-left: 3px solid var(--orange);
   padding: 8px 12px;
-  margin: 14px 0 16px;
+  
 }
 
 /* ── Spec tweak section header ────────────────────────────────────────── */
@@ -740,8 +764,6 @@ hr,
   --dc-card-tier-color: var(--hud-magenta);
   --dc-card-tier-border: var(--hud-magenta);
   --dc-card-body-mark: var(--crimson);
-  --dc-skill-tab-shape: polygon(0 0, calc(100% - 18px) 0, 100% 100%, 0 100%);
-  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 44px) 100%, 0 100%);
 
   position: relative;
   break-inside: avoid;
@@ -797,7 +819,7 @@ hr,
   z-index: 2;
   max-width: calc(100% - 28px);
   box-sizing: border-box;
-  clip-path: var(--dc-skill-tab-shape);
+  clip-path: var(--dc-skill-tab-shape, polygon(0 0, calc(100% - 18px) 0, 100% 100%, 0 100%));
 }
 .dc-tab-title {
   font-family: var(--font-tab);
@@ -830,7 +852,7 @@ hr,
   background: var(--dc-card-surface);
   padding: 22px 20px 36px;
   position: relative;
-  clip-path: var(--dc-skill-body-shape);
+  clip-path: var(--dc-skill-body-shape, polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 44px) 100%, 0 100%));
 }
 .dc-card-body::before {
   content: '';
@@ -921,7 +943,6 @@ hr,
 .dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--hud-magenta);
   --dc-specialty-intro-title-color: var(--bg);
-  --dc-specialty-intro-title-shape: polygon(0 0, 100% 0, 100% 100%, 22px 100%, 0 calc(100% - 14px));
 
   background: var(--hud-panel);
   padding: 1.5rem 1.5rem 1.25rem;
@@ -932,7 +953,7 @@ hr,
   min-height: 10in;
   box-sizing: border-box;
   border: none;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
+  clip-path: var(--dc-specialty-intro-clip, polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%));
 }
 
 .dc-specialty-intro > h2:first-child {
@@ -944,7 +965,7 @@ hr,
   display: block;
   padding: 0.85rem 1.75rem;
   margin: -1.5rem -1.5rem 1rem -1.5rem;
-  clip-path: var(--dc-specialty-intro-title-shape);
+  clip-path: var(--dc-specialty-intro-title-shape, polygon(0 0, 100% 0, 100% 100%, 22px 100%, 0 calc(100% - 14px)));
   border: none;
 }
 
@@ -998,8 +1019,6 @@ hr,
   --dc-specialty-card-media-width: 0.95in;
   --dc-specialty-card-media-height: 1.2in;
   --dc-specialty-card-title-align: right;
-  --dc-specialty-card-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 24px) 100%, 0 100%);
-
   background: var(--dc-specialty-card-bg);
   display: flow-root;
   overflow: hidden;
@@ -1010,7 +1029,7 @@ hr,
   break-inside: avoid;
   border: 1.5px solid var(--dc-specialty-card-border);
   border-left: var(--callout-border-width-small) solid var(--dc-specialty-card-accent);
-  clip-path: var(--dc-specialty-card-shell-shape);
+  clip-path: var(--dc-specialty-card-shell-shape, polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 24px) 100%, 0 100%));
 }
 
 /* Portrait image floated in specialty card. */
@@ -1080,23 +1099,24 @@ hr,
 .dc-path-shell {
   --dc-path-title-bg: var(--hud-magenta);
   --dc-path-title-color: var(--paper-cream);
-  --dc-path-title-shape: polygon(0 0, 100% 0, 100% 100%, 25px 100%, 0 calc(100% - 15px));
 
   background: var(--paper-cream);
   margin: 0 0 22px;
-  padding: 24px 26px 30px;
   position: relative;
-  clip-path: polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px);
+  clip-path: var(--dc-path-shell-clip, polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px));
   filter: drop-shadow(2px 0 0 var(--ink))
     drop-shadow(-2px 0 0 var(--ink))
     drop-shadow(0 2px 0 var(--ink))
     drop-shadow(0 -2px 0 var(--ink)); /* screen preview only — drops in Paged.js PDF export */
 }
 
+.dc-path-shell > h2.dc-spray{
+  width: stretch;
+}
 .dc-path-shell > h2.dc-spray:first-child {
   color: var(--dc-path-title-color);
   background: var(--dc-path-title-bg);
-  clip-path: var(--dc-path-title-shape);
+  clip-path: var(--dc-path-title-shape, polygon(0 0, 100% 0, 100% 100%, 25px 100%, 0 calc(100% - 15px)));
   margin-bottom: 12px;
 }
 
@@ -1105,6 +1125,9 @@ hr,
   background: var(--dc-path-title-bg);
 }
 
+.dc-path-shell > p, .dc-path-shell > div, .dc-path-shell > div.dc-intro {
+  margin-inline: var(--space-md);
+}
 /* ═══ OUTCOMES + STEPS + DISTANCE ═══ */
 
 /* ── Procedure / numbered steps ───────────────────────────────────────── */
@@ -1136,7 +1159,6 @@ hr,
   letter-spacing: 2px;
   color: var(--hud-blue-dark);
   line-height: 1;
-  white-space: nowrap;
   align-self: center;
 }
 .dc-steps li strong { color: var(--crimson); font-weight: 700; }

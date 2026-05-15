@@ -7,6 +7,19 @@ Users download a single executable from GitHub Releases — no Node, no Bun, no
 `node_modules` on the host. The CLI also runs from source via `bun src/cli.ts`
 during development.
 
+## print-md Primary Goals
+> [!ALERT]
+> VERY IMPORTANT: All changes to this repo MUST comply with these goals.
+> All changes must REDUCE complexity unless it can be properly justified.
+
+- Create a way for non-technical writes to easily publish print materials using markdown and modern CSS
+- Allow most authors to write and perform layout using simple markdown syntax
+- Allow non-technical users to style their projects by setting CSS custom properties
+- Make handling page layout trivial
+- Allow authors to convert markdown and CSS into print ready PDFs
+- Simplify the process of creating 
+
+
 ## Architectural rules
 
 These are non-negotiable for any change that touches the runtime or build
@@ -69,29 +82,6 @@ Any change to `css/dc-brand.css`, `css/page-rules.css`, `css/content-templates.c
 or `plugins/dimm-city-plugin.js` should be reflected in the design guide documentation.
 If the design guide documents one behaviour and the code does another, the code is wrong.
 
-### Macro-first authoring direction
-
-The design guide uses **only `@macros`** — all `:::` container syntax has been
-removed from the design guide source. New content should always use a named macro,
-not a triple-colon container wrapper.
-
-**All shipped macros:**
-`@chapter`, `@page`, `@section`, `@spread`, `@break`, `@specialty`, `@end-specialty`,
-`@specialty-intro`, `@end-specialty-intro`, `@specialty-art`, `@end-specialty-art`,
-`@specialty-card`, `@end-specialty-card`, `@learning-path`, `@end-learning-path`,
-`@skill`, `@end-skill`, `@continue`, `@outcome`, `@end-outcome`, `@chapter-opener`,
-`@class-entry`, `@end-class-entry`, `@roll-table`, `@options-table`,
-`@sidebar`, `@end-sidebar`, `@sidebar-box`, `@end-sidebar-box`,
-`@definition`, `@end-definition`, `@procedure`, `@end-procedure`,
-`@callout`, `@end-callout`, `@dm-note`, `@end-dm-note`,
-`@toc`, `@end-toc`, `@two-column`, `@end-two-column`,
-`@three-column`, `@end-three-column`, `@no-break`, `@end-no-break`,
-`@gear-card`, `@end-gear-card`, `@tape`, `@lede`, `@end-lede`,
-`@glossary`, `@end-glossary`
-
-**Removed `:::` containers (framework):** `:::page`, `:::wrapper`, `:::ability`,
-`:::ability-continued`, `:::aug`, `:::lede` — all replaced by macros above.
-
 ### Per-page styling via `@page` named classes
 
 Individual page layout — image position, column arrangement, decorative elements
@@ -99,12 +89,6 @@ specific to one spread — is done via `@page .class-name` in markdown. A class 
 only once is not an anti-pattern; it is the intended mechanism. Do not generalise
 one-off page classes into reusable components unless the pattern genuinely recurs.
 
-### Plugin class naming convention
-
-All classes emitted by `plugins/dimm-city-plugin.js` must use the `dc-` prefix
-(e.g. `dc-note-callout`, `dc-outcomes-label`). The only exception is `.scream`,
-which is intentionally unprefixed as a semantic name. When adding new plugin output,
-always check that the emitted class name has a matching CSS rule before shipping.
 
 ### CSS layer contract (five-file hierarchy)
 
@@ -119,8 +103,6 @@ comment in the first 50 lines of each file before adding any rule.
 | `page-rules.css` | `@page` declarations, named pages, Paged.js counter fixes |
 | `guide.css` | `div.chapter` scaffolding, `.specimen` chrome, guide-specific footer |
 
-**`dc-brand.css` no longer exists.** It was deleted as part of the final dc-brand.css migration. Every CSS rule now lives in one of the five canonical files above. Do not recreate dc-brand.css.
-
 ### Specialty variant system
 
 Card variants (skill cards, path shells, specialty cards) are controlled by the
@@ -129,32 +111,6 @@ Card variants (skill cards, path shells, specialty cards) are controlled by the
 automatically. Do NOT add `variant=` attributes to `@skill`, `@continue`, or
 `@learning-path` macros.
 
-### Component consolidation rule
-
-Shared component families must be built as a base rule plus variable-driven
-variants.
-
-- The base class owns structure, spacing, typography, borders, layout, and break behavior.
-- Variant classes should primarily set CSS custom properties such as `--accent`,
-  `--surface`, `--label`, `--label-color`, `--title-color`, `--tab-bg`, or other
-  component-scoped tokens.
-- New variants should avoid copy-pasting full component rules when a base pattern
-  already exists.
-- This rule applies to alerts/callouts, skill cards, learning paths, sidebars,
-  stat grids, banners, and similar repeated design systems.
-- When refactoring an existing family, preserve authoring ergonomics where possible:
-  existing markdown syntax and emitted class names may remain as thin variant wrappers
-  over a shared base.
-
-### Class alias consolidation rule
-
-When retiring a deprecated alias class name, a full find-replace is required across:
-1. All field guide markdown (`dc-op-manual/field-guide/*.md`)
-2. All design guide markdown (`examples/dc-design-guide/*.md`)
-3. The plugin JS (`examples/dc-design-guide/plugins/dimm-city-plugin.js`)
-4. All CSS files
-
-Renaming only in CSS is not sufficient.
 
 ## Background reading
 
