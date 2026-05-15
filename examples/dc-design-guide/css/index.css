@@ -2,25 +2,20 @@
    DC Design Guide — CSS Entry Point
 
    5-file stack — import order: tokens first, guide scaffolding last:
-     tokens.css         :root tokens, @font-face, html/body baseline
-     components.css     every .dc-* and .pmd-* component (base + thin variants)
-     page-templates.css every .page.* layout rule — sole home of columns:N
-     page-rules.css     @page declarations, .pagedjs_* overrides, counter resets
-     guide.css          div.chapter scaffolding, .specimen chrome (guide-only)
+     tokens.css            :root tokens, @font-face, html/body baseline
+     dc-components.css     every .dc-* and .pmd-* component (base + thin variants)
+     page-templates.css    every .page.* layout rule — sole home of columns:N
+     page-rules.css        @page declarations, .pagedjs_* overrides, counter resets
+     dc-design-guide.css   div.chapter scaffolding, .specimen chrome (guide-only)
 
    To adapt for a new project, copy the first four files and add
    project-overrides.css (last import, silently absent if missing).
    ============================================================================= */
-@import url("./tokens.css");         /* tokens, @font-face, html/body baseline */
-/*TODO: rename to dc-components.css*/
-@import url("./components.css");     /* every .dc-* component (base + thin variants) */
-
-/*TODO: reorganize these rules into core-page-rules.css, move anything not general use into dc-design-guide.css or field-guide-overrides.css */
-@import url("./page-templates.css"); /* .page.* layouts — sole home of columns:N */
-@import url("./page-rules.css");     /* @page declarations, named pages, counter resets */
-
-/*TODO: rename to dc-design-guide.css*/
-@import url("./guide.css");          /* div.chapter scaffold, .specimen chrome */
+@import url("./tokens.css");            /* tokens, @font-face, html/body baseline */
+@import url("./dc-components.css");     /* every .dc-* component (base + thin variants) */
+@import url("./page-templates.css");    /* .page.* layouts — sole home of columns:N */
+@import url("./page-rules.css");        /* @page declarations, named pages, counter resets */
+@import url("./dc-design-guide.css");   /* div.chapter scaffold, .specimen chrome */
 
 /* Project overrides — create to customize tokens without editing source files.
    Intentionally last so it wins the cascade. Silently absent = no-op. */

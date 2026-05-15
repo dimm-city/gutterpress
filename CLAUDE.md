@@ -98,10 +98,10 @@ comment in the first 50 lines of each file before adding any rule.
 | File | Owns |
 |---|---|
 | `tokens.css` | `:root` tokens, `@font-face`, html/body baseline, global element resets |
-| `components.css` | Every `.dc-*` + `.pmd-*` component (base + thin variants), specialty parent-container overrides |
+| `dc-components.css` | Every `.dc-*` + `.pmd-*` component (base + thin variants), specialty parent-container overrides |
 | `page-templates.css` | **ALL `columns:N` rules** (exclusive), `.page.*` layouts, paged wrapper scaffolding, print utilities |
 | `page-rules.css` | `@page` declarations, named pages, Paged.js counter fixes |
-| `guide.css` | `div.chapter` scaffolding, `.specimen` chrome, guide-specific footer |
+| `dc-design-guide.css` | `div.chapter` scaffolding, `.specimen` chrome, guide-specific footer |
 
 ### Specialty variant system
 

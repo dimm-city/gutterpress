@@ -33,19 +33,20 @@ body { counter-reset: chapter; }
    Chapter Counters
    ---------------------------------------------------------------------------
    PAGED.JS: counter-set is silently ignored; use counter-reset only.
-   counter-reset is applied to .page.chapter-NN (the first rendered page-break
-   div per chapter) rather than the wrapping <section> because Paged.js clones
+   counter-reset is applied to .page.chapter-NN (the first rendered page div
+   per chapter) rather than the wrapping <section> because Paged.js clones
    content per page — the section element only appears on the first page,
    so resets on it do not propagate. The per-page .chapter-NN class IS present
    on every body page, guaranteeing the running footer reads the correct number.
    Page counter reset is only on .chapter-start.chapter-01 (the front-matter →
    body transition) to avoid zeroing target-counter() snapshots in the TOC.
+   .chapter-start is only combined with chapter-01/02/03 in this document.
    --------------------------------------------------------------------------- */
-.page.chapter-01, .page-break.chapter-01 { counter-reset: chapter 1; }
-.page.chapter-02, .page-break.chapter-02 { counter-reset: chapter 2; }
-.page.chapter-03, .page-break.chapter-03 { counter-reset: chapter 3; }
-.page.chapter-04, .page-break.chapter-04 { counter-reset: chapter 4; }
-.page.chapter-05, .page-break.chapter-05 { counter-reset: chapter 5; }
+.page.chapter-01 { counter-reset: chapter 1; }
+.page.chapter-02 { counter-reset: chapter 2; }
+.page.chapter-03 { counter-reset: chapter 3; }
+.page.chapter-04 { counter-reset: chapter 4; }
+.page.chapter-05 { counter-reset: chapter 5; }
 
 /* Also reset on .chapter-start elements so the running footer is correct
    on each chapter's first page. Page counter reset only on chapter-01
@@ -53,8 +54,6 @@ body { counter-reset: chapter; }
 .chapter-start.chapter-01 { counter-reset: chapter 1 page 0; }
 .chapter-start.chapter-02 { counter-reset: chapter 2; }
 .chapter-start.chapter-03 { counter-reset: chapter 3; }
-.chapter-start.chapter-04 { counter-reset: chapter 4; }
-.chapter-start.chapter-05 { counter-reset: chapter 5; }
 
 /* ---------------------------------------------------------------------------
    Default Page Template
@@ -127,7 +126,7 @@ body { counter-reset: chapter; }
   }
 }
 
-.page.citizen-file, .page-break.citizen-file { page: citizen-file; }
+.page.citizen-file { page: citizen-file; }
 
 /* ---------------------------------------------------------------------------
    Page Template: Front Matter (no footers; binding margins from @page :left/:right)
@@ -137,20 +136,16 @@ body { counter-reset: chapter; }
   @bottom-right { content: none; }
 }
 
-.page-break.intro,
-.page-break.page-intro,
 .page.intro,
 .page.page-intro {
   page: front-matter;
 }
 
 /* TOC and full-bleed pages use the full @page template (no margins, no footers). */
-.page-break.toc,
 .page.toc,
 .page.page-full-bleed,
 .page.cover,
 .page.back-cover,
-.page-break.credits,
 .page.credits {
   page: full;
 }
