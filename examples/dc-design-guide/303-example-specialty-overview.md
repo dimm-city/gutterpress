@@ -67,7 +67,12 @@ In Dimm City, abilities aren't just what you can do. They're learned techniques,
 >
 > Everything in this chapter exists to support that loop. Abilities bend it. Dice decide it. Dreamers drive it. The Monoverse responds.
 
+@page .card-grid
+
+
 ## Choose Your Specialty
+
+@lede
 
 A specialty is your primary ability set — the collection of learned techniques, augments, and practices that defines what you bring to the crew. Every specialty has three learning paths, each containing five abilities. You don't pick a path at character creation. You grow into it.
 
@@ -75,9 +80,7 @@ Each specialty produces a different kind of operative. The Augmerc hits hard in 
 
 Every dreamer's got a sharp edge — your specialty is where it starts.
 
----
-
-@page .card-grid
+@end-lede
 
 @specialty .augmerc
 
