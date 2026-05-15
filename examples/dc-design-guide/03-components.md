@@ -348,27 +348,46 @@ Five-rung d20 result table for all rolls. Each row is color-coded by result seve
 
 ## Component Token Reference {.pmd-break-before}
 
-| Component | Authoring method | CSS class / output |
-|-----------|-----------------|-------------------|
+**Prose & Callouts**
+
+| Component | Authoring method | CSS class |
+|-----------|-----------------|-----------|
 | Body Prose | Plain markdown paragraph | *(auto)* |
-| Flavor Text | `> [!FLAVOR]` blockquote alert | `.dc-alert`, `.dc-flavor` |
-| Intro Lede | `:::lede` … `:::` | `.dc-intro` |
-| Note | `> [!NOTE]` blockquote alert | `.dc-note` |
-| Warning | `> [!WARNING]` blockquote alert | `.dc-note.warning` |
-| Pull Quote | `> [!PULLQUOTE]` blockquote alert | `.dc-pullquote.flush` |
-| Tape Divider | `<div class="dc-tape flush">…</div>` | `.dc-tape`, `.flush` |
-| Vibe Callout | `> [!VIBE]` blockquote alert | `.dc-vibe-callout` |
-| Origin Callout | `> [!ORIGIN]` blockquote alert | `.dc-origin-callout` |
-| Human Callout | Raw HTML inside `.dc-sidebar` | `.dc-human-callout` |
-| Gear Callout | `> [!GEAR]` blockquote alert | `.dc-gear-callout` |
+| Flavor Text | `> [!FLAVOR]` blockquote | `.dc-alert`, `.dc-flavor` |
+| Intro Lede | `@lede` … `@end-lede` | `.dc-intro` |
+| Note | `> [!NOTE]` | `.dc-note` |
+| Warning | `> [!WARNING]` | `.dc-note.warning` |
+| Pull Quote | `> [!PULLQUOTE]` | `.dc-pullquote.flush` |
+| Blockquote | Standard markdown `>` | *(auto)* |
+
+**Media & Structure**
+
+| Component | Authoring method | CSS class |
+|-----------|-----------------|-----------|
 | Table | Standard markdown pipe table | *(auto)* |
-| Blockquote | Standard markdown `>` blockquote | *(auto)* |
 | Code Block | Triple-backtick fenced block | *(auto)* |
-| Visit Callout | `> [!VISIT]` blockquote alert | `.dc-visit-callout` |
-| Dream Master Note | `> [!DM]` blockquote alert | `.dc-dm-note` |
+| Tape Divider | `<div class="dc-tape flush">…</div>` | `.dc-tape`, `.flush` |
 | Glossary / Term List | Raw HTML `.dc-terms` wrapper | `.dc-terms` |
-| Numbered Procedure | `@procedure` … `@end-procedure` ordered list | `.dc-steps` |
-| Outcome Ladder | `@outcome` … `@end-outcome` macro | `.dc-outcomes`, `.dc-outcome-row` |
+
+**Callout Variants**
+
+| Component | Authoring method | CSS class |
+|-----------|-----------------|-----------|
+| Vibe Callout | `> [!VIBE]` | `.dc-vibe-callout` |
+| Origin Callout | `> [!ORIGIN]` | `.dc-origin-callout` |
+| Human Callout | Raw HTML inside `.dc-sidebar` | `.dc-human-callout` |
+| Gear Callout | `> [!GEAR]` | `.dc-gear-callout` |
+| Visit Callout | `> [!VISIT]` | `.dc-visit-callout` |
+| Dream Master Note | `> [!DM]` | `.dc-dm-note` |
+
+**Block Macros & Interactive**
+
+| Component | Authoring method | CSS class |
+|-----------|-----------------|-----------|
+| Block Callout | `@callout variant="…"` … `@end-callout` | `.dc-alert` + variant |
+| DM Note block | `@dm-note label="…"` … `@end-dm-note` | `.dc-dm-note` |
+| Numbered Procedure | `@procedure` … `@end-procedure` | `.dc-steps` |
+| Outcome Ladder | `@outcome` … `@end-outcome` | `.dc-outcomes` |
 | Roll Lucid badge | auto via `@outcome` Crit row | `.dc-roll-lucid` |
 | Roll Surreal badge | auto via `@outcome` Catastrophe row | `.dc-roll-surreal` |
 

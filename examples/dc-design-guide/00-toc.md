@@ -49,23 +49,30 @@ This is the Dimm City print design system — cyberpunk and creaturepunk, built 
 
 ## Quick Start — What Each Chapter Covers
 
-| Part | Chapter | Covers |
-|------|---------|--------|
-| 1 | **1 — Overview** *(this page)* | Guide structure, CSS architecture, component model, how to customize the brand |
-| 1 | **2 — Typography** | Typefaces, type scale, heading styles, body prose, code blocks, and font tokens |
-| 1 | **3 — Color Palette** | All `--crimson`, `--hud-blue`, surface, and text tokens; contrast ratios; usage rules |
-| 1 | **4 — Components** | Alerts, callouts, sidebars, procedures, definitions, gear cards — every `.pmd-*` component |
-| 1 | **5 — DC Components** | Specialty cards, skill cards, learning paths, chapter openers — all `.dc-*` game content |
-| 1 | **6 — Page Templates** | Every named page layout: `page-chapter-start`, `citizen-file`, `spread-gear`, and more |
-| 1 | **7 — Layout** | Column breaks, two-column and three-column grids, `@no-break`, flow utilities |
-| 1 | **8 — Markdown Reference** | Full macro syntax — every `@macro` / `@end-macro` pair with usage examples |
-| 1 | **9 — Field Guide Components** | Stat grids, roll tables, option tables, class entries, and other book-specific blocks |
-| 1 | **10 — Publishing** | Print export, DTRPG preset, PDF validation, asset requirements |
-| 2 | **Examples Overview** | How real-world examples are organized and what pages to reference |
-| 2 | **Front Matter** | Title spread, legal page, ToC layout |
-| 2 | **Chapter Opener** | Chapter-start two-column spread and Citizen File info page |
-| 2 | **Specialty Overview** | Specialty intro spread and overview layout |
-| 2 | **Specialty Profile** | Full specialty profile with skill cards and learning path |
-| 2 | **Rules Pages** | Action economy, combat, and multi-column rules content |
-| 2 | **DM / NPCs** | DM notes, NPC stat blocks, and encounter tables |
-| 2 | **Gear & Tech** | Gear card grids and equipment reference spreads |
+### Part 1 — Implementation Reference
+
+| Chapter | Covers |
+|---------|--------|
+| **1 — Design System Overview** | Guide structure, CSS architecture, component model, how to customize the brand |
+| **2 — Typography** | Typefaces, type scale, heading styles, body prose, code blocks, and font tokens |
+| **3 — Color Palette** | All `--crimson`, `--hud-blue`, surface, and text tokens; contrast ratios; usage rules |
+| **4 — Core Components** | Alerts, callouts, sidebars, procedures, definitions, gear cards — every `.pmd-*` component |
+| **5 — DC Component Library** | Specialty cards, skill cards, learning paths, chapter openers — all `.dc-*` game content |
+| **6 — Page Templates** | Every named page layout: `page-chapter-start`, `citizen-file`, `spread-gear`, and more |
+| **7 — Layout & Composition** | Column breaks, two-column and three-column grids, `@no-break`, flow utilities |
+| **8 — Markdown Reference** | Full macro syntax — every `@macro` / `@end-macro` pair with usage examples |
+| **9 — Field Guide Components** | Stat grids, roll tables, option tables, class entries, and other book-specific blocks |
+| **10 — Publishing** | Print export, DTRPG preset, PDF validation, asset requirements |
+
+### Part 2 — Field Guide in Action
+
+| Chapter | Covers |
+|---------|--------|
+| **Examples Overview** | How real-world examples are organized and what pages to reference |
+| **Front Matter** | Title spread, legal page, ToC layout |
+| **Chapter Opener** | Chapter-start two-column spread and Citizen File info page |
+| **Specialty Overview** | Specialty intro spread and overview layout |
+| **Specialty Profile** | Full specialty profile with skill cards and learning path |
+| **Rules & Mechanics** | Action economy, combat, and multi-column rules content |
+| **Dream Master Pages** | DM notes, NPC stat blocks, and encounter tables |
+| **Gear & Tech** | Gear card grids and equipment reference spreads |

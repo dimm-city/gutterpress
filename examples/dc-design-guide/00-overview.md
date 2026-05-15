@@ -24,6 +24,8 @@ The guide is split into two parts.
 
 ## CSS Architecture
 
+@no-break
+
 | File | Purpose |
 |------|---------|
 | `css/tokens.css` | `:root` tokens, `@font-face` declarations, html/body baseline, and global element resets |
@@ -33,6 +35,8 @@ The guide is split into two parts.
 | `css/guide.css` | Design-guide-specific scaffolding, specimen chrome, and guide-only footer |
 
 All five are imported in order by `css/index.css`: `tokens.css` → `components.css` → `page-templates.css` → `page-rules.css` → `guide.css`.
+
+@end-no-break
 
 ## How Components Work
 
@@ -56,6 +60,8 @@ This is a lede rendered via the container plugin.
 ```
 
 ## Customizing the Brand
+
+@no-break
 
 `css/tokens.css` contains the canonical `:root` token list. For project-specific retheming, copy the tokens you need into `css/project-overrides.css` and let that file import last through `css/index.css`.
 
@@ -82,6 +88,8 @@ This is a lede rendered via the container plugin.
   --font-body:    'Titillium Web', Georgia, sans-serif;
 }
 ```
+
+@end-no-break
 
 ## Keeping the Guide in Sync
 

@@ -111,3 +111,11 @@ The typographer converts ASCII shortcuts automatically --- no special syntax nee
 - [Rules & Mechanics](#ch-example-rules) — rolling, outcomes, body prose at density
 - [Dream Master Pages](#ch-example-dm-npcs) — NPC stat blocks, encounter hooks
 - [Gear & Tech](#ch-example-gear-tech) — weapon tables and cybernetics
+
+---
+
+> [!NOTE]
+> **Column-safe headings:** H3 and H4 only. H1 and H2 at full print size exceed 3.5-inch column width — reserve them for full-width chapter openers, section breaks, and specimen pages. In two-column reference layouts, H3 is the workhorse heading.
+
+> [!NOTE]
+> **Body vs. flavor:** Body prose is Titillium Web at 12pt with `--lh-normal` (1.5) leading. Flavor text inherits the same size but switches to italic and `--ink-smoke` for a visual register shift. Never use bold italic for flavor — it reads as urgency, not voice.

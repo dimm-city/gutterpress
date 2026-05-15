@@ -50,6 +50,8 @@ The `@skill` macro generates the full card HTML automatically. Use `variant="1"`
 
 ---
 
+@no-break
+
 ### Skill Card Continuation
 
 When an ability is too long for one card, use `@continue` inside the active `@skill` block. It closes the current card and opens a new continuation card with the same variant and a `▸` suffix on the tab title.
@@ -69,7 +71,11 @@ When an ability is too long for one card, use `@continue` inside the active `@sk
 @end-skill
 ```
 
+@end-no-break
+
 ---
+
+@no-break
 
 ### AP Chip Variants
 
@@ -80,6 +86,8 @@ Inline HTML spans inside `@skill` ability text. Three variants signal cost type 
 | `dc-ap free` | `<span class="dc-ap free">0 AP</span>` | Free action — crimson fill |
 | `dc-ap` | `<span class="dc-ap">2 AP</span>` | Standard cost — HUD green |
 | `dc-ap var` | `<span class="dc-ap var">VAR</span>` | Variable cost — magenta fill |
+
+@end-no-break
 
 ---
 
@@ -323,7 +331,7 @@ Badge in the top-left corner of specialty chapter opener pages. Auto-generated b
 
 ---
 
-## Component Authoring Quick Reference
+## Component Authoring Quick Reference {.pmd-break-before}
 
 | Component | Authoring method | CSS class(es) |
 |---|---|---|

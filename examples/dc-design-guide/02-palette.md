@@ -8,6 +8,9 @@ Two accent registers on cream substrate. Creaturepunk fire (crimson, rust, orang
 
 @end-lede
 
+> [!NOTE]
+> **Register rule:** Use fire palette (crimson, orange, rust) for printed lore, ability text, and danger. Use HUD digital (blue, magenta) for cybernetics, tech overlays, and system chrome. Never mix fire and HUD on the same UI element.
+
 ## Paper & Ink
 
 <div class="dc-palette-grid">
@@ -92,7 +95,7 @@ The PNG uses RGBA with very low opacity so the `#d3cec6` gray reads through clea
 
 ---
 
-## Print Considerations
+## CMYK Notes
 
 CMYK approximations for the four primary colors:
 
@@ -128,3 +131,6 @@ These examples show the DC palette applied to real book pages using actual Dimm 
 - [Rules & Mechanics](#ch-example-rules) — HUD blue on outcome tables and roll chips
 - [Dream Master Pages](#ch-example-dm-npcs) — amber warnings and ink-smoke secondary text
 - [Gear & Tech](#ch-example-gear-tech) — fire-palette rules tables and cybernetics reference
+
+> [!NOTE]
+> **Ink coverage cap:** Keep total CMYK coverage under 280 % for coated stock and under 240 % for uncoated. Saturated fire palette colors run high — request a physical proof before full print run.
