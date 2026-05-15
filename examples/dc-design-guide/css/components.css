@@ -599,11 +599,8 @@
 
 /* ── Spec tweak section header ────────────────────────────────────────── */
 .dc-spec-tweak {
-  font-family: var(--font-display);
   font-size: 22px;
-  letter-spacing: 0.08em;
   color: var(--orange);
-  text-transform: uppercase;
   border-bottom: 2px solid var(--orange);
   border-left: 3px solid var(--crimson);
   padding-bottom: 6px;
@@ -1352,11 +1349,9 @@ hr,
 /* Box heading — bold red stencil-style label above the internal divider */
 .dc-sidebar-box > h3:first-child,
 .dc-sidebar-box > h4:first-child {
-  font-family: var(--font-display);
   font-size: var(--fs-h4);
   letter-spacing: var(--ls-display);
   color: var(--blood);
-  text-transform: uppercase;
   margin: 0 0 10px;
   font-style: italic;
 }
@@ -1389,11 +1384,8 @@ hr,
 }
 
 .dc-gear-entry h3 {
-  font-family: var(--font-display);
-  font-size: var(--fs-h3);
   letter-spacing: var(--ls-display);
   color: var(--crimson);
-  text-transform: uppercase;
   margin: 0 0 4px;
   break-after: avoid;
 }
@@ -1961,15 +1953,8 @@ p.dc-img-wrapper {
    Deliberately overrides the default h3 orange + border to read as a
    proper name header rather than a section divider. */
 .dc-class-entry-name {
-  font-family: var(--font-display);
-  font-size: var(--fs-h3);
-  letter-spacing: var(--ls-heading);
   color: var(--crimson);
-  text-transform: uppercase;
   margin: 0 0 8px;
-  border: 0;
-  padding: 0;
-  line-height: var(--lh-tight);
 }
 
 .dc-terms {
