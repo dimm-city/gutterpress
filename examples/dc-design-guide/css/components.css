@@ -1501,22 +1501,17 @@ hr,
 .dc-toc {
   font-family: var(--font-body);
   counter-reset: dc-toc;
-  padding: 0;
-  margin: 0;
 }
 .dc-toc ol {
   list-style: none;
-  counter-reset: dc-toc;
   padding: 0;
   margin: 0;
-  border: 0;
 }
 .dc-toc ol > li {
   position: relative;
   padding: 12px 0 12px 56px;
   border-bottom: 1px solid var(--hud-blue-dim);
   counter-increment: dc-toc;
-  font-family: var(--font-body);
   font-size: var(--fs-body-sm);
   line-height: 1.4;
   color: var(--ink-smoke);
@@ -1540,7 +1535,6 @@ hr,
   color: var(--hud-blue);
 }
 .dc-toc ol > li > a {
-  font-family: var(--font-body);
   font-size: 15pt;
   font-weight: 700;
   letter-spacing: 0.03em;
