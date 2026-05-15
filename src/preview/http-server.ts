@@ -184,6 +184,20 @@ async function serveStatic(absPath: string): Promise<Response> {
 
   // Let Bun.file infer Content-Type and stream the body. Disable caching so
   // the file watcher's reload always fetches the latest bytes.
+  // Empty files: Bun.file() returns 204 (No Content) by default, which makes
+  // fetch() reject in some clients (e.g. Paged.js). Force 200 with empty body
+  // so empty placeholder CSS files load without error.
+  const stat = await file.stat().catch(() => null);
+  if (stat && stat.size === 0) {
+    return new Response('', {
+      status: 200,
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'Cache-Control': 'no-cache',
+      },
+    });
+  }
+
   return new Response(file, {
     status: 200,
     headers: { 'Cache-Control': 'no-cache' },
