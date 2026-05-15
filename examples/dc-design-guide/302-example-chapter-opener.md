@@ -90,6 +90,12 @@ Before reputation comes recognition. Before recognition comes a glance. Dimmers 
 
 @page .citizen-file .chapter-01
 
+### Filling Out Your Profile
+
+The Citizen File works in layers. Start with what defines you instantly — your name, how people address you, what you look like, and what the city reads when it glances your way. These choices are about *presence*, not power.
+
+Once you've locked in your identity, the deeper choices come: your history, your species, your origin. The dream builds around what you are, not what you can do. Mechanics come later.
+
 #### What's Yr Handle?
 
 Choose a name.
