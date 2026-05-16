@@ -113,6 +113,8 @@ The affected PC rolls each round to regain functionality or control. Specialties
 
 ### Useful Items
 
+@section .two-column
+
 @gear-card
 ### Shadowbit Token
 
@@ -123,8 +125,6 @@ The affected PC rolls each round to regain functionality or control. Specialties
 Encrypted Dream Credits chip. Completely anonymous. If you can't pay clean, pay with one of these.
 
 @end-gear-card
-
----
 
 @gear-card
 ### Patchkit
@@ -137,8 +137,6 @@ Restores 2 HP when used as an action. Sterile enough. Nothing fancy.
 
 @end-gear-card
 
----
-
 @gear-card
 ### Signal Jammer
 
@@ -149,8 +147,6 @@ Restores 2 HP when used as an action. Sterile enough. Nothing fancy.
 Kills all wireless communications in Near range for 3 rounds. Loud to anyone watching network traffic.
 
 @end-gear-card
-
----
 
 @gear-card
 ### Breaching Charge
@@ -163,7 +159,11 @@ Destroys standard doors, locks, and light barriers. Very loud. Single use. Don't
 
 @end-gear-card
 
+@end-section
+
 ### Common Cybernetics
+
+@section .two-column
 
 @gear-card
 ### UniArm 100
@@ -176,8 +176,6 @@ Full arm functionality. +1 to Reach attacks. Comes in matte black or brushed chr
 
 @end-gear-card
 
----
-
 @gear-card
 ### RedEye Optical
 
@@ -188,8 +186,6 @@ Full arm functionality. +1 to Reach attacks. Comes in matte black or brushed chr
 Enhanced optical implant. Night vision + zoom to Far range. Compatible with targeting overlays.
 
 @end-gear-card
-
----
 
 @gear-card
 ### Neurolink Mk2
@@ -202,8 +198,6 @@ Neural interface chip. Connect to digital systems at Near range. Required for mo
 
 @end-gear-card
 
----
-
 @gear-card
 ### Reflex Accelerator
 
@@ -214,3 +208,5 @@ Neural interface chip. Connect to digital systems at Near range. Required for mo
 Combat processor wired into your nervous system. +1 AP per round. Cannot be Stunned. High EP cost — you'll feel it.
 
 @end-gear-card
+
+@end-section

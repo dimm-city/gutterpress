@@ -38,7 +38,7 @@ The status conditions table uses standard GFM `|---|---|` syntax — `dc-compone
 
 # C.1: Are You Lucid Yet? {#c1-are-you-lucid}
 
-![01-street-sign](https://placehold.co/600x400/png?text=Street+Sign){.fg-art-street-sign}
+![01-street-sign](https://placehold.co/600x800/png?text=Street+Sign){.fg-art-street-sign}
 
 Hologram haze cuts the gloom you're stumbling through. Flickering ads claw the air above blades of neon that contrast the scents of burnt oil and hot garbage. On the littered pavement around you, other pedestrians in the murk shuffle past, lit by glitchy devices and glowing bodymods.
 
@@ -74,15 +74,21 @@ In Dimm City RPG, you're not "pretending to be someone else." You're fighting fo
 
 ## The City
 
+@section .two-column
+
 Dimm City twitches like a clamped nerve at the edge of existence.
 It leaks ferocity, spits day-glo venom, and remembers every screw-up you tried to bury under cheap lies and even cheaper concrete.
 The streets look solid, but they shift like a glitch in a hallucination—half alive, half listening, all hungry.
 
 This place isn't just a city. It's a stubborn stain on the fabric of the Monoverse, the endless mess of realities piled on top of each other like corrupted files. Dimm City refuses to be overwritten. It clings. It mutates. It survives every rewrite some cosmic architect tries to force on it.
 
+@column-break
+
 Nothing here is safe. Nothing here is free. If you want something in this rotting wonderland, you pay in blood, credits, secrets, or shame. Usually all four.
 
 Other worlds dream of heroes and chosen ones. Dimm City dreams of people desperate enough to matter.
+
+@end-section
 
 ## Dreamers
 
@@ -100,25 +106,31 @@ Across the table sits the Dream Master: not your boss, not your babysitter, not 
 
 They don't stop you. They don't protect you. They just make sure the pain fits the crime.
 
+---
+
+@page .chapter-03
+
 ### ROLL A DIE! {#c1-rolling-the-die}
 
 When something matters—really matters—the DM might call for a roll. One toss of a d20 decides if you rocket through a window like a legend… or face-plant into the curb with a mouthful of glass and regrets.
 
 No dead rolls. No vanilla outcomes. If the dice show you teeth, you better bite back.
 
----
-
-@page .chapter-03
-
 ### Lucid & Surreal
 
 Some abilities shift your odds.
 
+@section .two-column
+
 #### Lucid
 Roll 2d20, take the higher. You're sharp, aligned, in control. When you roll a 20 in the dream, your next roll is Lucid!
 
+@column-break
+
 #### Surreal
 Roll 2d20, take the lower. Reality pushes back. When you roll a 1 in the dream, your next roll is Surreal.
+
+@end-section
 
 ### Augment Points (AP)
 

@@ -38,13 +38,15 @@ The stat block format is intentionally minimal — no special macro required. Th
 
 ## Dream Mastery
 
+@section .two-column
+
 Every Dream needs someone to light the fuse. That's you—the Dream Master.
 
 You're not just the voice behind the curtain. You are the curtain. The smoke. The shadows in the alley. You set the tone, build the streets, throw curveballs, and breathe fire into the frame.
 
 You're the storyteller, the scene-builder, and chaos coordinator. You spin Dimm City's razorwire threads into something raw, real, and just barely holding together.
 
----
+@column-break
 
 You play every lowlife, every beast, every storm creeping in off the skyline. You decide what hits. What hurts. What haunts.
 
@@ -53,6 +55,8 @@ Most of all? You make every dreamer's choices matter.
 Crank up the tension—then let it breathe. When they win, make 'em feel it. When they fall, make 'em remember.
 
 You're not here to run a game. You're here to make the Dream burn bright.
+
+@end-section
 
 ### Core Elements
 
@@ -207,13 +211,12 @@ Equipment and Cybernetics add texture and loot. They don't need to be tracked un
 
 When you need an NPC fast, answer these four questions:
 
-**Who are they in one sentence?** (A junked-out Patchhead mob guard with nothing to lose.)
-
-**What do they want in this scene?** (Drive the Dreamers out of the warehouse or die trying.)
-
-**What Trait makes them dangerous?** (Bloodlust — the more the Dreamers hurt, the more the mob escalates.)
-
-**What happens if the Dreamers handle them cleverly?** (Offer the Patchheads something worth more than the job. They scatter.)
+| Question | Example Answer |
+|----------|---------------|
+| **Who are they?** | A junked-out Patchhead mob guard with nothing to lose. |
+| **What do they want?** | Drive the Dreamers out of the warehouse or die trying. |
+| **What Trait makes them dangerous?** | Bloodlust — the more the Dreamers hurt, the more the mob escalates. |
+| **What if they're handled cleverly?** | Offer the Patchheads something worth more than the job. They scatter. |
 
 That's it. That's an NPC. Stat it if combat is likely. Leave it sketched if it's just atmosphere.
 

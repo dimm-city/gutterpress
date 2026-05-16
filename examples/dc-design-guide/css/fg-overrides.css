@@ -237,6 +237,48 @@
 
 
 
+/* ═══ NPC STAT BLOCKS — chapter-04 page ════════════════════════════════════
+   Raw H4/H5 NPC entries need visual structure. No macro — context class approach. */
+
+/* Rust top rule separates individual NPC entries (#### Patchhead style) */
+.page.chapter-04 h4 {
+  border-top: 1.5pt solid var(--rust);
+  padding-top: 0.05in;
+  margin-top: 0.1in;
+}
+
+/* Subsection labels: ##### Traits / Equipment / Cybernetics */
+.page.chapter-04 h5 {
+  color: var(--hud-blue-dark);
+  border-bottom: 0.75pt solid var(--border-hairline);
+  padding-bottom: 1pt;
+  margin-top: 0.06in;
+  margin-bottom: 0.02in;
+}
+
+/* Stat line immediately after blockquote: "2 HP — 1 Damage", "Fodder — Medium" */
+.page.chapter-04 blockquote + p {
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  color: var(--hud-blue);
+  letter-spacing: 0.04em;
+  margin-bottom: 0.02in;
+}
+
+/* Second stat line (type + size) */
+.page.chapter-04 blockquote + p + p {
+  font-family: var(--font-mono);
+  font-size: 7.5pt;
+  color: var(--ink-smoke);
+  letter-spacing: 0.04em;
+  margin-bottom: 0.04in;
+}
+
+/* Gear cards in two-column context: reduce h3 size slightly for narrow columns */
+.section.two-column .dc-gear-entry h3 {
+  font-size: var(--fs-h4);
+}
+
 /* ── FIELD GUIDE EXAMPLE ART IMAGE CLASSES ────────────────────────────────── */
 /* Placeholder art images for field guide example pages - sized for their context */
 .fg-art-specialty {
