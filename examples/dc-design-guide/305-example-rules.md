@@ -37,7 +37,7 @@ Tables use standard GFM markdown syntax. The status conditions table and outcome
 
 # C.1: Are You Lucid Yet? {#c1-are-you-lucid}
 
-![01-street-sign](https://placehold.co/1349x842/png?text=Street+Sign){.art-street-sign}
+![01-street-sign](https://placehold.co/600x400/png?text=Street+Sign){.fg-art-street-sign}
 
 Hologram haze cuts the gloom you're stumbling through. Flickering ads claw the air above blades of neon that contrast the scents of burnt oil and hot garbage. On the littered pavement around you, other pedestrians in the murk shuffle past, lit by glitchy devices and glowing bodymods.
 

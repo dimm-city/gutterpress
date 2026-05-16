@@ -314,6 +314,40 @@
   box-sizing: border-box;
 }
 
+/* ── FIELD GUIDE EXAMPLE ART IMAGE CLASSES ────────────────────────────────── */
+/* Placeholder art images for field guide example pages - sized for their context */
+.fg-art-specialty {
+  width: 0.75in;
+  height: 0.85in;
+  object-fit: cover;
+  display: block;
+}
+
+/* Chapter opener art - top of page, full width */
+.fg-art-street-sign,
+.fg-art-lil-thump,
+.fg-art-portrait {
+  width: 100%;
+  max-width: 7.5in;
+  height: auto;
+  max-height: 3.5in;
+  object-fit: cover;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Front matter art */
+.fg-art-founders-house,
+.fg-art-intro-image {
+  width: 100%;
+  max-width: 7.5in;
+  height: auto;
+  max-height: 4in;
+  object-fit: cover;
+  display: block;
+  margin: 0 auto;
+}
+
 /* ── SPECIALTY PAGE BREAK CONTROL ─────────────────────────────────────────── */
 /* Break and overflow rules for specialty page type. Components own their own
    sizing; only break-control and snap geometry belong here. */

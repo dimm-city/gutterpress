@@ -85,7 +85,7 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 **Dedicated to the memory of Donovan Henry Callender.**
 Don was a player in our 2E AD&D group throughout our youth and was a dear friend for even longer. He was taken too soon from us and we wish he were here to dream in Dimm City with us today.
 
-![founders-house](https://placehold.co/1349x842/png?text=Founders+House){.art-founders-house}
+![founders-house](https://placehold.co/600x400/png?text=Founders+House){.fg-art-founders-house}
 
 ---
 
@@ -105,7 +105,7 @@ The city didn't go quiet—it got loud. That feline snarl tore through the alley
 
 A crew of geared-up cats—sleek fur, feral eyes, lenses pulsing with kill-code—came screaming down the block, pulse cannons humming an evil dirge. They wore glossy slab-armor that flexed like chitin and burned like synthlight. Opposite them? A pack of ragged rabbits with wiry limbs and twitch-fast reflexes, zipping through the sprawl with street-born magic and muscle memory. Then the world erupted.
 
-![intro-image](https://placehold.co/1349x842/png?text=Intro+Image){.art-intro-image}
+![intro-image](https://placehold.co/600x400/png?text=Intro+Image){.fg-art-intro-image}
 
 Blasts lit the dusk like glitchfire. Bolts and teeth and claws tangled mid-air. Neon signs cracked. Alleyways bled smoke. Debris rained in bursts. This wasn't about glory—it was turf. It was pride. It was blood memory, raw and ugly, of family torn away by their rival.
 

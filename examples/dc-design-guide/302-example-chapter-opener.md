@@ -65,7 +65,7 @@ Da bats froze mid-flight, shrieking an tumbling outta da sky.
 
 I locked in da hack, jacked out, an leapt clean onto a passing airbus like I meant to do it all along.
 
-![Lil Thump](https://placehold.co/1349x842/png?text=Lil+Thump){.art-lil-thump}
+![Lil Thump](https://placehold.co/600x400/png?text=Lil+Thump){.fg-art-lil-thump}
 
 ---{.column-break}
 
@@ -79,7 +79,7 @@ This chapter will guide you through all the choices you need to make to help you
 
 Before reputation comes recognition. Before recognition comes a glance. Dimmers speed-read bodies like text: names, scars, size, and stance all scanned in a heartbeat. This section defines how you're read when the Dream first lays eyes on you.
 
-![Image is everything](https://placehold.co/1349x842/png?text=Portrait){.art-portrait}
+![Image is everything](https://placehold.co/600x400/png?text=Portrait){.fg-art-portrait}
 
 > [!VISIT]
 > **Before You Fill Anything In:**
