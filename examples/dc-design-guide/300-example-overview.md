@@ -12,9 +12,15 @@ Real pages from the Dimm City Field Guide rendered through the DC print system. 
 
 ## What Is Part 2?
 
+@section .two-column
+
 The spec chapters (01–08) explain the design system in terms of tokens, syntax, and components. Part 2 is the payoff: real Field Guide pages rendered live, showing how those components combine under actual conditions.
 
+@column-break
+
 Each chapter in Part 2 covers one type of page. The annotation above the rendered content names the active page template, CSS classes, and any macros in use. The rendered block beneath it is the actual book markdown — same source, same stylesheet, same output.
+
+@end-section
 
 ---
 
@@ -52,8 +58,22 @@ Each chapter in Part 2 covers one type of page. The annotation above the rendere
 
 Each example chapter follows the same structure:
 
-**Annotation block** — a boxed `> [!NOTE]` callout naming the active page template, the CSS classes applied to `@page`, and any macro directives in use. The annotation appears at the top of the rendered page — it is part of the design guide, not part of the Field Guide source. Cross-references point to the spec chapters for token details.
+@section .two-column
 
-**Live rendered block** — the actual Field Guide markdown that follows the annotation. Images reference `https://placehold.co/1349x842/png` in place of the book's original artwork paths, which don't resolve in the design guide context. All class attributes, macros, and prose are verbatim from the source.
+@definition
+
+**Annotation block** — Names the active page template, CSS classes on `@page`, and macros in use. Part of the design guide, not the Field Guide source. Cross-references point to spec chapters for token details.
+
+@end-definition
+
+@column-break
+
+@definition
+
+**Live rendered block** — Actual Field Guide markdown. Images use `placehold.co` in place of book artwork paths. All class attributes, macros, and prose are verbatim from the source.
+
+@end-definition
+
+@end-section
 
 The rendered output is the design system working as-shipped. If something looks wrong here, it's a real bug — not a specimen issue.

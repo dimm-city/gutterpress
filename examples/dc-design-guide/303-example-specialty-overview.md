@@ -12,6 +12,8 @@ This section shows how the "Choose a Specialty" spread looks in the actual Dimm 
 
 ## About These Pages
 
+@section .two-column
+
 The specialty section of the Field Guide has two distinct spreads. The chapter-start spread (Chapter 02) pairs an opening fiction vignette with the ability primer — the rules overview for how the whole system works. The specialty overview spread (the `card-grid` template) follows it with the 8 specialty cards side by side.
 
 | Page | Template | Purpose |
@@ -19,7 +21,13 @@ The specialty section of the Field Guide has two distinct spreads. The chapter-s
 | Chapter opener | `page-chapter-start .chapter-02` | Fiction left, ability rules right |
 | Specialty grid | `card-grid` | 8 specialty cards in two-column layout |
 
+@column-break
+
 The two-column structure on both pages is deliberate: the reader gets fiction and mechanics together on the opener, then a clean visual grid for the specialty choices. Every specialty gets equal visual weight in the card grid.
+
+The `@specialty-card` macro inside a `@specialty .name` wrapper sets accent color, silhouette shape, and card layout for each of the 8 specialties. The card grid is fully authored in markdown — no HTML needed.
+
+@end-section
 
 ---
 
@@ -54,18 +62,19 @@ How that pack works wasn't luck. It was abilities firing in sequence. Each move 
 
 In Dimm City, abilities aren't just what you can do. They're learned techniques, invasive augments, practiced rituals, and raw instinct working as one.
 
-> [!NOTE]
-> **The Core Loop of a Dream**
->
-> Every moment in Dimm City runs on the same simple rhythm:
->
-> - The Dream Master describes the situation.
-> - A Dreamer declares an action.
-> - If the outcome is uncertain, you ROLL THE DIE or activate an ability.
-> - The result determines what happens next.
-> - The scene evolves and the Dream continues.
->
-> Everything in this chapter exists to support that loop. Abilities bend it. Dice decide it. Dreamers drive it. The Monoverse responds.
+@callout variant=note label="The Core Loop of a Dream"
+
+Every moment in Dimm City runs on the same simple rhythm:
+
+- The Dream Master describes the situation.
+- A Dreamer declares an action.
+- If the outcome is uncertain, you ROLL THE DIE or activate an ability.
+- The result determines what happens next.
+- The scene evolves and the Dream continues.
+
+Everything in this chapter exists to support that loop. Abilities bend it. Dice decide it. Dreamers drive it. The Monoverse responds.
+
+@end-callout
 
 @page .card-grid
 

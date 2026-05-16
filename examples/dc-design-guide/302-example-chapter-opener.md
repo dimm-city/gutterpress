@@ -12,9 +12,9 @@ This section shows how chapter-start spreads look in the actual Dimm City Field 
 
 ## About Chapter Opener Spreads
 
-A chapter opener spread is the reader's first encounter with each chapter's world. DC openers are always two-column: the left column carries a short fiction vignette establishing the vibe and stakes of the chapter, and the right column launches directly into the rules or character creation content.
+@section .two-column
 
-The two-column split is authored with a `---{.column-break}` marker. Everything before the column break flows into the left column; everything after flows into the right. The `@chapter-opener C.NN` macro injects the chapter number badge over the left column's top edge.
+A chapter opener spread is the reader's first encounter with each chapter's world. DC openers are always two-column: the left column carries a short fiction vignette establishing the vibe and stakes of the chapter, and the right column launches directly into the rules or character creation content.
 
 | Element | Authoring pattern | Rendered as |
 |---------|------------------|-------------|
@@ -23,7 +23,13 @@ The two-column split is authored with a `---{.column-break}` marker. Everything 
 | Column break | `---{.column-break}` | Layout split between columns |
 | Right column | Rules intro + content | Standard heading hierarchy |
 
+@column-break
+
+The two-column split is authored with a `---{.column-break}` marker. Everything before the column break flows into the left column; everything after flows into the right. The `@chapter-opener C.NN` macro injects the chapter number badge over the left column's top edge.
+
 The `page-chapter-start` template in `page-rules.css` creates the column structure and applies chapter-specific accent colors via the `chapter-01`, `chapter-02` class selectors.
+
+@end-section
 
 ---
 

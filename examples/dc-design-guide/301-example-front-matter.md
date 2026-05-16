@@ -12,9 +12,9 @@ This section shows how the Table of Contents, Credits, and Introduction pages lo
 
 ## About Front Matter Pages
 
-Front matter sets the emotional contract with the reader. Before they see a single rule, a map, or a stat block, the TOC, Credits, and Introduction tell them what kind of book this is.
+@section .two-column
 
-The DC front matter uses three distinct page templates, each with its own layout role:
+Front matter sets the emotional contract with the reader. Before they see a single rule, a map, or a stat block, the TOC, Credits, and Introduction tell them what kind of book this is.
 
 | Page | Template class | Design purpose |
 |------|---------------|----------------|
@@ -22,18 +22,17 @@ The DC front matter uses three distinct page templates, each with its own layout
 | Credits | `page-credits` | Short credits block anchored by a full-bleed illustration |
 | Introduction | `page-intro` | Pull-quote opener, narrative fiction, setting primer |
 
+@column-break
+
 All three use the `chapter-00` class selector in `page-rules.css`, which drives the pre-chapter margin and header treatment. The `@toc` and `@end-toc` macros emit the `.dc-toc-row` structure for the Contents page. The pull-quote band on the Introduction page uses `> [!PULLQUOTE]` — the same alert component used elsewhere in the book.
 
 Front matter pages exist outside the main chapter numbering system. They do not have chapter code badges or specialty color blocks. Their job is to establish voice and brand before the system content begins.
 
+@end-section
+
 ---
 
 @page .page-toc
-
-> [!NOTE]
-> **Table of Contents** — `@page .page-toc` — activates the `.dc-toc` numbered list layout with bold chapter numbers. The intro blurb uses `@lede` / `@end-lede`. See [Components](#ch-components) for lede syntax and [Page Templates](#ch-templates) for the `page-toc` spec.
-
----
 
 # Contents {.dc-chevron}
 
@@ -65,11 +64,6 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 
 @page .page-credits .credits .chapter-00
 
-> [!NOTE]
-> **Credits Page** — `@page .page-credits .credits .chapter-00` — applies the credits layout with the `chapter-00` identifier. The founders-house art image anchors the bottom of the page. See [Page Templates](#ch-templates) for `.page-credits` details and [Typography](#ch-typography) for the bold/plain credits style.
-
----
-
 # Credits {.dc-chevron}
 
 **Designers:** TWard and ITLackey
@@ -90,11 +84,6 @@ Don was a player in our 2E AD&D group throughout our youth and was a dear friend
 ---
 
 @page .page-intro .intro .chapter-00
-
-> [!NOTE]
-> **Introduction Page** — `@page .page-intro .intro .chapter-00` — `page-intro` applies the narrative intro layout. The opening quote is authored as `> [!PULLQUOTE]` and renders as the large pull-quote band. The full-column fiction block follows with inline art. See [Components](#ch-components) for pull-quote authoring and [Field Guide Components](#ch-fg-components) for the intro prose style.
-
----
 
 # Introduction {.dc-chevron}
 

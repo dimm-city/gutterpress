@@ -12,6 +12,8 @@ This section shows how a full specialty profile looks in the actual Dimm City Fi
 
 ## About Specialty Profile Pages
 
+@section .two-column
+
 Every specialty in the Field Guide gets a two-page spread: the specialty intro block on the first page, followed by learning paths and skill cards flowing across as many pages as needed. The structure is always the same, but the silhouette shapes, accent colors, and ability content differ for each specialty.
 
 | Component | Macro / class | Renders as |
@@ -21,7 +23,13 @@ Every specialty in the Field Guide gets a two-page spread: the specialty intro b
 | Path header | `@learning-path` | Path shell with path title, skill list, signature augment |
 | Skill cards | `@skill` (one per ability) | Tabbed card with tier, flavor, and AP options |
 
+@column-break
+
 The `@specialty .augmerc` wrapper defines all 7 shape variables (`--dc-skill-tab-shape`, `--dc-skill-body-shape`, `--dc-path-title-shape`, `--dc-path-shell-clip`, `--dc-specialty-card-shell-shape`, `--dc-specialty-intro-title-shape`, `--dc-specialty-intro-clip`). Every nested component inherits these through CSS custom property cascade — the component base rules use `var(--token, fallback)` so that specialty shapes override without requiring new selectors.
+
+**Macros used:** `@specialty`, `@specialty-intro`, `@specialty-art`, `@learning-path`, `@skill`. See [DC Components](#ch-dc-components) for the full reference.
+
+@end-section
 
 ---
 
@@ -183,10 +191,11 @@ When you add a second specialty, choose one of its learning paths. You gain acce
 
 You cannot access Spec Tweaks from a second specialty. Those abilities are hard-wired to years of dedicated augmentation. What you gain is range, not depth — a taste of another crew's toolkit.
 
-> [!NOTE]
-> **Design note:** The specialty system is intentionally resistant to optimization. Cross-specialty learning is a story event, not a character sheet checkbox. The DM controls the gates. The city controls what you're exposed to.
+@dm-note label="Design Note"
 
----
+The specialty system is intentionally resistant to optimization. Cross-specialty learning is a story event, not a character sheet checkbox. The DM controls the gates. The city controls what you're exposed to.
+
+@end-dm-note
 
 ### Example: Augmerc + Wirephreak
 
@@ -200,9 +209,11 @@ This is the DC cross-specialty model. You stay rooted. You grow edges.
 
 The DM should look for three conditions before granting cross-specialty access:
 
+@procedure
 1. **Exposure** — the Dreamer has spent meaningful time around operatives who use those techniques
 2. **Need** — the Dreamer attempted something outside their specialty and succeeded by improvising
 3. **Commitment** — the Dreamer actively seeks out the knowledge (spends downtime, finds a teacher, risks something to learn it)
+@end-procedure
 
 All three should be present. One alone is a coincidence. Three is a turning point.
 
