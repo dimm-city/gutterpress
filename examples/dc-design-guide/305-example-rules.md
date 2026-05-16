@@ -122,13 +122,23 @@ Some abilities shift your odds.
 
 @section .two-column
 
+@definition
+
 #### Lucid
+
 Roll 2d20, take the higher. You're sharp, aligned, in control. When you roll a 20 in the dream, your next roll is Lucid!
+
+@end-definition
 
 @column-break
 
+@definition
+
 #### Surreal
+
 Roll 2d20, take the lower. Reality pushes back. When you roll a 1 in the dream, your next roll is Surreal.
+
+@end-definition
 
 @end-section
 
@@ -156,11 +166,13 @@ Abilities don't just deal damage. They disrupt momentum, break positioning, and 
 | **Silenced** | The creature cannot speak or use abilities requiring speech. |
 | **Stunned** | The creature cannot move, act, or speak. |
 
-#### Ending Conditions
+@callout variant=note label="Ending Conditions"
 
 A creature suffering a condition may attempt to end it at the time specified by the effect, usually at the start or end of its turn, by rolling 11 or higher on a d20.
 
 On a success, the condition ends. Conditions usually end when the encounter ends, unless the effect specifies otherwise. In unclear situations, it's DM's call.
+
+@end-callout
 
 ### Rolling the Die — Full Outcome Ladder
 
@@ -174,5 +186,11 @@ On a success, the condition ends. Conditions usually end when the encounter ends
 
 ### Distance Tags
 
-Distance in Dimm City is measured in three zones: **Reach** (adjacent, close enough to touch), **Near** (same room, line of sight), and **Far** (across a street, different room). Most abilities specify which distances they work at. When in doubt, ask if you could throw something at it and hit — that's Near.
+| Zone | Range |
+|------|-------|
+| **Reach** | Adjacent — close enough to touch |
+| **Near** | Same room, line of sight |
+| **Far** | Across a street, different room |
+
+Most abilities specify which distances they work at. When in doubt, ask if you could throw something at it and hit — that's Near.
 

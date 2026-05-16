@@ -60,6 +60,8 @@ You're not here to run a game. You're here to make the Dream burn bright.
 
 ### Core Elements
 
+@dm-note
+
 Dream Mastery ain't just running the game. It's breathing life into the Dream—then handing the knife to your players.
 
 Your job? Guide, don't control. Shape the chaos without strangling it. Keep the world alive, twitching, and ready to bite back.
@@ -70,7 +72,11 @@ Your job? Guide, don't control. Shape the chaos without strangling it. Keep the 
 
 - Keep your dreamers safe—but never too safe: Protect your players, not their characters. Let the city be lethal. Let them bleed. Just make sure the players always feel supported at the table, even when their PCs get wrecked.
 
+@end-dm-note
+
 #### Focus on the Fantascape
+
+@dm-note label="Fantascape Tips"
 
 Create immersion by turning game mechanics into vivid fiction. Avoid blunt mechanics like "You deal 4 damage" and instead paint scenes with sensory details, keeping the rules behind the curtain.
 
@@ -81,6 +87,8 @@ Create immersion by turning game mechanics into vivid fiction. Avoid blunt mecha
 - If a dreamer fails a Surreal roll while climbing, describe it as, "Your hands slip on the rain-slick metal rungs. Your foot scrapes for a hold, heart hammering, as you dangle above the alley's neon smear a 100 meters below!"
 
 Bury the math inside the moment and build scenes that hit harder than the dice ever could.
+
+@end-dm-note
 
 ---
 
@@ -115,7 +123,7 @@ Patchheads will sometimes carry makeshift weapons like weighted chains, shivs, o
 
 UniArm 100 / Redi-Mobile Cyberleg / RedEye Optical Prosthetic (could be just one or all)
 
----
+@tape label="Operators"
 
 ## NPC Stat Block: Operator
 
@@ -146,7 +154,7 @@ Operator — Medium
 
 UniArm 100 Cyberarm w/Optalanges TechMech kit and Smuggler's Stash Level 1, Light Blaster Pistol
 
----
+@tape label="Masters"
 
 ## NPC Stat Block: Master
 
@@ -199,9 +207,11 @@ Every NPC in Dimm City is built from the same chassis: a tier, a flavor quote, a
 
 A good Trait does one of three things:
 
+@procedure
 1. **Creates positioning pressure** — forces Dreamers to fight at a disadvantage unless they account for it (see: Stranglehold, Bloodlust)
 2. **Changes the environment** — Undertow in a flood district isn't just dangerous, they're regenerating while you're slowing down
 3. **Rewards specific counters** — a Patchhead mob with Bloodlust rewards hitting hard fast; a Grease Monkey rewards disrupting their tech before they rig the battlefield
+@end-procedure
 
 Equipment and Cybernetics add texture and loot. They don't need to be tracked unless the DM decides they matter to the story.
 

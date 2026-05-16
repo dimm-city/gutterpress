@@ -45,7 +45,11 @@ Wanna level up? In Dimm City, that means slicing yourself open and slotting in s
 
 Install too much, too fast, or too dirty, and the body pushes back. Or worse—the Dream does.
 
-**But remember:** Every install has a cost. Every edge has a crack. Push too far, and something in you will break.
+@callout variant=gear label="Remember"
+
+Every install has a cost. Every edge has a crack. Push too far, and something in you will break.
+
+@end-callout
 
 @end-section
 
@@ -91,21 +95,15 @@ PCs start clean with 0 EP. But every aug you bolt on scrapes at your mind, tugs 
 9–10 | Extreme instability, system failures likely | SysChk 15–20
 @end-outcome
 
-@section .two-column
+@callout variant=note label="Cybersuck"
 
-### Cybersuck
+Specialties relying on arcane forces are adversely affected by implant Ego. If you're a Proxy, Gutterdruid, or Etherlock, every Ego Point above 2 makes it harder to use your abilities: **+1 AP cost for every point of EP beyond 2.**
 
-Specialties relying on arcane forces are adversely affected by implant Ego.
+Example: With 4 EP, your abilities cost +2 AP more to activate. Technosorcerers are exempt—they've already sold their soul to the static. But even they risk system overload and are still subject to `SysChk` rolls.
 
-If you're a Proxy, Gutterdruid, or Etherlock, every Ego Point above 2 makes it harder to use your abilities: +1 AP cost for every point of EP beyond 2.
+@end-callout
 
-Example: With 4 EP, your abilities cost +2 AP more to activate.
-
-Technosorcerers are exempt—they've already sold their soul to the static. But even they risk system overload when their gears grind and are still subject to `SysChk` rolls.
-
-@column-break
-
-### SysFAIL
+@callout variant=gear label="SysFAIL"
 
 Consequences of a SysFAIL can range from temporary ability loss to total system shutdown.
 
@@ -113,9 +111,9 @@ Consequences of a SysFAIL can range from temporary ability loss to total system 
 - Mobility issues or loss of the character's action for a round.
 - Total system shutdown lasting for a quicktick (one combat round) or more.
 
-The affected PC rolls each round to regain functionality or control. Specialties like the Cybersurgeon, Technosorcerer, or Wirephreak can assist in recovery by spending their action or using an ability that deals specifically with this problem. Assistance grants Lucidity to the next SysChk, allowing the affected PC to roll two dice and use the better result.
+The affected PC rolls each round to regain control. Specialties like the Cybersurgeon, Technosorcerer, or Wirephreak can assist, granting Lucidity to the next `SysChk`.
 
-@end-section
+@end-callout
 
 ---
 
