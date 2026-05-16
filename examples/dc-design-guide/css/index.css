@@ -11,12 +11,13 @@
    To adapt for a new project, copy the first four files and add
    project-overrides.css (last import, silently absent if missing).
    ============================================================================= */
-@import url("./tokens.css");            /* tokens, @font-face, html/body baseline */
+@import url("./dc-tokens.css");            /* tokens, @font-face, html/body baseline */
+@import url("./dc-core.css"); 
 @import url("./dc-components.css");     /* every .dc-* component (base + thin variants) */
 @import url("./page-templates.css");    /* .page.* layouts — sole home of columns:N */
 @import url("./page-rules.css");        /* @page declarations, named pages, counter resets */
-@import url("./dc-design-guide.css");   /* div.chapter scaffold, .specimen chrome */
+@import url("./dg-overrides.css");   /* div.chapter scaffold, .specimen chrome */
 
 /* Project overrides — create to customize tokens without editing source files.
    Intentionally last so it wins the cascade. Silently absent = no-op. */
-@import url("./field-guide-overrides.css");
+@import url("./fg-overrides.css");

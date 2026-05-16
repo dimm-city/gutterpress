@@ -108,25 +108,7 @@ body { counter-reset: chapter; }
   }
 }
 
-/* ---------------------------------------------------------------------------
-   Page Template: Citizen File (running headers)
-   --------------------------------------------------------------------------- */
 
-@page citizen-file:right {
-  margin-left: var(--binding-margin, 0.75in);
-  margin-right: var(--page-margin);
-
-  @top-right {
-    content: "Citizen File";
-    color: var(--amber);
-    font-family: var(--font-display);
-    letter-spacing: 0.1em;
-    font-size: 0.8em;
-    padding-top: 0.1in;
-  }
-}
-
-.page.citizen-file { page: citizen-file; }
 
 /* ---------------------------------------------------------------------------
    Page Template: Front Matter (no footers; binding margins from @page :left/:right)
@@ -142,11 +124,7 @@ body { counter-reset: chapter; }
 }
 
 /* TOC and full-bleed pages use the full @page template (no margins, no footers). */
-.page.toc,
-.page.page-full-bleed,
-.page.cover,
-.page.back-cover,
-.page.credits {
+.page.full-bleed {
   page: full;
 }
 

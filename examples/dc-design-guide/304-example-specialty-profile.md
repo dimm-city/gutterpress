@@ -57,6 +57,12 @@ They are simply part of what makes an Augmerc dangerous.
 
 @end-specialty-intro
 
+@specialty-art
+
+![Augmerc](https://placehold.co/600x800/png?text=Augmerc){.augmerc}
+
+@end-specialty-art
+
 @learning-path
 
 ### Biting Distance

@@ -12,6 +12,8 @@ This section shows how gear and cybernetics pages look in the actual Dimm City F
 
 ## About Gear & Tech Pages
 
+@section .two-column
+
 Gear pages in the Field Guide follow a consistent structure: an in-world voice opener (blockquote), a mechanical explanation in plain prose, then a reference table. The pattern repeats for every subsystem — cybernetics, weapons, utilities.
 
 | Pattern | Element | Authoring |
@@ -21,18 +23,17 @@ Gear pages in the Field Guide follow a consistent structure: an in-world voice o
 | Reference table | GFM table | Standard `|---|---|` — no class needed for alternating rows |
 | Inline code | \`SysChk\` | Game-mechanic terms that are also keywords appear in code style |
 
+@column-break
+
 **Prose + table pattern** — This is the most common rules-page structure in the Field Guide: a section opener in bold flavour prose, a `> blockquote` for an in-world voice line, body prose explaining the mechanic, then a reference table. The Ego Points table is pure GFM markdown — no class attributes needed for basic alternating-row styling (`dc-components.css` applies it universally).
 
 **Inline code in prose** — `SysChk` rendered as inline code is intentional for game-mechanic terms that double as class names or keywords. The `dc-components.css` inline code style (orange text, faint orange background) reads clearly against cream body text at 12pt body size.
 
+@end-section
+
 ---
 
 @page .tech-cybernetics .second-page .chapter-05
-
-> [!NOTE]
-> **Tech and Cybernetics Page** — `@page .tech-cybernetics .second-page .chapter-05` — applies the cybernetics rules layout. This page uses dense prose with bold key terms and a full rules table for the Ego Points system. See [Components](#ch-components) for table rendering.
-
----
 
 ### Tech and Cybernetics
 
@@ -55,14 +56,20 @@ Ego Points (EP) measure how much of you is still you after the implant goes in. 
 Push past your limits, and you don't run the gear anymore. The gear runs you.
 
 A PC can have the following augmentations in their original form:
+
+@section .two-column
 - 1 Neurolink (assuming one brain)
 - 1 Skin augmentation
 - 1 Skeletal augmentation
 - 1 Nervous system augmentation
+
+@column-break
+
 - 1 implant per natural limb
 - 1 implant per natural eye socket
 - 1 implant per natural ear
 - 1 implant per voicebox
+@end-section
 
 Cybernetics must be installed by a trained Cybersurgeon in a medlab, clinic, or hospital. Augments and modifications are typically purchased with Dream Credits.
 
@@ -104,28 +111,106 @@ The affected PC rolls each round to regain functionality or control. Specialties
 
 ## Example Gear Entries
 
-> [!NOTE]
-> **Gear entry format** — gear items use the `.dc-gear-entry` component. Each entry has a name (H4), a tagline (`.dc-gear-entry-tagline` class applied via `{.dc-gear-entry-tagline}`), a cost and stats line, and a short description. Gear tables use `{.dc-table-crimson}` if the header row needs accent color.
-
 ### Useful Items
 
-| Item | Cost (DC) | Weight | Notes |
-|------|-----------|--------|-------|
-| **Shadowbit Token** | 20-500 | Nil | Encrypted Dream Credits chip, untraceable |
-| **Patchkit** | 80 | 0.5kg | Restores 2 HP when used as an action |
-| **Signal Jammer** | 200 | 1kg | Kills wireless in Near range for 3 rounds |
-| **Glow Stick (×6)** | 15 | Nil | Chemical light, 4 hours, bright Near radius |
-| **Breaching Charge** | 350 | 2kg | Destroys standard doors and locks; loud |
-| **Nano-Seal Spray** | 120 | 0.3kg | Closes wounds, stops bleeding — 1 HP, no roll |
-| **Burner Comm** | 60 | 0.1kg | One-use encrypted comm device |
+@gear-card
+### Shadowbit Token
+
+*Untraceable blockchain chip. The city's off-book currency.*
+
+**20–500 DC · Nil**
+
+Encrypted Dream Credits chip. Completely anonymous. If you can't pay clean, pay with one of these.
+
+@end-gear-card
+
+---
+
+@gear-card
+### Patchkit
+
+*Combat field dressing. Seal it, move on.*
+
+**80 DC · 0.5 kg**
+
+Restores 2 HP when used as an action. Sterile enough. Nothing fancy.
+
+@end-gear-card
+
+---
+
+@gear-card
+### Signal Jammer
+
+*Dead air on demand. No comms, no coordination.*
+
+**200 DC · 1 kg**
+
+Kills all wireless communications in Near range for 3 rounds. Loud to anyone watching network traffic.
+
+@end-gear-card
+
+---
+
+@gear-card
+### Breaching Charge
+
+*Knock knock.*
+
+**350 DC · 2 kg**
+
+Destroys standard doors, locks, and light barriers. Very loud. Single use. Don't stand in front of it.
+
+@end-gear-card
 
 ### Common Cybernetics
 
-| Implant | EP Cost | Effect |
-|---------|---------|--------|
-| **UniArm 100** | 1 | Cybernetic arm. Full functionality, +1 to Reach attacks. |
-| **RedEye Optical** | 1 | Enhanced vision. Night vision + zoom to Far range. |
-| **Redi-Mobile Cyberleg** | 1 | Cybernetic leg. +1 movement speed, silent movement. |
-| **Neurolink Mk2** | 2 | Neural interface. Connect to systems at Near range. |
-| **SubDerm Armor Mesh** | 2 | Subdermal plating. Resist 1 damage from physical attacks. |
-| **Reflex Accelerator** | 3 | Combat processor. +1 AP per round, cannot be Stunned. |
+@gear-card
+### UniArm 100
+
+*Cybernetic arm. Street grade. Reliable.*
+
+**1 EP · Cybersurgeon installation required**
+
+Full arm functionality. +1 to Reach attacks. Comes in matte black or brushed chrome.
+
+@end-gear-card
+
+---
+
+@gear-card
+### RedEye Optical
+
+*See in the dark. See far. See everything.*
+
+**1 EP · Cybersurgeon installation required**
+
+Enhanced optical implant. Night vision + zoom to Far range. Compatible with targeting overlays.
+
+@end-gear-card
+
+---
+
+@gear-card
+### Neurolink Mk2
+
+*Jack in. The city's yours.*
+
+**2 EP · Cybersurgeon installation required**
+
+Neural interface chip. Connect to digital systems at Near range. Required for most high-tier augments.
+
+@end-gear-card
+
+---
+
+@gear-card
+### Reflex Accelerator
+
+*You move before they think.*
+
+**3 EP · Cybersurgeon installation required**
+
+Combat processor wired into your nervous system. +1 AP per round. Cannot be Stunned. High EP cost — you'll feel it.
+
+@end-gear-card

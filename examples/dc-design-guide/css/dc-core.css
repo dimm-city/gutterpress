@@ -1,0 +1,169 @@
+
+/* ── GLOBAL PRINT ACCURACY ────────────────────────────────────────────────── */
+* {
+  print-color-adjust: exact;
+}
+
+/* ── BASELINE ─────────────────────────────────────────────────────────────── */
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  text-wrap: pretty; /* CSS4 — silently ignored by Paged.js; screen preview only */
+  position: relative;
+  hyphens: auto;
+  widows: 2;
+  orphans: 2;
+}
+
+/* ── HEADINGS ─────────────────────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  letter-spacing: var(--ls-display);
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+  text-wrap: balance; /* CSS4 — silently ignored by Paged.js */
+  margin-top: 0;    /* zero browser UA defaults; explicit values below per level */
+  margin-bottom: 0.5em;
+  color: var(--blood);
+  break-after: avoid;
+}
+
+h1 {
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-bold);
+  margin-bottom: 0.75em;
+  border-bottom: 2px solid var(--blood);
+  padding-bottom: 0.15em;
+}
+
+h2 {
+  font-size: var(--fs-h2);
+  color: var(--hud-blue-dark);
+  letter-spacing: var(--ls-heading);
+  border-bottom: 2.5pt solid var(--hud-blue-dark);
+  padding-bottom: 0.1em;
+}
+
+h3 { font-size: var(--fs-h3); margin-top: 0.08in; color: var(--rust);  letter-spacing: var(--ls-heading); }
+h4 { font-size: var(--fs-h4); margin-top: 0.05in; color: var(--blood); letter-spacing: 0.06em; }
+h5 { font-size: var(--fs-h5); color: var(--blood); }
+h6 { font-size: var(--fs-h6); color: var(--blood); }
+
+
+
+/* ── INLINE ELEMENTS ──────────────────────────────────────────────────────── */
+p   { margin-top: 0; margin-bottom: 0.08in; }
+em  { color: var(--ink-smoke); font-style: italic; }
+a   { color: var(--crimson); text-decoration: none; border-bottom: 1px dotted var(--crimson); }
+
+code, kbd, samp {
+  font-family: var(--font-mono);
+  color: var(--ink);
+  font-size: 0.92em;
+  background: var(--paper-aged);
+  padding: 1pt 4pt;
+  border-radius: 2pt;
+  border: 1px solid var(--paper-aged);
+}
+
+blockquote {
+  font-family: var(--font-quote);
+  font-style: italic;
+  color: var(--ink-smoke);
+  border-left: 3px solid var(--ink-smoke);
+  background: var(--paper-light);
+  padding: var(--space-sm) var(--space-md) var(--space-sm) var(--space-xl);
+  margin: 0.75rem 0;
+  text-wrap: balance;
+}
+
+/* ── GLOBAL LIST STYLES (kept as-is per plan) ─────────────────────────────── */
+ul { padding-left: 0.25in; }
+ul li { list-style: none; margin-bottom: 0.06in; }
+ul li::before {
+  content: "» ";
+  color: var(--orange);
+  font-weight: 700;
+  padding-right: 0.1em;
+}
+
+/* ── GLOBAL TABLE STYLES (kept as-is per plan) ────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+  margin: 0.1in 0;
+  break-inside: avoid;
+}
+
+tr:nth-child(even) td { background: var(--surface-tint-3); }
+tr:nth-child(odd)  td { background: var(--paper-light); }
+
+th {
+  background: var(--crimson);
+  color: var(--paper-cream);
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  text-align: left;
+}
+
+td {
+  border-bottom: 1px solid var(--border-hairline);
+  padding: 4px 8px;
+  vertical-align: top;
+}
+
+
+/* ── Headings: keep with following content ───────────────────────────────────
+   Prevent h2/h3/h4 from stranding at the bottom of a page. Scoped to
+   div.chapter so this doesn't suppress breaks outside the chapter context.
+   ─────────────────────────────────────────────────────────────────────────── */
+h2,
+h3,
+h4 {
+  break-before: auto;
+  break-after: avoid;
+  break-inside: avoid;
+}
+
+/* ── Heading word-wrap in column layouts ─────────────────────────────────────
+   ixdu display font at h1/h2 sizes can overflow narrow columns. Allow words
+   to break rather than clip. overflow-wrap handles long unbreakable strings
+   (URLs, class names, one-word caps titles like CREATUREPUNK). Font-size is
+   clamped on h2 so it scales
+   down when column width is tight without affecting full-width h1 banners.
+   ─────────────────────────────────────────────────────────────────────────── */
+h1 {
+  overflow-wrap: break-word;
+}
+
+h2 + p,
+h2 + ul,
+h2 + ol,
+h2 + div,
+h3 + p,
+h3 + ul,
+h3 + ol,
+h3 + div,
+h4 + p,
+h4 + ul,
+h4 + ol,
+h4 + div,
+h2 + pre,
+h2 + table,
+h3 + pre,
+h3 + table,
+h2 + blockquote {
+  break-before: avoid;
+}
+

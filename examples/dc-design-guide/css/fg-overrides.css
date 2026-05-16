@@ -234,3 +234,82 @@
   margin: 0 0 0.25rem 0.25rem;
   padding-bottom: 0.15rem;
 }
+
+
+
+/* ── FIELD GUIDE EXAMPLE ART IMAGE CLASSES ────────────────────────────────── */
+/* Placeholder art images for field guide example pages - sized for their context */
+.fg-art-specialty {
+  width: 0.75in;
+  height: 0.85in;
+  object-fit: cover;
+  display: block;
+}
+
+/* Chapter opener inset art — floated right, text wraps around it */
+.fg-art-street-sign {
+  float: right;
+  width: 1.75in;
+  height: auto;
+  object-fit: cover;
+  margin: 0 0 var(--space-sm) var(--space-md);
+  clear: right;
+}
+
+/* Chapter opener full-width art */
+.fg-art-lil-thump,
+.fg-art-portrait {
+  width: 100%;
+  max-width: 7.5in;
+  height: auto;
+  max-height: 3.5in;
+  object-fit: cover;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Front matter art */
+.fg-art-founders-house,
+.fg-art-intro-image {
+  width: 100%;
+  max-width: 7.5in;
+  height: auto;
+  max-height: 4in;
+  object-fit: cover;
+  display: block;
+  margin: 0 auto;
+}
+
+/* ── SPECIALTY PAGE BREAK CONTROL ─────────────────────────────────────────── */
+/* Break and overflow rules for specialty page type. Components own their own
+   sizing; only break-control and snap geometry belong here. */
+.dc-specialty .dc-learning-path {
+  break-before: auto;
+  break-inside: auto;
+  break-after: auto;
+  overflow: visible;
+}
+
+.dc-specialty .dc-path-shell { padding-top: 0; padding-bottom: 16px; margin-bottom: 0; }
+.dc-specialty .dc-skill-card.allow-split { break-inside: auto; }
+
+
+/* ---------------------------------------------------------------------------
+   Page Template: Citizen File (running headers)
+   --------------------------------------------------------------------------- */
+
+@page citizen-file:right {
+  margin-left: var(--binding-margin, 0.75in);
+  margin-right: var(--page-margin);
+
+  @top-right {
+    content: "Citizen File";
+    color: var(--amber);
+    font-family: var(--font-display);
+    letter-spacing: 0.1em;
+    font-size: 0.8em;
+    padding-top: 0.1in;
+  }
+}
+
+.page.citizen-file { page: citizen-file; }

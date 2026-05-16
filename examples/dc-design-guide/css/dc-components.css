@@ -35,34 +35,39 @@
    .dc-specialty.<name> scope block for a component?" — if NO, use another file.
    ──────────────────────────────────────────────────────────────────────── */
 
+.chapter {
+  display: block;
+  width: 100%;
+}
+
 /* ═══ ALERTS — base+thin-variant pattern ═══
    .dc-alert base + .dc-alert-label label chrome + thin variant classes.
    GFM: > [!NOTE/WARNING/DM/VIBE/ORIGIN/VISIT/GEAR] or @callout/@dm-note macros. */
 
 /* ── Base shell ─────────────────────────────────────────────────────────── */
 .dc-alert {
-  --dc-alert-bg:              var(--paper-light);
-  --dc-alert-border:          var(--crimson);
-  --dc-alert-fg:              var(--ink-smoke);
-  --dc-alert-label-color:     var(--dc-alert-border);
+  --dc-alert-bg: var(--paper-light);
+  --dc-alert-border: var(--crimson);
+  --dc-alert-fg: var(--ink-smoke);
+  --dc-alert-label-color: var(--dc-alert-border);
 
   /* Structural overrides via custom properties for variant use */
-  --dc-alert-body-size:       var(--fs-body-sm);
-  --dc-alert-border-width:    4px;
-  --dc-alert-label-size:      8pt;
-  --dc-alert-label-weight:    700;
-  --dc-alert-label-spacing:   0.12em;
-  --dc-alert-label-margin:    8pt;
-  --dc-alert-margin-top:      0;
+  --dc-alert-body-size: var(--fs-body-sm);
+  --dc-alert-border-width: 4px;
+  --dc-alert-label-size: 8pt;
+  --dc-alert-label-weight: 700;
+  --dc-alert-label-spacing: 0.12em;
+  --dc-alert-label-margin: 8pt;
+  --dc-alert-margin-top: 0;
 
-  background:    var(--dc-alert-bg);
-  border-left:   var(--dc-alert-border-width) solid var(--dc-alert-border);
-  color:         var(--dc-alert-fg);
-  font-size:     var(--dc-alert-body-size);
-  line-height:   var(--lh-normal);
-  padding:       var(--space-lg) var(--space-xl);
-  margin-top:    var(--dc-alert-margin-top);
-  break-inside:  avoid;
+  background: var(--dc-alert-bg);
+  border-left: var(--dc-alert-border-width) solid var(--dc-alert-border);
+  color: var(--dc-alert-fg);
+  font-size: var(--dc-alert-body-size);
+  line-height: var(--lh-normal);
+  padding: var(--space-lg) var(--space-xl);
+  margin-top: var(--dc-alert-margin-top);
+  break-inside: avoid;
 }
 
 .dc-alert p {
@@ -70,47 +75,59 @@
   font-style: italic;
 }
 
-.dc-alert p + p      { margin-top: 6pt; }
+.dc-alert p+p {
+  margin-top: 6pt;
+}
+
 .dc-alert ul,
-.dc-alert ol         { margin: 6pt 0 0; padding-left: 0.2in; }
-.dc-alert li         { margin-bottom: 0.04in; }
-.dc-alert li::before { color: var(--dc-alert-border); }
+.dc-alert ol {
+  margin: 6pt 0 0;
+  padding-left: 0.2in;
+}
+
+.dc-alert li {
+  margin-bottom: 0.04in;
+}
+
+.dc-alert li::before {
+  color: var(--dc-alert-border);
+}
 
 /* ── Label chrome ───────────────────────────────────────────────────────── */
 .dc-alert-label {
-  display:        block;
-  font-family:    var(--font-mono);
-  font-size:      var(--dc-alert-label-size);
-  font-weight:    var(--dc-alert-label-weight);
-  font-style:     normal;
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--dc-alert-label-size);
+  font-weight: var(--dc-alert-label-weight);
+  font-style: normal;
   text-transform: uppercase;
   letter-spacing: var(--dc-alert-label-spacing);
-  margin-bottom:  var(--dc-alert-label-margin);
-  color:          var(--dc-alert-label-color);
+  margin-bottom: var(--dc-alert-label-margin);
+  color: var(--dc-alert-label-color);
 }
 
 /* ── Variant: Note (player-facing, default) ─────────────────────────────── */
 .dc-note {
-  --dc-alert-label-size:      9px;
-  --dc-alert-label-spacing:   2px;
-  --dc-alert-label-margin:    var(--space-sm);
-  --dc-alert-margin-top:      var(--space-lg);
+  --dc-alert-label-size: 9px;
+  --dc-alert-label-spacing: 2px;
+  --dc-alert-label-margin: var(--space-sm);
+  --dc-alert-margin-top: var(--space-lg);
 }
 
 /* ── Variant: Warning (note with distinct surface) ──────────────────────── */
 .dc-note.warning {
-  --dc-alert-bg:     var(--surface-orange-tint);
+  --dc-alert-bg: var(--surface-orange-tint);
   --dc-alert-border: var(--rust);
 }
 
 /* ── Variant: DM Note (Dream Master-facing) ─────────────────────────────── */
 .dc-dm-note {
-  --dc-alert-bg:              var(--paper-cream);
-  --dc-alert-body-size:       9pt;
-  --dc-alert-border-width:    3px;
-  --dc-alert-label-weight:    600;
-  --dc-alert-label-spacing:   0.1em;
-  --dc-alert-margin-top:      9pt;
+  --dc-alert-bg: var(--paper-cream);
+  --dc-alert-body-size: 9pt;
+  --dc-alert-border-width: 3px;
+  --dc-alert-label-weight: 600;
+  --dc-alert-label-spacing: 0.1em;
+  --dc-alert-margin-top: 9pt;
 }
 
 /* ── Variant: Vibe Callout ──────────────────────────────────────────────── */
@@ -120,28 +137,28 @@
 
 /* ── Variant: Origin Callout ────────────────────────────────────────────── */
 .dc-origin-callout {
-  --dc-alert-bg:              var(--surface-orange-tint);
-  --dc-alert-border:          var(--blood);
-  --dc-alert-label-color:     var(--crimson);
-  --dc-alert-border-width:    3px;
+  --dc-alert-bg: var(--surface-orange-tint);
+  --dc-alert-border: var(--blood);
+  --dc-alert-label-color: var(--crimson);
+  --dc-alert-border-width: 3px;
 }
 
 /* ── Variant: Visit Callout ─────────────────────────────────────────────── */
 .dc-visit-callout {
-  --dc-alert-border:      var(--hud-blue);
+  --dc-alert-border: var(--hud-blue);
   --dc-alert-label-color: var(--hud-blue-dark);
-  --dc-alert-body-size:   var(--fs-body);
-  margin:    0.12in 0;
+  --dc-alert-body-size: var(--fs-body);
+  margin: 0.12in 0;
 }
 
 /* ── Variant: Gear Callout ──────────────────────────────────────────────── */
 .dc-gear-callout {
-  --dc-alert-bg:          var(--paper-cream);
-  --dc-alert-border:      var(--border-hairline);
+  --dc-alert-bg: var(--paper-cream);
+  --dc-alert-border: var(--border-hairline);
   --dc-alert-label-color: var(--orange);
-  margin:            0.12in auto 0.18in;
+  margin: 0.12in auto 0.18in;
   border-left-width: 1.5px;
-  width:             90%;
+  width: 90%;
 }
 
 /* ═══ SPECIALTY PARENT-CONTAINER VARIANTS ═══
@@ -160,241 +177,273 @@
 
 /* ── Augmerc — hardened military, HUD blue, hex cuts ───────────────────── */
 .dc-specialty.augmerc {
-  --dc-skill-tab-shape:             polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
-  --dc-skill-body-shape:            polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px));
-  --dc-path-title-shape:            polygon(14px 0, calc(100% - 24px) 0, 100% 18px, 100% 100%, 0 100%, 0 14px);
-  --dc-path-shell-clip:             polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
-  --dc-specialty-card-shell-shape:  polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+  --dc-skill-tab-shape: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
+  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px));
+  --dc-path-title-shape: polygon(14px 0, calc(100% - 24px) 0, 100% 18px, 100% 100%, 0 100%, 0 14px);
+  --dc-path-shell-clip: polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
+  --dc-specialty-card-shell-shape: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
   --dc-specialty-intro-title-shape: polygon(14px 0, calc(100% - 20px) 0, 100% 16px, 100% 100%, 0 100%, 0 14px);
-  --dc-specialty-intro-clip:        polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  --dc-specialty-intro-clip: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
 }
+
 .dc-specialty.augmerc .dc-skill-card {
-  --dc-card-accent:   var(--augmerc-accent);
-  --dc-card-tab-bg:   var(--hud-blue-dark);
+  --dc-card-accent: var(--augmerc-accent);
+  --dc-card-tab-bg: var(--hud-blue-dark);
 }
+
 .dc-specialty.augmerc .dc-path-shell {
-  --dc-path-title-bg:  var(--hud-blue-dark);
-  --dc-path-accent:    var(--augmerc-accent);
-  background:          var(--paper-light);
+  --dc-path-title-bg: var(--hud-blue-dark);
+  --dc-path-accent: var(--augmerc-accent);
+  background: var(--paper-light);
 }
+
 .dc-specialty.augmerc .dc-specialty-card {
-  --dc-specialty-card-bg:     var(--paper-light);
+  --dc-specialty-card-bg: var(--paper-light);
   --dc-specialty-card-accent: var(--augmerc-accent);
 }
+
 .dc-specialty.augmerc .dc-specialty-intro {
-  --dc-specialty-intro-title-bg:    var(--hud-blue-dark);
+  --dc-specialty-intro-title-bg: var(--hud-blue-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background:                       var(--paper-light);
+  background: var(--paper-light);
 }
 
 /* ── Cybersurgeon — precision surgical, silver, top-right diagonal ──────── */
 .dc-specialty.cybersurgeon {
-  --dc-skill-tab-shape:             polygon(0 0, calc(100% - 30px) 0, 100% 30px, 100% 100%, 0 100%);
-  --dc-skill-body-shape:            polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
-  --dc-path-title-shape:            polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
-  --dc-path-shell-clip:             polygon(0 0, calc(100% - 26px) 0, 100% 26px, 100% 100%, 0 100%);
-  --dc-specialty-card-shell-shape:  polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
+  --dc-skill-tab-shape: polygon(0 0, calc(100% - 30px) 0, 100% 30px, 100% 100%, 0 100%);
+  --dc-skill-body-shape: polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
+  --dc-path-title-shape: polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
+  --dc-path-shell-clip: polygon(0 0, calc(100% - 26px) 0, 100% 26px, 100% 100%, 0 100%);
+  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
   --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
-  --dc-specialty-intro-clip:        polygon(0 0, calc(100% - 32px) 0, 100% 32px, 100% 100%, 0 100%);
+  --dc-specialty-intro-clip: polygon(0 0, calc(100% - 32px) 0, 100% 32px, 100% 100%, 0 100%);
 }
+
 .dc-specialty.cybersurgeon .dc-skill-card {
-  --dc-card-accent:          var(--cybersurgeon-accent);
-  --dc-card-tab-bg:          #707070;
+  --dc-card-accent: var(--cybersurgeon-accent);
+  --dc-card-tab-bg: #707070;
   --dc-card-tab-title-color: var(--paper-cream);
 }
+
 .dc-specialty.cybersurgeon .dc-path-shell {
-  --dc-path-title-bg:  #606060;
-  --dc-path-accent:    var(--cybersurgeon-accent);
-  background:          var(--paper-cream);
+  --dc-path-title-bg: #606060;
+  --dc-path-accent: var(--cybersurgeon-accent);
+  background: var(--paper-cream);
 }
+
 .dc-specialty.cybersurgeon .dc-specialty-card {
-  --dc-specialty-card-bg:     var(--paper-cream);
+  --dc-specialty-card-bg: var(--paper-cream);
   --dc-specialty-card-accent: var(--cybersurgeon-accent);
 }
+
 .dc-specialty.cybersurgeon .dc-specialty-intro {
-  --dc-specialty-intro-title-bg:    #606060;
+  --dc-specialty-intro-title-bg: #606060;
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background:                       var(--hud-panel);
+  background: var(--hud-panel);
 }
 
 /* ── Proxy — covert, orange, top-left step + diagonal bottom ────────────── */
 .dc-specialty.proxy {
-  --dc-skill-tab-shape:             polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
-  --dc-skill-body-shape:            polygon(0 0, 100% 0, 100% calc(100% - 36px), calc(100% - 52px) 100%, 0 100%);
-  --dc-path-title-shape:            polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
-  --dc-path-shell-clip:             polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 34px), calc(100% - 56px) 100%, 0 100%);
-  --dc-specialty-card-shell-shape:  polygon(0 16px, 16px 0, 100% 0, 100% calc(100% - 24px), calc(100% - 36px) 100%, 0 100%);
+  --dc-skill-tab-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 36px), calc(100% - 52px) 100%, 0 100%);
+  --dc-path-title-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
+  --dc-path-shell-clip: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 34px), calc(100% - 56px) 100%, 0 100%);
+  --dc-specialty-card-shell-shape: polygon(0 16px, 16px 0, 100% 0, 100% calc(100% - 24px), calc(100% - 36px) 100%, 0 100%);
   --dc-specialty-intro-title-shape: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
-  --dc-specialty-intro-clip:        polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 36px), calc(100% - 56px) 100%, 0 100%);
+  --dc-specialty-intro-clip: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 36px), calc(100% - 56px) 100%, 0 100%);
 }
+
 .dc-specialty.proxy .dc-skill-card {
-  --dc-card-accent:   var(--proxy-accent);
-  --dc-card-tab-bg:   var(--rust);
+  --dc-card-accent: var(--proxy-accent);
+  --dc-card-tab-bg: var(--rust);
 }
+
 .dc-specialty.proxy .dc-path-shell {
-  --dc-path-title-bg:  var(--ink-dark);
-  --dc-path-accent:    var(--proxy-accent);
-  background:          var(--surface-orange-tint);
+  --dc-path-title-bg: var(--ink-dark);
+  --dc-path-accent: var(--proxy-accent);
+  background: var(--surface-orange-tint);
 }
+
 .dc-specialty.proxy .dc-specialty-card {
-  --dc-specialty-card-bg:     var(--paper-cream);
+  --dc-specialty-card-bg: var(--paper-cream);
   --dc-specialty-card-accent: var(--proxy-accent);
 }
+
 .dc-specialty.proxy .dc-specialty-intro {
-  --dc-specialty-intro-title-bg:    var(--ink-dark);
+  --dc-specialty-intro-title-bg: var(--ink-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background:                       var(--surface-orange-tint);
+  background: var(--surface-orange-tint);
 }
 
 /* ── Wirephreak — hacker, magenta, asymmetric cross-cuts ───────────────── */
 .dc-specialty.wirephreak {
-  --dc-skill-tab-shape:             polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 24px 100%, 0 calc(100% - 10px));
-  --dc-skill-body-shape:            polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 22px 100%, 0 calc(100% - 14px));
-  --dc-path-title-shape:            polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 0 100%);
-  --dc-path-shell-clip:             polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% calc(100% - 10px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px));
-  --dc-specialty-card-shell-shape:  polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 12px));
+  --dc-skill-tab-shape: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 24px 100%, 0 calc(100% - 10px));
+  --dc-skill-body-shape: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 22px 100%, 0 calc(100% - 14px));
+  --dc-path-title-shape: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 0 100%);
+  --dc-path-shell-clip: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% calc(100% - 10px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px));
+  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 12px));
   --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
-  --dc-specialty-intro-clip:        polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% calc(100% - 12px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px));
+  --dc-specialty-intro-clip: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% calc(100% - 12px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px));
 }
+
 .dc-specialty.wirephreak .dc-skill-card {
-  --dc-card-accent:          var(--wirephreak-accent);
-  --dc-card-tab-bg:          #7a3a7a;
+  --dc-card-accent: var(--wirephreak-accent);
+  --dc-card-tab-bg: #7a3a7a;
   --dc-card-tab-title-color: var(--paper-cream);
 }
+
 .dc-specialty.wirephreak .dc-path-shell {
-  --dc-path-title-bg:  #7a3a7a;
-  --dc-path-accent:    var(--wirephreak-accent);
-  background:          var(--paper-cream);
+  --dc-path-title-bg: #7a3a7a;
+  --dc-path-accent: var(--wirephreak-accent);
+  background: var(--paper-cream);
 }
+
 .dc-specialty.wirephreak .dc-specialty-card {
-  --dc-specialty-card-bg:     var(--paper-light);
+  --dc-specialty-card-bg: var(--paper-light);
   --dc-specialty-card-accent: var(--wirephreak-accent);
 }
+
 .dc-specialty.wirephreak .dc-specialty-intro {
-  --dc-specialty-intro-title-bg:    #7a3a7a;
+  --dc-specialty-intro-title-bg: #7a3a7a;
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background:                       var(--hud-panel);
+  background: var(--hud-panel);
 }
 
 /* ── Streetwarden — community defender, green, soft diamond cuts ────────── */
 .dc-specialty.streetwarden {
-  --dc-skill-tab-shape:             polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
-  --dc-skill-body-shape:            polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 22px) 100%, 22px 100%, 0 calc(100% - 18px));
-  --dc-path-title-shape:            polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
-  --dc-path-shell-clip:             polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
-  --dc-specialty-card-shell-shape:  polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 16px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 16px));
+  --dc-skill-tab-shape: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 22px) 100%, 22px 100%, 0 calc(100% - 18px));
+  --dc-path-title-shape: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  --dc-path-shell-clip: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
+  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 16px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 16px));
   --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%);
-  --dc-specialty-intro-clip:        polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
+  --dc-specialty-intro-clip: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
 }
+
 .dc-specialty.streetwarden .dc-skill-card {
-  --dc-card-accent:          var(--streetwarden-accent);
-  --dc-card-tab-bg:          #2a5a1a;
+  --dc-card-accent: var(--streetwarden-accent);
+  --dc-card-tab-bg: #2a5a1a;
   --dc-card-tab-title-color: var(--paper-cream);
 }
+
 .dc-specialty.streetwarden .dc-path-shell {
-  --dc-path-title-bg:  var(--crimson);
-  --dc-path-accent:    var(--streetwarden-accent);
-  background:          var(--paper-cream);
+  --dc-path-title-bg: var(--crimson);
+  --dc-path-accent: var(--streetwarden-accent);
+  background: var(--paper-cream);
 }
+
 .dc-specialty.streetwarden .dc-specialty-card {
-  --dc-specialty-card-bg:     var(--surface-orange-tint);
+  --dc-specialty-card-bg: var(--surface-orange-tint);
   --dc-specialty-card-accent: var(--streetwarden-accent);
 }
+
 .dc-specialty.streetwarden .dc-specialty-intro {
-  --dc-specialty-intro-title-bg:    var(--crimson);
+  --dc-specialty-intro-title-bg: var(--crimson);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background:                       var(--paper-cream);
+  background: var(--paper-cream);
 }
 
 /* ── Technosorcerer — arcane + tech, indigo, top-center gate notch ──────── */
 .dc-specialty.technosorcerer {
-  --dc-skill-tab-shape:             polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%);
-  --dc-skill-body-shape:            polygon(0 0, calc(50% - 18px) 0, 50% 10px, calc(50% + 18px) 0, 100% 0, 100% calc(100% - 20px), calc(100% - 24px) 100%, 24px 100%, 0 calc(100% - 20px));
-  --dc-path-title-shape:            polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
-  --dc-path-shell-clip:             polygon(0 0, calc(50% - 22px) 0, 50% 14px, calc(50% + 22px) 0, 100% 0, 100% calc(100% - 22px), calc(100% - 26px) 100%, 26px 100%, 0 calc(100% - 22px));
-  --dc-specialty-card-shell-shape:  polygon(0 0, calc(50% - 16px) 0, 50% 10px, calc(50% + 16px) 0, 100% 0, 100% calc(100% - 16px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 16px));
+  --dc-skill-tab-shape: polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape: polygon(0 0, calc(50% - 18px) 0, 50% 10px, calc(50% + 18px) 0, 100% 0, 100% calc(100% - 20px), calc(100% - 24px) 100%, 24px 100%, 0 calc(100% - 20px));
+  --dc-path-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-path-shell-clip: polygon(0 0, calc(50% - 22px) 0, 50% 14px, calc(50% + 22px) 0, 100% 0, 100% calc(100% - 22px), calc(100% - 26px) 100%, 26px 100%, 0 calc(100% - 22px));
+  --dc-specialty-card-shell-shape: polygon(0 0, calc(50% - 16px) 0, 50% 10px, calc(50% + 16px) 0, 100% 0, 100% calc(100% - 16px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 16px));
   --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 24px) 0, 50% 14px, calc(50% + 24px) 0, 100% 0, 100% 100%, 0 100%);
-  --dc-specialty-intro-clip:        polygon(0 0, calc(50% - 24px) 0, 50% 16px, calc(50% + 24px) 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
+  --dc-specialty-intro-clip: polygon(0 0, calc(50% - 24px) 0, 50% 16px, calc(50% + 24px) 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
 }
+
 .dc-specialty.technosorcerer .dc-skill-card {
-  --dc-card-accent:          var(--technosorcerer-accent);
-  --dc-card-tab-bg:          #2a3a6a;
+  --dc-card-accent: var(--technosorcerer-accent);
+  --dc-card-tab-bg: #2a3a6a;
   --dc-card-tab-title-color: var(--paper-cream);
 }
+
 .dc-specialty.technosorcerer .dc-path-shell {
-  --dc-path-title-bg:  #2a3a6a;
-  --dc-path-accent:    var(--technosorcerer-accent);
-  background:          var(--paper-light);
+  --dc-path-title-bg: #2a3a6a;
+  --dc-path-accent: var(--technosorcerer-accent);
+  background: var(--paper-light);
 }
+
 .dc-specialty.technosorcerer .dc-specialty-card {
-  --dc-specialty-card-bg:     var(--paper-light);
+  --dc-specialty-card-bg: var(--paper-light);
   --dc-specialty-card-accent: var(--technosorcerer-accent);
 }
+
 .dc-specialty.technosorcerer .dc-specialty-intro {
-  --dc-specialty-intro-title-bg:    #2a3a6a;
+  --dc-specialty-intro-title-bg: #2a3a6a;
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background:                       var(--paper-light);
+  background: var(--paper-light);
 }
 
 /* ── Gutterdruid — street nature, amber-brown, center bottom pinch ──────── */
 .dc-specialty.gutterdruid {
-  --dc-skill-tab-shape:             polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%);
-  --dc-skill-body-shape:            polygon(0 0, 100% 0, 100% calc(100% - 24px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 24px));
-  --dc-path-title-shape:            polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
-  --dc-path-shell-clip:             polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
-  --dc-specialty-card-shell-shape:  polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 20px));
+  --dc-skill-tab-shape: polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 24px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 24px));
+  --dc-path-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-path-shell-clip: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
+  --dc-specialty-card-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 20px));
   --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
-  --dc-specialty-intro-clip:        polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
+  --dc-specialty-intro-clip: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
 }
+
 .dc-specialty.gutterdruid .dc-skill-card {
-  --dc-card-accent:          var(--gutterdruid-accent);
-  --dc-card-tab-bg:          #5a3810;
+  --dc-card-accent: var(--gutterdruid-accent);
+  --dc-card-tab-bg: #5a3810;
   --dc-card-tab-title-color: var(--paper-cream);
 }
+
 .dc-specialty.gutterdruid .dc-path-shell {
-  --dc-path-title-bg:    var(--orange);
+  --dc-path-title-bg: var(--orange);
   --dc-path-title-color: var(--ink-dark);
-  --dc-path-accent:      var(--gutterdruid-accent);
-  background:            var(--paper-light);
+  --dc-path-accent: var(--gutterdruid-accent);
+  background: var(--paper-light);
 }
+
 .dc-specialty.gutterdruid .dc-specialty-card {
-  --dc-specialty-card-bg:     var(--paper-light);
+  --dc-specialty-card-bg: var(--paper-light);
   --dc-specialty-card-accent: var(--gutterdruid-accent);
 }
+
 .dc-specialty.gutterdruid .dc-specialty-intro {
-  --dc-specialty-intro-title-bg:    var(--orange);
+  --dc-specialty-intro-title-bg: var(--orange);
   --dc-specialty-intro-title-color: var(--ink-dark);
-  background:                       var(--paper-light);
+  background: var(--paper-light);
 }
 
 /* ── Etherlock — ethereal, gold, parallelogram cross-cuts ──────────────── */
 .dc-specialty.etherlock {
-  --dc-skill-tab-shape:             polygon(0 10px, 10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
-  --dc-skill-body-shape:            polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 18px 100%, 0 calc(100% - 20px));
-  --dc-path-title-shape:            polygon(0 12px, 12px 0, 100% 0, 100% 100%, 0 100%);
-  --dc-path-shell-clip:             polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 18px 100%, 0 calc(100% - 22px));
-  --dc-specialty-card-shell-shape:  polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 16px 100%, 0 calc(100% - 18px));
+  --dc-skill-tab-shape: polygon(0 10px, 10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 18px 100%, 0 calc(100% - 20px));
+  --dc-path-title-shape: polygon(0 12px, 12px 0, 100% 0, 100% 100%, 0 100%);
+  --dc-path-shell-clip: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 18px 100%, 0 calc(100% - 22px));
+  --dc-specialty-card-shell-shape: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 16px 100%, 0 calc(100% - 18px));
   --dc-specialty-intro-title-shape: polygon(0 14px, 14px 0, 100% 0, 100% 100%, 0 100%);
-  --dc-specialty-intro-clip:        polygon(0 14px, 14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 18px) 100%, 20px 100%, 0 calc(100% - 24px));
+  --dc-specialty-intro-clip: polygon(0 14px, 14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 18px) 100%, 20px 100%, 0 calc(100% - 24px));
 }
+
 .dc-specialty.etherlock .dc-skill-card {
-  --dc-card-accent:          var(--etherlock-accent);
-  --dc-card-tab-bg:          #6a5200;
+  --dc-card-accent: var(--etherlock-accent);
+  --dc-card-tab-bg: #6a5200;
   --dc-card-tab-title-color: var(--paper-cream);
 }
+
 .dc-specialty.etherlock .dc-path-shell {
-  --dc-path-title-bg:  #6a5200;
-  --dc-path-accent:    var(--etherlock-accent);
-  background:          var(--paper-light);
+  --dc-path-title-bg: #6a5200;
+  --dc-path-accent: var(--etherlock-accent);
+  background: var(--paper-light);
 }
+
 .dc-specialty.etherlock .dc-specialty-card {
-  --dc-specialty-card-bg:     var(--paper-light);
+  --dc-specialty-card-bg: var(--paper-light);
   --dc-specialty-card-accent: var(--etherlock-accent);
 }
+
 .dc-specialty.etherlock .dc-specialty-intro {
-  --dc-specialty-intro-title-bg:    #6a5200;
+  --dc-specialty-intro-title-bg: #6a5200;
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background:                       var(--paper-light);
+  background: var(--paper-light);
 }
 
 /* ───────── AP TAGS ───────── */
@@ -436,7 +485,8 @@
 /* ── Chevron banner ───────────────────────────────────────────────────── */
 .dc-chevron {
   font-family: var(--font-display);
-  font-size: var(--fs-h1); /* vw resolves to min in Paged.js — use fixed token */
+  font-size: var(--fs-h1);
+  /* vw resolves to min in Paged.js — use fixed token */
   letter-spacing: 0.06em;
   color: var(--paper-cream);
   text-transform: uppercase;
@@ -469,20 +519,26 @@
   word-break: break-word;
   overflow: visible;
 }
+
 .dc-spray::before {
   content: '';
   position: absolute;
-  top: -3px; right: -8px; bottom: -3px;
+  top: -3px;
+  right: -8px;
+  bottom: -3px;
   width: 14px;
   background: var(--hud-magenta);
   transform: skewX(-8deg);
   z-index: -1;
 }
+
 .dc-spray::after {
   content: '';
   position: absolute;
-  bottom: -6px; left: 8%;
-  width: 45%; height: 5px;
+  bottom: -6px;
+  left: 8%;
+  width: 45%;
+  height: 5px;
   background: var(--hud-magenta);
   opacity: 0.08;
 }
@@ -507,6 +563,7 @@
   align-items: center;
   margin: 4px 0 22px;
 }
+
 .dc-sticker {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -518,17 +575,25 @@
   transform: rotate(-0.5deg);
   text-transform: uppercase;
   letter-spacing: 1px;
-  box-shadow: 2px 2px 0 rgba(0,0,0,0.22);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.22);
 }
-.dc-sticker:nth-child(4n+3) { transform: rotate(0.7deg); }
-.dc-sticker:nth-child(4n+5) { transform: rotate(-0.9deg); }
+
+.dc-sticker:nth-child(4n+3) {
+  transform: rotate(0.7deg);
+}
+
+.dc-sticker:nth-child(4n+5) {
+  transform: rotate(-0.9deg);
+}
+
 .dc-sticker.active {
   background: var(--crimson);
   color: var(--paper-cream);
   border-color: var(--crimson);
   transform: rotate(-1.5deg);
-  box-shadow: 2px 2px 0 rgba(0,0,0,0.28);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.28);
 }
+
 .dc-arrow {
   font-family: var(--font-mono);
   color: var(--orange);
@@ -553,7 +618,7 @@
   position: relative;
   top: -1px;
   margin-right: 10px;
-  box-shadow: 1px 2px 0 rgba(0,0,0,0.30);
+  box-shadow: 1px 2px 0 rgba(0, 0, 0, 0.30);
 }
 
 /* ───────── STICKER TIER REF ───────── */
@@ -602,6 +667,7 @@
   overflow: hidden;
   height: fit-content;
 }
+
 .dc-portrait img {
   width: 100%;
   height: auto;
@@ -619,7 +685,7 @@
   line-height: 1.5;
   border-left: 3px solid var(--orange);
   padding: 8px 12px;
-  
+
 }
 
 /* ── Spec tweak section header ────────────────────────────────────────── */
@@ -657,20 +723,45 @@ hr,
   padding: 4px 10px 4px 6px;
   font-weight: 600;
 }
+
 .dc-classtag-dot {
   width: 10px;
   height: 10px;
   background: var(--c, var(--orange));
   display: inline-block;
 }
-.dc-classtag.augmerc      { --c: var(--rust); }
-.dc-classtag.proxy        { --c: var(--hud-magenta); }
-.dc-classtag.streetwarden { --c: var(--hud-blue); }
-.dc-classtag.gutterdruid  { --c: var(--classtag-gutterdruid); }
-.dc-classtag.cybersurgeon { --c: var(--blood); }
-.dc-classtag.wirephreak   { --c: var(--hud-blue-bright); }
-.dc-classtag.dc-technosorc   { --c: var(--classtag-technosorc); }
-.dc-classtag.etherlock    { --c: var(--amber); }
+
+.dc-classtag.augmerc {
+  --c: var(--rust);
+}
+
+.dc-classtag.proxy {
+  --c: var(--hud-magenta);
+}
+
+.dc-classtag.streetwarden {
+  --c: var(--hud-blue);
+}
+
+.dc-classtag.gutterdruid {
+  --c: var(--classtag-gutterdruid);
+}
+
+.dc-classtag.cybersurgeon {
+  --c: var(--blood);
+}
+
+.dc-classtag.wirephreak {
+  --c: var(--hud-blue-bright);
+}
+
+.dc-classtag.dc-technosorc {
+  --c: var(--classtag-technosorc);
+}
+
+.dc-classtag.etherlock {
+  --c: var(--amber);
+}
 
 
 /* ── Stamp ────────────────────────────────────────────────────────────── */
@@ -687,16 +778,39 @@ hr,
   background: var(--paper-cream);
   position: relative;
 }
-.dc-stamp::before, .dc-stamp::after {
+
+.dc-stamp::before,
+.dc-stamp::after {
   content: '';
   position: absolute;
   background: var(--blood);
   opacity: 0.5;
 }
-.dc-stamp::before { top: -1px; left: 4px; right: 4px; height: 1px; }
-.dc-stamp::after  { bottom: -1px; left: 4px; right: 4px; height: 1px; }
-.dc-stamp.dc-classified { color: var(--orange); border-color: var(--orange); transform: rotate(2deg); }
-.dc-stamp.dc-classified::before, .dc-stamp.dc-classified::after { background: var(--orange); }
+
+.dc-stamp::before {
+  top: -1px;
+  left: 4px;
+  right: 4px;
+  height: 1px;
+}
+
+.dc-stamp::after {
+  bottom: -1px;
+  left: 4px;
+  right: 4px;
+  height: 1px;
+}
+
+.dc-stamp.dc-classified {
+  color: var(--orange);
+  border-color: var(--orange);
+  transform: rotate(2deg);
+}
+
+.dc-stamp.dc-classified::before,
+.dc-stamp.dc-classified::after {
+  background: var(--orange);
+}
 
 /* ── Tape (torn-tape divider) ─────────────────────────────────────────── */
 .dc-tape {
@@ -712,10 +826,12 @@ hr,
   background: #b8af9e;
   padding: 14px 14px;
   border: 2px solid rgba(212, 18, 0, 0.60);
-  box-shadow: 1px 1px 0 rgba(0,0,0,0.15);
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.15);
   break-inside: avoid;
 }
-.dc-tape::before, .dc-tape::after {
+
+.dc-tape::before,
+.dc-tape::after {
   content: '';
   flex: 1;
   height: 4px;
@@ -726,7 +842,8 @@ hr,
 /* ── Chapter opener number badge ──────────────────────────────────────── */
 .dc-chapter-opener-no {
   font-family: var(--font-display);
-  font-size: var(--fs-chapter);   /* 26pt */
+  font-size: var(--fs-chapter);
+  /* 26pt */
   letter-spacing: var(--ls-display);
   text-transform: uppercase;
   color: var(--crimson);
@@ -750,9 +867,13 @@ hr,
   border-top: 0;
 }
 
-.dc-spec-tweak.dc-no-top { margin-top: 0; }
+.dc-spec-tweak.dc-no-top {
+  margin-top: 0;
+}
 
-.dc-tape.dc-margin-sm { margin: 14px 0 8px; }
+.dc-tape.dc-margin-sm {
+  margin: 14px 0 8px;
+}
 
 /* ═══ CARD SYSTEM ═══ */
 
@@ -770,11 +891,8 @@ hr,
   break-inside: avoid;
   margin-bottom: 24px;
   max-width: 100%;
-  filter: drop-shadow(2px 0 0 var(--ink))
-    drop-shadow(-2px 0 0 var(--ink))
-    drop-shadow(0 2px 0 var(--ink))
-    drop-shadow(0 -2px 0 var(--ink))
-    drop-shadow(4px 6px 8px rgba(0,0,0,0.18)); /* screen preview only — drops in Paged.js PDF export */
+  filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink)) drop-shadow(4px 6px 8px rgba(0, 0, 0, 0.18));
+  /* screen preview only — drops in Paged.js PDF export */
 }
 
 /* ── Continuation markers ─────────────────────────────────────────────── */
@@ -822,6 +940,7 @@ hr,
   box-sizing: border-box;
   clip-path: var(--dc-skill-tab-shape, polygon(0 0, calc(100% - 18px) 0, 100% 100%, 0 100%));
 }
+
 .dc-tab-title {
   font-family: var(--font-tab);
   font-size: 15px;
@@ -831,6 +950,7 @@ hr,
   line-height: 1.2;
   word-break: break-word;
 }
+
 .dc-tab-tier {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -855,24 +975,32 @@ hr,
   position: relative;
   clip-path: var(--dc-skill-body-shape, polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 44px) 100%, 0 100%));
 }
+
 .dc-card-body::before {
   content: '';
   position: absolute;
-  top: 10px; right: 16px;
-  width: 28px; height: 2px;
+  top: 10px;
+  right: 16px;
+  width: 28px;
+  height: 2px;
   background: var(--dc-card-body-mark);
   opacity: 0.15;
   transform: rotate(-3deg);
   z-index: 2;
 }
-.dc-card-inner { position: relative; z-index: 1; }
+
+.dc-card-inner {
+  position: relative;
+  z-index: 1;
+}
 
 /* ── Highlight variant — featured skill card (| highlight suffix in title) */
 .dc-skill-card.highlight .dc-card-tab {
   box-shadow: 0 0 0 3px var(--crimson);
 }
+
 .dc-skill-card.highlight .highlight-body {
-  background: linear-gradient(to bottom, rgba(180,40,40,0.06) 0%, transparent 40%);
+  background: linear-gradient(to bottom, rgba(180, 40, 40, 0.06) 0%, transparent 40%);
 }
 
 /* ── Continuation card variants ───────────────────────────────────────── */
@@ -895,24 +1023,32 @@ hr,
   margin-bottom: 12px;
   align-items: flex-start;
 }
-.dc-ability:last-child { margin-bottom: 0; }
+
+.dc-ability:last-child {
+  margin-bottom: 0;
+}
+
 .dc-ability-text {
   font-family: var(--font-body);
   font-size: var(--fs-body);
   line-height: 1.5;
   color: var(--ink);
 }
-.dc-ability-text strong { color: var(--crimson); font-weight: 600; }
+
+.dc-ability-text strong {
+  color: var(--crimson);
+  font-weight: 600;
+}
 
 /* ROLL THE DIE! emphasis span — intentionally unprefixed per CLAUDE.md */
 .scream {
-  font-family:    var(--font-display);
-  font-size:      var(--fs-h3);
-  font-weight:    700;
-  color:          var(--crimson);
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  color: var(--crimson);
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  display:        inline-block;
+  display: inline-block;
 }
 
 /* ── AP base + author-facing variants ─────────────────────────────────── */
@@ -929,14 +1065,20 @@ hr,
   background: var(--dc-ap-bg);
   color: var(--dc-ap-fg);
   transform: rotate(-1deg);
-  box-shadow: 2px 2px 0 rgba(0,0,0,0.12);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.12);
   letter-spacing: 1px;
   flex-shrink: 0;
   align-self: flex-start;
   margin-top: 1px;
 }
-.dc-ap.free { --dc-ap-bg: var(--crimson); }
-.dc-ap.var  { --dc-ap-bg: var(--hud-magenta); }
+
+.dc-ap.free {
+  --dc-ap-bg: var(--crimson);
+}
+
+.dc-ap.var {
+  --dc-ap-bg: var(--hud-magenta);
+}
 
 /* ═══ LEARNING PATH + SPECIALTY INTRO + SPECIALTY CARD ═══ */
 
@@ -957,7 +1099,7 @@ hr,
   clip-path: var(--dc-specialty-intro-clip, polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%));
 }
 
-.dc-specialty-intro > h2:first-child {
+.dc-specialty-intro>h2:first-child {
   font-size: 2rem;
   color: var(--dc-specialty-intro-title-color);
   letter-spacing: 0.04em;
@@ -970,7 +1112,7 @@ hr,
   border: none;
 }
 
-.dc-specialty-intro > h3 {
+.dc-specialty-intro>h3 {
   color: var(--crimson);
   letter-spacing: 0.05em;
   margin-top: 1.1rem;
@@ -979,22 +1121,22 @@ hr,
   border-bottom: 1px solid var(--crimson);
 }
 
-.dc-specialty-intro > p {
+.dc-specialty-intro>p {
   margin-block: 0.45rem;
   line-height: 1.5;
 }
 
-.dc-specialty-intro > h2:first-child + p {
+.dc-specialty-intro>h2:first-child+p {
   margin-top: 0.2rem;
 }
 
-.dc-specialty-intro > ul,
-.dc-specialty-intro > ol {
+.dc-specialty-intro>ul,
+.dc-specialty-intro>ol {
   margin-block: 0.45rem;
   padding-left: 1.2rem;
 }
 
-.dc-specialty-intro > :last-child {
+.dc-specialty-intro> :last-child {
   margin-bottom: 0;
 }
 
@@ -1105,30 +1247,32 @@ hr,
   margin: 0 0 22px;
   position: relative;
   clip-path: var(--dc-path-shell-clip, polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px));
-  filter: drop-shadow(2px 0 0 var(--ink))
-    drop-shadow(-2px 0 0 var(--ink))
-    drop-shadow(0 2px 0 var(--ink))
-    drop-shadow(0 -2px 0 var(--ink)); /* screen preview only — drops in Paged.js PDF export */
+  filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink));
+  /* screen preview only — drops in Paged.js PDF export */
 }
 
-.dc-path-shell > h2.dc-spray{
+.dc-path-shell>h2.dc-spray {
   width: stretch;
 }
-.dc-path-shell > h2.dc-spray:first-child {
+
+.dc-path-shell>h2.dc-spray:first-child {
   color: var(--dc-path-title-color);
   background: var(--dc-path-title-bg);
   clip-path: var(--dc-path-title-shape, polygon(0 0, 100% 0, 100% 100%, 25px 100%, 0 calc(100% - 15px)));
   margin-bottom: 12px;
 }
 
-.dc-path-shell > h2.dc-spray:first-child::before,
-.dc-path-shell > h2.dc-spray:first-child::after {
+.dc-path-shell>h2.dc-spray:first-child::before,
+.dc-path-shell>h2.dc-spray:first-child::after {
   background: var(--dc-path-title-bg);
 }
 
-.dc-path-shell > p, .dc-path-shell > div, .dc-path-shell > div.dc-intro {
+.dc-path-shell>p,
+.dc-path-shell>div,
+.dc-path-shell>div.dc-intro {
   margin-inline: var(--space-md);
 }
+
 /* ═══ OUTCOMES + STEPS + DISTANCE ═══ */
 
 /* ── Procedure / numbered steps ───────────────────────────────────────── */
@@ -1139,7 +1283,8 @@ hr,
   border-left: 2px solid var(--hud-blue-dim);
   break-inside: avoid;
 }
-.dc-steps > li {
+
+.dc-steps>li {
   display: grid;
   grid-template-columns: 48px 1fr;
   gap: 22px;
@@ -1151,8 +1296,17 @@ hr,
   color: var(--ink);
   align-items: baseline;
 }
-.dc-steps > li:first-child { border-top: 0; padding-top: 0; }
-.dc-steps > li::before { content: none; }   /* defang any inherited bullets */
+
+.dc-steps>li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.dc-steps>li::before {
+  content: none;
+}
+
+/* defang any inherited bullets */
 .dc-steps .dc-step-no {
   font-family: var(--font-mono);
   font-weight: 700;
@@ -1162,7 +1316,11 @@ hr,
   line-height: 1;
   align-self: center;
 }
-.dc-steps li strong { color: var(--crimson); font-weight: 700; }
+
+.dc-steps li strong {
+  color: var(--crimson);
+  font-weight: 700;
+}
 
 /* ── Outcome ladder ───────────────────────────────────────────────────── */
 .dc-outcomes {
@@ -1172,6 +1330,7 @@ hr,
   position: relative;
   break-inside: avoid;
 }
+
 .dc-outcomes::after {
   content: '';
   position: absolute;
@@ -1179,6 +1338,7 @@ hr,
   border: 1px solid var(--paper-aged);
   pointer-events: none;
 }
+
 .dc-outcomes-label {
   font-family: var(--font-mono);
   font-size: 9px;
@@ -1191,6 +1351,7 @@ hr,
   position: relative;
   z-index: 1;
 }
+
 .dc-outcome-row {
   display: grid;
   grid-template-columns: 155px 1fr;
@@ -1199,7 +1360,11 @@ hr,
   position: relative;
   z-index: 1;
 }
-.dc-outcome-row:last-child { border-bottom: 0; }
+
+.dc-outcome-row:last-child {
+  border-bottom: 0;
+}
+
 .dc-outcome-key {
   background: var(--row-color, var(--ink));
   color: var(--paper-cream);
@@ -1210,6 +1375,7 @@ hr,
   justify-content: center;
   gap: 3px;
 }
+
 .dc-outcome-name {
   font-family: var(--font-mono);
   font-size: 9px;
@@ -1220,6 +1386,7 @@ hr,
   opacity: 0.65;
   line-height: 1;
 }
+
 .dc-outcome-key .dc-outcome-roll {
   font-family: var(--font-display);
   font-size: 20px;
@@ -1232,6 +1399,7 @@ hr,
   white-space: nowrap;
   order: -1;
 }
+
 .dc-outcome-text {
   padding: 12px 18px;
   font-family: var(--font-body);
@@ -1242,11 +1410,25 @@ hr,
 }
 
 /* ── Outcome row color modifiers ──────────────────────────────────────── */
-.dc-outcome-row.crit  { --row-color: var(--blood); }
-.dc-outcome-row.hit   { --row-color: var(--crimson); }
-.dc-outcome-row.mixed { --row-color: var(--amber); }
-.dc-outcome-row.miss  { --row-color: var(--orange); }
-.dc-outcome-row.fail  { --row-color: var(--ink); }
+.dc-outcome-row.crit {
+  --row-color: var(--blood);
+}
+
+.dc-outcome-row.hit {
+  --row-color: var(--crimson);
+}
+
+.dc-outcome-row.mixed {
+  --row-color: var(--amber);
+}
+
+.dc-outcome-row.miss {
+  --row-color: var(--orange);
+}
+
+.dc-outcome-row.fail {
+  --row-color: var(--ink);
+}
 
 /* ── Distance tags (AP cost × distance block) ─────────────────────────── */
 .dc-distance-tags {
@@ -1255,6 +1437,7 @@ hr,
   gap: 6px;
   margin: 10px 0;
 }
+
 .dc-dist-tag {
   display: inline-flex;
   flex-direction: column;
@@ -1264,6 +1447,7 @@ hr,
   padding: 6px 10px;
   min-width: 52px;
 }
+
 .dc-dist-ap {
   font-family: var(--font-display);
   font-size: 14px;
@@ -1271,6 +1455,7 @@ hr,
   color: var(--ink);
   line-height: 1;
 }
+
 .dc-dist-name {
   font-family: var(--font-mono);
   font-size: 8px;
@@ -1289,10 +1474,24 @@ hr,
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.dc-roll-lucid   { color: var(--hud-blue-dark); }
-.dc-roll-lucid::before { content: '◈ '; opacity: 1; }
-.dc-roll-surreal { color: var(--hud-magenta); }
-.dc-roll-surreal::before { content: '∿ '; opacity: 1; }
+
+.dc-roll-lucid {
+  color: var(--hud-blue-dark);
+}
+
+.dc-roll-lucid::before {
+  content: '◈ ';
+  opacity: 1;
+}
+
+.dc-roll-surreal {
+  color: var(--hud-magenta);
+}
+
+.dc-roll-surreal::before {
+  content: '∿ ';
+  opacity: 1;
+}
 
 .chapter-start>blockquote:first-of-type {
   font-size: calc(var(--fs-body-sm) * 1.1);
@@ -1320,6 +1519,7 @@ hr,
   margin: 18px 0;
   break-inside: avoid;
 }
+
 .dc-pullquote::before {
   content: '"';
   position: absolute;
@@ -1331,12 +1531,15 @@ hr,
   opacity: 0.25;
   line-height: 1;
 }
+
 .dc-pullquote p {
   margin: 0;
 }
-.dc-pullquote p + p {
+
+.dc-pullquote p+p {
   margin-top: 10px;
 }
+
 /* ───────── PROSE PANEL BASE ───────── */
 .dc-prose-panel {
   padding: 10px 14px;
@@ -1346,7 +1549,8 @@ hr,
 
 /* ───────── DEFINITION BLOCK ───────── */
 .dc-definition-block {
-  background: var(--surface-orange-tint);    /* warm cream, distinct from paper-light */
+  background: var(--surface-orange-tint);
+  /* warm cream, distinct from paper-light */
   border-left: 4px solid var(--crimson);
   font-style: italic;
   font-size: var(--fs-body);
@@ -1358,7 +1562,7 @@ hr,
   margin: 0;
 }
 
-.dc-definition-block p + p {
+.dc-definition-block p+p {
   margin-top: 6pt;
 }
 
@@ -1370,8 +1574,8 @@ hr,
 }
 
 /* Box heading — bold red stencil-style label above the internal divider */
-.dc-sidebar-box > h3:first-child,
-.dc-sidebar-box > h4:first-child {
+.dc-sidebar-box>h3:first-child,
+.dc-sidebar-box>h4:first-child {
   font-size: var(--fs-h4);
   letter-spacing: var(--ls-display);
   color: var(--blood);
@@ -1393,7 +1597,7 @@ hr,
   line-height: var(--lh-normal);
 }
 
-.dc-sidebar-box p + p {
+.dc-sidebar-box p+p {
   margin-top: 6pt;
 }
 
@@ -1415,8 +1619,8 @@ hr,
 
 /* Italic tagline — the one-line flavor sentence immediately after the h3 */
 .dc-gear-entry-tagline,
-.dc-gear-entry > p:first-of-type em:only-child,
-.dc-gear-entry > p.dc-flavor:first-of-type {
+.dc-gear-entry>p:first-of-type em:only-child,
+.dc-gear-entry>p.dc-flavor:first-of-type {
   font-style: italic;
   font-size: var(--fs-body-sm);
   color: var(--ink-smoke);
@@ -1430,7 +1634,7 @@ hr,
   line-height: var(--lh-normal);
 }
 
-.dc-gear-entry p + p {
+.dc-gear-entry p+p {
   margin-top: 6pt;
 }
 
@@ -1443,6 +1647,7 @@ hr,
   margin: 18px 0;
   break-inside: avoid;
 }
+
 .dc-stat::after {
   content: '';
   position: absolute;
@@ -1450,6 +1655,7 @@ hr,
   border: 1px solid var(--paper-aged);
   pointer-events: none;
 }
+
 .dc-stat-head {
   display: flex;
   justify-content: space-between;
@@ -1460,6 +1666,7 @@ hr,
   position: relative;
   z-index: 1;
 }
+
 .dc-stat-name {
   font-family: var(--font-tab);
   font-size: 16px;
@@ -1467,6 +1674,7 @@ hr,
   text-transform: uppercase;
   color: var(--ink);
 }
+
 .dc-stat-class {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -1474,6 +1682,7 @@ hr,
   text-transform: uppercase;
   color: var(--hud-blue);
 }
+
 .dc-stat-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1482,6 +1691,7 @@ hr,
   position: relative;
   z-index: 1;
 }
+
 .dc-stat-cell {
   border-right: 1px dashed var(--paper-aged);
   padding: 4px 8px 6px;
@@ -1492,7 +1702,11 @@ hr,
   align-items: center;
   gap: 2px;
 }
-.dc-stat-cell:last-child { border-right: 0; }
+
+.dc-stat-cell:last-child {
+  border-right: 0;
+}
+
 .dc-stat-cell-key {
   font-family: var(--font-mono);
   font-size: 9px;
@@ -1501,6 +1715,7 @@ hr,
   color: var(--hud-blue);
   margin-bottom: 2px;
 }
+
 .dc-stat-cell-val {
   font-family: var(--font-display);
   font-size: 26px;
@@ -1510,6 +1725,7 @@ hr,
   min-width: 0;
   overflow: hidden;
 }
+
 .dc-stat-line {
   font-family: var(--font-body);
   font-size: var(--fs-body-sm);
@@ -1518,19 +1734,25 @@ hr,
   position: relative;
   z-index: 1;
 }
-.dc-stat-line strong { color: var(--crimson); font-weight: 700; }
+
+.dc-stat-line strong {
+  color: var(--crimson);
+  font-weight: 700;
+}
 
 /* ───────── TOC ───────── */
 .dc-toc {
   font-family: var(--font-body);
   counter-reset: dc-toc;
 }
+
 .dc-toc ol {
   list-style: none;
   padding: 0;
   margin: 0;
 }
-.dc-toc ol > li {
+
+.dc-toc ol>li {
   position: relative;
   padding: 12px 0 12px 56px;
   border-bottom: 1px solid var(--hud-blue-dim);
@@ -1542,7 +1764,8 @@ hr,
   list-style: none;
   break-inside: avoid;
 }
-.dc-toc ol > li::before {
+
+.dc-toc ol>li::before {
   content: counter(dc-toc, decimal-leading-zero);
   position: absolute;
   left: 0;
@@ -1554,10 +1777,12 @@ hr,
   color: var(--hud-blue);
   font-style: normal;
 }
-.dc-toc ol > li > strong {
+
+.dc-toc ol>li>strong {
   color: var(--hud-blue);
 }
-.dc-toc ol > li > a {
+
+.dc-toc ol>li>a {
   font-size: 15pt;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -1566,7 +1791,8 @@ hr,
   border-bottom: 0;
   font-style: normal;
 }
-.dc-toc ol > li > a::after {
+
+.dc-toc ol>li>a::after {
   content: ' p.' target-counter(attr(href), page);
   font-family: var(--font-mono);
   font-size: 10pt;
@@ -1577,6 +1803,7 @@ hr,
   margin-left: 0.6em;
   white-space: nowrap;
 }
+
 .dc-toc-row {
   display: flex;
   align-items: baseline;
@@ -1584,6 +1811,7 @@ hr,
   padding: 10px 0;
   border-bottom: 1px solid var(--hud-blue-dim);
 }
+
 .dc-toc .dc-toc-no {
   font-family: var(--font-mono);
   font-weight: 700;
@@ -1594,6 +1822,7 @@ hr,
   margin-right: 28px;
   white-space: nowrap;
 }
+
 .dc-toc-title {
   flex: 1 1 auto;
   min-width: 0;
@@ -1604,6 +1833,7 @@ hr,
   text-transform: none;
   color: var(--ink);
 }
+
 .dc-toc-title small {
   display: block;
   font-family: var(--font-body);
@@ -1614,6 +1844,7 @@ hr,
   color: var(--ink-smoke);
   margin-top: 2px;
 }
+
 .dc-toc-page {
   flex: 0 0 auto;
   margin-left: 18px;
@@ -1623,6 +1854,7 @@ hr,
   color: var(--hud-blue);
   font-weight: 600;
 }
+
 .dc-toc-page::before {
   content: '— ';
   color: var(--ink-dust);
@@ -1636,37 +1868,43 @@ hr,
   position: relative;
   overflow: hidden;
 }
+
 .dc-cover-page .dc-cover-bg {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at 8% 10%, rgba(0,0,0,0.55), transparent 62%),
-    radial-gradient(ellipse at 82% 88%, rgba(0,0,0,0.30), transparent 55%),
+    radial-gradient(ellipse at 8% 10%, rgba(0, 0, 0, 0.55), transparent 62%),
+    radial-gradient(ellipse at 82% 88%, rgba(0, 0, 0, 0.30), transparent 55%),
     radial-gradient(ellipse at 80% 18%, rgba(242, 77, 0, 0.14), transparent 50%),
     radial-gradient(ellipse at 60% 55%, rgba(72, 164, 224, 0.16), transparent 60%),
     var(--hud-blue);
 }
+
 .dc-cover-page .dc-cover-bg::after {
   content: '';
   position: absolute;
   inset: 0;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.04'/%3E%3C/svg%3E");
 }
+
 /* HUD scanline overlay — horizontal lines at low opacity */
 .dc-cover-page .dc-cover-bg::before {
   content: '';
   position: absolute;
   inset: 0;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent,
-    transparent 3px,
-    rgba(0,0,0,0.04) 3px,
-    rgba(0,0,0,0.04) 4px
-  );
+  background-image: repeating-linear-gradient(to bottom,
+      transparent,
+      transparent 3px,
+      rgba(0, 0, 0, 0.04) 3px,
+      rgba(0, 0, 0, 0.04) 4px);
   pointer-events: none;
 }
-.dc-cover-page > * { position: relative; z-index: 1; }
+
+.dc-cover-page>* {
+  position: relative;
+  z-index: 1;
+}
+
 .dc-cover-num {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -1675,9 +1913,11 @@ hr,
   color: var(--hud-blue-dim);
   margin-bottom: 18px;
 }
+
 .dc-cover-bigword {
   font-family: var(--font-display);
-  font-size: 66pt; /* vw resolves to min in Paged.js — use fixed size */
+  font-size: 66pt;
+  /* vw resolves to min in Paged.js — use fixed size */
   line-height: 1.1;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1686,6 +1926,7 @@ hr,
   word-break: break-word;
   overflow-wrap: break-word;
 }
+
 .dc-cover-strap {
   font-family: var(--font-body);
   font-style: italic;
@@ -1697,6 +1938,7 @@ hr,
   padding-left: 12px;
   border-left: 3px solid var(--hud-magenta);
 }
+
 .dc-cover-meta-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1705,6 +1947,7 @@ hr,
   padding-top: 24px;
   border-top: 1px solid rgba(201, 214, 226, 0.35);
 }
+
 .dc-stat.flush,
 .dc-steps.flush,
 .dc-outcomes.flush,
@@ -1732,8 +1975,8 @@ hr,
 /* When markdown wraps a list-item's text in a <p> (loose-list rendering),
    the paragraph's block display + margins push the text below the marker.
    Inline the paragraph so it flows directly after the bullet/number. */
-.dc-skill-card li > p:only-child,
-.dc-ability li > p:only-child {
+.dc-skill-card li>p:only-child,
+.dc-ability li>p:only-child {
   display: inline;
   margin: 0;
   padding: 0;
@@ -1828,8 +2071,16 @@ p.dc-img-wrapper {
   max-width: 44%;
   display: block;
 }
-.dc-img-float-right { float: right; margin: 0 0 0.15in 0.2in; }
-.dc-img-float-left  { float: left;  margin: 0 0.2in 0.15in 0; }
+
+.dc-img-float-right {
+  float: right;
+  margin: 0 0 0.15in 0.2in;
+}
+
+.dc-img-float-left {
+  float: left;
+  margin: 0 0.2in 0.15in 0;
+}
 
 .dc-sidebar {
   --dc-sidebar-surface: var(--paper-light);
@@ -1838,8 +2089,10 @@ p.dc-img-wrapper {
 
   padding: 14px 18px;
   float: right;
-  clear: right;           /* prevent stacking into adjacent floats */
-  shape-outside: margin-box; /* body text wraps cleanly around margin-box */
+  clear: right;
+  /* prevent stacking into adjacent floats */
+  shape-outside: margin-box;
+  /* body text wraps cleanly around margin-box */
   width: var(--sidebar-width);
   margin: 0 0 0.15in 0.2in;
   background: var(--dc-sidebar-surface);
@@ -1901,7 +2154,7 @@ p.dc-img-wrapper {
   border-color: var(--dc-sidebar-accent);
 }
 
-.dc-sidebar.inset hr + p {
+.dc-sidebar.inset hr+p {
   padding-top: 0.1in;
   font-size: var(--fs-body-sm);
   font-weight: var(--fw-bold);
@@ -1909,7 +2162,7 @@ p.dc-img-wrapper {
   color: var(--hud-blue);
 }
 
-.dc-sidebar.inset hr ~ p {
+.dc-sidebar.inset hr~p {
   background: rgba(42, 106, 138, 0.08);
   border-left: 3px solid var(--hud-blue);
   margin-left: -0.1in;
@@ -1917,7 +2170,7 @@ p.dc-img-wrapper {
   padding: 0.06in 0.1in;
 }
 
-.dc-sidebar.inset > p:last-child {
+.dc-sidebar.inset>p:last-child {
   margin-top: 0.1in;
   margin-bottom: 0;
   padding-top: 0.08in;
@@ -2021,4 +2274,3 @@ p.dc-img-wrapper {
   column-gap: var(--space-md);
   column-fill: balance;
 }
-

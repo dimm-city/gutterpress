@@ -12,6 +12,8 @@ This section shows how Dream Mastery and NPC pages look in the actual Dimm City 
 
 ## About DM and NPC Pages
 
+@section .two-column
+
 The Dream Mastery chapter of the Field Guide is written entirely in second-person directed at the DM. It's the most voice-forward section of the book — not a neutral referee guide, but a manifesto for how to run Dimm City. The layout reflects this: long-form prose with frequent subheadings, bullet-list guidance blocks, and callout boxes for specific techniques.
 
 NPC pages use a consistent three-tier format:
@@ -22,18 +24,17 @@ NPC pages use a consistent three-tier format:
 | **Operator** | 4 | 2 | Skilled grunts, tactical support, mini-bosses |
 | **Master** | 10 | 4 | Main antagonists, unique threats, boss encounters |
 
+@column-break
+
 Each NPC entry follows the same structure: a blockquote flavor line (in-world voice), a type/size designation, then H5 subsections for Traits, Equipment, and Cybernetics. The `---` dashed rule separates individual NPC entries within a tier. The tier headers are H3, individual NPC names are H4.
 
 The stat block format is intentionally minimal — no special macro required. The `dc-components.css` styles H4/H5 headings inside the NPC sections automatically using the `chapter-04` page class.
 
+@end-section
+
 ---
 
 @page .chapter-04
-
-> [!NOTE]
-> **Dream Mastery Chapter Page** — `@page .chapter-04` — standard body page with the chapter-04 identifier. The DM chapter uses long-form prose with bullet-list guidance blocks. The nested structure (Core Elements → Listen + Respond → Focus on the Fantascape) uses standard H2/H3/H4 hierarchy. See [Typography](#ch-typography) for heading levels and [Components](#ch-components) for list and prose styling.
-
----
 
 ## Dream Mastery
 
@@ -80,9 +81,6 @@ Bury the math inside the moment and build scenes that hit harder than the dice e
 ---
 
 ## NPC Stat Block: Fodder
-
-> [!NOTE]
-> **NPC Stat Block Format** — NPC stat blocks use a short italic definition quote, a type/size line, and H5/H6 subsections for Traits, Equipment, and Cybernetics. The `---` dashed rule separates NPC entries. The HP/Damage values appear as bold inline text after the quote. All content verbatim from `chapter-04.md`.
 
 ### Fodder
 
@@ -219,5 +217,3 @@ When you need an NPC fast, answer these four questions:
 
 That's it. That's an NPC. Stat it if combat is likely. Leave it sketched if it's just atmosphere.
 
-> [!NOTE]
-> **DM tip:** Most NPCs the Dreamers never fight don't need stats at all. A shopkeeper, a frightened courier, a bystander who saw something — these are scene dressing, not encounters. Save the full stat block for NPCs who will put pressure on the table. The city is full of people. Only a few of them are threats.

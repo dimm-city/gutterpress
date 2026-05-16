@@ -75,7 +75,21 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   md.use(unwrap(markdownItAttrs));
   md.use(unwrap(markdownItFootnote));
   md.use(unwrap(markdownItSourceMap));
-  md.use(unwrap(markdownItPaged), { implicitPage: true });
+  md.use(unwrap(markdownItPaged), { implicitPage: false });
+
+  // Fix: markdown-it-paged renders layout_column_break and layout_page_break with nesting:0
+  // on a <div> tag, which outputs only an opening <div ...> with no closing tag. The browser
+  // then treats all subsequent content as children of that unclosed div, so @end-section's
+  // </div> closes the break div instead of the section div, breaking @section/@end-section.
+  // Override the renderers to output a properly self-closed empty div.
+  md.renderer.rules.layout_column_break = (tokens, idx) => {
+    const cls = tokens[idx]!.attrGet("class") ?? "md-column-break";
+    return `<div class="${cls}" aria-hidden="true"></div>\n`;
+  };
+  md.renderer.rules.layout_page_break = (tokens, idx) => {
+    const cls = tokens[idx]!.attrGet("class") ?? "md-page-break";
+    return `<div class="${cls}" aria-hidden="true"></div>\n`;
+  };
 
   // Removed: :::page (deprecated — use @page), :::wrapper (use named macros),
   // :::ability / :::ability-continued (use @skill / @continue),
