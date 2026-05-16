@@ -37,13 +37,17 @@ Gear pages in the Field Guide follow a consistent structure: an in-world voice o
 
 ### Tech and Cybernetics
 
----
+@section .two-column
 
 Wanna level up? In Dimm City, that means slicing yourself open and slotting in something stronger. Flesh breaks. Metal remembers. Cybernetics give you reach, power, speed—whatever the job demands. But every upgrade scrapes away at what makes you you.
+
+@column-break
 
 Install too much, too fast, or too dirty, and the body pushes back. Or worse—the Dream does.
 
 **But remember:** Every install has a cost. Every edge has a crack. Push too far, and something in you will break.
+
+@end-section
 
 ---
 
@@ -79,13 +83,15 @@ Cybernetics must be installed by a trained Cybersurgeon in a medlab, clinic, or 
 
 PCs start clean with 0 EP. But every aug you bolt on scrapes at your mind, tugs at your guts, and dials up the system errors. Ten is the cap—go past it, and your character crashes. Full body-hack burnout.
 
-|  EP  |                       Outcome                       | SysChk |
-| :--: | :-------------------------------------------------: | :----: |
-| 1-2  |            Slim chance of control issues            |  6-7   |
-| 3-4  |          Increased difficulty keeping a grip          |  8-10  |
-| 5-6  |        Moderate challenges to functionality         |  9-13  |
-| 7-8  | High susceptibility to manipulation and malfunction | 12-15  |
-| 9-10 |      Extreme instability, system failures likely      | 15-20  |
+@outcome
+1–2 | Slim chance of control issues | SysChk 6–7
+3–4 | Increased difficulty keeping a grip | SysChk 8–10
+5–6 | Moderate challenges to functionality | SysChk 9–13
+7–8 | High susceptibility to manipulation and malfunction | SysChk 12–15
+9–10 | Extreme instability, system failures likely | SysChk 15–20
+@end-outcome
+
+@section .two-column
 
 ### Cybersuck
 
@@ -97,6 +103,8 @@ Example: With 4 EP, your abilities cost +2 AP more to activate.
 
 Technosorcerers are exempt—they've already sold their soul to the static. But even they risk system overload when their gears grind and are still subject to `SysChk` rolls.
 
+@column-break
+
 ### SysFAIL
 
 Consequences of a SysFAIL can range from temporary ability loss to total system shutdown.
@@ -106,6 +114,8 @@ Consequences of a SysFAIL can range from temporary ability loss to total system 
 - Total system shutdown lasting for a quicktick (one combat round) or more.
 
 The affected PC rolls each round to regain functionality or control. Specialties like the Cybersurgeon, Technosorcerer, or Wirephreak can assist in recovery by spending their action or using an ability that deals specifically with this problem. Assistance grants Lucidity to the next SysChk, allowing the affected PC to roll two dice and use the better result.
+
+@end-section
 
 ---
 
