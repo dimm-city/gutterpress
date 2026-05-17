@@ -411,54 +411,92 @@ function admonitionRule(state, startLine, endLine, silent) {
 }
 
 // Parse key="value", key='value', key=value, bare .class / #id tokens,
-// and {.class #id} attribute blocks from a string.
-// Supports both markdown-it-paged style (`@page .card-grid #id`) and brace
-// style (`@specialty {.augmerc}`) for consistency across all DC macros.
+// and {.class #id} attribute blocks from the body string following a marker keyword.
+//
+// Grammar aligns with markdown-it-paged's parseMarkerLine() tokenizer:
+//   - Quote-aware tokenization: key="a b" and key='a b' preserve spaces inside quotes
+//   - .classname  — shorthand class (multiple allowed)
+//   - #id         — shorthand id
+//   - key=value   — arbitrary attribute; key="class" splits on whitespace/commas
+//   - bare token  — treated as a class (DC markers have no positional "name" slot)
+//
+// Back-compat: brace blocks {.class #id} are stripped and injected as tokens
+// before the main pass so @specialty {.augmerc} continues to work alongside
+// the new bare-token form @specialty .augmerc.
 function parseAttrs(str) {
+  // Pre-pass: extract brace blocks {.class1 .class2 #id} for back-compat,
+  // then remove them from the string so the main tokenizer doesn't see them.
+  const braceClasses = [];
+  const braceIds = [];
+  const strNoBraces = str.replace(/\{([^}]+)\}/g, (_, inside) => {
+    for (const part of inside.trim().split(/\s+/)) {
+      if (part.startsWith('.')) braceClasses.push(part.slice(1));
+      else if (part.startsWith('#')) braceIds.push(part.slice(1));
+    }
+    return ' ';
+  });
+
+  // Tokenize the remaining string using the same quote-aware tokenizer as
+  // markdown-it-paged's parseMarkerLine().
+  const tokens = [];
+  let buf = '';
+  let quote = null;
+  for (let i = 0; i < strNoBraces.length; i++) {
+    const ch = strNoBraces[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      else buf += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (buf) tokens.push(buf);
+      buf = '';
+      continue;
+    }
+    buf += ch;
+  }
+  if (buf) tokens.push(buf);
+
+  // Process tokens: mirrors parseMarkerLine's attr-accumulation loop.
+  // DC markers have no positional "name" slot — bare tokens become classes.
   const attrs = {};
-  const classes = [];
-  let match;
+  const classes = [...braceClasses];
+  if (braceIds.length) attrs['id'] = braceIds[braceIds.length - 1];
 
-  // 1) Brace blocks {.class1 .class2 #id}
-  const braceRegex = /\{([^}]+)\}/g;
-  while ((match = braceRegex.exec(str)) !== null) {
-    const inside = match[1].trim();
-    for (const part of inside.split(/\s+/)) {
-      if (part.startsWith('.')) classes.push(part.slice(1));
-      else if (part.startsWith('#')) attrs['id'] = part.slice(1);
+  for (const t of tokens) {
+    if (t.startsWith('.')) {
+      const c = t.slice(1).trim();
+      if (c) classes.push(c);
+      continue;
     }
-  }
-
-  // 2) Bare .class / #id tokens (markdown-it-paged style, e.g. `@page .card-grid`)
-  //    Match dot/hash followed by identifier chars, surrounded by whitespace or start/end.
-  const bareRegex = /(?:^|\s)([.#][A-Za-z][\w-]*)/g;
-  while ((match = bareRegex.exec(str)) !== null) {
-    const part = match[1];
-    if (part.startsWith('.')) classes.push(part.slice(1));
-    else if (part.startsWith('#')) attrs['id'] = part.slice(1);
-  }
-
-  if (classes.length > 0) {
-    attrs['class'] = (attrs['class'] ? attrs['class'] + ' ' : '') + classes.join(' ');
-  }
-
-  // 3) Strip brace blocks and bare class/id tokens before parsing key=value pairs
-  let strNoBraces = str.replace(/\{[^}]+\}/g, '');
-  strNoBraces = strNoBraces.replace(/(?:^|\s)([.#][A-Za-z][\w-]*)/g, ' ');
-
-  // 4) Quoted key="value" / key='value'
-  const quotedRegex = /(\S+?)=["']([^"']*?)["']/g;
-  while ((match = quotedRegex.exec(strNoBraces)) !== null) {
-    attrs[match[1]] = match[2];
-  }
-  // 5) Unquoted key=value
-  const unquotedRegex = /(\S+?)=(\S+)/g;
-  while ((match = unquotedRegex.exec(strNoBraces)) !== null) {
-    if (!(match[1] in attrs)) {
-      const val = match[2].replace(/^["']|["']$/g, '');
-      attrs[match[1]] = val;
+    if (t.startsWith('#')) {
+      const id = t.slice(1).trim();
+      if (id) attrs['id'] = id;
+      continue;
     }
+    const eq = t.indexOf('=');
+    if (eq > 0) {
+      const key = t.slice(0, eq).trim();
+      const val = t.slice(eq + 1).trim();
+      if (!key) continue;
+      if (key === 'class') {
+        val.split(/[,\s]+/).filter(Boolean).forEach((c) => classes.push(c));
+      } else if (key === 'id') {
+        if (val) attrs['id'] = val;
+      } else {
+        attrs[key] = val;
+      }
+      continue;
+    }
+    // Bare token (no . # =) — becomes a class for DC markers
+    if (t) classes.push(t);
   }
+
+  if (classes.length) attrs['class'] = classes.join(' ');
   return attrs;
 }
 
