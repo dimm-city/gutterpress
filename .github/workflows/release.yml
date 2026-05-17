@@ -130,8 +130,8 @@ jobs:
 
   publish-npm:
     name: Publish to npm
-    needs: version
-    if: ${{ !inputs.skip_npm_publish }}
+    needs: [version, verify-windows]
+    if: ${{ !inputs.skip_npm_publish && needs.verify-windows.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
