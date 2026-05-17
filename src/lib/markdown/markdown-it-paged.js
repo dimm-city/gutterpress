@@ -8,17 +8,16 @@
  *   @spread [name|class ...] [key=value ...] [#id] [.class...]
  *   @page   [name|class ...] [key=value ...] [#id] [.class...]
  *   @section [name|class ...] [key=value ...] [#id] [.class...]
- *   @break
+ *   @end-section
  *   @page-break
  *   @column-break
- *   @end-section
  *
  * Output:
  *   chapter    -> <div class="chapter ..." ...>
  *   spread     -> <div class="spread ..." data-spread="name" ...>
  *   page       -> <div class="page ..." data-page="name" ...>
  *   section    -> <div class="section ..." data-section="name" data-region="..." ...>
- *   break      -> closes nearest open @section (no-op if none open)
+ *   end-section -> closes nearest open @section (no-op if none open)
  *   page-break -> <div class="md-page-break" aria-hidden="true"></div>
  *   column-break -> <div class="md-column-break" aria-hidden="true"></div>
  *
@@ -67,12 +66,12 @@ function parseMarkerLine(line) {
 
   if (buf) tokens.push(buf);
 
-  const head = tokens[0]; // "@chapter" | "@spread" | "@page" | "@section" | "@break"
+  const head = tokens[0]; // "@chapter" | "@spread" | "@page" | "@section" | "@end-section" | "@page-break" | "@column-break"
   const kind = head.slice(1);
 
-  if (!['chapter', 'spread', 'page', 'section', 'break', 'page-break', 'column-break', 'end-section'].includes(kind)) return null;
+  if (!['chapter', 'spread', 'page', 'section', 'page-break', 'column-break', 'end-section'].includes(kind)) return null;
 
-  if (kind === 'break' || kind === 'page-break' || kind === 'column-break' || kind === 'end-section') {
+  if (kind === 'page-break' || kind === 'column-break' || kind === 'end-section') {
     return { kind, name: null, attrs: {} };
   }
 
@@ -346,11 +345,6 @@ function plugin(md, pluginOptions = {}) {
         }
 
         openSection(meta);
-        continue;
-      }
-
-      if (kind === 'break') {
-        closeSection();
         continue;
       }
 

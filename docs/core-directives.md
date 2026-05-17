@@ -29,14 +29,14 @@ Multiple classes can be combined.
 
 Emits: `<div class="page">` (or `<div class="page chapter">`, etc.)
 
-### @break
+### @page-break
 
-Forces a hard page break without wrapping content:
+Forces a hard page break without wrapping content. Use `@end-section` to close an open `@section` without a page break.
 
 ```markdown
 Some content here.
 
-@break
+@end-section
 
 This starts on the next page.
 ```
@@ -171,26 +171,20 @@ Or in custom CSS:
 ```markdown
 @page                         Start a new page
 @page chapter                 New page with CSS class
-@break                        Hard page break
+@page-break                   Hard page break
+@end-section                  Close current @section
 @spread                       Start a two-page spread
 @section                      Group content (avoid breaks)
 ```
 
-### Container Blocks
-
-```markdown
-::: container                 General grouping
-::: two-column               Two-column layout
-::: wrapper                  Generic wrapper
-::: sidebar                  Sidebar/callout
-::: ability                  TTRPG ability block
-::: specialty                TTRPG specialty block
-```
+> `:::` container syntax was removed 2026-05-17. See
+> `docs/migrations/2026-05-removing-container-syntax.md` and the DC plugin
+> `@`-marker family for the canonical author surface.
 
 ## Implementation Notes
 
-- Layout markers (`@page`, `@break`, `@spread`, `@section`) are provided by the `markdown-it-paged` plugin
-- The `implicitPage` option is enabled, so a bare `@page` starts a new page div
-- CSS classes `.page`, `.spread`, `.region`, `.md-break` are auto-injected from `markdown-it-paged/css/paged.css`
+- Layout markers (`@chapter`, `@spread`, `@page`, `@section`, `@end-section`, `@page-break`, `@column-break`) are provided by the `markdown-it-paged` plugin
+- The `implicitPage` option defaults to `false`, so `@section` outside an open `@page` does not get an implicit page wrapper
+- CSS classes `.page`, `.spread`, `.section`, `.md-page-break`, `.md-column-break` are emitted directly by the plugin and styled via the inlined `PAGED_CSS`
 - Container blocks use `::: name ... :::` syntax with colon markers
 - H1 headings automatically create page breaks and set running headers

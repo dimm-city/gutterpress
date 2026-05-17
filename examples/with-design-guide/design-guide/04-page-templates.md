@@ -192,7 +192,7 @@ Left page content goes here. Use `---{.column-break}` for columns within a page.
 
 Right page content goes here. Both pages render side-by-side in the preview.
 
-@break
+@end-section
 ```
 
 The `@spread` marker emits `<div class="spread">`. The `@page` markers inside it emit `<div class="page">` children. Use `@break` after the spread to return to normal single-page flow. CSS targets the spread with `.spread.intro-spread` and individual pages with `.spread .page.left-page`.

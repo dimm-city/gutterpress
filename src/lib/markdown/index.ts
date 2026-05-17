@@ -114,18 +114,16 @@ export async function renderChapters(
     throw new Error(`No markdown files found in ${inputDir}`);
   }
 
+  // Source files concatenate directly into the body. @chapter (DC plugin)
+  // owns chapter wrappers and IDs; print-md core does not impose a file-level
+  // wrapper. Removed 2026-05-17 — previously emitted <section class="chapter">
+  // (and briefly chapter-file) but it was never required by any consumer.
   let bodyContent = "";
   for (const file of files) {
     const filePath = join(inputDir, file);
     try {
       const content = await readFile(filePath, "utf-8");
-      let html = md.render(content);
-      const id = file.replace(/\.md$/, "").replace(/\//g, "-");
-      // File-import boundary. Distinct class from @chapter (which is an
-      // author-controlled scope within a file) — see the 2026-05-17 alignment
-      // review and docs/migrations/2026-05-removing-container-syntax.md.
-      html = `<section class="chapter-file" id="${id}" data-source-file="${file}">\n${html}\n</section>`;
-      bodyContent += html + "\n";
+      bodyContent += md.render(content) + "\n";
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to read file ${file}: ${errorMsg}`);

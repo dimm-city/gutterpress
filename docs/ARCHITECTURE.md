@@ -223,10 +223,9 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
   const md = new MarkdownIt({ html: true, linkify: true, typographer: true });
 
   md.use(markdownItAttrs);
-  md.use(markdownItPaged, { implicitPage: true }); // Primary layout: @spread, @page, @section, @break
+  md.use(markdownItPaged, { implicitPage: false }); // Primary layout: @spread, @page, @section, @end-section, @page-break, @column-break
 
-  md.use(markdownItContainer, "page", { /* ... */ });
-  md.use(markdownItContainer, "sidebar", createSidebarContainer(md));
+  // markdown-it-container removed 2026-05-17; @-marker family is canonical.
   // ... more built-in containers (wrapper, ability, specialty, etc.)
 
   // Apply custom plugins from manifest
@@ -243,7 +242,7 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
 
 **Design Rationale**:
 - Factory function creates fresh instance per render call
-- `markdown-it-paged` registered early as the primary layout plugin (`@page`, `@break`, `@spread`, `@section`)
+- `markdown-it-paged` registered early as the primary layout plugin (`@chapter`, `@spread`, `@page`, `@section`, `@end-section`, `@page-break`, `@column-break`)
 - Plugin loading is separate (`plugins.ts`) from renderer creation (`index.ts`)
 
 #### CSS Cascade

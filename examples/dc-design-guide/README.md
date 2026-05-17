@@ -120,7 +120,8 @@ markdown source during the build step and emits structured HTML.
 | `@page .class` | `<div class="page ...">` | Named page break with CSS classes |
 | `@section #id .class` | `<div class="region ...">` | Grouped content region |
 | `@spread #id .class` | `<div class="spread ...">` | Two-page spread container |
-| `@break` | `<div class="md-break">` | Hard page break |
+| `@end-section` | (no output) | Closes nearest open `@section` |
+| `@page-break` | `<div class="md-page-break">` | Hard page break |
 | `@specialty {.class}` | Specialty section wrapper | Chapter-02 specialty opener and skill card sequence |
 | `@sidebar` | Sidebar callout | Floating reference/sidebar content |
 | `@sidebar-box` | Sidebar box callout | Cream boxed aside with heading + dashed divider |

@@ -250,7 +250,7 @@ print-md build ./my-book --output final.pdf
 
 **Solutions:**
 - Add `break-inside: avoid` to keep elements together
-- Use `<!-- @break -->` before sections
+- Use `@page-break` before sections that should start on a new page
 - Adjust margins to fit content
 - Rewrite/reorganize content slightly
 
@@ -290,7 +290,7 @@ print-md build ./my-book --output final.pdf
 **Problem:** Unwanted blank pages appear
 
 **Solutions:**
-- Check for extra `<!-- @break -->` directives
+- Check for extra `@page-break` directives
 - Review H1 auto-rules (force right page)
 - Verify `@spread` directives
 - Check for empty markdown files

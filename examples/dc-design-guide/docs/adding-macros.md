@@ -16,7 +16,7 @@ Card variants (skill cards, path shells, specialty cards, specialty intros) are 
 
 ## Currently registered macros
 
-`@chapter`, `@page`, `@section`, `@spread`, `@break`, `@specialty`, `@end-specialty`,
+`@chapter`, `@page`, `@section`, `@end-section`, `@spread`, `@page-break`, `@column-break`, `@specialty`, `@end-specialty`,
 `@specialty-intro`, `@end-specialty-intro`, `@specialty-art`, `@end-specialty-art`,
 `@specialty-card`, `@end-specialty-card`,
 `@learning-path`, `@end-learning-path`, `@skill`, `@end-skill`, `@continue`,

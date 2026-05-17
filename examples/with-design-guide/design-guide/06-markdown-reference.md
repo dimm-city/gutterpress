@@ -82,7 +82,7 @@ Forces a page break **without** generating a `<div class="page">` wrapper elemen
 ```markdown
 Content before the break.
 
-@break
+@end-section
 
 Content starts on the next page.
 ```

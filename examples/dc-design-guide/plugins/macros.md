@@ -8,7 +8,7 @@ always check that the emitted class name has a matching CSS rule before shipping
 
 
 **All shipped macros:**
-`@chapter`, `@page`, `@section`, `@spread`, `@break`, `@specialty`, `@end-specialty`,
+`@chapter`, `@page`, `@section`, `@end-section`, `@spread`, `@page-break`, `@column-break`, `@specialty`, `@end-specialty`,
 `@specialty-intro`, `@end-specialty-intro`, `@specialty-art`, `@end-specialty-art`,
 `@specialty-card`, `@end-specialty-card`, `@learning-path`, `@end-learning-path`,
 `@skill`, `@end-skill`, `@continue`, `@outcome`, `@end-outcome`, `@chapter-opener`,

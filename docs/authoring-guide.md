@@ -141,7 +141,7 @@ Start a new page.
 
 Start a new page with the "chapter" CSS class.
 
-@break
+@end-section
 
 Force a hard page break.
 
@@ -292,14 +292,14 @@ Tables automatically:
 
 ### Page Breaks
 
-Use `@break` for a hard page break, or `@page` to start a new styled page:
+Use `@page-break` for a hard page break, or `@page` to start a new styled page:
 
 ```markdown
 # Chapter One
 
 Content here...
 
-@break
+@end-section
 
 This starts on the next page.
 
@@ -1019,10 +1019,10 @@ Before final print:
 ```markdown
 @page                       Start a new page
 @page chapter               New page with chapter class
-@break                      Force a page break
+@page-break                 Force a page break
+@end-section                Close current @section
 @spread                     Start a two-page spread
 @section                    Group content (avoid breaks)
-::: container ... :::       Container block
 ::: two-column ... :::      Two-column layout
 ::: sidebar ... :::         Sidebar block
 ```

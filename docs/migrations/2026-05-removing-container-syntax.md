@@ -107,7 +107,7 @@ content                             content
 :::                                 @end-procedure
 ```
 
-The `@end-X` form is the unambiguous close. `@break` also closes the nearest open `@section`.
+The `@end-X` form is the unambiguous close. `@end-section` is the canonical close marker (the alias `@break` was removed in a follow-up cleanup on the same date).
 
 ## What we deliberately did NOT change
 

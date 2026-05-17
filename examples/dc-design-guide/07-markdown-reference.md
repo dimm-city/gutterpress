@@ -20,7 +20,8 @@ The `@` marker system controls page flow and generates semantic HTML wrappers. M
 |--------|-------------|---------|
 | `@chapter #id .class` | `<div class="chapter [class]" id="id">` | Wraps all following content until next `@chapter` |
 | `@page #id .class` | `<div class="page [class]" id="id">` | Explicit page container with a named CSS target |
-| `@break` | `<div class="md-break" aria-hidden="true"></div>` | Hard page break without generating a wrapper div |
+| `@end-section` | (no output) | Closes nearest open `@section` |
+| `@page-break` | `<div class="md-page-break" aria-hidden="true"></div>` | Force a hard page break without a wrapper |
 | `@section #id .class` | `<div class="region [class]" id="id">` | Region block — groups content, avoids page split |
 | `@spread #id .class` | `<div class="spread [class]" id="id">` | Two-page spread — keeps left and right pages paired |
 
@@ -99,7 +100,7 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 
 ## Marker Blocks
 
-`@`-prefixed markers open a wrapped block; matching `@end-X` (or `@break` / `@end-section`) closes it. Attributes use the same grammar as `@page` / `@section`: `name .class #id key=val key="quoted val"`.
+`@`-prefixed markers open a wrapped block; matching `@end-X` (or `@end-section`) closes it. Attributes use the same grammar as `@page` / `@section`: `name .class #id key=val key="quoted val"`.
 
 | Marker | Effect |
 |--------|--------|

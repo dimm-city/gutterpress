@@ -7,20 +7,53 @@
  * MARKERS (support optional key="value" attributes):
  *   @sidebar            → Start a dc-sidebar wrapper
  *   @end-sidebar        → End sidebar wrapper
- *   @specialty          → Start a specialty section (auto-closes any prior specialty,
- *                          learning-path, or skill so each chapter-02 file can open
- *                          cleanly without legacy fenced-div containers)
- *   @end-specialty      → Manually end a specialty section
-  *   @sidebar-box        → Start a dc-sidebar-box wrapper
-  *   @end-sidebar-box    → End sidebar-box wrapper
+ *   @sidebar-box        → Start a dc-sidebar-box wrapper
+ *   @end-sidebar-box    → End sidebar-box wrapper
+ *   @specialty          → Start a specialty wrapper (auto-closes any prior specialty,
+ *                          learning-path, or skill)
+ *   @end-specialty      → Manually end a specialty wrapper
  *   @definition         → Start a dc-definition-block wrapper
  *   @end-definition     → End definition wrapper
  *   @procedure          → Start a dc-steps procedure wrapper
- *   @end-procedure      → End procedure wrapper
+ *   @end-procedure      → End procedure wrapper (auto-closes on EOF with a warning)
+ *   @callout            → Start a dc-alert callout (variant=note|warning|dm|vibe|origin|visit|gear)
+ *   @end-callout        → End callout wrapper
+ *   @dm-note            → Start a Dream Master note (sugar for @callout variant=dm)
+ *   @end-dm-note        → End dm-note wrapper
+ *   @lede               → Start a dc-intro lede wrapper
+ *   @end-lede           → End lede wrapper
  *   @learning-path      → Start a learning path section (auto-closes previous sections)
  *   @end-learning-path  → Manually end a learning path section
- *   @skill              → Start skill cards section (auto-closes previous sections)
+ *   @skill              → Start a skill card (auto-closes previous skill)
  *   @end-skill          → End skill transformation mode
+ *   @continue           → Continuation marker — emits a card with a "{name} ▸"
+ *                          tab so an oversized skill card can be split across pages
+ *                          while keeping a visible link to its origin card
+ *   @specialty-intro    → Cosmetic specialty intro wrapper
+ *   @end-specialty-intro
+ *   @specialty-art      → Cosmetic specialty art wrapper
+ *   @end-specialty-art
+ *   @specialty-card     → Individual specialty card
+ *   @end-specialty-card
+ *   @class-entry        → Class entry card
+ *   @end-class-entry
+ *   @gear-card          → Gear card
+ *   @end-gear-card
+ *   @chapter-opener     → Chapter opener number badge (`@chapter-opener C.NN`)
+ *   @toc                → Table-of-contents wrapper
+ *   @end-toc
+ *   @glossary           → Glossary wrapper
+ *   @end-glossary
+ *   @outcome            → 5-rung d20 outcome ladder block
+ *   @end-outcome
+ *   @roll-table         → Roll-table block; emits `<table class="dc-roll-table">`
+ *   @options-table      → Options-table block; emits `<table class="dc-options-table">`
+ *   @tape               → Inline tape divider (`<div class="dc-tape">— § —</div>`)
+ *
+ * GFM ALERT SYNTAX:
+ *   `> [!NOTE]` / `[!WARNING]` / `[!DM]` / `[!VIBE]` / `[!ORIGIN]` / `[!VISIT]`
+ *   / `[!GEAR]` / `[!FLAVOR]` / `[!PULLQUOTE]` blockquotes are transformed
+ *   into `<div class="dc-alert dc-<type>">` (moved from print-md core 2026-05-17).
  *
  * SPECIALTY VARIANTS:
  *   Skill card and learning-path variants are controlled by the .specialty.<name>
@@ -32,7 +65,7 @@
  *   Markers can include key="value", key='value', or key=value pairs:
  *
  *   @learning-path data-foo="bar"
- *     → <section class="dc-learning-path dc-path-block" data-foo="bar">
+ *     → <div class="dc-learning-path dc-path-block" data-foo="bar">
  *
  *   @skill id="my-skill" data-category="combat"
  *     → Extra attributes added to skill-card wrapper
@@ -41,7 +74,7 @@
  *     → <div class="dc-skill-card allow-split" ...>
  *
  *   @learning-path {.custom-path}
- *     → <section class="dc-learning-path dc-path-block custom-path" ...>
+ *     → <div class="dc-learning-path dc-path-block custom-path" ...>
  *
  * LEARNING PATH FORMAT:
  *   @learning-path
@@ -821,7 +854,7 @@ export default function dimmCityPlugin(md, options = {}) {
          inLearningPathShell = false;
        }
         if (inLearningPath) {
-          newTokens.push(makeToken('html_block', '</section>\n'));
+          newTokens.push(makeToken('html_block', '</div>\n'));
           inLearningPath = false;
         }
         if (inCallout) {
@@ -845,7 +878,7 @@ export default function dimmCityPlugin(md, options = {}) {
     function closeSpecialty() {
       closeAll();
       if (inSpecialty) {
-        newTokens.push(makeToken('html_block', '</section>\n'));
+        newTokens.push(makeToken('html_block', '</div>\n'));
         inSpecialty = false;
       }
        currentSpecialtyCode = '';
@@ -1477,7 +1510,7 @@ export default function dimmCityPlugin(md, options = {}) {
             specAttrs += ' ' + key + '="' + esc(val) + '"';
           }
         }
-        newTokens.push(makeToken('html_block', '<section class="' + specClass + '"' + specAttrs + '>\n'));
+        newTokens.push(makeToken('html_block', '<div class="' + specClass + '"' + specAttrs + '>\n'));
         inSpecialty = true;
         currentSpecialtyCode = specialtyCodeFromClass(specClass);
         currentLearningPathIndex = 0;
@@ -1513,7 +1546,7 @@ export default function dimmCityPlugin(md, options = {}) {
           }
         }
         const lpClass = 'dc-learning-path dc-path-block' + (lpUserAttrs['class'] ? ' ' + lpUserAttrs['class'] : '');
-        newTokens.push(makeToken('html_block', '<section class="' + lpClass + '" data-path-ref="' + esc(currentLearningPathRef) + '"' + lpAttrs + '>\n<div class="dc-path-shell">\n'));
+        newTokens.push(makeToken('html_block', '<div class="' + lpClass + '" data-path-ref="' + esc(currentLearningPathRef) + '"' + lpAttrs + '>\n<div class="dc-path-shell">\n'));
         i += 2; // Skip paragraph_open, inline, paragraph_close
         continue;
       }
@@ -1600,7 +1633,7 @@ export default function dimmCityPlugin(md, options = {}) {
           inLearningPathShell = false;
         }
         if (inLearningPath) {
-          newTokens.push(makeToken('html_block', '</section>\n'));
+          newTokens.push(makeToken('html_block', '</div>\n'));
           inLearningPath = false;
           learningPathHasTitle = false;
         }

@@ -103,10 +103,10 @@ print-md validate --pdf dist/book.pdf
 ```markdown
 @page                       Start a new page
 @page chapter               New page with chapter class
-@break                      Force a page break
+@page-break                 Force a page break
+@end-section                Close current @section
 @spread                     Start a two-page spread
-@section                    Group content (avoid breaks)
-::: two-column ... :::      Two-column layout
+@section .two-column        Two-column layout
 ::: sidebar ... :::         Sidebar content block
 ```
 

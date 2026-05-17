@@ -241,7 +241,8 @@ The `markdown-it-paged` plugin emits these CSS classes from `@` markers:
 | `@page` | `.page` | `break-before: page` |
 | `@spread` | `.spread` | `break-before: page` |
 | `@section` | `.region` | `break-inside: avoid` |
-| `@break` | `.md-break` | `break-before: page` |
+| `@page-break` | `.md-page-break` | `break-before: page` |
+| `@end-section` | (no output) | Closes nearest `@section` |
 
 These classes can be extended in your custom CSS:
 

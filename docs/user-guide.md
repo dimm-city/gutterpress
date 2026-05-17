@@ -131,7 +131,7 @@ This tool makes it easy to create professional PDFs from markdown.
 - Easy to write and maintain
 - Supports images, tables, and code
 
-@break
+@end-section
 
 ## Getting Started
 
@@ -329,7 +329,7 @@ Control page layout with `@` markers (provided by `markdown-it-paged`):
 
 ```markdown
 <!-- Force page break -->
-@break
+@end-section
 
 <!-- Start a new page with a CSS class -->
 @page chapter
@@ -643,7 +643,7 @@ print-md preview --verbose
 
 ### Block markers (@page / @section / @sidebar / etc.)
 
-print-md uses `@`-prefixed markers for paged-media layout and DC content blocks. Markers open a wrapped block; matching `@end-X` (or `@break` / `@end-section`) closes it. Attribute grammar is `name .class #id key=val key="quoted val"`.
+print-md uses `@`-prefixed markers for paged-media layout and DC content blocks. Markers open a wrapped block; matching `@end-X` (or `@end-section`) closes it. Attribute grammar is `name .class #id key=val key="quoted val"`.
 
 ```markdown
 @page .full-page
@@ -968,7 +968,7 @@ my-book/
 # Chapter 1
 Content here...
 
-@break
+@end-section
 
 # Chapter 2
 New chapter on new page
