@@ -117,16 +117,16 @@ export async function generateAndWriteHtml(
     '<link rel="stylesheet" href="/preview/styles/preview.css">\n  '
     + '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
     + (debugCss ? `<script>(function(){var s=document.createElement("style");s.setAttribute("data-debug-css","true");s.textContent=\`${escapedDebugCss}\`;document.head.appendChild(s)})()</script>\n  ` : '');
-  // Copy the vendored paged.polyfill.min.js from embedded assets (works in compiled binary).
+  // Copy the vendored paged.polyfill.js from embedded assets (works in compiled binary).
   const pagedDestDir = path.join(tempDir, 'vendor');
-  const pagedDestPath = path.join(pagedDestDir, 'paged.polyfill.min.js');
+  const pagedDestPath = path.join(pagedDestDir, 'paged.polyfill.js');
   try {
     await import('node:fs/promises').then(fsp => fsp.mkdir(pagedDestDir, { recursive: true }));
-    await Bun.write(pagedDestPath, Bun.file(await getAssetPath('vendor/paged.polyfill.min.js')));
+    await Bun.write(pagedDestPath, Bun.file(await getAssetPath('vendor/paged.polyfill.js')));
   } catch { /* fall back to CDN if asset extraction fails */ }
 
   const pagedSrc = existsSync(pagedDestPath)
-    ? './vendor/paged.polyfill.min.js'
+    ? './vendor/paged.polyfill.js'
     : 'https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.js';
 
   const output = html.replace(

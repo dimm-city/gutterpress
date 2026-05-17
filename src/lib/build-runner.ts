@@ -302,13 +302,13 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
     // Must run after emitViewer so preview/scripts/pagedjs-interface.js exists.
     await fsp.mkdir(path.join(outDir, "vendor"), { recursive: true });
     await fsp.copyFile(
-      await getAssetPath("vendor/paged.polyfill.min.js"),
-      path.join(outDir, "vendor/paged.polyfill.min.js")
+      await getAssetPath("vendor/paged.polyfill.js"),
+      path.join(outDir, "vendor/paged.polyfill.js")
     );
     const bookSource = await fsp.readFile(htmlFile, "utf-8");
     const bookWithInterface = bookSource.replace(
       /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
-      '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="vendor/paged.polyfill.min.js"></script>'
+      '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="vendor/paged.polyfill.js"></script>'
     );
     await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
 
@@ -358,11 +358,11 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
   // Vendor paged.js from embedded assets (works in compiled binary without node_modules)
   await fsp.mkdir(path.join(stage, "vendor"), { recursive: true });
   await fsp.copyFile(
-    await getAssetPath("vendor/paged.polyfill.min.js"),
-    path.join(stage, "vendor/paged.polyfill.min.js")
+    await getAssetPath("vendor/paged.polyfill.js"),
+    path.join(stage, "vendor/paged.polyfill.js")
   );
 
-  await patchHtmlForPagedjs(stagedHtml, "./vendor/paged.polyfill.min.js");
+  await patchHtmlForPagedjs(stagedHtml, "./vendor/paged.polyfill.js");
 
   const rawPdf = pdfxMode ? path.join(stage, "raw.pdf") : path.resolve(pdfFile);
   log.info("Rendering HTML to PDF via Chromium+Paged.js");

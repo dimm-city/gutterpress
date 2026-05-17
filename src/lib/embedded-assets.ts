@@ -33,7 +33,7 @@ import toastCss from "../assets/preview/styles/toast.css" with { type: "file" };
 import debugCss from "../assets/preview/styles/debug.css" with { type: "file" };
 import viewSingleCss from "../assets/preview/styles/view-single.css" with { type: "file" };
 import viewTwoColumnCss from "../assets/preview/styles/view-two-column.css" with { type: "file" };
-import pagedPolyfill from "../assets/vendor/paged.polyfill.min.js" with { type: "file" };
+import pagedPolyfill from "../assets/vendor/paged.polyfill.js" with { type: "file" };
 
 // `with { type: "file" }` returns a string path at build time, but TS does
 // not model the type-attribute — extensions with TS-known shapes (.html,
@@ -54,7 +54,7 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "preview/styles/debug.css": debugCss,
   "preview/styles/view-single.css": viewSingleCss,
   "preview/styles/view-two-column.css": viewTwoColumnCss,
-  "vendor/paged.polyfill.min.js": filePath(pagedPolyfill),
+  "vendor/paged.polyfill.js": filePath(pagedPolyfill),
 };
 
 let extractPromise: Promise<string> | null = null;

@@ -1,12 +1,12 @@
 # Paged.js Vendored Copy — Patch Backlog
 
-**Vendored file:** `paged.polyfill.min.js`  
+**Vendored file:** `paged.polyfill.js`  
 **Source version:** pagedjs@0.4.3  
 **Source repo:** https://github.com/pagedjs/pagedjs
 
 This file is embedded into the print-md binary via `with { type: "file" }` in
 `src/lib/embedded-assets.ts`. To update, replace this file with the new dist
-from `node_modules/pagedjs/dist/paged.polyfill.min.js` after bumping the
+from `node_modules/pagedjs/dist/paged.polyfill.js` after bumping the
 version in your local install, then verify all patches below are still needed
 and re-apply to the unminified source if submitting upstream PRs.
 
