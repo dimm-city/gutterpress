@@ -16,7 +16,6 @@ always check that the emitted class name has a matching CSS rule before shipping
 `@sidebar`, `@end-sidebar`, `@sidebar-box`, `@end-sidebar-box`,
 `@definition`, `@end-definition`, `@procedure`, `@end-procedure`,
 `@callout`, `@end-callout`, `@dm-note`, `@end-dm-note`,
-`@toc`, `@end-toc`, `@two-column`, `@end-two-column`,
-`@three-column`, `@end-three-column`, `@no-break`, `@end-no-break`,
+`@toc`, `@end-toc`,
 `@gear-card`, `@end-gear-card`, `@tape`, `@lede`, `@end-lede`,
 `@glossary`, `@end-glossary`

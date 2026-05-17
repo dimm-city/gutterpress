@@ -57,6 +57,13 @@ export interface PrintMdManifest {
       markdownlint?: string | false;
       htmlhint?: string | false;
       stylelint?: string | false;
+      /**
+       * @deprecated `:::name` container syntax was removed 2026-05-17 and the
+       * callout-validation check it gated was removed at the same time. This
+       * field is now a no-op kept for backward-compatible manifest parsing.
+       * Will be removed in a future major version. See
+       * docs/migrations/2026-05-removing-container-syntax.md.
+       */
       allowedCallouts?: string[];
     };
     assets?: {

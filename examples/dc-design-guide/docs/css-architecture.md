@@ -712,7 +712,7 @@ class:
 }
 ```
 
-Apply via `{.pmd-no-break}` on a markdown element, or use the `@no-break` / `@end-no-break` macro to wrap a block without needing inline attrs.
+Apply via `{.pmd-no-break}` on a markdown element, or wrap a block with `@section .pmd-no-break` … `@end-section`.
 
 ### Recto Chapter Starts
 

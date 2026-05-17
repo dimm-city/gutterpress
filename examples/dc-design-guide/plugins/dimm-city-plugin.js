@@ -592,11 +592,20 @@ function collectOrderedListItems(tokens, startIndex, md) {
   return { items: items, endIndex: i };
 }
 
+// Attributes that should be emitted verbatim (real HTML attributes).
+// Everything else gets a `data-` prefix to avoid colliding with HTML semantics
+// (e.g. an author writing `title=foo` shouldn't produce a real `title` tooltip;
+// they meant `data-title="foo"`). Matches markdown-it-paged's convention.
+const PASSTHROUGH_HTML_ATTRS = new Set(['class', 'id', 'lang', 'dir', 'role', 'tabindex']);
+
 function buildAttrs(userAttrs, baseClass) {
   let attrs = ' class="' + esc(baseClass + (userAttrs['class'] ? ' ' + userAttrs['class'] : '')) + '"';
   for (const [key, val] of Object.entries(userAttrs)) {
-    if (key !== 'class') {
+    if (key === 'class') continue;
+    if (key.startsWith('data-') || key.startsWith('aria-') || PASSTHROUGH_HTML_ATTRS.has(key)) {
       attrs += ' ' + key + '="' + esc(val) + '"';
+    } else {
+      attrs += ' data-' + key + '="' + esc(val) + '"';
     }
   }
   return attrs;
@@ -613,9 +622,128 @@ function buildProcedureList(items) {
 }
 
 /**
+ * GFM-style blockquote alert types — Dimm City branded.
+ *
+ * Moved from print-md core (src/lib/markdown/alerts.ts) on 2026-05-17 because
+ * the classes and labels are DC-specific. Core no longer leaks DC identifiers.
+ */
+const DC_ALERT_TYPES = {
+  NOTE:      { classes: "dc-alert dc-note",                 label: "Note" },
+  WARNING:   { classes: "dc-alert dc-note warning",         label: "Warning" },
+  DM:        { classes: "dc-alert dc-dm-note",              label: "Dream Master Note" },
+  VIBE:      { classes: "dc-alert dc-vibe-callout",         label: "Vibe" },
+  ORIGIN:    { classes: "dc-alert dc-origin-callout",       label: "Origin" },
+  VISIT:     { classes: "dc-alert dc-visit-callout",        label: "Visit" },
+  GEAR:      { classes: "dc-alert dc-gear-callout",         label: "Gear" },
+  FLAVOR:    { classes: "dc-flavor" },
+  PULLQUOTE: { classes: "dc-pullquote flush" },
+};
+
+const DC_ALERT_PATTERN = /^\[!([A-Z_]+)\]/i;
+
+/**
+ * Transform `> [!TYPE]` blockquotes into DC-branded styled divs.
+ *
+ * This is a markdown-it core rule that consumes the `[!TYPE]` marker and
+ * wraps the blockquote contents in a `<div>` carrying the corresponding
+ * DC alert classes and an optional label span.
+ */
+function dcAlertsTransform(state) {
+  const tokens = state.tokens;
+  const newTokens = [];
+
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (!tok || tok.type !== 'blockquote_open') {
+      newTokens.push(tok);
+      continue;
+    }
+
+    let closeIdx = -1;
+    let firstInlineIdx = -1;
+    let depth = 0;
+    for (let j = i; j < tokens.length; j++) {
+      const jt = tokens[j];
+      if (!jt) continue;
+      if (jt.type === 'blockquote_open') depth++;
+      if (jt.type === 'blockquote_close') {
+        depth--;
+        if (depth === 0) { closeIdx = j; break; }
+      }
+      if (firstInlineIdx === -1 && jt.type === 'inline') firstInlineIdx = j;
+    }
+
+    if (closeIdx === -1 || firstInlineIdx === -1) { newTokens.push(tok); continue; }
+
+    const inlineTok = tokens[firstInlineIdx];
+    const match = inlineTok && inlineTok.content.match(DC_ALERT_PATTERN);
+    if (!match) { newTokens.push(tok); continue; }
+
+    const alertType = match[1].toUpperCase();
+    const config = DC_ALERT_TYPES[alertType];
+    if (!config) { newTokens.push(tok); continue; }
+
+    // Open div
+    const openTok = new state.Token('html_block', '', 0);
+    openTok.block = true;
+    let openHtml = `<div class="${config.classes}">`;
+    if (config.label) openHtml += `<span class="dc-alert-label">${config.label}</span>`;
+    openHtml += '\n';
+    openTok.content = openHtml;
+    newTokens.push(openTok);
+
+    // Strip [!TYPE] prefix from first inline; suppress its paragraph wrapper if empty.
+    const prefixMatch = inlineTok.content.match(/^\[![A-Z_]+\][ \t]*/i);
+    const stripped = prefixMatch
+      ? inlineTok.content.slice(prefixMatch[0].length).trim()
+      : inlineTok.content;
+
+    const paragraphOpenIdx = firstInlineIdx - 1;
+    const paragraphCloseIdx = firstInlineIdx + 1;
+    const wrapsInParagraph =
+      paragraphOpenIdx > i &&
+      tokens[paragraphOpenIdx] && tokens[paragraphOpenIdx].type === 'paragraph_open' &&
+      tokens[paragraphCloseIdx] && tokens[paragraphCloseIdx].type === 'paragraph_close';
+
+    for (let j = i + 1; j < closeIdx; j++) {
+      const t = tokens[j];
+      if (!t) continue;
+      if (j === firstInlineIdx) {
+        if (stripped === '') continue;
+        const strippedTok = new state.Token('inline', '', 0);
+        strippedTok.content = stripped;
+        strippedTok.children = [];
+        state.md.inline.parse(stripped, state.md, state.env, strippedTok.children);
+        newTokens.push(strippedTok);
+        continue;
+      }
+      if (stripped === '' && wrapsInParagraph) {
+        if (j === paragraphOpenIdx || j === paragraphCloseIdx) continue;
+      }
+      newTokens.push(t);
+    }
+
+    const closeTok = new state.Token('html_block', '', 0);
+    closeTok.block = true;
+    closeTok.content = '</div>\n';
+    newTokens.push(closeTok);
+
+    i = closeIdx;
+  }
+
+  state.tokens = newTokens;
+}
+
+/**
  * Main plugin function - default export for print-md
  */
 export default function dimmCityPlugin(md, options = {}) {
+  // GFM-style `> [!NOTE]` alerts (moved from core 2026-05-17).
+  // Must run before markdown-it-attrs so attrs don't interfere with `[!TYPE]`
+  // detection inside blockquotes. We register on the core ruler since the
+  // transform operates on already-parsed token streams.
+  md.core.ruler.push('dc_alerts', dcAlertsTransform);
+
   // Add admonition block rule
   md.block.ruler.before('paragraph', 'admonition', admonitionRule, {
     alt: ['paragraph', 'reference', 'blockquote']
@@ -1125,6 +1253,10 @@ export default function dimmCityPlugin(md, options = {}) {
 
       const procedureMarker = parseMarker(tok, tokens, i, '@procedure');
       if (procedureMarker.matched) {
+        // @procedure auto-closes any prior open section so a forgotten
+        // @end-procedure can't strand the previous transform open. closeAll()
+        // also clears inProcedure, so set the flag AFTER closing.
+        closeAll();
         inProcedure = true;
         i += 2;
         continue;
@@ -1271,41 +1403,11 @@ export default function dimmCityPlugin(md, options = {}) {
         i += 2; continue;
       }
 
-      // --- @two-column / @end-two-column ---
-      const twoColMarker = parseMarker(tok, tokens, i, '@two-column');
-      if (twoColMarker.matched) {
-        closeAll();
-        newTokens.push(makeToken('html_block', '<div class="two-column">\n'));
-        i += 2; continue;
-      }
-      if (isMarker(tok, tokens, i, '@end-two-column')) {
-        newTokens.push(makeToken('html_block', '</div>\n'));
-        i += 2; continue;
-      }
-
-      // --- @three-column / @end-three-column ---
-      const threeColMarker = parseMarker(tok, tokens, i, '@three-column');
-      if (threeColMarker.matched) {
-        closeAll();
-        newTokens.push(makeToken('html_block', '<div class="three-column">\n'));
-        i += 2; continue;
-      }
-      if (isMarker(tok, tokens, i, '@end-three-column')) {
-        newTokens.push(makeToken('html_block', '</div>\n'));
-        i += 2; continue;
-      }
-
-      // --- @no-break / @end-no-break ---
-      const noBreakMarker = parseMarker(tok, tokens, i, '@no-break');
-      if (noBreakMarker.matched) {
-        closeAll();
-        newTokens.push(makeToken('html_block', '<div class="pmd-no-break">\n'));
-        i += 2; continue;
-      }
-      if (isMarker(tok, tokens, i, '@end-no-break')) {
-        newTokens.push(makeToken('html_block', '</div>\n'));
-        i += 2; continue;
-      }
+      // Removed 2026-05-17: @two-column / @three-column / @no-break.
+      // Use @section .two-column / @section .three-column / @section .pmd-no-break
+      // instead — markdown-it-paged emits identical layout semantics, with the
+      // added `.section` class that picks up `break-inside: avoid` from PAGED_CSS.
+      // See docs/migrations/2026-05-removing-container-syntax.md for the rationale.
 
       // --- @gear-card / @end-gear-card ---
       const gearCardMarker = parseMarker(tok, tokens, i, '@gear-card');
@@ -1336,10 +1438,13 @@ export default function dimmCityPlugin(md, options = {}) {
       }
 
       // --- @lede / @end-lede ---
+      // Emits .dc-intro (canonical). The legacy bare `lede` class was removed
+      // 2026-05-17 — there were no CSS rules using it, only the dc-prefixed
+      // form is styled.
       const ledeMarker = parseMarker(tok, tokens, i, '@lede');
       if (ledeMarker.matched) {
         closeAll();
-        newTokens.push(makeToken('html_block', '<div class="dc-intro lede">\n'));
+        newTokens.push(makeToken('html_block', '<div class="dc-intro">\n'));
         inLede = true;
         i += 2; continue;
       }
@@ -1731,6 +1836,20 @@ export default function dimmCityPlugin(md, options = {}) {
     }
 
     // Close any open structures at EOF
+
+    // Warn if @procedure was opened without a matching @end-procedure.
+    // The transform is stateless (no open <div> to close) but every ordered
+    // list after the marker was being silently hijacked into step-list mode.
+    if (inProcedure) {
+      if (!state.env.layoutWarnings) state.env.layoutWarnings = [];
+      state.env.layoutWarnings.push({
+        type: 'unclosed_procedure',
+        message: '@procedure was opened but never closed with @end-procedure. ' +
+                 'Ordered lists after the marker may have been transformed into ' +
+                 'step-lists unintentionally.',
+      });
+      inProcedure = false;
+    }
 
     // Emit partial @roll-table if @end-roll-table was missing
     if (inRollTable && rollTableItems.length > 0) {

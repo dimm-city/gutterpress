@@ -111,11 +111,12 @@ function normalizePluginConfig(plugin: string | PluginConfig): ResolvedPluginCon
 }
 
 /**
- * Tracks manifests we've already warned about so the deprecation notice for
- * `output.html` fires once per process even if `resolveConfig` is called
- * repeatedly (e.g. on every preview regen).
+ * Tracks manifests we've already warned about so deprecation notices fire
+ * once per process even if `resolveConfig` is called repeatedly (e.g. on
+ * every preview regen).
  */
 let outputHtmlDeprecationWarned = false;
+let allowedCalloutsDeprecationWarned = false;
 
 /**
  * Merge CLI args > manifest > preset defaults into a fully-resolved config.
@@ -143,6 +144,22 @@ export function resolveConfig(
     console.warn(
       "[print-md] manifest field `output.html` is deprecated and ignored. " +
         "The rendered book HTML is always written as `book.html`."
+    );
+  }
+
+  // Deprecation: `validate.source.allowedCallouts` is a no-op as of 2026-05-17
+  // (the `:::` container syntax and its validation check were removed).
+  if (
+    !allowedCalloutsDeprecationWarned &&
+    ((m.validate?.source?.allowedCallouts?.length ?? 0) > 0 ||
+      (c.validate?.source?.allowedCallouts?.length ?? 0) > 0)
+  ) {
+    allowedCalloutsDeprecationWarned = true;
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[print-md] manifest field `validate.source.allowedCallouts` is " +
+        "deprecated and ignored. The `:::` container syntax it gated was " +
+        "removed 2026-05-17. See docs/migrations/2026-05-removing-container-syntax.md."
     );
   }
 

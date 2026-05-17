@@ -70,9 +70,9 @@ Inset sidebar content for page templates like rules references.
 ```
 
 ```markdown
-@no-break
+@section .pmd-no-break
 Content that must not split across a page break.
-@end-no-break
+@end-section
 
 ## New Section {.pmd-break-before}
 ```

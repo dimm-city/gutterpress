@@ -7,8 +7,7 @@ import markdownItAttrs from "markdown-it-attrs";
 import markdownItFootnote from "markdown-it-footnote";
 import markdownItPaged, { PAGED_CSS } from "./markdown-it-paged.js";
 import markdownItSourceMap from "markdown-it-source-map";
-import { dcAlertsPlugin } from "./alerts";
-import { fixImagePaths } from "./images";
+import { registerImageRule } from "./images";
 import type { LoadedPlugin } from "./plugins";
 import { applyPlugins } from "./plugins";
 
@@ -16,12 +15,16 @@ import { applyPlugins } from "./plugins";
  * Create a fully-configured MarkdownIt instance.
  *
  * Built-in pipeline (runs before any user plugins):
- *   dcAlertsPlugin → markdown-it-attrs → markdown-it-footnote
- *   → markdown-it-source-map → markdown-it-paged
+ *   markdown-it-attrs → markdown-it-footnote → markdown-it-source-map
+ *   → markdown-it-paged
  *
  * Block container syntax (`:::name ... :::`) was removed 2026-05-17 in favor
  * of the @marker family. See docs/migrations/2026-05-removing-container-syntax.md
  * for the migration mapping.
+ *
+ * GFM-style `> [!NOTE]` alerts were also moved into the DC plugin on the
+ * same date because the emitted classes (dc-alert, dc-vibe-callout, etc.)
+ * are DC-branded. Core should not leak DC identifiers.
  *
  * @param customPlugins - Optional array of custom plugins to load
  */
@@ -42,13 +45,13 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
       ? ((plugin as unknown as { default: T }).default)
       : plugin);
 
-  // DC alert plugin must run before markdownItAttrs so attrs don't interfere
-  // with blockquote detection (e.g. `> [!NOTE]{.something}` edge cases).
-  md.use(dcAlertsPlugin);
   md.use(unwrap(markdownItAttrs));
   md.use(unwrap(markdownItFootnote));
   md.use(unwrap(markdownItSourceMap));
   md.use(unwrap(markdownItPaged));
+
+  // Image src normalization (token-level renderer rule).
+  registerImageRule(md);
 
   // Apply custom plugins from manifest
   if (customPlugins && customPlugins.length > 0) {
@@ -118,7 +121,10 @@ export async function renderChapters(
       const content = await readFile(filePath, "utf-8");
       let html = md.render(content);
       const id = file.replace(/\.md$/, "").replace(/\//g, "-");
-      html = `<section class="chapter" id="${id}" data-source-file="${file}">\n${html}\n</section>`;
+      // File-import boundary. Distinct class from @chapter (which is an
+      // author-controlled scope within a file) — see the 2026-05-17 alignment
+      // review and docs/migrations/2026-05-removing-container-syntax.md.
+      html = `<section class="chapter-file" id="${id}" data-source-file="${file}">\n${html}\n</section>`;
       bodyContent += html + "\n";
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -126,7 +132,14 @@ export async function renderChapters(
     }
   }
 
-  bodyContent = fixImagePaths(bodyContent);
+  // Inject markdown-it-paged + user-plugin CSS as a single <style> block.
+  // PAGED_CSS is treated identically to user plugin css — the only built-in
+  // plugin that ships CSS routes through the same pipeline as user plugins,
+  // so the cascade story is uniform.
+  const inlineCss = [
+    `/* markdown-it-paged */\n${PAGED_CSS.trim()}`,
+    pluginCss ? `/* user plugin css */\n${pluginCss.trim()}` : null,
+  ].filter(Boolean).join("\n\n");
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -135,8 +148,7 @@ export async function renderChapters(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
   ${styles.map(s => `<link rel="stylesheet" href="${s}">`).join('\n  ')}
-  <style>\n/* markdown-it-paged layout CSS */\n${PAGED_CSS}\n</style>
-  ${pluginCss ? `<style>\n/* Plugin CSS */\n${pluginCss}\n</style>` : ''}
+  <style>\n${inlineCss}\n</style>
   <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.js"></script>
 </head>
 <body>
