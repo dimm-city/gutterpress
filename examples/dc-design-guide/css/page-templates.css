@@ -61,7 +61,8 @@
 }
 
 /* ── COLUMN BREAK MARKER ──────────────────────────────────────────────────── */
-.column-break {
+.column-break,
+.md-column-break {
   color: var(--hud-magenta);
   visibility: hidden;
   break-after: column;

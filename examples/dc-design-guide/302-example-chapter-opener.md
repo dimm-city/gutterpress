@@ -122,6 +122,8 @@ In Dimm City, you're not human—you never were. Every Dreamer is an anthropomor
 
 Choose a species that fits your vibe. Species carries no mechanical weight — it shapes your look, your voice, and how Dimm City reads you. The city has seen it all: cats and rabbits, rats and ravens, wolves and worse things with no clean name left.
 
+@column-break
+
 #### Origins
 
 Where did you start, and how far is that from where you are now?
@@ -129,8 +131,6 @@ Where did you start, and how far is that from where you are now?
 Origins tell the Dream Master how your character fits the city's grid. A corporate-born Dreamer walks alleys differently than someone who grew up in the Flats. They know different people, owe different debts, and have different reasons to still be breathing.
 
 Choose one: **EntD rat**, **Corp exile**, **District-born**, **Offworld arrival**, **Street-raised**, or **Something the city made and hasn't claimed yet**.
-
-@column-break
 
 #### Scars, Size, and Survival
 
