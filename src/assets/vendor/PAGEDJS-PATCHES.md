@@ -228,9 +228,9 @@ The Paged.js chunker reads `breakBefore === "recto"` or `"verso"` (lines
 variables being compared ("recto"/"verso" vs "left"/"right") can never be
 equal, so the page break ALWAYS fires for recto/verso, not conditionally.
 
-This is actually a partial implementation, not a no-op — it forces a new page
-but does not insert a blank page to guarantee the correct side. print-md's
-`RectoChapterHandler` (which runs in `afterRendered()` and inserts blank pages
-based on `pagedjs_page` count parity) is more reliable. Contribute
-`RectoChapterHandler` to the Paged.js documentation as the recommended pattern
-rather than patching the chunker.
+This is a partial implementation: it forces a new page but does not insert a
+blank page to guarantee the correct side. Guaranteeing chapter-on-recto in
+print-md is left to the author — insert `@page-break` before a chapter after
+reviewing output if the chapter lands on verso. This is the right trade-off for
+a simple-markdown-first tool; auto-recto adds complexity and surprise blank
+pages without clear benefit.

@@ -61,7 +61,7 @@ After writing `data-break-*` attributes, `addBreakAttributes()` in `breaks.js` r
 
 - `page-templates.css:67` — `.column-break { break-after: column }` → dead. No column break ever fires through this rule. The structural `.col` div approach in `index.ts` is the correct workaround.
 - `page-templates.css:88–90` — `.page h2, .page h3 { break-after: avoid }` → **active** as of vendored Paged.js PATCH-1. The chunker's element-level path (checking `node.dataset.previousBreakAfter === "avoid"` at lines 1937–1938) always functioned. PATCH-1 additionally forwards `avoid` to the page model so custom `afterPageLayout` handlers also see it.
-- Any `break-before: recto` or `break-before: verso` in author CSS → dead. Use `RectoChapterHandler` (DOM injection via `afterRendered()`) instead.
+- Any `break-before: recto` or `break-before: verso` in author CSS → dead. Insert `@page-break` manually before a chapter if it lands on the wrong side after reviewing output.
 
 ### 1.4 `break-before` on First Child is Silently Dropped
 
