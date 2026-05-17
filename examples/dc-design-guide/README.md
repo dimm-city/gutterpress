@@ -132,21 +132,26 @@ markdown source during the build step and emits structured HTML.
 | `@outcome` | Five-rung d20 outcome ladder | Crit / Hit / Mixed / Miss / Catastrophe table |
 | `@chapter-opener C.N` | Chapter number badge | Opener spread chapter number for non-specialty chapters |
 
-### Remaining migration work
+### Container syntax removed (2026-05-17)
 
-These authoring patterns still have migration work remaining in older
-container-heavy field-guide source:
+`:::name ... :::` block container syntax was fully removed from print-md
+core. The DC `@marker` family is the canonical author surface. See
+[docs/migrations/2026-05-removing-container-syntax.md](../../docs/migrations/2026-05-removing-container-syntax.md)
+for the full mapping. Quick reference:
 
-| Current syntax | Canonical replacement path |
+| Old syntax | Replacement |
 |---|---|
-| `:::sidebar` / `:::wrapper {.dc-sidebar}` | `@sidebar` |
-| `:::wrapper {.dc-sidebar-box}` | `@sidebar-box` |
+| `:::sidebar` | `@sidebar` |
+| `:::sidebar-box` | `@sidebar-box` |
 | `:::procedure` | `@procedure` |
-| `:::wrapper {.dc-definition-block}` | `@definition` |
-| `:::pull-quote` / `:::wrapper {.dc-pullquote}` | `> [!PULLQUOTE]` |
-| `:::wrapper {.two-column...}` / `:::wrapper {.two-column-list}` | `@section .two-column ...` |
-| `:::lede` | Keep `:::lede` for now; no shipped `@lede` macro yet |
-| `:::three-column` | `@three-column` |
+| `:::definition` | `@definition` |
+| `:::pull-quote` | `> [!PULLQUOTE]` (alerts plugin) |
+| `:::two-column` | `@section .two-column` |
+| `:::three-column` | `@section .three-column` |
+| `:::lede` | `@lede` |
+| `:::callout` | `@callout` or `> [!NOTE]` |
+| `:::dc-specialty` | `@specialty` |
+| `:::learning-path` | `@learning-path` |
 
 Note: `@spread` is still available for real two-page spread layouts, but the
 choose-specialty catalog no longer uses a dedicated spread wrapper. That grid is

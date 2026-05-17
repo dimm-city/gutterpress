@@ -14,18 +14,18 @@ Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
 
 | Syntax | Effect | Notes |
 |--------|--------|-------|
-| `:::two-column` … `:::` | Two equal columns with column rule | H1/H2 span both cols; H3/H4 flow inside |
-| `:::three-column` … `:::` | Three narrow columns | Best for short reference entries |
+| `@section .two-column` … `@end-section` | Two equal columns with column rule | H1/H2 span both cols; H3/H4 flow inside |
+| `@section .three-column` … `@end-section` | Three narrow columns | Best for short reference entries |
 | `@sidebar` … `@end-sidebar` | Right-floated aside at 38% width | Emits `.dc-sidebar`; add `class="inset"` for full-height page-inset treatment |
-| `---{.column-break}` | Force next column (no space before `{`) | Use inside `:::two-column` / `:::three-column` |
+| `@column-break` | Force next column | Use inside `@section .two-column` / `.three-column` |
 | `![]{.dc-img-float-right}` | Float image right, 44% width | Text wraps left |
 | `![]{.dc-img-float-left}` | Float image left, 44% width | Text wraps right |
-| `:::container {.pmd-no-break}` | Prevent block splitting across pages | — |
+| `@section .pmd-no-break` | Prevent block splitting across pages | — |
 | `## Heading {.pmd-break-before}` | Force new page before element | — |
 
 @section .two-column
 
-**Two-column behavior:** text fills the left column top-to-bottom and overflows right automatically. A two-column block can break across pages — wrap in `:::container` to keep it together.
+**Two-column behavior:** text fills the left column top-to-bottom and overflows right automatically. A two-column block can break across pages — wrap in `@section .pmd-no-break` to keep it together.
 
 **Image float behavior:** floated image occupies 44% of column width; after the float clears, text returns to full width. Add a blank line below the float to clear it explicitly if following content crowds the image.
 
@@ -36,15 +36,15 @@ Multi-column splits, floated art, sidebar wrappers, and page-break utilities.
 @section .two-column
 
 ```markdown
-@two-column
+@section .two-column
 
 Left column content.
 
----{.column-break}
+@column-break
 
 Right column content.
 
-@end-two-column
+@end-section
 ```
 
 ```markdown

@@ -139,12 +139,15 @@ These run automatically before any user plugins and don't need to be declared:
 
 | Plugin                 | Purpose                                                |
 | ---------------------- | ------------------------------------------------------ |
-| `markdown-it-attrs`    | `{#id .class key=val}` attribute syntax                |
+| `markdown-it-attrs`    | `{#id .class key=val}` inline attribute syntax         |
 | `markdown-it-footnote` | `[^1]` footnote syntax                                 |
-| `markdown-it-container`| `:::name ... :::` block containers                     |
 | `markdown-it-paged`    | `@page`, `@section`, `@column-break` layout markers    |
 | DC alerts plugin       | `> [!NOTE]` GitHub-style alerts                        |
 | Source map plugin      | `data-source-line` attributes for error reporting      |
+
+> The `markdown-it-container` (`:::name ... :::`) block syntax was removed
+> 2026-05-17. Use `@`-prefixed markers instead — see
+> [docs/migrations/2026-05-removing-container-syntax.md](migrations/2026-05-removing-container-syntax.md).
 
 ---
 

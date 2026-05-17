@@ -72,7 +72,6 @@ describe("Check Registry", () => {
     expect(sourceIds).toContain("source.markdownlint");
     expect(sourceIds).toContain("source.htmlhint");
     expect(sourceIds).toContain("source.stylelint");
-    expect(sourceIds).toContain("source.callout-validation");
     expect(sourceIds).toContain("source.links.local-refs");
     expect(sourceIds).toContain("source.accessibility.alt-text");
     expect(sourceIds).toContain("source.accessibility.heading-order");
@@ -161,8 +160,9 @@ describe("Check Registry", () => {
 
   test("total registered check count", () => {
     const all = getAllCheckIds();
-    // 15 pdf + 7 source + 8 asset + 4 heuristic = 34
-    expect(all.length).toBe(34);
+    // 15 pdf + 6 source + 8 asset + 4 heuristic = 33
+    // (source.callout-validation removed with ::: container syntax, 2026-05-17)
+    expect(all.length).toBe(33);
   });
 });
 
@@ -383,7 +383,8 @@ describe("Manifest validate section", () => {
       enabled: true,
       severity: "error",
     });
-    expect(config.validate.source.allowedCallouts).toContain("sidebar");
+    // allowedCallouts deprecated (::: syntax removed 2026-05-17) — default is now empty
+    expect(config.validate.source.allowedCallouts).toEqual([]);
     expect(config.validate.assets.maxImageSize).toBe(10_000_000);
     expect(config.validate.pdf.forbidTransparency).toBe(true);
     expect(config.validate.heuristics.textDensityRange.min).toBe(200);
@@ -473,55 +474,6 @@ describe("Manifest validate section", () => {
 // ---------------------------------------------------------------------------
 // Individual check unit tests (no external tools needed)
 // ---------------------------------------------------------------------------
-
-describe("Callout validation check", () => {
-  test("returns empty when no markdownFiles", async () => {
-    const check = getCheckById("source.callout-validation")!;
-    const ctx = makeCtx({ markdownFiles: [] });
-    const results = await check.run(ctx);
-    expect(results).toHaveLength(0);
-  });
-
-  test("returns empty when allowedCallouts is empty", async () => {
-    const config = makeConfig();
-    config.validate.source.allowedCallouts = [];
-    const check = getCheckById("source.callout-validation")!;
-    const ctx = makeCtx({ config, markdownFiles: ["/tmp/test.md"] });
-    const results = await check.run(ctx);
-    expect(results).toHaveLength(0);
-  });
-
-  test("accepts builtin containers and 4-colon wrapper syntax", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-callouts-"));
-    try {
-      const file = join(dir, "containers.md");
-      await writeFile(
-        file,
-        [
-          ":::lede",
-          "Intro text",
-          ":::",
-          "",
-          ":::item",
-          "Card body",
-          ":::",
-          "",
-          ":::: wrapper {.grid}",
-          "Wrapped content",
-          "::::",
-        ].join("\n")
-      );
-
-      const check = getCheckById("source.callout-validation")!;
-      const ctx = makeCtx({ markdownFiles: [file] });
-      const results = await check.run(ctx);
-
-      expect(results).toHaveLength(0);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-});
 
 describe("Local markdown refs check", () => {
   test("reports missing local link and image refs", async () => {

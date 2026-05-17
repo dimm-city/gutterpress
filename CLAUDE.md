@@ -89,6 +89,12 @@ Plugin loader (`src/lib/markdown/plugins.ts`) fails fast on any load error
 with messages identifying the offending manifest entry; it does NOT auto-install
 missing npm packages. Authoring guide lives in `docs/plugins.md`.
 
+**Block container syntax** (`:::name ... :::` via `markdown-it-container`) was
+removed 2026-05-17. The DC plugin's `@marker` family (`@page`, `@section`,
+`@sidebar`, `@callout`, etc.) is the canonical author surface for wrapped
+blocks. See `docs/migrations/2026-05-removing-container-syntax.md` for the
+mapping. Do NOT reintroduce `markdown-it-container` to core.
+
 ### 6. `markdown-it-paged` owns its full contract
 
 The inlined `src/lib/markdown/markdown-it-paged.js` owns: markers → tokens →

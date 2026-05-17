@@ -641,103 +641,37 @@ print-md preview --verbose
 
 ## Advanced Features
 
-### TTRPG Extensions
+### Block markers (@page / @section / @sidebar / etc.)
 
-Enable TTRPG-specific directives:
+print-md uses `@`-prefixed markers for paged-media layout and DC content blocks. Markers open a wrapped block; matching `@end-X` (or `@break` / `@end-section`) closes it. Attribute grammar is `name .class #id key=val key="quoted val"`.
 
-```yaml
-# manifest.yaml
-plugins:
-  - ttrpg
-```
-
-**Stat Blocks:**
 ```markdown
-:::statblock
-### Goblin Scout
-*Small humanoid (goblinoid), neutral evil*
+@page .full-page
 
-**Armor Class** 15 (leather armor)
-**Hit Points** 7 (2d6)
-**Speed** 30 ft.
+@section .two-column
 
-| STR | DEX | CON | INT | WIS | CHA |
-|:---:|:---:|:---:|:---:|:---:|:---:|
-| 8   | 14  | 10  | 10  | 8   | 8   |
-:::
+Left column content fills first.
+
+@column-break
+
+Right column content.
+
+@end-section
+
+@sidebar
+**Aside:** related context.
+@end-sidebar
 ```
 
-**Ability Blocks:**
-```markdown
-:::ability
-### Sneak Attack
-Once per turn, deal an extra 1d6 damage when you hit with an attack.
-:::
-```
+See the [DC design guide](../examples/dc-design-guide/) for the canonical reference and `docs/markdown-extension-alignment-review.md` for a complete marker catalog.
 
-**Dice Notation:**
-```markdown
-Roll 2d6+3 for damage
-Make a DC 15 Wisdom saving throw
-```
-
-### Dimm City Extensions
-
-Enable Dimm City-specific syntax:
-
-```yaml
-# manifest.yaml
-plugins:
-  - dimm-city
-```
-
-**District Badges:**
-```markdown
-@district{The Warrens}
-```
-
-**Roll Prompts:**
-```markdown
-@roll{Investigation DC 15}
-```
-
-### Container Syntax
-
-Container blocks are built-in to print-md. No plugin configuration is needed.
-
-**Available Containers:**
-```markdown
-:::warning
-This is a warning callout.
-:::
-
-:::info
-This is an informational callout.
-:::
-
-:::page
-Force content onto its own page.
-:::
-
-:::ability
-Format as ability block.
-:::
-```
+> `:::name ... :::` block container syntax was removed 2026-05-17. See [docs/migrations/2026-05-removing-container-syntax.md](migrations/2026-05-removing-container-syntax.md) for the migration mapping.
 
 ### Plugin System
 
-print-md's plugin system allows you to extend markdown syntax with custom features. Plugins can add new markdown syntax, modify rendering, and inject CSS styles automatically.
+print-md uses standard [markdown-it](https://markdown-it.github.io/) plugins. Any plugin published to npm with the `(md, options) => void` signature works without modification.
 
-#### Using Built-in Plugins
-
-Enable built-in plugins in your manifest:
-
-```yaml
-# manifest.yaml
-plugins:
-  - ttrpg      # TTRPG features (stat blocks, dice notation, cross-refs)
-  - dimm-city  # Dimm City game syntax (district badges, roll prompts)
-```
+See **[docs/plugins.md](plugins.md)** for the full author guide. Quick reference:
 
 #### Creating Local Plugins
 
@@ -941,7 +875,6 @@ print-md build ./my-book --format pdfx
 validate:
   source:
     markdownlint: ".markdownlint.yaml"  # Use your existing config
-    allowedCallouts: ["sidebar", "ability", "specialty"]
   assets:
     maxImageSize: 10000000              # 10MB per image
     minImageDpi: 300
@@ -949,7 +882,7 @@ validate:
     forbidTransparency: true
 ```
 
-The validation system runs 31 checks across four categories: source (markdownlint, htmlhint, stylelint, callout types), PDF (structure, page size, colors, fonts, ink coverage, transparency, bleed), assets (image size/DPI/color space, font refs), and heuristics (text density, layout analysis).
+The validation system runs 33 checks across four categories: source (markdownlint, htmlhint, stylelint, link integrity, accessibility), PDF (structure, page size, colors, fonts, ink coverage, transparency, bleed), assets (image size/DPI/color space, font refs), and heuristics (text density, layout analysis).
 
 Missing external tools (e.g. `qpdf`, `identify`) are detected automatically before checks run. You'll see a warning listing which checks are skipped, while all other checks proceed normally. Warnings are suppressed for checks you've explicitly disabled in your manifest.
 

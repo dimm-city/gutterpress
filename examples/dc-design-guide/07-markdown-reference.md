@@ -97,14 +97,14 @@ The Dimm City plugin (`dimm-city-plugin.js`) extends the `@` marker system with 
 
 @page
 
-## Container Blocks
+## Marker Blocks
 
-Triple-colon fences wrap content in a styled `<div>`. The word after `:::` sets the container type; `{.class}` applies additional classes.
+`@`-prefixed markers open a wrapped block; matching `@end-X` (or `@break` / `@end-section`) closes it. Attributes use the same grammar as `@page` / `@section`: `name .class #id key=val key="quoted val"`.
 
-| Container | Effect |
-|-----------|--------|
-| `@two-column` … `@end-two-column` | Two equal CSS columns |
-| `@three-column` … `@end-three-column` | Three narrow columns — best for short reference entries |
+| Marker | Effect |
+|--------|--------|
+| `@section .two-column` … `@end-section` | Two equal CSS columns (paged-media native) |
+| `@section .three-column` … `@end-section` | Three narrow columns — best for short reference entries |
 | `@sidebar` … `@end-sidebar` | Right-floated aside at 38% width |
 | `@callout variant="…"` … `@end-callout` | Styled alert box (block-level, supports multi-paragraph) |
 | `@dm-note` … `@end-dm-note` | Dream Master note box (multi-paragraph) |
@@ -123,11 +123,11 @@ Triple-colon fences wrap content in a styled `<div>`. The word after `:::` sets 
 | `gear` | `dc-gear-callout` | Gear |
 
 ```markdown
-@two-column
+@section .two-column
 Left column content.
----{.column-break}
+@column-break
 Right column content.
-@end-two-column
+@end-section
 
 @sidebar class="inset"
 **Sidebar note.** Supplementary content that doesn't interrupt the body flow.

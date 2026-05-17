@@ -1,5 +1,12 @@
 # Plugin System Design Plan
 
+> **Superseded (2026-05-17):** This document is the historical design plan
+> from early prototyping. The shipping plugin system is documented in
+> **[docs/plugins.md](plugins.md)**. The `:::name ... :::` container syntax
+> referenced throughout this document was removed in the
+> [2026-05 migration](migrations/2026-05-removing-container-syntax.md).
+> Kept for archaeology only.
+
 ## ✅ Implementation Status
 
 **Status:** Phase 1 Complete (2025-01-19)

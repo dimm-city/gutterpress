@@ -55,7 +55,9 @@ export const DTRPG_PRESET: VendorPreset = {
       markdownlint: null,
       htmlhint: null,
       stylelint: null,
-      allowedCallouts: ["sidebar", "ability", "dc-specialty", "container", "aug"],
+      // Deprecated: ::: container syntax was removed 2026-05-17. Field kept
+      // so older manifests still parse, but unused. See docs/migrations/2026-05-removing-container-syntax.md
+      allowedCallouts: [],
     },
     assets: {
       maxImageSize: 10_000_000,

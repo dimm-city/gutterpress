@@ -4,22 +4,24 @@ import { join } from "node:path";
 import MarkdownIt from "markdown-it";
 import { BOOK_HTML_FILENAME } from "../viewer";
 import markdownItAttrs from "markdown-it-attrs";
-import markdownItContainer from "markdown-it-container";
 import markdownItFootnote from "markdown-it-footnote";
 import markdownItPaged, { PAGED_CSS } from "./markdown-it-paged.js";
 import markdownItSourceMap from "markdown-it-source-map";
-import {
-  renderContainerOpen,
-  createNamedContainer,
-  createSidebarContainer,
-} from "./containers";
 import { dcAlertsPlugin } from "./alerts";
 import { fixImagePaths } from "./images";
 import type { LoadedPlugin } from "./plugins";
 import { applyPlugins } from "./plugins";
 
 /**
- * Create a fully-configured MarkdownIt instance with all container plugins.
+ * Create a fully-configured MarkdownIt instance.
+ *
+ * Built-in pipeline (runs before any user plugins):
+ *   dcAlertsPlugin → markdown-it-attrs → markdown-it-footnote
+ *   → markdown-it-source-map → markdown-it-paged
+ *
+ * Block container syntax (`:::name ... :::`) was removed 2026-05-17 in favor
+ * of the @marker family. See docs/migrations/2026-05-removing-container-syntax.md
+ * for the migration mapping.
  *
  * @param customPlugins - Optional array of custom plugins to load
  */
@@ -47,30 +49,6 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   md.use(unwrap(markdownItFootnote));
   md.use(unwrap(markdownItSourceMap));
   md.use(unwrap(markdownItPaged));
-
-  // Removed: :::page (deprecated — use @page), :::wrapper (use named macros),
-  // :::ability / :::ability-continued (use @skill / @continue),
-  // :::aug (no replacement), :::lede (use @lede macro)
-  md.use(markdownItContainer, "sidebar", createSidebarContainer(md));
-  md.use(markdownItContainer, "dc-specialty", createNamedContainer("dc-specialty"));
-  md.use(
-    markdownItContainer,
-    "learning-path",
-    createNamedContainer("learning-path")
-  );
-  md.use(markdownItContainer, "container", createNamedContainer("container"));
-  md.use(markdownItContainer, "two-column", createNamedContainer("two-column"));
-  md.use(markdownItContainer, "three-column", createNamedContainer("three-column"));
-  /* specific callout variants must be registered before the generic "callout"
-     because markdown-it-container tests in order and "^callout\b" matches all variants */
-  md.use(markdownItContainer, "callout-note", createNamedContainer("callout-note"));
-  md.use(markdownItContainer, "callout-warning", createNamedContainer("callout-warning"));
-  md.use(markdownItContainer, "callout-caution", createNamedContainer("callout-caution"));
-  md.use(markdownItContainer, "callout-tip", createNamedContainer("callout-tip"));
-  md.use(markdownItContainer, "callout", createNamedContainer("callout"));
-  md.use(markdownItContainer, "pull-quote", createNamedContainer("pull-quote"));
-  md.use(markdownItContainer, "procedure", createNamedContainer("procedure"));
-  md.use(markdownItContainer, "item", createNamedContainer("item"));
 
   // Apply custom plugins from manifest
   if (customPlugins && customPlugins.length > 0) {

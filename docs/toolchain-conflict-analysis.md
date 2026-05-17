@@ -1,5 +1,11 @@
 # Toolchain Conflict Analysis: Paged.js × markdown-it-paged × print-md
 
+> **Superseded note (2026-05-17):** Sections of this document describing
+> `:::name ... :::` container syntax are historical. That syntax was removed
+> from print-md core on 2026-05-17 — see
+> [docs/migrations/2026-05-removing-container-syntax.md](migrations/2026-05-removing-container-syntax.md).
+> The architectural analysis of `markdown-it-paged` × Paged.js still applies.
+
 **Generated:** 2026-05-17  
 **Scope:** Full stack analysis — Paged.js v0.4.x internals, the inlined `markdown-it-paged` plugin (`src/lib/markdown/markdown-it-paged.js`), and the DC Design Guide CSS architecture.
 

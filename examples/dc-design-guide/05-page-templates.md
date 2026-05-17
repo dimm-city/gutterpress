@@ -135,20 +135,20 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 
 @page .full-page
 
-:::wrapper {.specialty-art}
+@section .specialty-art
 
 ![Character art](https://placehold.co/1349x842/png?text=Character+Art)
 
-@break
+@end-section
 ```
 
-**Markdown `:::wrapper` equivalents** — the specialty grid is now page-template-owned, while the card items remain `:::wrapper` blocks:
+**Section/macro equivalents** — the specialty grid is now page-template-owned, while card content uses the DC plugin's `@` macros:
 
-| Shorthand | Purpose |
-|-----------|---------|
-| `:::lede` | Intro panel — prose and class tag chips |
-| `:::wrapper {.specialty-art}` | Full-bleed art plate (right page) |
-| `:::wrapper {.dc-specialty-card .augmerc}` | Individual card — name is a layout hook only, not a palette modifier |
+| Marker | Purpose |
+|--------|---------|
+| `@lede` | Intro panel — prose and class tag chips |
+| `@section .specialty-art` | Full-bleed art plate (right page) |
+| `@specialty .augmerc` | Wraps cards in a specialty palette; child cards inherit shape and accent |
 
 ---
 
