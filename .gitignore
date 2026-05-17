@@ -43,6 +43,9 @@ dist/
 .references/
 examples/field-guide/
 tests/
+# Integration fixtures and scripts are committed
+!tests/integration/
+!tests/integration/**
 .reviews/
 *.zip
 *.skill

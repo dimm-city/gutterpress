@@ -166,13 +166,21 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+  verify-windows:
+    name: Verify Windows binary (render smoke)
+    needs: [version, build-binaries]
+    uses: ./.github/workflows/windows-install-test.yml
+    with:
+      script_ref: ${{ needs.version.outputs.tag }}
+
   github-release:
     name: Create GitHub Release
-    needs: [version, build-binaries, publish-npm]
+    needs: [version, build-binaries, publish-npm, verify-windows]
     if: |
       always() &&
       needs.version.result == 'success' &&
       needs.build-binaries.result == 'success' &&
+      needs.verify-windows.result == 'success' &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:

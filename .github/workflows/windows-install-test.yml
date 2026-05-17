@@ -11,6 +11,8 @@ on:
   pull_request:
     paths:
       - 'scripts/install.ps1'
+      - 'tests/integration/**'
+      - 'src/lib/embedded-assets.ts'
       - '.github/workflows/windows-install-test.yml'
   workflow_call:
     inputs:
@@ -74,6 +76,55 @@ jobs:
       - name: Verify installation
         shell: pwsh
         run: ./tests/integration/run-install-test.ps1 -SkipInstall
+
+      - name: Build HTML output from smoke fixture
+        shell: pwsh
+        run: |
+          # Use the installed binary if present, fall back to the freshly-built exe.
+          $installed = "$env:LOCALAPPDATA\Programs\print-md\print-md.exe"
+          $workspace = "${{ github.workspace }}\print-md-windows-x64.exe"
+          $exe = if (Test-Path $installed) { $installed } else { $workspace }
+          Write-Host "Binary: $exe"
+
+          $fixtureDir = "${{ github.workspace }}\tests\integration\fixtures\smoke"
+          $outDir = "${{ runner.temp }}\smoke-out"
+          Write-Host "Building: $exe build $fixtureDir --format html --out $outDir"
+          & $exe build $fixtureDir --format html --out $outDir
+          if ($LASTEXITCODE -ne 0) { throw "print-md build --format html exited $LASTEXITCODE" }
+
+          # Verify all expected output files are present.
+          $expected = @("book.html", "index.html", "vendor\paged.polyfill.js", "preview\scripts\pagedjs-interface.js")
+          foreach ($f in $expected) {
+            $path = Join-Path $outDir $f
+            if (-not (Test-Path $path)) { throw "Expected output missing: $path" }
+            Write-Host "OK: $f"
+          }
+
+      - name: Verify Paged.js renders (smoke)
+        shell: pwsh
+        run: |
+          # Install playwright (library only — no browser download; uses system Chrome).
+          $pwDir = "${{ runner.temp }}\pw"
+          New-Item -ItemType Directory -Force -Path $pwDir | Out-Null
+          Set-Location $pwDir
+          npm init -y | Out-Null
+          npm install playwright 2>&1 | Where-Object { $_ -notmatch "^npm warn" }
+
+          # Find system Chrome — present on all windows-latest runners.
+          $chromePaths = @(
+            "C:\Program Files\Google\Chrome\Application\chrome.exe",
+            "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
+          )
+          $chrome = $chromePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $chrome) { throw "No system Chrome found on this runner" }
+          Write-Host "Chrome: $chrome"
+
+          $outDir = "${{ runner.temp }}\smoke-out"
+          $script = "${{ github.workspace }}\tests\integration\paged-smoke.mjs"
+          Set-Location $pwDir
+          node $script $outDir --chrome-path $chrome
+          if ($LASTEXITCODE -ne 0) { throw "Paged.js render smoke test failed — see output above" }
 
       - name: Upload debug logs on failure
         if: failure()
