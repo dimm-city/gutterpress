@@ -152,7 +152,9 @@
 
 /* ── PAGE TEMPLATE: TWO-COLUMN ─────────────────────────────────────────────── */
 /* Standard two-column body pages. column-fill: balance gives equal columns.
-   Author applies via @page .two-column in markdown. */
+   Author applies via @page .two-column or @section .two-column in markdown.
+   Note: balance overrides break-after:column hints. For explicit break control
+   use column-fill:auto scoped to the specific page type (see .citizen-file). */
 .page.two-column,
 .two-column {
   columns: 2;
@@ -160,9 +162,8 @@
   column-fill: balance;
 }
 
-/* Citizen-file character sheet: use auto-fill so @column-break markers are
-   honored exactly. balance mode overrides break-after:column hints by
-   redistributing content to equalize heights. */
+/* Citizen-file character sheet: explicit @column-break must be honored exactly.
+   balance mode redistributes content to equalize heights, overriding the break. */
 .page.citizen-file .two-column {
   column-fill: auto;
 }
