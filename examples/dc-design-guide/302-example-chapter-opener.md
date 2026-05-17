@@ -96,7 +96,7 @@ Before reputation comes recognition. Before recognition comes a glance. Dimmers 
 
 @page .citizen-file .chapter-01
 
-@section .three-column
+@section .two-column
 
 #### What's Yr Handle?
 
@@ -115,6 +115,20 @@ She/her, he/him, they/them, or something else entirely.
 Do your best to address your fellow Dreamers as they wish to be addressed.
 
 Names and pronouns matter when life itself is constantly trying to strip both away.
+
+#### Species
+
+In Dimm City, you're not human—you never were. Every Dreamer is an anthropomorphic creature: a splice of animal instinct, street survival, and whatever the corps, gods, or bad luck bolted on afterward.
+
+Choose a species that fits your vibe. Species carries no mechanical weight — it shapes your look, your voice, and how Dimm City reads you. The city has seen it all: cats and rabbits, rats and ravens, wolves and worse things with no clean name left.
+
+#### Origins
+
+Where did you start, and how far is that from where you are now?
+
+Origins tell the Dream Master how your character fits the city's grid. A corporate-born Dreamer walks alleys differently than someone who grew up in the Flats. They know different people, owe different debts, and have different reasons to still be breathing.
+
+Choose one: **EntD rat**, **Corp exile**, **District-born**, **Offworld arrival**, **Street-raised**, or **Something the city made and hasn't claimed yet**.
 
 @column-break
 
@@ -144,21 +158,5 @@ Size carries no mechanical advantage. It's a narrative choice that shapes how yo
 |  |**Small:** About 1–1.5 meters tall. You fit where the city pinches.|
 |  |**Medium:** About 1.6–2.5 meters tall. The city is built for bodies like yours.|
 |  |**Big:** Over 2.5 to 4 meters tall. Your presence fills rooms and draws eyes.|
-
-@column-break
-
-#### Species
-
-In Dimm City, you're not human—you never were. Every Dreamer is an anthropomorphic creature: a splice of animal instinct, street survival, and whatever the corps, gods, or bad luck bolted on afterward.
-
-Choose a species that fits your vibe. Species carries no mechanical weight — it shapes your look, your voice, and how Dimm City reads you. The city has seen it all: cats and rabbits, rats and ravens, wolves and worse things with no clean name left.
-
-#### Origins
-
-Where did you start, and how far is that from where you are now?
-
-Origins tell the Dream Master how your character fits the city's grid. A corporate-born Dreamer walks alleys differently than someone who grew up in the Flats. They know different people, owe different debts, and have different reasons to still be breathing.
-
-Choose one: **EntD rat**, **Corp exile**, **District-born**, **Offworld arrival**, **Street-raised**, or **Something the city made and hasn't claimed yet**.
 
 @end-section

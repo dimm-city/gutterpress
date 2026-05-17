@@ -385,8 +385,6 @@
 }
 
 .page.citizen-file p {
-  font-size: 8pt;
-  line-height: 1.4;
   color: var(--ink-smoke);
   margin-bottom: 0.03in;
 }
@@ -421,7 +419,7 @@
   color: transparent;
 }
 
-/* Three-column section uses auto-fill so @column-break markers are honored */
-.page.citizen-file .section.three-column {
+/* Two-column section uses auto-fill so @column-break marker is honored exactly */
+.page.citizen-file .section.two-column {
   column-fill: auto;
 }
