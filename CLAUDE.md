@@ -67,6 +67,37 @@ pattern are the **canonical** way to ship the viewer chrome (HTML/CSS/JS)
 inside the binary. This pattern works under `bun build --compile` and should
 not be rewritten.
 
+### 5. Plugins are plain markdown-it plugins
+
+User plugins loaded via the manifest follow the standard `(md, options) => void`
+markdown-it signature. Do **not** introduce a print-md-specific plugin API
+(no host-injected `ctx` arg, no required base class, no custom hooks).
+Reasons:
+
+  1. Any of the hundreds of markdown-it plugins on npm Just Works in print-md.
+  2. Plugin authors cannot reliably import from `@dimm-city/print-md` because
+     the compiled binary has no `node_modules` for plugin code to resolve
+     against. If a plugin needs an internal helper, it must inline-copy it.
+     See `examples/dc-design-guide/plugins/dimm-city-plugin.js` for an
+     example: its marker parser is an inlined copy of `markdown-it-paged`'s
+     `parseMarkerLine`, not an import.
+  3. `src/index.ts` re-exports type-only definitions (`PrintMdPlugin`,
+     `PrintMdPluginMetadata`, `PrintMdPluginExport`) for TypeScript plugin
+     authors. Types only — zero runtime coupling.
+
+Plugin loader (`src/lib/markdown/plugins.ts`) fails fast on any load error
+with messages identifying the offending manifest entry; it does NOT auto-install
+missing npm packages. Authoring guide lives in `docs/plugins.md`.
+
+### 6. `markdown-it-paged` owns its full contract
+
+The inlined `src/lib/markdown/markdown-it-paged.js` owns: markers → tokens →
+HTML emission → the supporting CSS (`PAGED_CSS` named export). `index.ts`
+imports the CSS and injects it; it does NOT override the plugin's renderer
+rules or maintain its own layout state. Per-render state lives on
+`env.__colSplitDepth`, not a module-level closure, so a thrown render can't
+leak depth state into the next chapter.
+
 ## DC Design Guide
 
 The `examples/dc-design-guide/` folder is the **canonical design reference** for
