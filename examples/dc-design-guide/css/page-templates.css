@@ -160,6 +160,13 @@
   column-fill: balance;
 }
 
+/* Citizen-file character sheet: use auto-fill so @column-break markers are
+   honored exactly. balance mode overrides break-after:column hints by
+   redistributing content to equalize heights. */
+.page.citizen-file .two-column {
+  column-fill: auto;
+}
+
 
 /* ── PAGE TEMPLATE: THREE-COLUMN (NEW) ─────────────────────────────────────── */
 /* Three narrow columns. Best for short reference entries, gear tables.

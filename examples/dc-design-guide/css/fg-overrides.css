@@ -314,7 +314,6 @@
   width: 2.25in;
   height: 2.75in;
   object-fit: cover;
-  margin: 0 0 var(--space-sm) var(--space-md);
 }
 
 /* Front matter art */
