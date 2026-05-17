@@ -61,12 +61,12 @@
 }
 
 /* ── COLUMN BREAK MARKER ──────────────────────────────────────────────────── */
-.column-break,
-.md-column-break {
+.column-break {
   color: var(--hud-magenta);
   visibility: hidden;
   break-after: column;
 }
+
 
 /* ── FULL-PAGE GEOMETRY ────────────────────────────────────────────────────── */
 /* Empty full-bleed pages need explicit geometry so Paged.js allocates a page. */
@@ -153,9 +153,7 @@
 
 /* ── PAGE TEMPLATE: TWO-COLUMN ─────────────────────────────────────────────── */
 /* Standard two-column body pages. column-fill: balance gives equal columns.
-   Author applies via @page .two-column or @section .two-column in markdown.
-   Note: balance overrides break-after:column hints. For explicit break control
-   use column-fill:auto scoped to the specific page type (see .citizen-file). */
+   Author applies via @page .two-column or @section .two-column in markdown. */
 .page.two-column,
 .two-column {
   columns: 2;
@@ -163,18 +161,20 @@
   column-fill: balance;
 }
 
-/* Citizen-file character sheet: explicit @column-break must be honored exactly.
-   balance mode redistributes content to equalize heights, overriding the break. */
-.page.citizen-file .two-column {
-  column-fill: auto;
+/* .col-split: opt-in explicit column placement for @section.two-column blocks.
+   Paged.js strips break-after:column from CSS, so @column-break cannot create CSS
+   column breaks. When .col-split is present, the renderer wraps content in .col divs
+   and @column-break generates the closing/opening boundary. Flex lays them side-by-side.
+   Sections without .col-split keep CSS multi-column balance behavior. */
+.section.col-split {
+  display: flex;
+  column-gap: var(--gutter);
+}
+.section.col-split .col {
+  flex: 1;
+  min-width: 0;
 }
 
-/* Paged.js zeroes out .md-column-break (height:0) so break-after:column never
-   fires on the marker itself. Instead, put break-before:column on the h4 that
-   immediately follows the marker — a non-zero element that CAN trigger a break. */
-.page.citizen-file .md-column-break + h4 {
-  break-before: column;
-}
 
 
 /* ── PAGE TEMPLATE: THREE-COLUMN (NEW) ─────────────────────────────────────── */

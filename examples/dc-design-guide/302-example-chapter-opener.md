@@ -96,7 +96,7 @@ Before reputation comes recognition. Before recognition comes a glance. Dimmers 
 
 @page .citizen-file .chapter-01
 
-@section .two-column
+@section .two-column .col-split
 
 #### What's Yr Handle?
 

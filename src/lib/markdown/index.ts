@@ -82,10 +82,56 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   // then treats all subsequent content as children of that unclosed div, so @end-section's
   // </div> closes the break div instead of the section div, breaking @section/@end-section.
   // Override the renderers to output a properly self-closed empty div.
+  // @column-break / @section column-split:
+  // Paged.js strips all break-after CSS during preprocessing (converting only page/recto/verso
+  // to data-break-after attributes; "column" is silently discarded). So CSS break-after:column
+  // never reaches the browser — @column-break inside @section containers does nothing via CSS.
+  //
+  // Fix: author opts in by adding .col-split class to the @section. The renderer then generates
+  // explicit .col wrapper divs so @column-break becomes the closing/opening tag boundary.
+  // @section .two-column (without .col-split) continues to use CSS multi-column balance.
+  // @section .two-column .col-split uses flex with explicit column placement.
+  let colSplitDepth = 0;
+
+  md.renderer.rules.layout_section_open = (tokens, idx, opts, _env, self) => {
+    const token = tokens[idx]!;
+    const cls = token.attrGet("class") ?? "";
+
+    if (cls.includes("col-split")) {
+      // Look ahead for layout_column_break before the matching section_close
+      let depth = 1;
+      let hasBreak = false;
+      for (let i = idx + 1; i < tokens.length; i++) {
+        const t = tokens[i]!;
+        if (t.type === "layout_section_open") depth++;
+        if (t.type === "layout_section_close") { depth--; if (depth === 0) break; }
+        if (t.type === "layout_column_break" && depth === 1) { hasBreak = true; break; }
+      }
+      if (hasBreak) {
+        colSplitDepth++;
+        return `<div class="${cls}"><div class="col">\n`; // cls already contains 'section col-split'
+      }
+    }
+
+    return self.renderToken(tokens, idx, opts);
+  };
+
+  md.renderer.rules.layout_section_close = (tokens, idx, opts, _env, self) => {
+    if (colSplitDepth > 0) {
+      colSplitDepth--;
+      return `</div></div>\n`;
+    }
+    return self.renderToken(tokens, idx, opts);
+  };
+
   md.renderer.rules.layout_column_break = (tokens, idx) => {
+    if (colSplitDepth > 0) {
+      return `</div><div class="col">\n`;
+    }
     const cls = tokens[idx]!.attrGet("class") ?? "md-column-break";
     return `<div class="${cls}" aria-hidden="true"></div>\n`;
   };
+
   md.renderer.rules.layout_page_break = (tokens, idx) => {
     const cls = tokens[idx]!.attrGet("class") ?? "md-page-break";
     return `<div class="${cls}" aria-hidden="true"></div>\n`;

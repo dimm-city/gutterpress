@@ -106,8 +106,6 @@ Across the table sits the Dream Master: not your boss, not your babysitter, not 
 
 They don't stop you. They don't protect you. They just make sure the pain fits the crime.
 
----
-
 @page .chapter-03
 
 ### ROLL A DIE! {#c1-rolling-the-die}
