@@ -79,20 +79,22 @@ I locked in da hack, jacked out, an leapt clean onto a passing airbus like I mea
 
 Thump is a PC created for dreams in Dimm City by an actual dreamer. Their personality, looks, vibe, equipment, and skills are all chosen by the dreamer themselves. You can do the same by filling in the blanks on a character profile to create your very own character. For many dreamers, this is one of the most exciting parts of this experience: thinking about a character you want to play and designing them for the dream to come.
 
+![Image is everything](https://placehold.co/600x400/png?text=Portrait){.fg-art-portrait}
 This chapter will guide you through all the choices you need to make to help you fill in the blanks and create a unique and interesting character. Don't worry about making mistakes or doing something wrong, just try to have fun with it and let your imagination do the work.
 
 ### Image Is Everything {#c2-first-impressions}
 
+
 Before reputation comes recognition. Before recognition comes a glance. Dimmers speed-read bodies like text: names, scars, size, and stance all scanned in a heartbeat. This section defines how you're read when the Dream first lays eyes on you.
 
-![Image is everything](https://placehold.co/600x400/png?text=Portrait){.fg-art-portrait}
-
-@page .citizen-file .chapter-01
 
 > [!VISIT]
 > **Before You Fill Anything In:**
 > Don't start with numbers. Start with a body, a vibe, and a reason you're still breathing in Dimm City. This file isn't about optimization, it's about creating a CREATUREPUNK. If a choice would make Dimm City react to you, it belongs here. If it only makes you stronger, it probably comes later.
 > Visit **dimm.city** for a form-fillable PDF version of the Citizen File.
+
+
+@page .citizen-file .chapter-01
 
 @section .two-column
 
@@ -120,6 +122,8 @@ In Dimm City, you're not human—you never were. Every Dreamer is an anthropomor
 
 Choose a species that fits your vibe. Species carries no mechanical weight — it shapes your look, your voice, and how Dimm City reads you. The city has seen it all: cats and rabbits, rats and ravens, wolves and worse things with no clean name left.
 
+@column-break
+
 #### Origins
 
 Where did you start, and how far is that from where you are now?
@@ -127,8 +131,6 @@ Where did you start, and how far is that from where you are now?
 Origins tell the Dream Master how your character fits the city's grid. A corporate-born Dreamer walks alleys differently than someone who grew up in the Flats. They know different people, owe different debts, and have different reasons to still be breathing.
 
 Choose one: **EntD rat**, **Corp exile**, **District-born**, **Offworld arrival**, **Street-raised**, or **Something the city made and hasn't claimed yet**.
-
-@column-break
 
 #### Scars, Size, and Survival
 

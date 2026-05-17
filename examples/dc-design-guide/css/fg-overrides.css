@@ -300,7 +300,7 @@
 
 /* Chapter opener fiction art — floated right so prose wraps alongside it */
 .fg-art-lil-thump {
-  float: right;
+  float: left;
   width: 1.85in;
   height: auto;
   max-height: 2.25in;
@@ -308,13 +308,13 @@
   margin: 0 0 var(--space-sm) var(--space-md);
 }
 
-/* Character portrait — full-column featured image anchoring the Citizen File intro */
+/* Character portrait — floats right, prose wraps to its left */
 .fg-art-portrait {
-  display: block;
-  width: 100%;
-  height: 3in;
+  float: right;
+  width: 2.25in;
+  height: 2.75in;
   object-fit: cover;
-  margin: var(--space-md) 0 var(--space-sm);
+  margin: 0 0 var(--space-sm) var(--space-md);
 }
 
 /* Front matter art */
