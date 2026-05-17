@@ -667,8 +667,12 @@ function onRenderingComplete(event) {
   // This ensures the iframe is at its final layout state before becoming visible —
   // no flash of wrong zoom or wrong view mode during the fade-in.
   injectViewerStyles(getIframeWindow());
-  setViewMode("single");
-  setZoom("fit-width");
+  
+  // Set single view mode and fit-width zoom on small screens
+  if (window.innerWidth < 1024) {
+    setViewMode("single");
+    setZoom("fit-width");
+  }
 
   // Update document title and page counter
   updateDocumentTitle();

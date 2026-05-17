@@ -6,7 +6,7 @@ import { BOOK_HTML_FILENAME } from "../viewer";
 import markdownItAttrs from "markdown-it-attrs";
 import markdownItContainer from "markdown-it-container";
 import markdownItFootnote from "markdown-it-footnote";
-import markdownItPaged from "./markdown-it-paged.js";
+import markdownItPaged, { PAGED_CSS } from "./markdown-it-paged.js";
 import markdownItSourceMap from "markdown-it-source-map";
 import {
   renderContainerOpen,
@@ -17,16 +17,6 @@ import { dcAlertsPlugin } from "./alerts";
 import { fixImagePaths } from "./images";
 import type { LoadedPlugin } from "./plugins";
 import { applyPlugins } from "./plugins";
-
-/* Minimal Paged.js-friendly hooks for @page, @section, @break markers */
-const PAGED_CSS = `
-.md-page-break { break-before: page; }
-.page { break-before: page; }
-.spread { break-before: page; }
-.section { break-inside: avoid; }
-.section.col-split { break-inside: auto; }
-.md-column-break { break-after: column; height: 0; font-size: 0; line-height: 0; visibility: hidden; }
-`;
 
 /**
  * Create a fully-configured MarkdownIt instance with all container plugins.
@@ -57,67 +47,6 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   md.use(unwrap(markdownItFootnote));
   md.use(unwrap(markdownItSourceMap));
   md.use(unwrap(markdownItPaged));
-
-  // @column-break / @section col-split:
-  // Paged.js strips break-after:column during preprocessing so CSS column breaks never fire.
-  // Authors opt in with .col-split on @section — the renderer then generates explicit .col
-  // wrapper divs, making @column-break the closing/opening div boundary instead.
-  // @section .two-column (without .col-split) keeps CSS multi-column balance behavior.
-  let colSplitDepth = 0;
-
-  md.renderer.rules.layout_section_open = (tokens, idx, opts, _env, self) => {
-    const token = tokens[idx]!;
-    const cls = token.attrGet("class") ?? "";
-
-    if (cls.includes("col-split")) {
-      // Look ahead for layout_column_break before the matching section_close
-      let depth = 1;
-      let hasBreak = false;
-      for (let i = idx + 1; i < tokens.length; i++) {
-        const t = tokens[i]!;
-        if (t.type === "layout_section_open") depth++;
-        if (t.type === "layout_section_close") { depth--; if (depth === 0) break; }
-        if (t.type === "layout_column_break" && depth === 1) { hasBreak = true; break; }
-      }
-      if (hasBreak) {
-        colSplitDepth++;
-        return `<div class="${cls}"><div class="col">\n`; // cls already contains 'section col-split'
-      }
-    }
-
-    return self.renderToken(tokens, idx, opts);
-  };
-
-  md.renderer.rules.layout_section_close = (tokens, idx, opts, _env, self) => {
-    if (colSplitDepth > 0) {
-      colSplitDepth--;
-      return `</div></div>\n`;
-    }
-    return self.renderToken(tokens, idx, opts);
-  };
-
-  md.renderer.rules.layout_column_break = (tokens, idx) => {
-    if (colSplitDepth > 0) {
-      return `</div><div class="col">\n`;
-    }
-    const cls = tokens[idx]!.attrGet("class") ?? "md-column-break";
-    return `<div class="${cls}" aria-hidden="true"></div>\n`;
-  };
-
-  md.renderer.rules.layout_page_break = (tokens, idx) => {
-    const cls = tokens[idx]!.attrGet("class") ?? "md-page-break";
-    return `<div class="${cls}" aria-hidden="true"></div>\n`;
-  };
-
-  md.renderer.rules.layout_page_open = (tokens, idx, opts, _env, self) => {
-    colSplitDepth = 0;
-    return self.renderToken(tokens, idx, opts);
-  };
-
-  md.renderer.rules.layout_chapter_open = (tokens, idx, opts, _env, self) => {
-    colSplitDepth = 0;
-    return self.renderToken(tokens, idx, opts);
-  };
 
   // Removed: :::page (deprecated — use @page), :::wrapper (use named macros),
   // :::ability / :::ability-continued (use @skill / @continue),

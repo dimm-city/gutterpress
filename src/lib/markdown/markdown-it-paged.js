@@ -394,21 +394,80 @@ function plugin(md, pluginOptions = {}) {
     state.tokens = out;
   });
 
-  // Renderer rules for injected tokens
-  md.renderer.rules.layout_chapter_open = (tokens, idx, opts, env, self) => self.renderToken(tokens, idx, opts);
+  // Renderer rules for injected tokens.
+  //
+  // col-split handling: Paged.js strips `break-after: column` during CSS
+  // preprocessing, so CSS column breaks never fire. Authors opt in by adding
+  // `.col-split` to an @section; the renderer then emits explicit
+  // <div class="col"> sibling wrappers and treats @column-break as the
+  // closing/opening div boundary. @section .two-column WITHOUT .col-split
+  // keeps native CSS multi-column balancing behavior.
+  //
+  // Depth state lives on env (per-render) so renders can't leak state into
+  // one another. layout_page_open / layout_chapter_open also reset depth
+  // defensively in case of misnested markers within one render.
+  function getDepth(env) {
+    return (env && env.__colSplitDepth) || 0;
+  }
+  function setDepth(env, n) {
+    if (env) env.__colSplitDepth = n;
+  }
+
+  md.renderer.rules.layout_chapter_open = (tokens, idx, opts, env, self) => {
+    setDepth(env, 0);
+    return self.renderToken(tokens, idx, opts);
+  };
   md.renderer.rules.layout_chapter_close = (tokens, idx, opts, env, self) => self.renderToken(tokens, idx, opts);
   md.renderer.rules.layout_spread_open = (tokens, idx, opts, env, self) => self.renderToken(tokens, idx, opts);
   md.renderer.rules.layout_spread_close = (tokens, idx, opts, env, self) => self.renderToken(tokens, idx, opts);
-  md.renderer.rules.layout_page_open = (tokens, idx, opts, env, self) => self.renderToken(tokens, idx, opts);
+  md.renderer.rules.layout_page_open = (tokens, idx, opts, env, self) => {
+    setDepth(env, 0);
+    return self.renderToken(tokens, idx, opts);
+  };
   md.renderer.rules.layout_page_close = (tokens, idx, opts, env, self) => self.renderToken(tokens, idx, opts);
-  md.renderer.rules.layout_section_open = (tokens, idx, opts, env, self) => self.renderToken(tokens, idx, opts);
-  md.renderer.rules.layout_section_close = (tokens, idx, opts, env, self) => self.renderToken(tokens, idx, opts);
+
+  md.renderer.rules.layout_section_open = (tokens, idx, opts, env, self) => {
+    const token = tokens[idx];
+    const cls = token.attrGet('class') || '';
+
+    if (cls.includes('col-split')) {
+      // Look ahead for layout_column_break before the matching section_close
+      let depth = 1;
+      let hasBreak = false;
+      for (let i = idx + 1; i < tokens.length; i++) {
+        const t = tokens[i];
+        if (t.type === 'layout_section_open') depth++;
+        if (t.type === 'layout_section_close') { depth--; if (depth === 0) break; }
+        if (t.type === 'layout_column_break' && depth === 1) { hasBreak = true; break; }
+      }
+      if (hasBreak) {
+        setDepth(env, getDepth(env) + 1);
+        // cls already contains 'section col-split'
+        return `<div class="${cls}"><div class="col">\n`;
+      }
+    }
+
+    return self.renderToken(tokens, idx, opts);
+  };
+
+  md.renderer.rules.layout_section_close = (tokens, idx, opts, env, self) => {
+    if (getDepth(env) > 0) {
+      setDepth(env, getDepth(env) - 1);
+      return `</div></div>\n`;
+    }
+    return self.renderToken(tokens, idx, opts);
+  };
+
   // nesting:0 on <div> emits only an opening tag — emit complete open+close pair instead
   md.renderer.rules.layout_page_break = (tokens, idx) => {
     const cls = tokens[idx].attrGet('class') || 'md-page-break';
     return `<div class="${cls}" aria-hidden="true"></div>\n`;
   };
-  md.renderer.rules.layout_column_break = (tokens, idx) => {
+
+  md.renderer.rules.layout_column_break = (tokens, idx, opts, env) => {
+    if (getDepth(env) > 0) {
+      return `</div><div class="col">\n`;
+    }
     const cls = tokens[idx].attrGet('class') || 'md-column-break';
     return `<div class="${cls}" aria-hidden="true"></div>\n`;
   };
@@ -417,7 +476,22 @@ function plugin(md, pluginOptions = {}) {
   md.renderer.rules.layout_marker = () => '';
 }
 
+/**
+ * Minimal Paged.js-friendly CSS for the classes this plugin emits.
+ * Consumers should inject this into <head> after their user stylesheets so
+ * the layout contract (page/section/column breaks) wins at equal specificity.
+ */
+const PAGED_CSS = `
+.md-page-break { break-before: page; }
+.page { break-before: page; }
+.spread { break-before: page; }
+.section { break-inside: avoid; }
+.section.col-split { break-inside: auto; }
+.md-column-break { break-after: column; height: 0; font-size: 0; line-height: 0; visibility: hidden; }
+`;
+
 // CJS default export
 module.exports = plugin;
 // Allow ESM default import via interop
 module.exports.default = plugin;
+module.exports.PAGED_CSS = PAGED_CSS;
