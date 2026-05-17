@@ -169,6 +169,13 @@
   column-fill: auto;
 }
 
+/* Paged.js zeroes out .md-column-break (height:0) so break-after:column never
+   fires on the marker itself. Instead, put break-before:column on the h4 that
+   immediately follows the marker — a non-zero element that CAN trigger a break. */
+.page.citizen-file .md-column-break + h4 {
+  break-before: column;
+}
+
 
 /* ── PAGE TEMPLATE: THREE-COLUMN (NEW) ─────────────────────────────────────── */
 /* Three narrow columns. Best for short reference entries, gear tables.
