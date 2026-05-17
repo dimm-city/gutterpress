@@ -308,13 +308,13 @@
   margin: 0 0 var(--space-sm) var(--space-md);
 }
 
-/* Character portrait — compact portrait inset in the Citizen File column */
+/* Character portrait — full-column featured image anchoring the Citizen File intro */
 .fg-art-portrait {
-  float: right;
-  width: 1.2in;
-  height: 1.5in;
+  display: block;
+  width: 100%;
+  height: 3in;
   object-fit: cover;
-  margin: 0 0 var(--space-sm) var(--space-md);
+  margin: var(--space-md) 0 var(--space-sm);
 }
 
 /* Front matter art */
