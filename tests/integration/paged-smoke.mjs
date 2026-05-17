@@ -125,13 +125,36 @@ async function main() {
     });
 
     const page = await browser.newPage();
+    const failed404s = [];
+
+    // Fail on any 404 — every resource book.html references must be present in
+    // the output directory. A missing vendor/paged.polyfill.js or
+    // pagedjs-interface.js would 404 here and must not be silently swallowed.
+    page.on("response", (response) => {
+      if (response.status() === 404) {
+        const url = response.url();
+        console.error(`[404] ${url}`);
+        failed404s.push(url);
+      }
+    });
+
     page.on("console", (msg) => {
-      if (msg.type() === "error") console.log(`[browser error] ${msg.text()}`);
+      const type = msg.type();
+      if (type === "error" || type === "warning") {
+        console.log(`[browser ${type}] ${msg.text()}`);
+      }
     });
 
     const url = `http://127.0.0.1:${port}/book.html`;
     console.log(`Loading ${url}`);
     await page.goto(url, { waitUntil: "networkidle", timeout: TIMEOUT_MS });
+
+    if (failed404s.length > 0) {
+      throw new Error(
+        `${failed404s.length} resource(s) returned 404 — the binary output is missing files:\n` +
+        failed404s.map((u) => `  ${u}`).join("\n")
+      );
+    }
 
     console.log("Waiting for .pagedjs_page elements...");
     await page.waitForSelector(".pagedjs_page", { timeout: TIMEOUT_MS });
