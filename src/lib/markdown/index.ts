@@ -1,13 +1,12 @@
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import MarkdownIt from "markdown-it";
 import { BOOK_HTML_FILENAME } from "../viewer";
 import markdownItAttrs from "markdown-it-attrs";
 import markdownItContainer from "markdown-it-container";
 import markdownItFootnote from "markdown-it-footnote";
-import markdownItPaged from "markdown-it-paged";
+import markdownItPaged from "./markdown-it-paged.js";
 import markdownItSourceMap from "markdown-it-source-map";
 import {
   renderContainerOpen,
@@ -16,36 +15,18 @@ import {
 } from "./containers";
 import { dcAlertsPlugin } from "./alerts";
 import { fixImagePaths } from "./images";
-import { registerCustomHrRule } from "./page-marker-hr";
-import { pageMarkerPlugin } from "./page-marker-plugin";
 import type { LoadedPlugin } from "./plugins";
 import { applyPlugins } from "./plugins";
 
-/**
- * Get the preview CSS content
- * Reads the preview.css file and returns its content for inlining
- */
-/**
- * Get the paged CSS content from markdown-it-paged
- * Provides CSS hooks for @spread, @page, @section, @break markers
- */
-async function getPagedCss(): Promise<string> {
-  try {
-    const pagedCssPath = require.resolve('markdown-it-paged/css/paged.css');
-    return await readFile(pagedCssPath, 'utf-8');
-  } catch {
-    // Fallback: try relative path from project root
-    try {
-      const thisDir = dirname(fileURLToPath(import.meta.url));
-      const projectRoot = dirname(dirname(dirname(thisDir)));
-      const cssPath = join(projectRoot, 'node_modules', 'markdown-it-paged', 'css', 'paged.css');
-      return await readFile(cssPath, 'utf-8');
-    } catch {
-      console.warn('Failed to load markdown-it-paged CSS');
-      return '';
-    }
-  }
-}
+/* Minimal Paged.js-friendly hooks for @page, @section, @break markers */
+const PAGED_CSS = `
+.md-page-break { break-before: page; }
+.page { break-before: page; }
+.spread { break-before: page; }
+.section { break-inside: avoid; }
+.section.col-split { break-inside: auto; }
+.md-column-break { break-after: column; height: 0; font-size: 0; line-height: 0; visibility: hidden; }
+`;
 
 /**
  * Create a fully-configured MarkdownIt instance with all container plugins.
@@ -75,22 +56,13 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   md.use(unwrap(markdownItAttrs));
   md.use(unwrap(markdownItFootnote));
   md.use(unwrap(markdownItSourceMap));
-  md.use(unwrap(markdownItPaged), { implicitPage: false });
+  md.use(unwrap(markdownItPaged));
 
-  // Fix: markdown-it-paged renders layout_column_break and layout_page_break with nesting:0
-  // on a <div> tag, which outputs only an opening <div ...> with no closing tag. The browser
-  // then treats all subsequent content as children of that unclosed div, so @end-section's
-  // </div> closes the break div instead of the section div, breaking @section/@end-section.
-  // Override the renderers to output a properly self-closed empty div.
-  // @column-break / @section column-split:
-  // Paged.js strips all break-after CSS during preprocessing (converting only page/recto/verso
-  // to data-break-after attributes; "column" is silently discarded). So CSS break-after:column
-  // never reaches the browser — @column-break inside @section containers does nothing via CSS.
-  //
-  // Fix: author opts in by adding .col-split class to the @section. The renderer then generates
-  // explicit .col wrapper divs so @column-break becomes the closing/opening tag boundary.
-  // @section .two-column (without .col-split) continues to use CSS multi-column balance.
-  // @section .two-column .col-split uses flex with explicit column placement.
+  // @column-break / @section col-split:
+  // Paged.js strips break-after:column during preprocessing so CSS column breaks never fire.
+  // Authors opt in with .col-split on @section — the renderer then generates explicit .col
+  // wrapper divs, making @column-break the closing/opening div boundary instead.
+  // @section .two-column (without .col-split) keeps CSS multi-column balance behavior.
   let colSplitDepth = 0;
 
   md.renderer.rules.layout_section_open = (tokens, idx, opts, _env, self) => {
@@ -137,6 +109,16 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
     return `<div class="${cls}" aria-hidden="true"></div>\n`;
   };
 
+  md.renderer.rules.layout_page_open = (tokens, idx, opts, _env, self) => {
+    colSplitDepth = 0;
+    return self.renderToken(tokens, idx, opts);
+  };
+
+  md.renderer.rules.layout_chapter_open = (tokens, idx, opts, _env, self) => {
+    colSplitDepth = 0;
+    return self.renderToken(tokens, idx, opts);
+  };
+
   // Removed: :::page (deprecated — use @page), :::wrapper (use named macros),
   // :::ability / :::ability-continued (use @skill / @continue),
   // :::aug (no replacement), :::lede (use @lede macro)
@@ -165,11 +147,6 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   if (customPlugins && customPlugins.length > 0) {
     applyPlugins(md, customPlugins);
   }
-
-  // DEPRECATED: Legacy HR-based page markers (use @page/@break instead)
-  // Kept for backward compatibility with --- {page} syntax
-  registerCustomHrRule(md);
-  md.use(pageMarkerPlugin);
 
   return md;
 }
@@ -206,7 +183,6 @@ export async function renderChapters(
 ): Promise<string> {
   const title = opts.title ?? "Document";
   const styles = resolveStyles(inputDir, opts.styles);
-  const pagedCss = await getPagedCss();
   const pluginCss = opts.pluginCss ?? '';
 
   const md = createMarkdownRenderer(opts.plugins);
@@ -252,9 +228,9 @@ export async function renderChapters(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
   ${styles.map(s => `<link rel="stylesheet" href="${s}">`).join('\n  ')}
-  ${pagedCss ? `<style>\n/* markdown-it-paged layout CSS */\n${pagedCss}\n</style>` : ''}
+  <style>\n/* markdown-it-paged layout CSS */\n${PAGED_CSS}\n</style>
   ${pluginCss ? `<style>\n/* Plugin CSS */\n${pluginCss}\n</style>` : ''}
-  <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>
+  <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.js"></script>
 </head>
 <body>
 ${bodyContent}

@@ -1,3 +1,30 @@
+/* =============================================================================
+   DC-CORE.CSS — Global Element Baseline
+   =============================================================================
+
+   ── ARCHITECTURAL CONTRACT ────────────────────────────────────────────────
+   OWNS:
+   - html / body baseline styles (background, color, font, line-height, hyphens,
+     widows/orphans, positioning)
+   - Global element resets driven by tokens: h1–h6, p, a, em, code/kbd/samp,
+     blockquote, ul/ol/li, table/th/td
+   - Print-specific element defaults (break-after:avoid on headings,
+     orphans/widows on body, print-color-adjust)
+   - Heading word-wrap and heading-follows-content break rules
+
+   MUST NOT CONTAIN:
+   - :root token definitions (→ dc-tokens.css)
+   - .dc-* or .pmd-* component styles (→ dc-components.css)
+   - columns:N rules (→ page-templates.css)
+   - @page declarations or named-page assignments (→ page-rules.css)
+   - Component-scoped font-size or line-height overrides — each component
+     owns its own typography via its own selector
+   - div.chapter scaffolding or guide-specific rules (→ dg-overrides.css)
+   - @media screen rules (print-only project)
+
+   AGENT RULE: "Is this an html/body baseline or a naked element reset
+   (no class, no ID, no page context)?" — if NO, use another file.
+   ──────────────────────────────────────────────────────────────────────── */
 
 /* ── GLOBAL PRINT ACCURACY ────────────────────────────────────────────────── */
 * {

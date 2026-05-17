@@ -221,12 +221,12 @@
 
 .dc-specialty.cybersurgeon .dc-skill-card {
   --dc-card-accent: var(--cybersurgeon-accent);
-  --dc-card-tab-bg: #707070;
+  --dc-card-tab-bg: var(--cybersurgeon-mid);
   --dc-card-tab-title-color: var(--paper-cream);
 }
 
 .dc-specialty.cybersurgeon .dc-path-shell {
-  --dc-path-title-bg: #606060;
+  --dc-path-title-bg: var(--cybersurgeon-dark);
   --dc-path-accent: var(--cybersurgeon-accent);
   background: var(--paper-cream);
 }
@@ -237,7 +237,7 @@
 }
 
 .dc-specialty.cybersurgeon .dc-specialty-intro {
-  --dc-specialty-intro-title-bg: #606060;
+  --dc-specialty-intro-title-bg: var(--cybersurgeon-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
   background: var(--hud-panel);
 }
@@ -288,12 +288,12 @@
 
 .dc-specialty.wirephreak .dc-skill-card {
   --dc-card-accent: var(--wirephreak-accent);
-  --dc-card-tab-bg: #7a3a7a;
+  --dc-card-tab-bg: var(--wirephreak-dark);
   --dc-card-tab-title-color: var(--paper-cream);
 }
 
 .dc-specialty.wirephreak .dc-path-shell {
-  --dc-path-title-bg: #7a3a7a;
+  --dc-path-title-bg: var(--wirephreak-dark);
   --dc-path-accent: var(--wirephreak-accent);
   background: var(--paper-cream);
 }
@@ -304,7 +304,7 @@
 }
 
 .dc-specialty.wirephreak .dc-specialty-intro {
-  --dc-specialty-intro-title-bg: #7a3a7a;
+  --dc-specialty-intro-title-bg: var(--wirephreak-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
   background: var(--hud-panel);
 }
@@ -322,7 +322,7 @@
 
 .dc-specialty.streetwarden .dc-skill-card {
   --dc-card-accent: var(--streetwarden-accent);
-  --dc-card-tab-bg: #2a5a1a;
+  --dc-card-tab-bg: var(--streetwarden-dark);
   --dc-card-tab-title-color: var(--paper-cream);
 }
 
@@ -356,12 +356,12 @@
 
 .dc-specialty.technosorcerer .dc-skill-card {
   --dc-card-accent: var(--technosorcerer-accent);
-  --dc-card-tab-bg: #2a3a6a;
+  --dc-card-tab-bg: var(--technosorcerer-dark);
   --dc-card-tab-title-color: var(--paper-cream);
 }
 
 .dc-specialty.technosorcerer .dc-path-shell {
-  --dc-path-title-bg: #2a3a6a;
+  --dc-path-title-bg: var(--technosorcerer-dark);
   --dc-path-accent: var(--technosorcerer-accent);
   background: var(--paper-light);
 }
@@ -372,7 +372,7 @@
 }
 
 .dc-specialty.technosorcerer .dc-specialty-intro {
-  --dc-specialty-intro-title-bg: #2a3a6a;
+  --dc-specialty-intro-title-bg: var(--technosorcerer-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
   background: var(--paper-light);
 }
@@ -390,7 +390,7 @@
 
 .dc-specialty.gutterdruid .dc-skill-card {
   --dc-card-accent: var(--gutterdruid-accent);
-  --dc-card-tab-bg: #5a3810;
+  --dc-card-tab-bg: var(--gutterdruid-dark);
   --dc-card-tab-title-color: var(--paper-cream);
 }
 
@@ -425,12 +425,12 @@
 
 .dc-specialty.etherlock .dc-skill-card {
   --dc-card-accent: var(--etherlock-accent);
-  --dc-card-tab-bg: #6a5200;
+  --dc-card-tab-bg: var(--etherlock-dark);
   --dc-card-tab-title-color: var(--paper-cream);
 }
 
 .dc-specialty.etherlock .dc-path-shell {
-  --dc-path-title-bg: #6a5200;
+  --dc-path-title-bg: var(--etherlock-dark);
   --dc-path-accent: var(--etherlock-accent);
   background: var(--paper-light);
 }
@@ -441,7 +441,7 @@
 }
 
 .dc-specialty.etherlock .dc-specialty-intro {
-  --dc-specialty-intro-title-bg: #6a5200;
+  --dc-specialty-intro-title-bg: var(--etherlock-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
   background: var(--paper-light);
 }
@@ -2263,14 +2263,11 @@ p.dc-img-wrapper {
 }
 
 .two-column {
-  column-count: 2;
-  column-gap: 0.25in;
+  /* column-count/gap/fill owned by page-templates.css */
   column-rule: 1pt solid var(--border-hairline);
 }
 
-/* Base two-column list utility — scoped card overrides below take precedence */
+/* Base two-column list utility — column layout owned by page-templates.css */
 .two-column-list {
-  column-count: 2;
-  column-gap: var(--space-md);
-  column-fill: balance;
+  /* column-count/gap/fill owned by page-templates.css */
 }

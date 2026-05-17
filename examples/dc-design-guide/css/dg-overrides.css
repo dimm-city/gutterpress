@@ -215,8 +215,7 @@ div.chapter hr {
 .toc {
   margin: var(--gutter);
   margin-inline: var(--page-margin);
-  columns: 2;
-  column-gap: 0.35in;
+  /* columns/column-gap owned by page-templates.css */
   column-fill: balance;
   column-rule: none;
   position: relative;
@@ -309,7 +308,7 @@ div.chapter hr {
    flat single-column list. .guide-toc is emitted alongside .toc so specificity
    from this single-class selector beats the .toc { columns } rule above. */
 .guide-toc {
-  columns: 1;
+  /* columns owned by page-templates.css */
   padding-right: 0.5in;
   box-sizing: border-box;
 }
@@ -517,25 +516,5 @@ div.chapter[data-ch] {
   string-set: guideSection attr(data-ch);
 }
 
-/* Override @page footer chapter label: replace counter(chapter) (which was stuck
-   at c.0 because div.chapter counter-resets don't propagate to margin boxes) with
-   string(guideSection, first), which reads the data-ch value captured above. */
-@page :left {
-  @bottom-right {
-    content: "c." string(guideSection, first);
-    color: var(--blood);
-    font-family: var(--font-display);
-    font-size: var(--fs-footer, 9.5pt);
-    letter-spacing: 0.08em;
-  }
-}
-
-@page :right {
-  @bottom-left {
-    content: "c." string(guideSection, first);
-    color: var(--blood);
-    font-family: var(--font-display);
-    font-size: var(--fs-footer, 9.5pt);
-    letter-spacing: 0.08em;
-  }
-}
+/* @page :left and @page :right footer overrides (string(guideSection)) are
+   consolidated into page-rules.css per the architectural contract. */

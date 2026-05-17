@@ -90,18 +90,19 @@ only once is not an anti-pattern; it is the intended mechanism. Do not generalis
 one-off page classes into reusable components unless the pattern genuinely recurs.
 
 
-### CSS layer contract (five-file hierarchy)
+### CSS layer contract (six-file hierarchy)
 
 Each CSS file has a strict ownership boundary. Read the ARCHITECTURAL CONTRACT
 comment in the first 50 lines of each file before adding any rule.
 
 | File | Owns |
 |---|---|
-| `tokens.css` | `:root` tokens, `@font-face`, html/body baseline, global element resets |
+| `dc-tokens.css` | `:root` tokens, `@font-face`, `* { print-color-adjust }` |
+| `dc-core.css` | `html`/`body` baseline, element resets, heading defaults |
 | `dc-components.css` | Every `.dc-*` + `.pmd-*` component (base + thin variants), specialty parent-container overrides |
 | `page-templates.css` | **ALL `columns:N` rules** (exclusive), `.page.*` layouts, paged wrapper scaffolding, print utilities |
 | `page-rules.css` | `@page` declarations, named pages, Paged.js counter fixes |
-| `dc-design-guide.css` | `div.chapter` scaffolding, `.specimen` chrome, guide-specific footer |
+| `dg-overrides.css` | `div.chapter` scaffolding, `.specimen` chrome, guide-specific footer |
 
 ### Specialty variant system
 

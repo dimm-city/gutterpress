@@ -212,6 +212,25 @@
   --dc-specialty-card-media-width: 0.75in;
 }
 
+/* ── TWO-COLUMN LIST UTILITY ───────────────────────────────────────────────── */
+/* Used inside skill cards and card bodies. Column layout authority lives here. */
+.two-column-list {
+  column-count: 2;
+  column-gap: var(--space-md);
+  column-fill: balance;
+}
+
+/* ── DESIGN GUIDE LAYOUT OVERRIDES ─────────────────────────────────────────── */
+/* TOC and guide-toc column rules — guide-only selectors, column authority here. */
+.toc {
+  columns: 2;
+  column-gap: 0.35in;
+}
+
+.guide-toc {
+  columns: 1;
+}
+
 /* ── PAGE TEMPLATE: IMAGE (NEW) ────────────────────────────────────────────── */
 /* Image page — full-width image at the top or bottom with no horizontal margin
    extension at the top/bottom edge. Default page margins apply on the sides.
