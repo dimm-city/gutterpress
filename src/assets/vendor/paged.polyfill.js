@@ -30033,8 +30033,13 @@
 
 		processBreaks(parsed, breaks) {
 			for (let b in breaks) {
-				// Find elements
-				let elements = parsed.querySelectorAll(b);
+				// Find elements — guard against :is() + sibling combinator selectors that
+				// crash DocumentFragment.querySelectorAll (print-md patch PATCH-3).
+				let elements;
+				try { elements = parsed.querySelectorAll(b); } catch(e) {
+					console.warn("[paged] Skipping unsupported selector in break processing:", b, e.message);
+					continue;
+				}
 				// Add break data
 				for (var i = 0; i < elements.length; i++) {
 					for (let prop of breaks[b]) {
@@ -30050,15 +30055,18 @@
 						} else if (prop.property === "break-before") {
 							let nodeBefore = displayedElementBefore(elements[i], parsed);
 
-							// Breaks are only allowed between siblings, not between a box and its container.
-							// If we cannot find a node before we should not break!
-							// https://drafts.csswg.org/css-break-3/#break-propagation
+							// print-md PATCH-2: always write data-break-before so the chunker can
+							// act on it even when the element is a first child with no preceding
+							// sibling. The CSS spec allows propagation to the container boundary.
+							// We still guard needsPageBreak and data-next-break-before with the
+							// nodeBefore check — those require a real preceding sibling.
+							elements[i].setAttribute("data-break-before", prop.value);
 							if (nodeBefore) {
 								if (prop.value === "page" && needsPageBreak(elements[i], nodeBefore)) {
 									// we ignore this explicit page break because an implicit page break is already needed
+									elements[i].removeAttribute("data-break-before");
 									continue;
 								}
-								elements[i].setAttribute("data-break-before", prop.value);
 								nodeBefore.setAttribute("data-next-break-before", prop.value);
 							}
 						} else if (prop.property === "page") {
@@ -30097,7 +30105,8 @@
 				if (before.dataset.splitFrom) {
 					page.splitFrom = before.dataset.splitFrom;
 					pageElement.setAttribute("data-split-from", before.dataset.splitFrom);
-				} else if (before.dataset.breakBefore && before.dataset.breakBefore !== "avoid") {
+				} else if (before.dataset.breakBefore) {
+					// print-md PATCH-1: removed !== "avoid" filter so avoid propagates to page model.
 					page.breakBefore = before.dataset.breakBefore;
 					pageElement.setAttribute("data-break-before", before.dataset.breakBefore);
 				}
@@ -30107,14 +30116,16 @@
 				if (after.dataset.splitTo) {
 					page.splitTo = after.dataset.splitTo;
 					pageElement.setAttribute("data-split-to", after.dataset.splitTo);
-				} else if (after.dataset.breakAfter && after.dataset.breakAfter !== "avoid") {
+				} else if (after.dataset.breakAfter) {
+					// print-md PATCH-1: removed !== "avoid" filter so avoid propagates to page model.
 					page.breakAfter = after.dataset.breakAfter;
 					pageElement.setAttribute("data-break-after", after.dataset.breakAfter);
 				}
 			}
 
 			if (previousBreakAfter && previousBreakAfter.dataset) {
-				if (previousBreakAfter.dataset.previousBreakAfter && previousBreakAfter.dataset.previousBreakAfter !== "avoid") {
+				if (previousBreakAfter.dataset.previousBreakAfter) {
+					// print-md PATCH-1: removed !== "avoid" filter so avoid propagates to page model.
 					page.previousBreakAfter = previousBreakAfter.dataset.previousBreakAfter;
 				}
 			}
@@ -30812,7 +30823,12 @@
 		processSelectors(parsed, selectors) {
 			// add the new attributes to matching elements
 			for (let s in selectors) {
-				let elements = parsed.querySelectorAll(s);
+				// print-md PATCH-3: guard against :is()+sibling selectors that crash querySelectorAll on DocumentFragment.
+				let elements;
+				try { elements = parsed.querySelectorAll(s); } catch(e) {
+					console.warn("[paged] Skipping unsupported selector in nth-of-type processing:", s, e.message);
+					continue;
+				}
 
 				for (var i = 0; i < elements.length; i++) {
 					let dataNthOfType = elements[i].getAttribute("data-nth-of-type");

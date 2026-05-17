@@ -1,142 +1,218 @@
-# Paged.js Vendored Copy — Patch Backlog
+# Paged.js Vendored Copy — Patch Log
 
 **Vendored file:** `paged.polyfill.js`  
 **Source version:** pagedjs@0.4.3  
-**Source repo:** https://github.com/pagedjs/pagedjs
+**Source repo:** https://github.com/pagedjs/pagedjs  
+**Applied patches:** PATCH-1, PATCH-2, PATCH-3 (2026-05-17)  
+**Deferred:** PATCH-4 (complex, workaround exists)
 
-This file is embedded into the print-md binary via `with { type: "file" }` in
-`src/lib/embedded-assets.ts`. To update, replace this file with the new dist
-from `node_modules/pagedjs/dist/paged.polyfill.js` after bumping the
-version in your local install, then verify all patches below are still needed
-and re-apply to the unminified source if submitting upstream PRs.
-
----
-
-## Patches to Apply
-
-The following bugs are confirmed in v0.4.3. None are filed upstream as of
-2026-05-17. Each entry is a candidate for an upstream PR at
-https://github.com/pagedjs/pagedjs/issues — file the issue, reference this
-file in the description.
+To update the vendored copy: replace `paged.polyfill.js` with the new dist
+from `node_modules/pagedjs/dist/paged.polyfill.js` after bumping the version,
+verify each patch below is still needed, and re-apply. File all applied patches
+as GitHub issues at https://github.com/pagedjs/pagedjs/issues before updating.
 
 ---
 
-### PATCH-1: `break-after: avoid` on headings is silently discarded
+## Applied Patches
 
-**File in source:** `src/modules/paged-media/breaks.js`  
-**Function:** `addBreakAttributes()`  
-**Upstream PR candidate:** YES — simple, targeted, spec-compliant
+### PATCH-1: `break-after: avoid` not forwarded to page model
 
-**Bug:** The function that writes `data-break-before`/`data-break-after`
-attributes to DOM elements explicitly skips the `"avoid"` value:
+**Status:** Applied 2026-05-17  
+**Upstream PR candidate:** YES — simple, targeted, spec-compliant  
+**Lines changed:** `addBreakAttributes()` — three `!== "avoid"` guard removals
+
+**Bug:** `addBreakAttributes()` is called after each page is laid out and
+populates the `page` model object from `data-break-*` attributes found in the
+page element's content. The function excluded any attribute with value `"avoid"`
+from being forwarded to `page.breakBefore`, `page.breakAfter`, and
+`page.previousBreakAfter`. This prevented the page model from knowing that an
+element requested break-avoid behaviour, which in turn prevented downstream
+handlers from acting on it.
+
+Note on mechanism: Paged.js has TWO paths for `avoid`:
+1. **Element-level** (lines 1937–1938 in the chunker) — checks
+   `node.dataset.previousBreakAfter === "avoid"` during content layout to pull
+   a break point back before the orphaned heading. This path works regardless
+   of this patch.
+2. **Page-model-level** (`addBreakAttributes`) — sets `page.breakAfter` etc.
+   for use by handlers registered on `afterPageLayout`. This path was broken.
+
+This patch fixes the page-model path. The element-level path already functioned
+but was the sole mechanism before this fix; downstream custom handlers that
+inspect `page.breakAfter` now also receive the `avoid` value.
+
+**Fix applied:**
 
 ```js
-// Current behavior (roughly):
-if (breakValue === "avoid") continue;  // avoid is never forwarded
+// Before (three occurrences):
+} else if (before.dataset.breakBefore && before.dataset.breakBefore !== "avoid") {
+} else if (after.dataset.breakAfter && after.dataset.breakAfter !== "avoid") {
+if (previousBreakAfter.dataset.previousBreakAfter && previousBreakAfter.dataset.previousBreakAfter !== "avoid") {
+
+// After — removed the !== "avoid" filter:
+} else if (before.dataset.breakBefore) {
+} else if (after.dataset.breakAfter) {
+if (previousBreakAfter.dataset.previousBreakAfter) {
 ```
 
-This means `break-after: avoid` and `break-before: avoid` on headings,
-captions, and any element that should not be orphaned are completely silently
-dropped. Authors who write:
-
-```css
-.page h2, .page h3 { break-after: avoid; }
-```
-
-get zero protection. The heading can appear as the last line on a page.
-
-**Fix:** Remove the `"avoid"` exclusion guard in `addBreakAttributes()`. The
-chunker should receive `avoid` on `page.breakAfter` and honor it by not
-breaking after the element.
+**Justification:** The CSS break spec does not say `"avoid"` should be
+invisible to the page model — it says it should influence layout decisions.
+Forwarding it to the page model lets custom `afterPageLayout` handlers
+(including future print-md handlers) inspect and act on it.
 
 ---
 
-### PATCH-2: `break-before` on first child is silently dropped
+### PATCH-2: `break-before` on first child silently dropped
 
-**File in source:** `src/modules/paged-media/breaks.js`  
-**Function:** `processBreaks()`  
-**Upstream PR candidate:** YES — two-line fix, clear regression from spec
+**Status:** Applied 2026-05-17  
+**Upstream PR candidate:** YES — aligns with CSS break propagation spec  
+**Lines changed:** `processBreaks()` — restructured `break-before` branch
 
-**Bug:** `processBreaks()` checks for a preceding sibling (`nodeBefore`)
-before writing `data-break-before`. If the element has no preceding sibling
-(it is the first child of its container), the attribute is never written and
-the break is silently discarded:
+**Bug:** When `break-before` CSS is applied to an element that has no
+preceding displayed sibling (it is the first child of its container),
+`processBreaks()` silently discarded the break entirely:
 
 ```js
-// Current behavior (roughly):
-const nodeBefore = getPreviousSibling(element);
-if (!nodeBefore) continue;  // first child: break-before is dropped
-element.setAttribute("data-break-before", breakValue);
+// Original:
+let nodeBefore = displayedElementBefore(elements[i], parsed);
+if (nodeBefore) {
+    elements[i].setAttribute("data-break-before", prop.value);
+    nodeBefore.setAttribute("data-next-break-before", prop.value);
+}
+// If nodeBefore is null: nothing happens, break is dropped.
 ```
 
-This means `break-before: page` on the first `.page` element inside `<body>`
-produces no forced break. In a document that starts with a named-page element
-as the first child, the page transition never fires.
+The in-code comment cited CSS Break Level 3 §5.4 (break propagation), which
+says breaks between a box and its container are disallowed. However, the spec
+also says that a forced break that cannot be satisfied should propagate to the
+parent. Dropping it entirely is not spec-compliant.
 
-**Fix:** Handle the no-sibling case — write `data-break-before` on the element
-itself even when there is no preceding sibling, or alternatively propagate the
-break to the parent container boundary.
+The practical impact: any element with `break-before: page` that is the first
+child of its `.page` div produces no break. In named-page documents this is
+usually handled by the named-page transition mechanism, but in non-named layouts
+(e.g. a `@page-break` injected before the first content element) it silently
+fails.
+
+**Fix applied:**
+
+```js
+// After:
+elements[i].setAttribute("data-break-before", prop.value);  // always set
+if (nodeBefore) {
+    if (prop.value === "page" && needsPageBreak(elements[i], nodeBefore)) {
+        elements[i].removeAttribute("data-break-before");    // undo if redundant
+        continue;
+    }
+    nodeBefore.setAttribute("data-next-break-before", prop.value);
+}
+```
+
+`data-break-before` is always written on the element itself. The
+`needsPageBreak` guard (which avoids duplicate breaks) and the
+`data-next-break-before` on the preceding sibling are only applied when a
+preceding sibling exists. If the break is deemed redundant by `needsPageBreak`,
+`data-break-before` is removed to keep the DOM clean.
+
+**Justification:** The data attribute is what the chunker reads at layout time.
+Writing it unconditionally gives the chunker the full picture; the chunker's
+own break-placement logic will determine whether to act on it.
 
 ---
 
 ### PATCH-3: `:is()` with sibling combinators crashes rendering
 
-**File in source:** `src/modules/` (CSS selector evaluation)  
-**Upstream PR candidate:** YES — defensive fix, clear reproduction case
+**Status:** Applied 2026-05-17  
+**Upstream PR candidate:** YES — defensive fix, clear crash with reproduction  
+**Lines changed:** `processBreaks()` and `processSelectors()` (two call sites) —
+  `querySelectorAll` wrapped in `try/catch`
 
-**Bug:** Any author CSS that uses `:is()` combined with adjacent (`+`) or
-general sibling (`~`) combinators causes a `SyntaxError` during Paged.js's
-internal `querySelectorAll` call on a `DocumentFragment`. The browser's
-`DocumentFragment.querySelectorAll` does not support `:is()` with sibling
-combinators. The error silently prevents all pages from rendering — `pageCount`
-is 0, the output is blank, and the error appears only in DevTools console.
+**Bug:** Any author CSS that combines `:is()` with adjacent (`+`) or general
+sibling (`~`) combinators causes a `SyntaxError` during Paged.js's internal
+`querySelectorAll()` call on a `DocumentFragment`. Browsers do not support
+`:is()` with sibling combinators in `DocumentFragment.querySelectorAll`. The
+uncaught exception propagates up and terminates the entire rendering pipeline —
+all pages come out blank, `pageCount === 0`, and the only visible symptom is a
+console error message.
 
 **Reproduction:**
 
 ```css
-/* This crashes Paged.js rendering: */
+/* This crashes Paged.js v0.4.3 completely: */
 div.chapter :is(h2, h3) + p { margin-top: 0; }
 ```
 
-**Fix:** Wrap `querySelectorAll` calls that process author CSS selectors in a
-`try/catch`. On `SyntaxError`, either skip the selector (with a console
-warning) or expand `:is(a, b)` to explicit comma-separated equivalents before
-querying.
+**Three affected call sites:**
+1. `processBreaks()` line ~30037 — iterates CSS break selectors
+2. `NthOfType.processSelectors()` line ~30815 — iterates `:nth-of-type` selectors
+3. `Following.processSelectors()` line ~30870 — iterates following-element selectors
 
-**Workaround for print-md authors:** Do not use `:is()` combined with `+` or
-`~`. Use explicit comma-separated selectors:
+**Fix applied** (identical pattern at all three sites):
+
+```js
+// Before:
+let elements = parsed.querySelectorAll(b);
+
+// After:
+let elements;
+try { elements = parsed.querySelectorAll(b); } catch(e) {
+    console.warn("[paged] Skipping unsupported selector:", b, e.message);
+    continue;
+}
+```
+
+The affected selector's break/nth/following rule is skipped with a console
+warning. Rendering continues for all other selectors. This is the correct
+degradation: the author loses one specific CSS rule's Paged.js processing, but
+the document renders fully rather than producing blank output.
+
+**Workaround for authors until this is fixed upstream:** Avoid `:is()` combined
+with `+` or `~` in any CSS file processed by Paged.js. Use explicit
+comma-separated selectors instead:
 
 ```css
-/* Safe alternative: */
+/* Safe — works in all Paged.js versions: */
 div.chapter h2 + p,
 div.chapter h3 + p { margin-top: 0; }
 ```
 
-The print-md stylelint config (`src/stylelint/printsafe-plugin.ts`) already
-flags dangerous selectors via the `printsafe/no-pagedjs-crash-selectors` rule.
+The print-md stylelint plugin (`src/stylelint/printsafe-plugin.ts`) flags this
+pattern via the `printsafe/no-pagedjs-crash-selectors` rule.
+
+**Justification:** An unhandled `SyntaxError` that blanks the entire output is
+the worst possible failure mode for a print tool. Skipping an unsupported
+selector with a warning is strictly better. Once Paged.js uses a more robust
+selector evaluation path (e.g. post-cssOM migration) this guard becomes a
+no-op.
 
 ---
 
-### PATCH-4: `break-after: column` is silently discarded by chunker
+## Deferred Patches
 
-**File in source:** `src/chunker/chunker.js`  
-**Upstream PR candidate:** MEDIUM — requires chunker changes, but well-scoped
+### PATCH-4: `break-after: column` silently discarded by chunker
 
-**Bug:** `breaks.js` strips `break-after: column` from CSS and writes
-`data-break-after="column"` on matched DOM elements. However, the chunker's
-`addBreakAttributes()` function never acts on the value `"column"` — it is not
-in the actionable whitelist. CSS column breaks are therefore impossible
-through the standard CSS path.
+**Status:** Deferred — complex, reliable workaround exists  
+**Upstream PR candidate:** MEDIUM — requires chunker architectural work
 
-**Note:** print-md works around this with the col-split DOM structure
-(`@section .two-column .col-split` generates explicit `<div class="col">`
-wrapper elements). The workaround is correct and reliable — this patch is
-lower priority than PATCH-1 through PATCH-3.
+**Bug:** `break-after: column` is stripped from CSS by `Breaks.onDeclaration()`
+and stored as `data-break-after="column"` on DOM elements. However, the
+chunker's break logic only acts on page-level break values ("always", "page",
+"left", "right", "recto", "verso"). The value `"column"` is written to the data
+attribute but never triggers a column advance in the Paged.js chunker — column
+breaks via CSS are therefore impossible.
 
-**Fix:** Add `"column"` handling to the chunker's break-action logic. The
-chunker would need to recognize a column break boundary within a
-`columns: N` formatting context and advance to the next column position rather
-than the next page.
+**Workaround:** print-md's `@section .two-column .col-split` generates explicit
+`<div class="col">` wrapper divs at render time, producing side-by-side flex
+columns that do not depend on CSS column break processing. This is the
+recommended approach and is more reliable than depending on Paged.js to
+implement CSS column break at the chunker level.
+
+**Why deferred:** A correct fix requires the chunker to (a) detect that the
+element with `data-break-after="column"` is inside a CSS `columns: N` context,
+(b) advance to the next column position within the current page rather than
+forcing a new page, and (c) handle the wrap-to-new-page case when all columns
+on the current page are exhausted. This is architectural work that touches the
+chunker's core layout loop. It is out of scope for a local patch and should be
+a full upstream contribution with test coverage.
 
 ---
 
@@ -144,15 +220,17 @@ than the next page.
 
 ### `break-before: recto/verso` no-ops
 
-These values are written to `data-break-before` attributes but never acted
-upon because the Paged.js chunker does not track document-level page parity
-(odd/even page count) during layout.
+The Paged.js chunker reads `breakBefore === "recto"` or `"verso"` (lines
+3056–3059) and checks whether the value matches `currentSide` (computed from
+`currentPage % 2`). However, "recto" and "verso" are never equal to
+`currentPosition` (which is "left"/"right"), and the comparison
+`breakBefore !== currentSide` is always true for a different reason — the
+variables being compared ("recto"/"verso" vs "left"/"right") can never be
+equal, so the page break ALWAYS fires for recto/verso, not conditionally.
 
-Implementing this correctly would require the chunker to count rendered pages
-in real time and conditionally insert blank pages — significant architectural
-work. print-md's `RectoChapterHandler` (which runs in `afterRendered()` and
-injects blank pages by reading `.pagedjs_page` count) is more reliable than
-asking the chunker to do this during layout.
-
-**Do not upstream this as a patch** — contribute the `RectoChapterHandler`
-pattern to the Paged.js documentation as a recommended workaround instead.
+This is actually a partial implementation, not a no-op — it forces a new page
+but does not insert a blank page to guarantee the correct side. print-md's
+`RectoChapterHandler` (which runs in `afterRendered()` and inserts blank pages
+based on `pagedjs_page` count parity) is more reliable. Contribute
+`RectoChapterHandler` to the Paged.js documentation as the recommended pattern
+rather than patching the chunker.
