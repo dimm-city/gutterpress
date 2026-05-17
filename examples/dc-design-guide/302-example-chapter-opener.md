@@ -47,6 +47,8 @@ I turned hard an hit a dead end. Balcony. High rise. Peak chaos screaming thirty
 
 No exits.
 
+![Lil Thump](https://placehold.co/600x400/png?text=Lil+Thump){.fg-art-lil-thump}
+
 I spun to face dem, back to da rail, fists up an shakin.
 Bats fanned out, claws flexing, chromed teeth catchin the light.
 Red eyes. Hungry eyes. I knew dat look.
@@ -71,8 +73,6 @@ Da bats froze mid-flight, shrieking an tumbling outta da sky.
 
 I locked in da hack, jacked out, an leapt clean onto a passing airbus like I meant to do it all along.
 
-![Lil Thump](https://placehold.co/600x400/png?text=Lil+Thump){.fg-art-lil-thump}
-
 ---{.column-break}
 
 ## Citizen File {#c2-character-profile}
@@ -96,6 +96,8 @@ Before reputation comes recognition. Before recognition comes a glance. Dimmers 
 
 @page .citizen-file .chapter-01
 
+@section .three-column
+
 #### What's Yr Handle?
 
 Choose a name.
@@ -114,7 +116,7 @@ Do your best to address your fellow Dreamers as they wish to be addressed.
 
 Names and pronouns matter when life itself is constantly trying to strip both away.
 
----{.column-break}
+@column-break
 
 #### Scars, Size, and Survival
 
@@ -143,7 +145,7 @@ Size carries no mechanical advantage. It's a narrative choice that shapes how yo
 |  |**Medium:** About 1.6–2.5 meters tall. The city is built for bodies like yours.|
 |  |**Big:** Over 2.5 to 4 meters tall. Your presence fills rooms and draws eyes.|
 
----{.column-break}
+@column-break
 
 #### Species
 
@@ -158,3 +160,5 @@ Where did you start, and how far is that from where you are now?
 Origins tell the Dream Master how your character fits the city's grid. A corporate-born Dreamer walks alleys differently than someone who grew up in the Flats. They know different people, owe different debts, and have different reasons to still be breathing.
 
 Choose one: **EntD rat**, **Corp exile**, **District-born**, **Offworld arrival**, **Street-raised**, or **Something the city made and hasn't claimed yet**.
+
+@end-section

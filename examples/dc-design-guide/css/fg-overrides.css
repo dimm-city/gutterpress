@@ -298,16 +298,23 @@
   clear: right;
 }
 
-/* Chapter opener full-width art */
-.fg-art-lil-thump,
-.fg-art-portrait {
-  width: 100%;
-  max-width: 7.5in;
+/* Chapter opener fiction art — floated right so prose wraps alongside it */
+.fg-art-lil-thump {
+  float: right;
+  width: 1.85in;
   height: auto;
-  max-height: 3.5in;
+  max-height: 2.25in;
   object-fit: cover;
-  display: block;
-  margin: 0 auto;
+  margin: 0 0 var(--space-sm) var(--space-md);
+}
+
+/* Character portrait — compact portrait inset in the Citizen File column */
+.fg-art-portrait {
+  float: right;
+  width: 1.2in;
+  height: 1.5in;
+  object-fit: cover;
+  margin: 0 0 var(--space-sm) var(--space-md);
 }
 
 /* Front matter art */
@@ -355,3 +362,66 @@
 }
 
 .page.citizen-file { page: citizen-file; }
+
+/* ══ CITIZEN FILE — Character Sheet Field Styling ═══════════════════════════
+   H4 headings become form field labels; tables become checkbox option lists.
+   Three-column @section uses column-fill: auto with explicit @column-break
+   markers so each field group stays in its designated column. */
+
+.page.citizen-file h4 {
+  font-family: var(--font-mono);
+  font-size: 7.5pt;
+  color: var(--amber);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-bottom: 1pt solid var(--amber);
+  padding-bottom: 2pt;
+  margin-top: 0.12in;
+  margin-bottom: 0.05in;
+}
+
+.page.citizen-file h4:first-child {
+  margin-top: 0;
+}
+
+.page.citizen-file p {
+  font-size: 8pt;
+  line-height: 1.4;
+  color: var(--ink-smoke);
+  margin-bottom: 0.03in;
+}
+
+/* Checkbox-style option tables */
+.page.citizen-file table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.05in 0;
+  font-size: 8pt;
+}
+
+/* Hide the empty GFM header row (| | | becomes empty thead) */
+.page.citizen-file thead {
+  display: none;
+}
+
+.page.citizen-file td {
+  padding: 3pt 4pt;
+  vertical-align: middle;
+  border-bottom: 0.5pt solid var(--border-hairline);
+  line-height: 1.35;
+}
+
+/* Checkbox cell — bordered square, content hidden */
+.page.citizen-file td:first-child {
+  width: 14pt;
+  text-align: center;
+  border: 1pt solid var(--border-default);
+  border-radius: 1pt;
+  background: var(--paper-aged);
+  color: transparent;
+}
+
+/* Three-column section uses auto-fill so @column-break markers are honored */
+.page.citizen-file .section.three-column {
+  column-fill: auto;
+}
