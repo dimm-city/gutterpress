@@ -419,7 +419,3 @@
   color: transparent;
 }
 
-/* Two-column section uses auto-fill so @column-break marker is honored exactly */
-.page.citizen-file .section.two-column {
-  column-fill: auto;
-}
