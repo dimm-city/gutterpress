@@ -792,25 +792,29 @@ describe("Source checks skip when tool is disabled", () => {
     }
   });
 
-  test("stylelint flags selectors that can crash Paged.js preview", async () => {
+  test("stylelint flags selectors that will be skipped by Paged.js", async () => {
     const dir = await mkdtemp(join(tmpdir(), "print-md-stylelint-"));
 
     try {
       const cssFile = join(dir, "test.css");
 
+      // Both :nth-of-type+sibling and :is()+sibling are flagged — they fail
+      // DocumentFragment.querySelectorAll and are silently skipped by Paged.js.
       await writeFile(
         cssFile,
-        ".page.rolling-die > .wrapper:first-of-type ul + p { margin-top: 0; }\n"
+        ".page.rolling-die > .wrapper:first-of-type ul + p { margin-top: 0; }\n" +
+        ":is(h2, h3) + p { break-before: avoid; }\n"
       );
 
       const check = getCheckById("source.stylelint")!;
       const ctx = makeCtx({ inputDir: dir, cssFiles: [cssFile] });
       const results = await check.run(ctx);
 
-      expect(results).toHaveLength(1);
+      expect(results).toHaveLength(2);
       expect(results[0]!.checkId).toBe("source.stylelint");
       expect(results[0]!.message).toContain("printsafe/no-pagedjs-crash-selectors");
-      expect(results[0]!.message).toContain("Paged.js preview");
+      expect(results[0]!.message).toContain("skipped by Paged.js");
+      expect(results[1]!.message).toContain("printsafe/no-pagedjs-crash-selectors");
       expect(results[0]!.file).toBe(cssFile);
     } finally {
       await rm(dir, { recursive: true, force: true });

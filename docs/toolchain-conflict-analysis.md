@@ -9,7 +9,7 @@
 
 The three tools operate on the same content at different times and with different assumptions, creating several categories of silent failure:
 
-1. **Paged.js strips CSS properties** that authors write expecting them to work — `break-after: column`, `break-after: avoid`, `break-before: recto/verso` are all swallowed silently.
+1. **Paged.js strips CSS properties** that authors write expecting them to work — `break-after: column` and `break-before: recto/verso` are silently discarded. (`break-after: avoid` was also silently discarded until vendored Paged.js PATCH-1 fixed it.)
 2. **Cascade order is inverted** relative to author expectation — the `PAGED_CSS` inline `<style>` block comes *after* user `<link>` stylesheets and wins specificity ties, meaning authors cannot override print-md base styles with same-specificity rules.
 3. **State shared across file renders** in the markdown renderer can corrupt multi-file output if a render fails mid-section.
 4. **CSS architecture contract violations** exist in 8+ places, making maintenance correctness hard to reason about.
@@ -60,7 +60,7 @@ After writing `data-break-*` attributes, `addBreakAttributes()` in `breaks.js` r
 **Concrete failures in the current codebase:**
 
 - `page-templates.css:67` — `.column-break { break-after: column }` → dead. No column break ever fires through this rule. The structural `.col` div approach in `index.ts` is the correct workaround.
-- `page-templates.css:88–90` — `.page h2, .page h3 { break-after: avoid }` → dead. Heading orphan protection via `break-after: avoid` is silently discarded. The chunker never receives the avoid hint.
+- `page-templates.css:88–90` — `.page h2, .page h3 { break-after: avoid }` → **active** as of vendored Paged.js PATCH-1. The chunker's element-level path (checking `node.dataset.previousBreakAfter === "avoid"` at lines 1937–1938) always functioned. PATCH-1 additionally forwards `avoid` to the page model so custom `afterPageLayout` handlers also see it.
 - Any `break-before: recto` or `break-before: verso` in author CSS → dead. Use `RectoChapterHandler` (DOM injection via `afterRendered()`) instead.
 
 ### 1.4 `break-before` on First Child is Silently Dropped
@@ -369,7 +369,7 @@ const PAGED_CSS = `
 | `css/dc-tokens.css` | Token definitions | `rem` units; utility classes belong in dc-components.css |
 | `css/dc-core.css` | Base element styles | No ARCHITECTURAL CONTRACT header |
 | `css/dc-components.css` | Component styles | `column-count` violations; hardcoded hex instead of tokens |
-| `css/page-templates.css` | Column and page layout | `break-after: avoid` on headings is dead CSS |
+| `css/page-templates.css` | Column and page layout | `break-after: column` on `.column-break` is still dead CSS (PATCH-4 deferred) |
 | `css/page-rules.css` | `@page` declarations | `chapter-end`, `clean` missing `:left/:right` variants |
 | `css/dg-overrides.css` | Design guide chrome | `@page :left/:right` split across files; `columns:N` violations |
 | `css/fg-overrides.css` | Field guide overrides | `@page citizen-file` in wrong file; `var(--border-default)` undefined |

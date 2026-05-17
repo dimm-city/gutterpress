@@ -30,7 +30,7 @@ const riskyMessages = utils.ruleMessages(ruleRiskyProps, {
 
 const pagedjsCrashMessages = utils.ruleMessages(rulePagedjsCrashSelectors, {
   rejected: (selector: string) =>
-    `Selector can crash Paged.js preview: avoid combining :first-of-type/:last-of-type/:nth-of-type with adjacent sibling (+) in ${selector}`
+    `Selector will be skipped by Paged.js (DocumentFragment.querySelectorAll rejects this pattern — break/nth rules won't apply): ${selector}`
 });
 
 function extractUrls(value: string): string[] {
@@ -97,7 +97,18 @@ function splitSelectorList(selectorList: string): string[] {
 }
 
 function isPagedjsCrashProneSelector(selector: string): boolean {
-  return /:(?:first|last|nth)-of-type\b/i.test(selector) && selector.includes("+");
+  const hasSiblingCombinator = selector.includes("+") || selector.includes("~");
+  // :is()/:where()/:not() combined with sibling combinators crash DocumentFragment.querySelectorAll
+  // in Paged.js's CSS processing pipeline. As of print-md's vendored Paged.js (PATCH-3), the
+  // crash is caught and the selector is skipped with a console.warn — but the CSS still has no
+  // effect on Paged.js break/nth processing. Authors must use explicit comma-separated selectors.
+  const hasFunctionalPseudoWithSibling =
+    hasSiblingCombinator && /:(?:is|where|not)\s*\(/i.test(selector);
+  // :first-of-type/:last-of-type/:nth-of-type combined with adjacent sibling was the original
+  // Paged.js crash pattern — keep detecting it as it also fails querySelectorAll in some contexts.
+  const hasNthOfTypeWithSibling =
+    hasSiblingCombinator && /:(?:first|last|nth)-of-type\b/i.test(selector);
+  return hasFunctionalPseudoWithSibling || hasNthOfTypeWithSibling;
 }
 
 const remoteUrlsRule = function(primaryOption: unknown) {
