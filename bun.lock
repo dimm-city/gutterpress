@@ -11,7 +11,6 @@
         "markdown-it-attrs": "^4.3.0",
         "markdown-it-container": "^4.0.0",
         "markdown-it-footnote": "^4.0.0",
-        "markdown-it-paged": "^0.3.0",
         "markdown-it-source-map": "^0.1.1",
         "pagedjs": "^0.4.3",
         "puppeteer-core": "^24.43.0",
@@ -370,8 +369,6 @@
     "markdown-it-container": ["markdown-it-container@4.0.0", "", {}, "sha512-HaNccxUH0l7BNGYbFbjmGpf5aLHAMTinqRZQAEQbMr2cdD3z91Q6kIo1oUn1CQndkT03jat6ckrdRYuwwqLlQw=="],
 
     "markdown-it-footnote": ["markdown-it-footnote@4.0.0", "", {}, "sha512-WYJ7urf+khJYl3DqofQpYfEYkZKbmXmwxQV8c8mO/hGIhgZ1wOe7R4HLFNwqx7TjILbnC98fuyeSsin19JdFcQ=="],
-
-    "markdown-it-paged": ["markdown-it-paged@0.3.0", "", {}, "sha512-PpsT2ES67wt4S5gvFB9hVfsGCwCLFsm26teuYZIlLZ68iH5Sx+tSQ4dWj4NarBsRaIKOVbGYBsGILmOh5Iyq8w=="],
 
     "markdown-it-source-map": ["markdown-it-source-map@0.1.1", "", {}, "sha512-q4+ij82K/0C6O8rw/NnWogcgp3AeQykZZ5954yyxY8pcX8Rago8uAS7e+4Ogd6rERf/tDAen73KwT+Sb7dP/6w=="],
 
