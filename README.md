@@ -49,8 +49,8 @@ cd print-md
 bun install
 
 # Run directly
-bun src/cli.ts build
-bun src/cli.ts preview
+bun packages/cli/src/cli.ts build
+bun packages/cli/src/cli.ts preview
 ```
 
 ### Future: Published Package Installation
@@ -456,7 +456,7 @@ print-md preview --no-watch
 
 - **Single Bun.serve instance** - Static files, `/api/*` routes, and a
   `/__print-md-hmr` WebSocket are all served by one `Bun.serve` process
-  (see `src/preview/http-server.ts`). No bundler runs at preview time.
+  (see `packages/cli/src/preview/http-server.ts`). No bundler runs at preview time.
 - **Live Reload** - File changes regenerate `book.html` and broadcast a
   `{ type: "full-reload" }` message over the WebSocket; a tiny client
   snippet injected into served HTML reloads the page on receipt.
@@ -468,25 +468,44 @@ print-md preview --no-watch
 - **PDF** - Renders via Chromium + Paged.js typesetter for professional print quality. Use `build --format pdf` for a quick PDF or `build --format pdfx` for a print-ready PDF/X-1a/X-3 with the full validated pipeline.
 - **HTML static site** - `build --format html` produces a directory whose `index.html` is the print-md viewer chrome wrapping the rendered book. Drop it on GitHub Pages or any static host. See [docs/design-guides.md](./docs/design-guides.md).
 
-## Project Structure
+## Project layout
+
+This repo is a Bun workspace monorepo.
 
 ```
 print-md/
-├── src/
-│   ├── cli.ts              # CLI entry point
-│   ├── commands/            # Command implementations
-│   ├── lib/                 # Core libraries
-│   │   ├── markdown/        # Markdown processing and plugins
-│   │   ├── manifest.ts      # Config resolution
-│   │   ├── presets.ts       # Vendor presets
-│   │   ├── ghostscript.ts   # PDF/X conversion
-│   │   └── chromium.ts      # Chromium resolution
-│   ├── checks/              # Validation check system
-│   ├── preview/             # Preview server
-│   ├── schema/              # Type definitions
-│   └── utils/               # Shared utilities
-└── README.md
+├── packages/
+│   ├── cli/                     # @dimm-city/print-md — CLI + library
+│   │   ├── src/
+│   │   │   ├── cli.ts           # CLI entry point (citty)
+│   │   │   ├── api/index.ts     # Library API (runBuild, startPreviewServer, …)
+│   │   │   ├── commands/        # Command implementations
+│   │   │   ├── lib/             # Core libraries (markdown, manifest, chromium, …)
+│   │   │   ├── checks/          # Validation check system
+│   │   │   ├── preview/         # Headless preview server (Bun.serve + chokidar)
+│   │   │   ├── schema/          # Type definitions
+│   │   │   └── assets/          # Embedded static assets (Paged.js, pagedjs-interface)
+│   │   ├── scripts/compile.ts   # bun build --compile wrapper
+│   │   ├── profiles/            # ICC colour profiles
+│   │   └── tests/               # Bun test suite
+│   └── viewer/                  # @dimm-city/print-md-viewer — Electron + SvelteKit desktop app
+│       ├── electron/            # Electron main process (TypeScript → CJS)
+│       ├── src/                 # SvelteKit app (toolbar UI, +server.ts API routes)
+│       └── electron-builder.yml # Linux AppImage packaging config
+├── examples/                    # Sample projects (dc-design-guide, template, …)
+├── docs/                        # Authoring guides, ADRs, architecture docs
+└── package.json                 # Workspace root (private)
 ```
+
+## Desktop viewer
+
+`packages/viewer` is an Electron + SvelteKit desktop app. It imports
+`@dimm-city/print-md` directly as a workspace dependency — no subprocess, no
+JSON IPC. The SvelteKit server runs under Bun because print-md uses Bun-specific
+APIs (`Bun.serve`, `Bun.file`, `with { type: "file" }` imports).
+
+See [`packages/viewer/README.md`](./packages/viewer/README.md) for dev and
+packaging instructions.
 
 ## Development
 
@@ -501,18 +520,21 @@ This project uses [Bun](https://bun.com) runtime v1.3.1 or later.
 git clone https://github.com/dimm-city/print-md.git
 cd print-md
 
-# Install dependencies
+# Install all workspace dependencies
 bun install
 
-# Run from source
-bun src/cli.ts build
-bun src/cli.ts preview
+# Run CLI from source
+bun packages/cli/src/cli.ts build
+bun packages/cli/src/cli.ts preview
 
-# Build the CLI
-bun run build
+# Run CLI tests
+bun --filter @dimm-city/print-md test
 
-# Run tests
-bun test
+# Type-check CLI
+bun --cwd packages/cli run typecheck
+
+# Launch desktop viewer (dev mode)
+bun --cwd packages/viewer run electron:dev
 ```
 
 ### Troubleshooting

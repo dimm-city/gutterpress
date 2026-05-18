@@ -11,8 +11,8 @@ on:
   pull_request:
     paths:
       - 'scripts/install.ps1'
-      - 'tests/integration/**'
-      - 'src/lib/embedded-assets.ts'
+      - 'packages/cli/tests/integration/**'
+      - 'packages/cli/src/lib/embedded-assets.ts'
       - '.github/workflows/windows-install-test.yml'
   workflow_call:
     inputs:
@@ -45,7 +45,7 @@ jobs:
 
       - name: Build standalone binary for windows-x64
         shell: pwsh
-        run: bun scripts/compile.ts bun-windows-x64 print-md-windows-x64.exe
+        run: bun --cwd packages/cli scripts/compile.ts bun-windows-x64 ../../print-md-windows-x64.exe
 
       - name: Smoke-test binary directly
         shell: pwsh
@@ -75,7 +75,7 @@ jobs:
 
       - name: Verify installation
         shell: pwsh
-        run: ./tests/integration/run-install-test.ps1 -SkipInstall
+        run: ./packages/cli/tests/integration/run-install-test.ps1 -SkipInstall
 
       - name: Build HTML output from smoke fixture
         shell: pwsh
@@ -86,7 +86,7 @@ jobs:
           $exe = if (Test-Path $installed) { $installed } else { $workspace }
           Write-Host "Binary: $exe"
 
-          $fixtureDir = "${{ github.workspace }}\tests\integration\fixtures\smoke"
+          $fixtureDir = "${{ github.workspace }}\packages\cli\tests\integration\fixtures\smoke"
           $outDir = "${{ runner.temp }}\smoke-out"
           Write-Host "Building: $exe build $fixtureDir --format html --out $outDir"
           & $exe build $fixtureDir --format html --out $outDir

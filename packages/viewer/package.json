@@ -3,6 +3,8 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
+  "main": "electron-dist/main.js",
+  "author": "itlackey",
   "description": "Desktop viewer for print-md (Electron + SvelteKit).",
   "scripts": {
     "dev": "vite dev",
@@ -10,6 +12,7 @@
     "preview": "vite preview",
     "electron:build": "tsc -p electron/tsconfig.json && echo '{\"type\":\"commonjs\"}' > electron-dist/package.json",
     "electron:dev": "bun run electron:build && bun run build && electron electron-dist/main.js",
+    "dist:linux": "bun run build && bun run electron:build && bunx electron-builder --linux AppImage --config electron-builder.yml",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
@@ -17,6 +20,7 @@
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "^5.2.0",
+    "electron-builder": "^26.0.0",
     "@sveltejs/kit": "^2.5.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@types/node": "^22.0.0",

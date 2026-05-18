@@ -1,0 +1,30 @@
+appId: city.dimm.print-md-viewer
+productName: print-md
+
+# Electron main entry (compiled from electron/main.ts by electron:build script)
+# The file pattern below tells electron-builder where to find it.
+
+# Files included in the packaged app.
+# The Electron main process spawns `bun build/index.js` (the SvelteKit Node
+# server). Bun must be installed on the host — it is NOT bundled here.
+files:
+  - electron-dist/**
+  - build/**
+  - package.json
+  - node_modules/**
+
+extraMetadata:
+  main: electron-dist/main.js
+
+# Do not bundle node_modules into an asar archive; the SvelteKit server
+# resolves @dimm-city/print-md from node_modules at runtime under Bun.
+asar: false
+
+directories:
+  output: dist
+  buildResources: build-resources
+
+linux:
+  target:
+    - AppImage
+  category: Office

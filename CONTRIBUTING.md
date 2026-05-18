@@ -34,60 +34,71 @@ Thank you for your interest in contributing to print-md! This document provides 
 
 3. **Verify setup**
    ```bash
-   # Run tests
-   bun test
-
-   # Build the project
-   bun run build
+   # Run CLI tests
+   bun --filter @dimm-city/print-md test
 
    # Try the CLI
-   bun run src/cli.ts --help
+   bun packages/cli/src/cli.ts --help
+
+   # Launch desktop viewer
+   bun --cwd packages/viewer run electron:dev
    ```
 
 ### Development Workflow
 
+Root-level scripts delegate to the relevant workspace package:
+
 ```bash
-# Run from source (for development)
-bun run src/cli.ts preview ./examples/my-book
+# Run CLI from source
+bun cli -- preview ./examples/my-book
 
-# Watch mode for tests
+# Run all tests (CLI package)
+bun test
+
+# Type-check all packages
+bun typecheck
+
+# Launch desktop viewer (dev mode, no Electron)
+bun viewer:dev
+
+# Launch desktop viewer with Electron
+bun viewer:electron
+```
+
+Working inside a single package:
+
+```bash
+# CLI package
+cd packages/cli
 bun test --watch
+bun run typecheck
 
-# Lint your code
-bun run lint
-
-# Format code
-bun run format
-
-# Type check
-bun run type-check
+# Viewer package
+cd packages/viewer
+bun run dev          # SvelteKit dev server only
+bun run electron:dev # Full Electron + SvelteKit
 ```
 
 ## Project Structure
 
 ```
-print-md/
-├── src/
-│   ├── cli.ts              # CLI entry point
-│   ├── types.ts            # TypeScript type definitions
-│   ├── constants.ts        # Application constants
-│   ├── build/              # Build orchestration
-│   │   ├── build.ts        # Main build function
-│   │   ├── watch.ts        # File watching
-│   │   └── formats/        # Output format strategies
-│   ├── markdown/           # Markdown processing
-│   │   ├── markdown.ts     # Main processor
-│   │   ├── core/           # Core directives
-│   │   └── plugins/        # Extension plugins
-│   ├── preview/            # Preview server
-│   │   └── routes.ts       # API routes
-│   ├── config/             # Configuration management
-│   ├── utils/              # Utility functions
-│   └── assets/             # CSS, fonts, scripts
-├── tests/
-│   └── integration/        # Integration tests
-├── examples/               # Example projects
-└── docs/                   # Documentation
+print-md/                        # Workspace root (private)
+├── packages/
+│   ├── cli/                     # @dimm-city/print-md — CLI + library
+│   │   ├── src/
+│   │   │   ├── cli.ts           # CLI entry point
+│   │   │   ├── api/index.ts     # Library API (runBuild, startPreviewServer, …)
+│   │   │   ├── commands/        # Command implementations
+│   │   │   ├── lib/             # Core libraries
+│   │   │   ├── checks/          # Validation check system
+│   │   │   └── preview/         # Headless preview server
+│   │   ├── scripts/compile.ts   # Binary compile wrapper
+│   │   └── tests/               # Bun test suite
+│   └── viewer/                  # Electron + SvelteKit desktop app
+│       ├── electron/            # Electron main process
+│       └── src/                 # SvelteKit UI + server routes
+├── examples/                    # Example projects
+└── docs/                        # Documentation
 
 ```
 
