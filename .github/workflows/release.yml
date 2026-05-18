@@ -216,6 +216,7 @@ jobs:
   build-viewer-linux-win:
     name: Build Viewer / Linux + Windows
     needs: [version, github-release]
+    if: always() && needs.version.result == 'success' && needs.github-release.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -258,6 +259,7 @@ jobs:
   build-viewer-mac:
     name: Build Viewer / macOS
     needs: [version, github-release]
+    if: always() && needs.version.result == 'success' && needs.github-release.result == 'success'
     runs-on: macos-latest
     permissions:
       contents: write
