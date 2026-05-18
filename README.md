@@ -2,12 +2,27 @@
 
 A CLI tool and desktop app for creating professional print-ready PDFs from markdown. Write your content in markdown and let print-md handle the complex CSS Paged Media layout. Uses Chromium + Paged.js for PDF generation.
 
+## Download
+
+**[Latest release →](https://github.com/dimm-city/print-md/releases/latest)**
+
+| Platform | Desktop App | CLI Binary |
+|---|---|---|
+| **Linux x64** | `.AppImage` on releases page | [`print-md-linux-x64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-linux-x64) |
+| **Windows x64** | `.zip` on releases page | [`print-md-windows-x64.exe`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-windows-x64.exe) |
+| **macOS (Apple Silicon)** | `.dmg` on releases page | [`print-md-macos-arm64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-macos-arm64) |
+| **macOS (Intel)** | `.dmg` on releases page | [`print-md-macos-x64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-macos-x64) |
+
+The desktop app (AppImage/zip/dmg) opens a project directory, shows a paginated preview, and exports PDF — no terminal required. The CLI binary is a single standalone executable for scripting and CI — no Node or Bun install needed on the host.
+
+> **Beta:** Releases tagged `-beta.N` are pre-releases for testing. Check the releases page for stability status.
+
 ## Features
 
 - **Markdown to PDF** - Convert markdown files to professional print layouts
 - **Live Preview** - Headless preview server with WebSocket-driven full-reload on file changes
-- **HTML static-site output** - `print-md build --format html` produces a deployable directory whose `index.html` is the same viewer the preview server uses. Ideal for [companion design guides](./docs/design-guides.md).
-- **Desktop App** - Electron + SvelteKit viewer with toolbar UI, page navigation, and PDF export
+- **HTML output** - `print-md build --format html` produces a self-contained directory with `book.html` + Paged.js assets. Ideal for [companion design guides](./docs/design-guides.md).
+- **Desktop App** - Electron + SvelteKit viewer with toolbar UI, page navigation, zoom, and PDF export
 - **Custom Styling** - Full control over typography, layout, and print design with CSS
 - **Page Control** - Fine-grained control over page breaks, spreads, and multi-column layouts
 - **Extensible** - Plugin system for custom markdown syntax and directives
@@ -15,17 +30,15 @@ A CLI tool and desktop app for creating professional print-ready PDFs from markd
 
 ## Installation
 
-**Package Status:** print-md is currently in development and not yet published to npm.
-
 ### Non-technical users: desktop app
 
-Download the desktop app from [GitHub Releases](https://github.com/dimm-city/print-md/releases):
+Download the desktop app from the [Download](#download) table above or the [GitHub Releases page](https://github.com/dimm-city/print-md/releases/latest):
 
-- **Linux** — `print-md-X.Y.Z.AppImage` (requires a system `bun` binary — see [bun.sh](https://bun.sh))
-- **Windows** — `print-md-X.Y.Z-win32-x64.zip` (extract and run `electron.exe`)
-- **macOS** — `print-md-X.Y.Z.dmg`
+- **Linux** — `.AppImage` — requires [Bun](https://bun.sh) installed on the host; make the file executable (`chmod +x`) then double-click or run it
+- **Windows** — `.zip` — extract and run `electron.exe`; requires [Bun](https://bun.sh) installed (the Bun Windows installer adds it to `PATH` automatically)
+- **macOS** — `.dmg` — open the disk image and drag the app to Applications
 
-The desktop app opens a project directory, shows a paginated preview, and saves a PDF — no terminal required.
+The desktop app opens a project directory, shows a paginated preview, and exports PDF — no terminal required.
 
 ### CLI power users
 
@@ -50,13 +63,13 @@ bun packages/cli/src/cli.ts preview
 bun run cli -- preview ./my-book
 ```
 
-### Future: Published Package Installation
-
-Once `@dimm-city/print-md` is published to npm, you'll be able to install it with:
+### npm (once stable)
 
 ```bash
 npm install -g @dimm-city/print-md
 ```
+
+The npm package is planned for stable releases. Pre-releases ship as binary downloads only.
 
 ## Documentation
 
