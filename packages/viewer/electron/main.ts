@@ -1,6 +1,24 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
+import net from "node:net";
 import path from "node:path";
+
+async function pickFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address();
+      if (typeof addr === "object" && addr) {
+        const port = addr.port;
+        srv.close(() => resolve(port));
+      } else {
+        srv.close(() => reject(new Error("no address")));
+      }
+    });
+  });
+}
 
 // Resolve the SvelteKit Node-style server bundle. In dev: ../build/index.js
 // (produced by `vite build`). In packaged mode: bundled into resources.
@@ -11,15 +29,19 @@ let serverUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
 
 async function startSvelteKitServer(): Promise<string> {
+  // Pre-pick a free port so we know the URL up front; adapter-node's stdout
+  // line ("Listening on http://HOST:PORT") echoes whatever PORT we pass,
+  // which is unhelpful when PORT=0.
+  const port = await pickFreePort();
+  const url = `http://127.0.0.1:${port}`;
+
   return new Promise((resolve, reject) => {
-    // Spawn under Bun so @dimm-city/print-md's Bun-specific APIs work.
     const proc = spawn("bun", [SVELTEKIT_ENTRY], {
       env: {
         ...process.env,
-        // Port 0 = OS-assigned. SvelteKit's @sveltejs/adapter-node logs the port on startup.
-        PORT: "0",
+        PORT: String(port),
         HOST: "127.0.0.1",
-        ORIGIN: "http://127.0.0.1",
+        ORIGIN: url,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -29,12 +51,11 @@ async function startSvelteKitServer(): Promise<string> {
     const onLine = (chunk: Buffer) => {
       const text = chunk.toString();
       process.stdout.write(`[server] ${text}`);
-      // adapter-node logs e.g. "Listening on http://127.0.0.1:PORT"
-      const m = text.match(/https?:\/\/[^\s]+/);
-      if (m && !resolved) {
+      // Adapter-node logs "Listening on <url>" once bound; ready to load.
+      if (!resolved && text.includes("Listening on")) {
         resolved = true;
-        serverUrl = m[0].replace(/[\s,.;)\]]+$/, "");
-        resolve(serverUrl);
+        serverUrl = url;
+        resolve(url);
       }
     };
     proc.stdout?.on("data", onLine);
@@ -49,7 +70,6 @@ async function startSvelteKitServer(): Promise<string> {
       if (!resolved) reject(e);
     });
 
-    // Safety timeout
     setTimeout(() => {
       if (!resolved) reject(new Error("SvelteKit server did not start within 15s"));
     }, 15_000);

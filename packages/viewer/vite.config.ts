@@ -1,31 +1,45 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
 
+// print-md uses Bun-specific APIs (Bun.serve, Bun.file, with { type: "file" })
+// and native deps. Keep its whole subgraph external from any Vite/Rollup pass
+// so the workspace dep resolves at runtime under Bun.
+const externalIds = [
+  "@dimm-city/print-md",
+  "@dimm-city/print-md/api",
+  "puppeteer-core",
+  "chokidar",
+  "citty",
+  "yaml",
+  "markdown-it",
+  "markdown-it-attrs",
+  "markdown-it-footnote",
+  "markdown-it-source-map",
+  "pagedjs",
+  "stylelint",
+];
+
+const isExternal = (id: string) => {
+  return externalIds.some((e) => id === e || id.startsWith(e + "/"));
+};
+
 export default defineConfig({
   plugins: [sveltekit()],
   ssr: {
-    // print-md uses Bun-specific APIs (Bun.serve, Bun.file, with { type: "file" } imports)
-    // and native deps (puppeteer-core, chokidar). Keep them external so Vite doesn't try
-    // to bundle them for SSR — the SvelteKit server runs under Bun and resolves them
-    // at runtime via the workspace dep.
+    // Do NOT bundle anything from print-md or its native deps for the server build.
+    external: externalIds,
     noExternal: [],
-    external: [
-      "@dimm-city/print-md",
-      "puppeteer-core",
-      "chokidar",
-      "citty",
-      "yaml",
-      "markdown-it",
-      "markdown-it-attrs",
-      "markdown-it-footnote",
-      "markdown-it-source-map",
-      "pagedjs",
-      "stylelint",
-    ],
+  },
+  optimizeDeps: {
+    exclude: externalIds,
+  },
+  build: {
+    rollupOptions: {
+      external: (id) => isExternal(id),
+    },
   },
   server: {
     fs: {
-      // Allow reading sources from the workspace (sibling packages).
       allow: [".."],
     },
   },

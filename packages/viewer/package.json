@@ -8,7 +8,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "electron:build": "tsc -p electron/tsconfig.json",
+    "electron:build": "tsc -p electron/tsconfig.json && echo '{\"type\":\"commonjs\"}' > electron-dist/package.json",
     "electron:dev": "bun run electron:build && bun run build && electron electron-dist/main.js",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
