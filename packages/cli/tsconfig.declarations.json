@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationDir": "types",
+    "outDir": "dist",
+    "stripInternal": true
+  },
+  "include": [
+    "src/api/index.ts",
+    "src/index.ts"
+  ]
+}
