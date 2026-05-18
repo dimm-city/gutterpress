@@ -328,7 +328,7 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
         stripAnnotations: null,
       },
     });
-    log.success(`Wrote: ${path.join(outDir, "index.html")}`);
+    log.success(`Wrote: ${path.join(outDir, "book.html")}`);
     log.info(`Fingerprint: ${fingerprintPath}`);
     return {
       outDir,

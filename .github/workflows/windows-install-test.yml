@@ -71,11 +71,11 @@ jobs:
           # Still set the workflow token in case anything still needs it
           # (e.g. future installer steps that talk to the API).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./scripts/install.ps1
+        run: ./packages/cli/scripts/install.ps1
 
       - name: Verify installation
         shell: pwsh
-        run: ./packages/cli/tests/integration/run-install-test.ps1 -SkipInstall
+        run: .\packages\cli\tests\integration\run-install-test.ps1 -SkipInstall
 
       - name: Build HTML output from smoke fixture
         shell: pwsh
@@ -93,7 +93,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "print-md build --format html exited $LASTEXITCODE" }
 
           # Verify all expected output files are present.
-          $expected = @("book.html", "index.html", "vendor\paged.polyfill.js", "preview\scripts\pagedjs-interface.js")
+          $expected = @("book.html", "vendor\paged.polyfill.js", "preview\scripts\pagedjs-interface.js", "preview\scripts\pagedjs-bridge.js")
           foreach ($f in $expected) {
             $path = Join-Path $outDir $f
             if (-not (Test-Path $path)) { throw "Expected output missing: $path" }
@@ -121,7 +121,7 @@ jobs:
           Write-Host "Chrome: $chrome"
 
           $outDir = "${{ runner.temp }}\smoke-out"
-          $script = "${{ github.workspace }}\tests\integration\paged-smoke.mjs"
+          $script = "${{ github.workspace }}\packages\cli\tests\integration\paged-smoke.mjs"
           Set-Location $pwDir
           node $script $outDir --chrome-path $chrome
           if ($LASTEXITCODE -ne 0) { throw "Paged.js render smoke test failed — see output above" }
