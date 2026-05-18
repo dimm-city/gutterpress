@@ -4,24 +4,31 @@
    Imported LAST by index.css. Wins the cascade for all project-specific tweaks.
    ============================================================================= */
 
-/* ═══ CARD-GRID SPREAD: keep header + intro + first cards together ══
-   The h2 heading had column-span: all which forced a page break after
-   it in Paged.js, leaving the heading alone on a page. Remove column-span
-   so the heading flows into the card grid with the intro and cards. */
+/* ═══ CARD-GRID SPREAD: full-width header + intro, then balanced 8-card grid ══
+   column-span: all on h2 and .dc-intro so both span the full width above the
+   two-column card area. break-after: avoid prevents Paged.js from isolating
+   the heading on its own page (the original bug). First specialty block is
+   pinned to the intro with break-before: avoid. */
 
 .page.card-grid > h2 {
-  column-span: none;
+  column-span: all;
   break-after: avoid;
 }
 
 .page.card-grid > .dc-intro {
-  column-span: none;
+  column-span: all;
   break-after: avoid;
 }
 
 /* Keep first specialty block with the intro */
 .page.card-grid .dc-specialty:first-of-type {
   break-before: avoid;
+}
+
+/* Compact card images so all 8 specialties balance 4+4 on one page */
+.page.card-grid .dc-specialty-card {
+  --dc-specialty-card-media-height: 0.65in;
+  --dc-specialty-card-media-width: 0.6in;
 }
 
 /* ═══ SKILL CARD PAGE DENSITY ═══
@@ -404,4 +411,5 @@
   background: var(--paper-aged);
   color: transparent;
 }
+
 

@@ -54,13 +54,17 @@ The door didn't explode. It failed. Metal screamed, folded, and vanished inward 
 
 Five shadows moved as one, already inside, already gone.
 
----{.column-break}
+@page .chapter-abilities
 
-## How Abilities Work
+## How Abilities Work {.dc-spray}
+
+@lede
 
 How that pack works wasn't luck. It was abilities firing in sequence. Each move opened space. Each ability set up the next.
 
 In Dimm City, abilities aren't just what you can do. They're learned techniques, invasive augments, practiced rituals, and raw instinct working as one.
+
+@end-lede
 
 @callout variant=note label="The Core Loop of a Dream"
 
@@ -154,8 +158,6 @@ They walk the alleys like sacred ground—feeding the hungry, tending weeds, rai
 @end-specialty-card
 
 @end-specialty
-
-@end-section
 
 @specialty .cybersurgeon
 
