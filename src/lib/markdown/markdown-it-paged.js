@@ -370,9 +370,13 @@ function plugin(md, pluginOptions = {}) {
       }
     }
 
-    // At EOF: close any open section explicitly; leave page/spread/chapter open
-    closeSection();
-
+    // At EOF: close every open scope so each file's render produces balanced
+    // HTML. print-md renders chapter files one at a time and concatenates the
+    // output (src/lib/markdown/index.ts); if any scope leaks across that
+    // boundary, the next file's content parses as nested inside the previous
+    // file's last unclosed wrapper. closeChapter() cascades through
+    // section → page → spread → chapter via closeOpenScopes(), so one call
+    // covers everything.
     if (spreadOpen && !sawAnyPageInsideCurrentSpread) {
       warn(
         state.env,
@@ -383,8 +387,8 @@ function plugin(md, pluginOptions = {}) {
       );
     }
 
-    // chapters intentionally left open — Paged.js handles document-end implicitly
-    if (!chapterOpen) closeSpread();
+    closeChapter();
+    closeSpread();
     state.tokens = out;
   });
 
