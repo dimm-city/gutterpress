@@ -74,4 +74,14 @@ export class PreviewClient {
     if (!this.win) return;
     this.win.postMessage({ type: "pmd:bg-color", color }, "*");
   }
+
+  /**
+   * Inject (or replace) a named <style> block inside the iframe's <head>.
+   * @param id   Unique identifier used as the data-pmd-{id} attribute.
+   * @param css  CSS text to write into the style block.
+   */
+  injectStyles(id: string, css: string) {
+    if (!this.win) return;
+    this.win.postMessage({ type: "pmd:inject-styles", id, css }, "*");
+  }
 }

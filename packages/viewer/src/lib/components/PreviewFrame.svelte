@@ -1,21 +1,22 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { PreviewClient } from "../preview-client";
 
   let { url, client = $bindable() }: { url: string; client?: PreviewClient } = $props();
 
-  let frame: HTMLIFrameElement;
+  let frame = $state<HTMLIFrameElement | undefined>(undefined);
 
-  onMount(() => {
+  $effect(() => {
+    if (!frame) return;
     const c = new PreviewClient();
     client = c;
     const onLoad = () => {
-      c.attach(frame.contentWindow);
+      c.attach(frame!.contentWindow);
     };
     frame.addEventListener("load", onLoad);
     return () => {
-      frame.removeEventListener("load", onLoad);
+      frame!.removeEventListener("load", onLoad);
       c.detach();
+      client = undefined;
     };
   });
 </script>
