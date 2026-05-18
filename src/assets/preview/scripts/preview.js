@@ -1133,6 +1133,24 @@ async function initializePreview() {
         // Non-fatal — viewer still works without the auto-open.
         console.warn("Could not check preview status:", e);
       }
+
+      // Hide the "Clone from GitHub" button when `gh` isn't installed —
+      // its modal is unusable without the CLI and a dead button is worse
+      // than no button. Failures here are non-fatal: leave the button
+      // visible so the user can still try (and get a clearer error from
+      // the modal flow).
+      try {
+        const ghResp = await fetch("/api/gh/status");
+        if (ghResp.ok) {
+          const ghStatus = await ghResp.json();
+          if (!ghStatus.ghCliInstalled) {
+            const githubBtn = document.getElementById("btn-github");
+            if (githubBtn) githubBtn.style.display = "none";
+          }
+        }
+      } catch (e) {
+        console.warn("Could not check GitHub CLI status:", e);
+      }
     }
 
     console.log("✓ Preview initialized");
