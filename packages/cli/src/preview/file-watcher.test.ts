@@ -130,7 +130,9 @@ describe('generateAndWriteHtml', () => {
     // the CSS refactor in bdc64ef. Scan all CSS files in the directory so this
     // regression guard stays valid regardless of future file renames.
     const { readdir } = await import('fs/promises');
-    const cssDir = join(process.cwd(), 'examples/dc-design-guide/css');
+    // Resolve relative to this file so it works whether tests are invoked
+    // from the package dir or the workspace root.
+    const cssDir = join(import.meta.dir, '../../../../examples/dc-design-guide/css');
     const cssFiles = (await readdir(cssDir)).filter((f) => f.endsWith('.css'));
 
     let allCss = '';

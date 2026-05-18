@@ -1,0 +1,90 @@
+{
+  "name": "@dimm-city/print-md",
+  "version": "0.1.0",
+  "description": "Markdown-to-PDF converter for professional print layout using Paged.js and Ghostscript.",
+  "author": "itlackey",
+  "license": "MPL-2.0",
+  "keywords": [
+    "markdown",
+    "pdf",
+    "print",
+    "pagedjs",
+    "ghostscript",
+    "book",
+    "publishing",
+    "ttrpg"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dimm-city/print-md.git"
+  },
+  "homepage": "https://github.com/dimm-city/print-md#readme",
+  "bugs": {
+    "url": "https://github.com/dimm-city/print-md/issues"
+  },
+  "type": "module",
+  "module": "src/index.ts",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./api": {
+      "bun": "./src/api/index.ts",
+      "types": "./src/api/index.ts",
+      "default": "./src/api/index.ts"
+    }
+  },
+  "bin": {
+    "print-md": "./src/cli.ts"
+  },
+  "files": [
+    "src/",
+    "profiles/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "lint:css": "bun src/cli.ts lint",
+    "build": "bun build src/cli.ts --outdir dist --target bun --packages external && cp -r src/assets dist/assets",
+    "build:pdf": "bun src/cli.ts build",
+    "build:html": "bun src/cli.ts build --format html",
+    "validate:pdf": "bun src/cli.ts validate",
+    "preview": "bun src/cli.ts preview",
+    "compile": "bun scripts/compile.ts",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage --coverage-reporter=text",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/markdown-it": "^14.1.2",
+    "glob": "^13.0.0",
+    "htmlhint": "^1.1.4",
+    "markdownlint-cli2": "^0.17.0",
+    "playwright": "^1.60.0",
+    "stylelint": "^17.0.0",
+    "stylelint-config-standard": "^40.0.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "chokidar": "^5.0.0",
+    "citty": "^0.2.0",
+    "markdown-it": "^14.1.0",
+    "markdown-it-attrs": "^4.3.0",
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-source-map": "^0.1.1",
+    "pagedjs": "^0.4.3",
+    "puppeteer-core": "^24.43.0",
+    "yaml": "^2.8.2"
+  }
+}
