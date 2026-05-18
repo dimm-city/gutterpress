@@ -260,7 +260,7 @@ Tactical context and table guidance. Two to three short paragraphs.
 
 Two-column creature/NPC entry. Left: chevron banner + lede + stat block + encounter notes. Right: aged-paper portrait + tape label + caption + optional stamp. **Page class:** `@page .page .chapter-end`
 
-**Components:** `:::two-column` (two-col split) · `# Title {.dc-chevron}` · `:::lede` (≤20 words) · `.dc-stat` · `.dc-portrait` · `.dc-tape` · `.dc-stamp` (optional)
+**Components:** `@section .two-column` (two-col split) · `# Title {.dc-chevron}` · `@lede` (≤20 words) · `.dc-stat` · `.dc-portrait` · `.dc-tape` · `.dc-stamp` (optional)
 
 ```markdown
 @page .page .chapter-end
@@ -271,7 +271,7 @@ Two-column creature/NPC entry. Left: chevron banner + lede + stat block + encoun
 
 @lede
 One punchy atmospheric line. Under twenty words.
-:::
+@end-lede
 
 Flavor prose — appearance, behavior, threat type.
 
@@ -341,14 +341,14 @@ Each `href` must point to an `id` on a heading or `<span id="…">` anchor. Page
 
 Numbered procedure with two-column layout: steps list left, callout + pull quote right. Tape divider introduces closing prose. **Page class:** normal body page, no break marker needed.
 
-**Components:** `# Title {.dc-chevron}` · `:::lede` · `@procedure` (ordered list rendered as `<ol class="dc-steps">`) · `@sidebar` · `> [!PULLQUOTE]` · `<div class="dc-tape">`
+**Components:** `# Title {.dc-chevron}` · `@lede` · `@procedure` (ordered list rendered as `<ol class="dc-steps">`) · `@sidebar` · `> [!PULLQUOTE]` · `<div class="dc-tape">`
 
 ```markdown
 # Procedure Title {.dc-chevron}
 
 @lede
 One orienting sentence — what this procedure produces and roughly how long it takes.
-:::
+@end-lede
 
 @procedure
 

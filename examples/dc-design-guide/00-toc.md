@@ -59,7 +59,7 @@ This is the Dimm City print design system — cyberpunk and creaturepunk, built 
 | **4 — Core Components** | Alerts, callouts, sidebars, procedures, definitions, gear cards — every `.pmd-*` component |
 | **5 — DC Component Library** | Specialty cards, skill cards, learning paths, chapter openers — all `.dc-*` game content |
 | **6 — Page Templates** | Every named page layout: `page-chapter-start`, `citizen-file`, `spread-gear`, and more |
-| **7 — Layout & Composition** | Column breaks, two-column and three-column grids, `@no-break`, flow utilities |
+| **7 — Layout & Composition** | Column breaks, two-column and three-column grids, `.pmd-no-break`, flow utilities |
 | **8 — Markdown Reference** | Full macro syntax — every `@macro` / `@end-macro` pair with usage examples |
 | **9 — Field Guide Components** | Stat grids, roll tables, option tables, class entries, and other book-specific blocks |
 | **10 — Publishing** | Print export, DTRPG preset, PDF validation, asset requirements |

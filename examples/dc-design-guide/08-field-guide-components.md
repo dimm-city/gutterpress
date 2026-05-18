@@ -117,5 +117,4 @@ These examples show the above field guide components rendered in real book pages
 | Sidebar | `@sidebar ... @end-sidebar` | `dc-sidebar` |
 | Procedure | `@procedure ... @end-procedure` | `dc-steps` |
 | Gear Entry | `@gear-card` … `@end-gear-card` | `dc-gear-entry` |
-| Art Bottom Pin | `![img](https://placehold.co/1349x842/png?text=Art){.dc-art-bottom}` or `@no-break` wrapper | `dc-art-bottom` |
-| Legacy note: Ability Container | Use `@skill` instead — `:::: ability` has no active CSS | — |
+| Art Bottom Pin | `![img](https://placehold.co/1349x842/png?text=Art){.dc-art-bottom}` or `@section .pmd-no-break` wrapper | `dc-art-bottom` |
