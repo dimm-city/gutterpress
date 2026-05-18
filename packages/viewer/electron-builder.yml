@@ -28,3 +28,17 @@ linux:
   target:
     - AppImage
   category: Office
+
+win:
+  target:
+    # zip = portable, no Wine required for cross-compilation from Linux/macOS.
+    # For a proper NSIS .exe installer, run this on Windows (or add Wine).
+    - zip
+  # Bun must be installed on the host (added to PATH by the Bun Windows installer).
+  # The Electron main process spawns 'bun build/index.js'; the same command
+  # works on Windows because Bun ships 'bun.exe' and adds it to PATH.
+
+mac:
+  target:
+    - dmg
+  category: public.app-category.developer-tools

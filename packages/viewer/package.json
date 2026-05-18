@@ -13,6 +13,8 @@
     "electron:build": "tsc -p electron/tsconfig.json && echo '{\"type\":\"commonjs\"}' > electron-dist/package.json",
     "electron:dev": "bun run electron:build && bun run build && electron electron-dist/main.js",
     "dist:linux": "bun run build && bun run electron:build && bunx electron-builder --linux AppImage --config electron-builder.yml",
+    "dist:win": "bun scripts/build-win.ts",
+    "dist:mac": "bun run build && bun run electron:build && bunx electron-builder --mac dmg --config electron-builder.yml",
     "check": "bun --bun ./node_modules/.bin/svelte-kit sync && bun --bun ./node_modules/.bin/svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
