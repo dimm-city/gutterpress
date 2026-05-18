@@ -388,11 +388,38 @@ function goToLastPage() {
 }
 
 /**
- * Change view mode (single/two-column) via iframe API
+ * Viewport width (px) at or below which the auto-mode picks single-page
+ * layout. Above the breakpoint, auto-mode picks two-column.
  */
-function setViewMode(mode) {
+const VIEW_MODE_BREAKPOINT = 1280;
+
+/**
+ * Tracks whether the user has explicitly picked a view mode via the toolbar.
+ * Once true, the resize listener stops second-guessing them.
+ */
+let userOverrodeViewMode = false;
+
+/**
+ * Pick the auto view mode for the current viewport.
+ */
+function autoViewModeForViewport() {
+  return window.innerWidth < VIEW_MODE_BREAKPOINT ? "single" : "two-column";
+}
+
+/**
+ * Change view mode (single/two-column) via iframe API.
+ *
+ * `source` defaults to "user" — clicking a toolbar button locks in the choice
+ * and disables the resize-driven auto-switch. Pass "auto" from the resize
+ * handler / initial render so the user's explicit pick is never overwritten.
+ */
+function setViewMode(mode, source = "user") {
   const iframeWin = getIframeWindow();
   if (!iframeWin || !iframeWin.previewAPI) return;
+
+  if (source === "user") {
+    userOverrodeViewMode = true;
+  }
 
   const api = iframeWin.previewAPI;
 
@@ -582,6 +609,30 @@ body.view-single .pagedjs_right_page {
 body.view-single .pagedjs_left_page .pagedjs_sheet {
   margin-left: 0 !important;
 }
+
+/* ── Two-column mode (re-asserts the base layout so it wins over view-single
+      when the user toggles back, and over the @media narrow-viewport fallback). */
+body.view-two-column .pagedjs_pages {
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  width: calc(var(--pagedjs-width) * 2 + 8mm) !important;
+  row-gap: 20mm !important;
+  column-gap: 8mm !important;
+  align-items: flex-start !important;
+}
+body.view-two-column .pagedjs_page {
+  margin: 0 !important;
+}
+body.view-two-column .pagedjs_first_page {
+  margin-left: 0 !important;
+}
+body.view-two-column .pagedjs_right_page {
+  position: relative !important;
+  left: 0 !important;
+}
+body.view-two-column .pagedjs_left_page .pagedjs_sheet {
+  margin-left: 0 !important;
+}
 `.trim();
 }
 
@@ -667,10 +718,14 @@ function onRenderingComplete(event) {
   // This ensures the iframe is at its final layout state before becoming visible —
   // no flash of wrong zoom or wrong view mode during the fade-in.
   injectViewerStyles(getIframeWindow());
-  
-  // Set single view mode and fit-width zoom on small screens
-  if (window.innerWidth < 1024) {
-    setViewMode("single");
+
+  // Always set an explicit view mode based on viewport so neither the toolbar
+  // button states nor the iframe CSS depend on a "no mode" fallback. The
+  // resize listener registered in initializeToolbarControls() keeps this
+  // in sync as the window grows/shrinks (until the user explicitly picks
+  // a mode via the toolbar — see userOverrodeViewMode).
+  setViewMode(autoViewModeForViewport(), "auto");
+  if (window.innerWidth < VIEW_MODE_BREAKPOINT) {
     setZoom("fit-width");
   }
 
@@ -892,7 +947,8 @@ function initializeToolbarControls() {
     });
   }
 
-  // View mode buttons
+  // View mode buttons. Clicking either flips userOverrodeViewMode = true,
+  // so the resize listener below stops auto-switching after that.
   const singleBtn = document.getElementById("btn-single");
   if (singleBtn) {
     singleBtn.addEventListener("click", () => setViewMode("single"));
@@ -902,6 +958,18 @@ function initializeToolbarControls() {
   if (twoColumnBtn) {
     twoColumnBtn.addEventListener("click", () => setViewMode("two-column"));
   }
+
+  // Re-evaluate auto view mode on window resize. Skipped once the user has
+  // explicitly picked a mode — keep their choice. Debounced because resize
+  // fires aggressively on drag.
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    if (userOverrodeViewMode) return;
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      setViewMode(autoViewModeForViewport(), "auto");
+    }, 150);
+  });
 
   // Zoom select
   const zoomSelect = document.getElementById("zoom-select");

@@ -281,37 +281,69 @@
      position: relative !important;
  }
 
- /* Responsive: Default to single column only if NO explicit view mode is set */
- /* Narrow viewport: auto single-column when no explicit mode is active */
+ /* TWO-COLUMN MODE: Two pages per row with a gutter, flex-wraps. The implicit
+    "no class" default already produces this layout via the injected stylesheet,
+    but having explicit rules means (a) clicking the Two-column button actually
+    overrides view-single, and (b) the narrow-viewport fallback below can
+    exclude this class. */
+ body.view-two-column .pagedjs_pages {
+     flex-direction: row !important;
+     flex-wrap: wrap !important;
+     width: calc(var(--pagedjs-width) * 2 + 8mm) !important;
+     row-gap: 20mm !important;
+     column-gap: 8mm !important;
+     align-items: flex-start;
+ }
+
+ body.view-two-column .pagedjs_first_page {
+     margin-left: 0 !important;
+ }
+
+ body.view-two-column .pagedjs_page {
+     margin: 0 !important;
+ }
+
+ body.view-two-column .pagedjs_left_page {
+     width: calc(var(--pagedjs-bleed-left) + var(--pagedjs-pagebox-width)) !important;
+ }
+
+ body.view-two-column .pagedjs_right_page {
+     position: relative !important;
+     left: 0 !important;
+ }
+
+ /* Responsive fallback: if no explicit view-* mode is set (shouldn't normally
+    happen — preview.js always sets one on render — but defensive in case JS
+    fails to load), narrow viewports default to single-page layout. */
  @media screen and (max-width: 1700px) {
-     body:not(.view-single):not(.view-spread) .pagedjs_pages {
+     body:not(.view-single):not(.view-spread):not(.view-two-column) .pagedjs_pages {
          flex-direction: column !important;
          width: fit-content !important;
          align-items: center;
          row-gap: 16mm !important;
      }
 
-     body:not(.view-single):not(.view-spread) .pagedjs_first_page {
+     body:not(.view-single):not(.view-spread):not(.view-two-column) .pagedjs_first_page {
          margin-left: 0;
      }
 
-     body:not(.view-single):not(.view-spread) .pagedjs_page {
+     body:not(.view-single):not(.view-spread):not(.view-two-column) .pagedjs_page {
          margin: 0 !important;
      }
 
-     body:not(.view-single):not(.view-spread) .pagedjs_left_page {
+     body:not(.view-single):not(.view-spread):not(.view-two-column) .pagedjs_left_page {
          width: calc(var(--pagedjs-bleed-left) + var(--pagedjs-pagebox-width) + var(--pagedjs-bleed-left)) !important;
      }
 
-     body:not(.view-single):not(.view-spread) .pagedjs_left_page .pagedjs_bleed-right .pagedjs_marks-crop {
+     body:not(.view-single):not(.view-spread):not(.view-two-column) .pagedjs_left_page .pagedjs_bleed-right .pagedjs_marks-crop {
          border-color: var(--pagedjs-crop-color);
      }
 
-     body:not(.view-single):not(.view-spread) .pagedjs_left_page .pagedjs_bleed-right .pagedjs_marks-middle {
+     body:not(.view-single):not(.view-spread):not(.view-two-column) .pagedjs_left_page .pagedjs_bleed-right .pagedjs_marks-middle {
          width: var(--pagedjs-cross-size) !important;
      }
 
-     body:not(.view-single):not(.view-spread) .pagedjs_right_page {
+     body:not(.view-single):not(.view-spread):not(.view-two-column) .pagedjs_right_page {
          left: 0 !important;
          position: relative !important;
      }
