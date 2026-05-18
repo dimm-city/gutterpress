@@ -70,8 +70,8 @@ function resolveDestinationForChange(
 
 /**
  * Tiny placeholder book.html for no-input mode. The viewer's iframe needs a
- * valid src to load; the viewer client opens the folder picker on top of it
- * as soon as `/api/status` reports `hasInput: false`. Plain text only — no
+ * valid src to load; the viewer app (packages/viewer) detects `hasInput: false`
+ * via /api/status and shows its own folder picker. Plain text only — no
  * Paged.js, no plugins, no manifest.
  */
 const EMPTY_BOOK_HTML = `<!doctype html>
@@ -86,7 +86,7 @@ const EMPTY_BOOK_HTML = `<!doctype html>
   </style>
 </head>
 <body>
-  <p>No directory selected. Use the folder picker to choose one.</p>
+  <p>No directory selected.</p>
 </body>
 </html>
 `;
@@ -97,8 +97,8 @@ const EMPTY_BOOK_HTML = `<!doctype html>
  * the toolbar interface script. The viewer's iframe loads `book.html` via
  * a relative URL — same name in dev and in published static-site builds.
  *
- * Empty `inputPath` writes a static placeholder — the viewer's folder picker
- * supplies a real path later via /api/change-folder.
+ * Empty `inputPath` writes a static placeholder — the viewer app (packages/viewer)
+ * supplies a real path via its own folder picker.
  */
 export async function generateAndWriteHtml(
   inputPath: string,

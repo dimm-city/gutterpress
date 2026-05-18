@@ -51,17 +51,16 @@ export async function startPreviewServer(
   options: StartPreviewServerOptions
 ): Promise<PreviewServerHandle> {
   // Stage 1: Validate and initialize. Empty input is a deliberate "no
-  // directory picked yet" mode: the server boots, the browser opens, and
-  // the viewer's folder picker fires automatically so the user can choose
-  // a directory. Compare to the previous behavior of silently defaulting
-  // to process.cwd().
+  // directory picked yet" mode: the server boots with a placeholder page,
+  // and the viewer desktop app (packages/viewer) shows its own folder picker.
+  // Compare to the previous behavior of silently defaulting to process.cwd().
   const inputPath = options.input ?? '';
   await validateInputPath(inputPath);
 
   if (inputPath) {
     info(`Starting preview server for: ${inputPath}`);
   } else {
-    info('Starting preview server (no input directory — folder picker will open in the browser)');
+    info('Starting preview server (no input directory)');
   }
 
   // Stage 2: Initialize configuration (needed for manifest assets)

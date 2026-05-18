@@ -122,8 +122,8 @@ export async function resolveAssetsDir(): Promise<string> {
 
 /**
  * Validate that the input path exists on the filesystem.
- * No-op for empty input (no-input mode — the viewer's folder picker
- * supplies the path later via /api/change-folder).
+ * No-op for empty input (no-input mode — the viewer desktop app
+ * supplies the path via its own folder picker).
  */
 export async function validateInputPath(inputPath: string): Promise<void> {
   if (!inputPath) return;
@@ -135,8 +135,7 @@ export async function validateInputPath(inputPath: string): Promise<void> {
 /**
  * Initialize configuration by loading manifest and resolving config.
  * For empty input (no-input mode), skip manifest loading entirely and
- * return a default resolved config — the user hasn't picked a directory
- * yet, so there's nothing to read.
+ * return a default resolved config.
  */
 export async function initializeConfiguration(
   inputPath: string,
@@ -158,7 +157,7 @@ export async function restartPreview(newInputPath: string, state: ServerState): 
   state.currentInputPath = newInputPath;
 
   // Only re-copy the input content — preview assets are already in the temp dir.
-  // Re-copying them would force a top-level reload of index.html and kill the
+  // Re-copying them would force a top-level reload of book.html and kill the
   // browser session.
   await copyDirectory(newInputPath, state.tempDir);
 
