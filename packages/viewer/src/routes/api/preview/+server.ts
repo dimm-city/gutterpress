@@ -2,8 +2,10 @@ import { json, error } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
 import {
   startPreviewServer,
+  loadManifestWithPath,
   type PreviewServerHandle,
 } from "@dimm-city/print-md";
+import { basename } from "node:path";
 
 // One active preview per app session for v1. Stored on the module so it
 // survives across requests in the same Node/Bun process.
@@ -32,7 +34,16 @@ export const POST: RequestHandler = async ({ request }) => {
     installSignalHandlers: false,
   });
 
-  return json({ url: active.url, port: active.port, input: active.inputPath });
+  // Read the document title from the manifest (fall back to dir basename).
+  let title: string = basename(body.input);
+  try {
+    const { manifest } = await loadManifestWithPath(body.input);
+    if (manifest.title) title = manifest.title;
+  } catch {
+    // Not a manifest project; keep the dir name.
+  }
+
+  return json({ url: active.url, port: active.port, input: active.inputPath, title });
 };
 
 export const DELETE: RequestHandler = async () => {
