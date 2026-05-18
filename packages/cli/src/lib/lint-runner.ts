@@ -1,4 +1,3 @@
-import { glob } from "glob";
 import type { Config } from "stylelint";
 import { resolve, dirname } from "node:path";
 import { loadManifest, resolveConfig } from "./manifest";
@@ -17,6 +16,7 @@ export interface LintRunnerResult {
 }
 
 export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerResult> {
+  const { glob } = await import("glob");
   const manifest = await loadManifest(opts.manifest);
   const resolvedConfig = resolveConfig(
     {

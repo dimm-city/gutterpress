@@ -23,16 +23,22 @@ export const POST: RequestHandler = async ({ request }) => {
     active = null;
   }
 
-  active = await startPreviewServer({
-    input: body.input,
-    port: 0,
-    host: "127.0.0.1",
-    noWatch: false,
-    openBrowser: false,
-    verbose: false,
-    debug: false,
-    installSignalHandlers: false,
-  });
+  try {
+    active = await startPreviewServer({
+      input: body.input,
+      port: 0,
+      host: "127.0.0.1",
+      noWatch: false,
+      openBrowser: false,
+      verbose: false,
+      debug: false,
+      installSignalHandlers: false,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[preview] startPreviewServer error:", e);
+    error(500, `Preview server failed to start: ${msg}`);
+  }
 
   // Read the document title from the manifest (fall back to dir basename).
   let title: string = basename(body.input);
@@ -43,7 +49,7 @@ export const POST: RequestHandler = async ({ request }) => {
     // Not a manifest project; keep the dir name.
   }
 
-  return json({ url: active.url, port: active.port, input: active.inputPath, title });
+  return json({ url: active!.url, port: active!.port, input: active!.inputPath, title });
 };
 
 export const DELETE: RequestHandler = async () => {
