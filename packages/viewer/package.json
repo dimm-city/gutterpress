@@ -13,7 +13,7 @@
     "electron:build": "tsc -p electron/tsconfig.json && echo '{\"type\":\"commonjs\"}' > electron-dist/package.json",
     "electron:dev": "bun run electron:build && bun run build && electron electron-dist/main.js",
     "dist:linux": "bun run build && bun run electron:build && bunx electron-builder --linux AppImage --config electron-builder.yml",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "check": "bun --bun ./node_modules/.bin/svelte-kit sync && bun --bun ./node_modules/.bin/svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "@dimm-city/print-md": "workspace:*"
