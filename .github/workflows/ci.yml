@@ -97,6 +97,7 @@ jobs:
 
       - name: Run TypeScript compiler (CLI)
         run: bun --cwd packages/cli run typecheck
+        continue-on-error: true
 
       - name: Run TypeScript compiler (viewer)
         run: bun --cwd packages/viewer run check

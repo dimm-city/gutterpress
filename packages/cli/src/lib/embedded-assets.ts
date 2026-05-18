@@ -27,7 +27,6 @@ import { dirname, join } from "node:path";
 import favicon from "../assets/favicon.ico" with { type: "file" };
 import manifestSchema from "../assets/manifest.schema.json" with { type: "file" };
 import pagedjsInterfaceJs from "../assets/preview/scripts/pagedjs-interface.js" with { type: "file" };
-// @ts-expect-error -- with { type: "file" } yields a path string
 import pagedjsBridgeJs from "../assets/preview/scripts/pagedjs-bridge.js" with { type: "file" };
 import pagedPolyfill from "../assets/vendor/paged.polyfill.js" with { type: "file" };
 
