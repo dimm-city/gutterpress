@@ -124,7 +124,7 @@ const appPkg = {
 await writeFile(join(APP_DIR, "package.json"), JSON.stringify(appPkg, null, 2));
 
 // Run bun install in the app dir to get a clean, flat node_modules
-await run("bun", ["install", "--production", "--frozen-lockfile"], APP_DIR);
+await run("bun", ["install", "--production"], APP_DIR);
 console.log("  node_modules installed");
 
 // Restore the real viewer package.json after bun install.
