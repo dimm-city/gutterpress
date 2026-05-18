@@ -189,15 +189,15 @@ describe('createPreviewServer', () => {
     expect([400, 404]).toContain(res.status);
   });
 
-  test('routes /api/directories through the dispatcher', async () => {
+  test('routes /api/status through the dispatcher', async () => {
     const state = makeState(tempDir);
     server = await createPreviewServer(state, port, async () => {});
 
-    const res = await fetch(`http://localhost:${port}/api/directories`);
+    const res = await fetch(`http://localhost:${port}/api/status`);
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toHaveProperty('currentPath');
-    expect(body).toHaveProperty('directories');
+    expect(body).toHaveProperty('hasInput');
   });
 
   test('returns 404 for unknown /api/* route', async () => {

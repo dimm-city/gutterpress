@@ -249,8 +249,10 @@ export async function createPreviewServer(
       }
 
       // 3. Static file fallback.
-      // Treat bare "/" as index.html lookup inside tempDir.
-      const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
+      // Treat bare "/" as book.html (the rendered paginated book) — there is no
+      // longer a viewer chrome index.html in the CLI; the desktop app
+      // (packages/viewer) wraps book.html in its own iframe-based toolbar.
+      const pathname = url.pathname === '/' ? '/book.html' : url.pathname;
       const absPath = resolveStaticPath(pathname, state.tempDir);
       if (!absPath) {
         return new Response('Not Found', { status: 404 });

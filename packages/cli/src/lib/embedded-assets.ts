@@ -1,6 +1,6 @@
 /**
- * Embedded viewer assets (index.html, favicon, manifest schema, preview
- * scripts and styles).
+ * Embedded preview assets (favicon, manifest schema, paged.js polyfill,
+ * iframe interface + cross-origin bridge).
  *
  * The repo holds these in `src/assets/`. In dev (`bun src/cli.ts`) we could
  * read them straight off the filesystem, but for the standalone binary
@@ -15,41 +15,31 @@
  * "assets dir", letting existing call sites keep using plain
  * `readFile`/`cp` without caring whether the source lives on disk or inside
  * the executable.
+ *
+ * Viewer chrome (toolbar HTML, preview.js, preview.css, toast.*) was
+ * removed 2026-05-18; lives in packages/viewer.
  */
 
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import indexHtml from "../assets/index.html" with { type: "file" };
 import favicon from "../assets/favicon.ico" with { type: "file" };
 import manifestSchema from "../assets/manifest.schema.json" with { type: "file" };
-// @ts-expect-error -- with { type: "file" } yields a path string; TS resolves the JS module and toast.js has only named exports
-import toastJs from "../assets/preview/scripts/toast.js" with { type: "file" };
 import pagedjsInterfaceJs from "../assets/preview/scripts/pagedjs-interface.js" with { type: "file" };
-import previewJs from "../assets/preview/scripts/preview.js" with { type: "file" };
-import previewCss from "../assets/preview/styles/preview.css" with { type: "file" };
-import toastCss from "../assets/preview/styles/toast.css" with { type: "file" };
-import debugCss from "../assets/preview/styles/debug.css" with { type: "file" };
+// @ts-expect-error -- with { type: "file" } yields a path string
+import pagedjsBridgeJs from "../assets/preview/scripts/pagedjs-bridge.js" with { type: "file" };
 import pagedPolyfill from "../assets/vendor/paged.polyfill.js" with { type: "file" };
 
-// `with { type: "file" }` returns a string path at build time, but TS does
-// not model the type-attribute — extensions with TS-known shapes (.html,
-// .json, .js) come in as their content type. Cast at use to a path string.
 const filePath = (v: unknown): string => v as string;
 
 // Manifest of asset path → embedded source. Keys are paths relative to the
 // extracted assets dir; values are paths into the bundle.
 const EMBEDDED_ASSETS: Record<string, string> = {
-  "index.html": filePath(indexHtml),
   "favicon.ico": favicon,
   "manifest.schema.json": filePath(manifestSchema),
-  "preview/scripts/toast.js": filePath(toastJs),
   "preview/scripts/pagedjs-interface.js": filePath(pagedjsInterfaceJs),
-  "preview/scripts/preview.js": filePath(previewJs),
-  "preview/styles/preview.css": previewCss,
-  "preview/styles/toast.css": toastCss,
-  "preview/styles/debug.css": debugCss,
+  "preview/scripts/pagedjs-bridge.js": filePath(pagedjsBridgeJs),
   "vendor/paged.polyfill.js": filePath(pagedPolyfill),
 };
 
@@ -60,10 +50,6 @@ async function extractAssets(): Promise<string> {
   for (const [relPath, srcPath] of Object.entries(EMBEDDED_ASSETS)) {
     const dest = join(root, relPath);
     await mkdir(dirname(dest), { recursive: true });
-    // `srcPath` is the bunfs path Bun returned for the `with { type: "file" }`
-    // import. `Bun.file(...).bytes()` reads the embedded content directly;
-    // `copyFile` against the same path fails inside compiled binaries
-    // because the bunfs entry isn't a real file the syscall can stat.
     const bytes = await Bun.file(srcPath).bytes();
     await writeFile(dest, bytes);
   }
@@ -72,10 +58,6 @@ async function extractAssets(): Promise<string> {
 
 /**
  * Resolve the assets directory, extracting embedded copies on first use.
- *
- * The result is a real filesystem path that callers can pass to
- * `readFile`, `cp`, or static file middleware. Cached for the life of the
- * process — the same temp dir is reused across calls.
  */
 export async function getAssetsDir(): Promise<string> {
   if (!extractPromise) {

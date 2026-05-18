@@ -125,28 +125,16 @@ export async function generateAndWriteHtml(
     pluginCss,
   });
 
-  // Read debug CSS so we can inline it via JS — see iface block below for why.
   const { getAssetPath } = await import('../lib/embedded-assets');
-  const debugCssPath = await getAssetPath('preview/styles/debug.css');
-  let debugCss = '';
-  try {
-    debugCss = await Bun.file(debugCssPath).text();
-  } catch { /* debug CSS is optional */ }
 
-  // Inject viewer chrome before the Paged.js polyfill:
-  //   1. <link> to preview.css — viewer-only styles (canvas bg, shadows, spacing).
-  //      Served as a URL so it is NEVER baked into book.html and never affects the
-  //      PDF build pipeline, which renders book.html without this server.
-  //   2. pagedjs-interface.js — toolbar ↔ iframe API bridge
-  //   3. debug.css (inlined via JS so a parent toolbar can inject debug styles
-  //      into the rendered iframe document at runtime via DOM, rather than
-  //      relying on a network <link> resolved inside the iframe)
-  //   4. BREAK_INSIDE_HANDLER — polyfill for break-inside: avoid
-  const escapedDebugCss = debugCss.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+  // Inject into book.html, in order:
+  //   1. pagedjs-interface.js — defines window.previewAPI for in-iframe controls
+  //   2. pagedjs-bridge.js    — postMessage bridge for cross-origin toolbar (viewer)
+  //   3. BREAK_INSIDE_HANDLER — polyfill for break-inside: avoid
+  //   4. Paged.js polyfill itself (vendored or CDN fallback)
   const iface =
-    '<link rel="stylesheet" href="/preview/styles/preview.css">\n  '
-    + '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
-    + (debugCss ? `<script>(function(){var s=document.createElement("style");s.setAttribute("data-debug-css","true");s.textContent=\`${escapedDebugCss}\`;document.head.appendChild(s)})()</script>\n  ` : '');
+    '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
+    + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
   // Copy the vendored paged.polyfill.js from embedded assets (works in compiled binary).
   const pagedDestDir = path.join(tempDir, 'vendor');
   const pagedDestPath = path.join(pagedDestDir, 'paged.polyfill.js');

@@ -14,7 +14,7 @@ import {
   stripAnnotations,
 } from "./ghostscript";
 import { writeBuildFingerprint } from "./build-fingerprint";
-import { emitViewer, BOOK_HTML_FILENAME } from "./viewer";
+import { BOOK_HTML_FILENAME } from "./viewer";
 import { getAssetPath } from "./embedded-assets";
 import { runLint } from "./lint-runner";
 import { executeAndReport } from "./validation-exec";
@@ -292,23 +292,27 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
     });
   }
 
-  // 7. Emit viewer chrome
-  await emitViewer(outDir);
-  log.info(`Emitted viewer chrome (${path.join(outDir, "index.html")})`);
-
   // === HTML format: stop here ============================================
   if (format === "html") {
-    // Vendor Paged.js locally so the HTML output works offline.
-    // Must run after emitViewer so preview/scripts/pagedjs-interface.js exists.
+    // Vendor Paged.js + interface + bridge locally so the HTML output works offline.
     await fsp.mkdir(path.join(outDir, "vendor"), { recursive: true });
+    await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
     await fsp.copyFile(
       await getAssetPath("vendor/paged.polyfill.js"),
       path.join(outDir, "vendor/paged.polyfill.js")
     );
+    await fsp.copyFile(
+      await getAssetPath("preview/scripts/pagedjs-interface.js"),
+      path.join(outDir, "preview/scripts/pagedjs-interface.js")
+    );
+    await fsp.copyFile(
+      await getAssetPath("preview/scripts/pagedjs-bridge.js"),
+      path.join(outDir, "preview/scripts/pagedjs-bridge.js")
+    );
     const bookSource = await fsp.readFile(htmlFile, "utf-8");
     const bookWithInterface = bookSource.replace(
       /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
-      '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="vendor/paged.polyfill.js"></script>'
+      '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="preview/scripts/pagedjs-bridge.js"></script>\n  <script src="vendor/paged.polyfill.js"></script>'
     );
     await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
 
