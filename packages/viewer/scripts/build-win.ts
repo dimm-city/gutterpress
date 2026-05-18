@@ -25,7 +25,8 @@ import { readFileSync } from "node:fs";
 const ELECTRON_VERSION = "33.4.11";
 const ELECTRON_ZIP_NAME = `electron-v${ELECTRON_VERSION}-win32-x64.zip`;
 const CACHE_ZIP = join(
-  process.env.HOME ?? tmpdir(), ".cache", "electron", ELECTRON_ZIP_NAME
+  process.env.HOME ?? process.env.USERPROFILE ?? tmpdir(),
+  ".cache", "electron", ELECTRON_ZIP_NAME
 );
 const ELECTRON_URL =
   `https://github.com/electron/electron/releases/download/v${ELECTRON_VERSION}/${ELECTRON_ZIP_NAME}`;
@@ -41,6 +42,8 @@ const viewerVersion = JSON.parse(readFileSync(join(VIEWER_ROOT, "package.json"),
 const ZIP_NAME    = `print-md-${viewerVersion}-win32-x64.zip`;
 const ZIP_PATH    = join(DIST_DIR, ZIP_NAME);
 
+const IS_WINDOWS = process.platform === "win32";
+
 async function run(cmd: string, args: string[], cwd?: string) {
   const proc = Bun.spawn([cmd, ...args], {
     cwd,
@@ -52,6 +55,32 @@ async function run(cmd: string, args: string[], cwd?: string) {
   if (code !== 0) throw new Error(`${cmd} exited ${code}`);
 }
 
+/** Extract a zip archive cross-platform: unzip on Linux/macOS, Expand-Archive on Windows. */
+async function extractZip(zipPath: string, destDir: string) {
+  if (IS_WINDOWS) {
+    await run("powershell", [
+      "-NoProfile", "-NonInteractive", "-Command",
+      `Expand-Archive -Force -Path '${zipPath}' -DestinationPath '${destDir}'`,
+    ]);
+  } else {
+    await run("unzip", ["-q", zipPath, "-d", destDir]);
+  }
+}
+
+/** Create a zip archive cross-platform: zip on Linux/macOS, Compress-Archive on Windows. */
+async function createZip(zipPath: string, sourceDir: string, entryDir: string) {
+  if (IS_WINDOWS) {
+    // Compress-Archive needs the source as a glob pattern
+    const sourceGlob = join(sourceDir, entryDir, "*");
+    await run("powershell", [
+      "-NoProfile", "-NonInteractive", "-Command",
+      `Compress-Archive -Force -Path '${sourceGlob}' -DestinationPath '${zipPath}'`,
+    ]);
+  } else {
+    await run("zip", ["-r", "-q", zipPath, entryDir], sourceDir);
+  }
+}
+
 // ── 1. Build SvelteKit server + Electron main ─────────────────────────────
 console.log("=== Building SvelteKit server ===");
 await run("bun", ["run", "build"], VIEWER_ROOT);
@@ -60,7 +89,7 @@ await run("bun", ["run", "electron:build"], VIEWER_ROOT);
 
 // ── 2. Download (or reuse) the Windows Electron binary ───────────────────
 if (!existsSync(CACHE_ZIP)) {
-  await mkdir(join(process.env.HOME ?? tmpdir(), ".cache", "electron"), { recursive: true });
+  await mkdir(join(process.env.HOME ?? process.env.USERPROFILE ?? tmpdir(), ".cache", "electron"), { recursive: true });
   console.log(`\nDownloading ${ELECTRON_URL} ...`);
   const res = await fetch(ELECTRON_URL);
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
@@ -74,7 +103,7 @@ if (!existsSync(CACHE_ZIP)) {
 console.log(`\n=== Extracting ${ELECTRON_ZIP_NAME} ===`);
 await rm(OUT_DIR, { recursive: true, force: true });
 await mkdir(OUT_DIR, { recursive: true });
-await run("unzip", ["-q", CACHE_ZIP, "-d", OUT_DIR]);
+await extractZip(CACHE_ZIP, OUT_DIR);
 console.log(`  → ${OUT_DIR}`);
 
 // ── 4. Inject app code (not node_modules) ────────────────────────────────
@@ -144,7 +173,7 @@ await writeFile(join(elDistDir, "package.json"), JSON.stringify({ type: "commonj
 // ── 7. Zip the result ─────────────────────────────────────────────────────
 console.log(`\n=== Creating ${ZIP_NAME} ===`);
 await rm(ZIP_PATH, { force: true });
-await run("zip", ["-r", "-q", ZIP_PATH, "win-unpacked/"], DIST_DIR);
+await createZip(ZIP_PATH, DIST_DIR, "win-unpacked");
 
 const stat = await Bun.file(ZIP_PATH).stat();
 console.log(`\n✓ ${ZIP_PATH}  (${(stat.size / 1e6).toFixed(1)} MB)\n`);

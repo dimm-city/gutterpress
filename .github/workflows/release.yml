@@ -141,7 +141,7 @@ jobs:
           path: ${{ matrix.artifact }}
 
   build-viewer-linux:
-    name: Viewer / Linux AppImage + Windows zip
+    name: Viewer / Linux AppImage
     needs: version
     runs-on: ubuntu-latest
     steps:
@@ -166,15 +166,41 @@ jobs:
         working-directory: packages/viewer
         run: bun run dist:linux
 
-      - name: Build Windows zip
-        working-directory: packages/viewer
-        run: bun run dist:win
-
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
           name: viewer-linux
           path: packages/viewer/dist/*.AppImage
+
+  build-viewer-windows:
+    name: Viewer / Windows zip
+    needs: version
+    # Run on Windows so bun install --production installs Windows-native
+    # package variants. The build-win.ts script handles Electron binary
+    # download, SvelteKit build, dep install, and zip — all self-contained.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Patch viewer version
+        shell: pwsh
+        run: |
+          $pkg = Get-Content packages/viewer/package.json | ConvertFrom-Json
+          $pkg.version = "${{ inputs.version }}"
+          $pkg | ConvertTo-Json -Depth 10 | Set-Content packages/viewer/package.json
+
+      - name: Build Windows zip
+        working-directory: packages/viewer
+        run: bun run dist:win
 
       - name: Upload Windows zip
         uses: actions/upload-artifact@v4
@@ -282,6 +308,7 @@ jobs:
       - version
       - build-cli
       - build-viewer-linux
+      - build-viewer-windows
       - build-viewer-mac
       - verify-windows
       - publish-npm
@@ -290,6 +317,7 @@ jobs:
       needs.version.result == 'success' &&
       needs.build-cli.result == 'success' &&
       needs.build-viewer-linux.result == 'success' &&
+      needs.build-viewer-windows.result == 'success' &&
       needs.build-viewer-mac.result == 'success' &&
       needs.verify-windows.result == 'success' &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
