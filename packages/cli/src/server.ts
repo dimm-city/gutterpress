@@ -21,10 +21,35 @@ import { createServerState } from './preview/server-context';
 import { generateAndWriteHtml, startFileWatcher } from './preview/file-watcher';
 import { findAvailablePort, createPreviewServer } from './preview/http-server';
 
+export interface PreviewServerHandle {
+  url: string;
+  port: number;
+  host: string;
+  inputPath: string;
+  /** Stop the server, file watcher, and any signal handlers. */
+  stop: () => Promise<void>;
+  /** Switch the watched directory and regenerate HTML. */
+  restart: (newInputPath: string) => Promise<void>;
+}
+
+export interface StartPreviewServerOptions extends PreviewServerOptions {
+  /**
+   * Install SIGINT/SIGTERM handlers that shut down the server on Ctrl+C.
+   * Defaults to true (CLI usage). Library/embedded callers (Electron+SvelteKit)
+   * should pass false and call handle.stop() themselves.
+   */
+  installSignalHandlers?: boolean;
+}
+
 /**
  * Start the preview server backed by a Bun-native HTTP/WebSocket server.
+ *
+ * Returns a handle the caller can use to introspect the URL or stop the server.
+ * CLI callers can simply ignore the handle and rely on SIGINT/SIGTERM.
  */
-export async function startPreviewServer(options: PreviewServerOptions): Promise<void> {
+export async function startPreviewServer(
+  options: StartPreviewServerOptions
+): Promise<PreviewServerHandle> {
   // Stage 1: Validate and initialize. Empty input is a deliberate "no
   // directory picked yet" mode: the server boots, the browser opens, and
   // the viewer's folder picker fires automatically so the user can choose
@@ -73,10 +98,31 @@ export async function startPreviewServer(options: PreviewServerOptions): Promise
   // Stage 8: Start file watching if enabled
   startFileWatcher(state);
 
-  // Stage 9: Register signal handlers for Ctrl+C and SIGTERM
+  // Stage 9: Register signal handlers for Ctrl+C and SIGTERM (CLI usage).
+  const installSignals = options.installSignalHandlers !== false;
   const handleShutdown = async () => {
     await shutdownServer(state);
   };
-  process.on('SIGINT', handleShutdown);
-  process.on('SIGTERM', handleShutdown);
+  if (installSignals) {
+    process.on('SIGINT', handleShutdown);
+    process.on('SIGTERM', handleShutdown);
+  }
+
+  const host = options.host ?? '127.0.0.1';
+  // Read the actually-bound port (Bun resolves port:0 to a free port).
+  const boundPort = state.previewServer.port;
+  return {
+    url: `http://${host}:${boundPort}`,
+    port: boundPort,
+    host,
+    inputPath,
+    stop: async () => {
+      if (installSignals) {
+        process.off('SIGINT', handleShutdown);
+        process.off('SIGTERM', handleShutdown);
+      }
+      await shutdownServer(state);
+    },
+    restart: restartPreview,
+  };
 }

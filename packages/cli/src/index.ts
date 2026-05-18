@@ -28,3 +28,9 @@ export type {
   PrintMdPluginExport,
   PrintMdPluginMetadata,
 } from "./lib/markdown/plugins";
+
+/**
+ * Runtime API — see ./api for the full barrel.
+ * Consumers may also `import { runBuild } from "@dimm-city/print-md/api"`.
+ */
+export * from "./api";

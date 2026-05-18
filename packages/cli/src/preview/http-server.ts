@@ -273,10 +273,13 @@ export async function createPreviewServer(
     },
   });
 
-  const serverUrl = `http://localhost:${port}`;
+  // Bun assigns a real port when `port: 0` is passed; read it back so callers
+  // (and our handle) always see the actually-bound port.
+  const boundPort = server.port;
+  const serverUrl = `http://localhost:${boundPort}`;
   info(`Preview server running at ${serverUrl}`);
   if (state.options.host !== '127.0.0.1' && state.options.host !== 'localhost') {
-    info(`Bound on ${state.options.host}:${port} (reachable from the network)`);
+    info(`Bound on ${state.options.host}:${boundPort} (reachable from the network)`);
   }
   info('Press Ctrl+C to stop');
 
@@ -290,7 +293,7 @@ export async function createPreviewServer(
   let stopped = false;
 
   return {
-    port,
+    port: boundPort,
     async close() {
       if (stopped) return;
       stopped = true;
