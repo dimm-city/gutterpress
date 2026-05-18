@@ -31,8 +31,6 @@ import previewJs from "../assets/preview/scripts/preview.js" with { type: "file"
 import previewCss from "../assets/preview/styles/preview.css" with { type: "file" };
 import toastCss from "../assets/preview/styles/toast.css" with { type: "file" };
 import debugCss from "../assets/preview/styles/debug.css" with { type: "file" };
-import viewSingleCss from "../assets/preview/styles/view-single.css" with { type: "file" };
-import viewTwoColumnCss from "../assets/preview/styles/view-two-column.css" with { type: "file" };
 import pagedPolyfill from "../assets/vendor/paged.polyfill.js" with { type: "file" };
 
 // `with { type: "file" }` returns a string path at build time, but TS does
@@ -52,8 +50,6 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "preview/styles/preview.css": previewCss,
   "preview/styles/toast.css": toastCss,
   "preview/styles/debug.css": debugCss,
-  "preview/styles/view-single.css": viewSingleCss,
-  "preview/styles/view-two-column.css": viewTwoColumnCss,
   "vendor/paged.polyfill.js": filePath(pagedPolyfill),
 };
 
