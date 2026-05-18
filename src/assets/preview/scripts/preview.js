@@ -1046,6 +1046,27 @@ async function initializePreview() {
     // Register page lifecycle listeners
     registerPageLifecycleListeners();
 
+    // If the server started without an input directory (`print-md` with no
+    // args), the iframe is showing a placeholder. Pop the folder picker so
+    // the user can choose a project to render. Static-mode viewers have no
+    // /api/status — fetch failures are ignored and we leave the viewer alone.
+    if (document.documentElement.dataset.mode === "live") {
+      try {
+        const statusResp = await fetch("/api/status");
+        if (statusResp.ok) {
+          const status = await statusResp.json();
+          if (!status.hasInput) {
+            const overlay = document.getElementById("loading-overlay");
+            if (overlay) overlay.classList.remove("active");
+            openFolderModal();
+          }
+        }
+      } catch (e) {
+        // Non-fatal — viewer still works without the auto-open.
+        console.warn("Could not check preview status:", e);
+      }
+    }
+
     console.log("✓ Preview initialized");
   } catch (error) {
     console.error("Initialization failed:", error);

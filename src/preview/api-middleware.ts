@@ -14,6 +14,7 @@ import {
   handleGitHubLogin,
   handleGitHubClone,
   handleGitHubUser,
+  handleStatus,
 } from './routes.ts';
 import type { ServerState } from './server-context.ts';
 
@@ -53,7 +54,7 @@ function exceedsBodyLimit(request: Request): boolean {
  */
 export async function handleApiRequest(
   request: Request,
-  _state: ServerState,
+  state: ServerState,
   restartPreviewFn: (newPath: string) => Promise<void>
 ): Promise<Response | null> {
   const url = new URL(request.url);
@@ -62,6 +63,12 @@ export async function handleApiRequest(
 
   if (!pathname.startsWith('/api/')) {
     return null;
+  }
+
+  // GET /api/status — viewer polls this on load to decide whether to auto-open
+  // the folder picker (no-input mode).
+  if (pathname === '/api/status' && method === 'GET') {
+    return handleStatus(state.currentInputPath);
   }
 
   // GET /api/directories

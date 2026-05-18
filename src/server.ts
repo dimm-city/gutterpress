@@ -25,11 +25,19 @@ import { findAvailablePort, createPreviewServer } from './preview/http-server';
  * Start the preview server backed by a Bun-native HTTP/WebSocket server.
  */
 export async function startPreviewServer(options: PreviewServerOptions): Promise<void> {
-  // Stage 1: Validate and initialize
-  const inputPath = options.input || process.cwd();
+  // Stage 1: Validate and initialize. Empty input is a deliberate "no
+  // directory picked yet" mode: the server boots, the browser opens, and
+  // the viewer's folder picker fires automatically so the user can choose
+  // a directory. Compare to the previous behavior of silently defaulting
+  // to process.cwd().
+  const inputPath = options.input ?? '';
   await validateInputPath(inputPath);
 
-  info(`Starting preview server for: ${inputPath}`);
+  if (inputPath) {
+    info(`Starting preview server for: ${inputPath}`);
+  } else {
+    info('Starting preview server (no input directory — folder picker will open in the browser)');
+  }
 
   // Stage 2: Initialize configuration (needed for manifest assets)
   const config = await initializeConfiguration(inputPath, options);
@@ -38,7 +46,7 @@ export async function startPreviewServer(options: PreviewServerOptions): Promise
   const assetsSourceDir = await resolveAssetsDir();
   const tempDir = await initializePreviewDirectories(inputPath, assetsSourceDir, config);
 
-  // Generate initial HTML
+  // Generate initial HTML (or a placeholder when there's no input yet)
   await generateAndWriteHtml(inputPath, tempDir, config);
 
   // Stage 4: Create state

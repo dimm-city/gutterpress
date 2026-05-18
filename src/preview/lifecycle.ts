@@ -69,7 +69,11 @@ async function cleanupOrphanTempDirs(): Promise<void> {
 }
 
 /**
- * Initialize preview directories and copy source files
+ * Initialize preview directories and copy source files.
+ *
+ * When `inputPath` is empty (no-input mode), the temp dir is still created
+ * with the preview viewer assets so the browser has something to load; the
+ * source-content copy and manifest-asset copy are skipped.
  */
 export async function initializePreviewDirectories(
   inputPath: string,
@@ -87,14 +91,16 @@ export async function initializePreviewDirectories(
   // Mark this dir as ours so a future startup can detect orphan-ship.
   await writeFile(path.join(tempDir, PID_FILE_NAME), `${process.pid}\n`, 'utf8');
 
-  await copyDirectory(inputPath, tempDir);
-  debug(`Copied input files to ${tempDir}`);
+  if (inputPath) {
+    await copyDirectory(inputPath, tempDir);
+    debug(`Copied input files to ${tempDir}`);
+  }
 
   await copyDirectory(assetsSourceDir, tempDir);
   debug(`Copied preview assets to ${tempDir}`);
 
   // Copy manifest assets (e.g., ../_shared directories)
-  if (config?.source?.assets) {
+  if (inputPath && config?.source?.assets) {
     await copyAssets(inputPath, tempDir, config.source.assets, {
       onCopy: (assetPath) => debug(`Copied manifest asset: ${assetPath}`),
       onSkip: (assetPath, srcPath) => debug(`Manifest asset not found: ${srcPath} (skipping)`),
@@ -115,21 +121,28 @@ export async function resolveAssetsDir(): Promise<string> {
 }
 
 /**
- * Validate that the input path exists on the filesystem
+ * Validate that the input path exists on the filesystem.
+ * No-op for empty input (no-input mode — the viewer's folder picker
+ * supplies the path later via /api/change-folder).
  */
 export async function validateInputPath(inputPath: string): Promise<void> {
+  if (!inputPath) return;
   if (!(await fileExists(inputPath))) {
     throw new Error(`Input path not found: ${inputPath}`);
   }
 }
 
 /**
- * Initialize configuration by loading manifest and resolving config
+ * Initialize configuration by loading manifest and resolving config.
+ * For empty input (no-input mode), skip manifest loading entirely and
+ * return a default resolved config — the user hasn't picked a directory
+ * yet, so there's nothing to read.
  */
 export async function initializeConfiguration(
   inputPath: string,
   _options: PreviewServerOptions
 ): Promise<ResolvedConfig> {
+  if (!inputPath) return resolveConfig({}, {});
   const manifest = await loadManifest(inputPath);
   return resolveConfig({}, manifest);
 }

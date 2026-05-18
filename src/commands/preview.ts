@@ -115,13 +115,19 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    // For html (live preview), input is optional: no path → the server boots
+    // empty and the viewer opens its folder picker so the user can choose one.
+    // For pdf|pdfx, a directory is required (there's nothing to build without
+    // source markdown).
     const inputPath = args.input
       ? path.resolve(args.input as string)
-      : process.cwd();
+      : undefined;
 
-    if (!fs.existsSync(inputPath) || !fs.statSync(inputPath).isDirectory()) {
-      log.error(`Input directory does not exist: ${inputPath}`);
-      process.exit(1);
+    if (inputPath !== undefined) {
+      if (!fs.existsSync(inputPath) || !fs.statSync(inputPath).isDirectory()) {
+        log.error(`Input directory does not exist: ${inputPath}`);
+        process.exit(1);
+      }
     }
 
     const format = parseFormat(args.format);
@@ -142,7 +148,14 @@ export default defineCommand({
       return;
     }
 
-    // pdf | pdfx: one-shot build, then open the artifact
+    // pdf | pdfx: one-shot build, then open the artifact. Requires a source dir.
+    if (inputPath === undefined) {
+      log.error(
+        `--format ${format} requires an input directory. Pass a path: print-md preview <dir> --format ${format}`
+      );
+      process.exit(2);
+    }
+
     const pdfxFlavor = parsePdfxFlavor(args["pdfx-flavor"], format);
     const { outDir, pdfFileOverride } = splitOutPath(
       typeof args.out === "string" ? args.out : undefined,

@@ -38,6 +38,16 @@ import {
 import { homedir } from "os";
 import { resolve as resolvePath } from "path";
 
+/**
+ * Response shape for GET /api/status.
+ * `hasInput: false` signals no-input mode (the user started `print-md` without
+ * a directory). The viewer client uses this to auto-open the folder picker.
+ */
+export interface PreviewStatusResponse {
+  hasInput: boolean;
+  currentPath: string;
+}
+
 // GitHub-related types (previously in types.ts)
 export interface GitHubAuthStatus {
   ghCliInstalled: boolean;
@@ -186,6 +196,19 @@ async function listDirectories(basePath: string): Promise<DirectoryEntry[]> {
     // Return empty array on error (likely permission denied or path doesn't exist)
     return [];
   }
+}
+
+/**
+ * Handle GET /api/status — report whether the server has an active input
+ * directory. The viewer reads this on init: when `hasInput` is false, it
+ * auto-opens the folder picker so the user can choose one.
+ */
+export function handleStatus(currentInputPath: string): Response {
+  const response: PreviewStatusResponse = {
+    hasInput: !!currentInputPath,
+    currentPath: currentInputPath,
+  };
+  return jsonResponse(response);
 }
 
 /**

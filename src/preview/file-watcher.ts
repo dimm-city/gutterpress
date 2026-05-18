@@ -69,16 +69,46 @@ function resolveDestinationForChange(
 }
 
 /**
+ * Tiny placeholder book.html for no-input mode. The viewer's iframe needs a
+ * valid src to load; the viewer client opens the folder picker on top of it
+ * as soon as `/api/status` reports `hasInput: false`. Plain text only — no
+ * Paged.js, no plugins, no manifest.
+ */
+const EMPTY_BOOK_HTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>print-md preview</title>
+  <style>
+    html, body { margin: 0; height: 100%; }
+    body { display: flex; align-items: center; justify-content: center;
+           font: 16px/1.4 -apple-system, "Segoe UI", sans-serif; color: #6b6b6b; }
+  </style>
+</head>
+<body>
+  <p>No directory selected. Use the folder picker to choose one.</p>
+</body>
+</html>
+`;
+
+/**
  * Generate HTML from markdown and write book.html to the temp directory.
  * renderChapters() does all the work (CSS, Paged.js script). We only inject
  * the toolbar interface script. The viewer's iframe loads `book.html` via
  * a relative URL — same name in dev and in published static-site builds.
+ *
+ * Empty `inputPath` writes a static placeholder — the viewer's folder picker
+ * supplies a real path later via /api/change-folder.
  */
 export async function generateAndWriteHtml(
   inputPath: string,
   tempDir: string,
   config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: any[] }
 ): Promise<void> {
+  if (!inputPath) {
+    await Bun.write(path.join(tempDir, BOOK_HTML_FILENAME), EMPTY_BOOK_HTML);
+    return;
+  }
   // Load plugins if configured
   let plugins;
   let pluginCss = '';
@@ -220,12 +250,14 @@ export function createFileWatcher(state: ServerState): FSWatcher {
 }
 
 /**
- * Start file watching if not disabled via options
+ * Start file watching if not disabled via options. No-input mode skips the
+ * watcher entirely (nothing to watch yet) — restartPreview wires up a
+ * watcher once the user picks a directory through the viewer.
  */
 export function startFileWatcher(state: ServerState): void {
-  if (!state.options.noWatch) {
-    state.currentWatcher = createFileWatcher(state);
-  }
+  if (state.options.noWatch) return;
+  if (!state.currentInputPath) return;
+  state.currentWatcher = createFileWatcher(state);
 }
 
 /**
