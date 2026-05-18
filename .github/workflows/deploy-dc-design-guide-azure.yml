@@ -41,6 +41,9 @@ jobs:
             --format html \
             --out .azure-static-web-apps/dc-design-guide
 
+      - name: Create index.html entry point
+        run: cp .azure-static-web-apps/dc-design-guide/book.html .azure-static-web-apps/dc-design-guide/index.html
+
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
         with:
