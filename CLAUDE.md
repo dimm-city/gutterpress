@@ -1,11 +1,26 @@
 # CLAUDE.md — guidance for AI coding sessions on this repo
 
+## Monorepo layout
+
+This repo is a Bun workspace with two packages:
+
+- **`packages/cli/`** (`@dimm-city/print-md`) — the markdown-to-PDF CLI and
+  its library API. All architectural rules below apply to this package.
+- **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron + SvelteKit
+  desktop app. Imports `@dimm-city/print-md` directly as a workspace dep.
+  SvelteKit's Vite/Rollup build is intentional here; `@dimm-city/print-md` is
+  marked SSR-external in `packages/viewer/vite.config.ts` so it is never
+  bundled by Vite. The no-bundlers rule (§1 below) applies only to
+  `packages/cli/src/`. Vite scripts in the viewer must be invoked with
+  `bun --bun ./node_modules/.bin/vite` so that Bun's module resolver handles
+  `@dimm-city/print-md` correctly at dev time.
+
 ## What print-md ships
 
-A standalone binary built with `bun build --compile` (see `scripts/compile.ts`).
-Users download a single executable from GitHub Releases — no Node, no Bun, no
-`node_modules` on the host. The CLI also runs from source via `bun src/cli.ts`
-during development.
+A standalone binary built with `bun build --compile` (see
+`packages/cli/scripts/compile.ts`). Users download a single executable from
+GitHub Releases — no Node, no Bun, no `node_modules` on the host. The CLI also
+runs from source via `bun packages/cli/src/cli.ts` during development.
 
 ## print-md Primary Goals
 > [!ALERT]
@@ -25,20 +40,20 @@ during development.
 These are non-negotiable for any change that touches the runtime or build
 pipeline.
 
-### 1. No bundlers at runtime
+### 1. No bundlers at runtime (packages/cli only)
 
 Do **not** import `vite`, `rollup`, `esbuild`, or any other bundler at runtime
-(eager or lazy) inside `src/`. Bundlers carry native bindings, large transitive
-graphs, and `package.json`/`__dirname`-relative resolution patterns that break
-under `bun build --compile`. Past attempts to ship vite inside the binary
-required a compile-time regex plugin to rewrite `JSON.parse(readFileSync(new
-URL("../package.json", import.meta.url)))` patterns inside `node_modules` — a
-hack we are eliminating.
+(eager or lazy) inside `packages/cli/src/`. Bundlers carry native bindings,
+large transitive graphs, and `package.json`/`__dirname`-relative resolution
+patterns that break under `bun build --compile`. Past attempts to ship vite
+inside the binary required a compile-time regex plugin to rewrite
+`JSON.parse(readFileSync(new URL("../package.json", import.meta.url)))`
+patterns inside `node_modules` — a hack we are eliminating.
 
 If you need a dev server with live reload, use **`Bun.serve`** with its built-in
-`websocket` upgrade. The historical use case (`src/preview/`) is a static file
-server + a "full-reload" websocket message on file change — which is exactly
-what `Bun.serve` provides natively in ~150 lines without any bundler.
+`websocket` upgrade. The historical use case (`packages/cli/src/preview/`) is a
+static file server + a "full-reload" websocket message on file change — which is
+exactly what `Bun.serve` provides natively in ~150 lines without any bundler.
 
 ### 2. Lazy-load heavy optional deps
 
@@ -62,10 +77,10 @@ If a third-party package reads its own `package.json` at module load via
 
 ### 4. Embedded static assets are fine
 
-`with { type: "file" }` imports and `src/lib/embedded-assets.ts`'s extraction
-pattern are the **canonical** way to ship the viewer chrome (HTML/CSS/JS)
-inside the binary. This pattern works under `bun build --compile` and should
-not be rewritten.
+`with { type: "file" }` imports and `packages/cli/src/lib/embedded-assets.ts`'s
+extraction pattern are the **canonical** way to ship the viewer chrome
+(HTML/CSS/JS) inside the binary. This pattern works under `bun build --compile`
+and should not be rewritten.
 
 ### 5. Plugins are plain markdown-it plugins
 
@@ -81,13 +96,13 @@ Reasons:
      See `examples/dc-design-guide/plugins/dimm-city-plugin.js` for an
      example: its marker parser is an inlined copy of `markdown-it-paged`'s
      `parseMarkerLine`, not an import.
-  3. `src/index.ts` re-exports type-only definitions (`PrintMdPlugin`,
-     `PrintMdPluginMetadata`, `PrintMdPluginExport`) for TypeScript plugin
-     authors. Types only — zero runtime coupling.
+  3. `packages/cli/src/index.ts` re-exports type-only definitions
+     (`PrintMdPlugin`, `PrintMdPluginMetadata`, `PrintMdPluginExport`) for
+     TypeScript plugin authors. Types only — zero runtime coupling.
 
-Plugin loader (`src/lib/markdown/plugins.ts`) fails fast on any load error
-with messages identifying the offending manifest entry; it does NOT auto-install
-missing npm packages. Authoring guide lives in `docs/plugins.md`.
+Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) fails fast on any
+load error with messages identifying the offending manifest entry; it does NOT
+auto-install missing npm packages. Authoring guide lives in `docs/plugins.md`.
 
 **Block container syntax** (`:::name ... :::` via `markdown-it-container`) was
 removed 2026-05-17. The DC plugin's `@marker` family (`@page`, `@section`,
@@ -97,10 +112,10 @@ mapping. Do NOT reintroduce `markdown-it-container` to core.
 
 ### 6. `markdown-it-paged` owns its full contract
 
-The inlined `src/lib/markdown/markdown-it-paged.js` owns: markers → tokens →
-HTML emission → the supporting CSS (`PAGED_CSS` named export). `index.ts`
-imports the CSS and injects it; it does NOT override the plugin's renderer
-rules or maintain its own layout state. Per-render state lives on
+The inlined `packages/cli/src/lib/markdown/markdown-it-paged.js` owns: markers
+→ tokens → HTML emission → the supporting CSS (`PAGED_CSS` named export).
+`index.ts` imports the CSS and injects it; it does NOT override the plugin's
+renderer rules or maintain its own layout state. Per-render state lives on
 `env.__colSplitDepth`, not a module-level closure, so a thrown render can't
 leak depth state into the next chapter.
 
@@ -153,6 +168,7 @@ automatically. Do NOT add `variant=` attributes to `@skill`, `@continue`, or
 ## Background reading
 
 - ADR `docs/adr/0001-no-bundlers-at-runtime.md`
+- `packages/viewer/README.md` — viewer dev and packaging instructions
 - [Single-file executable — Bun](https://bun.com/docs/bundler/executables)
 - [Embed directory in executable with `bun build --compile` (#5445)](https://github.com/oven-sh/bun/issues/5445)
 - [`bun build` does not embed binaries from node_modules correctly (#15374)](https://github.com/oven-sh/bun/issues/15374)

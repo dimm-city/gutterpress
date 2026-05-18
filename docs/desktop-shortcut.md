@@ -2,10 +2,13 @@
 
 ## Overview
 
-The print-md installation scripts create a desktop shortcut that automatically:
-- Starts the print-md preview server
-- Opens the preview UI in your default browser
-- Uses a custom favicon icon for visual identification
+The print-md installation scripts create a desktop shortcut that starts the
+print-md preview server and opens the rendered book in your default browser.
+
+`print-md preview` serves a **headless** HTML preview — there is no toolbar,
+page navigation, or folder picker in the browser. For the full interactive
+desktop experience (toolbar, page navigation, zoom, folder picker, PDF export),
+use the **Electron desktop app** (`packages/viewer`) instead of a browser shortcut.
 
 ## Platform Support
 
@@ -68,9 +71,16 @@ Currently, macOS users install manually via Bun. Desktop shortcuts are not autom
 ### Daily Use
 1. User double-clicks "Print-md Preview" shortcut
 2. Terminal/PowerShell window opens showing server logs
-3. Browser automatically opens to `http://localhost:3000`
-4. User can select a folder containing markdown files
-5. Preview updates live as files are edited
+3. Browser automatically opens to `http://localhost:3579`
+4. The rendered book is displayed (headless — no toolbar)
+5. Files update live in the browser as they are edited
+
+For the full toolbar UI (page navigation, zoom, folder picker, PDF export),
+launch the desktop app from the repo:
+
+```bash
+bun run viewer:electron
+```
 
 ## Customization
 

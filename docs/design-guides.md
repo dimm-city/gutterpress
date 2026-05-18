@@ -111,19 +111,17 @@ Produces a complete deployable directory:
 
 ```text
 _site/
-├── index.html              ← the print-md viewer (same UI as `preview`)
-├── book.html               ← the rendered guide content (loaded into the iframe)
-├── preview/                ← viewer scripts and styles
-│   ├── scripts/
-│   └── styles/
+├── book.html               ← the rendered guide content (Paged.js pagination)
+├── preview/                ← pagedjs-interface.js and pagedjs-bridge.js
+│   └── scripts/
+├── vendor/                 ← paged.polyfill.js
 ├── shared/                 ← copied from your manifest's assets
 └── styles/
 ```
 
-Open `_site/index.html` and you'll see the guide in the same chrome the
-preview server uses — toolbar, page nav, zoom, print button — but with no
-backing server. The toolbar's folder picker, GitHub clone, and exit
-buttons are hidden because they need API routes that aren't there.
+Open `_site/book.html` directly in a browser to view the paginated guide.
+The toolbar UI lives in the print-md Electron desktop app (`packages/viewer`)
+and is not part of the static HTML build output.
 
 ## Publish to GitHub Pages
 

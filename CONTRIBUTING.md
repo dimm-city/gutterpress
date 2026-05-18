@@ -15,9 +15,8 @@ Thank you for your interest in contributing to print-md! This document provides 
 
 ### Prerequisites
 
-- **Bun** v1.0.0 or later - [Install Bun](https://bun.sh)
+- **Bun** v1.3.1 or later - [Install Bun](https://bun.sh)
 - **Git** - Version control
-- **Node.js** (optional) - For compatibility testing
 
 ### Initial Setup
 
@@ -28,68 +27,96 @@ Thank you for your interest in contributing to print-md! This document provides 
    ```
 
 2. **Install dependencies**
+
+   Run `bun install` at the **repo root** — Bun workspace installs all
+   packages at once. Do not run `bun install` inside individual package
+   directories; it is not needed and will create duplicate `node_modules`.
+
    ```bash
    bun install
    ```
 
 3. **Verify setup**
    ```bash
-   # Run tests
-   bun test
+   # Run CLI from source
+   bun packages/cli/src/cli.ts --help
 
-   # Build the project
-   bun run build
+   # Run CLI tests
+   bun --filter @dimm-city/print-md test
 
-   # Try the CLI
-   bun run src/cli.ts --help
+   # Launch desktop viewer (browser UI, no Electron)
+   bun run viewer:dev
    ```
 
 ### Development Workflow
 
+Root-level scripts delegate to the relevant workspace package:
+
 ```bash
-# Run from source (for development)
-bun run src/cli.ts preview ./examples/my-book
+# Run CLI from source (pass any CLI command after --)
+bun run cli -- preview ./examples/my-book
+bun run cli -- build ./examples/my-book
 
-# Watch mode for tests
+# Run all tests (CLI package)
+bun run test
+
+# Type-check all packages
+bun run typecheck
+
+# Launch desktop viewer (SvelteKit dev server, browser at http://localhost:5173)
+bun run viewer:dev
+
+# Launch desktop viewer with Electron
+bun run viewer:electron
+```
+
+Working inside a single package:
+
+```bash
+# CLI package
+cd packages/cli
 bun test --watch
+bun run typecheck
 
-# Lint your code
-bun run lint
-
-# Format code
-bun run format
-
-# Type check
-bun run type-check
+# Viewer package
+cd packages/viewer
+bun run dev          # SvelteKit dev server only
+bun run electron:dev # Full Electron + SvelteKit
 ```
 
 ## Project Structure
 
 ```
-print-md/
-├── src/
-│   ├── cli.ts              # CLI entry point
-│   ├── types.ts            # TypeScript type definitions
-│   ├── constants.ts        # Application constants
-│   ├── build/              # Build orchestration
-│   │   ├── build.ts        # Main build function
-│   │   ├── watch.ts        # File watching
-│   │   └── formats/        # Output format strategies
-│   ├── markdown/           # Markdown processing
-│   │   ├── markdown.ts     # Main processor
-│   │   ├── core/           # Core directives
-│   │   └── plugins/        # Extension plugins
-│   ├── preview/            # Preview server
-│   │   └── routes.ts       # API routes
-│   ├── config/             # Configuration management
-│   ├── utils/              # Utility functions
-│   └── assets/             # CSS, fonts, scripts
-├── tests/
-│   └── integration/        # Integration tests
-├── examples/               # Example projects
-└── docs/                   # Documentation
-
+print-md/                        # Workspace root (private)
+├── packages/
+│   ├── cli/                     # @dimm-city/print-md — CLI + library
+│   │   ├── src/
+│   │   │   ├── cli.ts           # CLI entry point
+│   │   │   ├── api/index.ts     # Library API (runBuild, startPreviewServer, …)
+│   │   │   ├── commands/        # Command implementations
+│   │   │   ├── lib/             # Core libraries
+│   │   │   ├── checks/          # Validation check system
+│   │   │   └── preview/         # Headless preview server (Bun.serve + chokidar)
+│   │   ├── scripts/compile.ts   # Binary compile wrapper
+│   │   └── tests/               # Bun test suite
+│   └── viewer/                  # @dimm-city/print-md-viewer — Electron + SvelteKit desktop app
+│       ├── electron/            # Electron main process
+│       └── src/                 # SvelteKit UI + server routes
+├── examples/                    # Example projects
+├── docs/                        # Documentation
+│   └── adr/                     # Architecture Decision Records
+└── package.json                 # Workspace root (private Bun workspace)
 ```
+
+### Key architectural boundaries
+
+- **`packages/cli/src/`** — No bundlers at runtime (see
+  `docs/adr/0001-no-bundlers-at-runtime.md`). Use `Bun.serve` for any server
+  needs, not Vite/Rollup/esbuild.
+- **`packages/viewer/`** — Vite/Rollup are intentional here (SvelteKit build).
+  `@dimm-city/print-md` is SSR-external so it is never bundled by Vite.
+- **Plugin API** — Plugins are plain `(md, options) => void` markdown-it
+  functions. No print-md-specific plugin API. See `docs/plugins.md`.
 
 ## Coding Standards
 
@@ -176,11 +203,11 @@ bun run format
 ### Test Structure
 
 ```
-tests/
+packages/cli/tests/
 ├── integration/            # Integration tests
 │   ├── cli-build.test.ts
 │   └── markdown-processing.test.ts
-└── unit/                   # Unit tests (in src/ alongside code)
+└── unit/                   # Unit tests
     ├── config/config-state.test.ts
     └── utils/manifest-writer.test.ts
 ```
@@ -233,16 +260,16 @@ describe('Feature name', () => {
 
 4. **Running Tests**
    ```bash
-   # Run all tests
-   bun test
+   # Run CLI tests (from repo root)
+   bun --filter @dimm-city/print-md test
 
    # Run specific test file
-   bun test tests/integration/cli-build.test.ts
+   bun test packages/cli/tests/integration/cli-build.test.ts
 
-   # Watch mode
-   bun test --watch
+   # Watch mode (from packages/cli)
+   cd packages/cli && bun test --watch
 
-   # Run tests with coverage (if available)
+   # Run tests with coverage
    bun test --coverage
    ```
 
@@ -288,7 +315,7 @@ The project uses automated tools to monitor and update dependencies securely:
    - Check GitHub stars/activity    # Ensure active development
    - Review security advisories     # Check for known issues
 
-   # Install dependency
+   # Install dependency (run from repo root or the relevant package dir)
    bun add [package-name]
 
    # Run security audit
@@ -335,10 +362,8 @@ The CI/CD pipeline includes security measures:
 
 1. **Run quality checks**
    ```bash
-   bun run lint          # Check for lint errors
-   bun run type-check    # TypeScript compilation
-   bun test              # Run test suite
-   bun run format:check  # Check code formatting
+   bun run typecheck   # TypeScript compilation (all packages)
+   bun run test        # Run test suite
    ```
 
 2. **Update documentation**
@@ -429,11 +454,10 @@ test(config): add tests for manifest validation
    git tag -a v0.2.0 -m "Release v0.2.0"
    git push origin v0.2.0
    ```
-4. **Publish to npm**
-   ```bash
-   bun run prepublishOnly  # Build
-   npm publish
-   ```
+4. **Publish to npm** (via GitHub Actions OIDC trusted publisher)
+   - Tag push triggers the release workflow automatically.
+   - The workflow cross-compiles CLI binaries on `ubuntu-latest` and uploads
+     them to GitHub Releases alongside the Electron viewer packages.
 
 ## Getting Help
 
@@ -444,7 +468,3 @@ test(config): add tests for manifest validation
 ## License
 
 By contributing to print-md, you agree that your contributions will be licensed under the [CC-BY-4.0 License](./LICENSE).
-
----
-
-Thank you for contributing to print-md! 🎉

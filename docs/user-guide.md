@@ -38,11 +38,11 @@ EOF
 # Create your first page
 echo "# Chapter 1\n\nHello, world!" > chapter1.md
 
-# Preview it live
-bun src/cli.ts preview
+# Preview it live (headless server at http://localhost:3579)
+bun run --cwd .. cli -- preview .
 
-# Run the full pipeline to build a PDF
-bun src/cli.ts run .
+# Build a PDF
+bun run --cwd .. cli -- build .
 ```
 
 ---
@@ -66,11 +66,16 @@ print-md is not yet published to npm. Install from source:
 # Clone the repository
 git clone https://github.com/dimm-city/print-md.git
 cd print-md
+
+# Install all workspace dependencies (run at repo root)
 bun install
 
-# Run directly
-bun src/cli.ts preview
-bun src/cli.ts run ./my-book
+# Run CLI from source
+bun packages/cli/src/cli.ts preview
+bun packages/cli/src/cli.ts build ./my-book
+
+# Or use the root-level workspace script
+bun run cli -- preview ./my-book
 ```
 
 ---
@@ -144,11 +149,16 @@ Let's dive in...
 print-md preview
 ```
 
-This will:
-- Open your browser automatically
-- Show a live preview
-- Auto-reload when you save changes
-- Provide page navigation controls
+This starts a headless preview server at `http://localhost:3579`. The server
+auto-reloads when you save changes. There is no toolbar in the browser — for
+page navigation and view controls, use the desktop app instead.
+
+For the full toolbar experience (page navigation, view modes, zoom, folder
+picker, PDF export), launch the desktop app:
+
+```bash
+bun run viewer:electron
+```
 
 ### 5. Build Your PDF
 
@@ -227,7 +237,7 @@ page:
 plugins:                           # Enable/disable plugins
   - ttrpg                          # TTRPG directives
   - dimm-city                      # Dimm City extensions
-                                   # Note: containers are built-in
+                                   # Note: @-marker family is built-in
 ```
 
 ### CLI Options
@@ -256,12 +266,11 @@ print-md validate --input . --pdf dist/book.pdf  # Both
   --phase pre-build                # Run specific phase
 
 # Preview commands
-print-md preview [input]            # Start preview server
+print-md preview [input]            # Start headless preview server
   --port <number>                  # Server port (default: 3579)
   --no-watch                       # Disable file watching
   --open                           # Open browser automatically
   --verbose                        # Verbose output
-  --debug                          # Debug mode
 ```
 
 ---
@@ -329,7 +338,7 @@ Control page layout with `@` markers (provided by `markdown-it-paged`):
 
 ```markdown
 <!-- Force page break -->
-@end-section
+@page-break
 
 <!-- Start a new page with a CSS class -->
 @page chapter
@@ -340,6 +349,7 @@ Control page layout with `@` markers (provided by `markdown-it-paged`):
 <!-- Group content (avoid page breaks within) -->
 @section
 Content stays together on one page.
+@end-section
 ```
 
 These markers emit semantic HTML (`<div class="page">`, `<div class="spread">`, etc.) compatible with Paged.js and CSS Paged Media.
@@ -545,7 +555,7 @@ See [Theme Customization Guide](./theme-customization.md) for more details.
 
 ## Preview Mode
 
-Preview mode provides a live development environment:
+Preview mode provides a live development environment for your content.
 
 ### Starting Preview
 
@@ -566,42 +576,37 @@ print-md preview --open false
 print-md preview --no-watch
 ```
 
-### Preview Features
+### What Preview Does
 
-**Toolbar Controls:**
+`print-md preview` starts a **headless preview server** — it renders
+`book.html` and serves it at `http://localhost:3579`. A tiny WebSocket client
+injected into the page triggers a full-page reload whenever source files change.
+
+There is no toolbar, page navigation, zoom control, folder picker, or GitHub
+integration in the browser preview. Those features live in the **desktop app**
+(`packages/viewer`).
+
+**Live Updates:**
+- Edit markdown files → browser reloads automatically
+- Edit CSS → browser reloads with new styles
+- Edit manifest.yaml → configuration reloads on next build
+- WebSocket-driven full-page reload on any file change
+
+### Desktop App (full toolbar UI)
+
+For the full interactive experience, use the Electron desktop app:
+
+```bash
+# From repo root
+bun run viewer:electron
+```
+
+The desktop app provides:
 - **Page Navigation** - First, Previous, Next, Last buttons
 - **View Modes** - Single page or two-column spread
 - **Zoom** - Zoom in/out/reset controls
-- **Debug Mode** - Show layout debug info
-- **Folder Switcher** - Browse and switch to different projects
-
-**Live Updates:**
-- Edit markdown files → browser updates automatically
-- Edit CSS → instant style changes
-- Edit manifest.yaml → configuration reloads
-- No manual refresh needed (WebSocket-driven full-page reload on file change)
-
-**Keyboard Shortcuts:**
-- `←` / `→` - Previous/Next page
-- `Home` / `End` - First/Last page
-- `+` / `-` - Zoom in/out
-- `0` - Reset zoom
-
-### Folder Switching
-
-Click "Change Folder" to:
-1. Browse your home directory
-2. Select a different project
-3. Preview switches automatically
-4. No server restart needed
-
-### GitHub Integration
-
-Clone repositories directly from preview:
-1. Click "Clone from GitHub"
-2. Enter repository URL (e.g., `user/repo` or full URL)
-3. Automatically cloned and opened
-4. Requires `gh` CLI installed and authenticated
+- **Folder Switcher** - Browse and open different projects
+- **PDF Export** - Save a PDF directly from the app
 
 ---
 
@@ -751,10 +756,11 @@ plugins:
 
 #### Using npm Package Plugins
 
-Install plugins from npm:
+Install plugins from npm (print-md does not auto-install):
 
 ```bash
-npm install markdown-it-footnote
+bun add markdown-it-footnote
+# or: npm install markdown-it-footnote
 ```
 
 ```yaml
@@ -841,16 +847,9 @@ This project uses #javascript and #markdown-it
 #### Plugin Development Guide
 
 For comprehensive plugin development documentation, see:
-- **[examples/plugins/README.md](../examples/plugins/README.md)** - Complete plugin development guide
-- **[examples/with-custom-plugin/](../.tmp/with-custom-plugin)** - Working example project
+- **[docs/plugins.md](plugins.md)** - Plugin authoring guide
+- **[examples/dc-design-guide/plugins/dimm-city-plugin.js](../examples/dc-design-guide/plugins/dimm-city-plugin.js)** - Full-featured reference plugin (~1800 lines)
 - **[markdown-it documentation](https://markdown-it.github.io/)** - markdown-it API reference
-
-#### Security
-
-Plugins are subject to security restrictions:
-- Local plugins must use relative paths (no `../` or absolute paths)
-- All plugin files are validated before loading
-- Remote plugins (future feature) will require integrity hashes
 
 ### Validation
 
@@ -882,9 +881,9 @@ validate:
     forbidTransparency: true
 ```
 
-The validation system runs 33 checks across four categories: source (markdownlint, htmlhint, stylelint, link integrity, accessibility), PDF (structure, page size, colors, fonts, ink coverage, transparency, bleed), assets (image size/DPI/color space, font refs), and heuristics (text density, layout analysis).
+The validation system runs checks across four categories: source (markdownlint, htmlhint, stylelint), PDF (structure, page size, colors, fonts, ink coverage, transparency, bleed), assets (image size/DPI/color space, font refs), and heuristics (text density, layout analysis).
 
-Missing external tools (e.g. `qpdf`, `identify`) are detected automatically before checks run. You'll see a warning listing which checks are skipped, while all other checks proceed normally. Warnings are suppressed for checks you've explicitly disabled in your manifest.
+Missing external tools (e.g. `qpdf`, `identify`) are detected automatically before checks run. You'll see a warning listing which checks are skipped, while all other checks proceed normally.
 
 ### Multi-File Projects
 
@@ -951,7 +950,8 @@ my-book/
 │   └── *.jpg
 ├── styles/               # Custom CSS
 │   └── *.css
-└── .print-mdignore        # Files to exclude (future)
+└── plugins/              # Local plugins
+    └── *.js
 ```
 
 ### Writing Tips
@@ -968,7 +968,7 @@ my-book/
 # Chapter 1
 Content here...
 
-@end-section
+@page-break
 
 # Chapter 2
 New chapter on new page
@@ -1038,7 +1038,6 @@ h1 {
 **For Slow Builds:**
 - PDF generation is the bottleneck
 - Use preview mode during development for faster iteration
-- Use preview mode during development
 - Only build PDF for final output
 
 ### Troubleshooting

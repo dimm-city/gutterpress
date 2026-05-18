@@ -1,12 +1,28 @@
 # print-md
 
-A powerful CLI tool and live preview UI for creating professional print-ready PDFs from markdown. Write your content in markdown and let print-md handle the complex CSS Paged Media layout. Uses Chromium + Paged.js for PDF generation and Paged.js for live preview.
+A CLI tool and desktop app for creating professional print-ready PDFs from markdown. Write your content in markdown and let print-md handle the complex CSS Paged Media layout. Uses Chromium + Paged.js for PDF generation.
+
+## Download
+
+**[Latest release →](https://github.com/dimm-city/print-md/releases/latest)**
+
+| Platform | Desktop App | CLI Binary |
+|---|---|---|
+| **Linux x64** | `.AppImage` on releases page | [`print-md-linux-x64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-linux-x64) |
+| **Windows x64** | `.zip` on releases page | [`print-md-windows-x64.exe`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-windows-x64.exe) |
+| **macOS (Apple Silicon)** | `.dmg` on releases page | [`print-md-macos-arm64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-macos-arm64) |
+| **macOS (Intel)** | `.dmg` on releases page | [`print-md-macos-x64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-macos-x64) |
+
+The desktop app (AppImage/zip/dmg) opens a project directory, shows a paginated preview, and exports PDF — no terminal required. The CLI binary is a single standalone executable for scripting and CI — no Node or Bun install needed on the host.
+
+> **Beta:** Releases tagged `-beta.N` are pre-releases for testing. Check the releases page for stability status.
 
 ## Features
 
 - **Markdown to PDF** - Convert markdown files to professional print layouts
-- **Live Preview** - Interactive browser-based preview with WebSocket-driven full-reload on file changes
-- **HTML static-site output** - `print-md build --format html` produces a deployable directory whose `index.html` is the same viewer the preview server uses. Ideal for [companion design guides](./docs/design-guides.md).
+- **Live Preview** - Headless preview server with WebSocket-driven full-reload on file changes
+- **HTML output** - `print-md build --format html` produces a self-contained directory with `book.html` + Paged.js assets. Ideal for [companion design guides](./docs/design-guides.md).
+- **Desktop App** - Electron + SvelteKit viewer with toolbar UI, page navigation, zoom, and PDF export
 - **Custom Styling** - Full control over typography, layout, and print design with CSS
 - **Page Control** - Fine-grained control over page breaks, spreads, and multi-column layouts
 - **Extensible** - Plugin system for custom markdown syntax and directives
@@ -14,11 +30,19 @@ A powerful CLI tool and live preview UI for creating professional print-ready PD
 
 ## Installation
 
-**Package Status:** print-md is currently in development and not yet published to npm. 
+### Non-technical users: desktop app
 
-### Development Installation (From Source)
+Download the desktop app from the [Download](#download) table above or the [GitHub Releases page](https://github.com/dimm-city/print-md/releases/latest):
 
-Until the package is published to npm, install from the GitHub repository:
+- **Linux** — `.AppImage` — requires [Bun](https://bun.sh) installed on the host; make the file executable (`chmod +x`) then double-click or run it
+- **Windows** — `.zip` — extract and run `electron.exe`; requires [Bun](https://bun.sh) installed (the Bun Windows installer adds it to `PATH` automatically)
+- **macOS** — `.dmg` — open the disk image and drag the app to Applications
+
+The desktop app opens a project directory, shows a paginated preview, and exports PDF — no terminal required.
+
+### CLI power users
+
+Install the `print-md` binary from [GitHub Releases](https://github.com/dimm-city/print-md/releases) and place it on your `PATH`, or run from source:
 
 ```bash
 # Clone the repository
@@ -28,44 +52,24 @@ cd print-md
 # Install Bun (if not already installed)
 curl -fsSL https://bun.sh/install | bash
 
-# Install dependencies
+# Install workspace dependencies
 bun install
 
-# Link globally for development
-bun link
+# Run CLI from source
+bun packages/cli/src/cli.ts build
+bun packages/cli/src/cli.ts preview
 
-# Now the print-md command is available globally
-print-md build
-print-md preview
+# Or use the root-level workspace script
+bun run cli -- preview ./my-book
 ```
 
-### Using from Source Without Global Link
-
-If you prefer not to link globally:
+### npm (once stable)
 
 ```bash
-git clone https://github.com/dimm-city/print-md.git
-cd print-md
-bun install
-
-# Run directly
-bun src/cli.ts build
-bun src/cli.ts preview
-```
-
-### Future: Published Package Installation
-
-Once @dimm-city/print-md is published to npm, you'll be able to install it with:
-
-```bash
-# With Bun
-bun install -g @dimm-city/print-md
-
-# With npm
 npm install -g @dimm-city/print-md
 ```
 
-Check back soon for the published release!
+The npm package is planned for stable releases. Pre-releases ship as binary downloads only.
 
 ## Documentation
 
@@ -81,6 +85,7 @@ For comprehensive guides and references, see the [/docs](./docs) directory:
 - **[Best Practices](./docs/best-practices.md)** - Professional print guidelines
 - **[Complete Guide](./docs/authoring-guide.md)** - All-in-one reference
 - **[Design Guides](./docs/design-guides.md)** - Author and publish a companion HTML styleguide
+- **[Plugins](./docs/plugins.md)** - Extend markdown syntax with custom plugins
 
 ## Quick Start
 
@@ -100,7 +105,7 @@ print-md build ./my-book --out dist/
 print-md build ./my-book --format pdfx --icc ./profiles/CGATS21_CRPC1.icc
 ```
 
-### Live Preview
+### Live Preview (headless)
 
 ```bash
 # Start preview server with live reload
@@ -113,43 +118,7 @@ print-md preview --port 5000
 print-md preview --open false
 ```
 
-The preview UI provides:
-- **Page navigation** - Jump to any page, navigate with prev/next
-- **View modes** - Single page or two-column (spread) view
-- **Zoom controls** - Fit to width or custom zoom levels
-- **Debug mode** - Visualize page breaks and layout boxes
-- **Folder switching** - Load different projects without restarting
-- **GitHub cloning** - Clone and preview repositories directly from GitHub
-
-### Clone from GitHub
-
-The preview UI includes built-in support for cloning GitHub repositories:
-
-```bash
-# Start preview (no GitHub CLI installation needed yet)
-print-md preview
-```
-
-In the preview UI:
-1. Click the **GitHub icon** button in the toolbar
-2. If not authenticated, click "Login to GitHub" to authenticate via browser
-3. Enter a repository URL in any format:
-   - `https://github.com/owner/repo`
-   - `git@github.com:owner/repo.git`
-   - `owner/repo` (shorthand)
-4. Click "Clone Repository"
-5. The repository is cloned to `~/.print-md/cloned-repos/owner/repo`
-6. Preview automatically switches to the cloned repository
-
-**Prerequisites:**
-- GitHub CLI (`gh`) must be installed: https://cli.github.com/
-- One-time authentication via `gh auth login` or use the UI's "Login to GitHub" button
-
-**Benefits:**
-- No OAuth app setup required
-- Simple browser-based authentication
-- Repositories stored locally for offline access
-- Easy sharing of markdown projects via GitHub
+`print-md preview` starts a headless HTML preview server. It serves the rendered `book.html` at `http://localhost:3579` and broadcasts a `full-reload` WebSocket message whenever source files change. There is no toolbar or navigation chrome in the browser — those features live in the desktop app (`packages/viewer`).
 
 ## Configuration
 
@@ -186,7 +155,7 @@ plugins:
 
 ## Markdown Directives
 
-print-md extends markdown with special directives for layout control:
+print-md extends markdown with special directives for layout control.
 
 ### Layout Markers
 
@@ -195,27 +164,10 @@ The primary page layout system uses `@` markers (provided by [`markdown-it-paged
 ```markdown
 @page              Start a new page
 @page chapter      New page with "chapter" CSS class
-@break             Force a page break (no wrapper)
+@page-break        Force a page break (no wrapper)
 @spread            Start a two-page spread group
 @section           Group content (avoid page breaks within)
-```
-
-### Container Blocks
-
-Group content with container syntax for styling:
-
-```markdown
-::: container
-Keep this content together on one page.
-:::
-
-::: two-column
-This section uses two-column layout.
-:::
-
-::: sidebar
-Sidebar or callout box content.
-:::
+@column-break      Force a column break in multi-column layouts
 ```
 
 ### Example Usage
@@ -231,12 +183,13 @@ This is the first paragraph.
 
 This chapter starts on a new page.
 
-::: two-column
-This content flows in two columns until the container ends.
-:::
+@section .two-column
+This content flows in two columns until the section ends.
+@end-section
 
 @section
 Content in here avoids breaking across pages.
+@end-section
 ```
 
 ## Plugin System
@@ -267,15 +220,14 @@ plugins:
 **Example plugin** (`plugins/my-plugin.js`):
 
 ```javascript
-// Plugin function
+// Plugin function — standard markdown-it signature
 export default function myPlugin(md, options) {
-  // Extend markdown-it functionality
   md.renderer.rules.heading_open = function(tokens, idx) {
     return `<h${tokens[idx].tag.slice(1)} class="custom">`;
   };
 }
 
-// Plugin metadata
+// Plugin metadata (optional)
 export const metadata = {
   name: 'my-plugin',
   version: '1.0.0',
@@ -288,18 +240,20 @@ export const css = `
 `;
 ```
 
+See [docs/plugins.md](./docs/plugins.md) for the full plugin authoring guide.
+
 ### npm Package Plugins
 
-Install and use plugins from npm:
+Install and use plugins from npm (print-md does not auto-install — install first):
 
 ```bash
-npm install markdown-it-footnote
+bun add markdown-it-footnote
+# or: npm install markdown-it-footnote
 ```
 
 ```yaml
 plugins:
   - name: markdown-it-footnote
-    version: "^3.0.0"
     options:
       footnoteMarker: true
 ```
@@ -317,8 +271,6 @@ plugins:
     priority: 50   # Runs last
 ```
 
-**Learn more:** See [examples/plugins/README.md](./examples/plugins/README.md) for a complete plugin development guide and working examples.
-
 ## Styling
 
 ### CSS Cascade
@@ -328,13 +280,6 @@ Styles are applied in order:
 1. **Default Styles** - Base typography and layout (optional)
 2. **Theme Styles** - Your custom themes from `manifest.yaml`
 3. **CSS @import** - All imports are resolved and inlined
-
-### Disable Default Styles
-
-```yaml
-styles:
-  - my-complete-theme.css
-```
 
 ### CSS Paged Media
 
@@ -422,6 +367,8 @@ The fingerprint includes command args, key PDF/X config (flavor/profile path), t
 print-md preview [input] [options]
 ```
 
+Starts a headless HTML preview server. The server renders `book.html`, serves it at `http://localhost:<port>`, and pushes a `full-reload` WebSocket message to connected clients whenever source files change. There is no toolbar, page navigation, or folder picker in the browser — those are desktop app features.
+
 **Options:**
 - `--port <number>` - Server port (default: 3579)
 - `--open <boolean>` - Auto-open browser (default: true)
@@ -456,7 +403,7 @@ print-md preview --no-watch
 
 - **Single Bun.serve instance** - Static files, `/api/*` routes, and a
   `/__print-md-hmr` WebSocket are all served by one `Bun.serve` process
-  (see `src/preview/http-server.ts`). No bundler runs at preview time.
+  (see `packages/cli/src/preview/http-server.ts`). No bundler runs at preview time.
 - **Live Reload** - File changes regenerate `book.html` and broadcast a
   `{ type: "full-reload" }` message over the WebSocket; a tiny client
   snippet injected into served HTML reloads the page on receipt.
@@ -468,25 +415,48 @@ print-md preview --no-watch
 - **PDF** - Renders via Chromium + Paged.js typesetter for professional print quality. Use `build --format pdf` for a quick PDF or `build --format pdfx` for a print-ready PDF/X-1a/X-3 with the full validated pipeline.
 - **HTML static site** - `build --format html` produces a directory whose `index.html` is the print-md viewer chrome wrapping the rendered book. Drop it on GitHub Pages or any static host. See [docs/design-guides.md](./docs/design-guides.md).
 
-## Project Structure
+## Project layout
+
+This repo is a Bun workspace monorepo.
 
 ```
 print-md/
-├── src/
-│   ├── cli.ts              # CLI entry point
-│   ├── commands/            # Command implementations
-│   ├── lib/                 # Core libraries
-│   │   ├── markdown/        # Markdown processing and plugins
-│   │   ├── manifest.ts      # Config resolution
-│   │   ├── presets.ts       # Vendor presets
-│   │   ├── ghostscript.ts   # PDF/X conversion
-│   │   └── chromium.ts      # Chromium resolution
-│   ├── checks/              # Validation check system
-│   ├── preview/             # Preview server
-│   ├── schema/              # Type definitions
-│   └── utils/               # Shared utilities
-└── README.md
+├── packages/
+│   ├── cli/                     # @dimm-city/print-md — CLI + library
+│   │   ├── src/
+│   │   │   ├── cli.ts           # CLI entry point (citty)
+│   │   │   ├── api/index.ts     # Library API (runBuild, startPreviewServer, …)
+│   │   │   ├── commands/        # Command implementations
+│   │   │   ├── lib/             # Core libraries (markdown, manifest, chromium, …)
+│   │   │   ├── checks/          # Validation check system
+│   │   │   ├── preview/         # Headless preview server (Bun.serve + chokidar)
+│   │   │   ├── schema/          # Type definitions
+│   │   │   └── assets/          # Embedded static assets (Paged.js, pagedjs-interface)
+│   │   ├── scripts/compile.ts   # bun build --compile wrapper
+│   │   ├── profiles/            # ICC colour profiles
+│   │   └── tests/               # Bun test suite
+│   └── viewer/                  # @dimm-city/print-md-viewer — Electron + SvelteKit desktop app
+│       ├── electron/            # Electron main process (TypeScript → CJS)
+│       ├── src/                 # SvelteKit app (toolbar UI, +server.ts API routes)
+│       └── electron-builder.yml # Packaging config
+├── examples/                    # Sample projects (dc-design-guide, template, …)
+├── docs/                        # Authoring guides, ADRs, architecture docs
+└── package.json                 # Workspace root (private)
 ```
+
+## Desktop viewer
+
+`packages/viewer` is an Electron + SvelteKit desktop app. It imports
+`@dimm-city/print-md` directly as a workspace dependency — no subprocess, no
+JSON IPC. The SvelteKit server runs under Bun because print-md uses Bun-specific
+APIs (`Bun.serve`, `Bun.file`, `with { type: "file" }` imports).
+
+The desktop app provides the toolbar UI, page navigation, view modes, zoom
+controls, folder picker, and PDF export that are absent from the headless
+`print-md preview` server.
+
+See [`packages/viewer/README.md`](./packages/viewer/README.md) for dev and
+packaging instructions.
 
 ## Development
 
@@ -501,18 +471,24 @@ This project uses [Bun](https://bun.com) runtime v1.3.1 or later.
 git clone https://github.com/dimm-city/print-md.git
 cd print-md
 
-# Install dependencies
+# Install all workspace dependencies (run at repo root)
 bun install
 
-# Run from source
-bun src/cli.ts build
-bun src/cli.ts preview
+# Run CLI from source
+bun run cli -- build ./my-book
+bun run cli -- preview ./my-book
 
-# Build the CLI
-bun run build
+# Run CLI tests
+bun --filter @dimm-city/print-md test
 
-# Run tests
-bun test
+# Type-check all packages
+bun run typecheck
+
+# Launch desktop viewer (browser-based SvelteKit UI, no Electron)
+bun run viewer:dev
+
+# Launch desktop viewer with Electron
+bun run viewer:electron
 ```
 
 ### Troubleshooting
@@ -546,7 +522,7 @@ bunx playwright install chromium
 
 # If issues persist, verify Chromium is available:
 bunx playwright install --dry-run
-
+```
 
 **Problem: Build Fails with "manifest.yaml not found"**
 
@@ -566,12 +542,6 @@ CSS imports are resolved relative to the file containing the @import. Check path
 /* If your CSS is in styles/theme.css */
 @import "variables.css";        /* Looks for styles/variables.css */
 @import "../common/base.css";   /* Looks for common/base.css */
-```
-
-Verify the file exists:
-```bash
-# From your project root
-ls -la styles/variables.css
 ```
 
 **Problem: Build Hangs or Takes Very Long**
@@ -707,66 +677,7 @@ Verify CSS files exist:
 ls -la themes/theme.css custom.css
 ```
 
-#### GitHub Integration Issues
-
-**Problem: "gh CLI Not Found"**
-
-Install GitHub CLI:
-
-```bash
-# macOS
-brew install gh
-
-# Linux
-curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-sudo apt update
-sudo apt install gh
-
-# Windows
-winget install --id GitHub.cli
-```
-
-**Problem: GitHub Authentication Fails**
-
-Authenticate with GitHub:
-
-```bash
-# Interactive authentication
-gh auth login
-
-# Or use the preview UI's "Login to GitHub" button
-```
-
-**Problem: Clone Permission Denied**
-
-Ensure you have access to the repository:
-
-```bash
-# For private repos, check authentication
-gh auth status
-
-# For public repos, try HTTPS URL instead of SSH:
-# Use: https://github.com/owner/repo
-# Not: git@github.com:owner/repo.git
-```
-
 #### Performance Issues
-
-**Problem: Build is Slow**
-
-   ```bash
-   ```
-
-2. **Common slow operations:**
-   - Large images (optimize/resize)
-   - Complex CSS (simplify selectors)
-   - Many files (combine related content)
-   - Circular CSS imports (fix import chain)
-
-3. **Try HTML format first (faster):**
-   ```bash
-   ```
 
 **Problem: Preview Uses Too Much Memory**
 
@@ -832,7 +743,7 @@ If you're still stuck:
    - No custom CSS
 4. **Open an issue:** Include:
    - Operating system and version
-   - Bun/Node version (`bun --version`)
+   - Bun version (`bun --version`)
    - print-md version (`print-md --version`)
    - Full error message
    - Steps to reproduce
@@ -846,8 +757,10 @@ This project uses:
 - [Playwright](https://playwright.dev/) - Browser automation for PDF rendering
 - [Paged.js](https://pagedjs.org/) - CSS Paged Media polyfill and layout engine
 - [markdown-it](https://github.com/markdown-it/markdown-it) - Markdown parser
+- [Electron](https://www.electronjs.org/) - Desktop app shell for the viewer
+- [SvelteKit](https://kit.svelte.dev/) - Web framework for the viewer UI
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for full contribution guidelines.
 
 ## License
 

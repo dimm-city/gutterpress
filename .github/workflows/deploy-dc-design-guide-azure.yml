@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - "examples/dc-design-guide/**"
-      - "src/**"
+      - "packages/cli/src/**"
       - "package.json"
       - "bun.lock"
       - ".github/workflows/deploy-dc-design-guide-azure.yml"
@@ -37,7 +37,7 @@ jobs:
 
       - name: Build dc-design-guide HTML output
         run: |
-          bun src/cli.ts build examples/dc-design-guide \
+          bun packages/cli/src/cli.ts build examples/dc-design-guide \
             --format html \
             --out .azure-static-web-apps/dc-design-guide
 
