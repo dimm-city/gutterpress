@@ -230,5 +230,9 @@ export async function shutdownServer(state: ServerState): Promise<void> {
   }
 
   info('Server stopped. You can close this browser window.');
-  process.exit(0);
+  // NOTE: callers that need process termination (signal handlers in server.ts)
+  // are responsible for calling process.exit() themselves. shutdownServer()
+  // only cleans up — it does not decide to terminate the process, so that the
+  // viewer's PreviewServerHandle.stop() can call this safely without killing
+  // the SvelteKit host process.
 }
