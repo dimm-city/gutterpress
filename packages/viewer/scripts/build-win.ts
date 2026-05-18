@@ -34,7 +34,11 @@ const VIEWER_ROOT = resolve(import.meta.dir, "..");
 const CLI_ROOT    = resolve(VIEWER_ROOT, "../../packages/cli");
 const DIST_DIR    = join(VIEWER_ROOT, "dist");
 const OUT_DIR     = join(DIST_DIR, "win-unpacked");
-const ZIP_NAME    = "print-md-0.0.1-win32-x64.zip";
+
+// Derive the artifact version from package.json so CI version-patch steps
+// (which write the tag version into package.json) propagate automatically.
+const viewerVersion = JSON.parse(readFileSync(join(VIEWER_ROOT, "package.json"), "utf8")).version as string;
+const ZIP_NAME    = `print-md-${viewerVersion}-win32-x64.zip`;
 const ZIP_PATH    = join(DIST_DIR, ZIP_NAME);
 
 async function run(cmd: string, args: string[], cwd?: string) {
@@ -145,6 +149,6 @@ await run("zip", ["-r", "-q", ZIP_PATH, "win-unpacked/"], DIST_DIR);
 const stat = await Bun.file(ZIP_PATH).stat();
 console.log(`\n✓ ${ZIP_PATH}  (${(stat.size / 1e6).toFixed(1)} MB)\n`);
 console.log("Install on Windows:");
-console.log("  1. Unzip print-md-0.0.1-win32-x64.zip");
+console.log(`  1. Unzip ${ZIP_NAME}`);
 console.log("  2. Install Bun: https://bun.sh");
 console.log("  3. Run electron.exe");
