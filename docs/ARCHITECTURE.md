@@ -308,22 +308,21 @@ the `/api/*` route table, and a `/__print-md-hmr` WebSocket for full-reload
 broadcasts.
 
 ```
-User Browser → http://localhost:{port}
+User Browser / Electron Viewer → http://localhost:{port}
     ↓
 Bun.serve (src/preview/http-server.ts)
     ├─→ /__print-md-hmr  WebSocket → broadcastReload()
     │    (subscribers receive {type:"full-reload"} on file change)
     ├─→ /api/*           handleApiRequest (api-middleware.ts → routes.ts)
-    │    ├─→ GET  /api/directories      (handleListDirectories)
-    │    ├─→ POST /api/change-folder     (handleChangeFolder)
-    │    ├─→ GET  /api/gh/status         (handleGitHubStatus)
-    │    ├─→ POST /api/gh/login          (handleGitHubLogin)
-    │    ├─→ POST /api/gh/clone          (handleGitHubClone)
-    │    └─→ GET  /api/gh/user           (handleGitHubUser)
+    │    └─→ GET  /api/status            (handleStatus — reports hasInput + currentPath)
     └─→ /*               Bun.file from state.tempDir
-         (HTML responses get a tiny inline HMR client injected
-          before </body>; `..` traversal returns 404)
+         ("/" redirects to book.html; HTML responses get a tiny inline
+          HMR client injected before </body>; `..` traversal returns 404)
 ```
+
+> **Note**: Folder picker, GitHub clone, and other toolbar routes were removed
+> in the viewer extraction (spike/monorepo-electron-viewer). Those features now
+> live in `packages/viewer` (the Electron desktop app).
 
 **Design Rationale**:
 - The previous Vite-based dev server was the wrong shape: print-md doesn't
