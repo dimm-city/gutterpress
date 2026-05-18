@@ -8,8 +8,6 @@ Real pages from the Dimm City Field Guide rendered through the DC print system. 
 
 @end-lede
 
----
-
 ## What Is Part 2?
 
 @section .two-column
@@ -21,8 +19,6 @@ The spec chapters (01–08) explain the design system in terms of tokens, syntax
 Each chapter in Part 2 covers one type of page. The annotation above the rendered content names the active page template, CSS classes, and any macros in use. The rendered block beneath it is the actual book markdown — same source, same stylesheet, same output.
 
 @end-section
-
----
 
 ## Part 2 Contents
 
@@ -38,7 +34,7 @@ Each chapter in Part 2 covers one type of page. The annotation above the rendere
 </ol>
 </div>
 
----
+
 
 ## Page Templates at a Glance
 
@@ -51,8 +47,6 @@ Each chapter in Part 2 covers one type of page. The annotation above the rendere
 | Rules Pages | `chapter-start`, `the-players` | `@chapter-opener`, markdown tables |
 | DM & NPC Pages | `chapter-04` | H4/H5/H6 stat block format |
 | Gear & Tech | `tech-cybernetics` | EP table, `SysChk` inline code |
-
----
 
 ## How to Read These Examples
 

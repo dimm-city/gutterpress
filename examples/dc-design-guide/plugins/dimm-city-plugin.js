@@ -194,8 +194,8 @@ function buildStickerChain(items) {
 }
 
 function processRollDie(html) {
-  return html.replace(/\*\*ROLL THE DIE!\*\*/g, '<span class="scream">ROLL THE DIE!</span>')
-             .replace(/ROLL THE DIE!/g, '<span class="scream">ROLL THE DIE!</span>');
+  return html.replace(/\*\*ROLL THE DIE!\*\*/g, '<span class="dc-roll-the-die">ROLL THE DIE!</span>')
+             .replace(/ROLL THE DIE!/g, '<span class="dc-roll-the-die">ROLL THE DIE!</span>');
 }
 
 function renderInlineChildren(inlineTok, md) {
