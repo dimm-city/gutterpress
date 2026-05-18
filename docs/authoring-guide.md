@@ -28,7 +28,7 @@ Print-md converts markdown files into professional print PDFs. It's designed for
 # Build a quick PDF (lint + pre-build validation run by default)
 print-md build ./my-book
 
-# Preview with live reload
+# Preview with live reload (headless server at http://localhost:3579)
 print-md preview ./my-book
 
 # Build with a custom output directory
@@ -126,11 +126,13 @@ page:
 
 ## Core Directives
 
-Print-md provides directives to control page layout using `@` markers (primary) and fenced container blocks.
+Print-md controls page layout through `@` markers from the `markdown-it-paged` plugin.
+
+> **Note:** The `:::name ... :::` triple-colon container block syntax was removed
+> 2026-05-17. Use `@section .class-name` for layout wrappers instead. See
+> [docs/migrations/2026-05-removing-container-syntax.md](migrations/2026-05-removing-container-syntax.md).
 
 ### Layout Markers
-
-The primary page layout system uses `@` markers from the `markdown-it-paged` plugin:
 
 ```markdown
 @page
@@ -141,7 +143,7 @@ Start a new page.
 
 Start a new page with the "chapter" CSS class.
 
-@end-section
+@page-break
 
 Force a hard page break.
 
@@ -152,44 +154,31 @@ Start a two-page spread group.
 @section
 
 Group content to avoid page breaks within.
+
+@end-section
+
+Close the current @section or @page block.
+
+@column-break
+
+Force a column break (inside multi-column sections).
 ```
 
-### Container Blocks
+### Section Layout
 
-Use fenced container syntax (`::: name ... :::`) for layout blocks:
+Use `@section` with class names for multi-column and other layout wrappers:
 
 ```markdown
-::: container
-This content gets wrapped in a container div.
-:::
+@section .two-column
 
-::: two-column
-This content will flow in a two-column layout, perfect for
-glossaries, indexes, or dense reference material.
-:::
+Content flows in two columns.
 
-::: sidebar
-Sidebar content goes here.
-:::
+@column-break
 
-::: wrapper
-Generic wrapper for custom styling.
-:::
+Second column starts here.
+
+@end-section
 ```
-
-### Built-in Containers
-
-The following container names are built-in:
-
-- `container` - Generic container
-- `two-column` - Two-column layout
-- `wrapper` - Generic wrapper for styling
-- `sidebar` - Sidebar content
-- `ability` - Ability description block
-- `ability-continued` - Continued ability block
-- `specialty` - Specialty content block
-- `learning-path` - Learning path content
-- `aug` - Augmentation content block
 
 ---
 
@@ -299,7 +288,7 @@ Use `@page-break` for a hard page break, or `@page` to start a new styled page:
 
 Content here...
 
-@end-section
+@page-break
 
 This starts on the next page.
 
@@ -324,20 +313,13 @@ This H1 heading automatically:
 
 ### Preventing Page Breaks
 
-Use `@section` or CSS classes to keep content together:
+Use `@section` to keep content together:
 
 ```markdown
 @section
 This content will try to stay together on one page
 and avoid breaking across pages.
-```
-
-Or with container syntax:
-
-```markdown
-::: container
-This content stays together.
-:::
+@end-section
 ```
 
 Or in custom CSS:
@@ -542,17 +524,27 @@ Later, reference the chapter: [See Chapter One](#chapter-one)
 
 Auto-generated anchors are created for all headings, using slugified text.
 
-### Custom Containers
+### Named Page Sections
 
-Use container syntax for custom layouts:
+Use `@section` with CSS class names to apply layout to blocks of content:
 
 ```markdown
-::: custom-class
-This content gets wrapped in a div with class="custom-class".
+@section .two-column
 
-You can then style it with CSS in your custom stylesheet.
-:::
+This content flows in a two-column layout, perfect for
+glossaries, indexes, or dense reference material.
+
+@end-section
+
+@section .sidebar-layout
+
+Sidebar content goes here.
+
+@end-section
 ```
+
+For custom one-off layouts, use `@page .class-name` in markdown — a class used
+only once on one page is not an anti-pattern; it is the intended mechanism.
 
 ### HTML in Markdown
 
@@ -723,29 +715,28 @@ Automatically styled with:
 - Decorative borders
 - Centered alignment
 
-### Dimm City Containers
+### Dimm City Block Markers
 
-Dimm City includes specialized containers:
+Dimm City includes specialized `@`-marker blocks:
 
 ```markdown
-::: specialty
-Special content block
-:::
+@specialty .augmerc
 
-::: learning-path
-Step-by-step progression
-:::
+@skill #### Skill Name | AUG1.1
+Skill description here.
 
-::: ability
-Game ability description
-:::
+@learning-path
+- Step one
+- Step two
 
-::: item
-Equipment or item details
-:::
+@callout
+A callout block.
+@end-callout
+
+@end-specialty
 ```
 
-> **Tip:** You can also use `@section ability` as an alternative to `::: ability ... :::` for flat (non-nested) ability blocks.
+See the [DC design guide](../examples/dc-design-guide/) for the full macro reference.
 
 ---
 
@@ -1023,8 +1014,8 @@ Before final print:
 @end-section                Close current @section
 @spread                     Start a two-page spread
 @section                    Group content (avoid breaks)
-::: two-column ... :::      Two-column layout
-::: sidebar ... :::         Sidebar block
+@section .two-column        Two-column layout section
+@column-break               Force a column break
 ```
 
 ### Common Callouts
@@ -1046,24 +1037,3 @@ Before final print:
 {width="50%"}               Inline style
 {.float-left .rounded}      Multiple classes
 ```
-
----
-
-## Additional Resources
-
-- **Paged.js Documentation:** https://www.pagedjs.org/
-- **Playwright Documentation:** https://playwright.dev/
-- **Markdown Guide:** https://www.markdownguide.org/
-- **Print Design Best Practices:** Research book design principles
-- **CSS Paged Media:** https://www.w3.org/TR/css-page-3/
-
-For more examples, see the `/examples` directory in the print-md repository.
-
-## See also
-
-- [**Companion design guides**](./design-guides.md) — author and publish an HTML styleguide alongside your book.
-
----
-
-**Version:** 1.1
-**Last Updated:** 2026-02-12

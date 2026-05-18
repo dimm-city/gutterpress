@@ -17,6 +17,13 @@ This document describes the architecture, design decisions, and implementation d
 
 **print-md** is a markdown-to-PDF converter for professional print layout. It uses Chromium + Paged.js for PDF generation and Paged.js for live preview. It's designed as a single-user local application optimized for creating print-ready documents like books, game manuals, and professional reports.
 
+### Monorepo structure
+
+The repo is a Bun workspace with two packages:
+
+- **`packages/cli/`** (`@dimm-city/print-md`) — CLI binary + library API. Distributed as a standalone compiled binary via `bun build --compile`.
+- **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron + SvelteKit desktop app. Imports `@dimm-city/print-md` as a workspace dependency.
+
 ### Key Features
 
 - **Multi-format output**: PDF, HTML, and preview bundles
@@ -24,6 +31,7 @@ This document describes the architecture, design decisions, and implementation d
 - **Extensible markdown**: Plugin system for custom syntax
 - **CSS Paged Media**: Full control over print layout
 - **Bun-native**: Fast runtime with native TypeScript support
+- **Desktop app**: Electron viewer with toolbar UI, page navigation, and PDF export
 
 ## Design Principles
 
@@ -59,14 +67,13 @@ As a personal/single-user tool, we prioritize:
 ### Module Structure
 
 ```
-src/
+packages/cli/src/
 ├── cli.ts                  # CLI entry point (citty framework)
 ├── types.ts                # Central type definitions
 ├── constants.ts            # Application constants
-├── server.ts               # Preview server main
 ├── commands/               # CLI command implementations (thin citty wrappers)
 │   ├── build.ts            # Unified pipeline: html | pdf | pdfx
-│   ├── preview.ts          # Live HTML preview (HMR), or build+open for pdf|pdfx
+│   ├── preview.ts          # Headless preview server launcher
 │   ├── validate.ts         # Print validation
 │   ├── lint.ts             # CSS linting
 │   ├── audit.ts            # Asset-only validation
@@ -94,10 +101,8 @@ src/
 │   └── markdown/           # Markdown processing
 │       ├── index.ts        # Main renderer (createMarkdownRenderer)
 │       ├── plugins.ts      # Plugin loader
-│       ├── containers.ts   # Container rendering
 │       ├── images.ts       # Image path processing
-│       ├── page-marker-plugin.ts  # Page marker renderer
-│       └── page-marker-hr.ts     # Custom HR rule for {page}
+│       └── markdown-it-paged.js  # Inlined paged layout plugin
 ├── schema/
 │   └── manifest.types.ts   # PrintMdManifest + ResolvedConfig
 ├── preview/                # Preview server modules
@@ -105,7 +110,7 @@ src/
 │   ├── server-context.ts   # Server context
 │   ├── http-server.ts      # Bun.serve + WebSocket dev server
 │   ├── file-watcher.ts     # File change detection
-│   ├── api-middleware.ts    # API middleware
+│   ├── api-middleware.ts   # API middleware
 │   └── lifecycle.ts        # Server lifecycle
 ├── utils/                  # Shared utilities
 │   ├── file-utils.ts       # File operations
@@ -114,7 +119,7 @@ src/
 │   └── path-security.ts    # Path security
 └── assets/                 # Static assets
     ├── manifest.schema.json # JSON schema
-    └── preview/            # Preview UI
+    └── preview/            # Embedded viewer chrome (Paged.js, pagedjs-interface)
 ```
 
 ### Data Flow
@@ -174,7 +179,7 @@ Formatter (formatter.ts)
 
 ### 1. Configuration Resolution
 
-**Location**: `src/lib/manifest.ts`
+**Location**: `packages/cli/src/lib/manifest.ts`
 
 Configuration is resolved through standalone functions (not a class). Three exported functions handle manifest loading and config merging:
 
@@ -211,11 +216,11 @@ function resolveConfig(
 
 ### 2. Markdown Processing
 
-**Location**: `src/lib/markdown/index.ts`
+**Location**: `packages/cli/src/lib/markdown/index.ts`
 
 #### Plugin Architecture
 
-The `createMarkdownRenderer()` factory function creates a fully-configured MarkdownIt instance with the `markdown-it-paged` layout plugin, built-in container plugins, and attribute support. Custom plugins from the manifest are applied at creation time via `applyPlugins()` from `src/lib/markdown/plugins.ts`:
+The `createMarkdownRenderer()` factory function creates a fully-configured MarkdownIt instance with the `markdown-it-paged` layout plugin, built-in container plugins, and attribute support. Custom plugins from the manifest are applied at creation time via `applyPlugins()` from `packages/cli/src/lib/markdown/plugins.ts`:
 
 ```typescript
 // Creates a new MarkdownIt instance with all built-in plugins
@@ -226,15 +231,11 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
   md.use(markdownItPaged, { implicitPage: false }); // Primary layout: @spread, @page, @section, @end-section, @page-break, @column-break
 
   // markdown-it-container removed 2026-05-17; @-marker family is canonical.
-  // ... more built-in containers (wrapper, ability, specialty, etc.)
 
   // Apply custom plugins from manifest
   if (customPlugins && customPlugins.length > 0) {
     applyPlugins(md, customPlugins);
   }
-
-  registerCustomHrRule(md);
-  md.use(pageMarkerPlugin);
 
   return md;
 }
@@ -242,7 +243,7 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
 
 **Design Rationale**:
 - Factory function creates fresh instance per render call
-- `markdown-it-paged` registered early as the primary layout plugin (`@chapter`, `@spread`, `@page`, `@section`, `@end-section`, `@page-break`, `@column-break`)
+- `markdown-it-paged` registered early as the primary layout plugin (`@spread`, `@page`, `@section`, `@end-section`, `@page-break`, `@column-break`)
 - Plugin loading is separate (`plugins.ts`) from renderer creation (`index.ts`)
 
 #### CSS Cascade
@@ -250,12 +251,12 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
 Styles are applied in a carefully designed cascade:
 
 1. **Default Styles** (inlined) - Foundation layer
-   - Bundled CSS from `src/assets/core/`
+   - Bundled CSS from `packages/cli/src/assets/core/`
    - Can be disabled with `disableDefaultStyles: true`
 
 2. **User Styles** (inlined with resolved @imports)
    - Two-tier resolution:
-     - Check bundled themes (`src/assets/themes/`)
+     - Check bundled themes (`packages/cli/src/assets/themes/`)
      - Fall back to user directory
    - All `@import` statements resolved and inlined
 
@@ -266,7 +267,7 @@ Styles are applied in a carefully designed cascade:
 
 ### 3. HTML-to-PDF Build
 
-**Location**: `src/commands/build.ts`
+**Location**: `packages/cli/src/commands/build.ts`
 
 The build command renders HTML to PDF directly via Playwright's Chromium integration. There are no separate format strategy classes; the build pipeline is a single linear flow:
 
@@ -289,7 +290,7 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
 }
 ```
 
-**Optional PDF/X conversion**: When `--pdfx` is specified, the build command runs Ghostscript (`src/lib/ghostscript.ts`) to convert the Chromium PDF to CMYK PDF/X-1a or PDF/X-3, with optional annotation stripping for compliance.
+**Optional PDF/X conversion**: When `--format pdfx` is specified, the build command runs Ghostscript (`packages/cli/src/lib/ghostscript.ts`) to convert the Chromium PDF to CMYK PDF/X-1a or PDF/X-3, with optional annotation stripping for compliance.
 
 **Design Rationale**:
 - Direct Playwright rendering eliminates subprocess overhead
@@ -300,17 +301,18 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
 
 ### Bun-native HTTP + WebSocket
 
-**Location**: `src/preview/http-server.ts`, `src/preview/api-middleware.ts`,
-`src/preview/routes.ts`
+**Location**: `packages/cli/src/preview/http-server.ts`, `packages/cli/src/preview/api-middleware.ts`,
+`packages/cli/src/preview/routes.ts`
 
 Preview mode runs a single `Bun.serve` instance that handles static files,
 the `/api/*` route table, and a `/__print-md-hmr` WebSocket for full-reload
-broadcasts.
+broadcasts. There is no toolbar, page navigation, or folder picker — those
+live in the Electron viewer (`packages/viewer`).
 
 ```
 User Browser / Electron Viewer → http://localhost:{port}
     ↓
-Bun.serve (src/preview/http-server.ts)
+Bun.serve (packages/cli/src/preview/http-server.ts)
     ├─→ /__print-md-hmr  WebSocket → broadcastReload()
     │    (subscribers receive {type:"full-reload"} on file change)
     ├─→ /api/*           handleApiRequest (api-middleware.ts → routes.ts)
@@ -319,10 +321,6 @@ Bun.serve (src/preview/http-server.ts)
          ("/" redirects to book.html; HTML responses get a tiny inline
           HMR client injected before </body>; `..` traversal returns 404)
 ```
-
-> **Note**: Folder picker, GitHub clone, and other toolbar routes were removed
-> in the viewer extraction (spike/monorepo-electron-viewer). Those features now
-> live in `packages/viewer` (the Electron desktop app).
 
 **Design Rationale**:
 - The previous Vite-based dev server was the wrong shape: print-md doesn't
@@ -338,7 +336,7 @@ Bun.serve (src/preview/http-server.ts)
 
 ### File Watching
 
-**Location**: `src/preview/file-watcher.ts`
+**Location**: `packages/cli/src/preview/file-watcher.ts`
 
 Uses **Chokidar** for cross-platform file watching:
 
@@ -473,7 +471,7 @@ See the [Validation Guide](validation.md) for full configuration reference.
 
 ### Validation
 
-**Location**: `src/lib/manifest.ts`
+**Location**: `packages/cli/src/lib/manifest.ts`
 
 Manifest loading uses `loadManifest()` and `loadManifestWithPath()` which parse YAML and return typed objects. Configuration merging in `resolveConfig()` applies the CLI > manifest > preset cascade for every field, with the preset providing safe defaults for any unspecified values:
 
@@ -500,28 +498,28 @@ export function resolveConfig(
 **Design Rationale**:
 - No separate validation step needed; YAML parsing + TypeScript types handle structure
 - Preset defaults ensure every field has a value even with empty manifests
-- Path security handled separately in `src/utils/path-security.ts`
+- Path security handled separately in `packages/cli/src/utils/path-security.ts`
 
 ## Extension System
 
 ### Plugin Loading
 
-**Location**: `src/lib/markdown/plugins.ts`
+**Location**: `packages/cli/src/lib/markdown/plugins.ts`
 
 Plugins are declared in `manifest.yaml` as either local file paths or npm package names. The `loadPlugins()` function resolves and loads them, while `applyPlugins()` registers them with the MarkdownIt instance inside `createMarkdownRenderer()`:
 
 ```typescript
 // manifest.yaml plugin declaration
 plugins:
-  - ./plugins/my-custom-plugin.ts     # Local file path
+  - ./plugins/my-custom-plugin.js     # Local file path
   - markdown-it-footnote               # npm package name
   - name: my-scoped-plugin
-    path: ./plugins/scoped.ts
+    path: ./plugins/scoped.js
     priority: 200
     options:
       featureX: true
 
-// Plugin loading from src/lib/markdown/plugins.ts
+// Plugin loading from packages/cli/src/lib/markdown/plugins.ts
 export async function loadPlugins(
   configs: ResolvedPluginConfig[],
   baseDir: string
@@ -557,13 +555,19 @@ export const css = '.my-plugin-class { color: red; }';
 Plugins are resolved in this order:
 1. **User's project** (manifest directory `node_modules`)
 2. **print-md's own dependencies**
-3. **Auto-install to cache** (downloaded to temp directory if not found)
+3. **Fail fast** — if a plugin can't be found, the build errors with a clear message identifying the plugin and the install command to run
+
+print-md does **not** auto-install plugins. The user must install plugins in
+their project directory before running the build. This keeps builds
+reproducible and prevents network access during `print-md build`.
 
 **Design Rationale**:
 - Manifest-driven plugin declaration keeps configuration explicit
 - Priority sorting controls plugin load order
-- Auto-install from npm removes manual setup for published plugins
+- Fail-fast on missing plugins surfaces misconfiguration immediately rather than silently skipping
 - CSS export support allows plugins to inject styles into rendered output
+
+See [docs/plugins.md](plugins.md) for the full authoring guide.
 
 ## Key Design Decisions
 
@@ -608,7 +612,20 @@ Plugins are resolved in this order:
   removed both layers of workarounds.
 - See `docs/adr/0001-no-bundlers-at-runtime.md`.
 
-### 4. Why Direct Build Pipeline (Not Strategy Pattern)?
+### 4. Why Electron + SvelteKit for the Desktop Viewer?
+
+**Chosen over**: extending the CLI preview server with a toolbar
+
+**Reasons**:
+- Non-technical users need a native-feeling app with folder picker, page
+  navigation, and PDF export — not a browser tab.
+- SvelteKit runs under Bun (SSR adapter-node), so `@dimm-city/print-md` can
+  be imported directly as a workspace dependency with no subprocess or IPC.
+- Vite/Rollup in the viewer is intentional (web app build) and does not
+  conflict with the no-bundlers-at-runtime rule, which applies only to
+  `packages/cli/src/`.
+
+### 5. Why Direct Build Pipeline (Not Strategy Pattern)?
 
 **Chosen over**: Strategy pattern with separate format classes
 
@@ -618,7 +635,7 @@ Plugins are resolved in this order:
 - Preview is handled by a separate server, not the build command
 - Simple linear flow is easier to understand and debug
 
-### 5. Why Factory Function for Markdown Renderer?
+### 6. Why Factory Function for Markdown Renderer?
 
 **Chosen over**: Global singleton with enable/disable
 
@@ -628,7 +645,7 @@ Plugins are resolved in this order:
 - Built-in containers always registered in predictable order
 - Factory pattern allows different plugin sets per render
 
-### 5. Why Custom Error Classes?
+### 7. Why Custom Error Classes?
 
 **Chosen over**: Generic Error
 
@@ -688,7 +705,7 @@ export function validateSafePath(targetPath: string, basePath: string): boolean 
 
 ### Integration Tests
 
-- Located in `tests/integration/`
+- Located in `packages/cli/tests/integration/`
 - Test complete workflows
 - Use real files and temp directories
 
@@ -708,15 +725,13 @@ export function validateSafePath(targetPath: string, basePath: string): boolean 
 2. **Caching**: Cache processed markdown to speed up rebuilds
 3. **Incremental Builds**: Only rebuild changed files
 4. **Plugin Marketplace**: Community-contributed plugins
-5. **Visual Editor**: WYSIWYG editor with live preview
 
 ### Technical Debt
 
-1. **Refactor `startPreviewServer()`**: Currently 466 lines, should be split
-2. **Add Runtime Validation**: Consider Zod for schema validation
-3. **Improve Test Coverage**: Especially for server and build modules
+1. **Add Runtime Validation**: Consider Zod for schema validation
+2. **Improve Test Coverage**: Especially for server and build modules
 
 ---
 
-**Last Updated**: 2025-11-18
-**Version**: 2.0.0
+**Last Updated**: 2026-05-18
+**Version**: monorepo (packages/cli + packages/viewer)

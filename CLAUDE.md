@@ -11,7 +11,9 @@ This repo is a Bun workspace with two packages:
   SvelteKit's Vite/Rollup build is intentional here; `@dimm-city/print-md` is
   marked SSR-external in `packages/viewer/vite.config.ts` so it is never
   bundled by Vite. The no-bundlers rule (§1 below) applies only to
-  `packages/cli/src/`.
+  `packages/cli/src/`. Vite scripts in the viewer must be invoked with
+  `bun --bun ./node_modules/.bin/vite` so that Bun's module resolver handles
+  `@dimm-city/print-md` correctly at dev time.
 
 ## What print-md ships
 
