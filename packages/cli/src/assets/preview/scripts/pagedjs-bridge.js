@@ -15,6 +15,11 @@
 // Commands map 1:1 to previewAPI methods: getTotalPages, getCurrentPage,
 // goToPage, firstPage, prevPage, nextPage, lastPage, setViewMode, setZoom,
 // toggleDebugMode. Plus a synthetic 'print' command that calls window.print().
+//
+// Additional messages:
+//   parent -> iframe: { type: 'pmd:inject-styles', id: <attr-name>, css: <string> }
+//     Inserts or replaces a <style data-{id}="true"> block in the iframe's <head>.
+//     Used to push view-mode CSS and debug CSS into the cross-origin iframe.
 
 (function () {
   'use strict';
@@ -78,5 +83,22 @@
     var data = e.data;
     if (!data || data.type !== 'pmd:bg-color') return;
     document.documentElement.style.background = data.color;
+  });
+
+  // Inject or replace a named <style> block in the iframe's <head>.
+  // { type: 'pmd:inject-styles', id: <string>, css: <string> }
+  // The <style> element gets data-pmd-<id>="true" so subsequent calls update
+  // the same block rather than appending duplicates.
+  window.addEventListener('message', function (e) {
+    var data = e.data;
+    if (!data || data.type !== 'pmd:inject-styles') return;
+    var attrName = 'data-pmd-' + data.id;
+    var existing = document.querySelector('style[' + attrName + ']');
+    if (!existing) {
+      existing = document.createElement('style');
+      existing.setAttribute(attrName, 'true');
+      document.head.appendChild(existing);
+    }
+    existing.textContent = data.css;
   });
 })();

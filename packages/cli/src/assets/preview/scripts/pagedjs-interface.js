@@ -30,8 +30,15 @@
     goToPage: function (n) {
       refreshPages();
       currentIndex = Math.max(0, Math.min(n - 1, pages.length - 1));
-      pages[currentIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Use 'instant' so the scroll completes synchronously before notifyPageChange
+      // fires. 'smooth' interacts with the scroll-listener debounce timer and causes
+      // the parent Svelte toolbar to receive a stale page number on fast navigation.
+      pages[currentIndex].scrollIntoView({ behavior: 'instant', block: 'start' });
       api.notifyPageChange();
+    },
+    getPageDimensions: function () {
+      var page = document.querySelector('.pagedjs_page');
+      return page ? { width: page.offsetWidth, height: page.offsetHeight } : null;
     },
     firstPage: function () { api.goToPage(1); },
     prevPage: function () { api.goToPage(currentIndex); },

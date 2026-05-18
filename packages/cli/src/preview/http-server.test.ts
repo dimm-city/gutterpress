@@ -152,9 +152,12 @@ describe('createPreviewServer', () => {
     expect(await res.text()).toBe('hello world');
   });
 
-  test('serves index.html for "/" and injects the HMR client', async () => {
+  test('serves book.html for "/" and injects the HMR client', async () => {
+    // The CLI no longer ships a viewer chrome index.html; "/" now maps to
+    // book.html (the rendered paginated book). The desktop viewer wraps it
+    // in an iframe-based toolbar (packages/viewer).
     await writeFile(
-      join(tempDir, 'index.html'),
+      join(tempDir, 'book.html'),
       '<!doctype html><html><body><h1>Hi</h1></body></html>'
     );
 
