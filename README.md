@@ -8,10 +8,10 @@ A CLI tool and desktop app for creating professional print-ready PDFs from markd
 
 | Platform | Desktop App | CLI Binary |
 |---|---|---|
-| **Linux x64** | `.AppImage` on releases page | [`print-md-linux-x64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-linux-x64) |
-| **Windows x64** | `.zip` on releases page | [`print-md-windows-x64.exe`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-windows-x64.exe) |
-| **macOS (Apple Silicon)** | `.dmg` on releases page | [`print-md-macos-arm64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-macos-arm64) |
-| **macOS (Intel)** | `.dmg` on releases page | [`print-md-macos-x64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-macos-x64) |
+| **Linux x64** | `.AppImage` on releases page | [`print-md-cli-linux-x64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-cli-linux-x64) |
+| **Windows x64** | `.zip` on releases page | [`print-md-cli-windows-x64.exe`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-cli-windows-x64.exe) |
+| **macOS (Apple Silicon)** | `.dmg` on releases page | [`print-md-cli-macos-arm64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-cli-macos-arm64) |
+| **macOS (Intel)** | `.dmg` on releases page | [`print-md-cli-macos-x64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-cli-macos-x64) |
 
 The desktop app (AppImage/zip/dmg) opens a project directory, shows a paginated preview, and exports PDF — no terminal required. The CLI binary is a single standalone executable for scripting and CI — no Node or Bun install needed on the host.
 

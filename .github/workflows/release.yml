@@ -109,15 +109,15 @@ jobs:
       matrix:
         include:
           - target: bun-linux-x64
-            artifact: print-md-linux-x64
+            artifact: print-md-cli-linux-x64
           - target: bun-linux-arm64
-            artifact: print-md-linux-arm64
+            artifact: print-md-cli-linux-arm64
           - target: bun-darwin-x64
-            artifact: print-md-macos-x64
+            artifact: print-md-cli-macos-x64
           - target: bun-darwin-arm64
-            artifact: print-md-macos-arm64
+            artifact: print-md-cli-macos-arm64
           - target: bun-windows-x64
-            artifact: print-md-windows-x64.exe
+            artifact: print-md-cli-windows-x64.exe
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

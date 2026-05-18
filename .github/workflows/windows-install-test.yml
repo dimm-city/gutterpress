@@ -45,7 +45,7 @@ jobs:
 
       - name: Build standalone binary for windows-x64
         shell: pwsh
-        run: bun --cwd packages/cli scripts/compile.ts bun-windows-x64 ../../print-md-windows-x64.exe
+        run: bun --cwd packages/cli scripts/compile.ts bun-windows-x64 ../../print-md-cli-windows-x64.exe
 
       - name: Smoke-test binary directly
         shell: pwsh
@@ -53,7 +53,7 @@ jobs:
         # This surfaces the raw stderr in the CI step output if it crashes,
         # rather than being masked by run-install-test.ps1's error handling.
         run: |
-          $exe = "${{ github.workspace }}\print-md-windows-x64.exe"
+          $exe = "${{ github.workspace }}\print-md-cli-windows-x64.exe"
           Write-Host "Binary: $exe"
           Write-Host "Size: $((Get-Item $exe).Length) bytes"
           Write-Host "---- print-md --version ----"
@@ -67,7 +67,7 @@ jobs:
         env:
           # Skip the GitHub Release download — verify the binary this branch
           # actually produces, not whatever is in the latest published release.
-          PRINTMD_LOCAL_BINARY: ${{ github.workspace }}\print-md-windows-x64.exe
+          PRINTMD_LOCAL_BINARY: ${{ github.workspace }}\print-md-cli-windows-x64.exe
           # Still set the workflow token in case anything still needs it
           # (e.g. future installer steps that talk to the API).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -82,7 +82,7 @@ jobs:
         run: |
           # Use the installed binary if present, fall back to the freshly-built exe.
           $installed = "$env:LOCALAPPDATA\Programs\print-md\print-md.exe"
-          $workspace = "${{ github.workspace }}\print-md-windows-x64.exe"
+          $workspace = "${{ github.workspace }}\print-md-cli-windows-x64.exe"
           $exe = if (Test-Path $installed) { $installed } else { $workspace }
           Write-Host "Binary: $exe"
 
