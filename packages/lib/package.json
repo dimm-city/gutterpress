@@ -1,0 +1,49 @@
+{
+  "name": "@dimm-city/print-md-lib",
+  "version": "0.1.0-beta.7",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./api": {
+      "bun": "./src/api/index.ts",
+      "default": "./dist/api/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "profiles/",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": { "bun": ">=1.0.0" },
+  "dependencies": {
+    "chokidar": "^5.0.0",
+    "glob": "^13.0.0",
+    "markdown-it": "^14.1.0",
+    "markdown-it-attrs": "^4.3.0",
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-source-map": "^0.1.1",
+    "pagedjs": "^0.4.3",
+    "puppeteer-core": "^24.43.0",
+    "yaml": "^2.8.2",
+    "ws": "^8.18.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/markdown-it": "^14.1.2",
+    "@types/ws": "^8.5.13",
+    "htmlhint": "^1.1.4",
+    "markdownlint-cli2": "^0.17.0",
+    "stylelint": "^17.0.0",
+    "stylelint-config-standard": "^40.0.0"
+  }
+}

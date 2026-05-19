@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "cli": "bun --cwd packages/cli src/cli.ts",
+    "build:lib": "bun --cwd packages/lib run build",
     "test": "bun --filter '*' test",
     "typecheck": "bun --filter '*' typecheck",
     "viewer:dev": "bun --cwd packages/viewer dev",

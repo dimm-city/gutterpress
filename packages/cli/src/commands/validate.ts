@@ -1,7 +1,5 @@
 import { defineCommand } from "citty";
-import { log } from "../lib/logger";
-import type { OutputFormat } from "../checks/formatter";
-import { executeAndReport } from "../lib/validation-exec";
+import { log, executeAndReport, type OutputFormat } from "@dimm-city/print-md-lib";
 
 export default defineCommand({
   meta: {

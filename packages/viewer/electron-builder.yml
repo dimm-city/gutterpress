@@ -10,9 +10,12 @@ files:
 extraMetadata:
   main: electron-dist/main.js
 
-# Do not bundle node_modules into an asar archive; @dimm-city/print-md and
-# its deps are resolved from node_modules at runtime.
+# asar: false because @dimm-city/print-md-lib uses import.meta.url-relative
+# paths to locate assets (dist/assets/) — those paths break inside an ASAR
+# archive. If the asset resolution is ever changed, ASAR can be re-enabled.
 asar: false
+
+afterPack: scripts/after-pack.cjs
 
 directories:
   output: dist
@@ -21,6 +24,7 @@ directories:
 linux:
   target:
     - AppImage
+  icon: build-resources/icon.png
   category: Office
 
 win:

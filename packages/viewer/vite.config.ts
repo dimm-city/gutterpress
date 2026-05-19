@@ -1,11 +1,11 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
 
-// Keep @dimm-city/print-md and its runtime deps external from Vite/Rollup so
+// Keep @dimm-city/print-md-lib and its runtime deps external from Vite/Rollup so
 // they resolve at runtime from node_modules (not bundled into the SSR output).
 const externalIds = [
-  "@dimm-city/print-md",
-  "@dimm-city/print-md/api",
+  "@dimm-city/print-md-lib",
+  "@dimm-city/print-md-lib/api",
   "puppeteer-core",
   "chokidar",
   "citty",

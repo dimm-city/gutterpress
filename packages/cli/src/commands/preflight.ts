@@ -1,12 +1,12 @@
 import { defineCommand } from "citty";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { reportMissingTools } from "../checks/tool-check";
-import { log } from "../lib/logger";
 import {
+  log,
+  reportMissingTools,
   executeValidation,
   type ValidationExecutionResult,
-} from "../lib/validation-exec";
+} from "@dimm-city/print-md-lib";
 
 type PreflightStatus = "GO" | "FIX" | "NO-GO";
 

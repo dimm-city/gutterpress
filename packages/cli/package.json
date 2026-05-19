@@ -23,64 +23,27 @@
     "url": "https://github.com/dimm-city/print-md/issues"
   },
   "type": "module",
-  "module": "src/index.ts",
-  "main": "src/index.ts",
-  "types": "types/src/index.d.ts",
-  "exports": {
-    ".": {
-      "bun": "./src/index.ts",
-      "types": "./types/src/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./api": {
-      "bun": "./src/api/index.ts",
-      "types": "./types/src/api/index.d.ts",
-      "default": "./dist/api/index.js"
-    }
-  },
   "bin": {
-    "print-md": "./src/cli.ts"
+    "print-md": "./dist/cli.js"
   },
   "files": [
     "dist/",
-    "src/",
-    "types/",
-    "profiles/",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "lint:css": "bun src/cli.ts lint",
-    "build:types": "bunx tsc -p tsconfig.declarations.json --noEmitOnError false",
-    "build:lib": "bun scripts/build-lib.ts",
-    "build": "bun build src/cli.ts --outdir dist --target bun --packages external && cp -r src/assets dist/assets",
-    "build:pdf": "bun src/cli.ts build",
-    "build:html": "bun src/cli.ts build --format html",
-    "validate:pdf": "bun src/cli.ts validate",
-    "preview": "bun src/cli.ts preview",
+    "build:npm": "bun scripts/build-npm.ts",
+    "prepublishOnly": "bun run build:npm",
     "compile": "bun scripts/compile.ts",
     "test": "bun test",
-    "test:watch": "bun test --watch",
-    "test:coverage": "bun test --coverage --coverage-reporter=text",
     "typecheck": "tsc --noEmit"
   },
   "engines": {
-    "bun": ">=1.0.0"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/markdown-it": "^14.1.2",
-    "@types/ws": "^8.5.13",
-    "htmlhint": "^1.1.4",
-    "markdownlint-cli2": "^0.17.0",
-    "playwright": "^1.60.0",
-    "stylelint": "^17.0.0",
-    "stylelint-config-standard": "^40.0.0"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "bun": ">=1.0.0",
+    "node": ">=18.0.0"
   },
   "dependencies": {
+    "@dimm-city/print-md-lib": "workspace:*",
     "chokidar": "^5.0.0",
     "ws": "^8.18.2",
     "glob": "^13.0.0",
@@ -92,5 +55,12 @@
     "pagedjs": "^0.4.3",
     "puppeteer-core": "^24.43.0",
     "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "playwright": "^1.60.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
   }
 }

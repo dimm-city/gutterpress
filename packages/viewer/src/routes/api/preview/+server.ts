@@ -4,7 +4,7 @@ import {
   startPreviewServer,
   loadManifestWithPath,
   type PreviewServerHandle,
-} from "@dimm-city/print-md";
+} from "@dimm-city/print-md-lib";
 import { basename } from "node:path";
 
 // One active preview per app session for v1. Stored on the module so it

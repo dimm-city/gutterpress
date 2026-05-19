@@ -35,7 +35,7 @@ jobs:
         run: bun install
 
       - name: Run tests
-        run: bun --filter @dimm-city/print-md test
+        run: bun --filter '*' test
 
   # ── 2. Version bump & tag ─────────────────────────────────────────────────
   version:
@@ -62,9 +62,11 @@ jobs:
           VERSION="${{ inputs.version }}"
           VERSION="$VERSION" node -e "
             const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('packages/cli/package.json', 'utf8'));
-            pkg.version = process.env.VERSION;
-            fs.writeFileSync('packages/cli/package.json', JSON.stringify(pkg, null, 2) + '\n');
+            for (const pkg of ['packages/cli/package.json', 'packages/lib/package.json', 'packages/viewer/package.json']) {
+              const p = JSON.parse(fs.readFileSync(pkg, 'utf8'));
+              p.version = process.env.VERSION;
+              fs.writeFileSync(pkg, JSON.stringify(p, null, 2) + '\n');
+            }
           "
 
       - name: Commit and tag
@@ -72,7 +74,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add packages/cli/package.json
+          git add packages/cli/package.json packages/lib/package.json packages/viewer/package.json
 
           if ! git diff --cached --quiet; then
             git commit -m "chore: bump version to ${{ inputs.version }}"
@@ -162,6 +164,10 @@ jobs:
           jq --arg v "$VERSION" '.version = $v' packages/viewer/package.json > /tmp/viewer-pkg.json
           mv /tmp/viewer-pkg.json packages/viewer/package.json
 
+      - name: Build lib dist
+        run: bun run build
+        working-directory: packages/lib
+
       - name: Build Linux AppImage
         working-directory: packages/viewer
         run: bun run dist:linux
@@ -175,9 +181,9 @@ jobs:
   build-viewer-windows:
     name: Viewer / Windows zip
     needs: version
-    # Run on Windows so bun install --production installs Windows-native
-    # package variants. The build-win.ts script handles Electron binary
-    # download, SvelteKit build, dep install, and zip — all self-contained.
+    # Windows runner: bun install gets Windows-native package variants; electron-builder
+    # handles Electron download, exe rename, icon embedding, and zip creation.
+    # The afterPack hook installs @dimm-city/print-md-lib's runtime deps into the app.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -191,12 +197,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Patch viewer version
-        shell: pwsh
-        run: |
-          $pkg = Get-Content packages/viewer/package.json | ConvertFrom-Json
-          $pkg.version = "${{ inputs.version }}"
-          $pkg | ConvertTo-Json -Depth 10 | Set-Content packages/viewer/package.json
+      - name: Build lib dist
+        run: bun run build
+        working-directory: packages/lib
 
       - name: Build Windows zip
         working-directory: packages/viewer
@@ -232,6 +235,10 @@ jobs:
 
       - name: Install Xcode command-line tools
         run: xcode-select --install || true
+
+      - name: Build lib dist
+        run: bun run build
+        working-directory: packages/lib
 
       - name: Build macOS DMG
         working-directory: packages/viewer

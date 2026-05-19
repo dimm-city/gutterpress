@@ -1,5 +1,5 @@
 import { defineCommand } from "citty";
-import { runLint } from "../lib/lint-runner";
+import { runLint } from "@dimm-city/print-md-lib";
 
 export default defineCommand({
   meta: {
