@@ -172,6 +172,7 @@ jobs:
         with:
           name: viewer-linux
           path: packages/viewer/dist/*.AppImage
+          if-no-files-found: error
 
   build-viewer-windows:
     name: Viewer / Windows zip
@@ -203,7 +204,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: viewer-windows
-          path: packages/viewer/dist/*-win32-x64.zip
+          # electron-builder default for `--win zip` is
+          # ${productName}-${version}-win.zip
+          path: packages/viewer/dist/*-win.zip
+          if-no-files-found: error
 
   build-viewer-mac:
     name: Viewer / macOS DMG
@@ -245,6 +249,7 @@ jobs:
         with:
           name: viewer-mac
           path: packages/viewer/dist/*.dmg
+          if-no-files-found: error
 
   # ── 4. Verify on real Windows ────────────────────────────────────────────
   #
@@ -341,14 +346,25 @@ jobs:
 
       - name: Create GitHub release
         run: |
+          TAG="${{ needs.version.outputs.tag }}"
+          REPO="${{ github.repository }}"
+
           PRERELEASE_FLAG=""
           if [[ "${{ inputs.version }}" == *"-"* ]]; then
             PRERELEASE_FLAG="--prerelease"
           fi
 
-          gh release create "${{ needs.version.outputs.tag }}" \
-            --repo "${{ github.repository }}" \
-            --title "print-md ${{ needs.version.outputs.tag }}" \
+          # Delete any existing release for this tag (could be a stub left
+          # over from an earlier failed run). The tag itself is kept — the
+          # version job already pointed it at the current commit.
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Deleting existing release $TAG to recreate with current artifacts..."
+            gh release delete "$TAG" --yes --repo "$REPO"
+          fi
+
+          gh release create "$TAG" \
+            --repo "$REPO" \
+            --title "print-md $TAG" \
             --generate-notes \
             $PRERELEASE_FLAG \
             dist/*
