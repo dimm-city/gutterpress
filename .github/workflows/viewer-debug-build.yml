@@ -1,0 +1,48 @@
+name: Viewer debug build (Windows)
+
+# Builds the windows viewer zip from any branch and uploads it as an
+# artifact you can download from the Actions tab. Use this for testing
+# in-progress branches (like fix/first-render-perf) without cutting a
+# release.
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Build viewer windows zip
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build lib dist
+        working-directory: packages/lib
+        run: bun run build
+
+      - name: Build viewer windows zip
+        working-directory: packages/viewer
+        run: npm run dist:win
+
+      - name: Upload viewer zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewer-windows-debug-${{ github.sha }}
+          path: packages/viewer/dist/*-win.zip
+          if-no-files-found: error
+          retention-days: 14
