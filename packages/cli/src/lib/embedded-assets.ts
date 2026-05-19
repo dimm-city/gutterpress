@@ -2,54 +2,42 @@
  * Embedded preview assets (favicon, manifest schema, paged.js polyfill,
  * iframe interface + cross-origin bridge).
  *
- * The repo holds these in `src/assets/`. In dev (`bun src/cli.ts`) we could
- * read them straight off the filesystem, but for the standalone binary
- * (`bun build --compile`) we have to embed them — the binary's
- * `import.meta.url` points inside `/$bunfs/` and the original `src/assets/`
- * tree is no longer reachable.
+ * Assets are referenced via `new URL('../assets/...', import.meta.url)`, which
+ * works in three contexts:
+ *  - Dev (bun src/cli.ts): resolves to real disk paths
+ *  - Compiled binary (bun build --compile): Bun embeds files referenced by
+ *    this pattern and maps them into the binary's bunfs
+ *  - Node.js (inside Electron): resolves to real disk paths in node_modules
  *
- * Each asset is statically imported with `with { type: "file" }`, which
- * gives us a path string that resolves correctly in both dev (real disk
- * path) and compiled (a bunfs path inside the binary). On first use we copy
- * everything into a per-process temp directory and return that as the
- * "assets dir", letting existing call sites keep using plain
- * `readFile`/`cp` without caring whether the source lives on disk or inside
- * the executable.
+ * On first use we copy everything into a per-process temp directory and return
+ * that as the "assets dir", letting existing call sites keep using plain
+ * readFile/cp without caring whether the source lives on disk or inside the
+ * executable.
  *
  * Viewer chrome (toolbar HTML, preview.js, preview.css, toast.*) was
  * removed 2026-05-18; lives in packages/viewer.
  */
 
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import favicon from "../assets/favicon.ico" with { type: "file" };
-import manifestSchema from "../assets/manifest.schema.json" with { type: "file" };
-import pagedjsInterfaceJs from "../assets/preview/scripts/pagedjs-interface.js" with { type: "file" };
-import pagedjsBridgeJs from "../assets/preview/scripts/pagedjs-bridge.js" with { type: "file" };
-import pagedPolyfill from "../assets/vendor/paged.polyfill.js" with { type: "file" };
-
-const filePath = (v: unknown): string => v as string;
-
-// Manifest of asset path → embedded source. Keys are paths relative to the
-// extracted assets dir; values are paths into the bundle.
-const EMBEDDED_ASSETS: Record<string, string> = {
-  "favicon.ico": favicon,
-  "manifest.schema.json": filePath(manifestSchema),
-  "preview/scripts/pagedjs-interface.js": filePath(pagedjsInterfaceJs),
-  "preview/scripts/pagedjs-bridge.js": filePath(pagedjsBridgeJs),
-  "vendor/paged.polyfill.js": filePath(pagedPolyfill),
+const EMBEDDED_ASSETS: Record<string, URL> = {
+  "favicon.ico": new URL("../assets/favicon.ico", import.meta.url),
+  "manifest.schema.json": new URL("../assets/manifest.schema.json", import.meta.url),
+  "preview/scripts/pagedjs-interface.js": new URL("../assets/preview/scripts/pagedjs-interface.js", import.meta.url),
+  "preview/scripts/pagedjs-bridge.js": new URL("../assets/preview/scripts/pagedjs-bridge.js", import.meta.url),
+  "vendor/paged.polyfill.js": new URL("../assets/vendor/paged.polyfill.js", import.meta.url),
 };
 
 let extractPromise: Promise<string> | null = null;
 
 async function extractAssets(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "print-md-assets-"));
-  for (const [relPath, srcPath] of Object.entries(EMBEDDED_ASSETS)) {
+  for (const [relPath, srcUrl] of Object.entries(EMBEDDED_ASSETS)) {
     const dest = join(root, relPath);
     await mkdir(dirname(dest), { recursive: true });
-    const bytes = await Bun.file(srcPath).bytes();
+    const bytes = await readFile(srcUrl);
     await writeFile(dest, bytes);
   }
   return root;

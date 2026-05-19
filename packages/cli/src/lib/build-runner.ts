@@ -1,6 +1,8 @@
 import path from "node:path";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import http from "node:http";
+import net from "node:net";
 import puppeteer from "puppeteer-core";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
@@ -112,34 +114,54 @@ function computeGates(
   return { lint, preValidate, postValidate };
 }
 
+const STATIC_MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".htm": "text/html; charset=utf-8",
+  ".css": "text/css",
+  ".js": "application/javascript",
+  ".mjs": "application/javascript",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+};
+
 async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
   const executablePath = requireChromiumExecutable();
   const stageDir = path.dirname(path.resolve(inputHtml));
   const htmlFilename = path.basename(inputHtml);
 
-  const server = Bun.serve({
-    port: 0,
-    hostname: "127.0.0.1",
-    async fetch(req) {
-      const url = new URL(req.url);
-      // Strip leading slashes so url.pathname doesn't escape stageDir,
-      // then enforce the resolved path stays inside it (block ../ traversal).
-      const relative =
-        url.pathname === "/"
-          ? htmlFilename
-          : decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-      const filePath = path.resolve(stageDir, relative);
-      if (filePath !== stageDir && !filePath.startsWith(stageDir + path.sep)) {
-        return new Response("Forbidden", { status: 403 });
-      }
-      const file = Bun.file(filePath);
-      if (await file.exists()) {
-        return new Response(file);
-      }
-      return new Response("Not found", { status: 404 });
-    },
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url!, "http://127.0.0.1");
+    const relative =
+      url.pathname === "/"
+        ? htmlFilename
+        : decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+    const filePath = path.resolve(stageDir, relative);
+    if (filePath !== stageDir && !filePath.startsWith(stageDir + path.sep)) {
+      res.writeHead(403);
+      res.end("Forbidden");
+      return;
+    }
+    try {
+      const data = await fsp.readFile(filePath);
+      const ct = STATIC_MIME[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+      res.writeHead(200, { "Content-Type": ct });
+      res.end(data);
+    } catch {
+      res.writeHead(404);
+      res.end("Not found");
+    }
   });
-  const port = server.port;
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as net.AddressInfo).port;
 
   try {
     const browser = await puppeteer.launch({ headless: true, executablePath });
@@ -188,7 +210,7 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
       await browser.close();
     }
   } finally {
-    server.stop();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 }
 

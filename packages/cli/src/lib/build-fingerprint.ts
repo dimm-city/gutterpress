@@ -200,7 +200,7 @@ async function getToolVersions(): Promise<Record<string, string | null>> {
 
   return {
     "print-md": PACKAGE_META.version,
-    bun: Bun.version,
+    bun: (process.versions as Record<string, string | undefined>).bun ?? null,
     node: process.versions.node,
     playwright: PACKAGE_META.dependencies.playwright ?? null,
     pagedjs: PACKAGE_META.dependencies.pagedjs ?? null,

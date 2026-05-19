@@ -7,6 +7,7 @@
 
 import { watch, type FSWatcher } from 'chokidar';
 import { existsSync } from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'path';
 import { info, debug, error as logError } from '../utils/logger';
 import { DEBOUNCE } from '../constants';
@@ -106,7 +107,7 @@ export async function generateAndWriteHtml(
   config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: any[] }
 ): Promise<void> {
   if (!inputPath) {
-    await Bun.write(path.join(tempDir, BOOK_HTML_FILENAME), EMPTY_BOOK_HTML);
+    await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), EMPTY_BOOK_HTML, "utf-8");
     return;
   }
   // Load plugins if configured
@@ -125,8 +126,6 @@ export async function generateAndWriteHtml(
     pluginCss,
   });
 
-  const { getAssetPath } = await import('../lib/embedded-assets');
-
   // Inject into book.html, in order:
   //   1. pagedjs-interface.js — defines window.previewAPI for in-iframe controls
   //   2. pagedjs-bridge.js    — postMessage bridge for cross-origin toolbar (viewer)
@@ -139,8 +138,8 @@ export async function generateAndWriteHtml(
   const pagedDestDir = path.join(tempDir, 'vendor');
   const pagedDestPath = path.join(pagedDestDir, 'paged.polyfill.js');
   try {
-    await import('node:fs/promises').then(fsp => fsp.mkdir(pagedDestDir, { recursive: true }));
-    await Bun.write(pagedDestPath, Bun.file(await getAssetPath('vendor/paged.polyfill.js')));
+    await fsp.mkdir(pagedDestDir, { recursive: true });
+    await fsp.copyFile(await getAssetPath('vendor/paged.polyfill.js'), pagedDestPath);
   } catch { /* fall back to CDN if asset extraction fails */ }
 
   const pagedSrc = existsSync(pagedDestPath)
@@ -152,7 +151,7 @@ export async function generateAndWriteHtml(
     iface + BREAK_INSIDE_HANDLER + `\n  <script src="${pagedSrc}"></script>`
   );
 
-  await Bun.write(path.join(tempDir, BOOK_HTML_FILENAME), output);
+  await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), output, "utf-8");
 }
 
 /**
@@ -208,9 +207,8 @@ export function createFileWatcher(state: ServerState): FSWatcher {
           externalRoots
         );
         if (dest) {
-          const { mkdir } = await import('node:fs/promises');
-          await mkdir(path.dirname(dest.destPath), { recursive: true });
-          await Bun.write(dest.destPath, Bun.file(filePath));
+          await fsp.mkdir(path.dirname(dest.destPath), { recursive: true });
+          await fsp.copyFile(filePath, dest.destPath);
           debug(`Updated: ${dest.relativePath}`);
         }
 
