@@ -16,6 +16,7 @@ on:
 env:
   PUPPETEER_SKIP_DOWNLOAD: 'true'
   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ── 1. Gate ────────────────────────────────────────────────────────────────

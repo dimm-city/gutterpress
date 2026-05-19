@@ -7,15 +7,15 @@
   "author": "itlackey",
   "description": "Desktop viewer for print-md (Electron + SvelteKit).",
   "scripts": {
-    "dev": "node ./node_modules/.bin/vite dev",
-    "build": "node ./node_modules/.bin/vite build",
-    "preview": "node ./node_modules/.bin/vite preview",
+    "dev": "npx vite dev",
+    "build": "npx vite build",
+    "preview": "npx vite preview",
     "electron:build": "tsc -p electron/tsconfig.json && node -e \"require('fs').writeFileSync('electron-dist/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\"",
     "electron:dev": "npm run electron:build && npm run build && electron electron-dist/main.js",
     "dist:linux": "npm run build && npm run electron:build && npx electron-builder --linux AppImage --config electron-builder.yml",
     "dist:win": "npm run build && npm run electron:build && npx electron-builder --win zip --config electron-builder.yml",
     "dist:mac": "npm run build && npm run electron:build && npx electron-builder --mac dmg --config electron-builder.yml",
-    "check": "node ./node_modules/.bin/svelte-kit sync && node ./node_modules/.bin/svelte-check --tsconfig ./tsconfig.json"
+    "check": "npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "@dimm-city/print-md-lib": "workspace:*"
