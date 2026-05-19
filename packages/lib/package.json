@@ -35,8 +35,8 @@
     "markdown-it-footnote": "^4.0.0",
     "markdown-it-source-map": "^0.1.1",
     "pagedjs": "^0.4.3",
-    "postcss": "^8.4.0",
-    "puppeteer-core": "^24.43.0",
+    "postcss": "^8.5.15",
+    "puppeteer-core": "^25.0.4",
     "stylelint": "^17.0.0",
     "stylelint-config-standard": "^40.0.0",
     "yaml": "^2.8.2",
@@ -47,6 +47,6 @@
     "@types/markdown-it": "^14.1.2",
     "@types/ws": "^8.5.13",
     "htmlhint": "^1.1.4",
-    "markdownlint-cli2": "^0.17.0"
+    "markdownlint-cli2": "^0.22.1"
   }
 }
