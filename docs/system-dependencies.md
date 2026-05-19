@@ -201,16 +201,46 @@ You're probably on Windows without `which` on PATH. See the `which` section abov
 
 The check's required tool may be installed but missing from PATH. Run `which <tool>` (or `where.exe <tool>` on Windows) to verify. If the tool prints a path, restart your shell — environment changes don't propagate to running processes.
 
-## Gaps and roadmap
+## Roadmap
 
-Known issues this doc reflects (not yet fixed in code):
+### Shipped
 
-1. **Microsoft Edge isn't auto-detected** on Windows. Edge is the only Chromium-based browser pre-installed on stock Windows; Save PDF without Chrome installed currently fails until the user sets `CHROMIUM_PATH`. Adding Edge to the candidate list is a small change in `chromium.ts`.
+- ✅ Microsoft Edge auto-detection on Windows + macOS (`44515fb`, 0.1.7)
+- ✅ `where.exe` on Windows for validate's tool gate, `which` elsewhere (`44515fb`, 0.1.7)
+- ✅ `/Creator` Ghostscript stamp is best-effort — plain PDF no longer fails when `gs` is missing (`44515fb`, 0.1.7)
+- ✅ PATH probe for Chromium — Chocolatey / Scoop / Brave / Vivaldi / Arc / portable installs are now found (`d6bef6b`, 0.1.8)
+- ✅ Pre-flight tool check in `runBuild` — missing tools surface as actionable errors in 50ms with per-platform install commands, instead of `spawn ENOENT` 90 seconds into the pipeline (`d6bef6b`, 0.1.8)
+- ✅ Viewer IPC catch wraps raw `ENOENT` with a friendly message pointing at this doc (`d6bef6b`, 0.1.8)
 
-2. **No PATH probe** — Chrome installed via Scoop/Chocolatey/Homebrew to a non-default location is invisible. Workaround: set `CHROMIUM_PATH`.
+### Tier 2 — planned
 
-3. **No pre-flight tool check in the viewer.** "Save PDF" launches the full pipeline before discovering Chromium is absent; a missing-tool toast at click time would be friendlier than a mid-render error.
+Recommendations from the 2026-05-19 agent-team review (`docs/system-dependencies.md` agents, all converged):
 
-4. **No manifest field for tool paths.** All overrides go through env vars today.
+- **`print-md doctor` CLI subcommand + viewer "Check System Tools" menu item.** Iterates every tool the lib could need (Chromium, gs, qpdf, pdfinfo, pdffonts, pdfimages, pdftotext, identify, markdownlint-cli2, htmlhint), prints a status report with per-platform install commands for any missing ones. Centralizes the install-text strings currently scattered across `chromium.ts`, the `stampCreator` warning, and this doc. ~150 LOC: new `packages/cli/src/commands/doctor.ts`, new `api:doctor` IPC, viewer menu item under Help → "Check System Tools".
 
-5. **`which` gap on Windows** — the validate gate uses `which`, which isn't on stock Windows. The gate should fall back to `where.exe` on Windows.
+- **Pre-flight modal in the viewer at Save-PDF click.** Today the lib's pre-flight (0.1.8+) throws a `BuildError` with install instructions, and the viewer surfaces it as an error toast. Better UX: a proper modal with per-platform copy-able install commands, a "Continue anyway" button (for the best-effort `gs` case), and a "Show in docs" link. ~300 LOC across one new `checkPdfTooling()` export, a new IPC, and a `ToolingDialog.svelte` component.
+
+- **Bundle qpdf in viewer + CLI release zips.** Apache-2.0, ~3MB compressed, fully license-compatible with MPL-2.0. The only external tool that's both legally bundleable AND a real PDF/X friction point worth removing. Implementation: `extraResources` block in `packages/viewer/electron-builder.yml`, a `packages/viewer/scripts/fetch-binaries.ts` that pulls platform-specific qpdf binaries from upstream GitHub releases at build time, a `resolveBundledTool()` in `packages/lib/src/lib/exec.ts` that prepends `process.resourcesPath/bin/` to the spawn lookup. ~400 LOC + per-platform binary curation.
+
+### Tier 3 — future / situational
+
+- **Manifest config for tool paths.** Add `tools: { chromium, gs, qpdf }` to `manifest.yaml` schema as an alternative to `CHROMIUM_PATH` env var. Useful for CI projects that pin tool versions. Defer until a user requests it; `CHROMIUM_PATH` covers ~90% of the CI case.
+
+- **Download-on-demand Ghostscript** for the viewer's PDF/X path. A first-use modal that links to Artifex's GPL installer and walks the user through it. Sidesteps AGPL §6 because we direct the user to obtain the binary upstream rather than conveying it ourselves. Only needed if PDF/X becomes a popular viewer workflow.
+
+- **ADR documenting AGPL/GPL bundling restrictions** (`docs/adr/0002-no-bundled-gpl-tools.md`) so future contributors don't try to bundle Ghostscript or Poppler without realizing the license implications.
+
+### Explicit rejections
+
+All three review agents converged on rejecting these — recorded here so future sessions don't re-litigate:
+
+- ❌ **Bundle Ghostscript** — AGPL-3.0 §6 is viral; bundling would force the entire installer to comply.
+- ❌ **Bundle Poppler** — GPL-2.0 viral; same problem.
+- ❌ **Bundle ImageMagick** — licence is OK (Apache-style) but ~25 MB for only 3 validation checks isn't worth the size.
+- ❌ **Bundle a full Chromium** — ~150 MB cost; Edge fallback works on Windows; macOS/Linux users install Chrome/Chromium with one brew/apt command.
+- ❌ **Reuse Electron's bundled Chromium** for puppeteer-core — Electron's renderer isn't reachable via DevTools Protocol from a sibling Node process the way puppeteer requires.
+- ❌ **Native installers (MSI/PKG/DEB) with declared OS deps** — per-platform installer authoring is its own discipline; massively expands CI, signing, and portability burden; AppImage breaks; no upside for the AppImage/zip/dmg distribution model we already use.
+- ❌ **Setup wizard at first launch** — wizard fatigue; users who only preview never need PDF tooling, so blocking them at launch is wasted friction.
+- ❌ **"Install for me" buttons** — UAC (Windows), sudo (Linux), brew-not-present (macOS) edge cases create a per-platform maintenance black hole. Show the install command with a copy button instead.
+- ❌ **Auto-fallback PDF/X to plain PDF when gs/qpdf missing** — silent print-shop trap: the file looks compliant (same filename, same extension), gets rejected at prepress. Fail loud is correct for PDF/X.
+- ❌ **Auto-fallback Save PDF to Save HTML when Chromium missing** — confuses the user model; they clicked Save PDF, not Save HTML.
