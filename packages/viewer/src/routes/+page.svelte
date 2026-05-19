@@ -3,6 +3,8 @@
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
+  import HelpDialog from "$lib/components/HelpDialog.svelte";
+  import Icon from "$lib/components/Icon.svelte";
   import { PreviewClient } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
 
@@ -26,6 +28,7 @@
 
   // Toast controller (populated by Toast.svelte via bind:api)
   let toast = $state<ToastController | null>(null);
+  let helpOpen = $state(false);
   let userSetViewMode = $state(false);
 
   // ----------------------------------------------------------------
@@ -305,8 +308,9 @@
 <div class="shell">
   <header class="toolbar">
     <section class="left">
-      <button class="primary" onclick={openFolder} disabled={busy} title="Open folder (Ctrl+O)">
-        Open
+      <button class="primary icon-text" onclick={openFolder} disabled={busy} title="Open folder (Ctrl+O)">
+        <Icon name="folder-open" />
+        <span>Open</span>
       </button>
       {#if docTitle}
         <span class="doc-title" title={docTitle}>{docTitle}</span>
@@ -315,8 +319,12 @@
     </section>
 
     <section class="center">
-      <button class="icon-btn" onclick={firstPage} disabled={!previewUrl || rendering} title="First page (Home)">&#8676;</button>
-      <button class="icon-btn" onclick={prevPage} disabled={!previewUrl || rendering} title="Previous page (Left/PageUp)">&#9664;</button>
+      <button class="icon-btn" onclick={firstPage} disabled={!previewUrl || rendering} title="First page (Home)" aria-label="First page">
+        <Icon name="chevrons-left" />
+      </button>
+      <button class="icon-btn" onclick={prevPage} disabled={!previewUrl || rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
+        <Icon name="chevron-left" />
+      </button>
       <input
         type="number"
         class="page-input"
@@ -328,8 +336,12 @@
         disabled={!previewUrl || rendering}
       />
       <span class="status">/ {totalPages || "—"}</span>
-      <button class="icon-btn" onclick={nextPage} disabled={!previewUrl || rendering} title="Next page (Right/PageDown)">&#9654;</button>
-      <button class="icon-btn" onclick={lastPage} disabled={!previewUrl || rendering} title="Last page (End)">&#8677;</button>
+      <button class="icon-btn" onclick={nextPage} disabled={!previewUrl || rendering} title="Next page (Right/PageDown)" aria-label="Next page">
+        <Icon name="chevron-right" />
+      </button>
+      <button class="icon-btn" onclick={lastPage} disabled={!previewUrl || rendering} title="Last page (End)" aria-label="Last page">
+        <Icon name="chevrons-right" />
+      </button>
     </section>
 
     <section class="right">
@@ -339,14 +351,20 @@
         onclick={() => applyViewMode("single", true)}
         disabled={!previewUrl}
         title="Single page view"
-      >1</button>
+        aria-label="Single page view"
+      >
+        <Icon name="rectangle-vertical" />
+      </button>
       <button
         class="icon-btn"
         class:active={viewMode === "two-column"}
         onclick={() => applyViewMode("two-column", true)}
         disabled={!previewUrl}
         title="Two-column (spread) view"
-      >2</button>
+        aria-label="Two-column view"
+      >
+        <Icon name="columns-2" />
+      </button>
       <select
         class="zoom-select"
         bind:value={zoom}
@@ -369,12 +387,24 @@
         onclick={toggleDebug}
         disabled={!previewUrl}
         title="Toggle debug mode (D)"
-      >DBG</button>
+        aria-label="Toggle debug mode"
+      >
+        <Icon name="bug" />
+      </button>
       <label class="bg-swatch" title="Background color">
         <input type="color" value={bgColor} oninput={onBgColor} />
       </label>
-      <button class="primary save-btn" onclick={savePdf} disabled={busy || !currentDir} title="Save as PDF">
-        Save PDF
+      <button class="primary save-btn icon-text" onclick={savePdf} disabled={busy || !currentDir} title="Save as PDF">
+        <Icon name="file-down" />
+        <span>Save PDF</span>
+      </button>
+      <button
+        class="icon-btn"
+        onclick={() => (helpOpen = true)}
+        title="Help / About"
+        aria-label="Help and system info"
+      >
+        <Icon name="circle-help" />
       </button>
     </section>
   </header>
@@ -394,6 +424,9 @@
     </div>
   {/if}
 </div>
+
+<HelpDialog bind:open={helpOpen} />
+
 
 <style>
   :global(html, body) {
@@ -465,7 +498,19 @@
     cursor: not-allowed;
   }
 
-  .icon-btn { padding: 5px 8px; }
+  .icon-btn {
+    padding: 5px 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* Combo button: icon + label text side by side */
+  .icon-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .icon-text :global(svg) { flex: 0 0 auto; }
 
   .page-input {
     background: #3a3a3a;

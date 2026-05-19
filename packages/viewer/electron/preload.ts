@@ -56,4 +56,5 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("api:preview", args),
   build: (args: BuildArgs): Promise<BuildResult> =>
     ipcRenderer.invoke("api:build", args),
+  doctor: (): Promise<unknown> => ipcRenderer.invoke("api:doctor"),
 });

@@ -43,11 +43,27 @@ interface ManifestWithPath {
   manifest: { title?: string };
   manifestDir: string;
 }
+interface SystemDiagnostics {
+  libVersion: string;
+  platform: { os: string; arch: string; release: string; node: string };
+  tools: Array<{
+    name: string;
+    bin: string;
+    found: boolean;
+    path?: string;
+    version?: string;
+    usedBy: Array<{ feature: string; severity: "required" | "optional" }>;
+    installHint: string;
+  }>;
+  docsUrl: string;
+}
+
 interface LibModule {
   startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
   loadManifestWithPath: (input: string) => Promise<ManifestWithPath>;
   splitOutPath: (out: string | undefined, format: string) => SplitOutPath;
   runBuild: (opts: Record<string, unknown>) => Promise<BuildResult>;
+  getSystemDiagnostics: () => Promise<SystemDiagnostics>;
   BuildError: new (message: string) => Error;
 }
 
@@ -256,6 +272,17 @@ ipcMain.handle("shell:openExternal", async (_e, url: string) => {
 
 ipcMain.handle("api:status", async () => {
   return { name: "@dimm-city/print-md-viewer", runtime: "node", ok: true };
+});
+
+ipcMain.handle("api:doctor", async () => {
+  const lib = await loadLib();
+  const diag = await lib.getSystemDiagnostics();
+  return {
+    ...diag,
+    viewerVersion: app.getVersion(),
+    electronVersion: process.versions.electron,
+    chromeVersion: process.versions.chrome,
+  };
 });
 
 ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {

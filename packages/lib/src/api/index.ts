@@ -45,3 +45,12 @@ export type {
   PrintMdPluginExport,
   PrintMdPluginMetadata,
 } from "../lib/markdown/plugins";
+
+export {
+  getSystemDiagnostics,
+} from "../lib/diagnostics";
+
+export type {
+  ToolStatus,
+  SystemDiagnostics,
+} from "../lib/diagnostics";
