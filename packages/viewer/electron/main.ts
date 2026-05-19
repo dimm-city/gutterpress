@@ -103,6 +103,34 @@ function createWindow(url?: string) {
     },
   });
   mainWindow.setMenuBarVisibility(false);
+
+  // Surface every error from the renderer to stdout so users running from
+  // a terminal (or installs that capture logs) can see why a directory load
+  // failed — without these handlers, a thrown error in page.svelte or a
+  // failed iframe load produces no externally visible diagnostic.
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (_e, errorCode, errorDescription, validatedURL) => {
+      console.error(
+        `[renderer] did-fail-load url=${validatedURL} code=${errorCode} desc=${errorDescription}`
+      );
+    }
+  );
+  mainWindow.webContents.on("render-process-gone", (_e, details) => {
+    console.error(`[renderer] render-process-gone reason=${details.reason}`);
+  });
+  mainWindow.webContents.on(
+    "console-message",
+    (_e, level, message, line, sourceId) => {
+      // Levels: 0=verbose, 1=info, 2=warning, 3=error
+      if (level >= 2) {
+        console.error(
+          `[renderer:${level === 3 ? "error" : "warn"}] ${sourceId}:${line} ${message}`
+        );
+      }
+    }
+  );
+
   mainWindow.loadURL(url ?? LOADING_HTML);
   mainWindow.on("closed", () => {
     mainWindow = null;

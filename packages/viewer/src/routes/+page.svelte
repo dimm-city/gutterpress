@@ -389,7 +389,11 @@
 
   {#if previewUrl}
     {#key previewUrl}
-      <PreviewFrame url={previewUrl} bind:client />
+      <PreviewFrame
+        url={previewUrl}
+        bind:client
+        onError={(msg) => toast?.error(msg)}
+      />
     {/key}
   {:else}
     <div class="empty">

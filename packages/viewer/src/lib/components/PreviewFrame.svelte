@@ -1,7 +1,11 @@
 <script lang="ts">
   import { PreviewClient } from "../preview-client";
 
-  let { url, client = $bindable() }: { url: string; client?: PreviewClient } = $props();
+  let { url, client = $bindable(), onError }: {
+    url: string;
+    client?: PreviewClient;
+    onError?: (msg: string) => void;
+  } = $props();
 
   let frame = $state<HTMLIFrameElement | undefined>(undefined);
 
@@ -12,9 +16,14 @@
     const onLoad = () => {
       c.attach(frame!.contentWindow);
     };
+    const onErr = (_e: Event) => {
+      onError?.(`Preview iframe failed to load ${url}`);
+    };
     frame.addEventListener("load", onLoad);
+    frame.addEventListener("error", onErr);
     return () => {
       frame!.removeEventListener("load", onLoad);
+      frame!.removeEventListener("error", onErr);
       c.detach();
       client = undefined;
     };
