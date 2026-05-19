@@ -54,7 +54,11 @@ async function startSvelteKitServer(): Promise<string> {
   process.env.HOST = "127.0.0.1";
   process.env.ORIGIN = url;
 
-  await import(SVELTEKIT_ENTRY);
+  // TypeScript (module: CommonJS) transpiles import() to require(), which
+  // breaks ESM modules. Use Function constructor so the dynamic import reaches
+  // the runtime as a native import() call.
+  const nativeImport = new Function("p", "return import(p)") as (p: string) => Promise<unknown>;
+  await nativeImport(SVELTEKIT_ENTRY);
   await waitForPort(port);
 
   serverUrl = url;
