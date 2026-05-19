@@ -367,6 +367,17 @@ app.whenReady().then(async () => {
   registerAppProtocol();
   createWindow();
 
+  // Pre-warm the lib graph in parallel with SPA boot. The first call to
+  // window.electron.startPreview otherwise pays a 300–900ms cold-import
+  // cost (node resolving + parsing the lib's dist + transitive deps).
+  // Kicking it off now means the lib is already in memory by the time
+  // the user finishes picking a folder in the OS dialog. Non-fatal:
+  // genuine load failures will surface when the user actually invokes
+  // startPreview via IPC.
+  loadLib().catch((err) => {
+    console.warn("[prewarm] loadLib failed (non-fatal):", err);
+  });
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

@@ -3,7 +3,6 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
-import puppeteer from "puppeteer-core";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
 import { loadPlugins, collectPluginCss } from "./markdown/plugins";
@@ -164,6 +163,11 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
   const port = (server.address() as net.AddressInfo).port;
 
   try {
+    // Lazy-load puppeteer-core. It is the single biggest dep in the lib graph
+    // (~13MB plus transitive parse cost) and is only needed for PDF generation.
+    // Loading it here keeps preview-only paths — including the viewer's
+    // startPreviewServer — fast on cold start.
+    const puppeteer = (await import("puppeteer-core")).default;
     const browser = await puppeteer.launch({ headless: true, executablePath });
     try {
       const page = await browser.newPage();
