@@ -130,25 +130,21 @@ export async function generateAndWriteHtml(
   //   1. pagedjs-interface.js — defines window.previewAPI for in-iframe controls
   //   2. pagedjs-bridge.js    — postMessage bridge for cross-origin toolbar (viewer)
   //   3. BREAK_INSIDE_HANDLER — polyfill for break-inside: avoid
-  //   4. Paged.js polyfill itself (vendored or CDN fallback)
+  //   4. Paged.js polyfill itself, served directly from the process-wide
+  //      embedded-assets dir by the HTTP server (see http-server.ts route
+  //      for /vendor/*). We no longer copy it into the per-project tempDir
+  //      because:
+  //        - The polyfill is 904 KB and copying it per open is wasted IO
+  //          (one of the worst-case Defender scan targets on Windows).
+  //        - The per-process extracted copy is identical across opens so
+  //          serving it from a stable disk path lets the OS file-cache
+  //          and Defender hash-cache stay warm across sessions.
   const iface =
     '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
     + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
-  // Copy the vendored paged.polyfill.js from embedded assets (works in compiled binary).
-  const pagedDestDir = path.join(tempDir, 'vendor');
-  const pagedDestPath = path.join(pagedDestDir, 'paged.polyfill.js');
-  try {
-    await fsp.mkdir(pagedDestDir, { recursive: true });
-    await fsp.copyFile(await getAssetPath('vendor/paged.polyfill.js'), pagedDestPath);
-  } catch { /* fall back to CDN if asset extraction fails */ }
-
-  const pagedSrc = existsSync(pagedDestPath)
-    ? './vendor/paged.polyfill.js'
-    : 'https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.js';
-
   const output = html.replace(
     /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
-    iface + BREAK_INSIDE_HANDLER + `\n  <script src="${pagedSrc}"></script>`
+    iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
   );
 
   await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), output, "utf-8");

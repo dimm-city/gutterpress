@@ -96,8 +96,13 @@ export async function initializePreviewDirectories(
     debug(`Copied input files to ${tempDir}`);
   }
 
-  await copyDirectory(assetsSourceDir, tempDir);
-  debug(`Copied preview assets to ${tempDir}`);
+  // Preview assets (paged.polyfill.js, pagedjs-bridge.js, pagedjs-interface.js,
+  // favicon, manifest.schema.json) used to be copied here. They're now
+  // served directly from the process-wide embedded-assets dir by the HTTP
+  // server (see http-server.ts EMBEDDED_PREFIXES). assetsSourceDir is kept
+  // as a parameter for API stability and so callers that still need the
+  // path (e.g., the CLI's HTML build pipeline) can reach it.
+  void assetsSourceDir;
 
   // Copy manifest assets (e.g., ../_shared directories)
   if (inputPath && config?.source?.assets) {

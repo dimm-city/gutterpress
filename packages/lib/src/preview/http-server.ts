@@ -15,6 +15,7 @@ import path from 'path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { info } from '../utils/logger.ts';
 import { openPath } from '../lib/open-path.ts';
+import { getAssetPath } from '../lib/embedded-assets.ts';
 import type { ServerState } from './server-context.ts';
 import { handleApiRequest } from './api-middleware.ts';
 
@@ -131,8 +132,17 @@ function injectHmrClient(html: string): string {
 /**
  * Serve a static file (or directory's `index.html`) with HMR injection for
  * HTML responses. Writes 404 if the path doesn't resolve to a real file.
+ *
+ * `cacheControl` is the value sent in the Cache-Control header. Defaults to
+ * 'no-cache' (HMR-friendly). Vendor assets that never change content within
+ * a process pass 'public, max-age=31536000, immutable' so Chrome's HTTP
+ * cache reuses them across page reloads within the same session.
  */
-async function serveStatic(absPath: string, res: http.ServerResponse): Promise<void> {
+async function serveStatic(
+  absPath: string,
+  res: http.ServerResponse,
+  cacheControl: string = 'no-cache',
+): Promise<void> {
   let filePath = absPath;
 
   // Directory hit → try index.html inside it.
@@ -165,8 +175,23 @@ async function serveStatic(absPath: string, res: http.ServerResponse): Promise<v
   const ct = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
   // Empty files: force 200 with empty body so placeholders (e.g. empty CSS)
   // load without error in some clients.
-  res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': 'no-cache' });
+  res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': cacheControl });
   res.end(data);
+}
+
+/**
+ * URL paths that resolve to the process-wide embedded assets dir, NOT the
+ * per-project tempDir. These never change within a process lifetime so we
+ * serve them from a stable disk location (avoids per-open copies, lets
+ * Defender hash-cache stay warm, and lets Chrome's HTTP cache reuse the
+ * response across reloads in the same session).
+ */
+const EMBEDDED_PREFIXES = ['/vendor/', '/preview/scripts/'];
+const EMBEDDED_EXACT = new Set(['/favicon.ico']);
+
+function matchesEmbedded(urlPathname: string): boolean {
+  if (EMBEDDED_EXACT.has(urlPathname)) return true;
+  return EMBEDDED_PREFIXES.some((p) => urlPathname.startsWith(p));
 }
 
 /**
@@ -223,7 +248,28 @@ export async function createPreviewServer(
       return;
     }
 
-    // 3. Static file fallback.
+    // 3. Embedded assets (vendor + viewer scripts) — served from the
+    // process-wide extracted assets dir, with long cache headers. These
+    // never change within a process lifetime, so we never copy them into
+    // per-project tempDirs (avoids redundant disk writes that Windows
+    // Defender re-scans on every folder open).
+    if (matchesEmbedded(url.pathname)) {
+      const rel = url.pathname.slice(1); // strip leading '/'
+      try {
+        const absPath = await getAssetPath(rel);
+        await serveStatic(
+          absPath,
+          res,
+          'public, max-age=31536000, immutable',
+        );
+      } catch {
+        res.writeHead(404);
+        res.end('Not Found');
+      }
+      return;
+    }
+
+    // 4. Static file fallback.
     // Treat bare "/" as book.html — the desktop app (packages/viewer) wraps
     // book.html in its own iframe-based toolbar.
     const pathname = url.pathname === '/' ? '/book.html' : url.pathname;
