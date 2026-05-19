@@ -41,6 +41,9 @@ New to Print-md? Start here:
 - **[Best Practices](best-practices.md)**
   Professional guidelines for file organization, writing, print optimization, testing, and production workflows.
 
+- **[System Dependencies](system-dependencies.md)**
+  External tools each print-md feature needs (Chromium for PDF render, Ghostscript for PDF/X, qpdf, Poppler, ImageMagick for validation). Per-platform install commands and troubleshooting.
+
 ## Complete Reference
 
 - **[Authoring Guide](authoring-guide.md)**
@@ -76,6 +79,15 @@ New to Print-md? Start here:
 
 **Prepare for professional printing**
 → [Best Practices](best-practices.md)
+
+**Diagnose a missing-tool error (`spawn gs ENOENT`, "No Chromium found", etc)**
+→ [System Dependencies](system-dependencies.md)
+
+**Use the CLI from a terminal or CI**
+→ [CLI README](../packages/cli/README.md)
+
+**Develop on the viewer or the lib**
+→ [Viewer README](../packages/viewer/README.md) · [Architecture](ARCHITECTURE.md)
 
 ## Quick Reference
 
