@@ -619,8 +619,14 @@ See [docs/plugins.md](plugins.md) for the full authoring guide.
 **Reasons**:
 - Non-technical users need a native-feeling app with folder picker, page
   navigation, and PDF export — not a browser tab.
-- SvelteKit runs under Bun (SSR adapter-node), so `@dimm-city/print-md` can
-  be imported directly as a workspace dependency with no subprocess or IPC.
+- SvelteKit is built as a static SPA via `@sveltejs/adapter-static` and
+  served by Electron through a custom `app://` protocol handler. No
+  in-process HTTP server, no bundled Bun runtime. The renderer reaches
+  the lib through `ipcMain.handle()` rather than `fetch()`.
+- The lib (`@dimm-city/print-md-lib`) is Node.js-compatible at runtime
+  (`node:http` + `ws` instead of `Bun.serve`, `node:fs` instead of
+  `Bun.file`). Electron's bundled Node runs it directly via a dynamic
+  `import()` from main.js — no subprocess required.
 - Vite/Rollup in the viewer is intentional (web app build) and does not
   conflict with the no-bundlers-at-runtime rule, which applies only to
   `packages/cli/src/`.

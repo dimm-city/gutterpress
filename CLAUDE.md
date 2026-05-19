@@ -2,32 +2,33 @@
 
 ## Monorepo layout
 
-This repo is a Bun workspace with two packages:
+This repo is a Bun workspace with three packages:
 
-- **`packages/cli/`** (`@dimm-city/print-md`) — the markdown-to-PDF CLI and
-  its library API. All architectural rules below apply to this package.
-- **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron + SvelteKit
-  desktop app. Imports `@dimm-city/print-md` directly as a workspace dep.
-  SvelteKit's Vite/Rollup build is intentional here; `@dimm-city/print-md` is
-  marked SSR-external in `packages/viewer/vite.config.ts` so it is never
-  bundled by Vite. The no-bundlers rule (§1 below) applies only to
-  `packages/cli/src/`. Vite scripts in the viewer must be invoked with
-  `bun --bun ./node_modules/.bin/vite` so that Bun's module resolver handles
-  `@dimm-city/print-md` correctly at dev time.
+- **`packages/cli/`** (`@dimm-city/print-md`) — the markdown-to-PDF CLI. A
+  thin shell over `@dimm-city/print-md-lib`. Ships as a standalone binary
+  via `bun build --compile` AND as an npm package. The no-bundlers rule
+  (§1 below) applies to this package.
+- **`packages/lib/`** (`@dimm-city/print-md-lib`, private) — all runtime
+  logic: markdown rendering, preview HTTP server, PDF generation via
+  puppeteer-core, lint, validation. Pure ESM. Built with `bun build`
+  (target: node) to `dist/`. Consumed by both the CLI and the viewer as a
+  workspace dependency.
+- **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron desktop
+  app with a static SvelteKit SPA frontend. The SPA is built with
+  `@sveltejs/adapter-static` and served by Electron via a custom `app://`
+  protocol handler. The 3 API endpoints (status, preview, build) are
+  `ipcMain.handle()` calls, not HTTP routes. The lib is loaded via a
+  dynamic `import()` from `electron-dist/main.js` (CJS → ESM bridge using
+  the `new Function("spec", "return import(spec)")` trick). No afterPack
+  hook; electron-builder packages the lib via its standard dep walker.
+  See [project_viewer_architecture] memory for the full picture.
 
-> **Future work — Node.js compatibility for `@dimm-city/print-md`:**
-> The CLI package currently uses Bun-specific APIs throughout its runtime
-> (`Bun.serve`, `Bun.file`, `with { type: "file" }` import attributes). This
-> means the viewer's SvelteKit server **must** run under Bun, which is why
-> `packages/viewer/scripts/build-win.ts` bundles a `bun.exe` with the
-> Windows package. The correct long-term fix is to make the CLI's runtime
-> Node.js-compatible by replacing Bun APIs with Node.js equivalents:
-> - `Bun.serve` → `node:http` createServer + `ws` for WebSocket
-> - `Bun.file` → `node:fs/promises` readFile/createReadStream
-> - `with { type: "file" }` → `new URL('../assets/...', import.meta.url)`
->
-> Until that refactor is done, do **not** try to run the SvelteKit server
-> in-process inside Electron's Node.js runtime — the CLI imports will fail.
+The lib's runtime is Node.js-compatible — no `Bun.serve`/`Bun.file`/
+runtime Bun APIs. `with { type: "file" }` is used as a build-time syntax
+only; bun build compiles it to plain string constants in the dist output.
+This is what enables the viewer to run with Electron's bundled Node.
+Bun is required for development (workspace install, lib build, CLI
+compile, tests) but NOT for end users of the packaged viewer.
 
 ## What print-md ships
 

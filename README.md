@@ -13,9 +13,7 @@ A CLI tool and desktop app for creating professional print-ready PDFs from markd
 | **macOS (Apple Silicon)** | `.dmg` on releases page | [`print-md-cli-macos-arm64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-cli-macos-arm64) |
 | **macOS (Intel)** | `.dmg` on releases page | [`print-md-cli-macos-x64`](https://github.com/dimm-city/print-md/releases/latest/download/print-md-cli-macos-x64) |
 
-The desktop app (AppImage/zip/dmg) opens a project directory, shows a paginated preview, and exports PDF — no terminal required. The CLI binary is a single standalone executable for scripting and CI — no Node or Bun install needed on the host.
-
-> **Beta:** Releases tagged `-beta.N` are pre-releases for testing. Check the releases page for stability status.
+The desktop app (AppImage/zip/dmg) opens a project directory, shows a paginated preview, and exports PDF — no terminal required, no Bun or Node install needed. The CLI binary is a single standalone executable for scripting and CI — also self-contained.
 
 ## Features
 
@@ -34,9 +32,11 @@ The desktop app (AppImage/zip/dmg) opens a project directory, shows a paginated 
 
 Download the desktop app from the [Download](#download) table above or the [GitHub Releases page](https://github.com/dimm-city/print-md/releases/latest):
 
-- **Linux** — `.AppImage` — requires [Bun](https://bun.sh) installed on the host; make the file executable (`chmod +x`) then double-click or run it
-- **Windows** — `.zip` — extract and run `electron.exe`; requires [Bun](https://bun.sh) installed (the Bun Windows installer adds it to `PATH` automatically)
+- **Linux** — `.AppImage` — make the file executable (`chmod +x`), then double-click or run it
+- **Windows** — `.zip` — extract anywhere and run `print-md-viewer.exe`
 - **macOS** — `.dmg` — open the disk image and drag the app to Applications
+
+The desktop app is fully self-contained — no Bun, Node, or other runtime needs to be installed.
 
 The desktop app opens a project directory, shows a paginated preview, and exports PDF — no terminal required.
 
@@ -437,7 +437,8 @@ print-md/
 │   │   └── tests/               # Bun test suite
 │   └── viewer/                  # @dimm-city/print-md-viewer — Electron + SvelteKit desktop app
 │       ├── electron/            # Electron main process (TypeScript → CJS)
-│       ├── src/                 # SvelteKit app (toolbar UI, +server.ts API routes)
+│       ├── src/                 # SvelteKit SPA (adapter-static)
+│       ├── electron/            # Electron main + preload (ipcMain handlers)
 │       └── electron-builder.yml # Packaging config
 ├── examples/                    # Sample projects (dc-design-guide, template, …)
 ├── docs/                        # Authoring guides, ADRs, architecture docs
@@ -446,10 +447,18 @@ print-md/
 
 ## Desktop viewer
 
-`packages/viewer` is an Electron + SvelteKit desktop app. It imports
-`@dimm-city/print-md` directly as a workspace dependency — no subprocess, no
-JSON IPC. The SvelteKit server runs under Bun because print-md uses Bun-specific
-APIs (`Bun.serve`, `Bun.file`, `with { type: "file" }` imports).
+`packages/viewer` is an Electron + SvelteKit desktop app. The SvelteKit
+frontend is built as a static SPA via `@sveltejs/adapter-static` and served
+to the BrowserWindow over a custom `app://` protocol handler in the Electron
+main process. The three "API" operations (preview start, build, status) are
+exposed to the renderer via `ipcMain.handle()` rather than HTTP routes —
+the renderer calls them through a `window.electron` bridge installed by the
+preload script.
+
+The lib (`@dimm-city/print-md`) is a normal workspace dependency. The
+packaged app ships it via electron-builder's standard dependency walker —
+no afterPack hooks, no in-process SvelteKit HTTP server, no Bun runtime
+required on the user's machine.
 
 The desktop app provides the toolbar UI, page navigation, view modes, zoom
 controls, folder picker, and PDF export that are absent from the headless
