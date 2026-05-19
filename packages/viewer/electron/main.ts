@@ -35,10 +35,18 @@ async function startSvelteKitServer(): Promise<string> {
   const port = await pickFreePort();
   const url = `http://127.0.0.1:${port}`;
 
+  // In a packaged app bun is not on the user's PATH. Use Electron's bundled
+  // Node runtime (ELECTRON_RUN_AS_NODE=1) so the SvelteKit adapter-node
+  // server can start without any external runtime dependency.
+  const [exe, args] = app.isPackaged
+    ? [process.execPath, [SVELTEKIT_ENTRY]]
+    : ["bun", [SVELTEKIT_ENTRY]];
+
   return new Promise((resolve, reject) => {
-    const proc = spawn("bun", [SVELTEKIT_ENTRY], {
+    const proc = spawn(exe, args, {
       env: {
         ...process.env,
+        ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
         PORT: String(port),
         HOST: "127.0.0.1",
         ORIGIN: url,
