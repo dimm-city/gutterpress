@@ -1,0 +1,101 @@
+name: Windows Electron driver test
+
+# Launches the packaged Electron viewer .exe on windows-latest via
+# Playwright and drives the full directory-load flow:
+#   1. Wait for the SvelteKit server window to open
+#   2. POST /api/preview from the renderer with a real Windows fixture path
+#   3. Verify the returned URL serves book.html
+#
+# If this passes, the directory-load failure is NOT in the lib, NOT in
+# the HTTP API, and NOT in the Electron shell — the entire stack is
+# proven to work on Windows end-to-end.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/viewer/**'
+      - 'packages/lib/**'
+      - '.github/workflows/windows-electron-test.yml'
+  pull_request:
+    paths:
+      - 'packages/viewer/**'
+      - 'packages/lib/**'
+      - '.github/workflows/windows-electron-test.yml'
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PUPPETEER_SKIP_DOWNLOAD: 'true'
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
+
+jobs:
+  test:
+    name: Drive packaged Electron app on Windows
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install workspace deps
+        run: bun install --frozen-lockfile
+
+      - name: Build lib dist
+        working-directory: packages/lib
+        run: bun run build
+
+      - name: Build and package the viewer
+        working-directory: packages/viewer
+        run: npm run dist:win
+
+      - name: Locate unpacked app dir
+        id: locate
+        shell: pwsh
+        run: |
+          # electron-builder writes the unpacked app to dist/win-unpacked/.
+          $unpacked = "${{ github.workspace }}\packages\viewer\dist\win-unpacked"
+          if (-not (Test-Path $unpacked)) { throw "win-unpacked not found at $unpacked" }
+          $main = Join-Path $unpacked "resources\app\electron-dist\main.js"
+          if (-not (Test-Path $main)) { throw "main.js not found at $main" }
+          "main=$main" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "main.js: $main"
+
+      - name: Install playwright in isolated dir
+        shell: pwsh
+        run: |
+          # We need playwright to drive Electron. Install it standalone
+          # outside the workspace tree to avoid `workspace:*` conflicts.
+          $pwDir = "${{ runner.temp }}\pw"
+          New-Item -ItemType Directory -Force -Path $pwDir | Out-Null
+          Set-Location $pwDir
+          '{"name":"_etest","version":"0.0.0","private":true,"type":"module"}' | Set-Content -Encoding utf8 "package.json"
+          npm install playwright --no-save --no-package-lock --ignore-scripts 2>&1 | Where-Object { $_ -notmatch "^npm warn" }
+          # Copy the test script alongside node_modules so ESM resolves.
+          Copy-Item "${{ github.workspace }}\packages\viewer\tests\integration\electron-driver.test.mjs" "$pwDir\electron-driver.test.mjs"
+
+      - name: Drive the viewer end-to-end
+        shell: pwsh
+        run: |
+          $pwDir = "${{ runner.temp }}\pw"
+          $fixture = "${{ github.workspace }}\packages\cli\tests\integration\fixtures\smoke"
+          node "$pwDir\electron-driver.test.mjs" "${{ steps.locate.outputs.main }}" $fixture
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-test-debug
+          path: |
+            packages/viewer/dist/*.log
+            packages/viewer/dist/win-unpacked/resources/app/**/*.json
+          if-no-files-found: ignore
+          retention-days: 7
