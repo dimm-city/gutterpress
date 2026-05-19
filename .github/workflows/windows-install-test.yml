@@ -115,11 +115,15 @@ jobs:
       - name: Verify Paged.js renders (smoke)
         shell: pwsh
         run: |
-          $pwDir = "${{ runner.temp }}\pw"
-          New-Item -ItemType Directory -Force -Path $pwDir | Out-Null
-          Set-Location $pwDir
-          npm init -y | Out-Null
-          npm install playwright 2>&1 | Where-Object { $_ -notmatch "^npm warn" }
+          # Install playwright at packages/cli — that's where it's declared
+          # as a devDep, so node ESM resolution from
+          # packages/cli/tests/integration/paged-smoke.mjs walks up and finds
+          # packages/cli/node_modules/playwright. In the build-from-source
+          # path `bun install --frozen-lockfile` already did this; in the
+          # use_artifact path we skip bun install, so we install it manually.
+          $cliDir = "${{ github.workspace }}\packages\cli"
+          Set-Location $cliDir
+          npm install playwright --no-save --no-package-lock --omit=peer 2>&1 | Where-Object { $_ -notmatch "^npm warn" }
 
           $chromePaths = @(
             "C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -131,8 +135,7 @@ jobs:
           Write-Host "Chrome: $chrome"
 
           $outDir = "${{ runner.temp }}\smoke-out"
-          $script = "${{ github.workspace }}\packages\cli\tests\integration\paged-smoke.mjs"
-          Set-Location $pwDir
+          $script = "$cliDir\tests\integration\paged-smoke.mjs"
           node $script $outDir --chrome-path $chrome
           if ($LASTEXITCODE -ne 0) { throw "Paged.js render smoke test failed — see output above" }
 
