@@ -216,6 +216,10 @@
         input: currentDir,
         format: "pdf",
         out: outPath,
+        // Lint is a CLI/developer concern (stylelint, htmlhint, markdownlint
+        // are devDeps and not shipped with the viewer). End users hitting
+        // Save PDF want a PDF, not a linter — skip it.
+        skipLint: true,
         skipPreValidate: true,
         skipPostValidate: true,
       });
