@@ -158,19 +158,17 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Patch viewer version
-        run: |
-          VERSION="${{ inputs.version }}"
-          jq --arg v "$VERSION" '.version = $v' packages/viewer/package.json > /tmp/viewer-pkg.json
-          mv /tmp/viewer-pkg.json packages/viewer/package.json
-
       - name: Build lib dist
         run: bun run build
         working-directory: packages/lib
 
+      - name: Install viewer dependencies
+        run: npm ci
+        working-directory: packages/viewer
+
       - name: Build Linux AppImage
         working-directory: packages/viewer
-        run: bun run dist:linux
+        run: npm run dist:linux
 
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
@@ -181,9 +179,8 @@ jobs:
   build-viewer-windows:
     name: Viewer / Windows zip
     needs: version
-    # Windows runner: bun install gets Windows-native package variants; electron-builder
-    # handles Electron download, exe rename, icon embedding, and zip creation.
-    # The afterPack hook installs @dimm-city/print-md-lib's runtime deps into the app.
+    # electron-builder handles Electron download, exe rename, icon embedding, zip.
+    # afterPack hook uses npm install (no Bun required at packaging time).
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -201,9 +198,13 @@ jobs:
         run: bun run build
         working-directory: packages/lib
 
+      - name: Install viewer dependencies
+        run: npm ci
+        working-directory: packages/viewer
+
       - name: Build Windows zip
         working-directory: packages/viewer
-        run: bun run dist:win
+        run: npm run dist:win
 
       - name: Upload Windows zip
         uses: actions/upload-artifact@v4
@@ -240,9 +241,13 @@ jobs:
         run: bun run build
         working-directory: packages/lib
 
+      - name: Install viewer dependencies
+        run: npm ci
+        working-directory: packages/viewer
+
       - name: Build macOS DMG
         working-directory: packages/viewer
-        run: bun run dist:mac
+        run: npm run dist:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 

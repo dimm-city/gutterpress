@@ -35,5 +35,5 @@ win:
 mac:
   target:
     - dmg
-  icon: build-resources/icon.icns
+  icon: build-resources/icon.png
   category: public.app-category.developer-tools
