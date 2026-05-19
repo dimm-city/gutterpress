@@ -31,6 +31,17 @@ const CACHE_ZIP = join(
 const ELECTRON_URL =
   `https://github.com/electron/electron/releases/download/v${ELECTRON_VERSION}/${ELECTRON_ZIP_NAME}`;
 
+// Bun is bundled with the viewer so end-users don't need it installed.
+// The SvelteKit adapter-node server is run via the bundled bun.exe.
+const BUN_VERSION = "1.2.14";
+const BUN_ZIP_NAME = `bun-windows-x64.zip`;
+const BUN_CACHE_ZIP = join(
+  process.env.HOME ?? process.env.USERPROFILE ?? tmpdir(),
+  ".cache", "bun", `bun-v${BUN_VERSION}-windows-x64.zip`
+);
+const BUN_URL =
+  `https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/${BUN_ZIP_NAME}`;
+
 const VIEWER_ROOT = resolve(import.meta.dir, "..");
 const CLI_ROOT    = resolve(VIEWER_ROOT, "../../packages/cli");
 const DIST_DIR    = join(VIEWER_ROOT, "dist");
@@ -99,12 +110,36 @@ if (!existsSync(CACHE_ZIP)) {
   console.log(`\nReusing cached ${ELECTRON_ZIP_NAME}`);
 }
 
+// ── 2b. Download (or reuse) the Windows Bun binary ───────────────────────
+if (!existsSync(BUN_CACHE_ZIP)) {
+  await mkdir(join(process.env.HOME ?? process.env.USERPROFILE ?? tmpdir(), ".cache", "bun"), { recursive: true });
+  console.log(`\nDownloading ${BUN_URL} ...`);
+  const res = await fetch(BUN_URL);
+  if (!res.ok) throw new Error(`Bun download failed: ${res.status}`);
+  await Bun.write(BUN_CACHE_ZIP, res);
+  console.log(`  → cached at ${BUN_CACHE_ZIP}`);
+} else {
+  console.log(`\nReusing cached bun-v${BUN_VERSION}-windows-x64.zip`);
+}
+
 // ── 3. Extract Windows Electron into a fresh win-unpacked dir ─────────────
 console.log(`\n=== Extracting ${ELECTRON_ZIP_NAME} ===`);
 await rm(OUT_DIR, { recursive: true, force: true });
 await mkdir(OUT_DIR, { recursive: true });
 await extractZip(CACHE_ZIP, OUT_DIR);
 console.log(`  → ${OUT_DIR}`);
+
+// ── 3b. Extract bun.exe into OUT_DIR alongside electron.exe ──────────────
+console.log(`\n=== Extracting bun.exe ===`);
+const BUN_EXTRACT_TMP = join(DIST_DIR, "_bun-extract-tmp");
+await rm(BUN_EXTRACT_TMP, { recursive: true, force: true });
+await mkdir(BUN_EXTRACT_TMP, { recursive: true });
+await extractZip(BUN_CACHE_ZIP, BUN_EXTRACT_TMP);
+// The zip contains a folder `bun-windows-x64/bun.exe`
+const bunSrc = join(BUN_EXTRACT_TMP, "bun-windows-x64", "bun.exe");
+await cp(bunSrc, join(OUT_DIR, "bun.exe"));
+await rm(BUN_EXTRACT_TMP, { recursive: true, force: true });
+console.log(`  → ${join(OUT_DIR, "bun.exe")}`);
 
 // ── 4. Inject app code (not node_modules) ────────────────────────────────
 const APP_DIR = join(OUT_DIR, "resources", "app");
@@ -179,4 +214,4 @@ const stat = await Bun.file(ZIP_PATH).stat();
 console.log(`\n✓ ${ZIP_PATH}  (${(stat.size / 1e6).toFixed(1)} MB)\n`);
 console.log("Install on Windows:");
 console.log(`  1. Unzip ${ZIP_NAME}`);
-console.log(`  2. Run print-md-viewer.exe`);
+console.log(`  2. Run print-md-viewer.exe  (bun.exe is bundled — no installation needed)`);

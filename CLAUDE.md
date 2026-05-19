@@ -15,6 +15,20 @@ This repo is a Bun workspace with two packages:
   `bun --bun ./node_modules/.bin/vite` so that Bun's module resolver handles
   `@dimm-city/print-md` correctly at dev time.
 
+> **Future work — Node.js compatibility for `@dimm-city/print-md`:**
+> The CLI package currently uses Bun-specific APIs throughout its runtime
+> (`Bun.serve`, `Bun.file`, `with { type: "file" }` import attributes). This
+> means the viewer's SvelteKit server **must** run under Bun, which is why
+> `packages/viewer/scripts/build-win.ts` bundles a `bun.exe` with the
+> Windows package. The correct long-term fix is to make the CLI's runtime
+> Node.js-compatible by replacing Bun APIs with Node.js equivalents:
+> - `Bun.serve` → `node:http` createServer + `ws` for WebSocket
+> - `Bun.file` → `node:fs/promises` readFile/createReadStream
+> - `with { type: "file" }` → `new URL('../assets/...', import.meta.url)`
+>
+> Until that refactor is done, do **not** try to run the SvelteKit server
+> in-process inside Electron's Node.js runtime — the CLI imports will fail.
+
 ## What print-md ships
 
 A standalone binary built with `bun build --compile` (see

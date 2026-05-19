@@ -1,6 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
+import { existsSync } from "node:fs";
 
 async function pickFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -19,50 +21,74 @@ async function pickFreePort(): Promise<number> {
   });
 }
 
-// Wait until something is listening on the given port (polls every 100 ms).
-function waitForPort(port: number, timeoutMs = 15_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  return new Promise((resolve, reject) => {
-    const attempt = () => {
-      const sock = net.createConnection({ port, host: "127.0.0.1" });
-      sock.once("connect", () => { sock.destroy(); resolve(); });
-      sock.once("error", () => {
-        sock.destroy();
-        if (Date.now() > deadline) return reject(new Error("Server did not start within 15s"));
-        setTimeout(attempt, 100);
-      });
-    };
-    attempt();
-  });
-}
-
 // Resolve the SvelteKit Node-style server bundle.
 const SVELTEKIT_ENTRY = path.resolve(__dirname, "../build/index.js");
 
+let serverProcess: ChildProcess | null = null;
 let serverUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
+
+/**
+ * Resolve the Bun executable to use for the SvelteKit server.
+ *
+ * In packaged builds we ship a bundled bun binary alongside the Electron
+ * executable so end-users don't need Bun installed on their machine.
+ * In dev we fall back to whatever `bun` is on PATH.
+ */
+function getBunExe(): string {
+  if (app.isPackaged) {
+    const bunBin = process.platform === "win32" ? "bun.exe" : "bun";
+    const bundled = path.join(path.dirname(process.execPath), bunBin);
+    if (existsSync(bundled)) return bundled;
+    // Fallback: bun on PATH (should not happen in a correctly packaged build)
+    console.warn(`[server] bundled Bun not found at ${bundled}, falling back to PATH`);
+  }
+  return "bun";
+}
 
 async function startSvelteKitServer(): Promise<string> {
   const port = await pickFreePort();
   const url = `http://127.0.0.1:${port}`;
+  const bun = getBunExe();
 
-  // Run the SvelteKit adapter-node server in-process — no external runtime
-  // (bun, node) required on the host. Electron's main process IS Node.js;
-  // dynamic import() loads the ESM server bundle directly into the same event
-  // loop. The HTTP server is non-blocking so the Electron UI is unaffected.
-  process.env.PORT = String(port);
-  process.env.HOST = "127.0.0.1";
-  process.env.ORIGIN = url;
+  return new Promise((resolve, reject) => {
+    const proc = spawn(bun, [SVELTEKIT_ENTRY], {
+      env: {
+        ...process.env,
+        PORT: String(port),
+        HOST: "127.0.0.1",
+        ORIGIN: url,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
-  // TypeScript (module: CommonJS) transpiles import() to require(), which
-  // breaks ESM modules. Use Function constructor so the dynamic import reaches
-  // the runtime as a native import() call.
-  const nativeImport = new Function("p", "return import(p)") as (p: string) => Promise<unknown>;
-  await nativeImport(SVELTEKIT_ENTRY);
-  await waitForPort(port);
+    serverProcess = proc;
+    let resolved = false;
+    const onLine = (chunk: Buffer) => {
+      const text = chunk.toString();
+      process.stdout.write(`[server] ${text}`);
+      if (!resolved && text.includes("Listening on")) {
+        resolved = true;
+        serverUrl = url;
+        resolve(url);
+      }
+    };
+    proc.stdout?.on("data", onLine);
+    proc.stderr?.on("data", (c) => process.stderr.write(`[server err] ${c}`));
 
-  serverUrl = url;
-  return url;
+    proc.on("exit", (code) => {
+      console.log(`[server] exited with code ${code}`);
+      serverProcess = null;
+      if (!resolved) reject(new Error(`server exited (code ${code}) before listening`));
+    });
+    proc.on("error", (e) => {
+      if (!resolved) reject(e);
+    });
+
+    setTimeout(() => {
+      if (!resolved) reject(new Error("SvelteKit server did not start within 15s"));
+    }, 15_000);
+  });
 }
 
 function createWindow(url: string) {
@@ -131,4 +157,10 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  if (serverProcess && !serverProcess.killed) {
+    serverProcess.kill("SIGTERM");
+  }
 });
