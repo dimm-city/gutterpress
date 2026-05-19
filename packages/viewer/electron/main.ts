@@ -114,12 +114,21 @@ function createWindow() {
     }
   );
 
-  // adapter-static emits an SPA in build/. We serve it via the app://
-  // protocol so the page has a stable origin. Load the root "/" — NOT
-  // "/index.html" — so SvelteKit's client router sees the root route.
+  // Dev mode: if VITE_DEV_SERVER_URL is set, load the vite dev server
+  // directly. That keeps HMR, Svelte error overlays, and the rest of the
+  // SvelteKit DX while still exercising the real Electron preload bridge
+  // (window.electron.* IPC) against the same main process used in prod.
+  //
+  // Prod mode: adapter-static emits an SPA in build/. We serve it via the
+  // app:// protocol so the page has a stable origin. Load the root "/" —
+  // NOT "/index.html" — so SvelteKit's client router sees the root route.
   // (Loading /index.html makes the router try to resolve a page named
   // "index.html" and throw "Not found: /index.html".)
-  mainWindow.loadURL("app://local/");
+  const devUrl = process.env.VITE_DEV_SERVER_URL;
+  mainWindow.loadURL(devUrl || "app://local/");
+  if (devUrl) {
+    mainWindow.webContents.openDevTools({ mode: "detach" });
+  }
 
   mainWindow.on("closed", () => {
     mainWindow = null;

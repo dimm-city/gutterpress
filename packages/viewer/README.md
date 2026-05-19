@@ -82,13 +82,37 @@ tools each user-visible action requires.
 ```bash
 # From repo root — install all workspace dependencies
 bun install
+```
 
-# SvelteKit dev server only (browser at http://localhost:5173)
+Three dev modes, pick by what you're iterating on:
+
+```bash
+# SvelteKit only (no Electron — runs in a regular browser tab at
+# http://localhost:5173). HMR works, but window.electron is undefined
+# so any IPC-driven feature (Open Folder, Save PDF) will toast
+# "Electron bridge unavailable". Good for pure UI/CSS iteration.
 bun --cwd packages/viewer run dev
 
-# Full Electron app (dev mode — compiles electron/ then launches)
+# Full Electron with SvelteKit HMR — RECOMMENDED for most viewer dev.
+# Runs vite dev + Electron together; Electron loads the vite dev
+# server (http://localhost:5173) instead of the static build. You
+# get HMR + the real IPC bridge in one process.
+#
+# DevTools opens detached on launch. Edit Svelte files → live reload.
+# Edit electron/*.ts → rebuild + restart manually (Ctrl+C, re-run).
+bun --cwd packages/viewer run electron:hmr
+
+# Full Electron against the production build (no HMR — static SPA
+# served via app:// protocol exactly like the packaged app does).
+# Use when you need to test something protocol-handler-specific or
+# when the HMR version misbehaves and you want a clean baseline.
 bun --cwd packages/viewer run electron:dev
 ```
+
+The `electron:hmr` script wires `VITE_DEV_SERVER_URL=http://localhost:5173`
+into the Electron main process; `electron/main.ts` checks that env var
+and calls `mainWindow.loadURL(devUrl)` when set, otherwise falls back to
+the static `app://local/`. Preload + IPC are identical in both modes.
 
 ## Building for production
 
