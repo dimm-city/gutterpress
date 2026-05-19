@@ -316,6 +316,18 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
     );
     await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
 
+    // Write a minimal index.html that redirects to book.html so static hosts
+    // (Azure SWA, GitHub Pages, etc.) have a default entry point. This is not
+    // the viewer chrome — the Electron viewer loads book.html directly by name.
+    const indexPath = path.join(outDir, "index.html");
+    if (!fs.existsSync(indexPath)) {
+      await fsp.writeFile(
+        indexPath,
+        `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=book.html"><title>print-md</title></head><body></body></html>\n`,
+        "utf-8"
+      );
+    }
+
     const fingerprintPath = await writeBuildFingerprint({
       command: "build",
       outputDir: outDir,
