@@ -179,5 +179,4 @@ const stat = await Bun.file(ZIP_PATH).stat();
 console.log(`\n✓ ${ZIP_PATH}  (${(stat.size / 1e6).toFixed(1)} MB)\n`);
 console.log("Install on Windows:");
 console.log(`  1. Unzip ${ZIP_NAME}`);
-console.log("  2. Install Bun: https://bun.sh");
-console.log("  3. Run electron.exe");
+console.log(`  2. Run print-md-viewer.exe`);

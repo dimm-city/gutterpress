@@ -1,5 +1,4 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
-import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
 
@@ -20,68 +19,46 @@ async function pickFreePort(): Promise<number> {
   });
 }
 
-// Resolve the SvelteKit Node-style server bundle. In dev: ../build/index.js
-// (produced by `vite build`). In packaged mode: bundled into resources.
+// Wait until something is listening on the given port (polls every 100 ms).
+function waitForPort(port: number, timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve, reject) => {
+    const attempt = () => {
+      const sock = net.createConnection({ port, host: "127.0.0.1" });
+      sock.once("connect", () => { sock.destroy(); resolve(); });
+      sock.once("error", () => {
+        sock.destroy();
+        if (Date.now() > deadline) return reject(new Error("Server did not start within 15s"));
+        setTimeout(attempt, 100);
+      });
+    };
+    attempt();
+  });
+}
+
+// Resolve the SvelteKit Node-style server bundle.
 const SVELTEKIT_ENTRY = path.resolve(__dirname, "../build/index.js");
 
-let serverProcess: ChildProcess | null = null;
 let serverUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
 
 async function startSvelteKitServer(): Promise<string> {
-  // Pre-pick a free port so we know the URL up front; adapter-node's stdout
-  // line ("Listening on http://HOST:PORT") echoes whatever PORT we pass,
-  // which is unhelpful when PORT=0.
   const port = await pickFreePort();
   const url = `http://127.0.0.1:${port}`;
 
-  // In a packaged app bun is not on the user's PATH. Use Electron's bundled
-  // Node runtime (ELECTRON_RUN_AS_NODE=1) so the SvelteKit adapter-node
-  // server can start without any external runtime dependency.
-  const [exe, args] = app.isPackaged
-    ? [process.execPath, [SVELTEKIT_ENTRY]]
-    : ["bun", [SVELTEKIT_ENTRY]];
+  // Run the SvelteKit adapter-node server in-process — no external runtime
+  // (bun, node) required on the host. Electron's main process IS Node.js;
+  // dynamic import() loads the ESM server bundle directly into the same event
+  // loop. The HTTP server is non-blocking so the Electron UI is unaffected.
+  process.env.PORT = String(port);
+  process.env.HOST = "127.0.0.1";
+  process.env.ORIGIN = url;
 
-  return new Promise((resolve, reject) => {
-    const proc = spawn(exe, args, {
-      env: {
-        ...process.env,
-        ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
-        PORT: String(port),
-        HOST: "127.0.0.1",
-        ORIGIN: url,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+  await import(SVELTEKIT_ENTRY);
+  await waitForPort(port);
 
-    serverProcess = proc;
-    let resolved = false;
-    const onLine = (chunk: Buffer) => {
-      const text = chunk.toString();
-      process.stdout.write(`[server] ${text}`);
-      // Adapter-node logs "Listening on <url>" once bound; ready to load.
-      if (!resolved && text.includes("Listening on")) {
-        resolved = true;
-        serverUrl = url;
-        resolve(url);
-      }
-    };
-    proc.stdout?.on("data", onLine);
-    proc.stderr?.on("data", (c) => process.stderr.write(`[server err] ${c}`));
-
-    proc.on("exit", (code) => {
-      console.log(`[server] exited with code ${code}`);
-      serverProcess = null;
-      if (!resolved) reject(new Error(`server exited (code ${code}) before listening`));
-    });
-    proc.on("error", (e) => {
-      if (!resolved) reject(e);
-    });
-
-    setTimeout(() => {
-      if (!resolved) reject(new Error("SvelteKit server did not start within 15s"));
-    }, 15_000);
-  });
+  serverUrl = url;
+  return url;
 }
 
 function createWindow(url: string) {
@@ -150,10 +127,4 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
-});
-
-app.on("before-quit", () => {
-  if (serverProcess && !serverProcess.killed) {
-    serverProcess.kill("SIGTERM");
-  }
 });
