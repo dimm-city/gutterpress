@@ -50,20 +50,39 @@ try {
   const page = await electronApp.firstWindow({ timeout: 30_000 });
   log(`first window opened, url=${page.url()}`);
 
-  // adapter-static + protocol.handle: page loads instantly at app://local/.
-  // No "wait for SvelteKit server" phase anymore — that whole thing is gone.
   await page.waitForLoadState("domcontentloaded");
   if (!page.url().startsWith("app://")) {
     fail(`window not on app:// origin (still at ${page.url()})`);
   }
   log(`page loaded at ${page.url()}`);
 
-  // The preload script exposes window.electron with startPreview/build/etc.
-  // Wait for it to be defined (Electron sometimes mounts it just after load).
+  // CRITICAL: verify the SPA actually rendered, not just that the URL
+  // is right. A broken protocol handler can return a 404 page that
+  // navigates fine but shows nothing. Check for a Svelte-rendered element.
+  try {
+    await page.waitForLoadState("networkidle", { timeout: 15_000 });
+  } catch { /* networkidle is best-effort */ }
+
+  const pageText = await page.evaluate(() => document.body.innerText || "");
+  log(`page body first 200 chars: ${pageText.slice(0, 200).replace(/\n/g, " | ")}`);
+
+  // Look for any of the strings the viewer's +page.svelte renders.
+  const sentinels = ["Open a folder", "Open Folder", "print-md"];
+  const found = sentinels.find((s) => pageText.includes(s));
+  if (!found) {
+    fail(
+      `SPA did not render — body did not contain any of: ${sentinels.join(", ")}.\n` +
+      `  body was: ${pageText.slice(0, 500)}`
+    );
+  }
+  log(`SPA rendered (found sentinel "${found}")`);
+
+  // Now verify the preload bridge.
   await page.waitForFunction(
     () => typeof (window).electron?.startPreview === "function",
     { timeout: 10_000 }
   );
+  log(`window.electron bridge is wired up`);
 
   // ── Trigger startPreview through the IPC bridge ───────────────────────
   log(`window.electron.startPreview({ input: ${fixturePath} })`);

@@ -5,10 +5,9 @@ import {
   ipcMain,
   protocol,
   shell,
-  net,
 } from "electron";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -116,10 +115,11 @@ function createWindow() {
   );
 
   // adapter-static emits an SPA in build/. We serve it via the app://
-  // protocol so the page has a stable origin (avoids file:// quirks and
-  // lets the preview iframe load from http://127.0.0.1:N without
-  // file://-vs-http:// mixed-content rules).
-  mainWindow.loadURL("app://local/index.html");
+  // protocol so the page has a stable origin. Load the root "/" — NOT
+  // "/index.html" — so SvelteKit's client router sees the root route.
+  // (Loading /index.html makes the router try to resolve a page named
+  // "index.html" and throw "Not found: /index.html".)
+  mainWindow.loadURL("app://local/");
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -133,30 +133,72 @@ function createWindow() {
 
 const STATIC_ROOT = path.resolve(__dirname, "../build");
 
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript",
+  ".mjs": "application/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+};
+
+function mimeFor(p: string): string {
+  return MIME[path.extname(p).toLowerCase()] ?? "application/octet-stream";
+}
+
 function registerAppProtocol() {
   protocol.handle("app", async (req) => {
     const url = new URL(req.url);
-    // app://local/foo/bar.js -> build/foo/bar.js
     let pathname = decodeURIComponent(url.pathname);
     if (!pathname || pathname === "/") pathname = "/index.html";
 
-    const filePath = path.join(STATIC_ROOT, pathname);
+    // strip leading "/" before joining so path.join treats it as relative
+    const rel = pathname.replace(/^\/+/, "");
+    const candidate = path.resolve(STATIC_ROOT, rel);
 
-    // Boundary check: stay inside STATIC_ROOT.
-    const resolved = path.resolve(filePath);
+    // Boundary check.
     if (
-      resolved !== STATIC_ROOT &&
-      !resolved.startsWith(STATIC_ROOT + path.sep)
+      candidate !== STATIC_ROOT &&
+      !candidate.startsWith(STATIC_ROOT + path.sep)
     ) {
+      console.error(`[app://] boundary violation: ${candidate}`);
       return new Response("Forbidden", { status: 403 });
     }
 
-    // adapter-static SPA fallback: anything that doesn't exist on disk
-    // gets index.html so client-side routing works.
-    const fileUrl = pathToFileURL(resolved).toString();
-    const res = await net.fetch(fileUrl).catch(() => null);
-    if (res && res.ok) return res;
-    return net.fetch(pathToFileURL(path.join(STATIC_ROOT, "index.html")).toString());
+    // Try the exact file first.
+    try {
+      const data = await readFile(candidate);
+      return new Response(data, {
+        headers: { "content-type": mimeFor(candidate) },
+      });
+    } catch {
+      // fall through to SPA fallback
+    }
+
+    // adapter-static SPA fallback: serve index.html for unknown paths so
+    // client-side routing works.
+    try {
+      const data = await readFile(path.join(STATIC_ROOT, "index.html"));
+      return new Response(data, {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    } catch (e) {
+      console.error(
+        `[app://] FATAL: index.html not found at ${STATIC_ROOT}/index.html (${(e as Error).message})`
+      );
+      return new Response(
+        `static root missing at ${STATIC_ROOT}`,
+        { status: 500 }
+      );
+    }
   });
 }
 
