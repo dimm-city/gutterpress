@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, join } from "node:path";
 import type { Config } from "stylelint";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
@@ -42,7 +42,7 @@ const check: Check = {
       const result = await stylelint.lint({
         files,
         config: stylelintConfig as Config,
-        configBasedir: configPath ? dirname(configPath) : undefined,
+        configBasedir: configPath ? dirname(configPath) : import.meta.dirname,
         formatter: "json",
       });
 

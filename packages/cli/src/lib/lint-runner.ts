@@ -68,11 +68,11 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     files,
     config: stylelintConfig as Config,
     // For user-supplied configs, resolve `extends`/plugin paths relative to
-    // the config file. For the bundled default, stylelint resolves against
-    // cwd (its built-in fallback) — fine because the default config's
-    // `extends: ["stylelint-config-standard"]` gets resolved through the
-    // bundled module graph.
-    configBasedir: configPath ? dirname(resolve(configPath)) : undefined,
+    // the config file. For the bundled default config, resolve relative to
+    // this module so stylelint finds stylelint-config-standard in the
+    // workspace node_modules rather than searching from cwd (which may be
+    // a temp dir with no node_modules during tests or packaged builds).
+    configBasedir: configPath ? dirname(resolve(configPath)) : import.meta.dirname,
     formatter: "string",
   });
 
