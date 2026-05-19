@@ -25,20 +25,23 @@ import { resolve } from "node:path";
 function log(msg) { console.log(`[etest] ${msg}`); }
 function fail(msg) { console.error(`[etest] FAIL: ${msg}`); process.exit(1); }
 
-const [, , mainArg, fixtureArg] = process.argv;
-if (!mainArg || !fixtureArg) {
-  fail("usage: electron-driver.test.mjs <main-js-path> <fixture-dir>");
+const [, , exeArg, fixtureArg] = process.argv;
+if (!exeArg || !fixtureArg) {
+  fail("usage: electron-driver.test.mjs <packaged-exe-path> <fixture-dir>");
 }
-const mainPath = resolve(mainArg);
+const exePath = resolve(exeArg);
 const fixturePath = resolve(fixtureArg);
-if (!existsSync(mainPath)) fail(`main.js not found at ${mainPath}`);
+if (!existsSync(exePath)) fail(`packaged exe not found at ${exePath}`);
 if (!existsSync(fixturePath)) fail(`fixture not found at ${fixturePath}`);
 
-log(`launching electron with main=${mainPath}`);
+log(`launching packaged electron app: ${exePath}`);
+// executablePath points at the packaged print-md-viewer.exe (or .AppImage)
+// produced by electron-builder. With no args, it boots the embedded
+// electron-dist/main.js using the bundled Electron runtime — i.e. exactly
+// what the end user runs when they double-click the installed app.
 const electronApp = await electron.launch({
-  args: [mainPath],
-  // Force a colourless theme so the launch isn't blocked by any system
-  // colour-scheme query on a server runner.
+  executablePath: exePath,
+  args: [],
   env: { ...process.env, ELECTRON_DISABLE_GPU: "1" },
 });
 

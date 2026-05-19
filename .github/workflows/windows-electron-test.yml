@@ -57,17 +57,17 @@ jobs:
         working-directory: packages/viewer
         run: npm run dist:win
 
-      - name: Locate unpacked app dir
+      - name: Locate packaged exe
         id: locate
         shell: pwsh
         run: |
           # electron-builder writes the unpacked app to dist/win-unpacked/.
           $unpacked = "${{ github.workspace }}\packages\viewer\dist\win-unpacked"
           if (-not (Test-Path $unpacked)) { throw "win-unpacked not found at $unpacked" }
-          $main = Join-Path $unpacked "resources\app\electron-dist\main.js"
-          if (-not (Test-Path $main)) { throw "main.js not found at $main" }
-          "main=$main" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "main.js: $main"
+          $exe = Join-Path $unpacked "print-md-viewer.exe"
+          if (-not (Test-Path $exe)) { throw "exe not found at $exe" }
+          "exe=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "exe: $exe"
 
       - name: Install playwright in isolated dir
         shell: pwsh
@@ -87,7 +87,7 @@ jobs:
         run: |
           $pwDir = "${{ runner.temp }}\pw"
           $fixture = "${{ github.workspace }}\packages\cli\tests\integration\fixtures\smoke"
-          node "$pwDir\electron-driver.test.mjs" "${{ steps.locate.outputs.main }}" $fixture
+          node "$pwDir\electron-driver.test.mjs" "${{ steps.locate.outputs.exe }}" $fixture
 
       - name: Upload diagnostics on failure
         if: failure()
