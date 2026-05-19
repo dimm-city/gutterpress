@@ -12,7 +12,7 @@ on:
     paths:
       - 'scripts/install.ps1'
       - 'packages/cli/tests/integration/**'
-      - 'packages/cli/src/lib/embedded-assets.ts'
+      - 'packages/lib/src/lib/embedded-assets.ts'
       - '.github/workflows/windows-install-test.yml'
   workflow_call:
     inputs:
@@ -21,6 +21,14 @@ on:
         required: false
         default: 'main'
         type: string
+      use_artifact:
+        description: 'Download the pre-built windows binary artifact instead of rebuilding from source'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   windows-install:
@@ -30,28 +38,37 @@ jobs:
       contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           ref: ${{ inputs.script_ref || github.ref }}
 
+      # ── Build path: compile binary from source (standalone run or PR) ────────
       - name: Setup Bun
+        if: ${{ !inputs.use_artifact }}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
       - name: Install dependencies
+        if: ${{ !inputs.use_artifact }}
         shell: pwsh
         run: bun install --frozen-lockfile
 
       - name: Build standalone binary for windows-x64
+        if: ${{ !inputs.use_artifact }}
         shell: pwsh
         run: bun --cwd packages/cli scripts/compile.ts bun-windows-x64 ../../print-md-cli-windows-x64.exe
 
+      # ── Artifact path: download binary built by the release workflow ─────────
+      - name: Download pre-built windows binary
+        if: ${{ inputs.use_artifact }}
+        uses: actions/download-artifact@v4
+        with:
+          name: print-md-cli-windows-x64.exe
+          path: .
+
       - name: Smoke-test binary directly
         shell: pwsh
-        # Run the freshly-built binary BEFORE install.ps1 wraps anything.
-        # This surfaces the raw stderr in the CI step output if it crashes,
-        # rather than being masked by run-install-test.ps1's error handling.
         run: |
           $exe = "${{ github.workspace }}\print-md-cli-windows-x64.exe"
           Write-Host "Binary: $exe"
@@ -65,11 +82,7 @@ jobs:
       - name: Run install script (with local binary)
         shell: pwsh
         env:
-          # Skip the GitHub Release download — verify the binary this branch
-          # actually produces, not whatever is in the latest published release.
           PRINTMD_LOCAL_BINARY: ${{ github.workspace }}\print-md-cli-windows-x64.exe
-          # Still set the workflow token in case anything still needs it
-          # (e.g. future installer steps that talk to the API).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./packages/cli/scripts/install.ps1
 
@@ -80,7 +93,7 @@ jobs:
       - name: Build HTML output from smoke fixture
         shell: pwsh
         run: |
-          # Use the installed binary if present, fall back to the freshly-built exe.
+          # Use the installed binary if present, fall back to the workspace exe.
           $installed = "$env:LOCALAPPDATA\Programs\print-md\print-md.exe"
           $workspace = "${{ github.workspace }}\print-md-cli-windows-x64.exe"
           $exe = if (Test-Path $installed) { $installed } else { $workspace }
@@ -92,7 +105,6 @@ jobs:
           & $exe build $fixtureDir --format html --out $outDir
           if ($LASTEXITCODE -ne 0) { throw "print-md build --format html exited $LASTEXITCODE" }
 
-          # Verify all expected output files are present.
           $expected = @("book.html", "vendor\paged.polyfill.js", "preview\scripts\pagedjs-interface.js", "preview\scripts\pagedjs-bridge.js")
           foreach ($f in $expected) {
             $path = Join-Path $outDir $f
@@ -103,14 +115,12 @@ jobs:
       - name: Verify Paged.js renders (smoke)
         shell: pwsh
         run: |
-          # Install playwright (library only — no browser download; uses system Chrome).
           $pwDir = "${{ runner.temp }}\pw"
           New-Item -ItemType Directory -Force -Path $pwDir | Out-Null
           Set-Location $pwDir
           npm init -y | Out-Null
           npm install playwright 2>&1 | Where-Object { $_ -notmatch "^npm warn" }
 
-          # Find system Chrome — present on all windows-latest runners.
           $chromePaths = @(
             "C:\Program Files\Google\Chrome\Application\chrome.exe",
             "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",

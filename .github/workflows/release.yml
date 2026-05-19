@@ -259,6 +259,7 @@ jobs:
     uses: ./.github/workflows/windows-install-test.yml
     with:
       script_ref: ${{ needs.version.outputs.tag }}
+      use_artifact: true
 
   # ── 5. Publish to npm (skippable) ─────────────────────────────────────────
   publish-npm:
