@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import net from "node:net";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 async function pickFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -66,7 +67,10 @@ async function startSvelteKitServer(): Promise<string> {
   const load = new Function("specifier", "return import(specifier)") as (
     s: string
   ) => Promise<unknown>;
-  await load(SVELTEKIT_ENTRY);
+  // Node's ESM loader requires file:// URLs on Windows — a raw absolute path
+  // like "C:\\..." is rejected as "protocol 'c:'". pathToFileURL produces
+  // the correct file:///C:/... form and is a no-op on POSIX.
+  await load(pathToFileURL(SVELTEKIT_ENTRY).href);
 
   await waitForServer(port);
   serverUrl = url;
