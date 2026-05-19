@@ -10,11 +10,11 @@
     "dev": "npx vite dev",
     "build": "npx vite build",
     "preview": "npx vite preview",
-    "electron:build": "bun scripts/build-electron.ts",
+    "electron:build": "tsc -p electron/tsconfig.json && node -e \"require('fs').writeFileSync('electron-dist/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\"",
     "electron:dev": "npm run build && npm run electron:build && electron electron-dist/main.js",
-    "dist:linux": "npm run build && npm run electron:build && npx electron-builder --linux AppImage --config electron-builder.yml",
-    "dist:win": "npm run build && npm run electron:build && npx electron-builder --win zip --config electron-builder.yml",
-    "dist:mac": "npm run build && npm run electron:build && npx electron-builder --mac dmg --config electron-builder.yml",
+    "dist:linux": "npm run build && npm run electron:build && electron-builder --linux AppImage --config electron-builder.yml",
+    "dist:win": "npm run build && npm run electron:build && electron-builder --win zip --config electron-builder.yml",
+    "dist:mac": "npm run build && npm run electron:build && electron-builder --mac dmg --config electron-builder.yml",
     "check": "npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
