@@ -76,14 +76,12 @@ jobs:
           $exe = Join-Path $extract "print-md-viewer.exe"
           if (-not (Test-Path $exe)) { throw "exe not found at $exe after extraction" }
 
-          # Sanity check: verify the lib bundle is shipped in the zip.
-          # The lib is now bundled into electron-dist/lib.cjs (no
-          # node_modules/@dimm-city/print-md-lib package on disk).
-          $libBundle = Join-Path $extract "resources\app\electron-dist\lib.cjs"
-          if (-not (Test-Path $libBundle)) {
-            throw "MISSING: $libBundle — build-electron.ts did not bundle the lib"
+          # Sanity check: verify the lib is shipped via node_modules.
+          $libIndex = Join-Path $extract "resources\app\node_modules\@dimm-city\print-md-lib\dist\index.js"
+          if (-not (Test-Path $libIndex)) {
+            throw "MISSING: $libIndex — lib not packaged correctly"
           }
-          Write-Host "lib bundle present: $libBundle"
+          Write-Host "lib present: $libIndex"
 
           "exe=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
