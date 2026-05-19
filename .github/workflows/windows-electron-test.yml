@@ -57,17 +57,33 @@ jobs:
         working-directory: packages/viewer
         run: npm run dist:win
 
-      - name: Locate packaged exe
+      - name: Extract zip artifact (mirror what users get)
         id: locate
         shell: pwsh
         run: |
-          # electron-builder writes the unpacked app to dist/win-unpacked/.
-          $unpacked = "${{ github.workspace }}\packages\viewer\dist\win-unpacked"
-          if (-not (Test-Path $unpacked)) { throw "win-unpacked not found at $unpacked" }
-          $exe = Join-Path $unpacked "print-md-viewer.exe"
-          if (-not (Test-Path $exe)) { throw "exe not found at $exe" }
+          # Test the actual zip artifact that ships to users, NOT the
+          # dist/win-unpacked tree (electron-builder's intermediate output).
+          # afterPack-related issues that affect npm install ordering only
+          # surface in the final zip — this catches that class of bug.
+          $zip = Get-ChildItem "${{ github.workspace }}\packages\viewer\dist\*-win.zip" | Select-Object -First 1
+          if (-not $zip) { throw "no *-win.zip found in dist/" }
+          Write-Host "zip: $($zip.FullName) ($([math]::Round($zip.Length/1MB,1))MB)"
+
+          $extract = "${{ runner.temp }}\viewer-extracted"
+          New-Item -ItemType Directory -Force -Path $extract | Out-Null
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath $extract -Force
+
+          $exe = Join-Path $extract "print-md-viewer.exe"
+          if (-not (Test-Path $exe)) { throw "exe not found at $exe after extraction" }
+
+          # Sanity check: verify the lib is actually shipped in the zip.
+          $libPkg = Join-Path $extract "resources\app\node_modules\@dimm-city\print-md-lib\package.json"
+          if (-not (Test-Path $libPkg)) {
+            throw "MISSING: $libPkg — afterPack did not ship the lib in the zip"
+          }
+          Write-Host "lib package.json present: $libPkg"
+
           "exe=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "exe: $exe"
 
       - name: Install playwright in isolated dir
         shell: pwsh

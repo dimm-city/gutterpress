@@ -79,19 +79,21 @@ try {
   }
   log(`/api/preview ok: ${result.body}`);
 
-  // ── Fetch book.html from the returned preview URL ─────────────────────
+  // ── Fetch book.html from outside the renderer (avoid CORS) ────────────
+  // In the real viewer the iframe loads the preview URL via navigation —
+  // not fetch — so cross-origin is fine. But cross-origin fetch from
+  // page.evaluate is blocked, so we do this call from node instead.
   let data;
   try { data = JSON.parse(result.body); } catch { fail(`bad json: ${result.body}`); }
   if (typeof data.url !== "string" || !/^http:\/\/127\.0\.0\.1:\d+$/.test(data.url)) {
     fail(`bad url in response: ${data.url}`);
   }
 
-  const bookRes = await page.evaluate(async (u) => {
-    const r = await fetch(`${u}/book.html`);
-    return { status: r.status, html: await r.text() };
-  }, data.url);
+  const bookRes = await fetch(`${data.url}/book.html`);
   if (bookRes.status !== 200) fail(`book.html returned ${bookRes.status}`);
-  log(`book.html served, ${bookRes.html.length} bytes`);
+  const bookHtml = await bookRes.text();
+  if (bookHtml.length < 500) fail(`book.html unexpectedly short: ${bookHtml.length} bytes`);
+  log(`book.html served, ${bookHtml.length} bytes`);
 
   log("PASS: directory load works end-to-end inside Electron");
 } catch (err) {
