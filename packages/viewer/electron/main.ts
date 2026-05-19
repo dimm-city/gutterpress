@@ -57,6 +57,7 @@ async function waitForServer(port: number, timeoutMs = 15_000): Promise<void> {
  * adapter-node output.
  */
 async function startSvelteKitServer(): Promise<string> {
+  const t0 = Date.now();
   const port = await pickFreePort();
   const url = `http://127.0.0.1:${port}`;
 
@@ -70,9 +71,15 @@ async function startSvelteKitServer(): Promise<string> {
   // Node's ESM loader requires file:// URLs on Windows — a raw absolute path
   // like "C:\\..." is rejected as "protocol 'c:'". pathToFileURL produces
   // the correct file:///C:/... form and is a no-op on POSIX.
+  const tImport = Date.now();
   await load(pathToFileURL(SVELTEKIT_ENTRY).href);
+  const tListen = Date.now();
 
   await waitForServer(port);
+  const tReady = Date.now();
+  console.log(
+    `[startup] pickPort=${tImport - t0}ms import=${tListen - tImport}ms listen=${tReady - tListen}ms total=${tReady - t0}ms`
+  );
   serverUrl = url;
   return url;
 }
