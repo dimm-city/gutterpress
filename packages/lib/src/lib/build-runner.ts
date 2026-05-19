@@ -173,6 +173,13 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
       const page = await browser.newPage();
       await page.setViewport({ width: 1920, height: 1080 });
 
+      // Large books (108+ pages, many fonts, heavy custom CSS) need a long
+      // budget for both navigation (resource load) and pagination.
+      // Allow up to 60 minutes for the full pipeline before giving up.
+      const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
+      page.setDefaultNavigationTimeout(RENDER_TIMEOUT_MS);
+      page.setDefaultTimeout(RENDER_TIMEOUT_MS);
+
       await page.goto(`http://127.0.0.1:${port}/${htmlFilename}`, {
         waitUntil: "networkidle0",
       });
@@ -183,7 +190,7 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
       await page
         .waitForFunction(
           () => (globalThis as any).__PAGED_RENDERED__ === true,
-          { timeout: 180_000 }
+          { timeout: RENDER_TIMEOUT_MS }
         )
         .catch(() => {});
 
