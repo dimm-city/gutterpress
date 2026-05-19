@@ -44,13 +44,15 @@ exports.default = async function afterPack({ appOutDir }) {
 
   await writeFile(join(appDir, "package.json"), JSON.stringify(tmpPkg, null, 2));
 
-  const bun = process.platform === "win32" ? "bun.cmd" : "bun";
-  const result = spawnSync(bun, ["install", "--production"], {
+  // Use shell:true on Windows so cmd.exe resolves bun.cmd correctly.
+  const result = spawnSync("bun", ["install", "--production"], {
     cwd: appDir,
     stdio: "inherit",
+    shell: process.platform === "win32",
   });
+  if (result.error) throw result.error;
   if (result.status !== 0) {
-    throw new Error(`bun install failed with status ${result.status}`);
+    throw new Error(`bun install failed with exit code ${result.status}`);
   }
 
   // Restore real package.json.
