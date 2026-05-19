@@ -5,23 +5,24 @@
   "type": "module",
   "main": "electron-dist/main.js",
   "author": "itlackey",
-  "description": "Desktop viewer for print-md (Electron + SvelteKit).",
+  "description": "Desktop viewer for print-md (Electron + SvelteKit static SPA).",
   "scripts": {
     "dev": "npx vite dev",
     "build": "npx vite build",
     "preview": "npx vite preview",
-    "electron:build": "tsc -p electron/tsconfig.json && node -e \"require('fs').writeFileSync('electron-dist/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\"",
-    "electron:dev": "npm run electron:build && npm run build && electron electron-dist/main.js",
+    "electron:build": "bun scripts/build-electron.ts",
+    "electron:dev": "npm run build && npm run electron:build && electron electron-dist/main.js",
     "dist:linux": "npm run build && npm run electron:build && npx electron-builder --linux AppImage --config electron-builder.yml",
     "dist:win": "npm run build && npm run electron:build && npx electron-builder --win zip --config electron-builder.yml",
     "dist:mac": "npm run build && npm run electron:build && npx electron-builder --mac dmg --config electron-builder.yml",
     "check": "npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "@dimm-city/print-md-lib": "workspace:*"
+    "puppeteer-core": "^24.43.0"
   },
   "devDependencies": {
-    "@sveltejs/adapter-node": "^5.2.0",
+    "@dimm-city/print-md-lib": "workspace:*",
+    "@sveltejs/adapter-static": "^3.0.0",
     "@sveltejs/kit": "^2.5.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@types/node": "^22.0.0",

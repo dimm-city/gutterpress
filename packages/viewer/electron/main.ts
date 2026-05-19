@@ -1,96 +1,81 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
-import net from "node:net";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  protocol,
+  shell,
+  net,
+} from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { basename } from "node:path";
 
-async function pickFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.unref();
-    srv.on("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      if (typeof addr === "object" && addr) {
-        const port = addr.port;
-        srv.close(() => resolve(port));
-      } else {
-        srv.close(() => reject(new Error("no address")));
-      }
-    });
-  });
+// ──────────────────────────────────────────────────────────────────────────
+// Lib loader
+//
+// The lib is bundled into electron-dist/lib.cjs at build time by
+// scripts/build-electron.ts. main.cjs require()s it directly — no
+// node_modules/@dimm-city/print-md-lib package on disk. This eliminates
+// the entire afterPack workspace-symlink + npm install + prune problem
+// that broke beta.11.
+//
+// Types are declared narrowly here rather than imported from the lib's
+// source — keeping electron/tsconfig.json's moduleResolution simple and
+// avoiding cross-package source coupling.
+// ──────────────────────────────────────────────────────────────────────────
+
+interface PreviewHandle {
+  url: string;
+  port: number;
+  inputPath: string;
+  stop: () => Promise<void>;
+}
+interface SplitOutPath {
+  outDir: string;
+  pdfFileOverride?: string;
+}
+interface BuildResult {
+  outDir: string;
+  htmlPath?: string;
+  pdfPath?: string;
+  fingerprintPath?: string;
+}
+interface ManifestWithPath {
+  manifest: { title?: string };
+  manifestDir: string;
+}
+interface LibModule {
+  startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
+  loadManifestWithPath: (input: string) => Promise<ManifestWithPath>;
+  splitOutPath: (out: string | undefined, format: string) => SplitOutPath;
+  runBuild: (opts: Record<string, unknown>) => Promise<BuildResult>;
+  BuildError: new (message: string) => Error;
 }
 
-// Resolve the SvelteKit Node-style server bundle.
-const SVELTEKIT_ENTRY = path.resolve(__dirname, "../build/index.js");
+let libPromise: Promise<LibModule> | null = null;
 
-let serverUrl: string | null = null;
+function loadLib(): Promise<LibModule> {
+  if (!libPromise) {
+    const libPath = path.resolve(__dirname, "./lib.cjs");
+    libPromise = Promise.resolve(require(libPath) as LibModule);
+  }
+  return libPromise;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Preview server state
+// ──────────────────────────────────────────────────────────────────────────
+
+let activePreview: PreviewHandle | null = null;
+
+// ──────────────────────────────────────────────────────────────────────────
+// Window management
+// ──────────────────────────────────────────────────────────────────────────
+
 let mainWindow: BrowserWindow | null = null;
 
-/**
- * Poll until a TCP port on 127.0.0.1 is accepting connections.
- */
-async function waitForServer(port: number, timeoutMs = 15_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const ready = await new Promise<boolean>((resolve) => {
-      const socket = net.createConnection({ port, host: "127.0.0.1" });
-      socket.on("connect", () => { socket.destroy(); resolve(true); });
-      socket.on("error", () => resolve(false));
-    });
-    if (ready) return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`SvelteKit server did not start within ${timeoutMs / 1000}s`);
-}
-
-/**
- * Start the SvelteKit server in-process using Electron's built-in Node.js.
- *
- * @dimm-city/print-md is now Node.js-compatible (no Bun-specific APIs), so
- * there is no longer any need to spawn a separate Bun subprocess.  The
- * adapter-node bundle reads PORT / HOST / ORIGIN from the environment, starts
- * its HTTP server, and returns — we poll until the port is accepting
- * connections before loading the URL into the BrowserWindow.
- *
- * `new Function(...)` is used so TypeScript's `module: CommonJS` transform
- * does not downgrade the dynamic import() to require(), which would break ESM
- * adapter-node output.
- */
-async function startSvelteKitServer(): Promise<string> {
-  const t0 = Date.now();
-  const port = await pickFreePort();
-  const url = `http://127.0.0.1:${port}`;
-
-  process.env.PORT = String(port);
-  process.env.HOST = "127.0.0.1";
-  process.env.ORIGIN = url;
-
-  const load = new Function("specifier", "return import(specifier)") as (
-    s: string
-  ) => Promise<unknown>;
-  // Node's ESM loader requires file:// URLs on Windows — a raw absolute path
-  // like "C:\\..." is rejected as "protocol 'c:'". pathToFileURL produces
-  // the correct file:///C:/... form and is a no-op on POSIX.
-  const tImport = Date.now();
-  await load(pathToFileURL(SVELTEKIT_ENTRY).href);
-  const tListen = Date.now();
-
-  await waitForServer(port);
-  const tReady = Date.now();
-  console.log(
-    `[startup] pickPort=${tImport - t0}ms import=${tListen - tImport}ms listen=${tReady - tListen}ms total=${tReady - t0}ms`
-  );
-  serverUrl = url;
-  return url;
-}
-
-const LOADING_HTML = `data:text/html,<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-body{margin:0;background:#1e1e1e;color:#9ca3af;display:flex;flex-direction:column;align-items:center;
-justify-content:center;height:100vh;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif}
-p{font-size:15px;margin:0 0 8px}small{font-size:12px;color:#555}
-</style></head><body><p>Starting print-md viewer…</p><small>Loading server</small></body></html>`;
-
-function createWindow(url?: string) {
+function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -104,10 +89,8 @@ function createWindow(url?: string) {
   });
   mainWindow.setMenuBarVisibility(false);
 
-  // Surface every error from the renderer to stdout so users running from
-  // a terminal (or installs that capture logs) can see why a directory load
-  // failed — without these handlers, a thrown error in page.svelte or a
-  // failed iframe load produces no externally visible diagnostic.
+  // Surface renderer errors to stdout so terminal-launched runs reveal
+  // their own failures without needing DevTools.
   mainWindow.webContents.on(
     "did-fail-load",
     (_e, errorCode, errorDescription, validatedURL) => {
@@ -122,7 +105,6 @@ function createWindow(url?: string) {
   mainWindow.webContents.on(
     "console-message",
     (_e, level, message, line, sourceId) => {
-      // Levels: 0=verbose, 1=info, 2=warning, 3=error
       if (level >= 2) {
         console.error(
           `[renderer:${level === 3 ? "error" : "warn"}] ${sourceId}:${line} ${message}`
@@ -131,12 +113,68 @@ function createWindow(url?: string) {
     }
   );
 
-  mainWindow.loadURL(url ?? LOADING_HTML);
+  // adapter-static emits an SPA in build/. We serve it via the app://
+  // protocol so the page has a stable origin (avoids file:// quirks and
+  // lets the preview iframe load from http://127.0.0.1:N without
+  // file://-vs-http:// mixed-content rules).
+  mainWindow.loadURL("app://local/index.html");
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
   return mainWindow;
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// app:// protocol — serves the static SvelteKit SPA from build/
+// ──────────────────────────────────────────────────────────────────────────
+
+const STATIC_ROOT = path.resolve(__dirname, "../build");
+
+function registerAppProtocol() {
+  protocol.handle("app", async (req) => {
+    const url = new URL(req.url);
+    // app://local/foo/bar.js -> build/foo/bar.js
+    let pathname = decodeURIComponent(url.pathname);
+    if (!pathname || pathname === "/") pathname = "/index.html";
+
+    const filePath = path.join(STATIC_ROOT, pathname);
+
+    // Boundary check: stay inside STATIC_ROOT.
+    const resolved = path.resolve(filePath);
+    if (
+      resolved !== STATIC_ROOT &&
+      !resolved.startsWith(STATIC_ROOT + path.sep)
+    ) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    // adapter-static SPA fallback: anything that doesn't exist on disk
+    // gets index.html so client-side routing works.
+    const fileUrl = pathToFileURL(resolved).toString();
+    const res = await net.fetch(fileUrl).catch(() => null);
+    if (res && res.ok) return res;
+    return net.fetch(pathToFileURL(path.join(STATIC_ROOT, "index.html")).toString());
+  });
+}
+
+// Register the scheme as standard (must happen before app.whenReady) so
+// fetch from the page works and ServiceWorker / IndexedDB / etc. behave.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "app",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+    },
+  },
+]);
+
+// ──────────────────────────────────────────────────────────────────────────
+// IPC handlers (replace the deleted /api/* SvelteKit routes)
+// ──────────────────────────────────────────────────────────────────────────
 
 ipcMain.handle("dialog:openDirectory", async () => {
   if (!mainWindow) return null;
@@ -163,30 +201,137 @@ ipcMain.handle("shell:openExternal", async (_e, url: string) => {
   await shell.openExternal(url);
 });
 
-app.whenReady().then(async () => {
-  // Show the window immediately with a loading screen so the user gets
-  // visual feedback while the SvelteKit server warms up.
-  const win = createWindow();
+ipcMain.handle("api:status", async () => {
+  return { name: "@dimm-city/print-md-viewer", runtime: "node", ok: true };
+});
 
-  try {
-    const url = await startSvelteKitServer();
-    win.loadURL(url);
-  } catch (err) {
-    console.error("Failed to start SvelteKit server:", err);
-    dialog.showErrorBox(
-      "Server failed to start",
-      err instanceof Error ? err.message : String(err)
-    );
-    app.quit();
+ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
+  const input = args?.input;
+  if (!input || typeof input !== "string") {
+    throw new Error("Missing 'input' (absolute path to a project directory)");
   }
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0 && serverUrl) {
-      createWindow(serverUrl);
+  const lib = await loadLib();
+
+  // Replace any existing preview before starting a new one.
+  if (activePreview) {
+    await activePreview.stop().catch(() => {});
+    activePreview = null;
+  }
+
+  try {
+    activePreview = await lib.startPreviewServer({
+      input,
+      port: 0,
+      host: "127.0.0.1",
+      noWatch: false,
+      openBrowser: false,
+      verbose: false,
+      debug: false,
+      installSignalHandlers: false,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const stack = e instanceof Error ? e.stack ?? "" : "";
+    console.error(`[api:preview] startPreviewServer failed: input=${input}`);
+    console.error(`  ${msg}`);
+    if (stack) console.error(stack);
+    throw new Error(`Preview server failed to start: ${msg}`);
+  }
+
+  let title: string = basename(input);
+  try {
+    const { manifest } = await lib.loadManifestWithPath(input);
+    if (manifest.title) title = manifest.title;
+  } catch {
+    /* not a manifest project — keep dir basename */
+  }
+
+  return {
+    url: activePreview.url,
+    port: activePreview.port,
+    input: activePreview.inputPath,
+    title,
+  };
+});
+
+ipcMain.handle(
+  "api:build",
+  async (
+    _e,
+    args: {
+      input: string;
+      format?: "pdf" | "html" | "pdfx";
+      out?: string;
+      title?: string;
+      pdfxFlavor?: string;
+      icc?: string;
+      manifest?: string;
+      stripAnnotations?: boolean;
+      skipLint?: boolean;
+      skipPreValidate?: boolean;
+      skipPostValidate?: boolean;
     }
+  ) => {
+    if (!args?.input) throw new Error("Missing 'input'");
+    const format = args.format ?? "pdf";
+    if (format === "pdfx" && !args.icc) {
+      throw new Error("PDF/X format requires 'icc' (ICC profile path)");
+    }
+
+    const lib = await loadLib();
+    const { outDir, pdfFileOverride } = lib.splitOutPath(args.out, format);
+
+    try {
+      const result = await lib.runBuild({
+        inputDir: args.input,
+        format,
+        outDir,
+        pdfFileOverride,
+        title: args.title,
+        pdfxFlavor: args.pdfxFlavor as any,
+        iccPath: args.icc,
+        manifestPath: args.manifest,
+        stripAnnotations: args.stripAnnotations,
+        skipLint: args.skipLint,
+        skipPreValidate: args.skipPreValidate,
+        skipPostValidate: args.skipPostValidate,
+        rawArgs: { input: args.input, format, out: args.out },
+      });
+      return {
+        outDir: result.outDir,
+        htmlPath: result.htmlPath,
+        pdfPath: result.pdfPath,
+        fingerprintPath: result.fingerprintPath,
+      };
+    } catch (e: unknown) {
+      if (e instanceof lib.BuildError) {
+        const err = new Error(e.message);
+        (err as Error & { code?: string }).code = "BUILD_ERROR";
+        throw err;
+      }
+      throw e;
+    }
+  }
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// App lifecycle
+// ──────────────────────────────────────────────────────────────────────────
+
+app.whenReady().then(async () => {
+  registerAppProtocol();
+  createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on("window-all-closed", () => {
+app.on("window-all-closed", async () => {
+  if (activePreview) {
+    await activePreview.stop().catch(() => {});
+    activePreview = null;
+  }
   if (process.platform !== "darwin") app.quit();
 });

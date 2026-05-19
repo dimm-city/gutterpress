@@ -50,52 +50,52 @@ try {
   const page = await electronApp.firstWindow({ timeout: 30_000 });
   log(`first window opened, url=${page.url()}`);
 
-  // The first window shows a "Loading server" data: URL until the
-  // SvelteKit server is ready. Wait for navigation to the real http URL.
-  const t0 = Date.now();
-  while (Date.now() - t0 < 60_000) {
-    const url = page.url();
-    if (url.startsWith("http://")) break;
-    await new Promise((r) => setTimeout(r, 250));
+  // adapter-static + protocol.handle: page loads instantly at app://local/.
+  // No "wait for SvelteKit server" phase anymore — that whole thing is gone.
+  await page.waitForLoadState("domcontentloaded");
+  if (!page.url().startsWith("app://")) {
+    fail(`window not on app:// origin (still at ${page.url()})`);
   }
-  if (!page.url().startsWith("http://")) {
-    fail(`window never navigated to http:// (still at ${page.url()})`);
-  }
-  log(`sveltekit server ready at ${page.url()} after ${Date.now() - t0}ms`);
+  log(`page loaded at ${page.url()}`);
 
-  // ── Hit /api/preview from inside the renderer ─────────────────────────
-  log(`POST /api/preview with input=${fixturePath} from renderer`);
+  // The preload script exposes window.electron with startPreview/build/etc.
+  // Wait for it to be defined (Electron sometimes mounts it just after load).
+  await page.waitForFunction(
+    () => typeof (window).electron?.startPreview === "function",
+    { timeout: 10_000 }
+  );
+
+  // ── Trigger startPreview through the IPC bridge ───────────────────────
+  log(`window.electron.startPreview({ input: ${fixturePath} })`);
   const result = await page.evaluate(async (input) => {
-    const r = await fetch("/api/preview", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ input }),
-    });
-    return { ok: r.ok, status: r.status, body: await r.text() };
+    try {
+      const r = await (window).electron.startPreview({ input });
+      return { ok: true, data: r };
+    } catch (e) {
+      return { ok: false, error: e?.message ?? String(e) };
+    }
   }, fixturePath);
 
   if (!result.ok) {
-    fail(`/api/preview returned ${result.status}: ${result.body}`);
+    fail(`startPreview threw: ${result.error}`);
   }
-  log(`/api/preview ok: ${result.body}`);
+  log(`startPreview ok: ${JSON.stringify(result.data)}`);
 
-  // ── Fetch book.html from outside the renderer (avoid CORS) ────────────
-  // In the real viewer the iframe loads the preview URL via navigation —
-  // not fetch — so cross-origin is fine. But cross-origin fetch from
-  // page.evaluate is blocked, so we do this call from node instead.
-  let data;
-  try { data = JSON.parse(result.body); } catch { fail(`bad json: ${result.body}`); }
+  const data = result.data;
   if (typeof data.url !== "string" || !/^http:\/\/127\.0\.0\.1:\d+$/.test(data.url)) {
     fail(`bad url in response: ${data.url}`);
   }
 
+  // The viewer loads the preview URL via iframe navigation. We verify the
+  // preview server actually serves book.html (the iframe target) by
+  // fetching from node — cross-origin doesn't matter outside the renderer.
   const bookRes = await fetch(`${data.url}/book.html`);
   if (bookRes.status !== 200) fail(`book.html returned ${bookRes.status}`);
   const bookHtml = await bookRes.text();
   if (bookHtml.length < 500) fail(`book.html unexpectedly short: ${bookHtml.length} bytes`);
   log(`book.html served, ${bookHtml.length} bytes`);
 
-  log("PASS: directory load works end-to-end inside Electron");
+  log("PASS: full directory-load flow works end-to-end inside Electron");
 } catch (err) {
   console.error("[etest] uncaught:", err);
   exitCode = 1;

@@ -168,21 +168,14 @@
     busyLabel = "Opening folder…";
     try {
       const electron = (window as any).electron;
-      let dir: string | null;
-      if (electron?.openDirectory) {
-        dir = await electron.openDirectory();
-      } else {
-        dir = prompt("Path to a print-md project directory");
+      if (!electron?.openDirectory || !electron?.startPreview) {
+        toast?.error("Electron bridge unavailable — run via the viewer app");
+        return;
       }
+      const dir = await electron.openDirectory();
       if (!dir) return;
       busyLabel = "Starting preview…";
-      const res = await fetch("/api/preview", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ input: dir }),
-      });
-      if (!res.ok) throw new Error(`Preview start failed: ${res.status} ${await res.text()}`);
-      const data = await res.json();
+      const data = await electron.startPreview({ input: dir });
       currentDir = dir;
       docTitle = data.title ?? null;
       // Force iframe remount by nulling first
@@ -211,27 +204,21 @@
     busyLabel = "Building PDF…";
     try {
       const electron = (window as any).electron;
-      let outPath: string | null;
-      const defaultName = (currentDir.split("/").pop() ?? "book") + ".pdf";
-      if (electron?.savePdf) {
-        outPath = await electron.savePdf(defaultName);
-      } else {
-        outPath = prompt("Save PDF to:", "/tmp/" + defaultName);
+      if (!electron?.savePdf || !electron?.build) {
+        toast?.error("Electron bridge unavailable — run via the viewer app");
+        return;
       }
+      const sep = currentDir.includes("\\") ? "\\" : "/";
+      const defaultName = (currentDir.split(sep).pop() ?? "book") + ".pdf";
+      const outPath = await electron.savePdf(defaultName);
       if (!outPath) return;
-      const res = await fetch("/api/build", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          input: currentDir,
-          format: "pdf",
-          out: outPath,
-          skipPreValidate: true,
-          skipPostValidate: true,
-        }),
+      const data = await electron.build({
+        input: currentDir,
+        format: "pdf",
+        out: outPath,
+        skipPreValidate: true,
+        skipPostValidate: true,
       });
-      if (!res.ok) throw new Error(`Build failed: ${res.status} ${await res.text()}`);
-      const data = await res.json();
       toast?.success(`PDF saved to ${data.pdfPath ?? outPath}`);
     } catch (e) {
       toast?.error(e instanceof Error ? e.message : String(e));
