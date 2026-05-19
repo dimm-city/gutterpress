@@ -1,28 +1,18 @@
-name: Windows lib + viewer integration tests
+name: Windows lib integration tests
 
-# Two layers of windows verification, both run on windows-latest:
-#
-#  1. Lib unit-level integration: exercises startPreviewServer directly
-#     with native windows backslash paths.
-#  2. Viewer API integration: builds the viewer's adapter-node server and
-#     drives /api/preview over real HTTP — the exact code path the
-#     Electron viewer hits when a user picks a folder.
-#
-# If both pass, the directory-load failure is NOT in the lib or in the
-# viewer's HTTP layer — it can only be in the Electron UI shell or
-# preload bridge, which we'd then exercise with a headless Electron test.
+# Exercises packages/lib's startPreviewServer with native windows
+# backslash paths. This is the lower-level test — the viewer's IPC-driven
+# flow is covered separately by .github/workflows/windows-electron-test.yml.
 
 on:
   push:
     branches: [main]
     paths:
       - 'packages/lib/**'
-      - 'packages/viewer/**'
       - '.github/workflows/windows-lib-test.yml'
   pull_request:
     paths:
       - 'packages/lib/**'
-      - 'packages/viewer/**'
       - '.github/workflows/windows-lib-test.yml'
   workflow_dispatch:
 
@@ -31,7 +21,7 @@ env:
 
 jobs:
   test:
-    name: Lib + viewer integration tests on Windows
+    name: Lib integration tests on Windows
     runs-on: windows-latest
     permissions:
       contents: read
@@ -41,10 +31,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -56,12 +42,3 @@ jobs:
       - name: Run lib integration tests (windows paths)
         working-directory: packages/lib
         run: bun test tests/integration/preview-server-windows.test.ts
-
-      - name: Build viewer
-        working-directory: packages/viewer
-        run: |
-          npx vite build
-          npm run electron:build
-
-      - name: Run viewer /api/preview integration test (windows paths)
-        run: node packages/viewer/tests/integration/api-preview-windows.test.mjs
