@@ -38,16 +38,44 @@ removed:
   handles the lib correctly.
 - **No more Bun runtime requirement** — the packaged app is self-contained.
 
-## Prerequisites (dev only)
+## Prerequisites
 
-For developing this package locally:
+### Dev (this package)
 
 - **Bun** (or **Node 20+**) for installing workspace deps and running tests
-- **Chromium** is downloaded by puppeteer-core on first PDF generation;
-  set `PUPPETEER_SKIP_DOWNLOAD=true` to skip if you have system Chrome on
-  PATH (the lib auto-detects)
 
-The packaged binaries that ship to end users need none of these.
+### End users (packaged viewer)
+
+- **A Chromium-based browser must be installed on the user's machine** for
+  the Save PDF feature. The lib uses `puppeteer-core`, which has no bundled
+  Chromium and never downloads one (despite what older versions of this
+  README claimed). The lib probes a hard-coded list of paths — see
+  `packages/lib/src/lib/chromium.ts` — and accepts a `CHROMIUM_PATH` or
+  `PUPPETEER_EXECUTABLE_PATH` env-var override.
+
+  Recognized today (as of 0.1.x+):
+  - **Windows:** Google Chrome in default locations OR Microsoft Edge in
+    default locations (auto-detected).
+  - **macOS:** Chrome, Chromium (Homebrew), or Microsoft Edge in
+    `/Applications`.
+  - **Linux:** `google-chrome[-stable]`, `chromium`, `chromium-browser`, or
+    Snap-installed Chromium.
+
+  For any other browser or non-default install location, set `CHROMIUM_PATH`
+  to point at it.
+
+- **Ghostscript is OPTIONAL for plain Save PDF.** As of 0.1.x, the lib's
+  `/Creator` metadata stamp via Ghostscript is best-effort — if `gs` isn't
+  installed, the PDF still saves and a warning is logged. (Earlier
+  versions failed hard.) Ghostscript IS required for the PDF/X format
+  (CMYK conversion) and recommended to silence the warning.
+
+  - Windows: https://www.ghostscript.com/ → AGPL release
+  - macOS: `brew install ghostscript`
+  - Linux: `apt install ghostscript` / `dnf install ghostscript`
+
+See `docs/system-dependencies.md` for the full per-feature matrix of what
+tools each user-visible action requires.
 
 ## Development
 

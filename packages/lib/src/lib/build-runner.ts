@@ -419,7 +419,27 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
   await renderHtmlToPdf(stagedHtml, rawPdf);
 
   if (!pdfxMode) {
-    await stampCreator(rawPdf);
+    // stampCreator writes /Creator (print-md) into the PDF's DOCINFO via
+    // Ghostscript. The information is cosmetic — losing it doesn't affect
+    // print fitness or any downstream tooling. If `gs` isn't installed,
+    // continue with the raw Chromium output as the final PDF rather than
+    // failing the entire build. The user's PDF is already at `rawPdf`
+    // (which equals the final `pdfFile` when !pdfxMode) before this call.
+    try {
+      await stampCreator(rawPdf);
+    } catch (err) {
+      const code = (err as { code?: string } | undefined)?.code;
+      if (code === "ENOENT") {
+        log.warn(
+          "Ghostscript (gs) not found — PDF saved without /Creator metadata. " +
+          "Install Ghostscript (https://www.ghostscript.com/, brew install ghostscript, apt install ghostscript) to silence this warning."
+        );
+      } else {
+        log.warn(
+          `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
   }
 
   let effectiveIccPath: string | null = null;
