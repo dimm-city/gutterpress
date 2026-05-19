@@ -7,7 +7,7 @@
     },
     "packages/cli": {
       "name": "@dimm-city/print-md",
-      "version": "0.1.0-beta.11",
+      "version": "0.1.0-beta.12",
       "bin": {
         "print-md": "./dist/cli.js",
       },
@@ -35,7 +35,7 @@
     },
     "packages/lib": {
       "name": "@dimm-city/print-md-lib",
-      "version": "0.1.0-beta.11",
+      "version": "0.1.0-beta.12",
       "dependencies": {
         "chokidar": "^5.0.0",
         "glob": "^13.0.0",
@@ -60,12 +60,11 @@
     },
     "packages/viewer": {
       "name": "@dimm-city/print-md-viewer",
-      "version": "0.1.0-beta.11",
+      "version": "0.1.0-beta.12",
       "dependencies": {
-        "puppeteer-core": "^24.43.0",
+        "@dimm-city/print-md-lib": "workspace:*",
       },
       "devDependencies": {
-        "@dimm-city/print-md-lib": "workspace:*",
         "@sveltejs/adapter-static": "^3.0.0",
         "@sveltejs/kit": "^2.5.0",
         "@sveltejs/vite-plugin-svelte": "^5.0.0",

@@ -14,15 +14,14 @@ import { basename } from "node:path";
 // ──────────────────────────────────────────────────────────────────────────
 // Lib loader
 //
-// The lib is bundled into electron-dist/lib.cjs at build time by
-// scripts/build-electron.ts. main.cjs require()s it directly — no
-// node_modules/@dimm-city/print-md-lib package on disk. This eliminates
-// the entire afterPack workspace-symlink + npm install + prune problem
-// that broke beta.11.
+// @dimm-city/print-md-lib is pure ESM; main.js is CJS. We can't require() an
+// ESM module, but we can dynamic-import it via Function() — TypeScript's
+// CJS transform won't touch that expression. Standard pattern, used widely
+// for Electron + ESM dep interop.
 //
-// Types are declared narrowly here rather than imported from the lib's
-// source — keeping electron/tsconfig.json's moduleResolution simple and
-// avoiding cross-package source coupling.
+// The lib is shipped as a normal package in node_modules. Its package.json
+// "files" field constrains what electron-builder packages (just dist/ and
+// profiles/) — no afterPack hook, no symlink dance.
 // ──────────────────────────────────────────────────────────────────────────
 
 interface PreviewHandle {
@@ -57,8 +56,11 @@ let libPromise: Promise<LibModule> | null = null;
 
 function loadLib(): Promise<LibModule> {
   if (!libPromise) {
-    const libPath = path.resolve(__dirname, "./lib.cjs");
-    libPromise = Promise.resolve(require(libPath) as LibModule);
+    const dynamicImport = new Function(
+      "spec",
+      "return import(spec)"
+    ) as (spec: string) => Promise<LibModule>;
+    libPromise = dynamicImport("@dimm-city/print-md-lib");
   }
   return libPromise;
 }
