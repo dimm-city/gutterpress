@@ -253,9 +253,9 @@ jobs:
 
   verify-windows:
     name: Verify Windows binary (render smoke)
-    # Also waits for the Windows viewer zip — both are built on windows-latest
-    # so this gates the release on both artifacts being successfully produced.
-    needs: [version, build-cli, build-viewer-windows]
+    # Runs as soon as build-cli finishes — does not wait on the viewer
+    # Windows build so the two windows-latest jobs run in parallel.
+    needs: [version, build-cli]
     uses: ./.github/workflows/windows-install-test.yml
     with:
       script_ref: ${{ needs.version.outputs.tag }}
