@@ -216,10 +216,11 @@
         input: currentDir,
         format: "pdf",
         out: outPath,
-        // Lint is a CLI/developer concern (stylelint, htmlhint, markdownlint
-        // are devDeps and not shipped with the viewer). End users hitting
-        // Save PDF want a PDF, not a linter — skip it.
-        skipLint: true,
+        // pre/post validate skipped for now (they require external tools
+        // like qpdf, pdfinfo, etc that aren't bundled with the viewer).
+        // Lint stays ON — stylelint + stylelint-config-standard are
+        // production deps of the lib so they ship; lint catches real
+        // CSS problems before PDF gen.
         skipPreValidate: true,
         skipPostValidate: true,
       });
