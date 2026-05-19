@@ -162,10 +162,6 @@ jobs:
         run: bun run build
         working-directory: packages/lib
 
-      - name: Install viewer dependencies
-        run: npm ci
-        working-directory: packages/viewer
-
       - name: Build Linux AppImage
         working-directory: packages/viewer
         run: npm run dist:linux
@@ -197,10 +193,6 @@ jobs:
       - name: Build lib dist
         run: bun run build
         working-directory: packages/lib
-
-      - name: Install viewer dependencies
-        run: npm ci
-        working-directory: packages/viewer
 
       - name: Build Windows zip
         working-directory: packages/viewer
@@ -240,10 +232,6 @@ jobs:
       - name: Build lib dist
         run: bun run build
         working-directory: packages/lib
-
-      - name: Install viewer dependencies
-        run: npm ci
-        working-directory: packages/viewer
 
       - name: Build macOS DMG
         working-directory: packages/viewer
