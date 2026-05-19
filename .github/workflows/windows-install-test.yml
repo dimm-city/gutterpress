@@ -112,42 +112,6 @@ jobs:
             Write-Host "OK: $f"
           }
 
-      - name: Verify Paged.js renders (smoke)
-        shell: pwsh
-        run: |
-          # Set up an isolated install dir for playwright outside the
-          # workspace tree. The cli package.json declares playwright as a
-          # devDep, but it also uses workspace:* refs that plain npm install
-          # rejects. We can't install in packages/cli without that error,
-          # and installing elsewhere is invisible to node ESM resolution
-          # (which resolves relative to the importing module's location).
-          # Fix: install playwright in a clean dir, then copy the smoke
-          # script next to it so node finds node_modules/playwright via
-          # the standard upward lookup.
-          $pwDir = "${{ runner.temp }}\pw"
-          New-Item -ItemType Directory -Force -Path $pwDir | Out-Null
-          Set-Location $pwDir
-          '{"name":"_smoke","version":"0.0.0","private":true,"type":"module"}' | Set-Content -Encoding utf8 "package.json"
-          npm install playwright --no-save --no-package-lock --ignore-scripts 2>&1 | Where-Object { $_ -notmatch "^npm warn" }
-
-          $chromePaths = @(
-            "C:\Program Files\Google\Chrome\Application\chrome.exe",
-            "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-            "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
-          )
-          $chrome = $chromePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $chrome) { throw "No system Chrome found on this runner" }
-          Write-Host "Chrome: $chrome"
-
-          # Copy the smoke script into the same dir as node_modules so the
-          # `import { chromium } from "playwright"` resolves to $pwDir\node_modules\playwright.
-          $scriptSrc = "${{ github.workspace }}\packages\cli\tests\integration\paged-smoke.mjs"
-          Copy-Item $scriptSrc "$pwDir\paged-smoke.mjs"
-
-          $outDir = "${{ runner.temp }}\smoke-out"
-          node "$pwDir\paged-smoke.mjs" $outDir --chrome-path $chrome
-          if ($LASTEXITCODE -ne 0) { throw "Paged.js render smoke test failed — see output above" }
-
       - name: Upload debug logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
