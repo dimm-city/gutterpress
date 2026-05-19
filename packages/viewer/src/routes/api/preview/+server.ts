@@ -36,8 +36,21 @@ export const POST: RequestHandler = async ({ request }) => {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("[preview] startPreviewServer error:", e);
-    error(500, `Preview server failed to start: ${msg}`);
+    const stack = e instanceof Error ? e.stack ?? "" : "";
+    // Log to main-process stderr so the new console-message hook in
+    // electron/main.ts captures it, and include enough context in the
+    // HTTP response that the renderer's toast surfaces the real cause
+    // (path, error code, top of stack) instead of "500 ...failed to start".
+    console.error("[preview] startPreviewServer error:");
+    console.error(`  input: ${body.input}`);
+    console.error(`  message: ${msg}`);
+    if (stack) console.error(stack);
+    const code = (e as { code?: string } | undefined)?.code;
+    const head = stack.split("\n").slice(0, 3).join(" | ");
+    error(
+      500,
+      `Preview server failed to start: ${msg}${code ? ` [${code}]` : ""}${head ? ` — ${head}` : ""}`
+    );
   }
 
   // Read the document title from the manifest (fall back to dir basename).
