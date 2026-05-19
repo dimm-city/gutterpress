@@ -1,5 +1,5 @@
 appId: city.dimm.print-md-viewer
-productName: print-md
+productName: print-md-viewer
 
 # Electron main entry (compiled from electron/main.ts by electron:build script)
 # The file pattern below tells electron-builder where to find it.
