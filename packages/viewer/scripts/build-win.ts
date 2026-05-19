@@ -50,7 +50,7 @@ const OUT_DIR     = join(DIST_DIR, "win-unpacked");
 // Derive the artifact version from package.json so CI version-patch steps
 // (which write the tag version into package.json) propagate automatically.
 const viewerVersion = JSON.parse(readFileSync(join(VIEWER_ROOT, "package.json"), "utf8")).version as string;
-const ZIP_NAME    = `print-md-${viewerVersion}-win32-x64.zip`;
+const ZIP_NAME    = `print-md-viewer-${viewerVersion}-win32-x64.zip`;
 const ZIP_PATH    = join(DIST_DIR, ZIP_NAME);
 
 const IS_WINDOWS = process.platform === "win32";
@@ -128,6 +128,19 @@ await rm(OUT_DIR, { recursive: true, force: true });
 await mkdir(OUT_DIR, { recursive: true });
 await extractZip(CACHE_ZIP, OUT_DIR);
 console.log(`  → ${OUT_DIR}`);
+
+// ── 3a. Rename electron.exe → print-md-viewer.exe ────────────────────────
+// On Windows we can rename the PE binary directly. On Linux this would
+// require Wine to patch the PE header, so we skip it for cross-compiled builds.
+if (IS_WINDOWS) {
+  await run("powershell", [
+    "-NoProfile", "-NonInteractive", "-Command",
+    `Rename-Item -Path '${join(OUT_DIR, "electron.exe")}' -NewName 'print-md-viewer.exe'`,
+  ]);
+  console.log(`  renamed electron.exe → print-md-viewer.exe`);
+} else {
+  console.log(`  (cross-compile: binary stays as electron.exe — run on Windows for branded name)`);
+}
 
 // ── 3b. Extract bun.exe into OUT_DIR alongside electron.exe ──────────────
 console.log(`\n=== Extracting bun.exe ===`);

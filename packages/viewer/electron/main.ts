@@ -91,7 +91,13 @@ async function startSvelteKitServer(): Promise<string> {
   });
 }
 
-function createWindow(url: string) {
+const LOADING_HTML = `data:text/html,<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#1e1e1e;color:#9ca3af;display:flex;flex-direction:column;align-items:center;
+justify-content:center;height:100vh;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif}
+p{font-size:15px;margin:0 0 8px}small{font-size:12px;color:#555}
+</style></head><body><p>Starting print-md viewer…</p><small>Loading server</small></body></html>`;
+
+function createWindow(url?: string) {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -104,10 +110,11 @@ function createWindow(url: string) {
     },
   });
   mainWindow.setMenuBarVisibility(false);
-  mainWindow.loadURL(url);
+  mainWindow.loadURL(url ?? LOADING_HTML);
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+  return mainWindow;
 }
 
 ipcMain.handle("dialog:openDirectory", async () => {
@@ -136,9 +143,13 @@ ipcMain.handle("shell:openExternal", async (_e, url: string) => {
 });
 
 app.whenReady().then(async () => {
+  // Show the window immediately with a loading screen so the user gets
+  // visual feedback while the SvelteKit server (Bun) warms up.
+  const win = createWindow();
+
   try {
     const url = await startSvelteKitServer();
-    createWindow(url);
+    win.loadURL(url);
   } catch (err) {
     console.error("Failed to start SvelteKit server:", err);
     dialog.showErrorBox(
