@@ -349,9 +349,27 @@ ipcMain.handle(
         fingerprintPath: result.fingerprintPath,
       };
     } catch (e: unknown) {
+      // BuildError carries actionable multi-line text from the lib's
+      // preflightBuildTools / requireChromiumExecutable — preserve it.
       if (e instanceof lib.BuildError) {
         const err = new Error(e.message);
         (err as Error & { code?: string }).code = "BUILD_ERROR";
+        throw err;
+      }
+      // Generic spawn ENOENT: wrap with a friendlier message identifying
+      // the missing tool. (Preflight should have caught this earlier, but
+      // some downstream tools — e.g. when a tool exists but errors out —
+      // can still surface raw ENOENT here.)
+      if (e instanceof Error && (e as Error & { code?: string }).code === "ENOENT") {
+        const syscall = (e as Error & { syscall?: string }).syscall ?? "";
+        const path = (e as Error & { path?: string }).path ?? "";
+        const tool = path || syscall.replace(/^spawn /, "");
+        const err = new Error(
+          `Required system tool not found: ${tool}\n\n` +
+          `Install it and re-run. See docs/system-dependencies.md for per-platform instructions.\n\n` +
+          `Underlying error: ${e.message}`
+        );
+        (err as Error & { code?: string }).code = "TOOL_MISSING";
         throw err;
       }
       throw e;

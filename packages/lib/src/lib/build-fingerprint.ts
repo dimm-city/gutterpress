@@ -190,7 +190,7 @@ async function getGitRevision(sourceDir?: string): Promise<{
 }
 
 async function getToolVersions(): Promise<Record<string, string | null>> {
-  const chromiumPath = resolveChromiumExecutable();
+  const chromiumPath = await resolveChromiumExecutable();
 
   const [gsVersion, qpdfVersion, chromiumVersion] = await Promise.all([
     getFirstLineVersion("gs", ["--version"]),

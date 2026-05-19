@@ -7,7 +7,8 @@ import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
 import { loadPlugins, collectPluginCss } from "./markdown/plugins";
 import { copyAssets, resolveAssetDestName } from "./assets";
-import { requireChromiumExecutable } from "./chromium";
+import { requireChromiumExecutable, resolveChromiumExecutable } from "./chromium";
+import { isToolAvailable } from "./tool-probe";
 import { patchHtmlForPagedjs } from "./pagedjs";
 import {
   convertToPdfxCmyk,
@@ -89,6 +90,76 @@ interface Gates {
   postValidate: boolean;
 }
 
+interface MissingTool {
+  name: string;
+  installHint: string;
+}
+
+const INSTALL_HINTS: Record<string, string> = {
+  gs: "  macOS:   brew install ghostscript\n  Ubuntu:  sudo apt install -y ghostscript\n  Windows: https://www.ghostscript.com/releases/gsdnld.html  (or: choco install ghostscript)",
+  qpdf: "  macOS:   brew install qpdf\n  Ubuntu:  sudo apt install -y qpdf\n  Windows: choco install qpdf  (or: https://github.com/qpdf/qpdf/releases)",
+};
+
+/**
+ * Probe for every tool this build will actually spawn, BEFORE the pipeline
+ * starts running for real. Fails fast with one error that lists every
+ * missing tool plus per-platform install commands.
+ *
+ * Without this, the user waits for lint + render (30-90s) before hitting
+ * `spawn gs ENOENT` from deep inside the post-processing. 50ms preflight
+ * makes the failure actionable and immediate.
+ *
+ * Chromium is REQUIRED for any non-html format and surfaces the same
+ * install-instructions error from requireChromiumExecutable() if missing.
+ * Ghostscript is REQUIRED for pdfx (CMYK conversion); for plain pdf it
+ * only adds /Creator metadata — best-effort downstream — so we warn but
+ * don't block.
+ * qpdf is REQUIRED for pdfx + stripAnnotations (default true).
+ */
+async function preflightBuildTools(
+  format: BuildFormat,
+  opts: { stripAnnotations?: boolean },
+  config: { pdfx: { stripAnnotations: boolean } }
+): Promise<void> {
+  const missing: MissingTool[] = [];
+
+  // Chromium — required for any rendered output.
+  if (!(await resolveChromiumExecutable())) {
+    // requireChromiumExecutable() throws with multi-line install instructions
+    // that include all three platforms. Defer to it for the canonical message.
+    await requireChromiumExecutable();
+  }
+
+  // Ghostscript:
+  //   - plain pdf  -> /Creator stamp only, best-effort, warn-don't-block
+  //   - pdfx       -> CMYK conversion, REQUIRED
+  if (format === "pdfx" && !(await isToolAvailable("gs"))) {
+    missing.push({ name: "gs (Ghostscript)", installHint: INSTALL_HINTS.gs! });
+  } else if (format === "pdf" && !(await isToolAvailable("gs"))) {
+    log.warn(
+      "Ghostscript (gs) not found — the /Creator metadata stamp will be skipped. PDF will save fine without it. Install gs to silence this warning."
+    );
+  }
+
+  // qpdf — only when pdfx with stripAnnotations enabled (default true).
+  if (format === "pdfx") {
+    const stripAnnotations = opts.stripAnnotations ?? config.pdfx.stripAnnotations;
+    if (stripAnnotations && !(await isToolAvailable("qpdf"))) {
+      missing.push({ name: "qpdf", installHint: INSTALL_HINTS.qpdf! });
+    }
+  }
+
+  if (missing.length === 0) return;
+
+  const list = missing
+    .map((m) => `  • ${m.name}\n${m.installHint}`)
+    .join("\n\n");
+  throw new BuildError(
+    `Required system tools not found:\n\n${list}\n\nInstall the missing tools and re-run, or set CHROMIUM_PATH / system PATH so print-md can find them. See docs/system-dependencies.md for the full per-feature matrix.`,
+    2
+  );
+}
+
 function computeGates(
   format: BuildFormat,
   opts: { skipLint?: boolean; skipPreValidate?: boolean; skipPostValidate?: boolean },
@@ -133,7 +204,7 @@ const STATIC_MIME: Record<string, string> = {
 };
 
 async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
-  const executablePath = requireChromiumExecutable();
+  const executablePath = await requireChromiumExecutable();
   const stageDir = path.dirname(path.resolve(inputHtml));
   const htmlFilename = path.basename(inputHtml);
 
@@ -259,6 +330,17 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
 
   log.info(`Build (${format}): ${inputDir} -> ${outDir}`);
   await fsp.mkdir(outDir, { recursive: true });
+
+  // 2.5. Pre-flight tool check.
+  //
+  // Without this we'd discover missing tools deep in the pipeline (30-90s in
+  // for a real book) when ENOENT bubbles up from a child_process spawn. A 50ms
+  // probe at the top gives an actionable error immediately. The stamp-PDF case
+  // (gs for !pdfxMode) is best-effort downstream — we only WARN here so the
+  // missing-gs user can still save a plain PDF.
+  if (format !== "html") {
+    await preflightBuildTools(format, opts, config);
+  }
 
   // 3. Lint
   if (gates.lint) {

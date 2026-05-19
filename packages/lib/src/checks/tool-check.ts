@@ -1,36 +1,9 @@
-import { spawn } from "node:child_process";
-import { resolve as resolvePath, join, delimiter } from "node:path";
-import { platform } from "node:os";
 import { getChecks, resolveCheckSelectors } from "./registry";
 import { log } from "../lib/logger";
+import { isToolAvailable } from "../lib/tool-probe";
 import type { ResolvedConfig } from "../schema/manifest.types";
 import type { CheckCategory, CheckPhase } from "./types";
 import type { RunnerOptions } from "./runner";
-
-/** print-md's own node_modules/.bin so locally installed tools are found */
-const localBin = resolvePath(join(import.meta.dirname, "..", "..", "node_modules", ".bin"));
-const enhancedPath = `${localBin}${delimiter}${process.env.PATH ?? ""}`;
-
-const IS_WINDOWS = platform() === "win32";
-
-/**
- * Test whether a CLI command is available on the system.
- *
- * Uses `where.exe` on Windows (POSIX `which` is not on stock Windows installs)
- * and `which` everywhere else. Both search the (enhanced) PATH and short-
- * circuit zero-cost when the binary is missing.
- */
-async function isToolAvailable(tool: string): Promise<boolean> {
-  const cmd = IS_WINDOWS ? "where.exe" : "which";
-  return new Promise((resolve) => {
-    const p = spawn(cmd, [tool], {
-      stdio: ["ignore", "ignore", "ignore"],
-      env: { ...process.env, PATH: enhancedPath },
-    });
-    p.on("error", () => resolve(false));
-    p.on("exit", (code) => resolve(code === 0));
-  });
-}
 
 export interface ToolCheckResult {
   /** Tools that were checked and found present */
