@@ -7,7 +7,7 @@ import type { CheckCategory, CheckPhase } from "./types";
 import type { RunnerOptions } from "./runner";
 
 /** print-md's own node_modules/.bin so locally installed tools are found */
-const localBin = resolvePath(join(import.meta.dir, "..", "..", "node_modules", ".bin"));
+const localBin = resolvePath(join(import.meta.dirname, "..", "..", "node_modules", ".bin"));
 const enhancedPath = `${localBin}:${process.env.PATH ?? ""}`;
 
 /**

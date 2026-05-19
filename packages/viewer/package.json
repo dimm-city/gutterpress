@@ -12,9 +12,9 @@
     "preview": "bun --bun ./node_modules/.bin/vite preview",
     "electron:build": "tsc -p electron/tsconfig.json && echo '{\"type\":\"commonjs\"}' > electron-dist/package.json",
     "electron:dev": "bun run electron:build && bun run build && electron electron-dist/main.js",
-    "dist:linux": "bun run build && bun run electron:build && bunx electron-builder --linux AppImage --config electron-builder.yml",
+    "dist:linux": "bun run --cwd ../../packages/cli build:lib && bun run build && bun run electron:build && bunx electron-builder --linux AppImage --config electron-builder.yml",
     "dist:win": "bun scripts/build-win.ts",
-    "dist:mac": "bun run build && bun run electron:build && bunx electron-builder --mac dmg --config electron-builder.yml",
+    "dist:mac": "bun run --cwd ../../packages/cli build:lib && bun run build && bun run electron:build && bunx electron-builder --mac dmg --config electron-builder.yml",
     "check": "bun --bun ./node_modules/.bin/svelte-kit sync && bun --bun ./node_modules/.bin/svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
@@ -22,11 +22,12 @@
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "^5.2.0",
-    "electron-builder": "^26.0.0",
     "@sveltejs/kit": "^2.5.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@types/node": "^22.0.0",
     "electron": "^33.0.0",
+    "electron-builder": "^26.0.0",
+    "rcedit": "^5.0.2",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
     "typescript": "^5.5.0",

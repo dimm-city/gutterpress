@@ -1,59 +1,36 @@
 #!/usr/bin/env bun
 /**
- * Windows portable build without Wine.
+ * Windows viewer build.
  *
- * electron-builder's app-builder requires Wine on Linux to patch the Electron
- * PE binary (rename, embed icon). This script builds a portable Windows zip
- * without PE modification — the binary ships as "electron.exe" (cosmetic only;
- * functionality identical). For a branded installer with a custom name/icon,
- * build on Windows or use the GitHub Actions release workflow.
+ * electron-builder handles: Electron binary download + cache, exe rename
+ * (productName → print-md-viewer.exe), icon embedding (win.icon), app layout,
+ * and zip creation.
  *
- * The script creates a CLEAN node_modules by running `bun install --production`
- * for only the runtime deps. This avoids the 1+ GB problem caused by following
- * Bun workspace symlinks into the .bun cache.
+ * The only manual step is fixing the Bun workspace symlink:
+ * node_modules/@dimm-city/print-md → packages/cli (full source + devDeps).
+ * We replace it with only the compiled dist/ output and install the CLI's
+ * production deps before handing off to electron-builder.
+ *
+ * Flow:
+ *   1. Build CLI lib (dist/) + SvelteKit server + Electron main
+ *   2. electron-builder --win dir  (unpacks, renames exe, embeds icon)
+ *   3. Replace CLI in unpacked app/node_modules with dist/ only
+ *   4. Install CLI runtime deps in the unpacked app directory
+ *   5. electron-builder --prepackaged  (creates the zip)
  *
  * Usage (from packages/viewer/):
  *   bun scripts/build-win.ts
  */
 
-import { mkdir, rm, cp, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, rm, cp, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { existsSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { readFileSync } from "node:fs";
 
-const ELECTRON_VERSION = "33.4.11";
-const ELECTRON_ZIP_NAME = `electron-v${ELECTRON_VERSION}-win32-x64.zip`;
-const CACHE_ZIP = join(
-  process.env.HOME ?? process.env.USERPROFILE ?? tmpdir(),
-  ".cache", "electron", ELECTRON_ZIP_NAME
-);
-const ELECTRON_URL =
-  `https://github.com/electron/electron/releases/download/v${ELECTRON_VERSION}/${ELECTRON_ZIP_NAME}`;
-
-// Bun is bundled with the viewer so end-users don't need it installed.
-// The SvelteKit adapter-node server is run via the bundled bun.exe.
-const BUN_VERSION = "1.2.14";
-const BUN_ZIP_NAME = `bun-windows-x64.zip`;
-const BUN_CACHE_ZIP = join(
-  process.env.HOME ?? process.env.USERPROFILE ?? tmpdir(),
-  ".cache", "bun", `bun-v${BUN_VERSION}-windows-x64.zip`
-);
-const BUN_URL =
-  `https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/${BUN_ZIP_NAME}`;
-
-const VIEWER_ROOT = resolve(import.meta.dir, "..");
+const VIEWER_ROOT = resolve(import.meta.dirname, "..");
 const CLI_ROOT    = resolve(VIEWER_ROOT, "../../packages/cli");
-const DIST_DIR    = join(VIEWER_ROOT, "dist");
-const OUT_DIR     = join(DIST_DIR, "win-unpacked");
-
-// Derive the artifact version from package.json so CI version-patch steps
-// (which write the tag version into package.json) propagate automatically.
-const viewerVersion = JSON.parse(readFileSync(join(VIEWER_ROOT, "package.json"), "utf8")).version as string;
-const ZIP_NAME    = `print-md-viewer-${viewerVersion}-win32-x64.zip`;
-const ZIP_PATH    = join(DIST_DIR, ZIP_NAME);
-
-const IS_WINDOWS = process.platform === "win32";
+const UNPACKED    = join(VIEWER_ROOT, "dist", "win-unpacked");
+const APP_DIR     = join(UNPACKED, "resources", "app");
 
 async function run(cmd: string, args: string[], cwd?: string) {
   const proc = Bun.spawn([cmd, ...args], {
@@ -66,165 +43,67 @@ async function run(cmd: string, args: string[], cwd?: string) {
   if (code !== 0) throw new Error(`${cmd} exited ${code}`);
 }
 
-/** Extract a zip archive cross-platform: unzip on Linux/macOS, Expand-Archive on Windows. */
-async function extractZip(zipPath: string, destDir: string) {
-  if (IS_WINDOWS) {
-    await run("powershell", [
-      "-NoProfile", "-NonInteractive", "-Command",
-      `Expand-Archive -Force -Path '${zipPath}' -DestinationPath '${destDir}'`,
-    ]);
-  } else {
-    await run("unzip", ["-q", zipPath, "-d", destDir]);
-  }
-}
+// ── 1. Build ───────────────────────────────────────────────────────────────
+console.log("=== Building CLI lib (Node.js dist/) ===");
+await run("bun", ["run", "build:lib"], CLI_ROOT);
 
-/** Create a zip archive cross-platform: zip on Linux/macOS, Compress-Archive on Windows. */
-async function createZip(zipPath: string, sourceDir: string, entryDir: string) {
-  if (IS_WINDOWS) {
-    // Compress-Archive needs the source as a glob pattern
-    const sourceGlob = join(sourceDir, entryDir, "*");
-    await run("powershell", [
-      "-NoProfile", "-NonInteractive", "-Command",
-      `Compress-Archive -Force -Path '${sourceGlob}' -DestinationPath '${zipPath}'`,
-    ]);
-  } else {
-    await run("zip", ["-r", "-q", zipPath, entryDir], sourceDir);
-  }
-}
-
-// ── 1. Build SvelteKit server + Electron main ─────────────────────────────
-console.log("=== Building SvelteKit server ===");
+console.log("\n=== Building SvelteKit + Electron main ===");
 await run("bun", ["run", "build"], VIEWER_ROOT);
-console.log("=== Building Electron main process ===");
 await run("bun", ["run", "electron:build"], VIEWER_ROOT);
 
-// ── 2. Download (or reuse) the Windows Electron binary ───────────────────
-if (!existsSync(CACHE_ZIP)) {
-  await mkdir(join(process.env.HOME ?? process.env.USERPROFILE ?? tmpdir(), ".cache", "electron"), { recursive: true });
-  console.log(`\nDownloading ${ELECTRON_URL} ...`);
-  const res = await fetch(ELECTRON_URL);
-  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
-  await Bun.write(CACHE_ZIP, res);
-  console.log(`  → cached at ${CACHE_ZIP}`);
-} else {
-  console.log(`\nReusing cached ${ELECTRON_ZIP_NAME}`);
-}
+// ── 2. electron-builder: create unpacked app ───────────────────────────────
+// Handles: Electron binary download + cache, exe rename (productName),
+// icon embedding (win.icon), app directory structure.
+console.log("\n=== electron-builder: pack to directory ===");
+await run("bunx", ["electron-builder", "--win", "dir", "--config", "electron-builder.yml"], VIEWER_ROOT);
 
-// ── 2b. Download (or reuse) the Windows Bun binary ───────────────────────
-if (!existsSync(BUN_CACHE_ZIP)) {
-  await mkdir(join(process.env.HOME ?? process.env.USERPROFILE ?? tmpdir(), ".cache", "bun"), { recursive: true });
-  console.log(`\nDownloading ${BUN_URL} ...`);
-  const res = await fetch(BUN_URL);
-  if (!res.ok) throw new Error(`Bun download failed: ${res.status}`);
-  await Bun.write(BUN_CACHE_ZIP, res);
-  console.log(`  → cached at ${BUN_CACHE_ZIP}`);
-} else {
-  console.log(`\nReusing cached bun-v${BUN_VERSION}-windows-x64.zip`);
-}
-
-// ── 3. Extract Windows Electron into a fresh win-unpacked dir ─────────────
-console.log(`\n=== Extracting ${ELECTRON_ZIP_NAME} ===`);
-await rm(OUT_DIR, { recursive: true, force: true });
-await mkdir(OUT_DIR, { recursive: true });
-await extractZip(CACHE_ZIP, OUT_DIR);
-console.log(`  → ${OUT_DIR}`);
-
-// ── 3a. Rename electron.exe → print-md-viewer.exe ────────────────────────
-// On Windows we can rename the PE binary directly. On Linux this would
-// require Wine to patch the PE header, so we skip it for cross-compiled builds.
-if (IS_WINDOWS) {
-  await run("powershell", [
-    "-NoProfile", "-NonInteractive", "-Command",
-    `Rename-Item -Path '${join(OUT_DIR, "electron.exe")}' -NewName 'print-md-viewer.exe'`,
-  ]);
-  console.log(`  renamed electron.exe → print-md-viewer.exe`);
-} else {
-  console.log(`  (cross-compile: binary stays as electron.exe — run on Windows for branded name)`);
-}
-
-// ── 3b. Extract bun.exe into OUT_DIR alongside electron.exe ──────────────
-console.log(`\n=== Extracting bun.exe ===`);
-const BUN_EXTRACT_TMP = join(DIST_DIR, "_bun-extract-tmp");
-await rm(BUN_EXTRACT_TMP, { recursive: true, force: true });
-await mkdir(BUN_EXTRACT_TMP, { recursive: true });
-await extractZip(BUN_CACHE_ZIP, BUN_EXTRACT_TMP);
-// The zip contains a folder `bun-windows-x64/bun.exe`
-const bunSrc = join(BUN_EXTRACT_TMP, "bun-windows-x64", "bun.exe");
-await cp(bunSrc, join(OUT_DIR, "bun.exe"));
-await rm(BUN_EXTRACT_TMP, { recursive: true, force: true });
-console.log(`  → ${join(OUT_DIR, "bun.exe")}`);
-
-// ── 4. Inject app code (not node_modules) ────────────────────────────────
-const APP_DIR = join(OUT_DIR, "resources", "app");
-await mkdir(APP_DIR, { recursive: true });
-
-console.log("\n=== Copying app code ===");
-for (const item of ["build", "electron-dist"] as const) {
-  const src = join(VIEWER_ROOT, item);
-  await cp(src, join(APP_DIR, item), { recursive: true });
-  console.log(`  copied: ${item}`);
-}
-
-// Copy the CLI source (required by @dimm-city/print-md at runtime).
-// Only src/ and the required metadata — skip node_modules/tests/tools.
+// ── 3. Replace workspace-symlinked CLI with compiled dist/ ─────────────────
+// electron-builder followed packages/cli symlink and copied the full tree
+// (including playwright, stylelint devDeps). Replace with dist/ only.
+console.log("\n=== Replacing CLI with compiled dist/ ===");
 const CLI_DEST = join(APP_DIR, "node_modules", "@dimm-city", "print-md");
+await rm(CLI_DEST, { recursive: true, force: true });
 await mkdir(CLI_DEST, { recursive: true });
-for (const item of ["src", "profiles", "package.json"] as const) {
+for (const item of ["dist", "profiles", "package.json"] as const) {
   const src = join(CLI_ROOT, item);
-  if (!existsSync(src)) continue;
-  await cp(src, join(CLI_DEST, item), { recursive: true });
-  console.log(`  copied cli/${item}`);
+  if (existsSync(src)) await cp(src, join(CLI_DEST, item), { recursive: true });
 }
+console.log("  replaced with dist/ + profiles/ + package.json");
 
-// ── 5. Install ONLY runtime dependencies in a temp dir, then copy in ──────
-console.log("\n=== Installing production node_modules ===");
-
-// Collect runtime deps from both packages.
+// ── 4. Install CLI runtime deps ────────────────────────────────────────────
+// ws, chokidar, yaml, markdown-it, puppeteer-core, etc. need to be in
+// node_modules alongside the compiled CLI dist/.
+console.log("\n=== Installing CLI runtime deps ===");
 const viewerPkg = JSON.parse(readFileSync(join(VIEWER_ROOT, "package.json"), "utf8"));
 const cliPkg    = JSON.parse(readFileSync(join(CLI_ROOT, "package.json"), "utf8"));
-
-// The app runtime deps: all of CLI's runtime deps + any viewer runtime deps
-// (excluding @dimm-city/print-md itself — we copied it directly above).
-const runtimeDeps: Record<string, string> = {
-  ...(cliPkg.dependencies ?? {}),
-  // Remove the workspace self-reference if present
-};
+const runtimeDeps: Record<string, string> = { ...(cliPkg.dependencies ?? {}) };
 delete runtimeDeps["@dimm-city/print-md"];
 
-// Write a minimal package.json in app dir and bun install --production
-const appPkg = {
+const tmpPkg = {
   name: "print-md-app",
   private: true,
-  type: "module",
+  type: viewerPkg.type ?? "module",
+  main: viewerPkg.main,
+  version: viewerPkg.version,
   dependencies: runtimeDeps,
 };
-await writeFile(join(APP_DIR, "package.json"), JSON.stringify(appPkg, null, 2));
-
-// Run bun install in the app dir to get a clean, flat node_modules
+await writeFile(join(APP_DIR, "package.json"), JSON.stringify(tmpPkg, null, 2));
 await run("bun", ["install", "--production"], APP_DIR);
-console.log("  node_modules installed");
 
-// Restore the real viewer package.json after bun install.
-const realAppPkg = {
+// Restore a minimal real package.json.
+await writeFile(join(APP_DIR, "package.json"), JSON.stringify({
   name: viewerPkg.name,
   private: true,
   type: viewerPkg.type,
   main: viewerPkg.main,
   version: viewerPkg.version,
-};
-await writeFile(join(APP_DIR, "package.json"), JSON.stringify(realAppPkg, null, 2));
+}, null, 2));
+console.log("  done");
 
-// ── 6. Write electron-dist/package.json (CommonJS marker) ─────────────────
-const elDistDir = join(APP_DIR, "electron-dist");
-await writeFile(join(elDistDir, "package.json"), JSON.stringify({ type: "commonjs" }));
-
-// ── 7. Zip the result ─────────────────────────────────────────────────────
-console.log(`\n=== Creating ${ZIP_NAME} ===`);
-await rm(ZIP_PATH, { force: true });
-await createZip(ZIP_PATH, DIST_DIR, "win-unpacked");
-
-const stat = await Bun.file(ZIP_PATH).stat();
-console.log(`\n✓ ${ZIP_PATH}  (${(stat.size / 1e6).toFixed(1)} MB)\n`);
-console.log("Install on Windows:");
-console.log(`  1. Unzip ${ZIP_NAME}`);
-console.log(`  2. Run print-md-viewer.exe  (bun.exe is bundled — no installation needed)`);
+// ── 5. Zip from the corrected unpacked directory ───────────────────────────
+console.log("\n=== electron-builder: create zip ===");
+await run("bunx", [
+  "electron-builder", "--prepackaged", UNPACKED, "--win", "zip",
+  "--config", "electron-builder.yml",
+], VIEWER_ROOT);
+console.log("\n✓ dist/ contains the Windows zip");

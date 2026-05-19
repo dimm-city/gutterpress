@@ -1,12 +1,6 @@
 appId: city.dimm.print-md-viewer
 productName: print-md-viewer
 
-# Electron main entry (compiled from electron/main.ts by electron:build script)
-# The file pattern below tells electron-builder where to find it.
-
-# Files included in the packaged app.
-# The Electron main process spawns `bun build/index.js` (the SvelteKit Node
-# server). Bun must be installed on the host — it is NOT bundled here.
 files:
   - electron-dist/**
   - build/**
@@ -16,8 +10,8 @@ files:
 extraMetadata:
   main: electron-dist/main.js
 
-# Do not bundle node_modules into an asar archive; the SvelteKit server
-# resolves @dimm-city/print-md from node_modules at runtime under Bun.
+# Do not bundle node_modules into an asar archive; @dimm-city/print-md and
+# its deps are resolved from node_modules at runtime.
 asar: false
 
 directories:
@@ -31,14 +25,11 @@ linux:
 
 win:
   target:
-    # zip = portable, no Wine required for cross-compilation from Linux/macOS.
-    # For a proper NSIS .exe installer, run this on Windows (or add Wine).
     - zip
-  # Bun must be installed on the host (added to PATH by the Bun Windows installer).
-  # The Electron main process spawns 'bun build/index.js'; the same command
-  # works on Windows because Bun ships 'bun.exe' and adds it to PATH.
+  icon: build-resources/icon.ico
 
 mac:
   target:
     - dmg
+  icon: build-resources/icon.icns
   category: public.app-category.developer-tools

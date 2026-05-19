@@ -3,7 +3,7 @@ import { readdir, mkdir, copyFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 
 /** print-md's own node_modules/.bin so locally installed tools are found */
-const localBin = resolvePath(join(import.meta.dir, "..", "..", "node_modules", ".bin"));
+const localBin = resolvePath(join(import.meta.dirname, "..", "..", "node_modules", ".bin"));
 const enhancedEnv = { ...process.env, PATH: `${localBin}:${process.env.PATH ?? ""}` };
 
 /**

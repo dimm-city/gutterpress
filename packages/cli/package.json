@@ -30,18 +30,19 @@
     ".": {
       "bun": "./src/index.ts",
       "types": "./types/src/index.d.ts",
-      "default": "./src/index.ts"
+      "default": "./dist/index.js"
     },
     "./api": {
       "bun": "./src/api/index.ts",
       "types": "./types/src/api/index.d.ts",
-      "default": "./src/api/index.ts"
+      "default": "./dist/api/index.js"
     }
   },
   "bin": {
     "print-md": "./src/cli.ts"
   },
   "files": [
+    "dist/",
     "src/",
     "types/",
     "profiles/",
@@ -51,6 +52,7 @@
   "scripts": {
     "lint:css": "bun src/cli.ts lint",
     "build:types": "bunx tsc -p tsconfig.declarations.json --noEmitOnError false",
+    "build:lib": "bun scripts/build-lib.ts",
     "build": "bun build src/cli.ts --outdir dist --target bun --packages external && cp -r src/assets dist/assets",
     "build:pdf": "bun src/cli.ts build",
     "build:html": "bun src/cli.ts build --format html",

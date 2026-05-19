@@ -1,9 +1,8 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
 
-// print-md uses Bun-specific APIs (Bun.serve, Bun.file, with { type: "file" })
-// and native deps. Keep its whole subgraph external from any Vite/Rollup pass
-// so the workspace dep resolves at runtime under Bun.
+// Keep @dimm-city/print-md and its runtime deps external from Vite/Rollup so
+// they resolve at runtime from node_modules (not bundled into the SSR output).
 const externalIds = [
   "@dimm-city/print-md",
   "@dimm-city/print-md/api",
