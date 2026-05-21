@@ -50,12 +50,17 @@ const check: Check = {
   },
 };
 
+function stripInlineCode(line: string): string {
+  return line.replace(/`[^`]*`/g, (match) => " ".repeat(match.length));
+}
+
 function extractLocalRefs(line: string): string[] {
   const refs: string[] = [];
+  const stripped = stripInlineCode(line);
   const inlinePattern = /!?\[[^\]]*\]\(([^)]+)\)/g;
   const defPattern = /^\s*\[[^\]]+\]:\s*(\S+)/;
 
-  for (const match of line.matchAll(inlinePattern)) {
+  for (const match of stripped.matchAll(inlinePattern)) {
     const raw = match[1];
     if (!raw) continue;
     const ref = normalizeDestination(raw);
@@ -63,7 +68,7 @@ function extractLocalRefs(line: string): string[] {
     refs.push(ref);
   }
 
-  const defMatch = line.match(defPattern);
+  const defMatch = stripped.match(defPattern);
   if (defMatch?.[1]) {
     const ref = normalizeDestination(defMatch[1]);
     if (ref && isLocalRef(ref)) refs.push(ref);

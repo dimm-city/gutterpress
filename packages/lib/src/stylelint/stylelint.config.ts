@@ -17,7 +17,8 @@ const config: Config = {
 
     // Print safety rules
     [ruleRemoteUrls]: [true],
-    [ruleRiskyProps]: [true],
+    // clip-path and filter are demoted to warnings — intentional design tools, not hard blockers.
+    [ruleRiskyProps]: [true, { severity: "warning" }],
     [rulePagedjsCrashSelectors]: [true],
 
     // Allow Paged Media + margin boxes
