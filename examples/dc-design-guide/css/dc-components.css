@@ -952,15 +952,36 @@ hr,
 }
 
 .dc-tab-tier {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.25rem;
+  padding: 0 6px;
+  border-radius: 100px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  padding: 2px 7px;
-  background: transparent;
-  border: 1px solid var(--dc-card-tier-border);
-  color: var(--dc-card-tier-color);
-  letter-spacing: 1.5px;
+  line-height: 1;
+  background-color: var(--tier-bronze);
+  color: var(--paper-cream);
+  letter-spacing: 0;
   white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Tier 2 (mid-level specialties): gold badges with dark text for WCAG AA contrast */
+.dc-specialty.streetwarden .dc-tab-tier,
+.dc-specialty.cybersurgeon .dc-tab-tier,
+.dc-specialty.technosorcerer .dc-tab-tier {
+  background-color: var(--tier-gold);
+  color: var(--ink);
+}
+
+/* Tier 3 (advanced specialties): silver badges with dark text for WCAG AA contrast */
+.dc-specialty.gutterdruid .dc-tab-tier,
+.dc-specialty.etherlock .dc-tab-tier {
+  background-color: var(--tier-silver);
+  color: var(--ink);
 }
 
 /* ── Path block (structural section hook) ─────────────────────────────── */
