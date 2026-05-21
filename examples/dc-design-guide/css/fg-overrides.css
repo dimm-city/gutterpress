@@ -418,4 +418,52 @@
   color: transparent;
 }
 
+/* ── CHAPTER OPENER DROP CAP ─────────────────────────────────────────────────
+   @chapter-opener macro emits <span class="dc-chapter-opener-no">C.01</span>.
+   The paragraph immediately after the h1 gets a two-line drop cap. */
+.dc-chapter-opener-no+h1+p::first-letter {
+  initial-letter: 2;
+  font-weight: var(--fw-bold, 700);
+  color: var(--crimson);
+  margin-right: 0.05em;
+}
+
+/* ── SPECIALTY ART FULL-PAGE PLATE ───────────────────────────────────────────
+   Plugin emits .dc-specialty-art for full-page art spreads. */
+.dc-specialty-art {
+  width: var(--page-width, 8.625in);
+  height: var(--page-height, 11.25in);
+  break-before: page;
+  margin: 0;
+  overflow: hidden;
+}
+
+.dc-specialty-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ── TABLE HEADER COLOR BY SECTION CONTEXT ───────────────────────────────────
+   dc-core.css sets the global default: th { background: var(--crimson) }
+   That default is correct for dramatic/combat tables (Status Conditions, etc.)
+
+   Reference and system tables — authoring patterns, NPC tiers, size modifiers —
+   use HUD blue to signal "data/reference" vs "rules/drama". Scoped by the
+   surrounding page-class context; no per-table class attributes needed in markdown.
+
+   Selectors:
+   - .example-* > .section th   — intro "About" section tables (field guide context)
+   - .page.chapter-04 th        — NPC/DM pages: all tables are reference data
+   - .page.tech-cybernetics th  — gear/tech named page: system reference tables
+   ─────────────────────────────────────────────────────────────────────────── */
+.example-rules > .section th,
+.example-dm-npcs > .section th,
+.example-gear-tech > .section th,
+.page.chapter-04 th,
+.page.tech-cybernetics th {
+  background: var(--hud-blue-dark);
+}
+
 
