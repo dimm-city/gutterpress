@@ -116,7 +116,7 @@ print-md/                        # Workspace root (private)
 - **`packages/viewer/`** — Vite/Rollup are intentional here (SvelteKit build).
   `@dimm-city/print-md` is SSR-external so it is never bundled by Vite.
 - **Plugin API** — Plugins are plain `(md, options) => void` markdown-it
-  functions. No print-md-specific plugin API. See `docs/plugins.md`.
+  functions. No print-md-specific plugin API. See [User Guide: Chapter 6 — Plugins](./examples/print-md-user-guide/06-plugins.md).
 
 ## Coding Standards
 

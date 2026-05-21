@@ -39,7 +39,7 @@ bun packages/cli/src/cli.ts --help
 
 ## System requirements
 
-The CLI needs a Chromium-based browser for PDF generation, and a few external tools for PDF post-processing and validation depending on which features you use. See [`docs/system-dependencies.md`](../../docs/system-dependencies.md) for the full per-feature requirements matrix.
+The CLI needs a Chromium-based browser for PDF generation, and a few external tools for PDF post-processing and validation depending on which features you use. See [User Guide: Chapter 8 — System Setup](../../examples/print-md-user-guide/08-system-setup.md) for the full per-feature requirements matrix.
 
 The short version: you almost certainly want **Ghostscript** installed for PDF output, and **Chrome** / **Chromium** / **Edge** for the actual render.
 
@@ -77,7 +77,7 @@ my-book/
 └─ images/            ← images referenced from markdown or CSS
 ```
 
-See [docs/getting-started.md](../../docs/getting-started.md) for a full first-project walkthrough and [examples/](../../examples/) for working starters.
+See [User Guide: Chapter 1 — Getting Started](../../examples/print-md-user-guide/01-getting-started.md) for a full first-project walkthrough and [examples/](../../examples/) for working starters.
 
 ## Manifest
 
@@ -151,7 +151,7 @@ Common print-unsafe patterns the plugin flags: remote `url(...)` references in C
 
 ### `print-md validate`
 
-Run the validation pipeline (pre-build source checks and/or post-build PDF checks). Tools that aren't installed are skipped with a warning — they don't fail the run. See [`docs/validation.md`](../../docs/validation.md) for the full check list and [`docs/system-dependencies.md`](../../docs/system-dependencies.md) for which external tools each check needs.
+Run the validation pipeline (pre-build source checks and/or post-build PDF checks). Tools that aren't installed are skipped with a warning — they don't fail the run. See [User Guide: Chapter 7 — Validation](../../examples/print-md-user-guide/07-validation.md) for the full check list and [User Guide: Chapter 8 — System Setup](../../examples/print-md-user-guide/08-system-setup.md) for which external tools each check needs.
 
 ```sh
 print-md validate [input-dir] [options]
@@ -182,7 +182,7 @@ plugins:
     priority: 10
 ```
 
-See [`docs/plugins.md`](../../docs/plugins.md) for authoring custom plugins.
+See [User Guide: Chapter 6 — Plugins](../../examples/print-md-user-guide/06-plugins.md) for authoring custom plugins.
 
 ## CI / scripting
 
@@ -198,11 +198,11 @@ The standalone binary is the easiest way — drop it in a GitHub Actions step an
     ./print-md build ./my-book --out dist/my-book.pdf
 ```
 
-The binary is self-contained except for the system tools described in [`docs/system-dependencies.md`](../../docs/system-dependencies.md). On a runner with Chrome and Ghostscript present, you don't need a separate Node or Bun install.
+The binary is self-contained except for the system tools described in [User Guide: Chapter 8 — System Setup](../../examples/print-md-user-guide/08-system-setup.md). On a runner with Chrome and Ghostscript present, you don't need a separate Node or Bun install.
 
 ## Troubleshooting
 
-- **`spawn gs ENOENT`** — Ghostscript not installed. Plain `--format pdf` keeps working (only loses the `/Creator` metadata stamp). PDF/X builds genuinely need it. See [system-dependencies.md](../../docs/system-dependencies.md).
+- **`spawn gs ENOENT`** — Ghostscript not installed. Plain `--format pdf` keeps working (only loses the `/Creator` metadata stamp). PDF/X builds genuinely need it. See [User Guide: Chapter 8 — System Setup](../../examples/print-md-user-guide/08-system-setup.md).
 - **`No Chrome or Chromium binary found`** — install Chrome/Chromium/Edge, or set `CHROMIUM_PATH=/path/to/chrome` in your environment.
 - **`Tool "X" not found — skipping`** during validate — that's the graceful path; the check requires `X` and isn't available. Install the tool or accept the skip.
 - **All validate checks skipped on Windows** — was a bug pre-0.1.7 (used `which`, which isn't on stock Windows); fixed to use `where.exe`.

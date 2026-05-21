@@ -62,10 +62,10 @@ These containers had no DC `@marker` equivalent. Audit confirmed they had **no a
 
 | File                                       | Change                                                                                  |
 | ------------------------------------------ | --------------------------------------------------------------------------------------- |
-| `docs/plugins.md`                          | Removed `markdown-it-container` row from the built-in plugins table.                    |
-| `docs/user-guide.md`                       | Replaced all `:::` examples (statblock, ability, warning, info, page, etc.) with `@marker` equivalents or removed where the marker no longer exists. |
+| User Guide: Chapter 6 — Plugins            | Removed `markdown-it-container` row from the built-in plugins table.                    |
+| User Guide: Chapters throughout            | All `:::` examples (statblock, ability, warning, info, page, etc.) replaced with `@marker` equivalents or removed where the marker no longer exists. |
 | `docs/toolchain-conflict-analysis.md`      | Historical analysis doc — added a header note marking the `:::` discussion as superseded by this migration. Content preserved for archaeology. |
-| `docs/PLUGIN_SYSTEM_PLAN.md`               | Already out-of-date; added superseded note pointing to `docs/plugins.md`.               |
+| `docs/PLUGIN_SYSTEM_PLAN.md`               | Already out-of-date; added superseded note pointing to the User Guide Chapter 6.        |
 | `docs/markdown-extension-alignment-review.md` | Source review document that drove this migration. No edit needed.                    |
 | `CLAUDE.md`                                | Updated Rule 5 to reflect that plugins are the only container-style block surface; `markdown-it-container` no longer in the built-in pipeline. |
 

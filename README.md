@@ -14,7 +14,7 @@ print-md is a desktop application (with a CLI for power users) that turns a fold
 | **macOS** | `print-md-viewer-X.Y.Z-arm64.dmg` | Open the disk image, drag the app to Applications |
 | **Linux** | `print-md-viewer-X.Y.Z.AppImage` | `chmod +x` the file, then double-click or run it |
 
-The desktop app is fully self-contained — no Bun, Node, or other runtime to install. The only thing you may need is a Chromium-based browser (Chrome, Edge, Brave, etc) installed on the machine for the **Save PDF** feature; see [system-dependencies.md](./docs/system-dependencies.md) for details.
+The desktop app is fully self-contained — no Bun, Node, or other runtime to install. The only thing you may need is a Chromium-based browser (Chrome, Edge, Brave, etc) installed on the machine for the **Save PDF** feature; see the [User Guide: Chapter 8 — System Setup](./examples/print-md-user-guide/08-system-setup.md) for details.
 
 ## Your first book
 
@@ -36,17 +36,17 @@ For richer projects (cover art, fonts, a multi-chapter book with running headers
 
 | If you want to… | Start here |
 |---|---|
-| **Write a longer book** with chapters, custom styling, and page rules | [Authoring guide](./docs/authoring-guide.md) |
-| Understand the markdown extensions (page breaks, columns, callouts) | [Core directives](./docs/core-directives.md) |
-| Style your book with CSS (fonts, colors, page size, margins) | [Typography](./docs/typography.md) · [Styling & theming](./docs/styling-theming.md) |
-| See best practices, especially for TTRPG/games books | [Best practices](./docs/best-practices.md) · [TTRPG extensions](./docs/ttrpg-extensions.md) |
+| **Learn all print-md features** | [Print-md User Guide](./examples/print-md-user-guide/) — 48-page comprehensive guide covering all core features |
+| Understand markdown extensions (page breaks, columns, callouts) | [User Guide: Chapter 2 — Writing Your Content](./examples/print-md-user-guide/02-writing-content.md) |
+| Style your book with CSS (fonts, colors, page size, margins) | [User Guide: Chapter 4 — Styling & Theming](./examples/print-md-user-guide/04-styling-theming.md) |
+| Create TTRPG/games content (stat blocks, dice notation, etc) | [User Guide: Chapter 5 — TTRPG Extensions](./examples/print-md-user-guide/05-ttrpg-extensions.md) |
 | **Use the CLI** for scripting, CI builds, or batch work | [CLI README](./packages/cli/README.md) |
-| Add custom markdown plugins | [Plugin system](./docs/plugins.md) |
-| Validate output for print production (TAC, ICC, PDF/X) | [Validation guide](./docs/validation.md) |
+| Add custom markdown plugins | [User Guide: Chapter 6 — Plugins](./examples/print-md-user-guide/06-plugins.md) |
+| Validate output for print production (TAC, ICC, PDF/X) | [User Guide: Chapter 7 — Validation](./examples/print-md-user-guide/07-validation.md) |
+| Set up system tools (Chromium, Ghostscript, qpdf, etc) | [User Guide: Chapter 8 — System Setup](./examples/print-md-user-guide/08-system-setup.md) |
 | Develop / contribute to print-md itself | [CONTRIBUTING](./CONTRIBUTING.md) · [Architecture](./docs/ARCHITECTURE.md) |
-| Diagnose missing-tool errors (Ghostscript, qpdf, etc) | [System dependencies](./docs/system-dependencies.md) |
 
-The full [docs/](./docs/) directory has the canonical reference for everything above.
+See [docs/](./docs/) for technical architecture, ADRs, and developer references.
 
 ## What print-md can do
 

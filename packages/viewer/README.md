@@ -74,7 +74,7 @@ removed:
   - macOS: `brew install ghostscript`
   - Linux: `apt install ghostscript` / `dnf install ghostscript`
 
-See `docs/system-dependencies.md` for the full per-feature matrix of what
+See [User Guide: Chapter 8 — System Setup](../../examples/print-md-user-guide/08-system-setup.md) for the full per-feature matrix of what
 tools each user-visible action requires.
 
 ## Development

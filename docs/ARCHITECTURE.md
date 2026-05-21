@@ -567,7 +567,7 @@ reproducible and prevents network access during `print-md build`.
 - Fail-fast on missing plugins surfaces misconfiguration immediately rather than silently skipping
 - CSS export support allows plugins to inject styles into rendered output
 
-See [docs/plugins.md](plugins.md) for the full authoring guide.
+See [User Guide: Chapter 6 — Plugins](../examples/print-md-user-guide/06-plugins.md) for the full authoring guide.
 
 ## Key Design Decisions
 

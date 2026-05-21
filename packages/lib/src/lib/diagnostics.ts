@@ -221,6 +221,6 @@ export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
       node: process.versions.node,
     },
     tools: [chromium, ...tools],
-    docsUrl: "https://github.com/dimm-city/print-md/blob/main/docs/system-dependencies.md",
+    docsUrl: "https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md",
   };
 }

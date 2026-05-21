@@ -117,7 +117,7 @@ Reasons:
 
 Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) fails fast on any
 load error with messages identifying the offending manifest entry; it does NOT
-auto-install missing npm packages. Authoring guide lives in `docs/plugins.md`.
+auto-install missing npm packages. Authoring guide lives in [User Guide: Chapter 6 — Plugins](./examples/print-md-user-guide/06-plugins.md).
 
 **Block container syntax** (`:::name ... :::` via `markdown-it-container`) was
 removed 2026-05-17. The DC plugin's `@marker` family (`@page`, `@section`,

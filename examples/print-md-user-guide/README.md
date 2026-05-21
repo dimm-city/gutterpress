@@ -40,13 +40,4 @@ print-md-user-guide/
 
 ## Chapters
 
-| # | Chapter | Source docs |
-|---|---------|-------------|
-| 01 | Getting Started | `docs/getting-started.md` |
-| 02 | Writing Your Content | `docs/typography.md`, `docs/core-directives.md` |
-| 03 | Visual Elements | `docs/callouts.md`, `docs/images.md` |
-| 04 | Styling & Theming | `docs/styling-theming.md` |
-| 05 | TTRPG Extensions | `docs/ttrpg-extensions.md` |
-| 06 | Plugins | `docs/plugins.md` |
-| 07 | Validation & Best Practices | `docs/validation.md`, `docs/best-practices.md` |
-| 08 | System Setup | `docs/system-dependencies.md` |
+This guide covers all core Print-md features in a single book. See [docs/](../../docs/) for technical architecture and developer references.

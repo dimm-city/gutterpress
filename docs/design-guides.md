@@ -183,7 +183,7 @@ side-manifest form is there when you need it.
 
 - [`examples/with-design-guide/`](../examples/with-design-guide) — the
   paired book + guide reference.
-- [`docs/authoring-guide.md`](./authoring-guide.md) — markdown directives,
-  page control, custom containers.
-- [`docs/styling-theming.md`](./styling-theming.md) — theme examples and
+- [Print-md User Guide](../examples/print-md-user-guide/) — markdown directives,
+  page control, CSS theming, and all core features.
+- [User Guide: Chapter 4 — Styling & Theming](../examples/print-md-user-guide/04-styling-theming.md) — theme examples and
   CSS conventions.

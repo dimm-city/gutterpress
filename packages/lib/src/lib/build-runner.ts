@@ -155,7 +155,7 @@ async function preflightBuildTools(
     .map((m) => `  • ${m.name}\n${m.installHint}`)
     .join("\n\n");
   throw new BuildError(
-    `Required system tools not found:\n\n${list}\n\nInstall the missing tools and re-run, or set CHROMIUM_PATH / system PATH so print-md can find them. See docs/system-dependencies.md for the full per-feature matrix.`,
+    `Required system tools not found:\n\n${list}\n\nInstall the missing tools and re-run, or set CHROMIUM_PATH / system PATH so print-md can find them. See the User Guide Chapter 8 (System Setup) at examples/print-md-user-guide/08-system-setup.md for the full per-feature matrix.`,
     2
   );
 }

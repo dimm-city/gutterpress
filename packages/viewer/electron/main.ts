@@ -402,7 +402,7 @@ ipcMain.handle(
         const tool = path || syscall.replace(/^spawn /, "");
         const err = new Error(
           `Required system tool not found: ${tool}\n\n` +
-          `Install it and re-run. See docs/system-dependencies.md for per-platform instructions.\n\n` +
+          `Install it and re-run. See User Guide Chapter 8 (examples/print-md-user-guide/08-system-setup.md) for per-platform instructions.\n\n` +
           `Underlying error: ${e.message}`
         );
         (err as Error & { code?: string }).code = "TOOL_MISSING";
