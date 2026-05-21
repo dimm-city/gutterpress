@@ -254,8 +254,14 @@
   margin-top: 0.1in;
 }
 
-/* Subsection labels: ##### Traits / Equipment / Cybernetics */
+/* Subsection labels: ##### Traits / Equipment / Cybernetics
+   Compact to body-sm monospace so these read as data labels, not narrative headings. */
 .page.chapter-04 h5 {
+  font-family: var(--font-mono);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-cap-sm);
+  text-transform: uppercase;
   color: var(--hud-blue-dark);
   border-bottom: 0.75pt solid var(--border-hairline);
   padding-bottom: 1pt;
