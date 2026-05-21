@@ -2,86 +2,64 @@
 
 Complete documentation for creating professional print documents from markdown.
 
+> **📖 User Guide** — The canonical documentation is now the **[Print-md User Guide](../examples/print-md-user-guide/)**, a complete 48-page professionally formatted book covering all core features. Start here for learning Print-md.
+>
+> This directory contains technical architecture docs and advanced references. For authoring guides, see the user guide chapters linked below.
+
 ## Quick Start
 
 New to Print-md? Start here:
 
-- **[Getting Started](getting-started.md)** - Installation, basic workflow, and project setup
+- **[User Guide — Chapter 1: Getting Started](../examples/print-md-user-guide/01-getting-started.md)** - Installation, basic workflow, and project setup
 
-## Core Documentation
+## Core Documentation (see User Guide)
 
-### Essential Guides
+See the **[Print-md User Guide](../examples/print-md-user-guide/)** for all core documentation:
 
-- **[Getting Started](getting-started.md)**
-  Learn the basics of Print-md, including installation, basic commands, project structure, and manifest configuration. Start here if you're new to the tool.
+- **Chapter 1: Getting Started** — Installation, basic commands, project structure, manifest configuration
+- **Chapter 2: Writing Your Content** — Headings, text formatting, lists, blockquotes, tables, layout directives
+- **Chapter 3: Visual Elements** — Callouts, images, artwork, print-safe requirements
+- **Chapter 4: Styling & Theming** — CSS custom properties, themes, fonts, page templates
+- **Chapter 5: TTRPG Extensions** — Stat blocks, dice notation, cross-references, challenge ratings
+- **Chapter 6: Plugins** — Adding and writing markdown-it plugins
+- **Chapter 7: Validation** — Source/asset/PDF checks, configuration, workflows
+- **Chapter 8: System Setup** — Tool installation, environment variables, troubleshooting
 
-- **[Core Directives](core-directives.md)**
-  Master page control with directives for page templates, page breaks, column layouts, and running headers. Essential for controlling document structure.
-
-- **[Typography & Formatting](typography.md)**
-  Learn about headings, text formatting, lists, blockquotes, tables, and professional typography practices for print documents.
-
-- **[Callouts & Admonitions](callouts.md)**
-  Use professional callouts to highlight important information. Includes five standard types (note, tip, warning, danger, info) with GitHub-style syntax.
-
-- **[Images & Artwork](images.md)**
-  Comprehensive guide to using images in print, including sizing, positioning, full-bleed artwork, print-safe requirements, and resolution guidelines.
-
-### Advanced Features
-
-- **[Validation](validation.md)**
-  Validate source files, assets, and PDFs for print compliance. 31 checks across four categories (source, PDF, asset, heuristic) with per-project configuration.
-
-- **[TTRPG Extensions](ttrpg-extensions.md)**
-  Specialized markdown syntax for tabletop RPG content, including stat blocks, dice notation, cross-references, trait callouts, and challenge ratings.
-
-- **[Styling & Theming](styling-theming.md)**
-  Customize your document's appearance with built-in themes, CSS variables, custom styles, and advanced page templates.
-
-- **[Best Practices](best-practices.md)**
-  Professional guidelines for file organization, writing, print optimization, testing, and production workflows.
-
-- **[System Dependencies](system-dependencies.md)**
-  External tools each print-md feature needs (Chromium for PDF render, Ghostscript for PDF/X, qpdf, Poppler, ImageMagick for validation). Per-platform install commands and troubleshooting.
-
-## Complete Reference
-
-- **[Authoring Guide](authoring-guide.md)**
-  Comprehensive single-file reference covering all features in detail. Use this for deep dives or offline reference.
+The user guide is authored as a complete professional book and serves as the canonical reference for all features.
 
 ## Documentation by Use Case
 
-### I want to...
+See the [Print-md User Guide](../examples/print-md-user-guide/) for all topics:
 
 **Create my first document**
-→ [Getting Started](getting-started.md)
+→ [User Guide: Chapter 1 — Getting Started](../examples/print-md-user-guide/01-getting-started.md)
 
 **Control where pages break**
-→ [Core Directives](core-directives.md)
+→ [User Guide: Chapter 2 — Layout Directives](../examples/print-md-user-guide/02-writing-content.md#layout-directives)
 
 **Format text and headings**
-→ [Typography & Formatting](typography.md)
+→ [User Guide: Chapter 2 — Text Formatting](../examples/print-md-user-guide/02-writing-content.md#text-formatting)
 
 **Add warning boxes or tips**
-→ [Callouts & Admonitions](callouts.md)
+→ [User Guide: Chapter 3 — Callouts](../examples/print-md-user-guide/03-visual-elements.md#callouts)
 
 **Include photos or artwork**
-→ [Images & Artwork](images.md)
+→ [User Guide: Chapter 3 — Images](../examples/print-md-user-guide/03-visual-elements.md#images)
 
 **Create an RPG rulebook**
-→ [TTRPG Extensions](ttrpg-extensions.md)
+→ [User Guide: Chapter 5 — TTRPG Extensions](../examples/print-md-user-guide/05-ttrpg-extensions.md)
 
 **Customize colors and fonts**
-→ [Styling & Theming](styling-theming.md)
+→ [User Guide: Chapter 4 — Styling & Theming](../examples/print-md-user-guide/04-styling-theming.md)
 
 **Validate my project for print**
-→ [Validation](validation.md)
+→ [User Guide: Chapter 7 — Validation](../examples/print-md-user-guide/07-validation.md)
 
 **Prepare for professional printing**
-→ [Best Practices](best-practices.md)
+→ [User Guide: Chapter 8 — System Setup](../examples/print-md-user-guide/08-system-setup.md)
 
 **Diagnose a missing-tool error (`spawn gs ENOENT`, "No Chromium found", etc)**
-→ [System Dependencies](system-dependencies.md)
+→ [User Guide: Chapter 8 — System Setup / Troubleshooting](../examples/print-md-user-guide/08-system-setup.md)
 
 **Use the CLI from a terminal or CI**
 → [CLI README](../packages/cli/README.md)
@@ -136,18 +114,17 @@ print-md validate --pdf dist/book.pdf
 
 ```
 docs/
-├── README.md                    # This file
-├── authoring-guide.md          # Complete reference (all-in-one)
-├── getting-started.md          # Introduction and setup
-├── core-directives.md          # Page control and directives
-├── typography.md               # Text formatting
-├── callouts.md                 # Callouts and admonitions
-├── images.md                   # Image handling
-├── validation.md               # Print validation system
-├── ttrpg-extensions.md         # TTRPG features
-├── styling-theming.md          # Customization
-└── best-practices.md           # Professional guidelines
+├── README.md                              # This file
+├── ARCHITECTURE.md                        # Technical architecture (developers)
+├── best-practices.md                      # Extended reference for best practices
+├── SOURCE-FILES-GUIDE.md                  # Deep-dive into source.files configuration
+├── adr/                                   # Architecture Decision Records
+├── migrations/                            # Migration guides
+│   └── 2026-05-removing-container-syntax.md
+└── [other files are redirects to User Guide chapters]
 ```
+
+All authoring documentation lives in the **[Print-md User Guide](../examples/print-md-user-guide/)** (in `examples/`). This directory contains developer/architect reference materials only.
 
 ## Contributing
 
