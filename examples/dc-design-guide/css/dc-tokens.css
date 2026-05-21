@@ -216,7 +216,7 @@
   --etherlock-dark:        #6a5200;  /* skill/path/intro dark gold */
 
   /* ── Skill Tier Badge Colors ───────────────────────────────────────────── */
-  --tier-bronze:  #8B6F47;  /* tier 1 — earthy bronze */
+  --tier-bronze:  #7a5f38;  /* tier 1 — earthy bronze; darkened for WCAG AA 4.5:1 on --paper-cream */
   --tier-gold:    #D4AF37;  /* tier 2 — bright gold */
   --tier-silver:  #C0C0C0;  /* tier 3 — polished silver */
 }
