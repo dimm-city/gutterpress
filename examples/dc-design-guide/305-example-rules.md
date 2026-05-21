@@ -26,7 +26,7 @@ Rules pages are the workhorse of any RPG book. In Dimm City they follow a consis
 
 Rules prose in DC uses a deliberately aggressive voice. The Dream Master section, for instance, isn't a neutral referee description — it's confrontational, second-person, and assumes the reader is ready to run something rough. The tone is part of the system.
 
-The status conditions table uses standard GFM `|---|---|` syntax — `dc-components.css` applies alternating row backgrounds universally. The outcome ladder uses the `@outcome … @end-outcome` macro for tiered DC styling (crit/hit/mixed/miss/fail row colors). For a custom table header color, add `{.dc-table-crimson}` after the opening `|`.
+The status conditions table uses standard GFM `|---|---|` syntax — `dc-components.css` applies alternating row backgrounds universally. The outcome ladder uses the `@outcome … @end-outcome` macro for tiered DC styling (crit/hit/mixed/miss/fail row colors). Table header color is determined by page-class context: reference/system pages use HUD blue, dramatic/rules pages keep the default crimson.
 
 @end-section
 

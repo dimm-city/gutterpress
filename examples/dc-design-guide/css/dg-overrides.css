@@ -520,6 +520,27 @@ div.chapter[data-ch] {
 /* @page :left and @page :right footer overrides (string(guideSection)) are
    consolidated into page-rules.css per the architectural contract. */
 
+/* ── TABLE HEADER COLOR BY SECTION CONTEXT ───────────────────────────────────
+   dc-core.css sets the global default: th { background: var(--crimson) }
+   That default is correct for dramatic/combat tables (Status Conditions, etc.)
+
+   Reference and system tables — authoring patterns, NPC tiers, size modifiers —
+   use HUD blue to signal "data/reference" vs "rules/drama". Scoped by the
+   surrounding page-class context so no per-table class attributes are needed.
+
+   Selectors explained:
+   - .example-* > .section th   — intro "About" tables before any @page block
+   - .page.chapter-04 th        — NPC/DM pages: all tables are reference data
+   - .page.tech-cybernetics th  — gear/tech named page: system reference tables
+   ─────────────────────────────────────────────────────────────────────────── */
+.example-rules > .section th,
+.example-dm-npcs > .section th,
+.example-gear-tech > .section th,
+.page.chapter-04 th,
+.page.tech-cybernetics th {
+  background: var(--hud-blue-dark);
+}
+
 /* ── NPC STAT BLOCK DENSITY (example-dm-npcs only) ──────────────────────────
    H5 (Traits / Equipment / Cybernetics) within NPC entries are subsection labels,
    not narrative headings. Compact them to body-sm size with monospace font to
