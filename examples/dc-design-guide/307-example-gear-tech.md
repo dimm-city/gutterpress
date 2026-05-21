@@ -22,7 +22,6 @@ Gear pages in the Field Guide follow a consistent structure: an in-world voice o
 | Mechanical rules | Standard prose | Bold key terms, inline code for mechanic names |
 | Reference table | GFM table | Standard `|---|---|` — no class needed for alternating rows |
 | Inline code | \`SysChk\` | Game-mechanic terms that are also keywords appear in code style |
-{.dc-table-blue}
 
 @column-break
 

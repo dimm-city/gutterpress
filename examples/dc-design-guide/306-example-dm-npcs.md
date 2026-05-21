@@ -23,7 +23,6 @@ NPC pages use a consistent three-tier format:
 | **Fodder** | 2 | 1 | Cannon fodder, civilian threats, mob encounters |
 | **Operator** | 4 | 2 | Skilled grunts, tactical support, mini-bosses |
 | **Master** | 10 | 4 | Main antagonists, unique threats, boss encounters |
-{.dc-table-blue}
 
 @column-break
 
@@ -197,7 +196,6 @@ Size affects both hit points and damage output, scaling up or down based on how 
 | **Big** | +10 HP | +1 Damage | Large beasts or imposing foes |
 | **Huge** | +20 HP | +2 Damage | Truly massive creatures |
 | **Colossal** | +40 HP | +4 Damage | Titanic creatures that dominate the battlefield |
-{.dc-table-blue}
 
 Size is a narrative choice as much as a mechanical one. A Colossal creature changes the encounter architecture — the DM should treat them like a location, not just a big target.
 
@@ -229,7 +227,6 @@ When you need an NPC fast, answer these four questions:
 | **What do they want?** | Drive the Dreamers out of the warehouse or die trying. |
 | **What Trait makes them dangerous?** | Bloodlust — the more the Dreamers hurt, the more the mob escalates. |
 | **What if they're handled cleverly?** | Offer the Patchheads something worth more than the job. They scatter. |
-{.dc-table-gray}
 
 That's it. That's an NPC. Stat it if combat is likely. Leave it sketched if it's just atmosphere.
 
