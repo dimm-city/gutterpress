@@ -374,6 +374,7 @@ div.chapter hr {
 
 .page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start)>h1 {
   border: 0;
+  margin-top: 24pt;
 }
 
 .page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) p {

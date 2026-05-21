@@ -161,6 +161,13 @@
   column-fill: balance;
 }
 
+/* Chapter-start pages: add ornamental column divider via column-rule.
+   column-rule is safer than background gradients in Paged.js (avoids reference-frame and
+   shorthand-clear issues). Draws a clean line between the two columns. */
+.page.chapter-start.two-column {
+  column-rule: 2px solid var(--paper-light);
+}
+
 /* .col-split: opt-in explicit column placement for @section.two-column blocks.
    Paged.js strips break-after:column from CSS, so @column-break cannot create CSS
    column breaks. When .col-split is present, the renderer wraps content in .col divs
