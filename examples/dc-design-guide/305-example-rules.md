@@ -21,6 +21,7 @@ Rules pages are the workhorse of any RPG book. In Dimm City they follow a consis
 | `page-chapter-start` | `.chapter-03` | Chapter opener fiction + intro prose (two-column) |
 | `the-players` | `.chapter-03` | Dreams, Dreamers, Dream Master + ROLL A DIE! section |
 | bare `@page` | `.chapter-03` | Status conditions table, AP rules, outcome ladder |
+{.dc-table-blue}
 
 @column-break
 
@@ -189,6 +190,7 @@ On a success, the condition ends. Conditions usually end when the encounter ends
 | **Reach** | Adjacent — close enough to touch |
 | **Near** | Same room, line of sight |
 | **Far** | Across a street, different room |
+{.dc-table-blue}
 
 Most abilities specify which distances they work at. When in doubt, ask if you could throw something at it and hit — that's Near.
 
