@@ -2280,6 +2280,19 @@ p.dc-img-wrapper {
   border-bottom: 1px var(--hud-blue) solid;
 }
 
+/* ── TABLE HEADER VARIANTS ────────────────────────────────────────────────── */
+/* Default th { background: var(--crimson) } is set in dc-core.css.
+   These opt-in classes let authors choose alternate header colors on any table.
+   Usage: add class to the <table> element via markdown-it-attrs {.dc-table-blue} */
+.dc-table-blue th {
+  background: var(--hud-blue-dark);
+}
+
+.dc-table-gray th {
+  background: var(--ink-smoke);
+  letter-spacing: 0.04em;  /* slightly looser than default 0.06em for neutral variant */
+}
+
 /* Art pinned to page bottom-center — use on images or wrapper divs */
 .dc-art-bottom {
   position: absolute;

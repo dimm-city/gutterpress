@@ -519,3 +519,26 @@ div.chapter[data-ch] {
 
 /* @page :left and @page :right footer overrides (string(guideSection)) are
    consolidated into page-rules.css per the architectural contract. */
+
+/* ── NPC STAT BLOCK DENSITY (example-dm-npcs only) ──────────────────────────
+   H5 (Traits / Equipment / Cybernetics) within NPC entries are subsection labels,
+   not narrative headings. Compact them to body-sm size with monospace font to
+   read as inline labels rather than section breaks. Scoped to .example-dm-npcs
+   so this does not affect global H5 rendering in any other chapter.
+   ─────────────────────────────────────────────────────────────────────────── */
+.example-dm-npcs h5 {
+  font-family: var(--font-mono);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-cap-sm);
+  text-transform: uppercase;
+  color: var(--ink-dust);
+  margin-top: var(--space-sm);
+  margin-bottom: 2pt;
+}
+
+/* NPC blockquote flavor lines — tighten bottom margin so HP line reads as
+   a single unit with the flavor text, not a floating paragraph. */
+.example-dm-npcs blockquote {
+  margin-bottom: var(--space-sm);
+}
