@@ -2330,30 +2330,21 @@ p.dc-img-wrapper {
 /* ═══════════════════════════════════════════════════════════════════════════
    SECTION CONTAINER — DC prose content card
    ═══════════════════════════════════════════════════════════════════════════
-   .section is created by markdown-it-paged @section markers. In DC's design
-   system, a plain @section (no layout class) is treated as a prose content
-   card: left accent gradient strip, light surface, DC clip geometry.
+   .section is created by markdown-it-paged @section markers.
 
-   Column-layout variants (.two-column, .three-column) retain their layout
-   behavior from page-templates.css and get a gentler bg + top-border only
-   (clip-path breaks CSS multi-column rendering).
-
-   .col-split uses flex layout for Lucid/Surreal — reset to transparent.
-
-   Reusable across all DC-branded print-md projects.
+   Base rule styles ALL sections as accent-strip cards sitting on the page
+   surface. Layout variants override with their own treatment. No :not()
+   chains — variant classes always win the cascade.
 
    Token API:
      --section-bg      → panel background surface
-     --section-accent  → left strip + top border accent color        */
+     --section-accent  → left strip / top border accent color        */
 
-/* ── Token defaults ────────────────────────────────────────────────────── */
+/* ── Base card: every @section gets a cream surface + left accent strip ── */
 .section {
-  --section-bg:     var(--paper-light);
+  --section-bg:     var(--paper-cream);
   --section-accent: var(--hud-blue-dark);
-}
 
-/* ── Plain (single-column) — full card with clip geometry ─────────────── */
-.section:not(.two-column):not(.three-column):not(.col-split) {
   background: linear-gradient(
     to right,
     var(--section-accent) 4px,
@@ -2364,24 +2355,25 @@ p.dc-img-wrapper {
     100% 100%, 14px 100%, 0 calc(100% - 14px)
   );
   padding: var(--space-md) var(--space-lg);
-  margin: 0.1in 0;
+  margin: 6pt 0;
   break-inside: avoid;
 }
 
-/* ── Two-column / three-column — bg tint + accent top border ──────────── */
-.section.two-column:not(.col-split),
+/* ── Two-column / three-column — top border only; clip-path breaks columns */
+.section.two-column,
 .section.three-column {
   background: var(--section-bg);
+  clip-path: none;
   border-top: 3px solid var(--section-accent);
   border-bottom: 1px solid var(--paper-aged);
-  padding-top: var(--space-sm);
-  padding-bottom: var(--space-sm);
+  padding: var(--space-sm) 0;
 }
 
-/* ── col-split (Lucid / Surreal flex layout) — reset, keep flex only ──── */
+/* ── col-split (Lucid/Surreal flex layout) — no card treatment ─────────── */
 .section.col-split {
   background: transparent;
   clip-path: none;
+  border: none;
   padding: 0;
   margin: 0;
 }

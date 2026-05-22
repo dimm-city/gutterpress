@@ -70,9 +70,10 @@
   margin: 0 0 10px;
 }
 
-/* Tighten path shell margin */
+/* Tighten path shell margin + strengthen border outline */
 .dc-path-shell {
   margin: 0 0 10px;
+  filter: drop-shadow(3px 0 0 var(--ink)) drop-shadow(-3px 0 0 var(--ink)) drop-shadow(0 3px 0 var(--ink)) drop-shadow(0 -3px 0 var(--ink));
 }
 
 /* Reduce path shell body content margins */
