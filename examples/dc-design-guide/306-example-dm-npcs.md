@@ -219,7 +219,7 @@ Equipment and Cybernetics add texture and loot. They don't need to be tracked un
 
 ### Quick NPC Builder
 
-When you need an NPC fast, answer these four questions:
+When you need an NPC fast, answer these four questions. That's it. That's an NPC — stat it if combat is likely, leave it sketched if it's just atmosphere.
 
 | Question | Example Answer |
 |----------|---------------|
@@ -227,6 +227,4 @@ When you need an NPC fast, answer these four questions:
 | **What do they want?** | Drive the Dreamers out of the warehouse or die trying. |
 | **What Trait makes them dangerous?** | Bloodlust — the more the Dreamers hurt, the more the mob escalates. |
 | **What if they're handled cleverly?** | Offer the Patchheads something worth more than the job. They scatter. |
-
-That's it. That's an NPC. Stat it if combat is likely. Leave it sketched if it's just atmosphere.
 

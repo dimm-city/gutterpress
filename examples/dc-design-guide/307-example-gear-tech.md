@@ -63,21 +63,7 @@ Ego Points (EP) measure how much of you is still you after the implant goes in. 
 
 Push past your limits, and you don't run the gear anymore. The gear runs you.
 
-A PC can have the following augmentations in their original form:
-
-@section .two-column
-- 1 Neurolink (assuming one brain)
-- 1 Skin augmentation
-- 1 Skeletal augmentation
-- 1 Nervous system augmentation
-
-@column-break
-
-- 1 implant per natural limb
-- 1 implant per natural eye socket
-- 1 implant per natural ear
-- 1 implant per voicebox
-@end-section
+A PC can have the following augmentations in their original form: 1 Neurolink (assuming one brain), 1 skin augmentation, 1 skeletal augmentation, 1 nervous system augmentation, 1 implant per natural limb, 1 implant per natural eye socket, 1 implant per natural ear, and 1 implant per voicebox.
 
 Cybernetics must be installed by a trained Cybersurgeon in a medlab, clinic, or hospital. Augments and modifications are typically purchased with Dream Credits.
 

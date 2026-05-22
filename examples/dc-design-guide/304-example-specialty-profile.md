@@ -37,8 +37,6 @@ The `@specialty .augmerc` wrapper defines all 7 shape variables (`--dc-skill-tab
 
 **Macros** — `@specialty .augmerc` wraps the entire specialty section and applies specialty-scoped CSS. `@specialty-intro` holds the name, definition, and Spec Tweak. `@learning-path` injects the path header and path sequence list. Each `@skill` card follows the path declaration. See [DC Components](#ch-dc-components) for the full macro reference.
 
-@page-break
-
 @specialty .augmerc
 
 @specialty-intro
@@ -173,7 +171,7 @@ Some jobs are work. Some jobs are justice.
 
 @end-specialty
 
----
+@page-break
 
 ## Combining Specialties
 

@@ -244,6 +244,30 @@
 
 
 
+/* ═══ EXAMPLE INTRO PAGE — chevron H1 font-size cap ════════════════════════
+   The ".dc-chevron" H1 on each example intro page (e.g. "Specialty Profile —
+   Real-World Example") wraps to 3 lines at the default display size because the
+   titles are long. Scoped to the example chapter wrapper classes so only these
+   pages are affected — no other chapter h1 titles are touched. */
+.example-specialty-overview h1.dc-chevron,
+.example-specialty-profile h1.dc-chevron,
+.example-rules h1.dc-chevron,
+.example-dm-npcs h1.dc-chevron,
+.example-gear-tech h1.dc-chevron,
+.example-chapter-opener h1.dc-chevron,
+.example-front-matter h1.dc-chevron {
+  font-size: 1.4rem;
+  line-height: 1.2;
+}
+
+/* ═══ GEAR CARD SECTION: equal card heights in two-column layout ════════════
+   In a CSS-columns two-column layout, gear cards at different heights create a
+   ragged bottom edge. Setting a min-height ensures cards in each column are
+   visually consistent. */
+.section.two-column .dc-gear-entry {
+  min-height: 1.5in;
+}
+
 /* ═══ NPC STAT BLOCKS — chapter-04 page ════════════════════════════════════
    Raw H4/H5 NPC entries need visual structure. No macro — context class approach. */
 

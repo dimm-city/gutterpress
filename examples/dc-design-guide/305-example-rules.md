@@ -106,8 +106,6 @@ Across the table sits the Dream Master: not your boss, not your babysitter, not 
 
 They don't stop you. They don't protect you. They just make sure the pain fits the crime.
 
-@page .chapter-03
-
 ### ROLL A DIE! {#c1-rolling-the-die}
 
 When something matters—really matters—the DM might call for a roll. One toss of a d20 decides if you rocket through a window like a legend… or face-plant into the curb with a mouthful of glass and regrets.
@@ -184,11 +182,5 @@ On a success, the condition ends. Conditions usually end when the encounter ends
 
 ### Distance Tags
 
-| Zone | Range |
-|------|-------|
-| **Reach** | Adjacent — close enough to touch |
-| **Near** | Same room, line of sight |
-| **Far** | Across a street, different room |
-
-Most abilities specify which distances they work at. When in doubt, ask if you could throw something at it and hit — that's Near.
+Most abilities specify which distances they work at. **Reach** means adjacent — close enough to touch. **Near** means the same room or line of sight. **Far** means across a street or a different room. When in doubt, ask if you could throw something at it and hit — that's Near.
 

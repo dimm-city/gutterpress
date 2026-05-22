@@ -54,8 +54,6 @@ The door didn't explode. It failed. Metal screamed, folded, and vanished inward 
 
 Five shadows moved as one, already inside, already gone.
 
-@page .chapter-abilities
-
 ## How Abilities Work {.dc-spray}
 
 @lede
@@ -79,6 +77,12 @@ Every moment in Dimm City runs on the same simple rhythm:
 Everything in this chapter exists to support that loop. Abilities bend it. Dice decide it. Dreamers drive it. The Monoverse responds.
 
 @end-callout
+
+### Choosing by Playstyle
+
+**Want to hit things hard?** Augmerc. **Want to control the battlefield?** Streetwarden or Proxy. **Want to slide through systems undetected?** Wirephreak. **Want raw arcane force?** Technosorcerer, Gutterdruid, or Etherlock. **Want to rebuild your body as your toolkit?** Cybersurgeon.
+
+Every specialty excels at one thing and has a path toward a second. Your first specialty is your identity. What you pick up later is your legend.
 
 @page .card-grid
 
@@ -222,9 +226,3 @@ Secrets are currency—and Etherlocks are rich in them. Tapping into elemental f
 @end-specialty-card
 
 @end-specialty
-
-## Choosing by Playstyle
-
-**Want to hit things hard?** Augmerc. **Want to control the battlefield?** Streetwarden or Proxy. **Want to slide through systems undetected?** Wirephreak. **Want raw arcane force?** Technosorcerer, Gutterdruid, or Etherlock. **Want to rebuild your body as your toolkit?** Cybersurgeon.
-
-Every specialty excels at one thing and has a path toward a second. Your first specialty is your identity. What you pick up later is your legend.
