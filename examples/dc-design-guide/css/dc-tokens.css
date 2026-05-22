@@ -95,46 +95,51 @@
 
   /* ── Page & Paper ─────────────────────────────────────────────────────── */
   --bg:           #d3cec6;  /* page background — warm light gray */
-  --paper-cream:  #f5f0e6;  /* warm cream — primary card surface */
-  --paper-light:  #ebe5d8;  /* aside / sticker / quote */
-  --paper-aged:   #ddd6c6;  /* deeper aged — emphasis aside */
-  --paper-stain:  #d0c8b5;  /* dirty paper / inset wells */
+  --paper-cream:  #eee0c4;  /* bone-cream — warm but not competing with acid yellow */
+  --paper-light:  #e4dcc4;  /* dusty manila — cooler than cream */
+  --paper-aged:   #d4c9ad;  /* worn kraft — proper decay register */
+  --paper-stain:  #bcad90;  /* tobacco stain — dark inset wells */
 
-  /* ── Ink & Text ───────────────────────────────────────────────────────── */
-  --ink:        #1a1715;  /* primary text — near-black with warm cast */
-  --ink-dark:   #2a2622;  /* secondary headings */
-  --ink-smoke:  #4a4540;  /* body emphasis, italics on cream */
-  --ink-dust:   #6e6860;  /* muted labels — 4.85:1 on paper-cream */
+  /* ── Ink & Text — warm sepia drift, not neutral gray ─────────────────── */
+  --ink:        #1a1512;  /* near-black with red bias — riso warm black */
+  --ink-dark:   #2b231d;  /* warmer secondary heading weight */
+  --ink-smoke:  #4d4339;  /* sepia mid-tone — body emphasis */
+  --ink-dust:   #756a5c;  /* warm caption gray — 4.5:1+ on paper-cream */
 
   /* ── Accents — creaturepunk fire + blood ─────────────────────────────── */
-  --crimson:    #d41200;  /* primary accent — vivid banner red */
-  --blood:      #a30900;  /* deep crimson — 5.46:1 on --bg */
-  --orange:     #f24d00;  /* spray orange — vivid saturated */
-  --rust:       #c23000;  /* rust — warm red-orange */
-  --amber:      #856733;  /* amber — vivid golden */
-  --deep-rust:  #761800;  /* shadow rust */
-  --amber-dark: #b87400;  /* darkened amber — 3.22:1 on paper-cream */
+  --crimson:    #e1261c;  /* PMS Red 032 — CMYK 0 95 90 0; survives POD */
+  --blood:      #901a12;  /* oxidised arterial — 5.2:1 on paper-cream */
+  --orange:     #f26b1f;  /* PMS 165 — CMYK 0 70 95 0; hazard orange */
+  --rust:       #b23a12;  /* burnt rebar edge */
+  --amber:      #8a6a35;  /* tarnished brass connector */
+  --deep-rust:  #6a1a08;  /* shadow rust — deepest warm dark */
+  --amber-dark: #6e5020;  /* burnt amber — darkened from old muddy #b87400 */
 
-  /* ── HUD Colors — digital chrome ─────────────────────────────────────── */
-  --hud-blue:        #2a6a8a;  /* primary HUD chrome border */
-  --hud-blue-dark:   #1f5a7a;  /* 5.06:1 on --bg */
-  --hud-blue-bright: #48a4e0;
-  --hud-blue-dim:    #c9d6e2;  /* very light HUD panel on cream */
-  --hud-magenta:     #b85820;
+  /* ── HUD Colors — digital neon chrome ────────────────────────────────── */
+  /* These are the CMYK process-primary neons — maximum chroma CMYK can make */
+  --hud-blue:        #1f6f94;  /* teal-cyan mid HUD — CMYK 85 45 25 10 */
+  --hud-blue-dark:   #14516e;  /* deep teal for borders/rules/H2 text */
+  --hud-blue-bright: #00aeef;  /* PROCESS CYAN 100C 0M 0Y 0K — the neon spark */
+  --hud-blue-dim:    #b8d8e8;  /* muted cyan panel tint on cream */
+  --hud-magenta:     #e6007a;  /* PROCESS MAGENTA 0C 100M 0Y 0K — Tokyo arcade */
   --hud-panel:       #eeece8;  /* neutral light cream — callouts, note bars */
+
+  /* ── New signal colors — the creaturepunk sparks ──────────────────────── */
+  --neon-acid:  #e8eb00;  /* CMYK 10 0 100 0 — hazmat acid yellow, NOT for text */
+  --ink-bruise: #38184a;  /* deep violet shadow — underground, chemical */
 
   /* ── Surface Tints ────────────────────────────────────────────────────── */
   --surface-tint-3:      #f2f0ec;
-  --surface-orange-tint: #dcd4bc;  /* gold @ 15% on --bg */
+  --surface-orange-tint: #d8cfb4;  /* warmer gold tint on aged paper */
 
   /* ── Borders ──────────────────────────────────────────────────────────── */
-  --border-hairline: #d0c8b5;
+  --border-hairline: #c8b898;  /* warmer/darker hairline on aged paper */
   --border-blue:     var(--hud-blue);
   --bw-thin:         1px;
   --callout-border-width-small: 2px;
 
   /* ── Shadows ──────────────────────────────────────────────────────────── */
-  --shadow-light: #b8b3a8;
+  --shadow-light: #b0a898;
   --shadow-ink-border:
     drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink))
     drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink));

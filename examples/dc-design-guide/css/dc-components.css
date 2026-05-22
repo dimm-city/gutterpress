@@ -44,11 +44,11 @@
    .dc-alert base + .dc-alert-label label chrome + thin variant classes.
    GFM: > [!NOTE/WARNING/DM/VIBE/ORIGIN/VISIT/GEAR] or @callout/@dm-note macros. */
 
-/* ── Base shell ─────────────────────────────────────────────────────────── */
+/* ── Base shell — player-facing: pale cyan HUD panel, blue border ─────────── */
 .dc-alert {
-  --dc-alert-bg: var(--paper-light);
-  --dc-alert-border: var(--crimson);
-  --dc-alert-fg: var(--ink-smoke);
+  --dc-alert-bg: var(--hud-blue-dim);
+  --dc-alert-border: var(--hud-blue-dark);
+  --dc-alert-fg: var(--ink);
   --dc-alert-label-color: var(--dc-alert-border);
 
   /* Structural overrides via custom properties for variant use */
@@ -116,13 +116,17 @@
 
 /* ── Variant: Warning (note with distinct surface) ──────────────────────── */
 .dc-note.warning {
-  --dc-alert-bg: var(--surface-orange-tint);
-  --dc-alert-border: var(--rust);
+  --dc-alert-bg: var(--paper-stain);
+  --dc-alert-border: var(--orange);
+  --dc-alert-label-color: var(--rust);
 }
 
-/* ── Variant: DM Note (Dream Master-facing) ─────────────────────────────── */
+/* ── Variant: DM Note (Dream Master-facing) — dark panel, authoritative ──── */
 .dc-dm-note {
-  --dc-alert-bg: var(--paper-cream);
+  --dc-alert-bg: var(--ink-dark);
+  --dc-alert-fg: var(--paper-cream);
+  --dc-alert-border: var(--hud-blue-bright);
+  --dc-alert-label-color: var(--hud-blue-bright);
   --dc-alert-body-size: 9pt;
   --dc-alert-border-width: 3px;
   --dc-alert-label-weight: 600;
@@ -130,9 +134,12 @@
   --dc-alert-margin-top: 9pt;
 }
 
-/* ── Variant: Vibe Callout ──────────────────────────────────────────────── */
+/* ── Variant: Vibe Callout — flavor fiction, dark panel ──────────────────── */
 .dc-vibe-callout {
+  --dc-alert-bg: var(--ink-dark);
+  --dc-alert-fg: var(--paper-aged);
   --dc-alert-border: var(--hud-magenta);
+  --dc-alert-label-color: var(--hud-magenta);
 }
 
 /* ── Variant: Origin Callout ────────────────────────────────────────────── */
@@ -153,11 +160,12 @@
 
 /* ── Variant: Gear Callout ──────────────────────────────────────────────── */
 .dc-gear-callout {
-  --dc-alert-bg: var(--paper-cream);
-  --dc-alert-border: var(--border-hairline);
-  --dc-alert-label-color: var(--orange);
+  --dc-alert-bg: var(--ink-dark);
+  --dc-alert-fg: var(--paper-cream);
+  --dc-alert-border: var(--neon-acid);  /* acid yellow-green = hazmat/tech signal */
+  --dc-alert-label-color: var(--neon-acid);
   margin: 0.12in auto 0.18in;
-  border-left-width: 1.5px;
+  border-left-width: 4px;
   width: 90%;
 }
 
@@ -198,8 +206,10 @@
 }
 
 .dc-specialty.augmerc .dc-specialty-card {
-  --dc-specialty-card-bg: var(--paper-light);
-  --dc-specialty-card-accent: var(--augmerc-accent);
+  --dc-specialty-card-bg: var(--hud-blue-dark);
+  --dc-specialty-card-fg: var(--paper-cream);
+  --dc-specialty-card-accent: var(--hud-blue-bright);
+  --dc-specialty-card-border: var(--hud-blue);
 }
 
 .dc-specialty.augmerc .dc-specialty-intro {
@@ -232,8 +242,10 @@
 }
 
 .dc-specialty.cybersurgeon .dc-specialty-card {
-  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-bg: var(--cybersurgeon-dark);
+  --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--cybersurgeon-accent);
+  --dc-specialty-card-border: var(--cybersurgeon-mid);
 }
 
 .dc-specialty.cybersurgeon .dc-specialty-intro {
@@ -265,8 +277,10 @@
 }
 
 .dc-specialty.proxy .dc-specialty-card {
-  --dc-specialty-card-bg: var(--paper-cream);
-  --dc-specialty-card-accent: var(--proxy-accent);
+  --dc-specialty-card-bg: var(--ink-dark);
+  --dc-specialty-card-fg: var(--paper-cream);
+  --dc-specialty-card-accent: var(--orange);
+  --dc-specialty-card-border: var(--rust);
 }
 
 .dc-specialty.proxy .dc-specialty-intro {
@@ -299,8 +313,10 @@
 }
 
 .dc-specialty.wirephreak .dc-specialty-card {
-  --dc-specialty-card-bg: var(--paper-light);
+  --dc-specialty-card-bg: var(--wirephreak-dark);
+  --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--wirephreak-accent);
+  --dc-specialty-card-border: var(--wirephreak-accent);
 }
 
 .dc-specialty.wirephreak .dc-specialty-intro {
@@ -333,8 +349,10 @@
 }
 
 .dc-specialty.streetwarden .dc-specialty-card {
-  --dc-specialty-card-bg: var(--surface-orange-tint);
+  --dc-specialty-card-bg: var(--streetwarden-dark);
+  --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--streetwarden-accent);
+  --dc-specialty-card-border: var(--streetwarden-accent);
 }
 
 .dc-specialty.streetwarden .dc-specialty-intro {
@@ -367,8 +385,10 @@
 }
 
 .dc-specialty.technosorcerer .dc-specialty-card {
-  --dc-specialty-card-bg: var(--paper-light);
+  --dc-specialty-card-bg: var(--technosorcerer-dark);
+  --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--technosorcerer-accent);
+  --dc-specialty-card-border: var(--technosorcerer-accent);
 }
 
 .dc-specialty.technosorcerer .dc-specialty-intro {
@@ -402,8 +422,10 @@
 }
 
 .dc-specialty.gutterdruid .dc-specialty-card {
-  --dc-specialty-card-bg: var(--paper-light);
+  --dc-specialty-card-bg: var(--gutterdruid-dark);
+  --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--gutterdruid-accent);
+  --dc-specialty-card-border: var(--gutterdruid-accent);
 }
 
 .dc-specialty.gutterdruid .dc-specialty-intro {
@@ -436,8 +458,10 @@
 }
 
 .dc-specialty.etherlock .dc-specialty-card {
-  --dc-specialty-card-bg: var(--paper-light);
+  --dc-specialty-card-bg: var(--etherlock-dark);
+  --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--etherlock-accent);
+  --dc-specialty-card-border: var(--etherlock-accent);
 }
 
 .dc-specialty.etherlock .dc-specialty-intro {
@@ -1187,10 +1211,12 @@ hr,
   --dc-specialty-card-bg: var(--hud-panel);
   --dc-specialty-card-border: var(--hud-blue);
   --dc-specialty-card-accent: var(--crimson);
+  --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-media-height: 0.85in;
   --dc-specialty-card-media-width: 0.75in;
   --dc-specialty-card-title-align: right;
   background: var(--dc-specialty-card-bg);
+  color: var(--dc-specialty-card-fg);
   display: flow-root;
   overflow: hidden;
   line-height: var(--lh-tight);
@@ -1220,6 +1246,7 @@ hr,
 .dc-specialty-card h3 {
   margin: 0;
   font-size: 1.15em;
+  color: var(--dc-specialty-card-fg);
   text-align: var(--dc-specialty-card-title-align);
   white-space: normal;
   overflow-wrap: anywhere;
@@ -1228,9 +1255,13 @@ hr,
 
 /* Subtitle tagline — aligned away from the portrait, allow wrapping. */
 .dc-specialty-card blockquote {
-  margin: 0.04in 0 0;
+  background: none;
+  border: none;
   padding: 0 0.06in;
+  margin: 0.04in 0 0;
   font-size: 0.95em;
+  color: var(--dc-specialty-card-fg);
+  opacity: 0.8;
   text-align: var(--dc-specialty-card-title-align);
   white-space: normal;
   overflow-wrap: anywhere;
@@ -1241,6 +1272,7 @@ hr,
   margin-top: 0.02in;
   margin-bottom: 0;
   line-height: 1.35;
+  color: var(--dc-specialty-card-fg);
   overflow-wrap: anywhere;
 }
 
@@ -1439,23 +1471,23 @@ hr,
 
 /* ── Outcome row color modifiers ──────────────────────────────────────── */
 .dc-outcome-row.crit {
-  --row-color: var(--blood);
+  --row-color: var(--hud-magenta);
 }
 
 .dc-outcome-row.hit {
-  --row-color: var(--crimson);
+  --row-color: var(--hud-blue-dark);
 }
 
 .dc-outcome-row.mixed {
-  --row-color: var(--amber);
-}
-
-.dc-outcome-row.miss {
   --row-color: var(--orange);
 }
 
+.dc-outcome-row.miss {
+  --row-color: var(--rust);
+}
+
 .dc-outcome-row.fail {
-  --row-color: var(--ink);
+  --row-color: var(--ink-dark);
 }
 
 /* ── Distance tags (AP cost × distance block) ─────────────────────────── */
@@ -1578,8 +1610,7 @@ hr,
 /* ───────── DEFINITION BLOCK ───────── */
 .dc-definition-block {
   background: var(--surface-orange-tint);
-  /* warm cream, distinct from paper-light */
-  border-left: 4px solid var(--crimson);
+  border-left: 4px solid var(--hud-blue-bright);  /* process cyan — digital HUD data */
   font-style: italic;
   font-size: var(--fs-body);
   line-height: var(--lh-normal);

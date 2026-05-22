@@ -31,11 +31,6 @@
   print-color-adjust: exact;
 }
 
-/* ── BASELINE ─────────────────────────────────────────────────────────────── */
-html, body {
-  background: var(--bg);
-  color: var(--ink);
-}
 
 body {
   margin: 0;
@@ -56,20 +51,23 @@ h1, h2, h3, h4, h5, h6 {
   line-height: var(--lh-tight);
   text-transform: uppercase;
   text-wrap: balance; /* CSS4 — silently ignored by Paged.js */
-  margin-top: 0;    /* zero browser UA defaults; explicit values below per level */
+  margin-top: 0;
   margin-bottom: 0.5em;
-  color: var(--blood);
+  color: var(--ink-dark);
   break-after: avoid;
 }
 
+/* H1 — magenta neon authority: chapter openers, page-level titles */
 h1 {
   font-size: var(--fs-h1);
   font-weight: var(--fw-bold);
   margin-bottom: 0.75em;
-  border-bottom: 2px solid var(--blood);
+  color: var(--hud-magenta);
+  border-bottom: 2px solid var(--hud-magenta);
   padding-bottom: 0.15em;
 }
 
+/* H2 — cold teal: major section breaks */
 h2 {
   font-size: var(--fs-h2);
   color: var(--hud-blue-dark);
@@ -78,13 +76,12 @@ h2 {
   padding-bottom: 0.1em;
 }
 
-/* H3: lighter sibling of H2's --hud-blue-dark — creates deliberate "dark/light" blue tier.
-   16pt bold qualifies as WCAG large text (≥14pt bold); --hud-blue at 3.80:1 min passes. */
-h3 { font-size: var(--fs-h3); margin-top: 0.08in; color: var(--hud-blue);  letter-spacing: var(--ls-heading); }
-/* H4–H6: neutral ink ramp — red reserved for H1 only; size + display font carry hierarchy. */
+/* H3 — lighter teal: sub-sections */
+h3 { font-size: var(--fs-h3); margin-top: 0.08in; color: var(--hud-blue); letter-spacing: var(--ls-heading); }
+/* H4–H6 — grim dark ramp: body labels */
 h4 { font-size: var(--fs-h4); margin-top: 0.05in; color: var(--ink-dark);  letter-spacing: 0.06em; }
 h5 { font-size: var(--fs-h5); color: var(--ink-smoke); }
-h6 { font-size: var(--fs-h6); color: var(--ink-smoke); }
+h6 { font-size: var(--fs-h6); color: var(--ink-dust); }
 
 
 
@@ -106,9 +103,9 @@ code, kbd, samp {
 blockquote {
   font-family: var(--font-quote);
   font-style: italic;
-  color: var(--ink-smoke);
-  border-left: 3px solid var(--ink-smoke);
-  background: var(--paper-light);
+  color: var(--ink);
+  border-left: 5px solid var(--hud-magenta);
+  background: var(--paper-aged);
   padding: var(--space-sm) var(--space-md) var(--space-sm) var(--space-xl);
   margin: 0.75rem 0;
   text-wrap: balance;
@@ -133,23 +130,23 @@ table {
   break-inside: avoid;
 }
 
-tr:nth-child(even) td { background: var(--surface-tint-3); }
-tr:nth-child(odd)  td { background: var(--paper-light); }
+tr:nth-child(even) td { background: var(--paper-stain); }
+tr:nth-child(odd)  td { background: var(--paper-cream); }
 
 th {
-  background: var(--crimson);
-  color: var(--paper-cream);
+  background: var(--ink-dark);
+  color: var(--hud-blue-bright);
   font-family: var(--font-mono);
   font-size: 8pt;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 4px 8px;
+  padding: 6px 8px;
   text-align: left;
 }
 
 td {
-  border-bottom: 1px solid var(--border-hairline);
-  padding: 4px 8px;
+  border-bottom: 1pt solid var(--border-hairline);
+  padding: 5px 8px;
   vertical-align: top;
 }
 

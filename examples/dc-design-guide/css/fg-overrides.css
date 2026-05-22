@@ -469,6 +469,18 @@
   object-fit: cover;
 }
 
+/* ── LUCID vs SURREAL — opposed palettes ─────────────────────────────────────
+   Lucid = cold cyan HUD signal. Surreal = hot magenta reality-failure.
+   Targeted at the two-column definition block split in the rules chapter. */
+.section.col-split .col:first-child .dc-definition-block {
+  background: var(--hud-blue-dim);
+  border-left: 5px solid var(--hud-blue-bright);
+}
+.section.col-split .col:last-child .dc-definition-block {
+  background: var(--paper-stain);
+  border-left: 5px solid var(--hud-magenta);
+}
+
 /* ── TABLE HEADER COLOR BY SECTION CONTEXT ───────────────────────────────────
    dc-core.css sets the global default: th { background: var(--crimson) }
    That default is correct for dramatic/combat tables (Status Conditions, etc.)
