@@ -1385,39 +1385,62 @@ export default function dimmCityPlugin(md, options = {}) {
       // Unified form:  @block variant=panel|slate|shard|codex label="Title"
       // Convenience:   @panel label="Title"  @slate label="Title"
       //                @shard label="Title"  @codex label="Title"
-      {
-        const BLOCK_SHORTHANDS = ['@panel', '@slate', '@shard', '@codex'];
-        let blockMarker = parseMarker(tok, tokens, i, '@block');
-        let blockVariant = null;
-        if (blockMarker.matched) {
-          blockVariant = (blockMarker.attrs['variant'] || 'panel').toLowerCase();
-        } else {
-          for (const sh of BLOCK_SHORTHANDS) {
-            const m = parseMarker(tok, tokens, i, sh);
-            if (m.matched) {
-              blockMarker = m;
-              blockVariant = sh.slice(1); // strip '@'
-              break;
-            }
-          }
-        }
-        if (blockVariant) {
-          closeAll();
-          const labelText = blockMarker.attrs['label'] ? esc(blockMarker.attrs['label']) : '';
-          const titleHtml = labelText
-            ? '<div class="dc-block-title">' + labelText + '</div>\n'
-            : '';
-          newTokens.push(makeToken('html_block',
-            '<div class="dc-block dc-' + blockVariant + '">\n' + titleHtml
-          ));
-          inBlock = true;
-          i += 2;
-          continue;
-        }
+
+      const blockUnifiedMarker = parseMarker(tok, tokens, i, '@block');
+      if (blockUnifiedMarker.matched) {
+        closeAll();
+        const blockVariant = (blockUnifiedMarker.attrs['variant'] || 'panel').toLowerCase();
+        const blockLabel = blockUnifiedMarker.attrs['label'] ? esc(blockUnifiedMarker.attrs['label']) : '';
+        const blockTitleHtml = blockLabel ? '<div class="dc-block-title">' + blockLabel + '</div>\n' : '';
+        newTokens.push(makeToken('html_block', '<div class="dc-block dc-' + blockVariant + '">\n' + blockTitleHtml));
+        inBlock = true;
+        i += 2;
+        continue;
       }
 
-      const END_BLOCK_MARKERS = ['@end-block', '@end-panel', '@end-slate', '@end-shard', '@end-codex'];
-      if (END_BLOCK_MARKERS.some(m => isMarker(tok, tokens, i, m))) {
+      const panelMarker = parseMarker(tok, tokens, i, '@panel');
+      if (panelMarker.matched) {
+        closeAll();
+        const panelLabel = panelMarker.attrs['label'] ? esc(panelMarker.attrs['label']) : '';
+        newTokens.push(makeToken('html_block', '<div class="dc-block dc-panel">\n' + (panelLabel ? '<div class="dc-block-title">' + panelLabel + '</div>\n' : '')));
+        inBlock = true;
+        i += 2;
+        continue;
+      }
+
+      const slateMarker = parseMarker(tok, tokens, i, '@slate');
+      if (slateMarker.matched) {
+        closeAll();
+        const slateLabel = slateMarker.attrs['label'] ? esc(slateMarker.attrs['label']) : '';
+        newTokens.push(makeToken('html_block', '<div class="dc-block dc-slate">\n' + (slateLabel ? '<div class="dc-block-title">' + slateLabel + '</div>\n' : '')));
+        inBlock = true;
+        i += 2;
+        continue;
+      }
+
+      const shardMarker = parseMarker(tok, tokens, i, '@shard');
+      if (shardMarker.matched) {
+        closeAll();
+        const shardLabel = shardMarker.attrs['label'] ? esc(shardMarker.attrs['label']) : '';
+        newTokens.push(makeToken('html_block', '<div class="dc-block dc-shard">\n' + (shardLabel ? '<div class="dc-block-title">' + shardLabel + '</div>\n' : '')));
+        inBlock = true;
+        i += 2;
+        continue;
+      }
+
+      const codexMarker = parseMarker(tok, tokens, i, '@codex');
+      if (codexMarker.matched) {
+        closeAll();
+        const codexLabel = codexMarker.attrs['label'] ? esc(codexMarker.attrs['label']) : '';
+        newTokens.push(makeToken('html_block', '<div class="dc-block dc-codex">\n' + (codexLabel ? '<div class="dc-block-title">' + codexLabel + '</div>\n' : '')));
+        inBlock = true;
+        i += 2;
+        continue;
+      }
+
+      if (isMarker(tok, tokens, i, '@end-block') || isMarker(tok, tokens, i, '@end-panel') ||
+          isMarker(tok, tokens, i, '@end-slate') || isMarker(tok, tokens, i, '@end-shard') ||
+          isMarker(tok, tokens, i, '@end-codex')) {
         if (inBlock) {
           newTokens.push(makeToken('html_block', '</div>\n'));
           inBlock = false;
