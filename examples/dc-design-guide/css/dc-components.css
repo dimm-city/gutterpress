@@ -32,6 +32,15 @@
    dc-components.css value is WRONG — fix it here. The override files own
    layout context only. Never split a component's appearance across files.
 
+   CORE CONSTRAINT — clip-path + filter NEVER on the same element:
+   Chrome clips the filter rendering canvas when clip-path is on the same
+   element — bottom and right drop-shadows silently disappear. Always use
+   the two-layer pattern: filter on the OUTER element (no clip-path), clip-path
+   on a CHILD or ::before pseudo-element. Canonical example in this file:
+     .dc-skill-card (filter) → .dc-card-body (clip-path + background)
+     .dc-path-shell (filter) → .dc-path-shell::before (clip-path + background)
+   Any component needing both geometric clip AND visible borders MUST follow this.
+
    COMPONENT PATTERN:
    One dc-prefixed base class owns the full default shell (structure, spacing,
    typography, borders, break behavior). Variant classes (including specialty
