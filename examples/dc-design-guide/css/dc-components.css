@@ -1341,13 +1341,30 @@ hr,
   --dc-path-title-color: var(--paper-cream);
   --dc-path-accent: var(--hud-magenta);
 
-  /* Left accent strip via gradient (border-left is clipped by clip-path) */
-  background:
-    linear-gradient(to right, var(--dc-path-accent) 4px, var(--paper-cream) 4px);
-  margin: 3px 3px 10px;
+  /* clip-path is on ::before (same pattern as .dc-skill-card / .dc-card-body).
+     filter on the outer shell, clip on a child — otherwise Chrome clips the
+     shadow rendering canvas before painting bottom/right drop-shadows. */
+  background: transparent;
+  margin: 8px 8px 16px;
   position: relative;
-  clip-path: var(--dc-path-shell-clip, polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px));
   filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink));
+}
+
+/* Background + clip-path on ::before — filter stays on parent (no clip-path
+   on parent) so drop-shadow renders on all four sides, same as .dc-skill-card */
+.dc-path-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, var(--dc-path-accent) 4px, var(--paper-cream) 4px);
+  clip-path: var(--dc-path-shell-clip, polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px));
+  z-index: 0;
+}
+
+/* All direct children need z-index > 0 to render above ::before */
+.dc-path-shell > * {
+  position: relative;
+  z-index: 1;
 }
 
 .dc-path-shell>h2.dc-spray {
