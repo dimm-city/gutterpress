@@ -6,6 +6,8 @@
 
 ## What Do You Dream of Doing? {.dc-spray}
 
+@section
+
 The alley narrowed to a throat of shadow as they reached the bunker's blind side. Rook paused, agile fingers lifting mid-air, knuckles flexing with simian grace. The ambient hum dipped a fraction.
 
 "Three layers," he murmured, dark eyes flicking as invisible data scrolled past his vision. "Motion, thermal, facial-recognition. Someone was paranoid."
@@ -22,6 +24,8 @@ The Sledge Sisters struck as one.
 The door didn't explode. It failed. Metal screamed, folded, and vanished inward under a synchronized impact that shook dust from the ceiling and sent shockwaves crawling down the corridor beyond.
 
 Five shadows moved as one, already inside, already gone.
+
+@end-section
 
 ## How Abilities Work {.dc-spray}
 

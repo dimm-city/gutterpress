@@ -2440,30 +2440,58 @@ p.dc-img-wrapper {
   --section-bg:     var(--paper-cream);
   --section-accent: var(--hud-blue-dark);
 
-  background: var(--section-bg);
-  border-left: 4px solid var(--section-accent);
+  /* filter on outer — NO clip-path (clip-path+filter on same element kills bottom/right shadows) */
+  background: transparent;
+  filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink))
+          drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink));
   padding: var(--space-md) var(--space-lg);
-  margin: 6pt 0;
+  margin: 6pt 6px;
+  position: relative;
   break-inside: avoid;
 }
 
-/* ── Two-column / three-column — top border only; clip-path breaks columns */
+/* clip-path + left accent band on ::before — same two-layer pattern as .dc-skill-card */
+.section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, var(--section-accent) 5px, var(--section-bg) 5px);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+  z-index: 0;
+}
+
+.section > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Two-column / three-column — top/bottom borders only; clip-path breaks columns */
 .section.two-column,
 .section.three-column {
+  filter: none;
   background: var(--section-bg);
-  clip-path: none;
   border-top: 3px solid var(--section-accent);
   border-bottom: 1px solid var(--paper-aged);
   padding: var(--space-sm) 0;
+  margin: 6pt 0;
+}
+
+.section.two-column::before,
+.section.three-column::before {
+  display: none;
 }
 
 /* ── col-split (Lucid/Surreal flex layout) — no card treatment ─────────── */
 .section.col-split {
+  filter: none;
   background: transparent;
-  clip-path: none;
   border: none;
   padding: 0;
   margin: 0;
+}
+
+.section.col-split::before {
+  display: none;
 }
 
 /* ═══ SEMANTIC COLOR + FONT UTILITIES ═══

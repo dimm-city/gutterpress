@@ -299,17 +299,37 @@
   letter-spacing: var(--ls-heading);
 }
 
-/* ── H3 LEFT ACCENT BAR — text-heavy flow pages ──────────────────────────────
-   Bare h3 in prose flow has no visual anchor beyond teal color. Scoped tightly
-   to example page contexts so component h3s (specialty-card, gear-entry, etc.)
-   are unaffected. */
-.example-rules > .section > h3,
-.example-dm-npcs > .section > h3,
-.example-gear-tech > .section > h3,
-.example-specialty-overview > .section > h3,
-.example-specialty-profile > .section > h3,
-.example-front-matter > .section > h3 {
-  border-left: 3px solid var(--hud-blue);
+/* ── HEADING INSIDE SECTION — header bar flush to container edges ────────────
+   When H2/H3 is the first child of a .section, pull it into a full-width
+   header bar that extends to the section's padding edges. Applies only in
+   field-guide example page contexts. */
+.example-rules .section > h2:first-child,
+.example-rules .section > h3:first-child,
+.example-dm-npcs .section > h2:first-child,
+.example-dm-npcs .section > h3:first-child,
+.example-specialty-profile .section > h2:first-child,
+.example-specialty-profile .section > h3:first-child,
+.example-front-matter .section > h2:first-child,
+.example-chapter-opener .section > h2:first-child {
+  background: var(--section-accent);
+  color: var(--paper-cream);
+  margin: calc(-1 * var(--space-md)) calc(-1 * var(--space-lg)) var(--space-sm);
+  padding: 0.35rem var(--space-lg);
+  border-left: none;
+  font-size: var(--fs-h4);
+  letter-spacing: var(--ls-heading);
+  text-transform: uppercase;
+}
+
+/* ── H3 LEFT ACCENT BAR — bare h3 not first-child in section ────────────────
+   Scoped tightly to example page contexts so component h3s are unaffected. */
+.example-rules .section > h3:not(:first-child),
+.example-dm-npcs .section > h3:not(:first-child),
+.example-gear-tech .section > h3:not(:first-child),
+.example-specialty-overview .section > h3:not(:first-child),
+.example-specialty-profile .section > h3:not(:first-child),
+.example-front-matter .section > h3:not(:first-child) {
+  border-left: 3px solid var(--section-accent);
   padding-left: var(--space-sm);
 }
 
@@ -324,6 +344,16 @@
 .page.tech-cybernetics th {
   background: var(--hud-blue-dark);
 }
+
+/* ── SECTION ACCENT COLORS BY CHAPTER CONTEXT ───────────────────────────────
+   Override --section-accent per chapter so not every section is the same
+   hud-blue-dark. Each chapter gets a color that signals its content type. */
+.example-rules .section        { --section-accent: var(--hud-blue); }
+.example-dm-npcs .section      { --section-accent: var(--rust); }
+.example-gear-tech .section    { --section-accent: var(--amber); }
+.example-front-matter .section { --section-accent: var(--hud-magenta); }
+.example-chapter-opener .section { --section-accent: var(--hud-blue); }
+.example-specialty-profile .section { --section-accent: var(--hud-blue-dark); }
 
 /* ── CHAPTER-START: opening blockquote epigraph treatment ────────────────────
    Moved from dc-components.css (C5 violation — page-context element selector

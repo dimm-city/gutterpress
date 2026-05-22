@@ -5,6 +5,8 @@
 
 # Who Do You Dream to Be? {.dc-chevron}
 
+@section
+
 "It's hard being me, but I guess it's the same for anyting sentient in the monoverse, ay?! Tag's Thump, an I'm a rabbit outta dee EntD here in Dimm City. Lemme post ya a tale about life here in da middle 'o dee ether.
 
 I wuz tearin down an alley, lungs burnin, heart jackhammering like it wanted out. Da cauldron wuz right on mai heels now, wings chopping da air, close enough I could smell da oil an blood on 'em.
@@ -39,9 +41,13 @@ Da bats froze mid-flight, shrieking an tumbling outta da sky.
 
 I locked in da hack, jacked out, an leapt clean onto a passing airbus like I meant to do it all along.
 
+@end-section
+
 ---{.column-break}
 
 ## Citizen File {#c2-character-profile}
+
+@section
 
 Thump is a PC created for dreams in Dimm City by an actual dreamer. Their personality, looks, vibe, equipment, and skills are all chosen by the dreamer themselves. You can do the same by filling in the blanks on a character profile to create your very own character. For many dreamers, this is one of the most exciting parts of this experience: thinking about a character you want to play and designing them for the dream to come.
 
@@ -50,14 +56,14 @@ This chapter will guide you through all the choices you need to make to help you
 
 ### Image Is Everything {#c2-first-impressions}
 
-
 Before reputation comes recognition. Before recognition comes a glance. Dimmers speed-read bodies like text: names, scars, size, and stance all scanned in a heartbeat. This section defines how you're read when the Dream first lays eyes on you.
-
 
 > [!VISIT]
 > **Before You Fill Anything In:**
 > Don't start with numbers. Start with a body, a vibe, and a reason you're still breathing in Dimm City. This file isn't about optimization, it's about creating a CREATUREPUNK. If a choice would make Dimm City react to you, it belongs here. If it only makes you stronger, it probably comes later.
 > Visit **dimm.city** for a form-fillable PDF version of the Citizen File.
+
+@end-section
 
 
 @page .citizen-file .chapter-01

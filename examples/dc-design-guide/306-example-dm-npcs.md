@@ -70,8 +70,6 @@ Bury the math inside the moment and build scenes that hit harder than the dice e
 
 Fodder are common, fringe threats—barely worth noticing on their own. But with the right numbers, traits, or upgrades, they can turn lethal fast. Fodder can be desperate civilians, low-tier gang members, kamikaze drones, or even mutated vermin. They're not tough or deadly solo—the danger comes from quantity or context.
 
-@end-section
-
 HP 2 — Damage 1
 
 ---
@@ -95,11 +93,15 @@ Patchheads will sometimes carry makeshift weapons like weighted chains, shivs, o
 
 UniArm 100 / Redi-Mobile Cyberleg / RedEye Optical Prosthetic (could be just one or all)
 
+@end-section
+
 @tape label="Operators"
 
 ## NPC Stat Block: Operator
 
 ### Operators
+
+@section
 
 *Tougher opponents that serve as grunts or support for their Master. Deadly in small groups or with traits that allow for tactical positioning.*
 
@@ -126,11 +128,15 @@ Operator — Medium
 
 UniArm 100 Cyberarm w/Optalanges TechMech kit and Smuggler's Stash Level 1, Light Blaster Pistol
 
+@end-section
+
 @tape label="Masters"
 
 ## NPC Stat Block: Master
 
 ### Masters
+
+@section
 
 > Major characters with significant influence. These NPCs often require strategy and teamwork to defeat and may have additional special abilities or resistances.
 
@@ -155,9 +161,13 @@ Master — Medium
 
 **Swim:** Undertow has the ability to move through water with the same speed as they would otherwise move on land.
 
+@end-section
+
 ---
 
 ### Size Modifiers
+
+@section
 
 Size affects both hit points and damage output, scaling up or down based on how physically imposing the NPC is:
 
@@ -171,9 +181,13 @@ Size affects both hit points and damage output, scaling up or down based on how 
 
 Size is a narrative choice as much as a mechanical one. A Colossal creature changes the encounter architecture — the DM should treat them like a location, not just a big target.
 
+@end-section
+
 ---
 
 ### Building Your Own NPCs
+
+@section
 
 Every NPC in Dimm City is built from the same chassis: a tier, a flavor quote, a size, HP/Damage, and a list of Traits. The Traits are where NPC personality lives.
 
@@ -187,9 +201,13 @@ A good Trait does one of three things:
 
 Equipment and Cybernetics add texture and loot. They don't need to be tracked unless the DM decides they matter to the story.
 
+@end-section
+
 ---
 
 ### Quick NPC Builder
+
+@section
 
 When you need an NPC fast, answer these four questions. That's it. That's an NPC — stat it if combat is likely, leave it sketched if it's just atmosphere.
 
@@ -199,4 +217,6 @@ When you need an NPC fast, answer these four questions. That's it. That's an NPC
 | **What do they want?** | Drive the Dreamers out of the warehouse or die trying. |
 | **What Trait makes them dangerous?** | Bloodlust — the more the Dreamers hurt, the more the mob escalates. |
 | **What if they're handled cleverly?** | Offer the Patchheads something worth more than the job. They scatter. |
+
+@end-section
 

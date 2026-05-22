@@ -24,11 +24,15 @@ What's your next move?
 
 ---{.column-break}
 
+@section
+
 In Dimm City, stakes is high and the death rate is higher. The scenario, like the one above, is presented to you by the Dream Master. Your role as the dreamer is to act how your character would act. The more fun you make for yourself and your friends through playing your characters well, the better the experience will be for everyone.
 
-## How to Play
+@end-section
+
 
 @section
+## How to Play
 
 Each player takes on the role of a Dreamer — a character living and scraping through Dimm City. One player takes on the role of Dream Master and runs the world, its inhabitants, and its consequences.
 
@@ -42,9 +46,9 @@ Learn the core loop first. Everything else builds on it.
 
 @page .the-players .chapter-03
 
-## Dreams {#c1-dreams}
 
 @section
+## Dreams {#c1-dreams}
 
 In Dimm City RPG, you're not "pretending to be someone else." You're fighting for a pulse in a city that chews nobodies into mulch. You and your crew aren't telling a story—you're tagging the city with it. One of you hijacks the world as Dream Master (DM). The rest strap in as the degenerates desperate enough to survive it.
 
@@ -68,9 +72,9 @@ Other worlds dream of heroes and chosen ones. Dimm City dreams of people despera
 
 @end-section
 
-## Dreamers
 
 @section
+## Dreamers
 
 You're a Dreamer, not because you're special, but because you're reckless enough to try. You open your mouth, your character speaks. You make a move, your character bleeds for it. You want something? Take it.
 
@@ -78,9 +82,9 @@ The city doesn't care if you're heroic. It only remembers the ones who leave sca
 
 @end-section
 
-## The Dream Master
 
 @section
+## The Dream Master
 
 Across the table sits the Dream Master: not your boss, not your babysitter, not your damn referee. They're the city's gut reaction. They show the danger, keep the consequences sharp, and laugh when your plans dissolve like cheap plastic.
 
@@ -104,9 +108,9 @@ No dead rolls. No vanilla outcomes. If the dice show you teeth, you better bite 
 
 ### Lucid & Surreal
 
-Some abilities shift your odds.
-
 @section .two-column
+
+Some abilities shift your odds.
 
 @definition
 
@@ -143,6 +147,8 @@ If an ability lists an AP cost, you spend it and the effect happens. No charge-u
 
 ### Status Conditions
 
+@section
+
 Abilities don't just deal damage. They disrupt momentum, break positioning, and shut enemies down long enough for the pack to finish the job.
 
 | Condition | Effect |
@@ -164,6 +170,8 @@ On a success, the condition ends. Conditions usually end when the encounter ends
 
 @end-callout
 
+@end-section
+
 ### Rolling the Die — Full Outcome Ladder
 
 @outcome
@@ -176,5 +184,9 @@ On a success, the condition ends. Conditions usually end when the encounter ends
 
 ### Distance Tags
 
+@section
+
 Most abilities specify which distances they work at. **Reach** means adjacent — close enough to touch. **Near** means the same room or line of sight. **Far** means across a street or a different room. When in doubt, ask if you could throw something at it and hit — that's Near.
+
+@end-section
 

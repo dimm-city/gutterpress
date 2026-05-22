@@ -136,9 +136,9 @@ Some jobs are work. Some jobs are justice.
 
 @page-break
 
-## Combining Specialties
-
 @section
+
+## Combining Specialties
 
 The Field Guide allows Dreamers to expand beyond a single specialty over the course of a campaign. After a significant story milestone — completing a major job, surviving an encounter that changes your character, or finding a mentor — the Dream Master may allow you to begin learning from a second specialty.
 
@@ -146,9 +146,9 @@ Combining specialties is not multi-classing. You don't split your focus at chara
 
 @end-section
 
-### Rules for Cross-Specialty Learning
-
 @section
+
+### Rules for Cross-Specialty Learning
 
 When you add a second specialty, choose one of its learning paths. You gain access to the first ability in that path. To learn further abilities, you must:
 
@@ -166,9 +166,9 @@ The specialty system is intentionally resistant to optimization. Cross-specialty
 
 @end-dm-note
 
-### Example: Augmerc + Wirephreak
-
 @section
+
+### Example: Augmerc + Wirephreak
 
 An Augmerc who spends three jobs embedded with a Wirephreak crew starts picking up how doors open from the inside. After a major job where stealth was the only play, the DM allows them to access the first ability in Wirephreak's *Clean In, Loud Out* path.
 
@@ -179,6 +179,8 @@ This is the DC cross-specialty model. You stay rooted. You grow edges.
 @end-section
 
 ## What Makes a Good Cross-Specialty Moment {.dc-spray}
+
+@section
 
 The DM should look for three conditions before granting cross-specialty access:
 
@@ -191,6 +193,8 @@ The DM should look for three conditions before granting cross-specialty access:
 All three should be present. One alone is a coincidence. Three is a turning point.
 
 A Dreamer who trains with an Augmerc but never fights should not gain Augmerc abilities. A Dreamer who picks up a skill mid-combat without context should not retain it. The city teaches the desperate, not the curious.
+
+@end-section
 
 @dm-note label="Adjudicating Cross-Specialty Access"
 

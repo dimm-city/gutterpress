@@ -51,6 +51,8 @@ Don was a player in our 2E AD&D group throughout our youth and was a dear friend
 
 # Introduction {.dc-chevron}
 
+@section
+
 > [!PULLQUOTE]
 > "How bright's it ay?!"
 
@@ -64,7 +66,11 @@ Blasts lit the dusk like glitchfire. Bolts and teeth and claws tangled mid-air. 
 
 DimmCitz scattered, vanished into bolted dens and reinforced rooftops. Some just slinked into a corner, shut their eyes, and hoped the riot passed them by. The air stank of scorched fur, ozone, and cordite. Concrete buckled under pulsefire and the ground groaned like it wanted no part of any of it.
 
+@end-section
+
 ## Metropolis in the Mist
+
+@section
 
 Dimm City is a place of crushing lows and exuberant highs known to all within. The citizens of the five districts commonly refer to each other as "Dimmers". Light is impermanent, as just as darkness is, but both are in constant flux. Life in DimmC is the same.
 
@@ -72,7 +78,11 @@ You and your party make the dream come alive. Without you, it doesn't exist. The
 
 These dreams you share will last in your consciousness for life. The joys you found and the laughs you shared coupled with tragedy, sadness or even guilt can impact you in unexpected ways. Be "ready 'n' wary" as adventure in Dimm City is hard, fast, and not for the faint of heart.
 
+@end-section
+
 ## CREATUREPUNK
+
+@section
 
 It ain't chrome. It ain't clean. It's coagulated blood in the wire, hairballs in the circuitry, a roar tearing through static.
 
@@ -84,3 +94,5 @@ Good. That makes you dangerous.
 This is a genre where dreams are loud, limbs are optional, and survival's the last sacred act.
 
 Welcome to Creaturepunk. Get weird or get wrecked.
+
+@end-section
