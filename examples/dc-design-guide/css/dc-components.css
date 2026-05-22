@@ -1344,7 +1344,7 @@ hr,
   /* Left accent strip via gradient (border-left is clipped by clip-path) */
   background:
     linear-gradient(to right, var(--dc-path-accent) 4px, var(--paper-cream) 4px);
-  margin: 0 0 10px;
+  margin: 3px 3px 10px;
   position: relative;
   clip-path: var(--dc-path-shell-clip, polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px));
   filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink));
