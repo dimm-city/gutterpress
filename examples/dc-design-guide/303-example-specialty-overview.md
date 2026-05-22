@@ -49,9 +49,13 @@ Everything in this chapter exists to support that loop. Abilities bend it. Dice 
 
 ### Choosing by Playstyle
 
+@section
+
 **Want to hit things hard?** Augmerc. **Want to control the battlefield?** Streetwarden or Proxy. **Want to slide through systems undetected?** Wirephreak. **Want raw arcane force?** Technosorcerer, Gutterdruid, or Etherlock. **Want to rebuild your body as your toolkit?** Cybersurgeon.
 
 Every specialty excels at one thing and has a path toward a second. Your first specialty is your identity. What you pick up later is your legend.
+
+@end-section
 
 @page .card-grid
 

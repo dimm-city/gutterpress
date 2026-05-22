@@ -138,11 +138,17 @@ Some jobs are work. Some jobs are justice.
 
 ## Combining Specialties
 
+@section
+
 The Field Guide allows Dreamers to expand beyond a single specialty over the course of a campaign. After a significant story milestone — completing a major job, surviving an encounter that changes your character, or finding a mentor — the Dream Master may allow you to begin learning from a second specialty.
 
 Combining specialties is not multi-classing. You don't split your focus at character creation. You begin as a pure specialist and add breadth through experience. A Wirephreak who survives three jobs with a Cybersurgeon crew might start picking up the basics of how to keep a body functional under pressure. That's how specialties bleed into each other in Dimm City.
 
+@end-section
+
 ### Rules for Cross-Specialty Learning
+
+@section
 
 When you add a second specialty, choose one of its learning paths. You gain access to the first ability in that path. To learn further abilities, you must:
 
@@ -152,6 +158,8 @@ When you add a second specialty, choose one of its learning paths. You gain acce
 
 You cannot access Spec Tweaks from a second specialty. Those abilities are hard-wired to years of dedicated augmentation. What you gain is range, not depth — a taste of another crew's toolkit.
 
+@end-section
+
 @dm-note label="Design Note"
 
 The specialty system is intentionally resistant to optimization. Cross-specialty learning is a story event, not a character sheet checkbox. The DM controls the gates. The city controls what you're exposed to.
@@ -160,11 +168,15 @@ The specialty system is intentionally resistant to optimization. Cross-specialty
 
 ### Example: Augmerc + Wirephreak
 
+@section
+
 An Augmerc who spends three jobs embedded with a Wirephreak crew starts picking up how doors open from the inside. After a major job where stealth was the only play, the DM allows them to access the first ability in Wirephreak's *Clean In, Loud Out* path.
 
 They don't become a Wirephreak. They become an Augmerc who knows one trick that a Wirephreak would recognize.
 
 This is the DC cross-specialty model. You stay rooted. You grow edges.
+
+@end-section
 
 ## What Makes a Good Cross-Specialty Moment {.dc-spray}
 

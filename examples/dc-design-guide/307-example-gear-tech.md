@@ -25,6 +25,8 @@ Every install has a cost. Every edge has a crack. Push too far, and something in
 
 ## The Cost of Upgrades Is You
 
+@section
+
 > You didn't lose yourself. You traded it—piece by piece.
 
 Ego Points (EP) measure how much of you is still you after the implant goes in. Every aug stretches the seams—mind, body, soul. The more tech you bolt on, the more your flesh remembers what got stripped away. Push too far, and it ain't just your mods glitching—it's your grip on reality.
@@ -35,11 +37,17 @@ A PC can have the following augmentations in their original form: 1 Neurolink (a
 
 Cybernetics must be installed by a trained Cybersurgeon in a medlab, clinic, or hospital. Augments and modifications are typically purchased with Dream Credits.
 
+@end-section
+
 ### Ego Points (EP)
+
+@section
 
 > How many implants 'til your brain bluescreens for good?
 
 PCs start clean with 0 EP. But every aug you bolt on scrapes at your mind, tugs at your guts, and dials up the system errors. Ten is the cap—go past it, and your character crashes. Full body-hack burnout.
+
+@end-section
 
 @outcome
 1–2 | Slim chance of control issues | SysChk 6–7

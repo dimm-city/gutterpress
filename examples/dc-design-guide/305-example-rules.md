@@ -28,11 +28,15 @@ In Dimm City, stakes is high and the death rate is higher. The scenario, like th
 
 ## How to Play
 
+@section
+
 Each player takes on the role of a Dreamer — a character living and scraping through Dimm City. One player takes on the role of Dream Master and runs the world, its inhabitants, and its consequences.
 
 The rules in this chapter govern how the Dream plays out: when you roll dice, how outcomes are interpreted, what it costs to push harder, and what conditions your character can suffer. These aren't restrictions — they're the physics of the Dream.
 
 Learn the core loop first. Everything else builds on it.
+
+@end-section
 
 ---
 
@@ -40,7 +44,11 @@ Learn the core loop first. Everything else builds on it.
 
 ## Dreams {#c1-dreams}
 
+@section
+
 In Dimm City RPG, you're not "pretending to be someone else." You're fighting for a pulse in a city that chews nobodies into mulch. You and your crew aren't telling a story—you're tagging the city with it. One of you hijacks the world as Dream Master (DM). The rest strap in as the degenerates desperate enough to survive it.
+
+@end-section
 
 ## The City
 
@@ -62,11 +70,17 @@ Other worlds dream of heroes and chosen ones. Dimm City dreams of people despera
 
 ## Dreamers
 
+@section
+
 You're a Dreamer, not because you're special, but because you're reckless enough to try. You open your mouth, your character speaks. You make a move, your character bleeds for it. You want something? Take it.
 
 The city doesn't care if you're heroic. It only remembers the ones who leave scars. A rare few burn bright enough to get noticed. Dimm City calls them Luminaries, not because they shine, but because they leave burn marks.
 
+@end-section
+
 ## The Dream Master
+
+@section
 
 Across the table sits the Dream Master: not your boss, not your babysitter, not your damn referee. They're the city's gut reaction. They show the danger, keep the consequences sharp, and laugh when your plans dissolve like cheap plastic.
 
@@ -76,11 +90,17 @@ Across the table sits the Dream Master: not your boss, not your babysitter, not 
 
 They don't stop you. They don't protect you. They just make sure the pain fits the crime.
 
+@end-section
+
 ### ROLL A DIE! {#c1-rolling-the-die}
+
+@section
 
 When something matters—really matters—the DM might call for a roll. One toss of a d20 decides if you rocket through a window like a legend… or face-plant into the curb with a mouthful of glass and regrets.
 
 No dead rolls. No vanilla outcomes. If the dice show you teeth, you better bite back.
+
+@end-section
 
 ### Lucid & Surreal
 
@@ -110,12 +130,16 @@ Roll 2d20, take the lower. Reality pushes back. When you roll a 1 in the dream, 
 
 ### Augment Points (AP)
 
+@section
+
 AP is your push. Your burn. Your "I'm doing this anyway."
 
 If an ability lists an AP cost, you spend it and the effect happens. No charge-up. No waiting.
 
 - **0 AP** — Free to use. Not always safe.
 - **1–X AP** — You choose how hard you push. More AP usually means more distance, power, or targets.
+
+@end-section
 
 ### Status Conditions
 

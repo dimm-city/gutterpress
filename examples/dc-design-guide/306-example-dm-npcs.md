@@ -64,9 +64,13 @@ Bury the math inside the moment and build scenes that hit harder than the dice e
 
 ### Fodder
 
+@section
+
 > Everyday creatures, not usually a combat threat but can become dangerous in mobs or with special roles.
 
 Fodder are common, fringe threats—barely worth noticing on their own. But with the right numbers, traits, or upgrades, they can turn lethal fast. Fodder can be desperate civilians, low-tier gang members, kamikaze drones, or even mutated vermin. They're not tough or deadly solo—the danger comes from quantity or context.
+
+@end-section
 
 HP 2 — Damage 1
 

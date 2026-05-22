@@ -2327,6 +2327,65 @@ p.dc-img-wrapper {
   /* column-count/gap/fill owned by page-templates.css */
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SECTION CONTAINER — DC prose content card
+   ═══════════════════════════════════════════════════════════════════════════
+   .section is created by markdown-it-paged @section markers. In DC's design
+   system, a plain @section (no layout class) is treated as a prose content
+   card: left accent gradient strip, light surface, DC clip geometry.
+
+   Column-layout variants (.two-column, .three-column) retain their layout
+   behavior from page-templates.css and get a gentler bg + top-border only
+   (clip-path breaks CSS multi-column rendering).
+
+   .col-split uses flex layout for Lucid/Surreal — reset to transparent.
+
+   Reusable across all DC-branded print-md projects.
+
+   Token API:
+     --section-bg      → panel background surface
+     --section-accent  → left strip + top border accent color        */
+
+/* ── Token defaults ────────────────────────────────────────────────────── */
+.section {
+  --section-bg:     var(--paper-light);
+  --section-accent: var(--hud-blue-dark);
+}
+
+/* ── Plain (single-column) — full card with clip geometry ─────────────── */
+.section:not(.two-column):not(.three-column):not(.col-split) {
+  background: linear-gradient(
+    to right,
+    var(--section-accent) 4px,
+    var(--section-bg) 4px
+  );
+  clip-path: polygon(
+    0 0, calc(100% - 14px) 0, 100% 14px,
+    100% 100%, 14px 100%, 0 calc(100% - 14px)
+  );
+  padding: var(--space-md) var(--space-lg);
+  margin: 0.1in 0;
+  break-inside: avoid;
+}
+
+/* ── Two-column / three-column — bg tint + accent top border ──────────── */
+.section.two-column:not(.col-split),
+.section.three-column {
+  background: var(--section-bg);
+  border-top: 3px solid var(--section-accent);
+  border-bottom: 1px solid var(--paper-aged);
+  padding-top: var(--space-sm);
+  padding-bottom: var(--space-sm);
+}
+
+/* ── col-split (Lucid / Surreal flex layout) — reset, keep flex only ──── */
+.section.col-split {
+  background: transparent;
+  clip-path: none;
+  padding: 0;
+  margin: 0;
+}
+
 /* ═══ SEMANTIC COLOR + FONT UTILITIES ═══
    Thin single-purpose classes for inline markdown spans ({.class-name}).
    Moved from dc-tokens.css (architectural contract violation) to here. */
