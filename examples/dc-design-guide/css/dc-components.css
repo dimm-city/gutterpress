@@ -1343,12 +1343,11 @@ hr,
 
   /* Left accent strip via gradient (border-left is clipped by clip-path) */
   background:
-    linear-gradient(to right, var(--dc-path-accent) 4px, var(--paper-aged) 4px);
+    linear-gradient(to right, var(--dc-path-accent) 4px, var(--paper-cream) 4px);
   margin: 0 0 10px;
   position: relative;
   clip-path: var(--dc-path-shell-clip, polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px));
-  filter: drop-shadow(3px 0 0 var(--ink)) drop-shadow(-3px 0 0 var(--ink)) drop-shadow(0 3px 0 var(--ink)) drop-shadow(0 -3px 0 var(--ink));
-  /* screen preview only — drops in Paged.js PDF export */
+  filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink));
 }
 
 .dc-path-shell>h2.dc-spray {
@@ -1363,6 +1362,8 @@ hr,
   padding: 10px 16px 12px;
   font-size: 18px;
   break-after: avoid;
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .dc-path-shell>h2.dc-spray:first-child + * {
@@ -1375,9 +1376,15 @@ hr,
 }
 
 .dc-path-shell>h2.dc-spray:first-child::after {
-  background: var(--dc-path-title-bg);
-  bottom: -3px;
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   height: 3px;
+  background: var(--hud-magenta);
+  opacity: 1;
+  width: auto;
 }
 
 .dc-path-shell>p,
@@ -2407,15 +2414,8 @@ p.dc-img-wrapper {
   --section-bg:     var(--paper-cream);
   --section-accent: var(--hud-blue-dark);
 
-  background: linear-gradient(
-    to right,
-    var(--section-accent) 4px,
-    var(--section-bg) 4px
-  );
-  clip-path: polygon(
-    0 0, calc(100% - 14px) 0, 100% 14px,
-    100% 100%, 14px 100%, 0 calc(100% - 14px)
-  );
+  background: var(--section-bg);
+  border-left: 4px solid var(--section-accent);
   padding: var(--space-md) var(--space-lg);
   margin: 6pt 0;
   break-inside: avoid;
