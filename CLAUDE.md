@@ -157,7 +157,7 @@ only once is not an anti-pattern; it is the intended mechanism. Do not generalis
 one-off page classes into reusable components unless the pattern genuinely recurs.
 
 
-### CSS layer contract (six-file hierarchy)
+### CSS layer contract (seven-file hierarchy)
 
 Each CSS file has a strict ownership boundary. Read the ARCHITECTURAL CONTRACT
 comment in the first 50 lines of each file before adding any rule.
@@ -170,6 +170,31 @@ comment in the first 50 lines of each file before adding any rule.
 | `page-templates.css` | **ALL `columns:N` rules** (exclusive), `.page.*` layouts, paged wrapper scaffolding, print utilities |
 | `page-rules.css` | `@page` declarations, named pages, Paged.js counter fixes |
 | `dg-overrides.css` | `div.chapter` scaffolding, `.specimen` chrome, guide-specific footer |
+| `fg-overrides.css` | Context-scoped layout rules only: `.page.*`, `.example-*`, `.section.two-column` selectors and pure break control |
+
+### Component style isolation — CORE CONSTRAINT
+
+> **All component styles belong in `dc-components.css`. The override files
+> (`fg-overrides.css`, `dg-overrides.css`) must NOT contain bare `.dc-*` style
+> rules — they exist only for layout context and document-specific positioning.**
+
+The test: if a selector is `.dc-something { ... }` with no page/chapter context
+qualifier, it belongs in `dc-components.css`. Period.
+
+**What belongs in `fg-overrides.css`:**
+- Selectors scoped to a page or chapter class: `.page.card-grid`, `.example-rules >`, `.page.citizen-file`
+- Pure CSS break control (`break-before/after/inside`) on bare component selectors
+- Document-specific element overrides: `.page.chapter-04 h4`, `.chapter-start > blockquote`
+- Field-guide-only image utility classes: `.fg-art-*`
+
+**What does NOT belong in `fg-overrides.css`:**
+- Any `.dc-*` rule without a context-scope qualifier
+- Spacing, font-size, padding, color, or margin changes to components
+- Any rule that would need to be duplicated in a second DC project
+
+This constraint is what makes `dc-components.css` a reusable component library.
+A new DC project imports `dc-components.css` and gets all correct default values
+with zero override files required.
 
 ### Specialty variant system
 

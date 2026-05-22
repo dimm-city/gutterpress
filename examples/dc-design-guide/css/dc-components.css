@@ -1,6 +1,9 @@
 /* =============================================================================
-   COMPONENTS.CSS — DC Design Guide Component Library
+   DC-COMPONENTS.CSS — Reusable DC Component Library
    =============================================================================
+   This file IS the DC component library. Any DC-branded print-md project
+   imports this file and gets all components at their correct defaults with
+   no override files required. Do not break that portability contract.
 
    ── ARCHITECTURAL CONTRACT ────────────────────────────────────────────────
    OWNS:
@@ -18,9 +21,16 @@
    MUST NOT CONTAIN:
    - columns:N rules of any kind (→ page-templates.css)
    - @page declarations or named-page assignments (→ page-rules.css)
-   - div.chapter scaffolding (→ guide.css)
-   - :root token definitions (→ tokens.css)
+   - div.chapter scaffolding (→ dg-overrides.css)
+   - :root token definitions (→ dc-tokens.css)
    - @media screen rules (print-only project)
+   - Element selectors scoped to page/chapter context classes
+     (→ fg-overrides.css or dg-overrides.css)
+
+   CORE CONSTRAINT — COMPONENT STYLE ISOLATION:
+   If a bare .dc-* rule needs different values in fg-overrides.css, the
+   dc-components.css value is WRONG — fix it here. The override files own
+   layout context only. Never split a component's appearance across files.
 
    COMPONENT PATTERN:
    One dc-prefixed base class owns the full default shell (structure, spacing,

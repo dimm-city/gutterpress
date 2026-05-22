@@ -1,14 +1,31 @@
 /* =============================================================================
    FIELD-GUIDE-OVERRIDES.CSS — DC Design Guide layout and context overrides
    =============================================================================
-   Imported LAST by index.css. Owns layout, break control, and context-scoped
-   element styling for the field guide document.
+   Imported LAST by index.css. Wins the cascade for field-guide-specific rules.
 
-   RULE: Only selectors scoped to a page/chapter context class (.page.*,
-   .example-*, .page.citizen-file, .section.two-column) OR pure break-control
-   rules on bare component selectors belong here. Component base styles —
-   colors, fonts, spacing — live in dc-components.css.
-   ============================================================================= */
+   ── ARCHITECTURAL CONTRACT ────────────────────────────────────────────────
+   OWNS:
+   - Selectors scoped to a page or chapter context class:
+       .page.card-grid, .example-rules >, .page.citizen-file, etc.
+   - Pure CSS break control on bare component selectors
+       (break-before/after/inside only — no spacing or appearance)
+   - Document-specific element overrides:
+       .page.chapter-04 h4, .chapter-start > blockquote, etc.
+   - Field-guide-only image utility classes: .fg-art-*
+
+   MUST NOT CONTAIN — CORE CONSTRAINT:
+   - Any bare .dc-* or .pmd-* rule without a page/chapter context qualifier
+   - Spacing, font-size, padding, color, margin, or border changes to components
+   - Any rule that would need to be duplicated in a second DC-branded project
+
+   WHY: dc-components.css is a reusable component library. A new DC project
+   imports dc-components.css and gets all correct defaults with no override
+   files. Bare component style overrides here break that portability contract.
+
+   AGENT RULE: Before writing any rule, ask: "Is this selector scoped to a
+   specific page class or example chapter class?" If NO — it belongs in
+   dc-components.css, not here.
+   ──────────────────────────────────────────────────────────────────────── */
 
 /* ═══ CARD-GRID SPREAD: full-width header + intro, then balanced 8-card grid ══
    column-span: all on h2 and .dc-intro so both span the full width above the
