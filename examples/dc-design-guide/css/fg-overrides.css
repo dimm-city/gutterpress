@@ -18,6 +18,9 @@
 .page.card-grid > .dc-intro {
   column-span: all;
   break-after: avoid;
+  /* Compact padding so 8 specialty cards fit below on the same page */
+  padding: 5px 12px 5px 16px;
+  margin: 0 0 0.04in;
 }
 
 /* Keep first specialty block with the intro */
@@ -77,6 +80,9 @@
 .dc-path-shell > div,
 .dc-path-shell > div.dc-intro {
   margin-inline: var(--space-sm);
+  /* Compact dc-intro inside path-shell — don't let full padding add height */
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 /* Tighten ability row spacing */
@@ -491,6 +497,34 @@
 .section.col-split .col:last-child .dc-definition-block {
   background: var(--paper-stain);
   border-left: 5px solid var(--hud-magenta);
+}
+
+/* ── FRONT MATTER PAGE H2 — dark band treatment ──────────────────────────────
+   Scoped to .page.page-intro so only the "Metropolis" / "CREATUREPUNK" intro
+   sections get the dark-band H2 treatment, matching the chapter opener register. */
+.page.page-intro h2 {
+  background: var(--ink-dark);
+  color: var(--paper-cream);
+  border-bottom: 3px solid var(--hud-magenta);
+  border-left: none;
+  padding: 0.09in 0.14in;
+  width: 100%;
+  box-sizing: border-box;
+  letter-spacing: var(--ls-heading);
+}
+
+/* ── H3 LEFT ACCENT BAR — text-heavy flow pages ──────────────────────────────
+   Bare h3 in prose flow has no visual anchor beyond teal color. Scoped tightly
+   to example page contexts so component h3s (specialty-card, gear-entry, etc.)
+   are unaffected. Adds 3px left bar to visually weight the subheading. */
+.example-rules > .section > h3,
+.example-dm-npcs > .section > h3,
+.example-gear-tech > .section > h3,
+.example-specialty-overview > .section > h3,
+.example-specialty-profile > .section > h3,
+.example-front-matter > .section > h3 {
+  border-left: 3px solid var(--hud-blue);
+  padding-left: var(--space-sm);
 }
 
 /* ── TABLE HEADER COLOR BY SECTION CONTEXT ───────────────────────────────────
