@@ -166,7 +166,7 @@ They don't become a Wirephreak. They become an Augmerc who knows one trick that 
 
 This is the DC cross-specialty model. You stay rooted. You grow edges.
 
-### What Makes a Good Cross-Specialty Moment
+## What Makes a Good Cross-Specialty Moment {.dc-spray}
 
 The DM should look for three conditions before granting cross-specialty access:
 
@@ -179,3 +179,17 @@ The DM should look for three conditions before granting cross-specialty access:
 All three should be present. One alone is a coincidence. Three is a turning point.
 
 A Dreamer who trains with an Augmerc but never fights should not gain Augmerc abilities. A Dreamer who picks up a skill mid-combat without context should not retain it. The city teaches the desperate, not the curious.
+
+@dm-note label="Adjudicating Cross-Specialty Access"
+
+**Don't grant it early.** Cross-specialty access is a milestone, not a reward. If a Dreamer asks for it at Session 2, the answer is almost always *not yet.*
+
+**Make them earn the fiction first.** Before they can access even one ability from a second specialty, they should have spent at least two sessions doing things that specialty would do — not just being near someone who does them.
+
+**Tier 1 only, to start.** A Dreamer's first cross-specialty unlock should always be a Tier 1 ability. Jumping to Tier 2 or 3 short-circuits the learning arc and collapses what should be a multi-session evolution into a single handout.
+
+**One path, not a buffet.** Cross-specialty learning opens a single learning path, not the entire specialty catalog. The Dreamer chooses *one* path in the cross-specialty and can only progress linearly through it. They are building a bridge between identities, not copying a second identity wholesale.
+
+**The city decides.** In Dimm City, who you become is shaped by what the Monoverse throws at you. A forced narrative justification — *I spent downtime reading Wirephreak manuals* — is weaker than an earned one. *Last session you jacked into a live system to save someone and it worked* — that's the city talking.
+
+@end-dm-note

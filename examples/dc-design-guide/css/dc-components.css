@@ -35,11 +35,6 @@
    .dc-specialty.<name> scope block for a component?" — if NO, use another file.
    ──────────────────────────────────────────────────────────────────────── */
 
-.chapter {
-  display: block;
-  width: 100%;
-}
-
 /* ═══ ALERTS — base+thin-variant pattern ═══
    .dc-alert base + .dc-alert-label label chrome + thin variant classes.
    GFM: > [!NOTE/WARNING/DM/VIBE/ORIGIN/VISIT/GEAR] or @callout/@dm-note macros. */
@@ -202,7 +197,6 @@
 .dc-specialty.augmerc .dc-path-shell {
   --dc-path-title-bg: var(--hud-blue-dark);
   --dc-path-accent: var(--augmerc-accent);
-  background: var(--paper-light);
 }
 
 .dc-specialty.augmerc .dc-specialty-card {
@@ -238,7 +232,6 @@
 .dc-specialty.cybersurgeon .dc-path-shell {
   --dc-path-title-bg: var(--cybersurgeon-dark);
   --dc-path-accent: var(--cybersurgeon-accent);
-  background: var(--paper-cream);
 }
 
 .dc-specialty.cybersurgeon .dc-specialty-card {
@@ -273,7 +266,6 @@
 .dc-specialty.proxy .dc-path-shell {
   --dc-path-title-bg: var(--ink-dark);
   --dc-path-accent: var(--proxy-accent);
-  background: var(--surface-orange-tint);
 }
 
 .dc-specialty.proxy .dc-specialty-card {
@@ -309,7 +301,6 @@
 .dc-specialty.wirephreak .dc-path-shell {
   --dc-path-title-bg: var(--wirephreak-dark);
   --dc-path-accent: var(--wirephreak-accent);
-  background: var(--paper-cream);
 }
 
 .dc-specialty.wirephreak .dc-specialty-card {
@@ -345,7 +336,6 @@
 .dc-specialty.streetwarden .dc-path-shell {
   --dc-path-title-bg: var(--crimson);
   --dc-path-accent: var(--streetwarden-accent);
-  background: var(--paper-cream);
 }
 
 .dc-specialty.streetwarden .dc-specialty-card {
@@ -381,7 +371,6 @@
 .dc-specialty.technosorcerer .dc-path-shell {
   --dc-path-title-bg: var(--technosorcerer-dark);
   --dc-path-accent: var(--technosorcerer-accent);
-  background: var(--paper-light);
 }
 
 .dc-specialty.technosorcerer .dc-specialty-card {
@@ -418,7 +407,6 @@
   --dc-path-title-bg: var(--gutterdruid-dark);
   --dc-path-title-color: var(--ink-dark);
   --dc-path-accent: var(--gutterdruid-accent);
-  background: var(--paper-light);
 }
 
 .dc-specialty.gutterdruid .dc-specialty-card {
@@ -454,7 +442,6 @@
 .dc-specialty.etherlock .dc-path-shell {
   --dc-path-title-bg: var(--etherlock-dark);
   --dc-path-accent: var(--etherlock-accent);
-  background: var(--paper-light);
 }
 
 .dc-specialty.etherlock .dc-specialty-card {
@@ -867,13 +854,16 @@ hr,
 .dc-chapter-opener-no {
   font-family: var(--font-display);
   font-size: var(--fs-chapter);
-  /* 26pt */
   letter-spacing: var(--ls-display);
   text-transform: uppercase;
-  color: var(--crimson);
+  color: var(--hud-magenta);
+  background: var(--ink-dark);
   line-height: 1;
   display: block;
-  margin: 0 0 var(--space-sm);
+  padding: 0.14in 0.18in 0.1in;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 
@@ -1145,7 +1135,6 @@ hr,
   position: relative;
   z-index: 1;
   break-inside: avoid;
-  min-height: 10in;
   box-sizing: border-box;
   border: none;
   clip-path: var(--dc-specialty-intro-clip, polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%));
@@ -1302,8 +1291,11 @@ hr,
 .dc-path-shell {
   --dc-path-title-bg: var(--hud-magenta);
   --dc-path-title-color: var(--paper-cream);
+  --dc-path-accent: var(--hud-magenta);
 
-  background: var(--paper-cream);
+  /* Left accent strip via gradient (border-left is clipped by clip-path) */
+  background:
+    linear-gradient(to right, var(--dc-path-accent) 4px, var(--paper-aged) 4px);
   margin: 0 0 22px;
   position: relative;
   clip-path: var(--dc-path-shell-clip, polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px));
@@ -1552,15 +1544,6 @@ hr,
   content: '∿ ';
   opacity: 1;
 }
-
-.chapter-start>blockquote:first-of-type {
-  font-size: calc(var(--fs-body-sm) * 1.1);
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
-  margin-top: 0;
-  margin-bottom: 0.2in;
-}
-
 
 /* ───────── PULL-QUOTE ───────── */
 .dc-pullquote {
@@ -2343,3 +2326,24 @@ p.dc-img-wrapper {
 .two-column-list {
   /* column-count/gap/fill owned by page-templates.css */
 }
+
+/* ═══ SEMANTIC COLOR + FONT UTILITIES ═══
+   Thin single-purpose classes for inline markdown spans ({.class-name}).
+   Moved from dc-tokens.css (architectural contract violation) to here. */
+
+.fg1 { color: var(--ink); }
+.fg2 { color: var(--ink-dark); }
+.fg3 { color: var(--ink-smoke); }
+.fg4 { color: var(--ink-dust); }
+.accent-orange  { color: var(--orange); }
+.accent-crimson { color: var(--crimson); }
+.accent-blood   { color: var(--blood); }
+.accent-blue    { color: var(--hud-blue); }
+.accent-amber   { color: var(--amber); }
+.accent-rust    { color: var(--rust); }
+
+.font-display { font-family: var(--font-display); letter-spacing: var(--ls-display); text-transform: uppercase; }
+.font-tab     { font-family: var(--font-tab); letter-spacing: 0.05em; text-transform: uppercase; }
+.font-body    { font-family: var(--font-body); }
+.font-sans    { font-family: var(--font-sans); }
+.font-mono    { font-family: var(--font-mono); }

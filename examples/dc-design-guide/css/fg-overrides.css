@@ -179,12 +179,8 @@
   break-before: avoid;
 }
 
-/* ══ SPECIALTY INTRO: remove excessive min-height ═══
-   The dc-specialty-intro had min-height: 10in which forced it to occupy
-   nearly a full page. Remove this so it only takes the space it needs. */
-
+/* ══ SPECIALTY INTRO: tighten padding for field guide density ═══ */
 .dc-specialty-intro {
-  min-height: auto;
   padding: 1rem 1.25rem 0.75rem;
 }
 
@@ -342,7 +338,9 @@
   height: auto;
   max-height: 2.25in;
   object-fit: cover;
-  margin: 0 0 var(--space-sm) var(--space-md);
+  margin: 0 var(--space-md) var(--space-sm) 0;
+  outline: 3px solid var(--ink-dark);
+  box-shadow: 4px 4px 0 var(--hud-blue-dark);
 }
 
 /* Character portrait — floats right, prose wraps to its left */
@@ -351,6 +349,8 @@
   width: 2.25in;
   height: 2.75in;
   object-fit: cover;
+  outline: 3px solid var(--ink-dark);
+  box-shadow: -4px 4px 0 var(--hud-magenta);
 }
 
 /* Front matter art */
@@ -442,9 +442,21 @@
   color: transparent;
 }
 
-/* ── CHAPTER OPENER DROP CAP ─────────────────────────────────────────────────
-   @chapter-opener macro emits <span class="dc-chapter-opener-no">C.01</span>.
-   The paragraph immediately after the h1 gets a two-line drop cap. */
+/* ── CHAPTER OPENER: dark band extends through H1 ────────────────────────────
+   @chapter-opener macro emits <span class="dc-chapter-opener-no">C.01</span>
+   followed by H1. Both sit on the ink-dark band; H1 text becomes cream with
+   magenta underline — maximum neon-on-grim contrast. */
+.dc-chapter-opener-no + h1 {
+  background: var(--ink-dark);
+  color: var(--paper-cream);
+  border-bottom: 3px solid var(--hud-magenta);
+  padding: 0.06in 0.18in 0.16in;
+  margin: 0 0 0.2in;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* Drop cap on first paragraph after the chapter opener H1 */
 .dc-chapter-opener-no+h1+p::first-letter {
   initial-letter: 2;
   font-weight: var(--fw-bold, 700);
@@ -482,8 +494,8 @@
 }
 
 /* ── TABLE HEADER COLOR BY SECTION CONTEXT ───────────────────────────────────
-   dc-core.css sets the global default: th { background: var(--crimson) }
-   That default is correct for dramatic/combat tables (Status Conditions, etc.)
+   dc-core.css sets the global default: th { background: var(--ink-dark) }
+   with color: var(--hud-blue-bright). Correct for dramatic/combat tables.
 
    Reference and system tables — authoring patterns, NPC tiers, size modifiers —
    use HUD blue to signal "data/reference" vs "rules/drama". Scoped by the
@@ -500,6 +512,17 @@
 .page.chapter-04 th,
 .page.tech-cybernetics th {
   background: var(--hud-blue-dark);
+}
+
+/* ── CHAPTER-START: opening blockquote epigraph treatment ────────────────────
+   Moved from dc-components.css (C5 violation — page-context element selector
+   belongs in fg-overrides, not in component file). */
+.chapter-start > blockquote:first-of-type {
+  font-size: calc(var(--fs-body-sm) * 1.1);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  margin-top: 0;
+  margin-bottom: 0.2in;
 }
 
 

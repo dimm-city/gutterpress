@@ -231,28 +231,3 @@
 }
 
 
-/* ── SEMANTIC COLOR UTILITIES ─────────────────────────────────────────────── */
-.fg1 { color: var(--ink); }
-.fg2 { color: var(--ink-dark); }
-.fg3 { color: var(--ink-smoke); }
-.fg4 { color: var(--ink-dust); }
-.accent-orange  { color: var(--orange); }
-.accent-crimson { color: var(--crimson); }
-.accent-blood   { color: var(--blood); }
-.accent-blue    { color: var(--hud-blue); }
-.accent-amber   { color: var(--amber); }
-.accent-rust    { color: var(--rust); }
-
-.font-display { font-family: var(--font-display); letter-spacing: var(--ls-display); text-transform: uppercase; }
-.font-tab     { font-family: var(--font-tab); letter-spacing: 0.05em; text-transform: uppercase; }
-.font-body    { font-family: var(--font-body); }
-.font-sans    { font-family: var(--font-sans); }
-.font-mono    { font-family: var(--font-mono); }
-
-/* ── H1 LETTER SPACING (print) ──────────────────────────────────────────── */
-/* H1 display letter-spacing is wider than the h1–h6 group default.
-   This is a presentation token, not a size override (font-size is now 26pt
-   directly in the token above). */
-h1 {
-  letter-spacing: 0.2em;
-}

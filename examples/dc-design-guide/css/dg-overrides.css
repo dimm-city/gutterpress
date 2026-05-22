@@ -49,6 +49,10 @@
      <div class="chapter id class">…</div>
    The default div behaviour is fine; we just ensure no width side-effects.
    ─────────────────────────────────────────────────────────────────────────── */
+.chapter {
+  display: block;
+  width: 100%;
+}
 
 
 /* ── Chapter page breaks (disabled) ──────────────────────────────────────────
@@ -235,6 +239,8 @@ div.chapter hr {
   position: absolute;
   left: -0.36in;
   top: 0.02in;
+  color: var(--hud-magenta);
+  font-weight: 700;
 }
 
 .toc p {
@@ -244,7 +250,7 @@ div.chapter hr {
 .toc ol,
 .toc ul {
   margin-bottom: var(--gutter);
-  border-left: var(--callout-border-width-small, 2px) solid var(--crimson);
+  border-left: var(--callout-border-width-small, 2px) solid var(--hud-blue-bright);
 }
 
 .toc ul {

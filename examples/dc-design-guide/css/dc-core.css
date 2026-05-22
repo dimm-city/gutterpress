@@ -61,6 +61,7 @@ h1, h2, h3, h4, h5, h6 {
 h1 {
   font-size: var(--fs-h1);
   font-weight: var(--fw-bold);
+  letter-spacing: 0.2em;
   margin-bottom: 0.75em;
   color: var(--hud-magenta);
   border-bottom: 2px solid var(--hud-magenta);
