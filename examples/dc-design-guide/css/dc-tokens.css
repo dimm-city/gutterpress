@@ -147,19 +147,23 @@
   --font-mono:    'Tomorrow', 'Titillium Web', ui-monospace, monospace;
   --font-quote:   'Titillium Web', 'Tomorrow', serif;
 
-  /* ── Type Scale — 12pt body floor ────────────────────────────────────── */
+  /* ── Type Scale — modular ~1.23× ratio, 12pt body anchor ──────────────
+     h1/h2: 1.30×  h2/h3: 1.25×  h3/h4: 1.23×  h4/h5: 1.18×  h5/h6: 1.22×
+     H5 == body-sm: display font + caps + tracking provide differentiation.
+     H6 below body: metadata-only; display font keeps it legible.
+     ────────────────────────────────────────────────────────────────────── */
   --fs-body:    12pt;
   --fs-body-sm: 11pt;    /* design floor — never below this for prose */
   --fs-body-xs: 11.5pt;  /* between sm and body */
   --fs-caption: 10pt;    /* credits / fine print */
   --fs-footer:  9.5pt;   /* @page margin box footer */
-  --fs-h1:      26pt;    /* anchor: 1.5rem × (26pt/1.5rem) */
-  --fs-h2:      22pt;    /* 1.25rem → 26 × (1.25/1.5) = 21.7pt */
-  --fs-h3:      21pt;    /* 1.2rem  → 26 × (1.2/1.5)  = 20.8pt */
-  --fs-h4:      19pt;    /* 1.1rem  → 26 × (1.1/1.5)  = 19.1pt */
-  --fs-h5:      16.5pt;  /* 0.95rem → 26 × (0.95/1.5) = 16.5pt */
-  --fs-h6:      15pt;    /* 0.85rem → 26 × (0.85/1.5) = 14.7pt */
-  --fs-chapter: 26pt;    /* chapter openers */
+  --fs-h1:      26pt;    /* anchor — chapter/page-level titles */
+  --fs-h2:      20pt;    /* section headers; 1.30× below h1 */
+  --fs-h3:      16pt;    /* sub-section, gear card titles; 1.25× below h2 */
+  --fs-h4:      13pt;    /* skill card names, stat block NPC names; 1.23× below h3 */
+  --fs-h5:      11pt;    /* field labels, stat-block sublabels; 1.18× below h4 */
+  --fs-h6:      9pt;     /* metadata only; 1.22× below h5 */
+  --fs-chapter: 26pt;    /* chapter openers — matches h1 */
 
   --fw-semibold: 600;
   --fw-bold:     700;

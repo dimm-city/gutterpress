@@ -54,6 +54,34 @@ Eleven templates cover every DC Field Guide page type. Use the minimal examples 
 
 ---
 
+### Front Matter Pages
+
+@lede
+
+This section shows how the Table of Contents, Credits, and Introduction pages look in the actual Dimm City Field Guide, rendered using real book content. These are the first pages a reader encounters — `page-toc`, `page-credits`, and `page-intro` templates applied to the `chapter-00` content.
+
+@end-lede
+
+@section .two-column
+
+Front matter sets the emotional contract with the reader. Before they see a single rule, a map, or a stat block, the TOC, Credits, and Introduction tell them what kind of book this is.
+
+| Page | Template class | Design purpose |
+|------|---------------|----------------|
+| Table of Contents | `page-toc` | Dense chapter listing with `.dc-toc` numbered rows |
+| Credits | `page-credits` | Short credits block anchored by a full-bleed illustration |
+| Introduction | `page-intro` | Pull-quote opener, narrative fiction, setting primer |
+
+@column-break
+
+All three use the `chapter-00` class selector in `page-rules.css`, which drives the pre-chapter margin and header treatment. The `@toc` and `@end-toc` macros emit the `.dc-toc-row` structure for the Contents page. The pull-quote band on the Introduction page uses `> [!PULLQUOTE]` — the same alert component used elsewhere in the book.
+
+Front matter pages exist outside the main chapter numbering system. They do not have chapter code badges or specialty color blocks. Their job is to establish voice and brand before the system content begins.
+
+@end-section
+
+---
+
 ### Chapter Cover
 
 Full-page specialty chapter cover. Footers suppressed. One per specialty chapter. **Page class:** `@page .page-chapter-start .chapter-start`.
@@ -78,6 +106,40 @@ Full-page specialty chapter cover. Footers suppressed. One per specialty chapter
   </div>
 </div>
 ```
+
+---
+@chapter #ch-example-chapter-opener .example-chapter-opener .chapter-03 ch="3"
+
+### Chapter Opener — Real-World Example {.dc-chevron}
+
+@lede
+
+This section shows how chapter-start spreads look in the actual Dimm City Field Guide, rendered using real book content. The chapter opener uses the `page-chapter-start` page template to create a two-column layout: fiction narrative on the left, rules or character content on the right, separated by a column break.
+
+@end-lede
+
+---
+
+#### About Chapter Opener Spreads
+
+@section .two-column
+
+A chapter opener spread is the reader's first encounter with each chapter's world. DC openers are always two-column: the left column carries a short fiction vignette establishing the vibe and stakes of the chapter, and the right column launches directly into the rules or character creation content.
+
+| Element | Authoring pattern | Rendered as |
+|---------|------------------|-------------|
+| Chapter badge | `@chapter-opener C.01` | Stacked chapter code + large number overlay |
+| Left column | Fiction vignette + art | Narrative prose with inline image |
+| Column break | `---{.column-break}` | Layout split between columns |
+| Right column | Rules intro + content | Standard heading hierarchy |
+
+@column-break
+
+The two-column split is authored with a `---{.column-break}` marker. Everything before the column break flows into the left column; everything after flows into the right. The `@chapter-opener C.NN` macro injects the chapter number badge over the left column's top edge.
+
+The `page-chapter-start` template in `page-rules.css` creates the column structure and applies chapter-specific accent colors via the `chapter-01`, `chapter-02` class selectors.
+
+@end-section
 
 ---
 
@@ -106,6 +168,38 @@ Rules prose fills the right column.
 > [!DM]
 > Facilitator guidance goes here.
 ```
+
+---
+@chapter #ch-example-specialty-overview .example-specialty-overview .chapter-03 ch="3"
+
+# Specialty Overview — Real-World Example {.dc-chevron}
+
+@lede
+
+This section shows how the "Choose a Specialty" spread looks in the actual Dimm City Field Guide, rendered using real book content. It covers two page types: a chapter-start opener with fiction and ability primer, followed by a specialty overview spread with the specialty card grid.
+
+@end-lede
+
+---
+
+## About These Pages
+
+@section .two-column
+
+The specialty section of the Field Guide has two distinct spreads. The chapter-start spread (Chapter 02) pairs an opening fiction vignette with the ability primer — the rules overview for how the whole system works. The specialty overview spread (the `card-grid` template) follows it with the 8 specialty cards side by side.
+
+| Page | Template | Purpose |
+|------|----------|---------|
+| Chapter opener | `page-chapter-start .chapter-02` | Fiction left, ability rules right |
+| Specialty grid | `card-grid` | 8 specialty cards in two-column layout |
+
+@column-break
+
+The two-column structure on both pages is deliberate: the reader gets fiction and mechanics together on the opener, then a clean visual grid for the specialty choices. Every specialty gets equal visual weight in the card grid.
+
+The `@specialty-card` macro inside a `@specialty .name` wrapper sets accent color, silhouette shape, and card layout for each of the 8 specialties. The card grid is fully authored in markdown — no HTML needed.
+
+@end-section
 
 ---
 
@@ -149,6 +243,46 @@ Spec-tweak body prose — conditions and assumptions the specialty carries into 
 | `@lede` | Intro panel — prose and class tag chips |
 | `@section .specialty-art` | Full-bleed art plate (right page) |
 | `@specialty .augmerc` | Wraps cards in a specialty palette; child cards inherit shape and accent |
+
+---
+@chapter #ch-example-specialty-profile .example-specialty-profile .chapter-03 ch="3"
+
+# Specialty Profile — Real-World Example {.dc-chevron}
+
+@lede
+
+This section shows how a full specialty profile looks in the actual Dimm City Field Guide, rendered using real book content from the Augmerc chapter. A specialty profile combines the `@specialty` macro, intro block, art panel, `@learning-path` macro, and a sequence of `@skill` cards — all live DC components.
+
+@end-lede
+
+---
+
+## About Specialty Profile Pages
+
+@section .two-column
+
+Every specialty in the Field Guide gets a two-page spread: the specialty intro block on the first page, followed by learning paths and skill cards flowing across as many pages as needed. The structure is always the same, but the silhouette shapes, accent colors, and ability content differ for each specialty.
+
+| Component | Macro / class | Renders as |
+|-----------|---------------|------------|
+| Specialty wrapper | `@specialty .augmerc` | Parent container with accent + shape tokens |
+| Intro block | `@specialty-intro` / `@end-specialty-intro` | Title banner + definition + spec tweak |
+| Path header | `@learning-path` | Path shell with path title, skill list, signature augment |
+| Skill cards | `@skill` (one per ability) | Tabbed card with tier, flavor, and AP options |
+
+@column-break
+
+The `@specialty .augmerc` wrapper defines all 7 shape variables (`--dc-skill-tab-shape`, `--dc-skill-body-shape`, `--dc-path-title-shape`, `--dc-path-shell-clip`, `--dc-specialty-card-shell-shape`, `--dc-specialty-intro-title-shape`, `--dc-specialty-intro-clip`). Every nested component inherits these through CSS custom property cascade — the component base rules use `var(--token, fallback)` so that specialty shapes override without requiring new selectors.
+
+**Macros used:** `@specialty`, `@specialty-intro`, `@specialty-art`, `@learning-path`, `@skill`. See [DC Components](#ch-dc-components) for the full reference.
+
+@end-section
+
+---
+
+## Specialty Intro Block
+
+**Macros** — `@specialty .augmerc` wraps the entire specialty section and applies specialty-scoped CSS. `@specialty-intro` holds the name, definition, and Spec Tweak. `@learning-path` injects the path header and path sequence list. Each `@skill` card follows the path declaration. See [DC Components](#ch-dc-components) for the full macro reference.
 
 ---
 
@@ -403,6 +537,38 @@ Continued prose with the floated image wrapping left.
 
 ---
 
+# Rules Pages — Real-World Example {.dc-chevron}
+
+@lede
+
+This section shows how core rules pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 03. Rules pages use standard prose, outcome tables, status condition tables, and rule-break callouts. No special macros — clean prose layout with DC typography.
+
+@end-lede
+
+---
+
+## About Rules Page Layouts
+
+@section .two-column
+
+Rules pages are the workhorse of any RPG book. In Dimm City they follow a consistent structure across three page templates:
+
+| Template | Chapter class | Contents |
+|----------|--------------|----------|
+| `page-chapter-start` | `.chapter-03` | Chapter opener fiction + intro prose (two-column) |
+| `the-players` | `.chapter-03` | Dreams, Dreamers, Dream Master + ROLL A DIE! section |
+| bare `@page` | `.chapter-03` | Status conditions table, AP rules, outcome ladder |
+
+@column-break
+
+Rules prose in DC uses a deliberately aggressive voice. The Dream Master section, for instance, isn't a neutral referee description — it's confrontational, second-person, and assumes the reader is ready to run something rough. The tone is part of the system.
+
+The status conditions table uses standard GFM `|---|---|` syntax — `dc-components.css` applies alternating row backgrounds universally. The outcome ladder uses the `@outcome … @end-outcome` macro for tiered DC styling (crit/hit/mixed/miss/fail row colors). Table header color is determined by page-class context: reference/system pages use HUD blue, dramatic/rules pages keep the default crimson.
+
+@end-section
+
+---
+
 ### Rules Reference
 
 Workhorse template for mechanics chapters. H2 banners, H3 sub-headings, body prose, note callouts, tape dividers, roll tables, option tables. **Page class:** normal body page, no break marker needed.
@@ -445,6 +611,73 @@ Fail, and something else goes wrong.
 
 @end-outcome
 ```
+
+---
+
+# DM & NPC Pages — Real-World Example {.dc-chevron}
+
+@lede
+
+This section shows how Dream Mastery and NPC pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 04. DM pages combine prose, callout blocks, and example sidebars. NPC pages use the stat block format: type line, HP/Damage, Traits, Equipment, and Cybernetics sections.
+
+@end-lede
+
+---
+
+## About DM and NPC Pages
+
+@section .two-column
+
+The Dream Mastery chapter of the Field Guide is written entirely in second-person directed at the DM. It's the most voice-forward section of the book — not a neutral referee guide, but a manifesto for how to run Dimm City. The layout reflects this: long-form prose with frequent subheadings, bullet-list guidance blocks, and callout boxes for specific techniques.
+
+NPC pages use a consistent three-tier format:
+
+| Tier | HP | Damage | Role |
+|------|----|--------|------|
+| **Fodder** | 2 | 1 | Cannon fodder, civilian threats, mob encounters |
+| **Operator** | 4 | 2 | Skilled grunts, tactical support, mini-bosses |
+| **Master** | 10 | 4 | Main antagonists, unique threats, boss encounters |
+
+@column-break
+
+Each NPC entry follows the same structure: a blockquote flavor line (in-world voice), a type/size designation, then H5 subsections for Traits, Equipment, and Cybernetics. The `---` dashed rule separates individual NPC entries within a tier. The tier headers are H3, individual NPC names are H4.
+
+The stat block format is intentionally minimal — no special macro required. The `dc-components.css` styles H4/H5 headings inside the NPC sections automatically using the `chapter-04` page class.
+
+@end-section
+
+---
+
+# Gear & Tech — Real-World Example {.dc-chevron}
+
+@lede
+
+This section shows how gear and cybernetics pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 05. This example focuses on the rules-heavy reference page pattern and standard gear prose.
+
+@end-lede
+
+---
+
+## About Gear & Tech Pages
+
+@section .two-column
+
+Gear pages in the Field Guide follow a consistent structure: an in-world voice opener (blockquote), a mechanical explanation in plain prose, then a reference table. The pattern repeats for every subsystem — cybernetics, weapons, utilities.
+
+| Pattern | Element | Authoring |
+|---------|---------|----------|
+| Voice opener | `> blockquote` | In-world character speaking about the gear |
+| Mechanical rules | Standard prose | Bold key terms, inline code for mechanic names |
+| Reference table | GFM table | Standard `|---|---|` — no class needed for alternating rows |
+| Inline code | \`SysChk\` | Game-mechanic terms that are also keywords appear in code style |
+
+@column-break
+
+**Prose + table pattern** — This is the most common rules-page structure in the Field Guide: a section opener in bold flavour prose, a `> blockquote` for an in-world voice line, body prose explaining the mechanic, then a reference table. The Ego Points table is pure GFM markdown — no class attributes needed for basic alternating-row styling (`dc-components.css` applies it universally).
+
+**Inline code in prose** — `SysChk` rendered as inline code is intentional for game-mechanic terms that double as class names or keywords. The `dc-components.css` inline code style (orange text, faint orange background) reads clearly against cream body text at 12pt body size.
+
+@end-section
 
 ---
 

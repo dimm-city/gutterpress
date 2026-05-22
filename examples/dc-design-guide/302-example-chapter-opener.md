@@ -1,43 +1,9 @@
 @chapter #ch-example-chapter-opener .example-chapter-opener .chapter-03 ch="3"
-
-# Chapter Opener — Real-World Example {.dc-chevron}
-
-@lede
-
-This section shows how chapter-start spreads look in the actual Dimm City Field Guide, rendered using real book content. The chapter opener uses the `page-chapter-start` page template to create a two-column layout: fiction narrative on the left, rules or character content on the right, separated by a column break.
-
-@end-lede
-
----
-
-## About Chapter Opener Spreads
-
-@section .two-column
-
-A chapter opener spread is the reader's first encounter with each chapter's world. DC openers are always two-column: the left column carries a short fiction vignette establishing the vibe and stakes of the chapter, and the right column launches directly into the rules or character creation content.
-
-| Element | Authoring pattern | Rendered as |
-|---------|------------------|-------------|
-| Chapter badge | `@chapter-opener C.01` | Stacked chapter code + large number overlay |
-| Left column | Fiction vignette + art | Narrative prose with inline image |
-| Column break | `---{.column-break}` | Layout split between columns |
-| Right column | Rules intro + content | Standard heading hierarchy |
-
-@column-break
-
-The two-column split is authored with a `---{.column-break}` marker. Everything before the column break flows into the left column; everything after flows into the right. The `@chapter-opener C.NN` macro injects the chapter number badge over the left column's top edge.
-
-The `page-chapter-start` template in `page-rules.css` creates the column structure and applies chapter-specific accent colors via the `chapter-01`, `chapter-02` class selectors.
-
-@end-section
-
----
-
 @page .page-chapter-start .chapter-start .chapter-01
 
 @chapter-opener C.01
 
-# Who Do You Dream to Be? {#c2-who-do-you-dream .dc-chevron}
+# Who Do You Dream to Be? {.dc-chevron}
 
 "It's hard being me, but I guess it's the same for anyting sentient in the monoverse, ay?! Tag's Thump, an I'm a rabbit outta dee EntD here in Dimm City. Lemme post ya a tale about life here in da middle 'o dee ether.
 

@@ -1,37 +1,5 @@
 @chapter #ch-example-gear-tech .example-gear-tech .chapter-03 ch="3"
 
-# Gear & Tech — Real-World Example {.dc-chevron}
-
-@lede
-
-This section shows how gear and cybernetics pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 05. This example focuses on the rules-heavy reference page pattern and standard gear prose.
-
-@end-lede
-
----
-
-## About Gear & Tech Pages
-
-@section .two-column
-
-Gear pages in the Field Guide follow a consistent structure: an in-world voice opener (blockquote), a mechanical explanation in plain prose, then a reference table. The pattern repeats for every subsystem — cybernetics, weapons, utilities.
-
-| Pattern | Element | Authoring |
-|---------|---------|----------|
-| Voice opener | `> blockquote` | In-world character speaking about the gear |
-| Mechanical rules | Standard prose | Bold key terms, inline code for mechanic names |
-| Reference table | GFM table | Standard `|---|---|` — no class needed for alternating rows |
-| Inline code | \`SysChk\` | Game-mechanic terms that are also keywords appear in code style |
-
-@column-break
-
-**Prose + table pattern** — This is the most common rules-page structure in the Field Guide: a section opener in bold flavour prose, a `> blockquote` for an in-world voice line, body prose explaining the mechanic, then a reference table. The Ego Points table is pure GFM markdown — no class attributes needed for basic alternating-row styling (`dc-components.css` applies it universally).
-
-**Inline code in prose** — `SysChk` rendered as inline code is intentional for game-mechanic terms that double as class names or keywords. The `dc-components.css` inline code style (orange text, faint orange background) reads clearly against cream body text at 12pt body size.
-
-@end-section
-
----
 
 @page .tech-cybernetics .second-page .chapter-05
 

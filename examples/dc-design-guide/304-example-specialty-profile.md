@@ -1,42 +1,5 @@
 @chapter #ch-example-specialty-profile .example-specialty-profile .chapter-03 ch="3"
 
-# Specialty Profile — Real-World Example {.dc-chevron}
-
-@lede
-
-This section shows how a full specialty profile looks in the actual Dimm City Field Guide, rendered using real book content from the Augmerc chapter. A specialty profile combines the `@specialty` macro, intro block, art panel, `@learning-path` macro, and a sequence of `@skill` cards — all live DC components.
-
-@end-lede
-
----
-
-## About Specialty Profile Pages
-
-@section .two-column
-
-Every specialty in the Field Guide gets a two-page spread: the specialty intro block on the first page, followed by learning paths and skill cards flowing across as many pages as needed. The structure is always the same, but the silhouette shapes, accent colors, and ability content differ for each specialty.
-
-| Component | Macro / class | Renders as |
-|-----------|---------------|------------|
-| Specialty wrapper | `@specialty .augmerc` | Parent container with accent + shape tokens |
-| Intro block | `@specialty-intro` / `@end-specialty-intro` | Title banner + definition + spec tweak |
-| Path header | `@learning-path` | Path shell with path title, skill list, signature augment |
-| Skill cards | `@skill` (one per ability) | Tabbed card with tier, flavor, and AP options |
-
-@column-break
-
-The `@specialty .augmerc` wrapper defines all 7 shape variables (`--dc-skill-tab-shape`, `--dc-skill-body-shape`, `--dc-path-title-shape`, `--dc-path-shell-clip`, `--dc-specialty-card-shell-shape`, `--dc-specialty-intro-title-shape`, `--dc-specialty-intro-clip`). Every nested component inherits these through CSS custom property cascade — the component base rules use `var(--token, fallback)` so that specialty shapes override without requiring new selectors.
-
-**Macros used:** `@specialty`, `@specialty-intro`, `@specialty-art`, `@learning-path`, `@skill`. See [DC Components](#ch-dc-components) for the full reference.
-
-@end-section
-
----
-
-## Specialty Intro Block
-
-**Macros** — `@specialty .augmerc` wraps the entire specialty section and applies specialty-scoped CSS. `@specialty-intro` holds the name, definition, and Spec Tweak. `@learning-path` injects the path header and path sequence list. Each `@skill` card follows the path declaration. See [DC Components](#ch-dc-components) for the full macro reference.
-
 @specialty .augmerc
 
 @specialty-intro

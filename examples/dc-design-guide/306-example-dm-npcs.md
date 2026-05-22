@@ -1,38 +1,6 @@
 @chapter #ch-example-dm-npcs .example-dm-npcs .chapter-03 ch="3"
 
-# DM & NPC Pages — Real-World Example {.dc-chevron}
 
-@lede
-
-This section shows how Dream Mastery and NPC pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 04. DM pages combine prose, callout blocks, and example sidebars. NPC pages use the stat block format: type line, HP/Damage, Traits, Equipment, and Cybernetics sections.
-
-@end-lede
-
----
-
-## About DM and NPC Pages
-
-@section .two-column
-
-The Dream Mastery chapter of the Field Guide is written entirely in second-person directed at the DM. It's the most voice-forward section of the book — not a neutral referee guide, but a manifesto for how to run Dimm City. The layout reflects this: long-form prose with frequent subheadings, bullet-list guidance blocks, and callout boxes for specific techniques.
-
-NPC pages use a consistent three-tier format:
-
-| Tier | HP | Damage | Role |
-|------|----|--------|------|
-| **Fodder** | 2 | 1 | Cannon fodder, civilian threats, mob encounters |
-| **Operator** | 4 | 2 | Skilled grunts, tactical support, mini-bosses |
-| **Master** | 10 | 4 | Main antagonists, unique threats, boss encounters |
-
-@column-break
-
-Each NPC entry follows the same structure: a blockquote flavor line (in-world voice), a type/size designation, then H5 subsections for Traits, Equipment, and Cybernetics. The `---` dashed rule separates individual NPC entries within a tier. The tier headers are H3, individual NPC names are H4.
-
-The stat block format is intentionally minimal — no special macro required. The `dc-components.css` styles H4/H5 headings inside the NPC sections automatically using the `chapter-04` page class.
-
-@end-section
-
----
 
 @page .chapter-04
 

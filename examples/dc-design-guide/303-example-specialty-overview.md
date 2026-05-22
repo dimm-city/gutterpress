@@ -1,36 +1,5 @@
 @chapter #ch-example-specialty-overview .example-specialty-overview .chapter-03 ch="3"
 
-# Specialty Overview — Real-World Example {.dc-chevron}
-
-@lede
-
-This section shows how the "Choose a Specialty" spread looks in the actual Dimm City Field Guide, rendered using real book content. It covers two page types: a chapter-start opener with fiction and ability primer, followed by a specialty overview spread with the specialty card grid.
-
-@end-lede
-
----
-
-## About These Pages
-
-@section .two-column
-
-The specialty section of the Field Guide has two distinct spreads. The chapter-start spread (Chapter 02) pairs an opening fiction vignette with the ability primer — the rules overview for how the whole system works. The specialty overview spread (the `card-grid` template) follows it with the 8 specialty cards side by side.
-
-| Page | Template | Purpose |
-|------|----------|---------|
-| Chapter opener | `page-chapter-start .chapter-02` | Fiction left, ability rules right |
-| Specialty grid | `card-grid` | 8 specialty cards in two-column layout |
-
-@column-break
-
-The two-column structure on both pages is deliberate: the reader gets fiction and mechanics together on the opener, then a clean visual grid for the specialty choices. Every specialty gets equal visual weight in the card grid.
-
-The `@specialty-card` macro inside a `@specialty .name` wrapper sets accent color, silhouette shape, and card layout for each of the 8 specialties. The card grid is fully authored in markdown — no HTML needed.
-
-@end-section
-
----
-
 @page .page-chapter-start .chapter-start .chapter-02
 
 @chapter-opener C.02

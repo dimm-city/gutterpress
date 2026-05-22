@@ -1,36 +1,6 @@
 @chapter #ch-example-rules .example-rules .chapter-03 ch="3"
 
-# Rules Pages — Real-World Example {.dc-chevron}
 
-@lede
-
-This section shows how core rules pages look in the actual Dimm City Field Guide, rendered using real book content from chapter 03. Rules pages use standard prose, outcome tables, status condition tables, and rule-break callouts. No special macros — clean prose layout with DC typography.
-
-@end-lede
-
----
-
-## About Rules Page Layouts
-
-@section .two-column
-
-Rules pages are the workhorse of any RPG book. In Dimm City they follow a consistent structure across three page templates:
-
-| Template | Chapter class | Contents |
-|----------|--------------|----------|
-| `page-chapter-start` | `.chapter-03` | Chapter opener fiction + intro prose (two-column) |
-| `the-players` | `.chapter-03` | Dreams, Dreamers, Dream Master + ROLL A DIE! section |
-| bare `@page` | `.chapter-03` | Status conditions table, AP rules, outcome ladder |
-
-@column-break
-
-Rules prose in DC uses a deliberately aggressive voice. The Dream Master section, for instance, isn't a neutral referee description — it's confrontational, second-person, and assumes the reader is ready to run something rough. The tone is part of the system.
-
-The status conditions table uses standard GFM `|---|---|` syntax — `dc-components.css` applies alternating row backgrounds universally. The outcome ladder uses the `@outcome … @end-outcome` macro for tiered DC styling (crit/hit/mixed/miss/fail row colors). Table header color is determined by page-class context: reference/system pages use HUD blue, dramatic/rules pages keep the default crimson.
-
-@end-section
-
----
 
 @page .chapter-start .chapter-03
 

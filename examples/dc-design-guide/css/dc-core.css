@@ -78,10 +78,13 @@ h2 {
   padding-bottom: 0.1em;
 }
 
-h3 { font-size: var(--fs-h3); margin-top: 0.08in; color: var(--rust);  letter-spacing: var(--ls-heading); }
-h4 { font-size: var(--fs-h4); margin-top: 0.05in; color: var(--blood); letter-spacing: 0.06em; }
-h5 { font-size: var(--fs-h5); color: var(--blood); }
-h6 { font-size: var(--fs-h6); color: var(--blood); }
+/* H3: lighter sibling of H2's --hud-blue-dark — creates deliberate "dark/light" blue tier.
+   16pt bold qualifies as WCAG large text (≥14pt bold); --hud-blue at 3.80:1 min passes. */
+h3 { font-size: var(--fs-h3); margin-top: 0.08in; color: var(--hud-blue);  letter-spacing: var(--ls-heading); }
+/* H4–H6: neutral ink ramp — red reserved for H1 only; size + display font carry hierarchy. */
+h4 { font-size: var(--fs-h4); margin-top: 0.05in; color: var(--ink-dark);  letter-spacing: 0.06em; }
+h5 { font-size: var(--fs-h5); color: var(--ink-smoke); }
+h6 { font-size: var(--fs-h6); color: var(--ink-smoke); }
 
 
 

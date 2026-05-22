@@ -27,7 +27,7 @@ source:
     # - 08-field-guide-components.md
     # - 101-publishing.md
     # Part 2 — Field Guide in Action examples (complete, field-guide-only set)
-    - 300-example-overview.md
+    # - 300-example-overview.md
     - 301-example-front-matter.md
     - 302-example-chapter-opener.md
     - 303-example-specialty-overview.md

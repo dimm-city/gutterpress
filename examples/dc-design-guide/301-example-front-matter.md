@@ -1,37 +1,3 @@
-@chapter #ch-example-front-matter .example-front-matter .chapter-03 ch="3"
-
-# Front Matter — Real-World Example {.dc-chevron}
-
-@lede
-
-This section shows how the Table of Contents, Credits, and Introduction pages look in the actual Dimm City Field Guide, rendered using real book content. These are the first pages a reader encounters — `page-toc`, `page-credits`, and `page-intro` templates applied to the `chapter-00` content.
-
-@end-lede
-
----
-
-## About Front Matter Pages
-
-@section .two-column
-
-Front matter sets the emotional contract with the reader. Before they see a single rule, a map, or a stat block, the TOC, Credits, and Introduction tell them what kind of book this is.
-
-| Page | Template class | Design purpose |
-|------|---------------|----------------|
-| Table of Contents | `page-toc` | Dense chapter listing with `.dc-toc` numbered rows |
-| Credits | `page-credits` | Short credits block anchored by a full-bleed illustration |
-| Introduction | `page-intro` | Pull-quote opener, narrative fiction, setting primer |
-
-@column-break
-
-All three use the `chapter-00` class selector in `page-rules.css`, which drives the pre-chapter margin and header treatment. The `@toc` and `@end-toc` macros emit the `.dc-toc-row` structure for the Contents page. The pull-quote band on the Introduction page uses `> [!PULLQUOTE]` — the same alert component used elsewhere in the book.
-
-Front matter pages exist outside the main chapter numbering system. They do not have chapter code badges or specialty color blocks. Their job is to establish voice and brand before the system content begins.
-
-@end-section
-
----
-
 @page .page-toc
 
 # Contents {.dc-chevron}
@@ -44,25 +10,23 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 
 @toc
 
-1. **01** &nbsp; [Who Do You Dream to Be?](#chapter-01) — Citizen file, vibe, origins, ideals, flaws.
-2. **02** &nbsp; What Do You Dream of Doing? — How abilities work. Choose a specialty.
-3. **03** &nbsp; The Augmerc — Muscle for hire. Backbiters and worse.
-4. **04** &nbsp; The Proxy — Bodies for hire. Divine force as a weapon.
-5. **05** &nbsp; The Streetwarden — The closest thing to law in the alleys.
-6. **06** &nbsp; The Gutterdruid — Sacred ground in broken pavement.
-7. **07** &nbsp; The Cybersurgeon — Cutting, splicing, upgrading flesh.
-8. **08** &nbsp; The Wirephreak — Killers, thieves, forgers — clean or loud.
-9. **09** &nbsp; The Technosorcerer — Code that bites. Magic with root access.
-10. **10** &nbsp; The Etherlock — Secrets as currency. Power has a price.
-11. **11** &nbsp; Are You Lucid Yet? — Core rules, scenes, distances, rolling the die.
-12. **12** &nbsp; Dream Mastery & Cosmology — NPCs, traits, time, districts.
-13. **13** &nbsp; Cybernetics, Weapons, and Gear — Useful items, tech, blasters, blades.
+1. Who Do You Dream to Be? — Citizen file, vibe, origins, ideals, flaws.
+2. What Do You Dream of Doing? — How abilities work. Choose a specialty.
+3. The Augmerc — Muscle for hire. Backbiters and worse.
+4. The Proxy — Bodies for hire. Divine force as a weapon.
+5. The Streetwarden — The closest thing to law in the alleys.
+6. The Gutterdruid — Sacred ground in broken pavement.
+7. The Cybersurgeon — Cutting, splicing, upgrading flesh.
+8. The Wirephreak — Killers, thieves, forgers — clean or loud.
+9. The Technosorcerer — Code that bites. Magic with root access.
+10. The Etherlock — Secrets as currency. Power has a price.
+11. Are You Lucid Yet? — Core rules, scenes, distances, rolling the die.
+12. Dream Mastery & Cosmology — NPCs, traits, time, districts.
+13. Cybernetics, Weapons, and Gear — Useful items, tech, blasters, blades.
 
 @end-toc
 
----
-
-@page .page-credits .credits .chapter-00
+@page .page-credits
 
 # Credits {.dc-chevron}
 

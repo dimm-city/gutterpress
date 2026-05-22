@@ -395,7 +395,7 @@
 }
 
 .dc-specialty.gutterdruid .dc-path-shell {
-  --dc-path-title-bg: var(--orange);
+  --dc-path-title-bg: var(--gutterdruid-dark);
   --dc-path-title-color: var(--ink-dark);
   --dc-path-accent: var(--gutterdruid-accent);
   background: var(--paper-light);
