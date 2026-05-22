@@ -20,6 +20,16 @@
  *   @end-callout        → End callout wrapper
  *   @dm-note            → Start a Dream Master note (sugar for @callout variant=dm)
  *   @end-dm-note        → End dm-note wrapper
+ *   @block              → Section enclosure card (variant=panel|slate|shard|codex label="Title")
+ *   @end-block          → End block enclosure
+ *   @panel              → Shorthand for @block variant=panel (HUD/tactical panel)
+ *   @end-panel
+ *   @slate              → Shorthand for @block variant=slate (dark authority block)
+ *   @end-slate
+ *   @shard              → Shorthand for @block variant=shard (zine/punk asymmetric)
+ *   @end-shard
+ *   @codex              → Shorthand for @block variant=codex (reference/data entry)
+ *   @end-codex
  *   @lede               → Start a dc-intro lede wrapper
  *   @end-lede           → End lede wrapper
  *   @learning-path      → Start a learning path section (auto-closes previous sections)
@@ -806,6 +816,7 @@ export default function dimmCityPlugin(md, options = {}) {
       let inProcedure = false;
       let inCallout = false;
       let inDmNote = false;
+      let inBlock = false;
       let inClassEntry = false;
       let classEntryName = '';
       let classEntryTokens = [];
@@ -864,6 +875,10 @@ export default function dimmCityPlugin(md, options = {}) {
         if (inDmNote) {
           newTokens.push(makeToken('html_block', '</div>\n'));
           inDmNote = false;
+        }
+        if (inBlock) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inBlock = false;
         }
         inProcedure = false;
         learningPathHasTitle = false;
@@ -1357,6 +1372,55 @@ export default function dimmCityPlugin(md, options = {}) {
         if (inDmNote) {
           newTokens.push(makeToken('html_block', '</div>\n'));
           inDmNote = false;
+        }
+        i += 2;
+        continue;
+      }
+
+      // --- @block / @panel / @slate / @shard / @codex (section enclosures) ---
+      // Reusable card-like text section enclosures. Four variants with distinct
+      // clip-path geometry, surface, and accent colors. Each emits a .dc-block
+      // container with an optional titled header band (.dc-block-title).
+      //
+      // Unified form:  @block variant=panel|slate|shard|codex label="Title"
+      // Convenience:   @panel label="Title"  @slate label="Title"
+      //                @shard label="Title"  @codex label="Title"
+      {
+        const BLOCK_SHORTHANDS = ['@panel', '@slate', '@shard', '@codex'];
+        let blockMarker = parseMarker(tok, tokens, i, '@block');
+        let blockVariant = null;
+        if (blockMarker.matched) {
+          blockVariant = (blockMarker.attrs['variant'] || 'panel').toLowerCase();
+        } else {
+          for (const sh of BLOCK_SHORTHANDS) {
+            const m = parseMarker(tok, tokens, i, sh);
+            if (m.matched) {
+              blockMarker = m;
+              blockVariant = sh.slice(1); // strip '@'
+              break;
+            }
+          }
+        }
+        if (blockVariant) {
+          closeAll();
+          const labelText = blockMarker.attrs['label'] ? esc(blockMarker.attrs['label']) : '';
+          const titleHtml = labelText
+            ? '<div class="dc-block-title">' + labelText + '</div>\n'
+            : '';
+          newTokens.push(makeToken('html_block',
+            '<div class="dc-block dc-' + blockVariant + '">\n' + titleHtml
+          ));
+          inBlock = true;
+          i += 2;
+          continue;
+        }
+      }
+
+      const END_BLOCK_MARKERS = ['@end-block', '@end-panel', '@end-slate', '@end-shard', '@end-codex'];
+      if (END_BLOCK_MARKERS.some(m => isMarker(tok, tokens, i, m))) {
+        if (inBlock) {
+          newTokens.push(makeToken('html_block', '</div>\n'));
+          inBlock = false;
         }
         i += 2;
         continue;

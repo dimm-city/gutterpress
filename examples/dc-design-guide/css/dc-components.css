@@ -2347,3 +2347,153 @@ p.dc-img-wrapper {
 .font-body    { font-family: var(--font-body); }
 .font-sans    { font-family: var(--font-sans); }
 .font-mono    { font-family: var(--font-mono); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SECTION ENCLOSURES — dc-block family
+   ═══════════════════════════════════════════════════════════════════════════
+   Reusable card-like enclosures for text content sections. Each variant has
+   a distinct clip-path geometry, surface color, and accent treatment that
+   signal different content registers.
+
+   Plugin macro API (dimm-city-plugin.js):
+     @block variant=panel|slate|shard|codex label="Title" … @end-block
+     @panel label="Title" … @end-panel   (shorthand for variant=panel)
+     @slate label="Title" … @end-slate   (shorthand for variant=slate)
+     @shard label="Title" … @end-shard   (shorthand for variant=shard)
+     @codex label="Title" … @end-codex   (shorthand for variant=codex)
+
+   CSS class API (direct use without plugin):
+     <div class="dc-block dc-panel"><div class="dc-block-title">…</div>…</div>
+
+   Public token API (override at usage site to create variants):
+     --dc-block-bg        → body surface color
+     --dc-block-fg        → body text color
+     --dc-block-accent    → left-strip accent / border highlight
+     --dc-block-title-bg  → title band background
+     --dc-block-title-fg  → title band text
+   ─────────────────────────────────────────────────────────────────────── */
+
+/* ── Base shell ──────────────────────────────────────────────────────────── */
+.dc-block {
+  --dc-block-bg:       var(--paper-light);
+  --dc-block-fg:       var(--ink);
+  --dc-block-accent:   var(--hud-blue-dark);
+  --dc-block-title-bg: var(--hud-blue-dark);
+  --dc-block-title-fg: var(--paper-cream);
+
+  background: var(--dc-block-bg);
+  color: var(--dc-block-fg);
+  padding: 0 var(--space-lg) var(--space-lg);
+  margin: 0.15in 0;
+  position: relative;
+  break-inside: avoid;
+}
+
+/* Title band — bleeds to horizontal edges of the container */
+.dc-block-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h4);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-heading);
+  text-transform: uppercase;
+  line-height: 1.3;
+  color: var(--dc-block-title-fg);
+  background: var(--dc-block-title-bg);
+  padding: 7px 18px 6px;
+  margin: 0 calc(-1 * var(--space-lg)) var(--space-md) calc(-1 * var(--space-lg));
+  display: block;
+  border: none;
+}
+
+/* Content children inherit fg color (overrides dc-core.css heading defaults) */
+.dc-block h3,
+.dc-block h4,
+.dc-block p,
+.dc-block li {
+  color: var(--dc-block-fg);
+}
+
+.dc-block > p:last-child,
+.dc-block > ul:last-child,
+.dc-block > ol:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Variant: Panel — military/HUD tactical container ────────────────────── */
+/* Geometry: hex corner cuts top-left + bottom-right. Left accent strip.
+   Signal: structured information, mission briefings, system data. */
+.dc-block.dc-panel {
+  --dc-block-accent:   var(--hud-blue-dark);
+  --dc-block-title-bg: var(--hud-blue-dark);
+  background:
+    linear-gradient(to right, var(--dc-block-accent) 3px, var(--paper-light) 3px);
+  clip-path: polygon(
+    14px 0, 100% 0,
+    100% calc(100% - 14px), calc(100% - 14px) 100%,
+    0 100%, 0 14px
+  );
+}
+.dc-block.dc-panel .dc-block-title {
+  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 100%, 0 100%);
+}
+
+/* ── Variant: Slate — dark authority block ───────────────────────────────── */
+/* Geometry: top-left step cut. Dark surface with magenta accent.
+   Signal: key rules, Dream Master directives, important definitions. */
+.dc-block.dc-slate {
+  --dc-block-bg:        var(--ink-dark);
+  --dc-block-fg:        var(--paper-cream);
+  --dc-block-accent:    var(--hud-magenta);
+  --dc-block-title-bg:  var(--hud-magenta);
+  --dc-block-title-fg:  var(--paper-cream);
+  clip-path: polygon(
+    20px 0, 100% 0,
+    100% 100%, 0 100%, 0 20px
+  );
+}
+.dc-block.dc-slate .dc-block-title {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+}
+
+/* ── Variant: Shard — zine/punk asymmetric slash ─────────────────────────── */
+/* Geometry: diagonal bottom-right cut, left accent strip.
+   Signal: flavor text, atmospheric descriptions, setting detail. */
+.dc-block.dc-shard {
+  --dc-block-bg:        var(--paper-aged);
+  --dc-block-fg:        var(--ink);
+  --dc-block-accent:    var(--rust);
+  --dc-block-title-bg:  var(--rust);
+  --dc-block-title-fg:  var(--paper-cream);
+  background:
+    linear-gradient(to right, var(--dc-block-accent) 4px, var(--paper-aged) 4px);
+  clip-path: polygon(
+    0 0, 100% 0,
+    100% calc(100% - 28px), calc(100% - 52px) 100%,
+    0 100%
+  );
+}
+.dc-block.dc-shard .dc-block-title {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 16px 100%, 0 calc(100% - 14px));
+}
+
+/* ── Variant: Codex — reference/data entry ───────────────────────────────── */
+/* Geometry: symmetric octagon corner cuts. HUD-blue surface.
+   Signal: tables, reference data, rules lookups, compendium entries. */
+.dc-block.dc-codex {
+  --dc-block-bg:        var(--hud-blue-dim);
+  --dc-block-fg:        var(--ink);
+  --dc-block-accent:    var(--hud-blue-dark);
+  --dc-block-title-bg:  var(--hud-blue-dark);
+  --dc-block-title-fg:  var(--paper-cream);
+  clip-path: polygon(
+    8px 0, calc(100% - 8px) 0, 100% 8px,
+    100% calc(100% - 8px), calc(100% - 8px) 100%,
+    8px 100%, 0 calc(100% - 8px), 0 8px
+  );
+}
+.dc-block.dc-codex .dc-block-title {
+  clip-path: polygon(
+    0 0, calc(100% - 8px) 0, 100% 8px,
+    100% 100%, 0 100%
+  );
+}

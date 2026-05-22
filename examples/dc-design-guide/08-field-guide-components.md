@@ -107,14 +107,73 @@ These examples show the above field guide components rendered in real book pages
 
 @end-section
 
+## Section Enclosures (dc-block family)
+
+Four reusable card-like enclosures for text content sections. Each variant has a distinct clip-path geometry, surface color, and accent that signals a different content register.
+
+@section .two-column
+
+@panel label="Panel — HUD Tactical"
+
+Structured data, mission briefings, system documentation. Left accent strip in dark teal. Hex corner cuts. Title band has diagonal right cut.
+
+Use for player-facing rules summaries and structured information blocks.
+
+@end-panel
+
+@slate label="Slate — Dark Authority"
+
+Key rules, Dream Master directives, critical definitions. Dark near-black surface with magenta title band. Top-left step cut.
+
+Use for authoritative rulings and high-importance content.
+
+@end-slate
+
+@shard label="Shard — Zine Cut"
+
+Flavor, atmosphere, setting detail, narrative asides. Warm aged-paper surface, rust title band. Aggressive bottom-right diagonal slash.
+
+Use for fiction, vibe, and atmospheric content blocks.
+
+@end-shard
+
+@codex label="Codex — Reference"
+
+Tables, compendium entries, rules lookups. Pale cyan surface. Symmetric octagon corner cuts. Clean data-register aesthetic.
+
+Use for reference tables and encyclopedia-style entries.
+
+@end-codex
+
+@end-section
+
+### Authoring Syntax
+
+All four variants share a unified macro API with convenience shorthands:
+
+```
+@panel label="Title"
+Content here (any markdown)...
+@end-panel
+
+@block variant=codex label="Custom Title"
+Also works via the unified @block form.
+@end-block
+```
+
+The `label` attribute is optional — omit it to render without a title band.
+
 ## Component Authoring Quick Reference
 
 | Component | Authoring method | CSS class |
 |---|---|---|
-| Dashed Rule Divider | `---` (standard markdown) | `dc-dashed-rule` (auto) |
-| Definition Block | `@definition ... @end-definition` | `dc-prose-panel dc-definition-block` |
-| Sidebar Box | `@sidebar-box ... @end-sidebar-box` | `dc-prose-panel dc-sidebar-box` |
-| Sidebar | `@sidebar ... @end-sidebar` | `dc-sidebar` |
-| Procedure | `@procedure ... @end-procedure` | `dc-steps` |
-| Gear Entry | `@gear-card` … `@end-gear-card` | `dc-gear-entry` |
-| Art Bottom Pin | `![img](https://placehold.co/1349x842/png?text=Art){.dc-art-bottom}` or `@section .pmd-no-break` wrapper | `dc-art-bottom` |
+| Dashed Rule Divider | `---` | `dc-dashed-rule` |
+| Definition Block | `@definition … @end-definition` | `dc-prose-panel dc-definition-block` |
+| Sidebar Box | `@sidebar-box … @end-sidebar-box` | `dc-prose-panel dc-sidebar-box` |
+| Sidebar | `@sidebar … @end-sidebar` | `dc-sidebar` |
+| Procedure | `@procedure … @end-procedure` | `dc-steps` |
+| Gear Entry | `@gear-card … @end-gear-card` | `dc-gear-entry` |
+| Panel Enclosure | `@panel label="…" … @end-panel` | `dc-block dc-panel` |
+| Slate Enclosure | `@slate label="…" … @end-slate` | `dc-block dc-slate` |
+| Shard Enclosure | `@shard label="…" … @end-shard` | `dc-block dc-shard` |
+| Codex Enclosure | `@codex label="…" … @end-codex` | `dc-block dc-codex` |
