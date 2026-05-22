@@ -1,14 +1,19 @@
 /* =============================================================================
-   FIELD-GUIDE-OVERRIDES.CSS — DC Design Guide project-specific overrides
+   FIELD-GUIDE-OVERRIDES.CSS — DC Design Guide layout and context overrides
    =============================================================================
-   Imported LAST by index.css. Wins the cascade for all project-specific tweaks.
+   Imported LAST by index.css. Owns layout, break control, and context-scoped
+   element styling for the field guide document.
+
+   RULE: Only selectors scoped to a page/chapter context class (.page.*,
+   .example-*, .page.citizen-file, .section.two-column) OR pure break-control
+   rules on bare component selectors belong here. Component base styles —
+   colors, fonts, spacing — live in dc-components.css.
    ============================================================================= */
 
 /* ═══ CARD-GRID SPREAD: full-width header + intro, then balanced 8-card grid ══
    column-span: all on h2 and .dc-intro so both span the full width above the
    two-column card area. break-after: avoid prevents Paged.js from isolating
-   the heading on its own page (the original bug). First specialty block is
-   pinned to the intro with break-before: avoid. */
+   the heading on its own page. First specialty block is pinned to the intro. */
 
 .page.card-grid > h2 {
   column-span: all;
@@ -34,127 +39,7 @@
   --dc-specialty-card-media-width: 0.6in;
 }
 
-/* ═══ SKILL CARD PAGE DENSITY ═══
-   Tighten spacing on skill cards and learning paths so more content fits
-   per page — aiming for learning path header + 2-3 skill cards on one page. */
-
-/* Reduce skill card bottom margin significantly */
-.dc-skill-card {
-  margin-bottom: 10px;
-}
-
-/* Tighten card body padding — the 36px bottom padding was excessive */
-.dc-card-body {
-  padding: 12px 14px 20px;
-}
-
-/* Reduce card tab padding */
-.dc-card-tab {
-  padding: 3px 18px 3px 8px;
-  margin-left: 10px;
-}
-
-/* Slightly reduce tab title font */
-.dc-tab-title {
-  font-size: 13px;
-}
-
-/* Reduce tier badge padding */
-.dc-tab-tier {
-  padding: 1px 5px;
-  font-size: 9px;
-}
-
-/* Tighten learning path block margin */
-.dc-learning-path.dc-path-block {
-  margin: 0 0 10px;
-}
-
-/* Tighten path shell margin + strengthen border outline */
-.dc-path-shell {
-  margin: 0 0 10px;
-  filter: drop-shadow(3px 0 0 var(--ink)) drop-shadow(-3px 0 0 var(--ink)) drop-shadow(0 3px 0 var(--ink)) drop-shadow(0 -3px 0 var(--ink));
-}
-
-/* Reduce path shell body content margins */
-.dc-path-shell > p,
-.dc-path-shell > div,
-.dc-path-shell > div.dc-intro {
-  margin-inline: var(--space-sm);
-  /* Compact dc-intro inside path-shell — don't let full padding add height */
-  padding-top: 6px;
-  padding-bottom: 6px;
-}
-
-/* Tighten ability row spacing */
-.dc-ability {
-  margin-bottom: 6px;
-}
-
-/* Reduce AP badge padding and size */
-.dc-ap {
-  padding: 3px 6px;
-  min-width: 38px;
-  font-size: 10px;
-}
-
-/* Tighten flavor text margin */
-.dc-flavor {
-  padding-bottom: 4px;
-  margin-bottom: 6px;
-  padding-left: 8px;
-}
-
-/* Reduce sub-header margin */
-.dc-sub-header {
-  margin: 6px 0 3px;
-  padding-top: 4px;
-}
-
-/* Tighten outcome table */
-.dc-outcomes {
-  margin: 8px 0;
-}
-
-.dc-outcome-row {
-  grid-template-columns: 130px 1fr;
-}
-
-.dc-outcome-key {
-  padding: 6px 10px;
-}
-
-.dc-outcome-key .dc-outcome-roll {
-  font-size: 16px;
-}
-
-.dc-outcome-text {
-  padding: 8px 12px;
-  font-size: 8.5pt;
-}
-
-.dc-outcomes-label {
-  padding: 4px 12px 3px;
-  font-size: 8px;
-}
-
-/* Tighten steps list */
-.dc-steps {
-  margin: 8px 0;
-  padding: 0 0 0 12px;
-}
-
-.dc-steps > li {
-  padding: 8px 0 8px 2px;
-  gap: 14px;
-  font-size: 9pt;
-}
-
-.dc-steps .dc-step-no {
-  font-size: 13px;
-}
-
-/* ═══ SPECIALTY CARD GRID DENSITY ═══
+/* ═══ CARD-GRID SPECIALTY CARD DENSITY ═══
    Tighten specialty cards on the card-grid page so all 8 fit comfortably. */
 
 .page.card-grid .dc-specialty-card {
@@ -176,99 +61,14 @@
   margin: 0.02in 0 0;
 }
 
-/* ══ LEARNING PATH: keep path header with its first skill card ═══ */
-
-.dc-path-shell > h2.dc-spray:first-child {
-  break-after: avoid;
-}
-
-.dc-path-shell > h2.dc-spray:first-child + * {
-  break-before: avoid;
-}
-
-/* ══ SPECIALTY INTRO: tighten padding for field guide density ═══ */
-.dc-specialty-intro {
-  padding: 1rem 1.25rem 0.75rem;
-}
-
-.dc-specialty-intro > h2:first-child {
-  padding: 0.6rem 1.25rem;
-  margin: -1rem -1.25rem 0.6rem -1.25rem;
-  font-size: 1.6rem;
-}
-
-.dc-specialty-intro > p {
-  margin-block: 0.3rem;
-  font-size: 9.5pt;
-}
-
-.dc-specialty-intro > h3 {
-  margin-top: 0.6rem;
-  margin-bottom: 0.2rem;
-  font-size: 1rem;
-}
-
-/* ═══ PATH SHELL: tighten internal spacing ═══ */
-
-.dc-path-shell > h2.dc-spray:first-child {
-  padding: 10px 16px 12px;
-  font-size: 18px;
-}
-
-.dc-path-shell > h2.dc-spray:first-child::before {
-  right: -5px;
-}
-
-.dc-path-shell > h2.dc-spray:first-child::after {
-  bottom: -3px;
-  height: 3px;
-}
-
-/* Tighten path subtitle */
-.dc-path-subtitle {
-  font-size: 9px;
-  letter-spacing: 3px;
-  margin: 8px 0 4px;
-}
-
-/* Tighten path sticker */
-.dc-path-sticker {
-  font-size: 8px;
-  padding: 2px 5px 1px;
-}
-
-/* ═══ CARD CONTINUATION MARKERS ═══ */
-
-.dc-card-cont-marker {
-  font-size: 8pt;
-  margin: 0 0 0.25rem 0.25rem;
-  padding-bottom: 0.15rem;
-}
-
-
-
-/* ═══ EXAMPLE INTRO PAGE — chevron H1 font-size cap ════════════════════════
-   The ".dc-chevron" H1 on each example intro page (e.g. "Specialty Profile —
-   Real-World Example") wraps to 3 lines at the default display size because the
-   titles are long. Scoped to the example chapter wrapper classes so only these
-   pages are affected — no other chapter h1 titles are touched. */
-.example-specialty-overview h1.dc-chevron,
-.example-specialty-profile h1.dc-chevron,
-.example-rules h1.dc-chevron,
-.example-dm-npcs h1.dc-chevron,
-.example-gear-tech h1.dc-chevron,
-.example-chapter-opener h1.dc-chevron,
-.example-front-matter h1.dc-chevron {
-  font-size: 1.4rem;
-  line-height: 1.2;
-}
-
-/* ═══ GEAR CARD SECTION: equal card heights in two-column layout ════════════
-   In a CSS-columns two-column layout, gear cards at different heights create a
-   ragged bottom edge. Setting a min-height ensures cards in each column are
-   visually consistent. */
+/* ═══ GEAR CARD SECTION: equal card heights in two-column layout ════════════ */
 .section.two-column .dc-gear-entry {
   min-height: 1.5in;
+}
+
+/* Gear cards in two-column context: reduce h3 size slightly for narrow columns */
+.section.two-column .dc-gear-entry h3 {
+  font-size: var(--fs-h4);
 }
 
 /* ═══ NPC STAT BLOCKS — chapter-04 page ════════════════════════════════════
@@ -281,8 +81,7 @@
   margin-top: 0.1in;
 }
 
-/* Subsection labels: ##### Traits / Equipment / Cybernetics
-   Compact to body-sm monospace so these read as data labels, not narrative headings. */
+/* Subsection labels: ##### Traits / Equipment / Cybernetics */
 .page.chapter-04 h5 {
   font-family: var(--font-mono);
   font-size: var(--fs-body-sm);
@@ -312,11 +111,6 @@
   color: var(--ink-smoke);
   letter-spacing: 0.04em;
   margin-bottom: 0.04in;
-}
-
-/* Gear cards in two-column context: reduce h3 size slightly for narrow columns */
-.section.two-column .dc-gear-entry h3 {
-  font-size: var(--fs-h4);
 }
 
 /* ── FIELD GUIDE EXAMPLE ART IMAGE CLASSES ────────────────────────────────── */
@@ -394,9 +188,7 @@
 .page.citizen-file { page: citizen-file; }
 
 /* ══ CITIZEN FILE — Character Sheet Field Styling ═══════════════════════════
-   H4 headings become form field labels; tables become checkbox option lists.
-   Three-column @section uses column-fill: auto with explicit @column-break
-   markers so each field group stays in its designated column. */
+   H4 headings become form field labels; tables become checkbox option lists. */
 
 .page.citizen-file h4 {
   font-family: var(--font-mono);
@@ -449,43 +241,19 @@
   color: transparent;
 }
 
-/* ── CHAPTER OPENER: dark band extends through H1 ────────────────────────────
-   @chapter-opener macro emits <span class="dc-chapter-opener-no">C.01</span>
-   followed by H1. Both sit on the ink-dark band; H1 text becomes cream with
-   magenta underline — maximum neon-on-grim contrast. */
-.dc-chapter-opener-no + h1 {
-  background: var(--ink-dark);
-  color: var(--paper-cream);
-  border-bottom: 3px solid var(--hud-magenta);
-  padding: 0.06in 0.18in 0.16in;
-  margin: 0 0 0.2in;
-  box-sizing: border-box;
-  width: 100%;
-}
-
-/* Drop cap on first paragraph after the chapter opener H1 */
-.dc-chapter-opener-no+h1+p::first-letter {
-  initial-letter: 2;
-  font-weight: var(--fw-bold, 700);
-  color: var(--crimson);
-  margin-right: 0.05em;
-}
-
-/* ── SPECIALTY ART FULL-PAGE PLATE ───────────────────────────────────────────
-   Plugin emits .dc-specialty-art for full-page art spreads. */
-.dc-specialty-art {
-  width: var(--page-width, 8.625in);
-  height: var(--page-height, 11.25in);
-  break-before: page;
-  margin: 0;
-  overflow: hidden;
-}
-
-.dc-specialty-art img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+/* ═══ EXAMPLE INTRO PAGE — chevron H1 font-size cap ════════════════════════
+   The ".dc-chevron" H1 on each example intro page wraps to 3 lines at the
+   default display size because the titles are long. Scoped to the example
+   chapter wrapper classes so only these pages are affected. */
+.example-specialty-overview h1.dc-chevron,
+.example-specialty-profile h1.dc-chevron,
+.example-rules h1.dc-chevron,
+.example-dm-npcs h1.dc-chevron,
+.example-gear-tech h1.dc-chevron,
+.example-chapter-opener h1.dc-chevron,
+.example-front-matter h1.dc-chevron {
+  font-size: 1.4rem;
+  line-height: 1.2;
 }
 
 /* ── LUCID vs SURREAL — opposed palettes ─────────────────────────────────────
@@ -502,7 +270,7 @@
 
 /* ── FRONT MATTER PAGE H2 — dark band treatment ──────────────────────────────
    Scoped to .page.page-intro so only the "Metropolis" / "CREATUREPUNK" intro
-   sections get the dark-band H2 treatment, matching the chapter opener register. */
+   sections get the dark-band H2 treatment. */
 .page.page-intro h2 {
   background: var(--ink-dark);
   color: var(--paper-cream);
@@ -517,7 +285,7 @@
 /* ── H3 LEFT ACCENT BAR — text-heavy flow pages ──────────────────────────────
    Bare h3 in prose flow has no visual anchor beyond teal color. Scoped tightly
    to example page contexts so component h3s (specialty-card, gear-entry, etc.)
-   are unaffected. Adds 3px left bar to visually weight the subheading. */
+   are unaffected. */
 .example-rules > .section > h3,
 .example-dm-npcs > .section > h3,
 .example-gear-tech > .section > h3,
@@ -530,17 +298,8 @@
 
 /* ── TABLE HEADER COLOR BY SECTION CONTEXT ───────────────────────────────────
    dc-core.css sets the global default: th { background: var(--ink-dark) }
-   with color: var(--hud-blue-bright). Correct for dramatic/combat tables.
-
-   Reference and system tables — authoring patterns, NPC tiers, size modifiers —
-   use HUD blue to signal "data/reference" vs "rules/drama". Scoped by the
-   surrounding page-class context; no per-table class attributes needed in markdown.
-
-   Selectors:
-   - .example-* > .section th   — intro "About" section tables (field guide context)
-   - .page.chapter-04 th        — NPC/DM pages: all tables are reference data
-   - .page.tech-cybernetics th  — gear/tech named page: system reference tables
-   ─────────────────────────────────────────────────────────────────────────── */
+   Reference and system tables use HUD blue to signal "data/reference". Scoped
+   by surrounding page/section context; no per-table class attributes needed. */
 .example-rules > .section th,
 .example-dm-npcs > .section th,
 .example-gear-tech > .section th,
@@ -559,5 +318,3 @@
   margin-top: 0;
   margin-bottom: 0.2in;
 }
-
-

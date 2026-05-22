@@ -558,12 +558,12 @@
 /* ── Path subtitle ────────────────────────────────────────────────────── */
 .dc-path-subtitle {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 9px;
   text-transform: uppercase;
-  letter-spacing: 4px;
+  letter-spacing: 3px;
   color: var(--hud-blue-dark);
   font-weight: 600;
-  margin: 14px 0 8px;
+  margin: 8px 0 4px;
 }
 
 
@@ -618,13 +618,13 @@
 .dc-path-sticker {
   display: inline-block;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.10em;
   text-transform: uppercase;
   background: var(--paper-cream);
   color: var(--hud-blue);
-  padding: 3px 7px 2px;
+  padding: 2px 5px 1px;
   transform: rotate(-2.5deg);
   vertical-align: middle;
   position: relative;
@@ -650,11 +650,11 @@
   font-style: italic;
   color: var(--ink-smoke);
   font-size: var(--fs-body-sm);
-  padding-bottom: 10px;
-  margin-bottom: 12px;
+  padding-bottom: 4px;
+  margin-bottom: 6px;
   position: relative;
   border-left: 3px solid var(--orange);
-  padding-left: 10px;
+  padding-left: 8px;
 }
 
 /* ── Sub-header ───────────────────────────────────────────────────────── */
@@ -664,8 +664,8 @@
   text-transform: uppercase;
   letter-spacing: 3px;
   color: var(--hud-blue);
-  margin: 14px 0 8px;
-  padding-top: 10px;
+  margin: 6px 0 3px;
+  padding-top: 4px;
   border-top: 1px solid var(--hud-blue-dim);
 }
 
@@ -867,6 +867,41 @@ hr,
   box-sizing: border-box;
 }
 
+/* H1 immediately after .dc-chapter-opener-no — dark band with magenta underline */
+.dc-chapter-opener-no + h1 {
+  background: var(--ink-dark);
+  color: var(--paper-cream);
+  border-bottom: 3px solid var(--hud-magenta);
+  padding: 0.06in 0.18in 0.16in;
+  margin: 0 0 0.2in;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* Drop cap on first paragraph after the chapter opener H1 */
+.dc-chapter-opener-no + h1 + p::first-letter {
+  initial-letter: 2;
+  font-weight: var(--fw-bold, 700);
+  color: var(--crimson);
+  margin-right: 0.05em;
+}
+
+/* ── Specialty art full-page plate ─────────────────────────────────────────── */
+.dc-specialty-art {
+  width: var(--page-width, 8.625in);
+  height: var(--page-height, 11.25in);
+  break-before: page;
+  margin: 0;
+  overflow: hidden;
+}
+
+.dc-specialty-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 
 /* ── Modifier variants — .flush removes margin ─────────────────────────── */
 .dc-stickers.flush,
@@ -904,7 +939,7 @@ hr,
 
   position: relative;
   break-inside: avoid;
-  margin-bottom: 24px;
+  margin-bottom: 10px;
   max-width: 100%;
   filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink)) drop-shadow(4px 6px 8px rgba(0, 0, 0, 0.18));
   /* screen preview only — drops in Paged.js PDF export */
@@ -914,14 +949,14 @@ hr,
 .dc-card-cont-marker {
   display: block;
   font-family: var(--font-mono);
-  font-size: 9pt;
+  font-size: 8pt;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--orange);
   opacity: 0.85;
-  margin: 0 0 0.5rem 0.5rem;
-  padding-bottom: 0.3rem;
+  margin: 0 0 0.25rem 0.25rem;
+  padding-bottom: 0.15rem;
   border-bottom: 1px dashed var(--orange);
   width: fit-content;
 }
@@ -943,11 +978,11 @@ hr,
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  padding: 6px 26px 6px 12px;
+  padding: 3px 18px 3px 8px;
   background: var(--dc-card-tab-bg);
   border: 2px solid var(--dc-card-accent);
   border-bottom: 0;
-  margin-left: 14px;
+  margin-left: 10px;
   margin-bottom: -2px;
   position: relative;
   z-index: 2;
@@ -958,7 +993,7 @@ hr,
 
 .dc-tab-title {
   font-family: var(--font-tab);
-  font-size: 15px;
+  font-size: 13px;
   color: var(--dc-card-tab-title-color);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -971,7 +1006,7 @@ hr,
   align-items: center;
   justify-content: center;
   height: 1.25rem;
-  padding: 0 6px;
+  padding: 1px 5px;
   border-radius: 100px;
   font-family: var(--font-mono);
   font-size: 9px;
@@ -1007,7 +1042,7 @@ hr,
 /* ── Card body + decorative mark ──────────────────────────────────────── */
 .dc-card-body {
   background: var(--dc-card-surface);
-  padding: 22px 20px 36px;
+  padding: 12px 14px 20px;
   position: relative;
   clip-path: var(--dc-skill-body-shape, polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 44px) 100%, 0 100%));
 }
@@ -1056,7 +1091,7 @@ hr,
 .dc-ability {
   display: flex;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
   align-items: flex-start;
 }
 
@@ -1100,10 +1135,10 @@ hr,
   --dc-ap-fg: var(--paper-cream);
 
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
-  padding: 6px 9px;
-  min-width: 50px;
+  padding: 3px 6px;
+  min-width: 38px;
   text-align: center;
   background: var(--dc-ap-bg);
   color: var(--dc-ap-fg);
@@ -1131,7 +1166,7 @@ hr,
   --dc-specialty-intro-title-color: var(--bg);
 
   background: var(--hud-panel);
-  padding: 1.5rem 1.5rem 1.25rem;
+  padding: 1rem 1.25rem 0.75rem;
   margin: 0;
   position: relative;
   z-index: 1;
@@ -1142,14 +1177,14 @@ hr,
 }
 
 .dc-specialty-intro>h2:first-child {
-  font-size: 2rem;
+  font-size: 1.6rem;
   color: var(--dc-specialty-intro-title-color);
   letter-spacing: 0.04em;
   line-height: 1;
   background: var(--dc-specialty-intro-title-bg);
   display: block;
-  padding: 0.85rem 1.75rem;
-  margin: -1.5rem -1.5rem 1rem -1.5rem;
+  padding: 0.6rem 1.25rem;
+  margin: -1rem -1.25rem 0.6rem -1.25rem;
   clip-path: var(--dc-specialty-intro-title-shape, polygon(0 0, 100% 0, 100% 100%, 22px 100%, 0 calc(100% - 14px)));
   border: none;
 }
@@ -1157,14 +1192,16 @@ hr,
 .dc-specialty-intro>h3 {
   color: var(--crimson);
   letter-spacing: 0.05em;
-  margin-top: 1.1rem;
-  margin-bottom: 0.4rem;
+  font-size: 1rem;
+  margin-top: 0.6rem;
+  margin-bottom: 0.2rem;
   padding-bottom: 0.25rem;
   border-bottom: 1px solid var(--crimson);
 }
 
 .dc-specialty-intro>p {
-  margin-block: 0.45rem;
+  margin-block: 0.3rem;
+  font-size: 9.5pt;
   line-height: 1.5;
 }
 
@@ -1284,7 +1321,7 @@ hr,
 .dc-learning-path.dc-path-block {
   --dc-path-accent: var(--crimson);
   position: relative;
-  margin: 0 0 22px;
+  margin: 0 0 10px;
   break-before: auto;
   break-after: avoid;
 }
@@ -1297,10 +1334,10 @@ hr,
   /* Left accent strip via gradient (border-left is clipped by clip-path) */
   background:
     linear-gradient(to right, var(--dc-path-accent) 4px, var(--paper-aged) 4px);
-  margin: 0 0 22px;
+  margin: 0 0 10px;
   position: relative;
   clip-path: var(--dc-path-shell-clip, polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px));
-  filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink));
+  filter: drop-shadow(3px 0 0 var(--ink)) drop-shadow(-3px 0 0 var(--ink)) drop-shadow(0 3px 0 var(--ink)) drop-shadow(0 -3px 0 var(--ink));
   /* screen preview only — drops in Paged.js PDF export */
 }
 
@@ -1313,17 +1350,32 @@ hr,
   background: var(--dc-path-title-bg);
   clip-path: var(--dc-path-title-shape, polygon(0 0, 100% 0, 100% 100%, 25px 100%, 0 calc(100% - 15px)));
   margin-bottom: 12px;
+  padding: 10px 16px 12px;
+  font-size: 18px;
+  break-after: avoid;
 }
 
-.dc-path-shell>h2.dc-spray:first-child::before,
+.dc-path-shell>h2.dc-spray:first-child + * {
+  break-before: avoid;
+}
+
+.dc-path-shell>h2.dc-spray:first-child::before {
+  background: var(--dc-path-title-bg);
+  right: -5px;
+}
+
 .dc-path-shell>h2.dc-spray:first-child::after {
   background: var(--dc-path-title-bg);
+  bottom: -3px;
+  height: 3px;
 }
 
 .dc-path-shell>p,
 .dc-path-shell>div,
 .dc-path-shell>div.dc-intro {
-  margin-inline: var(--space-md);
+  margin-inline: var(--space-sm);
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 /* ═══ OUTCOMES + STEPS + DISTANCE ═══ */
@@ -1331,8 +1383,8 @@ hr,
 /* ── Procedure / numbered steps ───────────────────────────────────────── */
 .dc-steps {
   list-style: none;
-  padding: 0 0 0 16px;
-  margin: 14px 0;
+  padding: 0 0 0 12px;
+  margin: 8px 0;
   border-left: 2px solid var(--hud-blue-dim);
   break-inside: avoid;
 }
@@ -1340,11 +1392,11 @@ hr,
 .dc-steps>li {
   display: grid;
   grid-template-columns: 48px 1fr;
-  gap: 22px;
-  padding: 12px 0 12px 4px;
+  gap: 14px;
+  padding: 8px 0 8px 2px;
   border-top: 1px dashed var(--paper-aged);
   font-family: var(--font-body);
-  font-size: var(--fs-body);
+  font-size: 9pt;
   line-height: 1.5;
   color: var(--ink);
   align-items: baseline;
@@ -1363,7 +1415,7 @@ hr,
 .dc-steps .dc-step-no {
   font-family: var(--font-mono);
   font-weight: 700;
-  font-size: 16px;
+  font-size: 13px;
   letter-spacing: 2px;
   color: var(--hud-blue-dark);
   line-height: 1;
@@ -1377,7 +1429,7 @@ hr,
 
 /* ── Outcome ladder ───────────────────────────────────────────────────── */
 .dc-outcomes {
-  margin: 14px 0;
+  margin: 8px 0;
   border: 2px solid var(--ink);
   background: var(--paper-cream);
   position: relative;
@@ -1394,12 +1446,12 @@ hr,
 
 .dc-outcomes-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--hud-blue);
-  padding: 8px 16px 6px;
+  padding: 4px 12px 3px;
   border-bottom: 1px solid var(--hud-blue-dim);
   position: relative;
   z-index: 1;
@@ -1407,7 +1459,7 @@ hr,
 
 .dc-outcome-row {
   display: grid;
-  grid-template-columns: 155px 1fr;
+  grid-template-columns: 130px 1fr;
   gap: 0;
   border-bottom: 1px solid var(--hud-blue-dim);
   position: relative;
@@ -1421,7 +1473,7 @@ hr,
 .dc-outcome-key {
   background: var(--row-color, var(--ink));
   color: var(--paper-cream);
-  padding: 10px 16px;
+  padding: 6px 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1442,7 +1494,7 @@ hr,
 
 .dc-outcome-key .dc-outcome-roll {
   font-family: var(--font-display);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.03em;
   color: var(--paper-cream);
@@ -1454,9 +1506,9 @@ hr,
 }
 
 .dc-outcome-text {
-  padding: 12px 18px;
+  padding: 8px 12px;
   font-family: var(--font-body);
-  font-size: var(--fs-body-xs);
+  font-size: 8.5pt;
   line-height: 1.55;
   color: var(--ink);
   align-self: center;
