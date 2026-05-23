@@ -39,6 +39,7 @@ For richer projects (cover art, fonts, a multi-chapter book with running headers
 | **Learn all print-md features** | [Print-md User Guide](./examples/print-md-user-guide/) — 48-page comprehensive guide covering all core features |
 | Understand markdown extensions (page breaks, columns, callouts) | [User Guide: Chapter 2 — Writing Your Content](./examples/print-md-user-guide/02-writing-content.md) |
 | Style your book with CSS (fonts, colors, page size, margins) | [User Guide: Chapter 4 — Styling & Theming](./examples/print-md-user-guide/04-styling-theming.md) |
+| **Structure your CSS like a pro** — the recommended pattern for variant assignment | [Contextual Cascade Principle](./docs/contextual-cascade-principle.md) |
 | Create TTRPG/games content (stat blocks, dice notation, etc) | [User Guide: Chapter 5 — TTRPG Extensions](./examples/print-md-user-guide/05-ttrpg-extensions.md) |
 | **Use the CLI** for scripting, CI builds, or batch work | [CLI README](./packages/cli/README.md) |
 | Add custom markdown plugins | [User Guide: Chapter 6 — Plugins](./examples/print-md-user-guide/06-plugins.md) |

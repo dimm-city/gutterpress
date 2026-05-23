@@ -52,6 +52,9 @@ See the [Print-md User Guide](../examples/print-md-user-guide/) for all topics:
 **Customize colors and fonts**
 → [User Guide: Chapter 4 — Styling & Theming](../examples/print-md-user-guide/04-styling-theming.md)
 
+**Structure CSS for a multi-chapter book** (the recommended pattern for component variants, per-chapter overrides, and reusable section libraries)
+→ [The Contextual Cascade Principle](./contextual-cascade-principle.md)
+
 **Validate my project for print**
 → [User Guide: Chapter 7 — Validation](../examples/print-md-user-guide/07-validation.md)
 
@@ -117,6 +120,7 @@ docs/
 ├── README.md                              # This file
 ├── ARCHITECTURE.md                        # Technical architecture (developers)
 ├── best-practices.md                      # Extended reference for best practices
+├── contextual-cascade-principle.md        # ★ Recommended CSS architecture pattern
 ├── SOURCE-FILES-GUIDE.md                  # Deep-dive into source.files configuration
 ├── adr/                                   # Architecture Decision Records
 ├── migrations/                            # Migration guides

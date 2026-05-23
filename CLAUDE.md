@@ -172,6 +172,30 @@ comment in the first 50 lines of each file before adding any rule.
 | `dg-overrides.css` | `div.chapter` scaffolding, `.specimen` chrome, guide-specific footer |
 | `fg-overrides.css` | Context-scoped layout rules only: `.page.*`, `.example-*`, `.section.two-column` selectors and pure break control |
 
+### Contextual Cascade Principle — variant assignment via CSS, not markdown
+
+The DC design guide demonstrates the recommended pattern for print-md projects:
+component variants flow from the document's natural hierarchy (chapter id →
+page template class → section component class) via CSS selector chains that
+set component custom properties — NOT via utility classes the author has to
+apply to wrappers or per-element class attributes.
+
+Authors write semantic markdown only (`@section .dc-X`). Components in
+`dc-components.css` expose their look via `var(--dc-X, fallback)` patterns
+and work in any context with no setup. Per-book overrides in
+`fg-overrides.css` use natural selector chains to set component custom
+properties for that book's variant choices.
+
+`@section .dc-X` is the **minimum viable parent** for any variant. Chapter
+and page selectors are layered on top only when a variant needs scope-
+specific overrides. See [`docs/contextual-cascade-principle.md`](./docs/contextual-cascade-principle.md)
+for the full pattern explanation with worked examples.
+
+**FORBIDDEN:** utility variant classes on wrappers (`.dc-accent-X`,
+`.variant-Y`); per-element class attributes for styling (`{.dc-table-blue}`
+on tables); HTML wrappers in markdown for styling; raw values in per-book
+overrides (always set component custom properties, never the raw property).
+
 ### Component style isolation — CORE CONSTRAINT
 
 > **All component styles belong in `dc-components.css`. The override files
