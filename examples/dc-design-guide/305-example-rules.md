@@ -96,7 +96,7 @@ They don't stop you. They don't protect you. They just make sure the pain fits t
 
 @end-section
 
-@section
+@section .tabbed
 
 ### ROLL A DIE! {#c1-rolling-the-die}
 

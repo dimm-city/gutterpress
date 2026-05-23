@@ -2529,54 +2529,71 @@ p.dc-img-wrapper {
   margin-top: calc(var(--space-md) + 1.5em + 5px);
 }
 
-/* ── Shared base — both H2 and H3 tabs use the inverted-strip pattern ───── */
+/* ── Shared base — both H2 and H3 tabs use the cut-corner stencil silhouette */
 .section.tabbed > h2:first-child,
 .section.tabbed > h3:first-child {
   display: inline-block;
   width: fit-content;
   background: var(--section-accent);
   color: var(--paper-cream);
-  /* Lift the tab so its BOTTOM edge sits flush with the section's TOP edge
-     (no overlap). The 1.75em + 5px term covers the tab's own rendered height:
-       line-height (1.2em)
-     + vertical padding (~0.55em — H2 baseline; H3 is slightly smaller
-                          and the em-scaled margin compensates since it uses
-                          the heading's own font-size)
-     + border-top (2px) + border-bottom (1px) + tolerance (~2px).
-     `var(--section-tab-overlap)` (default 0) is a tuning knob — set it positive
-     to overlap the tab INTO the section, negative to leave a visible gap. */
-  margin: calc(-1 * var(--space-md) - 1.75em - 5px + var(--section-tab-overlap))
-          0 var(--space-sm) var(--section-tab-indent);
-  /* Inverted-strip pattern: cream left-stripe echoes the section card's accent
-     strip, no ink outline so the tab reads as a creaturepunk artifact, not a
-     generic UI tab. Tab silhouette is defined by the accent-color fill against
-     the paper background. */
-  border: 2px solid transparent;
-  border-left: 5px solid var(--paper-cream);
-  border-bottom: 1px solid var(--section-accent);
+  margin-right: 0;
+  margin-bottom: var(--space-sm);
+  margin-left: var(--section-tab-indent);
+  /* No borders — silhouette is defined entirely by the clip-path against the
+     paper background. This makes the tab read as a stenciled/torn artifact
+     rather than a bordered UI control. */
+  border: 0;
   border-radius: 0;
-  /* Slant matches the H3 bar's 10px notch vocabulary */
-  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 100%, 0 100%);
+  /* 10-point ragged-edge clip — gives the tab a "torn from the page" feel
+     instead of a clean geometric tab silhouette:
+       1-2  top edge with 8px top-left chamfer + 14px right setback
+       3    diagonal descends along the right edge (40% height)
+       4    INWARD V-notch bites 4px into the tab body (the "tear" at midpoint)
+       5    diagonal continues outward to the bottom corner (60% height)
+       6    bottom-right corner is flush
+       7-9  triangular bite carved out of the bottom-left corner — apex pokes
+            8px into the tab body, giving the bottom-left an asymmetric scar
+       10   left edge starts 8px down from the top (mirrors point 1)              */
+  clip-path: polygon(
+    8px 0,
+    calc(100% - 14px) 0,
+    calc(100% - 6px) 40%,
+    calc(100% - 10px) 50%,
+    calc(100% - 4px) 60%,
+    100% 100%,
+    12px 100%,
+    4px calc(100% - 8px),
+    0 calc(100% - 12px),
+    0 8px
+  );
   font-family: var(--font-tab);
   line-height: 1.2;
   letter-spacing: var(--ls-display);
+  /* 1px ink-dark text-shadow adds grit/weight to the tab typography without
+     triggering the clip-path+filter conflict that would kill the clip mask. */
+  text-shadow: 1px 1px 0 var(--ink-dark);
   text-transform: uppercase;
   position: relative;
   z-index: 2;
   break-after: avoid;
 }
 
-/* ── H2 tab — PRIMARY: --fs-h4 (13pt) + heavier padding for visual weight ─ */
+/* ── H2 tab — PRIMARY: --fs-h4 (13pt) + heavier padding for visual weight.
+   Flush-bottom margin: lift = section padding-top + tab height
+   (line-height 1.2em + paddingY ~0.55em + 2px tolerance). */
 .section.tabbed > h2:first-child {
   font-size: var(--fs-h4);
   padding: 0.30em 0.95em calc(0.25em + 2px);
-  border-left-width: 6px;
+  margin-top: calc(-1 * var(--space-md) - 1.75em - 2px + var(--section-tab-overlap));
 }
 
-/* ── H3 tab — SUBORDINATE: --fs-h5 (11pt) + tighter padding ─────────────── */
+/* ── H3 tab — SUBORDINATE: --fs-h5 (11pt) + tighter padding.
+   Flush-bottom margin uses smaller em coefficient since H3's paddings are
+   tighter (paddingY ~0.45em + 2px). */
 .section.tabbed > h3:first-child {
   font-size: var(--fs-h5);
   padding: 0.25em 0.75em calc(0.20em + 2px);
+  margin-top: calc(-1 * var(--space-md) - 1.65em - 2px + var(--section-tab-overlap));
 }
 
 /* ── First-child heading inside a section becomes a filled top bar ───────
