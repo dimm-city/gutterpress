@@ -2453,17 +2453,18 @@ p.dc-img-wrapper {
      --section-bg      → panel background surface
      --section-accent  → left strip / top border accent color        */
 
-/* ── Base card: every @section gets a cream surface + left accent strip ── */
+/* ── Base card: every @section gets a cream surface + left accent strip ──
+   Public tokens (defaults declared in dc-tokens.css :root):
+     --section-bg      — panel background surface
+     --section-accent  — left strip / top bar accent color
+   Chapter-scoped overrides cascade in via .example-X .section { … }. */
 .section {
-  --section-bg:     var(--paper-cream);
-  --section-accent: var(--hud-blue-dark);
-
   /* filter on outer — NO clip-path (clip-path+filter on same element kills bottom/right shadows) */
   background: transparent;
-  filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink))
-          drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink));
+  filter: drop-shadow(2px 0 0 var(--ink-dark)) drop-shadow(-2px 0 0 var(--ink-dark))
+          drop-shadow(0 2px 0 var(--ink-dark)) drop-shadow(0 -2px 0 var(--ink-dark));
   padding: var(--space-md) var(--space-lg);
-  margin: 6pt 6px;
+  margin: 12pt 6px;
   position: relative;
   break-inside: avoid;
 }
@@ -2491,7 +2492,7 @@ p.dc-img-wrapper {
   border-top: 3px solid var(--section-accent);
   border-bottom: 1px solid var(--paper-aged);
   padding: var(--space-sm) 0;
-  margin: 6pt 0;
+  margin: 12pt 0;
 }
 
 .section.two-column::before,
@@ -2505,7 +2506,7 @@ p.dc-img-wrapper {
   background: transparent;
   border: none;
   padding: 0;
-  margin: 0;
+  margin: var(--space-md) 0 0;
 }
 
 .section.col-split::before {
@@ -2532,12 +2533,18 @@ p.dc-img-wrapper {
   width: fit-content;
   background: var(--section-accent);
   color: var(--paper-cream);
-  padding: 0.15em 0.75em calc(0.15em + 3px);
+  /* Asymmetric optical-center padding (matches section bar's 0.42/0.28 pattern, scaled to H5) */
+  padding: 0.25em 0.75em calc(0.20em + 2px);
   margin: calc(-1 * var(--space-md) - 1em + var(--section-tab-overlap)) 0 var(--space-sm) var(--section-tab-indent);
-  border: 2px solid var(--ink-dark);
+  /* Inverted-strip pattern: cream left-stripe echoes the section card's accent strip,
+     no ink outline so the tab reads as a creaturepunk artifact, not a generic UI tab.
+     Tab silhouette is defined by the accent-color fill against the paper background. */
+  border: 2px solid transparent;
+  border-left: 5px solid var(--paper-cream);
   border-bottom: 1px solid var(--section-accent);
   border-radius: 0;
-  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+  /* Slant reduced 14px → 10px to match H3 bar's notch vocabulary */
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 100%, 0 100%);
   font-family: var(--font-tab);
   font-size: var(--fs-h5);
   line-height: 1.2;
@@ -2554,8 +2561,7 @@ p.dc-img-wrapper {
    reads at print size. Asymmetric padding centers cap-height vertically
    (all-caps glyphs have no descenders). The bar's clip-path matches
    .section::before's top-right notch so it doesn't overshoot. */
-.section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h2:first-child,
-.section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h3:first-child {
+.section:not(.tabbed, .two-column, .three-column, .col-split) > :is(h2, h3):first-child {
   background: var(--section-accent);
   color: var(--paper-cream);
   margin: calc(-1 * var(--space-md)) calc(-1 * var(--space-lg)) var(--space-sm);
@@ -2566,12 +2572,12 @@ p.dc-img-wrapper {
   break-after: avoid;
 }
 
-.section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h2:first-child {
+.section:not(.tabbed, .two-column, .three-column, .col-split) > h2:first-child {
   font-size: var(--fs-h3);
   clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
 }
 
-.section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h3:first-child {
+.section:not(.tabbed, .two-column, .three-column, .col-split) > h3:first-child {
   font-size: var(--fs-h4);
   clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
 }
@@ -2581,14 +2587,13 @@ p.dc-img-wrapper {
    Section's vertical padding is var(--space-sm); pull up so bar starts at
    the section's top edge. Bottom margin uses --space-md to land the first
    paragraph on the next baseline grid step. */
-.section.two-column > h2:first-child,
-.section.two-column > h3:first-child,
-.section.three-column > h2:first-child,
-.section.three-column > h3:first-child {
+.section.two-column > :is(h2, h3):first-child,
+.section.three-column > :is(h2, h3):first-child {
   column-span: all;
   background: var(--section-accent);
   color: var(--paper-cream);
-  margin: calc(-1 * var(--space-sm)) 0 var(--space-md);
+  /* Bar reaches the section's inside edges (matches single-column behavior at L2561 above). */
+  margin: calc(-1 * var(--space-sm)) calc(-1 * var(--space-lg)) var(--space-md);
   padding: 0.42rem var(--space-lg) 0.28rem;
   border-left: none;
   letter-spacing: var(--ls-display);

@@ -228,6 +228,12 @@
   --tier-bronze:  #7a5f38;  /* tier 1 — earthy bronze; darkened for WCAG AA 4.5:1 on --paper-cream */
   --tier-gold:    #D4AF37;  /* tier 2 — bright gold */
   --tier-silver:  #C0C0C0;  /* tier 3 — polished silver */
+
+  /* ── Section Component Public Tokens ────────────────────────────────────
+     Default theming for .section / @section macros. Chapter-scoped overrides
+     live in fg-overrides.css and win via .example-X .section { … } cascade. */
+  --section-bg:     var(--paper-cream);
+  --section-accent: var(--hud-blue-dark);
 }
 
 

@@ -324,8 +324,15 @@
 
 /* ── TABLE HEADER COLOR BY SECTION CONTEXT ───────────────────────────────────
    dc-core.css sets the global default: th { background: var(--ink-dark) }
-   Reference and system tables use HUD blue to signal "data/reference". Scoped
-   by surrounding page/section context; no per-table class attributes needed. */
+   Reference and system tables use HUD blue to signal "data/reference" across
+   ALL field-guide chapters — chosen deliberately over per-chapter accent
+   cohesion. The "data = HUD blue" signal is system-wide vocabulary; a gear
+   chapter's amber section-bar and a rules chapter's blue section-bar can
+   coexist because the table header reads as a separate object (the data
+   surface), not as part of the section's chapter palette.
+   If a future project wants chapter-cohesive tables, drop the rule list to
+   only `.example-rules > .section th, .example-dm-npcs > .section th` and let
+   --section-accent cascade into other chapters' table headers via th-scoped CSS. */
 .example-rules > .section th,
 .example-dm-npcs > .section th,
 .example-gear-tech > .section th,
@@ -337,7 +344,8 @@
 /* ── SECTION ACCENT COLORS BY CHAPTER CONTEXT ───────────────────────────────
    Override --section-accent per chapter so not every section is the same
    hud-blue-dark. Each chapter gets a color that signals its content type.
-   Amber resolves to --amber-dark for AA contrast on paper-cream caps.
+   Gear uses --amber (saturated, pops against cream) instead of --amber-dark
+   (which competed with paper-aged in the warm register).
 
    The `.page-intro` fallback covers front-matter pages that have no
    `@chapter` wrapper (301-example-front-matter.md). It's wrapped in
@@ -346,7 +354,7 @@
 :where(.page-intro) .section { --section-accent: var(--hud-magenta); }
 .example-rules .section        { --section-accent: var(--hud-blue); }
 .example-dm-npcs .section      { --section-accent: var(--rust); }
-.example-gear-tech .section    { --section-accent: var(--amber-dark); }
+.example-gear-tech .section    { --section-accent: var(--amber); }
 .example-front-matter .section { --section-accent: var(--hud-magenta); }
 .example-chapter-opener .section { --section-accent: var(--hud-blue); }
 .example-specialty-profile .section { --section-accent: var(--hud-blue-dark); }
