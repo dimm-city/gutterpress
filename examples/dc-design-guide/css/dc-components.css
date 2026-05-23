@@ -2512,6 +2512,132 @@ p.dc-img-wrapper {
   display: none;
 }
 
+/* ── Tabbed variant — first-child heading sits ABOVE the section ─────────
+   `@section .tabbed` opts the section into a `.dc-card-tab → .dc-card-body`
+   silhouette. Flex container is required so the first-child heading's
+   negative margin-top actually lifts it above the section (block layout
+   clamps negative margins on the first in-flow child). `.section::before`
+   is absolutely positioned, so flex doesn't disturb the background pseudo. */
+.section.tabbed {
+  --section-tab-overlap: 4px;
+  --section-tab-indent: 8px;
+  display: flex;
+  flex-direction: column;
+  margin-top: calc(var(--space-md) + 1em);
+}
+
+.section.tabbed > h2:first-child,
+.section.tabbed > h3:first-child {
+  display: inline-block;
+  width: fit-content;
+  background: var(--section-accent);
+  color: var(--paper-cream);
+  padding: 0.15em 0.75em calc(0.15em + 3px);
+  margin: calc(-1 * var(--space-md) - 1em + var(--section-tab-overlap)) 0 var(--space-sm) var(--section-tab-indent);
+  border: 2px solid var(--ink-dark);
+  border-bottom: 1px solid var(--section-accent);
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+  font-family: var(--font-tab);
+  font-size: var(--fs-h5);
+  line-height: 1.2;
+  letter-spacing: var(--ls-display);
+  text-transform: uppercase;
+  position: relative;
+  z-index: 2;
+  break-after: avoid;
+}
+
+/* ── First-child heading inside a section becomes a filled top bar ───────
+   Base behavior — chapter-specific palette is set via --section-accent
+   in fg-overrides.css. H2 gets a larger bar than H3 so the hierarchy
+   reads at print size. Asymmetric padding centers cap-height vertically
+   (all-caps glyphs have no descenders). The bar's clip-path matches
+   .section::before's top-right notch so it doesn't overshoot. */
+.section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h2:first-child,
+.section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h3:first-child {
+  background: var(--section-accent);
+  color: var(--paper-cream);
+  margin: calc(-1 * var(--space-md)) calc(-1 * var(--space-lg)) var(--space-sm);
+  padding: 0.42rem var(--space-lg) 0.28rem;
+  border-left: none;
+  letter-spacing: var(--ls-display);
+  text-transform: uppercase;
+  break-after: avoid;
+}
+
+.section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h2:first-child {
+  font-size: var(--fs-h3);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+}
+
+.section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h3:first-child {
+  font-size: var(--fs-h4);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+}
+
+/* ── Multi-column sections — first-child heading spans all columns ───────
+   `column-span: all` keeps the bar from getting trapped inside column 1.
+   Section's vertical padding is var(--space-sm); pull up so bar starts at
+   the section's top edge. Bottom margin uses --space-md to land the first
+   paragraph on the next baseline grid step. */
+.section.two-column > h2:first-child,
+.section.two-column > h3:first-child,
+.section.three-column > h2:first-child,
+.section.three-column > h3:first-child {
+  column-span: all;
+  background: var(--section-accent);
+  color: var(--paper-cream);
+  margin: calc(-1 * var(--space-sm)) 0 var(--space-md);
+  padding: 0.42rem var(--space-lg) 0.28rem;
+  border-left: none;
+  letter-spacing: var(--ls-display);
+  text-transform: uppercase;
+  break-after: avoid;
+}
+
+.section.two-column > h2:first-child,
+.section.three-column > h2:first-child {
+  font-size: var(--fs-h3);
+}
+
+.section.two-column > h3:first-child,
+.section.three-column > h3:first-child {
+  font-size: var(--fs-h4);
+}
+
+/* Multi-column sections whose first child is a heading: drop the redundant
+   `border-top: 3px solid var(--section-accent)` since the bar IS the top.
+   Requires Chromium ≥105 — Paged.js's embedded engine satisfies this. */
+.section:is(.two-column, .three-column):has(> :is(h2, h3):first-child) {
+  border-top: 0;
+}
+
+/* Heading bar followed immediately by a table — give the table head room
+   so the bar and `<th>` background don't bleed into a single coloured block. */
+.section > :is(h2, h3):first-child + table {
+  margin-top: var(--space-sm);
+}
+
+/* Column-break orphan protection: keep first paragraph with the spanning bar.
+   `break-after: avoid` on the bar guards page breaks; these guards also cover
+   column-break orphaning that can strand a bar above an empty column. */
+.section.two-column > :is(h2, h3):first-child + *,
+.section.three-column > :is(h2, h3):first-child + * {
+  break-before: avoid;
+}
+
+.section.two-column > :is(h2, h3):first-child + p,
+.section.three-column > :is(h2, h3):first-child + p {
+  break-inside: avoid;
+}
+
+/* Multi-column body copy: kill rivers from narrow-column justification. */
+.section.two-column p,
+.section.three-column p {
+  text-align: left;
+}
+
 /* ═══ SEMANTIC COLOR + FONT UTILITIES ═══
    Thin single-purpose classes for inline markdown spans ({.class-name}).
    Moved from dc-tokens.css (architectural contract violation) to here. */

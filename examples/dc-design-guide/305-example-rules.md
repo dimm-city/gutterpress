@@ -134,9 +134,9 @@ Roll 2d20, take the lower. Reality pushes back. When you roll a 1 in the dream, 
 
 @section
 
-### Augment Points (AP)
+### Augment Points
 
-AP is your push. Your burn. Your "I'm doing this anyway."
+**AP** is your push. Your burn. Your "I'm doing this anyway."
 
 If an ability lists an AP cost, you spend it and the effect happens. No charge-up. No waiting.
 
