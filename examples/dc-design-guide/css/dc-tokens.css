@@ -233,7 +233,7 @@
      Default theming for .section / @section macros. Chapter-scoped overrides
      live in fg-overrides.css and win via .example-X .section { … } cascade. */
   --section-bg:     var(--paper-cream);
-  --section-accent: var(--hud-blue-dark);
+  --section-accent: var(--blood);
 }
 
 

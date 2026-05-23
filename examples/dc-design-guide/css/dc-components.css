@@ -2459,12 +2459,15 @@ p.dc-img-wrapper {
      --section-accent  — left strip / top bar accent color
    Chapter-scoped overrides cascade in via .example-X .section { … }. */
 .section {
-  /* filter on outer — NO clip-path (clip-path+filter on same element kills bottom/right shadows) */
+  /* filter on outer — NO clip-path (clip-path+filter on same element kills bottom/right shadows).
+     Asymmetric right+down shadow reads as elevation at print; all-around 0-blur spreads to a
+     solid border via dot gain on uncoated paper. */
   background: transparent;
-  filter: drop-shadow(2px 0 0 var(--ink-dark)) drop-shadow(-2px 0 0 var(--ink-dark))
-          drop-shadow(0 2px 0 var(--ink-dark)) drop-shadow(0 -2px 0 var(--ink-dark));
+  filter: drop-shadow(3px 3px 0 var(--ink-dark));
   padding: var(--space-md) var(--space-lg);
-  margin: 12pt 6px;
+  /* Side margin creates visible spatial gap between the card and the column boundary
+     so the card reads as a contained object sitting on the page, not a paragraph. */
+  margin: 12pt 0;
   position: relative;
   break-inside: avoid;
 }
@@ -2475,7 +2478,7 @@ p.dc-img-wrapper {
   position: absolute;
   inset: 0;
   background: linear-gradient(to right, var(--section-accent) 5px, var(--section-bg) 5px);
-  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
   z-index: 0;
 }
 
@@ -2490,7 +2493,7 @@ p.dc-img-wrapper {
   filter: none;
   background: var(--section-bg);
   border-top: 3px solid var(--section-accent);
-  border-bottom: 1px solid var(--paper-aged);
+  border-bottom: 2px solid var(--border-hairline);
   padding: var(--space-sm) 0;
   margin: 12pt 0;
 }
@@ -2500,12 +2503,16 @@ p.dc-img-wrapper {
   display: none;
 }
 
-/* ── col-split (Lucid/Surreal flex layout) — no card treatment ─────────── */
+/* ── col-split (Lucid/Surreal flex layout) — minimal structural framing ───
+   No card chrome (no background, no shadow, no left strip), but top/bottom
+   hairline rules anchor the section as a named unit on the page rather than
+   letting it dissolve into running prose. */
 .section.col-split {
   filter: none;
   background: transparent;
-  border: none;
-  padding: 0;
+  border-top: 1px solid var(--border-hairline);
+  border-bottom: 1px solid var(--border-hairline);
+  padding: var(--space-sm) 0;
   margin: var(--space-md) 0 0;
 }
 
@@ -2520,13 +2527,16 @@ p.dc-img-wrapper {
    clamps negative margins on the first in-flow child). `.section::before`
    is absolutely positioned, so flex doesn't disturb the background pseudo. */
 .section.tabbed {
-  --section-tab-overlap: 0px;
-  --section-tab-indent: 8px;
+  /* Negative overlap = gap between tab bottom and card top surface.
+     6px lets a sliver of page background show, making the tab read as a
+     torn/stamped label placed ON the card rather than fused to it. */
+  --section-tab-overlap: -6px;
+  /* 0 = flush with card left edge, consistent with base H2 bar registration. */
+  --section-tab-indent: 0px;
   display: flex;
   flex-direction: column;
-  /* Headroom above the section for the lifted tab; sized for H2 (13pt) variant
-     so H3 (11pt) fits comfortably as well. */
-  margin-top: calc(var(--space-md) + 1.5em + 5px);
+  /* Headroom above the section for the lifted tab (+6px for the gap). */
+  margin-top: calc(var(--space-md) + 1.5em + 11px);
 }
 
 /* ── Shared base — both H2 and H3 tabs use the cut-corner stencil silhouette */
@@ -2579,8 +2589,8 @@ p.dc-img-wrapper {
 }
 
 /* ── H2 tab — PRIMARY: --fs-h4 (13pt) + heavier padding for visual weight.
-   Flush-bottom margin: lift = section padding-top + tab height
-   (line-height 1.2em + paddingY ~0.55em + 2px tolerance). */
+   lift = section padding-top + tab height (1.2em × --fs-h4 + paddingY ~0.55em)
+   + 2px tolerance + --section-tab-overlap (negative = gap above card). */
 .section.tabbed > h2:first-child {
   font-size: var(--fs-h4);
   padding: 0.30em 0.95em calc(0.25em + 2px);
@@ -2605,7 +2615,8 @@ p.dc-img-wrapper {
 .section:not(.tabbed, .two-column, .three-column, .col-split) > :is(h2, h3):first-child {
   background: var(--section-accent);
   color: var(--paper-cream);
-  margin: calc(-1 * var(--space-md)) calc(-1 * var(--space-lg)) var(--space-sm);
+  /* --space-md bottom margin gives the bar breathing room before body copy. */
+  margin: calc(-1 * var(--space-md)) calc(-1 * var(--space-lg)) var(--space-md);
   padding: 0.42rem var(--space-lg) 0.28rem;
   border-left: none;
   letter-spacing: var(--ls-display);
@@ -2613,14 +2624,22 @@ p.dc-img-wrapper {
   break-after: avoid;
 }
 
+/* H2 — PRIMARY: taller padding + 18px chamfer matches the card's own notch. */
 .section:not(.tabbed, .two-column, .three-column, .col-split) > h2:first-child {
   font-size: var(--fs-h3);
-  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+  padding-top: 0.55rem;
+  padding-bottom: 0.40rem;
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
 }
 
+/* H3 — SUBORDINATE: inset from the card's left edge (margin-left: 0 cancels the
+   shared negative margin, landing the bar at the content padding edge = ~11pt inset).
+   The left accent strip shows to the left of the bar, reinforcing subordination.
+   12px chamfer is intentionally smaller than H2's 18px. */
 .section:not(.tabbed, .two-column, .three-column, .col-split) > h3:first-child {
   font-size: var(--fs-h4);
-  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+  margin-left: 0;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
 }
 
 /* ── Multi-column sections — first-child heading spans all columns ───────
@@ -2682,6 +2701,34 @@ p.dc-img-wrapper {
 .section.two-column p,
 .section.three-column p {
   text-align: left;
+}
+
+/* ── A7: free-standing heading directly before a section card — add extra
+   top clearance so the page-level heading and the card's header bar don't
+   compete at the same visual weight on the vertical scan. */
+:is(h2, h3) + .section {
+  margin-top: 20pt;
+}
+
+/* ── A1: H3 tabbed sections use near-black (ink-dark) label background instead
+   of the chapter accent, making the dark stamp read as secondary/subordinate
+   vs H2 tabs which use the full chapter accent color.
+   P1: scaled clip-path — notch teeth proportional to H3's smaller height.
+       Right V-notch bite: 10px → 7px. Bottom-left scar: 8px/12px → 5px/9px. */
+.section.tabbed > h3:first-child {
+  background: var(--ink-dark);
+  clip-path: polygon(
+    8px 0,
+    calc(100% - 14px) 0,
+    calc(100% - 6px) 40%,
+    calc(100% - 7px) 50%,
+    calc(100% - 3px) 60%,
+    100% 100%,
+    12px 100%,
+    4px calc(100% - 5px),
+    0 calc(100% - 9px),
+    0 8px
+  );
 }
 
 /* ═══ SEMANTIC COLOR + FONT UTILITIES ═══
