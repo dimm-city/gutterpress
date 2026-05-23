@@ -29959,6 +29959,26 @@
 
 	}
 
+	// print-md PATCH-4: paren-aware selector split so `:is(h2, h3)`, `:where(...)`,
+	// `:not(a, b)` etc. are never split at commas inside parentheses.
+	// Replaces every `selector.split(",")` call in the handlers below.
+	function splitSelectors(selector) {
+		const parts = [];
+		let depth = 0;
+		let start = 0;
+		for (let i = 0; i < selector.length; i++) {
+			const ch = selector[i];
+			if (ch === "(" || ch === "[") { depth++; }
+			else if (ch === ")" || ch === "]") { depth--; }
+			else if (ch === "," && depth === 0) {
+				parts.push(selector.slice(start, i));
+				start = i + 1;
+			}
+		}
+		parts.push(selector.slice(start));
+		return parts;
+	}
+
 	class Breaks extends Handler {
 		constructor(chunker, polisher, caller) {
 			super(chunker, polisher, caller);
@@ -29982,7 +30002,7 @@
 					name: name
 				};
 
-				selector.split(",").forEach((s) => {
+				splitSelectors(selector).forEach((s) => {
 					if (!this.breaks[s]) {
 						this.breaks[s] = [breaker];
 					} else {
@@ -30014,7 +30034,7 @@
 					selector: selector
 				};
 
-				selector.split(",").forEach((s) => {
+				splitSelectors(selector).forEach((s) => {
 					if (!this.breaks[s]) {
 						this.breaks[s] = [breaker];
 					} else {
@@ -30804,7 +30824,7 @@
 
 				let uuid = "nth-of-type-" + UUID();
 
-				selector.split(",").forEach((s) => {
+				splitSelectors(selector).forEach((s) => {
 					if (!this.selectors[s]) {
 						this.selectors[s] = [uuid, declarations];
 					} else {
@@ -30864,7 +30884,7 @@
 
 				let uuid = "following-" + UUID();
 
-				selector.split(",").forEach((s) => {
+				splitSelectors(selector).forEach((s) => {
 					if (!this.selectors[s]) {
 						this.selectors[s] = [uuid, declarations];
 					} else {
@@ -31507,7 +31527,7 @@
 							// we only handle first for now
 							let style = "first";
 
-							selector.split(",").forEach((s) => {
+							splitSelectors(selector).forEach((s) => {
 								// remove before / after
 								s = s.replace(/::after|::before/, "");
 
@@ -31912,7 +31932,7 @@
 
 				let variable = "target-counter-" + UUID();
 
-				selector.split(",").forEach((s) => {
+				splitSelectors(selector).forEach((s) => {
 					this.counterTargets[s] = {
 						func: func,
 						args: args,
@@ -32043,7 +32063,7 @@
 
 				let variable = "--pagedjs-" + UUID();
 
-				this.selector.split(",").forEach(s => {
+				splitSelectors(this.selector).forEach(s => {
 					this.textTargets[s] = {
 						func: func,
 						args: args,
@@ -32365,7 +32385,7 @@
 				let selector = csstree.generate(rule.ruleNode.prelude);
 				let value = declaration.value.children.first().name;
 
-				selector.split(",").forEach((s) => {
+				splitSelectors(selector).forEach((s) => {
 					this.displayRules[s] = {
 						value: value,
 						selector: s,
