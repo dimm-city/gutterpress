@@ -2461,7 +2461,9 @@ p.dc-img-wrapper {
    Public tokens (defaults declared in dc-tokens.css :root):
      --section-bg      — panel background surface
      --section-accent  — left strip / top bar accent color
-   Chapter-scoped overrides cascade in via .example-X .section { … }. */
+   Override --section-accent via a .dc-accent-X utility class applied to
+   any ancestor (typically @chapter or @section). See "ACCENT IDENTITY
+   UTILITIES" section at the bottom of this file. */
 .section {
   /* `filter` on this element was causing negative-margin heading bars to NOT escape
      the parent's padding area in Paged.js/Chromium (filter creates a stacking context

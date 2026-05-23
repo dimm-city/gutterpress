@@ -1,4 +1,4 @@
-@chapter #ch-example-gear-tech .example-gear-tech .dc-accent-amber ch="6"
+@chapter #ch-example-gear-tech .dc-accent-amber ch="6"
 
 
 @page .tech-cybernetics .second-page

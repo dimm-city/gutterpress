@@ -231,7 +231,9 @@
 
   /* ── Section Component Public Tokens ────────────────────────────────────
      Default theming for .section / @section macros. Chapter-scoped overrides
-     live in fg-overrides.css and win via .example-X .section { … } cascade. */
+     live in fg-overrides.css and win via the parent-context cascade —
+     typically by applying a .dc-accent-X utility on @chapter / @section
+     (see dc-components.css "ACCENT IDENTITY UTILITIES" section). */
   --section-bg:     var(--paper-cream);
   --section-accent: var(--blood);
 }

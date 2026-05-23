@@ -1,4 +1,4 @@
-@chapter #ch-example-rules .example-rules .dc-accent-blood ch="4"
+@chapter #ch-example-rules .dc-accent-blood ch="4"
 
 
 

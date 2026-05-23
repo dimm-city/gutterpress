@@ -1,4 +1,4 @@
-@chapter #ch-example-chapter-opener .example-chapter-opener .dc-accent-blood ch="1"
+@chapter #ch-example-chapter-opener .dc-accent-blood ch="1"
 @page .page-chapter-start .chapter-start
 
 @chapter-opener C.01
