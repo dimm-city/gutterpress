@@ -861,10 +861,10 @@ hr,
   font-size: 11px;
   letter-spacing: 4px;
   text-transform: uppercase;
-  color: var(--ink-dust);
-  background: #b8af9e;
+  color: var(--dc-tape-color, var(--ink-dust));
+  background: var(--dc-tape-bg, var(--paper-aged));
   padding: 14px 14px;
-  border: 2px solid rgba(212, 18, 0, 0.60);
+  border: 2px solid var(--dc-tape-border, rgba(212, 18, 0, 0.60));
   box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.15);
   break-inside: avoid;
 }
@@ -1670,9 +1670,9 @@ hr,
 
 /* ───────── PULL-QUOTE ───────── */
 .dc-pullquote {
-  background: var(--paper-stain);
-  border-left: 5px solid var(--hud-magenta);
-  border-right: 2px solid rgba(230, 0, 122, 0.15);
+  background: var(--dc-pullquote-bg, var(--paper-stain));
+  border-left: 5px solid var(--dc-pullquote-accent, var(--hud-magenta));
+  border-right: 2px solid var(--dc-pullquote-accent-soft, rgba(230, 0, 122, 0.15));
   padding: 14px 20px 12px 28px;
   position: relative;
   font-family: var(--font-body);
@@ -2109,7 +2109,7 @@ hr,
   gap: 14px;
   margin-top: auto;
   padding-top: 24px;
-  border-top: 1px solid rgba(201, 214, 226, 0.35);
+  border-top: 1px solid var(--dc-cover-meta-border, rgba(201, 214, 226, 0.35));
 }
 
 .dc-stat.flush,
@@ -2327,8 +2327,8 @@ p.dc-img-wrapper {
 }
 
 .dc-sidebar.inset hr~p {
-  background: rgba(42, 106, 138, 0.08);
-  border-left: 3px solid var(--hud-blue);
+  background: var(--dc-sidebar-callout-bg, rgba(42, 106, 138, 0.08));
+  border-left: 3px solid var(--dc-sidebar-callout-accent, var(--hud-blue));
   margin-left: -0.1in;
   margin-right: -0.1in;
   padding: 0.06in 0.1in;

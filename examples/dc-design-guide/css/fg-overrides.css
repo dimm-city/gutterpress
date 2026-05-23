@@ -41,9 +41,12 @@
    .section.two-column .dc-gear-entry { min-height: 1.5in; ... }
    NPC stat blocks moved to dc-components.css as .dc-npc-stat. */
 
-/* ── FIELD GUIDE EXAMPLE ART IMAGE CLASSES ────────────────────────────────── */
-/* Placeholder art images for field guide example pages - sized for their context */
-.fg-art-specialty {
+/* ── FIELD GUIDE EXAMPLE ART — context-driven, no per-image classes ──────── */
+/* Specialty card thumbnails — sized by parent context (the card itself),
+   not by per-image classes. Applies anywhere a .dc-specialty-card has a
+   leading image. */
+.dc-specialty-card > p > img:first-child,
+.dc-specialty-card > img:first-child {
   width: 0.75in;
   height: 0.85in;
   object-fit: cover;

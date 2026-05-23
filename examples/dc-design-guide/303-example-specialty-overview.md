@@ -83,7 +83,7 @@ Every dreamer's got a sharp edge — your specialty is where it starts.
 
 ### Augmerc
 
-![Augmerc](https://placehold.co/300x340/png?text=Augmerc){.fg-art-specialty}
+![Augmerc](https://placehold.co/300x340/png?text=Augmerc)
 
 > Cybernetic Commando
 
@@ -99,7 +99,7 @@ Heavily armed and wired for war, Augmercs are the blunt force of any squad. They
 
 ### Proxy
 
-![Proxy](https://placehold.co/300x340/png?text=Proxy){.fg-art-specialty}
+![Proxy](https://placehold.co/300x340/png?text=Proxy)
 
 > Militant Monolith
 
@@ -115,7 +115,7 @@ Marked by something higher—god, ghost, code, or conviction—Proxies walk the 
 
 ### Streetwarden
 
-![Streetwarden](https://placehold.co/300x340/png?text=Streetwarden){.fg-art-specialty}
+![Streetwarden](https://placehold.co/300x340/png?text=Streetwarden)
 
 > Sprawl Sentinel
 
@@ -131,7 +131,7 @@ They don't wear badges—they are the law when no one else shows. Streetwardens 
 
 ### Gutterdruid
 
-![Gutterdruid](https://placehold.co/300x340/png?text=Gutterdruid){.fg-art-specialty}
+![Gutterdruid](https://placehold.co/300x340/png?text=Gutterdruid)
 
 > Wold Witch
 
@@ -147,7 +147,7 @@ They walk the alleys like sacred ground—feeding the hungry, tending weeds, rai
 
 ### Cybersurgeon
 
-![Cybersurgeon](https://placehold.co/300x340/png?text=Cybersurgeon){.fg-art-specialty}
+![Cybersurgeon](https://placehold.co/300x340/png?text=Cybersurgeon)
 
 > Mech Medic
 
@@ -163,7 +163,7 @@ Life is flexible. Cybersurgeons prove it daily—cutting, splicing, upgrading fl
 
 ### Wirephreak
 
-![Wirephreak](https://placehold.co/300x340/png?text=Wirephreak){.fg-art-specialty}
+![Wirephreak](https://placehold.co/300x340/png?text=Wirephreak)
 
 > Ping Predator
 
@@ -179,7 +179,7 @@ Killers, thieves, forgers—Wirephreaks specialize in slipping past locks, firew
 
 ### Technosorcerer
 
-![Technosorcerer](https://placehold.co/300x340/png?text=Technosorcerer){.fg-art-specialty}
+![Technosorcerer](https://placehold.co/300x340/png?text=Technosorcerer)
 
 > Modular Magician
 
@@ -195,7 +195,7 @@ Technosorcerers walk on the razor's edge between magic and technology. They beli
 
 ### Etherlock
 
-![Etherlock](https://placehold.co/300x340/png?text=Etherlock){.fg-art-specialty}
+![Etherlock](https://placehold.co/300x340/png?text=Etherlock)
 
 > Manifold Magus
 
