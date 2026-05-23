@@ -287,8 +287,9 @@
 
 /* ── FRONT MATTER PAGE H2 — dark band treatment ──────────────────────────────
    Scoped to .page.page-intro so only the "Metropolis" / "CREATUREPUNK" intro
-   sections get the dark-band H2 treatment. */
-.page.page-intro h2 {
+   sections get the dark-band H2 treatment. Specialty intro pages also carry
+   .page-intro, so :not(.dc-specialty-intro h2) excludes component headings. */
+.page.page-intro h2:not(.dc-specialty-intro h2) {
   background: var(--ink-dark);
   color: var(--paper-cream);
   border-bottom: 3px solid var(--hud-magenta);
@@ -297,20 +298,6 @@
   width: 100%;
   box-sizing: border-box;
   letter-spacing: var(--ls-heading);
-}
-
-/* Specialty intro pages also carry .page-intro but the component H2 needs its
-   own negative-margin breakout treatment — undo the dark-band overrides so
-   dc-components.css rules (box-sizing: content-box, component background, etc.)
-   apply cleanly. Specificity (0,3,1) > .page.page-intro h2 (0,2,1). */
-.page.page-intro .dc-specialty-intro > h2:first-child {
-  background: var(--dc-specialty-intro-title-bg);
-  color: var(--paper-cream);
-  border-bottom: none;
-  padding: 0.6rem 1.25rem;
-  width: auto;
-  box-sizing: content-box;
-  letter-spacing: 0.04em;
 }
 
 /* ── SECTION HEADER BAR — chapter-scope hooks only ───────────────────────────
