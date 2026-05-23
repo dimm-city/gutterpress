@@ -228,7 +228,7 @@
 .dc-specialty.augmerc .dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--hud-blue-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background: var(--paper-light);
+  --dc-specialty-intro-bg: var(--paper-light);
 }
 
 /* ── Cybersurgeon — precision surgical, silver, top-right diagonal ──────── */
@@ -263,7 +263,7 @@
 .dc-specialty.cybersurgeon .dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--cybersurgeon-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background: var(--hud-panel);
+  --dc-specialty-intro-bg: var(--hud-panel);
 }
 
 /* ── Proxy — covert, orange, top-left step + diagonal bottom ────────────── */
@@ -297,7 +297,7 @@
 .dc-specialty.proxy .dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--ink-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background: var(--surface-orange-tint);
+  --dc-specialty-intro-bg: var(--surface-orange-tint);
 }
 
 /* ── Wirephreak — hacker, magenta, asymmetric cross-cuts ───────────────── */
@@ -332,7 +332,7 @@
 .dc-specialty.wirephreak .dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--wirephreak-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background: var(--hud-panel);
+  --dc-specialty-intro-bg: var(--hud-panel);
 }
 
 /* ── Streetwarden — community defender, green, soft diamond cuts ────────── */
@@ -367,7 +367,7 @@
 .dc-specialty.streetwarden .dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--crimson);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background: var(--paper-cream);
+  --dc-specialty-intro-bg: var(--paper-cream);
 }
 
 /* ── Technosorcerer — arcane + tech, indigo, top-center gate notch ──────── */
@@ -402,7 +402,7 @@
 .dc-specialty.technosorcerer .dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--technosorcerer-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background: var(--paper-light);
+  --dc-specialty-intro-bg: var(--paper-light);
 }
 
 /* ── Gutterdruid — street nature, amber-brown, center bottom pinch ──────── */
@@ -438,7 +438,7 @@
 .dc-specialty.gutterdruid .dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--orange);
   --dc-specialty-intro-title-color: var(--ink-dark);
-  background: var(--paper-light);
+  --dc-specialty-intro-bg: var(--paper-light);
 }
 
 /* ── Etherlock — ethereal, gold, parallelogram cross-cuts ──────────────── */
@@ -473,7 +473,7 @@
 .dc-specialty.etherlock .dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--etherlock-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  background: var(--paper-light);
+  --dc-specialty-intro-bg: var(--paper-light);
 }
 
 /* ───────── AP TAGS ───────── */
@@ -1183,8 +1183,12 @@ hr,
 .dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--hud-magenta);
   --dc-specialty-intro-title-color: var(--bg);
+  --dc-specialty-intro-bg: var(--hud-panel);
 
-  background: var(--hud-panel);
+  /* filter on outer — NO clip-path here; clip-path is on ::before */
+  background: transparent;
+  filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink))
+          drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink));
   padding: 1rem 1.25rem 0.75rem;
   margin: 0;
   position: relative;
@@ -1192,7 +1196,20 @@ hr,
   break-inside: avoid;
   box-sizing: border-box;
   border: none;
+}
+
+.dc-specialty-intro::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--dc-specialty-intro-bg);
   clip-path: var(--dc-specialty-intro-clip, polygon(0 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%));
+  z-index: 0;
+}
+
+.dc-specialty-intro > * {
+  position: relative;
+  z-index: 1;
 }
 
 .dc-specialty-intro>h2:first-child {
@@ -1206,6 +1223,7 @@ hr,
   margin: -1rem -1.25rem 0.6rem -1.25rem;
   clip-path: var(--dc-specialty-intro-title-shape, polygon(0 0, 100% 0, 100% 100%, 22px 100%, 0 calc(100% - 14px)));
   border: none;
+  break-after: avoid;
 }
 
 .dc-specialty-intro>h3 {
