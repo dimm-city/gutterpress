@@ -2527,16 +2527,15 @@ p.dc-img-wrapper {
    clamps negative margins on the first in-flow child). `.section::before`
    is absolutely positioned, so flex doesn't disturb the background pseudo. */
 .section.tabbed {
-  /* Negative overlap = gap between tab bottom and card top surface.
-     6px lets a sliver of page background show, making the tab read as a
-     torn/stamped label placed ON the card rather than fused to it. */
-  --section-tab-overlap: -6px;
-  /* 0 = flush with card left edge, consistent with base H2 bar registration. */
+  /* 0 = tab bottom sits flush on the card top edge. */
+  --section-tab-overlap: 0px;
   --section-tab-indent: 0px;
+  /* No outer shadow — the tab floats clean above the card with no shadow bleed
+     into the tab silhouette. */
+  filter: none;
   display: flex;
   flex-direction: column;
-  /* Headroom above the section for the lifted tab (+6px for the gap). */
-  margin-top: calc(var(--space-md) + 1.5em + 11px);
+  margin-top: calc(var(--space-md) + 1.5em + 5px);
 }
 
 /* ── Shared base — both H2 and H3 tabs use the cut-corner stencil silhouette */
@@ -2554,27 +2553,33 @@ p.dc-img-wrapper {
      rather than a bordered UI control. */
   border: 0;
   border-radius: 0;
-  /* 10-point ragged-edge clip — gives the tab a "torn from the page" feel
-     instead of a clean geometric tab silhouette:
-       1-2  top edge with 8px top-left chamfer + 14px right setback
-       3    diagonal descends along the right edge (40% height)
-       4    INWARD V-notch bites 4px into the tab body (the "tear" at midpoint)
-       5    diagonal continues outward to the bottom corner (60% height)
-       6    bottom-right corner is flush
-       7-9  triangular bite carved out of the bottom-left corner — apex pokes
-            8px into the tab body, giving the bottom-left an asymmetric scar
-       10   left edge starts 8px down from the top (mirrors point 1)              */
+  /* Chipped-stone clip — multiple notches on all exposed edges so the tab
+     reads as a fragment of physical material placed on the card:
+       top-left     10px chamfer (beveled corner)
+       top edge     one 4px chip at ~25% from left
+       top-right    16px setback before the right diagonal
+       right side   double-V staircase — two inward bites create a jagged
+                    diagonal rather than a smooth slope
+       bottom-right flush (the card covers this edge)
+       bottom edge  clean
+       bottom-left  asymmetric triangular scar
+       left edge    small 3px chip at midpoint
+       left-top     10px from corner before entering the top edge            */
   clip-path: polygon(
-    8px 0,
-    calc(100% - 14px) 0,
-    calc(100% - 6px) 40%,
-    calc(100% - 10px) 50%,
-    calc(100% - 4px) 60%,
+    10px 0,
+    calc(25% - 2px) 0,  25% 4px,  calc(25% + 2px) 0,
+    calc(100% - 16px) 0,
+    calc(100% - 7px)  27%,
+    calc(100% - 12px) 38%,
+    calc(100% - 5px)  48%,
+    calc(100% - 11px) 58%,
+    calc(100% - 4px)  68%,
     100% 100%,
-    12px 100%,
-    4px calc(100% - 8px),
-    0 calc(100% - 12px),
-    0 8px
+    14px 100%,
+    6px  calc(100% - 5px),
+    0    calc(100% - 11px),
+    3px  48%,  0 52%,  3px 56%,
+    0    10px
   );
   font-family: var(--font-tab);
   line-height: 1.2;
@@ -2632,13 +2637,10 @@ p.dc-img-wrapper {
   clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
 }
 
-/* H3 — SUBORDINATE: inset from the card's left edge (margin-left: 0 cancels the
-   shared negative margin, landing the bar at the content padding edge = ~11pt inset).
-   The left accent strip shows to the left of the bar, reinforcing subordination.
-   12px chamfer is intentionally smaller than H2's 18px. */
+/* H3 — SUBORDINATE: same edge-to-edge flush as H2; hierarchy reads through
+   font size (--fs-h4 vs --fs-h3) and padding height alone. */
 .section:not(.tabbed, .two-column, .three-column, .col-split) > h3:first-child {
   font-size: var(--fs-h4);
-  margin-left: 0;
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
 }
 
@@ -2694,6 +2696,9 @@ p.dc-img-wrapper {
 
 .section.two-column > :is(h2, h3):first-child + p,
 .section.three-column > :is(h2, h3):first-child + p {
+  /* Span the intro paragraph across both columns so it reads as a shared
+     preamble rather than being trapped in column 1. */
+  column-span: all;
   break-inside: avoid;
 }
 
@@ -2710,24 +2715,26 @@ p.dc-img-wrapper {
   margin-top: 20pt;
 }
 
-/* ── A1: H3 tabbed sections use near-black (ink-dark) label background instead
-   of the chapter accent, making the dark stamp read as secondary/subordinate
-   vs H2 tabs which use the full chapter accent color.
-   P1: scaled clip-path — notch teeth proportional to H3's smaller height.
-       Right V-notch bite: 10px → 7px. Bottom-left scar: 8px/12px → 5px/9px. */
+/* ── A1 + P1: H3 tabbed sections use ink-dark background (secondary/subordinate
+   vs chapter-accent H2 tabs). Same chipped-stone structure as H2 but with
+   notch depths scaled ~70% for the smaller tab height. */
 .section.tabbed > h3:first-child {
   background: var(--ink-dark);
   clip-path: polygon(
-    8px 0,
-    calc(100% - 14px) 0,
-    calc(100% - 6px) 40%,
-    calc(100% - 7px) 50%,
-    calc(100% - 3px) 60%,
+    10px 0,
+    calc(25% - 2px) 0,  25% 3px,  calc(25% + 2px) 0,
+    calc(100% - 16px) 0,
+    calc(100% - 6px)  27%,
+    calc(100% - 9px)  38%,
+    calc(100% - 4px)  48%,
+    calc(100% - 8px)  58%,
+    calc(100% - 3px)  68%,
     100% 100%,
-    12px 100%,
-    4px calc(100% - 5px),
-    0 calc(100% - 9px),
-    0 8px
+    14px 100%,
+    4px  calc(100% - 4px),
+    0    calc(100% - 8px),
+    2px  48%,  0 52%,  2px 56%,
+    0    10px
   );
 }
 
