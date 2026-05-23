@@ -2623,7 +2623,9 @@ p.dc-img-wrapper {
   /* --space-md bottom margin gives the bar breathing room before body copy. */
   margin: calc(-1 * var(--space-md)) calc(-1 * var(--space-lg)) var(--space-md);
   padding: 0.42rem var(--space-lg) 0.28rem;
-  border-left: none;
+  /* Zero all borders — the global h2/h3 rules set border-bottom which bleeds
+     through if not explicitly cleared here. */
+  border: 0;
   letter-spacing: var(--ls-display);
   text-transform: uppercase;
   break-after: avoid;
@@ -2654,10 +2656,10 @@ p.dc-img-wrapper {
   column-span: all;
   background: var(--section-accent);
   color: var(--paper-cream);
-  /* Bar reaches the section's inside edges (matches single-column behavior at L2561 above). */
+  /* Bar reaches the section's inside edges (matches single-column behavior above). */
   margin: calc(-1 * var(--space-sm)) calc(-1 * var(--space-lg)) var(--space-md);
   padding: 0.42rem var(--space-lg) 0.28rem;
-  border-left: none;
+  border: 0;
   letter-spacing: var(--ls-display);
   text-transform: uppercase;
   break-after: avoid;
