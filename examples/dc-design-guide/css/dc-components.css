@@ -2459,20 +2459,20 @@ p.dc-img-wrapper {
      --section-accent  — left strip / top bar accent color
    Chapter-scoped overrides cascade in via .example-X .section { … }. */
 .section {
-  /* filter on outer — NO clip-path (clip-path+filter on same element kills bottom/right shadows).
-     Asymmetric right+down shadow reads as elevation at print; all-around 0-blur spreads to a
-     solid border via dot gain on uncoated paper. */
+  /* `filter` on this element was causing negative-margin heading bars to NOT escape
+     the parent's padding area in Paged.js/Chromium (filter creates a stacking context
+     that suppresses negative-margin overflow rendering). Shadow moved to ::after below.
+     `isolation: isolate` creates the needed stacking context for ::before/::after
+     z-index ordering without blocking child margin overflow. */
   background: transparent;
-  filter: drop-shadow(3px 3px 0 var(--ink-dark));
+  isolation: isolate;
   padding: var(--space-md) var(--space-lg);
-  /* Side margin creates visible spatial gap between the card and the column boundary
-     so the card reads as a contained object sitting on the page, not a paragraph. */
   margin: 12pt 0;
   position: relative;
   break-inside: avoid;
 }
 
-/* clip-path + left accent band on ::before — same two-layer pattern as .dc-skill-card */
+/* clip-path + left accent band on ::before */
 .section::before {
   content: '';
   position: absolute;
@@ -2480,6 +2480,31 @@ p.dc-img-wrapper {
   background: linear-gradient(to right, var(--section-accent) 5px, var(--section-bg) 5px);
   clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
   z-index: 0;
+}
+
+/* Fake shadow via ::after — same clip-path as ::before, shifted 3px right + down.
+   Replaces the removed filter: drop-shadow() while leaving the box model unaffected
+   so negative-margin heading bars can reach the card edges. Base card only — variants
+   with different or no chrome suppress this via content: none below. */
+.section::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  right: -3px;
+  bottom: -3px;
+  background: var(--ink-dark);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Suppress fake shadow on variants that have different chrome or no chrome */
+.section.tabbed::after,
+.section.two-column::after,
+.section.three-column::after,
+.section.col-split::after {
+  content: none;
 }
 
 .section > * {
@@ -2527,12 +2552,8 @@ p.dc-img-wrapper {
    clamps negative margins on the first in-flow child). `.section::before`
    is absolutely positioned, so flex doesn't disturb the background pseudo. */
 .section.tabbed {
-  /* 0 = tab bottom sits flush on the card top edge. */
   --section-tab-overlap: 0px;
   --section-tab-indent: 0px;
-  /* No outer shadow — the tab floats clean above the card with no shadow bleed
-     into the tab silhouette. */
-  filter: none;
   display: flex;
   flex-direction: column;
   margin-top: calc(var(--space-md) + 1.5em + 5px);
