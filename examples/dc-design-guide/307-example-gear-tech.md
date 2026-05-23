@@ -3,9 +3,9 @@
 
 @page .tech-cybernetics .second-page .chapter-05
 
-### Tech and Cybernetics
-
 @section .two-column
+
+### Tech and Cybernetics
 
 Wanna level up? In Dimm City, that means slicing yourself open and slotting in something stronger. Flesh breaks. Metal remembers. Cybernetics give you reach, power, speed—whatever the job demands. But every upgrade scrapes away at what makes you you.
 
@@ -23,9 +23,9 @@ Every install has a cost. Every edge has a crack. Push too far, and something in
 
 ---
 
-## The Cost of Upgrades Is You
-
 @section
+
+## The Cost of Upgrades Is You
 
 > You didn't lose yourself. You traded it—piece by piece.
 
@@ -39,9 +39,9 @@ Cybernetics must be installed by a trained Cybersurgeon in a medlab, clinic, or 
 
 @end-section
 
-### Ego Points (EP)
-
 @section
+
+### Ego Points (EP)
 
 > How many implants 'til your brain bluescreens for good?
 
@@ -81,9 +81,9 @@ The affected PC rolls each round to regain control. Specialties like the Cybersu
 
 ## Example Gear Entries
 
-### Useful Items
-
 @section .two-column
+
+### Useful Items
 
 @gear-card
 ### Shadowbit Token
@@ -131,9 +131,9 @@ Destroys standard doors, locks, and light barriers. Very loud. Single use. Don't
 
 @end-section
 
-### Common Cybernetics
-
 @section .two-column
+
+### Common Cybernetics
 
 @gear-card
 ### UniArm 100

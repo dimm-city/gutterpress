@@ -4,9 +4,9 @@
 
 @page .chapter-04
 
-## Dream Mastery
-
 @section .two-column
+
+## Dream Mastery
 
 Every Dream needs someone to light the fuse. That's you—the Dream Master.
 
@@ -62,9 +62,9 @@ Bury the math inside the moment and build scenes that hit harder than the dice e
 
 ## NPC Stat Block: Fodder
 
-### Fodder
-
 @section
+
+### Fodder
 
 > Everyday creatures, not usually a combat threat but can become dangerous in mobs or with special roles.
 
@@ -99,9 +99,9 @@ UniArm 100 / Redi-Mobile Cyberleg / RedEye Optical Prosthetic (could be just one
 
 ## NPC Stat Block: Operator
 
-### Operators
-
 @section
+
+### Operators
 
 *Tougher opponents that serve as grunts or support for their Master. Deadly in small groups or with traits that allow for tactical positioning.*
 
@@ -134,9 +134,9 @@ UniArm 100 Cyberarm w/Optalanges TechMech kit and Smuggler's Stash Level 1, Ligh
 
 ## NPC Stat Block: Master
 
-### Masters
-
 @section
+
+### Masters
 
 > Major characters with significant influence. These NPCs often require strategy and teamwork to defeat and may have additional special abilities or resistances.
 
@@ -165,9 +165,9 @@ Master — Medium
 
 ---
 
-### Size Modifiers
-
 @section
+
+### Size Modifiers
 
 Size affects both hit points and damage output, scaling up or down based on how physically imposing the NPC is:
 
@@ -185,9 +185,9 @@ Size is a narrative choice as much as a mechanical one. A Colossal creature chan
 
 ---
 
-### Building Your Own NPCs
-
 @section
+
+### Building Your Own NPCs
 
 Every NPC in Dimm City is built from the same chassis: a tier, a flavor quote, a size, HP/Damage, and a list of Traits. The Traits are where NPC personality lives.
 
@@ -205,9 +205,9 @@ Equipment and Cybernetics add texture and loot. They don't need to be tracked un
 
 ---
 
-### Quick NPC Builder
-
 @section
+
+### Quick NPC Builder
 
 When you need an NPC fast, answer these four questions. That's it. That's an NPC — stat it if combat is likely, leave it sketched if it's just atmosphere.
 

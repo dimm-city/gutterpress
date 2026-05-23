@@ -45,9 +45,9 @@ I locked in da hack, jacked out, an leapt clean onto a passing airbus like I mea
 
 ---{.column-break}
 
-## Citizen File {#c2-character-profile}
-
 @section
+
+## Citizen File {#c2-character-profile}
 
 Thump is a PC created for dreams in Dimm City by an actual dreamer. Their personality, looks, vibe, equipment, and skills are all chosen by the dreamer themselves. You can do the same by filling in the blanks on a character profile to create your very own character. For many dreamers, this is one of the most exciting parts of this experience: thinking about a character you want to play and designing them for the dream to come.
 

@@ -4,9 +4,9 @@
 
 @chapter-opener C.02
 
-## What Do You Dream of Doing? {.dc-spray}
-
 @section
+
+## What Do You Dream of Doing? {.dc-spray}
 
 The alley narrowed to a throat of shadow as they reached the bunker's blind side. Rook paused, agile fingers lifting mid-air, knuckles flexing with simian grace. The ambient hum dipped a fraction.
 
@@ -51,9 +51,9 @@ Everything in this chapter exists to support that loop. Abilities bend it. Dice 
 
 @end-callout
 
-### Choosing by Playstyle
-
 @section
+
+### Choosing by Playstyle
 
 **Want to hit things hard?** Augmerc. **Want to control the battlefield?** Streetwarden or Proxy. **Want to slide through systems undetected?** Wirephreak. **Want raw arcane force?** Technosorcerer, Gutterdruid, or Etherlock. **Want to rebuild your body as your toolkit?** Cybersurgeon.
 

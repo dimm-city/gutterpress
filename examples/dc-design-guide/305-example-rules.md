@@ -54,9 +54,9 @@ In Dimm City RPG, you're not "pretending to be someone else." You're fighting fo
 
 @end-section
 
-## The City
-
 @section .two-column
+
+## The City
 
 Dimm City twitches like a clamped nerve at the edge of existence.
 It leaks ferocity, spits day-glo venom, and remembers every screw-up you tried to bury under cheap lies and even cheaper concrete.
@@ -73,7 +73,7 @@ Other worlds dream of heroes and chosen ones. Dimm City dreams of people despera
 @end-section
 
 
-@section
+@section .tabbed
 ## Dreamers
 
 You're a Dreamer, not because you're special, but because you're reckless enough to try. You open your mouth, your character speaks. You make a move, your character bleeds for it. You want something? Take it.
@@ -83,7 +83,7 @@ The city doesn't care if you're heroic. It only remembers the ones who leave sca
 @end-section
 
 
-@section
+@section .tabbed
 ## The Dream Master
 
 Across the table sits the Dream Master: not your boss, not your babysitter, not your damn referee. They're the city's gut reaction. They show the danger, keep the consequences sharp, and laugh when your plans dissolve like cheap plastic.
@@ -96,9 +96,9 @@ They don't stop you. They don't protect you. They just make sure the pain fits t
 
 @end-section
 
-### ROLL A DIE! {#c1-rolling-the-die}
-
 @section
+
+### ROLL A DIE! {#c1-rolling-the-die}
 
 When something matters—really matters—the DM might call for a roll. One toss of a d20 decides if you rocket through a window like a legend… or face-plant into the curb with a mouthful of glass and regrets.
 
@@ -106,9 +106,9 @@ No dead rolls. No vanilla outcomes. If the dice show you teeth, you better bite 
 
 @end-section
 
-### Lucid & Surreal
-
 @section .two-column
+
+### Lucid & Surreal
 
 Some abilities shift your odds.
 
@@ -132,9 +132,9 @@ Roll 2d20, take the lower. Reality pushes back. When you roll a 1 in the dream, 
 
 @end-section
 
-### Augment Points (AP)
-
 @section
+
+### Augment Points (AP)
 
 AP is your push. Your burn. Your "I'm doing this anyway."
 
@@ -145,9 +145,9 @@ If an ability lists an AP cost, you spend it and the effect happens. No charge-u
 
 @end-section
 
-### Status Conditions
-
 @section
+
+### Status Conditions
 
 Abilities don't just deal damage. They disrupt momentum, break positioning, and shut enemies down long enough for the pack to finish the job.
 
@@ -182,9 +182,9 @@ On a success, the condition ends. Conditions usually end when the encounter ends
 1 | Catastrophe | It goes bad, and then worse
 @end-outcome
 
-### Distance Tags
-
 @section
+
+### Distance Tags
 
 Most abilities specify which distances they work at. **Reach** means adjacent — close enough to touch. **Near** means the same room or line of sight. **Far** means across a street or a different room. When in doubt, ask if you could throw something at it and hit — that's Near.
 

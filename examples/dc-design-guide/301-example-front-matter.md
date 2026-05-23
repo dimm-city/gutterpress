@@ -68,9 +68,9 @@ DimmCitz scattered, vanished into bolted dens and reinforced rooftops. Some just
 
 @end-section
 
-## Metropolis in the Mist
-
 @section
+
+## Metropolis in the Mist
 
 Dimm City is a place of crushing lows and exuberant highs known to all within. The citizens of the five districts commonly refer to each other as "Dimmers". Light is impermanent, as just as darkness is, but both are in constant flux. Life in DimmC is the same.
 
@@ -80,9 +80,9 @@ These dreams you share will last in your consciousness for life. The joys you fo
 
 @end-section
 
-## CREATUREPUNK
-
 @section
+
+## CREATUREPUNK
 
 It ain't chrome. It ain't clean. It's coagulated blood in the wire, hairballs in the circuitry, a roar tearing through static.
 

@@ -300,17 +300,33 @@
 }
 
 /* ── HEADING INSIDE SECTION — header bar flush to container edges ────────────
-   When H2/H3 is the first child of a .section, pull it into a full-width
-   header bar that extends to the section's padding edges. Applies only in
-   field-guide example page contexts. */
-.example-rules .section > h2:first-child,
-.example-rules .section > h3:first-child,
-.example-dm-npcs .section > h2:first-child,
-.example-dm-npcs .section > h3:first-child,
-.example-specialty-profile .section > h2:first-child,
-.example-specialty-profile .section > h3:first-child,
-.example-front-matter .section > h2:first-child,
-.example-chapter-opener .section > h2:first-child {
+   When H2/H3 is the first child of a `.section` (NOT a multi-column variant
+   and NOT `.tabbed`), pull it into a full-width header bar that fills the
+   top from inside-edge to inside-edge of the section's clipped body. The
+   header's own clip-path matches the section's top-right 14px notch (see
+   `.section::before` in dc-components.css) so the bar doesn't visibly
+   extend past the clipped surface.
+
+   Scope: every field-guide example chapter + the front-matter intro pages
+   that don't have an `@chapter` wrapper. Selectors are spelled out flat
+   because Paged.js's break-processing pass fails on multi-line `:where()`/
+   `:is()` and aborts rendering. */
+.example-rules .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h2:first-child,
+.example-rules .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h3:first-child,
+.example-dm-npcs .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h2:first-child,
+.example-dm-npcs .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h3:first-child,
+.example-gear-tech .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h2:first-child,
+.example-gear-tech .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h3:first-child,
+.example-specialty-overview .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h2:first-child,
+.example-specialty-overview .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h3:first-child,
+.example-specialty-profile .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h2:first-child,
+.example-specialty-profile .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h3:first-child,
+.example-chapter-opener .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h2:first-child,
+.example-chapter-opener .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h3:first-child,
+.examples .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h2:first-child,
+.examples .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h3:first-child,
+.page-intro .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h2:first-child,
+.page-intro .section:not(.tabbed):not(.two-column):not(.three-column):not(.col-split) > h3:first-child {
   background: var(--section-accent);
   color: var(--paper-cream);
   margin: calc(-1 * var(--space-md)) calc(-1 * var(--space-lg)) var(--space-sm);
@@ -319,6 +335,136 @@
   font-size: var(--fs-h4);
   letter-spacing: var(--ls-heading);
   text-transform: uppercase;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+  break-after: avoid;
+}
+
+/* ── TABBED VARIANT — heading sits ON TOP of section like .dc-card-tab ───────
+   `@section .tabbed` opts into the skill-card tab look: the heading is a
+   fit-content tab that hovers above the section with a 2px overlap at the
+   bottom edge, exactly like .dc-card-tab on .dc-card-body. Flex on the
+   section is required so the H2's negative margin-top actually lifts it
+   above the section (block layout clamps negative margins on the first
+   in-flow child). `.section::before` is absolute, so flex doesn't disturb
+   the body. */
+.example-rules .section.tabbed,
+.example-dm-npcs .section.tabbed,
+.example-gear-tech .section.tabbed,
+.example-specialty-overview .section.tabbed,
+.example-specialty-profile .section.tabbed,
+.example-chapter-opener .section.tabbed,
+.examples .section.tabbed,
+.page-intro .section.tabbed {
+  display: flex;
+  flex-direction: column;
+  margin-top: calc(var(--space-md) + 1em);
+}
+
+.example-rules .section.tabbed > h2:first-child,
+.example-rules .section.tabbed > h3:first-child,
+.example-dm-npcs .section.tabbed > h2:first-child,
+.example-dm-npcs .section.tabbed > h3:first-child,
+.example-gear-tech .section.tabbed > h2:first-child,
+.example-gear-tech .section.tabbed > h3:first-child,
+.example-specialty-overview .section.tabbed > h2:first-child,
+.example-specialty-overview .section.tabbed > h3:first-child,
+.example-specialty-profile .section.tabbed > h2:first-child,
+.example-specialty-profile .section.tabbed > h3:first-child,
+.example-chapter-opener .section.tabbed > h2:first-child,
+.example-chapter-opener .section.tabbed > h3:first-child,
+.examples .section.tabbed > h2:first-child,
+.examples .section.tabbed > h3:first-child,
+.page-intro .section.tabbed > h2:first-child,
+.page-intro .section.tabbed > h3:first-child {
+  display: inline-block;
+  width: fit-content;
+  background: var(--section-accent);
+  color: var(--paper-cream);
+  padding: 3px 24px 3px 12px;
+  margin: calc(-1 * var(--space-md) - 1em + 2px) 0 var(--space-sm) 8px;
+  border: 2px solid var(--ink);
+  border-bottom: 0;
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 100%, 0 100%);
+  font-family: var(--font-tab);
+  font-size: var(--fs-h4);
+  line-height: 1.2;
+  letter-spacing: var(--ls-heading);
+  text-transform: uppercase;
+  position: relative;
+  z-index: 2;
+  break-after: avoid;
+}
+
+/* ── HEADING INSIDE MULTI-COLUMN SECTION — span all columns, fill top ────────
+   When H2/H3 is the first child of a `.section.two-column` or `.three-column`,
+   make it span all columns and render as the same filled top bar. Padding on
+   these section variants is `var(--space-sm) 0` (zero horizontal), so the
+   header bar sits flush with the section's left/right edges without a
+   negative horizontal margin. `column-span: all` is what keeps the heading
+   from being trapped inside the first column. */
+.example-rules .section.two-column > h2:first-child,
+.example-rules .section.two-column > h3:first-child,
+.example-rules .section.three-column > h2:first-child,
+.example-rules .section.three-column > h3:first-child,
+.example-dm-npcs .section.two-column > h2:first-child,
+.example-dm-npcs .section.two-column > h3:first-child,
+.example-dm-npcs .section.three-column > h2:first-child,
+.example-dm-npcs .section.three-column > h3:first-child,
+.example-gear-tech .section.two-column > h2:first-child,
+.example-gear-tech .section.two-column > h3:first-child,
+.example-gear-tech .section.three-column > h2:first-child,
+.example-gear-tech .section.three-column > h3:first-child,
+.example-specialty-overview .section.two-column > h2:first-child,
+.example-specialty-overview .section.two-column > h3:first-child,
+.example-specialty-overview .section.three-column > h2:first-child,
+.example-specialty-overview .section.three-column > h3:first-child,
+.example-specialty-profile .section.two-column > h2:first-child,
+.example-specialty-profile .section.two-column > h3:first-child,
+.example-specialty-profile .section.three-column > h2:first-child,
+.example-specialty-profile .section.three-column > h3:first-child,
+.example-chapter-opener .section.two-column > h2:first-child,
+.example-chapter-opener .section.two-column > h3:first-child,
+.example-chapter-opener .section.three-column > h2:first-child,
+.example-chapter-opener .section.three-column > h3:first-child,
+.examples .section.two-column > h2:first-child,
+.examples .section.two-column > h3:first-child,
+.examples .section.three-column > h2:first-child,
+.examples .section.three-column > h3:first-child,
+.page-intro .section.two-column > h2:first-child,
+.page-intro .section.two-column > h3:first-child,
+.page-intro .section.three-column > h2:first-child,
+.page-intro .section.three-column > h3:first-child {
+  column-span: all;
+  background: var(--section-accent);
+  color: var(--paper-cream);
+  /* Section's vertical padding is var(--space-sm); pull up so bar starts at top edge */
+  margin: calc(-1 * var(--space-sm)) 0 var(--space-sm);
+  padding: 0.35rem var(--space-lg);
+  border-left: none;
+  font-size: var(--fs-h4);
+  letter-spacing: var(--ls-heading);
+  text-transform: uppercase;
+  break-after: avoid;
+}
+
+/* Multi-column sections with a first-child heading: drop the redundant border-top
+   (the heading bar IS the top). */
+.example-rules .section.two-column:has(> h2:first-child),
+.example-rules .section.two-column:has(> h3:first-child),
+.example-rules .section.three-column:has(> h2:first-child),
+.example-rules .section.three-column:has(> h3:first-child),
+.example-dm-npcs .section.two-column:has(> h2:first-child),
+.example-dm-npcs .section.two-column:has(> h3:first-child),
+.example-dm-npcs .section.three-column:has(> h2:first-child),
+.example-dm-npcs .section.three-column:has(> h3:first-child),
+.example-gear-tech .section.two-column:has(> h2:first-child),
+.example-gear-tech .section.two-column:has(> h3:first-child),
+.example-gear-tech .section.three-column:has(> h2:first-child),
+.example-gear-tech .section.three-column:has(> h3:first-child),
+.examples .section.two-column:has(> h2:first-child),
+.examples .section.two-column:has(> h3:first-child) {
+  border-top: 0;
 }
 
 /* ── H3 LEFT ACCENT BAR — bare h3 not first-child in section ────────────────
