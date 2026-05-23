@@ -1,5 +1,7 @@
 @chapter #ch-example-specialty-profile .example-specialty-profile .chapter-03 ch="3"
 
+@page .specialty-profile
+
 @specialty .augmerc
 
 @specialty-intro
