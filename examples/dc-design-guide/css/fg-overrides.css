@@ -118,20 +118,8 @@
    itself is now a reusable component: .dc-citizen-file in dc-components.css. */
 .page.citizen-file { page: citizen-file; }
 
-/* ═══ EXAMPLE INTRO PAGE — chevron H1 font-size cap ════════════════════════
-   The ".dc-chevron" H1 on each example intro page wraps to 3 lines at the
-   default display size because the titles are long. Scoped to the example
-   chapter wrapper classes so only these pages are affected. */
-.example-specialty-overview h1.dc-chevron,
-.example-specialty-profile h1.dc-chevron,
-.example-rules h1.dc-chevron,
-.example-dm-npcs h1.dc-chevron,
-.example-gear-tech h1.dc-chevron,
-.example-chapter-opener h1.dc-chevron,
-.example-front-matter h1.dc-chevron {
-  font-size: 1.4rem;
-  line-height: 1.2;
-}
+/* H1 chevron font-size cap moved to dc-components.css under .dc-chevron.
+   It's a component-level style, not a per-chapter override. */
 
 /* ── LUCID vs SURREAL — opposed palettes ─────────────────────────────────────
    Lucid = cold cyan HUD signal. Surreal = hot magenta reality-failure.
@@ -170,53 +158,28 @@
    the per-chapter `--section-accent` map (further down in this file) which
    sets a chapter-appropriate accent colour for the bars. */
 
-/* ── H3 LEFT ACCENT BAR — bare h3 not first-child in section ────────────────
-   Scoped tightly to example page contexts so component h3s are unaffected. */
-.example-rules .section > h3:not(:first-child),
-.example-dm-npcs .section > h3:not(:first-child),
-.example-gear-tech .section > h3:not(:first-child),
-.example-specialty-overview .section > h3:not(:first-child),
-.example-specialty-profile .section > h3:not(:first-child),
-.example-front-matter .section > h3:not(:first-child) {
-  border-left: 3px solid var(--section-accent);
-  padding-left: var(--space-sm);
-}
+/* Section sub-heading H3 left-accent bar moved to dc-components.css as
+   universal .section > h3:not(:first-child) rule (applies anywhere). */
 
-/* ── TABLE HEADER COLOR BY SECTION CONTEXT ───────────────────────────────────
-   dc-core.css sets the global default: th { background: var(--ink-dark) }
-   Reference and system tables use HUD blue to signal "data/reference" across
-   ALL field-guide chapters — the "data = HUD blue" signal is system-wide
-   vocabulary that keeps table headers visually distinct from section bars.
-   Section bars use chapter-palette accents (blood, rust, amber, magenta);
-   table headers always read as "data surface" regardless of chapter.
-   If a future project wants chapter-cohesive tables, drop the rule list to
-   only `.example-rules > .section th, .example-dm-npcs > .section th` and let
-   --section-accent cascade into other chapters' table headers via th-scoped CSS. */
-.example-rules > .section th,
-.example-dm-npcs > .section th,
-.example-gear-tech > .section th,
-.page.chapter-04 th,
-.page.tech-cybernetics th {
-  background: var(--hud-blue-dark);
-}
+/* Table styling moved to .dc-data-table component (dc-components.css).
+   Apply via markdown-it-attrs: `{.dc-data-table.hud-blue}` etc. on the table. */
 
 /* ── SECTION ACCENT COLORS BY CHAPTER CONTEXT ───────────────────────────────
-   Override --section-accent per chapter so not every section is the same
-   hud-blue-dark. Each chapter gets a color that signals its content type.
-   Gear uses --amber (saturated, pops against cream) instead of --amber-dark
-   (which competed with paper-aged in the warm register).
+   Per-chapter --section-accent is set on the chapter wrapper itself; the
+   value cascades naturally to every .section within. This is the ONE
+   legitimate use of chapter-context selectors per the design-guide
+   constitution: an intentional per-chapter color identity.
 
    The `.page-intro` fallback covers front-matter pages that have no
-   `@chapter` wrapper (301-example-front-matter.md). It's wrapped in
-   `:where()` so its specificity is 0,1,0 — any chapter-scoped rule below
-   (specificity 0,2,0) wins when both ancestors are present in the DOM. */
-:where(.page-intro) .section { --section-accent: var(--hud-magenta); }
-.example-rules .section        { --section-accent: var(--blood); }
-.example-dm-npcs .section      { --section-accent: var(--rust); }
-.example-gear-tech .section    { --section-accent: var(--amber); }
-.example-front-matter .section { --section-accent: var(--hud-magenta); }
-.example-chapter-opener .section { --section-accent: var(--blood); }
-.example-specialty-profile .section { --section-accent: var(--hud-blue-dark); }
+   @chapter wrapper (301-example-front-matter.md). :where() gives it
+   specificity 0,0,1 so any chapter-scoped rule below (0,1,0) wins. */
+:where(.page-intro) { --section-accent: var(--hud-magenta); }
+.example-rules                { --section-accent: var(--blood); }
+.example-dm-npcs              { --section-accent: var(--rust); }
+.example-gear-tech            { --section-accent: var(--amber); }
+.example-front-matter         { --section-accent: var(--hud-magenta); }
+.example-chapter-opener       { --section-accent: var(--blood); }
+.example-specialty-profile    { --section-accent: var(--hud-blue-dark); }
 
 /* ── CHAPTER-START: opening blockquote epigraph treatment ────────────────────
    Moved from dc-components.css (C5 violation — page-context element selector

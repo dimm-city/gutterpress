@@ -131,7 +131,11 @@ ul li::before {
   padding-right: 0.1em;
 }
 
-/* ── GLOBAL TABLE STYLES (kept as-is per plan) ────────────────────────────── */
+/* ── TABLES — universal default look, no class required ─────────────────────
+   Per the design-guide constitution (no per-element class attributes), every
+   <table> in markdown gets the full DC data-table appearance by default:
+   striped rows, HUD-blue header bar, mono caps headers, sane cell padding.
+   Authors write a plain markdown table and it looks right — no decoration. */
 table {
   width: 100%;
   border-collapse: collapse;
@@ -144,8 +148,8 @@ tr:nth-child(even) td { background: var(--paper-stain); }
 tr:nth-child(odd)  td { background: var(--paper-cream); }
 
 th {
-  background: var(--ink-dark);
-  color: var(--hud-blue-bright);
+  background: var(--hud-blue-dark);
+  color: var(--paper-cream);
   font-family: var(--font-mono);
   font-size: 8pt;
   letter-spacing: 0.1em;

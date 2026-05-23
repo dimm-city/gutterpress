@@ -531,6 +531,14 @@
   word-break: break-word;
 }
 
+/* H1.dc-chevron — chapter-title banner sized to fit long chapter names on
+   one or two lines. The base .dc-chevron font-size is too large for typical
+   H1 chapter titles ("What Do You Dream of Doing?", etc.). */
+h1.dc-chevron {
+  font-size: 1.4rem;
+  line-height: 1.2;
+}
+
 
 /* ── Spray banner (h2 path header) ────────────────────────────────────── */
 .dc-spray {
@@ -2409,18 +2417,12 @@ p.dc-img-wrapper {
   border-bottom: 1px var(--hud-blue) solid;
 }
 
-/* ── TABLE HEADER VARIANTS ────────────────────────────────────────────────── */
-/* Default th { background: var(--crimson) } is set in dc-core.css.
-   These opt-in classes let authors choose alternate header colors on any table.
-   Usage: add class to the <table> element via markdown-it-attrs {.dc-table-blue} */
-.dc-table-blue th {
-  background: var(--hud-blue-dark);
-}
-
-.dc-table-gray th {
-  background: var(--ink-smoke);
-  letter-spacing: 0.04em;  /* slightly looser than default 0.06em for neutral variant */
-}
+/* Tables: universal default look lives in dc-core.css under the <table>,
+   <th>, <td>, tr:nth-child(...) selectors. Authors write plain markdown
+   tables; no class required. No per-element class attribute syntax in MD
+   files (constitution). If a future table needs to look DIFFERENT, wrap
+   it in @section .dc-some-variant so the section class is the styling
+   handle, not the table itself. */
 
 /* Art pinned to page bottom-center — use on images or wrapper divs */
 .dc-art-bottom {
@@ -2734,6 +2736,15 @@ p.dc-img-wrapper {
 .section.two-column p,
 .section.three-column p {
   text-align: left;
+}
+
+/* Section sub-heading H3 — H3s inside a section that are NOT the first child
+   (i.e. NOT the section's header bar) get a left-accent border matching the
+   section accent. This visually distinguishes subsection headings from the
+   section title bar. Universal across all chapters. */
+.section > h3:not(:first-child) {
+  border-left: 3px solid var(--section-accent);
+  padding-left: var(--space-sm);
 }
 
 /* ── A7: free-standing heading directly before a section card — add extra
