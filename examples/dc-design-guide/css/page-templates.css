@@ -183,29 +183,25 @@
   column-fill: balance;
 }
 
-/* ── PAGE TEMPLATE: CARD GRID ──────────────────────────────────────────────── */
-/* Specialty card grid — two columns, auto-fill. Cards carry break-inside:avoid. */
-.page.card-grid {
+/* ── LAYOUT: CARD GRID (.dc-card-grid section) ─────────────────────────────── */
+/* Specialty card grid — two columns, auto-fill. Layout owns columns + column-
+   span here; component styling (chrome reset, card density, break control)
+   lives in dc-components.css under the same .dc-card-grid selector. */
+.dc-card-grid {
   columns: 2;
   column-gap: var(--gutter);
   column-fill: balance;
 }
 
-/* Column-span: all for card-grid header/intro content. */
-.page.card-grid > .dc-intro,
-.page.card-grid > h1,
-.page.card-grid > h2 {
+.dc-card-grid > .dc-intro,
+.dc-card-grid > h1,
+.dc-card-grid > h2 {
   column-span: all;
 }
 
-.page.card-grid .dc-specialty {
+.dc-card-grid .dc-specialty,
+.dc-card-grid .dc-specialty-card {
   break-inside: avoid;
-}
-
-.page.card-grid .dc-specialty-card {
-  break-inside: avoid;
-  --dc-specialty-card-media-height: 0.85in;
-  --dc-specialty-card-media-width: 0.75in;
 }
 
 /* ── TWO-COLUMN LIST UTILITY ───────────────────────────────────────────────── */

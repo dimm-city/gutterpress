@@ -2941,11 +2941,22 @@ p.dc-img-wrapper {
 /* ═════════════════════════════════════════════════════════════════════════
    CITIZEN-FILE FORM — character sheet field styling
    ═════════════════════════════════════════════════════════════════════════
-   Apply via container class on the markdown `@page` directive:
-     @page .citizen-file .dc-citizen-file .chapter-01
-   H4 headings become form field labels; tables become checkbox option rows.
-   Reusable: any DC project can apply .dc-citizen-file to get the same
-   character-sheet authoring surface. */
+   Apply via section class — keeps the page-template concern (`@page
+   .citizen-file` → recto/verso running headers in page-rules.css) separate
+   from the component concern (form-field appearance):
+
+     @page .citizen-file .chapter-01           ← page template + counter
+     @section .two-column .col-split .dc-citizen-file  ← layout + component
+     #### Handle
+     Choose a name.
+     #### Designation
+     ...
+     @end-section
+
+   Inside the section: H4s become amber-underlined form labels; tables
+   become checkbox option rows. Reusable: any DC project that applies
+   .dc-citizen-file to a section gets the same character-sheet authoring
+   surface — independent of which page template they chose. */
 
 .dc-citizen-file h4 {
   font-family: var(--font-mono);
@@ -3046,4 +3057,75 @@ p.dc-img-wrapper {
   color: var(--ink-smoke);
   letter-spacing: 0.04em;
   margin-bottom: 0.04in;
+}
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+   CARD-GRID — compact specialty-card display in a 2-column layout
+   ═════════════════════════════════════════════════════════════════════════
+   Apply via section class — same architectural split as .dc-citizen-file:
+   the @page directive identifies the page template, the @section provides
+   the layout + component-tweak context.
+
+     @page .card-grid
+     @section .dc-card-grid
+     ## Choose Your Specialty
+     @lede ... @end-lede
+     @specialty .augmerc
+     @specialty-card ... @end-specialty-card
+     @end-specialty
+     [repeat for 6+ specialties]
+     @end-section
+
+   The column-flow rules (columns:2, column-span:all) live in page-templates.css
+   per the architectural contract. Here we own only the chrome-reset (the
+   .dc-card-grid section has no card background/shadow — it's a pure layout
+   wrapper) plus the per-card density tweaks so all 8 specialty cards fit
+   comfortably on one page. */
+
+/* Chrome reset — strip .section's card visuals so the wrapper is invisible */
+.section.dc-card-grid {
+  background: transparent;
+  padding: 0;
+  margin: var(--space-md) 0 0;
+  filter: none;
+}
+.section.dc-card-grid::before,
+.section.dc-card-grid::after {
+  content: none;
+}
+
+/* Header + intro stay close to the cards below (no orphan break) */
+.dc-card-grid > h2 { break-after: avoid; }
+.dc-card-grid > .dc-intro {
+  break-after: avoid;
+  padding: 5px 12px 5px 16px;
+  margin: 0 0 0.04in;
+}
+.dc-card-grid .dc-specialty:first-of-type { break-before: avoid; }
+
+/* Compact specialty card density: 8 cards on one page in 2 columns */
+.dc-card-grid .dc-specialty-card {
+  --dc-specialty-card-media-height: 0.65in;
+  --dc-specialty-card-media-width: 0.6in;
+  padding: var(--space-md);
+  margin: 0 0 0.04in 0;
+}
+.dc-card-grid .dc-specialty-card p { line-height: 1.25; font-size: 9pt; }
+.dc-card-grid .dc-specialty-card h3 { font-size: 1em; }
+.dc-card-grid .dc-specialty-card blockquote { font-size: 0.9em; margin: 0.02in 0 0; }
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+   GEAR-ENTRY LAYOUT TWEAKS in two-column sections
+   ═════════════════════════════════════════════════════════════════════════
+   When .dc-gear-entry cards are placed inside a .section.two-column, give
+   them equal min-height for visual balance and shrink the H3 a touch so
+   long gear names don't overflow the narrow column. Reusable: any DC
+   project that lays gear entries in a two-column section gets this. */
+.section.two-column .dc-gear-entry {
+  min-height: 1.5in;
+}
+.section.two-column .dc-gear-entry h3 {
+  font-size: var(--fs-h4);
 }

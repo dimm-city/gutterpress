@@ -63,6 +63,7 @@ Every specialty excels at one thing and has a path toward a second. Your first s
 
 @page .card-grid
 
+@section .dc-card-grid
 
 ## Choose Your Specialty
 
@@ -203,3 +204,5 @@ Secrets are currency—and Etherlocks are rich in them. Tapping into elemental f
 @end-specialty-card
 
 @end-specialty
+
+@end-section

@@ -34,68 +34,12 @@
    dc-components.css, not here.
    ──────────────────────────────────────────────────────────────────────── */
 
-/* ═══ CARD-GRID SPREAD: full-width header + intro, then balanced 8-card grid ══
-   column-span: all on h2 and .dc-intro so both span the full width above the
-   two-column card area. break-after: avoid prevents Paged.js from isolating
-   the heading on its own page. First specialty block is pinned to the intro. */
+/* Card-grid styling moved to dc-components.css as .dc-card-grid (reusable).
+   Layout column-flow lives in page-templates.css. */
 
-.page.card-grid > h2 {
-  column-span: all;
-  break-after: avoid;
-}
-
-.page.card-grid > .dc-intro {
-  column-span: all;
-  break-after: avoid;
-  /* Compact padding so 8 specialty cards fit below on the same page */
-  padding: 5px 12px 5px 16px;
-  margin: 0 0 0.04in;
-}
-
-/* Keep first specialty block with the intro */
-.page.card-grid .dc-specialty:first-of-type {
-  break-before: avoid;
-}
-
-/* Compact card images so all 8 specialties balance 4+4 on one page */
-.page.card-grid .dc-specialty-card {
-  --dc-specialty-card-media-height: 0.65in;
-  --dc-specialty-card-media-width: 0.6in;
-}
-
-/* ═══ CARD-GRID SPECIALTY CARD DENSITY ═══
-   Tighten specialty cards on the card-grid page so all 8 fit comfortably. */
-
-.page.card-grid .dc-specialty-card {
-  padding: var(--space-md);
-  margin: 0 0 0.04in 0;
-}
-
-.page.card-grid .dc-specialty-card p {
-  line-height: 1.25;
-  font-size: 9pt;
-}
-
-.page.card-grid .dc-specialty-card h3 {
-  font-size: 1em;
-}
-
-.page.card-grid .dc-specialty-card blockquote {
-  font-size: 0.9em;
-  margin: 0.02in 0 0;
-}
-
-/* ═══ GEAR CARD SECTION: equal card heights in two-column layout ════════════ */
-.example-gear-tech .section.two-column .dc-gear-entry {
-  min-height: 1.5in;
-}
-
-/* Gear cards in two-column context: reduce h3 size slightly for narrow columns */
-.example-gear-tech .section.two-column .dc-gear-entry h3 {
-  font-size: var(--fs-h4);
-}
-
-/* NPC stat blocks moved to dc-components.css as .dc-npc-stat (reusable). */
+/* Gear entry two-column layout adjustments moved to dc-components.css —
+   .section.two-column .dc-gear-entry { min-height: 1.5in; ... }
+   NPC stat blocks moved to dc-components.css as .dc-npc-stat. */
 
 /* ── FIELD GUIDE EXAMPLE ART IMAGE CLASSES ────────────────────────────────── */
 /* Placeholder art images for field guide example pages - sized for their context */
