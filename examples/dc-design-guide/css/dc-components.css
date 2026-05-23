@@ -2644,8 +2644,10 @@ p.dc-img-wrapper {
   /* --space-md bottom margin gives the bar breathing room before body copy. */
   margin: calc(-1 * var(--space-md)) calc(-1 * var(--space-lg)) var(--space-md);
   padding: 0.42rem var(--space-lg) 0.28rem;
-  /* Zero all borders — the global h2/h3 rules set border-bottom which bleeds
-     through if not explicitly cleared here. */
+  /* Paged.js sets box-sizing: border-box on .pagedjs_pagebox *. With border-box,
+     width:auto fills the parent CONTENT box so negative margins can't extend the
+     right edge. content-box restores standard auto-width behaviour. */
+  box-sizing: content-box;
   border: 0;
   letter-spacing: var(--ls-display);
   text-transform: uppercase;
@@ -2680,6 +2682,7 @@ p.dc-img-wrapper {
   /* Bar reaches the section's inside edges (matches single-column behavior above). */
   margin: calc(-1 * var(--space-sm)) calc(-1 * var(--space-lg)) var(--space-md);
   padding: 0.42rem var(--space-lg) 0.28rem;
+  box-sizing: content-box;
   border: 0;
   letter-spacing: var(--ls-display);
   text-transform: uppercase;
