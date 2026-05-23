@@ -374,9 +374,14 @@ function plugin(md, pluginOptions = {}) {
     // HTML. print-md renders chapter files one at a time and concatenates the
     // output (src/lib/markdown/index.ts); if any scope leaks across that
     // boundary, the next file's content parses as nested inside the previous
-    // file's last unclosed wrapper. closeChapter() cascades through
-    // section → page → spread → chapter via closeOpenScopes(), so one call
-    // covers everything.
+    // file's last unclosed wrapper.
+    //
+    // We must close ALL four scope kinds explicitly here. closeChapter()
+    // cascades through inner scopes via closeOpenScopes(), but only when
+    // chapterOpen is true — files that use @page without an enclosing
+    // @chapter (e.g. front-matter pages) would otherwise leak an open
+    // .page wrapper across the file boundary. Each close* function is
+    // idempotent, so calling them all in innermost→outermost order is safe.
     if (spreadOpen && !sawAnyPageInsideCurrentSpread) {
       warn(
         state.env,
@@ -387,8 +392,10 @@ function plugin(md, pluginOptions = {}) {
       );
     }
 
-    closeChapter();
+    closeSection();
+    closePage();
     closeSpread();
+    closeChapter();
     state.tokens = out;
   });
 

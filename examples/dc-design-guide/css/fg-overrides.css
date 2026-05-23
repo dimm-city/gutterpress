@@ -287,12 +287,8 @@
 
 /* ── FRONT MATTER PAGE H2 — dark band treatment ──────────────────────────────
    Scoped to .page.page-intro so only the "Metropolis" / "CREATUREPUNK" intro
-   sections get the dark-band H2 treatment. The :not(.page .page h2) clause
-   excludes H2s that live inside a nested .page wrapper — markdown-it-paged
-   doesn't close prior .page wrappers, so chapters that follow page-intro
-   inherit it as an ancestor; this :not() keeps the dark band confined to
-   H2s whose nearest .page ancestor is .page.page-intro. */
-.page.page-intro h2:not(.page .page h2) {
+   sections get the dark-band H2 treatment. */
+.page.page-intro h2 {
   background: var(--ink-dark);
   color: var(--paper-cream);
   border-bottom: 3px solid var(--hud-magenta);
