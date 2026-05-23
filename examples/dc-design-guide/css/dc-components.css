@@ -3157,3 +3157,105 @@ h3 + .section {
    selector chains (chapter id → page template class → section component
    class) that set component CSS custom properties. No utility-variant
    classes here — that would force authors to re-type variant intent. */
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+   FICTION EXCERPT — narrative prose with optional inline art
+   ═════════════════════════════════════════════════════════════════════════
+   Wraps a fiction section (chapter opener prose, vignette, in-character
+   narrative). Provides baseline narrative typography, break control, and
+   automatic image positioning (first image floats left, subsequent floats
+   right) — authors don't need per-image positioning classes.
+
+     @section .dc-fiction-excerpt
+     "It's hard being me, but I guess..."
+     ![Lil Thump](url)
+     The cauldron wuz right on mai heels now...
+     @end-section
+
+   Variants come from chapter/page context — e.g. a specific chapter could
+   set --dc-fiction-bg to a tinted paper, or a page-template could constrain
+   art width differently. */
+
+.section.dc-fiction-excerpt {
+  --dc-fiction-bg: transparent;
+  --dc-fiction-art-width: 1.85in;
+  --dc-fiction-art-shadow: 4px 4px 0 var(--hud-blue-dark);
+  --dc-fiction-art-outline: 3px solid var(--ink-dark);
+  --dc-fiction-line-height: 1.45;
+
+  background: var(--dc-fiction-bg);
+  line-height: var(--dc-fiction-line-height);
+}
+
+.section.dc-fiction-excerpt p {
+  orphans: 3;
+  widows: 3;
+}
+
+/* Images inside the excerpt float by default (--dc-fiction-art-float; left
+   by default, set to right on a specific page/chapter via fg-overrides if
+   needed). Text wraps to the opposite side. Author places the image at the
+   start of the paragraph flow — no per-image class required. */
+.section.dc-fiction-excerpt img {
+  float: var(--dc-fiction-art-float, left);
+  width: var(--dc-fiction-art-width);
+  height: auto;
+  max-height: 2.25in;
+  object-fit: cover;
+  margin: 0 var(--space-md) var(--space-sm) 0;
+  outline: var(--dc-fiction-art-outline);
+  box-shadow: var(--dc-fiction-art-shadow);
+}
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+   RULES DEFINITION — side-by-side opposed-concept explainer
+   ═════════════════════════════════════════════════════════════════════════
+   For "Lucid vs Surreal", "Yes vs No", "Before vs After" style explainers
+   where two definitions sit side-by-side. Pairs with @definition blocks
+   inside, but the section wrapper provides the layout + accent tinting.
+   When the chapter's --section-accent is set, the right-hand definition
+   gets a contrasting magenta accent so the opposition reads visually.
+
+     @section .dc-rules-definition
+     ### Lucid & Surreal
+     Some abilities shift your odds.
+     @definition
+     #### Lucid
+     Roll 2d20, take the higher...
+     @end-definition
+     @column-break
+     @definition
+     #### Surreal
+     Roll 2d20, take the lower...
+     @end-definition
+     @end-section */
+
+.section.dc-rules-definition {
+  --dc-rules-definition-accent-a: var(--section-accent);
+  --dc-rules-definition-accent-b: var(--hud-magenta);
+
+  columns: 2;
+  column-gap: var(--gutter);
+  column-fill: balance;
+  margin: var(--space-md) 0;
+}
+
+.section.dc-rules-definition > h2:first-child,
+.section.dc-rules-definition > h3:first-child {
+  column-span: all;
+}
+
+.section.dc-rules-definition > h2:first-child + p,
+.section.dc-rules-definition > h3:first-child + p {
+  column-span: all;
+}
+
+.section.dc-rules-definition .dc-definition-block:first-of-type {
+  border-left-color: var(--dc-rules-definition-accent-a);
+}
+
+.section.dc-rules-definition .dc-definition-block:nth-of-type(2) {
+  border-left-color: var(--dc-rules-definition-accent-b);
+}

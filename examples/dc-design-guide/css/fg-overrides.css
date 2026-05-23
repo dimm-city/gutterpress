@@ -63,17 +63,8 @@
   clear: right;
 }
 
-/* Chapter opener fiction art — floated right so prose wraps alongside it */
-.fg-art-lil-thump {
-  float: left;
-  width: 1.85in;
-  height: auto;
-  max-height: 2.25in;
-  object-fit: cover;
-  margin: 0 var(--space-md) var(--space-sm) 0;
-  outline: 3px solid var(--ink-dark);
-  box-shadow: 4px 4px 0 var(--hud-blue-dark);
-}
+/* .fg-art-lil-thump removed — fiction-excerpt images are now styled by
+   their parent .section.dc-fiction-excerpt context (dc-components.css). */
 
 /* Character portrait — floats right, prose wraps to its left */
 .fg-art-portrait {

@@ -5,7 +5,7 @@
 
 # Who Do You Dream to Be? {.dc-chevron}
 
-@section
+@section .dc-fiction-excerpt
 
 "It's hard being me, but I guess it's the same for anyting sentient in the monoverse, ay?! Tag's Thump, an I'm a rabbit outta dee EntD here in Dimm City. Lemme post ya a tale about life here in da middle 'o dee ether.
 
@@ -15,7 +15,7 @@ I turned hard an hit a dead end. Balcony. High rise. Peak chaos screaming thirty
 
 No exits.
 
-![Lil Thump](https://placehold.co/600x400/png?text=Lil+Thump){.fg-art-lil-thump}
+![Lil Thump](https://placehold.co/600x400/png?text=Lil+Thump)
 
 I spun to face dem, back to da rail, fists up an shakin.
 Bats fanned out, claws flexing, chromed teeth catchin the light.
