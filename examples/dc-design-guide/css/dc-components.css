@@ -2713,23 +2713,30 @@ p.dc-img-wrapper {
 }
 
 /* Heading bar followed immediately by a table — give the table head room
-   so the bar and `<th>` background don't bleed into a single coloured block. */
-.section > :is(h2, h3):first-child + table {
+   so the bar and `<th>` background don't bleed into a single coloured block.
+   Selector enumerated (not :is()) because Paged.js's DocumentFragment
+   querySelectorAll rejects :is() patterns and silently drops the rule. */
+.section > h2:first-child + table,
+.section > h3:first-child + table {
   margin-top: var(--space-sm);
 }
 
 /* Column-break orphan protection: keep first paragraph with the spanning bar.
    `break-after: avoid` on the bar guards page breaks; these guards also cover
    column-break orphaning that can strand a bar above an empty column. */
-.section.two-column > :is(h2, h3):first-child + *,
-.section.three-column > :is(h2, h3):first-child + * {
+.section.two-column > h2:first-child + *,
+.section.two-column > h3:first-child + *,
+.section.three-column > h2:first-child + *,
+.section.three-column > h3:first-child + * {
   break-before: avoid;
 }
 
-.section.two-column > :is(h2, h3):first-child + p,
-.section.three-column > :is(h2, h3):first-child + p {
-  /* Span the intro paragraph across both columns so it reads as a shared
-     preamble rather than being trapped in column 1. */
+/* Span the intro paragraph across both columns so it reads as a shared
+   preamble rather than being trapped in column 1. */
+.section.two-column > h2:first-child + p,
+.section.two-column > h3:first-child + p,
+.section.three-column > h2:first-child + p,
+.section.three-column > h3:first-child + p {
   column-span: all;
   break-inside: avoid;
 }
@@ -2751,8 +2758,10 @@ p.dc-img-wrapper {
 
 /* ── A7: free-standing heading directly before a section card — add extra
    top clearance so the page-level heading and the card's header bar don't
-   compete at the same visual weight on the vertical scan. */
-:is(h2, h3) + .section {
+   compete at the same visual weight on the vertical scan. Enumerated,
+   not :is(), because Paged.js rejects :is() in querySelectorAll. */
+h2 + .section,
+h3 + .section {
   margin-top: 20pt;
 }
 
