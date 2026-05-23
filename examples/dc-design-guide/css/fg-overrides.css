@@ -299,6 +299,20 @@
   letter-spacing: var(--ls-heading);
 }
 
+/* Specialty intro pages also carry .page-intro but the component H2 needs its
+   own negative-margin breakout treatment — undo the dark-band overrides so
+   dc-components.css rules (box-sizing: content-box, component background, etc.)
+   apply cleanly. Specificity (0,3,1) > .page.page-intro h2 (0,2,1). */
+.page.page-intro .dc-specialty-intro > h2:first-child {
+  background: var(--dc-specialty-intro-title-bg);
+  color: var(--paper-cream);
+  border-bottom: none;
+  padding: 0.6rem 1.25rem;
+  width: auto;
+  box-sizing: content-box;
+  letter-spacing: 0.04em;
+}
+
 /* ── SECTION HEADER BAR — chapter-scope hooks only ───────────────────────────
    The structural bar styling (size, padding, clip-path, hierarchy between
    H2/H3, tab visuals, multi-column spanning, border-top suppression on
