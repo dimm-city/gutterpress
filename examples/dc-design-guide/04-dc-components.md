@@ -32,7 +32,7 @@ Dimm City-specific components. Ability cards, banners, stat blocks, AP chips, ta
 
 ## Ability Cards
 
-The `@skill` macro generates the full card HTML automatically. Use `variant="1"` through `variant="5"` to select clip-path shapes. The next `@skill` or `@end-skill` closes the current card.
+The `@skill` macro generates the full card HTML automatically. The next `@skill` or `@end-skill` closes the current card. **The card's silhouette and accent color come from the `@specialty .<name>` parent container** — no per-card variant attribute is needed. Wrap a section in `@specialty .augmerc` and every `@skill` inside inherits the augmerc shape; wrap in `@specialty .wirephreak` and every `@skill` inherits that family's shape. This is the Contextual Cascade Principle in action: variants flow from the parent context, never from a class on the card itself.
 
 > **Component pattern:** `.dc-skill-card`, `.dc-path-shell`, and `.dc-specialty-card` are distinct components. They may share some visual language, but each owns its own shell, spacing, break behavior, and layout rules. Do not collapse them into one broad variable-driven family.
 
@@ -223,27 +223,31 @@ A learning path wraps skill cards under a named spray banner with a sticker chai
 @end-learning-path
 ```
 
-## Learning Path Variants (v1-v5)
+## Learning Path Variants — driven by the parent specialty
 
-Five clip-path shapes for the learning-path shell and its spray-banner title. Set `variant="N"` on the `@learning-path` macro to choose. The emitted `.dc-path-shell` owns the variant, and the inner `h2.dc-spray` reads its shape, title color, and background from that root state.
+The learning-path shell and its spray-banner title each have a distinct clip-path silhouette per specialty family. The shape is **assigned by the parent `@specialty .<name>` container**, not by an attribute on `@learning-path` itself.
 
-**Syntax** — `variant="N"` on `@learning-path`; raw HTML fallback uses a root modifier on `.dc-path-shell`
-
-```html
-<div class="dc-path-shell variant-1">
-  <h2 class="dc-spray">…</h2>
-</div>
+```markdown
+@specialty .augmerc
+@learning-path
+### Biting Distance
+- subtitle
+@end-learning-path
+@end-specialty
 ```
+
+The CSS rule `.dc-specialty.augmerc .dc-path-shell { clip-path: … }` picks the silhouette. Drop the same `@learning-path` into `@specialty .wirephreak` and it inherits the wirephreak shape automatically — no syntax change needed.
 
 @end-section
 
-| Variant | Shape |
-|---------|-------|
-| `variant-1` | Default corner-notched shell with diagonal spray banner |
-| `variant-2` | Sharp angular shell with clipped-corner banner |
-| `variant-3` | Asymmetric stepped shell with left-cut banner |
-| `variant-4` | Soft angular shell with shallow-corner banner |
-| `variant-5` | Pinched shell with centered-notch banner |
+| Parent specialty | Shell silhouette |
+|---|---|
+| `.dc-specialty.augmerc` | Default corner-notched shell with diagonal spray banner |
+| `.dc-specialty.wirephreak` | Sharp angular shell with clipped-corner banner |
+| `.dc-specialty.proxy` | Asymmetric stepped shell with left-cut banner |
+| `.dc-specialty.gutterdruid` | Soft angular shell with shallow-corner banner |
+| `.dc-specialty.cybersurgeon` | Pinched shell with centered-notch banner |
+| `.dc-specialty.streetwarden`, `.technosorcerer`, `.etherlock` | Additional family-specific silhouettes |
 
 ---
 
@@ -296,28 +300,34 @@ Rotated monospaced label chips for content status (draft, deprecated, classified
 
 ---
 
-## Clip-Path Card Variants (v1–v5)
+## Clip-Path Card Shapes — assigned by parent specialty
 
-Five clip-path shapes for the skill-card shell. Set `variant="N"` on the `@skill` macro to choose. The emitted `.dc-skill-card` owns the variant, and its internal tab/body shapes inherit from that root state. Variant 1 is the default right-diagonal; variants 2–5 offer progressively distinct tech silhouettes.
+Each specialty family has a distinct skill-card silhouette. The shape is **read from the `@specialty .<name>` parent container** — authors never set a `variant=` attribute on `@skill`. This is the Contextual Cascade Principle: the parent's class drives the variant.
 
 @section .two-column
 
-**Syntax** — `variant="N"` on `@skill` macro; raw HTML fallback uses a root modifier on `.dc-skill-card`
-
-```html
-<div class="dc-skill-card variant-1">
-  <div class="dc-card-tab">…</div>
-  <div class="dc-card-body">…</div>
-</div>
+```markdown
+@specialty .augmerc
+@skill
+#### Punishing Counter
+> Flavor line.
+1. **0 AP** *Steel Says No:* …
+@end-skill
+@end-specialty
 ```
 
-| Variant | Shape |
-|---------|-------|
-| `variant-1` | Default right-diagonal tab, bottom-right notch body |
-| `variant-2` | Sharp angular — diagonal cuts on all four tab corners and both body bottom corners |
-| `variant-3` | Asymmetric tech — top-left step on tab, large single diagonal on body |
-| `variant-4` | Soft angular — shallow corner cuts, more restrained than variant-1/2 |
-| `variant-5` | Scooped futuristic — center notch on tab top, pinched bottom corners on body |
+The CSS rule `.dc-specialty.augmerc .dc-skill-card { clip-path: … }` defines the augmerc card silhouette. Eight specialty families exist, each with its own card shape and tab silhouette:
+
+| Specialty | Card silhouette |
+|-----------|-----------------|
+| `.dc-specialty.augmerc` | Default right-diagonal tab, bottom-right notch body |
+| `.dc-specialty.wirephreak` | Sharp angular — diagonal cuts on all four tab corners |
+| `.dc-specialty.proxy` | Asymmetric tech — top-left step on tab, large diagonal on body |
+| `.dc-specialty.gutterdruid` | Soft angular — shallow corner cuts |
+| `.dc-specialty.cybersurgeon` | Scooped futuristic — center notch on tab |
+| `.dc-specialty.streetwarden`, `.technosorcerer`, `.etherlock` | Family-specific variants |
+
+To add a new specialty, define `.dc-specialty.<name> .dc-skill-card { clip-path: … }` in dc-components.css. All skill cards inside `@specialty .<name>` automatically pick up the silhouette.
 
 @end-section
 
@@ -404,7 +414,7 @@ Badge in the top-left corner of specialty chapter opener pages. Auto-generated b
 | Sub-header Sticker | auto via `@skill`; raw HTML fallback | `dc-sub-header`, `flush` |
 | Stamp — Default | `<span class="dc-stamp">TEXT</span>` | `dc-stamp` |
 | Stamp — Classified | `<span class="dc-stamp dc-classified">TEXT</span>` | `dc-stamp`, `dc-classified` |
-| Clip-Path v1–v5 | `variant="1"` through `variant="5"` on `@skill` | `dc-skill-card variant-1`–`variant-5` |
+| Card silhouette | Driven by `@specialty .<name>` parent — no per-card variant attribute | `.dc-specialty.<name> .dc-skill-card` |
 | `.dc-columns` / `.dc-rows` | modifier class on specialty wrapper (`.dense` deprecated) | `dc-columns`, `dc-rows` |
 | `.dc-chapter-opener-no` | Raw HTML | `dc-chapter-opener-no` |
 

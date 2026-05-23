@@ -126,7 +126,7 @@ markdown source during the build step and emits structured HTML.
 | `@sidebar` | Sidebar callout | Floating reference/sidebar content |
 | `@sidebar-box` | Sidebar box callout | Cream boxed aside with heading + dashed divider |
 | `@learning-path` | Learning path banner + card group | Groups `@skill` cards under a spray-banner header |
-| `@skill variant="N"` | Skill card (root-owned clip-path variant 1–5) | Individual skill card with tab, flavor, and abilities |
+| `@skill` | Skill card — silhouette inherits from `@specialty .<name>` parent | Individual skill card with tab, flavor, and abilities |
 | `@procedure` | Numbered procedure block | Ordered list rendered as `dc-steps` |
 | `@definition` | Definition callout | Italic definition block with left rule |
 | `@continue` | Card continuation marker | Splits an oversized skill card across a page break |
