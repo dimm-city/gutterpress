@@ -2520,39 +2520,63 @@ p.dc-img-wrapper {
    clamps negative margins on the first in-flow child). `.section::before`
    is absolutely positioned, so flex doesn't disturb the background pseudo. */
 .section.tabbed {
-  --section-tab-overlap: 4px;
+  --section-tab-overlap: 0px;
   --section-tab-indent: 8px;
   display: flex;
   flex-direction: column;
-  margin-top: calc(var(--space-md) + 1em);
+  /* Headroom above the section for the lifted tab; sized for H2 (13pt) variant
+     so H3 (11pt) fits comfortably as well. */
+  margin-top: calc(var(--space-md) + 1.5em + 5px);
 }
 
+/* ── Shared base — both H2 and H3 tabs use the inverted-strip pattern ───── */
 .section.tabbed > h2:first-child,
 .section.tabbed > h3:first-child {
   display: inline-block;
   width: fit-content;
   background: var(--section-accent);
   color: var(--paper-cream);
-  /* Asymmetric optical-center padding (matches section bar's 0.42/0.28 pattern, scaled to H5) */
-  padding: 0.25em 0.75em calc(0.20em + 2px);
-  margin: calc(-1 * var(--space-md) - 1em + var(--section-tab-overlap)) 0 var(--space-sm) var(--section-tab-indent);
-  /* Inverted-strip pattern: cream left-stripe echoes the section card's accent strip,
-     no ink outline so the tab reads as a creaturepunk artifact, not a generic UI tab.
-     Tab silhouette is defined by the accent-color fill against the paper background. */
+  /* Lift the tab so its BOTTOM edge sits flush with the section's TOP edge
+     (no overlap). The 1.75em + 5px term covers the tab's own rendered height:
+       line-height (1.2em)
+     + vertical padding (~0.55em — H2 baseline; H3 is slightly smaller
+                          and the em-scaled margin compensates since it uses
+                          the heading's own font-size)
+     + border-top (2px) + border-bottom (1px) + tolerance (~2px).
+     `var(--section-tab-overlap)` (default 0) is a tuning knob — set it positive
+     to overlap the tab INTO the section, negative to leave a visible gap. */
+  margin: calc(-1 * var(--space-md) - 1.75em - 5px + var(--section-tab-overlap))
+          0 var(--space-sm) var(--section-tab-indent);
+  /* Inverted-strip pattern: cream left-stripe echoes the section card's accent
+     strip, no ink outline so the tab reads as a creaturepunk artifact, not a
+     generic UI tab. Tab silhouette is defined by the accent-color fill against
+     the paper background. */
   border: 2px solid transparent;
   border-left: 5px solid var(--paper-cream);
   border-bottom: 1px solid var(--section-accent);
   border-radius: 0;
-  /* Slant reduced 14px → 10px to match H3 bar's notch vocabulary */
+  /* Slant matches the H3 bar's 10px notch vocabulary */
   clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 100%, 0 100%);
   font-family: var(--font-tab);
-  font-size: var(--fs-h5);
   line-height: 1.2;
   letter-spacing: var(--ls-display);
   text-transform: uppercase;
   position: relative;
   z-index: 2;
   break-after: avoid;
+}
+
+/* ── H2 tab — PRIMARY: --fs-h4 (13pt) + heavier padding for visual weight ─ */
+.section.tabbed > h2:first-child {
+  font-size: var(--fs-h4);
+  padding: 0.30em 0.95em calc(0.25em + 2px);
+  border-left-width: 6px;
+}
+
+/* ── H3 tab — SUBORDINATE: --fs-h5 (11pt) + tighter padding ─────────────── */
+.section.tabbed > h3:first-child {
+  font-size: var(--fs-h5);
+  padding: 0.25em 0.75em calc(0.20em + 2px);
 }
 
 /* ── First-child heading inside a section becomes a filled top bar ───────
