@@ -1,4 +1,4 @@
-@chapter #ch-example-dm-npcs .dc-accent-rust ch="5"
+@chapter #ch-example-dm-npcs ch="5"
 
 
 

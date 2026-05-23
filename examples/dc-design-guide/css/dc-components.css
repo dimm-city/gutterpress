@@ -3153,28 +3153,7 @@ h3 + .section {
 }
 
 
-/* ═════════════════════════════════════════════════════════════════════════
-   ACCENT IDENTITY UTILITIES — set chapter/section --section-accent
-   ═════════════════════════════════════════════════════════════════════════
-   Each chapter (or specific section) opts into a color identity by adding
-   one of these classes. The variable cascades to every .section descendant,
-   driving section header bars, sub-heading H3 left rules, and any other
-   element that reads var(--section-accent).
-
-     @chapter #ch-rules .dc-accent-blood ch="4"
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^ accent identity applied here
-
-   Authors should add the SAME .dc-accent-X class to a chapter at the @chapter
-   directive (semantic intent: "this chapter's identity color is blood-red").
-   The class cascades through child @page wrappers and sections automatically.
-
-   Reusable across any DC project — no chapter-name-specific selectors. */
-
-.dc-accent-blood        { --section-accent: var(--blood); }
-.dc-accent-rust         { --section-accent: var(--rust); }
-.dc-accent-amber        { --section-accent: var(--amber); }
-.dc-accent-magenta      { --section-accent: var(--hud-magenta); }
-.dc-accent-hud-blue     { --section-accent: var(--hud-blue); }
-.dc-accent-hud-blue-dark { --section-accent: var(--hud-blue-dark); }
-.dc-accent-crimson      { --section-accent: var(--crimson); }
-.dc-accent-orange       { --section-accent: var(--orange); }
+/* Per-book variant assignment lives in fg-overrides.css using natural
+   selector chains (chapter id → page template class → section component
+   class) that set component CSS custom properties. No utility-variant
+   classes here — that would force authors to re-type variant intent. */

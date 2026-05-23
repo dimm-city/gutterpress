@@ -158,15 +158,39 @@
    the per-chapter `--section-accent` map (further down in this file) which
    sets a chapter-appropriate accent colour for the bars. */
 
-/* Section sub-heading H3 left-accent bar moved to dc-components.css as
-   universal .section > h3:not(:first-child) rule (applies anywhere). */
+/* ═══════════════════════════════════════════════════════════════════════════
+   PER-CHAPTER VARIANT ASSIGNMENT (Field Guide book scope)
+   ═══════════════════════════════════════════════════════════════════════════
+   Following the Contextual Cascade Principle: variant choice flows from the
+   document's natural hierarchy (chapter id → page template → section
+   component) by SETTING CSS CUSTOM PROPERTIES the components consume. We
+   never set raw values here; always set a variable like --section-accent
+   that the component's own rule reads.
 
-/* Table styling moved to .dc-data-table component (dc-components.css).
-   Apply via markdown-it-attrs: `{.dc-data-table.hud-blue}` etc. on the table. */
+   Authors don't write any variant-utility classes in markdown. The CSS
+   below reads the semantic structure and assigns component variants
+   accordingly. To change a chapter's identity, edit ONE rule here. */
 
-/* Front-matter fallback — pages without an @chapter wrapper (301) get the
-   magenta accent. :where() gives this specificity 0,0,1 so any chapter-level
-   .dc-accent-X applied via @chapter wins. */
+/* Chapter 1 — opener + character creation */
+#ch-example-chapter-opener { --section-accent: var(--blood); }
+
+/* Chapter 2 — specialty overview (Choose Your Specialty card grid) */
+#ch-example-specialty-overview { --section-accent: var(--hud-blue-dark); }
+
+/* Chapter 3 — specialty profile spreads (Augmerc and friends) */
+#ch-example-specialty-profile { --section-accent: var(--hud-blue-dark); }
+
+/* Chapter 4 — rules (Are You Lucid Yet, Dreams, City, etc.) */
+#ch-example-rules { --section-accent: var(--blood); }
+
+/* Chapter 5 — DM & NPC pages (stat blocks) */
+#ch-example-dm-npcs { --section-accent: var(--rust); }
+
+/* Chapter 6 — gear & tech */
+#ch-example-gear-tech { --section-accent: var(--amber); }
+
+/* Front-matter pages have no @chapter wrapper (301). :where() gives 0,0,1
+   specificity so any chapter rule above wins where it cascades down. */
 :where(.page-intro) { --section-accent: var(--hud-magenta); }
 
 /* ── CHAPTER-START: opening blockquote epigraph treatment ────────────────────

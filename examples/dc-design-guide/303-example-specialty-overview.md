@@ -1,4 +1,4 @@
-@chapter #ch-example-specialty-overview .dc-accent-hud-blue-dark ch="2"
+@chapter #ch-example-specialty-overview ch="2"
 
 @page .page-chapter-start .chapter-start
 
