@@ -33,27 +33,28 @@ body { counter-reset: chapter; }
    Chapter Counters
    ---------------------------------------------------------------------------
    PAGED.JS: counter-set is silently ignored; use counter-reset only.
-   counter-reset is applied to .page.chapter-NN (the first rendered page div
-   per chapter) rather than the wrapping <section> because Paged.js clones
-   content per page — the section element only appears on the first page,
-   so resets on it do not propagate. The per-page .chapter-NN class IS present
-   on every body page, guaranteeing the running footer reads the correct number.
-   Page counter reset is only on .chapter-start.chapter-01 (the front-matter →
-   body transition) to avoid zeroing target-counter() snapshots in the TOC.
-   .chapter-start is only combined with chapter-01/02/03 in this document.
-   --------------------------------------------------------------------------- */
-.page.chapter-01 { counter-reset: chapter 1; }
-.page.chapter-02 { counter-reset: chapter 2; }
-.page.chapter-03 { counter-reset: chapter 3; }
-.page.chapter-04 { counter-reset: chapter 4; }
-.page.chapter-05 { counter-reset: chapter 5; }
 
-/* Also reset on .chapter-start elements so the running footer is correct
-   on each chapter's first page. Page counter reset only on chapter-01
-   so that body folios begin at p.1 after front-matter. */
-.chapter-start.chapter-01 { counter-reset: chapter 1 page 0; }
-.chapter-start.chapter-02 { counter-reset: chapter 2; }
-.chapter-start.chapter-03 { counter-reset: chapter 3; }
+   The `.chapter-N` class is applied automatically to every `<div class="page">`
+   wrapper by markdown-it-paged when the parent @chapter declares ch="N".
+   Authors NEVER hand-apply `.chapter-N` to @page directives — they just
+   declare the chapter number once on @chapter and the cascade handles the
+   rest. Counter resets fire on EVERY page in the chapter (not just the
+   first) because Paged.js clones content per page; needing the class on
+   every page wrapper is why this lives on .page.chapter-N and not on
+   .chapter.chapter-N.
+
+   The page-counter reset on .page-chapter-start (first body chapter only)
+   transitions front-matter folios into body folios starting at p.1. */
+.page.chapter-1 { counter-reset: chapter 1; }
+.page.chapter-2 { counter-reset: chapter 2; }
+.page.chapter-3 { counter-reset: chapter 3; }
+.page.chapter-4 { counter-reset: chapter 4; }
+.page.chapter-5 { counter-reset: chapter 5; }
+.page.chapter-6 { counter-reset: chapter 6; }
+
+/* First body chapter (chapter 1) — also reset the page counter so body
+   folios begin at p.1 after front-matter. */
+.page.chapter-start.chapter-1 { counter-reset: chapter 1 page 0; }
 
 /* ---------------------------------------------------------------------------
    Default Page Template

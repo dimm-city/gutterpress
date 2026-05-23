@@ -1,6 +1,6 @@
-@chapter #ch-example-specialty-overview .example-specialty-overview .chapter-03 ch="3"
+@chapter #ch-example-specialty-overview .example-specialty-overview .dc-accent-hud-blue-dark ch="2"
 
-@page .page-chapter-start .chapter-start .chapter-02
+@page .page-chapter-start .chapter-start
 
 @chapter-opener C.02
 

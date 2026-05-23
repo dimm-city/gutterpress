@@ -1,5 +1,5 @@
-@chapter #ch-example-chapter-opener .example-chapter-opener .chapter-03 ch="3"
-@page .page-chapter-start .chapter-start .chapter-01
+@chapter #ch-example-chapter-opener .example-chapter-opener .dc-accent-blood ch="1"
+@page .page-chapter-start .chapter-start
 
 @chapter-opener C.01
 
@@ -66,7 +66,7 @@ Before reputation comes recognition. Before recognition comes a glance. Dimmers 
 @end-section
 
 
-@page .citizen-file .chapter-01
+@page .citizen-file
 
 @section .two-column .col-split .dc-citizen-file
 

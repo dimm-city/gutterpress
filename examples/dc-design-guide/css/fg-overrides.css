@@ -11,7 +11,7 @@
        .page.card-grid .dc-specialty-card { width: ... }
        .chapter-start > blockquote:first-of-type { ... }
    - Chapter-context table-header tinting:
-       .page.chapter-04 th, .page.tech-cybernetics th
+       .page.tech-cybernetics .dc-gear-entry (per-page gear adjustments)
    - Pure CSS break control on bare component selectors
        (break-before/after/inside only — no spacing or appearance)
    - Field-guide-only image utility classes: .fg-art-*
@@ -164,22 +164,10 @@
 /* Table styling moved to .dc-data-table component (dc-components.css).
    Apply via markdown-it-attrs: `{.dc-data-table.hud-blue}` etc. on the table. */
 
-/* ── SECTION ACCENT COLORS BY CHAPTER CONTEXT ───────────────────────────────
-   Per-chapter --section-accent is set on the chapter wrapper itself; the
-   value cascades naturally to every .section within. This is the ONE
-   legitimate use of chapter-context selectors per the design-guide
-   constitution: an intentional per-chapter color identity.
-
-   The `.page-intro` fallback covers front-matter pages that have no
-   @chapter wrapper (301-example-front-matter.md). :where() gives it
-   specificity 0,0,1 so any chapter-scoped rule below (0,1,0) wins. */
+/* Front-matter fallback — pages without an @chapter wrapper (301) get the
+   magenta accent. :where() gives this specificity 0,0,1 so any chapter-level
+   .dc-accent-X applied via @chapter wins. */
 :where(.page-intro) { --section-accent: var(--hud-magenta); }
-.example-rules                { --section-accent: var(--blood); }
-.example-dm-npcs              { --section-accent: var(--rust); }
-.example-gear-tech            { --section-accent: var(--amber); }
-.example-front-matter         { --section-accent: var(--hud-magenta); }
-.example-chapter-opener       { --section-accent: var(--blood); }
-.example-specialty-profile    { --section-accent: var(--hud-blue-dark); }
 
 /* ── CHAPTER-START: opening blockquote epigraph treatment ────────────────────
    Moved from dc-components.css (C5 violation — page-context element selector

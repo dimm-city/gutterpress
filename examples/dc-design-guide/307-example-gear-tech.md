@@ -1,7 +1,7 @@
-@chapter #ch-example-gear-tech .example-gear-tech .chapter-03 ch="3"
+@chapter #ch-example-gear-tech .example-gear-tech .dc-accent-amber ch="6"
 
 
-@page .tech-cybernetics .second-page .chapter-05
+@page .tech-cybernetics .second-page
 
 @section .two-column
 

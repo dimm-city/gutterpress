@@ -213,6 +213,15 @@ function plugin(md, pluginOptions = {}) {
     let spreadStartedWithNoPagesYet = false;
     let sawAnyPageInsideCurrentSpread = false;
 
+    // Chapter counter context inherited by child @page directives.
+    // When an @chapter declares ch="N" (or a .chapter-N class), every @page
+    // opened within that chapter automatically gets the same .chapter-N
+    // class. This lets CSS rules like `.page.chapter-3 { counter-reset:
+    // chapter 3 }` in page-rules.css match every page in the chapter,
+    // because Paged.js needs the class on every page wrapper (it clones
+    // content per page). Authors don't hand-apply .chapter-N anywhere.
+    let chapterCounterClass = '';
+
     function closeOpenScopes() {
       closeSection();
       closePage();
@@ -224,6 +233,7 @@ function plugin(md, pluginOptions = {}) {
       closeOpenScopes();
       out.push(new state.Token('layout_chapter_close', 'div', -1));
       chapterOpen = false;
+      chapterCounterClass = '';
     }
 
     function closeSection() {
@@ -250,10 +260,16 @@ function plugin(md, pluginOptions = {}) {
 
     function openChapter(meta) {
       const t = new state.Token('layout_chapter_open', 'div', 1);
-      addClasses(t, 'chapter', meta.attrs?.class || '');
+      const classes = meta.attrs?.class || '';
+      addClasses(t, 'chapter', classes);
       attachDataAttrs(t, 'chapter', null, meta.attrs || {});
       out.push(t);
       chapterOpen = true;
+      // Resolve chapter counter class: explicit `.chapter-N` in the class
+      // list takes priority over the `ch="N"` attribute.
+      const explicit = (classes.match(/(?:^|\s)(chapter-\d+)(?=\s|$)/) || [])[1] || '';
+      const fromAttr = meta.attrs?.ch ? `chapter-${meta.attrs.ch}` : '';
+      chapterCounterClass = explicit || fromAttr;
     }
 
     function openSpread(meta) {
@@ -268,7 +284,15 @@ function plugin(md, pluginOptions = {}) {
 
     function openPage(meta) {
       const t = new state.Token('layout_page_open', 'div', 1);
-      addClasses(t, 'page', meta.attrs && meta.attrs.class ? meta.attrs.class : '');
+      const explicit = (meta.attrs && meta.attrs.class) ? meta.attrs.class : '';
+      // Auto-inherit the open chapter's counter class so .page.chapter-N
+      // selectors in page-rules.css match every page in the chapter without
+      // the author repeating .chapter-N on every @page directive.
+      const tokens = explicit ? explicit.split(/\s+/) : [];
+      const merged = (chapterCounterClass && !tokens.includes(chapterCounterClass))
+        ? (explicit ? `${explicit} ${chapterCounterClass}` : chapterCounterClass)
+        : explicit;
+      addClasses(t, 'page', merged);
       attachDataAttrs(t, 'page', meta.name, meta.attrs || {});
       out.push(t);
       pageOpen = true;

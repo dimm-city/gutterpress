@@ -1,8 +1,8 @@
-@chapter #ch-example-dm-npcs .example-dm-npcs .chapter-03 ch="3"
+@chapter #ch-example-dm-npcs .example-dm-npcs .dc-accent-rust ch="5"
 
 
 
-@page .chapter-04
+@page
 
 @section .two-column
 

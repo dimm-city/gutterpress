@@ -1,8 +1,8 @@
-@chapter #ch-example-rules .example-rules .chapter-03 ch="3"
+@chapter #ch-example-rules .example-rules .dc-accent-blood ch="4"
 
 
 
-@page .chapter-start .chapter-03
+@page .chapter-start
 
 @chapter-opener C.11
 
@@ -44,7 +44,7 @@ Learn the core loop first. Everything else builds on it.
 
 ---
 
-@page .the-players .chapter-03
+@page .the-players
 
 
 @section

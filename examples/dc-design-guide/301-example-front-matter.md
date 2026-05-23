@@ -47,7 +47,7 @@ Don was a player in our 2E AD&D group throughout our youth and was a dear friend
 
 ---
 
-@page .page-intro .intro .chapter-00
+@page .page-intro .intro
 
 # Introduction {.dc-chevron}
 

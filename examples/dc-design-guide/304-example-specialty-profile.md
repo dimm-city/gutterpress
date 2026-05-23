@@ -1,4 +1,4 @@
-@chapter #ch-example-specialty-profile .example-specialty-profile .chapter-03 ch="3"
+@chapter #ch-example-specialty-profile .example-specialty-profile .dc-accent-hud-blue-dark ch="3"
 
 @page .specialty-profile
 
