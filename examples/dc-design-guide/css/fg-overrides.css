@@ -5,13 +5,20 @@
 
    ── ARCHITECTURAL CONTRACT ────────────────────────────────────────────────
    OWNS:
-   - Selectors scoped to a page or chapter context class:
-       .page.card-grid, .example-rules >, .page.citizen-file, etc.
+   - Named-page assignments (.page.X { page: X }) wiring markdown @page
+     directives to @page CSS templates in page-rules.css
+   - Per-instance positional overrides scoped to a specific page/chapter:
+       .page.card-grid .dc-specialty-card { width: ... }
+       .chapter-start > blockquote:first-of-type { ... }
+   - Chapter-context table-header tinting:
+       .page.chapter-04 th, .page.tech-cybernetics th
    - Pure CSS break control on bare component selectors
        (break-before/after/inside only — no spacing or appearance)
-   - Document-specific element overrides:
-       .page.chapter-04 h4, .chapter-start > blockquote, etc.
    - Field-guide-only image utility classes: .fg-art-*
+
+   DOES NOT OWN (moved to dc-components.css):
+   - Citizen-file form field styling (now .dc-citizen-file component)
+   - NPC stat block styling (now .dc-npc-stat component)
 
    MUST NOT CONTAIN — CORE CONSTRAINT:
    - Any bare .dc-* or .pmd-* rule without a page/chapter context qualifier
@@ -88,47 +95,7 @@
   font-size: var(--fs-h4);
 }
 
-/* ═══ NPC STAT BLOCKS — chapter-04 page ════════════════════════════════════
-   Raw H4/H5 NPC entries need visual structure. No macro — context class approach. */
-
-/* Rust top rule separates individual NPC entries (#### Patchhead style) */
-.page.chapter-04 h4 {
-  border-top: 1.5pt solid var(--rust);
-  padding-top: 0.05in;
-  margin-top: 0.1in;
-}
-
-/* Subsection labels: ##### Traits / Equipment / Cybernetics */
-.page.chapter-04 h5 {
-  font-family: var(--font-mono);
-  font-size: var(--fs-body-sm);
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--ls-cap-sm);
-  text-transform: uppercase;
-  color: var(--hud-blue-dark);
-  border-bottom: 0.75pt solid var(--border-hairline);
-  padding-bottom: 1pt;
-  margin-top: 0.06in;
-  margin-bottom: 0.02in;
-}
-
-/* Stat line immediately after blockquote: "2 HP — 1 Damage", "Fodder — Medium" */
-.page.chapter-04 blockquote + p {
-  font-family: var(--font-mono);
-  font-size: 8pt;
-  color: var(--hud-blue);
-  letter-spacing: 0.04em;
-  margin-bottom: 0.02in;
-}
-
-/* Second stat line (type + size) */
-.page.chapter-04 blockquote + p + p {
-  font-family: var(--font-mono);
-  font-size: 7.5pt;
-  color: var(--ink-smoke);
-  letter-spacing: 0.04em;
-  margin-bottom: 0.04in;
-}
+/* NPC stat blocks moved to dc-components.css as .dc-npc-stat (reusable). */
 
 /* ── FIELD GUIDE EXAMPLE ART IMAGE CLASSES ────────────────────────────────── */
 /* Placeholder art images for field guide example pages - sized for their context */
@@ -202,61 +169,10 @@
    @page citizen-file:right and @page citizen-file:left are in page-rules.css.
    --------------------------------------------------------------------------- */
 
+/* Named-page assignment — wires the markdown `@page .citizen-file` directive
+   to the @page citizen-file CSS template in page-rules.css. Form styling
+   itself is now a reusable component: .dc-citizen-file in dc-components.css. */
 .page.citizen-file { page: citizen-file; }
-
-/* ══ CITIZEN FILE — Character Sheet Field Styling ═══════════════════════════
-   H4 headings become form field labels; tables become checkbox option lists. */
-
-.page.citizen-file h4 {
-  font-family: var(--font-mono);
-  font-size: 7.5pt;
-  color: var(--amber);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  border-bottom: 1pt solid var(--amber);
-  padding-bottom: 2pt;
-  margin-top: 0.12in;
-  margin-bottom: 0.05in;
-}
-
-.page.citizen-file h4:first-child {
-  margin-top: 0;
-}
-
-.page.citizen-file p {
-  color: var(--ink-smoke);
-  margin-bottom: 0.03in;
-}
-
-/* Checkbox-style option tables */
-.page.citizen-file table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 0.05in 0;
-  font-size: 8pt;
-}
-
-/* Hide the empty GFM header row (| | | becomes empty thead) */
-.page.citizen-file thead {
-  display: none;
-}
-
-.page.citizen-file td {
-  padding: 3pt 4pt;
-  vertical-align: middle;
-  border-bottom: 0.5pt solid var(--border-hairline);
-  line-height: 1.35;
-}
-
-/* Checkbox cell — bordered square, content hidden */
-.page.citizen-file td:first-child {
-  width: 14pt;
-  text-align: center;
-  border: 1pt solid var(--border-hairline);
-  border-radius: 1pt;
-  background: var(--paper-aged);
-  color: transparent;
-}
 
 /* ═══ EXAMPLE INTRO PAGE — chevron H1 font-size cap ════════════════════════
    The ".dc-chevron" H1 on each example intro page wraps to 3 lines at the

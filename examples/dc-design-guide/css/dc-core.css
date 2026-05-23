@@ -40,8 +40,16 @@ body {
   text-wrap: pretty; /* CSS4 — silently ignored by Paged.js; screen preview only */
   position: relative;
   hyphens: auto;
+  /* Paged Media orphans/widows constraint: cascades to every .page box, so
+     no need to repeat at .page p level — that would be pure duplication. */
   widows: 2;
   orphans: 2;
+}
+
+/* ── ELEMENT BASELINES ────────────────────────────────────────────────────── */
+img {
+  max-width: 100%;
+  height: auto;
 }
 
 /* ── HEADINGS ─────────────────────────────────────────────────────────────── */

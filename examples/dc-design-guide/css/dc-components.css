@@ -2937,3 +2937,113 @@ p.dc-img-wrapper {
     100% 100%, 0 100%
   );
 }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   CITIZEN-FILE FORM — character sheet field styling
+   ═════════════════════════════════════════════════════════════════════════
+   Apply via container class on the markdown `@page` directive:
+     @page .citizen-file .dc-citizen-file .chapter-01
+   H4 headings become form field labels; tables become checkbox option rows.
+   Reusable: any DC project can apply .dc-citizen-file to get the same
+   character-sheet authoring surface. */
+
+.dc-citizen-file h4 {
+  font-family: var(--font-mono);
+  font-size: 7.5pt;
+  color: var(--amber);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-bottom: 1pt solid var(--amber);
+  padding-bottom: 2pt;
+  margin-top: 0.12in;
+  margin-bottom: 0.05in;
+}
+
+.dc-citizen-file h4:first-child {
+  margin-top: 0;
+}
+
+.dc-citizen-file p {
+  color: var(--ink-smoke);
+  margin-bottom: 0.03in;
+}
+
+/* Checkbox-style option tables */
+.dc-citizen-file table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.05in 0;
+  font-size: 8pt;
+}
+
+/* Hide the empty GFM header row (| | | becomes empty thead) */
+.dc-citizen-file thead {
+  display: none;
+}
+
+.dc-citizen-file td {
+  padding: 3pt 4pt;
+  vertical-align: middle;
+  border-bottom: 0.5pt solid var(--border-hairline);
+  line-height: 1.35;
+}
+
+/* Checkbox cell — bordered square, content hidden */
+.dc-citizen-file td:first-child {
+  width: 14pt;
+  text-align: center;
+  border: 1pt solid var(--border-hairline);
+  border-radius: 1pt;
+  background: var(--paper-aged);
+  color: transparent;
+}
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+   NPC STAT BLOCK — DM/NPC entries (Patchhead, Grease Monkey, Undertow, ...)
+   ═════════════════════════════════════════════════════════════════════════
+   Apply via @section .dc-npc-stat in markdown. Inside the wrapper:
+     #### Name              → labeled NPC entry (rust top-rule)
+     > "flavor quote"
+     2 HP — 1 Damage        → primary stat line (mono, hud-blue)
+     Fodder — Medium        → secondary stat line (mono, ink-smoke)
+     ##### Traits           → subsection label (mono caps, hud-blue)
+     ##### Equipment        → ditto
+   Reusable: any DC project can use .dc-npc-stat for stat-block authoring. */
+
+.dc-npc-stat h4 {
+  border-top: 1.5pt solid var(--rust);
+  padding-top: 0.05in;
+  margin-top: 0.1in;
+}
+
+.dc-npc-stat h5 {
+  font-family: var(--font-mono);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-cap-sm);
+  text-transform: uppercase;
+  color: var(--hud-blue-dark);
+  border-bottom: 0.75pt solid var(--border-hairline);
+  padding-bottom: 1pt;
+  margin-top: 0.06in;
+  margin-bottom: 0.02in;
+}
+
+/* Primary stat line — "2 HP — 1 Damage" sits directly after the flavor quote. */
+.dc-npc-stat blockquote + p {
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  color: var(--hud-blue);
+  letter-spacing: 0.04em;
+  margin-bottom: 0.02in;
+}
+
+/* Secondary stat line — "Fodder — Medium" type+size. */
+.dc-npc-stat blockquote + p + p {
+  font-family: var(--font-mono);
+  font-size: 7.5pt;
+  color: var(--ink-smoke);
+  letter-spacing: 0.04em;
+  margin-bottom: 0.04in;
+}

@@ -66,7 +66,7 @@ Before reputation comes recognition. Before recognition comes a glance. Dimmers 
 @end-section
 
 
-@page .citizen-file .chapter-01
+@page .citizen-file .dc-citizen-file .chapter-01
 
 @section .two-column .col-split
 

@@ -13,8 +13,10 @@
    - General print utilities (.pmd-no-break, .pmd-break-before, .pmd-col-span,
      .pmd-suppress-footer, .dc-art-top, .dc-art-bottom, .column-break)
    - Break/overflow control scoped to a page type (.dc-specialty break rules)
-   - Page-level typography constraints (orphans/widows, heading break rules)
-     scoped to .page context
+
+   NOTE: Page-level typography constraints (orphans/widows on body, break-after
+   on global headings) live in dc-core.css — they cascade to every .page box,
+   so repeating them here would be pure duplication.
 
    MUST NOT CONTAIN:
    - @page declarations or named-page geometry (→ page-rules.css)
@@ -47,13 +49,9 @@
   break-inside: avoid;
 }
 
-.page img {
-  max-width: 100%;
-  height: auto;
-}
-
 /* Specialty card images must be constrained to prevent full-size external images
-   from breaking break-inside:avoid. More specific than .page img. */
+   from breaking break-inside:avoid. (Generic `img { max-width: 100% }` baseline
+   lives in dc-core.css.) */
 .page .dc-specialty-card img {
   width: var(--dc-specialty-card-media-width);
   height: var(--dc-specialty-card-media-height);
@@ -76,17 +74,6 @@
   height: var(--page-height, 11.25in);
   background-color: var(--bg);
   break-before: page;
-}
-
-/* ── PAGE-LEVEL TYPOGRAPHY CONSTRAINTS ────────────────────────────────────── */
-.page p {
-  orphans: 2;
-  widows: 2;
-}
-
-.page h2,
-.page h3 {
-  break-after: avoid;
 }
 
 /* ── PRINT UTILITY CLASSES ─────────────────────────────────────────────────── */

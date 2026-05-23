@@ -62,7 +62,7 @@ Bury the math inside the moment and build scenes that hit harder than the dice e
 
 ## NPC Stat Block: Fodder
 
-@section
+@section .dc-npc-stat
 
 ### Fodder
 
@@ -99,7 +99,7 @@ UniArm 100 / Redi-Mobile Cyberleg / RedEye Optical Prosthetic (could be just one
 
 ## NPC Stat Block: Operator
 
-@section
+@section .dc-npc-stat
 
 ### Operators
 
@@ -134,7 +134,7 @@ UniArm 100 Cyberarm w/Optalanges TechMech kit and Smuggler's Stash Level 1, Ligh
 
 ## NPC Stat Block: Master
 
-@section
+@section .dc-npc-stat
 
 ### Masters
 
