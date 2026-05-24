@@ -85,8 +85,8 @@ h2 {
   padding-bottom: 0.1em;
 }
 
-/* H3 — lighter teal: sub-sections */
-h3 { font-size: var(--fs-h3); margin-top: 0.08in; color: var(--hud-blue); letter-spacing: var(--ls-heading); }
+/* H3 — deep teal: sub-sections (hud-blue-dark gives 6.4:1 on paper-cream vs hud-blue's 3.8:1) */
+h3 { font-size: var(--fs-h3); margin-top: 0.08in; color: var(--hud-blue-dark); letter-spacing: var(--ls-heading); }
 /* H4–H6 — grim dark ramp: body labels */
 h4 { font-size: var(--fs-h4); margin-top: 0.05in; color: var(--ink-dark);  letter-spacing: 0.06em; }
 h5 { font-size: var(--fs-h5); color: var(--ink-smoke); }
@@ -113,7 +113,7 @@ blockquote {
   font-family: var(--font-quote);
   font-style: italic;
   color: var(--ink);
-  border-left: 7px solid var(--hud-magenta);
+  border-left: 7px solid var(--hud-blue-dim);
   border-right: 2px solid rgba(230, 0, 122, 0.18);
   background: var(--paper-stain);
   padding: var(--space-md) var(--space-md) var(--space-md) var(--space-xl);

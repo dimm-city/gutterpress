@@ -1,0 +1,137 @@
+/* =============================================================================
+   DEPRECATED.CSS — Reference Parking Lot
+   =============================================================================
+
+   NOT LOADED by the build. This file is intentionally absent from index.css.
+
+   Components in this file were either:
+     - never had a live emitter (no markdown authoring path)
+     - never had any live content usage in the field guide
+     - violated the Contextual Cascade Principle's "no raw HTML in markdown"
+       rule (the only way to render them was raw <span class="...">)
+
+   They are kept here for reference because the design intent may be revived
+   in a future spread. If reintroduced, the cascade-correct shape is:
+
+       @section .dc-X        ← author opt-in section component
+       content...            ← natural markdown
+       @end-section
+
+   …with the styling living in dc-components.css under
+   `.section.dc-X` and reading from `var(--dc-X-*, fallback)` tokens.
+
+   Do NOT load this file. Do NOT author against these classes in markdown.
+   ──────────────────────────────────────────────────────────────────────── */
+
+
+/* ───────── DC-STAMP — diegetic stamp chrome (DREAM MASTER, CLASSIFIED) ─────
+   Removed from dc-components.css 2026-05-24. Reason: zero live usage in any
+   Part 2 (30x) example file; only appeared in Part 1 documentation specimens
+   as raw <span class="dc-stamp"> HTML, which violates the cascade principle's
+   no-raw-HTML rule. If a stamp is needed in a future spread, design it as a
+   section component (@section .dc-stamp) so the wrapping <section> can
+   display: inline-block carrying the stamp styling. */
+
+.dc-stamp {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dc-stamp-color, var(--blood));
+  border: 2px solid var(--dc-stamp-color, var(--blood));
+  padding: 6px 10px;
+  transform: rotate(-4deg);
+  background: var(--dc-stamp-surface, var(--paper-cream));
+  position: relative;
+}
+
+.dc-stamp::before,
+.dc-stamp::after {
+  content: '';
+  position: absolute;
+  background: var(--dc-stamp-color, var(--blood));
+  opacity: 0.5;
+}
+
+.dc-stamp::before {
+  top: -1px;
+  left: 4px;
+  right: 4px;
+  height: 1px;
+}
+
+.dc-stamp::after {
+  bottom: -1px;
+  left: 4px;
+  right: 4px;
+  height: 1px;
+}
+
+.dc-stamp.dc-classified {
+  --dc-stamp-color: var(--orange);
+  transform: rotate(2deg);
+}
+
+
+/* ───────── .scream — legacy "ROLL THE DIE!" inline emphasis ─────────────────
+   Never had CSS in this project — was a class name referenced in Part 1 docs
+   and README/roadmap as an "intentionally unprefixed exception," but the
+   styling never landed. The functional substitute is .dc-roll-the-die,
+   which lives in dc-components.css. If a future iteration wants explicit
+   "scream" styling, define it as .dc-roll-the-die styling (the canonical
+   prefixed name) or as a section component. */
+
+
+/* ───────── @class-entry / .section.dc-class-entry — specialty roster ────────
+   Removed 2026-05-24. Reason: zero live usage in any 30x example file (the
+   one historical consumer was the "fabricated specimen pages" removed in
+   commit 84d4ec2 when the design guide split into Part 1 + Part 2 real-world
+   examples). The macro and CSS survived the cull as POC leftovers.
+
+   Plus: an attempt to revive it surfaced a parser-state bug where consecutive
+   @class-entry blocks fail to render — only the last one is parsed. Rather
+   than fix the parser for a never-used feature, the macro is deprecated.
+
+   If the "specialty roster" format is needed in a future spread, the
+   cascade-correct shape is: @section .dc-class-entry as the wrapper, with
+   the structural elements (.dc-portrait frame, content column, tag-row of
+   classtag pills) inside. The CSS below preserves the layout intent for
+   reference. The plugin would need a parser-rewrite to support multiple
+   consecutive entries correctly. */
+
+.section.dc-class-entry {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 4px;
+  break-inside: avoid;
+}
+
+.section.dc-class-entry > .dc-portrait {
+  flex-shrink: 0;
+}
+
+.section.dc-class-entry > .dc-content-col {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Class name h3 — crimson display, no underline border (override of default h3). */
+.section.dc-class-entry h3 {
+  color: var(--crimson);
+  margin: 0 0 8px;
+}
+
+/* Generic horizontal tag-row primitive — used here for the classtag pill cluster.
+   Was the only consumer; deprecated alongside the class-entry. Could be hoisted
+   back to dc-components.css if any future component needs an inline-tag row. */
+.dc-tag-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+/* (no CSS to park — class has always been a no-op) */

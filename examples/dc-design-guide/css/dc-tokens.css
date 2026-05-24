@@ -94,7 +94,7 @@
 :root {
 
   /* ── Page & Paper ─────────────────────────────────────────────────────── */
-  --bg:           #d3cec6;  /* page background — warm light gray */
+  --bg:           #c8c5bf;  /* ash-concrete — cool gray, creaturepunk substrate (L*~70) */
   --paper-cream:  #eee0c4;  /* bone-cream — warm but not competing with acid yellow */
   --paper-light:  #e4dcc4;  /* dusty manila — cooler than cream */
   --paper-aged:   #d4c9ad;  /* worn kraft — proper decay register */
@@ -109,24 +109,32 @@
   /* ── Accents — creaturepunk fire + blood ─────────────────────────────── */
   --crimson:    #e1261c;  /* PMS Red 032 — CMYK 0 95 90 0; survives POD */
   --blood:      #901a12;  /* oxidised arterial — 5.2:1 on paper-cream */
-  --orange:     #f26b1f;  /* PMS 165 — CMYK 0 70 95 0; hazard orange */
+  --orange:     #d4500a;  /* burnt circuit-board — heat-damaged, not friendly cone */
   --rust:       #b23a12;  /* burnt rebar edge */
-  --amber:      #8a6a35;  /* tarnished brass connector */
+  --amber:      #7a5a20;  /* sulfur-scorched brass — contaminated, not generic earth */
   --deep-rust:  #6a1a08;  /* shadow rust — deepest warm dark */
-  --amber-dark: #6e5020;  /* burnt amber — darkened from old muddy #b87400 */
+  --amber-dark: #5c3c10;  /* charred amber — follows amber down */
+
+  /* ── Brand Signature Layer — print-safe analogs of dimm.city web palette
+     These three are the source of truth for "the dimm.city signature in print."
+     Values are SWOP/substrate-corrected from the website's pure-RGB tokens
+     (#d946ef / #00ffff / #ffd700) so they survive POD press without muddying.
+     HUD + signal tokens below alias these — touch the brand layer first. */
+  --brand-magenta: #c026d3;  /* dimm.city cyber-magenta, SWOP-corrected from web #d946ef */
+  --brand-cyan:    #00bcd4;  /* dimm.city neon-cyan, paper-contrast-tuned from web #00ffff */
+  --brand-yellow:  #ffd700;  /* dimm.city brand-yellow — survives press unchanged */
+  --brand-violet:  #7030b8;  /* dimm.city cyber-violet, SWOP-corrected from web #a020f0 */
 
   /* ── HUD Colors — digital neon chrome ────────────────────────────────── */
-  /* These are the CMYK process-primary neons — maximum chroma CMYK can make */
   --hud-blue:        #1f6f94;  /* teal-cyan mid HUD — CMYK 85 45 25 10 */
   --hud-blue-dark:   #14516e;  /* deep teal for borders/rules/H2 text */
-  --hud-blue-bright: #00aeef;  /* PROCESS CYAN 100C 0M 0Y 0K — the neon spark */
-  --hud-blue-dim:    #b8d8e8;  /* muted cyan panel tint on cream */
-  --hud-magenta:     #e6007a;  /* PROCESS MAGENTA 0C 100M 0Y 0K — Tokyo arcade */
+  --hud-blue-bright: var(--brand-cyan);     /* alias — substrate-safe neon-cyan accent */
+  --hud-blue-dim:    #7ab8d0;  /* visible-on-cream panel tint (was #b8d8e8 — invisible at L*84) */
+  --hud-magenta:     var(--brand-magenta);  /* alias — brand-signature cyber-magenta */
   --hud-panel:       #eeece8;  /* neutral light cream — callouts, note bars */
 
-  /* ── New signal colors — the creaturepunk sparks ──────────────────────── */
-  --neon-acid:  #e8eb00;  /* CMYK 10 0 100 0 — hazmat acid yellow, NOT for text */
-  --ink-bruise: #38184a;  /* deep violet shadow — underground, chemical */
+  /* ── Shadow / Atmosphere ──────────────────────────────────────────────── */
+  --ink-bruise: #28143c;  /* dimm.city deep purple atmosphere — chapter tabs, depth shadows */
 
   /* ── Surface Tints ────────────────────────────────────────────────────── */
   --surface-tint-3:      #f2f0ec;
@@ -134,7 +142,6 @@
 
   /* ── Borders ──────────────────────────────────────────────────────────── */
   --border-hairline: #c8b898;  /* warmer/darker hairline on aged paper */
-  --border-blue:     var(--hud-blue);
   --bw-thin:         1px;
   --callout-border-width-small: 2px;
 
@@ -199,35 +206,52 @@
 
   /* ── Semantic / Role Colors ───────────────────────────────────────────── */
   --text-secondary:       #a8b0bc;  /* muted TOC link text */
-  --classtag-gutterdruid: #4a7c3a;
-  --classtag-technosorc:  #8a3aa9;
 
   /* ── Shapes ───────────────────────────────────────────────────────────── */
   --clip-banner: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
 
   /* ── Specialty Accent Colors ──────────────────────────────────────────── */
-  --augmerc-accent:        var(--hud-blue);
-  --proxy-accent:          var(--orange);
-  --streetwarden-accent:   #6fc24a;
-  --gutterdruid-accent:    #b3884f;
-  --cybersurgeon-accent:   #c0c0c0;
-  --wirephreak-accent:     #b34fb3;
-  --technosorcerer-accent: #4f6fc2;
-  --etherlock-accent:      #d4af37;
+  /* Scheme A: 3 brand-anchored (augmerc=magenta, wirephreak=cyan, technosorcerer=violet, etherlock=yellow),
+     4 bespoke creaturepunk hues (proxy=burnt orange, streetwarden=toxic green, gutterdruid=verdigris,
+     cybersurgeon=chrome). */
+  --augmerc-accent:        var(--brand-magenta);  /* cyber-augmentation = brand-signature magenta */
+  --proxy-accent:          var(--orange);          /* burnt-circuit orange */
+  --streetwarden-accent:   #4db840;                /* toxic civic green — hazard, not park bench */
+  --gutterdruid-accent:    #7a9a3a;                /* lichen / verdigris on rebar */
+  --cybersurgeon-accent:   #a8b4b8;                /* cool blue-gray chrome (was flat silver) */
+  --wirephreak-accent:     var(--brand-cyan);      /* signal interference = brand neon-cyan */
+  --technosorcerer-accent: var(--brand-violet);    /* ritual + tech = brand cyber-violet */
+  --etherlock-accent:      var(--brand-yellow);    /* spirit channeling = brand radiant gold */
 
-  /* ── Specialty Dark Colors (title/tab backgrounds) ──────────────────── */
-  --cybersurgeon-mid:      #707070;  /* card tab background */
-  --cybersurgeon-dark:     #606060;  /* path title + intro title background */
-  --wirephreak-dark:       #7a3a7a;  /* skill/path/intro dark purple */
-  --streetwarden-dark:     #2a5a1a;  /* skill card tab dark green */
-  --technosorcerer-dark:   #2a3a6a;  /* skill/path/intro dark indigo */
-  --gutterdruid-dark:      #5a3810;  /* skill card tab dark brown */
-  --etherlock-dark:        #6a5200;  /* skill/path/intro dark gold */
+  /* ── Specialty Dark Colors (path-shell + specialty-card backgrounds) ── */
+  --augmerc-dark:          #7a1080;  /* deep magenta-violet */
+  --proxy-dark:            #3d1a00;  /* near-black scorch */
+  --cybersurgeon-dark:     #303840;  /* cold clinical near-black */
+  --wirephreak-dark:       #003a40;  /* deep teal-black — drowned circuit */
+  --streetwarden-dark:     #1a3d10;  /* rot-soaked forest dark */
+  --technosorcerer-dark:   #200a38;  /* ink-bruise kin — deep ritual dark */
+  --gutterdruid-dark:      #2a3408;  /* swamp-rot dark — greenish, not brown */
+  --etherlock-dark:        #3d3000;  /* deep tarnished gold */
 
-  /* ── Skill Tier Badge Colors ───────────────────────────────────────────── */
-  --tier-bronze:  #7a5f38;  /* tier 1 — earthy bronze; darkened for WCAG AA 4.5:1 on --paper-cream */
-  --tier-gold:    #D4AF37;  /* tier 2 — bright gold */
-  --tier-silver:  #C0C0C0;  /* tier 3 — polished silver */
+  /* ── Specialty Mid Colors (card-tab bg + card border — uniform contract)
+     Each mid sits perceptually midway between its specialty's accent and
+     dark, slightly shifted toward the dark hue. Used wherever a specialty
+     needs a chrome/structural tone that isn't accent-glare or dark-mass. */
+  --augmerc-mid:           #9a1896;  /* between brand-magenta and augmerc-dark */
+  --proxy-mid:             #7a3008;  /* burnt umber, between scorch-orange and dark */
+  --cybersurgeon-mid:      #606870;  /* cool steel mid (pre-existing token) */
+  --streetwarden-mid:      #347828;  /* civic green mid, not chartreuse */
+  --gutterdruid-mid:       #4d6020;  /* olive-swamp lichen */
+  --wirephreak-mid:        #006878;  /* drowned signal teal */
+  --technosorcerer-mid:    #4a1878;  /* ritual indigo midpoint */
+  --etherlock-mid:         #8a6a00;  /* tarnished antique gold */
+
+  /* ── Skill Tier Badge Colors — creaturepunk-decoded ─────────────────────
+     Tier identity reframed: not trophy-show metals but salvaged/scarred ones.
+     Bronze = rust-on-steel, Gold = pirated brass, Silver = cyan-tinged chrome. */
+  --tier-bronze:  #8a5c28;  /* tier 1 — rust-on-steel salvage */
+  --tier-gold:    #b8921a;  /* tier 2 — pirated brass, tarnished */
+  --tier-silver:  #a8b4b8;  /* tier 3 — cyan-tinged chrome (was flat printer-gray) */
 
   /* ── Section Component Public Tokens ────────────────────────────────────
      Default theming for .section / @section macros. Chapter-scoped overrides
@@ -235,7 +259,7 @@
      typically by applying a .dc-accent-X utility on @chapter / @section
      (see dc-components.css "ACCENT IDENTITY UTILITIES" section). */
   --section-bg:     var(--paper-cream);
-  --section-accent: var(--blood);
+  --section-accent: var(--brand-magenta);  /* brand signal at every section header (was --blood) */
 }
 
 

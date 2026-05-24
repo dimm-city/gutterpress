@@ -290,23 +290,29 @@ The `@specialty .augmerc` wrapper defines all 7 shape variables (`--dc-skill-tab
 
 2–3 specialty entries per page: portrait, class tag chip, prose description, flavor quote. Separated by tape dividers. **Page class:** normal body page, no break marker needed.
 
-**Components:** `.dc-class-entry` (outer) · `.dc-class-entry-portrait > .dc-portrait` · `.dc-class-entry-name` (H3) · `.dc-class-entry-tags > span.dc-classtag` · plain body paragraphs · `.dc-flavor` · `<div class="dc-tape">— § —</div>` (separator — not `<hr>`)
+**Status:** *deprecated 2026-05-24.* The `@class-entry` macro and the
+`.section.dc-class-entry` CSS were moved to `css/deprecated.css` after zero
+live usage was found in any Part 2 example file. A parser-state bug in the
+multi-entry path made revival expensive for a never-used feature. If the
+"specialty roster" format is needed in a future spread, design it from the
+cascade principle: `@section .dc-class-entry` as the wrapper, with structural
+elements inside. The structure below is preserved for reference only.
+
+**Reference emitted structure (deprecated):** `<div class="section dc-class-entry">` (outer) · `.dc-portrait > img` (frame component, direct child) · `.dc-content-col` (body column) > `<h3>` (styled by `.section.dc-class-entry h3`) + `.dc-tag-row > .dc-classtag` (generic tag-row primitive) + body `<p>` + `.dc-flavor` · followed by `<div class="dc-tape">— § —</div>` separator
 
 ```html
-<div class="dc-class-entry">
-  <div class="dc-class-entry-portrait">
-    <div class="dc-portrait">
-      <img src="images/specialty.png" alt="Specialty Name">
-    </div>
+<div class="section dc-class-entry">
+  <div class="dc-portrait">
+    <img src="images/specialty.png" alt="Specialty Name">
   </div>
-  <div class="dc-class-entry-body">
-    <h3 class="dc-class-entry-name">Specialty Name</h3>
-    <div class="dc-class-entry-tags">
-      <span class="dc-classtag augmerc"><span class="dc-classtag-dot"></span>Specialty Name</span>
+  <div class="dc-content-col">
+    <h3>Specialty Name</h3>
+    <div class="dc-tag-row">
+      <span class="dc-classtag augmerc">Specialty Name</span>
     </div>
     <p>Description paragraph one.</p>
     <p>Description paragraph two — when to choose this specialty.</p>
-    <div class="dc-flavor">"Flavor quote."<br><em>— Operator Name, Role, District</em></div>
+    <p class="dc-flavor">"Flavor quote."<br><em>— Operator Name, Role, District</em></p>
   </div>
 </div>
 

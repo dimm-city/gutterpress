@@ -118,13 +118,16 @@
 /* ── LUCID vs SURREAL — opposed palettes ─────────────────────────────────────
    Lucid = cold cyan HUD signal. Surreal = hot magenta reality-failure.
    Targeted at the two-column definition block split in the rules chapter. */
+/* Set tokens, not properties — keeps the component's contract intact. */
 .section.col-split .col:first-child .dc-definition-block {
-  background: var(--hud-blue-dim);
-  border-left: 5px solid var(--hud-blue-bright);
+  --dc-definition-block-surface: var(--hud-blue-dim);
+  --dc-definition-block-accent: var(--hud-blue-bright);
+  --dc-definition-block-accent-width: 5px;
 }
 .section.col-split .col:last-child .dc-definition-block {
-  background: var(--paper-stain);
-  border-left: 5px solid var(--hud-magenta);
+  --dc-definition-block-surface: var(--paper-stain);
+  --dc-definition-block-accent: var(--hud-magenta);
+  --dc-definition-block-accent-width: 5px;
 }
 
 /* ── FRONT MATTER PAGE H2 — dark band treatment ──────────────────────────────
@@ -165,17 +168,17 @@
    below reads the semantic structure and assigns component variants
    accordingly. To change a chapter's identity, edit ONE rule here. */
 
-/* Chapter 1 — opener + character creation */
-#ch-example-chapter-opener { --section-accent: var(--blood); }
+/* Chapter 1 — opener + character creation: brand identity register */
+#ch-example-chapter-opener { --section-accent: var(--brand-magenta); }
 
-/* Chapter 2 — specialty overview (Choose Your Specialty card grid) */
+/* Chapter 2 — specialty overview (Choose Your Specialty card grid): HUD/data */
 #ch-example-specialty-overview { --section-accent: var(--hud-blue-dark); }
 
-/* Chapter 3 — specialty profile spreads (Augmerc and friends) */
+/* Chapter 3 — specialty profile spreads (Augmerc and friends): HUD/data */
 #ch-example-specialty-profile { --section-accent: var(--hud-blue-dark); }
 
-/* Chapter 4 — rules (Are You Lucid Yet, Dreams, City, etc.) */
-#ch-example-rules { --section-accent: var(--blood); }
+/* Chapter 4 — rules (Are You Lucid Yet, Dreams, City, etc.): brand identity register */
+#ch-example-rules { --section-accent: var(--brand-magenta); }
 
 /* Chapter 5 — DM & NPC pages (stat blocks) */
 #ch-example-dm-npcs { --section-accent: var(--rust); }

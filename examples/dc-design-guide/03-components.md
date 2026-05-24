@@ -385,8 +385,8 @@ Five-rung d20 result table for all rolls. Each row is color-coded by result seve
 | DM Note block | `@dm-note label="…"` … `@end-dm-note` | `.dc-dm-note` |
 | Numbered Procedure | `@procedure` … `@end-procedure` | `.dc-steps` |
 | Outcome Ladder | `@outcome` … `@end-outcome` | `.dc-outcomes` |
-| Roll Lucid badge | auto via `@outcome` Crit row | `.dc-roll-lucid` |
-| Roll Surreal badge | auto via `@outcome` Catastrophe row | `.dc-roll-surreal` |
+| Roll Lucid badge | (no current authoring path — CSS exists, awaiting a section-component wrapper) | `.dc-roll-lucid` |
+| Roll Surreal badge | (no current authoring path — CSS exists, awaiting a section-component wrapper) | `.dc-roll-surreal` |
 
 ---
 

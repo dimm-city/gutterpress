@@ -45,8 +45,6 @@
  *   @end-specialty-art
  *   @specialty-card     → Individual specialty card
  *   @end-specialty-card
- *   @class-entry        → Class entry card
- *   @end-class-entry
  *   @gear-card          → Gear card
  *   @end-gear-card
  *   @chapter-opener     → Chapter opener number badge (`@chapter-opener C.NN`)
@@ -817,9 +815,6 @@ export default function dimmCityPlugin(md, options = {}) {
       let inCallout = false;
       let inDmNote = false;
       let inBlock = false;
-      let inClassEntry = false;
-      let classEntryName = '';
-      let classEntryTokens = [];
      let learningPathHasTitle = false;
      let inLearningPathShell = false;
      let currentSkillAttrs = {};
@@ -1148,94 +1143,6 @@ export default function dimmCityPlugin(md, options = {}) {
           continue;
         }
         // Pass through anything else (shouldn't normally occur)
-        continue;
-      }
-
-      // --- @class-entry / @end-class-entry ---
-      // Collects tokens between markers and emits a class entry card
-      const classEntryMarker = parseMarker(tok, tokens, i, '@class-entry');
-      if (classEntryMarker.matched) {
-        inClassEntry = true;
-        classEntryTokens = [];
-        // Extract specialty name from the inline content after '@class-entry '
-        const ceInline = tokens[i + 1];
-        const ceContent = ceInline ? ceInline.content.trim() : '';
-        const ceRest = ceContent.startsWith('@class-entry ')
-          ? ceContent.slice('@class-entry '.length).trim()
-          : '';
-        classEntryName = ceRest.split(/\s+/)[0] || '';
-        i += 2;
-        continue;
-      }
-
-      if (inClassEntry) {
-        if (isMarker(tok, tokens, i, '@end-class-entry')) {
-          inClassEntry = false;
-          // Walk collected tokens to build portrait, name, and body content
-          const specialtySlug = classEntryName.toLowerCase();
-          const specialtyLabel = specialtySlug.charAt(0).toUpperCase() + specialtySlug.slice(1);
-          let portraitHtml = '';
-          let entryNameHtml = '';
-          let bodyPartsHtml = '';
-
-          for (let ci = 0; ci < classEntryTokens.length; ci++) {
-            const ctok = classEntryTokens[ci];
-            // Image-only paragraph → portrait div
-            if (ctok.type === 'inline' && /!\[([^\]]*)\]\(([^)]+)\)/.test(ctok.content)) {
-              const imgMatch = ctok.content.match(/!\[([^\]]*)\]\(([^)]+)\)/);
-              if (imgMatch) {
-                portraitHtml = '<div class="dc-class-entry-portrait">\n  <img src="' + esc(imgMatch[2]) + '" alt="' + esc(imgMatch[1]) + '">\n</div>\n';
-              }
-              continue;
-            }
-            // Heading h3 → class name
-            if (ctok.type === 'heading_open' && ctok.tag === 'h3') {
-              const headInline = classEntryTokens[ci + 1];
-              const headText = headInline && headInline.type === 'inline' ? headInline.content.trim() : '';
-              entryNameHtml = '<h3 class="dc-class-entry-name">' + esc(headText) + '</h3>\n';
-              ci += 2; // Skip heading_open, inline, heading_close
-              continue;
-            }
-            // Blockquote → flavor paragraph
-            if (ctok.type === 'blockquote_open') {
-              let bqContent = '';
-              let bi = ci + 1;
-              while (bi < classEntryTokens.length && classEntryTokens[bi].type !== 'blockquote_close') {
-                if (classEntryTokens[bi].type === 'inline') {
-                  bqContent = classEntryTokens[bi].content;
-                }
-                bi++;
-              }
-              // Render italic/bold in flavor text
-              const renderedFlavor = md.renderInline(bqContent);
-              bodyPartsHtml += '<p class="dc-flavor">' + renderedFlavor + '</p>\n';
-              ci = bi;
-              continue;
-            }
-            // Inline token in a paragraph → prose
-            if (ctok.type === 'inline' && ctok.content.trim() !== '') {
-              const renderedProse = md.renderInline(ctok.content);
-              bodyPartsHtml += '<p>' + renderedProse + '</p>\n';
-            }
-          }
-
-          let html = '<div class="dc-class-entry">\n';
-          if (portraitHtml) html += portraitHtml;
-          html += '<div class="dc-class-entry-body">\n';
-          if (entryNameHtml) html += entryNameHtml;
-          html += '<div class="dc-class-entry-tags">\n';
-          html += '  <span class="dc-classtag ' + esc(specialtySlug) + '"><span class="dc-classtag-dot"></span>' + esc(specialtyLabel) + '</span>\n';
-          html += '</div>\n';
-          html += bodyPartsHtml;
-          html += '</div>\n</div>\n';
-          newTokens.push(makeToken('html_block', html));
-          classEntryName = '';
-          classEntryTokens = [];
-          i += 2;
-          continue;
-        }
-        // Collect all tokens between @class-entry and @end-class-entry
-        classEntryTokens.push(tok);
         continue;
       }
 
@@ -2009,56 +1916,6 @@ export default function dimmCityPlugin(md, options = {}) {
         html += '    </tr>\n';
       });
       html += '  </tbody>\n</table>\n';
-      newTokens.push(makeToken('html_block', html));
-    }
-
-    // Emit partial @class-entry if @end-class-entry was missing
-    if (inClassEntry && classEntryTokens.length > 0) {
-      const specialtySlug = classEntryName.toLowerCase();
-      const specialtyLabel = specialtySlug.charAt(0).toUpperCase() + specialtySlug.slice(1);
-      let portraitHtml = '';
-      let entryNameHtml = '';
-      let bodyPartsHtml = '';
-      for (let ci = 0; ci < classEntryTokens.length; ci++) {
-        const ctok = classEntryTokens[ci];
-        if (ctok.type === 'inline' && /!\[([^\]]*)\]\(([^)]+)\)/.test(ctok.content)) {
-          const imgMatch = ctok.content.match(/!\[([^\]]*)\]\(([^)]+)\)/);
-          if (imgMatch) {
-            portraitHtml = '<div class="dc-class-entry-portrait">\n  <img src="' + esc(imgMatch[2]) + '" alt="' + esc(imgMatch[1]) + '">\n</div>\n';
-          }
-          continue;
-        }
-        if (ctok.type === 'heading_open' && ctok.tag === 'h3') {
-          const headInline = classEntryTokens[ci + 1];
-          const headText = headInline && headInline.type === 'inline' ? headInline.content.trim() : '';
-          entryNameHtml = '<h3 class="dc-class-entry-name">' + esc(headText) + '</h3>\n';
-          ci += 2;
-          continue;
-        }
-        if (ctok.type === 'blockquote_open') {
-          let bqContent = '';
-          let bi = ci + 1;
-          while (bi < classEntryTokens.length && classEntryTokens[bi].type !== 'blockquote_close') {
-            if (classEntryTokens[bi].type === 'inline') bqContent = classEntryTokens[bi].content;
-            bi++;
-          }
-          bodyPartsHtml += '<p class="dc-flavor">' + md.renderInline(bqContent) + '</p>\n';
-          ci = bi;
-          continue;
-        }
-        if (ctok.type === 'inline' && ctok.content.trim() !== '') {
-          bodyPartsHtml += '<p>' + md.renderInline(ctok.content) + '</p>\n';
-        }
-      }
-      let html = '<div class="dc-class-entry">\n';
-      if (portraitHtml) html += portraitHtml;
-      html += '<div class="dc-class-entry-body">\n';
-      if (entryNameHtml) html += entryNameHtml;
-      html += '<div class="dc-class-entry-tags">\n';
-      html += '  <span class="dc-classtag ' + esc(specialtySlug) + '"><span class="dc-classtag-dot"></span>' + esc(specialtyLabel) + '</span>\n';
-      html += '</div>\n';
-      html += bodyPartsHtml;
-      html += '</div>\n</div>\n';
       newTokens.push(makeToken('html_block', html));
     }
 

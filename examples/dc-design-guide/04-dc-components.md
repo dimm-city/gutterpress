@@ -289,14 +289,9 @@ Both are auto-generated from the `@learning-path` / `@skill` macros. Author manu
 
 ---
 
-## Stamps
+## Stamps *(deprecated)*
 
-Rotated monospaced label chips for content status (draft, deprecated, classified, DM-only). `.dc-classified` adds the orange-border variant.
-
-```html
-<span class="dc-stamp">DREAM MASTER</span>
-<span class="dc-stamp dc-classified">PRE-RELEASE</span>
-```
+Rotated monospaced label chips for content status (draft, deprecated, classified, DM-only). Moved to `css/deprecated.css` on 2026-05-24 — zero live usage and the only authoring path was raw HTML, which violates the no-HTML-in-markdown rule. If revived, the cascade-correct shape is `@section .dc-stamp` containing the label text, with `.dc-classified` as a variant on the section. The parked CSS preserves the visual design for reference.
 
 ---
 

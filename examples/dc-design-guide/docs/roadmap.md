@@ -91,7 +91,7 @@ The chapter-start example H1 now carries `{.dc-chevron}`, and the shared page-te
 **Implementation notes:**
 - Simple macros = wrap content in a named div, no special parsing; follow the existing completed wrapper macros (`@sidebar`, `@sidebar-box`, `@definition`) rather than assuming a shipped `@lede` macro
 - Medium macros = structured sub-blocks or ordered list detection; follow `@skill` / `@outcome` patterns
-- All emitted classes must use `dc-` prefix per CLAUDE.md (exception: `.scream` intentionally unprefixed)
+- All emitted classes must use `dc-` prefix per CLAUDE.md (no exceptions — the legacy `.scream` exception was retired 2026-05-24)
 - Each new macro needs a matching CSS rule in `components.css` before shipping
 - Each new macro needs a design guide specimen in the appropriate `03-components.md` or `08-field-guide-components.md` section
 - `dc-pullquote` should migrate to GFM alert syntax, not a new macro

@@ -176,9 +176,11 @@ Important distinction:
 
 ### Class naming convention
 
-All classes emitted by the plugin use the `dc-` prefix. The only exception is
-`.scream` (the ROLL THE DIE! inline span), which is intentionally unprefixed.
-When adding new output, always verify a matching CSS rule exists before shipping.
+All classes emitted by the plugin use the `dc-` prefix. (The `.scream` class
+referenced in earlier docs was retired 2026-05-24 — it had no CSS and no
+emitter. Use `.dc-roll-the-die` if an explicit emphatic-roll callout is
+needed.) When adding new output, always verify a matching CSS rule exists
+before shipping.
 
 ### Per-page styling
 

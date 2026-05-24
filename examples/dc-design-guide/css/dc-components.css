@@ -159,7 +159,7 @@
 /* ── Variant: Origin Callout ────────────────────────────────────────────── */
 .dc-origin-callout {
   --dc-alert-bg: var(--surface-orange-tint);
-  --dc-alert-border: var(--blood);
+  --dc-alert-border: var(--rust);  /* warmth without blood's full danger weight */
   --dc-alert-label-color: var(--crimson);
   --dc-alert-border-width: 3px;
 }
@@ -176,8 +176,8 @@
 .dc-gear-callout {
   --dc-alert-bg: var(--ink-dark);
   --dc-alert-fg: var(--paper-cream);
-  --dc-alert-border: var(--neon-acid);  /* acid yellow-green = hazmat/tech signal */
-  --dc-alert-label-color: var(--neon-acid);
+  --dc-alert-border: var(--brand-yellow);  /* brand-yellow = hazmat/tech signal */
+  --dc-alert-label-color: var(--brand-yellow);
   margin: 0.12in auto 0.18in;
   border-left-width: 4px;
   width: 90%;
@@ -197,7 +197,7 @@
      --dc-specialty-intro-title-shape → .dc-specialty-intro > h2 clip-path
      --dc-specialty-intro-clip       → .dc-specialty-intro clip-path */
 
-/* ── Augmerc — hardened military, HUD blue, hex cuts ───────────────────── */
+/* ── Augmerc — cyber-augmentation, brand magenta + cyan accent, hex cuts ── */
 .dc-specialty.augmerc {
   --dc-skill-tab-shape: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
   --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px));
@@ -210,23 +210,27 @@
 
 .dc-specialty.augmerc .dc-skill-card {
   --dc-card-accent: var(--augmerc-accent);
-  --dc-card-tab-bg: var(--hud-blue-dark);
+  --dc-card-tab-bg: var(--augmerc-mid);
+  --dc-card-tab-title-color: var(--paper-cream);
 }
 
 .dc-specialty.augmerc .dc-path-shell {
-  --dc-path-title-bg: var(--hud-blue-dark);
+  --dc-path-title-bg: var(--augmerc-dark);
   --dc-path-accent: var(--augmerc-accent);
 }
 
+/* AUGMERC OPT-IN: brand-cyan accent inside magenta body — the user-praised
+   "brand-pop pattern." Augmerc is the only specialty using this; do not
+   propagate to other specialties without explicit approval. */
 .dc-specialty.augmerc .dc-specialty-card {
-  --dc-specialty-card-bg: var(--hud-blue-dark);
+  --dc-specialty-card-bg: var(--augmerc-dark);
   --dc-specialty-card-fg: var(--paper-cream);
-  --dc-specialty-card-accent: var(--hud-blue-bright);
-  --dc-specialty-card-border: var(--hud-blue);
+  --dc-specialty-card-accent: var(--brand-cyan);
+  --dc-specialty-card-border: var(--augmerc-mid);
 }
 
 .dc-specialty.augmerc .dc-specialty-intro {
-  --dc-specialty-intro-title-bg: var(--hud-blue-dark);
+  --dc-specialty-intro-title-bg: var(--augmerc-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
   --dc-specialty-intro-bg: var(--paper-light);
 }
@@ -263,7 +267,7 @@
 .dc-specialty.cybersurgeon .dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--cybersurgeon-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-bg: var(--hud-panel);
+  --dc-specialty-intro-bg: var(--paper-light);  /* uniform intro-bg */
 }
 
 /* ── Proxy — covert, orange, top-left step + diagonal bottom ────────────── */
@@ -279,25 +283,26 @@
 
 .dc-specialty.proxy .dc-skill-card {
   --dc-card-accent: var(--proxy-accent);
-  --dc-card-tab-bg: var(--rust);
+  --dc-card-tab-bg: var(--proxy-mid);
+  --dc-card-tab-title-color: var(--paper-cream);
 }
 
 .dc-specialty.proxy .dc-path-shell {
-  --dc-path-title-bg: var(--ink-dark);
+  --dc-path-title-bg: var(--proxy-dark);
   --dc-path-accent: var(--proxy-accent);
 }
 
 .dc-specialty.proxy .dc-specialty-card {
-  --dc-specialty-card-bg: var(--ink-dark);
+  --dc-specialty-card-bg: var(--proxy-dark);
   --dc-specialty-card-fg: var(--paper-cream);
-  --dc-specialty-card-accent: var(--orange);
-  --dc-specialty-card-border: var(--rust);
+  --dc-specialty-card-accent: var(--proxy-accent);
+  --dc-specialty-card-border: var(--proxy-mid);
 }
 
 .dc-specialty.proxy .dc-specialty-intro {
-  --dc-specialty-intro-title-bg: var(--ink-dark);
+  --dc-specialty-intro-title-bg: var(--proxy-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-bg: var(--surface-orange-tint);
+  --dc-specialty-intro-bg: var(--paper-light);
 }
 
 /* ── Wirephreak — hacker, magenta, asymmetric cross-cuts ───────────────── */
@@ -313,7 +318,7 @@
 
 .dc-specialty.wirephreak .dc-skill-card {
   --dc-card-accent: var(--wirephreak-accent);
-  --dc-card-tab-bg: var(--wirephreak-dark);
+  --dc-card-tab-bg: var(--wirephreak-mid);
   --dc-card-tab-title-color: var(--paper-cream);
 }
 
@@ -326,13 +331,13 @@
   --dc-specialty-card-bg: var(--wirephreak-dark);
   --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--wirephreak-accent);
-  --dc-specialty-card-border: var(--wirephreak-accent);
+  --dc-specialty-card-border: var(--wirephreak-mid);
 }
 
 .dc-specialty.wirephreak .dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--wirephreak-dark);
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-bg: var(--hud-panel);
+  --dc-specialty-intro-bg: var(--paper-light);
 }
 
 /* ── Streetwarden — community defender, green, soft diamond cuts ────────── */
@@ -348,12 +353,12 @@
 
 .dc-specialty.streetwarden .dc-skill-card {
   --dc-card-accent: var(--streetwarden-accent);
-  --dc-card-tab-bg: var(--streetwarden-dark);
+  --dc-card-tab-bg: var(--streetwarden-mid);
   --dc-card-tab-title-color: var(--paper-cream);
 }
 
 .dc-specialty.streetwarden .dc-path-shell {
-  --dc-path-title-bg: var(--crimson);
+  --dc-path-title-bg: var(--streetwarden-dark);  /* was --crimson — cross-token */
   --dc-path-accent: var(--streetwarden-accent);
 }
 
@@ -361,13 +366,13 @@
   --dc-specialty-card-bg: var(--streetwarden-dark);
   --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--streetwarden-accent);
-  --dc-specialty-card-border: var(--streetwarden-accent);
+  --dc-specialty-card-border: var(--streetwarden-mid);
 }
 
 .dc-specialty.streetwarden .dc-specialty-intro {
-  --dc-specialty-intro-title-bg: var(--crimson);
+  --dc-specialty-intro-title-bg: var(--streetwarden-dark);  /* was --crimson — cross-token */
   --dc-specialty-intro-title-color: var(--paper-cream);
-  --dc-specialty-intro-bg: var(--paper-cream);
+  --dc-specialty-intro-bg: var(--paper-light);  /* uniform intro-bg */
 }
 
 /* ── Technosorcerer — arcane + tech, indigo, top-center gate notch ──────── */
@@ -383,7 +388,7 @@
 
 .dc-specialty.technosorcerer .dc-skill-card {
   --dc-card-accent: var(--technosorcerer-accent);
-  --dc-card-tab-bg: var(--technosorcerer-dark);
+  --dc-card-tab-bg: var(--technosorcerer-mid);
   --dc-card-tab-title-color: var(--paper-cream);
 }
 
@@ -396,7 +401,7 @@
   --dc-specialty-card-bg: var(--technosorcerer-dark);
   --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--technosorcerer-accent);
-  --dc-specialty-card-border: var(--technosorcerer-accent);
+  --dc-specialty-card-border: var(--technosorcerer-mid);
 }
 
 .dc-specialty.technosorcerer .dc-specialty-intro {
@@ -418,13 +423,12 @@
 
 .dc-specialty.gutterdruid .dc-skill-card {
   --dc-card-accent: var(--gutterdruid-accent);
-  --dc-card-tab-bg: var(--gutterdruid-dark);
+  --dc-card-tab-bg: var(--gutterdruid-mid);
   --dc-card-tab-title-color: var(--paper-cream);
 }
 
 .dc-specialty.gutterdruid .dc-path-shell {
   --dc-path-title-bg: var(--gutterdruid-dark);
-  --dc-path-title-color: var(--ink-dark);
   --dc-path-accent: var(--gutterdruid-accent);
 }
 
@@ -432,12 +436,12 @@
   --dc-specialty-card-bg: var(--gutterdruid-dark);
   --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--gutterdruid-accent);
-  --dc-specialty-card-border: var(--gutterdruid-accent);
+  --dc-specialty-card-border: var(--gutterdruid-mid);
 }
 
 .dc-specialty.gutterdruid .dc-specialty-intro {
-  --dc-specialty-intro-title-bg: var(--orange);
-  --dc-specialty-intro-title-color: var(--ink-dark);
+  --dc-specialty-intro-title-bg: var(--gutterdruid-dark);  /* was --orange — cross-token */
+  --dc-specialty-intro-title-color: var(--paper-cream);
   --dc-specialty-intro-bg: var(--paper-light);
 }
 
@@ -454,7 +458,7 @@
 
 .dc-specialty.etherlock .dc-skill-card {
   --dc-card-accent: var(--etherlock-accent);
-  --dc-card-tab-bg: var(--etherlock-dark);
+  --dc-card-tab-bg: var(--etherlock-mid);
   --dc-card-tab-title-color: var(--paper-cream);
 }
 
@@ -467,7 +471,7 @@
   --dc-specialty-card-bg: var(--etherlock-dark);
   --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--etherlock-accent);
-  --dc-specialty-card-border: var(--etherlock-accent);
+  --dc-specialty-card-border: var(--etherlock-mid);
 }
 
 .dc-specialty.etherlock .dc-specialty-intro {
@@ -513,14 +517,19 @@
 }
 
 /* ── Chevron banner ───────────────────────────────────────────────────── */
+/* Chapter-title chevron banner. Token contract:
+     --dc-chevron-bg    → banner background (default --rust)
+     --dc-chevron-color → text color (default --paper-cream)
+   Per-chapter override e.g.:
+     #ch-example-gear-tech .dc-chevron { --dc-chevron-bg: var(--hud-blue-dark); } */
 .dc-chevron {
   font-family: var(--font-display);
   font-size: var(--fs-h1);
   /* vw resolves to min in Paged.js — use fixed token */
   letter-spacing: 0.06em;
-  color: var(--paper-cream);
+  color: var(--dc-chevron-color, var(--paper-cream));
   text-transform: uppercase;
-  background: var(--rust);
+  background: var(--dc-chevron-bg, var(--rust));
   padding: 10px 28px 10px 14px;
   display: inline-block;
   max-width: 100%;
@@ -540,14 +549,19 @@ h1.dc-chevron {
 }
 
 
-/* ── Spray banner (h2 path header) ────────────────────────────────────── */
+/* ── Spray banner (h2 path header) ───────────────────────────────────────
+   Token contract:
+     --dc-spray-bg    → banner background (default --hud-magenta)
+     --dc-spray-color → text color (default --paper-cream)
+   Section-level override e.g.:
+     .section.dc-augmerc .dc-spray { --dc-spray-bg: var(--augmerc-dark); } */
 .dc-spray {
   font-family: var(--font-display);
   font-size: 22px;
-  color: var(--paper-cream);
+  color: var(--dc-spray-color, var(--paper-cream));
   text-transform: uppercase;
   line-height: 1.5;
-  background: var(--hud-magenta);
+  background: var(--dc-spray-bg, var(--hud-magenta));
   display: inline-block;
   box-sizing: border-box;
   padding: 16px 22px 18px;
@@ -565,7 +579,7 @@ h1.dc-chevron {
   right: -8px;
   bottom: -3px;
   width: 14px;
-  background: var(--hud-magenta);
+  background: var(--dc-spray-bg, var(--hud-magenta));
   transform: skewX(-8deg);
   z-index: -1;
 }
@@ -577,7 +591,7 @@ h1.dc-chevron {
   left: 8%;
   width: 45%;
   height: 5px;
-  background: var(--hud-magenta);
+  background: var(--dc-spray-bg, var(--hud-magenta));
   opacity: 0.08;
 }
 
@@ -633,9 +647,10 @@ h1.dc-chevron {
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.28);
 }
 
+/* Inline ↑↓→ marker. Token: --dc-arrow-color (default --orange). */
 .dc-arrow {
   font-family: var(--font-mono);
-  color: var(--orange);
+  color: var(--dc-arrow-color, var(--orange));
   font-size: 14px;
   font-weight: 700;
 }
@@ -671,16 +686,21 @@ h1.dc-chevron {
   letter-spacing: 0.5px;
 }
 
-/* ── Flavor (italic flavor text) ──────────────────────────────────────── */
+/* ── Flavor (italic flavor text) ──────────────────────────────────────────
+   Token contract:
+     --dc-flavor-color         → text color (default --ink-smoke)
+     --dc-flavor-accent        → left-rail color (default --orange)
+     --dc-flavor-accent-width  → left-rail weight (default 3px)
+*/
 .dc-flavor {
   font-family: var(--font-body);
   font-style: italic;
-  color: var(--ink-smoke);
+  color: var(--dc-flavor-color, var(--ink-smoke));
   font-size: var(--fs-body-sm);
   padding-bottom: 4px;
   margin-bottom: 6px;
   position: relative;
-  border-left: 3px solid var(--orange);
+  border-left: var(--dc-flavor-accent-width, 3px) solid var(--dc-flavor-accent, var(--orange));
   padding-left: 8px;
 }
 
@@ -698,9 +718,13 @@ h1.dc-chevron {
 
 
 /* ── Portrait panel ───────────────────────────────────────────────────── */
+/* Token contract:
+     --dc-portrait-surface → frame fill (default --paper-cream)
+     --dc-portrait-border  → frame border color (default --paper-aged)
+*/
 .dc-portrait {
-  background: var(--paper-cream);
-  border: 1px solid var(--paper-aged);
+  background: var(--dc-portrait-surface, var(--paper-cream));
+  border: 1px solid var(--dc-portrait-border, var(--paper-aged));
   padding: 14px;
   position: relative;
   overflow: hidden;
@@ -763,93 +787,35 @@ hr,
   font-weight: 600;
 }
 
-.dc-classtag-dot {
+/* Token contract:
+     --dc-classtag-color → dot fill color (default --orange)
+   Set by each .dc-classtag.X variant to its specialty's accent.
+   The dot is now a ::before pseudo on .dc-classtag itself — no inner
+   .dc-classtag-dot element is required. Authors / plugin emit only the
+   outer .dc-classtag span. */
+.dc-classtag::before {
+  content: '';
   width: 10px;
   height: 10px;
-  background: var(--c, var(--orange));
+  background: var(--dc-classtag-color, var(--orange));
   display: inline-block;
+  flex-shrink: 0;
 }
 
-.dc-classtag.augmerc {
-  --c: var(--rust);
-}
-
-.dc-classtag.proxy {
-  --c: var(--hud-magenta);
-}
-
-.dc-classtag.streetwarden {
-  --c: var(--hud-blue);
-}
-
-.dc-classtag.gutterdruid {
-  --c: var(--classtag-gutterdruid);
-}
-
-.dc-classtag.cybersurgeon {
-  --c: var(--blood);
-}
-
-.dc-classtag.wirephreak {
-  --c: var(--hud-blue-bright);
-}
-
-.dc-classtag.dc-technosorc {
-  --c: var(--classtag-technosorc);
-}
-
-.dc-classtag.etherlock {
-  --c: var(--amber);
-}
+/* Classtag dots — each specialty's own --*-accent for consistent identity */
+.dc-classtag.augmerc        { --dc-classtag-color: var(--augmerc-accent); }
+.dc-classtag.proxy          { --dc-classtag-color: var(--proxy-accent); }
+.dc-classtag.streetwarden   { --dc-classtag-color: var(--streetwarden-accent); }
+.dc-classtag.gutterdruid    { --dc-classtag-color: var(--gutterdruid-accent); }
+.dc-classtag.cybersurgeon   { --dc-classtag-color: var(--cybersurgeon-accent); }
+.dc-classtag.wirephreak     { --dc-classtag-color: var(--wirephreak-accent); }
+.dc-classtag.dc-technosorc  { --dc-classtag-color: var(--technosorcerer-accent); }
+.dc-classtag.etherlock      { --dc-classtag-color: var(--etherlock-accent); }
 
 
-/* ── Stamp ────────────────────────────────────────────────────────────── */
-.dc-stamp {
-  display: inline-block;
-  font-family: var(--font-display);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--blood);
-  border: 2px solid var(--blood);
-  padding: 6px 10px;
-  transform: rotate(-4deg);
-  background: var(--paper-cream);
-  position: relative;
-}
-
-.dc-stamp::before,
-.dc-stamp::after {
-  content: '';
-  position: absolute;
-  background: var(--blood);
-  opacity: 0.5;
-}
-
-.dc-stamp::before {
-  top: -1px;
-  left: 4px;
-  right: 4px;
-  height: 1px;
-}
-
-.dc-stamp::after {
-  bottom: -1px;
-  left: 4px;
-  right: 4px;
-  height: 1px;
-}
-
-.dc-stamp.dc-classified {
-  color: var(--orange);
-  border-color: var(--orange);
-  transform: rotate(2deg);
-}
-
-.dc-stamp.dc-classified::before,
-.dc-stamp.dc-classified::after {
-  background: var(--orange);
-}
+/* .dc-stamp / .dc-classified moved to deprecated.css 2026-05-24.
+   Reason: zero live usage; only raw-HTML doc specimens. See deprecated.css
+   for the parked rules and the path to revive as a section component. */
 
 /* ── Tape (torn-tape divider) ─────────────────────────────────────────── */
 .dc-tape {
@@ -1138,12 +1104,12 @@ hr,
   font-weight: 600;
 }
 
-/* ROLL THE DIE! emphasis span */
+/* ROLL THE DIE! emphasis span — token: --dc-roll-the-die-color (default --crimson) */
 .dc-roll-the-die {
     font-family: var(--font-display);
     font-size: 8pt;
     font-weight: 700;
-    color: var(--crimson);
+    color: var(--dc-roll-the-die-color, var(--crimson));
     letter-spacing: 0.05em;
     text-transform: uppercase;
     display: inline-block;
@@ -1497,11 +1463,18 @@ hr,
   font-weight: 700;
 }
 
-/* ── Outcome ladder ───────────────────────────────────────────────────── */
+/* ── Outcome ladder ───────────────────────────────────────────────────────
+   Token contract:
+     --dc-outcomes-surface       → body fill (default --paper-cream)
+     --dc-outcomes-border        → outer frame color (default --ink)
+     --dc-outcomes-inner-border  → inset hairline color (default --paper-aged)
+     --dc-outcomes-label-color   → label text color (default --hud-blue)
+     --dc-outcomes-divider       → label underline + row dividers (default --hud-blue-dim)
+*/
 .dc-outcomes {
   margin: 8px 0;
-  border: 2px solid var(--ink);
-  background: var(--paper-cream);
+  border: 2px solid var(--dc-outcomes-border, var(--ink));
+  background: var(--dc-outcomes-surface, var(--paper-cream));
   position: relative;
   break-inside: avoid;
 }
@@ -1510,7 +1483,7 @@ hr,
   content: '';
   position: absolute;
   inset: 4px;
-  border: 1px solid var(--paper-aged);
+  border: 1px solid var(--dc-outcomes-inner-border, var(--paper-aged));
   pointer-events: none;
 }
 
@@ -1520,9 +1493,9 @@ hr,
   font-weight: 700;
   letter-spacing: 0.15em;
   text-transform: uppercase;
-  color: var(--hud-blue);
+  color: var(--dc-outcomes-label-color, var(--hud-blue));
   padding: 4px 12px 3px;
-  border-bottom: 1px solid var(--hud-blue-dim);
+  border-bottom: 1px solid var(--dc-outcomes-divider, var(--hud-blue-dim));
   position: relative;
   z-index: 1;
 }
@@ -1531,7 +1504,7 @@ hr,
   display: grid;
   grid-template-columns: 130px 1fr;
   gap: 0;
-  border-bottom: 1px solid var(--hud-blue-dim);
+  border-bottom: 1px solid var(--dc-outcomes-divider, var(--hud-blue-dim));
   position: relative;
   z-index: 1;
 }
@@ -1613,12 +1586,18 @@ hr,
   margin: 10px 0;
 }
 
+/* Token contract for distance-tag pills:
+     --dc-dist-tag-surface → cell bg (default --paper-light)
+     --dc-dist-tag-border  → cell border color (default --hud-blue-dim)
+     --dc-dist-ap-color    → AP-cost number color (default --ink)
+     --dc-dist-name-color  → distance-name caption color (default --hud-blue)
+*/
 .dc-dist-tag {
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  background: var(--paper-light);
-  border: 1px solid var(--hud-blue-dim);
+  background: var(--dc-dist-tag-surface, var(--paper-light));
+  border: 1px solid var(--dc-dist-tag-border, var(--hud-blue-dim));
   padding: 6px 10px;
   min-width: 52px;
 }
@@ -1627,7 +1606,7 @@ hr,
   font-family: var(--font-display);
   font-size: 14px;
   font-weight: 700;
-  color: var(--ink);
+  color: var(--dc-dist-ap-color, var(--ink));
   line-height: 1;
 }
 
@@ -1636,7 +1615,7 @@ hr,
   font-size: 8px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--hud-blue);
+  color: var(--dc-dist-name-color, var(--hud-blue));
   margin-top: 3px;
 }
 
@@ -1650,8 +1629,9 @@ hr,
   letter-spacing: 0.06em;
 }
 
+/* --dc-roll-lucid-color (default --hud-blue-dark) */
 .dc-roll-lucid {
-  color: var(--hud-blue-dark);
+  color: var(--dc-roll-lucid-color, var(--hud-blue-dark));
 }
 
 .dc-roll-lucid::before {
@@ -1659,8 +1639,9 @@ hr,
   opacity: 1;
 }
 
+/* --dc-roll-surreal-color (default --hud-magenta) */
 .dc-roll-surreal {
-  color: var(--hud-magenta);
+  color: var(--dc-roll-surreal-color, var(--hud-magenta));
 }
 
 .dc-roll-surreal::before {
@@ -1712,10 +1693,17 @@ hr,
   break-inside: avoid;
 }
 
-/* ───────── DEFINITION BLOCK ───────── */
+/* ───────── DEFINITION BLOCK ─────────
+   Token contract:
+     --dc-definition-block-surface       → block background (default --surface-orange-tint)
+     --dc-definition-block-accent        → left rail color (default --hud-blue-bright)
+     --dc-definition-block-accent-width  → left rail weight (default 4px)
+   Per-section / per-column overrides set the tokens; they don't override
+   the properties directly. See .section.dc-rules-definition and the
+   .section.col-split contracts in fg-overrides.css for examples. */
 .dc-definition-block {
-  background: var(--surface-orange-tint);
-  border-left: 4px solid var(--hud-blue-bright);  /* process cyan — digital HUD data */
+  background: var(--dc-definition-block-surface, var(--surface-orange-tint));
+  border-left: var(--dc-definition-block-accent-width, 4px) solid var(--dc-definition-block-accent, var(--hud-blue-bright));
   font-style: italic;
   font-size: var(--fs-body);
   line-height: var(--lh-normal);
@@ -1730,19 +1718,27 @@ hr,
   margin-top: 6pt;
 }
 
-/* ───────── SIDEBAR BOX ───────── */
+/* ───────── SIDEBAR BOX ─────────
+   Token contract:
+     --dc-sidebar-box-surface  → background (default --paper-cream)
+     --dc-sidebar-box-border   → frame border color (default --border-hairline)
+     --dc-sidebar-box-accent   → left rail + heading + divider (default --hud-blue-dark)
+     --dc-sidebar-box-rail     → left rail width (default 4px)
+   Override via fg-overrides selector chain, e.g.:
+     .dc-danger .dc-sidebar-box { --dc-sidebar-box-accent: var(--blood); }
+*/
 .dc-sidebar-box {
-  background: var(--paper-cream);
-  border: 1.5px solid var(--border-hairline);
-  border-left: 4px solid var(--blood);
+  background: var(--dc-sidebar-box-surface, var(--paper-cream));
+  border: 1.5px solid var(--dc-sidebar-box-border, var(--border-hairline));
+  border-left: var(--dc-sidebar-box-rail, 4px) solid var(--dc-sidebar-box-accent, var(--hud-blue-dark));
 }
 
-/* Box heading — bold red stencil-style label above the internal divider */
+/* Box heading — bold accent label above the internal divider */
 .dc-sidebar-box>h3:first-child,
 .dc-sidebar-box>h4:first-child {
   font-size: var(--fs-h4);
   letter-spacing: var(--ls-display);
-  color: var(--blood);
+  color: var(--dc-sidebar-box-accent, var(--hud-blue-dark));
   margin: 0 0 10px;
   font-style: italic;
 }
@@ -1751,7 +1747,7 @@ hr,
 .dc-sidebar-box hr,
 .dc-sidebar-box .dc-sidebar-box-divider {
   border: none;
-  border-top: 1px dashed var(--blood);
+  border-top: 1px dashed var(--dc-sidebar-box-accent, var(--hud-blue-dark));
   margin: 7.5pt 0;
 }
 
@@ -2355,42 +2351,9 @@ p.dc-img-wrapper {
   break-inside: avoid;
 }
 
-/* ───────── SPECIALTY LISTING ───────── */
-/* Outer row wrapper — portrait left, prose body right */
-.dc-class-entry {
-  display: flex;
-  gap: 18px;
-  align-items: flex-start;
-  margin-bottom: 4px;
-  break-inside: avoid;
-}
-
-/* Portrait column — holds the 120×120 image or placeholder */
-.dc-class-entry-portrait {
-  flex-shrink: 0;
-}
-
-/* Prose column — takes remaining horizontal space */
-.dc-class-entry-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.dc-class-entry-tags {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-/* Class name inside an entry — lixdu display, crimson, no underline border.
-   Deliberately overrides the default h3 orange + border to read as a
-   proper name header rather than a section divider. */
-.dc-class-entry-name {
-  color: var(--crimson);
-  margin: 0 0 8px;
-}
+/* .section.dc-class-entry + .dc-content-col + .dc-tag-row moved to
+   deprecated.css 2026-05-24. Reason: @class-entry macro had no live
+   consumers, plus the parser had a multi-block bug. See deprecated.css. */
 
 .dc-terms {
   break-inside: avoid;
@@ -2980,13 +2943,19 @@ h3 + .section {
    .dc-citizen-file to a section gets the same character-sheet authoring
    surface — independent of which page template they chose. */
 
+/* Token contract for .dc-citizen-file:
+     --dc-citizen-file-label-color  → h4 form-label text color (default --hud-blue-dark)
+     --dc-citizen-file-rule-color   → underline color (default --hud-blue-dark)
+     --dc-citizen-file-rule-width   → underline weight (default 1pt)
+     --dc-citizen-file-checkbox-bg  → checkbox cell fill (default --paper-light)
+   Override e.g. .dc-corp-form .dc-citizen-file { --dc-citizen-file-label-color: var(--amber); } */
 .dc-citizen-file h4 {
   font-family: var(--font-mono);
   font-size: 7.5pt;
-  color: var(--amber);
+  color: var(--dc-citizen-file-label-color, var(--hud-blue-dark));
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  border-bottom: 1pt solid var(--amber);
+  border-bottom: var(--dc-citizen-file-rule-width, 1pt) solid var(--dc-citizen-file-rule-color, var(--hud-blue-dark));
   padding-bottom: 2pt;
   margin-top: 0.12in;
   margin-bottom: 0.05in;
@@ -3027,7 +2996,7 @@ h3 + .section {
   text-align: center;
   border: 1pt solid var(--border-hairline);
   border-radius: 1pt;
-  background: var(--paper-aged);
+  background: var(--dc-citizen-file-checkbox-bg, var(--paper-light));
   color: transparent;
 }
 
@@ -3044,8 +3013,15 @@ h3 + .section {
      ##### Equipment        → ditto
    Reusable: any DC project can use .dc-npc-stat for stat-block authoring. */
 
+/* Token contract for .dc-npc-stat:
+     --dc-npc-stat-rule         → name top-rule color (default --rust)
+     --dc-npc-stat-rule-width   → name top-rule weight (default 1.5pt)
+     --dc-npc-stat-label-color  → h5 subsection-label color (default --hud-blue-dark)
+     --dc-npc-stat-primary      → primary stat-line color, e.g. "2 HP — 1 Damage" (default --hud-blue)
+     --dc-npc-stat-secondary    → secondary stat-line color (default --ink-smoke)
+   Override per chapter / per faction in fg-overrides selector chains. */
 .dc-npc-stat h4 {
-  border-top: 1.5pt solid var(--rust);
+  border-top: var(--dc-npc-stat-rule-width, 1.5pt) solid var(--dc-npc-stat-rule, var(--rust));
   padding-top: 0.05in;
   margin-top: 0.1in;
 }
@@ -3056,7 +3032,7 @@ h3 + .section {
   font-weight: var(--fw-semibold);
   letter-spacing: var(--ls-cap-sm);
   text-transform: uppercase;
-  color: var(--hud-blue-dark);
+  color: var(--dc-npc-stat-label-color, var(--hud-blue-dark));
   border-bottom: 0.75pt solid var(--border-hairline);
   padding-bottom: 1pt;
   margin-top: 0.06in;
@@ -3067,7 +3043,7 @@ h3 + .section {
 .dc-npc-stat blockquote + p {
   font-family: var(--font-mono);
   font-size: 8pt;
-  color: var(--hud-blue);
+  color: var(--dc-npc-stat-primary, var(--hud-blue));
   letter-spacing: 0.04em;
   margin-bottom: 0.02in;
 }
@@ -3076,7 +3052,7 @@ h3 + .section {
 .dc-npc-stat blockquote + p + p {
   font-family: var(--font-mono);
   font-size: 7.5pt;
-  color: var(--ink-smoke);
+  color: var(--dc-npc-stat-secondary, var(--ink-smoke));
   letter-spacing: 0.04em;
   margin-bottom: 0.04in;
 }
@@ -3253,9 +3229,9 @@ h3 + .section {
 }
 
 .section.dc-rules-definition .dc-definition-block:first-of-type {
-  border-left-color: var(--dc-rules-definition-accent-a);
+  --dc-definition-block-accent: var(--dc-rules-definition-accent-a);
 }
 
 .section.dc-rules-definition .dc-definition-block:nth-of-type(2) {
-  border-left-color: var(--dc-rules-definition-accent-b);
+  --dc-definition-block-accent: var(--dc-rules-definition-accent-b);
 }
