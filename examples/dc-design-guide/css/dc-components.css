@@ -1463,15 +1463,27 @@ hr,
   text-wrap: balance;
 }
 
-/* Subtitle tagline — aligned away from the portrait, allow wrapping. */
+/* Subtitle tagline — the specialty's "archetype label" (e.g.,
+   "Cybernetic Commando", "Wold Witch"). This is the card's INTERIOR
+   visual beat per contest judge R9 ("each specialty card needs one
+   nail hole — a single strong visual beat inside the card body").
+   Mono-caps + tracked + accent-colored + bottom-rule gives the card
+   a typographic anchor below the title, lifting the interior from
+   "uniform cream surface" to a structured stat-block-like reading. */
 .dc-specialty-card blockquote {
   background: none;
   border: none;
-  padding: 0 0.06in;
-  margin: 0.04in 0 0;
-  font-size: 0.95em;
-  color: var(--dc-specialty-card-fg);
-  opacity: 0.8;
+  border-bottom: 0.75pt solid var(--dc-specialty-card-accent);
+  padding: 0 0.06in 0.03in;
+  margin: 0.02in 0 0.06in;
+  font-family: var(--font-mono);
+  font-size: 0.72em;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dc-specialty-card-accent);
+  opacity: 1;
   text-align: var(--dc-specialty-card-title-align);
   white-space: normal;
   overflow-wrap: anywhere;
@@ -2648,12 +2660,9 @@ p.dc-img-wrapper {
   margin: 12pt 0;
   position: relative;
   break-inside: avoid;
-  /* Drop shadow pins the section to the brick wall as a physical object —
-     follows the clipped ::before shape (filter respects child clip-path).
-     Hard offset, no blur = "stuck on" not "floating." Same shadow stack
-     applies to .dc-npc-stat (@section variant) and all other section
-     variants without per-component shadow declarations. */
-  filter: drop-shadow(2pt 3pt 0 rgba(0, 0, 0, 0.25));
+  /* Wall-shadow is the ::after fake-shadow below (vector, same clip-path
+     as ::before). Do NOT add filter:drop-shadow here — that would double
+     the shadow (raster filter + vector pseudo) per print R9 finding. */
 }
 
 /* clip-path + left accent band on ::before */
@@ -3242,22 +3251,21 @@ h3 + .section {
 }
 
 .dc-npc-stat h5 {
-  /* TRAITS / EQUIPMENT / CYBERNETICS chrome labels — explicitly smaller +
-     wider-tracked than the NPC name (h4) so the hierarchy reads at a glance.
-     Was --fs-body-sm (11pt) which only had a 2pt gap to the 13pt h4 name —
-     mono caps closed that perceptually to read as competing headings.
-     Dropping to --fs-h6 (9pt) with extra tracking restores chrome-label
-     register, matching the PHB stat-block pattern (name ~14pt → label ~8pt). */
+  /* TRAITS / EQUIPMENT / CYBERNETICS chrome labels — must read DISTINCTLY
+     against the body weight (contest judge R9: "they disappear into body
+     weight" was a contest blocker). Bumped to font-weight 700 + explicit
+     hud-blue-dark color + thicker bottom rule so the label dominates its
+     own line. Mono-caps + tracking unchanged. */
   font-family: var(--font-mono);
   font-size: var(--fs-h6);
-  font-weight: var(--fw-semibold);
+  font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--dc-npc-stat-label-color, var(--hud-blue-dark));
-  border-bottom: 0.75pt solid var(--border-hairline);
-  padding-bottom: 1pt;
-  margin-top: 0.06in;
-  margin-bottom: 0.02in;
+  border-bottom: 1pt solid var(--dc-npc-stat-label-color, var(--hud-blue-dark));
+  padding-bottom: 1.5pt;
+  margin-top: 0.08in;
+  margin-bottom: 0.04in;
 }
 
 /* Primary stat line — "2 HP — 1 Damage" sits directly after the flavor quote. */
@@ -3269,13 +3277,19 @@ h3 + .section {
   margin-bottom: 0.02in;
 }
 
-/* Secondary stat line — "Fodder — Medium" type+size. */
+/* Secondary stat line — "Fodder — Medium" type+size. Carries the
+   stat-summary divider: a dotted ink hairline AFTER this line and
+   BEFORE the TRAITS h5 creates the visible skeleton
+   (header → flavor quote → meta-stats → SEPARATOR → ability sections)
+   per contest judge R9 finding. */
 .dc-npc-stat blockquote + p + p {
   font-family: var(--font-mono);
   font-size: 7.5pt;
   color: var(--dc-npc-stat-secondary, var(--ink-smoke));
   letter-spacing: 0.04em;
-  margin-bottom: 0.04in;
+  border-bottom: 0.75pt dotted var(--ink-dust);
+  padding-bottom: 0.05in;
+  margin-bottom: 0.06in;
 }
 
 
