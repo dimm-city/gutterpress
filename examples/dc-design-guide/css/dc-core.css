@@ -109,9 +109,19 @@ h6 { font-size: var(--fs-h6); color: var(--ink-dust); }
 
 
 /* ── INLINE ELEMENTS ──────────────────────────────────────────────────────── */
-p   { margin-top: 0; margin-bottom: 0.08in; }
+/* Baseline p color = --ink. Prose outside any styled container (a plain <p>
+   not inside @section / @callout / etc.) was inheriting nothing and reading
+   as cyan in some leaked contexts — measured 1.33:1 on the wall. Explicit
+   color: --ink at the base element makes loose paragraphs always legible.
+   Components with paper substrates may still override --ink-smoke or warmer
+   tones via their own selectors. */
+p   { margin-top: 0; margin-bottom: 0.08in; color: var(--ink); }
 em  { color: var(--ink-smoke); font-style: italic; }
-a   { color: var(--crimson); text-decoration: none; border-bottom: 1px dotted var(--crimson); }
+/* Links: --crimson #e1261c on paper-cream = 4.03:1 (fails AA normal text).
+   --blood #901a12 on paper-cream = 7.73:1 (passes AA + AAA). Per expert
+   debate consensus: crimson is reserved for FILLS / decorative rails; text
+   color on light backgrounds uses --blood. */
+a   { color: var(--blood); text-decoration: none; border-bottom: 1px dotted var(--blood); }
 
 code, kbd, samp {
   font-family: var(--font-mono);
@@ -140,7 +150,11 @@ ul { padding-left: 0.25in; }
 ul li { list-style: none; margin-bottom: 0.06in; }
 ul li::before {
   content: "» ";
-  color: var(--orange);
+  /* --orange (#d4500a) on wall = 2.46:1 (fail). --rust (#b23a12) = 3.48:1
+     (measured — also fail). --blood (#901a12) = 5.21:1 on wall, passes
+     AA small text. Bullet markers appear in every list including those
+     outside paper substrates, so they MUST read on the wall background. */
+  color: var(--blood);
   font-weight: 700;
   padding-right: 0.1em;
 }

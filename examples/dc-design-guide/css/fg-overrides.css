@@ -175,23 +175,29 @@
    below reads the semantic structure and assigns component variants
    accordingly. To change a chapter's identity, edit ONE rule here. */
 
+/* Per-chapter --section-accent: this is consumed by `.section.tabbed > h3`
+   as a REVERSE-OUT FILL behind paper-cream text. Cream on --brand-magenta =
+   4.06:1 (fails AA normal text). Cream on --brand-magenta-deep = 6.99:1
+   (passes). Same logic for --amber → --amber-dark. --rust on cream already
+   passes (4.95:1) so no deep variant needed there. */
+
 /* Chapter 1 — opener + character creation: brand identity register */
-#ch-example-chapter-opener { --section-accent: var(--brand-magenta); }
+#ch-example-chapter-opener { --section-accent: var(--brand-magenta-deep); }
 
 /* Chapter 2 — specialty overview (Choose Your Specialty card grid): brand-magenta gateway */
-#ch-example-specialty-overview { --section-accent: var(--brand-magenta); }
+#ch-example-specialty-overview { --section-accent: var(--brand-magenta-deep); }
 
 /* Chapter 3 — specialty profile spreads (Augmerc and friends): brand-magenta gateway */
-#ch-example-specialty-profile { --section-accent: var(--brand-magenta); }
+#ch-example-specialty-profile { --section-accent: var(--brand-magenta-deep); }
 
 /* Chapter 4 — rules (Are You Lucid Yet, Dreams, City, etc.): brand identity register */
-#ch-example-rules { --section-accent: var(--brand-magenta); }
+#ch-example-rules { --section-accent: var(--brand-magenta-deep); }
 
 /* Chapter 5 — DM & NPC pages (stat blocks) */
 #ch-example-dm-npcs { --section-accent: var(--rust); }
 
 /* Chapter 6 — gear & tech */
-#ch-example-gear-tech { --section-accent: var(--amber); }
+#ch-example-gear-tech { --section-accent: var(--amber-dark); }
 
 /* Front-matter pages have no @chapter wrapper (301). :where() gives 0,0,1
    specificity so any chapter rule above wins where it cascades down. */

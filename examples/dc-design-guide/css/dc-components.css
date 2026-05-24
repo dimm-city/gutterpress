@@ -63,7 +63,10 @@
   --dc-alert-bg: var(--hud-blue-dim);
   --dc-alert-border: var(--hud-blue-dark);
   --dc-alert-fg: var(--ink);
-  --dc-alert-label-color: var(--dc-alert-border);
+  /* Was: var(--dc-alert-border) → hud-blue-dark on hud-blue-dim bg = 3.95:1
+     (fails AA). --ink-dark on hud-blue-dim = ~7.05:1. Architecturally cleaner
+     than blood (red label on cyan panel has no semantic home). */
+  --dc-alert-label-color: var(--ink-dark);
 
   /* Structural overrides via custom properties for variant use */
   --dc-alert-body-size: var(--fs-body-sm);
@@ -93,9 +96,12 @@
   margin-top: 6pt;
 }
 
-/* Inline emphasis inside callouts must inherit the alert's --dc-alert-fg
-   color. Global em rule sets color: --ink-smoke which is dark — invisible
-   on dark callout backgrounds (1.60:1 measured). Same for strong. */
+/* Inline emphasis + paragraphs inside callouts must inherit the alert's
+   --dc-alert-fg color. The global p/em/strong rules in dc-core.css set
+   dark text colors (color: --ink / --ink-smoke). Inside dark-fill callout
+   variants (.dc-dm-note etc.), dark-on-dark measured 1.17:1 — invisible.
+   Inherit makes p/em/strong adopt the alert's own foreground. */
+.dc-alert p,
 .dc-alert em,
 .dc-alert strong {
   color: inherit;
@@ -175,7 +181,9 @@
 /* ── Variant: Visit Callout ─────────────────────────────────────────────── */
 .dc-visit-callout {
   --dc-alert-border: var(--hud-blue);
-  --dc-alert-label-color: var(--hud-blue-dark);
+  /* Was --hud-blue-dark on --hud-blue-dim (default alert bg) = 3.95:1
+     (fails AA). --ink-dark gives 7.05:1 on the same cyan bg. */
+  --dc-alert-label-color: var(--ink-dark);
   --dc-alert-body-size: var(--fs-body);
   margin: 0.12in 0;
 }
@@ -589,9 +597,9 @@
 
 /* ───────── AP TAGS ───────── */
 
-/* Standard action point — default blue; explicit class for documentation clarity */
+/* Standard action point — explicit class for documentation clarity */
 .dc-ap.standard {
-  --dc-ap-bg: var(--hud-blue);
+  --dc-ap-bg: var(--hud-blue-dark);
 }
 
 /* Reduced-cost action */
@@ -747,17 +755,27 @@ h1.dc-chevron {
 }
 
 .dc-sticker.active {
-  background: var(--crimson);
+  /* cream on --crimson = 4.03:1 (fails AA at 11px). I tested --ink on
+     --crimson per the pressure-test expert; measured 3.83:1 — also fails.
+     Neither text-color choice passes on the bright crimson fill at sticker
+     size. Switching the bg to --blood: cream-on-blood = 7.73:1, comfortably
+     passes AA. The "active/hot" semantic is preserved (still warm red),
+     just deeper. */
+  background: var(--blood);
   color: var(--paper-cream);
-  border-color: var(--crimson);
+  border-color: var(--blood);
   transform: rotate(-1.5deg);
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.28);
 }
 
-/* Inline ↑↓→ marker. Token: --dc-arrow-color (default --orange). */
+/* Inline ↑↓→ marker. Token: --dc-arrow-color (default --blood).
+   --orange #d4500a = 2.46:1 on wall — fails AA. --rust #b23a12 measured
+   3.48:1 on wall — still fails. --blood #901a12 = 5.21:1 on wall, passes
+   AA small text. Arrows can render outside a paper substrate, so default
+   needs to read against the worst case. */
 .dc-arrow {
   font-family: var(--font-mono);
-  color: var(--dc-arrow-color, var(--orange));
+  color: var(--dc-arrow-color, var(--blood));
   font-size: 14px;
   font-weight: 700;
 }
@@ -861,9 +879,12 @@ h1.dc-chevron {
 /* ── Spec tweak section header ────────────────────────────────────────── */
 .dc-spec-tweak {
   font-size: 22px;
-  color: var(--orange);
-  border-bottom: 2px solid var(--orange);
-  border-left: 3px solid var(--crimson);
+  /* Was --orange (2.46:1 on wall, fails) and --crimson decorative left
+     border. Switched to --blood (5.21:1 on wall) for the header text +
+     rule + accent so the spec-tweak reads at AA on any substrate. */
+  color: var(--blood);
+  border-bottom: 2px solid var(--blood);
+  border-left: 3px solid var(--blood);
   padding-bottom: 6px;
   padding-left: 10px;
   margin: 20px 0 14px;
@@ -1255,16 +1276,19 @@ hr,
 }
 
 .dc-ability-text strong {
-  color: var(--crimson);
+  /* --crimson on paper-cream = 4.03 (fails AA); --blood = 7.73:1 */
+  color: var(--blood);
   font-weight: 600;
 }
 
-/* ROLL THE DIE! emphasis span — token: --dc-roll-the-die-color (default --crimson) */
+/* ROLL THE DIE! emphasis span — token: --dc-roll-the-die-color (default --blood)
+   --crimson default failed at 2.64:1 on the skill-card paper-aged substrate;
+   --blood is 5.07:1 there. Per-component overrides via the token are unchanged. */
 .dc-roll-the-die {
     font-family: var(--font-display);
     font-size: 8pt;
     font-weight: 700;
-    color: var(--dc-roll-the-die-color, var(--crimson));
+    color: var(--dc-roll-the-die-color, var(--blood));
     letter-spacing: 0.05em;
     text-transform: uppercase;
     display: inline-block;
@@ -1277,7 +1301,9 @@ hr,
 
 /* ── AP base + author-facing variants ─────────────────────────────────── */
 .dc-ap {
-  --dc-ap-bg: var(--hud-blue);
+  /* cream on --hud-blue = 4.45:1 borderline; on the gradient mid-tone
+     it measured 3.95 in real preview. --hud-blue-dark = 7.45:1, safe. */
+  --dc-ap-bg: var(--hud-blue-dark);
   --dc-ap-fg: var(--paper-cream);
   --dc-ap-border: var(--ink-dark);
 
@@ -1316,7 +1342,8 @@ hr,
 }
 
 .dc-ap.free {
-  --dc-ap-bg: var(--crimson);
+  /* cream on --crimson = 4.03:1 (fails AA). --blood = 7.73:1. */
+  --dc-ap-bg: var(--blood);
 }
 
 .dc-ap.var {
@@ -1382,13 +1409,14 @@ hr,
 }
 
 .dc-specialty-intro>h3 {
-  color: var(--crimson);
+  /* --crimson on paper-cream = 4.03 (fails AA). --blood = 7.73:1. */
+  color: var(--blood);
   letter-spacing: 0.05em;
   font-size: 1rem;
   margin-top: 0.6rem;
   margin-bottom: 0.2rem;
   padding-bottom: 0.25rem;
-  border-bottom: 1px solid var(--crimson);
+  border-bottom: 1px solid var(--blood);
 }
 
 .dc-specialty-intro>p {
@@ -1697,7 +1725,8 @@ hr,
 }
 
 .dc-steps li strong {
-  color: var(--crimson);
+  /* --crimson 4.03:1 on paper-cream → --blood 7.73:1 */
+  color: var(--blood);
   font-weight: 700;
 }
 
@@ -1764,7 +1793,11 @@ hr,
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     inset 0 -1px 0 rgba(0, 0, 0, 0.18);
-  color: var(--paper-cream);
+  /* Use the token so .dc-outcome-row.hit (which sets --dc-outcome-key-color
+     to --ink because the fungi-glow fill is too light for cream text — was
+     1.24:1) actually propagates to the chip element itself, not just to its
+     children. Default stays cream for the dark-fill outcomes (crit/miss/fail). */
+  color: var(--dc-outcome-key-color, var(--paper-cream));
   padding: 6px 10px;
   display: flex;
   flex-direction: column;
@@ -1839,7 +1872,10 @@ hr,
 }
 
 .dc-outcome-row.miss {
-  --row-color: var(--rust);
+  /* --rust + cream = 4.48:1 (just under AA at small chip text). --blood
+     + cream = 7.73:1, safer at 9-10pt chip sizes. Still warm red, still
+     reads as "miss/fail" semantic. */
+  --row-color: var(--blood);
 }
 
 .dc-outcome-row.fail {
@@ -2044,7 +2080,8 @@ hr,
      override if a single-column gear layout ever needs the bigger h3. */
   font-size: var(--dc-gear-entry-h3-size, var(--fs-h4));
   letter-spacing: var(--ls-display);
-  color: var(--crimson);
+  /* --crimson on paper-light = 3.48:1 (fails). --blood = 6.69:1 */
+  color: var(--blood);
   margin: 0 0 4px;
   break-after: avoid;
 }
@@ -3349,7 +3386,9 @@ h3 + .section {
 .dc-npc-stat blockquote + p {
   font-family: var(--font-mono);
   font-size: 8pt;
-  color: var(--dc-npc-stat-primary, var(--hud-blue));
+  /* --hud-blue (#1f6f94) on wall = 3.24:1 (fails AA). --hud-blue-dark
+     (#14516e) gives ~5.5:1 on wall and 7.45:1 on paper-cream. */
+  color: var(--dc-npc-stat-primary, var(--hud-blue-dark));
   letter-spacing: 0.04em;
   margin-bottom: 0.02in;
 }

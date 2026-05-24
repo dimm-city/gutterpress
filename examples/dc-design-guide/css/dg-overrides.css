@@ -106,10 +106,13 @@ div.chapter pre code {
 div.chapter :not(pre)>code {
   font-family: var(--font-mono);
   font-size: 9pt;
-  color: var(--orange);
-  background: rgba(242, 77, 0, 0.08)
-    /* --orange at 8% opacity */
-  ;
+  /* Was: --orange (#d4500a) on rgba(242, 77, 0, 0.08) — orange-on-faint-
+     orange = 1.18:1 (effectively invisible). The 8% tint barely shifts
+     the wall/paper color, so the effective bg is whatever's behind. Fix:
+     keep the warm tint as a subtle visual but use --blood text which
+     passes on both wall (5.21:1) and paper-cream (7.73:1). */
+  color: var(--blood);
+  background: rgba(242, 77, 0, 0.08);
   border-radius: 2px;
   padding: 1px 4px;
   overflow-wrap: break-word;
