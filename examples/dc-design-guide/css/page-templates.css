@@ -34,11 +34,20 @@
    ──────────────────────────────────────────────────────────────────────── */
 
 /* ── PAGED.JS SHEET BACKGROUND ────────────────────────────────────────────── */
-/* Brick texture on .pagedjs_sheet so it visually sits above the @page box. */
+/* THE WALL — concrete grey with VISIBLE concrete-aggregate texture.
+   The brick image is white-on-light, so naive blending doesn't register.
+   Solution: pair the image with a CSS-generated noise overlay (encoded
+   as a data: URI SVG so no extra HTTP fetch) and use multiply blend.
+   The result reads as gritty concrete grain — mottled, urban, not
+   sterile-flat. Constitution: "the wall has texture; the posters have
+   ink." This is the wall texture half of that contract. */
 .pagedjs_sheet {
   background-color: var(--bg);
-  background-image: url("../img/brick-bg-02.png");
-  background-repeat: repeat;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.18 0'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>"),
+    url("../img/brick-bg-02.png");
+  background-repeat: repeat, repeat;
+  background-blend-mode: multiply, multiply;
 }
 
 /* ── PAGE WRAPPER BASE GEOMETRY ────────────────────────────────────────────── */
