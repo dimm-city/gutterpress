@@ -91,10 +91,6 @@
   break-after: auto;
 }
 
-.dc-specialty .dc-path-shell {
-  --dc-path-shell-padding-top: 0;
-  --dc-path-shell-padding-bottom: 16px;
-}
 .dc-specialty .dc-skill-card.allow-split { break-inside: auto; }
 
 

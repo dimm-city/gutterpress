@@ -833,7 +833,7 @@ h1.dc-chevron {
   font-size: var(--fs-body);
   font-style: italic;
   color: var(--ink-smoke);
-  background: linear-gradient(to right, var(--orange) 4px, var(--paper-stain) 4px);
+  background: linear-gradient(to right, var(--dc-intro-accent, var(--orange)) 4px, var(--paper-stain) 4px);
   line-height: 1.5;
   padding: 10px 14px 10px 18px;
   margin: 0.1in 0;
@@ -1563,6 +1563,15 @@ hr,
   background: linear-gradient(to right, var(--dc-path-accent) 4px, var(--paper-cream) 4px);
   clip-path: var(--dc-path-shell-clip, polygon(26px 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%, 0 26px));
   z-index: 0;
+}
+
+/* Within a .dc-specialty parent (the canonical wrapper around path-shell +
+   skill cards), tighten path-shell padding tokens. Belongs here, not in
+   fg-overrides — every DC project that uses the specialty system needs
+   this default. */
+.dc-specialty .dc-path-shell {
+  --dc-path-shell-padding-top: 0;
+  --dc-path-shell-padding-bottom: 16px;
 }
 
 /* All direct children need z-index > 0 to render above ::before */

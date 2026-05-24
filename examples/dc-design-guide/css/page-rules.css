@@ -73,7 +73,7 @@ body { counter-reset: chapter; }
 
   @bottom-left {
     content: "p." counter(page);
-    color: var(--blood);
+    color: var(--ink-smoke);
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
     letter-spacing: 0.08em;
@@ -81,7 +81,7 @@ body { counter-reset: chapter; }
 
   @bottom-right {
     content: "c." string(guideSection, first);
-    color: var(--blood);
+    color: var(--ink-smoke);
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
     letter-spacing: 0.08em;
@@ -94,7 +94,7 @@ body { counter-reset: chapter; }
 
   @bottom-left {
     content: "c." string(guideSection, first);
-    color: var(--blood);
+    color: var(--ink-smoke);
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
     letter-spacing: 0.08em;
@@ -102,7 +102,7 @@ body { counter-reset: chapter; }
 
   @bottom-right {
     content: "p." counter(page);
-    color: var(--blood);
+    color: var(--ink-smoke);
     font-family: var(--font-display);
     font-size: var(--fs-footer, 9.5pt);
     letter-spacing: 0.08em;
