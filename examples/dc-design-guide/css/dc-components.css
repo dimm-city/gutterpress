@@ -364,18 +364,28 @@
 }
 
 /* ── Streetwarden — community defender, green, hazard-taped diamond ──────
-   Register mix: mid future-tech + mid landfill. The bottom edge gets an
-   asymmetric hazard-tape step (not torn — that belongs to Gutterdruid).
-   This reads as "civic notice stamped onto corrugated steel" rather than
-   "clean government card." */
+   Register mix: mid future-tech + mid landfill. Hazard-tape pattern on the
+   left border + asymmetric notch on bottom edge. The edge mark survives
+   thumbnail scale where the bottom alone disappeared. */
 .dc-specialty.streetwarden {
   --dc-skill-tab-shape: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
   --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 22px) 100%, 22px 100%, 0 calc(100% - 18px));
   --dc-path-title-shape: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
   --dc-path-shell-clip: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
-  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 12px), calc(100% - 22px) calc(100% - 4px), 62% 100%, 38% calc(100% - 6px), 18px 100%, 0 calc(100% - 14px));
+  /* Specialty-card: bigger asymmetric step on bottom edge (12-16px vertices
+     vs the previous 4-6px which disappeared at thumbnail scale). */
+  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 8px), calc(100% - 28px) calc(100% - 16px), 60% 100%, 38% calc(100% - 14px), 22px 100%, 0 calc(100% - 22px));
   --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%);
-  --dc-specialty-intro-clip: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 16px), calc(100% - 28px) calc(100% - 6px), 60% 100%, 36% calc(100% - 8px), 22px 100%, 0 calc(100% - 18px));
+  --dc-specialty-intro-clip: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 12px), calc(100% - 34px) calc(100% - 22px), 58% 100%, 34% calc(100% - 18px), 26px 100%, 0 calc(100% - 26px));
+}
+
+/* Streetwarden hazard-tape left border — survives thumbnail scale where a
+   bottom hazard-stripe alone disappeared. Diagonal yellow-black pattern
+   is the universal "construction site / civic hazard" signal. The 4pt
+   width is wide enough to read as deliberate edge mark. */
+.dc-specialty.streetwarden .dc-specialty-card {
+  border-left: 4pt solid transparent;
+  border-image: repeating-linear-gradient(135deg, #1a1512 0 6px, var(--brand-yellow) 6px 12px) 4;
 }
 
 .dc-specialty.streetwarden .dc-skill-card {
@@ -408,7 +418,13 @@
   --dc-skill-body-shape: polygon(0 0, calc(50% - 18px) 0, 50% 10px, calc(50% + 18px) 0, 100% 0, 100% calc(100% - 20px), calc(100% - 24px) 100%, 24px 100%, 0 calc(100% - 20px));
   --dc-path-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
   --dc-path-shell-clip: polygon(0 0, calc(50% - 22px) 0, 50% 14px, calc(50% + 22px) 0, 100% 0, 100% calc(100% - 22px), calc(100% - 26px) 100%, 26px 100%, 0 calc(100% - 22px));
-  --dc-specialty-card-shell-shape: polygon(0 0, calc(50% - 16px) 0, 50% 10px, calc(50% + 16px) 0, 100% 0, 100% calc(100% - 16px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 16px));
+  /* Specialty-card shell: rectangular top (tech-cluster register at grid
+     scale) with hex-cut bottom corners preserving the ritual-tech crossover
+     feel. The centre-notch lives on path-shell / specialty-intro only —
+     where it has the space to read as the runic-gate signature. At grid
+     density it collapsed into the magic cluster; rectangular top reads
+     tech immediately. */
+  --dc-specialty-card-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 22px) 100%, 22px 100%, 0 calc(100% - 16px));
   --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 24px) 0, 50% 14px, calc(50% + 24px) 0, 100% 0, 100% 100%, 0 100%);
   --dc-specialty-intro-clip: polygon(0 0, calc(50% - 24px) 0, 50% 16px, calc(50% + 24px) 0, 100% 0, 100% calc(100% - 32px), calc(100% - 56px) 100%, 0 100%);
 }
@@ -493,6 +509,14 @@
   border-bottom: 2.5pt solid var(--fungi-glow);
 }
 
+/* Gutterdruid card title — fungi-glow color separates it from Proxy's
+   warm-burnt-orange title at card-grid scale (the two cards were bleeding
+   together as dark warm-tones). The fungi-glow title reads "alive +
+   organic" vs Proxy's "scorch + conviction". */
+.dc-specialty.gutterdruid .dc-specialty-card h3 {
+  color: var(--fungi-glow);
+}
+
 .dc-specialty.gutterdruid .dc-specialty-intro {
   --dc-specialty-intro-title-bg: var(--gutterdruid-dark);  /* was --orange — cross-token */
   --dc-specialty-intro-title-color: var(--paper-cream);
@@ -521,11 +545,17 @@
   --dc-path-accent: var(--etherlock-accent);
 }
 
+/* Register mix: HIGH ancient-magic + mid landfill + mid wonderland —
+   "secrets as currency, manifold magus". The spectral pale-cyan rim
+   reads liminal-information / hidden-channels rather than tech-lit. NOT
+   a future-tech LED rim (which belongs only to tech-high specialties);
+   this is the magic-register equivalent — pale-spectral-aura. */
 .dc-specialty.etherlock .dc-specialty-card {
   --dc-specialty-card-bg: var(--etherlock-dark);
   --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--etherlock-accent);
   --dc-specialty-card-border: var(--etherlock-mid);
+  --dc-specialty-card-shadow: inset 0 1.5pt 0 rgba(180, 230, 200, 0.55);
 }
 
 .dc-specialty.etherlock .dc-specialty-intro {
