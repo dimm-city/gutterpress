@@ -229,11 +229,11 @@
   --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--brand-cyan);
   --dc-specialty-card-border: var(--augmerc-mid);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  --dc-specialty-card-shadow: inset 0 1.5pt 0 rgba(255, 255, 255, 0.55);
 }
 
-.dc-specialty.augmerc .dc-skill-card .dc-card-tab {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+.dc-specialty.augmerc .dc-skill-card {
+  --dc-card-tab-shadow: inset 0 1.25pt 0 rgba(255, 255, 255, 0.50);
 }
 
 .dc-specialty.augmerc .dc-specialty-intro {
@@ -272,11 +272,11 @@
   --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--cybersurgeon-accent);
   --dc-specialty-card-border: var(--cybersurgeon-mid);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  --dc-specialty-card-shadow: inset 0 1.5pt 0 rgba(255, 255, 255, 0.62);
 }
 
-.dc-specialty.cybersurgeon .dc-skill-card .dc-card-tab {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.20);
+.dc-specialty.cybersurgeon .dc-skill-card {
+  --dc-card-tab-shadow: inset 0 1.25pt 0 rgba(255, 255, 255, 0.55);
 }
 
 .dc-specialty.cybersurgeon .dc-specialty-intro {
@@ -350,11 +350,11 @@
   --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--wirephreak-accent);
   --dc-specialty-card-border: var(--wirephreak-mid);
-  box-shadow: inset 0 1px 0 rgba(0, 200, 220, 0.22);
+  --dc-specialty-card-shadow: inset 0 1.5pt 0 rgba(120, 230, 245, 0.60);
 }
 
-.dc-specialty.wirephreak .dc-skill-card .dc-card-tab {
-  box-shadow: inset 0 1px 0 rgba(0, 200, 220, 0.20);
+.dc-specialty.wirephreak .dc-skill-card {
+  --dc-card-tab-shadow: inset 0 1.25pt 0 rgba(120, 230, 245, 0.55);
 }
 
 .dc-specialty.wirephreak .dc-specialty-intro {
@@ -363,15 +363,19 @@
   --dc-specialty-intro-bg: var(--paper-light);
 }
 
-/* ── Streetwarden — community defender, green, soft diamond cuts ────────── */
+/* ── Streetwarden — community defender, green, hazard-taped diamond ──────
+   Register mix: mid future-tech + mid landfill. The bottom edge gets an
+   asymmetric hazard-tape step (not torn — that belongs to Gutterdruid).
+   This reads as "civic notice stamped onto corrugated steel" rather than
+   "clean government card." */
 .dc-specialty.streetwarden {
   --dc-skill-tab-shape: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
   --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 22px) 100%, 22px 100%, 0 calc(100% - 18px));
   --dc-path-title-shape: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
   --dc-path-shell-clip: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
-  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 16px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 16px));
+  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 12px), calc(100% - 22px) calc(100% - 4px), 62% 100%, 38% calc(100% - 6px), 18px 100%, 0 calc(100% - 14px));
   --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%);
-  --dc-specialty-intro-clip: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
+  --dc-specialty-intro-clip: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 16px), calc(100% - 28px) calc(100% - 6px), 60% 100%, 36% calc(100% - 8px), 22px 100%, 0 calc(100% - 18px));
 }
 
 .dc-specialty.streetwarden .dc-skill-card {
@@ -421,17 +425,27 @@
 }
 
 /* Register mix: HIGH future-tech + HIGH ancient-magic → LED-rim top-edge
-   highlight tinted violet to read as runic-tech crossover, not pure tech. */
+   highlight tinted violet to read as runic-tech crossover, not pure tech.
+   Violet opacity must be HIGHER than other tech specialties (white tints)
+   so the magic-crossover register survives card-grid density on POD. */
 .dc-specialty.technosorcerer .dc-specialty-card {
   --dc-specialty-card-bg: var(--technosorcerer-dark);
   --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--technosorcerer-accent);
   --dc-specialty-card-border: var(--technosorcerer-mid);
-  box-shadow: inset 0 1px 0 rgba(180, 130, 220, 0.20);
+  --dc-specialty-card-shadow: inset 0 1.5pt 0 rgba(200, 150, 240, 0.65);
 }
 
-.dc-specialty.technosorcerer .dc-skill-card .dc-card-tab {
-  box-shadow: inset 0 1px 0 rgba(180, 130, 220, 0.18);
+.dc-specialty.technosorcerer .dc-skill-card {
+  --dc-card-tab-shadow: inset 0 1.25pt 0 rgba(200, 150, 240, 0.58);
+}
+
+/* TECHNOSORCERER title fix — "TECHNOSORCERER" is 14 chars and wraps mid-word
+   at card-grid scale ("TECHNOSORCERE / R" orphan). Tightened letter-spacing
+   keeps it on one line at the lixdu display size used in the card title. */
+.dc-specialty.technosorcerer .dc-specialty-card h3 {
+  letter-spacing: -0.04em;
+  font-size: 1.05em;
 }
 
 .dc-specialty.technosorcerer .dc-specialty-intro {
@@ -467,11 +481,16 @@
   --dc-path-accent: var(--gutterdruid-accent);
 }
 
+/* Register mix: HIGH landfill + HIGH wonderland → fungi-glow bottom stripe
+   makes the bioluminescent-spore wonderland register visible at card-grid
+   density. Bottom edge survives the top-torn clip-path geometry; the
+   stripe reads as "spore-light seeping from under the torn paper." */
 .dc-specialty.gutterdruid .dc-specialty-card {
   --dc-specialty-card-bg: var(--gutterdruid-dark);
   --dc-specialty-card-fg: var(--paper-cream);
   --dc-specialty-card-accent: var(--gutterdruid-accent);
   --dc-specialty-card-border: var(--gutterdruid-mid);
+  border-bottom: 2.5pt solid var(--fungi-glow);
 }
 
 .dc-specialty.gutterdruid .dc-specialty-intro {
@@ -1104,6 +1123,9 @@ hr,
   max-width: calc(100% - 28px);
   box-sizing: border-box;
   clip-path: var(--dc-skill-tab-shape, polygon(0 0, calc(100% - 18px) 0, 100% 100%, 0 100%));
+  /* Token surface — future-tech-high specialties opt into LED-rim inset
+     highlight via --dc-card-tab-shadow. Default none (paper-poster register). */
+  box-shadow: var(--dc-card-tab-shadow, none);
 }
 
 .dc-tab-title {
@@ -1401,6 +1423,8 @@ hr,
      --dc-specialty-card-media-height  → portrait image height (default 0.85in)
      --dc-specialty-card-title-align   → title text-align (default right)
      --dc-specialty-card-shell-shape   → outer clip-path polygon
+     --dc-specialty-card-shadow        → box-shadow (default none) — future-tech-high
+                                          specialties opt into LED-rim inset highlight here
    Specialty themes override via .dc-specialty.<name> .dc-specialty-card { }. */
 
 /* ── Specialty card (.dc-specialty-card + descendants + nth-of-type(even)) */
@@ -1412,6 +1436,7 @@ hr,
   --dc-specialty-card-media-height: 0.85in;
   --dc-specialty-card-media-width: 0.75in;
   --dc-specialty-card-title-align: right;
+  box-shadow: var(--dc-specialty-card-shadow, none);
   /* Tonal lift gradient: top 6% lighter, bottom 2% darker pool. Subtle weight
      on the card body without reading as a screen-style gradient. */
   background:
