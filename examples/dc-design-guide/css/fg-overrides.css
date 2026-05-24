@@ -83,15 +83,17 @@
 
 /* Chapter opener art — fills the chapter-start splash below the C.NN
    banner. Without an art slot here, the chapter-start page reads as
-   70% bare wall (proper print-layout-reviewer flagged this as BROKEN —
-   "content that failed to load"). The art element pulls the page's
-   visual weight up so the splash composition feels deliberate. */
+   70% bare wall. The art element fills the rest of the chapter-start
+   page content area (page height 11.25in − margins ≈ 10in − C.NN
+   banner ≈ 1.2in = ~8.5in of available splash space). Sized to fill
+   that entirely so the splash composition is intentional, not "art
+   placeholder failed to load with dead wall below". */
 .fg-art-chapter-opener {
   width: 100%;
-  height: 5.5in;
+  height: 8.5in;
   object-fit: cover;
   display: block;
-  margin: 0 0 0.32in 0;
+  margin: 0;
 }
 
 /* ── SPECIALTY PAGE BREAK CONTROL ─────────────────────────────────────────── */

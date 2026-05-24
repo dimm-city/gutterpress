@@ -2178,6 +2178,13 @@ hr,
 .dc-toc {
   font-family: var(--font-body);
   counter-reset: dc-toc;
+  /* Paper substrate — TOC entries were rendering on the concrete-grain
+     wall texture (user-circled defect, screenshot 01-toc-circled.jpg).
+     Per constitution: "components float above the wall; body text must
+     not float on the wall." TOC is a poster on the wall. */
+  background: var(--paper-cream);
+  padding: 0.18in 0.22in;
+  box-shadow: var(--shadow-poster);
 }
 
 .dc-toc ol {
@@ -3232,6 +3239,16 @@ h3 + .section {
      --dc-citizen-file-rule-width   → underline weight (default 1pt)
      --dc-citizen-file-checkbox-bg  → checkbox cell fill (default --paper-light)
    Override e.g. .dc-corp-form .dc-citizen-file { --dc-citizen-file-label-color: var(--amber); } */
+
+/* Base — paper substrate so form content reads on paper, not the brick wall.
+   Without this, all citizen-file body paragraphs walked up to .pagedjs_sheet
+   (the concrete grain), making the entire form float on the wall. */
+.dc-citizen-file {
+  background: var(--paper-cream);
+  padding: 0.18in 0.22in;
+  box-shadow: var(--shadow-poster);
+}
+
 .dc-citizen-file h4 {
   font-family: var(--font-mono);
   font-size: 7.5pt;
