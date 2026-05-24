@@ -480,6 +480,79 @@
   --dc-specialty-intro-bg: var(--paper-light);
 }
 
+/* ── Dualist — dual-class specialist, symmetric "two-sided" octagon shapes ─ */
+.dc-specialty.dualist {
+  --dc-skill-tab-shape: polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%, 0 10px);
+  --dc-skill-body-shape: polygon(12px 0, calc(100% - 12px) 0, 100% 12px, 100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 12px), 0 12px);
+  --dc-path-title-shape: polygon(12px 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%, 0 12px);
+  --dc-path-shell-clip: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px);
+  /* Dualist card shape: 6-point lozenge (points top + bottom) — faceted mineral
+     refraction made literal at card scale. Distinct from augmerc's octagonal
+     chamfer geometry; signals "two-sided crystal" identity at a glance. */
+  --dc-specialty-card-shell-shape: polygon(50% 0, 100% 18px, 100% calc(100% - 18px), 50% 100%, 0 calc(100% - 18px), 0 18px);
+  --dc-specialty-intro-title-shape: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
+  --dc-specialty-intro-clip: polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px), 0 16px);
+}
+
+.dc-specialty.dualist .dc-skill-card {
+  --dc-card-accent: var(--dualist-accent);
+  --dc-card-tab-bg: var(--dualist-mid);
+  --dc-card-tab-title-color: var(--paper-cream);
+}
+
+.dc-specialty.dualist .dc-path-shell {
+  --dc-path-title-bg: var(--dualist-dark);
+  --dc-path-accent: var(--dualist-accent);
+}
+
+.dc-specialty.dualist .dc-specialty-card {
+  --dc-specialty-card-bg: var(--dualist-dark);
+  --dc-specialty-card-fg: var(--paper-cream);
+  --dc-specialty-card-accent: var(--dualist-accent);
+  --dc-specialty-card-border: var(--dualist-mid);
+}
+
+.dc-specialty.dualist .dc-specialty-intro {
+  --dc-specialty-intro-title-bg: var(--dualist-dark);
+  --dc-specialty-intro-title-color: var(--paper-cream);
+  --dc-specialty-intro-bg: var(--paper-light);
+}
+
+/* ── Generalist — jack-of-all-trades, soft chamfered rectangle (neutral) ─── */
+.dc-specialty.generalist {
+  --dc-skill-tab-shape: polygon(4px 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 0 100%, 0 4px);
+  --dc-skill-body-shape: polygon(4px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 4px);
+  --dc-path-title-shape: polygon(5px 0, calc(100% - 5px) 0, 100% 5px, 100% 100%, 0 100%, 0 5px);
+  --dc-path-shell-clip: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+  --dc-specialty-card-shell-shape: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+  --dc-specialty-intro-title-shape: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%, 0 6px);
+  --dc-specialty-intro-clip: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
+}
+
+.dc-specialty.generalist .dc-skill-card {
+  --dc-card-accent: var(--generalist-accent);
+  --dc-card-tab-bg: var(--generalist-mid);
+  --dc-card-tab-title-color: var(--paper-cream);
+}
+
+.dc-specialty.generalist .dc-path-shell {
+  --dc-path-title-bg: var(--generalist-dark);
+  --dc-path-accent: var(--generalist-accent);
+}
+
+.dc-specialty.generalist .dc-specialty-card {
+  --dc-specialty-card-bg: var(--generalist-dark);
+  --dc-specialty-card-fg: var(--paper-cream);
+  --dc-specialty-card-accent: var(--generalist-accent);
+  --dc-specialty-card-border: var(--generalist-mid);
+}
+
+.dc-specialty.generalist .dc-specialty-intro {
+  --dc-specialty-intro-title-bg: var(--generalist-dark);
+  --dc-specialty-intro-title-color: var(--paper-cream);
+  --dc-specialty-intro-bg: var(--paper-light);
+}
+
 /* ───────── AP TAGS ───────── */
 
 /* Standard action point — default blue; explicit class for documentation clarity */
@@ -809,8 +882,10 @@ hr,
 .dc-classtag.gutterdruid    { --dc-classtag-color: var(--gutterdruid-accent); }
 .dc-classtag.cybersurgeon   { --dc-classtag-color: var(--cybersurgeon-accent); }
 .dc-classtag.wirephreak     { --dc-classtag-color: var(--wirephreak-accent); }
-.dc-classtag.dc-technosorc  { --dc-classtag-color: var(--technosorcerer-accent); }
+.dc-classtag.technosorcerer { --dc-classtag-color: var(--technosorcerer-accent); }
 .dc-classtag.etherlock      { --dc-classtag-color: var(--etherlock-accent); }
+.dc-classtag.dualist        { --dc-classtag-color: var(--dualist-accent); }
+.dc-classtag.generalist     { --dc-classtag-color: var(--generalist-accent); }
 
 
 /* .dc-stamp / .dc-classified moved to deprecated.css 2026-05-24.
@@ -919,6 +994,18 @@ hr,
 }
 
 /* ═══ CARD SYSTEM ═══ */
+
+/* Token contract for .dc-skill-card:
+     --dc-card-accent          → tab border + body accent rule (default --ink)
+     --dc-card-surface         → card body background (default --paper-cream)
+     --dc-card-tab-bg          → tab background (default --ink-dark)
+     --dc-card-tab-title-color → tab title text color (default --paper-cream)
+     --dc-card-tier-color      → tier-badge fill (default --hud-magenta)
+     --dc-card-tier-border     → tier-badge border (default --hud-magenta)
+     --dc-card-body-mark       → decorative ::before mark color (default --crimson)
+   Specialty themes override these via .dc-specialty.<name> .dc-skill-card { }.
+   Adding a new specialty: copy a sibling block (.dc-specialty.augmerc .dc-skill-card)
+   and replace token values with the new specialty's --<name>-* aliases. */
 
 /* ── Skill card shell ─────────────────────────────────────────────────── */
 .dc-skill-card {
@@ -1117,15 +1204,14 @@ hr,
     background-color: var(--paper-aged);
     padding: 0.5em;
     box-shadow: var(--shadow-light);
-    border: var(--dc-card-tier-border);
-    border-style: dashed;
-    border-width: 2px;
+    border: 2px dashed var(--dc-roll-the-die-border, var(--hud-magenta));
 }
 
 /* ── AP base + author-facing variants ─────────────────────────────────── */
 .dc-ap {
   --dc-ap-bg: var(--hud-blue);
   --dc-ap-fg: var(--paper-cream);
+  --dc-ap-border: var(--ink-dark);
 
   font-family: var(--font-mono);
   font-size: 10px;
@@ -1135,6 +1221,10 @@ hr,
   text-align: center;
   background: var(--dc-ap-bg);
   color: var(--dc-ap-fg);
+  /* 1pt ink-dark hairline gives registration grip — without it, adjacent
+     red-family AP chips (free/var/increased) merge under CMYK dot gain
+     at chip scale (38px wide, ~0.5in on press). */
+  border: 1px solid var(--dc-ap-border);
   transform: rotate(-1deg);
   box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.12);
   letter-spacing: 1px;
@@ -1152,6 +1242,14 @@ hr,
 }
 
 /* ═══ LEARNING PATH + SPECIALTY INTRO + SPECIALTY CARD ═══ */
+
+/* Token contract for .dc-specialty-intro:
+     --dc-specialty-intro-title-bg     → title-tab background (default --hud-magenta)
+     --dc-specialty-intro-title-color  → title-tab text color (default --bg)
+     --dc-specialty-intro-bg           → body panel surface (default --paper-cream)
+     --dc-specialty-intro-title-shape  → title-tab clip-path polygon
+     --dc-specialty-intro-clip         → body shell clip-path polygon
+   Specialty themes override via .dc-specialty.<name> .dc-specialty-intro { }. */
 
 /* ── Specialty intro shell + element overrides ────────────────────────── */
 .dc-specialty-intro {
@@ -1244,6 +1342,17 @@ hr,
   padding-top: 0.08in;
   border-top: var(--bw-thin) solid var(--orange);
 }
+
+/* Token contract for .dc-specialty-card:
+     --dc-specialty-card-bg            → card body background (default --hud-panel)
+     --dc-specialty-card-border        → outer card border color (default --hud-blue)
+     --dc-specialty-card-accent        → inner accent rule color (default --crimson)
+     --dc-specialty-card-fg            → body text color (default --ink)
+     --dc-specialty-card-media-width   → portrait image width (default 0.75in)
+     --dc-specialty-card-media-height  → portrait image height (default 0.85in)
+     --dc-specialty-card-title-align   → title text-align (default right)
+     --dc-specialty-card-shell-shape   → outer clip-path polygon
+   Specialty themes override via .dc-specialty.<name> .dc-specialty-card { }. */
 
 /* ── Specialty card (.dc-specialty-card + descendants + nth-of-type(even)) */
 .dc-specialty-card {
@@ -1348,6 +1457,8 @@ hr,
      shadow rendering canvas before painting bottom/right drop-shadows. */
   background: transparent;
   margin: 8px 8px 16px;
+  padding-top:    var(--dc-path-shell-padding-top, 0);
+  padding-bottom: var(--dc-path-shell-padding-bottom, 0);
   position: relative;
   filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink));
 }
@@ -1530,8 +1641,8 @@ hr,
   font-weight: 400;
   letter-spacing: 0.10em;
   text-transform: uppercase;
-  color: var(--paper-cream);
-  opacity: 0.65;
+  color: var(--dc-outcome-name-color, var(--paper-cream));
+  opacity: var(--dc-outcome-name-opacity, 0.85);
   line-height: 1;
 }
 
@@ -1540,7 +1651,7 @@ hr,
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.03em;
-  color: var(--paper-cream);
+  color: var(--dc-outcome-key-color, var(--paper-cream));
   opacity: 1;
   display: block;
   line-height: 1;
@@ -1555,19 +1666,38 @@ hr,
   line-height: 1.55;
   color: var(--ink);
   align-self: center;
+  /* Container rule tethers the result text to its row color — without it the
+     right-column text floats on plain paper-cream with no visual tie back to
+     the row band, reading as untether'd prose next to a designed table.
+     Reads `--row-color` which is set per-variant on .dc-outcome-row.X. */
+  border-left: 2px solid var(--row-color, var(--ink-dust));
 }
 
-/* ── Outcome row color modifiers ──────────────────────────────────────── */
+/* ── Outcome row color modifiers ──────────────────────────────────────────
+   Creaturepunk pillar gradient across the 5-band outcome ladder:
+     crit  → brand-magenta-deep  (NEON peak, jewel-deep — paper-cream 6.21:1)
+     hit   → fungi-glow + ink    (FLUORESCENT FUNGI alive — ink-on-glow 12.24:1)
+     mixed → orange-deep         (GUTTER warm, burnt-deep — paper-cream 5.25:1)
+     miss  → rust                (GUTTER deep — paper-cream 4.59:1)
+     fail  → fungi-rot           (FLUORESCENT FUNGI dark — paper-cream 8.73:1)
+   All four creaturepunk pillars present; all 5 rows clear WCAG AA 4.5:1
+   for 9px outcome-name and 12pt roll-number text.
+
+   The hit row uses --row-text-color override because fungi-glow is too
+   light to carry paper-cream text (1.13:1 fail). Bright row + dark text
+   preserves the bioluminescent signal while keeping labels press-legible. */
 .dc-outcome-row.crit {
-  --row-color: var(--hud-magenta);
+  --row-color: var(--brand-magenta-deep);
 }
 
 .dc-outcome-row.hit {
-  --row-color: var(--hud-blue-dark);
+  --row-color: var(--fungi-glow);
+  --dc-outcome-name-color: var(--ink);
+  --dc-outcome-key-color: var(--ink);
 }
 
 .dc-outcome-row.mixed {
-  --row-color: var(--orange);
+  --row-color: var(--orange-deep);
 }
 
 .dc-outcome-row.miss {
@@ -1575,7 +1705,7 @@ hr,
 }
 
 .dc-outcome-row.fail {
-  --row-color: var(--ink-dark);
+  --row-color: var(--fungi-rot);
 }
 
 /* ── Distance tags (AP cost × distance block) ─────────────────────────── */
@@ -1771,6 +1901,12 @@ hr,
 }
 
 .dc-gear-entry h3 {
+  /* Gear item names sit in 2-column grids — h3's default 16pt burns
+     disproportionate column measure. Drop to --fs-h4 (13pt) so 1 EP / 2 EP
+     stat lines below have a tighter vertical anchor; lixdu display font
+     still reads as display at 13pt+. Token surface so per-context can
+     override if a single-column gear layout ever needs the bigger h3. */
+  font-size: var(--dc-gear-entry-h3-size, var(--fs-h4));
   letter-spacing: var(--ls-display);
   color: var(--crimson);
   margin: 0 0 4px;
@@ -3015,22 +3151,28 @@ h3 + .section {
 
 /* Token contract for .dc-npc-stat:
      --dc-npc-stat-rule         → name top-rule color (default --rust)
-     --dc-npc-stat-rule-width   → name top-rule weight (default 1.5pt)
+     --dc-npc-stat-rule-width   → name top-rule weight (default 2pt, was 1.5pt — hairline risk on press)
      --dc-npc-stat-label-color  → h5 subsection-label color (default --hud-blue-dark)
      --dc-npc-stat-primary      → primary stat-line color, e.g. "2 HP — 1 Damage" (default --hud-blue)
      --dc-npc-stat-secondary    → secondary stat-line color (default --ink-smoke)
    Override per chapter / per faction in fg-overrides selector chains. */
 .dc-npc-stat h4 {
-  border-top: var(--dc-npc-stat-rule-width, 1.5pt) solid var(--dc-npc-stat-rule, var(--rust));
+  border-top: var(--dc-npc-stat-rule-width, 2pt) solid var(--dc-npc-stat-rule, var(--rust));
   padding-top: 0.05in;
   margin-top: 0.1in;
 }
 
 .dc-npc-stat h5 {
+  /* TRAITS / EQUIPMENT / CYBERNETICS chrome labels — explicitly smaller +
+     wider-tracked than the NPC name (h4) so the hierarchy reads at a glance.
+     Was --fs-body-sm (11pt) which only had a 2pt gap to the 13pt h4 name —
+     mono caps closed that perceptually to read as competing headings.
+     Dropping to --fs-h6 (9pt) with extra tracking restores chrome-label
+     register, matching the PHB stat-block pattern (name ~14pt → label ~8pt). */
   font-family: var(--font-mono);
-  font-size: var(--fs-body-sm);
+  font-size: var(--fs-h6);
   font-weight: var(--fw-semibold);
-  letter-spacing: var(--ls-cap-sm);
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--dc-npc-stat-label-color, var(--hud-blue-dark));
   border-bottom: 0.75pt solid var(--border-hairline);
@@ -3086,6 +3228,10 @@ h3 + .section {
   background: transparent;
   padding: 0;
   margin: var(--space-md) 0 0;
+  /* Explicit override of .section default (break-inside: avoid) — the grid is a
+     layout wrapper, not a cohesive content block, and may span across pages
+     when the card count exceeds what fits on a single page. */
+  break-inside: auto;
   filter: none;
 }
 .section.dc-card-grid::before,
@@ -3098,7 +3244,7 @@ h3 + .section {
 .dc-card-grid > .dc-intro {
   break-after: avoid;
   padding: 5px 12px 5px 16px;
-  margin: 0 0 0.04in;
+  margin: 0 0 var(--space-md);
 }
 .dc-card-grid .dc-specialty:first-of-type { break-before: avoid; }
 
@@ -3208,13 +3354,12 @@ h3 + .section {
      @end-definition
      @end-section */
 
+/* Layout (columns: 2 / column-gap / column-fill) lives in page-templates.css
+   alongside other multi-column section types — columns-ownership rule. */
 .section.dc-rules-definition {
   --dc-rules-definition-accent-a: var(--section-accent);
   --dc-rules-definition-accent-b: var(--hud-magenta);
 
-  columns: 2;
-  column-gap: var(--gutter);
-  column-fill: balance;
   margin: var(--space-md) 0;
 }
 

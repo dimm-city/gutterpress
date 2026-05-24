@@ -49,14 +49,9 @@
   break-inside: avoid;
 }
 
-/* Specialty card images must be constrained to prevent full-size external images
-   from breaking break-inside:avoid. (Generic `img { max-width: 100% }` baseline
-   lives in dc-core.css.) */
-.page .dc-specialty-card img {
-  width: var(--dc-specialty-card-media-width);
-  height: var(--dc-specialty-card-media-height);
-  object-fit: cover;
-}
+/* Specialty card image sizing lives in dc-components.css (.dc-specialty-card img)
+   via --dc-specialty-card-media-width/height tokens; no page-template override
+   needed. */
 
 /* ── COLUMN BREAK MARKER ──────────────────────────────────────────────────── */
 .column-break {
@@ -202,6 +197,17 @@
 .dc-card-grid .dc-specialty,
 .dc-card-grid .dc-specialty-card {
   break-inside: avoid;
+}
+
+/* ── LAYOUT: RULES-DEFINITION SECTION ──────────────────────────────────────── */
+/* @section .dc-rules-definition is the two-column "term ↔ definition" rule
+   pairing (e.g., Lucid ↔ Surreal in the dice-rolls chapter). Column layout
+   lives here per the columns-ownership rule; component styling (accents,
+   token surfaces, h2 column-span) lives in dc-components.css. */
+.section.dc-rules-definition {
+  columns: 2;
+  column-gap: var(--gutter);
+  column-fill: balance;
 }
 
 /* ── TWO-COLUMN LIST UTILITY ───────────────────────────────────────────────── */

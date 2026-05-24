@@ -51,21 +51,9 @@ Everything in this chapter exists to support that loop. Abilities bend it. Dice 
 
 @end-callout
 
-@section
-
-### Choosing by Playstyle
-
-**Want to hit things hard?** Augmerc. **Want to control the battlefield?** Streetwarden or Proxy. **Want to slide through systems undetected?** Wirephreak. **Want raw arcane force?** Technosorcerer, Gutterdruid, or Etherlock. **Want to rebuild your body as your toolkit?** Cybersurgeon.
-
-Every specialty excels at one thing and has a path toward a second. Your first specialty is your identity. What you pick up later is your legend.
-
-@end-section
-
 @page .card-grid
 
-@section .dc-card-grid
-
-## Choose Your Specialty
+## Choose Your Specialty {.dc-chevron}
 
 @lede
 
@@ -76,6 +64,8 @@ Each specialty produces a different kind of operative. The Augmerc hits hard in 
 Every dreamer's got a sharp edge — your specialty is where it starts.
 
 @end-lede
+
+@section .dc-card-grid
 
 @specialty .augmerc
 
@@ -204,5 +194,47 @@ Secrets are currency—and Etherlocks are rich in them. Tapping into elemental f
 @end-specialty-card
 
 @end-specialty
+
+@specialty .dualist
+
+@specialty-card #specialty-dualist
+
+### Dualist
+
+![Dualist](https://placehold.co/300x340/png?text=Dualist)
+
+> Two-Path Walker
+
+Dualists refuse to choose. They walk two specialty paths at once, drawing skills from both at the cost of mastery in either. Where others sharpen one edge, the Dualist carries two — equally at home picking locks and pulling triggers, casting circuits and reading rooms.
+
+@end-specialty-card
+
+@end-specialty
+
+@specialty .generalist
+
+@specialty-card #specialty-generalist
+
+### Generalist
+
+![Generalist](https://placehold.co/300x340/png?text=Generalist)
+
+> Sprawl Survivor
+
+Generalists don't specialize — they scavenge. Picking up scraps of every art the city offers, they're the operative no one expects: a passable hacker who can shoot, a mediocre fighter who can sneak, a half-druid who knows a guy. Master of none. Useful to everyone.
+
+@end-specialty-card
+
+@end-specialty
+
+@end-section
+
+@section
+
+### Choosing by Playstyle
+
+**Want to hit things hard?** Augmerc. **Want to control the battlefield?** Streetwarden or Proxy. **Want to slide through systems undetected?** Wirephreak. **Want raw arcane force?** Technosorcerer, Gutterdruid, or Etherlock. **Want to rebuild your body as your toolkit?** Cybersurgeon. **Want two paths at once?** Dualist. **Want a scrap of everything?** Generalist.
+
+Every specialty excels at one thing and has a path toward a second. Your first specialty is your identity. What you pick up later is your legend.
 
 @end-section

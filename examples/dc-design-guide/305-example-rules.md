@@ -172,6 +172,8 @@ On a success, the condition ends. Conditions usually end when the encounter ends
 
 @end-section
 
+@section
+
 ### Rolling the Die — Full Outcome Ladder
 
 @outcome
@@ -181,8 +183,6 @@ On a success, the condition ends. Conditions usually end when the encounter ends
 2–5 | Failure | You don't get what you wanted
 1 | Catastrophe | It goes bad, and then worse
 @end-outcome
-
-@section
 
 ### Distance Tags
 

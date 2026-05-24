@@ -1,15 +1,21 @@
 /* =============================================================================
    DC Design Guide — CSS Entry Point
 
-   5-file stack — import order: tokens first, guide scaffolding last:
-     tokens.css            :root tokens, @font-face, html/body baseline
-     dc-components.css     every .dc-* and .pmd-* component (base + thin variants)
-     page-templates.css    every .page.* layout rule — sole home of columns:N
-     page-rules.css        @page declarations, .pagedjs_* overrides, counter resets
-     dc-design-guide.css   div.chapter scaffolding, .specimen chrome (guide-only)
+   7-file stack — import order: tokens first, project overrides last:
+     dc-tokens.css       :root tokens, @font-face, * { print-color-adjust }
+     dc-core.css         html/body baseline, element resets, heading defaults
+     dc-components.css   every .dc-* component (base + token contracts + theme variants)
+     page-templates.css  every .page.* layout rule — sole home of columns:N
+     page-rules.css      @page declarations, named pages, Paged.js counter fixes
+     dg-overrides.css    div.chapter scaffolding, .specimen chrome (guide-only)
+     fg-overrides.css    field-guide context overrides — chapter-id selectors that
+                         set component tokens, plus context-scoped break rules.
+                         Loads LAST so it wins the cascade.
 
-   To adapt for a new project, copy the first four files and add
-   project-overrides.css (last import, silently absent if missing).
+   To adapt for a new project, copy the first six files and replace
+   fg-overrides.css with your own project-overrides setting component tokens
+   in chapter / page-template / section context selectors. Never write bare
+   .dc-* rules in the overrides file — that's the cascade contract.
    ============================================================================= */
 @import url("./dc-tokens.css");            /* tokens, @font-face, html/body baseline */
 @import url("./dc-core.css"); 

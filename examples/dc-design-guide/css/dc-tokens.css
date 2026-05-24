@@ -110,6 +110,7 @@
   --crimson:    #e1261c;  /* PMS Red 032 — CMYK 0 95 90 0; survives POD */
   --blood:      #901a12;  /* oxidised arterial — 5.2:1 on paper-cream */
   --orange:     #d4500a;  /* burnt circuit-board — heat-damaged, not friendly cone */
+  --orange-deep: #a03808; /* burnt fire-deep — paper-cream 5.25:1 (deeper variant for small-text-on-fill contexts) */
   --rust:       #b23a12;  /* burnt rebar edge */
   --amber:      #7a5a20;  /* sulfur-scorched brass — contaminated, not generic earth */
   --deep-rust:  #6a1a08;  /* shadow rust — deepest warm dark */
@@ -121,6 +122,7 @@
      (#d946ef / #00ffff / #ffd700) so they survive POD press without muddying.
      HUD + signal tokens below alias these — touch the brand layer first. */
   --brand-magenta: #c026d3;  /* dimm.city cyber-magenta, SWOP-corrected from web #d946ef */
+  --brand-magenta-deep: #8a0a9a;  /* jewel-deep cyber-magenta — paper-cream 6.21:1 (small-text-on-fill safe) */
   --brand-cyan:    #00bcd4;  /* dimm.city neon-cyan, paper-contrast-tuned from web #00ffff */
   --brand-yellow:  #ffd700;  /* dimm.city brand-yellow — survives press unchanged */
   --brand-violet:  #7030b8;  /* dimm.city cyber-violet, SWOP-corrected from web #a020f0 */
@@ -210,21 +212,49 @@
   /* ── Shapes ───────────────────────────────────────────────────────────── */
   --clip-banner: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
 
+  /* ── Fluorescent Fungi Pillar (creaturepunk: bioluminescent organic) ─────
+     The 4th creaturepunk register: spore-light, lichen-glow, UV-reactive
+     bio-organic green family. Distinct from the gutter pillar (rust/blood)
+     and the neon pillar (brand-magenta/cyan/yellow) — this is "alive and
+     glowing" rather than "signal" or "decay". CMYK-safe:
+       fungi-glow  ≈ C30/M0/Y90/K0  = 120%
+       fungi-mid   ≈ C58/M18/Y100/K8 = 184%
+       fungi-rot   ≈ C50/M30/Y100/K60 = 240% (large fills only) */
+  --fungi-glow:  #c8e040;  /* bioluminescent yellow-green — UV spore-light (consumed: .dc-outcome-row.hit, --gutterdruid-accent) */
+  --fungi-mid:   #6aa030;  /* luminous lichen mid — verdigris with a pulse (RESERVED — no current consumer; intended for DM-chapter secondary accent or future fungi-faction signal) */
+  --fungi-rot:   #2a4015;  /* deep moldering green — rot in dark places (consumed: .dc-outcome-row.fail; large-fill only — TAC 176%) */
+
+  /* ── Ancient Crystal Pillar (creaturepunk: faceted mineral refraction) ───
+     The mineral-magic register: amethyst, aquamarine, citrine — geometric
+     and refractive. Available for ritual / arcane / "ancient power"
+     accents. Distinct from brand-violet (signal-saturated) and the warm
+     gold of brand-yellow (electric). CMYK-safe:
+       crystal-amethyst ≈ C50/M65/Y0/K35 = 150%
+       crystal-aqua     ≈ C70/M28/Y28/K20 = 146%
+       crystal-citrine  ≈ C20/M30/Y90/K20 = 160% */
+  --crystal-amethyst: #6a3a8a;  /* deep mineral violet — refractive arcane (consumed: --generalist-accent) */
+  --crystal-aqua:     #4a98a8;  /* pale crystalline aquamarine (consumed: --dualist-accent) */
+  --crystal-citrine:  #b89a3a;  /* burnt mineral gold — earthy ritual variant (RESERVED — no current consumer; intended for tier-badge gold variants or future crystal-faction signal) */
+
   /* ── Specialty Accent Colors ──────────────────────────────────────────── */
-  /* Scheme A: 3 brand-anchored (augmerc=magenta, wirephreak=cyan, technosorcerer=violet, etherlock=yellow),
-     4 bespoke creaturepunk hues (proxy=burnt orange, streetwarden=toxic green, gutterdruid=verdigris,
-     cybersurgeon=chrome). */
+  /* Scheme A: 4 brand-anchored (augmerc=magenta, wirephreak=cyan, technosorcerer=violet, etherlock=yellow),
+     1 fungi-pillar (gutterdruid=bioluminescent rot), 3 bespoke creaturepunk hues
+     (proxy=burnt orange, streetwarden=toxic-civic hazard green, cybersurgeon=chrome).
+     Streetwarden keeps #4db840 (high-vis civic hazard) — distinct from the quieter
+     fungi-mid lichen tone; gutterdruid is the alive-and-glowing spore. */
   --augmerc-accent:        var(--brand-magenta);  /* cyber-augmentation = brand-signature magenta */
   --proxy-accent:          var(--orange);          /* burnt-circuit orange */
   --streetwarden-accent:   #4db840;                /* toxic civic green — hazard, not park bench */
-  --gutterdruid-accent:    #7a9a3a;                /* lichen / verdigris on rebar */
+  --gutterdruid-accent:    var(--fungi-glow);      /* bioluminescent spore — alley fungus at full flare */
   --cybersurgeon-accent:   #a8b4b8;                /* cool blue-gray chrome (was flat silver) */
   --wirephreak-accent:     var(--brand-cyan);      /* signal interference = brand neon-cyan */
   --technosorcerer-accent: var(--brand-violet);    /* ritual + tech = brand cyber-violet */
   --etherlock-accent:      var(--brand-yellow);    /* spirit channeling = brand radiant gold */
+  --dualist-accent:        var(--crystal-aqua);     /* refractive mineral split — two-path walker */
+  --generalist-accent:     var(--crystal-amethyst); /* deep mineral refraction — survivor's stone, opposite pole from dualist */
 
   /* ── Specialty Dark Colors (path-shell + specialty-card backgrounds) ── */
-  --augmerc-dark:          #7a1080;  /* deep magenta-violet */
+  --augmerc-dark:          #8a1a90;  /* deep magenta-violet (TAC ~157% — was #7a1080 at 175%) */
   --proxy-dark:            #3d1a00;  /* near-black scorch */
   --cybersurgeon-dark:     #303840;  /* cold clinical near-black */
   --wirephreak-dark:       #003a40;  /* deep teal-black — drowned circuit */
@@ -232,6 +262,8 @@
   --technosorcerer-dark:   #200a38;  /* ink-bruise kin — deep ritual dark */
   --gutterdruid-dark:      #2a3408;  /* swamp-rot dark — greenish, not brown */
   --etherlock-dark:        #3d3000;  /* deep tarnished gold */
+  --dualist-dark:          #143a4a;  /* sapphire-trench — deep crystal-aqua dark */
+  --generalist-dark:       #1e0e2e;  /* deep amethyst-black — opposite crystal pole from dualist */
 
   /* ── Specialty Mid Colors (card-tab bg + card border — uniform contract)
      Each mid sits perceptually midway between its specialty's accent and
@@ -245,6 +277,8 @@
   --wirephreak-mid:        #006878;  /* drowned signal teal */
   --technosorcerer-mid:    #4a1878;  /* ritual indigo midpoint */
   --etherlock-mid:         #8a6a00;  /* tarnished antique gold */
+  --dualist-mid:           #2a6878;  /* drowned mineral aqua — between crystal-aqua and sapphire-trench */
+  --generalist-mid:        #503070;  /* mid amethyst — between crystal-amethyst and generalist-dark */
 
   /* ── Skill Tier Badge Colors — creaturepunk-decoded ─────────────────────
      Tier identity reframed: not trophy-show metals but salvaged/scarred ones.

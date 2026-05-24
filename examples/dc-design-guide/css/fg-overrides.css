@@ -42,16 +42,9 @@
    NPC stat blocks moved to dc-components.css as .dc-npc-stat. */
 
 /* ── FIELD GUIDE EXAMPLE ART — context-driven, no per-image classes ──────── */
-/* Specialty card thumbnails — sized by parent context (the card itself),
-   not by per-image classes. Applies anywhere a .dc-specialty-card has a
-   leading image. */
-.dc-specialty-card > p > img:first-child,
-.dc-specialty-card > img:first-child {
-  width: 0.75in;
-  height: 0.85in;
-  object-fit: cover;
-  display: block;
-}
+/* Specialty card thumbnails are sized by the component default in
+   dc-components.css (via --dc-specialty-card-media-width/height tokens).
+   No override needed here. */
 
 /* Chapter opener inset art — floated right, text wraps around it */
 .fg-art-street-sign {
@@ -89,16 +82,19 @@
 }
 
 /* ── SPECIALTY PAGE BREAK CONTROL ─────────────────────────────────────────── */
-/* Break and overflow rules for specialty page type. Components own their own
-   sizing; only break-control and snap geometry belong here. */
+/* Break-control rules for specialty page type. Components own their own
+   sizing; only break-control and snap geometry belong here. The overflow
+   and padding overrides moved to token-driven defaults in dc-components.css. */
 .dc-specialty .dc-learning-path {
   break-before: auto;
   break-inside: auto;
   break-after: auto;
-  overflow: visible;
 }
 
-.dc-specialty .dc-path-shell { padding-top: 0; padding-bottom: 16px; }
+.dc-specialty .dc-path-shell {
+  --dc-path-shell-padding-top: 0;
+  --dc-path-shell-padding-bottom: 16px;
+}
 .dc-specialty .dc-skill-card.allow-split { break-inside: auto; }
 
 
@@ -171,11 +167,11 @@
 /* Chapter 1 — opener + character creation: brand identity register */
 #ch-example-chapter-opener { --section-accent: var(--brand-magenta); }
 
-/* Chapter 2 — specialty overview (Choose Your Specialty card grid): HUD/data */
-#ch-example-specialty-overview { --section-accent: var(--hud-blue-dark); }
+/* Chapter 2 — specialty overview (Choose Your Specialty card grid): brand-magenta gateway */
+#ch-example-specialty-overview { --section-accent: var(--brand-magenta); }
 
-/* Chapter 3 — specialty profile spreads (Augmerc and friends): HUD/data */
-#ch-example-specialty-profile { --section-accent: var(--hud-blue-dark); }
+/* Chapter 3 — specialty profile spreads (Augmerc and friends): brand-magenta gateway */
+#ch-example-specialty-profile { --section-accent: var(--brand-magenta); }
 
 /* Chapter 4 — rules (Are You Lucid Yet, Dreams, City, etc.): brand identity register */
 #ch-example-rules { --section-accent: var(--brand-magenta); }
@@ -199,4 +195,47 @@
   text-transform: uppercase;
   margin-top: 0;
   margin-bottom: 0.2in;
+}
+
+/* ── DM/NPC chapter: tables wear the chapter's gutter-pillar accent ─────────
+   Default .dc-table header background is --hud-blue-dim (cold-teal HUD),
+   which conflicts with the rust section-accent on this chapter. Use --blood
+   (not --rust) for the header fill: --rust on paper-cream prints at 4.59:1
+   contrast — a bare WCAG AA pass with no press-margin safety. --blood lands
+   at 6.3:1 contrast on the same background while staying firmly in the warm
+   gutter-pillar register. Section headers and rule-stripes still use --rust;
+   table-header fills get the safer --blood. */
+#ch-example-dm-npcs .dc-table th,
+#ch-example-dm-npcs table th {
+  background: var(--blood);
+  color: var(--paper-cream);
+}
+
+/* ── DM/NPC chapter: callouts catch a faint fungi glow ───────────────────────
+   Plants the fluorescent-fungi pillar in the DM chapter. The rust accents on
+   section headers and stat-block rules deliver the gutter pillar; this rule
+   gives advisory/vibe callouts a low-level organic glow — alley fungus
+   creeping into the encounter rules. Uses --fungi-rot at 30% mix against the
+   paper-light substrate so the green stays a tint, not a fill, and uses
+   --fungi-mid as the left-bar border accent. */
+#ch-example-dm-npcs .dc-alert {
+  --dc-alert-bg: color-mix(in srgb, var(--fungi-rot) 30%, var(--paper-light));
+  --dc-alert-border: var(--fungi-mid);
+}
+
+/* ── Augmerc learning-path: glue path-overview to first skill card ──────────
+   The plugin emits each @skill as its own `.dc-specialty.augmerc` wrapper
+   (sibling wrappers, not nested), so the path-shell wrapper and the first
+   skill-card wrapper are SIBLINGS at the @specialty level — not parent and
+   child. Use :has() to target the wrapper that holds the populated path
+   overview (h2.dc-spray) and glue it to its next sibling wrapper (which
+   holds the first skill card). Without this, Biting Distance lands on its
+   own half-empty page while Punishing Counter starts a new page (orphan
+   pair). The scoped break rules force paged.js to keep them on the same
+   page — either both on this page or both moved to the next. */
+.dc-specialty.augmerc:has(.dc-path-shell > h2.dc-spray) {
+  break-after: avoid;
+}
+.dc-specialty.augmerc:has(.dc-path-shell > h2.dc-spray) + .dc-specialty.augmerc {
+  break-before: avoid;
 }
