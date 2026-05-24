@@ -74,8 +74,22 @@
   --dc-alert-label-margin: 8pt;
   --dc-alert-margin-top: 0;
 
-  background: var(--dc-alert-bg);
+  /* Tonal depth on the panel fill — 4% lighter top fading to 4% darker bottom
+     gives the callout an "inked-into-paper" pressed register vs a flat tinted
+     box. The previous flat fill was the dominant reason callouts read as
+     "wireframe" rather than "designed". */
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--dc-alert-bg) 96%, #fff 4%) 0%,
+      var(--dc-alert-bg) 30%,
+      color-mix(in srgb, var(--dc-alert-bg) 97%, #000 3%) 100%);
   border-left: var(--dc-alert-border-width) solid var(--dc-alert-border);
+  /* Inset hairline-cream stroke on the inner edge of the left border + a
+     1px top-light highlight. Deluxe-book carved-frame feel without adding
+     visible chrome at reading distance. */
+  box-shadow:
+    inset calc(var(--dc-alert-border-width) + 1px) 0 0 -1px rgba(238, 224, 196, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
   color: var(--dc-alert-fg);
   font-size: var(--dc-alert-body-size);
   line-height: var(--lh-normal);
@@ -598,11 +612,22 @@
 .dc-chevron {
   font-family: var(--font-display);
   font-size: var(--fs-h1);
-  /* vw resolves to min in Paged.js — use fixed token */
-  letter-spacing: 0.06em;
+  /* Tighter optical tracking — lixdu at display sizes needs negative kerning
+     to feel "designed" rather than "default-rendered." */
+  letter-spacing: -0.005em;
   color: var(--dc-chevron-color, var(--paper-cream));
   text-transform: uppercase;
-  background: var(--dc-chevron-bg, var(--rust));
+  /* Subtle tonal gradient — 7% lighter top fading into solid token color over
+     the first ~14px. Doesn't read as a gradient; reads as ink density / "lit
+     from above" depth. The flat solid fill was the #1 amateur tell. */
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--dc-chevron-bg, var(--rust)) 93%, #fff 7%) 0%,
+      var(--dc-chevron-bg, var(--rust)) 14px,
+      var(--dc-chevron-bg, var(--rust)) 100%);
+  /* Subtle text shadow lifts heading off the field — barely perceptible but
+     elevates the title from "label" to "set type". */
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
   padding: 10px 28px 10px 14px;
   display: inline-block;
   max-width: 100%;
@@ -631,10 +656,19 @@ h1.dc-chevron {
 .dc-spray {
   font-family: var(--font-display);
   font-size: 22px;
+  /* Display-size negative tracking — same rationale as .dc-chevron */
+  letter-spacing: -0.01em;
   color: var(--dc-spray-color, var(--paper-cream));
   text-transform: uppercase;
   line-height: 1.5;
-  background: var(--dc-spray-bg, var(--hud-magenta));
+  /* Tonal gradient with stronger top-highlight than .dc-chevron — spray banners
+     are smaller so the lit-from-above effect needs a tighter peak. */
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--dc-spray-bg, var(--hud-magenta)) 90%, #fff 10%) 0%,
+      var(--dc-spray-bg, var(--hud-magenta)) 12px,
+      var(--dc-spray-bg, var(--hud-magenta)) 100%);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
   display: inline-block;
   box-sizing: border-box;
   padding: 16px 22px 18px;
@@ -817,10 +851,41 @@ h1.dc-chevron {
   font-size: var(--fs-body);
   font-style: italic;
   color: var(--ink-smoke);
-  background: linear-gradient(to right, var(--orange) 4px, var(--paper-stain) 4px);
+  /* Layered fill: paper-grain noise + accent strip + tonal-lift fill —
+     same three-layer composition used on .section / .dc-specialty-card so
+     the lede reads as designed page furniture, not a tinted div. */
+  background:
+    var(--texture-paper-grain) repeat,
+    linear-gradient(to right,
+      var(--section-accent, var(--orange)) 0,
+      var(--section-accent, var(--orange)) 4px,
+      transparent 4px),
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--paper-stain) 96%, #fff 4%) 0%,
+      var(--paper-stain) 30%,
+      color-mix(in srgb, var(--paper-stain) 98%, #000 2%) 100%);
+  background-blend-mode: multiply, normal, normal;
   line-height: 1.5;
   padding: 10px 14px 10px 18px;
   margin: 0.1in 0;
+}
+
+/* Drop cap on the first paragraph of a lede block — 2-line lixdu display
+   initial in section-accent. Editorial drop caps are one of the strongest
+   "this is a designed book" signals; their absence is one of the loudest
+   "this is rendered Markdown" tells.
+
+   Uses the same `initial-letter` pattern as .dc-chapter-opener-no — that's
+   the CSS-spec property for drop caps and renders correctly in paged.js. */
+.dc-intro > p:first-of-type::first-letter,
+.dc-intro > p:first-child::first-letter {
+  initial-letter: 2;
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold, 700);
+  font-style: normal;
+  color: var(--section-accent, var(--brand-magenta));
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+  margin-right: 0.06em;
 }
 
 /* ── Spec tweak section header ────────────────────────────────────────── */
@@ -1059,7 +1124,15 @@ hr,
   align-items: center;
   gap: 12px;
   padding: 3px 18px 3px 8px;
-  background: var(--dc-card-tab-bg);
+  /* Tonal gradient on the tab fill — top 12% lighter, bottom 6% darker —
+     reads as inked-into-paper depth rather than flat sticker. The skill tab
+     is the most-repeated chrome element in the book (every skill card has
+     one), so the polish multiplier here is high. */
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--dc-card-tab-bg) 88%, #fff 12%) 0%,
+      var(--dc-card-tab-bg) 55%,
+      color-mix(in srgb, var(--dc-card-tab-bg) 94%, #000 6%) 100%);
   border: 2px solid var(--dc-card-accent);
   border-bottom: 0;
   margin-left: 10px;
@@ -1079,6 +1152,10 @@ hr,
   letter-spacing: 0.05em;
   line-height: 1.2;
   word-break: break-word;
+  /* Subtle text-shadow lifts the title against the tab gradient — same
+     trick as .dc-chevron / .dc-spray. Imperceptible at normal reading
+     distance, decisive at the "designed vs default" level. */
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
 }
 
 .dc-tab-tier {
@@ -1219,14 +1296,28 @@ hr,
   padding: 3px 6px;
   min-width: 38px;
   text-align: center;
-  background: var(--dc-ap-bg);
+  /* Inner ink-density gradient + top-highlight — same pattern as
+     .dc-outcome-key. The chip reads as "stamped/printed" rather than a flat
+     CSS rectangle. */
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--dc-ap-bg) 90%, #fff 10%) 0%,
+      var(--dc-ap-bg) 50%,
+      color-mix(in srgb, var(--dc-ap-bg) 94%, #000 6%) 100%);
   color: var(--dc-ap-fg);
   /* 1pt ink-dark hairline gives registration grip — without it, adjacent
      red-family AP chips (free/var/increased) merge under CMYK dot gain
      at chip scale (38px wide, ~0.5in on press). */
   border: 1px solid var(--dc-ap-border);
   transform: rotate(-1deg);
-  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.12);
+  /* Layered shadow — tight close shadow + soft far shadow. Single flat shadow
+     is the #2 amateur tell after flat fills. The layered version gives depth
+     that reads as "card lifted off page". */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    2px 2px 0 rgba(0, 0, 0, 0.10),
+    3px 3px 6px rgba(0, 0, 0, 0.08);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.20);
   letter-spacing: 1px;
   flex-shrink: 0;
   align-self: flex-start;
@@ -1363,7 +1454,23 @@ hr,
   --dc-specialty-card-media-height: 0.85in;
   --dc-specialty-card-media-width: 0.75in;
   --dc-specialty-card-title-align: right;
-  background: var(--dc-specialty-card-bg);
+  /* Three-layer background stack — biggest swing for "designed not rendered":
+       1. Paper-grain noise overlay (~5% opacity) breaks the flat-fill plane —
+          the fill stops reading as a CSS rectangle and starts reading as ink
+          on paper. This is THE single move that flips amateur → designed.
+       2. Tonal lift gradient (top 6% lighter, bottom 2% darker pool) gives
+          dimensional weight without reading as a "gradient".
+       3. Solid token underneath as fallback / dominant fill color. */
+  background:
+    var(--texture-paper-grain) repeat,
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--dc-specialty-card-bg) 94%, #fff 6%) 0%,
+      var(--dc-specialty-card-bg) 30%,
+      color-mix(in srgb, var(--dc-specialty-card-bg) 98%, #000 2%) 100%);
+  /* Multiply blend on the noise so it darkens/varies the fill rather than
+     adding a flat film over the top. Multiply is print-safe (renders in CMYK
+     as standard ink-layer math). */
+  background-blend-mode: multiply, normal;
   color: var(--dc-specialty-card-fg);
   display: flow-root;
   overflow: hidden;
@@ -1377,17 +1484,53 @@ hr,
   clip-path: var(--dc-specialty-card-shell-shape, polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 24px) 100%, 0 100%));
 }
 
-/* Portrait image floated in specialty card. */
+/* Portrait image floated in specialty card.
+   Frame chrome — double-border treatment lifts the portrait from "raw
+   placeholder" to "framed plate". Outer accent border + 1px paper-cream
+   inset offset = deluxe trading-card / monograph-illustration register. */
 .dc-specialty-card img {
   width: var(--dc-specialty-card-media-width);
   height: var(--dc-specialty-card-media-height);
   object-fit: cover;
-  border: none;
+  /* Outer hairline in the specialty's accent — frames the portrait as
+     "specialty-claimed" art rather than a stock image. */
+  border: 1.5pt solid var(--dc-specialty-card-accent);
+  /* Inset offset stroke in paper-cream creates the deluxe-frame double-edge
+     (outline + offset gap + border = three visual layers in 2px of chrome). */
+  outline: 0.75pt solid color-mix(in srgb, var(--paper-cream) 80%, transparent);
+  outline-offset: 1.5pt;
   padding: 0;
   box-sizing: border-box;
   float: left;
-  margin: 0 0.14in 0.08in 0;
-  border-radius: 2px;
+  margin: 0 0.18in 0.08in 0;
+  border-radius: 0;  /* sharp corners — printed plates don't have CSS rounding */
+  /* Subtle inset shadow under the portrait suggests it sits ON the card, not
+     within a transparent slot. Bottom-right ink-shadow is the universal "this
+     thing has depth" signal. */
+  box-shadow:
+    0 0.5pt 0 rgba(0, 0, 0, 0.18),
+    1pt 1.5pt 3pt rgba(0, 0, 0, 0.22);
+}
+
+/* Corner accent ornament — small geometric mark in the specialty's accent
+   color at the top-right corner. Reads as a "specialty-class seal" or
+   "trading card foil corner" — the kind of asymmetric chrome that
+   distinguishes designed cards from rendered ones. */
+.dc-specialty-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  background:
+    linear-gradient(135deg,
+      var(--dc-specialty-card-accent) 0%,
+      var(--dc-specialty-card-accent) 50%,
+      transparent 50.1%,
+      transparent 100%);
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Specialty name heading — aligned away from the portrait, allow wrapping. */
@@ -1625,7 +1768,18 @@ hr,
 }
 
 .dc-outcome-key {
-  background: var(--row-color, var(--ink));
+  /* Inner top-highlight + bottom-shadow simulates ink density — the chip reads
+     as a "pressed-in" element rather than a flat color sticker. The 1px white
+     highlight at the top is the single most-recognisable signal designers use
+     to make a fill feel "lifted from above". */
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--row-color, var(--ink)) 92%, #fff 8%) 0%,
+      var(--row-color, var(--ink)) 50%,
+      color-mix(in srgb, var(--row-color, var(--ink)) 96%, #000 4%) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
   color: var(--paper-cream);
   padding: 6px 10px;
   display: flex;
@@ -2577,12 +2731,29 @@ p.dc-img-wrapper {
   break-inside: avoid;
 }
 
-/* clip-path + left accent band on ::before */
+/* Section chrome — left accent strip + tonal panel fill + paper-grain overlay.
+   This is the universal section frame across the whole book; every @section
+   block inherits it. Three-layer composition lifts it from "rendered colored
+   box" to "designed panel chrome":
+     1. Paper-grain noise on top — breaks the flat fill plane
+     2. Vertical accent strip with subtle top-to-bottom tonal lift
+     3. Section-bg with horizontal tonal lift (6% lighter at top fades)
+   The clip-path corner cut survives, defining the asymmetric panel shape. */
 .section::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(to right, var(--section-accent) 5px, var(--section-bg) 5px);
+  background:
+    var(--texture-paper-grain) repeat,
+    linear-gradient(to right,
+      var(--section-accent) 0,
+      var(--section-accent) 5px,
+      transparent 5px),
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--section-bg) 96%, #fff 4%) 0%,
+      var(--section-bg) 25%,
+      var(--section-bg) 100%);
+  background-blend-mode: multiply, normal, normal;
   clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
   z-index: 0;
 }
