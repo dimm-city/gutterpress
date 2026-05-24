@@ -358,10 +358,10 @@
     </section>
 
     <section class="center">
-      <button class="icon-btn" onclick={firstPage} disabled={!previewUrl || rendering || sourceMode === "url"} title="First page (Home)" aria-label="First page">
+      <button class="icon-btn" onclick={firstPage} disabled={!previewUrl || rendering} title="First page (Home)" aria-label="First page">
         <Icon name="chevrons-left" />
       </button>
-      <button class="icon-btn" onclick={prevPage} disabled={!previewUrl || rendering || sourceMode === "url"} title="Previous page (Left/PageUp)" aria-label="Previous page">
+      <button class="icon-btn" onclick={prevPage} disabled={!previewUrl || rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
         <Icon name="chevron-left" />
       </button>
       <input
@@ -372,13 +372,13 @@
         bind:value={pageInput}
         onchange={() => gotoPage(pageInput)}
         onkeydown={(e) => e.key === "Enter" && gotoPage(pageInput)}
-        disabled={!previewUrl || rendering || sourceMode === "url"}
+        disabled={!previewUrl || rendering}
       />
       <span class="status">/ {totalPages || "—"}</span>
-      <button class="icon-btn" onclick={nextPage} disabled={!previewUrl || rendering || sourceMode === "url"} title="Next page (Right/PageDown)" aria-label="Next page">
+      <button class="icon-btn" onclick={nextPage} disabled={!previewUrl || rendering} title="Next page (Right/PageDown)" aria-label="Next page">
         <Icon name="chevron-right" />
       </button>
-      <button class="icon-btn" onclick={lastPage} disabled={!previewUrl || rendering || sourceMode === "url"} title="Last page (End)" aria-label="Last page">
+      <button class="icon-btn" onclick={lastPage} disabled={!previewUrl || rendering} title="Last page (End)" aria-label="Last page">
         <Icon name="chevrons-right" />
       </button>
     </section>
@@ -388,7 +388,7 @@
         class="icon-btn"
         class:active={viewMode === "single"}
         onclick={() => applyViewMode("single", true)}
-        disabled={!previewUrl || sourceMode === "url"}
+        disabled={!previewUrl}
         title="Single page view"
         aria-label="Single page view"
       >
@@ -398,7 +398,7 @@
         class="icon-btn"
         class:active={viewMode === "two-column"}
         onclick={() => applyViewMode("two-column", true)}
-        disabled={!previewUrl || sourceMode === "url"}
+        disabled={!previewUrl}
         title="Two-column (spread) view"
         aria-label="Two-column view"
       >
@@ -408,7 +408,7 @@
         class="zoom-select"
         bind:value={zoom}
         onchange={() => applyZoom(zoom)}
-        disabled={!previewUrl || sourceMode === "url"}
+        disabled={!previewUrl}
         title="Zoom level (+ / - keys)"
       >
         <option value="0.25">25%</option>
@@ -424,7 +424,7 @@
         class="icon-btn"
         class:active={debug}
         onclick={toggleDebug}
-        disabled={!previewUrl || sourceMode === "url"}
+        disabled={!previewUrl}
         title="Toggle debug mode (D)"
         aria-label="Toggle debug mode"
       >
