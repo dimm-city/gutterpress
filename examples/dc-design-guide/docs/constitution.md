@@ -298,12 +298,15 @@ Each component lives in ONE surface register (paper poster or digital display) a
 
 ### Specialty cards (the 10-card grid + profile shells)
 
-- **Surface**: digital display register (saturated dark fill + crisp reverse-out type)
-- Dark fill via per-specialty `--<name>-dark` token — gives card serious presence on the wall.
-- Per-specialty `--dc-specialty-card-accent` rules the inner accent line (often a register contrast — augmerc body magenta + accent cyan for the "brand-pop pattern").
-- Per-specialty clip-path geometry — this is where specialty identity reads loudest at the 10-card grid scale.
-- Tonal lift on the card body (top 6% lighter / bottom 2% darker) gives the card weight without becoming a sheen-gradient.
-- **NO** corner accent triangles, NO portrait double-edge framing, NO noise overlays — those Pass 6/7 experiments failed.
+- **Surface**: paper poster register — paper-cream substrate with printed colored ink header. The full-dark-fill pattern was over-styled; specialty color now lives in the **header band + title + thick left border**, NOT the card body.
+- Card body: `--paper-cream` (default). Body text: `--ink`. Reads as a printed flyer pasted on the brick wall.
+- **Colored header band**: thick top border (~16pt) in the specialty's accent color. This is the specialty's primary visual signature at grid scale.
+- **Colored title**: h3 title color matches the band — reinforces the specialty signature.
+- **Thick colored left border** (3pt) in the same accent — secondary signature, vertical anchor.
+- **Outer 1.5pt border** in the specialty's mid color — frame.
+- Per-specialty clip-path geometry — secondary identity cue (rectangular tops keep the band readable; aggressive top cuts would clip the band).
+- **NO** corner accent triangles, NO portrait double-edge framing, NO noise overlays, NO LED-rim inset highlights, NO tonal-lift gradient on the body, NO hazard-tape borders, NO torn-paper irregular clip-paths — all Pass 6/7/8 experiments were rejected by user-eye review as over-styling. Restraint wins.
+- The rule: **specialty color belongs in border, title, and at most a tint of the substrate** — not as a saturated fill across the entire card.
 
 ### Outcome ladder chips (digital display)
 

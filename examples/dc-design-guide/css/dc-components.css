@@ -219,21 +219,14 @@
   --dc-path-accent: var(--augmerc-accent);
 }
 
-/* AUGMERC OPT-IN: brand-cyan accent inside magenta body — the user-praised
-   "brand-pop pattern." Augmerc is the only specialty using this; do not
-   propagate to other specialties without explicit approval.
-   Register mix: HIGH future-tech + mid landfill → LED-rim top-edge highlight
-   reads as polished-tech-panel, consistent with the AP-chip LED treatment. */
+/* Augmerc — paper poster with magenta ink. The specialty signature color
+   lives in the border + title, not the substrate. Keeps the card readable
+   as a flyer pasted on the brick wall, not a painted plaque. */
 .dc-specialty.augmerc .dc-specialty-card {
-  --dc-specialty-card-bg: var(--augmerc-dark);
-  --dc-specialty-card-fg: var(--paper-cream);
-  --dc-specialty-card-accent: var(--brand-cyan);
-  --dc-specialty-card-border: var(--augmerc-mid);
-  --dc-specialty-card-shadow: inset 0 1.5pt 0 rgba(255, 255, 255, 0.55);
-}
-
-.dc-specialty.augmerc .dc-skill-card {
-  --dc-card-tab-shadow: inset 0 1.25pt 0 rgba(255, 255, 255, 0.50);
+  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-fg: var(--ink);
+  --dc-specialty-card-accent: var(--brand-magenta);
+  --dc-specialty-card-border: var(--brand-magenta);
 }
 
 .dc-specialty.augmerc .dc-specialty-intro {
@@ -264,19 +257,11 @@
   --dc-path-accent: var(--cybersurgeon-accent);
 }
 
-/* Register mix: HIGH future-tech (clinical med-tech) → LED-rim top-edge
-   highlight, brighter than augmerc's to read as clinical-chrome not
-   industrial-chrome. */
 .dc-specialty.cybersurgeon .dc-specialty-card {
-  --dc-specialty-card-bg: var(--cybersurgeon-dark);
-  --dc-specialty-card-fg: var(--paper-cream);
-  --dc-specialty-card-accent: var(--cybersurgeon-accent);
-  --dc-specialty-card-border: var(--cybersurgeon-mid);
-  --dc-specialty-card-shadow: inset 0 1.5pt 0 rgba(255, 255, 255, 0.62);
-}
-
-.dc-specialty.cybersurgeon .dc-skill-card {
-  --dc-card-tab-shadow: inset 0 1.25pt 0 rgba(255, 255, 255, 0.55);
+  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-fg: var(--ink);
+  --dc-specialty-card-accent: var(--hud-blue-dark);
+  --dc-specialty-card-border: var(--hud-blue-dark);
 }
 
 .dc-specialty.cybersurgeon .dc-specialty-intro {
@@ -308,9 +293,9 @@
 }
 
 .dc-specialty.proxy .dc-specialty-card {
-  --dc-specialty-card-bg: var(--proxy-dark);
-  --dc-specialty-card-fg: var(--paper-cream);
-  --dc-specialty-card-accent: var(--proxy-accent);
+  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-fg: var(--ink);
+  --dc-specialty-card-accent: var(--proxy-mid);
   --dc-specialty-card-border: var(--proxy-mid);
 }
 
@@ -342,19 +327,11 @@
   --dc-path-accent: var(--wirephreak-accent);
 }
 
-/* Register mix: HIGH future-tech + mid landfill (drowned-circuit deck) →
-   LED-rim top-edge highlight, cyan-tinted to read as signal-interference
-   rather than clean clinical light. */
 .dc-specialty.wirephreak .dc-specialty-card {
-  --dc-specialty-card-bg: var(--wirephreak-dark);
-  --dc-specialty-card-fg: var(--paper-cream);
-  --dc-specialty-card-accent: var(--wirephreak-accent);
+  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-fg: var(--ink);
+  --dc-specialty-card-accent: var(--wirephreak-mid);
   --dc-specialty-card-border: var(--wirephreak-mid);
-  --dc-specialty-card-shadow: inset 0 1.5pt 0 rgba(120, 230, 245, 0.60);
-}
-
-.dc-specialty.wirephreak .dc-skill-card {
-  --dc-card-tab-shadow: inset 0 1.25pt 0 rgba(120, 230, 245, 0.55);
 }
 
 .dc-specialty.wirephreak .dc-specialty-intro {
@@ -363,29 +340,15 @@
   --dc-specialty-intro-bg: var(--paper-light);
 }
 
-/* ── Streetwarden — community defender, green, hazard-taped diamond ──────
-   Register mix: mid future-tech + mid landfill. Hazard-tape pattern on the
-   left border + asymmetric notch on bottom edge. The edge mark survives
-   thumbnail scale where the bottom alone disappeared. */
+/* ── Streetwarden — community defender, green, soft diamond cuts ──────── */
 .dc-specialty.streetwarden {
   --dc-skill-tab-shape: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
   --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 22px) 100%, 22px 100%, 0 calc(100% - 18px));
   --dc-path-title-shape: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
   --dc-path-shell-clip: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
-  /* Specialty-card: bigger asymmetric step on bottom edge (12-16px vertices
-     vs the previous 4-6px which disappeared at thumbnail scale). */
-  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 8px), calc(100% - 28px) calc(100% - 16px), 60% 100%, 38% calc(100% - 14px), 22px 100%, 0 calc(100% - 22px));
+  --dc-specialty-card-shell-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 16px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 16px));
   --dc-specialty-intro-title-shape: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%);
-  --dc-specialty-intro-clip: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 12px), calc(100% - 34px) calc(100% - 22px), 58% 100%, 34% calc(100% - 18px), 26px 100%, 0 calc(100% - 26px));
-}
-
-/* Streetwarden hazard-tape left border — survives thumbnail scale where a
-   bottom hazard-stripe alone disappeared. Diagonal yellow-black pattern
-   is the universal "construction site / civic hazard" signal. The 4pt
-   width is wide enough to read as deliberate edge mark. */
-.dc-specialty.streetwarden .dc-specialty-card {
-  border-left: 4pt solid transparent;
-  border-image: repeating-linear-gradient(135deg, #1a1512 0 6px, var(--brand-yellow) 6px 12px) 4;
+  --dc-specialty-intro-clip: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% calc(100% - 20px), calc(100% - 28px) 100%, 28px 100%, 0 calc(100% - 20px));
 }
 
 .dc-specialty.streetwarden .dc-skill-card {
@@ -400,9 +363,9 @@
 }
 
 .dc-specialty.streetwarden .dc-specialty-card {
-  --dc-specialty-card-bg: var(--streetwarden-dark);
-  --dc-specialty-card-fg: var(--paper-cream);
-  --dc-specialty-card-accent: var(--streetwarden-accent);
+  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-fg: var(--ink);
+  --dc-specialty-card-accent: var(--streetwarden-mid);
   --dc-specialty-card-border: var(--streetwarden-mid);
 }
 
@@ -440,20 +403,11 @@
   --dc-path-accent: var(--technosorcerer-accent);
 }
 
-/* Register mix: HIGH future-tech + HIGH ancient-magic → LED-rim top-edge
-   highlight tinted violet to read as runic-tech crossover, not pure tech.
-   Violet opacity must be HIGHER than other tech specialties (white tints)
-   so the magic-crossover register survives card-grid density on POD. */
 .dc-specialty.technosorcerer .dc-specialty-card {
-  --dc-specialty-card-bg: var(--technosorcerer-dark);
-  --dc-specialty-card-fg: var(--paper-cream);
-  --dc-specialty-card-accent: var(--technosorcerer-accent);
+  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-fg: var(--ink);
+  --dc-specialty-card-accent: var(--technosorcerer-mid);
   --dc-specialty-card-border: var(--technosorcerer-mid);
-  --dc-specialty-card-shadow: inset 0 1.5pt 0 rgba(200, 150, 240, 0.65);
-}
-
-.dc-specialty.technosorcerer .dc-skill-card {
-  --dc-card-tab-shadow: inset 0 1.25pt 0 rgba(200, 150, 240, 0.58);
 }
 
 /* TECHNOSORCERER title fix — "TECHNOSORCERER" is 14 chars and wraps mid-word
@@ -471,19 +425,14 @@
 }
 
 /* ── Gutterdruid — street nature, amber-brown, center bottom pinch ──────── */
-/* Register mix: HIGH landfill + HIGH wonderland (trash heap spore magic).
-   The clip-paths use torn-paper irregular vertices on the top edge and
-   slightly asymmetric bottom cuts — gutterdruid posters are pasted up,
-   peeled at the corners, weathered by alley-damp. NOT clean polygons.
-   No LED top-edge highlight here — torn paper isn't lit-from-within. */
 .dc-specialty.gutterdruid {
-  --dc-skill-tab-shape: polygon(0 4px, 4% 0, 12% 5px, 22% 1px, calc(50% - 18px) 4px, 50% 12px, calc(50% + 18px) 3px, 78% 0, 88% 5px, 95% 1px, 100% 4px, 100% 100%, 0 100%);
-  --dc-skill-body-shape: polygon(0 5px, 5% 0, 14% 6px, 28% 1px, 42% 5px, 58% 0, 72% 6px, 88% 2px, 100% 5px, 100% calc(100% - 22px), calc(100% - 24px) 100%, 18px 100%, 0 calc(100% - 26px));
-  --dc-path-title-shape: polygon(0 4px, 5% 0, 14% 5px, 26% 1px, calc(50% - 20px) 4px, 50% 12px, calc(50% + 20px) 3px, 76% 0, 88% 5px, 96% 1px, 100% 4px, 100% 100%, 0 100%);
-  --dc-path-shell-clip: polygon(0 5px, 5% 0, 14% 6px, 28% 1px, 42% 5px, 58% 0, 72% 6px, 88% 2px, 100% 5px, 100% calc(100% - 26px), calc(100% - 22px) 100%, 20px 100%, 0 calc(100% - 30px));
-  --dc-specialty-card-shell-shape: polygon(0 4px, 6% 0, 14% 5px, 28% 1px, 42% 5px, 58% 0, 72% 6px, 88% 2px, 100% 5px, 100% calc(100% - 18px), calc(100% - 22px) 100%, 16px 100%, 0 calc(100% - 22px));
-  --dc-specialty-intro-title-shape: polygon(0 4px, 5% 0, 14% 5px, 26% 1px, calc(50% - 22px) 4px, 50% 12px, calc(50% + 22px) 3px, 76% 0, 88% 5px, 96% 1px, 100% 4px, 100% 100%, 0 100%);
-  --dc-specialty-intro-clip: polygon(0 5px, 5% 0, 14% 6px, 28% 1px, 42% 5px, 58% 0, 72% 6px, 88% 2px, 100% 5px, 100% calc(100% - 26px), calc(100% - 22px) 100%, 20px 100%, 0 calc(100% - 30px));
+  --dc-skill-tab-shape: polygon(0 0, calc(50% - 20px) 0, 50% 12px, calc(50% + 20px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 24px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 24px));
+  --dc-path-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-path-shell-clip: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
+  --dc-specialty-card-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 20px));
+  --dc-specialty-intro-title-shape: polygon(0 0, calc(50% - 22px) 0, 50% 12px, calc(50% + 22px) 0, 100% 0, 100% 100%, 0 100%);
+  --dc-specialty-intro-clip: polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 20px) 100%, 20px 100%, 0 calc(100% - 28px));
 }
 
 .dc-specialty.gutterdruid .dc-skill-card {
@@ -497,24 +446,11 @@
   --dc-path-accent: var(--gutterdruid-accent);
 }
 
-/* Register mix: HIGH landfill + HIGH wonderland → fungi-glow bottom stripe
-   makes the bioluminescent-spore wonderland register visible at card-grid
-   density. Bottom edge survives the top-torn clip-path geometry; the
-   stripe reads as "spore-light seeping from under the torn paper." */
 .dc-specialty.gutterdruid .dc-specialty-card {
-  --dc-specialty-card-bg: var(--gutterdruid-dark);
-  --dc-specialty-card-fg: var(--paper-cream);
-  --dc-specialty-card-accent: var(--gutterdruid-accent);
+  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-fg: var(--ink);
+  --dc-specialty-card-accent: var(--gutterdruid-mid);
   --dc-specialty-card-border: var(--gutterdruid-mid);
-  border-bottom: 2.5pt solid var(--fungi-glow);
-}
-
-/* Gutterdruid card title — fungi-glow color separates it from Proxy's
-   warm-burnt-orange title at card-grid scale (the two cards were bleeding
-   together as dark warm-tones). The fungi-glow title reads "alive +
-   organic" vs Proxy's "scorch + conviction". */
-.dc-specialty.gutterdruid .dc-specialty-card h3 {
-  color: var(--fungi-glow);
 }
 
 .dc-specialty.gutterdruid .dc-specialty-intro {
@@ -545,17 +481,11 @@
   --dc-path-accent: var(--etherlock-accent);
 }
 
-/* Register mix: HIGH ancient-magic + mid landfill + mid wonderland —
-   "secrets as currency, manifold magus". The spectral pale-cyan rim
-   reads liminal-information / hidden-channels rather than tech-lit. NOT
-   a future-tech LED rim (which belongs only to tech-high specialties);
-   this is the magic-register equivalent — pale-spectral-aura. */
 .dc-specialty.etherlock .dc-specialty-card {
-  --dc-specialty-card-bg: var(--etherlock-dark);
-  --dc-specialty-card-fg: var(--paper-cream);
-  --dc-specialty-card-accent: var(--etherlock-accent);
+  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-fg: var(--ink);
+  --dc-specialty-card-accent: var(--etherlock-mid);
   --dc-specialty-card-border: var(--etherlock-mid);
-  --dc-specialty-card-shadow: inset 0 1.5pt 0 rgba(180, 230, 200, 0.55);
 }
 
 .dc-specialty.etherlock .dc-specialty-intro {
@@ -570,10 +500,12 @@
   --dc-skill-body-shape: polygon(12px 0, calc(100% - 12px) 0, 100% 12px, 100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 12px), 0 12px);
   --dc-path-title-shape: polygon(12px 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%, 0 12px);
   --dc-path-shell-clip: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px);
-  /* Dualist card shape: 6-point lozenge (points top + bottom) — faceted mineral
-     refraction made literal at card scale. Distinct from augmerc's octagonal
-     chamfer geometry; signals "two-sided crystal" identity at a glance. */
-  --dc-specialty-card-shell-shape: polygon(50% 0, 100% 18px, 100% calc(100% - 18px), 50% 100%, 0 calc(100% - 18px), 0 18px);
+  /* Dualist card shape: flat top + symmetric bottom point — crystal-facet
+     hint preserved on the bottom edge (the "refractive" bottom-pointed
+     drop), but a flat top so the colored header band renders as a clean
+     rectangle. Previous full-lozenge clipped the header band into a
+     triangle. */
+  --dc-specialty-card-shell-shape: polygon(0 0, 100% 0, 100% calc(100% - 22px), calc(100% - 20px) 100%, 50% calc(100% - 4px), 20px 100%, 0 calc(100% - 22px));
   --dc-specialty-intro-title-shape: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
   --dc-specialty-intro-clip: polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px), 0 16px);
 }
@@ -590,9 +522,9 @@
 }
 
 .dc-specialty.dualist .dc-specialty-card {
-  --dc-specialty-card-bg: var(--dualist-dark);
-  --dc-specialty-card-fg: var(--paper-cream);
-  --dc-specialty-card-accent: var(--dualist-accent);
+  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-fg: var(--ink);
+  --dc-specialty-card-accent: var(--dualist-mid);
   --dc-specialty-card-border: var(--dualist-mid);
 }
 
@@ -625,9 +557,9 @@
 }
 
 .dc-specialty.generalist .dc-specialty-card {
-  --dc-specialty-card-bg: var(--generalist-dark);
-  --dc-specialty-card-fg: var(--paper-cream);
-  --dc-specialty-card-accent: var(--generalist-accent);
+  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-fg: var(--ink);
+  --dc-specialty-card-accent: var(--generalist-mid);
   --dc-specialty-card-border: var(--generalist-mid);
 }
 
@@ -1459,31 +1391,34 @@ hr,
 
 /* ── Specialty card (.dc-specialty-card + descendants + nth-of-type(even)) */
 .dc-specialty-card {
-  --dc-specialty-card-bg: var(--hud-panel);
+  --dc-specialty-card-bg: var(--paper-cream);
   --dc-specialty-card-border: var(--hud-blue);
   --dc-specialty-card-accent: var(--crimson);
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-media-height: 0.85in;
   --dc-specialty-card-media-width: 0.75in;
   --dc-specialty-card-title-align: right;
+  --dc-specialty-card-band-height: 16pt;
   box-shadow: var(--dc-specialty-card-shadow, none);
-  /* Tonal lift gradient: top 6% lighter, bottom 2% darker pool. Subtle weight
-     on the card body without reading as a screen-style gradient. */
-  background:
-    linear-gradient(180deg,
-      color-mix(in srgb, var(--dc-specialty-card-bg) 94%, #fff 6%) 0%,
-      var(--dc-specialty-card-bg) 30%,
-      color-mix(in srgb, var(--dc-specialty-card-bg) 98%, #000 2%) 100%);
+  /* Poster-header pattern: thick colored TOP border = the specialty's
+     header ribbon. paper-cream body below = the printed flyer substrate.
+     Title h3 + body content sit inside the padding box, naturally below
+     the border (which is part of the box model, not content area).
+     This puts the specialty signature in the band + title color + side
+     border — NOT in the card body. Reads as a printed poster pasted on
+     the brick wall, not a painted plaque. */
+  background: var(--dc-specialty-card-bg);
   color: var(--dc-specialty-card-fg);
   display: flow-root;
   overflow: hidden;
   line-height: var(--lh-tight);
   margin: 0 0 0.1in 0;
-  padding: var(--space-2xl);
+  padding: 0.14in 0.18in 0.18in 0.18in;
   position: relative;
   break-inside: avoid;
-  border: 1.5px solid var(--dc-specialty-card-border);
-  border-left: var(--callout-border-width-small) solid var(--dc-specialty-card-accent);
+  border: 1.5pt solid var(--dc-specialty-card-border);
+  border-top: var(--dc-specialty-card-band-height) solid var(--dc-specialty-card-accent);
+  border-left: 3pt solid var(--dc-specialty-card-accent);
   clip-path: var(--dc-specialty-card-shell-shape, polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 24px) 100%, 0 100%));
 }
 
@@ -1500,11 +1435,15 @@ hr,
   border-radius: 2px;
 }
 
-/* Specialty name heading — aligned away from the portrait, allow wrapping. */
+/* Specialty name heading — colored in the specialty's accent (the "ink"
+   on the paper-poster substrate). Each specialty's identity color shows
+   here, in the border, and in the body-accent rule — NOT in the card
+   background. The card itself stays paper-cream so the colored elements
+   read as ink on paper, not as a painted card. */
 .dc-specialty-card h3 {
   margin: 0;
   font-size: 1.15em;
-  color: var(--dc-specialty-card-fg);
+  color: var(--dc-specialty-card-title-color, var(--dc-specialty-card-accent));
   text-align: var(--dc-specialty-card-title-align);
   white-space: normal;
   overflow-wrap: anywhere;
