@@ -2704,6 +2704,12 @@ p.dc-img-wrapper {
   padding: var(--space-md) var(--space-lg);
   margin: 12pt 0;
   position: relative;
+  /* Sections are atomic units — they MUST NOT span pages. If a section
+     does not fit on the remaining page space, it moves to the next page
+     entirely. The resulting dead zone at the end of the previous page is
+     intentional design behavior, not a layout failure. Authors keep
+     sections short enough to fit; if a section is too tall, split it
+     into multiple @section blocks at logical boundaries. */
   break-inside: avoid;
   /* Wall-shadow is the ::after fake-shadow below (vector, same clip-path
      as ::before). Do NOT add filter:drop-shadow here — that would double
