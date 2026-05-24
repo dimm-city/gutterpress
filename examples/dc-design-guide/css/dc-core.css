@@ -56,17 +56,15 @@ img {
   height: auto;
 }
 
-/* ── PLACEHOLDER IMAGE STRATEGY ──────────────────────────────────────────────
-   While real commissioned art isn't shipped, every `placehold.co` image
-   reads as "wireframe" — the single loudest amateur signal in the book.
-   Hide them entirely. Cards, gear entries, and chapter openers were
-   designed (Pass 9, 12, 13) to work via colour + title + body typography
-   without art slots. When real art is commissioned, this rule can drop
-   or be scoped to `[src*="placehold.co"]` only. */
-img[src*="placehold.co"],
-img[src*="placeholder"] {
-  display: none;
-}
+/* ── PLACEHOLDER IMAGES — keep visible, design around placement only ─────────
+   User direction (2026-05-24): "we want the placeholders images. Ignore
+   the placeholders images other than placement."
+   The placeholders proof layout (showing where real art will land). Don't
+   waste polish on making the placeholder content look intentional — focus
+   on the *image placement* (size, position, surrounding negative space)
+   so that when real art is commissioned and dropped in, the spread works.
+   The placeholders themselves will look like wireframe boxes — that's
+   acceptable; they're proofing slots. */
 
 /* ── HEADINGS ─────────────────────────────────────────────────────────────── */
 h1, h2, h3, h4, h5, h6 {
