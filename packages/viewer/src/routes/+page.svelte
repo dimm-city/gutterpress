@@ -4,6 +4,7 @@
   import type { ToastController } from "$lib/components/Toast.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
+  import OpenUrlDialog from "$lib/components/OpenUrlDialog.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { PreviewClient } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
@@ -11,9 +12,12 @@
   // Per-screen state
   let previewUrl = $state<string | null>(null);
   let currentDir = $state<string | null>(null);
+  let currentUrl = $state<string | null>(null);
+  let sourceMode = $state<"folder" | "url">("folder");
   let docTitle = $state<string | null>(null);
   let busy = $state(false);
   let busyLabel = $state("");
+  let openUrlOpen = $state(false);
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
@@ -179,7 +183,9 @@
       if (!dir) return;
       busyLabel = "Starting preview…";
       const data = await electron.startPreview({ input: dir });
+      sourceMode = "folder";
       currentDir = dir;
+      currentUrl = null;
       docTitle = data.title ?? null;
       // Force iframe remount by nulling first
       previewUrl = null;
@@ -198,9 +204,31 @@
     }
   }
 
+  function openUrl(url: string) {
+    sourceMode = "url";
+    currentUrl = url;
+    currentDir = null;
+    docTitle = null;
+    // Force iframe remount by nulling first
+    previewUrl = null;
+    queueMicrotask(() => {
+      previewUrl = url;
+      rendering = false;
+      totalPages = 0;
+      currentPage = 1;
+      pageInput = 1;
+    });
+  }
+
+  function openInBrowser() {
+    if (!currentUrl) return;
+    const electron = (window as any).electron;
+    electron?.openExternal?.(currentUrl);
+  }
+
   async function savePdf() {
-    if (!currentDir) {
-      toast?.error("Open a folder first.");
+    if (sourceMode !== "folder" || !currentDir) {
+      toast?.error("Open a folder first — PDF export is disabled for URL sources.");
       return;
     }
     busy = true;
@@ -312,17 +340,28 @@
         <Icon name="folder-open" />
         <span>Open</span>
       </button>
+      <button class="icon-text" onclick={() => (openUrlOpen = true)} disabled={busy} title="Open published HTML from a URL">
+        <Icon name="link" />
+        <span>URL</span>
+      </button>
       {#if docTitle}
         <span class="doc-title" title={docTitle}>{docTitle}</span>
       {/if}
-      <span class="path" title={currentDir ?? ""}>{currentDir ?? "No folder selected"}</span>
+      {#if sourceMode === "url" && currentUrl}
+        <span class="path" title={currentUrl}>{currentUrl}</span>
+        <button class="icon-btn" onclick={openInBrowser} title="Open in browser" aria-label="Open in browser">
+          <Icon name="external-link" />
+        </button>
+      {:else}
+        <span class="path" title={currentDir ?? ""}>{currentDir ?? "No source selected"}</span>
+      {/if}
     </section>
 
     <section class="center">
-      <button class="icon-btn" onclick={firstPage} disabled={!previewUrl || rendering} title="First page (Home)" aria-label="First page">
+      <button class="icon-btn" onclick={firstPage} disabled={!previewUrl || rendering || sourceMode === "url"} title="First page (Home)" aria-label="First page">
         <Icon name="chevrons-left" />
       </button>
-      <button class="icon-btn" onclick={prevPage} disabled={!previewUrl || rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
+      <button class="icon-btn" onclick={prevPage} disabled={!previewUrl || rendering || sourceMode === "url"} title="Previous page (Left/PageUp)" aria-label="Previous page">
         <Icon name="chevron-left" />
       </button>
       <input
@@ -333,13 +372,13 @@
         bind:value={pageInput}
         onchange={() => gotoPage(pageInput)}
         onkeydown={(e) => e.key === "Enter" && gotoPage(pageInput)}
-        disabled={!previewUrl || rendering}
+        disabled={!previewUrl || rendering || sourceMode === "url"}
       />
       <span class="status">/ {totalPages || "—"}</span>
-      <button class="icon-btn" onclick={nextPage} disabled={!previewUrl || rendering} title="Next page (Right/PageDown)" aria-label="Next page">
+      <button class="icon-btn" onclick={nextPage} disabled={!previewUrl || rendering || sourceMode === "url"} title="Next page (Right/PageDown)" aria-label="Next page">
         <Icon name="chevron-right" />
       </button>
-      <button class="icon-btn" onclick={lastPage} disabled={!previewUrl || rendering} title="Last page (End)" aria-label="Last page">
+      <button class="icon-btn" onclick={lastPage} disabled={!previewUrl || rendering || sourceMode === "url"} title="Last page (End)" aria-label="Last page">
         <Icon name="chevrons-right" />
       </button>
     </section>
@@ -349,7 +388,7 @@
         class="icon-btn"
         class:active={viewMode === "single"}
         onclick={() => applyViewMode("single", true)}
-        disabled={!previewUrl}
+        disabled={!previewUrl || sourceMode === "url"}
         title="Single page view"
         aria-label="Single page view"
       >
@@ -359,7 +398,7 @@
         class="icon-btn"
         class:active={viewMode === "two-column"}
         onclick={() => applyViewMode("two-column", true)}
-        disabled={!previewUrl}
+        disabled={!previewUrl || sourceMode === "url"}
         title="Two-column (spread) view"
         aria-label="Two-column view"
       >
@@ -369,7 +408,7 @@
         class="zoom-select"
         bind:value={zoom}
         onchange={() => applyZoom(zoom)}
-        disabled={!previewUrl}
+        disabled={!previewUrl || sourceMode === "url"}
         title="Zoom level (+ / - keys)"
       >
         <option value="0.25">25%</option>
@@ -385,7 +424,7 @@
         class="icon-btn"
         class:active={debug}
         onclick={toggleDebug}
-        disabled={!previewUrl}
+        disabled={!previewUrl || sourceMode === "url"}
         title="Toggle debug mode (D)"
         aria-label="Toggle debug mode"
       >
@@ -394,7 +433,12 @@
       <label class="bg-swatch" title="Background color">
         <input type="color" value={bgColor} oninput={onBgColor} />
       </label>
-      <button class="primary save-btn icon-text" onclick={savePdf} disabled={busy || !currentDir} title="Save as PDF">
+      <button
+        class="primary save-btn icon-text"
+        onclick={savePdf}
+        disabled={busy || !currentDir || sourceMode === "url"}
+        title={sourceMode === "url" ? "PDF export not available for URL sources" : "Save as PDF"}
+      >
         <Icon name="file-down" />
         <span>Save PDF</span>
       </button>
@@ -419,13 +463,14 @@
     {/key}
   {:else}
     <div class="empty">
-      <p>Open a folder containing markdown files to begin.</p>
-      <p class="hint">Use the Open button above or press Ctrl+O.</p>
+      <p>Open a folder containing markdown files, or load a published HTML output by URL.</p>
+      <p class="hint">Use the Open or URL buttons above.</p>
     </div>
   {/if}
 </div>
 
 <HelpDialog bind:open={helpOpen} />
+<OpenUrlDialog bind:open={openUrlOpen} onOpen={openUrl} />
 
 
 <style>
