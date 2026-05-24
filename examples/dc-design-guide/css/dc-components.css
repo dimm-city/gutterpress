@@ -227,6 +227,7 @@
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--brand-magenta);
   --dc-specialty-card-border: var(--brand-magenta);
+  --dc-specialty-card-title-color: var(--augmerc-dark);
 }
 
 .dc-specialty.augmerc .dc-specialty-intro {
@@ -262,6 +263,7 @@
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--hud-blue-dark);
   --dc-specialty-card-border: var(--hud-blue-dark);
+  --dc-specialty-card-title-color: var(--cybersurgeon-dark);
 }
 
 .dc-specialty.cybersurgeon .dc-specialty-intro {
@@ -297,6 +299,7 @@
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--proxy-mid);
   --dc-specialty-card-border: var(--proxy-mid);
+  --dc-specialty-card-title-color: var(--proxy-dark);
 }
 
 .dc-specialty.proxy .dc-specialty-intro {
@@ -332,6 +335,7 @@
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--wirephreak-mid);
   --dc-specialty-card-border: var(--wirephreak-mid);
+  --dc-specialty-card-title-color: var(--wirephreak-dark);
 }
 
 .dc-specialty.wirephreak .dc-specialty-intro {
@@ -367,6 +371,7 @@
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--streetwarden-mid);
   --dc-specialty-card-border: var(--streetwarden-mid);
+  --dc-specialty-card-title-color: var(--streetwarden-dark);
 }
 
 .dc-specialty.streetwarden .dc-specialty-intro {
@@ -408,6 +413,7 @@
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--technosorcerer-mid);
   --dc-specialty-card-border: var(--technosorcerer-mid);
+  --dc-specialty-card-title-color: var(--technosorcerer-dark);
 }
 
 /* TECHNOSORCERER title fix — "TECHNOSORCERER" is 14 chars and wraps mid-word
@@ -451,6 +457,7 @@
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--gutterdruid-mid);
   --dc-specialty-card-border: var(--gutterdruid-mid);
+  --dc-specialty-card-title-color: var(--gutterdruid-dark);
 }
 
 .dc-specialty.gutterdruid .dc-specialty-intro {
@@ -486,6 +493,7 @@
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--etherlock-mid);
   --dc-specialty-card-border: var(--etherlock-mid);
+  --dc-specialty-card-title-color: var(--etherlock-dark);
 }
 
 .dc-specialty.etherlock .dc-specialty-intro {
@@ -526,6 +534,7 @@
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--dualist-mid);
   --dc-specialty-card-border: var(--dualist-mid);
+  --dc-specialty-card-title-color: var(--dualist-dark);
 }
 
 .dc-specialty.dualist .dc-specialty-intro {
@@ -561,6 +570,7 @@
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--generalist-mid);
   --dc-specialty-card-border: var(--generalist-mid);
+  --dc-specialty-card-title-color: var(--generalist-dark);
 }
 
 .dc-specialty.generalist .dc-specialty-intro {
@@ -943,14 +953,14 @@ hr,
    the chapter title. */
 .dc-chapter-opener-no {
   font-family: var(--font-display);
-  font-size: calc(var(--fs-chapter) * 3.2);
-  letter-spacing: 0.16em;
+  font-size: calc(var(--fs-chapter) * 1.35);
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--brand-magenta);
   background: var(--ink-dark);
-  line-height: 0.95;
+  line-height: 1;
   display: block;
-  padding: 0.55in 0.28in 0.42in;
+  padding: 0.22in 0.18in 0.14in;
   margin: 0;
   width: 100%;
   box-sizing: border-box;
@@ -1119,7 +1129,12 @@ hr,
 .dc-tab-title {
   font-family: var(--font-tab);
   font-size: 13px;
-  color: var(--dc-card-tab-title-color);
+  /* Default to paper-cream so reverse-out text on the saturated tab fill
+     always passes WCAG. Specialty contexts re-affirm the same color via
+     their --dc-card-tab-title-color token. Without this fallback, the
+     title rendered as default body color (near-black) over a saturated
+     magenta fill — 2.95:1 contrast, fails WCAG at all sizes. */
+  color: var(--dc-card-tab-title-color, var(--paper-cream));
   text-transform: uppercase;
   letter-spacing: 0.05em;
   line-height: 1.2;
@@ -1500,7 +1515,10 @@ hr,
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--dc-specialty-card-accent);
+  /* Use the dark variant for text (WCAG safe on cream); border stays
+     bright (graphic separation, not body-text rule). Falls back to the
+     accent for any specialty that hasn't defined its dark variant. */
+  color: var(--dc-specialty-card-title-color, var(--dc-specialty-card-accent));
   opacity: 1;
   text-align: var(--dc-specialty-card-title-align);
   white-space: normal;
