@@ -836,7 +836,8 @@ h1.dc-chevron {
   background: linear-gradient(to right, var(--dc-intro-accent, var(--orange)) 4px, var(--paper-stain) 4px);
   line-height: 1.5;
   padding: 10px 14px 10px 18px;
-  margin: 0.1in 0;
+  margin: 0.1in 0 calc(0.1in + 3pt) 0;
+  box-shadow: var(--shadow-poster);
 }
 
 /* ── Spec tweak section header ────────────────────────────────────────── */
@@ -942,14 +943,14 @@ hr,
    the chapter title. */
 .dc-chapter-opener-no {
   font-family: var(--font-display);
-  font-size: calc(var(--fs-chapter) * 1.35);
-  letter-spacing: 0.18em;
+  font-size: calc(var(--fs-chapter) * 3.2);
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--brand-magenta);
   background: var(--ink-dark);
-  line-height: 1;
+  line-height: 0.95;
   display: block;
-  padding: 0.22in 0.18in 0.14in;
+  padding: 0.55in 0.28in 0.42in;
   margin: 0;
   width: 100%;
   box-sizing: border-box;
@@ -961,12 +962,12 @@ hr,
   background: var(--ink-dark);
   color: var(--paper-cream);
   border-bottom: 4pt solid var(--brand-magenta);
-  padding: 0.08in 0.18in 0.22in;
-  margin: 0 0 0.28in;
+  padding: 0.1in 0.22in 0.28in;
+  margin: 0 0 0.32in;
   box-sizing: border-box;
   width: 100%;
-  font-size: calc(var(--fs-h1) * 1.05);
-  letter-spacing: 0.02em;
+  font-size: calc(var(--fs-h1) * 1.2);
+  letter-spacing: 0.04em;
 }
 
 /* First paragraph after the chapter opener — atmospheric lead-in.
