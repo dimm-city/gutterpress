@@ -119,6 +119,22 @@ body { counter-reset: chapter; }
   @bottom-right { content: none; }
 }
 
+/* Paged.js specializes @page :left and @page :right for every named page,
+   and those specializations inherit from the GLOBAL @page :left / :right
+   blocks above — which emit "p." counter(page) and "c." string(guideSection)
+   in the bottom corners. Without explicit named :left/:right suppression
+   here, front-matter pages render an empty "C." (no chapter binding) and a
+   stray page number. Constitution: front-matter has no folio. */
+@page front-matter:left {
+  @bottom-left  { content: none; }
+  @bottom-right { content: none; }
+}
+
+@page front-matter:right {
+  @bottom-left  { content: none; }
+  @bottom-right { content: none; }
+}
+
 .page.intro,
 .page.page-intro,
 .page.page-toc,
