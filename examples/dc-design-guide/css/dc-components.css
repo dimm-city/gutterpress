@@ -1935,15 +1935,13 @@ hr,
 }
 
 .dc-pullquote::before {
-  content: '"';
-  position: absolute;
-  top: -6px;
-  left: 10px;
-  font-family: var(--font-display);
-  font-size: 56px;
-  color: var(--hud-magenta);
-  opacity: 0.55;
-  line-height: 1;
+  /* User-circled defect (screenshot 02): the 56pt magenta decorative
+     quote mark on top of the pullquote was redundant with the literal
+     quote characters in the body text (e.g. "'How bright's it ay?!'"),
+     and read as over-the-top decoration. The component already has a
+     left accent bar + paper-stain substrate + shadow — that's enough
+     visual identity. Removed the duplicate ornament. */
+  content: none;
 }
 
 .dc-pullquote p {
