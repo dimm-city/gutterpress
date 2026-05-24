@@ -850,21 +850,13 @@ h1.dc-chevron {
   margin: 20px 0 14px;
 }
 
-/* ── Decorative section ornament — replaces plain hr ────────────────────────
-   Classic editorial centered-diamond divider: horizontal rule on each side
-   with twin paired diamonds centered. Inline SVG data URI so no extra HTTP
-   fetch. Uses currentColor so the ornament inherits via CSS color property.
-   Per constitution: 20% chaos rule — decorative breaks belong on dividers,
-   not on body or tables. */
+/* ── Dashed rule divider (hr) ─────────────────────────────────────────── */
 hr,
 .dc-dashed-rule {
   border: none;
-  height: 14pt;
-  background:
-    center / 100% 14pt no-repeat
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><line x1='0' y1='7' x2='80' y2='7' stroke='%23c026d3' stroke-width='0.6'/><polygon points='86,4 90,7 86,10 82,7' fill='%23c026d3'/><polygon points='94,4 98,7 94,10 90,7' fill='%23c026d3'/><polygon points='106,4 110,7 106,10 102,7' fill='%23c026d3'/><polygon points='114,4 118,7 114,10 110,7' fill='%23c026d3'/><line x1='120' y1='7' x2='200' y2='7' stroke='%23c026d3' stroke-width='0.6'/></svg>");
-  margin: var(--space-xl) auto;
-  opacity: 0.65;
+  border-top: 1.5px dashed var(--hud-magenta);
+  opacity: 0.5;
+  margin: var(--space-xl) 0;
 }
 
 
@@ -2146,10 +2138,7 @@ hr,
   font-weight: 700;
 }
 
-/* ───────── TOC — decorated chapter index ─────────
-   Each entry: boxed magenta number badge + chapter title (display caps)
-   + leader dots filling the gap + page number. Classic editorial pattern
-   (PHB / PF2e Core / Mothership PSG all use leader dots). */
+/* ───────── TOC ───────── */
 .dc-toc {
   font-family: var(--font-body);
   counter-reset: dc-toc;
@@ -2163,8 +2152,8 @@ hr,
 
 .dc-toc ol>li {
   position: relative;
-  padding: 14px 0 14px 62px;
-  border-bottom: 0.5pt solid var(--ink-smoke);
+  padding: 12px 0 12px 56px;
+  border-bottom: 1px solid var(--hud-blue-dim);
   counter-increment: dc-toc;
   font-size: var(--fs-body-sm);
   line-height: 1.4;
@@ -2174,68 +2163,43 @@ hr,
   break-inside: avoid;
 }
 
-/* Number badge — boxed magenta numeral, the chapter's serial mark */
 .dc-toc ol>li::before {
   content: counter(dc-toc, decimal-leading-zero);
   position: absolute;
   left: 0;
-  top: 12px;
-  width: 42px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  top: 14px;
   font-family: var(--font-mono);
   font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 1.5px;
-  color: var(--paper-cream);
-  background: var(--brand-magenta);
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: var(--hud-blue);
   font-style: normal;
 }
 
 .dc-toc ol>li>strong {
-  color: var(--brand-magenta);
+  color: var(--hud-blue);
 }
 
-/* TOC entry: title + leader-dots + page number, flexbox-aligned baseline */
 .dc-toc ol>li>a {
-  display: inline-flex;
-  align-items: baseline;
-  width: 100%;
-  font-family: var(--font-display);
-  font-size: 13pt;
+  font-size: 15pt;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   color: var(--ink);
   text-decoration: none;
   border-bottom: 0;
   font-style: normal;
-  text-transform: uppercase;
 }
 
-/* Leader dots filling the gap between title and page number */
-.dc-toc ol>li>a::before {
-  content: '';
-  flex: 1;
-  border-bottom: 1pt dotted var(--ink-smoke);
-  margin: 0 0.4em 0.16em;
-  order: 2;
-  min-width: 1em;
-  align-self: flex-end;
-}
-
-/* Page number — mono-font right side */
 .dc-toc ol>li>a::after {
-  content: target-counter(attr(href), page);
+  content: ' p.' target-counter(attr(href), page);
   font-family: var(--font-mono);
   font-size: 10pt;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  color: var(--brand-magenta);
+  letter-spacing: 1.5px;
+  color: var(--hud-blue);
   font-style: normal;
+  margin-left: 0.6em;
   white-space: nowrap;
-  order: 3;
 }
 
 .dc-toc-row {
