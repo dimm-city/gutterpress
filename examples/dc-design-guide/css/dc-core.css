@@ -37,6 +37,10 @@ body {
   font-family: var(--font-body);
   font-size: var(--fs-body);
   line-height: var(--lh-normal);
+  /* Body text tracking — subtle tightening reads as "industrial print"
+     vs the slack default. Not enough to harm readability; enough to
+     give the body register its own creaturepunk voice. */
+  letter-spacing: 0.005em;
   text-wrap: pretty; /* CSS4 — silently ignored by Paged.js; screen preview only */
   position: relative;
   hyphens: auto;
@@ -50,6 +54,18 @@ body {
 img {
   max-width: 100%;
   height: auto;
+}
+
+/* ── PLACEHOLDER IMAGE STRATEGY ──────────────────────────────────────────────
+   While real commissioned art isn't shipped, every `placehold.co` image
+   reads as "wireframe" — the single loudest amateur signal in the book.
+   Hide them entirely. Cards, gear entries, and chapter openers were
+   designed (Pass 9, 12, 13) to work via colour + title + body typography
+   without art slots. When real art is commissioned, this rule can drop
+   or be scoped to `[src*="placehold.co"]` only. */
+img[src*="placehold.co"],
+img[src*="placeholder"] {
+  display: none;
 }
 
 /* ── HEADINGS ─────────────────────────────────────────────────────────────── */

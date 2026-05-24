@@ -935,31 +935,48 @@ hr,
   opacity: 0.85;
 }
 
-/* ── Chapter opener number badge ──────────────────────────────────────── */
+/* ── Chapter opener number badge ──────────────────────────────────────────
+   The chapter opener has to ARRIVE — Mörk Borg / Mothership openers PUNCH
+   the reader. Bigger number badge, dramatic top + bottom rules, expanded
+   tracking so "C.01" sits like a stencil-painted concrete numeral above
+   the chapter title. */
 .dc-chapter-opener-no {
   font-family: var(--font-display);
-  font-size: var(--fs-chapter);
-  letter-spacing: var(--ls-display);
+  font-size: calc(var(--fs-chapter) * 1.35);
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--hud-magenta);
+  color: var(--brand-magenta);
   background: var(--ink-dark);
   line-height: 1;
   display: block;
-  padding: 0.14in 0.18in 0.1in;
+  padding: 0.22in 0.18in 0.14in;
   margin: 0;
   width: 100%;
   box-sizing: border-box;
+  border-top: 4pt solid var(--brand-magenta);
 }
 
 /* H1 immediately after .dc-chapter-opener-no — dark band with magenta underline */
 .dc-chapter-opener-no + h1 {
   background: var(--ink-dark);
   color: var(--paper-cream);
-  border-bottom: 3px solid var(--hud-magenta);
-  padding: 0.06in 0.18in 0.16in;
-  margin: 0 0 0.2in;
+  border-bottom: 4pt solid var(--brand-magenta);
+  padding: 0.08in 0.18in 0.22in;
+  margin: 0 0 0.28in;
   box-sizing: border-box;
   width: 100%;
+  font-size: calc(var(--fs-h1) * 1.05);
+  letter-spacing: 0.02em;
+}
+
+/* First paragraph after the chapter opener — atmospheric lead-in.
+   Bigger size + ink-smoke color reads as the chapter's opening salvo,
+   not just body copy that happens to start the chapter. */
+.dc-chapter-opener-no + h1 + p {
+  font-size: 1.12em;
+  line-height: 1.55;
+  color: var(--ink-smoke);
+  margin-bottom: 0.18in;
 }
 
 /* Drop cap on first paragraph after the chapter opener H1 */
