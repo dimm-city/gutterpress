@@ -93,6 +93,14 @@
   margin-top: 6pt;
 }
 
+/* Inline emphasis inside callouts must inherit the alert's --dc-alert-fg
+   color. Global em rule sets color: --ink-smoke which is dark — invisible
+   on dark callout backgrounds (1.60:1 measured). Same for strong. */
+.dc-alert em,
+.dc-alert strong {
+  color: inherit;
+}
+
 .dc-alert ul,
 .dc-alert ol {
   margin: 6pt 0 0;
