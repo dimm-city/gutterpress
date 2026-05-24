@@ -72,30 +72,19 @@ body { counter-reset: chapter; }
   margin-left: 0.625in;
 
   @bottom-left {
-    content: counter(page);
-    color: var(--brand-magenta);
+    content: "p." counter(page);
+    color: var(--blood);
     font-family: var(--font-display);
-    font-size: 16pt;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    border-top: 1.5pt solid var(--brand-magenta);
-    padding-top: 4pt;
-    margin: 0 0 0.18in 0;
-    vertical-align: top;
+    font-size: var(--fs-footer, 9.5pt);
+    letter-spacing: 0.08em;
   }
 
   @bottom-right {
-    content: "CH " string(guideSection, first);
-    color: var(--ink-smoke);
-    font-family: var(--font-mono);
-    font-weight: 600;
-    font-size: 8pt;
-    letter-spacing: 0.22em;
-    border-top: 0.5pt solid var(--ink-dust);
-    padding-top: 6pt;
-    margin: 0 0 0.22in 0;
-    text-align: right;
-    vertical-align: top;
+    content: "c." string(guideSection, first);
+    color: var(--blood);
+    font-family: var(--font-display);
+    font-size: var(--fs-footer, 9.5pt);
+    letter-spacing: 0.08em;
   }
 }
 
@@ -104,31 +93,19 @@ body { counter-reset: chapter; }
   margin-right: 0.625in;
 
   @bottom-left {
-    content: "CH " string(guideSection, first);
-    color: var(--ink-smoke);
-    font-family: var(--font-mono);
-    font-weight: 600;
-    font-size: 8pt;
-    letter-spacing: 0.22em;
-    border-top: 0.5pt solid var(--ink-dust);
-    padding-top: 6pt;
-    margin: 0 0 0.22in 0;
-    text-align: left;
-    vertical-align: top;
+    content: "c." string(guideSection, first);
+    color: var(--blood);
+    font-family: var(--font-display);
+    font-size: var(--fs-footer, 9.5pt);
+    letter-spacing: 0.08em;
   }
 
   @bottom-right {
-    content: counter(page);
-    color: var(--brand-magenta);
+    content: "p." counter(page);
+    color: var(--blood);
     font-family: var(--font-display);
-    font-size: 16pt;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    border-top: 1.5pt solid var(--brand-magenta);
-    padding-top: 4pt;
-    margin: 0 0 0.18in 0;
-    text-align: right;
-    vertical-align: top;
+    font-size: var(--fs-footer, 9.5pt);
+    letter-spacing: 0.08em;
   }
 }
 
