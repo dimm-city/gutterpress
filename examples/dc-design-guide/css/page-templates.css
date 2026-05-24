@@ -50,21 +50,6 @@
   background-blend-mode: multiply, multiply;
 }
 
-/* ── PAGE CONTENT AREA — paper substrate behind all body content ──────────
-   Body text without a styled component wrapper was floating directly on
-   the brick wall texture, making it nearly unreadable. The content area
-   (paged.js's content rectangle, inside the page margins) gets a
-   paper-cream substrate. The wall shows ONLY in the page margins around
-   the content area, and on chapter-start splashes where the content is
-   sparse enough that the wall reads as composition, not as illegibility.
-
-   Components with their own backgrounds (.section, .dc-skill-card,
-   blockquote, etc.) sit on top of this paper layer with no change to
-   their look — they were always poster-on-substrate, this just defines
-   what the substrate actually is. */
-.pagedjs_page_content {
-  background: var(--paper-cream);
-}
 
 /* ── PAGE WRAPPER BASE GEOMETRY ────────────────────────────────────────────── */
 .page,
