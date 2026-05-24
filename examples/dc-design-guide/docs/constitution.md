@@ -457,20 +457,81 @@ When in doubt: keep components FLAT, give them HARD SHADOWS, hard edges, decisiv
 
 ---
 
-## XI. Review Requirement
+## XI. Review Requirement — The Four Judges
 
-Before any commit to `dc-components.css`, `dc-tokens.css`, `page-templates.css`, or any markdown file under `examples/dc-design-guide/`:
+Before any commit to `dc-components.css`, `dc-tokens.css`, `page-templates.css`, or any markdown file under `examples/dc-design-guide/`, **four designated reviewers must all return GO**. A FIX or NO-GO from any single judge blocks the commit.
 
-**Four diverse experts must all agree** the work is at-bar:
+The judges are dispatched as parallel agents (Sonnet model, background) with the prompts framed below. Each judge has a specific charter and reads the screenshots + this constitution as their rubric.
 
-1. **CSS architecture** — cascade discipline, token contracts, naming, no violations.
-2. **Print production** — POD-safe (SWOP coated v2, TAC ≤ 280%, contrast ≥ 4.5:1 for body, hairlines ≥ 0.5pt).
-3. **Creaturepunk brand** — aesthetic stays true (4 registers + per-specialty mix); no drift into anti-patterns.
-4. **Editorial / book-layout** — TTRPG-quality (D&D 5e PHB / PF2e Core / Mothership / Blades reference bar).
+### Judge 1 — CSS Architecture
 
-The canonical print-layout review prompt: [agent:print/print-layout-reviewer]. Use it as a quality gate post-edit.
+**Charter**: cascade discipline, token contract integrity, naming, file ownership boundaries, no architectural violations.
 
-**A GO from all four is required to commit. A FIX or NO-GO from any blocks the commit.**
+**Key questions**:
+- Are component styles in `dc-components.css` with `--dc-X-*` token surfaces?
+- Are per-book overrides in `fg-overrides.css` setting tokens via context selectors only?
+- Any bare `.dc-*` rules in override files? Any raw property assignments where tokens should mediate?
+- Are token contract comments present and accurate on the major components?
+- Could a new author add a 9th specialty by following an existing pattern?
+
+**Verdict**: GO / FIX / NO-GO + file-by-file cascade compliance score (1–5).
+
+### Judge 2 — Print Production
+
+**Charter**: POD-safe rendering (SWOP coated v2 / GRACoL gamut). TAC ceiling 280%. Body contrast ≥ 4.5:1. Hairlines ≥ 0.5pt. Reversed type ≥ 8.5pt semibold.
+
+**Key questions**:
+- CMYK estimate every new or changed token. Any over 280%?
+- WCAG contrast on every text-on-fill pair, including reversed-out.
+- Registration risk on hard ink-to-substrate edges (specialty card band/body boundary, etc.).
+- Hairline rules thinner than 0.5pt that will vanish on press?
+- Any saturated-small-text legibility risks under press dot gain?
+
+**Verdict**: GO / FIX / NO-GO + numeric CMYK + contrast table.
+
+### Judge 3 — Creaturepunk Brand
+
+**Charter**: aesthetic fidelity to **hostile, improvised, urban, cold, aggressive, dirty** Dimm City. NOT fantasy-coded, NOT corporate-clean, NOT smooth-cyberpunk-glamour. The 4-register system (future-tech + ancient-magic + landfill + wonderland) and per-specialty register mix.
+
+**Key questions**:
+- Does the page feel like a wall in Dimm City, not a clean book page?
+- Do components feel like posters/displays hung on the wall, not embedded?
+- Are the 4 registers all visibly present (not just 2)?
+- Is the page register cold-urban, not warm-vintage?
+- Does color usage feel deliberate and earned, not decorative?
+- Does each specialty's register mix read at-a-glance?
+
+**Verdict**: GO / FIX / NO-GO + per-register check + brand-fidelity-blockers.
+
+### Judge 4 — TTRPG Visual Design Contest
+
+**Charter**: would this *legitimately beat* Pathfinder 2e Core Rulebook, D&D 5e PHB, Mothership Player's Survival Guide, and Mörk Borg in a visual design contest (ENnie-tier judging)? The bar is **contest-winner**, not "good for indie."
+
+**Key questions**:
+- Per reference book (PHB / PF2e Core / Mothership PSG / Mörk Borg): WORSE / EQUAL / BETTER, with justification?
+- Component-by-component score against contest bar (BELOW / AT / ABOVE BAR).
+- Top 3 contest-blockers — what specifically prevents the work from being declared CONTEST-WINNER right now?
+
+**Verdict**: CONTEST-WINNER / CONTENDER / NOT YET + comparative table.
+
+This judge typically also acts as the editorial / book-design reviewer (page density, typography rhythm, spread cohesion) and uses the canonical `agent:print/print-layout-reviewer` prompt (or the contest-judge framing above).
+
+### Dispatch pattern
+
+All four judges run in parallel as background sonnet agents. Each is dispatched with:
+- A short summary of what changed in the current pass.
+- Pointers to the relevant CSS files and screenshots.
+- An ask for verdict + top-3 fixes (if FIX) in under 400 words.
+
+Iterate on the union of all four judges' findings. Re-dispatch after fixes land. Loop until **all four return GO simultaneously** (or CONTENDER → CONTEST-WINNER for Judge 4 + GO on the other three).
+
+### Anti-patterns in expert dispatch
+
+- **Don't dispatch judges in isolation.** A single judge approving is not a green light. All four must agree.
+- **Don't grade-inflate**. Judges should be honest. "Pretty good" is not GO.
+- **Don't trust the chorus over the user's eye.** If the user-eye verdict says over-styled and all four judges said GO, the JUDGES were wrong — they evaluated against a lower bar. Recalibrate prompts to lift the bar.
+- **Don't iterate on cosmetic moves while ignoring structural ones.** If three judges flag a fundamental issue (e.g., "the substrate collapsed into the wall"), fix that BEFORE pursuing micro-polish.
+- **Don't lose the user's accepted moves.** Track what the user has explicitly liked (outcome ladder depth, AP chip LED treatment, grey paper substrate) and protect those through iteration.
 
 ### Per-spread verdict scheme (designer-eye review)
 

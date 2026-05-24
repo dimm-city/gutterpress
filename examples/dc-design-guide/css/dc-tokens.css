@@ -101,16 +101,22 @@
      "industrial flyer paper / printer stock" — closer to the actual
      real-world surface posters get pasted on in a creaturepunk city. */
   --bg:           #c8c5bf;  /* ash-concrete — the brick wall (page background, L*~70) */
-  --paper-cream:  #e8e6e2;  /* light industrial flyer-stock — slightly warm-neutral grey */
-  --paper-light:  #ddd9d3;  /* slightly darker grey for alternate paper surfaces */
+  --paper-cream:  #f0eee9;  /* light industrial flyer-stock — brighter than wall, more poster-vs-wall delta (L*~93) */
+  --paper-light:  #e2ded7;  /* slightly darker grey alternate surface — for layered paper / secondary panels */
   --paper-aged:   #c8c2b8;  /* weathered grey — decay register, dust + age */
   --paper-stain:  #b0a89c;  /* deep stain — dark inset wells, smoke-grey */
+  /* Poster-wall shadow — hard offset, no blur. Pins paper-register
+     components to the wall as physical objects. Applied to specialty
+     cards, skill cards, sections, paper-variant callouts, NPC stat
+     blocks, citizen file — anything that should read as "stuck on
+     the wall" rather than "embedded in the page." */
+  --shadow-poster: 2pt 3pt 0 rgba(0, 0, 0, 0.28);
 
   /* ── Ink & Text — warm sepia drift, not neutral gray ─────────────────── */
   --ink:        #1a1512;  /* near-black with red bias — riso warm black */
   --ink-dark:   #2b231d;  /* warmer secondary heading weight */
   --ink-smoke:  #4d4339;  /* sepia mid-tone — body emphasis */
-  --ink-dust:   #756a5c;  /* warm caption gray — 4.5:1+ on paper-cream */
+  --ink-dust:   #665b4e;  /* darkened (was #756a5c) — 4.58:1 on new lighter paper-cream #f0eee9 */
 
   /* ── Accents — creaturepunk fire + blood ─────────────────────────────── */
   --crimson:    #e1261c;  /* PMS Red 032 — CMYK 0 95 90 0; survives POD */

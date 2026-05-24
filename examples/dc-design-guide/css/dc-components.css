@@ -1037,8 +1037,16 @@ hr,
   break-inside: avoid;
   margin-bottom: 10px;
   max-width: 100%;
-  filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink)) drop-shadow(4px 6px 8px rgba(0, 0, 0, 0.18));
-  /* screen preview only — drops in Paged.js PDF export */
+  /* 4-way ink outline (1px on each side) + HARD offset poster shadow.
+     The hard shadow (2pt 3pt 0, no blur) pins the card to the brick wall
+     as a physical object. Replaces the previous soft 8px-blur drop shadow
+     which read as web-UI floating, not poster-on-wall stuck-on. */
+  filter:
+    drop-shadow(2px 0 0 var(--ink))
+    drop-shadow(-2px 0 0 var(--ink))
+    drop-shadow(0 2px 0 var(--ink))
+    drop-shadow(0 -2px 0 var(--ink))
+    drop-shadow(2pt 3pt 0 rgba(0, 0, 0, 0.28));
 }
 
 /* ── Continuation markers ─────────────────────────────────────────────── */
@@ -1399,7 +1407,12 @@ hr,
   --dc-specialty-card-media-width: 0.75in;
   --dc-specialty-card-title-align: right;
   --dc-specialty-card-band-height: 16pt;
-  box-shadow: var(--dc-specialty-card-shadow, none);
+  /* Stack the optional per-specialty shadow on top of the universal
+     poster-wall shadow. The poster shadow pins the card to the brick
+     wall as a physical object (hard offset, no blur — "stuck on" not
+     "floating"). Specialty themes can add LED-rim insets via the
+     shadow token without losing the wall-pin. */
+  box-shadow: var(--dc-specialty-card-shadow, none), var(--shadow-poster, none);
   /* Poster-header pattern: thick colored TOP border = the specialty's
      header ribbon. paper-cream body below = the printed flyer substrate.
      Title h3 + body content sit inside the padding box, naturally below
@@ -2635,6 +2648,12 @@ p.dc-img-wrapper {
   margin: 12pt 0;
   position: relative;
   break-inside: avoid;
+  /* Drop shadow pins the section to the brick wall as a physical object —
+     follows the clipped ::before shape (filter respects child clip-path).
+     Hard offset, no blur = "stuck on" not "floating." Same shadow stack
+     applies to .dc-npc-stat (@section variant) and all other section
+     variants without per-component shadow declarations. */
+  filter: drop-shadow(2pt 3pt 0 rgba(0, 0, 0, 0.25));
 }
 
 /* clip-path + left accent band on ::before */
