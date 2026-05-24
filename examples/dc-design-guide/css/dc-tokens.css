@@ -94,11 +94,17 @@
 :root {
 
   /* ── Page & Paper ─────────────────────────────────────────────────────── */
-  --bg:           #c8c5bf;  /* ash-concrete — cool gray, creaturepunk substrate (L*~70) */
-  --paper-cream:  #eee0c4;  /* bone-cream — warm but not competing with acid yellow */
-  --paper-light:  #e4dcc4;  /* dusty manila — cooler than cream */
-  --paper-aged:   #d4c9ad;  /* worn kraft — proper decay register */
-  --paper-stain:  #bcad90;  /* tobacco stain — dark inset wells */
+  /* Paper substrate shifted from warm cream/manila to neutral-cool light
+     greys (2026-05-24). The previous warm-cream register read vintage /
+     fantasy-coded against the urban-concrete brick-wall background and
+     made the book feel less Dimm-City than it should. Greys read as
+     "industrial flyer paper / printer stock" — closer to the actual
+     real-world surface posters get pasted on in a creaturepunk city. */
+  --bg:           #c8c5bf;  /* ash-concrete — the brick wall (page background, L*~70) */
+  --paper-cream:  #e8e6e2;  /* light industrial flyer-stock — slightly warm-neutral grey */
+  --paper-light:  #ddd9d3;  /* slightly darker grey for alternate paper surfaces */
+  --paper-aged:   #c8c2b8;  /* weathered grey — decay register, dust + age */
+  --paper-stain:  #b0a89c;  /* deep stain — dark inset wells, smoke-grey */
 
   /* ── Ink & Text — warm sepia drift, not neutral gray ─────────────────── */
   --ink:        #1a1512;  /* near-black with red bias — riso warm black */
