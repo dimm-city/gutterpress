@@ -30,6 +30,8 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 
 # Credits {.dc-chevron}
 
+@section
+
 **Designers:** TWard and ITLackey
 
 **Artist:** Scott Georges
