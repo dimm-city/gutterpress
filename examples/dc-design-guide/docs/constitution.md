@@ -64,16 +64,48 @@ The setting is documented at length in [knowledge:print/design/creaturepunk-desi
 > **Tagline:** "It ain't chrome. It ain't clean."
 > Creaturepunk is **hostile, improvised, urban, cold, aggressive, dirty.** Not friendly. Not polished. Not warm. Not luxurious. Not decorative.
 
-### The four pillars
+### The four registers
 
-| Pillar | Register | Token family |
-|---|---|---|
-| **Cyberpunk neon** | Bright signal — brand-magenta, brand-cyan, brand-yellow, brand-violet. Saturated, lit, electric. | `--brand-*` |
-| **Gutter grim** | Rust, blood, amber, paper-stain, ink-dust, smoke. Warm decay, oxidised metal, dried blood, sulphur-burn. | `--rust`, `--blood`, `--orange`, `--amber`, `--crimson`, `--paper-stain` |
-| **Fluorescent fungi** | Bioluminescent lichen, UV-reactive spore, alley moss with a pulse. Yellow-green organic glow. | `--fungi-glow`, `--fungi-mid`, `--fungi-rot` |
-| **Ancient crystals** | Refractive mineral facets — amethyst, aquamarine, citrine, smoky quartz. Geometric, faceted, arcane. | `--crystal-amethyst`, `--crystal-aqua`, `--crystal-citrine` |
+Creaturepunk is **part future tech, part ancient magic, part landfill, part wonderland.** Every component is a blend of these four registers in deliberate proportions. The mix is not aesthetic ornament — it's the **identity signal** of who/what made the object and where it sits in Dimm City's stratigraphy.
 
-Every accent decision lands in one pillar. A component drifting between pillars (rust + crystal-aqua on the same card) needs a justification documented in the per-book overrides.
+| Register | Reads as | Tells | Token family |
+|---|---|---|---|
+| **Future tech** | LED indicators, HUD panels, digital displays, brushed metal, circuit traces, neon signal. Lit-from-within, edges are sharp and cut, fills are saturated and crisp. | sharp polygon clips, reverse-out crisp type, top-edge highlight (LED-rim), saturated chip fills, mono caps labels | `--brand-magenta/cyan/yellow/violet`, `--hud-blue/blue-dark`, AP-chip / outcome-chip / skill-tab chrome |
+| **Ancient magic** | Mineral facets, refractive crystals, faceted geometric chrome, arcane runes, smoky-quartz depth. Cold colour temperature, faceted geometry, multi-stroke depth. | faceted/lozenge clip-paths, mineral-violet/aqua/citrine accents, geometric ornaments, multi-stop tonal depth (light-mid-deep) | `--crystal-amethyst/aqua/citrine`, mineral-violet undertones |
+| **Landfill** | Rust drips, torn paper edges, exposed adhesive, scratched tape, oil stains, smoke-burn. Warm decay, oxidised metal, dried blood, sulphur-burn. | torn-paper edges, rough/irregular cuts, paper-stain tints, rust drips, smudge/grime overlays | `--rust`, `--blood`, `--orange`, `--amber`, `--crimson`, `--deep-rust`, `--paper-stain`, `--paper-aged` |
+| **Wonderland** | Bioluminescent fungi, UV-reactive spore-light, alley moss with a pulse, organic crackle, dream-haze. Yellow-green organic glow, irregular organic boundaries. | fungi-glow accents on dark fills, organic curvature in clip-paths, irregular asymmetric edges, spore-halo treatments | `--fungi-glow`, `--fungi-mid`, `--fungi-rot` |
+
+### Per-specialty register mix (deliberate, not random)
+
+Every specialty leans into a specific register mix that reflects WHO it is in the world. The CSS theme block per specialty (`.dc-specialty.<name>`) should express that mix, not just swap colors.
+
+| Specialty | Future tech | Ancient magic | Landfill | Wonderland | Visual cues |
+|---|---|---|---|---|---|
+| **Augmerc** | ████ HIGH | low | ██ mid | low | LED-chrome tabs, hard angular cuts, brand-magenta body + brand-cyan accent pop. Tech-heavy, street-salvaged. |
+| **Wirephreak** | ████ HIGH | low | ██ mid | low | Drowned-circuit teal, signal-cyan accents, crisp polygonal clips. Decking + interference. |
+| **Cybersurgeon** | ████ HIGH | low | █ low | low | Cold clinical chrome, medical mono labels, blue-grey steel. Med-tech, surgical precision. |
+| **Technosorcerer** | ████ HIGH | ████ HIGH | low | low | Tech+magic hybrid. Centre-notched gate clips (mineral geometry), violet ritual chrome. |
+| **Etherlock** | ██ mid | ████ HIGH | ██ mid | ██ mid | Faceted refraction, citrine/yellow ritual hits. Secrets-as-currency, manifold magic. |
+| **Proxy** | low | ████ HIGH | ████ HIGH | low | Divine force on burnt paper. Scorch-orange, near-black ink, conviction stamp register. |
+| **Streetwarden** | ██ mid | low | ██ mid | low | Civic-warden hazard register. High-vis toxic green, polygonal civic chrome. |
+| **Gutterdruid** | low | ██ mid | ████ HIGH | ████ HIGH | Trash heap + spore magic. Torn-paper edges, fungi-glow accent flare, organic asymmetric clips. |
+| **Dualist** | ██ mid | ████ HIGH | low | ██ mid | Two-path walker. Crystal-aqua refraction, lozenge faceted geometry, mineral-mineral. |
+| **Generalist** | ██ mid | ███ HIGH | ██ mid | low | Sprawl survivor. Crystal-amethyst undertones, soft chamfered geometry. Common stone, refracted depth. |
+
+The mix is the SOURCE of design decisions. When polishing a component for a specialty, ask: *which register dominates? what visual cues belong to that register? what does NOT belong?*
+
+Example: a top-edge LED highlight (`box-shadow: inset 0 1px 0 rgba(255,255,255,0.18)`) belongs on **Augmerc / Wirephreak / Cybersurgeon / Technosorcerer** chrome (future-tech high). It does NOT belong on **Gutterdruid** — the gutterdruid card is torn paper with fungi-glow seeping through, not a polished tech panel.
+
+Example: a torn-paper edge (irregular clip-path, slightly rotated) belongs on **Gutterdruid / Proxy** (landfill high). It does NOT belong on **Augmerc / Cybersurgeon** — clinical tech doesn't tear.
+
+### Controlled chaos — the 80/20 rule
+
+- **80% of the page** is structurally reliable: text frames, margins, table alignment, reading order, page furniture.
+- **20% can misbehave**: rotated stamps, broken banners, offset tabs, hard colour hits, asymmetric ornament.
+
+Apply disruption to *display elements*, never to *reading surfaces*. Safe places for chaos: chapter openers, section banners, AP tags, pull quotes, image crops. Stable: body copy, tables, rules text, lists, page numbers.
+
+The mistake to avoid: confusing **chaotic** with **hard to use**. Creaturepunk pages should feel **unstable while the information remains easy to scan.**
 
 ### Controlled chaos — the 80/20 rule
 
