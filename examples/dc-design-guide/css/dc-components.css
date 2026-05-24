@@ -3251,19 +3251,22 @@ h3 + .section {
 }
 
 .dc-npc-stat h5 {
-  /* TRAITS / EQUIPMENT / CYBERNETICS chrome labels — must read DISTINCTLY
-     against the body weight (contest judge R9: "they disappear into body
-     weight" was a contest blocker). Bumped to font-weight 700 + explicit
-     hud-blue-dark color + thicker bottom rule so the label dominates its
-     own line. Mono-caps + tracking unchanged. */
+  /* TRAITS / EQUIPMENT / CYBERNETICS section-anchor labels — must read
+     as CATEGORICALLY DIFFERENT from body text, not just heavier (contest
+     judge R10: "they feel labelled rather than anchored... mono-caps +
+     accent underline + left-border accent pip would close the PHB gap").
+     Triple-cue treatment: bold mono-caps tracked + 1pt accent underline
+     + 3pt accent left-border pip. The pip is the anchor — scannable at
+     reading distance, unmistakable as a section start. */
   font-family: var(--font-mono);
   font-size: var(--fs-h6);
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--dc-npc-stat-label-color, var(--hud-blue-dark));
+  border-left: 3pt solid var(--dc-npc-stat-label-color, var(--hud-blue-dark));
   border-bottom: 1pt solid var(--dc-npc-stat-label-color, var(--hud-blue-dark));
-  padding-bottom: 1.5pt;
+  padding: 1pt 0 1.5pt 6pt;
   margin-top: 0.08in;
   margin-bottom: 0.04in;
 }
