@@ -237,4 +237,16 @@ Generalists don't specialize — they scavenge. Picking up scraps of every art t
 
 Every specialty excels at one thing and has a path toward a second. Your first specialty is your identity. What you pick up later is your legend.
 
+Don't agonize over the choice. Most Dreamers don't know their specialty until the city forces it out of them — under fire, under stress, or under the kind of debt that doesn't go away. Pick the one that sounds like the way you'd bleed if you had to. You'll grow into the rest whether you want to or not.
+
+@end-section
+
+@section
+
+### What Comes Next
+
+The next chapter walks through what each specialty actually does at the table — the abilities, the augmentations, the rituals, the way each one breaks the laws of a city that wants you breaking them anyway. Read your pick first. Then read the others. Specialties don't stand alone in Dimm City; the crews that survive are the ones whose specialties chew off each other's edges.
+
+If you're still on the fence, that's fine. The Dream Master will give you a few sessions to feel which way the city pushes you. The character you bring in is a draft. The character that walks out of the first heist is the one that's yours.
+
 @end-section
