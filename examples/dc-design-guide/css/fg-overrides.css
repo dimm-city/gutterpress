@@ -108,11 +108,6 @@
    itself is now a reusable component: .dc-citizen-file in dc-components.css. */
 .page.citizen-file { page: citizen-file; }
 
-/* TOC chapter (#ch-toc) routes through @page front-matter so its folios
-   are suppressed. The TOC pages don't carry .intro/.page-intro on their
-   wrapper, so the parent chapter id is the cleanest hook. */
-#ch-toc .page { page: front-matter; }
-
 /* H1 chevron font-size cap moved to dc-components.css under .dc-chevron.
    It's a component-level style, not a per-chapter override. */
 
