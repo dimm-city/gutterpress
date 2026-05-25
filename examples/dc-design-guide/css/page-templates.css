@@ -52,7 +52,21 @@
 
 
 /* ── PAGE WRAPPER BASE GEOMETRY ────────────────────────────────────────────── */
-.page,
+/* .page used to have `break-after: always`. Per the designer-eye book
+   review (2026-05-24), 6 pages in the output were forced-blank fillers
+   inserted between content sections — caused by paged.js interpreting
+   `break-after: always` on consecutive .page wrappers as "emit a
+   trailing blank page after each one." Changed to `break-before: page`
+   so each .page wrapper STARTS a new page (which is what we want) but
+   does NOT force a phantom break after that could insert a blank.
+   .page-break (the explicit @page-break directive) keeps break-after
+   so authors can still force a hard page break when needed. */
+.page {
+  columns: unset;
+  break-before: page;
+  break-inside: avoid;
+}
+
 .page-break {
   columns: unset;
   break-after: always;

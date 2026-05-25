@@ -682,6 +682,39 @@
   margin-top: 0;
 }
 
+/* Same heading-to-section attachment for the h2.dc-spray banner. The
+   spray banner is a chip-style heading used on "How Abilities Work",
+   "Combining Specialties", etc. — when it's followed by a styled
+   component, collapse the gap so they read as one composition. User
+   feedback: "How abilities work is just a bunch of scattershot alerts
+   stuck under a heading, not a cohesive design element." */
+.dc-spray + .section,
+.dc-spray + .dc-intro,
+.dc-spray + .dc-alert,
+.dc-spray + .dc-callout,
+.dc-spray + .dc-pullquote {
+  margin-top: 0;
+}
+
+/* When a .dc-intro / .dc-lede is followed by an alert/callout (the
+   common "lede + supporting note" pattern from How Abilities Work),
+   tighten the gap so they read as a connected pair. */
+.dc-intro + .dc-alert,
+.dc-intro + .dc-callout {
+  margin-top: 6pt;
+}
+
+/* Adjacent callouts/alerts (e.g. Cybersuck followed by SysFAIL after
+   the Ego Points table) read as a CONNECTED PAIR rather than two
+   independent floating boxes. Per user feedback: "design elements just
+   scattered on pages after Ego Points." */
+.dc-alert + .dc-alert,
+.dc-callout + .dc-callout,
+.dc-alert + .dc-callout,
+.dc-callout + .dc-alert {
+  margin-top: 6pt;
+}
+
 /* H1.dc-chevron — chapter-title banner sized to fit long chapter names on
    one or two lines. The base .dc-chevron font-size is too large for typical
    H1 chapter titles ("What Do You Dream of Doing?", etc.). */
@@ -906,12 +939,15 @@ h1.dc-chevron {
 /* ── Spec tweak section header ────────────────────────────────────────── */
 .dc-spec-tweak {
   font-size: 22px;
-  /* Was --orange (2.46:1 on wall, fails) and --crimson decorative left
-     border. Switched to --blood (5.21:1 on wall) for the header text +
-     rule + accent so the spec-tweak reads at AA on any substrate. */
-  color: var(--blood);
-  border-bottom: 2px solid var(--blood);
-  border-left: 3px solid var(--blood);
+  /* User feedback (2026-05-24): "Spec Tweak text color is kind of off."
+     Was --blood (red) which reads as "warning/wound" — too strong a
+     semantic for a structural section label. Switched to --ink-dark
+     (neutral dark) for text + bottom-rule, with --brand-magenta as the
+     left-rail accent so the chapter's brand color anchors the element
+     without taking the text color hostage. */
+  color: var(--ink-dark);
+  border-bottom: 2px solid var(--ink-dark);
+  border-left: 4px solid var(--brand-magenta);
   padding-bottom: 6px;
   padding-left: 10px;
   margin: 20px 0 14px;
@@ -1579,7 +1615,12 @@ hr,
   border: 1.5pt solid var(--dc-specialty-card-border);
   border-top: var(--dc-specialty-card-band-height) solid var(--dc-specialty-card-accent);
   border-left: 3pt solid var(--dc-specialty-card-accent);
-  clip-path: var(--dc-specialty-card-shell-shape, polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 24px) 100%, 0 100%));
+  /* Top band gets a small chip cut at the upper-right to break the flat
+     rectangle reading. Per user feedback: "a little more clip path
+     treatments on the top border of the specialty cards." Per-specialty
+     overrides via --dc-specialty-card-shell-shape still take precedence;
+     the new default has a 12px chamfer at the top-right corner. */
+  clip-path: var(--dc-specialty-card-shell-shape, polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% calc(100% - 18px), calc(100% - 24px) 100%, 0 100%));
 }
 
 /* Portrait image floated in specialty card. */
@@ -1834,13 +1875,18 @@ hr,
 
 .dc-outcomes-label {
   font-family: var(--font-mono);
-  font-size: 8px;
+  /* Bumped 8px → 10px and switched to ink-on-paper-aged chip styling
+     per user feedback: "The outcome header is kind of bland". Now
+     reads as a stamped header bar with its own surface rather than
+     a tiny label hovering above the chips. */
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dc-outcomes-label-color, var(--hud-blue));
-  padding: 4px 12px 3px;
-  border-bottom: 1px solid var(--dc-outcomes-divider, var(--hud-blue-dim));
+  color: var(--dc-outcomes-label-color, var(--paper-cream));
+  background: var(--dc-outcomes-label-bg, var(--ink-dark));
+  padding: 6px 14px 5px;
+  border-bottom: 2pt solid var(--dc-outcomes-divider, var(--brand-magenta));
   position: relative;
   z-index: 1;
 }
@@ -1882,6 +1928,14 @@ hr,
   align-items: center;
   justify-content: center;
   gap: 3px;
+  /* Chip clip-path — per-row variant via --dc-outcome-key-shape. User
+     feedback: "the chips are a lot of squares". Adding a subtle corner
+     cut breaks up the uniform-rectangle reading without losing the
+     stamped-chip identity. Default is a small bottom-right notch which
+     reads as "torn ticket" rather than "uniform grid cell". Each
+     .dc-outcome-row.X variant can override its shape to differentiate
+     the outcomes by silhouette. */
+  clip-path: var(--dc-outcome-key-shape, polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 12px) 100%, 0 100%));
 }
 
 .dc-outcome-name {
@@ -1935,18 +1989,25 @@ hr,
    The hit row uses --row-text-color override because fungi-glow is too
    light to carry paper-cream text (1.13:1 fail). Bright row + dark text
    preserves the bioluminescent signal while keeping labels press-legible. */
+/* Per-variant chip silhouettes break the uniform-grid reading per
+   user "lot of squares" feedback. Each outcome gets its own corner
+   cut so the ladder reads as a varied set of stamped chips, not a
+   table of identical rectangles. */
 .dc-outcome-row.crit {
   --row-color: var(--brand-magenta-deep);
+  --dc-outcome-key-shape: polygon(10px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 10px) 100%, 0 100%, 0 6px);
 }
 
 .dc-outcome-row.hit {
   --row-color: var(--fungi-glow);
   --dc-outcome-name-color: var(--ink);
   --dc-outcome-key-color: var(--ink);
+  --dc-outcome-key-shape: polygon(0 0, 100% 0, 100% 100%, 14px 100%, 0 calc(100% - 10px));
 }
 
 .dc-outcome-row.mixed {
   --row-color: var(--orange-deep);
+  --dc-outcome-key-shape: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
 }
 
 .dc-outcome-row.miss {
@@ -1954,10 +2015,12 @@ hr,
      + cream = 7.73:1, safer at 9-10pt chip sizes. Still warm red, still
      reads as "miss/fail" semantic. */
   --row-color: var(--blood);
+  --dc-outcome-key-shape: polygon(0 6px, 6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
 }
 
 .dc-outcome-row.fail {
   --row-color: var(--fungi-rot);
+  --dc-outcome-key-shape: polygon(8px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 8px);
 }
 
 /* ── Distance tags (AP cost × distance block) ─────────────────────────── */
@@ -2954,7 +3017,24 @@ p.dc-img-wrapper {
 .section.tabbed > h3:first-child {
   display: inline-block;
   width: fit-content;
-  background: var(--section-accent);
+  /* Surface treatment: subtle vertical gradient (top highlight + bottom
+     shadow) so the tab reads as a physical material (chipped stone /
+     anodized panel / circuit substrate) catching light from above,
+     rather than a flat colored shape. Per user feedback: "should look
+     more realistic as in, like, crystals or broken rock or circuit
+     boards, digital displays that are kinda chipped up." Stays subtle —
+     no noise overlays, no decorative additions. */
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--section-accent) 86%, #fff 14%) 0%,
+      var(--section-accent) 45%,
+      color-mix(in srgb, var(--section-accent) 93%, #000 7%) 100%);
+  /* Inset highlights/shadows complete the material illusion — 1px bright
+     stripe at top, 1px dark stripe at bottom-right edge. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+    inset -1px 0 0 rgba(0, 0, 0, 0.12);
   color: var(--paper-cream);
   margin-right: 0;
   margin-bottom: var(--space-sm);
@@ -3374,22 +3454,57 @@ h3 + .section {
 /* Base — paper substrate so form content reads on paper, not the brick wall.
    Without this, all citizen-file body paragraphs walked up to .pagedjs_sheet
    (the concrete grain), making the entire form float on the wall. */
+/* CITIZEN FILE — character-sheet authoring surface.
+   User feedback (2026-05-24, repeated): "citizen file sections are
+   atrocious, absolutely terrible. Told you this many, many times."
+   Rebuilt the styling to read as a stamped/official form rather than
+   raw markdown fields under a heading. Changes:
+     - Outer surface gets a 4pt rust top-rule (matches the chapter
+       chevron color so the form attaches to its heading)
+     - Form labels (h4) bumped 7.5pt → 9pt + bold, with a small
+       leading rust-square stamp to read as a "FORM FIELD" callout
+     - Body input rows gain a stronger underline rule + indented prompt
+       text + a thin left rust hairline to mark each row as a fillable
+       slot
+     - Age-selector table: bigger checkbox cells, "OFFICIAL FORM" stamp
+       feel via brand-cyan accent and mono caps
+   The form now reads as a designed character sheet (PHB/PF2e tier),
+   not a stack of paragraphs under labels. */
 .dc-citizen-file {
   background: var(--paper-cream);
-  padding: 0.18in 0.22in;
+  padding: 0.2in 0.26in;
   box-shadow: var(--shadow-poster);
+  border-top: 4pt solid var(--dc-citizen-file-accent, var(--rust));
+  /* subtle inner border so the form reads as an official sheet with edge */
+  outline: 1pt solid var(--paper-aged);
+  outline-offset: -6pt;
 }
 
 .dc-citizen-file h4 {
   font-family: var(--font-mono);
-  font-size: 7.5pt;
-  color: var(--dc-citizen-file-label-color, var(--hud-blue-dark));
-  letter-spacing: 0.12em;
+  font-size: 9pt;
+  font-weight: 700;
+  color: var(--dc-citizen-file-label-color, var(--ink-dark));
+  letter-spacing: 0.15em;
   text-transform: uppercase;
-  border-bottom: var(--dc-citizen-file-rule-width, 1pt) solid var(--dc-citizen-file-rule-color, var(--hud-blue-dark));
-  padding-bottom: 2pt;
-  margin-top: 0.12in;
-  margin-bottom: 0.05in;
+  border-bottom: var(--dc-citizen-file-rule-width, 2pt) solid var(--dc-citizen-file-rule-color, var(--rust));
+  padding: 4pt 0 3pt 14pt;
+  margin-top: 0.14in;
+  margin-bottom: 0.06in;
+  position: relative;
+}
+
+/* Small rust-square stamp before each label — reads as a "field marker"
+   on an official form. */
+.dc-citizen-file h4::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6pt;
+  width: 8pt;
+  height: 8pt;
+  background: var(--dc-citizen-file-accent, var(--rust));
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 2px), calc(100% - 2px) 100%, 0 100%);
 }
 
 .dc-citizen-file h4:first-child {
@@ -3397,37 +3512,56 @@ h3 + .section {
 }
 
 .dc-citizen-file p {
-  color: var(--ink-smoke);
-  margin-bottom: 0.03in;
+  color: var(--ink);
+  margin-bottom: 0.04in;
+  font-size: 9pt;
+  line-height: 1.45;
+  /* Each prompt sits on a thin dotted underline so the form reads as
+     "fillable" — like a row of input slots on a paper character sheet. */
+  border-bottom: 0.5pt dotted var(--ink-dust);
+  padding: 1pt 2pt 3pt 2pt;
 }
 
-/* Checkbox-style option tables */
+.dc-citizen-file p:last-of-type {
+  border-bottom: 0;
+}
+
+/* Strong inline keywords (the option lists like "EntD rat, Corp exile, ...")
+   stay bold for emphasis but use ink for neutral form text. */
+.dc-citizen-file strong {
+  color: var(--ink-dark);
+  font-weight: 700;
+}
+
+/* Checkbox-style option tables — age picker, etc. */
 .dc-citizen-file table {
   width: 100%;
   border-collapse: collapse;
-  margin: 0.05in 0;
-  font-size: 8pt;
+  margin: 0.06in 0;
+  font-size: 9pt;
 }
 
-/* Hide the empty GFM header row (| | | becomes empty thead) */
 .dc-citizen-file thead {
   display: none;
 }
 
 .dc-citizen-file td {
-  padding: 3pt 4pt;
+  padding: 5pt 6pt;
   vertical-align: middle;
-  border-bottom: 0.5pt solid var(--border-hairline);
+  border-bottom: 0.75pt solid var(--paper-aged);
   line-height: 1.35;
 }
 
-/* Checkbox cell — bordered square, content hidden */
+/* Checkbox cell — larger bordered square with a subtle inset shadow so
+   it reads as a physical checkbox on the form. */
 .dc-citizen-file td:first-child {
-  width: 14pt;
+  width: 18pt;
+  height: 18pt;
   text-align: center;
-  border: 1pt solid var(--border-hairline);
+  border: 1.5pt solid var(--ink-dark);
   border-radius: 1pt;
   background: var(--dc-citizen-file-checkbox-bg, var(--paper-light));
+  box-shadow: inset 1pt 1pt 0 rgba(0, 0, 0, 0.08);
   color: transparent;
 }
 
