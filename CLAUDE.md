@@ -228,6 +228,42 @@ Card variants (skill cards, path shells, specialty cards) are controlled by the
 automatically. Do NOT add `variant=` attributes to `@skill`, `@continue`, or
 `@learning-path` macros.
 
+### 🔒 Frozen components (do not modify without approval)
+
+**Chapter-opener / intro composite** — APPROVED 2026-05-25 after 14
+iterations on the DC design guide. The author markdown surface is:
+
+```
+@chapter C.01
+@page intro
+@section
+# Who Do You Dream to Be?
+```
+
+The implementation surface (DO NOT modify without explicit per-change
+user approval — full surface list in project memory
+`feedback_chapter_opener_frozen.md`):
+
+- `packages/lib/src/lib/markdown/markdown-it-paged.js` — `@chapter NAME`
+  parsing, `chapterLabel` context, `data-chapter-label` propagation, and
+  `<div class="chapter-opener">` element injection.
+- `examples/dc-design-guide/css/dc-tokens.css` — `--dc-chapter-opener-*`
+  token defaults (co-located with `--space-*` / `--clip-banner` deps;
+  cross-file `var()` chains are unreliable in paged.js).
+- `examples/dc-design-guide/css/dc-components.css` — `.chapter-opener`
+  badge, the `.chapter[data-chapter-label] > .page[data-page="intro"] >
+  .section` substrate variant chain, the chevron auto-extension via
+  shared `.dc-chevron` selector lists, and the `filter: drop-shadow()`
+  on the intro page that produces the composite's cohesive shadow.
+
+Only approved customisation: per-chapter token overrides at the chapter
+id scope (`#ch-name .chapter { --dc-chapter-opener-accent: ... }`).
+
+If a future task seems to require a chapter-opener change, STOP and
+ask the user. Cite the frozen-component memory and request explicit
+approval. Diagnostic notes on the paged.js quirks the architecture
+relies on are in AKM `memory:paged-js-css-quirks-discovered-2026-05-25`.
+
 ### CSS anti-patterns (learned the hard way over 8 gate iterations)
 
 Apply these BEFORE making any CSS edit. Each rule came from a user callout
