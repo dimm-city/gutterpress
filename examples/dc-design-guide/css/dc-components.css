@@ -672,16 +672,29 @@
   display: block;
   box-sizing: border-box;
   clip-path: var(--clip-banner);
-  /* Zero margins on the chevron itself. Flush attachment to the next
-     element is handled by the `.dc-chevron + X` adjacency rules below —
-     a single component-level contract, not per-page overrides. The
-     prior negative `margin-bottom: -10px` + `z-index: 1` mechanism
-     produced visible overlap (the next element's first line rendered
-     UNDER the chevron's bottom). Removed 2026-05-25 (gate iter-8). */
+  /* Single-direction margin convention (top:0, see flush-stacking
+     comment above). Flush attachment to the next element comes from
+     consistent margin convention, not from negative margins or z-index
+     stacking tricks. */
   margin: 0;
   line-height: 1.2;
   word-break: break-word;
-  vertical-align: bottom;
+}
+
+/* CHEVRON AS SECTION HEADER (card-header pattern)
+   When a .dc-chevron is the first child of a .section, it acts like a
+   "card header" extending edge-to-edge of the section's border box —
+   claiming back the section's padding so it aligns with the section's
+   outer edges (and with anything else that aligns to the section's outer
+   edges, like a chapter-opener banner above it). The section's body
+   content keeps its padding so prose stays inset.
+
+   Single component-level rule. Applies to every chevron used as a
+   section's first child, anywhere in the book. Iter-9 (2026-05-25). */
+.section > .dc-chevron:first-child {
+  margin-top: calc(var(--space-md) * -1);
+  margin-left: calc(var(--space-lg) * -1);
+  margin-right: calc(var(--clip-tail) * -1);
 }
 
 /* HEADING-SECTION ADJACENCY (D11, ≤ 0px gap)
@@ -2943,7 +2956,11 @@ p.dc-img-wrapper {
      z-index ordering without blocking child margin overflow. */
   background: transparent;
   isolation: isolate;
-  padding: var(--space-md) var(--space-lg);
+  /* Right padding matches --clip-tail so body content fits inside the
+     section's clipped cream substrate (the ::before clip path also uses
+     --clip-tail for its right inset). Left/top/bottom padding use the
+     standard space tokens. */
+  padding: var(--space-md) var(--clip-tail) var(--space-md) var(--space-lg);
   /* Single-direction margin: bottom only. Consecutive sections collapse to
      the bottom margin gap (12pt). First section after a chevron has no
      top gap → flush attachment without an adjacency rule.
@@ -2962,13 +2979,21 @@ p.dc-img-wrapper {
      the shadow (raster filter + vector pseudo) per print R9 finding. */
 }
 
-/* clip-path + left accent band on ::before */
+/* clip-path + left accent band on ::before
+   Right edge is straight-vertical at the same x as the chevron-banner's
+   tail (calc(100% - 22px) = the --clip-banner tail position). When a
+   chevron is used as the section's first child, the chevron tapers from
+   full-width at top to (100% - 22px) at its bottom; this section ::before
+   then continues straight down at that narrower x. The combined silhouette
+   forms ONE continuous shape on the right side — the chevron's diagonal
+   transitions into the section's vertical edge with no horizontal step.
+   Iter-9 (2026-05-25). */
 .section::before {
   content: '';
   position: absolute;
   inset: 0;
   background: linear-gradient(to right, var(--section-accent) 5px, var(--section-bg) 5px);
-  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+  clip-path: polygon(0 0, calc(100% - var(--clip-tail)) 0, calc(100% - var(--clip-tail)) 100%, 0 100%);
   z-index: 0;
 }
 

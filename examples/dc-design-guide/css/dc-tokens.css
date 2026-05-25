@@ -222,7 +222,13 @@
   --text-secondary:       #a8b0bc;  /* muted TOC link text */
 
   /* ── Shapes ───────────────────────────────────────────────────────────── */
-  --clip-banner: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
+  /* Chevron banner / section right-edge inset. Used by --clip-banner, by
+     .section::before's clip-path, by .section padding-right, and by
+     .section > .dc-chevron:first-child negative margin-right. Single
+     token so the chevron's angular tail aligns with the section's
+     right edge AND the body content stays inside the clipped substrate. */
+  --clip-tail: 22px;
+  --clip-banner: polygon(0 0, 100% 0, calc(100% - var(--clip-tail)) 100%, 0 100%);
 
   /* ── Fluorescent Fungi Pillar (creaturepunk: bioluminescent organic) ─────
      The 4th creaturepunk register: spore-light, lichen-glow, UV-reactive
