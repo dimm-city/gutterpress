@@ -48,14 +48,17 @@
    dc-components.css (via --dc-specialty-card-media-width/height tokens).
    No override needed here. */
 
-/* Chapter opener inset art — floated right, text wraps around it */
+/* Chapter opener inset art — floated right, text wraps around it.
+   outline + shadow match the DC brand poster register; -x shadow offset
+   because the image is right-floated (shadow falls left-and-down). */
 .fg-art-street-sign {
   float: right;
   width: 1.75in;
   height: auto;
   object-fit: cover;
   margin: 0 0 var(--space-sm) var(--space-md);
-  clear: right;
+  outline: 3px solid var(--ink-dark);
+  box-shadow: -4px 4px 0 var(--hud-blue-dark);
 }
 
 /* .fg-art-lil-thump removed — fiction-excerpt images are now styled by
@@ -242,6 +245,15 @@
 
 /* Chapter 4 — rules (Are You Lucid Yet, Dreams, City, etc.): brand identity register */
 #ch-example-rules { --section-accent: var(--brand-magenta-deep); }
+/* Street-sign image in the chapter opener fiction excerpt: float right so the
+   ape-scenario text wraps around the sign's left side. Shadow flipped to
+   -x so it falls LEFT (visible beside the float) rather than right (clipped
+   by the section's composite edge). Token overrides follow contextual
+   cascade principle. */
+#ch-example-rules .section.dc-fiction-excerpt {
+  --dc-fiction-art-float: right;
+  --dc-fiction-art-shadow: -4px 4px 0 var(--hud-blue-dark);
+}
 
 /* Chapter 5 — DM & NPC pages (stat blocks) */
 #ch-example-dm-npcs { --section-accent: var(--rust); }

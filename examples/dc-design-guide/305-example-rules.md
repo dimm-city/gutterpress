@@ -1,10 +1,10 @@
-@chapter #ch-example-rules ch="4"
+@chapter C.1 #ch-example-rules ch="4"
 
+@page intro
 
+@section .dc-fiction-excerpt
 
-@page .chapter-start
-
-# C.1: Are You Lucid Yet? {#c1-are-you-lucid}
+# Are You Lucid Yet?
 
 ![01-street-sign](https://placehold.co/600x800/png?text=Street+Sign){.fg-art-street-sign}
 
@@ -19,6 +19,8 @@ Behind him, a chorus of giggles breaks from the shadows moving closer.
 "Hand over that cap," he growls. "Or we'll make you a bite late for yr appointy."
 
 What's your next move?
+
+@end-section
 
 ---{.column-break}
 
@@ -39,10 +41,6 @@ The rules in this chapter govern how the Dream plays out: when you roll dice, ho
 Learn the core loop first. Everything else builds on it.
 
 @end-section
-
----
-
-@page .the-players
 
 
 @section
