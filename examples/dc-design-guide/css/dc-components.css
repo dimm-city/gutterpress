@@ -3437,15 +3437,28 @@ h3 + .section {
      @page .citizen-file                                ← topic page (running header)
      @section .dc-citizen-walkthrough                   ← standard section chassis
 
-   STRIP-FIRST POLICY: this component carries ZERO bespoke CSS. The
-   .dc-citizen-walkthrough class is a markdown authoring hook only —
-   styling comes entirely from the standard .section chassis (clipped-
+   STRIP-FIRST POLICY: this component carries minimal bespoke CSS.
+   Styling comes primarily from the standard .section chassis (clipped-
    corner ::before with --section-accent stripe + --section-bg substrate
-   + ::after fake shadow) plus the dc-core.css element baselines.
+   + ::after fake shadow) plus the dc-core.css element baselines. Rules
+   below address observed problems that the chassis does not cover.
 
    To tune the walkthrough's accent or substrate, override the existing
    --section-accent / --section-bg custom properties at the chapter id
-   scope in fg-overrides.css — do NOT add bespoke rules here. */
+   scope in fg-overrides.css — do NOT add bespoke rules here unless an
+   observed problem requires it.
+
+   OBSERVED PROBLEM (2026-05-25): When the walkthrough's first card uses
+   `.two-column` for an internal Handle/Designation split, the longer h4
+   text ("What's Yr Handle?") wraps to 2 lines while shorter text
+   ("Designation") fits on 1 line at the narrow column width. The body
+   text below each h4 then starts at different baselines across columns
+   — visible asymmetry the user-eye reads as a production error. Fix:
+   reserve uniform heading height inside two-column walkthrough cards so
+   both columns' body content starts at the same y. */
+.dc-citizen-walkthrough.two-column h4 {
+  min-height: calc(2 * 1.35em);
+}
 
 /* ═════════════════════════════════════════════════════════════════════════
    NPC STAT BLOCK — DM/NPC entries (Patchhead, Grease Monkey, Undertow, ...)

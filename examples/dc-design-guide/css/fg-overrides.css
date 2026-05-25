@@ -61,7 +61,14 @@
 /* .fg-art-lil-thump removed — fiction-excerpt images are now styled by
    their parent .section.dc-fiction-excerpt context (dc-components.css). */
 
-/* Character portrait — floats right, prose wraps to its left */
+/* Character portrait — floats right, prose wraps to its left.
+   margin-bottom accounts for the 3px outline + 4px box-shadow offset that
+   project BELOW the image's border-box. Without this, a `clear: right`
+   block (e.g. .dc-alert) following the image starts at the border-bottom
+   and visually covers the outline/shadow — the user-visible bug from
+   2026-05-25 that the gate kept missing because the audit measured
+   border-boxes, not visual extents. 12pt gap = outline (3) + shadow (4)
+   + breathing room (~5). */
 .fg-art-portrait {
   float: right;
   width: 2.25in;
@@ -69,6 +76,7 @@
   object-fit: cover;
   outline: 3px solid var(--ink-dark);
   box-shadow: -4px 4px 0 var(--hud-magenta);
+  margin-bottom: 12pt;
 }
 
 

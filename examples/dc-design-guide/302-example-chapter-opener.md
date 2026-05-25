@@ -55,7 +55,7 @@ This chapter will guide you through all the choices you need to make to help you
 
 Before reputation comes recognition. Before recognition comes a glance. Dimmers speed-read bodies like text: names, scars, size, and stance all scanned in a heartbeat. This section defines how you're read when the Dream first lays eyes on you.
 
-@callout variant=visit label="Image Is Everything"
+@callout variant=origin label="Image Is Everything"
 
 **Before You Fill Anything In:**
 
@@ -71,15 +71,21 @@ Visit **dimm.city** for a form-fillable PDF version of the Citizen File.
 
 #### What's Yr Handle?
 
-Choose a name. It can come from any culture, any language, or straight out of your imagination.
+Choose a name.
+
+It can come from any culture, any language, or straight out of your imagination.
 
 Pull it from a book, a show, a half-remembered dream, or invent something that sounds right for the city.
 
 #### Designation
 
-Let others know how to refer to you — she/her, he/him, they/them, or something else entirely.
+Let others know how to refer to you.
 
-Do your best to address your fellow Dreamers as they wish to be addressed. Names and pronouns matter when life itself is constantly trying to strip both away.
+She/her, he/him, they/them, or something else entirely.
+
+Do your best to address your fellow Dreamers as they wish to be addressed.
+
+Names and pronouns matter when life itself is constantly trying to strip both away.
 
 @end-section
 
@@ -124,7 +130,9 @@ Choose the stage of life your character is in:
 |  |old age|
 |  |extreme old age|
 
-Expressing age in years means little in Dimm City. Here, age is experiential, not chronological. Survival, scars, augmentation, and memory say far more than a number ever could.
+Expressing age in years means little in Dimm City. Here, age is experiential, not chronological.
+
+Survival, scars, augmentation, and memory say far more than a number ever could.
 
 @end-section
 
