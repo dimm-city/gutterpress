@@ -3002,6 +3002,18 @@ p.dc-img-wrapper {
   z-index: 1;
 }
 
+/* Floated image wrappers (markdown-it's `.dc-img-wrapper`, used by every
+   floated `.fg-art-*` image) stack above their sibling section children.
+   Without this, the floated image and adjacent styled blocks (pullquote,
+   callout, etc.) all sit at the same `z-index: 1` set above for
+   .section > *, and source order wins — the later block's background
+   covers the float's top edge. Bumping the wrapper's z-index restores
+   the standard editorial expectation that floated art renders above
+   sibling block backgrounds. Iter-8c (2026-05-25). */
+.section > .dc-img-wrapper {
+  z-index: 2;
+}
+
 /* ── Two-column / three-column — top/bottom borders only; clip-path breaks columns */
 .section.two-column,
 .section.three-column {
