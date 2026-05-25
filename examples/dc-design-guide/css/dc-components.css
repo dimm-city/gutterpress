@@ -717,9 +717,16 @@
    (TOC / Credits / Introduction) override this back up to a commanding display
    size — see the page-scoped rule below. D4 type scale (banner-to-body ratio
    must be ≥ 2× at print scale for chapter-punch role). */
-h1.dc-chevron,
-.chapter[data-chapter-label] > .page[data-page="intro"] > .section > h1:first-of-type {
+h1.dc-chevron {
   font-size: 1.4rem;
+  line-height: 1.2;
+}
+
+/* Chapter-opener heading runs at a smaller size than other h1.dc-chevron
+   instances so the section body weight stays the focal anchor below the
+   composite badge + banner. User-approved 2026-05-25. */
+.chapter[data-chapter-label] > .page[data-page="intro"] > .section > h1:first-of-type {
+  font-size: 1.1rem;
   line-height: 1.2;
 }
 
