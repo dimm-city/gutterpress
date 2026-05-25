@@ -643,10 +643,18 @@
 
 /* ── Chevron banner ───────────────────────────────────────────────────── */
 /* Chapter-title chevron banner. Token contract:
-     --dc-chevron-bg    → banner background (default --rust)
+     --dc-chevron-bg    → banner background (default --brand-magenta-deep)
      --dc-chevron-color → text color (default --paper-cream)
    Per-chapter override e.g.:
-     #ch-example-gear-tech .dc-chevron { --dc-chevron-bg: var(--hud-blue-dark); } */
+     #ch-example-gear-tech .dc-chevron { --dc-chevron-bg: var(--hud-blue-dark); }
+
+   WHY brand-magenta-deep default (and not rust): per the creaturepunk-
+   design-guide brand spec, magenta is the "banner / chapter punch /
+   spray treatment" role color. Rust/orange is reserved for "warnings,
+   AP tags, arrows, mechanical emphasis" — putting it on chapter banners
+   miscommunicates the semantic (CONTENTS shouldn't read as a warning).
+   Rubric: D9 (brand identity per chapter — chroma anchor must match
+   the banner's semantic role). */
 .dc-chevron {
   font-family: var(--font-display);
   font-size: var(--fs-h1);
@@ -654,7 +662,7 @@
   letter-spacing: 0.06em;
   color: var(--dc-chevron-color, var(--paper-cream));
   text-transform: uppercase;
-  background: var(--dc-chevron-bg, var(--rust));
+  background: var(--dc-chevron-bg, var(--brand-magenta-deep));
   padding: 10px 28px 10px 14px;
   display: inline-block;
   max-width: 100%;
@@ -2366,17 +2374,20 @@ hr,
 .dc-toc {
   font-family: var(--font-body);
   counter-reset: dc-toc;
-  /* Paper substrate w/ rust top + bottom stripes — user complained the
-     TOC "reads as basically just a white square" with only paper-cream
-     fill. The dual accent stripes (top + bottom, both --rust to match
-     the CONTENTS chevron) frame the TOC as a designed unit. The bottom
-     stripe closes the composition so the card doesn't float without an
-     end-edge. */
+  /* Creaturepunk industrial card: paper substrate framed by rust strips
+     (top + bottom — "mechanical emphasis / AP / arrows" role per brand
+     guide) and hard --ink-dark side rails (heavy ink hard borders per
+     "Cards: Use hard borders and clipped corners"). The dual accent
+     stripes + ink side rails read as field-issued reference card, not
+     editorial design. Rubric: D9 brand identity per chapter, A2 token-
+     driven (per-project tints via tokens, not raw colors). */
   background: var(--paper-cream);
   padding: 0.18in 0.22in;
   box-shadow: var(--shadow-poster);
   border-top: 4pt solid var(--rust);
   border-bottom: 4pt solid var(--rust);
+  border-left: 1.5pt solid var(--ink-dark);
+  border-right: 1.5pt solid var(--ink-dark);
 }
 
 .dc-toc ol {
