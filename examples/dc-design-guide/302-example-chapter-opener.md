@@ -1,10 +1,10 @@
-@chapter #ch-example-chapter-opener ch="1"
+@chapter C.01 #ch-example-chapter-opener ch="1"
 
-@chapter-opener C.01
+@page intro
 
-@section .dc-fiction-excerpt .dc-chapter-opener
+@section .dc-fiction-excerpt
 
-# Who Do You Dream to Be? {.dc-chevron}
+# Who Do You Dream to Be?
 
 "It's hard being me, but I guess it's the same for anyting sentient in the monoverse, ay?! Tag's Thump, an I'm a rabbit outta dee EntD here in Dimm City. Lemme post ya a tale about life here in da middle 'o dee ether.
 

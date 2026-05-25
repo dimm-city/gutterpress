@@ -85,14 +85,17 @@ function parseMarkerLine(line) {
   let nameIndex = -1;
   const firstBareTokenIndex = body.findIndex((token) => isBareToken(token));
 
-  if (kind !== 'chapter') {
-    if (hasExplicitAttrsOrShorthand && bareTokens.length) {
-      name = bareTokens[0];
-      nameIndex = firstBareTokenIndex;
-    } else if (bareTokens.length === 1) {
-      name = bareTokens[0];
-      nameIndex = firstBareTokenIndex;
-    }
+  // All marker kinds (including @chapter) accept an optional bare name as the
+  // first non-attribute token. For @chapter the name is a human label like
+  // "C.01" that consumer plugins (e.g. dimm-city-plugin) use to generate
+  // chapter badges. The name is exposed on the rendered element via
+  // `data-<kind>-label` (e.g. data-chapter-label="C.01").
+  if (hasExplicitAttrsOrShorthand && bareTokens.length) {
+    name = bareTokens[0];
+    nameIndex = firstBareTokenIndex;
+  } else if (bareTokens.length === 1) {
+    name = bareTokens[0];
+    nameIndex = firstBareTokenIndex;
   }
 
   const attrs = {};
@@ -154,6 +157,7 @@ function addClasses(token, baseClass, extraClass) {
 
 function attachDataAttrs(token, kind, name, attrs) {
   if (name) {
+    if (kind === 'chapter') token.attrSet('data-chapter-label', name);
     if (kind === 'spread') token.attrSet('data-spread', name);
     if (kind === 'page') token.attrSet('data-page', name);
     if (kind === 'section') token.attrSet('data-section', name);
@@ -262,7 +266,11 @@ function plugin(md, pluginOptions = {}) {
       const t = new state.Token('layout_chapter_open', 'div', 1);
       const classes = meta.attrs?.class || '';
       addClasses(t, 'chapter', classes);
-      attachDataAttrs(t, 'chapter', null, meta.attrs || {});
+      // Pass meta.name so attachDataAttrs emits `data-chapter-label="<name>"`
+      // (e.g. data-chapter-label="C.01"). Consumer plugins use this to render
+      // the chapter's badge / opener UI; standard markdown-it-paged treats it
+      // as opaque metadata.
+      attachDataAttrs(t, 'chapter', meta.name, meta.attrs || {});
       out.push(t);
       chapterOpen = true;
       // Resolve chapter counter class: explicit `.chapter-N` in the class

@@ -796,6 +796,101 @@ export default function dimmCityPlugin(md, options = {}) {
     alt: ['paragraph', 'reference', 'blockquote']
   });
 
+  // Chapter-opener composite: when @chapter has a label AND a child @page is
+  // named "intro" AND that page contains an @section, auto-wire the DC
+  // chapter-opener pattern:
+  //   1. Inject a <span class="dc-chapter-opener-no">LABEL</span> badge as
+  //      the page's first child.
+  //   2. Add `.dc-chapter-opener` to the section's class list.
+  //   3. Add `.dc-chevron` to the section's first <h1>.
+  //
+  // This lets authors write the simplified markdown:
+  //
+  //     @chapter C.01
+  //     @page intro
+  //     @section
+  //     # Who Do You Dream to Be?
+  //
+  // ...without needing @chapter-opener / .dc-chapter-opener / {.dc-chevron}
+  // markers. Runs AFTER markdown-it-paged's layout_transform so the chapter
+  // / page / section tokens already exist in their final form.
+  md.core.ruler.after('layout_transform', 'dc_chapter_opener', function (state) {
+    const tokens = state.tokens;
+    if (!tokens || !tokens.length) return;
+
+    // Find the immediately following layout_<kind>_open after index `from`.
+    const findOpen = (from, kind) => {
+      for (let i = from + 1; i < tokens.length; i++) {
+        if (tokens[i].type === `layout_${kind}_open`) return i;
+        // Stop scanning if we close the enclosing scope.
+        if (tokens[i].type === 'layout_chapter_close' || tokens[i].type === 'layout_chapter_open') break;
+      }
+      return -1;
+    };
+
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i];
+      if (tok.type !== 'layout_chapter_open') continue;
+      const label = tok.attrGet('data-chapter-label');
+      if (!label) continue;
+
+      // Find first @page named "intro" inside this chapter.
+      let pageIdx = -1;
+      for (let j = i + 1; j < tokens.length; j++) {
+        if (tokens[j].type === 'layout_chapter_close') break;
+        if (tokens[j].type === 'layout_page_open' && tokens[j].attrGet('data-page') === 'intro') {
+          pageIdx = j;
+          break;
+        }
+      }
+      if (pageIdx < 0) continue;
+
+      // Find first @section inside that page.
+      let secIdx = -1;
+      for (let j = pageIdx + 1; j < tokens.length; j++) {
+        if (tokens[j].type === 'layout_page_close' || tokens[j].type === 'layout_page_open') break;
+        if (tokens[j].type === 'layout_section_open') {
+          secIdx = j;
+          break;
+        }
+      }
+      if (secIdx < 0) continue;
+
+      // Add .dc-chapter-opener to the section's class list.
+      const sec = tokens[secIdx];
+      const secCls = sec.attrGet('class') || '';
+      if (!/(^|\s)dc-chapter-opener(\s|$)/.test(secCls)) {
+        sec.attrSet('class', (secCls + ' dc-chapter-opener').trim());
+      }
+
+      // Add .dc-chevron to the first <h1> inside the section. Markdown-it
+      // renders headings as heading_open / inline / heading_close triples.
+      for (let j = secIdx + 1; j < tokens.length; j++) {
+        if (tokens[j].type === 'layout_section_close' || tokens[j].type === 'layout_section_open') break;
+        if (tokens[j].type === 'heading_open' && tokens[j].tag === 'h1') {
+          const h1 = tokens[j];
+          const h1Cls = h1.attrGet('class') || '';
+          if (!/(^|\s)dc-chevron(\s|$)/.test(h1Cls)) {
+            h1.attrSet('class', (h1Cls + ' dc-chevron').trim());
+          }
+          break;
+        }
+      }
+
+      // Insert the chapter-opener badge as a SIBLING immediately BEFORE
+      // the section open token (so it sits inside the .page.intro wrapper
+      // and renders as a band above the section). Matches the legacy
+      // `@chapter-opener C.NN` placement so the existing `.dc-chapter-opener-no`
+      // styling applies unchanged.
+      const badge = makeToken(
+        'html_block',
+        '<span class="dc-chapter-opener-no">' + esc(label) + '</span>\n'
+      );
+      badge.block = true;
+      tokens.splice(secIdx, 0, badge);
+    }
+  });
+
   // Transform tokens after parsing
    md.core.ruler.push('dimm_city_transform', function (state) {
      const tokens = state.tokens;
