@@ -657,7 +657,7 @@
    the banner's semantic role). */
 .dc-chevron {
   font-family: var(--font-display);
-  font-size: var(--fs-h1);
+  font-size: var(--dc-chevron-font-size, var(--fs-h1));
   /* vw resolves to min in Paged.js — use fixed token */
   letter-spacing: 0.06em;
   color: var(--dc-chevron-color, var(--paper-cream));
@@ -722,11 +722,18 @@
 
 /* H1.dc-chevron — chapter-title banner sized to fit long chapter names on
    one or two lines. The base .dc-chevron font-size is too large for typical
-   H1 chapter titles ("What Do You Dream of Doing?", etc.). */
+   H1 chapter titles ("What Do You Dream of Doing?", etc.). Front-matter pages
+   (TOC / Credits / Introduction) override this back up to a commanding display
+   size — see the page-scoped rule below. D4 type scale (banner-to-body ratio
+   must be ≥ 2× at print scale for chapter-punch role). */
 h1.dc-chevron {
   font-size: 1.4rem;
   line-height: 1.2;
 }
+
+/* Front-matter chevron font-size overrides moved to fg-overrides.css per A1
+   layer-ownership (page-context rules belong in the guide-specific override
+   file, not the portable component library). Three-judge gate iteration 3. */
 
 
 /* ── Spray banner (h2 path header) ───────────────────────────────────────

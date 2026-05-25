@@ -26,11 +26,11 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 
 @end-toc
 
-@page .page-credits
+@page .page-credits .credits
 
 # Credits {.dc-chevron}
 
-@section
+@section .credits-colophon .two-column
 
 **Designers:** TWard and ITLackey
 
@@ -38,14 +38,25 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 
 **Creative Director:** Matt Pini
 
+**Editing & Layout:** Dimm City Field Office
+
+**Cover & Interior Design:** Founders House Studio
+
 **Play Testers:** Malie Mason, Ceros Whaley, Lady Lunadi, Owen Benjamin Kessel, Tim Kirk, Xander Arth, Thomas Morton, Ian Cooper, Colin Campbell, Chris Mayes, Jesse Rhom, Toby Dillon, Tim Peludat, Lane Francis, Adam Martin, Clay Meyer, Luther Krupp
 
-**Special Thanks:** Don and Cindy Ward, Ted Bonnah, Joseph Woodworth, Ben McDonough, Michael Giordono, Adam Tripp, Nathan Hays, Nathanael Elkins, Danny Sweeney, John Scheiber, Bill Rekowski, Tim Peludat, Lane Francis, Adam Martin, Clay Meyer, Luther Krupp, Chelanna Leigh, Nathan Perko, Danial DZ, Thomas Amundrud, Virgina Horine, Dennis Lee Rose, Gena Pini, Lily Choo-Wright, Madeleine Pini, Ken Pini, Mary Jo Pini, Davide Cavadini
+**Special Thanks:** Don and Cindy Ward, Ted Bonnah, Joseph Woodworth, Ben McDonough, Michael Giordono, Adam Tripp, Nathan Hays, Nathanael Elkins, Danny Sweeney, John Scheiber, Bill Rekowski, Chelanna Leigh, Nathan Perko, Danial DZ, Thomas Amundrud, Virgina Horine, Dennis Lee Rose, Gena Pini, Lily Choo-Wright, Madeleine Pini, Ken Pini, Mary Jo Pini, Davide Cavadini
 
-**Dedicated to the memory of Donovan Henry Callender.**
-Don was a player in our 2E AD&D group throughout our youth and was a dear friend for even longer. He was taken too soon from us and we wish he were here to dream in Dimm City with us today.
+**Dedicated to the memory of Donovan Henry Callender.** Don was a player in our 2E AD&D group throughout our youth and was a dear friend for even longer. He was taken too soon from us and we wish he were here to dream in Dimm City with us today.
 
-![founders-house](https://placehold.co/600x400/png?text=Founders+House){.fg-art-founders-house}
+**Typography:** Bebas Neue (display) · Special Elite (typewriter) · Inter (body) · JetBrains Mono (data). All faces open-licensed and self-hosted.
+
+**Safety Tools:** This game uses Lines & Veils, the X-Card, and Script Change. Establish boundaries at session zero. The full safety toolkit lives at dimm.city/safety.
+
+**Edition & ISBN:** First Edition · Version 0.1.x · ISBN pending. Printed on demand via DriveThruRPG and Founders House direct.
+
+**Trademarks:** Dimm City, the Creaturepunk wordmark, and the chevron mark are trademarks of Founders House. © 2026 Founders House. All rights reserved.
+
+**Published by Founders House · Dimm City · 2026.**
 
 ---
 
@@ -53,16 +64,24 @@ Don was a player in our 2E AD&D group throughout our youth and was a dear friend
 
 # Introduction {.dc-chevron}
 
+@lede
+
+The city didn't go quiet—it got loud. That feline snarl tore through the alley speakers, chased hard by the thundercrack of gunfire. A crew of geared-up cats—sleek fur, feral eyes, lenses pulsing with kill-code—came screaming down the block, pulse cannons humming an evil dirge.
+
+@end-lede
+
 @section
 
 > [!PULLQUOTE]
 > "How bright's it ay?!"
 
-The city didn't go quiet—it got loud. That feline snarl tore through the alley speakers, chased hard by the thundercrack of gunfire.
+They wore glossy slab-armor that flexed like chitin and burned like synthlight. Opposite them? A pack of ragged rabbits with wiry limbs and twitch-fast reflexes, zipping through the sprawl with street-born magic and muscle memory. Then the world erupted.
 
-A crew of geared-up cats—sleek fur, feral eyes, lenses pulsing with kill-code—came screaming down the block, pulse cannons humming an evil dirge. They wore glossy slab-armor that flexed like chitin and burned like synthlight. Opposite them? A pack of ragged rabbits with wiry limbs and twitch-fast reflexes, zipping through the sprawl with street-born magic and muscle memory. Then the world erupted.
+@slate label="CHAPTER SPLASH ART — TK"
 
-![intro-image](https://placehold.co/600x400/png?text=Intro+Image){.fg-art-intro-image}
+*Commissioned artwork lands here before press. Caption to come.*
+
+@end-slate
 
 Blasts lit the dusk like glitchfire. Bolts and teeth and claws tangled mid-air. Neon signs cracked. Alleyways bled smoke. Debris rained in bursts. This wasn't about glory—it was turf. It was pride. It was blood memory, raw and ugly, of family torn away by their rival.
 

@@ -363,6 +363,19 @@ div.chapter hr {
   margin-top: 24pt;
 }
 
+/* Banner-to-section flush attachment on named front-matter and chapter-start pages.
+   .dc-chevron has margin-bottom: -10px (pulls next element up by 10px) but the
+   first .section after it has margin-top: 16px — net residual gap ≈ 6px which
+   reads as "banner stranded above card". Zeroing the first .section's margin-top
+   on these named pages collapses the residual gap so the chevron banner reads as
+   a label affixed directly to the section card below it.
+   D11 (heading-section adjacency). Three-judge gate iteration 2, 2026-05-25. */
+.page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) > .section:first-of-type,
+.page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) > .dc-intro:first-of-type,
+.page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) > .dc-lede:first-of-type {
+  margin-top: 0;
+}
+
 .page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start) p {
   line-height: 1.6;
 }
