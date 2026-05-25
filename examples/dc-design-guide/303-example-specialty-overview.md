@@ -4,7 +4,7 @@
 
 @section
 
-## What Do You Dream of Doing? {.dc-spray}
+# What Do You Dream of Doing?
 
 The alley narrowed to a throat of shadow as they reached the bunker's blind side. Rook paused, agile fingers lifting mid-air, knuckles flexing with simian grace. The ambient hum dipped a fraction.
 

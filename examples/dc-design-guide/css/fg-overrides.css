@@ -240,44 +240,11 @@
    specificity so any chapter rule above wins where it cascades down. */
 :where(.page-intro) { --section-accent: var(--hud-magenta); }
 
-/* ── CHAPTER-START: opening blockquote epigraph treatment ────────────────────
-   Moved from dc-components.css (C5 violation — page-context element selector
-   belongs in fg-overrides, not in component file). */
-.chapter-start > blockquote:first-of-type {
-  font-size: calc(var(--fs-body-sm) * 1.1);
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
-  margin-top: 0;
-  margin-bottom: 0.2in;
-}
-
-/* CHAPTER-START opening fiction — atmospheric lead-in
-   Per contest judge R10 + user-eye R12: chapter openers need to ARRIVE,
-   not just present competently. The first paragraph of the chapter
-   opening @section gets a dramatic lead-in treatment:
-     - Larger size (1.18em) — first-line dominance
-     - Tighter leading (1.55)
-     - Slightly italicized — "voice of the city"
-     - Drop cap on the first letter via initial-letter spec
-   This is the textual equivalent of the punching chapter banner. */
-.chapter-start .section:first-of-type > p:first-of-type {
-  font-size: 1.18em;
-  line-height: 1.55;
-  font-style: italic;
-  color: var(--ink);
-  margin-top: 0;
-  margin-bottom: 0.16in;
-}
-
-.chapter-start .section:first-of-type > p:first-of-type::first-letter {
-  initial-letter: 2;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-style: normal;
-  color: var(--section-accent, var(--brand-magenta));
-  margin-right: 0.08em;
-  padding-right: 0.04em;
-}
+/* Chapter-start drop-cap / opening-blockquote rules removed 2026-05-25.
+   They targeted the legacy `.chapter-start` class set by `@page
+   .chapter-start` — that markdown pattern was replaced by the frozen
+   chapter-opener composite (`@chapter NAME / @page intro / @section`),
+   which produces `.page.intro` instead. The dead selectors are out. */
 
 /* ── DM/NPC chapter: page-title h1/h2 in neutral ink, not teal ──────────────
    Default h1/h2 colors (--hud-magenta for h1, --hud-blue-dark for h2) clash
