@@ -228,6 +228,54 @@ Card variants (skill cards, path shells, specialty cards) are controlled by the
 automatically. Do NOT add `variant=` attributes to `@skill`, `@continue`, or
 `@learning-path` macros.
 
+### CSS anti-patterns (learned the hard way over 8 gate iterations)
+
+Apply these BEFORE making any CSS edit. Each rule came from a user callout
+of "lazy shortcut" or "poor architecture" during the 2026-05-25 DC gate.
+Durable notes live in AKM memory `print-css-architectural-anti-patterns`
+and project memory `feedback_css_architectural_anti_patterns.md`.
+
+**R1. Component-level rule before per-page override.** Before writing
+`.page.X > .Y`, ask: is this expressible at the component level? If yes,
+change the component default. Per-page selectors are one-offs that don't
+compose.
+
+**R2. Verify selectors target classes that exist in rendered DOM.** Grep
+the plugin source or inspect the DOM before writing a CSS selector against
+a class. The `@lede` macro emits `.dc-intro`, NOT `.dc-lede` — five
+iterations of dead selectors lived in fg-overrides.css because no one
+checked the plugin.
+
+**R3. Flush attachment = single-direction margins.** Components space
+themselves via `margin-bottom` only; `margin-top: 0`. Consecutive siblings
+collapse to the bottom-margin gap. First sibling after a chevron is
+automatically flush. NEVER use negative margins or z-index to mask a wrong
+margin convention.
+
+**R4. Block sibling beside a float — source order or BFC, NEVER z-index.**
+If a styled block "covers" a float, the root cause is normal CSS float
+behaviour (blocks extend full-width behind floats). Three fixes, ranked:
+(1) reorder DOM source so visual order matches; (2) `display: flow-root`
+on the sibling block (creates BFC, block shrinks beside float); (3)
+`clear: both` (block sits below float). Z-index is for stacking situations
+(overlays, modals, decorative pseudos), not for layout flow.
+
+**R5. Don't shrink a block that's meant to be full-width.** If the intent
+is "pullquote spans the section width, image floats below it", the answer
+is source order (pullquote first, image second). Reaching for `display:
+flow-root` to shrink the pullquote breaks the intent.
+
+**R6. The "CSS or DOM order?" diagnostic.** Before any CSS layout fight:
+write the intended visual order (top-to-bottom, left-to-right), compare
+to current DOM order, and if they don't match the fix is source order not
+CSS. CSS is only the right tool when intent can't be expressed by source
+order (true 2D grids, overlays, components used across multiple contexts).
+
+**R7. Response to user callout of "lazy" or "poor architecture".** Revert
+the shortcut; restate the intent in plain language; identify the right
+primitive; apply at the component level. Do NOT respond with another
+shortcut variant.
+
 
 ## Background reading
 
