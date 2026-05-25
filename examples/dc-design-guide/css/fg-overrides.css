@@ -69,19 +69,31 @@
   box-shadow: -4px 4px 0 var(--hud-magenta);
 }
 
-/* Front matter art — placeholder images render as designed "framed art" blocks
-   so the page reads as a deliberate composition even before the commissioned
-   artwork arrives. Hard ink border + poster shadow + cream substrate provides
-   the same chrome a real art block would carry — pure PLACEMENT concern, not
-   placeholder polish. Three-judge gate iteration 2, 2026-05-25. */
-.fg-art-founders-house,
+/* Front matter art — real commissioned artwork (iteration 6).
+   Founders House: moody chapel-on-hill establishing shot, landscape. Sits at
+   the bottom of the credits page as a printer's-mark vignette anchoring the
+   colophon. Intro splash: scavenger character portrait, square. Sits mid-flow
+   in the introduction page between the lede and METROPOLIS section.
+   Both get hard ink border + poster shadow for the wall-poster register. */
+.fg-art-founders-house {
+  display: block;
+  width: 100%;
+  max-width: 5.5in;
+  height: 1.6in;
+  object-fit: cover;
+  margin: 0.1in auto 0;
+  border: 1.5pt solid var(--ink-dark);
+  box-shadow: var(--shadow-poster);
+}
+
 .fg-art-intro-image {
   display: block;
   width: 100%;
-  max-width: 7in;
-  height: 2.75in;
-  object-fit: cover;
-  margin: 0.12in auto;
+  max-width: 5in;
+  height: 3.25in;
+  object-fit: contain;
+  object-position: center;
+  margin: 0.18in auto;
   border: 1.5pt solid var(--ink-dark);
   box-shadow: var(--shadow-poster);
   background: var(--paper-cream);
@@ -391,15 +403,15 @@
    is a rust mono caps top-rule; body sits below at readable POD scale.
    Contest-judge R1 + print-judge R2, iteration 5. */
 .section.credits-colophon {
-  font-size: 11pt;
-  line-height: 1.45;
+  font-size: 9.5pt;
+  line-height: 1.35;
   background: var(--paper-cream);
-  padding: 0.2in 0.25in;
+  padding: 0.12in 0.18in;
   box-shadow: var(--shadow-poster);
 }
 
 .section.credits-colophon p {
-  margin: 0 0 0.14in 0;
+  margin: 0 0 0.08in 0;
   break-inside: avoid;
 }
 

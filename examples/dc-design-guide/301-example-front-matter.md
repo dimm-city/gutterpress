@@ -44,7 +44,7 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 
 **Play Testers:** Malie Mason, Ceros Whaley, Lady Lunadi, Owen Benjamin Kessel, Tim Kirk, Xander Arth, Thomas Morton, Ian Cooper, Colin Campbell, Chris Mayes, Jesse Rhom, Toby Dillon, Tim Peludat, Lane Francis, Adam Martin, Clay Meyer, Luther Krupp
 
-**Special Thanks:** Don and Cindy Ward, Ted Bonnah, Joseph Woodworth, Ben McDonough, Michael Giordono, Adam Tripp, Nathan Hays, Nathanael Elkins, Danny Sweeney, John Scheiber, Bill Rekowski, Chelanna Leigh, Nathan Perko, Danial DZ, Thomas Amundrud, Virgina Horine, Dennis Lee Rose, Gena Pini, Lily Choo-Wright, Madeleine Pini, Ken Pini, Mary Jo Pini, Davide Cavadini
+**Special Thanks:** Don and Cindy Ward, Ted Bonnah, Joseph Woodworth, Ben McDonough, Michael Giordono, Adam Tripp, Nathan Hays, Nathanael Elkins, Chelanna Leigh, Thomas Amundrud, Virgina Horine, Gena Pini, Madeleine Pini, Ken Pini, Mary Jo Pini, Davide Cavadini
 
 **Dedicated to the memory of Donovan Henry Callender.** Don was a player in our 2E AD&D group throughout our youth and was a dear friend for even longer. He was taken too soon from us and we wish he were here to dream in Dimm City with us today.
 
@@ -57,6 +57,8 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 **Trademarks:** Dimm City, the Creaturepunk wordmark, and the chevron mark are trademarks of Founders House. © 2026 Founders House. All rights reserved.
 
 **Published by Founders House · Dimm City · 2026.**
+
+![Founders House](img/founder-house.png){.fg-art-founders-house}
 
 ---
 
@@ -77,11 +79,7 @@ The city didn't go quiet—it got loud. That feline snarl tore through the alley
 
 They wore glossy slab-armor that flexed like chitin and burned like synthlight. Opposite them? A pack of ragged rabbits with wiry limbs and twitch-fast reflexes, zipping through the sprawl with street-born magic and muscle memory. Then the world erupted.
 
-@slate label="CHAPTER SPLASH ART — TK"
-
-*Commissioned artwork lands here before press. Caption to come.*
-
-@end-slate
+![Scavenger holding a recovered field-detonator](img/scavenger.png){.fg-art-intro-image}
 
 Blasts lit the dusk like glitchfire. Bolts and teeth and claws tangled mid-air. Neon signs cracked. Alleyways bled smoke. Debris rained in bursts. This wasn't about glory—it was turf. It was pride. It was blood memory, raw and ugly, of family torn away by their rival.
 
