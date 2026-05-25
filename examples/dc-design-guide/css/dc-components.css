@@ -3420,143 +3420,122 @@ h3 + .section {
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
-   CITIZEN-FILE FORM — character sheet field styling
+   CITIZEN-WALKTHROUGH — guide for filling out the Citizen File
    ═════════════════════════════════════════════════════════════════════════
-   Apply via section class — keeps the page-template concern (`@page
-   .citizen-file` → recto/verso running headers in page-rules.css) separate
-   from the component concern (form-field appearance):
+   This is the TUTORIAL chapter that walks a reader through what each field
+   of the Citizen File character sheet means and what choices belong there.
+   It is NOT a rendering of a filled-out Citizen File artifact — that is a
+   distinct component (.dc-citizen-file) shipping on a separate page later.
 
-     @page .citizen-file                                    ← page template
-     @section .two-column .col-split .dc-citizen-file       ← layout + component
-     #### Handle
-     Choose a name.
-     #### Designation
-     ...
-     @end-section
+   Content shape inside the section:
+     #### Field name           → section anchor naming a Citizen File field
+     Explanatory paragraphs    → 2–4 sentences of reading copy
+     Bold option list          → "Choose one: A, B, C, ..." inline choice menu
+     Markdown table            → option presentation (age, size pickers)
 
-   Inside the section: H4s become amber-underlined form labels; tables
-   become checkbox option rows. Reusable: any DC project that applies
-   .dc-citizen-file to a section gets the same character-sheet authoring
-   surface — independent of which page template they chose. */
+   Applied via:
+     @page .citizen-file                                          ← topic page (running header)
+     @section .two-column .col-split .dc-citizen-walkthrough      ← layout + component
 
-/* Token contract for .dc-citizen-file:
-     --dc-citizen-file-label-color  → h4 form-label text color (default --hud-blue-dark)
-     --dc-citizen-file-rule-color   → underline color (default --hud-blue-dark)
-     --dc-citizen-file-rule-width   → underline weight (default 1pt)
-     --dc-citizen-file-checkbox-bg  → checkbox cell fill (default --paper-light)
-   Override e.g. .dc-corp-form .dc-citizen-file { --dc-citizen-file-label-color: var(--amber); } */
+   Design pattern (post-2026-05-25 redesign):
+     - .col-split is required for @column-break to work reliably (paged.js
+       strips break-after:column otherwise), but it strips substrate. This
+       component re-supplies the substrate so The Wall principle holds:
+       reading copy sits on paper-cream, not bare brick.
+     - H4 field-names are SECTION ANCHORS (mono-caps tracked + hairline rule
+       above), NOT form labels. They announce a new field; they do not
+       request a fillable entry.
+     - Prose is FULL READING COPY (12pt body, 1.55 leading, no decoration).
+       No dot-leaders. No fillable-row chrome. This was the previous design's
+       category error.
+     - Bold inline runs carry the only color signal in the section
+       (--hud-blue-dark) so the eye learns "colored bold = a real choice."
+     - Option tables present choices as scannable rows with a bordered
+       selector box on the first cell — they look pickable without
+       requesting a literal fill.
+     - No bespoke top-rule / outline-inset / shadow chrome. The substrate
+       shift + section structure are the only frame.
+*/
 
-/* Base — paper substrate so form content reads on paper, not the brick wall.
-   Without this, all citizen-file body paragraphs walked up to .pagedjs_sheet
-   (the concrete grain), making the entire form float on the wall. */
-/* CITIZEN FILE — character-sheet authoring surface.
-   User feedback (2026-05-24, repeated): "citizen file sections are
-   atrocious, absolutely terrible. Told you this many, many times."
-   Rebuilt the styling to read as a stamped/official form rather than
-   raw markdown fields under a heading. Changes:
-     - Outer surface gets a 4pt rust top-rule (matches the chapter
-       chevron color so the form attaches to its heading)
-     - Form labels (h4) bumped 7.5pt → 9pt + bold, with a small
-       leading rust-square stamp to read as a "FORM FIELD" callout
-     - Body input rows gain a stronger underline rule + indented prompt
-       text + a thin left rust hairline to mark each row as a fillable
-       slot
-     - Age-selector table: bigger checkbox cells, "OFFICIAL FORM" stamp
-       feel via brand-cyan accent and mono caps
-   The form now reads as a designed character sheet (PHB/PF2e tier),
-   not a stack of paragraphs under labels. */
-.dc-citizen-file {
+.dc-citizen-walkthrough {
+  /* Paper substrate so reading copy doesn't bleed into the brick wall
+     (The Wall principle). .col-split strips its own background; we
+     restore it here, scoped to this component only. */
   background: var(--paper-cream);
-  padding: 0.2in 0.26in;
-  box-shadow: var(--shadow-poster);
-  border-top: 4pt solid var(--dc-citizen-file-accent, var(--rust));
-  /* subtle inner border so the form reads as an official sheet with edge */
-  outline: 1pt solid var(--paper-aged);
-  outline-offset: -6pt;
+  padding: var(--space-md);
 }
 
-.dc-citizen-file h4 {
+.dc-citizen-walkthrough h4 {
+  /* Section anchor — announces a Citizen File field. Mono-caps + tracked
+     reads as a structural marker; the hairline rule above creates a
+     field-separator rhythm without boxing each field.
+     R3 (single-direction margins): margin-top: 0; the inter-field gap is
+     created by padding-top, so the hairline rule sits ABOVE the gap and
+     reads as a divider between fields. */
   font-family: var(--font-mono);
-  font-size: 9pt;
+  font-size: var(--fs-h5); /* 11pt */
   font-weight: 700;
-  color: var(--dc-citizen-file-label-color, var(--ink-dark));
-  letter-spacing: 0.15em;
+  color: var(--hud-blue-dark);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  border-bottom: var(--dc-citizen-file-rule-width, 2pt) solid var(--dc-citizen-file-rule-color, var(--rust));
-  padding: 4pt 0 3pt 14pt;
-  margin-top: 0.14in;
-  margin-bottom: 0.06in;
-  position: relative;
+  border-top: 0.5pt solid var(--paper-aged);
+  padding-top: var(--space-lg);
+  margin: 0 0 var(--space-sm) 0;
+  /* Anchor + first paragraph stay together — a label split from its
+     explanation would be a reading-flow break. */
+  break-after: avoid;
 }
 
-/* Small rust-square stamp before each label — reads as a "field marker"
-   on an official form. */
-.dc-citizen-file h4::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6pt;
-  width: 8pt;
-  height: 8pt;
-  background: var(--dc-citizen-file-accent, var(--rust));
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 2px), calc(100% - 2px) 100%, 0 100%);
+.dc-citizen-walkthrough h4:first-child {
+  /* No separator above the first field — the section substrate's top
+     edge already serves as the opening boundary. */
+  border-top: none;
+  padding-top: 0;
 }
 
-.dc-citizen-file h4:first-child {
-  margin-top: 0;
-}
-
-.dc-citizen-file p {
+.dc-citizen-walkthrough p {
+  /* Reading copy at handbook scale. No fillable-row chrome. */
+  font-size: var(--fs-body); /* 12pt */
+  line-height: 1.55;
   color: var(--ink);
-  margin-bottom: 0.04in;
-  font-size: 9pt;
-  line-height: 1.45;
-  /* Each prompt sits on a thin dotted underline so the form reads as
-     "fillable" — like a row of input slots on a paper character sheet. */
-  border-bottom: 0.5pt dotted var(--ink-dust);
-  padding: 1pt 2pt 3pt 2pt;
+  margin-bottom: var(--space-sm);
 }
 
-.dc-citizen-file p:last-of-type {
-  border-bottom: 0;
-}
-
-/* Strong inline keywords (the option lists like "EntD rat, Corp exile, ...")
-   stay bold for emphasis but use ink for neutral form text. */
-.dc-citizen-file strong {
-  color: var(--ink-dark);
+.dc-citizen-walkthrough strong {
+  /* Bold inline runs ("EntD rat", "Corp exile", "Tiny:", ...) carry the
+     only color signal — eye learns this means a real choice. */
+  color: var(--hud-blue-dark);
   font-weight: 700;
 }
 
-/* Checkbox-style option tables — age picker, etc. */
-.dc-citizen-file table {
+/* ── Option tables (age picker, size picker) ──────────────────────────── */
+.dc-citizen-walkthrough table {
   width: 100%;
   border-collapse: collapse;
-  margin: 0.06in 0;
-  font-size: 9pt;
+  /* R3: single-direction margin (bottom only). */
+  margin: 0 0 var(--space-sm) 0;
+  font-size: var(--fs-body-sm); /* 11pt */
 }
 
-.dc-citizen-file thead {
+.dc-citizen-walkthrough thead {
   display: none;
 }
 
-.dc-citizen-file td {
+.dc-citizen-walkthrough td {
   padding: 5pt 6pt;
   vertical-align: middle;
-  border-bottom: 0.75pt solid var(--paper-aged);
-  line-height: 1.35;
+  border-bottom: 0.5pt solid var(--paper-aged);
+  line-height: 1.4;
+  color: var(--ink);
 }
 
-/* Checkbox cell — larger bordered square with a subtle inset shadow so
-   it reads as a physical checkbox on the form. */
-.dc-citizen-file td:first-child {
-  width: 18pt;
-  height: 18pt;
+.dc-citizen-walkthrough td:first-child {
+  /* Bordered selector box — reads as "pickable option" without inset
+     shadow artifice (which doesn't reproduce cleanly at POD 150 lpi). */
+  width: 14pt;
   text-align: center;
-  border: 1.5pt solid var(--ink-dark);
-  border-radius: 1pt;
-  background: var(--dc-citizen-file-checkbox-bg, var(--paper-light));
-  box-shadow: inset 1pt 1pt 0 rgba(0, 0, 0, 0.08);
+  border: 1pt solid var(--ink-dust);
+  background: var(--paper-light);
   color: transparent;
 }
 
@@ -3637,7 +3616,7 @@ h3 + .section {
 /* ═════════════════════════════════════════════════════════════════════════
    CARD-GRID — compact specialty-card display in a 2-column layout
    ═════════════════════════════════════════════════════════════════════════
-   Apply via section class — same architectural split as .dc-citizen-file:
+   Apply via section class — same architectural split as .dc-citizen-walkthrough:
    the @page directive identifies the page template, the @section provides
    the layout + component-tweak context.
 

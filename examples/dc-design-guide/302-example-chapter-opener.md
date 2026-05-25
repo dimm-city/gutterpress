@@ -67,7 +67,7 @@ Before reputation comes recognition. Before recognition comes a glance. Dimmers 
 
 @page .citizen-file
 
-@section .two-column .col-split .dc-citizen-file
+@section .two-column .col-split .dc-citizen-walkthrough
 
 #### What's Yr Handle?
 

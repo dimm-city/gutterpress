@@ -17,7 +17,9 @@
    - Field-guide-only image utility classes: .fg-art-*
 
    DOES NOT OWN (moved to dc-components.css):
-   - Citizen-file form field styling (now .dc-citizen-file component)
+   - Citizen-walkthrough field-prompt styling (now .dc-citizen-walkthrough component;
+     guides the reader through what each Citizen File field means — distinct
+     from the future .dc-citizen-file form artifact)
    - NPC stat block styling (now .dc-npc-stat component)
 
    MUST NOT CONTAIN — CORE CONSTRAINT:
@@ -143,8 +145,10 @@
    --------------------------------------------------------------------------- */
 
 /* Named-page assignment — wires the markdown `@page .citizen-file` directive
-   to the @page citizen-file CSS template in page-rules.css. Form styling
-   itself is now a reusable component: .dc-citizen-file in dc-components.css. */
+   to the @page citizen-file CSS template in page-rules.css. The page name is
+   topic-scoped ("Citizen File" running header) and is shared by the walkthrough
+   chapter (.dc-citizen-walkthrough section) AND the future filled-form artifact
+   (.dc-citizen-file section). Component-level styling lives in dc-components.css. */
 .page.citizen-file { page: citizen-file; }
 
 /* H1 chevron font-size cap moved to dc-components.css under .dc-chevron.
