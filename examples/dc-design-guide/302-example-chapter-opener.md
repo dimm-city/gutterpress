@@ -68,18 +68,28 @@ Before reputation comes recognition. Before recognition comes a glance. Dimmers 
 
 #### What's Yr Handle?
 
-Choose a name. It can come from any culture, any language, or straight out of your imagination. Pull it from a book, a show, a half-remembered dream, or invent something that sounds right for the city.
+Choose a name.
+
+It can come from any culture, any language, or straight out of your imagination.
+
+Pull it from a book, a show, a half-remembered dream, or invent something that sounds right for the city.
 
 @end-section
 
 
-@page .citizen-file
+@page .citizen-file .two-column
 
 @section .dc-citizen-walkthrough
 
 #### Designation
 
-Let others know how to refer to you — she/her, he/him, they/them, or something else entirely. Do your best to address your fellow Dreamers as they wish to be addressed. Names and pronouns matter when life itself is constantly trying to strip both away.
+Let others know how to refer to you.
+
+She/her, he/him, they/them, or something else entirely.
+
+Do your best to address your fellow Dreamers as they wish to be addressed.
+
+Names and pronouns matter when life itself is constantly trying to strip both away.
 
 @end-section
 
@@ -87,7 +97,7 @@ Let others know how to refer to you — she/her, he/him, they/them, or something
 
 #### Species
 
-In Dimm City, you're not human — you never were. Every Dreamer is an anthropomorphic creature: a splice of animal instinct, street survival, and whatever the corps, gods, or bad luck bolted on afterward.
+In Dimm City, you're not human—you never were. Every Dreamer is an anthropomorphic creature: a splice of animal instinct, street survival, and whatever the corps, gods, or bad luck bolted on afterward.
 
 Choose a species that fits your vibe. Species carries no mechanical weight — it shapes your look, your voice, and how Dimm City reads you. The city has seen it all: cats and rabbits, rats and ravens, wolves and worse things with no clean name left.
 
@@ -97,7 +107,9 @@ Choose a species that fits your vibe. Species carries no mechanical weight — i
 
 #### Origins
 
-Where did you start, and how far is that from where you are now? Origins tell the Dream Master how your character fits the city's grid. A corporate-born Dreamer walks alleys differently than someone who grew up in the Flats — they know different people, owe different debts, and have different reasons to still be breathing.
+Where did you start, and how far is that from where you are now?
+
+Origins tell the Dream Master how your character fits the city's grid. A corporate-born Dreamer walks alleys differently than someone who grew up in the Flats. They know different people, owe different debts, and have different reasons to still be breathing.
 
 Choose one: **EntD rat**, **Corp exile**, **District-born**, **Offworld arrival**, **Street-raised**, or **Something the city made and hasn't claimed yet**.
 
@@ -105,10 +117,35 @@ Choose one: **EntD rat**, **Corp exile**, **District-born**, **Offworld arrival*
 
 @section .dc-citizen-walkthrough
 
-#### Scars, Size, and Survival
+#### Scars & Survival
 
-Age in years means little in Dimm City — age is experiential, not chronological. Survival, scars, augmentation, and memory say far more than a number ever could. Pick the stage you're in: **childhood**, **adolescence**, **young adulthood**, **adulthood**, **middle age**, **old age**, or **extreme old age**.
+Choose the stage of life your character is in:
 
-Size carries no mechanical weight — it shapes how you move through the city and how others read you. Choose one: **Tiny** (<1m, moves like a rumor), **Small** (1–1.5m, fits the pinches), **Medium** (1.6–2.5m, the default), or **Big** (2.5–4m, fills rooms).
+| |  |
+|-------|-------|
+|  |childhood|
+|  |adolescence|
+|  |young adulthood|
+|   |adulthood|
+|  |middle age|
+|  |old age|
+|  |extreme old age|
+
+Expressing age in years means little in Dimm City. Here, age is experiential, not chronological. Survival, scars, augmentation, and memory say far more than a number ever could.
+
+@end-section
+
+@section .dc-citizen-walkthrough
+
+#### Size
+
+Size carries no mechanical advantage. It's a narrative choice that shapes how you move through the city, how others perceive you, and how easily you stay with your crew:
+
+| |  |
+|-------|-------|
+|  |**Tiny:** Under 1 meter tall. You move through Dimm City like a rumor.|
+|  |**Small:** About 1–1.5 meters tall. You fit where the city pinches.|
+|  |**Medium:** About 1.6–2.5 meters tall. The city is built for bodies like yours.|
+|  |**Big:** Over 2.5 to 4 meters tall. Your presence fills rooms and draws eyes.|
 
 @end-section
