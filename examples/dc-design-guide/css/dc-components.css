@@ -2114,6 +2114,13 @@ hr,
   border-right: 2px solid var(--dc-pullquote-accent-soft, rgba(230, 0, 122, 0.15));
   padding: 14px 20px 12px 28px;
   position: relative;
+  /* Establish a block formatting context so the pullquote's box shrinks
+     to fit beside a floated sibling (e.g. `.fg-art-intro-image`) instead
+     of extending its full-width background BEHIND the float. This is the
+     standard CSS primitive for "block next to a float" — `display:
+     flow-root` creates a BFC without any of the overflow side effects
+     of `overflow: hidden`. */
+  display: flow-root;
   font-family: var(--font-body);
   font-style: italic;
   font-size: var(--fs-h2);
@@ -3000,18 +3007,6 @@ p.dc-img-wrapper {
 .section > * {
   position: relative;
   z-index: 1;
-}
-
-/* Floated image wrappers (markdown-it's `.dc-img-wrapper`, used by every
-   floated `.fg-art-*` image) stack above their sibling section children.
-   Without this, the floated image and adjacent styled blocks (pullquote,
-   callout, etc.) all sit at the same `z-index: 1` set above for
-   .section > *, and source order wins — the later block's background
-   covers the float's top edge. Bumping the wrapper's z-index restores
-   the standard editorial expectation that floated art renders above
-   sibling block backgrounds. Iter-8c (2026-05-25). */
-.section > .dc-img-wrapper {
-  z-index: 2;
 }
 
 /* ── Two-column / three-column — top/bottom borders only; clip-path breaks columns */
