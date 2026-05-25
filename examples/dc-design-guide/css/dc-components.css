@@ -658,7 +658,6 @@
 .dc-chevron {
   font-family: var(--font-display);
   font-size: var(--dc-chevron-font-size, var(--fs-h1));
-  /* vw resolves to min in Paged.js — use fixed token */
   letter-spacing: 0.06em;
   color: var(--dc-chevron-color, var(--paper-cream));
   text-transform: uppercase;
@@ -668,38 +667,31 @@
   max-width: 100%;
   box-sizing: border-box;
   clip-path: var(--clip-banner);
-  /* MECHANISM: gap between chevron heading and the next styled
-     component is NOT margin-top on the next element — Paged.js rewrites
-     adjacent-sibling selectors `.dc-chevron + X` to `[data-following*=...]`
-     attribute selectors with specificity (0,1,0), which loses the
-     cascade tiebreak to a later `.X { margin: ... }` rule.
-     FIX: negative margin-bottom on .dc-chevron itself PULLS the next
-     element up, regardless of paged.js's selector rewriting. Closes
-     the ~10px gap caused by inline-block + parent line-height + the
-     next element's default top margin. */
-  margin: 0 0 -10px 0;
+  /* Zero margins on the chevron itself. Flush attachment to the next
+     element is handled by the `.dc-chevron + X` adjacency rules below —
+     a single component-level contract, not per-page overrides. The
+     prior negative `margin-bottom: -10px` + `z-index: 1` mechanism
+     produced visible overlap (the next element's first line rendered
+     UNDER the chevron's bottom). Removed 2026-05-25 (gate iter-8). */
+  margin: 0;
   line-height: 1.2;
   word-break: break-word;
-  /* Ensure the chevron's own stacking is above the next element so the
-     pulled-up margin doesn't visually clip the chevron's bottom edge. */
-  position: relative;
-  z-index: 1;
   vertical-align: bottom;
 }
 
-/* Same heading-to-section attachment for the h2.dc-spray banner. The
-   spray banner is a chip-style heading used on "How Abilities Work",
-   "Combining Specialties", etc. — when it's followed by a styled
-   component, collapse the gap so they read as one composition. User
-   feedback: "How abilities work is just a bunch of scattershot alerts
-   stuck under a heading, not a cohesive design element." */
-.dc-spray + .section,
-.dc-spray + .dc-intro,
-.dc-spray + .dc-alert,
-.dc-spray + .dc-callout,
-.dc-spray + .dc-pullquote {
-  margin-top: 0;
-}
+/* HEADING-SECTION ADJACENCY (D11, ≤ 0px gap)
+   See the single-direction margin convention applied to .section, .dc-intro,
+   .dc-toc, .dc-callout etc. below in their base definitions: each component
+   has `margin-top: 0` and spaces itself via bottom margin only. Consecutive
+   siblings collapse naturally (top:0 + bottom:Npt = Npt gap). The first
+   sibling after a chevron has no top gap → flush attachment "for free",
+   no adjacency rule required.
+
+   Why not adjacent-sibling selectors? Paged.js rewrites `A + B` to
+   `[data-following]` attribute selectors and drops the rule's specificity
+   enough that a later `.B { margin: ... }` shorthand definition wins the
+   cascade tiebreak. Single-direction margins side-step the cascade
+   problem entirely. Iter-8 (2026-05-25). */
 
 /* When a .dc-intro / .dc-lede is followed by an alert/callout (the
    common "lede + supporting note" pattern from How Abilities Work),
@@ -935,7 +927,11 @@ h1.dc-chevron {
 }
 
 
-/* ── Intro / Lede line ────────────────────────────────────────────────── */
+/* ── Intro / Lede line ──────────────────────────────────────────────────
+   Single-direction margin: top: 0, bottom: standard gap. This gives the
+   lede flush attachment to a chevron heading above (D11 = 0) and natural
+   spacing to whatever comes below. When a lede follows body text (rare),
+   the paragraph's bottom margin provides the gap above the lede. */
 .dc-intro {
   font-family: var(--font-body);
   font-size: var(--fs-body);
@@ -944,7 +940,7 @@ h1.dc-chevron {
   background: linear-gradient(to right, var(--dc-intro-accent, var(--orange)) 4px, var(--paper-stain) 4px);
   line-height: 1.5;
   padding: 10px 14px 10px 18px;
-  margin: 0.1in 0 calc(0.1in + 3pt) 0;
+  margin: 0 0 calc(0.1in + 3pt) 0;
   box-shadow: var(--shadow-poster);
 }
 
@@ -2943,7 +2939,11 @@ p.dc-img-wrapper {
   background: transparent;
   isolation: isolate;
   padding: var(--space-md) var(--space-lg);
-  margin: 12pt 0;
+  /* Single-direction margin: bottom only. Consecutive sections collapse to
+     the bottom margin gap (12pt). First section after a chevron has no
+     top gap → flush attachment without an adjacency rule.
+     Iter-8 (2026-05-25). */
+  margin: 0 0 12pt 0;
   position: relative;
   /* Sections are atomic units — they MUST NOT span pages. If a section
      does not fit on the remaining page space, it moves to the next page

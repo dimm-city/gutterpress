@@ -91,11 +91,9 @@
   flex-shrink: 0;
 }
 
-/* Intro splash — floated right with body text wrapping its left side
-   (user R2 / contest-judge R2, iter-7). Anchored in the first .section
-   on the intro page so the lede and following prose flow naturally
-   around it. */
-.page-intro .section .fg-art-intro-image,
+/* Intro splash — floated right with body text wrapping its left side.
+   Image is placed as the DOM-first child of the intro .section in
+   the markdown source, so float anchors at the section's top-right. */
 .fg-art-intro-image {
   display: block;
   float: right;
@@ -411,27 +409,10 @@
   font-weight: 700;
 }
 
-/* ── FLUSH COMPOSITE HEADER (gate iteration 7) ─────────────────────────────
-   Chevron/masthead + lede + first .section/.dc-toc read as ONE composite
-   component on each front-matter page. Each element retains its own visual
-   treatment (clip-path, border, background) — the cohesion comes from
-   stacking them with zero gap so the eye reads the trio as a single piece.
-   D11 (heading-section adjacency) explicitly at 0. User direction 2026-05-25. */
-.page.page-toc > .dc-lede,
-.page.page-credits > .dc-lede,
-.page.page-intro > .dc-lede,
-.page.page-toc > .section:first-of-type,
-.page.page-credits > .section:first-of-type,
-.page.page-intro > .section:first-of-type,
-.page.page-toc > .dc-toc {
-  margin-top: 0;
-}
-
-.page.page-toc > .dc-lede,
-.page.page-credits > .dc-lede,
-.page.page-intro > .dc-lede {
-  margin-bottom: 0;
-}
+/* Heading-section adjacency / composite-header flush moved to
+   dc-components.css as `.dc-chevron + X` adjacency rules.
+   Single component-level contract, applies everywhere in the book.
+   No per-page overrides needed. Iter-8 cleanup. */
 
 /* CREDITS colophon — flex column so the founder-house image bottom-justifies
    in the column (user R1, iter-7). Inner .colophon-grid carries the 2-column
@@ -475,17 +456,9 @@
   border-bottom: 1.5pt solid var(--rust);
 }
 
-/* TOC anchor sub-line — a small mono caption that further differentiates the
-   TOC page from chapter pages by giving it a "field guide · 12 chapters"
-   label register that no other page carries. Targets the .dc-lede inside
-   the page-toc — its small-caps subtitle role. */
-.page-toc .dc-lede::after {
-  content: "12 CHAPTERS · FIELD GUIDE";
-  display: block;
-  margin-top: 6pt;
-  font-family: var(--font-mono, monospace);
-  font-size: 8.5pt;
-  letter-spacing: 0.22em;
-  color: var(--rust);
-  text-transform: uppercase;
-}
+/* TOC sub-line moved/removed — the prior rule targeted `.dc-lede` but the
+   @lede macro emits `.dc-intro` (verified in plugins/dimm-city-plugin.js:
+   `<div class="dc-intro">`), so the rule never matched. The TOC's
+   thumbnail identity is now carried by the lede prose + chip-list +
+   .dc-toc card composition without an additional pseudo-element label.
+   Iter-8 cleanup. */
