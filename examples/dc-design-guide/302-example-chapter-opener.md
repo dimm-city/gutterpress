@@ -53,9 +53,13 @@ Thump is a PC created for dreams in Dimm City by an actual dreamer. Their person
 ![Image is everything](https://placehold.co/600x400/png?text=Portrait){.fg-art-portrait}
 This chapter will guide you through all the choices you need to make to help you fill in the blanks and create a unique and interesting character. Don't worry about making mistakes or doing something wrong, just try to have fun with it and let your imagination do the work.
 
+Before reputation comes recognition. Before recognition comes a glance. Dimmers speed-read bodies like text: names, scars, size, and stance all scanned in a heartbeat. This section defines how you're read when the Dream first lays eyes on you.
+
 @callout variant=visit label="Image Is Everything"
 
-Before reputation comes recognition. Before recognition comes a glance. Dimmers speed-read bodies like text: names, scars, size, and stance all scanned in a heartbeat. **Don't start with numbers.** Start with a body, a vibe, and a reason you're still breathing in Dimm City. If a choice would make Dimm City react to you, it belongs here.
+**Before You Fill Anything In:**
+
+Don't start with numbers. Start with a body, a vibe, and a reason you're still breathing in Dimm City. This file isn't about optimization, it's about creating a CREATUREPUNK. If a choice would make Dimm City react to you, it belongs here. If it only makes you stronger, it probably comes later.
 
 Visit **dimm.city** for a form-fillable PDF version of the Citizen File.
 

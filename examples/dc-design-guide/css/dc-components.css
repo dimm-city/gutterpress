@@ -85,6 +85,13 @@
   padding: var(--space-lg) var(--space-xl);
   margin-top: var(--dc-alert-margin-top);
   break-inside: avoid;
+  /* Alerts are full-width callouts that interrupt the reading flow; they
+     should NEVER overlap a preceding right-floated image (observed 2026-05-25
+     with the portrait in the citizen-file intro). Block elements don't wrap
+     floats by default — clear: right ensures any alert after a floated image
+     sits decisively below it. Project memory R12 forbids :has() tree-walking
+     in paged.js, so this is the generic fix at the component-base layer. */
+  clear: right;
 }
 
 .dc-alert p {
