@@ -2366,16 +2366,17 @@ hr,
 .dc-toc {
   font-family: var(--font-body);
   counter-reset: dc-toc;
-  /* Paper substrate — TOC entries were rendering on the concrete-grain
-     wall texture earlier. TOC is a poster on the wall.
-     Added: 4pt accent stripe at top (--rust to match the CONTENTS chevron
-     color) so the TOC reads as part of the same design unit as its
-     heading, not "basically a white square" floating below. The accent
-     bar visually attaches TOC to the chevron header above it. */
+  /* Paper substrate w/ rust top + bottom stripes — user complained the
+     TOC "reads as basically just a white square" with only paper-cream
+     fill. The dual accent stripes (top + bottom, both --rust to match
+     the CONTENTS chevron) frame the TOC as a designed unit. The bottom
+     stripe closes the composition so the card doesn't float without an
+     end-edge. */
   background: var(--paper-cream);
   padding: 0.18in 0.22in;
   box-shadow: var(--shadow-poster);
   border-top: 4pt solid var(--rust);
+  border-bottom: 4pt solid var(--rust);
 }
 
 .dc-toc ol {
@@ -2386,7 +2387,7 @@ hr,
 
 .dc-toc ol>li {
   position: relative;
-  padding: 12px 0 12px 56px;
+  padding: 10px 4px 10px 56px;
   border-bottom: 1px solid var(--hud-blue-dim);
   counter-increment: dc-toc;
   font-size: var(--fs-body-sm);
@@ -2397,17 +2398,33 @@ hr,
   break-inside: avoid;
 }
 
+.dc-toc ol>li:last-child {
+  border-bottom: 0;
+}
+
+/* Number badge — reads as a stamped chip rather than plain mono text.
+   42x22 boxed badge with rust fill + cream digits gives TOC entries a
+   designed start-of-row anchor instead of an underline-style number. */
 .dc-toc ol>li::before {
   content: counter(dc-toc, decimal-leading-zero);
   position: absolute;
   left: 0;
-  top: 14px;
+  top: 10px;
+  width: 42px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--rust);
+  color: var(--paper-cream);
   font-family: var(--font-mono);
   font-weight: 700;
-  font-size: 14px;
-  letter-spacing: 2px;
-  color: var(--hud-blue);
+  font-size: 11px;
+  letter-spacing: 0.08em;
   font-style: normal;
+  /* Small bottom-right corner cut so the badge reads as a stamp, not
+     a flat rectangle. */
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 4px), calc(100% - 6px) 100%, 0 100%);
 }
 
 .dc-toc ol>li>strong {
@@ -2969,7 +2986,10 @@ p.dc-img-wrapper {
   background: var(--section-bg);
   border-top: 3px solid var(--section-accent);
   border-bottom: 2px solid var(--border-hairline);
-  padding: var(--space-sm) 0;
+  /* Horizontal padding was 0 — Dream Mastery body text + other two/three
+     column sections pressed against the section's left and right edges.
+     Add comfortable horizontal padding so prose has breathing room. */
+  padding: var(--space-sm) var(--space-md);
   margin: 12pt 0;
 }
 
