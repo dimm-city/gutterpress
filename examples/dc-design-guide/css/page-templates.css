@@ -34,13 +34,15 @@
    ──────────────────────────────────────────────────────────────────────── */
 
 /* ── PAGED.JS SHEET BACKGROUND ────────────────────────────────────────────── */
-/* Flat page background. The noise overlay + brick image were removed
-   because the user is commissioning an artist to create the proper
-   background image. Until that art lands, the sheet is the bare token
-   color so nothing competes with content evaluation or pre-empts the
-   commissioned design. */
+/* Brick wall image, no noise overlay. The previous grain texture (CSS-
+   generated noise SVG at 0.18 alpha) was removed per user direction;
+   the brick image stays as the working background until the artist's
+   commissioned background art replaces it. */
 .pagedjs_sheet {
   background-color: var(--bg);
+  background-image: url("../img/brick-bg-02.png");
+  background-repeat: repeat;
+  background-blend-mode: multiply;
 }
 
 
