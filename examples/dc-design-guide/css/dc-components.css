@@ -681,21 +681,6 @@
   word-break: break-word;
 }
 
-/* CHEVRON AS SECTION HEADER (card-header pattern)
-   When a .dc-chevron is the first child of a .section, it acts like a
-   "card header" extending edge-to-edge of the section's border box —
-   claiming back the section's padding so it aligns with the section's
-   outer edges (and with anything else that aligns to the section's outer
-   edges, like a chapter-opener banner above it). The section's body
-   content keeps its padding so prose stays inset.
-
-   Single component-level rule. Applies to every chevron used as a
-   section's first child, anywhere in the book. Iter-9 (2026-05-25). */
-.section > .dc-chevron:first-child {
-  margin-top: calc(var(--space-md) * -1);
-  margin-left: calc(var(--space-lg) * -1);
-  margin-right: calc(var(--clip-tail) * -1);
-}
 
 /* HEADING-SECTION ADJACENCY (D11, ≤ 0px gap)
    See the single-direction margin convention applied to .section, .dc-intro,
@@ -2956,11 +2941,7 @@ p.dc-img-wrapper {
      z-index ordering without blocking child margin overflow. */
   background: transparent;
   isolation: isolate;
-  /* Right padding matches --clip-tail so body content fits inside the
-     section's clipped cream substrate (the ::before clip path also uses
-     --clip-tail for its right inset). Left/top/bottom padding use the
-     standard space tokens. */
-  padding: var(--space-md) var(--clip-tail) var(--space-md) var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
   /* Single-direction margin: bottom only. Consecutive sections collapse to
      the bottom margin gap (12pt). First section after a chevron has no
      top gap → flush attachment without an adjacency rule.
@@ -2979,21 +2960,13 @@ p.dc-img-wrapper {
      the shadow (raster filter + vector pseudo) per print R9 finding. */
 }
 
-/* clip-path + left accent band on ::before
-   Right edge is straight-vertical at the same x as the chevron-banner's
-   tail (calc(100% - 22px) = the --clip-banner tail position). When a
-   chevron is used as the section's first child, the chevron tapers from
-   full-width at top to (100% - 22px) at its bottom; this section ::before
-   then continues straight down at that narrower x. The combined silhouette
-   forms ONE continuous shape on the right side — the chevron's diagonal
-   transitions into the section's vertical edge with no horizontal step.
-   Iter-9 (2026-05-25). */
+/* clip-path + left accent band on ::before */
 .section::before {
   content: '';
   position: absolute;
   inset: 0;
   background: linear-gradient(to right, var(--section-accent) 5px, var(--section-bg) 5px);
-  clip-path: polygon(0 0, calc(100% - var(--clip-tail)) 0, calc(100% - var(--clip-tail)) 100%, 0 100%);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
   z-index: 0;
 }
 
@@ -3783,6 +3756,114 @@ h3 + .section {
    selector chains (chapter id → page template class → section component
    class) that set component CSS custom properties. No utility-variant
    classes here — that would force authors to re-type variant intent. */
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+   CHAPTER OPENER — composite of badge + intro section as one component
+   ═════════════════════════════════════════════════════════════════════════
+   Section variant for the intro section that immediately follows a
+   `.dc-chapter-opener-no` badge (`@chapter-opener C.NN`). Forms a single
+   visual composite with the badge above: badge's bottom edge sits flush
+   against the section's top, the section's first-child `.dc-chevron`
+   acts as a card header (extends edge-to-edge of the section's border
+   box, claiming back the section's padding), and the right side forms
+   ONE continuous silhouette via a shared --dc-chapter-opener-clip-tail
+   token (chevron tapers from full-width at top to clip-tail-inset at
+   bottom; section continues straight down at that inset).
+
+   Variants (per-chapter override via the chapter id):
+
+     .section.dc-chapter-opener {
+       --dc-chapter-opener-accent: var(--brand-magenta-deep);  // chevron + section accent
+       --dc-chapter-opener-clip-tail: 22px;                    // right-edge inset
+       --dc-chapter-opener-bg: var(--paper-cream);             // section substrate
+     }
+
+     #ch-example-specialty-overview .section.dc-chapter-opener {
+       --dc-chapter-opener-accent: var(--augmerc-deep);
+       --dc-chapter-opener-clip-tail: 32px;
+     }
+
+   This token contract follows the same pattern as `.dc-fiction-excerpt`,
+   `.dc-specialty.<name>`, `.dc-skill-card`: chapters override tokens at
+   the parent chapter id scope; the component reads them via fallbacks.
+
+   The variant is OPT-IN — only sections that explicitly carry the
+   `.dc-chapter-opener` class get the composite treatment. Other sections
+   (`.dc-fiction-excerpt`, `.dc-specialty`, plain `.section`) keep their
+   own default chrome unchanged.
+
+   Authoring:
+
+     @chapter-opener C.01
+     @section .dc-fiction-excerpt .dc-chapter-opener
+     # Who Do You Dream to Be? {.dc-chevron}
+     ...intro prose...
+     @end-section
+   ───────────────────────────────────────────────────────────────────── */
+
+.section.dc-chapter-opener {
+  /* Token contract — override at the chapter scope for per-chapter variants. */
+  --dc-chapter-opener-accent:    var(--brand-magenta-deep);
+  --dc-chapter-opener-clip-tail: 22px;
+  --dc-chapter-opener-bg:        var(--paper-cream);
+  --dc-chapter-opener-pad-top:   var(--space-md);
+  --dc-chapter-opener-pad-side:  var(--space-lg);
+
+  /* Right padding matches the clip-tail so body content stays inside the
+     clipped substrate (matches the ::before override below). */
+  padding: var(--dc-chapter-opener-pad-top)
+           var(--dc-chapter-opener-clip-tail)
+           var(--dc-chapter-opener-pad-top)
+           var(--dc-chapter-opener-pad-side);
+
+  /* Variant tokens fed into the existing section accent / bg surfaces. */
+  --section-accent: var(--dc-chapter-opener-accent);
+  --section-bg:     var(--dc-chapter-opener-bg);
+
+  /* Propagate the chapter-opener's clip-tail into --clip-tail so any
+     .dc-chevron descendant (which uses --clip-banner = polygon(...
+     calc(100% - var(--clip-tail)) ...)) tapers to the same x position
+     as this section's right edge. One token override on the variant
+     keeps the chevron's tail and section's right edge aligned. */
+  --clip-tail: var(--dc-chapter-opener-clip-tail);
+}
+
+/* ::before's right edge is straight-vertical at the clip-tail x — the
+   chevron above tapers from full-width to this same x, so the silhouette
+   transitions diagonal → vertical with no horizontal step at the chevron/
+   section boundary. */
+.section.dc-chapter-opener::before {
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--dc-chapter-opener-clip-tail)) 0,
+    calc(100% - var(--dc-chapter-opener-clip-tail)) 100%,
+    0 100%
+  );
+}
+
+/* Suppress the .section::after fake-shadow on the chapter-opener variant:
+   the badge above provides the upper visual weight; the shadow under the
+   composite is provided by the badge + section's own ink-dark fill, not
+   a vector shadow offset that would visually clip at the new right edge. */
+.section.dc-chapter-opener::after {
+  content: none;
+}
+
+/* The chevron banner inside .dc-chapter-opener acts as a card header —
+   extends to the section's outer border-box edges by claiming back the
+   section's padding via negative margins. Body content keeps its padding
+   inset. The chevron's own clip-path (--clip-banner, tail = 22px by
+   default) provides the angular taper on the right; the section ::before
+   continues that taper as a vertical line below. */
+.section.dc-chapter-opener > .dc-chevron:first-child {
+  margin-top:   calc(var(--dc-chapter-opener-pad-top)  * -1);
+  margin-left:  calc(var(--dc-chapter-opener-pad-side) * -1);
+  margin-right: calc(var(--dc-chapter-opener-clip-tail) * -1);
+  /* Use the variant accent for the chevron banner so a per-chapter
+     override of --dc-chapter-opener-accent flows through to the heading. */
+  --dc-chevron-bg: var(--dc-chapter-opener-accent);
+}
 
 
 /* ═════════════════════════════════════════════════════════════════════════

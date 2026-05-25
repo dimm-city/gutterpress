@@ -2,7 +2,7 @@
 
 @chapter-opener C.01
 
-@section .dc-fiction-excerpt
+@section .dc-fiction-excerpt .dc-chapter-opener
 
 # Who Do You Dream to Be? {.dc-chevron}
 
