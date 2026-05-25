@@ -64,65 +64,51 @@ Before reputation comes recognition. Before recognition comes a glance. Dimmers 
 
 @end-section
 
-
-@page .citizen-file
-
-@section .two-column .col-split .dc-citizen-walkthrough
+@section .dc-citizen-walkthrough
 
 #### What's Yr Handle?
 
-Choose a name.
+Choose a name. It can come from any culture, any language, or straight out of your imagination. Pull it from a book, a show, a half-remembered dream, or invent something that sounds right for the city.
 
-It can come from any culture, any language, or straight out of your imagination.
+@end-section
 
-Pull it from a book, a show, a half-remembered dream, or invent something that sounds right for the city.
+
+@page .citizen-file
+
+@section .dc-citizen-walkthrough
 
 #### Designation
 
-Let others know how to refer to you.
+Let others know how to refer to you — she/her, he/him, they/them, or something else entirely. Do your best to address your fellow Dreamers as they wish to be addressed. Names and pronouns matter when life itself is constantly trying to strip both away.
 
-She/her, he/him, they/them, or something else entirely.
+@end-section
 
-Do your best to address your fellow Dreamers as they wish to be addressed.
-
-Names and pronouns matter when life itself is constantly trying to strip both away.
+@section .dc-citizen-walkthrough
 
 #### Species
 
-In Dimm City, you're not human—you never were. Every Dreamer is an anthropomorphic creature: a splice of animal instinct, street survival, and whatever the corps, gods, or bad luck bolted on afterward.
+In Dimm City, you're not human — you never were. Every Dreamer is an anthropomorphic creature: a splice of animal instinct, street survival, and whatever the corps, gods, or bad luck bolted on afterward.
 
 Choose a species that fits your vibe. Species carries no mechanical weight — it shapes your look, your voice, and how Dimm City reads you. The city has seen it all: cats and rabbits, rats and ravens, wolves and worse things with no clean name left.
 
-@column-break
+@end-section
+
+@section .dc-citizen-walkthrough
 
 #### Origins
 
-Where did you start, and how far is that from where you are now?
-
-Origins tell the Dream Master how your character fits the city's grid. A corporate-born Dreamer walks alleys differently than someone who grew up in the Flats. They know different people, owe different debts, and have different reasons to still be breathing.
+Where did you start, and how far is that from where you are now? Origins tell the Dream Master how your character fits the city's grid. A corporate-born Dreamer walks alleys differently than someone who grew up in the Flats — they know different people, owe different debts, and have different reasons to still be breathing.
 
 Choose one: **EntD rat**, **Corp exile**, **District-born**, **Offworld arrival**, **Street-raised**, or **Something the city made and hasn't claimed yet**.
 
+@end-section
+
+@section .dc-citizen-walkthrough
+
 #### Scars, Size, and Survival
 
-Choose the stage of life your character is in:
+Age in years means little in Dimm City — age is experiential, not chronological. Survival, scars, augmentation, and memory say far more than a number ever could. Pick the stage you're in: **childhood**, **adolescence**, **young adulthood**, **adulthood**, **middle age**, **old age**, or **extreme old age**.
 
-| |  |
-|-------|-------|
-|  |childhood|
-|  |adolescence|
-|  |young adulthood|
-|   |adulthood|
-|  |middle age|
-|  |old age|
-|  |extreme old age|
-
-Expressing age in years means little in Dimm City. Here, age is experiential, not chronological.
-
-Survival, scars, augmentation, and memory say far more than a number ever could.
-
-Size carries no mechanical weight — it shapes how you move through the city and how others read you.
-
-Choose one: **Tiny** (<1m, moves like a rumor), **Small** (1–1.5m, fits the pinches), **Medium** (1.6–2.5m, the default), or **Big** (2.5–4m, fills rooms).
+Size carries no mechanical weight — it shapes how you move through the city and how others read you. Choose one: **Tiny** (<1m, moves like a rumor), **Small** (1–1.5m, fits the pinches), **Medium** (1.6–2.5m, the default), or **Big** (2.5–4m, fills rooms).
 
 @end-section

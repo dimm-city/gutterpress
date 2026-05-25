@@ -3427,26 +3427,18 @@ h3 + .section {
    on a separate page).
 
    Applied via:
-     @page .citizen-file                                          ← topic page
-     @section .two-column .col-split .dc-citizen-walkthrough      ← layout
+     @page .citizen-file                                ← topic page (running header)
+     @section .dc-citizen-walkthrough                   ← standard section chassis
 
-   STRIP-FIRST POLICY: this component intentionally carries NO bespoke
-   rules unless a problem is observable in the rendered page AND no base
-   style covers it. Justify each addition with the problem it solves.
-   See feedback_css_strip_first_principle.md.
+   STRIP-FIRST POLICY: this component carries ZERO bespoke CSS. The
+   .dc-citizen-walkthrough class is a markdown authoring hook only —
+   styling comes entirely from the standard .section chassis (clipped-
+   corner ::before with --section-accent stripe + --section-bg substrate
+   + ::after fake shadow) plus the dc-core.css element baselines.
 
-   OBSERVED PROBLEM 1 — "Floating text with no content container":
-   .section.col-split sets background: transparent and every ancestor up
-   to .pagedjs_sheet is also transparent, so walkthrough content sits on
-   the bare brick wall. Reading copy on brick violates The Wall principle.
-   Fix: higher-specificity selector (3 classes beats col-split's 2) to
-   restore the paper-cream substrate that col-split intentionally strips.
-*/
-
-.section.col-split.dc-citizen-walkthrough {
-  background: var(--paper-cream);
-  padding: var(--space-md);
-}
+   To tune the walkthrough's accent or substrate, override the existing
+   --section-accent / --section-bg custom properties at the chapter id
+   scope in fg-overrides.css — do NOT add bespoke rules here. */
 
 /* ═════════════════════════════════════════════════════════════════════════
    NPC STAT BLOCK — DM/NPC entries (Patchhead, Grease Monkey, Undertow, ...)
