@@ -660,26 +660,23 @@
   max-width: 100%;
   box-sizing: border-box;
   clip-path: var(--clip-banner);
-  /* Margin-bottom 18 → 0 so when the chevron is immediately followed by
-     a .section / .dc-toc / .dc-citizen-file etc, the heading visually
-     attaches to its section rather than floating disconnected above it.
-     Per user feedback: "the contents header and the lead paragraph
-     before the table of contents just look like there are a couple of
-     things stuck on a page together as opposed to a cohesive design". */
-  margin: 0;
+  /* MECHANISM: gap between chevron heading and the next styled
+     component is NOT margin-top on the next element — Paged.js rewrites
+     adjacent-sibling selectors `.dc-chevron + X` to `[data-following*=...]`
+     attribute selectors with specificity (0,1,0), which loses the
+     cascade tiebreak to a later `.X { margin: ... }` rule.
+     FIX: negative margin-bottom on .dc-chevron itself PULLS the next
+     element up, regardless of paged.js's selector rewriting. Closes
+     the ~10px gap caused by inline-block + parent line-height + the
+     next element's default top margin. */
+  margin: 0 0 -10px 0;
   line-height: 1.2;
   word-break: break-word;
-}
-
-/* When a chevron heading is followed by a styled component, collapse
-   the gap so they read as one cohesive design element rather than two
-   floating elements. Applies to .dc-toc, .dc-citizen-file, and any
-   .section variants — the common case for chapter-opener layouts. */
-.dc-chevron + .section,
-.dc-chevron + .dc-toc,
-.dc-chevron + .dc-citizen-file,
-.dc-chevron + .dc-intro {
-  margin-top: 0;
+  /* Ensure the chevron's own stacking is above the next element so the
+     pulled-up margin doesn't visually clip the chevron's bottom edge. */
+  position: relative;
+  z-index: 1;
+  vertical-align: bottom;
 }
 
 /* Same heading-to-section attachment for the h2.dc-spray banner. The
