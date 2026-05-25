@@ -226,6 +226,14 @@ function plugin(md, pluginOptions = {}) {
     // content per page). Authors don't hand-apply .chapter-N anywhere.
     let chapterCounterClass = '';
 
+    // Chapter label propagated to every child @page as data-chapter-label.
+    // This lets CSS reach the chapter label from any descendant page via
+    // attr(data-chapter-label) — e.g. to render a chapter-opener badge as
+    // a ::before pseudo on the page where the content actually lives,
+    // rather than on the chapter wrapper (which paged.js may split into
+    // an empty leading sheet).
+    let chapterLabel = '';
+
     function closeOpenScopes() {
       closeSection();
       closePage();
@@ -238,6 +246,7 @@ function plugin(md, pluginOptions = {}) {
       out.push(new state.Token('layout_chapter_close', 'div', -1));
       chapterOpen = false;
       chapterCounterClass = '';
+      chapterLabel = '';
     }
 
     function closeSection() {
@@ -273,6 +282,11 @@ function plugin(md, pluginOptions = {}) {
       attachDataAttrs(t, 'chapter', meta.name, meta.attrs || {});
       out.push(t);
       chapterOpen = true;
+      // Track the label so we can propagate it to child @page elements (see
+      // openPage). Paged.js may split the chapter across multiple sheets;
+      // having data-chapter-label on each child page lets CSS render the
+      // chapter badge on the page where content actually lives.
+      chapterLabel = meta.name || '';
       // Resolve chapter counter class: explicit `.chapter-N` in the class
       // list takes priority over the `ch="N"` attribute.
       const explicit = (classes.match(/(?:^|\s)(chapter-\d+)(?=\s|$)/) || [])[1] || '';
@@ -302,6 +316,11 @@ function plugin(md, pluginOptions = {}) {
         : explicit;
       addClasses(t, 'page', merged);
       attachDataAttrs(t, 'page', meta.name, meta.attrs || {});
+      // Propagate the chapter label so CSS can render the chapter badge on
+      // the page where the content actually lives (paged.js may split the
+      // chapter wrapper into an empty leading sheet, but the child page
+      // wrapper stays with its content).
+      if (chapterLabel) t.attrSet('data-chapter-label', chapterLabel);
       out.push(t);
       pageOpen = true;
 
