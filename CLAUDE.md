@@ -312,6 +312,36 @@ the shortcut; restate the intent in plain language; identify the right
 primitive; apply at the component level. Do NOT respond with another
 shortcut variant.
 
+**R8. Composite shadows = `filter: drop-shadow()` on the wrapper.** Per-element
+`box-shadow` on stacked children with different widths/clips produces
+stepped offsets. `filter: drop-shadow(<offset>)` on the common wrapper
+follows the union silhouette of all visible descendants — one continuous
+shadow respecting clip paths.
+
+**R9. Co-locate dependent CSS custom properties.** Paged.js resolves
+cross-stylesheet `var()` chains unreliably. If `--x: var(--y)`, declare
+both `--x` and `--y` in the same `:root` block (same file). Otherwise the
+chain can resolve to `""` and the property comes out empty.
+
+**R10. Selector chains on `.page` survive paged.js; `::before` on `.page`/
+`.chapter` does NOT.** Paged.js's polisher strips static pseudo-element
+declarations on those classes (likely because `@page` is a CSS at-rule
+it processes specially). For visible composite elements that can't be a
+pseudo, inject a real DOM element via the markdown plugin. Selector
+CHAINS through `.page[data-page="X"]` to descendants are fine.
+
+**R11. Split visual-edge tokens from content-edge tokens.** A clipped
+composite has two edges: the visual edge (where the substrate ends) and
+the content edge (where body text ends). Conflating them makes body text
+flush with the clip — cramped. Use two tokens: `--clip-tail` and
+`--pad-right: calc(var(--clip-tail) + var(--space-md))`.
+
+**R12. Propagation > tree-walking.** CSS `attr()` reads the SAME element
+only. When a CSS rule needs context from a parent ("this is in a labeled
+chapter"), have the markdown plugin propagate the context as a data
+attribute on the child. Don't try to walk up the tree with `:has()` —
+it's unreliable in paged.js.
+
 
 ## Background reading
 
