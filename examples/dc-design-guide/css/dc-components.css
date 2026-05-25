@@ -1092,7 +1092,10 @@ hr,
 
   position: relative;
   break-inside: avoid;
-  margin-bottom: 10px;
+  /* Margin-bottom tightened 10 → 6 — gains ~4pt per card-gap on
+     vertical-stacked pages. Combined with body padding tightening,
+     two skill cards now fit on a single 10-inch page in more cases. */
+  margin-bottom: 6px;
   max-width: 100%;
   /* 4-way ink outline (1px on each side) + HARD offset poster shadow.
      The hard shadow (2pt 3pt 0, no blur) pins the card to the brick wall
@@ -1211,10 +1214,43 @@ hr,
 /* ── Card body + decorative mark ──────────────────────────────────────── */
 .dc-card-body {
   background: var(--dc-card-surface);
-  padding: 12px 14px 20px;
+  /* Tightened from 12px 14px 20px — saves ~10pt of vertical per card
+     so 2 cards fit per page more reliably. Bottom kept at 16px (down
+     from 20px) so the clip-path corner cut remains uncrowded by text. */
+  padding: 8px 12px 16px;
   position: relative;
   clip-path: var(--dc-skill-body-shape, polygon(0 0, 100% 0, 100% calc(100% - 28px), calc(100% - 44px) 100%, 0 100%));
 }
+
+/* Two-column body variant for short skill cards. Applied via
+   `@skill {.two-col}` in markdown. The .dc-card-inner content flows in
+   2 columns so a 4in single-column skill becomes ~2in tall, doubling
+   horizontal packing density. Suitable for skills with shorter mechanics
+   text (no large tables, no outcomes ladder). */
+.dc-skill-card.two-col .dc-card-inner {
+  column-count: 2;
+  column-gap: 12px;
+  column-fill: balance;
+}
+
+/* Inside 2-col body, force outcome tables and full-width elements to span
+   both columns so the visual chrome doesn't break across the gap. */
+.dc-skill-card.two-col .dc-card-inner .dc-outcome-table,
+.dc-skill-card.two-col .dc-card-inner table,
+.dc-skill-card.two-col .dc-card-inner h5 {
+  column-span: all;
+}
+
+/* Horizontal skill placement — NOTE: this is a known dead-end. I tried
+   `.dc-specialty.skill-grid { columns: 2 }` and `display: grid` to pack
+   skill cards horizontally on the page. Neither worked because paged.js
+   creates a fresh copy of the parent chain on each rendered page; when
+   only one card's content lands on a page, the columns/grid container
+   has only that one card to layout, and it fills full width regardless.
+
+   The path forward for skill packing is per-skill `.two-col` body
+   variant (above) which shrinks each card vertically so 2 fit per page
+   naturally, OR cutting skill body text length at the markdown level. */
 
 .dc-card-body::before {
   content: '';
