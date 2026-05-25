@@ -240,6 +240,19 @@
   --dc-chapter-opener-bg:        var(--paper-cream);
   --dc-chapter-opener-pad-top:   var(--space-md);
   --dc-chapter-opener-pad-side:  var(--space-lg);
+  /* Right-side padding is independent from --clip-tail. The clip-tail is
+     the *visual* right inset (where the chevron's tail and the section
+     substrate end). The pad-right is the *content* right inset (where
+     body text ends). Pad-right > clip-tail gives body text breathing
+     room inside the visible substrate instead of running flush to the
+     clipped edge. */
+  --dc-chapter-opener-pad-right: calc(var(--dc-chapter-opener-clip-tail) + var(--space-md));
+  /* Cohesive drop shadow for the chapter-opener composite. Hard offset
+     (no blur) matches the "poster pinned to a wall" aesthetic used by
+     the existing --shadow-poster token. Applied via filter:drop-shadow
+     on the chapter-opener page so it follows the union silhouette
+     (badge + tapered chevron + section substrate) as a single shape. */
+  --dc-chapter-opener-shadow: 3px 4px 0 rgba(0, 0, 0, 0.28);
 
   /* ── Fluorescent Fungi Pillar (creaturepunk: bioluminescent organic) ─────
      The 4th creaturepunk register: spore-light, lichen-glow, UV-reactive

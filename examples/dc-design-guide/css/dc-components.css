@@ -3778,14 +3778,27 @@ h3 + .section {
   border-top: 4pt solid var(--dc-chapter-opener-accent);
 }
 
+/* Cohesive drop shadow for the entire chapter-opener composite.
+   `filter: drop-shadow()` follows the union of the page's visible child
+   silhouettes — badge, tapered chevron, clipped section — and renders
+   ONE continuous shadow that looks like the composite is pinned to the
+   wall and casting a single offset. Applied on the page wrapper rather
+   than per-element so the diagonal join between chevron's tapered right
+   edge and the section's vertical right edge is preserved in the shadow
+   shape. */
+.chapter[data-chapter-label] > .page[data-page="intro"] {
+  filter: drop-shadow(var(--dc-chapter-opener-shadow));
+}
+
 /* Section substrate for the chapter-opener intro section. Selector
    matches a .section that's an immediate child of a chapter-opener intro
    page (page named "intro" inside a chapter with a label). */
 .chapter[data-chapter-label] > .page[data-page="intro"] > .section {
-  /* Right padding matches the clip-tail so body content stays inside
-     the clipped substrate (matches the ::before override below). */
+  /* Right padding (--pad-right = clip-tail + space-md) is larger than
+     the visual clip-tail so body text has breathing room from the
+     clipped substrate edge. */
   padding: var(--dc-chapter-opener-pad-top)
-           var(--dc-chapter-opener-clip-tail)
+           var(--dc-chapter-opener-pad-right)
            var(--dc-chapter-opener-pad-top)
            var(--dc-chapter-opener-pad-side);
 
@@ -3825,13 +3838,15 @@ h3 + .section {
    section's outer border-box edges (card-header pattern) by claiming back
    the section's padding via negative margins. */
 .chapter[data-chapter-label] > .page[data-page="intro"] > .section > h1:first-of-type {
-  /* Inherit the chevron base styles via a shared rule below
-     (`.dc-chevron, .chapter[data-chapter-label] > .page[data-page="intro"]
-     > .section > h1:first-of-type`). The negative-margin card-header
-     adjustment is component-local to the chapter-opener structure. */
-  margin-top:   calc(var(--dc-chapter-opener-pad-top)  * -1);
-  margin-left:  calc(var(--dc-chapter-opener-pad-side) * -1);
-  margin-right: calc(var(--dc-chapter-opener-clip-tail) * -1);
+  /* Negative margins claim back the section's padding so the chevron
+     banner extends to the section's outer border-box edges (card-header
+     pattern). Margin-right uses --pad-right (the same value that pads
+     body content) so the chevron's outer right edge aligns with the
+     section's outer right edge — its --clip-banner tail then tapers
+     in by --clip-tail, matching where the section substrate ends. */
+  margin-top:   calc(var(--dc-chapter-opener-pad-top)   * -1);
+  margin-left:  calc(var(--dc-chapter-opener-pad-side)  * -1);
+  margin-right: calc(var(--dc-chapter-opener-pad-right) * -1);
   --dc-chevron-bg: var(--dc-chapter-opener-accent);
 }
 
