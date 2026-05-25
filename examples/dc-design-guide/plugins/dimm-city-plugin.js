@@ -47,7 +47,7 @@
  *   @end-specialty-card
  *   @gear-card          → Gear card
  *   @end-gear-card
- *   @chapter-opener     → Chapter opener number badge (`@chapter-opener C.NN`)
+ *   (chapter-opener composite is now markup-driven — see CSS notes below)
  *   @toc                → Table-of-contents wrapper
  *   @end-toc
  *   @glossary           → Glossary wrapper
@@ -797,7 +797,7 @@ export default function dimmCityPlugin(md, options = {}) {
   });
 
   // NOTE: Chapter-opener composite behaviour is intentionally NOT handled
-  // by the plugin. The simplified author markdown
+  // by the plugin. The author markdown
   //
   //     @chapter C.01
   //     @page intro
@@ -807,24 +807,14 @@ export default function dimmCityPlugin(md, options = {}) {
   // produces the standard markdown-it-paged DOM:
   //
   //     .chapter[data-chapter-label="C.01"]
-  //       .page[data-page="intro"]
+  //       .page[data-page="intro"][data-chapter-label="C.01"]
   //         .section
   //           h1
   //           ...
   //
   // All chapter-opener visual treatment (the C.NN badge, the section
-  // variant chrome, the chevron-styled h1, the image float) is provided
-  // by CSS attribute selectors in dc-components.css matching this
-  // structure. That keeps:
-  //   1. The plugin generic (no DC-specific HTML injection here).
-  //   2. The author markdown clean (no class attributes needed).
-  //   3. Reusability — any project consuming markdown-it-paged can
-  //      provide their own attribute-selector CSS to react to the
-  //      same data-chapter-label / data-page="intro" structure.
-  //
-  // The legacy `@chapter-opener C.NN` macro handler below (around L940)
-  // remains for backwards compatibility with chapters that still use the
-  // older 3-marker syntax.
+  // variant chrome, the chevron-styled h1) is provided by CSS attribute
+  // selectors in dc-components.css matching this structure.
 
   // Transform tokens after parsing
    md.core.ruler.push('dimm_city_transform', function (state) {
@@ -961,22 +951,6 @@ export default function dimmCityPlugin(md, options = {}) {
           inSidebar = false;
         }
         i += 2;
-        continue;
-      }
-
-      // --- @chapter-opener ---
-      // Syntax: @chapter-opener C.02
-      // Emits:  <span class="dc-chapter-opener-no">C.02</span>
-      const chapterOpenerMarker = parseMarker(tok, tokens, i, '@chapter-opener');
-      if (chapterOpenerMarker.matched) {
-        const inline = tokens[i + 1];
-        const content = inline ? inline.content.trim() : '';
-        // Extract label: everything after '@chapter-opener '
-        const label = content.startsWith('@chapter-opener ')
-          ? content.slice('@chapter-opener '.length).trim()
-          : '';
-        newTokens.push(makeToken('html_block', '<span class="dc-chapter-opener-no">' + esc(label) + '</span>\n'));
-        i += 2; // Skip paragraph_open, inline, paragraph_close
         continue;
       }
 

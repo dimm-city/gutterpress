@@ -1,8 +1,6 @@
-@chapter #ch-example-specialty-overview ch="2"
+@chapter C.02 #ch-example-specialty-overview ch="2"
 
-@page .page-chapter-start .chapter-start
-
-@chapter-opener C.02
+@page intro
 
 @section
 

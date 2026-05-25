@@ -661,7 +661,7 @@
    The structural-selector branch is the same selector used by the
    chapter-opener composite rules above. */
 .dc-chevron,
-.page[data-page="intro"][data-chapter-label] > .section > h1:first-of-type {
+.chapter[data-chapter-label] > .page[data-page="intro"] > .section > h1:first-of-type {
   font-family: var(--font-display);
   font-size: var(--dc-chevron-font-size, var(--fs-h1));
   letter-spacing: 0.06em;
@@ -718,7 +718,7 @@
    size — see the page-scoped rule below. D4 type scale (banner-to-body ratio
    must be ≥ 2× at print scale for chapter-punch role). */
 h1.dc-chevron,
-.page[data-page="intro"][data-chapter-label] > .section > h1:first-of-type {
+.chapter[data-chapter-label] > .page[data-page="intro"] > .section > h1:first-of-type {
   font-size: 1.4rem;
   line-height: 1.2;
 }
@@ -1046,57 +1046,10 @@ hr,
   opacity: 0.85;
 }
 
-/* ── Chapter opener number badge ──────────────────────────────────────────
-   The chapter opener has to ARRIVE — Mörk Borg / Mothership openers PUNCH
-   the reader. Bigger number badge, dramatic top + bottom rules, expanded
-   tracking so "C.01" sits like a stencil-painted concrete numeral above
-   the chapter title. */
-.dc-chapter-opener-no {
-  font-family: var(--font-display);
-  font-size: calc(var(--fs-chapter) * 1.35);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--brand-magenta);
-  background: var(--ink-dark);
-  line-height: 1;
-  display: block;
-  padding: 0.22in 0.18in 0.14in;
-  margin: 0;
-  width: 100%;
-  box-sizing: border-box;
-  border-top: 4pt solid var(--brand-magenta);
-}
-
-/* H1 immediately after .dc-chapter-opener-no — dark band with magenta underline */
-.dc-chapter-opener-no + h1 {
-  background: var(--ink-dark);
-  color: var(--paper-cream);
-  border-bottom: 4pt solid var(--brand-magenta);
-  padding: 0.1in 0.22in 0.28in;
-  margin: 0 0 0.32in;
-  box-sizing: border-box;
-  width: 100%;
-  font-size: calc(var(--fs-h1) * 1.2);
-  letter-spacing: 0.04em;
-}
-
-/* First paragraph after the chapter opener — atmospheric lead-in.
-   Bigger size + ink-smoke color reads as the chapter's opening salvo,
-   not just body copy that happens to start the chapter. */
-.dc-chapter-opener-no + h1 + p {
-  font-size: 1.12em;
-  line-height: 1.55;
-  color: var(--ink-smoke);
-  margin-bottom: 0.18in;
-}
-
-/* Drop cap on first paragraph after the chapter opener H1 */
-.dc-chapter-opener-no + h1 + p::first-letter {
-  initial-letter: 2;
-  font-weight: var(--fw-bold, 700);
-  color: var(--crimson);
-  margin-right: 0.05em;
-}
+/* Chapter-opener badge + H1 banner — see the chapter-opener composite
+   block further down (.page[data-page="intro"][data-chapter-label]).
+   The legacy .dc-chapter-opener-no rules previously here were removed
+   when the legacy @chapter-opener macro was retired. */
 
 /* ── Specialty art full-page plate ─────────────────────────────────────────── */
 .dc-specialty-art {
@@ -3790,16 +3743,9 @@ h3 + .section {
 
    Token contract — override at the chapter id scope for per-chapter
    variants. Authors don't write these in markdown; they're project CSS
-   overrides:
+   overrides. Defaults live in dc-tokens.css; example per-chapter
+   override (NOT nested CSS comments — these are illustrative only):
 
-       /* Default (applies to any chapter-opener) */
-       :root {
-         --dc-chapter-opener-accent:    var(--brand-magenta-deep);
-         --dc-chapter-opener-clip-tail: 22px;
-         --dc-chapter-opener-bg:        var(--paper-cream);
-       }
-
-       /* Per-chapter override */
        #ch-example-specialty-overview .chapter {
          --dc-chapter-opener-accent: var(--augmerc-deep);
          --dc-chapter-opener-clip-tail: 32px;
@@ -3807,27 +3753,16 @@ h3 + .section {
 
    ───────────────────────────────────────────────────────────────────── */
 
-/* Token defaults at :root so any descendant can read them, and so per-
-   chapter overrides can target the chapter scope without re-declaring
-   the variable above the fallback. */
-:root {
-  --dc-chapter-opener-accent:    var(--brand-magenta-deep);
-  --dc-chapter-opener-clip-tail: 22px;
-  --dc-chapter-opener-bg:        var(--paper-cream);
-  --dc-chapter-opener-pad-top:   var(--space-md);
-  --dc-chapter-opener-pad-side:  var(--space-lg);
-}
+/* Token defaults for this component live in dc-tokens.css alongside the
+   space / color / clip primitives they reference. Centralising :root
+   tokens avoids a load-order subtlety where paged.js's polisher
+   resolves var() chains across stylesheets unreliably. */
 
-/* Badge — rendered as a ::before pseudo on the chapter-opener intro page.
-   `data-chapter-label` is propagated from the @chapter directive down to
-   each child @page by markdown-it-paged, so CSS can read it via attr()
-   at the page scope (where the chapter's actual content lives — the
-   chapter wrapper itself may be split by paged.js into an empty leading
-   sheet). No plugin DOM injection. Visually identical to the legacy
-   .dc-chapter-opener-no span emitted by the older @chapter-opener C.NN
-   macro; that CSS rule stays in place for backwards compatibility. */
-.page[data-page="intro"][data-chapter-label]::before {
-  content: attr(data-chapter-label);
+/* Chapter-opener badge — styled on the .chapter-opener element that
+   markdown-it-paged emits as the first child of a labeled chapter's
+   first page (see openPage in markdown-it-paged.js). The element carries
+   the chapter label as both its text content and a data attribute. */
+.chapter-opener {
   display: block;
   font-family: var(--font-display);
   font-size: calc(var(--fs-chapter) * 1.35);
@@ -3843,13 +3778,10 @@ h3 + .section {
   border-top: 4pt solid var(--dc-chapter-opener-accent);
 }
 
-/* Section substrate for the chapter-opener intro section. The selector
+/* Section substrate for the chapter-opener intro section. Selector
    matches a .section that's an immediate child of a chapter-opener intro
-   page (page named "intro" with data-chapter-label propagated from
-   the enclosing chapter). Same token contract as the previous
-   .section.dc-chapter-opener variant, just selected via attribute
-   structure instead of an opt-in class. */
-.page[data-page="intro"][data-chapter-label] > .section {
+   page (page named "intro" inside a chapter with a label). */
+.chapter[data-chapter-label] > .page[data-page="intro"] > .section {
   /* Right padding matches the clip-tail so body content stays inside
      the clipped substrate (matches the ::before override below). */
   padding: var(--dc-chapter-opener-pad-top)
@@ -3872,7 +3804,7 @@ h3 + .section {
    chevron above tapers from full-width to this same x, so the silhouette
    transitions diagonal → vertical with no horizontal step at the chevron/
    section boundary. */
-.page[data-page="intro"][data-chapter-label] > .section::before {
+.chapter[data-chapter-label] > .page[data-page="intro"] > .section::before {
   clip-path: polygon(
     0 0,
     calc(100% - var(--dc-chapter-opener-clip-tail)) 0,
@@ -3884,7 +3816,7 @@ h3 + .section {
 /* Suppress the .section::after fake-shadow on the chapter-opener composite:
    the chapter badge above already provides the upper visual weight, and a
    vector shadow offset would visually clip at the indented right edge. */
-.page[data-page="intro"][data-chapter-label] > .section::after {
+.chapter[data-chapter-label] > .page[data-page="intro"] > .section::after {
   content: none;
 }
 
@@ -3892,7 +3824,7 @@ h3 + .section {
    `{.dc-chevron}` attribute required. The chevron banner extends to the
    section's outer border-box edges (card-header pattern) by claiming back
    the section's padding via negative margins. */
-.page[data-page="intro"][data-chapter-label] > .section > h1:first-of-type {
+.chapter[data-chapter-label] > .page[data-page="intro"] > .section > h1:first-of-type {
   /* Inherit the chevron base styles via a shared rule below
      (`.dc-chevron, .chapter[data-chapter-label] > .page[data-page="intro"]
      > .section > h1:first-of-type`). The negative-margin card-header

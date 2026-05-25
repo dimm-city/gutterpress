@@ -32,6 +32,14 @@ function isBareToken(token) {
   return token && !token.includes('=') && !token.startsWith('.') && !token.startsWith('#');
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function parseMarkerLine(line) {
   const trimmed = line.trim();
   if (!trimmed.startsWith('@')) return null;
@@ -316,13 +324,36 @@ function plugin(md, pluginOptions = {}) {
         : explicit;
       addClasses(t, 'page', merged);
       attachDataAttrs(t, 'page', meta.name, meta.attrs || {});
-      // Propagate the chapter label so CSS can render the chapter badge on
-      // the page where the content actually lives (paged.js may split the
-      // chapter wrapper into an empty leading sheet, but the child page
-      // wrapper stays with its content).
+      // Propagate the chapter label so CSS can target the chapter-opener
+      // page via attribute selector (paged.js may split the chapter wrapper
+      // into an empty leading sheet, but the child page stays with its
+      // content).
       if (chapterLabel) t.attrSet('data-chapter-label', chapterLabel);
       out.push(t);
       pageOpen = true;
+
+      // Inject a structural chapter-opener element as the page's first
+      // child when the chapter has a label AND this is the first @page in
+      // that chapter. The element carries the chapter label as both its
+      // text content and a data attribute, so projects style it however
+      // they like:
+      //
+      //     <div class="chapter-opener" data-chapter-label="C.01">C.01</div>
+      //
+      // Paged.js strips `::before` declarations on `.chapter` and `.page`
+      // elements during its polisher pass, so a pure-CSS pseudo-element
+      // approach isn't viable here. A structural element is the simplest
+      // mechanism that survives pagination and is reusable across
+      // projects (any project styling `.chapter-opener` gets the same
+      // markup).
+      if (chapterLabel) {
+        const opener = new state.Token('html_block', '', 0);
+        opener.content = `<div class="chapter-opener" data-chapter-label="${escapeAttr(chapterLabel)}">${escapeHtml(chapterLabel)}</div>\n`;
+        out.push(opener);
+        // Clear so subsequent @page directives in the same chapter don't
+        // emit another opener — the opener belongs on the FIRST page only.
+        chapterLabel = '';
+      }
 
       if (spreadOpen) {
         sawAnyPageInsideCurrentSpread = true;

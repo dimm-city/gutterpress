@@ -223,12 +223,23 @@
 
   /* ── Shapes ───────────────────────────────────────────────────────────── */
   /* Chevron banner / section right-edge inset. Used by --clip-banner, by
-     .section::before's clip-path, by .section padding-right, and by
-     .section > .dc-chevron:first-child negative margin-right. Single
-     token so the chevron's angular tail aligns with the section's
-     right edge AND the body content stays inside the clipped substrate. */
+     the chapter-opener intro section's clip-path + padding-right, and by
+     the chapter-opener h1's negative margin-right. */
   --clip-tail: 22px;
   --clip-banner: polygon(0 0, 100% 0, calc(100% - var(--clip-tail)) 100%, 0 100%);
+
+  /* ── Chapter-opener composite (dc-components.css consumes these) ──────
+     Token contract — override at the chapter id scope to customise a
+     specific chapter's opener without affecting any other chapter:
+       #ch-chapter-2 .chapter {
+         --dc-chapter-opener-accent: var(--augmerc-deep);
+         --dc-chapter-opener-clip-tail: 32px;
+       } */
+  --dc-chapter-opener-accent:    var(--brand-magenta-deep);
+  --dc-chapter-opener-clip-tail: 22px;
+  --dc-chapter-opener-bg:        var(--paper-cream);
+  --dc-chapter-opener-pad-top:   var(--space-md);
+  --dc-chapter-opener-pad-side:  var(--space-lg);
 
   /* ── Fluorescent Fungi Pillar (creaturepunk: bioluminescent organic) ─────
      The 4th creaturepunk register: spore-light, lichen-glow, UV-reactive
