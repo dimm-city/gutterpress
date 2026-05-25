@@ -217,11 +217,21 @@
 .dc-specialty.augmerc {
   --dc-skill-tab-shape: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%, 0 14px);
   --dc-skill-body-shape: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px));
+  /* Path title + shell clip-paths must AGREE at the top-right corner.
+     User feedback: "There's also a weird clipping issue in the top right
+     corner of biting distance similar to the OGMERK specialty intro."
+     Title is cut at 24px-from-right with 18px slope down. Shell is now
+     cut at the SAME 24px point so the title's TR cut sits flush against
+     the shell's TR cut instead of being exposed against a flat corner. */
   --dc-path-title-shape: polygon(14px 0, calc(100% - 24px) 0, 100% 18px, 100% 100%, 0 100%, 0 14px);
-  --dc-path-shell-clip: polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
+  --dc-path-shell-clip: polygon(18px 0, calc(100% - 24px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
   --dc-specialty-card-shell-shape: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+  /* Same fix on specialty-intro: intro-title is cut at 20px-from-right
+     with 16px slope. intro-clip now matches so the title's TR cut sits
+     flush against the container instead of being exposed against a
+     flat TR corner. */
   --dc-specialty-intro-title-shape: polygon(14px 0, calc(100% - 20px) 0, 100% 16px, 100% 100%, 0 100%, 0 14px);
-  --dc-specialty-intro-clip: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  --dc-specialty-intro-clip: polygon(18px 0, calc(100% - 20px) 0, 100% 16px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
 }
 
 .dc-specialty.augmerc .dc-skill-card {
@@ -650,9 +660,26 @@
   max-width: 100%;
   box-sizing: border-box;
   clip-path: var(--clip-banner);
-  margin: 0 0 18px;
+  /* Margin-bottom 18 → 0 so when the chevron is immediately followed by
+     a .section / .dc-toc / .dc-citizen-file etc, the heading visually
+     attaches to its section rather than floating disconnected above it.
+     Per user feedback: "the contents header and the lead paragraph
+     before the table of contents just look like there are a couple of
+     things stuck on a page together as opposed to a cohesive design". */
+  margin: 0;
   line-height: 1.2;
   word-break: break-word;
+}
+
+/* When a chevron heading is followed by a styled component, collapse
+   the gap so they read as one cohesive design element rather than two
+   floating elements. Applies to .dc-toc, .dc-citizen-file, and any
+   .section variants — the common case for chapter-opener layouts. */
+.dc-chevron + .section,
+.dc-chevron + .dc-toc,
+.dc-chevron + .dc-citizen-file,
+.dc-chevron + .dc-intro {
+  margin-top: 0;
 }
 
 /* H1.dc-chevron — chapter-title banner sized to fit long chapter names on
@@ -1160,7 +1187,10 @@ hr,
 
 .dc-tab-title {
   font-family: var(--font-tab);
-  font-size: 13px;
+  /* Bumped 13px → 15px per user feedback: "The tab headings on skill
+     cards are a little too small." Stays under 16pt to keep the tab
+     chrome compact. */
+  font-size: 15px;
   /* Default to paper-cream so reverse-out text on the saturated tab fill
      always passes WCAG. Specialty contexts re-affirm the same color via
      their --dc-card-tab-title-color token. Without this fallback, the
@@ -2019,13 +2049,22 @@ hr,
 }
 
 .dc-pullquote::before {
-  /* User-circled defect (screenshot 02): the 56pt magenta decorative
-     quote mark on top of the pullquote was redundant with the literal
-     quote characters in the body text (e.g. "'How bright's it ay?!'"),
-     and read as over-the-top decoration. The component already has a
-     left accent bar + paper-stain substrate + shadow — that's enough
-     visual identity. Removed the duplicate ornament. */
-  content: none;
+  /* User RE-REQUESTED these accent marks: "I noticed the accent marks
+     from the pull quote have disappeared. That was one of my favorite
+     accents. I don't know why that was removed." They were removed
+     earlier because of an over-decoration concern; turns out the user
+     wanted them. Restored. Tightened size slightly (was 56px, now 48px)
+     to reduce duplication with literal quotes in body text without
+     removing the accent entirely. */
+  content: '"';
+  position: absolute;
+  top: -6px;
+  left: 10px;
+  font-family: var(--font-display);
+  font-size: 48px;
+  color: var(--hud-magenta);
+  opacity: 0.55;
+  line-height: 1;
 }
 
 .dc-pullquote p {
@@ -2058,6 +2097,12 @@ hr,
   font-size: var(--fs-body);
   line-height: var(--lh-normal);
   color: var(--ink);
+  /* Added per user feedback: "text inside that section is pushed against
+     the left edge and potentially the right edge of the section." The
+     definition block had no internal padding so prose touched the box
+     edges. 9pt top/bottom + 12pt left/right gives prose breathing room
+     from the colored rail and right edge. */
+  padding: 9pt 12pt 9pt 14pt;
 }
 
 .dc-definition-block p {
@@ -2262,12 +2307,15 @@ hr,
   font-family: var(--font-body);
   counter-reset: dc-toc;
   /* Paper substrate — TOC entries were rendering on the concrete-grain
-     wall texture (user-circled defect, screenshot 01-toc-circled.jpg).
-     Per constitution: "components float above the wall; body text must
-     not float on the wall." TOC is a poster on the wall. */
+     wall texture earlier. TOC is a poster on the wall.
+     Added: 4pt accent stripe at top (--rust to match the CONTENTS chevron
+     color) so the TOC reads as part of the same design unit as its
+     heading, not "basically a white square" floating below. The accent
+     bar visually attaches TOC to the chevron header above it. */
   background: var(--paper-cream);
   padding: 0.18in 0.22in;
   box-shadow: var(--shadow-poster);
+  border-top: 4pt solid var(--rust);
 }
 
 .dc-toc ol {
@@ -3558,7 +3606,11 @@ h3 + .section {
 
 .section.dc-fiction-excerpt {
   --dc-fiction-bg: transparent;
-  --dc-fiction-art-width: 1.85in;
+  /* Fiction-excerpt inset art used to be 1.85in — user feedback: "Lil
+     Thump placeholder image is too small. It should take up more of the
+     left side of the page." Bumped to 3in so the art block carries
+     visual weight comparable to body prose on the right. */
+  --dc-fiction-art-width: 3in;
   --dc-fiction-art-shadow: 4px 4px 0 var(--hud-blue-dark);
   --dc-fiction-art-outline: 3px solid var(--ink-dark);
   --dc-fiction-line-height: 1.45;

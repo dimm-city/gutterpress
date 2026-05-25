@@ -4,8 +4,6 @@
 
 @page .chapter-start
 
-@chapter-opener C.11
-
 # C.1: Are You Lucid Yet? {#c1-are-you-lucid}
 
 ![01-street-sign](https://placehold.co/600x800/png?text=Street+Sign){.fg-art-street-sign}

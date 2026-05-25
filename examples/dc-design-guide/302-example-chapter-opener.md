@@ -3,8 +3,6 @@
 
 @chapter-opener C.01
 
-![Chapter 1 Art](https://placehold.co/1000x700/png?text=Chapter+1+Art){.fg-art-chapter-opener}
-
 # Who Do You Dream to Be? {.dc-chevron}
 
 @section .dc-fiction-excerpt

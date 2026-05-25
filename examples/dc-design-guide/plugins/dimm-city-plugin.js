@@ -191,7 +191,13 @@ function specialtyCodeFromClass(className) {
 function buildStickerChain(items) {
   let html = '<div class="dc-stickers">';
   items.forEach((name, i) => {
-    const cls = 'dc-sticker' + (i === 0 ? ' active' : '');
+    // The first sticker used to get .active treatment, rendering it in
+    // --blood while siblings rendered in --ink-dark. User feedback:
+    // "there's no reason for the first skill in the learning path list
+    // to be marked as active or a different color than the other skills.
+    // For example, under biting distance, punishing counter is red, and
+    // the rest are black. It should also be black." Removed.
+    const cls = 'dc-sticker';
     html += '<span class="' + cls + '"><span class="dc-sticker-ref">' + esc(String(i + 1)) + '</span>' + esc(name.trim()) + '</span>';
     if (i < items.length - 1) {
       html += '<span class="dc-arrow">»</span>';

@@ -172,12 +172,24 @@ table {
   break-inside: avoid;
 }
 
-tr:nth-child(even) td { background: var(--paper-stain); }
+/* Row tinting: alternating paper-cream and paper-light reads cleaner
+   than paper-cream + paper-stain. The previous pair (cream + stain)
+   produced too much chroma shift between rows and read as "muddy" per
+   user feedback. paper-light is closer to cream so the zebra is subtle
+   without being invisible. */
+tr:nth-child(even) td { background: var(--paper-light); }
 tr:nth-child(odd)  td { background: var(--paper-cream); }
 
 th {
-  background: var(--hud-blue-dark);
-  color: var(--paper-cream);
+  /* Was --hud-blue-dark — clashed with adjacent section accents in some
+     chapters (Size Modifier heading uses rust/orange tones, the teal
+     table header fought it). Token-driven so per-chapter overrides in
+     fg-overrides.css can pick a header color that harmonizes with the
+     chapter's --section-accent. Default ink-dark reads as a structural
+     "this is a header bar" rule that doesn't take on a chroma identity
+     of its own. */
+  background: var(--dc-table-header-bg, var(--ink-dark));
+  color: var(--dc-table-header-color, var(--paper-cream));
   font-family: var(--font-mono);
   font-size: 8pt;
   letter-spacing: 0.1em;
