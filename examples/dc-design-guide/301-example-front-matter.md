@@ -78,10 +78,10 @@ The city didn't go quiet—it got loud. That feline snarl tore through the alley
 
 @section
 
-![Scavenger holding a recovered field-detonator](img/scavenger.png){.fg-art-intro-image}
-
 > [!PULLQUOTE]
 > "How bright's it ay?!"
+
+![Scavenger holding a recovered field-detonator](img/scavenger.png){.fg-art-intro-image}
 
 They wore glossy slab-armor that flexed like chitin and burned like synthlight. Opposite them? A pack of ragged rabbits with wiry limbs and twitch-fast reflexes, zipping through the sprawl with street-born magic and muscle memory. Then the world erupted.
 
