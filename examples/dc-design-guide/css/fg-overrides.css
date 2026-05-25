@@ -251,6 +251,19 @@
   padding-right: 0.04em;
 }
 
+/* ── DM/NPC chapter: page-title h1/h2 in neutral ink, not teal ──────────────
+   Default h1/h2 colors (--hud-magenta for h1, --hud-blue-dark for h2) clash
+   with this chapter's rust --section-accent. Designer-eye reviewer flagged
+   "NPC STAT BLOCK: FODDER" h2 page-titles rendering teal while everything
+   else in the chapter (section tabs, stat-block accents, table headers) is
+   rust. Neutral --ink-dark page-titles let the chapter's rust components
+   carry the chroma identity without fighting the title. */
+#ch-example-dm-npcs h1,
+#ch-example-dm-npcs h2:not(.dc-spray):not(.dc-chevron) {
+  color: var(--ink-dark);
+  border-bottom-color: var(--rust);
+}
+
 /* ── DM/NPC chapter: tables wear the chapter's gutter-pillar accent ─────────
    Default .dc-table header background is --hud-blue-dim (cold-teal HUD),
    which conflicts with the rust section-accent on this chapter. Use --blood
