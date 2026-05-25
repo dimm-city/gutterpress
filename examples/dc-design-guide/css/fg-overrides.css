@@ -75,28 +75,40 @@
    colophon. Intro splash: scavenger character portrait, square. Sits mid-flow
    in the introduction page between the lede and METROPOLIS section.
    Both get hard ink border + poster shadow for the wall-poster register. */
+/* Founders House mark — bottom-justified in the colophon column (user R1,
+   iter-7). margin-top: auto inside the flex-column .section.credits-colophon
+   pushes the image to the section's bottom edge regardless of how much text
+   fills the colophon above. */
 .fg-art-founders-house {
   display: block;
   width: 100%;
   max-width: 5.5in;
   height: 1.6in;
   object-fit: cover;
-  margin: 0.1in auto 0;
+  margin: auto auto 0;
   border: 1.5pt solid var(--ink-dark);
   box-shadow: var(--shadow-poster);
+  flex-shrink: 0;
 }
 
+/* Intro splash — floated right with body text wrapping its left side
+   (user R2 / contest-judge R2, iter-7). Anchored in the first .section
+   on the intro page so the lede and following prose flow naturally
+   around it. */
+.page-intro .section .fg-art-intro-image,
 .fg-art-intro-image {
   display: block;
-  width: 100%;
-  max-width: 5in;
-  height: 3.25in;
+  float: right;
+  width: 2.8in;
+  height: auto;
+  max-height: 4in;
   object-fit: contain;
   object-position: center;
-  margin: 0.18in auto;
+  margin: 0.05in 0 0.15in 0.22in;
   border: 1.5pt solid var(--ink-dark);
   box-shadow: var(--shadow-poster);
   background: var(--paper-cream);
+  shape-outside: margin-box;
 }
 
 /* Chapter opener art — fills the chapter-start splash below the C.NN
@@ -379,13 +391,15 @@
    colophon page uses a full-bleed black band; Mothership PSG credits use a
    flush all-caps sans masthead with no chrome. */
 .page-credits h1.dc-chevron {
-  /* Override chevron geometry — full-bleed flat masthead */
+  /* Override chevron geometry — full-bleed flat masthead, flush against
+     the colophon panel below (iter-7: zero margin-bottom for composite
+     header read). */
   display: block;
   width: calc(100% + 1.25in);
   margin-left: -0.625in;
   margin-right: -0.625in;
   margin-top: -0.5in;
-  margin-bottom: 0.25in;
+  margin-bottom: 0;
   padding: 0.45in 0.625in 0.35in;
   box-sizing: content-box;
   clip-path: none;
@@ -397,17 +411,50 @@
   font-weight: 700;
 }
 
-/* CREDITS colophon — two-column dense typographic block on a paper-cream
-   substrate so body text sits on a paper-poster surface (not directly on
-   the ash-concrete wall, per print-judge R2 / D6). Each entry's mini-label
-   is a rust mono caps top-rule; body sits below at readable POD scale.
-   Contest-judge R1 + print-judge R2, iteration 5. */
+/* ── FLUSH COMPOSITE HEADER (gate iteration 7) ─────────────────────────────
+   Chevron/masthead + lede + first .section/.dc-toc read as ONE composite
+   component on each front-matter page. Each element retains its own visual
+   treatment (clip-path, border, background) — the cohesion comes from
+   stacking them with zero gap so the eye reads the trio as a single piece.
+   D11 (heading-section adjacency) explicitly at 0. User direction 2026-05-25. */
+.page.page-toc > .dc-lede,
+.page.page-credits > .dc-lede,
+.page.page-intro > .dc-lede,
+.page.page-toc > .section:first-of-type,
+.page.page-credits > .section:first-of-type,
+.page.page-intro > .section:first-of-type,
+.page.page-toc > .dc-toc {
+  margin-top: 0;
+}
+
+.page.page-toc > .dc-lede,
+.page.page-credits > .dc-lede,
+.page.page-intro > .dc-lede {
+  margin-bottom: 0;
+}
+
+/* CREDITS colophon — flex column so the founder-house image bottom-justifies
+   in the column (user R1, iter-7). Inner .colophon-grid carries the 2-column
+   text layout AND has flex-grow:1 so it fills available section height;
+   image sits at section bottom via margin-top: auto on the image itself.
+   Replaced iter-7's min-height (paged.js fragility per print-judge feedback)
+   with flex-grow on the inner grid — iter-7b. */
 .section.credits-colophon {
   font-size: 9.5pt;
   line-height: 1.35;
   background: var(--paper-cream);
-  padding: 0.12in 0.18in;
+  padding: 0.18in 0.22in;
   box-shadow: var(--shadow-poster);
+  display: flex;
+  flex-direction: column;
+  columns: unset;
+}
+
+.section.credits-colophon .colophon-grid {
+  columns: 2;
+  column-gap: var(--gutter, 0.25in);
+  column-fill: balance;
+  flex-grow: 1;
 }
 
 .section.credits-colophon p {

@@ -30,7 +30,9 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 
 # Credits {.dc-chevron}
 
-@section .credits-colophon .two-column
+@section .credits-colophon
+
+<div class="colophon-grid">
 
 **Designers:** TWard and ITLackey
 
@@ -58,6 +60,8 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 
 **Published by Founders House · Dimm City · 2026.**
 
+</div>
+
 ![Founders House](img/founder-house.png){.fg-art-founders-house}
 
 ---
@@ -74,12 +78,12 @@ The city didn't go quiet—it got loud. That feline snarl tore through the alley
 
 @section
 
+![Scavenger holding a recovered field-detonator](img/scavenger.png){.fg-art-intro-image}
+
 > [!PULLQUOTE]
 > "How bright's it ay?!"
 
 They wore glossy slab-armor that flexed like chitin and burned like synthlight. Opposite them? A pack of ragged rabbits with wiry limbs and twitch-fast reflexes, zipping through the sprawl with street-born magic and muscle memory. Then the world erupted.
-
-![Scavenger holding a recovered field-detonator](img/scavenger.png){.fg-art-intro-image}
 
 Blasts lit the dusk like glitchfire. Bolts and teeth and claws tangled mid-air. Neon signs cracked. Alleyways bled smoke. Debris rained in bursts. This wasn't about glory—it was turf. It was pride. It was blood memory, raw and ugly, of family torn away by their rival.
 
