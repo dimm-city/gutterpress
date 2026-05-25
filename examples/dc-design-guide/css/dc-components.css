@@ -1241,6 +1241,18 @@ hr,
   column-span: all;
 }
 
+/* AP/numbered list items must stay whole — splitting "Bullet to Blood"
+   across columns reads as sloppy. break-inside: avoid keeps each <li>
+   together in a single column even when the column boundary lands in
+   the middle of one. Paragraphs immediately following list items also
+   stay glued so their text doesn't strand from its anchor item. */
+.dc-skill-card.two-col .dc-card-inner ol > li,
+.dc-skill-card.two-col .dc-card-inner ul > li,
+.dc-skill-card.two-col .dc-card-inner p {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
 /* Horizontal skill placement — NOTE: this is a known dead-end. I tried
    `.dc-specialty.skill-grid { columns: 2 }` and `display: grid` to pack
    skill cards horizontally on the page. Neither worked because paged.js
