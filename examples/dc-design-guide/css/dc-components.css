@@ -3422,123 +3422,31 @@ h3 + .section {
 /* ═════════════════════════════════════════════════════════════════════════
    CITIZEN-WALKTHROUGH — guide for filling out the Citizen File
    ═════════════════════════════════════════════════════════════════════════
-   This is the TUTORIAL chapter that walks a reader through what each field
-   of the Citizen File character sheet means and what choices belong there.
-   It is NOT a rendering of a filled-out Citizen File artifact — that is a
-   distinct component (.dc-citizen-file) shipping on a separate page later.
-
-   Content shape inside the section:
-     #### Field name           → section anchor naming a Citizen File field
-     Explanatory paragraphs    → 2–4 sentences of reading copy
-     Bold option list          → "Choose one: A, B, C, ..." inline choice menu
-     Markdown table            → option presentation (age, size pickers)
+   The chapter that walks a reader through each Citizen File field. NOT
+   the filled-form artifact (that is a future .dc-citizen-file component
+   on a separate page).
 
    Applied via:
-     @page .citizen-file                                          ← topic page (running header)
-     @section .two-column .col-split .dc-citizen-walkthrough      ← layout + component
+     @page .citizen-file                                          ← topic page
+     @section .two-column .col-split .dc-citizen-walkthrough      ← layout
 
-   Design pattern (post-2026-05-25 redesign):
-     - .col-split is required for @column-break to work reliably (paged.js
-       strips break-after:column otherwise), but it strips substrate. This
-       component re-supplies the substrate so The Wall principle holds:
-       reading copy sits on paper-cream, not bare brick.
-     - H4 field-names are SECTION ANCHORS (mono-caps tracked + hairline rule
-       above), NOT form labels. They announce a new field; they do not
-       request a fillable entry.
-     - Prose is FULL READING COPY (12pt body, 1.55 leading, no decoration).
-       No dot-leaders. No fillable-row chrome. This was the previous design's
-       category error.
-     - Bold inline runs carry the only color signal in the section
-       (--hud-blue-dark) so the eye learns "colored bold = a real choice."
-     - Option tables present choices as scannable rows with a bordered
-       selector box on the first cell — they look pickable without
-       requesting a literal fill.
-     - No bespoke top-rule / outline-inset / shadow chrome. The substrate
-       shift + section structure are the only frame.
+   STRIP-FIRST POLICY: this component intentionally carries NO bespoke
+   rules unless a problem is observable in the rendered page AND no base
+   style covers it. Justify each addition with the problem it solves.
+   See feedback_css_strip_first_principle.md.
+
+   OBSERVED PROBLEM 1 — "Floating text with no content container":
+   .section.col-split sets background: transparent and every ancestor up
+   to .pagedjs_sheet is also transparent, so walkthrough content sits on
+   the bare brick wall. Reading copy on brick violates The Wall principle.
+   Fix: higher-specificity selector (3 classes beats col-split's 2) to
+   restore the paper-cream substrate that col-split intentionally strips.
 */
 
-.dc-citizen-walkthrough {
-  /* Paper substrate so reading copy doesn't bleed into the brick wall
-     (The Wall principle). .col-split strips its own background; we
-     restore it here, scoped to this component only. */
+.section.col-split.dc-citizen-walkthrough {
   background: var(--paper-cream);
   padding: var(--space-md);
 }
-
-.dc-citizen-walkthrough h4 {
-  /* Section anchor — announces a Citizen File field. Mono-caps + tracked
-     reads as a structural marker; the hairline rule above creates a
-     field-separator rhythm without boxing each field.
-     R3 (single-direction margins): margin-top: 0; the inter-field gap is
-     created by padding-top, so the hairline rule sits ABOVE the gap and
-     reads as a divider between fields. */
-  font-family: var(--font-mono);
-  font-size: var(--fs-h5); /* 11pt */
-  font-weight: 700;
-  color: var(--hud-blue-dark);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  border-top: 0.5pt solid var(--paper-aged);
-  padding-top: var(--space-lg);
-  margin: 0 0 var(--space-sm) 0;
-  /* Anchor + first paragraph stay together — a label split from its
-     explanation would be a reading-flow break. */
-  break-after: avoid;
-}
-
-.dc-citizen-walkthrough h4:first-child {
-  /* No separator above the first field — the section substrate's top
-     edge already serves as the opening boundary. */
-  border-top: none;
-  padding-top: 0;
-}
-
-.dc-citizen-walkthrough p {
-  /* Reading copy at handbook scale. No fillable-row chrome. */
-  font-size: var(--fs-body); /* 12pt */
-  line-height: 1.55;
-  color: var(--ink);
-  margin-bottom: var(--space-sm);
-}
-
-.dc-citizen-walkthrough strong {
-  /* Bold inline runs ("EntD rat", "Corp exile", "Tiny:", ...) carry the
-     only color signal — eye learns this means a real choice. */
-  color: var(--hud-blue-dark);
-  font-weight: 700;
-}
-
-/* ── Option tables (age picker, size picker) ──────────────────────────── */
-.dc-citizen-walkthrough table {
-  width: 100%;
-  border-collapse: collapse;
-  /* R3: single-direction margin (bottom only). */
-  margin: 0 0 var(--space-sm) 0;
-  font-size: var(--fs-body-sm); /* 11pt */
-}
-
-.dc-citizen-walkthrough thead {
-  display: none;
-}
-
-.dc-citizen-walkthrough td {
-  padding: 5pt 6pt;
-  vertical-align: middle;
-  border-bottom: 0.5pt solid var(--paper-aged);
-  line-height: 1.4;
-  color: var(--ink);
-}
-
-.dc-citizen-walkthrough td:first-child {
-  /* Bordered selector box — reads as "pickable option" without inset
-     shadow artifice (which doesn't reproduce cleanly at POD 150 lpi). */
-  width: 14pt;
-  text-align: center;
-  border: 1pt solid var(--ink-dust);
-  background: var(--paper-light);
-  color: transparent;
-}
-
 
 /* ═════════════════════════════════════════════════════════════════════════
    NPC STAT BLOCK — DM/NPC entries (Patchhead, Grease Monkey, Undertow, ...)

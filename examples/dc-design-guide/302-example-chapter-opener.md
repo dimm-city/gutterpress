@@ -121,13 +121,8 @@ Expressing age in years means little in Dimm City. Here, age is experiential, no
 
 Survival, scars, augmentation, and memory say far more than a number ever could.
 
-Size carries no mechanical advantage. It's a narrative choice that shapes how you move through the city, how others perceive you, and how easily you stay with your crew:
+Size carries no mechanical weight — it shapes how you move through the city and how others read you.
 
-| |  |
-|-------|-------|
-|  |**Tiny:** Under 1 meter tall. You move through Dimm City like a rumor.|
-|  |**Small:** About 1–1.5 meters tall. You fit where the city pinches.|
-|  |**Medium:** About 1.6–2.5 meters tall. The city is built for bodies like yours.|
-|  |**Big:** Over 2.5 to 4 meters tall. Your presence fills rooms and draws eyes.|
+Choose one: **Tiny** (<1m, moves like a rumor), **Small** (1–1.5m, fits the pinches), **Medium** (1.6–2.5m, the default), or **Big** (2.5–4m, fills rooms).
 
 @end-section
