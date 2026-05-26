@@ -3102,8 +3102,13 @@ p.dc-img-wrapper {
 .section:not(.tabbed, .two-column, .three-column, .col-split) > :is(h2, h3):first-child {
   background: var(--section-accent);
   color: var(--paper-cream);
-  /* --space-md bottom margin gives the bar breathing room before body copy. */
-  margin: calc(-1 * var(--space-md)) calc(-1 * var(--space-lg)) var(--space-md);
+  /* Right margin breaks out of section padding AND outer page margin so the
+     bar bleeds flush to the page trim edge on recto pages. Left stays at
+     section edge (binding margin is on the other side). */
+  margin: calc(-1 * var(--space-md))
+          calc(-1 * (var(--space-lg) + var(--outer-margin)))
+          var(--space-md)
+          calc(-1 * var(--space-lg));
   padding: 0.42rem var(--space-lg) 0.28rem;
   /* Paged.js sets box-sizing: border-box on .pagedjs_pagebox *. With border-box,
      width:auto fills the parent CONTENT box so negative margins can't extend the
@@ -3142,8 +3147,11 @@ p.dc-img-wrapper {
   column-span: all;
   background: var(--section-accent);
   color: var(--paper-cream);
-  /* Bar reaches the section's inside edges (matches single-column behavior above). */
-  margin: calc(-1 * var(--space-sm)) calc(-1 * var(--space-lg)) var(--space-md);
+  /* Bar bleeds to page trim edge on recto (right margin = section pad + outer margin). */
+  margin: calc(-1 * var(--space-sm))
+          calc(-1 * (var(--space-lg) + var(--outer-margin)))
+          var(--space-md)
+          calc(-1 * var(--space-lg));
   padding: 0.42rem var(--space-lg) 0.28rem;
   box-sizing: content-box;
   border: 0;

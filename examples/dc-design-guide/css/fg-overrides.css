@@ -397,6 +397,15 @@
 .page:is(.page-toc, .page-intro) h1.dc-chevron {
   font-size: 28pt;
   letter-spacing: 0.08em;
+  /* Banner is a direct page child (no section wrapper). Extend right edge
+     to the page trim margin so the chevron spans full visible width on
+     recto pages. On verso pages it falls ~12px short (binding margin). */
+  margin-right: calc(-1 * var(--outer-margin));
+}
+
+/* Card-grid chapter banner — direct page child, same right-bleed logic. */
+.page.card-grid h2.dc-chevron {
+  margin-right: calc(-1 * var(--outer-margin));
 }
 
 /* CREDITS masthead — contest-judge R2 (iteration 4): the chevron grammar is
