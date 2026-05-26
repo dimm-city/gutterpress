@@ -3109,7 +3109,10 @@ p.dc-img-wrapper {
           calc(-1 * (var(--space-lg) + var(--outer-margin)))
           var(--space-md)
           calc(-1 * var(--space-lg));
-  padding: 0.42rem var(--space-lg) 0.28rem;
+  /* Right padding uses --space-2xl (0.25in ≈ 24px) so text clears the
+     print trim line by ≥ 0.125in even when the bar bleeds to 828px. Left
+     padding stays --space-lg to align flush with section border-box edge. */
+  padding: 0.42rem var(--space-2xl) 0.28rem var(--space-lg);
   /* Paged.js sets box-sizing: border-box on .pagedjs_pagebox *. With border-box,
      width:auto fills the parent CONTENT box so negative margins can't extend the
      right edge. content-box restores standard auto-width behaviour. */
@@ -3152,7 +3155,7 @@ p.dc-img-wrapper {
           calc(-1 * (var(--space-lg) + var(--outer-margin)))
           var(--space-md)
           calc(-1 * var(--space-lg));
-  padding: 0.42rem var(--space-lg) 0.28rem;
+  padding: 0.42rem var(--space-2xl) 0.28rem var(--space-lg);
   box-sizing: content-box;
   border: 0;
   letter-spacing: var(--ls-display);

@@ -398,9 +398,10 @@
   font-size: 28pt;
   letter-spacing: 0.08em;
   /* Banner is a direct page child (no section wrapper). Extend right edge
-     to the page trim margin so the chevron spans full visible width on
-     recto pages. On verso pages it falls ~12px short (binding margin). */
-  margin-right: calc(-1 * var(--outer-margin));
+     partway into the outer margin — intentional visual reach without
+     touching the trim (middle ground: half outer-margin = ~30px extension).
+     Full outer-margin reads too corporate on sparse front-matter pages. */
+  margin-right: calc(-1 * (var(--outer-margin) * 0.5));
 }
 
 /* Card-grid chapter banner — direct page child, same right-bleed logic. */
