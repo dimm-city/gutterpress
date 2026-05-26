@@ -953,7 +953,7 @@ h1.dc-chevron {
   color: var(--ink-smoke);
   background: linear-gradient(to right, var(--dc-intro-accent, var(--orange)) 4px, var(--paper-stain) 4px);
   line-height: 1.5;
-  padding: 10px 14px 10px 18px;
+  padding: 0 14px 10px 18px;
   margin: 0 0 calc(0.1in + 3pt) 0;
   box-shadow: var(--shadow-poster);
 }
