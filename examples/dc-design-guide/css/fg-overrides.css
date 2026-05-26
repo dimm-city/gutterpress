@@ -226,6 +226,11 @@
   letter-spacing: var(--ls-heading);
 }
 
+/* col-split h2s sit inside ~335px columns — step down one rung on the type scale */
+:is(.page.page-intro, .page.page-intro-overview) .section.col-split h2 {
+  font-size: var(--fs-h3);
+}
+
 
 /* ── SECTION HEADER BAR — chapter-scope hooks only ───────────────────────────
    The structural bar styling (size, padding, clip-path, hierarchy between
