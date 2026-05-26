@@ -272,7 +272,9 @@
 
 /* ── Cybersurgeon — precision surgical, silver, top-right diagonal ──────── */
 .dc-specialty.cybersurgeon {
-  --dc-skill-tab-shape: polygon(0 0, calc(100% - 30px) 0, 100% 30px, 100% 100%, 0 100%);
+  /* Tab diagonal capped at 18px — the 30px original exceeded the ~27px tab height,
+     making the polygon degenerate (right edge nearly invisible). */
+  --dc-skill-tab-shape: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
   --dc-skill-body-shape: polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
   --dc-path-title-shape: polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 0 100%);
   --dc-path-shell-clip: polygon(0 0, calc(100% - 26px) 0, 100% 26px, 100% 100%, 0 100%);
@@ -1907,14 +1909,6 @@ hr,
   align-items: center;
   justify-content: center;
   gap: 3px;
-  /* Chip clip-path — per-row variant via --dc-outcome-key-shape. User
-     feedback: "the chips are a lot of squares". Adding a subtle corner
-     cut breaks up the uniform-rectangle reading without losing the
-     stamped-chip identity. Default is a small bottom-right notch which
-     reads as "torn ticket" rather than "uniform grid cell". Each
-     .dc-outcome-row.X variant can override its shape to differentiate
-     the outcomes by silhouette. */
-  clip-path: var(--dc-outcome-key-shape, polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 12px) 100%, 0 100%));
 }
 
 .dc-outcome-name {
@@ -1968,25 +1962,18 @@ hr,
    The hit row uses --row-text-color override because fungi-glow is too
    light to carry paper-cream text (1.13:1 fail). Bright row + dark text
    preserves the bioluminescent signal while keeping labels press-legible. */
-/* Per-variant chip silhouettes break the uniform-grid reading per
-   user "lot of squares" feedback. Each outcome gets its own corner
-   cut so the ladder reads as a varied set of stamped chips, not a
-   table of identical rectangles. */
 .dc-outcome-row.crit {
   --row-color: var(--brand-magenta-deep);
-  --dc-outcome-key-shape: polygon(10px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 10px) 100%, 0 100%, 0 6px);
 }
 
 .dc-outcome-row.hit {
   --row-color: var(--fungi-glow);
   --dc-outcome-name-color: var(--ink);
   --dc-outcome-key-color: var(--ink);
-  --dc-outcome-key-shape: polygon(0 0, 100% 0, 100% 100%, 14px 100%, 0 calc(100% - 10px));
 }
 
 .dc-outcome-row.mixed {
   --row-color: var(--orange-deep);
-  --dc-outcome-key-shape: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
 }
 
 .dc-outcome-row.miss {
@@ -1994,12 +1981,10 @@ hr,
      + cream = 7.73:1, safer at 9-10pt chip sizes. Still warm red, still
      reads as "miss/fail" semantic. */
   --row-color: var(--blood);
-  --dc-outcome-key-shape: polygon(0 6px, 6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
 }
 
 .dc-outcome-row.fail {
   --row-color: var(--fungi-rot);
-  --dc-outcome-key-shape: polygon(8px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 8px);
 }
 
 /* ── Distance tags (AP cost × distance block) ─────────────────────────── */
