@@ -56,15 +56,15 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 
 **Edition & ISBN:** First Edition · Version 0.1.x · ISBN pending. Printed on demand via DriveThruRPG and Founders House direct.
 
-**Trademarks:** Dimm City, the Creaturepunk wordmark, and the chevron mark are trademarks of Founders House. © 2026 Founders House. All rights reserved.
-
-**Published by Founders House · Dimm City · 2026.**
+**Trademarks:** Dimm City, the Creaturepunk trademarked by Dimm City LLC. All rights reserved.
 
 </div>
 
+---
+
 ![Founders House](img/founder-house.png){.fg-art-founders-house}
 
----
+**Published by Dimm City LLC · 2026.**
 
 @page .page-intro .intro
 
@@ -81,9 +81,9 @@ The city didn't go quiet—it got loud. That feline snarl tore through the alley
 > [!PULLQUOTE]
 > "How bright's it ay?!"
 
-![Scavenger holding a recovered field-detonator](img/scavenger.png){.fg-art-intro-image}
-
 They wore glossy slab-armor that flexed like chitin and burned like synthlight. Opposite them? A pack of ragged rabbits with wiry limbs and twitch-fast reflexes, zipping through the sprawl with street-born magic and muscle memory. Then the world erupted.
+
+![Scavenger holding a recovered field-detonator](img/scavenger.png){.fg-art-intro-image}
 
 Blasts lit the dusk like glitchfire. Bolts and teeth and claws tangled mid-air. Neon signs cracked. Alleyways bled smoke. Debris rained in bursts. This wasn't about glory—it was turf. It was pride. It was blood memory, raw and ugly, of family torn away by their rival.
 
@@ -91,7 +91,9 @@ DimmCitz scattered, vanished into bolted dens and reinforced rooftops. Some just
 
 @end-section
 
-@section
+@page .page-intro-overview
+
+@section .col-split
 
 ## Metropolis in the Mist
 
@@ -101,9 +103,7 @@ You and your party make the dream come alive. Without you, it doesn't exist. The
 
 These dreams you share will last in your consciousness for life. The joys you found and the laughs you shared coupled with tragedy, sadness or even guilt can impact you in unexpected ways. Be "ready 'n' wary" as adventure in Dimm City is hard, fast, and not for the faint of heart.
 
-@end-section
-
-@section
+@column-break
 
 ## CREATUREPUNK
 
@@ -114,8 +114,4 @@ Creaturepunk is what happens when evolution takes a sledgehammer to the face and
 The city don't love you. The corps don't see you. The gods don't pick up.
 Good. That makes you dangerous.
 
-This is a genre where dreams are loud, limbs are optional, and survival's the last sacred act.
-
-Welcome to Creaturepunk. Get weird or get wrecked.
-
-@end-section
+This is a genre where dreams are loud, limbs are optional, and survival's the last sacred act. *Welcome to Creaturepunk. Get weird or get wrecked.*

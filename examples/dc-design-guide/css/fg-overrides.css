@@ -106,8 +106,8 @@
 }
 
 /* Intro splash — floated right with body text wrapping its left side.
-   Image is placed as the DOM-first child of the intro .section in
-   the markdown source, so float anchors at the section's top-right. */
+   No border or box-shadow: commissioned artwork floats as a raw image
+   so the illustration bleeds naturally into the surrounding prose. */
 .fg-art-intro-image {
   display: block;
   float: right;
@@ -117,9 +117,6 @@
   object-fit: contain;
   object-position: center;
   margin: 0.05in 0 0.15in 0.22in;
-  border: 1.5pt solid var(--ink-dark);
-  box-shadow: var(--shadow-poster);
-  background: var(--paper-cream);
   shape-outside: margin-box;
 }
 
@@ -190,10 +187,35 @@
   box-shadow: 2pt 2pt 0 rgba(138, 10, 154, 0.18);
 }
 
+/* ── FRONT MATTER LEDE — flush lede directly into following section ───────────
+   The .dc-intro block's default margin-bottom creates a ~14px gap before the
+   first section on the intro page. Intro flow reads better without it. */
+.page.page-intro .dc-intro {
+  margin-bottom: 0;
+}
+
+/* ── INTRO OVERVIEW PAGE — section-accent token for the new page ─────────────
+   Front-matter pages use :where(.page-intro) for zero-specificity token setting.
+   The intro-overview page needs the same magenta accent. */
+:where(.page-intro-overview) { --section-accent: var(--hud-magenta); }
+
+/* ── INTRO col-split: styled to match two-column section appearance ──────────
+   The col-split section uses flex (not CSS multicol), guaranteeing METROPOLIS
+   in col 1 and CREATUREPUNK in col 2. Override the col-split defaults to match
+   the two-column section's card appearance (section-bg, thick accent border).
+   Applies to both the intro page (if content fits) and the dedicated overview
+   page (where it always has a full page). */
+:is(.page.page-intro, .page.page-intro-overview) .section.col-split {
+  background: var(--section-bg);
+  border-top: 3px solid var(--section-accent);
+  border-bottom: 2px solid var(--border-hairline);
+  padding: var(--space-sm) var(--space-md);
+}
+
 /* ── FRONT MATTER PAGE H2 — dark band treatment ──────────────────────────────
-   Scoped to .page.page-intro so only the "Metropolis" / "CREATUREPUNK" intro
-   sections get the dark-band H2 treatment. */
-.page.page-intro h2 {
+   Covers both the intro page and the intro-overview page (METROPOLIS /
+   CREATUREPUNK side-by-side columns). */
+:is(.page.page-intro, .page.page-intro-overview) h2 {
   background: var(--ink-dark);
   color: var(--paper-cream);
   border-bottom: 3px solid var(--hud-magenta);
@@ -203,6 +225,7 @@
   box-sizing: border-box;
   letter-spacing: var(--ls-heading);
 }
+
 
 /* ── SECTION HEADER BAR — chapter-scope hooks only ───────────────────────────
    The structural bar styling (size, padding, clip-path, hierarchy between

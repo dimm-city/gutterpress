@@ -50,7 +50,7 @@ They are simply part of what makes an Augmerc dangerous.
 
 When creatures crowd into reach, you can trigger the system to bloom outward in a form you choose upon implant: blades, spikes, studs, or writhing polyalloy pseudopods. Spending an action doing nothing but defending, the rig braces and answers every swing, letting you resist 2 damage from all melee attacks and dealing 1 damage to all creatures in reach at the start of your turn.
 
-@skill {.two-col}
+@skill
 
 #### Punishing Counter | AUG1.1
 
@@ -64,7 +64,7 @@ When an enemy falters, you may trigger one of the following counters:
 
 Openings are invitations to take a chunk out 'em.
 
-@skill {.two-col}
+@skill
 
 #### Rage Hit | AUG1.2
 
@@ -87,7 +87,7 @@ Until the start of your next turn, any enemy that starts their turn in reach of 
 
 Full send or full regret.
 
-@skill {.two-col}
+@skill
 
 #### Dirty Work | AUG1.3
 
@@ -106,7 +106,7 @@ Once per round, outside your turn, you exploit a target in reach. Choose one tec
 
 You don't need an opening. You make one.
 
-@skill {.two-col}
+@skill
 
 #### Pain Compliance | AUG1.4
 
@@ -120,7 +120,7 @@ You lock down a target in reach, exploiting pain and leverage over raw force. Th
 
 Pain is a language everyone understands.
 
-@skill {.two-col}
+@skill
 
 #### It's Personal | AUG1.5
 
