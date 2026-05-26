@@ -2413,7 +2413,7 @@ hr,
 }
 
 .dc-toc ol>li>strong {
-  color: var(--hud-blue);
+  color: var(--hud-blue-dark);
 }
 
 .dc-toc ol>li>a {

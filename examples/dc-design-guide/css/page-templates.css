@@ -248,6 +248,11 @@
   columns: 1;
 }
 
+/* Credits colophon: section inherits columns from page context; reset to flow,
+   then inner grid uses 2-col balance. */
+.section.credits-colophon { columns: unset; }
+.section.credits-colophon .colophon-grid { columns: 2; }
+
 /* ── PAGE TEMPLATE: IMAGE (NEW) ────────────────────────────────────────────── */
 /* Image page — full-width image at the top or bottom with no horizontal margin
    extension at the top/bottom edge. Default page margins apply on the sides.

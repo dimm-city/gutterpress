@@ -280,6 +280,9 @@
 
 /* Chapter 5 — DM & NPC pages (stat blocks) */
 #ch-example-dm-npcs { --section-accent: var(--rust); }
+/* Prevent level-3 heading orphan at bottom of p29 (paged.js doesn't honor
+   break-after:avoid on siblings; scoped break-before on the heading works). */
+#ch-example-dm-npcs .section > h3:first-child { break-before: avoid; }
 
 /* Chapter 6 — gear & tech */
 #ch-example-gear-tech { --section-accent: var(--amber-dark); }
@@ -443,11 +446,9 @@
   box-shadow: var(--shadow-poster);
   display: flex;
   flex-direction: column;
-  columns: unset;
 }
 
 .section.credits-colophon .colophon-grid {
-  columns: 2;
   column-gap: var(--gutter, 0.25in);
   column-fill: balance;
   flex-grow: 1;

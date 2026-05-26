@@ -30,7 +30,7 @@ They are simply part of what makes an Augmerc dangerous.
 
 @specialty-art
 
-![Augmerc](https://placehold.co/600x800/png?text=Augmerc)
+![Augmerc](https://placehold.co/600x800/1a1512/cc3399/png?text=AUGMERC)
 
 @end-specialty-art
 
