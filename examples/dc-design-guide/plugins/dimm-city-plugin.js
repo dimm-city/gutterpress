@@ -662,7 +662,9 @@ function buildProcedureList(items) {
   let html = '<ol class="dc-steps">\n';
   items.forEach((itemHtml, idx) => {
     const stepNo = String(idx + 1).padStart(2, '0');
-    html += '  <li><span class="dc-step-no">' + esc(stepNo) + '</span><span>' + itemHtml + '</span></li>\n';
+    // Strip @end-procedure if markdown-it consumed it as continuation of the last item
+    const cleaned = itemHtml.replace(/\n?@end-procedure\s*$/g, '').trimEnd();
+    html += '  <li><span class="dc-step-no">' + esc(stepNo) + '</span><span>' + cleaned + '</span></li>\n';
   });
   html += '</ol>\n';
   return html;

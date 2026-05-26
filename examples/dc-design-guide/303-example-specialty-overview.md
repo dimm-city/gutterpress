@@ -215,16 +215,6 @@ Don't agonize over the choice. Most Dreamers don't know their specialty until th
 
 @end-section
 
-@section
-
-### What Comes Next
-
-The next chapter walks through what each specialty actually does at the table — the abilities, the augmentations, the rituals, the way each one breaks the laws of a city that wants you breaking them anyway. Read your pick first. Then read the others. Specialties don't stand alone in Dimm City; the crews that survive are the ones whose specialties chew off each other's edges.
-
-If you're still on the fence, that's fine. The Dream Master will give you a few sessions to feel which way the city pushes you. The character you bring in is a draft. The character that walks out of the first heist is the one that's yours.
-
-@end-section
-
 ## How Abilities Work {.dc-spray}
 
 @lede
@@ -248,5 +238,15 @@ In Dimm City, abilities aren't just what you can do. They're learned techniques,
 @end-procedure
 
 Everything in this chapter exists to support that loop. Abilities bend it. Dice decide it. Dreamers drive it. The Monoverse responds.
+
+@end-section
+
+@section
+
+### What Comes Next
+
+The next chapter walks through what each specialty actually does at the table — the abilities, the augmentations, the rituals, the way each one breaks the laws of a city that wants you breaking them anyway. Read your pick first. Then read the others. Specialties don't stand alone in Dimm City; the crews that survive are the ones whose specialties chew off each other's edges.
+
+If you're still on the fence, that's fine. The Dream Master will give you a few sessions to feel which way the city pushes you. The character you bring in is a draft. The character that walks out of the first heist is the one that's yours.
 
 @end-section
