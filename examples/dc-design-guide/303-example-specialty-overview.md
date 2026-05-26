@@ -25,30 +25,6 @@ Five shadows moved as one, already inside, already gone.
 
 @end-section
 
-## How Abilities Work {.dc-spray}
-
-@lede
-
-How that pack works wasn't luck. It was abilities firing in sequence. Each move opened space. Each ability set up the next.
-
-In Dimm City, abilities aren't just what you can do. They're learned techniques, invasive augments, practiced rituals, and raw instinct working as one.
-
-@end-lede
-
-@callout variant=note label="The Core Loop of a Dream"
-
-Every moment in Dimm City runs on the same simple rhythm:
-
-- The Dream Master describes the situation.
-- A Dreamer declares an action.
-- If the outcome is uncertain, you ROLL THE DIE or activate an ability.
-- The result determines what happens next.
-- The scene evolves and the Dream continues.
-
-Everything in this chapter exists to support that loop. Abilities bend it. Dice decide it. Dreamers drive it. The Monoverse responds.
-
-@end-callout
-
 @page .card-grid
 
 ## Choose Your Specialty {.dc-chevron}
@@ -246,5 +222,31 @@ Don't agonize over the choice. Most Dreamers don't know their specialty until th
 The next chapter walks through what each specialty actually does at the table — the abilities, the augmentations, the rituals, the way each one breaks the laws of a city that wants you breaking them anyway. Read your pick first. Then read the others. Specialties don't stand alone in Dimm City; the crews that survive are the ones whose specialties chew off each other's edges.
 
 If you're still on the fence, that's fine. The Dream Master will give you a few sessions to feel which way the city pushes you. The character you bring in is a draft. The character that walks out of the first heist is the one that's yours.
+
+@end-section
+
+## How Abilities Work {.dc-spray}
+
+@lede
+
+How that pack works wasn't luck. It was abilities firing in sequence. Each move opened space. Each ability set up the next.
+
+In Dimm City, abilities aren't just what you can do. They're learned techniques, invasive augments, practiced rituals, and raw instinct working as one.
+
+@end-lede
+
+@section
+
+### The Core Loop of a Dream
+
+@procedure
+1. The Dream Master describes the situation.
+2. A Dreamer declares an action.
+3. If the outcome is uncertain, you ROLL THE DIE or activate an ability.
+4. The result determines what happens next.
+5. The scene evolves and the Dream continues.
+@end-procedure
+
+Everything in this chapter exists to support that loop. Abilities bend it. Dice decide it. Dreamers drive it. The Monoverse responds.
 
 @end-section

@@ -91,9 +91,8 @@ DimmCitz scattered, vanished into bolted dens and reinforced rooftops. Some just
 
 @end-section
 
-@page .page-intro-overview
-
-@section .col-split
+@page 
+@section
 
 ## Metropolis in the Mist
 
@@ -103,7 +102,7 @@ You and your party make the dream come alive. Without you, it doesn't exist. The
 
 These dreams you share will last in your consciousness for life. The joys you found and the laughs you shared coupled with tragedy, sadness or even guilt can impact you in unexpected ways. Be "ready 'n' wary" as adventure in Dimm City is hard, fast, and not for the faint of heart.
 
-@column-break
+@section
 
 ## CREATUREPUNK
 
