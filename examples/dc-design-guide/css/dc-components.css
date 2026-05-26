@@ -261,6 +261,7 @@
   --dc-specialty-card-accent: var(--brand-magenta);
   --dc-specialty-card-border: var(--brand-magenta);
   --dc-specialty-card-title-color: var(--augmerc-dark);
+  --dc-specialty-card-shadow: inset 0 0 0 1.5pt var(--brand-magenta);
 }
 
 .dc-specialty.augmerc .dc-specialty-intro {
@@ -297,6 +298,7 @@
   --dc-specialty-card-accent: var(--hud-blue-dark);
   --dc-specialty-card-border: var(--hud-blue-dark);
   --dc-specialty-card-title-color: var(--cybersurgeon-dark);
+  --dc-specialty-card-shadow: inset 0 0 0 1.5pt var(--hud-blue-dark);
 }
 
 .dc-specialty.cybersurgeon .dc-specialty-intro {
@@ -328,7 +330,7 @@
 }
 
 .dc-specialty.proxy .dc-specialty-card {
-  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-bg: var(--paper-aged);
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--proxy-mid);
   --dc-specialty-card-border: var(--proxy-mid);
@@ -369,6 +371,7 @@
   --dc-specialty-card-accent: var(--wirephreak-mid);
   --dc-specialty-card-border: var(--wirephreak-mid);
   --dc-specialty-card-title-color: var(--wirephreak-dark);
+  --dc-specialty-card-shadow: inset 0 0 0 1.5pt var(--wirephreak-mid);
 }
 
 .dc-specialty.wirephreak .dc-specialty-intro {
@@ -400,7 +403,7 @@
 }
 
 .dc-specialty.streetwarden .dc-specialty-card {
-  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-bg: var(--paper-light);
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--streetwarden-mid);
   --dc-specialty-card-border: var(--streetwarden-mid);
@@ -486,7 +489,7 @@
 }
 
 .dc-specialty.gutterdruid .dc-specialty-card {
-  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-bg: var(--paper-aged);
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--gutterdruid-mid);
   --dc-specialty-card-border: var(--gutterdruid-mid);
@@ -522,7 +525,7 @@
 }
 
 .dc-specialty.etherlock .dc-specialty-card {
-  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-bg: var(--paper-aged);
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--etherlock-mid);
   --dc-specialty-card-border: var(--etherlock-mid);
@@ -599,7 +602,7 @@
 }
 
 .dc-specialty.generalist .dc-specialty-card {
-  --dc-specialty-card-bg: var(--paper-cream);
+  --dc-specialty-card-bg: var(--paper-light);
   --dc-specialty-card-fg: var(--ink);
   --dc-specialty-card-accent: var(--generalist-mid);
   --dc-specialty-card-border: var(--generalist-mid);
@@ -1072,6 +1075,7 @@ hr,
   break-before: page;
   margin: 0;
   overflow: hidden;
+  background: var(--ink-dark); /* dark fallback so a missing image reads as intentional art plate */
 }
 
 .dc-specialty-art img {
@@ -3126,12 +3130,14 @@ p.dc-img-wrapper {
   break-after: avoid;
 }
 
-/* H2 — PRIMARY: taller padding + 18px chamfer matches the card's own notch. */
+/* H2 — PRIMARY: taller padding + 18px chamfer matches the card's own notch.
+   Bottom rule at --orange adds one extra hierarchy step vs H3. */
 .section:not(.tabbed, .two-column, .three-column, .col-split) > h2:first-child {
   font-size: var(--fs-h3);
   padding-top: 0.55rem;
   padding-bottom: 0.40rem;
   clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+  border-bottom: 3pt solid var(--orange);
 }
 
 /* H3 — SUBORDINATE: same edge-to-edge flush as H2; hierarchy reads through
@@ -3581,16 +3587,17 @@ h3 + .section {
 }
 .dc-card-grid .dc-specialty:first-of-type { break-before: avoid; }
 
-/* Compact specialty card density: 8 cards on one page in 2 columns */
+/* Compact specialty card density: 10 cards on one page in 2 columns */
 .dc-card-grid .dc-specialty-card {
-  --dc-specialty-card-media-height: 0.65in;
-  --dc-specialty-card-media-width: 0.6in;
-  padding: var(--space-md);
-  margin: 0 0 0.04in 0;
+  --dc-specialty-card-media-height: 0.42in;
+  --dc-specialty-card-media-width: 0.38in;
+  padding: var(--space-sm);
+  margin: 0;
 }
-.dc-card-grid .dc-specialty-card p { line-height: 1.25; font-size: 9pt; }
-.dc-card-grid .dc-specialty-card h3 { font-size: 1em; }
-.dc-card-grid .dc-specialty-card blockquote { font-size: 0.9em; margin: 0.02in 0 0; }
+.dc-card-grid .dc-specialty-card img { margin-bottom: 0; }
+.dc-card-grid .dc-specialty-card p { line-height: 1.2; font-size: 8pt; }
+.dc-card-grid .dc-specialty-card h3 { font-size: 0.95em; margin: 0; padding-top: 0; line-height: 1.3; }
+.dc-card-grid .dc-specialty-card blockquote { font-size: 0.85em; margin: 0; line-height: 1.3; }
 
 
 /* ═════════════════════════════════════════════════════════════════════════
