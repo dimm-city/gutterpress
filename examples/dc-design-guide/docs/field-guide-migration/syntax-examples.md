@@ -1,14 +1,16 @@
 # Field Guide Syntax Examples
 
-One representative before/after example for every component and pattern type found in the live field guide source (`dc-op-manual/field-guide/`). File paths are relative to that directory. Use these for author reference and as acceptance tests when migrating.
+One representative before/after example for every component and pattern type found in the live field guide source (`dc-op-manual/field-guide/`). File paths are relative to that directory.
 
 ---
 
 ## How to Read This Document
 
-- **BEFORE** — exact source from the live field guide (file + line)
-- **AFTER** — canonical new syntax per the migration plan
-- Patterns marked ⚠️ have open specs or require author decision before migration
+Each entry includes:
+- **file:line** — where the example lives in the live source
+- **Change:** — exactly what needs to be done to that line/block
+- **BEFORE / AFTER** — the exact old and new markdown
+- ⚠️ — open spec or author decision required before migrating
 
 ---
 
@@ -16,38 +18,32 @@ One representative before/after example for every component and pattern type fou
 
 ### 1.1 Chapter opener
 
-`chapter-02 0.md` line 4 — already correct; shown for reference.
+`chapter-02 0.md` line 4 — **Change:** none; already canonical.
 
 ```markdown
 @chapter C.02
 @page .page-chapter-start .chapter-start .chapter-02
 ```
 
-No change needed. Canonical.
-
 ---
 
 ### 1.2 Named page marker
 
-`chapter-01.md` line 2 — already correct.
+`chapter-01.md` line 2 — **Change:** none; already canonical.
 
 ```markdown
 @page .page-info-sidebar .citizen-file .chapter-01
 ```
 
-No change needed.
-
 ---
 
 ### 1.3 Column break
 
-`chapter-01.md` line 77 — already correct.
+`chapter-01.md` line 77 — **Change:** none; already canonical.
 
 ```markdown
 ---{.column-break}
 ```
-
-No change needed.
 
 ---
 
@@ -55,7 +51,7 @@ No change needed.
 
 ### 2.1 Lede container
 
-`chapter-00.md` lines 6–8
+`chapter-00.md` lines 6–8 — **Change:** replace `::: lede` with `@lede`; replace closing `:::` with `@end-lede`.
 
 **BEFORE:**
 ```markdown
@@ -77,7 +73,9 @@ Twelve chapters of dreams, dirt, and what bites back...
 
 ### 3.1 Wrapper with class — TOC
 
-`chapter-00.md` lines 10–28
+`chapter-00.md` lines 10–28 — **Change:** replace `::: wrapper {.dc-toc}` with `@block .dc-toc`; replace closing `:::` with `@end-block`.
+
+⚠️ Requires `@block .classname` syntax fix (Phase 0 prerequisite).
 
 **BEFORE:**
 ```markdown
@@ -95,13 +93,11 @@ Twelve chapters of dreams, dirt, and what bites back...
 @end-block
 ```
 
-⚠️ Requires `@block .classname` syntax fix (Phase 0 prerequisite).
-
 ---
 
 ### 3.2 Empty wrapper — remove
 
-`chapter-03.md` line 449
+`chapter-03.md` line 449 — **Change:** delete the `::: wrapper` line and its closing `:::` line entirely; leave the inner content in place.
 
 **BEFORE:**
 ```markdown
@@ -118,13 +114,13 @@ Twelve chapters of dreams, dirt, and what bites back...
 ...
 ```
 
-Delete the wrapper entirely — no class, no purpose.
-
 ---
 
 ### 3.3 Outcome / rules table (authority register)
 
-`chapter-03.md` line 591
+`chapter-03.md` line 591 — **Change:** replace `::: container {.outcome-table}` with `@block .slate`; replace closing `:::` with `@end-block`.
+
+⚠️ Requires `@block` P0b.
 
 **BEFORE:**
 ```markdown
@@ -143,13 +139,11 @@ Delete the wrapper entirely — no class, no purpose.
 @end-block
 ```
 
-⚠️ Requires `@block` P0b.
-
 ---
 
 ## 4. Sidebar
 
-`chapter-03.md` line 496
+`chapter-03.md` line 496 — **Change:** replace `::: container {.dc-sidebar}` with `@sidebar`; replace closing `:::` with `@end-sidebar`.
 
 **BEFORE:**
 ```markdown
@@ -172,11 +166,9 @@ Delete the wrapper entirely — no class, no purpose.
 
 ## 5. Alert Blockquotes
 
-All alert types use standard GFM blockquote syntax. Several instances in the field guide still use legacy `{.class}` attribute syntax or `:::wrapper` containers.
-
 ### 5.1 VISIT callout
 
-`chapter-01.md` line 79
+`chapter-01.md` line 79 — **Change:** remove the `{.visit-callout}` attribute line; reformat the preceding text as `> [!VISIT]\n> text` blockquote.
 
 **BEFORE:**
 ```markdown
@@ -195,7 +187,7 @@ Don't start with numbers. Start with a body, a vibe, and a reason you're still b
 
 ### 5.2 VIBE callout
 
-`chapter-01.md` line 387
+`chapter-01.md` line 387 — **Change:** remove the `{.vibe-callout}` attribute line; prefix the text with `> [!VIBE]\n>`.
 
 **BEFORE:**
 ```markdown
@@ -213,7 +205,7 @@ DM tip: Ask each Dreamer for one vibe cue, then echo it back in the first NPC re
 
 ### 5.3 ORIGIN callout
 
-`chapter-01.md` line 420
+`chapter-01.md` line 420 — **Change:** remove the `{.origin-callout}` attribute line; prefix the text with `> [!ORIGIN]\n>`.
 
 **BEFORE:**
 ```markdown
@@ -231,7 +223,9 @@ Origin prompt: What did you lose here, and what did you learn to survive it?
 
 ### 5.4 GEAR callout
 
-`chapter-01.md` lines 809–819
+`chapter-01.md` lines 809–819 — **Change:** replace `::: wrapper {.gear-callout}` and closing `:::` with `> [!GEAR]\n>` prefix on the content line.
+
+⚠️ Verify `[!GEAR]` handler is registered in `dimm-city-plugin.js` before migrating.
 
 **BEFORE:**
 ```markdown
@@ -248,20 +242,16 @@ Not everything you carry is a weapon, a tool, or a piece of tech...
 > Not everything you carry is a weapon, a tool, or a piece of tech...
 ```
 
-⚠️ Verify `[!GEAR]` handler is registered in `dimm-city-plugin.js` before migrating.
-
 ---
 
 ### 5.5 DM / NOTE callouts
 
-`chapter-02 0.md` line 63 — already correct; shown for reference.
+`chapter-02 0.md` line 63 — **Change:** none; already canonical.
 
 ```markdown
 > [!NOTE] The Core Loop of a Dream
 > Every moment in Dimm City runs on...
 ```
-
-No change needed.
 
 ---
 
@@ -269,7 +259,7 @@ No change needed.
 
 ### 6.1 Art class rename
 
-`chapter-00.md` line 64 (and ~20 instances throughout the book)
+`chapter-00.md` line 64 (~20 instances throughout the book) — **Change:** find-replace `.art-` → `.dc-art-` on all image class attributes across all chapters. Safe to run as a global sweep.
 
 **BEFORE:**
 ```markdown
@@ -281,13 +271,11 @@ No change needed.
 ![intro-image](images/chapter-00/neonrabbit.png){.dc-art-intro-image}
 ```
 
-All `.art-X` classes gain a `.dc-` prefix. Find-replace across all chapters.
-
 ---
 
 ### 6.2 `.bottom-center` image position
 
-`chapter-05.md` line 73 (also `chapter-01.md` lines 459, 512, 883)
+`chapter-05.md` line 73 (also `chapter-01.md` lines 459, 512, 883) — **Change:** replace `.bottom-center` with `.dc-art-bottom` in image attrs at these 4 locations.
 
 **BEFORE:**
 ```markdown
@@ -303,7 +291,7 @@ All `.art-X` classes gain a `.dc-` prefix. Find-replace across all chapters.
 
 ### 6.3 `{class="X"}` → `{.X}` syntax
 
-`chapter-02 4 Gutterdruid.md` line 5
+`chapter-02 4 Gutterdruid.md` line 5 — **Change:** replace `{class="gutterdruid" }` with `{.gutterdruid}`. Grep for `{class=` across all files and fix any other instances.
 
 **BEFORE:**
 ```markdown
@@ -315,15 +303,13 @@ All `.art-X` classes gain a `.dc-` prefix. Find-replace across all chapters.
 ![druid](./images/chapter-03/Gutterdruid.png){.gutterdruid}
 ```
 
-Simple find-replace. Markdown-it-attrs supports both; `{.X}` is preferred.
-
 ---
 
 ## 7. Specialty Sections
 
 ### 7.1 Specialty scope wrapper — syntax normalization
 
-`chapter-02 1 Augmerc.md` line 1
+`chapter-02 1 Augmerc.md` line 1 (also line 1 of all 8 specialty files) — **Change:** remove the braces: `@specialty {.NAME}` → `@specialty .NAME`. One fix per file, 8 files total.
 
 **BEFORE:**
 ```markdown
@@ -335,13 +321,11 @@ Simple find-replace. Markdown-it-attrs supports both; `{.X}` is preferred.
 @specialty .augmerc
 ```
 
-Remove braces. All 8 specialty files use `{.NAME}` form; all need this fix.
-
 ---
 
 ### 7.2 Specialty intro block
 
-`chapter-02 1 Augmerc.md` lines 3–25
+`chapter-02 1 Augmerc.md` lines 3–25 — **Change:** replace `::: wrapper {.specialty-intro}` with `@specialty-intro`; replace closing `:::` with `@end-specialty-intro`. Repeat for each specialty file that has this block (Augmerc and Proxy confirmed; others need verification).
 
 **BEFORE:**
 ```markdown
@@ -369,7 +353,7 @@ An Augmerc is muscle for hire...
 
 ### 7.3 Specialty art block
 
-`chapter-02 1 Augmerc.md` lines 27–31
+`chapter-02 1 Augmerc.md` lines 27–31 — **Change:** replace `::: wrapper {.specialty-art}` with `@specialty-art`; replace closing `:::` with `@end-specialty-art`.
 
 **BEFORE:**
 ```markdown
@@ -393,7 +377,7 @@ An Augmerc is muscle for hire...
 
 ### 7.4 Specialty card (chapter-01 overview cards)
 
-`chapter-01.md` lines 228–240 (one of 10 specialty summary cards)
+`chapter-01.md` lines 228–240 (one of 10 specialty summary cards) — **Change:** replace `::: wrapper {.specialty-card .augmerc}` with `@specialty .augmerc` + `@specialty-card` on the next line; replace closing `:::` with `@end-specialty-card` + `@end-specialty`. Repeat for all 10 specialty cards in chapter-01.
 
 **BEFORE:**
 ```markdown
@@ -429,7 +413,9 @@ Heavily armed and wired for war...
 
 ### 7.5 Spec Tweak block
 
-`chapter-02 3 Streetwarden.md` line 19 (same pattern in all 8 specialty files)
+`chapter-02 3 Streetwarden.md` line 19 (same `### Spec Tweak:` heading in all 8 specialty files) — **Change:** insert `@block .slate` on the line immediately before `### Spec Tweak:`; insert `@end-block` on the line immediately after the last sentence of Spec Tweak content (before the first `@learning-path`).
+
+⚠️ Mandatory — NOT optional. Without `.slate`, Spec Tweaks are indistinguishable from regular ability entries. Requires `@block` P0b.
 
 **BEFORE:**
 ```markdown
@@ -445,13 +431,11 @@ You move through the city like fog through a gap in the wall...
 @end-block
 ```
 
-⚠️ Mandatory — NOT optional. Without the `.slate` wrapper, Spec Tweaks are visually indistinguishable from regular ability entries. Requires `@block` P0b.
-
 ---
 
 ## 8. Learning Path
 
-`chapter-02 1 Augmerc.md` lines 33–46
+`chapter-02 1 Augmerc.md` lines 33–46 (~51 instances across all chapter-02 files) — **Change:** add `@end-learning-path` on the line immediately after the last bullet item in each learning path block. The opening `@learning-path` is already correct.
 
 **BEFORE:**
 ```markdown
@@ -459,7 +443,7 @@ You move through the city like fog through a gap in the wall...
 
 ### Biting Distance
 
-> If you can touch it, you can maul it. When things get close, they bleed.
+> If you can touch it, you can maul it.
 
 - Punishing Counter
 - Rage Hit
@@ -474,7 +458,7 @@ You move through the city like fog through a gap in the wall...
 
 ### Biting Distance
 
-> If you can touch it, you can maul it. When things get close, they bleed.
+> If you can touch it, you can maul it.
 
 - Punishing Counter
 - Rage Hit
@@ -485,15 +469,13 @@ You move through the city like fog through a gap in the wall...
 @end-learning-path
 ```
 
-The macro syntax is already correct; only the closing `@end-learning-path` marker is missing throughout the book.
-
 ---
 
 ## 9. Skill Abilities
 
 ### 9.1 Remove `variant="N"` attribute
 
-`chapter-02 1 Augmerc.md` line 49 (~160 instances across all chapter-02 files)
+`chapter-02 1 Augmerc.md` line 49 (~160 instances across all chapter-02 files) — **Change:** on every `@skill` line, remove `variant="N"` (where N is any number). The rest of the line is unchanged. Can be done with: `sed -i 's/ variant="[^"]*"//g'` across all chapter-02 files.
 
 **BEFORE:**
 ```markdown
@@ -513,13 +495,11 @@ The macro syntax is already correct; only the closing `@end-learning-path` marke
 > See an opening, ya take it...
 ```
 
-`variant="N"` is silently ignored by the plugin. Remove in a sweep across all chapter-02 files.
-
 ---
 
 ### 9.2 `<ins>` tags → bold
 
-`chapter-02 2 Proxy.md` line 22
+`chapter-02 2 Proxy.md` line 22 — **Change:** replace `<ins>` with `**` and `</ins>` with `**` throughout this file. Verify surrounding bold markers don't double up.
 
 **BEFORE:**
 ```markdown
@@ -537,7 +517,9 @@ Your unshakable belief... You **always** **ROLL A DIE!**... it's **always** roll
 
 ### 10.1 Ideal entry
 
-`chapter-01.md` lines 463–476
+`chapter-01.md` lines 451–510 — **Change:** (1) delete the `:::: wrapper {.section-header}` / `::::` block (the heading wrapper); (2) add `@section .dc-ideals` before the first ideal; (3) wrap each individual ideal in `@card` / `@end-card`; (4) add `@end-section` after the last ideal entry.
+
+⚠️ Blocked on `@card` macro (Phase 1) and `dc-components.css` rules for `.dc-ideals`.
 
 **BEFORE:**
 ```markdown
@@ -570,13 +552,11 @@ Their belief cuts clean:
 @end-section
 ```
 
-⚠️ Blocked on `@card` macro (Phase 1) and `dc-components.css` rules for `.dc-ideals`.
-
 ---
 
 ### 10.2 Flaw entry
 
-`chapter-01.md` lines 524–538
+`chapter-01.md` lines 514–559 — **Change:** same as ideals: (1) delete `.section-header` wrapper; (2) add `@section .dc-flaws`; (3) wrap each flaw in `@card` / `@end-card`; (4) add `@end-section`. Dreams in `chapter-02 4 Gutterdruid.md` follow the same structure with `.dc-dreams`.
 
 **BEFORE:**
 ```markdown
@@ -602,13 +582,13 @@ Their ambition has no ceiling:
 @end-section
 ```
 
-Same pattern as Ideals. Dreams follow the same structure in chapter-02 4 Gutterdruid.md.
-
 ---
 
 ## 11. At-a-Glance Cards
 
-`chapter-01.md` lines 148–165
+`chapter-01.md` lines 148–165 — **Change:** replace `::::: wrapper {.at-a-glance-cards}` with `@block .dc-at-a-glance-cards`; replace each `::: wrapper {.at-a-glance-card}` with `@block .dc-at-a-glance-card`; replace each `:::` / `:::::` close with `@end-block`.
+
+⚠️ Requires `@block .classname` syntax (Phase 0).
 
 **BEFORE:**
 ```markdown
@@ -632,15 +612,13 @@ Same pattern as Ideals. Dreams follow the same structure in chapter-02 4 Gutterd
 @end-block
 ```
 
-⚠️ Requires `@block .classname` syntax (Phase 0).
-
 ---
 
 ## 12. Glossary / Definitions
 
 ### 12.1 Two-column glossary wrapper
 
-`chapter-04.md` line 619
+`chapter-04.md` lines 619–735 — **Change:** (1) replace `:::: wrapper {.two-column .dc-terms}` with `@section .two-column`; (2) replace each `::: wrapper {.item}` (or `.item .violet`) with `@definition`; (3) replace each closing `:::` with `@end-definition`; (4) replace closing `::::` with `@end-section`; (5) drop `.violet` modifier — no CSS backing.
 
 **BEFORE:**
 ```markdown
@@ -672,15 +650,13 @@ Same pattern as Ideals. Dreams follow the same structure in chapter-02 4 Gutterd
 @end-section
 ```
 
-Drop `.violet` — no CSS backing. The `@definition` macro handles the `dt`/`dd` structure.
-
 ---
 
 ## 13. Gear Entries
 
 ### 13.1 Standard gear entry
 
-`chapter-05.md` lines 344–360
+`chapter-05.md` lines 344–360 — **Change:** remove the outer `:::: wrapper` / `::::` lines and the inner `::: wrapper {.item}` / `:::` lines; replace the pair with `@gear` at the top and `@end-gear` at the bottom. Inner content is unchanged.
 
 **BEFORE:**
 ```markdown
@@ -709,7 +685,9 @@ Drop `.violet` — no CSS backing. The `@definition` macro handles the `dt`/`dd`
 
 ### 13.2 Multi-table weapon entry
 
-`chapter-05.md` lines 435–490
+`chapter-05.md` lines 435–490 — **Change:** replace `::: wrapper {.item .schraphose}` with `@gear`; replace closing `:::` with `@end-gear`. Keep all inner content (outcome sub-tables) unchanged.
+
+⚠️ Blocked on Gap 6 spec — how multiple outcome tables nest inside `@gear` is not yet defined. Migrate the wrapper now; leave the inner tables untouched until spec is written.
 
 **BEFORE:**
 ```markdown
@@ -718,12 +696,6 @@ Drop `.violet` — no CSS backing. The `@definition` macro handles the `dt`/`dd`
 #### Schraphose
 ...
 ##### In Reach Damage
-| Roll | Result | Damage |
-...
-##### Nearby Damage
-| Roll | Result | Damage |
-...
-##### In Range Damage
 | Roll | Result | Damage |
 ...
 :::
@@ -736,24 +708,19 @@ Drop `.violet` — no CSS backing. The `@definition` macro handles the `dt`/`dd`
 #### Schraphose
 ...
 ##### In Reach Damage
-[outcome rows]
-##### Nearby Damage
-[outcome rows]
-##### In Range Damage
-[outcome rows]
+| Roll | Result | Damage |
+...
 
 @end-gear
 ```
-
-⚠️ Blocked on Gap 6 spec — how multiple outcome tables nest inside one `@gear` block is not yet defined.
 
 ---
 
 ### 13.3 Partially-migrated gear section
 
-`chapter-05.md` line 7
+`chapter-05.md` line 7 — **Change:** replace each `@section .aug` with `@gear`; add `@end-gear` after the last line of each gear entry's content (before the next `@gear` or end of section).
 
-**BEFORE (already partially migrated):**
+**BEFORE:**
 ```markdown
 @section .aug
 
@@ -773,13 +740,13 @@ Drop `.violet` — no CSS backing. The `@definition` macro handles the `dt`/`dd`
 @end-gear
 ```
 
-These sections use `@section .aug` instead of `@gear`. Convert to `@gear` / `@end-gear`.
-
 ---
 
 ## 14. Emoji → Text
 
-`chapter-05.md` lines 512, 540
+`chapter-05.md` lines 512, 540 — **Change:** replace each emoji marker with a bold text label: `⚠️` → `**ALERT**`, `☀️` → `**FLASH EFFECT**`, `🔊` → `**BANG EFFECT**`, `💥` → `**BONUS BOOM**`, `🔥` → `**BURN**`.
+
+⚠️ Verify emoji font support in the PDF renderer first — if emojis render correctly, they may be kept.
 
 **BEFORE:**
 ```markdown
@@ -799,15 +766,13 @@ These sections use `@section .aug` instead of `@gear`. Convert to `@gear` / `@en
 **BURN**: Targets catch fire...
 ```
 
-⚠️ Verify emoji font support in the PDF renderer before committing — if emojis render correctly, these may be kept.
-
 ---
 
 ## 15. Raw HTML Cleanup
 
 ### 15.1 Float-clear hack
 
-`chapter-02 4 Gutterdruid.md` line 20
+`chapter-02 4 Gutterdruid.md` line 20 — **Change:** delete this line entirely. CSS section context rules handle float clearance; no layout replacement needed.
 
 **BEFORE:**
 ```markdown
@@ -816,10 +781,8 @@ These sections use `@section .aug` instead of `@gear`. Convert to `@gear` / `@en
 
 **AFTER:**
 ```markdown
-(remove entirely)
+(line deleted)
 ```
-
-CSS section context rules should handle float clearance. If a clear is genuinely needed, use `@section` reset behavior — do NOT add raw HTML.
 
 ---
 
@@ -827,31 +790,32 @@ CSS section context rules should handle float clearance. If a clear is genuinely
 
 ## Patterns NOT in the Plan
 
-These patterns appear 2+ times in the live source and have no equivalent macro, component, or plan item. Each needs a decision before migration begins.
+Reviewed against existing components and the Contextual Cascade Principle. Each pattern is either mapped to an existing component or confirmed as truly unique.
 
 ---
 
 ### P1. `::: wrapper {.two-column-list}` for roll tables
 
 **Appears in:**
-- `chapter-02 7 Technosorcerer.md` lines 66, 79 (Practical Power ability — spell component lists)
+- `chapter-02 7 Technosorcerer.md` lines 66, 79 (Practical Power — spell component lists)
 - `chapter-02 8 Etherlock.md` lines 177–190 (Beast Beckoning — land animal table)
 - `chapter-02 8 Etherlock.md` lines 198–211 (Beast Beckoning — water animal table)
 
-**Example** (`chapter-02 8 Etherlock.md` line 177):
+**Verdict: MAPS TO EXISTING**
+
+The `.two-column-list` wrapper is unnecessary structure. The two-column layout is a CSS concern, not a structural one. These are roll-result lists that render correctly as plain markdown.
+
+**Change:** Delete the `::: wrapper {.two-column-list}` and closing `:::` lines. Convert the numbered list to a markdown table for clarity:
+
 ```markdown
-::: wrapper {.two-column-list}
-1. 1-2: 1 Taruja Murder
-2. 3-4: 1 Swarm of Razor Rats
-3. 5-6: 1 Tangle Bear
-:::
+| Roll | Result |
+|---|---|
+| 1-2 | 1 Taruja Murder |
+| 3-4 | 1 Swarm of Razor Rats |
+| 5-6 | 1 Tangle Bear |
 ```
 
-**Options:**
-- Remove wrapper and convert to plain markdown table (`| Roll | Result |`)
-- Create `@list .two-column` if the two-column layout is essential
-
-**Decision needed:** Is the two-column layout necessary, or is a plain table sufficient?
+If two-column layout is genuinely needed, a `.section.two-column` context selector in `fg-overrides.css` can handle it — no new macro required.
 
 ---
 
@@ -860,22 +824,21 @@ These patterns appear 2+ times in the live source and have no equivalent macro, 
 **Appears in:**
 - `chapter-02 6 Wirephreak.md` lines 188–203 (Bug ability continuation)
 
-**Example:**
+**Verdict: MAPS TO EXISTING**
+
+The plugin already implements `@continue` for exactly this case: it emits a card with a `{name} ▸` tab so an oversized skill card can be split across pages while preserving a visual link to the origin card.
+
+**Change:** Remove the `:::: wrapper {.item .ability .continued}` / `::::` wrapper. The `@skill` inside it is already present — simply add `@continue` as a marker within that block if page-split is needed, or merge both entries into a single `@skill` block if it fits without forcing a break:
+
 ```markdown
-:::: wrapper {.item .ability .continued}
-
-@skill variant="3"
-
-#### Bug (cont'd.)
-...
-::::
+@skill
+#### Bug
+> [flavor text]
+...first part of ability...
+@continue
+...continuation content...
+@end-skill
 ```
-
-**Options:**
-- Remove wrapper; concatenate content into a single `@skill` block
-- If page-break splitting is essential, use `@continue` marker inside `@skill` (see component-mapping.md)
-
-**Decision needed:** Does Bug need forced continuation across pages, or can it be a single long `@skill` block?
 
 ---
 
@@ -884,24 +847,27 @@ These patterns appear 2+ times in the live source and have no equivalent macro, 
 **Appears in:**
 - `chapter-02 7 Technosorcerer.md` line 292 (Voltgeist ability)
 
-**Example:**
-```markdown
-@skill variant="5" {.allow-split}
+**Verdict: MAPS TO EXISTING**
 
-#### Voltgeist
-```
+`{.allow-split}` is valid `@skill` syntax — class attributes are passed through to the skill-card wrapper DOM element. The class appends to `.dc-skill-card` so CSS can target `.dc-skill-card.allow-split { break-inside: auto; }` to allow the card to split across pages (overriding the default `break-inside: avoid`).
 
-**Status:** `.allow-split` is not in the `@skill` spec. Possibly controls whether the ability card is allowed to break across pages. Requires plugin author to confirm whether this attribute is live, silently ignored, or an artifact.
+**Change:** No markdown change needed — syntax is already correct after `variant="N"` is removed (see §9.1). If the break behavior is not working, add the CSS rule to `dc-components.css`, not to the markdown.
 
 ---
 
 ### P4. Wirephreak choice-based Spec Tweak
 
 **Appears in:**
-- `chapter-02 6 Wirephreak.md` lines 13–32 (two alternatives: Zero Trace / Hard Wired)
+- `chapter-02 6 Wirephreak.md` lines 13–32 (Zero Trace / Hard Wired choice)
 
-**Example:**
+**Verdict: MAPS TO EXISTING**
+
+The standard `@block .slate` wrapper applies to the outer Spec Tweak block regardless of whether it contains one power or two alternatives. The choice structure (two bold headers + prose) renders fine as plain prose inside a `.slate` register. When `@card` exists (Phase 1), the two alternatives can optionally be elevated to `@card` entries if visual distinction is needed.
+
+**Change:** Wrap the entire Spec Tweak block in `@block .slate` / `@end-block`. Leave the inner choice prose as-is:
+
 ```markdown
+@block .slate
 ### Spec Tweak
 Choose one of the following. Your choice sticks unless you decide to work it out with your DM.
 
@@ -910,14 +876,8 @@ You are a ghost in the mists...
 
 **Hard Wired**
 You gain a cyberdeck...
+@end-block
 ```
-
-Unlike all other specialties (single passive power), Wirephreak's Spec Tweak is a player choice between two alternatives. The standard `@block .slate` wrapper applies to the outer block, but the inner choice structure has no component.
-
-**Options:**
-- Wrap the whole thing in `@block .slate`, leave inner prose as-is
-- Use `@card` entries inside `@block .slate` once `@card` exists
-- Author decision: collapse to one canonical choice
 
 ---
 
@@ -927,19 +887,24 @@ Unlike all other specialties (single passive power), Wirephreak's Spec Tweak is 
 - `chapter-02 6 Wirephreak.md` line 23 (Scope, nested under Hard Wired)
 - `chapter-02 7 Technosorcerer.md` line 25 (Scope, nested under Living Terminal)
 
-**Example** (`chapter-02 7 Technosorcerer.md` line 25):
+**Verdict: MAPS TO EXISTING**
+
+This is a bonus ability granted by the Spec Tweak. It should use `@skill` nested inside the `@block .slate` wrapper — the cascade context (`.dc-block.slate .dc-skill-card`) naturally provides the authority register treatment, distinguishing it from a standalone learnable ability.
+
+**Change:** Wrap the nested ability in `@skill` / `@end-skill` inside the `@block .slate` block:
+
 ```markdown
+@block .slate
 ### Spec Tweak: **Living Terminal**
 You can hack any connected system nearby...
 
+@skill
 #### Scope
 > Your awareness of the tangled web...
 0 AP. Passively detect...
+@end-skill
+@end-block
 ```
-
-A full ability definition (`#### Heading` + flavor + AP text) appears directly inside a Spec Tweak block, with no `@skill` wrapper. This may be a bonus ability granted by the Spec Tweak.
-
-**Decision needed:** Should these use `@skill` inside `@block .slate`, or are they treated as plain prose since they're part of the Spec Tweak grant (not standalone learnable abilities)?
 
 ---
 
@@ -948,31 +913,39 @@ A full ability definition (`#### Heading` + flavor + AP text) appears directly i
 **Appears in:**
 - `chapter-02 5 Cybersurgeon.md` lines 55–69
 
-**Example:**
+**Verdict: MAPS TO EXISTING**
+
+The `@skill` macro is agnostic to whether AP tiers are presented as a numbered list or a markdown table — both are valid inner content. The table format here is likely an author style choice or draft artifact. Normalizing to the standard numbered-list format keeps the book consistent and reduces rendering edge cases.
+
+**Change:** Convert the table-based AP presentation to the standard numbered-list format:
+
 ```markdown
+@skill
 #### Triage Rig
 > I ain't fixin' ya — I'm keepin' ya operatin'.
 
-|          |     |
-| -------- | --- |
-| **3 AP** | You slap a portable triage rig onto a creature in reach... |
+1. **3 AP** You slap a portable triage rig onto a creature in reach...
+@end-skill
 ```
-
-All other abilities use a numbered list (`1. **3 AP** ...`). This one uses a markdown table for the AP tier. Either an author error or an intentional single-column table format.
-
-**Decision needed:** Convert to standard `1. **3 AP** ...` list format, or confirm as intentional variant?
 
 ---
 
 ### P7. Voltgeist duplicate entry
 
 **Appears in:**
-- `chapter-02 7 Technosorcerer.md` lines 292–310 (narrative prose + bullets)
-- `chapter-02 7 Technosorcerer.md` lines 311–363 (same ability name, numbered AP tiers + Live Virus sub-ability)
+- `chapter-02 7 Technosorcerer.md` lines 292–310 (narrative prose + bullet format)
+- `chapter-02 7 Technosorcerer.md` lines 311–363 (same ability name, standard AP tiers + Live Virus sub-ability)
 
-The same ability (Voltgeist) appears twice in the file with different presentation formats. Either a draft artifact (one should be deleted) or a narrative-then-rules pattern where flavor prose precedes the mechanical entry.
+**Verdict: TRULY UNIQUE — author approval required**
 
-**Decision needed:** Delete one instance, or is the dual-entry intentional? Author approval required before touching this content.
+This is a content-level issue, not a component gap. The same ability (Voltgeist) appears twice in the same file with different presentation formats. No CSS or macro can resolve this — the decision to keep, merge, or delete one instance is authorial.
+
+**Do not migrate without author confirmation.** Two possible interpretations:
+
+1. **Draft artifact** — the prose version (lines 292–310) is a flavor description that should be merged into the canonical entry (lines 311–363) as a blockquote flavor intro, then the duplicate deleted.
+2. **Intentional** — the two entries represent different ability tiers or modes (e.g., a simplified version and a full-rules version), in which case the structure needs explicit author spec before encoding in `@skill`.
+
+Flag for author review before touching either entry.
 
 ---
 
@@ -981,14 +954,20 @@ The same ability (Voltgeist) appears twice in the file with different presentati
 **Appears in:**
 - `chapter-01.md` lines 373–381
 
-**Example:**
+**Verdict: TRULY UNIQUE — keep as-is until Gap 8 spec**
+
+The vibe selection table is a player-facing worksheet component (multi-column selection grid, empty first column as write-in field) with no equivalent in the existing component library. `.dc-at-a-glance-card`, `.dc-card`, and the existing section layouts all operate at the wrong scale or register.
+
+The migration plan calls this a `.dc-pick-grid` component (Gap 8) but provides no spec. Keep the plain markdown table until Gap 8 is resolved. Add an HTML comment so future authors understand the intent:
+
+**Change (interim):** Add a comment above the table:
+
 ```markdown
+<!-- dc-pick-grid: first column is blank player write-in field — do not remove empty cells -->
 | | |  | |
 |---|---|---|---|
 | | Long shadow | Sleepy drag | Street-born instinct |
 | | Outsider static | Resting snarl | Corporate chill |
 ```
 
-A character worksheet with checkbox-style cells (empty first column). The migration plan calls this a `.dc-pick-grid` component (Gap 8) but does not define the CSS or macro yet. The plain table preserves content correctly until the component is specced.
-
-**Status:** IN_PLAN as a gap, but no spec exists. Keep as-is until Gap 8 is resolved.
+When Gap 8 spec is written, the component will need: creaturepunk / paper-poster register, dashed-border or checkbox-style first column, multi-column grid layout.
