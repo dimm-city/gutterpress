@@ -67,46 +67,96 @@ body { counter-reset: chapter; }
   background-color: var(--bg);
 }
 
+/* @page margin boxes — keep only content + content-color in the @page rule.
+   The visible chip/sticker chrome is applied to `.pagedjs_margin-content`
+   below, because paged.js routes @page margin-box styling to the OUTER
+   slot element (the full margin-area box, typically ~3.8in wide × 0.5in
+   tall) rather than the inner text-sized element. Applying background +
+   padding + border + transform to the outer slot fills the entire margin
+   with the chip color — not what we want. The inner `.pagedjs_margin-
+   content` IS text-sized, so styling it produces a tight pill. */
 @page :left {
   margin-right: var(--binding-margin, 0.75in);
   margin-left: 0.625in;
 
-  @bottom-left {
-    content: "p." counter(page);
-    color: var(--ink-smoke);
-    font-family: var(--font-display);
-    font-size: var(--fs-footer, 9.5pt);
-    letter-spacing: 0.08em;
-  }
-
-  @bottom-right {
-    content: "c." string(guideSection, first);
-    color: var(--ink-smoke);
-    font-family: var(--font-display);
-    font-size: var(--fs-footer, 9.5pt);
-    letter-spacing: 0.08em;
-  }
+  @bottom-left  { content: "P." counter(page); }
+  @bottom-right { content: "C." string(guideSection, first); }
 }
 
 @page :right {
   margin-left: var(--binding-margin, 0.75in);
   margin-right: 0.625in;
 
-  @bottom-left {
-    content: "c." string(guideSection, first);
-    color: var(--ink-smoke);
-    font-family: var(--font-display);
-    font-size: var(--fs-footer, 9.5pt);
-    letter-spacing: 0.08em;
-  }
+  @bottom-left  { content: "C." string(guideSection, first); }
+  @bottom-right { content: "P." counter(page); }
+}
 
-  @bottom-right {
-    content: "p." counter(page);
-    color: var(--ink-smoke);
-    font-family: var(--font-display);
-    font-size: var(--fs-footer, 9.5pt);
-    letter-spacing: 0.08em;
-  }
+/* Folio chip — mirrors .dc-ap LED-chip register from dc-components.css.
+   The page number reads as a stamped digital-display marker in the page's
+   bottom margin, matching the AP cost chips inside skill cards. Applies
+   to whichever bottom margin slot carries the page number (alternates
+   left/right on recto/verso). */
+.pagedjs_margin-bottom-left.hasContent .pagedjs_margin-content,
+.pagedjs_margin-bottom-right.hasContent .pagedjs_margin-content {
+  /* Paged.js wraps margin content in a flex slot that stretches the child
+     to fill the slot width. fit-content + align-self shrink it to the
+     text size so we get a pill, not a full-width bar. */
+  width: fit-content;
+  max-width: fit-content;
+  align-self: end;
+  font-family: var(--font-mono);
+  font-size: 8.5pt;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 3px 7px;
+  color: var(--paper-cream);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--hud-blue-dark) 90%, #fff 10%) 0%,
+    var(--hud-blue-dark) 50%,
+    color-mix(in srgb, var(--hud-blue-dark) 94%, #000 6%) 100%);
+  border: 1px solid var(--ink-dark);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    2px 2px 0 rgba(0, 0, 0, 0.18);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
+  transform: rotate(-1deg);
+}
+
+/* Right-side margin slots — align to start so the chip sits flush to
+   the inside (gutter) side, mirroring the left slot's right-alignment. */
+.pagedjs_margin-bottom-right.hasContent .pagedjs_margin-content {
+  align-self: end;
+  margin-left: auto;
+}
+
+/* Chapter sticker — mirrors .dc-sticker paper-stamp register. The chapter
+   label reads as a hand-pasted bill in the corner opposite the folio.
+   On verso pages the folio is bottom-left and the sticker bottom-right;
+   on recto pages they swap. The selector chain below targets whichever
+   slot is carrying the chapter string. */
+.pagedjs_left_page .pagedjs_margin-bottom-right.hasContent .pagedjs_margin-content,
+.pagedjs_right_page .pagedjs_margin-bottom-left.hasContent .pagedjs_margin-content {
+  font-family: var(--font-mono);
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 4px 10px;
+  color: var(--paper-cream);
+  background: var(--ink-dark);
+  background-image: none;
+  border: 1px solid var(--hud-blue-dark);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.32);
+  text-shadow: none;
+  transform: rotate(-0.7deg);
+}
+
+/* Mirror the rotation direction on the opposite side so the chips lean
+   inward toward the gutter, balancing the spread visually. */
+.pagedjs_right_page .pagedjs_margin-bottom-right.hasContent .pagedjs_margin-content {
+  transform: rotate(1deg);
+}
+.pagedjs_left_page .pagedjs_margin-bottom-right.hasContent .pagedjs_margin-content {
+  transform: rotate(0.7deg);
 }
 
 
@@ -187,13 +237,10 @@ body { counter-reset: chapter; }
 }
 
 @page chapter-end {
-  @bottom-left {
-    content: "c." counter(chapter);
-  }
-
-  @bottom-right {
-    content: "p." counter(page);
-  }
+  /* Visual chrome supplied by .pagedjs_margin-content selectors above —
+     content declarations here keep the chapter-end folio working. */
+  @bottom-left  { content: "C." counter(chapter); }
+  @bottom-right { content: "P." counter(page); }
 }
 
 .chapter-end {
