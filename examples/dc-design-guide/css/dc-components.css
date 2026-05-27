@@ -3103,14 +3103,9 @@ p.dc-img-wrapper {
 .section > h3:first-child {
   background: var(--section-accent);
   color: var(--paper-cream);
-  /* Right margin breaks out of section padding AND outer page margin so the
-     bar bleeds flush to the page trim edge on recto pages. */
-  margin: calc(-1 * var(--space-md))
-          calc(-1 * (var(--space-lg) + var(--outer-margin)))
-          var(--space-md)
-          calc(-1 * var(--space-lg));
-  /* Right padding (--space-2xl ≈ 24px) keeps text ≥ 0.125in from trim. */
-  padding: 0.42rem var(--space-2xl) 0.28rem var(--space-lg);
+  /* Negative margins pull bar flush with the section border-box edges. */
+  margin: calc(-1 * var(--space-md)) calc(-1 * var(--space-lg)) var(--space-md);
+  padding: 0.42rem var(--space-lg) 0.28rem;
   /* Paged.js forces border-box on .pagedjs_pagebox *; content-box restores
      auto-width so negative margins can extend the right edge. */
   box-sizing: content-box;

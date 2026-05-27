@@ -394,18 +394,12 @@
                                               tightened so the smaller size
                                               still reads as a deliberate
                                               typographic gesture. */
-.page:is(.page-toc, .page-intro) h1.dc-chevron {
+/* TOC banner — direct page child (no section wrapper), extends to right
+   page trim edge. Credits uses the full-bleed masthead block below.
+   Only these two pages get edge-to-edge treatment. */
+.page.page-toc h1.dc-chevron {
   font-size: 28pt;
   letter-spacing: 0.08em;
-  /* Banner is a direct page child (no section wrapper). Extend right edge
-     partway into the outer margin — intentional visual reach without
-     touching the trim (middle ground: half outer-margin = ~30px extension).
-     Full outer-margin reads too corporate on sparse front-matter pages. */
-  margin-right: calc(-1 * (var(--outer-margin) * 0.5));
-}
-
-/* Card-grid chapter banner — direct page child, same right-bleed logic. */
-.page.card-grid h2.dc-chevron {
   margin-right: calc(-1 * var(--outer-margin));
 }
 
