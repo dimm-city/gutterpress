@@ -477,12 +477,26 @@
   filter: drop-shadow(var(--shadow-poster));
 }
 
-/* Chevron at body column width (override leaked negative margins from
-   the chapter-opener composite rule). The clip-path stays as the
-   default decorative bottom-right cut. */
+/* Chevron geometry on the standalone intro page. This page is NOT a
+   chapter-opener composite (no .chapter[data-chapter-label] ancestor,
+   data-page is "front-matter" not "intro") but paged.js's selector
+   transform on `h1:first-of-type` over-broadens the chapter-opener
+   composite rule's data-nth-of-type hash to ALL h1:first-of-type
+   elements. The overrides below isolate the chevron from that leak.
+
+   The chevron extends `--clip-tail` (22px default) past the lede on the
+   right so the clip-path's bottom-right point — which is at
+   `calc(100% - --clip-tail)` — lands EXACTLY on the lede's right edge.
+   The chevron's diagonal bottom-right cut then tapers from the
+   extended top down to the body column width, leaving the bottom-right
+   flush with the lede. Top + left stay at lede width.
+
+   --dc-chevron-bg pinned explicitly so a chapter-opener accent token
+   can't leak through the paged.js over-match. */
 .page.page-intro h1.dc-chevron {
   margin-left: 0;
-  margin-right: 0;
+  margin-right: calc(var(--clip-tail) * -1);
+  --dc-chevron-bg: var(--brand-magenta-deep);
   box-shadow: none;
 }
 
