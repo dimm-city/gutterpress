@@ -135,15 +135,15 @@ A developer importing this for a second project cannot tell which tokens are glo
 | P2-3 | `--text-secondary` (#a8b0bc) — 2.1:1 contrast, listed as unsafe for print text | **Grep `var(--text-secondary)` across all CSS files first.** If no consumer: remove the token. If consumers found: raise value to ≥4.5:1 (approximately `#5a6070`). |
 | P2-4 | Cover page `rgba()` vignettes — fail PDF/X-1a preflight | Add `dc-tokens-print.css` override with pre-composited opaque equivalents |
 | P2-5 | `--shadow-ink-border` token — no clip+filter usage warning | Add comment: do not consume on elements with `clip-path` |
-| P2-6 | `--shadow-poster: 2pt 3pt 0 rgba(0,0,0,0.28)` uses `rgba()` — same PDF/X-1a risk as cover vignettes but consumed by every specialty card, skill card, path shell, and stat block | Pre-composite to opaque equivalent or include in `dc-tokens-print.css` alongside P2-4 |
-| P2-7 | `color-mix()` in `.section.tabbed` gradient (`dc-components.css:3024–3026`) — may not resolve correctly in PDF/X-1a preflight processors | Evaluate Ingram impact before submission |
+| P2-6 | `--shadow-poster: 2pt 3pt 0 rgba(0,0,0,0.28)` uses `rgba()` — same PDF/X-1a risk as cover vignettes but consumed by every specialty card, skill card, path shell, and stat block | Pre-composite to opaque equivalent or include in `dc-tokens-print.css` alongside P2-4 | **[DONE - companion token `--shadow-poster-print: 2pt 3pt 0 #adaba8` added to dc-tokens.css alongside original. Use in dc-tokens-print.css override for Ingram submission.]** |
+| P2-7 | `color-mix()` in `.section.tabbed` gradient (`dc-components.css:3024–3026`) — may not resolve correctly in PDF/X-1a preflight processors | Evaluate Ingram impact before submission | **[DONE - advisory comments added to all 6 color-mix() occurrences across 3 components: AP chip gradient (lines ~1399/1401), outcome-key gradient (lines ~1869/1871), section-tab gradient (lines ~2994/2996). Each comment provides the pre-composite formula and an example opaque value for Ingram workflow.]** |
 
 ### P3 — Naming / Convention Cleanup
 
 | # | Issue | Fix |
 |---|---|---|
 | P3-1 | `--ink-bruise` in wrong semantic group | Move to palette alongside `--brand-violet` |
-| P3-2 | `--surface-tint-3: #f2f0ec` — no comment, no consumers | Remove or document |
+| P3-2 | `--surface-tint-3: #f2f0ec` — no comment, no consumers | Remove or document | **[Phase 8 finding: 1 consumer found in dg-overrides.css:482-483 — `.dc-palette-swatch.bg-surface-tint-3 { background: var(--surface-tint-3); }`. This is a design-guide palette specimen swatch only (not used by any component). Safe to remove or rename; does not affect rendered content outside the palette chapter.]** |
 | P3-3 | `--shadow-light` is a hex color in the shadows group | Rename to `--color-shadow` or move to paper group |
 | P3-4 | Industrial warm bare names (`--blood`, `--rust`) — no pillar prefix | Phase to `--warm-*` prefix in next breaking refactor pass |
 | P3-5 | `--hud-blue-bright` and `--hud-magenta` aliases may add no semantic value | **Consumer audit required before any action.** `--hud-magenta` is confirmed in at least three component base rules. Removal requires find-replace of all consumers in the same commit. |

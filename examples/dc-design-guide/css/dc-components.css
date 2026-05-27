@@ -1396,9 +1396,9 @@ hr,
      CSS rectangle. */
   background:
     linear-gradient(180deg,
-      color-mix(in srgb, var(--dc-ap-bg) 90%, #fff 10%) 0%,
+      color-mix(in srgb, var(--dc-ap-bg) 90%, #fff 10%) 0%, /* PDF/X-1a: pre-composite to ~90% bg + 10% white; e.g. on --crimson (#e1261c) → #e64030; on Ingram submission replace with static opaque value in dc-tokens-print.css */
       var(--dc-ap-bg) 50%,
-      color-mix(in srgb, var(--dc-ap-bg) 94%, #000 6%) 100%);
+      color-mix(in srgb, var(--dc-ap-bg) 94%, #000 6%) 100%); /* PDF/X-1a: pre-composite to ~94% bg + 6% black; e.g. on --crimson (#e1261c) → #d42419; on Ingram submission replace with static opaque value in dc-tokens-print.css */
   color: var(--dc-ap-fg);
   /* 1pt ink-dark hairline gives registration grip — without it, adjacent
      red-family AP chips (free/var/increased) merge under CMYK dot gain
@@ -1866,9 +1866,9 @@ hr,
      to make a fill feel "lifted from above". */
   background:
     linear-gradient(180deg,
-      color-mix(in srgb, var(--row-color, var(--ink)) 92%, #fff 8%) 0%,
+      color-mix(in srgb, var(--row-color, var(--ink)) 92%, #fff 8%) 0%, /* PDF/X-1a: pre-composite to ~92% ink + 8% white; on --ink (#1a1512) → #2d2926; on Ingram submission replace with static opaque value in dc-tokens-print.css */
       var(--row-color, var(--ink)) 50%,
-      color-mix(in srgb, var(--row-color, var(--ink)) 96%, #000 4%) 100%);
+      color-mix(in srgb, var(--row-color, var(--ink)) 96%, #000 4%) 100%); /* PDF/X-1a: pre-composite to ~96% ink + 4% black; on --ink (#1a1512) → #191411; on Ingram submission replace with static opaque value in dc-tokens-print.css */
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     inset 0 -1px 0 rgba(0, 0, 0, 0.18);
@@ -2991,9 +2991,9 @@ p.dc-img-wrapper {
      no noise overlays, no decorative additions. */
   background:
     linear-gradient(180deg,
-      color-mix(in srgb, var(--dc-section-accent) 86%, #fff 14%) 0%,
+      color-mix(in srgb, var(--dc-section-accent) 86%, #fff 14%) 0%, /* PDF/X-1a: pre-composite to ~86% accent + 14% white; e.g. on --brand-magenta (#9b2b7a) → #ad4891; on Ingram submission replace with static opaque value in dc-tokens-print.css */
       var(--dc-section-accent) 45%,
-      color-mix(in srgb, var(--dc-section-accent) 93%, #000 7%) 100%);
+      color-mix(in srgb, var(--dc-section-accent) 93%, #000 7%) 100%); /* PDF/X-1a: pre-composite to ~93% accent + 7% black; e.g. on --brand-magenta (#9b2b7a) → #912872; on Ingram submission replace with static opaque value in dc-tokens-print.css */
   /* Inset highlights/shadows complete the material illusion — 1px bright
      stripe at top, 1px dark stripe at bottom-right edge. */
   box-shadow:

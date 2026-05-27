@@ -111,7 +111,8 @@
      cards, skill cards, sections, paper-variant callouts, NPC stat
      blocks, citizen file — anything that should read as "stuck on
      the wall" rather than "embedded in the page." */
-  --shadow-poster: 2pt 3pt 0 rgba(0, 0, 0, 0.28);
+  --shadow-poster: 2pt 3pt 0 rgba(0, 0, 0, 0.28);  /* screen/preview: alpha shadow */
+  --shadow-poster-print: 2pt 3pt 0 #adaba8;               /* PDF/X-1a safe: pre-composited on --paper-cream (#f0eee9). R≈173 G≈171 B≈168. Use in dc-tokens-print.css override for Ingram submission */
 
   /* ── Ink & Text — warm sepia drift, not neutral gray ─────────────────── */
   --ink:        #1a1512;  /* near-black with red bias — riso warm black */
