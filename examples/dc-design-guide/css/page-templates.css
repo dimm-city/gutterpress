@@ -389,6 +389,20 @@
   box-shadow: var(--shadow-poster);
 }
 
+/* Suppress the .section base component's ::before (magenta left strip +
+   18px top-right clip-path corner cut) and ::after (ink-dark fake-shadow
+   offset 3px down-right). The colophon here is a SUBSTRATE inside the
+   frontmatter composite — not a stand-alone section header card. The
+   base pseudo-elements were creating the visible right-edge step (clip-
+   path cut at the top-right corner) and a doubled shadow at the lede→
+   colophon seam. Once suppressed, the colophon becomes a plain
+   rectangle that matches the TOC's shape on page 1, so the body column
+   reads identically on both pages. */
+.page.page-credits .section.credits-colophon::before,
+.page.page-credits .section.credits-colophon::after {
+  content: none;
+}
+
 .page.page-credits .section.credits-colophon .colophon-grid {
   columns: 2;
   column-gap: var(--gutter, 0.25in);
