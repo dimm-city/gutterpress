@@ -91,72 +91,66 @@ body { counter-reset: chapter; }
   @bottom-right { content: "P." counter(page); }
 }
 
-/* Folio chip — mirrors .dc-ap LED-chip register from dc-components.css.
-   The page number reads as a stamped digital-display marker in the page's
-   bottom margin, matching the AP cost chips inside skill cards. Applies
-   to whichever bottom margin slot carries the page number (alternates
-   left/right on recto/verso). */
+/* Folio sticker — paper-register sticker stuck to the wall, mirrors the
+   .dc-sticker pattern from dc-components.css. The page number reads as
+   a hand-pasted bill in the page's bottom margin: cream substrate, hard
+   ink border, hard offset poster-shadow pinning it to the wall surface,
+   slight rotation so it doesn't read as a CSS rectangle.
+
+   Paged.js wraps margin content in a flex slot that stretches the
+   child. fit-content + align-self collapses it to a tight pill. */
 .pagedjs_margin-bottom-left.hasContent .pagedjs_margin-content,
 .pagedjs_margin-bottom-right.hasContent .pagedjs_margin-content {
-  /* Paged.js wraps margin content in a flex slot that stretches the child
-     to fill the slot width. fit-content + align-self shrink it to the
-     text size so we get a pill, not a full-width bar. */
   width: fit-content;
   max-width: fit-content;
   align-self: end;
   font-family: var(--font-mono);
-  font-size: 8.5pt;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  padding: 3px 7px;
-  color: var(--paper-cream);
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--hud-blue-dark) 90%, #fff 10%) 0%,
-    var(--hud-blue-dark) 50%,
-    color-mix(in srgb, var(--hud-blue-dark) 94%, #000 6%) 100%);
+  font-size: 9pt;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  color: var(--ink-dark);
+  background: var(--paper-cream);
   border: 1px solid var(--ink-dark);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.15),
-    2px 2px 0 rgba(0, 0, 0, 0.18);
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-poster);
   transform: rotate(-1deg);
 }
 
-/* Right-side margin slots — align to start so the chip sits flush to
-   the inside (gutter) side, mirroring the left slot's right-alignment. */
+/* Right slot — push to the inside (gutter) edge so the sticker isn't
+   pinned against the outer bleed. */
 .pagedjs_margin-bottom-right.hasContent .pagedjs_margin-content {
-  align-self: end;
   margin-left: auto;
 }
 
-/* Chapter sticker — mirrors .dc-sticker paper-stamp register. The chapter
-   label reads as a hand-pasted bill in the corner opposite the folio.
-   On verso pages the folio is bottom-left and the sticker bottom-right;
-   on recto pages they swap. The selector chain below targets whichever
-   slot is carrying the chapter string. */
+/* Chapter sticker — paper-register sticker with a dashed accent border,
+   mirrors the .dc-roll-the-die "stamped coupon" pattern. Aged paper
+   substrate + blood-red display text + dashed magenta border read as a
+   torn-out reference tag pasted on the wall, distinct from the page
+   number sticker's clean civic register. Sits in the corner opposite
+   the page number on each spread. */
 .pagedjs_left_page .pagedjs_margin-bottom-right.hasContent .pagedjs_margin-content,
 .pagedjs_right_page .pagedjs_margin-bottom-left.hasContent .pagedjs_margin-content {
-  font-family: var(--font-mono);
-  font-size: 8.5pt;
+  font-family: var(--font-display);
+  font-size: 9pt;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  padding: 4px 10px;
-  color: var(--paper-cream);
-  background: var(--ink-dark);
-  background-image: none;
-  border: 1px solid var(--hud-blue-dark);
-  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.32);
-  text-shadow: none;
-  transform: rotate(-0.7deg);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2.5px 8px;
+  color: var(--blood);
+  background: var(--paper-aged);
+  border: 1.5px dashed var(--hud-magenta);
+  box-shadow: var(--shadow-poster);
+  transform: rotate(0.8deg);
 }
 
-/* Mirror the rotation direction on the opposite side so the chips lean
-   inward toward the gutter, balancing the spread visually. */
+/* Mirror rotation across the spread so both stickers lean toward the
+   spine (recto/verso symmetry). */
 .pagedjs_right_page .pagedjs_margin-bottom-right.hasContent .pagedjs_margin-content {
   transform: rotate(1deg);
 }
-.pagedjs_left_page .pagedjs_margin-bottom-right.hasContent .pagedjs_margin-content {
-  transform: rotate(0.7deg);
+.pagedjs_left_page .pagedjs_margin-bottom-left.hasContent .pagedjs_margin-content {
+  transform: rotate(-1deg);
 }
 
 
