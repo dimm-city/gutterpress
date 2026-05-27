@@ -355,9 +355,16 @@
    inherited --shadow-poster combines flush with the lede's right
    shadow above to form one continuous body-column shadow. The number-
    badge accent flips to --frontmatter-accent so the cyber signature
-   persists. */
+   persists. Substrate also picks up the lede's 4px magenta gradient
+   strip so the rail extends from the top of the lede continuously
+   down through the bottom of the TOC. */
 .page.page-toc .dc-toc {
   border: 0;
+  background: linear-gradient(
+    to right,
+    var(--frontmatter-accent) 4px,
+    var(--paper-cream) 4px
+  );
 }
 
 .page.page-toc .dc-toc ol > li::before {
@@ -375,16 +382,22 @@
 /* Credits colophon section. Same composite role as the TOC card: it's
    the bottom block of the stack. Carries --shadow-poster so the body
    column on the credits page lifts off the wall the same way the TOC
-   does on page 1. The flex column layout keeps any trailing publisher-
-   mark image bottom-aligned while the inner 2-column grid fills the
-   available height. */
+   does on page 1. Substrate picks up the lede's 4px magenta gradient
+   strip so the rail extends continuously from the top of the lede
+   down through the bottom of the colophon. The flex column layout
+   keeps any trailing publisher-mark image bottom-aligned while the
+   inner 2-column grid fills the available height. */
 .page.page-credits .section.credits-colophon {
   columns: unset;
   display: flex;
   flex-direction: column;
   font-size: 9.5pt;
   line-height: 1.35;
-  background: var(--paper-cream);
+  background: linear-gradient(
+    to right,
+    var(--frontmatter-accent) 4px,
+    var(--paper-cream) 4px
+  );
   padding: 0.18in 0.22in;
   box-shadow: var(--shadow-poster);
 }
