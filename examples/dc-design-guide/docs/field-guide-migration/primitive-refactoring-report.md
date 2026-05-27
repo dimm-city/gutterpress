@@ -14,7 +14,7 @@ Three agents independently reviewed the proposed refactoring. Their findings con
 
 2. **`@skill` CANNOT be simplified to a card primitive** — it is a domain-specific state machine with AP parsing, outcome table classification, two-part chrome geometry, and continuation splitting. Any attempt to reduce it to `@card` would require rewriting most of the field guide's content.
 
-3. **`.dc-card` is a FATAL name** — the skill card system already owns `.dc-card-tab`, `.dc-card-body`, `.dc-card-inner`, `.dc-card-cont-marker`, `.dc-card-fwd-marker`. The new card primitive must be named `.dc-choice-card` (or similar).
+3. **`.dc-card` is the correct base class name** — the skill card system owns `.dc-card-tab`, `.dc-card-body`, `.dc-card-inner`, `.dc-card-cont-marker`, `.dc-card-fwd-marker`. The new card primitive is also `.dc-card`; sub-elements are scoped by their outer class parent.
 
 4. **The `@block` breaking-change migration (§1.1b) is unnecessary** — `@panel`/`@slate`/`@shard`/`@codex` shorthands already work. The real needed change is: allow `@block` to accept `.classname` syntax in addition to `variant=`.
 
@@ -37,10 +37,10 @@ Body paragraph(s)
 Emitted DOM:
 
 ```html
-<div class="dc-choice-card dc-flaws">
-  <div class="dc-choice-card-heading">Flaw Title</div>
-  <div class="dc-choice-card-pull">Pull-quote or flavor text</div>
-  <div class="dc-choice-card-body">Body paragraph(s)</div>
+<div class="dc-card dc-flaws">
+  <div class="dc-card-heading">Flaw Title</div>
+  <div class="dc-card-pull">Pull-quote or flavor text</div>
+  <div class="dc-card-body">Body paragraph(s)</div>
 </div>
 ```
 
@@ -53,8 +53,7 @@ The macro follows existing `@block` infrastructure: `parseAttrs()`, `closeAll()`
 | `@section .dc-flaws` + raw `<div>` per entry | `@card .dc-flaws` per entry inside `@section .dc-flaws` | Eliminates raw HTML |
 | `@section .dc-ideals` + raw `<div>` per entry | `@card .dc-ideals` per entry inside `@section .dc-ideals` | Eliminates raw HTML |
 | `@section .dc-dreams` + raw `<div>` per entry | `@card .dc-dreams` per entry inside `@section .dc-dreams` | Eliminates raw HTML |
-| `@gear-card` | `@card .dc-gear` inside `@section .dc-gear-list` | Consolidates to primitive |
-| `@specialty-intro` (when simplified) | `@card .dc-specialty-intro` | Eliminates separate macro |
+| `@gear-card` (renamed `@gear`) | `@gear` shorthand for `@card .dc-gear` inside `@section .dc-gear-list` | Renames macro + consolidates to primitive |
 
 ### What `@card` Does NOT Replace
 
@@ -77,14 +76,9 @@ Reducing `@skill` to `@card` would require:
 
 ### Critical Blockers for `@card` Implementation
 
-1. **Name collision:** `.dc-card` is already owned by the skill card system. Use `.dc-choice-card`.
+1. **Selector chain must include `.section`:** `@section .dc-flaws` emits `<div class="section dc-flaws">`. The CSS must target `.section.dc-flaws > .dc-card`, not `.dc-flaws > .dc-card`.
 
-2. **Selector chain must include `.section`:** `@section .dc-flaws` emits `<div class="section dc-flaws">`. The CSS must target `.section.dc-flaws > .dc-choice-card`, not `.dc-flaws > .dc-choice-card`.
-
-3. **Book-specific label classes do NOT belong in `dc-components.css`:** `.dc-flaws`, `.dc-ideals`, `.dc-dreams` are field-guide-specific names for the same generic card list component. The correct approach:
-   - `dc-components.css` defines `.dc-choice-card` and `.dc-card-list` (generic)
-   - `fg-overrides.css` maps `.section.dc-flaws > .dc-choice-card` to the correct visual
-   - A future project with Sins/Virtues/Goals gets the primitive free; it adds only its own label classes to its own override file
+2. **`.dc-flaws`, `.dc-ideals`, `.dc-dreams` CSS belongs in `dc-components.css`:** These are DC component-layer classes. They set styling defaults for the three card-list types and are reusable across DC projects. Only layout context and page-scoped positioning belong in `fg-overrides.css`.
 
 ---
 
@@ -113,7 +107,7 @@ These macros do nothing except wrap content in a `<div>` with one class. They're
 | `@panel`, `@slate`, `@shard`, `@codex` | Four-variant shorthand system; authors know these names; CSS built around them |
 | `@sidebar`, `@sidebar-box` | Distinct enough in purpose and frequency to warrant their own names |
 | `@definition` | Term/definition semantic pair — not a generic wrapper |
-| `@gear-card` | Current behaviour is correct; migrate to `@card .dc-gear` when `@card` exists |
+| `@gear` | Current behaviour is correct; migrate to `@card .dc-gear` when `@card` exists |
 
 #### Group C — Transform and state-machine macros (NEVER simplify)
 
@@ -158,8 +152,8 @@ With `@card .dc-flaws` inside `@section .dc-flaws` inside `@specialty .augmerc`:
 ```
 .dc-specialty.augmerc                  → sets specialty accent tokens
   .section.dc-flaws                    → sets card-list layout tokens
-    .dc-choice-card                    → base card styles (dc-components.css)
-    .section.dc-flaws > .dc-choice-card → flaw-specific overrides (dc-components.css)
+    .dc-card                           → base card styles (dc-components.css)
+    .section.dc-flaws > .dc-card       → flaw-specific overrides (dc-components.css)
 ```
 
 This cascade is **Contextual Cascade Principle compliant**: authors write semantic markdown; CSS selectors handle variants; no utility classes on wrappers.
@@ -170,8 +164,8 @@ The most dangerous architecture problem is equal-specificity collisions between 
 
 ```css
 /* Both at specificity 0,3,0 — source order determines winner */
-.section.dc-flaws > .dc-choice-card { ... }   /* context: flaw-list */
-.dc-specialty.augmerc .dc-choice-card { ... } /* context: augmerc specialty */
+.section.dc-flaws > .dc-card { ... }   /* context: flaw-list */
+.dc-specialty.augmerc .dc-card { ... } /* context: augmerc specialty */
 ```
 
 When both apply simultaneously, the LAST rule in source order wins. This is correct behavior, but it requires deliberate ordering: specialty overrides must come AFTER section overrides in `dc-components.css`.
@@ -179,27 +173,18 @@ When both apply simultaneously, the LAST rule in source order wins. This is corr
 **Resolution:** Use a third class chain for the intersection case:
 
 ```css
-.dc-specialty.augmerc .section.dc-flaws > .dc-choice-card { ... }  /* 0,4,0 — wins cleanly */
+.dc-specialty.augmerc .section.dc-flaws > .dc-card { ... }  /* 0,4,0 — wins cleanly */
 ```
 
 ### Token Isolation Requirement
 
-`.dc-skill-card` and the new `.dc-choice-card` must NOT share a CSS token namespace. Their DOM structures differ:
-
-| Skill card | Choice card |
-|---|---|
-| `.dc-skill-card` wrapper | `.dc-choice-card` wrapper |
-| `.dc-card-body` inner | `.dc-choice-card-body` inner |
-| `.dc-card-tab` heading | `.dc-choice-card-heading` heading |
-| `data-path-ref` attr | no path ref needed |
-
-Using `.dc-card-body` on both creates selector ambiguity. All choice-card sub-elements must be prefixed `.dc-choice-card-*`.
+`.dc-skill-card` and `.dc-card` exist in the same DOM but never on the same element. The skill card system uses `.dc-skill-card` as the outer wrapper; its sub-elements (`.dc-card-tab`, `.dc-card-body`, `.dc-card-inner`) are always scoped under `.dc-skill-card`. The new `.dc-card` primitive is a sibling type, not a descendant. CSS rules like `.dc-skill-card .dc-card-body` and `.dc-card > .dc-card-body` are unambiguous because the outer class differs. No token namespace conflict exists as long as sub-element selectors are written with their correct outer class prefix.
 
 ### Paged.js Risk: `filter` + `clip-path` on Shared Ancestor
 
-If `.dc-choice-card` inherits a base `filter: drop-shadow()` rule (for consistent card shadows), and specialty cards use `clip-path` on the same element — the filter will be silently stripped (Paged.js / clip-path rendering interaction).
+If `.dc-card` inherits a base `filter: drop-shadow()` rule (for consistent card shadows), and specialty cards use `clip-path` on the same element — the filter will be silently stripped (Paged.js / clip-path rendering interaction).
 
-**Resolution:** Never put `filter: drop-shadow` on the base `.dc-choice-card` rule. Specialty variants that need shadows must use the canonical pattern from `dc-components.css`: `filter` on the wrapper, `clip-path` on a `::before` or child element.
+**Resolution:** Never put `filter: drop-shadow` on the base `.dc-card` rule. Specialty variants that need shadows must use the canonical pattern from `dc-components.css`: `filter` on the wrapper, `clip-path` on a `::before` or child element.
 
 ### Architecture Verdict
 
@@ -207,9 +192,8 @@ The `@card` primitive + CSS cascade approach aligns with the Contextual Cascade 
 
 | Issue | Required fix |
 |---|---|
-| `.dc-card` name collision | Use `.dc-choice-card` throughout |
-| `.dc-flaws > .dc-card` wrong selector | Use `.section.dc-flaws > .dc-choice-card` |
-| Book-specific classes in `dc-components.css` | Move to `fg-overrides.css`; expose generic primitives only |
+| `.dc-card-body` sub-element overlap | Scope all skill-card sub-selectors to `.dc-skill-card > .dc-card-X`; new card sub-elements use `.dc-card > .dc-card-X` — no ambiguity when outer class differs |
+| `.dc-flaws > .dc-card` wrong selector | Use `.section.dc-flaws > .dc-card` |
 | Equal-specificity trap | Use three-class intersection selectors for specialty + section overlap |
 
 ---
@@ -222,24 +206,23 @@ All three agents converge on:
 
 1. `@card` is a legitimate new primitive. It fills a real gap and eliminates raw HTML workarounds.
 2. `@skill` is a domain-specific compiler, not a card. Do not touch it during this refactoring.
-3. `.dc-card` is taken. Use `.dc-choice-card`.
+3. `.dc-card` is the correct base class name for the new card primitive.
 4. The `@block` breaking-change migration (§1.1b in the migration plan) is unnecessary — it solves a problem that does not exist.
-5. Book-specific CSS classes (`.dc-flaws`, `.dc-ideals`, `.dc-dreams`) must NOT live in `dc-components.css`. They belong in `fg-overrides.css`.
+5. `.dc-flaws`, `.dc-ideals`, `.dc-dreams` CSS belongs in `dc-components.css`. These are DC component-layer classes, not fg-specific overrides.
 
 ### Phased Implementation Plan
 
 #### Phase 0 — Prerequisites (no new features)
 
 - Fix `@block` to accept `.classname` syntax (currently only `variant=` works)
-- Fix the `.dc-card` name in any existing migration planning docs (rename to `.dc-choice-card`)
 - Delete `admonitionRule` from the plugin (dead code)
 
 #### Phase 1 — `@card` primitive
 
 - Implement `@card` / `@end-card` macro in `dimm-city-plugin.js`
-- DOM: `<div class="dc-choice-card [author-classes]">` with optional sub-element wrappers
+- DOM: `<div class="dc-card [author-classes]">` with optional sub-element wrappers
 - Reuse: `parseAttrs()`, `closeAll()`, `inCardMode` state flag (mirrors `inSkillMode` pattern)
-- Add base `.dc-choice-card` styles to `dc-components.css`
+- Add base `.dc-card` styles to `dc-components.css`
 - Test with one content type (`.dc-flaws`) before migrating others
 
 #### Phase 2c — Field guide migration (using `@card` + consolidated macros)
@@ -249,23 +232,24 @@ Migrate in this order (depends on Phase 1 and Phase 2b both complete):
 1. `.dc-flaws` entries — three entries in chapter-02; lowest risk
 2. `.dc-ideals` entries — six entries; same structure
 3. `.dc-dreams` entries — five entries; same structure
-4. `@gear-card` consolidation — replace with `@card .dc-gear` + `@outcome` for embedded tables
+4. `@gear` consolidation — replace with `@card .dc-gear` + `@outcome` for embedded tables
 
-#### Phase 2b — Wrapper macro consolidation (REQUIRED, before field guide migration)
+#### Phase 2b — Block variant consolidation (REQUIRED, before field guide migration)
 
-**Rationale:** Migrating the field guide while redundant single-class wrapper macros still exist means the field guide gets touched twice — once now, once again when the macros are consolidated. Do the consolidation first so migration authors write the final, canonical syntax.
+**Rationale:** `@panel`, `@slate`, `@shard`, `@codex` are named shorthands for `@block variant=X`. Authors writing the field guide should use `@block .dc-panel` etc. directly so the macro surface is smaller and more regular. Consolidating before migration means field guide authors write final canonical syntax the first time through.
 
-Migrate `@lede`, `@toc`, `@glossary`, `@specialty-intro`, `@specialty-art` to `@block .X` before any field guide content migration begins. Requires Phase 0's `.classname` syntax fix to already be in place.
+Requires Phase 0's `.classname` syntax fix to already be in place.
 
-| Macro | Final form | Notes |
+| Old shorthand | Final form | Notes |
 |---|---|---|
-| `@lede` | `@block .dc-intro` | Rename to avoid `@lede` / `.dc-intro` name confusion |
-| `@toc` | `@block .dc-toc` | No behavior change |
-| `@glossary` | `@block .dc-glossary` | No behavior change |
-| `@specialty-intro` | `@block .dc-specialty-intro` | No behavior change |
-| `@specialty-art` | `@block .dc-specialty-art` | No behavior change |
+| `@panel` | `@block .dc-panel` | No behavior change |
+| `@slate` | `@block .dc-slate` | No behavior change |
+| `@shard` | `@block .dc-shard` | No behavior change |
+| `@codex` | `@block .dc-codex` | No behavior change |
 
-After consolidation: remove the five dedicated macro handlers from `dimm-city-plugin.js`. Any existing field guide source that uses `@lede` / `@toc` etc. gets a find-replace pass as part of this phase — before the structural migration begins.
+After consolidation: remove the four shorthand macro handlers from `dimm-city-plugin.js` (or keep as deprecated aliases pointing to `@block` logic). Any existing design guide source that uses `@panel`/`@slate`/`@shard`/`@codex` gets a find-replace pass as part of this phase.
+
+`@lede`, `@toc`, `@glossary`, `@specialty-intro`, `@specialty-art` are SEMANTIC wrappers with their own identity and must NOT be collapsed into `@block .X`. They stay as named macros.
 
 ### What NOT to Do
 
@@ -273,16 +257,15 @@ After consolidation: remove the five dedicated macro handlers from `dimm-city-pl
 - **Do not add `@stat .npc`** — `@section .dc-npc-stat` already works per the CSS comment at dc-components.css:3407.
 - **Do not add `@dm-note`** as a separate macro — `> [!DM]` handles multi-paragraph blocks already; the single-paragraph constraint cited in the migration plan is false (see skeptic-review.md #22, #34).
 - **Do not add `.dc-vibe-table`** — name it `.dc-pick-grid` or `.dc-worksheet-grid` so every future DC project gets it free.
-- **Do not put `.dc-flaws`, `.dc-ideals`, `.dc-dreams` in `dc-components.css`** — these are field-guide-specific names for a generic component. Add the generic `.dc-card-list` to `dc-components.css`; map the FG-specific names in `fg-overrides.css`.
 
 ---
 
 ## Open Questions
 
-1. **`@card` footer section** — the user described "a heading, a pull-quote, body text, and then potentially a footer." Should the footer be a distinct sub-element (`.dc-choice-card-footer`) or just the last child of `.dc-choice-card-body`? The former is more explicit; the latter requires less CSS specificity.
+1. **`@card` footer section** — the user described "a heading, a pull-quote, body text, and then potentially a footer." Should the footer be a distinct sub-element (`.dc-card-footer`) or just the last child of `.dc-card-body`? The former is more explicit; the latter requires less CSS specificity.
 
 2. **`@card` heading level** — should `@card` enforce `####` (h4) as the heading, or accept any heading level? The flaws/ideals/dreams content currently uses `####`; enforcing it simplifies CSS. But `@skill` also uses h4 for tier headings — level collision is not a problem if namespaces are distinct.
 
 3. **Specialty card migration** — `@specialty-card` currently injects `data-specialty` and `data-path-ref` automatically. If migrated to `@card .dc-specialty-card`, these attributes must either be injected by the `@card` macro (coupling a generic primitive to specialty logic) or supplied manually by authors (regression in ergonomics). Recommendation: keep `@specialty-card` as a named shorthand that delegates to `@card` internally.
 
-4. **`@gear-card` + `@outcome`** — Gap 6 in the migration plan claims `@gear-card` supports embedded `.dc-outcome-row` rows. It does not (outcome table classification only fires inside `inSkillMode`). The correct fix is `@outcome` blocks inside `@gear-card`. This needs to be verified against current Schraphose/Yari content before migration.
+4. **`@gear` + `@outcome`** — Gap 6 in the migration plan claims `@gear` supports embedded `.dc-outcome-row` rows. It does not (outcome table classification only fires inside `inSkillMode`). The correct fix is `@outcome` blocks inside `@gear`. This needs to be verified against current Schraphose/Yari content before migration.

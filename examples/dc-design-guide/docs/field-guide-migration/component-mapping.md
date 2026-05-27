@@ -485,9 +485,13 @@ Combat knife (1 Damage)
 1. **Equipment item**: item name, description paragraph (1–3 sentences to a paragraph).
 2. **Weapon entry**: item name, flavor quote, mod tags (Automatic, Pack Fed, etc.), outcome table (Roll / Result / Damage).
 
-**Recommendation:** `.dc-gear-entry` exists for equipment. The `:::aug` containers map to `@gear-card … @end-gear-card` (the actual macro name in the DC plugin — NOT `@gear`). For weapons, `@gear-card` with embedded `.dc-outcome-row` rows handles single-outcome-table entries. **Split into two cases:** (a) standard weapons with one outcome table (Throwaway Blaster, Wakizashi, Pepperbox) — straightforward `@gear-card` migration; (b) multi-table weapons (Schraphose has three range-tier tables: In Reach / Nearby / In Range; Yari has non-standard 6-row outcomes) — these need explicit spec for how multiple tables nest inside one `@gear-card` block before migration.
+**Recommendation:** `.dc-gear-entry` exists for equipment. The `:::aug` containers map to `@gear … @end-gear` (the actual macro name in the DC plugin). For weapons, `@gear` with embedded `.dc-outcome-row` rows handles single-outcome-table entries. **Split into two cases:** (a) standard weapons with one outcome table (Throwaway Blaster, Wakizashi, Pepperbox) — straightforward `@gear` migration; (b) multi-table weapons (Schraphose has three range-tier tables: In Reach / Nearby / In Range; Yari has non-standard 6-row outcomes) — these need explicit spec for how multiple tables nest inside one `@gear` block before migration.
 
 **Priority:** P1 (raw `:::aug` must be replaced); multi-table weapon entries (Schraphose, Yari) are P2 pending spec
+
+---
+
+### Gap 6: Gear Entries (Chapter 05)
 
 ---
 
@@ -591,7 +595,7 @@ Combat knife (1 Damage)
 - Dream titles are `**Bold**` not `###` — changing heading level is a content edit
 - All five dreams must be split out of their single fence into individual `@card`/`@end-card` pairs
 - Attribution quotes (currently inline prose) must be converted to `>` blockquotes
-- The `.dc-dreams` CSS section class AND `.dc-card` base CSS do not yet exist — must be created in `dc-components.css` (NOT fg-overrides.css) before migration
+- The `.dc-dreams` CSS section class AND `.dc-card` base CSS do not yet exist — must be created in `dc-components.css` (NOT fg-overrides.css) before migration, and `.dc-card` requires P2-5 (`@card` macro) to be implemented first
 - **The `@card` macro does not yet exist in `dimm-city-plugin.js`** — must be implemented (P2-5) before any migration here
 
 **Note on source tree:** In the `dc-op-manual/field-guide/` live tree, the `.dream-callout` container fence may already have been removed (dreams appear as plain prose). Verify before planning the fence migration — it may already be partially done.
@@ -681,7 +685,7 @@ These items produce no output or corrupt output. **Split into two tracks — P0-
 4. **All `:::` fences in chapter-01** (~16–43 lines depending on source tree): sidebars have `@sidebar`/`@sidebar-box`; `.at-a-glance-cards`, `.section-header`, `.human-callout`, `.gear-callout` wrappers blocked on `@block` or require new macro.
 5. **All `:::` fences in chapter-03** (14–16 lines): outcome table container, dice sidebar, image wrappers — partially blocked on `@block`.
 6. **All `:::` fences in chapter-04** (30 lines): time glossary columns, keyword columns — `@section .two-column` + `@definition` available; blocked on `@block` for anything without a macro equivalent.
-7. **All `:::` / `::::` fences in chapter-05** (53 lines): gear grid uses `@gear-card`; weapon wrappers, some aug wrappers need `@block`.
+7. **All `:::` / `::::` fences in chapter-05** (53 lines): gear grid uses `@gear`; weapon wrappers, some aug wrappers need `@block`.
 
 #### P0-B: Blocked on `@skill` multi-tier spec (P0b prerequisite)
 ~253 fence lines.
@@ -704,7 +708,7 @@ These sections have valid DC components available; using them will render correc
 3. **Learning path ability lists**: Resolves with `@learning-path` migration.
 4. **Specialty scope containers** (8 + 2 variants): Resolves with `@specialty` migration — canonical slugs: `augmerc`, `proxy`, `streetwarden`, `gutterdruid`, `cybersurgeon`, `wirephreak`, `technosorcerer`, `etherlock`, **`dualist`**, **`generalist`**. CSS cascade rules exist for all 10 — do not use a slug not in this list. **⚠️ Plugin gap:** `specialtyCodeFromClass()` only maps the base 8; `dualist` and `generalist` return `'PATH'` instead of a specialty code, so path `data-path-ref` attributes will be wrong (`PATH1` instead of `DUA1`). A plugin fix is needed alongside these migrations.
 5. **4 NPC stat blocks** (Patchhead, Grease Monkey, Undertow, Chromejaw): Migrate to `@stat .npc` once macro is built (see P2-2). Tier differentiation spec also required.
-6. **~14 gear entries + standard weapon entries** in chapter-05: Migrate to `@gear-card … @end-gear-card` (the actual macro name — NOT `@gear`).
+6. **~14 gear entries + standard weapon entries** in chapter-05: Migrate to `@gear … @end-gear`.
 7. **3 SIDEBAR blocks** in chapters 01 and 03: Migrate to `@sidebar … @end-sidebar`.
 8. **Cover page** (chapter-00): Migrate to `.dc-cover-page` family.
 9. **TOC** (chapter-00): Migrate to `.dc-toc` + `@section .two-column`.
@@ -714,7 +718,7 @@ These sections have valid DC components available; using them will render correc
 13. **District lore paragraphs** (chapter-04): Multi-paragraph district descriptions → `@block .shard` (atmosphere register). Single-sentence world-facts inline → `> [!ORIGIN]` (confirmed registered ✅). Do NOT use `> [!ORIGIN]` for multi-paragraph lore — it only handles one paragraph.
 14. **Credits page** (chapter-00)**: ~~P1~~ → moved to P2 (blocked by `@block` P0b and `@page .credits` CSS definition needed — see Gap 1).
 15. **Specialty intro cards** (chapter-01, 8 instances): Migrate `<div class="faction-section">` to `@specialty-card … @end-specialty-card` inside `@specialty .NAME` scope. Use `.dc-specialty-card` (compact card, grid-sized). Do NOT use `@specialty-intro` — that component is for the ch02 full-section opener, not summary cards. See Gap 3 and §6.5 naming note.
-16. **Ideals and Flaws** (chapter-01, 5+5 entries): `@card` inside `@section .dc-ideals` / `@section .dc-flaws`. **⚠️ Blocked by: P2-5 (`@card` macro), `.dc-ideals`/`.dc-flaws` CSS creation, AND author approval for content restructure** (inline quotes → `>` blockquotes; individual fences per entry).
+16. **Ideals and Flaws** (chapter-01, 5+5 entries): `@card` inside `@section .dc-ideals` / `@section .dc-flaws`. **⚠️ Moved to P2 — Blocked by: P2-5 (`@card` macro), `.dc-ideals`/`.dc-flaws` CSS creation, AND author approval for content restructure** (inline quotes → `>` blockquotes; individual fences per entry).
 17. **Vibe table** (chapter-01): New `.dc-vibe-table` component required — `.dc-at-a-glance-card` does NOT fit this shape. Moved to P2 (see Gap 8).
 18. **General Rules** (chapter-03, social contract sections): Migrate to `@block .slate`. Add chapter-scoped token override in `fg-overrides.css` to shift title-bar from HUD-blue-dark → `--ink-dark`/`--rust` (avoid "clean corporate manual" §IX anti-pattern). Blocked by `@block` P0b.
 19. **Distances reference** (chapter-03): Migrate wrapper; elevate to `@block .codex`. Consider paper-poster variant token (`--paper-cream` body, ruled heading) rather than HUD-blue-dark default. Blocked by `@block` P0b.
@@ -725,13 +729,13 @@ These sections have valid DC components available; using them will render correc
 2. **`@stat .npc` macro** (DC plugin) — generic stat wrapper, `.npc` emits `.dc-npc-stat`; with tier differentiation spec (Fodder/Operator/Master visual weight). See Gap 5.
 3. **`@skill` multi-tier spec** — also listed as P0b prerequisite.
 4. **Spec Tweak entries** (chapter-02, 8): **Mandatory** `@block .slate` — not optional. Required to distinguish passive powers from `@skill` ability cards in 253-ability chapter. Requires `@block` in paged (P0b).
-5. **`@card` macro + CSS** (DC plugin) — **Does not yet exist.** New macro required for Ideals, Flaws, Dreams, and specialty intro cards. Three deliverables: (a) `@card`/`@end-card` handler in `dimm-city-plugin.js` emitting `<div class="dc-card">`; (b) `.dc-card` base CSS **in `dc-components.css`** (paper-poster register defaults — NOT in fg-overrides.css); (c) cascade override rules **in `dc-components.css`**: `.dc-ideals > .dc-card`, `.dc-flaws > .dc-card`, `.dc-dreams > .dc-card`, `.dc-specialty.augmerc .dc-card` etc. All three must land before P1-15 and P1-16 can complete. `.dc-flaws`, `.dc-ideals`, `.dc-dreams` section classes also need CSS rules in `dc-components.css`.
+5. **`@card` macro + CSS** (DC plugin) — **Does not yet exist.** New macro required for Ideals, Flaws, Dreams, and specialty intro cards. Three deliverables: (a) `@card`/`@end-card` handler in `dimm-city-plugin.js` emitting `<div class="dc-card">`; (b) `.dc-card` base CSS **in `dc-components.css`** (paper-poster register defaults — NOT in fg-overrides.css); (c) cascade override rules **in `dc-components.css`**: `.dc-ideals > .dc-card`, `.dc-flaws > .dc-card`, `.dc-dreams > .dc-card`, `.dc-specialty.augmerc .dc-card` etc. All three must land before P1-16 can complete. `.dc-flaws`, `.dc-ideals`, `.dc-dreams` section classes also need CSS rules in `dc-components.css`.
 6. **Dream examples** (chapter-01): `@card` per entry inside `@section .dc-dreams` — same pattern as Ideals/Flaws. Straightforward once `@card` macro is implemented.
 7. **Time/Keywords glossaries** (chapter-04): `@section .two-column` + `.dc-terms`; verify `.dc-terms` renders term+description pairs correctly; add CSS for `.violet` tint variant at chapter scope.
-8. **Multi-table weapon entries** (chapter-05 — Schraphose, Yari): Define how multiple outcome tables nest inside one `@gear-card` block.
+8. **Multi-table weapon entries** (chapter-05 — Schraphose, Yari): Define how multiple outcome tables nest inside one `@gear` block.
 9. **Blank-column fill-in tables** ("Other Ideals", "Other Flaws", "Other Dreams" — chapter-01): Add authorial intent note or `<!-- fill-in-field -->` comment; these are print form elements, not data tables.
 10. **Quick Start Checklist** (chapter-01): `@sidebar` migration is syntactically correct but visual register (inset/small text) may not serve player-facing form content — flag for layout review.
-11. **Weapon mod tags** (chapter-05): Define whether `@gear-card` handles mod tags as a structured field, or author uses `{.dc-tag}` inline spans.
+11. **Weapon mod tags** (chapter-05): Define whether `@gear` handles mod tags as a structured field, or author uses `{.dc-tag}` inline spans.
 
 ### P3 — Polish (Plain Markdown Acceptable For Now)
 
@@ -944,12 +948,12 @@ Description
 :::
 
 NEW:
-@gear-card
+@gear
 #### Item Name
 Description
-@end-gear-card
+@end-gear
 
-NOTE: The macro is @gear-card / @end-gear-card — NOT @gear / @end-gear.
+NOTE: The macro is `@gear` / `@end-gear`.
 
 ---
 ANY CHAPTER — Generic class wrapper (no existing DC macro):

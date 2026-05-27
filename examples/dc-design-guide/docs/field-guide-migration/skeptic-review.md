@@ -4,6 +4,7 @@
 
 **Highest-priority killers** (fix these five first — they collapse ~80% of implementation friction):
 - #1: P0-2/P0-3 blockers don't exist — delete them
+- #2: `.dc-card` is the correct base class — sub-element selectors require explicit outer-class scoping (`.dc-skill-card > .dc-card-X` vs `.dc-card > .dc-card-X`)
 - #17: The `@block` breaking-change migration solves nothing the existing shorthands don't
 - #19: `@stat .npc` is over-specced — `@section .dc-npc-stat` already works
 - #27: `@skill` type-3 spec gap blocks 253 ability migrations with no answer given
@@ -16,8 +17,8 @@
 **1. P0-2 and P0-3 prerequisites are already fixed.**
 The migration plan's §1.1d lists `:nth-last-of-type(2)` on `.dc-ability` and `:nth-of-type(even)` on `.dc-specialty-card` as hard blockers. Both are already patched — `dc-components.css` uses `[data-ability-last]`/`[data-ability-penultimate]` and `[data-position="even"]`; the plugin already emits those attributes. Delete §1.1d's P0-2 and P0-3 entries entirely.
 
-**2. `.dc-card` name collides with the existing skill-card namespace.**
-The skill card system already owns `.dc-card-tab`, `.dc-card-body`, `.dc-card-inner`, `.dc-card-cont-marker`, `.dc-card-fwd-marker` (dc-components.css lines 1119, 1168, 1245, 1310, 1140, 1155). Picking `.dc-card` as the new authored-choice card base class makes descendant selectors like `.dc-card .dc-card-body` immediately ambiguous. The new component needs a different name — `.dc-choice-card`, `.dc-pick-card`, or similar.
+**2. `.dc-card` sub-element selectors require explicit outer-class scoping.**
+The skill card system already owns `.dc-card-tab`, `.dc-card-body`, `.dc-card-inner`, `.dc-card-cont-marker`, `.dc-card-fwd-marker` as sub-elements scoped under `.dc-skill-card`. The `.dc-card` base class itself is NOT taken — `.dc-skill-card` is the outer wrapper for skill cards, not `.dc-card`. The correct resolution is: write all skill-card sub-element selectors as `.dc-skill-card > .dc-card-X` (not `.dc-card .dc-card-X`) and write all new card primitive sub-element selectors as `.dc-card > .dc-card-X`. Because the outer classes differ, there is no ambiguity. `.dc-card` IS the correct base class for the new card primitive.
 
 **3. The `@block` CSS migration table implies the codebase has drifted — it hasn't.**
 §1.1b "OLD → NEW" language implies `.dc-block.dc-panel` is already stale. The plugin today emits `class="dc-block dc-panel"` and the CSS uses `.dc-block.dc-panel` — they are in sync. The table should say "current form → post-migration form," not "old → new."
@@ -37,8 +38,8 @@ The spec shows `@card .flaw` as a syntax example, then in the actual recommended
 **7. `.dc-flaws > .dc-card` selector won't match.**
 `@section .dc-flaws` is processed by markdown-it-paged, which emits `<div class="section dc-flaws">`. The working CSS selector must be `.section.dc-flaws > .dc-card`, not `.dc-flaws > .dc-card`. A developer following the literal example writes a rule that never fires.
 
-**8. `@gear-card` does NOT classify outcome tables as `.dc-outcome-row` rows.**
-Table classification (`getTableHeaders` → `classifyTable`) only runs inside `inSkillMode` (plugin line 1850: `if (tok.type === 'table_open' && inSkillCard)`). A Roll/Outcome table inside `@gear-card` renders as a plain `<table>`, not `.dc-outcome-row` rows. Gap 6's "embedded `.dc-outcome-row` rows" claim is false. See also #20 — `@outcome` already handles this case.
+**8. `@gear` does NOT classify outcome tables as `.dc-outcome-row` rows.**
+Table classification (`getTableHeaders` → `classifyTable`) only runs inside `inSkillMode` (plugin line 1850: `if (tok.type === 'table_open' && inSkillCard)`). A Roll/Outcome table inside `@gear` renders as a plain `<table>`, not `.dc-outcome-row` rows. Gap 6's "embedded `.dc-outcome-row` rows" claim is false. See also #20 — `@outcome` already handles this case.
 
 **9. `<ins>` → bold is a content edit, not a syntax migration.**
 In chapter-02 ("It's Personal") and the Proxy spec tweak, `<ins>` was deliberately used for one visual register and `**bold**` for another. Merging them collapses distinct emphases into one. Needs an author-approval flag identical to the one on Dream title heading levels.
@@ -53,8 +54,8 @@ In chapter-02 ("It's Personal") and the Proxy spec tweak, `<ins>` was deliberate
 
 ## REUSABILITY FAILURES
 
-**12. `.dc-flaws`, `.dc-ideals`, `.dc-dreams` are book-specific labels for the same component and don't belong in `dc-components.css`.**
-Constitution §I-1 requires the component library to drop into any DC project with zero override files. A new project with Sins/Virtues/Goals needs three new section classes, three CSS blocks, and three plugin entries for labels that are semantically identical. The correct primitive is one generic card component (`@block variant=card` or a new shorthand) with book-specific label classes in `fg-overrides.css`, not `dc-components.css`.
+**12. `.dc-flaws`, `.dc-ideals`, `.dc-dreams` CSS belongs in `dc-components.css` — NOT fg-overrides.**
+These are DC component-layer classes, not book-specific overrides. Constitution §I-1's portability requirement is met by exposing the generic `.dc-card` primitive — a new project with Sins/Virtues/Goals creates its own section classes but the card primitive is free. The section-type CSS (`.dc-flaws > .dc-card`, `.dc-ideals > .dc-card`) lives in `dc-components.css` as context selectors, same as any other component variant. `fg-overrides.css` handles only layout context and page-scoped positioning.
 
 **13. `.dc-vibe-table` is named for one chapter's concept.**
 A fill-in selection grid is a generic component. Name it `.dc-pick-grid` or `.dc-worksheet-grid` and every future DC project gets it free. As specced, `.dc-vibe-table` is the same one-book bloat as `.dc-flaws`.
@@ -86,7 +87,7 @@ The `@card` spec calls for a DC-plugin macro that emits a `<div>` with a base cl
 The CSS comment at dc-components.css line 3407 says: *"Apply via `@section .dc-npc-stat` in markdown."* That mechanism exists today. Use `@section .dc-npc-stat` four times and close the gap. No new macro needed for this book.
 
 **20. `@outcome` already handles outcome tables outside skill cards.**
-Plugin lines 1060–1156 implement an `@outcome` / `@end-outcome` macro for tier-explicit outcome rendering that doesn't require `.dc-skill-card` context. Gap 6's multi-table weapon entries (Schraphose, Yari) don't need a spec extension to `@gear-card` — they need `@outcome` blocks inside `@gear-card`. The plan never mentions `@outcome`.
+Plugin lines 1060–1156 implement an `@outcome` / `@end-outcome` macro for tier-explicit outcome rendering that doesn't require `.dc-skill-card` context. Gap 6's multi-table weapon entries (Schraphose, Yari) don't need a spec extension to `@gear` — they need `@outcome` blocks inside `@gear`. The plan never mentions `@outcome`.
 
 **21. Gap 16 ("add an HTML comment") is non-action.**
 The reader holds a PDF and sees a mysterious empty column. Adding `<!-- print fill-in field -->` helps the next markdown author, not the end user. Either spec a `.dc-pick-grid` worksheet treatment with dashed-border first column (which becomes #13 above), or drop the gap and accept plain tables for now.
