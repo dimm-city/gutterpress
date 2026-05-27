@@ -950,13 +950,17 @@ h1.dc-chevron {
    Single-direction margin: top: 0, bottom: standard gap. This gives the
    lede flush attachment to a chevron heading above (D11 = 0) and natural
    spacing to whatever comes below. When a lede follows body text (rare),
-   the paragraph's bottom margin provides the gap above the lede. */
+   the paragraph's bottom margin provides the gap above the lede.
+
+   Token contract:
+     --dc-intro-accent → 4px left-strip color (default --orange)
+     --dc-intro-bg     → substrate color right of the strip (default --paper-stain) */
 .dc-intro {
   font-family: var(--font-body);
   font-size: var(--fs-body);
   font-style: italic;
   color: var(--ink-smoke);
-  background: linear-gradient(to right, var(--dc-intro-accent, var(--orange)) 4px, var(--paper-stain) 4px);
+  background: linear-gradient(to right, var(--dc-intro-accent, var(--orange)) 4px, var(--dc-intro-bg, var(--paper-stain)) 4px);
   line-height: 1.5;
   padding: 0 14px 10px 18px;
   margin: 0 0 calc(0.1in + 3pt) 0;

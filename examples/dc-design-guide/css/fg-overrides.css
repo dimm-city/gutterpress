@@ -402,61 +402,8 @@
    Single component-level contract, applies everywhere in the book.
    No per-page overrides needed. Iter-8 cleanup. */
 
-/* CREDITS colophon — flex column so the founder-house image bottom-justifies
-   in the column (user R1, iter-7). Inner .colophon-grid carries the 2-column
-   text layout AND has flex-grow:1 so it fills available section height;
-   image sits at section bottom via margin-top: auto on the image itself.
-   Replaced iter-7's min-height (paged.js fragility per print-judge feedback)
-   with flex-grow on the inner grid — iter-7b. */
-.section.credits-colophon {
-  font-size: 9.5pt;
-  line-height: 1.35;
-  background: var(--paper-cream);
-  padding: 0.18in 0.22in;
-  box-shadow: var(--shadow-poster);
-  display: flex;
-  flex-direction: column;
-}
-
-.section.credits-colophon .colophon-grid {
-  column-gap: var(--gutter, 0.25in);
-  column-fill: balance;
-  flex-grow: 1;
-}
-
-.section.credits-colophon p {
-  margin: 0 0 0.08in 0;
-  break-inside: avoid;
-}
-
-.section.credits-colophon p strong:first-child {
-  font-family: var(--font-mono, monospace);
-  font-size: 9pt;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--brand-magenta-deep);
-  display: block;
-  margin-bottom: 0.04in;
-  padding-bottom: 0.02in;
-  border-bottom: 1.5pt solid var(--brand-magenta-deep);
-}
-
-/* TOC sub-line moved/removed — the prior rule targeted `.dc-lede` but the
-   @lede macro emits `.dc-intro` (verified in plugins/dimm-city-plugin.js:
-   `<div class="dc-intro">`), so the rule never matched. The TOC's
-   thumbnail identity is now carried by the lede prose + chip-list +
-   .dc-toc card composition without an additional pseudo-element label.
-   Iter-8 cleanup. */
-
-/* .dc-toc accent — cyber palette override for the TOC page.
-   Base component uses --rust for card borders + number badge fill.
-   Frontmatter pages use --hud-magenta to match the cyber signature. */
-.page.page-toc .dc-toc {
-  border-top-color: var(--brand-magenta-deep);
-  border-bottom-color: var(--brand-magenta-deep);
-}
-
-.page.page-toc .dc-toc ol > li::before {
-  background: var(--brand-magenta-deep);
-}
+/* Frontmatter (TOC + Credits) styling — colophon layout, role-label
+   typography, TOC accent overrides — moved to page-templates.css under
+   the FRONTMATTER template. That file is the single source of truth for
+   the opening-spread look. To recolor for this project, override
+   --frontmatter-accent at the page scope here. */

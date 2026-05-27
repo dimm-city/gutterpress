@@ -101,6 +101,7 @@
      "industrial flyer paper / printer stock" — closer to the actual
      real-world surface posters get pasted on in a creaturepunk city. */
   --bg:           #c8c5bf;  /* ash-concrete — the brick wall (page background, L*~70) */
+  --concrete-pale: #dcdad5; /* pale concrete swatch — light cool grey lifted from the wall; substrate for lede/intro panels that should read cold-grey, not paper-cream */
   --paper-cream:  #f0eee9;  /* light industrial flyer-stock — brighter than wall, more poster-vs-wall delta (L*~93) */
   --paper-light:  #e2ded7;  /* slightly darker grey alternate surface — for layered paper / secondary panels */
   --paper-aged:   #c8c2b8;  /* weathered grey — decay register, dust + age */

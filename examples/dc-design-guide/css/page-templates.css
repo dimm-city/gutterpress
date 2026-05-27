@@ -248,26 +248,72 @@
   columns: 1;
 }
 
-/* Credits colophon: section inherits columns from page context; reset to flow,
-   then inner grid uses 2-col balance. */
-.section.credits-colophon { columns: unset; }
-.section.credits-colophon .colophon-grid { columns: 2; }
-
 /* ── PAGE TEMPLATE: FRONTMATTER (TOC + CREDITS) ─────────────────────────────
-   Shared masthead and layout rules for the two front-matter pages.
-   The h1 on both pages is a full-bleed dark band that covers the page top
-   margin (margin-top: -0.5in pulls it flush to the page box edge).
-   Lede (dc-intro) sits flush against the masthead with no gap below. */
+   Shared opening-spread template for any DC-branded book. Owns the full
+   visual contract for the two-page TOC + Credits frontmatter so a sibling
+   project gets the same spread by importing this file and writing:
 
-/* Cyber-palette accent identity for both frontmatter pages.
-   --dc-intro-accent sets the .dc-intro left-strip color; default is --orange
-   which reads as warm/rust. Override to brand-magenta so the lede strip
-   and the colophon labels all read as the same cyber signature. */
+     @page .page-toc
+     # Contents {.dc-chevron}
+     @lede ... @end-lede
+     @toc ... @end-toc
+
+     @page .page-credits .credits
+     # Credits {.dc-chevron}
+     @lede ... @end-lede
+     @section .credits-colophon
+     <div class="colophon-grid">
+       **Role:** Names
+       ...
+     </div>
+
+   ── Template public API ──────────────────────────────────────────────────
+   --frontmatter-accent    Single recolor knob. Drives the lede left-strip,
+                           masthead border, TOC number badges, and the
+                           colophon role-label underline.
+                           Default: --brand-magenta-deep (cyber signature).
+   --frontmatter-lede-bg   Lede substrate. Default: cool light grey concrete
+                           swatch lifted off the warm-grey wall.
+
+   Per-project recolor is one rule:
+     .page.page-toc, .page.page-credits {
+       --frontmatter-accent: var(--brand-cyan);
+     }
+
+   ── Composite contract ──────────────────────────────────────────────────
+   The masthead, lede, and primary content (TOC card OR credits colophon)
+   stack flush with no gaps and read as ONE cohesive object lifted from
+   the wall. To make that work:
+     - The masthead is full-bleed across the page and casts NO shadow of
+       its own. Its full width is part of the banner identity, not a card
+       edge that should "lift."
+     - The body column (lede + primary) carries the lift. Each child
+       keeps its own --shadow-poster; flush stacking means each child's
+       bottom shadow hides under the next sibling, so the body column
+       reads as ONE card with a continuous right + bottom shadow.
+     - The TOC's component-default 4pt magenta top/bottom rails are
+       stripped — they were the visible "seam" at the lede/TOC junction.
+     - Color contrast between the three substrates (ink-dark masthead →
+       cool light grey lede → paper-cream primary) carries the internal
+       hierarchy without dividing rules.
+     - The masthead's magenta border-bottom is the single accent cut line
+       inside the composite.
+
+   This block is the SINGLE location where TOC and Credits styling lives —
+   do not split it across fg-overrides.css. */
+
+/* Identity tokens for the spread. --dc-intro-accent / --dc-intro-bg feed
+   the .dc-intro component's gradient via its own var() fallback chain. */
 .page.page-toc,
 .page.page-credits {
-  --dc-intro-accent: var(--brand-magenta-deep);
+  --frontmatter-accent: var(--brand-magenta-deep);
+  --frontmatter-lede-bg: var(--concrete-pale);
+  --dc-intro-accent: var(--frontmatter-accent);
+  --dc-intro-bg: var(--frontmatter-lede-bg);
 }
 
+/* Masthead — full-bleed dark band that covers the page top margin
+   (margin-top: -0.5in pulls it flush to the page box edge). */
 .page.page-toc h1.dc-chevron,
 .page.page-credits h1.dc-chevron {
   display: block;
@@ -281,15 +327,17 @@
   clip-path: none;
   background: var(--ink-dark);
   color: var(--paper-cream);
-  border-bottom: 4px solid var(--brand-magenta-deep);
+  border-bottom: 4px solid var(--frontmatter-accent);
   font-size: 26pt;
   letter-spacing: 0.32em;
   font-weight: 700;
 }
 
 /* Lede flush-attaches to the masthead and passes straight into the next
-   element — no gap on either side. Last child's margin-bottom is also
-   zeroed because it bleeds out of the zero-padded container. */
+   element — no gap on either side. Shadow inherited from .dc-intro
+   base component (--shadow-poster) — its bottom edge is hidden under
+   the flush primary, leaving only the right-side shadow which lines up
+   continuously with the primary's own right shadow. */
 .page.page-toc .dc-intro,
 .page.page-credits .dc-intro {
   margin-bottom: 0;
@@ -299,6 +347,73 @@
 .page.page-toc .dc-intro > :last-child,
 .page.page-credits .dc-intro > :last-child {
   margin-bottom: 0;
+}
+
+/* TOC card — strip the dc-toc base component's 4pt top/bottom rust
+   rails + 1.5pt ink side rails. Those rails were the visible "seam" at
+   the lede/TOC junction in the original render — once removed, the
+   inherited --shadow-poster combines flush with the lede's right
+   shadow above to form one continuous body-column shadow. The number-
+   badge accent flips to --frontmatter-accent so the cyber signature
+   persists. */
+.page.page-toc .dc-toc {
+  border: 0;
+}
+
+.page.page-toc .dc-toc ol > li::before {
+  background: var(--frontmatter-accent);
+}
+
+/* Row dividers between TOC entries — base component uses --hud-blue-dim
+   which clashes with the magenta accent everywhere else on the spread.
+   Match the colophon's role-label underline so both pages carry the
+   same accent hue on every internal divider. */
+.page.page-toc .dc-toc ol > li {
+  border-bottom-color: var(--frontmatter-accent);
+}
+
+/* Credits colophon section. Same composite role as the TOC card: it's
+   the bottom block of the stack. Carries --shadow-poster so the body
+   column on the credits page lifts off the wall the same way the TOC
+   does on page 1. The flex column layout keeps any trailing publisher-
+   mark image bottom-aligned while the inner 2-column grid fills the
+   available height. */
+.page.page-credits .section.credits-colophon {
+  columns: unset;
+  display: flex;
+  flex-direction: column;
+  font-size: 9.5pt;
+  line-height: 1.35;
+  background: var(--paper-cream);
+  padding: 0.18in 0.22in;
+  box-shadow: var(--shadow-poster);
+}
+
+.page.page-credits .section.credits-colophon .colophon-grid {
+  columns: 2;
+  column-gap: var(--gutter, 0.25in);
+  column-fill: balance;
+  flex-grow: 1;
+}
+
+.page.page-credits .section.credits-colophon p {
+  margin: 0 0 0.08in 0;
+  break-inside: avoid;
+}
+
+/* Role labels — the first <strong> of each colophon paragraph (e.g.
+   "**Designers:**") becomes a chrome label with an accent underline. */
+.page.page-credits .section.credits-colophon p strong:first-child {
+  font-family: var(--font-mono, monospace);
+  font-size: 9pt;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--frontmatter-accent);
+  display: block;
+  margin-bottom: 0.04in;
+  padding-bottom: 0.02in;
+  border-bottom: 1.5pt solid var(--frontmatter-accent);
 }
 
 /* ── PAGE TEMPLATE: IMAGE (NEW) ────────────────────────────────────────────── */
