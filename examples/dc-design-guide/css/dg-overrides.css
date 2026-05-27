@@ -358,8 +358,14 @@ div.chapter hr {
   padding-left: 18px;
 }
 
-/* page-credits removed — its h1 is the full-bleed masthead in page-templates.css
-   which owns border and margin-top directly. */
+/* page-credits removed — credits uses the full-bleed masthead treatment in
+   page-templates.css which owns its own border-bottom (magenta cut line)
+   and margin-top (-0.5in pull). page-intro KEEPS the default .dc-chevron
+   styling (magenta banner with its own clip-path); the border-reset here
+   would conflict with the chevron's own decorations, so .page-intro is
+   no longer included. Chapter-start pages and intro pages reset h1 border
+   and lift the h1 down 24pt to give the heading some breathing room
+   below the page top. */
 .page:is(.page-intro.intro, .page-chapter-start.chapter-start) > h1 {
   border: 0;
   margin-top: 24pt;

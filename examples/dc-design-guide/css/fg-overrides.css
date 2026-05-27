@@ -187,12 +187,9 @@
   box-shadow: 2pt 2pt 0 rgba(138, 10, 154, 0.18);
 }
 
-/* ── FRONT MATTER LEDE — flush lede directly into following section ───────────
-   The .dc-intro block's default margin-bottom creates a ~14px gap before the
-   first section on the intro page. Intro flow reads better without it. */
-.page.page-intro .dc-intro {
-  margin-bottom: 0;
-}
+/* .page.page-intro composite (lede flush + chevron masthead + section
+   substrate) moved to page-templates.css under the INTRO template, which
+   mirrors the FRONTMATTER template's unified-composite contract. */
 
 /* ── INTRO OVERVIEW PAGE — section-accent token for the new page ─────────────
    Front-matter pages use :where(.page-intro) for zero-specificity token setting.

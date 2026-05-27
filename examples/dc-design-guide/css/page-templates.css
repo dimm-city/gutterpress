@@ -443,6 +443,66 @@
   border-bottom: 1.5pt solid var(--frontmatter-accent);
 }
 
+/* ── PAGE TEMPLATE: INTRO (chapter intro / narrative entry) ─────────────────
+   KEEPS the default .dc-chevron heading styling (magenta banner with its
+   own bottom-right diagonal clip-path) — that's the established intro
+   identity and is intentional.
+
+   Fixes only the lede → section join so the body BELOW the chevron
+   reads as one cohesive paper card:
+     - Suppress the .section base ::before / ::after pseudos (their
+       18px TOP-right clip-path went the OPPOSITE direction of the
+       chevron's 22px BOTTOM-right cut, creating the stepped right-edge
+       mismatch the user flagged).
+     - Give the section a clean paper-cream substrate with the same 4px
+       magenta left rail as the lede, so the two children share one
+       continuous accent edge.
+     - Each child carries --shadow-poster; flush stacking gives one
+       continuous right + bottom shadow below the chevron.
+
+   --intro-accent is the single recolor knob, mirroring --frontmatter-
+   accent's role on the TOC/Credits template. */
+.page.page-intro {
+  --intro-accent: var(--brand-magenta-deep);
+  --dc-intro-accent: var(--intro-accent);
+}
+
+/* Lede flush-attaches to the chevron above; bottom margin zeroed so
+   the next sibling .section sits flush below. Substrate, padding, and
+   shadow inherit from the .dc-intro component default. */
+.page.page-intro .dc-intro {
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.page.page-intro .dc-intro > :last-child {
+  margin-bottom: 0;
+}
+
+/* Section content — same composite role as the colophon on the credits
+   page. Substrate picks up the lede's 4px magenta gradient strip so the
+   left rail runs continuously through both. Carries --shadow-poster so
+   the lede + section read as one lifted card under the chevron. */
+.page.page-intro > .section {
+  background: linear-gradient(
+    to right,
+    var(--intro-accent) 4px,
+    var(--paper-cream) 4px
+  );
+  padding: 0.18in 0.22in;
+  box-shadow: var(--shadow-poster);
+}
+
+/* Suppress the .section base ::before (magenta gradient + 18px top-right
+   clip-path corner cut) and ::after (ink-dark fake-shadow offset 3px
+   down-right). The ::before's clip-path direction OPPOSED the chevron's
+   bottom-right cut, producing the visible step at the right edge. With
+   both off the section is a clean rectangle that flows smoothly out of
+   the lede above. */
+.page.page-intro > .section::before,
+.page.page-intro > .section::after {
+  content: none;
+}
+
 /* ── PAGE TEMPLATE: IMAGE (NEW) ────────────────────────────────────────────── */
 /* Image page — full-width image at the top or bottom with no horizontal margin
    extension at the top/bottom edge. Default page margins apply on the sides.
