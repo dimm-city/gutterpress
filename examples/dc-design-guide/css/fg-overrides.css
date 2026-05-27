@@ -394,26 +394,10 @@
                                               tightened so the smaller size
                                               still reads as a deliberate
                                               typographic gesture. */
-/* TOC banner — direct page child (no section wrapper), extends to right
-   page trim edge. Credits uses the full-bleed masthead block below.
-   Only these two pages get edge-to-edge treatment. */
-.page.page-toc h1.dc-chevron {
-  font-size: 28pt;
-  letter-spacing: 0.08em;
-  margin-right: calc(-1 * var(--outer-margin));
-}
-
-/* CREDITS masthead — contest-judge R2 (iteration 4): the chevron grammar is
-   replaced on the credits page with a full-bleed dark-fill masthead. This is a
-   structural differentiation (not just smaller scale) — the credits page now
-   reads as production-metadata register at thumbnail, distinct from the
-   chevron-punch banners on CONTENTS and INTRODUCTION. Exemplar: Mörk Borg
-   colophon page uses a full-bleed black band; Mothership PSG credits use a
-   flush all-caps sans masthead with no chrome. */
+/* CONTENTS + CREDITS masthead — full-bleed dark band, same treatment on
+   both pages. Direct page children (no section wrapper). */
+.page.page-toc h1.dc-chevron,
 .page-credits h1.dc-chevron {
-  /* Override chevron geometry — full-bleed flat masthead, flush against
-     the colophon panel below (iter-7: zero margin-bottom for composite
-     header read). */
   display: block;
   width: calc(100% + 1.25in);
   margin-left: -0.625in;
