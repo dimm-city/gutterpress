@@ -265,7 +265,7 @@
    and the colophon labels all read as the same cyber signature. */
 .page.page-toc,
 .page.page-credits {
-  --dc-intro-accent: var(--hud-magenta);
+  --dc-intro-accent: var(--brand-magenta-deep);
 }
 
 .page.page-toc h1.dc-chevron,
@@ -281,7 +281,7 @@
   clip-path: none;
   background: var(--ink-dark);
   color: var(--paper-cream);
-  border-bottom: 4px solid var(--hud-magenta);
+  border-bottom: 4px solid var(--brand-magenta-deep);
   font-size: 26pt;
   letter-spacing: 0.32em;
   font-weight: 700;
