@@ -158,6 +158,8 @@ Note: the `rgba()` vignette overlays will fail PDF/X-1a preflight (required by I
 
 ## Color Palette Pillars
 
+Tokens are organized in layers. New projects override the pillar layer only where brand identity differs; everything else inherits automatically.
+
 ### Surface / Paper
 | Token | Value | Role |
 |---|---|---|
@@ -196,17 +198,17 @@ Note: the `rgba()` vignette overlays will fail PDF/X-1a preflight (required by I
 | `--brand-cyan` | `#00bcd4` | Neon-cyan — signal/wire |
 | `--brand-yellow` | `#ffd700` | Brand radiant gold |
 | `--brand-violet` | `#7030b8` | Cyber-violet — ritual+tech |
-| `--ink-bruise` | `#28143c` | Deep purple atmosphere (semantically a dark brand-violet; grouped in Shadow/Atmosphere for legacy reasons) |
+| `--ink-bruise` | `#28143c` | Deep purple atmosphere — chapter tabs, depth shadows |
 
 ### HUD / Interface
 | Token | Value | Role |
 |---|---|---|
 | `--hud-blue` | `#1f6f94` | Teal-cyan mid HUD |
 | `--hud-blue-dark` | `#14516e` | Deep teal — borders, H2 text |
-| `--hud-blue-bright` | `→ brand-cyan` | Neon accent alias |
+| `--hud-blue-bright` | `→ --brand-cyan` | Neon accent alias (5 consumers) |
 | `--hud-blue-dim` | `#7ab8d0` | Visible cream panel tint |
-| `--hud-magenta` | `→ brand-magenta` | Alias |
-| `--hud-panel` | `#eeece8` | Neutral cream — callouts |
+| `--hud-magenta` | `→ --brand-magenta` | Brand-magenta alias (29 consumers) |
+| `--hud-panel` | `#eeece8` | Neutral cream — callouts, note bars |
 
 ### Ecological / Organic
 | Token | Value | Role |
@@ -222,19 +224,134 @@ Note: the `rgba()` vignette overlays will fail PDF/X-1a preflight (required by I
 | `--crystal-aqua` | `#4a98a8` | Pale crystalline aquamarine |
 | `--crystal-citrine` | `#b89a3a` | Burnt mineral gold (reserved) |
 
+### Shadows & Utility
+| Token | Value | Role |
+|---|---|---|
+| `--shadow-poster` | `2pt 3pt 0 rgba(0,0,0,0.28)` | Card drop-shadow — screen/preview |
+| `--shadow-poster-print` | `2pt 3pt 0 #adaba8` | PDF/X-1a safe companion — use in `dc-tokens-print.css` for Ingram |
+| `--shadow-tint` | `#b0a898` | Shadow tint color (hex, not shorthand) |
+
+---
+
+## Semantic Bridge Tokens
+
+These tokens sit between the pillar palette and components. Override them at `:root` in a project stylesheet to reskin the system — no component rules need touching.
+
+### Surface Roles
+| Token | Points to | Role |
+|---|---|---|
+| `--surface-callout` | `--hud-blue-dim` | Default player callout background |
+| `--surface-callout-dm` | `--hud-panel` | DM-only callout background |
+| `--surface-callout-vibe` | `--paper-aged` | Atmospheric / flavor callout background |
+| `--surface-well` | `--paper-stain` | Dark inset wells, sidebar fills |
+| `--surface-panel` | `--paper-light` | Secondary panel — `dc-block` default |
+
+### Text Roles
+| Token | Points to | Role |
+|---|---|---|
+| `--text-on-dark` | `--paper-cream` | Text over dark-fill surfaces |
+| `--text-accent` | `--blood` | Accent / highlighted text |
+| `--text-muted` | `--ink-dust` | Secondary / caption text |
+
+### Border Roles
+| Token | Points to | Role |
+|---|---|---|
+| `--border-callout` | `--hud-blue` | Callout left-rail / rule |
+| `--border-callout-dm` | `--hud-blue-dark` | DM note left-rail |
+| `--border-accent` | `--blood` | Accent border — cards, headings |
+
+### Elevation
+| Token | Points to | Role |
+|---|---|---|
+| `--elevation-card` | `--shadow-poster` | Card-level drop shadow |
+
+---
+
+## Component Public Token Defaults
+
+All component tokens live at `:root` so per-chapter overrides can use the cascade. Set these at chapter id scope in `fg-overrides.css` to retheme a section without touching component rules.
+
+### Section (`.section`)
+| Token | Default | Role |
+|---|---|---|
+| `--dc-section-bg` | `--paper-cream` | Section card background |
+| `--dc-section-accent` | `--brand-magenta` | Section header accent strip |
+
+### Alert / Callout (`.dc-alert`)
+| Token | Default | Role |
+|---|---|---|
+| `--dc-alert-bg` | `--hud-blue-dim` | Panel background |
+| `--dc-alert-border` | `--hud-blue-dark` | Left-rail border color |
+| `--dc-alert-fg` | `--ink` | Body text color |
+| `--dc-alert-label-color` | `--ink-dark` | Label chip text |
+| `--dc-alert-border-width` | `4px` | Left-rail width |
+| `--dc-alert-label-size` | `8pt` | Label chip font size |
+
+### Skill Card (`.dc-skill-card`)
+| Token | Default | Role |
+|---|---|---|
+| `--dc-card-accent` | `--ink` | Default accent (no specialty) |
+| `--dc-card-surface` | `--paper-cream` | Card body background |
+| `--dc-card-tab-bg` | `--ink-dark` | Tab strip background |
+| `--dc-card-tab-title-color` | `--paper-cream` | Tab title text |
+| `--dc-card-tier-color` | `--hud-magenta` | Tier badge color |
+| `--dc-card-tier-border` | `--hud-magenta` | Tier badge border |
+| `--dc-card-body-mark` | `--crimson` | Body accent mark |
+
+### Specialty Intro (`.dc-specialty-intro`)
+| Token | Default | Role |
+|---|---|---|
+| `--dc-specialty-intro-title-bg` | `--hud-magenta` | Title bar background |
+| `--dc-specialty-intro-title-color` | `--bg` | Title bar text |
+| `--dc-specialty-intro-bg` | `--hud-panel` | Panel background |
+
+### Learning Path Shell (`.dc-path-shell`)
+| Token | Default | Role |
+|---|---|---|
+| `--dc-path-title-bg` | `--hud-magenta` | Path header background |
+| `--dc-path-title-color` | `--paper-cream` | Path header text |
+| `--dc-path-accent` | `--hud-magenta` | Path accent color |
+
+### Specialty Card (`.dc-specialty-card`)
+| Token | Default | Role |
+|---|---|---|
+| `--dc-specialty-card-bg` | `--paper-cream` | Card background |
+| `--dc-specialty-card-border` | `--hud-blue` | Card border color |
+| `--dc-specialty-card-accent` | `--crimson` | Card accent |
+| `--dc-specialty-card-fg` | `--ink` | Card text |
+| `--dc-specialty-card-media-height` | `0.85in` | Portrait image height |
+| `--dc-specialty-card-media-width` | `0.75in` | Portrait image width |
+| `--dc-specialty-card-title-align` | `right` | Name heading alignment |
+| `--dc-specialty-card-band-height` | `16pt` | Accent band height |
+
+### Block (`.dc-block`)
+| Token | Default | Role |
+|---|---|---|
+| `--dc-block-bg` | `--paper-light` | Block background |
+| `--dc-block-fg` | `--ink` | Block text |
+| `--dc-block-accent` | `--hud-blue-dark` | Block accent |
+| `--dc-block-title-bg` | `--hud-blue-dark` | Title bar background |
+| `--dc-block-title-fg` | `--paper-cream` | Title bar text |
+
+---
+
+## Dimm City Specialty Identity Tokens
+
+Project-specific. A different project using this component library replaces this block with its own identity tokens; the pillar palette and component defaults above remain untouched.
+
 ### Specialty Accents
 | Specialty | Accent | Mid | Dark |
 |---|---|---|---|
-| Augmerc | `--brand-magenta` (`#c026d3`) | `--augmerc-mid` `#9a1896` | `#8a1a90` |
-| Proxy | `--orange` (`#d4500a`) | `--proxy-mid` `#7a3008` | `#3d1a00` |
-| Streetwarden | `#4db840` | `--streetwarden-mid` `#347828` | `#1a3d10` |
-| Gutterdruid | `--fungi-glow` (`#c8e040`) | `--gutterdruid-mid` `#4d6020` | `#2a3408` |
-| Cybersurgeon | `#a8b4b8` | `--cybersurgeon-mid` `#606870` | `#303840` |
-| Wirephreak | `--brand-cyan` (`#00bcd4`) | `--wirephreak-mid` `#006878` | `#003a40` |
-| Technosorcerer | `--brand-violet` (`#7030b8`) | `--technosorcerer-mid` `#4a1878` | `#200a38` |
-| Etherlock | `--brand-yellow` (`#ffd700`) | `--etherlock-mid` `#8a6a00` | `#3d3000` |
-| Dualist | `--crystal-aqua` (`#4a98a8`) | `--dualist-mid` `#2a6878` | `#143a4a` |
-| Generalist | `--crystal-amethyst` (`#6a3a8a`) | `--generalist-mid` `#503070` | `#1e0e2e` |
+| Augmerc | `--brand-magenta` (`#c026d3`) | `#9a1896` | `#8a1a90` |
+| Proxy | `--orange` (`#d4500a`) | `#7a3008` | `#3d1a00` |
+| Streetwarden | `#4db840` | `#347828` | `#1a3d10` |
+| Gutterdruid | `--fungi-glow` (`#c8e040`) | `#4d6020` | `#2a3408` |
+| Cybersurgeon | `#a8b4b8` | `#606870` | `#303840` |
+| Wirephreak | `--brand-cyan` (`#00bcd4`) | `#006878` | `#003a40` |
+| Technosorcerer | `--brand-violet` (`#7030b8`) | `#4a1878` | `#200a38` |
+| Etherlock | `--brand-yellow` (`#ffd700`) | `#8a6a00` | `#3d3000` |
+| Dualist | `--crystal-aqua` (`#4a98a8`) | `#2a6878` | `#143a4a` |
+| Generalist | `--crystal-amethyst` (`#6a3a8a`) | `#503070` | `#1e0e2e` |
 
 ### Tier Badges
 | Token | Value | Role |
