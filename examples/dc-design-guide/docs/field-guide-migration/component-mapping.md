@@ -15,7 +15,7 @@ This document catalogs every content type across all six Field Guide chapters, m
 | Chapter | `:::` fence lines | Notes |
 |---|---|---|
 | chapter-00 | 12 | Cover, credits, TOC wrappers |
-| chapter-01 | 16 | Character creation sidebars, wrappers |
+| chapter-01 | 16 (field-guide-print) / ~43 (dc-op-manual live tree) | Character creation sidebars, wrappers, at-a-glance cards, specialty spread, section headers, ideal-list, flaw-list |
 | chapter-02 | 635 | Overwhelmingly `:::: ability`, `:::: learning-path`, `:::: specialty` (quad-colon variant) |
 | chapter-03 | 16 | Rules wrappers, outcome table, sidebar |
 | chapter-04 | 30 | Terms columns, wrapper items |
@@ -85,7 +85,9 @@ OLD: @block variant=codex   →   NEW: @block .codex
 
 ### 1.1c Generic Card Macro — `@card` (to be added to DC plugin)
 
-A new `@card` macro handles discrete authored-choice entries (ideals, flaws, dreams, specialty intro cards, spec tweaks — any content that is one item from a menu of options rather than a container or a skill).
+**⚠️ `@card` DOES NOT YET EXIST in `dimm-city-plugin.js`.** This is a new macro that must be implemented before any field guide migration that depends on it (Ideals, Flaws, Dreams, specialty intro cards — see Gap 14, P1-16, P2-5).
+
+A new `@card` macro will handle discrete authored-choice entries (ideals, flaws, dreams, specialty intro cards, spec tweaks — any content that is one item from a menu of options rather than a container or a skill).
 
 **Spec:**
 - Syntax: `@card .class-name` / `@end-card`
@@ -111,7 +113,7 @@ Driven by an unshakeable belief...
 @end-section
 ```
 
-CSS drives the appearance:
+CSS drives the appearance — **all of these rules must go in `dc-components.css`** (bare `.dc-*` rules belong in the component library, NOT in `fg-overrides.css`):
 ```css
 .dc-flaws > .dc-card { /* flaw card default */ }
 .dc-ideals > .dc-card { /* ideal card default */ }
@@ -132,6 +134,24 @@ Heavily armed and wired for war...
 ```
 
 The `@specialty .augmerc` scope sets the cascade; the `.dc-card` inside it inherits the augmerc accent automatically via `.dc-specialty.augmerc .dc-card { … }` rules in `dc-components.css`.
+
+---
+
+### 1.1d CSS Normalization Debt — Must Fix Before or Alongside Migration
+
+The [component normalization debate doc](../component-normalization-debate.md) identifies several bugs and architectural issues in `dc-components.css` that directly affect field guide migration correctness. These are **not optional** — migrating field guide content onto the current CSS produces broken output.
+
+**P0-2 (from debate doc): `:nth-last-of-type(2)` break-after leak on `.dc-ability`** (`dc-components.css:2608`)
+Paged.js rewrites this selector and it fires document-wide, causing column overflow in densely-packed skill-card pages. **Must be fixed before completing P0-B** (ability migration to `@skill`). Fix: plugin emits `data-ability-index` attribute; CSS targets attribute instead.
+
+**P0-3 (from debate doc): `:nth-of-type(even)` alternating accent + float leak on `.dc-specialty-card`** (`dc-components.css:1679`)
+Fires document-wide, producing visible border/image misalignment in multi-specialty chapters. **Must be fixed before specialty card migration** (P1-15). Fix: plugin emits `data-position="even"` on even cards; CSS targets attribute.
+
+**P1-3 (from debate doc): No semantic bridge between component tokens and the pillar layer**
+New components being specified here (`.dc-card`, `.dc-flaws`, `.dc-ideals`, `.dc-dreams`) will be built directly on pillar tokens by default. They must instead follow the semantic bridge pattern: component → semantic surface token → pillar. This ensures a new project can reskin by overriding ~20 semantic tokens rather than hundreds of scattered pillar references. **Write these new components using semantic tokens from the start** — refactoring after the fact is expensive.
+
+**P1-8 (from debate doc): Existing bare `.dc-*` rules in `fg-overrides.css`** (lines 142–148 and 365–368 confirmed)
+These violate the seven-file hierarchy contract. Any migration that adds new CSS should not repeat this pattern and, ideally, these existing violations should be moved to `dc-components.css` in the same pass.
 
 ---
 
@@ -204,8 +224,8 @@ Same pattern in chapter-00, line 139.
 | "Specialty Variants" section | Dual Specialist + Generalist descriptions | Plain markdown + image | `@block .panel` or `.dc-sidebar` | Optional: elevate to panel component |
 | Vibe table | 4-column selection grid with blank interaction column (player circles one); used once at session zero, not referenced in play | Plain markdown table | New `.dc-vibe-table` component required (see Gap 8) | Plain table preserves structure but loses creaturepunk "item on the wall" identity. `.dc-at-a-glance-card` does NOT fit (wrong shape — 7-row multi-column grid, not a single-item card). Requires new component spec. Priority: see Gap 8 (P2 — needs spec before work can start). |
 | "Origins Matter" section | Bullet list choices (where from / where stay) | Plain markdown | Plain markdown | Already correct |
-| "Ideal" section | 5 named ideals, each with inline attribution quote + 3–4 prose paragraphs, no per-entry fence | `:::wrapper {.header}` | `@section .dc-ideals` + `@card` per entry | **Requires content restructure + author approval**: attribution quotes are inline paragraphs (not `>`), must be converted to `>` blockquotes; entries need individual `@card`/`@end-card` fences added. `.dc-ideals` and `.dc-card` CSS must be written first. See Gap 14. |
-| "Flaw" section | 5 named flaws with inline quotes, two-column selection list | `:::wrapper {.header}` + `:::wrapper {.two-column .items}` | `@section .dc-flaws` + `@card` per entry + `@section .two-column` for selection list | **Requires content restructure + author approval**: same attribution-quote conversion as Ideals. `.dc-flaws` CSS must be written first. |
+| "Ideal" section | 5 named ideals, each with inline attribution quote + 3–4 prose paragraphs, no per-entry fence | `:::: wrapper {.section-header}` + `:::: wrapper {.ideal-list}` (two separate wrappers in live tree) | `@section .dc-ideals` + `@card` per entry | **Requires content restructure + author approval**: attribution quotes are inline paragraphs (not `>`), must be converted to `>` blockquotes; entries need individual `@card`/`@end-card` fences added. `.dc-ideals` and `.dc-card` CSS must be written in `dc-components.css` first. `@card` macro does not yet exist. See Gap 14. |
+| "Flaw" section | 5 named flaws with inline quotes, two-column selection list | `:::: wrapper {.section-header}` + `:::: wrapper {.flaw-list}` (two separate wrappers in live tree) | `@section .dc-flaws` + `@card` per entry + `@section .two-column` for selection list | **Requires content restructure + author approval**: same attribution-quote conversion as Ideals. `.dc-flaws` CSS must be written first in `dc-components.css`. `@card` macro does not yet exist. |
 | "Dream" section | 5 named dreams using `**Bold**` titles (NOT `###`), single monolithic fence, 3–5 prose paragraphs each; "Other Dreams" blank-column table | `:::{.dream-callout}` (ONE fence around all five) | `@section .dc-dreams` + `@card` per entry | **Requires content restructure + author approval**: Dream titles are `**Bold**` not `###` — changing heading level is a content edit requiring explicit author sign-off. Each dream needs individual `@card`/`@end-card` fences. `.dc-dreams` CSS must be written first. See Gap 14. |
 | Gear loadout / "Personal Items" sidebar | Sidebar box with personal items note | `:::SIDEBAR` | `@sidebar … @end-sidebar` | Migrate to `@sidebar` |
 | "Quick Start Checklist" sidebar | Checklist sidebar | `:::SIDEBAR` | `@sidebar … @end-sidebar` | Migrate to `@sidebar` |
@@ -229,9 +249,9 @@ This is the most critical chapter. It contains virtually all of the game's abili
 | Individual abilities (253 total) | Ability name, flavor quote, AP cost options, outcome table | `:::: ability` | `@skill … @end-skill` | Migrate to `@skill` — **requires `@skill` multi-tier spec first** (see Gap 15) |
 | AP cost inline text | **0 AP**, **1 AP**, **2 AP** etc. as bold text | `**0 AP**` bold markdown | `.dc-ap` chip inline | Resolves when `@skill` migration completes; tier notation (`\| AUG1.1`) is optional for books without tier codes — do NOT add it if not present |
 | Outcome tables in abilities | Roll/Outcome markdown table (20 / 11-19 / 6-10 / 2-5 / 1) | Plain markdown table | `.dc-outcome-row` rows | `@skill` macro handles outcome table rendering — migrates automatically |
-| Spec Tweak description per specialty | Short narrative power description under `### Spec Tweak:` | Plain markdown (correct) | Plain markdown or `.dc-block.panel` | Acceptable as-is; optionally elevate to panel |
+| Spec Tweak description per specialty | Short narrative power description under `### Spec Tweak:` | Plain markdown (correct) | `@block .slate` → `.dc-block.slate` | **MANDATORY — not optional.** With 253 `@skill` cards in the same chapter, Spec Tweaks must use authority register (`slate`) to be visually distinct. See Gap 12. Blocked by `@block` P0b. |
 | Inline grapple note | Rules sidebar within Pain Compliance ability | `<div style="border:2px...">` raw HTML (line 325) | `> [!NOTE]` or `@block .panel` | Replace div with callout |
-| `<ins>` underline tags | Used in "It's Personal" momentum levels and Proxy spec tweak | `<ins>text</ins>` raw HTML | Bold or custom CSS class | Replace with `**text**` or `{.dc-tag}` |
+| `<ins>` underline tags | Used in "It's Personal" momentum levels and Proxy spec tweak | `<ins>text</ins>` raw HTML | Bold text | Replace with `**text**`. Do NOT use `{.dc-tag}` — per-element class attributes on body text are an architectural anti-pattern (constitution §I). If a DC tag style is needed, handle it inside the `@skill` macro spec. |
 | Spec Tweak "Nanoswarm" etc. | One-paragraph tweak description per specialty | Plain markdown | Plain markdown | Already correct |
 
 **Per-specialty ability count (approximate from grep):**
@@ -255,7 +275,7 @@ This is the most critical chapter. It contains virtually all of the game's abili
 | "How to Play" example of play | DM/player dialogue example | Plain markdown | `@block .shard` or `.dc-block.shard` for flavor | Optional upgrade |
 | Image wrapper (rabbit portrait) | Decorative image with augmented-ui frame | `:::wrapper {".bottom-center" data-augmented-ui=...}` | CSS class float or `.dc-portrait` | Remove augmented-ui dep; use page-level CSS |
 | Image wrapper (distances storyboard) | Inline distances diagram | `:::wrapper` | Plain markdown image or `.dc-img-float-right` | Remove wrapper |
-| "ROLLING THE DIE!" rules section | Major rules section in a decorated wrapper | `:::wrapper` | `@section .rules-block` or plain markdown | Remove wrapper |
+| "ROLLING THE DIE!" rules section | Major rules section in a decorated wrapper | `:::wrapper` | Plain markdown (remove wrapper) | `.rules-block` does not exist in dc-components.css — use plain markdown until a component is specced. |
 | "Dice Etiquette" sidebar | Sidebar rules box | `:::container {.sidebar .top-right}` | `@sidebar … @end-sidebar` | Migrate to `@sidebar` |
 | "Table of Outcomes" | Full outcome table (20/11-19/6-10/2-5/1) | `:::container {.top-left .outcome-table}` | `@block .slate` header + `.dc-outcome-row` rows | The master outcomes table is THE player reference (scanned every session) — must have visual authority. Use `@block .slate` as the container header labeled "Table of Outcomes", then `.dc-outcome-row` rows inside. This distinguishes it from per-ability outcome sub-tables in chapter-02. See Gap 4. |
 | "Distances" (In Reach / Nearby / In Range / Too Far) | Foundational 4-distance rules reference; referenced on every weapon, ability, and NPC trait | Plain markdown + `:::wrapper` | `@block .codex` for the full 4-definition section | Core rules reference consulted constantly — needs `.dc-block.codex` (reference register) for visual weight. Not just a wrapper removal — elevate to named reference card. |
@@ -355,8 +375,9 @@ This is the most critical chapter. It contains virtually all of the game's abili
 | `.dc-distance-tags` | Chapter 05 (Schraphose range) | NOT used |
 | `.dc-ap` | Chapter 02 (358 AP cost instances) | NOT used — all are bold markdown `**N AP**` |
 | `.dc-steps` | Chapter 03 ("Things You Need" list) | NOT used |
-| `.dc-spray` | Nowhere | NOT used anywhere |
-| `.dc-tape`, `.dc-sticker` | Nowhere | NOT used anywhere |
+| `.dc-spray` | Chapter 02 (via `@learning-path` — emitted on every learning-path `h2` title) | Emitted by design guide `@learning-path` macro. NOT yet used in field guide (chapter-02 not migrated). |
+| `.dc-tape` | Via `@tape` marker in design guide | NOT used anywhere in field guide. |
+| `.dc-sticker`, `.dc-sticker-ref`, `.dc-stickers` | Chapter 02 (via `@learning-path` bullet lists — `buildStickerChain()`) | Emitted by design guide `@learning-path` macro for ability sticker chains. NOT yet used in field guide. |
 | `.dc-portrait` | Chapter 01–02 (character art) | NOT used |
 
 **Summary:** Zero DC macro components are currently active in the field guide. The entire document uses the pre-migration container syntax and raw HTML throughout.
@@ -386,6 +407,8 @@ This is the most critical chapter. It contains virtually all of the game's abili
 **What it needs:** Full-bleed cover image, overlaid title text, subtitle, genre tagline.
 
 **Recommendation:** MODIFY to use the existing `.dc-cover-page` / `.dc-cover-layout` / `.dc-cover-bigword` / `.dc-cover-strap` family. The design guide has this component. Map: `:::container {.cover-container}` → `@page .cover` + DC cover classes; `:::container {.cover-text}` → `.dc-cover-body` with `.dc-cover-bigword` for "DIMM CITY" and `.dc-cover-strap` for "Field Guide / A Creaturepunk TTRPG".
+
+**⚠️ Print safety (normalization debate P2-4):** The existing cover uses `rgba()` vignettes that fail PDF/X-1a Ingram preflight. Do not carry over rgba-based overlays when migrating. Pre-composited opaque equivalents required for Ingram submission — planned in `dc-tokens-print.css`.
 
 **Priority:** P1
 
@@ -429,7 +452,7 @@ Also consider: the Table of Outcomes prose is longer than typical ability outcom
 
 **What it needs:** Structured stat block with: flavor quote at top, core stats row (HP, Damage, Type, Size), traits section (bolded name + description per trait), equipment section, cybernetics section.
 
-**Recommendation:** CREATE a generic `@stat … @end-stat` macro in `dimm-city-plugin.js`. When `.npc` attribute is present, the macro emits `<div class="dc-npc-stat">` directly (using the existing styled component). Without `.npc`, it emits `<div class="dc-stat-block">` (unstyled base, for future vehicle/location/creature entries). Do NOT emit `<div class="dc-stat-block npc">` — the existing CSS class is `.dc-npc-stat` (not `.dc-stat-block.npc`), and introducing a new class name would require new CSS rules.
+**Recommendation:** CREATE a generic `@stat … @end-stat` macro in `dimm-city-plugin.js`. When `.npc` attribute is present, the macro emits `<div class="dc-npc-stat">` directly (using the existing styled component). Without `.npc`, it emits `<div class="dc-stat">` (the existing generic stat shell in `dc-components.css` — sub-elements: `.dc-stat-head`, `.dc-stat-name`, `.dc-stat-grid`). Do NOT use `.dc-stat-block` — that class does not exist in dc-components.css.
 
 **Author-facing format inside `@stat .npc`:** The actual NPC entries in chapter-04 do NOT use clean key:value pairs. Stats appear as inline prose (`2 HP-1 Damage`, `Fodder-Usually Small to Medium`) or bulleted calculations (Chromejaw has `* Hit Points: 10 (Master) + 10 (Big) = 20 HP`). Grease Monkey uses inconsistent punctuation (`HP 4-Damage: 2` — note the stray colon). Undertow has no Equipment or Cybernetics section. Chromejaw has no flavor `>` blockquote — quote-equivalent is buried in a preceding paragraph. The macro spec must define a canonical author format, and **all four NPCs will require content rewrites by the author, not just syntax migration.**
 
@@ -474,7 +497,7 @@ Combat knife (1 Damage)
 
 **What it needs:** Two-column term list where each term is bold header + description paragraph. Items alternate between violet-tinted and plain backgrounds (using `.violet` class on some items).
 
-**Recommendation:** RESTRUCTURE to use `@section .two-column` + individual `@section` or `@block .codex` items. The `.dc-terms` component can handle the list format. The `.violet` tint variants would need a CSS rule at the chapter scope. No new component needed — migration is purely syntax conversion.
+**Recommendation:** RESTRUCTURE to use `@section .two-column` + individual `@section` or `@block .codex` items. The `.dc-terms` component can handle the list format. **Drop the `.violet` modifier when migrating** — it has no CSS backing and is invisible today. If highlighted entries are needed later, add a field-guide-specific rule in `book-sections.css`. No new component needed — migration is purely syntax conversion.
 
 **Priority:** P2
 
@@ -568,7 +591,10 @@ Combat knife (1 Damage)
 - Dream titles are `**Bold**` not `###` — changing heading level is a content edit
 - All five dreams must be split out of their single fence into individual `@card`/`@end-card` pairs
 - Attribution quotes (currently inline prose) must be converted to `>` blockquotes
-- The `.dc-dreams` CSS section class AND `.dc-card` base CSS do not yet exist — must be created before migration
+- The `.dc-dreams` CSS section class AND `.dc-card` base CSS do not yet exist — must be created in `dc-components.css` (NOT fg-overrides.css) before migration
+- **The `@card` macro does not yet exist in `dimm-city-plugin.js`** — must be implemented (P2-5) before any migration here
+
+**Note on source tree:** In the `dc-op-manual/field-guide/` live tree, the `.dream-callout` container fence may already have been removed (dreams appear as plain prose). Verify before planning the fence migration — it may already be partially done.
 
 These are NOT mechanical syntax migrations. Do not proceed without author sign-off on heading-level and quote structure changes.
 
@@ -608,7 +634,7 @@ If `@skill` cannot handle type-2 or type-3, the spec — not the content — nee
 
 **What it needs:** These are player worksheets, not data tables. The blank column is a checkbox or write-in field. A plain markdown table migration preserves the visual structure but any reader looking at the PDF without context will see a mysterious empty column with no affordance.
 
-**Recommendation:** Add an explicit `<!-- print fill-in field -->` HTML comment before each table. Long-term, consider a `.dc-checklist` or `.dc-worksheet-table` CSS class applied via `{.dc-worksheet}` markdown-it-attrs on the table, giving the first column a checkbox border and dashed fill to signal player interaction. This is an authoring intent documentation issue more than a component gap.
+**Recommendation:** Add an explicit `<!-- print fill-in field -->` HTML comment before each table. Long-term, if a styled worksheet treatment is needed, create a `.dc-worksheet-table` CSS rule in `dc-components.css` and use `@block .dc-worksheet-table` as a wrapper — do NOT use `{.dc-worksheet}` as a per-element class attribute on the table itself (per-element class attributes for styling are an architectural anti-pattern). This is an authoring intent documentation issue more than a component gap.
 
 **Priority:** P2
 
@@ -625,10 +651,10 @@ If `@skill` cannot handle type-2 or type-3, the spec — not the content — nee
 | `> [!ORIGIN]` | ✅ Confirmed registered | `dc-origin-callout` handler exists in plugin |
 | `> [!DM]` | ✅ Confirmed registered | Single-paragraph only — see note below |
 | `> [!NOTE]` | ✅ Confirmed registered | Standard GFM type |
-| `> [!VIBE]` | ❓ Needs verification | Proposed in this doc; not yet confirmed in plugin |
-| `> [!GEAR]` | ❓ Needs verification | Proposed in this doc; not yet confirmed in plugin |
+| `> [!VIBE]` | ✅ Confirmed registered | `DC_ALERT_TYPES.VIBE` → `dc-alert dc-vibe-callout` |
+| `> [!GEAR]` | ✅ Confirmed registered | `DC_ALERT_TYPES.GEAR` → `dc-alert dc-gear-callout` |
 
-**Note on `> [!DM]` vs `@dm-note`:** `> [!DM]` handles **single-paragraph** DM notes only. Chapter-04 DM guidance blocks run 4–10 bullet points each with nested examples — these are definitively multi-paragraph. Use `@dm-note … @end-dm-note` for all chapter-04 DM guidance sections. Every mapping row in chapter-04 that says "Optionally migrate to `> [!DM]`" should be read as "use `@dm-note … @end-dm-note`." Confirm `@dm-note` is an implemented macro before scheduling.
+**Note on `> [!DM]` vs `@dm-note`:** `> [!DM]` CAN handle multi-paragraph blockquotes — markdown-it parses consecutive `>` lines with blank lines between them as a single blockquote block containing multiple paragraphs, and the DC alert transform forwards all tokens. However, `@dm-note … @end-dm-note` is still the **recommended** form for chapter-04's 4–10 bullet point DM guidance blocks because it doesn't depend on GFM blockquote nesting rules and is more explicit. Every mapping row in chapter-04 that says "Optionally migrate to `> [!DM]`" should be read as "use `@dm-note … @end-dm-note` for multi-paragraph blocks." Confirm `@dm-note` is an implemented macro before scheduling.
 
 **Action required:** Verify `[!VIBE]` and `[!GEAR]` in `dimm-city-plugin.js` before using them in any migration. Register if missing.
 
@@ -642,17 +668,20 @@ If `@skill` cannot handle type-2 or type-3, the spec — not the content — nee
 
 These items produce no output or corrupt output. **Split into two tracks — P0-A can start immediately; P0-B is blocked on the `@skill` spec.**
 
-#### P0-A: Can start immediately (no prerequisites)
+#### P0-A: Can start immediately (partial — see notes)
 ~509 fence lines. These macros are confirmed to exist.
 
+**Truly unblocked (no prerequisites):**
 1. **All `:::: learning-path` fences in chapter-02** (51 opening fences). Migrate to `@learning-path … @end-learning-path`.
 1a. **All `:::: wrapper {.specialty-intro}` fences in chapter-02** (8 — one per specialty). Migrate to `@specialty-intro … @end-specialty-intro` inside the enclosing `@specialty .NAME` scope.
 2. **All `:::: specialty` fences in chapter-02** (8 opening fences). Migrate to `@specialty .NAME … @end-specialty`.
-3. **All `:::` fences in chapter-00** (12 lines): cover, credits, TOC wrappers, intro image.
-4. **All `:::` fences in chapter-01** (16 lines): sidebars, wrappers, dream callout, two-column items.
-5. **All `:::` fences in chapter-03** (16 lines): image wrappers, outcome table container, dice sidebar, rules wrapper.
-6. **All `:::` fences in chapter-04** (30 lines): time glossary columns, keyword columns.
-7. **All `:::` / `::::` fences in chapter-05** (53 lines): gear grid, aug blocks, weapon wrappers.
+
+**Blocked on `@block` P0b (items 3–7 have `:::wrapper {.custom-class}` patterns with no existing macro equivalent):**
+3. **All `:::` fences in chapter-00** (12 lines): cover, credits, TOC wrappers, intro image — sidebar/toc macros available; image wrappers blocked on `@block`.
+4. **All `:::` fences in chapter-01** (~16–43 lines depending on source tree): sidebars have `@sidebar`/`@sidebar-box`; `.at-a-glance-cards`, `.section-header`, `.human-callout`, `.gear-callout` wrappers blocked on `@block` or require new macro.
+5. **All `:::` fences in chapter-03** (14–16 lines): outcome table container, dice sidebar, image wrappers — partially blocked on `@block`.
+6. **All `:::` fences in chapter-04** (30 lines): time glossary columns, keyword columns — `@section .two-column` + `@definition` available; blocked on `@block` for anything without a macro equivalent.
+7. **All `:::` / `::::` fences in chapter-05** (53 lines): gear grid uses `@gear-card`; weapon wrappers, some aug wrappers need `@block`.
 
 #### P0-B: Blocked on `@skill` multi-tier spec (P0b prerequisite)
 ~253 fence lines.
@@ -673,7 +702,7 @@ These sections have valid DC components available; using them will render correc
 1. **Ability AP costs** (358 instances): Resolves with `@skill` migration (pending P0b spec).
 2. **Ability outcome tables** (11 custom, 253 ability entries): Resolves with `@skill` migration.
 3. **Learning path ability lists**: Resolves with `@learning-path` migration.
-4. **Specialty scope containers** (8 + 2 variants): Resolves with `@specialty` migration — canonical slugs: `augmerc`, `proxy`, `streetwarden`, `gutterdruid`, `cybersurgeon`, `wirephreak`, `technosorcerer`, `etherlock`, **`dualist`**, **`generalist``. CSS cascade rules exist for all 10 — do not use a slug not in this list.
+4. **Specialty scope containers** (8 + 2 variants): Resolves with `@specialty` migration — canonical slugs: `augmerc`, `proxy`, `streetwarden`, `gutterdruid`, `cybersurgeon`, `wirephreak`, `technosorcerer`, `etherlock`, **`dualist`**, **`generalist`**. CSS cascade rules exist for all 10 — do not use a slug not in this list. **⚠️ Plugin gap:** `specialtyCodeFromClass()` only maps the base 8; `dualist` and `generalist` return `'PATH'` instead of a specialty code, so path `data-path-ref` attributes will be wrong (`PATH1` instead of `DUA1`). A plugin fix is needed alongside these migrations.
 5. **4 NPC stat blocks** (Patchhead, Grease Monkey, Undertow, Chromejaw): Migrate to `@stat .npc` once macro is built (see P2-2). Tier differentiation spec also required.
 6. **~14 gear entries + standard weapon entries** in chapter-05: Migrate to `@gear-card … @end-gear-card` (the actual macro name — NOT `@gear`).
 7. **3 SIDEBAR blocks** in chapters 01 and 03: Migrate to `@sidebar … @end-sidebar`.
@@ -696,7 +725,7 @@ These sections have valid DC components available; using them will render correc
 2. **`@stat .npc` macro** (DC plugin) — generic stat wrapper, `.npc` emits `.dc-npc-stat`; with tier differentiation spec (Fodder/Operator/Master visual weight). See Gap 5.
 3. **`@skill` multi-tier spec** — also listed as P0b prerequisite.
 4. **Spec Tweak entries** (chapter-02, 8): **Mandatory** `@block .slate` — not optional. Required to distinguish passive powers from `@skill` ability cards in 253-ability chapter. Requires `@block` in paged (P0b).
-5. **`@card` macro + CSS** (DC plugin) — new macro required for Ideals, Flaws, Dreams, and specialty intro cards. Three deliverables: (a) `@card`/`@end-card` handler in `dimm-city-plugin.js` emitting `<div class="dc-card">`; (b) `.dc-card` base CSS in `dc-components.css` (paper-poster register defaults); (c) cascade override rules: `.dc-ideals > .dc-card`, `.dc-flaws > .dc-card`, `.dc-dreams > .dc-card`, `.dc-specialty.augmerc .dc-card` etc. All three must land before P1-15 and P1-16 can complete. `.dc-flaws`, `.dc-ideals`, `.dc-dreams` section classes also need CSS rules.
+5. **`@card` macro + CSS** (DC plugin) — **Does not yet exist.** New macro required for Ideals, Flaws, Dreams, and specialty intro cards. Three deliverables: (a) `@card`/`@end-card` handler in `dimm-city-plugin.js` emitting `<div class="dc-card">`; (b) `.dc-card` base CSS **in `dc-components.css`** (paper-poster register defaults — NOT in fg-overrides.css); (c) cascade override rules **in `dc-components.css`**: `.dc-ideals > .dc-card`, `.dc-flaws > .dc-card`, `.dc-dreams > .dc-card`, `.dc-specialty.augmerc .dc-card` etc. All three must land before P1-15 and P1-16 can complete. `.dc-flaws`, `.dc-ideals`, `.dc-dreams` section classes also need CSS rules in `dc-components.css`.
 6. **Dream examples** (chapter-01): `@card` per entry inside `@section .dc-dreams` — same pattern as Ideals/Flaws. Straightforward once `@card` macro is implemented.
 7. **Time/Keywords glossaries** (chapter-04): `@section .two-column` + `.dc-terms`; verify `.dc-terms` renders term+description pairs correctly; add CSS for `.violet` tint variant at chapter scope.
 8. **Multi-table weapon entries** (chapter-05 — Schraphose, Yari): Define how multiple outcome tables nest inside one `@gear-card` block.
@@ -738,8 +767,8 @@ These components have no field guide home, no registered macro trigger, and no p
 
 | Component | Reason for removal |
 |---|---|
-| `.dc-visit-callout` | No `> [!VISIT]` macro trigger exists; no field guide content type maps to "visit." Stale CSS with no active path to emit it. |
-| `.dc-human-callout` | Listed in the reference doc callout group but no `> [!HUMAN]` trigger is registered anywhere. Active status unknown; no field guide content needs it. |
+| `.dc-visit-callout` | `> [!VISIT]` IS registered in the plugin (`DC_ALERT_TYPES.VISIT`). However, no field guide content type naturally maps to "visit" and there is no authoring home for it. Flagged for removal from the DC component library unless a use is identified; confirm zero consumers before removing. |
+| `.dc-human-callout` | No `> [!HUMAN]` trigger is registered in the plugin (`[!HUMAN]` is NOT in `DC_ALERT_TYPES`). The CSS class exists in dc-components.css but has no alert handler. Active status unknown; no field guide content needs it. |
 | `.dc-classtag` | Specialty identity dot-badges. The `@specialty .NAME` cascade delivers specialty accent to all components — standalone dot-badge class indicators are redundant and have no authoring surface in the field guide. |
 | `.dc-citizen-walkthrough.two-column` | Design-guide-only filled citizen form example. The field guide has no equivalent fill-in form page and no plans to add one. |
 
@@ -929,15 +958,24 @@ OLD:
 content
 :::
 
-NEW:
+NEW (future — after @block lands in markdown-it-paged):
 @block .bottom-center
 content
 @end-block
 
-NOTE: @block moves from the DC plugin to markdown-it-paged (general-purpose,
-available to all projects). The DC plugin's @block variant=X handlers are
-deprecated. Use class names directly: @block .panel / @block .slate / etc.
-CSS selectors in dc-components.css updated to .dc-block.panel (not .dc-block.dc-panel).
+⚠️ WARNING: @block .slate / @block .panel / etc. DO NOT WORK YET with the
+current DC plugin. The current plugin reads attrs['variant'], not attrs['class'].
+Writing @block .slate today silently renders as a panel. The @block-to-paged
+migration is a coordinated breaking change (§1.1b) — do NOT write @block .CLASSNAME
+in field guide source until that migration is confirmed deployed.
+
+CURRENT WORKING SYNTAX (use until migration ships):
+@block variant=slate       (or shorthand @slate if available)
+@block variant=panel
+@block variant=shard
+@block variant=codex
+
+NOTE: After migration ships, CSS selectors change: .dc-block.panel (not .dc-block.dc-panel).
 
 ---
 IDEALS / FLAWS / DREAMS — Authored-choice cards (@card macro, DC plugin):

@@ -184,9 +184,9 @@ preceding paragraph.
 
 | Find (inline attr) | File / Line | Replace with |
 |---|---|---|
-| `{.visit-callout}` | `chapter-01.md` line 82 | `> [!VISIT]` alert block |
-| `{.vibe-callout}` | `chapter-01.md` line 388 | `> [!VIBE]` alert block |
-| `{.origin-callout}` | `chapter-01.md` line 421 | `> [!ORIGIN]` alert block |
+| `{.visit-callout}` | `chapter-01.md` line 82 | `> [!VISIT]` alert block ✅ registered in plugin |
+| `{.vibe-callout}` | `chapter-01.md` line 388 | `> [!VIBE]` alert block ✅ registered in plugin |
+| `{.origin-callout}` | `chapter-01.md` line 421 | `> [!ORIGIN]` alert block ✅ registered in plugin |
 
 Example:
 
@@ -207,11 +207,12 @@ After:
 | Find | File / Lines | Replace with |
 |---|---|---|
 | `:::: wrapper {.human-callout}` ... `::::` | `chapter-01.md` line 190 | `@dm-note` ... `@end-dm-note` |
-| `:::: wrapper {.gear-callout}` ... `::::` | `chapter-01.md` line 809 | `@callout` ... `@end-callout` |
+| `:::: wrapper {.gear-callout}` ... `::::` | `chapter-01.md` line 809 | `@callout variant=gear` ... `@end-callout` |
 
 The `@dm-note` macro accepts an optional `label="..."` attribute if a custom
-heading is needed. For `@callout`, the default label is "Note" — pass
-`label="Gear"` explicitly if a custom heading is required.
+heading is needed. For `@callout`, use `variant=gear` to get the gear-callout
+visual style. `label=` sets only the title text; without `variant=gear` the
+default note style is used instead of the gear register.
 
 **Risk:** Medium. Verify the callout title bar appears correctly. The
 gear-callout block is multi-paragraph; ensure all content is enclosed before
@@ -234,42 +235,32 @@ The field guide source files still use the old names.
 | `.specialty-intro` (wrapper) | macro output `dc-specialty-intro` | Migrate to `@specialty-intro` (see §2) |
 | `.specialty-art` (wrapper) | macro output `dc-specialty-art` | Migrate to `@specialty-art` (see §2) |
 
-### `.section-header` → `.dc-section-header`
+### `.section-header` → **skip intermediate rename**
 
 **File:** `chapter-01.md`, lines 451 and 514 (2 occurrences).
 
-```
-Find:    :::: wrapper {.section-header}
-Replace: :::: wrapper {.dc-section-header}
-```
+**⚠️ Do NOT rename to `.dc-section-header`** — that class does not exist in
+`dc-components.css`. An intermediate class rename is also redundant because these
+`:::: wrapper {.section-header}` containers will be replaced entirely by the
+`@section .dc-ideals` / `@section .dc-flaws` macro migration (see §6 in
+component-mapping.md, P1-16). Migrate directly to the macro form; skip the
+intermediate rename step.
 
-**Risk:** Low. Confirm `.dc-section-header` rule exists in `components.css`
-before replacing.
-
-### `.at-a-glance-cards` / `.at-a-glance-card` — migrate to raw HTML
+### `.at-a-glance-cards` / `.at-a-glance-card` — requires new macro
 
 **File:** `chapter-01.md`, lines 148-165 (1 outer container + 3 inner cards).
 
-The `:::: wrapper` form cannot cleanly nest three inner wrappers at colon depth
-4. Replace with a raw HTML block:
+**⚠️ Do NOT migrate to raw HTML.** The constitution §I goal 2 forbids HTML in
+markdown. The `:::: wrapper` nesting depth problem needs a macro solution, not
+raw HTML.
 
-```html
-<div class="dc-at-a-glance-cards">
-  <div class="dc-at-a-glance-card">
-    <!-- card content -->
-  </div>
-  <div class="dc-at-a-glance-card">
-    <!-- card content -->
-  </div>
-  <div class="dc-at-a-glance-card">
-    <!-- card content -->
-  </div>
-</div>
-```
+**Recommended path:** Create an `@at-a-glance` / `@end-at-a-glance` macro in
+`dimm-city-plugin.js` (or use `@block .dc-at-a-glance-cards` with nested
+`@block .dc-at-a-glance-card` children once `@block` lands in `markdown-it-paged`).
+Until one of these is available, leave this block in its current `:::: wrapper`
+form and migrate other items first.
 
-**Risk:** Medium. Raw HTML bypasses markdown-it parsing for inline content
-inside the divs. Keep heading and paragraph content as plain text; inline attrs
-on inner elements may need to become explicit HTML attributes.
+**Risk:** Blocked — requires either a new macro or `@block` paged migration first.
 
 ---
 
@@ -318,8 +309,34 @@ equivalent. If the page-template grid layout requires the outer div, wrap with
 a raw HTML `<div class="dc-specialty-spread">` or confirm the page CSS handles
 the grid without it.
 
-**Files:** `chapter-01.md` lines 226-338 (10 specialty cards + 1 outer
-container).
+**Files:** `chapter-01.md` lines 226-338 (10 specialty cards + 1 outer container).
+
+**⚠️ Dual-specialist and generalist cards:** The live tree has 10 cards including
+`.specialty-card .dual-specialist` and `.specialty-card .generalist`. When
+migrating, use the canonical slugs `dualist` and `generalist` (NOT `dual-specialist`
+— the hyphenated form has no matching CSS cascade rule in `dc-components.css`):
+
+```markdown
+@specialty .dualist
+@specialty-card
+### Dual Specialist
+...
+@end-specialty-card
+@end-specialty
+
+@specialty .generalist
+@specialty-card
+### Generalist
+...
+@end-specialty-card
+@end-specialty
+```
+
+**⚠️ No outer wrapper macro:** `::::: wrapper {.specialty-spread}` has no macro
+equivalent. Do NOT replace with raw HTML (`<div class="dc-specialty-spread">`
+violates constitution §I). Check whether the page CSS handles the grid without
+the outer wrapper; if the layout breaks, a new `@specialty-spread` macro is
+needed.
 
 **Risk:** High. Visual verification required. The page-template for the
 choose-specialty catalog page may depend on the `.specialty-spread` outer div.
@@ -402,8 +419,11 @@ The `dc-art-bottom` CSS class is live in both `components.css` and
 | `chapter-03.md` | `:::: wrapper {.bottom-center}` | 182, 712 | 2 |
 | `chapter-05.md` | `![...]{.bottom-center}` | 99 | 1 |
 
-Note: `chapter-01.md` was listed in the previous version of this doc as a
-target. Confirmed clean — no `.bottom-center` occurrences present.
+Note: `chapter-01.md` in `dc-op-manual/field-guide/` has **three** live
+`.bottom-center` image class attributes (lines 459, 512, 883 — `{.bottom-center .art-slothhh}`,
+`{.bottom-center .art-badger}`, `{.bottom-center .art-scavenger}`). These are
+image-attr form, not `:::: wrapper` containers. Add them to the migration scope
+above and rename to `{.dc-art-bottom}` in the same pass.
 
 **Risk:** Low. Class rename only. Verify the art plate pins to the bottom of
 the page in a build preview before committing.
