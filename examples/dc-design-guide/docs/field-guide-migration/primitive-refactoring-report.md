@@ -242,18 +242,30 @@ All three agents converge on:
 - Add base `.dc-choice-card` styles to `dc-components.css`
 - Test with one content type (`.dc-flaws`) before migrating others
 
-#### Phase 2 — Field guide migration (using `@card`)
+#### Phase 2c — Field guide migration (using `@card` + consolidated macros)
 
-Migrate in this order (each depends on Phase 1 completion):
+Migrate in this order (depends on Phase 1 and Phase 2b both complete):
 
 1. `.dc-flaws` entries — three entries in chapter-02; lowest risk
 2. `.dc-ideals` entries — six entries; same structure
 3. `.dc-dreams` entries — five entries; same structure
 4. `@gear-card` consolidation — replace with `@card .dc-gear` + `@outcome` for embedded tables
 
-#### Phase 3 — Wrapper macro consolidation (optional, low value)
+#### Phase 2b — Wrapper macro consolidation (REQUIRED, before field guide migration)
 
-Migrate `@lede`, `@toc`, `@glossary`, `@specialty-intro`, `@specialty-art` to `@block .X` only if `@block` `.classname` syntax is working and tested. These macros have zero bug risk and are not blocking anything. Deprioritize.
+**Rationale:** Migrating the field guide while redundant single-class wrapper macros still exist means the field guide gets touched twice — once now, once again when the macros are consolidated. Do the consolidation first so migration authors write the final, canonical syntax.
+
+Migrate `@lede`, `@toc`, `@glossary`, `@specialty-intro`, `@specialty-art` to `@block .X` before any field guide content migration begins. Requires Phase 0's `.classname` syntax fix to already be in place.
+
+| Macro | Final form | Notes |
+|---|---|---|
+| `@lede` | `@block .dc-intro` | Rename to avoid `@lede` / `.dc-intro` name confusion |
+| `@toc` | `@block .dc-toc` | No behavior change |
+| `@glossary` | `@block .dc-glossary` | No behavior change |
+| `@specialty-intro` | `@block .dc-specialty-intro` | No behavior change |
+| `@specialty-art` | `@block .dc-specialty-art` | No behavior change |
+
+After consolidation: remove the five dedicated macro handlers from `dimm-city-plugin.js`. Any existing field guide source that uses `@lede` / `@toc` etc. gets a find-replace pass as part of this phase — before the structural migration begins.
 
 ### What NOT to Do
 
