@@ -30,6 +30,14 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 
 # Credits {.dc-chevron}
 
+@lede
+
+**Special Thanks:** Don and Cindy Ward, Ted Bonnah, Joseph Woodworth, Ben McDonough, Michael Giordono, Adam Tripp, Nathan Hays, Nathanael Elkins, Chelanna Leigh, Thomas Amundrud, Virgina Horine, Gena Pini, Madeleine Pini, Ken Pini, Mary Jo Pini, Davide Cavadini
+
+**Dedicated to the memory of Donovan Henry Callender.** Don was a player in our 2E AD&D group throughout our youth and was a dear friend for even longer. He was taken too soon from us and we wish he were here to dream in Dimm City with us today.
+
+@end-lede
+
 @section .credits-colophon
 
 <div class="colophon-grid">
@@ -45,10 +53,6 @@ Twelve chapters of dreams, dirt, and what bites back. Read them in any order —
 **Cover & Interior Design:** Founders House Studio
 
 **Play Testers:** Malie Mason, Ceros Whaley, Lady Lunadi, Owen Benjamin Kessel, Tim Kirk, Xander Arth, Thomas Morton, Ian Cooper, Colin Campbell, Chris Mayes, Jesse Rhom, Toby Dillon, Tim Peludat, Lane Francis, Adam Martin, Clay Meyer, Luther Krupp
-
-**Special Thanks:** Don and Cindy Ward, Ted Bonnah, Joseph Woodworth, Ben McDonough, Michael Giordono, Adam Tripp, Nathan Hays, Nathanael Elkins, Chelanna Leigh, Thomas Amundrud, Virgina Horine, Gena Pini, Madeleine Pini, Ken Pini, Mary Jo Pini, Davide Cavadini
-
-**Dedicated to the memory of Donovan Henry Callender.** Don was a player in our 2E AD&D group throughout our youth and was a dear friend for even longer. He was taken too soon from us and we wish he were here to dream in Dimm City with us today.
 
 **Typography:** Bebas Neue (display) · Special Elite (typewriter) · Inter (body) · JetBrains Mono (data). All faces open-licensed and self-hosted.
 
