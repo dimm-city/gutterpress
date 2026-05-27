@@ -258,6 +258,16 @@
    The h1 on both pages is a full-bleed dark band that covers the page top
    margin (margin-top: -0.5in pulls it flush to the page box edge).
    Lede (dc-intro) sits flush against the masthead with no gap below. */
+
+/* Cyber-palette accent identity for both frontmatter pages.
+   --dc-intro-accent sets the .dc-intro left-strip color; default is --orange
+   which reads as warm/rust. Override to brand-magenta so the lede strip
+   and the colophon labels all read as the same cyber signature. */
+.page.page-toc,
+.page.page-credits {
+  --dc-intro-accent: var(--hud-magenta);
+}
+
 .page.page-toc h1.dc-chevron,
 .page.page-credits h1.dc-chevron {
   display: block;

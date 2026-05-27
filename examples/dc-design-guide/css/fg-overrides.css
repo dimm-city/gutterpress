@@ -435,11 +435,11 @@
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--rust);
+  color: var(--hud-magenta);
   display: block;
   margin-bottom: 0.04in;
   padding-bottom: 0.02in;
-  border-bottom: 1.5pt solid var(--rust);
+  border-bottom: 1.5pt solid var(--hud-magenta);
 }
 
 /* TOC sub-line moved/removed — the prior rule targeted `.dc-lede` but the
