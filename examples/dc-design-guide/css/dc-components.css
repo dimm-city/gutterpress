@@ -3094,28 +3094,25 @@ p.dc-img-wrapper {
 }
 
 /* ── First-child heading inside a section becomes a filled top bar ───────
-   Base behavior — chapter-specific palette is set via --section-accent
-   in fg-overrides.css. H2 gets a larger bar than H3 so the hierarchy
-   reads at print size. Asymmetric padding centers cap-height vertically
-   (all-caps glyphs have no descenders). The bar's clip-path matches
-   .section::before's top-right notch so it doesn't overshoot. */
-.section:not(.tabbed, .two-column, .three-column, .col-split) > :is(h2, h3):first-child {
+   Base rule covers all sections. More-specific .section.tabbed rules
+   (above) already override via higher specificity — no negation needed.
+   Paged.js crashes when break-after:avoid selectors use :not(a,b) or
+   :is(h2,h3) — it splits on commas without tracking bracket depth. Keep
+   selectors to plain element + class combinators only. */
+.section > h2:first-child,
+.section > h3:first-child {
   background: var(--section-accent);
   color: var(--paper-cream);
   /* Right margin breaks out of section padding AND outer page margin so the
-     bar bleeds flush to the page trim edge on recto pages. Left stays at
-     section edge (binding margin is on the other side). */
+     bar bleeds flush to the page trim edge on recto pages. */
   margin: calc(-1 * var(--space-md))
           calc(-1 * (var(--space-lg) + var(--outer-margin)))
           var(--space-md)
           calc(-1 * var(--space-lg));
-  /* Right padding uses --space-2xl (0.25in ≈ 24px) so text clears the
-     print trim line by ≥ 0.125in even when the bar bleeds to 828px. Left
-     padding stays --space-lg to align flush with section border-box edge. */
+  /* Right padding (--space-2xl ≈ 24px) keeps text ≥ 0.125in from trim. */
   padding: 0.42rem var(--space-2xl) 0.28rem var(--space-lg);
-  /* Paged.js sets box-sizing: border-box on .pagedjs_pagebox *. With border-box,
-     width:auto fills the parent CONTENT box so negative margins can't extend the
-     right edge. content-box restores standard auto-width behaviour. */
+  /* Paged.js forces border-box on .pagedjs_pagebox *; content-box restores
+     auto-width so negative margins can extend the right edge. */
   box-sizing: content-box;
   border: 0;
   letter-spacing: var(--ls-display);
@@ -3123,9 +3120,8 @@ p.dc-img-wrapper {
   break-after: avoid;
 }
 
-/* H2 — PRIMARY: taller padding + 18px chamfer matches the card's own notch.
-   Bottom rule at --orange adds one extra hierarchy step vs H3. */
-.section:not(.tabbed, .two-column, .three-column, .col-split) > h2:first-child {
+/* H2 — PRIMARY: taller padding + 18px chamfer + orange rule. */
+.section > h2:first-child {
   font-size: var(--fs-h3);
   padding-top: 0.55rem;
   padding-bottom: 0.40rem;
@@ -3133,44 +3129,22 @@ p.dc-img-wrapper {
   border-bottom: 3pt solid var(--orange);
 }
 
-/* H3 — SUBORDINATE: same edge-to-edge flush as H2; hierarchy reads through
-   font size (--fs-h4 vs --fs-h3) and padding height alone. */
-.section:not(.tabbed, .two-column, .three-column, .col-split) > h3:first-child {
+/* H3 — SUBORDINATE: hierarchy reads through font size alone. */
+.section > h3:first-child {
   font-size: var(--fs-h4);
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
 }
 
-/* ── Multi-column sections — first-child heading spans all columns ───────
-   `column-span: all` keeps the bar from getting trapped inside column 1.
-   Section's vertical padding is var(--space-sm); pull up so bar starts at
-   the section's top edge. Bottom margin uses --space-md to land the first
-   paragraph on the next baseline grid step. */
-.section.two-column > :is(h2, h3):first-child,
-.section.three-column > :is(h2, h3):first-child {
-  column-span: all;
-  background: var(--section-accent);
-  color: var(--paper-cream);
-  /* Bar bleeds to page trim edge on recto (right margin = section pad + outer margin). */
-  margin: calc(-1 * var(--space-sm))
-          calc(-1 * (var(--space-lg) + var(--outer-margin)))
-          var(--space-md)
-          calc(-1 * var(--space-lg));
-  padding: 0.42rem var(--space-2xl) 0.28rem var(--space-lg);
-  box-sizing: content-box;
-  border: 0;
-  letter-spacing: var(--ls-display);
-  text-transform: uppercase;
-  break-after: avoid;
-}
-
+/* ── Multi-column sections — only the deltas from the base rule ───────────
+   column-span:all keeps the bar from being trapped inside column 1.
+   Top margin uses --space-sm (vs --space-md) to match the section's
+   smaller vertical padding. All other bar properties cascade from base. */
 .section.two-column > h2:first-child,
-.section.three-column > h2:first-child {
-  font-size: var(--fs-h3);
-}
-
 .section.two-column > h3:first-child,
+.section.three-column > h2:first-child,
 .section.three-column > h3:first-child {
-  font-size: var(--fs-h4);
+  column-span: all;
+  margin-top: calc(-1 * var(--space-sm));
 }
 
 /* Multi-column sections whose first child is a heading: drop the redundant
