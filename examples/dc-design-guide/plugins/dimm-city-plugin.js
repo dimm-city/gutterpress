@@ -859,6 +859,7 @@ export default function dimmCityPlugin(md, options = {}) {
         between Part 1 and the continuation. */
      let lastCardTitle = '';
      let lastCardTier = '';
+     let specialtyCardCount = 0;  // resets per-specialty; used to emit data-position="even/odd"
 
      // Helper to close all open structures EXCEPT specialty (specialty
      // wraps the entire chapter section and is closed separately).
@@ -921,6 +922,9 @@ export default function dimmCityPlugin(md, options = {}) {
       }
        currentSpecialtyCode = '';
       currentLearningPathIndex = 0;
+      // specialtyCardCount intentionally NOT reset here — it counts
+      // all cards emitted in the current section so even/odd alternation
+      // works across multiple @specialty blocks in the same card-grid.
     }
 
     for (let i = 0; i < tokens.length; i++) {
@@ -1374,10 +1378,11 @@ export default function dimmCityPlugin(md, options = {}) {
       const specialtyCardMarker = parseMarker(tok, tokens, i, '@specialty-card');
       if (specialtyCardMarker.matched) {
         closeAll();
+        specialtyCardCount++;
         const userAttrs = { ...specialtyCardMarker.attrs };
         const extraClass = userAttrs['class'] ? ' ' + userAttrs['class'] : '';
         delete userAttrs['class'];
-        let extraAttrs = '';
+        let extraAttrs = ' data-position="' + (specialtyCardCount % 2 === 0 ? 'even' : 'odd') + '"';
         for (const [key, val] of Object.entries(userAttrs)) {
           extraAttrs += ' ' + key + '="' + esc(val) + '"';
         }
@@ -1811,10 +1816,15 @@ export default function dimmCityPlugin(md, options = {}) {
         if (tok.type === 'ordered_list_open' && inSkillCard) {
           const { items, endIndex } = collectOrderedListItems(tokens, i, md);
 
-          items.forEach(itemHtml => {
+          items.forEach((itemHtml, idx) => {
             const ability = parseAbilityFromListItem(itemHtml);
             if (ability) {
-              let output = '<div class="dc-ability">\n';
+              let posAttrs = '';
+              if (items.length > 1) {
+                if (idx === items.length - 1) posAttrs = ' data-ability-last="true"';
+                if (idx === items.length - 2) posAttrs = ' data-ability-penultimate="true"';
+              }
+              let output = '<div class="dc-ability"' + posAttrs + '>\n';
               output += '  <span class="' + ability.apClass + '">' + esc(ability.apVal) + '</span>\n';
               output += '  <p class="dc-ability-text">' + processRollDie(ability.text) + '</p>\n';
               output += '</div>\n';

@@ -194,7 +194,7 @@
 /* ── INTRO OVERVIEW PAGE — section-accent token for the new page ─────────────
    Front-matter pages use :where(.page-intro) for zero-specificity token setting.
    The intro-overview page needs the same magenta accent. */
-:where(.page-intro-overview) { --section-accent: var(--hud-magenta); }
+:where(.page-intro-overview) { --dc-section-accent: var(--hud-magenta); }
 
 /* ── INTRO col-split: styled to match two-column section appearance ──────────
    The col-split section uses flex (not CSS multicol), guaranteeing METROPOLIS
@@ -203,8 +203,8 @@
    Applies to both the intro page (if content fits) and the dedicated overview
    page (where it always has a full page). */
 :is(.page.page-intro, .page.page-intro-overview) .section.col-split {
-  background: var(--section-bg);
-  border-top: 3px solid var(--section-accent);
+  background: var(--dc-section-bg);
+  border-top: 3px solid var(--dc-section-accent);
   border-bottom: 2px solid var(--border-hairline);
   padding: var(--space-sm) var(--space-md);
 }
@@ -241,30 +241,30 @@
    Following the Contextual Cascade Principle: variant choice flows from the
    document's natural hierarchy (chapter id → page template → section
    component) by SETTING CSS CUSTOM PROPERTIES the components consume. We
-   never set raw values here; always set a variable like --section-accent
+   never set raw values here; always set a variable like --dc-section-accent
    that the component's own rule reads.
 
    Authors don't write any variant-utility classes in markdown. The CSS
    below reads the semantic structure and assigns component variants
    accordingly. To change a chapter's identity, edit ONE rule here. */
 
-/* Per-chapter --section-accent: this is consumed by `.section.tabbed > h3`
+/* Per-chapter --dc-section-accent: this is consumed by `.section.tabbed > h3`
    as a REVERSE-OUT FILL behind paper-cream text. Cream on --brand-magenta =
    4.06:1 (fails AA normal text). Cream on --brand-magenta-deep = 6.99:1
    (passes). Same logic for --amber → --amber-dark. --rust on cream already
    passes (4.95:1) so no deep variant needed there. */
 
 /* Chapter 1 — opener + character creation: brand identity register */
-#ch-example-chapter-opener { --section-accent: var(--brand-magenta-deep); }
+#ch-example-chapter-opener { --dc-section-accent: var(--brand-magenta-deep); }
 
 /* Chapter 2 — specialty overview (Choose Your Specialty card grid): brand-magenta gateway */
-#ch-example-specialty-overview { --section-accent: var(--brand-magenta-deep); }
+#ch-example-specialty-overview { --dc-section-accent: var(--brand-magenta-deep); }
 
 /* Chapter 3 — specialty profile spreads (Augmerc and friends): brand-magenta gateway */
-#ch-example-specialty-profile { --section-accent: var(--brand-magenta-deep); }
+#ch-example-specialty-profile { --dc-section-accent: var(--brand-magenta-deep); }
 
 /* Chapter 4 — rules (Are You Lucid Yet, Dreams, City, etc.): brand identity register */
-#ch-example-rules { --section-accent: var(--brand-magenta-deep); }
+#ch-example-rules { --dc-section-accent: var(--brand-magenta-deep); }
 /* Street-sign image in the chapter opener fiction excerpt: float right so the
    ape-scenario text wraps around the sign's left side. Shadow flipped to
    -x so it falls LEFT (visible beside the float) rather than right (clipped
@@ -276,17 +276,17 @@
 }
 
 /* Chapter 5 — DM & NPC pages (stat blocks) */
-#ch-example-dm-npcs { --section-accent: var(--rust); }
+#ch-example-dm-npcs { --dc-section-accent: var(--rust); }
 /* Prevent level-3 heading orphan at bottom of p29 (paged.js doesn't honor
    break-after:avoid on siblings; scoped break-before on the heading works). */
 #ch-example-dm-npcs .section > h3:first-child { break-before: avoid; }
 
 /* Chapter 6 — gear & tech */
-#ch-example-gear-tech { --section-accent: var(--amber-dark); }
+#ch-example-gear-tech { --dc-section-accent: var(--amber-dark); }
 
 /* Front-matter pages have no @chapter wrapper (301). :where() gives 0,0,1
    specificity so any chapter rule above wins where it cascades down. */
-:where(.page-intro) { --section-accent: var(--hud-magenta); }
+:where(.page-intro) { --dc-section-accent: var(--hud-magenta); }
 
 /* Chapter-start drop-cap / opening-blockquote rules removed 2026-05-25.
    They targeted the legacy `.chapter-start` class set by `@page

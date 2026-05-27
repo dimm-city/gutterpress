@@ -59,24 +59,9 @@
    GFM: > [!NOTE/WARNING/DM/VIBE/ORIGIN/VISIT/GEAR] or @callout/@dm-note macros. */
 
 /* ── Base shell — player-facing: pale cyan HUD panel, blue border ─────────── */
+/* Token defaults for .dc-alert are declared in :root in dc-tokens.css.
+   Override at chapter-id scope in fg-overrides.css, or in variant rules below. */
 .dc-alert {
-  --dc-alert-bg: var(--hud-blue-dim);
-  --dc-alert-border: var(--hud-blue-dark);
-  --dc-alert-fg: var(--ink);
-  /* Was: var(--dc-alert-border) → hud-blue-dark on hud-blue-dim bg = 3.95:1
-     (fails AA). --ink-dark on hud-blue-dim = ~7.05:1. Architecturally cleaner
-     than blood (red label on cyan panel has no semantic home). */
-  --dc-alert-label-color: var(--ink-dark);
-
-  /* Structural overrides via custom properties for variant use */
-  --dc-alert-body-size: var(--fs-body-sm);
-  --dc-alert-border-width: 4px;
-  --dc-alert-label-size: 8pt;
-  --dc-alert-label-weight: 700;
-  --dc-alert-label-spacing: 0.12em;
-  --dc-alert-label-margin: 8pt;
-  --dc-alert-margin-top: 0;
-
   background: var(--dc-alert-bg);
   border-left: var(--dc-alert-border-width) solid var(--dc-alert-border);
   color: var(--dc-alert-fg);
@@ -1129,15 +1114,9 @@ hr,
    and replace token values with the new specialty's --<name>-* aliases. */
 
 /* ── Skill card shell ─────────────────────────────────────────────────── */
+/* Token defaults for .dc-skill-card are declared in :root in dc-tokens.css.
+   Specialty contexts override via .dc-specialty.<name> .dc-skill-card { } below. */
 .dc-skill-card {
-  --dc-card-accent: var(--ink);
-  --dc-card-surface: var(--paper-cream);
-  --dc-card-tab-bg: var(--ink-dark);
-  --dc-card-tab-title-color: var(--paper-cream);
-  --dc-card-tier-color: var(--hud-magenta);
-  --dc-card-tier-border: var(--hud-magenta);
-  --dc-card-body-mark: var(--crimson);
-
   position: relative;
   break-inside: avoid;
   /* Margin-bottom tightened 10 → 6 — gains ~4pt per card-gap on
@@ -1394,7 +1373,7 @@ hr,
     vertical-align: middle;
     background-color: var(--paper-aged);
     padding: 0.5em;
-    box-shadow: var(--shadow-light);
+    box-shadow: var(--shadow-tint);
     border: 2px dashed var(--dc-roll-the-die-border, var(--hud-magenta));
 }
 
@@ -1460,11 +1439,9 @@ hr,
    Specialty themes override via .dc-specialty.<name> .dc-specialty-intro { }. */
 
 /* ── Specialty intro shell + element overrides ────────────────────────── */
+/* Token defaults for .dc-specialty-intro are declared in :root in dc-tokens.css.
+   Specialty contexts override via .dc-specialty.<name> .dc-specialty-intro { } above. */
 .dc-specialty-intro {
-  --dc-specialty-intro-title-bg: var(--hud-magenta);
-  --dc-specialty-intro-title-color: var(--bg);
-  --dc-specialty-intro-bg: var(--hud-panel);
-
   /* filter on outer — NO clip-path here; clip-path is on ::before */
   background: transparent;
   filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink))
@@ -1566,15 +1543,9 @@ hr,
    Specialty themes override via .dc-specialty.<name> .dc-specialty-card { }. */
 
 /* ── Specialty card (.dc-specialty-card + descendants + nth-of-type(even)) */
+/* Token defaults for .dc-specialty-card are declared in :root in dc-tokens.css.
+   Specialty contexts override via .dc-specialty.<name> .dc-specialty-card { } above. */
 .dc-specialty-card {
-  --dc-specialty-card-bg: var(--paper-cream);
-  --dc-specialty-card-border: var(--hud-blue);
-  --dc-specialty-card-accent: var(--crimson);
-  --dc-specialty-card-fg: var(--ink);
-  --dc-specialty-card-media-height: 0.85in;
-  --dc-specialty-card-media-width: 0.75in;
-  --dc-specialty-card-title-align: right;
-  --dc-specialty-card-band-height: 16pt;
   /* Stack the optional per-specialty shadow on top of the universal
      poster-wall shadow. The poster shadow pins the card to the brick
      wall as a physical object (hard offset, no blur — "stuck on" not
@@ -1674,16 +1645,17 @@ hr,
   overflow-wrap: anywhere;
 }
 
-/* Even cards flip the border accent to the right. Use nth-of-type because
-   specialty spreads include interleaved wrapper blocks in the same parent. */
-.dc-specialty-card:nth-of-type(even) {
+/* Even cards flip the border accent to the right. data-position is emitted by
+   the plugin (specialtyCardCount resets per-specialty) so the selector is
+   Paged.js-safe — no :nth-of-type rewriting. */
+.dc-specialty-card[data-position="even"] {
   --dc-specialty-card-title-align: left;
 
   border-left: 1.5px solid var(--dc-specialty-card-border);
   border-right: var(--callout-border-width-small) solid var(--dc-specialty-card-accent);
 }
 
-.dc-specialty-card:nth-of-type(even) img {
+.dc-specialty-card[data-position="even"] img {
   float: right;
   margin: 0 0 0.08in 0.14in;
 }
@@ -1697,11 +1669,9 @@ hr,
   break-after: avoid;
 }
 
+/* Token defaults for .dc-path-shell are declared in :root in dc-tokens.css.
+   Specialty contexts override via .dc-specialty.<name> .dc-path-shell { } above. */
 .dc-path-shell {
-  --dc-path-title-bg: var(--hud-magenta);
-  --dc-path-title-color: var(--paper-cream);
-  --dc-path-accent: var(--hud-magenta);
-
   /* clip-path is on ::before (same pattern as .dc-skill-card / .dc-card-body).
      filter on the outer shell, clip on a child — otherwise Chrome clips the
      shadow rendering canvas before painting bottom/right drop-shadows. */
@@ -2605,11 +2575,11 @@ hr,
   padding: 0;
 }
 
-.dc-card-body .dc-ability:nth-last-of-type(2):not(:only-of-type) {
+.dc-card-body .dc-ability[data-ability-penultimate] {
   break-after: avoid;
 }
 
-.dc-card-body .dc-ability:last-of-type:not(:only-of-type) {
+.dc-card-body .dc-ability[data-ability-last] {
   break-before: avoid;
 }
 
@@ -2880,14 +2850,14 @@ p.dc-img-wrapper {
    chains — variant classes always win the cascade.
 
    Token API:
-     --section-bg      → panel background surface
-     --section-accent  → left strip / top border accent color        */
+     --dc-section-bg      → panel background surface
+     --dc-section-accent  → left strip / top border accent color        */
 
 /* ── Base card: every @section gets a cream surface + left accent strip ──
    Public tokens (defaults declared in dc-tokens.css :root):
-     --section-bg      — panel background surface
-     --section-accent  — left strip / top bar accent color
-   Override --section-accent via a .dc-accent-X utility class applied to
+     --dc-section-bg      — panel background surface
+     --dc-section-accent  — left strip / top bar accent color
+   Override --dc-section-accent via a .dc-accent-X utility class applied to
    any ancestor (typically @chapter or @section). See "ACCENT IDENTITY
    UTILITIES" section at the bottom of this file. */
 .section {
@@ -2922,7 +2892,7 @@ p.dc-img-wrapper {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(to right, var(--section-accent) 5px, var(--section-bg) 5px);
+  background: linear-gradient(to right, var(--dc-section-accent) 5px, var(--dc-section-bg) 5px);
   clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
   z-index: 0;
 }
@@ -2961,8 +2931,8 @@ p.dc-img-wrapper {
 .section.two-column,
 .section.three-column {
   filter: none;
-  background: var(--section-bg);
-  border-top: 3px solid var(--section-accent);
+  background: var(--dc-section-bg);
+  border-top: 3px solid var(--dc-section-accent);
   border-bottom: 2px solid var(--border-hairline);
   /* Horizontal padding was 0 — Dream Mastery body text + other two/three
      column sections pressed against the section's left and right edges.
@@ -3021,9 +2991,9 @@ p.dc-img-wrapper {
      no noise overlays, no decorative additions. */
   background:
     linear-gradient(180deg,
-      color-mix(in srgb, var(--section-accent) 86%, #fff 14%) 0%,
-      var(--section-accent) 45%,
-      color-mix(in srgb, var(--section-accent) 93%, #000 7%) 100%);
+      color-mix(in srgb, var(--dc-section-accent) 86%, #fff 14%) 0%,
+      var(--dc-section-accent) 45%,
+      color-mix(in srgb, var(--dc-section-accent) 93%, #000 7%) 100%);
   /* Inset highlights/shadows complete the material illusion — 1px bright
      stripe at top, 1px dark stripe at bottom-right edge. */
   box-shadow:
@@ -3105,7 +3075,7 @@ p.dc-img-wrapper {
    selectors to plain element + class combinators only. */
 .section > h2:first-child,
 .section > h3:first-child {
-  background: var(--section-accent);
+  background: var(--dc-section-accent);
   color: var(--paper-cream);
   /* Negative margins pull bar flush with the section border-box edges. */
   margin: calc(-1 * var(--space-md)) calc(-1 * var(--space-lg)) var(--space-md);
@@ -3147,7 +3117,7 @@ p.dc-img-wrapper {
 }
 
 /* Multi-column sections whose first child is a heading: drop the redundant
-   `border-top: 3px solid var(--section-accent)` since the bar IS the top.
+   `border-top: 3px solid var(--dc-section-accent)` since the bar IS the top.
    Requires Chromium ≥105 — Paged.js's embedded engine satisfies this. */
 .section:is(.two-column, .three-column):has(> :is(h2, h3):first-child) {
   border-top: 0;
@@ -3193,7 +3163,7 @@ p.dc-img-wrapper {
    section accent. This visually distinguishes subsection headings from the
    section title bar. Universal across all chapters. */
 .section > h3:not(:first-child) {
-  border-left: 3px solid var(--section-accent);
+  border-left: 3px solid var(--dc-section-accent);
   padding-left: var(--space-sm);
 }
 
@@ -3276,13 +3246,9 @@ h3 + .section {
    ─────────────────────────────────────────────────────────────────────── */
 
 /* ── Base shell ──────────────────────────────────────────────────────────── */
+/* Token defaults for .dc-block are declared in :root in dc-tokens.css.
+   Override via variant rules (.dc-block.dc-panel etc.) below. */
 .dc-block {
-  --dc-block-bg:       var(--paper-light);
-  --dc-block-fg:       var(--ink);
-  --dc-block-accent:   var(--hud-blue-dark);
-  --dc-block-title-bg: var(--hud-blue-dark);
-  --dc-block-title-fg: var(--paper-cream);
-
   background: var(--dc-block-bg);
   color: var(--dc-block-fg);
   padding: 0 var(--space-lg) var(--space-lg);
@@ -3554,7 +3520,7 @@ h3 + .section {
   padding: 5px 12px 5px 16px;
   margin: 0 0 var(--space-md);
 }
-.dc-card-grid .dc-specialty:first-of-type { break-before: avoid; }
+.dc-card-grid .dc-specialty:first-child { break-before: avoid; }
 
 /* Compact specialty card density: 10 cards on one page in 2 columns */
 .dc-card-grid .dc-specialty-card {
@@ -3686,8 +3652,8 @@ h3 + .section {
 
   /* Feed the existing section accent / bg surfaces from the
      chapter-opener tokens so per-chapter overrides flow through. */
-  --section-accent: var(--dc-chapter-opener-accent);
-  --section-bg:     var(--dc-chapter-opener-bg);
+  --dc-section-accent: var(--dc-chapter-opener-accent);
+  --dc-section-bg:     var(--dc-chapter-opener-bg);
 
   /* Propagate the chapter-opener's clip-tail into --clip-tail so any
      .dc-chevron descendant's --clip-banner polygon tapers to the same
@@ -3813,7 +3779,7 @@ h3 + .section {
 /* Layout (columns: 2 / column-gap / column-fill) lives in page-templates.css
    alongside other multi-column section types — columns-ownership rule. */
 .section.dc-rules-definition {
-  --dc-rules-definition-accent-a: var(--section-accent);
+  --dc-rules-definition-accent-a: var(--dc-section-accent);
   --dc-rules-definition-accent-b: var(--hud-magenta);
 
   margin: var(--space-md) 0;
@@ -3829,10 +3795,10 @@ h3 + .section {
   column-span: all;
 }
 
-.section.dc-rules-definition .dc-definition-block:first-of-type {
+.section.dc-rules-definition .dc-definition-block:first-child {
   --dc-definition-block-accent: var(--dc-rules-definition-accent-a);
 }
 
-.section.dc-rules-definition .dc-definition-block:nth-of-type(2) {
+.section.dc-rules-definition .dc-definition-block:nth-child(2) {
   --dc-definition-block-accent: var(--dc-rules-definition-accent-b);
 }
