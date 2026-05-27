@@ -153,6 +153,23 @@ body { counter-reset: chapter; }
   transform: rotate(-1deg);
 }
 
+/* Suppress sticker chrome on named pages where the folio content is
+   itself suppressed via `content: none` (front-matter, chapter-start,
+   full-bleed, clean, blank). Paged.js still adds the `.hasContent`
+   class to those margin slots because the GENERIC @page :left/:right
+   declared content — only the named-page override later set content
+   to none. Without `display: none` here, an empty styled sticker box
+   renders in the margin even though there's no text inside it. */
+:is(.pagedjs_front-matter_page,
+    .pagedjs_chapter-start_page,
+    .pagedjs_full_page,
+    .pagedjs_clean_page,
+    .pagedjs_blank_page)
+  :is(.pagedjs_margin-bottom-left, .pagedjs_margin-bottom-right)
+  .pagedjs_margin-content {
+  display: none;
+}
+
 
 
 /* ---------------------------------------------------------------------------
