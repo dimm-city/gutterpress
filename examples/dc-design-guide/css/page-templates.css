@@ -448,40 +448,59 @@
    own bottom-right diagonal clip-path) — that's the established intro
    identity and is intentional.
 
-   Fixes only the lede → section join so the body BELOW the chevron
-   reads as one cohesive paper card:
-     - Suppress the .section base ::before / ::after pseudos (their
-       18px TOP-right clip-path went the OPPOSITE direction of the
-       chevron's 22px BOTTOM-right cut, creating the stepped right-edge
-       mismatch the user flagged).
-     - Give the section a clean paper-cream substrate with the same 4px
-       magenta left rail as the lede, so the two children share one
-       continuous accent edge.
-     - Each child carries --shadow-poster; flush stacking gives one
-       continuous right + bottom shadow below the chevron.
+   Composite contract:
+     - Chevron is constrained to body column width (overriding the
+       chapter-opener composite's negative margins that were leaking in
+       via a paged.js-generated selector — those margins were designed
+       for chapters where the chevron lives inside a wrapper, not for
+       this standalone intro page).
+     - Section's ::before / ::after pseudos suppressed (their 18px TOP-
+       right cut opposed the chevron's BOTTOM-right cut, producing the
+       stepped right-edge mismatch).
+     - Section gets a clean paper-cream substrate with the same 4px
+       magenta left rail as the lede; rail runs continuously through
+       both.
+     - ONE filter: drop-shadow on the .page wrapper follows the union
+       silhouette of all three children — chevron's clip-path included
+       — so the shadow respects the chevron's diagonal cut and there's
+       no top-right gap on the lede (per-child box-shadow with offset-y
+       leaves a few-pixel notch at every child's top-right; the wrapper
+       filter never does). Per-child box-shadows therefore SUPPRESSED.
+       MEMORY R8: composite shadows via filter:drop-shadow on the
+       common wrapper.
 
    --intro-accent is the single recolor knob, mirroring --frontmatter-
    accent's role on the TOC/Credits template. */
 .page.page-intro {
   --intro-accent: var(--brand-magenta-deep);
   --dc-intro-accent: var(--intro-accent);
+  filter: drop-shadow(var(--shadow-poster));
+}
+
+/* Chevron at body column width (override leaked negative margins from
+   the chapter-opener composite rule). The clip-path stays as the
+   default decorative bottom-right cut. */
+.page.page-intro h1.dc-chevron {
+  margin-left: 0;
+  margin-right: 0;
+  box-shadow: none;
 }
 
 /* Lede flush-attaches to the chevron above; bottom margin zeroed so
-   the next sibling .section sits flush below. Substrate, padding, and
-   shadow inherit from the .dc-intro component default. */
+   the next sibling .section sits flush below. box-shadow suppressed —
+   page-level filter:drop-shadow provides the composite shadow. */
 .page.page-intro .dc-intro {
   margin-bottom: 0;
   padding-bottom: 0;
+  box-shadow: none;
 }
 .page.page-intro .dc-intro > :last-child {
   margin-bottom: 0;
 }
 
-/* Section content — same composite role as the colophon on the credits
-   page. Substrate picks up the lede's 4px magenta gradient strip so the
-   left rail runs continuously through both. Carries --shadow-poster so
-   the lede + section read as one lifted card under the chevron. */
+/* Section content — paper-cream substrate, magenta 4px left rail
+   continuing from the lede. box-shadow suppressed; page filter handles
+   the composite shadow. */
 .page.page-intro > .section {
   background: linear-gradient(
     to right,
@@ -489,15 +508,12 @@
     var(--paper-cream) 4px
   );
   padding: 0.18in 0.22in;
-  box-shadow: var(--shadow-poster);
+  box-shadow: none;
 }
 
 /* Suppress the .section base ::before (magenta gradient + 18px top-right
-   clip-path corner cut) and ::after (ink-dark fake-shadow offset 3px
-   down-right). The ::before's clip-path direction OPPOSED the chevron's
-   bottom-right cut, producing the visible step at the right edge. With
-   both off the section is a clean rectangle that flows smoothly out of
-   the lede above. */
+   clip-path corner cut) and ::after (ink-dark fake-shadow). Both fought
+   the chevron's clip direction and added doubled shadows. */
 .page.page-intro > .section::before,
 .page.page-intro > .section::after {
   content: none;
