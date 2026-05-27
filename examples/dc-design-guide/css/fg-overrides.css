@@ -448,3 +448,15 @@
    thumbnail identity is now carried by the lede prose + chip-list +
    .dc-toc card composition without an additional pseudo-element label.
    Iter-8 cleanup. */
+
+/* .dc-toc accent — cyber palette override for the TOC page.
+   Base component uses --rust for card borders + number badge fill.
+   Frontmatter pages use --hud-magenta to match the cyber signature. */
+.page.page-toc .dc-toc {
+  border-top-color: var(--hud-magenta);
+  border-bottom-color: var(--hud-magenta);
+}
+
+.page.page-toc .dc-toc ol > li::before {
+  background: var(--hud-magenta);
+}
