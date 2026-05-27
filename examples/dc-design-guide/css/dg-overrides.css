@@ -358,7 +358,9 @@ div.chapter hr {
   padding-left: 18px;
 }
 
-.page:is(.page-credits.credits, .page-intro.intro, .page-chapter-start.chapter-start)>h1 {
+/* page-credits removed — its h1 is the full-bleed masthead in page-templates.css
+   which owns border and margin-top directly. */
+.page:is(.page-intro.intro, .page-chapter-start.chapter-start) > h1 {
   border: 0;
   margin-top: 24pt;
 }

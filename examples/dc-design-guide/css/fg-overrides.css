@@ -394,26 +394,8 @@
                                               tightened so the smaller size
                                               still reads as a deliberate
                                               typographic gesture. */
-/* CONTENTS + CREDITS masthead — full-bleed dark band, same treatment on
-   both pages. Direct page children (no section wrapper). */
-.page.page-toc h1.dc-chevron,
-.page-credits h1.dc-chevron {
-  display: block;
-  width: calc(100% + 1.25in);
-  margin-left: -0.625in;
-  margin-right: -0.625in;
-  margin-top: -0.5in;
-  margin-bottom: 0;
-  padding: 0.45in 0.625in 0.35in;
-  box-sizing: content-box;
-  clip-path: none;
-  background: var(--ink-dark);
-  color: var(--paper-cream);
-  border-bottom: 4px solid var(--hud-magenta);
-  font-size: 26pt;
-  letter-spacing: 0.32em;
-  font-weight: 700;
-}
+/* CONTENTS + CREDITS masthead — moved to page-templates.css as the shared
+   frontmatter page template. */
 
 /* Heading-section adjacency / composite-header flush moved to
    dc-components.css as `.dc-chevron + X` adjacency rules.

@@ -253,6 +253,44 @@
 .section.credits-colophon { columns: unset; }
 .section.credits-colophon .colophon-grid { columns: 2; }
 
+/* ── PAGE TEMPLATE: FRONTMATTER (TOC + CREDITS) ─────────────────────────────
+   Shared masthead and layout rules for the two front-matter pages.
+   The h1 on both pages is a full-bleed dark band that covers the page top
+   margin (margin-top: -0.5in pulls it flush to the page box edge).
+   Lede (dc-intro) sits flush against the masthead with no gap below. */
+.page.page-toc h1.dc-chevron,
+.page.page-credits h1.dc-chevron {
+  display: block;
+  width: calc(100% + 1.25in);
+  margin-left: -0.625in;
+  margin-right: -0.625in;
+  margin-top: -0.5in;
+  margin-bottom: 0;
+  padding: 0.45in 0.625in 0.35in;
+  box-sizing: content-box;
+  clip-path: none;
+  background: var(--ink-dark);
+  color: var(--paper-cream);
+  border-bottom: 4px solid var(--hud-magenta);
+  font-size: 26pt;
+  letter-spacing: 0.32em;
+  font-weight: 700;
+}
+
+/* Lede flush-attaches to the masthead and passes straight into the next
+   element — no gap on either side. Last child's margin-bottom is also
+   zeroed because it bleeds out of the zero-padded container. */
+.page.page-toc .dc-intro,
+.page.page-credits .dc-intro {
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.page.page-toc .dc-intro > :last-child,
+.page.page-credits .dc-intro > :last-child {
+  margin-bottom: 0;
+}
+
 /* ── PAGE TEMPLATE: IMAGE (NEW) ────────────────────────────────────────────── */
 /* Image page — full-width image at the top or bottom with no horizontal margin
    extension at the top/bottom edge. Default page margins apply on the sides.
