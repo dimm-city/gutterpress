@@ -1666,7 +1666,7 @@ hr,
   position: relative;
   margin: 0 0 10px;
   break-before: auto;
-  break-after: avoid;
+  break-after: auto;
 }
 
 /* Token defaults for .dc-path-shell are declared in :root in dc-tokens.css.

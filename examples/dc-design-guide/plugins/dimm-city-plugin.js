@@ -1752,6 +1752,35 @@ export default function dimmCityPlugin(md, options = {}) {
 
       // Inside @skill section
       if (inSkillMode) {
+        // Auto-close skill mode before any markdown-it-paged layout marker.
+        // Example: chapter-02's inline example skill is followed directly by
+        // `@page` with no explicit `@end-skill`. If we pass the layout marker
+        // through while the card is still open, the next page wrapper and all
+        // following content are emitted inside the current .dc-skill-card,
+        // producing malformed HTML and a Paged.js layout loop.
+        if (tok.type && tok.type.startsWith('layout_')) {
+          closeAll();
+          newTokens.push(tok);
+          continue;
+        }
+
+        // markdown-it-paged has not yet transformed raw marker paragraphs into
+        // layout_marker tokens when this plugin runs. If a skill is followed
+        // directly by a layout directive such as `@page`, `@section`,
+        // `@chapter`, or `@spread`, auto-close the open card/mode so the next
+        // pipeline stage can emit balanced page wrappers instead of nesting the
+        // new layout block inside the current skill card.
+        if (
+          (parseMarker(tok, tokens, i, '@page').matched)
+          || (parseMarker(tok, tokens, i, '@section').matched)
+          || (parseMarker(tok, tokens, i, '@chapter').matched)
+          || (parseMarker(tok, tokens, i, '@spread').matched)
+        ) {
+          closeAll();
+          newTokens.push(tok);
+          continue;
+        }
+
         // H4 = Skill card title
         if (tok.type === 'heading_open' && tok.tag === 'h4') {
           // Close previous card if open

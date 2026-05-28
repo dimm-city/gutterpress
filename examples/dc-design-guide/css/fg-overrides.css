@@ -352,32 +352,10 @@
   --dc-alert-label-color: var(--rust);
 }
 
-/* ── Augmerc learning-path: glue path-overview to first skill card ──────────
-   The plugin emits each @skill as its own `.dc-specialty.augmerc` wrapper
-   (sibling wrappers, not nested), so the path-shell wrapper and the first
-   skill-card wrapper are SIBLINGS at the @specialty level — not parent and
-   child. Use :has() to target the wrapper that holds the populated path
-   overview (h2.dc-spray) and glue it to its next sibling wrapper (which
-   holds the first skill card). Without this, Biting Distance lands on its
-   own half-empty page while Punishing Counter starts a new page (orphan
-   pair). The scoped break rules force paged.js to keep them on the same
-   page — either both on this page or both moved to the next. */
-.dc-specialty.augmerc:has(.dc-path-shell > h2.dc-spray) {
-  break-after: avoid;
-}
-.dc-specialty.augmerc:has(.dc-path-shell > h2.dc-spray) + .dc-specialty.augmerc {
-  break-before: avoid;
-}
-
-/* Skill-card packing: I tried `.dc-specialty.augmerc:has(...) +
-   .dc-specialty.augmerc:has(...) { break-before: avoid }` to pack adjacent
-   skill wrappers on the same page. Paged.js did NOT honor it — page count
-   stayed at 44 with 1 card per page in 3 of 4 skill spreads. Known issue
-   per MEMORY: ":has() can crash layout, break-inside: avoid is unreliable
-   in paged.js" — same applies to break-before. The real fix for the
-   skill-pack BROKEN verdicts is plugin-level (modify dimm-city-plugin.js
-   so all @skill within a single @specialty share ONE .dc-specialty
-   wrapper, not one wrapper per skill). NOT attempting that here. */
+/* Augmerc packing rules using :has() were removed.
+   Paged.js can crash or loop on :has()-based pagination selectors, and these
+   break-before/break-after hints were not reliably honored anyway. The safe
+   fix path is plugin-level wrapper structure, not selector-driven glue logic. */
 
 /* ── FRONT-MATTER PAGE-IDENTITY DIFFERENTIATION (gate iteration 3) ─────────
    D12 spread cohesion: three identical banner-then-body pages fail the
