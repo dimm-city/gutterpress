@@ -1,5 +1,8 @@
 # Field Guide Syntax Examples
 
+> **⛔ CONTENT PROTECTION RULE — PRIMARY CONSTRAINT**
+> Migration changes markdown **syntax only**. No prose, dialogue, flavor text, ability text, heading text, game mechanics, or any other author-written content may be altered, rewritten, trimmed, paraphrased, or "improved" without explicit user direction. A syntax migration that changes a single word of content is a failure. Run `content-hash.ts verify` before committing any batch.
+
 One representative before/after example for every component and pattern type found in the live field guide source (`dc-op-manual/field-guide/`). File paths are relative to that directory.
 
 ---
@@ -71,11 +74,9 @@ Twelve chapters of dreams, dirt, and what bites back...
 
 ## 3. Generic Block Wrappers
 
-### 3.1 Wrapper with class — TOC
+### 3.1 TOC
 
-`chapter-00.md` lines 10–28 — **Change:** replace `::: wrapper {.dc-toc}` with `@block .dc-toc`; replace closing `:::` with `@end-block`.
-
-⚠️ Requires `@block .classname` syntax fix (Phase 0 prerequisite).
+`chapter-00.md` lines 10–28 — **Change:** replace `::: wrapper {.dc-toc}` with `@toc`; replace closing `:::` with `@end-toc`. The `@toc` macro exists specifically for this and emits `.dc-toc` directly — no `@block` wrapper needed.
 
 **BEFORE:**
 ```markdown
@@ -87,10 +88,10 @@ Twelve chapters of dreams, dirt, and what bites back...
 
 **AFTER:**
 ```markdown
-@block .dc-toc
+@toc
 1. **01** &nbsp; [Who Do You Dream to Be?](#chapter-01) — Citizen file...
 2. **02** &nbsp; ...
-@end-block
+@end-toc
 ```
 
 ---
@@ -116,11 +117,9 @@ Twelve chapters of dreams, dirt, and what bites back...
 
 ---
 
-### 3.3 Outcome / rules table (authority register)
+### 3.3 Table of Outcomes
 
-`chapter-03.md` line 591 — **Change:** replace `::: container {.outcome-table}` with `@block .slate`; replace closing `:::` with `@end-block`.
-
-⚠️ Requires `@block` P0b.
+`chapter-03.md` line 591 — **Change:** replace `::: container {.outcome-table}` with `@outcome`; replace closing `:::` with `@end-outcome`. Convert the table rows to the pipe-separated row format the macro expects (`Roll | Result | Description`). The `@outcome` macro renders the d20 outcome ladder with per-tier `.dc-outcome-row` classes.
 
 **BEFORE:**
 ```markdown
@@ -133,10 +132,13 @@ Twelve chapters of dreams, dirt, and what bites back...
 
 **AFTER:**
 ```markdown
-@block .slate
-### Table of Outcomes
-...
-@end-block
+@outcome
+20 | Triumph | Best-case outcome, extra impact
+11–19 | Success | You do it
+6–10 | Hard Choice | You succeed, but it costs you
+2–5 | Failure | You don't get what you wanted
+1 | Catastrophe | It goes bad, and then worse
+@end-outcome
 ```
 
 ---
@@ -257,9 +259,9 @@ Not everything you carry is a weapon, a tool, or a piece of tech...
 
 ## 6. Images
 
-### 6.1 Art class rename
+### 6.1 Remove image class attributes
 
-`chapter-00.md` line 64 (~20 instances throughout the book) — **Change:** find-replace `.art-` → `.dc-art-` on all image class attributes across all chapters. Safe to run as a global sweep.
+`chapter-00.md` line 64 (~20 instances throughout the book) — **Change:** remove all `{.art-*}` class attributes from image tags. Images are positioned and styled via CSS context selectors (`@specialty .augmerc img`, `.page.page-intro img`, etc.) — no class attribute on the image element is needed or wanted. This is the Contextual Cascade Principle applied to images: the page/section/specialty scope in `fg-overrides.css` targets the image by its container, not by a per-element attribute.
 
 **BEFORE:**
 ```markdown
@@ -268,14 +270,14 @@ Not everything you carry is a weapon, a tool, or a piece of tech...
 
 **AFTER:**
 ```markdown
-![intro-image](images/chapter-00/neonrabbit.png){.dc-art-intro-image}
+![intro-image](images/chapter-00/neonrabbit.png)
 ```
 
 ---
 
-### 6.2 `.bottom-center` image position
+### 6.2 Remove positional image class attributes
 
-`chapter-05.md` line 73 (also `chapter-01.md` lines 459, 512, 883) — **Change:** replace `.bottom-center` with `.dc-art-bottom` in image attrs at these 4 locations.
+`chapter-05.md` line 73 (also `chapter-01.md` lines 459, 512, 883) — **Change:** remove `{.bottom-center .art-medkit}` entirely. Image position is a CSS concern: the enclosing page or section class targets the image via a context selector in `fg-overrides.css` (e.g. `.page.some-page img { position: ...; bottom: 0; }`). No per-element attribute needed.
 
 **BEFORE:**
 ```markdown
@@ -284,14 +286,14 @@ Not everything you carry is a weapon, a tool, or a piece of tech...
 
 **AFTER:**
 ```markdown
-![medkit](images/chapter-02/medkit.png){.dc-art-bottom .art-medkit}
+![medkit](images/chapter-02/medkit.png)
 ```
 
 ---
 
-### 6.3 `{class="X"}` → `{.X}` syntax
+### 6.3 Remove `{class="X"}` attribute entirely
 
-`chapter-02 4 Gutterdruid.md` line 5 — **Change:** replace `{class="gutterdruid" }` with `{.gutterdruid}`. Grep for `{class=` across all files and fix any other instances.
+`chapter-02 4 Gutterdruid.md` line 5 — **Change:** remove `{class="gutterdruid" }` entirely. Grep for `{class=` across all files and remove any other instances. Same principle as §6.1 and §6.2: the enclosing `@specialty .gutterdruid` scope provides the CSS context; the image needs no class attribute.
 
 **BEFORE:**
 ```markdown
@@ -300,12 +302,31 @@ Not everything you carry is a weapon, a tool, or a piece of tech...
 
 **AFTER:**
 ```markdown
-![druid](./images/chapter-03/Gutterdruid.png){.gutterdruid}
+![druid](./images/chapter-03/Gutterdruid.png)
 ```
 
 ---
 
 ## 7. Specialty Sections
+
+> **⛔ SPECIALTY MACRO TAXONOMY — READ BEFORE MIGRATING ANY SPECIALTY CONTENT**
+>
+> There are four distinct specialty macros. They are NOT interchangeable:
+>
+> | Macro | Purpose | Where used |
+> |---|---|---|
+> | `@specialty .name` / `@end-specialty` | **Parent container.** Sets the cascade context for all specialty-scoped components. EVERY specialty page must be wrapped in this. | Every chapter-02 specialty file; also wraps `@specialty-card` entries on chapter-01 |
+> | `@specialty-card #id` / `@end-specialty-card` | **Overview card.** The summary card shown in the chapter-01 specialty grid (name, image, flavor, description). | **Chapter-01 only** |
+> | `@specialty-intro` / `@end-specialty-intro` | **Intro block.** The flavor intro text at the top of a specialty's chapter page. Goes INSIDE `@specialty .name`. | **Chapter-02 specialty files only** |
+>
+> **`@specialty-art` is NOT used.** The specialty art image sits as a bare image tag inside the `@specialty .name` wrapper. CSS in `fg-overrides.css` targets it via `.dc-specialty img` — no wrapper macro and no class attribute needed.
+>
+> **Wrong:** using `@specialty-intro` on the chapter-01 overview page.
+> **Wrong:** using `@specialty-card` on a chapter-02 specialty profile page.
+> **Wrong:** putting `@specialty-intro` or `@specialty-card` OUTSIDE a `@specialty .name` wrapper.
+> **Wrong:** adding `{.any-class}` to image tags — use CSS context selectors instead.
+
+---
 
 ### 7.1 Specialty scope wrapper — syntax normalization
 
@@ -351,9 +372,9 @@ An Augmerc is muscle for hire...
 
 ---
 
-### 7.3 Specialty art block
+### 7.3 Specialty art block — remove wrapper, bare image
 
-`chapter-02 1 Augmerc.md` lines 27–31 — **Change:** replace `::: wrapper {.specialty-art}` with `@specialty-art`; replace closing `:::` with `@end-specialty-art`.
+`chapter-02 1 Augmerc.md` lines 27–31 — **Change:** remove the `::: wrapper {.specialty-art}` line and its closing `:::` entirely. Remove the `{.augmerc}` class from the image. Leave the bare image tag in place. No `@specialty-art` wrapper macro is needed: the `@specialty .augmerc` parent scope provides the CSS context — `fg-overrides.css` targets the image via `.dc-specialty.augmerc img` or `.dc-specialty img` without any wrapper or attribute.
 
 **BEFORE:**
 ```markdown
@@ -366,18 +387,16 @@ An Augmerc is muscle for hire...
 
 **AFTER:**
 ```markdown
-@specialty-art
-
-![Augmerc](./images/chapter-02/augmerc.png){.augmerc}
-
-@end-specialty-art
+![Augmerc](./images/chapter-02/augmerc.png)
 ```
 
 ---
 
-### 7.4 Specialty card (chapter-01 overview cards)
+### 7.4 Specialty card (chapter-01 overview cards only)
 
-`chapter-01.md` lines 228–240 (one of 10 specialty summary cards) — **Change:** replace `::: wrapper {.specialty-card .augmerc}` with `@specialty .augmerc` + `@specialty-card` on the next line; replace closing `:::` with `@end-specialty-card` + `@end-specialty`. Repeat for all 10 specialty cards in chapter-01.
+`chapter-01.md` lines 228–240 (one of 10 specialty summary cards) — **Change:** replace `::: wrapper {.specialty-card .augmerc}` with `@specialty .augmerc` / `@specialty-card #specialty-augmerc`; replace closing `:::` with `@end-specialty-card` / `@end-specialty`. The `#id` goes on the macro, not the heading. Remove `{.art-specialty}` from the image — CSS inside `.dc-specialty-card` handles image styling via cascade. Remove `{#specialty-augmerc}` from the heading. Repeat for all 10 specialty cards in chapter-01.
+
+**This pattern is chapter-01 ONLY.** Do not use `@specialty-card` in any chapter-02 specialty file.
 
 **BEFORE:**
 ```markdown
@@ -396,16 +415,19 @@ Heavily armed and wired for war...
 **AFTER:**
 ```markdown
 @specialty .augmerc
-@specialty-card
-### Augmerc {#specialty-augmerc}
 
-![alt text](images/chapter-01/augmerc.png){.art-specialty}
+@specialty-card #specialty-augmerc
+
+### Augmerc
+
+![alt text](images/chapter-01/augmerc.png)
 
 > Cybernetic Commando
 
 Heavily armed and wired for war...
 
 @end-specialty-card
+
 @end-specialty
 ```
 
@@ -477,6 +499,8 @@ You move through the city like fog through a gap in the wall...
 
 `chapter-02 1 Augmerc.md` line 49 (~160 instances across all chapter-02 files) — **Change:** on every `@skill` line, remove `variant="N"` (where N is any number). The rest of the line is unchanged. Can be done with: `sed -i 's/ variant="[^"]*"//g'` across all chapter-02 files.
 
+Note: `{.allow-split}` is **break control** (`break-inside: auto` override for this specific card), not a styling class. It is not legacy syntax — leave it in place when present.
+
 **BEFORE:**
 ```markdown
 @skill variant="2" {.allow-split}
@@ -543,11 +567,11 @@ Their belief cuts clean:
 @section .dc-ideals
 @card
 ### Information Freedom
-
 You value the free flow of information...
 
 Their belief cuts clean:
 > "If knowledge is locked away, it's already being abused."
+
 @end-card
 @end-section
 ```

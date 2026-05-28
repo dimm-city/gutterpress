@@ -1,5 +1,8 @@
 # Field Guide Markdown Cleanup
 
+> **⛔ CONTENT PROTECTION RULE — PRIMARY CONSTRAINT**
+> Migration changes markdown **syntax only**. No prose, dialogue, flavor text, ability text, heading text, game mechanics, or any other author-written content may be altered, rewritten, trimmed, paraphrased, or "improved" without explicit user direction. A syntax migration that changes a single word of content is a failure. Run `content-hash.ts verify` before committing any batch.
+
 Changes needed in `dc-op-manual/field-guide/` markdown source files to align
 with the dc-design-guide canonical patterns. Do not change `field-guide/css/`
 — those files are owned by the field-guide build, not the design guide.
@@ -19,7 +22,7 @@ The field-guide source files still need the same treatment:
 
 - Design guide uses `@specialty .augmerc` (no braces) — field guide still uses `@specialty {.augmerc}` in all 8 specialty files
 - Design guide uses `@specialty-intro` / `@end-specialty-intro` macros — field guide still uses `:::: wrapper {.specialty-intro}` in 3 files
-- Design guide uses `@specialty-art` / `@end-specialty-art` macros — field guide still uses `:::: wrapper {.specialty-art}` in 3 files
+- Design guide specialty art images are bare `![alt](path)` inside `@specialty` scope — field guide still wraps them in `:::: wrapper {.specialty-art}` in 3 files and adds `{.augmerc}` class attributes to images
 - Design guide `@skill` cards carry no `variant=` attribute — field guide still has `variant="N"` on all ~160 `@skill` lines
 - `dc-art-bottom` CSS is live in `components.css` and `page-templates.css` — `{.bottom-center}` / `:::: wrapper {.bottom-center}` in field guide not yet renamed
 
@@ -61,36 +64,33 @@ per file.
 
 ---
 
-## 2. Specialty opener containers — migrate to `@specialty-intro` / `@specialty-art`
+## 2. Specialty opener containers — migrate to `@specialty-intro`; remove art wrapper
 
 **Status: PENDING**
 
-Three specialty files still use the legacy `:::: wrapper` syntax for the intro
-block and art panel. The other five (Gutterdruid, Cybersurgeon, Wirephreak,
-Technosorcerer, Etherlock) have no intro/art block at all — they need those
-sections added when content is ready.
+Three specialty files still use the legacy `:::: wrapper` syntax for the intro block and art panel. The other five (Gutterdruid, Cybersurgeon, Wirephreak, Technosorcerer, Etherlock) have no intro/art block at all — they need those sections added when content is ready.
 
-### Files that need the container-to-macro rename
+**`@specialty-art` is NOT used.** The specialty art image sits as a bare image tag directly inside the `@specialty .name` wrapper — no wrapper macro, no class attribute on the image. CSS in `fg-overrides.css` targets it via `.dc-specialty img` or `.dc-specialty.augmerc img`.
+
+### Files that need the intro container rename
 
 | File | Find | Replace |
 |---|---|---|
 | `chapter-02 1 Augmerc.md` (line 3) | `:::: wrapper {.specialty-intro}` | `@specialty-intro` |
-| `chapter-02 1 Augmerc.md` (line 27) | `:::: wrapper {.specialty-art}` | `@specialty-art` |
 | `chapter-02 2 Proxy.md` (line 3) | `:::: wrapper {.specialty-intro}` | `@specialty-intro` |
-| `chapter-02 2 Proxy.md` (line 31) | `:::: wrapper {.specialty-art}` | `@specialty-art` |
 | `chapter-02 3 Streetwarden.md` (line 4) | `:::: wrapper {.specialty-intro}` | `@specialty-intro` |
-| `chapter-02 3 Streetwarden.md` (line 25) | `:::: wrapper {.specialty-art}` | `@specialty-art` |
 
-Also replace the closing fence of each wrapper with the correct end marker:
+Replace the closing `::::` after each specialty-intro block with `@end-specialty-intro`.
 
-| Closing fence | Replace with |
+### Files that need the art wrapper removed
+
+| File | Action |
 |---|---|
-| Closing `::::` after specialty-intro block | `@end-specialty-intro` |
-| Closing `::::` after specialty-art block | `@end-specialty-art` |
+| `chapter-02 1 Augmerc.md` (line 27) | Delete `:::: wrapper {.specialty-art}` and closing `::::`. Remove `{.augmerc}` from the image. Leave the bare image in place. |
+| `chapter-02 2 Proxy.md` (line 31) | Same — delete wrapper lines, remove image class. |
+| `chapter-02 3 Streetwarden.md` (line 25) | Same — delete wrapper lines, remove image class. |
 
-**Risk:** Medium. The macros are live in the plugin. Verify the intro panel and
-art plate render correctly after migration. Count colons carefully — the wrappers
-use 4 colons (`::::`); ensure no accidental early close from an inner block.
+**Risk:** Medium. Verify the intro panel renders correctly after migration. The art image will rely on `fg-overrides.css` context selectors — confirm those selectors are in place before migrating.
 
 ---
 
@@ -233,7 +233,7 @@ The field guide source files still use the old names.
 | `.at-a-glance-card` | `.dc-at-a-glance-card` | Use raw HTML; see below |
 | `.at-a-glance-cards` | `.dc-at-a-glance-cards` | Outer grid; use raw HTML |
 | `.specialty-intro` (wrapper) | macro output `dc-specialty-intro` | Migrate to `@specialty-intro` (see §2) |
-| `.specialty-art` (wrapper) | macro output `dc-specialty-art` | Migrate to `@specialty-art` (see §2) |
+| `.specialty-art` (wrapper) | bare image inside `@specialty` scope | Remove `:::: wrapper {.specialty-art}` and closing `::::`. Remove image class attribute. See §2. |
 
 ### `.section-header` → **skip intermediate rename**
 
@@ -268,10 +268,11 @@ form and migrate other items first.
 
 **Status: PENDING**
 
+> **⛔ CHAPTER-01 ONLY.** `@specialty-card` is used exclusively on the chapter-01 specialty overview page. Chapter-02 specialty files use `@specialty-intro` for the text block and a bare image for the art — no `@specialty-card` or `@specialty-art` macro.
+
 `chapter-01.md` lines 226-338 use a deep `::::: wrapper {.specialty-spread}`
 outer container with ten `:::: wrapper {.specialty-card .<name>}` inner cards.
-The canonical replacement is the `@specialty .<name>` macro with
-`@specialty-card` / `@end-specialty-card` per card.
+The canonical replacement is `@specialty .<name>` + `@specialty-card #id` per card.
 
 Old pattern:
 ```markdown
@@ -289,25 +290,38 @@ Description text.
 New pattern (one `@specialty` block per card):
 ```markdown
 @specialty .augmerc
-@specialty-card
-### Augmerc {#specialty-augmerc}
-![art](path){.art-specialty}
+
+@specialty-card #specialty-augmerc
+
+### Augmerc
+
+![art](path)
+
 > Tag line
+
 Description text.
+
 @end-specialty-card
+
 @end-specialty
 
 @specialty .proxy
-@specialty-card
+
+@specialty-card #specialty-proxy
+
+### Proxy
+
 ...
+
 @end-specialty-card
+
 @end-specialty
 ```
 
-The `::::: wrapper {.specialty-spread}` outer container has no direct macro
-equivalent. If the page-template grid layout requires the outer div, wrap with
-a raw HTML `<div class="dc-specialty-spread">` or confirm the page CSS handles
-the grid without it.
+Key rules:
+- The `#id` goes on `@specialty-card`, NOT on the heading. Remove `{#specialty-augmerc}` from the `### Augmerc` heading.
+- Images have **no class attribute** — the `@specialty .augmerc` cascade handles image styling via CSS context. Remove `{.art-specialty}` and any other image class attributes.
+- The outer `::::: wrapper {.specialty-spread}` has no macro equivalent. The page CSS handles the grid without it — verify visually and remove the outer wrapper.
 
 **Files:** `chapter-01.md` lines 226-338 (10 specialty cards + 1 outer container).
 
@@ -318,25 +332,29 @@ migrating, use the canonical slugs `dualist` and `generalist` (NOT `dual-special
 
 ```markdown
 @specialty .dualist
-@specialty-card
+
+@specialty-card #specialty-dualist
+
 ### Dual Specialist
+
 ...
+
 @end-specialty-card
+
 @end-specialty
 
 @specialty .generalist
-@specialty-card
+
+@specialty-card #specialty-generalist
+
 ### Generalist
+
 ...
+
 @end-specialty-card
+
 @end-specialty
 ```
-
-**⚠️ No outer wrapper macro:** `::::: wrapper {.specialty-spread}` has no macro
-equivalent. Do NOT replace with raw HTML (`<div class="dc-specialty-spread">`
-violates constitution §I). Check whether the page CSS handles the grid without
-the outer wrapper; if the layout breaks, a new `@specialty-spread` macro is
-needed.
 
 **Risk:** High. Visual verification required. The page-template for the
 choose-specialty catalog page may depend on the `.specialty-spread` outer div.

@@ -1,5 +1,8 @@
 # Field-Guide Migration Plan: Skeptic Review
 
+> **⛔ CONTENT PROTECTION RULE — PRIMARY CONSTRAINT**
+> Migration changes markdown **syntax only**. No prose, dialogue, flavor text, ability text, heading text, game mechanics, or any other author-written content may be altered, rewritten, trimmed, paraphrased, or "improved" without explicit user direction. A syntax migration that changes a single word of content is a failure. Run `content-hash.ts verify` before committing any batch.
+
 35 findings across 8 categories. Read before acting on any migration plan item.
 
 **Highest-priority killers** (fix these five first — they collapse ~80% of implementation friction):

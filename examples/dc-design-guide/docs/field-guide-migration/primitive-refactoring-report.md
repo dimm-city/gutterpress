@@ -1,5 +1,8 @@
 # Primitive Macro Refactoring Report
 
+> **⛔ CONTENT PROTECTION RULE — PRIMARY CONSTRAINT**
+> Migration changes markdown **syntax only**. No prose, dialogue, flavor text, ability text, heading text, game mechanics, or any other author-written content may be altered, rewritten, trimmed, paraphrased, or "improved" without explicit user direction. A syntax migration that changes a single word of content is a failure. Run `content-hash.ts verify` before committing any batch.
+
 **Purpose:** Multi-agent research report on refactoring the DC plugin macro system to a core set of primitive macros (`@block`, `@card`) with CSS-based component variants built on top.
 
 **Scope reviewed:** `skeptic-review.md`, `component-mapping.md`, `field-guide-cleanup.md`, `dimm-city-plugin.js`, `markdown-it-paged.js`, `dc-components.css`, `constitution.md`, `contextual-cascade-principle.md`
@@ -10,7 +13,7 @@
 
 Three agents independently reviewed the proposed refactoring. Their findings converge on four conclusions:
 
-1. **`@card` as a new primitive is the right call** — the plugin already has five macros that are structurally identical dumb wrappers (`@lede`, `@toc`, `@glossary`, `@specialty-intro`, `@specialty-art`). A named `@card` shorthand consolidates them with shared infrastructure.
+1. **`@card` as a new primitive is the right call** — the plugin already has four macros that are structurally identical dumb wrappers (`@lede`, `@toc`, `@glossary`, `@specialty-intro`). A named `@card` shorthand consolidates them with shared infrastructure. `@specialty-art` is removed from the macro surface entirely — specialty art images are bare image tags within the `@specialty` cascade context.
 
 2. **`@skill` CANNOT be simplified to a card primitive** — it is a domain-specific state machine with AP parsing, outcome table classification, two-part chrome geometry, and continuation splitting. Any attempt to reduce it to `@card` would require rewriting most of the field guide's content.
 
@@ -31,6 +34,7 @@ A `@card` macro should be a structured wrapper that accepts a specific internal 
 #### Flaw Title
 > Pull-quote or flavor text
 Body paragraph(s)
+> Optional footer text
 @end-card
 ```
 
@@ -40,9 +44,16 @@ Emitted DOM:
 <div class="dc-card dc-flaws">
   <div class="dc-card-heading">Flaw Title</div>
   <div class="dc-card-pull">Pull-quote or flavor text</div>
-  <div class="dc-card-body">Body paragraph(s)</div>
+  <div class="dc-card-body">
+    <p>Body paragraph(s)</p>
+    <blockquote><p>Optional footer text</p></blockquote>
+  </div>
 </div>
 ```
+
+**Heading level:** `####` (h4) is the enforced heading level inside `@card`. The macro treats the first h4 as the card heading.
+
+**Footer:** The last `>` blockquote in the card body is the footer. No `.dc-card-footer` wrapper is emitted. CSS targets it via `blockquote:last-of-type` under `.dc-card`. This means the first blockquote after the heading is always `.dc-card-pull`; any blockquote at the tail of the body content is the footer.
 
 The macro follows existing `@block` infrastructure: `parseAttrs()`, `closeAll()` integration, end-marker detection via `inCardMode` flag. The internal format is not enforced — missing sections are simply absent from the emitted DOM.
 
@@ -88,23 +99,27 @@ Reducing `@skill` to `@card` would require:
 
 The DC plugin currently has 29 distinct opening markers. Categorized by refactoring potential:
 
-#### Group A — Wrappers that could become `@block .X` today
+#### Group A — Block variant shorthands being consolidated to `@block .X` (Phase 2b)
 
 | Macro | Emits | Migrate to |
 |---|---|---|
-| `@lede` | `<div class="dc-intro">` | `@block .dc-intro` |
-| `@toc` | `<div class="dc-toc">` | `@block .dc-toc` |
-| `@glossary` | `<div class="dc-glossary">` | `@block .dc-glossary` |
-| `@specialty-intro` | `<div class="dc-specialty-intro">` | `@block .dc-specialty-intro` |
-| `@specialty-art` | `<div class="dc-specialty-art">` | `@block .dc-specialty-art` |
+| `@panel` | `<div class="dc-block dc-panel">` | `@block .dc-panel` |
+| `@slate` | `<div class="dc-block dc-slate">` | `@block .dc-slate` |
+| `@shard` | `<div class="dc-block dc-shard">` | `@block .dc-shard` |
+| `@codex` | `<div class="dc-block dc-codex">` | `@block .dc-codex` |
 
-These macros do nothing except wrap content in a `<div>` with one class. They're candidates for consolidation, but **only if** `@block` gains `.classname` syntax (currently only `variant=` is accepted).
+These are visual-register shorthands for `@block`. They carry no semantic identity of their own — `@panel`/`@slate`/`@shard`/`@codex` are names for "data", "authority", "atmosphere", "reference" registers. Consolidating to `@block .dc-X` removes the shorthand macros and makes the register naming explicit. Requires `@block` to accept `.classname` syntax (Phase 0 prerequisite).
 
-#### Group B — Named shorthands worth keeping as-is
+**`@specialty-art` is removed from the macro surface.** Specialty art images are bare `![alt](path)` tags inside the `@specialty .name` wrapper — no macro wrapper, no class attribute. CSS in `fg-overrides.css` provides context-scoped image styling.
+
+#### Group B — Semantic wrappers that stay as named macros (NOT consolidation targets)
 
 | Macro | Rationale |
 |---|---|
-| `@panel`, `@slate`, `@shard`, `@codex` | Four-variant shorthand system; authors know these names; CSS built around them |
+| `@lede` | Semantic identity: the opening lede of a chapter. Not a generic block. |
+| `@toc` | Semantic identity: the table of contents. Emits `.dc-toc` structure directly. |
+| `@glossary` | Semantic identity: a glossary section. |
+| `@specialty-intro` | Semantic identity: the flavor intro block of a specialty chapter. |
 | `@sidebar`, `@sidebar-box` | Distinct enough in purpose and frequency to warrant their own names |
 | `@definition` | Term/definition semantic pair — not a generic wrapper |
 | `@gear` | Current behaviour is correct; migrate to `@card .dc-gear` when `@card` exists |
@@ -249,7 +264,7 @@ Requires Phase 0's `.classname` syntax fix to already be in place.
 
 After consolidation: remove the four shorthand macro handlers from `dimm-city-plugin.js` (or keep as deprecated aliases pointing to `@block` logic). Any existing design guide source that uses `@panel`/`@slate`/`@shard`/`@codex` gets a find-replace pass as part of this phase.
 
-`@lede`, `@toc`, `@glossary`, `@specialty-intro`, `@specialty-art` are SEMANTIC wrappers with their own identity and must NOT be collapsed into `@block .X`. They stay as named macros.
+`@lede`, `@toc`, `@glossary`, `@specialty-intro` are SEMANTIC wrappers with their own identity and must NOT be collapsed into `@block .X`. They stay as named macros. (`@specialty-art` is removed from the macro surface — see Group A note above.)
 
 ### What NOT to Do
 
@@ -260,12 +275,17 @@ After consolidation: remove the four shorthand macro handlers from `dimm-city-pl
 
 ---
 
-## Open Questions
+## Resolved Decisions
 
-1. **`@card` footer section** — the user described "a heading, a pull-quote, body text, and then potentially a footer." Should the footer be a distinct sub-element (`.dc-card-footer`) or just the last child of `.dc-card-body`? The former is more explicit; the latter requires less CSS specificity.
+These were open questions at the time of the initial report. All four are now decided.
 
-2. **`@card` heading level** — should `@card` enforce `####` (h4) as the heading, or accept any heading level? The flaws/ideals/dreams content currently uses `####`; enforcing it simplifies CSS. But `@skill` also uses h4 for tier headings — level collision is not a problem if namespaces are distinct.
+1. **`@card` footer section — RESOLVED: last blockquote, no sub-element wrapper.**
+   The last `>` blockquote in a card's content is the footer. The macro does not emit a `.dc-card-footer` wrapper div. CSS targets it via `:last-of-type` on blockquote descendants of `.dc-card`. This keeps the macro simple and avoids a parallel DOM sub-element for a rarely-used slot.
 
-3. **Specialty card migration** — `@specialty-card` currently injects `data-specialty` and `data-path-ref` automatically. If migrated to `@card .dc-specialty-card`, these attributes must either be injected by the `@card` macro (coupling a generic primitive to specialty logic) or supplied manually by authors (regression in ergonomics). Recommendation: keep `@specialty-card` as a named shorthand that delegates to `@card` internally.
+2. **`@card` heading level — RESOLVED: `####` (h4) enforced.**
+   Authors write `####` as the heading inside `@card`. The macro treats the first h4 as the card heading and emits it in `.dc-card-heading`. This simplifies CSS targeting. Namespace collision with `@skill` h4 tier headings is not a problem — skill card h4s are always scoped under `.dc-skill-card`.
 
-4. **`@gear` + `@outcome`** — Gap 6 in the migration plan claims `@gear` supports embedded `.dc-outcome-row` rows. It does not (outcome table classification only fires inside `inSkillMode`). The correct fix is `@outcome` blocks inside `@gear`. This needs to be verified against current Schraphose/Yari content before migration.
+3. **Specialty card migration — RESOLVED: `@specialty-card` stays as a named shorthand.**
+   `@specialty-card` is kept as a named macro that delegates to `@card` logic internally. It continues to inject `data-specialty` and `data-path-ref` automatically. Authors never write `@card .dc-specialty-card` directly. This avoids coupling the generic `@card` primitive to specialty-specific attribute logic.
+
+4. **`@gear` + `@outcome`** — not yet verified against `dc-op-manual/field-guide/` Schraphose/Yari content. Deferred until field guide migration phase begins. The correct fix when reached: use `@outcome` blocks inside `@gear`, not a spec extension to `@gear` itself.

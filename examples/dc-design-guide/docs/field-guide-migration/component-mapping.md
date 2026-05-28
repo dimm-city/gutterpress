@@ -1,5 +1,8 @@
 # Field Guide Component Mapping & Migration Reference
 
+> **⛔ CONTENT PROTECTION RULE — PRIMARY CONSTRAINT**
+> Migration changes markdown **syntax only**. No prose, dialogue, flavor text, ability text, heading text, game mechanics, or any other author-written content may be altered, rewritten, trimmed, paraphrased, or "improved" without explicit user direction. A syntax migration that changes a single word of content is a failure. Run `content-hash.ts verify` before committing any batch.
+
 This document catalogs every content type across all six Field Guide chapters, maps each to the correct DC Design Guide component, and lists all migration work required to bring the source into compliance with the current print-md macro system.
 
 ---
@@ -277,7 +280,7 @@ This is the most critical chapter. It contains virtually all of the game's abili
 | Image wrapper (distances storyboard) | Inline distances diagram | `:::wrapper` | Plain markdown image or `.dc-img-float-right` | Remove wrapper |
 | "ROLLING THE DIE!" rules section | Major rules section in a decorated wrapper | `:::wrapper` | Plain markdown (remove wrapper) | `.rules-block` does not exist in dc-components.css — use plain markdown until a component is specced. |
 | "Dice Etiquette" sidebar | Sidebar rules box | `:::container {.sidebar .top-right}` | `@sidebar … @end-sidebar` | Migrate to `@sidebar` |
-| "Table of Outcomes" | Full outcome table (20/11-19/6-10/2-5/1) | `:::container {.top-left .outcome-table}` | `@block .slate` header + `.dc-outcome-row` rows | The master outcomes table is THE player reference (scanned every session) — must have visual authority. Use `@block .slate` as the container header labeled "Table of Outcomes", then `.dc-outcome-row` rows inside. This distinguishes it from per-ability outcome sub-tables in chapter-02. See Gap 4. |
+| "Table of Outcomes" | Full outcome table (20/11-19/6-10/2-5/1) | `:::container {.top-left .outcome-table}` | `@outcome` / `@end-outcome` | The master outcomes table is THE player reference (scanned every session). Use the `@outcome` macro, which renders the d20 outcome ladder with per-tier `.dc-outcome-row` classes. Row format: `Roll \| Result \| Description`. See Gap 4. |
 | "Distances" (In Reach / Nearby / In Range / Too Far) | Foundational 4-distance rules reference; referenced on every weapon, ability, and NPC trait | Plain markdown + `:::wrapper` | `@block .codex` for the full 4-definition section | Core rules reference consulted constantly — needs `.dc-block.codex` (reference register) for visual weight. Not just a wrapper removal — elevate to named reference card. |
 | "Lucid and Surreal Rolls" table | Two-row modifier table | Plain markdown table | Plain markdown table | Already correct |
 | "Deadly Scenes / HP / Injury" | Rules text | Plain markdown | Plain markdown | Already correct |
@@ -438,11 +441,11 @@ Canonical `@specialty` slugs: `augmerc`, `proxy`, `streetwarden`, `gutterdruid`,
 
 **What it needs:** A visually prominent reference table with color-coded outcome rows matching the five result tiers. Currently in a `:::container {.top-left .outcome-table}` wrapper with a plain markdown table inside.
 
-**Recommendation:** `.dc-outcome-row` components exist for this. Outcome mapping: 20 = `.crit`, 11–19 = `.hit`, 6–10 = `.mixed`, 2–5 = `.miss`, 1 = `.fail`. The mapping doc recommends `@block .slate` as an authority wrapper + `.dc-outcome-row` rows inside. **Before implementing, verify:** `.dc-outcome-row` styles may depend on a `.dc-skill-card` parent scaffold (flex/grid container, border-left tether). If `.dc-outcome-row` elements only have standalone styles in `dc-components.css`, they can sit inside `@block .slate` directly. If they are descendant-styled from `.dc-skill-card`, a standalone `.dc-outcomes-table` wrapper component is required. Grep `dc-components.css` for `.dc-outcome-row` parent context before building.
+**Recommendation:** Use the `@outcome` / `@end-outcome` macro. Row format inside the macro: `Roll | Result | Description` (pipe-separated, one row per line). The macro renders the five-rung d20 outcome ladder with per-tier `.dc-outcome-row` classes automatically — no `@block .slate` wrapper needed.
 
-Also consider: the Table of Outcomes prose is longer than typical ability outcome rows — verify `.dc-outcome-row` handles multi-sentence text without wrapping issues.
+Also verify: the Table of Outcomes prose rows are longer than typical ability outcome rows — confirm `.dc-outcome-row` handles multi-sentence descriptions without layout issues before committing.
 
-**Priority:** P1 (pending nesting verification)
+**Priority:** P1
 
 ---
 
@@ -711,8 +714,8 @@ These sections have valid DC components available; using them will render correc
 6. **~14 gear entries + standard weapon entries** in chapter-05: Migrate to `@gear … @end-gear`.
 7. **3 SIDEBAR blocks** in chapters 01 and 03: Migrate to `@sidebar … @end-sidebar`.
 8. **Cover page** (chapter-00): Migrate to `.dc-cover-page` family.
-9. **TOC** (chapter-00): Migrate to `.dc-toc` + `@section .two-column`.
-10. **Table of Outcomes** (chapter-03): Migrate to `@block .slate` header + `.dc-outcome-row` rows (authority wrapper required to distinguish from per-ability outcome sub-tables).
+9. **TOC** (chapter-00): Migrate to `@toc` / `@end-toc`.
+10. **Table of Outcomes** (chapter-03): Migrate to `@outcome` / `@end-outcome` (d20 outcome ladder macro). Row format: `Roll | Result | Description`.
 11. **Raw HTML** (12 instances): Replace `<div class="faction-section">` → `.dc-specialty-card` in `@specialty` scope; `<div class="caption">` → italic markdown; `<div style="...">` → `> [!NOTE]`; `<ins>` → bold.
 12. **"Why You Don't Play Humans"** sidebar (chapter-01): Migrate to `@sidebar`.
 13. **District lore paragraphs** (chapter-04): Multi-paragraph district descriptions → `@block .shard` (atmosphere register). Single-sentence world-facts inline → `> [!ORIGIN]` (confirmed registered ✅). Do NOT use `> [!ORIGIN]` for multi-paragraph lore — it only handles one paragraph.
