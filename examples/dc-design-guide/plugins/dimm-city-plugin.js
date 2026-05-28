@@ -35,8 +35,8 @@
  *   @end-specialty-intro
  *   @specialty-card     → Individual specialty card
  *   @end-specialty-card
- *   @gear-card          → Gear card
- *   @end-gear-card
+ *   @gear               → Gear card (shorthand for @card .dc-gear)
+ *   @end-gear
  *   (chapter-opener composite is now markup-driven — see CSS notes below)
  *   @toc                → Table-of-contents wrapper
  *   @end-toc
@@ -1391,21 +1391,23 @@ export default function dimmCityPlugin(md, options = {}) {
       // added `.section` class that picks up `break-inside: avoid` from PAGED_CSS.
       // See docs/migrations/2026-05-removing-container-syntax.md for the rationale.
 
-      // --- @gear-card / @end-gear-card ---
-      const gearCardMarker = parseMarker(tok, tokens, i, '@gear-card');
-      if (gearCardMarker.matched) {
+      // --- @gear / @end-gear ---
+      // Shorthand for @card .dc-gear — emits .dc-card.dc-gear inside .section.dc-gear-list.
+      // CSS contextual cascade (.section.dc-gear-list > .dc-card) applies gear-entry styling.
+      const gearMarker = parseMarker(tok, tokens, i, '@gear');
+      if (gearMarker.matched) {
         closeAll();
-        const userAttrs = { ...gearCardMarker.attrs };
+        const userAttrs = { ...gearMarker.attrs };
         const extraClass = userAttrs['class'] ? ' ' + userAttrs['class'] : '';
         delete userAttrs['class'];
         let extraAttrs = '';
         for (const [key, val] of Object.entries(userAttrs)) {
           extraAttrs += ' ' + key + '="' + esc(val) + '"';
         }
-        newTokens.push(makeToken('html_block', '<div class="dc-gear-entry' + extraClass + '"' + extraAttrs + '>\n'));
+        newTokens.push(makeToken('html_block', '<div class="dc-card dc-gear' + extraClass + '"' + extraAttrs + '>\n'));
         i += 2; continue;
       }
-      if (isMarker(tok, tokens, i, '@end-gear-card')) {
+      if (isMarker(tok, tokens, i, '@end-gear')) {
         newTokens.push(makeToken('html_block', '</div>\n'));
         i += 2; continue;
       }

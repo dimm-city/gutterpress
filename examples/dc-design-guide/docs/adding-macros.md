@@ -27,7 +27,7 @@ Card variants (skill cards, path shells, specialty cards, specialty intros) are 
 `@definition`, `@end-definition`, `@procedure`, `@end-procedure`,
 `@callout`, `@end-callout`, `@dm-note`, `@end-dm-note`,
 `@toc`, `@end-toc`,
-`@gear-card`, `@end-gear-card`, `@tape`, `@lede`, `@end-lede`,
+`@gear`, `@end-gear`, `@tape`, `@lede`, `@end-lede`,
 `@glossary`, `@end-glossary`
 
 ## Blank-line requirement for markers

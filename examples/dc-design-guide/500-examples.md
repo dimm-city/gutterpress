@@ -187,7 +187,7 @@ A Proxy is a living conduit — flesh wired to divine signal, body bent to a pur
 
 ## Gear Entry
 
-@gear-card
+@gear
 
 #### Throwaway Blaster
 
@@ -195,7 +195,7 @@ A single-use pulse pistol factory-sealed in printed plastic. Cheap, disposable, 
 
 **Range:** Near. **Damage:** 1. **Tags:** Disposable, Loud.
 
-@end-gear-card
+@end-gear
 
 ---
 

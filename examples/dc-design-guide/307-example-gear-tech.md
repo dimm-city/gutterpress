@@ -85,7 +85,7 @@ The affected PC rolls each round to regain control. Specialties like the Cybersu
 
 ### Useful Items
 
-@gear-card
+@gear
 ### Shadowbit Token
 
 *Untraceable blockchain chip. The city's off-book currency.*
@@ -94,9 +94,9 @@ The affected PC rolls each round to regain control. Specialties like the Cybersu
 
 Encrypted Dream Credits chip. Completely anonymous. If you can't pay clean, pay with one of these.
 
-@end-gear-card
+@end-gear
 
-@gear-card
+@gear
 ### Patchkit
 
 *Combat field dressing. Seal it, move on.*
@@ -105,9 +105,9 @@ Encrypted Dream Credits chip. Completely anonymous. If you can't pay clean, pay 
 
 Restores 2 HP when used as an action. Sterile enough. Nothing fancy.
 
-@end-gear-card
+@end-gear
 
-@gear-card
+@gear
 ### Signal Jammer
 
 *Dead air on demand. No comms, no coordination.*
@@ -116,9 +116,9 @@ Restores 2 HP when used as an action. Sterile enough. Nothing fancy.
 
 Kills all wireless communications in Near range for 3 rounds. Loud to anyone watching network traffic.
 
-@end-gear-card
+@end-gear
 
-@gear-card
+@gear
 ### Breaching Charge
 
 *Knock knock.*
@@ -127,7 +127,7 @@ Kills all wireless communications in Near range for 3 rounds. Loud to anyone wat
 
 Destroys standard doors, locks, and light barriers. Very loud. Single use. Don't stand in front of it.
 
-@end-gear-card
+@end-gear
 
 @end-section
 
@@ -135,7 +135,7 @@ Destroys standard doors, locks, and light barriers. Very loud. Single use. Don't
 
 ### Common Cybernetics
 
-@gear-card
+@gear
 ### UniArm 100
 
 *Cybernetic arm. Street grade. Reliable.*
@@ -144,9 +144,9 @@ Destroys standard doors, locks, and light barriers. Very loud. Single use. Don't
 
 Full arm functionality. +1 to Reach attacks. Comes in matte black or brushed chrome.
 
-@end-gear-card
+@end-gear
 
-@gear-card
+@gear
 ### RedEye Optical
 
 *See in the dark. See far. See everything.*
@@ -155,9 +155,9 @@ Full arm functionality. +1 to Reach attacks. Comes in matte black or brushed chr
 
 Enhanced optical implant. Night vision + zoom to Far range. Compatible with targeting overlays.
 
-@end-gear-card
+@end-gear
 
-@gear-card
+@gear
 ### Neurolink Mk2
 
 *Jack in. The city's yours.*
@@ -166,9 +166,9 @@ Enhanced optical implant. Night vision + zoom to Far range. Compatible with targ
 
 Neural interface chip. Connect to digital systems at Near range. Required for most high-tier augments.
 
-@end-gear-card
+@end-gear
 
-@gear-card
+@gear
 ### Reflex Accelerator
 
 *You move before they think.*
@@ -177,6 +177,6 @@ Neural interface chip. Connect to digital systems at Near range. Required for mo
 
 Combat processor wired into your nervous system. +1 AP per round. Cannot be Stunned. High EP cost — you'll feel it.
 
-@end-gear-card
+@end-gear
 
 @end-section

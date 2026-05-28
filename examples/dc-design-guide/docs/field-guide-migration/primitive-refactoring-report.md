@@ -61,9 +61,9 @@ The macro follows existing `@block` infrastructure: `parseAttrs()`, `closeAll()`
 
 | Current syntax | New syntax | Rationale |
 |---|---|---|
-| `@section .dc-flaws` + raw `<div>` per entry | `@card .dc-flaws` per entry inside `@section .dc-flaws` | Eliminates raw HTML |
-| `@section .dc-ideals` + raw `<div>` per entry | `@card .dc-ideals` per entry inside `@section .dc-ideals` | Eliminates raw HTML |
-| `@section .dc-dreams` + raw `<div>` per entry | `@card .dc-dreams` per entry inside `@section .dc-dreams` | Eliminates raw HTML |
+| `@section .dc-flaws` + raw `<div>` per entry | `@card` per entry inside `@section .dc-flaws` | Eliminates raw HTML; CSS contextual cascade handles variant |
+| `@section .dc-ideals` + raw `<div>` per entry | `@card` per entry inside `@section .dc-ideals` | Eliminates raw HTML; CSS contextual cascade handles variant |
+| `@section .dc-dreams` + raw `<div>` per entry | `@card` per entry inside `@section .dc-dreams` | Eliminates raw HTML; CSS contextual cascade handles variant |
 | `@gear-card` (renamed `@gear`) | `@gear` shorthand for `@card .dc-gear` inside `@section .dc-gear-list` | Renames macro + consolidates to primitive |
 
 ### What `@card` Does NOT Replace

@@ -61,7 +61,7 @@ lands off the table, reroll it.
 H3 item name (crimson display font) + italic tagline + mechanics prose. Entries separated by `---`. Tagline paragraph must be purely italic (`*...*`); use `.dc-gear-entry-tagline` if you need the style without that constraint. **Use:** appendices, gear chapters, weapon lists.
 
 ```markdown
-@gear-card
+@gear
 ### Ripper Blades Mk.II
 
 *Melee. Cyberware implant. Pair.*
@@ -69,18 +69,18 @@ H3 item name (crimson display font) + italic tagline + mechanics prose. Entries 
 Damage 1d8+STR. On a crit, the target bleeds for 1d4 at the start of
 their next turn. Retractable — no visible profile when sheathed.
 Requires Cybersurgeon installation.
-@end-gear-card
+@end-gear
 
 ---
 
-@gear-card
+@gear
 ### Ghost-Wire Whip
 
 *Melee. Monofilament. Reach 2.*
 
 Damage 1d6+AGI. Ignores armor on a roll of 5+. Folding grip —
 concealable under a jacket. Cuts non-powered barriers on a hit of 10+.
-@end-gear-card
+@end-gear
 ```
 
 @section .two-column
@@ -172,7 +172,7 @@ The `label` attribute is optional — omit it to render without a title band.
 | Sidebar Box | `@sidebar-box … @end-sidebar-box` | `dc-prose-panel dc-sidebar-box` |
 | Sidebar | `@sidebar … @end-sidebar` | `dc-sidebar` |
 | Procedure | `@procedure … @end-procedure` | `dc-steps` |
-| Gear Entry | `@gear-card … @end-gear-card` | `dc-gear-entry` |
+| Gear Entry | `@gear … @end-gear` | `dc-card dc-gear` |
 | Panel Enclosure | `@block .dc-panel label="…" … @end-block` | `dc-block dc-panel` |
 | Slate Enclosure | `@block .dc-slate label="…" … @end-block` | `dc-block dc-slate` |
 | Shard Enclosure | `@block .dc-shard label="…" … @end-block` | `dc-block dc-shard` |
