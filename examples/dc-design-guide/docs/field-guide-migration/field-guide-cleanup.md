@@ -98,6 +98,8 @@ Replace the closing `::::` after each specialty-intro block with `@end-specialty
 
 **Status: PENDING**
 
+> **Dreams section:** Do NOT migrate the Dreams section to `@card` entries at this time. Dream titles use `**Bold**` prose (not `####` headings) — the `@card` macro would emit no `.dc-card-heading` for them. This needs an author decision before migrating. Leave the Dreams section in its current form until the author confirms the heading format.
+
 The `variant=` attribute was removed from the plugin. It is currently parsed
 and silently discarded — it has no effect on output. All ~160 occurrences
 across the field guide should be stripped. The specialty CSS parent-container
@@ -229,9 +231,8 @@ The field guide source files still use the old names.
 
 | Old class (field-guide) | New class (canonical) | Notes |
 |---|---|---|
-| `.section-header` | `.dc-section-header` | Direct rename; see below |
-| `.at-a-glance-card` | `.dc-at-a-glance-card` | Use raw HTML; see below |
-| `.at-a-glance-cards` | `.dc-at-a-glance-cards` | Outer grid; use raw HTML |
+| `.section-header` | _(remove entirely)_ | Replace with `@section .dc-ideals` / `@section .dc-flaws`; see below |
+| `.at-a-glance-cards` / `.at-a-glance-card` | _(remove)_ | Component removed from scope; see below |
 | `.specialty-intro` (wrapper) | macro output `dc-specialty-intro` | Migrate to `@specialty-intro` (see §2) |
 | `.specialty-art` (wrapper) | bare image inside `@specialty` scope | Remove `:::: wrapper {.specialty-art}` and closing `::::`. Remove image class attribute. See §2. |
 
@@ -240,27 +241,33 @@ The field guide source files still use the old names.
 **File:** `chapter-01.md`, lines 451 and 514 (2 occurrences).
 
 **⚠️ Do NOT rename to `.dc-section-header`** — that class does not exist in
-`dc-components.css`. An intermediate class rename is also redundant because these
-`:::: wrapper {.section-header}` containers will be replaced entirely by the
-`@section .dc-ideals` / `@section .dc-flaws` macro migration (see §6 in
-component-mapping.md, P1-16). Migrate directly to the macro form; skip the
-intermediate rename step.
+`dc-components.css`. These containers will be replaced entirely by the
+`@section .dc-ideals` / `@section .dc-flaws` macro migration. Migrate directly
+to the macro form; skip the intermediate rename step.
 
-### `.at-a-glance-cards` / `.at-a-glance-card` — requires new macro
+**Attribution quotes (Ideals and Flaws sections):** In chapter-01, the attribution
+quotes after each entry title are inline paragraphs (not `>` blockquotes). The
+`@card` macro handles this correctly — blockquote pull-quote extraction is optional.
+If no blockquote immediately follows the h4 heading, the body opens directly and
+the attribution paragraph renders as normal body content. **No content restructure
+required.** Authors can optionally convert to `>` blockquotes later for
+`.dc-card-pull` styling.
+
+**"Other Flaws" and "Other Ideals" blank-column tables** (chapter-01 lines 589, approx.):
+These are print fill-in worksheets (players circle/write in a choice). **Do NOT
+migrate to `@card` entries.** Convert to a plain markdown bullet list for clean
+migration-safe output.
+
+### `.at-a-glance-cards` / `.at-a-glance-card` — **REMOVED FROM SCOPE**
 
 **File:** `chapter-01.md`, lines 148-165 (1 outer container + 3 inner cards).
 
-**⚠️ Do NOT migrate to raw HTML.** The constitution §I goal 2 forbids HTML in
-markdown. The `:::: wrapper` nesting depth problem needs a macro solution, not
-raw HTML.
-
-**Recommended path:** Create an `@at-a-glance` / `@end-at-a-glance` macro in
-`dimm-city-plugin.js` (or use `@block .dc-at-a-glance-cards` with nested
-`@block .dc-at-a-glance-card` children once `@block` lands in `markdown-it-paged`).
-Until one of these is available, leave this block in its current `:::: wrapper`
-form and migrate other items first.
-
-**Risk:** Blocked — requires either a new macro or `@block` paged migration first.
+**Decision:** The `.dc-at-a-glance-card` component has been removed from the migration
+scope. Replace the `:::: wrapper {.at-a-glance-cards}` outer container with a
+plain `@section`, and the individual `:::: wrapper {.at-a-glance-card}` inner
+containers with plain markdown prose — no named component required. If a more
+styled treatment is needed later, it can be added as a book-specific rule in
+`book-sections.css`.
 
 ---
 
@@ -488,6 +495,10 @@ the continuation tab renders correctly in preview.
 | `:::: wrapper {.call-home-img}` | `chapter-01.md` | 393 | Delete — the image inside is already commented out |
 | `::::: wrapper {.item .ability .continued}` | `chapter-02 6 Wirephreak.md` | 188 | Remove outer wrapper (see §10) |
 | `:::: aug` (9 containers) | `chapter-05.md` | — | **DONE — replaced with `@section .aug`** |
+| `data-augmented-ui` wrapper (ch-03 line 185) | `chapter-03.md` | 185 | Drop attribute; rename `{.bottom-center}` → `{.dc-art-bottom}` (do in §9 pass) |
+| `data-augmented-ui` wrapper (ch-03 line 718) | `chapter-03.md` | 718 | Same |
+| `data-augmented-ui` wrapper (ch-03 line 1105) | `chapter-03.md` | 1105 | Remove wrapper; use plain image |
+| `data-augmented-ui` wrapper (ch-00 line 139) | `chapter-00.md` | 139 | Remove wrapper; use plain image or `.dc-art-bottom` |
 
 **Risk:** The `.call-home-img` delete is safe (no live content). The
 `.specialty-spread` change requires visual review (§6).

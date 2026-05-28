@@ -227,29 +227,35 @@ All three agents converge on:
 
 ### Phased Implementation Plan
 
-#### Phase 0 — Prerequisites (no new features)
+#### Phase 0 — Prerequisites ✅ COMPLETE
 
-- Fix `@block` to accept `.classname` syntax (currently only `variant=` works)
-- Delete `admonitionRule` from the plugin (dead code)
+- ✅ Fixed `@block` to accept `.classname` syntax
+- ✅ Deleted `admonitionRule` dead code from the plugin
+- ✅ Deleted `@specialty-art` handler
 
-#### Phase 1 — `@card` primitive
+#### Phase 1 — `@card` primitive ✅ COMPLETE
 
-- Implement `@card` / `@end-card` macro in `dimm-city-plugin.js`
-- DOM: `<div class="dc-card [author-classes]">` with optional sub-element wrappers
-- Reuse: `parseAttrs()`, `closeAll()`, `inCardMode` state flag (mirrors `inSkillMode` pattern)
-- Add base `.dc-card` styles to `dc-components.css`
-- Test with one content type (`.dc-flaws`) before migrating others
+- ✅ `@card` / `@end-card` implemented in `dimm-city-plugin.js`
+- ✅ DOM: `<div class="dc-card">` with optional `.dc-card-heading`, `.dc-card-pull`, `.dc-card-body` sub-elements
+- ✅ Sub-elements are all optional — blockquote pull-quote is extracted only if it immediately follows the h4 heading; otherwise body opens directly
+- ✅ Base `.dc-card`, `.section.dc-flaws`, `.section.dc-ideals`, `.section.dc-dreams` cascade rules added to `dc-components.css`
 
-#### Phase 2c — Field guide migration (using `@card` + consolidated macros)
+#### Phase 2b — Block variant consolidation ✅ COMPLETE
 
-Migrate in this order (depends on Phase 1 and Phase 2b both complete):
+- ✅ `@panel` / `@slate` / `@shard` / `@codex` shorthand handlers removed from plugin
+- ✅ Design guide source files migrated to `@block .dc-X` canonical form
+- ✅ `@gear-card` renamed to `@gear`; emits `dc-card dc-gear`
 
-1. `.dc-flaws` entries — three entries in chapter-02; lowest risk
-2. `.dc-ideals` entries — six entries; same structure
-3. `.dc-dreams` entries — five entries; same structure
-4. `@gear` consolidation — replace with `@card .dc-gear` + `@outcome` for embedded tables
+#### Phase 2c — Field guide migration (unblocked — start here)
 
-#### Phase 2b — Block variant consolidation (REQUIRED, before field guide migration)
+Migrate in this order:
+
+1. `.dc-flaws` entries — use `@card` per entry inside `@section .dc-flaws`; attribution quote lines can stay as prose paragraphs (blockquote is optional — CSS handles styling)
+2. `.dc-ideals` entries — same; same note on attribution quotes
+3. Dreams section — **SKIP for now** (titles are `**Bold**`, not h4 — needs author decision)
+4. `@gear` entries in chapter-05 — `@gear` / `@end-gear` inside `@section .dc-gear-list`
+
+#### Phase 2b — Block variant consolidation (ARCHIVE — see above)
 
 **Rationale:** `@panel`, `@slate`, `@shard`, `@codex` are named shorthands for `@block variant=X`. Authors writing the field guide should use `@block .dc-panel` etc. directly so the macro surface is smaller and more regular. Consolidating before migration means field guide authors write final canonical syntax the first time through.
 
