@@ -20,16 +20,8 @@
  *   @end-callout        → End callout wrapper
  *   @dm-note            → Start a Dream Master note (sugar for @callout variant=dm)
  *   @end-dm-note        → End dm-note wrapper
- *   @block              → Section enclosure card (variant=panel|slate|shard|codex label="Title")
+ *   @block              → Section enclosure card (.dc-panel|.dc-slate|.dc-shard|.dc-codex label="Title")
  *   @end-block          → End block enclosure
- *   @panel              → Shorthand for @block variant=panel (HUD/tactical panel)
- *   @end-panel
- *   @slate              → Shorthand for @block variant=slate (dark authority block)
- *   @end-slate
- *   @shard              → Shorthand for @block variant=shard (zine/punk asymmetric)
- *   @end-shard
- *   @codex              → Shorthand for @block variant=codex (reference/data entry)
- *   @end-codex
  *   @lede               → Start a dc-intro lede wrapper
  *   @end-lede           → End lede wrapper
  *   @learning-path      → Start a learning path section (auto-closes previous sections)
@@ -41,8 +33,6 @@
  *                          while keeping a visible link to its origin card
  *   @specialty-intro    → Cosmetic specialty intro wrapper
  *   @end-specialty-intro
- *   @specialty-art      → Cosmetic specialty art wrapper
- *   @end-specialty-art
  *   @specialty-card     → Individual specialty card
  *   @end-specialty-card
  *   @gear-card          → Gear card
@@ -404,58 +394,6 @@ function parseAbilityFromListItem(html) {
   };
 }
 
-function admonitionRule(state, startLine, endLine, silent) {
-  const pos = state.bMarks[startLine] + state.tShift[startLine];
-  const max = state.eMarks[startLine];
-
-  if (max - pos < 4) return false;
-  if (state.src.charCodeAt(pos) !== 0x21 ||
-      state.src.charCodeAt(pos + 1) !== 0x21 ||
-      state.src.charCodeAt(pos + 2) !== 0x21) {
-    return false;
-  }
-
-  if (silent) return true;
-
-  const label = state.src.slice(pos + 3, max).trim();
-
-  let nextLine = startLine + 1;
-  const contentLines = [];
-  while (nextLine < endLine) {
-    const lS = state.bMarks[nextLine] + state.tShift[nextLine];
-    const lE = state.eMarks[nextLine];
-    const line = state.src.slice(lS, lE);
-    if (line.trim() === '') break;
-    if (line.trimStart().startsWith('!!!')) break;
-    if (line.trimStart().startsWith('# ')) break;
-    if (/^-{3,}\s*$/.test(line.trim())) break;
-    contentLines.push(line);
-    nextLine++;
-  }
-
-  let tok = state.push('admonition_open', 'div', 1);
-  tok.attrSet('class', 'dc-alert dc-dm-note');
-  tok.block = true;
-  tok.map = [startLine, nextLine];
-
-  tok = state.push('html_block', '', 0);
-  tok.content = '<strong class="dc-alert-label">' + esc(label) + '</strong>\n';
-  tok.block = true;
-
-  if (contentLines.length > 0) {
-    tok = state.push('paragraph_open', 'p', 1);
-    tok.map = [startLine + 1, nextLine];
-    tok = state.push('inline', '', 0);
-    tok.content = contentLines.join(' ');
-    tok.map = [startLine + 1, nextLine];
-    tok.children = [];
-    state.push('paragraph_close', 'p', -1);
-  }
-
-  state.push('admonition_close', 'div', -1);
-  state.line = nextLine;
-  return true;
-}
 
 // Parse key="value", key='value', key=value, bare .class / #id tokens,
 // and {.class #id} attribute blocks from the body string following a marker keyword.
@@ -793,11 +731,6 @@ export default function dimmCityPlugin(md, options = {}) {
   // transform operates on already-parsed token streams.
   md.core.ruler.push('dc_alerts', dcAlertsTransform);
 
-  // Add admonition block rule
-  md.block.ruler.before('paragraph', 'admonition', admonitionRule, {
-    alt: ['paragraph', 'reference', 'blockquote']
-  });
-
   // NOTE: Chapter-opener composite behaviour is intentionally NOT handled
   // by the plugin. The author markdown
   //
@@ -843,6 +776,10 @@ export default function dimmCityPlugin(md, options = {}) {
       let inCallout = false;
       let inDmNote = false;
       let inBlock = false;
+      let inCard = false;
+      let cardHeadingDone = false;
+      let cardPullDone = false;
+      let cardBodyOpen = false;
      let learningPathHasTitle = false;
      let inLearningPathShell = false;
      let currentSkillAttrs = {};
@@ -864,6 +801,16 @@ export default function dimmCityPlugin(md, options = {}) {
      // Helper to close all open structures EXCEPT specialty (specialty
      // wraps the entire chapter section and is closed separately).
       function closeAll() {
+        if (inCard) {
+          if (cardBodyOpen) {
+            newTokens.push(makeToken('html_block', '</div>\n')); // close .dc-card-body
+            cardBodyOpen = false;
+          }
+          newTokens.push(makeToken('html_block', '</div>\n')); // close .dc-card
+          inCard = false;
+          cardHeadingDone = false;
+          cardPullDone = false;
+        }
         if (inLede) {
           newTokens.push(makeToken('html_block', '</div>\n'));
           inLede = false;
@@ -1300,73 +1247,82 @@ export default function dimmCityPlugin(md, options = {}) {
         continue;
       }
 
-      // --- @block / @panel / @slate / @shard / @codex (section enclosures) ---
+      // --- @block (section enclosures) ---
       // Reusable card-like text section enclosures. Four variants with distinct
       // clip-path geometry, surface, and accent colors. Each emits a .dc-block
       // container with an optional titled header band (.dc-block-title).
       //
-      // Unified form:  @block variant=panel|slate|shard|codex label="Title"
-      // Convenience:   @panel label="Title"  @slate label="Title"
-      //                @shard label="Title"  @codex label="Title"
+      // Syntax:   @block .dc-panel|.dc-slate|.dc-shard|.dc-codex label="Title"
 
       const blockUnifiedMarker = parseMarker(tok, tokens, i, '@block');
       if (blockUnifiedMarker.matched) {
         closeAll();
-        const blockVariant = (blockUnifiedMarker.attrs['variant'] || 'panel').toLowerCase();
         const blockLabel = blockUnifiedMarker.attrs['label'] ? esc(blockUnifiedMarker.attrs['label']) : '';
         const blockTitleHtml = blockLabel ? '<div class="dc-block-title">' + blockLabel + '</div>\n' : '';
-        newTokens.push(makeToken('html_block', '<div class="dc-block dc-' + blockVariant + '">\n' + blockTitleHtml));
+        let blockClass = 'dc-block';
+        if (blockUnifiedMarker.attrs['class']) {
+          blockClass += ' ' + blockUnifiedMarker.attrs['class'];
+        } else if (blockUnifiedMarker.attrs['variant']) {
+          blockClass += ' dc-' + blockUnifiedMarker.attrs['variant'].toLowerCase();
+        }
+        newTokens.push(makeToken('html_block', '<div class="' + blockClass + '">\n' + blockTitleHtml));
         inBlock = true;
         i += 2;
         continue;
       }
 
-      const panelMarker = parseMarker(tok, tokens, i, '@panel');
-      if (panelMarker.matched) {
-        closeAll();
-        const panelLabel = panelMarker.attrs['label'] ? esc(panelMarker.attrs['label']) : '';
-        newTokens.push(makeToken('html_block', '<div class="dc-block dc-panel">\n' + (panelLabel ? '<div class="dc-block-title">' + panelLabel + '</div>\n' : '')));
-        inBlock = true;
-        i += 2;
-        continue;
-      }
 
-      const slateMarker = parseMarker(tok, tokens, i, '@slate');
-      if (slateMarker.matched) {
-        closeAll();
-        const slateLabel = slateMarker.attrs['label'] ? esc(slateMarker.attrs['label']) : '';
-        newTokens.push(makeToken('html_block', '<div class="dc-block dc-slate">\n' + (slateLabel ? '<div class="dc-block-title">' + slateLabel + '</div>\n' : '')));
-        inBlock = true;
-        i += 2;
-        continue;
-      }
-
-      const shardMarker = parseMarker(tok, tokens, i, '@shard');
-      if (shardMarker.matched) {
-        closeAll();
-        const shardLabel = shardMarker.attrs['label'] ? esc(shardMarker.attrs['label']) : '';
-        newTokens.push(makeToken('html_block', '<div class="dc-block dc-shard">\n' + (shardLabel ? '<div class="dc-block-title">' + shardLabel + '</div>\n' : '')));
-        inBlock = true;
-        i += 2;
-        continue;
-      }
-
-      const codexMarker = parseMarker(tok, tokens, i, '@codex');
-      if (codexMarker.matched) {
-        closeAll();
-        const codexLabel = codexMarker.attrs['label'] ? esc(codexMarker.attrs['label']) : '';
-        newTokens.push(makeToken('html_block', '<div class="dc-block dc-codex">\n' + (codexLabel ? '<div class="dc-block-title">' + codexLabel + '</div>\n' : '')));
-        inBlock = true;
-        i += 2;
-        continue;
-      }
-
-      if (isMarker(tok, tokens, i, '@end-block') || isMarker(tok, tokens, i, '@end-panel') ||
-          isMarker(tok, tokens, i, '@end-slate') || isMarker(tok, tokens, i, '@end-shard') ||
-          isMarker(tok, tokens, i, '@end-codex')) {
+      if (isMarker(tok, tokens, i, '@end-block')) {
         if (inBlock) {
           newTokens.push(makeToken('html_block', '</div>\n'));
           inBlock = false;
+        }
+        i += 2;
+        continue;
+      }
+
+      // --- @card / @end-card ---
+      // Generic card primitive. Emits .dc-card with optional sub-elements:
+      //   .dc-card-heading  — first h4 after @card
+      //   .dc-card-pull     — first blockquote after the heading (move outside body)
+      //   .dc-card-body     — all remaining content
+      // Author syntax:
+      //   @card .dc-flaws
+      //   #### Title
+      //   > Pull quote
+      //   Body paragraph.
+      //   > Footer blockquote
+      //
+      //   @end-card
+      //
+      // IMPORTANT: @end-card must be preceded by a blank line when the last
+      // content before it is a blockquote. Without the blank line markdown-it
+      // lazily continues the blockquote and absorbs the @end-card marker.
+      const cardMarker = parseMarker(tok, tokens, i, '@card');
+      if (cardMarker.matched) {
+        closeAll();
+        const userAttrs = cardMarker.attrs;
+        const extraClass = userAttrs['class'] ? ' ' + userAttrs['class'] : '';
+        const extraId = userAttrs['id'] ? ' id="' + esc(userAttrs['id']) + '"' : '';
+        newTokens.push(makeToken('html_block', '<div class="dc-card' + extraClass + '"' + extraId + '>\n'));
+        inCard = true;
+        cardHeadingDone = false;
+        cardPullDone = false;
+        cardBodyOpen = false;
+        i += 2;
+        continue;
+      }
+
+      if (isMarker(tok, tokens, i, '@end-card')) {
+        if (inCard) {
+          if (cardBodyOpen) {
+            newTokens.push(makeToken('html_block', '</div>\n')); // close .dc-card-body
+            cardBodyOpen = false;
+          }
+          newTokens.push(makeToken('html_block', '</div>\n')); // close .dc-card
+          inCard = false;
+          cardHeadingDone = false;
+          cardPullDone = false;
         }
         i += 2;
         continue;
@@ -1416,24 +1372,6 @@ export default function dimmCityPlugin(md, options = {}) {
         continue;
       }
 
-      // --- @specialty-art / @end-specialty-art ---
-      // Full-page art plate. Emits .dc-specialty-art wrapper.
-      const specialtyArtMarker = parseMarker(tok, tokens, i, '@specialty-art');
-      if (specialtyArtMarker.matched) {
-        closeAll();
-        const userAttrs = { ...specialtyArtMarker.attrs };
-        const extraClass = userAttrs['class'] ? ' ' + userAttrs['class'] : '';
-        delete userAttrs['class'];
-        newTokens.push(makeToken('html_block', '<div class="dc-specialty-art' + extraClass + '">\n'));
-        i += 2;
-        continue;
-      }
-
-      if (isMarker(tok, tokens, i, '@end-specialty-art')) {
-        newTokens.push(makeToken('html_block', '</div>\n'));
-        i += 2;
-        continue;
-      }
 
       // --- @toc / @end-toc ---
       const tocMarker = parseMarker(tok, tokens, i, '@toc');
@@ -1703,6 +1641,92 @@ export default function dimmCityPlugin(md, options = {}) {
         }
 
         // Pass through other content in learning-path
+        newTokens.push(tok);
+        continue;
+      }
+
+      // Inside @card section
+      if (inCard) {
+        // Check for @end-card marker FIRST (before processing other tokens)
+        if (isMarker(tok, tokens, i, '@end-card')) {
+          if (cardBodyOpen) {
+            newTokens.push(makeToken('html_block', '</div>\n')); // close .dc-card-body
+            cardBodyOpen = false;
+          }
+          newTokens.push(makeToken('html_block', '</div>\n')); // close .dc-card
+          inCard = false;
+          cardHeadingDone = false;
+          cardPullDone = false;
+          i += 2;
+          continue;
+        }
+
+        // h4 = card heading (first h4 only)
+        if (tok.type === 'heading_open' && tok.tag === 'h4' && !cardHeadingDone) {
+          const inlineTok = tokens[i + 1];
+          const headingHtml = inlineTok && inlineTok.children
+            ? md.renderer.render(inlineTok.children, md.options, {})
+            : esc(inlineTok ? inlineTok.content || '' : '');
+          newTokens.push(makeToken('html_block', '<div class="dc-card-heading">' + headingHtml + '</div>\n'));
+          cardHeadingDone = true;
+          i += 2; // skip inline + heading_close
+          continue;
+        }
+
+        // First blockquote after heading (before body opens) = pull quote
+        if (tok.type === 'blockquote_open' && cardHeadingDone && !cardPullDone && !cardBodyOpen) {
+          let bqContent = '';
+          let j = i + 1;
+          let blockquoteCloseIdx = -1;
+          while (j < tokens.length && tokens[j].type !== 'blockquote_close') {
+            if (tokens[j].type === 'inline') {
+              // The inline content may have @end-card appended as a lazy continuation.
+              // Extract text, strip the trailing marker, render the inline children.
+              let rawText = tokens[j].content || '';
+              // Remove lazy continuation @end-card from the end
+              rawText = rawText.replace(/\n@end-card\s*$/, '').replace(/\s+@end-card\s*$/, '').trim();
+
+              // Render children, but strip @end-card from the rendered HTML if it appears
+              bqContent = tokens[j].children
+                ? md.renderer.render(tokens[j].children, md.options, {})
+                : esc(rawText);
+              // Strip @end-card from rendered output as a fallback
+              bqContent = bqContent.replace(/\s*@end-card\s*$/, '').replace(/@end-card\s*<\/p>/, '</p>');
+            }
+            j++;
+          }
+          blockquoteCloseIdx = j;
+          newTokens.push(makeToken('html_block', '<div class="dc-card-pull">' + bqContent + '</div>\n'));
+          newTokens.push(makeToken('html_block', '<div class="dc-card-body">\n'));
+          cardPullDone = true;
+          cardBodyOpen = true;
+          i = blockquoteCloseIdx; // for-loop i++ lands at token after blockquote_close
+          continue;
+        }
+
+        // Open body for any non-heading, non-pull content that arrived before body was opened
+        if (!cardBodyOpen) {
+          newTokens.push(makeToken('html_block', '<div class="dc-card-body">\n'));
+          cardBodyOpen = true;
+          // Do NOT skip tok — fall through to passthrough below
+        }
+
+        // Inside body: strip @end-card from blockquotes (lazy continuation artifact)
+        if (tok.type === 'blockquote_open') {
+          let j = i + 1;
+          let blockquoteCloseIdx = -1;
+          while (j < tokens.length && tokens[j].type !== 'blockquote_close') {
+            if (tokens[j].type === 'inline') {
+              // Strip @end-card from inline content
+              let rawText = tokens[j].content || '';
+              rawText = rawText.replace(/\n@end-card\s*$/, '').replace(/\s+@end-card\s*$/, '').trim();
+              tokens[j].content = rawText;
+            }
+            j++;
+          }
+        }
+
+        // Pass through card body content unchanged
         newTokens.push(tok);
         continue;
       }

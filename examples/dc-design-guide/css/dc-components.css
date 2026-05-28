@@ -3228,11 +3228,7 @@ h3 + .section {
    signal different content registers.
 
    Plugin macro API (dimm-city-plugin.js):
-     @block variant=panel|slate|shard|codex label="Title" … @end-block
-     @panel label="Title" … @end-panel   (shorthand for variant=panel)
-     @slate label="Title" … @end-slate   (shorthand for variant=slate)
-     @shard label="Title" … @end-shard   (shorthand for variant=shard)
-     @codex label="Title" … @end-codex   (shorthand for variant=codex)
+     @block .dc-panel|.dc-slate|.dc-shard|.dc-codex label="Title" … @end-block
 
    CSS class API (direct use without plugin):
      <div class="dc-block dc-panel"><div class="dc-block-title">…</div>…</div>
@@ -3365,6 +3361,89 @@ h3 + .section {
     0 0, calc(100% - 8px) 0, 100% 8px,
     100% 100%, 0 100%
   );
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   CARD PRIMITIVE — dc-card family
+   ═════════════════════════════════════════════════════════════════════════
+   Generic structured card. Emits .dc-card with optional sub-elements:
+     .dc-card-heading  — card title (from first h4)
+     .dc-card-pull     — pull-quote or flavor intro (first blockquote)
+     .dc-card-body     — remaining content container
+   Footer: the last blockquote in .dc-card-body; no wrapper div emitted.
+   CSS targets it via .dc-card-body blockquote:last-of-type.
+
+   Plugin macro:
+     @card .dc-flaws … @end-card
+
+   IMPORTANT: .dc-skill-card and .dc-card are different outer classes.
+   Sub-elements (.dc-card-body etc.) are always scoped to their outer parent:
+     .dc-skill-card .dc-card-body → skill card body (existing rules)
+     .dc-card > .dc-card-body     → card primitive body (this section)
+   No selector conflict. */
+
+.dc-card {
+  background: var(--paper-light);
+  border-left: 3px solid var(--ink-dark);
+  padding: var(--space-sm) var(--space-md) var(--space-md);
+  margin: var(--space-sm) 0;
+  break-inside: avoid;
+}
+
+.dc-card-heading {
+  font-family: var(--font-display);
+  font-size: var(--fs-h4);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-heading);
+  margin-bottom: var(--space-xs);
+  color: var(--ink-dark);
+}
+
+.dc-card-pull {
+  font-style: italic;
+  color: var(--ink-mid);
+  margin-bottom: var(--space-xs);
+  font-size: var(--fs-sm);
+}
+
+.dc-card > .dc-card-body {
+  margin-top: var(--space-xs);
+}
+
+.dc-card > .dc-card-body > p {
+  margin-bottom: var(--space-xs);
+}
+
+.dc-card > .dc-card-body > p:last-child {
+  margin-bottom: 0;
+}
+
+/* Footer: last blockquote in card body */
+.dc-card > .dc-card-body blockquote:last-of-type {
+  border-left: none;
+  padding-left: 0;
+  margin-top: var(--space-xs);
+  font-size: var(--fs-sm);
+  color: var(--ink-mid);
+  font-style: italic;
+}
+
+/* ── Card list contexts (dc-components.css owns these — NOT fg-overrides) ── */
+
+/* Flaw cards */
+.section.dc-flaws > .dc-card {
+  border-left-color: var(--blood, #c0392b);
+}
+
+/* Ideal cards */
+.section.dc-ideals > .dc-card {
+  border-left-color: var(--hud-blue-dark, #1a5276);
+}
+
+/* Dream cards */
+.section.dc-dreams > .dc-card {
+  border-left-color: var(--augmerc-accent, #e67e22);
 }
 
 /* ═════════════════════════════════════════════════════════════════════════

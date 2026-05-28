@@ -38,28 +38,23 @@ Live specimens for every component touched by the macro refactor. Use this page 
 
 ---
 
-## Block Variants — Current Syntax
+## Block Variants
 
-@panel
+@block .dc-panel
 **Panel (data/tactical register)** — `.dc-block.dc-panel`. HUD-blue border, data-dense layout. Used for stats, action economy reference, tactical tables.
-@end-panel
+@end-block
 
-@slate
+@block .dc-slate
 **Slate (authority register)** — `.dc-block.dc-slate`. Dark substrate, high contrast. Used for rules text, social contracts, Spec Tweak blocks.
-@end-slate
+@end-block
 
-@shard
+@block .dc-shard
 **Shard (atmosphere register)** — `.dc-block.dc-shard`. Asymmetric zine/punk treatment. Used for flavor, lore asides, world fragments.
-@end-shard
+@end-block
 
-@codex
+@block .dc-codex
 **Codex (reference register)** — `.dc-block.dc-codex`. Clean reference card. Used for distance tags, glossary terms, quick-reference rules.
-@end-codex
-
-<!-- Phase 0: @block .classname syntax — add examples here after implementation -->
-<!-- @block .dc-panel -->
-<!-- Panel via @block .dc-panel -->
-<!-- @end-block -->
+@end-block
 
 ---
 
@@ -74,10 +69,10 @@ Roll in the open. Results stand. If a roll leaves the table, it doesn't count �
 
 ## Spec Tweak Block
 
-@slate
+@block .dc-slate
 ### Spec Tweak: **Mistrunner**
 You move through the city like fog through a gap in the wall. Once per scene, you may cross through one barrier — a locked door, a guarded threshold, a checkpoint — without triggering an obstacle roll. The city lets you through. It doesn't know why.
-@end-slate
+@end-block
 
 ---
 
@@ -204,54 +199,33 @@ A single-use pulse pistol factory-sealed in printed plastic. Cheap, disposable, 
 
 ---
 
-<!-- ═══════════════════════════════════════════════════════════════════
-     PHASE 1 TARGETS — Uncomment and test after @card implementation
-     ═══════════════════════════════════════════════════════════════════ -->
+## Card Entries (Flaws / Ideals / Dreams) — Phase 1
 
-<!-- ## Card Entries (Flaws / Ideals / Dreams) — Phase 1 -->
+@section .dc-flaws
+@card
+#### Megalomaniac
+You have delusional fantasies of wealth or power. Their ambition has no ceiling.
+> "I won't rest until I rule every inch of this world."
 
-<!-- @section .dc-flaws -->
-<!-- @card -->
-<!-- #### Megalomaniac -->
-<!-- You have delusional fantasies of wealth or power. Their ambition has no ceiling. -->
-<!-- > "I won't rest until I rule every inch of this world." -->
-<!-- @end-card -->
-<!-- @end-section -->
+@end-card
+@end-section
 
-<!-- @section .dc-ideals -->
-<!-- @card -->
-<!-- #### Information Freedom -->
-<!-- You value the free flow of information above all other rights. -->
-<!-- > "If knowledge is locked away, it's already being abused." -->
-<!-- @end-card -->
-<!-- @end-section -->
+@section .dc-ideals
+@card
+#### Information Freedom
+You value the free flow of information above all other rights.
+> "If knowledge is locked away, it's already being abused."
 
-<!-- @section .dc-dreams -->
-<!-- @card -->
-<!-- #### Build Something Real -->
-<!-- Not fame. Not revenge. Just one thing that lasts after you're gone. -->
-<!-- > "I want to leave something better than I found." -->
-<!-- @end-card -->
-<!-- @end-section -->
+@end-card
+@end-section
 
-<!-- ═══════════════════════════════════════════════════════════════════
-     PHASE 2b TARGETS — Uncomment after @block .classname is live
-     ═══════════════════════════════════════════════════════════════════ -->
+@section .dc-dreams
+@card
+#### Build Something Real
+Not fame. Not revenge. Just one thing that lasts after you're gone.
+> "I want to leave something better than I found."
 
-<!-- ## Block Variants — Post-Phase-2b Syntax -->
+@end-card
+@end-section
 
-<!-- @block .dc-panel -->
-<!-- **Panel via @block .dc-panel** — verify same output as @panel above -->
-<!-- @end-block -->
-
-<!-- @block .dc-slate -->
-<!-- **Slate via @block .dc-slate** — verify same output as @slate above -->
-<!-- @end-block -->
-
-<!-- @block .dc-shard -->
-<!-- **Shard via @block .dc-shard** — verify same output as @shard above -->
-<!-- @end-block -->
-
-<!-- @block .dc-codex -->
-<!-- **Codex via @block .dc-codex** — verify same output as @codex above -->
-<!-- @end-block -->
+---

@@ -113,51 +113,51 @@ Four reusable card-like enclosures for text content sections. Each variant has a
 
 @section .two-column
 
-@panel label="Panel — HUD Tactical"
+@block .dc-panel label="Panel — HUD Tactical"
 
 Structured data, mission briefings, system documentation. Left accent strip in dark teal. Hex corner cuts. Title band has diagonal right cut.
 
 Use for player-facing rules summaries and structured information blocks.
 
-@end-panel
+@end-block
 
-@slate label="Slate — Dark Authority"
+@block .dc-slate label="Slate — Dark Authority"
 
 Key rules, Dream Master directives, critical definitions. Dark near-black surface with magenta title band. Top-left step cut.
 
 Use for authoritative rulings and high-importance content.
 
-@end-slate
+@end-block
 
-@shard label="Shard — Zine Cut"
+@block .dc-shard label="Shard — Zine Cut"
 
 Flavor, atmosphere, setting detail, narrative asides. Warm aged-paper surface, rust title band. Aggressive bottom-right diagonal slash.
 
 Use for fiction, vibe, and atmospheric content blocks.
 
-@end-shard
+@end-block
 
-@codex label="Codex — Reference"
+@block .dc-codex label="Codex — Reference"
 
 Tables, compendium entries, rules lookups. Pale cyan surface. Symmetric octagon corner cuts. Clean data-register aesthetic.
 
 Use for reference tables and encyclopedia-style entries.
 
-@end-codex
+@end-block
 
 @end-section
 
 ### Authoring Syntax
 
-All four variants share a unified macro API with convenience shorthands:
+All four variants use the unified `@block` macro with class syntax:
 
 ```
-@panel label="Title"
+@block .dc-panel label="Title"
 Content here (any markdown)...
-@end-panel
+@end-block
 
-@block variant=codex label="Custom Title"
-Also works via the unified @block form.
+@block .dc-codex label="Custom Title"
+Also works with any of the four variants.
 @end-block
 ```
 
@@ -173,7 +173,7 @@ The `label` attribute is optional — omit it to render without a title band.
 | Sidebar | `@sidebar … @end-sidebar` | `dc-sidebar` |
 | Procedure | `@procedure … @end-procedure` | `dc-steps` |
 | Gear Entry | `@gear-card … @end-gear-card` | `dc-gear-entry` |
-| Panel Enclosure | `@panel label="…" … @end-panel` | `dc-block dc-panel` |
-| Slate Enclosure | `@slate label="…" … @end-slate` | `dc-block dc-slate` |
-| Shard Enclosure | `@shard label="…" … @end-shard` | `dc-block dc-shard` |
-| Codex Enclosure | `@codex label="…" … @end-codex` | `dc-block dc-codex` |
+| Panel Enclosure | `@block .dc-panel label="…" … @end-block` | `dc-block dc-panel` |
+| Slate Enclosure | `@block .dc-slate label="…" … @end-block` | `dc-block dc-slate` |
+| Shard Enclosure | `@block .dc-shard label="…" … @end-block` | `dc-block dc-shard` |
+| Codex Enclosure | `@block .dc-codex label="…" … @end-block` | `dc-block dc-codex` |
