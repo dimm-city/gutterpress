@@ -135,6 +135,31 @@
   margin: 0;
 }
 
+/* Rules/DM/Gear interior art should read as inset support art, not full-page
+   plates. Keep these floats constrained so prose can wrap and no late-book
+   page turns collapse into image-only walls. */
+.fg-art-inline,
+.fg-art-wide {
+  float: right;
+  clear: right;
+  height: auto;
+  object-fit: contain;
+  margin: 0.02in 0 0.14in 0.2in;
+  break-inside: avoid;
+}
+
+.fg-art-inline {
+  width: 2.3in;
+  max-width: 46%;
+  max-height: 2.8in;
+}
+
+.fg-art-wide {
+  width: 2.85in;
+  max-width: 54%;
+  max-height: 2.95in;
+}
+
 /* ── SPECIALTY PAGE BREAK CONTROL ─────────────────────────────────────────── */
 /* Break-control rules for specialty page type. Components own their own
    sizing; only break-control and snap geometry belong here. The overflow
