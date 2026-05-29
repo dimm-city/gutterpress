@@ -2887,6 +2887,46 @@ p.dc-img-wrapper {
      the shadow (raster filter + vector pseudo) per print R9 finding. */
 }
 
+/* Optional escape hatch for genuinely long rules sections where atomic-card
+   pagination creates unusable dead zones. Use sparingly and only on sections
+   that have already been split at logical authoring boundaries. */
+.section.allow-split {
+  break-inside: auto;
+}
+
+/* Generic continuation affordance for author-inserted @continue markers. The
+    core plugin owns the authoring primitive; the DC layer makes the continuation
+    visually explicit so mid-flow fragments still read as intentional paper
+    objects instead of anonymous wall text. */
+.section.pmd-continued {
+  /* Continued sections may themselves fragment across pages. Use a real
+     background/border here instead of the base pseudo-element card backing;
+     Paged.js can strand ::after shadows on later fragments as the visible
+     surface, which makes continued prose unreadable. */
+  background: var(--dc-section-bg);
+  border-left: 5px solid var(--dc-section-accent);
+  border-top: 1px solid var(--border-hairline);
+  border-bottom: 1px solid var(--border-hairline);
+  box-shadow: 3px 3px 0 var(--ink-dark);
+}
+
+.section.pmd-continued::before,
+.section.pmd-continued::after {
+  content: none;
+}
+
+.section.pmd-continued > :first-child::before {
+  content: 'CONTINUED';
+  display: block;
+  margin: 0 0 6pt 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h4);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dark);
+}
+
 /* clip-path + left accent band on ::before */
 .section::before {
   content: '';

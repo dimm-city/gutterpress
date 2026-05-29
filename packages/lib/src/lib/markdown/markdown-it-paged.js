@@ -8,6 +8,7 @@
  *   @spread [name|class ...] [key=value ...] [#id] [.class...]
  *   @page   [name|class ...] [key=value ...] [#id] [.class...]
  *   @section [name|class ...] [key=value ...] [#id] [.class...]
+ *   @continue
  *   @end-section
  *   @page-break
  *   @column-break
@@ -17,6 +18,7 @@
  *   spread     -> <div class="spread ..." data-spread="name" ...>
  *   page       -> <div class="page ..." data-page="name" ...>
  *   section    -> <div class="section ..." data-section="name" data-region="..." ...>
+ *   continue   -> closes current @section and opens a new matching continuation section
  *   end-section -> closes nearest open @section (no-op if none open)
  *   page-break -> <div class="md-page-break" aria-hidden="true"></div>
  *   column-break -> <div class="md-column-break" aria-hidden="true"></div>
@@ -74,12 +76,12 @@ function parseMarkerLine(line) {
 
   if (buf) tokens.push(buf);
 
-  const head = tokens[0]; // "@chapter" | "@spread" | "@page" | "@section" | "@end-section" | "@page-break" | "@column-break"
+  const head = tokens[0]; // "@chapter" | "@spread" | "@page" | "@section" | "@continue" | "@end-section" | "@page-break" | "@column-break"
   const kind = head.slice(1);
 
-  if (!['chapter', 'spread', 'page', 'section', 'page-break', 'column-break', 'end-section'].includes(kind)) return null;
+  if (!['chapter', 'spread', 'page', 'section', 'continue', 'page-break', 'column-break', 'end-section'].includes(kind)) return null;
 
-  if (kind === 'page-break' || kind === 'column-break' || kind === 'end-section') {
+  if (kind === 'page-break' || kind === 'column-break' || kind === 'end-section' || kind === 'continue') {
     return { kind, name: null, attrs: {} };
   }
 
@@ -221,6 +223,7 @@ function plugin(md, pluginOptions = {}) {
     let spreadOpen = false;
     let pageOpen = false;
     let sectionOpen = false;
+    let currentSectionMeta = null;
 
     let spreadStartedWithNoPagesYet = false;
     let sawAnyPageInsideCurrentSpread = false;
@@ -261,6 +264,7 @@ function plugin(md, pluginOptions = {}) {
       if (!sectionOpen) return;
       out.push(new state.Token('layout_section_close', 'div', -1));
       sectionOpen = false;
+      currentSectionMeta = null;
     }
 
     function closePage() {
@@ -369,6 +373,10 @@ function plugin(md, pluginOptions = {}) {
       attachDataAttrs(t, 'section', meta.name, meta.attrs || {});
       out.push(t);
       sectionOpen = true;
+      currentSectionMeta = {
+        name: meta.name || null,
+        attrs: { ...(meta.attrs || {}) },
+      };
     }
 
     for (let i = 0; i < state.tokens.length; i++) {
@@ -427,6 +435,25 @@ function plugin(md, pluginOptions = {}) {
         }
 
         openSection(meta);
+        continue;
+      }
+
+      if (kind === 'continue') {
+        if (!sectionOpen || !currentSectionMeta) {
+          warn(state.env, line, 'continue_without_section', '@continue used without an open @section; ignoring marker.', meta);
+          continue;
+        }
+
+        const contMeta = {
+          name: currentSectionMeta.name,
+          attrs: { ...(currentSectionMeta.attrs || {}) },
+        };
+        const cls = (contMeta.attrs.class || '').split(/\s+/).filter(Boolean);
+        if (!cls.includes('pmd-continued')) cls.push('pmd-continued');
+        contMeta.attrs.class = cls.join(' ');
+
+        closeSection();
+        openSection(contMeta);
         continue;
       }
 

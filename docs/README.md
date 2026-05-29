@@ -97,6 +97,7 @@ print-md validate --pdf dist/book.pdf
 @page                       Start a new page
 @page chapter               New page with chapter class
 @page-break                 Force a page break
+@continue                   Continue current @section with a matching new section box
 @end-section                Close current @section
 @spread                     Start a two-page spread
 @section .two-column        Two-column layout

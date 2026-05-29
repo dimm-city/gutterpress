@@ -55,6 +55,19 @@ runs from source via `bun packages/cli/src/cli.ts` during development.
 These are non-negotiable for any change that touches the runtime or build
 pipeline.
 
+### 0. Author-first primitive layering
+
+Default, author-facing layout primitives belong in the most general reusable
+layer that can own them:
+
+1. Put generic markdown authoring behavior in core print-md / `markdown-it-paged`
+2. Put DC-specific component chrome and macro semantics in the DC plugin and `dc-components.css`
+3. Put book-specific positioning and context-only break tuning in `fg-overrides.css`
+
+If a behavior is broadly useful to non-technical authors using simple markdown,
+fix the default/core primitive first instead of solving it only in a project or
+override layer.
+
 ### 1. No bundlers at runtime (packages/cli only)
 
 Do **not** import `vite`, `rollup`, `esbuild`, or any other bundler at runtime

@@ -1529,13 +1529,9 @@ export default function dimmCityPlugin(md, options = {}) {
         continue;
       }
 
-      // Check for @continue marker — manually splits a long ability into two
-      // (or more) chrome-bearing cards. Closes the current skill-card and
-      // opens a new one with the same variant and a "{title} ▸"
-      // tab so the reader sees the continuation visually. Use this instead
-      // of `.allow-split` when an ability is too tall for one page; manual
-      // splits keep card chrome on every fragment, while paged.js auto-splits
-      // produce naked continuations (no tab, no body frame on later pages).
+      // Skill-card @continue is context-specific. Outside an active skill card,
+      // leave @continue untouched so markdown-it-paged can apply the generic
+      // section-continuation primitive.
       if (isMarker(tok, tokens, i, '@continue')) {
         if (inSkillMode && inSkillCard) {
           // Close current card
@@ -1572,9 +1568,9 @@ export default function dimmCityPlugin(md, options = {}) {
 
           newTokens.push(makeToken('html_block', cardHtml));
           inSkillCard = true;
+          i += 2;
+          continue;
         }
-        i += 2;
-        continue;
       }
 
       // Check for @end-learning-path marker

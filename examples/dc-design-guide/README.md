@@ -129,7 +129,7 @@ markdown source during the build step and emits structured HTML.
 | `@skill` | Skill card — silhouette inherits from `@specialty .<name>` parent | Individual skill card with tab, flavor, and abilities |
 | `@procedure` | Numbered procedure block | Ordered list rendered as `dc-steps` |
 | `@definition` | Definition callout | Italic definition block with left rule |
-| `@continue` | Card continuation marker | Splits an oversized skill card across a page break |
+| `@continue` | Context-sensitive continuation marker | Inside `@skill`, splits a skill card; inside `@section`, starts a matching continuation section |
 | `@outcome` | Five-rung d20 outcome ladder | Crit / Hit / Mixed / Miss / Catastrophe table |
 | `@chapter-opener C.N` | Chapter number badge | Opener spread chapter number for non-specialty chapters |
 
