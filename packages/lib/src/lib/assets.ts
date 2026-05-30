@@ -5,9 +5,25 @@
  * Handles relative paths like "../_shared" correctly.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join, basename } from "node:path";
 import { copyDir } from "./exec";
+
+/**
+ * Top-level file names (not directories) directly inside `dir`.
+ * Used to detect destructive filename overlaps when two asset entries
+ * flatten to the same destination folder. Returns an empty array if the
+ * directory can't be read (it may be a single file or not exist).
+ */
+function topLevelFileNames(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isFile())
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Default asset directories when no manifest is provided
@@ -40,9 +56,26 @@ export async function copyAssets(
   options?: {
     onCopy?: (assetPath: string) => void;
     onSkip?: (assetPath: string, srcPath: string) => void;
+    /**
+     * Fired when a file copied by `assetPath` overwrites a file with the same
+     * name already placed in the shared destination folder by an earlier asset
+     * entry (e.g. local `css/index.css` and `../shared/css/index.css` both
+     * flatten to `css/index.css`). The last entry silently wins, which is a
+     * common cause of "my shared styles aren't being applied" — surfacing it
+     * lets callers warn the author.
+     */
+    onCollision?: (info: {
+      destName: string;
+      fileName: string;
+      winnerAsset: string;
+      loserAsset: string;
+    }) => void;
   }
 ): Promise<string[]> {
   const copied: string[] = [];
+  // destName -> (fileName -> assetPath that last wrote it). Tracks which asset
+  // entry owns each flattened file so we can report destructive overwrites.
+  const ownership = new Map<string, Map<string, string>>();
 
   for (const assetPath of assets) {
     const src = join(inputDir, assetPath);
@@ -55,6 +88,20 @@ export async function copyAssets(
     const resolvedSrc = existsSync(src) ? src : existsSync(fallbackSrc) ? fallbackSrc : null;
 
     if (resolvedSrc) {
+      // Detect filename overlaps with earlier entries that share this destName
+      // BEFORE the copy overwrites them.
+      if (options?.onCollision) {
+        const seen = ownership.get(destName) ?? new Map<string, string>();
+        for (const fileName of topLevelFileNames(resolvedSrc)) {
+          const loserAsset = seen.get(fileName);
+          if (loserAsset && loserAsset !== assetPath) {
+            options.onCollision({ destName, fileName, winnerAsset: assetPath, loserAsset });
+          }
+          seen.set(fileName, assetPath);
+        }
+        ownership.set(destName, seen);
+      }
+
       options?.onCopy?.(assetPath);
       await copyDir(resolvedSrc, join(outDir, destName));
       copied.push(destName);

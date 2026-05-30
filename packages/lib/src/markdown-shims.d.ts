@@ -9,3 +9,4 @@ declare module "*.md" {
 // the use site via filePath() in embedded-assets.ts.
 declare module "*.ico" { const path: string; export default path; }
 declare module "*.css" { const path: string; export default path; }
+declare module "*.icc" { const path: string; export default path; }

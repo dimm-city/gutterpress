@@ -407,6 +407,12 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
       onCopy: (assetPath) => log.info(`  Copied ${assetPath}/`),
       onSkip: (assetPath, srcPath) =>
         log.warn(`  ${assetPath}/ not found at ${srcPath} (skipping)`),
+      onCollision: ({ destName, fileName, winnerAsset, loserAsset }) =>
+        log.warn(
+          `  Asset collision: "${winnerAsset}/${fileName}" overwrites "${loserAsset}/${fileName}" ` +
+            `(both flatten to ${destName}/${fileName}). Last entry wins — rename the file or reorder ` +
+            `manifest assets if this is not intended.`
+        ),
     });
   }
 

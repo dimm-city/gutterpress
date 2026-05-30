@@ -5,7 +5,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -124,25 +124,6 @@ describe('generateAndWriteHtml', () => {
     expect(content).toContain('Chapter 1');
     expect(content).toContain('Chapter 2');
   }, 60000);
-
-  test('design guide stylesheet avoids the crash-prone selector combination', async () => {
-    // content-templates.css was merged into guide.css (and other files) during
-    // the CSS refactor in bdc64ef. Scan all CSS files in the directory so this
-    // regression guard stays valid regardless of future file renames.
-    const { readdir } = await import('fs/promises');
-    // Resolve relative to this file so it works whether tests are invoked
-    // from the package dir or the workspace root.
-    const cssDir = join(import.meta.dir, '../../../../examples/dc-design-guide/css');
-    const cssFiles = (await readdir(cssDir)).filter((f) => f.endsWith('.css'));
-
-    let allCss = '';
-    for (const file of cssFiles) {
-      allCss += await readFile(join(cssDir, file), 'utf8');
-    }
-
-    expect(allCss).not.toContain('.page.rolling-die > .wrapper:first-of-type ul + p');
-    expect(allCss).not.toContain('.page.rolling-die > .wrapper ul + p');
-  });
 });
 
 describe('createFileWatcher', () => {

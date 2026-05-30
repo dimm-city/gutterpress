@@ -10,7 +10,7 @@ import { tmpdir } from 'os';
 import { randomBytes } from 'crypto';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { mkdir, remove, copyDirectory, fileExists } from '../utils/file-utils';
-import { info, debug } from '../utils/logger';
+import { info, debug, warn } from '../utils/logger';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import { copyAssets } from '../lib/assets';
 import type { PreviewServerOptions } from '../types';
@@ -109,6 +109,12 @@ export async function initializePreviewDirectories(
     await copyAssets(inputPath, tempDir, config.source.assets, {
       onCopy: (assetPath) => debug(`Copied manifest asset: ${assetPath}`),
       onSkip: (assetPath, srcPath) => debug(`Manifest asset not found: ${srcPath} (skipping)`),
+      onCollision: ({ destName, fileName, winnerAsset, loserAsset }) =>
+        warn(
+          `Asset collision: "${winnerAsset}/${fileName}" overwrites "${loserAsset}/${fileName}" ` +
+            `(both flatten to ${destName}/${fileName}). Last entry wins — rename the file or reorder ` +
+            `manifest assets if this is not intended.`
+        ),
     });
   }
 
