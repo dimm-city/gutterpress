@@ -42,6 +42,7 @@ For richer projects (cover art, fonts, a multi-chapter book with running headers
 | **Structure your CSS like a pro** — the recommended pattern for variant assignment | [Contextual Cascade Principle](./docs/contextual-cascade-principle.md) |
 | Create TTRPG/games content (stat blocks, dice notation, etc) | [User Guide: Chapter 5 — TTRPG Extensions](./examples/print-md-user-guide/05-ttrpg-extensions.md) |
 | **Use the CLI** for scripting, CI builds, or batch work | [CLI README](./packages/cli/README.md) |
+| **Run the whole pipeline in Docker** (all print tools pre-installed) | [Docker guide](./docs/docker.md) |
 | Add custom markdown plugins | [User Guide: Chapter 6 — Plugins](./examples/print-md-user-guide/06-plugins.md) |
 | Validate output for print production (TAC, ICC, PDF/X) | [User Guide: Chapter 7 — Validation](./examples/print-md-user-guide/07-validation.md) |
 | Set up system tools (Chromium, Ghostscript, qpdf, etc) | [User Guide: Chapter 8 — System Setup](./examples/print-md-user-guide/08-system-setup.md) |
