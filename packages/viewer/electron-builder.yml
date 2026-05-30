@@ -1,11 +1,13 @@
 appId: city.dimm.print-md-viewer
 productName: print-md-viewer
 
-# The lib is bundled into electron-dist/lib.cjs by scripts/build-electron.ts.
-# The only runtime dep that stays external is puppeteer-core (used by the
-# lib's runBuild() to drive Chrome for PDF generation). electron-builder
-# picks it up automatically from package.json's `dependencies` and walks
-# its transitive deps — no manual list required, no afterPack hook.
+# The compiled Electron main (electron-dist/main.js, CJS) dynamic-imports the
+# pure-ESM @dimm-city/print-md-lib from node_modules at runtime (see
+# electron/main.ts loadLib()). The lib's package.json `files` field constrains
+# what ships (just dist/ and profiles/). electron-builder copies the lib and
+# its transitive deps (puppeteer-core, markdown-it, etc.) automatically from
+# the workspace node_modules via package.json `dependencies` — no manual list,
+# no afterPack hook, no separate lib bundle.
 files:
   - electron-dist/**
   - build/**
@@ -24,10 +26,9 @@ directories:
   output: dist
   buildResources: build-resources
 
-# Native deps and large optionals are still installed via the viewer's
-# package.json dependencies. electron-builder copies them automatically
-# from the workspace's node_modules at packaging time. No afterPack
-# hook needed — the lib itself is in electron-dist/lib.cjs.
+# Native deps and large optionals are installed via the viewer's package.json
+# dependencies (@dimm-city/print-md-lib → its transitive deps). electron-builder
+# copies them automatically from the workspace node_modules at packaging time.
 linux:
   target:
     - AppImage

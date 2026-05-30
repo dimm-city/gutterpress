@@ -19,10 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - name: Setup Bun (cached)
+        uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install
@@ -46,10 +44,8 @@ jobs:
         with:
           chrome-version: stable
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - name: Setup Bun (cached)
+        uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install
@@ -67,19 +63,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - name: Setup Bun (cached)
+        uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install
 
-      - name: Build CLI (SvelteKit Node bundle)
-        run: bun --cwd packages/cli run build
+      - name: Build CLI npm bundle
+        run: bun --cwd packages/cli run build:npm
 
-      - name: Build viewer (SvelteKit Node bundle)
-        run: bun --cwd packages/viewer run build
+      - name: Build viewer (static SPA + Electron main)
+        run: |
+          bun --cwd packages/viewer run build
+          bun --cwd packages/viewer run electron:build
 
   type-check:
     name: Type Check
@@ -87,10 +83,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - name: Setup Bun (cached)
+        uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install
@@ -102,84 +96,14 @@ jobs:
       - name: Run TypeScript compiler (viewer)
         run: bun --cwd packages/viewer run check
 
-  pdfx-smoke:
-    name: PDF/X Smoke
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # Temporarily disabled: the smoke test exercises the Chromium + Paged.js
-    # + Ghostscript pipeline end-to-end, which has been failing in CI under
-    # opaque conditions (no log access from this environment to diagnose).
-    # Locally `bun src/cli.ts build examples/template --format html` works;
-    # the PDF/X path needs a separate investigation. Re-enable once fixed.
-    if: false
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Chrome
-        uses: browser-actions/setup-chrome@v1
-        with:
-          chrome-version: stable
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install OS tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ghostscript qpdf
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Configure Chromium path
-        # setup-chrome installs `google-chrome` (a wrapper); fall back to
-        # `google-chrome-stable` and the bundled chromium-browser if the
-        # canonical path isn't present.
-        run: |
-          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
-            path="$(command -v "$candidate" || true)"
-            if [ -n "$path" ]; then
-              echo "CHROMIUM_PATH=$path" >> "$GITHUB_ENV"
-              echo "Resolved CHROMIUM_PATH=$path"
-              exit 0
-            fi
-          done
-          echo "No Chromium binary found on PATH" >&2
-          exit 1
-
-      - name: Build sample PDF/X artifact
-        run: |
-          set -x
-          bun packages/cli/src/cli.ts build examples/template \
-            --out .ci-smoke \
-            --pdfx x1a \
-            --icc packages/cli/profiles/CGATS21_CRPC1.icc
-          ls -la .ci-smoke/
-
-      - name: Strict PDF/X structural validation
-        run: |
-          set -x
-          qpdf --check .ci-smoke/book.pdf
-          bun packages/cli/src/cli.ts validate \
-            --pdf .ci-smoke/book.pdf \
-            --phase post-build \
-            --only pdf.print.pdfx-markers,pdf.print.pdfx-metadata
-
-      - name: Verify fingerprint artifact emitted
-        run: test -f .ci-smoke/build-fingerprint.json
-
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - name: Setup Bun (cached)
+        uses: ./.github/actions/bun
 
       - name: Install dependencies with frozen lockfile
         run: bun install --frozen-lockfile

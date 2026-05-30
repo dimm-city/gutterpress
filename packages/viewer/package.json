@@ -7,16 +7,16 @@
   "author": "itlackey",
   "description": "Desktop viewer for print-md (Electron + SvelteKit static SPA).",
   "scripts": {
-    "dev": "npx vite dev",
-    "build": "npx vite build",
-    "preview": "npx vite preview",
-    "electron:build": "tsc -p electron/tsconfig.json && node -e \"require('fs').writeFileSync('electron-dist/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\"",
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:build": "tsc -p electron/tsconfig.json && node scripts/write-cjs-marker.mjs",
     "electron:dev": "npm run build && npm run electron:build && electron electron-dist/main.js",
     "electron:hmr": "npm run electron:build && concurrently -k -n vite,electron -c cyan,magenta \"vite dev --port 5173 --strictPort\" \"wait-on http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron electron-dist/main.js\"",
     "dist:linux": "npm run build && npm run electron:build && electron-builder --linux AppImage --config electron-builder.yml",
     "dist:win": "npm run build && npm run electron:build && electron-builder --win zip --config electron-builder.yml",
     "dist:mac": "npm run build && npm run electron:build && electron-builder --mac dmg --config electron-builder.yml",
-    "check": "npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "@dimm-city/print-md-lib": "workspace:*"

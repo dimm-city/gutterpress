@@ -4,7 +4,7 @@
 # GitHub Releases and drops it in %LOCALAPPDATA%\Programs\print-md. No bun,
 # node, or git required.
 #
-#   irm https://raw.githubusercontent.com/dimm-city/print-md/main/scripts/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/scripts/install.ps1 | iex
 #
 # Optional environment variables:
 #   PRINTMD_VERSION        override the version to install (e.g. v0.2.0-beta.5)
@@ -45,7 +45,10 @@ function Write-Step    {
 # we ship the same asset there.
 
 function Get-PrintMdAsset {
-    return "print-md-windows-x64.exe"
+    # Must match the release.yml build-cli matrix `artifact` name. The `-cli`
+    # infix distinguishes the standalone CLI binary from the print-md-viewer-*
+    # desktop assets in the same release.
+    return "print-md-cli-windows-x64.exe"
 }
 
 # ---- HTTP helpers ----------------------------------------------------------

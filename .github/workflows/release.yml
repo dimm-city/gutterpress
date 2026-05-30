@@ -178,7 +178,8 @@ jobs:
     name: Viewer / Windows zip
     needs: version
     # electron-builder handles Electron download, exe rename, icon embedding, zip.
-    # afterPack hook uses npm install (no Bun required at packaging time).
+    # No afterPack hook: the lib ships as a normal node_modules dependency that
+    # electron-builder walks automatically (see electron-builder.yml).
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -225,11 +226,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Patch viewer version
-        run: |
-          VERSION="${{ inputs.version }}"
-          jq --arg v "$VERSION" '.version = $v' packages/viewer/package.json > /tmp/viewer-pkg.json
-          mv /tmp/viewer-pkg.json packages/viewer/package.json
+      # No version patch needed — this job checks out the tag the `version`
+      # job already bumped and committed (ref: needs.version.outputs.tag).
 
       - name: Install Xcode command-line tools
         run: xcode-select --install || true

@@ -4,7 +4,7 @@
 # Downloads the standalone binary for the current platform from GitHub
 # Releases and drops it in ~/.local/bin. No bun, node, or git required.
 #
-#   curl -fsSL https://raw.githubusercontent.com/dimm-city/print-md/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/scripts/install.sh | bash
 #
 # Optional environment variables:
 #   PRINTMD_VERSION  override the version to install (e.g. v0.2.0-beta.5)
@@ -46,7 +46,10 @@ detect_platform() {
 
     PRINTMD_OS="$os"
     PRINTMD_ARCH="$arch"
-    PRINTMD_ASSET="print-md-${os}-${arch}"
+    # Must match the release.yml build-cli matrix `artifact` names. The `-cli`
+    # infix distinguishes these standalone CLI binaries from the
+    # print-md-viewer-* desktop assets in the same release.
+    PRINTMD_ASSET="print-md-cli-${os}-${arch}"
 }
 
 # ---- curl helpers ----------------------------------------------------------
