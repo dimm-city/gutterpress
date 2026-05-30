@@ -300,6 +300,35 @@
   --dc-fiction-art-shadow: -4px 4px 0 var(--hud-blue-dark);
 }
 
+/* The chapter-start opener in chapter 03 is not inset support art; it is the
+   full splash object for the lower half of the page. Override the generic
+   fiction-excerpt image treatment so the opener art actually occupies the
+   chapter-start slot instead of shrinking to the default 3in inset size. */
+#ch-example-rules.page-chapter-start.chapter-start .section.dc-fiction-excerpt img.fg-art-chapter-opener,
+.page.page-chapter-start.chapter-start.chapter-03 .section.dc-fiction-excerpt img.fg-art-chapter-opener {
+  float: none;
+  width: 100%;
+  height: 9.9in;
+  max-width: none;
+  max-height: none;
+  object-fit: cover;
+  object-position: center center;
+  margin: 0;
+  outline: 3px solid var(--ink-dark);
+  box-shadow: 4px 4px 0 var(--hud-blue-dark);
+}
+
+/* Chapter-03 opener spread needs stronger physical poster presence than the
+   default section chrome. Give both opener pages heavier edge/shadow treatment
+   so the spread reads as two deliberate wall objects rather than tidy layout
+   boxes. */
+.page.page-chapter-start.chapter-start.chapter-03 .section {
+  background: var(--paper-aged);
+  border-top: 2px solid var(--ink-dark);
+  border-bottom: 2px solid var(--ink-dark);
+  box-shadow: 6px 6px 0 var(--ink-dark);
+}
+
 /* Chapter 5 — DM & NPC pages (stat blocks) */
 #ch-example-dm-npcs { --dc-section-accent: var(--rust); }
 /* Prevent level-3 heading orphan at bottom of p29 (paged.js doesn't honor

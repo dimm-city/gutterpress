@@ -68,6 +68,20 @@ If a behavior is broadly useful to non-technical authors using simple markdown,
 fix the default/core primitive first instead of solving it only in a project or
 override layer.
 
+### 0b. Resize review screenshots before judge runs
+
+Before any AI visual review or three-judge design gate run, resize or otherwise
+reduce screenshot payloads so they stay small enough to survive agent context
+compaction.
+
+1. Do not send large full-resolution chapter screenshots directly to judges.
+2. Prefer smaller JPEGs or tighter page-range batches that remain legible.
+3. Treat screenshot sizing as part of the review pipeline, not an optional
+   cleanup step.
+
+If review evidence is too large to stay in context, the judge pass is invalid
+and must be re-run with resized screenshots.
+
 ### 1. No bundlers at runtime (packages/cli only)
 
 Do **not** import `vite`, `rollup`, `esbuild`, or any other bundler at runtime
