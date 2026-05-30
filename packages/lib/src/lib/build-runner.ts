@@ -207,6 +207,9 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
   const executablePath = await requireChromiumExecutable();
   const stageDir = path.dirname(path.resolve(inputHtml));
   const htmlFilename = path.basename(inputHtml);
+  // Large books need this budget for navigation, Paged.js pagination, and the
+  // Chromium DevTools Protocol printToPDF call itself.
+  const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url!, "http://127.0.0.1");
@@ -239,15 +242,15 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
     // Loading it here keeps preview-only paths — including the viewer's
     // startPreviewServer — fast on cold start.
     const puppeteer = (await import("puppeteer-core")).default;
-    const browser = await puppeteer.launch({ headless: true, executablePath });
+    const browser = await puppeteer.launch({
+      headless: true,
+      executablePath,
+      protocolTimeout: RENDER_TIMEOUT_MS,
+    });
     try {
       const page = await browser.newPage();
       await page.setViewport({ width: 1920, height: 1080 });
 
-      // Large books (108+ pages, many fonts, heavy custom CSS) need a long
-      // budget for both navigation (resource load) and pagination.
-      // Allow up to 60 minutes for the full pipeline before giving up.
-      const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
       page.setDefaultNavigationTimeout(RENDER_TIMEOUT_MS);
       page.setDefaultTimeout(RENDER_TIMEOUT_MS);
 
@@ -529,9 +532,16 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
 
   if (pdfxMode) {
     const icc = opts.iccPath ?? config.pdfx.icc;
-    effectiveIccPath = path.resolve(icc);
+    const iccCandidates = path.isAbsolute(icc)
+      ? [icc]
+      : [path.resolve(manifestDir, icc), path.resolve(icc)];
+    effectiveIccPath = iccCandidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 
-    if (!fs.existsSync(icc)) {
+    if (!effectiveIccPath && !opts.iccPath && path.basename(icc) === "CGATS21_CRPC1.icc") {
+      effectiveIccPath = await getAssetPath("profiles/CGATS21_CRPC1.icc");
+    }
+
+    if (!effectiveIccPath) {
       throw new BuildError(
         `Missing ICC profile at ${icc}. Place the ICC profile or specify --icc <path>`,
         2
@@ -547,7 +557,7 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
 
     log.info(`Converting to CMYK PDF/X (${pdfxMode})`);
     await convertToPdfxCmyk(rawPdf, path.resolve(pdfFile), {
-      iccPath: path.resolve(icc),
+      iccPath: effectiveIccPath,
       pdfx: pdfxMode,
       title: config.title,
       maxTac: config.ink.maxTac,

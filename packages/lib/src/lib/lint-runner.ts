@@ -1,6 +1,6 @@
 import type { Config } from "stylelint";
 import { resolve, dirname } from "node:path";
-import { loadManifest, resolveConfig } from "./manifest";
+import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { log } from "./logger";
 
 export interface LintRunnerOptions {
@@ -17,7 +17,7 @@ export interface LintRunnerResult {
 
 export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerResult> {
   const { glob } = await import("glob");
-  const manifest = await loadManifest(opts.manifest);
+  const { manifest, manifestDir } = await loadManifestWithPath(opts.manifest);
   const resolvedConfig = resolveConfig(
     {
       lint: opts.configPath ? { configPath: opts.configPath } : undefined,
@@ -42,6 +42,11 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
   let files: string[];
   if (opts.files) {
     files = await glob([opts.files], { nodir: true, ignore: ["**/*.min.css"] });
+  } else if (manifest.styles?.length) {
+    files = await glob(
+      manifest.styles.map((stylePath) => resolve(manifestDir, stylePath)),
+      { nodir: true, ignore: ["**/*.min.css"] }
+    );
   } else {
     const stageGlob = ".build/**/*.css";
     const stageFiles = await glob([stageGlob], {

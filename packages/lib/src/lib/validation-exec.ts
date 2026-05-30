@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { loadManifest, resolveConfig } from "./manifest";
+import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { log } from "./logger";
 import { BOOK_HTML_FILENAME } from "./viewer";
 import { formatReport, type OutputFormat } from "../checks/formatter";
@@ -98,7 +98,9 @@ export async function executeValidation(
   args: ValidationExecutionArgs
 ): Promise<ValidationExecutionResult> {
   const manifestPath = typeof args.manifest === "string" ? args.manifest : undefined;
-  const manifest = await loadManifest(manifestPath ?? args.input ?? undefined);
+  const { manifest, manifestDir } = await loadManifestWithPath(
+    manifestPath ?? args.input ?? undefined
+  );
 
   const profile = parseProfile(typeof args.profile === "string" ? args.profile : undefined);
 
@@ -138,16 +140,20 @@ export async function executeValidation(
 
   if (inputDir) {
     const { glob } = await import("glob");
-    markdownFiles = await glob("**/*.md", {
-      cwd: inputDir,
+    markdownFiles = await glob(config.source.files, {
+      cwd: manifestDir,
       absolute: true,
+      nodir: true,
       ignore: ["**/node_modules/**"],
     });
-    cssFiles = await glob("**/*.css", {
-      cwd: inputDir,
-      absolute: true,
-      ignore: ["**/node_modules/**"],
-    });
+    cssFiles = await glob(
+      config.styles.map((stylePath) => resolve(manifestDir, stylePath)),
+      {
+        absolute: true,
+        nodir: true,
+        ignore: ["**/node_modules/**", "**/*.min.css"],
+      }
+    );
     assetDirs = config.source.assets.map((assetDir) => resolve(inputDir, assetDir));
 
     const outDir = resolve(config.output.dir);
