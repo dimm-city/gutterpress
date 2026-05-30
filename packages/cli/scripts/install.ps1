@@ -165,10 +165,25 @@ function Install-Binary {
         throw "Failed to download binary: $_"
     }
 
+    # Windows refuses to delete an executable that is currently running (e.g.
+    # the user has `print-md preview` open), but it WILL let you rename it.
+    # Move the in-use binary aside, drop the new one in, then best-effort
+    # remove the old copy (still running → deletion just fails harmlessly).
+    $backup = "$($script:PrintMdBin).old"
     if (Test-Path $script:PrintMdBin) {
-        Remove-Item $script:PrintMdBin -Force
+        if (Test-Path $backup) {
+            Remove-Item $backup -Force -ErrorAction SilentlyContinue
+        }
+        try {
+            Remove-Item $script:PrintMdBin -Force -ErrorAction Stop
+        } catch {
+            Rename-Item -Path $script:PrintMdBin -NewName ([System.IO.Path]::GetFileName($backup)) -Force
+        }
     }
     Move-Item -Path $tempPath -Destination $script:PrintMdBin -Force
+    if (Test-Path $backup) {
+        Remove-Item $backup -Force -ErrorAction SilentlyContinue
+    }
     Write-Success "Installed binary to $($script:PrintMdBin)"
 }
 

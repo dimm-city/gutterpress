@@ -294,6 +294,12 @@ jobs:
         run: bun run build
         working-directory: packages/lib
 
+      # OIDC trusted publishing (no long-lived token) requires npm >= 11.5.1;
+      # node 20 ships npm 10.x, so update it. Provenance attestation is implied
+      # by trusted publishing but kept explicit below.
+      - name: Update npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+
       - name: Skip if already published
         run: |
           if npm view "@dimm-city/print-md@${{ inputs.version }}" version &>/dev/null; then
@@ -301,12 +307,14 @@ jobs:
             echo "ALREADY_PUBLISHED=true" >> "$GITHUB_ENV"
           fi
 
+      # Pure OIDC trusted publishing — no NODE_AUTH_TOKEN. The id-token: write
+      # permission (above) lets npm mint a short-lived credential. Prerequisite:
+      # @dimm-city/print-md must be configured as a Trusted Publisher for this
+      # repo + workflow on npmjs.com (Settings → Trusted Publishers).
       - name: Publish to npm
         if: ${{ env.ALREADY_PUBLISHED != 'true' }}
         working-directory: packages/cli
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # ── 6. Create release with ALL artifacts ──────────────────────────────────
   #

@@ -185,46 +185,77 @@ verify_install() {
     print_success "print-md is working! ($version)"
 }
 
-# Append the install dir to the user's shell rc if it isn't already on PATH.
+PRINTMD_PATH_MARKER_BEGIN="# >>> print-md installer >>>"
+PRINTMD_PATH_MARKER_END="# <<< print-md installer <<<"
+
+# Write (or rewrite) the print-md PATH block in a single rc file. Any existing
+# block between our markers is stripped first, so re-installs — even with a
+# changed PRINTMD_PREFIX — replace the old entry instead of stacking a new one.
+update_rc_path_block() {
+    local rc="$1" line="$2" tmp
+    mkdir -p "$(dirname "$rc")"
+    [ -f "$rc" ] || : > "$rc"
+    tmp="$(mktemp)"
+    awk -v b="$PRINTMD_PATH_MARKER_BEGIN" -v e="$PRINTMD_PATH_MARKER_END" '
+        $0 == b { skip = 1; next }
+        $0 == e { skip = 0; next }
+        !skip   { print }
+    ' "$rc" > "$tmp"
+    {
+        printf '%s\n' "$PRINTMD_PATH_MARKER_BEGIN"
+        printf '%s\n' "$line"
+        printf '%s\n' "$PRINTMD_PATH_MARKER_END"
+    } >> "$tmp"
+    mv "$tmp" "$rc"
+}
+
+# Add the install dir to PATH in the rc files the user's shell actually sources.
+# $SHELL is the login shell, which often differs from the interactive shell and
+# from which rc file gets read (notably bash on macOS reads .bash_profile/
+# .profile for the login shells Terminal opens, not .bashrc), so we update the
+# realistic set rather than a single guessed file.
 ensure_path() {
     case ":$PATH:" in
         *":$PRINTMD_PREFIX:"*) return 0 ;;
     esac
 
-    local rc=""
+    local line os
+    os="$(uname -s)"
+    local -a targets=()
     case "${SHELL:-}" in
-        */bash) rc="$HOME/.bashrc" ;;
-        */zsh)  rc="$HOME/.zshrc" ;;
-        */fish) rc="$HOME/.config/fish/config.fish" ;;
+        */fish)
+            # Single-quoted format string keeps $PATH literal so fish expands it.
+            line=$(printf 'set -gx PATH %s $PATH' "$PRINTMD_PREFIX")
+            targets=("$HOME/.config/fish/config.fish")
+            ;;
+        */zsh)
+            line=$(printf 'export PATH="%s:$PATH"' "$PRINTMD_PREFIX")
+            targets=("$HOME/.zshrc")
+            ;;
+        */bash)
+            line=$(printf 'export PATH="%s:$PATH"' "$PRINTMD_PREFIX")
+            targets=("$HOME/.bashrc")
+            if [ "$os" = "Darwin" ]; then
+                if [ -f "$HOME/.bash_profile" ]; then
+                    targets+=("$HOME/.bash_profile")
+                else
+                    targets+=("$HOME/.profile")
+                fi
+            fi
+            ;;
+        *)
+            print_info "$PRINTMD_PREFIX is not on PATH and your shell (${SHELL:-unknown}) isn't recognized."
+            print_info "Add it manually: export PATH=\"$PRINTMD_PREFIX:\$PATH\""
+            return 0
+            ;;
     esac
 
-    if [ -z "$rc" ]; then
-        print_info "$PRINTMD_PREFIX is not on PATH. Add it manually."
-        return 0
-    fi
-
-    local line
-    if [[ "${SHELL:-}" == */fish ]]; then
-        # printf with a single-quoted format string preserves $PATH literally,
-        # so config.fish receives an unescaped $PATH that fish itself expands
-        # at load time. Earlier `"\$PATH"` style worked but was repeatedly
-        # mis-flagged because the bash escape mechanics aren't obvious.
-        line=$(printf 'set -gx PATH %s $PATH' "$PRINTMD_PREFIX")
-    else
-        line=$(printf 'export PATH="%s:$PATH"' "$PRINTMD_PREFIX")
-    fi
-
-    if [ -f "$rc" ] && grep -qF "$line" "$rc"; then
-        return 0
-    fi
-
-    mkdir -p "$(dirname "$rc")"
-    {
-        printf '\n# Added by print-md installer\n'
-        printf '%s\n' "$line"
-    } >> "$rc"
-    print_success "Added $PRINTMD_PREFIX to PATH in $rc"
-    print_info "Restart your shell or run: source $rc"
+    local rc
+    for rc in "${targets[@]}"; do
+        update_rc_path_block "$rc" "$line"
+        print_success "Added $PRINTMD_PREFIX to PATH in $rc"
+    done
+    print_info "Restart your shell or run: source ${targets[0]}"
 }
 
 resolve_documents_dir() {

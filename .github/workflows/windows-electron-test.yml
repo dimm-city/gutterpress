@@ -40,20 +40,8 @@ jobs:
 
       - uses: ./.github/actions/bun
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install workspace deps
-        run: bun install --frozen-lockfile
-
-      - name: Build lib dist
-        working-directory: packages/lib
-        run: bun run build
-
-      - name: Build and package the viewer
-        working-directory: packages/viewer
-        run: npm run dist:win
+      - name: Build viewer Windows zip
+        uses: ./.github/actions/build-viewer-windows-zip
 
       - name: Extract zip artifact (mirror what users get)
         id: locate
