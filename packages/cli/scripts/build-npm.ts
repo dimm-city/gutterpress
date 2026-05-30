@@ -34,6 +34,12 @@ const result = await Bun.build({
   target: "node",
   format: "esm",
   external: EXTERNAL,
+  // Resolve @dimm-city/print-md-lib via its `bun` export condition (src/) so
+  // its `with { type: "file" }` assets (paged.polyfill, favicon, ICC profile,
+  // …) are re-emitted next to cli.js with correct relative paths. Resolving
+  // the `default` export (dist/) instead inlines stale asset path strings whose
+  // files never get copied → runtime ENOENT on the embedded assets.
+  conditions: ["bun"],
   sourcemap: "none",
   minify: false,
   banner: "#!/usr/bin/env node",

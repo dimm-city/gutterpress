@@ -18,7 +18,10 @@ const check: Check = {
 
     try {
       const { stdout } = await execCapture("qpdf", [
-        "--json",
+        // Pin JSON v1: qpdf 11+ defaults to JSON v2, where --json-key=objects is
+        // rejected ("only valid for json version 1"). --json=1 works on qpdf
+        // 9.1.1+ and yields the { objects: {...} } shape the parser expects.
+        "--json=1",
         "--json-key=objects",
         ctx.pdfPath,
       ]);

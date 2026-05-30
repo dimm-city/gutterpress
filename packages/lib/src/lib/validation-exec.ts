@@ -140,15 +140,21 @@ export async function executeValidation(
 
   if (inputDir) {
     const { glob } = await import("glob");
-    markdownFiles = await glob(config.source.files, {
+    // A manifest may omit source.files / styles (auto-discover everything).
+    // glob() throws on a null/undefined pattern, so fall back to a recursive
+    // glob when the config doesn't enumerate them explicitly.
+    markdownFiles = await glob(config.source.files ?? "**/*.md", {
       cwd: manifestDir,
       absolute: true,
       nodir: true,
       ignore: ["**/node_modules/**"],
     });
     cssFiles = await glob(
-      config.styles.map((stylePath) => resolve(manifestDir, stylePath)),
+      config.styles?.length
+        ? config.styles.map((stylePath) => resolve(manifestDir, stylePath))
+        : "**/*.css",
       {
+        cwd: manifestDir,
         absolute: true,
         nodir: true,
         ignore: ["**/node_modules/**", "**/*.min.css"],

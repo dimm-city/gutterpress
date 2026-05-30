@@ -242,9 +242,17 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
     // Loading it here keeps preview-only paths — including the viewer's
     // startPreviewServer — fast on cold start.
     const puppeteer = (await import("puppeteer-core")).default;
+    // Extra Chromium flags, space-separated, via PRINTMD_CHROMIUM_ARGS. Opt-in
+    // and empty by default so desktop/CLI behavior is unchanged. Containers and
+    // some CI runners need "--no-sandbox --disable-dev-shm-usage" because
+    // headless Chromium refuses to start as root / with a small /dev/shm.
+    const extraChromiumArgs = (process.env.PRINTMD_CHROMIUM_ARGS ?? "")
+      .split(/\s+/)
+      .filter(Boolean);
     const browser = await puppeteer.launch({
       headless: true,
       executablePath,
+      args: extraChromiumArgs,
       protocolTimeout: RENDER_TIMEOUT_MS,
     });
     try {

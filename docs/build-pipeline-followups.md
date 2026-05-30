@@ -8,6 +8,27 @@ commits and `fix(field-guide):` in dc-op-manual.
 
 ## High value
 
+### 0. Standalone binary's stylelint (lint/build) is broken under `bun --compile`
+The `bun build --compile` binary can't run the lint step on projects with CSS.
+`compile-plugin.ts` now rewrites css-tree's runtime JSON reads (fixed), but
+stylelint still fails resolving `extends: ["stylelint-config-standard"]` because
+`configBasedir` points into the `/$bunfs` virtual FS, which has no node_modules
+(`lint-runner.ts` sets `configBasedir: import.meta.dirname`). Surfaced while
+building the Docker image; the **Docker image and npm package both run via Node**
+with real node_modules, so they're unaffected. **Fix:** make the bundled
+stylelint config self-contained (flatten the `stylelint-config-standard` →
+`stylelint-config-recommended` chain into an inlined rules object at build time)
+so no runtime module resolution is needed, OR document that lint requires the
+Node/Docker distribution, not the standalone binary.
+
+### 0b. `cross-refs.ts` PDF check never works (`qpdf --list-all-objects`)
+The cross-reference check invokes `qpdf --list-all-objects`, which isn't a valid
+qpdf option on qpdf 10 or 11 — it always lands in the catch and emits the
+info-level "Could not inspect PDF for cross-references." Harmless (info, never
+blocks), but the check is dead. **Fix:** use a real qpdf invocation (e.g.
+`qpdf --json=1 --json-key=objects` and count `/Subtype /Link`, like the PDF/X
+checks now do) or remove the check.
+
 ### 1. Release tag/release delete-and-recreate rewrites published history
 `release.yml` force-deletes the remote tag (version job) and deletes the
 existing GitHub release (github-release job) on re-runs. Repointing a published
