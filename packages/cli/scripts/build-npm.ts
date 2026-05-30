@@ -12,7 +12,7 @@
  * Usage: bun scripts/build-npm.ts
  */
 
-import { rm } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -43,5 +43,11 @@ if (!result.success) {
   for (const log of result.logs) console.error(log);
   process.exit(1);
 }
+
+const outputPath = join(ROOT, "dist", "cli.js");
+const output = await readFile(outputPath, "utf8");
+const normalizedOutput = output.replace(/^(?:#!.*\n|\/\/ @bun\n)+/, "");
+
+await writeFile(outputPath, `#!/usr/bin/env node\n${normalizedOutput}`);
 
 console.log("✓ dist/cli.js built for npm distribution");
