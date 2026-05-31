@@ -202,7 +202,7 @@ async function getToolVersions(): Promise<Record<string, string | null>> {
     "print-md": PACKAGE_META.version,
     bun: (process.versions as Record<string, string | undefined>).bun ?? null,
     node: process.versions.node,
-    playwright: PACKAGE_META.dependencies.playwright ?? null,
+    "puppeteer-core": PACKAGE_META.dependencies["puppeteer-core"] ?? null,
     pagedjs: PACKAGE_META.dependencies.pagedjs ?? null,
     ghostscript: gsVersion,
     qpdf: qpdfVersion,

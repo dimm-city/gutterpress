@@ -25,5 +25,8 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  // Type-check the package source only — not the standalone helper scripts in
+  // tools/ or the gitignored tests/ scratch dir.
+  "include": ["src"]
 }

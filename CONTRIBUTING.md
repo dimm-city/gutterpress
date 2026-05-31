@@ -146,35 +146,22 @@ print-md/                        # Workspace root (private)
 
 ### Code Style
 
-We use **ESLint** and **Prettier** for consistent code style:
+The enforced gates are TypeScript and the test suite — run both before opening a PR:
 
 ```bash
-# Check for lint errors
-bun run lint
+# Type-check every package
+bun run typecheck
 
-# Auto-fix lint errors
-bun run lint:fix
-
-# Check formatting
-bun run format:check
-
-# Auto-format code
-bun run format
+# Run all tests
+bun test
 ```
 
-**ESLint Rules:**
+Follow these conventions (not auto-enforced, but expected in review):
 - No unused variables (prefix with `_` if intentional)
-- Explicit function return types (when not obvious)
-- No floating promises
-- Always use `===` instead of `==`
-- Prefer `const` over `let`
-
-**Prettier Configuration:**
-- 100 character line width
-- 2 space indentation
-- Semicolons required
-- Double quotes for strings
-- Trailing commas in ES5 contexts
+- Explicit function return types when not obvious; no floating promises
+- Always use `===` instead of `==`; prefer `const` over `let`
+- 100-character line width, 2-space indentation, semicolons, double quotes
+- Match the style of the surrounding code
 
 ### Best Practices
 

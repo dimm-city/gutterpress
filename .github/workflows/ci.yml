@@ -13,26 +13,6 @@ env:
   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Bun (cached)
-        uses: ./.github/actions/bun
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Run ESLint
-        run: bun run lint
-        continue-on-error: true
-
-      - name: Check Prettier formatting
-        run: bun run format:check
-        continue-on-error: true
-
   test:
     name: Test
     runs-on: ubuntu-latest

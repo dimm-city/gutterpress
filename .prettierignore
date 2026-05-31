@@ -1,9 +1,0 @@
-dist
-node_modules
-coverage
-*.log
-.git
-.DS_Store
-bun.lock
-*.min.js
-*.min.css
