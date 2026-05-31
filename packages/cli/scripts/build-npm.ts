@@ -23,7 +23,8 @@ const EXTERNAL = [
   "chokidar", "glob", "citty",
   "markdown-it", "markdown-it-attrs", "markdown-it-footnote", "markdown-it-source-map",
   "pagedjs", "puppeteer-core", "yaml", "ws",
-  "stylelint", "stylelint-config-standard", "htmlhint", "markdownlint-cli2",
+  "stylelint", "stylelint-config-standard", "stylelint-config-recommended",
+  "htmlhint", "markdownlint-cli2",
 ];
 
 await rm(join(ROOT, "dist"), { recursive: true, force: true });

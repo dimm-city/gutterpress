@@ -68,6 +68,18 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
 
   log.info(`Linting ${files.length} CSS file(s)`);
 
+  // The standalone binary can only run print-safety rules (stylelint's built-in
+  // rules load lazily from the filesystem, which isn't available in /$bunfs).
+  // Tell the user so the reduced rule set isn't mistaken for a clean full lint.
+  if (!configPath) {
+    const { isCompiledBinary } = await import("../stylelint/stylelint.config");
+    if (isCompiledBinary) {
+      log.info(
+        "Standalone binary: running print-safety rules only. For the full CSS rule set, use the npm package or Docker image."
+      );
+    }
+  }
+
   const { default: stylelint } = await import("stylelint");
   const result = await stylelint.lint({
     files,

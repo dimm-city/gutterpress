@@ -8,18 +8,33 @@ commits and `fix(field-guide):` in dc-op-manual.
 
 ## High value
 
-### 0. Standalone binary's stylelint (lint/build) is broken under `bun --compile`
-The `bun build --compile` binary can't run the lint step on projects with CSS.
-`compile-plugin.ts` now rewrites css-tree's runtime JSON reads (fixed), but
-stylelint still fails resolving `extends: ["stylelint-config-standard"]` because
-`configBasedir` points into the `/$bunfs` virtual FS, which has no node_modules
-(`lint-runner.ts` sets `configBasedir: import.meta.dirname`). Surfaced while
-building the Docker image; the **Docker image and npm package both run via Node**
-with real node_modules, so they're unaffected. **Fix:** make the bundled
-stylelint config self-contained (flatten the `stylelint-config-standard` →
-`stylelint-config-recommended` chain into an inlined rules object at build time)
-so no runtime module resolution is needed, OR document that lint requires the
-Node/Docker distribution, not the standalone binary.
+### -1. The lib ships no `.d.ts`, so consumers' typecheck can't see its types
+`@dimm-city/print-md-lib` builds with `bun build` (JS only) and its package
+`exports` has `bun` (src) + `default` (dist/index.js) conditions but no `types`.
+Under tsc, the cli/viewer resolve the lib to `dist/index.js` (no declarations),
+so every `import type { … } from "@dimm-city/print-md-lib"` errors with "has no
+exported member" (~9 errors in `packages/cli/src/commands/*`). The artifacts
+build fine (Bun transpiles, ignoring types) and the lib's own index.ts already
+`export type`s these, so this is purely a consumer-typecheck gap. **Fix:** emit
+declarations in the lib build (`tsc --emitDeclarationOnly --declaration` into
+`dist/`) and add a `types` export condition, OR wire up TS project references.
+Needs the lib's own pre-existing type errors (file-utils `Dirent`, stylelint
+`Document_`) addressed first for clean `.d.ts`. (Resolving via `customConditions:
+["bun"]` is NOT the fix — it makes the cli recompile lib internals.)
+
+### 0. Standalone binary lint = print-safety-only by design (RESOLVED)
+stylelint can't run its built-in rules inside a `bun build --compile` binary —
+it loads each of ~200 rule modules via a computed-path dynamic import
+(`import(\`./${ruleName}/index.mjs\`)`) that no bundler can resolve. Rather than
+bundling all 200 (a brittle, version-specific hack), the binary now runs only
+print-md's bundled **print-safety** plugin rules (remote-url / risky-prop /
+pagedjs-crash-selector); `stylelint.config.ts` detects the `/$bunfs` runtime and
+drops the built-in base rules, and `lint-runner.ts` prints a one-line notice. The
+**npm package and Docker image run the full ruleset** (real node_modules). The
+config `extends` chain was also inlined (no runtime module resolution) and
+css-tree's JSON reads rewritten in `compile-plugin.ts`. If full CSS linting in
+the single binary is ever required, the only path is bundling every stylelint
+rule via a generated static-import map — not recommended.
 
 ### 0b. `cross-refs.ts` PDF check never works (`qpdf --list-all-objects`)
 The cross-reference check invokes `qpdf --list-all-objects`, which isn't a valid
