@@ -129,7 +129,7 @@ print-md build [input-dir] [options]
   --format          pdf | pdfx | html       (default: pdf)
   --out             Output file or directory
   --title           Override manifest title
-  --skip-lint       Skip the stylelint pass
+  --skip-lint       Skip the CSS print-safety pass
   --skip-pre-validate
   --skip-post-validate
   --strip-annotations    PDF/X only: flatten form annotations (default: true)
@@ -154,7 +154,7 @@ Preview itself uses no external tools — pure JS rendering. Paged.js runs in yo
 
 ### `print-md lint`
 
-Run stylelint with print-md's built-in print-safety plugin against the project's CSS files.
+Run print-md's print-safety CSS checks (postcss-based: remote URLs, rasterizing effects, Paged.js crash-prone selectors) against the project's CSS files.
 
 ```sh
 print-md lint [input-dir] [--files <glob>]

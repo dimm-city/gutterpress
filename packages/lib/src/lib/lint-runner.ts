@@ -1,11 +1,11 @@
-import type { Config } from "stylelint";
-import { resolve, dirname } from "node:path";
+import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { log } from "./logger";
+import { checkCss, ruleRiskyProps } from "./printsafe";
 
 export interface LintRunnerOptions {
   files?: string;
-  configPath?: string;
   manifest?: string;
 }
 
@@ -18,26 +18,8 @@ export interface LintRunnerResult {
 export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerResult> {
   const { glob } = await import("glob");
   const { manifest, manifestDir } = await loadManifestWithPath(opts.manifest);
-  const resolvedConfig = resolveConfig(
-    {
-      lint: opts.configPath ? { configPath: opts.configPath } : undefined,
-    },
-    manifest
-  );
-
-  const configPath = resolvedConfig.lint.configPath;
-
-  // User-supplied configPath is a runtime path on the host filesystem;
-  // dynamic require() is the right call. The default config is dynamically
-  // imported so that the bundler embeds it (survives `bun build --compile`)
-  // *and* its transitive printsafe-plugin require chain only evaluates on
-  // the `print-md lint` command path — not on cold startup of preview/build.
-  let stylelintConfig: unknown;
-  if (configPath) {
-    stylelintConfig = require(resolve(configPath));
-  } else {
-    stylelintConfig = (await import("../stylelint/stylelint.config")).default;
-  }
+  // resolveConfig still runs so manifest loading/validation behaves consistently.
+  resolveConfig({}, manifest);
 
   let files: string[];
   if (opts.files) {
@@ -48,8 +30,7 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
       { nodir: true, ignore: ["**/*.min.css"] }
     );
   } else {
-    const stageGlob = ".build/**/*.css";
-    const stageFiles = await glob([stageGlob], {
+    const stageFiles = await glob([".build/**/*.css"], {
       nodir: true,
       ignore: ["**/*.min.css"],
     });
@@ -68,65 +49,33 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
 
   log.info(`Linting ${files.length} CSS file(s)`);
 
-  // The standalone binary can only run print-safety rules (stylelint's built-in
-  // rules load lazily from the filesystem, which isn't available in /$bunfs).
-  // Tell the user so the reduced rule set isn't mistaken for a clean full lint.
-  if (!configPath) {
-    const { isCompiledBinary } = await import("../stylelint/stylelint.config");
-    if (isCompiledBinary) {
-      log.info(
-        "Standalone binary: running print-safety rules only. For the full CSS rule set, use the npm package or Docker image."
-      );
+  let errorCount = 0;
+  let riskyCount = 0;
+
+  for (const file of files) {
+    let css: string;
+    try {
+      css = await readFile(file, "utf8");
+    } catch {
+      continue;
     }
-  }
+    const warnings = checkCss(css, file);
+    const errors = warnings.filter((w) => w.severity === "error");
+    riskyCount += warnings.filter((w) => w.rule === ruleRiskyProps).length;
 
-  const { default: stylelint } = await import("stylelint");
-  const result = await stylelint.lint({
-    files,
-    config: stylelintConfig as Config,
-    // For user-supplied configs, resolve `extends`/plugin paths relative to
-    // the config file. For the bundled default config, resolve relative to
-    // this module so stylelint finds stylelint-config-standard in the
-    // workspace node_modules rather than searching from cwd (which may be
-    // a temp dir with no node_modules during tests or packaged builds).
-    configBasedir: configPath ? dirname(resolve(configPath)) : import.meta.dirname,
-    formatter: "string",
-  });
-
-  if (result.report?.trim()) console.log(result.report);
-
-  const hasRealErrors = result.results.some((r) =>
-    r.warnings.some(
-      (w) =>
-        w.severity === "error" && !w.rule?.startsWith("printsafe/no-risky")
-    )
-  );
-
-  if (hasRealErrors) {
-    if (!result.report?.trim()) {
-      for (const r of result.results) {
-        const errors = r.warnings.filter(
-          (w) => w.severity === "error" && !w.rule?.startsWith("printsafe/no-risky")
-        );
-        if (errors.length > 0) {
-          log.error(`  ${r.source}`);
-          for (const w of errors) {
-            log.error(`    ${w.line}:${w.column}  ${w.text}  (${w.rule})`);
-          }
-        }
+    if (errors.length > 0) {
+      log.error(`  ${file}`);
+      for (const w of errors) {
+        log.error(`    ${w.line}:${w.column}  ${w.message}  (${w.rule})`);
       }
+      errorCount += errors.length;
     }
-    log.error("CSS lint errors found");
-    return { ok: false, riskyCount: 0, filesLinted: files.length };
   }
 
-  const riskyCount = result.results.reduce(
-    (sum, r) =>
-      sum +
-      r.warnings.filter((w) => w.rule?.startsWith("printsafe/no-risky"))
-        .length,
-    0
-  );
+  if (errorCount > 0) {
+    log.error("CSS lint errors found");
+    return { ok: false, riskyCount, filesLinted: files.length };
+  }
 
   if (riskyCount > 0) {
     log.warn(

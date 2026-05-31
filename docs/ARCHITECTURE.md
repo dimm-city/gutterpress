@@ -131,7 +131,7 @@ Configuration Manager (loads manifest.yaml + resolveConfig)
     ↓
 Pipeline Orchestrator (run.ts — 6 steps)
     │
-    ├── 1. CSS Linting (stylelint)
+    ├── 1. CSS Linting (print-safety / postcss)
     ├── 2. Pre-build Validation (source + asset checks)
     ├── 3. Markdown → HTML Conversion
     ├── 4. Asset Copying (css, fonts, images)
@@ -170,7 +170,7 @@ Formatter (formatter.ts)
 ```
 
 **31 checks across 4 categories:**
-- **Source (4)**: Tool wrappers for markdownlint, htmlhint, stylelint + callout validation
+- **Source (4)**: markdownlint + htmlhint wrappers, print-safety CSS checks (postcss), callout validation
 - **PDF (15)**: Structure, page size, color spaces, fonts, ink coverage, transparency, bleed, bookmarks, etc.
 - **Asset (8)**: Image size/DPI/color space/alpha, font references/licenses
 - **Heuristic (4)**: Text density, section density, layer count, placement variance

@@ -2,16 +2,14 @@
 /**
  * Standalone binary compiler for print-md.
  *
- * Wraps `Bun.build({ compile: ... })`. The bundle is fully self-contained
- * — no native externals, no `bun patch` files. The narrow rewrite plugin
- * is only there to handle one upstream `package.json` read in stylelint
- * that doesn't survive `import.meta.url` resolution under `--compile`.
+ * Wraps `Bun.build({ compile: ... })`. The bundle is fully self-contained —
+ * no native externals, no `bun patch` files, no source rewrites. (stylelint,
+ * which needed runtime-`require` rewrites to survive `--compile`, was removed;
+ * CSS print-safety checks now run on postcss, which bundles cleanly.)
  *
  * Usage: bun scripts/compile.ts <bun-target> <outfile>
  *   e.g. bun scripts/compile.ts bun-linux-x64 print-md-linux-x64
  */
-
-import { inlinePackageJsonReads } from "./compile-plugin";
 
 const [target, outfile] = process.argv.slice(2);
 
@@ -27,7 +25,6 @@ console.log(`Compiling ${target} → ${outfile}`);
 
 const result = await Bun.build({
   entrypoints: ["src/cli.ts"],
-  plugins: [inlinePackageJsonReads],
   compile: {
     target: target as import("bun").Build.Target,
     outfile,

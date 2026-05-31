@@ -23,7 +23,6 @@ const EXTERNAL = [
   "chokidar", "glob", "citty",
   "markdown-it", "markdown-it-attrs", "markdown-it-footnote", "markdown-it-source-map",
   "pagedjs", "puppeteer-core", "yaml", "ws",
-  "stylelint", "stylelint-config-standard", "stylelint-config-recommended",
   "htmlhint", "markdownlint-cli2",
 ];
 

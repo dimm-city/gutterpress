@@ -14,10 +14,6 @@ export default defineCommand({
       description: "Project directory with manifest.yaml, or glob pattern for CSS files to lint",
       required: false,
     },
-    config: {
-      type: "string",
-      description: "Path to stylelint config",
-    },
     manifest: {
       type: "string",
       description: "Path to manifest.yaml",
@@ -35,7 +31,6 @@ export default defineCommand({
 
     const result = await runLint({
       files: filesArgIsManifestDir ? undefined : filesArg,
-      configPath: typeof args.config === "string" ? args.config : undefined,
       manifest: manifestArg ?? (filesArgIsManifestDir ? filesArg : undefined),
     });
     if (!result.ok) {

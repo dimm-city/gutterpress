@@ -707,38 +707,30 @@ describe("Source checks skip when tool is disabled", () => {
     expect(results).toHaveLength(0);
   });
 
-  test("stylelint uses in-process config resolution for validate.source.stylelint", async () => {
+  test("flags remote url() as error and risky print effects as warning", async () => {
     const dir = await mkdtemp(join(tmpdir(), "print-md-stylelint-"));
 
     try {
       const cssFile = join(dir, "test.css");
-      const configFile = join(dir, "stylelint.config.cjs");
-
-      await writeFile(cssFile, "a { color: red }");
       await writeFile(
-        configFile,
-        [
-          "module.exports = {",
-          "  rules: {",
-          '    "color-named": "never"',
-          "  }",
-          "};",
-        ].join("\n")
+        cssFile,
+        ".a { background: url(https://evil.example/img.png); }\n" +
+          ".b { filter: blur(2px); }\n"
       );
 
-      const config = makeConfig({
-        validate: {
-          source: { stylelint: "./stylelint.config.cjs" },
-        },
-      } as Partial<ResolvedConfig>);
-
       const check = getCheckById("source.stylelint")!;
-      const ctx = makeCtx({ config, inputDir: dir, cssFiles: [cssFile] });
+      const ctx = makeCtx({ inputDir: dir, cssFiles: [cssFile] });
       const results = await check.run(ctx);
 
-      expect(results).toHaveLength(1);
-      expect(results[0]!.checkId).toBe("source.stylelint");
-      expect(results[0]!.message).toContain("color-named");
+      const remote = results.find((r) => r.message.includes("no-remote-urls"));
+      const risky = results.find((r) =>
+        r.message.includes("no-risky-print-effects")
+      );
+      expect(remote).toBeDefined();
+      expect(remote!.severity).toBe("error");
+      expect(remote!.file).toBe(cssFile);
+      expect(risky).toBeDefined();
+      expect(risky!.severity).toBe("warning");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

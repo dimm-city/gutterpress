@@ -99,23 +99,26 @@ exactly what `Bun.serve` provides natively in ~150 lines without any bundler.
 
 ### 2. Lazy-load heavy optional deps
 
-Anything used by a single subcommand (e.g. `stylelint` in `print-md lint`)
+Anything used by a single subcommand (e.g. `puppeteer-core` in `print-md build`)
 should be imported with a dynamic `import()` inside the command handler, not at
-top-level. This keeps `print-md --help` fast and isolates compile failures to
-the specific command path.
+top-level. This keeps `print-md --help` fast and isolates failures to the
+specific command path.
 
-### 3. Don't add bun-patch files for upstream `package.json` reads
+### 3. Keep the binary free of deps that need filesystem resolution at runtime
 
-If a third-party package reads its own `package.json` at module load via
-`readFileSync(new URL(...))` and breaks under `--compile`, prefer to:
+The compiled binary must be fully self-contained — **there are currently zero
+source rewrites** (`scripts/compile-plugin.ts` was removed when stylelint was
+dropped). stylelint was the one offender: it read its own `package.json` and
+`css-tree` data at runtime AND loaded its ~200 rule modules via a computed-path
+dynamic `import()` that no bundler can embed. CSS print-safety checks now run on
+**postcss** (`packages/lib/src/lib/printsafe.ts`), which bundles cleanly.
 
-  1. Drop the dep (often it's a bundler we shouldn't be running at runtime
-     anyway — see rule 1).
-  2. If the dep is essential, add a narrow rewrite to
-     `scripts/compile-plugin.ts`. Each rewrite must target one specific file
-     path inside `node_modules` and be guarded by the exact source pattern.
-  3. Never use `bun patch` — it requires re-patching on every dep version
-     bump.
+If a future dep breaks under `--compile` (runtime `package.json`/data reads,
+`createRequire` JSON, or computed-path dynamic imports), prefer to **drop it**
+(rule 1). Only if it is essential, re-introduce a narrow build-time `onLoad`
+rewrite plugin — each rewrite targeting one exact `node_modules` file, guarded
+by the exact source pattern. Never use `bun patch` (it needs re-patching on
+every dep bump).
 
 ### 4. Embedded static assets are fine
 

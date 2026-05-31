@@ -355,7 +355,7 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
 
   // 3. Lint
   if (gates.lint) {
-    log.info("Lint: stylelint");
+    log.info("Lint: CSS print-safety");
     const lintResult = await runLint({
       manifest: opts.manifestPath ?? inputDir,
     });

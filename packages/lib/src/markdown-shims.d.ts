@@ -10,14 +10,3 @@ declare module "*.md" {
 declare module "*.ico" { const path: string; export default path; }
 declare module "*.css" { const path: string; export default path; }
 declare module "*.icc" { const path: string; export default path; }
-
-// Untyped stylelint config presets — we inline their `rules` (see
-// stylelint/stylelint.config.ts) to avoid runtime `extends` resolution.
-declare module "stylelint-config-standard" {
-  const config: { rules: Record<string, unknown> };
-  export default config;
-}
-declare module "stylelint-config-recommended" {
-  const config: { rules: Record<string, unknown> };
-  export default config;
-}
