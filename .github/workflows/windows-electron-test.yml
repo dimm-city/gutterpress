@@ -62,12 +62,17 @@ jobs:
           $exe = Join-Path $extract "print-md-viewer.exe"
           if (-not (Test-Path $exe)) { throw "exe not found at $exe after extraction" }
 
-          # Sanity check: verify the lib is shipped via node_modules.
-          $libIndex = Join-Path $extract "resources\app\node_modules\@dimm-city\print-md-lib\dist\index.js"
-          if (-not (Test-Path $libIndex)) {
-            throw "MISSING: $libIndex — lib not packaged correctly"
+          # Sanity check: the app is packed into an asar archive (the lib, incl.
+          # its embedded assets, ships inside it; puppeteer-core is unpacked).
+          $asar = Join-Path $extract "resources\app.asar"
+          if (-not (Test-Path $asar)) {
+            throw "MISSING: $asar — app not packaged into asar correctly"
           }
-          Write-Host "lib present: $libIndex"
+          $pptr = Join-Path $extract "resources\app.asar.unpacked\node_modules\puppeteer-core"
+          if (-not (Test-Path $pptr)) {
+            throw "MISSING: $pptr — puppeteer-core should be asar-unpacked"
+          }
+          Write-Host "asar present: $asar; puppeteer-core unpacked"
 
           "exe=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 

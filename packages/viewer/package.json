@@ -3,20 +3,22 @@
   "private": true,
   "version": "0.1.10",
   "type": "module",
-  "main": "electron-dist/main.js",
+  "main": "out/main/main.js",
   "author": "itlackey",
   "description": "Desktop viewer for print-md (Electron + SvelteKit static SPA).",
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "electron:build": "tsc -p electron/tsconfig.json && node scripts/write-cjs-marker.mjs",
-    "electron:dev": "npm run build && npm run electron:build && electron electron-dist/main.js",
-    "electron:hmr": "npm run electron:build && concurrently -k -n vite,electron -c cyan,magenta \"vite dev --port 5173 --strictPort\" \"wait-on http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron electron-dist/main.js\"",
-    "dist:linux": "npm run build && npm run electron:build && electron-builder --linux AppImage --config electron-builder.yml",
-    "dist:win": "npm run build && npm run electron:build && electron-builder --win zip --config electron-builder.yml",
-    "dist:mac": "npm run build && npm run electron:build && electron-builder --mac dmg --config electron-builder.yml",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "electron:build": "electron-vite build",
+    "electron:dev": "npm run build && npm run electron:build && electron out/main/main.js",
+    "electron:hmr": "npm run electron:build && concurrently -k -n vite,electron -c cyan,magenta \"vite dev --port 5173 --strictPort\" \"wait-on http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron out/main/main.js\"",
+    "dist": "npm run build && npm run electron:build && electron-builder --config electron-builder.yml",
+    "dist:linux": "npm run dist -- --linux AppImage",
+    "dist:win": "npm run dist -- --win zip",
+    "dist:mac": "npm run dist -- --mac dmg",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "typecheck": "tsc -p electron/tsconfig.json"
   },
   "dependencies": {
     "@dimm-city/print-md-lib": "workspace:*"
@@ -30,6 +32,7 @@
     "cross-env": "^7.0.3",
     "electron": "^42.1.0",
     "electron-builder": "^26.0.0",
+    "electron-vite": "^5.0.0",
     "svelte": "^5.55.8",
     "svelte-check": "^4.0.0",
     "typescript": "^5.5.0",

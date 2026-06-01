@@ -10,17 +10,16 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 
+// __dirname/__filename are injected by electron-vite for the ESM main bundle
+// (resolves to out/main/ at runtime).
+
 // ──────────────────────────────────────────────────────────────────────────
 // Lib loader
 //
-// @dimm-city/print-md-lib is pure ESM; main.js is CJS. We can't require() an
-// ESM module, but we can dynamic-import it via Function() — TypeScript's
-// CJS transform won't touch that expression. Standard pattern, used widely
-// for Electron + ESM dep interop.
-//
-// The lib is shipped as a normal package in node_modules. Its package.json
-// "files" field constrains what electron-builder packages (just dist/ and
-// profiles/) — no afterPack hook, no symlink dance.
+// Both this main process and @dimm-city/print-md-lib are ESM, so it's a plain
+// dynamic import. The lib ships as a normal node_modules package (its package
+// "files" field limits what electron-builder packages to dist/ + profiles/) —
+// no afterPack hook, no symlink dance, no require()/Function() interop trick.
 // ──────────────────────────────────────────────────────────────────────────
 
 interface PreviewHandle {
@@ -71,11 +70,7 @@ let libPromise: Promise<LibModule> | null = null;
 
 function loadLib(): Promise<LibModule> {
   if (!libPromise) {
-    const dynamicImport = new Function(
-      "spec",
-      "return import(spec)"
-    ) as (spec: string) => Promise<LibModule>;
-    libPromise = dynamicImport("@dimm-city/print-md-lib");
+    libPromise = import("@dimm-city/print-md-lib") as Promise<LibModule>;
   }
   return libPromise;
 }
@@ -98,7 +93,7 @@ function createWindow() {
     height: 900,
     backgroundColor: "#1e1e1e",
     webPreferences: {
-      preload: path.resolve(__dirname, "./preload.js"),
+      preload: path.resolve(__dirname, "../preload/preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -156,7 +151,8 @@ function createWindow() {
 // app:// protocol — serves the static SvelteKit SPA from build/
 // ──────────────────────────────────────────────────────────────────────────
 
-const STATIC_ROOT = path.resolve(__dirname, "../build");
+// main.js lives at out/main/; the SvelteKit SPA is at the package root build/.
+const STATIC_ROOT = path.resolve(__dirname, "../../build");
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",

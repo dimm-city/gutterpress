@@ -9,7 +9,7 @@ and export a PDF — no terminal required, no runtime to install.
 ## Architecture
 
 ```
-Electron main process (electron-dist/main.js)
+Electron main process (out/main/main.js — ESM, built by electron-vite)
   ├─ protocol.handle("app", ...)        — serves the SvelteKit SPA from build/
   ├─ ipcMain.handle("api:status", ...)  — viewer status check
   ├─ ipcMain.handle("api:preview", ...) — wraps lib.startPreviewServer
@@ -122,7 +122,7 @@ the static `app://local/`. Preload + IPC are identical in both modes.
 # 1. Build the SvelteKit SPA (output: build/)
 npm run build
 
-# 2. Compile the Electron main + preload (output: electron-dist/)
+# 2. Build the Electron main + preload via electron-vite (output: out/)
 npm run electron:build
 
 # 3. Package as platform installer (electron-builder)
@@ -164,10 +164,10 @@ packages/viewer/
 │   ├── main.ts              # app lifecycle, protocol.handle("app"), ipcMain handlers
 │   ├── preload.ts           # contextBridge — exposes window.electron
 │   └── tsconfig.json
-├── electron-dist/           # Compiled Electron CJS output (git-ignored)
-│   ├── main.js
-│   ├── preload.js
-│   └── package.json         # {"type": "commonjs"}
+├── electron.vite.config.ts  # electron-vite config (main + preload builds)
+├── out/                     # electron-vite output (ESM, git-ignored)
+│   ├── main/main.js
+│   └── preload/preload.js
 ├── src/                     # SvelteKit SPA
 │   ├── routes/
 │   │   ├── +layout.ts       # ssr=false, prerender=true (SPA mode)
@@ -200,10 +200,11 @@ packages/viewer/
   serves `index.html` for unknown paths so client-side routes work.
 - **IPC, not fetch** — the renderer calls `window.electron.startPreview({input})`
   rather than `fetch("/api/preview")`. The bridge lives in `preload.ts`.
-- **Lib loader** — `electron-dist/main.js` is CJS and the lib is ESM, so the
-  lib is loaded via `new Function("spec", "return import(spec)")` (TypeScript's
-  CJS transform won't rewrite that to `require()`). The promise is cached so
-  subsequent IPC calls reuse the already-imported module.
+- **Build** — `electron-vite` builds the ESM main + preload into `out/`
+  (externalizing electron + the lib); SvelteKit's adapter-static builds the
+  renderer into `build/`. No CJS↔ESM interop trick: the ESM main just does
+  `await import("@dimm-city/print-md-lib")`, cached so subsequent IPC calls
+  reuse the module. Packaged with asar (puppeteer-core unpacked).
 - **Preview iframe** — `lib.startPreviewServer` returns an `http://127.0.0.1:N`
   URL that the renderer puts in `<iframe src={url}>`. Iframe is cross-origin
   (different scheme) from the SPA's `app://` parent; postMessage bridge

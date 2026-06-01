@@ -1,7 +1,7 @@
 node_modules
 .svelte-kit
 build
-electron-dist
+out
 dist
 .env
 .env.*
