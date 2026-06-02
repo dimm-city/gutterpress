@@ -114,8 +114,12 @@
         <section class="tools">
           <h3>System tools</h3>
           <p class="hint">
-            Tools print-md may spawn at build time. Required tools must be present for the
-            corresponding feature; optional tools just degrade gracefully.
+            print-md does almost everything in-process — rendering needs a
+            Chromium-based browser, and the optional <strong>PDF/X (CMYK)
+            pre-print pipeline</strong> additionally needs Ghostscript + qpdf.
+            All other validation runs built-in and needs no system tools.
+            Expand “Install” below for setup commands, or run the whole pipeline
+            via the print-md Docker image (all tools pre-installed).
           </p>
           <ul>
             {#each data.tools as t (t.bin)}

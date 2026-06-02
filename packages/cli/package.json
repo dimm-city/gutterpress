@@ -53,9 +53,7 @@
     "markdown-it-source-map": "^0.1.1",
     "pagedjs": "^0.4.3",
     "puppeteer-core": "^25.0.4",
-    "yaml": "^2.8.2",
-    "htmlhint": "^1.1.4",
-    "markdownlint-cli2": "^0.22.1"
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "@dimm-city/print-md-lib": "workspace:*",

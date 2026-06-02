@@ -1,10 +1,15 @@
 # Running print-md in Docker
 
-The `print-md` container ships the CLI **and every system dependency** the
-`lint → build → validate` pipeline needs to produce a validated, print-ready
-PDF — Chromium, Ghostscript, qpdf, Poppler, ImageMagick, base fonts, and the
-`htmlhint` / `markdownlint-cli2` source linters. Nothing to install on the host
-except Docker.
+The `print-md` container ships the CLI **and the system tools the full
+PDF/X pre-print pipeline needs** — Chromium (rendering), Ghostscript and qpdf
+(PDF/X CMYK + validation), and base fonts. Everything else (page/font/image
+validation, markdown/HTML/CSS lint) runs in-process in the bundle, so the image
+is the simplest way to get a **complete, validated, print-ready PDF/X** with
+nothing to install on the host except Docker.
+
+> Why use the image? A plain RGB PDF needs only a browser, but the **PDF/X
+> (CMYK) pre-print pipeline requires Ghostscript + qpdf** on the host. The
+> container bundles them so you don't have to install or configure anything.
 
 ## Get the image
 
@@ -97,11 +102,12 @@ build-pdf:
 
 | Dependency | Provides |
 |---|---|
-| print-md CLI (Node bundle) | the CLI (lint/build/validate) |
-| Chromium | Paged.js PDF rendering |
-| Ghostscript | PDF/X CMYK conversion, `/Creator` stamp, ink-coverage checks |
-| qpdf | PDF/X annotation stripping + structural validation |
-| Poppler (`pdfinfo`/`pdffonts`/`pdfimages`/`pdftotext`) | bleed, page-size, font-embedding, image checks |
-| ImageMagick (`identify`) | image alpha / color-space / resolution checks |
-| `htmlhint`, `markdownlint-cli2` | source lint |
+| print-md CLI (Node bundle) | the CLI (lint/build/validate); all in-process checks (page/font/image validation, markdown/HTML/CSS lint) are bundled in |
+| Chromium | Paged.js PDF rendering (**required for any PDF**) |
+| Ghostscript | PDF/X CMYK conversion + per-page ink-coverage validation |
+| qpdf | PDF/X annotation stripping + OutputIntent/metadata validation |
 | `fonts-liberation`, `fonts-dejavu-core`, fontconfig | base fonts (your project fonts come from the mount) |
+
+Poppler, ImageMagick, `htmlhint`, `markdownlint-cli2`, and stylelint are **no
+longer installed** — those checks now run in-process inside the bundle (see
+[ADR 0002](adr/0002-prefer-in-process-libraries-over-os-dependencies.md)).

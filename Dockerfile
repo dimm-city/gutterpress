@@ -3,20 +3,19 @@
 # print-md CLI container
 #
 # A self-contained image with EVERYTHING the lint → build → validate pipeline
-# needs to turn a markdown project into a validated, print-ready PDF:
+# needs to turn a markdown project into a validated, print-ready PDF — including
+# the full PDF/X (CMYK) pre-print path:
 #   - the print-md CLI (Node bundle: src + @dimm-city/print-md-lib compiled in)
-#   - Chromium            (PDF rendering via Paged.js)
-#   - Ghostscript         (PDF/X CMYK conversion)
-#   - qpdf                (PDF/X annotation stripping + structural validation)
-#   - Poppler utils       (pdfinfo/pdffonts/pdfimages/pdftotext validation)
-#   - ImageMagick         (image validation)
-#   - htmlhint + markdownlint-cli2 (source lint; Node CLIs)
+#   - Chromium            (PDF rendering via Paged.js — REQUIRED for any PDF)
+#   - Ghostscript         (PDF/X CMYK conversion + ink-coverage validation)
+#   - qpdf                (PDF/X annotation stripping + OutputIntent validation)
 #   - base fonts + fontconfig
 #
-# We ship the Node bundle (not the bun --compile standalone binary) so the
-# lint step's stylelint can resolve its config/plugins (stylelint-config-
-# standard, css-tree data files) from a real node_modules — those dynamic
-# resolutions don't survive --compile.
+# All other validation (page size, fonts, images/DPI, bookmarks, links, text,
+# markdown/HTML/CSS lint, image color/alpha) runs IN-PROCESS in the bundle, so
+# Poppler, ImageMagick, htmlhint, markdownlint-cli2, and stylelint are no longer
+# installed (see ADR 0002). The remaining three tools exist only to enable the
+# optional PDF/X pre-print pipeline; a plain RGB `build` needs only Chromium.
 #
 # Usage (entrypoint forwards all args to print-md):
 #   docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/print-md \
@@ -54,8 +53,6 @@ RUN set -eux; \
         chromium \
         ghostscript \
         qpdf \
-        poppler-utils \
-        imagemagick \
         fonts-liberation \
         fonts-dejavu-core \
         fontconfig \
@@ -70,11 +67,11 @@ ENV PUPPETEER_SKIP_DOWNLOAD=1 \
 WORKDIR /app
 
 # Install ONLY the CLI's production runtime deps (the externals the bundle
-# expects: puppeteer-core, stylelint(+config), css-tree, markdown-it*, chokidar,
-# htmlhint, markdownlint-cli2, …). We synthesize a minimal package.json with
-# just `dependencies` — the original's devDependencies carry the workspace:*
-# lib (already bundled into dist/cli.js), which npm can't parse, and the
-# typescript peer isn't needed at runtime.
+# expects: puppeteer-core, markdown-it*, pagedjs, chokidar, ws, yaml, glob,
+# citty). The in-process check deps (markdownlint, htmlhint, unpdf, pdf-lib) are
+# bundled into dist/cli.js, not installed here. We synthesize a minimal
+# package.json with just `dependencies` — the original's devDependencies carry
+# the workspace:* lib (already bundled into dist/cli.js), which npm can't parse.
 COPY --from=builder /src/packages/cli/package.json ./cli-package.json
 RUN node -e "const p=require('./cli-package.json'); require('fs').writeFileSync('./package.json', JSON.stringify({name:p.name,version:p.version,private:true,type:'module',dependencies:p.dependencies},null,2))" \
     && rm cli-package.json \
@@ -91,12 +88,10 @@ RUN printf '#!/bin/sh\nexec node /app/dist/cli.js "$@"\n' > /usr/local/bin/print
 
 # Point print-md at the apt Chromium and give headless Chromium the flags it
 # needs inside a container (no user namespace / small /dev/shm). HOME=/tmp keeps
-# tools that want a writable home working under `-u <uid>:<gid>`. node_modules/
-# .bin on PATH lets the lint step exec htmlhint / markdownlint-cli2.
+# tools that want a writable home working under `-u <uid>:<gid>`.
 ENV CHROMIUM_PATH=/usr/bin/chromium \
     PRINTMD_CHROMIUM_ARGS="--no-sandbox --disable-dev-shm-usage --disable-gpu" \
-    HOME=/tmp \
-    PATH="/app/node_modules/.bin:${PATH}"
+    HOME=/tmp
 
 # Projects are mounted here; relative --out paths resolve against it.
 WORKDIR /work

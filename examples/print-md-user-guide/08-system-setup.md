@@ -1,30 +1,43 @@
 # System Setup {#ch-system}
 
-<div class="lede">Print-md uses external tools for PDF generation and validation. This chapter lists every tool, explains what each one does, and provides per-platform install commands.</div>
+<div class="lede">Print-md does almost everything in-process. It needs only a Chromium-based browser to render PDFs, plus — for the optional PDF/X (CMYK) pre-print pipeline — Ghostscript and qpdf. This chapter explains what each tool is for, how to install it, and how the Docker image gives you the whole pipeline with nothing to install.</div>
 
 ## Quick Reference
 
 @section
 
-| Tool | Required for | Tier |
-|------|-------------|------|
-| Chrome / Chromium | **All PDF output** | Required |
-| Ghostscript (`gs`) | PDF/X generation + ink-coverage validation | Recommended |
-| `qpdf` | PDF/X generation + PDF/X validation | Recommended (PDF/X only) |
+| Tool | Used for | When you need it |
+|------|----------|------------------|
+| Chrome / Chromium | Renders your HTML + Paged.js layout into a PDF | **Always** (every PDF) |
+| Ghostscript (`gs`) | Converts the RGB PDF to **CMYK PDF/X** with an ICC output intent; per-page ink-coverage check | Only for `--format pdfx` |
+| `qpdf` | Strips disallowed annotations for PDF/X; validates the PDF/X OutputIntent + metadata | Only for `--format pdfx` |
 
 @end-section
 
-> **Validation is built in.** Page size, fonts, images/DPI, bookmarks, links,
-> page labels, text density, and structural parsing run in-process via a bundled
-> PDF.js engine — **no Poppler required**. Image asset checks (DPI, color space,
-> alpha) use an in-process image-header reader — **no ImageMagick (`identify`)
-> required**. Markdown/HTML linting is in-process too — **no `markdownlint-cli2`
-> or `htmlhint` required**.
->
-> The only remaining external tools are Chromium (rendering — always needed) and,
-> for PDF/X output only, Ghostscript + qpdf. See sections below.
+> **Why so few tools?** Page size, fonts, images/DPI, bookmarks, links, page
+> labels, text density, structure, image color/alpha, and markdown/HTML/CSS
+> linting all run **in-process** — no Poppler, ImageMagick, `markdownlint-cli2`,
+> `htmlhint`, or stylelint to install (see ADR 0002). A plain RGB `build` needs
+> only a browser; the three print tools above exist solely to enable PDF/X.
 
-## Per-Platform Install
+## Easiest path: Docker (the whole PDF/X pipeline, nothing to install)
+
+If you want a complete, validated, print-ready **PDF/X** without installing
+Ghostscript/qpdf/Chromium yourself, use the container — it bundles all three:
+
+```bash
+# One-off: build a print-ready PDF/X from a project in the current folder
+docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" \
+    ghcr.io/dimm-city/print-md \
+    build my-book --out dist/my-book.pdf --format pdfx
+```
+
+This is also the recommended way to run the full pipeline in CI. See the
+[Docker guide](../../docs/docker.md) for the convenience alias, output
+ownership, and CI examples. The rest of this chapter covers installing the
+tools directly on your machine instead.
+
+## Install the tools on your machine
 
 ### macOS
 

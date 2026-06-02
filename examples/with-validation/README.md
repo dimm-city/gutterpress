@@ -57,40 +57,30 @@ Running source validation on this example will:
 
 ## Automatic Tool Detection
 
-Before running checks, print-md probes for required external tools. If any are
-missing you'll see warnings like:
+Almost every check runs in-process and needs no system tool. Only the PDF/X
+checks (need `qpdf`) and ink-coverage (needs `gs`) probe for a tool, and warn if
+it's missing:
 
 ```
-warn  Tool "qpdf" not found — skipping: pdf.print.ink-coverage, pdf.nav.bookmarks, ...
-warn  Tool "identify" not found — skipping: asset.image.resolution, asset.image.color-space, asset.image.alpha-channel
+warn  Tool "gs" not found — skipping: pdf.print.ink-coverage
+warn  Tool "qpdf" not found — skipping: pdf.print.pdfx-markers, pdf.print.pdfx-metadata
 ```
 
 Checks that don't need the missing tool still run normally.
 
 **Suppressed warnings:** Because this example disables `pdf.structure.qpdf` in
-the manifest, you will **not** see a warning about `qpdf` for that check — even
-if `qpdf` isn't installed. Warnings only appear for checks that would have run
-but can't.
+the manifest, you won't see a warning about that check. (Note `pdf.structure.qpdf`
+no longer uses qpdf — it's an in-process parse check now.)
 
 ## System Dependencies
 
-You don't need every tool installed to use validation — missing tools are
-detected automatically and their checks are skipped with a clear warning. Install
-the ones you need:
+Source linting, page/font/image validation, and color/alpha checks are **all
+built in** — no tools to install. The only optional system tools are for the
+**PDF/X (CMYK) pre-print pipeline**:
 
-**Source checks:**
+- `gs` (Ghostscript) — CMYK conversion + ink-coverage — `apt install ghostscript` or `brew install ghostscript`
+- `qpdf` — PDF/X annotation stripping + OutputIntent validation — `apt install qpdf` or `brew install qpdf`
 
-- `markdownlint-cli2` — `npm install -g markdownlint-cli2`
-- `htmlhint` — `npm install -g htmlhint`
-- `stylelint` — `npm install -g stylelint`
-
-**PDF checks:**
-
-- `qpdf` — `apt install qpdf` or `brew install qpdf`
-- `pdfinfo`, `pdffonts`, `pdfimages`, `pdftotext` — `apt install poppler-utils` or `brew install poppler`
-- `gs` (Ghostscript) — `apt install ghostscript` or `brew install ghostscript`
-
-**Asset checks:**
-
-- `identify` (ImageMagick) — `apt install imagemagick` or `brew install imagemagick`
-- `gs` (Ghostscript) — shared with PDF checks above
+Or skip installing anything and run the full PDF/X pipeline via the
+[Docker image](../../docs/docker.md). Rendering any PDF also needs a
+Chromium-based browser (see [System Setup](../print-md-user-guide/08-system-setup.md)).

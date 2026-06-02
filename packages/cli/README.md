@@ -28,11 +28,12 @@ npm install -g @dimm-city/print-md
 
 This installs the CLI for `node`-based projects. Same surface area as the binary.
 
-### With Docker (all system tools pre-installed)
+### With Docker (full PDF/X pipeline pre-installed)
 
-No need to install Chromium, Ghostscript, qpdf, Poppler, or ImageMagick — the
-image bundles the full `lint → build → validate` toolchain. Mount your project
-at `/work`:
+No need to install Chromium, Ghostscript, or qpdf — the image bundles
+everything the `lint → build → validate` pipeline needs, including the PDF/X
+(CMYK) pre-print path. (All other validation runs in-process; Poppler and
+ImageMagick are no longer used.) Mount your project at `/work`:
 
 ```sh
 docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" \

@@ -56,5 +56,7 @@ print-md validate --pdf dist/book.pdf --only pdf.print.page-size
 print-md validate --input . --skip source.stylelint
 ```
 
-> [!warning]
-> Some checks require system tools (qpdf, pdfinfo, ImageMagick). Install them before running validation.
+> [!note]
+> Almost all validation runs in-process — no tools to install. Only the PDF/X
+> checks need `qpdf` and ink-coverage needs Ghostscript (`gs`); install those, or
+> use the Docker image, only when producing PDF/X.
