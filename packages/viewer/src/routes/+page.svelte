@@ -22,6 +22,10 @@
   let busy = $state(false);
   let busyLabel = $state("");
   let openUrlOpen = $state(false);
+  // PDF export runs in a separate render window, so the UI stays usable — track
+  // it separately with a NON-blocking status pill instead of the modal overlay.
+  let exporting = $state(false);
+  let pdfProgress = $state<string | null>(null);
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
@@ -244,24 +248,27 @@
       toast?.error("Open a folder first — PDF export is disabled for URL sources.");
       return;
     }
-    busy = true;
-    busyLabel = "Building PDF…";
+    const electron = (window as any).electron;
+    if (!electron?.savePdf || !electron?.build) {
+      toast?.error("Electron bridge unavailable — run via the viewer app");
+      return;
+    }
+    const sep = currentDir.includes("\\") ? "\\" : "/";
+    const defaultName = (currentDir.split(sep).pop() ?? "book") + ".pdf";
+    const outPath = await electron.savePdf(defaultName);
+    if (!outPath) return;
+
+    // Non-blocking: the build runs in a separate render window, so keep the
+    // preview interactive and show progress in a corner pill (not the overlay).
+    exporting = true;
+    pdfProgress = "Preparing PDF…";
     let offProgress: (() => void) | undefined;
     try {
-      const electron = (window as any).electron;
-      if (!electron?.savePdf || !electron?.build) {
-        toast?.error("Electron bridge unavailable — run via the viewer app");
-        return;
-      }
-      const sep = currentDir.includes("\\") ? "\\" : "/";
-      const defaultName = (currentDir.split(sep).pop() ?? "book") + ".pdf";
-      const outPath = await electron.savePdf(defaultName);
-      if (!outPath) return;
       // Live progress: Paged.js pagination of large books takes minutes, so show
       // the growing page count instead of an opaque spinner.
       offProgress = electron.onBuildProgress?.(
         (p: { phase: "rendering" | "finalizing"; pages: number }) => {
-          busyLabel =
+          pdfProgress =
             p.phase === "finalizing"
               ? `Finalizing PDF (${p.pages} pages)…`
               : `Rendering page ${p.pages}…`;
@@ -285,8 +292,8 @@
       toast?.error(e instanceof Error ? e.message : String(e));
     } finally {
       offProgress?.();
-      busy = false;
-      busyLabel = "";
+      exporting = false;
+      pdfProgress = null;
     }
   }
 
@@ -358,6 +365,15 @@
 
 <Toast bind:api={toast} />
 <LoadingOverlay visible={rendering || (busy && !!busyLabel)} label={busyLabel || "Rendering…"} />
+
+<!-- Non-blocking PDF export progress: a corner pill that leaves the preview
+     fully interactive (the build runs in a separate render window). -->
+{#if exporting && pdfProgress}
+  <div class="export-pill" role="status" aria-live="polite">
+    <span class="export-spinner" aria-hidden="true"></span>
+    <span class="export-label">{pdfProgress}</span>
+  </div>
+{/if}
 
 <div class="shell">
   <header class="toolbar">
@@ -465,11 +481,11 @@
       <button
         class="primary save-btn icon-text"
         onclick={savePdf}
-        disabled={busy || !currentDir || sourceMode === "url"}
+        disabled={busy || exporting || !currentDir || sourceMode === "url"}
         title={sourceMode === "url" ? "PDF export not available for URL sources" : "Save as PDF"}
       >
         <Icon name="file-down" />
-        <span>Save PDF</span>
+        <span>{exporting ? "Saving…" : "Save PDF"}</span>
       </button>
       <button
         class="icon-btn"
@@ -516,6 +532,44 @@
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
+  }
+
+  /* ---- Non-blocking PDF export progress pill ---- */
+  .export-pill {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 320px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: rgba(30, 30, 30, 0.95);
+    border: 1px solid #3a3a3a;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    color: #eee;
+    font-size: 13px;
+    /* Informational only — never intercept clicks/scroll on the preview. */
+    pointer-events: none;
+  }
+  .export-spinner {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+    border: 2px solid #555;
+    border-top-color: #4c9ffe;
+    border-radius: 50%;
+    animation: export-spin 0.8s linear infinite;
+  }
+  .export-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  @keyframes export-spin {
+    to { transform: rotate(360deg); }
   }
 
   /* ---- Toolbar ---- */
