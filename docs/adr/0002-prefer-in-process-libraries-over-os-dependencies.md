@@ -122,8 +122,14 @@ This decision establishes a priority order and a set of guardrails; it does
    checks (`pdfx-markers`, `pdfx-metadata`) stay on qpdf (PDF/X-only; qpdf is
    mandatory to produce PDF/X and pdfjs exposes no catalog OutputIntents API).
    In-process reader lives in `packages/lib/src/lib/pdf-inspect.ts`.
-3. **Phase 3 (images):** `sharp` in the viewer; pure-JS combo in the CLI; image
-   ink-coverage gated behind optional sharp.
+3. **Phase 3 (images) — ✅ SHIPPED:** ImageMagick `identify` replaced by a
+   dependency-free PNG/JPEG/TIFF header reader
+   (`packages/lib/src/lib/image-inspect.ts`) covering dimensions, DPI, alpha, and
+   color space. Chosen over `sharp` to keep a **single** `--compile`-safe code
+   path (sharp is native and resolves `@img/*` binaries through `node_modules` at
+   runtime, which breaks the standalone binary). Output cross-checked against
+   `identify` on real fixtures. Image *ink coverage* stays on gs (image-tac,
+   Phase 4). ImageMagick is no longer a dependency.
 4. **Phase 4 (hard deps, decision required):** opt-in WASM gs for PDF/X (after
    AGPL sign-off + PDF/X smoke test); Playwright hermetic Chromium for
    browserless CLI use; viewer renders via Electron's own Chromium.

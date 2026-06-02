@@ -59,11 +59,6 @@ const INSTALL_HINTS: Record<string, string> = {
     "  macOS:   brew install qpdf\n" +
     "  Ubuntu:  sudo apt install -y qpdf\n" +
     "  Windows: choco install qpdf  (or: https://github.com/qpdf/qpdf/releases)",
-  identify:
-    "Install ImageMagick (provides identify):\n" +
-    "  macOS:   brew install imagemagick\n" +
-    "  Ubuntu:  sudo apt install -y imagemagick\n" +
-    "  Windows: https://imagemagick.org/script/download.php#windows",
 };
 
 const TOOLS_TO_PROBE: Array<{
@@ -89,14 +84,6 @@ const TOOLS_TO_PROBE: Array<{
     usedBy: [
       { feature: "PDF/X annotation stripping (build --format pdfx)", severity: "required" },
       { feature: "validate: PDF/X OutputIntent + metadata checks", severity: "optional" },
-    ],
-  },
-  {
-    bin: "identify",
-    name: "ImageMagick (identify)",
-    hintKey: "identify",
-    usedBy: [
-      { feature: "validate: image-alpha, image-color-space, image-resolution", severity: "optional" },
     ],
   },
 ];

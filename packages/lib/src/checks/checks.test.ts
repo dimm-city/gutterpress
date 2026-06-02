@@ -805,6 +805,10 @@ describe("Tool Check", () => {
       "heuristic.whitespace.text-density",
       "heuristic.decoration.layer-count",
       "heuristic.layout.placement-variance",
+      // Phase 3 — pure-JS image header reader (replaced ImageMagick identify)
+      "asset.image.alpha-channel",
+      "asset.image.color-space",
+      "asset.image.resolution",
     ]);
 
     const allChecks = getChecks();
@@ -1066,6 +1070,98 @@ describe("In-process source/PDF checks (no external tools)", () => {
       const ctx = makeCtx({ pdfPath: pdfFile });
       const results = await check.run(ctx);
       expect(results.some((r) => r.message.includes("Lab color space"))).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Asset image checks via the in-process header reader (Phase 3). Builds tiny
+// PNGs in-test so no ImageMagick / committed binaries are needed.
+// ---------------------------------------------------------------------------
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
+  return Buffer.concat([len, Buffer.from(type, "latin1"), data, Buffer.alloc(4)]);
+}
+function buildPng(colorType: number, ppm?: number): Buffer {
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(10, 0);
+  ihdr.writeUInt32BE(8, 4);
+  ihdr[8] = 8;
+  ihdr[9] = colorType;
+  const parts = [sig, pngChunk("IHDR", ihdr)];
+  if (ppm) {
+    const phys = Buffer.alloc(9);
+    phys.writeUInt32BE(ppm, 0);
+    phys.writeUInt32BE(ppm, 4);
+    phys[8] = 1;
+    parts.push(pngChunk("pHYs", phys));
+  }
+  parts.push(pngChunk("IEND", Buffer.alloc(0)));
+  return Buffer.concat(parts);
+}
+
+describe("Asset image checks (in-process reader)", () => {
+  test("alpha-channel flags an RGBA PNG when allowAlpha=false", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-asset-"));
+    try {
+      await writeFile(join(dir, "rgba.png"), buildPng(6)); // colorType 6 = RGBA
+      const config = makeConfig();
+      config.validate.assets.allowAlpha = false;
+      const check = getCheckById("asset.image.alpha-channel")!;
+      const results = await check.run(makeCtx({ config, inputDir: dir, assetDirs: [dir] }));
+      expect(results).toHaveLength(1);
+      expect(results[0]!.message).toContain("alpha channel");
+      expect(results[0]!.file).toContain("rgba.png");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("alpha-channel passes an opaque RGB PNG", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-asset-"));
+    try {
+      await writeFile(join(dir, "rgb.png"), buildPng(2)); // colorType 2 = RGB
+      const config = makeConfig();
+      config.validate.assets.allowAlpha = false;
+      const check = getCheckById("asset.image.alpha-channel")!;
+      const results = await check.run(makeCtx({ config, inputDir: dir, assetDirs: [dir] }));
+      expect(results).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("color-space flags an sRGB PNG when only CMYK/Gray allowed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-asset-"));
+    try {
+      await writeFile(join(dir, "rgb.png"), buildPng(2)); // sRGB
+      const config = makeConfig();
+      config.validate.assets.allowedColorSpaces = ["CMYK", "Gray"];
+      const check = getCheckById("asset.image.color-space")!;
+      const results = await check.run(makeCtx({ config, inputDir: dir, assetDirs: [dir] }));
+      expect(results).toHaveLength(1);
+      expect(results[0]!.message).toContain("sRGB");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("resolution flags a low-DPI image and passes a 300-DPI one", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-asset-"));
+    try {
+      await writeFile(join(dir, "low.png"), buildPng(2)); // no pHYs → 72 DPI
+      await writeFile(join(dir, "hi.png"), buildPng(2, 11811)); // 300 DPI
+      const config = makeConfig();
+      config.validate.assets.minImageDpi = 300;
+      const check = getCheckById("asset.image.resolution")!;
+      const results = await check.run(makeCtx({ config, inputDir: dir, assetDirs: [dir] }));
+      expect(results).toHaveLength(1);
+      expect(results[0]!.file).toContain("low.png");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

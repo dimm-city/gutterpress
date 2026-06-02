@@ -11,18 +11,18 @@
 | Chrome / Chromium | **All PDF output** | Required |
 | Ghostscript (`gs`) | PDF/X generation + ink-coverage validation | Recommended |
 | `qpdf` | PDF/X generation + PDF/X validation | Recommended (PDF/X only) |
-| `identify` (ImageMagick) | Asset validation | Optional |
 
 @end-section
 
-> **PDF validation is built in.** Page size, fonts, images/DPI, bookmarks,
-> links, page labels, text density, and structural parsing now run in-process
-> via a bundled PDF.js engine — **no Poppler (`pdfinfo`/`pdffonts`/`pdfimages`/
-> `pdftotext`) install is required.** Only PDF/X-specific validation still uses
-> `qpdf`, which you already need to *produce* PDF/X.
+> **Validation is built in.** Page size, fonts, images/DPI, bookmarks, links,
+> page labels, text density, and structural parsing run in-process via a bundled
+> PDF.js engine — **no Poppler required**. Image asset checks (DPI, color space,
+> alpha) use an in-process image-header reader — **no ImageMagick (`identify`)
+> required**. Markdown/HTML linting is in-process too — **no `markdownlint-cli2`
+> or `htmlhint` required**.
 >
-> Markdown and HTML source linting are **built in** too — no `markdownlint-cli2`
-> or `htmlhint` install is required. See [Source linting — built in](#source-linting-built-in).
+> The only remaining external tools are Chromium (rendering — always needed) and,
+> for PDF/X output only, Ghostscript + qpdf. See sections below.
 
 ## Per-Platform Install
 
@@ -40,8 +40,6 @@ brew install ghostscript
 # Only for PDF/X (annotation stripping + PDF/X validation)
 brew install qpdf
 
-# Only for asset (image) validation
-brew install imagemagick
 ```
 
 ### Windows
@@ -51,7 +49,6 @@ Install Chrome or Chromium from the official websites. For Ghostscript and other
 ```bash
 winget install Ghostscript.Ghostscript
 winget install qpdf.qpdf  # PDF/X only
-# ImageMagick: https://imagemagick.org/script/download.php#windows
 ```
 
 > **Windows note:** Print-md uses `where` instead of `which` to probe for tools. If you have `busybox` or other POSIX emulators installed, ensure `where` is the one on `PATH`.
@@ -70,14 +67,12 @@ sudo apt install ghostscript
 # Only for PDF/X (annotation stripping + PDF/X validation)
 sudo apt install qpdf
 
-# Only for asset (image) validation
-sudo apt install imagemagick
 ```
 
 ### Linux (Fedora/RHEL)
 
 ```bash
-sudo dnf install chromium ghostscript qpdf ImageMagick
+sudo dnf install chromium ghostscript qpdf
 ```
 
 ## Tool Details
@@ -132,9 +127,11 @@ everywhere, including from the standalone binary, with zero system tools.
 > than a deep `qpdf --check`, and image DPI is derived from the rendered placed
 > size (best-effort). See ADR 0002 for details.
 
-### ImageMagick `identify` — asset validation only
+### Image asset checks — built in (no ImageMagick)
 
-Used by asset checks to read image resolution and color profile. Without it, those checks are skipped.
+Image resolution (DPI), color space, and alpha-channel checks read PNG/JPEG/TIFF
+headers **in-process** — **ImageMagick (`identify`) is no longer used or
+required.** These run everywhere, including from the standalone binary.
 
 ### Source linting — built in {#source-linting-built-in}
 
@@ -198,9 +195,9 @@ No browser was found. Install Chrome, set `CHROME_PATH`, or allow puppeteer to d
 
 ### Some validation checks reported as "skipped"
 
-General PDF and source checks run in-process and never skip. Only the
-PDF/X checks (need `qpdf`), ink-coverage (needs `gs`), and image asset checks
-(need `identify`) can be skipped — install the relevant tool to enable them.
+General PDF, source, and image-asset checks run in-process and never skip. Only
+the PDF/X checks (need `qpdf`) and ink-coverage (needs `gs`) can be skipped —
+install the relevant tool to enable them.
 
 ### A specific check still fails after installing its tool
 
@@ -215,7 +212,7 @@ Restart the terminal to pick up the updated `PATH`. If the tool is in a non-stan
 - qpdf annotation stripping + PDF/X validation
 - In-process PDF validation via bundled PDF.js (replaced Poppler)
 - In-process markdown/HTML linting (replaced markdownlint-cli2/htmlhint)
-- ImageMagick asset checks
+- In-process image asset checks (replaced ImageMagick identify)
 
 ### Planned (Tier 2)
 
