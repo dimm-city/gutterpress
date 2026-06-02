@@ -117,17 +117,35 @@ async function electronPdfRenderer(input: {
     // Wait for web fonts to finish loading.
     await wc.executeJavaScript("document.fonts.ready.then(() => true)");
 
-    // Poll until Paged.js signals completion (or the timeout elapses).
+    // Poll until Paged.js signals completion (or the timeout elapses), emitting
+    // a per-page progress event so the UI can show "Rendering page N…" instead
+    // of an opaque spinner during the (inherently slow) Paged.js pagination of
+    // large books.
     const deadline = Date.now() + input.timeoutMs;
+    let lastPages = -1;
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const done = await wc.executeJavaScript(
-        "window.__PAGED_RENDERED__ === true"
-      );
-      if (done) break;
+      const status = (await wc.executeJavaScript(`(() => ({
+        done: window.__PAGED_RENDERED__ === true,
+        pages: document.querySelectorAll('.pagedjs_page').length
+      }))()`)) as { done: boolean; pages: number };
+      if (status.pages !== lastPages) {
+        lastPages = status.pages;
+        mainWindow?.webContents.send("build:progress", {
+          phase: "rendering",
+          pages: status.pages,
+        });
+      }
+      if (status.done) break;
       if (Date.now() > deadline) break;
       await new Promise((r) => setTimeout(r, 100));
     }
+
+    // Pagination done — serializing a large PDF still takes time, so flag it.
+    mainWindow?.webContents.send("build:progress", {
+      phase: "finalizing",
+      pages: lastPages,
+    });
 
     // Measure the first rendered page (CSS px) to set the paper size.
     const info = (await wc.executeJavaScript(`(() => {
