@@ -95,7 +95,20 @@ async function electronPdfRenderer(input: {
 }): Promise<void> {
   const win = new BrowserWindow({
     show: false,
-    webPreferences: { sandbox: true, contextIsolation: true, javascript: true },
+    // A hidden window is "occluded", so Chromium throttles its timers,
+    // requestAnimationFrame, and rendering to ~1 Hz — which makes Paged.js
+    // pagination (timer/rAF-driven) crawl, the #1 cause of slow PDF export.
+    // Disable background throttling and keep painting while hidden, and give the
+    // window a real size so layout/pagination run at full speed.
+    paintWhenInitiallyHidden: true,
+    width: 1280,
+    height: 1024,
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      javascript: true,
+      backgroundThrottling: false,
+    },
   });
   try {
     await win.loadURL(input.url);
