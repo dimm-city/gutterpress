@@ -5,4 +5,9 @@
 // the runtime import path stays the documented package root.
 declare module "htmlhint" {
   export * from "htmlhint/dist/core/core";
+  // The package main is CJS; the runtime default import yields module.exports
+  // (which carries HTMLHint, HTMLRules, Reporter, HTMLParser). Declare it so a
+  // default import + destructure typechecks and matches Node's interop.
+  import * as htmlhint from "htmlhint/dist/core/core";
+  export default htmlhint;
 }
