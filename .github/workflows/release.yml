@@ -322,6 +322,54 @@ jobs:
         working-directory: packages/cli
         run: npm publish --provenance --access public
 
+  # ── 5b. Publish the CLI Docker image to GHCR ──────────────────────────────
+  # Builds the root Dockerfile (CLI bundle + Chromium/Ghostscript/qpdf) and
+  # pushes it to ghcr.io/<owner>/print-md. Tags the exact version always;
+  # `latest` only for stable releases (a version without a "-" prerelease tag).
+  publish-docker:
+    name: Publish Docker image
+    needs: [version, verify-windows]
+    if: ${{ needs.verify-windows.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - name: Compute image tags
+        id: imgtags
+        run: |
+          REPO_LC="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          TAGS="$REPO_LC:${{ inputs.version }}"
+          # Stable (no "-" prerelease suffix) also updates :latest.
+          case "${{ inputs.version }}" in
+            *-*) ;;
+            *) TAGS="$TAGS"$'\n'"$REPO_LC:latest" ;;
+          esac
+          { echo "tags<<EOF"; printf '%s\n' "$TAGS"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push CLI image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.imgtags.outputs.tags }}
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   # ── 6. Create release with ALL artifacts ──────────────────────────────────
   #
   # Waits for every build job and the Windows verify before creating the
