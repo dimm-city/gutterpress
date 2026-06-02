@@ -15,6 +15,10 @@
   let currentUrl = $state<string | null>(null);
   let sourceMode = $state<"folder" | "url">("folder");
   let docTitle = $state<string | null>(null);
+  // Folder name (basename) for the toolbar label; the full path is the tooltip.
+  let folderName = $derived(
+    currentDir ? (currentDir.split(/[\\/]/).filter(Boolean).pop() ?? currentDir) : ""
+  );
   let busy = $state(false);
   let busyLabel = $state("");
   let openUrlOpen = $state(false);
@@ -196,6 +200,15 @@
       currentPage = 1;
       pageInput = 1;
       userSetViewMode = false;
+      // Loud signal for the #1 cause of wrong fonts/styles: shared asset dirs
+      // (e.g. ../dc-design-guide/fonts) that don't resolve next to this project.
+      const missing = data.missingSharedAssets ?? [];
+      if (missing.length > 0) {
+        toast?.error(
+          `Shared asset folder(s) not found — fonts/styles may be wrong: ${missing.join(", ")}. ` +
+            `Make sure the shared directory exists next to this project.`
+        );
+      }
     } catch (e) {
       toast?.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -357,16 +370,19 @@
         <Icon name="link" />
         <span>URL</span>
       </button>
-      {#if docTitle}
-        <span class="doc-title" title={docTitle}>{docTitle}</span>
-      {/if}
       {#if sourceMode === "url" && currentUrl}
+        {#if docTitle}
+          <span class="doc-title" title={docTitle}>{docTitle}</span>
+        {/if}
         <span class="path" title={currentUrl}>{currentUrl}</span>
         <button class="icon-btn" onclick={openInBrowser} title="Open in browser" aria-label="Open in browser">
           <Icon name="external-link" />
         </button>
+      {:else if currentDir}
+        <!-- Folder source: show the title/name; full path is the hover tooltip. -->
+        <span class="doc-title" title={currentDir}>{docTitle || folderName}</span>
       {:else}
-        <span class="path" title={currentDir ?? ""}>{currentDir ?? "No source selected"}</span>
+        <span class="path">No source selected</span>
       {/if}
     </section>
 

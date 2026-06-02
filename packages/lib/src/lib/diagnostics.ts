@@ -133,8 +133,13 @@ export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
   const libVersion = await readLibVersion();
 
   // Chromium gets its own special probe (uses the existing resolver, not just PATH).
+  // NOTE: do NOT spawn the browser to read its version — on Windows `chrome.exe
+  // --version` launches a visible browser window instead of printing+exiting,
+  // which made opening the viewer's Help/About dialog pop a new Chrome instance.
+  // The browser is a GUI app, so we report only its presence + path. (The viewer
+  // surfaces its own bundled Chromium version separately via process.versions.)
   const chromiumPath = await resolveChromiumExecutable();
-  const chromiumVersion = chromiumPath ? await getVersion(chromiumPath, ["--version"]) : undefined;
+  const chromiumVersion = undefined;
 
   const chromium: ToolStatus = {
     name: "Chromium-based browser",

@@ -26,6 +26,7 @@ interface PreviewHandle {
   url: string;
   port: number;
   inputPath: string;
+  missingSharedAssets?: string[];
   stop: () => Promise<void>;
 }
 interface SplitOutPath {
@@ -197,6 +198,17 @@ function createWindow() {
     },
   });
   mainWindow.setMenuBarVisibility(false);
+
+  // Any link / window.open targeting an external URL opens in the user's real
+  // browser, not a new Electron (Chromium) window. Without this, clicking a docs
+  // link in the Help dialog would spawn a bare new app window.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) {
+      void shell.openExternal(url);
+      return { action: "deny" };
+    }
+    return { action: "deny" };
+  });
 
   // Surface renderer errors to stdout so terminal-launched runs reveal
   // their own failures without needing DevTools.
@@ -425,6 +437,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
     port: activePreview.port,
     input: activePreview.inputPath,
     title,
+    missingSharedAssets: activePreview.missingSharedAssets ?? [],
   };
 });
 
