@@ -7,7 +7,9 @@
  * `full-reload` over the HMR WebSocket whenever the file watcher fires.
  */
 
-import { info } from './utils/logger';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { info, warn } from './utils/logger';
 import type { PreviewServerOptions } from './types';
 import {
   validateInputPath,
@@ -30,6 +32,12 @@ export interface PreviewServerHandle {
   stop: () => Promise<void>;
   /** Switch the watched directory and regenerate HTML. */
   restart: (newInputPath: string) => Promise<void>;
+  /**
+   * Manifest `source.assets` entries pointing at a parent/shared directory
+   * (e.g. `../dc-design-guide/fonts`) that don't exist relative to the input —
+   * the #1 cause of missing fonts/styles. Empty when all shared dirs resolve.
+   */
+  missingSharedAssets: string[];
 }
 
 export interface StartPreviewServerOptions extends PreviewServerOptions {
@@ -65,6 +73,22 @@ export async function startPreviewServer(
 
   // Stage 2: Initialize configuration (needed for manifest assets)
   const config = await initializeConfiguration(inputPath, options);
+
+  // Detect shared/parent asset dirs (e.g. ../dc-design-guide/fonts) that don't
+  // resolve — silently missing shared CSS/fonts is the #1 cause of "wrong
+  // fonts/styles". Surface it loudly (and back to the viewer for a toast).
+  const missingSharedAssets = inputPath
+    ? config.source.assets.filter(
+        (a) => a.startsWith('..') && !existsSync(resolve(inputPath, a))
+      )
+    : [];
+  if (missingSharedAssets.length > 0) {
+    warn(
+      `Shared asset folder(s) not found — fonts/styles may be missing or wrong: ` +
+        missingSharedAssets.map((a) => `"${a}"`).join(', ') +
+        `. Check that the shared directory exists next to this project.`
+    );
+  }
 
   // Stage 3: Setup directories (with config for manifest assets)
   const assetsSourceDir = await resolveAssetsDir();
@@ -118,6 +142,7 @@ export async function startPreviewServer(
     port: boundPort,
     host,
     inputPath,
+    missingSharedAssets,
     stop: async () => {
       if (installSignals) {
         process.off('SIGINT', handleShutdown);
