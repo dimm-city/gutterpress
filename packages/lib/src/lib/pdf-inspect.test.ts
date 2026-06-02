@@ -7,7 +7,10 @@
  * the expensive operator-list pass is paid a single time across all assertions.
  */
 
-import { describe, test, expect, beforeAll } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { existsSync } from "node:fs";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -20,9 +23,19 @@ import {
 import type { PDFDocumentProxy } from "unpdf/pdfjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+// Large (135 MB), Chromium-generated, and gitignored — present on dev machines,
+// absent in CI. The rich integration suite below runs only when it exists; the
+// synthetic pdf-lib suite further down always runs (CI baseline coverage).
 const FIXTURE = join(HERE, "../../../cli/tests/field-guide.pdf");
+const HAS_FIXTURE = existsSync(FIXTURE);
 
-describe("pdf-inspect (real PDF fixture)", () => {
+if (!HAS_FIXTURE) {
+  console.warn(
+    `[pdf-inspect.test] fixture not found (${FIXTURE}); skipping real-PDF suite`
+  );
+}
+
+describe.skipIf(!HAS_FIXTURE)("pdf-inspect (real PDF fixture)", () => {
   let doc: PDFDocumentProxy;
 
   beforeAll(async () => {
@@ -77,5 +90,51 @@ describe("pdf-inspect (real PDF fixture)", () => {
 
   test("structural parse gate passes for a valid PDF", async () => {
     expect(await isLoadable(doc)).toBe(true);
+  });
+});
+
+// Synthetic PDF generated in-test with pdf-lib (a runtime dep) — no large
+// fixture or external tools needed, so this runs everywhere including CI.
+// Covers the loader, page-size, structural gate, and the no-outline path.
+describe("pdf-inspect (synthetic pdf-lib document)", () => {
+  let dir: string;
+  let pdfPath: string;
+
+  beforeAll(async () => {
+    const { PDFDocument } = await import("pdf-lib");
+    const docu = await PDFDocument.create();
+    docu.addPage([612, 792]); // US Letter, points
+    docu.addPage([612, 792]);
+    const bytes = await docu.save();
+    dir = await mkdtemp(join(tmpdir(), "print-md-pdfinspect-"));
+    pdfPath = join(dir, "synthetic.pdf");
+    await writeFile(pdfPath, bytes);
+  });
+
+  test("loads and reports page count", async () => {
+    const doc = await loadPdf(pdfPath);
+    expect(doc).toBeTruthy();
+    expect(doc!.numPages).toBe(2);
+  });
+
+  test("reports page size in points", async () => {
+    const doc = (await loadPdf(pdfPath))!;
+    const { w, h } = getPageSize(await doc.getPage(1));
+    expect(Math.round(w)).toBe(612);
+    expect(Math.round(h)).toBe(792);
+  });
+
+  test("no outline → count 0; structural gate passes", async () => {
+    const doc = (await loadPdf(pdfPath))!;
+    expect(await getOutlineCount(doc)).toBe(0);
+    expect(await isLoadable(doc)).toBe(true);
+  });
+
+  test("loadPdf returns null for a missing file", async () => {
+    expect(await loadPdf(join(dir, "nope.pdf"))).toBeNull();
+  });
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
   });
 });
