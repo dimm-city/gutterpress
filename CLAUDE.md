@@ -17,11 +17,16 @@ This repo is a Bun workspace with three packages:
   app with a static SvelteKit SPA frontend. The SPA is built with
   `@sveltejs/adapter-static` and served by Electron via a custom `app://`
   protocol handler. The 3 API endpoints (status, preview, build) are
-  `ipcMain.handle()` calls, not HTTP routes. The lib is loaded via a
-  dynamic `import()` from `electron-dist/main.js` (CJS → ESM bridge using
-  the `new Function("spec", "return import(spec)")` trick). No afterPack
-  hook; electron-builder packages the lib via its standard dep walker.
-  See [project_viewer_architecture] memory for the full picture.
+  `ipcMain.handle()` calls, not HTTP routes. The Electron main + preload are
+  built by **electron-vite** to `out/main/main.js` + `out/preload/`; the main
+  is ESM and loads the lib with a plain dynamic `import("@dimm-city/print-md-lib")`
+  (no CJS→ESM `new Function` bridge — that was removed when the build moved to
+  electron-vite + asar, commit `c5e75ae`). No afterPack hook; electron-builder
+  packages the lib + its transitive deps from the workspace `node_modules` via
+  its standard dep walker (puppeteer-core is `asarUnpack`ed; PDF export itself
+  uses Electron's own Chromium via `webContents.printToPDF` — see ADR 0002).
+  See [project_viewer_architecture] memory + `packages/viewer/README.md` for the
+  full picture.
 
 The lib's runtime is Node.js-compatible — no `Bun.serve`/`Bun.file`/
 runtime Bun APIs. `with { type: "file" }` is used as a build-time syntax
