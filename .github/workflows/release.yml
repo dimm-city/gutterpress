@@ -163,6 +163,12 @@ jobs:
         run: bun run build
         working-directory: packages/lib
 
+      # IMPORTANT: package the viewer with `npm run`, never `bun run`. The
+      # `dist:*` scripts invoke electron-builder, which spawns worker processes
+      # via `process.execPath`; under Bun that points at the Bun ELF binary and
+      # the workers fail (Node can't parse it). Keep electron-builder on
+      # node/npm. (See electron-builder.yml `npmRebuild: false` for the related
+      # workspace:* guard.)
       - name: Build Linux AppImage
         working-directory: packages/viewer
         run: npm run dist:linux

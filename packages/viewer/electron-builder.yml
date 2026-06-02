@@ -15,6 +15,14 @@ files:
 extraMetadata:
   main: out/main/main.js
 
+# The viewer depends on the private workspace lib via `"@dimm-city/print-md-lib":
+# "workspace:*"`. electron-builder must NOT run `npm install --production` during
+# packaging — npm rejects the `workspace:*` protocol (EUNSUPPORTEDPROTOCOL) and
+# the lib is unpublished. We rely on the already-installed (bun) workspace
+# node_modules and pure-JS deps (no native addons to rebuild), so disable the
+# rebuild step explicitly rather than depending on the default.
+npmRebuild: false
+
 # asar (Electron's default) — smaller, faster to scan on Windows. The lib reads
 # its embedded assets (favicon, paged.polyfill, ICC) via fs from inside the
 # archive, which Electron's patched fs handles. puppeteer-core is unpacked so it
