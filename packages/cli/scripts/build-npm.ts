@@ -18,12 +18,14 @@ import { join } from "node:path";
 const ROOT = join(import.meta.dirname, "..");
 
 // All npm packages that should be imported at runtime (not bundled).
-// @dimm-city/print-md-lib is intentionally NOT here — it gets bundled in.
+// @dimm-city/print-md-lib is intentionally NOT here — it gets bundled in, and
+// so are its in-process check deps (markdownlint, htmlhint, unpdf, pdf-lib),
+// which are pure JS and embed cleanly — keeping them out of EXTERNAL means the
+// npm package + Docker image need no runtime install for them.
 const EXTERNAL = [
   "chokidar", "glob", "citty",
   "markdown-it", "markdown-it-attrs", "markdown-it-footnote", "markdown-it-source-map",
   "pagedjs", "puppeteer-core", "yaml", "ws",
-  "htmlhint", "markdownlint-cli2",
 ];
 
 await rm(join(ROOT, "dist"), { recursive: true, force: true });

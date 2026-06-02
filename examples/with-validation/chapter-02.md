@@ -27,7 +27,7 @@ Print vendors typically require CMYK color spaces. The validation system checks:
 
 ## Font Embedding
 
-All fonts must be fully embedded in the PDF. The `pdf.print.embedded-fonts` check verifies this using `pdffonts`. Missing or partially embedded fonts will cause errors.
+All fonts must be fully embedded in the PDF. The `pdf.print.embedded-fonts` check verifies this in-process (via the bundled PDF.js engine — no external tool). Missing or partially embedded fonts will cause errors.
 
 ## Ink Coverage
 

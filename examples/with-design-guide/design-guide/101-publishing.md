@@ -69,6 +69,12 @@ print-md build field-guide --format pdf --out ./field-guide.pdf
 print-md build field-guide --format pdf --pdfx x1a --icc ./profiles/CGATS21_CRPC1.icc
 ```
 
+> Plain `--format pdf` needs only a Chromium-based browser. **PDF/X (CMYK)
+> additionally requires Ghostscript + qpdf** on the host — install them (see
+> [System Setup](../../print-md-user-guide/08-system-setup.md)) or run the build
+> via the [print-md Docker image](../../../docs/docker.md), which bundles all
+> three tools.
+
 ### print-md run
 
 The full validated PDF pipeline: `lint → validate:pre → build → validate:post`. Use this for print-ready PDF production, not for HTML output or the design guide.

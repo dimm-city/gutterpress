@@ -247,11 +247,12 @@
         input: currentDir,
         format: "pdf",
         out: outPath,
-        // pre/post validate skipped for now (they require external tools
-        // like qpdf, pdfinfo, etc that aren't bundled with the viewer).
-        // Lint stays ON — stylelint + stylelint-config-standard are
-        // production deps of the lib so they ship; lint catches real
-        // CSS problems before PDF gen.
+        // Validation is skipped for the quick "Save PDF" action by design —
+        // it's a fast RGB export, not the full preflight. (Most checks now run
+        // in-process and need no system tools; the full validated/PDF-X pipeline
+        // is available via the CLI or the Docker image.) Lint stays ON — the
+        // in-process PostCSS print-safety checks catch real CSS problems before
+        // PDF gen.
         skipPreValidate: true,
         skipPostValidate: true,
       });
