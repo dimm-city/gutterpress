@@ -190,12 +190,16 @@ async function getGitRevision(sourceDir?: string): Promise<{
 }
 
 async function getToolVersions(): Promise<Record<string, string | null>> {
+  // Record the resolved Chromium PATH, but do NOT spawn it for `--version`:
+  // on Windows `chrome.exe --version` launches a visible browser window instead
+  // of printing+exiting, so fingerprinting after a build popped a stray Chrome
+  // window. gs/qpdf are CLI tools and print+exit safely. (See the same fix in
+  // diagnostics.ts.)
   const chromiumPath = await resolveChromiumExecutable();
 
-  const [gsVersion, qpdfVersion, chromiumVersion] = await Promise.all([
+  const [gsVersion, qpdfVersion] = await Promise.all([
     getFirstLineVersion("gs", ["--version"]),
     getFirstLineVersion("qpdf", ["--version"]),
-    chromiumPath ? getFirstLineVersion(chromiumPath, ["--version"]) : Promise.resolve(null),
   ]);
 
   return {
@@ -206,7 +210,8 @@ async function getToolVersions(): Promise<Record<string, string | null>> {
     pagedjs: PACKAGE_META.dependencies.pagedjs ?? null,
     ghostscript: gsVersion,
     qpdf: qpdfVersion,
-    chromium: chromiumVersion,
+    // Path, not version — recording the version would require spawning the GUI.
+    chromium: chromiumPath ?? null,
   };
 }
 
