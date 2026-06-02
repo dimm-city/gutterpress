@@ -1,6 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { execCapture } from "../../lib/exec";
+import { readPdfBytes } from "../../lib/pdf-parse";
 
 const check: Check = {
   id: "pdf.print.transparency",
@@ -9,24 +9,18 @@ const check: Check = {
     "Checks for transparency markers (/Transparency, /SMask, /BM) in the PDF",
   category: "pdf",
   phase: "post-build",
-  requiredTools: ["grep"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     if (!ctx.config.validate.pdf.forbidTransparency) return [];
 
-    const transparencyCheck = await execCapture("grep", [
-      "-ao",
-      "/Transparency\\|/SMask\\|/BM /",
-      ctx.pdfPath,
-    ]).catch(() => ({ stdout: "", stderr: "" }));
+    // Raw byte scan — in-process replacement for the previous `grep -ao` usage
+    // (same uncompressed-bytes-only behavior). Unreadable file → no findings.
+    const bytes = await readPdfBytes(ctx.pdfPath).catch(() => "");
 
     const found: string[] = [];
-    if (transparencyCheck.stdout.includes("/Transparency"))
-      found.push("Transparency group");
-    if (transparencyCheck.stdout.includes("/SMask"))
-      found.push("Soft mask (SMask)");
-    if (transparencyCheck.stdout.includes("/BM /"))
-      found.push("Blend mode");
+    if (bytes.includes("/Transparency")) found.push("Transparency group");
+    if (bytes.includes("/SMask")) found.push("Soft mask (SMask)");
+    if (bytes.includes("/BM /")) found.push("Blend mode");
 
     if (found.length > 0) {
       return [

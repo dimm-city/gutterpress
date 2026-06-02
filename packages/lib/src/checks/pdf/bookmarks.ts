@@ -1,6 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { execCapture } from "../../lib/exec";
+import { loadPdf, getOutlineCount } from "../../lib/pdf-inspect";
 
 const check: Check = {
   id: "pdf.nav.bookmarks",
@@ -8,33 +8,28 @@ const check: Check = {
   description: "Checks for PDF outline (bookmarks) tree",
   category: "pdf",
   phase: "post-build",
-  requiredTools: ["qpdf"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     if (!ctx.config.validate.pdf.requireBookmarks) return [];
 
-    try {
-      const { stdout } = await execCapture("qpdf", [
-        "--list-all-objects",
-        ctx.pdfPath,
-      ]);
-      const hasOutlines = /\/Type\s+\/Outlines/.test(stdout);
-      if (!hasOutlines) {
-        return [
-          {
-            checkId: check.id,
-            severity: "warning",
-            message: "PDF does not contain bookmarks (outline tree).",
-            file: ctx.pdfPath,
-          },
-        ];
-      }
-    } catch {
+    const doc = await loadPdf(ctx.pdfPath);
+    if (!doc) {
       return [
         {
           checkId: check.id,
           severity: "warning",
           message: "Could not inspect PDF for bookmarks.",
+          file: ctx.pdfPath,
+        },
+      ];
+    }
+
+    if ((await getOutlineCount(doc)) === 0) {
+      return [
+        {
+          checkId: check.id,
+          severity: "warning",
+          message: "PDF does not contain bookmarks (outline tree).",
           file: ctx.pdfPath,
         },
       ];

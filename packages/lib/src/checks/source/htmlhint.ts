@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { HTMLHint } from "htmlhint";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { execCapture } from "../../lib/exec";
 
 const CONFIG_NAMES = [".htmlhintrc"];
 
@@ -24,7 +25,6 @@ const check: Check = {
   description: "Runs htmlhint with project config to validate generated HTML",
   category: "source",
   phase: "pre-build",
-  requiredTools: ["htmlhint"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     const sourceConfig = ctx.config.validate.source;
     if (sourceConfig.htmlhint === false) return [];
@@ -40,87 +40,28 @@ const check: Check = {
 
     if (!resolvedConfig && !configPath) return [];
 
-    const args: string[] = ["--format", "json"];
-    if (resolvedConfig) {
-      args.push("--config", resolvedConfig);
-    }
-    args.push(ctx.htmlPath);
+    // A .htmlhintrc replaces the default ruleset (matches the prior `--config`
+    // CLI behavior). No config → HTMLHint's built-in defaults. NEVER pass `{}`:
+    // an empty ruleset disables every rule in HTMLHint.verify().
+    const ruleset = resolvedConfig
+      ? (JSON.parse(
+          await readFile(resolvedConfig, "utf8")
+        ) as typeof HTMLHint.defaultRuleset)
+      : HTMLHint.defaultRuleset;
 
-    try {
-      await execCapture("htmlhint", args);
-      return [];
-    } catch (err) {
-      const output =
-        err instanceof Error ? err.message : String(err);
-      return parseHtmlhintOutput(output, check.id);
-    }
+    const html = await readFile(ctx.htmlPath, "utf8");
+    const messages = HTMLHint.verify(html, ruleset);
+
+    return messages.map((m) => ({
+      checkId: check.id,
+      severity: m.type === "error" ? ("error" as const) : ("warning" as const),
+      message: `${m.rule.id}: ${m.message}`,
+      file: ctx.htmlPath!,
+      line: m.line,
+      column: m.col,
+    }));
   },
 };
-
-function parseHtmlhintOutput(
-  output: string,
-  checkId: string
-): CheckResult[] {
-  // Try to parse JSON output
-  try {
-    const jsonStart = output.indexOf("[");
-    if (jsonStart >= 0) {
-      const jsonStr = output.substring(jsonStart);
-      const parsed = JSON.parse(jsonStr) as Array<{
-        file: string;
-        messages: Array<{
-          line: number;
-          col: number;
-          message: string;
-          rule: { id: string };
-          type: string;
-        }>;
-      }>;
-
-      const results: CheckResult[] = [];
-      for (const fileResult of parsed) {
-        for (const msg of fileResult.messages) {
-          results.push({
-            checkId,
-            severity: msg.type === "error" ? "error" : "warning",
-            message: `${msg.rule.id}: ${msg.message}`,
-            file: fileResult.file,
-            line: msg.line,
-            column: msg.col,
-          });
-        }
-      }
-      return results;
-    }
-  } catch {
-    // Fall through to line-by-line parsing
-  }
-
-  // Fallback: line-by-line parsing
-  const results: CheckResult[] = [];
-  const linePattern = /^(.+?):(\d+):(\d+):\s*(.+)$/gm;
-  let match;
-  while ((match = linePattern.exec(output)) !== null) {
-    results.push({
-      checkId,
-      severity: "warning",
-      message: match[4]!,
-      file: match[1]!,
-      line: parseInt(match[2]!, 10),
-      column: parseInt(match[3]!, 10),
-    });
-  }
-
-  if (results.length === 0 && output.trim()) {
-    results.push({
-      checkId,
-      severity: "warning",
-      message: output.trim().split("\n")[0]!,
-    });
-  }
-
-  return results;
-}
 
 registerCheck(check);
 export default check;

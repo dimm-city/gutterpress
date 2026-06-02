@@ -772,7 +772,9 @@ describe("Source checks skip when tool is disabled", () => {
 
 describe("Tool Check", () => {
   test("all checks that use external tools declare requiredTools", () => {
-    // These checks are known to NOT need external tools
+    // These checks are known to NOT need external tools — including everything
+    // migrated to in-process libs in Phases 1 & 2 (grep/markdownlint/htmlhint →
+    // pure JS; Poppler + general qpdf inspection → PDF.js via unpdf).
     const noToolChecks = new Set([
       "source.callout-validation",
       "source.links.local-refs",
@@ -783,6 +785,30 @@ describe("Tool Check", () => {
       "asset.font.missing-refs",
       "asset.font.license",
       "heuristic.chunking.section-density",
+      // Phase 1 — pure JS
+      "source.markdownlint",
+      "source.htmlhint",
+      "source.stylelint",
+      "pdf.print.transparency",
+      "pdf.print.color-spaces",
+      // Phase 2 — PDF.js (unpdf)
+      "pdf.nav.bookmarks",
+      "pdf.nav.toc-links",
+      "pdf.nav.cross-refs",
+      "pdf.nav.page-labels",
+      "pdf.structure.qpdf",
+      "pdf.print.page-size",
+      "pdf.print.bleed",
+      "pdf.print.embedded-fonts",
+      "pdf.print.image-resolution",
+      "pdf.print.rasterized-pages",
+      "heuristic.whitespace.text-density",
+      "heuristic.decoration.layer-count",
+      "heuristic.layout.placement-variance",
+      // Phase 3 — pure-JS image header reader (replaced ImageMagick identify)
+      "asset.image.alpha-channel",
+      "asset.image.color-space",
+      "asset.image.resolution",
     ]);
 
     const allChecks = getChecks();
@@ -822,14 +848,15 @@ describe("Tool Check", () => {
 
   test("checkToolAvailability returns empty for manifest-disabled checks", async () => {
     const config = makeConfig();
-    config.validate.checks["pdf.structure.qpdf"] = false;
+    // pdf.print.pdfx-markers still requires qpdf (PDF/X-only check).
+    config.validate.checks["pdf.print.pdfx-markers"] = false;
 
     const result = await checkToolAvailability(config, {
-      only: ["pdf.structure.qpdf"],
+      only: ["pdf.print.pdfx-markers"],
     });
 
     // Check is disabled, so its tool shouldn't be probed
-    expect(result.skippedChecks).not.toContain("pdf.structure.qpdf");
+    expect(result.skippedChecks).not.toContain("pdf.print.pdfx-markers");
   });
 
   test("checkToolAvailability detects missing fictitious tool", async () => {
@@ -865,12 +892,12 @@ describe("Tool Check", () => {
 
   test("reportMissingTools does not throw when tools are missing", () => {
     const toolToChecks = new Map<string, string[]>();
-    toolToChecks.set("qpdf", ["pdf.structure.qpdf"]);
+    toolToChecks.set("qpdf", ["pdf.print.pdfx-markers"]);
 
     reportMissingTools({
       available: [],
       missing: ["qpdf"],
-      skippedChecks: ["pdf.structure.qpdf"],
+      skippedChecks: ["pdf.print.pdfx-markers"],
       toolToChecks,
     });
   });
@@ -905,5 +932,238 @@ describe("Runner skips checks with missing tools", () => {
     expect(report.results).toHaveLength(0);
     expect(report.passed).toHaveLength(0);
     expect(report.summary.total).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// In-process replacements for grep / markdownlint-cli2 / htmlhint (Phase 1).
+// These run with NO external tools — previously they required tools on PATH and
+// silently skipped. See docs/phase-1-os-dependency-removal-plan.md.
+// ---------------------------------------------------------------------------
+
+describe("In-process source/PDF checks (no external tools)", () => {
+  test("markdownlint detects violations via auto-detected YAML config", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-mdlint-"));
+    try {
+      await writeFile(join(dir, ".markdownlint.yaml"), "default: true\nMD013: false\n");
+      const mdFile = join(dir, "doc.md");
+      await writeFile(mdFile, "#Heading\n\nsome text\n"); // MD018: no space after hash
+      const check = getCheckById("source.markdownlint")!;
+      const ctx = makeCtx({ inputDir: dir, markdownFiles: [mdFile] });
+      const results = await check.run(ctx);
+      const md018 = results.find((r) => r.message.includes("MD018"));
+      expect(md018).toBeDefined();
+      expect(md018!.severity).toBe("warning");
+      expect(md018!.file).toBe(mdFile);
+      expect(md018!.line).toBe(1);
+      // message mirrors cli2 text format: "rule/alias description"
+      expect(md018!.message).toContain("no-missing-space-atx");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("markdownlint returns [] for clean markdown", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-mdlint-"));
+    try {
+      await writeFile(join(dir, ".markdownlint.yaml"), "default: true\n");
+      const mdFile = join(dir, "doc.md");
+      await writeFile(mdFile, "# Title\n\nA paragraph of text.\n");
+      const check = getCheckById("source.markdownlint")!;
+      const ctx = makeCtx({ inputDir: dir, markdownFiles: [mdFile] });
+      const results = await check.run(ctx);
+      expect(results).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("markdownlint skips silently when no config is present", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-mdlint-"));
+    try {
+      const mdFile = join(dir, "doc.md");
+      await writeFile(mdFile, "#bad\n");
+      const check = getCheckById("source.markdownlint")!;
+      const ctx = makeCtx({ inputDir: dir, markdownFiles: [mdFile] });
+      const results = await check.run(ctx);
+      expect(results).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("htmlhint detects violations using a .htmlhintrc config", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-htmlhint-"));
+    try {
+      await writeFile(join(dir, ".htmlhintrc"), JSON.stringify({ "tagname-lowercase": true }));
+      const htmlFile = join(dir, "page.html");
+      await writeFile(htmlFile, "<DIV></DIV>");
+      const check = getCheckById("source.htmlhint")!;
+      const ctx = makeCtx({ inputDir: dir, htmlPath: htmlFile });
+      const results = await check.run(ctx);
+      const lc = results.find((r) => r.message.includes("tagname-lowercase"));
+      expect(lc).toBeDefined();
+      expect(lc!.file).toBe(htmlFile);
+      expect(lc!.line).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("htmlhint uses built-in defaults when config path is set but missing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-htmlhint-"));
+    try {
+      const htmlFile = join(dir, "page.html");
+      await writeFile(htmlFile, "<DIV></DIV>");
+      const config = makeConfig();
+      (config.validate.source.htmlhint as any) = ".htmlhintrc"; // explicit but absent
+      const check = getCheckById("source.htmlhint")!;
+      const ctx = makeCtx({ config, inputDir: dir, htmlPath: htmlFile });
+      const results = await check.run(ctx);
+      // default ruleset includes tagname-lowercase — never disabled by an empty {}
+      expect(results.some((r) => r.message.includes("tagname-lowercase"))).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("transparency detects markers via raw byte scan", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-pdf-"));
+    try {
+      const pdfFile = join(dir, "t.pdf");
+      await writeFile(pdfFile, "%PDF-1.7\n<< /Type /Group /S /Transparency >>\n/SMask 5 0 R\n");
+      const config = makeConfig();
+      config.validate.pdf.forbidTransparency = true;
+      const check = getCheckById("pdf.print.transparency")!;
+      const ctx = makeCtx({ config, pdfPath: pdfFile });
+      const results = await check.run(ctx);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.message).toContain("Transparency group");
+      expect(results[0]!.message).toContain("Soft mask");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("color-spaces flags DeviceRGB; /Lab\\b does not match /Label", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-pdf-"));
+    try {
+      const pdfFile = join(dir, "c.pdf");
+      // Contains /DeviceRGB and /Label — /Label must NOT trip the /Lab rule.
+      await writeFile(pdfFile, "%PDF-1.7\n/ColorSpace /DeviceRGB\n/Label (foo)\n");
+      const check = getCheckById("pdf.print.color-spaces")!;
+      const ctx = makeCtx({ pdfPath: pdfFile });
+      const results = await check.run(ctx);
+      expect(results.some((r) => r.message.includes("DeviceRGB"))).toBe(true);
+      expect(results.some((r) => r.message.includes("Lab color space"))).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("color-spaces matches a genuine /Lab color space", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-pdf-"));
+    try {
+      const pdfFile = join(dir, "lab.pdf");
+      await writeFile(pdfFile, "%PDF-1.7\n[/Lab << /WhitePoint [1 1 1] >>]\n");
+      const check = getCheckById("pdf.print.color-spaces")!;
+      const ctx = makeCtx({ pdfPath: pdfFile });
+      const results = await check.run(ctx);
+      expect(results.some((r) => r.message.includes("Lab color space"))).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Asset image checks via the in-process header reader (Phase 3). Builds tiny
+// PNGs in-test so no ImageMagick / committed binaries are needed.
+// ---------------------------------------------------------------------------
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
+  return Buffer.concat([len, Buffer.from(type, "latin1"), data, Buffer.alloc(4)]);
+}
+function buildPng(colorType: number, ppm?: number): Buffer {
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(10, 0);
+  ihdr.writeUInt32BE(8, 4);
+  ihdr[8] = 8;
+  ihdr[9] = colorType;
+  const parts = [sig, pngChunk("IHDR", ihdr)];
+  if (ppm) {
+    const phys = Buffer.alloc(9);
+    phys.writeUInt32BE(ppm, 0);
+    phys.writeUInt32BE(ppm, 4);
+    phys[8] = 1;
+    parts.push(pngChunk("pHYs", phys));
+  }
+  parts.push(pngChunk("IEND", Buffer.alloc(0)));
+  return Buffer.concat(parts);
+}
+
+describe("Asset image checks (in-process reader)", () => {
+  test("alpha-channel flags an RGBA PNG when allowAlpha=false", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-asset-"));
+    try {
+      await writeFile(join(dir, "rgba.png"), buildPng(6)); // colorType 6 = RGBA
+      const config = makeConfig();
+      config.validate.assets.allowAlpha = false;
+      const check = getCheckById("asset.image.alpha-channel")!;
+      const results = await check.run(makeCtx({ config, inputDir: dir, assetDirs: [dir] }));
+      expect(results).toHaveLength(1);
+      expect(results[0]!.message).toContain("alpha channel");
+      expect(results[0]!.file).toContain("rgba.png");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("alpha-channel passes an opaque RGB PNG", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-asset-"));
+    try {
+      await writeFile(join(dir, "rgb.png"), buildPng(2)); // colorType 2 = RGB
+      const config = makeConfig();
+      config.validate.assets.allowAlpha = false;
+      const check = getCheckById("asset.image.alpha-channel")!;
+      const results = await check.run(makeCtx({ config, inputDir: dir, assetDirs: [dir] }));
+      expect(results).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("color-space flags an sRGB PNG when only CMYK/Gray allowed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-asset-"));
+    try {
+      await writeFile(join(dir, "rgb.png"), buildPng(2)); // sRGB
+      const config = makeConfig();
+      config.validate.assets.allowedColorSpaces = ["CMYK", "Gray"];
+      const check = getCheckById("asset.image.color-space")!;
+      const results = await check.run(makeCtx({ config, inputDir: dir, assetDirs: [dir] }));
+      expect(results).toHaveLength(1);
+      expect(results[0]!.message).toContain("sRGB");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("resolution flags a low-DPI image and passes a 300-DPI one", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-asset-"));
+    try {
+      await writeFile(join(dir, "low.png"), buildPng(2)); // no pHYs → 72 DPI
+      await writeFile(join(dir, "hi.png"), buildPng(2, 11811)); // 300 DPI
+      const config = makeConfig();
+      config.validate.assets.minImageDpi = 300;
+      const check = getCheckById("asset.image.resolution")!;
+      const results = await check.run(makeCtx({ config, inputDir: dir, assetDirs: [dir] }));
+      expect(results).toHaveLength(1);
+      expect(results[0]!.file).toContain("low.png");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

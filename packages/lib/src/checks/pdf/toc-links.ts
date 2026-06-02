@@ -1,6 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { execCapture } from "../../lib/exec";
+import { loadPdf, countLinkAnnotations } from "../../lib/pdf-inspect";
 
 const check: Check = {
   id: "pdf.nav.toc-links",
@@ -8,35 +8,29 @@ const check: Check = {
   description: "Detects link annotations on TOC pages",
   category: "pdf",
   phase: "post-build",
-  requiredTools: ["qpdf"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     if (!ctx.config.validate.pdf.requireTocLinks) return [];
 
-    try {
-      const { stdout } = await execCapture("qpdf", [
-        "--list-all-objects",
-        ctx.pdfPath,
-      ]);
-      const hasLinks = /\/Type\s+\/Annot[\s\S]*?\/Subtype\s+\/Link/.test(
-        stdout
-      );
-      if (!hasLinks) {
-        return [
-          {
-            checkId: check.id,
-            severity: "warning",
-            message: "No link annotations found in PDF (expected for TOC).",
-            file: ctx.pdfPath,
-          },
-        ];
-      }
-    } catch {
+    const doc = await loadPdf(ctx.pdfPath);
+    if (!doc) {
       return [
         {
           checkId: check.id,
           severity: "warning",
           message: "Could not inspect PDF for TOC links.",
+          file: ctx.pdfPath,
+        },
+      ];
+    }
+
+    const hasLinks = (await countLinkAnnotations(doc, true)) > 0;
+    if (!hasLinks) {
+      return [
+        {
+          checkId: check.id,
+          severity: "warning",
+          message: "No link annotations found in PDF (expected for TOC).",
           file: ctx.pdfPath,
         },
       ];

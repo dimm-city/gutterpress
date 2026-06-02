@@ -1,8 +1,10 @@
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { lint } from "markdownlint/sync";
+import { parse as parseYaml } from "yaml";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { execCapture } from "../../lib/exec";
 
 const CONFIG_NAMES = [
   ".markdownlint.yaml",
@@ -26,14 +28,56 @@ function findConfig(inputDir: string, explicit?: string | null): string | null {
   return null;
 }
 
+/** Strip line and block comments so JSONC config files parse as JSON. */
+function stripJsonComments(s: string): string {
+  return s
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1"); // ignore // not preceded by : (URLs)
+}
+
+/**
+ * Load a markdownlint config object from a discovered config file. The parser
+ * is selected by extension (.json → JSON, .jsonc → JSON minus comments, else
+ * YAML — which also accepts plain JSON). markdownlint-cli2-style files nest the
+ * rules under a `config:` key; plain markdownlint files are the rules object
+ * directly, so `parsed.config ?? parsed` handles both shapes.
+ */
+async function loadConfig(
+  configPath: string
+): Promise<Record<string, unknown>> {
+  const raw = await readFile(configPath, "utf8");
+  let parsed: unknown;
+  if (configPath.endsWith(".json")) {
+    parsed = JSON.parse(raw);
+  } else if (configPath.endsWith(".jsonc")) {
+    parsed = JSON.parse(stripJsonComments(raw));
+  } else {
+    parsed = parseYaml(raw);
+  }
+  if (parsed && typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
+    if (obj.config && typeof obj.config === "object") {
+      return obj.config as Record<string, unknown>;
+    }
+    return obj;
+  }
+  return {};
+}
+
+interface MarkdownlintError {
+  lineNumber: number;
+  ruleNames: string[];
+  ruleDescription: string;
+  errorRange?: [number, number] | null;
+}
+
 const check: Check = {
   id: "source.markdownlint",
   name: "Markdownlint",
   description:
-    "Runs markdownlint-cli2 with project config to validate Markdown files",
+    "Runs markdownlint with project config to validate Markdown files",
   category: "source",
   phase: "pre-build",
-  requiredTools: ["markdownlint-cli2"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     const sourceConfig = ctx.config.validate.source;
     if (sourceConfig.markdownlint === false) return [];
@@ -50,55 +94,35 @@ const check: Check = {
     // If no config found and not explicitly set, skip silently
     if (!resolvedConfig && !configPath) return [];
 
-    const args: string[] = [];
-    if (resolvedConfig) {
-      args.push("--config", resolvedConfig);
-    }
-    args.push(...files);
+    // Explicit-but-missing config falls back to defaults (matches prior CLI run
+    // with no --config flag).
+    const config = resolvedConfig
+      ? await loadConfig(resolvedConfig)
+      : { default: true };
 
-    try {
-      await execCapture("markdownlint-cli2", args);
-      return [];
-    } catch (err) {
-      // markdownlint-cli2 exits non-zero when violations found
-      const output =
-        err instanceof Error ? err.message : String(err);
-      return parseMarkdownlintOutput(output, check.id);
+    const results = lint({ files, config }) as Record<
+      string,
+      MarkdownlintError[]
+    >;
+
+    const out: CheckResult[] = [];
+    for (const [file, violations] of Object.entries(results)) {
+      if (!Array.isArray(violations)) continue;
+      for (const v of violations) {
+        out.push({
+          checkId: check.id,
+          severity: "warning",
+          // Format mirrors markdownlint-cli2 text output: "rule/alias description"
+          message: `${v.ruleNames.join("/")} ${v.ruleDescription}`,
+          file,
+          line: v.lineNumber,
+          column: v.errorRange?.[0],
+        });
+      }
     }
+    return out;
   },
 };
-
-function parseMarkdownlintOutput(
-  output: string,
-  checkId: string
-): CheckResult[] {
-  const results: CheckResult[] = [];
-  // Format: filepath:line[:column] rule/alias description
-  const linePattern = /^(.+?):(\d+)(?::(\d+))?\s+(\S+)\s+(.+)$/gm;
-  let match;
-
-  while ((match = linePattern.exec(output)) !== null) {
-    results.push({
-      checkId,
-      severity: "warning",
-      message: `${match[4]} ${match[5]}`,
-      file: match[1]!,
-      line: parseInt(match[2]!, 10),
-      column: match[3] ? parseInt(match[3], 10) : undefined,
-    });
-  }
-
-  // If no parseable lines but there was output, report the raw error
-  if (results.length === 0 && output.trim()) {
-    results.push({
-      checkId,
-      severity: "warning",
-      message: output.trim().split("\n")[0]!,
-    });
-  }
-
-  return results;
-}
 
 registerCheck(check);
 export default check;

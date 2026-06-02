@@ -59,16 +59,6 @@ const INSTALL_HINTS: Record<string, string> = {
     "  macOS:   brew install qpdf\n" +
     "  Ubuntu:  sudo apt install -y qpdf\n" +
     "  Windows: choco install qpdf  (or: https://github.com/qpdf/qpdf/releases)",
-  pdfinfo:
-    "Install Poppler (provides pdfinfo, pdffonts, pdfimages, pdftotext):\n" +
-    "  macOS:   brew install poppler\n" +
-    "  Ubuntu:  sudo apt install -y poppler-utils\n" +
-    "  Windows: https://github.com/oschwartz10612/poppler-windows/releases  (add bin/ to PATH)",
-  identify:
-    "Install ImageMagick (provides identify):\n" +
-    "  macOS:   brew install imagemagick\n" +
-    "  Ubuntu:  sudo apt install -y imagemagick\n" +
-    "  Windows: https://imagemagick.org/script/download.php#windows",
 };
 
 const TOOLS_TO_PROBE: Array<{
@@ -92,42 +82,8 @@ const TOOLS_TO_PROBE: Array<{
     name: "qpdf",
     hintKey: "qpdf",
     usedBy: [
-      { feature: "PDF/X annotation stripping (default behavior)", severity: "required" },
-      { feature: "validate: 8 pdf.* structural checks", severity: "optional" },
-    ],
-  },
-  {
-    bin: "pdfinfo",
-    name: "Poppler (pdfinfo)",
-    hintKey: "pdfinfo",
-    usedBy: [
-      { feature: "validate: bleed, page-size, rasterized-pages, text-density", severity: "optional" },
-    ],
-  },
-  {
-    bin: "pdffonts",
-    name: "Poppler (pdffonts)",
-    hintKey: "pdfinfo",
-    usedBy: [{ feature: "validate: pdf.print.embedded-fonts", severity: "optional" }],
-  },
-  {
-    bin: "pdfimages",
-    name: "Poppler (pdfimages)",
-    hintKey: "pdfinfo",
-    usedBy: [{ feature: "validate: image-resolution, rasterized-pages, layer-count", severity: "optional" }],
-  },
-  {
-    bin: "pdftotext",
-    name: "Poppler (pdftotext)",
-    hintKey: "pdfinfo",
-    usedBy: [{ feature: "validate: rasterized-pages, text-density", severity: "optional" }],
-  },
-  {
-    bin: "identify",
-    name: "ImageMagick (identify)",
-    hintKey: "identify",
-    usedBy: [
-      { feature: "validate: image-alpha, image-color-space, image-resolution", severity: "optional" },
+      { feature: "PDF/X annotation stripping (build --format pdfx)", severity: "required" },
+      { feature: "validate: PDF/X OutputIntent + metadata checks", severity: "optional" },
     ],
   },
 ];

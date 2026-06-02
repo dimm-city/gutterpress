@@ -1,6 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { execCapture } from "../../lib/exec";
+import { loadPdf, countLinkAnnotations } from "../../lib/pdf-inspect";
 
 const check: Check = {
   id: "pdf.nav.cross-refs",
@@ -8,27 +8,11 @@ const check: Check = {
   description: "Counts and verifies internal link annotations",
   category: "pdf",
   phase: "post-build",
-  requiredTools: ["qpdf"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
 
-    try {
-      const { stdout } = await execCapture("qpdf", [
-        "--list-all-objects",
-        ctx.pdfPath,
-      ]);
-      const linkMatches = stdout.match(/\/Subtype\s+\/Link/g);
-      const linkCount = linkMatches ? linkMatches.length : 0;
-
-      return [
-        {
-          checkId: check.id,
-          severity: "info",
-          message: `PDF contains ${linkCount} internal link annotation${linkCount !== 1 ? "s" : ""}.`,
-          file: ctx.pdfPath,
-        },
-      ];
-    } catch {
+    const doc = await loadPdf(ctx.pdfPath);
+    if (!doc) {
       return [
         {
           checkId: check.id,
@@ -38,6 +22,16 @@ const check: Check = {
         },
       ];
     }
+
+    const linkCount = await countLinkAnnotations(doc);
+    return [
+      {
+        checkId: check.id,
+        severity: "info",
+        message: `PDF contains ${linkCount} internal link annotation${linkCount !== 1 ? "s" : ""}.`,
+        file: ctx.pdfPath,
+      },
+    ];
   },
 };
 

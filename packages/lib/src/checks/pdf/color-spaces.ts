@@ -1,6 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { execCapture } from "../../lib/exec";
+import { readPdfBytes } from "../../lib/pdf-parse";
 
 const check: Check = {
   id: "pdf.print.color-spaces",
@@ -9,18 +9,17 @@ const check: Check = {
     "Checks for forbidden color spaces (DeviceRGB, Lab, Separation, DeviceN)",
   category: "pdf",
   phase: "post-build",
-  requiredTools: ["grep"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
-    const colorCheck = await execCapture("grep", [
-      "-ao",
-      "/DeviceRGB\\|/Lab\\b\\|/Separation\\|/DeviceN",
-      ctx.pdfPath,
-    ]).catch(() => ({ stdout: "", stderr: "" }));
+
+    // Raw byte scan — in-process replacement for the previous `grep -ao` usage.
+    // Note: /Lab uses a \b boundary (matching the old grep pattern) so the
+    // "/Label" key and similar do not false-positive as the Lab color space.
+    const bytes = await readPdfBytes(ctx.pdfPath).catch(() => "");
 
     const results: CheckResult[] = [];
 
-    if (colorCheck.stdout.includes("/DeviceRGB")) {
+    if (/\/DeviceRGB/.test(bytes)) {
       results.push({
         checkId: check.id,
         severity: "error",
@@ -29,7 +28,7 @@ const check: Check = {
         file: ctx.pdfPath,
       });
     }
-    if (colorCheck.stdout.includes("/Lab")) {
+    if (/\/Lab\b/.test(bytes)) {
       results.push({
         checkId: check.id,
         severity: "error",
@@ -37,7 +36,7 @@ const check: Check = {
         file: ctx.pdfPath,
       });
     }
-    if (colorCheck.stdout.includes("/Separation")) {
+    if (/\/Separation/.test(bytes)) {
       results.push({
         checkId: check.id,
         severity: "error",
@@ -45,7 +44,7 @@ const check: Check = {
         file: ctx.pdfPath,
       });
     }
-    if (colorCheck.stdout.includes("/DeviceN")) {
+    if (/\/DeviceN/.test(bytes)) {
       results.push({
         checkId: check.id,
         severity: "error",

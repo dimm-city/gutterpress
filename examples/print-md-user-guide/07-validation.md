@@ -127,7 +127,7 @@ validate:
     pdf.structure.qpdf: false
     source.accessibility.alt-text: false
 
-  # Disable specific source tools (suppresses missing-tool warnings)
+  # Disable built-in source linting (markdown / HTML) if not needed
   source:
     htmlhint: false
     markdownlint: false
@@ -139,14 +139,17 @@ validate:
 
 ## Automatic Tool Detection
 
-Before running any checks, the validate command probes for required external tools. If a tool is missing, Print-md warns you which checks will be skipped:
+Most checks run in-process and never need an external tool. Only a few still
+probe for a system tool and warn if it is missing:
 
 ```
-warn  Tool "qpdf" not found — skipping: pdf.structure.qpdf, pdf.print.ink-coverage, ...
-warn  Tool "identify" not found — skipping: asset.image.resolution, ...
+warn  Tool "qpdf" not found — skipping: pdf.print.pdfx-markers, pdf.print.pdfx-metadata
+warn  Tool "gs" not found — skipping: pdf.print.ink-coverage, asset.image.tac-raster
 ```
 
-Checks that don't need the missing tool continue to run normally. You can use validation immediately without installing every system dependency.
+Everything else — page size, fonts, images/DPI, bookmarks, links, page labels,
+text density, color space, alpha, markdown/HTML linting — runs with no system
+dependency, so you can validate immediately on any machine.
 
 ## File Organization Best Practices
 
