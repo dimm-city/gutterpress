@@ -13,10 +13,11 @@
 | `qpdf` | PDF/X + some validation | Recommended |
 | `pdfinfo`, `pdffonts`, `pdfimages`, `pdftotext` | Validation only | Optional |
 | `identify` (ImageMagick) | Asset validation | Optional |
-| `markdownlint-cli2` | Source validation | Optional |
-| `htmlhint` | Source validation | Optional |
 
 @end-section
+
+> Markdown and HTML source linting are **built in** — no `markdownlint-cli2` or
+> `htmlhint` install is required. See [Source linting — built in](#source-linting-built-in).
 
 ## Per-Platform Install
 
@@ -36,8 +37,6 @@ brew install qpdf
 
 # Only for validation
 brew install poppler imagemagick
-npm install -g markdownlint-cli2
-npm install -g htmlhint
 ```
 
 ### Windows
@@ -69,14 +68,12 @@ sudo apt install qpdf
 
 # Only if running validation
 sudo apt install poppler-utils imagemagick
-npm install -g markdownlint-cli2 htmlhint
 ```
 
 ### Linux (Fedora/RHEL)
 
 ```bash
 sudo dnf install chromium ghostscript qpdf poppler-utils ImageMagick
-npm install -g markdownlint-cli2 htmlhint
 ```
 
 ## Tool Details
@@ -127,16 +124,24 @@ warn: Tool "pdfinfo" not found — skipping: pdf.nav.page-labels, pdf.metadata.t
 
 Used by asset checks to read image resolution and color profile. Without it, those checks are skipped.
 
-### `markdownlint-cli2` and `htmlhint` — source validation only
+### Source linting — built in {#source-linting-built-in}
 
-Used by pre-build source checks. Both are optional. Disable either in the manifest if not needed:
+Markdown linting (`source.markdownlint`) and HTML linting (`source.htmlhint`)
+run **in-process** using the bundled `markdownlint` and `htmlhint` libraries.
+No `markdownlint-cli2` or `htmlhint` CLI install is required — these checks run
+everywhere, including from the standalone binary. Disable either in the manifest
+if not needed, or point them at a config file:
 
 ```yaml
 validate:
   source:
-    markdownlint: false
-    htmlhint: false
+    markdownlint: false          # or ".markdownlint.yaml" to use a config
+    htmlhint: false              # or ".htmlhintrc"
 ```
+
+Markdown linting auto-detects `.markdownlint.{yaml,yml,json,jsonc}` (and the
+`.markdownlint-cli2.{yaml,jsonc}` variants) in the source directory; HTML
+linting auto-detects `.htmlhintrc`.
 
 ### `stylelint` — bundled
 

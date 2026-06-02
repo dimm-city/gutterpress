@@ -1,4 +1,19 @@
+import { readFile } from "node:fs/promises";
 import { execCapture } from "./exec";
+
+/**
+ * Read a PDF as a latin1 string for literal ASCII-marker scanning.
+ *
+ * latin1 maps every byte 0x00–0xFF to exactly one char (lossless for binary
+ * data) — never use utf8 here, which mangles non-text bytes. This is the
+ * in-process replacement for the previous `grep -ao <marker> file.pdf` usage
+ * and is a behavioral equivalent, including grep's one limitation: markers that
+ * live inside FlateDecode-compressed streams are not visible to a raw byte
+ * scan. grep had the identical blind spot, so callers see no behavior change.
+ */
+export async function readPdfBytes(pdfPath: string): Promise<string> {
+  return readFile(pdfPath, "latin1");
+}
 
 /**
  * Parse page size from `pdfinfo -box` output.

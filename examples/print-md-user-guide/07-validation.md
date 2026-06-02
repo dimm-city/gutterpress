@@ -127,7 +127,7 @@ validate:
     pdf.structure.qpdf: false
     source.accessibility.alt-text: false
 
-  # Disable specific source tools (suppresses missing-tool warnings)
+  # Disable built-in source linting (markdown / HTML) if not needed
   source:
     htmlhint: false
     markdownlint: false

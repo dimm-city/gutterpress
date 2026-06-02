@@ -44,10 +44,10 @@ export async function checkToolAvailability(
     return true;
   });
 
-  // Also filter out source checks disabled via their tool-specific config
+  // Also filter out source checks disabled via their tool-specific config.
+  // (markdownlint & htmlhint no longer declare requiredTools — they run
+  // in-process — so they're handled by the requiredTools gate below.)
   checks = checks.filter((c) => {
-    if (c.id === "source.markdownlint" && config.validate.source.markdownlint === false) return false;
-    if (c.id === "source.htmlhint" && config.validate.source.htmlhint === false) return false;
     if (c.id === "source.stylelint" && config.validate.source.stylelint === false) return false;
     return true;
   });

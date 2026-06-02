@@ -30,10 +30,12 @@
   "dependencies": {
     "chokidar": "^5.0.0",
     "glob": "^13.0.0",
+    "htmlhint": "^1.9.2",
     "markdown-it": "^14.1.0",
     "markdown-it-attrs": "^4.3.0",
     "markdown-it-footnote": "^4.0.0",
     "markdown-it-source-map": "^0.1.1",
+    "markdownlint": "^0.40.0",
     "pagedjs": "^0.4.3",
     "postcss": "^8.5.15",
     "puppeteer-core": "^25.0.4",
@@ -43,8 +45,6 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/markdown-it": "^14.1.2",
-    "@types/ws": "^8.5.13",
-    "htmlhint": "^1.1.4",
-    "markdownlint-cli2": "^0.22.1"
+    "@types/ws": "^8.5.13"
   }
 }

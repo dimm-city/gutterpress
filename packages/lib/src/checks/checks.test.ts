@@ -907,3 +907,144 @@ describe("Runner skips checks with missing tools", () => {
     expect(report.summary.total).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// In-process replacements for grep / markdownlint-cli2 / htmlhint (Phase 1).
+// These run with NO external tools — previously they required tools on PATH and
+// silently skipped. See docs/phase-1-os-dependency-removal-plan.md.
+// ---------------------------------------------------------------------------
+
+describe("In-process source/PDF checks (no external tools)", () => {
+  test("markdownlint detects violations via auto-detected YAML config", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-mdlint-"));
+    try {
+      await writeFile(join(dir, ".markdownlint.yaml"), "default: true\nMD013: false\n");
+      const mdFile = join(dir, "doc.md");
+      await writeFile(mdFile, "#Heading\n\nsome text\n"); // MD018: no space after hash
+      const check = getCheckById("source.markdownlint")!;
+      const ctx = makeCtx({ inputDir: dir, markdownFiles: [mdFile] });
+      const results = await check.run(ctx);
+      const md018 = results.find((r) => r.message.includes("MD018"));
+      expect(md018).toBeDefined();
+      expect(md018!.severity).toBe("warning");
+      expect(md018!.file).toBe(mdFile);
+      expect(md018!.line).toBe(1);
+      // message mirrors cli2 text format: "rule/alias description"
+      expect(md018!.message).toContain("no-missing-space-atx");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("markdownlint returns [] for clean markdown", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-mdlint-"));
+    try {
+      await writeFile(join(dir, ".markdownlint.yaml"), "default: true\n");
+      const mdFile = join(dir, "doc.md");
+      await writeFile(mdFile, "# Title\n\nA paragraph of text.\n");
+      const check = getCheckById("source.markdownlint")!;
+      const ctx = makeCtx({ inputDir: dir, markdownFiles: [mdFile] });
+      const results = await check.run(ctx);
+      expect(results).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("markdownlint skips silently when no config is present", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-mdlint-"));
+    try {
+      const mdFile = join(dir, "doc.md");
+      await writeFile(mdFile, "#bad\n");
+      const check = getCheckById("source.markdownlint")!;
+      const ctx = makeCtx({ inputDir: dir, markdownFiles: [mdFile] });
+      const results = await check.run(ctx);
+      expect(results).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("htmlhint detects violations using a .htmlhintrc config", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-htmlhint-"));
+    try {
+      await writeFile(join(dir, ".htmlhintrc"), JSON.stringify({ "tagname-lowercase": true }));
+      const htmlFile = join(dir, "page.html");
+      await writeFile(htmlFile, "<DIV></DIV>");
+      const check = getCheckById("source.htmlhint")!;
+      const ctx = makeCtx({ inputDir: dir, htmlPath: htmlFile });
+      const results = await check.run(ctx);
+      const lc = results.find((r) => r.message.includes("tagname-lowercase"));
+      expect(lc).toBeDefined();
+      expect(lc!.file).toBe(htmlFile);
+      expect(lc!.line).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("htmlhint uses built-in defaults when config path is set but missing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-htmlhint-"));
+    try {
+      const htmlFile = join(dir, "page.html");
+      await writeFile(htmlFile, "<DIV></DIV>");
+      const config = makeConfig();
+      (config.validate.source.htmlhint as any) = ".htmlhintrc"; // explicit but absent
+      const check = getCheckById("source.htmlhint")!;
+      const ctx = makeCtx({ config, inputDir: dir, htmlPath: htmlFile });
+      const results = await check.run(ctx);
+      // default ruleset includes tagname-lowercase — never disabled by an empty {}
+      expect(results.some((r) => r.message.includes("tagname-lowercase"))).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("transparency detects markers via raw byte scan", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-pdf-"));
+    try {
+      const pdfFile = join(dir, "t.pdf");
+      await writeFile(pdfFile, "%PDF-1.7\n<< /Type /Group /S /Transparency >>\n/SMask 5 0 R\n");
+      const config = makeConfig();
+      config.validate.pdf.forbidTransparency = true;
+      const check = getCheckById("pdf.print.transparency")!;
+      const ctx = makeCtx({ config, pdfPath: pdfFile });
+      const results = await check.run(ctx);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.message).toContain("Transparency group");
+      expect(results[0]!.message).toContain("Soft mask");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("color-spaces flags DeviceRGB; /Lab\\b does not match /Label", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-pdf-"));
+    try {
+      const pdfFile = join(dir, "c.pdf");
+      // Contains /DeviceRGB and /Label — /Label must NOT trip the /Lab rule.
+      await writeFile(pdfFile, "%PDF-1.7\n/ColorSpace /DeviceRGB\n/Label (foo)\n");
+      const check = getCheckById("pdf.print.color-spaces")!;
+      const ctx = makeCtx({ pdfPath: pdfFile });
+      const results = await check.run(ctx);
+      expect(results.some((r) => r.message.includes("DeviceRGB"))).toBe(true);
+      expect(results.some((r) => r.message.includes("Lab color space"))).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("color-spaces matches a genuine /Lab color space", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-pdf-"));
+    try {
+      const pdfFile = join(dir, "lab.pdf");
+      await writeFile(pdfFile, "%PDF-1.7\n[/Lab << /WhitePoint [1 1 1] >>]\n");
+      const check = getCheckById("pdf.print.color-spaces")!;
+      const ctx = makeCtx({ pdfPath: pdfFile });
+      const results = await check.run(ctx);
+      expect(results.some((r) => r.message.includes("Lab color space"))).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
