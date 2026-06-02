@@ -772,7 +772,9 @@ describe("Source checks skip when tool is disabled", () => {
 
 describe("Tool Check", () => {
   test("all checks that use external tools declare requiredTools", () => {
-    // These checks are known to NOT need external tools
+    // These checks are known to NOT need external tools — including everything
+    // migrated to in-process libs in Phases 1 & 2 (grep/markdownlint/htmlhint →
+    // pure JS; Poppler + general qpdf inspection → PDF.js via unpdf).
     const noToolChecks = new Set([
       "source.callout-validation",
       "source.links.local-refs",
@@ -783,6 +785,26 @@ describe("Tool Check", () => {
       "asset.font.missing-refs",
       "asset.font.license",
       "heuristic.chunking.section-density",
+      // Phase 1 — pure JS
+      "source.markdownlint",
+      "source.htmlhint",
+      "source.stylelint",
+      "pdf.print.transparency",
+      "pdf.print.color-spaces",
+      // Phase 2 — PDF.js (unpdf)
+      "pdf.nav.bookmarks",
+      "pdf.nav.toc-links",
+      "pdf.nav.cross-refs",
+      "pdf.nav.page-labels",
+      "pdf.structure.qpdf",
+      "pdf.print.page-size",
+      "pdf.print.bleed",
+      "pdf.print.embedded-fonts",
+      "pdf.print.image-resolution",
+      "pdf.print.rasterized-pages",
+      "heuristic.whitespace.text-density",
+      "heuristic.decoration.layer-count",
+      "heuristic.layout.placement-variance",
     ]);
 
     const allChecks = getChecks();
@@ -822,14 +844,15 @@ describe("Tool Check", () => {
 
   test("checkToolAvailability returns empty for manifest-disabled checks", async () => {
     const config = makeConfig();
-    config.validate.checks["pdf.structure.qpdf"] = false;
+    // pdf.print.pdfx-markers still requires qpdf (PDF/X-only check).
+    config.validate.checks["pdf.print.pdfx-markers"] = false;
 
     const result = await checkToolAvailability(config, {
-      only: ["pdf.structure.qpdf"],
+      only: ["pdf.print.pdfx-markers"],
     });
 
     // Check is disabled, so its tool shouldn't be probed
-    expect(result.skippedChecks).not.toContain("pdf.structure.qpdf");
+    expect(result.skippedChecks).not.toContain("pdf.print.pdfx-markers");
   });
 
   test("checkToolAvailability detects missing fictitious tool", async () => {
@@ -865,12 +888,12 @@ describe("Tool Check", () => {
 
   test("reportMissingTools does not throw when tools are missing", () => {
     const toolToChecks = new Map<string, string[]>();
-    toolToChecks.set("qpdf", ["pdf.structure.qpdf"]);
+    toolToChecks.set("qpdf", ["pdf.print.pdfx-markers"]);
 
     reportMissingTools({
       available: [],
       missing: ["qpdf"],
-      skippedChecks: ["pdf.structure.qpdf"],
+      skippedChecks: ["pdf.print.pdfx-markers"],
       toolToChecks,
     });
   });

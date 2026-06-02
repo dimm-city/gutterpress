@@ -111,11 +111,17 @@ This decision establishes a priority order and a set of guardrails; it does
 
 ## Phasing
 
-1. **Phase 1 (free wins):** grep → `node:fs`; markdownlint-cli2 → `markdownlint`
-   lib; htmlhint CLI → `htmlhint` lib. No fidelity loss, removes 2 system deps.
-   See [`docs/phase-1-os-dependency-removal-plan.md`](../phase-1-os-dependency-removal-plan.md).
-2. **Phase 2 (PDF inspection):** Poppler + qpdf-inspection checks → `pdfjs-dist`
-   / `unpdf`. Accept degraded `qpdf --check` and DPI, or keep those optional.
+1. **Phase 1 (free wins) — ✅ SHIPPED:** grep → `node:fs`; markdownlint-cli2 →
+   `markdownlint` lib; htmlhint CLI → `htmlhint` lib. No fidelity loss, removes 2
+   system deps. See [`docs/phase-1-os-dependency-removal-plan.md`](../phase-1-os-dependency-removal-plan.md).
+2. **Phase 2 (PDF inspection) — ✅ SHIPPED:** Poppler + general qpdf-inspection
+   checks → **`unpdf`** (a serverless-tuned PDF.js build; raw `pdfjs-dist`
+   crashes under `bun build --compile` with `DOMMatrix is not defined`, unpdf does
+   not). Poppler fully removed. `qpdf --check` degraded to a parse gate; image DPI
+   derived from rendered placed size; bleed boxes via raw-byte scan. The PDF/X
+   checks (`pdfx-markers`, `pdfx-metadata`) stay on qpdf (PDF/X-only; qpdf is
+   mandatory to produce PDF/X and pdfjs exposes no catalog OutputIntents API).
+   In-process reader lives in `packages/lib/src/lib/pdf-inspect.ts`.
 3. **Phase 3 (images):** `sharp` in the viewer; pure-JS combo in the CLI; image
    ink-coverage gated behind optional sharp.
 4. **Phase 4 (hard deps, decision required):** opt-in WASM gs for PDF/X (after

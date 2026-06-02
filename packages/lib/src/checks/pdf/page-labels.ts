@@ -1,6 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { execCapture } from "../../lib/exec";
+import { loadPdf, getPageLabels } from "../../lib/pdf-inspect";
 
 const check: Check = {
   id: "pdf.nav.page-labels",
@@ -8,30 +8,24 @@ const check: Check = {
   description: "Verifies PDF page labels / folio numbering",
   category: "pdf",
   phase: "post-build",
-  requiredTools: ["qpdf"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
 
-    try {
-      const { stdout } = await execCapture("qpdf", [
-        "--list-all-objects",
-        ctx.pdfPath,
-      ]);
-      const hasPageLabels = /\/PageLabels/.test(stdout);
+    const doc = await loadPdf(ctx.pdfPath);
+    if (!doc) return [];
 
-      return [
-        {
-          checkId: check.id,
-          severity: "info",
-          message: hasPageLabels
+    const labels = await getPageLabels(doc);
+    return [
+      {
+        checkId: check.id,
+        severity: "info",
+        message:
+          labels && labels.length > 0
             ? "PDF contains page labels."
             : "PDF does not contain explicit page labels.",
-          file: ctx.pdfPath,
-        },
-      ];
-    } catch {
-      return [];
-    }
+        file: ctx.pdfPath,
+      },
+    ];
   },
 };
 

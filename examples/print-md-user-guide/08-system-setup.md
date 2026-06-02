@@ -9,15 +9,20 @@
 | Tool | Required for | Tier |
 |------|-------------|------|
 | Chrome / Chromium | **All PDF output** | Required |
-| Ghostscript (`gs`) | PDF/X generation | Recommended |
-| `qpdf` | PDF/X + some validation | Recommended |
-| `pdfinfo`, `pdffonts`, `pdfimages`, `pdftotext` | Validation only | Optional |
+| Ghostscript (`gs`) | PDF/X generation + ink-coverage validation | Recommended |
+| `qpdf` | PDF/X generation + PDF/X validation | Recommended (PDF/X only) |
 | `identify` (ImageMagick) | Asset validation | Optional |
 
 @end-section
 
-> Markdown and HTML source linting are **built in** — no `markdownlint-cli2` or
-> `htmlhint` install is required. See [Source linting — built in](#source-linting-built-in).
+> **PDF validation is built in.** Page size, fonts, images/DPI, bookmarks,
+> links, page labels, text density, and structural parsing now run in-process
+> via a bundled PDF.js engine — **no Poppler (`pdfinfo`/`pdffonts`/`pdfimages`/
+> `pdftotext`) install is required.** Only PDF/X-specific validation still uses
+> `qpdf`, which you already need to *produce* PDF/X.
+>
+> Markdown and HTML source linting are **built in** too — no `markdownlint-cli2`
+> or `htmlhint` install is required. See [Source linting — built in](#source-linting-built-in).
 
 ## Per-Platform Install
 
@@ -32,11 +37,11 @@ brew install chromium
 # Recommended (needed for PDF/X)
 brew install ghostscript
 
-# Only for PDF/X with stripAnnotations
+# Only for PDF/X (annotation stripping + PDF/X validation)
 brew install qpdf
 
-# Only for validation
-brew install poppler imagemagick
+# Only for asset (image) validation
+brew install imagemagick
 ```
 
 ### Windows
@@ -45,8 +50,7 @@ Install Chrome or Chromium from the official websites. For Ghostscript and other
 
 ```bash
 winget install Ghostscript.Ghostscript
-winget install qpdf.qpdf
-# Poppler: download from https://github.com/oschwartz10612/poppler-windows
+winget install qpdf.qpdf  # PDF/X only
 # ImageMagick: https://imagemagick.org/script/download.php#windows
 ```
 
@@ -63,17 +67,17 @@ sudo apt install google-chrome-stable
 # Recommended
 sudo apt install ghostscript
 
-# Only if building PDF/X with stripAnnotations
+# Only for PDF/X (annotation stripping + PDF/X validation)
 sudo apt install qpdf
 
-# Only if running validation
-sudo apt install poppler-utils imagemagick
+# Only for asset (image) validation
+sudo apt install imagemagick
 ```
 
 ### Linux (Fedora/RHEL)
 
 ```bash
-sudo dnf install chromium ghostscript qpdf poppler-utils ImageMagick
+sudo dnf install chromium ghostscript qpdf ImageMagick
 ```
 
 ## Tool Details
@@ -102,23 +106,31 @@ error: spawn gs ENOENT
 
 **Fix:** Install Ghostscript and ensure `gs` is on `PATH`.
 
-### qpdf — PDF/X and some validation
+### qpdf — PDF/X only
 
-Required for the `stripAnnotations` step in the PDF/X pipeline, and for `pdf.structure.qpdf` validation checks. Not needed for standard PDF output.
-
-```
-warn: spawn qpdf ENOENT — skipping: pdf.structure.qpdf, pdf.print.ink-coverage, ...
-```
-
-This is a warning, not an error — the build succeeds, but those checks are skipped.
-
-### Poppler tools — validation only
-
-`pdfinfo`, `pdffonts`, `pdfimages`, `pdftotext` are used by post-build PDF checks. Without them, those checks are skipped with a warning.
+Required for the `stripAnnotations` step in the PDF/X pipeline, and for the
+PDF/X-specific validation checks (`pdf.print.pdfx-markers`,
+`pdf.print.pdfx-metadata`). Not needed for standard PDF output or for general
+PDF validation — those now use the bundled PDF.js engine.
 
 ```
-warn: Tool "pdfinfo" not found — skipping: pdf.nav.page-labels, pdf.metadata.title, ...
+warn: Tool "qpdf" not found — skipping: pdf.print.pdfx-markers, pdf.print.pdfx-metadata
 ```
+
+This is a warning, not an error — the build succeeds, but those PDF/X checks are skipped.
+
+### PDF validation — built in (no Poppler)
+
+Page size, bleed boxes, embedded fonts, image resolution/DPI, bookmarks, TOC
+links, cross-references, page labels, rasterized-page detection, text density,
+layout variance, and structural parsing all run **in-process** via a bundled
+PDF.js engine (the `unpdf` package). **Poppler (`pdfinfo`, `pdffonts`,
+`pdfimages`, `pdftotext`) is no longer used or required.** These checks run
+everywhere, including from the standalone binary, with zero system tools.
+
+> Fidelity note: structural validation is a "does it parse cleanly" gate rather
+> than a deep `qpdf --check`, and image DPI is derived from the rendered placed
+> size (best-effort). See ADR 0002 for details.
 
 ### ImageMagick `identify` — asset validation only
 
@@ -184,9 +196,11 @@ No browser was found. Install Chrome, set `CHROME_PATH`, or allow puppeteer to d
 
 `qpdf` is not installed. Required for `--format pdfx`. Install it from your package manager.
 
-### All validation checks reported as "skipped"
+### Some validation checks reported as "skipped"
 
-External validation tools are all missing. Install at least `poppler-utils` and `qpdf` to enable the most important PDF checks.
+General PDF and source checks run in-process and never skip. Only the
+PDF/X checks (need `qpdf`), ink-coverage (needs `gs`), and image asset checks
+(need `identify`) can be skipped — install the relevant tool to enable them.
 
 ### A specific check still fails after installing its tool
 
@@ -198,8 +212,9 @@ Restart the terminal to pick up the updated `PATH`. If the tool is in a non-stan
 
 - Chrome / Chromium PDF rendering via puppeteer-core
 - Ghostscript PDF/X conversion
-- qpdf annotation stripping
-- Poppler validation checks
+- qpdf annotation stripping + PDF/X validation
+- In-process PDF validation via bundled PDF.js (replaced Poppler)
+- In-process markdown/HTML linting (replaced markdownlint-cli2/htmlhint)
 - ImageMagick asset checks
 
 ### Planned (Tier 2)

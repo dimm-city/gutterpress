@@ -1,7 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { execCapture } from "../../lib/exec";
-import { parsePdfInfoBox } from "../../lib/pdf-parse";
+import { loadPdf, getPageSize } from "../../lib/pdf-inspect";
 
 const check: Check = {
   id: "pdf.print.page-size",
@@ -9,13 +8,11 @@ const check: Check = {
   description: "Validates PDF page dimensions match expected size from config",
   category: "pdf",
   phase: "post-build",
-  requiredTools: ["pdfinfo"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
-    const info = await execCapture("pdfinfo", ["-box", ctx.pdfPath]);
-    const size = parsePdfInfoBox(info.stdout);
 
-    if (!size) {
+    const doc = await loadPdf(ctx.pdfPath);
+    if (!doc) {
       return [
         {
           checkId: check.id,
@@ -26,6 +23,9 @@ const check: Check = {
       ];
     }
 
+    const page = await doc.getPage(1);
+    const size = getPageSize(page);
+
     const { width, height, tolerance } = ctx.config.page;
     if (
       Math.abs(size.w - width) >= tolerance ||
@@ -35,7 +35,7 @@ const check: Check = {
         {
           checkId: check.id,
           severity: "error",
-          message: `Page size mismatch: expected ~${width}x${height} pts, got ${size.w}x${size.h} pts.`,
+          message: `Page size mismatch: expected ~${width}x${height} pts, got ${Math.round(size.w)}x${Math.round(size.h)} pts.`,
           file: ctx.pdfPath,
         },
       ];
