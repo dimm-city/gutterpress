@@ -233,6 +233,7 @@
     }
     busy = true;
     busyLabel = "Building PDF…";
+    let offProgress: (() => void) | undefined;
     try {
       const electron = (window as any).electron;
       if (!electron?.savePdf || !electron?.build) {
@@ -243,6 +244,16 @@
       const defaultName = (currentDir.split(sep).pop() ?? "book") + ".pdf";
       const outPath = await electron.savePdf(defaultName);
       if (!outPath) return;
+      // Live progress: Paged.js pagination of large books takes minutes, so show
+      // the growing page count instead of an opaque spinner.
+      offProgress = electron.onBuildProgress?.(
+        (p: { phase: "rendering" | "finalizing"; pages: number }) => {
+          busyLabel =
+            p.phase === "finalizing"
+              ? `Finalizing PDF (${p.pages} pages)…`
+              : `Rendering page ${p.pages}…`;
+        }
+      );
       const data = await electron.build({
         input: currentDir,
         format: "pdf",
@@ -260,6 +271,7 @@
     } catch (e) {
       toast?.error(e instanceof Error ? e.message : String(e));
     } finally {
+      offProgress?.();
       busy = false;
       busyLabel = "";
     }

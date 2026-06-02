@@ -57,4 +57,16 @@ contextBridge.exposeInMainWorld("electron", {
   build: (args: BuildArgs): Promise<BuildResult> =>
     ipcRenderer.invoke("api:build", args),
   doctor: (): Promise<unknown> => ipcRenderer.invoke("api:doctor"),
+
+  // Live PDF-build progress (main → renderer). Returns an unsubscribe fn.
+  onBuildProgress: (
+    cb: (data: { phase: "rendering" | "finalizing"; pages: number }) => void
+  ): (() => void) => {
+    const listener = (
+      _e: unknown,
+      data: { phase: "rendering" | "finalizing"; pages: number }
+    ) => cb(data);
+    ipcRenderer.on("build:progress", listener);
+    return () => ipcRenderer.removeListener("build:progress", listener);
+  },
 });
