@@ -1,4 +1,4 @@
-import { writeFile, unlink, rename } from "node:fs/promises";
+import { readFile, writeFile, unlink, rename } from "node:fs/promises";
 import { join, dirname, basename, resolve } from "node:path";
 import { run } from "./exec";
 
@@ -95,22 +95,20 @@ ${docInfoConformance}/DOCINFO pdfmark
 }
 
 /**
- * Stamp the Creator metadata field on an existing PDF using Ghostscript.
+ * Stamp the Creator metadata field on an existing PDF.
+ *
+ * Uses pdf-lib (pure JS, MIT) rather than Ghostscript, so the plain-PDF build
+ * path needs no system tool at all — gs is now required only for PDF/X CMYK
+ * conversion (ADR 0002). `updateMetadata: false` keeps pdf-lib from rewriting
+ * the ModDate/Producer so the only change is the /Creator field.
  */
 export async function stampCreator(pdfPath: string): Promise<void> {
-  const tmp = `${pdfPath}.stamped.pdf`;
-  await run("gs", [
-    "-dBATCH",
-    "-dNOPAUSE",
-    "-dSAFER",
-    "-sDEVICE=pdfwrite",
-    `-sOutputFile=${tmp}`,
-    "-c",
-    "[/Creator (print-md) /DOCINFO pdfmark",
-    "-f",
-    pdfPath,
-  ]);
-  await rename(tmp, pdfPath);
+  const { PDFDocument } = await import("pdf-lib");
+  const bytes = await readFile(pdfPath);
+  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  doc.setCreator("print-md");
+  const out = await doc.save();
+  await writeFile(pdfPath, out);
 }
 
 /**

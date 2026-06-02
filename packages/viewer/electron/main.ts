@@ -7,7 +7,7 @@ import {
   shell,
 } from "electron";
 import path from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 
 // __dirname/__filename are injected by electron-vite for the ESM main bundle
@@ -73,6 +73,72 @@ function loadLib(): Promise<LibModule> {
     libPromise = import("@dimm-city/print-md-lib") as Promise<LibModule>;
   }
   return libPromise;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// PDF renderer — uses Electron's OWN bundled Chromium (a hidden BrowserWindow +
+// webContents.printToPDF) instead of spawning an external Chromium via
+// puppeteer. The viewer already ships Chromium (it IS Electron), so this drops
+// the external-browser dependency for PDF export with zero added bytes and full
+// Paged.js fidelity (ADR 0002, Phase 4). Injected into lib.runBuild as the
+// `pdfRenderer` override; the lib still serves the staged HTML + assets on a
+// local HTTP server, so asset resolution is identical to the puppeteer path.
+//
+// Escape hatch: set PRINTMD_VIEWER_PUPPETEER=1 to fall back to the lib's default
+// puppeteer renderer (requires a system/bundled Chromium on PATH).
+// ──────────────────────────────────────────────────────────────────────────
+
+async function electronPdfRenderer(input: {
+  url: string;
+  outPdf: string;
+  timeoutMs: number;
+}): Promise<void> {
+  const win = new BrowserWindow({
+    show: false,
+    webPreferences: { sandbox: true, contextIsolation: true, javascript: true },
+  });
+  try {
+    await win.loadURL(input.url);
+    const wc = win.webContents;
+
+    // Wait for web fonts to finish loading.
+    await wc.executeJavaScript("document.fonts.ready.then(() => true)");
+
+    // Poll until Paged.js signals completion (or the timeout elapses).
+    const deadline = Date.now() + input.timeoutMs;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const done = await wc.executeJavaScript(
+        "window.__PAGED_RENDERED__ === true"
+      );
+      if (done) break;
+      if (Date.now() > deadline) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    // Measure the first rendered page (CSS px) to set the paper size.
+    const info = (await wc.executeJavaScript(`(() => {
+      const pages = document.querySelectorAll('.pagedjs_page');
+      const el = pages[0] || null;
+      const s = el ? getComputedStyle(el) : null;
+      const px = (v) => (v ? parseFloat(v) : 0);
+      return { count: pages.length, w: px(s && s.width), h: px(s && s.height) };
+    })()`)) as { count: number; w: number; h: number };
+
+    // printToPDF pageSize is in INCHES; CSS px → in is px / 96. Fall back to a
+    // US-Letter-ish book trim if measurement failed.
+    const widthIn = info.w > 0 ? info.w / 96 : 8.625;
+    const heightIn = info.h > 0 ? info.h / 96 : 11.25;
+
+    const data = await wc.printToPDF({
+      printBackground: true,
+      pageSize: { width: widthIn, height: heightIn },
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    });
+    await writeFile(input.outPdf, data);
+  } finally {
+    win.destroy();
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -372,6 +438,10 @@ ipcMain.handle(
         skipLint: args.skipLint,
         skipPreValidate: args.skipPreValidate,
         skipPostValidate: args.skipPostValidate,
+        // Render with Electron's own Chromium unless explicitly opted out.
+        pdfRenderer: process.env.PRINTMD_VIEWER_PUPPETEER
+          ? undefined
+          : electronPdfRenderer,
         rawArgs: { input: args.input, format, out: args.out },
       });
       return {

@@ -47,6 +47,12 @@ export interface BuildRunnerOptions {
   skipLint?: boolean;
   skipPreValidate?: boolean;
   skipPostValidate?: boolean;
+  /**
+   * Optional PDF renderer override. When provided, the build uses it instead of
+   * launching Chromium via puppeteer, and the Chromium preflight is skipped.
+   * The Electron viewer injects one backed by `webContents.printToPDF`.
+   */
+  pdfRenderer?: PdfRenderer;
   rawArgs: Record<string, unknown>;
 }
 
@@ -118,27 +124,24 @@ const INSTALL_HINTS: Record<string, string> = {
  */
 async function preflightBuildTools(
   format: BuildFormat,
-  opts: { stripAnnotations?: boolean },
+  opts: { stripAnnotations?: boolean; pdfRenderer?: PdfRenderer },
   config: { pdfx: { stripAnnotations: boolean } }
 ): Promise<void> {
   const missing: MissingTool[] = [];
 
-  // Chromium — required for any rendered output.
-  if (!(await resolveChromiumExecutable())) {
+  // Chromium — required for any rendered output, UNLESS an external PDF renderer
+  // is injected (the Electron viewer renders with its own bundled Chromium).
+  if (!opts.pdfRenderer && !(await resolveChromiumExecutable())) {
     // requireChromiumExecutable() throws with multi-line install instructions
     // that include all three platforms. Defer to it for the canonical message.
     await requireChromiumExecutable();
   }
 
   // Ghostscript:
-  //   - plain pdf  -> /Creator stamp only, best-effort, warn-don't-block
+  //   - plain pdf  -> none (the /Creator stamp now uses pdf-lib, in-process)
   //   - pdfx       -> CMYK conversion, REQUIRED
   if (format === "pdfx" && !(await isToolAvailable("gs"))) {
     missing.push({ name: "gs (Ghostscript)", installHint: INSTALL_HINTS.gs! });
-  } else if (format === "pdf" && !(await isToolAvailable("gs"))) {
-    log.warn(
-      "Ghostscript (gs) not found — the /Creator metadata stamp will be skipped. PDF will save fine without it. Install gs to silence this warning."
-    );
   }
 
   // qpdf — only when pdfx with stripAnnotations enabled (default true).
@@ -203,12 +206,101 @@ const STATIC_MIME: Record<string, string> = {
   ".otf": "font/otf",
 };
 
-async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
+/** Input handed to a PDF renderer: a URL serving the staged HTML + assets. */
+export interface PdfRenderInput {
+  /** URL of the staged HTML on a local HTTP server (assets resolve relative). */
+  url: string;
+  /** Absolute path the renderer must write the finished PDF to. */
+  outPdf: string;
+  /** Hard ceiling for navigation + pagination + PDF generation. */
+  timeoutMs: number;
+}
+
+/**
+ * A PDF renderer drives a browser engine to load `url`, wait for fonts +
+ * Paged.js (`window.__PAGED_RENDERED__ === true`), measure the first
+ * `.pagedjs_page`, and write a borderless PDF at that exact page size to
+ * `outPdf` with backgrounds printed.
+ *
+ * The default ({@link puppeteerPdfRenderer}) drives a system/bundled Chromium.
+ * The Electron viewer injects one backed by its own `webContents.printToPDF`,
+ * so the packaged app needs no external browser (ADR 0002, Phase 4).
+ */
+export type PdfRenderer = (input: PdfRenderInput) => Promise<void>;
+
+/** Default renderer: system Chromium via puppeteer-core. */
+const puppeteerPdfRenderer: PdfRenderer = async ({ url, outPdf, timeoutMs }) => {
   const executablePath = await requireChromiumExecutable();
+  // Lazy-load puppeteer-core. It is the single biggest dep in the lib graph
+  // (~13MB plus transitive parse cost) and is only needed for PDF generation.
+  const puppeteer = (await import("puppeteer-core")).default;
+  // Extra Chromium flags, space-separated, via PRINTMD_CHROMIUM_ARGS. Opt-in
+  // and empty by default so desktop/CLI behavior is unchanged. Containers and
+  // some CI runners need "--no-sandbox --disable-dev-shm-usage" because
+  // headless Chromium refuses to start as root / with a small /dev/shm.
+  const extraChromiumArgs = (process.env.PRINTMD_CHROMIUM_ARGS ?? "")
+    .split(/\s+/)
+    .filter(Boolean);
+  const browser = await puppeteer.launch({
+    headless: true,
+    executablePath,
+    args: extraChromiumArgs,
+    protocolTimeout: timeoutMs,
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1920, height: 1080 });
+    page.setDefaultNavigationTimeout(timeoutMs);
+    page.setDefaultTimeout(timeoutMs);
+
+    await page.goto(url, { waitUntil: "networkidle0" });
+
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    await page.evaluate(() => (globalThis as any).document.fonts.ready);
+
+    await page
+      .waitForFunction(() => (globalThis as any).__PAGED_RENDERED__ === true, {
+        timeout: timeoutMs,
+      })
+      .catch(() => {});
+
+    const pagedInfo = await page.evaluate(() => {
+      const g = globalThis as any;
+      const pages = g.document.querySelectorAll(".pagedjs_page");
+      const el = pages[0] ?? null;
+      const s = el ? g.getComputedStyle(el) : null;
+      return {
+        pageCount: pages.length as number,
+        width: s?.width as string | undefined,
+        height: s?.height as string | undefined,
+      };
+    });
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+    log.info(
+      `Paged.js rendered ${pagedInfo.pageCount} pages (${pagedInfo.width} × ${pagedInfo.height})`
+    );
+
+    await page.pdf({
+      path: outPdf,
+      printBackground: true,
+      width: pagedInfo.width ?? "8.625in",
+      height: pagedInfo.height ?? "11.25in",
+      margin: { top: "0", right: "0", bottom: "0", left: "0" },
+    });
+  } finally {
+    await browser.close();
+  }
+};
+
+async function renderHtmlToPdf(
+  inputHtml: string,
+  outPdf: string,
+  renderer: PdfRenderer = puppeteerPdfRenderer
+) {
   const stageDir = path.dirname(path.resolve(inputHtml));
   const htmlFilename = path.basename(inputHtml);
   // Large books need this budget for navigation, Paged.js pagination, and the
-  // Chromium DevTools Protocol printToPDF call itself.
+  // browser's printToPDF call itself.
   const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
 
   const server = http.createServer(async (req, res) => {
@@ -237,71 +329,11 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
   const port = (server.address() as net.AddressInfo).port;
 
   try {
-    // Lazy-load puppeteer-core. It is the single biggest dep in the lib graph
-    // (~13MB plus transitive parse cost) and is only needed for PDF generation.
-    // Loading it here keeps preview-only paths — including the viewer's
-    // startPreviewServer — fast on cold start.
-    const puppeteer = (await import("puppeteer-core")).default;
-    // Extra Chromium flags, space-separated, via PRINTMD_CHROMIUM_ARGS. Opt-in
-    // and empty by default so desktop/CLI behavior is unchanged. Containers and
-    // some CI runners need "--no-sandbox --disable-dev-shm-usage" because
-    // headless Chromium refuses to start as root / with a small /dev/shm.
-    const extraChromiumArgs = (process.env.PRINTMD_CHROMIUM_ARGS ?? "")
-      .split(/\s+/)
-      .filter(Boolean);
-    const browser = await puppeteer.launch({
-      headless: true,
-      executablePath,
-      args: extraChromiumArgs,
-      protocolTimeout: RENDER_TIMEOUT_MS,
+    await renderer({
+      url: `http://127.0.0.1:${port}/${htmlFilename}`,
+      outPdf,
+      timeoutMs: RENDER_TIMEOUT_MS,
     });
-    try {
-      const page = await browser.newPage();
-      await page.setViewport({ width: 1920, height: 1080 });
-
-      page.setDefaultNavigationTimeout(RENDER_TIMEOUT_MS);
-      page.setDefaultTimeout(RENDER_TIMEOUT_MS);
-
-      await page.goto(`http://127.0.0.1:${port}/${htmlFilename}`, {
-        waitUntil: "networkidle0",
-      });
-
-      /* eslint-disable @typescript-eslint/no-explicit-any */
-      await page.evaluate(() => (globalThis as any).document.fonts.ready);
-
-      await page
-        .waitForFunction(
-          () => (globalThis as any).__PAGED_RENDERED__ === true,
-          { timeout: RENDER_TIMEOUT_MS }
-        )
-        .catch(() => {});
-
-      const pagedInfo = await page.evaluate(() => {
-        const g = globalThis as any;
-        const pages = g.document.querySelectorAll(".pagedjs_page");
-        const el = pages[0] ?? null;
-        const s = el ? g.getComputedStyle(el) : null;
-        return {
-          pageCount: pages.length as number,
-          width: s?.width as string | undefined,
-          height: s?.height as string | undefined,
-        };
-      });
-      /* eslint-enable @typescript-eslint/no-explicit-any */
-      log.info(
-        `Paged.js rendered ${pagedInfo.pageCount} pages (${pagedInfo.width} × ${pagedInfo.height})`
-      );
-
-      await page.pdf({
-        path: outPdf,
-        printBackground: true,
-        width: pagedInfo.width ?? "8.625in",
-        height: pagedInfo.height ?? "11.25in",
-        margin: { top: "0", right: "0", bottom: "0", left: "0" },
-      });
-    } finally {
-      await browser.close();
-    }
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
@@ -515,29 +547,19 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
   const rawPdf = pdfxMode ? path.join(stage, "raw.pdf") : path.resolve(pdfFile);
   log.info("Rendering HTML to PDF via Chromium+Paged.js");
   await fsp.mkdir(path.dirname(path.resolve(pdfFile)), { recursive: true });
-  await renderHtmlToPdf(stagedHtml, rawPdf);
+  await renderHtmlToPdf(stagedHtml, rawPdf, opts.pdfRenderer);
 
   if (!pdfxMode) {
-    // stampCreator writes /Creator (print-md) into the PDF's DOCINFO via
-    // Ghostscript. The information is cosmetic — losing it doesn't affect
-    // print fitness or any downstream tooling. If `gs` isn't installed,
-    // continue with the raw Chromium output as the final PDF rather than
-    // failing the entire build. The user's PDF is already at `rawPdf`
-    // (which equals the final `pdfFile` when !pdfxMode) before this call.
+    // stampCreator writes /Creator (print-md) into the PDF's Info dict using
+    // pdf-lib (in-process, no system tool). The information is cosmetic — if it
+    // fails for any reason, keep the raw Chromium output as the final PDF rather
+    // than failing the build. `rawPdf` equals the final `pdfFile` when !pdfxMode.
     try {
       await stampCreator(rawPdf);
     } catch (err) {
-      const code = (err as { code?: string } | undefined)?.code;
-      if (code === "ENOENT") {
-        log.warn(
-          "Ghostscript (gs) not found — PDF saved without /Creator metadata. " +
-          "Install Ghostscript (https://www.ghostscript.com/, brew install ghostscript, apt install ghostscript) to silence this warning."
-        );
-      } else {
-        log.warn(
-          `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
-        );
-      }
+      log.warn(
+        `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
+      );
     }
   }
 
