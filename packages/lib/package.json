@@ -37,6 +37,7 @@
     "markdown-it-source-map": "^0.1.1",
     "markdownlint": "^0.40.0",
     "pagedjs": "^0.4.3",
+    "pdf-lib": "^1.17.1",
     "postcss": "^8.5.15",
     "puppeteer-core": "^25.0.4",
     "unpdf": "^1.6.2",

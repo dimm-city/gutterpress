@@ -130,9 +130,28 @@ This decision establishes a priority order and a set of guardrails; it does
    runtime, which breaks the standalone binary). Output cross-checked against
    `identify` on real fixtures. Image *ink coverage* stays on gs (image-tac,
    Phase 4). ImageMagick is no longer a dependency.
-4. **Phase 4 (hard deps, decision required):** opt-in WASM gs for PDF/X (after
-   AGPL sign-off + PDF/X smoke test); Playwright hermetic Chromium for
-   browserless CLI use; viewer renders via Electron's own Chromium.
+4. **Phase 4 (hard deps) — decisions made 2026-06:**
+   - **`/Creator` stamp → pdf-lib (SHIPPED).** The plain-PDF path no longer
+     touches Ghostscript at all; gs is now required *only* for PDF/X CMYK
+     conversion and ink-coverage.
+   - **Viewer renders via Electron's own Chromium (SHIPPED).** `runBuild` gained
+     an injectable `pdfRenderer`; the viewer passes one backed by
+     `webContents.printToPDF` (hidden BrowserWindow), so the packaged app needs
+     no external browser. CLI default is unchanged (puppeteer). Opt out with
+     `PRINTMD_VIEWER_PUPPETEER=1`.
+   - **WASM Ghostscript for PDF/X — REJECTED (AGPL).** The owner declined the
+     AGPL-3.0 obligation, so PDF/X CMYK conversion **stays gated on a system
+     `gs`** (+ qpdf for annotation stripping / OutputIntent validation). These
+     are detected at runtime, used when present, and produce actionable install
+     guidance when absent. PDF/X remains an optional, advanced feature.
+   - **Playwright hermetic Chromium — DEFERRED.** Not added. The CLI continues to
+     detect a system/bundled Chromium and guide installation when missing.
+
+   Net: the default RGB pipeline, all validation, and the desktop viewer's PDF
+   export run with **zero required system tools** (the viewer uses its built-in
+   Chromium; the CLI needs a Chromium it detects). The only remaining system
+   dependencies are **opt-in**: Chromium for the CLI's rendering, and gs+qpdf for
+   PDF/X output.
 
 ## Sources
 
