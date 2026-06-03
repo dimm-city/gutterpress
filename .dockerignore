@@ -22,5 +22,6 @@ _site
 
 # Local tooling noise
 .github
+!.github/README.npm.md
 .vscode
 *.log
