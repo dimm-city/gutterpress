@@ -166,7 +166,6 @@
         client?.call<number>("getTotalPages").then((n) => {
           if (n > 0) {
             totalPages = n;
-            rendering = false;
           }
         }).catch(() => {});
       }

@@ -402,12 +402,26 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.tag }}
 
-      - name: Download all artifacts
+      - name: Download CLI artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist/
           merge-multiple: true
-          pattern: "print-md-*|viewer-*"
+          pattern: "print-md-*"
+
+      - name: Download viewer artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+          pattern: "viewer-*"
+
+      - name: Verify release assets were downloaded
+        run: |
+          if [ -z "$(ls -A dist)" ]; then
+            echo "No release assets were downloaded into dist/."
+            exit 1
+          fi
 
       - name: Create GitHub release
         run: |

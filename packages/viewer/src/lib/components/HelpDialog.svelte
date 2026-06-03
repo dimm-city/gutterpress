@@ -353,13 +353,48 @@
   }
   .tools li.found { border-left: 3px solid #4caf50; }
   .tools li.missing { border-left: 3px solid #f0a020; }
-  .tool-row { display: flex; gap: 10px; align-items: baseline; }
-  .status-icon { width: 14px; text-align: center; }
-  .status-word { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+  .tool-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 6px 10px;
+    align-items: start;
+  }
+  .status-icon {
+    min-width: 44px;
+    text-align: left;
+  }
+  .status-word {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    line-height: 1.2;
+  }
   .tools li.found .status-word { color: #4caf50; }
   .tools li.missing .status-word { color: #f0a020; }
-  .tool-name { flex: 0 0 auto; font-weight: 600; }
-  .tool-version { color: #888; font-family: ui-monospace, monospace; font-size: 12px; }
+  .tool-name {
+    align-self: start;
+    min-width: 0;
+    font-weight: 600;
+  }
+  .tool-version {
+    align-self: start;
+    color: #888;
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+  @media (max-width: 640px) {
+    .tool-row {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+    .tool-version {
+      grid-column: 2;
+      text-align: left;
+    }
+  }
   .tool-path { font-family: ui-monospace, monospace; font-size: 11px; color: #6a6a6a; margin: 2px 0 4px 24px; word-break: break-all; }
   .used-by { font-size: 11px; color: #aaa; margin: 4px 0 0 24px; line-height: 1.55; }
   .badge {
