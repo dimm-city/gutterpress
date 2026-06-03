@@ -12,7 +12,7 @@
  * Usage: bun scripts/build-npm.ts
  */
 
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -29,6 +29,13 @@ const EXTERNAL = [
 ];
 
 await rm(join(ROOT, "dist"), { recursive: true, force: true });
+
+// Use the npm-specific README (absolute URLs, no Docker/dev sections)
+await copyFile(
+  join(ROOT, "../../.github/README.npm.md"),
+  join(ROOT, "README.md")
+);
+console.log("✓ README.md updated from .github/README.npm.md");
 
 const result = await Bun.build({
   entrypoints: [join(ROOT, "src/cli.ts")],
