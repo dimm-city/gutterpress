@@ -2,9 +2,11 @@
   let {
     open = $bindable(false),
     onOpen,
+    triggerEl,
   }: {
     open?: boolean;
     onOpen?: (url: string) => void;
+    triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
   let url = $state("");
@@ -20,6 +22,7 @@
 
   function close() {
     open = false;
+    triggerEl?.focus();
   }
 
   function submit() {
@@ -42,6 +45,7 @@
     onOpen?.(parsed.toString());
     url = "";
     open = false;
+    triggerEl?.focus();
   }
 </script>
 
@@ -50,23 +54,22 @@
 
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="open-url-title">
     <header class="dialog-header">
-      <h2 id="open-url-title">Open URL</h2>
+      <h2 id="open-url-title">Preview from Web</h2>
       <button class="close" onclick={close} title="Close (Esc)" aria-label="Close">&times;</button>
     </header>
 
     <div class="dialog-body">
       <p class="hint">
-        Load a published print-md HTML output. The viewer will display the page
-        read-only — saving as PDF is disabled for URL sources.
+        Enter the web address of a print-md document to preview it here. <strong>PDF export is not available for web previews</strong> — open a local folder to save a PDF.
       </p>
 
       <label class="field">
-        <span>URL</span>
+        <span>Web address</span>
         <input
           bind:this={input}
           bind:value={url}
           type="url"
-          placeholder="https://example.com/book/"
+          placeholder="https://example.com/your-document/"
           spellcheck="false"
           autocomplete="off"
           onkeydown={(e) => {

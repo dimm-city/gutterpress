@@ -42,6 +42,11 @@
   let toast = $state<ToastController | null>(null);
   let helpOpen = $state(false);
   let userSetViewMode = $state(false);
+  let openError = $state<string | null>(null);
+
+  // UX-026: focus-restoration references for Help and URL dialogs
+  let helpBtn = $state<HTMLButtonElement | undefined>(undefined);
+  let urlBtn = $state<HTMLButtonElement | undefined>(undefined);
 
   // ----------------------------------------------------------------
   // Inject viewer canvas styles into iframe when client + bgColor change
@@ -75,7 +80,8 @@
         } else {
           client?.call("setZoom", [zoom === "fit-width" ? 1 : Number(zoom)]).catch(() => {});
         }
-        toast?.success(`${n} pages loaded`);
+        // UX-011: improved success toast copy
+        toast?.success(`Your book is ready — ${n} ${n === 1 ? 'page' : 'pages'}`);
       } else if (e.name === "pageChanged") {
         currentPage = e.detail.currentPage ?? 1;
         pageInput = currentPage;
@@ -103,6 +109,13 @@
       // Don't intercept when focus is in an input/textarea/select
       const tag = (e.target as HTMLElement)?.tagName ?? "";
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      // UX-006: Ctrl/Cmd+S saves PDF
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        savePdf();
+        return;
+      }
 
       switch (e.key) {
         case "ArrowRight":
@@ -139,13 +152,8 @@
             applyZoom("fit-width");
           }
           break;
-        case "d":
-        case "D":
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            toggleDebug();
-          }
-          break;
+        // UX-004: 'D' shortcut for debug removed — non-technical writers should
+        // not accidentally trigger debug mode.
       }
     }
 
@@ -178,7 +186,45 @@
   // Actions
   // ----------------------------------------------------------------
 
+  function friendlyFolderError(msg: string): string {
+    if (/manifest|print-md\.yaml|No such file/i.test(msg)) {
+      return "This doesn't look like a print-md project — we couldn't find a print-md.yaml file. Make sure you're opening the right folder.";
+    }
+    if (/ENOENT|not found/i.test(msg)) {
+      return "The folder couldn't be read. Check that it exists and you have permission to open it.";
+    }
+    if (/permission|EACCES/i.test(msg)) {
+      return "Permission denied. Check that you have access to this folder.";
+    }
+    return "Something went wrong opening this folder. Try again, or choose a different folder.";
+  }
+
+  function friendlyPdfError(e: unknown): string {
+    const msg = e instanceof Error ? e.message : String(e);
+    const code = (e as any)?.code ?? "";
+    if (code === "BUILD_ERROR") {
+      const firstLine = msg.split("\n")[0]?.trim() ?? msg;
+      return `PDF generation failed: ${firstLine}. Open Help (?) for setup details.`;
+    }
+    if (code === "TOOL_MISSING") {
+      const match = msg.match(/Required system tool not found: ([^\n]+)/);
+      const tool = match?.[1]?.trim() ?? "a required tool";
+      return `PDF export needs "${tool}" installed. Open Help (?) → System tools to see how to install it.`;
+    }
+    if (/chrome|chromium|browser/i.test(msg)) {
+      return "PDF export needs a browser (Chrome or Edge) installed. Open Help (?) for setup details.";
+    }
+    if (/ENOENT|not found/i.test(msg)) {
+      return "Could not find a required program. Open Help (?) → System tools to check what needs to be installed.";
+    }
+    if (/permission|EACCES/i.test(msg)) {
+      return "Permission denied saving the PDF. Try saving to a different folder (like your Desktop).";
+    }
+    return "PDF export failed. Open Help (?) → System tools to check for issues.";
+  }
+
   async function openFolder() {
+    openError = null;
     busy = true;
     busyLabel = "Opening folder…";
     try {
@@ -214,7 +260,11 @@
         );
       }
     } catch (e) {
-      toast?.error(e instanceof Error ? e.message : String(e));
+      previewUrl = null;
+      currentDir = null;
+      docTitle = null;
+      rendering = false;
+      openError = e instanceof Error ? e.message : String(e);
     } finally {
       busy = false;
       busyLabel = "";
@@ -222,6 +272,7 @@
   }
 
   function openUrl(url: string) {
+    openError = null;
     sourceMode = "url";
     currentUrl = url;
     currentDir = null;
@@ -289,7 +340,7 @@
       });
       toast?.success(`PDF saved to ${data.pdfPath ?? outPath}`);
     } catch (e) {
-      toast?.error(e instanceof Error ? e.message : String(e));
+      toast?.error(friendlyPdfError(e));
     } finally {
       offProgress?.();
       exporting = false;
@@ -382,9 +433,10 @@
         <Icon name="folder-open" />
         <span>Open</span>
       </button>
-      <button class="icon-text" onclick={() => (openUrlOpen = true)} disabled={busy} title="Open published HTML from a URL">
+      <!-- UX-016: renamed "URL" → "Web" for clarity; UX-026: bind:this for focus restore -->
+      <button bind:this={urlBtn} class="icon-text" onclick={() => (openUrlOpen = true)} disabled={busy} title="Preview a published document from a web address">
         <Icon name="link" />
-        <span>URL</span>
+        <span>Web</span>
       </button>
       {#if sourceMode === "url" && currentUrl}
         {#if docTitle}
@@ -402,60 +454,78 @@
       {/if}
     </section>
 
-    <section class="center">
-      <button class="icon-btn" onclick={firstPage} disabled={!previewUrl || rendering} title="First page (Home)" aria-label="First page">
-        <Icon name="chevrons-left" />
-      </button>
-      <button class="icon-btn" onclick={prevPage} disabled={!previewUrl || rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
-        <Icon name="chevron-left" />
-      </button>
-      <input
-        type="number"
-        class="page-input"
-        min="1"
-        max={totalPages || 1}
-        bind:value={pageInput}
-        onchange={() => gotoPage(pageInput)}
-        onkeydown={(e) => e.key === "Enter" && gotoPage(pageInput)}
-        disabled={!previewUrl || rendering}
-      />
-      <span class="status">/ {totalPages || "—"}</span>
-      <button class="icon-btn" onclick={nextPage} disabled={!previewUrl || rendering} title="Next page (Right/PageDown)" aria-label="Next page">
-        <Icon name="chevron-right" />
-      </button>
-      <button class="icon-btn" onclick={lastPage} disabled={!previewUrl || rendering} title="Last page (End)" aria-label="Last page">
-        <Icon name="chevrons-right" />
-      </button>
-    </section>
+    <!-- UX-012: center nav only shows when a document is loaded -->
+    {#if previewUrl}
+      <section class="center">
+        <button class="icon-btn" onclick={firstPage} disabled={rendering} title="First page (Home)" aria-label="First page">
+          <Icon name="chevrons-left" />
+        </button>
+        <button class="icon-btn" onclick={prevPage} disabled={rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
+          <Icon name="chevron-left" />
+        </button>
+        <!-- UX-029: accessible label and describedby for page input -->
+        <input
+          type="number"
+          class="page-input"
+          min="1"
+          max={totalPages || 1}
+          bind:value={pageInput}
+          onchange={() => gotoPage(pageInput)}
+          onkeydown={(e) => e.key === "Enter" && gotoPage(pageInput)}
+          disabled={rendering}
+          aria-label="Go to page"
+          aria-describedby="page-total"
+        />
+        <!-- UX-031: #b8c0cc for WCAG AA; UX-029: id for aria-describedby -->
+        <span class="status" id="page-total">/ {totalPages || "—"}</span>
+        <button class="icon-btn" onclick={nextPage} disabled={rendering} title="Next page (Right/PageDown)" aria-label="Next page">
+          <Icon name="chevron-right" />
+        </button>
+        <button class="icon-btn" onclick={lastPage} disabled={rendering} title="Last page (End)" aria-label="Last page">
+          <Icon name="chevrons-right" />
+        </button>
+        <!-- UX-037: persistent page count badge -->
+        {#if totalPages > 0}
+          <span class="page-count-badge">{totalPages} pages</span>
+        {/if}
+      </section>
+    {/if}
 
     <section class="right">
+      <!-- UX-039: separator before view mode buttons -->
+      <span class="toolbar-sep" aria-hidden="true"></span>
+      <!-- UX-014: text labels + aria-pressed on view mode buttons -->
       <button
-        class="icon-btn"
+        class="icon-text"
         class:active={viewMode === "single"}
         onclick={() => applyViewMode("single", true)}
         disabled={!previewUrl}
-        title="Single page view"
+        title="Single page view (Page)"
         aria-label="Single page view"
+        aria-pressed={viewMode === "single"}
       >
-        <Icon name="rectangle-vertical" />
+        <Icon name="rectangle-vertical" /><span class="view-label">Page</span>
       </button>
       <button
-        class="icon-btn"
+        class="icon-text"
         class:active={viewMode === "two-column"}
         onclick={() => applyViewMode("two-column", true)}
         disabled={!previewUrl}
-        title="Two-column (spread) view"
-        aria-label="Two-column view"
+        title="Two-page spread view (Spread)"
+        aria-label="Two-page spread view"
+        aria-pressed={viewMode === "two-column"}
       >
-        <Icon name="columns-2" />
+        <Icon name="columns-2" /><span class="view-label">Spread</span>
       </button>
       <select
         class="zoom-select"
         bind:value={zoom}
         onchange={() => applyZoom(zoom)}
         disabled={!previewUrl}
-        title="Zoom level (+ / - keys)"
+        title="Zoom level — F for fit width, + / - to zoom in and out"
       >
+        <!-- UX-015: fit-width first, renamed to "Fit width" -->
+        <option value="fit-width">Fit width</option>
         <option value="0.25">25%</option>
         <option value="0.5">50%</option>
         <option value="0.75">75%</option>
@@ -463,31 +533,36 @@
         <option value="1.25">125%</option>
         <option value="1.5">150%</option>
         <option value="2">200%</option>
-        <option value="fit-width">Fit (F)</option>
       </select>
-      <button
-        class="icon-btn"
-        class:active={debug}
-        onclick={toggleDebug}
-        disabled={!previewUrl}
-        title="Toggle debug mode (D)"
-        aria-label="Toggle debug mode"
-      >
-        <Icon name="bug" />
-      </button>
-      <label class="bg-swatch" title="Background color">
-        <input type="color" value={bgColor} oninput={onBgColor} />
-      </label>
+      <!-- UX-005: labeled canvas color picker -->
+      <div class="bg-swatch-wrapper">
+        <span class="bg-label">Canvas</span>
+        <label class="bg-swatch" title="Change the preview canvas color — does not affect your PDF">
+          <input type="color" value={bgColor} oninput={onBgColor} />
+        </label>
+      </div>
+      <!-- UX-004: debug button removed from toolbar -->
+      <!-- UX-039: separator before Save PDF -->
+      <span class="toolbar-sep" aria-hidden="true"></span>
+      <!-- UX-006: Save PDF always visible; icon-only at narrow widths -->
       <button
         class="primary save-btn icon-text"
         onclick={savePdf}
         disabled={busy || exporting || !currentDir || sourceMode === "url"}
-        title={sourceMode === "url" ? "PDF export not available for URL sources" : "Save as PDF"}
+        title="Save as PDF (Ctrl+S)"
       >
         <Icon name="file-down" />
-        <span>{exporting ? "Saving…" : "Save PDF"}</span>
+        <span class="save-btn-label">{exporting ? "Saving…" : "Save PDF"}</span>
       </button>
+      <!-- UX-023: explain why Save PDF is disabled -->
+      {#if !currentDir && !busy}
+        <span class="save-hint">Open a folder first</span>
+      {:else if sourceMode === "url"}
+        <span class="save-hint">Not available for web previews</span>
+      {/if}
+      <!-- UX-026: bind:this for focus restore -->
       <button
+        bind:this={helpBtn}
         class="icon-btn"
         onclick={() => (helpOpen = true)}
         title="Help / About"
@@ -508,14 +583,26 @@
     {/key}
   {:else}
     <div class="empty">
-      <p>Open a folder containing markdown files, or load a published HTML output by URL.</p>
-      <p class="hint">Use the Open or URL buttons above.</p>
+      <div class="empty-hero">
+        <div class="empty-icon" aria-hidden="true">📖</div>
+        <h1 class="empty-title">print-md</h1>
+        <p class="empty-tagline">Turn your markdown writing into a print-ready book</p>
+        <button class="primary empty-cta" onclick={openFolder} disabled={busy}>Open Your Book Folder</button>
+        <p class="empty-hint">Your project folder needs a <code>print-md.yaml</code> file and your <code>.md</code> chapter files.</p>
+        <button class="ghost-link" onclick={() => (openUrlOpen = true)}>Or preview from a web address →</button>
+        {#if openError}
+          <div class="open-error" role="alert">
+            <strong>Couldn't open that folder.</strong>
+            <p>{friendlyFolderError(openError)}</p>
+          </div>
+        {/if}
+      </div>
     </div>
   {/if}
 </div>
 
-<HelpDialog bind:open={helpOpen} />
-<OpenUrlDialog bind:open={openUrlOpen} onOpen={openUrl} />
+<HelpDialog bind:open={helpOpen} triggerEl={helpBtn} />
+<OpenUrlDialog bind:open={openUrlOpen} onOpen={openUrl} triggerEl={urlBtn} />
 
 
 <style>
@@ -640,6 +727,9 @@
   }
   .icon-text :global(svg) { flex: 0 0 auto; }
 
+  /* UX-014: small text label under/beside view mode icon */
+  .view-label { font-size: 11px; }
+
   .page-input {
     background: #3a3a3a;
     border: 1px solid #4a4a4a;
@@ -654,7 +744,8 @@
 
   .zoom-select { padding: 5px 6px; }
 
-  .status { color: #9ca3af; font-size: 12px; white-space: nowrap; }
+  /* UX-031: #b8c0cc meets WCAG AA on dark background */
+  .status { color: #b8c0cc; font-size: 12px; white-space: nowrap; }
 
   .doc-title {
     color: #ddd;
@@ -667,8 +758,9 @@
     flex-shrink: 1;
   }
 
+  /* UX-031: #a8a8a8 for better contrast */
   .path {
-    color: #888;
+    color: #a8a8a8;
     font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -677,6 +769,14 @@
     flex-shrink: 2;
   }
 
+  /* UX-005: labeled canvas color picker wrapper */
+  .bg-swatch-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .bg-label { font-size: 11px; color: #aaa; white-space: nowrap; }
   .bg-swatch { display: inline-block; cursor: pointer; flex-shrink: 0; }
   .bg-swatch input {
     width: 32px;
@@ -688,7 +788,34 @@
     cursor: pointer;
   }
 
-  /* ---- Empty state ---- */
+  /* UX-039: visual separator between toolbar groups */
+  .toolbar-sep {
+    width: 1px;
+    height: 20px;
+    background: #404040;
+    margin: 0 4px;
+    flex-shrink: 0;
+  }
+
+  /* UX-023: hint below Save PDF when disabled */
+  .save-hint {
+    font-size: 11px;
+    color: #888;
+    white-space: nowrap;
+  }
+
+  /* UX-037: persistent page count badge */
+  .page-count-badge {
+    font-size: 11px;
+    color: #9ab;
+    background: #2a3040;
+    padding: 2px 7px;
+    border-radius: 10px;
+    white-space: nowrap;
+    margin-left: 4px;
+  }
+
+  /* ---- Empty state / welcome hero ---- */
   .empty {
     flex: 1;
     display: grid;
@@ -696,8 +823,51 @@
     color: #888;
     text-align: center;
   }
-  .empty p { margin: 4px 0; }
-  .hint { font-size: 12px; color: #666; }
+  .empty-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    max-width: 400px;
+    text-align: center;
+    padding: 32px 24px;
+  }
+  .empty-icon { font-size: 48px; line-height: 1; margin-bottom: 4px; }
+  .empty-title { margin: 0; font-size: 22px; font-weight: 700; color: #e0e0e0; letter-spacing: -0.3px; }
+  .empty-tagline { margin: 0; font-size: 14px; color: #aaa; line-height: 1.5; }
+  .empty-cta { padding: 10px 24px; font-size: 14px; font-weight: 600; border-radius: 8px; margin-top: 4px; }
+  .empty-hint { margin: 0; font-size: 12px; color: #777; line-height: 1.5; }
+  .empty-hint code {
+    font-family: ui-monospace, monospace;
+    color: #9ab;
+    background: #2a3040;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .ghost-link {
+    background: transparent;
+    border: none;
+    color: #6a9fd8;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .ghost-link:hover { color: #88c0f8; }
+  .open-error {
+    background: #3a1a1a;
+    border: 1px solid #5a2d2d;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: #fca5a5;
+    max-width: 340px;
+    text-align: left;
+    line-height: 1.5;
+  }
+  .open-error strong { display: block; margin-bottom: 4px; font-size: 13px; }
+  .open-error p { margin: 0; color: #f0a0a0; }
 
   /* ---- Responsive breakpoints ---- */
   @media screen and (max-width: 1200px) {
@@ -707,7 +877,8 @@
   @media screen and (max-width: 900px) {
     .doc-title { display: none; }
     .path { max-width: 140px; }
-    .save-btn { display: none; }
+    /* UX-006: hide Save PDF text label at 900px, keep button as icon-only */
+    .save-btn-label { display: none; }
   }
   @media screen and (max-width: 700px) {
     .path { display: none; }

@@ -3,10 +3,10 @@
 </script>
 
 {#if visible}
-  <div class="loading-overlay" role="status" aria-live="polite">
+  <div class="loading-overlay" role="status" aria-live="assertive" aria-busy="true">
     <div class="spinner-wrap">
       <div class="spinner" aria-hidden="true"></div>
-      <p class="label">{label}</p>
+      <p class="label" aria-atomic="true">{label}</p>
     </div>
   </div>
 {/if}
