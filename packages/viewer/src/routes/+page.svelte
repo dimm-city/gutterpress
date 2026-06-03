@@ -662,7 +662,7 @@
     {/if}
     <span class="export-label">{pdfProgress}</span>
     {#if exportState !== "success" && exportState !== "canceling"}
-      <button class="export-cancel" onclick={cancelExport}>Cancel</button>
+      <button class="export-cancel" onclick={cancelExport} disabled={!activeExportId}>Cancel</button>
     {/if}
   </div>
 {/if}

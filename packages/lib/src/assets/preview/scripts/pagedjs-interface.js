@@ -71,7 +71,9 @@
   window.previewAPI = api;
 
   var observedPageCount = 0;
-  var pageObserver = new MutationObserver(function () {
+  var pageObserverQueued = false;
+  function publishObservedPageCount() {
+    pageObserverQueued = false;
     if (window.__PAGED_RENDERED__ === true) return;
     var count = refreshPages().length;
     if (count > observedPageCount) {
@@ -80,6 +82,12 @@
         detail: { currentPage: count, totalPages: count }
       }));
     }
+  }
+  var pageObserver = new MutationObserver(function () {
+    if (window.__PAGED_RENDERED__ === true) return;
+    if (pageObserverQueued) return;
+    pageObserverQueued = true;
+    window.requestAnimationFrame(publishObservedPageCount);
   });
   pageObserver.observe(document.body, { childList: true, subtree: true });
 

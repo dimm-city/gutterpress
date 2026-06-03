@@ -45,6 +45,46 @@
 - Moved to `0.3.0` during the run: `#10`, `#12`
 - Blocked / escalated: none in the remaining `0.2.0` issue set
 
+## Workflow Step Status
+
+- `intake`: completed
+- `plan-and-order`: completed
+- `prepare-worktrees`: completed
+- `implement-review-test`: completed
+- `integrate`: completed on `release/0.2.0`
+- `open-prs`: completed
+- `review-and-merge`: pending
+- `watch-and-respond`: pending
+- `archive`: partially completed locally
+
+## PR Status
+
+- Branch pushed: `origin/release/0.2.0`
+- Commit delivered: `a73f2f0` `feat(viewer): improve export and URL preview workflows`
+- Pull request: `https://github.com/dimm-city/print-md/pull/26`
+- PR state: `OPEN`
+
+## Archive Status
+
+- Temporary workflow worktrees created for isolated implementation were removed.
+- Temporary helper branches for issue-specific worktrees were deleted.
+- Local working tree is clean.
+- Remote branch intentionally retained because the PR is still open.
+
+## Remaining Workflow Work
+
+- `review-and-merge` cannot be truthfully marked complete while PR `#26` remains open and unmerged.
+- `watch-and-respond` remains active until CI and any human review feedback are resolved.
+- `archive` can only be fully completed after the PR reaches a terminal state and any branch cleanup is explicitly done.
+
+## Review Follow-up
+
+- Addressed Copilot PR review comments by:
+  - limiting URL embed-block detection to the top-level embedded frame and only treating CSP `frame-ancestors` as blocking when it is not permissive
+  - updating the popup-handling comment in `electron/main.ts` to match the current in-app auth popup behavior
+  - disabling the export cancel button until an active export id exists
+  - throttling render-progress DOM rescans to once per animation frame
+
 ## Issue 11 Plan
 
 - `#11` was scoped and implemented as an embedded-browser compatibility task, not an app-managed authentication task.

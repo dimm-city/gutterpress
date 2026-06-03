@@ -257,15 +257,33 @@ function extractHeader(
   return value;
 }
 
+function cspFrameAncestorsBlocksEmbedding(csp: string | undefined): boolean {
+  if (!csp) return false;
+  const directive = csp
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => /^frame-ancestors\b/i.test(part));
+  if (!directive) return false;
+  const sources = directive
+    .split(/\s+/)
+    .slice(1)
+    .map((part) => part.trim().replace(/^'+|'+$/g, ""))
+    .filter(Boolean);
+  if (sources.includes("*")) return false;
+  return true;
+}
+
 function registerUrlPreviewHeaderWatch() {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const url = details.url;
     const isSubframe = details.resourceType === "subFrame";
     const isLocalPreview = /^https?:\/\/127\.0\.0\.1(?::\d+)?\//.test(url);
-    if (isSubframe && !isLocalPreview) {
+    const parentFrameId = (details as { parentFrameId?: number }).parentFrameId;
+    const isTopLevelEmbeddedFrame = parentFrameId === 0;
+    if (isSubframe && isTopLevelEmbeddedFrame && !isLocalPreview) {
       const xfo = extractHeader(details.responseHeaders ?? {}, "x-frame-options");
       const csp = extractHeader(details.responseHeaders ?? {}, "content-security-policy");
-      const blocksEmbedding = !!xfo || /frame-ancestors/i.test(csp ?? "");
+      const blocksEmbedding = !!xfo || cspFrameAncestorsBlocksEmbedding(csp);
       if (blocksEmbedding) {
         mainWindow?.webContents.send("url-preview:blocked", {
           url,
@@ -292,9 +310,9 @@ function createWindow() {
   });
   mainWindow.setMenuBarVisibility(false);
 
-  // Any link / window.open targeting an external URL opens in the user's real
-  // browser, not a new Electron (Chromium) window. Without this, clicking a docs
-  // link in the Help dialog would spawn a bare new app window.
+  // Auth flows for URL previews sometimes rely on window.open popups, so allow
+  // http(s) popups inside Electron. Renderer code should still call
+  // `electron.openExternal()` when the user explicitly wants the system browser.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) {
       return {
