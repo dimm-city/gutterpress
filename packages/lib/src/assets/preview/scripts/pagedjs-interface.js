@@ -6,46 +6,64 @@
   'use strict';
 
   var pages = [];
-  var currentIndex = 0;
+  var currentPage = 1;
   var debugMode = false;
   var currentViewMode = 'two-column';
+  var ignoreScrollUntil = 0;
 
   function refreshPages() {
     pages = Array.from(document.querySelectorAll('.pagedjs_page'));
     return pages;
   }
 
-  function detectCurrentPage() {
-    if (pages.length === 0) return 0;
-    var scrollTop = window.scrollY || document.documentElement.scrollTop;
-    var threshold = scrollTop + window.innerHeight / 3;
-    for (var i = pages.length - 1; i >= 0; i--) {
-      if (pages[i].offsetTop <= threshold) {
-        if (currentViewMode !== 'single' && i % 2 === 1) return i - 1;
-        return i;
-      }
-    }
-    return 0;
+  function clampPage(n) {
+    if (pages.length === 0) return 1;
+    var page = Number(n);
+    if (!Number.isFinite(page)) page = 1;
+    return Math.max(1, Math.min(Math.round(page), pages.length));
   }
 
-  function normalizeTargetPage(n) {
-    var clamped = Math.max(1, Math.min(n, pages.length));
-    if (currentViewMode === 'single' || clamped <= 1) return clamped;
-    return clamped % 2 === 0 ? clamped - 1 : clamped;
+  function detectVisiblePage() {
+    if (pages.length === 0) return 1;
+    var scrollTop = window.scrollY || document.documentElement.scrollTop;
+    var threshold = scrollTop + window.innerHeight / 3;
+    var page = 1;
+    var pageTop = pages[0].offsetTop;
+    for (var i = pages.length - 1; i >= 0; i--) {
+      if (pages[i].offsetTop <= threshold) {
+        pageTop = pages[i].offsetTop;
+        break;
+      }
+    }
+    for (var j = 0; j < pages.length; j++) {
+      if (Math.abs(pages[j].offsetTop - pageTop) < 2) {
+        page = j + 1;
+        break;
+      }
+    }
+    return page;
+  }
+
+  function scrollToCurrentPage() {
+    if (pages.length === 0) return;
+    var page = clampPage(currentPage);
+    currentPage = page;
+    ignoreScrollUntil = Date.now() + 300;
+    pages[page - 1].scrollIntoView({ behavior: 'instant', block: 'start', inline: 'nearest' });
+  }
+
+  function pageStep() {
+    return currentViewMode === 'single' ? 1 : 2;
   }
 
   var api = {
     getTotalPages: function () { refreshPages(); return pages.length; },
-    getCurrentPage: function () { return currentIndex + 1; },
+    getCurrentPage: function () { return currentPage; },
     goToPage: function (n) {
       refreshPages();
-      var target = normalizeTargetPage(n);
-      currentIndex = Math.max(0, Math.min(target - 1, pages.length - 1));
-      // Use 'instant' so the scroll completes synchronously before notifyPageChange
-      // fires. 'smooth' interacts with the scroll-listener debounce timer and causes
-      // the parent Svelte toolbar to receive a stale page number on fast navigation.
-      pages[currentIndex].scrollIntoView({ behavior: 'instant', block: 'start' });
-      api.notifyPageChange();
+      currentPage = clampPage(n);
+      scrollToCurrentPage();
+      return api.notifyPageChange();
     },
     getPageDimensions: function () {
       refreshPages();
@@ -57,17 +75,17 @@
         height: page.offsetHeight
       };
     },
-    firstPage: function () { api.goToPage(1); },
-    prevPage: function () { api.goToPage(currentIndex + 1 - (currentViewMode === 'single' ? 1 : 2)); },
-    nextPage: function () { api.goToPage(currentIndex + 1 + (currentViewMode === 'single' ? 1 : 2)); },
-    lastPage: function () { api.goToPage(pages.length); },
+    firstPage: function () { return api.goToPage(1); },
+    prevPage: function () { return api.goToPage(currentPage - pageStep()); },
+    nextPage: function () { return api.goToPage(currentPage + pageStep()); },
+    lastPage: function () { refreshPages(); return api.goToPage(pages.length); },
     setViewMode: function (mode) {
       refreshPages();
       currentViewMode = mode || 'two-column';
       document.body.classList.remove('view-single', 'view-spread', 'view-two-column');
       if (mode) document.body.classList.add('view-' + mode);
-      currentIndex = detectCurrentPage();
-      api.notifyPageChange();
+      scrollToCurrentPage();
+      return api.notifyPageChange();
     },
     setZoom: function (z) {
       document.documentElement.style.setProperty('--pmd-zoom', z);
@@ -78,9 +96,9 @@
       return debugMode;
     },
     notifyPageChange: function () {
-      window.dispatchEvent(new CustomEvent('pageChanged', {
-        detail: { currentPage: api.getCurrentPage(), totalPages: pages.length }
-      }));
+      var detail = { currentPage: api.getCurrentPage(), totalPages: pages.length };
+      window.dispatchEvent(new CustomEvent('pageChanged', { detail: detail }));
+      return detail;
     },
     notifyRenderingComplete: function () {
       window.dispatchEvent(new CustomEvent('renderingComplete', {
@@ -110,7 +128,20 @@
     pageObserverQueued = true;
     window.requestAnimationFrame(publishObservedPageCount);
   });
-  pageObserver.observe(document.body, { childList: true, subtree: true });
+
+  function startPageObserver() {
+    var target = document.body || document.documentElement;
+    if (!target) return false;
+    pageObserver.observe(target, { childList: true, subtree: true });
+    return true;
+  }
+
+  if (!startPageObserver()) {
+    document.addEventListener('DOMContentLoaded', function onReady() {
+      document.removeEventListener('DOMContentLoaded', onReady);
+      startPageObserver();
+    });
+  }
 
   // Scroll tracking
   var scrollTimer = null;
@@ -119,9 +150,10 @@
     if (pages.length === 0) return;
     if (scrollTimer) clearTimeout(scrollTimer);
     scrollTimer = setTimeout(function () {
-      var idx = detectCurrentPage();
-      if (idx !== currentIndex) {
-        currentIndex = idx;
+      if (Date.now() < ignoreScrollUntil) return;
+      var page = detectVisiblePage();
+      if (page !== currentPage) {
+        currentPage = page;
         api.notifyPageChange();
       }
     }, 150);
@@ -133,7 +165,11 @@
     refreshPages();
     observedPageCount = pages.length;
     pageObserver.disconnect();
+    currentPage = 1;
+    ignoreScrollUntil = Date.now() + 300;
+    window.scrollTo(0, 0);
     console.log('Paged.js rendered ' + pages.length + ' pages');
     api.notifyRenderingComplete();
+    setTimeout(api.notifyPageChange, 0);
   };
 })();

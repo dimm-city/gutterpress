@@ -24,6 +24,10 @@
     url: string;
     reason: string;
   };
+  type PageState = {
+    currentPage?: number;
+    totalPages?: number;
+  };
 
   // Per-screen state
   let previewUrl = $state<string | null>(null);
@@ -54,7 +58,6 @@
   let client = $state<PreviewClient | undefined>(undefined);
   let currentPage = $state(1);
   let totalPages = $state(0);
-  let pageInput = $state(1);
   let pageEditing = $state(false);
   let pageEditValue = $state("1");
   let pageEditInput = $state<HTMLInputElement | undefined>(undefined);
@@ -155,10 +158,7 @@
           renderProgressPage = e.detail.totalPages ?? renderProgressPage;
           totalPages = e.detail.totalPages ?? totalPages;
         } else {
-          currentPage = e.detail.currentPage ?? 1;
-          pageInput = currentPage;
-          if (!pageEditing) pageEditValue = String(currentPage);
-          totalPages = e.detail.totalPages ?? totalPages;
+          syncPageState(e.detail);
         }
       } else if (e.name === "ready") {
         rendering = true;
@@ -387,7 +387,6 @@
       renderProgressPage = 0;
       totalPages = 0;
       currentPage = 1;
-      pageInput = 1;
       userSetViewMode = false;
       // Loud signal for the #1 cause of wrong fonts/styles: shared asset dirs
       // (e.g. ../dc-design-guide/fonts) that don't resolve next to this project.
@@ -427,7 +426,6 @@
       renderProgressPage = 0;
       totalPages = 0;
       currentPage = 1;
-      pageInput = 1;
     });
   }
 
@@ -469,7 +467,6 @@
     renderCompleteOverlay = false;
     totalPages = 0;
     currentPage = 1;
-    pageInput = 1;
     pageEditing = false;
   }
 
@@ -559,9 +556,20 @@
     await electron?.cancelExport?.(activeExportId).catch(() => {});
   }
 
-  function gotoPage(n: number) {
+  function syncPageState(state: PageState | undefined) {
+    if (!state) return;
+    currentPage = state.currentPage ?? currentPage;
+    totalPages = state.totalPages ?? totalPages;
+    if (!pageEditing) pageEditValue = String(currentPage);
+  }
+
+  function runPageCommand(cmd: string, args: unknown[] = []) {
     if (!client || rendering) return;
-    client.call("goToPage", [n]).catch(() => {});
+    client.call<PageState>(cmd, args).then(syncPageState).catch(() => {});
+  }
+
+  function gotoPage(n: number) {
+    runPageCommand("goToPage", [n]);
   }
   function beginPageEdit() {
     if (rendering) return;
@@ -576,15 +584,14 @@
     const next = Number(pageEditValue);
     if (Number.isFinite(next)) {
       const clamped = Math.max(1, Math.min(totalPages || 1, Math.round(next)));
-      pageInput = clamped;
       gotoPage(clamped);
     }
     pageEditing = false;
   }
-  function firstPage() { if (client && !rendering) client.call("firstPage").catch(() => {}); }
-  function prevPage() { if (client && !rendering) client.call("prevPage").catch(() => {}); }
-  function nextPage() { if (client && !rendering) client.call("nextPage").catch(() => {}); }
-  function lastPage() { if (client && !rendering) client.call("lastPage").catch(() => {}); }
+  function firstPage() { runPageCommand("firstPage"); }
+  function prevPage() { runPageCommand("prevPage"); }
+  function nextPage() { runPageCommand("nextPage"); }
+  function lastPage() { runPageCommand("lastPage"); }
 
   /** Apply fit-width by querying the page's rendered width from the iframe. */
   async function applyFitWidthZoom() {

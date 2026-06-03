@@ -51,6 +51,10 @@ function loadPreviewApi(pages, pagesWidth = 808) {
     __PAGED_RENDERED__: false,
     parent: { postMessage() {} },
     print() {},
+    scrollTo(_x, y) {
+      this.scrollY = y;
+      document.documentElement.scrollTop = y;
+    },
     requestAnimationFrame(cb) {
       cb();
       return 1;
@@ -107,20 +111,42 @@ async function main() {
     const { api } = loadPreviewApi(pages);
     api.setViewMode("two-column");
     api.goToPage(4);
-    assert.equal(api.getCurrentPage(), 3);
+    assert.equal(api.getCurrentPage(), 4);
+    api.nextPage();
+    assert.equal(api.getCurrentPage(), 6);
+    api.prevPage();
+    assert.equal(api.getCurrentPage(), 4);
+  }
+
+  {
+    const pages = [makePage(0), makePage(1000), makePage(2000), makePage(3000), makePage(4000), makePage(5000)];
+    const { api } = loadPreviewApi(pages);
+    api.setViewMode("single");
+    api.goToPage(4);
     api.nextPage();
     assert.equal(api.getCurrentPage(), 5);
     api.prevPage();
-    assert.equal(api.getCurrentPage(), 3);
+    assert.equal(api.getCurrentPage(), 4);
   }
 
   {
     const pages = [makePage(0), makePage(0), makePage(1000), makePage(1000)];
     const { api, windowObj } = loadPreviewApi(pages);
     api.setViewMode("two-column");
+    await new Promise((resolve) => setTimeout(resolve, 320));
     windowObj.scrollY = 1100;
     windowObj.dispatchEvent({ type: "scroll" });
     await new Promise((resolve) => setTimeout(resolve, 170));
+    assert.equal(api.getCurrentPage(), 3);
+  }
+
+  {
+    const pages = [makePage(0), makePage(0), makePage(1000), makePage(1000)];
+    const { api } = loadPreviewApi(pages);
+    api.goToPage(3);
+    api.setViewMode("single");
+    assert.equal(api.getCurrentPage(), 3);
+    api.setViewMode("two-column");
     assert.equal(api.getCurrentPage(), 3);
   }
 
