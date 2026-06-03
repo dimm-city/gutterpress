@@ -9,6 +9,22 @@
   import { PreviewClient } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
 
+  type DiagnosticsTool = {
+    name: string;
+    found: boolean;
+    usedBy: Array<{ feature: string; severity: "required" | "optional" }>;
+  };
+  type ExportProgressEvent = {
+    exportId: string;
+    state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
+    pages?: number;
+    message?: string;
+  };
+  type UrlPreviewBlockedEvent = {
+    url: string;
+    reason: string;
+  };
+
   // Per-screen state
   let previewUrl = $state<string | null>(null);
   let currentDir = $state<string | null>(null);
@@ -26,23 +42,36 @@
   // it separately with a NON-blocking status pill instead of the modal overlay.
   let exporting = $state(false);
   let pdfProgress = $state<string | null>(null);
+  let activeExportId = $state<string | null>(null);
+  let exportState = $state<"idle" | "started" | "rendering" | "finalizing" | "canceling" | "success">("idle");
+  let exportPages = $state(0);
+  let exportElapsedSeconds = $state(0);
+  let exportTimer = $state<ReturnType<typeof setInterval> | null>(null);
+  let saveWarning = $state<string | null>(null);
+  let diagnosticsTools = $state<DiagnosticsTool[] | null>(null);
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
   let currentPage = $state(1);
   let totalPages = $state(0);
   let pageInput = $state(1);
+  let pageEditing = $state(false);
+  let pageEditValue = $state("1");
+  let pageEditInput = $state<HTMLInputElement | undefined>(undefined);
   let zoom = $state<string>("fit-width");
   let viewMode = $state<"single" | "two-column">("two-column");
   let debug = $state(false);
   let bgColor = $state("#5a5a5a");
   let rendering = $state(false);
+  let renderProgressPage = $state(0);
+  let renderCompleteOverlay = $state(false);
 
   // Toast controller (populated by Toast.svelte via bind:api)
   let toast = $state<ToastController | null>(null);
   let helpOpen = $state(false);
   let userSetViewMode = $state(false);
   let openError = $state<string | null>(null);
+  let urlPreviewError = $state<string | null>(null);
 
   // UX-026: focus-restoration references for Help and URL dialogs
   let helpBtn = $state<HTMLButtonElement | undefined>(undefined);
@@ -57,6 +86,40 @@
     client.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
   });
 
+  $effect(() => {
+    if (diagnosticsTools) return;
+    const electron = (window as any).electron;
+    electron?.doctor?.()
+      .then((data: { tools?: DiagnosticsTool[] }) => {
+        diagnosticsTools = data.tools ?? [];
+      })
+      .catch(() => {});
+  });
+
+  $effect(() => {
+    if (!saveWarning) return;
+    if (currentDir && !rendering && sourceMode === "folder") {
+      saveWarning = null;
+    }
+  });
+
+  $effect(() => {
+    const electron = (window as any).electron;
+    const off = electron?.onUrlPreviewBlocked?.((event: UrlPreviewBlockedEvent) => {
+      if (sourceMode !== "url") return;
+      if (!previewUrl) return;
+      previewUrl = null;
+      urlPreviewError = event.reason;
+    });
+    return () => off?.();
+  });
+
+  $effect(() => {
+    if (pageEditing) {
+      queueMicrotask(() => pageEditInput?.focus());
+    }
+  });
+
   // ----------------------------------------------------------------
   // Hook PreviewClient events when it appears
   // ----------------------------------------------------------------
@@ -66,7 +129,12 @@
       if (e.name === "renderingComplete") {
         const n = e.detail.totalPages ?? 0;
         totalPages = n;
+        renderProgressPage = n;
         rendering = false;
+        renderCompleteOverlay = true;
+        setTimeout(() => {
+          renderCompleteOverlay = false;
+        }, 700);
         // Inject canvas styles now that Paged.js is done
         client?.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
         client?.injectStyles("debug", DEBUG_STYLES);
@@ -83,11 +151,18 @@
         // UX-011: improved success toast copy
         toast?.success(`Your book is ready — ${n} ${n === 1 ? 'page' : 'pages'}`);
       } else if (e.name === "pageChanged") {
-        currentPage = e.detail.currentPage ?? 1;
-        pageInput = currentPage;
-        totalPages = e.detail.totalPages ?? totalPages;
+        if (rendering) {
+          renderProgressPage = e.detail.totalPages ?? renderProgressPage;
+          totalPages = e.detail.totalPages ?? totalPages;
+        } else {
+          currentPage = e.detail.currentPage ?? 1;
+          pageInput = currentPage;
+          if (!pageEditing) pageEditValue = String(currentPage);
+          totalPages = e.detail.totalPages ?? totalPages;
+        }
       } else if (e.name === "ready") {
         rendering = true;
+        renderProgressPage = 0;
         client?.call<number>("getTotalPages").then((n) => {
           if (n > 0) {
             totalPages = n;
@@ -202,6 +277,9 @@
   function friendlyPdfError(e: unknown): string {
     const msg = e instanceof Error ? e.message : String(e);
     const code = (e as any)?.code ?? "";
+    if (code === "EXPORT_CANCELED") {
+      return "";
+    }
     if (code === "BUILD_ERROR") {
       const firstLine = msg.split("\n")[0]?.trim() ?? msg;
       return `PDF generation failed: ${firstLine}. Open Help (?) for setup details.`;
@@ -223,8 +301,69 @@
     return "PDF export failed. Open Help (?) → System tools to check for issues.";
   }
 
+  function startExportTimer() {
+    if (exportTimer) clearInterval(exportTimer);
+    exportElapsedSeconds = 0;
+    exportTimer = setInterval(() => {
+      exportElapsedSeconds += 1;
+      updateExportLabel();
+    }, 1000);
+  }
+
+  function stopExportTimer() {
+    if (exportTimer) {
+      clearInterval(exportTimer);
+      exportTimer = null;
+    }
+  }
+
+  function resetExportState() {
+    stopExportTimer();
+    exporting = false;
+    activeExportId = null;
+    exportState = "idle";
+    exportPages = 0;
+    exportElapsedSeconds = 0;
+    pdfProgress = null;
+  }
+
+  function updateExportLabel() {
+    const elapsed = exportElapsedSeconds >= 3 ? ` ${exportElapsedSeconds}s` : "";
+    if (exportState === "success") {
+      pdfProgress = `PDF saved${elapsed}`;
+      return;
+    }
+    if (exportState === "canceling") {
+      pdfProgress = "Canceling export…";
+      return;
+    }
+    if (exportState === "finalizing") {
+      pdfProgress = exportPages > 0 ? `Finalizing PDF (${exportPages} pages)…${elapsed}` : `Finalizing PDF…${elapsed}`;
+      return;
+    }
+    if (exportState === "rendering") {
+      pdfProgress = exportPages > 0 ? `Exporting page ${exportPages}…${elapsed}` : `Exporting…${elapsed}`;
+      return;
+    }
+    pdfProgress = `Preparing PDF…${elapsed}`;
+  }
+
+  function syncExportProgress(event: ExportProgressEvent) {
+    if (activeExportId && event.exportId !== activeExportId) return;
+    if (!activeExportId) activeExportId = event.exportId;
+    if (event.pages) exportPages = event.pages;
+    if (event.state === "started") exportState = "started";
+    else if (event.state === "rendering") exportState = "rendering";
+    else if (event.state === "finalizing") exportState = "finalizing";
+    else if (event.state === "success") exportState = "success";
+    updateExportLabel();
+  }
+
   async function openFolder() {
     openError = null;
+    urlPreviewError = null;
+    saveWarning = null;
+    renderCompleteOverlay = false;
     busy = true;
     busyLabel = "Opening folder…";
     try {
@@ -246,6 +385,7 @@
       await Promise.resolve();
       previewUrl = data.url;
       rendering = true;
+      renderProgressPage = 0;
       totalPages = 0;
       currentPage = 1;
       pageInput = 1;
@@ -273,6 +413,9 @@
 
   function openUrl(url: string) {
     openError = null;
+    urlPreviewError = null;
+    saveWarning = null;
+    renderCompleteOverlay = false;
     sourceMode = "url";
     currentUrl = url;
     currentDir = null;
@@ -282,6 +425,7 @@
     queueMicrotask(() => {
       previewUrl = url;
       rendering = false;
+      renderProgressPage = 0;
       totalPages = 0;
       currentPage = 1;
       pageInput = 1;
@@ -294,39 +438,85 @@
     electron?.openExternal?.(currentUrl);
   }
 
-  async function savePdf() {
+  function getSaveReadinessWarning(): string | null {
     if (sourceMode !== "folder" || !currentDir) {
-      toast?.error("Open a folder first — PDF export is disabled for URL sources.");
+      return "Open a project folder before saving a PDF.";
+    }
+    if (rendering || !previewUrl) {
+      return "Your document is still loading. Wait a moment and try again.";
+    }
+    const missingRequiredTool = diagnosticsTools?.find(
+      (tool) =>
+        !tool.found &&
+        tool.usedBy.some(
+          (use) => use.severity === "required" && /save pdf/i.test(use.feature)
+        )
+    );
+    if (missingRequiredTool) {
+      return `PDF export needs ${missingRequiredTool.name} on this computer before you can save.`;
+    }
+    return null;
+  }
+
+  async function stopPreview() {
+    const electron = (window as any).electron;
+    await electron?.stopPreview?.().catch(() => {});
+    previewUrl = null;
+    currentDir = null;
+    currentUrl = null;
+    docTitle = null;
+    rendering = false;
+    renderProgressPage = 0;
+    renderCompleteOverlay = false;
+    totalPages = 0;
+    currentPage = 1;
+    pageInput = 1;
+    pageEditing = false;
+  }
+
+  async function savePdf() {
+    saveWarning = getSaveReadinessWarning();
+    if (saveWarning) {
       return;
     }
+    const inputDir = currentDir;
+    if (!inputDir) return;
     const electron = (window as any).electron;
     if (!electron?.savePdf || !electron?.build) {
       toast?.error("Electron bridge unavailable — run via the viewer app");
       return;
     }
-    const sep = currentDir.includes("\\") ? "\\" : "/";
-    const defaultName = (currentDir.split(sep).pop() ?? "book") + ".pdf";
+    const sep = inputDir.includes("\\") ? "\\" : "/";
+    const defaultName = (inputDir.split(sep).pop() ?? "book") + ".pdf";
     const outPath = await electron.savePdf(defaultName);
     if (!outPath) return;
 
     // Non-blocking: the build runs in a separate render window, so keep the
     // preview interactive and show progress in a corner pill (not the overlay).
     exporting = true;
+    exportState = "started";
+    exportPages = 0;
     pdfProgress = "Preparing PDF…";
+    startExportTimer();
     let offProgress: (() => void) | undefined;
     try {
       // Live progress: Paged.js pagination of large books takes minutes, so show
       // the growing page count instead of an opaque spinner.
       offProgress = electron.onBuildProgress?.(
-        (p: { phase: "rendering" | "finalizing"; pages: number }) => {
-          pdfProgress =
-            p.phase === "finalizing"
-              ? `Finalizing PDF (${p.pages} pages)…`
-              : `Rendering page ${p.pages}…`;
+        (p: ExportProgressEvent) => {
+          if (p.state === "canceled") {
+            exportState = "canceling";
+            pdfProgress = "Canceling export…";
+            return;
+          }
+          if (p.state === "error") {
+            return;
+          }
+          syncExportProgress(p);
         }
       );
       const data = await electron.build({
-        input: currentDir,
+        input: inputDir,
         format: "pdf",
         out: outPath,
         // Validation is skipped for the quick "Save PDF" action by design —
@@ -338,19 +528,59 @@
         skipPreValidate: true,
         skipPostValidate: true,
       });
-      toast?.success(`PDF saved to ${data.pdfPath ?? outPath}`);
+      if (data.exportId) activeExportId = data.exportId;
+      exportState = "success";
+      stopExportTimer();
+      updateExportLabel();
+      const savedPdfPath = data.pdfPath ?? outPath;
+      toast?.success(`PDF saved to ${savedPdfPath}`, 8000, {
+        label: "Show in Folder",
+        onClick: () => {
+          void electron.showInFolder?.(savedPdfPath);
+        },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     } catch (e) {
+      if ((e as { code?: string })?.code === "EXPORT_CANCELED") {
+        resetExportState();
+        return;
+      }
       toast?.error(friendlyPdfError(e));
     } finally {
       offProgress?.();
-      exporting = false;
-      pdfProgress = null;
+      resetExportState();
     }
+  }
+
+  async function cancelExport() {
+    if (!activeExportId) return;
+    exportState = "canceling";
+    updateExportLabel();
+    const electron = (window as any).electron;
+    await electron?.cancelExport?.(activeExportId).catch(() => {});
   }
 
   function gotoPage(n: number) {
     if (!client || rendering) return;
     client.call("goToPage", [n]).catch(() => {});
+  }
+  function beginPageEdit() {
+    if (rendering) return;
+    pageEditing = true;
+    pageEditValue = String(currentPage);
+  }
+  function cancelPageEdit() {
+    pageEditing = false;
+    pageEditValue = String(currentPage);
+  }
+  function commitPageEdit() {
+    const next = Number(pageEditValue);
+    if (Number.isFinite(next)) {
+      const clamped = Math.max(1, Math.min(totalPages || 1, Math.round(next)));
+      pageInput = clamped;
+      gotoPage(clamped);
+    }
+    pageEditing = false;
   }
   function firstPage() { if (client && !rendering) client.call("firstPage").catch(() => {}); }
   function prevPage() { if (client && !rendering) client.call("prevPage").catch(() => {}); }
@@ -415,14 +645,25 @@
 </script>
 
 <Toast bind:api={toast} />
-<LoadingOverlay visible={rendering || (busy && !!busyLabel)} label={busyLabel || "Rendering…"} />
+<LoadingOverlay
+  visible={rendering || renderCompleteOverlay || (busy && !!busyLabel)}
+  label={busyLabel || (renderCompleteOverlay ? "Rendering complete" : renderProgressPage > 0 ? `Laying out page ${renderProgressPage}…` : "Rendering…")}
+  onCancel={rendering ? stopPreview : undefined}
+/>
 
 <!-- Non-blocking PDF export progress: a corner pill that leaves the preview
      fully interactive (the build runs in a separate render window). -->
 {#if exporting && pdfProgress}
-  <div class="export-pill" role="status" aria-live="polite">
-    <span class="export-spinner" aria-hidden="true"></span>
+  <div class="export-pill" role="status" aria-live="polite" aria-atomic="true">
+    {#if exportState === "success"}
+      <span class="export-success" aria-hidden="true">✓</span>
+    {:else}
+      <span class="export-spinner" aria-hidden="true"></span>
+    {/if}
     <span class="export-label">{pdfProgress}</span>
+    {#if exportState !== "success" && exportState !== "canceling"}
+      <button class="export-cancel" onclick={cancelExport}>Cancel</button>
+    {/if}
   </div>
 {/if}
 
@@ -463,21 +704,31 @@
         <button class="icon-btn" onclick={prevPage} disabled={rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
           <Icon name="chevron-left" />
         </button>
-        <!-- UX-029: accessible label and describedby for page input -->
-        <input
-          type="number"
-          class="page-input"
-          min="1"
-          max={totalPages || 1}
-          bind:value={pageInput}
-          onchange={() => gotoPage(pageInput)}
-          onkeydown={(e) => e.key === "Enter" && gotoPage(pageInput)}
-          disabled={rendering}
-          aria-label="Go to page"
-          aria-describedby="page-total"
-        />
-        <!-- UX-031: #b8c0cc for WCAG AA; UX-029: id for aria-describedby -->
-        <span class="status" id="page-total">/ {totalPages || "—"}</span>
+        {#if pageEditing}
+          <input
+            bind:this={pageEditInput}
+            type="number"
+            class="page-input"
+            min="1"
+            max={totalPages || 1}
+            bind:value={pageEditValue}
+            onblur={commitPageEdit}
+            onkeydown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitPageEdit();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelPageEdit();
+              }
+            }}
+            aria-label="Go to page"
+          />
+        {:else}
+          <button class="page-pill" onclick={beginPageEdit} disabled={rendering} aria-label="Edit current page">
+            Page {currentPage} / {totalPages || "—"}
+          </button>
+        {/if}
         <button class="icon-btn" onclick={nextPage} disabled={rendering} title="Next page (Right/PageDown)" aria-label="Next page">
           <Icon name="chevron-right" />
         </button>
@@ -559,6 +810,8 @@
         <span class="save-hint">Open a folder first</span>
       {:else if sourceMode === "url"}
         <span class="save-hint">Not available for web previews</span>
+      {:else if saveWarning}
+        <span class="save-hint save-warning" role="alert">{saveWarning}</span>
       {/if}
       <!-- UX-026: bind:this for focus restore -->
       <button
@@ -578,7 +831,13 @@
       <PreviewFrame
         url={previewUrl}
         bind:client
-        onError={(msg) => toast?.error(msg)}
+        onError={(msg) => {
+          if (sourceMode === "url") {
+            urlPreviewError = "This website could not be previewed inside print-md.";
+          } else {
+            toast?.error(msg);
+          }
+        }}
       />
     {/key}
   {:else}
@@ -590,7 +849,12 @@
         <button class="primary empty-cta" onclick={openFolder} disabled={busy}>Open Your Book Folder</button>
         <p class="empty-hint">Your project folder needs a <code>print-md.yaml</code> file and your <code>.md</code> chapter files.</p>
         <button class="ghost-link" onclick={() => (openUrlOpen = true)}>Or preview from a web address →</button>
-        {#if openError}
+        {#if urlPreviewError && sourceMode === "url"}
+          <div class="open-error" role="alert">
+            <strong>Preview unavailable.</strong>
+            <p>{urlPreviewError}</p>
+          </div>
+        {:else if openError}
           <div class="open-error" role="alert">
             <strong>Couldn't open that folder.</strong>
             <p>{friendlyFolderError(openError)}</p>
@@ -630,7 +894,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    max-width: 320px;
+    max-width: 420px;
     padding: 10px 14px;
     border-radius: 8px;
     background: rgba(30, 30, 30, 0.95);
@@ -638,8 +902,7 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     color: #eee;
     font-size: 13px;
-    /* Informational only — never intercept clicks/scroll on the preview. */
-    pointer-events: none;
+    pointer-events: auto;
   }
   .export-spinner {
     width: 14px;
@@ -651,9 +914,29 @@
     animation: export-spin 0.8s linear infinite;
   }
   .export-label {
+    flex: 1;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .export-success {
+    width: 14px;
+    flex: 0 0 auto;
+    color: #86efac;
+    font-weight: 700;
+    text-align: center;
+  }
+  .export-cancel {
+    background: transparent;
+    border: 1px solid #6b7280;
+    color: #e5e7eb;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+  .export-cancel:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: #9ca3af;
   }
   @keyframes export-spin {
     to { transform: rotate(360deg); }
@@ -741,11 +1024,19 @@
     text-align: center;
   }
   .page-input:disabled { opacity: 0.4; }
+  .page-pill {
+    background: linear-gradient(to bottom, #313740, #262c34);
+    border-color: #576170;
+    color: #eef4ff;
+    min-width: 104px;
+    text-align: center;
+  }
+  .page-pill:hover:not(:disabled) {
+    background: linear-gradient(to bottom, #38404b, #2c333d);
+    border-color: #6a7485;
+  }
 
   .zoom-select { padding: 5px 6px; }
-
-  /* UX-031: #b8c0cc meets WCAG AA on dark background */
-  .status { color: #b8c0cc; font-size: 12px; white-space: nowrap; }
 
   .doc-title {
     color: #ddd;
@@ -802,6 +1093,12 @@
     font-size: 11px;
     color: #888;
     white-space: nowrap;
+  }
+  .save-warning {
+    color: #f0c674;
+    max-width: 240px;
+    white-space: normal;
+    line-height: 1.35;
   }
 
   /* UX-037: persistent page count badge */

@@ -5,6 +5,11 @@
     id: number;
     message: string;
     type: ToastType;
+    action?: {
+      label: string;
+      onClick: () => void;
+      dismissOnClick?: boolean;
+    };
     removing?: boolean;
   }
 
@@ -17,8 +22,8 @@
   }
 
   export interface ToastController {
-    show(message: string, type?: ToastType, duration?: number): void;
-    success(message: string, duration?: number): void;
+    show(message: string, type?: ToastType, duration?: number, action?: ToastItem["action"]): void;
+    success(message: string, duration?: number, action?: ToastItem["action"]): void;
     error(message: string, duration?: number): void;
     warning(message: string, duration?: number): void;
     info(message: string, duration?: number): void;
@@ -50,9 +55,9 @@
     }, 300);
   }
 
-  function show(message: string, type: ToastType = "info", duration?: number): void {
+  function show(message: string, type: ToastType = "info", duration?: number, action?: ToastItem["action"]): void {
     const id = nextId++;
-    toasts = [...toasts, { id, message, type }];
+    toasts = [...toasts, { id, message, type, action }];
     const ms = duration ?? DURATIONS[type];
     if (ms > 0) setTimeout(() => dismiss(id), ms);
   }
@@ -61,7 +66,7 @@
   $effect(() => {
     api = {
       show,
-      success: (m, d) => show(m, "success", d),
+      success: (m, d, a) => show(m, "success", d, a),
       error:   (m, d) => show(m, "error", d),
       warning: (m, d) => show(m, "warning", d),
       info:    (m, d) => show(m, "info", d),
@@ -78,10 +83,21 @@
       role="status"
       aria-atomic="true"
     >
-      <span class="toast-icon">{@html ICONS[toast.type]}</span>
-      <span class="toast-message">{toast.message}</span>
-      <button class="toast-close" aria-label="Dismiss" onclick={() => dismiss(toast.id)}>&times;</button>
-    </div>
+        <span class="toast-icon">{@html ICONS[toast.type]}</span>
+        <span class="toast-message">{toast.message}</span>
+        {#if toast.action}
+          <button
+            class="toast-action"
+            onclick={() => {
+              toast.action?.onClick();
+              if (toast.action?.dismissOnClick !== false) dismiss(toast.id);
+            }}
+          >
+            {toast.action.label}
+          </button>
+        {/if}
+        <button class="toast-close" aria-label="Dismiss" onclick={() => dismiss(toast.id)}>&times;</button>
+      </div>
   {/each}
 </div>
 
@@ -141,6 +157,21 @@
   .toast-message {
     flex: 1;
     line-height: 1.4;
+  }
+
+  .toast-action {
+    background: transparent;
+    border: 1px solid currentColor;
+    color: inherit;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .toast-action:hover {
+    background: rgba(255, 255, 255, 0.08);
   }
 
   .toast-close {

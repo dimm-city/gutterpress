@@ -1,5 +1,15 @@
 <script lang="ts">
-  let { visible = false, label = "Loading…" }: { visible?: boolean; label?: string } = $props();
+  let {
+    visible = false,
+    label = "Loading…",
+    cancelLabel,
+    onCancel,
+  }: {
+    visible?: boolean;
+    label?: string;
+    cancelLabel?: string;
+    onCancel?: (() => void) | undefined;
+  } = $props();
 </script>
 
 {#if visible}
@@ -7,6 +17,9 @@
     <div class="spinner-wrap">
       <div class="spinner" aria-hidden="true"></div>
       <p class="label" aria-atomic="true">{label}</p>
+      {#if onCancel}
+        <button class="cancel-btn" onclick={onCancel}>{cancelLabel ?? "Cancel"}</button>
+      {/if}
     </div>
   </div>
 {/if}
@@ -49,5 +62,19 @@
     color: #ccc;
     font-size: 13px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  }
+
+  .cancel-btn {
+    background: transparent;
+    border: 1px solid #6b7280;
+    color: #e5e7eb;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
   }
 </style>
