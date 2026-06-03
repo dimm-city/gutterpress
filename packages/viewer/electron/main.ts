@@ -4,10 +4,12 @@ import {
   dialog,
   ipcMain,
   protocol,
+  session,
   shell,
 } from "electron";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 
 // __dirname/__filename are injected by electron-vite for the ESM main bundle
@@ -39,6 +41,19 @@ interface BuildResult {
   pdfPath?: string;
   fingerprintPath?: string;
 }
+interface ExportProgressEvent {
+  exportId: string;
+  state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
+  pages?: number;
+  message?: string;
+}
+interface ExportSession {
+  id: string;
+  canceled: boolean;
+  outPath: string;
+  tempOutPath: string;
+  win: BrowserWindow | null;
+}
 interface ManifestWithPath {
   manifest: { title?: string };
   manifestDir: string;
@@ -68,6 +83,16 @@ interface LibModule {
 }
 
 let libPromise: Promise<LibModule> | null = null;
+let activeExportSession: ExportSession | null = null;
+
+class ExportCanceledError extends Error {
+  code = "EXPORT_CANCELED";
+
+  constructor(message = "PDF export canceled") {
+    super(message);
+    this.name = "ExportCanceledError";
+  }
+}
 
 function loadLib(): Promise<LibModule> {
   if (!libPromise) {
@@ -89,11 +114,30 @@ function loadLib(): Promise<LibModule> {
 // puppeteer renderer (requires a system/bundled Chromium on PATH).
 // ──────────────────────────────────────────────────────────────────────────
 
+function sendExportProgress(event: ExportProgressEvent) {
+  mainWindow?.webContents.send("build:progress", event);
+}
+
+function requireActiveExportSession(): ExportSession {
+  if (!activeExportSession) {
+    throw new Error("No active export session");
+  }
+  return activeExportSession;
+}
+
+function throwIfExportCanceled(session: ExportSession) {
+  if (session.canceled) {
+    throw new ExportCanceledError();
+  }
+}
+
 async function electronPdfRenderer(input: {
   url: string;
   outPdf: string;
   timeoutMs: number;
 }): Promise<void> {
+  const session = requireActiveExportSession();
+  throwIfExportCanceled(session);
   const win = new BrowserWindow({
     show: false,
     // A hidden window is "occluded", so Chromium throttles its timers,
@@ -111,12 +155,15 @@ async function electronPdfRenderer(input: {
       backgroundThrottling: false,
     },
   });
+  session.win = win;
   try {
     await win.loadURL(input.url);
+    throwIfExportCanceled(session);
     const wc = win.webContents;
 
     // Wait for web fonts to finish loading.
     await wc.executeJavaScript("document.fonts.ready.then(() => true)");
+    throwIfExportCanceled(session);
 
     // Poll until Paged.js signals completion (or the timeout elapses), emitting
     // a per-page progress event so the UI can show "Rendering page N…" instead
@@ -132,19 +179,23 @@ async function electronPdfRenderer(input: {
       }))()`)) as { done: boolean; pages: number };
       if (status.pages !== lastPages) {
         lastPages = status.pages;
-        mainWindow?.webContents.send("build:progress", {
-          phase: "rendering",
+        sendExportProgress({
+          exportId: session.id,
+          state: "rendering",
           pages: status.pages,
         });
       }
+      throwIfExportCanceled(session);
       if (status.done) break;
       if (Date.now() > deadline) break;
       await new Promise((r) => setTimeout(r, 100));
     }
 
     // Pagination done — serializing a large PDF still takes time, so flag it.
-    mainWindow?.webContents.send("build:progress", {
-      phase: "finalizing",
+    throwIfExportCanceled(session);
+    sendExportProgress({
+      exportId: session.id,
+      state: "finalizing",
       pages: lastPages,
     });
 
@@ -162,14 +213,26 @@ async function electronPdfRenderer(input: {
     const widthIn = info.w > 0 ? info.w / 96 : 8.625;
     const heightIn = info.h > 0 ? info.h / 96 : 11.25;
 
+    throwIfExportCanceled(session);
     const data = await wc.printToPDF({
       printBackground: true,
       pageSize: { width: widthIn, height: heightIn },
       margins: { top: 0, bottom: 0, left: 0, right: 0 },
     });
+    throwIfExportCanceled(session);
     await writeFile(input.outPdf, data);
+  } catch (error) {
+    if (session.canceled) {
+      throw new ExportCanceledError();
+    }
+    throw error;
   } finally {
-    win.destroy();
+    if (!win.isDestroyed()) {
+      win.destroy();
+    }
+    if (session.win === win) {
+      session.win = null;
+    }
   }
 }
 
@@ -185,6 +248,54 @@ let activePreview: PreviewHandle | null = null;
 
 let mainWindow: BrowserWindow | null = null;
 
+function extractHeader(
+  headers: Record<string, string | string[] | undefined>,
+  name: string
+): string | undefined {
+  const value = headers[name] ?? headers[name.toLowerCase()] ?? headers[name.toUpperCase()];
+  if (Array.isArray(value)) return value.join(", ");
+  return value;
+}
+
+function cspFrameAncestorsBlocksEmbedding(csp: string | undefined): boolean {
+  if (!csp) return false;
+  const directive = csp
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => /^frame-ancestors\b/i.test(part));
+  if (!directive) return false;
+  const sources = directive
+    .split(/\s+/)
+    .slice(1)
+    .map((part) => part.trim().replace(/^'+|'+$/g, ""))
+    .filter(Boolean);
+  if (sources.includes("*")) return false;
+  return true;
+}
+
+function registerUrlPreviewHeaderWatch() {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const url = details.url;
+    const isSubframe = details.resourceType === "subFrame";
+    const isLocalPreview = /^https?:\/\/127\.0\.0\.1(?::\d+)?\//.test(url);
+    const parentFrameId = (details as { parentFrameId?: number }).parentFrameId;
+    const isTopLevelEmbeddedFrame = parentFrameId === 0;
+    if (isSubframe && isTopLevelEmbeddedFrame && !isLocalPreview) {
+      const xfo = extractHeader(details.responseHeaders ?? {}, "x-frame-options");
+      const csp = extractHeader(details.responseHeaders ?? {}, "content-security-policy");
+      const blocksEmbedding = !!xfo || cspFrameAncestorsBlocksEmbedding(csp);
+      if (blocksEmbedding) {
+        mainWindow?.webContents.send("url-preview:blocked", {
+          url,
+          reason:
+            "This website does not allow embedded preview inside print-md. Sign-in may have worked, but the site blocks in-app framing for security reasons.",
+        });
+      }
+    }
+    callback({ responseHeaders: details.responseHeaders });
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -199,13 +310,25 @@ function createWindow() {
   });
   mainWindow.setMenuBarVisibility(false);
 
-  // Any link / window.open targeting an external URL opens in the user's real
-  // browser, not a new Electron (Chromium) window. Without this, clicking a docs
-  // link in the Help dialog would spawn a bare new app window.
+  // Auth flows for URL previews sometimes rely on window.open popups, so allow
+  // http(s) popups inside Electron. Renderer code should still call
+  // `electron.openExternal()` when the user explicitly wants the system browser.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) {
-      void shell.openExternal(url);
-      return { action: "deny" };
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          width: 1100,
+          height: 760,
+          parent: mainWindow ?? undefined,
+          autoHideMenuBar: true,
+          webPreferences: {
+            sandbox: true,
+            contextIsolation: true,
+            nodeIntegration: false,
+          },
+        },
+      };
     }
     return { action: "deny" };
   });
@@ -375,6 +498,10 @@ ipcMain.handle("shell:openExternal", async (_e, url: string) => {
   await shell.openExternal(url);
 });
 
+ipcMain.handle("shell:showInFolder", async (_e, filePath: string) => {
+  shell.showItemInFolder(filePath);
+});
+
 ipcMain.handle("api:status", async () => {
   return { name: "@dimm-city/print-md-viewer", runtime: "node", ok: true };
 });
@@ -382,8 +509,25 @@ ipcMain.handle("api:status", async () => {
 ipcMain.handle("api:doctor", async () => {
   const lib = await loadLib();
   const diag = await lib.getSystemDiagnostics();
+  const externalTools = diag.tools.filter(
+    (tool) => tool.bin !== "chrome / chromium / msedge"
+  );
   return {
     ...diag,
+    tools: [
+      {
+        name: "Chromium (built-in via Electron)",
+        bin: "electron",
+        found: true,
+        path: "Bundled with the viewer app",
+        version: process.versions.chrome,
+        usedBy: [
+          { feature: "Preview rendering and Save PDF", severity: "required" },
+        ],
+        installHint: "No setup required in the viewer app.",
+      },
+      ...externalTools,
+    ],
     viewerVersion: app.getVersion(),
     electronVersion: process.versions.electron,
     chromeVersion: process.versions.chrome,
@@ -441,6 +585,26 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   };
 });
 
+ipcMain.handle("api:stopPreview", async () => {
+  if (activePreview) {
+    await activePreview.stop().catch(() => {});
+    activePreview = null;
+  }
+  return { stopped: true };
+});
+
+ipcMain.handle("api:cancelExport", async (_e, exportId: string) => {
+  if (!activeExportSession || activeExportSession.id !== exportId) {
+    return { canceled: false };
+  }
+  activeExportSession.canceled = true;
+  const exportWin = activeExportSession.win;
+  if (exportWin && !exportWin.isDestroyed()) {
+    exportWin.destroy();
+  }
+  return { canceled: true };
+});
+
 ipcMain.handle(
   "api:build",
   async (
@@ -466,7 +630,24 @@ ipcMain.handle(
     }
 
     const lib = await loadLib();
-    const { outDir, pdfFileOverride } = lib.splitOutPath(args.out, format);
+    if (activeExportSession) {
+      throw new Error("A PDF export is already in progress");
+    }
+    const requestedOutPath = args.out;
+    if (!requestedOutPath) {
+      throw new Error("Missing 'out' for PDF export");
+    }
+    const tempOutPath = `${requestedOutPath}.print-md.tmp.pdf`;
+    const { outDir, pdfFileOverride } = lib.splitOutPath(tempOutPath, format);
+    const exportSession: ExportSession = {
+      id: randomUUID(),
+      canceled: false,
+      outPath: requestedOutPath,
+      tempOutPath,
+      win: null,
+    };
+    activeExportSession = exportSession;
+    sendExportProgress({ exportId: exportSession.id, state: "started" });
 
     try {
       const result = await lib.runBuild({
@@ -488,13 +669,27 @@ ipcMain.handle(
           : electronPdfRenderer,
         rawArgs: { input: args.input, format, out: args.out },
       });
+      throwIfExportCanceled(exportSession);
+      await rename(exportSession.tempOutPath, exportSession.outPath);
+      sendExportProgress({
+        exportId: exportSession.id,
+        state: "success",
+        message: exportSession.outPath,
+      });
       return {
+        exportId: exportSession.id,
         outDir: result.outDir,
         htmlPath: result.htmlPath,
-        pdfPath: result.pdfPath,
+        pdfPath: exportSession.outPath,
         fingerprintPath: result.fingerprintPath,
       };
     } catch (e: unknown) {
+      if (exportSession.canceled || e instanceof ExportCanceledError) {
+        sendExportProgress({ exportId: exportSession.id, state: "canceled" });
+        const err = new Error("PDF export canceled");
+        (err as Error & { code?: string }).code = "EXPORT_CANCELED";
+        throw err;
+      }
       // BuildError carries actionable multi-line text from the lib's
       // preflightBuildTools / requireChromiumExecutable — preserve it.
       if (e instanceof lib.BuildError) {
@@ -518,7 +713,15 @@ ipcMain.handle(
         (err as Error & { code?: string }).code = "TOOL_MISSING";
         throw err;
       }
+      sendExportProgress({
+        exportId: exportSession.id,
+        state: "error",
+        message: e instanceof Error ? e.message : String(e),
+      });
       throw e;
+    } finally {
+      activeExportSession = null;
+      await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
     }
   }
 );
@@ -529,6 +732,7 @@ ipcMain.handle(
 
 app.whenReady().then(async () => {
   registerAppProtocol();
+  registerUrlPreviewHeaderWatch();
   createWindow();
 
   // Pre-warm the lib graph in parallel with SPA boot. The first call to
@@ -548,6 +752,14 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", async () => {
+  if (activeExportSession) {
+    activeExportSession.canceled = true;
+    if (activeExportSession.win && !activeExportSession.win.isDestroyed()) {
+      activeExportSession.win.destroy();
+    }
+    await rm(activeExportSession.tempOutPath, { force: true }).catch(() => {});
+    activeExportSession = null;
+  }
   if (activePreview) {
     await activePreview.stop().catch(() => {});
     activePreview = null;

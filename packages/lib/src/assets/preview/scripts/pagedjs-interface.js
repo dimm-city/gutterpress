@@ -70,6 +70,27 @@
 
   window.previewAPI = api;
 
+  var observedPageCount = 0;
+  var pageObserverQueued = false;
+  function publishObservedPageCount() {
+    pageObserverQueued = false;
+    if (window.__PAGED_RENDERED__ === true) return;
+    var count = refreshPages().length;
+    if (count > observedPageCount) {
+      observedPageCount = count;
+      window.dispatchEvent(new CustomEvent('pageChanged', {
+        detail: { currentPage: count, totalPages: count }
+      }));
+    }
+  }
+  var pageObserver = new MutationObserver(function () {
+    if (window.__PAGED_RENDERED__ === true) return;
+    if (pageObserverQueued) return;
+    pageObserverQueued = true;
+    window.requestAnimationFrame(publishObservedPageCount);
+  });
+  pageObserver.observe(document.body, { childList: true, subtree: true });
+
   // Scroll tracking
   var scrollTimer = null;
   window.addEventListener('scroll', function () {
@@ -88,6 +109,8 @@
   window.PagedConfig = window.PagedConfig || {};
   window.PagedConfig.after = function (flow) {
     refreshPages();
+    observedPageCount = pages.length;
+    pageObserver.disconnect();
     console.log('Paged.js rendered ' + pages.length + ' pages');
     api.notifyRenderingComplete();
   };

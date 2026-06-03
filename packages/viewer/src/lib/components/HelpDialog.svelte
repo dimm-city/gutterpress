@@ -24,6 +24,34 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
   let copied = $state(false);
+  let dialogEl = $state<HTMLDivElement | undefined>(undefined);
+
+  function focusableElements() {
+    return Array.from(
+      dialogEl?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
+      ) ?? []
+    );
+  }
+
+  function focusFirstElement() {
+    focusableElements()[0]?.focus();
+  }
+
+  function trapFocus(e: KeyboardEvent) {
+    if (e.key !== "Tab") return;
+    const focusable = focusableElements();
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) return;
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   async function load() {
     loading = true;
@@ -43,7 +71,10 @@
   }
 
   $effect(() => {
-    if (open && !data && !loading) load();
+    if (open) {
+      queueMicrotask(focusFirstElement);
+      if (!data && !loading) load();
+    }
   });
 
   function close() {
@@ -116,7 +147,7 @@
 {#if open}
   <div class="backdrop" onclick={close} role="presentation"></div>
 
-  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
+  <div bind:this={dialogEl} class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1" onkeydown={trapFocus}>
     <header class="dialog-header">
       <h2 id="help-title">Help &amp; About</h2>
       <button class="close" onclick={close} title="Close (Esc)" aria-label="Close">&times;</button>

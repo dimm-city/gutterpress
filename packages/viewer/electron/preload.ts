@@ -33,10 +33,23 @@ interface BuildArgs {
 }
 
 interface BuildResult {
+  exportId?: string;
   outDir: string;
   htmlPath?: string;
   pdfPath?: string;
   fingerprintPath?: string;
+}
+
+interface ExportProgressEvent {
+  exportId: string;
+  state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
+  pages?: number;
+  message?: string;
+}
+
+interface UrlPreviewBlockedEvent {
+  url: string;
+  reason: string;
 }
 
 contextBridge.exposeInMainWorld("electron", {
@@ -49,25 +62,39 @@ contextBridge.exposeInMainWorld("electron", {
   // App actions
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke("shell:openExternal", url),
+  showInFolder: (filePath: string): Promise<void> =>
+    ipcRenderer.invoke("shell:showInFolder", filePath),
 
   // Lib API (replaces /api/* HTTP routes)
   getStatus: (): Promise<{ ok: boolean; runtime: string; name: string }> =>
     ipcRenderer.invoke("api:status"),
   startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
+  stopPreview: (): Promise<{ stopped: boolean }> =>
+    ipcRenderer.invoke("api:stopPreview"),
+  cancelExport: (exportId: string): Promise<{ canceled: boolean }> =>
+    ipcRenderer.invoke("api:cancelExport", exportId),
   build: (args: BuildArgs): Promise<BuildResult> =>
     ipcRenderer.invoke("api:build", args),
   doctor: (): Promise<unknown> => ipcRenderer.invoke("api:doctor"),
 
   // Live PDF-build progress (main → renderer). Returns an unsubscribe fn.
   onBuildProgress: (
-    cb: (data: { phase: "rendering" | "finalizing"; pages: number }) => void
+    cb: (data: ExportProgressEvent) => void
   ): (() => void) => {
     const listener = (
       _e: unknown,
-      data: { phase: "rendering" | "finalizing"; pages: number }
+      data: ExportProgressEvent
     ) => cb(data);
     ipcRenderer.on("build:progress", listener);
     return () => ipcRenderer.removeListener("build:progress", listener);
+  },
+
+  onUrlPreviewBlocked: (
+    cb: (data: UrlPreviewBlockedEvent) => void
+  ): (() => void) => {
+    const listener = (_e: unknown, data: UrlPreviewBlockedEvent) => cb(data);
+    ipcRenderer.on("url-preview:blocked", listener);
+    return () => ipcRenderer.removeListener("url-preview:blocked", listener);
   },
 });
