@@ -62,6 +62,7 @@
     nextPage: function () { api.goToPage(currentIndex + 1 + (currentViewMode === 'single' ? 1 : 2)); },
     lastPage: function () { api.goToPage(pages.length); },
     setViewMode: function (mode) {
+      refreshPages();
       currentViewMode = mode || 'two-column';
       document.body.classList.remove('view-single', 'view-spread', 'view-two-column');
       if (mode) document.body.classList.add('view-' + mode);
@@ -114,6 +115,7 @@
   // Scroll tracking
   var scrollTimer = null;
   window.addEventListener('scroll', function () {
+    if (pages.length === 0) refreshPages();
     if (pages.length === 0) return;
     if (scrollTimer) clearTimeout(scrollTimer);
     scrollTimer = setTimeout(function () {
