@@ -407,6 +407,7 @@ jobs:
         with:
           path: dist/
           merge-multiple: true
+          pattern: "print-md-*|viewer-*"
 
       - name: Create GitHub release
         run: |
