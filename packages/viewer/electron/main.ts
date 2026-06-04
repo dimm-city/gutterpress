@@ -9,7 +9,7 @@ import {
 } from "electron";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 
 // __dirname/__filename are injected by electron-vite for the ESM main bundle
@@ -241,6 +241,40 @@ async function electronPdfRenderer(input: {
 // ──────────────────────────────────────────────────────────────────────────
 
 let activePreview: PreviewHandle | null = null;
+
+interface ViewerPrefs {
+  lastProjectDir?: string;
+  currentPage?: number;
+  viewMode?: "single" | "two-column";
+}
+
+type ViewerPrefsPatch = Partial<ViewerPrefs>;
+
+function prefsPath(): string {
+  return path.join(app.getPath("userData"), "viewer-prefs.json");
+}
+
+async function readPrefs(): Promise<ViewerPrefs> {
+  try {
+    return JSON.parse(await readFile(prefsPath(), "utf8")) as ViewerPrefs;
+  } catch {
+    return {};
+  }
+}
+
+async function writePrefs(prefs: ViewerPrefs): Promise<void> {
+  await mkdir(app.getPath("userData"), { recursive: true });
+  await writeFile(prefsPath(), JSON.stringify(prefs, null, 2), "utf8");
+}
+
+async function existingDirectory(dir: string | undefined): Promise<string | null> {
+  if (!dir) return null;
+  try {
+    return (await stat(dir)).isDirectory() ? dir : null;
+  } catch {
+    return null;
+  }
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Window management
@@ -506,6 +540,25 @@ ipcMain.handle("api:status", async () => {
   return { name: "@dimm-city/print-md-viewer", runtime: "node", ok: true };
 });
 
+ipcMain.handle("app:getLastProject", async () => {
+  const prefs = await readPrefs();
+  return existingDirectory(prefs.lastProjectDir);
+});
+
+ipcMain.handle("app:getViewerPrefs", async () => {
+  const prefs = await readPrefs();
+  return {
+    ...prefs,
+    lastProjectDir: await existingDirectory(prefs.lastProjectDir),
+  };
+});
+
+ipcMain.handle("app:setViewerPrefs", async (_e, patch: ViewerPrefsPatch) => {
+  const current = await readPrefs();
+  await writePrefs({ ...current, ...patch });
+  return { ok: true };
+});
+
 ipcMain.handle("api:doctor", async () => {
   const lib = await loadLib();
   const diag = await lib.getSystemDiagnostics();
@@ -575,6 +628,8 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   } catch {
     /* not a manifest project — keep dir basename */
   }
+
+  await writePrefs({ ...(await readPrefs()), lastProjectDir: activePreview.inputPath });
 
   return {
     url: activePreview.url,

@@ -112,10 +112,19 @@ async function main() {
     api.setViewMode("two-column");
     api.goToPage(4);
     assert.equal(api.getCurrentPage(), 4);
-    api.nextPage();
+    api.nextPage("two-column");
     assert.equal(api.getCurrentPage(), 6);
-    api.prevPage();
+    api.prevPage("two-column");
     assert.equal(api.getCurrentPage(), 4);
+  }
+
+  {
+    const pages = [makePage(0), makePage(0), makePage(1000), makePage(1000), makePage(2000), makePage(2000)];
+    const { api } = loadPreviewApi(pages);
+    api.setViewMode("single");
+    api.goToPage(4);
+    api.nextPage("two-column");
+    assert.equal(api.getCurrentPage(), 6);
   }
 
   {

@@ -52,6 +52,12 @@ interface UrlPreviewBlockedEvent {
   reason: string;
 }
 
+interface ViewerPrefs {
+  lastProjectDir?: string | null;
+  currentPage?: number;
+  viewMode?: "single" | "two-column";
+}
+
 contextBridge.exposeInMainWorld("electron", {
   // Dialogs
   openDirectory: (): Promise<string | null> =>
@@ -68,6 +74,12 @@ contextBridge.exposeInMainWorld("electron", {
   // Lib API (replaces /api/* HTTP routes)
   getStatus: (): Promise<{ ok: boolean; runtime: string; name: string }> =>
     ipcRenderer.invoke("api:status"),
+  getLastProject: (): Promise<string | null> =>
+    ipcRenderer.invoke("app:getLastProject"),
+  getViewerPrefs: (): Promise<ViewerPrefs> =>
+    ipcRenderer.invoke("app:getViewerPrefs"),
+  setViewerPrefs: (patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("app:setViewerPrefs", patch),
   startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>

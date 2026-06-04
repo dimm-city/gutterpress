@@ -28,6 +28,11 @@
     currentPage?: number;
     totalPages?: number;
   };
+  type PersistedProjectState = {
+    lastProjectDir?: string | null;
+    currentPage?: number;
+    viewMode?: "single" | "two-column";
+  };
 
   // Per-screen state
   let previewUrl = $state<string | null>(null);
@@ -68,6 +73,11 @@
   let rendering = $state(false);
   let renderProgressPage = $state(0);
   let renderCompleteOverlay = $state(false);
+  let autoOpeningLastProject = $state(false);
+  let lastProjectChecked = $state(false);
+  let pendingRestorePage = $state<number | null>(null);
+  let pendingRestoreViewMode = $state<"single" | "two-column" | null>(null);
+  let restoringSavedState = $state(false);
 
   // Toast controller (populated by Toast.svelte via bind:api)
   let toast = $state<ToastController | null>(null);
@@ -123,6 +133,26 @@
     }
   });
 
+  $effect(() => {
+    const electron = (window as any).electron;
+    if (!electron?.getViewerPrefs || !electron?.startPreview) return;
+    if (lastProjectChecked) return;
+    if (previewUrl || currentDir || currentUrl || busy || openError || urlPreviewError) return;
+    if (autoOpeningLastProject) return;
+
+    autoOpeningLastProject = true;
+    lastProjectChecked = true;
+    electron.getViewerPrefs()
+      .then((prefs: PersistedProjectState) => {
+        if (!prefs.lastProjectDir || previewUrl || currentDir || currentUrl) return;
+        return startFolderPreview(prefs.lastProjectDir, "Reopening previous folder…", prefs);
+      })
+      .catch(() => {})
+      .finally(() => {
+        autoOpeningLastProject = false;
+      });
+  });
+
   // ----------------------------------------------------------------
   // Hook PreviewClient events when it appears
   // ----------------------------------------------------------------
@@ -143,13 +173,20 @@
         client?.injectStyles("debug", DEBUG_STYLES);
         // Set initial view mode (auto if user hasn't chosen)
         const auto = window.innerWidth < 1280 ? "single" : "two-column";
-        const mode = userSetViewMode ? viewMode : auto;
+        const restorePage = pendingRestorePage;
+        const restoreMode = pendingRestoreViewMode;
+        pendingRestorePage = null;
+        pendingRestoreViewMode = null;
+        const mode = restoreMode ?? (userSetViewMode ? viewMode : auto);
         applyViewMode(mode, false);
         // Apply fit-width zoom on narrow screens
         if (window.innerWidth < 1280) {
           applyFitWidthZoom();
         } else {
           client?.call("setZoom", [zoom === "fit-width" ? 1 : Number(zoom)]).catch(() => {});
+        }
+        if (restorePage && restorePage > 1) {
+          queueMicrotask(() => restoreProjectPage(restorePage));
         }
         // UX-011: improved success toast copy
         toast?.success(`Your book is ready — ${n} ${n === 1 ? 'page' : 'pages'}`);
@@ -358,22 +395,23 @@
     updateExportLabel();
   }
 
-  async function openFolder() {
+  async function startFolderPreview(
+    dir: string,
+    label = "Starting preview…",
+    restoreState: PersistedProjectState | null = null
+  ) {
     openError = null;
     urlPreviewError = null;
     saveWarning = null;
     renderCompleteOverlay = false;
     busy = true;
-    busyLabel = "Opening folder…";
+    busyLabel = label;
     try {
       const electron = (window as any).electron;
-      if (!electron?.openDirectory || !electron?.startPreview) {
+      if (!electron?.startPreview) {
         toast?.error("Electron bridge unavailable — run via the viewer app");
         return;
       }
-      const dir = await electron.openDirectory();
-      if (!dir) return;
-      busyLabel = "Starting preview…";
       const data = await electron.startPreview({ input: dir });
       sourceMode = "folder";
       currentDir = dir;
@@ -387,7 +425,15 @@
       renderProgressPage = 0;
       totalPages = 0;
       currentPage = 1;
-      userSetViewMode = false;
+      const restoredViewMode = restoreState?.viewMode;
+      pendingRestoreViewMode = restoredViewMode ?? null;
+      pendingRestorePage = restoreState?.currentPage && restoreState.currentPage > 1
+        ? restoreState.currentPage
+        : null;
+      if (restoredViewMode) {
+        viewMode = restoredViewMode;
+      }
+      userSetViewMode = !!restoredViewMode;
       // Loud signal for the #1 cause of wrong fonts/styles: shared asset dirs
       // (e.g. ../dc-design-guide/fonts) that don't resolve next to this project.
       const missing = data.missingSharedAssets ?? [];
@@ -406,6 +452,30 @@
     } finally {
       busy = false;
       busyLabel = "";
+    }
+  }
+
+  async function openFolder() {
+    const electron = (window as any).electron;
+    if (!electron?.openDirectory) {
+      toast?.error("Electron bridge unavailable — run via the viewer app");
+      return;
+    }
+    busy = true;
+    busyLabel = "Opening folder…";
+    try {
+      const dir = await electron.openDirectory();
+      if (!dir) return;
+      const prefs = electron.getViewerPrefs
+        ? await electron.getViewerPrefs().catch(() => null) as PersistedProjectState | null
+        : null;
+      const restoreState = prefs?.lastProjectDir === dir ? prefs : null;
+      await startFolderPreview(dir, "Starting preview…", restoreState);
+    } finally {
+      if (busyLabel === "Opening folder…") {
+        busy = false;
+        busyLabel = "";
+      }
     }
   }
 
@@ -561,6 +631,30 @@
     currentPage = state.currentPage ?? currentPage;
     totalPages = state.totalPages ?? totalPages;
     if (!pageEditing) pageEditValue = String(currentPage);
+    saveViewerPrefs({ currentPage });
+  }
+
+  function saveViewerPrefs(patch: Partial<PersistedProjectState>) {
+    if (!currentDir || sourceMode !== "folder" || rendering || restoringSavedState) return;
+    const electron = (window as any).electron;
+    electron?.setViewerPrefs?.({ lastProjectDir: currentDir, ...patch }).catch(() => {});
+  }
+
+  function restoreProjectPage(page: number) {
+    if (!client || rendering) return;
+    restoringSavedState = true;
+    client.call<PageState>("goToPage", [page])
+      .then((state) => {
+        currentPage = state.currentPage ?? currentPage;
+        totalPages = state.totalPages ?? totalPages;
+        if (!pageEditing) pageEditValue = String(currentPage);
+        const electron = (window as any).electron;
+        electron?.setViewerPrefs?.({ lastProjectDir: currentDir, currentPage }).catch(() => {});
+      })
+      .catch(() => {})
+      .finally(() => {
+        restoringSavedState = false;
+      });
   }
 
   function runPageCommand(cmd: string, args: unknown[] = []) {
@@ -589,8 +683,8 @@
     pageEditing = false;
   }
   function firstPage() { runPageCommand("firstPage"); }
-  function prevPage() { runPageCommand("prevPage"); }
-  function nextPage() { runPageCommand("nextPage"); }
+  function prevPage() { runPageCommand("prevPage", [viewMode]); }
+  function nextPage() { runPageCommand("nextPage", [viewMode]); }
   function lastPage() { runPageCommand("lastPage"); }
 
   /** Apply fit-width by querying the page's rendered width from the iframe. */
@@ -629,6 +723,7 @@
   function applyViewMode(mode: "single" | "two-column", fromUser: boolean) {
     viewMode = mode;
     if (fromUser) userSetViewMode = true;
+    saveViewerPrefs({ viewMode: mode });
     client?.call("setViewMode", [mode]).catch(() => {});
   }
 
@@ -741,10 +836,6 @@
         <button class="icon-btn" onclick={lastPage} disabled={rendering} title="Last page (End)" aria-label="Last page">
           <Icon name="chevrons-right" />
         </button>
-        <!-- UX-037: persistent page count badge -->
-        {#if totalPages > 0}
-          <span class="page-count-badge">{totalPages} pages</span>
-        {/if}
       </section>
     {/if}
 
@@ -853,7 +944,7 @@
         <h1 class="empty-title">print-md</h1>
         <p class="empty-tagline">Turn your markdown writing into a print-ready book</p>
         <button class="primary empty-cta" onclick={openFolder} disabled={busy}>Open Your Book Folder</button>
-        <p class="empty-hint">Your project folder needs a <code>print-md.yaml</code> file and your <code>.md</code> chapter files.</p>
+        <p class="empty-hint">Open a Print-md project folder with a <code>manifest.yaml</code> or <code>manifest.yml</code> file. Markdown sources are loaded in manifest order, or alphabetically when no file list is configured.</p>
         <button class="ghost-link" onclick={() => (openUrlOpen = true)}>Or preview from a web address →</button>
         {#if urlPreviewError && sourceMode === "url"}
           <div class="open-error" role="alert">
@@ -1105,17 +1196,6 @@
     max-width: 240px;
     white-space: normal;
     line-height: 1.35;
-  }
-
-  /* UX-037: persistent page count badge */
-  .page-count-badge {
-    font-size: 11px;
-    color: #9ab;
-    background: #2a3040;
-    padding: 2px 7px;
-    border-radius: 10px;
-    white-space: nowrap;
-    margin-left: 4px;
   }
 
   /* ---- Empty state / welcome hero ---- */

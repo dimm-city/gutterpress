@@ -52,8 +52,8 @@
     pages[page - 1].scrollIntoView({ behavior: 'instant', block: 'start', inline: 'nearest' });
   }
 
-  function pageStep() {
-    return currentViewMode === 'single' ? 1 : 2;
+  function pageStep(mode) {
+    return (mode || currentViewMode) === 'single' ? 1 : 2;
   }
 
   var api = {
@@ -76,8 +76,8 @@
       };
     },
     firstPage: function () { return api.goToPage(1); },
-    prevPage: function () { return api.goToPage(currentPage - pageStep()); },
-    nextPage: function () { return api.goToPage(currentPage + pageStep()); },
+    prevPage: function (mode) { return api.goToPage(currentPage - pageStep(mode)); },
+    nextPage: function (mode) { return api.goToPage(currentPage + pageStep(mode)); },
     lastPage: function () { refreshPages(); return api.goToPage(pages.length); },
     setViewMode: function (mode) {
       refreshPages();
