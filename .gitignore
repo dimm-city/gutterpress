@@ -46,6 +46,9 @@ tests/
 # Integration fixtures and scripts are committed
 !tests/integration/
 !tests/integration/**
+# Updater unit tests are committed (run in CI via the viewer `test` script)
+!tests/updater/
+!tests/updater/**
 .reviews/
 *.zip
 *.skill
