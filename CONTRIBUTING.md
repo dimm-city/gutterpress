@@ -89,7 +89,7 @@ bun run electron:dev # Full Electron + SvelteKit
 ```
 print-md/                        # Workspace root (private)
 ├── packages/
-│   ├── cli/                     # @dimm-city/print-md — CLI + library
+│   ├── cli/                     # @dimm-city/print-md — CLI (thin shell over print-md-lib)
 │   │   ├── src/
 │   │   │   ├── cli.ts           # CLI entry point
 │   │   │   ├── api/index.ts     # Library API (runBuild, startPreviewServer, …)
@@ -99,6 +99,7 @@ print-md/                        # Workspace root (private)
 │   │   │   └── preview/         # Headless preview server (Bun.serve + chokidar)
 │   │   ├── scripts/compile.ts   # Binary compile wrapper
 │   │   └── tests/               # Bun test suite
+│   ├── lib/                     # @dimm-city/print-md-lib — all runtime logic (markdown rendering, preview server, PDF generation)
 │   └── viewer/                  # @dimm-city/print-md-viewer — Electron + SvelteKit desktop app
 │       ├── electron/            # Electron main process
 │       └── src/                 # SvelteKit UI + server routes
@@ -356,7 +357,7 @@ The CI/CD pipeline includes security measures:
 2. **Update documentation**
    - Update README.md for user-facing changes
    - Add JSDoc comments for new APIs
-   - Update CHANGELOG.md (if exists)
+   - Update CHANGELOG.md
 
 3. **Test your changes**
    - Add tests for new functionality

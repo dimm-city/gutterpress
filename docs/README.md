@@ -101,7 +101,6 @@ print-md validate --pdf dist/book.pdf
 @end-section                Close current @section
 @spread                     Start a two-page spread
 @section .two-column        Two-column layout
-::: sidebar ... :::         Sidebar content block
 ```
 
 ### Common Callouts

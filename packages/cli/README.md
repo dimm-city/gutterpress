@@ -219,7 +219,7 @@ The binary is self-contained except for the system tools described in [User Guid
 - **`spawn gs ENOENT`** — Ghostscript not installed. Plain `--format pdf` keeps working (only loses the `/Creator` metadata stamp). PDF/X builds genuinely need it. See [User Guide: Chapter 8 — System Setup](../../examples/print-md-user-guide/08-system-setup.md).
 - **`No Chrome or Chromium binary found`** — install Chrome/Chromium/Edge, or set `CHROMIUM_PATH=/path/to/chrome` in your environment.
 - **`Tool "X" not found — skipping`** during validate — that's the graceful path; the check requires `X` and isn't available. Install the tool or accept the skip.
-- **All validate checks skipped on Windows** — was a bug pre-0.1.7 (used `which`, which isn't on stock Windows); fixed to use `where.exe`.
+- **All validate checks skipped on Windows** — fixed in an earlier release (used `which`, which isn't on stock Windows); now uses `where.exe`.
 
 ## Development
 

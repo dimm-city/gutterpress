@@ -27,7 +27,7 @@ and never hosts its own HTTP server.
 
 ## What's NOT here anymore
 
-If you're coming from the pre-v0.1.0 architecture, several things have been
+If you're coming from the pre-v0.2.0 architecture, several things have been
 removed:
 
 - **No more SvelteKit HTTP server inside Electron** — adapter-static replaced
@@ -53,7 +53,7 @@ removed:
   `packages/lib/src/lib/chromium.ts` — and accepts a `CHROMIUM_PATH` or
   `PUPPETEER_EXECUTABLE_PATH` env-var override.
 
-  Recognized today (as of 0.1.x+):
+  Recognized today (as of 0.2.0):
   - **Windows:** Google Chrome in default locations OR Microsoft Edge in
     default locations (auto-detected).
   - **macOS:** Chrome, Chromium (Homebrew), or Microsoft Edge in
@@ -64,7 +64,7 @@ removed:
   For any other browser or non-default install location, set `CHROMIUM_PATH`
   to point at it.
 
-- **Ghostscript is OPTIONAL for plain Save PDF.** As of 0.1.x, the lib's
+- **Ghostscript is OPTIONAL for plain Save PDF.** As of 0.2.0, the lib's
   `/Creator` metadata stamp via Ghostscript is best-effort — if `gs` isn't
   installed, the PDF still saves and a warning is logged. (Earlier
   versions failed hard.) Ghostscript IS required for the PDF/X format
@@ -126,9 +126,9 @@ npm run build
 npm run electron:build
 
 # 3. Package as platform installer (electron-builder)
-npm run dist:linux   # → dist/print-md-viewer-X.Y.Z.AppImage
-npm run dist:win     # → dist/print-md-viewer-X.Y.Z-win.zip
-npm run dist:mac     # → dist/print-md-viewer-X.Y.Z-arm64.dmg
+npm run dist:linux   # → dist/print-md-viewer-0.2.0.AppImage
+npm run dist:win     # → dist/print-md-viewer-0.2.0-win.zip
+npm run dist:mac     # → dist/print-md-viewer-0.2.0-arm64.dmg
 ```
 
 Each `dist:*` script runs the build and electron:build steps automatically
@@ -138,7 +138,7 @@ before packaging.
 
 ```bash
 npm run dist:win
-# Output: dist/print-md-viewer-X.Y.Z-win.zip
+# Output: dist/print-md-viewer-0.2.0-win.zip
 ```
 
 Extract the zip and run `print-md-viewer.exe`. The release CI runs this on
@@ -149,7 +149,7 @@ config for the right platform.
 
 ```bash
 npm run dist:mac
-# Output: dist/print-md-viewer-X.Y.Z-arm64.dmg
+# Output: dist/print-md-viewer-0.2.0-arm64.dmg
 ```
 
 Code-signing and notarization require macOS credentials configured in the

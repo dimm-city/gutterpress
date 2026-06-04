@@ -19,10 +19,11 @@ This document describes the architecture, design decisions, and implementation d
 
 ### Monorepo structure
 
-The repo is a Bun workspace with two packages:
+The repo is a Bun workspace with three packages:
 
-- **`packages/cli/`** (`@dimm-city/print-md`) — CLI binary + library API. Distributed as a standalone compiled binary via `bun build --compile`.
-- **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron + SvelteKit desktop app. Imports `@dimm-city/print-md` as a workspace dependency.
+- **`packages/cli/`** (`@dimm-city/print-md`) — CLI binary. Thin shell over `@dimm-city/print-md-lib`. Distributed as a standalone compiled binary via `bun build --compile`.
+- **`packages/lib/`** (`@dimm-city/print-md-lib`, private) — all runtime logic: markdown rendering, preview HTTP server, PDF generation, lint, validation. Pure ESM. Consumed by both the CLI and the viewer as a workspace dependency.
+- **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron + SvelteKit desktop app. Imports `@dimm-city/print-md-lib` as a workspace dependency.
 
 ### Key Features
 
@@ -220,7 +221,7 @@ function resolveConfig(
 
 #### Plugin Architecture
 
-The `createMarkdownRenderer()` factory function creates a fully-configured MarkdownIt instance with the `markdown-it-paged` layout plugin, built-in container plugins, and attribute support. Custom plugins from the manifest are applied at creation time via `applyPlugins()` from `packages/cli/src/lib/markdown/plugins.ts`:
+The `createMarkdownRenderer()` factory function creates a fully-configured MarkdownIt instance with the `markdown-it-paged` layout plugin and attribute support. Custom plugins from the manifest are applied at creation time via `applyPlugins()` from `packages/cli/src/lib/markdown/plugins.ts`:
 
 ```typescript
 // Creates a new MarkdownIt instance with all built-in plugins
@@ -723,21 +724,5 @@ export function validateSafePath(targetPath: string, basePath: string): boolean 
 
 ---
 
-## Future Considerations
-
-### Potential Improvements
-
-1. **Parallel Processing**: Process multiple markdown files concurrently
-2. **Caching**: Cache processed markdown to speed up rebuilds
-3. **Incremental Builds**: Only rebuild changed files
-4. **Plugin Marketplace**: Community-contributed plugins
-
-### Technical Debt
-
-1. **Add Runtime Validation**: Consider Zod for schema validation
-2. **Improve Test Coverage**: Especially for server and build modules
-
----
-
-**Last Updated**: 2026-05-18
-**Version**: monorepo (packages/cli + packages/viewer)
+**Last Updated**: 2026-06-03
+**Version**: 0.2.0 (packages/cli + packages/lib + packages/viewer)

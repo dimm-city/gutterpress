@@ -50,6 +50,7 @@ tests/
 *.zip
 *.skill
 .trash/
+.akm-run/
 review/
 review_screenshots/
 _site/dc-design-guide-migration-check/
