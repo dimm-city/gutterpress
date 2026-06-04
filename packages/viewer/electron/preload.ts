@@ -6,6 +6,28 @@ import { contextBridge, ipcRenderer } from "electron";
  * happens here, in the preload, or in main via ipcRenderer.invoke.
  */
 
+// ──────────────────────────────────────────────────────────────────────────
+// Updater types — mirror electron/updater/contract.ts; kept local so the
+// preload never imports from the main-process updater module.
+// ──────────────────────────────────────────────────────────────────────────
+
+interface UpdaterStatus {
+  currentVersion: string | null;
+  stagedVersion: string | null;
+  availableVersion: string | null;
+  phase: "idle" | "checking" | "downloading" | "staged" | "error";
+  lastCheckAt: string | null;
+  error: string | null;
+}
+
+type UpdaterEventPayload =
+  | { type: "available"; version: string }
+  | { type: "staged"; version: string }
+  | { type: "uptodate"; reason?: string }
+  | { type: "healthy"; version: string }
+  | { type: "rolledback"; version: string }
+  | { type: "error"; message: string };
+
 interface PreviewStartArgs {
   input: string;
 }
@@ -59,6 +81,33 @@ interface ViewerPrefs {
 }
 
 contextBridge.exposeInMainWorld("electron", {
+  // ──────────────────────────────────────────────────────────────────────
+  // API version contract.  Must stay in sync with DESKTOP_API in
+  // electron/updater/contract.ts.  The renderer checks this to refuse
+  // running against a stale shell.
+  // ──────────────────────────────────────────────────────────────────────
+  apiVersion: 1 as const,
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Web-UI auto-update surface
+  // ──────────────────────────────────────────────────────────────────────
+  updater: {
+    getStatus: (): Promise<UpdaterStatus> =>
+      ipcRenderer.invoke("updater:getStatus"),
+    check: (): Promise<UpdaterStatus> =>
+      ipcRenderer.invoke("updater:check"),
+    applyNow: (): Promise<{ applied: boolean; version?: string }> =>
+      ipcRenderer.invoke("updater:applyNow"),
+    markReady: (): Promise<{ ok: true; pending: boolean; version?: string }> =>
+      ipcRenderer.invoke("updater:markReady"),
+    /** Subscribe to updater events from main. Returns an unsubscribe fn. */
+    onEvent: (cb: (data: UpdaterEventPayload) => void): (() => void) => {
+      const listener = (_e: unknown, data: UpdaterEventPayload) => cb(data);
+      ipcRenderer.on("updater:event", listener);
+      return () => ipcRenderer.removeListener("updater:event", listener);
+    },
+  },
+
   // Dialogs
   openDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke("dialog:openDirectory"),

@@ -8,9 +8,9 @@
   "description": "Desktop viewer for print-md (Electron + SvelteKit static SPA).",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "vite build && node ../../scripts/write-baseline-manifest.mjs",
     "preview": "vite preview",
-    "test": "node tests/pagedjs-interface.test.mjs",
+    "test": "node tests/pagedjs-interface.test.mjs && bun test --isolate tests/updater",
     "electron:build": "electron-vite build",
     "electron:dev": "npm run build && npm run electron:build && electron out/main/main.js",
     "electron:hmr": "npm run electron:build && concurrently -k -n vite,electron -c cyan,magenta \"vite dev --port 5173 --strictPort\" \"wait-on http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron out/main/main.js\"",
@@ -22,7 +22,8 @@
     "typecheck": "tsc -p electron/tsconfig.json"
   },
   "dependencies": {
-    "@dimm-city/print-md-lib": "workspace:*"
+    "@dimm-city/print-md-lib": "workspace:*",
+    "fflate": "^0.8.2"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.0",
