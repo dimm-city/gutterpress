@@ -463,6 +463,7 @@
     }
     busy = true;
     busyLabel = "Opening folder…";
+    let handedOff = false;
     try {
       const dir = await electron.openDirectory();
       if (!dir) return;
@@ -470,9 +471,10 @@
         ? await electron.getViewerPrefs().catch(() => null) as PersistedProjectState | null
         : null;
       const restoreState = prefs?.lastProjectDir === dir ? prefs : null;
+      handedOff = true;
       await startFolderPreview(dir, "Starting preview…", restoreState);
     } finally {
-      if (busyLabel === "Opening folder…") {
+      if (!handedOff) {
         busy = false;
         busyLabel = "";
       }

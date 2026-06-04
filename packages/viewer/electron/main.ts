@@ -248,8 +248,6 @@ interface ViewerPrefs {
   viewMode?: "single" | "two-column";
 }
 
-type ViewerPrefsPatch = Partial<ViewerPrefs>;
-
 function prefsPath(): string {
   return path.join(app.getPath("userData"), "viewer-prefs.json");
 }
@@ -553,7 +551,7 @@ ipcMain.handle("app:getViewerPrefs", async () => {
   };
 });
 
-ipcMain.handle("app:setViewerPrefs", async (_e, patch: ViewerPrefsPatch) => {
+ipcMain.handle("app:setViewerPrefs", async (_e, patch: Partial<ViewerPrefs>) => {
   const current = await readPrefs();
   await writePrefs({ ...current, ...patch });
   return { ok: true };
@@ -629,7 +627,8 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
     /* not a manifest project — keep dir basename */
   }
 
-  await writePrefs({ ...(await readPrefs()), lastProjectDir: activePreview.inputPath });
+  const existingPrefs = await readPrefs();
+  await writePrefs({ ...existingPrefs, lastProjectDir: activePreview.inputPath });
 
   return {
     url: activePreview.url,
