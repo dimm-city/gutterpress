@@ -581,6 +581,10 @@ ipcMain.handle("app:setViewerPrefs", async (_e, patch: Partial<ViewerPrefs>) => 
 ipcMain.handle("api:doctor", async () => {
   const lib = await loadLib();
   const diag = await lib.getSystemDiagnostics();
+  // Web-UI bundle version: the current updater pointer (or the baked baseline).
+  // This is distinct from viewerVersion (the Electron shell) — after a web-UI
+  // auto-update they diverge, so surface both.
+  const webUiVersion = (await getStatus().catch(() => null))?.currentVersion ?? null;
   const externalTools = diag.tools.filter(
     (tool) => tool.bin !== "chrome / chromium / msedge"
   );
@@ -601,6 +605,7 @@ ipcMain.handle("api:doctor", async () => {
       ...externalTools,
     ],
     viewerVersion: app.getVersion(),
+    webUiVersion,
     electronVersion: process.versions.electron,
     chromeVersion: process.versions.chrome,
   };

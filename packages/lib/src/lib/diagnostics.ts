@@ -113,11 +113,29 @@ async function readLibVersion(): Promise<string> {
     const { readFile } = await import("node:fs/promises");
     const { join, dirname } = await import("node:path");
     const { fileURLToPath } = await import("node:url");
-    // dist/diagnostics.js lives next to the lib's package.json after build.
-    const here = dirname(fileURLToPath(import.meta.url));
-    const pkgPath = join(here, "..", "..", "package.json");
-    const raw = await readFile(pkgPath, "utf-8");
-    cachedLibVersion = (JSON.parse(raw).version as string) ?? "unknown";
+    // bun build emits the diagnostics code into a bundled chunk whose depth in
+    // dist/ is not fixed (dist/index.js, dist/api/index.js, or dist/chunk-*.js),
+    // so a hard-coded "../.." overshoots. Walk up from the running module and
+    // return the version of the FIRST package.json named "@dimm-city/print-md-lib".
+    let dir = dirname(fileURLToPath(import.meta.url));
+    for (let i = 0; i < 6; i++) {
+      try {
+        const pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf-8")) as {
+          name?: string;
+          version?: string;
+        };
+        if (pkg.name === "@dimm-city/print-md-lib" && pkg.version) {
+          cachedLibVersion = pkg.version;
+          return cachedLibVersion;
+        }
+      } catch {
+        // no package.json here (or unreadable) — keep walking up
+      }
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    cachedLibVersion = "unknown";
   } catch {
     cachedLibVersion = "unknown";
   }

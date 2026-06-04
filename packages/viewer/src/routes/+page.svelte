@@ -245,19 +245,15 @@
       .catch(() => {});
 
     // Subscribe to future events from main.
-    const off = electron.updater.onEvent((event: { type: string; version?: string; message?: string; reason?: string }) => {
+    // Events fire for BOTH the silent background launch check and the manual
+    // "Check for updates" button. Only react to "staged" here (show the banner
+    // live, e.g. when the background check stages an update). "uptodate"/"error"
+    // are intentionally silent — surfacing them here would toast on every
+    // launch and would double-toast during a manual check (which drives its own
+    // feedback from the IPC return value in checkForUpdates()).
+    const off = electron.updater.onEvent((event: { type: string; version?: string }) => {
       if (event.type === "staged") {
         updateReadyVersion = event.version ?? null;
-      } else if (event.type === "available") {
-        // download was triggered; leave the banner alone until "staged" arrives
-      } else if (event.type === "uptodate") {
-        toast?.info("You're up to date.");
-        checkingUpdates = false;
-      } else if (event.type === "error") {
-        toast?.error(event.message ?? "Update check failed.");
-        checkingUpdates = false;
-      } else if (event.type === "healthy" || event.type === "rolledback") {
-        // informational — no UI action needed
       }
     });
 
@@ -808,15 +804,16 @@
     checkingUpdates = true;
     toast?.info("Checking for updates…");
     try {
-      const status: { phase: string; stagedVersion: string | null } =
+      const status: { phase: string; stagedVersion: string | null; error: string | null } =
         await electron.updater.check();
       if (status.stagedVersion) {
+        // An update was downloaded + staged — the banner appears; no toast.
         updateReadyVersion = status.stagedVersion;
-        // banner will appear; don't show a second toast
-      } else if (status.phase === "idle" || status.phase === "error") {
+      } else if (status.phase === "error") {
+        toast?.error(status.error ?? "Update check failed.");
+      } else {
         toast?.info("You're up to date.");
       }
-      // If phase is downloading/staged the onEvent handler will surface the result.
     } catch (e) {
       toast?.error(e instanceof Error ? e.message : "Update check failed.");
     } finally {

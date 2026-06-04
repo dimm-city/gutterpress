@@ -11,6 +11,7 @@
   interface Diagnostics {
     libVersion: string;
     viewerVersion: string;
+    webUiVersion: string | null;
     electronVersion: string;
     chromeVersion: string;
     platform: { os: string; arch: string; release: string; node: string };
@@ -93,7 +94,7 @@
   function copyReport() {
     if (!data) return;
     const lines = [
-      `print-md viewer ${data.viewerVersion}`,
+      `print-md viewer ${data.viewerVersion}  ·  web-ui ${data.webUiVersion ?? "—"}`,
       `lib ${data.libVersion}  ·  electron ${data.electronVersion}  ·  chromium ${data.chromeVersion}  ·  node ${data.platform.node}`,
       `platform: ${osLabel(data.platform.os)} ${data.platform.arch} (${data.platform.release})`,
       ``,
@@ -192,6 +193,7 @@
 
         <section class="versions">
           <div><strong>Viewer:</strong> {data.viewerVersion}</div>
+          <div><strong>Web UI:</strong> {data.webUiVersion ?? "—"}</div>
           <div><strong>Lib:</strong> {data.libVersion}</div>
           <div>
             <strong>Runtime:</strong>
