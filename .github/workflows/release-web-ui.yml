@@ -142,15 +142,21 @@ jobs:
             gh release delete "$TAG" --yes --repo "$REPO"
           fi
 
+          # Build release notes in a file (avoids embedding newlines in the
+          # YAML run block, which breaks the literal scalar).
+          printf '%s\n' \
+            "Automated web UI bundle release for version ${VERSION}." \
+            "" \
+            "Assets:" \
+            "- web-ui-bundle.zip — SvelteKit static build (index.html at zip root)" \
+            "- update-manifest.json — update manifest (schemaVersion 1)" \
+            "- update-manifest.json.sig — Ed25519 signature of the manifest" \
+            > /tmp/web-ui-release-notes.md
+
           gh release create "$TAG" \
             --repo "$REPO" \
             --title "Web UI $TAG" \
-            --notes "Automated web UI bundle release for version ${VERSION}.
-
-Assets:
-- \`web-ui-bundle.zip\` — SvelteKit static build (index.html at zip root)
-- \`update-manifest.json\` — update manifest (schemaVersion 1)
-- \`update-manifest.json.sig\` — Ed25519 signature of the manifest" \
+            --notes-file /tmp/web-ui-release-notes.md \
             $PRERELEASE_FLAG \
             packages/viewer/web-ui-bundle.zip \
             packages/viewer/update-manifest.json \
