@@ -86,6 +86,11 @@
   let openError = $state<string | null>(null);
   let urlPreviewError = $state<string | null>(null);
 
+  // ── Auto-update state ──────────────────────────────────────────────────
+  /** Non-null when a staged bundle is ready to apply. */
+  let updateReadyVersion = $state<string | null>(null);
+  let checkingUpdates = $state(false);
+
   // UX-026: focus-restoration references for Help and URL dialogs
   let helpBtn = $state<HTMLButtonElement | undefined>(undefined);
   let urlBtn = $state<HTMLButtonElement | undefined>(undefined);
@@ -208,6 +213,55 @@
       }
     });
     return off;
+  });
+
+  // ----------------------------------------------------------------
+  // Auto-update: markReady on mount (health gate) + event subscription
+  // ----------------------------------------------------------------
+
+  // markReady tells main the new bundle booted successfully, clearing the
+  // health watchdog armed after an apply/launch-promote. If it does not arrive
+  // before the watchdog elapses (and the window is still open), main rolls the
+  // bundle back this session. Harmless no-op when nothing is pending.
+  $effect(() => {
+    const electron = (window as any).electron;
+    if (!electron?.updater?.markReady) return;
+    electron.updater.markReady().catch(() => {});
+  });
+
+  // Check for an already-staged update on load, then subscribe to future events.
+  $effect(() => {
+    const electron = (window as any).electron;
+    if (!electron?.updater) return;
+
+    // Peek at current status so we can surface a banner immediately if a
+    // bundle was staged during a previous run.
+    electron.updater.getStatus()
+      .then((status: { stagedVersion: string | null }) => {
+        if (status.stagedVersion) {
+          updateReadyVersion = status.stagedVersion;
+        }
+      })
+      .catch(() => {});
+
+    // Subscribe to future events from main.
+    const off = electron.updater.onEvent((event: { type: string; version?: string; message?: string; reason?: string }) => {
+      if (event.type === "staged") {
+        updateReadyVersion = event.version ?? null;
+      } else if (event.type === "available") {
+        // download was triggered; leave the banner alone until "staged" arrives
+      } else if (event.type === "uptodate") {
+        toast?.info("You're up to date.");
+        checkingUpdates = false;
+      } else if (event.type === "error") {
+        toast?.error(event.message ?? "Update check failed.");
+        checkingUpdates = false;
+      } else if (event.type === "healthy" || event.type === "rolledback") {
+        // informational — no UI action needed
+      }
+    });
+
+    return () => off?.();
   });
 
   // ----------------------------------------------------------------
@@ -745,6 +799,41 @@
     // Re-inject canvas styles with new bg (covers elements Paged.js strips)
     client?.injectStyles("viewer-canvas", buildViewerStyles(v));
   }
+
+  // ── Auto-update actions ────────────────────────────────────────────────
+
+  async function checkForUpdates() {
+    const electron = (window as any).electron;
+    if (!electron?.updater?.check) return;
+    checkingUpdates = true;
+    toast?.info("Checking for updates…");
+    try {
+      const status: { phase: string; stagedVersion: string | null } =
+        await electron.updater.check();
+      if (status.stagedVersion) {
+        updateReadyVersion = status.stagedVersion;
+        // banner will appear; don't show a second toast
+      } else if (status.phase === "idle" || status.phase === "error") {
+        toast?.info("You're up to date.");
+      }
+      // If phase is downloading/staged the onEvent handler will surface the result.
+    } catch (e) {
+      toast?.error(e instanceof Error ? e.message : "Update check failed.");
+    } finally {
+      checkingUpdates = false;
+    }
+  }
+
+  async function applyUpdate() {
+    const electron = (window as any).electron;
+    if (!electron?.updater?.applyNow) return;
+    try {
+      await electron.updater.applyNow();
+      // Main reloads the window; no further action needed here.
+    } catch (e) {
+      toast?.error(e instanceof Error ? e.message : "Could not apply update.");
+    }
+  }
 </script>
 
 <Toast bind:api={toast} />
@@ -767,6 +856,14 @@
     {#if exportState !== "success" && exportState !== "canceling"}
       <button class="export-cancel" onclick={cancelExport} disabled={!activeExportId}>Cancel</button>
     {/if}
+  </div>
+{/if}
+
+{#if updateReadyVersion}
+  <div class="update-banner" role="status" aria-live="polite">
+    <span class="update-banner-msg">Update ready (v{updateReadyVersion})</span>
+    <button class="update-apply" onclick={applyUpdate}>Apply now</button>
+    <button class="update-later" onclick={() => (updateReadyVersion = null)}>Later</button>
   </div>
 {/if}
 
@@ -911,6 +1008,18 @@
         <span class="save-hint">Not available for web previews</span>
       {:else if saveWarning}
         <span class="save-hint save-warning" role="alert">{saveWarning}</span>
+      {/if}
+      <!-- Auto-update: quiet icon-only button; only shown when bridge is present -->
+      {#if (window as any).electron?.updater}
+        <button
+          class="icon-btn update-check-btn"
+          onclick={checkForUpdates}
+          disabled={checkingUpdates}
+          title={checkingUpdates ? "Checking for updates…" : "Check for updates"}
+          aria-label="Check for updates"
+        >
+          <Icon name="refresh-cw" />
+        </button>
       {/if}
       <!-- UX-026: bind:this for focus restore -->
       <button
@@ -1253,6 +1362,49 @@
   }
   .open-error strong { display: block; margin-bottom: 4px; font-size: 13px; }
   .open-error p { margin: 0; color: #f0a0a0; }
+
+  /* ---- Auto-update banner ---- */
+  .update-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: #1a2e1a;
+    border-bottom: 1px solid #2d4d2d;
+    color: #86efac;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .update-banner-msg { flex: 1; }
+  .update-apply {
+    background: #166534;
+    border: 1px solid #15803d;
+    color: #dcfce7;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .update-apply:hover { background: #15803d; }
+  .update-later {
+    background: transparent;
+    border: 1px solid #4a6a4a;
+    color: #a7f3d0;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .update-later:hover { background: rgba(255, 255, 255, 0.06); }
+
+  /* Spin the refresh icon while checking */
+  .update-check-btn:disabled :global(svg) {
+    animation: update-spin 1s linear infinite;
+  }
+  @keyframes update-spin {
+    to { transform: rotate(360deg); }
+  }
 
   /* ---- Responsive breakpoints ---- */
   @media screen and (max-width: 1200px) {

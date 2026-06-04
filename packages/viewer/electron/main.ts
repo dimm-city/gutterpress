@@ -11,6 +11,21 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
+import {
+  ensureLayout,
+  resolveWebRoot,
+  readPointer,
+  readState,
+  writeState,
+} from "./updater/web-runtime";
+import {
+  checkForUpdate,
+  downloadAndStage,
+  promoteStaged,
+  rollback,
+  pruneVersions,
+  getStatus,
+} from "./updater/index";
 
 // __dirname/__filename are injected by electron-vite for the ESM main bundle
 // (resolves to out/main/ at runtime).
@@ -415,8 +430,14 @@ function createWindow() {
 // app:// protocol — serves the static SvelteKit SPA from build/
 // ──────────────────────────────────────────────────────────────────────────
 
-// main.js lives at out/main/; the SvelteKit SPA is at the package root build/.
-const STATIC_ROOT = path.resolve(__dirname, "../../build");
+// The SPA root is resolved at startup (and refreshable later): a downloaded
+// bundle in userData if present and valid, otherwise the bundled-in-asar
+// build/. Set by refreshWebRoot() before registerAppProtocol()/createWindow().
+let activeWebRoot = path.resolve(__dirname, "../../build");
+
+async function refreshWebRoot(): Promise<void> {
+  activeWebRoot = await resolveWebRoot();
+}
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -447,12 +468,12 @@ function registerAppProtocol() {
 
     // strip leading "/" before joining so path.join treats it as relative
     const rel = pathname.replace(/^\/+/, "");
-    const candidate = path.resolve(STATIC_ROOT, rel);
+    const candidate = path.resolve(activeWebRoot, rel);
 
     // Boundary check.
     if (
-      candidate !== STATIC_ROOT &&
-      !candidate.startsWith(STATIC_ROOT + path.sep)
+      candidate !== activeWebRoot &&
+      !candidate.startsWith(activeWebRoot + path.sep)
     ) {
       console.error(`[app://] boundary violation: ${candidate}`);
       return new Response("Forbidden", { status: 403 });
@@ -471,16 +492,16 @@ function registerAppProtocol() {
     // adapter-static SPA fallback: serve index.html for unknown paths so
     // client-side routing works.
     try {
-      const data = await readFile(path.join(STATIC_ROOT, "index.html"));
+      const data = await readFile(path.join(activeWebRoot, "index.html"));
       return new Response(data, {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     } catch (e) {
       console.error(
-        `[app://] FATAL: index.html not found at ${STATIC_ROOT}/index.html (${(e as Error).message})`
+        `[app://] FATAL: index.html not found at ${activeWebRoot}/index.html (${(e as Error).message})`
       );
       return new Response(
-        `static root missing at ${STATIC_ROOT}`,
+        `static root missing at ${activeWebRoot}`,
         { status: 500 }
       );
     }
@@ -781,13 +802,200 @@ ipcMain.handle(
 );
 
 // ──────────────────────────────────────────────────────────────────────────
+// Web-UI auto-updater wiring
+//
+// The updater is ENABLED only in a packaged build with no vite dev server. In
+// dev/HMR it is fully inert: every entry point below short-circuits on
+// updaterEnabled() so the IPC handlers are harmless no-ops and no networking
+// or filesystem mutation happens. Networking lives ONLY in updater/index.ts.
+//
+// Health gate + watchdog (Phase 6): after a promote (either "apply now" or
+// "apply on next launch"), we arm a 10s watchdog. The renderer calls
+// updater:markReady once it boots; on time we record the version healthy and
+// prune old bundles. If the deadline elapses with no markReady, we rollback,
+// refresh the web root, and reload the window to recover from a bad bundle.
+// ──────────────────────────────────────────────────────────────────────────
+
+// Generous enough that a healthy static SPA (sub-second boot) never trips it,
+// while still catching a genuinely broken bundle that never executes JS.
+const HEALTH_WATCHDOG_MS = 30_000;
+
+let pendingHealthCheck: { version: string; timer: NodeJS.Timeout } | null = null;
+
+function updaterEnabled(): boolean {
+  return app.isPackaged && !process.env.VITE_DEV_SERVER_URL;
+}
+
+function sendUpdaterEvent(event: Record<string, unknown>) {
+  mainWindow?.webContents.send("updater:event", event);
+}
+
+async function markHealthy(version: string) {
+  try {
+    const state = await readState();
+    state.lastHealthyVersion = version;
+    state.minimumSeenVersion = version;
+    await writeState(state);
+    await pruneVersions();
+  } catch (err) {
+    console.warn("[updater] markHealthy failed (non-fatal):", err);
+  }
+}
+
+// Arm the watchdog after a promote. The renderer's updater:markReady IPC clears
+// it; otherwise the timer fires and rolls the bundle back.
+function armHealthWatchdog(version: string) {
+  clearHealthWatchdog();
+  const timer = setTimeout(() => {
+    pendingHealthCheck = null;
+    void (async () => {
+      // If the window is gone, the user simply quit/closed before the SPA could
+      // mark ready — that is NOT evidence the bundle is broken. Skip the
+      // rollback (which would otherwise count a failure and could blocklist a
+      // good version); the bundle stays current and is re-gated on next launch.
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        console.warn(
+          `[updater] health watchdog expired for ${version} but window is gone; deferring`
+        );
+        return;
+      }
+      console.warn(
+        `[updater] health watchdog expired for ${version}; rolling back`
+      );
+      await rollback("renderer did not mark ready");
+      await refreshWebRoot();
+      sendUpdaterEvent({ type: "rolledback", version });
+      mainWindow?.webContents.reload();
+    })();
+  }, HEALTH_WATCHDOG_MS);
+  // Don't keep the event loop alive on the watchdog alone.
+  if (typeof timer.unref === "function") timer.unref();
+  pendingHealthCheck = { version, timer };
+}
+
+function clearHealthWatchdog() {
+  if (pendingHealthCheck) {
+    clearTimeout(pendingHealthCheck.timer);
+    pendingHealthCheck = null;
+  }
+}
+
+// Shared check→stage→emit-events flow used by both the background launch check
+// and the manual "Check for updates" IPC. checkForUpdate/downloadAndStage are
+// themselves non-throwing; callers still wrap this defensively.
+async function checkAndStage(): Promise<void> {
+  const { available, reason } = await checkForUpdate();
+  if (!available) {
+    sendUpdaterEvent(
+      reason && reason !== "already up to date"
+        ? { type: "uptodate", reason }
+        : { type: "uptodate" }
+    );
+    return;
+  }
+  sendUpdaterEvent({ type: "available", version: available.version });
+  const { staged, reason: stageReason } = await downloadAndStage(available);
+  sendUpdaterEvent(
+    staged
+      ? { type: "staged", version: available.version }
+      : { type: "error", message: stageReason ?? "stage failed" }
+  );
+}
+
+// Fire-and-forget background check → stage on launch. Never blocks startup.
+async function runBackgroundUpdate() {
+  try {
+    await checkAndStage();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn("[updater] background update failed (non-fatal):", message);
+    sendUpdaterEvent({ type: "error", message });
+  }
+}
+
+ipcMain.handle("updater:getStatus", async () => {
+  return getStatus();
+});
+
+ipcMain.handle("updater:check", async () => {
+  if (!updaterEnabled()) return getStatus();
+  try {
+    await checkAndStage();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn("[updater] manual check failed (non-fatal):", message);
+    sendUpdaterEvent({ type: "error", message });
+  }
+  return getStatus();
+});
+
+ipcMain.handle("updater:applyNow", async () => {
+  if (!updaterEnabled()) return { applied: false };
+  const { promoted, version } = await promoteStaged();
+  if (!promoted || !version) return { applied: false };
+  await refreshWebRoot();
+  armHealthWatchdog(version);
+  mainWindow?.webContents.reload();
+  return { applied: true, version };
+});
+
+ipcMain.handle("updater:markReady", async () => {
+  // No-op when nothing is pending (e.g. a normal startup with no update).
+  if (!pendingHealthCheck) return { ok: true, pending: false };
+  const version = pendingHealthCheck.version;
+  clearHealthWatchdog();
+  await markHealthy(version);
+  sendUpdaterEvent({ type: "healthy", version });
+  return { ok: true, pending: true, version };
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // App lifecycle
 // ──────────────────────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
+  // Apply any staged update from a previous session BEFORE resolving the web
+  // root, so refreshWebRoot() picks up the newly promoted bundle. Wrapped so a
+  // userData IO failure (EACCES, disk full) can never prevent createWindow() —
+  // a broken updater must degrade to the bundled fallback, not a blank window.
+  if (updaterEnabled()) {
+    try {
+      await ensureLayout();
+      await promoteStaged();
+    } catch (err) {
+      console.warn("[updater] startup promote failed (non-fatal):", err);
+    }
+  }
+
+  await refreshWebRoot();
   registerAppProtocol();
   registerUrlPreviewHeaderWatch();
   createWindow();
+
+  // Health-gate any current bundle that hasn't been confirmed healthy yet —
+  // whether just promoted this launch or left unconfirmed by a prior session
+  // that closed before markReady. The renderer must mark ready within the
+  // watchdog window or we roll it back + reload. A bundle already recorded as
+  // healthy (or the bundled fallback, which has no pointer) is not gated, so
+  // markReady is a harmless no-op on a normal launch.
+  if (updaterEnabled()) {
+    try {
+      const current = await readPointer("current");
+      const state = await readState();
+      if (current && state.lastHealthyVersion !== current.version) {
+        armHealthWatchdog(current.version);
+      }
+    } catch (err) {
+      console.warn("[updater] health-gate arming failed (non-fatal):", err);
+    }
+  }
+
+  // Background check → stage on every launch (non-blocking, fire-and-forget).
+  if (updaterEnabled()) {
+    runBackgroundUpdate().catch((err) => {
+      console.warn("[updater] runBackgroundUpdate rejected (non-fatal):", err);
+    });
+  }
 
   // Pre-warm the lib graph in parallel with SPA boot. The first call to
   // window.electron.startPreview otherwise pays a 300–900ms cold-import
