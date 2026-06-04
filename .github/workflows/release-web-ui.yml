@@ -102,7 +102,8 @@ jobs:
       # Output goes to packages/viewer/build/ (adapter-static, see svelte.config.js).
 
       - name: Build SvelteKit static bundle
-        run: bun --cwd packages/viewer run build
+        working-directory: packages/viewer
+        run: bun run build
 
       # ── 7. Zip bundle contents (index.html at zip root) ────────────────────
 
