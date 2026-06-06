@@ -8,10 +8,10 @@ on:
         required: true
         type: string
       skip_npm_publish:
-        description: "Skip publishing to npm (default true while npm trusted-publisher setup is pending)"
+        description: "Skip publishing to npm. Default false — npm publishes via OIDC trusted publishing. Set true only to intentionally hold back the npm release."
         required: false
         type: boolean
-        default: true
+        default: false
 
 env:
   PUPPETEER_SKIP_DOWNLOAD: 'true'
