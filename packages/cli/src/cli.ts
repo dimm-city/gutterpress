@@ -17,10 +17,18 @@ const SUBCOMMANDS = {
   preflight: () => import("./commands/preflight").then((m) => m.default),
 } as const;
 
+// Injected at build time by scripts/compile.ts and scripts/build-npm.ts (Bun
+// `define`) from packages/cli/package.json. The compiled binary cannot read
+// package.json at runtime (CLAUDE.md §3), so the version is baked in. Falls back
+// to a dev marker when run from source via `bun src/cli.ts`.
+declare const __PMD_VERSION__: string | undefined;
+const VERSION =
+  typeof __PMD_VERSION__ === "string" ? __PMD_VERSION__ : "0.0.0-dev";
+
 const main = defineCommand({
   meta: {
     name: "print-md",
-    version: "2.0.0",
+    version: VERSION,
     description:
       "Markdown to print-ready PDF (and static-site HTML) using Chromium + Paged.js",
   },

@@ -37,11 +37,17 @@ await copyFile(
 );
 console.log("✓ README.md updated from .github/README.npm.md");
 
+// Bake the real version into the bundle so `--version` matches the package.
+const { version: pkgVersion } = JSON.parse(
+  await readFile(join(ROOT, "package.json"), "utf8")
+) as { version: string };
+
 const result = await Bun.build({
   entrypoints: [join(ROOT, "src/cli.ts")],
   outdir: join(ROOT, "dist"),
   target: "node",
   format: "esm",
+  define: { __PMD_VERSION__: JSON.stringify(pkgVersion) },
   external: EXTERNAL,
   // Resolve @dimm-city/print-md-lib via its `bun` export condition (src/) so
   // its `with { type: "file" }` assets (paged.polyfill, favicon, ICC profile,

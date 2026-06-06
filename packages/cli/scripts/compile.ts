@@ -23,8 +23,12 @@ if (!target || !outfile) {
 
 console.log(`Compiling ${target} → ${outfile}`);
 
+// Bake the real version into the binary (it can't read package.json at runtime).
+const { version } = (await Bun.file("package.json").json()) as { version: string };
+
 const result = await Bun.build({
   entrypoints: ["src/cli.ts"],
+  define: { __PMD_VERSION__: JSON.stringify(version) },
   compile: {
     target: target as import("bun").Build.Target,
     outfile,
