@@ -15,6 +15,8 @@ export interface ServerState {
   currentInputPath: string;
   /** File watcher instance */
   currentWatcher: FSWatcher | null;
+  /** Pending debounced rebuild timer scheduled by the file watcher */
+  rebuildTimer: NodeJS.Timeout | null;
   /** Is currently rebuilding? (prevents overlapping builds) */
   isRebuilding: boolean;
   /** Bun-native preview HTTP/WebSocket server instance */
@@ -44,6 +46,7 @@ export function createServerState(
   return {
     currentInputPath: inputPath,
     currentWatcher: null,
+    rebuildTimer: null,
     isRebuilding: false,
     previewServer: null,
     isShuttingDown: false,

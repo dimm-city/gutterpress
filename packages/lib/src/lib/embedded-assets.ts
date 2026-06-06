@@ -26,6 +26,7 @@
  * the source format.
  */
 
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -69,10 +70,25 @@ async function extractAssets(): Promise<string> {
   return root;
 }
 
+// A sentinel asset whose presence proves the extracted dir is still intact.
+// The OS tmp reaper, lifecycle shutdown cleanup, or external cleanup can remove
+// the per-process temp dir out from under us; in that case we must re-extract.
+const SENTINEL_ASSET = "vendor/paged.polyfill.js";
+
 export async function getAssetsDir(): Promise<string> {
-  if (!extractPromise) {
-    extractPromise = extractAssets();
+  if (extractPromise) {
+    try {
+      const root = await extractPromise;
+      if (existsSync(join(root, SENTINEL_ASSET))) {
+        return root;
+      }
+    } catch {
+      // Prior extraction failed; fall through and retry.
+    }
+    // Cached dir is gone (or extraction failed) — invalidate and re-extract.
+    extractPromise = null;
   }
+  extractPromise = extractAssets();
   return extractPromise;
 }
 

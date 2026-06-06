@@ -180,14 +180,12 @@ export function createFileWatcher(state: ServerState): FSWatcher {
     },
   });
 
-  let rebuildTimer: NodeJS.Timeout | null = null;
-
   watcher.on('all', async (event, filePath) => {
     debug(`File ${event}: ${filePath}`);
 
-    if (rebuildTimer) clearTimeout(rebuildTimer);
+    if (state.rebuildTimer) clearTimeout(state.rebuildTimer);
 
-    rebuildTimer = setTimeout(async () => {
+    state.rebuildTimer = setTimeout(async () => {
       if (state.isRebuilding) return;
 
       state.isRebuilding = true;
@@ -246,6 +244,13 @@ export function startFileWatcher(state: ServerState): void {
  * Stop the file watcher and clean up resources
  */
 export async function stopFileWatcher(state: ServerState): Promise<void> {
+  // Cancel any pending debounced rebuild so a callback scheduled just before
+  // close cannot fire against stale ServerState after restartPreview repoints
+  // currentInputPath/config at a different directory.
+  if (state.rebuildTimer) {
+    clearTimeout(state.rebuildTimer);
+    state.rebuildTimer = null;
+  }
   if (state.currentWatcher) {
     await state.currentWatcher.close();
     state.currentWatcher = null;

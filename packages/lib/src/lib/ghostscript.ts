@@ -162,6 +162,9 @@ export async function convertToPdfxCmyk(
     inputPdf,
   ];
 
-  await run("gs", args);
-  await unlink(tmpDef).catch(() => {});
+  try {
+    await run("gs", args);
+  } finally {
+    await unlink(tmpDef).catch(() => {});
+  }
 }

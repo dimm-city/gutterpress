@@ -39,10 +39,16 @@ export function execCapture(
     p.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
     p.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
     p.on("error", reject);
-    p.on("exit", (code) =>
+    p.on("exit", (code, signal) =>
       code === 0
         ? resolve({ stdout, stderr })
-        : reject(new Error(`${cmd} exited ${code}\n${stderr}`))
+        : reject(
+            new Error(
+              code === null
+                ? `${cmd} was killed by signal ${signal}\n${stderr}`
+                : `${cmd} exited ${code}\n${stderr}`
+            )
+          )
     );
   });
 }

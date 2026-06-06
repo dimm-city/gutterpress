@@ -35,6 +35,7 @@ function makeState(tempDir: string): ServerState {
   return {
     currentInputPath: tempDir,
     currentWatcher: null,
+    rebuildTimer: null,
     isRebuilding: false,
     previewServer: null,
     isShuttingDown: false,

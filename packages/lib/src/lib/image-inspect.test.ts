@@ -189,4 +189,11 @@ describe("image-inspect", () => {
   test("unknown format → null", async () => {
     expect(await inspect("a.bin", Buffer.from("not an image"))).toBeNull();
   });
+
+  test("big-endian TIFF with wrong byte[2] is not recognized → null", async () => {
+    // Valid BE TIFF magic is [0x4d,0x4d,0x00,0x2a]. Byte 2 here is 0xff, so the
+    // signature must NOT match; the BE branch must check b[2]===0x00.
+    const bytes = Buffer.from([0x4d, 0x4d, 0xff, 0x2a, 0, 0, 0, 8, 0, 0]);
+    expect(await inspect("bad.tif", bytes)).toBeNull();
+  });
 });

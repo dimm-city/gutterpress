@@ -12,6 +12,16 @@ import {
   type PdfxFlavor,
 } from "@dimm-city/print-md-lib";
 
+export function resolvePort(raw: unknown): number {
+  if (raw === undefined || raw === "") return 3579;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) {
+    log.error(`Invalid --port value: "${raw}". Expected a non-negative number (0 = OS-assigned).`);
+    process.exit(2);
+  }
+  return n;
+}
+
 function parseFormat(raw: unknown): BuildFormat {
   if (raw === undefined || raw === "") return "html";
   if (raw === "html" || raw === "pdf" || raw === "pdfx") return raw;
@@ -66,7 +76,7 @@ export default defineCommand({
     if (format === "html") {
       await startPreviewServer({
         input: inputPath,
-        port: Number(args.port) || 3579,
+        port: resolvePort(args.port),
         host: (args.host as string | undefined) || "127.0.0.1",
         noWatch: !!args["no-watch"],
         verbose: !!args.verbose,

@@ -160,7 +160,7 @@ function parseSemver(v: string): { core: number[]; pre: string | null } | null {
 }
 
 /** Returns >0 if a>b, <0 if a<b, 0 if equal. Unparseable versions sort low. */
-function compareSemver(a: string, b: string): number {
+export function compareSemver(a: string, b: string): number {
   const pa = parseSemver(a);
   const pb = parseSemver(b);
   if (!pa && !pb) return 0;
@@ -194,8 +194,13 @@ function comparePrerelease(a: string, b: string): number {
     const xn = /^\d+$/.test(x);
     const yn = /^\d+$/.test(y);
     if (xn && yn) {
-      const d = Number(x) - Number(y);
-      if (d !== 0) return d < 0 ? -1 : 1;
+      // Compare by length then lexicographically: both are all-digit strings,
+      // so this orders them numerically without the IEEE-754 precision loss that
+      // Number(x) - Number(y) suffers for identifiers above 2^53.
+      const xt = x.replace(/^0+(?=\d)/, "");
+      const yt = y.replace(/^0+(?=\d)/, "");
+      if (xt.length !== yt.length) return xt.length < yt.length ? -1 : 1;
+      if (xt !== yt) return xt < yt ? -1 : 1;
     } else if (xn !== yn) {
       return xn ? -1 : 1; // numeric < alphanumeric
     } else if (x !== y) {

@@ -6,10 +6,12 @@
   "main": "dist/index.js",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "bun": "./src/index.ts",
       "default": "./dist/index.js"
     },
     "./api": {
+      "types": "./dist/api/index.d.ts",
       "bun": "./src/api/index.ts",
       "default": "./dist/api/index.js"
     }
@@ -47,6 +49,8 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/markdown-it": "^14.1.2",
-    "@types/ws": "^8.5.13"
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5"
   }
 }

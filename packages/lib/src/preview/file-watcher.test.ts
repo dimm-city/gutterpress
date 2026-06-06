@@ -41,6 +41,7 @@ function createTestServerState(
       ...options,
     },
     currentWatcher: null,
+    rebuildTimer: null,
     isRebuilding: false,
     previewServer: null,
     isShuttingDown: false,
@@ -287,4 +288,33 @@ describe('stopFileWatcher', () => {
 
     expect(state.currentWatcher).toBeNull();
   });
+
+  test('cancels a pending debounced rebuild scheduled just before close', async () => {
+    const watcher = createFileWatcher(state);
+    state.currentWatcher = watcher;
+
+    // Track whether the rebuild callback ever started running.
+    let rebuildStarted = false;
+    Object.defineProperty(state, 'isRebuilding', {
+      configurable: true,
+      get() {
+        return false;
+      },
+      set(_v: boolean) {
+        // The debounced rebuild callback flips isRebuilding = true as its
+        // first action. If the timer was cleared on close this never fires.
+        rebuildStarted = true;
+      },
+    });
+
+    // Emit a change to schedule the debounced rebuild timer, then immediately
+    // close the watcher — exactly the race restartPreview can hit.
+    watcher.emit('all', 'change', join(testDir, 'chapter-01.md'));
+    await stopFileWatcher(state);
+
+    // Advance real time well past DEBOUNCE.FILE_WATCH (100ms).
+    await wait(400);
+
+    expect(rebuildStarted).toBe(false);
+  }, 10000);
 });
