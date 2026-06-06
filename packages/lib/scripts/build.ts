@@ -38,3 +38,16 @@ if (!result.success) {
 
 const outputs = result.outputs.map((o) => o.path.replace(ROOT + "/", ""));
 console.log(`✓ dist/ built (${outputs.length} files: ${outputs.join(", ")})`);
+
+// Emit .d.ts declarations alongside the bundled JS so `tsc`-based consumers
+// (CLI, viewer, external TS plugin authors) resolve real types via the
+// package "types" export condition. Bun.build does not emit declarations.
+const tsc = Bun.spawnSync(
+  ["tsc", "-p", join(ROOT, "tsconfig.build.json")],
+  { cwd: ROOT, stdout: "inherit", stderr: "inherit" },
+);
+if (!tsc.success) {
+  console.error("✗ declaration emit (tsc -p tsconfig.build.json) failed");
+  process.exit(1);
+}
+console.log("✓ dist/ type declarations emitted");

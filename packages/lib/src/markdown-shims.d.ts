@@ -10,3 +10,21 @@ declare module "*.md" {
 declare module "*.ico" { const path: string; export default path; }
 declare module "*.css" { const path: string; export default path; }
 declare module "*.icc" { const path: string; export default path; }
+
+// These markdown-it plugins ship no type declarations. They follow the
+// standard markdown-it plugin signature, so declare them accordingly.
+declare module "markdown-it-attrs" {
+  import type { PluginWithOptions } from "markdown-it";
+  const plugin: PluginWithOptions;
+  export default plugin;
+}
+declare module "markdown-it-footnote" {
+  import type { PluginSimple } from "markdown-it";
+  const plugin: PluginSimple;
+  export default plugin;
+}
+declare module "markdown-it-source-map" {
+  import type { PluginSimple } from "markdown-it";
+  const plugin: PluginSimple;
+  export default plugin;
+}
