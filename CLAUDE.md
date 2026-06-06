@@ -169,6 +169,35 @@ renderer rules or maintain its own layout state. Per-render state lives on
 `env.__colSplitDepth`, not a module-level closure, so a thrown render can't
 leak depth state into the next chapter.
 
+### 7. Git/source operations are Node-native — no external OS tools (0.4.0+)
+
+The upcoming project-source / version-history / GitHub features (milestones
+0.4.0 and 0.5.0 — see GitHub issues #12, #13, #14, #15, #16, #25) must perform
+**all Git and GitHub operations with a Node-native, pure-JS implementation
+(e.g. `isomorphic-git`)**. Non-negotiable:
+
+- **Do NOT shell out to the system `git` binary.** The user must not be required
+  to have Git installed, and we do **not** bundle a Git binary on any platform
+  (this supersedes the original "bundle Git on Windows" framing of #16).
+- **Do NOT depend on the GitHub CLI (`gh`)** or any other external CLI. GitHub
+  API access uses the REST API directly (`fetch` / a JS SDK such as
+  `@octokit/rest`), authenticated via the managed GitHub App / OAuth token.
+- **Default new projects to a local Git repo** (`git init` + automatic
+  "snapshot" commits) so non-technical users get local version control with **no
+  credentials and no remote**, plus an **escape hatch** to run as a plain
+  `local-folder` (no Git) when Git can't or shouldn't be used.
+- **Shared lib, not duplicated.** Project scaffolding (with embedded-asset
+  templates), source-type detection/capabilities, and the Git/provider layer
+  live in `@dimm-city/print-md-lib` and are consumed by **both** the CLI
+  (`print-md new`, etc.) and the viewer — one implementation, two thin
+  front-ends.
+
+Rationale: this keeps the `bun build --compile` CLI binary and the packaged
+viewer fully self-contained (consistent with §1/§3) and makes the features work
+for users with nothing pre-installed. NOTE: the existing PDF-validation external
+tools (qpdf/gs/pdf* via `execCapture`) are a separate, pre-existing concern and
+are unaffected by this rule — this rule governs the new Git/source surface only.
+
 ## DC Design Guide
 
 The `examples/dc-design-guide/` folder is the **canonical design reference** for
