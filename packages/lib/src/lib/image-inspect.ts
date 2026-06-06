@@ -80,7 +80,7 @@ function parseImage(b: Buffer): ImageInfo | null {
   if (
     b.length > 8 &&
     ((b[0] === 0x49 && b[1] === 0x49 && b[2] === 0x2a) ||
-      (b[0] === 0x4d && b[1] === 0x4d && b[3] === 0x2a))
+      (b[0] === 0x4d && b[1] === 0x4d && b[2] === 0x00 && b[3] === 0x2a))
   ) {
     return parseTiff(b);
   }

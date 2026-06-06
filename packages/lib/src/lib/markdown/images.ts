@@ -9,7 +9,7 @@ import type MarkdownIt from "markdown-it";
  * (e.g. `<img src="...">`) is no longer rewritten. If a plugin needs the same
  * normalization it can call `normalizeImageSrc` directly.
  */
-const PREFIX_PATTERNS = [/^\.?\/?temp\/images\//, /^\.?\/?images\//];
+const PREFIX_PATTERNS = [/^(?:\.\/|\/)?temp\/images\//, /^(?:\.\/|\/)?images\//];
 
 export function normalizeImageSrc(src: string): string {
   for (const pat of PREFIX_PATTERNS) {

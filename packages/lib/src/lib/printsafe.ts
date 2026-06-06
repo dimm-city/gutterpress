@@ -62,12 +62,18 @@ function splitSelectorList(selectorList: string): string[] {
 
   for (let i = 0; i < selectorList.length; i += 1) {
     const char = selectorList[i]!;
-    const prev = i > 0 ? selectorList[i - 1] : "";
 
     current += char;
 
     if (quote) {
-      if (char === quote && prev !== "\\") quote = null;
+      // A quote closes the string only if it is not escaped. It is escaped when
+      // an ODD number of backslashes immediately precede it; an even count means
+      // those backslashes escape each other and the quote stands on its own.
+      if (char === quote) {
+        let backslashes = 0;
+        for (let j = i - 1; j >= 0 && selectorList[j] === "\\"; j -= 1) backslashes += 1;
+        if (backslashes % 2 === 0) quote = null;
+      }
       continue;
     }
 
