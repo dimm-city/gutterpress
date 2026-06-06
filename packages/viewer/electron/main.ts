@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   protocol,
   session,
   shell,
@@ -26,6 +27,13 @@ import {
   pruneVersions,
   getStatus,
 } from "./updater/index";
+import {
+  upsertRecentFolder,
+  removeRecentFolder,
+  toggleFavoriteFolder,
+  type RecentFolder,
+  type FavoriteFolder,
+} from "./recent-folders";
 
 // __dirname/__filename are injected by electron-vite for the ESM main bundle
 // (resolves to out/main/ at runtime).
@@ -261,6 +269,8 @@ interface ViewerPrefs {
   lastProjectDir?: string;
   currentPage?: number;
   viewMode?: "single" | "two-column";
+  recentFolders?: RecentFolder[];
+  favorites?: FavoriteFolder[];
 }
 
 function prefsPath(): string {
@@ -356,6 +366,23 @@ function createWindow() {
     },
   });
   mainWindow.setMenuBarVisibility(false);
+
+  // Editable-field context menu. Electron ships no default menu, so inputs
+  // (e.g. the Open Location URL/path field) otherwise have no right-click
+  // cut/copy/paste affordance.
+  mainWindow.webContents.on("context-menu", (_e, params) => {
+    if (!params.isEditable && !params.selectionText) return;
+    const template: Electron.MenuItemConstructorOptions[] = params.isEditable
+      ? [
+          { role: "cut", enabled: params.editFlags.canCut },
+          { role: "copy", enabled: params.editFlags.canCopy },
+          { role: "paste", enabled: params.editFlags.canPaste },
+          { type: "separator" },
+          { role: "selectAll" },
+        ]
+      : [{ role: "copy", enabled: params.editFlags.canCopy }];
+    Menu.buildFromTemplate(template).popup({ window: mainWindow ?? undefined });
+  });
 
   // Auth flows for URL previews sometimes rely on window.open popups, so allow
   // http(s) popups inside Electron. Renderer code should still call
@@ -578,6 +605,50 @@ ipcMain.handle("app:setViewerPrefs", async (_e, patch: Partial<ViewerPrefs>) => 
   return { ok: true };
 });
 
+ipcMain.handle("app:getRecentFolders", async () => {
+  const prefs = await readPrefs();
+  const recents = prefs.recentFolders ?? [];
+  return Promise.all(
+    recents.map(async (r) => ({
+      ...r,
+      exists: (await existingDirectory(r.path)) !== null,
+    }))
+  );
+});
+
+ipcMain.handle("app:getFavorites", async () => {
+  const prefs = await readPrefs();
+  const favorites = prefs.favorites ?? [];
+  return Promise.all(
+    favorites.map(async (f) => ({
+      ...f,
+      exists: (await existingDirectory(f.path)) !== null,
+    }))
+  );
+});
+
+ipcMain.handle(
+  "app:toggleFavorite",
+  async (_e, folderPath: string, title: string) => {
+    const current = await readPrefs();
+    const { favorites, favorited } = toggleFavoriteFolder(current.favorites, {
+      path: folderPath,
+      title,
+    });
+    await writePrefs({ ...current, favorites });
+    return { favorited };
+  }
+);
+
+ipcMain.handle("app:removeRecent", async (_e, folderPath: string) => {
+  const current = await readPrefs();
+  await writePrefs({
+    ...current,
+    recentFolders: removeRecentFolder(current.recentFolders, folderPath),
+  });
+  return { ok: true };
+});
+
 ipcMain.handle("api:doctor", async () => {
   const lib = await loadLib();
   const diag = await lib.getSystemDiagnostics();
@@ -654,7 +725,17 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   }
 
   const existingPrefs = await readPrefs();
-  await writePrefs({ ...existingPrefs, lastProjectDir: activePreview.inputPath });
+  await writePrefs({
+    ...existingPrefs,
+    lastProjectDir: activePreview.inputPath,
+    // Single source of truth for recents: every successful preview start
+    // (modal, toolbar, or auto-reopen) upserts the folder here.
+    recentFolders: upsertRecentFolder(existingPrefs.recentFolders, {
+      path: activePreview.inputPath,
+      title,
+      openedAt: new Date().toISOString(),
+    }),
+  });
 
   return {
     url: activePreview.url,

@@ -53,12 +53,25 @@ interface Window {
       lastProjectDir?: string | null;
       currentPage?: number;
       viewMode?: "single" | "two-column";
+      recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
+      favorites?: Array<{ path: string; title: string }>;
     }>;
     setViewerPrefs(patch: {
       lastProjectDir?: string | null;
       currentPage?: number;
       viewMode?: "single" | "two-column";
+      recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
+      favorites?: Array<{ path: string; title: string }>;
     }): Promise<{ ok: boolean }>;
+    // Open Location modal: recent folders + favorites
+    getRecentFolders(): Promise<
+      Array<{ path: string; title: string; openedAt: string; exists: boolean }>
+    >;
+    getFavorites(): Promise<
+      Array<{ path: string; title: string; exists: boolean }>
+    >;
+    toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }>;
+    removeRecent(folderPath: string): Promise<{ ok: boolean }>;
     startPreview(args: { input: string }): Promise<{
       url: string;
       port: number;

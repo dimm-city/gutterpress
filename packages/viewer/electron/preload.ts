@@ -74,10 +74,23 @@ interface UrlPreviewBlockedEvent {
   reason: string;
 }
 
+interface RecentFolderEntry {
+  path: string;
+  title: string;
+  openedAt: string;
+}
+
+interface FavoriteEntry {
+  path: string;
+  title: string;
+}
+
 interface ViewerPrefs {
   lastProjectDir?: string | null;
   currentPage?: number;
   viewMode?: "single" | "two-column";
+  recentFolders?: RecentFolderEntry[];
+  favorites?: FavoriteEntry[];
 }
 
 contextBridge.exposeInMainWorld("electron", {
@@ -129,6 +142,21 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("app:getViewerPrefs"),
   setViewerPrefs: (patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("app:setViewerPrefs", patch),
+
+  // Open Location modal: recent folders + favorites
+  getRecentFolders: (): Promise<
+    Array<{ path: string; title: string; openedAt: string; exists: boolean }>
+  > => ipcRenderer.invoke("app:getRecentFolders"),
+  getFavorites: (): Promise<
+    Array<{ path: string; title: string; exists: boolean }>
+  > => ipcRenderer.invoke("app:getFavorites"),
+  toggleFavorite: (
+    folderPath: string,
+    title: string
+  ): Promise<{ favorited: boolean }> =>
+    ipcRenderer.invoke("app:toggleFavorite", folderPath, title),
+  removeRecent: (folderPath: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("app:removeRecent", folderPath),
   startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>
