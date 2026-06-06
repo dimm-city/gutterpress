@@ -46,8 +46,15 @@ const {
   GITHUB_REPO,
 } = await import("../../electron/updater/index.js");
 
-const { readPointer, writePointer, readState, writeState, ensureLayout, webRuntimeDir } =
-  await import("../../electron/updater/web-runtime.js");
+const {
+  readPointer,
+  writePointer,
+  readState,
+  writeState,
+  ensureLayout,
+  webRuntimeDir,
+  readBaselineVersion,
+} = await import("../../electron/updater/web-runtime.js");
 
 const { DESKTOP_API } = await import("../../electron/updater/contract.js");
 
@@ -697,6 +704,27 @@ describe("checkForUpdate – gates", () => {
     await writePointer("current", { version: "2.0.0", path: v2Dir });
 
     restoreFetch = mockFetch(makeFetchForVersion("1.0.0")); // older
+
+    const result = await checkForUpdate();
+    expect(result.available).toBeNull();
+    expect(result.reason).toContain("up to date");
+  });
+
+  test("does NOT offer a published version <= the baked baseline when a stale OLDER pointer exists", async () => {
+    // Regression: a promoted pointer left in userData that is OLDER than the
+    // baked-in baseline (the desktop app shipped a newer UI than was last
+    // hot-swapped) must NOT make the updater treat the loaded UI as the stale
+    // pointer and re-pull an equal/older published bundle over it. The loaded
+    // version is max(baseline, pointer); compare against THAT.
+    stubVerify();
+    const baseline = await readBaselineVersion();
+    const staleDir = path.join(webRuntimeDir(), "versions", "0.0.1");
+    await mkdir(staleDir, { recursive: true });
+    await writePointer("current", { version: "0.0.1", path: staleDir });
+
+    // Newest published == the baked baseline (newer than the stale 0.0.1 pointer
+    // but NOT newer than what is actually loaded).
+    restoreFetch = mockFetch(makeFetchForVersion(baseline));
 
     const result = await checkForUpdate();
     expect(result.available).toBeNull();
