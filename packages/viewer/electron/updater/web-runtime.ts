@@ -20,6 +20,7 @@
 import { app } from "electron";
 import path from "node:path";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { compareSemver } from "./semver.js";
 
 export interface Pointer {
   version: string;
@@ -133,8 +134,19 @@ export async function resolveWebRoot(): Promise<string> {
   try {
     const ptr = await readPointer("current");
     if (ptr && isInsideVersions(ptr.path)) {
-      await readFile(path.join(ptr.path, "index.html"));
-      return ptr.path;
+      // A promoted web bundle only wins if it is STRICTLY NEWER than the
+      // baked-in baseline. Otherwise the app's own shipped UI is at least as
+      // new and must take precedence — a fresh install or an upgraded desktop
+      // build must never be shadowed by an older promoted bundle still sitting
+      // in userData (e.g. web-v0.2.3 promoted before the app was bumped to
+      // 0.3.0). resolveWebRoot used to honor any current pointer
+      // unconditionally, which made stale promotions permanently override
+      // newer baked UI.
+      const baseline = await readBaselineVersion();
+      if (compareSemver(ptr.version, baseline) > 0) {
+        await readFile(path.join(ptr.path, "index.html"));
+        return ptr.path;
+      }
     }
   } catch {
     // fall through to bundled root

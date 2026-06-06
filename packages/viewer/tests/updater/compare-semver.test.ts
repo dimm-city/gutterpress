@@ -13,7 +13,7 @@ mock.module("electron", () => ({
   app: { getPath: () => "/tmp", getVersion: () => "0.0.0" },
 }));
 
-const { compareSemver } = await import("../../electron/updater/index.js");
+const { compareSemver } = await import("../../electron/updater/semver.js");
 
 describe("compareSemver prerelease numeric ordering", () => {
   test("orders ordinary numeric prerelease identifiers numerically", () => {

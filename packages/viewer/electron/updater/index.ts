@@ -24,6 +24,7 @@
 import path from "node:path";
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { unzipSync } from "fflate";
+import { compareSemver } from "./semver.js";
 
 import {
   readPointer,
@@ -146,71 +147,6 @@ export async function clearStaged(): Promise<void> {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Semver helpers (no dependency). Compares dotted numeric cores; prerelease
-// tags sort BEFORE their release (standard semver precedence, simplified).
-// ──────────────────────────────────────────────────────────────────────────
-
-function parseSemver(v: string): { core: number[]; pre: string | null } | null {
-  const m = /^(\d+)\.(\d+)\.(\d+)(?:[-+](.+))?$/.exec(v.trim());
-  if (!m) return null;
-  return {
-    core: [Number(m[1]), Number(m[2]), Number(m[3])],
-    pre: m[4] ?? null,
-  };
-}
-
-/** Returns >0 if a>b, <0 if a<b, 0 if equal. Unparseable versions sort low. */
-export function compareSemver(a: string, b: string): number {
-  const pa = parseSemver(a);
-  const pb = parseSemver(b);
-  if (!pa && !pb) return 0;
-  if (!pa) return -1;
-  if (!pb) return 1;
-  for (let i = 0; i < 3; i++) {
-    if (pa.core[i]! !== pb.core[i]!) return pa.core[i]! - pb.core[i]!;
-  }
-  // A version with a prerelease has LOWER precedence than one without.
-  if (pa.pre === null && pb.pre === null) return 0;
-  if (pa.pre === null) return 1;
-  if (pb.pre === null) return -1;
-  return comparePrerelease(pa.pre, pb.pre);
-}
-
-/**
- * Compare prerelease strings by dot-separated identifiers (semver §11): numeric
- * identifiers compare numerically (so beta.2 < beta.10), and a numeric
- * identifier has lower precedence than an alphanumeric one. Avoids the naive
- * lexicographic bug where "beta.10" < "beta.2".
- */
-function comparePrerelease(a: string, b: string): number {
-  const as = a.split(".");
-  const bs = b.split(".");
-  const len = Math.max(as.length, bs.length);
-  for (let i = 0; i < len; i++) {
-    const x = as[i];
-    const y = bs[i];
-    if (x === undefined) return -1; // shorter set of fields has lower precedence
-    if (y === undefined) return 1;
-    const xn = /^\d+$/.test(x);
-    const yn = /^\d+$/.test(y);
-    if (xn && yn) {
-      // Compare by length then lexicographically: both are all-digit strings,
-      // so this orders them numerically without the IEEE-754 precision loss that
-      // Number(x) - Number(y) suffers for identifiers above 2^53.
-      const xt = x.replace(/^0+(?=\d)/, "");
-      const yt = y.replace(/^0+(?=\d)/, "");
-      if (xt.length !== yt.length) return xt.length < yt.length ? -1 : 1;
-      if (xt !== yt) return xt < yt ? -1 : 1;
-    } else if (xn !== yn) {
-      return xn ? -1 : 1; // numeric < alphanumeric
-    } else if (x !== y) {
-      return x < y ? -1 : 1;
-    }
-  }
-  return 0;
-}
-
-// ──────────────────────────────────────────────────────────────────────────
 // GitHub releases — web-v* line only. Never /releases/latest (installer line).
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -292,9 +228,18 @@ async function downloadBuffer(url: string, maxBytes: number): Promise<Buffer> {
 
 /** Effective current web-UI version: current pointer || baseline manifest. */
 async function effectiveCurrentVersion(): Promise<string> {
+  // The UI actually loaded is the NEWER of the baked-in baseline and any
+  // promoted bundle — resolveWebRoot() serves the baked UI whenever it is >=
+  // the pointer. Compare against that maximum so a published web bundle is only
+  // treated as "newer" when it beats what is genuinely on screen. Returning the
+  // raw pointer here (ignoring a newer baked baseline) is what made a freshly
+  // built/upgraded app keep pulling and promoting an OLDER published bundle.
+  const baseline = await readBaselineVersion();
   const ptr = await readPointer("current");
-  if (ptr?.version) return ptr.version;
-  return readBaselineVersion();
+  if (ptr?.version && compareSemver(ptr.version, baseline) > 0) {
+    return ptr.version;
+  }
+  return baseline;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -694,7 +639,16 @@ export async function getStatus(): Promise<UpdaterStatus> {
   const current = await readPointer("current");
   const staged = await readStaged();
   const state = await readState();
-  const currentVersion = current?.version ?? (await readBaselineVersion());
+  // Report the version actually SERVED, mirroring resolveWebRoot()'s rule: a
+  // promoted pointer only wins if it is strictly newer than the baked baseline.
+  // Otherwise the baked UI is on screen, so currentVersion must be the baseline
+  // — not a stale pointer left in userData (which previously made the Help
+  // modal show e.g. 0.2.3 while 0.3.0 was actually rendered).
+  const baseline = await readBaselineVersion();
+  const currentVersion =
+    current && compareSemver(current.version, baseline) > 0
+      ? current.version
+      : baseline;
   return {
     currentVersion,
     stagedVersion: staged?.version ?? null,

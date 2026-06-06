@@ -39,6 +39,7 @@ const {
   ensureLayout,
   webRuntimeDir,
   bundledWebRoot,
+  readBaselineVersion,
 } = await import("../../electron/updater/web-runtime.js");
 
 // ── Test helpers ─────────────────────────────────────────────────────────
@@ -315,6 +316,33 @@ describe("resolveWebRoot", () => {
 
       const result = await resolveWebRoot();
       expect(result).toBe(bundledWebRoot());
+    });
+  });
+
+  test("ignores a promoted pointer NOT newer than the baked baseline (serves baked UI)", async () => {
+    await withTempDir(async (tmpDir) => {
+      // Regression: a stale promoted bundle (<= the shipped baseline) must never
+      // shadow the freshly-built baked UI — the web-v0.2.3-shadows-0.3.0 bug.
+      const baseline = await readBaselineVersion();
+      const staleRoot = path.join(tmpDir, "web-runtime", "versions", baseline);
+      await mkdir(staleRoot, { recursive: true });
+      await writeFile(path.join(staleRoot, "index.html"), "<html>stale</html>", "utf8");
+      await writePointer("current", { version: baseline, path: staleRoot });
+
+      const result = await resolveWebRoot();
+      expect(result).toBe(bundledWebRoot());
+    });
+  });
+
+  test("serves a promoted pointer that IS strictly newer than the baked baseline", async () => {
+    await withTempDir(async (tmpDir) => {
+      const newerRoot = path.join(tmpDir, "web-runtime", "versions", "999.0.0");
+      await mkdir(newerRoot, { recursive: true });
+      await writeFile(path.join(newerRoot, "index.html"), "<html>newer</html>", "utf8");
+      await writePointer("current", { version: "999.0.0", path: newerRoot });
+
+      const result = await resolveWebRoot();
+      expect(result).toBe(newerRoot);
     });
   });
 });

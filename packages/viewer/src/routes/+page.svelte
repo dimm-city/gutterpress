@@ -4,7 +4,7 @@
   import type { ToastController } from "$lib/components/Toast.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
-  import OpenUrlDialog from "$lib/components/OpenUrlDialog.svelte";
+  import OpenLocationDialog from "$lib/components/OpenLocationDialog.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { PreviewClient } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
@@ -46,7 +46,6 @@
   );
   let busy = $state(false);
   let busyLabel = $state("");
-  let openUrlOpen = $state(false);
   // PDF export runs in a separate render window, so the UI stays usable — track
   // it separately with a NON-blocking status pill instead of the modal overlay.
   let exporting = $state(false);
@@ -91,9 +90,11 @@
   let updateReadyVersion = $state<string | null>(null);
   let checkingUpdates = $state(false);
 
-  // UX-026: focus-restoration references for Help and URL dialogs
+  // UX-026: focus-restoration reference for the Help dialog
   let helpBtn = $state<HTMLButtonElement | undefined>(undefined);
-  let urlBtn = $state<HTMLButtonElement | undefined>(undefined);
+  // Open Location modal
+  let openLocationOpen = $state(false);
+  let openBtn = $state<HTMLButtonElement | undefined>(undefined);
 
   // ----------------------------------------------------------------
   // Inject viewer canvas styles into iframe when client + bgColor change
@@ -856,6 +857,7 @@
   </div>
 {/if}
 
+<div class="app-root">
 {#if updateReadyVersion}
   <div class="update-banner" role="status" aria-live="polite">
     <span class="update-banner-msg">Update ready (v{updateReadyVersion})</span>
@@ -867,14 +869,9 @@
 <div class="shell">
   <header class="toolbar">
     <section class="left">
-      <button class="primary icon-text" onclick={openFolder} disabled={busy} title="Open folder (Ctrl+O)">
+      <button bind:this={openBtn} class="primary icon-text" onclick={() => (openLocationOpen = true)} disabled={busy} title="Open folder or web address (Ctrl+O)">
         <Icon name="folder-open" />
         <span>Open</span>
-      </button>
-      <!-- UX-016: renamed "URL" → "Web" for clarity; UX-026: bind:this for focus restore -->
-      <button bind:this={urlBtn} class="icon-text" onclick={() => (openUrlOpen = true)} disabled={busy} title="Preview a published document from a web address">
-        <Icon name="link" />
-        <span>Web</span>
       </button>
       {#if sourceMode === "url" && currentUrl}
         {#if docTitle}
@@ -1051,9 +1048,8 @@
         <div class="empty-icon" aria-hidden="true">📖</div>
         <h1 class="empty-title">print-md</h1>
         <p class="empty-tagline">Turn your markdown writing into a print-ready book</p>
-        <button class="primary empty-cta" onclick={openFolder} disabled={busy}>Open Your Book Folder</button>
-        <p class="empty-hint">Open a Print-md project folder with a <code>manifest.yaml</code> or <code>manifest.yml</code> file. Markdown sources are loaded in manifest order, or alphabetically when no file list is configured.</p>
-        <button class="ghost-link" onclick={() => (openUrlOpen = true)}>Or preview from a web address →</button>
+        <button class="primary empty-cta" onclick={() => (openLocationOpen = true)} disabled={busy}>Open Your Book Folder</button>
+        <p class="empty-hint">Open a Print-md project folder with a <code>manifest.yaml</code> or <code>manifest.yml</code> file, or preview a published document from a web address — both live under the <strong>Open</strong> button. Markdown sources are loaded in manifest order, or alphabetically when no file list is configured.</p>
         {#if urlPreviewError && sourceMode === "url"}
           <div class="open-error" role="alert">
             <strong>Preview unavailable.</strong>
@@ -1069,9 +1065,15 @@
     </div>
   {/if}
 </div>
+</div>
 
 <HelpDialog bind:open={helpOpen} triggerEl={helpBtn} />
-<OpenUrlDialog bind:open={openUrlOpen} onOpen={openUrl} triggerEl={urlBtn} />
+<OpenLocationDialog
+  bind:open={openLocationOpen}
+  onOpenFolder={(path) => startFolderPreview(path)}
+  onOpenUrl={openUrl}
+  triggerEl={openBtn}
+/>
 
 
 <style>
@@ -1083,10 +1085,17 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   }
 
-  .shell {
+  .app-root {
     display: flex;
     flex-direction: column;
     height: 100vh;
+    overflow: hidden;
+  }
+  .shell {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow: hidden;
   }
 
@@ -1335,17 +1344,6 @@
     padding: 1px 5px;
     border-radius: 3px;
   }
-  .ghost-link {
-    background: transparent;
-    border: none;
-    color: #6a9fd8;
-    font-size: 12px;
-    cursor: pointer;
-    padding: 0;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-  .ghost-link:hover { color: #88c0f8; }
   .open-error {
     background: #3a1a1a;
     border: 1px solid #5a2d2d;
