@@ -292,6 +292,136 @@ const puppeteerPdfRenderer: PdfRenderer = async ({ url, outPdf, timeoutMs }) => 
   }
 };
 
+/**
+ * Build-time pagination (SSG model): drive headless Chromium to fully paginate
+ * the staged HTML with Paged.js, then serialize the resulting already-fragmented
+ * DOM to a static HTML string. Paged.js's polisher injects its layout CSS as
+ * `<style>` elements INTO the DOM, so the serialized markup carries everything
+ * needed to render the pages with NO runtime pagination engine.
+ *
+ * This is the same headless engine the PDF path uses — the only difference is we
+ * capture `document.documentElement.outerHTML` instead of (or before) printing.
+ */
+async function paginateToStaticHtml(stagedHtml: string): Promise<string> {
+  const stageDir = path.dirname(path.resolve(stagedHtml));
+  const htmlFilename = path.basename(stagedHtml);
+  const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
+
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url!, "http://127.0.0.1");
+    const relative =
+      url.pathname === "/"
+        ? htmlFilename
+        : decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+    const filePath = path.resolve(stageDir, relative);
+    if (filePath !== stageDir && !filePath.startsWith(stageDir + path.sep)) {
+      res.writeHead(403);
+      res.end("Forbidden");
+      return;
+    }
+    try {
+      const data = await fsp.readFile(filePath);
+      const ct =
+        STATIC_MIME[path.extname(filePath).toLowerCase()] ??
+        "application/octet-stream";
+      res.writeHead(200, { "Content-Type": ct });
+      res.end(data);
+    } catch {
+      res.writeHead(404);
+      res.end("Not found");
+    }
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as net.AddressInfo).port;
+
+  try {
+    const executablePath = await requireChromiumExecutable();
+    const puppeteer = (await import("puppeteer-core")).default;
+    const extraChromiumArgs = (process.env.PRINTMD_CHROMIUM_ARGS ?? "")
+      .split(/\s+/)
+      .filter(Boolean);
+    const browser = await puppeteer.launch({
+      headless: true,
+      executablePath,
+      args: extraChromiumArgs,
+      protocolTimeout: RENDER_TIMEOUT_MS,
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1920, height: 1080 });
+      page.setDefaultNavigationTimeout(RENDER_TIMEOUT_MS);
+      page.setDefaultTimeout(RENDER_TIMEOUT_MS);
+
+      await page.goto(`http://127.0.0.1:${port}/${htmlFilename}`, {
+        waitUntil: "networkidle0",
+      });
+
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      await page.evaluate(() => (globalThis as any).document.fonts.ready);
+      await page
+        .waitForFunction(() => (globalThis as any).__PAGED_RENDERED__ === true, {
+          timeout: RENDER_TIMEOUT_MS,
+        })
+        .catch(() => {});
+
+      const result = await page.evaluate(() => {
+        const g = globalThis as any;
+        const count = g.document.querySelectorAll(".pagedjs_page").length;
+        return {
+          count: count as number,
+          html:
+            "<!DOCTYPE html>\n" + g.document.documentElement.outerHTML,
+        };
+      });
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+      log.info(
+        `Paged.js paginated ${result.count} pages → serialized to static HTML`
+      );
+      return result.html;
+    } finally {
+      await browser.close();
+    }
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+/**
+ * Remove the Paged.js pagination ENGINE from an already-paginated, serialized
+ * document so the browser renders the static pages as-is and never re-paginates.
+ * Strips (a) the polyfill `<script src>` and (b) the inline break-inside handler.
+ * Navigation toolbar scripts are NOT touched — they only scroll between pages
+ * that already exist, which is not DOM-pagination.
+ */
+function stripPaginationRuntime(html: string): string {
+  let out = html;
+  // (a) Paged.js polyfill <script src=...paged...> (CDN or vendored copy).
+  out = out.replace(
+    /<script\b[^>]*\bsrc=["'][^"']*paged[^"']*["'][^>]*>\s*<\/script>/gi,
+    ""
+  );
+  // (b) The inline BreakInsideAvoidHandler block (identified by its class name);
+  //     it sets window.PagedConfig.* which is dead without the engine.
+  out = out.replace(
+    /<script\b(?![^>]*\bsrc=)[^>]*>(?:(?!<\/script>)[\s\S])*?BreakInsideAvoidHandler(?:(?!<\/script>)[\s\S])*?<\/script>/gi,
+    ""
+  );
+  return out;
+}
+
+/**
+ * Inject the navigation-only toolbar scripts (page nav, zoom, view modes) into
+ * the static document head. These read the pre-rendered `.pagedjs_page`
+ * elements; they do not paginate.
+ */
+function injectNavigationScripts(html: string): string {
+  const tags =
+    '  <script src="preview/scripts/pagedjs-interface.js"></script>\n' +
+    '  <script src="preview/scripts/pagedjs-bridge.js"></script>\n';
+  if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, tags + "</head>");
+  return tags + html;
+}
+
 async function renderHtmlToPdf(
   inputHtml: string,
   outPdf: string,
@@ -456,15 +586,40 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
     });
   }
 
-  // === HTML format: stop here ============================================
+  // === HTML format =======================================================
+  // Pre-paginate at BUILD time (static-site-generator model): run Paged.js once
+  // in headless Chromium, serialize the fully-fragmented DOM, and ship that
+  // static HTML so the browser renders pages with NO runtime pagination JS. This
+  // inverts today's model (shipping the polyfill so the browser re-paginates on
+  // every load). The navigation toolbar scripts are kept — they only scroll
+  // between already-laid-out pages; they do not modify the DOM to render pages.
   if (format === "html") {
-    // Vendor Paged.js + interface + bridge locally so the HTML output works offline.
-    await fsp.mkdir(path.join(outDir, "vendor"), { recursive: true });
-    await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
+    // Stage a working copy for the headless pagination pass (assets + polyfill).
+    const htmlStage = path.resolve(".print-md-stage-html");
+    await fsp.rm(htmlStage, { recursive: true, force: true });
+    await fsp.mkdir(htmlStage, { recursive: true });
+    const stagedBook = path.join(htmlStage, BOOK_HTML_FILENAME);
+    await fsp.copyFile(htmlFile, stagedBook);
+    if (assetDirs.length > 0) {
+      const flattenedAssetDirs = Array.from(
+        new Set(assetDirs.map(resolveAssetDestName))
+      );
+      await copyAssets(outDir, htmlStage, flattenedAssetDirs);
+    }
+    await fsp.mkdir(path.join(htmlStage, "vendor"), { recursive: true });
     await fsp.copyFile(
       await getAssetPath("vendor/paged.polyfill.js"),
-      path.join(outDir, "vendor/paged.polyfill.js")
+      path.join(htmlStage, "vendor/paged.polyfill.js")
     );
+    // Inject the break-inside handler + polyfill so pagination AND its cleanup
+    // (ghost-card dedupe, orphan-page hide) run during the build pass.
+    await patchHtmlForPagedjs(stagedBook, "./vendor/paged.polyfill.js");
+
+    log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
+    const paginated = await paginateToStaticHtml(stagedBook);
+
+    // Ship the navigation-only toolbar scripts (no pagination engine).
+    await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
     await fsp.copyFile(
       await getAssetPath("preview/scripts/pagedjs-interface.js"),
       path.join(outDir, "preview/scripts/pagedjs-interface.js")
@@ -473,12 +628,11 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
       await getAssetPath("preview/scripts/pagedjs-bridge.js"),
       path.join(outDir, "preview/scripts/pagedjs-bridge.js")
     );
-    const bookSource = await fsp.readFile(htmlFile, "utf-8");
-    const bookWithInterface = bookSource.replace(
-      /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
-      '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="preview/scripts/pagedjs-bridge.js"></script>\n  <script src="vendor/paged.polyfill.js"></script>'
-    );
-    await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
+
+    // Strip the engine, wire in navigation, write the static, pre-paginated book.
+    const staticBook = injectNavigationScripts(stripPaginationRuntime(paginated));
+    await fsp.writeFile(htmlFile, staticBook, "utf-8");
+    await fsp.rm(htmlStage, { recursive: true, force: true });
 
     // Write a minimal index.html that redirects to book.html so static hosts
     // (Azure SWA, GitHub Pages, etc.) have a default entry point. This is not
