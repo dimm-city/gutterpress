@@ -501,6 +501,45 @@ export async function shipRuntimePaginatedHtml(
   await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
 }
 
+/**
+ * Pre-paginate a LIVE-PREVIEW HTML string (which still carries the Paged.js
+ * polyfill + break handler) into static, already-paginated HTML using the warm
+ * pooled browser, so the preview browser loads static pages with NO runtime
+ * pagination on each hot reload. `servingDir` is the preview temp dir the result
+ * is served from; the vendored polyfill is placed there so the pagination pass's
+ * static server can load it, and the nav toolbar scripts already present in the
+ * input survive the strip. Returns the static HTML; the caller writes book.html.
+ *
+ * The pooled browser stays warm across edits (the preview process never closes
+ * it), so each rebuild pays only pagination — not the ~1.5s Chromium launch.
+ */
+export async function prepaginatePreviewHtml(
+  htmlWithEngine: string,
+  servingDir: string
+): Promise<string> {
+  // paginateToStaticHtml serves `servingDir` as a plain static dir, so the
+  // polyfill the staged page references (/vendor/paged.polyfill.js) must be a
+  // real file there.
+  const vendorPoly = path.join(servingDir, "vendor", "paged.polyfill.js");
+  if (!fs.existsSync(vendorPoly)) {
+    await fsp.mkdir(path.dirname(vendorPoly), { recursive: true });
+    await fsp.copyFile(
+      await getAssetPath("vendor/paged.polyfill.js"),
+      vendorPoly
+    );
+  }
+  const staging = path.join(servingDir, "__pmd_prepaginate.html");
+  await fsp.writeFile(staging, htmlWithEngine, "utf-8");
+  try {
+    const raw = await paginateToStaticHtml(staging);
+    // Strip the polyfill + break handler; the interface/bridge nav scripts that
+    // were already in the preview HTML survive (they only navigate).
+    return stripPaginationRuntime(raw);
+  } finally {
+    await fsp.rm(staging, { force: true });
+  }
+}
+
 async function renderHtmlToPdf(
   inputHtml: string,
   outPdf: string,

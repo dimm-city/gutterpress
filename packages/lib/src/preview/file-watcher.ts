@@ -19,6 +19,7 @@ import { BOOK_HTML_FILENAME } from '../lib/viewer';
 import type { ServerState } from './server-context';
 import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
 import { getAssetPath } from '../lib/embedded-assets';
+import { prepaginatePreviewHtml } from '../lib/build-runner';
 
 /**
  * Build the list of asset roots that live outside the input path and need
@@ -146,6 +147,20 @@ export async function generateAndWriteHtml(
     /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
     iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
   );
+
+  // Opt-in: pre-paginate at build time in the warm pooled browser so the preview
+  // browser loads STATIC pages on each hot reload (no runtime re-pagination, no
+  // screenshifting). Falls back to the polyfill output on any error so the
+  // preview never breaks. Enable with PRINTMD_PREVIEW_PREPAGINATE=1.
+  if (process.env.PRINTMD_PREVIEW_PREPAGINATE === "1") {
+    try {
+      const staticHtml = await prepaginatePreviewHtml(output, tempDir);
+      await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), staticHtml, "utf-8");
+      return;
+    } catch (err) {
+      debug(`Pre-pagination failed, serving runtime-polyfill HTML: ${err}`);
+    }
+  }
 
   await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), output, "utf-8");
 }
