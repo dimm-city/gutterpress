@@ -8,6 +8,7 @@ import { renderChaptersToFile } from "./markdown/index";
 import { loadPlugins, collectPluginCss } from "./markdown/plugins";
 import { copyAssets, resolveAssetDestName } from "./assets";
 import { requireChromiumExecutable, resolveChromiumExecutable } from "./chromium";
+import { prewarmBrowser, getBrowser, closeBrowser } from "./browser-pool";
 import { isToolAvailable } from "./tool-probe";
 import { patchHtmlForPagedjs } from "./pagedjs";
 import {
@@ -53,6 +54,14 @@ export interface BuildRunnerOptions {
    * The Electron viewer injects one backed by `webContents.printToPDF`.
    */
   pdfRenderer?: PdfRenderer;
+  /**
+   * Keep the pooled headless browser alive after the build returns. A one-shot
+   * CLI build leaves this false so the process can exit; a long-lived
+   * preview/watch server sets it true so the browser stays warm across rebuilds
+   * (every rebuild then skips the ~1–2s Chromium launch). The server owns
+   * `closeBrowser()` on shutdown.
+   */
+  keepBrowserAlive?: boolean;
   rawArgs: Record<string, unknown>;
 }
 
@@ -237,32 +246,22 @@ export interface PdfRenderInput {
  */
 export type PdfRenderer = (input: PdfRenderInput) => Promise<void>;
 
-/** Default renderer: system Chromium via puppeteer-core. */
+/** Hard ceiling for navigation + pagination + PDF generation. Large books need
+ *  this budget; it is also the puppeteer protocolTimeout for the pooled browser. */
+const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
+
+/** Default renderer: system Chromium via puppeteer-core (pooled + pre-warmable). */
 const puppeteerPdfRenderer: PdfRenderer = async ({
   url,
   outPdf,
   timeoutMs,
   captureStaticHtmlTo,
 }) => {
-  const executablePath = await requireChromiumExecutable();
-  // Lazy-load puppeteer-core. It is the single biggest dep in the lib graph
-  // (~13MB plus transitive parse cost) and is only needed for PDF generation.
-  const puppeteer = (await import("puppeteer-core")).default;
-  // Extra Chromium flags, space-separated, via PRINTMD_CHROMIUM_ARGS. Opt-in
-  // and empty by default so desktop/CLI behavior is unchanged. Containers and
-  // some CI runners need "--no-sandbox --disable-dev-shm-usage" because
-  // headless Chromium refuses to start as root / with a small /dev/shm.
-  const extraChromiumArgs = (process.env.PRINTMD_CHROMIUM_ARGS ?? "")
-    .split(/\s+/)
-    .filter(Boolean);
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath,
-    args: extraChromiumArgs,
-    protocolTimeout: timeoutMs,
-  });
+  // Reuse the pre-warmed pooled browser; open a fresh page and close the PAGE
+  // (not the browser) so the browser stays warm for the next render.
+  const browser = await getBrowser(timeoutMs);
+  const page = await browser.newPage();
   try {
-    const page = await browser.newPage();
     await page.setViewport({ width: 1920, height: 1080 });
     page.setDefaultNavigationTimeout(timeoutMs);
     page.setDefaultTimeout(timeoutMs);
@@ -316,7 +315,7 @@ const puppeteerPdfRenderer: PdfRenderer = async ({
       await fsp.writeFile(captureStaticHtmlTo, staticHtml, "utf-8");
     }
   } finally {
-    await browser.close();
+    await page.close();
   }
 };
 
@@ -333,7 +332,6 @@ const puppeteerPdfRenderer: PdfRenderer = async ({
 async function paginateToStaticHtml(stagedHtml: string): Promise<string> {
   const stageDir = path.dirname(path.resolve(stagedHtml));
   const htmlFilename = path.basename(stagedHtml);
-  const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url!, "http://127.0.0.1");
@@ -363,19 +361,10 @@ async function paginateToStaticHtml(stagedHtml: string): Promise<string> {
   const port = (server.address() as net.AddressInfo).port;
 
   try {
-    const executablePath = await requireChromiumExecutable();
-    const puppeteer = (await import("puppeteer-core")).default;
-    const extraChromiumArgs = (process.env.PRINTMD_CHROMIUM_ARGS ?? "")
-      .split(/\s+/)
-      .filter(Boolean);
-    const browser = await puppeteer.launch({
-      headless: true,
-      executablePath,
-      args: extraChromiumArgs,
-      protocolTimeout: RENDER_TIMEOUT_MS,
-    });
+    // Reuse the pre-warmed pooled browser; open a fresh page, close the PAGE.
+    const browser = await getBrowser(RENDER_TIMEOUT_MS);
+    const page = await browser.newPage();
     try {
-      const page = await browser.newPage();
       await page.setViewport({ width: 1920, height: 1080 });
       page.setDefaultNavigationTimeout(RENDER_TIMEOUT_MS);
       page.setDefaultTimeout(RENDER_TIMEOUT_MS);
@@ -407,7 +396,7 @@ async function paginateToStaticHtml(stagedHtml: string): Promise<string> {
       );
       return result.html;
     } finally {
-      await browser.close();
+      await page.close();
     }
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -520,9 +509,6 @@ async function renderHtmlToPdf(
 ) {
   const stageDir = path.dirname(path.resolve(inputHtml));
   const htmlFilename = path.basename(inputHtml);
-  // Large books need this budget for navigation, Paged.js pagination, and the
-  // browser's printToPDF call itself.
-  const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url!, "http://127.0.0.1");
@@ -606,6 +592,16 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
   if (format !== "html") {
     await preflightBuildTools(format, opts, config);
   }
+
+  // 2.6. Pre-warm the headless browser NOW (fire-and-forget) so the ~1–2s
+  // Chromium cold start overlaps with lint + validation + markdown render +
+  // asset staging below, instead of sitting on the critical path at pagination
+  // time. Only when this build will actually paginate in Chromium: a PDF/PDFX
+  // build with no injected renderer, or an HTML build with a browser available.
+  const willPaginateInChromium =
+    (format !== "html" && !opts.pdfRenderer) ||
+    (format === "html" && !!(await resolveChromiumExecutable()));
+  if (willPaginateInChromium) prewarmBrowser(RENDER_TIMEOUT_MS);
 
   // 3. Lint
   if (gates.lint) {
@@ -750,6 +746,9 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
     });
     log.success(`Wrote: ${path.join(outDir, "book.html")}`);
     log.info(`Fingerprint: ${fingerprintPath}`);
+    // Close the pooled browser unless the caller (e.g. a preview server) wants
+    // it kept warm for the next rebuild. No-op if nothing was launched.
+    if (!opts.keepBrowserAlive) await closeBrowser();
     return {
       outDir,
       htmlPath: htmlFile,
@@ -891,6 +890,10 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
 
   log.success(`Wrote: ${pdfFile}`);
   log.info(`Fingerprint: ${fingerprintPath}`);
+
+  // Close the pooled browser unless the caller wants it kept warm. No-op for the
+  // injected-renderer (Electron) path, which never used the pool.
+  if (!opts.keepBrowserAlive) await closeBrowser();
 
   return {
     outDir,
