@@ -214,6 +214,15 @@ export interface PdfRenderInput {
   outPdf: string;
   /** Hard ceiling for navigation + pagination + PDF generation. */
   timeoutMs: number;
+  /**
+   * When set, after printing the PDF the renderer also serializes the
+   * already-paginated DOM (the same DOM it just printed) and writes it to this
+   * path as raw static HTML. Lets ONE pagination pass emit BOTH the PDF and the
+   * static viewer HTML, so screen and PDF come from the same artifact. The
+   * serialize is read-only and runs AFTER `page.pdf()`, so it cannot affect the
+   * PDF. Optional; injected renderers that cannot serialize may ignore it.
+   */
+  captureStaticHtmlTo?: string;
 }
 
 /**
@@ -229,7 +238,12 @@ export interface PdfRenderInput {
 export type PdfRenderer = (input: PdfRenderInput) => Promise<void>;
 
 /** Default renderer: system Chromium via puppeteer-core. */
-const puppeteerPdfRenderer: PdfRenderer = async ({ url, outPdf, timeoutMs }) => {
+const puppeteerPdfRenderer: PdfRenderer = async ({
+  url,
+  outPdf,
+  timeoutMs,
+  captureStaticHtmlTo,
+}) => {
   const executablePath = await requireChromiumExecutable();
   // Lazy-load puppeteer-core. It is the single biggest dep in the lib graph
   // (~13MB plus transitive parse cost) and is only needed for PDF generation.
@@ -287,6 +301,20 @@ const puppeteerPdfRenderer: PdfRenderer = async ({ url, outPdf, timeoutMs }) => 
       height: pagedInfo.height ?? "11.25in",
       margin: { top: "0", right: "0", bottom: "0", left: "0" },
     });
+
+    // Unification: serialize the SAME printed DOM to static HTML so the on-screen
+    // viewer renders the identical artifact the PDF was printed from. Read-only,
+    // after page.pdf() — does not perturb the PDF.
+    if (captureStaticHtmlTo) {
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      const staticHtml = await page.evaluate(
+        () =>
+          "<!DOCTYPE html>\n" +
+          (globalThis as any).document.documentElement.outerHTML
+      );
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+      await fsp.writeFile(captureStaticHtmlTo, staticHtml, "utf-8");
+    }
   } finally {
     await browser.close();
   }
@@ -393,11 +421,14 @@ async function paginateToStaticHtml(stagedHtml: string): Promise<string> {
  * Navigation toolbar scripts are NOT touched — they only scroll between pages
  * that already exist, which is not DOM-pagination.
  */
-function stripPaginationRuntime(html: string): string {
+export function stripPaginationRuntime(html: string): string {
   let out = html;
-  // (a) Paged.js polyfill <script src=...paged...> (CDN or vendored copy).
+  // (a) Paged.js polyfill <script src=....paged.polyfill.js> (CDN or vendored).
+  //     Match the polyfill FILENAME specifically — a bare "paged" substring also
+  //     matches the navigation scripts (pagedjs-interface.js / pagedjs-bridge.js),
+  //     which must survive.
   out = out.replace(
-    /<script\b[^>]*\bsrc=["'][^"']*paged[^"']*["'][^>]*>\s*<\/script>/gi,
+    /<script\b[^>]*\bsrc=["'][^"']*paged\.polyfill[^"']*["'][^>]*>\s*<\/script>/gi,
     ""
   );
   // (b) The inline BreakInsideAvoidHandler block (identified by its class name);
@@ -414,7 +445,7 @@ function stripPaginationRuntime(html: string): string {
  * the static document head. These read the pre-rendered `.pagedjs_page`
  * elements; they do not paginate.
  */
-function injectNavigationScripts(html: string): string {
+export function injectNavigationScripts(html: string): string {
   const tags =
     '  <script src="preview/scripts/pagedjs-interface.js"></script>\n' +
     '  <script src="preview/scripts/pagedjs-bridge.js"></script>\n';
@@ -422,10 +453,70 @@ function injectNavigationScripts(html: string): string {
   return tags + html;
 }
 
+/**
+ * Turn a raw serialized paginated document into the shippable static viewer
+ * `book.html`: copy the navigation toolbar scripts into outDir, strip the
+ * pagination engine, wire the nav scripts, and write the file. Shared by the
+ * HTML format and the PDF unification path.
+ */
+async function finalizeStaticBook(
+  rawSerializedHtml: string,
+  htmlFile: string,
+  outDir: string
+): Promise<void> {
+  await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
+  await fsp.copyFile(
+    await getAssetPath("preview/scripts/pagedjs-interface.js"),
+    path.join(outDir, "preview/scripts/pagedjs-interface.js")
+  );
+  await fsp.copyFile(
+    await getAssetPath("preview/scripts/pagedjs-bridge.js"),
+    path.join(outDir, "preview/scripts/pagedjs-bridge.js")
+  );
+  await fsp.writeFile(
+    htmlFile,
+    injectNavigationScripts(stripPaginationRuntime(rawSerializedHtml)),
+    "utf-8"
+  );
+}
+
+/**
+ * Fallback for `--format html` when no headless browser is available: ship the
+ * Paged.js polyfill + nav scripts so the BROWSER paginates at load time (the
+ * pre-SSG behavior). Slower at runtime and not pre-paginated, but it works with
+ * no Chromium at build. Mirrors the historic HTML output exactly.
+ */
+export async function shipRuntimePaginatedHtml(
+  htmlFile: string,
+  outDir: string
+): Promise<void> {
+  await fsp.mkdir(path.join(outDir, "vendor"), { recursive: true });
+  await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
+  await fsp.copyFile(
+    await getAssetPath("vendor/paged.polyfill.js"),
+    path.join(outDir, "vendor/paged.polyfill.js")
+  );
+  await fsp.copyFile(
+    await getAssetPath("preview/scripts/pagedjs-interface.js"),
+    path.join(outDir, "preview/scripts/pagedjs-interface.js")
+  );
+  await fsp.copyFile(
+    await getAssetPath("preview/scripts/pagedjs-bridge.js"),
+    path.join(outDir, "preview/scripts/pagedjs-bridge.js")
+  );
+  const bookSource = await fsp.readFile(htmlFile, "utf-8");
+  const bookWithInterface = bookSource.replace(
+    /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
+    '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="preview/scripts/pagedjs-bridge.js"></script>\n  <script src="vendor/paged.polyfill.js"></script>'
+  );
+  await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
+}
+
 async function renderHtmlToPdf(
   inputHtml: string,
   outPdf: string,
-  renderer: PdfRenderer = puppeteerPdfRenderer
+  renderer: PdfRenderer = puppeteerPdfRenderer,
+  captureStaticHtmlTo?: string
 ) {
   const stageDir = path.dirname(path.resolve(inputHtml));
   const htmlFilename = path.basename(inputHtml);
@@ -463,6 +554,7 @@ async function renderHtmlToPdf(
       url: `http://127.0.0.1:${port}/${htmlFilename}`,
       outPdf,
       timeoutMs: RENDER_TIMEOUT_MS,
+      captureStaticHtmlTo,
     });
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -594,45 +686,43 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
   // every load). The navigation toolbar scripts are kept — they only scroll
   // between already-laid-out pages; they do not modify the DOM to render pages.
   if (format === "html") {
-    // Stage a working copy for the headless pagination pass (assets + polyfill).
-    const htmlStage = path.resolve(".print-md-stage-html");
-    await fsp.rm(htmlStage, { recursive: true, force: true });
-    await fsp.mkdir(htmlStage, { recursive: true });
-    const stagedBook = path.join(htmlStage, BOOK_HTML_FILENAME);
-    await fsp.copyFile(htmlFile, stagedBook);
-    if (assetDirs.length > 0) {
-      const flattenedAssetDirs = Array.from(
-        new Set(assetDirs.map(resolveAssetDestName))
+    const chromium = await resolveChromiumExecutable();
+    if (!chromium) {
+      // No headless browser at build → fall back to runtime pagination so the
+      // build still succeeds (the browser paginates on load — pre-SSG behavior).
+      log.warn(
+        "Chromium not found — shipping runtime-paginated HTML (the browser will " +
+          "paginate on load). Install Chromium or set CHROMIUM_PATH for " +
+          "pre-paginated static output."
       );
-      await copyAssets(outDir, htmlStage, flattenedAssetDirs);
+      await shipRuntimePaginatedHtml(htmlFile, outDir);
+    } else {
+      // Stage a working copy for the build-time pagination pass (assets + polyfill).
+      const htmlStage = path.resolve(".print-md-stage-html");
+      await fsp.rm(htmlStage, { recursive: true, force: true });
+      await fsp.mkdir(htmlStage, { recursive: true });
+      const stagedBook = path.join(htmlStage, BOOK_HTML_FILENAME);
+      await fsp.copyFile(htmlFile, stagedBook);
+      if (assetDirs.length > 0) {
+        const flattenedAssetDirs = Array.from(
+          new Set(assetDirs.map(resolveAssetDestName))
+        );
+        await copyAssets(outDir, htmlStage, flattenedAssetDirs);
+      }
+      await fsp.mkdir(path.join(htmlStage, "vendor"), { recursive: true });
+      await fsp.copyFile(
+        await getAssetPath("vendor/paged.polyfill.js"),
+        path.join(htmlStage, "vendor/paged.polyfill.js")
+      );
+      // Inject the break-inside handler + polyfill so pagination AND its cleanup
+      // (ghost-card dedupe, orphan-page hide) run during the build pass.
+      await patchHtmlForPagedjs(stagedBook, "./vendor/paged.polyfill.js");
+
+      log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
+      const paginated = await paginateToStaticHtml(stagedBook);
+      await finalizeStaticBook(paginated, htmlFile, outDir);
+      await fsp.rm(htmlStage, { recursive: true, force: true });
     }
-    await fsp.mkdir(path.join(htmlStage, "vendor"), { recursive: true });
-    await fsp.copyFile(
-      await getAssetPath("vendor/paged.polyfill.js"),
-      path.join(htmlStage, "vendor/paged.polyfill.js")
-    );
-    // Inject the break-inside handler + polyfill so pagination AND its cleanup
-    // (ghost-card dedupe, orphan-page hide) run during the build pass.
-    await patchHtmlForPagedjs(stagedBook, "./vendor/paged.polyfill.js");
-
-    log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
-    const paginated = await paginateToStaticHtml(stagedBook);
-
-    // Ship the navigation-only toolbar scripts (no pagination engine).
-    await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
-    await fsp.copyFile(
-      await getAssetPath("preview/scripts/pagedjs-interface.js"),
-      path.join(outDir, "preview/scripts/pagedjs-interface.js")
-    );
-    await fsp.copyFile(
-      await getAssetPath("preview/scripts/pagedjs-bridge.js"),
-      path.join(outDir, "preview/scripts/pagedjs-bridge.js")
-    );
-
-    // Strip the engine, wire in navigation, write the static, pre-paginated book.
-    const staticBook = injectNavigationScripts(stripPaginationRuntime(paginated));
-    await fsp.writeFile(htmlFile, staticBook, "utf-8");
-    await fsp.rm(htmlStage, { recursive: true, force: true });
 
     // Write a minimal index.html that redirects to book.html so static hosts
     // (Azure SWA, GitHub Pages, etc.) have a default entry point. This is not
@@ -701,7 +791,23 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
   const rawPdf = pdfxMode ? path.join(stage, "raw.pdf") : path.resolve(pdfFile);
   log.info("Rendering HTML to PDF via Chromium+Paged.js");
   await fsp.mkdir(path.dirname(path.resolve(pdfFile)), { recursive: true });
-  await renderHtmlToPdf(stagedHtml, rawPdf, opts.pdfRenderer);
+  // PDF unification: the default renderer prints the PDF and, from the SAME
+  // pagination pass, serializes the static viewer book.html — so the on-screen
+  // pages and the PDF come from one paginated artifact. The PDF call itself is
+  // unchanged, so the PDF is pixel-identical to the pre-SSG pipeline. Injected
+  // renderers (e.g. the Electron viewer) print only.
+  const staticHtmlRaw = opts.pdfRenderer
+    ? undefined
+    : path.join(stage, "book-static-raw.html");
+  await renderHtmlToPdf(stagedHtml, rawPdf, opts.pdfRenderer, staticHtmlRaw);
+  if (staticHtmlRaw && fs.existsSync(staticHtmlRaw)) {
+    await finalizeStaticBook(
+      await fsp.readFile(staticHtmlRaw, "utf-8"),
+      htmlFile,
+      outDir
+    );
+    log.success(`Wrote static viewer: ${path.join(outDir, "book.html")}`);
+  }
 
   if (!pdfxMode) {
     // stampCreator writes /Creator (print-md) into the PDF's Info dict using

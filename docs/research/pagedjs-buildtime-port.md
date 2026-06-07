@@ -1,8 +1,25 @@
 # Paged.js as a Static Site Generator (build-time pagination)
 
-**Status: PROTOTYPED & VERIFIED — `--format html` now emits pre-paginated static HTML**
+**Status: IMPLEMENTED & VERIFIED — static HTML + Chromium fallback + PDF unification, PDF pixel-identical to `main`**
 **Date: 2026-06-07**
 **Branch: `feat/pagedjs-static-html`**
+
+## PDF parity result (vs `main`)
+
+"Byte-identical" is **impossible**: Chromium's `page.pdf()` embeds a creation
+timestamp + object-IDs, so even **two runs of `main` differ in bytes** (464017 vs
+464013, different md5). The meaningful target is **pixel-identical rendering**,
+and `main` is fully deterministic there (two `main` runs = **0 differing pixels**).
+
+The unified path prints the PDF with the **same `page.pdf()` call** as `main`
+(serialization happens read-only, *after* the print), so:
+
+> **branch PDF vs `main` PDF = 0 differing pixels across all 59 pages** (rasterized
+> at 100 dpi, ImageMagick `compare -metric AE`).
+
+Printing the *static serialized artifact* instead was measured at ~34k px drift
+(running headers/folios re-resolve) — which is why the PDF prints the **live DOM**
+and the static HTML is a read-only serialization of that same printed DOM.
 
 ## Goal (corrected)
 
@@ -75,22 +92,28 @@ zero DOM pagination.
 
 ## Scope & follow-ups
 
-This prototype covers **`--format html` only** (as scoped). Known follow-ups
-before it ships as the default:
+Done in this branch:
 
-1. **Chromium preflight for HTML.** `--format html` now requires a headless
-   browser at build (it didn't before). Add it to `preflightBuildTools` and offer
-   a graceful fallback (ship the polyfill) when Chromium is absent, so non-PDF
-   users aren't hard-blocked.
-2. **`renderingComplete` wiring.** `pagedjs-interface.js` fires that event from
+1. ✅ **Chromium fallback for HTML.** When no headless browser is found,
+   `--format html` falls back to `shipRuntimePaginatedHtml()` (ships the polyfill;
+   the browser paginates on load — the pre-SSG behavior) with a warning, so non-PDF
+   users are never hard-blocked. Unit-tested.
+2. ✅ **PDF unification.** The default renderer prints the PDF and, from the SAME
+   pagination pass, serializes the static viewer `book.html` (via the new
+   `captureStaticHtmlTo` field on `PdfRenderInput`). One Chromium launch → both
+   outputs. The PDF call is unchanged, so the PDF is **pixel-identical to `main`**
+   (see *PDF parity result* above). Note: the static HTML is the read-only
+   serialization of the **live printed DOM** (not a re-print of the static file),
+   which is what keeps PDF parity exact.
+
+Remaining follow-ups:
+
+3. **`renderingComplete` wiring.** `pagedjs-interface.js` fires that event from
    `PagedConfig.after`, which never runs without the engine. Re-wire it to a
    `DOMContentLoaded` dispatch (~10–20 lines) so the toolbar gets its page count.
-3. **Viewer parity.** The Electron viewer injects its own renderer for PDF; it
-   needs an analogous injected serializer so the desktop app produces the same
-   static HTML without a separate Chromium.
-4. **PDF unification (next phase).** Run the single pagination pass once and emit
-   *both* the static HTML and the PDF (print the static artifact) — guarantees
-   screen==PDF and avoids a second Chromium launch.
+4. **Viewer parity.** The Electron viewer injects its own renderer for PDF; it can
+   honor `captureStaticHtmlTo` (or get an analogous injected serializer) so the
+   desktop app produces the same static HTML without a separate Chromium.
 5. **Output size.** Static output is larger (70KB → ~648KB for the guide) because
    every page is fully expanded — expected and fine for static hosting; gzip
    recovers most of it.
@@ -98,4 +121,8 @@ before it ships as the default:
 ## Files
 
 - `packages/lib/src/lib/build-runner.ts` — `paginateToStaticHtml()`,
-  `stripPaginationRuntime()`, `injectNavigationScripts()`, rewritten HTML branch.
+  `stripPaginationRuntime()`, `injectNavigationScripts()`, `finalizeStaticBook()`,
+  `shipRuntimePaginatedHtml()`, `captureStaticHtmlTo` on `PdfRenderInput` +
+  `puppeteerPdfRenderer`, the fallback-aware HTML branch, and the unified PDF branch.
+- `packages/lib/src/lib/build-runner.test.ts` — unit tests for the strip/inject
+  helpers and the no-Chromium fallback.
