@@ -49,6 +49,14 @@ export interface PlatformAdapter {
   writeFile(path: string, content: string): Promise<void>;
 
   /**
+   * List the immediate entries of a directory (single level, no recursion).
+   * @returns each entry's `name`, absolute `path`, and whether it `isDir`.
+   * Editor seam for #38 (file-tree sidebar). Electron: `node:fs/promises`
+   * `readdir`. Web: File System Access API (0.6.0).
+   */
+  listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
+
+  /**
    * Watch a folder for changes, invoking `cb` on each change.
    * @returns an unsubscribe function.
    * Web has no general recursive-watch primitive — `WebAdapter` throws here

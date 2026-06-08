@@ -280,4 +280,5 @@ export interface ElectronBridge extends HostServices {
   openDirectory(): Promise<string | null>;
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
+  listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
 }

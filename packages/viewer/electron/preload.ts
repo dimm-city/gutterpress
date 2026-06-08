@@ -221,6 +221,10 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("fs:readFile", filePath),
   writeFile: (filePath: string, content: string): Promise<void> =>
     ipcRenderer.invoke("fs:writeFile", filePath, content),
+  listDir: (
+    dirPath: string,
+  ): Promise<Array<{ name: string; path: string; isDir: boolean }>> =>
+    ipcRenderer.invoke("fs:listDir", dirPath),
 
   // Lib API (replaces /api/* HTTP routes)
   getStatus: (): Promise<{ ok: boolean; runtime: string; name: string }> =>

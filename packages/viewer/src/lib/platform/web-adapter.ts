@@ -83,6 +83,10 @@ export class WebAdapter implements Platform {
     return notImplemented("writeFile");
   }
 
+  listDir(_path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>> {
+    return notImplemented("listDir");
+  }
+
   watchFolder(_path: string, _cb: () => void): () => void {
     return notImplemented("watchFolder");
   }

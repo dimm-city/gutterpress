@@ -748,6 +748,30 @@ ipcMain.handle(
   },
 );
 
+// ── Directory listing (PlatformAdapter.listDir, #38) ──────────────────────
+// Backs the in-app editor's file-tree sidebar. Returns the immediate entries
+// of `dirPath` (single level, no recursion) as {name, path, isDir}. The path
+// MUST be absolute (a relative path could resolve against the main-process CWD
+// by accident); the renderer is our own trusted SPA and always passes a
+// user-opened project directory.
+ipcMain.handle(
+  "fs:listDir",
+  async (
+    _e,
+    dirPath: string,
+  ): Promise<Array<{ name: string; path: string; isDir: boolean }>> => {
+    if (!path.isAbsolute(dirPath)) {
+      throw new Error(`fs:listDir requires an absolute path, got: ${dirPath}`);
+    }
+    const entries = await readdir(dirPath, { withFileTypes: true });
+    return entries.map((entry) => ({
+      name: entry.name,
+      path: path.join(dirPath, entry.name),
+      isDir: entry.isDirectory(),
+    }));
+  },
+);
+
 ipcMain.handle("api:status", async () => {
   return { name: "@dimm-city/print-md-viewer", runtime: "node", ok: true };
 });

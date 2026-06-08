@@ -1,5 +1,7 @@
 <script lang="ts">
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
+  import FileTree from "$lib/components/FileTree.svelte";
+  import MarkdownEditor from "$lib/components/MarkdownEditor.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type { ProjectCapabilities } from "$lib/platform/contract";
@@ -112,6 +114,81 @@
   // Open Location modal
   let openLocationOpen = $state(false);
   let openBtn = $state<HTMLButtonElement | undefined>(undefined);
+
+  // ── In-app markdown editor (#38) ────────────────────────────────────────
+  // editorOpen toggles the file-tree + editor split alongside the preview.
+  // editorFilePath/editorContent drive the CodeMirror pane; a debounced
+  // writeFile saves edits to disk, which the existing preview file-watcher
+  // picks up to re-render — no extra wiring needed.
+  let editorOpen = $state(false);
+  let editorFilePath = $state<string | null>(null);
+  let editorContent = $state<string>("");
+  let editorLoading = $state(false);
+  let saveDebounce: ReturnType<typeof setTimeout> | null = null;
+  let editorRef = $state<{ focus: () => void } | null>(null);
+
+  // Load file content when the selected file changes.
+  $effect(() => {
+    const filePath = editorFilePath;
+    if (!filePath || !isDesktop()) {
+      return;
+    }
+    editorLoading = true;
+    let cancelled = false;
+    getPlatform()
+      .readFile(filePath)
+      .then((text) => {
+        if (cancelled) return;
+        editorContent = text;
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        editorContent = "";
+        toast?.error(
+          `Could not open file: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      })
+      .finally(() => {
+        if (!cancelled) editorLoading = false;
+      });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  function onEditorChange(value: string) {
+    editorContent = value;
+    const filePath = editorFilePath;
+    if (!filePath || !isDesktop()) return;
+    if (saveDebounce) clearTimeout(saveDebounce);
+    // 500ms debounce — autoSaveDelay default is 1000ms but the issue specifies
+    // a 500ms editor debounce for the responsive edit→preview loop.
+    saveDebounce = setTimeout(() => {
+      getPlatform()
+        .writeFile(filePath, value)
+        .catch((e: unknown) => {
+          toast?.error(
+            `Save failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        });
+    }, 500);
+  }
+
+  function selectEditorFile(path: string) {
+    editorFilePath = path;
+  }
+
+  function toggleEditor() {
+    if (!currentDir || sourceMode !== "folder") return;
+    editorOpen = !editorOpen;
+    // On open, move keyboard focus into the editor so Ctrl+E acts as a
+    // focus-switch into the editing surface (#38). Closing returns focus to
+    // the document (preview iframe / window) implicitly.
+    if (editorOpen) {
+      // Defer until the pane (and CodeMirror view) is mounted.
+      requestAnimationFrame(() => editorRef?.focus());
+    }
+  }
 
   // ----------------------------------------------------------------
   // Inject viewer canvas styles into iframe when client + bgColor change
@@ -294,6 +371,11 @@
         e.preventDefault();
         settingsOpen = !settingsOpen;
       }
+      // Cmd/Ctrl+E toggles the in-app editor (#38) when a folder is open.
+      if ((e.ctrlKey || e.metaKey) && (e.key === "e" || e.key === "E")) {
+        e.preventDefault();
+        toggleEditor();
+      }
     }
     window.addEventListener("keydown", onGlobalKey);
     return () => window.removeEventListener("keydown", onGlobalKey);
@@ -306,9 +388,14 @@
     if (!previewUrl) return;
 
     function onKey(e: KeyboardEvent) {
-      // Don't intercept when focus is in an input/textarea/select
-      const tag = (e.target as HTMLElement)?.tagName ?? "";
+      // Don't intercept when focus is in an input/textarea/select, or inside
+      // the CodeMirror editor (#38) — its content node is a contenteditable
+      // DIV, so a tagName check alone would let preview-nav keys (arrows,
+      // Home/End, +/-/=, f) hijack core editing.
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName ?? "";
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (t?.isContentEditable || t?.closest?.(".cm-editor")) return;
 
       // UX-006: Ctrl/Cmd+S saves PDF
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -503,6 +590,12 @@
       const platform = getPlatform();
       const data = await platform.startPreview({ input: dir });
       sourceMode = "folder";
+      // New folder: clear any file selected from a previous project so the
+      // editor pane doesn't point at a stale path.
+      if (currentDir !== dir) {
+        editorFilePath = null;
+        editorContent = "";
+      }
       currentDir = dir;
       currentUrl = null;
       // Classify the opened folder (#12) so capability-gated actions (#13/#25)
@@ -595,6 +688,10 @@
     currentUrl = url;
     currentDir = null;
     docTitle = null;
+    // The editor is folder-only; close it for web previews.
+    editorOpen = false;
+    editorFilePath = null;
+    editorContent = "";
     // Force iframe remount by nulling first
     previewUrl = null;
     queueMicrotask(() => {
@@ -643,6 +740,9 @@
     totalPages = 0;
     currentPage = 1;
     pageEditing = false;
+    editorOpen = false;
+    editorFilePath = null;
+    editorContent = "";
   }
 
   async function savePdf() {
@@ -982,6 +1082,19 @@
     {/if}
 
     <section class="right">
+      <!-- In-app editor toggle (#38): collapses/expands the file-tree + editor
+           split. Disabled until a project folder is open. -->
+      <button
+        class="icon-text"
+        class:active={editorOpen}
+        onclick={toggleEditor}
+        disabled={!currentDir || sourceMode === "url"}
+        title="Toggle markdown editor (Ctrl+E)"
+        aria-label="Toggle markdown editor"
+        aria-pressed={editorOpen}
+      >
+        <Icon name="pen-line" /><span class="view-label">Edit</span>
+      </button>
       <!-- UX-039: separator before view mode buttons -->
       <span class="toolbar-sep" aria-hidden="true"></span>
       <!-- UX-014: text labels + aria-pressed on view mode buttons -->
@@ -1088,19 +1201,40 @@
   </header>
 
   {#if previewUrl}
-    {#key previewUrl}
-      <PreviewFrame
-        url={previewUrl}
-        bind:client
-        onError={(msg) => {
-          if (sourceMode === "url") {
-            urlPreviewError = "This website could not be previewed inside print-md.";
-          } else {
-            toast?.error(msg);
-          }
-        }}
-      />
-    {/key}
+    <div class="workspace" class:editor-open={editorOpen && !!currentDir}>
+      {#if editorOpen && currentDir}
+        <aside class="pane file-tree-pane">
+          <FileTree
+            projectDir={currentDir}
+            selectedPath={editorFilePath}
+            onSelectFile={selectEditorFile}
+          />
+        </aside>
+        <section class="pane editor-pane" aria-label="Markdown editor">
+          <MarkdownEditor
+            bind:this={editorRef}
+            filePath={editorFilePath}
+            content={editorContent}
+            onChange={onEditorChange}
+          />
+        </section>
+      {/if}
+      <section class="pane preview-pane">
+        {#key previewUrl}
+          <PreviewFrame
+            url={previewUrl}
+            bind:client
+            onError={(msg) => {
+              if (sourceMode === "url") {
+                urlPreviewError = "This website could not be previewed inside print-md.";
+              } else {
+                toast?.error(msg);
+              }
+            }}
+          />
+        {/key}
+      </section>
+    </div>
   {:else}
     <div class="empty">
       <div class="empty-hero">
@@ -1157,6 +1291,44 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow: hidden;
+  }
+
+  /* ---- Editor workspace: [file-tree | editor | preview] (#38) ---- */
+  /* When the editor is closed the preview takes the full width, preserving
+     the prior single-pane behaviour exactly. */
+  .workspace {
+    display: grid;
+    grid-template-columns: 1fr;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .workspace.editor-open {
+    grid-template-columns: minmax(160px, 220px) minmax(280px, 1fr) minmax(320px, 1.2fr);
+  }
+  .pane {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .editor-pane {
+    border-right: 1px solid var(--app-border);
+  }
+  .preview-pane {
+    position: relative;
+  }
+  /* Narrow widths: drop the file-tree column, stack editor over preview is
+     avoided (keeps the live preview visible) — instead shrink the tree away
+     and give editor + preview equal space. */
+  @media screen and (max-width: 1100px) {
+    .workspace.editor-open {
+      grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.1fr);
+    }
+    .workspace.editor-open .file-tree-pane {
+      display: none;
+    }
   }
 
   /* ---- Non-blocking PDF export progress pill ---- */

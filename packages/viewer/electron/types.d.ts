@@ -106,6 +106,9 @@ interface Window {
     // Filesystem primitives (PlatformAdapter, #41)
     readFile(filePath: string): Promise<string>;
     writeFile(filePath: string, content: string): Promise<void>;
+    listDir(
+      dirPath: string,
+    ): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
     // Lib API
     getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
     getLastProject(): Promise<string | null>;

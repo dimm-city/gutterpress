@@ -54,6 +54,10 @@ export class ElectronAdapter implements Platform {
     return bridge().writeFile(path, content);
   }
 
+  listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>> {
+    return bridge().listDir(path);
+  }
+
   watchFolder(_path: string, _cb: () => void): () => void {
     throw new Error(
       "watchFolder is not implemented yet — wiring lands with the in-app editor (#38).",
