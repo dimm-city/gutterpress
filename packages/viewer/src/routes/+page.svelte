@@ -1,14 +1,20 @@
 <script lang="ts">
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
+  import ChapterList from "$lib/components/ChapterList.svelte";
+  import FileTree from "$lib/components/FileTree.svelte";
+  import MarkdownEditor from "$lib/components/MarkdownEditor.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
+  import type { ProjectCapabilities } from "$lib/platform/contract";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
+  import SettingsDialog from "$lib/components/SettingsDialog.svelte";
   import OpenLocationDialog from "$lib/components/OpenLocationDialog.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { PreviewClient } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { useSettings, _loadSettings } from "$lib/settings.svelte";
 
   type DiagnosticsTool = {
     name: string;
@@ -29,10 +35,17 @@
     currentPage?: number;
     totalPages?: number;
   };
+  // Per-project editor/preview state (#43), keyed by folder path in the main
+  // process. currentPage/viewMode are live; the rest are dead schema for the
+  // forthcoming in-app editor (#38) / chapter list (#42).
   type PersistedProjectState = {
-    lastProjectDir?: string | null;
     currentPage?: number;
     viewMode?: "single" | "two-column";
+    lastChapter?: string;
+    sidebarOpen?: boolean;
+    cursorLine?: number;
+    editorScroll?: number;
+    splitPaneRatio?: number;
   };
 
   // Per-screen state
@@ -41,6 +54,11 @@
   let currentUrl = $state<string | null>(null);
   let sourceMode = $state<"folder" | "url">("folder");
   let docTitle = $state<string | null>(null);
+  // Capabilities of the open project's source (#12): local-folder vs
+  // local-git-folder (with/without remote). Stored so forthcoming action
+  // buttons (#13/#25 — Save Snapshot, View History, Publish) can render against
+  // it. No new buttons yet; the data is simply available.
+  let projectCapabilities = $state<ProjectCapabilities | null>(null);
   // Folder name (basename) for the toolbar label; the full path is the tooltip.
   let folderName = $derived(
     currentDir ? (currentDir.split(/[\\/]/).filter(Boolean).pop() ?? currentDir) : ""
@@ -66,10 +84,18 @@
   let pageEditing = $state(false);
   let pageEditValue = $state("1");
   let pageEditInput = $state<HTMLInputElement | undefined>(undefined);
-  let zoom = $state<string>("fit-width");
-  let viewMode = $state<"single" | "two-column">("two-column");
+  // ── User settings (#45) ────────────────────────────────────────────────
+  // bgColor, viewMode and zoom are sourced from the persisted settings store
+  // (their old inline defaults #5a5a5a / two-column / fit-width now live in
+  // DEFAULT_SETTINGS). Local mutations write back through useSettings().set().
+  const settings = useSettings();
+  _loadSettings();
+  let zoom = $derived(settings.current.preview.defaultZoom);
+  let viewMode = $derived(settings.current.preview.viewMode);
+  let bgColor = $derived(settings.current.appearance.previewBg);
   let debug = $state(false);
-  let bgColor = $state("#5a5a5a");
+  let settingsOpen = $state(false);
+  let settingsBtn = $state<HTMLButtonElement | undefined>(undefined);
   let rendering = $state(false);
   let renderProgressPage = $state(0);
   let renderCompleteOverlay = $state(false);
@@ -97,6 +123,131 @@
   let openLocationOpen = $state(false);
   let openBtn = $state<HTMLButtonElement | undefined>(undefined);
 
+  // ── Chapter-list sidebar (#42) ──────────────────────────────────────────
+  // A collapsible left sidebar listing the project's .md chapters (and .css
+  // stylesheets separately). Open/closed state persists across sessions via
+  // ViewerPrefs.sidebarOpen. On narrow viewports it renders as a bottom-sheet
+  // drawer with a backdrop (CSS-driven). Clicking a chapter fires
+  // selectEditorFile so it opens in the editor pane (#38) when one is present;
+  // in a preview-only build it simply records the active path.
+  let sidebarOpen = $state(false);
+  let sidebarPrefsLoaded = $state(false);
+
+  // Load the persisted sidebar state once on mount (desktop only).
+  $effect(() => {
+    if (!isDesktop() || sidebarPrefsLoaded) return;
+    sidebarPrefsLoaded = true;
+    getPlatform()
+      .getViewerPrefs()
+      .then((prefs) => {
+        if (typeof prefs.sidebarOpen === "boolean") sidebarOpen = prefs.sidebarOpen;
+      })
+      .catch(() => {});
+  });
+
+  function toggleSidebar() {
+    sidebarOpen = !sidebarOpen;
+    if (isDesktop()) {
+      getPlatform().setViewerPrefs({ sidebarOpen }).catch(() => {});
+    }
+  }
+
+  function onSelectChapter(path: string) {
+    // Hand off to the editor seam (#38).
+    selectEditorFile(path);
+    // Clicking a chapter must reliably SHOW the file (issue #42 acceptance:
+    // "clicking switches the editor content"). The chapter-list sidebar and
+    // the editor pane are independent toggles, so on desktop folder projects
+    // we open the editor pane (if closed) and move focus into it — mirroring
+    // toggleEditor. In preview-only/url mode this just marks the active
+    // chapter so the sidebar highlight tracks the selection.
+    if (currentDir && sourceMode === "folder") {
+      const wasClosed = !editorOpen;
+      editorOpen = true;
+      if (wasClosed) requestAnimationFrame(() => editorRef?.focus());
+    }
+    // On the mobile bottom-sheet drawer, picking a chapter dismisses it.
+    if (window.matchMedia("(max-width: 640px)").matches) {
+      sidebarOpen = false;
+      if (isDesktop()) getPlatform().setViewerPrefs({ sidebarOpen: false }).catch(() => {});
+    }
+  }
+
+  // ── In-app markdown editor (#38) ────────────────────────────────────────
+  // editorOpen toggles the file-tree + editor split alongside the preview.
+  // editorFilePath/editorContent drive the CodeMirror pane; a debounced
+  // writeFile saves edits to disk, which the existing preview file-watcher
+  // picks up to re-render — no extra wiring needed.
+  let editorOpen = $state(false);
+  let editorFilePath = $state<string | null>(null);
+  let editorContent = $state<string>("");
+  let editorLoading = $state(false);
+  let saveDebounce: ReturnType<typeof setTimeout> | null = null;
+  let editorRef = $state<{ focus: () => void } | null>(null);
+
+  // Load file content when the selected file changes.
+  $effect(() => {
+    const filePath = editorFilePath;
+    if (!filePath || !isDesktop()) {
+      return;
+    }
+    editorLoading = true;
+    let cancelled = false;
+    getPlatform()
+      .readFile(filePath)
+      .then((text) => {
+        if (cancelled) return;
+        editorContent = text;
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        editorContent = "";
+        toast?.error(
+          `Could not open file: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      })
+      .finally(() => {
+        if (!cancelled) editorLoading = false;
+      });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  function onEditorChange(value: string) {
+    editorContent = value;
+    const filePath = editorFilePath;
+    if (!filePath || !isDesktop()) return;
+    if (saveDebounce) clearTimeout(saveDebounce);
+    // 500ms debounce — autoSaveDelay default is 1000ms but the issue specifies
+    // a 500ms editor debounce for the responsive edit→preview loop.
+    saveDebounce = setTimeout(() => {
+      getPlatform()
+        .writeFile(filePath, value)
+        .catch((e: unknown) => {
+          toast?.error(
+            `Save failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        });
+    }, 500);
+  }
+
+  function selectEditorFile(path: string) {
+    editorFilePath = path;
+  }
+
+  function toggleEditor() {
+    if (!currentDir || sourceMode !== "folder") return;
+    editorOpen = !editorOpen;
+    // On open, move keyboard focus into the editor so Ctrl+E acts as a
+    // focus-switch into the editing surface (#38). Closing returns focus to
+    // the document (preview iframe / window) implicitly.
+    if (editorOpen) {
+      // Defer until the pane (and CodeMirror view) is mounted.
+      requestAnimationFrame(() => editorRef?.focus());
+    }
+  }
+
   // ----------------------------------------------------------------
   // Inject viewer canvas styles into iframe when client + bgColor change
   // ----------------------------------------------------------------
@@ -104,6 +255,15 @@
     if (!client) return;
     // Inject once on client attach; renderingComplete will re-inject with final bg
     client.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
+  });
+
+  // Apply view-mode changes that originate from the Settings panel (which writes
+  // the settings store directly rather than calling applyViewMode). Keeps the
+  // rendered spread in sync with the derived viewMode without a reload.
+  $effect(() => {
+    const mode = viewMode;
+    if (!client || rendering) return;
+    client.call("setViewMode", [mode]).catch(() => {});
   });
 
   $effect(() => {
@@ -148,9 +308,15 @@
     lastProjectChecked = true;
     const platform = getPlatform();
     platform.getViewerPrefs()
-      .then((prefs: PersistedProjectState) => {
-        if (!prefs.lastProjectDir || previewUrl || currentDir || currentUrl) return;
-        return startFolderPreview(prefs.lastProjectDir, "Reopening previous folder…", prefs);
+      .then(async (prefs) => {
+        const dir = prefs.lastProjectDir;
+        if (!dir || previewUrl || currentDir || currentUrl) return;
+        // Per-project state (#43) is keyed by folder path so opening a
+        // different project never pollutes this one's restore point.
+        const restoreState = await platform
+          .getViewerProjectState(dir)
+          .catch(() => null);
+        return startFolderPreview(dir, "Reopening previous folder…", restoreState);
       })
       .catch(() => {})
       .finally(() => {
@@ -260,15 +426,45 @@
   });
 
   // ----------------------------------------------------------------
+  // Global keyboard shortcuts (available without a loaded document)
+  // ----------------------------------------------------------------
+  $effect(() => {
+    function onGlobalKey(e: KeyboardEvent) {
+      // Cmd/Ctrl+, opens the Settings panel (toggles closed if already open).
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        settingsOpen = !settingsOpen;
+      }
+      // Cmd/Ctrl+E toggles the in-app editor (#38) when a folder is open.
+      if ((e.ctrlKey || e.metaKey) && (e.key === "e" || e.key === "E")) {
+        e.preventDefault();
+        toggleEditor();
+      }
+      // Cmd/Ctrl+B toggles the chapter-list sidebar (#42).
+      if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")) {
+        e.preventDefault();
+        toggleSidebar();
+      }
+    }
+    window.addEventListener("keydown", onGlobalKey);
+    return () => window.removeEventListener("keydown", onGlobalKey);
+  });
+
+  // ----------------------------------------------------------------
   // Keyboard shortcuts
   // ----------------------------------------------------------------
   $effect(() => {
     if (!previewUrl) return;
 
     function onKey(e: KeyboardEvent) {
-      // Don't intercept when focus is in an input/textarea/select
-      const tag = (e.target as HTMLElement)?.tagName ?? "";
+      // Don't intercept when focus is in an input/textarea/select, or inside
+      // the CodeMirror editor (#38) — its content node is a contenteditable
+      // DIV, so a tagName check alone would let preview-nav keys (arrows,
+      // Home/End, +/-/=, f) hijack core editing.
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName ?? "";
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (t?.isContentEditable || t?.closest?.(".cm-editor")) return;
 
       // UX-006: Ctrl/Cmd+S saves PDF
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -463,8 +659,30 @@
       const platform = getPlatform();
       const data = await platform.startPreview({ input: dir });
       sourceMode = "folder";
+      // New folder: clear any file selected from a previous project so the
+      // editor pane doesn't point at a stale path.
+      if (currentDir !== dir) {
+        editorFilePath = null;
+        editorContent = "";
+      }
       currentDir = dir;
       currentUrl = null;
+      // Classify the opened folder (#12) so capability-gated actions (#13/#25)
+      // can render. Always re-detected on open (a user may add/remove `.git`
+      // between sessions) and persisted as a hint. Fire-and-forget: a failure
+      // must never block the preview.
+      projectCapabilities = null;
+      platform
+        .classifyProject(dir)
+        .then((result) => {
+          projectCapabilities = result.capabilities;
+          platform
+            .setViewerPrefs({ projectSource: result.source })
+            .catch(() => {});
+        })
+        .catch(() => {
+          projectCapabilities = null;
+        });
       docTitle = data.title ?? null;
       // Force iframe remount by nulling first
       previewUrl = null;
@@ -480,7 +698,9 @@
         ? restoreState.currentPage
         : null;
       if (restoredViewMode) {
-        viewMode = restoredViewMode;
+        // Per-project ViewerPrefs override → seed the settings store so the
+        // derived viewMode reflects this project's last-used mode.
+        settings.set({ preview: { viewMode: restoredViewMode } });
       }
       userSetViewMode = !!restoredViewMode;
       // Loud signal for the #1 cause of wrong fonts/styles: shared asset dirs
@@ -516,8 +736,11 @@
       const platform = getPlatform();
       const dir = await platform.openFolder();
       if (!dir) return;
-      const prefs = await platform.getViewerPrefs().catch(() => null) as PersistedProjectState | null;
-      const restoreState = prefs?.lastProjectDir === dir ? prefs : null;
+      // Per-project state (#43): restore whatever was saved for THIS folder
+      // (page, view mode, …) regardless of which project was last open.
+      const restoreState = await platform
+        .getViewerProjectState(dir)
+        .catch(() => null);
       handedOff = true;
       await startFolderPreview(dir, "Starting preview…", restoreState);
     } finally {
@@ -537,6 +760,10 @@
     currentUrl = url;
     currentDir = null;
     docTitle = null;
+    // The editor is folder-only; close it for web previews.
+    editorOpen = false;
+    editorFilePath = null;
+    editorContent = "";
     // Force iframe remount by nulling first
     previewUrl = null;
     queueMicrotask(() => {
@@ -585,6 +812,9 @@
     totalPages = 0;
     currentPage = 1;
     pageEditing = false;
+    editorOpen = false;
+    editorFilePath = null;
+    editorContent = "";
   }
 
   async function savePdf() {
@@ -682,7 +912,10 @@
 
   function saveViewerPrefs(patch: Partial<PersistedProjectState>) {
     if (!currentDir || sourceMode !== "folder" || rendering || restoringSavedState) return;
-    getPlatform().setViewerPrefs({ lastProjectDir: currentDir, ...patch }).catch(() => {});
+    // Per-project state (#43): write to the folder-keyed bucket so this never
+    // overwrites another project's saved page/view. The main process also
+    // updates lastProjectDir, so reopening lands on this project.
+    getPlatform().setViewerProjectState(currentDir, patch).catch(() => {});
   }
 
   function restoreProjectPage(page: number) {
@@ -693,7 +926,9 @@
         currentPage = state.currentPage ?? currentPage;
         totalPages = state.totalPages ?? totalPages;
         if (!pageEditing) pageEditValue = String(currentPage);
-        getPlatform().setViewerPrefs({ lastProjectDir: currentDir, currentPage }).catch(() => {});
+        if (currentDir) {
+          getPlatform().setViewerProjectState(currentDir, { currentPage }).catch(() => {});
+        }
       })
       .catch(() => {})
       .finally(() => {
@@ -749,7 +984,7 @@
   }
 
   function applyZoom(value: string) {
-    zoom = value;
+    settings.set({ preview: { defaultZoom: value } });
     if (!client) return;
     if (value === "fit-width") {
       applyFitWidthZoom();
@@ -765,7 +1000,9 @@
   }
 
   function applyViewMode(mode: "single" | "two-column", fromUser: boolean) {
-    viewMode = mode;
+    // Settings store owns the durable default; ViewerPrefs keeps a per-project
+    // override so reopening a folder restores its last view mode.
+    settings.set({ preview: { viewMode: mode } });
     if (fromUser) userSetViewMode = true;
     saveViewerPrefs({ viewMode: mode });
     client?.call("setViewMode", [mode]).catch(() => {});
@@ -782,7 +1019,7 @@
 
   function onBgColor(e: Event) {
     const v = (e.target as HTMLInputElement).value;
-    bgColor = v;
+    settings.set({ appearance: { previewBg: v } });
     client?.setBgColor(v);
     // Re-inject canvas styles with new bg (covers elements Paged.js strips)
     client?.injectStyles("viewer-canvas", buildViewerStyles(v));
@@ -858,6 +1095,20 @@
 <div class="shell">
   <header class="toolbar">
     <section class="left">
+      <!-- Chapter-list sidebar toggle (#42): button + Ctrl/Cmd+B. Disabled
+           until a project folder is open (the sidebar lists that folder's
+           chapters). -->
+      <button
+        class="icon-btn"
+        class:active={sidebarOpen}
+        onclick={toggleSidebar}
+        disabled={!currentDir || sourceMode === "url"}
+        title="Toggle chapter list (Ctrl+B)"
+        aria-label="Toggle chapter list"
+        aria-pressed={sidebarOpen}
+      >
+        <Icon name="panel-left" />
+      </button>
       <button bind:this={openBtn} class="primary icon-text" onclick={() => (openLocationOpen = true)} disabled={busy} title="Open folder or web address (Ctrl+O)">
         <Icon name="folder-open" />
         <span>Open</span>
@@ -922,6 +1173,19 @@
     {/if}
 
     <section class="right">
+      <!-- In-app editor toggle (#38): collapses/expands the file-tree + editor
+           split. Disabled until a project folder is open. -->
+      <button
+        class="icon-text"
+        class:active={editorOpen}
+        onclick={toggleEditor}
+        disabled={!currentDir || sourceMode === "url"}
+        title="Toggle markdown editor (Ctrl+E)"
+        aria-label="Toggle markdown editor"
+        aria-pressed={editorOpen}
+      >
+        <Icon name="pen-line" /><span class="view-label">Edit</span>
+      </button>
       <!-- UX-039: separator before view mode buttons -->
       <span class="toolbar-sep" aria-hidden="true"></span>
       <!-- UX-014: text labels + aria-pressed on view mode buttons -->
@@ -949,8 +1213,8 @@
       </button>
       <select
         class="zoom-select"
-        bind:value={zoom}
-        onchange={() => applyZoom(zoom)}
+        value={zoom}
+        onchange={(e) => applyZoom((e.currentTarget as HTMLSelectElement).value)}
         disabled={!previewUrl}
         title="Zoom level — F for fit width, + / - to zoom in and out"
       >
@@ -1004,6 +1268,16 @@
           <Icon name="refresh-cw" />
         </button>
       {/if}
+      <!-- Settings panel (#45): gear icon + Cmd/Ctrl+, shortcut -->
+      <button
+        bind:this={settingsBtn}
+        class="icon-btn"
+        onclick={() => (settingsOpen = true)}
+        title="Settings (Ctrl+,)"
+        aria-label="Settings"
+      >
+        <Icon name="settings" />
+      </button>
       <!-- UX-026: bind:this for focus restore -->
       <button
         bind:this={helpBtn}
@@ -1018,19 +1292,61 @@
   </header>
 
   {#if previewUrl}
-    {#key previewUrl}
-      <PreviewFrame
-        url={previewUrl}
-        bind:client
-        onError={(msg) => {
-          if (sourceMode === "url") {
-            urlPreviewError = "This website could not be previewed inside print-md.";
-          } else {
-            toast?.error(msg);
-          }
-        }}
-      />
-    {/key}
+    <div
+      class="workspace"
+      class:editor-open={editorOpen && !!currentDir}
+      class:sidebar-open={sidebarOpen && !!currentDir && sourceMode === "folder"}
+    >
+      {#if currentDir && sourceMode === "folder" && sidebarOpen}
+        <!-- Backdrop only matters on the mobile bottom-sheet variant (hidden via
+             CSS on wide viewports). Click dismisses the drawer. -->
+        <button
+          type="button"
+          class="sidebar-backdrop"
+          aria-label="Close chapter list"
+          onclick={toggleSidebar}
+        ></button>
+        <aside class="pane chapter-list-pane" aria-label="Chapters">
+          <ChapterList
+            projectDir={currentDir}
+            selectedPath={editorFilePath}
+            onSelectFile={onSelectChapter}
+          />
+        </aside>
+      {/if}
+      {#if editorOpen && currentDir}
+        <aside class="pane file-tree-pane">
+          <FileTree
+            projectDir={currentDir}
+            selectedPath={editorFilePath}
+            onSelectFile={selectEditorFile}
+          />
+        </aside>
+        <section class="pane editor-pane" aria-label="Markdown editor">
+          <MarkdownEditor
+            bind:this={editorRef}
+            filePath={editorFilePath}
+            content={editorContent}
+            onChange={onEditorChange}
+          />
+        </section>
+      {/if}
+      <section class="pane preview-pane">
+        {#key previewUrl}
+          <PreviewFrame
+            url={previewUrl}
+            bind:client
+            onError={(msg) => {
+              if (sourceMode === "url") {
+                urlPreviewError = "This website could not be previewed inside print-md.";
+              } else {
+                toast?.error(msg);
+              }
+            }}
+          />
+        {/key}
+      </section>
+    </div>
   {:else}
     <div class="empty">
       <div class="empty-hero">
@@ -1057,6 +1373,7 @@
 </div>
 
 <HelpDialog bind:open={helpOpen} triggerEl={helpBtn} />
+<SettingsDialog bind:open={settingsOpen} triggerEl={settingsBtn} />
 <OpenLocationDialog
   bind:open={openLocationOpen}
   onOpenFolder={(path) => startFolderPreview(path)}
@@ -1069,8 +1386,8 @@
   :global(html, body) {
     margin: 0;
     height: 100%;
-    background: #1e1e1e;
-    color: #eee;
+    background: var(--app-bg);
+    color: var(--app-text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   }
 
@@ -1088,6 +1405,60 @@
     overflow: hidden;
   }
 
+  /* ---- Editor workspace: [file-tree | editor | preview] (#38) ---- */
+  /* When the editor is closed the preview takes the full width, preserving
+     the prior single-pane behaviour exactly. */
+  .workspace {
+    display: grid;
+    grid-template-columns: 1fr;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .workspace.editor-open {
+    grid-template-columns: minmax(160px, 220px) minmax(280px, 1fr) minmax(320px, 1.2fr);
+  }
+  /* Chapter-list sidebar (#42): a leading column before the preview (or before
+     the editor split). On wide viewports it's a persistent side panel. */
+  .workspace.sidebar-open {
+    grid-template-columns: minmax(180px, 240px) 1fr;
+  }
+  .workspace.sidebar-open.editor-open {
+    grid-template-columns:
+      minmax(180px, 240px) minmax(160px, 220px) minmax(280px, 1fr) minmax(320px, 1.2fr);
+  }
+  .chapter-list-pane {
+    border-right: 1px solid var(--app-border);
+  }
+  /* Backdrop is only visible in the mobile bottom-sheet variant (below). */
+  .sidebar-backdrop {
+    display: none;
+  }
+  .pane {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .editor-pane {
+    border-right: 1px solid var(--app-border);
+  }
+  .preview-pane {
+    position: relative;
+  }
+  /* Narrow widths: drop the file-tree column, stack editor over preview is
+     avoided (keeps the live preview visible) — instead shrink the tree away
+     and give editor + preview equal space. */
+  @media screen and (max-width: 1100px) {
+    .workspace.editor-open {
+      grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.1fr);
+    }
+    .workspace.editor-open .file-tree-pane {
+      display: none;
+    }
+  }
+
   /* ---- Non-blocking PDF export progress pill ---- */
   .export-pill {
     position: fixed;
@@ -1100,10 +1471,10 @@
     max-width: 420px;
     padding: 10px 14px;
     border-radius: 8px;
-    background: rgba(30, 30, 30, 0.95);
-    border: 1px solid #3a3a3a;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-    color: #eee;
+    background: var(--app-surface-raised);
+    border: 1px solid var(--app-border);
+    box-shadow: 0 4px 16px var(--app-shadow-md);
+    color: var(--app-text);
     font-size: 13px;
     pointer-events: auto;
   }
@@ -1111,8 +1482,8 @@
     width: 14px;
     height: 14px;
     flex: 0 0 auto;
-    border: 2px solid #555;
-    border-top-color: #4c9ffe;
+    border: 2px solid var(--app-spinner-track);
+    border-top-color: var(--app-spinner-head);
     border-radius: 50%;
     animation: export-spin 0.8s linear infinite;
   }
@@ -1125,21 +1496,21 @@
   .export-success {
     width: 14px;
     flex: 0 0 auto;
-    color: #86efac;
+    color: var(--app-success-text);
     font-weight: 700;
     text-align: center;
   }
   .export-cancel {
     background: transparent;
-    border: 1px solid #6b7280;
-    color: #e5e7eb;
+    border: 1px solid var(--app-border-strong);
+    color: var(--app-text-secondary);
     border-radius: 999px;
     padding: 4px 10px;
     font-size: 12px;
   }
   .export-cancel:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: #9ca3af;
+    background: var(--app-scrim-strong);
+    border-color: var(--app-control-hover-border);
   }
   @keyframes export-spin {
     to { transform: rotate(360deg); }
@@ -1154,8 +1525,8 @@
     padding: 0 12px;
     height: 56px;
     flex-shrink: 0;
-    background: linear-gradient(to bottom, #252525, #1e1e1e);
-    border-bottom: 1px solid #3a3a3a;
+    background: linear-gradient(to bottom, var(--app-toolbar-from), var(--app-toolbar-to));
+    border-bottom: 1px solid var(--app-border);
     overflow: hidden;
   }
 
@@ -1166,9 +1537,9 @@
 
   /* ---- Buttons & inputs ---- */
   button, select {
-    background: #3a3a3a;
-    border: 1px solid #4a4a4a;
-    color: #e0e0e0;
+    background: var(--app-control-bg);
+    border: 1px solid var(--app-control-border);
+    color: var(--app-control-text);
     padding: 5px 10px;
     border-radius: 6px;
     font-size: 13px;
@@ -1177,22 +1548,22 @@
     white-space: nowrap;
   }
   button:hover:not(:disabled) {
-    background: #444;
-    border-color: #5a5a5a;
+    background: var(--app-control-hover-bg);
+    border-color: var(--app-control-hover-border);
   }
   button.primary {
-    background: linear-gradient(to bottom, #0077dd, #0066cc);
-    border-color: #0055aa;
-    color: #fff;
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
     font-weight: 600;
   }
   button.primary:hover:not(:disabled) {
-    background: linear-gradient(to bottom, #0088ee, #0077dd);
+    background: linear-gradient(to bottom, var(--app-accent-bright), var(--app-accent-hover));
   }
   button.active {
-    background: linear-gradient(to bottom, #0077dd, #0066cc);
-    border-color: #0055aa;
-    color: #fff;
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
   }
   button:disabled, select:disabled {
     opacity: 0.4;
@@ -1217,9 +1588,9 @@
   .view-label { font-size: 11px; }
 
   .page-input {
-    background: #3a3a3a;
-    border: 1px solid #4a4a4a;
-    color: #e0e0e0;
+    background: var(--app-control-bg);
+    border: 1px solid var(--app-control-border);
+    color: var(--app-control-text);
     padding: 5px 4px;
     border-radius: 6px;
     font-size: 13px;
@@ -1228,21 +1599,21 @@
   }
   .page-input:disabled { opacity: 0.4; }
   .page-pill {
-    background: linear-gradient(to bottom, #313740, #262c34);
-    border-color: #576170;
-    color: #eef4ff;
+    background: linear-gradient(to bottom, var(--app-pill-from), var(--app-pill-to));
+    border-color: var(--app-pill-border);
+    color: var(--app-pill-text);
     min-width: 104px;
     text-align: center;
   }
   .page-pill:hover:not(:disabled) {
-    background: linear-gradient(to bottom, #38404b, #2c333d);
-    border-color: #6a7485;
+    background: linear-gradient(to bottom, var(--app-pill-from), var(--app-pill-to));
+    border-color: var(--app-control-hover-border);
   }
 
   .zoom-select { padding: 5px 6px; }
 
   .doc-title {
-    color: #ddd;
+    color: var(--app-text-secondary);
     font-size: 13px;
     font-weight: 600;
     overflow: hidden;
@@ -1252,9 +1623,9 @@
     flex-shrink: 1;
   }
 
-  /* UX-031: #a8a8a8 for better contrast */
+  /* UX-031: muted token for better contrast */
   .path {
-    color: #a8a8a8;
+    color: var(--app-text-muted);
     font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1270,14 +1641,14 @@
     gap: 4px;
     flex-shrink: 0;
   }
-  .bg-label { font-size: 11px; color: #aaa; white-space: nowrap; }
+  .bg-label { font-size: 11px; color: var(--app-text-muted); white-space: nowrap; }
   .bg-swatch { display: inline-block; cursor: pointer; flex-shrink: 0; }
   .bg-swatch input {
     width: 32px;
     height: 28px;
     padding: 0;
     border-radius: 6px;
-    border: 1px solid #4a4a4a;
+    border: 1px solid var(--app-control-border);
     background: none;
     cursor: pointer;
   }
@@ -1286,7 +1657,7 @@
   .toolbar-sep {
     width: 1px;
     height: 20px;
-    background: #404040;
+    background: var(--app-border-strong);
     margin: 0 4px;
     flex-shrink: 0;
   }
@@ -1294,11 +1665,11 @@
   /* UX-023: hint below Save PDF when disabled */
   .save-hint {
     font-size: 11px;
-    color: #888;
+    color: var(--app-text-faint);
     white-space: nowrap;
   }
   .save-warning {
-    color: #f0c674;
+    color: var(--app-warning-text);
     max-width: 240px;
     white-space: normal;
     line-height: 1.35;
@@ -1309,7 +1680,7 @@
     flex: 1;
     display: grid;
     place-items: center;
-    color: #888;
+    color: var(--app-text-faint);
     text-align: center;
   }
   .empty-hero {
@@ -1322,30 +1693,30 @@
     padding: 32px 24px;
   }
   .empty-icon { font-size: 48px; line-height: 1; margin-bottom: 4px; }
-  .empty-title { margin: 0; font-size: 22px; font-weight: 700; color: #e0e0e0; letter-spacing: -0.3px; }
-  .empty-tagline { margin: 0; font-size: 14px; color: #aaa; line-height: 1.5; }
+  .empty-title { margin: 0; font-size: 22px; font-weight: 700; color: var(--app-text-secondary); letter-spacing: -0.3px; }
+  .empty-tagline { margin: 0; font-size: 14px; color: var(--app-text-muted); line-height: 1.5; }
   .empty-cta { padding: 10px 24px; font-size: 14px; font-weight: 600; border-radius: 8px; margin-top: 4px; }
-  .empty-hint { margin: 0; font-size: 12px; color: #777; line-height: 1.5; }
+  .empty-hint { margin: 0; font-size: 12px; color: var(--app-text-faint); line-height: 1.5; }
   .empty-hint code {
     font-family: ui-monospace, monospace;
-    color: #9ab;
-    background: #2a3040;
+    color: var(--app-code-text);
+    background: var(--app-code-bg);
     padding: 1px 5px;
     border-radius: 3px;
   }
   .open-error {
-    background: #3a1a1a;
-    border: 1px solid #5a2d2d;
+    background: var(--app-error-bg);
+    border: 1px solid var(--app-error-border);
     border-radius: 6px;
     padding: 10px 14px;
     font-size: 12px;
-    color: #fca5a5;
+    color: var(--app-error-text);
     max-width: 340px;
     text-align: left;
     line-height: 1.5;
   }
   .open-error strong { display: block; margin-bottom: 4px; font-size: 13px; }
-  .open-error p { margin: 0; color: #f0a0a0; }
+  .open-error p { margin: 0; color: var(--app-error-text); }
 
   /* ---- Auto-update banner ---- */
   .update-banner {
@@ -1353,34 +1724,34 @@
     align-items: center;
     gap: 10px;
     padding: 8px 16px;
-    background: #1a2e1a;
-    border-bottom: 1px solid #2d4d2d;
-    color: #86efac;
+    background: var(--app-success-bg);
+    border-bottom: 1px solid var(--app-success-border);
+    color: var(--app-success-text);
     font-size: 13px;
     flex-shrink: 0;
   }
   .update-banner-msg { flex: 1; }
   .update-apply {
-    background: #166534;
-    border: 1px solid #15803d;
-    color: #dcfce7;
+    background: var(--app-success-strong);
+    border: 1px solid var(--app-success-border);
+    color: var(--app-text-on-accent);
     border-radius: 6px;
     padding: 4px 12px;
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
   }
-  .update-apply:hover { background: #15803d; }
+  .update-apply:hover { background: var(--app-success-strong); }
   .update-later {
     background: transparent;
-    border: 1px solid #4a6a4a;
-    color: #a7f3d0;
+    border: 1px solid var(--app-success-border);
+    color: var(--app-success-text);
     border-radius: 6px;
     padding: 4px 10px;
     font-size: 12px;
     cursor: pointer;
   }
-  .update-later:hover { background: rgba(255, 255, 255, 0.06); }
+  .update-later:hover { background: var(--app-scrim); }
 
   /* Spin the refresh icon while checking */
   .update-check-btn:disabled :global(svg) {
@@ -1408,5 +1779,42 @@
   @media screen and (max-width: 520px) {
     .toolbar { grid-template-columns: auto 1fr; }
     .right { display: none; }
+  }
+
+  /* ---- Chapter-list mobile bottom-sheet drawer (#42) ----
+     Under 640px the persistent side panel becomes a bottom-sheet drawer with a
+     backdrop. The grid columns collapse back to a single preview column so the
+     drawer floats above the preview rather than squeezing it. */
+  @media screen and (max-width: 640px) {
+    .workspace.sidebar-open,
+    .workspace.sidebar-open.editor-open {
+      grid-template-columns: 1fr;
+    }
+    .sidebar-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: var(--app-scrim-modal, rgba(0, 0, 0, 0.45));
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      margin: 0;
+      cursor: pointer;
+    }
+    .chapter-list-pane {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 61;
+      max-height: 70vh;
+      border-right: none;
+      border-top: 1px solid var(--app-border);
+      border-top-left-radius: 12px;
+      border-top-right-radius: 12px;
+      background: var(--app-surface, var(--app-bg));
+      box-shadow: 0 -4px 20px var(--app-shadow-md, rgba(0, 0, 0, 0.35));
+    }
   }
 </style>

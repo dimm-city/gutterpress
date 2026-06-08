@@ -5,6 +5,31 @@
     <link rel="icon" href="%sveltekit.assets%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>print-md viewer</title>
+    <script>
+      // No-flash theme injection (#48). Runs before first paint so the app
+      // chrome never flashes the wrong theme on launch. Reads the fast-path
+      // cache written by theme.svelte.ts; falls back to the OS preference for
+      // "system" or first launch. The Svelte theme controller refines this
+      // with the canonical persisted setting + live OS-change tracking once
+      // it mounts.
+      (function () {
+        try {
+          var mode = localStorage.getItem("print-md.theme-mode") || "system";
+          var resolved =
+            mode === "light"
+              ? "light"
+              : mode === "dark"
+                ? "dark"
+                : window.matchMedia &&
+                    window.matchMedia("(prefers-color-scheme: dark)").matches
+                  ? "dark"
+                  : "light";
+          document.documentElement.dataset.theme = resolved;
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">

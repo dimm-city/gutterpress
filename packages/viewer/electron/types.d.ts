@@ -35,6 +35,74 @@ interface ElectronUpdater {
   onEvent(cb: (event: UpdaterEvent) => void): () => void;
 }
 
+interface AppSettings {
+  editor: {
+    fontFamily: string;
+    fontSize: number;
+    lineHeight: number;
+    spellCheckLanguage: string;
+    autoSaveDelay: number;
+  };
+  appearance: {
+    theme: "light" | "dark" | "system";
+    previewBg: string;
+  };
+  preview: {
+    defaultZoom: string;
+    viewMode: "single" | "two-column";
+  };
+  advanced: {
+    fileWatcherInterval: number;
+    logLevel: "error" | "warn" | "info" | "debug";
+  };
+}
+
+type DeepPartialSettings = {
+  [K in keyof AppSettings]?: Partial<AppSettings[K]>;
+};
+
+// Project source classification (#12). Mirrors @dimm-city/print-md-lib.
+type ProjectSource =
+  | { type: "local-folder"; path: string }
+  | {
+      type: "local-git-folder";
+      path: string;
+      hasRemote: boolean;
+      remoteUrl?: string;
+      branch?: string;
+    }
+  | {
+      type: "managed-github";
+      installationId: string;
+      owner: string;
+      repo: string;
+      branch: string;
+      rootPath?: string;
+    };
+
+interface ProjectCapabilities {
+  canRead: boolean;
+  canWriteLocal: boolean;
+  canEnableVersionHistory: boolean;
+  canSnapshot: boolean;
+  canViewHistory: boolean;
+  canRestoreSnapshot: boolean;
+  canPublish: boolean;
+  canSync: boolean;
+  authManagedByApp: boolean;
+}
+
+// Per-project editor/preview state (#43). Mirrors electron/project-state.ts.
+interface ProjectState {
+  currentPage?: number;
+  viewMode?: "single" | "two-column";
+  lastChapter?: string;
+  sidebarOpen?: boolean;
+  cursorLine?: number;
+  editorScroll?: number;
+  splitPaneRatio?: number;
+}
+
 interface Window {
   electron?: {
     /** Integer IPC-surface version; mirrors DESKTOP_API in updater/contract.ts. */
@@ -49,23 +117,51 @@ interface Window {
     // Filesystem primitives (PlatformAdapter, #41)
     readFile(filePath: string): Promise<string>;
     writeFile(filePath: string, content: string): Promise<void>;
+    listDir(
+      dirPath: string,
+    ): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
+    listProjectFiles(
+      projectDir: string,
+    ): Promise<{ md: string[]; css: string[] }>;
     // Lib API
     getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
     getLastProject(): Promise<string | null>;
     getViewerPrefs(): Promise<{
       lastProjectDir?: string | null;
+      sidebarOpen?: boolean;
       currentPage?: number;
       viewMode?: "single" | "two-column";
       recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
       favorites?: Array<{ path: string; title: string }>;
+      projectStates?: Record<string, ProjectState>;
+      projectSearchRoots?: string[];
+      projectSource?: ProjectSource;
     }>;
     setViewerPrefs(patch: {
       lastProjectDir?: string | null;
+      sidebarOpen?: boolean;
       currentPage?: number;
       viewMode?: "single" | "two-column";
       recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
       favorites?: Array<{ path: string; title: string }>;
+      projectStates?: Record<string, ProjectState>;
+      projectSearchRoots?: string[];
+      projectSource?: ProjectSource;
     }): Promise<{ ok: boolean }>;
+    // Per-project editor/preview state (#43)
+    getViewerProjectState(projectDir: string): Promise<ProjectState | null>;
+    setViewerProjectState(
+      projectDir: string,
+      patch: ProjectState,
+    ): Promise<{ ok: boolean }>;
+    // User settings (#45)
+    getSettings(): Promise<AppSettings>;
+    setSettings(patch: DeepPartialSettings): Promise<{ ok: boolean }>;
+    // Native (OS) theme surface (#48)
+    getNativeTheme(): Promise<{ shouldUseDarkColors: boolean }>;
+    onNativeThemeUpdated(
+      cb: (data: { shouldUseDarkColors: boolean }) => void
+    ): () => void;
     // Open Location modal: recent folders + favorites
     getRecentFolders(): Promise<
       Array<{ path: string; title: string; openedAt: string; exists: boolean }>
@@ -75,6 +171,13 @@ interface Window {
     >;
     toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }>;
     removeRecent(folderPath: string): Promise<{ ok: boolean }>;
+    // Project discovery (#27)
+    discoverProjects(): Promise<Array<{ path: string; title: string }>>;
+    // Project source classification (#12)
+    classifyProject(path: string): Promise<{
+      source: ProjectSource;
+      capabilities: ProjectCapabilities;
+    }>;
     startPreview(args: { input: string }): Promise<{
       url: string;
       port: number;

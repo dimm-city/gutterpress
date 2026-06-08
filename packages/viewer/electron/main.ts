@@ -4,14 +4,17 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeTheme,
   protocol,
   session,
   shell,
 } from "electron";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { scanForProjects, type ScanDeps } from "./discover-projects";
 import {
   ensureLayout,
   resolveWebRoot,
@@ -34,6 +37,13 @@ import {
   type RecentFolder,
   type FavoriteFolder,
 } from "./recent-folders";
+import {
+  readProjectState,
+  writeProjectState,
+  migrateLegacyProjectState,
+  type ProjectState,
+  type ProjectStateMap,
+} from "./project-state";
 
 // __dirname/__filename are injected by electron-vite for the ESM main bundle
 // (resolves to out/main/ at runtime).
@@ -96,12 +106,44 @@ interface SystemDiagnostics {
   docsUrl: string;
 }
 
+type ProjectSource =
+  | { type: "local-folder"; path: string }
+  | {
+      type: "local-git-folder";
+      path: string;
+      hasRemote: boolean;
+      remoteUrl?: string;
+      branch?: string;
+    }
+  | {
+      type: "managed-github";
+      installationId: string;
+      owner: string;
+      repo: string;
+      branch: string;
+      rootPath?: string;
+    };
+
+interface ProjectCapabilities {
+  canRead: boolean;
+  canWriteLocal: boolean;
+  canEnableVersionHistory: boolean;
+  canSnapshot: boolean;
+  canViewHistory: boolean;
+  canRestoreSnapshot: boolean;
+  canPublish: boolean;
+  canSync: boolean;
+  authManagedByApp: boolean;
+}
+
 interface LibModule {
   startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
   loadManifestWithPath: (input: string) => Promise<ManifestWithPath>;
   splitOutPath: (out: string | undefined, format: string) => SplitOutPath;
   runBuild: (opts: Record<string, unknown>) => Promise<BuildResult>;
   getSystemDiagnostics: () => Promise<SystemDiagnostics>;
+  detectProjectSource: (folderPath: string) => Promise<ProjectSource>;
+  capabilitiesFor: (source: ProjectSource) => ProjectCapabilities;
   BuildError: new (message: string) => Error;
 }
 
@@ -267,10 +309,35 @@ let activePreview: PreviewHandle | null = null;
 
 interface ViewerPrefs {
   lastProjectDir?: string;
+  /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
+  sidebarOpen?: boolean;
+  /**
+   * @deprecated (#43) Pre-per-project global page. Kept ONE version as a
+   * migration fallback (see migrateLegacyProjectState); new writes go to
+   * projectStates[dir].currentPage. Remove in a later release.
+   */
   currentPage?: number;
+  /**
+   * @deprecated (#43) Pre-per-project global view mode. Kept ONE version as a
+   * migration fallback; new writes go to projectStates[dir].viewMode.
+   */
   viewMode?: "single" | "two-column";
   recentFolders?: RecentFolder[];
   favorites?: FavoriteFolder[];
+  /**
+   * Per-project editor/preview state keyed by folder path (#43). Opening
+   * project B never overwrites project A's page/view/chapter state.
+   */
+  projectStates?: ProjectStateMap;
+  /** Root dirs scanned by app:discoverProjects (#27). Defaults applied below. */
+  projectSearchRoots?: string[];
+  /**
+   * Last classified source of the open project (#12). Cached so the UI can
+   * render without re-detecting on launch, but the renderer always re-classifies
+   * on folder open (a user may add/remove `.git` between sessions), so this is a
+   * hint, not the source of truth.
+   */
+  projectSource?: ProjectSource;
 }
 
 function prefsPath(): string {
@@ -279,7 +346,14 @@ function prefsPath(): string {
 
 async function readPrefs(): Promise<ViewerPrefs> {
   try {
-    return JSON.parse(await readFile(prefsPath(), "utf8")) as ViewerPrefs;
+    const prefs = JSON.parse(await readFile(prefsPath(), "utf8")) as ViewerPrefs;
+    // #43 one-time migration: seed projectStates from the legacy top-level
+    // currentPage/viewMode so existing users don't lose their saved state.
+    const migrated = migrateLegacyProjectState(prefs);
+    if (migrated && !prefs.projectStates) {
+      prefs.projectStates = migrated;
+    }
+    return prefs;
   } catch {
     return {};
   }
@@ -288,6 +362,92 @@ async function readPrefs(): Promise<ViewerPrefs> {
 async function writePrefs(prefs: ViewerPrefs): Promise<void> {
   await mkdir(app.getPath("userData"), { recursive: true });
   await writeFile(prefsPath(), JSON.stringify(prefs, null, 2), "utf8");
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// User settings (#45) — persisted, section-organised user preferences in a
+// SEPARATE file from viewer-prefs.json so session/per-project state and durable
+// user settings don't collide. Shape mirrors AppSettings in
+// src/lib/platform/contract.ts (kept in sync manually).
+// ──────────────────────────────────────────────────────────────────────────
+
+interface AppSettings {
+  editor: {
+    fontFamily: string;
+    fontSize: number;
+    lineHeight: number;
+    spellCheckLanguage: string;
+    autoSaveDelay: number;
+  };
+  appearance: {
+    theme: "light" | "dark" | "system";
+    previewBg: string;
+  };
+  preview: {
+    defaultZoom: string;
+    viewMode: "single" | "two-column";
+  };
+  advanced: {
+    fileWatcherInterval: number;
+    logLevel: "error" | "warn" | "info" | "debug";
+  };
+}
+
+const DEFAULT_SETTINGS: AppSettings = {
+  editor: {
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontSize: 14,
+    lineHeight: 1.6,
+    spellCheckLanguage: "en-US",
+    autoSaveDelay: 1000,
+  },
+  appearance: {
+    theme: "system",
+    previewBg: "#5a5a5a",
+  },
+  preview: {
+    defaultZoom: "fit-width",
+    viewMode: "two-column",
+  },
+  advanced: {
+    fileWatcherInterval: 300,
+    logLevel: "warn",
+  },
+};
+
+type DeepPartialSettings = {
+  [K in keyof AppSettings]?: Partial<AppSettings[K]>;
+};
+
+function settingsPath(): string {
+  return path.join(app.getPath("userData"), "app-settings.json");
+}
+
+function mergeSettings(base: AppSettings, patch: DeepPartialSettings): AppSettings {
+  const out = { ...base } as Record<string, unknown>;
+  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
+    const value = patch[key];
+    if (value && typeof value === "object") {
+      out[key] = { ...base[key], ...value };
+    }
+  }
+  return out as unknown as AppSettings;
+}
+
+async function readSettings(): Promise<AppSettings> {
+  try {
+    const stored = JSON.parse(
+      await readFile(settingsPath(), "utf8"),
+    ) as DeepPartialSettings;
+    return mergeSettings(DEFAULT_SETTINGS, stored);
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+async function writeSettings(settings: AppSettings): Promise<void> {
+  await mkdir(app.getPath("userData"), { recursive: true });
+  await writeFile(settingsPath(), JSON.stringify(settings, null, 2), "utf8");
 }
 
 async function existingDirectory(dir: string | undefined): Promise<string | null> {
@@ -447,7 +607,18 @@ function createWindow() {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   }
 
+  // Push OS theme changes (light↔dark) to the renderer so a "system" theme
+  // mode tracks the OS live. Registered after window creation so mainWindow is
+  // non-null when the event fires; removed on close to avoid a dangling ref.
+  const onNativeThemeUpdated = () => {
+    mainWindow?.webContents.send("app:nativeThemeUpdated", {
+      shouldUseDarkColors: nativeTheme.shouldUseDarkColors,
+    });
+  };
+  nativeTheme.on("updated", onNativeThemeUpdated);
+
   mainWindow.on("closed", () => {
+    nativeTheme.removeListener("updated", onNativeThemeUpdated);
     mainWindow = null;
   });
   return mainWindow;
@@ -607,6 +778,62 @@ ipcMain.handle(
   },
 );
 
+// ── Directory listing (PlatformAdapter.listDir, #38) ──────────────────────
+// Backs the in-app editor's file-tree sidebar. Returns the immediate entries
+// of `dirPath` (single level, no recursion) as {name, path, isDir}. The path
+// MUST be absolute (a relative path could resolve against the main-process CWD
+// by accident); the renderer is our own trusted SPA and always passes a
+// user-opened project directory.
+ipcMain.handle(
+  "fs:listDir",
+  async (
+    _e,
+    dirPath: string,
+  ): Promise<Array<{ name: string; path: string; isDir: boolean }>> => {
+    if (!path.isAbsolute(dirPath)) {
+      throw new Error(`fs:listDir requires an absolute path, got: ${dirPath}`);
+    }
+    const entries = await readdir(dirPath, { withFileTypes: true });
+    return entries.map((entry) => ({
+      name: entry.name,
+      path: path.join(dirPath, entry.name),
+      isDir: entry.isDirectory(),
+    }));
+  },
+);
+
+// ── Project file listing (fs:listProjectFiles, #42) ───────────────────────
+// Backs the chapter-list sidebar. Returns the top-level `.md` and `.css`
+// files of the opened project directory, each sorted by filename. Shallow by
+// design (a v1 constraint — subdirectory layouts are not surfaced). The path
+// MUST be absolute and is constrained to the project directory; only files
+// (not directories) at the top level are returned.
+ipcMain.handle(
+  "fs:listProjectFiles",
+  async (
+    _e,
+    projectDir: string,
+  ): Promise<{ md: string[]; css: string[] }> => {
+    if (!path.isAbsolute(projectDir)) {
+      throw new Error(
+        `fs:listProjectFiles requires an absolute path, got: ${projectDir}`,
+      );
+    }
+    const entries = await readdir(projectDir, { withFileTypes: true });
+    const md: string[] = [];
+    const css: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const lower = entry.name.toLowerCase();
+      if (lower.endsWith(".md")) md.push(entry.name);
+      else if (lower.endsWith(".css")) css.push(entry.name);
+    }
+    md.sort((a, b) => a.localeCompare(b));
+    css.sort((a, b) => a.localeCompare(b));
+    return { md, css };
+  },
+);
+
 ipcMain.handle("api:status", async () => {
   return { name: "@dimm-city/print-md-viewer", runtime: "node", ok: true };
 });
@@ -628,6 +855,60 @@ ipcMain.handle("app:setViewerPrefs", async (_e, patch: Partial<ViewerPrefs>) => 
   const current = await readPrefs();
   await writePrefs({ ...current, ...patch });
   return { ok: true };
+});
+
+// ── Per-project editor/preview state (#43) ──────────────────────────────────
+// Read/merge the per-project bucket in viewer-prefs.json projectStates. Keying
+// by folder path means opening project B never overwrites project A's page,
+// view mode, open chapter, etc. Corrupt/missing state fails silently to null so
+// the renderer falls back to first-page defaults.
+ipcMain.handle(
+  "app:getViewerProjectState",
+  async (_e, projectDir: string): Promise<ProjectState | null> => {
+    if (!projectDir || typeof projectDir !== "string") return null;
+    try {
+      const prefs = await readPrefs();
+      return readProjectState(prefs.projectStates, projectDir);
+    } catch {
+      return null;
+    }
+  },
+);
+
+ipcMain.handle(
+  "app:setViewerProjectState",
+  async (
+    _e,
+    projectDir: string,
+    patch: Partial<ProjectState>,
+  ): Promise<{ ok: boolean }> => {
+    if (!projectDir || typeof projectDir !== "string") return { ok: false };
+    const current = await readPrefs();
+    await writePrefs({
+      ...current,
+      lastProjectDir: projectDir,
+      projectStates: writeProjectState(current.projectStates, projectDir, patch),
+    });
+    return { ok: true };
+  },
+);
+
+ipcMain.handle("app:getSettings", async () => {
+  return readSettings();
+});
+
+ipcMain.handle("app:setSettings", async (_e, patch: DeepPartialSettings) => {
+  const current = await readSettings();
+  await writeSettings(mergeSettings(current, patch));
+  return { ok: true };
+});
+
+// ── Native (OS) theme surface (#48) ─────────────────────────────────────────
+// One-shot query of the OS dark/light preference. The renderer's theme
+// controller resolves "system" against this. Pushed updates come via the
+// nativeTheme "updated" listener registered in createWindow().
+ipcMain.handle("app:getNativeTheme", async () => {
+  return { shouldUseDarkColors: nativeTheme.shouldUseDarkColors };
 });
 
 ipcMain.handle("app:getRecentFolders", async () => {
@@ -673,6 +954,69 @@ ipcMain.handle("app:removeRecent", async (_e, folderPath: string) => {
   });
   return { ok: true };
 });
+
+// ── Project discovery (#27) ─────────────────────────────────────────────────
+// Shallow (depth ≤ 3) BFS scan of projectSearchRoots for print-md projects
+// (folders with manifest.yaml/.yml) not already in recents/favorites. The scan
+// uses node:fs/promises but the traversal logic lives in discover-projects.ts
+// so it stays unit-testable. Title defaults to the directory basename —
+// parsing each manifest's title would make the scan far too heavy.
+function defaultProjectSearchRoots(): string[] {
+  const home = os.homedir();
+  return [path.join(home, "Documents"), path.join(home, "Desktop")];
+}
+
+const discoverScanDeps: ScanDeps = {
+  async listDirs(dir: string): Promise<string[]> {
+    const entries = await readdir(dir, { withFileTypes: true });
+    return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+  },
+  async fileExists(filePath: string): Promise<boolean> {
+    try {
+      return (await stat(filePath)).isFile();
+    } catch {
+      return false;
+    }
+  },
+  join: (...segments: string[]) => path.join(...segments),
+  basename: (p: string) => basename(p),
+};
+
+ipcMain.handle("app:discoverProjects", async () => {
+  const prefs = await readPrefs();
+  const roots =
+    prefs.projectSearchRoots && prefs.projectSearchRoots.length > 0
+      ? prefs.projectSearchRoots
+      : defaultProjectSearchRoots();
+  const exclude = new Set<string>([
+    ...(prefs.recentFolders ?? []).map((r) => r.path),
+    ...(prefs.favorites ?? []).map((f) => f.path),
+  ]);
+  try {
+    return await scanForProjects(roots, exclude, discoverScanDeps);
+  } catch {
+    return [];
+  }
+});
+
+// ── Project source classification (#12) ──────────────────────────────────────
+// Classify an opened folder as local-folder / local-git-folder (hasRemote
+// true/false) via the lib's pure Node-fs detector. Always re-classified on
+// folder open by the renderer — never relies solely on the cached
+// ViewerPrefs.projectSource (a user may add/remove `.git` between sessions).
+ipcMain.handle(
+  "app:classifyProject",
+  async (_e, args: { path?: string }) => {
+    const folderPath = args?.path;
+    if (!folderPath || typeof folderPath !== "string") {
+      throw new Error("app:classifyProject requires a 'path' string");
+    }
+    const lib = await loadLib();
+    const source = await lib.detectProjectSource(folderPath);
+    const capabilities = lib.capabilitiesFor(source);
+    return { source, capabilities };
+  },
+);
 
 ipcMain.handle("api:doctor", async () => {
   const lib = await loadLib();

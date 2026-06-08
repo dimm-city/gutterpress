@@ -11,9 +11,13 @@
  * host-divergent primitives throw, to be implemented via the File System Access
  * API in 0.6.0.
  */
+import { DEFAULT_SETTINGS } from "./contract";
 import type {
   Platform,
   ViewerPrefs,
+  ProjectState,
+  AppSettings,
+  DeepPartial,
   PreviewStartArgs,
   PreviewStartResult,
   BuildArgs,
@@ -24,6 +28,12 @@ import type {
   FavoriteEntry,
   UpdaterApi,
   UpdaterStatus,
+  NativeThemeState,
+  DiscoveredProject,
+  ProjectClassification,
+  FileStat,
+  RecoveryEntry,
+  FolderChangedEvent,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -34,6 +44,20 @@ function notImplemented(method: string): never {
 
 function rejectNotImplemented(method: string): Promise<never> {
   return Promise.reject(new Error(`${method}: ${NOT_IMPL}`));
+}
+
+const SETTINGS_KEY = "print-md.app-settings";
+
+/** Recursively merge a settings patch over a base, returning a new object. */
+function deepMergeSettings(base: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
+  const out = { ...base } as Record<string, unknown>;
+  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
+    const value = patch[key];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      out[key] = { ...base[key], ...(value as object) };
+    }
+  }
+  return out as unknown as AppSettings;
 }
 
 const webUpdater: UpdaterApi = {
@@ -61,6 +85,14 @@ export class WebAdapter implements Platform {
 
   writeFile(_path: string, _content: string): Promise<void> {
     return notImplemented("writeFile");
+  }
+
+  listDir(_path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>> {
+    return notImplemented("listDir");
+  }
+
+  statFile(_path: string): Promise<FileStat> {
+    return notImplemented("statFile");
   }
 
   watchFolder(_path: string, _cb: () => void): () => void {
@@ -96,12 +128,69 @@ export class WebAdapter implements Platform {
     return rejectNotImplemented("getLastProject");
   }
 
+  listProjectFiles(_projectDir: string): Promise<{ md: string[]; css: string[] }> {
+    return rejectNotImplemented("listProjectFiles");
+  }
+
   getViewerPrefs(): Promise<ViewerPrefs> {
     return rejectNotImplemented("getViewerPrefs");
   }
 
   setViewerPrefs(_patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> {
     return rejectNotImplemented("setViewerPrefs");
+  }
+
+  getViewerProjectState(_projectDir: string): Promise<ProjectState | null> {
+    return rejectNotImplemented("getViewerProjectState");
+  }
+
+  setViewerProjectState(
+    _projectDir: string,
+    _patch: Partial<ProjectState>,
+  ): Promise<{ ok: boolean }> {
+    return rejectNotImplemented("setViewerProjectState");
+  }
+
+  // Settings (#45) — genuinely implemented on web via localStorage so the
+  // settings store works even outside Electron.
+  getSettings(): Promise<AppSettings> {
+    try {
+      const raw = globalThis.localStorage?.getItem(SETTINGS_KEY);
+      const stored = raw ? (JSON.parse(raw) as DeepPartial<AppSettings>) : {};
+      return Promise.resolve(deepMergeSettings(DEFAULT_SETTINGS, stored));
+    } catch {
+      return Promise.resolve(DEFAULT_SETTINGS);
+    }
+  }
+
+  setSettings(patch: DeepPartial<AppSettings>): Promise<{ ok: boolean }> {
+    try {
+      const raw = globalThis.localStorage?.getItem(SETTINGS_KEY);
+      const stored = raw ? (JSON.parse(raw) as DeepPartial<AppSettings>) : {};
+      const merged = deepMergeSettings(deepMergeSettings(DEFAULT_SETTINGS, stored), patch);
+      globalThis.localStorage?.setItem(SETTINGS_KEY, JSON.stringify(merged));
+      return Promise.resolve({ ok: true });
+    } catch {
+      return Promise.resolve({ ok: false });
+    }
+  }
+
+  // Native (OS) theme (#48) — genuinely implemented via matchMedia so the
+  // PWA / `vite dev` path themes correctly (not a 0.6.0 stub).
+  getNativeTheme(): Promise<NativeThemeState> {
+    const dark =
+      typeof globalThis.matchMedia === "function" &&
+      globalThis.matchMedia("(prefers-color-scheme: dark)").matches;
+    return Promise.resolve({ shouldUseDarkColors: dark });
+  }
+
+  onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void {
+    if (typeof globalThis.matchMedia !== "function") return () => {};
+    const mql = globalThis.matchMedia("(prefers-color-scheme: dark)");
+    const listener = (e: MediaQueryListEvent) =>
+      cb({ shouldUseDarkColors: e.matches });
+    mql.addEventListener("change", listener);
+    return () => mql.removeEventListener("change", listener);
   }
 
   getRecentFolders(): Promise<RecentFolderEntry[]> {
@@ -118,6 +207,17 @@ export class WebAdapter implements Platform {
 
   removeRecent(_folderPath: string): Promise<{ ok: boolean }> {
     return rejectNotImplemented("removeRecent");
+  }
+
+  // Project discovery (#27) — no background filesystem scan on the PWA (File
+  // System Access API restrictions). Resolve to [] so the Discovered section is
+  // simply absent rather than erroring.
+  discoverProjects(): Promise<DiscoveredProject[]> {
+    return Promise.resolve([]);
+  }
+
+  classifyProject(_path: string): Promise<ProjectClassification> {
+    return rejectNotImplemented("classifyProject");
   }
 
   startPreview(_args: PreviewStartArgs): Promise<PreviewStartResult> {
@@ -145,6 +245,35 @@ export class WebAdapter implements Platform {
   }
 
   onUrlPreviewBlocked(_cb: (data: UrlPreviewBlockedEvent) => void): () => void {
+    return () => {};
+  }
+
+  // ── Unsaved changes / recovery (#44) — desktop-only; reject/no-op on web ───
+  writeRecovery(
+    _filePath: string,
+    _content: string,
+    _baseMtimeMs: number,
+  ): Promise<{ ok: boolean }> {
+    return rejectNotImplemented("writeRecovery");
+  }
+
+  clearRecovery(_filePath: string): Promise<{ ok: boolean }> {
+    return rejectNotImplemented("clearRecovery");
+  }
+
+  listRecovery(_projectDir: string): Promise<RecoveryEntry[]> {
+    return Promise.resolve([]);
+  }
+
+  setDirtyState(_isDirty: boolean): Promise<void> {
+    return rejectNotImplemented("setDirtyState");
+  }
+
+  onFlushBeforeClose(_cb: () => void): () => void {
+    return () => {};
+  }
+
+  onFolderChanged(_cb: (data: FolderChangedEvent) => void): () => void {
     return () => {};
   }
 }

@@ -9,6 +9,8 @@ import { ElectronAdapter } from "./electron-adapter";
 import { WebAdapter } from "./web-adapter";
 import type { Platform } from "./contract";
 
+export { DEFAULT_SETTINGS } from "./contract";
+
 export type {
   Platform,
   PlatformAdapter,
@@ -18,6 +20,8 @@ export type {
   UpdaterStatus,
   UpdaterEvent,
   ViewerPrefs,
+  AppSettings,
+  DeepPartial,
   RecentFolderEntry,
   FavoriteEntry,
   PreviewStartArgs,
@@ -26,6 +30,7 @@ export type {
   BuildResult,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
+  NativeThemeState,
 } from "./contract";
 
 let instance: Platform | null = null;

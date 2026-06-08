@@ -85,13 +85,111 @@ interface FavoriteEntry {
   title: string;
 }
 
+interface ProjectState {
+  currentPage?: number;
+  viewMode?: "single" | "two-column";
+  lastChapter?: string;
+  sidebarOpen?: boolean;
+  cursorLine?: number;
+  editorScroll?: number;
+  splitPaneRatio?: number;
+}
+
 interface ViewerPrefs {
   lastProjectDir?: string | null;
+  /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
+  sidebarOpen?: boolean;
+  /** @deprecated (#43) migration fallback — use projectStates[dir]. */
   currentPage?: number;
+  /** @deprecated (#43) migration fallback — use projectStates[dir]. */
   viewMode?: "single" | "two-column";
   recentFolders?: RecentFolderEntry[];
   favorites?: FavoriteEntry[];
+  projectStates?: Record<string, ProjectState>;
+  projectSearchRoots?: string[];
+  projectSource?: ProjectSourceHint;
 }
+
+/** Forward ref used by ViewerPrefs above; full union declared below. */
+type ProjectSourceHint =
+  | { type: "local-folder"; path: string }
+  | {
+      type: "local-git-folder";
+      path: string;
+      hasRemote: boolean;
+      remoteUrl?: string;
+      branch?: string;
+    }
+  | {
+      type: "managed-github";
+      installationId: string;
+      owner: string;
+      repo: string;
+      branch: string;
+      rootPath?: string;
+    };
+
+interface DiscoveredProject {
+  path: string;
+  title: string;
+}
+
+// Project source classification (#12). Mirrors @dimm-city/print-md-lib.
+type ProjectSource =
+  | { type: "local-folder"; path: string }
+  | {
+      type: "local-git-folder";
+      path: string;
+      hasRemote: boolean;
+      remoteUrl?: string;
+      branch?: string;
+    }
+  | {
+      type: "managed-github";
+      installationId: string;
+      owner: string;
+      repo: string;
+      branch: string;
+      rootPath?: string;
+    };
+
+interface ProjectCapabilities {
+  canRead: boolean;
+  canWriteLocal: boolean;
+  canEnableVersionHistory: boolean;
+  canSnapshot: boolean;
+  canViewHistory: boolean;
+  canRestoreSnapshot: boolean;
+  canPublish: boolean;
+  canSync: boolean;
+  authManagedByApp: boolean;
+}
+
+interface AppSettings {
+  editor: {
+    fontFamily: string;
+    fontSize: number;
+    lineHeight: number;
+    spellCheckLanguage: string;
+    autoSaveDelay: number;
+  };
+  appearance: {
+    theme: "light" | "dark" | "system";
+    previewBg: string;
+  };
+  preview: {
+    defaultZoom: string;
+    viewMode: "single" | "two-column";
+  };
+  advanced: {
+    fileWatcherInterval: number;
+    logLevel: "error" | "warn" | "info" | "debug";
+  };
+}
+
+type DeepPartialSettings = {
+  [K in keyof AppSettings]?: Partial<AppSettings[K]>;
+};
 
 contextBridge.exposeInMainWorld("electron", {
   // ──────────────────────────────────────────────────────────────────────
@@ -138,6 +236,14 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("fs:readFile", filePath),
   writeFile: (filePath: string, content: string): Promise<void> =>
     ipcRenderer.invoke("fs:writeFile", filePath, content),
+  listDir: (
+    dirPath: string,
+  ): Promise<Array<{ name: string; path: string; isDir: boolean }>> =>
+    ipcRenderer.invoke("fs:listDir", dirPath),
+  listProjectFiles: (
+    projectDir: string,
+  ): Promise<{ md: string[]; css: string[] }> =>
+    ipcRenderer.invoke("fs:listProjectFiles", projectDir),
 
   // Lib API (replaces /api/* HTTP routes)
   getStatus: (): Promise<{ ok: boolean; runtime: string; name: string }> =>
@@ -148,6 +254,31 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("app:getViewerPrefs"),
   setViewerPrefs: (patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("app:setViewerPrefs", patch),
+  // Per-project editor/preview state (#43)
+  getViewerProjectState: (projectDir: string): Promise<ProjectState | null> =>
+    ipcRenderer.invoke("app:getViewerProjectState", projectDir),
+  setViewerProjectState: (
+    projectDir: string,
+    patch: Partial<ProjectState>,
+  ): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("app:setViewerProjectState", projectDir, patch),
+  getSettings: (): Promise<AppSettings> =>
+    ipcRenderer.invoke("app:getSettings"),
+  setSettings: (patch: DeepPartialSettings): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("app:setSettings", patch),
+
+  // Native (OS) theme surface (#48)
+  getNativeTheme: (): Promise<{ shouldUseDarkColors: boolean }> =>
+    ipcRenderer.invoke("app:getNativeTheme"),
+  /** Subscribe to OS theme changes from main. Returns an unsubscribe fn. */
+  onNativeThemeUpdated: (
+    cb: (data: { shouldUseDarkColors: boolean }) => void
+  ): (() => void) => {
+    const listener = (_e: unknown, data: { shouldUseDarkColors: boolean }) =>
+      cb(data);
+    ipcRenderer.on("app:nativeThemeUpdated", listener);
+    return () => ipcRenderer.removeListener("app:nativeThemeUpdated", listener);
+  },
 
   // Open Location modal: recent folders + favorites
   getRecentFolders: (): Promise<
@@ -163,6 +294,14 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("app:toggleFavorite", folderPath, title),
   removeRecent: (folderPath: string): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("app:removeRecent", folderPath),
+  discoverProjects: (): Promise<DiscoveredProject[]> =>
+    ipcRenderer.invoke("app:discoverProjects"),
+
+  // Project source classification (#12)
+  classifyProject: (
+    path: string,
+  ): Promise<{ source: ProjectSource; capabilities: ProjectCapabilities }> =>
+    ipcRenderer.invoke("app:classifyProject", { path }),
   startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>

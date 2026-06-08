@@ -56,3 +56,34 @@ export type {
   ToolStatus,
   SystemDiagnostics,
 } from "../lib/diagnostics";
+
+export {
+  detectProjectSource,
+  capabilitiesFor,
+} from "../lib/project-source";
+
+export type {
+  ProjectSource,
+  ProjectCapabilities,
+} from "../lib/project-source";
+
+// ── Project scaffolding contract (#25) — type-only until the impl lands ───────
+// The scaffold/source-provider FUNCTIONS are intentionally NOT re-exported yet
+// (they are `declare`d, bodiless stubs). Only the types ship so the viewer
+// wizard, the `print-md new` CLI command, and tests can be typed against them.
+export type {
+  ProjectTemplateId,
+  ProjectVersionHistoryMode,
+  CreateProjectOptions,
+  CreateProjectResult,
+  CreateProjectErrorCode,
+  CreateProjectError,
+} from "../lib/project-scaffold.ts";
+
+export type {
+  SnapshotEntry,
+  InitVersionHistoryOptions,
+  SnapshotOptions,
+  RestoreSnapshotOptions,
+  SourceProvider,
+} from "../lib/source-provider.ts";

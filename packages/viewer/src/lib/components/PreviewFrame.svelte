@@ -33,6 +33,14 @@
 <iframe bind:this={frame} src={url} title="print-md preview"></iframe>
 
 <style>
+  /*
+   * The preview iframe is INTENTIONALLY EXCLUDED from app theming (#48). It
+   * renders the author's own document CSS and must always sit on a fixed,
+   * neutral print-condition background regardless of the app's light/dark
+   * theme. This literal is the one deliberate exception to the no-hardcoded-
+   * colour rule; see iframe-styles.ts buildViewerStyles for the matching
+   * in-iframe canvas background. Do NOT replace it with an app theme token.
+   */
   iframe {
     flex: 1;
     width: 100%;

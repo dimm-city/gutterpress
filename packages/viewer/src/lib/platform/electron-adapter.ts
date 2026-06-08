@@ -2,15 +2,21 @@
  * ElectronAdapter — the ONLY module permitted to CALL methods on
  * `window.electron`. (`isDesktop()` in index.ts may test for its presence.)
  *
- * Every method delegates 1:1 to the preload bridge, so behaviour is identical
- * to the pre-#41 direct calls. `watchFolder`/`getSecret`/`setSecret` have no
- * existing IPC (they land with the in-app editor #38 and source modes #12), so
- * they throw a descriptive error rather than silently no-op.
+ * Every implemented method delegates 1:1 to the preload bridge, so behaviour is
+ * identical to the pre-#41 direct calls. The #44 surface (statFile, watchFolder,
+ * and the writeRecovery/clearRecovery/listRecovery/setDirtyState/onFlushBeforeClose/
+ * onFolderChanged recovery methods) plus getSecret/setSecret (#12) are SCAFFOLDED
+ * only — the contract/types exist but there is no IPC behind them yet, so they
+ * throw a descriptive error rather than delegate to a non-existent bridge method.
+ * Wire them up (preload + main IPC) when implementing #44 / #12.
  */
 import type {
   Platform,
   ElectronBridge,
   ViewerPrefs,
+  ProjectState,
+  AppSettings,
+  DeepPartial,
   PreviewStartArgs,
   PreviewStartResult,
   BuildArgs,
@@ -20,6 +26,12 @@ import type {
   RecentFolderEntry,
   FavoriteEntry,
   UpdaterApi,
+  NativeThemeState,
+  DiscoveredProject,
+  ProjectClassification,
+  FileStat,
+  RecoveryEntry,
+  FolderChangedEvent,
 } from "./contract";
 
 function bridge(): ElectronBridge {
@@ -49,9 +61,19 @@ export class ElectronAdapter implements Platform {
     return bridge().writeFile(path, content);
   }
 
+  listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>> {
+    return bridge().listDir(path);
+  }
+
+  statFile(_path: string): Promise<FileStat> {
+    throw new Error(
+      "statFile is not implemented yet — file metadata IPC lands with #44 (currently scaffolded).",
+    );
+  }
+
   watchFolder(_path: string, _cb: () => void): () => void {
     throw new Error(
-      "watchFolder is not implemented yet — wiring lands with the in-app editor (#38).",
+      "watchFolder is not implemented yet — folder-watch IPC lands with #44 (currently scaffolded).",
     );
   }
 
@@ -96,12 +118,43 @@ export class ElectronAdapter implements Platform {
     return bridge().getLastProject();
   }
 
+  listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }> {
+    return bridge().listProjectFiles(projectDir);
+  }
+
   getViewerPrefs(): Promise<ViewerPrefs> {
     return bridge().getViewerPrefs();
   }
 
   setViewerPrefs(patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> {
     return bridge().setViewerPrefs(patch);
+  }
+
+  getViewerProjectState(projectDir: string): Promise<ProjectState | null> {
+    return bridge().getViewerProjectState(projectDir);
+  }
+
+  setViewerProjectState(
+    projectDir: string,
+    patch: Partial<ProjectState>,
+  ): Promise<{ ok: boolean }> {
+    return bridge().setViewerProjectState(projectDir, patch);
+  }
+
+  getSettings(): Promise<AppSettings> {
+    return bridge().getSettings();
+  }
+
+  setSettings(patch: DeepPartial<AppSettings>): Promise<{ ok: boolean }> {
+    return bridge().setSettings(patch);
+  }
+
+  getNativeTheme(): Promise<NativeThemeState> {
+    return bridge().getNativeTheme();
+  }
+
+  onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void {
+    return bridge().onNativeThemeUpdated(cb);
   }
 
   getRecentFolders(): Promise<RecentFolderEntry[]> {
@@ -118,6 +171,14 @@ export class ElectronAdapter implements Platform {
 
   removeRecent(folderPath: string): Promise<{ ok: boolean }> {
     return bridge().removeRecent(folderPath);
+  }
+
+  discoverProjects(): Promise<DiscoveredProject[]> {
+    return bridge().discoverProjects();
+  }
+
+  classifyProject(path: string): Promise<ProjectClassification> {
+    return bridge().classifyProject(path);
   }
 
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {
@@ -146,5 +207,34 @@ export class ElectronAdapter implements Platform {
 
   onUrlPreviewBlocked(cb: (data: UrlPreviewBlockedEvent) => void): () => void {
     return bridge().onUrlPreviewBlocked(cb);
+  }
+
+  // ── Unsaved changes / recovery (#44) — SCAFFOLD ONLY (no IPC yet) ──────────
+  writeRecovery(
+    _filePath: string,
+    _content: string,
+    _baseMtimeMs: number,
+  ): Promise<{ ok: boolean }> {
+    throw new Error("writeRecovery is not implemented yet — recovery IPC lands with #44 (scaffolded).");
+  }
+
+  clearRecovery(_filePath: string): Promise<{ ok: boolean }> {
+    throw new Error("clearRecovery is not implemented yet — recovery IPC lands with #44 (scaffolded).");
+  }
+
+  listRecovery(_projectDir: string): Promise<RecoveryEntry[]> {
+    throw new Error("listRecovery is not implemented yet — recovery IPC lands with #44 (scaffolded).");
+  }
+
+  setDirtyState(_isDirty: boolean): Promise<void> {
+    throw new Error("setDirtyState is not implemented yet — recovery IPC lands with #44 (scaffolded).");
+  }
+
+  onFlushBeforeClose(_cb: () => void): () => void {
+    throw new Error("onFlushBeforeClose is not implemented yet — recovery IPC lands with #44 (scaffolded).");
+  }
+
+  onFolderChanged(_cb: (data: FolderChangedEvent) => void): () => void {
+    throw new Error("onFolderChanged is not implemented yet — recovery IPC lands with #44 (scaffolded).");
   }
 }
