@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getPlatform, isDesktop } from "$lib/platform";
+  import Icon from "$lib/components/Icon.svelte";
 
   interface ToolStatus {
     name: string;
@@ -21,7 +22,22 @@
     docsUrl: string;
   }
 
-  let { open = $bindable(false), onClose, triggerEl }: { open?: boolean; onClose?: () => void; triggerEl?: HTMLButtonElement | undefined } = $props();
+  let {
+    open = $bindable(false),
+    onClose,
+    triggerEl,
+    onCheckForUpdates,
+    checkingUpdates = false,
+    updateReadyVersion = null,
+  }: {
+    open?: boolean;
+    onClose?: () => void;
+    triggerEl?: HTMLButtonElement | undefined;
+    /** Relocated from the toolbar: triggers the manual web-UI update check. */
+    onCheckForUpdates?: () => void;
+    checkingUpdates?: boolean;
+    updateReadyVersion?: string | null;
+  } = $props();
 
   let data = $state<Diagnostics | null>(null);
   let loading = $state(false);
@@ -170,6 +186,27 @@
           </ol>
           <p class="gs-note">Don't have a project yet? Visit the <button class="inline-link" onclick={openDocs}>online setup guide</button> to create one.</p>
         </section>
+
+        {#if isDesktop() && onCheckForUpdates}
+          <section class="updates">
+            <h3>Updates</h3>
+            <p class="updates-note">
+              {#if updateReadyVersion}
+                An update (v{updateReadyVersion}) is ready to apply — close this dialog and use the banner at the top of the window.
+              {:else}
+                print-md keeps its interface up to date automatically. You can also check now.
+              {/if}
+            </p>
+            <button
+              class="update-check"
+              onclick={() => onCheckForUpdates?.()}
+              disabled={checkingUpdates}
+            >
+              <span class="update-check-icon" class:spinning={checkingUpdates}><Icon name="refresh-cw" /></span>
+              {checkingUpdates ? "Checking for updates…" : "Check for updates"}
+            </button>
+          </section>
+        {/if}
 
         <section class="shortcuts">
           <h3>Keyboard Shortcuts</h3>
@@ -333,6 +370,28 @@
   .system-info > summary::before { content: "▶ "; font-size: 10px; }
   .system-info[open] > summary::before { content: "▼ "; }
   .system-info > summary:hover { color: var(--app-text-muted); }
+
+  /* Updates section (relocated from toolbar) */
+  .updates { margin-bottom: 18px; }
+  .updates h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; color: var(--app-text-muted); letter-spacing: 0.5px; }
+  .updates-note { margin: 0 0 10px; font-size: 12px; color: var(--app-text-faint); line-height: 1.5; }
+  .update-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    border-radius: 6px;
+    cursor: pointer;
+    background: transparent;
+    color: var(--app-text-muted);
+    border: 1px solid var(--app-border);
+  }
+  .update-check:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
+  .update-check:disabled { opacity: 0.6; cursor: not-allowed; }
+  .update-check-icon { display: inline-flex; }
+  .update-check-icon.spinning :global(svg) { animation: help-update-spin 1s linear infinite; }
+  @keyframes help-update-spin { to { transform: rotate(360deg); } }
 
   .shortcuts { margin-bottom: 18px; }
   .shortcuts h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; color: var(--app-text-muted); letter-spacing: 0.5px; }
