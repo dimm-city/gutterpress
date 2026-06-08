@@ -27,9 +27,10 @@
   import { languages } from "@codemirror/language-data";
   import {
     syntaxHighlighting,
-    defaultHighlightStyle,
+    HighlightStyle,
     bracketMatching,
   } from "@codemirror/language";
+  import { tags as t } from "@lezer/highlight";
   import { linter, lintGutter } from "@codemirror/lint";
   import { autocompletion } from "@codemirror/autocomplete";
   import {
@@ -126,34 +127,77 @@
     return autocompletion({ override: [pagedMediaCompletionSource] });
   }
 
-  const editableTheme = EditorView.theme(
-    {
-      "&": {
-        height: "100%",
-        fontSize: "13px",
-        backgroundColor: "var(--app-bg)",
-        color: "var(--app-text)",
-      },
-      ".cm-scroller": {
-        fontFamily:
-          "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-        lineHeight: "1.6",
-        overflow: "auto",
-      },
-      ".cm-content": { caretColor: "var(--app-accent, #4ea1ff)" },
-      ".cm-gutters": {
-        backgroundColor: "var(--app-surface, var(--app-bg))",
-        color: "var(--app-text-faint)",
-        border: "none",
-      },
-      ".cm-activeLine": { backgroundColor: "var(--app-control-hover-bg)" },
-      ".cm-activeLineGutter": {
-        backgroundColor: "var(--app-control-hover-bg)",
-      },
-      "&.cm-focused": { outline: "none" },
+  // Theme-aware syntax highlighting. Every colour is a CSS custom property
+  // (defined per app theme in the style block below), so the SAME highlight
+  // style is legible in both light and dark mode and switches instantly with the
+  // app's [data-theme] — no second editor, no rebuild. Replaces CodeMirror's
+  // light-tuned defaultHighlightStyle, which rendered as low-contrast mush on the
+  // dark background.
+  const printmdHighlight = HighlightStyle.define([
+    { tag: [t.heading, t.heading1, t.heading2, t.heading3, t.heading4, t.heading5, t.heading6], color: "var(--cm-heading)", fontWeight: "700" },
+    { tag: t.strong, color: "var(--cm-strong)", fontWeight: "700" },
+    { tag: t.emphasis, color: "var(--cm-em)", fontStyle: "italic" },
+    { tag: t.strikethrough, textDecoration: "line-through" },
+    { tag: [t.link, t.url], color: "var(--cm-link)", textDecoration: "underline" },
+    { tag: t.quote, color: "var(--cm-quote)", fontStyle: "italic" },
+    // Markdown structural markers (##, *, -, >, |, ```), kept subtle but visible.
+    { tag: [t.processingInstruction, t.meta, t.contentSeparator], color: "var(--cm-marker)" },
+    { tag: [t.list, t.labelName], color: "var(--cm-marker)" },
+    // Inline / fenced code + embedded languages.
+    { tag: [t.monospace], color: "var(--cm-code)" },
+    { tag: [t.string, t.special(t.string), t.attributeValue], color: "var(--cm-string)" },
+    { tag: [t.number, t.atom, t.bool, t.special(t.variableName)], color: "var(--cm-number)" },
+    { tag: [t.keyword, t.modifier, t.operatorKeyword], color: "var(--cm-keyword)" },
+    { tag: [t.comment, t.lineComment, t.blockComment], color: "var(--cm-comment)", fontStyle: "italic" },
+    // Embedded HTML (common in print-md covers/layout blocks) + CSS.
+    { tag: [t.tagName, t.angleBracket], color: "var(--cm-tag)" },
+    { tag: [t.attributeName], color: "var(--cm-attr)" },
+    { tag: [t.propertyName], color: "var(--cm-property)" },
+    { tag: [t.className, t.typeName, t.namespace], color: "var(--cm-class)" },
+    { tag: [t.variableName, t.definition(t.variableName)], color: "var(--cm-text)" },
+    { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "var(--cm-function)" },
+    { tag: [t.punctuation, t.separator, t.bracket], color: "var(--cm-punct)" },
+    { tag: t.invalid, color: "var(--cm-invalid)" },
+  ]);
+
+  const editableTheme = EditorView.theme({
+    "&": {
+      height: "100%",
+      fontSize: "13px",
+      backgroundColor: "var(--app-bg)",
+      color: "var(--cm-text)",
     },
-    { dark: true },
-  );
+    ".cm-scroller": {
+      fontFamily:
+        "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+      lineHeight: "1.6",
+      overflow: "auto",
+    },
+    ".cm-content": { caretColor: "var(--app-accent, #4ea1ff)" },
+    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--app-accent, #4ea1ff)" },
+    // Selection — explicit in BOTH focused and unfocused states so it reads in
+    // light and dark (CodeMirror's built-in selection colour assumes one theme).
+    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
+      { backgroundColor: "var(--cm-selection)" },
+    ".cm-gutters": {
+      backgroundColor: "var(--cm-gutter-bg)",
+      color: "var(--cm-gutter-text)",
+      border: "none",
+    },
+    // Subtle active-line tint — must NOT wash out the text on that line (the old
+    // --app-control-hover-bg was far too strong).
+    ".cm-activeLine": { backgroundColor: "var(--cm-active-line)" },
+    ".cm-activeLineGutter": {
+      backgroundColor: "var(--cm-active-line)",
+      color: "var(--cm-text)",
+    },
+    ".cm-matchingBracket, &.cm-focused .cm-matchingBracket": {
+      backgroundColor: "var(--cm-bracket-bg)",
+      outline: "1px solid var(--cm-bracket-outline)",
+    },
+    ".cm-selectionMatch": { backgroundColor: "var(--cm-selection)" },
+    "&.cm-focused": { outline: "none" },
+  });
 
   function buildState(doc: string): EditorState {
     const lang = languageForPath(filePath);
@@ -167,7 +211,7 @@
         languageCompartment.of(languageExtension(lang)),
         cssLintCompartment.of(cssLintExtensions(lang)),
         cssCompletionCompartment.of(cssCompletionExtensions(lang)),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        syntaxHighlighting(printmdHighlight, { fallback: true }),
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         editableTheme,
         EditorView.lineWrapping,
@@ -352,5 +396,66 @@
     margin: 0;
     max-width: 240px;
     line-height: 1.5;
+  }
+
+  /* ── CodeMirror syntax palette (consumed by printmdHighlight + editableTheme) ──
+     Tokens flip with the app's [data-theme] so the SAME highlight style is
+     legible in both modes. Dark is the default (covers the no-attr first paint);
+     light overrides below. Tuned for contrast: markers visible-but-subtle, code
+     tokens clearly differentiated, body text high-contrast. */
+  :global(:root),
+  :global([data-theme="dark"]) {
+    --cm-text: #d8dee9;
+    --cm-heading: #c8a8ff;
+    --cm-strong: #f2f4f8;
+    --cm-em: #d8dee9;
+    --cm-link: #5cb3ff;
+    --cm-quote: #9aa5b1;
+    --cm-marker: #8195b5;
+    --cm-code: #e6c07b;
+    --cm-string: #a8d08d;
+    --cm-number: #f0a36b;
+    --cm-keyword: #c792ea;
+    --cm-comment: #7c8590;
+    --cm-tag: #ff8f8f;
+    --cm-attr: #ffcb6b;
+    --cm-property: #82aaff;
+    --cm-class: #ffcb6b;
+    --cm-function: #82aaff;
+    --cm-punct: #9aa5b1;
+    --cm-invalid: #ff6b6b;
+    --cm-selection: rgba(92, 179, 255, 0.28);
+    --cm-active-line: rgba(255, 255, 255, 0.05);
+    --cm-gutter-bg: var(--app-surface, #252526);
+    --cm-gutter-text: #6b7280;
+    --cm-bracket-bg: rgba(92, 179, 255, 0.18);
+    --cm-bracket-outline: rgba(92, 179, 255, 0.5);
+  }
+  :global([data-theme="light"]) {
+    --cm-text: #1f2328;
+    --cm-heading: #6639ba;
+    --cm-strong: #1f2328;
+    --cm-em: #1f2328;
+    --cm-link: #0969da;
+    --cm-quote: #57606a;
+    --cm-marker: #6e7781;
+    --cm-code: #953800;
+    --cm-string: #0a7d33;
+    --cm-number: #953800;
+    --cm-keyword: #cf222e;
+    --cm-comment: #6e7781;
+    --cm-tag: #116329;
+    --cm-attr: #0550ae;
+    --cm-property: #0550ae;
+    --cm-class: #953800;
+    --cm-function: #8250df;
+    --cm-punct: #57606a;
+    --cm-invalid: #cf222e;
+    --cm-selection: rgba(9, 105, 218, 0.18);
+    --cm-active-line: rgba(27, 31, 36, 0.045);
+    --cm-gutter-bg: var(--app-surface, #f6f8fa);
+    --cm-gutter-text: #8c959f;
+    --cm-bracket-bg: rgba(9, 105, 218, 0.14);
+    --cm-bracket-outline: rgba(9, 105, 218, 0.45);
   }
 </style>

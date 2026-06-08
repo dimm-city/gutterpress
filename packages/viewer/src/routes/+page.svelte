@@ -1,6 +1,5 @@
 <script lang="ts">
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
-  import ChapterList from "$lib/components/ChapterList.svelte";
   import FileTree from "$lib/components/FileTree.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
@@ -152,56 +151,6 @@
     getPlatform().openExternal(SETUP_GUIDE_URL).catch(() => {});
   }
 
-  // ── Chapter-list sidebar (#42) ──────────────────────────────────────────
-  // A collapsible left sidebar listing the project's .md chapters (and .css
-  // stylesheets separately). Open/closed state persists across sessions via
-  // ViewerPrefs.sidebarOpen. On narrow viewports it renders as a bottom-sheet
-  // drawer with a backdrop (CSS-driven). Clicking a chapter fires
-  // selectEditorFile so it opens in the editor pane (#38) when one is present;
-  // in a preview-only build it simply records the active path.
-  let sidebarOpen = $state(false);
-  let sidebarPrefsLoaded = $state(false);
-
-  // Load the persisted sidebar state once on mount (desktop only).
-  $effect(() => {
-    if (!isDesktop() || sidebarPrefsLoaded) return;
-    sidebarPrefsLoaded = true;
-    getPlatform()
-      .getViewerPrefs()
-      .then((prefs) => {
-        if (typeof prefs.sidebarOpen === "boolean") sidebarOpen = prefs.sidebarOpen;
-      })
-      .catch(() => {});
-  });
-
-  function toggleSidebar() {
-    sidebarOpen = !sidebarOpen;
-    if (isDesktop()) {
-      getPlatform().setViewerPrefs({ sidebarOpen }).catch(() => {});
-    }
-  }
-
-  function onSelectChapter(path: string) {
-    // Hand off to the editor seam (#38).
-    selectEditorFile(path);
-    // Clicking a chapter must reliably SHOW the file (issue #42 acceptance:
-    // "clicking switches the editor content"). The chapter-list sidebar and
-    // the editor pane are independent toggles, so on desktop folder projects
-    // we open the editor pane (if closed) and move focus into it — mirroring
-    // toggleEditor. In preview-only/url mode this just marks the active
-    // chapter so the sidebar highlight tracks the selection.
-    if (currentDir && sourceMode === "folder") {
-      const wasClosed = !editorOpen;
-      editorOpen = true;
-      if (wasClosed) focusEditorWhenReady();
-    }
-    // On the mobile bottom-sheet drawer, picking a chapter dismisses it.
-    if (window.matchMedia("(max-width: 640px)").matches) {
-      sidebarOpen = false;
-      if (isDesktop()) getPlatform().setViewerPrefs({ sidebarOpen: false }).catch(() => {});
-    }
-  }
-
   // ── In-app markdown editor (#38) + unsaved-changes (#44) ──────────────────
   // editorOpen toggles the file-tree + editor split alongside the preview.
   // The EditorBuffer (#44) is the single owner of the edit lifecycle: open file
@@ -241,6 +190,13 @@
     typeof import("$lib/components/MarkdownEditor.svelte")["default"] | null
   >(null);
   let editorModuleLoading = $state(false);
+  // Set when the lazy import of the editor chunk fails, so the load effect does
+  // NOT immediately retry (which spammed an infinite error-toast loop). Cleared
+  // by an explicit user "Retry".
+  let editorModuleFailed = $state(false);
+  function retryEditorLoad() {
+    editorModuleFailed = false;
+  }
   // Set when the editor is opened before its (lazy) component has mounted, so
   // the focus request is honored once editorRef becomes available.
   let pendingEditorFocus = $state(false);
@@ -258,17 +214,30 @@
     }
   });
   $effect(() => {
-    if (!editorOpen || !currentDir || MarkdownEditor || editorModuleLoading) return;
+    if (
+      !editorOpen ||
+      !currentDir ||
+      MarkdownEditor ||
+      editorModuleLoading ||
+      editorModuleFailed
+    )
+      return;
     editorModuleLoading = true;
     import("$lib/components/MarkdownEditor.svelte")
       .then((m) => {
         MarkdownEditor = m.default;
       })
       .catch((e) => {
-        editorModuleLoading = false;
+        // Mark as failed so the effect doesn't immediately re-run and retry —
+        // that turned a single failed chunk fetch into an infinite error-toast
+        // loop. Surface ONE error; the editor pane shows a Retry affordance.
+        editorModuleFailed = true;
         toast?.error(
           `Could not open the editor: ${e instanceof Error ? e.message : String(e)}`,
         );
+      })
+      .finally(() => {
+        editorModuleLoading = false;
       });
   });
 
@@ -581,20 +550,25 @@
         // Build the chapter-jump outline from the freshly rendered DOM.
         refreshOutline();
       } else if (e.name === "sourceLineChanged") {
-        // Preview→editor sync: the reader scrolled; follow in the editor and
-        // update the active outline entry. Only move the editor when the scrolled
-        // chapter is the file that's open (per-file source lines), and not while
-        // the editor itself is driving the preview.
+        // Preview→editor sync: the reader scrolled. Follow in the editor and
+        // update the active outline entry — but not while the editor itself is
+        // driving the preview (echo guard).
         const line = e.detail.sourceLine;
+        const chap = e.detail.chapter;
         if (typeof line === "number") {
-          if (
-            Date.now() >= suppressPreviewSyncUntil &&
-            editorPaneOpen &&
-            e.detail.chapter === editorChapter
-          ) {
-            editorRef?.revealLine(line);
-          }
           updateActiveOutline(line);
+          if (Date.now() >= suppressPreviewSyncUntil && editorPaneOpen) {
+            if (chap === editorChapter) {
+              editorRef?.revealLine(line);
+            } else if (chap && currentDir && !buffer?.isDirty) {
+              // Scrolled into a DIFFERENT chapter: follow it by opening that
+              // chapter's file, then reveal the line once it has loaded. Skipped
+              // when there are unsaved edits so it never yanks the file away mid-
+              // edit. This is what makes the editor track the whole book, not
+              // just the one open chapter (the "sporadic" complaint).
+              followChapterInEditor(chap, line);
+            }
+          }
         }
       } else if (e.name === "pageChanged") {
         if (rendering) {
@@ -676,11 +650,6 @@
       if ((e.ctrlKey || e.metaKey) && (e.key === "e" || e.key === "E")) {
         e.preventDefault();
         toggleEditor();
-      }
-      // Cmd/Ctrl+B toggles the chapter-list sidebar (#42).
-      if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")) {
-        e.preventDefault();
-        toggleSidebar();
       }
     }
     window.addEventListener("keydown", onGlobalKey);
@@ -1264,6 +1233,44 @@
       .catch(() => {});
   }
 
+  // Cross-chapter follow (preview→editor): open the scrolled chapter's file and
+  // reveal the line once the buffer has actually swapped to it. Polls editorChapter
+  // (the file load is async) rather than guessing at timing, with a ~2s cap.
+  let crossChapterReveal:
+    | { chapter: string; line: number; tries: number; nudges: number }
+    | null = null;
+  function followChapterInEditor(chapter: string, line: number) {
+    if (!currentDir) return;
+    const dir = currentDir.replace(/[\\/]+$/, "");
+    crossChapterReveal = { chapter, line, tries: 0, nudges: 0 };
+    selectEditorFile(`${dir}/${chapter}`);
+    pumpCrossChapterReveal();
+  }
+  function pumpCrossChapterReveal() {
+    const r = crossChapterReveal;
+    if (!r) return;
+    if (editorChapter === r.chapter && editorRef) {
+      // The file load swaps the editor doc and resets scroll to the TOP, and
+      // that reset can land AFTER our first reveal — so re-issue the reveal a
+      // few times (~250ms) so the last one wins. Without this the editor sat at
+      // the top of the newly-opened chapter instead of the synced line.
+      suppressPreviewSyncUntil = Date.now() + 300;
+      editorRef.revealLine(r.line);
+      if (++r.nudges >= 5) {
+        crossChapterReveal = null;
+        return;
+      }
+      setTimeout(pumpCrossChapterReveal, 50);
+      return;
+    }
+    // Still waiting for the async file load to swap the buffer to this chapter.
+    if (r.tries++ > 40) {
+      crossChapterReveal = null;
+      return;
+    }
+    setTimeout(pumpCrossChapterReveal, 50);
+  }
+
   // Editor→preview: the caret moved or the editor scrolled. Drive the preview to
   // the matching source line WITHIN the open chapter; guard the echo so the
   // preview's resulting sourceLineChanged doesn't bounce back into the editor.
@@ -1448,23 +1455,9 @@
 <div class="shell">
   <header class="toolbar" class:edit-narrow={isNarrow && paneMode === "edit"}>
     <section class="left">
-      <!-- Chapter-list sidebar toggle (#42): button + Ctrl/Cmd+B. Disabled
-           until a project folder is open (the sidebar lists that folder's
-           chapters). -->
-      <button
-        class="icon-btn"
-        class:active={sidebarOpen}
-        onclick={toggleSidebar}
-        disabled={!currentDir || sourceMode === "url"}
-        title="Toggle chapter list (Ctrl+B)"
-        aria-label="Toggle chapter list"
-        aria-pressed={sidebarOpen}
-      >
-        <Icon name="panel-left" />
-      </button>
-      <button bind:this={openBtn} class="primary icon-text" onclick={() => (openLocationOpen = true)} disabled={busy} title="Open folder or web address (Ctrl+O)">
+      <button bind:this={openBtn} class="primary icon-text open-btn" onclick={() => (openLocationOpen = true)} disabled={busy} title="Open folder or web address (Ctrl+O)" aria-label="Open folder or web address">
         <Icon name="folder-open" />
-        <span>Open</span>
+        <span class="open-label">Open</span>
       </button>
       {#if sourceMode === "url" && currentUrl}
         {#if docTitle}
@@ -1505,6 +1498,8 @@
                 <button
                   class="menu-item chapter-item"
                   class:active={i === activeOutlineIndex}
+                  class:chapter-top={entry.level <= 1}
+                  class:chapter-sub={entry.level >= 3}
                   style="padding-left: {8 + (entry.level - 1) * 14}px"
                   onclick={(e) => { jumpToOutline(entry); closeMenu(e); }}
                 >
@@ -1614,22 +1609,22 @@
           class:active={viewMode === "single"}
           onclick={() => applyViewMode("single", true)}
           disabled={!previewUrl}
-          title="Single page view (Page)"
+          title="Show one page at a time"
           aria-label="Single page view"
           aria-pressed={viewMode === "single"}
         >
-          <Icon name="rectangle-vertical" /><span class="view-label">Page</span>
+          <Icon name="rectangle-vertical" /><span class="view-label">Single</span>
         </button>
         <button
           class="icon-text"
           class:active={viewMode === "two-column"}
           onclick={() => applyViewMode("two-column", true)}
           disabled={!previewUrl}
-          title="Two-page spread view (Spread)"
-          aria-label="Two-page spread view"
+          title="Show two pages side by side, like an open book"
+          aria-label="Two pages side by side"
           aria-pressed={viewMode === "two-column"}
         >
-          <Icon name="columns-2" /><span class="view-label">Spread</span>
+          <Icon name="columns-2" /><span class="view-label">Two-page</span>
         </button>
       </div>
       <details class="menu view-mode-menu">
@@ -1658,7 +1653,7 @@
             onclick={(e) => { applyViewMode("two-column", true); closeMenu(e); }}
             disabled={!previewUrl}
           >
-            <Icon name="columns-2" /> Two-page spread
+            <Icon name="columns-2" /> Two pages side by side
           </button>
         </div>
       </details>
@@ -1671,10 +1666,9 @@
         onchange={(e) => applyZoom((e.currentTarget as HTMLSelectElement).value)}
         disabled={!previewUrl}
         aria-label="Zoom level"
-        title="Zoom level — F for fit width, + / - to zoom in and out"
+        title="Zoom — F fits the page to the window, + / − zoom in and out"
       >
-        <!-- UX-015: fit-width first, renamed to "Fit width" -->
-        <option value="fit-width">Fit width</option>
+        <option value="fit-width">Fit to width</option>
         <option value="0.25">25%</option>
         <option value="0.5">50%</option>
         <option value="0.75">75%</option>
@@ -1693,7 +1687,7 @@
           <Icon name="chevron-down" size={12} />
         </summary>
         <div class="menu-panel">
-          {#each [["fit-width", "Fit width"], ["0.25", "25%"], ["0.5", "50%"], ["0.75", "75%"], ["1", "100%"], ["1.25", "125%"], ["1.5", "150%"], ["2", "200%"]] as [val, label] (val)}
+          {#each [["fit-width", "Fit to width"], ["0.25", "25%"], ["0.5", "50%"], ["0.75", "75%"], ["1", "100%"], ["1.25", "125%"], ["1.5", "150%"], ["2", "200%"]] as [val, label] (val)}
             <button
               aria-pressed={zoom === val}
               class="menu-item"
@@ -1770,29 +1764,10 @@
     <div
       class="workspace"
       class:editor-open={editorPaneOpen}
-      class:sidebar-open={sidebarOpen && !!currentDir && sourceMode === "folder"}
       class:narrow={isNarrow}
       class:show-edit={isNarrow && paneMode === "edit"}
       class:show-view={isNarrow && paneMode === "view"}
     >
-      {#if currentDir && sourceMode === "folder" && sidebarOpen}
-        <!-- Backdrop only matters on the mobile bottom-sheet variant (hidden via
-             CSS on wide viewports). Click dismisses the drawer. -->
-        <button
-          type="button"
-          class="sidebar-backdrop"
-          aria-label="Close chapter list"
-          onclick={toggleSidebar}
-        ></button>
-        <aside class="pane chapter-list-pane" aria-label="Chapters">
-          <ChapterList
-            projectDir={currentDir}
-            selectedPath={editorFilePath}
-            {dirtyPath}
-            onSelectFile={onSelectChapter}
-          />
-        </aside>
-      {/if}
       {#if editorPaneOpen}
         <aside class="pane file-tree-pane">
           <FileTree
@@ -1817,6 +1792,11 @@
               onChange={onEditorChange}
               onAnchorLine={onEditorAnchorLine}
             />
+          {:else if editorModuleFailed}
+            <div class="editor-loading" role="alert">
+              <p>The editor failed to load.</p>
+              <button class="primary" onclick={retryEditorLoad}>Retry</button>
+            </div>
           {:else}
             <div class="editor-loading" role="status" aria-live="polite">
               Loading editor…
@@ -1926,24 +1906,10 @@
     min-height: 0;
     overflow: hidden;
   }
+  /* Editor open: [files | editor | preview]. The preview is weighted heaviest
+     since it's the primary output for a writer. */
   .workspace.editor-open {
-    grid-template-columns: minmax(160px, 220px) minmax(280px, 1fr) minmax(320px, 1.2fr);
-  }
-  /* Chapter-list sidebar (#42): a leading column before the preview (or before
-     the editor split). On wide viewports it's a persistent side panel. */
-  .workspace.sidebar-open {
-    grid-template-columns: minmax(180px, 240px) 1fr;
-  }
-  .workspace.sidebar-open.editor-open {
-    grid-template-columns:
-      minmax(180px, 240px) minmax(160px, 220px) minmax(280px, 1fr) minmax(320px, 1.2fr);
-  }
-  .chapter-list-pane {
-    border-right: 1px solid var(--app-border);
-  }
-  /* Backdrop is only visible in the mobile bottom-sheet variant (below). */
-  .sidebar-backdrop {
-    display: none;
+    grid-template-columns: minmax(150px, 200px) minmax(280px, 1fr) minmax(360px, 1.4fr);
   }
   .pane {
     min-width: 0;
@@ -2192,7 +2158,31 @@
     border-color: var(--app-accent-border);
     color: var(--app-accent-text);
   }
-  .view-mode-group { display: inline-flex; gap: 6px; }
+  /* Page/Spread as a true segmented control: one bordered track, the selected
+     segment filled, the other transparent — so "which mode am I in" is obvious. */
+  .view-mode-group {
+    display: inline-flex;
+    gap: 0;
+    background: var(--app-control-bg);
+    border: 1px solid var(--app-control-border);
+    border-radius: 7px;
+    padding: 2px;
+  }
+  .view-mode-group button {
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 5px;
+    padding: 4px 9px;
+  }
+  .view-mode-group button:hover:not(:disabled) {
+    background: var(--app-control-hover-bg);
+    border-color: transparent;
+  }
+  .view-mode-group button.active {
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
+  }
 
   /* Chapter-jump dropdown (UX-013). Always visible when an outline exists —
      overrides the generic `.menu { display: none }` (which keeps zoom/view-mode
@@ -2232,11 +2222,32 @@
     max-height: 60vh;
     overflow-y: auto;
   }
-  .chapter-item { justify-content: space-between; gap: 12px; }
+  /* Hierarchy in the jump list: chapters (h1) bold, sub-headings (h3+) lighter,
+     a little breathing room before each chapter so groups are scannable. */
+  .chapter-item {
+    justify-content: space-between;
+    gap: 12px;
+    font-weight: 400;
+    color: var(--app-text-secondary);
+  }
+  .chapter-item.chapter-top {
+    font-weight: 650;
+    color: var(--app-text);
+    margin-top: 7px;
+    padding-top: 7px;
+    border-top: 1px solid var(--app-border);
+  }
+  .chapter-item.chapter-top:first-child {
+    margin-top: 0;
+    padding-top: 6px;
+    border-top: none;
+  }
+  .chapter-item.chapter-sub { color: var(--app-text-muted); }
+  .chapter-item.active { color: var(--app-accent-text); }
   .chapter-item-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chapter-item-page {
     flex: 0 0 auto;
-    opacity: 0.5;
+    opacity: 0.55;
     font-variant-numeric: tabular-nums;
     font-size: 11px;
   }
@@ -2423,6 +2434,13 @@
   @media screen and (max-width: 700px) {
     .path { display: none; }
   }
+  @media screen and (max-width: 820px) {
+    /* The chapter-jump menu keeps its icon + chevron but drops its (often long)
+       heading label so it stops eating the center width — which previously
+       pushed the page total "/ N" off-screen behind the right-side controls. */
+    .chapter-label { display: none; }
+    .chapter-summary { max-width: none; }
+  }
   @media screen and (max-width: 620px) {
     /* Fold Settings + Help into the "More" overflow menu, and drop the "Page"
        word from the pill — so the page navigation keeps room and the toolbar
@@ -2430,6 +2448,9 @@
     .opt-inline { display: none; }
     details.more-menu { display: inline-block; }
     .pill-word { display: none; }
+    /* Open becomes icon-only (the folder icon is unambiguous) so the primary
+       action never truncates to "Op". */
+    .open-label { display: none; }
   }
   @media screen and (max-width: 560px) {
     /* Compact page navigation: drop the first/last jump buttons, keep prev /
@@ -2457,9 +2478,7 @@
       display: none;
     }
     .workspace.narrow,
-    .workspace.narrow.editor-open,
-    .workspace.narrow.sidebar-open,
-    .workspace.narrow.sidebar-open.editor-open {
+    .workspace.narrow.editor-open {
       grid-template-columns: 1fr;
     }
     /* The file tree is part of the editing surface; fold it away on small
@@ -2481,43 +2500,6 @@
       overflow: hidden;
       pointer-events: none;
       opacity: 0;
-    }
-  }
-
-  /* ---- Chapter-list mobile bottom-sheet drawer (#42) ----
-     Under 640px the persistent side panel becomes a bottom-sheet drawer with a
-     backdrop. The grid columns collapse back to a single preview column so the
-     drawer floats above the preview rather than squeezing it. */
-  @media screen and (max-width: 640px) {
-    .workspace.sidebar-open,
-    .workspace.sidebar-open.editor-open {
-      grid-template-columns: 1fr;
-    }
-    .sidebar-backdrop {
-      display: block;
-      position: fixed;
-      inset: 0;
-      z-index: 60;
-      background: var(--app-scrim-modal, rgba(0, 0, 0, 0.45));
-      border: none;
-      border-radius: 0;
-      padding: 0;
-      margin: 0;
-      cursor: pointer;
-    }
-    .chapter-list-pane {
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 61;
-      max-height: 70vh;
-      border-right: none;
-      border-top: 1px solid var(--app-border);
-      border-top-left-radius: 12px;
-      border-top-right-radius: 12px;
-      background: var(--app-surface, var(--app-bg));
-      box-shadow: 0 -4px 20px var(--app-shadow-md, rgba(0, 0, 0, 0.35));
     }
   }
 </style>

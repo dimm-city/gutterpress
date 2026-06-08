@@ -329,25 +329,30 @@
   window.previewAPI = api;
 
   // Default highlight style (preview-only; never part of the PDF build path).
-  (function injectHlStyle() {
-    var s = document.createElement('style');
-    s.textContent =
-      '.pmd-hl{outline:2px solid var(--pmd-hl-color,#4ea1ff);outline-offset:2px;' +
-      'background:var(--pmd-hl-bg,rgba(78,161,255,.14));' +
-      'transition:outline-color .2s,background .2s;}';
-    (document.head || document.documentElement).appendChild(s);
-  })();
+  // Guarded so a minimal/headless DOM (e.g. unit-test harness) can't crash here.
+  if (typeof document.createElement === 'function') {
+    try {
+      var hlStyle = document.createElement('style');
+      hlStyle.textContent =
+        '.pmd-hl{outline:2px solid var(--pmd-hl-color,#4ea1ff);outline-offset:2px;' +
+        'background:var(--pmd-hl-bg,rgba(78,161,255,.14));' +
+        'transition:outline-color .2s,background .2s;}';
+      (document.head || document.documentElement).appendChild(hlStyle);
+    } catch (_e) { /* non-fatal: highlight just renders unstyled */ }
+  }
 
   // Click-to-source: emit elementActivated when the user clicks a source-mapped
   // block. Never preventDefault (links/selection keep working); the host decides
   // whether to act. (ADR 0005)
-  document.addEventListener('click', function (e) {
-    var el = e.target && e.target.closest ? e.target.closest('[data-source-line]') : null;
-    if (!el) return;
-    window.dispatchEvent(new CustomEvent('elementActivated', {
-      detail: { sourceLine: lineOf(el), chapter: chapterOf(el), id: el.id || null, tag: el.tagName.toLowerCase() }
-    }));
-  }, true);
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('click', function (e) {
+      var el = e.target && e.target.closest ? e.target.closest('[data-source-line]') : null;
+      if (!el) return;
+      window.dispatchEvent(new CustomEvent('elementActivated', {
+        detail: { sourceLine: lineOf(el), chapter: chapterOf(el), id: el.id || null, tag: el.tagName.toLowerCase() }
+      }));
+    }, true);
+  }
 
   var observedPageCount = 0;
   var pageObserverQueued = false;

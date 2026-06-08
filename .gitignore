@@ -48,6 +48,10 @@ tests/
 !tests/integration/**
 # Updater unit tests are committed (run in CI via the viewer `test` script)
 !tests/updater/
+# NOTE: the blanket `tests/` above excludes the tests DIRECTORY, so root-level
+# committed harnesses (pagedjs-interface.test.mjs, preview-bridge.test.mjs) are
+# tracked via `git add -f`. git's "can't re-include under an excluded parent"
+# rule means a `!tests/*.test.mjs` negation can't bring them back.
 !tests/updater/**
 .reviews/
 *.zip

@@ -119,7 +119,7 @@
             onchange={(e) => settings.set({ preview: { viewMode: (e.currentTarget as HTMLSelectElement).value as "single" | "two-column" } })}
           >
             <option value="single">Single page</option>
-            <option value="two-column">Two-page spread</option>
+            <option value="two-column">Two pages side by side</option>
           </select>
         </div>
         <div class="row">
@@ -129,7 +129,7 @@
             value={s.preview.defaultZoom}
             onchange={(e) => settings.set({ preview: { defaultZoom: (e.currentTarget as HTMLSelectElement).value } })}
           >
-            <option value="fit-width">Fit width</option>
+            <option value="fit-width">Fit to width</option>
             <option value="0.5">50%</option>
             <option value="0.75">75%</option>
             <option value="1">100%</option>
@@ -167,7 +167,7 @@
           />
         </div>
         <div class="row">
-          <label for="set-lineheight">Line height</label>
+          <label for="set-lineheight">Line spacing</label>
           <input
             id="set-lineheight"
             type="number"
@@ -210,10 +210,17 @@
         </div>
       </section>
 
-      <!-- Advanced --------------------------------------------------------- -->
-      <section class="group">
-        <div class="group-head">
-          <h3>Advanced</h3>
+      <!-- Advanced (collapsed by default) --------------------------------- -->
+      <!-- Developer-oriented knobs (file-watch polling, log verbosity). Hidden
+           behind a disclosure so a non-technical writer never has to reason
+           about milliseconds or log levels to use the app. -->
+      <details class="group advanced">
+        <summary class="group-head advanced-summary">
+          <h3>Advanced <span class="advanced-hint">— for developers</span></h3>
+        </summary>
+        <div class="advanced-body">
+        <div class="group-head advanced-reset-row">
+          <span></span>
           <button class="reset" onclick={() => settings.resetSection("advanced")}>Reset to defaults</button>
         </div>
         <div class="row">
@@ -241,24 +248,8 @@
             <option value="debug">Debug</option>
           </select>
         </div>
-      </section>
-
-      <!-- Stubs for future milestones -------------------------------------- -->
-      <section class="group stub">
-        <div class="group-head">
-          <h3>AI Assistant</h3>
-          <span class="coming-soon">Coming soon</span>
         </div>
-        <p class="stub-note">Provider, model, and API key settings arrive in a later release.</p>
-      </section>
-
-      <section class="group stub">
-        <div class="group-head">
-          <h3>Publishing</h3>
-          <span class="coming-soon">Coming soon</span>
-        </div>
-        <p class="stub-note">Per-provider publishing credentials arrive in a later release.</p>
-      </section>
+      </details>
 
       <footer class="actions">
         <button class="primary" onclick={close}>Done</button>
@@ -364,6 +355,17 @@
     font-size: 13px;
     min-width: 160px;
   }
+  /* Reset the native select chrome (Linux GTK ignores `background` otherwise,
+     so the dropdowns rendered as light OS widgets against the dark dialog) and
+     draw a consistent custom chevron. */
+  .row select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 28px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8a8a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+  }
   .row input[type="color"] {
     width: 40px;
     height: 28px;
@@ -373,18 +375,24 @@
     background: none;
     cursor: pointer;
   }
-  .stub { opacity: 0.7; }
-  .coming-soon {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--app-text-faint);
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    border-radius: 4px;
-    padding: 2px 6px;
+  /* Advanced disclosure: collapsed by default; summary reads as a section head. */
+  .advanced > .advanced-summary { cursor: pointer; list-style: none; }
+  .advanced > .advanced-summary::-webkit-details-marker { display: none; }
+  .advanced > .advanced-summary::after {
+    content: "▸";
+    margin-left: auto;
+    color: var(--app-text-muted);
+    font-size: 11px;
   }
-  .stub-note { margin: 0; font-size: 12px; color: var(--app-text-faint); }
+  .advanced[open] > .advanced-summary::after { content: "▾"; }
+  .advanced-hint {
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--app-text-faint);
+    font-weight: 400;
+  }
+  .advanced-reset-row { border-bottom: none; margin-top: 4px; padding-bottom: 0; }
+  .advanced-body { padding-top: 4px; }
   .actions {
     display: flex;
     gap: 8px;
