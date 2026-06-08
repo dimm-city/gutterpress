@@ -35,6 +35,32 @@ interface ElectronUpdater {
   onEvent(cb: (event: UpdaterEvent) => void): () => void;
 }
 
+interface AppSettings {
+  editor: {
+    fontFamily: string;
+    fontSize: number;
+    lineHeight: number;
+    spellCheckLanguage: string;
+    autoSaveDelay: number;
+  };
+  appearance: {
+    theme: "light" | "dark" | "system";
+    previewBg: string;
+  };
+  preview: {
+    defaultZoom: string;
+    viewMode: "single" | "two-column";
+  };
+  advanced: {
+    fileWatcherInterval: number;
+    logLevel: "error" | "warn" | "info" | "debug";
+  };
+}
+
+type DeepPartialSettings = {
+  [K in keyof AppSettings]?: Partial<AppSettings[K]>;
+};
+
 interface Window {
   electron?: {
     /** Integer IPC-surface version; mirrors DESKTOP_API in updater/contract.ts. */
@@ -66,6 +92,9 @@ interface Window {
       recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
       favorites?: Array<{ path: string; title: string }>;
     }): Promise<{ ok: boolean }>;
+    // User settings (#45)
+    getSettings(): Promise<AppSettings>;
+    setSettings(patch: DeepPartialSettings): Promise<{ ok: boolean }>;
     // Open Location modal: recent folders + favorites
     getRecentFolders(): Promise<
       Array<{ path: string; title: string; openedAt: string; exists: boolean }>

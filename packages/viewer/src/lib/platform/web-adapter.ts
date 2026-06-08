@@ -11,9 +11,12 @@
  * host-divergent primitives throw, to be implemented via the File System Access
  * API in 0.6.0.
  */
+import { DEFAULT_SETTINGS } from "./contract";
 import type {
   Platform,
   ViewerPrefs,
+  AppSettings,
+  DeepPartial,
   PreviewStartArgs,
   PreviewStartResult,
   BuildArgs,
@@ -34,6 +37,20 @@ function notImplemented(method: string): never {
 
 function rejectNotImplemented(method: string): Promise<never> {
   return Promise.reject(new Error(`${method}: ${NOT_IMPL}`));
+}
+
+const SETTINGS_KEY = "print-md.app-settings";
+
+/** Recursively merge a settings patch over a base, returning a new object. */
+function deepMergeSettings(base: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
+  const out = { ...base } as Record<string, unknown>;
+  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
+    const value = patch[key];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      out[key] = { ...base[key], ...(value as object) };
+    }
+  }
+  return out as unknown as AppSettings;
 }
 
 const webUpdater: UpdaterApi = {
@@ -102,6 +119,30 @@ export class WebAdapter implements Platform {
 
   setViewerPrefs(_patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> {
     return rejectNotImplemented("setViewerPrefs");
+  }
+
+  // Settings (#45) — genuinely implemented on web via localStorage so the
+  // settings store works even outside Electron.
+  getSettings(): Promise<AppSettings> {
+    try {
+      const raw = globalThis.localStorage?.getItem(SETTINGS_KEY);
+      const stored = raw ? (JSON.parse(raw) as DeepPartial<AppSettings>) : {};
+      return Promise.resolve(deepMergeSettings(DEFAULT_SETTINGS, stored));
+    } catch {
+      return Promise.resolve(DEFAULT_SETTINGS);
+    }
+  }
+
+  setSettings(patch: DeepPartial<AppSettings>): Promise<{ ok: boolean }> {
+    try {
+      const raw = globalThis.localStorage?.getItem(SETTINGS_KEY);
+      const stored = raw ? (JSON.parse(raw) as DeepPartial<AppSettings>) : {};
+      const merged = deepMergeSettings(deepMergeSettings(DEFAULT_SETTINGS, stored), patch);
+      globalThis.localStorage?.setItem(SETTINGS_KEY, JSON.stringify(merged));
+      return Promise.resolve({ ok: true });
+    } catch {
+      return Promise.resolve({ ok: false });
+    }
   }
 
   getRecentFolders(): Promise<RecentFolderEntry[]> {

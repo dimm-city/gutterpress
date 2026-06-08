@@ -63,6 +63,70 @@ export interface ViewerPrefs {
   favorites?: Array<{ path: string; title: string }>;
 }
 
+// ── User settings (#45) ──────────────────────────────────────────────────────
+//
+// Persisted, section-organised user preferences. Distinct from `ViewerPrefs`
+// (session/per-project state). Stored in `userData/app-settings.json` on desktop
+// and `localStorage` on the web PWA.
+//
+// Adding a new setting requires ONE line: add the key + default to the relevant
+// section of `DEFAULT_SETTINGS` (its type is inferred). A matching UI control in
+// `SettingsDialog.svelte` is the only other change needed.
+
+export interface AppSettings {
+  editor: {
+    fontFamily: string;
+    fontSize: number;
+    lineHeight: number;
+    spellCheckLanguage: string;
+    autoSaveDelay: number;
+  };
+  appearance: {
+    theme: "light" | "dark" | "system";
+    previewBg: string;
+  };
+  preview: {
+    defaultZoom: string;
+    viewMode: "single" | "two-column";
+  };
+  advanced: {
+    fileWatcherInterval: number;
+    logLevel: "error" | "warn" | "info" | "debug";
+  };
+}
+
+/**
+ * Canonical defaults. The single source of truth for the settings schema — its
+ * shape defines `AppSettings`. The inline `+page.svelte` defaults that used to
+ * live as local `$state` (#5a5a5a / two-column / fit-width) now live here.
+ */
+export const DEFAULT_SETTINGS: AppSettings = {
+  editor: {
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontSize: 14,
+    lineHeight: 1.6,
+    spellCheckLanguage: "en-US",
+    autoSaveDelay: 1000,
+  },
+  appearance: {
+    theme: "system",
+    previewBg: "#5a5a5a",
+  },
+  preview: {
+    defaultZoom: "fit-width",
+    viewMode: "two-column",
+  },
+  advanced: {
+    fileWatcherInterval: 300,
+    logLevel: "warn",
+  },
+};
+
+/** A recursively-optional view of `T` — used for settings patches. */
+export type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
+};
+
 export interface PreviewStartArgs {
   input: string;
 }
@@ -130,6 +194,8 @@ export interface HostServices {
   getLastProject(): Promise<string | null>;
   getViewerPrefs(): Promise<ViewerPrefs>;
   setViewerPrefs(patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }>;
+  getSettings(): Promise<AppSettings>;
+  setSettings(patch: DeepPartial<AppSettings>): Promise<{ ok: boolean }>;
   getRecentFolders(): Promise<RecentFolderEntry[]>;
   getFavorites(): Promise<FavoriteEntry[]>;
   toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }>;

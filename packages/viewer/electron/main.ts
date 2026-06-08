@@ -290,6 +290,92 @@ async function writePrefs(prefs: ViewerPrefs): Promise<void> {
   await writeFile(prefsPath(), JSON.stringify(prefs, null, 2), "utf8");
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// User settings (#45) — persisted, section-organised user preferences in a
+// SEPARATE file from viewer-prefs.json so session/per-project state and durable
+// user settings don't collide. Shape mirrors AppSettings in
+// src/lib/platform/contract.ts (kept in sync manually).
+// ──────────────────────────────────────────────────────────────────────────
+
+interface AppSettings {
+  editor: {
+    fontFamily: string;
+    fontSize: number;
+    lineHeight: number;
+    spellCheckLanguage: string;
+    autoSaveDelay: number;
+  };
+  appearance: {
+    theme: "light" | "dark" | "system";
+    previewBg: string;
+  };
+  preview: {
+    defaultZoom: string;
+    viewMode: "single" | "two-column";
+  };
+  advanced: {
+    fileWatcherInterval: number;
+    logLevel: "error" | "warn" | "info" | "debug";
+  };
+}
+
+const DEFAULT_SETTINGS: AppSettings = {
+  editor: {
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontSize: 14,
+    lineHeight: 1.6,
+    spellCheckLanguage: "en-US",
+    autoSaveDelay: 1000,
+  },
+  appearance: {
+    theme: "system",
+    previewBg: "#5a5a5a",
+  },
+  preview: {
+    defaultZoom: "fit-width",
+    viewMode: "two-column",
+  },
+  advanced: {
+    fileWatcherInterval: 300,
+    logLevel: "warn",
+  },
+};
+
+type DeepPartialSettings = {
+  [K in keyof AppSettings]?: Partial<AppSettings[K]>;
+};
+
+function settingsPath(): string {
+  return path.join(app.getPath("userData"), "app-settings.json");
+}
+
+function mergeSettings(base: AppSettings, patch: DeepPartialSettings): AppSettings {
+  const out = { ...base } as Record<string, unknown>;
+  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
+    const value = patch[key];
+    if (value && typeof value === "object") {
+      out[key] = { ...base[key], ...value };
+    }
+  }
+  return out as unknown as AppSettings;
+}
+
+async function readSettings(): Promise<AppSettings> {
+  try {
+    const stored = JSON.parse(
+      await readFile(settingsPath(), "utf8"),
+    ) as DeepPartialSettings;
+    return mergeSettings(DEFAULT_SETTINGS, stored);
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+async function writeSettings(settings: AppSettings): Promise<void> {
+  await mkdir(app.getPath("userData"), { recursive: true });
+  await writeFile(settingsPath(), JSON.stringify(settings, null, 2), "utf8");
+}
+
 async function existingDirectory(dir: string | undefined): Promise<string | null> {
   if (!dir) return null;
   try {
@@ -627,6 +713,16 @@ ipcMain.handle("app:getViewerPrefs", async () => {
 ipcMain.handle("app:setViewerPrefs", async (_e, patch: Partial<ViewerPrefs>) => {
   const current = await readPrefs();
   await writePrefs({ ...current, ...patch });
+  return { ok: true };
+});
+
+ipcMain.handle("app:getSettings", async () => {
+  return readSettings();
+});
+
+ipcMain.handle("app:setSettings", async (_e, patch: DeepPartialSettings) => {
+  const current = await readSettings();
+  await writeSettings(mergeSettings(current, patch));
   return { ok: true };
 });
 

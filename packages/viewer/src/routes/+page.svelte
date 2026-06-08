@@ -4,11 +4,13 @@
   import type { ToastController } from "$lib/components/Toast.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
+  import SettingsDialog from "$lib/components/SettingsDialog.svelte";
   import OpenLocationDialog from "$lib/components/OpenLocationDialog.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { PreviewClient } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { useSettings, _loadSettings } from "$lib/settings.svelte";
 
   type DiagnosticsTool = {
     name: string;
@@ -66,10 +68,18 @@
   let pageEditing = $state(false);
   let pageEditValue = $state("1");
   let pageEditInput = $state<HTMLInputElement | undefined>(undefined);
-  let zoom = $state<string>("fit-width");
-  let viewMode = $state<"single" | "two-column">("two-column");
+  // ── User settings (#45) ────────────────────────────────────────────────
+  // bgColor, viewMode and zoom are sourced from the persisted settings store
+  // (their old inline defaults #5a5a5a / two-column / fit-width now live in
+  // DEFAULT_SETTINGS). Local mutations write back through useSettings().set().
+  const settings = useSettings();
+  _loadSettings();
+  let zoom = $derived(settings.current.preview.defaultZoom);
+  let viewMode = $derived(settings.current.preview.viewMode);
+  let bgColor = $derived(settings.current.appearance.previewBg);
   let debug = $state(false);
-  let bgColor = $state("#5a5a5a");
+  let settingsOpen = $state(false);
+  let settingsBtn = $state<HTMLButtonElement | undefined>(undefined);
   let rendering = $state(false);
   let renderProgressPage = $state(0);
   let renderCompleteOverlay = $state(false);
@@ -104,6 +114,15 @@
     if (!client) return;
     // Inject once on client attach; renderingComplete will re-inject with final bg
     client.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
+  });
+
+  // Apply view-mode changes that originate from the Settings panel (which writes
+  // the settings store directly rather than calling applyViewMode). Keeps the
+  // rendered spread in sync with the derived viewMode without a reload.
+  $effect(() => {
+    const mode = viewMode;
+    if (!client || rendering) return;
+    client.call("setViewMode", [mode]).catch(() => {});
   });
 
   $effect(() => {
@@ -257,6 +276,21 @@
     });
 
     return () => off?.();
+  });
+
+  // ----------------------------------------------------------------
+  // Global keyboard shortcuts (available without a loaded document)
+  // ----------------------------------------------------------------
+  $effect(() => {
+    function onGlobalKey(e: KeyboardEvent) {
+      // Cmd/Ctrl+, opens the Settings panel (toggles closed if already open).
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        settingsOpen = !settingsOpen;
+      }
+    }
+    window.addEventListener("keydown", onGlobalKey);
+    return () => window.removeEventListener("keydown", onGlobalKey);
   });
 
   // ----------------------------------------------------------------
@@ -480,7 +514,9 @@
         ? restoreState.currentPage
         : null;
       if (restoredViewMode) {
-        viewMode = restoredViewMode;
+        // Per-project ViewerPrefs override → seed the settings store so the
+        // derived viewMode reflects this project's last-used mode.
+        settings.set({ preview: { viewMode: restoredViewMode } });
       }
       userSetViewMode = !!restoredViewMode;
       // Loud signal for the #1 cause of wrong fonts/styles: shared asset dirs
@@ -749,7 +785,7 @@
   }
 
   function applyZoom(value: string) {
-    zoom = value;
+    settings.set({ preview: { defaultZoom: value } });
     if (!client) return;
     if (value === "fit-width") {
       applyFitWidthZoom();
@@ -765,7 +801,9 @@
   }
 
   function applyViewMode(mode: "single" | "two-column", fromUser: boolean) {
-    viewMode = mode;
+    // Settings store owns the durable default; ViewerPrefs keeps a per-project
+    // override so reopening a folder restores its last view mode.
+    settings.set({ preview: { viewMode: mode } });
     if (fromUser) userSetViewMode = true;
     saveViewerPrefs({ viewMode: mode });
     client?.call("setViewMode", [mode]).catch(() => {});
@@ -782,7 +820,7 @@
 
   function onBgColor(e: Event) {
     const v = (e.target as HTMLInputElement).value;
-    bgColor = v;
+    settings.set({ appearance: { previewBg: v } });
     client?.setBgColor(v);
     // Re-inject canvas styles with new bg (covers elements Paged.js strips)
     client?.injectStyles("viewer-canvas", buildViewerStyles(v));
@@ -949,8 +987,8 @@
       </button>
       <select
         class="zoom-select"
-        bind:value={zoom}
-        onchange={() => applyZoom(zoom)}
+        value={zoom}
+        onchange={(e) => applyZoom((e.currentTarget as HTMLSelectElement).value)}
         disabled={!previewUrl}
         title="Zoom level — F for fit width, + / - to zoom in and out"
       >
@@ -1004,6 +1042,16 @@
           <Icon name="refresh-cw" />
         </button>
       {/if}
+      <!-- Settings panel (#45): gear icon + Cmd/Ctrl+, shortcut -->
+      <button
+        bind:this={settingsBtn}
+        class="icon-btn"
+        onclick={() => (settingsOpen = true)}
+        title="Settings (Ctrl+,)"
+        aria-label="Settings"
+      >
+        <Icon name="settings" />
+      </button>
       <!-- UX-026: bind:this for focus restore -->
       <button
         bind:this={helpBtn}
@@ -1057,6 +1105,7 @@
 </div>
 
 <HelpDialog bind:open={helpOpen} triggerEl={helpBtn} />
+<SettingsDialog bind:open={settingsOpen} triggerEl={settingsBtn} />
 <OpenLocationDialog
   bind:open={openLocationOpen}
   onOpenFolder={(path) => startFolderPreview(path)}

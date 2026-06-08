@@ -93,6 +93,32 @@ interface ViewerPrefs {
   favorites?: FavoriteEntry[];
 }
 
+interface AppSettings {
+  editor: {
+    fontFamily: string;
+    fontSize: number;
+    lineHeight: number;
+    spellCheckLanguage: string;
+    autoSaveDelay: number;
+  };
+  appearance: {
+    theme: "light" | "dark" | "system";
+    previewBg: string;
+  };
+  preview: {
+    defaultZoom: string;
+    viewMode: "single" | "two-column";
+  };
+  advanced: {
+    fileWatcherInterval: number;
+    logLevel: "error" | "warn" | "info" | "debug";
+  };
+}
+
+type DeepPartialSettings = {
+  [K in keyof AppSettings]?: Partial<AppSettings[K]>;
+};
+
 contextBridge.exposeInMainWorld("electron", {
   // ──────────────────────────────────────────────────────────────────────
   // API version contract.  Must stay in sync with DESKTOP_API in
@@ -148,6 +174,10 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("app:getViewerPrefs"),
   setViewerPrefs: (patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("app:setViewerPrefs", patch),
+  getSettings: (): Promise<AppSettings> =>
+    ipcRenderer.invoke("app:getSettings"),
+  setSettings: (patch: DeepPartialSettings): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("app:setSettings", patch),
 
   // Open Location modal: recent folders + favorites
   getRecentFolders: (): Promise<
