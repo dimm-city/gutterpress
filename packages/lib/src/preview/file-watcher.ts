@@ -221,7 +221,19 @@ export function createFileWatcher(state: ServerState): FSWatcher {
           debug(`Updated: ${dest.relativePath}`);
         }
 
-        // Reload config and regenerate
+        // CSS hot-swap fast path: a stylesheet edit doesn't change content flow,
+        // so we re-copy it (above) and tell the client to re-fetch JUST that
+        // <link> — no markdown re-render, no re-pagination, no reload. Scroll
+        // position is preserved and the new styles apply on the next frame.
+        // (Geometry-affecting CSS like @page size won't re-flow page boxes until
+        // a content change triggers a full rebuild — acceptable for live tweaks.)
+        if (dest && path.extname(filePath).toLowerCase() === '.css') {
+          state.previewServer?.broadcastCssUpdate(dest.relativePath);
+          info(`CSS hot-swapped: ${dest.relativePath}`);
+          return;
+        }
+
+        // Content change: re-render markdown + regenerate book.html, then reload.
         const manifest = await loadManifest(state.currentInputPath);
         const updatedConfig = resolveConfig({}, manifest);
         state.config = updatedConfig;
