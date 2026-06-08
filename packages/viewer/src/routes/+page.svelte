@@ -1397,6 +1397,9 @@
     {/if}
 
     <section class="right">
+      <!-- Separator so the page-navigation group reads as a distinct unit and
+           doesn't visually merge into the mode toggle beside it. -->
+      <span class="toolbar-sep" aria-hidden="true"></span>
       <!-- Edit / View pane toggle. On wide viewports this toggles the editor
            split open/closed alongside the preview (#38). On narrow viewports
            the layout is single-pane, and this switches which pane is shown
@@ -1894,7 +1897,25 @@
 
   section { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .left { justify-self: start; overflow: hidden; }
-  .center { justify-self: center; flex-shrink: 0; }
+  /* Group the page navigation (prev · pill · next) into one bordered segmented
+     control so it reads as a single unit instead of merging with the buttons
+     beside it. Inner buttons go flat; the pill keeps its own look. */
+  .center {
+    justify-self: center;
+    flex-shrink: 0;
+    gap: 2px;
+    background: var(--app-control-bg);
+    border: 1px solid var(--app-control-border);
+    border-radius: 8px;
+    padding: 2px;
+  }
+  .center > .icon-btn {
+    background: transparent;
+    border-color: transparent;
+  }
+  .center > .icon-btn:hover:not(:disabled) {
+    background: var(--app-control-hover-bg);
+  }
   .right { justify-self: end; flex-shrink: 0; }
 
   /* ---- Buttons & inputs ---- */
