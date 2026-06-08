@@ -18,6 +18,7 @@ import { openPath } from '../lib/open-path.ts';
 import { getAssetPath } from '../lib/embedded-assets.ts';
 import type { ServerState } from './server-context.ts';
 import { handleApiRequest } from './api-middleware.ts';
+import { renderChapterPreviewHtml, incrementalPreviewEnabled } from './file-watcher.ts';
 
 /**
  * URL path that upgrades to a WebSocket subscribed to the reload topic.
@@ -31,9 +32,100 @@ const HMR_PATH = '/__print-md-hmr';
 const HMR_CLIENT_SNIPPET = `
 <script>
   (function () {
+    // When loaded by the preview SHELL (iframe double-buffer), the shell loads us
+    // with ?pmdshell=1 and owns HMR (it swaps frames + syncs scroll), so we stay
+    // inert. We must NOT bail merely because we're framed — other hosts (the
+    // Electron viewer's SPA) embed book.html directly and rely on this HMR client
+    // for CSS hot-swap, scroll-anchor, and reload.
+    if (/[?&]pmdshell=1/.test(location.search)) return;
+    var ANCHOR_KEY = 'pmd-scroll-anchor';
+
+    // Find the element nearest the top of the viewport that carries a source
+    // line (markdown-it-source-map emits data-source-line on block elements).
+    // We anchor on SOURCE position, not pixels, because page breaks move when
+    // content re-paginates.
+    function captureAnchor() {
+      var els = document.querySelectorAll('[data-source-line]');
+      var best = null, bestTop = -Infinity;
+      for (var i = 0; i < els.length; i++) {
+        var r = els[i].getBoundingClientRect();
+        if (r.bottom < 0 || r.height === 0) continue;
+        if (r.top <= 80 && r.top > bestTop) { bestTop = r.top; best = els[i]; }
+      }
+      if (!best) {
+        for (var j = 0; j < els.length; j++) {
+          var rr = els[j].getBoundingClientRect();
+          if (rr.bottom > 0 && rr.height > 0) { best = els[j]; break; }
+        }
+      }
+      if (!best) return null;
+      return { line: best.getAttribute('data-source-line'), offset: best.getBoundingClientRect().top };
+    }
+
+    // After a content reload, put the same source line back at the same viewport
+    // offset so the author keeps their place (no jump to the top).
+    function restoreAnchor() {
+      var raw;
+      try { raw = sessionStorage.getItem(ANCHOR_KEY); } catch (_) { return; }
+      if (!raw) return;
+      try { sessionStorage.removeItem(ANCHOR_KEY); } catch (_) {}
+      var a; try { a = JSON.parse(raw); } catch (_) { return; }
+      var tries = 0;
+      (function attempt() {
+        var el = document.querySelector('[data-source-line="' + a.line + '"]');
+        if (el) {
+          window.scrollBy(0, el.getBoundingClientRect().top - a.offset);
+          return;
+        }
+        if (tries++ < 240) setTimeout(attempt, 25); // wait for pagination
+      })();
+    }
+    var restored = false;
+    function restoreOnce() { if (restored) return; restored = true; restoreAnchor(); }
+    // CRITICAL ordering: when the Paged.js polyfill is present it re-paginates on
+    // load and its PagedConfig.after calls scrollTo(0,0) THEN fires
+    // 'renderingComplete'. So in engine mode we MUST wait for that event —
+    // restoring earlier would be wiped by the scrollTo(0,0). In static mode (no
+    // engine) the content is final immediately, so restore right after load.
+    var hasEngine = !!document.querySelector('script[src*="paged.polyfill"], script[src*="pagedjs"]');
+    window.addEventListener('renderingComplete', restoreOnce);
+    if (!hasEngine) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () { setTimeout(restoreOnce, 50); });
+      } else {
+        setTimeout(restoreOnce, 50);
+      }
+    }
+    setTimeout(restoreOnce, 10000); // safety net if renderingComplete never fires
+
     var ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '${HMR_PATH}');
     ws.onmessage = function (e) {
-      try { if (JSON.parse(e.data).type === 'full-reload') location.reload(); } catch (_) {}
+      var msg;
+      try { msg = JSON.parse(e.data); } catch (_) { return; }
+      if (msg.type === 'full-reload') {
+        try { var a = captureAnchor(); if (a) sessionStorage.setItem(ANCHOR_KEY, JSON.stringify(a)); } catch (_) {}
+        location.reload();
+        return;
+      }
+      // CSS hot-swap: Paged.js inlines the user CSS and REMOVES the original
+      // <link> during pagination, so there is usually no <link> left to bump.
+      // Instead we (re)inject a fresh <link> for the edited stylesheet, appended
+      // LAST so its rules win the cascade over Paged.js's stale inlined copy.
+      // No reload, no re-pagination — scroll position is preserved and the new
+      // styles apply on the next frame. (Geometry/@page changes won't re-flow
+      // page boxes until a content edit triggers a full rebuild.)
+      if (msg.type === 'css-update' && msg.path) {
+        var id = 'pmd-hot-' + msg.path.replace(/[^a-z0-9]/gi, '_');
+        var prev = document.getElementById(id);
+        if (prev && prev.parentNode) prev.parentNode.removeChild(prev);
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.id = id;
+        link.href = msg.path + '?t=' + Date.now();
+        (document.head || document.documentElement).appendChild(link);
+        window.dispatchEvent(new CustomEvent('pmd:css-updated', { detail: { path: msg.path } }));
+        return;
+      }
     };
   })();
 </script>
@@ -59,6 +151,24 @@ const MIME: Record<string, string> = {
 };
 
 /**
+ * Preview shell (opt-in via PRINTMD_PREVIEW_SHELL=1). Hosts book.html in an
+ * iframe and double-buffers content reloads: on a markdown edit it paginates a
+ * SECOND hidden iframe, waits for it to finish, then swaps it in atomically and
+ * restores the scroll anchor — so the visible page never flickers or rebuilds in
+ * view. CSS edits are forwarded into the active frame (instant hot-swap). This is
+ * the same iframe pattern the Electron viewer uses, converging the two.
+ */
+const SHELL_HTML = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>print-md preview</title>
+<style>html,body{margin:0;height:100%;background:#fff;overflow:hidden}
+iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}</style>
+</head><body>
+<iframe id="pmd-active" src="/book.html?pmdshell=1" title="preview"></iframe>
+<script>window.__PMD_HMR=${JSON.stringify(HMR_PATH)};</script>
+<script src="/preview/scripts/preview-shell.js"></script>
+</body></html>`;
+
+/**
  * Public handle for the running preview server.
  */
 export interface PreviewServer {
@@ -71,6 +181,18 @@ export interface PreviewServer {
    * client. Safe to call after `close()` (no-op).
    */
   broadcastReload(): void;
+  /**
+   * Broadcast a `{ type: "css-update", path }` message so clients re-fetch just
+   * that stylesheet (no reload / re-pagination). `path` is the stylesheet's
+   * served path relative to the temp dir (e.g. "styles/guide.css").
+   */
+  broadcastCssUpdate(stylesheetPath: string): void;
+  /**
+   * Broadcast a `{ type: "content-update", file }` message so the incremental
+   * shell re-paginates and splices just that chapter (instead of reloading the
+   * whole document). `file` matches the `data-chapter-src` wrapper attribute.
+   */
+  broadcastContentUpdate(file: string): void;
 }
 
 /**
@@ -269,6 +391,35 @@ export async function createPreviewServer(
       return;
     }
 
+    // 3a. Incremental: render a single chapter for the shell to splice.
+    if (url.pathname === '/__chapter') {
+      const file = url.searchParams.get('file');
+      if (!file || !state.currentInputPath) {
+        res.writeHead(400); res.end('Bad Request'); return;
+      }
+      try {
+        const chapterHtml = await renderChapterPreviewHtml(
+          state.currentInputPath,
+          file,
+          (state.config as { title?: string; styles?: string[]; plugins?: unknown[] }) || {}
+        );
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+        res.end(chapterHtml);
+      } catch (e) {
+        res.writeHead(500); res.end(String(e));
+      }
+      return;
+    }
+
+    // 3b. Preview shell: serve the double-buffering / incremental shell at "/".
+    // DEFAULT ON (incremental). Opt out with PRINTMD_PREVIEW_INCREMENTAL=0.
+    if (url.pathname === '/' &&
+        (incrementalPreviewEnabled() || process.env.PRINTMD_PREVIEW_SHELL === '1')) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(SHELL_HTML);
+      return;
+    }
+
     // 4. Static file fallback.
     // Treat bare "/" as book.html — the desktop app (packages/viewer) wraps
     // book.html in its own iframe-based toolbar.
@@ -332,6 +483,20 @@ export async function createPreviewServer(
     broadcastReload() {
       if (stopped) return;
       const message = JSON.stringify({ type: 'full-reload' });
+      for (const ws of clients) {
+        if (ws.readyState === WebSocket.OPEN) ws.send(message);
+      }
+    },
+    broadcastCssUpdate(stylesheetPath: string) {
+      if (stopped) return;
+      const message = JSON.stringify({ type: 'css-update', path: stylesheetPath });
+      for (const ws of clients) {
+        if (ws.readyState === WebSocket.OPEN) ws.send(message);
+      }
+    },
+    broadcastContentUpdate(file: string) {
+      if (stopped) return;
+      const message = JSON.stringify({ type: 'content-update', file });
       for (const ws of clients) {
         if (ws.readyState === WebSocket.OPEN) ws.send(message);
       }

@@ -67,6 +67,20 @@ function loadPreviewApi(pages, pagesWidth = 808) {
     },
   };
 
+  // detectVisiblePage() uses getBoundingClientRect (viewport-relative, post-zoom)
+  // rather than offsetTop, so the page number tracks scroll under CSS zoom. Mock
+  // it to match the real DOM: top = offsetTop - scrollY.
+  for (const p of pages) {
+    p.getBoundingClientRect = () => ({
+      top: p.offsetTop - windowObj.scrollY,
+      bottom: p.offsetTop - windowObj.scrollY + p.offsetHeight,
+      left: 0,
+      right: p.offsetWidth,
+      width: p.offsetWidth,
+      height: p.offsetHeight,
+    });
+  }
+
   class CustomEventStub {
     constructor(type, init = {}) {
       this.type = type;

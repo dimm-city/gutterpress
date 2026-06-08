@@ -25,23 +25,24 @@
 
   function detectVisiblePage() {
     if (pages.length === 0) return 1;
-    var scrollTop = window.scrollY || document.documentElement.scrollTop;
-    var threshold = scrollTop + window.innerHeight / 3;
-    var page = 1;
-    var pageTop = pages[0].offsetTop;
-    for (var i = pages.length - 1; i >= 0; i--) {
-      if (pages[i].offsetTop <= threshold) {
-        pageTop = pages[i].offsetTop;
-        break;
-      }
+    // Use getBoundingClientRect (viewport-relative, post-zoom) rather than
+    // offsetTop. The viewer applies CSS `zoom` for fit-width; under `zoom`,
+    // offsetTop stays in PRE-zoom layout coords while window.scrollY is POST-zoom,
+    // so mixing them pinned the detected page to 1. getBoundingClientRect is
+    // consistent with the rendered viewport at any zoom.
+    var line = window.innerHeight / 3; // reference line in the upper third
+    var vh = window.innerHeight;
+    var last = 0;
+    for (var i = 0; i < pages.length; i++) {
+      var top = pages[i].getBoundingClientRect().top;
+      if (top <= line) last = i;       // last page whose top is at/above the line
+      else if (top > vh) break;        // well below the viewport — stop scanning
     }
-    for (var j = 0; j < pages.length; j++) {
-      if (Math.abs(pages[j].offsetTop - pageTop) < 2) {
-        page = j + 1;
-        break;
-      }
-    }
-    return page;
+    // In spread/two-column view a row holds two pages at the same top; report the
+    // FIRST page of that row (matches single view, where each row is one page).
+    var rowTop = pages[last].getBoundingClientRect().top;
+    while (last > 0 && Math.abs(pages[last - 1].getBoundingClientRect().top - rowTop) < 2) last--;
+    return last + 1;
   }
 
   function scrollToCurrentPage() {
@@ -104,6 +105,16 @@
       window.dispatchEvent(new CustomEvent('renderingComplete', {
         detail: { totalPages: pages.length }
       }));
+    },
+    // Re-read the page list and recompute the current page from the scroll
+    // position, then notify. The incremental preview shell calls this after it
+    // splices a chapter's pages into the live DOM (Paged.js does NOT re-run, so
+    // the cached page list and counters would otherwise go stale — freezing the
+    // toolbar's page number and breaking scroll sync).
+    refresh: function () {
+      refreshPages();
+      currentPage = detectVisiblePage();
+      return api.notifyPageChange();
     }
   };
 
