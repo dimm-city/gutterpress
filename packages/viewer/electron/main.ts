@@ -829,6 +829,17 @@ function registerAppProtocol() {
   });
 }
 
+// Disable GPU hardware acceleration. On many Linux desktops the GPU/driver
+// stack is broken or inaccessible to a sandboxed AppImage (e.g. the
+// `MESA-LOADER ... Permission denied` failures on this class of system). When
+// launched from a file manager (double-click) — as opposed to a terminal where
+// the GPU path fails fast — Chromium spends ~10s trying hardware acceleration /
+// cold-compiling the SwiftShader fallback before it paints, leaving the window
+// blank the whole time. A print-document viewer does no 3D/WebGL/video work, so
+// going straight to software rendering is strictly faster to start and costs
+// nothing visible. Must be called before app `ready`.
+app.disableHardwareAcceleration();
+
 // Register the scheme as standard (must happen before app.whenReady) so
 // fetch from the page works and ServiceWorker / IndexedDB / etc. behave.
 protocol.registerSchemesAsPrivileged([

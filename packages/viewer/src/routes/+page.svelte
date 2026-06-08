@@ -1317,7 +1317,7 @@
 {/if}
 
 <div class="shell">
-  <header class="toolbar">
+  <header class="toolbar" class:edit-narrow={isNarrow && paneMode === "edit"}>
     <section class="left">
       <!-- Chapter-list sidebar toggle (#42): button + Ctrl/Cmd+B. Disabled
            until a project folder is open (the sidebar lists that folder's
@@ -1958,6 +1958,18 @@
   /* ---- Collapsible dropdown menus (view-mode + zoom) ---- */
   /* On wide screens the inline controls (.view-mode-group / .zoom-select) show
      and the menu buttons hide. Below a breakpoint they swap. */
+  /* Narrow + Edit mode: the preview is hidden, so its controls (page navigation,
+     single/spread, zoom) are noise — hide them so the edit toolbar is just
+     sidebar / Open / Edit·View / Save / More. Highest specificity wins over the
+     generic responsive rules below. */
+  .toolbar.edit-narrow .center,
+  .toolbar.edit-narrow .view-mode-group,
+  .toolbar.edit-narrow .view-mode-menu,
+  .toolbar.edit-narrow .zoom-select,
+  .toolbar.edit-narrow .zoom-menu {
+    display: none;
+  }
+
   .menu { position: relative; display: none; }
   /* The "More" overflow menu uses higher specificity (details.more-menu) than
      the generic `.menu { display: inline-block }` shown at <=980px, so it stays
