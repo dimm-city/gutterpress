@@ -34,10 +34,17 @@
     currentPage?: number;
     totalPages?: number;
   };
+  // Per-project editor/preview state (#43), keyed by folder path in the main
+  // process. currentPage/viewMode are live; the rest are dead schema for the
+  // forthcoming in-app editor (#38) / chapter list (#42).
   type PersistedProjectState = {
-    lastProjectDir?: string | null;
     currentPage?: number;
     viewMode?: "single" | "two-column";
+    lastChapter?: string;
+    sidebarOpen?: boolean;
+    cursorLine?: number;
+    editorScroll?: number;
+    splitPaneRatio?: number;
   };
 
   // Per-screen state
@@ -250,9 +257,15 @@
     lastProjectChecked = true;
     const platform = getPlatform();
     platform.getViewerPrefs()
-      .then((prefs: PersistedProjectState) => {
-        if (!prefs.lastProjectDir || previewUrl || currentDir || currentUrl) return;
-        return startFolderPreview(prefs.lastProjectDir, "Reopening previous folder…", prefs);
+      .then(async (prefs) => {
+        const dir = prefs.lastProjectDir;
+        if (!dir || previewUrl || currentDir || currentUrl) return;
+        // Per-project state (#43) is keyed by folder path so opening a
+        // different project never pollutes this one's restore point.
+        const restoreState = await platform
+          .getViewerProjectState(dir)
+          .catch(() => null);
+        return startFolderPreview(dir, "Reopening previous folder…", restoreState);
       })
       .catch(() => {})
       .finally(() => {
@@ -667,8 +680,11 @@
       const platform = getPlatform();
       const dir = await platform.openFolder();
       if (!dir) return;
-      const prefs = await platform.getViewerPrefs().catch(() => null) as PersistedProjectState | null;
-      const restoreState = prefs?.lastProjectDir === dir ? prefs : null;
+      // Per-project state (#43): restore whatever was saved for THIS folder
+      // (page, view mode, …) regardless of which project was last open.
+      const restoreState = await platform
+        .getViewerProjectState(dir)
+        .catch(() => null);
       handedOff = true;
       await startFolderPreview(dir, "Starting preview…", restoreState);
     } finally {
@@ -840,7 +856,10 @@
 
   function saveViewerPrefs(patch: Partial<PersistedProjectState>) {
     if (!currentDir || sourceMode !== "folder" || rendering || restoringSavedState) return;
-    getPlatform().setViewerPrefs({ lastProjectDir: currentDir, ...patch }).catch(() => {});
+    // Per-project state (#43): write to the folder-keyed bucket so this never
+    // overwrites another project's saved page/view. The main process also
+    // updates lastProjectDir, so reopening lands on this project.
+    getPlatform().setViewerProjectState(currentDir, patch).catch(() => {});
   }
 
   function restoreProjectPage(page: number) {
@@ -851,7 +870,9 @@
         currentPage = state.currentPage ?? currentPage;
         totalPages = state.totalPages ?? totalPages;
         if (!pageEditing) pageEditValue = String(currentPage);
-        getPlatform().setViewerPrefs({ lastProjectDir: currentDir, currentPage }).catch(() => {});
+        if (currentDir) {
+          getPlatform().setViewerProjectState(currentDir, { currentPage }).catch(() => {});
+        }
       })
       .catch(() => {})
       .finally(() => {

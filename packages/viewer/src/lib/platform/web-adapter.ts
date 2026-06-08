@@ -15,6 +15,7 @@ import { DEFAULT_SETTINGS } from "./contract";
 import type {
   Platform,
   ViewerPrefs,
+  ProjectState,
   AppSettings,
   DeepPartial,
   PreviewStartArgs,
@@ -126,6 +127,17 @@ export class WebAdapter implements Platform {
 
   setViewerPrefs(_patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> {
     return rejectNotImplemented("setViewerPrefs");
+  }
+
+  getViewerProjectState(_projectDir: string): Promise<ProjectState | null> {
+    return rejectNotImplemented("getViewerProjectState");
+  }
+
+  setViewerProjectState(
+    _projectDir: string,
+    _patch: Partial<ProjectState>,
+  ): Promise<{ ok: boolean }> {
+    return rejectNotImplemented("setViewerProjectState");
   }
 
   // Settings (#45) — genuinely implemented on web via localStorage so the

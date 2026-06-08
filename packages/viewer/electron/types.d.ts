@@ -92,6 +92,17 @@ interface ProjectCapabilities {
   authManagedByApp: boolean;
 }
 
+// Per-project editor/preview state (#43). Mirrors electron/project-state.ts.
+interface ProjectState {
+  currentPage?: number;
+  viewMode?: "single" | "two-column";
+  lastChapter?: string;
+  sidebarOpen?: boolean;
+  cursorLine?: number;
+  editorScroll?: number;
+  splitPaneRatio?: number;
+}
+
 interface Window {
   electron?: {
     /** Integer IPC-surface version; mirrors DESKTOP_API in updater/contract.ts. */
@@ -118,6 +129,7 @@ interface Window {
       viewMode?: "single" | "two-column";
       recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
       favorites?: Array<{ path: string; title: string }>;
+      projectStates?: Record<string, ProjectState>;
       projectSearchRoots?: string[];
       projectSource?: ProjectSource;
     }>;
@@ -127,9 +139,16 @@ interface Window {
       viewMode?: "single" | "two-column";
       recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
       favorites?: Array<{ path: string; title: string }>;
+      projectStates?: Record<string, ProjectState>;
       projectSearchRoots?: string[];
       projectSource?: ProjectSource;
     }): Promise<{ ok: boolean }>;
+    // Per-project editor/preview state (#43)
+    getViewerProjectState(projectDir: string): Promise<ProjectState | null>;
+    setViewerProjectState(
+      projectDir: string,
+      patch: ProjectState,
+    ): Promise<{ ok: boolean }>;
     // User settings (#45)
     getSettings(): Promise<AppSettings>;
     setSettings(patch: DeepPartialSettings): Promise<{ ok: boolean }>;

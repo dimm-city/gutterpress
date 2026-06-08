@@ -11,6 +11,7 @@ import type {
   Platform,
   ElectronBridge,
   ViewerPrefs,
+  ProjectState,
   AppSettings,
   DeepPartial,
   PreviewStartArgs,
@@ -111,6 +112,17 @@ export class ElectronAdapter implements Platform {
 
   setViewerPrefs(patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> {
     return bridge().setViewerPrefs(patch);
+  }
+
+  getViewerProjectState(projectDir: string): Promise<ProjectState | null> {
+    return bridge().getViewerProjectState(projectDir);
+  }
+
+  setViewerProjectState(
+    projectDir: string,
+    patch: Partial<ProjectState>,
+  ): Promise<{ ok: boolean }> {
+    return bridge().setViewerProjectState(projectDir, patch);
   }
 
   getSettings(): Promise<AppSettings> {

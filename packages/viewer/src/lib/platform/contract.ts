@@ -65,12 +65,34 @@ export interface FavoriteEntry {
   exists: boolean;
 }
 
+/**
+ * Per-project editor/preview state keyed by folder path (#43).
+ *
+ * `currentPage` and `viewMode` are live today; the remaining fields are written
+ * by the forthcoming in-app editor (#38) / chapter list (#42). They are carried
+ * through JSON as dead schema now so #38 can persist them without further
+ * main.ts changes.
+ */
+export interface ProjectState {
+  currentPage?: number;
+  viewMode?: "single" | "two-column";
+  lastChapter?: string;
+  sidebarOpen?: boolean;
+  cursorLine?: number;
+  editorScroll?: number;
+  splitPaneRatio?: number;
+}
+
 export interface ViewerPrefs {
   lastProjectDir?: string | null;
+  /** @deprecated (#43) migration fallback — read `projectStates[dir]` instead. */
   currentPage?: number;
+  /** @deprecated (#43) migration fallback — read `projectStates[dir]` instead. */
   viewMode?: "single" | "two-column";
   recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
   favorites?: Array<{ path: string; title: string }>;
+  /** Per-project editor/preview state keyed by folder path (#43). */
+  projectStates?: Record<string, ProjectState>;
   /**
    * Root directories scanned by `discoverProjects()` (#27). Defaults to
    * `[~/Documents, ~/Desktop]` in the main process when unset. No Settings UI
@@ -227,6 +249,21 @@ export interface HostServices {
   getLastProject(): Promise<string | null>;
   getViewerPrefs(): Promise<ViewerPrefs>;
   setViewerPrefs(patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }>;
+
+  /**
+   * Per-project editor/preview state (#43). Reads the bucket keyed by
+   * `projectDir`; returns `null` when absent or corrupt (silent fail → the app
+   * opens page 1). The WebAdapter stub rejects.
+   */
+  getViewerProjectState(projectDir: string): Promise<ProjectState | null>;
+  /**
+   * Merge-patch a project's state bucket (#43), upserting the key. Only writes
+   * the project-keyed bucket — never the deprecated top-level page/mode.
+   */
+  setViewerProjectState(
+    projectDir: string,
+    patch: Partial<ProjectState>,
+  ): Promise<{ ok: boolean }>;
   getSettings(): Promise<AppSettings>;
   setSettings(patch: DeepPartial<AppSettings>): Promise<{ ok: boolean }>;
 

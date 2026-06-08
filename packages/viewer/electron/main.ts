@@ -37,6 +37,13 @@ import {
   type RecentFolder,
   type FavoriteFolder,
 } from "./recent-folders";
+import {
+  readProjectState,
+  writeProjectState,
+  migrateLegacyProjectState,
+  type ProjectState,
+  type ProjectStateMap,
+} from "./project-state";
 
 // __dirname/__filename are injected by electron-vite for the ESM main bundle
 // (resolves to out/main/ at runtime).
@@ -302,10 +309,24 @@ let activePreview: PreviewHandle | null = null;
 
 interface ViewerPrefs {
   lastProjectDir?: string;
+  /**
+   * @deprecated (#43) Pre-per-project global page. Kept ONE version as a
+   * migration fallback (see migrateLegacyProjectState); new writes go to
+   * projectStates[dir].currentPage. Remove in a later release.
+   */
   currentPage?: number;
+  /**
+   * @deprecated (#43) Pre-per-project global view mode. Kept ONE version as a
+   * migration fallback; new writes go to projectStates[dir].viewMode.
+   */
   viewMode?: "single" | "two-column";
   recentFolders?: RecentFolder[];
   favorites?: FavoriteFolder[];
+  /**
+   * Per-project editor/preview state keyed by folder path (#43). Opening
+   * project B never overwrites project A's page/view/chapter state.
+   */
+  projectStates?: ProjectStateMap;
   /** Root dirs scanned by app:discoverProjects (#27). Defaults applied below. */
   projectSearchRoots?: string[];
   /**
@@ -323,7 +344,14 @@ function prefsPath(): string {
 
 async function readPrefs(): Promise<ViewerPrefs> {
   try {
-    return JSON.parse(await readFile(prefsPath(), "utf8")) as ViewerPrefs;
+    const prefs = JSON.parse(await readFile(prefsPath(), "utf8")) as ViewerPrefs;
+    // #43 one-time migration: seed projectStates from the legacy top-level
+    // currentPage/viewMode so existing users don't lose their saved state.
+    const migrated = migrateLegacyProjectState(prefs);
+    if (migrated && !prefs.projectStates) {
+      prefs.projectStates = migrated;
+    }
+    return prefs;
   } catch {
     return {};
   }
@@ -794,6 +822,42 @@ ipcMain.handle("app:setViewerPrefs", async (_e, patch: Partial<ViewerPrefs>) => 
   await writePrefs({ ...current, ...patch });
   return { ok: true };
 });
+
+// ── Per-project editor/preview state (#43) ──────────────────────────────────
+// Read/merge the per-project bucket in viewer-prefs.json projectStates. Keying
+// by folder path means opening project B never overwrites project A's page,
+// view mode, open chapter, etc. Corrupt/missing state fails silently to null so
+// the renderer falls back to first-page defaults.
+ipcMain.handle(
+  "app:getViewerProjectState",
+  async (_e, projectDir: string): Promise<ProjectState | null> => {
+    if (!projectDir || typeof projectDir !== "string") return null;
+    try {
+      const prefs = await readPrefs();
+      return readProjectState(prefs.projectStates, projectDir);
+    } catch {
+      return null;
+    }
+  },
+);
+
+ipcMain.handle(
+  "app:setViewerProjectState",
+  async (
+    _e,
+    projectDir: string,
+    patch: Partial<ProjectState>,
+  ): Promise<{ ok: boolean }> => {
+    if (!projectDir || typeof projectDir !== "string") return { ok: false };
+    const current = await readPrefs();
+    await writePrefs({
+      ...current,
+      lastProjectDir: projectDir,
+      projectStates: writeProjectState(current.projectStates, projectDir, patch),
+    });
+    return { ok: true };
+  },
+);
 
 ipcMain.handle("app:getSettings", async () => {
   return readSettings();

@@ -85,12 +85,25 @@ interface FavoriteEntry {
   title: string;
 }
 
+interface ProjectState {
+  currentPage?: number;
+  viewMode?: "single" | "two-column";
+  lastChapter?: string;
+  sidebarOpen?: boolean;
+  cursorLine?: number;
+  editorScroll?: number;
+  splitPaneRatio?: number;
+}
+
 interface ViewerPrefs {
   lastProjectDir?: string | null;
+  /** @deprecated (#43) migration fallback — use projectStates[dir]. */
   currentPage?: number;
+  /** @deprecated (#43) migration fallback — use projectStates[dir]. */
   viewMode?: "single" | "two-column";
   recentFolders?: RecentFolderEntry[];
   favorites?: FavoriteEntry[];
+  projectStates?: Record<string, ProjectState>;
   projectSearchRoots?: string[];
   projectSource?: ProjectSourceHint;
 }
@@ -235,6 +248,14 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("app:getViewerPrefs"),
   setViewerPrefs: (patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("app:setViewerPrefs", patch),
+  // Per-project editor/preview state (#43)
+  getViewerProjectState: (projectDir: string): Promise<ProjectState | null> =>
+    ipcRenderer.invoke("app:getViewerProjectState", projectDir),
+  setViewerProjectState: (
+    projectDir: string,
+    patch: Partial<ProjectState>,
+  ): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("app:setViewerProjectState", projectDir, patch),
   getSettings: (): Promise<AppSettings> =>
     ipcRenderer.invoke("app:getSettings"),
   setSettings: (patch: DeepPartialSettings): Promise<{ ok: boolean }> =>
