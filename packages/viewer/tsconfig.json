@@ -21,6 +21,7 @@
     "src/service-worker/**/*.d.ts",
     "tests/updater/**",
     "tests/platform/**",
-    "tests/recovery/**"
+    "tests/recovery/**",
+    "tests/editor/**"
   ]
 }

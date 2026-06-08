@@ -65,10 +65,13 @@
       "name": "@dimm-city/print-md-viewer",
       "version": "0.4.0-beta.3",
       "dependencies": {
+        "@codemirror/autocomplete": "^6.18.4",
         "@codemirror/commands": "^6.8.0",
+        "@codemirror/lang-css": "^6.3.1",
         "@codemirror/lang-markdown": "^6.3.1",
         "@codemirror/language": "^6.10.8",
         "@codemirror/language-data": "^6.5.1",
+        "@codemirror/lint": "^6.8.4",
         "@codemirror/state": "^6.5.2",
         "@codemirror/view": "^6.36.2",
         "@dimm-city/print-md-lib": "workspace:*",
