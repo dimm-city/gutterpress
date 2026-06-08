@@ -1221,6 +1221,25 @@
     return () => mq.removeEventListener("change", onChange);
   });
 
+  // Keep the editor pane in sync with the narrow Edit/View mode. BUG (user
+  // report): on launch — or a resize to narrow — when paneMode is "edit" (e.g.
+  // persisted from a prior session) but the editor was never opened, the narrow
+  // CSS hides the preview (.show-edit) while the editor only renders
+  // `{#if editorOpen}` — so the pane is BLANK until the user toggles View. Open
+  // the editor (and load a file) here so edit mode always shows the editor.
+  $effect(() => {
+    if (
+      isNarrow &&
+      paneMode === "edit" &&
+      currentDir &&
+      sourceMode === "folder" &&
+      !editorOpen
+    ) {
+      editorOpen = true;
+      void ensureEditorFile();
+    }
+  });
+
   // Close the enclosing <details> menu after a menu item is chosen, and return
   // focus to its summary for keyboard users.
   function closeMenu(e: Event) {

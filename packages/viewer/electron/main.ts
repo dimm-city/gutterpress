@@ -621,11 +621,10 @@ function createWindow() {
     width: 1400,
     height: 900,
     backgroundColor: "#1e1e1e",
-    // Don't show the window until the renderer has painted its first frame —
-    // otherwise the user stares at a blank window for the duration of the
-    // (unavoidable) Electron/AppImage cold-start. ready-to-show fires once the
-    // SPA is ready, so the window appears already-rendered.
-    show: false,
+    // Show the window IMMEDIATELY (default). Waiting for `ready-to-show` (first
+    // paint) means the user stares at nothing while the SPA + preview render —
+    // which can be several seconds. Showing now (with the dark backgroundColor)
+    // gives instant feedback; the shell + content paint into the visible window.
     webPreferences: {
       preload: path.resolve(__dirname, "../preload/preload.js"),
       contextIsolation: true,
@@ -633,7 +632,7 @@ function createWindow() {
       sandbox: false,
     },
   });
-  mainWindow.once("ready-to-show", () => { slog("renderer ready-to-show (window shown)"); mainWindow?.show(); });
+  mainWindow.once("ready-to-show", () => slog("renderer ready-to-show (first paint)"));
   mainWindow.webContents.on("did-start-loading", () => slog("renderer did-start-loading"));
   mainWindow.webContents.on("dom-ready", () => slog("renderer dom-ready"));
   mainWindow.webContents.on("did-finish-load", () => slog("renderer did-finish-load"));
