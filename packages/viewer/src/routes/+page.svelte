@@ -2,7 +2,6 @@
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
   import ChapterList from "$lib/components/ChapterList.svelte";
   import FileTree from "$lib/components/FileTree.svelte";
-  import MarkdownEditor from "$lib/components/MarkdownEditor.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
   import type { RecoveryItem } from "$lib/components/CrashRecoveryDialog.svelte";
@@ -179,7 +178,7 @@
     if (currentDir && sourceMode === "folder") {
       const wasClosed = !editorOpen;
       editorOpen = true;
-      if (wasClosed) requestAnimationFrame(() => editorRef?.focus());
+      if (wasClosed) focusEditorWhenReady();
     }
     // On the mobile bottom-sheet drawer, picking a chapter dismisses it.
     if (window.matchMedia("(max-width: 640px)").matches) {
@@ -198,6 +197,48 @@
   // state now lives inside the buffer.
   let editorOpen = $state(false);
   let editorRef = $state<{ focus: () => void } | null>(null);
+
+  // MarkdownEditor wraps the full CodeMirror 6 stack (+ lang-markdown's
+  // code-language loaders), a ~300 KB chunk. The editor pane is closed by
+  // default and is desktop-folder-only, so importing it statically would parse
+  // + evaluate all of CodeMirror on every launch — the dominant cold-start
+  // cost. Load it lazily the first time the editor pane is actually opened so
+  // app startup never pays for it. One-time import; the resolved component is
+  // cached in MarkdownEditor for the lifetime of the app.
+  let MarkdownEditor = $state<
+    typeof import("$lib/components/MarkdownEditor.svelte")["default"] | null
+  >(null);
+  let editorModuleLoading = $state(false);
+  // Set when the editor is opened before its (lazy) component has mounted, so
+  // the focus request is honored once editorRef becomes available.
+  let pendingEditorFocus = $state(false);
+  function focusEditorWhenReady() {
+    if (editorRef) {
+      requestAnimationFrame(() => editorRef?.focus());
+    } else {
+      pendingEditorFocus = true;
+    }
+  }
+  $effect(() => {
+    if (editorRef && pendingEditorFocus) {
+      pendingEditorFocus = false;
+      requestAnimationFrame(() => editorRef?.focus());
+    }
+  });
+  $effect(() => {
+    if (!editorOpen || !currentDir || MarkdownEditor || editorModuleLoading) return;
+    editorModuleLoading = true;
+    import("$lib/components/MarkdownEditor.svelte")
+      .then((m) => {
+        MarkdownEditor = m.default;
+      })
+      .catch((e) => {
+        editorModuleLoading = false;
+        toast?.error(
+          `Could not open the editor: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      });
+  });
 
   // Construct lazily on first desktop use so the WebAdapter path never touches
   // it (the editor is desktop-only). One buffer for the lifetime of the app.
@@ -334,7 +375,7 @@
       const recovered = await getPlatform().readFile(item.recoveryPath);
       await buf.restoreContent(item.filePath, recovered);
       editorOpen = true;
-      requestAnimationFrame(() => editorRef?.focus());
+      focusEditorWhenReady();
     } catch (e) {
       toast?.error(
         `Could not restore: ${e instanceof Error ? e.message : String(e)}`,
@@ -360,8 +401,9 @@
     // focus-switch into the editing surface (#38). Closing returns focus to
     // the document (preview iframe / window) implicitly.
     if (editorOpen) {
-      // Defer until the pane (and CodeMirror view) is mounted.
-      requestAnimationFrame(() => editorRef?.focus());
+      // Defer until the pane (and CodeMirror view) is mounted. The editor
+      // component is lazy-loaded, so focus may need to wait for it to arrive.
+      focusEditorWhenReady();
     }
   }
 
@@ -1461,12 +1503,18 @@
               onKeepMine={keepMineExternal}
             />
           {/if}
-          <MarkdownEditor
-            bind:this={editorRef}
-            filePath={editorFilePath}
-            content={editorContent}
-            onChange={onEditorChange}
-          />
+          {#if MarkdownEditor}
+            <MarkdownEditor
+              bind:this={editorRef}
+              filePath={editorFilePath}
+              content={editorContent}
+              onChange={onEditorChange}
+            />
+          {:else}
+            <div class="editor-loading" role="status" aria-live="polite">
+              Loading editor…
+            </div>
+          {/if}
         </section>
       {/if}
       <section class="pane preview-pane">
@@ -1590,6 +1638,14 @@
   }
   .editor-pane {
     border-right: 1px solid var(--app-border);
+  }
+  .editor-loading {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    color: var(--app-text-faint);
+    font-size: 13px;
   }
   .preview-pane {
     position: relative;
