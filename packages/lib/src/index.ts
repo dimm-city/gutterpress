@@ -27,6 +27,9 @@ export { resolveCheckSelectors, getChecks, getCheckById } from "./checks/registr
 export type { CheckCategory, CheckPhase } from "./checks/types.ts";
 export { loadManifest } from "./lib/manifest.ts";
 
+// ── Platform abstraction contract (#41) — consumed by the viewer ─────────────
+export type { PlatformAdapter } from "./platform.ts";
+
 // ── Type-only exports for plugin authors ─────────────────────────────────────
 export type {
   PrintMdPlugin,

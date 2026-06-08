@@ -582,6 +582,31 @@ ipcMain.handle("shell:showInFolder", async (_e, filePath: string) => {
   shell.showItemInFolder(filePath);
 });
 
+// ── Filesystem primitives (PlatformAdapter, #41) ──────────────────────────
+// Backs ElectronAdapter.readFile/writeFile. No current consumer in 0.4.0 — the
+// in-app editor (#38/#39) is the first. The renderer is our own trusted SPA;
+// paths must be absolute so a relative path can't resolve against the main
+// process CWD by accident.
+// Callers MUST constrain filePath to a user-opened project directory; there is
+// no global path allowlist by design — the renderer is our own trusted SPA.
+ipcMain.handle("fs:readFile", async (_e, filePath: string): Promise<string> => {
+  if (!path.isAbsolute(filePath)) {
+    throw new Error(`fs:readFile requires an absolute path, got: ${filePath}`);
+  }
+  return await readFile(filePath, "utf-8");
+});
+
+ipcMain.handle(
+  "fs:writeFile",
+  async (_e, filePath: string, content: string): Promise<void> => {
+    if (!path.isAbsolute(filePath)) {
+      throw new Error(`fs:writeFile requires an absolute path, got: ${filePath}`);
+    }
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, content, "utf-8");
+  },
+);
+
 ipcMain.handle("api:status", async () => {
   return { name: "@dimm-city/print-md-viewer", runtime: "node", ok: true };
 });

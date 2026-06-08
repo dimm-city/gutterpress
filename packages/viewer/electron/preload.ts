@@ -133,6 +133,12 @@ contextBridge.exposeInMainWorld("electron", {
   showInFolder: (filePath: string): Promise<void> =>
     ipcRenderer.invoke("shell:showInFolder", filePath),
 
+  // Filesystem primitives (PlatformAdapter, #41 — editor seam for #38/#39)
+  readFile: (filePath: string): Promise<string> =>
+    ipcRenderer.invoke("fs:readFile", filePath),
+  writeFile: (filePath: string, content: string): Promise<void> =>
+    ipcRenderer.invoke("fs:writeFile", filePath, content),
+
   // Lib API (replaces /api/* HTTP routes)
   getStatus: (): Promise<{ ok: boolean; runtime: string; name: string }> =>
     ipcRenderer.invoke("api:status"),

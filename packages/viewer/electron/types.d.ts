@@ -46,6 +46,9 @@ interface Window {
     // App actions
     openExternal(url: string): Promise<void>;
     showInFolder(filePath: string): Promise<void>;
+    // Filesystem primitives (PlatformAdapter, #41)
+    readFile(filePath: string): Promise<string>;
+    writeFile(filePath: string, content: string): Promise<void>;
     // Lib API
     getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
     getLastProject(): Promise<string | null>;
