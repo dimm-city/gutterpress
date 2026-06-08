@@ -31,11 +31,75 @@ const HMR_PATH = '/__print-md-hmr';
 const HMR_CLIENT_SNIPPET = `
 <script>
   (function () {
+    var ANCHOR_KEY = 'pmd-scroll-anchor';
+
+    // Find the element nearest the top of the viewport that carries a source
+    // line (markdown-it-source-map emits data-source-line on block elements).
+    // We anchor on SOURCE position, not pixels, because page breaks move when
+    // content re-paginates.
+    function captureAnchor() {
+      var els = document.querySelectorAll('[data-source-line]');
+      var best = null, bestTop = -Infinity;
+      for (var i = 0; i < els.length; i++) {
+        var r = els[i].getBoundingClientRect();
+        if (r.bottom < 0 || r.height === 0) continue;
+        if (r.top <= 80 && r.top > bestTop) { bestTop = r.top; best = els[i]; }
+      }
+      if (!best) {
+        for (var j = 0; j < els.length; j++) {
+          var rr = els[j].getBoundingClientRect();
+          if (rr.bottom > 0 && rr.height > 0) { best = els[j]; break; }
+        }
+      }
+      if (!best) return null;
+      return { line: best.getAttribute('data-source-line'), offset: best.getBoundingClientRect().top };
+    }
+
+    // After a content reload, put the same source line back at the same viewport
+    // offset so the author keeps their place (no jump to the top).
+    function restoreAnchor() {
+      var raw;
+      try { raw = sessionStorage.getItem(ANCHOR_KEY); } catch (_) { return; }
+      if (!raw) return;
+      try { sessionStorage.removeItem(ANCHOR_KEY); } catch (_) {}
+      var a; try { a = JSON.parse(raw); } catch (_) { return; }
+      var tries = 0;
+      (function attempt() {
+        var el = document.querySelector('[data-source-line="' + a.line + '"]');
+        if (el) {
+          window.scrollBy(0, el.getBoundingClientRect().top - a.offset);
+          return;
+        }
+        if (tries++ < 240) setTimeout(attempt, 25); // wait for pagination
+      })();
+    }
+    var restored = false;
+    function restoreOnce() { if (restored) return; restored = true; restoreAnchor(); }
+    // CRITICAL ordering: when the Paged.js polyfill is present it re-paginates on
+    // load and its PagedConfig.after calls scrollTo(0,0) THEN fires
+    // 'renderingComplete'. So in engine mode we MUST wait for that event —
+    // restoring earlier would be wiped by the scrollTo(0,0). In static mode (no
+    // engine) the content is final immediately, so restore right after load.
+    var hasEngine = !!document.querySelector('script[src*="paged.polyfill"], script[src*="pagedjs"]');
+    window.addEventListener('renderingComplete', restoreOnce);
+    if (!hasEngine) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () { setTimeout(restoreOnce, 50); });
+      } else {
+        setTimeout(restoreOnce, 50);
+      }
+    }
+    setTimeout(restoreOnce, 10000); // safety net if renderingComplete never fires
+
     var ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '${HMR_PATH}');
     ws.onmessage = function (e) {
       var msg;
       try { msg = JSON.parse(e.data); } catch (_) { return; }
-      if (msg.type === 'full-reload') { location.reload(); return; }
+      if (msg.type === 'full-reload') {
+        try { var a = captureAnchor(); if (a) sessionStorage.setItem(ANCHOR_KEY, JSON.stringify(a)); } catch (_) {}
+        location.reload();
+        return;
+      }
       // CSS hot-swap: Paged.js inlines the user CSS and REMOVES the original
       // <link> during pagination, so there is usually no <link> left to bump.
       // Instead we (re)inject a fresh <link> for the edited stylesheet, appended
