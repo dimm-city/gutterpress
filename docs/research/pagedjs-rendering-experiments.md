@@ -267,20 +267,28 @@ Current state: the shell + client lives inline in `http-server.ts`
 `content-update`, `full-reload`) and the per-chapter render (`/__chapter`) are
 the entire host contract.
 
-Convergence plan:
-1. **Extract** `SHELL_HTML` + controller into a shared asset
-   (`assets/preview/shell.html` + `scripts/preview-shell.js`), served by the CLI
-   http server today and loadable by Electron via `app://`.
-2. **Abstract the transport**: the client takes a `changeSource` with
-   `onMessage(cb)` — backed by **WebSocket** (CLI) or **ipcRenderer/postMessage**
-   (Electron). Same double-buffer + splice logic in both.
-3. **Electron becomes thin**: its main process provides the OS bridge (pick
-   folder, watch files via the shared `file-watcher`, emit the same
-   `content-update`/`css-update`/`full-reload` events over IPC) and hosts the
-   shared shell. No bespoke viewer pagination/rebuild path.
-4. This also **closes the preview-vs-build divergence**: both the viewer and the
-   CLI preview render through the one shell client; the build/PDF SSG path stays
-   separate by design (publish artifact, not live edit).
+Convergence status:
+1. ✅ **Extracted** — the controller now lives in the shared embedded asset
+   `assets/preview/scripts/preview-shell.js`, served at `/preview/scripts/`; the
+   shell HTML is a thin loader. CLI preview and the Electron viewer load the SAME
+   asset (the viewer already embeds the lib's http preview server in its iframe).
+2. ✅ **Transport abstracted** — the controller gets change events via
+   `connectChanges()`, which uses a **WebSocket** by default but honors an injected
+   `window.__PMD_CHANGE_SOURCE` (`subscribe(cb)` → unsubscribe). An Electron-native
+   host can feed events over **IPC** with no controller change.
+3. ✅ **Incremental is the DEFAULT** preview experience (CLI + viewer). Opt out with
+   `PRINTMD_PREVIEW_INCREMENTAL=0`. Toolbar fixes (page-sync under zoom via
+   `getBoundingClientRect`; chapter-scoped scroll anchor so edits don't jump).
+4. **Remaining** for a fully Electron-native path (optional): serve the shell via
+   `app://` with an IPC `__PMD_CHANGE_SOURCE` instead of the http+WS server, so the
+   viewer needs no localhost server at all. Not required today — the viewer already
+   reuses the shared client over the in-process http server.
+
+The preview-vs-build divergence note still stands: incremental mode page-isolates
+chapters in the **preview** (a few more page breaks than the build) so a chapter's
+pages are contiguous for splicing. Acceptable for live editing; the build/PDF SSG
+path is unaffected. Opt out with `PRINTMD_PREVIEW_INCREMENTAL=0` for a
+build-identical (non-incremental) preview.
 
 ## Experiment backlog
 
