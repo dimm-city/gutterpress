@@ -844,35 +844,11 @@ function registerAppProtocol() {
   });
 }
 
-// ── Startup-stall fix: skip the GPU process entirely ──────────────────────
-// Diagnosed from a user's launch log: a ~10s blank-window stall sits between
-// Chromium's GPU init (`VAAPI version is too old` / `MESA-LOADER ... Permission
-// denied`) and the renderer painting. The GPU/driver stack is broken or
-// inaccessible to the sandboxed AppImage on this class of Linux system, so
-// Chromium hangs on a GPU watchdog (incl. hardware *video decode* / VAAPI) before
-// falling back to software.
-//
-// `disableHardwareAcceleration()` alone is NOT enough — it only disables GPU
-// *compositing*; VAAPI still initialises and stalls. So also force the GPU
-// process off and disable the VAAPI video pipeline outright. A print-document
-// viewer does no 3D/WebGL/video, so software rendering costs nothing visible and
-// removes the stall. Must run before app `ready`.
-app.disableHardwareAcceleration();
-app.commandLine.appendSwitch("disable-gpu");
-app.commandLine.appendSwitch("disable-gpu-compositing");
-app.commandLine.appendSwitch(
-  "disable-features",
-  "VaapiVideoDecoder,VaapiVideoEncoder,VaapiVideoDecodeLinuxGL,UseChromeOSDirectVideoDecoder",
-);
-
-// ── Launch-speed fix: cap the HTTP disk cache ─────────────────────────────────
-// The real cause of the multi-second blank launch: the preview HTTP server's
-// responses (every rendered book + its images/fonts/paged.js) were disk-cached
-// without bound and grew to ~1.5 GB. Chromium opens+indexes the whole cache on
-// startup before the renderer can paint. Cap it hard so it can never balloon
-// again; preview content is also marked no-store (see lib http-server) so it
-// stops accumulating in the first place.
-app.commandLine.appendSwitch("disk-cache-size", String(64 * 1024 * 1024)); // 64 MB
+// The `VAAPI version is too old` / `MESA-LOADER` lines in the launch log are
+// harmless Chromium GPU-probe noise, NOT the cause of slow launches — the
+// multi-second blank window was profile-lock contention between two instances
+// (see the single-instance lock below). So we keep hardware acceleration at its
+// Electron default; forcing software rendering only slows the paged.js preview.
 
 // Register the scheme as standard (must happen before app.whenReady) so
 // fetch from the page works and ServiceWorker / IndexedDB / etc. behave.
@@ -1694,7 +1670,33 @@ ipcMain.handle("updater:markReady", async () => {
 // App lifecycle
 // ──────────────────────────────────────────────────────────────────────────
 
+// ── Single-instance lock (THE launch-speed fix) ─────────────────────────────
+// A second instance pointed at the same userData dir contends with the first
+// for the profile's leveldb/singleton locks — which stalls the new window's
+// first paint for MANY seconds (measured: 9.2s with a second instance present
+// vs 2.1s alone, same binary/profile). This happens to real users whenever a
+// prior instance hasn't fully exited (crash, lingering window) or on a fast
+// double-launch. Acquire the lock up front: if another instance already holds
+// it, quit immediately and let the running instance focus its window instead.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  // Electron has already signalled the primary instance (see "second-instance"
+  // below) by the time this returns false. Just bow out — never create a
+  // second window that would fight the first for the profile.
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
+
 app.whenReady().then(async () => {
+  // Lost the single-instance race — app.quit() is already in flight; do not
+  // proceed to create a contending window.
+  if (!gotSingleInstanceLock) return;
   slog("app whenReady");
   // Apply any staged update from a previous session BEFORE resolving the web
   // root, so refreshWebRoot() picks up the newly promoted bundle. Wrapped so a
@@ -1716,22 +1718,6 @@ app.whenReady().then(async () => {
   registerUrlPreviewHeaderWatch();
   createWindow();
   slog("createWindow returned (loadURL dispatched)");
-
-  // One-time self-heal: a profile from before the cache cap may already hold a
-  // multi-GB cache that slows every launch. If the disk cache is oversized, clear
-  // it in the background — harmless (it just re-fills under the 64 MB cap) and the
-  // next launch is fast.
-  session.defaultSession
-    .getCacheSize()
-    .then((size) => {
-      slog(`disk cache ${Math.round(size / (1024 * 1024))}MB`);
-      if (size > 128 * 1024 * 1024) {
-        return session.defaultSession
-          .clearCache()
-          .then(() => slog("oversized disk cache cleared (next launch will be fast)"));
-      }
-    })
-    .catch(() => {});
 
   // Health-gate any current bundle that hasn't been confirmed healthy yet —
   // whether just promoted this launch or left unconfirmed by a prior session
