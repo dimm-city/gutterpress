@@ -104,11 +104,11 @@
   }
   .file-tree-header {
     padding: 8px 12px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
     text-transform: uppercase;
-    color: var(--app-text-muted);
+    color: var(--app-text-faint);
     border-bottom: 1px solid var(--app-border);
     flex-shrink: 0;
   }

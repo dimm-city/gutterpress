@@ -320,10 +320,11 @@
   }
   .group-head h3 {
     margin: 0;
-    font-size: 12px;
+    font-size: 10.5px;
+    font-weight: 600;
     text-transform: uppercase;
-    color: var(--app-text-muted);
-    letter-spacing: 0.5px;
+    color: var(--app-text-faint);
+    letter-spacing: 0.09em;
   }
   .reset {
     background: transparent;

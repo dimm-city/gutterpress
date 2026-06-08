@@ -536,11 +536,16 @@
         pendingRestoreViewMode = null;
         const mode = restoreMode ?? (userSetViewMode ? viewMode : auto);
         applyViewMode(mode, false);
-        // Apply fit-width zoom on narrow screens
-        if (window.innerWidth < 1280) {
-          applyFitWidthZoom();
+        // "Fit to width" must ALWAYS measure-and-fit, never assume 100% fits.
+        // A two-page spread (~1656px) overflows a 1400px pane at 100%, clipping
+        // the right page — so fit even on wide screens. Wait a frame so the
+        // view-mode layout has reflowed before measuring the (spread) width.
+        if (zoom === "fit-width") {
+          // setViewMode is an async postMessage round-trip; let it apply + reflow
+          // before measuring the spread width, else we'd fit the single-page width.
+          setTimeout(() => applyFitWidthZoom(), 100);
         } else {
-          client?.call("setZoom", [zoom === "fit-width" ? 1 : Number(zoom)]).catch(() => {});
+          client?.call("setZoom", [Number(zoom)]).catch(() => {});
         }
         if (restorePage && restorePage > 1) {
           queueMicrotask(() => restoreProjectPage(restorePage));
@@ -2066,6 +2071,21 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+  }
+  /* Button vocabulary: in the toolbar, secondary controls (nav arrows, settings,
+     help, menu summaries) read as ONE ghost family — transparent until hover —
+     so the filled treatment is reserved for the primary actions (Open, Save PDF)
+     and active toggles (Edit, the selected view-mode segment). This removes the
+     "every control is a box" clutter the design review flagged. */
+  .toolbar .icon-btn:not(.active),
+  .toolbar .menu-summary {
+    background: transparent;
+    border-color: transparent;
+  }
+  .toolbar .icon-btn:not(.active):hover:not(:disabled),
+  .toolbar .menu-summary:hover {
+    background: var(--app-control-hover-bg);
+    border-color: transparent;
   }
   /* Combo button: icon + label text side by side */
   .icon-text {
