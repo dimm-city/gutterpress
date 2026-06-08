@@ -30,6 +30,18 @@ export { loadManifest } from "./lib/manifest.ts";
 // ── Platform abstraction contract (#41) — consumed by the viewer ─────────────
 export type { PlatformAdapter } from "./platform.ts";
 
+// ── Print-safety CSS checks (#39) — backs the in-app CSS editor gutter ────────
+// The viewer's CSS editor runs `checkCss` in the renderer (postcss is pure JS)
+// to surface the SAME print-safety findings as the CLI validation pipeline.
+export { checkCss } from "./lib/printsafe.ts";
+export type { PrintSafeWarning } from "./lib/printsafe.ts";
+export {
+  ruleRemoteUrls,
+  ruleRiskyProps,
+  rulePagedjsCrashSelectors,
+  ruleSyntax,
+} from "./lib/printsafe.ts";
+
 // ── Type-only exports for plugin authors ─────────────────────────────────────
 export type {
   PrintMdPlugin,
