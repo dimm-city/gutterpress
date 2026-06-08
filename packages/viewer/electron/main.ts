@@ -159,6 +159,14 @@ interface CreateProjectResult {
   versionHistoryError?: string;
 }
 
+interface PrintSafeWarning {
+  rule: string;
+  severity: "error" | "warning";
+  message: string;
+  line: number;
+  column: number;
+}
+
 interface LibModule {
   startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
   loadManifestWithPath: (input: string) => Promise<ManifestWithPath>;
@@ -168,6 +176,7 @@ interface LibModule {
   detectProjectSource: (folderPath: string) => Promise<ProjectSource>;
   capabilitiesFor: (source: ProjectSource) => ProjectCapabilities;
   scaffoldProject: (options: CreateProjectOptions) => Promise<CreateProjectResult>;
+  checkCss: (css: string, from?: string) => PrintSafeWarning[];
   BuildError: new (message: string) => Error;
 }
 
@@ -1035,6 +1044,18 @@ ipcMain.handle(
 ipcMain.handle("api:status", async () => {
   return { name: "@dimm-city/print-md-viewer", runtime: "node", ok: true };
 });
+
+// CSS print-safety lint for the in-app CSS editor (#39). Runs in the main
+// process: checkCss is postcss-based, and postcss's node:url usage crashes the
+// renderer if bundled into the SPA. Routing through IPC keeps a single source of
+// truth (the same checkCss `print-md validate` uses) without bundling postcss.
+ipcMain.handle(
+  "lint:checkCss",
+  async (_e, css: string, from?: string): Promise<PrintSafeWarning[]> => {
+    const lib = await loadLib();
+    return lib.checkCss(css, from);
+  },
+);
 
 ipcMain.handle("app:getLastProject", async () => {
   const prefs = await readPrefs();

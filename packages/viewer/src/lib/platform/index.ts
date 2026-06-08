@@ -31,6 +31,7 @@ export type {
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
   NativeThemeState,
+  PrintSafeWarning,
 } from "./contract";
 
 let instance: Platform | null = null;

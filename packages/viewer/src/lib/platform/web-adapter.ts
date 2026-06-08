@@ -31,6 +31,7 @@ import type {
   NativeThemeState,
   DiscoveredProject,
   ProjectClassification,
+  PrintSafeWarning,
   FileStat,
   FileWriteResult,
   RecoveryEntry,
@@ -133,6 +134,12 @@ export class WebAdapter implements Platform {
 
   listProjectFiles(_projectDir: string): Promise<{ md: string[]; css: string[] }> {
     return rejectNotImplemented("listProjectFiles");
+  }
+
+  // Lint is non-essential chrome — degrade to "no warnings" rather than reject,
+  // so a future PWA editor still renders without a gutter until lint lands.
+  checkCss(_css: string, _from?: string): Promise<PrintSafeWarning[]> {
+    return Promise.resolve([]);
   }
 
   getViewerPrefs(): Promise<ViewerPrefs> {

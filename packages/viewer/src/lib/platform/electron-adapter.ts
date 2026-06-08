@@ -29,6 +29,7 @@ import type {
   NativeThemeState,
   DiscoveredProject,
   ProjectClassification,
+  PrintSafeWarning,
   FileStat,
   FileWriteResult,
   RecoveryEntry,
@@ -119,6 +120,10 @@ export class ElectronAdapter implements Platform {
 
   listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }> {
     return bridge().listProjectFiles(projectDir);
+  }
+
+  checkCss(css: string, from?: string): Promise<PrintSafeWarning[]> {
+    return bridge().checkCss(css, from);
   }
 
   getViewerPrefs(): Promise<ViewerPrefs> {

@@ -262,6 +262,13 @@ contextBridge.exposeInMainWorld("electron", {
     projectDir: string,
   ): Promise<{ md: string[]; css: string[] }> =>
     ipcRenderer.invoke("fs:listProjectFiles", projectDir),
+  // CSS print-safety lint (#39) — runs in main (postcss can't bundle into the SPA)
+  checkCss: (
+    css: string,
+    from?: string,
+  ): Promise<
+    Array<{ rule: string; severity: "error" | "warning"; message: string; line: number; column: number }>
+  > => ipcRenderer.invoke("lint:checkCss", css, from),
   // File metadata (PlatformAdapter.statFile, #44 — external-edit detection)
   statFile: (
     filePath: string,

@@ -63,6 +63,19 @@ export interface ProjectClassification {
   capabilities: ProjectCapabilities;
 }
 
+/**
+ * One CSS print-safety warning (#39). Mirrors the lib's `PrintSafeWarning`
+ * (packages/lib/src/lib/printsafe.ts) — defined locally so the SPA never imports
+ * the lib (and its postcss/node deps) into the renderer bundle.
+ */
+export interface PrintSafeWarning {
+  rule: string;
+  severity: "error" | "warning";
+  message: string;
+  line: number;
+  column: number;
+}
+
 // ── Host RPC payload shapes (mirror electron/preload.ts + types.d.ts) ─────────
 
 export interface UpdaterStatus {
@@ -298,6 +311,16 @@ export interface HostServices {
    * chapter-list sidebar. The WebAdapter stub rejects.
    */
   listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }>;
+
+  /**
+   * Run the CSS print-safety lint (#39) and return warnings for the editor
+   * gutter. Host-side because it is postcss-based and postcss's `node:url`
+   * usage cannot bundle into the browser SPA — so the UI calls this instead of
+   * importing `checkCss` directly. Same check `print-md validate` uses, so the
+   * gutter and CLI never disagree. The WebAdapter stub returns `[]`.
+   */
+  checkCss(css: string, from?: string): Promise<PrintSafeWarning[]>;
+
   getViewerPrefs(): Promise<ViewerPrefs>;
   setViewerPrefs(patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }>;
 

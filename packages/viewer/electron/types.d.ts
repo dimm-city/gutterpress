@@ -124,6 +124,11 @@ interface Window {
     listProjectFiles(
       projectDir: string,
     ): Promise<{ md: string[]; css: string[] }>;
+    // CSS print-safety lint (#39) — runs in main; postcss can't bundle into the SPA
+    checkCss(
+      css: string,
+      from?: string,
+    ): Promise<Array<{ rule: string; severity: "error" | "warning"; message: string; line: number; column: number }>>;
     // File metadata + folder watch (PlatformAdapter, #44)
     statFile(
       filePath: string,

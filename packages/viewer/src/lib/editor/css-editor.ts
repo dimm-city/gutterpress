@@ -8,16 +8,20 @@
  *  - {@link languageForPath} picks the CodeMirror language from a file's
  *    extension. The editor holds the language in a `Compartment` so switching
  *    files reconfigures the language without recreating the EditorView.
- *  - {@link cssDiagnosticsSource} reuses `checkCss` from
- *    `@dimm-city/print-md-lib` (pure JS, runs in the renderer) so the gutter
- *    and `print-md validate` never disagree.
+ *  - {@link cssDiagnosticsSource} runs the print-safety lint via
+ *    `getPlatform().checkCss(...)` (an IPC call into the main process), NOT by
+ *    importing the lib. `checkCss` is postcss-based and postcss's `node:url`
+ *    usage crashes the renderer if bundled into the SPA — so the UI stays clean
+ *    of platform/node code and the host runs it. Same check `print-md validate`
+ *    uses, so the gutter and CLI never disagree. (Async — CodeMirror's linter
+ *    accepts a Promise source.)
  *  - {@link pagedMediaCompletions} is a curated, static table — no generated
  *    schema, no runtime data read.
  *  - No Git/GitHub surface is touched (CLAUDE.md §7 is N/A to this issue).
  */
 
-import type { PrintSafeWarning } from "@dimm-city/print-md-lib";
-import { checkCss } from "@dimm-city/print-md-lib";
+import type { PrintSafeWarning } from "$lib/platform";
+import { getPlatform } from "$lib/platform";
 import type { Diagnostic } from "@codemirror/lint";
 import type { EditorState } from "@codemirror/state";
 import type {
@@ -98,9 +102,9 @@ export function toCssDiagnostic(
  * Map an EditorState's CSS document through `checkCss` into CodeMirror
  * diagnostics. Pure and synchronous — `checkCss` runs postcss in the renderer.
  */
-export function cssDiagnosticsSource(state: EditorState): Diagnostic[] {
+export async function cssDiagnosticsSource(state: EditorState): Promise<Diagnostic[]> {
   const doc = state.doc;
-  const warnings = checkCss(doc.toString());
+  const warnings = await getPlatform().checkCss(doc.toString());
   return warnings.map((w) => {
     const d = toCssDiagnostic(
       w,
