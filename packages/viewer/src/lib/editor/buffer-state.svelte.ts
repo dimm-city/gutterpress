@@ -207,6 +207,16 @@ export class EditorBuffer {
   async reconcileExternalChange(): Promise<void> {
     const filePath = this.filePath;
     if (!filePath) return;
+    // Self-echo suppression (#38 cursor-jump fix): the folder watcher fires on
+    // our OWN debounced disk write. The mtime guard below catches the echo once
+    // doSave has recorded the post-write mtime — but the watch event can arrive
+    // while a save is still pending or mid-flight, when the file on disk already
+    // carries a new mtime that diskMtimeMs hasn't caught up to yet. Reconciling
+    // then would read back our just-written snapshot, see it differ from the
+    // still-typing buffer, and either pop a false conflict banner or auto-reload
+    // the document — collapsing the caret/scroll ("editor jumps when I type").
+    // Any change while a save is outstanding is definitionally our own; skip it.
+    if (this.hasPendingSave) return;
     let stat: { mtimeMs: number; size: number; exists: boolean };
     try {
       stat = await this.platform.statFile(filePath);

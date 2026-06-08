@@ -193,6 +193,12 @@ export interface AppSettings {
   preview: {
     defaultZoom: string;
     viewMode: "single" | "two-column";
+    /**
+     * On small/narrow viewports the editor and preview can't sit side by side,
+     * so the workspace collapses to a single pane and this picks which one is
+     * shown. Ignored above the responsive breakpoint (split layout). (#responsive)
+     */
+    paneMode: "edit" | "view";
   };
   advanced: {
     fileWatcherInterval: number;
@@ -221,6 +227,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   preview: {
     defaultZoom: "fit-width",
     viewMode: "two-column",
+    paneMode: "view",
   },
   advanced: {
     fileWatcherInterval: 300,

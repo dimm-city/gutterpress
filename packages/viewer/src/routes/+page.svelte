@@ -2,7 +2,6 @@
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
   import ChapterList from "$lib/components/ChapterList.svelte";
   import FileTree from "$lib/components/FileTree.svelte";
-  import MarkdownEditor from "$lib/components/MarkdownEditor.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
   import type { RecoveryItem } from "$lib/components/CrashRecoveryDialog.svelte";
@@ -93,11 +92,17 @@
   // bgColor, viewMode and zoom are sourced from the persisted settings store
   // (their old inline defaults #5a5a5a / two-column / fit-width now live in
   // DEFAULT_SETTINGS). Local mutations write back through useSettings().set().
+  // bgColor has no toolbar control (that was removed in the toolbar redesign);
+  // it is set via the Settings dialog only.
   const settings = useSettings();
   _loadSettings();
   let zoom = $derived(settings.current.preview.defaultZoom);
   let viewMode = $derived(settings.current.preview.viewMode);
   let bgColor = $derived(settings.current.appearance.previewBg);
+  // Edit/View single-pane mode for narrow viewports (persisted in settings #45).
+  // Only consulted below the responsive breakpoint; above it the layout is the
+  // side-by-side split regardless of this value.
+  let paneMode = $derived(settings.current.preview.paneMode);
   let debug = $state(false);
   let settingsOpen = $state(false);
   let settingsBtn = $state<HTMLButtonElement | undefined>(undefined);
@@ -179,7 +184,7 @@
     if (currentDir && sourceMode === "folder") {
       const wasClosed = !editorOpen;
       editorOpen = true;
-      if (wasClosed) requestAnimationFrame(() => editorRef?.focus());
+      if (wasClosed) focusEditorWhenReady();
     }
     // On the mobile bottom-sheet drawer, picking a chapter dismisses it.
     if (window.matchMedia("(max-width: 640px)").matches) {
@@ -198,6 +203,48 @@
   // state now lives inside the buffer.
   let editorOpen = $state(false);
   let editorRef = $state<{ focus: () => void } | null>(null);
+
+  // MarkdownEditor wraps the full CodeMirror 6 stack (+ lang-markdown's
+  // code-language loaders), a ~300 KB chunk. The editor pane is closed by
+  // default and is desktop-folder-only, so importing it statically would parse
+  // + evaluate all of CodeMirror on every launch — the dominant cold-start
+  // cost. Load it lazily the first time the editor pane is actually opened so
+  // app startup never pays for it. One-time import; the resolved component is
+  // cached in MarkdownEditor for the lifetime of the app.
+  let MarkdownEditor = $state<
+    typeof import("$lib/components/MarkdownEditor.svelte")["default"] | null
+  >(null);
+  let editorModuleLoading = $state(false);
+  // Set when the editor is opened before its (lazy) component has mounted, so
+  // the focus request is honored once editorRef becomes available.
+  let pendingEditorFocus = $state(false);
+  function focusEditorWhenReady() {
+    if (editorRef) {
+      requestAnimationFrame(() => editorRef?.focus());
+    } else {
+      pendingEditorFocus = true;
+    }
+  }
+  $effect(() => {
+    if (editorRef && pendingEditorFocus) {
+      pendingEditorFocus = false;
+      requestAnimationFrame(() => editorRef?.focus());
+    }
+  });
+  $effect(() => {
+    if (!editorOpen || !currentDir || MarkdownEditor || editorModuleLoading) return;
+    editorModuleLoading = true;
+    import("$lib/components/MarkdownEditor.svelte")
+      .then((m) => {
+        MarkdownEditor = m.default;
+      })
+      .catch((e) => {
+        editorModuleLoading = false;
+        toast?.error(
+          `Could not open the editor: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      });
+  });
 
   // Construct lazily on first desktop use so the WebAdapter path never touches
   // it (the editor is desktop-only). One buffer for the lifetime of the app.
@@ -334,7 +381,7 @@
       const recovered = await getPlatform().readFile(item.recoveryPath);
       await buf.restoreContent(item.filePath, recovered);
       editorOpen = true;
-      requestAnimationFrame(() => editorRef?.focus());
+      focusEditorWhenReady();
     } catch (e) {
       toast?.error(
         `Could not restore: ${e instanceof Error ? e.message : String(e)}`,
@@ -360,8 +407,9 @@
     // focus-switch into the editing surface (#38). Closing returns focus to
     // the document (preview iframe / window) implicitly.
     if (editorOpen) {
-      // Defer until the pane (and CodeMirror view) is mounted.
-      requestAnimationFrame(() => editorRef?.focus());
+      // Defer until the pane (and CodeMirror view) is mounted. The editor
+      // component is lazy-loaded, so focus may need to wait for it to arrive.
+      focusEditorWhenReady();
     }
   }
 
@@ -1140,12 +1188,38 @@
     client?.call("toggleDebugMode").catch(() => {});
   }
 
-  function onBgColor(e: Event) {
-    const v = (e.target as HTMLInputElement).value;
-    settings.set({ appearance: { previewBg: v } });
-    client?.setBgColor(v);
-    // Re-inject canvas styles with new bg (covers elements Paged.js strips)
-    client?.injectStyles("viewer-canvas", buildViewerStyles(v));
+  // ── Responsive single-pane (narrow viewport) ───────────────────────────────
+  // Below this width the editor + preview can't sit side by side, so the
+  // workspace collapses to one pane and the Edit / View toggle picks which one
+  // shows. Above it, the side-by-side split is used and paneMode is ignored.
+  const NARROW_QUERY = "(max-width: 820px)";
+  let isNarrow = $state(false);
+  $effect(() => {
+    const mq = window.matchMedia(NARROW_QUERY);
+    isNarrow = mq.matches;
+    const onChange = (e: MediaQueryListEvent) => (isNarrow = e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  });
+
+  // Close the enclosing <details> menu after a menu item is chosen, and return
+  // focus to its summary for keyboard users.
+  function closeMenu(e: Event) {
+    const details = (e.currentTarget as HTMLElement)?.closest("details");
+    if (details) {
+      details.open = false;
+      details.querySelector<HTMLElement>("summary")?.focus();
+    }
+  }
+
+  function setPaneMode(mode: "edit" | "view") {
+    settings.set({ preview: { paneMode: mode } });
+    // Switching to the edit pane should open the editor + focus it (folder only).
+    if (mode === "edit" && currentDir && sourceMode === "folder") {
+      const wasClosed = !editorOpen;
+      editorOpen = true;
+      if (wasClosed) focusEditorWhenReady();
+    }
   }
 
   // ── Auto-update actions ────────────────────────────────────────────────
@@ -1303,49 +1377,118 @@
     {/if}
 
     <section class="right">
-      <!-- In-app editor toggle (#38): collapses/expands the file-tree + editor
-           split. Disabled until a project folder is open. -->
-      <button
-        class="icon-text"
-        class:active={editorOpen}
-        onclick={toggleEditor}
-        disabled={!currentDir || sourceMode === "url"}
-        title="Toggle markdown editor (Ctrl+E)"
-        aria-label="Toggle markdown editor"
-        aria-pressed={editorOpen}
-      >
-        <Icon name="pen-line" /><span class="view-label">Edit</span>
-      </button>
-      <!-- UX-039: separator before view mode buttons -->
+      <!-- Edit / View pane toggle. On wide viewports this toggles the editor
+           split open/closed alongside the preview (#38). On narrow viewports
+           the layout is single-pane, and this switches which pane is shown
+           (#responsive). Disabled until a project folder is open. -->
+      {#if isNarrow}
+        <div class="pane-toggle" role="radiogroup" aria-label="Edit or view mode">
+          <button
+            role="radio"
+            class="icon-text seg"
+            class:active={paneMode === "edit"}
+            onclick={() => setPaneMode("edit")}
+            disabled={!currentDir || sourceMode === "url"}
+            title="Edit your markdown"
+            aria-label="Edit mode"
+            aria-checked={paneMode === "edit"}
+          >
+            <Icon name="pen-line" /><span class="view-label">Edit</span>
+          </button>
+          <button
+            role="radio"
+            class="icon-text seg"
+            class:active={paneMode === "view"}
+            onclick={() => setPaneMode("view")}
+            disabled={!previewUrl}
+            title="Preview your book"
+            aria-label="View mode"
+            aria-checked={paneMode === "view"}
+          >
+            <Icon name="eye" /><span class="view-label">View</span>
+          </button>
+        </div>
+      {:else}
+        <button
+          class="icon-text"
+          class:active={editorOpen}
+          onclick={toggleEditor}
+          disabled={!currentDir || sourceMode === "url"}
+          title="Toggle markdown editor (Ctrl+E)"
+          aria-label="Toggle markdown editor"
+          aria-pressed={editorOpen}
+        >
+          <Icon name="pen-line" /><span class="view-label">Edit</span>
+        </button>
+      {/if}
+      <!-- UX-039: separator before view mode controls -->
       <span class="toolbar-sep" aria-hidden="true"></span>
-      <!-- UX-014: text labels + aria-pressed on view mode buttons -->
-      <button
-        class="icon-text"
-        class:active={viewMode === "single"}
-        onclick={() => applyViewMode("single", true)}
-        disabled={!previewUrl}
-        title="Single page view (Page)"
-        aria-label="Single page view"
-        aria-pressed={viewMode === "single"}
-      >
-        <Icon name="rectangle-vertical" /><span class="view-label">Page</span>
-      </button>
-      <button
-        class="icon-text"
-        class:active={viewMode === "two-column"}
-        onclick={() => applyViewMode("two-column", true)}
-        disabled={!previewUrl}
-        title="Two-page spread view (Spread)"
-        aria-label="Two-page spread view"
-        aria-pressed={viewMode === "two-column"}
-      >
-        <Icon name="columns-2" /><span class="view-label">Spread</span>
-      </button>
+
+      <!-- View-mode (single/spread): a pair of segmented buttons on wide
+           screens; collapses into a single menu button when space is tight. -->
+      <div class="view-mode-group">
+        <button
+          class="icon-text"
+          class:active={viewMode === "single"}
+          onclick={() => applyViewMode("single", true)}
+          disabled={!previewUrl}
+          title="Single page view (Page)"
+          aria-label="Single page view"
+          aria-pressed={viewMode === "single"}
+        >
+          <Icon name="rectangle-vertical" /><span class="view-label">Page</span>
+        </button>
+        <button
+          class="icon-text"
+          class:active={viewMode === "two-column"}
+          onclick={() => applyViewMode("two-column", true)}
+          disabled={!previewUrl}
+          title="Two-page spread view (Spread)"
+          aria-label="Two-page spread view"
+          aria-pressed={viewMode === "two-column"}
+        >
+          <Icon name="columns-2" /><span class="view-label">Spread</span>
+        </button>
+      </div>
+      <details class="menu view-mode-menu">
+        <summary
+          class="icon-btn menu-summary"
+          title="Page view mode"
+          aria-label="Page view mode"
+        >
+          <Icon name={viewMode === "single" ? "rectangle-vertical" : "columns-2"} />
+          <Icon name="chevron-down" size={12} />
+        </summary>
+        <div class="menu-panel">
+          <button
+            aria-pressed={viewMode === "single"}
+            class="menu-item"
+            class:active={viewMode === "single"}
+            onclick={(e) => { applyViewMode("single", true); closeMenu(e); }}
+            disabled={!previewUrl}
+          >
+            <Icon name="rectangle-vertical" /> Single page
+          </button>
+          <button
+            aria-pressed={viewMode === "two-column"}
+            class="menu-item"
+            class:active={viewMode === "two-column"}
+            onclick={(e) => { applyViewMode("two-column", true); closeMenu(e); }}
+            disabled={!previewUrl}
+          >
+            <Icon name="columns-2" /> Two-page spread
+          </button>
+        </div>
+      </details>
+
+      <!-- Zoom: a select on wide screens; collapses into a menu button when
+           space is tight. -->
       <select
         class="zoom-select"
         value={zoom}
         onchange={(e) => applyZoom((e.currentTarget as HTMLSelectElement).value)}
         disabled={!previewUrl}
+        aria-label="Zoom level"
         title="Zoom level — F for fit width, + / - to zoom in and out"
       >
         <!-- UX-015: fit-width first, renamed to "Fit width" -->
@@ -1358,14 +1501,30 @@
         <option value="1.5">150%</option>
         <option value="2">200%</option>
       </select>
-      <!-- UX-005: labeled canvas color picker -->
-      <div class="bg-swatch-wrapper">
-        <span class="bg-label">Canvas</span>
-        <label class="bg-swatch" title="Change the preview canvas color — does not affect your PDF">
-          <input type="color" value={bgColor} oninput={onBgColor} />
-        </label>
-      </div>
-      <!-- UX-004: debug button removed from toolbar -->
+      <details class="menu zoom-menu">
+        <summary
+          class="icon-btn menu-summary"
+          title="Zoom level"
+          aria-label="Zoom level"
+        >
+          <Icon name="zoom-in" />
+          <Icon name="chevron-down" size={12} />
+        </summary>
+        <div class="menu-panel">
+          {#each [["fit-width", "Fit width"], ["0.25", "25%"], ["0.5", "50%"], ["0.75", "75%"], ["1", "100%"], ["1.25", "125%"], ["1.5", "150%"], ["2", "200%"]] as [val, label] (val)}
+            <button
+              aria-pressed={zoom === val}
+              class="menu-item"
+              class:active={zoom === val}
+              onclick={(e) => { applyZoom(val); closeMenu(e); }}
+              disabled={!previewUrl}
+            >
+              {label}
+            </button>
+          {/each}
+        </div>
+      </details>
+
       <!-- UX-039: separator before Save PDF -->
       <span class="toolbar-sep" aria-hidden="true"></span>
       <!-- UX-006: Save PDF always visible; icon-only at narrow widths -->
@@ -1385,18 +1544,6 @@
         <span class="save-hint">Not available for web previews</span>
       {:else if saveWarning}
         <span class="save-hint save-warning" role="alert">{saveWarning}</span>
-      {/if}
-      <!-- Auto-update: quiet icon-only button; only shown when bridge is present -->
-      {#if isDesktop()}
-        <button
-          class="icon-btn update-check-btn"
-          onclick={checkForUpdates}
-          disabled={checkingUpdates}
-          title={checkingUpdates ? "Checking for updates…" : "Check for updates"}
-          aria-label="Check for updates"
-        >
-          <Icon name="refresh-cw" />
-        </button>
       {/if}
       <!-- Settings panel (#45): gear icon + Cmd/Ctrl+, shortcut -->
       <button
@@ -1426,6 +1573,9 @@
       class="workspace"
       class:editor-open={editorOpen && !!currentDir}
       class:sidebar-open={sidebarOpen && !!currentDir && sourceMode === "folder"}
+      class:narrow={isNarrow}
+      class:show-edit={isNarrow && paneMode === "edit"}
+      class:show-view={isNarrow && paneMode === "view"}
     >
       {#if currentDir && sourceMode === "folder" && sidebarOpen}
         <!-- Backdrop only matters on the mobile bottom-sheet variant (hidden via
@@ -1461,15 +1611,24 @@
               onKeepMine={keepMineExternal}
             />
           {/if}
-          <MarkdownEditor
-            bind:this={editorRef}
-            filePath={editorFilePath}
-            content={editorContent}
-            onChange={onEditorChange}
-          />
+          {#if MarkdownEditor}
+            <MarkdownEditor
+              bind:this={editorRef}
+              filePath={editorFilePath}
+              content={editorContent}
+              onChange={onEditorChange}
+            />
+          {:else}
+            <div class="editor-loading" role="status" aria-live="polite">
+              Loading editor…
+            </div>
+          {/if}
         </section>
       {/if}
-      <section class="pane preview-pane">
+      <section
+        class="pane preview-pane"
+        inert={isNarrow && paneMode === "edit" ? true : undefined}
+      >
         {#key previewUrl}
           <PreviewFrame
             url={previewUrl}
@@ -1514,7 +1673,13 @@
 </div>
 </div>
 
-<HelpDialog bind:open={helpOpen} triggerEl={helpBtn} />
+<HelpDialog
+  bind:open={helpOpen}
+  triggerEl={helpBtn}
+  onCheckForUpdates={checkForUpdates}
+  {checkingUpdates}
+  {updateReadyVersion}
+/>
 <SettingsDialog bind:open={settingsOpen} triggerEl={settingsBtn} />
 <OpenLocationDialog
   bind:open={openLocationOpen}
@@ -1590,6 +1755,14 @@
   }
   .editor-pane {
     border-right: 1px solid var(--app-border);
+  }
+  .editor-loading {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    color: var(--app-text-faint);
+    font-size: 13px;
   }
   .preview-pane {
     position: relative;
@@ -1734,6 +1907,67 @@
   /* UX-014: small text label under/beside view mode icon */
   .view-label { font-size: 11px; }
 
+  /* Edit/View segmented toggle (narrow single-pane mode) */
+  .pane-toggle { display: inline-flex; gap: 0; }
+  .pane-toggle .seg { border-radius: 0; }
+  .pane-toggle .seg:first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+  .pane-toggle .seg:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; margin-left: -1px; }
+
+  /* ---- Collapsible dropdown menus (view-mode + zoom) ---- */
+  /* On wide screens the inline controls (.view-mode-group / .zoom-select) show
+     and the menu buttons hide. Below a breakpoint they swap. */
+  .menu { position: relative; display: none; }
+  .menu-summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    cursor: pointer;
+  }
+  .menu-summary::-webkit-details-marker { display: none; }
+  .menu[open] .menu-summary {
+    background: var(--app-control-hover-bg);
+    border-color: var(--app-control-hover-border);
+  }
+  .menu-panel {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 80;
+    min-width: 168px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+    background: var(--app-surface-raised);
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    box-shadow: 0 6px 20px var(--app-shadow-md);
+  }
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    padding: 6px 10px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .menu-item:hover:not(:disabled) {
+    background: var(--app-control-hover-bg);
+    border-color: var(--app-control-hover-border);
+  }
+  .menu-item.active {
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
+  }
+  .view-mode-group { display: inline-flex; gap: 6px; }
+
   .page-input {
     background: var(--app-control-bg);
     border: 1px solid var(--app-control-border);
@@ -1779,25 +2013,6 @@
     white-space: nowrap;
     max-width: 260px;
     flex-shrink: 2;
-  }
-
-  /* UX-005: labeled canvas color picker wrapper */
-  .bg-swatch-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-  }
-  .bg-label { font-size: 11px; color: var(--app-text-muted); white-space: nowrap; }
-  .bg-swatch { display: inline-block; cursor: pointer; flex-shrink: 0; }
-  .bg-swatch input {
-    width: 32px;
-    height: 28px;
-    padding: 0;
-    border-radius: 6px;
-    border: 1px solid var(--app-control-border);
-    background: none;
-    cursor: pointer;
   }
 
   /* UX-039: visual separator between toolbar groups */
@@ -1905,18 +2120,26 @@
   }
   .update-later:hover { background: var(--app-scrim); }
 
-  /* Spin the refresh icon while checking */
-  .update-check-btn:disabled :global(svg) {
-    animation: update-spin 1s linear infinite;
-  }
-  @keyframes update-spin {
-    to { transform: rotate(360deg); }
-  }
-
-  /* ---- Responsive breakpoints ---- */
+  /* ---- Responsive breakpoints ----
+     The toolbar degrades in stages as the viewport narrows:
+       1200px — trim the doc-title/path widths
+       1024px — drop button text labels (icon-only with tooltips/aria-labels)
+        980px — collapse view-mode + zoom into dropdown menu buttons
+        900px — hide the doc title, drop the Save PDF text label
+        820px — single-pane layout (Edit/View toggle); see .workspace.narrow */
   @media screen and (max-width: 1200px) {
     .doc-title { max-width: 140px; }
     .path { max-width: 180px; }
+  }
+  @media screen and (max-width: 1024px) {
+    /* Icon-only buttons: labels drop, aria-label/title keep them accessible. */
+    .view-label { display: none; }
+  }
+  @media screen and (max-width: 980px) {
+    /* Swap the inline view-mode buttons + zoom select for compact menu buttons. */
+    .view-mode-group { display: none; }
+    .zoom-select { display: none; }
+    .menu { display: inline-block; }
   }
   @media screen and (max-width: 900px) {
     .doc-title { display: none; }
@@ -1926,11 +2149,42 @@
   }
   @media screen and (max-width: 700px) {
     .path { display: none; }
-    .zoom-select { display: none; }
   }
-  @media screen and (max-width: 520px) {
-    .toolbar { grid-template-columns: auto 1fr; }
-    .right { display: none; }
+  @media screen and (max-width: 560px) {
+    /* Compact page navigation: drop the first/last jump buttons, keep prev /
+       page-pill / next so navigation still works without overflow. */
+    .center .icon-btn:first-child,
+    .center .icon-btn:last-child { display: none; }
+    .page-pill { min-width: 72px; }
+  }
+
+  /* ---- Small-screen single-pane layout (#responsive) ----
+     Below NARROW_QUERY (820px) the editor + preview can't sit side by side.
+     The workspace stays a single column and the Edit/View toggle decides which
+     pane is visible. The preview iframe is NEVER unmounted (it owns the live
+     PreviewClient); inactive panes are hidden with `display:none`. */
+  @media screen and (max-width: 820px) {
+    .workspace.narrow,
+    .workspace.narrow.editor-open,
+    .workspace.narrow.sidebar-open,
+    .workspace.narrow.sidebar-open.editor-open {
+      grid-template-columns: 1fr;
+    }
+    /* The file tree is part of the editing surface; fold it away on small
+       screens so the editor pane gets the full width. */
+    .workspace.narrow .file-tree-pane { display: none; }
+    /* View mode: show only the preview. */
+    .workspace.narrow.show-view .editor-pane { display: none; }
+    /* Edit mode: show only the editor; keep the preview mounted but hidden. */
+    .workspace.narrow.show-edit .preview-pane {
+      position: absolute;
+      width: 0;
+      height: 0;
+      overflow: hidden;
+      pointer-events: none;
+      opacity: 0;
+    }
+    .workspace.narrow.show-edit .editor-pane { border-right: none; }
   }
 
   /* ---- Chapter-list mobile bottom-sheet drawer (#42) ----

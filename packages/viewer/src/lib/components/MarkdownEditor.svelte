@@ -10,7 +10,12 @@
    * extension awareness yet (a follow-on per the issue).
    */
   import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
-  import { EditorState, Compartment, type Extension } from "@codemirror/state";
+  import {
+    EditorState,
+    EditorSelection,
+    Compartment,
+    type Extension,
+  } from "@codemirror/state";
   import {
     defaultKeymap,
     history,
@@ -63,6 +68,10 @@
   // The language the view is currently configured for. Seeded at mount; the
   // doc-swap effect reconfigures the compartments when it changes.
   let currentLanguage: EditorLanguage = "plain";
+  // The filePath the view's document currently belongs to. Used by the doc-swap
+  // effect to tell a same-file content reload (preserve caret) from a file
+  // switch (reset caret). Seeded at mount alongside the initial document.
+  let appliedPath: string | null = null;
 
   /** Build the language extension for a given resolved language mode. */
   function languageExtension(lang: EditorLanguage): Extension {
@@ -144,6 +153,7 @@
   $effect(() => {
     if (!host || view) return;
     currentLanguage = languageForPath(filePath);
+    appliedPath = filePath;
     view = new EditorView({ state: buildState(content), parent: host });
     return () => {
       view?.destroy();
@@ -158,8 +168,16 @@
     const nextDoc = content;
     // Track filePath so the effect re-runs on file switch even if content
     // happens to match.
+    const nextPath = filePath;
     const nextLang = languageForPath(filePath);
     if (!view) return;
+
+    // Switching to a different file is a fresh document: the prior caret/scroll
+    // is meaningless against new content, so let the replace reset to the top.
+    // Re-applying content for the SAME file (external-edit reload) preserves the
+    // caret/scroll so the editor never jumps mid-edit (#38).
+    const sameFile = nextPath === appliedPath;
+    appliedPath = nextPath;
 
     // Reconfigure language + CSS-only extensions when switching to a file of a
     // different type (e.g. .md → .css). Compartment.reconfigure swaps the
@@ -178,9 +196,31 @@
     const current = view.state.doc.toString();
     if (current === nextDoc) return;
     applyingExternal = true;
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: nextDoc },
-    });
+    if (sameFile) {
+      // Same-file content replace (external-edit reload): a naive full-document
+      // dispatch collapses the selection to offset 0 and snaps scroll to the top
+      // — the editor would "jump" mid-edit. Clamp the existing selection into the
+      // new document and keep the viewport anchored to the caret.
+      const prevSel = view.state.selection;
+      const docLen = nextDoc.length;
+      const clampedSel = prevSel.ranges.map((r) =>
+        EditorSelection.range(Math.min(r.anchor, docLen), Math.min(r.head, docLen)),
+      );
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: nextDoc },
+        selection: EditorSelection.create(
+          clampedSel,
+          Math.min(prevSel.mainIndex, clampedSel.length - 1),
+        ),
+        effects: EditorView.scrollIntoView(Math.min(prevSel.main.head, docLen)),
+        scrollIntoView: false,
+      });
+    } else {
+      // Different file: fresh document, reset caret/scroll to the top.
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: nextDoc },
+      });
+    }
     applyingExternal = false;
   });
 
