@@ -1,10 +1,27 @@
 # Issue #25 — New project wizard / starter template for first-time writers
 
-> **Status:** design + compile-clean type stubs only. No behaviour is
-> implemented in this pass. Milestone 0.4.0. Builds on the platform abstraction
-> (#41), the project-source classification (#12, already landed in
+> **Status:** IMPLEMENTED (Phases 1–4 complete). Milestone 0.4.0. Builds on the
+> platform abstraction (#41), the project-source classification (#12,
 > `lib/project-source.ts`), local version history (#13), and the embedded-asset
 > pattern (`lib/embedded-assets.ts`).
+>
+> **Implementation notes (delivered):**
+> - The generated manifest filename is **`manifest.yaml`**, not `print-md.yaml`
+>   — that is the filename the lib's manifest loader and the viewer/CLI project
+>   detection actually look for, so the new project opens and renders
+>   immediately (the explicit acceptance criterion). The plan's earlier
+>   `print-md.yaml` framing would not have been discoverable.
+> - The empty `assets/` dir is created by `scaffoldProject` directly rather than
+>   shipping an embedded `assets/.gitkeep` — an empty file can't be a typed
+>   embedded asset module (TS declaration emit rejects a `.gitkeep` import), and
+>   the directory copy only carries registered embedded files.
+> - **`isomorphic-git` VERIFIED under `bun build --compile`.** The compiled
+>   linux-x64 CLI binary scaffolds a project AND runs `git init` + initial
+>   commit via isomorphic-git from bunfs — so version history is ON by default
+>   in both the CLI and the viewer wizard (no deferral needed). The escape hatch
+>   (`--no-git` / wizard checkbox / downgrade-on-failure) is also wired.
+> - `DESKTOP_API` was already `2` (bumped by #44); `app:createProject` rides
+>   that version — no further bump needed this release.
 
 ## 1. Problem
 

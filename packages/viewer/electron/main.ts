@@ -142,6 +142,23 @@ interface ProjectCapabilities {
   authManagedByApp: boolean;
 }
 
+// New-project scaffold (#25). Mirrors the lib's CreateProjectOptions/Result.
+interface CreateProjectOptions {
+  name: string;
+  author?: string;
+  parentDir: string;
+  folderName?: string;
+  template?: "book";
+  versionHistory?: "local-git" | "none";
+}
+interface CreateProjectResult {
+  projectDir: string;
+  manifestPath: string;
+  openFile: string;
+  versionHistory: "local-git" | "none";
+  versionHistoryError?: string;
+}
+
 interface LibModule {
   startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
   loadManifestWithPath: (input: string) => Promise<ManifestWithPath>;
@@ -150,6 +167,7 @@ interface LibModule {
   getSystemDiagnostics: () => Promise<SystemDiagnostics>;
   detectProjectSource: (folderPath: string) => Promise<ProjectSource>;
   capabilitiesFor: (source: ProjectSource) => ProjectCapabilities;
+  scaffoldProject: (options: CreateProjectOptions) => Promise<CreateProjectResult>;
   BuildError: new (message: string) => Error;
 }
 
@@ -1195,6 +1213,22 @@ ipcMain.handle(
     const source = await lib.detectProjectSource(folderPath);
     const capabilities = lib.capabilitiesFor(source);
     return { source, capabilities };
+  },
+);
+
+// ── New-project scaffold (#25) ───────────────────────────────────────────────
+// Thin pass-through to the shared lib's scaffoldProject — the scaffolding logic
+// (template copy, placeholder fill, optional Git init via isomorphic-git) lives
+// in @dimm-city/print-md-lib, NOT here (issue #25 requirement). The renderer
+// wizard collects inputs and the lib does the work.
+ipcMain.handle(
+  "app:createProject",
+  async (_e, options: CreateProjectOptions): Promise<CreateProjectResult> => {
+    if (!options || typeof options.name !== "string" || typeof options.parentDir !== "string") {
+      throw new Error("app:createProject requires { name, parentDir }");
+    }
+    const lib = await loadLib();
+    return lib.scaffoldProject(options);
   },
 );
 

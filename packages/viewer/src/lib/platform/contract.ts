@@ -17,6 +17,8 @@ import type {
   ProjectCapabilities,
   FileStat,
   FileWriteResult,
+  CreateProjectOptions,
+  CreateProjectResult,
 } from "@dimm-city/print-md-lib";
 
 export type {
@@ -25,6 +27,8 @@ export type {
   ProjectCapabilities,
   FileStat,
   FileWriteResult,
+  CreateProjectOptions,
+  CreateProjectResult,
 };
 
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
@@ -336,6 +340,14 @@ export interface HostServices {
    * preview starts; never relies on the cached `ViewerPrefs.projectSource`.
    */
   classifyProject(path: string): Promise<ProjectClassification>;
+
+  /**
+   * Scaffold a new project from an embedded starter template (#25). A thin
+   * pass-through to the lib's `scaffoldProject` — the wizard collects inputs and
+   * the lib does the work (template copy, placeholder fill, optional local Git
+   * init). The WebAdapter stub rejects (the wizard is desktop-only in 0.4.0).
+   */
+  createProject(options: CreateProjectOptions): Promise<CreateProjectResult>;
 
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;

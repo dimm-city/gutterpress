@@ -33,6 +33,8 @@ import type {
   FileWriteResult,
   RecoveryEntry,
   FolderChangedEvent,
+  CreateProjectOptions,
+  CreateProjectResult,
 } from "./contract";
 
 function bridge(): ElectronBridge {
@@ -176,6 +178,10 @@ export class ElectronAdapter implements Platform {
 
   classifyProject(path: string): Promise<ProjectClassification> {
     return bridge().classifyProject(path);
+  }
+
+  createProject(options: CreateProjectOptions): Promise<CreateProjectResult> {
+    return bridge().createProject(options);
   }
 
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {

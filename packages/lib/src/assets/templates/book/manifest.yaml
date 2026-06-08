@@ -1,0 +1,8 @@
+title: "{{TITLE}}"
+authors:
+  - "{{AUTHOR}}"
+source:
+  files:
+    - chapter-01.md
+output:
+  filename: "{{OUTPUT_PDF}}"

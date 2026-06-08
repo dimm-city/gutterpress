@@ -14,6 +14,7 @@
   import HelpDialog from "$lib/components/HelpDialog.svelte";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
   import OpenLocationDialog from "$lib/components/OpenLocationDialog.svelte";
+  import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { PreviewClient } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
@@ -126,6 +127,16 @@
   // Open Location modal
   let openLocationOpen = $state(false);
   let openBtn = $state<HTMLButtonElement | undefined>(undefined);
+  // New-project wizard (#25)
+  let newProjectOpen = $state(false);
+  let newProjectBtn = $state<HTMLButtonElement | undefined>(undefined);
+  // Official setup guide for first-time writers (MVP "Download starter template").
+  const SETUP_GUIDE_URL =
+    "https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/01-getting-started.md";
+
+  function openSetupGuide() {
+    getPlatform().openExternal(SETUP_GUIDE_URL).catch(() => {});
+  }
 
   // ── Chapter-list sidebar (#42) ──────────────────────────────────────────
   // A collapsible left sidebar listing the project's .md chapters (and .css
@@ -1480,8 +1491,12 @@
         <div class="empty-icon" aria-hidden="true">📖</div>
         <h1 class="empty-title">print-md</h1>
         <p class="empty-tagline">Turn your markdown writing into a print-ready book</p>
-        <button class="primary empty-cta" onclick={() => (openLocationOpen = true)} disabled={busy}>Open Your Book Folder</button>
-        <p class="empty-hint">Open a Print-md project folder with a <code>manifest.yaml</code> or <code>manifest.yml</code> file, or preview a published document from a web address — both live under the <strong>Open</strong> button. Markdown sources are loaded in manifest order, or alphabetically when no file list is configured.</p>
+        <div class="empty-cta-row">
+          <button bind:this={newProjectBtn} class="primary empty-cta" onclick={() => (newProjectOpen = true)} disabled={busy}>Create a New Book</button>
+          <button class="ghost empty-cta" onclick={() => (openLocationOpen = true)} disabled={busy}>Open an Existing Book</button>
+        </div>
+        <p class="empty-hint">New to print-md? <button type="button" class="link-btn" onclick={openSetupGuide}>Read the getting-started guide →</button></p>
+        <p class="empty-hint">Already have a book folder? Open it under <strong>Open an Existing Book</strong>, or preview a published document from a web address. Your chapters are loaded in order automatically.</p>
         {#if urlPreviewError && sourceMode === "url"}
           <div class="open-error" role="alert">
             <strong>Preview unavailable.</strong>
@@ -1506,6 +1521,11 @@
   onOpenFolder={(path) => startFolderPreview(path)}
   onOpenUrl={openUrl}
   triggerEl={openBtn}
+/>
+<NewProjectWizard
+  bind:open={newProjectOpen}
+  onCreated={(projectDir) => startFolderPreview(projectDir, "Opening your new book…")}
+  triggerEl={newProjectBtn}
 />
 
 
@@ -1822,15 +1842,20 @@
   .empty-icon { font-size: 48px; line-height: 1; margin-bottom: 4px; }
   .empty-title { margin: 0; font-size: 22px; font-weight: 700; color: var(--app-text-secondary); letter-spacing: -0.3px; }
   .empty-tagline { margin: 0; font-size: 14px; color: var(--app-text-muted); line-height: 1.5; }
-  .empty-cta { padding: 10px 24px; font-size: 14px; font-weight: 600; border-radius: 8px; margin-top: 4px; }
+  .empty-cta-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+  .empty-cta { padding: 10px 24px; font-size: 14px; font-weight: 600; border-radius: 8px; }
   .empty-hint { margin: 0; font-size: 12px; color: var(--app-text-faint); line-height: 1.5; }
-  .empty-hint code {
-    font-family: ui-monospace, monospace;
-    color: var(--app-code-text);
-    background: var(--app-code-bg);
-    padding: 1px 5px;
-    border-radius: 3px;
+  .link-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    color: var(--app-link, var(--app-accent));
+    font: inherit;
+    cursor: pointer;
+    text-decoration: underline;
   }
+  .link-btn:hover { color: var(--app-accent-bright, var(--app-accent)); }
   .open-error {
     background: var(--app-error-bg);
     border: 1px solid var(--app-error-border);

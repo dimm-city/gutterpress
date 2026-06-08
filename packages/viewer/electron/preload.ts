@@ -74,6 +74,23 @@ interface UrlPreviewBlockedEvent {
   reason: string;
 }
 
+// New-project scaffold (#25). Mirrors the lib's CreateProjectOptions/Result.
+interface CreateProjectOptions {
+  name: string;
+  author?: string;
+  parentDir: string;
+  folderName?: string;
+  template?: "book";
+  versionHistory?: "local-git" | "none";
+}
+interface CreateProjectResult {
+  projectDir: string;
+  manifestPath: string;
+  openFile: string;
+  versionHistory: "local-git" | "none";
+  versionHistoryError?: string;
+}
+
 interface RecentFolderEntry {
   path: string;
   title: string;
@@ -322,6 +339,10 @@ contextBridge.exposeInMainWorld("electron", {
     path: string,
   ): Promise<{ source: ProjectSource; capabilities: ProjectCapabilities }> =>
     ipcRenderer.invoke("app:classifyProject", { path }),
+
+  // New-project scaffold (#25)
+  createProject: (options: CreateProjectOptions): Promise<CreateProjectResult> =>
+    ipcRenderer.invoke("app:createProject", options),
   startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>

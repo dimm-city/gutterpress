@@ -184,6 +184,21 @@ interface Window {
       source: ProjectSource;
       capabilities: ProjectCapabilities;
     }>;
+    // New-project scaffold (#25)
+    createProject(options: {
+      name: string;
+      author?: string;
+      parentDir: string;
+      folderName?: string;
+      template?: "book";
+      versionHistory?: "local-git" | "none";
+    }): Promise<{
+      projectDir: string;
+      manifestPath: string;
+      openFile: string;
+      versionHistory: "local-git" | "none";
+      versionHistoryError?: string;
+    }>;
     startPreview(args: { input: string }): Promise<{
       url: string;
       port: number;

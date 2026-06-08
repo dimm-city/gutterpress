@@ -67,10 +67,13 @@ export type {
   ProjectCapabilities,
 } from "../lib/project-source";
 
-// ── Project scaffolding contract (#25) — type-only until the impl lands ───────
-// The scaffold/source-provider FUNCTIONS are intentionally NOT re-exported yet
-// (they are `declare`d, bodiless stubs). Only the types ship so the viewer
-// wizard, the `print-md new` CLI command, and tests can be typed against them.
+// ── Project scaffolding (#25) ─────────────────────────────────────────────────
+export {
+  scaffoldProject,
+  slugifyProjectName,
+  escapeYamlScalar,
+} from "../lib/project-scaffold.ts";
+
 export type {
   ProjectTemplateId,
   ProjectVersionHistoryMode,
@@ -79,6 +82,10 @@ export type {
   CreateProjectErrorCode,
   CreateProjectError,
 } from "../lib/project-scaffold.ts";
+
+export {
+  providerFor,
+} from "../lib/source-provider.ts";
 
 export type {
   SnapshotEntry,

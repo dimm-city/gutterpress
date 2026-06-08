@@ -8,6 +8,7 @@ import { defineCommand, runMain } from "citty";
 // loads on `build`/`preview`.
 const SUBCOMMANDS = {
   // Primary author commands:
+  new: () => import("./commands/new").then((m) => m.default),
   preview: () => import("./commands/preview").then((m) => m.default),
   build: () => import("./commands/build").then((m) => m.default),
   // CI / advanced:

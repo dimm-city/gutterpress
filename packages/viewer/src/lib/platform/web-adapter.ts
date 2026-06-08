@@ -35,6 +35,8 @@ import type {
   FileWriteResult,
   RecoveryEntry,
   FolderChangedEvent,
+  CreateProjectOptions,
+  CreateProjectResult,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -219,6 +221,11 @@ export class WebAdapter implements Platform {
 
   classifyProject(_path: string): Promise<ProjectClassification> {
     return rejectNotImplemented("classifyProject");
+  }
+
+  // New-project scaffold (#25) — desktop-only in 0.4.0.
+  createProject(_options: CreateProjectOptions): Promise<CreateProjectResult> {
+    return rejectNotImplemented("createProject");
   }
 
   startPreview(_args: PreviewStartArgs): Promise<PreviewStartResult> {
