@@ -31,6 +31,9 @@ import type {
   NativeThemeState,
   DiscoveredProject,
   ProjectClassification,
+  FileStat,
+  RecoveryEntry,
+  FolderChangedEvent,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -86,6 +89,10 @@ export class WebAdapter implements Platform {
 
   listDir(_path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>> {
     return notImplemented("listDir");
+  }
+
+  statFile(_path: string): Promise<FileStat> {
+    return notImplemented("statFile");
   }
 
   watchFolder(_path: string, _cb: () => void): () => void {
@@ -238,6 +245,35 @@ export class WebAdapter implements Platform {
   }
 
   onUrlPreviewBlocked(_cb: (data: UrlPreviewBlockedEvent) => void): () => void {
+    return () => {};
+  }
+
+  // ── Unsaved changes / recovery (#44) — desktop-only; reject/no-op on web ───
+  writeRecovery(
+    _filePath: string,
+    _content: string,
+    _baseMtimeMs: number,
+  ): Promise<{ ok: boolean }> {
+    return rejectNotImplemented("writeRecovery");
+  }
+
+  clearRecovery(_filePath: string): Promise<{ ok: boolean }> {
+    return rejectNotImplemented("clearRecovery");
+  }
+
+  listRecovery(_projectDir: string): Promise<RecoveryEntry[]> {
+    return Promise.resolve([]);
+  }
+
+  setDirtyState(_isDirty: boolean): Promise<void> {
+    return rejectNotImplemented("setDirtyState");
+  }
+
+  onFlushBeforeClose(_cb: () => void): () => void {
+    return () => {};
+  }
+
+  onFolderChanged(_cb: (data: FolderChangedEvent) => void): () => void {
     return () => {};
   }
 }

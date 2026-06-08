@@ -25,6 +25,18 @@
  * surface stays small and easy to reason about. The full thing the app consumes
  * is {@link Platform} = `PlatformAdapter & HostServices`.
  */
+/**
+ * Filesystem metadata for a single path (GitHub #44 — external-edit detection).
+ * `mtimeMs` is the modification time in epoch milliseconds; `exists` is `false`
+ * (with `mtimeMs`/`size` = 0) when the path is absent rather than throwing, so
+ * the editor can distinguish "deleted out from under us" from a read error.
+ */
+export interface FileStat {
+  mtimeMs: number;
+  size: number;
+  exists: boolean;
+}
+
 export interface PlatformAdapter {
   /** Which host backs this adapter. Lets the rare unavoidable branch be explicit. */
   readonly platform: "electron" | "web";
@@ -55,6 +67,14 @@ export interface PlatformAdapter {
    * `readdir`. Web: File System Access API (0.6.0).
    */
   listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
+
+  /**
+   * Stat a file by absolute path (GitHub #44). Used by the editor to confirm a
+   * `watchFolder` event reflects a real on-disk change (mtime moved) versus the
+   * self-echo of our own `writeFile`. Resolves with `exists: false` rather than
+   * rejecting when the path is absent. Web throws until 0.6.0 (FS Access API).
+   */
+  statFile(path: string): Promise<FileStat>;
 
   /**
    * Watch a folder for changes, invoking `cb` on each change.

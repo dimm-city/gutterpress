@@ -26,6 +26,9 @@ import type {
   NativeThemeState,
   DiscoveredProject,
   ProjectClassification,
+  FileStat,
+  RecoveryEntry,
+  FolderChangedEvent,
 } from "./contract";
 
 function bridge(): ElectronBridge {
@@ -59,10 +62,12 @@ export class ElectronAdapter implements Platform {
     return bridge().listDir(path);
   }
 
-  watchFolder(_path: string, _cb: () => void): () => void {
-    throw new Error(
-      "watchFolder is not implemented yet — wiring lands with the in-app editor (#38).",
-    );
+  statFile(path: string): Promise<FileStat> {
+    return bridge().statFile(path);
+  }
+
+  watchFolder(path: string, cb: () => void): () => void {
+    return bridge().watchFolder(path, cb);
   }
 
   getSecret(_key: string): Promise<string | null> {
@@ -195,5 +200,34 @@ export class ElectronAdapter implements Platform {
 
   onUrlPreviewBlocked(cb: (data: UrlPreviewBlockedEvent) => void): () => void {
     return bridge().onUrlPreviewBlocked(cb);
+  }
+
+  // ── Unsaved changes / recovery (#44) ──────────────────────────────────────
+  writeRecovery(
+    filePath: string,
+    content: string,
+    baseMtimeMs: number,
+  ): Promise<{ ok: boolean }> {
+    return bridge().writeRecovery(filePath, content, baseMtimeMs);
+  }
+
+  clearRecovery(filePath: string): Promise<{ ok: boolean }> {
+    return bridge().clearRecovery(filePath);
+  }
+
+  listRecovery(projectDir: string): Promise<RecoveryEntry[]> {
+    return bridge().listRecovery(projectDir);
+  }
+
+  setDirtyState(isDirty: boolean): Promise<void> {
+    return bridge().setDirtyState(isDirty);
+  }
+
+  onFlushBeforeClose(cb: () => void): () => void {
+    return bridge().onFlushBeforeClose(cb);
+  }
+
+  onFolderChanged(cb: (data: FolderChangedEvent) => void): () => void {
+    return bridge().onFolderChanged(cb);
   }
 }

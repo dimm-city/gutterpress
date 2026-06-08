@@ -15,9 +15,36 @@ import type {
   PlatformAdapter,
   ProjectSource,
   ProjectCapabilities,
+  FileStat,
 } from "@dimm-city/print-md-lib";
 
-export type { PlatformAdapter, ProjectSource, ProjectCapabilities };
+export type { PlatformAdapter, ProjectSource, ProjectCapabilities, FileStat };
+
+// ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
+//
+// Phase-0 type stubs only — no implementation in this pass. See
+// docs/design/issue-44-plan.md.
+
+/** Lifecycle of the in-app editor buffer relative to disk (#44). */
+export type EditorBufferPhase = "clean" | "dirty" | "saving" | "error";
+
+/**
+ * One pending crash-recovery snapshot (#44), stored under
+ * `<userData>/recovery/`. `savedAt` is epoch ms of the snapshot; `baseMtimeMs`
+ * is the disk mtime the snapshot was taken against, so launch-time recovery can
+ * skip entries the user has since saved or that an external edit superseded.
+ */
+export interface RecoveryEntry {
+  filePath: string;
+  recoveryPath: string;
+  savedAt: number;
+  baseMtimeMs: number;
+}
+
+/** Payload of an `onFolderChanged` event (#44) — the changed entry's basename. */
+export interface FolderChangedEvent {
+  filename: string;
+}
 
 /** Result of classifying an opened folder (#12). */
 export interface ProjectClassification {
@@ -310,6 +337,36 @@ export interface HostServices {
   // Event subscriptions (return an unsubscribe fn)
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;
   onUrlPreviewBlocked(cb: (data: UrlPreviewBlockedEvent) => void): () => void;
+
+  // ── Unsaved changes / recovery (#44) — Phase-0 stubs, no impl yet ──────────
+
+  /** Write a debounced crash-recovery snapshot of the open buffer (#44). */
+  writeRecovery(
+    filePath: string,
+    content: string,
+    baseMtimeMs: number,
+  ): Promise<{ ok: boolean }>;
+  /** Clear the recovery snapshot for a file after a successful disk save (#44). */
+  clearRecovery(filePath: string): Promise<{ ok: boolean }>;
+  /** List pending recovery snapshots for an opened project, newest first (#44). */
+  listRecovery(projectDir: string): Promise<RecoveryEntry[]>;
+
+  /**
+   * Push the renderer's pending-save state to main so the window `close` gate
+   * can flush before quitting (#44). Renderer → main, fire-and-forget.
+   */
+  setDirtyState(isDirty: boolean): Promise<void>;
+  /**
+   * Subscribe to the main process's request to flush before the window closes
+   * (#44). The renderer flushes its buffer then signals completion; main waits
+   * (with a watchdog) before destroying the window. Returns an unsubscribe fn.
+   */
+  onFlushBeforeClose(cb: () => void): () => void;
+  /**
+   * Subscribe to debounced folder-change notifications for the open project
+   * (#44), backing external-edit detection. Returns an unsubscribe fn.
+   */
+  onFolderChanged(cb: (data: FolderChangedEvent) => void): () => void;
 }
 
 /** The complete host surface the viewer app consumes through `getPlatform()`. */
@@ -328,4 +385,11 @@ export interface ElectronBridge extends HostServices {
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
   listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
+  /** Raw fs stat IPC behind `PlatformAdapter.statFile` (#44). */
+  statFile(path: string): Promise<FileStat>;
+  /**
+   * Raw folder-watch IPC behind `PlatformAdapter.watchFolder` (#44). Subscribes
+   * to change events for `path` and returns an unsubscribe fn.
+   */
+  watchFolder(path: string, cb: () => void): () => void;
 }
