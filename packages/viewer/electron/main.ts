@@ -51,6 +51,16 @@ import {
   type ProjectStateMap,
 } from "./project-state";
 
+// ── Startup timing instrumentation (diagnose the ~10s launch stall) ──────────
+// Prints "[startup +Nms] <milestone>" so a slow launch log pinpoints exactly
+// which phase stalls (Electron init → web-root → window create → renderer load
+// → first paint → preview). Cheap; safe to leave in for a beta.
+const __startupT0 = Date.now();
+function slog(msg: string): void {
+  console.log(`[startup +${Date.now() - __startupT0}ms] ${msg}`);
+}
+slog("main.js evaluated");
+
 // __dirname/__filename are injected by electron-vite for the ESM main bundle
 // (resolves to out/main/ at runtime).
 
@@ -623,7 +633,10 @@ function createWindow() {
       sandbox: false,
     },
   });
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.once("ready-to-show", () => { slog("renderer ready-to-show (window shown)"); mainWindow?.show(); });
+  mainWindow.webContents.on("did-start-loading", () => slog("renderer did-start-loading"));
+  mainWindow.webContents.on("dom-ready", () => slog("renderer dom-ready"));
+  mainWindow.webContents.on("did-finish-load", () => slog("renderer did-finish-load"));
   mainWindow.setMenuBarVisibility(false);
 
   // Editable-field context menu. Electron ships no default menu, so inputs
@@ -1671,6 +1684,7 @@ ipcMain.handle("updater:markReady", async () => {
 // ──────────────────────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
+  slog("app whenReady");
   // Apply any staged update from a previous session BEFORE resolving the web
   // root, so refreshWebRoot() picks up the newly promoted bundle. Wrapped so a
   // userData IO failure (EACCES, disk full) can never prevent createWindow() —
@@ -1683,11 +1697,14 @@ app.whenReady().then(async () => {
       console.warn("[updater] startup promote failed (non-fatal):", err);
     }
   }
+  slog("updater promote done");
 
   await refreshWebRoot();
+  slog("web root resolved");
   registerAppProtocol();
   registerUrlPreviewHeaderWatch();
   createWindow();
+  slog("createWindow returned (loadURL dispatched)");
 
   // Health-gate any current bundle that hasn't been confirmed healthy yet —
   // whether just promoted this launch or left unconfirmed by a prior session
