@@ -44,10 +44,17 @@
     filePath = null,
     content = "",
     onChange,
+    onAnchorLine,
   }: {
     filePath?: string | null;
     content?: string;
     onChange?: (value: string) => void;
+    /**
+     * Editor→preview sync. Fires with the 1-based "anchor" source line: the top
+     * visible line on scroll, or the caret line on a deliberate (non-typing)
+     * caret move. Debounced via rAF.
+     */
+    onAnchorLine?: (line: number) => void;
   } = $props();
 
   let host = $state<HTMLDivElement | undefined>(undefined);
@@ -55,6 +62,29 @@
   // Guards the updateListener so programmatic document swaps (loading a file)
   // don't echo back through onChange and re-trigger a save.
   let applyingExternal = false;
+  // Suppress anchor-line emission until this timestamp — set by revealLine()
+  // (preview→editor) so the resulting scroll/selection can't bounce back as an
+  // editor→preview event. A timestamp (not a boolean) survives the async scroll
+  // event that fires after dispatch returns.
+  let suppressEmitUntil = 0;
+  let lastEmittedLine = -1;
+  let anchorRaf = 0;
+
+  function emitAnchorLine(line: number): void {
+    if (!onAnchorLine) return;
+    if (Date.now() < suppressEmitUntil) return;
+    if (line === lastEmittedLine) return;
+    lastEmittedLine = line;
+    onAnchorLine(line);
+  }
+
+  // Top visible source line = doc line at the top-left of the scroll viewport.
+  function topVisibleLine(v: EditorView): number | null {
+    const rect = v.scrollDOM.getBoundingClientRect();
+    const pos = v.posAtCoords({ x: rect.left + 6, y: rect.top + 6 }, false);
+    if (pos == null) return null;
+    return v.state.doc.lineAt(pos).number;
+  }
 
   // ── Language / diagnostics / completion compartments (#39) ────────────────
   // The editor is ONE CodeMirror instance whose language + CSS-only extensions
@@ -145,6 +175,13 @@
           if (update.docChanged && !applyingExternal) {
             onChange?.(update.state.doc.toString());
           }
+          // Editor→preview sync on a DELIBERATE caret move (click / arrow key),
+          // not while typing — typing would yank the preview on every keystroke.
+          if (onAnchorLine && update.selectionSet && !update.docChanged) {
+            emitAnchorLine(
+              update.state.doc.lineAt(update.state.selection.main.head).number,
+            );
+          }
         }),
       ],
     });
@@ -157,14 +194,33 @@
   // and dropping focus ("editor jumps / loses focus while typing"). Subsequent
   // content/file changes are handled by the doc-swap effect below, on the SAME
   // view instance.
+  let detachScroll: (() => void) | null = null;
   $effect(() => {
     if (!host || view) return;
     untrack(() => {
       currentLanguage = languageForPath(filePath);
       appliedPath = filePath;
       view = new EditorView({ state: buildState(content), parent: host });
+      // Editor→preview scroll sync: emit the top visible line as the user
+      // scrolls (rAF-coalesced). Bound to scrollDOM rather than updateListener
+      // because pure scrolling doesn't produce editor transactions.
+      const v = view;
+      const onScroll = () => {
+        if (anchorRaf) return;
+        anchorRaf = requestAnimationFrame(() => {
+          anchorRaf = 0;
+          const line = topVisibleLine(v);
+          if (line != null) emitAnchorLine(line);
+        });
+      };
+      v.scrollDOM.addEventListener("scroll", onScroll, { passive: true });
+      detachScroll = () => v.scrollDOM.removeEventListener("scroll", onScroll);
     });
     return () => {
+      if (anchorRaf) cancelAnimationFrame(anchorRaf);
+      anchorRaf = 0;
+      detachScroll?.();
+      detachScroll = null;
       view?.destroy();
       view = null;
     };
@@ -236,6 +292,23 @@
   /** Move keyboard focus into the editor (used when the pane is opened). */
   export function focus(): void {
     view?.focus();
+  }
+
+  /**
+   * Scroll/move the caret to a 1-based source line (preview→editor sync).
+   * Suppresses the cursor-line echo so it doesn't bounce back to the preview.
+   */
+  export function revealLine(line: number): void {
+    if (!view) return;
+    const doc = view.state.doc;
+    const clamped = Math.max(1, Math.min(line, doc.lines));
+    const pos = doc.line(clamped).from;
+    // Suppress the echo across the async scroll event the dispatch triggers.
+    suppressEmitUntil = Date.now() + 300;
+    lastEmittedLine = clamped;
+    view.dispatch({
+      effects: EditorView.scrollIntoView(pos, { y: "center" }),
+    });
   }
 </script>
 

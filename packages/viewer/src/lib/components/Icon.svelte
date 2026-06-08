@@ -30,7 +30,8 @@
     | "eye"
     | "chevron-down"
     | "ellipsis-vertical"
-    | "zoom-in";
+    | "zoom-in"
+    | "list";
 
   const ICONS: Record<IconName, string> = {
     "folder-open":
@@ -77,6 +78,8 @@
       '<circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>',
     "zoom-in":
       '<circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/>',
+    "list":
+      '<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>',
   };
 </script>
 

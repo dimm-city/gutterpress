@@ -67,6 +67,13 @@
   window.addEventListener('renderingComplete', function (e) {
     post({ type: 'pmd:event', name: 'renderingComplete', detail: e.detail });
   });
+  // ADR 0005: source-position sync + click-to-source.
+  window.addEventListener('sourceLineChanged', function (e) {
+    post({ type: 'pmd:event', name: 'sourceLineChanged', detail: e.detail });
+  });
+  window.addEventListener('elementActivated', function (e) {
+    post({ type: 'pmd:event', name: 'elementActivated', detail: e.detail });
+  });
 
   // Announce readiness as soon as previewAPI is defined.
   function announceReady() {

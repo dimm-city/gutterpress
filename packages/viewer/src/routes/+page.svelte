@@ -15,7 +15,7 @@
   import OpenLocationDialog from "$lib/components/OpenLocationDialog.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { PreviewClient } from "$lib/preview-client";
+  import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { useSettings, _loadSettings } from "$lib/settings.svelte";
@@ -88,6 +88,15 @@
   let pageEditing = $state(false);
   let pageEditValue = $state("1");
   let pageEditInput = $state<HTMLInputElement | undefined>(undefined);
+
+  // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
+  // outline drives the chapter-jump dropdown; activeOutlineIndex tracks the
+  // heading the reader is currently within (updated from sourceLineChanged).
+  let outline = $state<OutlineEntry[]>([]);
+  let activeOutlineIndex = $state(0);
+  // Timestamp guard: while the preview is being driven from the editor side,
+  // ignore the sourceLineChanged it emits so the two panes don't feed back.
+  let suppressPreviewSyncUntil = 0;
   // ── User settings (#45) ────────────────────────────────────────────────
   // bgColor, viewMode and zoom are sourced from the persisted settings store
   // (their old inline defaults #5a5a5a / two-column / fit-width now live in
@@ -202,7 +211,10 @@
   // reconciliation. The old loose editorFilePath/editorContent/saveDebounce
   // state now lives inside the buffer.
   let editorOpen = $state(false);
-  let editorRef = $state<{ focus: () => void } | null>(null);
+  let editorRef = $state<{
+    focus: () => void;
+    revealLine: (line: number) => void;
+  } | null>(null);
   // True below the single-pane breakpoint. Assigned by the matchMedia
   // subscription further down; declared here so the derived below can read it.
   let isNarrow = $state(false);
@@ -267,6 +279,13 @@
   // Mirrors used by the markup/props (chapter highlight, dirty dot, editor pane).
   let editorFilePath = $derived(buffer?.filePath ?? null);
   let editorContent = $derived(buffer?.content ?? "");
+  // The open file's chapter id for editor↔preview sync scoping. data-chapter-src
+  // is the manifest source filename (shallow/flat project layout), so the
+  // basename matches. Used to keep per-file source lines from mapping into the
+  // wrong chapter of the whole-book preview (ADR 0005).
+  let editorChapter = $derived(
+    editorFilePath ? (editorFilePath.split(/[\\/]/).pop() ?? null) : null,
+  );
   let dirtyPath = $derived(buffer && buffer.isDirty ? buffer.filePath : null);
 
   // External-edit conflict banner state (#44). Derived from the buffer's
@@ -559,6 +578,24 @@
         }
         // UX-011: improved success toast copy
         toast?.success(`Your book is ready — ${n} ${n === 1 ? 'page' : 'pages'}`);
+        // Build the chapter-jump outline from the freshly rendered DOM.
+        refreshOutline();
+      } else if (e.name === "sourceLineChanged") {
+        // Preview→editor sync: the reader scrolled; follow in the editor and
+        // update the active outline entry. Only move the editor when the scrolled
+        // chapter is the file that's open (per-file source lines), and not while
+        // the editor itself is driving the preview.
+        const line = e.detail.sourceLine;
+        if (typeof line === "number") {
+          if (
+            Date.now() >= suppressPreviewSyncUntil &&
+            editorPaneOpen &&
+            e.detail.chapter === editorChapter
+          ) {
+            editorRef?.revealLine(line);
+          }
+          updateActiveOutline(line);
+        }
       } else if (e.name === "pageChanged") {
         if (rendering) {
           renderProgressPage = e.detail.totalPages ?? renderProgressPage;
@@ -569,6 +606,8 @@
       } else if (e.name === "ready") {
         rendering = true;
         renderProgressPage = 0;
+        outline = [];
+        activeOutlineIndex = 0;
         client?.call<number>("getTotalPages").then((n) => {
           if (n > 0) {
             totalPages = n;
@@ -1176,6 +1215,71 @@
   function nextPage() { runPageCommand("nextPage", [viewMode]); }
   function lastPage() { runPageCommand("lastPage"); }
 
+  // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
+  function refreshOutline() {
+    if (!client) return;
+    client
+      .getOutline()
+      .then((entries) => {
+        outline = entries ?? [];
+        activeOutlineIndex = 0;
+      })
+      .catch(() => {
+        outline = [];
+      });
+  }
+
+  // Mark the deepest heading at/above the given source line as active (drives
+  // the dropdown's current-chapter label + highlight).
+  function updateActiveOutline(line: number) {
+    if (outline.length === 0) return;
+    let idx = 0;
+    for (let i = 0; i < outline.length; i++) {
+      const sl = outline[i].sourceLine;
+      if (sl != null && sl <= line) idx = i;
+      else if (sl != null && sl > line) break;
+    }
+    activeOutlineIndex = idx;
+  }
+
+  // Jump the preview (and, if open, the editor) to a heading.
+  function jumpToOutline(entry: OutlineEntry) {
+    if (!client) return;
+    const target: PreviewTarget =
+      entry.id != null
+        ? { id: entry.id }
+        : entry.sourceLine != null
+          ? { line: entry.sourceLine, chapter: entry.chapter }
+          : { page: entry.page };
+    // Editor-side first so its scroll doesn't get mistaken for a reader scroll.
+    suppressPreviewSyncUntil = Date.now() + 400;
+    if (entry.sourceLine != null && editorPaneOpen && entry.chapter === editorChapter) {
+      editorRef?.revealLine(entry.sourceLine);
+    }
+    client
+      .scrollTo(target, { block: "start" })
+      .then((res) => {
+        if (res?.page) syncPageState({ currentPage: res.page, totalPages });
+      })
+      .catch(() => {});
+  }
+
+  // Editor→preview: the caret moved or the editor scrolled. Drive the preview to
+  // the matching source line WITHIN the open chapter; guard the echo so the
+  // preview's resulting sourceLineChanged doesn't bounce back into the editor.
+  function onEditorAnchorLine(line: number) {
+    if (!client || rendering) return;
+    suppressPreviewSyncUntil = Date.now() + 400;
+    client
+      .scrollTo({ line, chapter: editorChapter }, { block: "start" })
+      .then((res) => {
+        // scrollTo suppresses the book's scroll-driven pageChanged, so reflect
+        // the new page in the toolbar from the command's own return value.
+        if (res?.page) syncPageState({ currentPage: res.page, totalPages });
+      })
+      .catch(() => {});
+  }
+
   /** Apply fit-width by querying the page's rendered width from the iframe. */
   async function applyFitWidthZoom() {
     if (!client) return;
@@ -1381,6 +1485,36 @@
     <!-- UX-012: center nav only shows when a document is loaded -->
     {#if previewUrl}
       <section class="center">
+        {#if outline.length > 0}
+          <!-- Chapter / heading jump (UX-013). Built from the rendered outline
+               via the preview bridge; jumps preview + editor together. -->
+          <details class="menu chapter-menu">
+            <summary
+              class="chapter-summary"
+              title="Jump to a chapter or heading"
+              aria-label="Jump to a chapter or heading"
+            >
+              <Icon name="list" />
+              <span class="chapter-label"
+                >{outline[activeOutlineIndex]?.text ?? "Contents"}</span
+              >
+              <Icon name="chevron-down" size={12} />
+            </summary>
+            <div class="menu-panel chapter-panel">
+              {#each outline as entry, i (entry.index)}
+                <button
+                  class="menu-item chapter-item"
+                  class:active={i === activeOutlineIndex}
+                  style="padding-left: {8 + (entry.level - 1) * 14}px"
+                  onclick={(e) => { jumpToOutline(entry); closeMenu(e); }}
+                >
+                  <span class="chapter-item-text">{entry.text}</span>
+                  <span class="chapter-item-page">{entry.page || ""}</span>
+                </button>
+              {/each}
+            </div>
+          </details>
+        {/if}
         <button class="icon-btn" onclick={firstPage} disabled={rendering} title="First page (Home)" aria-label="First page">
           <Icon name="chevrons-left" />
         </button>
@@ -1681,6 +1815,7 @@
               filePath={editorFilePath}
               content={editorContent}
               onChange={onEditorChange}
+              onAnchorLine={onEditorAnchorLine}
             />
           {:else}
             <div class="editor-loading" role="status" aria-live="polite">
@@ -2058,6 +2193,53 @@
     color: var(--app-accent-text);
   }
   .view-mode-group { display: inline-flex; gap: 6px; }
+
+  /* Chapter-jump dropdown (UX-013). Always visible when an outline exists —
+     overrides the generic `.menu { display: none }` (which keeps zoom/view-mode
+     menus collapsed until their narrow breakpoints). Left-aligned, scrollable. */
+  .chapter-menu { display: inline-block; }
+  .chapter-summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 220px;
+    padding: 4px 8px;
+    border: 1px solid var(--app-control-border);
+    border-radius: 6px;
+    background: var(--app-control-bg);
+    color: var(--app-control-text);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .chapter-summary::-webkit-details-marker { display: none; }
+  .chapter-summary:hover,
+  .chapter-menu[open] .chapter-summary {
+    background: var(--app-control-hover-bg);
+    border-color: var(--app-control-hover-border);
+  }
+  .chapter-label {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chapter-panel {
+    left: 0;
+    right: auto;
+    min-width: 240px;
+    max-width: 360px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  .chapter-item { justify-content: space-between; gap: 12px; }
+  .chapter-item-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chapter-item-page {
+    flex: 0 0 auto;
+    opacity: 0.5;
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+  }
 
   .page-input {
     background: var(--app-control-bg);
