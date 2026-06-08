@@ -191,16 +191,29 @@ iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}<
     var l=d.createElement('link'); l.rel='stylesheet'; l.id=id; l.href=p+'?t='+Date.now();
     (d.head||d.documentElement).appendChild(l);
   }
+  function chapterOf(el){ var c=el.closest&&el.closest('[data-chapter-src]'); return c?c.getAttribute('data-chapter-src'):null; }
   function capture(f){
     var d=fdoc(f); if(!d)return null;
     var els=d.querySelectorAll('[data-source-line]'),best=null,bestTop=-Infinity;
     for(var i=0;i<els.length;i++){var r=els[i].getBoundingClientRect(); if(r.bottom<0||r.height===0)continue; if(r.top<=80&&r.top>bestTop){bestTop=r.top;best=els[i];}}
     if(!best){for(var j=0;j<els.length;j++){var rr=els[j].getBoundingClientRect(); if(rr.bottom>0&&rr.height>0){best=els[j];break;}}}
-    if(!best)return null; return {line:best.getAttribute('data-source-line'),offset:best.getBoundingClientRect().top};
+    if(!best)return null;
+    // data-source-line resets PER FILE, so scope the anchor to its chapter —
+    // otherwise the same line number matches an element in a different chapter
+    // and restore jumps the view.
+    return {chapter:chapterOf(best), line:best.getAttribute('data-source-line'), offset:best.getBoundingClientRect().top};
   }
   function restore(f,a){
     if(!a)return; var w=fwin(f),d=fdoc(f); if(!w||!d)return;
-    var el=d.querySelector('[data-source-line="'+a.line+'"]'); if(!el)return;
+    var scope=a.chapter?'[data-chapter-src="'+a.chapter+'"] ':'';
+    var el=d.querySelector(scope+'[data-source-line="'+a.line+'"]');
+    if(!el){ // exact line gone (edited) → nearest source line WITHIN the chapter
+      var els=d.querySelectorAll((a.chapter?'[data-chapter-src="'+a.chapter+'"] ':'')+'[data-source-line]');
+      var want=parseInt(a.line,10), best=null, bestDiff=Infinity;
+      for(var i=0;i<els.length;i++){ var ln=parseInt(els[i].getAttribute('data-source-line'),10); var diff=Math.abs(ln-want); if(diff<bestDiff){bestDiff=diff;best=els[i];} }
+      el=best;
+    }
+    if(!el)return;
     w.scrollBy(0, el.getBoundingClientRect().top - a.offset);
   }
   function swap(){
@@ -267,6 +280,9 @@ iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}<
           }
           for(var j=0;j<oldPages.length;j++) oldPages[j].parentNode.removeChild(oldPages[j]);
           restore(active,anchor);
+          // Paged.js didn't re-run, so refresh the toolbar interface's page list
+          // + counters (otherwise the page number freezes and scroll sync stalls).
+          try{ var api=fwin(active)&&fwin(active).previewAPI; if(api&&api.refresh) api.refresh(); }catch(_){}
         }catch(err){ if(window.console)console.warn('[pmd] incremental splice failed, full swap:',err); swap(); }
         if(f.parentNode)f.parentNode.removeChild(f);
       });

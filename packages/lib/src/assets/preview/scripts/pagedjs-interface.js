@@ -104,6 +104,16 @@
       window.dispatchEvent(new CustomEvent('renderingComplete', {
         detail: { totalPages: pages.length }
       }));
+    },
+    // Re-read the page list and recompute the current page from the scroll
+    // position, then notify. The incremental preview shell calls this after it
+    // splices a chapter's pages into the live DOM (Paged.js does NOT re-run, so
+    // the cached page list and counters would otherwise go stale — freezing the
+    // toolbar's page number and breaking scroll sync).
+    refresh: function () {
+      refreshPages();
+      currentPage = detectVisiblePage();
+      return api.notifyPageChange();
     }
   };
 
