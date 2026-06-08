@@ -31,6 +31,10 @@ const HMR_PATH = '/__print-md-hmr';
 const HMR_CLIENT_SNIPPET = `
 <script>
   (function () {
+    // When embedded in the preview shell (iframe double-buffer), the shell owns
+    // HMR — it swaps frames and syncs scroll. Stay inert so we don't open a
+    // second WebSocket or self-reload inside the frame.
+    if (window.self !== window.top) return;
     var ANCHOR_KEY = 'pmd-scroll-anchor';
 
     // Find the element nearest the top of the viewport that carries a source
@@ -142,6 +146,77 @@ const MIME: Record<string, string> = {
   ".ttf": "font/ttf",
   ".otf": "font/otf",
 };
+
+/**
+ * Preview shell (opt-in via PRINTMD_PREVIEW_SHELL=1). Hosts book.html in an
+ * iframe and double-buffers content reloads: on a markdown edit it paginates a
+ * SECOND hidden iframe, waits for it to finish, then swaps it in atomically and
+ * restores the scroll anchor — so the visible page never flickers or rebuilds in
+ * view. CSS edits are forwarded into the active frame (instant hot-swap). This is
+ * the same iframe pattern the Electron viewer uses, converging the two.
+ */
+const SHELL_HTML = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>print-md preview</title>
+<style>html,body{margin:0;height:100%;background:#fff;overflow:hidden}
+iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}</style>
+</head><body>
+<iframe id="pmd-active" src="/book.html" title="preview"></iframe>
+<script>
+(function(){
+  var HMR='${HMR_PATH}';
+  var active=document.getElementById('pmd-active');
+  var building=null;
+  function fdoc(f){try{return f.contentDocument;}catch(_){return null;}}
+  function fwin(f){try{return f.contentWindow;}catch(_){return null;}}
+  function hotCss(p){
+    var d=fdoc(active); if(!d)return;
+    var id='pmd-hot-'+p.replace(/[^a-z0-9]/gi,'_');
+    var prev=d.getElementById(id); if(prev&&prev.parentNode)prev.parentNode.removeChild(prev);
+    var l=d.createElement('link'); l.rel='stylesheet'; l.id=id; l.href=p+'?t='+Date.now();
+    (d.head||d.documentElement).appendChild(l);
+  }
+  function capture(f){
+    var d=fdoc(f); if(!d)return null;
+    var els=d.querySelectorAll('[data-source-line]'),best=null,bestTop=-Infinity;
+    for(var i=0;i<els.length;i++){var r=els[i].getBoundingClientRect(); if(r.bottom<0||r.height===0)continue; if(r.top<=80&&r.top>bestTop){bestTop=r.top;best=els[i];}}
+    if(!best){for(var j=0;j<els.length;j++){var rr=els[j].getBoundingClientRect(); if(rr.bottom>0&&rr.height>0){best=els[j];break;}}}
+    if(!best)return null; return {line:best.getAttribute('data-source-line'),offset:best.getBoundingClientRect().top};
+  }
+  function restore(f,a){
+    if(!a)return; var w=fwin(f),d=fdoc(f); if(!w||!d)return;
+    var el=d.querySelector('[data-source-line="'+a.line+'"]'); if(!el)return;
+    w.scrollBy(0, el.getBoundingClientRect().top - a.offset);
+  }
+  function swap(){
+    if(building&&building.parentNode)building.parentNode.removeChild(building); building=null;
+    var anchor=capture(active);
+    var f=document.createElement('iframe');
+    f.style.visibility='hidden'; f.setAttribute('aria-hidden','true');
+    f.src='/book.html?bust='+Date.now(); building=f;
+    var finished=false;
+    function finish(){
+      if(finished||building!==f)return; finished=true;
+      restore(f,anchor);
+      f.style.visibility='visible'; f.removeAttribute('aria-hidden');
+      var old=active; active=f; building=null;
+      requestAnimationFrame(function(){requestAnimationFrame(function(){ if(old&&old.parentNode)old.parentNode.removeChild(old); });});
+    }
+    f.addEventListener('load',function(){
+      var w=fwin(f),d=fdoc(f); if(!w||!d){finish();return;}
+      var hasEngine=!!d.querySelector('script[src*="paged.polyfill"], script[src*="pagedjs"]');
+      if(hasEngine){ w.addEventListener('renderingComplete',finish,{once:true}); setTimeout(finish,180000); }
+      else { var t=0; (function p(){var dd=fdoc(f); if(dd&&dd.querySelectorAll('.pagedjs_page').length>0){finish();return;} if(t++<600)setTimeout(p,25); else finish();})(); }
+    });
+    document.body.appendChild(f);
+  }
+  var ws=new WebSocket(location.origin.replace(/^http/,'ws')+HMR);
+  ws.onmessage=function(e){ var m; try{m=JSON.parse(e.data);}catch(_){return;}
+    if(m.type==='css-update'&&m.path){hotCss(m.path);return;}
+    if(m.type==='full-reload'){swap();return;}
+  };
+})();
+</script>
+</body></html>`;
 
 /**
  * Public handle for the running preview server.
@@ -357,6 +432,13 @@ export async function createPreviewServer(
         res.writeHead(404);
         res.end('Not Found');
       }
+      return;
+    }
+
+    // 3b. Preview shell (opt-in): serve the double-buffering shell at "/".
+    if (url.pathname === '/' && process.env.PRINTMD_PREVIEW_SHELL === '1') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(SHELL_HTML);
       return;
     }
 
