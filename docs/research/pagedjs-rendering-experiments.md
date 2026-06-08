@@ -221,11 +221,66 @@ the swap (smooth-but-later vs janky-but-progressive). The fix for that latency i
 **incremental pagination** (re-paginate only the changed region) — backlog item B1,
 the one remaining lever for near-instant on very long docs.
 
+### ✅ Incremental pagination → near-instant on long docs
+`PRINTMD_PREVIEW_INCREMENTAL=1` (implies the shell). Each source file is wrapped
+as a **page-isolated chapter** (`.pmd-chapter[data-chapter-src]`,
+`break-before:page`). On a markdown edit the watcher sends
+`{type:'content-update', file}`; the shell paginates **only that chapter** in a
+hidden iframe (`/__chapter?file=…`) and **splices** its pages into the live view
+(`importNode`, replacing the old chapter's pages). Page numbers are a live CSS
+counter so they re-flow automatically; scroll anchor preserved; falls back to a
+full double-buffer swap if the splice can't apply.
+
+Hypothesis first (why it's worth it): paginating **1 chapter = 333 ms** vs the
+**full 281 pp doc = 6112 ms (~18×)**, ~linear in content.
+
+| doc | full double-buffer | **incremental** | flicker | correctness (3 edits) |
+|---|---|---|---|---|
+| 169 pp synthetic | 7–9.6 s | **0.5–1 s** | none | total stable 283, marker ×1, 41 chapters |
+| design guide (heavy CSS) | 1.3 s | **0.4 s** | none | total stable 65, marker ×1, 9 chapters |
+
+Correctness gate proved no page accumulation, clean chapter replace (not
+duplicated), exactly one marker. **Near-instant even on a 280-page doc.**
+
+Tradeoffs (documented): incremental mode page-isolates chapters (a few more pages
+than the build), and only the edited chapter re-paginates — so cross-chapter
+reflow at a page boundary isn't reflected until a full reload. Acceptable for
+live editing; the full build/PDF path is unaffected.
+
 ### Net real-time-editing status
 - **CSS edits:** instant (~259 ms), scroll-stable, no flicker. ✅
-- **Content edits (≤ ~60 pp):** ~1.3 s, no flicker, scroll preserved. ✅
-- **Content edits (very long, 150–280 pp):** no flicker, scroll preserved, but
-  ~7–9 s to settle. ⏳ → incremental pagination (B1) for near-instant.
+- **Content edits, incremental:** **0.4–1 s on docs up to ~280 pp**, no flicker,
+  scroll preserved, correct. ✅ (near-instant)
+- The full-document double-buffer remains the fallback when a doc isn't
+  chapter-page-isolated or a splice can't apply.
+
+## Converging the Electron viewer onto the same preview client
+
+Goal: **one preview experience, one codebase** — the CLI `print-md preview` and
+the Electron viewer should run the **same** shell + double-buffer + incremental
+client, with Electron a **thin OS-bridge wrapper** (file dialogs, watching,
+window chrome) rather than a parallel implementation.
+
+Current state: the shell + client lives inline in `http-server.ts`
+(`SHELL_HTML`). It is already **host-agnostic except one line** — the
+`new WebSocket(HMR_PATH)` transport. The change events (`css-update`,
+`content-update`, `full-reload`) and the per-chapter render (`/__chapter`) are
+the entire host contract.
+
+Convergence plan:
+1. **Extract** `SHELL_HTML` + controller into a shared asset
+   (`assets/preview/shell.html` + `scripts/preview-shell.js`), served by the CLI
+   http server today and loadable by Electron via `app://`.
+2. **Abstract the transport**: the client takes a `changeSource` with
+   `onMessage(cb)` — backed by **WebSocket** (CLI) or **ipcRenderer/postMessage**
+   (Electron). Same double-buffer + splice logic in both.
+3. **Electron becomes thin**: its main process provides the OS bridge (pick
+   folder, watch files via the shared `file-watcher`, emit the same
+   `content-update`/`css-update`/`full-reload` events over IPC) and hosts the
+   shared shell. No bespoke viewer pagination/rebuild path.
+4. This also **closes the preview-vs-build divergence**: both the viewer and the
+   CLI preview render through the one shell client; the build/PDF SSG path stays
+   separate by design (publish artifact, not live edit).
 
 ## Experiment backlog
 
