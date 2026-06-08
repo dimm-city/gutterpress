@@ -814,7 +814,10 @@ function registerAppProtocol() {
 
     // Try the exact file first.
     try {
+      const rt = Date.now();
       const data = await readFile(candidate);
+      const dt = Date.now() - rt;
+      if (dt > 40) slog(`app:// SLOW read ${dt}ms ${rel}`);
       return new Response(data, {
         headers: { "content-type": mimeFor(candidate) },
       });

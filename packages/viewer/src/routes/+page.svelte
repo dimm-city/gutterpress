@@ -203,6 +203,20 @@
   // state now lives inside the buffer.
   let editorOpen = $state(false);
   let editorRef = $state<{ focus: () => void } | null>(null);
+  // True below the single-pane breakpoint. Assigned by the matchMedia
+  // subscription further down; declared here so the derived below can read it.
+  let isNarrow = $state(false);
+
+  // Whether the editor pane is shown — DERIVED, not synced via $effect. In narrow
+  // single-pane mode the Edit/View mode decides it; in the wide split it's the
+  // editorOpen toggle. This fixes the "blank pane on launch in edit mode" bug:
+  // previously the editor only rendered `{#if editorOpen}`, so a persisted
+  // paneMode="edit" hid the preview without rendering the editor.
+  let editorPaneOpen = $derived(
+    !!currentDir &&
+      sourceMode === "folder" &&
+      (isNarrow ? paneMode === "edit" : editorOpen),
+  );
 
   // MarkdownEditor wraps the full CodeMirror 6 stack (+ lang-markdown's
   // code-language loaders), a ~300 KB chunk. The editor pane is closed by
@@ -852,6 +866,12 @@
       }
       currentDir = dir;
       currentUrl = null;
+      // Preload the first file into the editor buffer when a folder opens, so the
+      // editor pane is never empty whenever it's shown (and switching to edit is
+      // instant). Action-driven (folder open), not an effect, and independent of
+      // async settings/narrow timing. Idempotent + self-gated (no-op in view-only
+      // contexts where there's nothing to edit).
+      void ensureEditorFile();
       // Classify the opened folder (#12) so capability-gated actions (#13/#25)
       // can render. Always re-detected on open (a user may add/remove `.git`
       // between sessions) and persisted as a hint. Fire-and-forget: a failure
@@ -1212,32 +1232,18 @@
   // workspace collapses to one pane and the Edit / View toggle picks which one
   // shows. Above it, the side-by-side split is used and paneMode is ignored.
   const NARROW_QUERY = "(max-width: 820px)";
-  let isNarrow = $state(false);
+  // matchMedia subscription (a genuine lifecycle subscription — the idiomatic
+  // use of $effect). On a resize INTO narrow while in edit mode, make sure a
+  // file is loaded so the editor isn't empty (the tree is hidden when narrow).
   $effect(() => {
     const mq = window.matchMedia(NARROW_QUERY);
     isNarrow = mq.matches;
-    const onChange = (e: MediaQueryListEvent) => (isNarrow = e.matches);
+    const onChange = (e: MediaQueryListEvent) => {
+      isNarrow = e.matches;
+      if (e.matches && paneMode === "edit") void ensureEditorFile();
+    };
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
-  });
-
-  // Keep the editor pane in sync with the narrow Edit/View mode. BUG (user
-  // report): on launch — or a resize to narrow — when paneMode is "edit" (e.g.
-  // persisted from a prior session) but the editor was never opened, the narrow
-  // CSS hides the preview (.show-edit) while the editor only renders
-  // `{#if editorOpen}` — so the pane is BLANK until the user toggles View. Open
-  // the editor (and load a file) here so edit mode always shows the editor.
-  $effect(() => {
-    if (
-      isNarrow &&
-      paneMode === "edit" &&
-      currentDir &&
-      sourceMode === "folder" &&
-      !editorOpen
-    ) {
-      editorOpen = true;
-      void ensureEditorFile();
-    }
   });
 
   // Close the enclosing <details> menu after a menu item is chosen, and return
@@ -1629,7 +1635,7 @@
   {#if previewUrl}
     <div
       class="workspace"
-      class:editor-open={editorOpen && !!currentDir}
+      class:editor-open={editorPaneOpen}
       class:sidebar-open={sidebarOpen && !!currentDir && sourceMode === "folder"}
       class:narrow={isNarrow}
       class:show-edit={isNarrow && paneMode === "edit"}
@@ -1653,7 +1659,7 @@
           />
         </aside>
       {/if}
-      {#if editorOpen && currentDir}
+      {#if editorPaneOpen}
         <aside class="pane file-tree-pane">
           <FileTree
             projectDir={currentDir}
