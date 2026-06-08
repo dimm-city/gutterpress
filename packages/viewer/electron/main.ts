@@ -11,8 +11,10 @@ import {
 } from "electron";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { scanForProjects, type ScanDeps } from "./discover-projects";
 import {
   ensureLayout,
   resolveWebRoot,
@@ -272,6 +274,8 @@ interface ViewerPrefs {
   viewMode?: "single" | "two-column";
   recentFolders?: RecentFolder[];
   favorites?: FavoriteFolder[];
+  /** Root dirs scanned by app:discoverProjects (#27). Defaults applied below. */
+  projectSearchRoots?: string[];
 }
 
 function prefsPath(): string {
@@ -788,6 +792,50 @@ ipcMain.handle("app:removeRecent", async (_e, folderPath: string) => {
     recentFolders: removeRecentFolder(current.recentFolders, folderPath),
   });
   return { ok: true };
+});
+
+// ── Project discovery (#27) ─────────────────────────────────────────────────
+// Shallow (depth ≤ 3) BFS scan of projectSearchRoots for print-md projects
+// (folders with manifest.yaml/.yml) not already in recents/favorites. The scan
+// uses node:fs/promises but the traversal logic lives in discover-projects.ts
+// so it stays unit-testable. Title defaults to the directory basename —
+// parsing each manifest's title would make the scan far too heavy.
+function defaultProjectSearchRoots(): string[] {
+  const home = os.homedir();
+  return [path.join(home, "Documents"), path.join(home, "Desktop")];
+}
+
+const discoverScanDeps: ScanDeps = {
+  async listDirs(dir: string): Promise<string[]> {
+    const entries = await readdir(dir, { withFileTypes: true });
+    return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+  },
+  async fileExists(filePath: string): Promise<boolean> {
+    try {
+      return (await stat(filePath)).isFile();
+    } catch {
+      return false;
+    }
+  },
+  join: (...segments: string[]) => path.join(...segments),
+  basename: (p: string) => basename(p),
+};
+
+ipcMain.handle("app:discoverProjects", async () => {
+  const prefs = await readPrefs();
+  const roots =
+    prefs.projectSearchRoots && prefs.projectSearchRoots.length > 0
+      ? prefs.projectSearchRoots
+      : defaultProjectSearchRoots();
+  const exclude = new Set<string>([
+    ...(prefs.recentFolders ?? []).map((r) => r.path),
+    ...(prefs.favorites ?? []).map((f) => f.path),
+  ]);
+  try {
+    return await scanForProjects(roots, exclude, discoverScanDeps);
+  } catch {
+    return [];
+  }
 });
 
 ipcMain.handle("api:doctor", async () => {

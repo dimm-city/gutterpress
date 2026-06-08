@@ -23,6 +23,7 @@ import type {
   FavoriteEntry,
   UpdaterApi,
   NativeThemeState,
+  DiscoveredProject,
 } from "./contract";
 
 function bridge(): ElectronBridge {
@@ -137,6 +138,10 @@ export class ElectronAdapter implements Platform {
 
   removeRecent(folderPath: string): Promise<{ ok: boolean }> {
     return bridge().removeRecent(folderPath);
+  }
+
+  discoverProjects(): Promise<DiscoveredProject[]> {
+    return bridge().discoverProjects();
   }
 
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {

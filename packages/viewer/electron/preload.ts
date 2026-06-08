@@ -91,6 +91,12 @@ interface ViewerPrefs {
   viewMode?: "single" | "two-column";
   recentFolders?: RecentFolderEntry[];
   favorites?: FavoriteEntry[];
+  projectSearchRoots?: string[];
+}
+
+interface DiscoveredProject {
+  path: string;
+  title: string;
 }
 
 interface AppSettings {
@@ -206,6 +212,8 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("app:toggleFavorite", folderPath, title),
   removeRecent: (folderPath: string): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("app:removeRecent", folderPath),
+  discoverProjects: (): Promise<DiscoveredProject[]> =>
+    ipcRenderer.invoke("app:discoverProjects"),
   startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>

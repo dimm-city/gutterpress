@@ -3,6 +3,7 @@
 
   type RecentFolder = { path: string; title: string; openedAt: string; exists: boolean };
   type FavoriteFolder = { path: string; title: string; exists: boolean };
+  type DiscoveredProject = { path: string; title: string };
 
   let {
     open = $bindable(false),
@@ -20,6 +21,7 @@
   let error = $state<string | null>(null);
   let recents = $state<RecentFolder[]>([]);
   let favorites = $state<FavoriteFolder[]>([]);
+  let discovered = $state<DiscoveredProject[]>([]);
   let loading = $state(false);
   let input = $state<HTMLInputElement | undefined>(undefined);
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
@@ -73,7 +75,18 @@
       error = null;
       location = "";
       focusedRowIndex = null;
+      discovered = [];
       loadLists();
+      // Background project scan (#27) — non-blocking; the Discovered section is
+      // absent until this resolves. Errors are swallowed (no scan on PWA).
+      if (isDesktop()) {
+        getPlatform()
+          .discoverProjects()
+          .then((r) => {
+            discovered = r;
+          })
+          .catch(() => {});
+      }
       queueMicrotask(() => input?.focus() ?? focusableElements()[0]?.focus());
     }
   });
@@ -83,14 +96,66 @@
     triggerEl?.focus();
   }
 
-  // Combined ordered list: favorites first, then recents (deduped by path)
-  let allRows = $derived.by<Array<{ path: string; title: string; exists: boolean; isFavorite: boolean }>>(() => {
-    const favPaths = new Set(favorites.map((f) => f.path));
-    const favRows = favorites.map((f) => ({ ...f, isFavorite: true }));
-    const recentRows = recents
-      .filter((r) => !favPaths.has(r.path))
-      .map((r) => ({ path: r.path, title: r.title, exists: r.exists, isFavorite: false }));
-    return [...favRows, ...recentRows];
+  // ── Filter-as-you-type (#27) ──────────────────────────────────────────────
+  // When the input does NOT look like a literal path or URL, treat it as a
+  // case-insensitive filter term against the folder name + full path. Literal
+  // paths (/, ~/, C:\) and URLs bypass filtering entirely.
+  function isLiteralPath(val: string): boolean {
+    const v = val.trim();
+    if (!v) return false;
+    return v.startsWith("/") || v.startsWith("~/") || /^[A-Za-z]:[\\/]/.test(v);
+  }
+
+  // Active filter term: empty when the input is blank, a literal path, or a URL.
+  let filterTerm = $derived.by<string>(() => {
+    const v = location.trim();
+    if (!v || isLiteralPath(v) || isUrl(v)) return "";
+    return v.toLowerCase();
+  });
+
+  function matchesFilter(path: string, title: string, term: string): boolean {
+    if (!term) return true;
+    return path.toLowerCase().includes(term) || (title ?? "").toLowerCase().includes(term);
+  }
+
+  let filteredFavorites = $derived(
+    favorites.filter((f) => matchesFilter(f.path, f.title, filterTerm)),
+  );
+  let filteredRecents = $derived(
+    recents.filter((r) => matchesFilter(r.path, r.title, filterTerm)),
+  );
+
+  // Discovered entries not already shown in the filtered favorites/recents,
+  // and that also match the active filter term.
+  let filteredDiscovered = $derived.by<DiscoveredProject[]>(() => {
+    const shown = new Set<string>([
+      ...filteredFavorites.map((f) => f.path),
+      ...filteredRecents.map((r) => r.path),
+    ]);
+    return discovered.filter(
+      (d) => !shown.has(d.path) && matchesFilter(d.path, d.title, filterTerm),
+    );
+  });
+
+  // Combined ordered list used for arrow-key navigation: filtered favorites,
+  // then filtered recents, then filtered discovered.
+  let allRows = $derived.by<
+    Array<{ path: string; title: string; exists: boolean; isFavorite: boolean }>
+  >(() => {
+    const favRows = filteredFavorites.map((f) => ({ ...f, isFavorite: true }));
+    const recentRows = filteredRecents.map((r) => ({
+      path: r.path,
+      title: r.title,
+      exists: r.exists,
+      isFavorite: false,
+    }));
+    const discoveredRows = filteredDiscovered.map((d) => ({
+      path: d.path,
+      title: d.title,
+      exists: true,
+      isFavorite: false,
+    }));
+    return [...favRows, ...recentRows, ...discoveredRows];
   });
 
   function isUrl(val: string): boolean {
@@ -102,6 +167,19 @@
     }
   }
 
+  // The Open button submits the typed text as a path/URL. It's enabled when the
+  // text is a literal path or a URL (always openable as-is). When the text is a
+  // filter term, Open is meaningful only if it doesn't resolve to zero rows —
+  // otherwise there's nothing to open and the button stays disabled.
+  let canOpen = $derived.by<boolean>(() => {
+    const v = location.trim();
+    if (!v) return false;
+    if (isLiteralPath(v) || isUrl(v)) return true;
+    // A filter term: allow Open only if at least one row matches (Open would
+    // otherwise pass a bare name that isn't a real path).
+    return allRows.length > 0;
+  });
+
   async function submit() {
     const trimmed = location.trim();
     if (!trimmed) {
@@ -112,10 +190,23 @@
       onOpenUrl?.(trimmed);
       open = false;
       triggerEl?.focus();
-    } else {
+      return;
+    }
+    if (isLiteralPath(trimmed)) {
       onOpenFolder?.(trimmed);
       open = false;
       triggerEl?.focus();
+      return;
+    }
+    // Filter term: open the first matching row, if any. With no matches the
+    // Open button is disabled, but Enter can still reach here — guard it.
+    const first = allRows[0];
+    if (first) {
+      onOpenFolder?.(first.path);
+      open = false;
+      triggerEl?.focus();
+    } else {
+      error = "No matching projects. Type a folder path or web address.";
     }
   }
 
@@ -231,11 +322,11 @@
       {/if}
 
       <!-- Favorites section -->
-      {#if favorites.length > 0}
+      {#if filteredFavorites.length > 0}
         <section class="list-section">
           <h3 class="list-heading">Favorites</h3>
           <ul class="list" role="listbox" aria-label="Favorite folders">
-            {#each favorites as fav, i}
+            {#each filteredFavorites as fav, i}
               {@const rowIndex = i}
               <li
                 class="list-row"
@@ -268,12 +359,12 @@
       {/if}
 
       <!-- Recently Opened section -->
-      {#if recents.length > 0}
+      {#if filteredRecents.length > 0}
         <section class="list-section">
           <h3 class="list-heading">Recently Opened</h3>
           <ul class="list" role="listbox" aria-label="Recently opened folders">
-            {#each recents as recent, i}
-              {@const rowIndex = favorites.length + i}
+            {#each filteredRecents as recent, i}
+              {@const rowIndex = filteredFavorites.length + i}
               {@const favorited = isFavorited(recent.path)}
               <li
                 class="list-row"
@@ -310,13 +401,55 @@
             {/each}
           </ul>
         </section>
-      {:else if !loading && favorites.length === 0}
-        <p class="empty-hint">No recent projects yet. Open a folder to get started.</p>
+      {/if}
+
+      <!-- Discovered section (#27): projects found by the background scan that
+           are not already shown in Favorites / Recently Opened. -->
+      {#if filteredDiscovered.length > 0}
+        <section class="list-section">
+          <h3 class="list-heading">Discovered</h3>
+          <ul class="list" role="listbox" aria-label="Discovered projects">
+            {#each filteredDiscovered as proj, i}
+              {@const rowIndex = filteredFavorites.length + filteredRecents.length + i}
+              <li
+                class="list-row"
+                role="option"
+                aria-selected="false"
+                tabindex="0"
+                onclick={() => openRow(proj.path)}
+                onkeydown={(e) => onListKeydown(e, rowIndex, proj.path, proj.title)}
+                title={proj.path}
+              >
+                <span class="row-icon" aria-hidden="true">🔍</span>
+                <span class="row-info">
+                  <span class="row-title">{proj.title || proj.path.split(/[\\/]/).filter(Boolean).pop()}</span>
+                  <span class="row-path">{proj.path}</span>
+                </span>
+                <div class="row-actions">
+                  <button
+                    class="icon-action star"
+                    title="Add to favorites"
+                    aria-label="Add to favorites"
+                    onclick={(e) => toggleFavorite(proj.path, proj.title, e)}
+                  >★</button>
+                </div>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
+
+      {#if !loading && allRows.length === 0}
+        {#if filterTerm}
+          <p class="empty-hint">No projects match “{location.trim()}”.</p>
+        {:else if favorites.length === 0 && recents.length === 0}
+          <p class="empty-hint">No recent projects yet. Open a folder to get started.</p>
+        {/if}
       {/if}
 
       <footer class="actions">
         <button class="ghost" onclick={close}>Cancel</button>
-        <button class="primary" onclick={submit} disabled={!location.trim()}>Open</button>
+        <button class="primary" onclick={submit} disabled={!canOpen}>Open</button>
       </footer>
     </div>
   </div>

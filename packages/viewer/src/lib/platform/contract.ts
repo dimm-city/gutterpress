@@ -61,6 +61,18 @@ export interface ViewerPrefs {
   viewMode?: "single" | "two-column";
   recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
   favorites?: Array<{ path: string; title: string }>;
+  /**
+   * Root directories scanned by `discoverProjects()` (#27). Defaults to
+   * `[~/Documents, ~/Desktop]` in the main process when unset. No Settings UI
+   * yet — that belongs to #45.
+   */
+  projectSearchRoots?: string[];
+}
+
+/** A print-md project discovered by the background scan (#27). */
+export interface DiscoveredProject {
+  path: string;
+  title: string;
 }
 
 // ── User settings (#45) ──────────────────────────────────────────────────────
@@ -210,6 +222,13 @@ export interface HostServices {
   getFavorites(): Promise<FavoriteEntry[]>;
   toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }>;
   removeRecent(folderPath: string): Promise<{ ok: boolean }>;
+
+  /**
+   * Background scan (#27) of `projectSearchRoots` for print-md projects
+   * (folders containing manifest.yaml/.yml) not already in recents/favorites.
+   * Shallow (depth ≤ 3). The WebAdapter stub returns `[]`.
+   */
+  discoverProjects(): Promise<DiscoveredProject[]>;
 
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;

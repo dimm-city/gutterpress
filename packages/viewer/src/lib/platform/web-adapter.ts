@@ -28,6 +28,7 @@ import type {
   UpdaterApi,
   UpdaterStatus,
   NativeThemeState,
+  DiscoveredProject,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -178,6 +179,13 @@ export class WebAdapter implements Platform {
 
   removeRecent(_folderPath: string): Promise<{ ok: boolean }> {
     return rejectNotImplemented("removeRecent");
+  }
+
+  // Project discovery (#27) — no background filesystem scan on the PWA (File
+  // System Access API restrictions). Resolve to [] so the Discovered section is
+  // simply absent rather than erroring.
+  discoverProjects(): Promise<DiscoveredProject[]> {
+    return Promise.resolve([]);
   }
 
   startPreview(_args: PreviewStartArgs): Promise<PreviewStartResult> {

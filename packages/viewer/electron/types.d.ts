@@ -84,6 +84,7 @@ interface Window {
       viewMode?: "single" | "two-column";
       recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
       favorites?: Array<{ path: string; title: string }>;
+      projectSearchRoots?: string[];
     }>;
     setViewerPrefs(patch: {
       lastProjectDir?: string | null;
@@ -91,6 +92,7 @@ interface Window {
       viewMode?: "single" | "two-column";
       recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
       favorites?: Array<{ path: string; title: string }>;
+      projectSearchRoots?: string[];
     }): Promise<{ ok: boolean }>;
     // User settings (#45)
     getSettings(): Promise<AppSettings>;
@@ -109,6 +111,8 @@ interface Window {
     >;
     toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }>;
     removeRecent(folderPath: string): Promise<{ ok: boolean }>;
+    // Project discovery (#27)
+    discoverProjects(): Promise<Array<{ path: string; title: string }>>;
     startPreview(args: { input: string }): Promise<{
       url: string;
       port: number;
