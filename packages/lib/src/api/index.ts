@@ -56,3 +56,13 @@ export type {
   ToolStatus,
   SystemDiagnostics,
 } from "../lib/diagnostics";
+
+export {
+  detectProjectSource,
+  capabilitiesFor,
+} from "../lib/project-source";
+
+export type {
+  ProjectSource,
+  ProjectCapabilities,
+} from "../lib/project-source";

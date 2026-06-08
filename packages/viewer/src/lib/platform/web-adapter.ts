@@ -29,6 +29,7 @@ import type {
   UpdaterStatus,
   NativeThemeState,
   DiscoveredProject,
+  ProjectClassification,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -186,6 +187,10 @@ export class WebAdapter implements Platform {
   // simply absent rather than erroring.
   discoverProjects(): Promise<DiscoveredProject[]> {
     return Promise.resolve([]);
+  }
+
+  classifyProject(_path: string): Promise<ProjectClassification> {
+    return rejectNotImplemented("classifyProject");
   }
 
   startPreview(_args: PreviewStartArgs): Promise<PreviewStartResult> {

@@ -2,6 +2,7 @@
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
+  import type { ProjectCapabilities } from "$lib/platform/contract";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
@@ -43,6 +44,11 @@
   let currentUrl = $state<string | null>(null);
   let sourceMode = $state<"folder" | "url">("folder");
   let docTitle = $state<string | null>(null);
+  // Capabilities of the open project's source (#12): local-folder vs
+  // local-git-folder (with/without remote). Stored so forthcoming action
+  // buttons (#13/#25 — Save Snapshot, View History, Publish) can render against
+  // it. No new buttons yet; the data is simply available.
+  let projectCapabilities = $state<ProjectCapabilities | null>(null);
   // Folder name (basename) for the toolbar label; the full path is the tooltip.
   let folderName = $derived(
     currentDir ? (currentDir.split(/[\\/]/).filter(Boolean).pop() ?? currentDir) : ""
@@ -499,6 +505,22 @@
       sourceMode = "folder";
       currentDir = dir;
       currentUrl = null;
+      // Classify the opened folder (#12) so capability-gated actions (#13/#25)
+      // can render. Always re-detected on open (a user may add/remove `.git`
+      // between sessions) and persisted as a hint. Fire-and-forget: a failure
+      // must never block the preview.
+      projectCapabilities = null;
+      platform
+        .classifyProject(dir)
+        .then((result) => {
+          projectCapabilities = result.capabilities;
+          platform
+            .setViewerPrefs({ projectSource: result.source })
+            .catch(() => {});
+        })
+        .catch(() => {
+          projectCapabilities = null;
+        });
       docTitle = data.title ?? null;
       // Force iframe remount by nulling first
       previewUrl = null;

@@ -99,12 +99,44 @@ interface SystemDiagnostics {
   docsUrl: string;
 }
 
+type ProjectSource =
+  | { type: "local-folder"; path: string }
+  | {
+      type: "local-git-folder";
+      path: string;
+      hasRemote: boolean;
+      remoteUrl?: string;
+      branch?: string;
+    }
+  | {
+      type: "managed-github";
+      installationId: string;
+      owner: string;
+      repo: string;
+      branch: string;
+      rootPath?: string;
+    };
+
+interface ProjectCapabilities {
+  canRead: boolean;
+  canWriteLocal: boolean;
+  canEnableVersionHistory: boolean;
+  canSnapshot: boolean;
+  canViewHistory: boolean;
+  canRestoreSnapshot: boolean;
+  canPublish: boolean;
+  canSync: boolean;
+  authManagedByApp: boolean;
+}
+
 interface LibModule {
   startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
   loadManifestWithPath: (input: string) => Promise<ManifestWithPath>;
   splitOutPath: (out: string | undefined, format: string) => SplitOutPath;
   runBuild: (opts: Record<string, unknown>) => Promise<BuildResult>;
   getSystemDiagnostics: () => Promise<SystemDiagnostics>;
+  detectProjectSource: (folderPath: string) => Promise<ProjectSource>;
+  capabilitiesFor: (source: ProjectSource) => ProjectCapabilities;
   BuildError: new (message: string) => Error;
 }
 
@@ -276,6 +308,13 @@ interface ViewerPrefs {
   favorites?: FavoriteFolder[];
   /** Root dirs scanned by app:discoverProjects (#27). Defaults applied below. */
   projectSearchRoots?: string[];
+  /**
+   * Last classified source of the open project (#12). Cached so the UI can
+   * render without re-detecting on launch, but the renderer always re-classifies
+   * on folder open (a user may add/remove `.git` between sessions), so this is a
+   * hint, not the source of truth.
+   */
+  projectSource?: ProjectSource;
 }
 
 function prefsPath(): string {
@@ -837,6 +876,25 @@ ipcMain.handle("app:discoverProjects", async () => {
     return [];
   }
 });
+
+// ── Project source classification (#12) ──────────────────────────────────────
+// Classify an opened folder as local-folder / local-git-folder (hasRemote
+// true/false) via the lib's pure Node-fs detector. Always re-classified on
+// folder open by the renderer — never relies solely on the cached
+// ViewerPrefs.projectSource (a user may add/remove `.git` between sessions).
+ipcMain.handle(
+  "app:classifyProject",
+  async (_e, args: { path?: string }) => {
+    const folderPath = args?.path;
+    if (!folderPath || typeof folderPath !== "string") {
+      throw new Error("app:classifyProject requires a 'path' string");
+    }
+    const lib = await loadLib();
+    const source = await lib.detectProjectSource(folderPath);
+    const capabilities = lib.capabilitiesFor(source);
+    return { source, capabilities };
+  },
+);
 
 ipcMain.handle("api:doctor", async () => {
   const lib = await loadLib();

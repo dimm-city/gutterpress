@@ -24,6 +24,7 @@ import type {
   UpdaterApi,
   NativeThemeState,
   DiscoveredProject,
+  ProjectClassification,
 } from "./contract";
 
 function bridge(): ElectronBridge {
@@ -142,6 +143,10 @@ export class ElectronAdapter implements Platform {
 
   discoverProjects(): Promise<DiscoveredProject[]> {
     return bridge().discoverProjects();
+  }
+
+  classifyProject(path: string): Promise<ProjectClassification> {
+    return bridge().classifyProject(path);
   }
 
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {

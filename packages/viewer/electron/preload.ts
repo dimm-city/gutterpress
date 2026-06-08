@@ -92,11 +92,62 @@ interface ViewerPrefs {
   recentFolders?: RecentFolderEntry[];
   favorites?: FavoriteEntry[];
   projectSearchRoots?: string[];
+  projectSource?: ProjectSourceHint;
 }
+
+/** Forward ref used by ViewerPrefs above; full union declared below. */
+type ProjectSourceHint =
+  | { type: "local-folder"; path: string }
+  | {
+      type: "local-git-folder";
+      path: string;
+      hasRemote: boolean;
+      remoteUrl?: string;
+      branch?: string;
+    }
+  | {
+      type: "managed-github";
+      installationId: string;
+      owner: string;
+      repo: string;
+      branch: string;
+      rootPath?: string;
+    };
 
 interface DiscoveredProject {
   path: string;
   title: string;
+}
+
+// Project source classification (#12). Mirrors @dimm-city/print-md-lib.
+type ProjectSource =
+  | { type: "local-folder"; path: string }
+  | {
+      type: "local-git-folder";
+      path: string;
+      hasRemote: boolean;
+      remoteUrl?: string;
+      branch?: string;
+    }
+  | {
+      type: "managed-github";
+      installationId: string;
+      owner: string;
+      repo: string;
+      branch: string;
+      rootPath?: string;
+    };
+
+interface ProjectCapabilities {
+  canRead: boolean;
+  canWriteLocal: boolean;
+  canEnableVersionHistory: boolean;
+  canSnapshot: boolean;
+  canViewHistory: boolean;
+  canRestoreSnapshot: boolean;
+  canPublish: boolean;
+  canSync: boolean;
+  authManagedByApp: boolean;
 }
 
 interface AppSettings {
@@ -214,6 +265,12 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("app:removeRecent", folderPath),
   discoverProjects: (): Promise<DiscoveredProject[]> =>
     ipcRenderer.invoke("app:discoverProjects"),
+
+  // Project source classification (#12)
+  classifyProject: (
+    path: string,
+  ): Promise<{ source: ProjectSource; capabilities: ProjectCapabilities }> =>
+    ipcRenderer.invoke("app:classifyProject", { path }),
   startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>

@@ -61,6 +61,37 @@ type DeepPartialSettings = {
   [K in keyof AppSettings]?: Partial<AppSettings[K]>;
 };
 
+// Project source classification (#12). Mirrors @dimm-city/print-md-lib.
+type ProjectSource =
+  | { type: "local-folder"; path: string }
+  | {
+      type: "local-git-folder";
+      path: string;
+      hasRemote: boolean;
+      remoteUrl?: string;
+      branch?: string;
+    }
+  | {
+      type: "managed-github";
+      installationId: string;
+      owner: string;
+      repo: string;
+      branch: string;
+      rootPath?: string;
+    };
+
+interface ProjectCapabilities {
+  canRead: boolean;
+  canWriteLocal: boolean;
+  canEnableVersionHistory: boolean;
+  canSnapshot: boolean;
+  canViewHistory: boolean;
+  canRestoreSnapshot: boolean;
+  canPublish: boolean;
+  canSync: boolean;
+  authManagedByApp: boolean;
+}
+
 interface Window {
   electron?: {
     /** Integer IPC-surface version; mirrors DESKTOP_API in updater/contract.ts. */
@@ -85,6 +116,7 @@ interface Window {
       recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
       favorites?: Array<{ path: string; title: string }>;
       projectSearchRoots?: string[];
+      projectSource?: ProjectSource;
     }>;
     setViewerPrefs(patch: {
       lastProjectDir?: string | null;
@@ -93,6 +125,7 @@ interface Window {
       recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
       favorites?: Array<{ path: string; title: string }>;
       projectSearchRoots?: string[];
+      projectSource?: ProjectSource;
     }): Promise<{ ok: boolean }>;
     // User settings (#45)
     getSettings(): Promise<AppSettings>;
@@ -113,6 +146,11 @@ interface Window {
     removeRecent(folderPath: string): Promise<{ ok: boolean }>;
     // Project discovery (#27)
     discoverProjects(): Promise<Array<{ path: string; title: string }>>;
+    // Project source classification (#12)
+    classifyProject(path: string): Promise<{
+      source: ProjectSource;
+      capabilities: ProjectCapabilities;
+    }>;
     startPreview(args: { input: string }): Promise<{
       url: string;
       port: number;

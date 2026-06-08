@@ -11,9 +11,19 @@
  * `getPlatform()`. It must NOT touch `window.electron` directly — that access
  * is confined to `electron-adapter.ts`.
  */
-import type { PlatformAdapter } from "@dimm-city/print-md-lib";
+import type {
+  PlatformAdapter,
+  ProjectSource,
+  ProjectCapabilities,
+} from "@dimm-city/print-md-lib";
 
-export type { PlatformAdapter };
+export type { PlatformAdapter, ProjectSource, ProjectCapabilities };
+
+/** Result of classifying an opened folder (#12). */
+export interface ProjectClassification {
+  source: ProjectSource;
+  capabilities: ProjectCapabilities;
+}
 
 // ── Host RPC payload shapes (mirror electron/preload.ts + types.d.ts) ─────────
 
@@ -67,6 +77,12 @@ export interface ViewerPrefs {
    * yet — that belongs to #45.
    */
   projectSearchRoots?: string[];
+  /**
+   * Last classified source of the open project (#12). A cached hint only — the
+   * app always re-classifies on folder open (a user may add/remove `.git`
+   * between sessions), so this never overrides a fresh detection.
+   */
+  projectSource?: ProjectSource;
 }
 
 /** A print-md project discovered by the background scan (#27). */
@@ -229,6 +245,13 @@ export interface HostServices {
    * Shallow (depth ≤ 3). The WebAdapter stub returns `[]`.
    */
   discoverProjects(): Promise<DiscoveredProject[]>;
+
+  /**
+   * Classify an opened folder as `local-folder` / `local-git-folder` (#12) and
+   * return its capabilities. The WebAdapter stub rejects. Always called after a
+   * preview starts; never relies on the cached `ViewerPrefs.projectSource`.
+   */
+  classifyProject(path: string): Promise<ProjectClassification>;
 
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;
