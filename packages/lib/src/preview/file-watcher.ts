@@ -102,6 +102,20 @@ const EMPTY_BOOK_HTML = `<!doctype html>
  * Empty `inputPath` writes a static placeholder — the viewer app (packages/viewer)
  * supplies a real path via its own folder picker.
  */
+/**
+ * Whether the incremental live-preview (shell + per-chapter splice) is active.
+ * DEFAULT ON; opt out with PRINTMD_PREVIEW_INCREMENTAL=0 to fall back to the
+ * direct book.html preview (CSS hot-swap + full reload on content). The static
+ * pre-pagination experiment (PRINTMD_PREVIEW_PREPAGINATE=1) takes precedence and
+ * disables incremental, since it ships engine-less HTML the splice can't use.
+ */
+export function incrementalPreviewEnabled(): boolean {
+  return (
+    process.env.PRINTMD_PREVIEW_INCREMENTAL !== "0" &&
+    process.env.PRINTMD_PREVIEW_PREPAGINATE !== "1"
+  );
+}
+
 export async function generateAndWriteHtml(
   inputPath: string,
   tempDir: string,
@@ -119,7 +133,7 @@ export async function generateAndWriteHtml(
     pluginCss = collectPluginCss(plugins);
   }
 
-  const incremental = process.env.PRINTMD_PREVIEW_INCREMENTAL === "1";
+  const incremental = incrementalPreviewEnabled();
   const html = await renderChapters(inputPath, {
     title: config.title ?? "Document",
     styles: config.styles,
@@ -290,7 +304,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         // Incremental: a single markdown file changed → splice just that chapter
         // in the live shell (re-paginate one chapter, not the whole doc).
         if (
-          process.env.PRINTMD_PREVIEW_INCREMENTAL === "1" &&
+          incrementalPreviewEnabled() &&
           dest &&
           path.extname(filePath).toLowerCase() === ".md"
         ) {
