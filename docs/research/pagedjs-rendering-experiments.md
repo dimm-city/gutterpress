@@ -157,6 +157,59 @@ This divergence is a smell:
 
 ---
 
+## Preview HMR — implemented & measured (real-time editing)
+
+Goal: near-instant preview updates as the author edits, **without flicker or lost
+scroll position** (target: a VS Code preview pane). Built layered by what changed.
+
+### ✅ CSS edits → hot-swap (instant, scroll-stable, no flicker)
+A stylesheet edit doesn't change content flow, so the watcher broadcasts
+`{type:'css-update', path}` instead of regenerating + reloading, and the client
+**injects a fresh `<link>`** for that stylesheet appended last. (Paged.js inlines
+the user CSS and *removes* the original `<link>` during pagination — verified
+`link[rel=stylesheet] == []` post-pagination — so bumping a link can't work; a
+freshly injected link wins the cascade over Paged.js's stale inlined copy.)
+
+| metric | result |
+|---|---|
+| time to apply (median) | **259 ms** |
+| scroll preserved | **yes — exact (5000→5000 px)** |
+| re-pagination | **none (pages stay 59)** |
+| flicker | **none** |
+
+Also fixes the long-standing stale-CSS preview bug (CSS edits previously needed a
+server restart). The ~259 ms is almost all watcher debounce (100 ms) +
+`awaitWriteFinish` (100 ms); the apply itself is next-frame.
+
+### ✅ Content edits → scroll preserved via source anchor
+A markdown edit still full-reloads + re-paginates, but the client now anchors on
+**source position** (`data-source-line`, emitted by `markdown-it-source-map` — 668
+in the user guide) rather than pixels: capture the line nearest the viewport top
+before reload (sessionStorage), restore it to the same offset after. Critical
+ordering: in polyfill mode restore must wait for `renderingComplete`, because
+Paged.js's `PagedConfig.after` calls `scrollTo(0,0)` right before firing it.
+
+| metric | result (3 edits) |
+|---|---|
+| anchored source line returns to same offset | **drift 0 px** (scrollY restored 0→6000) |
+| scroll position lost | **no** |
+| flicker on content edit | **still present** (full reload + visible re-pagination) |
+
+### ⏳ Remaining: eliminate content-edit flicker
+Content edits still flash because Paged.js re-paginates visibly on reload. The fix
+is **off-screen double-buffering**, but Paged.js paginates the whole `document.body`
+and can't be scoped to a hidden sub-container, so it needs one of:
+- **Iframe shell** (recommended): serve a persistent shell with the book in an
+  iframe; on content change, paginate a *second* hidden iframe, then swap which is
+  visible + sync the scroll anchor across frames. Flicker-free, keeps the page view.
+  (The Electron viewer already uses an iframe — converging on this also closes the
+  preview-vs-viewer gap.)
+- **Galley/continuous mode**: render content without pagination for editing
+  (instant, native reflow, no flicker) and paginate only for the proof view. Best
+  for *content* authoring; doesn't show page breaks live.
+
+Both are a clean next iteration, not a patch — deferred to a deliberate build.
+
 ## Experiment backlog
 
 ### A. Improve Paged.js HMR while keeping the polyfill (preview-side)
