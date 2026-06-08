@@ -89,6 +89,13 @@ export async function renderChapters(
     files?: string[] | null;
     plugins?: LoadedPlugin[];
     pluginCss?: string;
+    /**
+     * Wrap each source file's output in `<div class="pmd-chapter"
+     * data-chapter-src="<file>">`. Used by the incremental live-preview to
+     * identify and re-paginate a single chapter on edit. Off by default — the
+     * build output is unaffected.
+     */
+    wrapChapters?: boolean;
   } = {}
 ): Promise<string> {
   const title = opts.title ?? "Document";
@@ -123,7 +130,13 @@ export async function renderChapters(
     const filePath = join(inputDir, file);
     try {
       const content = await readFile(filePath, "utf-8");
-      bodyContent += md.render(content) + "\n";
+      const rendered = md.render(content);
+      if (opts.wrapChapters) {
+        const safe = String(file).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+        bodyContent += `<div class="pmd-chapter" data-chapter-src="${safe}">\n${rendered}\n</div>\n`;
+      } else {
+        bodyContent += rendered + "\n";
+      }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to read file ${file}: ${errorMsg}`);
