@@ -32,10 +32,12 @@ const HMR_PATH = '/__print-md-hmr';
 const HMR_CLIENT_SNIPPET = `
 <script>
   (function () {
-    // When embedded in the preview shell (iframe double-buffer), the shell owns
-    // HMR — it swaps frames and syncs scroll. Stay inert so we don't open a
-    // second WebSocket or self-reload inside the frame.
-    if (window.self !== window.top) return;
+    // When loaded by the preview SHELL (iframe double-buffer), the shell loads us
+    // with ?pmdshell=1 and owns HMR (it swaps frames + syncs scroll), so we stay
+    // inert. We must NOT bail merely because we're framed — other hosts (the
+    // Electron viewer's SPA) embed book.html directly and rely on this HMR client
+    // for CSS hot-swap, scroll-anchor, and reload.
+    if (/[?&]pmdshell=1/.test(location.search)) return;
     var ANCHOR_KEY = 'pmd-scroll-anchor';
 
     // Find the element nearest the top of the viewport that carries a source
@@ -161,12 +163,25 @@ const SHELL_HTML = `<!doctype html>
 <style>html,body{margin:0;height:100%;background:#fff;overflow:hidden}
 iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}</style>
 </head><body>
-<iframe id="pmd-active" src="/book.html" title="preview"></iframe>
+<iframe id="pmd-active" src="/book.html?pmdshell=1" title="preview"></iframe>
 <script>
 (function(){
   var HMR='${HMR_PATH}';
   var active=document.getElementById('pmd-active');
   var building=null;
+  // Transparent bridge relay: forward host-toolbar commands (parent → shell) to
+  // the active book iframe, and its replies/events back up. Lets the Electron
+  // viewer (or any host) drive the book through the shell with no extra code —
+  // the shell stays a thin pass-through for the pagedjs-bridge protocol.
+  window.addEventListener('message', function(e){
+    try{
+      if (window.parent !== window && e.source === window.parent){
+        if (active && active.contentWindow) active.contentWindow.postMessage(e.data, '*');
+      } else if (active && e.source === active.contentWindow && window.parent !== window){
+        window.parent.postMessage(e.data, '*');
+      }
+    }catch(_){}
+  });
   function fdoc(f){try{return f.contentDocument;}catch(_){return null;}}
   function fwin(f){try{return f.contentWindow;}catch(_){return null;}}
   function hotCss(p){
@@ -193,7 +208,7 @@ iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}<
     var anchor=capture(active);
     var f=document.createElement('iframe');
     f.style.visibility='hidden'; f.setAttribute('aria-hidden','true');
-    f.src='/book.html?bust='+Date.now(); building=f;
+    f.src='/book.html?pmdshell=1&bust='+Date.now(); building=f;
     var finished=false;
     function finish(){
       if(finished||building!==f)return; finished=true;
