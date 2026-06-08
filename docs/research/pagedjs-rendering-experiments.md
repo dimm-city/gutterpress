@@ -195,20 +195,37 @@ Paged.js's `PagedConfig.after` calls `scrollTo(0,0)` right before firing it.
 | scroll position lost | **no** |
 | flicker on content edit | **still present** (full reload + visible re-pagination) |
 
-### ⏳ Remaining: eliminate content-edit flicker
-Content edits still flash because Paged.js re-paginates visibly on reload. The fix
-is **off-screen double-buffering**, but Paged.js paginates the whole `document.body`
-and can't be scoped to a hidden sub-container, so it needs one of:
-- **Iframe shell** (recommended): serve a persistent shell with the book in an
-  iframe; on content change, paginate a *second* hidden iframe, then swap which is
-  visible + sync the scroll anchor across frames. Flicker-free, keeps the page view.
-  (The Electron viewer already uses an iframe — converging on this also closes the
-  preview-vs-viewer gap.)
-- **Galley/continuous mode**: render content without pagination for editing
-  (instant, native reflow, no flicker) and paginate only for the proof view. Best
-  for *content* authoring; doesn't show page breaks live.
+### ✅ Content edits → flicker-free via iframe-shell double-buffer
+Content edits flash because Paged.js re-paginates visibly on reload, and Paged.js
+paginates the whole `document.body` (can't be scoped to a hidden sub-container).
+Fix (opt-in `PRINTMD_PREVIEW_SHELL=1`): serve a **shell** at `/` that hosts
+`book.html` in an iframe. On a content edit the shell paginates a **second hidden
+iframe**, waits for its `renderingComplete`, then **swaps it in atomically** and
+restores the scroll anchor. The visible page never blanks or rebuilds. `book.html`'s
+HMR client is inert when framed (`window.self !== window.top`) so the shell is the
+sole driver. (Same iframe pattern the Electron viewer uses → converges the two.)
 
-Both are a clean next iteration, not a patch — deferred to a deliberate build.
+Flicker measured as the **minimum page count visible** during a content edit
+(direct = rebuild in view; shell = stays full):
+
+| doc | direct (reload) | shell (double-buffer) |
+|---|---|---|
+| user guide (59 pp) | min **0** — flicker, settle 1.27s | min **59** — none, settle 1.3s |
+| synthetic (169 pp) | min **0** — flicker, settle 3–5s | min **150/281** — none, settle 7–9.6s |
+| design guide (55 pp, heavy CSS) | min **0** — flicker, settle 1.25s | min **55** — none, settle 1.3s |
+
+**No flicker on every doc incl. complex/long; scroll anchor preserved.** Honest
+tradeoff: latency is **free up to ~60 pp**; for very long docs (150–280 pp) the
+shell is ~2× slower to *settle* because the full new layout paginates hidden before
+the swap (smooth-but-later vs janky-but-progressive). The fix for that latency is
+**incremental pagination** (re-paginate only the changed region) — backlog item B1,
+the one remaining lever for near-instant on very long docs.
+
+### Net real-time-editing status
+- **CSS edits:** instant (~259 ms), scroll-stable, no flicker. ✅
+- **Content edits (≤ ~60 pp):** ~1.3 s, no flicker, scroll preserved. ✅
+- **Content edits (very long, 150–280 pp):** no flicker, scroll preserved, but
+  ~7–9 s to settle. ⏳ → incremental pagination (B1) for near-instant.
 
 ## Experiment backlog
 
