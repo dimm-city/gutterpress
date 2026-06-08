@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { getPlatform, isDesktop } from "$lib/platform";
+
   interface ToolStatus {
     name: string;
     bin: string;
@@ -58,12 +60,11 @@
     loading = true;
     error = null;
     try {
-      const electron = (window as any).electron;
-      if (!electron?.doctor) {
+      if (!isDesktop()) {
         error = "Electron bridge unavailable — run via the viewer app (not vite dev in a browser).";
         return;
       }
-      data = (await electron.doctor()) as Diagnostics;
+      data = (await getPlatform().doctor()) as Diagnostics;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
@@ -110,8 +111,7 @@
   }
 
   function openDocs() {
-    const electron = (window as any).electron;
-    if (electron?.openExternal && data) electron.openExternal(data.docsUrl);
+    if (isDesktop() && data) getPlatform().openExternal(data.docsUrl).catch(() => {});
   }
 
   const isMac = $derived(data?.platform?.os === 'darwin');

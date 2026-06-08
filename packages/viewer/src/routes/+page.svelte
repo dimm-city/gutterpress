@@ -8,6 +8,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { PreviewClient } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
+  import { getPlatform, isDesktop } from "$lib/platform";
 
   type DiagnosticsTool = {
     name: string;
@@ -107,10 +108,9 @@
 
   $effect(() => {
     if (diagnosticsTools) return;
-    const electron = (window as any).electron;
-    electron?.doctor?.()
-      .then((data: { tools?: DiagnosticsTool[] }) => {
-        diagnosticsTools = data.tools ?? [];
+    getPlatform().doctor()
+      .then((data) => {
+        diagnosticsTools = (data as { tools?: DiagnosticsTool[] }).tools ?? [];
       })
       .catch(() => {});
   });
@@ -123,8 +123,7 @@
   });
 
   $effect(() => {
-    const electron = (window as any).electron;
-    const off = electron?.onUrlPreviewBlocked?.((event: UrlPreviewBlockedEvent) => {
+    const off = getPlatform().onUrlPreviewBlocked((event: UrlPreviewBlockedEvent) => {
       if (sourceMode !== "url") return;
       if (!previewUrl) return;
       previewUrl = null;
@@ -140,15 +139,15 @@
   });
 
   $effect(() => {
-    const electron = (window as any).electron;
-    if (!electron?.getViewerPrefs || !electron?.startPreview) return;
+    if (!isDesktop()) return;
     if (lastProjectChecked) return;
     if (previewUrl || currentDir || currentUrl || busy || openError || urlPreviewError) return;
     if (autoOpeningLastProject) return;
 
     autoOpeningLastProject = true;
     lastProjectChecked = true;
-    electron.getViewerPrefs()
+    const platform = getPlatform();
+    platform.getViewerPrefs()
       .then((prefs: PersistedProjectState) => {
         if (!prefs.lastProjectDir || previewUrl || currentDir || currentUrl) return;
         return startFolderPreview(prefs.lastProjectDir, "Reopening previous folder…", prefs);
@@ -225,19 +224,18 @@
   // before the watchdog elapses (and the window is still open), main rolls the
   // bundle back this session. Harmless no-op when nothing is pending.
   $effect(() => {
-    const electron = (window as any).electron;
-    if (!electron?.updater?.markReady) return;
-    electron.updater.markReady().catch(() => {});
+    if (!isDesktop()) return;
+    getPlatform().updater.markReady().catch(() => {});
   });
 
   // Check for an already-staged update on load, then subscribe to future events.
   $effect(() => {
-    const electron = (window as any).electron;
-    if (!electron?.updater) return;
+    if (!isDesktop()) return;
+    const platform = getPlatform();
 
     // Peek at current status so we can surface a banner immediately if a
     // bundle was staged during a previous run.
-    electron.updater.getStatus()
+    platform.updater.getStatus()
       .then((status: { stagedVersion: string | null }) => {
         if (status.stagedVersion) {
           updateReadyVersion = status.stagedVersion;
@@ -252,7 +250,7 @@
     // are intentionally silent — surfacing them here would toast on every
     // launch and would double-toast during a manual check (which drives its own
     // feedback from the IPC return value in checkForUpdates()).
-    const off = electron.updater.onEvent((event: { type: string; version?: string }) => {
+    const off = platform.updater.onEvent((event: { type: string; version?: string }) => {
       if (event.type === "staged") {
         updateReadyVersion = event.version ?? null;
       }
@@ -458,12 +456,12 @@
     busy = true;
     busyLabel = label;
     try {
-      const electron = (window as any).electron;
-      if (!electron?.startPreview) {
+      if (!isDesktop()) {
         toast?.error("Electron bridge unavailable — run via the viewer app");
         return;
       }
-      const data = await electron.startPreview({ input: dir });
+      const platform = getPlatform();
+      const data = await platform.startPreview({ input: dir });
       sourceMode = "folder";
       currentDir = dir;
       currentUrl = null;
@@ -507,8 +505,7 @@
   }
 
   async function openFolder() {
-    const electron = (window as any).electron;
-    if (!electron?.openDirectory) {
+    if (!isDesktop()) {
       toast?.error("Electron bridge unavailable — run via the viewer app");
       return;
     }
@@ -516,11 +513,10 @@
     busyLabel = "Opening folder…";
     let handedOff = false;
     try {
-      const dir = await electron.openDirectory();
+      const platform = getPlatform();
+      const dir = await platform.openFolder();
       if (!dir) return;
-      const prefs = electron.getViewerPrefs
-        ? await electron.getViewerPrefs().catch(() => null) as PersistedProjectState | null
-        : null;
+      const prefs = await platform.getViewerPrefs().catch(() => null) as PersistedProjectState | null;
       const restoreState = prefs?.lastProjectDir === dir ? prefs : null;
       handedOff = true;
       await startFolderPreview(dir, "Starting preview…", restoreState);
@@ -554,8 +550,7 @@
 
   function openInBrowser() {
     if (!currentUrl) return;
-    const electron = (window as any).electron;
-    electron?.openExternal?.(currentUrl);
+    getPlatform().openExternal(currentUrl).catch(() => {});
   }
 
   function getSaveReadinessWarning(): string | null {
@@ -579,8 +574,7 @@
   }
 
   async function stopPreview() {
-    const electron = (window as any).electron;
-    await electron?.stopPreview?.().catch(() => {});
+    await getPlatform().stopPreview().catch(() => {});
     previewUrl = null;
     currentDir = null;
     currentUrl = null;
@@ -600,14 +594,14 @@
     }
     const inputDir = currentDir;
     if (!inputDir) return;
-    const electron = (window as any).electron;
-    if (!electron?.savePdf || !electron?.build) {
+    if (!isDesktop()) {
       toast?.error("Electron bridge unavailable — run via the viewer app");
       return;
     }
+    const platform = getPlatform();
     const sep = inputDir.includes("\\") ? "\\" : "/";
     const defaultName = (inputDir.split(sep).pop() ?? "book") + ".pdf";
-    const outPath = await electron.savePdf(defaultName);
+    const outPath = await platform.savePdf(defaultName);
     if (!outPath) return;
 
     // Non-blocking: the build runs in a separate render window, so keep the
@@ -621,7 +615,7 @@
     try {
       // Live progress: Paged.js pagination of large books takes minutes, so show
       // the growing page count instead of an opaque spinner.
-      offProgress = electron.onBuildProgress?.(
+      offProgress = platform.onBuildProgress(
         (p: ExportProgressEvent) => {
           if (p.state === "canceled") {
             exportState = "canceling";
@@ -634,7 +628,7 @@
           syncExportProgress(p);
         }
       );
-      const data = await electron.build({
+      const data = await platform.build({
         input: inputDir,
         format: "pdf",
         out: outPath,
@@ -655,7 +649,7 @@
       toast?.success(`PDF saved to ${savedPdfPath}`, 8000, {
         label: "Show in Folder",
         onClick: () => {
-          void electron.showInFolder?.(savedPdfPath);
+          void getPlatform().showInFolder(savedPdfPath).catch(() => {});
         },
       });
       await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -675,8 +669,7 @@
     if (!activeExportId) return;
     exportState = "canceling";
     updateExportLabel();
-    const electron = (window as any).electron;
-    await electron?.cancelExport?.(activeExportId).catch(() => {});
+    await getPlatform().cancelExport(activeExportId).catch(() => {});
   }
 
   function syncPageState(state: PageState | undefined) {
@@ -689,8 +682,7 @@
 
   function saveViewerPrefs(patch: Partial<PersistedProjectState>) {
     if (!currentDir || sourceMode !== "folder" || rendering || restoringSavedState) return;
-    const electron = (window as any).electron;
-    electron?.setViewerPrefs?.({ lastProjectDir: currentDir, ...patch }).catch(() => {});
+    getPlatform().setViewerPrefs({ lastProjectDir: currentDir, ...patch }).catch(() => {});
   }
 
   function restoreProjectPage(page: number) {
@@ -701,8 +693,7 @@
         currentPage = state.currentPage ?? currentPage;
         totalPages = state.totalPages ?? totalPages;
         if (!pageEditing) pageEditValue = String(currentPage);
-        const electron = (window as any).electron;
-        electron?.setViewerPrefs?.({ lastProjectDir: currentDir, currentPage }).catch(() => {});
+        getPlatform().setViewerPrefs({ lastProjectDir: currentDir, currentPage }).catch(() => {});
       })
       .catch(() => {})
       .finally(() => {
@@ -800,13 +791,12 @@
   // ── Auto-update actions ────────────────────────────────────────────────
 
   async function checkForUpdates() {
-    const electron = (window as any).electron;
-    if (!electron?.updater?.check) return;
+    if (!isDesktop()) return;
     checkingUpdates = true;
     toast?.info("Checking for updates…");
     try {
       const status: { phase: string; stagedVersion: string | null; error: string | null } =
-        await electron.updater.check();
+        await getPlatform().updater.check();
       if (status.stagedVersion) {
         // An update was downloaded + staged — the banner appears; no toast.
         updateReadyVersion = status.stagedVersion;
@@ -823,10 +813,9 @@
   }
 
   async function applyUpdate() {
-    const electron = (window as any).electron;
-    if (!electron?.updater?.applyNow) return;
+    if (!isDesktop()) return;
     try {
-      await electron.updater.applyNow();
+      await getPlatform().updater.applyNow();
       // Main reloads the window; no further action needed here.
     } catch (e) {
       toast?.error(e instanceof Error ? e.message : "Could not apply update.");
@@ -1004,7 +993,7 @@
         <span class="save-hint save-warning" role="alert">{saveWarning}</span>
       {/if}
       <!-- Auto-update: quiet icon-only button; only shown when bridge is present -->
-      {#if (window as any).electron?.updater}
+      {#if isDesktop()}
         <button
           class="icon-btn update-check-btn"
           onclick={checkForUpdates}

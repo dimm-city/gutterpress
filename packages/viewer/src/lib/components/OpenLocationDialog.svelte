@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { getPlatform, isDesktop } from "$lib/platform";
+
   type RecentFolder = { path: string; title: string; openedAt: string; exists: boolean };
   type FavoriteFolder = { path: string; title: string; exists: boolean };
 
@@ -49,13 +51,13 @@
   }
 
   async function loadLists() {
-    const electron = (window as any).electron;
-    if (!electron) return;
+    if (!isDesktop()) return;
     loading = true;
     try {
+      const platform = getPlatform();
       const [r, f] = await Promise.all([
-        electron.getRecentFolders?.() ?? Promise.resolve([]),
-        electron.getFavorites?.() ?? Promise.resolve([]),
+        platform.getRecentFolders(),
+        platform.getFavorites(),
       ]);
       recents = r;
       favorites = f;
@@ -118,9 +120,8 @@
   }
 
   async function browse() {
-    const electron = (window as any).electron;
-    if (!electron?.openDirectory) return;
-    const dir = await electron.openDirectory();
+    if (!isDesktop()) return;
+    const dir = await getPlatform().openFolder();
     if (!dir) return;
     location = dir;
     onOpenFolder?.(dir);
@@ -136,15 +137,13 @@
 
   async function removeRecent(path: string, e: MouseEvent | KeyboardEvent) {
     e.stopPropagation();
-    const electron = (window as any).electron;
-    await electron?.removeRecent?.(path).catch(() => {});
+    await getPlatform().removeRecent(path).catch(() => {});
     await loadLists();
   }
 
   async function toggleFavorite(path: string, title: string, e: MouseEvent | KeyboardEvent) {
     e.stopPropagation();
-    const electron = (window as any).electron;
-    await electron?.toggleFavorite?.(path, title).catch(() => {});
+    await getPlatform().toggleFavorite(path, title).catch(() => {});
     await loadLists();
   }
 
