@@ -38,6 +38,7 @@
     pagedMediaCompletionSource,
     type EditorLanguage,
   } from "$lib/editor/css-editor";
+  import { untrack } from "svelte";
 
   let {
     filePath = null,
@@ -149,12 +150,20 @@
     });
   }
 
-  // Mount the EditorView once the host node exists.
+  // Mount the EditorView once the host node exists. Only `host` is a tracked
+  // dependency — the content/filePath reads are wrapped in untrack(). Otherwise
+  // every keystroke (which mutates `content`) re-runs this effect, and its
+  // cleanup destroys + recreates the whole EditorView, collapsing the caret to 0
+  // and dropping focus ("editor jumps / loses focus while typing"). Subsequent
+  // content/file changes are handled by the doc-swap effect below, on the SAME
+  // view instance.
   $effect(() => {
     if (!host || view) return;
-    currentLanguage = languageForPath(filePath);
-    appliedPath = filePath;
-    view = new EditorView({ state: buildState(content), parent: host });
+    untrack(() => {
+      currentLanguage = languageForPath(filePath);
+      appliedPath = filePath;
+      view = new EditorView({ state: buildState(content), parent: host });
+    });
     return () => {
       view?.destroy();
       view = null;

@@ -611,6 +611,11 @@ function createWindow() {
     width: 1400,
     height: 900,
     backgroundColor: "#1e1e1e",
+    // Don't show the window until the renderer has painted its first frame —
+    // otherwise the user stares at a blank window for the duration of the
+    // (unavoidable) Electron/AppImage cold-start. ready-to-show fires once the
+    // SPA is ready, so the window appears already-rendered.
+    show: false,
     webPreferences: {
       preload: path.resolve(__dirname, "../preload/preload.js"),
       contextIsolation: true,
@@ -618,6 +623,7 @@ function createWindow() {
       sandbox: false,
     },
   });
+  mainWindow.once("ready-to-show", () => mainWindow?.show());
   mainWindow.setMenuBarVisibility(false);
 
   // Editable-field context menu. Electron ships no default menu, so inputs

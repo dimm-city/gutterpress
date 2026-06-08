@@ -332,6 +332,24 @@
     ensureBuffer().edit(value);
   }
 
+  // When the editor opens with nothing loaded, auto-select a sensible file so the
+  // user isn't dropped on an empty "Select a file" pane: the first markdown file,
+  // else the first editable file.
+  async function ensureEditorFile() {
+    if (!currentDir || !isDesktop()) return;
+    const buf = ensureBuffer();
+    if (buf.filePath) return;
+    try {
+      const files = (await getPlatform().listDir(currentDir)).filter((e) => !e.isDir);
+      const pick =
+        files.filter((e) => /\.md$/i.test(e.name)).sort((a, b) => a.name.localeCompare(b.name))[0] ||
+        files.find((e) => /\.(md|css)$/i.test(e.name));
+      if (pick) selectEditorFile(pick.path);
+    } catch {
+      /* non-fatal: the user can still pick a file from the tree */
+    }
+  }
+
   function reloadExternal() {
     buffer?.acceptExternal();
   }
@@ -407,6 +425,7 @@
     // focus-switch into the editing surface (#38). Closing returns focus to
     // the document (preview iframe / window) implicitly.
     if (editorOpen) {
+      void ensureEditorFile();
       // Defer until the pane (and CodeMirror view) is mounted. The editor
       // component is lazy-loaded, so focus may need to wait for it to arrive.
       focusEditorWhenReady();
@@ -1218,6 +1237,7 @@
     if (mode === "edit" && currentDir && sourceMode === "folder") {
       const wasClosed = !editorOpen;
       editorOpen = true;
+      void ensureEditorFile();
       if (wasClosed) focusEditorWhenReady();
     }
   }
@@ -1364,7 +1384,7 @@
           />
         {:else}
           <button class="page-pill" onclick={beginPageEdit} disabled={rendering} aria-label="Edit current page">
-            Page {currentPage} / {totalPages || "—"}
+            <span class="pill-word">Page </span>{currentPage} / {totalPages || "—"}
           </button>
         {/if}
         <button class="icon-btn" onclick={nextPage} disabled={rendering} title="Next page (Right/PageDown)" aria-label="Next page">
@@ -1545,10 +1565,11 @@
       {:else if saveWarning}
         <span class="save-hint save-warning" role="alert">{saveWarning}</span>
       {/if}
-      <!-- Settings panel (#45): gear icon + Cmd/Ctrl+, shortcut -->
+      <!-- Settings panel (#45): gear icon + Cmd/Ctrl+, shortcut. Inline on wide
+           screens; folds into the "More" menu when space is tight. -->
       <button
         bind:this={settingsBtn}
-        class="icon-btn"
+        class="icon-btn opt-inline"
         onclick={() => (settingsOpen = true)}
         title="Settings (Ctrl+,)"
         aria-label="Settings"
@@ -1558,13 +1579,28 @@
       <!-- UX-026: bind:this for focus restore -->
       <button
         bind:this={helpBtn}
-        class="icon-btn"
+        class="icon-btn opt-inline"
         onclick={() => (helpOpen = true)}
         title="Help / About"
         aria-label="Help and system info"
       >
         <Icon name="circle-help" />
       </button>
+      <!-- Overflow menu: collapses Settings + Help into one button at narrow
+           widths so the toolbar never crowds the page navigation. -->
+      <details class="menu more-menu">
+        <summary class="icon-btn menu-summary" title="More" aria-label="More options">
+          <Icon name="ellipsis-vertical" />
+        </summary>
+        <div class="menu-panel menu-panel-right">
+          <button class="menu-item" onclick={(e) => { settingsOpen = true; closeMenu(e); }}>
+            <Icon name="settings" /> Settings
+          </button>
+          <button class="menu-item" onclick={(e) => { helpOpen = true; closeMenu(e); }}>
+            <Icon name="circle-help" /> Help &amp; about
+          </button>
+        </div>
+      </details>
     </section>
   </header>
 
@@ -1847,7 +1883,13 @@
     flex-shrink: 0;
     background: linear-gradient(to bottom, var(--app-toolbar-from), var(--app-toolbar-to));
     border-bottom: 1px solid var(--app-border);
-    overflow: hidden;
+    /* Stacking context ABOVE the workspace panes (z-index 50) so dropdown menus
+       that hang below the toolbar paint over the preview, not behind it. overflow
+       must stay visible for the same reason — `overflow: hidden` clips dropdowns.
+       Horizontal overflow is controlled per-section (.left/.center/.right). */
+    position: relative;
+    z-index: 100;
+    overflow: visible;
   }
 
   section { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -1917,6 +1959,10 @@
   /* On wide screens the inline controls (.view-mode-group / .zoom-select) show
      and the menu buttons hide. Below a breakpoint they swap. */
   .menu { position: relative; display: none; }
+  /* The "More" overflow menu uses higher specificity (details.more-menu) than
+     the generic `.menu { display: inline-block }` shown at <=980px, so it stays
+     hidden until its own <=620px breakpoint. */
+  details.more-menu { display: none; }
   .menu-summary {
     list-style: none;
     display: inline-flex;
@@ -2150,12 +2196,20 @@
   @media screen and (max-width: 700px) {
     .path { display: none; }
   }
+  @media screen and (max-width: 620px) {
+    /* Fold Settings + Help into the "More" overflow menu, and drop the "Page"
+       word from the pill — so the page navigation keeps room and the toolbar
+       never crowds/clips at narrow widths. */
+    .opt-inline { display: none; }
+    details.more-menu { display: inline-block; }
+    .pill-word { display: none; }
+  }
   @media screen and (max-width: 560px) {
     /* Compact page navigation: drop the first/last jump buttons, keep prev /
        page-pill / next so navigation still works without overflow. */
     .center .icon-btn:first-child,
     .center .icon-btn:last-child { display: none; }
-    .page-pill { min-width: 72px; }
+    .page-pill { min-width: 56px; }
   }
 
   /* ---- Small-screen single-pane layout (#responsive) ----
@@ -2173,9 +2227,15 @@
     /* The file tree is part of the editing surface; fold it away on small
        screens so the editor pane gets the full width. */
     .workspace.narrow .file-tree-pane { display: none; }
-    /* View mode: show only the preview. */
-    .workspace.narrow.show-view .editor-pane { display: none; }
+    /* DEFAULT narrow = preview only. Driving the single-pane choice from CSS
+       defaults (not from the show-* classes alone) means an unset/undefined
+       paneMode can never leave BOTH panes stacked in the single column. */
+    .workspace.narrow .editor-pane { display: none; }
     /* Edit mode: show only the editor; keep the preview mounted but hidden. */
+    .workspace.narrow.show-edit .editor-pane {
+      display: flex;
+      border-right: none;
+    }
     .workspace.narrow.show-edit .preview-pane {
       position: absolute;
       width: 0;
@@ -2184,7 +2244,6 @@
       pointer-events: none;
       opacity: 0;
     }
-    .workspace.narrow.show-edit .editor-pane { border-right: none; }
   }
 
   /* ---- Chapter-list mobile bottom-sheet drawer (#42) ----
