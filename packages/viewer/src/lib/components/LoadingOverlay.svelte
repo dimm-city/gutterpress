@@ -29,7 +29,7 @@
     position: fixed;
     inset: 0;
     top: 56px; /* below toolbar */
-    background: rgba(32, 32, 32, 0.88);
+    background: var(--app-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -47,8 +47,8 @@
   .spinner {
     width: 40px;
     height: 40px;
-    border: 3px solid #3a3a3a;
-    border-top-color: #0077dd;
+    border: 3px solid var(--app-spinner-track);
+    border-top-color: var(--app-spinner-head);
     border-radius: 50%;
     animation: spin 0.75s linear infinite;
   }
@@ -59,15 +59,15 @@
 
   .label {
     margin: 0;
-    color: #ccc;
+    color: var(--app-text-secondary);
     font-size: 13px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   }
 
   .cancel-btn {
     background: transparent;
-    border: 1px solid #6b7280;
-    color: #e5e7eb;
+    border: 1px solid var(--app-border-strong);
+    color: var(--app-text-secondary);
     border-radius: 999px;
     padding: 6px 12px;
     font-size: 12px;
@@ -75,6 +75,6 @@
   }
 
   .cancel-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--app-scrim-strong);
   }
 </style>

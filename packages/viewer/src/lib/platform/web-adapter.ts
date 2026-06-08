@@ -27,6 +27,7 @@ import type {
   FavoriteEntry,
   UpdaterApi,
   UpdaterStatus,
+  NativeThemeState,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -143,6 +144,24 @@ export class WebAdapter implements Platform {
     } catch {
       return Promise.resolve({ ok: false });
     }
+  }
+
+  // Native (OS) theme (#48) — genuinely implemented via matchMedia so the
+  // PWA / `vite dev` path themes correctly (not a 0.6.0 stub).
+  getNativeTheme(): Promise<NativeThemeState> {
+    const dark =
+      typeof globalThis.matchMedia === "function" &&
+      globalThis.matchMedia("(prefers-color-scheme: dark)").matches;
+    return Promise.resolve({ shouldUseDarkColors: dark });
+  }
+
+  onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void {
+    if (typeof globalThis.matchMedia !== "function") return () => {};
+    const mql = globalThis.matchMedia("(prefers-color-scheme: dark)");
+    const listener = (e: MediaQueryListEvent) =>
+      cb({ shouldUseDarkColors: e.matches });
+    mql.addEventListener("change", listener);
+    return () => mql.removeEventListener("change", listener);
   }
 
   getRecentFolders(): Promise<RecentFolderEntry[]> {

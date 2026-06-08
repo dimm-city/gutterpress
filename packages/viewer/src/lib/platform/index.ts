@@ -30,6 +30,7 @@ export type {
   BuildResult,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
+  NativeThemeState,
 } from "./contract";
 
 let instance: Platform | null = null;

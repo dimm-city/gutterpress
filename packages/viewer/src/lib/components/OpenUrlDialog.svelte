@@ -127,7 +127,7 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--app-backdrop);
     z-index: 1000;
   }
   .dialog {
@@ -136,10 +136,10 @@
     left: 50%;
     transform: translate(-50%, -50%);
     width: min(520px, 92vw);
-    background: #1e1e1e;
-    color: #e0e0e0;
+    background: var(--app-surface);
+    color: var(--app-text-secondary);
     border-radius: 8px;
-    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 14px 40px var(--app-shadow-lg);
     z-index: 1001;
     display: flex;
     flex-direction: column;
@@ -150,27 +150,27 @@
     align-items: center;
     justify-content: space-between;
     padding: 14px 18px;
-    border-bottom: 1px solid #303030;
+    border-bottom: 1px solid var(--app-border-subtle);
   }
   .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
   .close {
     background: transparent;
     border: 0;
-    color: #aaa;
+    color: var(--app-text-muted);
     font-size: 22px;
     line-height: 1;
     cursor: pointer;
     padding: 0 4px;
   }
-  .close:hover { color: #fff; }
+  .close:hover { color: var(--app-text); }
   .dialog-body { padding: 16px 18px; }
-  .hint { font-size: 12px; color: #888; margin: 0 0 14px; line-height: 1.5; }
+  .hint { font-size: 12px; color: var(--app-text-faint); margin: 0 0 14px; line-height: 1.5; }
   .field { display: flex; flex-direction: column; gap: 6px; }
-  .field span { font-size: 12px; color: #aaa; font-weight: 500; }
+  .field span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
   .field input {
-    background: #2a2a2a;
-    border: 1px solid #404040;
-    color: #e0e0e0;
+    background: var(--app-surface-sunken);
+    border: 1px solid var(--app-border);
+    color: var(--app-text-secondary);
     padding: 8px 10px;
     border-radius: 6px;
     font-size: 13px;
@@ -178,16 +178,16 @@
   }
   .field input:focus {
     outline: none;
-    border-color: #3a6fb5;
+    border-color: var(--app-focus-ring);
   }
-  .error { color: #f08080; font-size: 12px; margin: 10px 0 0; }
+  .error { color: var(--app-error-text); font-size: 12px; margin: 10px 0 0; }
   .actions {
     display: flex;
     gap: 8px;
     justify-content: flex-end;
     padding-top: 16px;
     margin-top: 16px;
-    border-top: 1px solid #303030;
+    border-top: 1px solid var(--app-border-subtle);
   }
   .actions button {
     padding: 6px 14px;
@@ -196,8 +196,8 @@
     cursor: pointer;
     border: 1px solid transparent;
   }
-  .actions .primary { background: #3a6fb5; color: #fff; }
-  .actions .primary:hover { background: #4882d4; }
-  .actions .ghost { background: transparent; color: #aaa; border-color: #404040; }
-  .actions .ghost:hover { background: #262626; color: #fff; }
+  .actions .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
+  .actions .primary:hover { background: var(--app-accent-hover); }
+  .actions .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
+  .actions .ghost:hover { background: var(--app-surface-hover); color: var(--app-text); }
 </style>

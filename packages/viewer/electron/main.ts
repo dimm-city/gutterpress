@@ -4,6 +4,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeTheme,
   protocol,
   session,
   shell,
@@ -533,7 +534,18 @@ function createWindow() {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   }
 
+  // Push OS theme changes (light↔dark) to the renderer so a "system" theme
+  // mode tracks the OS live. Registered after window creation so mainWindow is
+  // non-null when the event fires; removed on close to avoid a dangling ref.
+  const onNativeThemeUpdated = () => {
+    mainWindow?.webContents.send("app:nativeThemeUpdated", {
+      shouldUseDarkColors: nativeTheme.shouldUseDarkColors,
+    });
+  };
+  nativeTheme.on("updated", onNativeThemeUpdated);
+
   mainWindow.on("closed", () => {
+    nativeTheme.removeListener("updated", onNativeThemeUpdated);
     mainWindow = null;
   });
   return mainWindow;
@@ -724,6 +736,14 @@ ipcMain.handle("app:setSettings", async (_e, patch: DeepPartialSettings) => {
   const current = await readSettings();
   await writeSettings(mergeSettings(current, patch));
   return { ok: true };
+});
+
+// ── Native (OS) theme surface (#48) ─────────────────────────────────────────
+// One-shot query of the OS dark/light preference. The renderer's theme
+// controller resolves "system" against this. Pushed updates come via the
+// nativeTheme "updated" listener registered in createWindow().
+ipcMain.handle("app:getNativeTheme", async () => {
+  return { shouldUseDarkColors: nativeTheme.shouldUseDarkColors };
 });
 
 ipcMain.handle("app:getRecentFolders", async () => {

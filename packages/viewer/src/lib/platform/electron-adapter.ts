@@ -22,6 +22,7 @@ import type {
   RecentFolderEntry,
   FavoriteEntry,
   UpdaterApi,
+  NativeThemeState,
 } from "./contract";
 
 function bridge(): ElectronBridge {
@@ -112,6 +113,14 @@ export class ElectronAdapter implements Platform {
 
   setSettings(patch: DeepPartial<AppSettings>): Promise<{ ok: boolean }> {
     return bridge().setSettings(patch);
+  }
+
+  getNativeTheme(): Promise<NativeThemeState> {
+    return bridge().getNativeTheme();
+  }
+
+  onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void {
+    return bridge().onNativeThemeUpdated(cb);
   }
 
   getRecentFolders(): Promise<RecentFolderEntry[]> {

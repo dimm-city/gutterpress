@@ -1,5 +1,6 @@
 <script lang="ts">
   import { useSettings } from "$lib/settings.svelte";
+  import { setThemeMode } from "$lib/theme.svelte";
 
   let {
     open = $bindable(false),
@@ -86,7 +87,7 @@
           <select
             id="set-theme"
             value={s.appearance.theme}
-            onchange={(e) => settings.set({ appearance: { theme: (e.currentTarget as HTMLSelectElement).value as "light" | "dark" | "system" } })}
+            onchange={(e) => setThemeMode((e.currentTarget as HTMLSelectElement).value as "light" | "dark" | "system")}
           >
             <option value="system">System</option>
             <option value="light">Light</option>
@@ -267,7 +268,7 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--app-backdrop);
     z-index: 1000;
   }
   .dialog {
@@ -277,10 +278,10 @@
     transform: translate(-50%, -50%);
     width: min(560px, 92vw);
     max-height: 88vh;
-    background: #1e1e1e;
-    color: #e0e0e0;
+    background: var(--app-surface);
+    color: var(--app-text-secondary);
     border-radius: 8px;
-    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 14px 40px var(--app-shadow-lg);
     z-index: 1001;
     display: flex;
     flex-direction: column;
@@ -291,19 +292,19 @@
     align-items: center;
     justify-content: space-between;
     padding: 14px 18px;
-    border-bottom: 1px solid #303030;
+    border-bottom: 1px solid var(--app-border-subtle);
   }
   .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
   .close {
     background: transparent;
     border: 0;
-    color: #aaa;
+    color: var(--app-text-muted);
     font-size: 22px;
     line-height: 1;
     cursor: pointer;
     padding: 0 4px;
   }
-  .close:hover { color: #fff; }
+  .close:hover { color: var(--app-text); }
   .dialog-body {
     padding: 16px 18px;
     overflow-y: auto;
@@ -314,26 +315,26 @@
     align-items: center;
     justify-content: space-between;
     margin-bottom: 8px;
-    border-bottom: 1px solid #303030;
+    border-bottom: 1px solid var(--app-border-subtle);
     padding-bottom: 6px;
   }
   .group-head h3 {
     margin: 0;
     font-size: 12px;
     text-transform: uppercase;
-    color: #aaa;
+    color: var(--app-text-muted);
     letter-spacing: 0.5px;
   }
   .reset {
     background: transparent;
-    border: 1px solid #404040;
-    color: #aaa;
+    border: 1px solid var(--app-border);
+    color: var(--app-text-muted);
     font-size: 11px;
     padding: 3px 8px;
     border-radius: 4px;
     cursor: pointer;
   }
-  .reset:hover { background: #262626; color: #fff; }
+  .reset:hover { background: var(--app-surface-hover); color: var(--app-text); }
   .row {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -342,13 +343,13 @@
     padding: 6px 0;
     font-size: 13px;
   }
-  .row label { color: #d0d0d0; }
+  .row label { color: var(--app-text-secondary); }
   .row input[type="text"],
   .row input[type="number"],
   .row select {
-    background: #2a2a2a;
-    border: 1px solid #4a4a4a;
-    color: #e0e0e0;
+    background: var(--app-surface-sunken);
+    border: 1px solid var(--app-control-border);
+    color: var(--app-text-secondary);
     padding: 5px 8px;
     border-radius: 6px;
     font-size: 13px;
@@ -358,7 +359,7 @@
     width: 40px;
     height: 28px;
     padding: 0;
-    border: 1px solid #4a4a4a;
+    border: 1px solid var(--app-control-border);
     border-radius: 6px;
     background: none;
     cursor: pointer;
@@ -368,20 +369,20 @@
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.4px;
-    color: #888;
-    background: #2a2a2a;
-    border: 1px solid #3a3a3a;
+    color: var(--app-text-faint);
+    background: var(--app-surface-sunken);
+    border: 1px solid var(--app-border);
     border-radius: 4px;
     padding: 2px 6px;
   }
-  .stub-note { margin: 0; font-size: 12px; color: #888; }
+  .stub-note { margin: 0; font-size: 12px; color: var(--app-text-faint); }
   .actions {
     display: flex;
     gap: 8px;
     justify-content: flex-end;
     padding-top: 16px;
     margin-top: 8px;
-    border-top: 1px solid #303030;
+    border-top: 1px solid var(--app-border-subtle);
   }
   .actions button {
     padding: 6px 14px;
@@ -390,6 +391,6 @@
     cursor: pointer;
     border: 1px solid transparent;
   }
-  .actions .primary { background: #3a6fb5; color: #fff; }
-  .actions .primary:hover { background: #4882d4; }
+  .actions .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
+  .actions .primary:hover { background: var(--app-accent-hover); }
 </style>

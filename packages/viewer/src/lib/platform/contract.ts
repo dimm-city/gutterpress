@@ -173,6 +173,11 @@ export interface UrlPreviewBlockedEvent {
   reason: string;
 }
 
+/** OS appearance state (#48). Resolved against "system" theme mode. */
+export interface NativeThemeState {
+  shouldUseDarkColors: boolean;
+}
+
 /**
  * Host RPC services. Host-divergent (IPC vs HTTP) but not part of the narrow
  * filesystem/secrets primitive surface, so kept separate from PlatformAdapter.
@@ -196,6 +201,11 @@ export interface HostServices {
   setViewerPrefs(patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }>;
   getSettings(): Promise<AppSettings>;
   setSettings(patch: DeepPartial<AppSettings>): Promise<{ ok: boolean }>;
+
+  // Native (OS) theme (#48)
+  getNativeTheme(): Promise<NativeThemeState>;
+  onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void;
+
   getRecentFolders(): Promise<RecentFolderEntry[]>;
   getFavorites(): Promise<FavoriteEntry[]>;
   toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }>;

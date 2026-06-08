@@ -1,0 +1,182 @@
+/**
+ * App-chrome theme tokens (#48).
+ *
+ * The single source of truth for every app-chrome colour. Components reference
+ * `var(--token)` only — no hardcoded hex/rgb literals in component style blocks.
+ *
+ * `:root` carries the LIGHT palette (the default for `prefers-color-scheme:
+ * light`); `:root[data-theme="dark"]` overrides it with the dark palette. The
+ * effective `data-theme` attribute is resolved by `theme.svelte.ts` (and the
+ * no-flash inline script in `app.html`) from the persisted appearance.theme
+ * setting + the OS preference.
+ *
+ * EXCLUDED from theming: the document preview iframe (PreviewFrame.svelte) and
+ * the injected preview canvas styles (iframe-styles.ts) — those render the
+ * author's own CSS on a fixed neutral background regardless of app theme.
+ */
+
+:root {
+  /* Surfaces */
+  --app-bg: #f4f4f5;
+  --app-surface: #ffffff;
+  --app-surface-raised: #ffffff;
+  --app-surface-sunken: #ececef;
+  --app-surface-hover: #e4e4e7;
+  --app-toolbar-from: #fafafa;
+  --app-toolbar-to: #f0f0f1;
+  --app-overlay: rgba(255, 255, 255, 0.82);
+  --app-backdrop: rgba(0, 0, 0, 0.45);
+
+  /* Borders */
+  --app-border: #d4d4d8;
+  --app-border-strong: #b8b8bf;
+  --app-border-subtle: #e4e4e7;
+
+  /* Text */
+  --app-text: #18181b;
+  --app-text-secondary: #3f3f46;
+  --app-text-muted: #71717a;
+  --app-text-faint: #a1a1aa;
+  --app-text-on-accent: #ffffff;
+
+  /* Controls */
+  --app-control-bg: #ffffff;
+  --app-control-border: #c8c8cf;
+  --app-control-text: #18181b;
+  --app-control-hover-bg: #f0f0f1;
+  --app-control-hover-border: #a8a8b0;
+
+  /* Accent (primary actions, focus) */
+  --app-accent: #0066cc;
+  --app-accent-hover: #0077dd;
+  --app-accent-bright: #0088ee;
+  --app-accent-border: #0055aa;
+  --app-accent-text: #ffffff;
+  --app-focus-ring: #3a6fb5;
+
+  /* Page pill (toolbar page indicator) */
+  --app-pill-from: #e8edf5;
+  --app-pill-to: #dde4ef;
+  --app-pill-border: #b3c0d4;
+  --app-pill-text: #1a3055;
+
+  /* Spinner / progress */
+  --app-spinner-track: #d4d4d8;
+  --app-spinner-head: #0066cc;
+
+  /* Shadows */
+  --app-shadow-sm: rgba(0, 0, 0, 0.12);
+  --app-shadow-md: rgba(0, 0, 0, 0.18);
+  --app-shadow-lg: rgba(0, 0, 0, 0.28);
+
+  /* Semantic status colours (success / error / warning / info) */
+  --app-success-bg: #e6f4ea;
+  --app-success-border: #a8d5b5;
+  --app-success-text: #1f6f3a;
+  --app-success-strong: #166534;
+
+  --app-error-bg: #fbe9e9;
+  --app-error-border: #e0aeae;
+  --app-error-text: #b42318;
+  --app-error-strong: #d04545;
+
+  --app-warning-bg: #fdf3e2;
+  --app-warning-border: #e8cf9a;
+  --app-warning-text: #92580a;
+
+  --app-info-bg: #e7f0fb;
+  --app-info-border: #aecbe8;
+  --app-info-text: #1f5fa8;
+
+  /* Misc accents */
+  --app-star: #d4a017;
+  --app-code-bg: #e8edf5;
+  --app-code-text: #2b4a6f;
+  --app-link: #1f5fa8;
+  --app-link-hover: #0066cc;
+  --app-scrim: rgba(0, 0, 0, 0.06);
+  --app-scrim-strong: rgba(0, 0, 0, 0.1);
+}
+
+:root[data-theme="dark"] {
+  /* Surfaces */
+  --app-bg: #1e1e1e;
+  --app-surface: #1e1e1e;
+  --app-surface-raised: #262626;
+  --app-surface-sunken: #2a2a2a;
+  --app-surface-hover: #333333;
+  --app-toolbar-from: #252525;
+  --app-toolbar-to: #1e1e1e;
+  --app-overlay: rgba(32, 32, 32, 0.88);
+  --app-backdrop: rgba(0, 0, 0, 0.55);
+
+  /* Borders */
+  --app-border: #3a3a3a;
+  --app-border-strong: #4a4a4a;
+  --app-border-subtle: #303030;
+
+  /* Text */
+  --app-text: #eeeeee;
+  --app-text-secondary: #d0d0d0;
+  --app-text-muted: #aaaaaa;
+  --app-text-faint: #888888;
+  --app-text-on-accent: #ffffff;
+
+  /* Controls */
+  --app-control-bg: #3a3a3a;
+  --app-control-border: #4a4a4a;
+  --app-control-text: #e0e0e0;
+  --app-control-hover-bg: #444444;
+  --app-control-hover-border: #5a5a5a;
+
+  /* Accent */
+  --app-accent: #0066cc;
+  --app-accent-hover: #0077dd;
+  --app-accent-bright: #0088ee;
+  --app-accent-border: #0055aa;
+  --app-accent-text: #ffffff;
+  --app-focus-ring: #3a6fb5;
+
+  /* Page pill */
+  --app-pill-from: #313740;
+  --app-pill-to: #262c34;
+  --app-pill-border: #576170;
+  --app-pill-text: #eef4ff;
+
+  /* Spinner / progress */
+  --app-spinner-track: #3a3a3a;
+  --app-spinner-head: #0077dd;
+
+  /* Shadows */
+  --app-shadow-sm: rgba(0, 0, 0, 0.4);
+  --app-shadow-md: rgba(0, 0, 0, 0.45);
+  --app-shadow-lg: rgba(0, 0, 0, 0.5);
+
+  /* Semantic status */
+  --app-success-bg: #1a3a1a;
+  --app-success-border: #2d5a2d;
+  --app-success-text: #86efac;
+  --app-success-strong: #166534;
+
+  --app-error-bg: #3a1a1a;
+  --app-error-border: #5a2d2d;
+  --app-error-text: #fca5a5;
+  --app-error-strong: #d04545;
+
+  --app-warning-bg: #3a2a0a;
+  --app-warning-border: #5a4a1a;
+  --app-warning-text: #fcd34d;
+
+  --app-info-bg: #1a2a3a;
+  --app-info-border: #2d4a6a;
+  --app-info-text: #93c5fd;
+
+  /* Misc accents */
+  --app-star: #f5c518;
+  --app-code-bg: #2a3040;
+  --app-code-text: #99aabb;
+  --app-link: #6a9fd8;
+  --app-link-hover: #88c0f8;
+  --app-scrim: rgba(255, 255, 255, 0.06);
+  --app-scrim-strong: rgba(255, 255, 255, 0.08);
+}

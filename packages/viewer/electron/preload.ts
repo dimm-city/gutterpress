@@ -179,6 +179,19 @@ contextBridge.exposeInMainWorld("electron", {
   setSettings: (patch: DeepPartialSettings): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("app:setSettings", patch),
 
+  // Native (OS) theme surface (#48)
+  getNativeTheme: (): Promise<{ shouldUseDarkColors: boolean }> =>
+    ipcRenderer.invoke("app:getNativeTheme"),
+  /** Subscribe to OS theme changes from main. Returns an unsubscribe fn. */
+  onNativeThemeUpdated: (
+    cb: (data: { shouldUseDarkColors: boolean }) => void
+  ): (() => void) => {
+    const listener = (_e: unknown, data: { shouldUseDarkColors: boolean }) =>
+      cb(data);
+    ipcRenderer.on("app:nativeThemeUpdated", listener);
+    return () => ipcRenderer.removeListener("app:nativeThemeUpdated", listener);
+  },
+
   // Open Location modal: recent folders + favorites
   getRecentFolders: (): Promise<
     Array<{ path: string; title: string; openedAt: string; exists: boolean }>

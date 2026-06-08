@@ -95,6 +95,11 @@ interface Window {
     // User settings (#45)
     getSettings(): Promise<AppSettings>;
     setSettings(patch: DeepPartialSettings): Promise<{ ok: boolean }>;
+    // Native (OS) theme surface (#48)
+    getNativeTheme(): Promise<{ shouldUseDarkColors: boolean }>;
+    onNativeThemeUpdated(
+      cb: (data: { shouldUseDarkColors: boolean }) => void
+    ): () => void;
     // Open Location modal: recent folders + favorites
     getRecentFolders(): Promise<
       Array<{ path: string; title: string; openedAt: string; exists: boolean }>
