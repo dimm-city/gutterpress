@@ -3,6 +3,10 @@
   import ChapterList from "$lib/components/ChapterList.svelte";
   import FileTree from "$lib/components/FileTree.svelte";
   import MarkdownEditor from "$lib/components/MarkdownEditor.svelte";
+  import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
+  import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
+  import type { RecoveryItem } from "$lib/components/CrashRecoveryDialog.svelte";
+  import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type { ProjectCapabilities } from "$lib/platform/contract";
@@ -10,6 +14,7 @@
   import HelpDialog from "$lib/components/HelpDialog.svelte";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
   import OpenLocationDialog from "$lib/components/OpenLocationDialog.svelte";
+  import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { PreviewClient } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
@@ -122,6 +127,16 @@
   // Open Location modal
   let openLocationOpen = $state(false);
   let openBtn = $state<HTMLButtonElement | undefined>(undefined);
+  // New-project wizard (#25)
+  let newProjectOpen = $state(false);
+  let newProjectBtn = $state<HTMLButtonElement | undefined>(undefined);
+  // Official setup guide for first-time writers (MVP "Download starter template").
+  const SETUP_GUIDE_URL =
+    "https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/01-getting-started.md";
+
+  function openSetupGuide() {
+    getPlatform().openExternal(SETUP_GUIDE_URL).catch(() => {});
+  }
 
   // ── Chapter-list sidebar (#42) ──────────────────────────────────────────
   // A collapsible left sidebar listing the project's .md chapters (and .css
@@ -173,67 +188,169 @@
     }
   }
 
-  // ── In-app markdown editor (#38) ────────────────────────────────────────
+  // ── In-app markdown editor (#38) + unsaved-changes (#44) ──────────────────
   // editorOpen toggles the file-tree + editor split alongside the preview.
-  // editorFilePath/editorContent drive the CodeMirror pane; a debounced
-  // writeFile saves edits to disk, which the existing preview file-watcher
-  // picks up to re-render — no extra wiring needed.
+  // The EditorBuffer (#44) is the single owner of the edit lifecycle: open file
+  // path, in-memory content, the dirty/save state machine, the debounced disk
+  // write (which the preview file-watcher picks up to re-render), debounced
+  // crash-recovery snapshots, the close/navigate flush, and external-edit
+  // reconciliation. The old loose editorFilePath/editorContent/saveDebounce
+  // state now lives inside the buffer.
   let editorOpen = $state(false);
-  let editorFilePath = $state<string | null>(null);
-  let editorContent = $state<string>("");
-  let editorLoading = $state(false);
-  let saveDebounce: ReturnType<typeof setTimeout> | null = null;
   let editorRef = $state<{ focus: () => void } | null>(null);
 
-  // Load file content when the selected file changes.
-  $effect(() => {
-    const filePath = editorFilePath;
-    if (!filePath || !isDesktop()) {
-      return;
-    }
-    editorLoading = true;
-    let cancelled = false;
-    getPlatform()
-      .readFile(filePath)
-      .then((text) => {
-        if (cancelled) return;
-        editorContent = text;
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        editorContent = "";
-        toast?.error(
-          `Could not open file: ${e instanceof Error ? e.message : String(e)}`,
-        );
-      })
-      .finally(() => {
-        if (!cancelled) editorLoading = false;
-      });
-    return () => {
-      cancelled = true;
-    };
-  });
+  // Construct lazily on first desktop use so the WebAdapter path never touches
+  // it (the editor is desktop-only). One buffer for the lifetime of the app.
+  let buffer = $state<EditorBuffer | null>(null);
 
-  function onEditorChange(value: string) {
-    editorContent = value;
-    const filePath = editorFilePath;
-    if (!filePath || !isDesktop()) return;
-    if (saveDebounce) clearTimeout(saveDebounce);
-    // 500ms debounce — autoSaveDelay default is 1000ms but the issue specifies
-    // a 500ms editor debounce for the responsive edit→preview loop.
-    saveDebounce = setTimeout(() => {
-      getPlatform()
-        .writeFile(filePath, value)
-        .catch((e: unknown) => {
-          toast?.error(
-            `Save failed: ${e instanceof Error ? e.message : String(e)}`,
-          );
-        });
-    }, 500);
+  // Mirrors used by the markup/props (chapter highlight, dirty dot, editor pane).
+  let editorFilePath = $derived(buffer?.filePath ?? null);
+  let editorContent = $derived(buffer?.content ?? "");
+  let dirtyPath = $derived(buffer && buffer.isDirty ? buffer.filePath : null);
+
+  // External-edit conflict banner state (#44). Derived from the buffer's
+  // pending external change so Reload / Keep mine route back through it.
+  let externalChange = $derived(buffer?.externalChange ?? null);
+  let externalFileName = $derived(
+    editorFilePath ? (editorFilePath.split(/[\\/]/).pop() ?? editorFilePath) : "",
+  );
+
+  function ensureBuffer(): EditorBuffer {
+    if (!buffer) {
+      buffer = new EditorBuffer({
+        platform: getPlatform(),
+        recoveryEnabled: settings.current.editor.crashRecovery,
+        onError: (msg) => toast?.error(msg),
+        onAutoReloaded: () => toast?.info?.("Reloaded from disk"),
+      });
+    }
+    return buffer;
   }
 
+  // Push the buffer's pending-save state to main so the window close gate can
+  // flush before quitting (#44). Fire-and-forget; main never reads our memory.
+  $effect(() => {
+    if (!isDesktop() || !buffer) return;
+    const pending = buffer.hasPendingSave;
+    getPlatform().setDirtyState(pending).catch(() => {});
+  });
+
+  // Keep the recovery-enabled toggle (#45) in sync with the live setting.
+  $effect(() => {
+    const enabled = settings.current.editor.crashRecovery;
+    if (buffer) buffer.setRecoveryEnabled(enabled);
+  });
+
+  // External-edit detection (#44): watch the open folder; on any debounced
+  // change, ask the buffer to reconcile the open document against disk. The
+  // watcher is torn down when the folder closes / switches to URL mode.
+  $effect(() => {
+    if (!isDesktop()) return;
+    const dir = currentDir;
+    if (!dir || sourceMode !== "folder") return;
+    const off = getPlatform().watchFolder(dir, () => {
+      buffer?.reconcileExternalChange().catch(() => {});
+    });
+    return () => off?.();
+  });
+
+  // Window close gate (#44): when main asks the renderer to flush before
+  // closing, flush the buffer. The preload wrapper signals main when done.
+  $effect(() => {
+    if (!isDesktop()) return;
+    const off = getPlatform().onFlushBeforeClose(() => buffer?.flush() ?? Promise.resolve());
+    return () => off?.();
+  });
+
+  /**
+   * Open a file in the editor (#44). Flushes any pending save on the currently
+   * open document FIRST so switching chapters never drops an in-flight write.
+   */
   function selectEditorFile(path: string) {
-    editorFilePath = path;
+    if (!isDesktop()) return;
+    const buf = ensureBuffer();
+    if (buf.filePath === path) return;
+    const wasPending = buf.hasPendingSave;
+    void (async () => {
+      if (buf.filePath && wasPending) {
+        toast?.info?.("Saving…");
+        await buf.flush().catch(() => {});
+      }
+      await buf.load(path);
+    })();
+  }
+
+  function onEditorChange(value: string) {
+    if (!isDesktop()) return;
+    ensureBuffer().edit(value);
+  }
+
+  function reloadExternal() {
+    buffer?.acceptExternal();
+  }
+
+  function keepMineExternal() {
+    buffer?.keepMine();
+  }
+
+  // ── Crash recovery (#44) ──────────────────────────────────────────────────
+  // After a project opens, scan userData/recovery for snapshots belonging to it
+  // (an unclean exit). Offer Restore / Discard per entry. `recoveryScanDir`
+  // guards against re-scanning the same folder twice.
+  let recoveryItems = $state<RecoveryItem[]>([]);
+  let recoveryScanDir = $state<string | null>(null);
+
+  function basenameOf(p: string): string {
+    return p.split(/[\\/]/).pop() ?? p;
+  }
+
+  async function scanForRecovery(dir: string) {
+    if (!isDesktop()) return;
+    if (recoveryScanDir === dir) return;
+    recoveryScanDir = dir;
+    if (!settings.current.editor.crashRecovery) return;
+    try {
+      const entries = await getPlatform().listRecovery(dir);
+      recoveryItems = entries.map((e) => ({
+        filePath: e.filePath,
+        recoveryPath: e.recoveryPath,
+        fileName: basenameOf(e.filePath),
+        savedAt: e.savedAt,
+      }));
+    } catch {
+      recoveryItems = [];
+    }
+  }
+
+  async function restoreRecovery(item: RecoveryItem) {
+    recoveryItems = recoveryItems.filter((i) => i.filePath !== item.filePath);
+    if (!isDesktop()) return;
+    const buf = ensureBuffer();
+    try {
+      // The recovered bytes live in the sidecar snapshot (an absolute path under
+      // userData). Read them, then load into the buffer against the current disk
+      // baseline — restoreContent marks the buffer dirty so it re-saves on the
+      // next debounce, preserving the recovered edits.
+      const recovered = await getPlatform().readFile(item.recoveryPath);
+      await buf.restoreContent(item.filePath, recovered);
+      editorOpen = true;
+      requestAnimationFrame(() => editorRef?.focus());
+    } catch (e) {
+      toast?.error(
+        `Could not restore: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  function discardRecovery(item: RecoveryItem) {
+    recoveryItems = recoveryItems.filter((i) => i.filePath !== item.filePath);
+    if (isDesktop()) {
+      getPlatform().clearRecovery(item.filePath).catch(() => {});
+    }
+  }
+
+  function dismissRecovery() {
+    recoveryItems = [];
   }
 
   function toggleEditor() {
@@ -659,11 +776,12 @@
       const platform = getPlatform();
       const data = await platform.startPreview({ input: dir });
       sourceMode = "folder";
-      // New folder: clear any file selected from a previous project so the
-      // editor pane doesn't point at a stale path.
-      if (currentDir !== dir) {
-        editorFilePath = null;
-        editorContent = "";
+      // New folder: flush + clear any file selected from a previous project so
+      // the editor pane doesn't point at a stale path (#44 — flush first so a
+      // pending save in the prior project isn't dropped on project switch).
+      if (currentDir !== dir && buffer) {
+        await buffer.flush().catch(() => {});
+        buffer.reset();
       }
       currentDir = dir;
       currentUrl = null;
@@ -712,6 +830,8 @@
             `Make sure the shared directory exists next to this project.`
         );
       }
+      // Crash-recovery offer (#44): scan for snapshots left by an unclean exit.
+      void scanForRecovery(dir);
     } catch (e) {
       previewUrl = null;
       currentDir = null;
@@ -762,8 +882,7 @@
     docTitle = null;
     // The editor is folder-only; close it for web previews.
     editorOpen = false;
-    editorFilePath = null;
-    editorContent = "";
+    buffer?.reset();
     // Force iframe remount by nulling first
     previewUrl = null;
     queueMicrotask(() => {
@@ -801,6 +920,9 @@
   }
 
   async function stopPreview() {
+    // Flush any pending edit before tearing down so closing the project never
+    // drops an in-flight auto-save (#44).
+    if (buffer) await buffer.flush().catch(() => {});
     await getPlatform().stopPreview().catch(() => {});
     previewUrl = null;
     currentDir = null;
@@ -813,8 +935,9 @@
     currentPage = 1;
     pageEditing = false;
     editorOpen = false;
-    editorFilePath = null;
-    editorContent = "";
+    buffer?.reset();
+    recoveryScanDir = null;
+    recoveryItems = [];
   }
 
   async function savePdf() {
@@ -1061,6 +1184,13 @@
 </script>
 
 <Toast bind:api={toast} />
+
+<CrashRecoveryDialog
+  items={recoveryItems}
+  onRestore={restoreRecovery}
+  onDiscard={discardRecovery}
+  onDismiss={dismissRecovery}
+/>
 <LoadingOverlay
   visible={rendering || renderCompleteOverlay || (busy && !!busyLabel)}
   label={busyLabel || (renderCompleteOverlay ? "Rendering complete" : renderProgressPage > 0 ? `Laying out page ${renderProgressPage}…` : "Rendering…")}
@@ -1310,6 +1440,7 @@
           <ChapterList
             projectDir={currentDir}
             selectedPath={editorFilePath}
+            {dirtyPath}
             onSelectFile={onSelectChapter}
           />
         </aside>
@@ -1323,6 +1454,13 @@
           />
         </aside>
         <section class="pane editor-pane" aria-label="Markdown editor">
+          {#if externalChange}
+            <ExternalEditBanner
+              fileName={externalFileName}
+              onReload={reloadExternal}
+              onKeepMine={keepMineExternal}
+            />
+          {/if}
           <MarkdownEditor
             bind:this={editorRef}
             filePath={editorFilePath}
@@ -1353,8 +1491,12 @@
         <div class="empty-icon" aria-hidden="true">📖</div>
         <h1 class="empty-title">print-md</h1>
         <p class="empty-tagline">Turn your markdown writing into a print-ready book</p>
-        <button class="primary empty-cta" onclick={() => (openLocationOpen = true)} disabled={busy}>Open Your Book Folder</button>
-        <p class="empty-hint">Open a Print-md project folder with a <code>manifest.yaml</code> or <code>manifest.yml</code> file, or preview a published document from a web address — both live under the <strong>Open</strong> button. Markdown sources are loaded in manifest order, or alphabetically when no file list is configured.</p>
+        <div class="empty-cta-row">
+          <button bind:this={newProjectBtn} class="primary empty-cta" onclick={() => (newProjectOpen = true)} disabled={busy}>Create a New Book</button>
+          <button class="ghost empty-cta" onclick={() => (openLocationOpen = true)} disabled={busy}>Open an Existing Book</button>
+        </div>
+        <p class="empty-hint">New to print-md? <button type="button" class="link-btn" onclick={openSetupGuide}>Read the getting-started guide →</button></p>
+        <p class="empty-hint">Already have a book folder? Open it under <strong>Open an Existing Book</strong>, or preview a published document from a web address. Your chapters are loaded in order automatically.</p>
         {#if urlPreviewError && sourceMode === "url"}
           <div class="open-error" role="alert">
             <strong>Preview unavailable.</strong>
@@ -1379,6 +1521,11 @@
   onOpenFolder={(path) => startFolderPreview(path)}
   onOpenUrl={openUrl}
   triggerEl={openBtn}
+/>
+<NewProjectWizard
+  bind:open={newProjectOpen}
+  onCreated={(projectDir) => startFolderPreview(projectDir, "Opening your new book…")}
+  triggerEl={newProjectBtn}
 />
 
 
@@ -1695,15 +1842,20 @@
   .empty-icon { font-size: 48px; line-height: 1; margin-bottom: 4px; }
   .empty-title { margin: 0; font-size: 22px; font-weight: 700; color: var(--app-text-secondary); letter-spacing: -0.3px; }
   .empty-tagline { margin: 0; font-size: 14px; color: var(--app-text-muted); line-height: 1.5; }
-  .empty-cta { padding: 10px 24px; font-size: 14px; font-weight: 600; border-radius: 8px; margin-top: 4px; }
+  .empty-cta-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+  .empty-cta { padding: 10px 24px; font-size: 14px; font-weight: 600; border-radius: 8px; }
   .empty-hint { margin: 0; font-size: 12px; color: var(--app-text-faint); line-height: 1.5; }
-  .empty-hint code {
-    font-family: ui-monospace, monospace;
-    color: var(--app-code-text);
-    background: var(--app-code-bg);
-    padding: 1px 5px;
-    border-radius: 3px;
+  .link-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    color: var(--app-link, var(--app-accent));
+    font: inherit;
+    cursor: pointer;
+    text-decoration: underline;
   }
+  .link-btn:hover { color: var(--app-accent-bright, var(--app-accent)); }
   .open-error {
     background: var(--app-error-bg);
     border: 1px solid var(--app-error-border);

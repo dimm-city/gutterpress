@@ -10,7 +10,7 @@
    * extension awareness yet (a follow-on per the issue).
    */
   import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
-  import { EditorState, Compartment } from "@codemirror/state";
+  import { EditorState, Compartment, type Extension } from "@codemirror/state";
   import {
     defaultKeymap,
     history,
@@ -18,12 +18,21 @@
     indentWithTab,
   } from "@codemirror/commands";
   import { markdown } from "@codemirror/lang-markdown";
+  import { css } from "@codemirror/lang-css";
   import { languages } from "@codemirror/language-data";
   import {
     syntaxHighlighting,
     defaultHighlightStyle,
     bracketMatching,
   } from "@codemirror/language";
+  import { linter, lintGutter } from "@codemirror/lint";
+  import { autocompletion } from "@codemirror/autocomplete";
+  import {
+    languageForPath,
+    cssDiagnosticsSource,
+    pagedMediaCompletionSource,
+    type EditorLanguage,
+  } from "$lib/editor/css-editor";
 
   let {
     filePath = null,
@@ -40,6 +49,42 @@
   // Guards the updateListener so programmatic document swaps (loading a file)
   // don't echo back through onChange and re-trigger a save.
   let applyingExternal = false;
+
+  // ── Language / diagnostics / completion compartments (#39) ────────────────
+  // The editor is ONE CodeMirror instance whose language + CSS-only extensions
+  // are swapped per file via Compartments — no second editor component, no
+  // view teardown. CSS files get `@codemirror/lang-css` highlighting, a print-
+  // safety lint gutter (reusing the lib's `checkCss`, so it agrees with
+  // `print-md validate`), and Paged Media at-rule/property completions. Other
+  // file types keep markdown (or plaintext) and carry none of the CSS layers.
+  const languageCompartment = new Compartment();
+  const cssLintCompartment = new Compartment();
+  const cssCompletionCompartment = new Compartment();
+  // The language the view is currently configured for. Seeded at mount; the
+  // doc-swap effect reconfigures the compartments when it changes.
+  let currentLanguage: EditorLanguage = "plain";
+
+  /** Build the language extension for a given resolved language mode. */
+  function languageExtension(lang: EditorLanguage): Extension {
+    if (lang === "css") return css();
+    if (lang === "markdown") return markdown({ codeLanguages: languages });
+    return [];
+  }
+
+  /** The print-safety lint gutter — active only for CSS docs. */
+  function cssLintExtensions(lang: EditorLanguage): Extension {
+    if (lang !== "css") return [];
+    return [
+      lintGutter(),
+      linter((cmView) => cssDiagnosticsSource(cmView.state), { delay: 400 }),
+    ];
+  }
+
+  /** Paged Media completions — active only for CSS docs. */
+  function cssCompletionExtensions(lang: EditorLanguage): Extension {
+    if (lang !== "css") return [];
+    return autocompletion({ override: [pagedMediaCompletionSource] });
+  }
 
   const editableTheme = EditorView.theme(
     {
@@ -71,6 +116,7 @@
   );
 
   function buildState(doc: string): EditorState {
+    const lang = languageForPath(filePath);
     return EditorState.create({
       doc,
       extensions: [
@@ -78,7 +124,9 @@
         history(),
         highlightActiveLine(),
         bracketMatching(),
-        markdown({ codeLanguages: languages }),
+        languageCompartment.of(languageExtension(lang)),
+        cssLintCompartment.of(cssLintExtensions(lang)),
+        cssCompletionCompartment.of(cssCompletionExtensions(lang)),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         editableTheme,
@@ -95,6 +143,7 @@
   // Mount the EditorView once the host node exists.
   $effect(() => {
     if (!host || view) return;
+    currentLanguage = languageForPath(filePath);
     view = new EditorView({ state: buildState(content), parent: host });
     return () => {
       view?.destroy();
@@ -109,8 +158,23 @@
     const nextDoc = content;
     // Track filePath so the effect re-runs on file switch even if content
     // happens to match.
-    void filePath;
+    const nextLang = languageForPath(filePath);
     if (!view) return;
+
+    // Reconfigure language + CSS-only extensions when switching to a file of a
+    // different type (e.g. .md → .css). Compartment.reconfigure swaps the
+    // extension without tearing the view down (same instance, new mode).
+    if (nextLang !== currentLanguage) {
+      currentLanguage = nextLang;
+      view.dispatch({
+        effects: [
+          languageCompartment.reconfigure(languageExtension(nextLang)),
+          cssLintCompartment.reconfigure(cssLintExtensions(nextLang)),
+          cssCompletionCompartment.reconfigure(cssCompletionExtensions(nextLang)),
+        ],
+      });
+    }
+
     const current = view.state.doc.toString();
     if (current === nextDoc) return;
     applyingExternal = true;

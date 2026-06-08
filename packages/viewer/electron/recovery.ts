@@ -1,0 +1,174 @@
+// ──────────────────────────────────────────────────────────────────────────
+// recovery.ts — crash-recovery sidecar store (#44).
+//
+// The in-app editor (#38) auto-saves on a debounce; between an edit and that
+// disk write the buffer differs from disk and an unclean exit would lose it.
+// This module persists a debounced *sidecar snapshot* of the open buffer under
+// Electron `userData/recovery/` so the next launch can offer to restore it.
+//
+// Layout (under <userData>/recovery/):
+//   index.json            — RecoveryEntry[] (one per recovered file)
+//   <sha1(filePath)>.md   — the buffer snapshot bytes
+//
+// On a successful disk save the matching entry is cleared, so a clean exit
+// leaves no orphan and launch-time recovery only fires after a real crash.
+//
+// The snapshot file is keyed by a hash of the absolute file path; recovery
+// entries are app-managed machine state (never the user's real file), so
+// clearing one is a lifecycle action, not user-data deletion.
+//
+// IO helpers take the recovery directory as an argument so the pure index
+// transforms (which carry the testable logic) stay free of electron / a global
+// userData path and can be unit-tested in isolation (mirrors project-state.ts).
+// ──────────────────────────────────────────────────────────────────────────
+import { createHash } from "node:crypto";
+import path from "node:path";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+
+/** One pending crash-recovery snapshot (#44). Mirrors the contract type. */
+export interface RecoveryEntry {
+  /** Absolute path of the document the snapshot belongs to. */
+  filePath: string;
+  /** Absolute path of the snapshot bytes on disk. */
+  recoveryPath: string;
+  /** Epoch-ms timestamp the snapshot was written. */
+  savedAt: number;
+  /** Disk mtime (epoch ms) the snapshot was taken against. */
+  baseMtimeMs: number;
+}
+
+/** Deterministic snapshot filename for a document path (sha1, 16 hex chars). */
+export function recoveryFileName(filePath: string): string {
+  return createHash("sha1").update(filePath).digest("hex").slice(0, 16) + ".md";
+}
+
+/** Upsert an entry into the index, returning a NEW array (keyed by filePath). */
+export function upsertEntry(
+  index: RecoveryEntry[],
+  entry: RecoveryEntry,
+): RecoveryEntry[] {
+  const rest = index.filter((e) => e.filePath !== entry.filePath);
+  return [entry, ...rest];
+}
+
+/** Remove the entry for `filePath`, returning a NEW array. */
+export function removeEntry(
+  index: RecoveryEntry[],
+  filePath: string,
+): RecoveryEntry[] {
+  return index.filter((e) => e.filePath !== filePath);
+}
+
+// ── IO layer (recoveryDir injected) ────────────────────────────────────────
+
+function indexPath(recoveryDir: string): string {
+  return path.join(recoveryDir, "index.json");
+}
+
+/** Read the recovery index, returning `[]` on absence or corruption. */
+export async function readIndex(recoveryDir: string): Promise<RecoveryEntry[]> {
+  try {
+    const raw = await readFile(indexPath(recoveryDir), "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (e): e is RecoveryEntry =>
+        e && typeof e.filePath === "string" && typeof e.recoveryPath === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function writeIndex(
+  recoveryDir: string,
+  index: RecoveryEntry[],
+): Promise<void> {
+  await mkdir(recoveryDir, { recursive: true });
+  await writeFile(indexPath(recoveryDir), JSON.stringify(index, null, 2), "utf-8");
+}
+
+/**
+ * Write a debounced snapshot of `content` for `filePath` and upsert its index
+ * entry. `baseMtimeMs` is the disk mtime the snapshot was taken against.
+ */
+export async function writeRecovery(
+  recoveryDir: string,
+  filePath: string,
+  content: string,
+  baseMtimeMs: number,
+): Promise<{ ok: boolean }> {
+  await mkdir(recoveryDir, { recursive: true });
+  const recoveryPath = path.join(recoveryDir, recoveryFileName(filePath));
+  await writeFile(recoveryPath, content, "utf-8");
+  const index = await readIndex(recoveryDir);
+  const entry: RecoveryEntry = {
+    filePath,
+    recoveryPath,
+    savedAt: Date.now(),
+    baseMtimeMs,
+  };
+  await writeIndex(recoveryDir, upsertEntry(index, entry));
+  return { ok: true };
+}
+
+/**
+ * Clear the snapshot for `filePath`: drop its index entry and delete the
+ * snapshot bytes. Only ever touches `userData/recovery/`, never the real file.
+ */
+export async function clearRecovery(
+  recoveryDir: string,
+  filePath: string,
+): Promise<{ ok: boolean }> {
+  const index = await readIndex(recoveryDir);
+  const entry = index.find((e) => e.filePath === filePath);
+  await writeIndex(recoveryDir, removeEntry(index, filePath));
+  if (entry) {
+    await rm(entry.recoveryPath, { force: true });
+  }
+  return { ok: true };
+}
+
+/**
+ * List pending snapshots for `projectDir` (immediate children only), newest
+ * first, and only when the snapshot is actually live (its file exists). Entries
+ * whose disk file changed since the snapshot's *baseline* (its `baseMtimeMs`)
+ * were saved/superseded by another process since the crash and are skipped —
+ * those are not "unsaved changes". (Comparing to `baseMtimeMs` rather than the
+ * snapshot's `savedAt` avoids a fractional-`mtimeMs` vs integer-`Date.now()`
+ * collision when the snapshot and the disk write land in the same millisecond.)
+ */
+export async function listRecovery(
+  recoveryDir: string,
+  projectDir: string,
+): Promise<RecoveryEntry[]> {
+  const index = await readIndex(recoveryDir);
+  const out: RecoveryEntry[] = [];
+  for (const entry of index) {
+    if (path.dirname(entry.filePath) !== projectDir) continue;
+    // The snapshot bytes must still exist.
+    try {
+      await stat(entry.recoveryPath);
+    } catch {
+      continue;
+    }
+    // Skip entries whose disk file moved past the snapshot's baseline mtime —
+    // the file was saved/changed by another process since the snapshot, so its
+    // current bytes supersede the recovery. A 1ms tolerance absorbs filesystem
+    // mtime granularity. `baseMtimeMs === 0` means the baseline was unknown
+    // (file absent when snapshotted) → always offer.
+    try {
+      const s = await stat(entry.filePath);
+      if (entry.baseMtimeMs > 0 && s.mtimeMs > entry.baseMtimeMs + 1) continue;
+    } catch {
+      // File was deleted on disk — still offer the snapshot.
+    }
+    out.push(entry);
+  }
+  return out.sort((a, b) => b.savedAt - a.savedAt);
+}
+
+/** Read a snapshot's bytes by its recovery path. */
+export async function readRecoveryContent(recoveryPath: string): Promise<string> {
+  return readFile(recoveryPath, "utf-8");
+}

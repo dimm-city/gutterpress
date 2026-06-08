@@ -1,9 +1,34 @@
 # Issue #44 — Unsaved changes: dirty indicator, discard warning, external-edit detection
 
-> **Status:** design + compile-clean type stubs only. No behaviour is implemented
-> in this pass. Milestone 0.4.0. Builds on the in-app editor (#38), chapter list
-> (#42), session-state restore (#43), settings (#45) and the platform abstraction
-> (#41).
+> **Status:** IMPLEMENTED (all four acceptance criteria). Milestone 0.4.0.
+> Builds on the in-app editor (#38), chapter list (#42), session-state restore
+> (#43), settings (#45) and the platform abstraction (#41).
+>
+> Implementation notes (delta from the original design below):
+> - The renderer single-owner store is `src/lib/editor/buffer-state.svelte.ts`
+>   (`EditorBuffer`), constructed lazily on first desktop editor use and owned by
+>   `+page.svelte`. It carries the dirty/save machine, debounced disk write,
+>   debounced recovery snapshot, close/navigate flush, and external-edit
+>   reconciliation (`reconcileExternalChange` implements the §3.3 decision table).
+> - The recovery sidecar store is `electron/recovery.ts` (pure index transforms +
+>   IO, recoveryDir injected for unit-testing — unit-tested in
+>   `tests/recovery/recovery.test.ts`). IPC: `recovery:write/clear/list`.
+> - External-edit detection wires `fs:watchFolder`/`fs:unwatchFolder` +
+>   `fs:folderChanged` (debounced ~150ms) + `fs:statFile`. The app subscribes via
+>   `PlatformAdapter.watchFolder`; on each debounced change the buffer re-stats +
+>   re-reads and applies the decision table.
+> - Close gate: renderer pushes `app:setDirtyState`; main's `BrowserWindow`
+>   `close` handler intercepts when dirty, sends `app:flushBeforeClose`, and
+>   destroys the window on `app:flushDone` (3s watchdog forces the close).
+> - `writeFile` widened to resolve `{ mtimeMs }` (lib `FileWriteResult`); the
+>   editor records that as the on-disk baseline to suppress its own self-echo.
+> - `DESKTOP_API` bumped 1 → 2 (new ipcMain handles the SPA calls);
+>   `requiresDesktopApi` is read from `DESKTOP_API` by the manifest scripts.
+> - `editor.crashRecovery` (default `true`) added to settings + a Settings
+>   checkbox; toggles sidecar snapshotting at runtime.
+> - The adapter test (`tests/platform/adapter.test.ts`) now asserts the eight #44
+>   methods DELEGATE to the bridge (moved out of the scaffold-throws test, which
+>   now covers only the #12 secrets surface).
 
 ## 1. Problem
 

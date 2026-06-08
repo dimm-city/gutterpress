@@ -42,6 +42,7 @@ interface AppSettings {
     lineHeight: number;
     spellCheckLanguage: string;
     autoSaveDelay: number;
+    crashRecovery: boolean;
   };
   appearance: {
     theme: "light" | "dark" | "system";
@@ -116,13 +117,18 @@ interface Window {
     showInFolder(filePath: string): Promise<void>;
     // Filesystem primitives (PlatformAdapter, #41)
     readFile(filePath: string): Promise<string>;
-    writeFile(filePath: string, content: string): Promise<void>;
+    writeFile(filePath: string, content: string): Promise<{ mtimeMs: number }>;
     listDir(
       dirPath: string,
     ): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
     listProjectFiles(
       projectDir: string,
     ): Promise<{ md: string[]; css: string[] }>;
+    // File metadata + folder watch (PlatformAdapter, #44)
+    statFile(
+      filePath: string,
+    ): Promise<{ mtimeMs: number; size: number; exists: boolean }>;
+    watchFolder(dirPath: string, cb: () => void): () => void;
     // Lib API
     getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
     getLastProject(): Promise<string | null>;
@@ -178,6 +184,21 @@ interface Window {
       source: ProjectSource;
       capabilities: ProjectCapabilities;
     }>;
+    // New-project scaffold (#25)
+    createProject(options: {
+      name: string;
+      author?: string;
+      parentDir: string;
+      folderName?: string;
+      template?: "book";
+      versionHistory?: "local-git" | "none";
+    }): Promise<{
+      projectDir: string;
+      manifestPath: string;
+      openFile: string;
+      versionHistory: "local-git" | "none";
+      versionHistoryError?: string;
+    }>;
     startPreview(args: { input: string }): Promise<{
       url: string;
       port: number;
@@ -215,5 +236,23 @@ interface Window {
       message?: string;
     }) => void): () => void;
     onUrlPreviewBlocked(cb: (data: { url: string; reason: string }) => void): () => void;
+    // Unsaved-changes / crash-recovery surface (#44)
+    writeRecovery(
+      filePath: string,
+      content: string,
+      baseMtimeMs: number,
+    ): Promise<{ ok: boolean }>;
+    clearRecovery(filePath: string): Promise<{ ok: boolean }>;
+    listRecovery(projectDir: string): Promise<
+      Array<{
+        filePath: string;
+        recoveryPath: string;
+        savedAt: number;
+        baseMtimeMs: number;
+      }>
+    >;
+    setDirtyState(isDirty: boolean): Promise<void>;
+    onFlushBeforeClose(cb: () => void): () => void;
+    onFolderChanged(cb: (data: { filename: string }) => void): () => void;
   };
 }

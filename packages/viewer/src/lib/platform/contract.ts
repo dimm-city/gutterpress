@@ -16,9 +16,20 @@ import type {
   ProjectSource,
   ProjectCapabilities,
   FileStat,
+  FileWriteResult,
+  CreateProjectOptions,
+  CreateProjectResult,
 } from "@dimm-city/print-md-lib";
 
-export type { PlatformAdapter, ProjectSource, ProjectCapabilities, FileStat };
+export type {
+  PlatformAdapter,
+  ProjectSource,
+  ProjectCapabilities,
+  FileStat,
+  FileWriteResult,
+  CreateProjectOptions,
+  CreateProjectResult,
+};
 
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
 //
@@ -159,6 +170,8 @@ export interface AppSettings {
     lineHeight: number;
     spellCheckLanguage: string;
     autoSaveDelay: number;
+    /** Write crash-recovery sidecar snapshots while editing (#44). */
+    crashRecovery: boolean;
   };
   appearance: {
     theme: "light" | "dark" | "system";
@@ -186,6 +199,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     lineHeight: 1.6,
     spellCheckLanguage: "en-US",
     autoSaveDelay: 1000,
+    crashRecovery: true,
   },
   appearance: {
     theme: "system",
@@ -327,6 +341,14 @@ export interface HostServices {
    */
   classifyProject(path: string): Promise<ProjectClassification>;
 
+  /**
+   * Scaffold a new project from an embedded starter template (#25). A thin
+   * pass-through to the lib's `scaffoldProject` — the wizard collects inputs and
+   * the lib does the work (template copy, placeholder fill, optional local Git
+   * init). The WebAdapter stub rejects (the wizard is desktop-only in 0.4.0).
+   */
+  createProject(options: CreateProjectOptions): Promise<CreateProjectResult>;
+
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;
   stopPreview(): Promise<{ stopped: boolean }>;
@@ -383,7 +405,7 @@ export interface Platform extends PlatformAdapter, HostServices {}
 export interface ElectronBridge extends HostServices {
   openDirectory(): Promise<string | null>;
   readFile(path: string): Promise<string>;
-  writeFile(path: string, content: string): Promise<void>;
+  writeFile(path: string, content: string): Promise<FileWriteResult>;
   listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
   /** Raw fs stat IPC behind `PlatformAdapter.statFile` (#44). */
   statFile(path: string): Promise<FileStat>;

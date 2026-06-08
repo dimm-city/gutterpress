@@ -199,6 +199,15 @@
             onchange={(e) => settings.set({ editor: { autoSaveDelay: Number((e.currentTarget as HTMLInputElement).value) } })}
           />
         </div>
+        <div class="row">
+          <label for="set-crash-recovery">Crash recovery</label>
+          <input
+            id="set-crash-recovery"
+            type="checkbox"
+            checked={s.editor.crashRecovery}
+            onchange={(e) => settings.set({ editor: { crashRecovery: (e.currentTarget as HTMLInputElement).checked } })}
+          />
+        </div>
       </section>
 
       <!-- Advanced --------------------------------------------------------- -->

@@ -37,6 +37,16 @@ export interface FileStat {
   exists: boolean;
 }
 
+/**
+ * Result of a successful {@link PlatformAdapter.writeFile} (GitHub #44). Carries
+ * the post-write modification time so the editor can record the on-disk baseline
+ * mtime without a follow-up `statFile` round-trip — this is what lets
+ * external-edit detection suppress the self-echo of our own debounced save.
+ */
+export interface FileWriteResult {
+  mtimeMs: number;
+}
+
 export interface PlatformAdapter {
   /** Which host backs this adapter. Lets the rare unavoidable branch be explicit. */
   readonly platform: "electron" | "web";
@@ -56,9 +66,11 @@ export interface PlatformAdapter {
 
   /**
    * Write a UTF-8 text file by absolute path, creating/overwriting it.
-   * Editor seam for #38/#39 — no current consumer in 0.4.0.
+   * Resolves with the post-write {@link FileWriteResult} (`{ mtimeMs }`) so the
+   * editor (#44) can record the on-disk baseline mtime; callers that ignore the
+   * value are unaffected (additive widening — was `Promise<void>`).
    */
-  writeFile(path: string, content: string): Promise<void>;
+  writeFile(path: string, content: string): Promise<FileWriteResult>;
 
   /**
    * List the immediate entries of a directory (single level, no recursion).

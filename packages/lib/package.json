@@ -33,6 +33,7 @@
     "chokidar": "^5.0.0",
     "glob": "^13.0.0",
     "htmlhint": "^1.9.2",
+    "isomorphic-git": "^1.38.4",
     "markdown-it": "^14.1.0",
     "markdown-it-attrs": "^4.3.0",
     "markdown-it-footnote": "^4.0.0",

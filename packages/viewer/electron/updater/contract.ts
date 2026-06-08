@@ -17,7 +17,7 @@ import { createPublicKey } from "node:crypto";
  * calls is added or removed.  The SPA reads this via the preload bridge and
  * refuses to run if the shell version is lower than what it was built against.
  */
-export const DESKTOP_API = 1;
+export const DESKTOP_API = 2;
 
 export interface BundleAsset {
   /** Filename of the distributable zip (e.g. "web-ui-bundle.zip"). */

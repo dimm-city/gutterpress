@@ -1,7 +1,22 @@
 # Issue #39 — In-app CSS editor (design + delivery plan)
 
-Status: design only. No feature code in this change — this doc plus compile-clean
-type stubs. Implementation lands in the phased PRs below.
+Status: IMPLEMENTED. All phases below shipped in one pass. The CSS editor is a
+language-mode + diagnostics + completions layer on the existing #38 editor —
+no new editor, no new platform capability, no Git/GitHub surface. Delivered:
+
+- `packages/viewer/src/lib/editor/css-editor.ts` — `languageForPath`,
+  `toCssDiagnostic`, `cssDiagnosticsSource` (reuses lib `checkCss`),
+  `pagedMediaCompletions` + `pagedMediaCompletionSource`.
+- `packages/viewer/src/lib/components/MarkdownEditor.svelte` — language /
+  CSS-lint / CSS-completion `Compartment`s, reconfigured on file switch (one
+  EditorView, swapped mode).
+- New viewer deps: `@codemirror/lang-css`, `@codemirror/lint`,
+  `@codemirror/autocomplete`. No new CLI/lib runtime dep — CLI `bun build
+  --compile` re-verified clean.
+- Tests: `packages/viewer/tests/editor/css-editor.test.ts` (9 tests).
+- Auto-save and CSS-in-file-tree were already satisfied by #38/#41.
+
+The original design (unchanged) follows.
 
 ## Goal
 
