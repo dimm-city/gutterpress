@@ -18,6 +18,7 @@ import { openPath } from '../lib/open-path.ts';
 import { getAssetPath } from '../lib/embedded-assets.ts';
 import type { ServerState } from './server-context.ts';
 import { handleApiRequest } from './api-middleware.ts';
+import { renderChapterPreviewHtml } from './file-watcher.ts';
 
 /**
  * URL path that upgrades to a WebSocket subscribed to the reload topic.
@@ -198,7 +199,7 @@ iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}<
       if(finished||building!==f)return; finished=true;
       restore(f,anchor);
       f.style.visibility='visible'; f.removeAttribute('aria-hidden');
-      var old=active; active=f; building=null;
+      var old=active; active=f; building=null; tagPages(active);
       requestAnimationFrame(function(){requestAnimationFrame(function(){ if(old&&old.parentNode)old.parentNode.removeChild(old); });});
     }
     f.addEventListener('load',function(){
@@ -209,9 +210,63 @@ iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}<
     });
     document.body.appendChild(f);
   }
+  // Tag each rendered page with the chapter (data-chapter-src) it contains, so a
+  // single edited chapter's pages can be located and replaced.
+  function tagPages(f){
+    var d=fdoc(f); if(!d)return;
+    var pages=d.querySelectorAll('.pagedjs_page');
+    for(var i=0;i<pages.length;i++){
+      if(pages[i].getAttribute('data-chapter-src'))continue;
+      var ch=pages[i].querySelector('.pmd-chapter[data-chapter-src]');
+      if(ch)pages[i].setAttribute('data-chapter-src',ch.getAttribute('data-chapter-src'));
+    }
+  }
+  function onReady(f,cb){
+    var w=fwin(f),d=fdoc(f); if(!w||!d){cb();return;}
+    var has=!!d.querySelector('script[src*="paged.polyfill"], script[src*="pagedjs"]');
+    if(has){ var done=false; var g=function(){if(done)return;done=true;cb();}; w.addEventListener('renderingComplete',g,{once:true}); setTimeout(g,180000); }
+    else { var t=0;(function p(){var dd=fdoc(f); if(dd&&dd.querySelectorAll('.pagedjs_page').length>0){cb();return;} if(t++<800)setTimeout(p,25); else cb();})(); }
+  }
+  // INCREMENTAL: re-paginate ONLY the edited chapter in a hidden iframe, then
+  // replace that chapter's pages in the live view. Page numbers are a live CSS
+  // counter, so they re-flow automatically. Falls back to a full double-buffer
+  // swap if the splice can't be applied.
+  function spliceChapter(file){
+    var anchor=capture(active);
+    tagPages(active);
+    var f=document.createElement('iframe'); f.style.visibility='hidden'; f.setAttribute('aria-hidden','true');
+    f.src='/__chapter?file='+encodeURIComponent(file)+'&t='+Date.now();
+    f.addEventListener('load',function(){
+      onReady(f,function(){
+        try{
+          var ad=fdoc(active), sd=fdoc(f);
+          var container=ad.querySelector('.pagedjs_pages')||ad.body;
+          var oldPages=[].slice.call(ad.querySelectorAll('.pagedjs_page[data-chapter-src="'+file+'"]'));
+          var newPages=[].slice.call(sd.querySelectorAll('.pagedjs_page'));
+          if(!oldPages.length||!newPages.length) throw new Error('no pages '+oldPages.length+'/'+newPages.length);
+          var at=oldPages[0];
+          for(var i=0;i<newPages.length;i++){
+            var imp=ad.importNode(newPages[i],true);
+            imp.setAttribute('data-chapter-src',file);
+            container.insertBefore(imp,at);
+          }
+          for(var j=0;j<oldPages.length;j++) oldPages[j].parentNode.removeChild(oldPages[j]);
+          restore(active,anchor);
+        }catch(err){ if(window.console)console.warn('[pmd] incremental splice failed, full swap:',err); swap(); }
+        if(f.parentNode)f.parentNode.removeChild(f);
+      });
+    });
+    document.body.appendChild(f);
+  }
+  // Tag the initial frame once it has paginated.
+  function tagInitial(){ onReady(active,function(){ tagPages(active); }); }
+  if(active.contentDocument && active.contentDocument.readyState==='complete') tagInitial();
+  active.addEventListener('load',tagInitial);
+
   var ws=new WebSocket(location.origin.replace(/^http/,'ws')+HMR);
   ws.onmessage=function(e){ var m; try{m=JSON.parse(e.data);}catch(_){return;}
     if(m.type==='css-update'&&m.path){hotCss(m.path);return;}
+    if(m.type==='content-update'&&m.file){spliceChapter(m.file);return;}
     if(m.type==='full-reload'){swap();return;}
   };
 })();
@@ -237,6 +292,12 @@ export interface PreviewServer {
    * served path relative to the temp dir (e.g. "styles/guide.css").
    */
   broadcastCssUpdate(stylesheetPath: string): void;
+  /**
+   * Broadcast a `{ type: "content-update", file }` message so the incremental
+   * shell re-paginates and splices just that chapter (instead of reloading the
+   * whole document). `file` matches the `data-chapter-src` wrapper attribute.
+   */
+  broadcastContentUpdate(file: string): void;
 }
 
 /**
@@ -435,8 +496,30 @@ export async function createPreviewServer(
       return;
     }
 
+    // 3a. Incremental: render a single chapter for the shell to splice.
+    if (url.pathname === '/__chapter') {
+      const file = url.searchParams.get('file');
+      if (!file || !state.currentInputPath) {
+        res.writeHead(400); res.end('Bad Request'); return;
+      }
+      try {
+        const chapterHtml = await renderChapterPreviewHtml(
+          state.currentInputPath,
+          file,
+          (state.config as { title?: string; styles?: string[]; plugins?: unknown[] }) || {}
+        );
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+        res.end(chapterHtml);
+      } catch (e) {
+        res.writeHead(500); res.end(String(e));
+      }
+      return;
+    }
+
     // 3b. Preview shell (opt-in): serve the double-buffering shell at "/".
-    if (url.pathname === '/' && process.env.PRINTMD_PREVIEW_SHELL === '1') {
+    // Incremental mode implies the shell.
+    if (url.pathname === '/' &&
+        (process.env.PRINTMD_PREVIEW_SHELL === '1' || process.env.PRINTMD_PREVIEW_INCREMENTAL === '1')) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
       res.end(SHELL_HTML);
       return;
@@ -512,6 +595,13 @@ export async function createPreviewServer(
     broadcastCssUpdate(stylesheetPath: string) {
       if (stopped) return;
       const message = JSON.stringify({ type: 'css-update', path: stylesheetPath });
+      for (const ws of clients) {
+        if (ws.readyState === WebSocket.OPEN) ws.send(message);
+      }
+    },
+    broadcastContentUpdate(file: string) {
+      if (stopped) return;
+      const message = JSON.stringify({ type: 'content-update', file });
       for (const ws of clients) {
         if (ws.readyState === WebSocket.OPEN) ws.send(message);
       }

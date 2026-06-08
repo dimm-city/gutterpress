@@ -119,12 +119,14 @@ export async function generateAndWriteHtml(
     pluginCss = collectPluginCss(plugins);
   }
 
+  const incremental = process.env.PRINTMD_PREVIEW_INCREMENTAL === "1";
   const html = await renderChapters(inputPath, {
     title: config.title ?? "Document",
     styles: config.styles,
     files: config.source?.files ?? null,
     plugins,
     pluginCss,
+    wrapChapters: incremental,
   });
 
   // Inject into book.html, in order:
@@ -143,10 +145,16 @@ export async function generateAndWriteHtml(
   const iface =
     '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
     + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
-  const output = html.replace(
+  let output = html.replace(
     /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
     iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
   );
+
+  // Incremental preview: page-isolate each chapter so the shell can re-paginate
+  // and splice a single edited chapter without disturbing the others.
+  if (incremental && /<\/head>/i.test(output)) {
+    output = output.replace(/<\/head>/i, '<style>.pmd-chapter{break-before:page}</style>\n</head>');
+  }
 
   // Opt-in: pre-paginate at build time in the warm pooled browser so the preview
   // browser loads STATIC pages on each hot reload (no runtime re-pagination, no
@@ -163,6 +171,45 @@ export async function generateAndWriteHtml(
   }
 
   await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), output, "utf-8");
+}
+
+/**
+ * Render a SINGLE source file as a standalone, paginatable preview document
+ * (same CSS/plugins/scripts as the full book, chapter-wrapped + page-isolated).
+ * The incremental shell loads this in a hidden iframe, paginates just this
+ * chapter, and splices its pages into the live view — so an edit re-paginates
+ * one chapter (~hundreds of ms) instead of the whole document (~seconds).
+ */
+export async function renderChapterPreviewHtml(
+  inputPath: string,
+  file: string,
+  config: { title?: string; styles?: string[]; plugins?: any[] }
+): Promise<string> {
+  let plugins;
+  let pluginCss = '';
+  if (config.plugins && config.plugins.length > 0) {
+    plugins = await loadPlugins(config.plugins, inputPath);
+    pluginCss = collectPluginCss(plugins);
+  }
+  const html = await renderChapters(inputPath, {
+    title: config.title ?? "Document",
+    styles: config.styles,
+    files: [file],
+    plugins,
+    pluginCss,
+    wrapChapters: true,
+  });
+  const iface =
+    '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
+    + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
+  let out = html.replace(
+    /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
+    iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
+  );
+  if (/<\/head>/i.test(out)) {
+    out = out.replace(/<\/head>/i, '<style>.pmd-chapter{break-before:page}</style>\n</head>');
+  }
+  return out;
 }
 
 /**
@@ -233,17 +280,27 @@ export function createFileWatcher(state: ServerState): FSWatcher {
           return;
         }
 
-        // Content change: re-render markdown + regenerate book.html, then reload.
+        // Content change: re-render markdown + regenerate book.html (keeps fresh
+        // loads correct) then update the live view.
         const manifest = await loadManifest(state.currentInputPath);
         const updatedConfig = resolveConfig({}, manifest);
         state.config = updatedConfig;
         await generateAndWriteHtml(state.currentInputPath, state.tempDir, updatedConfig);
 
-        // Tell every connected HMR client to reload. The Bun preview server
-        // owns the WebSocket pub/sub topic — we just ask it to publish.
-        state.previewServer?.broadcastReload();
-
-        info('Preview updated');
+        // Incremental: a single markdown file changed → splice just that chapter
+        // in the live shell (re-paginate one chapter, not the whole doc).
+        if (
+          process.env.PRINTMD_PREVIEW_INCREMENTAL === "1" &&
+          dest &&
+          path.extname(filePath).toLowerCase() === ".md"
+        ) {
+          state.previewServer?.broadcastContentUpdate(dest.relativePath);
+          info(`Chapter updated: ${dest.relativePath}`);
+        } else {
+          // Tell every connected HMR client to reload.
+          state.previewServer?.broadcastReload();
+          info('Preview updated');
+        }
       } catch (err) {
         logError('Failed to regenerate preview:', err);
       } finally {
