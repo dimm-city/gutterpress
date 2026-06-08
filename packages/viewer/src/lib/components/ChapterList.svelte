@@ -22,10 +22,17 @@
   let {
     projectDir,
     selectedPath = null,
+    dirtyPath = null,
     onSelectFile,
   }: {
     projectDir: string | null;
     selectedPath?: string | null;
+    /**
+     * Path of the document with unsaved changes (#44). A single document can be
+     * dirty at a time — switching files flushes first — so this is one path, not
+     * a set. When `doc.path === dirtyPath` an "unsaved" dot is shown.
+     */
+    dirtyPath?: string | null;
     onSelectFile?: (path: string) => void;
   } = $props();
 
@@ -116,6 +123,9 @@
           >
             <Icon name="file-text" />
             <span class="cl-name">{doc.display}</span>
+            {#if doc.path === dirtyPath}
+              <span class="cl-dot" aria-label="Unsaved changes" title="Unsaved changes"></span>
+            {/if}
           </button>
         </li>
       {/each}
@@ -218,8 +228,23 @@
     height: 15px;
   }
   .cl-name {
+    flex: 1 1 auto;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Unsaved-changes indicator (#44): a small accent dot after the chapter name.
+     Accent-driven (no per-component colour) per the dark-mode layer contract. */
+  .cl-dot {
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--app-accent, #4ea1ff);
+  }
+  /* On the active row the gradient already uses the accent — keep the dot
+     legible against it with the accent-text colour. */
+  .cl-item.active .cl-dot {
+    background: var(--app-accent-text, #fff);
   }
 </style>

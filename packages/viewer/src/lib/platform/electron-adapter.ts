@@ -30,6 +30,7 @@ import type {
   DiscoveredProject,
   ProjectClassification,
   FileStat,
+  FileWriteResult,
   RecoveryEntry,
   FolderChangedEvent,
 } from "./contract";
@@ -57,7 +58,7 @@ export class ElectronAdapter implements Platform {
     return bridge().readFile(path);
   }
 
-  writeFile(path: string, content: string): Promise<void> {
+  writeFile(path: string, content: string): Promise<FileWriteResult> {
     return bridge().writeFile(path, content);
   }
 
@@ -65,16 +66,12 @@ export class ElectronAdapter implements Platform {
     return bridge().listDir(path);
   }
 
-  statFile(_path: string): Promise<FileStat> {
-    throw new Error(
-      "statFile is not implemented yet — file metadata IPC lands with #44 (currently scaffolded).",
-    );
+  statFile(path: string): Promise<FileStat> {
+    return bridge().statFile(path);
   }
 
-  watchFolder(_path: string, _cb: () => void): () => void {
-    throw new Error(
-      "watchFolder is not implemented yet — folder-watch IPC lands with #44 (currently scaffolded).",
-    );
+  watchFolder(path: string, cb: () => void): () => void {
+    return bridge().watchFolder(path, cb);
   }
 
   getSecret(_key: string): Promise<string | null> {
@@ -209,32 +206,32 @@ export class ElectronAdapter implements Platform {
     return bridge().onUrlPreviewBlocked(cb);
   }
 
-  // ── Unsaved changes / recovery (#44) — SCAFFOLD ONLY (no IPC yet) ──────────
+  // ── Unsaved changes / recovery (#44) — delegate 1:1 to the bridge ──────────
   writeRecovery(
-    _filePath: string,
-    _content: string,
-    _baseMtimeMs: number,
+    filePath: string,
+    content: string,
+    baseMtimeMs: number,
   ): Promise<{ ok: boolean }> {
-    throw new Error("writeRecovery is not implemented yet — recovery IPC lands with #44 (scaffolded).");
+    return bridge().writeRecovery(filePath, content, baseMtimeMs);
   }
 
-  clearRecovery(_filePath: string): Promise<{ ok: boolean }> {
-    throw new Error("clearRecovery is not implemented yet — recovery IPC lands with #44 (scaffolded).");
+  clearRecovery(filePath: string): Promise<{ ok: boolean }> {
+    return bridge().clearRecovery(filePath);
   }
 
-  listRecovery(_projectDir: string): Promise<RecoveryEntry[]> {
-    throw new Error("listRecovery is not implemented yet — recovery IPC lands with #44 (scaffolded).");
+  listRecovery(projectDir: string): Promise<RecoveryEntry[]> {
+    return bridge().listRecovery(projectDir);
   }
 
-  setDirtyState(_isDirty: boolean): Promise<void> {
-    throw new Error("setDirtyState is not implemented yet — recovery IPC lands with #44 (scaffolded).");
+  setDirtyState(isDirty: boolean): Promise<void> {
+    return bridge().setDirtyState(isDirty);
   }
 
-  onFlushBeforeClose(_cb: () => void): () => void {
-    throw new Error("onFlushBeforeClose is not implemented yet — recovery IPC lands with #44 (scaffolded).");
+  onFlushBeforeClose(cb: () => void): () => void {
+    return bridge().onFlushBeforeClose(cb);
   }
 
-  onFolderChanged(_cb: (data: FolderChangedEvent) => void): () => void {
-    throw new Error("onFolderChanged is not implemented yet — recovery IPC lands with #44 (scaffolded).");
+  onFolderChanged(cb: (data: FolderChangedEvent) => void): () => void {
+    return bridge().onFolderChanged(cb);
   }
 }

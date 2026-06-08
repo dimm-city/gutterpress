@@ -14,7 +14,13 @@ import path from "node:path";
 import os from "node:os";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { watch, type FSWatcher } from "node:fs";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
+import {
+  writeRecovery as writeRecoveryStore,
+  clearRecovery as clearRecoveryStore,
+  listRecovery as listRecoveryStore,
+} from "./recovery";
 import {
   ensureLayout,
   resolveWebRoot,
@@ -378,6 +384,7 @@ interface AppSettings {
     lineHeight: number;
     spellCheckLanguage: string;
     autoSaveDelay: number;
+    crashRecovery: boolean;
   };
   appearance: {
     theme: "light" | "dark" | "system";
@@ -400,6 +407,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     lineHeight: 1.6,
     spellCheckLanguage: "en-US",
     autoSaveDelay: 1000,
+    crashRecovery: true,
   },
   appearance: {
     theme: "system",
@@ -464,6 +472,64 @@ async function existingDirectory(dir: string | undefined): Promise<string | null
 // ──────────────────────────────────────────────────────────────────────────
 
 let mainWindow: BrowserWindow | null = null;
+
+// ── Unsaved-changes infrastructure (#44) ────────────────────────────────────
+// The recovery sidecar store lives under userData/recovery/.
+function recoveryDir(): string {
+  return path.join(app.getPath("userData"), "recovery");
+}
+
+// A single shallow folder watcher for the open project. fs.watch is coarse and
+// fires multiple times per save, so changes are debounced before notifying the
+// renderer. Only one project is open at a time, so a single watcher suffices.
+let folderWatcher: FSWatcher | null = null;
+let watchedDir: string | null = null;
+let folderChangeDebounce: ReturnType<typeof setTimeout> | null = null;
+
+function stopFolderWatch(): void {
+  if (folderChangeDebounce) {
+    clearTimeout(folderChangeDebounce);
+    folderChangeDebounce = null;
+  }
+  if (folderWatcher) {
+    folderWatcher.close();
+    folderWatcher = null;
+  }
+  watchedDir = null;
+}
+
+function startFolderWatch(dirPath: string): void {
+  if (watchedDir === dirPath && folderWatcher) return;
+  stopFolderWatch();
+  watchedDir = dirPath;
+  try {
+    folderWatcher = watch(dirPath, { recursive: false }, (_event, filename) => {
+      // fs.watch is noisy (fires on rename + change). Debounce so a single
+      // external save produces one renderer notification.
+      if (folderChangeDebounce) clearTimeout(folderChangeDebounce);
+      const name =
+        typeof filename === "string"
+          ? filename
+          : filename
+            ? Buffer.from(filename).toString()
+            : "";
+      folderChangeDebounce = setTimeout(() => {
+        mainWindow?.webContents.send("fs:folderChanged", { filename: name });
+      }, 150);
+    });
+  } catch (e) {
+    console.error(`[watch] failed to watch ${dirPath}:`, e);
+    folderWatcher = null;
+    watchedDir = null;
+  }
+}
+
+// Renderer pushes its pending-save state here so the window `close` gate can
+// flush before quitting. `flushResolve` is set while main awaits the renderer's
+// flush; the watchdog forces the close if the renderer never answers.
+let rendererDirty = false;
+let isQuitting = false;
+let flushResolve: (() => void) | null = null;
 
 function extractHeader(
   headers: Record<string, string | string[] | undefined>,
@@ -617,8 +683,32 @@ function createWindow() {
   };
   nativeTheme.on("updated", onNativeThemeUpdated);
 
+  // ── Unsaved-changes close gate (#44) ──────────────────────────────────────
+  // If the renderer has a pending auto-save, intercept the first close, ask the
+  // renderer to flush, and only destroy the window once it replies (or a 3s
+  // watchdog fires — never block quit indefinitely). The renderer pushes its
+  // dirty state via `app:setDirtyState`; main never reads renderer memory.
+  mainWindow.on("close", (e) => {
+    if (isQuitting || !rendererDirty || !mainWindow) return;
+    e.preventDefault();
+    isQuitting = true;
+    const win = mainWindow;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      flushResolve = null;
+      win.destroy();
+    };
+    flushResolve = finish;
+    win.webContents.send("app:flushBeforeClose");
+    // Watchdog: force the close after 3s if the renderer doesn't answer.
+    setTimeout(finish, 3000);
+  });
+
   mainWindow.on("closed", () => {
     nativeTheme.removeListener("updated", onNativeThemeUpdated);
+    stopFolderWatch();
     mainWindow = null;
   });
   return mainWindow;
@@ -769,14 +859,104 @@ ipcMain.handle("fs:readFile", async (_e, filePath: string): Promise<string> => {
 
 ipcMain.handle(
   "fs:writeFile",
-  async (_e, filePath: string, content: string): Promise<void> => {
+  async (_e, filePath: string, content: string): Promise<{ mtimeMs: number }> => {
     if (!path.isAbsolute(filePath)) {
       throw new Error(`fs:writeFile requires an absolute path, got: ${filePath}`);
     }
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, content, "utf-8");
+    // Return the post-write mtime so the editor can record its on-disk baseline
+    // (#44) and suppress the self-echo from its own folder watcher.
+    const s = await stat(filePath);
+    return { mtimeMs: s.mtimeMs };
   },
 );
+
+// ── File metadata (PlatformAdapter.statFile, #44 — external-edit detection) ──
+// Resolves with `exists: false` (zeroed metadata) rather than rejecting when the
+// path is absent, so the editor can tell "deleted out from under us" from an IO
+// error. The path MUST be absolute (renderer is our trusted SPA).
+ipcMain.handle(
+  "fs:statFile",
+  async (
+    _e,
+    filePath: string,
+  ): Promise<{ mtimeMs: number; size: number; exists: boolean }> => {
+    if (!path.isAbsolute(filePath)) {
+      throw new Error(`fs:statFile requires an absolute path, got: ${filePath}`);
+    }
+    try {
+      const s = await stat(filePath);
+      return { mtimeMs: s.mtimeMs, size: s.size, exists: true };
+    } catch {
+      return { mtimeMs: 0, size: 0, exists: false };
+    }
+  },
+);
+
+// ── Folder watching (PlatformAdapter.watchFolder, #44) ──────────────────────
+// Backs external-edit detection: a shallow fs.watch on the open project whose
+// debounced changes are pushed to the renderer as `fs:folderChanged`. Only one
+// project is open at a time, so subscribing replaces any prior watch.
+ipcMain.handle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {
+  if (!path.isAbsolute(dirPath)) {
+    throw new Error(`fs:watchFolder requires an absolute path, got: ${dirPath}`);
+  }
+  startFolderWatch(dirPath);
+});
+
+ipcMain.handle("fs:unwatchFolder", async (_e, dirPath: string): Promise<void> => {
+  if (watchedDir === dirPath) stopFolderWatch();
+});
+
+// ── Crash recovery (#44) ────────────────────────────────────────────────────
+// Sidecar snapshots under userData/recovery/. Never touches the user's file.
+ipcMain.handle(
+  "recovery:write",
+  async (
+    _e,
+    filePath: string,
+    content: string,
+    baseMtimeMs: number,
+  ): Promise<{ ok: boolean }> => {
+    if (!path.isAbsolute(filePath)) {
+      throw new Error(`recovery:write requires an absolute path, got: ${filePath}`);
+    }
+    return writeRecoveryStore(recoveryDir(), filePath, content, baseMtimeMs);
+  },
+);
+
+ipcMain.handle(
+  "recovery:clear",
+  async (_e, filePath: string): Promise<{ ok: boolean }> => {
+    if (!path.isAbsolute(filePath)) {
+      throw new Error(`recovery:clear requires an absolute path, got: ${filePath}`);
+    }
+    return clearRecoveryStore(recoveryDir(), filePath);
+  },
+);
+
+ipcMain.handle(
+  "recovery:list",
+  async (_e, projectDir: string) => {
+    if (!path.isAbsolute(projectDir)) {
+      throw new Error(`recovery:list requires an absolute path, got: ${projectDir}`);
+    }
+    return listRecoveryStore(recoveryDir(), projectDir);
+  },
+);
+
+// ── Unsaved-changes close gate (#44) ────────────────────────────────────────
+// The renderer pushes its pending-save state; main reads it in the `close`
+// handler. `app:flushDone` is the renderer's reply that its buffer is flushed.
+ipcMain.handle("app:setDirtyState", async (_e, isDirty: boolean): Promise<void> => {
+  rendererDirty = !!isDirty;
+});
+
+ipcMain.handle("app:flushDone", async (): Promise<void> => {
+  rendererDirty = false;
+  flushResolve?.();
+});
 
 // ── Directory listing (PlatformAdapter.listDir, #38) ──────────────────────
 // Backs the in-app editor's file-tree sidebar. Returns the immediate entries

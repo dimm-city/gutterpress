@@ -32,6 +32,7 @@ import type {
   DiscoveredProject,
   ProjectClassification,
   FileStat,
+  FileWriteResult,
   RecoveryEntry,
   FolderChangedEvent,
 } from "./contract";
@@ -83,7 +84,7 @@ export class WebAdapter implements Platform {
     return notImplemented("readFile");
   }
 
-  writeFile(_path: string, _content: string): Promise<void> {
+  writeFile(_path: string, _content: string): Promise<FileWriteResult> {
     return notImplemented("writeFile");
   }
 

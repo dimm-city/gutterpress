@@ -172,6 +172,7 @@ interface AppSettings {
     lineHeight: number;
     spellCheckLanguage: string;
     autoSaveDelay: number;
+    crashRecovery: boolean;
   };
   appearance: {
     theme: "light" | "dark" | "system";
@@ -197,7 +198,7 @@ contextBridge.exposeInMainWorld("electron", {
   // electron/updater/contract.ts.  The renderer checks this to refuse
   // running against a stale shell.
   // ──────────────────────────────────────────────────────────────────────
-  apiVersion: 1 as const,
+  apiVersion: 2 as const,
 
   // ──────────────────────────────────────────────────────────────────────
   // Web-UI auto-update surface
@@ -234,7 +235,7 @@ contextBridge.exposeInMainWorld("electron", {
   // Filesystem primitives (PlatformAdapter, #41 — editor seam for #38/#39)
   readFile: (filePath: string): Promise<string> =>
     ipcRenderer.invoke("fs:readFile", filePath),
-  writeFile: (filePath: string, content: string): Promise<void> =>
+  writeFile: (filePath: string, content: string): Promise<{ mtimeMs: number }> =>
     ipcRenderer.invoke("fs:writeFile", filePath, content),
   listDir: (
     dirPath: string,
@@ -244,6 +245,25 @@ contextBridge.exposeInMainWorld("electron", {
     projectDir: string,
   ): Promise<{ md: string[]; css: string[] }> =>
     ipcRenderer.invoke("fs:listProjectFiles", projectDir),
+  // File metadata (PlatformAdapter.statFile, #44 — external-edit detection)
+  statFile: (
+    filePath: string,
+  ): Promise<{ mtimeMs: number; size: number; exists: boolean }> =>
+    ipcRenderer.invoke("fs:statFile", filePath),
+  /**
+   * Watch a project folder for changes (#44). Subscribes to debounced
+   * `fs:folderChanged` events for `dirPath` and returns an unsubscribe fn that
+   * tears down the main-process watcher. The renderer never sees raw fs events.
+   */
+  watchFolder: (dirPath: string, cb: () => void): (() => void) => {
+    const listener = () => cb();
+    ipcRenderer.on("fs:folderChanged", listener);
+    void ipcRenderer.invoke("fs:watchFolder", dirPath);
+    return () => {
+      ipcRenderer.removeListener("fs:folderChanged", listener);
+      void ipcRenderer.invoke("fs:unwatchFolder", dirPath);
+    };
+  },
 
   // Lib API (replaces /api/* HTTP routes)
   getStatus: (): Promise<{ ok: boolean; runtime: string; name: string }> =>
@@ -330,5 +350,57 @@ contextBridge.exposeInMainWorld("electron", {
     const listener = (_e: unknown, data: UrlPreviewBlockedEvent) => cb(data);
     ipcRenderer.on("url-preview:blocked", listener);
     return () => ipcRenderer.removeListener("url-preview:blocked", listener);
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Unsaved-changes / crash-recovery surface (#44)
+  // ──────────────────────────────────────────────────────────────────────
+
+  /** Write a debounced crash-recovery snapshot of the open buffer (#44). */
+  writeRecovery: (
+    filePath: string,
+    content: string,
+    baseMtimeMs: number,
+  ): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("recovery:write", filePath, content, baseMtimeMs),
+  /** Clear a recovery snapshot after a successful disk save (#44). */
+  clearRecovery: (filePath: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("recovery:clear", filePath),
+  /** List pending recovery snapshots for an opened project, newest first (#44). */
+  listRecovery: (
+    projectDir: string,
+  ): Promise<
+    Array<{ filePath: string; recoveryPath: string; savedAt: number; baseMtimeMs: number }>
+  > => ipcRenderer.invoke("recovery:list", projectDir),
+
+  /** Push the renderer's pending-save state to main for the close gate (#44). */
+  setDirtyState: (isDirty: boolean): Promise<void> =>
+    ipcRenderer.invoke("app:setDirtyState", isDirty),
+  /**
+   * Subscribe to main's request to flush before the window closes (#44). The
+   * renderer flushes, then calls `app:flushDone` (sent by the buffer store).
+   * Returns an unsubscribe fn.
+   */
+  onFlushBeforeClose: (cb: () => void): (() => void) => {
+    const listener = () => {
+      // The renderer flushes its buffer, then signals completion so main can
+      // destroy the window. Signal even if the cb throws so quit never hangs.
+      void Promise.resolve()
+        .then(() => cb())
+        .finally(() => {
+          void ipcRenderer.invoke("app:flushDone");
+        });
+    };
+    ipcRenderer.on("app:flushBeforeClose", listener);
+    return () => ipcRenderer.removeListener("app:flushBeforeClose", listener);
+  },
+  /**
+   * Subscribe to debounced folder-change notifications carrying the changed
+   * file's basename (#44). Returns an unsubscribe fn.
+   */
+  onFolderChanged: (cb: (data: { filename: string }) => void): (() => void) => {
+    const listener = (_e: unknown, data: { filename: string }) => cb(data);
+    ipcRenderer.on("fs:folderChanged", listener);
+    return () => ipcRenderer.removeListener("fs:folderChanged", listener);
   },
 });

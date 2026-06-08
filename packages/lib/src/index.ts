@@ -28,7 +28,7 @@ export type { CheckCategory, CheckPhase } from "./checks/types.ts";
 export { loadManifest } from "./lib/manifest.ts";
 
 // ── Platform abstraction contract (#41) — consumed by the viewer ─────────────
-export type { PlatformAdapter, FileStat } from "./platform.ts";
+export type { PlatformAdapter, FileStat, FileWriteResult } from "./platform.ts";
 
 // ── Print-safety CSS checks (#39) — backs the in-app CSS editor gutter ────────
 // The viewer's CSS editor runs `checkCss` in the renderer (postcss is pure JS)
