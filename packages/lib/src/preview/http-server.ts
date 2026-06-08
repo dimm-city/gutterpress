@@ -256,14 +256,16 @@ function injectHmrClient(html: string): string {
  * HTML responses. Writes 404 if the path doesn't resolve to a real file.
  *
  * `cacheControl` is the value sent in the Cache-Control header. Defaults to
- * 'no-cache' (HMR-friendly). Vendor assets that never change content within
- * a process pass 'public, max-age=31536000, immutable' so Chrome's HTTP
- * cache reuses them across page reloads within the same session.
+ * 'no-store' — the preview server binds a NEW port every launch, so any disk
+ * caching keys per-origin and accumulates a fresh copy of every asset on each
+ * run (this grew a user's HTTP cache to ~1.5 GB and made launch take ~10s as
+ * Chromium indexed it). Live preview content changes on every edit anyway, so
+ * nothing here should ever be written to the HTTP disk cache.
  */
 async function serveStatic(
   absPath: string,
   res: http.ServerResponse,
-  cacheControl: string = 'no-cache',
+  cacheControl: string = 'no-store',
 ): Promise<void> {
   let filePath = absPath;
 
@@ -289,7 +291,7 @@ async function serveStatic(
   const isHtml = filePath.endsWith('.html') || filePath.endsWith('.htm');
   if (isHtml) {
     const withHmr = injectHmrClient(data.toString('utf-8'));
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(withHmr);
     return;
   }
@@ -382,7 +384,7 @@ export async function createPreviewServer(
         await serveStatic(
           absPath,
           res,
-          'public, max-age=31536000, immutable',
+          'no-store',
         );
       } catch {
         res.writeHead(404);
@@ -403,7 +405,7 @@ export async function createPreviewServer(
           file,
           (state.config as { title?: string; styles?: string[]; plugins?: unknown[] }) || {}
         );
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         res.end(chapterHtml);
       } catch (e) {
         res.writeHead(500); res.end(String(e));
@@ -415,7 +417,7 @@ export async function createPreviewServer(
     // DEFAULT ON (incremental). Opt out with PRINTMD_PREVIEW_INCREMENTAL=0.
     if (url.pathname === '/' &&
         (incrementalPreviewEnabled() || process.env.PRINTMD_PREVIEW_SHELL === '1')) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       res.end(SHELL_HTML);
       return;
     }

@@ -1897,25 +1897,7 @@
 
   section { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .left { justify-self: start; overflow: hidden; }
-  /* Group the page navigation (prev · pill · next) into one bordered segmented
-     control so it reads as a single unit instead of merging with the buttons
-     beside it. Inner buttons go flat; the pill keeps its own look. */
-  .center {
-    justify-self: center;
-    flex-shrink: 0;
-    gap: 2px;
-    background: var(--app-control-bg);
-    border: 1px solid var(--app-control-border);
-    border-radius: 8px;
-    padding: 2px;
-  }
-  .center > .icon-btn {
-    background: transparent;
-    border-color: transparent;
-  }
-  .center > .icon-btn:hover:not(:disabled) {
-    background: var(--app-control-hover-bg);
-  }
+  .center { justify-self: center; flex-shrink: 0; }
   .right { justify-self: end; flex-shrink: 0; }
 
   /* ---- Buttons & inputs ---- */
@@ -1989,6 +1971,11 @@
   .toolbar.edit-narrow .zoom-select,
   .toolbar.edit-narrow .zoom-menu {
     display: none;
+  }
+  /* Edit mode has no center column (page nav hidden) — collapse the toolbar to
+     two tracks so the controls don't leave a dead gap. (per user) */
+  .toolbar.edit-narrow {
+    grid-template-columns: 1fr auto;
   }
 
   .menu { position: relative; display: none; }
@@ -2251,6 +2238,17 @@
      pane is visible. The preview iframe is NEVER unmounted (it owns the live
      PreviewClient); inactive panes are hidden with `display:none`. */
   @media screen and (max-width: 820px) {
+    /* Small screens: drop the zoom + single/spread controls and the group
+       separators entirely — they crowd the bar and merge the controls into an
+       unreadable blob. Toolbar becomes sidebar / Open / Edit·View / page-nav /
+       Save / More. (per user) */
+    .zoom-select,
+    .zoom-menu,
+    .view-mode-group,
+    .view-mode-menu,
+    .toolbar-sep {
+      display: none;
+    }
     .workspace.narrow,
     .workspace.narrow.editor-open,
     .workspace.narrow.sidebar-open,

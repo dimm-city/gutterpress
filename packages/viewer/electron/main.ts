@@ -863,6 +863,15 @@ app.commandLine.appendSwitch(
   "VaapiVideoDecoder,VaapiVideoEncoder,VaapiVideoDecodeLinuxGL,UseChromeOSDirectVideoDecoder",
 );
 
+// ── Launch-speed fix: cap the HTTP disk cache ─────────────────────────────────
+// The real cause of the multi-second blank launch: the preview HTTP server's
+// responses (every rendered book + its images/fonts/paged.js) were disk-cached
+// without bound and grew to ~1.5 GB. Chromium opens+indexes the whole cache on
+// startup before the renderer can paint. Cap it hard so it can never balloon
+// again; preview content is also marked no-store (see lib http-server) so it
+// stops accumulating in the first place.
+app.commandLine.appendSwitch("disk-cache-size", String(64 * 1024 * 1024)); // 64 MB
+
 // Register the scheme as standard (must happen before app.whenReady) so
 // fetch from the page works and ServiceWorker / IndexedDB / etc. behave.
 protocol.registerSchemesAsPrivileged([
@@ -1705,6 +1714,22 @@ app.whenReady().then(async () => {
   registerUrlPreviewHeaderWatch();
   createWindow();
   slog("createWindow returned (loadURL dispatched)");
+
+  // One-time self-heal: a profile from before the cache cap may already hold a
+  // multi-GB cache that slows every launch. If the disk cache is oversized, clear
+  // it in the background — harmless (it just re-fills under the 64 MB cap) and the
+  // next launch is fast.
+  session.defaultSession
+    .getCacheSize()
+    .then((size) => {
+      slog(`disk cache ${Math.round(size / (1024 * 1024))}MB`);
+      if (size > 128 * 1024 * 1024) {
+        return session.defaultSession
+          .clearCache()
+          .then(() => slog("oversized disk cache cleared (next launch will be fast)"));
+      }
+    })
+    .catch(() => {});
 
   // Health-gate any current bundle that hasn't been confirmed healthy yet —
   // whether just promoted this launch or left unconfirmed by a prior session
