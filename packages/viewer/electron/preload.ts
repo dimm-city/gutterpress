@@ -97,6 +97,8 @@ interface ProjectState {
 
 interface ViewerPrefs {
   lastProjectDir?: string | null;
+  /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
+  sidebarOpen?: boolean;
   /** @deprecated (#43) migration fallback — use projectStates[dir]. */
   currentPage?: number;
   /** @deprecated (#43) migration fallback — use projectStates[dir]. */
@@ -238,6 +240,10 @@ contextBridge.exposeInMainWorld("electron", {
     dirPath: string,
   ): Promise<Array<{ name: string; path: string; isDir: boolean }>> =>
     ipcRenderer.invoke("fs:listDir", dirPath),
+  listProjectFiles: (
+    projectDir: string,
+  ): Promise<{ md: string[]; css: string[] }> =>
+    ipcRenderer.invoke("fs:listProjectFiles", projectDir),
 
   // Lib API (replaces /api/* HTTP routes)
   getStatus: (): Promise<{ ok: boolean; runtime: string; name: string }> =>

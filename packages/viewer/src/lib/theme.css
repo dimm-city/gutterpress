@@ -96,6 +96,8 @@
   --app-link-hover: #0066cc;
   --app-scrim: rgba(0, 0, 0, 0.06);
   --app-scrim-strong: rgba(0, 0, 0, 0.1);
+  /* Heavy backdrop for dismissable modals/drawers (bottom-sheet sidebar). */
+  --app-scrim-modal: rgba(0, 0, 0, 0.45);
 }
 
 :root[data-theme="dark"] {
@@ -179,4 +181,6 @@
   --app-link-hover: #88c0f8;
   --app-scrim: rgba(255, 255, 255, 0.06);
   --app-scrim-strong: rgba(255, 255, 255, 0.08);
+  /* Heavy backdrop for dismissable modals/drawers (bottom-sheet sidebar). */
+  --app-scrim-modal: rgba(0, 0, 0, 0.6);
 }

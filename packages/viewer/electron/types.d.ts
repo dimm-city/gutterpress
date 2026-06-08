@@ -120,11 +120,15 @@ interface Window {
     listDir(
       dirPath: string,
     ): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
+    listProjectFiles(
+      projectDir: string,
+    ): Promise<{ md: string[]; css: string[] }>;
     // Lib API
     getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
     getLastProject(): Promise<string | null>;
     getViewerPrefs(): Promise<{
       lastProjectDir?: string | null;
+      sidebarOpen?: boolean;
       currentPage?: number;
       viewMode?: "single" | "two-column";
       recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
@@ -135,6 +139,7 @@ interface Window {
     }>;
     setViewerPrefs(patch: {
       lastProjectDir?: string | null;
+      sidebarOpen?: boolean;
       currentPage?: number;
       viewMode?: "single" | "two-column";
       recentFolders?: Array<{ path: string; title: string; openedAt: string }>;

@@ -85,6 +85,8 @@ export interface ProjectState {
 
 export interface ViewerPrefs {
   lastProjectDir?: string | null;
+  /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
+  sidebarOpen?: boolean;
   /** @deprecated (#43) migration fallback — read `projectStates[dir]` instead. */
   currentPage?: number;
   /** @deprecated (#43) migration fallback — read `projectStates[dir]` instead. */
@@ -247,6 +249,14 @@ export interface HostServices {
   // Lib API / app state
   getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
   getLastProject(): Promise<string | null>;
+
+  /**
+   * List the top-level `.md` and `.css` files of an opened project directory
+   * (#42), each sorted by filename. Shallow by design (subdirectory layouts
+   * are not surfaced in v1). `projectDir` must be an absolute path. Backs the
+   * chapter-list sidebar. The WebAdapter stub rejects.
+   */
+  listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }>;
   getViewerPrefs(): Promise<ViewerPrefs>;
   setViewerPrefs(patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }>;
 

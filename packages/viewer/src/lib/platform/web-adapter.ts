@@ -121,6 +121,10 @@ export class WebAdapter implements Platform {
     return rejectNotImplemented("getLastProject");
   }
 
+  listProjectFiles(_projectDir: string): Promise<{ md: string[]; css: string[] }> {
+    return rejectNotImplemented("listProjectFiles");
+  }
+
   getViewerPrefs(): Promise<ViewerPrefs> {
     return rejectNotImplemented("getViewerPrefs");
   }

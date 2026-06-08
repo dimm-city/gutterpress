@@ -106,6 +106,10 @@ export class ElectronAdapter implements Platform {
     return bridge().getLastProject();
   }
 
+  listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }> {
+    return bridge().listProjectFiles(projectDir);
+  }
+
   getViewerPrefs(): Promise<ViewerPrefs> {
     return bridge().getViewerPrefs();
   }

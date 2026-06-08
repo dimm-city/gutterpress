@@ -309,6 +309,8 @@ let activePreview: PreviewHandle | null = null;
 
 interface ViewerPrefs {
   lastProjectDir?: string;
+  /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
+  sidebarOpen?: boolean;
   /**
    * @deprecated (#43) Pre-per-project global page. Kept ONE version as a
    * migration fallback (see migrateLegacyProjectState); new writes go to
@@ -797,6 +799,38 @@ ipcMain.handle(
       path: path.join(dirPath, entry.name),
       isDir: entry.isDirectory(),
     }));
+  },
+);
+
+// ── Project file listing (fs:listProjectFiles, #42) ───────────────────────
+// Backs the chapter-list sidebar. Returns the top-level `.md` and `.css`
+// files of the opened project directory, each sorted by filename. Shallow by
+// design (a v1 constraint — subdirectory layouts are not surfaced). The path
+// MUST be absolute and is constrained to the project directory; only files
+// (not directories) at the top level are returned.
+ipcMain.handle(
+  "fs:listProjectFiles",
+  async (
+    _e,
+    projectDir: string,
+  ): Promise<{ md: string[]; css: string[] }> => {
+    if (!path.isAbsolute(projectDir)) {
+      throw new Error(
+        `fs:listProjectFiles requires an absolute path, got: ${projectDir}`,
+      );
+    }
+    const entries = await readdir(projectDir, { withFileTypes: true });
+    const md: string[] = [];
+    const css: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const lower = entry.name.toLowerCase();
+      if (lower.endsWith(".md")) md.push(entry.name);
+      else if (lower.endsWith(".css")) css.push(entry.name);
+    }
+    md.sort((a, b) => a.localeCompare(b));
+    css.sort((a, b) => a.localeCompare(b));
+    return { md, css };
   },
 );
 

@@ -1,5 +1,6 @@
 <script lang="ts">
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
+  import ChapterList from "$lib/components/ChapterList.svelte";
   import FileTree from "$lib/components/FileTree.svelte";
   import MarkdownEditor from "$lib/components/MarkdownEditor.svelte";
   import Toast from "$lib/components/Toast.svelte";
@@ -121,6 +122,56 @@
   // Open Location modal
   let openLocationOpen = $state(false);
   let openBtn = $state<HTMLButtonElement | undefined>(undefined);
+
+  // ── Chapter-list sidebar (#42) ──────────────────────────────────────────
+  // A collapsible left sidebar listing the project's .md chapters (and .css
+  // stylesheets separately). Open/closed state persists across sessions via
+  // ViewerPrefs.sidebarOpen. On narrow viewports it renders as a bottom-sheet
+  // drawer with a backdrop (CSS-driven). Clicking a chapter fires
+  // selectEditorFile so it opens in the editor pane (#38) when one is present;
+  // in a preview-only build it simply records the active path.
+  let sidebarOpen = $state(false);
+  let sidebarPrefsLoaded = $state(false);
+
+  // Load the persisted sidebar state once on mount (desktop only).
+  $effect(() => {
+    if (!isDesktop() || sidebarPrefsLoaded) return;
+    sidebarPrefsLoaded = true;
+    getPlatform()
+      .getViewerPrefs()
+      .then((prefs) => {
+        if (typeof prefs.sidebarOpen === "boolean") sidebarOpen = prefs.sidebarOpen;
+      })
+      .catch(() => {});
+  });
+
+  function toggleSidebar() {
+    sidebarOpen = !sidebarOpen;
+    if (isDesktop()) {
+      getPlatform().setViewerPrefs({ sidebarOpen }).catch(() => {});
+    }
+  }
+
+  function onSelectChapter(path: string) {
+    // Hand off to the editor seam (#38).
+    selectEditorFile(path);
+    // Clicking a chapter must reliably SHOW the file (issue #42 acceptance:
+    // "clicking switches the editor content"). The chapter-list sidebar and
+    // the editor pane are independent toggles, so on desktop folder projects
+    // we open the editor pane (if closed) and move focus into it — mirroring
+    // toggleEditor. In preview-only/url mode this just marks the active
+    // chapter so the sidebar highlight tracks the selection.
+    if (currentDir && sourceMode === "folder") {
+      const wasClosed = !editorOpen;
+      editorOpen = true;
+      if (wasClosed) requestAnimationFrame(() => editorRef?.focus());
+    }
+    // On the mobile bottom-sheet drawer, picking a chapter dismisses it.
+    if (window.matchMedia("(max-width: 640px)").matches) {
+      sidebarOpen = false;
+      if (isDesktop()) getPlatform().setViewerPrefs({ sidebarOpen: false }).catch(() => {});
+    }
+  }
 
   // ── In-app markdown editor (#38) ────────────────────────────────────────
   // editorOpen toggles the file-tree + editor split alongside the preview.
@@ -388,6 +439,11 @@
       if ((e.ctrlKey || e.metaKey) && (e.key === "e" || e.key === "E")) {
         e.preventDefault();
         toggleEditor();
+      }
+      // Cmd/Ctrl+B toggles the chapter-list sidebar (#42).
+      if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")) {
+        e.preventDefault();
+        toggleSidebar();
       }
     }
     window.addEventListener("keydown", onGlobalKey);
@@ -1039,6 +1095,20 @@
 <div class="shell">
   <header class="toolbar">
     <section class="left">
+      <!-- Chapter-list sidebar toggle (#42): button + Ctrl/Cmd+B. Disabled
+           until a project folder is open (the sidebar lists that folder's
+           chapters). -->
+      <button
+        class="icon-btn"
+        class:active={sidebarOpen}
+        onclick={toggleSidebar}
+        disabled={!currentDir || sourceMode === "url"}
+        title="Toggle chapter list (Ctrl+B)"
+        aria-label="Toggle chapter list"
+        aria-pressed={sidebarOpen}
+      >
+        <Icon name="panel-left" />
+      </button>
       <button bind:this={openBtn} class="primary icon-text" onclick={() => (openLocationOpen = true)} disabled={busy} title="Open folder or web address (Ctrl+O)">
         <Icon name="folder-open" />
         <span>Open</span>
@@ -1222,7 +1292,28 @@
   </header>
 
   {#if previewUrl}
-    <div class="workspace" class:editor-open={editorOpen && !!currentDir}>
+    <div
+      class="workspace"
+      class:editor-open={editorOpen && !!currentDir}
+      class:sidebar-open={sidebarOpen && !!currentDir && sourceMode === "folder"}
+    >
+      {#if currentDir && sourceMode === "folder" && sidebarOpen}
+        <!-- Backdrop only matters on the mobile bottom-sheet variant (hidden via
+             CSS on wide viewports). Click dismisses the drawer. -->
+        <button
+          type="button"
+          class="sidebar-backdrop"
+          aria-label="Close chapter list"
+          onclick={toggleSidebar}
+        ></button>
+        <aside class="pane chapter-list-pane" aria-label="Chapters">
+          <ChapterList
+            projectDir={currentDir}
+            selectedPath={editorFilePath}
+            onSelectFile={onSelectChapter}
+          />
+        </aside>
+      {/if}
       {#if editorOpen && currentDir}
         <aside class="pane file-tree-pane">
           <FileTree
@@ -1326,6 +1417,22 @@
   }
   .workspace.editor-open {
     grid-template-columns: minmax(160px, 220px) minmax(280px, 1fr) minmax(320px, 1.2fr);
+  }
+  /* Chapter-list sidebar (#42): a leading column before the preview (or before
+     the editor split). On wide viewports it's a persistent side panel. */
+  .workspace.sidebar-open {
+    grid-template-columns: minmax(180px, 240px) 1fr;
+  }
+  .workspace.sidebar-open.editor-open {
+    grid-template-columns:
+      minmax(180px, 240px) minmax(160px, 220px) minmax(280px, 1fr) minmax(320px, 1.2fr);
+  }
+  .chapter-list-pane {
+    border-right: 1px solid var(--app-border);
+  }
+  /* Backdrop is only visible in the mobile bottom-sheet variant (below). */
+  .sidebar-backdrop {
+    display: none;
   }
   .pane {
     min-width: 0;
@@ -1672,5 +1779,42 @@
   @media screen and (max-width: 520px) {
     .toolbar { grid-template-columns: auto 1fr; }
     .right { display: none; }
+  }
+
+  /* ---- Chapter-list mobile bottom-sheet drawer (#42) ----
+     Under 640px the persistent side panel becomes a bottom-sheet drawer with a
+     backdrop. The grid columns collapse back to a single preview column so the
+     drawer floats above the preview rather than squeezing it. */
+  @media screen and (max-width: 640px) {
+    .workspace.sidebar-open,
+    .workspace.sidebar-open.editor-open {
+      grid-template-columns: 1fr;
+    }
+    .sidebar-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: var(--app-scrim-modal, rgba(0, 0, 0, 0.45));
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      margin: 0;
+      cursor: pointer;
+    }
+    .chapter-list-pane {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 61;
+      max-height: 70vh;
+      border-right: none;
+      border-top: 1px solid var(--app-border);
+      border-top-left-radius: 12px;
+      border-top-right-radius: 12px;
+      background: var(--app-surface, var(--app-bg));
+      box-shadow: 0 -4px 20px var(--app-shadow-md, rgba(0, 0, 0, 0.35));
+    }
   }
 </style>
