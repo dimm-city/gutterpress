@@ -1,6 +1,9 @@
 <script lang="ts">
+  import { getPlatform, isDesktop } from "$lib/platform";
+
   type RecentFolder = { path: string; title: string; openedAt: string; exists: boolean };
   type FavoriteFolder = { path: string; title: string; exists: boolean };
+  type DiscoveredProject = { path: string; title: string };
 
   let {
     open = $bindable(false),
@@ -18,6 +21,7 @@
   let error = $state<string | null>(null);
   let recents = $state<RecentFolder[]>([]);
   let favorites = $state<FavoriteFolder[]>([]);
+  let discovered = $state<DiscoveredProject[]>([]);
   let loading = $state(false);
   let input = $state<HTMLInputElement | undefined>(undefined);
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
@@ -49,13 +53,13 @@
   }
 
   async function loadLists() {
-    const electron = (window as any).electron;
-    if (!electron) return;
+    if (!isDesktop()) return;
     loading = true;
     try {
+      const platform = getPlatform();
       const [r, f] = await Promise.all([
-        electron.getRecentFolders?.() ?? Promise.resolve([]),
-        electron.getFavorites?.() ?? Promise.resolve([]),
+        platform.getRecentFolders(),
+        platform.getFavorites(),
       ]);
       recents = r;
       favorites = f;
@@ -71,7 +75,18 @@
       error = null;
       location = "";
       focusedRowIndex = null;
+      discovered = [];
       loadLists();
+      // Background project scan (#27) — non-blocking; the Discovered section is
+      // absent until this resolves. Errors are swallowed (no scan on PWA).
+      if (isDesktop()) {
+        getPlatform()
+          .discoverProjects()
+          .then((r) => {
+            discovered = r;
+          })
+          .catch(() => {});
+      }
       queueMicrotask(() => input?.focus() ?? focusableElements()[0]?.focus());
     }
   });
@@ -81,14 +96,66 @@
     triggerEl?.focus();
   }
 
-  // Combined ordered list: favorites first, then recents (deduped by path)
-  let allRows = $derived.by<Array<{ path: string; title: string; exists: boolean; isFavorite: boolean }>>(() => {
-    const favPaths = new Set(favorites.map((f) => f.path));
-    const favRows = favorites.map((f) => ({ ...f, isFavorite: true }));
-    const recentRows = recents
-      .filter((r) => !favPaths.has(r.path))
-      .map((r) => ({ path: r.path, title: r.title, exists: r.exists, isFavorite: false }));
-    return [...favRows, ...recentRows];
+  // ── Filter-as-you-type (#27) ──────────────────────────────────────────────
+  // When the input does NOT look like a literal path or URL, treat it as a
+  // case-insensitive filter term against the folder name + full path. Literal
+  // paths (/, ~/, C:\) and URLs bypass filtering entirely.
+  function isLiteralPath(val: string): boolean {
+    const v = val.trim();
+    if (!v) return false;
+    return v.startsWith("/") || v.startsWith("~/") || /^[A-Za-z]:[\\/]/.test(v);
+  }
+
+  // Active filter term: empty when the input is blank, a literal path, or a URL.
+  let filterTerm = $derived.by<string>(() => {
+    const v = location.trim();
+    if (!v || isLiteralPath(v) || isUrl(v)) return "";
+    return v.toLowerCase();
+  });
+
+  function matchesFilter(path: string, title: string, term: string): boolean {
+    if (!term) return true;
+    return path.toLowerCase().includes(term) || (title ?? "").toLowerCase().includes(term);
+  }
+
+  let filteredFavorites = $derived(
+    favorites.filter((f) => matchesFilter(f.path, f.title, filterTerm)),
+  );
+  let filteredRecents = $derived(
+    recents.filter((r) => matchesFilter(r.path, r.title, filterTerm)),
+  );
+
+  // Discovered entries not already shown in the filtered favorites/recents,
+  // and that also match the active filter term.
+  let filteredDiscovered = $derived.by<DiscoveredProject[]>(() => {
+    const shown = new Set<string>([
+      ...filteredFavorites.map((f) => f.path),
+      ...filteredRecents.map((r) => r.path),
+    ]);
+    return discovered.filter(
+      (d) => !shown.has(d.path) && matchesFilter(d.path, d.title, filterTerm),
+    );
+  });
+
+  // Combined ordered list used for arrow-key navigation: filtered favorites,
+  // then filtered recents, then filtered discovered.
+  let allRows = $derived.by<
+    Array<{ path: string; title: string; exists: boolean; isFavorite: boolean }>
+  >(() => {
+    const favRows = filteredFavorites.map((f) => ({ ...f, isFavorite: true }));
+    const recentRows = filteredRecents.map((r) => ({
+      path: r.path,
+      title: r.title,
+      exists: r.exists,
+      isFavorite: false,
+    }));
+    const discoveredRows = filteredDiscovered.map((d) => ({
+      path: d.path,
+      title: d.title,
+      exists: true,
+      isFavorite: false,
+    }));
+    return [...favRows, ...recentRows, ...discoveredRows];
   });
 
   function isUrl(val: string): boolean {
@@ -100,6 +167,19 @@
     }
   }
 
+  // The Open button submits the typed text as a path/URL. It's enabled when the
+  // text is a literal path or a URL (always openable as-is). When the text is a
+  // filter term, Open is meaningful only if it doesn't resolve to zero rows —
+  // otherwise there's nothing to open and the button stays disabled.
+  let canOpen = $derived.by<boolean>(() => {
+    const v = location.trim();
+    if (!v) return false;
+    if (isLiteralPath(v) || isUrl(v)) return true;
+    // A filter term: allow Open only if at least one row matches (Open would
+    // otherwise pass a bare name that isn't a real path).
+    return allRows.length > 0;
+  });
+
   async function submit() {
     const trimmed = location.trim();
     if (!trimmed) {
@@ -110,17 +190,29 @@
       onOpenUrl?.(trimmed);
       open = false;
       triggerEl?.focus();
-    } else {
+      return;
+    }
+    if (isLiteralPath(trimmed)) {
       onOpenFolder?.(trimmed);
       open = false;
       triggerEl?.focus();
+      return;
+    }
+    // Filter term: open the first matching row, if any. With no matches the
+    // Open button is disabled, but Enter can still reach here — guard it.
+    const first = allRows[0];
+    if (first) {
+      onOpenFolder?.(first.path);
+      open = false;
+      triggerEl?.focus();
+    } else {
+      error = "No matching projects. Type a folder path or web address.";
     }
   }
 
   async function browse() {
-    const electron = (window as any).electron;
-    if (!electron?.openDirectory) return;
-    const dir = await electron.openDirectory();
+    if (!isDesktop()) return;
+    const dir = await getPlatform().openFolder();
     if (!dir) return;
     location = dir;
     onOpenFolder?.(dir);
@@ -136,15 +228,13 @@
 
   async function removeRecent(path: string, e: MouseEvent | KeyboardEvent) {
     e.stopPropagation();
-    const electron = (window as any).electron;
-    await electron?.removeRecent?.(path).catch(() => {});
+    await getPlatform().removeRecent(path).catch(() => {});
     await loadLists();
   }
 
   async function toggleFavorite(path: string, title: string, e: MouseEvent | KeyboardEvent) {
     e.stopPropagation();
-    const electron = (window as any).electron;
-    await electron?.toggleFavorite?.(path, title).catch(() => {});
+    await getPlatform().toggleFavorite(path, title).catch(() => {});
     await loadLists();
   }
 
@@ -232,11 +322,11 @@
       {/if}
 
       <!-- Favorites section -->
-      {#if favorites.length > 0}
+      {#if filteredFavorites.length > 0}
         <section class="list-section">
           <h3 class="list-heading">Favorites</h3>
           <ul class="list" role="listbox" aria-label="Favorite folders">
-            {#each favorites as fav, i}
+            {#each filteredFavorites as fav, i}
               {@const rowIndex = i}
               <li
                 class="list-row"
@@ -269,12 +359,12 @@
       {/if}
 
       <!-- Recently Opened section -->
-      {#if recents.length > 0}
+      {#if filteredRecents.length > 0}
         <section class="list-section">
           <h3 class="list-heading">Recently Opened</h3>
           <ul class="list" role="listbox" aria-label="Recently opened folders">
-            {#each recents as recent, i}
-              {@const rowIndex = favorites.length + i}
+            {#each filteredRecents as recent, i}
+              {@const rowIndex = filteredFavorites.length + i}
               {@const favorited = isFavorited(recent.path)}
               <li
                 class="list-row"
@@ -311,13 +401,55 @@
             {/each}
           </ul>
         </section>
-      {:else if !loading && favorites.length === 0}
-        <p class="empty-hint">No recent projects yet. Open a folder to get started.</p>
+      {/if}
+
+      <!-- Discovered section (#27): projects found by the background scan that
+           are not already shown in Favorites / Recently Opened. -->
+      {#if filteredDiscovered.length > 0}
+        <section class="list-section">
+          <h3 class="list-heading">Discovered</h3>
+          <ul class="list" role="listbox" aria-label="Discovered projects">
+            {#each filteredDiscovered as proj, i}
+              {@const rowIndex = filteredFavorites.length + filteredRecents.length + i}
+              <li
+                class="list-row"
+                role="option"
+                aria-selected="false"
+                tabindex="0"
+                onclick={() => openRow(proj.path)}
+                onkeydown={(e) => onListKeydown(e, rowIndex, proj.path, proj.title)}
+                title={proj.path}
+              >
+                <span class="row-icon" aria-hidden="true">🔍</span>
+                <span class="row-info">
+                  <span class="row-title">{proj.title || proj.path.split(/[\\/]/).filter(Boolean).pop()}</span>
+                  <span class="row-path">{proj.path}</span>
+                </span>
+                <div class="row-actions">
+                  <button
+                    class="icon-action star"
+                    title="Add to favorites"
+                    aria-label="Add to favorites"
+                    onclick={(e) => toggleFavorite(proj.path, proj.title, e)}
+                  >★</button>
+                </div>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
+
+      {#if !loading && allRows.length === 0}
+        {#if filterTerm}
+          <p class="empty-hint">No projects match “{location.trim()}”.</p>
+        {:else if favorites.length === 0 && recents.length === 0}
+          <p class="empty-hint">No recent projects yet. Open a folder to get started.</p>
+        {/if}
       {/if}
 
       <footer class="actions">
         <button class="ghost" onclick={close}>Cancel</button>
-        <button class="primary" onclick={submit} disabled={!location.trim()}>Open</button>
+        <button class="primary" onclick={submit} disabled={!canOpen}>Open</button>
       </footer>
     </div>
   </div>
@@ -333,7 +465,7 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--app-backdrop);
     z-index: 1000;
   }
   .dialog {
@@ -343,10 +475,10 @@
     transform: translate(-50%, -50%);
     width: min(560px, 94vw);
     max-height: 80vh;
-    background: #1e1e1e;
-    color: #e0e0e0;
+    background: var(--app-surface);
+    color: var(--app-text-secondary);
     border-radius: 8px;
-    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 14px 40px var(--app-shadow-lg);
     z-index: 1001;
     display: flex;
     flex-direction: column;
@@ -358,20 +490,20 @@
     align-items: center;
     justify-content: space-between;
     padding: 14px 18px;
-    border-bottom: 1px solid #303030;
+    border-bottom: 1px solid var(--app-border-subtle);
     flex-shrink: 0;
   }
   .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
   .close {
     background: transparent;
     border: 0;
-    color: #aaa;
+    color: var(--app-text-muted);
     font-size: 22px;
     line-height: 1;
     cursor: pointer;
     padding: 0 4px;
   }
-  .close:hover { color: #fff; }
+  .close:hover { color: var(--app-text); }
   .dialog-body {
     padding: 16px 18px;
     display: flex;
@@ -381,13 +513,13 @@
     flex: 1;
   }
   .input-row { display: flex; flex-direction: column; gap: 6px; }
-  .field { font-size: 12px; color: #aaa; font-weight: 500; }
+  .field { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
   .input-with-browse { display: flex; gap: 8px; align-items: stretch; }
   .input-with-browse input {
     flex: 1;
-    background: #2a2a2a;
-    border: 1px solid #404040;
-    color: #e0e0e0;
+    background: var(--app-surface-sunken);
+    border: 1px solid var(--app-border);
+    color: var(--app-text-secondary);
     padding: 8px 10px;
     border-radius: 6px;
     font-size: 13px;
@@ -396,7 +528,7 @@
   }
   .input-with-browse input:focus {
     outline: none;
-    border-color: #3a6fb5;
+    border-color: var(--app-focus-ring);
   }
   .browse-btn {
     flex-shrink: 0;
@@ -406,8 +538,8 @@
     cursor: pointer;
     white-space: nowrap;
   }
-  .error { color: #f08080; font-size: 12px; margin: 0; }
-  .empty-hint { font-size: 12px; color: #666; margin: 4px 0; text-align: center; }
+  .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
+  .empty-hint { font-size: 12px; color: var(--app-text-faint); margin: 4px 0; text-align: center; }
 
   /* List sections */
   .list-section { display: flex; flex-direction: column; gap: 4px; }
@@ -416,7 +548,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #666;
+    color: var(--app-text-faint);
     margin: 0;
     padding: 0 2px;
   }
@@ -440,12 +572,12 @@
   }
   .list-row:not(.dimmed):hover,
   .list-row:not(.dimmed):focus {
-    background: #2a2a2a;
-    border-color: #383838;
+    background: var(--app-surface-sunken);
+    border-color: var(--app-border);
     outline: none;
   }
   .list-row:not(.dimmed):focus {
-    border-color: #3a6fb5;
+    border-color: var(--app-focus-ring);
   }
   .list-row.dimmed {
     cursor: default;
@@ -467,14 +599,14 @@
   .row-title {
     font-size: 13px;
     font-weight: 500;
-    color: #e0e0e0;
+    color: var(--app-text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .row-path {
     font-size: 11px;
-    color: #666;
+    color: var(--app-text-faint);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -500,15 +632,15 @@
     border-radius: 4px;
     font-size: 14px;
     line-height: 1;
-    color: #555;
+    color: var(--app-text-faint);
     transition: color 0.1s, background 0.1s;
   }
-  .icon-action:hover { background: #333; }
-  .icon-action.star { color: #555; }
+  .icon-action:hover { background: var(--app-surface-hover); }
+  .icon-action.star { color: var(--app-text-faint); }
   .icon-action.star:hover,
-  .icon-action.star.active { color: #f5c518; }
-  .icon-action.remove { color: #555; }
-  .icon-action.remove:hover { color: #f08080; }
+  .icon-action.star.active { color: var(--app-star); }
+  .icon-action.remove { color: var(--app-text-faint); }
+  .icon-action.remove:hover { color: var(--app-error-text); }
 
   /* Footer actions */
   .actions {
@@ -517,7 +649,7 @@
     justify-content: flex-end;
     padding-top: 12px;
     margin-top: 4px;
-    border-top: 1px solid #303030;
+    border-top: 1px solid var(--app-border-subtle);
     flex-shrink: 0;
   }
   .actions button {
@@ -528,8 +660,8 @@
     border: 1px solid transparent;
   }
   .actions button:disabled { opacity: 0.45; cursor: default; }
-  .actions .primary { background: #3a6fb5; color: #fff; }
-  .actions .primary:not(:disabled):hover { background: #4882d4; }
-  .actions .ghost { background: transparent; color: #aaa; border-color: #404040; }
-  .actions .ghost:hover { background: #262626; color: #fff; }
+  .actions .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
+  .actions .primary:not(:disabled):hover { background: var(--app-accent-hover); }
+  .actions .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
+  .actions .ghost:hover { background: var(--app-surface-hover); color: var(--app-text); }
 </style>

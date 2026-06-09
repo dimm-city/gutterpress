@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<!--
+  print-md viewer — splash screen
+  Window: 460 × 280 px, frameless, dark (#1e1e1e bg).
+
+  Updatable elements (wired by main process via window.__splashUpdate):
+    #splash-status     — primary one-line status string
+    #splash-progress   — progress bar fill (set width % via JS)
+    #splash-substatus  — secondary smaller line (may be empty)
+
+  DO NOT add window.__splashUpdate here; the main process injects it.
+  Only decorative CSS animation and the tiny resize guard script below.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=460, height=280">
+<title>print-md</title>
+<style>
+/* ─── Reset & base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 460px;
+  height: 280px;
+  overflow: hidden;
+  background: #1e1e1e;
+  color: #eeeeee;
+  /* System font stack: neutral, professional, cross-platform */
+  font-family:
+    -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "Helvetica Neue",
+    Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+  /* Prevent any accidental scroll flash during animation */
+  position: fixed;
+  inset: 0;
+}
+
+/* ─── Outer shell ──────────────────────────────────────────────────────────── */
+.splash {
+  width: 460px;
+  height: 280px;
+  background: #1e1e1e;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  /* Subtle inset surface card for depth */
+  gap: 0;
+}
+
+/* Very subtle gradient vignette so the edges recede slightly */
+.splash::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 380px 220px at 50% 45%,
+    rgba(0, 136, 238, 0.04) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Hairline top border — acts as a subtle window chrome signal */
+.splash::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #3a3a3a 20%,
+    #444444 50%,
+    #3a3a3a 80%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ─── Inner card ───────────────────────────────────────────────────────────── */
+.splash-card {
+  position: relative;
+  z-index: 2;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+/* ─── Brand lockup ─────────────────────────────────────────────────────────── */
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+/* The document mark — rendered as inline SVG, no external asset */
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  /* Breathing glow — the mark gently pulses with the accent color */
+  animation: mark-breathe 3.2s ease-in-out infinite;
+}
+
+@keyframes mark-breathe {
+  0%, 100% { filter: drop-shadow(0 0 0px rgba(0, 136, 238, 0)); }
+  50%       { filter: drop-shadow(0 0 8px rgba(58, 160, 255, 0.45)); }
+}
+
+/* Wordmark: "print-md" in monospace — clean code-tool aesthetic */
+.brand-wordmark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.brand-name {
+  font-family:
+    "SF Mono", "Cascadia Code", "Fira Code",
+    "JetBrains Mono", "Consolas",
+    "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: #eeeeee;
+  line-height: 1;
+}
+
+/* The hyphen in "print-md" gets an accent color — subtle brand hook */
+.brand-name .accent-hyphen {
+  color: #3aa0ff;
+}
+
+/* Tagline underneath wordmark */
+.brand-tagline {
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #888888;
+  line-height: 1;
+}
+
+/* ─── Ruled-line animation — the signature loading motif ───────────────────── */
+/*
+  Three horizontal rules of staggered width representing text baselines.
+  Each sweeps left-to-right in the accent blue, then fades and resets.
+  Reads as "parsing / laying out lines of content" — thematic to print-md.
+*/
+.ruled-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 28px;
+  width: 240px;
+  align-items: flex-start;
+}
+
+.rule {
+  height: 2px;
+  background: #2e2e2e;
+  border-radius: 1px;
+  position: relative;
+  overflow: hidden;
+}
+
+.rule::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #3aa0ff 30%,
+    #0088ee 70%,
+    transparent 100%
+  );
+  border-radius: 1px;
+  /* Start off-screen to the left */
+  transform: translateX(-100%);
+  animation: rule-sweep 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Three different widths for the three lines — mimics a paragraph */
+.rule:nth-child(1) { width: 100%; }
+.rule:nth-child(2) { width: 78%; }
+.rule:nth-child(3) { width: 88%; }
+
+/* Stagger the sweep start times */
+.rule:nth-child(1)::after { animation-delay: 0s; }
+.rule:nth-child(2)::after { animation-delay: 0.18s; }
+.rule:nth-child(3)::after { animation-delay: 0.36s; }
+
+@keyframes rule-sweep {
+  0%   { transform: translateX(-100%); opacity: 0; }
+  8%   { opacity: 1; }
+  55%  { transform: translateX(0%); opacity: 1; }
+  70%  { transform: translateX(0%); opacity: 0.6; }
+  85%  { transform: translateX(0%); opacity: 0; }
+  100% { transform: translateX(-100%); opacity: 0; }
+}
+
+/* ─── Progress bar ─────────────────────────────────────────────────────────── */
+.progress-track {
+  width: 100%;
+  height: 3px;
+  background: #2a2a2a;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  position: relative;
+}
+
+/* The fill element — width% set by JS (0–100). Default 0%. */
+#splash-progress {
+  height: 100%;
+  width: 0%;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    #0066cc 0%,
+    #0088ee 60%,
+    #3aa0ff 100%
+  );
+  transition: width 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  /* Minimum visible size so it reads as "started" even at 0% */
+  min-width: 0;
+}
+
+/* Shimmer sweep over the progress fill — gives a live "working" feel */
+#splash-progress::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.28) 45%,
+    rgba(255, 255, 255, 0.12) 55%,
+    transparent 100%
+  );
+  animation: progress-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes progress-shimmer {
+  0%   { transform: translateX(-200%); }
+  100% { transform: translateX(300%); }
+}
+
+/* ─── Status text ──────────────────────────────────────────────────────────── */
+.status-block {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px; /* Prevents layout shift as text changes */
+}
+
+#splash-status {
+  font-size: 12px;
+  font-weight: 400;
+  color: #aaaaaa;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+  text-align: center;
+  /* Fade text updates so rapid changes don't flash */
+  transition: opacity 120ms ease;
+}
+
+/* Default placeholder — will be replaced by the loader */
+#splash-status:empty::before {
+  content: "Starting\2026"; /* "Starting…" via unicode ellipsis */
+  color: #888888;
+}
+
+#splash-substatus {
+  font-size: 10.5px;
+  font-weight: 400;
+  color: #666666;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+  text-align: center;
+  transition: opacity 120ms ease;
+  /* Minimum height so the status block doesn't reflow when empty */
+  min-height: 14px;
+}
+
+/* ─── Version badge — bottom-right, quiet ──────────────────────────────────── */
+.version-badge {
+  position: absolute;
+  bottom: 14px;
+  right: 18px;
+  font-family:
+    "SF Mono", "Cascadia Code", "Fira Code",
+    "Consolas", "Liberation Mono", monospace;
+  font-size: 9.5px;
+  color: #555555;
+  letter-spacing: 0.06em;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* ─── Reduced-motion: disable all decorative animation ─────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .brand-mark           { animation: none; filter: none; }
+  .rule::after          { animation: none; background: #3a3a3a; transform: none; opacity: 1; }
+  #splash-progress::after { animation: none; }
+  #splash-status,
+  #splash-substatus     { transition: none; }
+  #splash-progress      { transition: width 80ms linear; }
+}
+</style>
+</head>
+<body>
+<div class="splash" role="status" aria-live="polite" aria-label="print-md loading">
+
+  <div class="splash-card">
+
+    <!-- ── Brand lockup ──────────────────────────────────────────── -->
+    <div class="brand">
+
+      <!--
+        Document mark: a page with folded top-right corner and a stylised
+        "M↓" markdown chevron centred on it. Pure inline SVG, no external asset.
+      -->
+      <svg class="brand-mark"
+           viewBox="0 0 40 40"
+           fill="none"
+           xmlns="http://www.w3.org/2000/svg"
+           aria-hidden="true">
+        <!-- Page body -->
+        <path
+          d="M7 4 H27 L33 10 V36 H7 Z"
+          fill="#262626"
+          stroke="#3a3a3a"
+          stroke-width="1.25"
+          stroke-linejoin="round"/>
+        <!-- Folded corner flap — matches page background + edge -->
+        <path
+          d="M27 4 L33 10 H27 Z"
+          fill="#1e1e1e"
+          stroke="#3a3a3a"
+          stroke-width="1.25"
+          stroke-linejoin="round"/>
+        <!-- Baseline rules on the page — three text rows -->
+        <line x1="11" y1="17" x2="27" y2="17" stroke="#4a4a4a" stroke-width="1" stroke-linecap="round"/>
+        <line x1="11" y1="21" x2="24" y2="21" stroke="#4a4a4a" stroke-width="1" stroke-linecap="round"/>
+        <line x1="11" y1="25" x2="26" y2="25" stroke="#4a4a4a" stroke-width="1" stroke-linecap="round"/>
+        <!--
+          Markdown chevron mark (M↓ abstraction):
+          Two upward strokes meeting at a peak, then a downward arrow —
+          the universal "markdown" visual shorthand, rendered at ~10px.
+          Positioned at bottom-center of page for a stamp/badge feel.
+        -->
+        <g transform="translate(12, 28)">
+          <!-- M shape: two peaks -->
+          <polyline
+            points="0,6 0,0 4,4 8,0 8,6"
+            stroke="#0088ee"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            fill="none"/>
+          <!-- Down arrow: stem + head -->
+          <line x1="11" y1="0" x2="11" y2="6" stroke="#3aa0ff" stroke-width="1.4" stroke-linecap="round"/>
+          <polyline
+            points="9,4 11,6 13,4"
+            stroke="#3aa0ff"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            fill="none"/>
+        </g>
+      </svg>
+
+      <!-- Wordmark -->
+      <div class="brand-wordmark">
+        <div class="brand-name">print<span class="accent-hyphen">-</span>md</div>
+        <div class="brand-tagline">Markdown to Print</div>
+      </div>
+    </div>
+
+    <!-- ── Ruled-line signature animation ──────────────────────── -->
+    <div class="ruled-lines" aria-hidden="true">
+      <div class="rule"></div>
+      <div class="rule"></div>
+      <div class="rule"></div>
+    </div>
+
+    <!-- ── Progress bar ─────────────────────────────────────────── -->
+    <div class="progress-track" role="progressbar"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+         aria-labelledby="splash-status">
+      <div id="splash-progress"></div>
+    </div>
+
+    <!-- ── Status text ──────────────────────────────────────────── -->
+    <div class="status-block">
+      <div id="splash-status"></div>
+      <div id="splash-substatus"></div>
+    </div>
+
+  </div><!-- /.splash-card -->
+
+  <!-- Version, populated by main process if desired via textContent -->
+  <div class="version-badge" id="splash-version"></div>
+
+</div><!-- /.splash -->
+
+<!--
+  Tiny inline script — purely defensive: if Electron loads this at a
+  non-standard DPR the layout still clips correctly, and we expose the
+  __splashUpdate hook as a no-op stub so the main process can safely
+  call it before the real implementation is wired (prevents JS errors
+  during the brief window between load and IPC setup).
+-->
+<script>
+  // No-op stub so __splashUpdate calls before IPC wiring don't throw.
+  window.__splashUpdate = window.__splashUpdate || function(status, progress, substatus) {
+    var s = document.getElementById('splash-status');
+    var p = document.getElementById('splash-progress');
+    var ss = document.getElementById('splash-substatus');
+    var pb = p && p.parentElement;
+    if (s && status !== undefined) s.textContent = status;
+    if (p && progress !== undefined) {
+      var pct = Math.max(0, Math.min(100, Number(progress)));
+      p.style.width = pct + '%';
+      if (pb) pb.setAttribute('aria-valuenow', String(pct));
+    }
+    if (ss && substatus !== undefined) ss.textContent = substatus;
+  };
+</script>
+</body>
+</html>

@@ -74,6 +74,23 @@ interface UrlPreviewBlockedEvent {
   reason: string;
 }
 
+// New-project scaffold (#25). Mirrors the lib's CreateProjectOptions/Result.
+interface CreateProjectOptions {
+  name: string;
+  author?: string;
+  parentDir: string;
+  folderName?: string;
+  template?: "book";
+  versionHistory?: "local-git" | "none";
+}
+interface CreateProjectResult {
+  projectDir: string;
+  manifestPath: string;
+  openFile: string;
+  versionHistory: "local-git" | "none";
+  versionHistoryError?: string;
+}
+
 interface RecentFolderEntry {
   path: string;
   title: string;
@@ -85,13 +102,112 @@ interface FavoriteEntry {
   title: string;
 }
 
+interface ProjectState {
+  currentPage?: number;
+  viewMode?: "single" | "two-column";
+  lastChapter?: string;
+  sidebarOpen?: boolean;
+  cursorLine?: number;
+  editorScroll?: number;
+  splitPaneRatio?: number;
+}
+
 interface ViewerPrefs {
   lastProjectDir?: string | null;
+  /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
+  sidebarOpen?: boolean;
+  /** @deprecated (#43) migration fallback — use projectStates[dir]. */
   currentPage?: number;
+  /** @deprecated (#43) migration fallback — use projectStates[dir]. */
   viewMode?: "single" | "two-column";
   recentFolders?: RecentFolderEntry[];
   favorites?: FavoriteEntry[];
+  projectStates?: Record<string, ProjectState>;
+  projectSearchRoots?: string[];
+  projectSource?: ProjectSourceHint;
 }
+
+/** Forward ref used by ViewerPrefs above; full union declared below. */
+type ProjectSourceHint =
+  | { type: "local-folder"; path: string }
+  | {
+      type: "local-git-folder";
+      path: string;
+      hasRemote: boolean;
+      remoteUrl?: string;
+      branch?: string;
+    }
+  | {
+      type: "managed-github";
+      installationId: string;
+      owner: string;
+      repo: string;
+      branch: string;
+      rootPath?: string;
+    };
+
+interface DiscoveredProject {
+  path: string;
+  title: string;
+}
+
+// Project source classification (#12). Mirrors @dimm-city/print-md-lib.
+type ProjectSource =
+  | { type: "local-folder"; path: string }
+  | {
+      type: "local-git-folder";
+      path: string;
+      hasRemote: boolean;
+      remoteUrl?: string;
+      branch?: string;
+    }
+  | {
+      type: "managed-github";
+      installationId: string;
+      owner: string;
+      repo: string;
+      branch: string;
+      rootPath?: string;
+    };
+
+interface ProjectCapabilities {
+  canRead: boolean;
+  canWriteLocal: boolean;
+  canEnableVersionHistory: boolean;
+  canSnapshot: boolean;
+  canViewHistory: boolean;
+  canRestoreSnapshot: boolean;
+  canPublish: boolean;
+  canSync: boolean;
+  authManagedByApp: boolean;
+}
+
+interface AppSettings {
+  editor: {
+    fontFamily: string;
+    fontSize: number;
+    lineHeight: number;
+    spellCheckLanguage: string;
+    autoSaveDelay: number;
+    crashRecovery: boolean;
+  };
+  appearance: {
+    theme: "light" | "dark" | "system";
+    previewBg: string;
+  };
+  preview: {
+    defaultZoom: string;
+    viewMode: "single" | "two-column";
+  };
+  advanced: {
+    fileWatcherInterval: number;
+    logLevel: "error" | "warn" | "info" | "debug";
+  };
+}
+
+type DeepPartialSettings = {
+  [K in keyof AppSettings]?: Partial<AppSettings[K]>;
+};
 
 contextBridge.exposeInMainWorld("electron", {
   // ──────────────────────────────────────────────────────────────────────
@@ -99,7 +215,7 @@ contextBridge.exposeInMainWorld("electron", {
   // electron/updater/contract.ts.  The renderer checks this to refuse
   // running against a stale shell.
   // ──────────────────────────────────────────────────────────────────────
-  apiVersion: 1 as const,
+  apiVersion: 2 as const,
 
   // ──────────────────────────────────────────────────────────────────────
   // Web-UI auto-update surface
@@ -133,15 +249,83 @@ contextBridge.exposeInMainWorld("electron", {
   showInFolder: (filePath: string): Promise<void> =>
     ipcRenderer.invoke("shell:showInFolder", filePath),
 
+  // Filesystem primitives (PlatformAdapter, #41 — editor seam for #38/#39)
+  readFile: (filePath: string): Promise<string> =>
+    ipcRenderer.invoke("fs:readFile", filePath),
+  writeFile: (filePath: string, content: string): Promise<{ mtimeMs: number }> =>
+    ipcRenderer.invoke("fs:writeFile", filePath, content),
+  listDir: (
+    dirPath: string,
+  ): Promise<Array<{ name: string; path: string; isDir: boolean }>> =>
+    ipcRenderer.invoke("fs:listDir", dirPath),
+  listProjectFiles: (
+    projectDir: string,
+  ): Promise<{ md: string[]; css: string[] }> =>
+    ipcRenderer.invoke("fs:listProjectFiles", projectDir),
+  // CSS print-safety lint (#39) — runs in main (postcss can't bundle into the SPA)
+  checkCss: (
+    css: string,
+    from?: string,
+  ): Promise<
+    Array<{ rule: string; severity: "error" | "warning"; message: string; line: number; column: number }>
+  > => ipcRenderer.invoke("lint:checkCss", css, from),
+  // File metadata (PlatformAdapter.statFile, #44 — external-edit detection)
+  statFile: (
+    filePath: string,
+  ): Promise<{ mtimeMs: number; size: number; exists: boolean }> =>
+    ipcRenderer.invoke("fs:statFile", filePath),
+  /**
+   * Watch a project folder for changes (#44). Subscribes to debounced
+   * `fs:folderChanged` events for `dirPath` and returns an unsubscribe fn that
+   * tears down the main-process watcher. The renderer never sees raw fs events.
+   */
+  watchFolder: (dirPath: string, cb: () => void): (() => void) => {
+    const listener = () => cb();
+    ipcRenderer.on("fs:folderChanged", listener);
+    void ipcRenderer.invoke("fs:watchFolder", dirPath);
+    return () => {
+      ipcRenderer.removeListener("fs:folderChanged", listener);
+      void ipcRenderer.invoke("fs:unwatchFolder", dirPath);
+    };
+  },
+
   // Lib API (replaces /api/* HTTP routes)
   getStatus: (): Promise<{ ok: boolean; runtime: string; name: string }> =>
     ipcRenderer.invoke("api:status"),
   getLastProject: (): Promise<string | null> =>
     ipcRenderer.invoke("app:getLastProject"),
+  splashStatus: (status?: string, progress?: number, sub?: string): Promise<void> =>
+    ipcRenderer.invoke("app:splashStatus", status, progress, sub),
+  rendererReady: (): Promise<void> => ipcRenderer.invoke("app:rendererReady"),
   getViewerPrefs: (): Promise<ViewerPrefs> =>
     ipcRenderer.invoke("app:getViewerPrefs"),
   setViewerPrefs: (patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("app:setViewerPrefs", patch),
+  // Per-project editor/preview state (#43)
+  getViewerProjectState: (projectDir: string): Promise<ProjectState | null> =>
+    ipcRenderer.invoke("app:getViewerProjectState", projectDir),
+  setViewerProjectState: (
+    projectDir: string,
+    patch: Partial<ProjectState>,
+  ): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("app:setViewerProjectState", projectDir, patch),
+  getSettings: (): Promise<AppSettings> =>
+    ipcRenderer.invoke("app:getSettings"),
+  setSettings: (patch: DeepPartialSettings): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("app:setSettings", patch),
+
+  // Native (OS) theme surface (#48)
+  getNativeTheme: (): Promise<{ shouldUseDarkColors: boolean }> =>
+    ipcRenderer.invoke("app:getNativeTheme"),
+  /** Subscribe to OS theme changes from main. Returns an unsubscribe fn. */
+  onNativeThemeUpdated: (
+    cb: (data: { shouldUseDarkColors: boolean }) => void
+  ): (() => void) => {
+    const listener = (_e: unknown, data: { shouldUseDarkColors: boolean }) =>
+      cb(data);
+    ipcRenderer.on("app:nativeThemeUpdated", listener);
+    return () => ipcRenderer.removeListener("app:nativeThemeUpdated", listener);
+  },
 
   // Open Location modal: recent folders + favorites
   getRecentFolders: (): Promise<
@@ -157,6 +341,18 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("app:toggleFavorite", folderPath, title),
   removeRecent: (folderPath: string): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("app:removeRecent", folderPath),
+  discoverProjects: (): Promise<DiscoveredProject[]> =>
+    ipcRenderer.invoke("app:discoverProjects"),
+
+  // Project source classification (#12)
+  classifyProject: (
+    path: string,
+  ): Promise<{ source: ProjectSource; capabilities: ProjectCapabilities }> =>
+    ipcRenderer.invoke("app:classifyProject", { path }),
+
+  // New-project scaffold (#25)
+  createProject: (options: CreateProjectOptions): Promise<CreateProjectResult> =>
+    ipcRenderer.invoke("app:createProject", options),
   startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>
@@ -185,5 +381,57 @@ contextBridge.exposeInMainWorld("electron", {
     const listener = (_e: unknown, data: UrlPreviewBlockedEvent) => cb(data);
     ipcRenderer.on("url-preview:blocked", listener);
     return () => ipcRenderer.removeListener("url-preview:blocked", listener);
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Unsaved-changes / crash-recovery surface (#44)
+  // ──────────────────────────────────────────────────────────────────────
+
+  /** Write a debounced crash-recovery snapshot of the open buffer (#44). */
+  writeRecovery: (
+    filePath: string,
+    content: string,
+    baseMtimeMs: number,
+  ): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("recovery:write", filePath, content, baseMtimeMs),
+  /** Clear a recovery snapshot after a successful disk save (#44). */
+  clearRecovery: (filePath: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("recovery:clear", filePath),
+  /** List pending recovery snapshots for an opened project, newest first (#44). */
+  listRecovery: (
+    projectDir: string,
+  ): Promise<
+    Array<{ filePath: string; recoveryPath: string; savedAt: number; baseMtimeMs: number }>
+  > => ipcRenderer.invoke("recovery:list", projectDir),
+
+  /** Push the renderer's pending-save state to main for the close gate (#44). */
+  setDirtyState: (isDirty: boolean): Promise<void> =>
+    ipcRenderer.invoke("app:setDirtyState", isDirty),
+  /**
+   * Subscribe to main's request to flush before the window closes (#44). The
+   * renderer flushes, then calls `app:flushDone` (sent by the buffer store).
+   * Returns an unsubscribe fn.
+   */
+  onFlushBeforeClose: (cb: () => void): (() => void) => {
+    const listener = () => {
+      // The renderer flushes its buffer, then signals completion so main can
+      // destroy the window. Signal even if the cb throws so quit never hangs.
+      void Promise.resolve()
+        .then(() => cb())
+        .finally(() => {
+          void ipcRenderer.invoke("app:flushDone");
+        });
+    };
+    ipcRenderer.on("app:flushBeforeClose", listener);
+    return () => ipcRenderer.removeListener("app:flushBeforeClose", listener);
+  },
+  /**
+   * Subscribe to debounced folder-change notifications carrying the changed
+   * file's basename (#44). Returns an unsubscribe fn.
+   */
+  onFolderChanged: (cb: (data: { filename: string }) => void): (() => void) => {
+    const listener = (_e: unknown, data: { filename: string }) => cb(data);
+    ipcRenderer.on("fs:folderChanged", listener);
+    return () => ipcRenderer.removeListener("fs:folderChanged", listener);
   },
 });

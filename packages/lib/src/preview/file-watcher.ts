@@ -19,6 +19,7 @@ import { BOOK_HTML_FILENAME } from '../lib/viewer';
 import type { ServerState } from './server-context';
 import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
 import { getAssetPath } from '../lib/embedded-assets';
+import { prepaginatePreviewHtml } from '../lib/build-runner';
 
 /**
  * Build the list of asset roots that live outside the input path and need
@@ -101,6 +102,20 @@ const EMPTY_BOOK_HTML = `<!doctype html>
  * Empty `inputPath` writes a static placeholder — the viewer app (packages/viewer)
  * supplies a real path via its own folder picker.
  */
+/**
+ * Whether the incremental live-preview (shell + per-chapter splice) is active.
+ * DEFAULT ON; opt out with PRINTMD_PREVIEW_INCREMENTAL=0 to fall back to the
+ * direct book.html preview (CSS hot-swap + full reload on content). The static
+ * pre-pagination experiment (PRINTMD_PREVIEW_PREPAGINATE=1) takes precedence and
+ * disables incremental, since it ships engine-less HTML the splice can't use.
+ */
+export function incrementalPreviewEnabled(): boolean {
+  return (
+    process.env.PRINTMD_PREVIEW_INCREMENTAL !== "0" &&
+    process.env.PRINTMD_PREVIEW_PREPAGINATE !== "1"
+  );
+}
+
 export async function generateAndWriteHtml(
   inputPath: string,
   tempDir: string,
@@ -118,12 +133,14 @@ export async function generateAndWriteHtml(
     pluginCss = collectPluginCss(plugins);
   }
 
+  const incremental = incrementalPreviewEnabled();
   const html = await renderChapters(inputPath, {
     title: config.title ?? "Document",
     styles: config.styles,
     files: config.source?.files ?? null,
     plugins,
     pluginCss,
+    wrapChapters: incremental,
   });
 
   // Inject into book.html, in order:
@@ -142,12 +159,71 @@ export async function generateAndWriteHtml(
   const iface =
     '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
     + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
-  const output = html.replace(
+  let output = html.replace(
     /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
     iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
   );
 
+  // Incremental preview: page-isolate each chapter so the shell can re-paginate
+  // and splice a single edited chapter without disturbing the others.
+  if (incremental && /<\/head>/i.test(output)) {
+    output = output.replace(/<\/head>/i, '<style>.pmd-chapter{break-before:page}</style>\n</head>');
+  }
+
+  // Opt-in: pre-paginate at build time in the warm pooled browser so the preview
+  // browser loads STATIC pages on each hot reload (no runtime re-pagination, no
+  // screenshifting). Falls back to the polyfill output on any error so the
+  // preview never breaks. Enable with PRINTMD_PREVIEW_PREPAGINATE=1.
+  if (process.env.PRINTMD_PREVIEW_PREPAGINATE === "1") {
+    try {
+      const staticHtml = await prepaginatePreviewHtml(output, tempDir);
+      await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), staticHtml, "utf-8");
+      return;
+    } catch (err) {
+      debug(`Pre-pagination failed, serving runtime-polyfill HTML: ${err}`);
+    }
+  }
+
   await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), output, "utf-8");
+}
+
+/**
+ * Render a SINGLE source file as a standalone, paginatable preview document
+ * (same CSS/plugins/scripts as the full book, chapter-wrapped + page-isolated).
+ * The incremental shell loads this in a hidden iframe, paginates just this
+ * chapter, and splices its pages into the live view — so an edit re-paginates
+ * one chapter (~hundreds of ms) instead of the whole document (~seconds).
+ */
+export async function renderChapterPreviewHtml(
+  inputPath: string,
+  file: string,
+  config: { title?: string; styles?: string[]; plugins?: any[] }
+): Promise<string> {
+  let plugins;
+  let pluginCss = '';
+  if (config.plugins && config.plugins.length > 0) {
+    plugins = await loadPlugins(config.plugins, inputPath);
+    pluginCss = collectPluginCss(plugins);
+  }
+  const html = await renderChapters(inputPath, {
+    title: config.title ?? "Document",
+    styles: config.styles,
+    files: [file],
+    plugins,
+    pluginCss,
+    wrapChapters: true,
+  });
+  const iface =
+    '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
+    + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
+  let out = html.replace(
+    /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
+    iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
+  );
+  if (/<\/head>/i.test(out)) {
+    out = out.replace(/<\/head>/i, '<style>.pmd-chapter{break-before:page}</style>\n</head>');
+  }
+  return out;
 }
 
 /**
@@ -206,17 +282,39 @@ export function createFileWatcher(state: ServerState): FSWatcher {
           debug(`Updated: ${dest.relativePath}`);
         }
 
-        // Reload config and regenerate
+        // CSS hot-swap fast path: a stylesheet edit doesn't change content flow,
+        // so we re-copy it (above) and tell the client to re-fetch JUST that
+        // <link> — no markdown re-render, no re-pagination, no reload. Scroll
+        // position is preserved and the new styles apply on the next frame.
+        // (Geometry-affecting CSS like @page size won't re-flow page boxes until
+        // a content change triggers a full rebuild — acceptable for live tweaks.)
+        if (dest && path.extname(filePath).toLowerCase() === '.css') {
+          state.previewServer?.broadcastCssUpdate(dest.relativePath);
+          info(`CSS hot-swapped: ${dest.relativePath}`);
+          return;
+        }
+
+        // Content change: re-render markdown + regenerate book.html (keeps fresh
+        // loads correct) then update the live view.
         const manifest = await loadManifest(state.currentInputPath);
         const updatedConfig = resolveConfig({}, manifest);
         state.config = updatedConfig;
         await generateAndWriteHtml(state.currentInputPath, state.tempDir, updatedConfig);
 
-        // Tell every connected HMR client to reload. The Bun preview server
-        // owns the WebSocket pub/sub topic — we just ask it to publish.
-        state.previewServer?.broadcastReload();
-
-        info('Preview updated');
+        // Incremental: a single markdown file changed → splice just that chapter
+        // in the live shell (re-paginate one chapter, not the whole doc).
+        if (
+          incrementalPreviewEnabled() &&
+          dest &&
+          path.extname(filePath).toLowerCase() === ".md"
+        ) {
+          state.previewServer?.broadcastContentUpdate(dest.relativePath);
+          info(`Chapter updated: ${dest.relativePath}`);
+        } else {
+          // Tell every connected HMR client to reload.
+          state.previewServer?.broadcastReload();
+          info('Preview updated');
+        }
       } catch (err) {
         logError('Failed to regenerate preview:', err);
       } finally {

@@ -18,9 +18,10 @@
  * Exit 0 on pass, 1 on fail.
  */
 
-import { _electron as electron } from "playwright";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { _electron as electron } from "playwright-core";
+import { existsSync, mkdtempSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { tmpdir } from "node:os";
 
 function log(msg) { console.log(`[etest] ${msg}`); }
 function fail(msg) { console.error(`[etest] FAIL: ${msg}`); process.exit(1); }
@@ -36,12 +37,15 @@ if (!existsSync(fixturePath)) fail(`fixture not found at ${fixturePath}`);
 
 log(`launching packaged electron app: ${exePath}`);
 // executablePath points at the packaged print-md-viewer.exe (or .AppImage)
-// produced by electron-builder. With no args, it boots the embedded
-// electron-dist/main.js using the bundled Electron runtime — i.e. exactly
-// what the end user runs when they double-click the installed app.
+// produced by electron-builder — exactly what the end user runs. Launch with a
+// FRESH userData dir so the run is deterministic: the app shows the empty
+// "Open a folder" state regardless of any project the developer's real profile
+// last had open (otherwise it auto-reopens that project and the sentinel check
+// below sees the wrong screen).
+const userDataDir = mkdtempSync(join(tmpdir(), "pmd-etest-"));
 const electronApp = await electron.launch({
   executablePath: exePath,
-  args: [],
+  args: [`--user-data-dir=${userDataDir}`, "--no-sandbox"],
   env: { ...process.env, ELECTRON_DISABLE_GPU: "1" },
 });
 

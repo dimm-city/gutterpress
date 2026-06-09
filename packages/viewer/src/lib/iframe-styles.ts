@@ -37,6 +37,11 @@ body {
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: wrap !important;
+  /* Center each row so a LONE page (the cover, or an odd last page) sits in the
+     middle of the spread instead of flex-starting to the left half, leaving the
+     right half empty. Full two-page rows fill the fixed width exactly, so
+     centering is a no-op for them. */
+  justify-content: center !important;
   width: calc(var(--pagedjs-width) * 2 + 8mm) !important;
   margin: 20mm auto !important;
   row-gap: 20mm !important;
@@ -75,6 +80,7 @@ body.view-single .pagedjs_left_page {
 body.view-two-column .pagedjs_pages {
   flex-direction: row !important;
   flex-wrap: wrap !important;
+  justify-content: center !important;
   width: calc(var(--pagedjs-width) * 2 + 8mm) !important;
   row-gap: 20mm !important;
   column-gap: 8mm !important;

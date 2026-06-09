@@ -198,6 +198,63 @@ for users with nothing pre-installed. NOTE: the existing PDF-validation external
 tools (qpdf/gs/pdf* via `execCapture`) are a separate, pre-existing concern and
 are unaffected by this rule — this rule governs the new Git/source surface only.
 
+### 8. Platform abstraction — the renderer is host-agnostic; the host runs platform code (CORE REQUIREMENT)
+
+> [!ALERT]
+> This is a **non-negotiable core architecture requirement** for the viewer and
+> for **every Electron application started in this org** — it is the gold
+> standard, applied by default. See ADR `docs/adr/0004-platform-abstraction.md`.
+
+The viewer is an Electron shell hosting a **static SvelteKit SPA**. The SPA is
+written so it could run unchanged in a browser PWA tomorrow. To make that true —
+and to keep the desktop build correct — there is exactly **one seam** between the
+UI and the host, and it is honoured absolutely:
+
+**The renderer (the SPA, everything under `packages/viewer/src/`) MUST stay
+"PWA-clean": it contains ZERO platform/host code.**
+
+- **No runtime imports from `@dimm-city/print-md-lib`** in the SPA. `import type`
+  is fine (erased at build). A *value* import (e.g. `import { checkCss }`) drags
+  the Node-target lib — and its transitive `fileURLToPath`/`node:*`/`postcss`/
+  `isomorphic-git` code — into the browser bundle, which builds fine (vite shims
+  `node:*`) but **crashes at runtime**. This exact mistake shipped a `500`/
+  `fileURLToPath is not a function` crash in 0.4.0-beta.4.
+- **No `node:*` / `fs` / `path` / `url` / `child_process` / `postcss` imports**
+  in the SPA. Node-oriented libraries (postcss included) belong in the host.
+- **All host work goes through the platform adapter.** App code does
+  `import { getPlatform, isDesktop } from "$lib/platform"` and calls
+  `platform.X(...)` — a platform-agnostic, typed, async API. It never touches
+  `window.electron`/`ipcRenderer` directly (only `electron-adapter.ts` may).
+
+**Adding a new host capability** means wiring it across the **five layers**, then
+calling it via `getPlatform()`:
+
+1. `electron/main.ts` — `ipcMain.handle("ns:op", …)` (the real Node work)
+2. `electron/preload.ts` — expose it on the `contextBridge` object
+3. `electron/types.d.ts` — add it to the `Window.electron` shape
+4. `src/lib/platform/contract.ts` — add it to `HostServices` + `ElectronBridge`
+   (and define any payload types **locally**, decoupled from the lib)
+5. `ElectronAdapter` (delegate to `bridge().op`) **and** `WebAdapter` (stub:
+   reject / throw / safe no-op until the PWA lands)
+
+**The canonical fix when node code is needed by the UI:** don't bundle it into
+the renderer — run it in the host and expose a narrow async method. Example:
+CSS print-safety linting (`checkCss`) is postcss-based, so it runs in `main` via
+a `lint:checkCss` IPC and the editor's lint gutter calls
+`getPlatform().checkCss(...)` (CodeMirror accepts a `Promise` lint source).
+
+**Verification (must pass before any viewer change is "done"):** after
+`npm run build`, the SPA bundle must contain no host code —
+`grep -rlE "fileURLToPath|node:module|createRequire|node:fs|node:url|isomorphic-git" build/_app/`
+must output **nothing**. Treat a hit as a release-blocking regression. (The
+`bun build --compile` CLI binary is the *opposite* environment — it bundles the
+lib's Node code on purpose; §1/§3 govern it. This rule governs the renderer.)
+
+Why this is the default for new Electron apps: the renderer/host split is the
+only thing that keeps an Electron UI portable to web, testable without a host,
+and free of the "works in `vite dev`, crashes in the packaged app" trap. Build
+the typed adapter seam **first**, before the first feature adds a host call.
+
 ## DC Design Guide
 
 The `examples/dc-design-guide/` folder is the **canonical design reference** for

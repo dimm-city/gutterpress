@@ -8,6 +8,7 @@ import { renderChaptersToFile } from "./markdown/index";
 import { loadPlugins, collectPluginCss } from "./markdown/plugins";
 import { copyAssets, resolveAssetDestName } from "./assets";
 import { requireChromiumExecutable, resolveChromiumExecutable } from "./chromium";
+import { prewarmBrowser, getBrowser, closeBrowser } from "./browser-pool";
 import { isToolAvailable } from "./tool-probe";
 import { patchHtmlForPagedjs } from "./pagedjs";
 import {
@@ -53,6 +54,14 @@ export interface BuildRunnerOptions {
    * The Electron viewer injects one backed by `webContents.printToPDF`.
    */
   pdfRenderer?: PdfRenderer;
+  /**
+   * Keep the pooled headless browser alive after the build returns. A one-shot
+   * CLI build leaves this false so the process can exit; a long-lived
+   * preview/watch server sets it true so the browser stays warm across rebuilds
+   * (every rebuild then skips the ~1–2s Chromium launch). The server owns
+   * `closeBrowser()` on shutdown.
+   */
+  keepBrowserAlive?: boolean;
   rawArgs: Record<string, unknown>;
 }
 
@@ -214,6 +223,15 @@ export interface PdfRenderInput {
   outPdf: string;
   /** Hard ceiling for navigation + pagination + PDF generation. */
   timeoutMs: number;
+  /**
+   * When set, after printing the PDF the renderer also serializes the
+   * already-paginated DOM (the same DOM it just printed) and writes it to this
+   * path as raw static HTML. Lets ONE pagination pass emit BOTH the PDF and the
+   * static viewer HTML, so screen and PDF come from the same artifact. The
+   * serialize is read-only and runs AFTER `page.pdf()`, so it cannot affect the
+   * PDF. Optional; injected renderers that cannot serialize may ignore it.
+   */
+  captureStaticHtmlTo?: string;
 }
 
 /**
@@ -228,27 +246,22 @@ export interface PdfRenderInput {
  */
 export type PdfRenderer = (input: PdfRenderInput) => Promise<void>;
 
-/** Default renderer: system Chromium via puppeteer-core. */
-const puppeteerPdfRenderer: PdfRenderer = async ({ url, outPdf, timeoutMs }) => {
-  const executablePath = await requireChromiumExecutable();
-  // Lazy-load puppeteer-core. It is the single biggest dep in the lib graph
-  // (~13MB plus transitive parse cost) and is only needed for PDF generation.
-  const puppeteer = (await import("puppeteer-core")).default;
-  // Extra Chromium flags, space-separated, via PRINTMD_CHROMIUM_ARGS. Opt-in
-  // and empty by default so desktop/CLI behavior is unchanged. Containers and
-  // some CI runners need "--no-sandbox --disable-dev-shm-usage" because
-  // headless Chromium refuses to start as root / with a small /dev/shm.
-  const extraChromiumArgs = (process.env.PRINTMD_CHROMIUM_ARGS ?? "")
-    .split(/\s+/)
-    .filter(Boolean);
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath,
-    args: extraChromiumArgs,
-    protocolTimeout: timeoutMs,
-  });
+/** Hard ceiling for navigation + pagination + PDF generation. Large books need
+ *  this budget; it is also the puppeteer protocolTimeout for the pooled browser. */
+const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
+
+/** Default renderer: system Chromium via puppeteer-core (pooled + pre-warmable). */
+const puppeteerPdfRenderer: PdfRenderer = async ({
+  url,
+  outPdf,
+  timeoutMs,
+  captureStaticHtmlTo,
+}) => {
+  // Reuse the pre-warmed pooled browser; open a fresh page and close the PAGE
+  // (not the browser) so the browser stays warm for the next render.
+  const browser = await getBrowser(timeoutMs);
+  const page = await browser.newPage();
   try {
-    const page = await browser.newPage();
     await page.setViewport({ width: 1920, height: 1080 });
     page.setDefaultNavigationTimeout(timeoutMs);
     page.setDefaultTimeout(timeoutMs);
@@ -287,21 +300,254 @@ const puppeteerPdfRenderer: PdfRenderer = async ({ url, outPdf, timeoutMs }) => 
       height: pagedInfo.height ?? "11.25in",
       margin: { top: "0", right: "0", bottom: "0", left: "0" },
     });
+
+    // Unification: serialize the SAME printed DOM to static HTML so the on-screen
+    // viewer renders the identical artifact the PDF was printed from. Read-only,
+    // after page.pdf() — does not perturb the PDF.
+    if (captureStaticHtmlTo) {
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      const staticHtml = await page.evaluate(
+        () =>
+          "<!DOCTYPE html>\n" +
+          (globalThis as any).document.documentElement.outerHTML
+      );
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+      await fsp.writeFile(captureStaticHtmlTo, staticHtml, "utf-8");
+    }
   } finally {
-    await browser.close();
+    await page.close();
   }
 };
+
+/**
+ * Build-time pagination (SSG model): drive headless Chromium to fully paginate
+ * the staged HTML with Paged.js, then serialize the resulting already-fragmented
+ * DOM to a static HTML string. Paged.js's polisher injects its layout CSS as
+ * `<style>` elements INTO the DOM, so the serialized markup carries everything
+ * needed to render the pages with NO runtime pagination engine.
+ *
+ * This is the same headless engine the PDF path uses — the only difference is we
+ * capture `document.documentElement.outerHTML` instead of (or before) printing.
+ */
+async function paginateToStaticHtml(stagedHtml: string): Promise<string> {
+  const stageDir = path.dirname(path.resolve(stagedHtml));
+  const htmlFilename = path.basename(stagedHtml);
+
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url!, "http://127.0.0.1");
+    const relative =
+      url.pathname === "/"
+        ? htmlFilename
+        : decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+    const filePath = path.resolve(stageDir, relative);
+    if (filePath !== stageDir && !filePath.startsWith(stageDir + path.sep)) {
+      res.writeHead(403);
+      res.end("Forbidden");
+      return;
+    }
+    try {
+      const data = await fsp.readFile(filePath);
+      const ct =
+        STATIC_MIME[path.extname(filePath).toLowerCase()] ??
+        "application/octet-stream";
+      res.writeHead(200, { "Content-Type": ct });
+      res.end(data);
+    } catch {
+      res.writeHead(404);
+      res.end("Not found");
+    }
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as net.AddressInfo).port;
+
+  try {
+    // Reuse the pre-warmed pooled browser; open a fresh page, close the PAGE.
+    const browser = await getBrowser(RENDER_TIMEOUT_MS);
+    const page = await browser.newPage();
+    try {
+      await page.setViewport({ width: 1920, height: 1080 });
+      page.setDefaultNavigationTimeout(RENDER_TIMEOUT_MS);
+      page.setDefaultTimeout(RENDER_TIMEOUT_MS);
+
+      await page.goto(`http://127.0.0.1:${port}/${htmlFilename}`, {
+        waitUntil: "networkidle0",
+      });
+
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      await page.evaluate(() => (globalThis as any).document.fonts.ready);
+      await page
+        .waitForFunction(() => (globalThis as any).__PAGED_RENDERED__ === true, {
+          timeout: RENDER_TIMEOUT_MS,
+        })
+        .catch(() => {});
+
+      const result = await page.evaluate(() => {
+        const g = globalThis as any;
+        const count = g.document.querySelectorAll(".pagedjs_page").length;
+        return {
+          count: count as number,
+          html:
+            "<!DOCTYPE html>\n" + g.document.documentElement.outerHTML,
+        };
+      });
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+      log.info(
+        `Paged.js paginated ${result.count} pages → serialized to static HTML`
+      );
+      return result.html;
+    } finally {
+      await page.close();
+    }
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+/**
+ * Remove the Paged.js pagination ENGINE from an already-paginated, serialized
+ * document so the browser renders the static pages as-is and never re-paginates.
+ * Strips (a) the polyfill `<script src>` and (b) the inline break-inside handler.
+ * Navigation toolbar scripts are NOT touched — they only scroll between pages
+ * that already exist, which is not DOM-pagination.
+ */
+export function stripPaginationRuntime(html: string): string {
+  let out = html;
+  // (a) Paged.js polyfill <script src=....paged.polyfill.js> (CDN or vendored).
+  //     Match the polyfill FILENAME specifically — a bare "paged" substring also
+  //     matches the navigation scripts (pagedjs-interface.js / pagedjs-bridge.js),
+  //     which must survive.
+  out = out.replace(
+    /<script\b[^>]*\bsrc=["'][^"']*paged\.polyfill[^"']*["'][^>]*>\s*<\/script>/gi,
+    ""
+  );
+  // (b) The inline BreakInsideAvoidHandler block (identified by its class name);
+  //     it sets window.PagedConfig.* which is dead without the engine.
+  out = out.replace(
+    /<script\b(?![^>]*\bsrc=)[^>]*>(?:(?!<\/script>)[\s\S])*?BreakInsideAvoidHandler(?:(?!<\/script>)[\s\S])*?<\/script>/gi,
+    ""
+  );
+  return out;
+}
+
+/**
+ * Inject the navigation-only toolbar scripts (page nav, zoom, view modes) into
+ * the static document head. These read the pre-rendered `.pagedjs_page`
+ * elements; they do not paginate.
+ */
+export function injectNavigationScripts(html: string): string {
+  const tags =
+    '  <script src="preview/scripts/pagedjs-interface.js"></script>\n' +
+    '  <script src="preview/scripts/pagedjs-bridge.js"></script>\n';
+  if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, tags + "</head>");
+  return tags + html;
+}
+
+/**
+ * Turn a raw serialized paginated document into the shippable static viewer
+ * `book.html`: copy the navigation toolbar scripts into outDir, strip the
+ * pagination engine, wire the nav scripts, and write the file. Shared by the
+ * HTML format and the PDF unification path.
+ */
+async function finalizeStaticBook(
+  rawSerializedHtml: string,
+  htmlFile: string,
+  outDir: string
+): Promise<void> {
+  await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
+  await fsp.copyFile(
+    await getAssetPath("preview/scripts/pagedjs-interface.js"),
+    path.join(outDir, "preview/scripts/pagedjs-interface.js")
+  );
+  await fsp.copyFile(
+    await getAssetPath("preview/scripts/pagedjs-bridge.js"),
+    path.join(outDir, "preview/scripts/pagedjs-bridge.js")
+  );
+  await fsp.writeFile(
+    htmlFile,
+    injectNavigationScripts(stripPaginationRuntime(rawSerializedHtml)),
+    "utf-8"
+  );
+}
+
+/**
+ * Fallback for `--format html` when no headless browser is available: ship the
+ * Paged.js polyfill + nav scripts so the BROWSER paginates at load time (the
+ * pre-SSG behavior). Slower at runtime and not pre-paginated, but it works with
+ * no Chromium at build. Mirrors the historic HTML output exactly.
+ */
+export async function shipRuntimePaginatedHtml(
+  htmlFile: string,
+  outDir: string
+): Promise<void> {
+  await fsp.mkdir(path.join(outDir, "vendor"), { recursive: true });
+  await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
+  await fsp.copyFile(
+    await getAssetPath("vendor/paged.polyfill.js"),
+    path.join(outDir, "vendor/paged.polyfill.js")
+  );
+  await fsp.copyFile(
+    await getAssetPath("preview/scripts/pagedjs-interface.js"),
+    path.join(outDir, "preview/scripts/pagedjs-interface.js")
+  );
+  await fsp.copyFile(
+    await getAssetPath("preview/scripts/pagedjs-bridge.js"),
+    path.join(outDir, "preview/scripts/pagedjs-bridge.js")
+  );
+  const bookSource = await fsp.readFile(htmlFile, "utf-8");
+  const bookWithInterface = bookSource.replace(
+    /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
+    '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="preview/scripts/pagedjs-bridge.js"></script>\n  <script src="vendor/paged.polyfill.js"></script>'
+  );
+  await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
+}
+
+/**
+ * Pre-paginate a LIVE-PREVIEW HTML string (which still carries the Paged.js
+ * polyfill + break handler) into static, already-paginated HTML using the warm
+ * pooled browser, so the preview browser loads static pages with NO runtime
+ * pagination on each hot reload. `servingDir` is the preview temp dir the result
+ * is served from; the vendored polyfill is placed there so the pagination pass's
+ * static server can load it, and the nav toolbar scripts already present in the
+ * input survive the strip. Returns the static HTML; the caller writes book.html.
+ *
+ * The pooled browser stays warm across edits (the preview process never closes
+ * it), so each rebuild pays only pagination — not the ~1.5s Chromium launch.
+ */
+export async function prepaginatePreviewHtml(
+  htmlWithEngine: string,
+  servingDir: string
+): Promise<string> {
+  // paginateToStaticHtml serves `servingDir` as a plain static dir, so the
+  // polyfill the staged page references (/vendor/paged.polyfill.js) must be a
+  // real file there.
+  const vendorPoly = path.join(servingDir, "vendor", "paged.polyfill.js");
+  if (!fs.existsSync(vendorPoly)) {
+    await fsp.mkdir(path.dirname(vendorPoly), { recursive: true });
+    await fsp.copyFile(
+      await getAssetPath("vendor/paged.polyfill.js"),
+      vendorPoly
+    );
+  }
+  const staging = path.join(servingDir, "__pmd_prepaginate.html");
+  await fsp.writeFile(staging, htmlWithEngine, "utf-8");
+  try {
+    const raw = await paginateToStaticHtml(staging);
+    // Strip the polyfill + break handler; the interface/bridge nav scripts that
+    // were already in the preview HTML survive (they only navigate).
+    return stripPaginationRuntime(raw);
+  } finally {
+    await fsp.rm(staging, { force: true });
+  }
+}
 
 async function renderHtmlToPdf(
   inputHtml: string,
   outPdf: string,
-  renderer: PdfRenderer = puppeteerPdfRenderer
+  renderer: PdfRenderer = puppeteerPdfRenderer,
+  captureStaticHtmlTo?: string
 ) {
   const stageDir = path.dirname(path.resolve(inputHtml));
   const htmlFilename = path.basename(inputHtml);
-  // Large books need this budget for navigation, Paged.js pagination, and the
-  // browser's printToPDF call itself.
-  const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url!, "http://127.0.0.1");
@@ -333,6 +579,7 @@ async function renderHtmlToPdf(
       url: `http://127.0.0.1:${port}/${htmlFilename}`,
       outPdf,
       timeoutMs: RENDER_TIMEOUT_MS,
+      captureStaticHtmlTo,
     });
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -384,6 +631,16 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
   if (format !== "html") {
     await preflightBuildTools(format, opts, config);
   }
+
+  // 2.6. Pre-warm the headless browser NOW (fire-and-forget) so the ~1–2s
+  // Chromium cold start overlaps with lint + validation + markdown render +
+  // asset staging below, instead of sitting on the critical path at pagination
+  // time. Only when this build will actually paginate in Chromium: a PDF/PDFX
+  // build with no injected renderer, or an HTML build with a browser available.
+  const willPaginateInChromium =
+    (format !== "html" && !opts.pdfRenderer) ||
+    (format === "html" && !!(await resolveChromiumExecutable()));
+  if (willPaginateInChromium) prewarmBrowser(RENDER_TIMEOUT_MS);
 
   // 3. Lint
   if (gates.lint) {
@@ -456,29 +713,51 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
     });
   }
 
-  // === HTML format: stop here ============================================
+  // === HTML format =======================================================
+  // Pre-paginate at BUILD time (static-site-generator model): run Paged.js once
+  // in headless Chromium, serialize the fully-fragmented DOM, and ship that
+  // static HTML so the browser renders pages with NO runtime pagination JS. This
+  // inverts today's model (shipping the polyfill so the browser re-paginates on
+  // every load). The navigation toolbar scripts are kept — they only scroll
+  // between already-laid-out pages; they do not modify the DOM to render pages.
   if (format === "html") {
-    // Vendor Paged.js + interface + bridge locally so the HTML output works offline.
-    await fsp.mkdir(path.join(outDir, "vendor"), { recursive: true });
-    await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
-    await fsp.copyFile(
-      await getAssetPath("vendor/paged.polyfill.js"),
-      path.join(outDir, "vendor/paged.polyfill.js")
-    );
-    await fsp.copyFile(
-      await getAssetPath("preview/scripts/pagedjs-interface.js"),
-      path.join(outDir, "preview/scripts/pagedjs-interface.js")
-    );
-    await fsp.copyFile(
-      await getAssetPath("preview/scripts/pagedjs-bridge.js"),
-      path.join(outDir, "preview/scripts/pagedjs-bridge.js")
-    );
-    const bookSource = await fsp.readFile(htmlFile, "utf-8");
-    const bookWithInterface = bookSource.replace(
-      /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
-      '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="preview/scripts/pagedjs-bridge.js"></script>\n  <script src="vendor/paged.polyfill.js"></script>'
-    );
-    await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
+    const chromium = await resolveChromiumExecutable();
+    if (!chromium) {
+      // No headless browser at build → fall back to runtime pagination so the
+      // build still succeeds (the browser paginates on load — pre-SSG behavior).
+      log.warn(
+        "Chromium not found — shipping runtime-paginated HTML (the browser will " +
+          "paginate on load). Install Chromium or set CHROMIUM_PATH for " +
+          "pre-paginated static output."
+      );
+      await shipRuntimePaginatedHtml(htmlFile, outDir);
+    } else {
+      // Stage a working copy for the build-time pagination pass (assets + polyfill).
+      const htmlStage = path.resolve(".print-md-stage-html");
+      await fsp.rm(htmlStage, { recursive: true, force: true });
+      await fsp.mkdir(htmlStage, { recursive: true });
+      const stagedBook = path.join(htmlStage, BOOK_HTML_FILENAME);
+      await fsp.copyFile(htmlFile, stagedBook);
+      if (assetDirs.length > 0) {
+        const flattenedAssetDirs = Array.from(
+          new Set(assetDirs.map(resolveAssetDestName))
+        );
+        await copyAssets(outDir, htmlStage, flattenedAssetDirs);
+      }
+      await fsp.mkdir(path.join(htmlStage, "vendor"), { recursive: true });
+      await fsp.copyFile(
+        await getAssetPath("vendor/paged.polyfill.js"),
+        path.join(htmlStage, "vendor/paged.polyfill.js")
+      );
+      // Inject the break-inside handler + polyfill so pagination AND its cleanup
+      // (ghost-card dedupe, orphan-page hide) run during the build pass.
+      await patchHtmlForPagedjs(stagedBook, "./vendor/paged.polyfill.js");
+
+      log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
+      const paginated = await paginateToStaticHtml(stagedBook);
+      await finalizeStaticBook(paginated, htmlFile, outDir);
+      await fsp.rm(htmlStage, { recursive: true, force: true });
+    }
 
     // Write a minimal index.html that redirects to book.html so static hosts
     // (Azure SWA, GitHub Pages, etc.) have a default entry point. This is not
@@ -506,6 +785,9 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
     });
     log.success(`Wrote: ${path.join(outDir, "book.html")}`);
     log.info(`Fingerprint: ${fingerprintPath}`);
+    // Close the pooled browser unless the caller (e.g. a preview server) wants
+    // it kept warm for the next rebuild. No-op if nothing was launched.
+    if (!opts.keepBrowserAlive) await closeBrowser();
     return {
       outDir,
       htmlPath: htmlFile,
@@ -547,7 +829,23 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
   const rawPdf = pdfxMode ? path.join(stage, "raw.pdf") : path.resolve(pdfFile);
   log.info("Rendering HTML to PDF via Chromium+Paged.js");
   await fsp.mkdir(path.dirname(path.resolve(pdfFile)), { recursive: true });
-  await renderHtmlToPdf(stagedHtml, rawPdf, opts.pdfRenderer);
+  // PDF unification: the default renderer prints the PDF and, from the SAME
+  // pagination pass, serializes the static viewer book.html — so the on-screen
+  // pages and the PDF come from one paginated artifact. The PDF call itself is
+  // unchanged, so the PDF is pixel-identical to the pre-SSG pipeline. Injected
+  // renderers (e.g. the Electron viewer) print only.
+  const staticHtmlRaw = opts.pdfRenderer
+    ? undefined
+    : path.join(stage, "book-static-raw.html");
+  await renderHtmlToPdf(stagedHtml, rawPdf, opts.pdfRenderer, staticHtmlRaw);
+  if (staticHtmlRaw && fs.existsSync(staticHtmlRaw)) {
+    await finalizeStaticBook(
+      await fsp.readFile(staticHtmlRaw, "utf-8"),
+      htmlFile,
+      outDir
+    );
+    log.success(`Wrote static viewer: ${path.join(outDir, "book.html")}`);
+  }
 
   if (!pdfxMode) {
     // stampCreator writes /Creator (print-md) into the PDF's Info dict using
@@ -631,6 +929,10 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
 
   log.success(`Wrote: ${pdfFile}`);
   log.info(`Fingerprint: ${fingerprintPath}`);
+
+  // Close the pooled browser unless the caller wants it kept warm. No-op for the
+  // injected-renderer (Electron) path, which never used the pool.
+  if (!opts.keepBrowserAlive) await closeBrowser();
 
   return {
     outDir,

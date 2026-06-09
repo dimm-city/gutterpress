@@ -1,13 +1,23 @@
 <script lang="ts">
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
+  import FileTree from "$lib/components/FileTree.svelte";
+  import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
+  import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
+  import type { RecoveryItem } from "$lib/components/CrashRecoveryDialog.svelte";
+  import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
+  import type { ProjectCapabilities } from "$lib/platform/contract";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
+  import SettingsDialog from "$lib/components/SettingsDialog.svelte";
   import OpenLocationDialog from "$lib/components/OpenLocationDialog.svelte";
+  import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { PreviewClient } from "$lib/preview-client";
+  import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
+  import { getPlatform, isDesktop } from "$lib/platform";
+  import { useSettings, _loadSettings } from "$lib/settings.svelte";
 
   type DiagnosticsTool = {
     name: string;
@@ -28,10 +38,17 @@
     currentPage?: number;
     totalPages?: number;
   };
+  // Per-project editor/preview state (#43), keyed by folder path in the main
+  // process. currentPage/viewMode are live; the rest are dead schema for the
+  // forthcoming in-app editor (#38) / chapter list (#42).
   type PersistedProjectState = {
-    lastProjectDir?: string | null;
     currentPage?: number;
     viewMode?: "single" | "two-column";
+    lastChapter?: string;
+    sidebarOpen?: boolean;
+    cursorLine?: number;
+    editorScroll?: number;
+    splitPaneRatio?: number;
   };
 
   // Per-screen state
@@ -40,6 +57,11 @@
   let currentUrl = $state<string | null>(null);
   let sourceMode = $state<"folder" | "url">("folder");
   let docTitle = $state<string | null>(null);
+  // Capabilities of the open project's source (#12): local-folder vs
+  // local-git-folder (with/without remote). Stored so forthcoming action
+  // buttons (#13/#25 — Save Snapshot, View History, Publish) can render against
+  // it. No new buttons yet; the data is simply available.
+  let projectCapabilities = $state<ProjectCapabilities | null>(null);
   // Folder name (basename) for the toolbar label; the full path is the tooltip.
   let folderName = $derived(
     currentDir ? (currentDir.split(/[\\/]/).filter(Boolean).pop() ?? currentDir) : ""
@@ -65,10 +87,33 @@
   let pageEditing = $state(false);
   let pageEditValue = $state("1");
   let pageEditInput = $state<HTMLInputElement | undefined>(undefined);
-  let zoom = $state<string>("fit-width");
-  let viewMode = $state<"single" | "two-column">("two-column");
+
+  // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
+  // outline drives the chapter-jump dropdown; activeOutlineIndex tracks the
+  // heading the reader is currently within (updated from sourceLineChanged).
+  let outline = $state<OutlineEntry[]>([]);
+  let activeOutlineIndex = $state(0);
+  // Timestamp guard: while the preview is being driven from the editor side,
+  // ignore the sourceLineChanged it emits so the two panes don't feed back.
+  let suppressPreviewSyncUntil = 0;
+  // ── User settings (#45) ────────────────────────────────────────────────
+  // bgColor, viewMode and zoom are sourced from the persisted settings store
+  // (their old inline defaults #5a5a5a / two-column / fit-width now live in
+  // DEFAULT_SETTINGS). Local mutations write back through useSettings().set().
+  // bgColor has no toolbar control (that was removed in the toolbar redesign);
+  // it is set via the Settings dialog only.
+  const settings = useSettings();
+  _loadSettings();
+  let zoom = $derived(settings.current.preview.defaultZoom);
+  let viewMode = $derived(settings.current.preview.viewMode);
+  let bgColor = $derived(settings.current.appearance.previewBg);
+  // Edit/View single-pane mode for narrow viewports (persisted in settings #45).
+  // Only consulted below the responsive breakpoint; above it the layout is the
+  // side-by-side split regardless of this value.
+  let paneMode = $derived(settings.current.preview.paneMode);
   let debug = $state(false);
-  let bgColor = $state("#5a5a5a");
+  let settingsOpen = $state(false);
+  let settingsBtn = $state<HTMLButtonElement | undefined>(undefined);
   let rendering = $state(false);
   let renderProgressPage = $state(0);
   let renderCompleteOverlay = $state(false);
@@ -95,6 +140,299 @@
   // Open Location modal
   let openLocationOpen = $state(false);
   let openBtn = $state<HTMLButtonElement | undefined>(undefined);
+  // New-project wizard (#25)
+  let newProjectOpen = $state(false);
+  let newProjectBtn = $state<HTMLButtonElement | undefined>(undefined);
+  // Official setup guide for first-time writers (MVP "Download starter template").
+  const SETUP_GUIDE_URL =
+    "https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/01-getting-started.md";
+
+  function openSetupGuide() {
+    getPlatform().openExternal(SETUP_GUIDE_URL).catch(() => {});
+  }
+
+  // ── In-app markdown editor (#38) + unsaved-changes (#44) ──────────────────
+  // editorOpen toggles the file-tree + editor split alongside the preview.
+  // The EditorBuffer (#44) is the single owner of the edit lifecycle: open file
+  // path, in-memory content, the dirty/save state machine, the debounced disk
+  // write (which the preview file-watcher picks up to re-render), debounced
+  // crash-recovery snapshots, the close/navigate flush, and external-edit
+  // reconciliation. The old loose editorFilePath/editorContent/saveDebounce
+  // state now lives inside the buffer.
+  let editorOpen = $state(false);
+  let editorRef = $state<{
+    focus: () => void;
+    revealLine: (line: number) => void;
+  } | null>(null);
+  // True below the single-pane breakpoint. Assigned by the matchMedia
+  // subscription further down; declared here so the derived below can read it.
+  let isNarrow = $state(false);
+
+  // Whether the editor pane is shown — DERIVED, not synced via $effect. In narrow
+  // single-pane mode the Edit/View mode decides it; in the wide split it's the
+  // editorOpen toggle. This fixes the "blank pane on launch in edit mode" bug:
+  // previously the editor only rendered `{#if editorOpen}`, so a persisted
+  // paneMode="edit" hid the preview without rendering the editor.
+  let editorPaneOpen = $derived(
+    !!currentDir &&
+      sourceMode === "folder" &&
+      (isNarrow ? paneMode === "edit" : editorOpen),
+  );
+
+  // MarkdownEditor wraps the full CodeMirror 6 stack (+ lang-markdown's
+  // code-language loaders), a ~300 KB chunk. The editor pane is closed by
+  // default and is desktop-folder-only, so importing it statically would parse
+  // + evaluate all of CodeMirror on every launch — the dominant cold-start
+  // cost. Load it lazily the first time the editor pane is actually opened so
+  // app startup never pays for it. One-time import; the resolved component is
+  // cached in MarkdownEditor for the lifetime of the app.
+  let MarkdownEditor = $state<
+    typeof import("$lib/components/MarkdownEditor.svelte")["default"] | null
+  >(null);
+  let editorModuleLoading = $state(false);
+  // Set when the lazy import of the editor chunk fails, so the load effect does
+  // NOT immediately retry (which spammed an infinite error-toast loop). Cleared
+  // by an explicit user "Retry".
+  let editorModuleFailed = $state(false);
+  function retryEditorLoad() {
+    editorModuleFailed = false;
+  }
+  // Set when the editor is opened before its (lazy) component has mounted, so
+  // the focus request is honored once editorRef becomes available.
+  let pendingEditorFocus = $state(false);
+  function focusEditorWhenReady() {
+    if (editorRef) {
+      requestAnimationFrame(() => editorRef?.focus());
+    } else {
+      pendingEditorFocus = true;
+    }
+  }
+  $effect(() => {
+    if (editorRef && pendingEditorFocus) {
+      pendingEditorFocus = false;
+      requestAnimationFrame(() => editorRef?.focus());
+    }
+  });
+  $effect(() => {
+    if (
+      !editorOpen ||
+      !currentDir ||
+      MarkdownEditor ||
+      editorModuleLoading ||
+      editorModuleFailed
+    )
+      return;
+    editorModuleLoading = true;
+    import("$lib/components/MarkdownEditor.svelte")
+      .then((m) => {
+        MarkdownEditor = m.default;
+      })
+      .catch((e) => {
+        // Mark as failed so the effect doesn't immediately re-run and retry —
+        // that turned a single failed chunk fetch into an infinite error-toast
+        // loop. Surface ONE error; the editor pane shows a Retry affordance.
+        editorModuleFailed = true;
+        toast?.error(
+          `Could not open the editor: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      })
+      .finally(() => {
+        editorModuleLoading = false;
+      });
+  });
+
+  // Construct lazily on first desktop use so the WebAdapter path never touches
+  // it (the editor is desktop-only). One buffer for the lifetime of the app.
+  let buffer = $state<EditorBuffer | null>(null);
+
+  // Mirrors used by the markup/props (chapter highlight, dirty dot, editor pane).
+  let editorFilePath = $derived(buffer?.filePath ?? null);
+  let editorContent = $derived(buffer?.content ?? "");
+  // The open file's chapter id for editor↔preview sync scoping. data-chapter-src
+  // is the manifest source filename (shallow/flat project layout), so the
+  // basename matches. Used to keep per-file source lines from mapping into the
+  // wrong chapter of the whole-book preview (ADR 0005).
+  let editorChapter = $derived(
+    editorFilePath ? (editorFilePath.split(/[\\/]/).pop() ?? null) : null,
+  );
+  let dirtyPath = $derived(buffer && buffer.isDirty ? buffer.filePath : null);
+
+  // External-edit conflict banner state (#44). Derived from the buffer's
+  // pending external change so Reload / Keep mine route back through it.
+  let externalChange = $derived(buffer?.externalChange ?? null);
+  let externalFileName = $derived(
+    editorFilePath ? (editorFilePath.split(/[\\/]/).pop() ?? editorFilePath) : "",
+  );
+
+  function ensureBuffer(): EditorBuffer {
+    if (!buffer) {
+      buffer = new EditorBuffer({
+        platform: getPlatform(),
+        recoveryEnabled: settings.current.editor.crashRecovery,
+        onError: (msg) => toast?.error(msg),
+        onAutoReloaded: () => toast?.info?.("Reloaded from disk"),
+      });
+    }
+    return buffer;
+  }
+
+  // Push the buffer's pending-save state to main so the window close gate can
+  // flush before quitting (#44). Fire-and-forget; main never reads our memory.
+  $effect(() => {
+    if (!isDesktop() || !buffer) return;
+    const pending = buffer.hasPendingSave;
+    getPlatform().setDirtyState(pending).catch(() => {});
+  });
+
+  // Keep the recovery-enabled toggle (#45) in sync with the live setting.
+  $effect(() => {
+    const enabled = settings.current.editor.crashRecovery;
+    if (buffer) buffer.setRecoveryEnabled(enabled);
+  });
+
+  // External-edit detection (#44): watch the open folder; on any debounced
+  // change, ask the buffer to reconcile the open document against disk. The
+  // watcher is torn down when the folder closes / switches to URL mode.
+  $effect(() => {
+    if (!isDesktop()) return;
+    const dir = currentDir;
+    if (!dir || sourceMode !== "folder") return;
+    const off = getPlatform().watchFolder(dir, () => {
+      buffer?.reconcileExternalChange().catch(() => {});
+    });
+    return () => off?.();
+  });
+
+  // Window close gate (#44): when main asks the renderer to flush before
+  // closing, flush the buffer. The preload wrapper signals main when done.
+  $effect(() => {
+    if (!isDesktop()) return;
+    const off = getPlatform().onFlushBeforeClose(() => buffer?.flush() ?? Promise.resolve());
+    return () => off?.();
+  });
+
+  /**
+   * Open a file in the editor (#44). Flushes any pending save on the currently
+   * open document FIRST so switching chapters never drops an in-flight write.
+   */
+  function selectEditorFile(path: string) {
+    if (!isDesktop()) return;
+    const buf = ensureBuffer();
+    if (buf.filePath === path) return;
+    const wasPending = buf.hasPendingSave;
+    void (async () => {
+      if (buf.filePath && wasPending) {
+        toast?.info?.("Saving…");
+        await buf.flush().catch(() => {});
+      }
+      await buf.load(path);
+    })();
+  }
+
+  function onEditorChange(value: string) {
+    if (!isDesktop()) return;
+    ensureBuffer().edit(value);
+  }
+
+  // When the editor opens with nothing loaded, auto-select a sensible file so the
+  // user isn't dropped on an empty "Select a file" pane: the first markdown file,
+  // else the first editable file.
+  async function ensureEditorFile() {
+    if (!currentDir || !isDesktop()) return;
+    const buf = ensureBuffer();
+    if (buf.filePath) return;
+    try {
+      const files = (await getPlatform().listDir(currentDir)).filter((e) => !e.isDir);
+      const pick =
+        files.filter((e) => /\.md$/i.test(e.name)).sort((a, b) => a.name.localeCompare(b.name))[0] ||
+        files.find((e) => /\.(md|css)$/i.test(e.name));
+      if (pick) selectEditorFile(pick.path);
+    } catch {
+      /* non-fatal: the user can still pick a file from the tree */
+    }
+  }
+
+  function reloadExternal() {
+    buffer?.acceptExternal();
+  }
+
+  function keepMineExternal() {
+    buffer?.keepMine();
+  }
+
+  // ── Crash recovery (#44) ──────────────────────────────────────────────────
+  // After a project opens, scan userData/recovery for snapshots belonging to it
+  // (an unclean exit). Offer Restore / Discard per entry. `recoveryScanDir`
+  // guards against re-scanning the same folder twice.
+  let recoveryItems = $state<RecoveryItem[]>([]);
+  let recoveryScanDir = $state<string | null>(null);
+
+  function basenameOf(p: string): string {
+    return p.split(/[\\/]/).pop() ?? p;
+  }
+
+  async function scanForRecovery(dir: string) {
+    if (!isDesktop()) return;
+    if (recoveryScanDir === dir) return;
+    recoveryScanDir = dir;
+    if (!settings.current.editor.crashRecovery) return;
+    try {
+      const entries = await getPlatform().listRecovery(dir);
+      recoveryItems = entries.map((e) => ({
+        filePath: e.filePath,
+        recoveryPath: e.recoveryPath,
+        fileName: basenameOf(e.filePath),
+        savedAt: e.savedAt,
+      }));
+    } catch {
+      recoveryItems = [];
+    }
+  }
+
+  async function restoreRecovery(item: RecoveryItem) {
+    recoveryItems = recoveryItems.filter((i) => i.filePath !== item.filePath);
+    if (!isDesktop()) return;
+    const buf = ensureBuffer();
+    try {
+      // The recovered bytes live in the sidecar snapshot (an absolute path under
+      // userData). Read them, then load into the buffer against the current disk
+      // baseline — restoreContent marks the buffer dirty so it re-saves on the
+      // next debounce, preserving the recovered edits.
+      const recovered = await getPlatform().readFile(item.recoveryPath);
+      await buf.restoreContent(item.filePath, recovered);
+      editorOpen = true;
+      focusEditorWhenReady();
+    } catch (e) {
+      toast?.error(
+        `Could not restore: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  function discardRecovery(item: RecoveryItem) {
+    recoveryItems = recoveryItems.filter((i) => i.filePath !== item.filePath);
+    if (isDesktop()) {
+      getPlatform().clearRecovery(item.filePath).catch(() => {});
+    }
+  }
+
+  function dismissRecovery() {
+    recoveryItems = [];
+  }
+
+  function toggleEditor() {
+    if (!currentDir || sourceMode !== "folder") return;
+    editorOpen = !editorOpen;
+    // On open, move keyboard focus into the editor so Ctrl+E acts as a
+    // focus-switch into the editing surface (#38). Closing returns focus to
+    // the document (preview iframe / window) implicitly.
+    if (editorOpen) {
+      void ensureEditorFile();
+      // Defer until the pane (and CodeMirror view) is mounted. The editor
+      // component is lazy-loaded, so focus may need to wait for it to arrive.
+      focusEditorWhenReady();
+    }
+  }
 
   // ----------------------------------------------------------------
   // Inject viewer canvas styles into iframe when client + bgColor change
@@ -105,12 +443,20 @@
     client.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
   });
 
+  // Apply view-mode changes that originate from the Settings panel (which writes
+  // the settings store directly rather than calling applyViewMode). Keeps the
+  // rendered spread in sync with the derived viewMode without a reload.
+  $effect(() => {
+    const mode = viewMode;
+    if (!client || rendering) return;
+    client.call("setViewMode", [mode]).catch(() => {});
+  });
+
   $effect(() => {
     if (diagnosticsTools) return;
-    const electron = (window as any).electron;
-    electron?.doctor?.()
-      .then((data: { tools?: DiagnosticsTool[] }) => {
-        diagnosticsTools = data.tools ?? [];
+    getPlatform().doctor()
+      .then((data) => {
+        diagnosticsTools = (data as { tools?: DiagnosticsTool[] }).tools ?? [];
       })
       .catch(() => {});
   });
@@ -123,8 +469,7 @@
   });
 
   $effect(() => {
-    const electron = (window as any).electron;
-    const off = electron?.onUrlPreviewBlocked?.((event: UrlPreviewBlockedEvent) => {
+    const off = getPlatform().onUrlPreviewBlocked((event: UrlPreviewBlockedEvent) => {
       if (sourceMode !== "url") return;
       if (!previewUrl) return;
       previewUrl = null;
@@ -140,20 +485,35 @@
   });
 
   $effect(() => {
-    const electron = (window as any).electron;
-    if (!electron?.getViewerPrefs || !electron?.startPreview) return;
+    if (!isDesktop()) return;
     if (lastProjectChecked) return;
     if (previewUrl || currentDir || currentUrl || busy || openError || urlPreviewError) return;
     if (autoOpeningLastProject) return;
 
     autoOpeningLastProject = true;
     lastProjectChecked = true;
-    electron.getViewerPrefs()
-      .then((prefs: PersistedProjectState) => {
-        if (!prefs.lastProjectDir || previewUrl || currentDir || currentUrl) return;
-        return startFolderPreview(prefs.lastProjectDir, "Reopening previous folder…", prefs);
+    const platform = getPlatform();
+    platform.getViewerPrefs()
+      .then(async (prefs) => {
+        const dir = prefs.lastProjectDir;
+        if (!dir || previewUrl || currentDir || currentUrl) {
+          // Nothing to reopen — the welcome screen IS the first ready screen, so
+          // dismiss the splash and reveal the (welcome) window now.
+          platform.rendererReady().catch(() => {});
+          return;
+        }
+        // Per-project state (#43) is keyed by folder path so opening a
+        // different project never pollutes this one's restore point.
+        platform.splashStatus("Opening your project…", 45).catch(() => {});
+        const restoreState = await platform
+          .getViewerProjectState(dir)
+          .catch(() => null);
+        return startFolderPreview(dir, "Reopening previous folder…", restoreState);
       })
-      .catch(() => {})
+      .catch(() => {
+        // If reopen failed, still reveal the window (don't strand on the splash).
+        platform.rendererReady().catch(() => {});
+      })
       .finally(() => {
         autoOpeningLastProject = false;
       });
@@ -185,27 +545,64 @@
         pendingRestoreViewMode = null;
         const mode = restoreMode ?? (userSetViewMode ? viewMode : auto);
         applyViewMode(mode, false);
-        // Apply fit-width zoom on narrow screens
-        if (window.innerWidth < 1280) {
-          applyFitWidthZoom();
+        // "Fit to width" must ALWAYS measure-and-fit, never assume 100% fits.
+        // A two-page spread (~1656px) overflows a 1400px pane at 100%, clipping
+        // the right page — so fit even on wide screens. Wait a frame so the
+        // view-mode layout has reflowed before measuring the (spread) width.
+        if (zoom === "fit-width") {
+          // setViewMode is an async postMessage round-trip; let it apply + reflow
+          // before measuring the spread width, else we'd fit the single-page width.
+          setTimeout(() => applyFitWidthZoom(), 100);
         } else {
-          client?.call("setZoom", [zoom === "fit-width" ? 1 : Number(zoom)]).catch(() => {});
+          client?.call("setZoom", [Number(zoom)]).catch(() => {});
         }
         if (restorePage && restorePage > 1) {
           queueMicrotask(() => restoreProjectPage(restorePage));
         }
         // UX-011: improved success toast copy
         toast?.success(`Your book is ready — ${n} ${n === 1 ? 'page' : 'pages'}`);
+        // Build the chapter-jump outline from the freshly rendered DOM.
+        refreshOutline();
+        // First project render done → dismiss the splash and reveal the window.
+        getPlatform().splashStatus("Ready", 100).catch(() => {});
+        getPlatform().rendererReady().catch(() => {});
+      } else if (e.name === "sourceLineChanged") {
+        // Preview→editor sync: the reader scrolled. Follow in the editor and
+        // update the active outline entry — but not while the editor itself is
+        // driving the preview (echo guard).
+        const line = e.detail.sourceLine;
+        const chap = e.detail.chapter;
+        if (typeof line === "number") {
+          updateActiveOutline(line);
+          if (Date.now() >= suppressPreviewSyncUntil && editorPaneOpen) {
+            if (chap === editorChapter) {
+              editorRef?.revealLine(line);
+            } else if (chap && currentDir && !buffer?.isDirty) {
+              // Scrolled into a DIFFERENT chapter: follow it by opening that
+              // chapter's file, then reveal the line once it has loaded. Skipped
+              // when there are unsaved edits so it never yanks the file away mid-
+              // edit. This is what makes the editor track the whole book, not
+              // just the one open chapter (the "sporadic" complaint).
+              followChapterInEditor(chap, line);
+            }
+          }
+        }
       } else if (e.name === "pageChanged") {
         if (rendering) {
           renderProgressPage = e.detail.totalPages ?? renderProgressPage;
           totalPages = e.detail.totalPages ?? totalPages;
+          // Live splash sub-status during the (potentially multi-second) render.
+          const pg = e.detail.totalPages ?? renderProgressPage;
+          if (pg) getPlatform().splashStatus(undefined, undefined, `Laying out page ${pg}`).catch(() => {});
         } else {
           syncPageState(e.detail);
         }
       } else if (e.name === "ready") {
         rendering = true;
         renderProgressPage = 0;
+        outline = [];
+        activeOutlineIndex = 0;
+        getPlatform().splashStatus("Rendering pages…", 70).catch(() => {});
         client?.call<number>("getTotalPages").then((n) => {
           if (n > 0) {
             totalPages = n;
@@ -225,19 +622,18 @@
   // before the watchdog elapses (and the window is still open), main rolls the
   // bundle back this session. Harmless no-op when nothing is pending.
   $effect(() => {
-    const electron = (window as any).electron;
-    if (!electron?.updater?.markReady) return;
-    electron.updater.markReady().catch(() => {});
+    if (!isDesktop()) return;
+    getPlatform().updater.markReady().catch(() => {});
   });
 
   // Check for an already-staged update on load, then subscribe to future events.
   $effect(() => {
-    const electron = (window as any).electron;
-    if (!electron?.updater) return;
+    if (!isDesktop()) return;
+    const platform = getPlatform();
 
     // Peek at current status so we can surface a banner immediately if a
     // bundle was staged during a previous run.
-    electron.updater.getStatus()
+    platform.updater.getStatus()
       .then((status: { stagedVersion: string | null }) => {
         if (status.stagedVersion) {
           updateReadyVersion = status.stagedVersion;
@@ -252,7 +648,7 @@
     // are intentionally silent — surfacing them here would toast on every
     // launch and would double-toast during a manual check (which drives its own
     // feedback from the IPC return value in checkForUpdates()).
-    const off = electron.updater.onEvent((event: { type: string; version?: string }) => {
+    const off = platform.updater.onEvent((event: { type: string; version?: string }) => {
       if (event.type === "staged") {
         updateReadyVersion = event.version ?? null;
       }
@@ -262,15 +658,40 @@
   });
 
   // ----------------------------------------------------------------
+  // Global keyboard shortcuts (available without a loaded document)
+  // ----------------------------------------------------------------
+  $effect(() => {
+    function onGlobalKey(e: KeyboardEvent) {
+      // Cmd/Ctrl+, opens the Settings panel (toggles closed if already open).
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        settingsOpen = !settingsOpen;
+      }
+      // Cmd/Ctrl+E toggles the in-app editor (#38) when a folder is open.
+      if ((e.ctrlKey || e.metaKey) && (e.key === "e" || e.key === "E")) {
+        e.preventDefault();
+        toggleEditor();
+      }
+    }
+    window.addEventListener("keydown", onGlobalKey);
+    return () => window.removeEventListener("keydown", onGlobalKey);
+  });
+
+  // ----------------------------------------------------------------
   // Keyboard shortcuts
   // ----------------------------------------------------------------
   $effect(() => {
     if (!previewUrl) return;
 
     function onKey(e: KeyboardEvent) {
-      // Don't intercept when focus is in an input/textarea/select
-      const tag = (e.target as HTMLElement)?.tagName ?? "";
+      // Don't intercept when focus is in an input/textarea/select, or inside
+      // the CodeMirror editor (#38) — its content node is a contenteditable
+      // DIV, so a tagName check alone would let preview-nav keys (arrows,
+      // Home/End, +/-/=, f) hijack core editing.
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName ?? "";
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (t?.isContentEditable || t?.closest?.(".cm-editor")) return;
 
       // UX-006: Ctrl/Cmd+S saves PDF
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -458,15 +879,44 @@
     busy = true;
     busyLabel = label;
     try {
-      const electron = (window as any).electron;
-      if (!electron?.startPreview) {
+      if (!isDesktop()) {
         toast?.error("Electron bridge unavailable — run via the viewer app");
         return;
       }
-      const data = await electron.startPreview({ input: dir });
+      const platform = getPlatform();
+      const data = await platform.startPreview({ input: dir });
       sourceMode = "folder";
+      // New folder: flush + clear any file selected from a previous project so
+      // the editor pane doesn't point at a stale path (#44 — flush first so a
+      // pending save in the prior project isn't dropped on project switch).
+      if (currentDir !== dir && buffer) {
+        await buffer.flush().catch(() => {});
+        buffer.reset();
+      }
       currentDir = dir;
       currentUrl = null;
+      // Preload the first file into the editor buffer when a folder opens, so the
+      // editor pane is never empty whenever it's shown (and switching to edit is
+      // instant). Action-driven (folder open), not an effect, and independent of
+      // async settings/narrow timing. Idempotent + self-gated (no-op in view-only
+      // contexts where there's nothing to edit).
+      void ensureEditorFile();
+      // Classify the opened folder (#12) so capability-gated actions (#13/#25)
+      // can render. Always re-detected on open (a user may add/remove `.git`
+      // between sessions) and persisted as a hint. Fire-and-forget: a failure
+      // must never block the preview.
+      projectCapabilities = null;
+      platform
+        .classifyProject(dir)
+        .then((result) => {
+          projectCapabilities = result.capabilities;
+          platform
+            .setViewerPrefs({ projectSource: result.source })
+            .catch(() => {});
+        })
+        .catch(() => {
+          projectCapabilities = null;
+        });
       docTitle = data.title ?? null;
       // Force iframe remount by nulling first
       previewUrl = null;
@@ -482,7 +932,9 @@
         ? restoreState.currentPage
         : null;
       if (restoredViewMode) {
-        viewMode = restoredViewMode;
+        // Per-project ViewerPrefs override → seed the settings store so the
+        // derived viewMode reflects this project's last-used mode.
+        settings.set({ preview: { viewMode: restoredViewMode } });
       }
       userSetViewMode = !!restoredViewMode;
       // Loud signal for the #1 cause of wrong fonts/styles: shared asset dirs
@@ -494,6 +946,8 @@
             `Make sure the shared directory exists next to this project.`
         );
       }
+      // Crash-recovery offer (#44): scan for snapshots left by an unclean exit.
+      void scanForRecovery(dir);
     } catch (e) {
       previewUrl = null;
       currentDir = null;
@@ -507,8 +961,7 @@
   }
 
   async function openFolder() {
-    const electron = (window as any).electron;
-    if (!electron?.openDirectory) {
+    if (!isDesktop()) {
       toast?.error("Electron bridge unavailable — run via the viewer app");
       return;
     }
@@ -516,12 +969,14 @@
     busyLabel = "Opening folder…";
     let handedOff = false;
     try {
-      const dir = await electron.openDirectory();
+      const platform = getPlatform();
+      const dir = await platform.openFolder();
       if (!dir) return;
-      const prefs = electron.getViewerPrefs
-        ? await electron.getViewerPrefs().catch(() => null) as PersistedProjectState | null
-        : null;
-      const restoreState = prefs?.lastProjectDir === dir ? prefs : null;
+      // Per-project state (#43): restore whatever was saved for THIS folder
+      // (page, view mode, …) regardless of which project was last open.
+      const restoreState = await platform
+        .getViewerProjectState(dir)
+        .catch(() => null);
       handedOff = true;
       await startFolderPreview(dir, "Starting preview…", restoreState);
     } finally {
@@ -541,6 +996,9 @@
     currentUrl = url;
     currentDir = null;
     docTitle = null;
+    // The editor is folder-only; close it for web previews.
+    editorOpen = false;
+    buffer?.reset();
     // Force iframe remount by nulling first
     previewUrl = null;
     queueMicrotask(() => {
@@ -554,8 +1012,7 @@
 
   function openInBrowser() {
     if (!currentUrl) return;
-    const electron = (window as any).electron;
-    electron?.openExternal?.(currentUrl);
+    getPlatform().openExternal(currentUrl).catch(() => {});
   }
 
   function getSaveReadinessWarning(): string | null {
@@ -579,8 +1036,10 @@
   }
 
   async function stopPreview() {
-    const electron = (window as any).electron;
-    await electron?.stopPreview?.().catch(() => {});
+    // Flush any pending edit before tearing down so closing the project never
+    // drops an in-flight auto-save (#44).
+    if (buffer) await buffer.flush().catch(() => {});
+    await getPlatform().stopPreview().catch(() => {});
     previewUrl = null;
     currentDir = null;
     currentUrl = null;
@@ -591,6 +1050,10 @@
     totalPages = 0;
     currentPage = 1;
     pageEditing = false;
+    editorOpen = false;
+    buffer?.reset();
+    recoveryScanDir = null;
+    recoveryItems = [];
   }
 
   async function savePdf() {
@@ -600,14 +1063,14 @@
     }
     const inputDir = currentDir;
     if (!inputDir) return;
-    const electron = (window as any).electron;
-    if (!electron?.savePdf || !electron?.build) {
+    if (!isDesktop()) {
       toast?.error("Electron bridge unavailable — run via the viewer app");
       return;
     }
+    const platform = getPlatform();
     const sep = inputDir.includes("\\") ? "\\" : "/";
     const defaultName = (inputDir.split(sep).pop() ?? "book") + ".pdf";
-    const outPath = await electron.savePdf(defaultName);
+    const outPath = await platform.savePdf(defaultName);
     if (!outPath) return;
 
     // Non-blocking: the build runs in a separate render window, so keep the
@@ -621,7 +1084,7 @@
     try {
       // Live progress: Paged.js pagination of large books takes minutes, so show
       // the growing page count instead of an opaque spinner.
-      offProgress = electron.onBuildProgress?.(
+      offProgress = platform.onBuildProgress(
         (p: ExportProgressEvent) => {
           if (p.state === "canceled") {
             exportState = "canceling";
@@ -634,7 +1097,7 @@
           syncExportProgress(p);
         }
       );
-      const data = await electron.build({
+      const data = await platform.build({
         input: inputDir,
         format: "pdf",
         out: outPath,
@@ -655,7 +1118,7 @@
       toast?.success(`PDF saved to ${savedPdfPath}`, 8000, {
         label: "Show in Folder",
         onClick: () => {
-          void electron.showInFolder?.(savedPdfPath);
+          void getPlatform().showInFolder(savedPdfPath).catch(() => {});
         },
       });
       await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -675,8 +1138,7 @@
     if (!activeExportId) return;
     exportState = "canceling";
     updateExportLabel();
-    const electron = (window as any).electron;
-    await electron?.cancelExport?.(activeExportId).catch(() => {});
+    await getPlatform().cancelExport(activeExportId).catch(() => {});
   }
 
   function syncPageState(state: PageState | undefined) {
@@ -689,8 +1151,10 @@
 
   function saveViewerPrefs(patch: Partial<PersistedProjectState>) {
     if (!currentDir || sourceMode !== "folder" || rendering || restoringSavedState) return;
-    const electron = (window as any).electron;
-    electron?.setViewerPrefs?.({ lastProjectDir: currentDir, ...patch }).catch(() => {});
+    // Per-project state (#43): write to the folder-keyed bucket so this never
+    // overwrites another project's saved page/view. The main process also
+    // updates lastProjectDir, so reopening lands on this project.
+    getPlatform().setViewerProjectState(currentDir, patch).catch(() => {});
   }
 
   function restoreProjectPage(page: number) {
@@ -701,8 +1165,9 @@
         currentPage = state.currentPage ?? currentPage;
         totalPages = state.totalPages ?? totalPages;
         if (!pageEditing) pageEditValue = String(currentPage);
-        const electron = (window as any).electron;
-        electron?.setViewerPrefs?.({ lastProjectDir: currentDir, currentPage }).catch(() => {});
+        if (currentDir) {
+          getPlatform().setViewerProjectState(currentDir, { currentPage }).catch(() => {});
+        }
       })
       .catch(() => {})
       .finally(() => {
@@ -740,6 +1205,117 @@
   function nextPage() { runPageCommand("nextPage", [viewMode]); }
   function lastPage() { runPageCommand("lastPage"); }
 
+  // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
+  function refreshOutline() {
+    if (!client) return;
+    client
+      .getOutline()
+      .then((entries) => {
+        outline = entries ?? [];
+        activeOutlineIndex = 0;
+      })
+      .catch(() => {
+        outline = [];
+      });
+  }
+
+  // Mark the deepest heading at/above the given source line as active (drives
+  // the dropdown's current-chapter label + highlight).
+  function updateActiveOutline(line: number) {
+    if (outline.length === 0) return;
+    let idx = 0;
+    for (let i = 0; i < outline.length; i++) {
+      const sl = outline[i].sourceLine;
+      if (sl != null && sl <= line) idx = i;
+      else if (sl != null && sl > line) break;
+    }
+    activeOutlineIndex = idx;
+  }
+
+  // Jump the preview (and, if open, the editor) to a heading.
+  function jumpToOutline(entry: OutlineEntry) {
+    if (!client) return;
+    const target: PreviewTarget =
+      entry.id != null
+        ? { id: entry.id }
+        : entry.sourceLine != null
+          ? { line: entry.sourceLine, chapter: entry.chapter }
+          : { page: entry.page };
+    // Keep the editor in step with the jump. Editor-side first so its scroll
+    // doesn't get mistaken for a reader scroll. The jump suppresses the
+    // scroll-driven follow, so a cross-chapter jump must move the editor here
+    // explicitly — otherwise the preview lands on the new chapter while the
+    // editor is left on the old file (they desync).
+    suppressPreviewSyncUntil = Date.now() + 400;
+    if (entry.sourceLine != null && editorPaneOpen) {
+      if (entry.chapter === editorChapter) {
+        editorRef?.revealLine(entry.sourceLine);
+      } else if (entry.chapter && currentDir && !buffer?.isDirty) {
+        followChapterInEditor(entry.chapter, entry.sourceLine);
+      }
+    }
+    client
+      .scrollTo(target, { block: "start" })
+      .then((res) => {
+        if (res?.page) syncPageState({ currentPage: res.page, totalPages });
+      })
+      .catch(() => {});
+  }
+
+  // Cross-chapter follow (preview→editor): open the scrolled chapter's file and
+  // reveal the line once the buffer has actually swapped to it. Polls editorChapter
+  // (the file load is async) rather than guessing at timing, with a ~2s cap.
+  let crossChapterReveal:
+    | { chapter: string; line: number; tries: number; nudges: number }
+    | null = null;
+  function followChapterInEditor(chapter: string, line: number) {
+    if (!currentDir) return;
+    const dir = currentDir.replace(/[\\/]+$/, "");
+    crossChapterReveal = { chapter, line, tries: 0, nudges: 0 };
+    selectEditorFile(`${dir}/${chapter}`);
+    pumpCrossChapterReveal();
+  }
+  function pumpCrossChapterReveal() {
+    const r = crossChapterReveal;
+    if (!r) return;
+    if (editorChapter === r.chapter && editorRef) {
+      // The file load swaps the editor doc and resets scroll to the TOP, and
+      // that reset can land AFTER our first reveal — so re-issue the reveal a
+      // few times (~250ms) so the last one wins. Without this the editor sat at
+      // the top of the newly-opened chapter instead of the synced line.
+      suppressPreviewSyncUntil = Date.now() + 300;
+      editorRef.revealLine(r.line);
+      if (++r.nudges >= 5) {
+        crossChapterReveal = null;
+        return;
+      }
+      setTimeout(pumpCrossChapterReveal, 50);
+      return;
+    }
+    // Still waiting for the async file load to swap the buffer to this chapter.
+    if (r.tries++ > 40) {
+      crossChapterReveal = null;
+      return;
+    }
+    setTimeout(pumpCrossChapterReveal, 50);
+  }
+
+  // Editor→preview: the caret moved or the editor scrolled. Drive the preview to
+  // the matching source line WITHIN the open chapter; guard the echo so the
+  // preview's resulting sourceLineChanged doesn't bounce back into the editor.
+  function onEditorAnchorLine(line: number) {
+    if (!client || rendering) return;
+    suppressPreviewSyncUntil = Date.now() + 400;
+    client
+      .scrollTo({ line, chapter: editorChapter }, { block: "start" })
+      .then((res) => {
+        // scrollTo suppresses the book's scroll-driven pageChanged, so reflect
+        // the new page in the toolbar from the command's own return value.
+        if (res?.page) syncPageState({ currentPage: res.page, totalPages });
+      })
+      .catch(() => {});
+  }
+
   /** Apply fit-width by querying the page's rendered width from the iframe. */
   async function applyFitWidthZoom() {
     if (!client) return;
@@ -758,7 +1334,7 @@
   }
 
   function applyZoom(value: string) {
-    zoom = value;
+    settings.set({ preview: { defaultZoom: value } });
     if (!client) return;
     if (value === "fit-width") {
       applyFitWidthZoom();
@@ -774,7 +1350,9 @@
   }
 
   function applyViewMode(mode: "single" | "two-column", fromUser: boolean) {
-    viewMode = mode;
+    // Settings store owns the durable default; ViewerPrefs keeps a per-project
+    // override so reopening a folder restores its last view mode.
+    settings.set({ preview: { viewMode: mode } });
     if (fromUser) userSetViewMode = true;
     saveViewerPrefs({ viewMode: mode });
     client?.call("setViewMode", [mode]).catch(() => {});
@@ -789,24 +1367,55 @@
     client?.call("toggleDebugMode").catch(() => {});
   }
 
-  function onBgColor(e: Event) {
-    const v = (e.target as HTMLInputElement).value;
-    bgColor = v;
-    client?.setBgColor(v);
-    // Re-inject canvas styles with new bg (covers elements Paged.js strips)
-    client?.injectStyles("viewer-canvas", buildViewerStyles(v));
+  // ── Responsive single-pane (narrow viewport) ───────────────────────────────
+  // Below this width the editor + preview can't sit side by side, so the
+  // workspace collapses to one pane and the Edit / View toggle picks which one
+  // shows. Above it, the side-by-side split is used and paneMode is ignored.
+  const NARROW_QUERY = "(max-width: 820px)";
+  // matchMedia subscription (a genuine lifecycle subscription — the idiomatic
+  // use of $effect). On a resize INTO narrow while in edit mode, make sure a
+  // file is loaded so the editor isn't empty (the tree is hidden when narrow).
+  $effect(() => {
+    const mq = window.matchMedia(NARROW_QUERY);
+    isNarrow = mq.matches;
+    const onChange = (e: MediaQueryListEvent) => {
+      isNarrow = e.matches;
+      if (e.matches && paneMode === "edit") void ensureEditorFile();
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  });
+
+  // Close the enclosing <details> menu after a menu item is chosen, and return
+  // focus to its summary for keyboard users.
+  function closeMenu(e: Event) {
+    const details = (e.currentTarget as HTMLElement)?.closest("details");
+    if (details) {
+      details.open = false;
+      details.querySelector<HTMLElement>("summary")?.focus();
+    }
+  }
+
+  function setPaneMode(mode: "edit" | "view") {
+    settings.set({ preview: { paneMode: mode } });
+    // Switching to the edit pane should open the editor + focus it (folder only).
+    if (mode === "edit" && currentDir && sourceMode === "folder") {
+      const wasClosed = !editorOpen;
+      editorOpen = true;
+      void ensureEditorFile();
+      if (wasClosed) focusEditorWhenReady();
+    }
   }
 
   // ── Auto-update actions ────────────────────────────────────────────────
 
   async function checkForUpdates() {
-    const electron = (window as any).electron;
-    if (!electron?.updater?.check) return;
+    if (!isDesktop()) return;
     checkingUpdates = true;
     toast?.info("Checking for updates…");
     try {
       const status: { phase: string; stagedVersion: string | null; error: string | null } =
-        await electron.updater.check();
+        await getPlatform().updater.check();
       if (status.stagedVersion) {
         // An update was downloaded + staged — the banner appears; no toast.
         updateReadyVersion = status.stagedVersion;
@@ -823,10 +1432,9 @@
   }
 
   async function applyUpdate() {
-    const electron = (window as any).electron;
-    if (!electron?.updater?.applyNow) return;
+    if (!isDesktop()) return;
     try {
-      await electron.updater.applyNow();
+      await getPlatform().updater.applyNow();
       // Main reloads the window; no further action needed here.
     } catch (e) {
       toast?.error(e instanceof Error ? e.message : "Could not apply update.");
@@ -835,6 +1443,13 @@
 </script>
 
 <Toast bind:api={toast} />
+
+<CrashRecoveryDialog
+  items={recoveryItems}
+  onRestore={restoreRecovery}
+  onDiscard={discardRecovery}
+  onDismiss={dismissRecovery}
+/>
 <LoadingOverlay
   visible={rendering || renderCompleteOverlay || (busy && !!busyLabel)}
   label={busyLabel || (renderCompleteOverlay ? "Rendering complete" : renderProgressPage > 0 ? `Laying out page ${renderProgressPage}…` : "Rendering…")}
@@ -867,11 +1482,11 @@
 {/if}
 
 <div class="shell">
-  <header class="toolbar">
+  <header class="toolbar" class:edit-narrow={isNarrow && paneMode === "edit"}>
     <section class="left">
-      <button bind:this={openBtn} class="primary icon-text" onclick={() => (openLocationOpen = true)} disabled={busy} title="Open folder or web address (Ctrl+O)">
+      <button bind:this={openBtn} class="primary icon-text open-btn" onclick={() => (openLocationOpen = true)} disabled={busy} title="Open folder or web address (Ctrl+O)" aria-label="Open folder or web address">
         <Icon name="folder-open" />
-        <span>Open</span>
+        <span class="open-label">Open</span>
       </button>
       {#if sourceMode === "url" && currentUrl}
         {#if docTitle}
@@ -892,6 +1507,38 @@
     <!-- UX-012: center nav only shows when a document is loaded -->
     {#if previewUrl}
       <section class="center">
+        {#if outline.length > 0}
+          <!-- Chapter / heading jump (UX-013). Built from the rendered outline
+               via the preview bridge; jumps preview + editor together. -->
+          <details class="menu chapter-menu">
+            <summary
+              class="chapter-summary"
+              title="Jump to a chapter or heading"
+              aria-label="Jump to a chapter or heading"
+            >
+              <Icon name="list" />
+              <span class="chapter-label"
+                >{outline[activeOutlineIndex]?.text ?? "Contents"}</span
+              >
+              <Icon name="chevron-down" size={12} />
+            </summary>
+            <div class="menu-panel chapter-panel">
+              {#each outline as entry, i (entry.index)}
+                <button
+                  class="menu-item chapter-item"
+                  class:active={i === activeOutlineIndex}
+                  class:chapter-top={entry.level <= 1}
+                  class:chapter-sub={entry.level >= 3}
+                  style="padding-left: {8 + (entry.level - 1) * 20}px"
+                  onclick={(e) => { jumpToOutline(entry); closeMenu(e); }}
+                >
+                  <span class="chapter-item-text">{entry.text}</span>
+                  <span class="chapter-item-page">{entry.page || ""}</span>
+                </button>
+              {/each}
+            </div>
+          </details>
+        {/if}
         <button class="icon-btn" onclick={firstPage} disabled={rendering} title="First page (Home)" aria-label="First page">
           <Icon name="chevrons-left" />
         </button>
@@ -920,7 +1567,7 @@
           />
         {:else}
           <button class="page-pill" onclick={beginPageEdit} disabled={rendering} aria-label="Edit current page">
-            Page {currentPage} / {totalPages || "—"}
+            <span class="pill-word">Page&nbsp;</span>{currentPage} / {totalPages || "—"}
           </button>
         {/if}
         <button class="icon-btn" onclick={nextPage} disabled={rendering} title="Next page (Right/PageDown)" aria-label="Next page">
@@ -933,40 +1580,124 @@
     {/if}
 
     <section class="right">
-      <!-- UX-039: separator before view mode buttons -->
+      <!-- Separator so the page-navigation group reads as a distinct unit and
+           doesn't visually merge into the mode toggle beside it. -->
       <span class="toolbar-sep" aria-hidden="true"></span>
-      <!-- UX-014: text labels + aria-pressed on view mode buttons -->
-      <button
-        class="icon-text"
-        class:active={viewMode === "single"}
-        onclick={() => applyViewMode("single", true)}
-        disabled={!previewUrl}
-        title="Single page view (Page)"
-        aria-label="Single page view"
-        aria-pressed={viewMode === "single"}
-      >
-        <Icon name="rectangle-vertical" /><span class="view-label">Page</span>
-      </button>
-      <button
-        class="icon-text"
-        class:active={viewMode === "two-column"}
-        onclick={() => applyViewMode("two-column", true)}
-        disabled={!previewUrl}
-        title="Two-page spread view (Spread)"
-        aria-label="Two-page spread view"
-        aria-pressed={viewMode === "two-column"}
-      >
-        <Icon name="columns-2" /><span class="view-label">Spread</span>
-      </button>
+      <!-- Edit / View pane toggle. On wide viewports this toggles the editor
+           split open/closed alongside the preview (#38). On narrow viewports
+           the layout is single-pane, and this switches which pane is shown
+           (#responsive). Disabled until a project folder is open. -->
+      {#if isNarrow}
+        <div class="pane-toggle" role="radiogroup" aria-label="Edit or view mode">
+          <button
+            role="radio"
+            class="icon-text seg"
+            class:active={paneMode === "edit"}
+            onclick={() => setPaneMode("edit")}
+            disabled={!currentDir || sourceMode === "url"}
+            title="Edit your markdown"
+            aria-label="Edit mode"
+            aria-checked={paneMode === "edit"}
+          >
+            <Icon name="pen-line" /><span class="view-label">Edit</span>
+          </button>
+          <button
+            role="radio"
+            class="icon-text seg"
+            class:active={paneMode === "view"}
+            onclick={() => setPaneMode("view")}
+            disabled={!previewUrl}
+            title="Preview your book"
+            aria-label="View mode"
+            aria-checked={paneMode === "view"}
+          >
+            <Icon name="eye" /><span class="view-label">View</span>
+          </button>
+        </div>
+      {:else}
+        <button
+          class="icon-text"
+          class:active={editorOpen}
+          onclick={toggleEditor}
+          disabled={!currentDir || sourceMode === "url"}
+          title="Toggle markdown editor (Ctrl+E)"
+          aria-label="Toggle markdown editor"
+          aria-pressed={editorOpen}
+        >
+          <Icon name="pen-line" /><span class="view-label">Edit</span>
+        </button>
+      {/if}
+      <!-- UX-039: separator before view mode controls -->
+      <span class="toolbar-sep" aria-hidden="true"></span>
+
+      <!-- View-mode (single/spread): a pair of segmented buttons on wide
+           screens; collapses into a single menu button when space is tight. -->
+      <div class="view-mode-group">
+        <button
+          class="icon-text"
+          class:active={viewMode === "single"}
+          onclick={() => applyViewMode("single", true)}
+          disabled={!previewUrl}
+          title="Show one page at a time"
+          aria-label="Single page view"
+          aria-pressed={viewMode === "single"}
+        >
+          <Icon name="rectangle-vertical" /><span class="view-label">Single</span>
+        </button>
+        <button
+          class="icon-text"
+          class:active={viewMode === "two-column"}
+          onclick={() => applyViewMode("two-column", true)}
+          disabled={!previewUrl}
+          title="Show two pages side by side, like an open book"
+          aria-label="Two pages side by side"
+          aria-pressed={viewMode === "two-column"}
+        >
+          <Icon name="columns-2" /><span class="view-label">Two-page</span>
+        </button>
+      </div>
+      <details class="menu view-mode-menu">
+        <summary
+          class="icon-btn menu-summary"
+          title="Page view mode"
+          aria-label="Page view mode"
+        >
+          <Icon name={viewMode === "single" ? "rectangle-vertical" : "columns-2"} />
+          <Icon name="chevron-down" size={12} />
+        </summary>
+        <div class="menu-panel">
+          <button
+            aria-pressed={viewMode === "single"}
+            class="menu-item"
+            class:active={viewMode === "single"}
+            onclick={(e) => { applyViewMode("single", true); closeMenu(e); }}
+            disabled={!previewUrl}
+          >
+            <Icon name="rectangle-vertical" /> Single page
+          </button>
+          <button
+            aria-pressed={viewMode === "two-column"}
+            class="menu-item"
+            class:active={viewMode === "two-column"}
+            onclick={(e) => { applyViewMode("two-column", true); closeMenu(e); }}
+            disabled={!previewUrl}
+          >
+            <Icon name="columns-2" /> Two pages side by side
+          </button>
+        </div>
+      </details>
+
+      <!-- Zoom: a select on wide screens; collapses into a menu button when
+           space is tight. -->
       <select
         class="zoom-select"
-        bind:value={zoom}
-        onchange={() => applyZoom(zoom)}
+        value={zoom}
+        onchange={(e) => applyZoom((e.currentTarget as HTMLSelectElement).value)}
         disabled={!previewUrl}
-        title="Zoom level — F for fit width, + / - to zoom in and out"
+        aria-label="Zoom level"
+        title="Zoom — F fits the page to the window, + / − zoom in and out"
       >
-        <!-- UX-015: fit-width first, renamed to "Fit width" -->
-        <option value="fit-width">Fit width</option>
+        <option value="fit-width">Fit to width</option>
         <option value="0.25">25%</option>
         <option value="0.5">50%</option>
         <option value="0.75">75%</option>
@@ -975,14 +1706,30 @@
         <option value="1.5">150%</option>
         <option value="2">200%</option>
       </select>
-      <!-- UX-005: labeled canvas color picker -->
-      <div class="bg-swatch-wrapper">
-        <span class="bg-label">Canvas</span>
-        <label class="bg-swatch" title="Change the preview canvas color — does not affect your PDF">
-          <input type="color" value={bgColor} oninput={onBgColor} />
-        </label>
-      </div>
-      <!-- UX-004: debug button removed from toolbar -->
+      <details class="menu zoom-menu">
+        <summary
+          class="icon-btn menu-summary"
+          title="Zoom level"
+          aria-label="Zoom level"
+        >
+          <Icon name="zoom-in" />
+          <Icon name="chevron-down" size={12} />
+        </summary>
+        <div class="menu-panel">
+          {#each [["fit-width", "Fit to width"], ["0.25", "25%"], ["0.5", "50%"], ["0.75", "75%"], ["1", "100%"], ["1.25", "125%"], ["1.5", "150%"], ["2", "200%"]] as [val, label] (val)}
+            <button
+              aria-pressed={zoom === val}
+              class="menu-item"
+              class:active={zoom === val}
+              onclick={(e) => { applyZoom(val); closeMenu(e); }}
+              disabled={!previewUrl}
+            >
+              {label}
+            </button>
+          {/each}
+        </div>
+      </details>
+
       <!-- UX-039: separator before Save PDF -->
       <span class="toolbar-sep" aria-hidden="true"></span>
       <!-- UX-006: Save PDF always visible; icon-only at narrow widths -->
@@ -1003,53 +1750,120 @@
       {:else if saveWarning}
         <span class="save-hint save-warning" role="alert">{saveWarning}</span>
       {/if}
-      <!-- Auto-update: quiet icon-only button; only shown when bridge is present -->
-      {#if (window as any).electron?.updater}
-        <button
-          class="icon-btn update-check-btn"
-          onclick={checkForUpdates}
-          disabled={checkingUpdates}
-          title={checkingUpdates ? "Checking for updates…" : "Check for updates"}
-          aria-label="Check for updates"
-        >
-          <Icon name="refresh-cw" />
-        </button>
-      {/if}
+      <!-- Settings panel (#45): gear icon + Cmd/Ctrl+, shortcut. Inline on wide
+           screens; folds into the "More" menu when space is tight. -->
+      <button
+        bind:this={settingsBtn}
+        class="icon-btn opt-inline"
+        onclick={() => (settingsOpen = true)}
+        title="Settings (Ctrl+,)"
+        aria-label="Settings"
+      >
+        <Icon name="settings" />
+      </button>
       <!-- UX-026: bind:this for focus restore -->
       <button
         bind:this={helpBtn}
-        class="icon-btn"
+        class="icon-btn opt-inline"
         onclick={() => (helpOpen = true)}
         title="Help / About"
         aria-label="Help and system info"
       >
         <Icon name="circle-help" />
       </button>
+      <!-- Overflow menu: collapses Settings + Help into one button at narrow
+           widths so the toolbar never crowds the page navigation. -->
+      <details class="menu more-menu">
+        <summary class="icon-btn menu-summary" title="More" aria-label="More options">
+          <Icon name="ellipsis-vertical" />
+        </summary>
+        <div class="menu-panel menu-panel-right">
+          <button class="menu-item" onclick={(e) => { settingsOpen = true; closeMenu(e); }}>
+            <Icon name="settings" /> Settings
+          </button>
+          <button class="menu-item" onclick={(e) => { helpOpen = true; closeMenu(e); }}>
+            <Icon name="circle-help" /> Help &amp; about
+          </button>
+        </div>
+      </details>
     </section>
   </header>
 
   {#if previewUrl}
-    {#key previewUrl}
-      <PreviewFrame
-        url={previewUrl}
-        bind:client
-        onError={(msg) => {
-          if (sourceMode === "url") {
-            urlPreviewError = "This website could not be previewed inside print-md.";
-          } else {
-            toast?.error(msg);
-          }
-        }}
-      />
-    {/key}
+    <div
+      class="workspace"
+      class:editor-open={editorPaneOpen}
+      class:narrow={isNarrow}
+      class:show-edit={isNarrow && paneMode === "edit"}
+      class:show-view={isNarrow && paneMode === "view"}
+    >
+      {#if editorPaneOpen}
+        <aside class="pane file-tree-pane">
+          <FileTree
+            projectDir={currentDir}
+            selectedPath={editorFilePath}
+            onSelectFile={selectEditorFile}
+          />
+        </aside>
+        <section class="pane editor-pane" aria-label="Markdown editor">
+          {#if externalChange}
+            <ExternalEditBanner
+              fileName={externalFileName}
+              onReload={reloadExternal}
+              onKeepMine={keepMineExternal}
+            />
+          {/if}
+          {#if MarkdownEditor}
+            <MarkdownEditor
+              bind:this={editorRef}
+              filePath={editorFilePath}
+              content={editorContent}
+              onChange={onEditorChange}
+              onAnchorLine={onEditorAnchorLine}
+            />
+          {:else if editorModuleFailed}
+            <div class="editor-loading" role="alert">
+              <p>The editor failed to load.</p>
+              <button class="primary" onclick={retryEditorLoad}>Retry</button>
+            </div>
+          {:else}
+            <div class="editor-loading" role="status" aria-live="polite">
+              Loading editor…
+            </div>
+          {/if}
+        </section>
+      {/if}
+      <section
+        class="pane preview-pane"
+        inert={isNarrow && paneMode === "edit" ? true : undefined}
+      >
+        {#key previewUrl}
+          <PreviewFrame
+            url={previewUrl}
+            bind:client
+            onError={(msg) => {
+              if (sourceMode === "url") {
+                urlPreviewError = "This website could not be previewed inside print-md.";
+              } else {
+                toast?.error(msg);
+              }
+            }}
+          />
+        {/key}
+      </section>
+    </div>
   {:else}
     <div class="empty">
       <div class="empty-hero">
         <div class="empty-icon" aria-hidden="true">📖</div>
         <h1 class="empty-title">print-md</h1>
         <p class="empty-tagline">Turn your markdown writing into a print-ready book</p>
-        <button class="primary empty-cta" onclick={() => (openLocationOpen = true)} disabled={busy}>Open Your Book Folder</button>
-        <p class="empty-hint">Open a Print-md project folder with a <code>manifest.yaml</code> or <code>manifest.yml</code> file, or preview a published document from a web address — both live under the <strong>Open</strong> button. Markdown sources are loaded in manifest order, or alphabetically when no file list is configured.</p>
+        <div class="empty-cta-row">
+          <button bind:this={newProjectBtn} class="primary empty-cta" onclick={() => (newProjectOpen = true)} disabled={busy}>Create a New Book</button>
+          <button class="ghost empty-cta" onclick={() => (openLocationOpen = true)} disabled={busy}>Open an Existing Book</button>
+        </div>
+        <p class="empty-hint">New to print-md? <button type="button" class="link-btn" onclick={openSetupGuide}>Read the getting-started guide →</button></p>
+        <p class="empty-hint">Already have a book folder? Open it under <strong>Open an Existing Book</strong>, or preview a published document from a web address. Your chapters are loaded in order automatically.</p>
         {#if urlPreviewError && sourceMode === "url"}
           <div class="open-error" role="alert">
             <strong>Preview unavailable.</strong>
@@ -1067,12 +1881,24 @@
 </div>
 </div>
 
-<HelpDialog bind:open={helpOpen} triggerEl={helpBtn} />
+<HelpDialog
+  bind:open={helpOpen}
+  triggerEl={helpBtn}
+  onCheckForUpdates={checkForUpdates}
+  {checkingUpdates}
+  {updateReadyVersion}
+/>
+<SettingsDialog bind:open={settingsOpen} triggerEl={settingsBtn} />
 <OpenLocationDialog
   bind:open={openLocationOpen}
   onOpenFolder={(path) => startFolderPreview(path)}
   onOpenUrl={openUrl}
   triggerEl={openBtn}
+/>
+<NewProjectWizard
+  bind:open={newProjectOpen}
+  onCreated={(projectDir) => startFolderPreview(projectDir, "Opening your new book…")}
+  triggerEl={newProjectBtn}
 />
 
 
@@ -1080,8 +1906,8 @@
   :global(html, body) {
     margin: 0;
     height: 100%;
-    background: #1e1e1e;
-    color: #eee;
+    background: var(--app-bg);
+    color: var(--app-text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   }
 
@@ -1099,6 +1925,54 @@
     overflow: hidden;
   }
 
+  /* ---- Editor workspace: [file-tree | editor | preview] (#38) ---- */
+  /* When the editor is closed the preview takes the full width, preserving
+     the prior single-pane behaviour exactly. */
+  .workspace {
+    display: grid;
+    grid-template-columns: 1fr;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  /* Editor open: [files | editor | preview]. The preview is weighted heaviest
+     since it's the primary output for a writer. */
+  .workspace.editor-open {
+    grid-template-columns: minmax(150px, 200px) minmax(280px, 1fr) minmax(360px, 1.4fr);
+  }
+  .pane {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .editor-pane {
+    border-right: 1px solid var(--app-border);
+  }
+  .editor-loading {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    color: var(--app-text-faint);
+    font-size: 13px;
+  }
+  .preview-pane {
+    position: relative;
+  }
+  /* Narrow widths: drop the file-tree column, stack editor over preview is
+     avoided (keeps the live preview visible) — instead shrink the tree away
+     and give editor + preview equal space. */
+  @media screen and (max-width: 1100px) {
+    .workspace.editor-open {
+      grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.1fr);
+    }
+    .workspace.editor-open .file-tree-pane {
+      display: none;
+    }
+  }
+
   /* ---- Non-blocking PDF export progress pill ---- */
   .export-pill {
     position: fixed;
@@ -1111,10 +1985,10 @@
     max-width: 420px;
     padding: 10px 14px;
     border-radius: 8px;
-    background: rgba(30, 30, 30, 0.95);
-    border: 1px solid #3a3a3a;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-    color: #eee;
+    background: var(--app-surface-raised);
+    border: 1px solid var(--app-border);
+    box-shadow: 0 4px 16px var(--app-shadow-md);
+    color: var(--app-text);
     font-size: 13px;
     pointer-events: auto;
   }
@@ -1122,8 +1996,8 @@
     width: 14px;
     height: 14px;
     flex: 0 0 auto;
-    border: 2px solid #555;
-    border-top-color: #4c9ffe;
+    border: 2px solid var(--app-spinner-track);
+    border-top-color: var(--app-spinner-head);
     border-radius: 50%;
     animation: export-spin 0.8s linear infinite;
   }
@@ -1136,21 +2010,21 @@
   .export-success {
     width: 14px;
     flex: 0 0 auto;
-    color: #86efac;
+    color: var(--app-success-text);
     font-weight: 700;
     text-align: center;
   }
   .export-cancel {
     background: transparent;
-    border: 1px solid #6b7280;
-    color: #e5e7eb;
+    border: 1px solid var(--app-border-strong);
+    color: var(--app-text-secondary);
     border-radius: 999px;
     padding: 4px 10px;
     font-size: 12px;
   }
   .export-cancel:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: #9ca3af;
+    background: var(--app-scrim-strong);
+    border-color: var(--app-control-hover-border);
   }
   @keyframes export-spin {
     to { transform: rotate(360deg); }
@@ -1158,28 +2032,45 @@
 
   /* ---- Toolbar ---- */
   .toolbar {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    /* FLEX, not grid. A `1fr auto 1fr` grid positions the three sections
+       independently, so when the right section is wider than its 1fr column it
+       overflows leftward and OVERLAPS the centered page-nav (seen at ~1280px CSS
+       width, e.g. a 4K display at 300% OS scale). Flex lays the sections out
+       sequentially — they can never overlap; the worst case is a clip, which the
+       responsive collapse below prevents. The center is pushed to the middle by
+       equal-growing left/right spacers. */
+    display: flex;
     align-items: center;
     gap: 8px;
     padding: 0 12px;
     height: 56px;
     flex-shrink: 0;
-    background: linear-gradient(to bottom, #252525, #1e1e1e);
-    border-bottom: 1px solid #3a3a3a;
-    overflow: hidden;
+    background: linear-gradient(to bottom, var(--app-toolbar-from), var(--app-toolbar-to));
+    border-bottom: 1px solid var(--app-border);
+    /* Stacking context ABOVE the workspace panes (z-index 50) so dropdown menus
+       that hang below the toolbar paint over the preview, not behind it. overflow
+       must stay visible for the same reason — `overflow: hidden` clips dropdowns. */
+    position: relative;
+    z-index: 100;
+    overflow: visible;
   }
 
   section { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  .left { justify-self: start; overflow: hidden; }
-  .center { justify-self: center; flex-shrink: 0; }
-  .right { justify-self: end; flex-shrink: 0; }
+  /* .left shrinks first (the doc title ellipsises). .center (page-nav) and
+     .right never shrink, so their buttons can't overflow their own box and lap
+     onto a neighbour. The center is centred by auto margins; .right is pinned to
+     the end by margin-left:auto (works whether or not the center is present). If
+     everything still doesn't fit, .right clips past the right edge — which the
+     responsive collapse below avoids by shrinking the right section first. */
+  .left { flex: 0 1 auto; overflow: hidden; }
+  .center { flex: 0 0 auto; margin: 0 auto; }
+  .right { flex: 0 0 auto; margin-left: auto; }
 
   /* ---- Buttons & inputs ---- */
   button, select {
-    background: #3a3a3a;
-    border: 1px solid #4a4a4a;
-    color: #e0e0e0;
+    background: var(--app-control-bg);
+    border: 1px solid var(--app-control-border);
+    color: var(--app-control-text);
     padding: 5px 10px;
     border-radius: 6px;
     font-size: 13px;
@@ -1188,22 +2079,22 @@
     white-space: nowrap;
   }
   button:hover:not(:disabled) {
-    background: #444;
-    border-color: #5a5a5a;
+    background: var(--app-control-hover-bg);
+    border-color: var(--app-control-hover-border);
   }
   button.primary {
-    background: linear-gradient(to bottom, #0077dd, #0066cc);
-    border-color: #0055aa;
-    color: #fff;
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
     font-weight: 600;
   }
   button.primary:hover:not(:disabled) {
-    background: linear-gradient(to bottom, #0088ee, #0077dd);
+    background: linear-gradient(to bottom, var(--app-accent-bright), var(--app-accent-hover));
   }
   button.active {
-    background: linear-gradient(to bottom, #0077dd, #0066cc);
-    border-color: #0055aa;
-    color: #fff;
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
   }
   button:disabled, select:disabled {
     opacity: 0.4;
@@ -1216,6 +2107,21 @@
     align-items: center;
     justify-content: center;
   }
+  /* Button vocabulary: in the toolbar, secondary controls (nav arrows, settings,
+     help, menu summaries) read as ONE ghost family — transparent until hover —
+     so the filled treatment is reserved for the primary actions (Open, Save PDF)
+     and active toggles (Edit, the selected view-mode segment). This removes the
+     "every control is a box" clutter the design review flagged. */
+  .toolbar .icon-btn:not(.active),
+  .toolbar .menu-summary {
+    background: transparent;
+    border-color: transparent;
+  }
+  .toolbar .icon-btn:not(.active):hover:not(:disabled),
+  .toolbar .menu-summary:hover {
+    background: var(--app-control-hover-bg);
+    border-color: transparent;
+  }
   /* Combo button: icon + label text side by side */
   .icon-text {
     display: inline-flex;
@@ -1227,10 +2133,184 @@
   /* UX-014: small text label under/beside view mode icon */
   .view-label { font-size: 11px; }
 
+  /* Edit/View segmented toggle (narrow single-pane mode) */
+  .pane-toggle { display: inline-flex; gap: 0; }
+  .pane-toggle .seg { border-radius: 0; }
+  .pane-toggle .seg:first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+  .pane-toggle .seg:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; margin-left: -1px; }
+
+  /* ---- Collapsible dropdown menus (view-mode + zoom) ---- */
+  /* On wide screens the inline controls (.view-mode-group / .zoom-select) show
+     and the menu buttons hide. Below a breakpoint they swap. */
+  /* Narrow + Edit mode: the preview is hidden, so its controls (page navigation,
+     single/spread, zoom) are noise — hide them so the edit toolbar is just
+     sidebar / Open / Edit·View / Save / More. Highest specificity wins over the
+     generic responsive rules below. */
+  .toolbar.edit-narrow .center,
+  .toolbar.edit-narrow .view-mode-group,
+  .toolbar.edit-narrow .view-mode-menu,
+  .toolbar.edit-narrow .zoom-select,
+  .toolbar.edit-narrow .zoom-menu {
+    display: none;
+  }
+  /* Edit mode has no center column (page nav hidden) — collapse the toolbar to
+     two tracks so the controls don't leave a dead gap. (per user) */
+  .toolbar.edit-narrow {
+    grid-template-columns: 1fr auto;
+  }
+
+  .menu { position: relative; display: none; }
+  /* The "More" overflow menu uses higher specificity (details.more-menu) than
+     the generic `.menu { display: inline-block }` shown at <=980px, so it stays
+     hidden until its own <=620px breakpoint. */
+  details.more-menu { display: none; }
+  .menu-summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    cursor: pointer;
+  }
+  .menu-summary::-webkit-details-marker { display: none; }
+  .menu[open] .menu-summary {
+    background: var(--app-control-hover-bg);
+    border-color: var(--app-control-hover-border);
+  }
+  .menu-panel {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 80;
+    min-width: 168px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+    background: var(--app-surface-raised);
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    box-shadow: 0 6px 20px var(--app-shadow-md);
+  }
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    padding: 6px 10px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .menu-item:hover:not(:disabled) {
+    background: var(--app-control-hover-bg);
+    border-color: var(--app-control-hover-border);
+  }
+  .menu-item.active {
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
+  }
+  /* Page/Spread as a true segmented control: one bordered track, the selected
+     segment filled, the other transparent — so "which mode am I in" is obvious. */
+  .view-mode-group {
+    display: inline-flex;
+    gap: 0;
+    background: var(--app-control-bg);
+    border: 1px solid var(--app-control-border);
+    border-radius: 7px;
+    padding: 2px;
+  }
+  .view-mode-group button {
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 5px;
+    padding: 4px 9px;
+  }
+  .view-mode-group button:hover:not(:disabled) {
+    background: var(--app-control-hover-bg);
+    border-color: transparent;
+  }
+  .view-mode-group button.active {
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
+  }
+
+  /* Chapter-jump dropdown (UX-013). Always visible when an outline exists —
+     overrides the generic `.menu { display: none }` (which keeps zoom/view-mode
+     menus collapsed until their narrow breakpoints). Left-aligned, scrollable. */
+  .chapter-menu { display: inline-block; }
+  .chapter-summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 220px;
+    padding: 4px 8px;
+    border: 1px solid var(--app-control-border);
+    border-radius: 6px;
+    background: var(--app-control-bg);
+    color: var(--app-control-text);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .chapter-summary::-webkit-details-marker { display: none; }
+  .chapter-summary:hover,
+  .chapter-menu[open] .chapter-summary {
+    background: var(--app-control-hover-bg);
+    border-color: var(--app-control-hover-border);
+  }
+  .chapter-label {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chapter-panel {
+    left: 0;
+    right: auto;
+    min-width: 240px;
+    max-width: 360px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  /* Hierarchy in the jump list: chapters (h1) bold, sub-headings (h3+) lighter,
+     a little breathing room before each chapter so groups are scannable. */
+  .chapter-item {
+    justify-content: space-between;
+    gap: 12px;
+    font-weight: 400;
+    color: var(--app-text-secondary);
+  }
+  .chapter-item.chapter-top {
+    font-weight: 650;
+    color: var(--app-text);
+    margin-top: 7px;
+    padding-top: 7px;
+    border-top: 1px solid var(--app-border);
+  }
+  .chapter-item.chapter-top:first-child {
+    margin-top: 0;
+    padding-top: 6px;
+    border-top: none;
+  }
+  .chapter-item.chapter-sub { color: var(--app-text-muted); }
+  .chapter-item.active { color: var(--app-accent-text); }
+  .chapter-item-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chapter-item-page {
+    flex: 0 0 auto;
+    opacity: 0.55;
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+  }
+
   .page-input {
-    background: #3a3a3a;
-    border: 1px solid #4a4a4a;
-    color: #e0e0e0;
+    background: var(--app-control-bg);
+    border: 1px solid var(--app-control-border);
+    color: var(--app-control-text);
     padding: 5px 4px;
     border-radius: 6px;
     font-size: 13px;
@@ -1239,21 +2319,21 @@
   }
   .page-input:disabled { opacity: 0.4; }
   .page-pill {
-    background: linear-gradient(to bottom, #313740, #262c34);
-    border-color: #576170;
-    color: #eef4ff;
+    background: linear-gradient(to bottom, var(--app-pill-from), var(--app-pill-to));
+    border-color: var(--app-pill-border);
+    color: var(--app-pill-text);
     min-width: 104px;
     text-align: center;
   }
   .page-pill:hover:not(:disabled) {
-    background: linear-gradient(to bottom, #38404b, #2c333d);
-    border-color: #6a7485;
+    background: linear-gradient(to bottom, var(--app-pill-from), var(--app-pill-to));
+    border-color: var(--app-control-hover-border);
   }
 
   .zoom-select { padding: 5px 6px; }
 
   .doc-title {
-    color: #ddd;
+    color: var(--app-text-secondary);
     font-size: 13px;
     font-weight: 600;
     overflow: hidden;
@@ -1263,9 +2343,9 @@
     flex-shrink: 1;
   }
 
-  /* UX-031: #a8a8a8 for better contrast */
+  /* UX-031: muted token for better contrast */
   .path {
-    color: #a8a8a8;
+    color: var(--app-text-muted);
     font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1274,30 +2354,11 @@
     flex-shrink: 2;
   }
 
-  /* UX-005: labeled canvas color picker wrapper */
-  .bg-swatch-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-  }
-  .bg-label { font-size: 11px; color: #aaa; white-space: nowrap; }
-  .bg-swatch { display: inline-block; cursor: pointer; flex-shrink: 0; }
-  .bg-swatch input {
-    width: 32px;
-    height: 28px;
-    padding: 0;
-    border-radius: 6px;
-    border: 1px solid #4a4a4a;
-    background: none;
-    cursor: pointer;
-  }
-
   /* UX-039: visual separator between toolbar groups */
   .toolbar-sep {
     width: 1px;
     height: 20px;
-    background: #404040;
+    background: var(--app-border-strong);
     margin: 0 4px;
     flex-shrink: 0;
   }
@@ -1305,11 +2366,11 @@
   /* UX-023: hint below Save PDF when disabled */
   .save-hint {
     font-size: 11px;
-    color: #888;
+    color: var(--app-text-faint);
     white-space: nowrap;
   }
   .save-warning {
-    color: #f0c674;
+    color: var(--app-warning-text);
     max-width: 240px;
     white-space: normal;
     line-height: 1.35;
@@ -1320,7 +2381,7 @@
     flex: 1;
     display: grid;
     place-items: center;
-    color: #888;
+    color: var(--app-text-faint);
     text-align: center;
   }
   .empty-hero {
@@ -1333,30 +2394,35 @@
     padding: 32px 24px;
   }
   .empty-icon { font-size: 48px; line-height: 1; margin-bottom: 4px; }
-  .empty-title { margin: 0; font-size: 22px; font-weight: 700; color: #e0e0e0; letter-spacing: -0.3px; }
-  .empty-tagline { margin: 0; font-size: 14px; color: #aaa; line-height: 1.5; }
-  .empty-cta { padding: 10px 24px; font-size: 14px; font-weight: 600; border-radius: 8px; margin-top: 4px; }
-  .empty-hint { margin: 0; font-size: 12px; color: #777; line-height: 1.5; }
-  .empty-hint code {
-    font-family: ui-monospace, monospace;
-    color: #9ab;
-    background: #2a3040;
-    padding: 1px 5px;
-    border-radius: 3px;
+  .empty-title { margin: 0; font-size: 22px; font-weight: 700; color: var(--app-text-secondary); letter-spacing: -0.3px; }
+  .empty-tagline { margin: 0; font-size: 14px; color: var(--app-text-muted); line-height: 1.5; }
+  .empty-cta-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+  .empty-cta { padding: 10px 24px; font-size: 14px; font-weight: 600; border-radius: 8px; }
+  .empty-hint { margin: 0; font-size: 12px; color: var(--app-text-faint); line-height: 1.5; }
+  .link-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    color: var(--app-link, var(--app-accent));
+    font: inherit;
+    cursor: pointer;
+    text-decoration: underline;
   }
+  .link-btn:hover { color: var(--app-accent-bright, var(--app-accent)); }
   .open-error {
-    background: #3a1a1a;
-    border: 1px solid #5a2d2d;
+    background: var(--app-error-bg);
+    border: 1px solid var(--app-error-border);
     border-radius: 6px;
     padding: 10px 14px;
     font-size: 12px;
-    color: #fca5a5;
+    color: var(--app-error-text);
     max-width: 340px;
     text-align: left;
     line-height: 1.5;
   }
   .open-error strong { display: block; margin-bottom: 4px; font-size: 13px; }
-  .open-error p { margin: 0; color: #f0a0a0; }
+  .open-error p { margin: 0; color: var(--app-error-text); }
 
   /* ---- Auto-update banner ---- */
   .update-banner {
@@ -1364,47 +2430,58 @@
     align-items: center;
     gap: 10px;
     padding: 8px 16px;
-    background: #1a2e1a;
-    border-bottom: 1px solid #2d4d2d;
-    color: #86efac;
+    background: var(--app-success-bg);
+    border-bottom: 1px solid var(--app-success-border);
+    color: var(--app-success-text);
     font-size: 13px;
     flex-shrink: 0;
   }
   .update-banner-msg { flex: 1; }
   .update-apply {
-    background: #166534;
-    border: 1px solid #15803d;
-    color: #dcfce7;
+    background: var(--app-success-strong);
+    border: 1px solid var(--app-success-border);
+    color: var(--app-text-on-accent);
     border-radius: 6px;
     padding: 4px 12px;
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
   }
-  .update-apply:hover { background: #15803d; }
+  .update-apply:hover { background: var(--app-success-strong); }
   .update-later {
     background: transparent;
-    border: 1px solid #4a6a4a;
-    color: #a7f3d0;
+    border: 1px solid var(--app-success-border);
+    color: var(--app-success-text);
     border-radius: 6px;
     padding: 4px 10px;
     font-size: 12px;
     cursor: pointer;
   }
-  .update-later:hover { background: rgba(255, 255, 255, 0.06); }
+  .update-later:hover { background: var(--app-scrim); }
 
-  /* Spin the refresh icon while checking */
-  .update-check-btn:disabled :global(svg) {
-    animation: update-spin 1s linear infinite;
+  /* ---- Responsive breakpoints ----
+     The toolbar degrades in stages as the viewport narrows:
+       1366px — collapse view-mode + zoom into dropdown menu buttons (the
+                segmented control + zoom select are the widest right-side items;
+                collapsing them keeps the full toolbar within ~1280px CSS, e.g. a
+                4K display at 300% OS scale, where it otherwise overflowed)
+       1200px — trim the doc-title/path widths
+       1024px — drop button text labels (icon-only with tooltips/aria-labels)
+        900px — hide the doc title, drop the Save PDF text label
+        820px — single-pane layout (Edit/View toggle); see .workspace.narrow */
+  @media screen and (max-width: 1366px) {
+    /* Swap the inline view-mode buttons + zoom select for compact menu buttons. */
+    .view-mode-group { display: none; }
+    .zoom-select { display: none; }
+    .menu { display: inline-block; }
   }
-  @keyframes update-spin {
-    to { transform: rotate(360deg); }
-  }
-
-  /* ---- Responsive breakpoints ---- */
   @media screen and (max-width: 1200px) {
     .doc-title { max-width: 140px; }
     .path { max-width: 180px; }
+  }
+  @media screen and (max-width: 1024px) {
+    /* Icon-only buttons: labels drop, aria-label/title keep them accessible. */
+    .view-label { display: none; }
   }
   @media screen and (max-width: 900px) {
     .doc-title { display: none; }
@@ -1414,10 +2491,73 @@
   }
   @media screen and (max-width: 700px) {
     .path { display: none; }
-    .zoom-select { display: none; }
   }
-  @media screen and (max-width: 520px) {
-    .toolbar { grid-template-columns: auto 1fr; }
-    .right { display: none; }
+  @media screen and (max-width: 820px) {
+    /* The chapter-jump menu keeps its icon + chevron but drops its (often long)
+       heading label so it stops eating the center width — which previously
+       pushed the page total "/ N" off-screen behind the right-side controls. */
+    .chapter-label { display: none; }
+    .chapter-summary { max-width: none; }
+  }
+  @media screen and (max-width: 620px) {
+    /* Fold Settings + Help into the "More" overflow menu, and drop the "Page"
+       word from the pill — so the page navigation keeps room and the toolbar
+       never crowds/clips at narrow widths. */
+    .opt-inline { display: none; }
+    details.more-menu { display: inline-block; }
+    .pill-word { display: none; }
+    /* Open becomes icon-only (the folder icon is unambiguous) so the primary
+       action never truncates to "Op". */
+    .open-label { display: none; }
+  }
+  @media screen and (max-width: 560px) {
+    /* Compact page navigation: drop the first/last jump buttons, keep prev /
+       page-pill / next so navigation still works without overflow. */
+    .center .icon-btn:first-child,
+    .center .icon-btn:last-child { display: none; }
+    .page-pill { min-width: 56px; }
+  }
+
+  /* ---- Small-screen single-pane layout (#responsive) ----
+     Below NARROW_QUERY (820px) the editor + preview can't sit side by side.
+     The workspace stays a single column and the Edit/View toggle decides which
+     pane is visible. The preview iframe is NEVER unmounted (it owns the live
+     PreviewClient); inactive panes are hidden with `display:none`. */
+  @media screen and (max-width: 820px) {
+    /* Small screens: drop the zoom + single/spread controls and the group
+       separators entirely — they crowd the bar and merge the controls into an
+       unreadable blob. Toolbar becomes sidebar / Open / Edit·View / page-nav /
+       Save / More. (per user) */
+    .zoom-select,
+    .zoom-menu,
+    .view-mode-group,
+    .view-mode-menu,
+    .toolbar-sep {
+      display: none;
+    }
+    .workspace.narrow,
+    .workspace.narrow.editor-open {
+      grid-template-columns: 1fr;
+    }
+    /* The file tree is part of the editing surface; fold it away on small
+       screens so the editor pane gets the full width. */
+    .workspace.narrow .file-tree-pane { display: none; }
+    /* DEFAULT narrow = preview only. Driving the single-pane choice from CSS
+       defaults (not from the show-* classes alone) means an unset/undefined
+       paneMode can never leave BOTH panes stacked in the single column. */
+    .workspace.narrow .editor-pane { display: none; }
+    /* Edit mode: show only the editor; keep the preview mounted but hidden. */
+    .workspace.narrow.show-edit .editor-pane {
+      display: flex;
+      border-right: none;
+    }
+    .workspace.narrow.show-edit .preview-pane {
+      position: absolute;
+      width: 0;
+      height: 0;
+      overflow: hidden;
+      pointer-events: none;
+      opacity: 0;
+    }
   }
 </style>

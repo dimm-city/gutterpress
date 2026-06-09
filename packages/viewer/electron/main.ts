@@ -4,14 +4,23 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeTheme,
   protocol,
   session,
   shell,
 } from "electron";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { watch, type FSWatcher } from "node:fs";
+import { scanForProjects, type ScanDeps } from "./discover-projects";
+import {
+  writeRecovery as writeRecoveryStore,
+  clearRecovery as clearRecoveryStore,
+  listRecovery as listRecoveryStore,
+} from "./recovery";
 import {
   ensureLayout,
   resolveWebRoot,
@@ -34,6 +43,26 @@ import {
   type RecentFolder,
   type FavoriteFolder,
 } from "./recent-folders";
+import {
+  readProjectState,
+  writeProjectState,
+  migrateLegacyProjectState,
+  type ProjectState,
+  type ProjectStateMap,
+} from "./project-state";
+// The splash markup ships as a string baked into the main bundle (electron-vite
+// inlines `?raw`), so there is no separate file to resolve at runtime.
+import splashHtml from "./splash.html?raw";
+
+// ── Startup timing instrumentation (diagnose the ~10s launch stall) ──────────
+// Prints "[startup +Nms] <milestone>" so a slow launch log pinpoints exactly
+// which phase stalls (Electron init → web-root → window create → renderer load
+// → first paint → preview). Cheap; safe to leave in for a beta.
+const __startupT0 = Date.now();
+function slog(msg: string): void {
+  console.log(`[startup +${Date.now() - __startupT0}ms] ${msg}`);
+}
+slog("main.js evaluated");
 
 // __dirname/__filename are injected by electron-vite for the ESM main bundle
 // (resolves to out/main/ at runtime).
@@ -96,12 +125,71 @@ interface SystemDiagnostics {
   docsUrl: string;
 }
 
+type ProjectSource =
+  | { type: "local-folder"; path: string }
+  | {
+      type: "local-git-folder";
+      path: string;
+      hasRemote: boolean;
+      remoteUrl?: string;
+      branch?: string;
+    }
+  | {
+      type: "managed-github";
+      installationId: string;
+      owner: string;
+      repo: string;
+      branch: string;
+      rootPath?: string;
+    };
+
+interface ProjectCapabilities {
+  canRead: boolean;
+  canWriteLocal: boolean;
+  canEnableVersionHistory: boolean;
+  canSnapshot: boolean;
+  canViewHistory: boolean;
+  canRestoreSnapshot: boolean;
+  canPublish: boolean;
+  canSync: boolean;
+  authManagedByApp: boolean;
+}
+
+// New-project scaffold (#25). Mirrors the lib's CreateProjectOptions/Result.
+interface CreateProjectOptions {
+  name: string;
+  author?: string;
+  parentDir: string;
+  folderName?: string;
+  template?: "book";
+  versionHistory?: "local-git" | "none";
+}
+interface CreateProjectResult {
+  projectDir: string;
+  manifestPath: string;
+  openFile: string;
+  versionHistory: "local-git" | "none";
+  versionHistoryError?: string;
+}
+
+interface PrintSafeWarning {
+  rule: string;
+  severity: "error" | "warning";
+  message: string;
+  line: number;
+  column: number;
+}
+
 interface LibModule {
   startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
   loadManifestWithPath: (input: string) => Promise<ManifestWithPath>;
   splitOutPath: (out: string | undefined, format: string) => SplitOutPath;
   runBuild: (opts: Record<string, unknown>) => Promise<BuildResult>;
   getSystemDiagnostics: () => Promise<SystemDiagnostics>;
+  detectProjectSource: (folderPath: string) => Promise<ProjectSource>;
+  capabilitiesFor: (source: ProjectSource) => ProjectCapabilities;
+  scaffoldProject: (options: CreateProjectOptions) => Promise<CreateProjectResult>;
+  checkCss: (css: string, from?: string) => PrintSafeWarning[];
   BuildError: new (message: string) => Error;
 }
 
@@ -267,10 +355,35 @@ let activePreview: PreviewHandle | null = null;
 
 interface ViewerPrefs {
   lastProjectDir?: string;
+  /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
+  sidebarOpen?: boolean;
+  /**
+   * @deprecated (#43) Pre-per-project global page. Kept ONE version as a
+   * migration fallback (see migrateLegacyProjectState); new writes go to
+   * projectStates[dir].currentPage. Remove in a later release.
+   */
   currentPage?: number;
+  /**
+   * @deprecated (#43) Pre-per-project global view mode. Kept ONE version as a
+   * migration fallback; new writes go to projectStates[dir].viewMode.
+   */
   viewMode?: "single" | "two-column";
   recentFolders?: RecentFolder[];
   favorites?: FavoriteFolder[];
+  /**
+   * Per-project editor/preview state keyed by folder path (#43). Opening
+   * project B never overwrites project A's page/view/chapter state.
+   */
+  projectStates?: ProjectStateMap;
+  /** Root dirs scanned by app:discoverProjects (#27). Defaults applied below. */
+  projectSearchRoots?: string[];
+  /**
+   * Last classified source of the open project (#12). Cached so the UI can
+   * render without re-detecting on launch, but the renderer always re-classifies
+   * on folder open (a user may add/remove `.git` between sessions), so this is a
+   * hint, not the source of truth.
+   */
+  projectSource?: ProjectSource;
 }
 
 function prefsPath(): string {
@@ -279,7 +392,14 @@ function prefsPath(): string {
 
 async function readPrefs(): Promise<ViewerPrefs> {
   try {
-    return JSON.parse(await readFile(prefsPath(), "utf8")) as ViewerPrefs;
+    const prefs = JSON.parse(await readFile(prefsPath(), "utf8")) as ViewerPrefs;
+    // #43 one-time migration: seed projectStates from the legacy top-level
+    // currentPage/viewMode so existing users don't lose their saved state.
+    const migrated = migrateLegacyProjectState(prefs);
+    if (migrated && !prefs.projectStates) {
+      prefs.projectStates = migrated;
+    }
+    return prefs;
   } catch {
     return {};
   }
@@ -288,6 +408,94 @@ async function readPrefs(): Promise<ViewerPrefs> {
 async function writePrefs(prefs: ViewerPrefs): Promise<void> {
   await mkdir(app.getPath("userData"), { recursive: true });
   await writeFile(prefsPath(), JSON.stringify(prefs, null, 2), "utf8");
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// User settings (#45) — persisted, section-organised user preferences in a
+// SEPARATE file from viewer-prefs.json so session/per-project state and durable
+// user settings don't collide. Shape mirrors AppSettings in
+// src/lib/platform/contract.ts (kept in sync manually).
+// ──────────────────────────────────────────────────────────────────────────
+
+interface AppSettings {
+  editor: {
+    fontFamily: string;
+    fontSize: number;
+    lineHeight: number;
+    spellCheckLanguage: string;
+    autoSaveDelay: number;
+    crashRecovery: boolean;
+  };
+  appearance: {
+    theme: "light" | "dark" | "system";
+    previewBg: string;
+  };
+  preview: {
+    defaultZoom: string;
+    viewMode: "single" | "two-column";
+  };
+  advanced: {
+    fileWatcherInterval: number;
+    logLevel: "error" | "warn" | "info" | "debug";
+  };
+}
+
+const DEFAULT_SETTINGS: AppSettings = {
+  editor: {
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontSize: 14,
+    lineHeight: 1.6,
+    spellCheckLanguage: "en-US",
+    autoSaveDelay: 1000,
+    crashRecovery: true,
+  },
+  appearance: {
+    theme: "system",
+    previewBg: "#5a5a5a",
+  },
+  preview: {
+    defaultZoom: "fit-width",
+    viewMode: "two-column",
+  },
+  advanced: {
+    fileWatcherInterval: 300,
+    logLevel: "warn",
+  },
+};
+
+type DeepPartialSettings = {
+  [K in keyof AppSettings]?: Partial<AppSettings[K]>;
+};
+
+function settingsPath(): string {
+  return path.join(app.getPath("userData"), "app-settings.json");
+}
+
+function mergeSettings(base: AppSettings, patch: DeepPartialSettings): AppSettings {
+  const out = { ...base } as Record<string, unknown>;
+  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
+    const value = patch[key];
+    if (value && typeof value === "object") {
+      out[key] = { ...base[key], ...value };
+    }
+  }
+  return out as unknown as AppSettings;
+}
+
+async function readSettings(): Promise<AppSettings> {
+  try {
+    const stored = JSON.parse(
+      await readFile(settingsPath(), "utf8"),
+    ) as DeepPartialSettings;
+    return mergeSettings(DEFAULT_SETTINGS, stored);
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+async function writeSettings(settings: AppSettings): Promise<void> {
+  await mkdir(app.getPath("userData"), { recursive: true });
+  await writeFile(settingsPath(), JSON.stringify(settings, null, 2), "utf8");
 }
 
 async function existingDirectory(dir: string | undefined): Promise<string | null> {
@@ -304,6 +512,136 @@ async function existingDirectory(dir: string | undefined): Promise<string | null
 // ──────────────────────────────────────────────────────────────────────────
 
 let mainWindow: BrowserWindow | null = null;
+
+// ── Splash window ──────────────────────────────────────────────────────────
+// A small frameless window shown the instant the app starts, so the user sees
+// branded, animated feedback (with live status) while the main window's SPA
+// boots and the first project renders. The main window stays hidden until the
+// renderer reports its first screen is ready (rendered project OR welcome
+// screen), at which point we show it and close the splash. A fallback timeout
+// guarantees the splash never strands the user if that signal never arrives.
+let splashWindow: BrowserWindow | null = null;
+let mainShown = false;
+let splashFallbackTimer: NodeJS.Timeout | null = null;
+
+function createSplashWindow(): void {
+  splashWindow = new BrowserWindow({
+    width: 460,
+    height: 280,
+    frame: false,
+    resizable: false,
+    movable: true,
+    center: true,
+    alwaysOnTop: true,
+    show: true,
+    backgroundColor: "#1e1e1e",
+    title: "print-md",
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  void splashWindow.loadURL(
+    "data:text/html;charset=utf-8," + encodeURIComponent(splashHtml),
+  );
+  splashWindow.once("ready-to-show", () => {
+    // Stamp the version into the badge once the DOM exists.
+    splashWindow?.webContents
+      .executeJavaScript(
+        `(function(){var el=document.getElementById('splash-version');` +
+          `if(el)el.textContent=${JSON.stringify("v" + app.getVersion())};})()`,
+      )
+      .catch(() => {});
+  });
+  splashWindow.on("closed", () => {
+    splashWindow = null;
+  });
+}
+
+/** Drive the splash's status line / progress bar / sub-status from the host. */
+function updateSplash(status?: string, progress?: number, sub?: string): void {
+  if (!splashWindow || splashWindow.isDestroyed()) return;
+  const a = status === undefined ? "undefined" : JSON.stringify(status);
+  const b = progress === undefined ? "undefined" : String(Number(progress));
+  const c = sub === undefined ? "undefined" : JSON.stringify(sub);
+  splashWindow.webContents
+    .executeJavaScript(`window.__splashUpdate(${a},${b},${c})`)
+    .catch(() => {});
+}
+
+/** Reveal the main window and dismiss the splash — idempotent. */
+function showMainWindowAndCloseSplash(): void {
+  if (mainShown) return;
+  mainShown = true;
+  if (splashFallbackTimer) {
+    clearTimeout(splashFallbackTimer);
+    splashFallbackTimer = null;
+  }
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+  // Let the main window paint a frame before the splash vanishes, so there's no
+  // dark flash between them.
+  setTimeout(() => {
+    if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
+  }, 140);
+}
+
+// ── Unsaved-changes infrastructure (#44) ────────────────────────────────────
+// The recovery sidecar store lives under userData/recovery/.
+function recoveryDir(): string {
+  return path.join(app.getPath("userData"), "recovery");
+}
+
+// A single shallow folder watcher for the open project. fs.watch is coarse and
+// fires multiple times per save, so changes are debounced before notifying the
+// renderer. Only one project is open at a time, so a single watcher suffices.
+let folderWatcher: FSWatcher | null = null;
+let watchedDir: string | null = null;
+let folderChangeDebounce: ReturnType<typeof setTimeout> | null = null;
+
+function stopFolderWatch(): void {
+  if (folderChangeDebounce) {
+    clearTimeout(folderChangeDebounce);
+    folderChangeDebounce = null;
+  }
+  if (folderWatcher) {
+    folderWatcher.close();
+    folderWatcher = null;
+  }
+  watchedDir = null;
+}
+
+function startFolderWatch(dirPath: string): void {
+  if (watchedDir === dirPath && folderWatcher) return;
+  stopFolderWatch();
+  watchedDir = dirPath;
+  try {
+    folderWatcher = watch(dirPath, { recursive: false }, (_event, filename) => {
+      // fs.watch is noisy (fires on rename + change). Debounce so a single
+      // external save produces one renderer notification.
+      if (folderChangeDebounce) clearTimeout(folderChangeDebounce);
+      const name =
+        typeof filename === "string"
+          ? filename
+          : filename
+            ? Buffer.from(filename).toString()
+            : "";
+      folderChangeDebounce = setTimeout(() => {
+        mainWindow?.webContents.send("fs:folderChanged", { filename: name });
+      }, 150);
+    });
+  } catch (e) {
+    console.error(`[watch] failed to watch ${dirPath}:`, e);
+    folderWatcher = null;
+    watchedDir = null;
+  }
+}
+
+// Renderer pushes its pending-save state here so the window `close` gate can
+// flush before quitting. `flushResolve` is set while main awaits the renderer's
+// flush; the watchdog forces the close if the renderer never answers.
+let rendererDirty = false;
+let isQuitting = false;
+let flushResolve: (() => void) | null = null;
 
 function extractHeader(
   headers: Record<string, string | string[] | undefined>,
@@ -358,6 +696,11 @@ function createWindow() {
     width: 1400,
     height: 900,
     backgroundColor: "#1e1e1e",
+    // Start HIDDEN. The splash window provides instant branded feedback while
+    // the SPA boots + the first project renders; we reveal this window only once
+    // the renderer reports its first screen is ready (or a fallback timeout
+    // fires). See showMainWindowAndCloseSplash() + the app:rendererReady IPC.
+    show: false,
     webPreferences: {
       preload: path.resolve(__dirname, "../preload/preload.js"),
       contextIsolation: true,
@@ -365,6 +708,10 @@ function createWindow() {
       sandbox: false,
     },
   });
+  mainWindow.once("ready-to-show", () => slog("renderer ready-to-show (first paint)"));
+  mainWindow.webContents.on("did-start-loading", () => slog("renderer did-start-loading"));
+  mainWindow.webContents.on("dom-ready", () => slog("renderer dom-ready"));
+  mainWindow.webContents.on("did-finish-load", () => slog("renderer did-finish-load"));
   mainWindow.setMenuBarVisibility(false);
 
   // Editable-field context menu. Electron ships no default menu, so inputs
@@ -415,10 +762,13 @@ function createWindow() {
       console.error(
         `[renderer] did-fail-load url=${validatedURL} code=${errorCode} desc=${errorDescription}`
       );
+      // Don't strand the user on the splash if the SPA fails to load.
+      showMainWindowAndCloseSplash();
     }
   );
   mainWindow.webContents.on("render-process-gone", (_e, details) => {
     console.error(`[renderer] render-process-gone reason=${details.reason}`);
+    showMainWindowAndCloseSplash();
   });
   mainWindow.webContents.on(
     "console-message",
@@ -447,7 +797,42 @@ function createWindow() {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   }
 
+  // Push OS theme changes (light↔dark) to the renderer so a "system" theme
+  // mode tracks the OS live. Registered after window creation so mainWindow is
+  // non-null when the event fires; removed on close to avoid a dangling ref.
+  const onNativeThemeUpdated = () => {
+    mainWindow?.webContents.send("app:nativeThemeUpdated", {
+      shouldUseDarkColors: nativeTheme.shouldUseDarkColors,
+    });
+  };
+  nativeTheme.on("updated", onNativeThemeUpdated);
+
+  // ── Unsaved-changes close gate (#44) ──────────────────────────────────────
+  // If the renderer has a pending auto-save, intercept the first close, ask the
+  // renderer to flush, and only destroy the window once it replies (or a 3s
+  // watchdog fires — never block quit indefinitely). The renderer pushes its
+  // dirty state via `app:setDirtyState`; main never reads renderer memory.
+  mainWindow.on("close", (e) => {
+    if (isQuitting || !rendererDirty || !mainWindow) return;
+    e.preventDefault();
+    isQuitting = true;
+    const win = mainWindow;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      flushResolve = null;
+      win.destroy();
+    };
+    flushResolve = finish;
+    win.webContents.send("app:flushBeforeClose");
+    // Watchdog: force the close after 3s if the renderer doesn't answer.
+    setTimeout(finish, 3000);
+  });
+
   mainWindow.on("closed", () => {
+    nativeTheme.removeListener("updated", onNativeThemeUpdated);
+    stopFolderWatch();
     mainWindow = null;
   });
   return mainWindow;
@@ -508,7 +893,10 @@ function registerAppProtocol() {
 
     // Try the exact file first.
     try {
+      const rt = Date.now();
       const data = await readFile(candidate);
+      const dt = Date.now() - rt;
+      if (dt > 40) slog(`app:// SLOW read ${dt}ms ${rel}`);
       return new Response(data, {
         headers: { "content-type": mimeFor(candidate) },
       });
@@ -534,6 +922,12 @@ function registerAppProtocol() {
     }
   });
 }
+
+// The `VAAPI version is too old` / `MESA-LOADER` lines in the launch log are
+// harmless Chromium GPU-probe noise, NOT the cause of slow launches — the
+// multi-second blank window was profile-lock contention between two instances
+// (see the single-instance lock below). So we keep hardware acceleration at its
+// Electron default; forcing software rendering only slows the paged.js preview.
 
 // Register the scheme as standard (must happen before app.whenReady) so
 // fetch from the page works and ServiceWorker / IndexedDB / etc. behave.
@@ -582,13 +976,212 @@ ipcMain.handle("shell:showInFolder", async (_e, filePath: string) => {
   shell.showItemInFolder(filePath);
 });
 
+// ── Filesystem primitives (PlatformAdapter, #41) ──────────────────────────
+// Backs ElectronAdapter.readFile/writeFile. No current consumer in 0.4.0 — the
+// in-app editor (#38/#39) is the first. The renderer is our own trusted SPA;
+// paths must be absolute so a relative path can't resolve against the main
+// process CWD by accident.
+// Callers MUST constrain filePath to a user-opened project directory; there is
+// no global path allowlist by design — the renderer is our own trusted SPA.
+ipcMain.handle("fs:readFile", async (_e, filePath: string): Promise<string> => {
+  if (!path.isAbsolute(filePath)) {
+    throw new Error(`fs:readFile requires an absolute path, got: ${filePath}`);
+  }
+  return await readFile(filePath, "utf-8");
+});
+
+ipcMain.handle(
+  "fs:writeFile",
+  async (_e, filePath: string, content: string): Promise<{ mtimeMs: number }> => {
+    if (!path.isAbsolute(filePath)) {
+      throw new Error(`fs:writeFile requires an absolute path, got: ${filePath}`);
+    }
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, content, "utf-8");
+    // Return the post-write mtime so the editor can record its on-disk baseline
+    // (#44) and suppress the self-echo from its own folder watcher.
+    const s = await stat(filePath);
+    return { mtimeMs: s.mtimeMs };
+  },
+);
+
+// ── File metadata (PlatformAdapter.statFile, #44 — external-edit detection) ──
+// Resolves with `exists: false` (zeroed metadata) rather than rejecting when the
+// path is absent, so the editor can tell "deleted out from under us" from an IO
+// error. The path MUST be absolute (renderer is our trusted SPA).
+ipcMain.handle(
+  "fs:statFile",
+  async (
+    _e,
+    filePath: string,
+  ): Promise<{ mtimeMs: number; size: number; exists: boolean }> => {
+    if (!path.isAbsolute(filePath)) {
+      throw new Error(`fs:statFile requires an absolute path, got: ${filePath}`);
+    }
+    try {
+      const s = await stat(filePath);
+      return { mtimeMs: s.mtimeMs, size: s.size, exists: true };
+    } catch {
+      return { mtimeMs: 0, size: 0, exists: false };
+    }
+  },
+);
+
+// ── Folder watching (PlatformAdapter.watchFolder, #44) ──────────────────────
+// Backs external-edit detection: a shallow fs.watch on the open project whose
+// debounced changes are pushed to the renderer as `fs:folderChanged`. Only one
+// project is open at a time, so subscribing replaces any prior watch.
+ipcMain.handle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {
+  if (!path.isAbsolute(dirPath)) {
+    throw new Error(`fs:watchFolder requires an absolute path, got: ${dirPath}`);
+  }
+  startFolderWatch(dirPath);
+});
+
+ipcMain.handle("fs:unwatchFolder", async (_e, dirPath: string): Promise<void> => {
+  if (watchedDir === dirPath) stopFolderWatch();
+});
+
+// ── Crash recovery (#44) ────────────────────────────────────────────────────
+// Sidecar snapshots under userData/recovery/. Never touches the user's file.
+ipcMain.handle(
+  "recovery:write",
+  async (
+    _e,
+    filePath: string,
+    content: string,
+    baseMtimeMs: number,
+  ): Promise<{ ok: boolean }> => {
+    if (!path.isAbsolute(filePath)) {
+      throw new Error(`recovery:write requires an absolute path, got: ${filePath}`);
+    }
+    return writeRecoveryStore(recoveryDir(), filePath, content, baseMtimeMs);
+  },
+);
+
+ipcMain.handle(
+  "recovery:clear",
+  async (_e, filePath: string): Promise<{ ok: boolean }> => {
+    if (!path.isAbsolute(filePath)) {
+      throw new Error(`recovery:clear requires an absolute path, got: ${filePath}`);
+    }
+    return clearRecoveryStore(recoveryDir(), filePath);
+  },
+);
+
+ipcMain.handle(
+  "recovery:list",
+  async (_e, projectDir: string) => {
+    if (!path.isAbsolute(projectDir)) {
+      throw new Error(`recovery:list requires an absolute path, got: ${projectDir}`);
+    }
+    return listRecoveryStore(recoveryDir(), projectDir);
+  },
+);
+
+// ── Unsaved-changes close gate (#44) ────────────────────────────────────────
+// The renderer pushes its pending-save state; main reads it in the `close`
+// handler. `app:flushDone` is the renderer's reply that its buffer is flushed.
+ipcMain.handle("app:setDirtyState", async (_e, isDirty: boolean): Promise<void> => {
+  rendererDirty = !!isDirty;
+});
+
+ipcMain.handle("app:flushDone", async (): Promise<void> => {
+  rendererDirty = false;
+  flushResolve?.();
+});
+
+// ── Directory listing (PlatformAdapter.listDir, #38) ──────────────────────
+// Backs the in-app editor's file-tree sidebar. Returns the immediate entries
+// of `dirPath` (single level, no recursion) as {name, path, isDir}. The path
+// MUST be absolute (a relative path could resolve against the main-process CWD
+// by accident); the renderer is our own trusted SPA and always passes a
+// user-opened project directory.
+ipcMain.handle(
+  "fs:listDir",
+  async (
+    _e,
+    dirPath: string,
+  ): Promise<Array<{ name: string; path: string; isDir: boolean }>> => {
+    if (!path.isAbsolute(dirPath)) {
+      throw new Error(`fs:listDir requires an absolute path, got: ${dirPath}`);
+    }
+    const entries = await readdir(dirPath, { withFileTypes: true });
+    return entries.map((entry) => ({
+      name: entry.name,
+      path: path.join(dirPath, entry.name),
+      isDir: entry.isDirectory(),
+    }));
+  },
+);
+
+// ── Project file listing (fs:listProjectFiles, #42) ───────────────────────
+// Backs the chapter-list sidebar. Returns the top-level `.md` and `.css`
+// files of the opened project directory, each sorted by filename. Shallow by
+// design (a v1 constraint — subdirectory layouts are not surfaced). The path
+// MUST be absolute and is constrained to the project directory; only files
+// (not directories) at the top level are returned.
+ipcMain.handle(
+  "fs:listProjectFiles",
+  async (
+    _e,
+    projectDir: string,
+  ): Promise<{ md: string[]; css: string[] }> => {
+    if (!path.isAbsolute(projectDir)) {
+      throw new Error(
+        `fs:listProjectFiles requires an absolute path, got: ${projectDir}`,
+      );
+    }
+    const entries = await readdir(projectDir, { withFileTypes: true });
+    const md: string[] = [];
+    const css: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const lower = entry.name.toLowerCase();
+      if (lower.endsWith(".md")) md.push(entry.name);
+      else if (lower.endsWith(".css")) css.push(entry.name);
+    }
+    md.sort((a, b) => a.localeCompare(b));
+    css.sort((a, b) => a.localeCompare(b));
+    return { md, css };
+  },
+);
+
 ipcMain.handle("api:status", async () => {
   return { name: "@dimm-city/print-md-viewer", runtime: "node", ok: true };
 });
 
+// CSS print-safety lint for the in-app CSS editor (#39). Runs in the main
+// process: checkCss is postcss-based, and postcss's node:url usage crashes the
+// renderer if bundled into the SPA. Routing through IPC keeps a single source of
+// truth (the same checkCss `print-md validate` uses) without bundling postcss.
+ipcMain.handle(
+  "lint:checkCss",
+  async (_e, css: string, from?: string): Promise<PrintSafeWarning[]> => {
+    const lib = await loadLib();
+    return lib.checkCss(css, from);
+  },
+);
+
 ipcMain.handle("app:getLastProject", async () => {
   const prefs = await readPrefs();
   return existingDirectory(prefs.lastProjectDir);
+});
+
+// ── Splash coordination ──────────────────────────────────────────────────────
+// The renderer pushes human-readable status while it boots/renders, and signals
+// when its first screen (a rendered project OR the welcome screen) is ready —
+// at which point we reveal the main window and dismiss the splash.
+ipcMain.handle(
+  "app:splashStatus",
+  async (_e, status?: string, progress?: number, sub?: string) => {
+    updateSplash(status, progress, sub);
+  },
+);
+
+ipcMain.handle("app:rendererReady", async () => {
+  updateSplash("Ready", 100);
+  showMainWindowAndCloseSplash();
 });
 
 ipcMain.handle("app:getViewerPrefs", async () => {
@@ -603,6 +1196,60 @@ ipcMain.handle("app:setViewerPrefs", async (_e, patch: Partial<ViewerPrefs>) => 
   const current = await readPrefs();
   await writePrefs({ ...current, ...patch });
   return { ok: true };
+});
+
+// ── Per-project editor/preview state (#43) ──────────────────────────────────
+// Read/merge the per-project bucket in viewer-prefs.json projectStates. Keying
+// by folder path means opening project B never overwrites project A's page,
+// view mode, open chapter, etc. Corrupt/missing state fails silently to null so
+// the renderer falls back to first-page defaults.
+ipcMain.handle(
+  "app:getViewerProjectState",
+  async (_e, projectDir: string): Promise<ProjectState | null> => {
+    if (!projectDir || typeof projectDir !== "string") return null;
+    try {
+      const prefs = await readPrefs();
+      return readProjectState(prefs.projectStates, projectDir);
+    } catch {
+      return null;
+    }
+  },
+);
+
+ipcMain.handle(
+  "app:setViewerProjectState",
+  async (
+    _e,
+    projectDir: string,
+    patch: Partial<ProjectState>,
+  ): Promise<{ ok: boolean }> => {
+    if (!projectDir || typeof projectDir !== "string") return { ok: false };
+    const current = await readPrefs();
+    await writePrefs({
+      ...current,
+      lastProjectDir: projectDir,
+      projectStates: writeProjectState(current.projectStates, projectDir, patch),
+    });
+    return { ok: true };
+  },
+);
+
+ipcMain.handle("app:getSettings", async () => {
+  return readSettings();
+});
+
+ipcMain.handle("app:setSettings", async (_e, patch: DeepPartialSettings) => {
+  const current = await readSettings();
+  await writeSettings(mergeSettings(current, patch));
+  return { ok: true };
+});
+
+// ── Native (OS) theme surface (#48) ─────────────────────────────────────────
+// One-shot query of the OS dark/light preference. The renderer's theme
+// controller resolves "system" against this. Pushed updates come via the
+// nativeTheme "updated" listener registered in createWindow().
+ipcMain.handle("app:getNativeTheme", async () => {
+  return { shouldUseDarkColors: nativeTheme.shouldUseDarkColors };
 });
 
 ipcMain.handle("app:getRecentFolders", async () => {
@@ -648,6 +1295,85 @@ ipcMain.handle("app:removeRecent", async (_e, folderPath: string) => {
   });
   return { ok: true };
 });
+
+// ── Project discovery (#27) ─────────────────────────────────────────────────
+// Shallow (depth ≤ 3) BFS scan of projectSearchRoots for print-md projects
+// (folders with manifest.yaml/.yml) not already in recents/favorites. The scan
+// uses node:fs/promises but the traversal logic lives in discover-projects.ts
+// so it stays unit-testable. Title defaults to the directory basename —
+// parsing each manifest's title would make the scan far too heavy.
+function defaultProjectSearchRoots(): string[] {
+  const home = os.homedir();
+  return [path.join(home, "Documents"), path.join(home, "Desktop")];
+}
+
+const discoverScanDeps: ScanDeps = {
+  async listDirs(dir: string): Promise<string[]> {
+    const entries = await readdir(dir, { withFileTypes: true });
+    return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+  },
+  async fileExists(filePath: string): Promise<boolean> {
+    try {
+      return (await stat(filePath)).isFile();
+    } catch {
+      return false;
+    }
+  },
+  join: (...segments: string[]) => path.join(...segments),
+  basename: (p: string) => basename(p),
+};
+
+ipcMain.handle("app:discoverProjects", async () => {
+  const prefs = await readPrefs();
+  const roots =
+    prefs.projectSearchRoots && prefs.projectSearchRoots.length > 0
+      ? prefs.projectSearchRoots
+      : defaultProjectSearchRoots();
+  const exclude = new Set<string>([
+    ...(prefs.recentFolders ?? []).map((r) => r.path),
+    ...(prefs.favorites ?? []).map((f) => f.path),
+  ]);
+  try {
+    return await scanForProjects(roots, exclude, discoverScanDeps);
+  } catch {
+    return [];
+  }
+});
+
+// ── Project source classification (#12) ──────────────────────────────────────
+// Classify an opened folder as local-folder / local-git-folder (hasRemote
+// true/false) via the lib's pure Node-fs detector. Always re-classified on
+// folder open by the renderer — never relies solely on the cached
+// ViewerPrefs.projectSource (a user may add/remove `.git` between sessions).
+ipcMain.handle(
+  "app:classifyProject",
+  async (_e, args: { path?: string }) => {
+    const folderPath = args?.path;
+    if (!folderPath || typeof folderPath !== "string") {
+      throw new Error("app:classifyProject requires a 'path' string");
+    }
+    const lib = await loadLib();
+    const source = await lib.detectProjectSource(folderPath);
+    const capabilities = lib.capabilitiesFor(source);
+    return { source, capabilities };
+  },
+);
+
+// ── New-project scaffold (#25) ───────────────────────────────────────────────
+// Thin pass-through to the shared lib's scaffoldProject — the scaffolding logic
+// (template copy, placeholder fill, optional Git init via isomorphic-git) lives
+// in @dimm-city/print-md-lib, NOT here (issue #25 requirement). The renderer
+// wizard collects inputs and the lib does the work.
+ipcMain.handle(
+  "app:createProject",
+  async (_e, options: CreateProjectOptions): Promise<CreateProjectResult> => {
+    if (!options || typeof options.name !== "string" || typeof options.parentDir !== "string") {
+      throw new Error("app:createProject requires { name, parentDir }");
+    }
+    const lib = await loadLib();
+    return lib.scaffoldProject(options);
+  },
+);
 
 ipcMain.handle("api:doctor", async () => {
   const lib = await loadLib();
@@ -1039,24 +1765,63 @@ ipcMain.handle("updater:markReady", async () => {
 // App lifecycle
 // ──────────────────────────────────────────────────────────────────────────
 
+// ── Single-instance lock (THE launch-speed fix) ─────────────────────────────
+// A second instance pointed at the same userData dir contends with the first
+// for the profile's leveldb/singleton locks — which stalls the new window's
+// first paint for MANY seconds (measured: 9.2s with a second instance present
+// vs 2.1s alone, same binary/profile). This happens to real users whenever a
+// prior instance hasn't fully exited (crash, lingering window) or on a fast
+// double-launch. Acquire the lock up front: if another instance already holds
+// it, quit immediately and let the running instance focus its window instead.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  // Electron has already signalled the primary instance (see "second-instance"
+  // below) by the time this returns false. Just bow out — never create a
+  // second window that would fight the first for the profile.
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
+
 app.whenReady().then(async () => {
+  // Lost the single-instance race — app.quit() is already in flight; do not
+  // proceed to create a contending window.
+  if (!gotSingleInstanceLock) return;
+  slog("app whenReady");
+  // Show the splash immediately — branded feedback while everything below runs.
+  createSplashWindow();
   // Apply any staged update from a previous session BEFORE resolving the web
   // root, so refreshWebRoot() picks up the newly promoted bundle. Wrapped so a
   // userData IO failure (EACCES, disk full) can never prevent createWindow() —
   // a broken updater must degrade to the bundled fallback, not a blank window.
   if (updaterEnabled()) {
     try {
+      updateSplash("Checking for updates…", 8);
       await ensureLayout();
       await promoteStaged();
     } catch (err) {
       console.warn("[updater] startup promote failed (non-fatal):", err);
     }
   }
+  slog("updater promote done");
 
+  updateSplash("Preparing the interface…", 18);
   await refreshWebRoot();
+  slog("web root resolved");
   registerAppProtocol();
   registerUrlPreviewHeaderWatch();
+  updateSplash("Loading print-md…", 28);
   createWindow();
+  slog("createWindow returned (loadURL dispatched)");
+
+  // Fallback: if the renderer never reports ready (crash, hang), reveal the
+  // window anyway so the splash can't strand the user.
+  splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 30_000);
 
   // Health-gate any current bundle that hasn't been confirmed healthy yet —
   // whether just promoted this launch or left unconfirmed by a prior session

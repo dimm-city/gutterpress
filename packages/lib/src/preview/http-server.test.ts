@@ -72,52 +72,64 @@ describe('isPortAvailable', () => {
 });
 
 describe('findAvailablePort', () => {
+  // Reserve `count` CONTIGUOUS, currently-bindable ports starting at a randomly
+  // chosen base in the ephemeral range. Retries with a fresh base on any bind
+  // collision (a still-listening server or a TIME_WAIT socket from a prior run),
+  // so these tests never depend on hardcoded ports being free — which made the
+  // old fixed-port version flaky under back-to-back runs (EADDRINUSE).
+  function reserveContiguousPorts(count: number): {
+    base: number;
+    servers: ReturnType<typeof Bun.serve>[];
+  } {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const base = 49152 + Math.floor(Math.random() * (65535 - 49152 - count));
+      const servers: ReturnType<typeof Bun.serve>[] = [];
+      let ok = true;
+      for (let i = 0; i < count; i++) {
+        try {
+          servers.push(Bun.serve({ port: base + i, fetch: () => new Response() }));
+        } catch {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) return { base, servers };
+      for (const s of servers) s.stop(true);
+    }
+    throw new Error(`could not reserve ${count} contiguous ports for test`);
+  }
+
+  async function stopAll(servers: ReturnType<typeof Bun.serve>[]) {
+    for (const s of servers) s.stop(true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
   test('returns same port if available', async () => {
-    const desiredPort = 59998;
-    const port = await findAvailablePort(desiredPort);
-    expect(port).toBe(desiredPort);
+    // Find a port that's bindable right now, free it, then assert it's chosen.
+    const { base, servers } = reserveContiguousPorts(1);
+    await stopAll(servers);
+    const port = await findAvailablePort(base);
+    expect(port).toBe(base);
   });
 
   test('finds next available port if first is taken', async () => {
-    const startPort = 58887;
-    const server1 = Bun.serve({
-      port: startPort,
-      fetch() {
-        return new Response();
-      },
-    });
-
+    const { base, servers } = reserveContiguousPorts(1); // occupy `base` only
     try {
-      const port = await findAvailablePort(startPort);
-      expect(port).toBeGreaterThan(startPort);
-      expect(port).toBeLessThanOrEqual(startPort + 10);
+      const port = await findAvailablePort(base);
+      expect(port).toBeGreaterThan(base);
+      expect(port).toBeLessThanOrEqual(base + 10);
     } finally {
-      server1.stop(true);
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await stopAll(servers);
     }
   });
 
   test('throws error if no ports available after max attempts', async () => {
-    const startPort = 58886;
-    const servers: ReturnType<typeof Bun.serve>[] = [];
-
+    // findAvailablePort probes base..base+9 (10 attempts); occupy all of them.
+    const { base, servers } = reserveContiguousPorts(10);
     try {
-      for (let i = 0; i < 11; i++) {
-        const server = Bun.serve({
-          port: startPort + i,
-          fetch() {
-            return new Response();
-          },
-        });
-        servers.push(server);
-      }
-
-      await expect(findAvailablePort(startPort)).rejects.toThrow(/Could not find an available port/);
+      await expect(findAvailablePort(base)).rejects.toThrow(/Could not find an available port/);
     } finally {
-      for (const server of servers) {
-        server.stop(true);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await stopAll(servers);
     }
   });
 });
@@ -153,10 +165,11 @@ describe('createPreviewServer', () => {
     expect(await res.text()).toBe('hello world');
   });
 
-  test('serves book.html for "/" and injects the HMR client', async () => {
-    // The CLI no longer ships a viewer chrome index.html; "/" now maps to
-    // book.html (the rendered paginated book). The desktop viewer wraps it
-    // in an iframe-based toolbar (packages/viewer).
+  test('serves the preview shell for "/" by default (incremental preview on)', async () => {
+    // With incremental preview enabled (the default), "/" returns the thin
+    // shell loader — it embeds book.html in an iframe (?pmdshell=1) and owns
+    // HMR via preview-shell.js (flicker-free double-buffered reloads, the same
+    // iframe pattern the Electron viewer uses). It does NOT inline the book.
     await writeFile(
       join(tempDir, 'book.html'),
       '<!doctype html><html><body><h1>Hi</h1></body></html>'
@@ -166,6 +179,29 @@ describe('createPreviewServer', () => {
     server = await createPreviewServer(state, port, async () => {});
 
     const res = await fetch(`http://localhost:${port}/`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+
+    const body = await res.text();
+    expect(body).toContain('/book.html?pmdshell=1');
+    expect(body).toContain('preview-shell.js');
+    // The shell is a loader, not the book itself.
+    expect(body).not.toContain('<h1>Hi</h1>');
+  });
+
+  test('serves book.html with the HMR client injected', async () => {
+    // The CLI no longer ships a viewer chrome index.html; the rendered paginated
+    // book lives at /book.html. Any served HTML gets the HMR client injected so
+    // direct embedders (and the shell's inner frame) can hot-reload.
+    await writeFile(
+      join(tempDir, 'book.html'),
+      '<!doctype html><html><body><h1>Hi</h1></body></html>'
+    );
+
+    const state = makeState(tempDir);
+    server = await createPreviewServer(state, port, async () => {});
+
+    const res = await fetch(`http://localhost:${port}/book.html`);
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
 

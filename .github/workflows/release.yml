@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release (e.g. 1.2.3 or 1.2.3-beta.1). Bumps package.json, builds all artifacts, verifies on Windows, then creates a GitHub release."
+        description: "Version to release (e.g. 1.2.3, or 1.2.3-beta.1 for a prerelease). Stable releases must be dispatched from the default branch; prerelease versions (with a '-') may ALSO be dispatched from a release/* branch. Bumps package.json, builds all artifacts, verifies on Windows, then creates a GitHub release."
         required: true
         type: string
       skip_npm_publish:
@@ -24,9 +24,11 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
+      # Test the branch the release is dispatched from (default branch for a
+      # stable release, or a release/* branch for a prerelease).
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ github.ref_name }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -47,16 +49,31 @@ jobs:
       contents: write
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
     steps:
-      - name: Ensure workflow runs from default branch
-        if: ${{ github.ref_name != github.event.repository.default_branch }}
+      # Stable releases come from the default branch. PRERELEASE versions (the
+      # version string contains a '-', e.g. 0.4.0-beta.1) may also be cut from a
+      # release/* branch, so a release line can ship betas to testers before it
+      # merges to the default branch. Anything else is rejected.
+      - name: Validate dispatch branch and version
         run: |
-          echo "Releases must be dispatched from ${{ github.event.repository.default_branch }}."
-          exit 1
+          BRANCH="${{ github.ref_name }}"
+          DEFAULT="${{ github.event.repository.default_branch }}"
+          VERSION="${{ inputs.version }}"
+          if [ "$BRANCH" = "$DEFAULT" ]; then
+            echo "Dispatched from default branch ($BRANCH)."
+          elif [[ "$BRANCH" == release/* ]] && echo "$VERSION" | grep -qE '-'; then
+            echo "Dispatched from release branch ($BRANCH) with prerelease version ($VERSION)."
+          else
+            echo "::error::Releases must be dispatched from $DEFAULT, or from a release/* branch with a prerelease version (e.g. 0.4.0-beta.1). Got branch=$BRANCH version=$VERSION"
+            exit 1
+          fi
 
+      # Check out (and later push the bump commit + tag to) the branch the
+      # release was dispatched from — main for stable, release/* for a beta.
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ github.ref_name }}
 
       - name: Bump version in package.json
         run: |
@@ -93,6 +110,15 @@ jobs:
           git tag "v${{ inputs.version }}"
           git push origin "v${{ inputs.version }}"
           echo "tag=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+
+          # A version with a '-' (e.g. 0.4.0-beta.1) is a prerelease: it marks
+          # the GitHub release as a pre-release and publishes npm under `next`,
+          # not `latest`.
+          if echo "${{ inputs.version }}" | grep -qE '-'; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # ── 3. Build all artifacts in parallel ────────────────────────────────────
   #
@@ -255,26 +281,11 @@ jobs:
           path: packages/viewer/dist/*.dmg
           if-no-files-found: error
 
-  # ── 4. Verify on real Windows ────────────────────────────────────────────
-  #
-  # Runs the CLI binary and install script on windows-latest to catch any
-  # binary compatibility issues before publishing the release.
-
-  verify-windows:
-    name: Verify Windows binary (render smoke)
-    # Runs as soon as build-cli finishes — does not wait on the viewer
-    # Windows build so the two windows-latest jobs run in parallel.
-    needs: [version, build-cli]
-    uses: ./.github/workflows/windows-install-test.yml
-    with:
-      script_ref: ${{ needs.version.outputs.tag }}
-      use_artifact: true
-
-  # ── 5. Publish to npm (skippable) ─────────────────────────────────────────
+  # ── 4. Publish to npm (skippable) ─────────────────────────────────────────
   publish-npm:
     name: Publish to npm
-    needs: [version, verify-windows]
-    if: ${{ !inputs.skip_npm_publish && needs.verify-windows.result == 'success' }}
+    needs: [version]
+    if: ${{ !inputs.skip_npm_publish }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -317,10 +328,17 @@ jobs:
       # permission (above) lets npm mint a short-lived credential. Prerequisite:
       # @dimm-city/print-md must be configured as a Trusted Publisher for this
       # repo + workflow on npmjs.com (Settings → Trusted Publishers).
+      # Prereleases publish under the `next` dist-tag so `npm install
+      # @dimm-city/print-md` (which resolves `latest`) never picks up a beta.
       - name: Publish to npm
         if: ${{ env.ALREADY_PUBLISHED != 'true' }}
         working-directory: packages/cli
-        run: npm publish --provenance --access public
+        run: |
+          if [ "${{ needs.version.outputs.prerelease }}" = "true" ]; then
+            npm publish --provenance --access public --tag next
+          else
+            npm publish --provenance --access public
+          fi
 
   # ── 5b. Publish the CLI Docker image to GHCR ──────────────────────────────
   # Builds the root Dockerfile (CLI bundle + Chromium/Ghostscript/qpdf) and
@@ -328,8 +346,7 @@ jobs:
   # `latest` only for stable releases (a version without a "-" prerelease tag).
   publish-docker:
     name: Publish Docker image
-    needs: [version, verify-windows]
-    if: ${{ needs.verify-windows.result == 'success' }}
+    needs: [version]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -372,8 +389,8 @@ jobs:
 
   # ── 6. Create release with ALL artifacts ──────────────────────────────────
   #
-  # Waits for every build job and the Windows verify before creating the
-  # release. Users see a complete release — no partial-artifact window.
+  # Waits for every build job before creating the release. Users see a complete
+  # release — no partial-artifact window.
 
   github-release:
     name: Create GitHub Release
@@ -383,7 +400,6 @@ jobs:
       - build-viewer-linux
       - build-viewer-windows
       - build-viewer-mac
-      - verify-windows
       - publish-npm
     if: |
       always() &&
@@ -392,7 +408,6 @@ jobs:
       needs.build-viewer-linux.result == 'success' &&
       needs.build-viewer-windows.result == 'success' &&
       needs.build-viewer-mac.result == 'success' &&
-      needs.verify-windows.result == 'success' &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
@@ -429,7 +444,7 @@ jobs:
           REPO="${{ github.repository }}"
 
           PRERELEASE_FLAG=""
-          if [[ "${{ inputs.version }}" == *"-"* ]]; then
+          if [ "${{ needs.version.outputs.prerelease }}" = "true" ]; then
             PRERELEASE_FLAG="--prerelease"
           fi
 

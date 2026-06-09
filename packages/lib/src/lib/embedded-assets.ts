@@ -36,8 +36,14 @@ import favicon from "../assets/favicon.ico" with { type: "file" };
 import manifestSchema from "../assets/manifest.schema.json" with { type: "file" };
 import pagedjsInterfaceJs from "../assets/preview/scripts/pagedjs-interface.js" with { type: "file" };
 import pagedjsBridgeJs from "../assets/preview/scripts/pagedjs-bridge.js" with { type: "file" };
+import previewShellJs from "../assets/preview/scripts/preview-shell.js" with { type: "file" };
 import pagedPolyfill from "../assets/vendor/paged.polyfill.js" with { type: "file" };
 import cmykProfile from "../../profiles/CGATS21_CRPC1.icc" with { type: "file" };
+
+// New-project starter templates (#25). Baked in so `print-md new` (compiled
+// binary) and the viewer wizard scaffold from one embedded source.
+import tplBookManifest from "../assets/templates/book/manifest.yaml" with { type: "file" };
+import tplBookChapter01 from "../assets/templates/book/chapter-01.md" with { type: "file" };
 
 // Resolve paths relative to this module's location so that relative string
 // paths produced by bun build --target node work regardless of CWD.
@@ -53,8 +59,11 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "manifest.schema.json":                   abs(filePath(manifestSchema)),
   "preview/scripts/pagedjs-interface.js":   abs(filePath(pagedjsInterfaceJs)),
   "preview/scripts/pagedjs-bridge.js":      abs(filePath(pagedjsBridgeJs)),
+  "preview/scripts/preview-shell.js":       abs(filePath(previewShellJs)),
   "vendor/paged.polyfill.js":               abs(filePath(pagedPolyfill)),
   "profiles/CGATS21_CRPC1.icc":             abs(filePath(cmykProfile)),
+  "templates/book/manifest.yaml":           abs(filePath(tplBookManifest)),
+  "templates/book/chapter-01.md":           abs(filePath(tplBookChapter01)),
 };
 
 let extractPromise: Promise<string> | null = null;

@@ -56,3 +56,41 @@ export type {
   ToolStatus,
   SystemDiagnostics,
 } from "../lib/diagnostics";
+
+export {
+  detectProjectSource,
+  capabilitiesFor,
+} from "../lib/project-source";
+
+export type {
+  ProjectSource,
+  ProjectCapabilities,
+} from "../lib/project-source";
+
+// ── Project scaffolding (#25) ─────────────────────────────────────────────────
+export {
+  scaffoldProject,
+  slugifyProjectName,
+  escapeYamlScalar,
+} from "../lib/project-scaffold.ts";
+
+export type {
+  ProjectTemplateId,
+  ProjectVersionHistoryMode,
+  CreateProjectOptions,
+  CreateProjectResult,
+  CreateProjectErrorCode,
+  CreateProjectError,
+} from "../lib/project-scaffold.ts";
+
+export {
+  providerFor,
+} from "../lib/source-provider.ts";
+
+export type {
+  SnapshotEntry,
+  InitVersionHistoryOptions,
+  SnapshotOptions,
+  RestoreSnapshotOptions,
+  SourceProvider,
+} from "../lib/source-provider.ts";
