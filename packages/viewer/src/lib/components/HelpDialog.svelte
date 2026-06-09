@@ -181,7 +181,7 @@
           <h3>Getting Started</h3>
           <ol class="steps">
             <li><strong>Open your project folder</strong> — click <em>Open</em> in the toolbar and choose the folder that contains your <code>print-md.yaml</code> file.</li>
-            <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Use <em>Page / Spread</em> to switch between single and two-page view.</li>
+            <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Use <em>Single / Two-page</em> to switch between one page and two pages side by side.</li>
             <li><strong>Save as PDF</strong> — click <em>Save PDF</em> (or press {modKey}+S) when your layout looks right.</li>
           </ol>
           <p class="gs-note">Don't have a project yet? Visit the <button class="inline-link" onclick={openDocs}>online setup guide</button> to create one.</p>

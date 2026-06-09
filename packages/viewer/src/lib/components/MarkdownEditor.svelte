@@ -412,9 +412,9 @@
     --cm-link: #5cb3ff;
     --cm-quote: #9aa5b1;
     --cm-marker: #8195b5;
-    --cm-code: #e6c07b;
-    --cm-string: #a8d08d;
-    --cm-number: #f0a36b;
+    --cm-code: #f0cf94;
+    --cm-string: #b6dc9c;
+    --cm-number: #ffb88a;
     --cm-keyword: #c792ea;
     --cm-comment: #7c8590;
     --cm-tag: #ff8f8f;

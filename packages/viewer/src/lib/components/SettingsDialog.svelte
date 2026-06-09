@@ -80,7 +80,7 @@
       <section class="group">
         <div class="group-head">
           <h3>Appearance</h3>
-          <button class="reset" onclick={() => settings.resetSection("appearance")}>Reset to defaults</button>
+          <button class="reset" onclick={() => settings.resetSection("appearance")} title="Reset appearance to defaults">Reset</button>
         </div>
         <div class="row">
           <label for="set-theme">Theme</label>
@@ -109,7 +109,7 @@
       <section class="group">
         <div class="group-head">
           <h3>Preview</h3>
-          <button class="reset" onclick={() => settings.resetSection("preview")}>Reset to defaults</button>
+          <button class="reset" onclick={() => settings.resetSection("preview")} title="Reset preview settings to defaults">Reset</button>
         </div>
         <div class="row">
           <label for="set-viewmode">View mode</label>
@@ -144,7 +144,7 @@
       <section class="group">
         <div class="group-head">
           <h3>Editor</h3>
-          <button class="reset" onclick={() => settings.resetSection("editor")}>Reset to defaults</button>
+          <button class="reset" onclick={() => settings.resetSection("editor")} title="Reset editor settings to defaults">Reset</button>
         </div>
         <div class="row">
           <label for="set-font">Font family</label>
@@ -188,19 +188,22 @@
           />
         </div>
         <div class="row">
-          <label for="set-autosave">Auto-save delay (ms)</label>
+          <label for="set-autosave">Auto-save delay (seconds)</label>
           <input
             id="set-autosave"
             type="number"
             min="0"
-            max="10000"
-            step="100"
-            value={s.editor.autoSaveDelay}
-            onchange={(e) => settings.set({ editor: { autoSaveDelay: Number((e.currentTarget as HTMLInputElement).value) } })}
+            max="10"
+            step="0.5"
+            value={s.editor.autoSaveDelay / 1000}
+            onchange={(e) => settings.set({ editor: { autoSaveDelay: Math.round(Number((e.currentTarget as HTMLInputElement).value) * 1000) } })}
           />
         </div>
-        <div class="row">
-          <label for="set-crash-recovery">Crash recovery</label>
+        <div class="row row-toggle">
+          <div class="row-label">
+            <label for="set-crash-recovery">Crash recovery</label>
+            <span class="row-hint">Restore your work if the app closes unexpectedly</span>
+          </div>
           <input
             id="set-crash-recovery"
             type="checkbox"
@@ -221,7 +224,7 @@
         <div class="advanced-body">
         <div class="group-head advanced-reset-row">
           <span></span>
-          <button class="reset" onclick={() => settings.resetSection("advanced")}>Reset to defaults</button>
+          <button class="reset" onclick={() => settings.resetSection("advanced")} title="Reset advanced settings to defaults">Reset</button>
         </div>
         <div class="row">
           <label for="set-watcher">File watcher interval (ms)</label>
@@ -345,6 +348,9 @@
     font-size: 13px;
   }
   .row label { color: var(--app-text-secondary); }
+  .row-toggle { align-items: center; }
+  .row-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .row-hint { font-size: 11px; line-height: 1.3; color: var(--app-text-faint); }
   .row input[type="text"],
   .row input[type="number"],
   .row select {
