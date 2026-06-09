@@ -534,16 +534,13 @@
         totalPages = n;
         renderProgressPage = n;
         rendering = false;
-        // Keep the overlay up briefly to cover the post-render view-mode +
-        // fit-width settle (applyViewMode is sync; applyFitWidthZoom fires at
-        // t+100ms), then cross-fade: the overlay fades out (out:fade) while the
-        // iframe fades in (revealed) at the same moment, so the settled pages
-        // emerge through the dissolving overlay instead of snapping in.
+        // Keep the overlay up while the post-render layout settles. The pages
+        // stay invisible (iframe opacity 0) through the view-mode switch AND the
+        // async zoom round-trips; only once the zoom is actually applied do we
+        // cross-fade — see the revealSettledPages() call at the end of the
+        // settle sequence below. This is what prevents the visible page JUMP:
+        // we never reveal before the layout has stopped moving.
         renderCompleteOverlay = true;
-        setTimeout(() => {
-          renderCompleteOverlay = false;
-          iframeRevealed = true;
-        }, 250);
         // Inject canvas styles now that Paged.js is done
         client?.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
         client?.injectStyles("debug", DEBUG_STYLES);
@@ -554,18 +551,29 @@
         pendingRestorePage = null;
         pendingRestoreViewMode = null;
         const mode = restoreMode ?? (userSetViewMode ? viewMode : auto);
-        applyViewMode(mode, false);
-        // "Fit to width" must ALWAYS measure-and-fit, never assume 100% fits.
-        // A two-page spread (~1656px) overflows a 1400px pane at 100%, clipping
-        // the right page — so fit even on wide screens. Wait a frame so the
-        // view-mode layout has reflowed before measuring the (spread) width.
-        if (zoom === "fit-width") {
-          // setViewMode is an async postMessage round-trip; let it apply + reflow
-          // before measuring the spread width, else we'd fit the single-page width.
-          setTimeout(() => applyFitWidthZoom(), 100);
-        } else {
-          client?.call("setZoom", [Number(zoom)]).catch(() => {});
-        }
+        // Drive the whole settle sequence to completion, THEN reveal. The reveal
+        // is gated on the zoom promise resolving — not a magic timer — so the
+        // fade always uncovers a completely still layout. Reveal is in a finally
+        // so the pages are never stranded invisible if a zoom call rejects.
+        (async () => {
+          applyViewMode(mode, false);
+          try {
+            // "Fit to width" must ALWAYS measure-and-fit, never assume 100% fits.
+            // A two-page spread (~1656px) overflows a 1400px pane at 100%,
+            // clipping the right page — so fit even on wide screens. Awaiting
+            // applyFitWidthZoom() waits for both postMessage round-trips
+            // (getPageDimensions + setZoom), i.e. until the JUMP has happened.
+            if (zoom === "fit-width") {
+              await applyFitWidthZoom();
+            } else {
+              await client?.call("setZoom", [Number(zoom)]);
+            }
+          } catch {
+            // Zoom failed — still reveal below so pages aren't stranded hidden.
+          } finally {
+            revealSettledPages();
+          }
+        })();
         if (restorePage && restorePage > 1) {
           queueMicrotask(() => restoreProjectPage(restorePage));
         }
@@ -1330,6 +1338,19 @@
         if (res?.page) syncPageState({ currentPage: res.page, totalPages });
       })
       .catch(() => {});
+  }
+
+  /**
+   * Cross-fade the settled pages in. Called ONLY after the post-render zoom has
+   * been applied, so the layout is fully still. Waits one animation frame so the
+   * zoom reflow has painted, then fades the iframe in (revealed) while the
+   * loading overlay fades out (out:fade) — a single reveal path, no timers.
+   */
+  function revealSettledPages() {
+    requestAnimationFrame(() => {
+      iframeRevealed = true;
+      renderCompleteOverlay = false;
+    });
   }
 
   /** Apply fit-width by querying the page's rendered width from the iframe. */
