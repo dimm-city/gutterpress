@@ -1,10 +1,12 @@
 <script lang="ts">
   import { PreviewClient } from "../preview-client";
 
-  let { url, client = $bindable(), onError }: {
+  let { url, client = $bindable(), onError, revealed = false }: {
     url: string;
     client?: PreviewClient;
     onError?: (msg: string) => void;
+    /** When false the iframe is invisible (opacity 0). Set to true to fade it in. */
+    revealed?: boolean;
   } = $props();
 
   let frame = $state<HTMLIFrameElement | undefined>(undefined);
@@ -30,7 +32,7 @@
   });
 </script>
 
-<iframe bind:this={frame} src={url} title="print-md preview"></iframe>
+<iframe bind:this={frame} src={url} title="print-md preview" class:revealed></iframe>
 
 <style>
   /*
@@ -47,5 +49,16 @@
     height: 100%;
     border: 0;
     background: #5a5a5a;
+    /* Hidden (opacity 0) until paged.js layout is complete, so the user never
+       sees the page/layout shuffle. The `revealed` prop flips to true ~250ms
+       after renderingComplete, at the same moment the LoadingOverlay starts its
+       400ms out:fade — so the pages fade IN as the overlay fades OUT (cross-fade),
+       both over 400ms. */
+    opacity: 0;
+    transition: opacity 400ms ease;
+  }
+
+  iframe.revealed {
+    opacity: 1;
   }
 </style>

@@ -82,6 +82,10 @@
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
+  // Iframe stays invisible (opacity 0) while paged.js lays the book out, then
+  // fades in once rendering is done — hiding the page/layout shuffle. The loading
+  // overlay fades out at the same moment, so the two cross-fade.
+  let iframeRevealed = $state(false);
   let currentPage = $state(1);
   let totalPages = $state(0);
   let pageEditing = $state(false);
@@ -530,10 +534,16 @@
         totalPages = n;
         renderProgressPage = n;
         rendering = false;
+        // Keep the overlay up briefly to cover the post-render view-mode +
+        // fit-width settle (applyViewMode is sync; applyFitWidthZoom fires at
+        // t+100ms), then cross-fade: the overlay fades out (out:fade) while the
+        // iframe fades in (revealed) at the same moment, so the settled pages
+        // emerge through the dissolving overlay instead of snapping in.
         renderCompleteOverlay = true;
         setTimeout(() => {
           renderCompleteOverlay = false;
-        }, 700);
+          iframeRevealed = true;
+        }, 250);
         // Inject canvas styles now that Paged.js is done
         client?.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
         client?.injectStyles("debug", DEBUG_STYLES);
@@ -599,6 +609,9 @@
         }
       } else if (e.name === "ready") {
         rendering = true;
+        // New render starting — hide the iframe again so the re-paginate /
+        // layout shuffle stays hidden; it fades back in on renderingComplete.
+        iframeRevealed = false;
         renderProgressPage = 0;
         outline = [];
         activeOutlineIndex = 0;
@@ -918,7 +931,9 @@
           projectCapabilities = null;
         });
       docTitle = data.title ?? null;
-      // Force iframe remount by nulling first
+      // Force iframe remount by nulling first; reset reveal so the new iframe
+      // starts hidden until its own first renderingComplete.
+      iframeRevealed = false;
       previewUrl = null;
       await Promise.resolve();
       previewUrl = data.url;
@@ -999,7 +1014,8 @@
     // The editor is folder-only; close it for web previews.
     editorOpen = false;
     buffer?.reset();
-    // Force iframe remount by nulling first
+    // Force iframe remount by nulling first; reset reveal for the new iframe.
+    iframeRevealed = false;
     previewUrl = null;
     queueMicrotask(() => {
       previewUrl = url;
@@ -1841,6 +1857,7 @@
           <PreviewFrame
             url={previewUrl}
             bind:client
+            revealed={iframeRevealed}
             onError={(msg) => {
               if (sourceMode === "url") {
                 urlPreviewError = "This website could not be previewed inside print-md.";

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { fade } from "svelte/transition";
+
   let {
     visible = false,
     label = "Loading…",
@@ -13,7 +15,15 @@
 </script>
 
 {#if visible}
-  <div class="loading-overlay" role="status" aria-live="assertive" aria-busy="true">
+  <!-- Snaps in when work starts; fades OUT over 400ms when it ends, so on render
+       completion it dissolves while the preview iframe fades in (a cross-fade). -->
+  <div
+    class="loading-overlay"
+    role="status"
+    aria-live="assertive"
+    aria-busy="true"
+    out:fade={{ duration: 400 }}
+  >
     <div class="spinner-wrap">
       <div class="spinner" aria-hidden="true"></div>
       <p class="label" aria-atomic="true">{label}</p>
