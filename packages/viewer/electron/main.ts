@@ -1870,8 +1870,10 @@ app.whenReady().then(async () => {
   slog("createWindow returned (loadURL dispatched)");
 
   // Fallback: if the renderer never reports ready (crash, hang), reveal the
-  // window anyway so the splash can't strand the user.
-  splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 30_000);
+  // window anyway so the splash can't strand the user. Generous (60s) so a large
+  // book on a slow machine finishes rendering and dismisses the splash on its own
+  // signal rather than being cut off mid-render by the timeout.
+  splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 60_000);
 
   // Health-gate any current bundle that hasn't been confirmed healthy yet —
   // whether just promoted this launch or left unconfirmed by a prior session

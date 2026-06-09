@@ -117,6 +117,9 @@
   let rendering = $state(false);
   let renderProgressPage = $state(0);
   let renderCompleteOverlay = $state(false);
+  // Pages render at opacity 0 and fade in once Paged.js finishes (see
+  // buildViewerStyles `revealed`). Starts false so the very first paint is hidden.
+  let pagesRevealed = $state(false);
   let autoOpeningLastProject = $state(false);
   let lastProjectChecked = $state(false);
   let pendingRestorePage = $state<number | null>(null);
@@ -439,8 +442,10 @@
   // ----------------------------------------------------------------
   $effect(() => {
     if (!client) return;
-    // Inject once on client attach; renderingComplete will re-inject with final bg
-    client.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
+    // Inject on client attach + whenever bgColor or the reveal state changes.
+    // pagesRevealed flips true on renderingComplete, which re-injects with the
+    // opacity:1 + delayed-transition rule, fading the freshly-laid-out pages in.
+    client.injectStyles("viewer-canvas", buildViewerStyles(bgColor, pagesRevealed));
   });
 
   // Apply view-mode changes that originate from the Settings panel (which writes
@@ -530,12 +535,19 @@
         totalPages = n;
         renderProgressPage = n;
         rendering = false;
+        // Hold the loading overlay just long enough to cover the post-render
+        // layout/zoom settle (≈300ms), then drop it so the page fade-in is the
+        // visible reveal rather than happening hidden behind the overlay.
         renderCompleteOverlay = true;
         setTimeout(() => {
           renderCompleteOverlay = false;
-        }, 700);
+        }, 300);
+        // Reveal the pages: re-inject with opacity:1 so they fade in (360ms after
+        // a 300ms delay — long enough for the view-mode/fit-width reflow below to
+        // settle while the pages are still invisible).
+        pagesRevealed = true;
         // Inject canvas styles now that Paged.js is done
-        client?.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
+        client?.injectStyles("viewer-canvas", buildViewerStyles(bgColor, true));
         client?.injectStyles("debug", DEBUG_STYLES);
         // Set initial view mode (auto if user hasn't chosen)
         const auto = window.innerWidth < 1280 ? "single" : "two-column";
@@ -602,6 +614,10 @@
         renderProgressPage = 0;
         outline = [];
         activeOutlineIndex = 0;
+        // A new render started — hide the pages again so they don't flash the
+        // old layout / a half-built page while Paged.js re-paginates. They fade
+        // back in on the next renderingComplete.
+        pagesRevealed = false;
         getPlatform().splashStatus("Rendering pages…", 70).catch(() => {});
         client?.call<number>("getTotalPages").then((n) => {
           if (n > 0) {
