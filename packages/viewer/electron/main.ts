@@ -586,8 +586,10 @@ function showMainWindowAndCloseSplash(): void {
     clearTimeout(splashFallbackTimer);
     splashFallbackTimer = null;
   }
-  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
-    mainWindow.show();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    // The window is already visible (showInactive at create time, so it renders
+    // at full speed under the splash). Now bring it forward and give it focus.
+    if (!mainWindow.isVisible()) mainWindow.show();
     mainWindow.focus();
   }
   // Let the main window paint a frame before the splash vanishes, so there's no
@@ -708,10 +710,12 @@ function createWindow() {
     width: 1400,
     height: 900,
     backgroundColor: "#1e1e1e",
-    // Start HIDDEN. The splash window provides instant branded feedback while
-    // the SPA boots + the first project renders; we reveal this window only once
-    // the renderer reports its first screen is ready (or a fallback timeout
-    // fires). See showMainWindowAndCloseSplash() + the app:rendererReady IPC.
+    // Created hidden, then immediately shown INACTIVE (see mainWindow.showInactive()
+    // after loadURL). It must be VISIBLE during the first render so paged.js's
+    // requestAnimationFrame loop produces frames (a hidden window stalls it on real
+    // hardware). The splash (alwaysOnTop) covers it until the renderer reports the
+    // first screen is ready; showMainWindowAndCloseSplash() then focuses it + closes
+    // the splash (with a fallback timeout so the splash can never strand the user).
     show: false,
     webPreferences: {
       preload: path.resolve(__dirname, "../preload/preload.js"),
@@ -815,6 +819,15 @@ function createWindow() {
   if (devUrl) {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   }
+
+  // Make the window VISIBLE immediately — but INACTIVE so the splash (alwaysOnTop)
+  // stays on top. This is THE first-render-speed fix: paged.js drives its
+  // pagination loop with requestAnimationFrame, and on real hardware a hidden
+  // window (show:false) produces no compositor frames, so rAF stalls and layout
+  // collapses to ~1 page/sec — the "12 pages in 30s" regression. The pre-splash
+  // build showed the window immediately for exactly this reason; keeping it
+  // visible (just covered/centered under the splash) restores full render speed.
+  mainWindow.showInactive();
 
   // Push OS theme changes (light↔dark) to the renderer so a "system" theme
   // mode tracks the OS live. Registered after window creation so mainWindow is
