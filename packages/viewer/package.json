@@ -19,7 +19,8 @@
     "dist:win": "npm run dist -- --win zip",
     "dist:mac": "npm run dist -- --mac dmg",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "typecheck": "tsc -p electron/tsconfig.json"
+    "typecheck": "tsc -p electron/tsconfig.json",
+    "test:ui": "node tests/integration/run-ui.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.4",
@@ -46,6 +47,7 @@
     "electron-builder": "^26.0.0",
     "electron-vite": "^5.0.0",
     "happy-dom": "^15.11.6",
+    "playwright-core": "^1.60.0",
     "svelte": "^5.55.8",
     "svelte-check": "^4.0.0",
     "typescript": "^5.5.0",

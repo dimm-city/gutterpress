@@ -1,14 +1,12 @@
 name: Windows Electron driver test
 
-# Launches the packaged Electron viewer .exe on windows-latest via
-# Playwright and drives the full directory-load flow:
-#   1. Wait for the SvelteKit server window to open
-#   2. POST /api/preview from the renderer with a real Windows fixture path
-#   3. Verify the returned URL serves book.html
-#
-# If this passes, the directory-load failure is NOT in the lib, NOT in
-# the HTTP API, and NOT in the Electron shell — the entire stack is
-# proven to work on Windows end-to-end.
+# Builds the packaged Electron viewer .exe on windows-latest and runs the
+# committed UI test suite (packages/viewer/tests/integration/*.test.mjs) against
+# it via Playwright (playwright-core devDependency). Covers:
+#   - the full directory-load flow (renderer → preview server → book.html)
+#   - editor↔preview chapter-dropdown sync (the dropdown must move the editor
+#     across chapters, not just the preview)
+# Proves the whole stack works on Windows end-to-end.
 
 on:
   push:
@@ -76,25 +74,13 @@ jobs:
 
           "exe=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Install playwright in isolated dir
+      - name: Run the viewer UI test suite
         shell: pwsh
-        run: |
-          # We need playwright to drive Electron. Install it standalone
-          # outside the workspace tree to avoid `workspace:*` conflicts.
-          $pwDir = "${{ runner.temp }}\pw"
-          New-Item -ItemType Directory -Force -Path $pwDir | Out-Null
-          Set-Location $pwDir
-          '{"name":"_etest","version":"0.0.0","private":true,"type":"module"}' | Set-Content -Encoding utf8 "package.json"
-          npm install playwright --no-save --no-package-lock --ignore-scripts 2>&1 | Where-Object { $_ -notmatch "^npm warn" }
-          # Copy the test script alongside node_modules so ESM resolves.
-          Copy-Item "${{ github.workspace }}\packages\viewer\tests\integration\electron-driver.test.mjs" "$pwDir\electron-driver.test.mjs"
-
-      - name: Drive the viewer end-to-end
-        shell: pwsh
-        run: |
-          $pwDir = "${{ runner.temp }}\pw"
-          $fixture = "${{ github.workspace }}\packages\cli\tests\integration\fixtures\smoke"
-          node "$pwDir\electron-driver.test.mjs" "${{ steps.locate.outputs.exe }}" $fixture
+        # playwright-core is a viewer devDependency (installed by the build
+        # step's `bun install`), so the committed runner drives the packaged exe
+        # directly — no ad-hoc install or file-copy. It runs every
+        # tests/integration/*.test.mjs (directory-load + editor↔preview sync).
+        run: bun --cwd packages/viewer run test:ui -- "${{ steps.locate.outputs.exe }}"
 
       - name: Upload diagnostics on failure
         if: failure()

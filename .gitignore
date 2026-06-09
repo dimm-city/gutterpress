@@ -42,17 +42,17 @@ dist/
 # Code index and reference files (can be regenerated)
 .references/
 examples/field-guide/
-tests/
-# Integration fixtures and scripts are committed
-!tests/integration/
-!tests/integration/**
-# Updater unit tests are committed (run in CI via the viewer `test` script)
-!tests/updater/
-# NOTE: the blanket `tests/` above excludes the tests DIRECTORY, so root-level
-# committed harnesses (pagedjs-interface.test.mjs, preview-bridge.test.mjs) are
-# tracked via `git add -f`. git's "can't re-include under an excluded parent"
-# rule means a `!tests/*.test.mjs` negation can't bring them back.
-!tests/updater/**
+# CLI test scratch / generated output (was previously covered by a blanket
+# `tests/` ignore; keep just these specific generated paths ignored).
+/packages/cli/tests/field-guide/
+/packages/cli/tests/field-guide-bak/
+/packages/cli/tests/field-guide-input/
+/packages/cli/tests/field-guide.pdf
+# (Removed a blanket `tests/` ignore: there is no root-level scratch tests dir —
+# the only tests/ dirs are packages/{cli,lib,viewer}/tests, which are all
+# committed. The blanket rule matched them at any depth and, via git's
+# "can't re-include under an excluded parent" rule, forced `git add -f` and
+# broke negations for any NEW test file. Package test dirs are tracked normally.)
 .reviews/
 *.zip
 *.skill

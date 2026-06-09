@@ -1225,10 +1225,18 @@
         : entry.sourceLine != null
           ? { line: entry.sourceLine, chapter: entry.chapter }
           : { page: entry.page };
-    // Editor-side first so its scroll doesn't get mistaken for a reader scroll.
+    // Keep the editor in step with the jump. Editor-side first so its scroll
+    // doesn't get mistaken for a reader scroll. The jump suppresses the
+    // scroll-driven follow, so a cross-chapter jump must move the editor here
+    // explicitly — otherwise the preview lands on the new chapter while the
+    // editor is left on the old file (they desync).
     suppressPreviewSyncUntil = Date.now() + 400;
-    if (entry.sourceLine != null && editorPaneOpen && entry.chapter === editorChapter) {
-      editorRef?.revealLine(entry.sourceLine);
+    if (entry.sourceLine != null && editorPaneOpen) {
+      if (entry.chapter === editorChapter) {
+        editorRef?.revealLine(entry.sourceLine);
+      } else if (entry.chapter && currentDir && !buffer?.isDirty) {
+        followChapterInEditor(entry.chapter, entry.sourceLine);
+      }
     }
     client
       .scrollTo(target, { block: "start" })
@@ -2008,8 +2016,14 @@
 
   /* ---- Toolbar ---- */
   .toolbar {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    /* FLEX, not grid. A `1fr auto 1fr` grid positions the three sections
+       independently, so when the right section is wider than its 1fr column it
+       overflows leftward and OVERLAPS the centered page-nav (seen at ~1280px CSS
+       width, e.g. a 4K display at 300% OS scale). Flex lays the sections out
+       sequentially — they can never overlap; the worst case is a clip, which the
+       responsive collapse below prevents. The center is pushed to the middle by
+       equal-growing left/right spacers. */
+    display: flex;
     align-items: center;
     gap: 8px;
     padding: 0 12px;
@@ -2019,17 +2033,22 @@
     border-bottom: 1px solid var(--app-border);
     /* Stacking context ABOVE the workspace panes (z-index 50) so dropdown menus
        that hang below the toolbar paint over the preview, not behind it. overflow
-       must stay visible for the same reason — `overflow: hidden` clips dropdowns.
-       Horizontal overflow is controlled per-section (.left/.center/.right). */
+       must stay visible for the same reason — `overflow: hidden` clips dropdowns. */
     position: relative;
     z-index: 100;
     overflow: visible;
   }
 
   section { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  .left { justify-self: start; overflow: hidden; }
-  .center { justify-self: center; flex-shrink: 0; }
-  .right { justify-self: end; flex-shrink: 0; }
+  /* .left shrinks first (the doc title ellipsises). .center (page-nav) and
+     .right never shrink, so their buttons can't overflow their own box and lap
+     onto a neighbour. The center is centred by auto margins; .right is pinned to
+     the end by margin-left:auto (works whether or not the center is present). If
+     everything still doesn't fit, .right clips past the right edge — which the
+     responsive collapse below avoids by shrinking the right section first. */
+  .left { flex: 0 1 auto; overflow: hidden; }
+  .center { flex: 0 0 auto; margin: 0 auto; }
+  .right { flex: 0 0 auto; margin-left: auto; }
 
   /* ---- Buttons & inputs ---- */
   button, select {
@@ -2426,11 +2445,20 @@
 
   /* ---- Responsive breakpoints ----
      The toolbar degrades in stages as the viewport narrows:
+       1366px — collapse view-mode + zoom into dropdown menu buttons (the
+                segmented control + zoom select are the widest right-side items;
+                collapsing them keeps the full toolbar within ~1280px CSS, e.g. a
+                4K display at 300% OS scale, where it otherwise overflowed)
        1200px — trim the doc-title/path widths
        1024px — drop button text labels (icon-only with tooltips/aria-labels)
-        980px — collapse view-mode + zoom into dropdown menu buttons
         900px — hide the doc title, drop the Save PDF text label
         820px — single-pane layout (Edit/View toggle); see .workspace.narrow */
+  @media screen and (max-width: 1366px) {
+    /* Swap the inline view-mode buttons + zoom select for compact menu buttons. */
+    .view-mode-group { display: none; }
+    .zoom-select { display: none; }
+    .menu { display: inline-block; }
+  }
   @media screen and (max-width: 1200px) {
     .doc-title { max-width: 140px; }
     .path { max-width: 180px; }
@@ -2438,12 +2466,6 @@
   @media screen and (max-width: 1024px) {
     /* Icon-only buttons: labels drop, aria-label/title keep them accessible. */
     .view-label { display: none; }
-  }
-  @media screen and (max-width: 980px) {
-    /* Swap the inline view-mode buttons + zoom select for compact menu buttons. */
-    .view-mode-group { display: none; }
-    .zoom-select { display: none; }
-    .menu { display: inline-block; }
   }
   @media screen and (max-width: 900px) {
     .doc-title { display: none; }
