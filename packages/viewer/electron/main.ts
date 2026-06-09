@@ -1784,6 +1784,24 @@ ipcMain.handle("updater:markReady", async () => {
 // App lifecycle
 // ──────────────────────────────────────────────────────────────────────────
 
+// ── Never throttle the hidden renderer (THE first-render-speed fix) ─────────
+// The main window starts hidden behind the splash, and the FIRST project render
+// (paged.js) runs while it's hidden. Chromium throttles hidden/occluded windows:
+// once a window has been visible→hidden, background timer throttling clamps the
+// setTimeout()s paged.js yields on between pages, collapsing layout to ~1 page/sec
+// (measured: a hidden window dropped from 490 setTimeout callbacks/2s to 35 — and
+// worse on real hardware with the 1s clamp). That is the "12 pages in 30s" report.
+//
+// `backgroundThrottling: false` on the window (set below) fixes it, but these
+// app-level switches make it bulletproof: they globally disable renderer
+// backgrounding, background-timer throttling, and occlusion-driven backgrounding,
+// so NO window — even one fully covered by the splash — can be throttled. Verified:
+// with these switches a hidden window stays at 492 callbacks/2s even with
+// backgroundThrottling left at its (throttling) default. Must be set before ready.
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
+app.commandLine.appendSwitch("disable-background-timer-throttling");
+app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+
 // ── Single-instance lock (THE launch-speed fix) ─────────────────────────────
 // A second instance pointed at the same userData dir contends with the first
 // for the profile's leveldb/singleton locks — which stalls the new window's
