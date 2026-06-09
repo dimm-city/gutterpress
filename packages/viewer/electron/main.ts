@@ -555,9 +555,21 @@ function createSplashWindow(): void {
   });
 }
 
+let lastSubOnlySplashAt = 0;
 /** Drive the splash's status line / progress bar / sub-status from the host. */
 function updateSplash(status?: string, progress?: number, sub?: string): void {
+  // Once the main window is shown the splash is gone (or closing) — don't waste
+  // a cross-process executeJavaScript on it.
+  if (mainShown) return;
   if (!splashWindow || splashWindow.isDestroyed()) return;
+  // The renderer emits a sub-status per laid-out page (can be 100+). Coalesce
+  // those pure sub-status pings to ~10/sec so render isn't taxed by IPC +
+  // executeJavaScript chatter; meaningful status/progress changes always pass.
+  if (status === undefined && progress === undefined && sub !== undefined) {
+    const now = Date.now();
+    if (now - lastSubOnlySplashAt < 100) return;
+    lastSubOnlySplashAt = now;
+  }
   const a = status === undefined ? "undefined" : JSON.stringify(status);
   const b = progress === undefined ? "undefined" : String(Number(progress));
   const c = sub === undefined ? "undefined" : JSON.stringify(sub);
@@ -706,6 +718,13 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // CRITICAL: the window now starts hidden behind the splash, and the FIRST
+      // project render (paged.js) happens while it's still hidden. Electron
+      // background-throttles hidden/occluded windows — timers and rAF drop to
+      // ~1/sec — which made first-render "super slow" vs. the pre-splash beta
+      // (which showed the window immediately). Disable throttling so layout runs
+      // at full speed even before the window is revealed.
+      backgroundThrottling: false,
     },
   });
   mainWindow.once("ready-to-show", () => slog("renderer ready-to-show (first paint)"));
