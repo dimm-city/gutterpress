@@ -131,6 +131,14 @@ export class WebAdapter implements Platform {
   getLastProject(): Promise<string | null> {
     return rejectNotImplemented("getLastProject");
   }
+  // No splash window on the web — these are safe no-ops (a PWA would use its own
+  // loading UI, not a host splash).
+  splashStatus(): Promise<void> {
+    return Promise.resolve();
+  }
+  rendererReady(): Promise<void> {
+    return Promise.resolve();
+  }
 
   listProjectFiles(_projectDir: string): Promise<{ md: string[]; css: string[] }> {
     return rejectNotImplemented("listProjectFiles");

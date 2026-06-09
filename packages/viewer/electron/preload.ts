@@ -294,6 +294,9 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("api:status"),
   getLastProject: (): Promise<string | null> =>
     ipcRenderer.invoke("app:getLastProject"),
+  splashStatus: (status?: string, progress?: number, sub?: string): Promise<void> =>
+    ipcRenderer.invoke("app:splashStatus", status, progress, sub),
+  rendererReady: (): Promise<void> => ipcRenderer.invoke("app:rendererReady"),
   getViewerPrefs: (): Promise<ViewerPrefs> =>
     ipcRenderer.invoke("app:getViewerPrefs"),
   setViewerPrefs: (patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> =>

@@ -50,6 +50,9 @@ import {
   type ProjectState,
   type ProjectStateMap,
 } from "./project-state";
+// The splash markup ships as a string baked into the main bundle (electron-vite
+// inlines `?raw`), so there is no separate file to resolve at runtime.
+import splashHtml from "./splash.html?raw";
 
 // ── Startup timing instrumentation (diagnose the ~10s launch stall) ──────────
 // Prints "[startup +Nms] <milestone>" so a slow launch log pinpoints exactly
@@ -510,6 +513,78 @@ async function existingDirectory(dir: string | undefined): Promise<string | null
 
 let mainWindow: BrowserWindow | null = null;
 
+// ── Splash window ──────────────────────────────────────────────────────────
+// A small frameless window shown the instant the app starts, so the user sees
+// branded, animated feedback (with live status) while the main window's SPA
+// boots and the first project renders. The main window stays hidden until the
+// renderer reports its first screen is ready (rendered project OR welcome
+// screen), at which point we show it and close the splash. A fallback timeout
+// guarantees the splash never strands the user if that signal never arrives.
+let splashWindow: BrowserWindow | null = null;
+let mainShown = false;
+let splashFallbackTimer: NodeJS.Timeout | null = null;
+
+function createSplashWindow(): void {
+  splashWindow = new BrowserWindow({
+    width: 460,
+    height: 280,
+    frame: false,
+    resizable: false,
+    movable: true,
+    center: true,
+    alwaysOnTop: true,
+    show: true,
+    backgroundColor: "#1e1e1e",
+    title: "print-md",
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  void splashWindow.loadURL(
+    "data:text/html;charset=utf-8," + encodeURIComponent(splashHtml),
+  );
+  splashWindow.once("ready-to-show", () => {
+    // Stamp the version into the badge once the DOM exists.
+    splashWindow?.webContents
+      .executeJavaScript(
+        `(function(){var el=document.getElementById('splash-version');` +
+          `if(el)el.textContent=${JSON.stringify("v" + app.getVersion())};})()`,
+      )
+      .catch(() => {});
+  });
+  splashWindow.on("closed", () => {
+    splashWindow = null;
+  });
+}
+
+/** Drive the splash's status line / progress bar / sub-status from the host. */
+function updateSplash(status?: string, progress?: number, sub?: string): void {
+  if (!splashWindow || splashWindow.isDestroyed()) return;
+  const a = status === undefined ? "undefined" : JSON.stringify(status);
+  const b = progress === undefined ? "undefined" : String(Number(progress));
+  const c = sub === undefined ? "undefined" : JSON.stringify(sub);
+  splashWindow.webContents
+    .executeJavaScript(`window.__splashUpdate(${a},${b},${c})`)
+    .catch(() => {});
+}
+
+/** Reveal the main window and dismiss the splash — idempotent. */
+function showMainWindowAndCloseSplash(): void {
+  if (mainShown) return;
+  mainShown = true;
+  if (splashFallbackTimer) {
+    clearTimeout(splashFallbackTimer);
+    splashFallbackTimer = null;
+  }
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+  // Let the main window paint a frame before the splash vanishes, so there's no
+  // dark flash between them.
+  setTimeout(() => {
+    if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
+  }, 140);
+}
+
 // ── Unsaved-changes infrastructure (#44) ────────────────────────────────────
 // The recovery sidecar store lives under userData/recovery/.
 function recoveryDir(): string {
@@ -621,10 +696,11 @@ function createWindow() {
     width: 1400,
     height: 900,
     backgroundColor: "#1e1e1e",
-    // Show the window IMMEDIATELY (default). Waiting for `ready-to-show` (first
-    // paint) means the user stares at nothing while the SPA + preview render —
-    // which can be several seconds. Showing now (with the dark backgroundColor)
-    // gives instant feedback; the shell + content paint into the visible window.
+    // Start HIDDEN. The splash window provides instant branded feedback while
+    // the SPA boots + the first project renders; we reveal this window only once
+    // the renderer reports its first screen is ready (or a fallback timeout
+    // fires). See showMainWindowAndCloseSplash() + the app:rendererReady IPC.
+    show: false,
     webPreferences: {
       preload: path.resolve(__dirname, "../preload/preload.js"),
       contextIsolation: true,
@@ -686,10 +762,13 @@ function createWindow() {
       console.error(
         `[renderer] did-fail-load url=${validatedURL} code=${errorCode} desc=${errorDescription}`
       );
+      // Don't strand the user on the splash if the SPA fails to load.
+      showMainWindowAndCloseSplash();
     }
   );
   mainWindow.webContents.on("render-process-gone", (_e, details) => {
     console.error(`[renderer] render-process-gone reason=${details.reason}`);
+    showMainWindowAndCloseSplash();
   });
   mainWindow.webContents.on(
     "console-message",
@@ -1087,6 +1166,22 @@ ipcMain.handle(
 ipcMain.handle("app:getLastProject", async () => {
   const prefs = await readPrefs();
   return existingDirectory(prefs.lastProjectDir);
+});
+
+// ── Splash coordination ──────────────────────────────────────────────────────
+// The renderer pushes human-readable status while it boots/renders, and signals
+// when its first screen (a rendered project OR the welcome screen) is ready —
+// at which point we reveal the main window and dismiss the splash.
+ipcMain.handle(
+  "app:splashStatus",
+  async (_e, status?: string, progress?: number, sub?: string) => {
+    updateSplash(status, progress, sub);
+  },
+);
+
+ipcMain.handle("app:rendererReady", async () => {
+  updateSplash("Ready", 100);
+  showMainWindowAndCloseSplash();
 });
 
 ipcMain.handle("app:getViewerPrefs", async () => {
@@ -1698,12 +1793,15 @@ app.whenReady().then(async () => {
   // proceed to create a contending window.
   if (!gotSingleInstanceLock) return;
   slog("app whenReady");
+  // Show the splash immediately — branded feedback while everything below runs.
+  createSplashWindow();
   // Apply any staged update from a previous session BEFORE resolving the web
   // root, so refreshWebRoot() picks up the newly promoted bundle. Wrapped so a
   // userData IO failure (EACCES, disk full) can never prevent createWindow() —
   // a broken updater must degrade to the bundled fallback, not a blank window.
   if (updaterEnabled()) {
     try {
+      updateSplash("Checking for updates…", 8);
       await ensureLayout();
       await promoteStaged();
     } catch (err) {
@@ -1712,12 +1810,18 @@ app.whenReady().then(async () => {
   }
   slog("updater promote done");
 
+  updateSplash("Preparing the interface…", 18);
   await refreshWebRoot();
   slog("web root resolved");
   registerAppProtocol();
   registerUrlPreviewHeaderWatch();
+  updateSplash("Loading print-md…", 28);
   createWindow();
   slog("createWindow returned (loadURL dispatched)");
+
+  // Fallback: if the renderer never reports ready (crash, hang), reveal the
+  // window anyway so the splash can't strand the user.
+  splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 30_000);
 
   // Health-gate any current bundle that hasn't been confirmed healthy yet —
   // whether just promoted this launch or left unconfirmed by a prior session

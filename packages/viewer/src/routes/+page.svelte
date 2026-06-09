@@ -496,15 +496,24 @@
     platform.getViewerPrefs()
       .then(async (prefs) => {
         const dir = prefs.lastProjectDir;
-        if (!dir || previewUrl || currentDir || currentUrl) return;
+        if (!dir || previewUrl || currentDir || currentUrl) {
+          // Nothing to reopen — the welcome screen IS the first ready screen, so
+          // dismiss the splash and reveal the (welcome) window now.
+          platform.rendererReady().catch(() => {});
+          return;
+        }
         // Per-project state (#43) is keyed by folder path so opening a
         // different project never pollutes this one's restore point.
+        platform.splashStatus("Opening your project…", 45).catch(() => {});
         const restoreState = await platform
           .getViewerProjectState(dir)
           .catch(() => null);
         return startFolderPreview(dir, "Reopening previous folder…", restoreState);
       })
-      .catch(() => {})
+      .catch(() => {
+        // If reopen failed, still reveal the window (don't strand on the splash).
+        platform.rendererReady().catch(() => {});
+      })
       .finally(() => {
         autoOpeningLastProject = false;
       });
@@ -554,6 +563,9 @@
         toast?.success(`Your book is ready — ${n} ${n === 1 ? 'page' : 'pages'}`);
         // Build the chapter-jump outline from the freshly rendered DOM.
         refreshOutline();
+        // First project render done → dismiss the splash and reveal the window.
+        getPlatform().splashStatus("Ready", 100).catch(() => {});
+        getPlatform().rendererReady().catch(() => {});
       } else if (e.name === "sourceLineChanged") {
         // Preview→editor sync: the reader scrolled. Follow in the editor and
         // update the active outline entry — but not while the editor itself is
@@ -579,6 +591,9 @@
         if (rendering) {
           renderProgressPage = e.detail.totalPages ?? renderProgressPage;
           totalPages = e.detail.totalPages ?? totalPages;
+          // Live splash sub-status during the (potentially multi-second) render.
+          const pg = e.detail.totalPages ?? renderProgressPage;
+          if (pg) getPlatform().splashStatus(undefined, undefined, `Laying out page ${pg}`).catch(() => {});
         } else {
           syncPageState(e.detail);
         }
@@ -587,6 +602,7 @@
         renderProgressPage = 0;
         outline = [];
         activeOutlineIndex = 0;
+        getPlatform().splashStatus("Rendering pages…", 70).catch(() => {});
         client?.call<number>("getTotalPages").then((n) => {
           if (n > 0) {
             totalPages = n;

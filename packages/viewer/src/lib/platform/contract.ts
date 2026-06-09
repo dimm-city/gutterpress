@@ -311,6 +311,14 @@ export interface HostServices {
   getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
   getLastProject(): Promise<string | null>;
 
+  // ── Splash coordination ──────────────────────────────────────────────────
+  // Push human-readable startup status to the host splash (a no-op on the web,
+  // which has no splash window), then signal that the first meaningful screen
+  // (a rendered project OR the welcome screen) is ready so the host can reveal
+  // the main window and dismiss the splash.
+  splashStatus(status?: string, progress?: number, sub?: string): Promise<void>;
+  rendererReady(): Promise<void>;
+
   /**
    * List the top-level `.md` and `.css` files of an opened project directory
    * (#42), each sorted by filename. Shallow by design (subdirectory layouts

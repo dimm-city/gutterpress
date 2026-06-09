@@ -3,6 +3,13 @@
 // untyped module declaration is all that's needed for the electron typecheck.
 declare module "@dimm-city/print-md-lib";
 
+// `?raw` imports (electron-vite/vite) return the file contents as a string. Used
+// for the splash markup, which is baked into the main bundle.
+declare module "*.html?raw" {
+  const content: string;
+  export default content;
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // window.electron — bridge types for the renderer / SvelteKit SPA
 //
@@ -137,6 +144,9 @@ interface Window {
     // Lib API
     getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
     getLastProject(): Promise<string | null>;
+    // Splash coordination: push status while booting, then signal first-screen ready.
+    splashStatus(status?: string, progress?: number, sub?: string): Promise<void>;
+    rendererReady(): Promise<void>;
     getViewerPrefs(): Promise<{
       lastProjectDir?: string | null;
       sidebarOpen?: boolean;

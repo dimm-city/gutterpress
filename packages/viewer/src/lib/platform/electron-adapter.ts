@@ -117,6 +117,12 @@ export class ElectronAdapter implements Platform {
   getLastProject(): Promise<string | null> {
     return bridge().getLastProject();
   }
+  splashStatus(status?: string, progress?: number, sub?: string): Promise<void> {
+    return bridge().splashStatus(status, progress, sub);
+  }
+  rendererReady(): Promise<void> {
+    return bridge().rendererReady();
+  }
 
   listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }> {
     return bridge().listProjectFiles(projectDir);
