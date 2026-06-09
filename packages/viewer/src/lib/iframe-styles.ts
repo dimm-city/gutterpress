@@ -13,29 +13,14 @@
  *  - "debug": crop marks, page box overlays, bleed/safe area indicators.
  */
 
-/**
- * Build the canvas + view-mode stylesheet, parameterised by background color.
- *
- * `revealed` controls the page fade-in: pages render at opacity 0 (so the user
- * never watches the book being laid out page-by-page), then fade in once Paged.js
- * reports renderingComplete. The 300ms transition-delay lets post-render layout
- * (view-mode + fit-width reflow) settle while the pages are still invisible, so
- * they fade in already in their final position rather than visibly jumping.
- */
-export function buildViewerStyles(bg: string, revealed = true): string {
+/** Build the canvas + view-mode stylesheet, parameterised by background color. */
+export function buildViewerStyles(bg: string): string {
   return `
 /* Injected by print-md viewer — not in preview.css (Paged.js strips @media pagedjs-ignore) */
 
 /* Zoom — set via --pmd-zoom CSS custom property (JS sets the number) */
 html { --pmd-zoom: 1; }
 .pagedjs_pages { zoom: var(--pmd-zoom) !important; }
-
-/* Page fade-in: hidden (opacity 0) until renderingComplete, then fade in after a
-   300ms delay (so layout/zoom settle behind the invisible pages first). */
-.pagedjs_pages {
-  opacity: ${revealed ? "1" : "0"} !important;
-  transition: opacity 360ms ease ${revealed ? "300ms" : "0ms"} !important;
-}
 
 /* Canvas (space around pages) */
 html, body {
