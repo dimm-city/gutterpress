@@ -1505,7 +1505,7 @@
                   class:active={i === activeOutlineIndex}
                   class:chapter-top={entry.level <= 1}
                   class:chapter-sub={entry.level >= 3}
-                  style="padding-left: {8 + (entry.level - 1) * 14}px"
+                  style="padding-left: {8 + (entry.level - 1) * 20}px"
                   onclick={(e) => { jumpToOutline(entry); closeMenu(e); }}
                 >
                   <span class="chapter-item-text">{entry.text}</span>
@@ -1543,7 +1543,7 @@
           />
         {:else}
           <button class="page-pill" onclick={beginPageEdit} disabled={rendering} aria-label="Edit current page">
-            <span class="pill-word">Page </span>{currentPage} / {totalPages || "—"}
+            <span class="pill-word">Page&nbsp;</span>{currentPage} / {totalPages || "—"}
           </button>
         {/if}
         <button class="icon-btn" onclick={nextPage} disabled={rendering} title="Next page (Right/PageDown)" aria-label="Next page">
