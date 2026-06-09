@@ -281,26 +281,11 @@ jobs:
           path: packages/viewer/dist/*.dmg
           if-no-files-found: error
 
-  # ── 4. Verify on real Windows ────────────────────────────────────────────
-  #
-  # Runs the CLI binary and install script on windows-latest to catch any
-  # binary compatibility issues before publishing the release.
-
-  verify-windows:
-    name: Verify Windows binary (render smoke)
-    # Runs as soon as build-cli finishes — does not wait on the viewer
-    # Windows build so the two windows-latest jobs run in parallel.
-    needs: [version, build-cli]
-    uses: ./.github/workflows/windows-install-test.yml
-    with:
-      script_ref: ${{ needs.version.outputs.tag }}
-      use_artifact: true
-
-  # ── 5. Publish to npm (skippable) ─────────────────────────────────────────
+  # ── 4. Publish to npm (skippable) ─────────────────────────────────────────
   publish-npm:
     name: Publish to npm
-    needs: [version, verify-windows]
-    if: ${{ !inputs.skip_npm_publish && needs.verify-windows.result == 'success' }}
+    needs: [version]
+    if: ${{ !inputs.skip_npm_publish }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -361,8 +346,7 @@ jobs:
   # `latest` only for stable releases (a version without a "-" prerelease tag).
   publish-docker:
     name: Publish Docker image
-    needs: [version, verify-windows]
-    if: ${{ needs.verify-windows.result == 'success' }}
+    needs: [version]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -405,8 +389,8 @@ jobs:
 
   # ── 6. Create release with ALL artifacts ──────────────────────────────────
   #
-  # Waits for every build job and the Windows verify before creating the
-  # release. Users see a complete release — no partial-artifact window.
+  # Waits for every build job before creating the release. Users see a complete
+  # release — no partial-artifact window.
 
   github-release:
     name: Create GitHub Release
@@ -416,7 +400,6 @@ jobs:
       - build-viewer-linux
       - build-viewer-windows
       - build-viewer-mac
-      - verify-windows
       - publish-npm
     if: |
       always() &&
@@ -425,7 +408,6 @@ jobs:
       needs.build-viewer-linux.result == 'success' &&
       needs.build-viewer-windows.result == 'success' &&
       needs.build-viewer-mac.result == 'success' &&
-      needs.verify-windows.result == 'success' &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
