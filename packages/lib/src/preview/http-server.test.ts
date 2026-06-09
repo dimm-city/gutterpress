@@ -48,18 +48,28 @@ function makeState(tempDir: string): ServerState {
 
 describe('isPortAvailable', () => {
   test('returns true for available port', async () => {
-    const result = await isPortAvailable(59999);
+    // Bind an OS-assigned port, capture it, then release it — so we test a port
+    // we KNOW was bindable a moment ago rather than a hardcoded guess that may
+    // be occupied on a busy CI runner (the old fixed 59999 was flaky).
+    const probe = Bun.serve({ port: 0, fetch: () => new Response('probe') });
+    const freedPort = probe.port;
+    probe.stop(true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const result = await isPortAvailable(freedPort);
     expect(result).toBe(true);
   });
 
   test('returns false for unavailable port', async () => {
-    const testPort = 58888;
+    // Let the OS pick a free port (port: 0) instead of a hardcoded 58888, which
+    // collided under back-to-back CI runs (EADDRINUSE → "Failed to start server").
     const server = Bun.serve({
-      port: testPort,
+      port: 0,
       fetch() {
         return new Response('test');
       },
     });
+    const testPort = server.port;
 
     try {
       const result = await isPortAvailable(testPort);
