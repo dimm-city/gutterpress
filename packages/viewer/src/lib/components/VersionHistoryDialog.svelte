@@ -26,7 +26,7 @@
     open = $bindable(false),
     projectDir,
     capabilities,
-    insideVersionedProject = false,
+    sharesParentHistory = false,
     onEnabled,
     onSnapshotSaved,
     onRestored,
@@ -36,10 +36,11 @@
     projectDir: string | null;
     capabilities: ProjectCapabilities | null;
     /**
-     * The folder sits inside a larger folder that already has version history
-     * (SWEEP-2): enabling is suppressed and the dialog explains why instead.
+     * The book lives inside a larger folder that keeps the version history.
+     * All features work normally (the host scopes them to this book); shown
+     * only as a quiet informational hint.
      */
-    insideVersionedProject?: boolean;
+    sharesParentHistory?: boolean;
     /** History was just enabled — parent stores the new source/capabilities. */
     onEnabled?: (result: ProjectClassification) => void;
     onSnapshotSaved?: (entry: SnapshotEntry) => void;
@@ -360,6 +361,9 @@
           </button>
         </footer>
       {:else if canHistory}
+        {#if sharesParentHistory}
+          <p class="hint">This book shares history with its parent folder.</p>
+        {/if}
         {#if canSnapshot}
           <div class="snapshot-row">
             <input
@@ -417,18 +421,6 @@
             {/each}
           </ul>
         {/if}
-      {:else if insideVersionedProject}
-        <!-- SWEEP-2: the folder sits inside an existing versioned project —
-             a nested history here would silently break the outer one. -->
-        <p class="lede">
-          This folder is part of a larger folder that already keeps version
-          history, so print-md doesn't manage a separate history here — two
-          overlapping histories would conflict with each other.
-        </p>
-        <p class="hint">
-          Your work is still covered by the larger folder's history. To give
-          this project its own history, move it to a folder of its own first.
-        </p>
       {:else}
         <p class="hint">Version history isn't available for this project.</p>
       {/if}

@@ -199,3 +199,29 @@ test("forgeKindForHost classifies the supported forge families", () => {
   expect(forgeKindForHost("myorg.visualstudio.com")).toBe("azure");
   expect(forgeKindForHost("git.example.com")).toBe("generic");
 });
+
+test("book subfolder of a repo → diagnosis reads the ENCLOSING repo's remote/branch", async () => {
+  const dir = await gitFolder({
+    remoteUrl: "https://github.com/owner/books.git",
+    branch: "main",
+  });
+  try {
+    const inner = path.join(dir, "books", "field-guide");
+    await mkdir(inner, { recursive: true });
+    const diag = await diagnoseProjectRemote(inner);
+    expect(diag.classification.type).toBe("local-git-folder");
+    if (diag.classification.type === "local-git-folder") {
+      expect(diag.classification.repoRoot).toBe(dir);
+      expect(diag.classification.subPath).toBe("books/field-guide");
+    }
+    expect(diag.remoteUrl).toBe("https://github.com/owner/books.git");
+    expect(diag.remoteHost).toBe("github.com");
+    expect(diag.branch).toBe("main");
+    expect(diag.provider).toBe("github");
+    // No stored credential in this fixture → connect guidance, not syncable.
+    expect(diag.canSync).toBe(false);
+    expect(diag.guidance).toBe("connect-github-to-sync");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -1,5 +1,9 @@
 import { test, expect } from "bun:test";
-import { listGitHubRepositories, listGitHubBranches } from "./github-repos";
+import {
+  listGitHubRepositories,
+  listGitHubBranches,
+  listRepoBooks,
+} from "./github-repos";
 import type { HostCredential } from "./token-store";
 
 const CRED: HostCredential = {
@@ -94,4 +98,102 @@ test("listBranches paginates and sends the documented headers", async () => {
   expect(sawHeaders!["Accept"]).toBe("application/vnd.github+json");
   expect(sawHeaders!["Authorization"]).toBe("Bearer gho_tok");
   expect(sawHeaders!["X-GitHub-Api-Version"]).toBeTruthy();
+});
+
+// ── listRepoBooks (multi-book repositories) ──────────────────────────────────
+
+function treeResponse(
+  entries: Array<{ path: string; type: "blob" | "tree"; sha?: string }>,
+  truncated = false,
+) {
+  return jsonResponse({
+    tree: entries.map((e) => ({ sha: "0".repeat(40), ...e })),
+    truncated,
+  });
+}
+
+test("listRepoBooks finds every directory holding a print-md manifest (root counts)", async () => {
+  const requested: string[] = [];
+  const fetchImpl = (async (url: RequestInfo | URL) => {
+    const u = String(url);
+    requested.push(u);
+    return treeResponse([
+      { path: "print-md.yaml", type: "blob" },
+      { path: "books", type: "tree" },
+      { path: "books/field-guide", type: "tree" },
+      { path: "books/field-guide/print-md.yaml", type: "blob" },
+      { path: "books/op-manual", type: "tree" },
+      { path: "books/op-manual/print-md.yml", type: "blob" },
+      { path: "books/op-manual/chapter-01.md", type: "blob" },
+      // Similar names that must NOT match.
+      { path: "books/notes/not-print-md.yaml", type: "blob" },
+      { path: "books/notes/print-md.yaml.bak", type: "blob" },
+    ]);
+  }) as typeof fetch;
+
+  const books = await listRepoBooks(CRED, "octocat", "books", "main", { fetchImpl });
+  expect(books).toEqual([
+    { path: "", name: "books" },
+    { path: "books/field-guide", name: "field-guide" },
+    { path: "books/op-manual", name: "op-manual" },
+  ]);
+  // One recursive tree call against the chosen branch.
+  expect(requested.length).toBe(1);
+  expect(requested[0]).toContain("/repos/octocat/books/git/trees/main?recursive=1");
+});
+
+test("listRepoBooks returns [] when no manifest exists anywhere", async () => {
+  const fetchImpl = (async () =>
+    treeResponse([
+      { path: "README.md", type: "blob" },
+      { path: "src", type: "tree" },
+      { path: "src/index.ts", type: "blob" },
+    ])) as typeof fetch;
+  const books = await listRepoBooks(CRED, "octocat", "code", "main", { fetchImpl });
+  expect(books).toEqual([]);
+});
+
+test("listRepoBooks truncated tree → falls back to root + top-level dir scans", async () => {
+  const requested: string[] = [];
+  const fetchImpl = (async (url: RequestInfo | URL) => {
+    const u = String(url);
+    requested.push(u);
+    if (u.includes("?recursive=1")) {
+      // Truncated recursive listing: incomplete, must not be trusted.
+      return treeResponse([{ path: "partial.md", type: "blob" }], true);
+    }
+    if (u.includes("/git/trees/main")) {
+      // Non-recursive root: a manifest at the root + two top-level dirs.
+      return jsonResponse({
+        tree: [
+          { path: "print-md.yaml", type: "blob", sha: "a".repeat(40) },
+          { path: "field-guide", type: "tree", sha: "b".repeat(40) },
+          { path: "assets", type: "tree", sha: "c".repeat(40) },
+        ],
+        truncated: false,
+      });
+    }
+    if (u.includes(`/git/trees/${"b".repeat(40)}`)) {
+      return treeResponse([{ path: "print-md.yml", type: "blob" }]);
+    }
+    if (u.includes(`/git/trees/${"c".repeat(40)}`)) {
+      return treeResponse([{ path: "logo.png", type: "blob" }]);
+    }
+    throw new Error(`unexpected url ${u}`);
+  }) as typeof fetch;
+
+  const books = await listRepoBooks(CRED, "octocat", "big", "main", { fetchImpl });
+  expect(books).toEqual([
+    { path: "", name: "big" },
+    { path: "field-guide", name: "field-guide" },
+  ]);
+  // 1 recursive + 1 root + 2 per-dir probes.
+  expect(requested.length).toBe(4);
+});
+
+test("listRepoBooks maps 401 to the reconnect message", async () => {
+  const fetchImpl = (async () => jsonResponse({ message: "Bad credentials" }, 401)) as typeof fetch;
+  await expect(
+    listRepoBooks(CRED, "octocat", "books", "main", { fetchImpl }),
+  ).rejects.toThrow(/reconnect github/i);
 });

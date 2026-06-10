@@ -111,6 +111,100 @@ export async function listGitHubRepositories(
   return repos;
 }
 
+/** One print-md book found inside a repository. */
+export interface RepoBook {
+  /**
+   * Folder of the book relative to the repository root, forward-slash form.
+   * Empty string when the manifest sits at the repository root.
+   */
+  path: string;
+  /** Display name: the folder's basename, or the repo name for the root. */
+  name: string;
+}
+
+const MANIFEST_RE = /(^|\/)print-md\.ya?ml$/;
+
+type TreeEntry = { path?: string; type?: string; sha?: string };
+type TreeResponse = { tree?: TreeEntry[]; truncated?: boolean };
+
+function bookFromManifestPath(manifestPath: string, repo: string): RepoBook {
+  const dir = manifestPath.replace(/\/?[^/]*$/, "");
+  return { path: dir, name: dir === "" ? repo : dir.split("/").pop()! };
+}
+
+/**
+ * Find the print-md books inside a repository branch: every directory that
+ * contains a `print-md.yaml` / `print-md.yml` (the repository root counts,
+ * with `path: ""`). Uses one `GET /repos/{owner}/{repo}/git/trees/{branch}
+ * ?recursive=1` call; when GitHub truncates the recursive listing (very large
+ * repositories) it falls back to scanning the root + each top-level directory
+ * with non-recursive tree calls, so the result stays correct for the common
+ * "books are top-level folders" layout. Results are sorted by path, root
+ * first.
+ */
+export async function listRepoBooks(
+  credential: HostCredential,
+  owner: string,
+  repo: string,
+  branch: string,
+  options: GitHubApiOptions = {},
+): Promise<RepoBook[]> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const ownerEnc = encodeURIComponent(owner);
+  const repoEnc = encodeURIComponent(repo);
+  const treeUrl = (ref: string, recursive: boolean) =>
+    `${API_BASE}/repos/${ownerEnc}/${repoEnc}/git/trees/${encodeURIComponent(ref)}${
+      recursive ? "?recursive=1" : ""
+    }`;
+
+  const res = await apiGet(fetchImpl, treeUrl(branch, true), credential.token);
+  const body = (await res.json()) as TreeResponse;
+  const entries = body.tree ?? [];
+
+  if (!body.truncated) {
+    const books = entries
+      .filter((e) => e.type === "blob" && e.path && MANIFEST_RE.test(e.path))
+      .map((e) => bookFromManifestPath(e.path!, repo));
+    return dedupeAndSortBooks(books);
+  }
+
+  // Truncated listing: fall back to the root tree + each top-level directory
+  // (bounded — one request per top-level dir, capped).
+  const rootRes = await apiGet(fetchImpl, treeUrl(branch, false), credential.token);
+  const rootBody = (await rootRes.json()) as TreeResponse;
+  const rootEntries = rootBody.tree ?? [];
+  const books: RepoBook[] = rootEntries
+    .filter((e) => e.type === "blob" && e.path && MANIFEST_RE.test(e.path))
+    .map((e) => bookFromManifestPath(e.path!, repo));
+  const topDirs = rootEntries
+    .filter((e) => e.type === "tree" && typeof e.path === "string" && typeof e.sha === "string")
+    .slice(0, MAX_TRUNCATED_DIR_SCANS);
+  for (const dirEntry of topDirs) {
+    // Address each top-level directory by its tree SHA (always present in the
+    // parent listing) — branch:path ref syntax is not a documented API form.
+    const subRes = await apiGet(fetchImpl, treeUrl(dirEntry.sha!, false), credential.token);
+    const subBody = (await subRes.json()) as TreeResponse;
+    const hasManifest = (subBody.tree ?? []).some(
+      (e) => e.type === "blob" && (e.path === "print-md.yaml" || e.path === "print-md.yml"),
+    );
+    if (hasManifest) {
+      books.push({ path: dirEntry.path!, name: dirEntry.path! });
+    }
+  }
+  return dedupeAndSortBooks(books);
+}
+
+/** Bound on per-directory probes in the truncated-tree fallback. */
+const MAX_TRUNCATED_DIR_SCANS = 50;
+
+function dedupeAndSortBooks(books: RepoBook[]): RepoBook[] {
+  const byPath = new Map<string, RepoBook>();
+  for (const b of books) if (!byPath.has(b.path)) byPath.set(b.path, b);
+  return [...byPath.values()].sort((a, b) =>
+    a.path === b.path ? 0 : a.path === "" ? -1 : b.path === "" ? 1 : a.path < b.path ? -1 : 1,
+  );
+}
+
 /** List a repository's branches via `GET /repos/{owner}/{repo}/branches`. */
 export async function listGitHubBranches(
   credential: HostCredential,

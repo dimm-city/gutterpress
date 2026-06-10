@@ -18,7 +18,11 @@ import path from "node:path";
 import git from "isomorphic-git";
 
 import type { ProjectCapabilities, ProjectSource } from "./project-source.ts";
-import { capabilitiesFor, detectProjectSource } from "./project-source.ts";
+import {
+  capabilitiesFor,
+  detectProjectSource,
+  findEnclosingRepoDir,
+} from "./project-source.ts";
 
 /** One entry in a project's version history (a Git commit, abstracted). */
 export interface SnapshotEntry {
@@ -44,6 +48,28 @@ export interface SnapshotOptions {
   projectDir: string;
   message: string;
   authorName?: string;
+  /**
+   * Root of the Git repository the commit goes to. Defaults to `projectDir`.
+   * For a book subfolder of a larger repo this is the enclosing repo root.
+   */
+  repoRoot?: string;
+  /**
+   * When set (non-empty), the snapshot stages ONLY paths under this
+   * repo-relative folder — changes elsewhere in the repository (other books)
+   * stay out of this project's snapshots.
+   */
+  subPath?: string;
+}
+
+/**
+ * Resolve the repo root + subfolder scope for a classified source. For a
+ * repo-root project `dir === source.path` and `subPath` is "". Defensive:
+ * older persisted sources without `repoRoot` fall back to the project path.
+ */
+export function gitScopeFor(
+  source: Extract<ProjectSource, { type: "local-git-folder" }>,
+): { dir: string; subPath: string } {
+  return { dir: source.repoRoot || source.path, subPath: source.subPath || "" };
 }
 
 /** Inputs for restoring the working tree to a prior snapshot. */
@@ -109,10 +135,15 @@ export function gitAuthor(name?: string): { name: string; email: string } {
 
 /**
  * Stage every working-tree path (added/modified/removed) so the next commit
- * captures the full tree. Honours `.gitignore`.
+ * captures the full tree — or, when `subPath` is set, only the tree under
+ * that repo-relative folder (book-subfolder scoping). Honours `.gitignore`.
  */
-async function stageAll(dir: string): Promise<void> {
-  const status = await git.statusMatrix({ fs, dir });
+async function stageAll(dir: string, subPath?: string): Promise<void> {
+  const status = await git.statusMatrix({
+    fs,
+    dir,
+    ...(subPath ? { filepaths: [subPath] } : {}),
+  });
   await Promise.all(
     status.map(([filepath, , worktreeStatus]) =>
       worktreeStatus === 0
@@ -136,8 +167,15 @@ async function stageAll(dir: string): Promise<void> {
  * gitignored files must stay invisible to version history (they are user
  * state, never snapshotted). Do not "optimize" this to `ignored: true`.
  */
-export async function hasPendingChanges(dir: string): Promise<boolean> {
-  const status = await git.statusMatrix({ fs, dir });
+export async function hasPendingChanges(
+  dir: string,
+  subPath?: string,
+): Promise<boolean> {
+  const status = await git.statusMatrix({
+    fs,
+    dir,
+    ...(subPath ? { filepaths: [subPath] } : {}),
+  });
   // Row shape: [filepath, headStatus, worktreeStatus, stageStatus].
   // Unchanged-and-tracked is [_, 1, 1, 1]; anything else is a pending change.
   return status.some(
@@ -159,24 +197,22 @@ class LocalFolderSourceProvider implements SourceProvider {
     this.capabilities = capabilitiesFor(source);
   }
 
-  initVersionHistory(
+  async initVersionHistory(
     options: InitVersionHistoryOptions,
   ): Promise<ProjectSource> {
-    // SWEEP-2 guard (defense in depth — capabilitiesFor already suppresses the
-    // UI offer): never `git init` inside an existing repo. A nested `.git`
-    // silently shadows the outer repo's tracking of these files.
-    if (
-      this.source.type === "local-folder" &&
-      this.source.enclosingRepoDir !== undefined
-    ) {
-      return Promise.reject(
-        new Error(
-          "This folder is already inside a versioned project, so print-md " +
-            "won't create a separate history here.",
-        ),
+    const dir = options.projectDir;
+    // Defense in depth for the one TRUE conflict case: a `git init` INSIDE an
+    // existing repository would create a nested shadow repo that silently
+    // detaches these files from the outer repo's tracking. Classification now
+    // maps such folders to `local-git-folder` (they USE the enclosing repo's
+    // history), so the UI never offers this path — but a stale/hand-built
+    // source must still never nest a repo.
+    if ((await findEnclosingRepoDir(dir)) !== undefined) {
+      throw new Error(
+        "This folder is already inside a versioned project, so print-md " +
+          "won't create a separate history here.",
       );
     }
-    const dir = options.projectDir;
     return withRepoLock(dir, async () => {
       await git.init({ fs, dir, defaultBranch: DEFAULT_BRANCH });
       await stageAll(dir);
@@ -189,6 +225,8 @@ class LocalFolderSourceProvider implements SourceProvider {
       return {
         type: "local-git-folder",
         path: dir,
+        repoRoot: dir,
+        subPath: "",
         hasRemote: false,
         branch: DEFAULT_BRANCH,
       };
@@ -223,9 +261,12 @@ class LocalFolderSourceProvider implements SourceProvider {
 class LocalGitSourceProvider implements SourceProvider {
   readonly source: ProjectSource;
   readonly capabilities: ProjectCapabilities;
-  constructor(source: ProjectSource) {
+  /** Repo root + subfolder scope every git operation runs against. */
+  private readonly scope: { dir: string; subPath: string };
+  constructor(source: Extract<ProjectSource, { type: "local-git-folder" }>) {
     this.source = source;
     this.capabilities = capabilitiesFor(source);
+    this.scope = gitScopeFor(source);
   }
 
   async initVersionHistory(
@@ -248,17 +289,33 @@ class LocalGitSourceProvider implements SourceProvider {
   }
 
   snapshot(options: SnapshotOptions): Promise<SnapshotEntry> {
-    return withRepoLock(options.projectDir, () => this.snapshotUnlocked(options));
+    // Lock keys on the REPO ROOT, so two books in the same repo serialize.
+    return withRepoLock(this.scope.dir, () => this.snapshotUnlocked(options));
   }
 
   /** Lock-free snapshot impl — callers must already hold the repo lock. */
   snapshotUnlocked(options: SnapshotOptions): Promise<SnapshotEntry> {
-    return snapshotWorkingTreeUnlocked(options);
+    return snapshotWorkingTreeUnlocked({
+      ...options,
+      repoRoot: this.scope.dir,
+      ...(this.scope.subPath ? { subPath: this.scope.subPath } : {}),
+    });
   }
 
-  listHistory(projectDir: string): Promise<SnapshotEntry[]> {
-    return withRepoLock(projectDir, async () => {
-      const commits = await git.log({ fs, dir: projectDir });
+  listHistory(_projectDir: string): Promise<SnapshotEntry[]> {
+    const { dir, subPath } = this.scope;
+    return withRepoLock(dir, async () => {
+      // Subfolder projects list only commits that TOUCHED their folder.
+      // isomorphic-git's `log({ filepath })` resolves the tree oid at the
+      // path per commit and emits a commit whenever that oid changes — this
+      // works for directories, walking each commit once. `force: true` keeps
+      // the walk alive past commits where the folder doesn't exist yet
+      // (instead of throwing NotFoundError).
+      const commits = await git.log({
+        fs,
+        dir,
+        ...(subPath ? { filepath: subPath, force: true } : {}),
+      });
       return commits.map((c) => ({
         id: c.oid,
         message: c.commit.message.trim(),
@@ -269,7 +326,7 @@ class LocalGitSourceProvider implements SourceProvider {
   }
 
   restore(options: RestoreSnapshotOptions): Promise<void> {
-    return withRepoLock(options.projectDir, () => this.restoreUnlocked(options));
+    return withRepoLock(this.scope.dir, () => this.restoreUnlocked(options));
   }
 
   /** Lock-free restore impl — callers must already hold the repo lock. */
@@ -277,12 +334,16 @@ class LocalGitSourceProvider implements SourceProvider {
     // Restore the working tree to the given commit, keeping HEAD on its branch
     // (a non-destructive "restore files to this point" — does not rewrite
     // history). `force` overwrites the working tree with the snapshot contents.
+    // Subfolder projects restore ONLY their own paths — sibling books in the
+    // same repository are never touched.
+    const { dir, subPath } = this.scope;
     await git.checkout({
       fs,
-      dir: options.projectDir,
+      dir,
       ref: options.id,
       force: true,
       noUpdateHead: true,
+      ...(subPath ? { filepaths: [subPath] } : {}),
     });
   }
 }
@@ -299,13 +360,16 @@ class LocalGitSourceProvider implements SourceProvider {
 export async function snapshotWorkingTreeUnlocked(
   options: SnapshotOptions,
 ): Promise<SnapshotEntry> {
-  const dir = options.projectDir;
-  if (!(await hasPendingChanges(dir))) {
+  // The commit goes to the repo root; `subPath` (book subfolder of a larger
+  // repo) limits what is considered/staged to the project's own folder.
+  const dir = options.repoRoot ?? options.projectDir;
+  const subPath = options.subPath || undefined;
+  if (!(await hasPendingChanges(dir, subPath))) {
     throw new Error(
       "No changes since the last snapshot — there is nothing new to save.",
     );
   }
-  await stageAll(dir);
+  await stageAll(dir, subPath);
   const author = gitAuthor(options.authorName);
   const id = await git.commit({
     fs,
@@ -463,12 +527,14 @@ export async function restoreVersionWithBackup(
     );
   }
   const provider = new LocalGitSourceProvider(source);
+  const scope = gitScopeFor(source);
   // One lock span for the whole backup+restore sequence so nothing can slip
   // in between the safety snapshot and the restore (uses the providers'
   // *Unlocked internals — taking the per-method lock here would deadlock).
-  return withRepoLock(projectDir, async () => {
+  // Lock + pending-check key on the repo root, scoped to the book's subPath.
+  return withRepoLock(scope.dir, async () => {
     let backupId: string | undefined;
-    if (await hasPendingChanges(projectDir)) {
+    if (await hasPendingChanges(scope.dir, scope.subPath || undefined)) {
       const backup = await provider.snapshotUnlocked({
         projectDir,
         message: RESTORE_BACKUP_MESSAGE,

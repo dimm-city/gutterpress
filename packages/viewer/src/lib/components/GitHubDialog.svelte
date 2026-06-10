@@ -12,6 +12,7 @@
     DeviceCodeInfo,
     RemoteRepository,
     RemoteBranch,
+    RepoBook,
     CloneProgressEvent,
   } from "$lib/platform/contract";
 
@@ -29,10 +30,17 @@
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
-  type Step = "connect" | "code" | "repos" | "configure" | "cloning";
+  type Step = "connect" | "code" | "repos" | "configure" | "books" | "cloning";
   let step = $state<Step>("connect");
   let error = $state<string | null>(null);
   let busy = $state(false);
+
+  // "Choose a book" step (multi-book repositories). Populated after the
+  // configure step; loadGen invalidates an in-flight lookup when the user
+  // navigates away (stale-load guard — AdvancedSetupDialog precedent).
+  let books = $state<RepoBook[]>([]);
+  let booksLoading = $state(false);
+  let loadGen = 0;
 
   let username = $state<string | null>(null);
   let code = $state<DeviceCodeInfo | null>(null);
@@ -77,6 +85,9 @@
       branch = "";
       destination = null;
       folderName = "";
+      books = [];
+      booksLoading = false;
+      loadGen++;
       step = "connect";
       // Lead with the primary action (Connect); if init() finds an existing
       // connection it moves to the repo list and focuses the search input.
@@ -177,7 +188,46 @@
     if (dir) destination = dir;
   }
 
-  async function startClone() {
+  /**
+   * Configure-step submit: look for the books inside the chosen repo+branch
+   * first. More than one → the author picks which book to open ("books"
+   * step); exactly one → open it directly; none (or a lookup failure) →
+   * open the repository root, exactly as before. The WHOLE repository is
+   * downloaded once either way (ADR 0006 D2) — the chosen folder just
+   * becomes the project that opens.
+   */
+  async function openProject() {
+    if (!selectedRepo || !destination || busy) return;
+    error = null;
+    busy = true;
+    booksLoading = true;
+    const gen = ++loadGen;
+    let found: RepoBook[] = [];
+    try {
+      found = await getPlatform().listRepoBooks(
+        selectedRepo.owner,
+        selectedRepo.name,
+        branch,
+      );
+    } catch {
+      // Book discovery is best-effort — fall back to the repository root.
+      found = [];
+    } finally {
+      booksLoading = false;
+      busy = false;
+    }
+    if (gen !== loadGen || step !== "configure") return; // user navigated away
+    if (found.length > 1) {
+      books = found;
+      step = "books";
+      await tick();
+      dialogEl?.querySelector<HTMLButtonElement>(".repo-row")?.focus();
+      return;
+    }
+    await startClone(found.length === 1 ? found[0].path : "");
+  }
+
+  async function startClone(subPath: string) {
     if (!selectedRepo || !destination) return;
     error = null;
     step = "cloning";
@@ -200,6 +250,7 @@
         branch,
         owner: selectedRepo.owner,
         repo: selectedRepo.name,
+        ...(subPath ? { subPath } : {}),
       });
       open = false;
       triggerEl?.focus();
@@ -280,7 +331,7 @@
   >
     <header class="dialog-header">
       <h2 id="github-dialog-title">
-        {#if step === "connect" || step === "code"}Connect GitHub{:else if step === "repos"}Choose a repository{:else if step === "configure"}Open project{:else}Downloading…{/if}
+        {#if step === "connect" || step === "code"}Connect GitHub{:else if step === "repos"}Choose a repository{:else if step === "configure"}Open project{:else if step === "books"}Choose a book{:else}Downloading…{/if}
       </h2>
       <button
         class="close"
@@ -429,9 +480,34 @@
           <button class="ghost" onclick={close}>Cancel</button>
           <button
             class="primary"
-            onclick={startClone}
-            disabled={!destination || !folderName.trim()}
-          >Open project</button>
+            onclick={openProject}
+            disabled={!destination || !folderName.trim() || busy}
+          >{booksLoading ? "Looking inside…" : "Open project"}</button>
+        </footer>
+      {:else if step === "books" && selectedRepo}
+        <p class="hint">
+          <strong>{selectedRepo.fullName}</strong> contains more than one book.
+          Which one would you like to open?
+        </p>
+        <!-- svelte-ignore a11y_no_redundant_roles -- list-style:none strips
+             list semantics in some screen readers; role="list" restores it. -->
+        <ul class="repo-list" role="list" aria-label="Books in this repository">
+          {#each books as book (book.path)}
+            <li role="listitem">
+              <button type="button" class="repo-row" onclick={() => startClone(book.path)}>
+                <span class="repo-name">{book.name}</span>
+                <span class="book-path">{book.path === "" ? "whole folder" : book.path}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+        <p class="hint subtle">
+          The whole folder is saved on this computer either way — this just
+          chooses which book opens.
+        </p>
+        <footer class="actions">
+          <button class="ghost" onclick={() => (step = "configure")}>Back</button>
+          <button class="ghost" onclick={close}>Cancel</button>
         </footer>
       {:else if step === "cloning"}
         <p class="hint" role="status" aria-live="polite">{progressLabel(cloneProgress)}</p>
@@ -626,6 +702,12 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .book-path {
+    font-size: 11px;
+    color: var(--app-text-faint);
+    font-family: ui-monospace, monospace;
+    flex-shrink: 0;
   }
   .badge {
     font-size: 10px;

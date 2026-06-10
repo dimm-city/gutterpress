@@ -129,10 +129,12 @@ interface ViewerPrefs {
 
 /** Forward ref used by ViewerPrefs above; full union declared below. */
 type ProjectSourceHint =
-  | { type: "local-folder"; path: string; enclosingRepoDir?: string }
+  | { type: "local-folder"; path: string }
   | {
       type: "local-git-folder";
       path: string;
+      repoRoot: string;
+      subPath: string;
       hasRemote: boolean;
       remoteUrl?: string;
       branch?: string;
@@ -173,6 +175,12 @@ interface RemoteRepository {
 interface RemoteBranch {
   name: string;
 }
+interface RepoBook {
+  /** Book folder relative to the repo root ("" = the root itself). */
+  path: string;
+  /** Display name (folder basename; the repo name for the root). */
+  name: string;
+}
 interface CloneProgressEvent {
   phase: string;
   loaded: number;
@@ -185,6 +193,8 @@ interface CloneRepositoryArgs {
   branch?: string;
   owner?: string;
   repo?: string;
+  /** Book subfolder to open after the clone ("" / absent = repo root). */
+  subPath?: string;
 }
 
 // ── Advanced Setup (#14). Mirrors the lib's diagnose/test-access types. ──
@@ -299,10 +309,12 @@ interface HostConnectionInfo {
 
 // Project source classification (#12). Mirrors @dimm-city/print-md-lib.
 type ProjectSource =
-  | { type: "local-folder"; path: string; enclosingRepoDir?: string }
+  | { type: "local-folder"; path: string }
   | {
       type: "local-git-folder";
       path: string;
+      repoRoot: string;
+      subPath: string;
       hasRemote: boolean;
       remoteUrl?: string;
       branch?: string;
@@ -564,6 +576,8 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("remote:listRepositories"),
   listRemoteBranches: (owner: string, repo: string): Promise<RemoteBranch[]> =>
     ipcRenderer.invoke("remote:listBranches", owner, repo),
+  listRepoBooks: (owner: string, repo: string, branch: string): Promise<RepoBook[]> =>
+    ipcRenderer.invoke("remote:listRepoBooks", owner, repo, branch),
   cloneRemoteRepository: (
     args: CloneRepositoryArgs,
   ): Promise<{ projectDir: string }> =>

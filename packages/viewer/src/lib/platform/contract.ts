@@ -226,6 +226,14 @@ export interface RemoteBranch {
   name: string;
 }
 
+/** One print-md book found inside a repository (Choose-a-book step). */
+export interface RepoBook {
+  /** Book folder relative to the repo root, "/"-separated ("" = the root). */
+  path: string;
+  /** Display name (folder basename; the repo name for the root). */
+  name: string;
+}
+
 /** Coarse clone progress pushed from the host while a project downloads. */
 export interface CloneProgressEvent {
   phase: string;
@@ -241,6 +249,12 @@ export interface CloneRepositoryArgs {
   branch?: string;
   owner?: string;
   repo?: string;
+  /**
+   * Book subfolder to open after the clone (repo-relative, "/"-separated).
+   * The whole repository is still downloaded once; the chosen folder opens
+   * as the project. Empty/absent opens the repository root.
+   */
+  subPath?: string;
 }
 
 // ── Advanced Setup (#14, ADR 0006 D3/D7) ──────────────────────────────────────
@@ -678,6 +692,8 @@ export interface HostServices {
   listRemoteRepositories(): Promise<RemoteRepository[]>;
   /** Branches of a chosen repository (default branch preselected by the UI). */
   listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]>;
+  /** Book folders (print-md.yaml/.yml) inside a repository branch. */
+  listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]>;
   /** Download ("clone") a repository into a new local project folder. */
   cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
   /** Subscribe to clone progress events. Returns an unsubscribe fn. */

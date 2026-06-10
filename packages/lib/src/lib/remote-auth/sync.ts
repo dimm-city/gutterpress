@@ -42,8 +42,10 @@ import httpNode from "isomorphic-git/http/node";
 // precedent) rather than swapping in a heavier diff library.
 import diff3Merge from "diff3";
 
+import { detectProjectSource } from "../project-source.ts";
 import {
   gitAuthor,
+  gitScopeFor,
   hasPendingChanges,
   snapshotWorkingTreeUnlocked,
   withRepoLock,
@@ -127,6 +129,28 @@ const MSG_NO_BRANCH =
 
 /** Message recorded on the automatic pre-sync snapshot (D5 invariant). */
 export const SYNC_SNAPSHOT_MESSAGE = "Snapshot before syncing";
+
+/**
+ * Message recorded when a book that shares its repository with sibling
+ * folders has pending changes OUTSIDE its own folder at sync time. Those
+ * changes must be committed too before any merge/checkout step (the forced
+ * post-merge checkout would otherwise discard them — the D5 "never lose
+ * work" invariant applies to the whole shared folder).
+ */
+export const SHARED_FOLDER_SNAPSHOT_MESSAGE =
+  "Snapshot of other changes in this shared folder before syncing";
+
+/**
+ * Resolve the repository root + book subfolder scope for a project dir.
+ * A repo-root project (or anything unclassifiable) scopes to itself.
+ */
+async function resolveRepoScope(
+  projectDir: string,
+): Promise<{ dir: string; subPath: string }> {
+  const source = await detectProjectSource(projectDir);
+  if (source.type === "local-git-folder") return gitScopeFor(source);
+  return { dir: projectDir, subPath: "" };
+}
 
 // ── Options ──────────────────────────────────────────────────────────────────
 
@@ -370,8 +394,12 @@ async function fetchRemoteTip(
 export async function syncProject(
   options: SyncProjectOptions,
 ): Promise<SyncOutcome> {
-  const dir = options.projectDir;
   const http = options.httpClient ?? httpNode;
+  // Book subfolders of a larger repo sync against the ENCLOSING repository:
+  // the snapshot is scoped to the book's folder, but fetch/merge/push operate
+  // on the whole repo (that is what Git does). The lock keys on the repo root
+  // so two books in one repository serialize.
+  const { dir, subPath } = await resolveRepoScope(options.projectDir);
 
   return withRepoLock(dir, async (): Promise<SyncOutcome> => {
     let snapshotId: string | undefined;
@@ -381,13 +409,28 @@ export async function syncProject(
 
       // 1. Snapshot FIRST — the author's work is now unconditionally safe,
       //    before any network call or merge can run (the D5 invariant).
-      if (await hasPendingChanges(dir)) {
+      //    Scoped to the book's folder for subfolder projects.
+      if (await hasPendingChanges(dir, subPath || undefined)) {
         const snap = await snapshotWorkingTreeUnlocked({
-          projectDir: dir,
+          projectDir: options.projectDir,
+          repoRoot: dir,
+          ...(subPath ? { subPath } : {}),
           message: options.message?.trim() || SYNC_SNAPSHOT_MESSAGE,
           authorName: options.authorName,
         });
         snapshotId = snap.id;
+      }
+      // 1b. Shared-folder safety: a subfolder project may share the repo with
+      //     sibling books that have their own pending edits. The merge below
+      //     ends in a FORCED checkout, which would discard those edits — so
+      //     they are committed first, honestly labeled. (Repo-root projects
+      //     never hit this: their step-1 snapshot already cleaned the tree.)
+      if (subPath && (await hasPendingChanges(dir))) {
+        await snapshotWorkingTreeUnlocked({
+          projectDir: dir,
+          message: SHARED_FOLDER_SNAPSHOT_MESSAGE,
+          authorName: options.authorName,
+        });
       }
 
       // 2–3. fetch → fast-forward/merge → push. If someone syncs between
@@ -604,8 +647,11 @@ function defaultDiff3(
 export async function resolveConflicts(
   options: ResolveConflictsOptions,
 ): Promise<SyncOutcome> {
-  const dir = options.projectDir;
   const http = options.httpClient ?? httpNode;
+  // Same repo-scope rules as syncProject: conflict resolution for a book
+  // subfolder runs against the enclosing repository (conflict paths are
+  // repo-root-relative), with the entry snapshot scoped to the book.
+  const { dir, subPath } = await resolveRepoScope(options.projectDir);
 
   // Normalize both ids once at entry — every oid comparison below is lowercase.
   const normalizedLocalId = options.localId.toLowerCase();
@@ -627,14 +673,26 @@ export async function resolveConflicts(
       const transport = await resolveTransport(dir, options);
       const author = gitAuthor(options.authorName);
 
-      // Safety: capture any edits made while the choices dialog was open.
-      if (await hasPendingChanges(dir)) {
+      // Safety: capture any edits made while the choices dialog was open
+      // (scoped to the book for subfolder projects).
+      if (await hasPendingChanges(dir, subPath || undefined)) {
         const snap = await snapshotWorkingTreeUnlocked({
-          projectDir: dir,
+          projectDir: options.projectDir,
+          repoRoot: dir,
+          ...(subPath ? { subPath } : {}),
           message: SYNC_SNAPSHOT_MESSAGE,
           authorName: options.authorName,
         });
         snapshotId = snap.id;
+      }
+      // Shared-folder safety (see syncProject step 1b): sibling-book edits
+      // must be committed before the merge's forced checkout can run.
+      if (subPath && (await hasPendingChanges(dir))) {
+        await snapshotWorkingTreeUnlocked({
+          projectDir: dir,
+          message: SHARED_FOLDER_SNAPSHOT_MESSAGE,
+          authorName: options.authorName,
+        });
       }
 
       const localTip = await git.resolveRef({ fs, dir, ref: branch });
@@ -888,12 +946,16 @@ async function countCommitsSince(
 export async function getSyncStatus(
   options: SyncStatusOptions,
 ): Promise<SyncStatusResult> {
-  const dir = options.projectDir;
   const http = options.httpClient ?? httpNode;
+  // Subfolder projects read the ENCLOSING repo's branch/remote; the
+  // unsnapshotted-changes flag is scoped to the book's own folder (what a
+  // Sync would actually snapshot). Ahead/behind compare whole-repo tips —
+  // that is what a sync pushes/pulls.
+  const { dir, subPath } = await resolveRepoScope(options.projectDir);
 
   return withRepoLock(dir, async (): Promise<SyncStatusResult> => {
     const branch = (await git.currentBranch({ fs, dir })) ?? undefined;
-    const pending = await hasPendingChanges(dir);
+    const pending = await hasPendingChanges(dir, subPath || undefined);
     const base: Omit<SyncStatusResult, "ahead" | "behind" | "live" | "approximate"> = {
       hasRemote: false,
       ...(branch ? { branch } : {}),

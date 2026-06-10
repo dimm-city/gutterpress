@@ -61,6 +61,7 @@ export {
   detectProjectSource,
   capabilitiesFor,
   findEnclosingRepoDir,
+  repoSubPath,
 } from "../lib/project-source";
 
 export type {
@@ -130,11 +131,13 @@ export type {
 export {
   listGitHubRepositories,
   listGitHubBranches,
+  listRepoBooks,
 } from "../lib/remote-auth/github-repos.ts";
 
 export type {
   RemoteRepository,
   RemoteBranch,
+  RepoBook,
 } from "../lib/remote-auth/github-repos.ts";
 
 export {
@@ -197,6 +200,7 @@ export {
   getSyncStatus,
   onlineCopyPath,
   SYNC_SNAPSHOT_MESSAGE,
+  SHARED_FOLDER_SNAPSHOT_MESSAGE,
 } from "../lib/remote-auth/sync.ts";
 
 export type {

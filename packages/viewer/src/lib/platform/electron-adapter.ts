@@ -42,6 +42,7 @@ import type {
   RemoteConnection,
   RemoteRepository,
   RemoteBranch,
+  RepoBook,
   CloneProgressEvent,
   CloneRepositoryArgs,
   ProjectRemoteDiagnosis,
@@ -254,6 +255,10 @@ export class ElectronAdapter implements Platform {
 
   listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]> {
     return bridge().listRemoteBranches(owner, repo);
+  }
+
+  listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]> {
+    return bridge().listRepoBooks(owner, repo, branch);
   }
 
   cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }> {

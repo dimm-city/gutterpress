@@ -13,7 +13,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import git from "isomorphic-git";
@@ -25,6 +25,7 @@ import {
   onlineCopyPath,
   syncProject,
   SYNC_SNAPSHOT_MESSAGE,
+  SHARED_FOLDER_SNAPSHOT_MESSAGE,
   resolveConflicts,
   type SyncOutcome,
 } from "./sync.ts";
@@ -818,6 +819,95 @@ describe("getSyncStatus", () => {
       expect(status.behind).toBeNull();
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── Book subfolders of a larger repo (scoped sync) ───────────────────────────
+
+describe("syncProject for a book subfolder", () => {
+  test("syncs through the ENCLOSING repo: scoped book snapshot, whole-repo push", async () => {
+    const h = await setupClone();
+    try {
+      const dirA = path.join(h.projectDir, "book-a");
+      const dirB = path.join(h.projectDir, "book-b");
+      await mkdir(dirA, { recursive: true });
+      await mkdir(dirB, { recursive: true });
+      await writeFile(path.join(dirA, "chapter-01.md"), "# A\n\nBook A draft.\n");
+      await writeFile(path.join(dirB, "chapter-01.md"), "# B\n\nBook B draft.\n");
+
+      // Status BEFORE sync, from the book folder: the unsnapshotted flag is
+      // scoped to the book; remote/branch resolve from the enclosing repo.
+      const status = await getSyncStatus({ projectDir: dirA });
+      expect(status.hasRemote).toBe(true);
+      expect(status.branch).toBe("main");
+      expect(status.hasUnsnapshottedChanges).toBe(true);
+
+      const outcome = await syncProject({
+        projectDir: dirA,
+        message: "Book A snapshot",
+      });
+      expect(outcome.status).toBe("synced");
+      if (outcome.status !== "synced") throw new Error("unreachable");
+      expect(outcome.snapshotId).toBeDefined();
+
+      // Both books reached the server — the push moves the whole repository.
+      expect(await serverFile(h.serverDir, "book-a/chapter-01.md")).toBe(
+        "# A\n\nBook A draft.\n",
+      );
+      expect(await serverFile(h.serverDir, "book-b/chapter-01.md")).toBe(
+        "# B\n\nBook B draft.\n",
+      );
+
+      // The commit shapes are honest: book A's snapshot carries the author's
+      // message and contains ONLY book A; the sibling edits were committed
+      // separately under the shared-folder safety message.
+      const log = await git.log({ fs, dir: h.projectDir, depth: 3 });
+      const messages = log.map((c) => c.commit.message.trim());
+      expect(messages).toContain("Book A snapshot");
+      expect(messages).toContain(SHARED_FOLDER_SNAPSHOT_MESSAGE);
+      const snapTree = await git.readCommit({
+        fs,
+        dir: h.projectDir,
+        oid: outcome.snapshotId!,
+      });
+      const bookASnapshot = log.find(
+        (c) => c.commit.message.trim() === "Book A snapshot",
+      )!;
+      expect(bookASnapshot.oid).toBe(outcome.snapshotId!);
+      // Book A's scoped snapshot must NOT contain book B.
+      await expect(
+        git.readBlob({
+          fs,
+          dir: h.projectDir,
+          oid: snapTree.oid,
+          filepath: "book-b/chapter-01.md",
+        }),
+      ).rejects.toThrow();
+
+      expect(await isClean(h.projectDir)).toBe(true);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("two books in one repo serialize and both sync cleanly", async () => {
+    const h = await setupClone();
+    try {
+      const dirA = path.join(h.projectDir, "book-a");
+      const dirB = path.join(h.projectDir, "book-b");
+      await mkdir(dirA, { recursive: true });
+      await mkdir(dirB, { recursive: true });
+      await writeFile(path.join(dirA, "chapter-01.md"), "# A\n");
+      const first = await syncProject({ projectDir: dirA, message: "A" });
+      expect(first.status).toBe("synced");
+      await writeFile(path.join(dirB, "chapter-01.md"), "# B\n");
+      const second = await syncProject({ projectDir: dirB, message: "B" });
+      expect(second.status).toBe("synced");
+      expect(await serverFile(h.serverDir, "book-a/chapter-01.md")).toBe("# A\n");
+      expect(await serverFile(h.serverDir, "book-b/chapter-01.md")).toBe("# B\n");
+    } finally {
+      await h.cleanup();
     }
   });
 });

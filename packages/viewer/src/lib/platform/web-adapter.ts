@@ -44,6 +44,7 @@ import type {
   RemoteConnection,
   RemoteRepository,
   RemoteBranch,
+  RepoBook,
   CloneProgressEvent,
   CloneRepositoryArgs,
   ProjectRemoteDiagnosis,
@@ -304,6 +305,10 @@ export class WebAdapter implements Platform {
 
   listRemoteBranches(_owner: string, _repo: string): Promise<RemoteBranch[]> {
     return rejectNotImplemented("listRemoteBranches");
+  }
+
+  listRepoBooks(_owner: string, _repo: string, _branch: string): Promise<RepoBook[]> {
+    return rejectNotImplemented("listRepoBooks");
   }
 
   cloneRemoteRepository(_args: CloneRepositoryArgs): Promise<{ projectDir: string }> {

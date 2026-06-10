@@ -34,19 +34,25 @@ export type ProjectSource =
   | {
       type: "local-folder";
       path: string;
-      /**
-       * Nearest ANCESTOR directory that contains a `.git` (the folder itself
-       * has none). Present when the project folder lives INSIDE an existing
-       * Git repository — enabling version history here would `git init` a
-       * nested shadow repo that silently detaches the folder from the outer
-       * repo's tracking, so `capabilitiesFor` suppresses
-       * `canEnableVersionHistory` when this is set.
-       */
-      enclosingRepoDir?: string;
     }
   | {
       type: "local-git-folder";
       path: string;
+      /**
+       * Root of the Git repository that holds this project's history. For a
+       * project that IS the repository root this equals `path`. For a book
+       * folder that lives INSIDE a larger repository (a multi-book monorepo)
+       * this is the enclosing repository root — the project USES that repo's
+       * history, scoped to its own subfolder, rather than being told to move.
+       */
+      repoRoot: string;
+      /**
+       * Project directory relative to `repoRoot`, in canonical forward-slash
+       * form (`"books/field-guide"`). Empty string when the project is the
+       * repository root itself. All history operations (snapshot / list /
+       * restore) are scoped to this path.
+       */
+      subPath: string;
       hasRemote: boolean;
       remoteUrl?: string;
       branch?: string;
@@ -153,31 +159,11 @@ export async function findEnclosingRepoDir(
   return undefined;
 }
 
-/**
- * Classify a folder by inspecting it for a `.git` directory and, if present,
- * reading `.git/config` (for a remote) and `.git/HEAD` (for the branch).
- *
- * Pure Node-fs logic; never throws — any read error degrades gracefully (a
- * `.git` dir that can't be parsed still classifies as `local-git-folder` with
- * `hasRemote: false`). Never returns `managed-github`.
- */
-export async function detectProjectSource(
-  folderPath: string,
-): Promise<ProjectSource> {
-  const gitDir = path.join(folderPath, ".git");
-  if (!(await isDirectory(gitDir))) {
-    // No `.git` of its own — but it may sit INSIDE an existing repo, in which
-    // case offering "Enable Version History" would create a nested shadow
-    // repo (SWEEP-2). Record the enclosing root so capabilities can suppress
-    // the offer and the UI can explain why.
-    const enclosingRepoDir = await findEnclosingRepoDir(folderPath);
-    return {
-      type: "local-folder",
-      path: folderPath,
-      ...(enclosingRepoDir !== undefined ? { enclosingRepoDir } : {}),
-    };
-  }
-
+/** Read remote URL + branch from a `.git` directory; never throws. */
+async function readGitDirInfo(gitDir: string): Promise<{
+  remoteUrl?: string;
+  branch?: string;
+}> {
   let remoteUrl: string | undefined;
   try {
     const configText = await readFile(path.join(gitDir, "config"), "utf8");
@@ -193,14 +179,65 @@ export async function detectProjectSource(
   } catch {
     branch = undefined;
   }
+  return { remoteUrl, branch };
+}
 
-  return {
-    type: "local-git-folder",
-    path: folderPath,
-    hasRemote: remoteUrl !== undefined,
-    ...(remoteUrl !== undefined ? { remoteUrl } : {}),
-    ...(branch !== undefined ? { branch } : {}),
-  };
+/** Project dir relative to the repo root, canonical forward-slash form. */
+export function repoSubPath(repoRoot: string, folderPath: string): string {
+  const rel = path.relative(path.resolve(repoRoot), path.resolve(folderPath));
+  return rel.split(path.sep).join("/");
+}
+
+/**
+ * Classify a folder by inspecting it for a `.git` directory and, if present,
+ * reading `.git/config` (for a remote) and `.git/HEAD` (for the branch).
+ *
+ * A folder WITHOUT its own `.git` that sits inside an enclosing repository
+ * (a book subfolder of a multi-book monorepo) classifies as
+ * `local-git-folder` too: it USES the enclosing repo's history, scoped to
+ * `subPath`. Only a folder with no repo anywhere above it is `local-folder`.
+ *
+ * Pure Node-fs logic; never throws — any read error degrades gracefully (a
+ * `.git` dir that can't be parsed still classifies as `local-git-folder` with
+ * `hasRemote: false`). Never returns `managed-github`.
+ */
+export async function detectProjectSource(
+  folderPath: string,
+): Promise<ProjectSource> {
+  const ownGitDir = path.join(folderPath, ".git");
+  if (await isDirectory(ownGitDir)) {
+    const { remoteUrl, branch } = await readGitDirInfo(ownGitDir);
+    return {
+      type: "local-git-folder",
+      path: folderPath,
+      repoRoot: folderPath,
+      subPath: "",
+      hasRemote: remoteUrl !== undefined,
+      ...(remoteUrl !== undefined ? { remoteUrl } : {}),
+      ...(branch !== undefined ? { branch } : {}),
+    };
+  }
+
+  // No `.git` of its own — but it may sit INSIDE an existing repo (a book
+  // subfolder of a larger monorepo). The project then shares the enclosing
+  // repo's history, with every operation scoped to its subPath.
+  const enclosingRepoDir = await findEnclosingRepoDir(folderPath);
+  if (enclosingRepoDir !== undefined) {
+    const { remoteUrl, branch } = await readGitDirInfo(
+      path.join(enclosingRepoDir, ".git"),
+    );
+    return {
+      type: "local-git-folder",
+      path: folderPath,
+      repoRoot: enclosingRepoDir,
+      subPath: repoSubPath(enclosingRepoDir, folderPath),
+      hasRemote: remoteUrl !== undefined,
+      ...(remoteUrl !== undefined ? { remoteUrl } : {}),
+      ...(branch !== undefined ? { branch } : {}),
+    };
+  }
+
+  return { type: "local-folder", path: folderPath };
 }
 
 /**
@@ -208,12 +245,11 @@ export async function detectProjectSource(
  *
  * - `local-folder`: read/write only; version history can be ENABLED (a later
  *   `git init`, #13/#25) but no snapshot/history/restore until then; no sync.
- *   EXCEPTION (SWEEP-2): when the folder sits inside an existing Git repo
- *   (`enclosingRepoDir` set), enabling is suppressed — a nested `git init`
- *   would shadow the outer repo's tracking of these files.
  * - `local-git-folder`: version history already on, so snapshot/history/restore
- *   are available. Sync is offered only when a remote exists (the app can
- *   push via the user's externally-configured Git auth — #16).
+ *   are available — including book subfolders of a larger repo (`subPath`
+ *   non-empty), which share the enclosing repo's history scoped to their
+ *   folder. Sync is offered only when a remote exists (the app can push via
+ *   the user's externally-configured Git auth — #16).
  * - `managed-github`: full app-managed read/write/version/sync.
  */
 export function capabilitiesFor(source: ProjectSource): ProjectCapabilities {
@@ -222,7 +258,7 @@ export function capabilitiesFor(source: ProjectSource): ProjectCapabilities {
       return {
         canRead: true,
         canWriteLocal: true,
-        canEnableVersionHistory: source.enclosingRepoDir === undefined,
+        canEnableVersionHistory: true,
         canSnapshot: false,
         canViewHistory: false,
         canRestoreSnapshot: false,

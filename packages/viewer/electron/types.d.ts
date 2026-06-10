@@ -77,10 +77,14 @@ type DeepPartialSettings = {
 
 // Project source classification (#12). Mirrors @dimm-city/print-md-lib.
 type ProjectSource =
-  | { type: "local-folder"; path: string; enclosingRepoDir?: string }
+  | { type: "local-folder"; path: string }
   | {
       type: "local-git-folder";
       path: string;
+      /** Repository root holding the history (equals `path` for repo roots). */
+      repoRoot: string;
+      /** Project dir relative to repoRoot, "/"-separated; "" at the root. */
+      subPath: string;
       hasRemote: boolean;
       remoteUrl?: string;
       branch?: string;
@@ -152,6 +156,13 @@ interface RemoteBranch {
   name: string;
 }
 
+interface RepoBook {
+  /** Book folder relative to the repo root ("" = the root itself). */
+  path: string;
+  /** Display name (folder basename; the repo name for the root). */
+  name: string;
+}
+
 interface CloneProgressEvent {
   phase: string;
   loaded: number;
@@ -165,6 +176,8 @@ interface CloneRepositoryArgs {
   branch?: string;
   owner?: string;
   repo?: string;
+  /** Book subfolder to open after the clone ("" / absent = repo root). */
+  subPath?: string;
 }
 
 // ── Advanced Setup (#14). Mirrors preload.ts + the lib. ─────────────────────
@@ -404,6 +417,7 @@ interface Window {
     getRemoteConnection(host?: string): Promise<RemoteConnection>;
     listRemoteRepositories(): Promise<RemoteRepository[]>;
     listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]>;
+    listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]>;
     cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
     onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
     // Advanced Setup (#14) — diagnostics + generic "Connect a Git server"

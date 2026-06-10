@@ -26,12 +26,20 @@
   let {
     open = $bindable(false),
     projectDir,
+    bookSubPath = "",
     onSynced,
     onReconnect,
     triggerEl,
   }: {
     open?: boolean;
     projectDir: string | null;
+    /**
+     * When the book is a subfolder of a larger shared folder: its path
+     * relative to that folder ("/"-separated). Conflict files outside the
+     * book are still listed (they block the sync) and get labeled as part
+     * of the same shared folder. Empty for standalone projects.
+     */
+    bookSubPath?: string;
     /** Sync completed; local files may have gained online changes. */
     onSynced?: (mergedRemoteChanges: boolean) => void;
     /**
@@ -222,6 +230,18 @@
     onReconnect?.();
   }
 
+  /** Conflict paths are shared-folder-relative; is this one outside the book? */
+  function isOutsideBook(filePath: string): boolean {
+    return !!bookSubPath && !filePath.startsWith(bookSubPath + "/");
+  }
+
+  /** Book files display book-relative; outside files keep their full path. */
+  function displayPath(filePath: string): string {
+    return bookSubPath && filePath.startsWith(bookSubPath + "/")
+      ? filePath.slice(bookSubPath.length + 1)
+      : filePath;
+  }
+
   function kindLabel(kind: ConflictFileInfo["kind"]): string {
     // UX-5: clearer per-kind labels that describe what actually happened and
     // point toward the safest default choice for each situation.
@@ -399,14 +419,27 @@
           recover either version from View History. Review each file below
           and choose how to combine the changes.
         </p>
+        {#if bookSubPath && conflictFiles.some((f) => isOutsideBook(f.path))}
+          <!-- A book in a shared folder: conflicts ANYWHERE in that folder
+               block the sync, so they are all listed; files outside this
+               book keep their full shared-folder path. -->
+          <p class="hint">
+            Some of these files are outside this book but part of the same
+            shared folder — everything in it syncs together.
+          </p>
+        {/if}
         <!-- svelte-ignore a11y_no_redundant_roles -- list-style:none strips
              list semantics in some screen readers; role="list" restores it. -->
         <ul class="conflict-list" role="list" aria-label="Files with differences">
           {#each conflictFiles as file (file.path)}
             <li class="conflict-item">
               <div class="conflict-info">
-                <span class="conflict-path">{file.path}</span>
-                <span class="conflict-kind">{kindLabel(file.kind)}</span>
+                <span class="conflict-path">{displayPath(file.path)}</span>
+                <span class="conflict-kind">
+                  {kindLabel(file.kind)}{isOutsideBook(file.path)
+                    ? " · in the shared folder, outside this book"
+                    : ""}
+                </span>
               </div>
               <select
                 bind:value={choices[file.path]}

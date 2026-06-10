@@ -236,16 +236,19 @@
 
   let versionHistoryOpen = $state(false);
   let versionHistoryBtn = $state<HTMLButtonElement | undefined>(undefined);
-  // SWEEP-2: the open folder sits INSIDE an existing versioned folder, so
-  // enabling is suppressed — the dialog shows guidance instead of the offer.
-  let projectInsideVersionedFolder = $state(false);
+  // The open folder is a book subfolder of a larger versioned folder: full
+  // history features are available (scoped to the book by the host); the
+  // dialog shows a quiet "shares history with its parent folder" hint.
+  let projectSharesParentHistory = $state(false);
+  // The book's path relative to that shared folder ("" for standalone
+  // projects) — SyncDialog uses it to label conflict files outside the book.
+  let projectSubPath = $state("");
   let versionHistoryAvailable = $derived(
     !!currentDir &&
       sourceMode === "folder" &&
       !!projectCapabilities &&
       (projectCapabilities.canEnableVersionHistory ||
-        projectCapabilities.canViewHistory ||
-        projectInsideVersionedFolder),
+        projectCapabilities.canViewHistory),
   );
 
   // History was just enabled (#13): adopt the upgraded capabilities and persist
@@ -1056,15 +1059,16 @@
       // between sessions) and persisted as a hint. Fire-and-forget: a failure
       // must never block the preview.
       projectCapabilities = null;
-      projectInsideVersionedFolder = false;
+      projectSharesParentHistory = false;
+      projectSubPath = "";
       syncDiag = null;
       platform
         .classifyProject(dir)
         .then((result) => {
           projectCapabilities = result.capabilities;
-          projectInsideVersionedFolder =
-            result.source.type === "local-folder" &&
-            result.source.enclosingRepoDir !== undefined;
+          projectSubPath =
+            result.source.type === "local-git-folder" ? result.source.subPath : "";
+          projectSharesParentHistory = projectSubPath !== "";
           platform
             .setViewerPrefs({ projectSource: result.source })
             .catch(() => {});
@@ -2139,7 +2143,7 @@
 />
 <VersionHistoryDialog
   bind:open={versionHistoryOpen}
-  insideVersionedProject={projectInsideVersionedFolder}
+  sharesParentHistory={projectSharesParentHistory}
   projectDir={currentDir}
   capabilities={projectCapabilities}
   onEnabled={onVersionHistoryEnabled}
@@ -2150,6 +2154,7 @@
 <SyncDialog
   bind:open={syncOpen}
   projectDir={sourceMode === "folder" ? currentDir : null}
+  bookSubPath={projectSubPath}
   onSynced={onSyncCompleted}
   onReconnect={onSyncReconnect}
   triggerEl={syncBtn}

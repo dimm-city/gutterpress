@@ -130,10 +130,14 @@ interface SystemDiagnostics {
 }
 
 type ProjectSource =
-  | { type: "local-folder"; path: string; enclosingRepoDir?: string }
+  | { type: "local-folder"; path: string }
   | {
       type: "local-git-folder";
       path: string;
+      /** Repository root holding the history (equals `path` for repo roots). */
+      repoRoot: string;
+      /** Project dir relative to repoRoot, "/"-separated; "" at the root. */
+      subPath: string;
       hasRemote: boolean;
       remoteUrl?: string;
       branch?: string;
@@ -216,6 +220,12 @@ interface RemoteRepository {
   htmlUrl: string;
 }
 interface RemoteBranch {
+  name: string;
+}
+interface RepoBook {
+  /** Book folder relative to the repo root ("" = the root itself). */
+  path: string;
+  /** Display name (folder basename; the repo name for the root). */
   name: string;
 }
 interface CloneProgressEvent {
@@ -346,6 +356,12 @@ interface LibModule {
     owner: string,
     repo: string,
   ) => Promise<RemoteBranch[]>;
+  listRepoBooks: (
+    credential: HostCredential,
+    owner: string,
+    repo: string,
+    branch: string,
+  ) => Promise<RepoBook[]>;
   cloneRepository: (options: {
     url: string;
     dir: string;
@@ -1998,6 +2014,36 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  "remote:listRepoBooks",
+  (_e, owner: string, repo: string, branch: string): Promise<RepoBook[]> =>
+    handleRemoteErrors("remote:listRepoBooks", async () => {
+      if (
+        typeof owner !== "string" || typeof repo !== "string" ||
+        typeof branch !== "string" || !owner || !repo || !branch
+      ) {
+        throw new Error("remote:listRepoBooks requires owner, repo and branch");
+      }
+      const lib = await loadLib();
+      return lib.listRepoBooks(await requireGitHubCredential(), owner, repo, branch);
+    }),
+);
+
+/**
+ * Validate a renderer-supplied book subfolder path (repo-relative, "/"
+ * separated). Rejects traversal/absolute forms; returns "" for the repo root.
+ */
+function sanitizeBookSubPath(subPath: unknown): string {
+  if (typeof subPath !== "string") return "";
+  const cleaned = subPath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!cleaned) return "";
+  const segments = cleaned.split("/");
+  if (segments.some((s) => !s || s === "." || s === ".." || s === ".git")) {
+    throw new Error("The selected book folder path is not valid.");
+  }
+  return segments.join("/");
+}
+
+ipcMain.handle(
   "remote:cloneRepository",
   (
     _e,
@@ -2008,6 +2054,8 @@ ipcMain.handle(
       branch?: string;
       owner?: string;
       repo?: string;
+      /** Book subfolder to open after the clone ("" / absent = repo root). */
+      subPath?: string;
     },
   ): Promise<{ projectDir: string }> =>
     handleRemoteErrors("remote:cloneRepository", async () => {
@@ -2045,7 +2093,14 @@ ipcMain.handle(
           mainWindow?.webContents.send("remote:cloneProgress", event);
         },
       });
-      return { projectDir: result.projectDir };
+      // Multi-book repository: the WHOLE repo is cloned once (ADR 0006 D2);
+      // the chosen book subfolder opens as the project, which classifies as
+      // a subfolder of the enclosing repo and inherits its history/sync.
+      const subPath = sanitizeBookSubPath(args.subPath);
+      const openDir = subPath
+        ? path.join(result.projectDir, ...subPath.split("/"))
+        : result.projectDir;
+      return { projectDir: openDir };
     }),
 );
 

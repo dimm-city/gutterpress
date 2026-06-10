@@ -102,27 +102,57 @@ test("parseHeadBranch returns undefined on detached HEAD", () => {
   expect(parseHeadBranch("ref: refs/heads/main\n")).toBe("main");
 });
 
-// ── Enclosing-repo detection (SWEEP-2) ───────────────────────────────────────
+// ── Enclosing-repo detection (book subfolders of a larger repo) ──────────────
 
-test("folder nested inside a repo → local-folder with enclosingRepoDir, enable suppressed", async () => {
+test("folder nested inside a repo → local-git-folder scoped to its subPath", async () => {
   const dir = await tempDir();
   try {
-    await mkdir(path.join(dir, ".git"), { recursive: true });
+    const gitDir = path.join(dir, ".git");
+    await mkdir(gitDir, { recursive: true });
+    await writeFile(path.join(gitDir, "HEAD"), "ref: refs/heads/main\n");
+    await writeFile(
+      path.join(gitDir, "config"),
+      `[remote "origin"]\n\turl = https://github.com/owner/books.git\n`,
+    );
     const inner = path.join(dir, "books", "field-guide");
     await mkdir(inner, { recursive: true });
 
     const source = await detectProjectSource(inner);
-    expect(source.type).toBe("local-folder");
-    if (source.type === "local-folder") {
-      expect(source.enclosingRepoDir).toBe(dir);
+    expect(source.type).toBe("local-git-folder");
+    if (source.type === "local-git-folder") {
+      // The book USES the enclosing repo's history, scoped to its folder.
+      expect(source.repoRoot).toBe(dir);
+      expect(source.subPath).toBe("books/field-guide");
+      expect(source.hasRemote).toBe(true);
+      expect(source.remoteUrl).toBe("https://github.com/owner/books.git");
+      expect(source.branch).toBe("main");
     }
     const caps = capabilitiesFor(source);
-    // The whole point: never offer "Enable Version History" here — a nested
-    // git init would shadow the outer repo's tracking of these files.
+    // Full version-history features — the subfolder shares the parent's
+    // history rather than being told to move to its own folder.
     expect(caps.canEnableVersionHistory).toBe(false);
-    expect(caps.canSnapshot).toBe(false);
-    expect(caps.canViewHistory).toBe(false);
+    expect(caps.canSnapshot).toBe(true);
+    expect(caps.canViewHistory).toBe(true);
+    expect(caps.canRestoreSnapshot).toBe(true);
+    expect(caps.canSync).toBe(true);
     expect(caps.canWriteLocal).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a repo-root project keeps repoRoot === path and subPath ''", async () => {
+  const dir = await tempDir();
+  try {
+    const gitDir = path.join(dir, ".git");
+    await mkdir(gitDir, { recursive: true });
+    await writeFile(path.join(gitDir, "HEAD"), "ref: refs/heads/main\n");
+    const source = await detectProjectSource(dir);
+    expect(source.type).toBe("local-git-folder");
+    if (source.type === "local-git-folder") {
+      expect(source.repoRoot).toBe(dir);
+      expect(source.subPath).toBe("");
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -139,6 +169,11 @@ test("a folder's OWN .git wins over an enclosing repo (still local-git-folder)",
 
     const source = await detectProjectSource(inner);
     expect(source.type).toBe("local-git-folder");
+    if (source.type === "local-git-folder") {
+      // Its OWN repo, not the enclosing one.
+      expect(source.repoRoot).toBe(inner);
+      expect(source.subPath).toBe("");
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
