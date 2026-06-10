@@ -16,7 +16,9 @@ import { defineConfig } from "playwright/test";
 
 export default defineConfig({
   testDir: ".",
-  testMatch: "**/*.spec.ts",
+  // .pw.ts (not .spec.ts): `bun test` auto-discovers *.spec.ts and would try
+  // to execute Playwright tests under bun's runner, failing the CI test gate.
+  testMatch: "**/*.pw.ts",
   outputDir: "test-results",
   timeout: 600_000,
   fullyParallel: false,
