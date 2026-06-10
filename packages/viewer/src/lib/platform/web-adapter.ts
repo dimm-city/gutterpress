@@ -38,6 +38,8 @@ import type {
   FolderChangedEvent,
   CreateProjectOptions,
   CreateProjectResult,
+  SnapshotEntry,
+  RestoreVersionResult,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -241,6 +243,24 @@ export class WebAdapter implements Platform {
   // New-project scaffold (#25) — desktop-only in 0.4.0.
   createProject(_options: CreateProjectOptions): Promise<CreateProjectResult> {
     return rejectNotImplemented("createProject");
+  }
+
+  // ── Local version history (#13) — desktop-only; reject/empty on web ────────
+  enableVersionHistory(_projectDir: string): Promise<ProjectClassification> {
+    return rejectNotImplemented("enableVersionHistory");
+  }
+
+  saveSnapshot(_projectDir: string, _message?: string): Promise<SnapshotEntry> {
+    return rejectNotImplemented("saveSnapshot");
+  }
+
+  // Resolve to [] (like listRecovery) so a history view simply renders empty.
+  listSnapshots(_projectDir: string): Promise<SnapshotEntry[]> {
+    return Promise.resolve([]);
+  }
+
+  restoreSnapshot(_projectDir: string, _id: string): Promise<RestoreVersionResult> {
+    return rejectNotImplemented("restoreSnapshot");
   }
 
   startPreview(_args: PreviewStartArgs): Promise<PreviewStartResult> {

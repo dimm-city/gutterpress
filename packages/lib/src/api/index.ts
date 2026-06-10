@@ -85,6 +85,7 @@ export type {
 
 export {
   providerFor,
+  restoreVersionWithBackup,
 } from "../lib/source-provider.ts";
 
 export type {
@@ -92,5 +93,7 @@ export type {
   InitVersionHistoryOptions,
   SnapshotOptions,
   RestoreSnapshotOptions,
+  RestoreVersionOptions,
+  RestoreVersionResult,
   SourceProvider,
 } from "../lib/source-provider.ts";

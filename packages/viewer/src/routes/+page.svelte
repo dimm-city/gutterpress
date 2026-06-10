@@ -7,7 +7,11 @@
   import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
-  import type { ProjectCapabilities } from "$lib/platform/contract";
+  import type {
+    ProjectCapabilities,
+    ProjectClassification,
+  } from "$lib/platform/contract";
+  import VersionHistoryDialog from "$lib/components/VersionHistoryDialog.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
@@ -147,6 +151,40 @@
   // New-project wizard (#25)
   let newProjectOpen = $state(false);
   let newProjectBtn = $state<HTMLButtonElement | undefined>(undefined);
+  // Version history (#13): the toolbar entry shows only when the project's
+  // capabilities offer it — enable (plain folder) or view/snapshot/restore
+  // (history already on). Publish/sync are NEVER offered for local projects.
+  let versionHistoryOpen = $state(false);
+  let versionHistoryBtn = $state<HTMLButtonElement | undefined>(undefined);
+  let versionHistoryAvailable = $derived(
+    !!currentDir &&
+      sourceMode === "folder" &&
+      !!projectCapabilities &&
+      (projectCapabilities.canEnableVersionHistory ||
+        projectCapabilities.canViewHistory),
+  );
+
+  // History was just enabled (#13): adopt the upgraded capabilities and persist
+  // the re-classified source hint — same as what classifyProject does on open.
+  function onVersionHistoryEnabled(result: ProjectClassification) {
+    projectCapabilities = result.capabilities;
+    getPlatform()
+      .setViewerPrefs({ projectSource: result.source })
+      .catch(() => {});
+  }
+
+  // A restore rewrote project files on disk (#13). The preview server's file
+  // watcher re-renders on its own; the editor buffer reconciles via the folder
+  // watcher (#44). Just confirm in the toast.
+  function onVersionRestored() {
+    toast?.success("Project restored — the preview will refresh in a moment.");
+  }
+
+  // A snapshot was saved (#13) — same toast pattern as onVersionRestored, so
+  // version-history feedback is consistent (the dialog itself shows no notice).
+  function onVersionSnapshotSaved() {
+    toast?.success("Snapshot saved.");
+  }
   // Official setup guide for first-time writers (MVP "Download starter template").
   const SETUP_GUIDE_URL =
     "https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/01-getting-started.md";
@@ -1664,6 +1702,19 @@
           <Icon name="pen-line" /><span class="view-label">Edit</span>
         </button>
       {/if}
+      <!-- Version history (#13): capability-gated — plain folders get the
+           Enable prompt; versioned folders get snapshot/history/restore. -->
+      {#if versionHistoryAvailable}
+        <button
+          bind:this={versionHistoryBtn}
+          class="icon-text"
+          onclick={() => (versionHistoryOpen = true)}
+          title="Version history — save snapshots and restore earlier versions"
+          aria-label="Version history"
+        >
+          <Icon name="history" /><span class="view-label">History</span>
+        </button>
+      {/if}
       <!-- UX-039: separator before view mode controls -->
       <span class="toolbar-sep" aria-hidden="true"></span>
 
@@ -1937,6 +1988,15 @@
   bind:open={newProjectOpen}
   onCreated={(projectDir) => startFolderPreview(projectDir, "Opening your new book…")}
   triggerEl={newProjectBtn}
+/>
+<VersionHistoryDialog
+  bind:open={versionHistoryOpen}
+  projectDir={currentDir}
+  capabilities={projectCapabilities}
+  onEnabled={onVersionHistoryEnabled}
+  onSnapshotSaved={onVersionSnapshotSaved}
+  onRestored={onVersionRestored}
+  triggerEl={versionHistoryBtn}
 />
 
 

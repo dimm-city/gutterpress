@@ -151,6 +151,10 @@ interface DiscoveredProject {
   title: string;
 }
 
+// Local version history (#13): `SnapshotEntry` / `RestoreVersionResult` /
+// `ProjectClassification` are the ambient declarations in types.d.ts (single
+// electron-side definition; the lib ships no .d.ts to import from yet).
+
 // Project source classification (#12). Mirrors @dimm-city/print-md-lib.
 type ProjectSource =
   | { type: "local-folder"; path: string }
@@ -353,6 +357,19 @@ contextBridge.exposeInMainWorld("electron", {
   // New-project scaffold (#25)
   createProject: (options: CreateProjectOptions): Promise<CreateProjectResult> =>
     ipcRenderer.invoke("app:createProject", options),
+
+  // Local version history (#13) — isomorphic-git in main, via the lib
+  enableVersionHistory: (projectDir: string): Promise<ProjectClassification> =>
+    ipcRenderer.invoke("vcs:enableVersionHistory", projectDir),
+  saveSnapshot: (projectDir: string, message?: string): Promise<SnapshotEntry> =>
+    ipcRenderer.invoke("vcs:saveSnapshot", projectDir, message),
+  listSnapshots: (projectDir: string): Promise<SnapshotEntry[]> =>
+    ipcRenderer.invoke("vcs:listSnapshots", projectDir),
+  restoreSnapshot: (
+    projectDir: string,
+    id: string,
+  ): Promise<RestoreVersionResult> =>
+    ipcRenderer.invoke("vcs:restoreSnapshot", projectDir, id),
   startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>

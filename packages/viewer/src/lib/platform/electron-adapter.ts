@@ -36,6 +36,8 @@ import type {
   FolderChangedEvent,
   CreateProjectOptions,
   CreateProjectResult,
+  SnapshotEntry,
+  RestoreVersionResult,
 } from "./contract";
 
 function bridge(): ElectronBridge {
@@ -193,6 +195,23 @@ export class ElectronAdapter implements Platform {
 
   createProject(options: CreateProjectOptions): Promise<CreateProjectResult> {
     return bridge().createProject(options);
+  }
+
+  // ── Local version history (#13) — delegate 1:1 to the bridge ───────────────
+  enableVersionHistory(projectDir: string): Promise<ProjectClassification> {
+    return bridge().enableVersionHistory(projectDir);
+  }
+
+  saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry> {
+    return bridge().saveSnapshot(projectDir, message);
+  }
+
+  listSnapshots(projectDir: string): Promise<SnapshotEntry[]> {
+    return bridge().listSnapshots(projectDir);
+  }
+
+  restoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult> {
+    return bridge().restoreSnapshot(projectDir, id);
   }
 
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {

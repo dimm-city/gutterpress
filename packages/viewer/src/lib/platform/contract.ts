@@ -63,6 +63,30 @@ export interface ProjectClassification {
   capabilities: ProjectCapabilities;
 }
 
+// ── Local version history (#13) ───────────────────────────────────────────────
+//
+// Mirrors the lib's source-provider types — defined locally so the SPA never
+// value-imports the lib (and its isomorphic-git/node deps) into the renderer
+// bundle (§8 / ADR 0004).
+
+/** One entry in a project's version history (a Git commit, abstracted). */
+export interface SnapshotEntry {
+  /** Opaque revision id (a commit SHA for the local provider). */
+  id: string;
+  /** Author-supplied or auto-generated snapshot message. */
+  message: string;
+  /** Epoch milliseconds the snapshot was taken. */
+  timestamp: number;
+  /** Display name recorded for the snapshot author, if any. */
+  author?: string;
+}
+
+/** Result of a safe restore (#13): backupId is the automatic pre-restore snapshot. */
+export interface RestoreVersionResult {
+  restoredId: string;
+  backupId?: string;
+}
+
 /**
  * One CSS print-safety warning (#39). Mirrors the lib's `PrintSafeWarning`
  * (packages/lib/src/lib/printsafe.ts) — defined locally so the SPA never imports
@@ -386,6 +410,33 @@ export interface HostServices {
    * init). The WebAdapter stub rejects (the wizard is desktop-only in 0.4.0).
    */
   createProject(options: CreateProjectOptions): Promise<CreateProjectResult>;
+
+  // ── Local version history (#13) ───────────────────────────────────────────
+  // All four run in the host (isomorphic-git via the lib — CLAUDE.md §7); the
+  // UI derives which to OFFER from `classifyProject().capabilities`. The
+  // WebAdapter stubs reject (mutations) / return [] (listSnapshots).
+
+  /**
+   * Turn on local version history for a plain folder (`git init` + first
+   * snapshot, all isomorphic-git). Returns the re-classified source +
+   * capabilities so the UI can swap "Enable Version History" for the
+   * snapshot/history actions without a separate classify round-trip.
+   */
+  enableVersionHistory(projectDir: string): Promise<ProjectClassification>;
+  /**
+   * Save an explicit snapshot of the project's current state. `message` is
+   * optional author text; the host substitutes a default when blank. Rejects
+   * with a friendly message when nothing has changed since the last snapshot.
+   */
+  saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
+  /** List the project's snapshots, newest first. */
+  listSnapshots(projectDir: string): Promise<SnapshotEntry[]>;
+  /**
+   * Restore the project's files to a chosen snapshot — SAFELY: the host takes
+   * an automatic backup snapshot of the current state first (when anything
+   * changed), so a restore can never lose work.
+   */
+  restoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult>;
 
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;

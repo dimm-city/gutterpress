@@ -100,6 +100,26 @@ interface ProjectCapabilities {
   authManagedByApp: boolean;
 }
 
+/** A classified project source + its capabilities (#12). */
+interface ProjectClassification {
+  source: ProjectSource;
+  capabilities: ProjectCapabilities;
+}
+
+// Local version history (#13). Mirrors the lib's source-provider types.
+interface SnapshotEntry {
+  id: string;
+  message: string;
+  timestamp: number;
+  author?: string;
+}
+
+/** Result of a safe restore (#13): `backupId` is the automatic pre-restore snapshot. */
+interface RestoreVersionResult {
+  restoredId: string;
+  backupId?: string;
+}
+
 // Per-project editor/preview state (#43). Mirrors electron/project-state.ts.
 interface ProjectState {
   currentPage?: number;
@@ -214,6 +234,14 @@ interface Window {
       versionHistory: "local-git" | "none";
       versionHistoryError?: string;
     }>;
+    // Local version history (#13)
+    enableVersionHistory(projectDir: string): Promise<ProjectClassification>;
+    saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
+    listSnapshots(projectDir: string): Promise<SnapshotEntry[]>;
+    restoreSnapshot(
+      projectDir: string,
+      id: string,
+    ): Promise<RestoreVersionResult>;
     startPreview(args: { input: string }): Promise<{
       url: string;
       port: number;

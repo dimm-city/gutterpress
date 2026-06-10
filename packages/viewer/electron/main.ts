@@ -180,6 +180,24 @@ interface PrintSafeWarning {
   column: number;
 }
 
+// Local version history (#13). `SnapshotEntry` / `RestoreVersionResult` are
+// the ambient declarations in types.d.ts (single electron-side definition,
+// mirroring the lib — which ships no .d.ts to import from yet).
+interface SourceProviderOps {
+  initVersionHistory(options: {
+    projectDir: string;
+    authorName?: string;
+    initialMessage?: string;
+  }): Promise<ProjectSource>;
+  snapshot(options: {
+    projectDir: string;
+    message: string;
+    authorName?: string;
+  }): Promise<SnapshotEntry>;
+  listHistory(projectDir: string): Promise<SnapshotEntry[]>;
+  restore(options: { projectDir: string; id: string }): Promise<void>;
+}
+
 interface LibModule {
   startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
   loadManifestWithPath: (input: string) => Promise<ManifestWithPath>;
@@ -189,6 +207,12 @@ interface LibModule {
   detectProjectSource: (folderPath: string) => Promise<ProjectSource>;
   capabilitiesFor: (source: ProjectSource) => ProjectCapabilities;
   scaffoldProject: (options: CreateProjectOptions) => Promise<CreateProjectResult>;
+  providerFor: (source: ProjectSource) => SourceProviderOps;
+  restoreVersionWithBackup: (options: {
+    projectDir: string;
+    id: string;
+    authorName?: string;
+  }) => Promise<RestoreVersionResult>;
   checkCss: (css: string, from?: string) => PrintSafeWarning[];
   BuildError: new (message: string) => Error;
 }
@@ -1405,6 +1429,105 @@ ipcMain.handle(
     const lib = await loadLib();
     return lib.scaffoldProject(options);
   },
+);
+
+// ── Local version history (#13) ──────────────────────────────────────────────
+// Thin pass-throughs to the lib's source-provider operations (isomorphic-git —
+// CLAUDE.md §7: never the system git binary). The renderer drives these through
+// the platform adapter; capability gating (which actions to even show) comes
+// from app:classifyProject. Paths MUST be absolute (trusted SPA, but a relative
+// path could resolve against the main-process CWD by accident).
+
+function requireAbsoluteDir(channel: string, projectDir: unknown): string {
+  if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+    throw new Error(`${channel} requires an absolute project path`);
+  }
+  return projectDir;
+}
+
+// The lib's own author-facing messages (and our argument-validation messages)
+// pass through to the renderer verbatim. Anything else is an unexpected
+// internal failure: it gets logged in full here and replaced with a terse,
+// author-safe message (no raw isomorphic-git internals, no full fs paths).
+const VCS_FRIENDLY_ERROR =
+  /no changes since the last snapshot|no version history yet|your work is safe|project files were not changed|requires an absolute project path|valid snapshot id/i;
+
+async function handleVcsErrors<T>(
+  channel: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`[${channel}] failed: ${msg}`);
+    if (e instanceof Error && e.stack) console.error(e.stack);
+    if (e instanceof Error && e.cause) console.error(`  cause: ${String(e.cause)}`);
+    if (VCS_FRIENDLY_ERROR.test(msg)) {
+      // Re-wrap so only the friendly message crosses the IPC boundary.
+      throw new Error(msg);
+    }
+    throw new Error(
+      `Version history could not complete the ${channel.replace("vcs:", "")} operation. See the app log for details.`,
+    );
+  }
+}
+
+ipcMain.handle("vcs:enableVersionHistory", (_e, projectDir: string) =>
+  handleVcsErrors("vcs:enableVersionHistory", async () => {
+    const dir = requireAbsoluteDir("vcs:enableVersionHistory", projectDir);
+    const lib = await loadLib();
+    const source = await lib.detectProjectSource(dir);
+    await lib.providerFor(source).initVersionHistory({
+      projectDir: dir,
+      initialMessage: "Initial snapshot",
+    });
+    // Re-classify so the renderer gets the upgraded source + capabilities.
+    const upgraded = await lib.detectProjectSource(dir);
+    return { source: upgraded, capabilities: lib.capabilitiesFor(upgraded) };
+  }),
+);
+
+ipcMain.handle(
+  "vcs:saveSnapshot",
+  (_e, projectDir: string, message?: string): Promise<SnapshotEntry> =>
+    handleVcsErrors("vcs:saveSnapshot", async () => {
+      const dir = requireAbsoluteDir("vcs:saveSnapshot", projectDir);
+      const lib = await loadLib();
+      const source = await lib.detectProjectSource(dir);
+      return lib.providerFor(source).snapshot({
+        projectDir: dir,
+        message: message?.trim() || "Saved snapshot",
+      });
+    }),
+);
+
+ipcMain.handle(
+  "vcs:listSnapshots",
+  (_e, projectDir: string): Promise<SnapshotEntry[]> =>
+    handleVcsErrors("vcs:listSnapshots", async () => {
+      const dir = requireAbsoluteDir("vcs:listSnapshots", projectDir);
+      const lib = await loadLib();
+      const source = await lib.detectProjectSource(dir);
+      return lib.providerFor(source).listHistory(dir);
+    }),
+);
+
+ipcMain.handle(
+  "vcs:restoreSnapshot",
+  (_e, projectDir: string, id: string): Promise<RestoreVersionResult> =>
+    handleVcsErrors("vcs:restoreSnapshot", async () => {
+      const dir = requireAbsoluteDir("vcs:restoreSnapshot", projectDir);
+      // Snapshot ids are full commit SHAs — reject anything else before it
+      // reaches the lib (a partial/garbage ref must never hit checkout).
+      if (typeof id !== "string" || !/^[0-9a-f]{40}$/i.test(id)) {
+        throw new Error("vcs:restoreSnapshot requires a valid snapshot id");
+      }
+      const lib = await loadLib();
+      // Safety contract (#13 / ADR 0006 §D5): the lib snapshots the current
+      // state before restoring, so a restore can never lose author work.
+      return lib.restoreVersionWithBackup({ projectDir: dir, id });
+    }),
 );
 
 ipcMain.handle("api:doctor", async () => {
