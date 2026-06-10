@@ -49,6 +49,11 @@ function resolveExternalAssetRoots(
 /**
  * Find which watch root a changed file belongs to and compute the
  * corresponding destination path inside the temp dir.
+ *
+ * `relativePath` is normalized to FORWARD slashes regardless of platform —
+ * it is broadcast to clients (CSS hot-swap hrefs, content-update chapter
+ * splices) and compared against the SPA's forward-slash chapter paths, so
+ * Windows `path.sep` backslashes must never leak into it.
  */
 function resolveDestinationForChange(
   filePath: string,
@@ -58,13 +63,19 @@ function resolveDestinationForChange(
 ): { destPath: string; relativePath: string } | null {
   if (filePath === inputPath || filePath.startsWith(inputPath + path.sep)) {
     const relativePath = path.relative(inputPath, filePath);
-    return { destPath: path.join(tempDir, relativePath), relativePath };
+    return {
+      destPath: path.join(tempDir, relativePath),
+      relativePath: relativePath.replace(/\\/g, "/"),
+    };
   }
   for (const root of externalRoots) {
     if (filePath === root.src || filePath.startsWith(root.src + path.sep)) {
       const relInRoot = path.relative(root.src, filePath);
       const relativePath = path.join(root.destName, relInRoot);
-      return { destPath: path.join(tempDir, relativePath), relativePath };
+      return {
+        destPath: path.join(tempDir, relativePath),
+        relativePath: relativePath.replace(/\\/g, "/"),
+      };
     }
   }
   return null;
@@ -256,41 +267,74 @@ export function createFileWatcher(state: ServerState): FSWatcher {
     },
   });
 
-  watcher.on('all', async (event, filePath) => {
-    debug(`File ${event}: ${filePath}`);
+  // Paths changed during the current debounce window. A single edit fires one
+  // event, but multi-file disk rewrites (version restore, publish merge, bulk
+  // save) fire a burst — the rebuild must see ALL of them, not just the last
+  // event's path, or it splices one (possibly wrong) chapter and leaves the
+  // rest of the live preview stale.
+  const pendingChanges = new Map<string, string>(); // filePath -> last event
 
+  /** (Re-)arm the debounced rebuild timer. */
+  function scheduleRebuild(): void {
     if (state.rebuildTimer) clearTimeout(state.rebuildTimer);
+    state.rebuildTimer = setTimeout(runRebuild, DEBOUNCE.FILE_WATCH);
+  }
 
-    state.rebuildTimer = setTimeout(async () => {
+  async function runRebuild(): Promise<void> {
       if (state.isRebuilding) return;
+
+      // Snapshot + clear AFTER the isRebuilding guard so changes skipped by an
+      // in-flight rebuild stay pending until the rebuild's finally re-arms the
+      // timer (see below) — no further fs event is required to flush them.
+      const changes = [...pendingChanges.entries()];
+      pendingChanges.clear();
+      if (changes.length === 0) return;
 
       state.isRebuilding = true;
       try {
         info('Regenerating preview...');
 
-        // Re-copy changed file to temp directory — handles both files inside
-        // the input path and files inside any external asset root.
-        const dest = resolveDestinationForChange(
-          filePath,
-          inputResolved,
-          state.tempDir,
-          externalRoots
-        );
-        if (dest) {
-          await fsp.mkdir(path.dirname(dest.destPath), { recursive: true });
-          await fsp.copyFile(filePath, dest.destPath);
-          debug(`Updated: ${dest.relativePath}`);
+        // Mirror EVERY changed file into the temp directory — handles files
+        // inside the input path and files inside any external asset root.
+        // Deleted files are skipped (book.html is re-rendered from inputPath,
+        // the source of truth, below).
+        const dests: { relativePath: string; ext: string; event: string }[] = [];
+        for (const [changedPath, changedEvent] of changes) {
+          const dest = resolveDestinationForChange(
+            changedPath,
+            inputResolved,
+            state.tempDir,
+            externalRoots
+          );
+          if (!dest) continue;
+          if (existsSync(changedPath)) {
+            await fsp.mkdir(path.dirname(dest.destPath), { recursive: true });
+            await fsp.copyFile(changedPath, dest.destPath);
+            debug(`Updated: ${dest.relativePath}`);
+          }
+          dests.push({
+            relativePath: dest.relativePath,
+            ext: path.extname(changedPath).toLowerCase(),
+            event: changedEvent,
+          });
         }
 
         // CSS hot-swap fast path: a stylesheet edit doesn't change content flow,
-        // so we re-copy it (above) and tell the client to re-fetch JUST that
-        // <link> — no markdown re-render, no re-pagination, no reload. Scroll
+        // so we re-copy it (above) and tell the client to re-fetch JUST those
+        // <link>s — no markdown re-render, no re-pagination, no reload. Scroll
         // position is preserved and the new styles apply on the next frame.
+        // Only taken when EVERY change in the window is a stylesheet.
         // (Geometry-affecting CSS like @page size won't re-flow page boxes until
         // a content change triggers a full rebuild — acceptable for live tweaks.)
-        if (dest && path.extname(filePath).toLowerCase() === '.css') {
-          state.previewServer?.broadcastCssUpdate(dest.relativePath);
-          info(`CSS hot-swapped: ${dest.relativePath}`);
+        if (
+          dests.length === changes.length &&
+          dests.length > 0 &&
+          dests.every((d) => d.ext === '.css')
+        ) {
+          for (const d of dests) {
+            state.previewServer?.broadcastCssUpdate(d.relativePath);
+            info(`CSS hot-swapped: ${d.relativePath}`);
+          }
           return;
         }
 
@@ -301,26 +345,46 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         state.config = updatedConfig;
         await generateAndWriteHtml(state.currentInputPath, state.tempDir, updatedConfig);
 
-        // Incremental: a single markdown file changed → splice just that chapter
-        // in the live shell (re-paginate one chapter, not the whole doc).
+        // Incremental: EXACTLY ONE markdown file changed (and still exists) →
+        // splice just that chapter in the live shell (re-paginate one chapter,
+        // not the whole doc). Any multi-file change — restore, publish merge —
+        // must full-reload instead: a single-chapter splice can only refresh
+        // one chapter and would leave the others stale.
+        const only = dests.length === 1 ? dests[0]! : null;
         if (
           incrementalPreviewEnabled() &&
-          dest &&
-          path.extname(filePath).toLowerCase() === ".md"
+          changes.length === 1 &&
+          only &&
+          only.ext === '.md' &&
+          only.event !== 'unlink' &&
+          only.event !== 'unlinkDir'
         ) {
-          state.previewServer?.broadcastContentUpdate(dest.relativePath);
-          info(`Chapter updated: ${dest.relativePath}`);
+          state.previewServer?.broadcastContentUpdate(only.relativePath);
+          info(`Chapter updated: ${only.relativePath}`);
         } else {
           // Tell every connected HMR client to reload.
           state.previewServer?.broadcastReload();
-          info('Preview updated');
+          info(
+            changes.length > 1
+              ? `Preview updated (${changes.length} files changed — full reload)`
+              : 'Preview updated'
+          );
         }
       } catch (err) {
         logError('Failed to regenerate preview:', err);
       } finally {
         state.isRebuilding = false;
+        // Changes that arrived DURING this rebuild had their debounce timer
+        // fire into the isRebuilding guard above — with no further fs event
+        // they would be orphaned forever. Re-arm the timer so they rebuild.
+        if (pendingChanges.size > 0) scheduleRebuild();
       }
-    }, DEBOUNCE.FILE_WATCH);
+  }
+
+  watcher.on('all', (event, filePath) => {
+    debug(`File ${event}: ${filePath}`);
+    pendingChanges.set(filePath, event);
+    scheduleRebuild();
   });
 
   info('Watching for file changes...');

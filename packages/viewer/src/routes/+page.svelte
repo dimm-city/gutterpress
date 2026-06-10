@@ -163,18 +163,32 @@
   // Version history (#13): the toolbar entry shows only when the project's
   // capabilities offer it — enable (plain folder) or view/snapshot/restore
   // (history already on). Publish/sync are NEVER offered for local projects.
-  // Publish (#15 publish phase, ADR 0006 D5): the toolbar entry shows only
-  // when the project's remote diagnosis says publishing is actually possible
-  // (HTTPS remote + a stored connection for its host) — never for plain local
-  // projects, SSH remotes, or unconnected servers.
+  // Publish (#15 publish phase, ADR 0006 D5): the toolbar entry shows when the
+  // project has an HTTPS remote (connected or not) — never for plain local
+  // projects, SSH remotes, or no-remote projects. When no credential is stored
+  // yet, clicking the button routes to the matching connect flow so authors
+  // discover publishing exists and learn how to enable it (UX-2 fix).
   let publishOpen = $state(false);
   let publishBtn = $state<HTMLButtonElement | undefined>(undefined);
   let publishDiag = $state<ProjectRemoteDiagnosis | null>(null);
+  /** True when the project has an HTTPS remote (credential may or may not be stored). */
   let publishAvailable = $derived(
     !!currentDir &&
       sourceMode === "folder" &&
-      publishDiag?.canPublish === true,
+      (publishDiag?.guidance === "connect-github-to-publish" ||
+        publishDiag?.guidance === "https-connect-server" ||
+        publishDiag?.guidance === "ready-to-publish"),
   );
+
+  function openPublish() {
+    if (!publishDiag?.canPublish) {
+      // No stored credential — route straight to the matching connect flow so
+      // the author learns how to enable publishing (ADR 0006 D7 reuse).
+      onPublishReconnect();
+    } else {
+      publishOpen = true;
+    }
+  }
 
   async function refreshPublishDiag(dir: string) {
     try {
@@ -222,12 +236,16 @@
 
   let versionHistoryOpen = $state(false);
   let versionHistoryBtn = $state<HTMLButtonElement | undefined>(undefined);
+  // SWEEP-2: the open folder sits INSIDE an existing versioned folder, so
+  // enabling is suppressed — the dialog shows guidance instead of the offer.
+  let projectInsideVersionedFolder = $state(false);
   let versionHistoryAvailable = $derived(
     !!currentDir &&
       sourceMode === "folder" &&
       !!projectCapabilities &&
       (projectCapabilities.canEnableVersionHistory ||
-        projectCapabilities.canViewHistory),
+        projectCapabilities.canViewHistory ||
+        projectInsideVersionedFolder),
   );
 
   // History was just enabled (#13): adopt the upgraded capabilities and persist
@@ -357,12 +375,19 @@
   let editorFilePath = $derived(buffer?.filePath ?? null);
   let editorContent = $derived(buffer?.content ?? "");
   // The open file's chapter id for editor↔preview sync scoping. data-chapter-src
-  // is the manifest source filename (shallow/flat project layout), so the
-  // basename matches. Used to keep per-file source lines from mapping into the
-  // wrong chapter of the whole-book preview (ADR 0005).
-  let editorChapter = $derived(
-    editorFilePath ? (editorFilePath.split(/[\\/]/).pop() ?? null) : null,
-  );
+  // is the project-relative source path (with forward slashes), so derive the
+  // path relative to the open project dir — a bare basename only matched flat
+  // layouts and silently broke sync for chapters in subdirectories (RC1-5c).
+  // Falls back to the basename when the file isn't under the project dir.
+  // Used to keep per-file source lines from mapping into the wrong chapter of
+  // the whole-book preview (ADR 0005).
+  let editorChapter = $derived.by(() => {
+    if (!editorFilePath) return null;
+    const file = editorFilePath.replace(/\\/g, "/");
+    const dir = currentDir?.replace(/\\/g, "/").replace(/\/+$/, "");
+    if (dir && file.startsWith(dir + "/")) return file.slice(dir.length + 1);
+    return file.split("/").pop() ?? null;
+  });
   let dirtyPath = $derived(buffer && buffer.isDirty ? buffer.filePath : null);
 
   // External-edit conflict banner state (#44). Derived from the buffer's
@@ -1031,11 +1056,15 @@
       // between sessions) and persisted as a hint. Fire-and-forget: a failure
       // must never block the preview.
       projectCapabilities = null;
+      projectInsideVersionedFolder = false;
       publishDiag = null;
       platform
         .classifyProject(dir)
         .then((result) => {
           projectCapabilities = result.capabilities;
+          projectInsideVersionedFolder =
+            result.source.type === "local-folder" &&
+            result.source.enclosingRepoDir !== undefined;
           platform
             .setViewerPrefs({ projectSource: result.source })
             .catch(() => {});
@@ -1438,11 +1467,19 @@
   // Editor→preview: the caret moved or the editor scrolled. Drive the preview to
   // the matching source line WITHIN the open chapter; guard the echo so the
   // preview's resulting sourceLineChanged doesn't bounce back into the editor.
-  function onEditorAnchorLine(line: number) {
+  function onEditorAnchorLine(line: number, origin: "scroll" | "caret") {
     if (!client || rendering) return;
     suppressPreviewSyncUntil = Date.now() + 400;
+    // Scroll-driven anchors are the editor's TOP visible line → anchor the
+    // preview block to the TOP so the panes agree. Caret-driven anchors carry
+    // no viewport position (the caret sits anywhere), so CENTER the target —
+    // top-anchoring it disagreed with the editor by the caret's distance from
+    // the editor top (QA finding RC1-5).
     client
-      .scrollTo({ line, chapter: editorChapter }, { block: "start" })
+      .scrollTo(
+        { line, chapter: editorChapter },
+        { block: origin === "caret" ? "center" : "start" },
+      )
       .then((res) => {
         // scrollTo suppresses the book's scroll-driven pageChanged, so reflect
         // the new page in the toolbar from the command's own return value.
@@ -1788,15 +1825,18 @@
           <Icon name="history" /><span class="view-label">History</span>
         </button>
       {/if}
-      <!-- Publish (#15): only when the diagnosis says the project is actually
-           publishable (HTTPS remote + stored connection — ADR 0006 D4). -->
+      <!-- Publish (#15 / UX-2): show whenever project has an HTTPS remote.
+           When no credential stored yet, clicking routes to the connect flow
+           so authors discover publishing exists (ADR 0006 D4/D7). -->
       {#if publishAvailable}
         <button
           bind:this={publishBtn}
           class="icon-text"
-          onclick={() => (publishOpen = true)}
-          title="Publish your changes to the online repository"
-          aria-label="Publish changes"
+          onclick={openPublish}
+          title={publishDiag?.canPublish
+            ? "Publish your changes to the online repository"
+            : "Connect to your online repository to enable publishing"}
+          aria-label={publishDiag?.canPublish ? "Publish changes" : "Connect to enable publishing"}
         >
           <Icon name="cloud-upload" /><span class="view-label">Publish</span>
         </button>
@@ -2099,6 +2139,7 @@
 />
 <VersionHistoryDialog
   bind:open={versionHistoryOpen}
+  insideVersionedProject={projectInsideVersionedFolder}
   projectDir={currentDir}
   capabilities={projectCapabilities}
   onEnabled={onVersionHistoryEnabled}

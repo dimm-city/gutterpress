@@ -160,8 +160,16 @@
         conflictFiles = outcome.files;
         conflictLocalId = outcome.localId;
         conflictRemoteId = outcome.remoteId;
+        // UX-5: default both-edited files to "both" (Keep both copies) — the
+        // only option that can't silently discard anyone's work. Other kinds
+        // default to "mine" as before (you-deleted / online-deleted are
+        // deletion-intent conflicts where the author's local state is the
+        // starting point).
         choices = Object.fromEntries(
-          outcome.files.map((f) => [f.path, "mine" as const]),
+          outcome.files.map((f) => [
+            f.path,
+            f.kind === "both-edited" ? ("both" as const) : ("mine" as const),
+          ]),
         );
         phase = "conflict";
         break;
@@ -215,13 +223,15 @@
   }
 
   function kindLabel(kind: ConflictFileInfo["kind"]): string {
+    // UX-5: clearer per-kind labels that describe what actually happened and
+    // point toward the safest default choice for each situation.
     switch (kind) {
       case "both-edited":
-        return "Changed in your copy and in the online copy";
+        return "You and a collaborator both edited this file — keeping both copies is the safest choice";
       case "you-deleted":
-        return "You removed this file; the online copy changed it";
+        return "You removed this file, but it was changed online — choose whether to restore or discard it";
       case "online-deleted":
-        return "The online copy removed this file; you changed it";
+        return "This file was removed online, but you changed it — choose whether to keep or discard your edits";
     }
   }
 
@@ -342,25 +352,32 @@
         {#if status?.hasUnsnapshottedChanges}
           <p class="hint">Your newest edits will be saved as a snapshot when you publish.</p>
         {/if}
-        <footer class="actions">
-          <button class="ghost" onclick={close}>Not now</button>
-          <button class="primary" onclick={publish} disabled={nothingToPublish}>
-            {nothingToPublish
-              ? "Everything is published"
-              : hasOnlineChangesOnly
-                ? "Get online changes"
-                : "Publish Changes"}
-          </button>
-        </footer>
+        <!-- UX-6: when nothing to publish, replace the disabled pseudo-button +
+             "Not now" with a single enabled Done that closes the dialog. -->
+        {#if nothingToPublish}
+          <footer class="actions">
+            <button class="primary" onclick={close}>Done</button>
+          </footer>
+        {:else}
+          <footer class="actions">
+            <button class="ghost" onclick={close}>Not now</button>
+            <button class="primary" onclick={publish}>
+              {hasOnlineChangesOnly ? "Get online changes" : "Publish Changes"}
+            </button>
+          </footer>
+        {/if}
       {:else if phase === "done"}
         <p class="notice" role="status">{resultMessage}</p>
         <footer class="actions">
           <button class="primary" onclick={close}>Done</button>
         </footer>
       {:else if phase === "offline"}
+        <!-- UX-4: resultMessage (from MSG_OFFLINE in publish.ts) already contains
+             the full "Your changes are saved…" sentence — render it directly
+             rather than prepending a redundant "Saved on this computer — " prefix
+             that creates a doubled sentence. -->
         <p class="notice" role="status">
-          Saved on this computer — {resultMessage ??
-            "your changes will publish when you're back online."}
+          {resultMessage ?? "Your changes are saved on this computer. Try publishing again when you're back online."}
         </p>
         <footer class="actions">
           <button class="ghost" onclick={close}>Close</button>
@@ -373,10 +390,14 @@
           <button class="primary" onclick={reconnect}>Reconnect</button>
         </footer>
       {:else if phase === "conflict"}
+        <!-- UX-5: improved lede — make the safety snapshot prominent up front,
+             explain that no choice here permanently loses anything. The per-file
+             labels (kindLabel) guide each individual decision. -->
         <p class="lede">
-          Your copy and the online copy both changed. Choose which version to
-          keep for each file. A safety snapshot of your work was already taken,
-          so you can always get either version back from View History.
+          Your copy and the online copy changed the same files. A safety
+          snapshot was saved before anything was touched — you can always
+          recover either version from View History. Review each file below
+          and choose how to combine the changes.
         </p>
         <!-- svelte-ignore a11y_no_redundant_roles -- list-style:none strips
              list semantics in some screen readers; role="list" restores it. -->

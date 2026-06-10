@@ -60,6 +60,7 @@ export type {
 export {
   detectProjectSource,
   capabilitiesFor,
+  findEnclosingRepoDir,
 } from "../lib/project-source";
 
 export type {
@@ -86,7 +87,17 @@ export type {
 export {
   providerFor,
   restoreVersionWithBackup,
+  isNoChangesError,
+  autoSnapshotDelayMs,
+  isGitInternalPath,
+  AUTO_SNAPSHOT_MESSAGE,
+  RESTORE_BACKUP_MESSAGE,
+  AUTO_SNAPSHOT_MIN_MINUTES,
+  AUTO_SNAPSHOT_MAX_MINUTES,
+  AUTO_SNAPSHOT_DEFAULT_MINUTES,
 } from "../lib/source-provider.ts";
+
+export type { AutoSnapshotPolicy } from "../lib/source-provider.ts";
 
 // ── Remote Git: auth, discovery, clone (#15 / ADR 0006) ──────────────────────
 export {
@@ -106,6 +117,8 @@ export type {
 export {
   GitHubAuthProvider,
   resolveGitHubClientId,
+  resolveGitHubAppSlug,
+  githubAppInstallUrl,
   GITHUB_HOST,
 } from "../lib/remote-auth/github-auth.ts";
 

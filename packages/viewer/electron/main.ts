@@ -130,7 +130,7 @@ interface SystemDiagnostics {
 }
 
 type ProjectSource =
-  | { type: "local-folder"; path: string }
+  | { type: "local-folder"; path: string; enclosingRepoDir?: string }
   | {
       type: "local-git-folder";
       path: string;
@@ -326,6 +326,12 @@ interface LibModule {
   capabilitiesFor: (source: ProjectSource) => ProjectCapabilities;
   scaffoldProject: (options: CreateProjectOptions) => Promise<CreateProjectResult>;
   providerFor: (source: ProjectSource) => SourceProviderOps;
+  // Automatic snapshots (RC1-3)
+  AUTO_SNAPSHOT_MESSAGE: string;
+  isNoChangesError: (e: unknown) => boolean;
+  autoSnapshotDelayMs: (
+    policy: { autoSnapshot?: boolean; autoSnapshotMinutes?: number } | undefined,
+  ) => number | null;
   restoreVersionWithBackup: (options: {
     projectDir: string;
     id: string;
@@ -335,6 +341,7 @@ interface LibModule {
   BuildError: new (message: string) => Error;
   // Remote GitHub (#15)
   GitHubAuthProvider: new (options?: { clientId?: string }) => GitHubAuthProviderInstance;
+  githubAppInstallUrl: (slug?: string) => string;
   listGitHubRepositories: (credential: HostCredential) => Promise<RemoteRepository[]>;
   listGitHubBranches: (
     credential: HostCredential,
@@ -639,6 +646,12 @@ interface AppSettings {
     defaultZoom: string;
     viewMode: "single" | "two-column";
   };
+  versionHistory: {
+    /** Save automatic snapshots after edits settle (RC1-3). Default ON. */
+    autoSnapshot: boolean;
+    /** Minutes of quiet after the last edit before a snapshot fires. */
+    autoSnapshotMinutes: number;
+  };
   advanced: {
     fileWatcherInterval: number;
     logLevel: "error" | "warn" | "info" | "debug";
@@ -661,6 +674,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   preview: {
     defaultZoom: "fit-width",
     viewMode: "two-column",
+  },
+  versionHistory: {
+    autoSnapshot: true,
+    autoSnapshotMinutes: 10,
   },
   advanced: {
     fileWatcherInterval: 300,
@@ -817,7 +834,88 @@ let folderWatcher: FSWatcher | null = null;
 let watchedDir: string | null = null;
 let folderChangeDebounce: ReturnType<typeof setTimeout> | null = null;
 
+// ── Automatic snapshots (RC1-3) ──────────────────────────────────────────────
+// Host-side debounced auto-snapshot: every edit signal (fs:writeFile inside the
+// open project + folder-watch events) ARMS/RESETS one timer; it fires after N
+// minutes of quiet (settings.versionHistory, default ON / 10 min, floor 5) so
+// each snapshot marks the end of a work burst — never a commit per keystroke.
+// On fire: detect the source; only `local-git-folder` projects snapshot (a
+// plain folder is NEVER auto-`git init`ed — enabling history stays an explicit
+// author opt-in). The lib's per-repo FIFO lock serializes the commit against
+// publish/restore, and its no-empty-snapshot guard turns a clean-tree fire into
+// the expected `isNoChangesError` rejection, swallowed below. Silent on success
+// (the history dialog reloads its list on open).
+let autoSnapshotPending: { dir: string; timer: NodeJS.Timeout } | null = null;
+
+function cancelAutoSnapshotTimer(): void {
+  if (autoSnapshotPending) {
+    clearTimeout(autoSnapshotPending.timer);
+    autoSnapshotPending = null;
+  }
+}
+
+async function runAutoSnapshot(dir: string): Promise<void> {
+  try {
+    const lib = await loadLib();
+    // Re-check the live policy: the user may have toggled auto-snapshots off
+    // while this timer was already armed.
+    const settings = await readSettings();
+    if (lib.autoSnapshotDelayMs(settings.versionHistory) === null) return;
+    const source = await lib.detectProjectSource(dir);
+    if (source.type !== "local-git-folder") return;
+    await lib.providerFor(source).snapshot({
+      projectDir: dir,
+      message: lib.AUTO_SNAPSHOT_MESSAGE,
+    });
+  } catch (e) {
+    const lib = await loadLib().catch(() => null);
+    if (lib?.isNoChangesError(e)) return; // clean tree — expected, not an error
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`[auto-snapshot] failed for ${dir}: ${msg}`);
+    if (e instanceof Error && e.stack) console.error(e.stack);
+  }
+}
+
+/** Arm/reset the debounce timer after an edit signal in `dir`. */
+function scheduleAutoSnapshot(dir: string): void {
+  void (async () => {
+    try {
+      // Read settings + lib policy on every arm so changes apply live.
+      const [lib, settings] = await Promise.all([loadLib(), readSettings()]);
+      // Project may have switched while the awaits above yielded — arming a
+      // timer for the OLD directory would fire a stray snapshot there.
+      if (watchedDir !== dir) return;
+      const delayMs = lib.autoSnapshotDelayMs(settings.versionHistory);
+      cancelAutoSnapshotTimer();
+      if (delayMs === null) return; // automatic snapshots disabled
+      const timer = setTimeout(() => {
+        autoSnapshotPending = null;
+        void runAutoSnapshot(dir);
+      }, delayMs);
+      // Never keep the app alive for a pending snapshot alone.
+      if (typeof timer.unref === "function") timer.unref();
+      autoSnapshotPending = { dir, timer };
+    } catch (e) {
+      console.warn("[auto-snapshot] scheduling failed (non-fatal):", e);
+    }
+  })();
+}
+
+/**
+ * Fire any pending auto-snapshot NOW (project close / app quit flush points).
+ * Returns the in-flight snapshot promise, or `undefined` when nothing pends.
+ */
+function flushAutoSnapshot(): Promise<void> | undefined {
+  if (!autoSnapshotPending) return undefined;
+  const dir = autoSnapshotPending.dir;
+  cancelAutoSnapshotTimer();
+  return runAutoSnapshot(dir);
+}
+
 function stopFolderWatch(): void {
+  // Project switch/close flush point (RC1-3): edits were pending a snapshot —
+  // take it now (fire-and-forget) instead of dropping the timer.
+  void flushAutoSnapshot();
   if (folderChangeDebounce) {
     clearTimeout(folderChangeDebounce);
     folderChangeDebounce = null;
@@ -837,16 +935,25 @@ function startFolderWatch(dirPath: string): void {
     folderWatcher = watch(dirPath, { recursive: false }, (_event, filename) => {
       // fs.watch is noisy (fires on rename + change). Debounce so a single
       // external save produces one renderer notification.
-      if (folderChangeDebounce) clearTimeout(folderChangeDebounce);
       const name =
         typeof filename === "string"
           ? filename
           : filename
             ? Buffer.from(filename).toString()
             : "";
+      // Git-internal writes are NOT content changes (RC1-3): the automatic
+      // snapshot itself mutates `.git`, and treating that as an edit would
+      // re-trigger preview reloads and re-arm the snapshot timer forever.
+      // (The watch is non-recursive, so `.git` is the only segment we see.)
+      if (name === ".git" || name.startsWith(".git/") || name.startsWith(".git\\")) {
+        return;
+      }
+      if (folderChangeDebounce) clearTimeout(folderChangeDebounce);
       folderChangeDebounce = setTimeout(() => {
         mainWindow?.webContents.send("fs:folderChanged", { filename: name });
       }, 150);
+      // Edit signal: external editors and in-app saves both land here.
+      scheduleAutoSnapshot(dirPath);
     });
   } catch (e) {
     console.error(`[watch] failed to watch ${dirPath}:`, e);
@@ -1044,13 +1151,24 @@ function createWindow() {
   };
   nativeTheme.on("updated", onNativeThemeUpdated);
 
-  // ── Unsaved-changes close gate (#44) ──────────────────────────────────────
+  // ── Unsaved-changes close gate (#44) + final auto-snapshot (RC1-3) ────────
   // If the renderer has a pending auto-save, intercept the first close, ask the
-  // renderer to flush, and only destroy the window once it replies (or a 3s
-  // watchdog fires — never block quit indefinitely). The renderer pushes its
-  // dirty state via `app:setDirtyState`; main never reads renderer memory.
+  // renderer to flush, and only destroy the window once it replies. After the
+  // flush (the last keystrokes are on disk), any pending auto-snapshot fires
+  // before the window is destroyed, so closing the app never drops the final
+  // work burst from version history. A watchdog (5s — flush + commit) ensures
+  // quit is never blocked indefinitely. DELIBERATE POLICY: the snapshot shares
+  // the per-repo FIFO lock, so a publish/restore still in flight at quit time
+  // can consume the whole 5s budget and the final snapshot is then silently
+  // dropped — never blocking quit wins over guaranteeing the last snapshot.
+  // (The edits themselves are flushed to disk regardless; only the history
+  // entry is skipped.) The renderer pushes its dirty state via
+  // `app:setDirtyState`; main never reads renderer memory.
   mainWindow.on("close", (e) => {
-    if (isQuitting || !rendererDirty || !mainWindow) return;
+    if (isQuitting || !mainWindow) return;
+    const needsFlush = rendererDirty;
+    const needsSnapshot = autoSnapshotPending !== null;
+    if (!needsFlush && !needsSnapshot) return;
     e.preventDefault();
     isQuitting = true;
     const win = mainWindow;
@@ -1061,10 +1179,19 @@ function createWindow() {
       flushResolve = null;
       win.destroy();
     };
-    flushResolve = finish;
-    win.webContents.send("app:flushBeforeClose");
-    // Watchdog: force the close after 3s if the renderer doesn't answer.
-    setTimeout(finish, 3000);
+    const snapshotThenFinish = () => {
+      const pending = flushAutoSnapshot();
+      if (pending) void pending.finally(finish);
+      else finish();
+    };
+    if (needsFlush) {
+      flushResolve = snapshotThenFinish;
+      win.webContents.send("app:flushBeforeClose");
+    } else {
+      snapshotThenFinish();
+    }
+    // Watchdog: force the close if the flush/snapshot doesn't complete in time.
+    setTimeout(finish, 5000);
   });
 
   mainWindow.on("closed", () => {
@@ -1235,6 +1362,16 @@ ipcMain.handle(
     }
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, content, "utf-8");
+    // Edit signal for the auto-snapshot debounce (RC1-3): every in-app save
+    // inside the open project re-arms the quiet-period timer. (The folder
+    // watcher also fires for top-level files; this covers nested paths too.)
+    if (watchedDir) {
+      const resolved = path.resolve(filePath);
+      const root = path.resolve(watchedDir);
+      if (resolved === root || resolved.startsWith(root + path.sep)) {
+        scheduleAutoSnapshot(watchedDir);
+      }
+    }
     // Return the post-write mtime so the editor can record its on-disk baseline
     // (#44) and suppress the self-echo from its own folder watcher.
     const s = await stat(filePath);
@@ -1631,7 +1768,7 @@ function requireAbsoluteDir(channel: string, projectDir: unknown): string {
 // internal failure: it gets logged in full here and replaced with a terse,
 // author-safe message (no raw isomorphic-git internals, no full fs paths).
 const VCS_FRIENDLY_ERROR =
-  /no changes since the last snapshot|no version history yet|your work is safe|project files were not changed|requires an absolute project path|valid snapshot id/i;
+  /no changes since the last snapshot|no version history yet|your work is safe|project files were not changed|requires an absolute project path|valid snapshot id|already inside a versioned project/i;
 
 async function handleVcsErrors<T>(
   channel: string,
@@ -1831,9 +1968,24 @@ ipcMain.handle("remote:disconnectGitHub", () =>
   }),
 );
 
-// Redacted status only — the token NEVER crosses the IPC boundary.
+// Redacted status only — the token NEVER crosses the IPC boundary. The GitHub
+// App install URL rides along so the repo picker can offer "Choose
+// repositories on GitHub" without the renderer ever importing the lib (§8).
 ipcMain.handle("remote:getConnection", async (_e, host?: string) => {
-  return electronTokenStore.status(host || GITHUB_HOST);
+  const status = await electronTokenStore.status(host || GITHUB_HOST);
+  try {
+    const lib = await loadLib();
+    // Slug baked by the electron-vite `define`, same pattern as the client id
+    // above — resolveGitHubAppSlug treats ""/undefined as unset.
+    return {
+      ...status,
+      installUrl: lib.githubAppInstallUrl(process.env.PRINT_MD_GITHUB_APP_SLUG ?? ""),
+    };
+  } catch {
+    // Status must never fail because the lib didn't load — the dialog
+    // degrades gracefully when installUrl is absent.
+    return status;
+  }
 });
 
 async function requireGitHubCredential(): Promise<HostCredential> {

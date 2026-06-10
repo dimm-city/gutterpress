@@ -68,16 +68,59 @@
     w.scrollBy(0, el.getBoundingClientRect().top - a.offset);
   }
 
-  // Tag each rendered page with the chapter (data-chapter-src) it contains, so a
-  // single edited chapter's pages can be located and replaced.
+  // Tag each rendered page with EVERY chapter (data-chapter-src) present on it,
+  // so a single edited chapter's pages can be located and replaced. A page
+  // usually holds one chapter (the preview injects break-before:page on
+  // .pmd-chapter), but project CSS can override that — a chapter starting
+  // mid-page then SHARES its first page with the previous chapter, and tagging
+  // only the first chapter would make the second one unlocatable (every edit
+  // would degrade to a full swap). data-chapter-src keeps the first chapter for
+  // compatibility; data-chapter-srcs is the full newline-separated list.
   function tagPages(f) {
     var d = fdoc(f); if (!d) return;
     var pages = d.querySelectorAll('.pagedjs_page');
     for (var i = 0; i < pages.length; i++) {
-      if (pages[i].getAttribute('data-chapter-src')) continue;
-      var ch = pages[i].querySelector('.pmd-chapter[data-chapter-src]');
-      if (ch) pages[i].setAttribute('data-chapter-src', ch.getAttribute('data-chapter-src'));
+      // Known edge: a page tagged with a single chapter by a splice keeps that
+      // tag here (continue), so if a LATER reflow makes two chapters share the
+      // page its data-chapter-srcs can go stale until the next full reload
+      // re-tags everything. Accepted — the full reload resolves it.
+      if (pages[i].getAttribute('data-chapter-srcs')) continue;
+      var chs = pages[i].querySelectorAll('.pmd-chapter[data-chapter-src]');
+      var list = [];
+      for (var j = 0; j < chs.length; j++) {
+        var v = chs[j].getAttribute('data-chapter-src');
+        if (v && list.indexOf(v) === -1) list.push(v);
+      }
+      if (!list.length) continue;
+      pages[i].setAttribute('data-chapter-src', list[0]);
+      pages[i].setAttribute('data-chapter-srcs', list.join('\n'));
     }
+  }
+
+  function pageChapters(page) {
+    var v = page.getAttribute('data-chapter-srcs') || page.getAttribute('data-chapter-src') || '';
+    return v ? v.split('\n') : [];
+  }
+
+  // Collect the live pages a chapter appears on: `owned` = every page that
+  // contains any of it (document order); `shared` = the subset it shares with
+  // another chapter (chapter starts or ends mid-page).
+  function pagesFor(d, file) {
+    var pages = d.querySelectorAll('.pagedjs_page');
+    var owned = [], shared = [];
+    for (var i = 0; i < pages.length; i++) {
+      var list = pageChapters(pages[i]);
+      if (list.indexOf(file) === -1) continue;
+      owned.push(pages[i]);
+      if (list.length > 1) shared.push(pages[i]);
+    }
+    return { owned: owned, shared: shared };
+  }
+
+  // Report shell-side incremental-preview degradations to the preview server's
+  // log (best-effort) so bug reports carry the reason, not just the symptom.
+  function logToServer(msg) {
+    try { fetch('/__log', { method: 'POST', body: msg }).catch(function () {}); } catch (_) {}
   }
 
   // Run cb once the frame has paginated (renderingComplete) or, for static
@@ -122,19 +165,63 @@
         try {
           var ad = fdoc(active), sd = fdoc(f);
           var container = ad.querySelector('.pagedjs_pages') || ad.body;
-          var oldPages = [].slice.call(ad.querySelectorAll('.pagedjs_page[data-chapter-src="' + file + '"]'));
+          var found = pagesFor(ad, file);
           var newPages = [].slice.call(sd.querySelectorAll('.pagedjs_page'));
-          if (!oldPages.length || !newPages.length) throw new Error('no pages ' + oldPages.length + '/' + newPages.length);
-          var at = oldPages[0];
-          for (var i = 0; i < newPages.length; i++) {
+          if (!newPages.length) throw new Error('chapter render produced no pages');
+          if (!found.owned.length) throw new Error('chapter not present in live view (new file?)');
+
+          // Exclusive pages (this chapter only) are replaced wholesale; shared
+          // pages only lose this chapter's fragment.
+          var exclusive = [], i, j;
+          for (i = 0; i < found.owned.length; i++) {
+            if (found.shared.indexOf(found.owned[i]) === -1) exclusive.push(found.owned[i]);
+          }
+          // Insertion point derived from chapter order in the live view: before
+          // the chapter's first exclusive page, or — when it starts mid-page and
+          // owns no page of its own — right after the last page it shares.
+          // (insertBefore(node, null) appends when the shared page is last.)
+          var at = exclusive.length ? exclusive[0] : found.shared[found.shared.length - 1].nextElementSibling;
+
+          if (found.shared.length) {
+            // WHY fragments are MOVED, not re-rendered in place: a shared page's
+            // flow depends on the neighbouring chapter's content, which a
+            // single-chapter render cannot reproduce — re-rendering it correctly
+            // would mean re-paginating the whole book (the full-swap regression
+            // this path avoids). So we remove this chapter's stale fragment from
+            // the shared page and give the fresh render its own pages. Content
+            // is fully up to date; the one visible approximation is a gap left
+            // on the shared page until the next full reload (book.html on disk
+            // is already regenerated correctly). Page numbers are a live CSS
+            // counter and re-flow on their own.
+            logToServer('splice degraded for ' + file + ': chapter shares ' + found.shared.length +
+              ' page(s) with a neighbour; spliced onto its own pages until next full reload');
+            for (i = 0; i < found.shared.length; i++) {
+              var frags = found.shared[i].querySelectorAll('.pmd-chapter[data-chapter-src]');
+              for (j = 0; j < frags.length; j++) {
+                if (frags[j].getAttribute('data-chapter-src') === file) frags[j].parentNode.removeChild(frags[j]);
+              }
+              var rest = pageChapters(found.shared[i]).filter(function (c) { return c !== file; });
+              found.shared[i].setAttribute('data-chapter-srcs', rest.join('\n'));
+              if (rest.length) found.shared[i].setAttribute('data-chapter-src', rest[0]);
+              else found.shared[i].removeAttribute('data-chapter-src');
+            }
+          }
+
+          for (i = 0; i < newPages.length; i++) {
             var imp = ad.importNode(newPages[i], true);
             imp.setAttribute('data-chapter-src', file);
+            imp.setAttribute('data-chapter-srcs', file);
             container.insertBefore(imp, at);
           }
-          for (var j = 0; j < oldPages.length; j++) oldPages[j].parentNode.removeChild(oldPages[j]);
+          for (j = 0; j < exclusive.length; j++) exclusive[j].parentNode.removeChild(exclusive[j]);
           restore(active, anchor);
           try { var api = fwin(active) && fwin(active).previewAPI; if (api && api.refresh) api.refresh(); } catch (_) {}
-        } catch (err) { if (window.console) console.warn('[pmd] incremental splice failed, full swap:', err); swap(); }
+        } catch (err) {
+          var reason = err && err.message ? err.message : String(err);
+          if (window.console) console.warn('[pmd] incremental splice failed, full swap:', err);
+          logToServer('splice fallback to full swap for ' + file + ': ' + reason);
+          swap();
+        }
         if (f.parentNode) f.parentNode.removeChild(f);
       });
     });

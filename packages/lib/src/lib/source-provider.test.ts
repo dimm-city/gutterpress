@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { mkdtemp, writeFile, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { detectProjectSource } from "./project-source";
@@ -8,6 +8,11 @@ import {
   restoreVersionWithBackup,
   gitDirFor,
   RESTORE_BACKUP_MESSAGE,
+  AUTO_SNAPSHOT_MESSAGE,
+  AUTO_SNAPSHOT_DEFAULT_MINUTES,
+  autoSnapshotDelayMs,
+  isNoChangesError,
+  isGitInternalPath,
 } from "./source-provider";
 
 async function tempDir(): Promise<string> {
@@ -222,6 +227,113 @@ test("restore failure after a backup snapshot reports the backup in the error", 
     const history = await provider.listHistory(dir);
     expect(history[0]!.message).toBe(RESTORE_BACKUP_MESSAGE);
     expect(err.message).toContain(history[0]!.id.slice(0, 7));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── Automatic snapshots (RC1-3) ───────────────────────────────────────────────
+
+test("automatic snapshot records changes under AUTO_SNAPSHOT_MESSAGE", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nAuto draft.\n");
+    const snap = await provider.snapshot({
+      projectDir: dir,
+      message: AUTO_SNAPSHOT_MESSAGE,
+    });
+    expect(snap.message).toBe("Automatic snapshot");
+    const history = await provider.listHistory(dir);
+    expect(history[0]!.message).toBe(AUTO_SNAPSHOT_MESSAGE);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("automatic snapshot on a clean tree rejects with an isNoChangesError error", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    let caught: unknown;
+    try {
+      await provider.snapshot({ projectDir: dir, message: AUTO_SNAPSHOT_MESSAGE });
+    } catch (e) {
+      caught = e;
+    }
+    // The host scheduler fires blindly and swallows exactly this rejection.
+    expect(isNoChangesError(caught)).toBe(true);
+    // The guard kept history clean: no empty "Automatic snapshot" entry.
+    expect((await provider.listHistory(dir)).length).toBe(1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("isNoChangesError is false for other errors", () => {
+  expect(isNoChangesError(new Error("repository is corrupt"))).toBe(false);
+  expect(isNoChangesError("no changes since the last snapshot")).toBe(false);
+  expect(isNoChangesError(undefined)).toBe(false);
+});
+
+test("autoSnapshotDelayMs: defaults, disable, clamping, garbage", () => {
+  // Missing policy → defaults (enabled, 10 minutes).
+  expect(autoSnapshotDelayMs(undefined)).toBe(
+    AUTO_SNAPSHOT_DEFAULT_MINUTES * 60_000,
+  );
+  // Explicit values pass through.
+  expect(
+    autoSnapshotDelayMs({ autoSnapshot: true, autoSnapshotMinutes: 15 }),
+  ).toBe(15 * 60_000);
+  // Disabled → null (the host never arms the timer).
+  expect(
+    autoSnapshotDelayMs({ autoSnapshot: false, autoSnapshotMinutes: 10 }),
+  ).toBe(null);
+  // Floor: never below 5 minutes (commit-per-keystroke guard).
+  expect(
+    autoSnapshotDelayMs({ autoSnapshot: true, autoSnapshotMinutes: 1 }),
+  ).toBe(5 * 60_000);
+  // Ceiling: never above a day.
+  expect(
+    autoSnapshotDelayMs({ autoSnapshot: true, autoSnapshotMinutes: 99_999 }),
+  ).toBe(24 * 60 * 60_000);
+  // Garbage minutes fall back to the default, then clamp.
+  expect(
+    autoSnapshotDelayMs({ autoSnapshot: true, autoSnapshotMinutes: Number.NaN }),
+  ).toBe(AUTO_SNAPSHOT_DEFAULT_MINUTES * 60_000);
+  expect(
+    autoSnapshotDelayMs({ autoSnapshot: true, autoSnapshotMinutes: -3 }),
+  ).toBe(AUTO_SNAPSHOT_DEFAULT_MINUTES * 60_000);
+});
+
+test("isGitInternalPath matches .git segments only", () => {
+  expect(isGitInternalPath(".git")).toBe(true);
+  expect(isGitInternalPath(".git/index")).toBe(true);
+  expect(isGitInternalPath(".git\\index")).toBe(true);
+  expect(isGitInternalPath("/home/me/book/.git/HEAD")).toBe(true);
+  expect(isGitInternalPath("chapter-01.md")).toBe(false);
+  expect(isGitInternalPath(".gitignore")).toBe(false);
+  expect(isGitInternalPath("notes/.gitkeep")).toBe(false);
+});
+
+// ── Nested-repo guard (SWEEP-2) ──────────────────────────────────────────────
+
+test("initVersionHistory rejects for a folder inside an existing repo", async () => {
+  const dir = await tempDir();
+  try {
+    await initProject(dir); // outer repo
+    const inner = path.join(dir, "nested-project");
+    await mkdir(inner, { recursive: true });
+    await writeFile(path.join(inner, "chapter-01.md"), "# Inner\n");
+
+    const source = await detectProjectSource(inner);
+    expect(source.type).toBe("local-folder");
+    const provider = providerFor(source);
+    await expect(
+      provider.initVersionHistory({ projectDir: inner }),
+    ).rejects.toThrow(/already inside a versioned project/i);
+    // No shadow repo was created.
+    await expect(stat(gitDirFor(inner))).rejects.toThrow();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -83,6 +83,14 @@ function setup() {
   });
   window.innerHeight = 900;
 
+  // happy-dom has no window.scrollBy; record the interpolation nudges that
+  // scrollTo() issues for lines that fall between annotated blocks.
+  const scrolls = [];
+  window.scrollBy = (opts) => {
+    scrolls.push(opts);
+    state.scrollY += opts && typeof opts.top === "number" ? opts.top : 0;
+  };
+
   const run = new Function(
     "window",
     "document",
@@ -93,25 +101,31 @@ function setup() {
     source,
   );
   run(window, document, window.CustomEvent, window.MutationObserver, setTimeout, clearTimeout);
-  return { window, document, api: window.previewAPI, state };
+  return { window, document, api: window.previewAPI, state, scrolls };
 }
 
 async function main() {
   // ── 1. Chapter-scoped line resolution (the critical correctness property) ──
   {
-    const { api } = setup();
+    const { api, scrolls } = setup();
 
     const b = api.scrollTo({ line: 9, chapter: "b.md" });
     assert.equal(b.page, 2, "line 9 in chapter b resolves to page 2");
     assert.equal(b.sourceLine, 9);
+    assert.equal(scrolls.length, 0, "exact line match needs no interpolation nudge");
 
     const a = api.scrollTo({ line: 9, chapter: "a.md" });
     assert.equal(a.page, 1, "the SAME line 9 in chapter a resolves to page 1");
 
-    // A nearest-preceding line still stays inside the requested chapter.
+    // A nearest-preceding line still stays inside the requested chapter, and
+    // the scroll is interpolated by line fraction between the bounding blocks
+    // (line 6 sits 2/5 of the way from b's line 4 to b's line 9; blocks are
+    // 100px apart → a 40px nudge past the block top). RC1-5.
     const bMid = api.scrollTo({ line: 6, chapter: "b.md" });
     assert.equal(bMid.page, 2, "line 6 in chapter b snaps to b's line 4 (page 2)");
     assert.equal(bMid.sourceLine, 4);
+    assert.equal(scrolls.length, 1, "between-block line gets one interpolation nudge");
+    assert.equal(scrolls[0].top, 40, "nudge = fraction (2/5) of the 100px block gap");
 
     // Un-scoped resolution is ambiguous (picks the first line-9 = chapter a),
     // which is exactly why sync must pass the chapter.
@@ -128,6 +142,15 @@ async function main() {
     assert.equal(vs.chapter, "b.md", "top-visible chapter is b");
     assert.equal(vs.sourceLine, 1, "top-visible source line is b's line 1");
     assert.equal(vs.page, 2);
+
+    // Scrolled INTO a block: the reported line interpolates toward the next
+    // annotated block instead of snapping to the block's start line (RC1-5).
+    // b's h1 (line 1) top=-50, next block (line 4) top=+50, ref=4 →
+    // fraction 54/100 → line 1 + round(0.54 * 3) = 3.
+    state.scrollY = 350;
+    const mid = api.getVisibleSource();
+    assert.equal(mid.chapter, "b.md");
+    assert.equal(mid.sourceLine, 3, "line interpolates within the straddled block");
   }
 
   // ── 3. getOutline returns headings with chapter + page ────────────────────

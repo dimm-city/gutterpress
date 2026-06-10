@@ -72,6 +72,19 @@ export interface RemoteAuthProvider {
 const DEFAULT_GITHUB_CLIENT_ID = "Iv23liuFxmMqnaRNjIK5";
 
 /**
+ * URL slug of the same registered "print-md" GitHub App. The slug and the
+ * client id identify ONE registration — if the app is ever re-registered they
+ * ROTATE TOGETHER (set both PRINT_MD_GITHUB_CLIENT_ID and
+ * PRINT_MD_GITHUB_APP_SLUG, or neither). The slug is public by design: it only
+ * forms the install URL where the user picks which repositories the app may
+ * see.
+ *
+ * Intentionally NOT exported — hosts resolve through
+ * {@link resolveGitHubAppSlug} / {@link githubAppInstallUrl}.
+ */
+const DEFAULT_GITHUB_APP_SLUG = "print-md";
+
+/**
  * Client id resolution: explicit option → env var → placeholder default.
  * Empty/whitespace-only values at any layer are treated as unset (the packaged
  * viewer bakes `process.env.PRINT_MD_GITHUB_CLIENT_ID` in via a vite `define`,
@@ -83,6 +96,28 @@ export function resolveGitHubClientId(explicit?: string): string {
     process.env.PRINT_MD_GITHUB_CLIENT_ID?.trim() ||
     DEFAULT_GITHUB_CLIENT_ID
   );
+}
+
+/**
+ * App slug resolution: explicit option → env var → default. Mirrors
+ * {@link resolveGitHubClientId}, including the empty/whitespace-is-unset rule
+ * (a vite `define` bakes `""` when the env var is missing at build time).
+ */
+export function resolveGitHubAppSlug(explicit?: string): string {
+  return (
+    explicit?.trim() ||
+    process.env.PRINT_MD_GITHUB_APP_SLUG?.trim() ||
+    DEFAULT_GITHUB_APP_SLUG
+  );
+}
+
+/**
+ * Where the user chooses which repositories the print-md GitHub App can see
+ * (GitHub's "install / select repositories" page). A first-time user has zero
+ * installations, so the repo picker MUST offer this page or it dead-ends.
+ */
+export function githubAppInstallUrl(slug?: string): string {
+  return `https://github.com/apps/${resolveGitHubAppSlug(slug)}/installations/new`;
 }
 
 export const GITHUB_HOST = "github.com";

@@ -254,7 +254,7 @@
   function focusableElements() {
     return Array.from(
       dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
       ) ?? [],
     );
   }
@@ -523,7 +523,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: min(560px, 94vw);
+    width: min(560px, 92vw);
     max-height: 84vh;
     background: var(--app-surface);
     color: var(--app-text-secondary);

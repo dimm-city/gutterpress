@@ -23,6 +23,11 @@ export default defineConfig({
       "process.env.PRINT_MD_GITHUB_CLIENT_ID": JSON.stringify(
         process.env.PRINT_MD_GITHUB_CLIENT_ID ?? "",
       ),
+      // The app SLUG rotates together with the client id (one registration —
+      // see resolveGitHubAppSlug in the lib). Same bake-or-"" semantics.
+      "process.env.PRINT_MD_GITHUB_APP_SLUG": JSON.stringify(
+        process.env.PRINT_MD_GITHUB_APP_SLUG ?? "",
+      ),
     },
     build: {
       outDir: "out/main",

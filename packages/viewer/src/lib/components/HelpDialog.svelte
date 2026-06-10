@@ -182,9 +182,20 @@
           <ol class="steps">
             <li><strong>Open your project folder</strong> — click <em>Open</em> in the toolbar and choose the folder that contains your <code>print-md.yaml</code> file.</li>
             <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Use <em>Single / Two-page</em> to switch between one page and two pages side by side.</li>
+            <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. Your changes are saved automatically as you type.</li>
+            <li><strong>Keep a history of your work</strong> — click <em>History</em> and choose <em>Enable Version History</em> to keep a record of changes on this computer. Snapshots are then saved automatically as you work; use <em>Save Snapshot</em> to name important moments, and <em>Restore Version</em> to return to any earlier snapshot.</li>
             <li><strong>Save as PDF</strong> — click <em>Save PDF</em> (or press {modKey}+S) when your layout looks right.</li>
           </ol>
           <p class="gs-note">Don't have a project yet? Visit the <button class="inline-link" onclick={openDocs}>online setup guide</button> to create one.</p>
+        </section>
+
+        <section class="online-copy">
+          <h3>Work with an Online Copy</h3>
+          <ul class="steps">
+            <li><strong>Open from GitHub</strong> — click <em>Open</em>, then <em>Open from GitHub…</em> to connect your GitHub account, choose a repository, and download a copy of the project to your computer.</li>
+            <li><strong>Publish Changes</strong> — when your project has an online copy, click <em>Publish</em> to send your latest work to it. If you're offline, your work stays saved on this computer and you can publish when you're back online. If your copy and the online copy both changed, print-md lists each file that differs and lets you choose: keep your version, use the online version, or keep both copies.</li>
+            <li><strong>Other hosting services</strong> — if your project lives somewhere other than GitHub, open the <em>More</em> menu and choose <em>Advanced setup</em> to connect a Git server (such as Gitea or Forgejo).</li>
+          </ul>
         </section>
 
         {#if isDesktop() && onCheckForUpdates}
@@ -220,7 +231,9 @@
               <tr><td>Zoom in / out</td><td>+ / -</td></tr>
               <tr><td>Fit to width</td><td>F</td></tr>
               <tr><td>Open folder</td><td>{modKey}+O</td></tr>
+              <tr><td>Toggle editor</td><td>{modKey}+E</td></tr>
               <tr><td>Save PDF</td><td>{modKey}+S</td></tr>
+              <tr><td>Settings</td><td>{modKey}+,</td></tr>
             </tbody>
           </table>
         </section>
@@ -353,9 +366,9 @@
   .status { margin: 8px 0; }
   .status.error { color: var(--app-error-text); font-family: ui-monospace, monospace; font-size: 12px; }
 
-  /* Getting Started section */
-  .getting-started { margin-bottom: 18px; }
-  .getting-started h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; color: var(--app-text-muted); letter-spacing: 0.5px; }
+  /* Getting Started + Work with an Online Copy sections (same treatment) */
+  .getting-started, .online-copy { margin-bottom: 18px; }
+  .getting-started h3, .online-copy h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; color: var(--app-text-muted); letter-spacing: 0.5px; }
   .steps { margin: 0 0 10px; padding-left: 20px; font-size: 13px; line-height: 1.6; color: var(--app-text-secondary); }
   .steps li { margin-bottom: 6px; }
   .steps code { font-family: ui-monospace, monospace; color: var(--app-code-text); background: var(--app-code-bg); padding: 1px 5px; border-radius: 3px; font-size: 11px; }

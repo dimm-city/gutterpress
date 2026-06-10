@@ -40,6 +40,12 @@
   let repos = $state<RemoteRepository[]>([]);
   let reposLoading = $state(false);
   let filter = $state("");
+  /**
+   * GitHub App "choose repositories" page, supplied (redacted-status payload)
+   * by the host. A first-time user always starts with zero installations, so
+   * the empty repo list MUST offer this page or the picker dead-ends.
+   */
+  let installUrl = $state<string | null>(null);
 
   let selectedRepo = $state<RemoteRepository | null>(null);
   let branches = $state<RemoteBranch[]>([]);
@@ -53,6 +59,7 @@
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
   let connectBtn = $state<HTMLButtonElement | undefined>(undefined);
   let filterEl = $state<HTMLInputElement | undefined>(undefined);
+  let installBtn = $state<HTMLButtonElement | undefined>(undefined);
 
   let filteredRepos = $derived(
     repos.filter((r) =>
@@ -71,6 +78,7 @@
       cloneProgress = null;
       closeBlocked = false;
       username = null;
+      installUrl = null;
       repos = [];
       branches = [];
       branch = "";
@@ -88,6 +96,7 @@
     if (!isDesktop()) return;
     try {
       const conn = await getPlatform().getRemoteConnection();
+      installUrl = conn.installUrl ?? null;
       if (conn.connected) {
         username = conn.username ?? null;
         await loadRepos();
@@ -122,13 +131,20 @@
     }
   }
 
-  async function loadRepos() {
+  /**
+   * Fetch the repo list. `manageFocus: false` is the background-refresh mode
+   * (window regained focus) — it must never steal the user's focus.
+   */
+  async function loadRepos(manageFocus = true) {
     step = "repos";
     reposLoading = true;
     error = null;
-    // The search input is the primary action on this step.
-    await tick();
-    filterEl?.focus();
+    if (manageFocus) {
+      // Park focus on the dialog while loading so it can't fall to <body>
+      // when the previous step's controls unmount.
+      await tick();
+      dialogEl?.focus();
+    }
     try {
       repos = await getPlatform().listRemoteRepositories();
     } catch (e) {
@@ -136,6 +152,29 @@
     } finally {
       reposLoading = false;
     }
+    if (manageFocus) {
+      await tick();
+      // The search input is the primary action when there is a list; with no
+      // repositories yet, the "Choose repositories on GitHub" button is.
+      (repos.length > 0 ? filterEl : (installBtn ?? filterEl))?.focus();
+    }
+  }
+
+  /** Re-fetch when the user returns from choosing repositories on GitHub. */
+  function onWindowFocus() {
+    if (open && step === "repos" && !reposLoading) void loadRepos(false);
+  }
+
+  function openInstallPage() {
+    if (installUrl) getPlatform().openExternal(installUrl).catch(() => {});
+  }
+
+  /** Hand off to Advanced Setup (#14) — shared by the connect + repos steps. */
+  function goAdvancedSetup() {
+    open = false;
+    // No triggerEl?.focus() here: Advanced Setup opens next and takes focus
+    // itself; it restores focus when IT closes.
+    onAdvancedSetup?.();
   }
 
   async function chooseRepo(repo: RemoteRepository) {
@@ -226,7 +265,7 @@
     if (e.key !== "Tab") return;
     const focusable = Array.from(
       dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
       ) ?? [],
     );
     const first = focusable[0];
@@ -290,12 +329,7 @@
             <button
               type="button"
               class="link-btn"
-              onclick={() => {
-                open = false;
-                // No triggerEl?.focus() here: Advanced Setup opens next and
-                // takes focus itself; it restores focus when IT closes.
-                onAdvancedSetup?.();
-              }}
+              onclick={goAdvancedSetup}
             >Open Advanced setup</button>
           </p>
         {/if}
@@ -329,24 +363,32 @@
             <button type="button" class="link-btn" onclick={disconnect}>Disconnect</button>
           </p>
         {/if}
-        <input
-          bind:this={filterEl}
-          type="text"
-          class="filter"
-          placeholder="Search repositories…"
-          aria-label="Search repositories"
-          bind:value={filter}
-          spellcheck="false"
-          autocomplete="off"
-        />
+        {#if reposLoading || repos.length > 0}
+          <input
+            bind:this={filterEl}
+            type="text"
+            class="filter"
+            placeholder="Search repositories…"
+            aria-label="Search repositories"
+            bind:value={filter}
+            spellcheck="false"
+            autocomplete="off"
+          />
+        {/if}
         {#if reposLoading}
           <p class="hint subtle">Loading your repositories…</p>
-        {:else if filteredRepos.length === 0}
-          <p class="hint subtle">
-            {repos.length === 0
-              ? "No repositories yet. Grant print-md access to your book repositories on GitHub, then reopen this window."
-              : "No repositories match your search."}
+        {:else if repos.length === 0}
+          <!-- First-time state: a GitHub App starts with zero installations.
+               Never a dead end — install, refresh, and Advanced setup are all
+               one click away, and returning to this window refreshes the list
+               automatically. -->
+          <p class="hint">
+            No book projects found yet. print-md can only see repositories you
+            choose on GitHub. We'll open that page for you — pick your book
+            repositories, then come back here and the list will update.
           </p>
+        {:else if filteredRepos.length === 0}
+          <p class="hint subtle">No repositories match your search.</p>
         {:else}
           <!-- Pick-and-go list: each repo is a real button (native keyboard
                + focus semantics), not a listbox with managed selection. -->
@@ -360,9 +402,31 @@
               </li>
             {/each}
           </ul>
+          {#if installUrl}
+            <p class="hint subtle">
+              Don't see your book?
+              <button type="button" class="link-btn" onclick={openInstallPage}
+              >Choose repositories on GitHub</button>
+            </p>
+          {/if}
+        {/if}
+        {#if onAdvancedSetup}
+          <p class="hint subtle">
+            Or paste a repository address in
+            <button type="button" class="link-btn" onclick={goAdvancedSetup}
+            >Advanced setup</button>
+          </p>
         {/if}
         <footer class="actions">
           <button class="ghost" onclick={close}>Cancel</button>
+          {#if !reposLoading && repos.length === 0}
+            <button class="ghost" onclick={() => loadRepos()}>Refresh</button>
+            {#if installUrl}
+              <button bind:this={installBtn} class="primary" onclick={openInstallPage}>
+                Choose repositories on GitHub
+              </button>
+            {/if}
+          {/if}
         </footer>
       {:else if step === "configure" && selectedRepo}
         <p class="hint"><strong>{selectedRepo.fullName}</strong></p>
@@ -424,10 +488,14 @@
   </div>
 {/if}
 
+<!-- onfocus: the user installs the GitHub App in the browser and alt-tabs
+     back — the repo list refreshes itself, no manual step. Svelte removes the
+     listener with the component, and onWindowFocus self-gates on open/step. -->
 <svelte:window
   onkeydown={(e) => {
     if (e.key === "Escape" && open) close();
   }}
+  onfocus={onWindowFocus}
 />
 
 <style>
@@ -442,7 +510,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: min(520px, 94vw);
+    width: min(560px, 92vw);
     max-height: 80vh;
     background: var(--app-surface);
     color: var(--app-text-secondary);
@@ -625,7 +693,7 @@
     display: flex;
     gap: 8px;
     justify-content: flex-end;
-    padding-top: 12px;
+    padding-top: 16px;
     border-top: 1px solid var(--app-border-subtle);
   }
   .actions button {

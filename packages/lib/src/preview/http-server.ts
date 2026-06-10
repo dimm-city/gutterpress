@@ -393,7 +393,24 @@ export async function createPreviewServer(
       return;
     }
 
-    // 3a. Incremental: render a single chapter for the shell to splice.
+    // 3a. Shell diagnostics: the preview shell reports incremental-splice
+    // degradations/fallbacks here so the server log carries the REASON a full
+    // re-render happened — bug reports otherwise only show the symptom.
+    if (url.pathname === '/__log' && req.method === 'POST') {
+      let body = '';
+      // Cap accumulation at 2KB but keep draining — destroying the request
+      // mid-stream would leave the client with a dangling response (and can
+      // surface as an unhandled socket error). Oversized bodies are truncated.
+      req.on('data', (chunk) => { if (body.length < 2048) body += chunk; });
+      req.on('end', () => {
+        if (body) info(`[preview-shell] ${body.slice(0, 1024)}`);
+        res.writeHead(204);
+        res.end();
+      });
+      return;
+    }
+
+    // 3b. Incremental: render a single chapter for the shell to splice.
     if (url.pathname === '/__chapter') {
       const file = url.searchParams.get('file');
       if (!file || !state.currentInputPath) {
@@ -413,7 +430,7 @@ export async function createPreviewServer(
       return;
     }
 
-    // 3b. Preview shell: serve the double-buffering / incremental shell at "/".
+    // 3c. Preview shell: serve the double-buffering / incremental shell at "/".
     // DEFAULT ON (incremental). Opt out with PRINTMD_PREVIEW_INCREMENTAL=0.
     if (url.pathname === '/' &&
         (incrementalPreviewEnabled() || process.env.PRINTMD_PREVIEW_SHELL === '1')) {

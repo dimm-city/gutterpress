@@ -150,3 +150,59 @@ test("matches only github.com", () => {
   expect(provider.matches(new URL("https://github.com/o/r.git"))).toBe(true);
   expect(provider.matches(new URL("https://gitea.example.com/o/r.git"))).toBe(false);
 });
+
+// ── App slug resolution + install URL (repo-picker install affordance) ───────
+
+import { resolveGitHubAppSlug, githubAppInstallUrl } from "./github-auth";
+
+function withSlugEnv(value: string | undefined, fn: () => void) {
+  const prev = process.env.PRINT_MD_GITHUB_APP_SLUG;
+  if (value === undefined) delete process.env.PRINT_MD_GITHUB_APP_SLUG;
+  else process.env.PRINT_MD_GITHUB_APP_SLUG = value;
+  try {
+    fn();
+  } finally {
+    if (prev === undefined) delete process.env.PRINT_MD_GITHUB_APP_SLUG;
+    else process.env.PRINT_MD_GITHUB_APP_SLUG = prev;
+  }
+}
+
+test("resolveGitHubAppSlug: explicit option wins over env and default", () => {
+  withSlugEnv("env-slug", () => {
+    expect(resolveGitHubAppSlug("explicit-slug")).toBe("explicit-slug");
+  });
+});
+
+test("resolveGitHubAppSlug: env var wins over default when no explicit option", () => {
+  withSlugEnv("env-slug", () => {
+    expect(resolveGitHubAppSlug()).toBe("env-slug");
+  });
+});
+
+test("resolveGitHubAppSlug: falls back to the registered default", () => {
+  withSlugEnv(undefined, () => {
+    expect(resolveGitHubAppSlug()).toBe("print-md");
+  });
+});
+
+test("resolveGitHubAppSlug: empty/whitespace at any layer is treated as unset", () => {
+  // The packaged viewer bakes "" via a vite define when the env var is missing.
+  withSlugEnv("", () => {
+    expect(resolveGitHubAppSlug("")).toBe("print-md");
+    expect(resolveGitHubAppSlug("   ")).toBe("print-md");
+  });
+  withSlugEnv("   ", () => {
+    expect(resolveGitHubAppSlug()).toBe("print-md");
+  });
+});
+
+test("githubAppInstallUrl: default and explicit slugs", () => {
+  withSlugEnv(undefined, () => {
+    expect(githubAppInstallUrl()).toBe(
+      "https://github.com/apps/print-md/installations/new",
+    );
+    expect(githubAppInstallUrl("rotated-app")).toBe(
+      "https://github.com/apps/rotated-app/installations/new",
+    );
+  });
+});

@@ -120,6 +120,57 @@
     return best || blocks[0];
   }
 
+  // {el, line} of the viewport-top source position, with the line interpolated
+  // within the straddling block by the viewport top's fractional distance to the
+  // next annotated block (source-map only annotates top-level blocks, so the
+  // block's start line alone can be tens of lines above the visible content).
+  function visibleSourcePosition() {
+    var el = topVisibleSourceEl();
+    if (!el) return null;
+    var line = lineOf(el);
+    if (line == null) return { el: el, line: null };
+    var ref = 4; // same reference line as topVisibleSourceEl
+    var top = el.getBoundingClientRect().top;
+    if (top < ref) {
+      // Find the next annotated sibling-in-flow (document order, higher line —
+      // a higher line also guarantees we haven't crossed into the next chapter,
+      // where data-source-line restarts).
+      var blocks = sourcedBlocks();
+      var idx = blocks.indexOf(el);
+      for (var i = idx + 1; i < blocks.length; i++) {
+        var nl = lineOf(blocks[i]);
+        if (nl == null) continue;
+        if (nl <= line) break;
+        var nextTop = blocks[i].getBoundingClientRect().top;
+        if (nextTop > top) {
+          var f = Math.max(0, Math.min(1, (ref - top) / (nextTop - top)));
+          line = line + Math.round(f * (nl - line));
+        }
+        break;
+      }
+    }
+    return { el: el, line: line };
+  }
+
+  // Resolve a {line, chapter?} target to its enclosing annotated block PLUS the
+  // following annotated block, so callers can interpolate within long blocks
+  // (markdown-it-source-map only annotates top-level *_open tokens, so a target
+  // line deep inside a list/table/paragraph would otherwise snap to the block's
+  // start line — measured 35-line snap-backs on real chapters).
+  function resolveLinePosition(target) {
+    var line = Number(target.line);
+    var blocks = blocksInChapter(target.chapter);
+    var best = null, bestLine = -Infinity, next = null, nextLine = Infinity;
+    for (var i = 0; i < blocks.length; i++) {
+      var l = lineOf(blocks[i]);
+      if (l == null) continue;
+      if (l <= line && l > bestLine) { bestLine = l; best = blocks[i]; }
+      else if (l > line && l < nextLine) { nextLine = l; next = blocks[i]; }
+    }
+    if (!best) return blocks[0] ? { el: blocks[0], line: lineOf(blocks[0]), nextEl: null, nextLine: null } : null;
+    return { el: best, line: bestLine, nextEl: next, nextLine: next ? nextLine : null };
+  }
+
   // Resolve a scrollTo/highlight target ({line}|{id}|{selector}|{page} or a bare
   // line number) to a DOM element.
   function resolveTarget(target) {
@@ -129,14 +180,8 @@
     if (target.id) return document.getElementById(target.id);
     if (target.page != null) { refreshPages(); return pages[clampPage(target.page) - 1] || null; }
     if (target.line != null) {
-      var line = Number(target.line);
-      var blocks = blocksInChapter(target.chapter);
-      var best = null, bestLine = -Infinity;
-      for (var i = 0; i < blocks.length; i++) {
-        var l = lineOf(blocks[i]);
-        if (l != null && l <= line && l > bestLine) { bestLine = l; best = blocks[i]; }
-      }
-      return best || blocks[0] || null;
+      var pos = resolveLinePosition(target);
+      return pos ? pos.el : null;
     }
     return null;
   }
@@ -235,14 +280,43 @@
     // pageChanged/sourceLineChanged echo so host-driven jumps don't loop back.
     scrollTo: function (target, opts) {
       opts = opts || {};
-      var el = resolveTarget(target);
+      if (typeof target === 'number') target = { line: target };
+      var el = null;
+      var fraction = 0;
+      var nextEl = null;
+      if (target && target.line != null && target.selector == null && target.id == null && target.page == null) {
+        var pos = resolveLinePosition(target);
+        if (pos) {
+          el = pos.el;
+          if (pos.nextEl && pos.nextLine != null && pos.nextLine > pos.line) {
+            nextEl = pos.nextEl;
+            fraction = (Number(target.line) - pos.line) / (pos.nextLine - pos.line);
+            fraction = Math.max(0, Math.min(1, fraction));
+          }
+        }
+      } else {
+        el = resolveTarget(target);
+      }
       if (!el) return null;
       ignoreScrollUntil = Date.now() + 350;
+      var behavior = opts.smooth ? 'smooth' : 'instant';
       el.scrollIntoView({
-        behavior: opts.smooth ? 'smooth' : 'instant',
+        behavior: fraction > 0 ? 'instant' : behavior,
         block: opts.block || 'start',
         inline: 'nearest'
       });
+      if (fraction > 0 && nextEl) {
+        // Interpolate within the block: nudge the scroll by the target line's
+        // fractional distance between this block's top and the NEXT annotated
+        // block's top. Only when the next block is genuinely lower on screen —
+        // a facing-page or next-column neighbour (top <= ours) degrades to the
+        // plain block-top scroll, which is the pre-existing behaviour.
+        var top = el.getBoundingClientRect().top;
+        var nextTop = nextEl.getBoundingClientRect().top;
+        if (nextTop > top) {
+          window.scrollBy({ top: fraction * (nextTop - top), behavior: behavior });
+        }
+      }
       var page = pageIndexOf(el);
       if (page) currentPage = page;
       return { page: page || currentPage, sourceLine: lineOf(el) };
@@ -251,8 +325,8 @@
     // Source line + page of the block at the top of the viewport (host scroll
     // position read for preview->editor sync).
     getVisibleSource: function () {
-      var el = topVisibleSourceEl();
-      return el ? { sourceLine: lineOf(el), chapter: chapterOf(el), page: pageIndexOf(el) } : null;
+      var pos = visibleSourcePosition();
+      return pos ? { sourceLine: pos.line, chapter: chapterOf(pos.el), page: pageIndexOf(pos.el) } : null;
     },
 
     // Generic, read-only DOM extraction. fields: 'text'|'id'|'sourceLine'|
@@ -403,12 +477,12 @@
         api.notifyPageChange();
       }
       // Emit finer-grained source position for editor sync (ADR 0005).
-      var topEl = topVisibleSourceEl();
-      var sl = topEl ? lineOf(topEl) : null;
+      var pos = visibleSourcePosition();
+      var sl = pos ? pos.line : null;
       if (sl != null && sl !== lastSourceLine) {
         lastSourceLine = sl;
         window.dispatchEvent(new CustomEvent('sourceLineChanged', {
-          detail: { sourceLine: sl, chapter: chapterOf(topEl), page: pageIndexOf(topEl) }
+          detail: { sourceLine: sl, chapter: chapterOf(pos.el), page: pageIndexOf(pos.el) }
         }));
       }
     }, 150);

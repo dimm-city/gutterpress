@@ -59,6 +59,12 @@ interface AppSettings {
     defaultZoom: string;
     viewMode: "single" | "two-column";
   };
+  versionHistory: {
+    /** Save automatic snapshots after edits settle (RC1-3). Default ON. */
+    autoSnapshot: boolean;
+    /** Minutes of quiet after the last edit before a snapshot fires. */
+    autoSnapshotMinutes: number;
+  };
   advanced: {
     fileWatcherInterval: number;
     logLevel: "error" | "warn" | "info" | "debug";
@@ -71,7 +77,7 @@ type DeepPartialSettings = {
 
 // Project source classification (#12). Mirrors @dimm-city/print-md-lib.
 type ProjectSource =
-  | { type: "local-folder"; path: string }
+  | { type: "local-folder"; path: string; enclosingRepoDir?: string }
   | {
       type: "local-git-folder";
       path: string;
@@ -133,6 +139,8 @@ interface RemoteConnection {
   connected: boolean;
   username?: string;
   label?: string;
+  /** GitHub App "choose repositories" page — public URL, no secrets. */
+  installUrl?: string;
 }
 
 interface RemoteRepository {

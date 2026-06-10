@@ -213,6 +213,39 @@
         </div>
       </section>
 
+      <!-- Version history (RC1-3) ------------------------------------------ -->
+      <section class="group">
+        <div class="group-head">
+          <h3>Version history</h3>
+          <button class="reset" onclick={() => settings.resetSection("versionHistory")} title="Reset version history settings to defaults">Reset</button>
+        </div>
+        <div class="row row-toggle">
+          <div class="row-label">
+            <label for="set-auto-snapshot">Automatic snapshots</label>
+            <span class="row-hint">Save a snapshot of your work after you pause editing (only for projects with version history turned on)</span>
+          </div>
+          <input
+            id="set-auto-snapshot"
+            type="checkbox"
+            checked={s.versionHistory.autoSnapshot}
+            onchange={(e) => settings.set({ versionHistory: { autoSnapshot: (e.currentTarget as HTMLInputElement).checked } })}
+          />
+        </div>
+        <div class="row">
+          <label for="set-auto-snapshot-minutes">Save after this many quiet minutes</label>
+          <input
+            id="set-auto-snapshot-minutes"
+            type="number"
+            min="5"
+            max="1440"
+            step="5"
+            value={s.versionHistory.autoSnapshotMinutes}
+            disabled={!s.versionHistory.autoSnapshot}
+            onchange={(e) => settings.set({ versionHistory: { autoSnapshotMinutes: Number((e.currentTarget as HTMLInputElement).value) } })}
+          />
+        </div>
+      </section>
+
       <!-- Advanced (collapsed by default) --------------------------------- -->
       <!-- Developer-oriented knobs (file-watch polling, log verbosity). Hidden
            behind a disclosure so a non-technical writer never has to reason

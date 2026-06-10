@@ -26,6 +26,7 @@
     open = $bindable(false),
     projectDir,
     capabilities,
+    insideVersionedProject = false,
     onEnabled,
     onSnapshotSaved,
     onRestored,
@@ -34,6 +35,11 @@
     open?: boolean;
     projectDir: string | null;
     capabilities: ProjectCapabilities | null;
+    /**
+     * The folder sits inside a larger folder that already has version history
+     * (SWEEP-2): enabling is suppressed and the dialog explains why instead.
+     */
+    insideVersionedProject?: boolean;
     /** History was just enabled — parent stores the new source/capabilities. */
     onEnabled?: (result: ProjectClassification) => void;
     onSnapshotSaved?: (entry: SnapshotEntry) => void;
@@ -42,9 +48,25 @@
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
+  /**
+   * Message the host records on automatic snapshots (RC1-3). Mirrors the lib's
+   * AUTO_SNAPSHOT_MESSAGE — defined locally so the SPA never value-imports the
+   * lib (§8 / ADR 0004). Runs of consecutive entries carrying exactly this
+   * message are grouped into one expandable row to keep the list readable.
+   */
+  const AUTO_SNAPSHOT_MESSAGE = "Automatic snapshot";
+
+  type HistoryRow =
+    | { kind: "single"; entry: SnapshotEntry }
+    | { kind: "auto-group"; entries: SnapshotEntry[] };
+
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
   let enableBtn = $state<HTMLButtonElement | undefined>(undefined);
   let busy = $state(false);
+  /** What the in-flight operation is doing — shown when a close is blocked. */
+  let busyAction = $state<string | null>(null);
+  /** UX-8: the user tried to close (Esc/backdrop/×) while an op was in flight. */
+  let closeBlocked = $state(false);
   let error = $state<string | null>(null);
   let notice = $state<string | null>(null);
   let entries = $state<SnapshotEntry[]>([]);
@@ -57,6 +79,28 @@
   let canHistory = $derived(capabilities?.canViewHistory ?? false);
   let canSnapshot = $derived(capabilities?.canSnapshot ?? false);
   let canRestore = $derived(capabilities?.canRestoreSnapshot ?? false);
+
+  /** History rows with consecutive automatic snapshots collapsed (RC1-3). */
+  let rows = $derived.by<HistoryRow[]>(() => {
+    const out: HistoryRow[] = [];
+    let run: SnapshotEntry[] = [];
+    const flushRun = () => {
+      if (run.length === 0) return;
+      if (run.length === 1) out.push({ kind: "single", entry: run[0]! });
+      else out.push({ kind: "auto-group", entries: run });
+      run = [];
+    };
+    for (const entry of entries) {
+      if (entry.message === AUTO_SNAPSHOT_MESSAGE) {
+        run.push(entry);
+      } else {
+        flushRun();
+        out.push({ kind: "single", entry });
+      }
+    }
+    flushRun();
+    return out;
+  });
 
   function focusableElements() {
     return Array.from(
@@ -82,6 +126,14 @@
   }
 
   function close() {
+    // UX-8: an in-flight enable/snapshot/restore can't be safely abandoned —
+    // closing would discard its success/failure feedback (the open-effect
+    // wipes dialog state). Block the close and tell the user instead
+    // (PublishDialog/GitHubDialog precedent).
+    if (busy) {
+      closeBlocked = true;
+      return;
+    }
     open = false;
     triggerEl?.focus();
   }
@@ -91,6 +143,7 @@
     if (!open) return;
     error = null;
     notice = null;
+    closeBlocked = false;
     confirmRestoreId = null;
     snapshotMessage = "";
     if (canHistory) void refreshList();
@@ -121,6 +174,7 @@
   async function enable() {
     if (!projectDir || busy) return;
     busy = true;
+    busyAction = "Turning on version history — please wait.";
     error = null;
     try {
       const result = await getPlatform().enableVersionHistory(projectDir);
@@ -131,12 +185,15 @@
       error = friendly(e);
     } finally {
       busy = false;
+      busyAction = null;
+      closeBlocked = false;
     }
   }
 
   async function saveSnapshot() {
     if (!projectDir || busy) return;
     busy = true;
+    busyAction = "Saving your snapshot — please wait.";
     error = null;
     notice = null;
     try {
@@ -153,12 +210,15 @@
       error = friendly(e);
     } finally {
       busy = false;
+      busyAction = null;
+      closeBlocked = false;
     }
   }
 
   async function restore(id: string) {
     if (!projectDir || busy) return;
     busy = true;
+    busyAction = "Restoring your project — please wait.";
     error = null;
     notice = null;
     try {
@@ -173,6 +233,8 @@
       error = friendly(e);
     } finally {
       busy = false;
+      busyAction = null;
+      closeBlocked = false;
     }
   }
 
@@ -201,6 +263,47 @@
   }
 </script>
 
+{#snippet entryRow(entry: SnapshotEntry)}
+  <div class="entry-row">
+    <div class="entry-info">
+      <span class="entry-message">{entry.message}</span>
+      <span class="entry-meta" title={fullTime(entry.timestamp)}>
+        {relativeTime(entry.timestamp)}{entry.author ? ` · ${entry.author}` : ""}
+      </span>
+    </div>
+    {#if canRestore}
+      <button
+        class="restore-btn"
+        onclick={() =>
+          (confirmRestoreId = confirmRestoreId === entry.id ? null : entry.id)}
+        disabled={busy}
+        aria-expanded={confirmRestoreId === entry.id}
+      >
+        Restore Version
+      </button>
+    {/if}
+  </div>
+  {#if confirmRestoreId === entry.id}
+    <!-- role=region + aria-live, NOT alertdialog: a nested
+         alertdialog inside an open dialog is invalid ARIA. -->
+    <div class="confirm" role="region" aria-live="polite" aria-label="Confirm restore">
+      <p>
+        This returns your project files to how they were at this
+        snapshot. A backup of the current state is saved first, so
+        nothing is ever lost — you can come back here to undo this.
+      </p>
+      <div class="confirm-actions">
+        <button class="ghost" onclick={() => (confirmRestoreId = null)} disabled={busy}>
+          Cancel
+        </button>
+        <button class="primary" onclick={() => restore(entry.id)} disabled={busy}>
+          {busy ? "Restoring…" : "Yes, restore this version"}
+        </button>
+      </div>
+    </div>
+  {/if}
+{/snippet}
+
 {#if open}
   <div class="backdrop" onclick={close} role="presentation"></div>
 
@@ -218,7 +321,7 @@
         <Icon name="history" />
         Version History
       </h2>
-      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close">&times;</button>
+      <button class="close" onclick={close} disabled={busy} title="Close (Esc)" aria-label="Close">&times;</button>
     </header>
 
     <div class="dialog-body">
@@ -227,6 +330,10 @@
       {/if}
       {#if error}
         <p class="error" role="alert">{error}</p>
+      {/if}
+      {#if closeBlocked && busy}
+        <!-- UX-8: the user tried to close mid-operation — explain the wait. -->
+        <p class="hint" role="status">{busyAction ?? "Working — please wait."}</p>
       {/if}
 
       {#if canEnable}
@@ -281,51 +388,47 @@
           <p class="hint">No snapshots yet. Save one to start your history.</p>
         {:else}
           <ul class="history-list">
-            {#each entries as entry (entry.id)}
-              <li class="history-item">
-                <div class="entry-row">
-                  <div class="entry-info">
-                    <span class="entry-message">{entry.message}</span>
-                    <span class="entry-meta" title={fullTime(entry.timestamp)}>
-                      {relativeTime(entry.timestamp)}{entry.author ? ` · ${entry.author}` : ""}
-                    </span>
-                  </div>
-                  {#if canRestore}
-                    <button
-                      class="restore-btn"
-                      onclick={() =>
-                        (confirmRestoreId =
-                          confirmRestoreId === entry.id ? null : entry.id)}
-                      disabled={busy}
-                      aria-expanded={confirmRestoreId === entry.id}
-                    >
-                      Restore Version
-                    </button>
-                  {/if}
-                </div>
-                {#if confirmRestoreId === entry.id}
-                  <!-- role=region + aria-live, NOT alertdialog: a nested
-                       alertdialog inside an open dialog is invalid ARIA. -->
-                  <div class="confirm" role="region" aria-live="polite" aria-label="Confirm restore">
-                    <p>
-                      This returns your project files to how they were at this
-                      snapshot. A backup of the current state is saved first, so
-                      nothing is ever lost — you can come back here to undo this.
-                    </p>
-                    <div class="confirm-actions">
-                      <button class="ghost" onclick={() => (confirmRestoreId = null)} disabled={busy}>
-                        Cancel
-                      </button>
-                      <button class="primary" onclick={() => restore(entry.id)} disabled={busy}>
-                        {busy ? "Restoring…" : "Yes, restore this version"}
-                      </button>
-                    </div>
-                  </div>
-                {/if}
-              </li>
+            {#each rows as row (row.kind === "single" ? row.entry.id : row.entries[0]!.id)}
+              {#if row.kind === "single"}
+                <li class="history-item">
+                  {@render entryRow(row.entry)}
+                </li>
+              {:else}
+                <!-- RC1-3: consecutive automatic snapshots collapse into one
+                     expandable row; each inner entry stays restorable. -->
+                <li class="history-item auto-group">
+                  <details>
+                    <summary>
+                      <span class="entry-message">Automatic snapshots ({row.entries.length})</span>
+                      <span class="entry-meta" title={fullTime(row.entries[0]!.timestamp)}>
+                        latest {relativeTime(row.entries[0]!.timestamp)}
+                      </span>
+                    </summary>
+                    <ul class="auto-group-list">
+                      {#each row.entries as entry (entry.id)}
+                        <li class="auto-group-item">
+                          {@render entryRow(entry)}
+                        </li>
+                      {/each}
+                    </ul>
+                  </details>
+                </li>
+              {/if}
             {/each}
           </ul>
         {/if}
+      {:else if insideVersionedProject}
+        <!-- SWEEP-2: the folder sits inside an existing versioned project —
+             a nested history here would silently break the outer one. -->
+        <p class="lede">
+          This folder is part of a larger folder that already keeps version
+          history, so print-md doesn't manage a separate history here — two
+          overlapping histories would conflict with each other.
+        </p>
+        <p class="hint">
+          Your work is still covered by the larger folder's history. To give
+          this project its own history, move it to a folder of its own first.
+        </p>
       {:else}
         <p class="hint">Version history isn't available for this project.</p>
       {/if}
@@ -466,6 +569,35 @@
     border: 1px solid var(--app-border);
     border-radius: 8px;
     padding: 10px 12px;
+  }
+  /* Collapsed run of automatic snapshots (RC1-3). */
+  .auto-group details > summary {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    list-style: none;
+  }
+  .auto-group details > summary::-webkit-details-marker { display: none; }
+  .auto-group details > summary::before {
+    content: "▸";
+    color: var(--app-text-faint);
+    font-size: 11px;
+  }
+  .auto-group details[open] > summary::before { content: "▾"; }
+  .auto-group .entry-message { font-weight: 500; color: var(--app-text-secondary); }
+  .auto-group-list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0 0 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .auto-group-item {
+    border-top: 1px solid var(--app-border-subtle);
+    padding-top: 8px;
   }
   .entry-row {
     display: flex;

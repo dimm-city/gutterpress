@@ -140,8 +140,18 @@
     );
   });
 
+  // Discovered list expand/collapse
+  const DISCOVERED_CAP = 8;
+  let discoveredExpanded = $state(false);
+
+  let visibleDiscovered = $derived(
+    discoveredExpanded ? filteredDiscovered : filteredDiscovered.slice(0, DISCOVERED_CAP)
+  );
+
   // Combined ordered list used for arrow-key navigation: filtered favorites,
-  // then filtered recents, then filtered discovered.
+  // then filtered recents, then VISIBLE discovered. Must mirror the rows the
+  // DOM actually renders — deriving from filteredDiscovered (uncapped) would
+  // desync arrow-key/Enter indices whenever the Discovered list is collapsed.
   let allRows = $derived.by<
     Array<{ path: string; title: string; exists: boolean; isFavorite: boolean }>
   >(() => {
@@ -152,7 +162,7 @@
       exists: r.exists,
       isFavorite: false,
     }));
-    const discoveredRows = filteredDiscovered.map((d) => ({
+    const discoveredRows = visibleDiscovered.map((d) => ({
       path: d.path,
       title: d.title,
       exists: true,
@@ -245,6 +255,12 @@
     return favorites.some((f) => f.path === path);
   }
 
+  // Reset expansion whenever the discovered list changes (e.g. new filter term)
+  $effect(() => {
+    filteredDiscovered; // track
+    discoveredExpanded = false;
+  });
+
   // Arrow key navigation across all rows
   function onListKeydown(e: KeyboardEvent, rowIndex: number, path: string, title: string) {
     // Let action buttons (star/remove) handle their own Enter/Space natively.
@@ -290,7 +306,7 @@
     </header>
 
     <div class="dialog-body">
-      <!-- Input row -->
+      <!-- Input row — always visible, never scrolls -->
       <div class="input-row">
         <label class="field" for="location-input">
           <span>Folder path or web address</span>
@@ -301,7 +317,7 @@
             bind:this={input}
             bind:value={location}
             type="text"
-            placeholder="~/my-book  or  https://example.com/doc/"
+            placeholder='~/my-book  or  https://example.com/doc/'
             spellcheck="false"
             autocomplete="off"
             onkeydown={(e) => {
@@ -316,7 +332,9 @@
               }
             }}
           />
-          <button class="browse-btn ghost" onclick={browse} title="Browse for a folder">Browse…</button>
+          {#if isDesktop()}
+            <button class="browse-btn ghost" onclick={browse} title="Browse for a folder">Browse…</button>
+          {/if}
         </div>
       </div>
 
@@ -324,148 +342,214 @@
         <p class="error" role="alert">{error}</p>
       {/if}
 
-      <!-- Favorites section -->
-      {#if filteredFavorites.length > 0}
-        <section class="list-section">
-          <h3 class="list-heading">Favorites</h3>
-          <ul class="list" role="listbox" aria-label="Favorite folders">
-            {#each filteredFavorites as fav, i}
-              {@const rowIndex = i}
-              <li
-                class="list-row"
-                class:dimmed={!fav.exists}
-                role="option"
-                aria-selected="false"
-                aria-disabled={!fav.exists}
-                tabindex={fav.exists ? 0 : -1}
-                onclick={() => fav.exists && openRow(fav.path)}
-                onkeydown={(e) => onListKeydown(e, rowIndex, fav.path, fav.title)}
-                title={fav.exists ? fav.path : `${fav.path} (folder not found)`}
-              >
-                <span class="row-icon" aria-hidden="true">★</span>
-                <span class="row-info">
-                  <span class="row-title">{fav.title || fav.path.split(/[\\/]/).filter(Boolean).pop()}</span>
-                  <span class="row-path">{fav.path}{!fav.exists ? " — folder not found" : ""}</span>
-                </span>
-                <div class="row-actions">
-                  <button
-                    class="icon-action star active"
-                    title="Remove from favorites"
-                    aria-label="Remove from favorites"
-                    onclick={(e) => toggleFavorite(fav.path, fav.title, e)}
-                  >★</button>
-                </div>
-              </li>
-            {/each}
-          </ul>
-        </section>
-      {/if}
-
-      <!-- Recently Opened section -->
-      {#if filteredRecents.length > 0}
-        <section class="list-section">
-          <h3 class="list-heading">Recently Opened</h3>
-          <ul class="list" role="listbox" aria-label="Recently opened folders">
-            {#each filteredRecents as recent, i}
-              {@const rowIndex = filteredFavorites.length + i}
-              {@const favorited = isFavorited(recent.path)}
-              <li
-                class="list-row"
-                class:dimmed={!recent.exists}
-                role="option"
-                aria-selected="false"
-                aria-disabled={!recent.exists}
-                tabindex={recent.exists ? 0 : -1}
-                onclick={() => recent.exists && openRow(recent.path)}
-                onkeydown={(e) => onListKeydown(e, rowIndex, recent.path, recent.title)}
-                title={recent.exists ? recent.path : `${recent.path} (folder not found)`}
-              >
-                <span class="row-icon" aria-hidden="true">📁</span>
-                <span class="row-info">
-                  <span class="row-title">{recent.title || recent.path.split(/[\\/]/).filter(Boolean).pop()}</span>
-                  <span class="row-path">{recent.path}{!recent.exists ? " — folder not found" : ""}</span>
-                </span>
-                <div class="row-actions">
-                  <button
-                    class="icon-action star"
-                    class:active={favorited}
-                    title={favorited ? "Remove from favorites" : "Add to favorites"}
-                    aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
-                    onclick={(e) => toggleFavorite(recent.path, recent.title, e)}
-                  >★</button>
-                  <button
-                    class="icon-action remove"
-                    title="Remove from recents"
-                    aria-label="Remove from recently opened"
-                    onclick={(e) => removeRecent(recent.path, e)}
-                  >&times;</button>
-                </div>
-              </li>
-            {/each}
-          </ul>
-        </section>
-      {/if}
-
-      <!-- Discovered section (#27): projects found by the background scan that
-           are not already shown in Favorites / Recently Opened. -->
-      {#if filteredDiscovered.length > 0}
-        <section class="list-section">
-          <h3 class="list-heading">Discovered</h3>
-          <ul class="list" role="listbox" aria-label="Discovered projects">
-            {#each filteredDiscovered as proj, i}
-              {@const rowIndex = filteredFavorites.length + filteredRecents.length + i}
-              <li
-                class="list-row"
-                role="option"
-                aria-selected="false"
-                tabindex="0"
-                onclick={() => openRow(proj.path)}
-                onkeydown={(e) => onListKeydown(e, rowIndex, proj.path, proj.title)}
-                title={proj.path}
-              >
-                <span class="row-icon" aria-hidden="true">🔍</span>
-                <span class="row-info">
-                  <span class="row-title">{proj.title || proj.path.split(/[\\/]/).filter(Boolean).pop()}</span>
-                  <span class="row-path">{proj.path}</span>
-                </span>
-                <div class="row-actions">
-                  <button
-                    class="icon-action star"
-                    title="Add to favorites"
-                    aria-label="Add to favorites"
-                    onclick={(e) => toggleFavorite(proj.path, proj.title, e)}
-                  >★</button>
-                </div>
-              </li>
-            {/each}
-          </ul>
-        </section>
-      {/if}
-
-      {#if !loading && allRows.length === 0}
-        {#if filterTerm}
-          <p class="empty-hint">No projects match “{location.trim()}”.</p>
-        {:else if favorites.length === 0 && recents.length === 0}
-          <p class="empty-hint">No recent projects yet. Open a folder to get started.</p>
+      <!-- Scrollable lists region — only this area scrolls -->
+      <div class="lists">
+        <!-- Favorites section -->
+        {#if filteredFavorites.length > 0}
+          <section class="list-section">
+            <h3 class="list-heading">Favorites</h3>
+            <ul class="list" role="listbox" aria-label="Favorite folders">
+              {#each filteredFavorites as fav, i}
+                {@const rowIndex = i}
+                <li
+                  class="list-row"
+                  class:dimmed={!fav.exists}
+                  role="option"
+                  aria-selected="false"
+                  aria-disabled={!fav.exists}
+                  tabindex={fav.exists ? 0 : -1}
+                  onclick={() => fav.exists && openRow(fav.path)}
+                  onkeydown={(e) => onListKeydown(e, rowIndex, fav.path, fav.title)}
+                  title={fav.exists ? fav.path : `${fav.path} (folder not found)`}
+                >
+                  <span class="row-icon" aria-hidden="true">★</span>
+                  <span class="row-info">
+                    <span class="row-title">{fav.title || fav.path.split(/[\\/]/).filter(Boolean).pop()}</span>
+                    <span class="row-path">{fav.path}{!fav.exists ? " — folder not found" : ""}</span>
+                  </span>
+                  <div class="row-actions">
+                    <button
+                      class="icon-action star active"
+                      title="Remove from favorites"
+                      aria-label="Remove from favorites"
+                      onclick={(e) => toggleFavorite(fav.path, fav.title, e)}
+                    >★</button>
+                  </div>
+                </li>
+              {/each}
+            </ul>
+          </section>
         {/if}
-      {/if}
 
-      <footer class="actions">
-        {#if onOpenGitHub}
-          <button
-            class="ghost github-btn"
-            onclick={() => {
-              open = false;
-              onOpenGitHub?.();
-            }}
-            title="Open a book project stored on GitHub"
-          >Open from GitHub…</button>
+        <!-- Recently Opened section: always shown when not filtering (desktop
+             AND web — host-only gating belongs on actions, not on the list);
+             shows placeholder copy on fresh installs so the section isn't
+             invisible. -->
+        {#if !filterTerm}
+          <section class="list-section">
+            <h3 class="list-heading">Recently Opened</h3>
+            {#if filteredRecents.length > 0}
+              <ul class="list" role="listbox" aria-label="Recently opened folders">
+                {#each filteredRecents as recent, i}
+                  {@const rowIndex = filteredFavorites.length + i}
+                  {@const favorited = isFavorited(recent.path)}
+                  <li
+                    class="list-row"
+                    class:dimmed={!recent.exists}
+                    role="option"
+                    aria-selected="false"
+                    aria-disabled={!recent.exists}
+                    tabindex={recent.exists ? 0 : -1}
+                    onclick={() => recent.exists && openRow(recent.path)}
+                    onkeydown={(e) => onListKeydown(e, rowIndex, recent.path, recent.title)}
+                    title={recent.exists ? recent.path : `${recent.path} (folder not found)`}
+                  >
+                    <span class="row-icon" aria-hidden="true">📁</span>
+                    <span class="row-info">
+                      <span class="row-title">{recent.title || recent.path.split(/[\\/]/).filter(Boolean).pop()}</span>
+                      <span class="row-path">{recent.path}{!recent.exists ? " — folder not found" : ""}</span>
+                    </span>
+                    <div class="row-actions">
+                      <button
+                        class="icon-action star"
+                        class:active={favorited}
+                        title={favorited ? "Remove from favorites" : "Add to favorites"}
+                        aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
+                        onclick={(e) => toggleFavorite(recent.path, recent.title, e)}
+                      >★</button>
+                      <button
+                        class="icon-action remove"
+                        title="Remove from recents"
+                        aria-label="Remove from recently opened"
+                        onclick={(e) => removeRecent(recent.path, e)}
+                      >&times;</button>
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            {:else if !loading}
+              <p class="empty-section-hint">No recent projects yet — open a folder to get started.</p>
+            {/if}
+          </section>
+        {:else if filterTerm && filteredRecents.length > 0}
+          <!-- Filter-active view: show matching recents without section gating -->
+          <section class="list-section">
+            <h3 class="list-heading">Recently Opened</h3>
+            <ul class="list" role="listbox" aria-label="Recently opened folders">
+              {#each filteredRecents as recent, i}
+                {@const rowIndex = filteredFavorites.length + i}
+                {@const favorited = isFavorited(recent.path)}
+                <li
+                  class="list-row"
+                  class:dimmed={!recent.exists}
+                  role="option"
+                  aria-selected="false"
+                  aria-disabled={!recent.exists}
+                  tabindex={recent.exists ? 0 : -1}
+                  onclick={() => recent.exists && openRow(recent.path)}
+                  onkeydown={(e) => onListKeydown(e, rowIndex, recent.path, recent.title)}
+                  title={recent.exists ? recent.path : `${recent.path} (folder not found)`}
+                >
+                  <span class="row-icon" aria-hidden="true">📁</span>
+                  <span class="row-info">
+                    <span class="row-title">{recent.title || recent.path.split(/[\\/]/).filter(Boolean).pop()}</span>
+                    <span class="row-path">{recent.path}{!recent.exists ? " — folder not found" : ""}</span>
+                  </span>
+                  <div class="row-actions">
+                    <button
+                      class="icon-action star"
+                      class:active={favorited}
+                      title={favorited ? "Remove from favorites" : "Add to favorites"}
+                      aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
+                      onclick={(e) => toggleFavorite(recent.path, recent.title, e)}
+                    >★</button>
+                    <button
+                      class="icon-action remove"
+                      title="Remove from recents"
+                      aria-label="Remove from recently opened"
+                      onclick={(e) => removeRecent(recent.path, e)}
+                    >&times;</button>
+                  </div>
+                </li>
+              {/each}
+            </ul>
+          </section>
         {/if}
-        <span class="actions-spacer"></span>
-        <button class="ghost" onclick={close}>Cancel</button>
-        <button class="primary" onclick={submit} disabled={!canOpen}>Open</button>
-      </footer>
+
+        <!-- Discovered section (#27): projects found by the background scan that
+             are not already shown in Favorites / Recently Opened. Capped at
+             DISCOVERED_CAP rows; a "Show all (N)" button reveals the rest. -->
+        {#if filteredDiscovered.length > 0}
+          <section class="list-section">
+            <h3 class="list-heading">
+              Discovered
+              {#if filteredDiscovered.length > DISCOVERED_CAP}
+                <span class="list-heading-count">({filteredDiscovered.length})</span>
+              {/if}
+            </h3>
+            <ul class="list" role="listbox" aria-label="Discovered projects">
+              {#each visibleDiscovered as proj, i}
+                {@const rowIndex = filteredFavorites.length + filteredRecents.length + i}
+                <li
+                  class="list-row"
+                  role="option"
+                  aria-selected="false"
+                  tabindex="0"
+                  onclick={() => openRow(proj.path)}
+                  onkeydown={(e) => onListKeydown(e, rowIndex, proj.path, proj.title)}
+                  title={proj.path}
+                >
+                  <span class="row-icon" aria-hidden="true">🔍</span>
+                  <span class="row-info">
+                    <span class="row-title">{proj.title || proj.path.split(/[\\/]/).filter(Boolean).pop()}</span>
+                    <span class="row-path">{proj.path}</span>
+                  </span>
+                  <div class="row-actions">
+                    <button
+                      class="icon-action star"
+                      title="Add to favorites"
+                      aria-label="Add to favorites"
+                      onclick={(e) => toggleFavorite(proj.path, proj.title, e)}
+                    >★</button>
+                  </div>
+                </li>
+              {/each}
+            </ul>
+            {#if filteredDiscovered.length > DISCOVERED_CAP}
+              <button
+                class="show-all-btn"
+                onclick={() => (discoveredExpanded = !discoveredExpanded)}
+              >
+                {discoveredExpanded
+                  ? "Show fewer"
+                  : `Show all ${filteredDiscovered.length} discovered projects`}
+              </button>
+            {/if}
+          </section>
+        {/if}
+
+        {#if !loading && allRows.length === 0 && filterTerm}
+          <p class="empty-hint">No projects match "{location.trim()}".</p>
+        {/if}
+      </div>
     </div>
+
+    <!-- Actions footer: lives OUTSIDE .dialog-body so it is never scrolled away -->
+    <footer class="actions">
+      {#if onOpenGitHub}
+        <button
+          class="ghost github-btn"
+          onclick={() => {
+            open = false;
+            onOpenGitHub?.();
+          }}
+          title="Open a book project stored on GitHub"
+        >Open from GitHub…</button>
+      {/if}
+      <span class="actions-spacer"></span>
+      <button class="ghost" onclick={close}>Cancel</button>
+      <button class="primary" onclick={submit} disabled={!canOpen}>Open</button>
+    </footer>
   </div>
 {/if}
 
@@ -519,12 +603,24 @@
   }
   .close:hover { color: var(--app-text); }
   .dialog-body {
-    padding: 16px 18px;
+    padding: 16px 18px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    /* No overflow here — only .lists scrolls */
+    flex: 1;
+    min-height: 0;
+  }
+  /* Scrollable region that contains ONLY the list sections */
+  .lists {
     display: flex;
     flex-direction: column;
     gap: 12px;
     overflow-y: auto;
     flex: 1;
+    min-height: 0;
+    /* Slight inset so focus rings on list rows aren't clipped */
+    padding-right: 2px;
   }
   .input-row { display: flex; flex-direction: column; gap: 6px; }
   .field { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
@@ -559,12 +655,42 @@
   .list-section { display: flex; flex-direction: column; gap: 4px; }
   .list-heading {
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--app-text-faint);
+    letter-spacing: 0.08em;
+    color: var(--app-text-muted);
     margin: 0;
     padding: 0 2px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .list-heading-count {
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--app-text-faint);
+    font-size: 11px;
+  }
+  .empty-section-hint {
+    font-size: 12px;
+    color: var(--app-text-faint);
+    margin: 2px 0 0 2px;
+    font-style: italic;
+  }
+  .show-all-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--app-focus-ring);
+    padding: 4px 2px;
+    text-align: left;
+    border-radius: 4px;
+  }
+  .show-all-btn:hover {
+    color: var(--app-accent-hover);
+    text-decoration: underline;
   }
   .list {
     list-style: none;
@@ -656,16 +782,16 @@
   .icon-action.remove { color: var(--app-text-faint); }
   .icon-action.remove:hover { color: var(--app-error-text); }
 
-  /* Footer actions */
+  /* Footer actions — direct child of .dialog, never scrolls away */
   .actions-spacer { flex: 1; }
   .actions {
     display: flex;
     gap: 8px;
     justify-content: flex-end;
-    padding-top: 12px;
-    margin-top: 4px;
+    padding: 10px 18px;
     border-top: 1px solid var(--app-border-subtle);
     flex-shrink: 0;
+    background: var(--app-surface);
   }
   .actions button {
     padding: 6px 14px;

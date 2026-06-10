@@ -4,7 +4,7 @@
  * Validates file watching, debouncing, rebuild triggering, and state management
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -190,6 +190,179 @@ describe('createFileWatcher', () => {
 
     await watcher.close();
   }, 10000);
+
+  /** Mock preview server that records every broadcast. */
+  function attachBroadcastRecorder(s: ServerState) {
+    const calls: { type: string; arg?: string }[] = [];
+    s.previewServer = {
+      port: 0,
+      async close() {},
+      broadcastReload() { calls.push({ type: 'full-reload' }); },
+      broadcastCssUpdate(p: string) { calls.push({ type: 'css-update', arg: p }); },
+      broadcastContentUpdate(f: string) { calls.push({ type: 'content-update', arg: f }); },
+    } as any;
+    return calls;
+  }
+
+  /** Wait until the debounced rebuild has fired and finished. */
+  async function waitForRebuild(s: ServerState, calls: { type: string }[]) {
+    for (let i = 0; i < 400; i++) {
+      await wait(25);
+      if (calls.length > 0 && !s.isRebuilding) return;
+    }
+  }
+
+  test('single markdown change broadcasts a content-update splice', async () => {
+    await writeFile(join(testDir, 'chapter-02.md'), '# Two');
+    const calls = attachBroadcastRecorder(state);
+    const watcher = createFileWatcher(state);
+    state.currentWatcher = watcher;
+    await wait(200);
+
+    watcher.emit('all', 'change', join(testDir, 'chapter-02.md'));
+    await waitForRebuild(state, calls);
+
+    expect(calls).toEqual([{ type: 'content-update', arg: 'chapter-02.md' }]);
+    await watcher.close();
+  }, 30000);
+
+  test('multiple files changed in one debounce window trigger a full reload, not a splice', async () => {
+    // Simulates a multi-file disk rewrite (version restore / publish merge):
+    // a burst of events inside one debounce window must NOT collapse into a
+    // single-chapter splice — that leaves the other chapters stale.
+    await writeFile(join(testDir, 'chapter-02.md'), '# Two');
+    const calls = attachBroadcastRecorder(state);
+    const watcher = createFileWatcher(state);
+    state.currentWatcher = watcher;
+    await wait(200);
+
+    watcher.emit('all', 'change', join(testDir, 'chapter-01.md'));
+    watcher.emit('all', 'change', join(testDir, 'chapter-02.md'));
+    await waitForRebuild(state, calls);
+
+    expect(calls).toEqual([{ type: 'full-reload' }]);
+    await watcher.close();
+  }, 30000);
+
+  test('css-only burst hot-swaps every changed stylesheet without a reload', async () => {
+    await writeFile(join(testDir, 'a.css'), 'body{color:red}');
+    await writeFile(join(testDir, 'b.css'), 'body{margin:0}');
+    const calls = attachBroadcastRecorder(state);
+    const watcher = createFileWatcher(state);
+    state.currentWatcher = watcher;
+    await wait(200);
+
+    watcher.emit('all', 'change', join(testDir, 'a.css'));
+    watcher.emit('all', 'change', join(testDir, 'b.css'));
+    await waitForRebuild(state, calls);
+
+    expect(calls.map((c) => c.type)).toEqual(['css-update', 'css-update']);
+    expect(calls.map((c) => (c as any).arg).sort()).toEqual(['a.css', 'b.css']);
+    await watcher.close();
+  }, 30000);
+
+  test('broadcast chapter paths use forward slashes (never backslashes)', async () => {
+    // A chapter in a subdirectory must broadcast as "sub/file.md" so the SPA's
+    // forward-slash editorChapter comparison matches on every platform.
+    const { mkdir } = await import('fs/promises');
+    await mkdir(join(testDir, 'sub'), { recursive: true });
+    await writeFile(join(testDir, 'sub', 'chapter-03.md'), '# Three');
+    const calls = attachBroadcastRecorder(state);
+    const watcher = createFileWatcher(state);
+    state.currentWatcher = watcher;
+    await wait(200);
+
+    watcher.emit('all', 'change', join(testDir, 'sub', 'chapter-03.md'));
+    await waitForRebuild(state, calls);
+
+    expect(calls).toEqual([{ type: 'content-update', arg: 'sub/chapter-03.md' }]);
+    expect(calls[0]!.arg).not.toMatch(/\\/);
+    await watcher.close();
+  }, 30000);
+
+  test('backslash separators in the relative path are normalized in the broadcast', async () => {
+    // Windows can't be emulated here, so simulate a path whose relative part
+    // contains a literal backslash separator: the emitted value must come out
+    // with forward slashes and no backslash at all.
+    const calls = attachBroadcastRecorder(state);
+    const watcher = createFileWatcher(state);
+    state.currentWatcher = watcher;
+    await wait(200);
+
+    watcher.emit('all', 'change', join(testDir, 'sub\\chapter-04.md'));
+    await waitForRebuild(state, calls);
+
+    expect(calls.length).toBe(1);
+    expect(calls[0]!.type).toBe('content-update');
+    expect(calls[0]!.arg).toBe('sub/chapter-04.md');
+    expect(calls[0]!.arg).not.toMatch(/\\/);
+    await watcher.close();
+  }, 30000);
+
+  test('a change arriving during an in-flight rebuild triggers a follow-up rebuild without a new fs event', async () => {
+    await writeFile(join(testDir, 'chapter-02.md'), '# Two');
+
+    // Block the FIRST rebuild mid-flight by gating loadManifest.
+    const manifestMod = await import('../lib/manifest');
+    const realLoadManifest = manifestMod.loadManifest;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let loadCalls = 0;
+    mock.module('../lib/manifest', () => ({
+      ...manifestMod,
+      loadManifest: async (p: string) => {
+        loadCalls++;
+        if (loadCalls === 1) await gate;
+        return realLoadManifest(p);
+      },
+    }));
+
+    try {
+      const calls = attachBroadcastRecorder(state);
+      const watcher = createFileWatcher(state);
+      state.currentWatcher = watcher;
+      await wait(200);
+
+      // First change → debounce fires → rebuild starts and blocks on the gate.
+      watcher.emit('all', 'change', join(testDir, 'chapter-01.md'));
+      for (let i = 0; i < 400 && loadCalls === 0; i++) await wait(10);
+      expect(loadCalls).toBe(1);
+
+      // Second change lands DURING the in-flight rebuild. Its debounce timer
+      // fires into the isRebuilding guard — without the finally re-arm it
+      // would be orphaned until some future fs event.
+      watcher.emit('all', 'change', join(testDir, 'chapter-02.md'));
+      await wait(400); // well past DEBOUNCE.FILE_WATCH
+      expect(calls.length).toBe(0); // first rebuild still blocked, nothing broadcast
+
+      release();
+
+      // Both rebuilds complete with NO further fs events.
+      for (let i = 0; i < 400; i++) {
+        await wait(25);
+        if (calls.length >= 2 && !state.isRebuilding) break;
+      }
+      expect(calls.length).toBe(2);
+      expect(calls[1]).toEqual({ type: 'content-update', arg: 'chapter-02.md' });
+      await watcher.close();
+    } finally {
+      // Restore the real module for the remaining tests.
+      mock.module('../lib/manifest', () => ({ ...manifestMod }));
+    }
+  }, 60000);
+
+  test('deleted markdown file triggers a full reload, not a splice', async () => {
+    const calls = attachBroadcastRecorder(state);
+    const watcher = createFileWatcher(state);
+    state.currentWatcher = watcher;
+    await wait(200);
+
+    watcher.emit('all', 'unlink', join(testDir, 'chapter-99.md'));
+    await waitForRebuild(state, calls);
+
+    expect(calls).toEqual([{ type: 'full-reload' }]);
+    await watcher.close();
+  }, 30000);
 
   test('prevents overlapping rebuilds with isRebuilding flag', async () => {
     state.isRebuilding = true;

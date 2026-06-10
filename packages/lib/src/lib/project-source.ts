@@ -21,6 +21,7 @@
  * reworking callers.
  */
 import { stat, readFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 /**
@@ -33,6 +34,15 @@ export type ProjectSource =
   | {
       type: "local-folder";
       path: string;
+      /**
+       * Nearest ANCESTOR directory that contains a `.git` (the folder itself
+       * has none). Present when the project folder lives INSIDE an existing
+       * Git repository — enabling version history here would `git init` a
+       * nested shadow repo that silently detaches the folder from the outer
+       * repo's tracking, so `capabilitiesFor` suppresses
+       * `canEnableVersionHistory` when this is set.
+       */
+      enclosingRepoDir?: string;
     }
   | {
       type: "local-git-folder";
@@ -121,6 +131,31 @@ export function parseHeadBranch(headText: string): string | undefined {
 }
 
 /**
+ * Walk PARENT directories of `folderPath` looking for a `.git` directory
+ * (the folder's own `.git` is the `local-git-folder` case, not this).
+ * Returns the nearest enclosing repo root, or `undefined` when none exists.
+ *
+ * Stops at the user's home directory (a repo above `~` is OS/system tooling,
+ * not the author's project) and at the filesystem root. Pure `node:fs` stats —
+ * no git involvement — so the walk costs one `stat` per ancestor.
+ */
+export async function findEnclosingRepoDir(
+  folderPath: string,
+): Promise<string | undefined> {
+  const home = path.resolve(os.homedir());
+  let dir = path.resolve(folderPath);
+  // Hard cap as a defensive bound against pathological path layouts.
+  for (let i = 0; i < 64; i++) {
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined; // filesystem root reached
+    dir = parent;
+    if (await isDirectory(path.join(dir, ".git"))) return dir;
+    if (dir === home) return undefined; // never scan above the user's home
+  }
+  return undefined;
+}
+
+/**
  * Classify a folder by inspecting it for a `.git` directory and, if present,
  * reading `.git/config` (for a remote) and `.git/HEAD` (for the branch).
  *
@@ -133,7 +168,16 @@ export async function detectProjectSource(
 ): Promise<ProjectSource> {
   const gitDir = path.join(folderPath, ".git");
   if (!(await isDirectory(gitDir))) {
-    return { type: "local-folder", path: folderPath };
+    // No `.git` of its own — but it may sit INSIDE an existing repo, in which
+    // case offering "Enable Version History" would create a nested shadow
+    // repo (SWEEP-2). Record the enclosing root so capabilities can suppress
+    // the offer and the UI can explain why.
+    const enclosingRepoDir = await findEnclosingRepoDir(folderPath);
+    return {
+      type: "local-folder",
+      path: folderPath,
+      ...(enclosingRepoDir !== undefined ? { enclosingRepoDir } : {}),
+    };
   }
 
   let remoteUrl: string | undefined;
@@ -166,6 +210,9 @@ export async function detectProjectSource(
  *
  * - `local-folder`: read/write only; version history can be ENABLED (a later
  *   `git init`, #13/#25) but no snapshot/history/restore until then; no publish.
+ *   EXCEPTION (SWEEP-2): when the folder sits inside an existing Git repo
+ *   (`enclosingRepoDir` set), enabling is suppressed — a nested `git init`
+ *   would shadow the outer repo's tracking of these files.
  * - `local-git-folder`: version history already on, so snapshot/history/restore
  *   are available. Publish is offered only when a remote exists (the app can
  *   push via the user's externally-configured Git auth — #16).
@@ -177,7 +224,7 @@ export function capabilitiesFor(source: ProjectSource): ProjectCapabilities {
       return {
         canRead: true,
         canWriteLocal: true,
-        canEnableVersionHistory: true,
+        canEnableVersionHistory: source.enclosingRepoDir === undefined,
         canSnapshot: false,
         canViewHistory: false,
         canRestoreSnapshot: false,

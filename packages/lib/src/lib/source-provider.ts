@@ -162,6 +162,20 @@ class LocalFolderSourceProvider implements SourceProvider {
   initVersionHistory(
     options: InitVersionHistoryOptions,
   ): Promise<ProjectSource> {
+    // SWEEP-2 guard (defense in depth — capabilitiesFor already suppresses the
+    // UI offer): never `git init` inside an existing repo. A nested `.git`
+    // silently shadows the outer repo's tracking of these files.
+    if (
+      this.source.type === "local-folder" &&
+      this.source.enclosingRepoDir !== undefined
+    ) {
+      return Promise.reject(
+        new Error(
+          "This folder is already inside a versioned project, so print-md " +
+            "won't create a separate history here.",
+        ),
+      );
+    }
     const dir = options.projectDir;
     return withRepoLock(dir, async () => {
       await git.init({ fs, dir, defaultBranch: DEFAULT_BRANCH });
@@ -310,8 +324,12 @@ export async function snapshotWorkingTreeUnlocked(
   };
 }
 
-/** True for the friendly "nothing new to save" rejection from `snapshot()`. */
-function isNoChangesError(e: unknown): boolean {
+/**
+ * True for the friendly "nothing new to save" rejection from `snapshot()`.
+ * Exported (RC1-3) so the auto-snapshot scheduler in the viewer host can
+ * swallow the expected clean-tree rejection without string-matching itself.
+ */
+export function isNoChangesError(e: unknown): boolean {
   return e instanceof Error && /no changes since the last snapshot/i.test(e.message);
 }
 
@@ -362,6 +380,66 @@ export interface RestoreVersionResult {
 /** Message recorded on the automatic pre-restore safety snapshot. */
 export const RESTORE_BACKUP_MESSAGE =
   "Automatic backup before restoring an earlier version";
+
+// ── Automatic snapshots (RC1-3) ───────────────────────────────────────────────
+
+/**
+ * Message recorded on every host-scheduled automatic snapshot. The viewer's
+ * history UI groups consecutive entries carrying EXACTLY this message, so the
+ * string is a contract — change it only with a matching UI update.
+ */
+export const AUTO_SNAPSHOT_MESSAGE = "Automatic snapshot";
+
+/** User-facing auto-snapshot policy (mirrors the viewer's settings group). */
+export interface AutoSnapshotPolicy {
+  /** Master switch — automatic snapshots default ON. */
+  autoSnapshot: boolean;
+  /** Minutes of quiet after the last edit before a snapshot fires. */
+  autoSnapshotMinutes: number;
+}
+
+/** Cadence bounds: never below 5 minutes (commit-per-keystroke guard), never
+ * above a day (a longer value means the user effectively wants it off). */
+export const AUTO_SNAPSHOT_MIN_MINUTES = 5;
+export const AUTO_SNAPSHOT_MAX_MINUTES = 24 * 60;
+export const AUTO_SNAPSHOT_DEFAULT_MINUTES = 10;
+
+/**
+ * Resolve the debounce delay (ms) for the host's auto-snapshot timer, or
+ * `null` when automatic snapshots are disabled. Pure — the testable core of
+ * the trigger policy (the timer itself lives in the Electron main process).
+ *
+ * Defensive about persisted settings: a missing policy means "defaults"
+ * (enabled, 10 min); a non-finite/absurd minutes value falls back to the
+ * default and is then clamped into [5, 1440].
+ */
+export function autoSnapshotDelayMs(
+  policy: Partial<AutoSnapshotPolicy> | undefined,
+): number | null {
+  const enabled = policy?.autoSnapshot ?? true;
+  if (!enabled) return null;
+  const raw = policy?.autoSnapshotMinutes;
+  const minutes =
+    typeof raw === "number" && Number.isFinite(raw) && raw > 0
+      ? raw
+      : AUTO_SNAPSHOT_DEFAULT_MINUTES;
+  const clamped = Math.min(
+    AUTO_SNAPSHOT_MAX_MINUTES,
+    Math.max(AUTO_SNAPSHOT_MIN_MINUTES, minutes),
+  );
+  return clamped * 60_000;
+}
+
+/**
+ * True when a changed path is internal Git state (any `.git` segment). The
+ * host's project watcher and auto-snapshot triggers must IGNORE these: the
+ * automatic snapshot itself writes under `.git`, and treating that as a
+ * content change would re-trigger preview reloads / re-arm the timer forever.
+ * Accepts absolute paths, relative paths, or bare basenames.
+ */
+export function isGitInternalPath(p: string): boolean {
+  return p.split(/[\\/]+/).some((segment) => segment === ".git");
+}
 
 /**
  * Restore the working tree to a prior snapshot SAFELY (#13): if the current

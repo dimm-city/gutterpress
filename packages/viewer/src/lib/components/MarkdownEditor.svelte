@@ -55,7 +55,7 @@
      * visible line on scroll, or the caret line on a deliberate (non-typing)
      * caret move. Debounced via rAF.
      */
-    onAnchorLine?: (line: number) => void;
+    onAnchorLine?: (line: number, origin: "scroll" | "caret") => void;
   } = $props();
 
   let host = $state<HTMLDivElement | undefined>(undefined);
@@ -71,12 +71,12 @@
   let lastEmittedLine = -1;
   let anchorRaf = 0;
 
-  function emitAnchorLine(line: number): void {
+  function emitAnchorLine(line: number, origin: "scroll" | "caret"): void {
     if (!onAnchorLine) return;
     if (Date.now() < suppressEmitUntil) return;
     if (line === lastEmittedLine) return;
     lastEmittedLine = line;
-    onAnchorLine(line);
+    onAnchorLine(line, origin);
   }
 
   // Top visible source line = doc line at the top-left of the scroll viewport.
@@ -224,6 +224,7 @@
           if (onAnchorLine && update.selectionSet && !update.docChanged) {
             emitAnchorLine(
               update.state.doc.lineAt(update.state.selection.main.head).number,
+              "caret",
             );
           }
         }),
@@ -254,7 +255,7 @@
         anchorRaf = requestAnimationFrame(() => {
           anchorRaf = 0;
           const line = topVisibleLine(v);
-          if (line != null) emitAnchorLine(line);
+          if (line != null) emitAnchorLine(line, "scroll");
         });
       };
       v.scrollDOM.addEventListener("scroll", onScroll, { passive: true });
@@ -350,8 +351,13 @@
     // Suppress the echo across the async scroll event the dispatch triggers.
     suppressEmitUntil = Date.now() + 300;
     lastEmittedLine = clamped;
+    // y:'start' (not 'center'): the preview emits its TOP-visible block
+    // (sourceLineChanged) and editor→preview scroll sync anchors the resolved
+    // block to the preview's top — anchoring the revealed line to the editor's
+    // top keeps both panes agreeing on the same anchor point. Centering here
+    // gave a constant ~half-viewport disagreement (QA finding RC1-5).
     view.dispatch({
-      effects: EditorView.scrollIntoView(pos, { y: "center" }),
+      effects: EditorView.scrollIntoView(pos, { y: "start" }),
     });
   }
 </script>

@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   detectProjectSource,
   capabilitiesFor,
+  findEnclosingRepoDir,
   parseRemoteUrl,
   parseHeadBranch,
 } from "./project-source";
@@ -100,6 +101,71 @@ test("parseRemoteUrl returns undefined on empty/malformed config", () => {
 test("parseHeadBranch returns undefined on detached HEAD", () => {
   expect(parseHeadBranch("9fceb02d0ae598e95dc970b74767f19372d61af8\n")).toBeUndefined();
   expect(parseHeadBranch("ref: refs/heads/main\n")).toBe("main");
+});
+
+// ── Enclosing-repo detection (SWEEP-2) ───────────────────────────────────────
+
+test("folder nested inside a repo → local-folder with enclosingRepoDir, enable suppressed", async () => {
+  const dir = await tempDir();
+  try {
+    await mkdir(path.join(dir, ".git"), { recursive: true });
+    const inner = path.join(dir, "books", "field-guide");
+    await mkdir(inner, { recursive: true });
+
+    const source = await detectProjectSource(inner);
+    expect(source.type).toBe("local-folder");
+    if (source.type === "local-folder") {
+      expect(source.enclosingRepoDir).toBe(dir);
+    }
+    const caps = capabilitiesFor(source);
+    // The whole point: never offer "Enable Version History" here — a nested
+    // git init would shadow the outer repo's tracking of these files.
+    expect(caps.canEnableVersionHistory).toBe(false);
+    expect(caps.canSnapshot).toBe(false);
+    expect(caps.canViewHistory).toBe(false);
+    expect(caps.canWriteLocal).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a folder's OWN .git wins over an enclosing repo (still local-git-folder)", async () => {
+  const dir = await tempDir();
+  try {
+    await mkdir(path.join(dir, ".git"), { recursive: true });
+    const inner = path.join(dir, "sub");
+    const innerGit = path.join(inner, ".git");
+    await mkdir(innerGit, { recursive: true });
+    await writeFile(path.join(innerGit, "HEAD"), "ref: refs/heads/main\n");
+
+    const source = await detectProjectSource(inner);
+    expect(source.type).toBe("local-git-folder");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("findEnclosingRepoDir returns nearest ancestor repo, undefined when none", async () => {
+  const dir = await tempDir();
+  try {
+    const outer = path.join(dir, "outer");
+    const mid = path.join(outer, "mid");
+    const leaf = path.join(mid, "leaf");
+    await mkdir(path.join(outer, ".git"), { recursive: true });
+    await mkdir(path.join(mid, ".git"), { recursive: true });
+    await mkdir(leaf, { recursive: true });
+
+    // Nearest wins.
+    expect(await findEnclosingRepoDir(leaf)).toBe(mid);
+    // A `.git` FILE-less plain chain finds nothing (tmpdir has no repo above).
+    const plain = path.join(dir, "plain", "deep");
+    await mkdir(plain, { recursive: true });
+    expect(await findEnclosingRepoDir(plain)).toBeUndefined();
+    // The folder's own .git is ignored — only ANCESTORS are scanned.
+    expect(await findEnclosingRepoDir(mid)).toBe(outer);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("malformed .git config does not crash detection", async () => {

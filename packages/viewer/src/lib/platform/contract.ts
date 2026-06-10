@@ -209,6 +209,12 @@ export interface RemoteConnection {
   connected: boolean;
   username?: string;
   label?: string;
+  /**
+   * GitHub App "choose repositories" install page (public URL, no secrets).
+   * The repo picker opens it so a first-time user — who always starts with
+   * zero installations — is never dead-ended on an empty list.
+   */
+  installUrl?: string;
 }
 
 /** One repository the user can open from GitHub. */
@@ -429,6 +435,17 @@ export interface AppSettings {
      */
     paneMode: "edit" | "view";
   };
+  versionHistory: {
+    /**
+     * Save automatic snapshots while the author works (RC1-3): the host arms a
+     * quiet-period timer on every save and snapshots when edits settle, plus on
+     * project close / app quit. Only for projects that already have version
+     * history — a plain folder is never auto-initialised. Default ON.
+     */
+    autoSnapshot: boolean;
+    /** Minutes of quiet after the last edit before a snapshot fires (floor 5). */
+    autoSnapshotMinutes: number;
+  };
   advanced: {
     fileWatcherInterval: number;
     logLevel: "error" | "warn" | "info" | "debug";
@@ -457,6 +474,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     defaultZoom: "fit-width",
     viewMode: "two-column",
     paneMode: "view",
+  },
+  versionHistory: {
+    autoSnapshot: true,
+    autoSnapshotMinutes: 10,
   },
   advanced: {
     fileWatcherInterval: 300,
