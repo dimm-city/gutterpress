@@ -146,7 +146,7 @@ export async function testRemoteAccess(
           ? {
               onAuth: () => ({
                 username:
-                  credential.kind === "github-app"
+                  credential.kind === "github-oauth"
                     ? "x-access-token"
                     : credential.username || credential.token,
                 password: credential.token,

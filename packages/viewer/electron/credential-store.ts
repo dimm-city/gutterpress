@@ -22,7 +22,7 @@ import path from "node:path";
 /** Mirrors the lib's HostCredential (kept local; lib ships behind a dyn import). */
 export interface HostCredential {
   host: string;
-  kind: "github-app" | "token";
+  kind: "github-oauth" | "token";
   token: string;
   username?: string;
   label?: string;
@@ -31,7 +31,7 @@ export interface HostCredential {
 
 interface StoredEntry {
   host: string;
-  kind: "github-app" | "token";
+  kind: "github-oauth" | "token";
   /** base64 ciphertext of the token (safeStorage.encryptString). */
   tokenCipher: string;
   username?: string;
@@ -161,7 +161,7 @@ export const electronTokenStore = {
   listRedacted(): Promise<
     Array<{
       host: string;
-      kind: "github-app" | "token";
+      kind: "github-oauth" | "token";
       username?: string;
       label?: string;
       createdAt: number;

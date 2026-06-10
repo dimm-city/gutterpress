@@ -53,7 +53,6 @@ export type ProjectSource =
     }
   | {
       type: "managed-github";
-      installationId: string;
       owner: string;
       repo: string;
       branch: string;

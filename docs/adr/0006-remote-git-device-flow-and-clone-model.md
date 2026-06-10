@@ -40,6 +40,25 @@ Three constraints shape every decision here:
 
 ### D1. Auth: OAuth Device Flow with a GitHub App; no backend, no shipped secret
 
+> **Amended 2026-06-10 — switched to an OAuth App with `repo` scope; the
+> GitHub App registration is retired.** The GitHub App model required authors
+> to "install the app on repositories" before any repo appeared in the picker
+> — an unacceptable extra step for non-technical users. The replacement is a
+> registered **OAuth App** (client id `Ov23lijTeMEmkkZW2Mlt`, public by
+> design, Device Flow enabled, **no client secret — none is needed and none
+> may ever be added**) requesting the `repo` scope in the device-flow
+> request. After the single device-flow consent the token sees **every
+> repository the user can access** (owner, collaborator, org member) with
+> zero install/selection steps; discovery uses `GET /user/repos`. The
+> trade-off — broader access in exchange for zero friction — was accepted by
+> the project owner on 2026-06-10. OAuth device-flow tokens (`gho_…`) are
+> long-lived by default and revocable from GitHub → Settings → Applications;
+> the GitHub-App token-expiration foot-gun below no longer applies. The only
+> registration requirement is that **"Enable Device Flow" stays checked** on
+> the OAuth App. The device-flow mechanics in this section (device code, poll,
+> no backend, no shipped secret) are unchanged; the paragraphs marked
+> *superseded* below are kept for history.
+
 GitHub authentication uses the **OAuth Device Authorization Grant** against a
 registered **GitHub App** (not an OAuth App):
 
@@ -52,12 +71,14 @@ registered **GitHub App** (not an OAuth App):
   exchange.** This is the same mechanism the `gh` CLI uses; it works on all
   three platforms, behind firewalls and corporate proxies, and in the headless
   CLI as well as the viewer.
-- A **GitHub App** (not an OAuth App) because installation grants
+- *(superseded 2026-06-10 — see amendment above)* A **GitHub App** (not an OAuth App) because installation grants
   **selected-repository access** with fine-grained permissions (Contents
   read/write only) — the user authorizes their book repos, not `repo` scope
   over their whole account. This satisfies #15's "narrowest practical
   permissions / prefer selected-repository access" requirement.
 
+*(superseded 2026-06-10 — OAuth device-flow tokens have no expiration concept;
+the only registration requirement is keeping Device Flow enabled)*
 **Mandatory app-registration setting:** GitHub App user tokens expire after
 8 hours by default, and *refreshing* them requires the client secret — which
 we cannot ship. Therefore the registration MUST disable
@@ -167,8 +188,10 @@ interface RemoteAuthProvider {
   0.5.0 scope. The token flow is the universal floor.
 
 **Layer 4 — repo discovery is optional sugar.** GitHub gets the polished
-picker (REST: `/user/installations`, `/user/installations/{id}/repositories`
-via plain `fetch` — no `@octokit` dependency for ~5 endpoints). Every other
+picker (REST: `GET /user/repos?sort=pushed&affiliation=owner,collaborator,organization_member`
+via plain `fetch` — no `@octokit` dependency; the original
+`/user/installations` endpoints were retired with the GitHub App, D1
+amendment 2026-06-10). Every other
 provider starts with **"paste the repository's HTTPS clone URL"**, which is
 universal. Gitea and GitLab repo-listing REST adapters are mechanical
 follow-ups behind the same interface when demand justifies them.
@@ -271,8 +294,12 @@ sniffing) is rejected as exactly the brittle surface this ADR exists to avoid.
 - No SSH push (D6). Mitigated by honest guidance and the HTTPS upgrade path.
 - isomorphic-git is slower than native git on very large repos; mitigated by
   shallow clones and the fact that book projects are not monorepos.
-- The GitHub App registration carries one non-obvious foot-gun (token
-  expiration setting, D1) that must live in the release checklist.
+- ~~The GitHub App registration carries one non-obvious foot-gun (token
+  expiration setting, D1) that must live in the release checklist.~~
+  *(superseded 2026-06-10 — the OAuth App has no expiration setting; the only
+  registration requirement is keeping Device Flow enabled. New trade-off: the
+  `repo` scope grants access to ALL the user's repositories, not a selected
+  subset — accepted for the zero-install UX.)*
 
 ## Implementation order (0.5.0)
 
@@ -288,18 +315,19 @@ sniffing) is rejected as exactly the brittle surface this ADR exists to avoid.
    0.5.0 only if the conflict flow is complete; otherwise a fast-follow.
 5. **#16** — closed in favor of #14 (nothing to bundle under §7).
 
-### Release checklist — GitHub App client id
+### Release checklist — GitHub OAuth App client id
 
 The packaged viewer cannot read `PRINT_MD_GITHUB_CLIENT_ID` from the end
 user's environment; the value is baked into the Electron MAIN bundle at build
 time via an electron-vite `define` (`packages/viewer/electron.vite.config.ts`).
 Before any release that ships the GitHub flow:
 
-1. Set `PRINT_MD_GITHUB_CLIENT_ID` as a repository secret (the client id is
-   public by design — the secret slot is just the distribution mechanism).
+1. Set `PRINT_MD_GITHUB_CLIENT_ID` as a repository variable (the client id is
+   public by design — the env slot is just the rotation mechanism).
 2. Expose it as `env` on the viewer build step of the release workflow
-   (`PRINT_MD_GITHUB_CLIENT_ID: ${{ secrets.PRINT_MD_GITHUB_CLIENT_ID }}`)
+   (`PRINT_MD_GITHUB_CLIENT_ID: ${{ vars.PRINT_MD_GITHUB_CLIENT_ID }}`)
    so the `define` picks it up.
 3. If unset at build time, `""` is baked in — `resolveGitHubClientId` treats
-   empty as unset and falls back to the placeholder, so Connect GitHub fails
-   with a friendly error rather than silently misbehaving.
+   empty as unset and falls back to the registered default OAuth App client
+   id, so a build without the variable still connects against the canonical
+   registration.

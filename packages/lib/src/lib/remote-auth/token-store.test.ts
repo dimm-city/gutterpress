@@ -15,8 +15,8 @@ async function tempStore(): Promise<{ dir: string; store: FileTokenStore }> {
   return { dir, store: new FileTokenStore(path.join(dir, "credentials.json")) };
 }
 
-function cred(host: string, token = "ghu_secret123"): HostCredential {
-  return { host, kind: "github-app", token, username: "octocat", createdAt: Date.now() };
+function cred(host: string, token = "gho_secret123"): HostCredential {
+  return { host, kind: "github-oauth", token, username: "octocat", createdAt: Date.now() };
 }
 
 test("set/get/delete round-trips credentials keyed by host", async () => {
@@ -25,10 +25,10 @@ test("set/get/delete round-trips credentials keyed by host", async () => {
     expect(await store.get("github.com")).toBeNull();
     await store.set("github.com", cred("github.com"));
     const got = await store.get("github.com");
-    expect(got?.token).toBe("ghu_secret123");
+    expect(got?.token).toBe("gho_secret123");
     expect(got?.username).toBe("octocat");
     // Host lookup is case-insensitive.
-    expect((await store.get("GitHub.com"))?.token).toBe("ghu_secret123");
+    expect((await store.get("GitHub.com"))?.token).toBe("gho_secret123");
     expect((await store.list()).length).toBe(1);
     await store.delete("github.com");
     expect(await store.get("github.com")).toBeNull();
@@ -65,8 +65,8 @@ test("corrupt store file degrades to empty, not a crash", async () => {
 });
 
 test("redactCredential masks the token value", () => {
-  const redacted = redactCredential(cred("github.com", "ghu_supersecret"));
-  expect(JSON.stringify(redacted)).not.toContain("ghu_supersecret");
+  const redacted = redactCredential(cred("github.com", "gho_supersecret"));
+  expect(JSON.stringify(redacted)).not.toContain("gho_supersecret");
   expect(redacted.username).toBe("octocat");
 });
 

@@ -199,11 +199,12 @@ function onAuthFor(credential: HostCredential | undefined) {
   if (!credential) return {};
   return {
     onAuth: () => ({
-      // Same convention as clone.ts: GitHub App user tokens authenticate as
-      // x-access-token; plain tokens use the stored username (or the
-      // token-as-username convention every smart-HTTPS forge accepts).
+      // Same convention as clone.ts: GitHub accepts any username with the
+      // token as password (covers OAuth gho_ and legacy ghu_ tokens); plain
+      // tokens use the stored username (or the token-as-username convention
+      // every smart-HTTPS forge accepts).
       username:
-        credential.kind === "github-app"
+        credential.kind === "github-oauth"
           ? "x-access-token"
           : credential.username || credential.token,
       password: credential.token,

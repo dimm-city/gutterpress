@@ -1,12 +1,12 @@
 /**
  * GitHub device-flow auth provider (#15, ADR 0006 D1/D3 layer 3).
  *
- * OAuth Device Authorization Grant against a registered GitHub App: POST the
- * PUBLIC client id to `login/device/code`, surface the user code so the host
- * UI can display it and open the verification page in the system browser, then
- * poll `login/oauth/access_token` until the user approves. No redirect URI, no
- * loopback server, no client secret, no hosted token exchange — the same
- * mechanism the `gh` CLI uses.
+ * OAuth Device Authorization Grant against a registered OAuth App: POST the
+ * PUBLIC client id (plus `scope: "repo"`) to `login/device/code`, surface the
+ * user code so the host UI can display it and open the verification page in
+ * the system browser, then poll `login/oauth/access_token` until the user
+ * approves. No redirect URI, no loopback server, no client secret, no hosted
+ * token exchange — the same mechanism the `gh` CLI uses.
  *
  * All network calls use injectable `fetch` (testability) with explicit
  * timeouts and author-friendly error mapping. Token values are never logged.
@@ -48,19 +48,24 @@ export interface RemoteAuthProvider {
 }
 
 /**
- * Default GitHub App client id for the registered "print-md" GitHub App
- * (registered 2026-06-10 under the dimm-city org). Client IDs are public by
- * design (ADR 0006 D1); never put a client SECRET anywhere in this codebase.
+ * Default client id for the registered "print-md" OAuth App (registered
+ * 2026-06-10 under the dimm-city org; switched from the original GitHub App
+ * the same day — see ADR 0006 D1 amendment). Client IDs are public by design
+ * (ADR 0006 D1); never put a client SECRET anywhere in this codebase — the
+ * device flow needs none.
  *
- * Registration settings the app relies on (ADR 0006 D1 — if the app is ever
- * re-registered, these are release blocking):
- *   1. GitHub App (not an OAuth App) for selected-repository access.
- *   2. "Device flow" ENABLED (App settings → General).
- *   3. Permissions: Repository → Contents: Read and write. Nothing else.
- *   4. "User-to-server token expiration" DISABLED (App settings → Optional
- *      features) — refreshing expiring tokens requires the client secret,
- *      which we cannot ship; with expiration left on, every session silently
- *      dies after 8 hours.
+ * Registration settings the app relies on (release blocking if the app is
+ * ever re-registered):
+ *   1. OAuth App (not a GitHub App) — the `repo` scope sees every repository
+ *      the user can access immediately after device-flow consent, with NO
+ *      "install the app on repositories" step (zero-install UX mandate).
+ *   2. "Enable Device Flow" CHECKED (OAuth App settings) — without it every
+ *      device/code request fails.
+ *
+ * There is no token-expiration concept to configure: OAuth device-flow
+ * tokens (`gho_…`) are long-lived by default and revocable by the user from
+ * GitHub → Settings → Applications. (The old GitHub-App "user-to-server
+ * token expiration" foot-gun no longer applies.)
  *
  * Override order: explicit option → PRINT_MD_GITHUB_CLIENT_ID env var → this
  * default (see {@link resolveGitHubClientId}). The env var exists so a
@@ -69,23 +74,17 @@ export interface RemoteAuthProvider {
  * Intentionally NOT exported from the public API — hosts resolve through
  * {@link resolveGitHubClientId}.
  */
-const DEFAULT_GITHUB_CLIENT_ID = "Iv23liuFxmMqnaRNjIK5";
+const DEFAULT_GITHUB_CLIENT_ID = "Ov23lijTeMEmkkZW2Mlt";
 
 /**
- * URL slug of the same registered "print-md" GitHub App. The slug and the
- * client id identify ONE registration — if the app is ever re-registered they
- * ROTATE TOGETHER (set both PRINT_MD_GITHUB_CLIENT_ID and
- * PRINT_MD_GITHUB_APP_SLUG, or neither). The slug is public by design: it only
- * forms the install URL where the user picks which repositories the app may
- * see.
- *
- * Intentionally NOT exported — hosts resolve through
- * {@link resolveGitHubAppSlug} / {@link githubAppInstallUrl}.
+ * OAuth scope requested in the device flow. `repo` grants read/write to every
+ * repository the user can access (public + private) — accepted as the
+ * trade-off for the zero-install UX (ADR 0006 D1 amendment, 2026-06-10).
  */
-const DEFAULT_GITHUB_APP_SLUG = "print-md";
+const GITHUB_OAUTH_SCOPE = "repo";
 
 /**
- * Client id resolution: explicit option → env var → placeholder default.
+ * Client id resolution: explicit option → env var → registered default.
  * Empty/whitespace-only values at any layer are treated as unset (the packaged
  * viewer bakes `process.env.PRINT_MD_GITHUB_CLIENT_ID` in via a vite `define`,
  * which yields `""` when the secret is missing at build time).
@@ -96,28 +95,6 @@ export function resolveGitHubClientId(explicit?: string): string {
     process.env.PRINT_MD_GITHUB_CLIENT_ID?.trim() ||
     DEFAULT_GITHUB_CLIENT_ID
   );
-}
-
-/**
- * App slug resolution: explicit option → env var → default. Mirrors
- * {@link resolveGitHubClientId}, including the empty/whitespace-is-unset rule
- * (a vite `define` bakes `""` when the env var is missing at build time).
- */
-export function resolveGitHubAppSlug(explicit?: string): string {
-  return (
-    explicit?.trim() ||
-    process.env.PRINT_MD_GITHUB_APP_SLUG?.trim() ||
-    DEFAULT_GITHUB_APP_SLUG
-  );
-}
-
-/**
- * Where the user chooses which repositories the print-md GitHub App can see
- * (GitHub's "install / select repositories" page). A first-time user has zero
- * installations, so the repo picker MUST offer this page or it dead-ends.
- */
-export function githubAppInstallUrl(slug?: string): string {
-  return `https://github.com/apps/${resolveGitHubAppSlug(slug)}/installations/new`;
 }
 
 export const GITHUB_HOST = "github.com";
@@ -196,7 +173,7 @@ export class GitHubAuthProvider implements RemoteAuthProvider {
     const codeRes = await safeFetch(this.fetchImpl, DEVICE_CODE_URL, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ client_id: this.clientId }),
+      body: JSON.stringify({ client_id: this.clientId, scope: GITHUB_OAUTH_SCOPE }),
       signal: signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!codeRes.ok) {
@@ -239,7 +216,7 @@ export class GitHubAuthProvider implements RemoteAuthProvider {
         const username = await this.fetchUsername(poll.access_token);
         return {
           host: GITHUB_HOST,
-          kind: "github-app",
+          kind: "github-oauth",
           token: poll.access_token,
           ...(username ? { username, label: `GitHub — @${username}` } : {}),
           createdAt: Date.now(),

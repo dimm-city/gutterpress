@@ -140,7 +140,6 @@ type ProjectSource =
     }
   | {
       type: "managed-github";
-      installationId: string;
       owner: string;
       repo: string;
       branch: string;
@@ -215,7 +214,6 @@ interface RemoteRepository {
   private: boolean;
   defaultBranch: string;
   htmlUrl: string;
-  installationId: string;
 }
 interface RemoteBranch {
   name: string;
@@ -342,7 +340,6 @@ interface LibModule {
   BuildError: new (message: string) => Error;
   // Remote GitHub (#15)
   GitHubAuthProvider: new (options?: { clientId?: string }) => GitHubAuthProviderInstance;
-  githubAppInstallUrl: (slug?: string) => string;
   listGitHubRepositories: (credential: HostCredential) => Promise<RemoteRepository[]>;
   listGitHubBranches: (
     credential: HostCredential,
@@ -360,7 +357,6 @@ interface LibModule {
       provider: "github";
       owner: string;
       repo: string;
-      installationId?: string;
     };
   }) => Promise<{ projectDir: string; branch?: string }>;
   sanitizeCloneFolderName: (name: string) => string;
@@ -1969,25 +1965,10 @@ ipcMain.handle("remote:disconnectGitHub", () =>
   }),
 );
 
-// Redacted status only — the token NEVER crosses the IPC boundary. The GitHub
-// App install URL rides along so the repo picker can offer "Choose
-// repositories on GitHub" without the renderer ever importing the lib (§8).
-ipcMain.handle("remote:getConnection", async (_e, host?: string) => {
-  const status = await electronTokenStore.status(host || GITHUB_HOST);
-  try {
-    const lib = await loadLib();
-    // Slug baked by the electron-vite `define`, same pattern as the client id
-    // above — resolveGitHubAppSlug treats ""/undefined as unset.
-    return {
-      ...status,
-      installUrl: lib.githubAppInstallUrl(process.env.PRINT_MD_GITHUB_APP_SLUG ?? ""),
-    };
-  } catch {
-    // Status must never fail because the lib didn't load — the dialog
-    // degrades gracefully when installUrl is absent.
-    return status;
-  }
-});
+// Redacted status only — the token NEVER crosses the IPC boundary.
+ipcMain.handle("remote:getConnection", (_e, host?: string) =>
+  electronTokenStore.status(host || GITHUB_HOST),
+);
 
 async function requireGitHubCredential(): Promise<HostCredential> {
   const credential = await electronTokenStore.get(GITHUB_HOST);
@@ -2027,7 +2008,6 @@ ipcMain.handle(
       branch?: string;
       owner?: string;
       repo?: string;
-      installationId?: string;
     },
   ): Promise<{ projectDir: string }> =>
     handleRemoteErrors("remote:cloneRepository", async () => {
@@ -2058,7 +2038,6 @@ ipcMain.handle(
                 provider: "github" as const,
                 owner: args.owner,
                 repo: args.repo,
-                ...(args.installationId ? { installationId: args.installationId } : {}),
               },
             }
           : {}),

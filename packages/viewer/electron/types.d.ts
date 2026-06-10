@@ -87,7 +87,6 @@ type ProjectSource =
     }
   | {
       type: "managed-github";
-      installationId: string;
       owner: string;
       repo: string;
       branch: string;
@@ -138,8 +137,6 @@ interface RemoteConnection {
   connected: boolean;
   username?: string;
   label?: string;
-  /** GitHub App "choose repositories" page — public URL, no secrets. */
-  installUrl?: string;
 }
 
 interface RemoteRepository {
@@ -149,7 +146,6 @@ interface RemoteRepository {
   private: boolean;
   defaultBranch: string;
   htmlUrl: string;
-  installationId: string;
 }
 
 interface RemoteBranch {
@@ -169,7 +165,6 @@ interface CloneRepositoryArgs {
   branch?: string;
   owner?: string;
   repo?: string;
-  installationId?: string;
 }
 
 // ── Advanced Setup (#14). Mirrors preload.ts + the lib. ─────────────────────
@@ -273,7 +268,7 @@ interface ConnectGenericHostArgs {
 /** Redacted stored-connection entry — never carries tokens or ciphertext. */
 interface HostConnectionInfo {
   host: string;
-  kind: "github-app" | "token";
+  kind: "github-oauth" | "token";
   username?: string;
   label?: string;
   createdAt: number;

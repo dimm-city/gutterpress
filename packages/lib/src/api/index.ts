@@ -117,8 +117,6 @@ export type {
 export {
   GitHubAuthProvider,
   resolveGitHubClientId,
-  resolveGitHubAppSlug,
-  githubAppInstallUrl,
   GITHUB_HOST,
 } from "../lib/remote-auth/github-auth.ts";
 

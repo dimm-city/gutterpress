@@ -41,6 +41,11 @@ export interface ProjectProvenance {
   provider: "github";
   owner: string;
   repo: string;
+  /**
+   * Legacy GitHub-App installation id. New clones never write it (the OAuth
+   * App model has no installations — ADR 0006 D1 amendment 2026-06-10); kept
+   * optional so provenance files written by 0.4.x betas still parse.
+   */
   installationId?: string;
 }
 
@@ -225,11 +230,13 @@ export async function cloneRepository(
         ...(credential
           ? {
               onAuth: () => ({
-                // GitHub App user tokens authenticate as x-access-token; plain
-                // tokens use the stored username (or the token-as-username
-                // convention every smart-HTTPS forge accepts).
+                // GitHub accepts ANY username when the token is the password —
+                // "x-access-token" works for both OAuth (gho_) and the retired
+                // GitHub-App (ghu_) token kinds. Plain tokens use the stored
+                // username (or the token-as-username convention every
+                // smart-HTTPS forge accepts).
                 username:
-                  credential.kind === "github-app"
+                  credential.kind === "github-oauth"
                     ? "x-access-token"
                     : credential.username || credential.token,
                 password: credential.token,

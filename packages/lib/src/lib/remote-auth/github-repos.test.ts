@@ -4,8 +4,8 @@ import type { HostCredential } from "./token-store";
 
 const CRED: HostCredential = {
   host: "github.com",
-  kind: "github-app",
-  token: "ghu_tok",
+  kind: "github-oauth",
+  token: "gho_tok",
   createdAt: 0,
 };
 
@@ -27,39 +27,39 @@ function repoBody(name: string) {
   };
 }
 
-test("lists repositories across installations with pagination (2 pages)", async () => {
-  // 100 repos on page 1 (full page → fetch page 2), 1 repo on page 2.
-  const page1 = Array.from({ length: 100 }, (_, i) =>
-    repoBody(`book-${String(i).padStart(3, "0")}`),
-  );
-  const page2 = [repoBody("zz-last")];
+test("lists user repos via /user/repos with pagination (2 pages), preserving API order", async () => {
+  // 100 repos on page 1 (full page → fetch page 2), 1 repo on page 2. The
+  // names are deliberately NOT alphabetical: the API's sort=pushed order
+  // (most recently pushed first) must be preserved, never re-sorted.
+  const page1 = [
+    repoBody("zz-most-recent"),
+    ...Array.from({ length: 99 }, (_, i) => repoBody(`book-${String(i).padStart(3, "0")}`)),
+  ];
+  const page2 = [repoBody("aa-oldest")];
   const requested: string[] = [];
   const fetchImpl = (async (url: RequestInfo | URL) => {
     const u = String(url);
     requested.push(u);
-    if (u.includes("/user/installations?")) {
-      return jsonResponse({ total_count: 1, installations: [{ id: 42 }] });
-    }
-    if (u.includes("/user/installations/42/repositories")) {
+    if (u.includes("/user/repos?")) {
       const page = new URL(u).searchParams.get("page");
-      return jsonResponse({
-        total_count: 101,
-        repositories: page === "1" ? page1 : page2,
-      });
+      return jsonResponse(page === "1" ? page1 : page2);
     }
     throw new Error(`unexpected url ${u}`);
   }) as typeof fetch;
 
   const repos = await listGitHubRepositories(CRED, { fetchImpl });
   expect(repos.length).toBe(101);
-  expect(repos[0]!.fullName).toBe("octocat/book-000");
-  expect(repos.at(-1)!.fullName).toBe("octocat/zz-last");
-  expect(repos[0]!.installationId).toBe("42");
+  expect(repos[0]!.fullName).toBe("octocat/zz-most-recent");
+  expect(repos.at(-1)!.fullName).toBe("octocat/aa-oldest");
   expect(repos[0]!.defaultBranch).toBe("main");
-  // Both repo pages were fetched.
-  expect(requested.filter((u) => u.includes("/repositories")).length).toBe(2);
-  // Auth + API-version headers are GitHub's required shape — verified via the
-  // request the mock saw? (headers aren't captured here; covered in branches test)
+  // Both pages were fetched, with the sort + affiliation params on each.
+  expect(requested.length).toBe(2);
+  for (const u of requested) {
+    const params = new URL(u).searchParams;
+    expect(params.get("sort")).toBe("pushed");
+    expect(params.get("affiliation")).toBe("owner,collaborator,organization_member");
+    expect(params.get("per_page")).toBe("100");
+  }
 });
 
 test("401 maps to a reconnect message", async () => {
@@ -92,6 +92,6 @@ test("listBranches paginates and sends the documented headers", async () => {
   expect(branches.length).toBe(101);
   expect(branches.at(-1)!.name).toBe("main");
   expect(sawHeaders!["Accept"]).toBe("application/vnd.github+json");
-  expect(sawHeaders!["Authorization"]).toBe("Bearer ghu_tok");
+  expect(sawHeaders!["Authorization"]).toBe("Bearer gho_tok");
   expect(sawHeaders!["X-GitHub-Api-Version"]).toBeTruthy();
 });

@@ -209,12 +209,6 @@ export interface RemoteConnection {
   connected: boolean;
   username?: string;
   label?: string;
-  /**
-   * GitHub App "choose repositories" install page (public URL, no secrets).
-   * The repo picker opens it so a first-time user — who always starts with
-   * zero installations — is never dead-ended on an empty list.
-   */
-  installUrl?: string;
 }
 
 /** One repository the user can open from GitHub. */
@@ -225,7 +219,6 @@ export interface RemoteRepository {
   private: boolean;
   defaultBranch: string;
   htmlUrl: string;
-  installationId: string;
 }
 
 /** One branch of a remote repository. */
@@ -248,7 +241,6 @@ export interface CloneRepositoryArgs {
   branch?: string;
   owner?: string;
   repo?: string;
-  installationId?: string;
 }
 
 // ── Advanced Setup (#14, ADR 0006 D3/D7) ──────────────────────────────────────
@@ -397,7 +389,7 @@ export interface ConnectGenericHostArgs {
 /** Redacted stored-connection entry — never carries tokens. */
 export interface HostConnectionInfo {
   host: string;
-  kind: "github-app" | "token";
+  kind: "github-oauth" | "token";
   username?: string;
   label?: string;
   createdAt: number;

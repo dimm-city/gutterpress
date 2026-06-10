@@ -32,8 +32,8 @@ import {
 
 const CRED: HostCredential = {
   host: "127.0.0.1",
-  kind: "github-app",
-  token: "ghu_clone_tok",
+  kind: "github-oauth",
+  token: "gho_clone_tok",
   createdAt: 0,
 };
 
@@ -133,7 +133,7 @@ test("SHALLOW CLONE SPIKE: depth:1 clones; listHistory + snapshot still work but
   }
 }, 20_000);
 
-test("transport sends the credential as Basic auth (github-app → x-access-token)", async () => {
+test("transport sends the credential as Basic auth (github-oauth → x-access-token)", async () => {
   const repoDir = await tempDir("pmd-auth-src-");
   const workDir = await tempDir("pmd-auth-dst-");
   const dest = path.join(workDir, "book");
@@ -141,7 +141,7 @@ test("transport sends the credential as Basic auth (github-app → x-access-toke
   try {
     await createFixtureRepo(repoDir);
     server = await startGitServer(repoDir, {
-      requireAuth: { username: "x-access-token", password: "ghu_clone_tok" },
+      requireAuth: { username: "x-access-token", password: "gho_clone_tok" },
     });
     await cloneRepository({ url: server.url, dir: dest, credential: CRED });
     expect(await detectProjectSource(dest).then((s) => s.type)).toBe(
@@ -200,7 +200,7 @@ test("failed clone removes the partially-created directory; a retry then succeed
   try {
     await createFixtureRepo(repoDir);
     server = await startGitServer(repoDir, {
-      requireAuth: { username: "x-access-token", password: "ghu_clone_tok" },
+      requireAuth: { username: "x-access-token", password: "gho_clone_tok" },
     });
 
     // Wrong token → 401 mid-flight → friendly error AND no leftover dir.
@@ -231,7 +231,7 @@ test("failed clone into a pre-existing (empty) folder keeps the user's folder", 
   try {
     await createFixtureRepo(repoDir);
     server = await startGitServer(repoDir, {
-      requireAuth: { username: "x-access-token", password: "ghu_clone_tok" },
+      requireAuth: { username: "x-access-token", password: "gho_clone_tok" },
     });
     const badCred: HostCredential = { ...CRED, token: "wrong_token" };
     await expect(

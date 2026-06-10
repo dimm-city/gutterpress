@@ -23,10 +23,15 @@ function jsonResponse(body: unknown, status = 200): Response {
 function scriptedProvider(tokenResponses: unknown[], userBody: unknown = { login: "octocat" }) {
   const sleeps: number[] = [];
   const calls: string[] = [];
+  /** Parsed JSON bodies of POSTs, keyed by URL fragment, for request asserts. */
+  const requestBodies: Array<{ url: string; body: Record<string, unknown> }> = [];
   let pollIndex = 0;
-  const fetchImpl = (async (url: RequestInfo | URL) => {
+  const fetchImpl = (async (url: RequestInfo | URL, init?: RequestInit) => {
     const u = String(url);
     calls.push(u);
+    if (init?.body) {
+      requestBodies.push({ url: u, body: JSON.parse(String(init.body)) });
+    }
     if (u.includes("login/device/code")) return jsonResponse(DEVICE_CODE_BODY);
     if (u.includes("login/oauth/access_token")) {
       const body = tokenResponses[Math.min(pollIndex, tokenResponses.length - 1)];
@@ -43,29 +48,37 @@ function scriptedProvider(tokenResponses: unknown[], userBody: unknown = { login
       sleeps.push(ms);
     },
   });
-  return { provider, sleeps, calls };
+  return { provider, sleeps, calls, requestBodies };
 }
 
 test("happy path: device code surfaces via callback, token returned as credential", async () => {
-  const { provider } = scriptedProvider([{ access_token: "ghu_tok" }]);
+  const { provider } = scriptedProvider([{ access_token: "gho_tok" }]);
   let info: DeviceCodeInfo | null = null;
   const cred = await provider.connect({ onUserCode: (i) => (info = i) });
   expect(info!.userCode).toBe("ABCD-1234");
   expect(info!.verificationUri).toBe("https://github.com/login/device");
   expect(cred.host).toBe("github.com");
-  expect(cred.kind).toBe("github-app");
-  expect(cred.token).toBe("ghu_tok");
+  expect(cred.kind).toBe("github-oauth");
+  expect(cred.token).toBe("gho_tok");
   expect(cred.username).toBe("octocat");
+});
+
+test("device/code request carries the client id and the repo scope (OAuth App model)", async () => {
+  const { provider, requestBodies } = scriptedProvider([{ access_token: "gho_tok" }]);
+  await provider.connect({ onUserCode: () => {} });
+  const deviceCode = requestBodies.find((r) => r.url.includes("login/device/code"));
+  expect(deviceCode!.body["client_id"]).toBe("test-client-id");
+  expect(deviceCode!.body["scope"]).toBe("repo");
 });
 
 test("authorization_pending keeps polling until success", async () => {
   const { provider, sleeps } = scriptedProvider([
     { error: "authorization_pending" },
     { error: "authorization_pending" },
-    { access_token: "ghu_tok" },
+    { access_token: "gho_tok" },
   ]);
   const cred = await provider.connect({ onUserCode: () => {} });
-  expect(cred.token).toBe("ghu_tok");
+  expect(cred.token).toBe("gho_tok");
   // Three polls → three sleeps at the server interval (5s).
   expect(sleeps).toEqual([5000, 5000, 5000]);
 });
@@ -73,7 +86,7 @@ test("authorization_pending keeps polling until success", async () => {
 test("slow_down adds 5 seconds to the polling interval", async () => {
   const { provider, sleeps } = scriptedProvider([
     { error: "slow_down" },
-    { access_token: "ghu_tok" },
+    { access_token: "gho_tok" },
   ]);
   await provider.connect({ onUserCode: () => {} });
   expect(sleeps[0]).toBe(5000);
@@ -84,7 +97,7 @@ test("slow_down honors the server-sent interval as authoritative (RFC 8628 §3.5
   const { provider, sleeps } = scriptedProvider([
     { error: "slow_down", interval: 8 },
     { error: "slow_down", interval: 12 },
-    { access_token: "ghu_tok" },
+    { access_token: "gho_tok" },
   ]);
   await provider.connect({ onUserCode: () => {} });
   // Initial 5s, then server interval + 5 each time: 8+5, 12+5.
@@ -136,7 +149,7 @@ test("validate returns true on 200, false on 401/403", async () => {
     });
   const cred = {
     host: "github.com",
-    kind: "github-app" as const,
+    kind: "github-oauth" as const,
     token: "t",
     createdAt: 0,
   };
@@ -149,60 +162,4 @@ test("matches only github.com", () => {
   const { provider } = scriptedProvider([]);
   expect(provider.matches(new URL("https://github.com/o/r.git"))).toBe(true);
   expect(provider.matches(new URL("https://gitea.example.com/o/r.git"))).toBe(false);
-});
-
-// ── App slug resolution + install URL (repo-picker install affordance) ───────
-
-import { resolveGitHubAppSlug, githubAppInstallUrl } from "./github-auth";
-
-function withSlugEnv(value: string | undefined, fn: () => void) {
-  const prev = process.env.PRINT_MD_GITHUB_APP_SLUG;
-  if (value === undefined) delete process.env.PRINT_MD_GITHUB_APP_SLUG;
-  else process.env.PRINT_MD_GITHUB_APP_SLUG = value;
-  try {
-    fn();
-  } finally {
-    if (prev === undefined) delete process.env.PRINT_MD_GITHUB_APP_SLUG;
-    else process.env.PRINT_MD_GITHUB_APP_SLUG = prev;
-  }
-}
-
-test("resolveGitHubAppSlug: explicit option wins over env and default", () => {
-  withSlugEnv("env-slug", () => {
-    expect(resolveGitHubAppSlug("explicit-slug")).toBe("explicit-slug");
-  });
-});
-
-test("resolveGitHubAppSlug: env var wins over default when no explicit option", () => {
-  withSlugEnv("env-slug", () => {
-    expect(resolveGitHubAppSlug()).toBe("env-slug");
-  });
-});
-
-test("resolveGitHubAppSlug: falls back to the registered default", () => {
-  withSlugEnv(undefined, () => {
-    expect(resolveGitHubAppSlug()).toBe("print-md");
-  });
-});
-
-test("resolveGitHubAppSlug: empty/whitespace at any layer is treated as unset", () => {
-  // The packaged viewer bakes "" via a vite define when the env var is missing.
-  withSlugEnv("", () => {
-    expect(resolveGitHubAppSlug("")).toBe("print-md");
-    expect(resolveGitHubAppSlug("   ")).toBe("print-md");
-  });
-  withSlugEnv("   ", () => {
-    expect(resolveGitHubAppSlug()).toBe("print-md");
-  });
-});
-
-test("githubAppInstallUrl: default and explicit slugs", () => {
-  withSlugEnv(undefined, () => {
-    expect(githubAppInstallUrl()).toBe(
-      "https://github.com/apps/print-md/installations/new",
-    );
-    expect(githubAppInstallUrl("rotated-app")).toBe(
-      "https://github.com/apps/rotated-app/installations/new",
-    );
-  });
 });

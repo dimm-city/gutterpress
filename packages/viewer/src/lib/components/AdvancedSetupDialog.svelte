@@ -444,7 +444,7 @@
               <li role="listitem" class="conn-row">
                 <span class="conn-label">
                   {conn.label ?? conn.host}
-                  {#if conn.kind === "github-app"}<span class="badge">GitHub</span>{/if}
+                  {#if conn.kind === "github-oauth"}<span class="badge">GitHub</span>{/if}
                 </span>
                 <button
                   class="ghost small"

@@ -1,9 +1,9 @@
 /**
  * GitHub repo discovery (#15, ADR 0006 D3 layer 4).
  *
- * Plain `fetch` against ~3 REST endpoints — deliberately no `@octokit`
- * dependency. Lists the repositories the user granted the print-md GitHub App
- * access to (installation-scoped, i.e. "selected repositories"), plus the
+ * Plain `fetch` against 2 REST endpoints — deliberately no `@octokit`
+ * dependency. Lists every repository the user can access (`GET /user/repos`,
+ * the OAuth `repo`-scope model — ADR 0006 D1 amendment 2026-06-10), plus the
  * branches of a chosen repository. All calls paginate, time out explicitly,
  * and map failures to author-friendly messages (401 → "reconnect").
  */
@@ -24,8 +24,6 @@ export interface RemoteRepository {
   private: boolean;
   defaultBranch: string;
   htmlUrl: string;
-  /** The GitHub App installation that grants access to this repo. */
-  installationId: string;
 }
 
 /** One branch of a remote repository. */
@@ -69,70 +67,47 @@ async function apiGet(
   return res;
 }
 
-interface InstallationsPage {
-  total_count: number;
-  installations: Array<{ id: number }>;
-}
-
-interface InstallationReposPage {
-  total_count: number;
-  repositories: Array<{
-    name: string;
-    full_name: string;
-    private: boolean;
-    default_branch: string;
-    html_url: string;
-    owner: { login: string };
-  }>;
-}
+type UserReposPage = Array<{
+  name: string;
+  full_name: string;
+  private: boolean;
+  default_branch: string;
+  html_url: string;
+  owner: { login: string };
+}>;
 
 /**
- * List every repository the user has granted the print-md GitHub App, across
- * all of their installations (personal account + orgs). Endpoints:
- * `GET /user/installations` then
- * `GET /user/installations/{installation_id}/repositories` (both paginated).
+ * List every repository the user can access — own, collaborator, and org
+ * member — via `GET /user/repos` (paginated). The OAuth `repo` scope makes
+ * the full set visible with zero install/selection steps (ADR 0006 D1
+ * amendment). `sort=pushed` puts recently-active books first; callers must
+ * PRESERVE this order (the picker renders it as "most recent first").
  */
 export async function listGitHubRepositories(
   credential: HostCredential,
   options: GitHubApiOptions = {},
 ): Promise<RemoteRepository[]> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const installations: number[] = [];
+  const repos: RemoteRepository[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
     const res = await apiGet(
       fetchImpl,
-      `${API_BASE}/user/installations?per_page=${PER_PAGE}&page=${page}`,
+      `${API_BASE}/user/repos?per_page=${PER_PAGE}&page=${page}&sort=pushed&affiliation=owner,collaborator,organization_member`,
       credential.token,
     );
-    const body = (await res.json()) as InstallationsPage;
-    installations.push(...body.installations.map((i) => i.id));
-    if (body.installations.length < PER_PAGE) break;
-  }
-
-  const repos: RemoteRepository[] = [];
-  for (const installationId of installations) {
-    for (let page = 1; page <= MAX_PAGES; page++) {
-      const res = await apiGet(
-        fetchImpl,
-        `${API_BASE}/user/installations/${installationId}/repositories?per_page=${PER_PAGE}&page=${page}`,
-        credential.token,
-      );
-      const body = (await res.json()) as InstallationReposPage;
-      for (const r of body.repositories) {
-        repos.push({
-          owner: r.owner.login,
-          name: r.name,
-          fullName: r.full_name,
-          private: r.private,
-          defaultBranch: r.default_branch,
-          htmlUrl: r.html_url,
-          installationId: String(installationId),
-        });
-      }
-      if (body.repositories.length < PER_PAGE) break;
+    const body = (await res.json()) as UserReposPage;
+    for (const r of body) {
+      repos.push({
+        owner: r.owner.login,
+        name: r.name,
+        fullName: r.full_name,
+        private: r.private,
+        defaultBranch: r.default_branch,
+        htmlUrl: r.html_url,
+      });
     }
+    if (body.length < PER_PAGE) break;
   }
-  repos.sort((a, b) => a.fullName.localeCompare(b.fullName));
   return repos;
 }
 

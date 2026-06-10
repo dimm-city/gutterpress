@@ -124,7 +124,7 @@ test("SSH remote → ssh-use-own-tools, never syncable, host still recognized", 
     // Even WITH a stored credential, SSH can't sync (HTTPS-only transport).
     await store.set("github.com", {
       host: "github.com",
-      kind: "github-app",
+      kind: "github-oauth",
       token: "tok",
       createdAt: 0,
     });
