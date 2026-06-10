@@ -22,7 +22,7 @@ test("plain folder (no .git) → local-folder", async () => {
     const caps = capabilitiesFor(source);
     expect(caps.canEnableVersionHistory).toBe(true);
     expect(caps.canSnapshot).toBe(false);
-    expect(caps.canPublish).toBe(false);
+    expect(caps.canSync).toBe(false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -48,7 +48,7 @@ test("folder with .git but no remote → local-git-folder, hasRemote false", asy
     const caps = capabilitiesFor(source);
     expect(caps.canSnapshot).toBe(true);
     expect(caps.canEnableVersionHistory).toBe(false);
-    expect(caps.canPublish).toBe(false);
+    expect(caps.canSync).toBe(false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -72,7 +72,6 @@ test("folder with .git and an HTTPS remote → local-git-folder, hasRemote true"
       expect(source.branch).toBe("feature/x");
     }
     const caps = capabilitiesFor(source);
-    expect(caps.canPublish).toBe(true);
     expect(caps.canSync).toBe(true);
   } finally {
     await rm(dir, { recursive: true, force: true });

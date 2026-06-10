@@ -1,7 +1,7 @@
 /**
  * Minimal typings for the `diff3` package (the same three-way text merge
  * isomorphic-git uses internally as its default merge driver). Used by the
- * publish conflict-resolution driver (remote-auth/publish.ts) so files the
+ * sync conflict-resolution driver (remote-auth/sync.ts) so files the
  * author did NOT choose about still auto-merge exactly like a normal merge.
  */
 declare module "diff3" {

@@ -13,7 +13,7 @@
     ProjectRemoteDiagnosis,
   } from "$lib/platform/contract";
   import VersionHistoryDialog from "$lib/components/VersionHistoryDialog.svelte";
-  import PublishDialog from "$lib/components/PublishDialog.svelte";
+  import SyncDialog from "$lib/components/SyncDialog.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
@@ -67,7 +67,7 @@
   let docTitle = $state<string | null>(null);
   // Capabilities of the open project's source (#12): local-folder vs
   // local-git-folder (with/without remote). Stored so forthcoming action
-  // buttons (#13/#25 — Save Snapshot, View History, Publish) can render against
+  // buttons (#13/#25 — Save Snapshot, View History, Sync) can render against
   // it. No new buttons yet; the data is simply available.
   let projectCapabilities = $state<ProjectCapabilities | null>(null);
   // Folder name (basename) for the toolbar label; the full path is the tooltip.
@@ -162,63 +162,63 @@
   let newProjectBtn = $state<HTMLButtonElement | undefined>(undefined);
   // Version history (#13): the toolbar entry shows only when the project's
   // capabilities offer it — enable (plain folder) or view/snapshot/restore
-  // (history already on). Publish/sync are NEVER offered for local projects.
-  // Publish (#15 publish phase, ADR 0006 D5): the toolbar entry shows when the
+  // (history already on). Sync is NEVER offered for local projects.
+  // Sync (#15 sync phase, ADR 0006 D5): the toolbar entry shows when the
   // project has an HTTPS remote (connected or not) — never for plain local
   // projects, SSH remotes, or no-remote projects. When no credential is stored
   // yet, clicking the button routes to the matching connect flow so authors
-  // discover publishing exists and learn how to enable it (UX-2 fix).
-  let publishOpen = $state(false);
-  let publishBtn = $state<HTMLButtonElement | undefined>(undefined);
-  let publishDiag = $state<ProjectRemoteDiagnosis | null>(null);
+  // discover syncing exists and learn how to enable it (UX-2 fix).
+  let syncOpen = $state(false);
+  let syncBtn = $state<HTMLButtonElement | undefined>(undefined);
+  let syncDiag = $state<ProjectRemoteDiagnosis | null>(null);
   /** True when the project has an HTTPS remote (credential may or may not be stored). */
-  let publishAvailable = $derived(
+  let syncAvailable = $derived(
     !!currentDir &&
       sourceMode === "folder" &&
-      (publishDiag?.guidance === "connect-github-to-publish" ||
-        publishDiag?.guidance === "https-connect-server" ||
-        publishDiag?.guidance === "ready-to-publish"),
+      (syncDiag?.guidance === "connect-github-to-sync" ||
+        syncDiag?.guidance === "https-connect-server" ||
+        syncDiag?.guidance === "ready-to-sync"),
   );
 
-  function openPublish() {
-    if (!publishDiag?.canPublish) {
+  function openSync() {
+    if (!syncDiag?.canSync) {
       // No stored credential — route straight to the matching connect flow so
-      // the author learns how to enable publishing (ADR 0006 D7 reuse).
-      onPublishReconnect();
+      // the author learns how to enable syncing (ADR 0006 D7 reuse).
+      onSyncReconnect();
     } else {
-      publishOpen = true;
+      syncOpen = true;
     }
   }
 
-  async function refreshPublishDiag(dir: string) {
+  async function refreshSyncDiag(dir: string) {
     try {
       const diag = await getPlatform().diagnoseProjectRemote(dir);
       // Project may have changed while the diagnosis was in flight.
-      if (currentDir === dir) publishDiag = diag;
+      if (currentDir === dir) syncDiag = diag;
     } catch {
-      publishDiag = null;
+      syncDiag = null;
     }
   }
 
-  // Publish completed. Merged online changes land on disk and the preview's
+  // Sync completed. Merged online changes land on disk and the preview's
   // file watcher re-renders on its own (same contract as restore, #13).
-  function onPublishCompleted(mergedRemoteChanges: boolean) {
+  function onSyncCompleted(mergedRemoteChanges: boolean) {
     toast?.success(
       mergedRemoteChanges
-        ? "Published — changes from the online copy were combined in, so the preview will refresh."
-        : "Published — your changes are online.",
+        ? "Synced — changes from the online copy were combined in, so the preview will refresh."
+        : "Synced — your changes are online.",
     );
   }
 
   // The single Reconnect action (ADR 0006 D7): route to the matching connect
   // flow — GitHub's device flow, or Advanced Setup for every other server.
-  function onPublishReconnect() {
-    if (publishDiag?.provider === "github") githubOpen = true;
+  function onSyncReconnect() {
+    if (syncDiag?.provider === "github") githubOpen = true;
     else advancedSetupOpen = true;
   }
 
   // Completes the D7 Reconnect journey: a connect dialog closing may mean a
-  // new credential was just stored — re-check publishability so the Publish
+  // new credential was just stored — re-check syncability so the Sync
   // button and the dialog's auth state reflect it without a project reload.
   let connectDialogWasOpen = false;
   $effect(() => {
@@ -229,7 +229,7 @@
       currentDir &&
       sourceMode === "folder"
     ) {
-      void refreshPublishDiag(currentDir);
+      void refreshSyncDiag(currentDir);
     }
     connectDialogWasOpen = anyConnectOpen;
   });
@@ -1057,7 +1057,7 @@
       // must never block the preview.
       projectCapabilities = null;
       projectInsideVersionedFolder = false;
-      publishDiag = null;
+      syncDiag = null;
       platform
         .classifyProject(dir)
         .then((result) => {
@@ -1068,11 +1068,11 @@
           platform
             .setViewerPrefs({ projectSource: result.source })
             .catch(() => {});
-          // Publish gate (#15 / ADR 0006 D4): the toolbar action appears only
-          // when the diagnosis says the project is actually publishable (HTTPS
+          // Sync gate (#15 / ADR 0006 D4): the toolbar action appears only
+          // when the diagnosis says the project is actually syncable (HTTPS
           // remote + a stored connection). Local reads only; fire-and-forget.
-          if (result.capabilities.canPublish) {
-            void refreshPublishDiag(dir);
+          if (result.capabilities.canSync) {
+            void refreshSyncDiag(dir);
           }
         })
         .catch(() => {
@@ -1825,20 +1825,20 @@
           <Icon name="history" /><span class="view-label">History</span>
         </button>
       {/if}
-      <!-- Publish (#15 / UX-2): show whenever project has an HTTPS remote.
+      <!-- Sync (#15 / UX-2): show whenever project has an HTTPS remote.
            When no credential stored yet, clicking routes to the connect flow
-           so authors discover publishing exists (ADR 0006 D4/D7). -->
-      {#if publishAvailable}
+           so authors discover syncing exists (ADR 0006 D4/D7). -->
+      {#if syncAvailable}
         <button
-          bind:this={publishBtn}
+          bind:this={syncBtn}
           class="icon-text"
-          onclick={openPublish}
-          title={publishDiag?.canPublish
-            ? "Publish your changes to the online repository"
-            : "Connect to your online repository to enable publishing"}
-          aria-label={publishDiag?.canPublish ? "Publish changes" : "Connect to enable publishing"}
+          onclick={openSync}
+          title={syncDiag?.canSync
+            ? "Sync your changes with the online repository"
+            : "Connect to your online repository to enable syncing"}
+          aria-label={syncDiag?.canSync ? "Sync changes" : "Connect to enable syncing"}
         >
-          <Icon name="cloud-upload" /><span class="view-label">Publish</span>
+          <Icon name="cloud-upload" /><span class="view-label">Sync</span>
         </button>
       {/if}
       <!-- UX-039: separator before view mode controls -->
@@ -2147,12 +2147,12 @@
   onRestored={onVersionRestored}
   triggerEl={versionHistoryBtn}
 />
-<PublishDialog
-  bind:open={publishOpen}
+<SyncDialog
+  bind:open={syncOpen}
   projectDir={sourceMode === "folder" ? currentDir : null}
-  onPublished={onPublishCompleted}
-  onReconnect={onPublishReconnect}
-  triggerEl={publishBtn}
+  onSynced={onSyncCompleted}
+  onReconnect={onSyncReconnect}
+  triggerEl={syncBtn}
 />
 
 

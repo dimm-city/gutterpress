@@ -284,9 +284,9 @@ export type ForgeKind =
 /** Machine-readable next-step hint the UI maps to author copy. */
 export type RemoteGuidanceId =
   | "local-only"
-  | "connect-github-to-publish"
+  | "connect-github-to-sync"
   | "https-connect-server"
-  | "ready-to-publish"
+  | "ready-to-sync"
   | "ssh-use-own-tools";
 
 /** Environment status for the Advanced Setup panel. Local reads only. */
@@ -302,31 +302,33 @@ export interface ProjectRemoteDiagnosis {
   provider: ForgeKind | null;
   /** Token-settings deep link for recognized non-GitHub forges. */
   tokenSettingsUrl: string | null;
-  /** ADR 0006 D4: HTTPS remote + stored credential — the Publish gate. */
-  canPublish: boolean;
+  /** ADR 0006 D4: HTTPS remote + stored credential — the Sync gate. */
+  canSync: boolean;
   /**
-   * @deprecated Same value as {@link canPublish}. Do not use in new code —
-   * this field will be removed once all callers have migrated to `canPublish`.
+   * @deprecated Same value as {@link canSync}. Do not use in new code —
+   * this field will be removed once all callers have migrated to `canSync`.
+   * (Terminology note: the concept formerly called "publish" is now "Sync";
+   * the alias keeps its original name for shape stability.)
    */
   canPublishWhenImplemented: boolean;
   guidance: RemoteGuidanceId;
 }
 
-// ── Publish / sync (#15 publish phase, ADR 0006 D5) ───────────────────────────
+// ── Sync (#15 sync phase, ADR 0006 D5) ────────────────────────────────────────
 //
-// Mirrors the lib's publish types — defined locally so the SPA never
+// Mirrors the lib's sync types — defined locally so the SPA never
 // value-imports the lib (§8 / ADR 0004). Outcomes are returned (not thrown):
 // the lib maps every failure to an author-friendly status the dialog renders.
 
-/** Ahead/behind summary for the "N changes to publish" UI. */
-export interface PublishStatusInfo {
+/** Ahead/behind summary for the "N changes to sync" UI. */
+export interface SyncStatusInfo {
   hasRemote: boolean;
   branch?: string;
   /** Snapshots not yet online; `null` when there is nothing to compare. */
   ahead: number | null;
   /** Online snapshots not yet on this computer; `null` when unknown. */
   behind: number | null;
-  /** Working-tree edits that Publish would snapshot first. */
+  /** Working-tree edits that Sync would snapshot first. */
   hasUnsnapshottedChanges: boolean;
   /** True when the counts include a live check of the online repository. */
   live: boolean;
@@ -352,10 +354,10 @@ export interface ConflictResolutionChoice {
   choice: "mine" | "theirs" | "both";
 }
 
-/** Outcome of a publish (or conflict-resolution) attempt. */
-export type PublishOutcome =
+/** Outcome of a sync (or conflict-resolution) attempt. */
+export type SyncOutcome =
   | {
-      status: "published";
+      status: "synced";
       message: string;
       snapshotId?: string;
       mergedRemoteChanges: boolean;
@@ -374,7 +376,7 @@ export type PublishOutcome =
   | { status: "error"; message: string; snapshotId?: string };
 
 /** Inputs for applying the author's conflict choices. */
-export interface ResolvePublishConflictsArgs {
+export interface ResolveSyncConflictsArgs {
   projectDir: string;
   resolutions: ConflictResolutionChoice[];
   /** Echo of the conflict outcome's `localId`. */
@@ -710,20 +712,20 @@ export interface HostServices {
   /** Token-settings deep link for recognized forges; null when unknown. */
   forgeTokenUrl(host: string): Promise<string | null>;
 
-  // ── Publish / sync (#15 publish phase, ADR 0006 D5) ────────────────────────
-  // Snapshot-first publish: the host snapshots unsaved work BEFORE any
+  // ── Sync (#15 sync phase, ADR 0006 D5) ─────────────────────────────────────
+  // Snapshot-first sync: the host snapshots unsaved work BEFORE any
   // network/merge step, fetches, fast-forwards or merges, and pushes.
   // Conflicts come back as `{ status: "conflict" }` with per-file rows; the
   // dialog collects "Keep my version / Use the online version / Keep both
-  // copies" and calls resolvePublishConflicts. Credentials are resolved
+  // copies" and calls resolveSyncConflicts. Credentials are resolved
   // host-side and never reach the renderer. WebAdapter stubs reject.
 
-  /** Ahead/behind counts vs the online repository ("N changes to publish"). */
-  getPublishStatus(projectDir: string, fetch?: boolean): Promise<PublishStatusInfo>;
-  /** Snapshot-first publish of the project to its online repository. */
-  publishChanges(projectDir: string, message?: string): Promise<PublishOutcome>;
-  /** Apply per-file conflict choices and publish the combined result. */
-  resolvePublishConflicts(args: ResolvePublishConflictsArgs): Promise<PublishOutcome>;
+  /** Ahead/behind counts vs the online repository ("N changes to sync"). */
+  getSyncStatus(projectDir: string, fetch?: boolean): Promise<SyncStatusInfo>;
+  /** Snapshot-first sync of the project to its online repository. */
+  syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
+  /** Apply per-file conflict choices and sync the combined result. */
+  resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
 
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;

@@ -227,7 +227,7 @@ describe('createFileWatcher', () => {
   }, 30000);
 
   test('multiple files changed in one debounce window trigger a full reload, not a splice', async () => {
-    // Simulates a multi-file disk rewrite (version restore / publish merge):
+    // Simulates a multi-file disk rewrite (version restore / sync merge):
     // a burst of events inside one debounce window must NOT collapse into a
     // single-chapter splice — that leaves the other chapters stale.
     await writeFile(join(testDir, 'chapter-02.md'), '# Two');

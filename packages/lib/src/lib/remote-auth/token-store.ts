@@ -3,7 +3,7 @@
  *
  * Credentials are keyed by REMOTE HOST (e.g. "github.com"), not by project: a
  * credential for a host makes every project whose origin points at that host
- * publishable, including repos cloned externally.
+ * syncable, including repos cloned externally.
  *
  * The lib NEVER touches OS keychains — host applications inject the
  * implementation (the Electron viewer uses `safeStorage`; see

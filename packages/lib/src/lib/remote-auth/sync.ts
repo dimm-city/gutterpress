@@ -1,13 +1,13 @@
 /**
- * Snapshot-first publish + conflict resolution (#15, ADR 0006 D5).
+ * Snapshot-first sync + conflict resolution (#15, ADR 0006 D5).
  *
- * Publish sequence (ONE per-repo lock span, pure isomorphic-git — CLAUDE.md §7):
+ * Sync sequence (ONE per-repo lock span, pure isomorphic-git — CLAUDE.md §7):
  *
  *   1. Snapshot any working-tree changes FIRST — the author's work is now
  *      unconditionally safe, before any network or merge step can touch it.
  *   2. Fetch the tracked remote branch.
  *   3. Remote unchanged → push. Remote moved → fast-forward or clean merge,
- *      then push. Push rejected because someone published mid-flight → the
+ *      then push. Push rejected because someone synced mid-flight → the
  *      whole fetch/merge/push loop re-runs once.
  *   4. True conflict → abort cleanly (the working tree is NEVER left with
  *      conflict markers — `abortOnConflict` keeps the tree at the pre-merge
@@ -77,12 +77,12 @@ export interface ConflictResolution {
   choice: "mine" | "theirs" | "both";
 }
 
-/** Outcome of a publish (or conflict-resolution) attempt. */
-export type PublishOutcome =
+/** Outcome of a sync (or conflict-resolution) attempt. */
+export type SyncOutcome =
   | {
-      status: "published";
+      status: "synced";
       message: string;
-      /** Snapshot taken of unsaved work before publishing, if any. */
+      /** Snapshot taken of unsaved work before syncing, if any. */
       snapshotId?: string;
       /** True when online changes were merged into the local copy. */
       mergedRemoteChanges: boolean;
@@ -104,33 +104,33 @@ export type PublishOutcome =
 
 // ── Author-language copy (never raw git words) ───────────────────────────────
 
-const MSG_UP_TO_DATE = "Everything is already published.";
+const MSG_UP_TO_DATE = "Everything is in sync.";
 const MSG_UP_TO_DATE_PULLED =
-  "Everything is already published. The latest online changes were downloaded to this computer.";
-const MSG_PUBLISHED = "Your changes are online.";
-const MSG_PUBLISHED_MERGED =
+  "Everything is in sync. The latest online changes were downloaded to this computer.";
+const MSG_SYNCED = "Your changes are online.";
+const MSG_SYNCED_MERGED =
   "Your changes are online, combined with changes from the online copy.";
 const MSG_OFFLINE =
-  "Your changes are saved on this computer. print-md couldn't reach the online repository — try publishing again when you're back online.";
+  "Your changes are saved on this computer. print-md couldn't reach the online repository — try syncing again when you're back online.";
 const MSG_AUTH =
   "The online repository didn't accept the saved connection. Reconnect and try again.";
 const MSG_RACE =
-  "Someone else published changes at the same moment. Your work is saved on this computer — please try Publish again.";
+  "Someone else synced changes at the same moment. Your work is saved on this computer — please try Sync again.";
 const MSG_CONFLICT =
   "Your copy and the online copy both changed. Choose which version to keep for each file — a safety snapshot of your work was taken first.";
 const MSG_NO_REMOTE =
   "This project isn't connected to an online repository yet.";
 const MSG_SSH_REMOTE =
-  "This project's online address uses SSH (git@…), which print-md can't publish to. Switch it to the web (HTTPS) address to publish from here.";
+  "This project's online address uses SSH (git@…), which print-md can't sync to. Switch it to the web (HTTPS) address to sync from here.";
 const MSG_NO_BRANCH =
-  "This project's version history isn't on a named branch, so it can't be published right now.";
+  "This project's version history isn't on a named branch, so it can't be synced right now.";
 
-/** Message recorded on the automatic pre-publish snapshot (D5 invariant). */
-export const PUBLISH_SNAPSHOT_MESSAGE = "Snapshot before publishing";
+/** Message recorded on the automatic pre-sync snapshot (D5 invariant). */
+export const SYNC_SNAPSHOT_MESSAGE = "Snapshot before syncing";
 
 // ── Options ──────────────────────────────────────────────────────────────────
 
-export interface PublishProjectOptions {
+export interface SyncProjectOptions {
   projectDir: string;
   /** Explicit credential; wins over the token store. */
   credential?: HostCredential;
@@ -156,7 +156,7 @@ export interface ResolveConflictsOptions {
   httpClient?: typeof httpNode;
 }
 
-export interface PublishStatusOptions {
+export interface SyncStatusOptions {
   projectDir: string;
   /** Also fetch the online tip so the counts are live (network). */
   fetch?: boolean;
@@ -165,15 +165,15 @@ export interface PublishStatusOptions {
   httpClient?: typeof httpNode;
 }
 
-/** Ahead/behind summary for the "N changes to publish" UI. */
-export interface PublishStatusResult {
+/** Ahead/behind summary for the "N changes to sync" UI. */
+export interface SyncStatusResult {
   hasRemote: boolean;
   branch?: string;
   /** Snapshots not yet online. `null` when there is nothing to compare against. */
   ahead: number | null;
   /** Online snapshots not yet on this computer. `null` when unknown. */
   behind: number | null;
-  /** Working-tree edits that would be snapshotted by Publish. */
+  /** Working-tree edits that would be snapshotted by Sync. */
   hasUnsnapshottedChanges: boolean;
   /** True when the counts include a live check of the online repository. */
   live: boolean;
@@ -275,7 +275,7 @@ function classifyFailure(e: unknown): "auth" | "offline" | null {
   return null;
 }
 
-function failureOutcome(e: unknown, snapshotId?: string): PublishOutcome {
+function failureOutcome(e: unknown, snapshotId?: string): SyncOutcome {
   const kind = classifyFailure(e);
   const base = snapshotId ? { snapshotId } : {};
   if (kind === "auth") return { status: "auth", message: MSG_AUTH, ...base };
@@ -283,7 +283,7 @@ function failureOutcome(e: unknown, snapshotId?: string): PublishOutcome {
   return {
     status: "error",
     message:
-      "Publishing didn't complete. Your work is saved on this computer — please try again.",
+      "Syncing didn't complete. Your work is saved on this computer — please try again.",
     ...base,
   };
 }
@@ -359,20 +359,20 @@ async function fetchRemoteTip(
   }
 }
 
-// ── publishProject ────────────────────────────────────────────────────────────
+// ── syncProject ────────────────────────────────────────────────────────────
 
 /**
- * Snapshot-first publish (ADR 0006 D5). Never throws for expected outcomes —
- * everything is reported through the {@link PublishOutcome} union so hosts can
+ * Snapshot-first sync (ADR 0006 D5). Never throws for expected outcomes —
+ * everything is reported through the {@link SyncOutcome} union so hosts can
  * map statuses to author-friendly screens. Serialized on the per-repo lock.
  */
-export async function publishProject(
-  options: PublishProjectOptions,
-): Promise<PublishOutcome> {
+export async function syncProject(
+  options: SyncProjectOptions,
+): Promise<SyncOutcome> {
   const dir = options.projectDir;
   const http = options.httpClient ?? httpNode;
 
-  return withRepoLock(dir, async (): Promise<PublishOutcome> => {
+  return withRepoLock(dir, async (): Promise<SyncOutcome> => {
     let snapshotId: string | undefined;
     try {
       const branch = await currentBranchOrThrow(dir);
@@ -383,13 +383,13 @@ export async function publishProject(
       if (await hasPendingChanges(dir)) {
         const snap = await snapshotWorkingTreeUnlocked({
           projectDir: dir,
-          message: options.message?.trim() || PUBLISH_SNAPSHOT_MESSAGE,
+          message: options.message?.trim() || SYNC_SNAPSHOT_MESSAGE,
           authorName: options.authorName,
         });
         snapshotId = snap.id;
       }
 
-      // 2–3. fetch → fast-forward/merge → push. If someone publishes between
+      // 2–3. fetch → fast-forward/merge → push. If someone syncs between
       // our fetch and our push, the push is rejected — re-run the loop ONCE
       // (their commits merge in on the second pass), then surface a friendly
       // "try again" rather than looping forever.
@@ -472,8 +472,8 @@ export async function publishProject(
           throw e;
         }
         return {
-          status: "published",
-          message: merged ? MSG_PUBLISHED_MERGED : MSG_PUBLISHED,
+          status: "synced",
+          message: merged ? MSG_SYNCED_MERGED : MSG_SYNCED,
           mergedRemoteChanges: merged,
           ...(snapshotId ? { snapshotId } : {}),
         };
@@ -580,7 +580,7 @@ function defaultDiff3(
 }
 
 /**
- * Apply the author's per-file choices and publish the combined result
+ * Apply the author's per-file choices and sync the combined result
  * (ADR 0006 D5). The merge commit has TWO PARENTS — the local branch tip and
  * the online tip — so both histories remain intact and View History stays
  * honest about what was combined.
@@ -602,7 +602,7 @@ function defaultDiff3(
  */
 export async function resolveConflicts(
   options: ResolveConflictsOptions,
-): Promise<PublishOutcome> {
+): Promise<SyncOutcome> {
   const dir = options.projectDir;
   const http = options.httpClient ?? httpNode;
 
@@ -615,11 +615,11 @@ export async function resolveConflicts(
   ) {
     return {
       status: "error",
-      message: "Those combine choices have expired. Please run Publish again.",
+      message: "Those combine choices have expired. Please run Sync again.",
     };
   }
 
-  return withRepoLock(dir, async (): Promise<PublishOutcome> => {
+  return withRepoLock(dir, async (): Promise<SyncOutcome> => {
     let snapshotId: string | undefined;
     try {
       const branch = await currentBranchOrThrow(dir);
@@ -630,7 +630,7 @@ export async function resolveConflicts(
       if (await hasPendingChanges(dir)) {
         const snap = await snapshotWorkingTreeUnlocked({
           projectDir: dir,
-          message: PUBLISH_SNAPSHOT_MESSAGE,
+          message: SYNC_SNAPSHOT_MESSAGE,
           authorName: options.authorName,
         });
         snapshotId = snap.id;
@@ -758,7 +758,7 @@ export async function resolveConflicts(
       // files that had to be equalized the other way for the merge.
       await applyChanges(postWrites, postDeletes, "Applied your chosen versions");
 
-      // Push, with ONE recovery pass: if someone published between the
+      // Push, with ONE recovery pass: if someone synced between the
       // author's choices and this push, re-fetch the new online tip and
       // either merge it in cleanly and push again (no author interaction
       // needed) or hand back a FRESH conflict carrying the NEW tip — the UI
@@ -825,8 +825,8 @@ export async function resolveConflicts(
       }
 
       return {
-        status: "published",
-        message: MSG_PUBLISHED_MERGED,
+        status: "synced",
+        message: MSG_SYNCED_MERGED,
         mergedRemoteChanges: true,
         ...(snapshotId ? { snapshotId } : {}),
       };
@@ -844,7 +844,7 @@ export async function resolveConflicts(
   });
 }
 
-// ── getPublishStatus ──────────────────────────────────────────────────────────
+// ── getSyncStatus ──────────────────────────────────────────────────────────
 
 /**
  * Cap on the ahead/behind history walk. Counts past this are useless to the
@@ -880,20 +880,20 @@ async function countCommitsSince(
 
 /**
  * Ahead/behind counts vs the tracked remote branch, so the UI can show
- * "2 changes to publish". Local compare by default (no network); pass
+ * "2 changes to sync". Local compare by default (no network); pass
  * `fetch: true` (with a credential when the remote needs one) for live counts.
  * A failed live fetch degrades to the local compare (`live: false`).
  */
-export async function getPublishStatus(
-  options: PublishStatusOptions,
-): Promise<PublishStatusResult> {
+export async function getSyncStatus(
+  options: SyncStatusOptions,
+): Promise<SyncStatusResult> {
   const dir = options.projectDir;
   const http = options.httpClient ?? httpNode;
 
-  return withRepoLock(dir, async (): Promise<PublishStatusResult> => {
+  return withRepoLock(dir, async (): Promise<SyncStatusResult> => {
     const branch = (await git.currentBranch({ fs, dir })) ?? undefined;
     const pending = await hasPendingChanges(dir);
-    const base: Omit<PublishStatusResult, "ahead" | "behind" | "live" | "approximate"> = {
+    const base: Omit<SyncStatusResult, "ahead" | "behind" | "live" | "approximate"> = {
       hasRemote: false,
       ...(branch ? { branch } : {}),
       hasUnsnapshottedChanges: pending,
@@ -938,7 +938,7 @@ export async function getPublishStatus(
       }
     }
     if (!remoteTip) {
-      // No record of the online tip yet: everything local is unpublished.
+      // No record of the online tip yet: nothing local has been synced yet.
       const ahead = await countCommitsSince(dir, branch, undefined);
       return {
         ...base,

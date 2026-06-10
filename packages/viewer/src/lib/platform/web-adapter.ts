@@ -50,9 +50,9 @@ import type {
   RemoteAccessResult,
   ConnectGenericHostArgs,
   HostConnectionInfo,
-  PublishStatusInfo,
-  PublishOutcome,
-  ResolvePublishConflictsArgs,
+  SyncStatusInfo,
+  SyncOutcome,
+  ResolveSyncConflictsArgs,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -341,17 +341,17 @@ export class WebAdapter implements Platform {
     return Promise.resolve(null);
   }
 
-  // ── Publish / sync (#15 publish phase) — desktop-only until the PWA lands ──
-  getPublishStatus(_projectDir: string, _fetch?: boolean): Promise<PublishStatusInfo> {
-    return rejectNotImplemented("getPublishStatus");
+  // ── Sync (#15 sync phase) — desktop-only until the PWA lands ───────────────
+  getSyncStatus(_projectDir: string, _fetch?: boolean): Promise<SyncStatusInfo> {
+    return rejectNotImplemented("getSyncStatus");
   }
 
-  publishChanges(_projectDir: string, _message?: string): Promise<PublishOutcome> {
-    return rejectNotImplemented("publishChanges");
+  syncChanges(_projectDir: string, _message?: string): Promise<SyncOutcome> {
+    return rejectNotImplemented("syncChanges");
   }
 
-  resolvePublishConflicts(_args: ResolvePublishConflictsArgs): Promise<PublishOutcome> {
-    return rejectNotImplemented("resolvePublishConflicts");
+  resolveSyncConflicts(_args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {
+    return rejectNotImplemented("resolveSyncConflicts");
   }
 
   startPreview(_args: PreviewStartArgs): Promise<PreviewStartResult> {

@@ -218,22 +218,24 @@ interface ProjectRemoteDiagnosis {
     | "generic"
     | null;
   tokenSettingsUrl: string | null;
-  canPublish: boolean;
+  canSync: boolean;
   /**
-   * @deprecated Same value as canPublish. Do not use in new code — this field
-   * will be removed once all callers have migrated to canPublish.
+   * @deprecated Same value as canSync. Do not use in new code — this field
+   * will be removed once all callers have migrated to canSync.
+   * (Terminology note: the concept formerly called "publish" is now "Sync";
+   * the alias keeps its original name for shape stability.)
    */
   canPublishWhenImplemented: boolean;
   guidance:
     | "local-only"
-    | "connect-github-to-publish"
+    | "connect-github-to-sync"
     | "https-connect-server"
-    | "ready-to-publish"
+    | "ready-to-sync"
     | "ssh-use-own-tools";
 }
 
-// ── Publish / sync (#15 publish phase, ADR 0006 D5). Mirrors the lib. ──
-interface PublishStatusInfo {
+// ── Sync (#15 sync phase, ADR 0006 D5). Mirrors the lib. ──
+interface SyncStatusInfo {
   hasRemote: boolean;
   branch?: string;
   ahead: number | null;
@@ -254,9 +256,9 @@ interface ConflictResolutionChoice {
   choice: "mine" | "theirs" | "both";
 }
 
-type PublishOutcome =
+type SyncOutcome =
   | {
-      status: "published";
+      status: "synced";
       message: string;
       snapshotId?: string;
       mergedRemoteChanges: boolean;
@@ -274,7 +276,7 @@ type PublishOutcome =
   | { status: "offline"; message: string; snapshotId?: string }
   | { status: "error"; message: string; snapshotId?: string };
 
-interface ResolvePublishConflictsArgs {
+interface ResolveSyncConflictsArgs {
   projectDir: string;
   resolutions: ConflictResolutionChoice[];
   localId: string;
@@ -326,7 +328,6 @@ interface ProjectCapabilities {
   canSnapshot: boolean;
   canViewHistory: boolean;
   canRestoreSnapshot: boolean;
-  canPublish: boolean;
   canSync: boolean;
   authManagedByApp: boolean;
 }
@@ -568,23 +569,23 @@ contextBridge.exposeInMainWorld("electron", {
   forgeTokenUrl: (host: string): Promise<string | null> =>
     ipcRenderer.invoke("remote:forgeTokenUrl", host),
 
-  // ── Publish / sync (#15 publish phase, ADR 0006 D5) ──────────────────────
+  // ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────
   // All git work happens in the lib behind main; credentials are resolved
   // host-side from the safeStorage store and never cross this bridge.
-  getPublishStatus: (
+  getSyncStatus: (
     projectDir: string,
     fetch?: boolean,
-  ): Promise<PublishStatusInfo> =>
-    ipcRenderer.invoke("remote:publishStatus", projectDir, fetch),
-  publishChanges: (
+  ): Promise<SyncStatusInfo> =>
+    ipcRenderer.invoke("remote:syncStatus", projectDir, fetch),
+  syncChanges: (
     projectDir: string,
     message?: string,
-  ): Promise<PublishOutcome> =>
-    ipcRenderer.invoke("remote:publish", projectDir, message),
-  resolvePublishConflicts: (
-    args: ResolvePublishConflictsArgs,
-  ): Promise<PublishOutcome> =>
-    ipcRenderer.invoke("remote:resolveConflicts", args),
+  ): Promise<SyncOutcome> =>
+    ipcRenderer.invoke("remote:sync", projectDir, message),
+  resolveSyncConflicts: (
+    args: ResolveSyncConflictsArgs,
+  ): Promise<SyncOutcome> =>
+    ipcRenderer.invoke("remote:resolveSyncConflicts", args),
   startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>

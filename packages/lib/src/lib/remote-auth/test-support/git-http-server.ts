@@ -5,7 +5,7 @@
  * Extracted from clone.test.ts so test-access/generic-auth tests reuse the
  * same REAL wire-protocol exchange (ref advertisement + NAK + side-band
  * packfile, with `shallow`/`deepen` support) instead of mocking transports.
- * The receive-pack (push) side was added for the publish tests (#15 D5): it
+ * The receive-pack (push) side was added for the sync tests (#15 D5): it
  * parses the ref-update commands, indexes the received packfile into the
  * fixture repo with `git.indexPack`, moves the refs with `git.writeRef`, and
  * answers with a side-band-wrapped report-status — a REAL in-process push
@@ -333,7 +333,7 @@ async function applyPush(
     // Like a real receive-pack, reject stale updates: a non-zero oldOid that
     // doesn't match the ref's CURRENT value means someone else moved the ref
     // since the client's advertisement — report non-fast-forward and do NOT
-    // touch the ref. (Exercised by the publish race tests.)
+    // touch the ref. (Exercised by the sync race tests.)
     let current: string | null = null;
     try {
       current = await git.resolveRef({ fs, dir: repoDir, ref: cmd.ref });

@@ -129,7 +129,7 @@
     // UX-8: an in-flight enable/snapshot/restore can't be safely abandoned —
     // closing would discard its success/failure feedback (the open-effect
     // wipes dialog state). Block the close and tell the user instead
-    // (PublishDialog/GitHubDialog precedent).
+    // (SyncDialog/GitHubDialog precedent).
     if (busy) {
       closeBlocked = true;
       return;

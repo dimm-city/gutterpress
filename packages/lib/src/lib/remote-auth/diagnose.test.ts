@@ -28,7 +28,7 @@ async function gitFolder(opts: {
   return dir;
 }
 
-test("plain folder → local-only, no remote, nothing publishable", async () => {
+test("plain folder → local-only, no remote, nothing syncable", async () => {
   const dir = await tempDir("pmd-diag-plain-");
   try {
     const diag = await diagnoseProjectRemote(dir);
@@ -57,7 +57,7 @@ test("git folder without a remote → local-only with branch", async () => {
   }
 });
 
-test("HTTPS github remote without credential → connect-github-to-publish", async () => {
+test("HTTPS github remote without credential → connect-github-to-sync", async () => {
   const dir = await gitFolder({ remoteUrl: "https://github.com/octo/book.git" });
   const storeDir = await tempDir("pmd-diag-store-");
   try {
@@ -68,7 +68,7 @@ test("HTTPS github remote without credential → connect-github-to-publish", asy
     expect(diag.provider).toBe("github");
     expect(diag.credentialPresent).toBe(false);
     expect(diag.canPublishWhenImplemented).toBe(false);
-    expect(diag.guidance).toBe("connect-github-to-publish");
+    expect(diag.guidance).toBe("connect-github-to-sync");
     expect(diag.tokenSettingsUrl).toBeNull(); // GitHub = managed flow, no token page
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -76,7 +76,7 @@ test("HTTPS github remote without credential → connect-github-to-publish", asy
   }
 });
 
-test("HTTPS gitea remote with stored credential → ready-to-publish + token link", async () => {
+test("HTTPS gitea remote with stored credential → ready-to-sync + token link", async () => {
   const dir = await gitFolder({
     remoteUrl: "https://gitea.example.com/octo/book.git",
     branch: "main",
@@ -94,7 +94,7 @@ test("HTTPS gitea remote with stored credential → ready-to-publish + token lin
     expect(diag.provider).toBe("gitea");
     expect(diag.credentialPresent).toBe(true);
     expect(diag.canPublishWhenImplemented).toBe(true);
-    expect(diag.guidance).toBe("ready-to-publish");
+    expect(diag.guidance).toBe("ready-to-sync");
     expect(diag.tokenSettingsUrl).toBe(
       "https://gitea.example.com/user/settings/applications",
     );
@@ -116,12 +116,12 @@ test("HTTPS non-GitHub remote without credential → https-connect-server", asyn
   }
 });
 
-test("SSH remote → ssh-use-own-tools, never publishable, host still recognized", async () => {
+test("SSH remote → ssh-use-own-tools, never syncable, host still recognized", async () => {
   const dir = await gitFolder({ remoteUrl: "git@github.com:octo/book.git" });
   const storeDir = await tempDir("pmd-diag-store3-");
   try {
     const store = new FileTokenStore(path.join(storeDir, "credentials.json"));
-    // Even WITH a stored credential, SSH can't publish (HTTPS-only transport).
+    // Even WITH a stored credential, SSH can't sync (HTTPS-only transport).
     await store.set("github.com", {
       host: "github.com",
       kind: "github-app",

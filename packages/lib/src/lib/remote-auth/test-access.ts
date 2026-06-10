@@ -62,7 +62,7 @@ const FAILURE_MESSAGES: Record<RemoteAccessFailureReason, string> = {
   unreachable:
     "Couldn't reach the Git server. Check your internet connection (and VPN, if this is a private server), then try again.",
   "ssh-unsupported":
-    "This project's online address uses SSH (git@…), which print-md can't check or publish to. Everything on this computer still works — publish with your usual Git tool.",
+    "This project's online address uses SSH (git@…), which print-md can't check or sync with. Everything on this computer still works — sync with your usual Git tool.",
   tls: "The server's security certificate couldn't be verified. If this is a private server with its own certificate, ask its administrator about trusting it (NODE_EXTRA_CA_CERTS).",
   unknown:
     "The connection test failed unexpectedly. The server may not be a Git server, or it may be temporarily unavailable.",

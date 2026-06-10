@@ -194,6 +194,14 @@ canPublish = hasRemote
           && (credential exists for remote host || remote allows anonymous push)
 ```
 
+> **Terminology (2026-06-10):** the user-facing and code name for the remote
+> push/merge feature described here is **Sync** (toolbar "Sync", `syncProject`,
+> `remote:sync`, guidance ids `ready-to-sync` / `connect-github-to-sync`,
+> `canSync`). "Publish" is reserved for publishing *output* to distribution
+> targets (itch.io, DriveThruRPG, KDP — future issue #35). Where this ADR says
+> "publish"/"Publish Changes", read "sync"/"Sync Changes"; D5's design is
+> unchanged.
+
 ### D5. Conflict and failure model: snapshot-first, never show merge markers
 
 isomorphic-git performs clean merges but has no interactive conflict

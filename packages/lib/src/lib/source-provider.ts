@@ -99,7 +99,7 @@ export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promi
 
 /**
  * Resolve the commit author identity from an optional display name (exported
- * for the publish surface so merge commits carry the same identity as
+ * for the sync surface so merge commits carry the same identity as
  * snapshots).
  */
 export function gitAuthor(name?: string): { name: string; email: string } {
@@ -127,7 +127,7 @@ async function stageAll(dir: string): Promise<void> {
  * Used to skip empty snapshots: committing with nothing changed would create an
  * empty commit that pollutes the author-facing history list.
  *
- * Exported (lock-free) for the publish surface (#15, ADR 0006 D5): publish
+ * Exported (lock-free) for the sync surface (#15, ADR 0006 D5): sync
  * holds the repo lock for its whole sequence and needs the same "anything to
  * snapshot?" check the snapshot op uses. Callers outside a lock should prefer
  * the provider operations.
@@ -290,10 +290,10 @@ class LocalGitSourceProvider implements SourceProvider {
 /**
  * Lock-free snapshot of the full working tree (stage everything + commit).
  *
- * Exported for the publish surface (#15, ADR 0006 D5): `publishProject` holds
+ * Exported for the sync surface (#15, ADR 0006 D5): `syncProject` holds
  * the per-repo lock for snapshot → fetch → merge → push as ONE sequence, so it
  * needs the lock-free internal rather than `provider.snapshot()` (taking the
- * per-method lock inside the publish lock would deadlock the FIFO queue).
+ * per-method lock inside the sync lock would deadlock the FIFO queue).
  * Callers outside a lock should use `providerFor(source).snapshot()`.
  */
 export async function snapshotWorkingTreeUnlocked(

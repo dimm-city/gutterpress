@@ -3,7 +3,7 @@
  *
  * Classifies an opened folder as one of three `ProjectSource` variants so the
  * viewer (and, later, the CLI) can decide which actions to surface — open,
- * enable version history, snapshot, view history, publish — WITHOUT exposing
+ * enable version history, snapshot, view history, sync — WITHOUT exposing
  * Git terminology to non-technical authors.
  *
  * Scope for 0.4.0: detection uses ONLY Node `fs/promises` and a small regex
@@ -63,7 +63,7 @@ export type ProjectSource =
 /**
  * What the UI may offer for a given source. Derived purely from the source
  * type; no I/O. Drives which user-facing buttons (Enable Version History,
- * Save Snapshot, View History, Publish) are shown.
+ * Save Snapshot, View History, Sync) are shown.
  */
 export interface ProjectCapabilities {
   canRead: boolean;
@@ -72,7 +72,6 @@ export interface ProjectCapabilities {
   canSnapshot: boolean;
   canViewHistory: boolean;
   canRestoreSnapshot: boolean;
-  canPublish: boolean;
   canSync: boolean;
   authManagedByApp: boolean;
 }
@@ -209,14 +208,14 @@ export async function detectProjectSource(
  * Map a {@link ProjectSource} to the actions the UI may offer. Pure; no I/O.
  *
  * - `local-folder`: read/write only; version history can be ENABLED (a later
- *   `git init`, #13/#25) but no snapshot/history/restore until then; no publish.
+ *   `git init`, #13/#25) but no snapshot/history/restore until then; no sync.
  *   EXCEPTION (SWEEP-2): when the folder sits inside an existing Git repo
  *   (`enclosingRepoDir` set), enabling is suppressed — a nested `git init`
  *   would shadow the outer repo's tracking of these files.
  * - `local-git-folder`: version history already on, so snapshot/history/restore
- *   are available. Publish is offered only when a remote exists (the app can
+ *   are available. Sync is offered only when a remote exists (the app can
  *   push via the user's externally-configured Git auth — #16).
- * - `managed-github`: full app-managed read/write/version/publish/sync.
+ * - `managed-github`: full app-managed read/write/version/sync.
  */
 export function capabilitiesFor(source: ProjectSource): ProjectCapabilities {
   switch (source.type) {
@@ -228,7 +227,6 @@ export function capabilitiesFor(source: ProjectSource): ProjectCapabilities {
         canSnapshot: false,
         canViewHistory: false,
         canRestoreSnapshot: false,
-        canPublish: false,
         canSync: false,
         authManagedByApp: false,
       };
@@ -240,7 +238,6 @@ export function capabilitiesFor(source: ProjectSource): ProjectCapabilities {
         canSnapshot: true,
         canViewHistory: true,
         canRestoreSnapshot: true,
-        canPublish: source.hasRemote,
         canSync: source.hasRemote,
         authManagedByApp: false,
       };
@@ -252,7 +249,6 @@ export function capabilitiesFor(source: ProjectSource): ProjectCapabilities {
         canSnapshot: true,
         canViewHistory: true,
         canRestoreSnapshot: true,
-        canPublish: true,
         canSync: true,
         authManagedByApp: true,
       };

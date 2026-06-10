@@ -1,13 +1,13 @@
 <script lang="ts">
   /**
-   * PublishDialog (#15 publish phase, ADR 0006 D5) — the author-facing surface
-   * for "Publish Changes". Pure author language: publish / online copy /
+   * SyncDialog (#15 sync phase, ADR 0006 D5) — the author-facing surface
+   * for "Sync Changes". Pure author language: sync / online copy /
    * version — never push / merge / commit / conflict.
    *
-   * Flow: open → live "what's new" check ("N changes to publish") → Publish →
-   * one of: success · already published · offline ("saved on this computer")
+   * Flow: open → live "what's new" check ("N changes to sync") → Sync →
+   * one of: success · already in sync · offline ("saved on this computer")
    * · reconnect (single button, D7) · the per-file choices screen ("Your copy
-   * and the online copy both changed") → confirm → publish the combined
+   * and the online copy both changed") → confirm → sync the combined
    * result.
    *
    * All host work goes through getPlatform() (§8 / ADR 0004); the snapshot-
@@ -19,21 +19,21 @@
   import { getPlatform } from "$lib/platform";
   import type {
     ConflictFileInfo,
-    PublishOutcome,
-    PublishStatusInfo,
+    SyncOutcome,
+    SyncStatusInfo,
   } from "$lib/platform/contract";
 
   let {
     open = $bindable(false),
     projectDir,
-    onPublished,
+    onSynced,
     onReconnect,
     triggerEl,
   }: {
     open?: boolean;
     projectDir: string | null;
-    /** Publish completed; local files may have gained online changes. */
-    onPublished?: (mergedRemoteChanges: boolean) => void;
+    /** Sync completed; local files may have gained online changes. */
+    onSynced?: (mergedRemoteChanges: boolean) => void;
     /**
      * The saved connection was rejected (D7) — the parent routes the single
      * Reconnect action to the matching connect flow (GitHub dialog or
@@ -46,7 +46,7 @@
   type Phase =
     | "checking"
     | "idle"
-    | "publishing"
+    | "syncing"
     | "done"
     | "offline"
     | "auth"
@@ -55,14 +55,14 @@
 
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
   let phase = $state<Phase>("checking");
-  let status = $state<PublishStatusInfo | null>(null);
+  let status = $state<SyncStatusInfo | null>(null);
   let resultMessage = $state<string | null>(null);
   let conflictFiles = $state<ConflictFileInfo[]>([]);
   let conflictLocalId = $state<string | null>(null);
   let conflictRemoteId = $state<string | null>(null);
   /** Per-file choice, keyed by path. Defaults to keeping the author's copy. */
   let choices = $state<Record<string, "mine" | "theirs" | "both">>({});
-  /** True when the user tried to close the dialog mid-publish. */
+  /** True when the user tried to close the dialog mid-sync. */
   let closeBlocked = $state(false);
 
   // Stale-load guard (same pattern as AdvancedSetupDialog): check() is the
@@ -87,22 +87,22 @@
     if (!projectDir) return;
     const gen = ++loadGen;
     try {
-      // Live check so "N changes to publish" includes what's new online; the
+      // Live check so "N changes to sync" includes what's new online; the
       // host degrades to a local count when the network is unavailable.
-      const result = await getPlatform().getPublishStatus(projectDir, true);
+      const result = await getPlatform().getSyncStatus(projectDir, true);
       if (gen !== loadGen) return;
       status = result;
       phase = "idle";
     } catch (e) {
       if (gen !== loadGen) return;
-      // A failed check never blocks publishing — publish itself reports
+      // A failed check never blocks syncing — sync itself reports
       // offline/auth in a friendly way.
       status = null;
       phase = "idle";
     }
   }
 
-  /** "2 changes to publish" line for the idle screen. */
+  /** "2 changes to sync" line for the idle screen. */
   let statusLine = $derived.by(() => {
     if (!status) return null;
     // Approximate counts are lower bounds (the host caps the history walk;
@@ -113,7 +113,7 @@
     const localCount = ahead + (status.hasUnsnapshottedChanges ? 1 : 0);
     if (localCount > 0) {
       pieces.push(
-        `${localCount}${plus} change${localCount === 1 ? "" : "s"} to publish`,
+        `${localCount}${plus} change${localCount === 1 ? "" : "s"} to sync`,
       );
     }
     if ((status.behind ?? 0) > 0) {
@@ -121,11 +121,11 @@
         `${status.behind}${plus} new change${status.behind === 1 ? "" : "s"} in the online copy`,
       );
     }
-    if (pieces.length === 0) return "Everything is already published.";
+    if (pieces.length === 0) return "Everything is in sync.";
     return pieces.join(" · ");
   });
 
-  let nothingToPublish = $derived(
+  let nothingToSync = $derived(
     status !== null &&
       (status.ahead ?? 1) === 0 &&
       !status.hasUnsnapshottedChanges &&
@@ -140,12 +140,12 @@
       (status.behind ?? 0) > 0,
   );
 
-  function applyOutcome(outcome: PublishOutcome) {
+  function applyOutcome(outcome: SyncOutcome) {
     resultMessage = outcome.message;
     switch (outcome.status) {
-      case "published":
+      case "synced":
         phase = "done";
-        onPublished?.(outcome.mergedRemoteChanges);
+        onSynced?.(outcome.mergedRemoteChanges);
         break;
       case "up-to-date":
         phase = "done";
@@ -179,13 +179,13 @@
     }
   }
 
-  async function publish() {
-    if (!projectDir || phase === "publishing") return;
-    phase = "publishing";
+  async function sync() {
+    if (!projectDir || phase === "syncing") return;
+    phase = "syncing";
     closeBlocked = false;
     resultMessage = null;
     try {
-      applyOutcome(await getPlatform().publishChanges(projectDir));
+      applyOutcome(await getPlatform().syncChanges(projectDir));
     } catch (e) {
       resultMessage = friendly(e);
       phase = "error";
@@ -194,17 +194,17 @@
 
   async function confirmChoices() {
     if (!projectDir || !conflictLocalId || !conflictRemoteId) return;
-    if (phase === "publishing") return;
+    if (phase === "syncing") return;
     const resolutions = conflictFiles.map((f) => ({
       path: f.path,
       choice: choices[f.path] ?? ("mine" as const),
     }));
-    phase = "publishing";
+    phase = "syncing";
     closeBlocked = false;
     resultMessage = null;
     try {
       applyOutcome(
-        await getPlatform().resolvePublishConflicts({
+        await getPlatform().resolveSyncConflicts({
           projectDir,
           resolutions,
           localId: conflictLocalId,
@@ -264,10 +264,10 @@
   }
 
   function close() {
-    // Publishing can't be safely interrupted (the host is mid push/merge) —
+    // Syncing can't be safely interrupted (the host is mid-sync) —
     // tell the user instead of silently ignoring the attempt (GitHubDialog
     // precedent for mid-download closes).
-    if (phase === "publishing") {
+    if (phase === "syncing") {
       closeBlocked = true;
       return;
     }
@@ -282,8 +282,8 @@
         return "Checking what's new.";
       case "idle":
         return statusLine ?? "";
-      case "publishing":
-        return "Publishing your changes.";
+      case "syncing":
+        return "Syncing your changes.";
       case "done":
         return resultMessage ?? "Done.";
       case "offline":
@@ -293,7 +293,7 @@
       case "conflict":
         return "Your copy and the online copy both changed. Choose which version to keep for each file.";
       case "error":
-        return resultMessage ?? "Publishing didn't complete.";
+        return resultMessage ?? "Syncing didn't complete.";
     }
   });
 </script>
@@ -306,19 +306,19 @@
     class="dialog"
     role="dialog"
     aria-modal="true"
-    aria-labelledby="publish-title"
+    aria-labelledby="sync-title"
     tabindex="-1"
     onkeydown={trapFocus}
   >
     <header class="dialog-header">
-      <h2 id="publish-title">
+      <h2 id="sync-title">
         <Icon name="cloud-upload" />
-        Publish Changes
+        Sync Changes
       </h2>
       <button
         class="close"
         onclick={close}
-        disabled={phase === "publishing"}
+        disabled={phase === "syncing"}
         title="Close (Esc)"
         aria-label="Close"
       >&times;</button>
@@ -332,37 +332,37 @@
 
       {#if phase === "checking"}
         <p class="hint" role="status">Checking what's new…</p>
-      {:else if phase === "publishing"}
+      {:else if phase === "syncing"}
         <p class="hint busy" role="status">
           <span class="spinner" aria-hidden="true"></span>
-          Publishing your changes…
+          Syncing your changes…
         </p>
         {#if closeBlocked}
-          <p class="hint" role="status">Publishing in progress — please wait.</p>
+          <p class="hint" role="status">Syncing in progress — please wait.</p>
         {/if}
       {:else if phase === "idle"}
         {#if statusLine}
           <p class="lede" role="status">{statusLine}</p>
         {:else}
           <p class="lede" role="status">
-            Publish sends your latest work to this project's online repository.
+            Sync sends your latest work to this project's online repository.
             A snapshot of your work is saved first, so nothing can be lost.
           </p>
         {/if}
         {#if status?.hasUnsnapshottedChanges}
-          <p class="hint">Your newest edits will be saved as a snapshot when you publish.</p>
+          <p class="hint">Your newest edits will be saved as a snapshot when you sync.</p>
         {/if}
-        <!-- UX-6: when nothing to publish, replace the disabled pseudo-button +
+        <!-- UX-6: when nothing to sync, replace the disabled pseudo-button +
              "Not now" with a single enabled Done that closes the dialog. -->
-        {#if nothingToPublish}
+        {#if nothingToSync}
           <footer class="actions">
             <button class="primary" onclick={close}>Done</button>
           </footer>
         {:else}
           <footer class="actions">
             <button class="ghost" onclick={close}>Not now</button>
-            <button class="primary" onclick={publish}>
-              {hasOnlineChangesOnly ? "Get online changes" : "Publish Changes"}
+            <button class="primary" onclick={sync}>
+              {hasOnlineChangesOnly ? "Get online changes" : "Sync Changes"}
             </button>
           </footer>
         {/if}
@@ -372,16 +372,16 @@
           <button class="primary" onclick={close}>Done</button>
         </footer>
       {:else if phase === "offline"}
-        <!-- UX-4: resultMessage (from MSG_OFFLINE in publish.ts) already contains
+        <!-- UX-4: resultMessage (from MSG_OFFLINE in sync.ts) already contains
              the full "Your changes are saved…" sentence — render it directly
              rather than prepending a redundant "Saved on this computer — " prefix
              that creates a doubled sentence. -->
         <p class="notice" role="status">
-          {resultMessage ?? "Your changes are saved on this computer. Try publishing again when you're back online."}
+          {resultMessage ?? "Your changes are saved on this computer. Try syncing again when you're back online."}
         </p>
         <footer class="actions">
           <button class="ghost" onclick={close}>Close</button>
-          <button class="primary" onclick={publish}>Try again</button>
+          <button class="primary" onclick={sync}>Try again</button>
         </footer>
       {:else if phase === "auth"}
         <p class="error" role="alert">{resultMessage}</p>
@@ -422,14 +422,14 @@
         <footer class="actions">
           <button class="ghost" onclick={close}>Decide later</button>
           <button class="primary" onclick={confirmChoices}>
-            Use these choices and publish
+            Use these choices and sync
           </button>
         </footer>
       {:else if phase === "error"}
         <p class="error" role="alert">{resultMessage}</p>
         <footer class="actions">
           <button class="ghost" onclick={close}>Close</button>
-          <button class="primary" onclick={publish}>Try again</button>
+          <button class="primary" onclick={sync}>Try again</button>
         </footer>
       {/if}
     </div>

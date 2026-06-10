@@ -48,9 +48,9 @@ import type {
   RemoteAccessResult,
   ConnectGenericHostArgs,
   HostConnectionInfo,
-  PublishStatusInfo,
-  PublishOutcome,
-  ResolvePublishConflictsArgs,
+  SyncStatusInfo,
+  SyncOutcome,
+  ResolveSyncConflictsArgs,
 } from "./contract";
 
 function bridge(): ElectronBridge {
@@ -291,17 +291,17 @@ export class ElectronAdapter implements Platform {
     return bridge().forgeTokenUrl(host);
   }
 
-  // ── Publish / sync (#15 publish phase) — delegate 1:1 to the bridge ────────
-  getPublishStatus(projectDir: string, fetch?: boolean): Promise<PublishStatusInfo> {
-    return bridge().getPublishStatus(projectDir, fetch);
+  // ── Sync (#15 sync phase) — delegate 1:1 to the bridge ─────────────────────
+  getSyncStatus(projectDir: string, fetch?: boolean): Promise<SyncStatusInfo> {
+    return bridge().getSyncStatus(projectDir, fetch);
   }
 
-  publishChanges(projectDir: string, message?: string): Promise<PublishOutcome> {
-    return bridge().publishChanges(projectDir, message);
+  syncChanges(projectDir: string, message?: string): Promise<SyncOutcome> {
+    return bridge().syncChanges(projectDir, message);
   }
 
-  resolvePublishConflicts(args: ResolvePublishConflictsArgs): Promise<PublishOutcome> {
-    return bridge().resolvePublishConflicts(args);
+  resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {
+    return bridge().resolveSyncConflicts(args);
   }
 
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {

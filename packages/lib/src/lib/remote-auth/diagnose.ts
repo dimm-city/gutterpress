@@ -37,18 +37,18 @@ export type ForgeKind =
 /**
  * Machine-readable next-step hint the UI maps to author copy:
  * - `local-only` — no remote; everything is on this computer.
- * - `connect-github-to-publish` — HTTPS github.com remote, no stored credential.
+ * - `connect-github-to-sync` — HTTPS github.com remote, no stored credential.
  * - `https-connect-server` — HTTPS non-GitHub remote, no stored credential.
- * - `ready-to-publish` — HTTPS remote with a stored credential (publish lands
- *   with #15's publish phase; the plumbing is in place).
- * - `ssh-use-own-tools` — SSH remote: full local features, publish externally
+ * - `ready-to-sync` — HTTPS remote with a stored credential (sync lands
+ *   with #15's sync phase; the plumbing is in place).
+ * - `ssh-use-own-tools` — SSH remote: full local features, sync externally
  *   (ADR 0006 D6). The UI layers the "switch to HTTPS" hint on recognized hosts.
  */
 export type RemoteGuidanceId =
   | "local-only"
-  | "connect-github-to-publish"
+  | "connect-github-to-sync"
   | "https-connect-server"
-  | "ready-to-publish"
+  | "ready-to-sync"
   | "ssh-use-own-tools";
 
 export interface ProjectRemoteDiagnosis {
@@ -67,14 +67,17 @@ export interface ProjectRemoteDiagnosis {
   /** Token-settings deep link for recognized non-GitHub forges. */
   tokenSettingsUrl: string | null;
   /**
-   * ADR 0006 D4: hasRemote && smart-HTTPS && credential stored. The publish
-   * flow (#15 D5) is live, so this is the real "offer the Publish action"
+   * ADR 0006 D4: hasRemote && smart-HTTPS && credential stored. The sync
+   * flow (#15 D5) is live, so this is the real "offer the Sync action"
    * gate, not a future-capability hint.
    */
-  canPublish: boolean;
+  canSync: boolean;
   /**
-   * @deprecated Same value as {@link canPublish}. Do not use in new code —
-   * this field will be removed once all callers have migrated to `canPublish`.
+   * @deprecated Same value as {@link canSync}. Do not use in new code —
+   * this field will be removed once all callers have migrated to `canSync`.
+   * (Terminology note: the concept formerly called "publish" is now "Sync";
+   * "Publish" is reserved for publishing output to distribution targets, #35.
+   * The alias keeps its original name for shape stability.)
    */
   canPublishWhenImplemented: boolean;
   guidance: RemoteGuidanceId;
@@ -146,7 +149,7 @@ export async function diagnoseProjectRemote(
       credentialPresent: false,
       provider: null,
       tokenSettingsUrl: null,
-      canPublish: false,
+      canSync: false,
       canPublishWhenImplemented: false,
       guidance: "local-only",
     };
@@ -172,13 +175,13 @@ export async function diagnoseProjectRemote(
   }
 
   const provider = host && protocol !== "none" ? forgeKindForHost(host) : null;
-  const canPublish = protocol === "https" && credentialPresent;
+  const canSync = protocol === "https" && credentialPresent;
 
   let guidance: RemoteGuidanceId;
   if (protocol === "ssh") guidance = "ssh-use-own-tools";
   else if (protocol !== "https") guidance = "local-only";
-  else if (credentialPresent) guidance = "ready-to-publish";
-  else if (provider === "github") guidance = "connect-github-to-publish";
+  else if (credentialPresent) guidance = "ready-to-sync";
+  else if (provider === "github") guidance = "connect-github-to-sync";
   else guidance = "https-connect-server";
 
   return {
@@ -190,8 +193,8 @@ export async function diagnoseProjectRemote(
     credentialPresent,
     provider,
     tokenSettingsUrl: host ? knownForgeTokenUrl(host) : null,
-    canPublish,
-    canPublishWhenImplemented: canPublish,
+    canSync,
+    canPublishWhenImplemented: canSync,
     guidance,
   };
 }

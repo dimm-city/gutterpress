@@ -1,5 +1,5 @@
 /**
- * Publish / conflict-resolution tests (#15 publish phase, ADR 0006 D5).
+ * Sync / conflict-resolution tests (#15 sync phase, ADR 0006 D5).
  *
  * These run against the REAL in-process smart-HTTP server (upload-pack AND
  * receive-pack — see test-support/git-http-server.ts), so the full wire
@@ -7,7 +7,7 @@
  * No transport mocks, no shims.
  *
  * Invariants asserted throughout:
- *  - The pre-publish snapshot ALWAYS exists before any merge/network step
+ *  - The pre-sync snapshot ALWAYS exists before any merge/network step
  *    (author work can never be lost).
  *  - A conflict NEVER leaves merge markers or a dirty working tree.
  */
@@ -21,13 +21,13 @@ import httpNode from "isomorphic-git/http/node";
 
 import { cloneRepository } from "./clone.ts";
 import {
-  getPublishStatus,
+  getSyncStatus,
   onlineCopyPath,
-  publishProject,
-  PUBLISH_SNAPSHOT_MESSAGE,
+  syncProject,
+  SYNC_SNAPSHOT_MESSAGE,
   resolveConflicts,
-  type PublishOutcome,
-} from "./publish.ts";
+  type SyncOutcome,
+} from "./sync.ts";
 import type { HostCredential } from "./token-store.ts";
 import {
   createFixtureRepo,
@@ -48,10 +48,10 @@ interface Harness {
 }
 
 async function setupClone(opts: { requireAuth?: { username: string; password: string } } = {}): Promise<Harness> {
-  const serverDir = await tempDir("pmd-publish-server-");
+  const serverDir = await tempDir("pmd-sync-server-");
   await createFixtureRepo(serverDir);
   const server = await startGitServer(serverDir, opts);
-  const parent = await tempDir("pmd-publish-client-");
+  const parent = await tempDir("pmd-sync-client-");
   const projectDir = path.join(parent, "project");
   const credential: HostCredential | undefined = opts.requireAuth
     ? {
@@ -119,8 +119,8 @@ async function serverFile(serverDir: string, filepath: string): Promise<string |
  * An httpClient that runs `beforePushAdvert` right before the FIRST `times`
  * receive-pack ref advertisements (the GET the client makes immediately
  * before uploading a push). Committing into the server repo from that hook
- * reproduces the REAL "someone published between my fetch and my push" race:
- * the publish sequence has already fetched, and the ref moves before its push.
+ * reproduces the REAL "someone synced between my fetch and my push" race:
+ * the sync sequence has already fetched, and the ref moves before its push.
  */
 function racingHttpClient(
   beforePushAdvert: () => Promise<void>,
@@ -138,7 +138,7 @@ function racingHttpClient(
   } as typeof httpNode;
 }
 
-describe("publishProject", () => {
+describe("syncProject", () => {
   test("local changes only → snapshot + push; the remote head advances", async () => {
     const h = await setupClone();
     try {
@@ -148,9 +148,9 @@ describe("publishProject", () => {
         "# One\n\nThird draft, written locally.\n",
       );
 
-      const outcome = await publishProject({ projectDir: h.projectDir });
-      expect(outcome.status).toBe("published");
-      if (outcome.status !== "published") throw new Error("unreachable");
+      const outcome = await syncProject({ projectDir: h.projectDir });
+      expect(outcome.status).toBe("synced");
+      if (outcome.status !== "synced") throw new Error("unreachable");
       expect(outcome.mergedRemoteChanges).toBe(false);
       // The snapshot-first invariant: unsaved work was committed before push.
       expect(outcome.snapshotId).toBeDefined();
@@ -167,13 +167,13 @@ describe("publishProject", () => {
     }
   });
 
-  test("nothing to publish → friendly up-to-date message", async () => {
+  test("nothing to sync → friendly up-to-date message", async () => {
     const h = await setupClone();
     try {
-      const outcome = await publishProject({ projectDir: h.projectDir });
+      const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status).toBe("up-to-date");
       if (outcome.status !== "up-to-date") throw new Error("unreachable");
-      expect(outcome.message).toBe("Everything is already published.");
+      expect(outcome.message).toBe("Everything is in sync.");
     } finally {
       await h.cleanup();
     }
@@ -193,9 +193,9 @@ describe("publishProject", () => {
         "# One\n\nLocal third draft.\n",
       );
 
-      const outcome = await publishProject({ projectDir: h.projectDir });
-      expect(outcome.status).toBe("published");
-      if (outcome.status !== "published") throw new Error("unreachable");
+      const outcome = await syncProject({ projectDir: h.projectDir });
+      expect(outcome.status).toBe("synced");
+      if (outcome.status !== "synced") throw new Error("unreachable");
       expect(outcome.mergedRemoteChanges).toBe(true);
 
       // The pushed head is a TWO-PARENT merge commit containing both sides.
@@ -229,7 +229,7 @@ describe("publishProject", () => {
       const localText = "# One\n\nLocal rewrite.\n";
       await writeFile(path.join(h.projectDir, "chapter-01.md"), localText);
 
-      const outcome = await publishProject({ projectDir: h.projectDir });
+      const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status).toBe("conflict");
       if (outcome.status !== "conflict") throw new Error("unreachable");
       expect(outcome.files).toEqual([
@@ -249,7 +249,7 @@ describe("publishProject", () => {
       expect(content).not.toContain("<<<<<<<");
       // The safety snapshot exists and is the local tip.
       const [headLog] = await git.log({ fs, dir: h.projectDir, depth: 1 });
-      expect(headLog!.commit.message.trim()).toBe(PUBLISH_SNAPSHOT_MESSAGE);
+      expect(headLog!.commit.message.trim()).toBe(SYNC_SNAPSHOT_MESSAGE);
       expect(headLog!.oid).toBe(outcome.localId);
     } finally {
       await h.cleanup();
@@ -266,7 +266,7 @@ describe("publishProject", () => {
         "# One\n\nEdited while signed out.\n",
       );
       // No credential supplied and none in a store → fetch gets a 401.
-      const outcome = await publishProject({ projectDir: h.projectDir });
+      const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status).toBe("auth");
       if (outcome.status !== "auth") throw new Error("unreachable");
       expect(outcome.snapshotId).toBeDefined();
@@ -276,7 +276,7 @@ describe("publishProject", () => {
     }
   });
 
-  test("with the right credential the same server accepts the publish", async () => {
+  test("with the right credential the same server accepts the sync", async () => {
     const h = await setupClone({
       requireAuth: { username: "writer", password: "secret-token" },
     });
@@ -285,7 +285,7 @@ describe("publishProject", () => {
         path.join(h.projectDir, "chapter-01.md"),
         "# One\n\nEdited while signed in.\n",
       );
-      const outcome = await publishProject({
+      const outcome = await syncProject({
         projectDir: h.projectDir,
         credential: {
           host: "127.0.0.1",
@@ -295,7 +295,7 @@ describe("publishProject", () => {
           createdAt: Date.now(),
         },
       });
-      expect(outcome.status).toBe("published");
+      expect(outcome.status).toBe("synced");
       expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(
         "# One\n\nEdited while signed in.\n",
       );
@@ -319,7 +319,7 @@ describe("publishProject", () => {
       const localText = "# One\n\nWritten on a train.\n";
       await writeFile(path.join(h.projectDir, "chapter-01.md"), localText);
 
-      const outcome = await publishProject({ projectDir: h.projectDir });
+      const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status).toBe("offline");
       if (outcome.status !== "offline") throw new Error("unreachable");
       expect(outcome.message).toContain("saved on this computer");
@@ -330,33 +330,33 @@ describe("publishProject", () => {
         await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8"),
       ).toBe(localText);
       const [headLog] = await git.log({ fs, dir: h.projectDir, depth: 1 });
-      expect(headLog!.commit.message.trim()).toBe(PUBLISH_SNAPSHOT_MESSAGE);
+      expect(headLog!.commit.message.trim()).toBe(SYNC_SNAPSHOT_MESSAGE);
     } finally {
       await h.cleanup();
     }
   });
 
-  test("push rejected mid-publish → the retry loop merges the racer's change and publishes", async () => {
+  test("push rejected mid-sync → the retry loop merges the racer's change and syncs", async () => {
     const h = await setupClone();
     try {
       await writeFile(
         path.join(h.projectDir, "chapter-01.md"),
         "# One\n\nLocal third draft.\n",
       );
-      // The remote moves AFTER publish's fetch, right before its push: the
+      // The remote moves AFTER sync's fetch, right before its push: the
       // first push attempt is rejected (non-fast-forward), the loop re-runs,
       // merges the racer's commit, and the second push lands.
       const httpClient = racingHttpClient(async () => {
         await serverCommit(
           h.serverDir,
-          { "racer.md": "Published by someone else mid-flight.\n" },
+          { "racer.md": "Synced by someone else mid-flight.\n" },
           "racer",
         );
       }, 1);
 
-      const outcome = await publishProject({ projectDir: h.projectDir, httpClient });
-      expect(outcome.status).toBe("published");
-      if (outcome.status !== "published") throw new Error("unreachable");
+      const outcome = await syncProject({ projectDir: h.projectDir, httpClient });
+      expect(outcome.status).toBe("synced");
+      if (outcome.status !== "synced") throw new Error("unreachable");
       expect(outcome.mergedRemoteChanges).toBe(true);
 
       // Both sides of the race are on the server head…
@@ -364,12 +364,12 @@ describe("publishProject", () => {
         "# One\n\nLocal third draft.\n",
       );
       expect(await serverFile(h.serverDir, "racer.md")).toBe(
-        "Published by someone else mid-flight.\n",
+        "Synced by someone else mid-flight.\n",
       );
       // …and the racer's file arrived locally via the merge.
       expect(
         await readFile(path.join(h.projectDir, "racer.md"), "utf8"),
-      ).toBe("Published by someone else mid-flight.\n");
+      ).toBe("Synced by someone else mid-flight.\n");
       expect(await isClean(h.projectDir)).toBe(true);
     } finally {
       await h.cleanup();
@@ -390,7 +390,7 @@ describe("publishProject", () => {
         await serverCommit(h.serverDir, { [`racer-${n}.md`]: `racer ${n}\n` }, `racer ${n}`);
       }, 2);
 
-      const outcome = await publishProject({ projectDir: h.projectDir, httpClient });
+      const outcome = await syncProject({ projectDir: h.projectDir, httpClient });
       expect(outcome.status).toBe("error");
       if (outcome.status !== "error") throw new Error("unreachable");
       expect(outcome.message).toContain("at the same moment");
@@ -405,7 +405,7 @@ describe("publishProject", () => {
 
 describe("test server receive-pack validation", () => {
   test("a stale oldOid is rejected as non-fast-forward and the ref does not move", async () => {
-    const serverDir = await tempDir("pmd-publish-nff-server-");
+    const serverDir = await tempDir("pmd-sync-nff-server-");
     const { first } = await createFixtureRepo(serverDir);
     const server = await startGitServer(serverDir);
     try {
@@ -437,10 +437,10 @@ describe("test server receive-pack validation", () => {
 });
 
 describe("resolveConflicts", () => {
-  /** Drive publish into the standard both-edited conflict. */
+  /** Drive sync into the standard both-edited conflict. */
   async function conflictSetup(): Promise<{
     h: Harness;
-    conflict: Extract<PublishOutcome, { status: "conflict" }>;
+    conflict: Extract<SyncOutcome, { status: "conflict" }>;
     localText: string;
     onlineText: string;
   }> {
@@ -449,7 +449,7 @@ describe("resolveConflicts", () => {
     await serverCommit(h.serverDir, { "chapter-01.md": onlineText }, "online edit");
     const localText = "# One\n\nLocal rewrite.\n";
     await writeFile(path.join(h.projectDir, "chapter-01.md"), localText);
-    const outcome = await publishProject({ projectDir: h.projectDir });
+    const outcome = await syncProject({ projectDir: h.projectDir });
     if (outcome.status !== "conflict") {
       await h.cleanup();
       throw new Error(`expected conflict, got ${outcome.status}`);
@@ -479,7 +479,7 @@ describe("resolveConflicts", () => {
         localId: conflict.localId,
         remoteId: conflict.remoteId,
       });
-      expect(outcome.status).toBe("published");
+      expect(outcome.status).toBe("synced");
       expect(
         await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8"),
       ).toBe(localText);
@@ -505,7 +505,7 @@ describe("resolveConflicts", () => {
         localId: conflict.localId,
         remoteId: conflict.remoteId,
       });
-      expect(outcome.status).toBe("published");
+      expect(outcome.status).toBe("synced");
       expect(
         await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8"),
       ).toBe(onlineText);
@@ -526,7 +526,7 @@ describe("resolveConflicts", () => {
         localId: conflict.localId,
         remoteId: conflict.remoteId,
       });
-      expect(outcome.status).toBe("published");
+      expect(outcome.status).toBe("synced");
       const copyName = onlineCopyPath("chapter-01.md");
       expect(copyName).toBe("chapter-01 (online copy).md");
       expect(
@@ -554,7 +554,7 @@ describe("resolveConflicts", () => {
       );
       await rm(path.join(h.projectDir, "chapter-01.md"));
 
-      const outcome = await publishProject({ projectDir: h.projectDir });
+      const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status).toBe("conflict");
       if (outcome.status !== "conflict") throw new Error("unreachable");
       expect(outcome.files).toEqual([
@@ -567,7 +567,7 @@ describe("resolveConflicts", () => {
         localId: outcome.localId,
         remoteId: outcome.remoteId,
       });
-      expect(resolved.status).toBe("published");
+      expect(resolved.status).toBe("synced");
       expect(fs.existsSync(path.join(h.projectDir, "chapter-01.md"))).toBe(false);
       expect(await serverFile(h.serverDir, "chapter-01.md")).toBeNull();
       expect(await isClean(h.projectDir)).toBe(true);
@@ -585,7 +585,7 @@ describe("resolveConflicts", () => {
       const myText = "# One\n\nEdited after the online copy deleted it.\n";
       await writeFile(path.join(h.projectDir, "chapter-01.md"), myText);
 
-      const outcome = await publishProject({ projectDir: h.projectDir });
+      const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status).toBe("conflict");
       if (outcome.status !== "conflict") throw new Error("unreachable");
       expect(outcome.files).toEqual([
@@ -598,7 +598,7 @@ describe("resolveConflicts", () => {
         localId: outcome.localId,
         remoteId: outcome.remoteId,
       });
-      expect(resolved.status).toBe("published");
+      expect(resolved.status).toBe("synced");
       expect(
         await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8"),
       ).toBe(myText);
@@ -625,7 +625,7 @@ describe("resolveConflicts", () => {
         localId: conflict.localId,
         remoteId: conflict.remoteId,
       });
-      expect(outcome.status).toBe("published");
+      expect(outcome.status).toBe("synced");
       // The pre-existing file is byte-identical…
       expect(
         await readFile(path.join(h.projectDir, existingName), "utf8"),
@@ -645,15 +645,15 @@ describe("resolveConflicts", () => {
     }
   });
 
-  test("remote moves (no overlap) between conflict and confirm → recovery merge, published", async () => {
+  test("remote moves (no overlap) between conflict and confirm → recovery merge, synced", async () => {
     const { h, conflict, localText } = await conflictSetup();
     try {
-      // Someone publishes a NON-conflicting file while the choices dialog is
+      // Someone syncs a NON-conflicting file while the choices dialog is
       // open: the resolution push is rejected, the recovery pass fetches the
       // new tip, merges it cleanly, and pushes again — no author interaction.
       await serverCommit(
         h.serverDir,
-        { "chapter-03.md": "# Three\n\nPublished mid-resolution.\n" },
+        { "chapter-03.md": "# Three\n\nSynced mid-resolution.\n" },
         "mid-resolution add",
       );
 
@@ -663,14 +663,14 @@ describe("resolveConflicts", () => {
         localId: conflict.localId,
         remoteId: conflict.remoteId,
       });
-      expect(outcome.status).toBe("published");
+      expect(outcome.status).toBe("synced");
       expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(localText);
       expect(await serverFile(h.serverDir, "chapter-03.md")).toBe(
-        "# Three\n\nPublished mid-resolution.\n",
+        "# Three\n\nSynced mid-resolution.\n",
       );
       expect(
         await readFile(path.join(h.projectDir, "chapter-03.md"), "utf8"),
-      ).toBe("# Three\n\nPublished mid-resolution.\n");
+      ).toBe("# Three\n\nSynced mid-resolution.\n");
       expect(await isClean(h.projectDir)).toBe(true);
     } finally {
       await h.cleanup();
@@ -704,14 +704,14 @@ describe("resolveConflicts", () => {
       ]);
       expect(await isClean(h.projectDir)).toBe(true);
 
-      // Confirming against the fresh ids completes the publish.
+      // Confirming against the fresh ids completes the sync.
       const second = await resolveConflicts({
         projectDir: h.projectDir,
         resolutions: [{ path: "chapter-01.md", choice: "mine" }],
         localId: outcome.localId,
         remoteId: outcome.remoteId,
       });
-      expect(second.status).toBe("published");
+      expect(second.status).toBe("synced");
       expect(await serverFile(h.serverDir, "chapter-01.md")).toBe(localText);
       expect(await isClean(h.projectDir)).toBe(true);
     } finally {
@@ -720,7 +720,7 @@ describe("resolveConflicts", () => {
   });
 });
 
-describe("getPublishStatus", () => {
+describe("getSyncStatus", () => {
   test("ahead counts local snapshots; behind counts online ones (live fetch)", async () => {
     const h = await setupClone();
     try {
@@ -743,7 +743,7 @@ describe("getPublishStatus", () => {
       });
 
       // Local compare (no network): the clone recorded the remote tip.
-      const local = await getPublishStatus({ projectDir: h.projectDir });
+      const local = await getSyncStatus({ projectDir: h.projectDir });
       expect(local.hasRemote).toBe(true);
       expect(local.ahead).toBe(2);
       expect(local.behind).toBe(0);
@@ -756,7 +756,7 @@ describe("getPublishStatus", () => {
         { "chapter-02.md": "# Two\n" },
         "online add",
       );
-      const liveStatus = await getPublishStatus({
+      const liveStatus = await getSyncStatus({
         projectDir: h.projectDir,
         fetch: true,
       });
@@ -766,7 +766,7 @@ describe("getPublishStatus", () => {
 
       // Unsnapshotted working-tree edits are reported separately.
       await writeFile(path.join(h.projectDir, "notes.md"), "draft\n");
-      const withEdits = await getPublishStatus({ projectDir: h.projectDir });
+      const withEdits = await getSyncStatus({ projectDir: h.projectDir });
       expect(withEdits.hasUnsnapshottedChanges).toBe(true);
     } finally {
       await h.cleanup();
@@ -793,7 +793,7 @@ describe("getPublishStatus", () => {
         url: "http://127.0.0.1:1/unreachable.git",
       });
 
-      const status = await getPublishStatus({ projectDir: h.projectDir, fetch: true });
+      const status = await getSyncStatus({ projectDir: h.projectDir, fetch: true });
       expect(status.hasRemote).toBe(true);
       expect(status.live).toBe(false);
       // The local compare still works off the recorded remote-tracking ref.
@@ -806,13 +806,13 @@ describe("getPublishStatus", () => {
   });
 
   test("no remote → hasRemote false, counts null", async () => {
-    const dir = await tempDir("pmd-publish-noremote-");
+    const dir = await tempDir("pmd-sync-noremote-");
     try {
       await git.init({ fs, dir, defaultBranch: "main" });
       await writeFile(path.join(dir, "a.md"), "hi\n");
       await git.add({ fs, dir, filepath: "a.md" });
       await git.commit({ fs, dir, message: "init", author: SERVER_AUTHOR });
-      const status = await getPublishStatus({ projectDir: dir });
+      const status = await getSyncStatus({ projectDir: dir });
       expect(status.hasRemote).toBe(false);
       expect(status.ahead).toBeNull();
       expect(status.behind).toBeNull();

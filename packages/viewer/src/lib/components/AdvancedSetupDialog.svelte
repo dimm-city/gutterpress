@@ -14,7 +14,7 @@
    *      token is validated with a refs probe BEFORE it is saved, crosses to
    *      the host exactly once, and never persists in renderer state.
    *   4. Provider guidance — short, honest per-provider next steps, including
-   *      the SSH limitation (full local features; publish with your own tool).
+   *      the SSH limitation (full local features; sync with your own tool).
    *
    * All host work goes through getPlatform() (§8 / ADR 0004).
    */
@@ -225,14 +225,14 @@
     switch (diag.guidance) {
       case "local-only":
         return "This project lives only on this computer. Everything works without a Git server.";
-      case "connect-github-to-publish":
-        return "This project's online repository is on GitHub. Use Connect GitHub so print-md can publish for you.";
+      case "connect-github-to-sync":
+        return "This project's online repository is on GitHub. Use Connect GitHub so print-md can sync for you.";
       case "https-connect-server":
-        return "This project's online repository is on a Git server print-md doesn't know yet. Connect that server below to prepare it for publishing.";
-      case "ready-to-publish":
-        return "This server is connected. Use Publish Changes in the toolbar to send your work to the online repository.";
+        return "This project's online repository is on a Git server print-md doesn't know yet. Connect that server below to prepare it for syncing.";
+      case "ready-to-sync":
+        return "This server is connected. Use Sync Changes in the toolbar to send your work to the online repository.";
       case "ssh-use-own-tools":
-        return "This project's online address uses SSH (git@…). Everything on this computer works — preview, snapshots, history, restore. To publish, use your usual Git tool.";
+        return "This project's online address uses SSH (git@…). Everything on this computer works — preview, snapshots, history, restore. To sync, use your usual Git tool.";
     }
   });
 
@@ -340,7 +340,7 @@
             <p class="hint subtle">
               Tip: this address points at a server print-md can work with. If you
               switch the project's address to the web (HTTPS) form with your Git
-              tool, print-md will be able to publish once you connect the server.
+              tool, print-md will be able to sync once you connect the server.
             </p>
           {/if}
         {/if}
@@ -495,8 +495,8 @@
           <dt>SSH addresses (git@…)</dt>
           <dd>
             Projects opened from an SSH clone keep every local feature —
-            preview, snapshots, history, restore. print-md can't publish over
-            SSH, so publish with your usual Git tool, or switch the project to
+            preview, snapshots, history, restore. print-md can't sync over
+            SSH, so sync with your usual Git tool, or switch the project to
             the web (HTTPS) address and connect the server here.
           </dd>
         </dl>

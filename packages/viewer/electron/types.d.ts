@@ -101,7 +101,6 @@ interface ProjectCapabilities {
   canSnapshot: boolean;
   canViewHistory: boolean;
   canRestoreSnapshot: boolean;
-  canPublish: boolean;
   canSync: boolean;
   authManagedByApp: boolean;
 }
@@ -199,22 +198,24 @@ interface ProjectRemoteDiagnosis {
     | "generic"
     | null;
   tokenSettingsUrl: string | null;
-  canPublish: boolean;
+  canSync: boolean;
   /**
-   * @deprecated Same value as canPublish. Do not use in new code — this field
-   * will be removed once all callers have migrated to canPublish.
+   * @deprecated Same value as canSync. Do not use in new code — this field
+   * will be removed once all callers have migrated to canSync.
+   * (Terminology note: the concept formerly called "publish" is now "Sync";
+   * the alias keeps its original name for shape stability.)
    */
   canPublishWhenImplemented: boolean;
   guidance:
     | "local-only"
-    | "connect-github-to-publish"
+    | "connect-github-to-sync"
     | "https-connect-server"
-    | "ready-to-publish"
+    | "ready-to-sync"
     | "ssh-use-own-tools";
 }
 
-// ── Publish / sync (#15 publish phase, ADR 0006 D5). Mirrors preload.ts. ────
-interface PublishStatusInfo {
+// ── Sync (#15 sync phase, ADR 0006 D5). Mirrors preload.ts. ─────────────────
+interface SyncStatusInfo {
   hasRemote: boolean;
   branch?: string;
   ahead: number | null;
@@ -235,9 +236,9 @@ interface ConflictResolutionChoice {
   choice: "mine" | "theirs" | "both";
 }
 
-type PublishOutcome =
+type SyncOutcome =
   | {
-      status: "published";
+      status: "synced";
       message: string;
       snapshotId?: string;
       mergedRemoteChanges: boolean;
@@ -255,7 +256,7 @@ type PublishOutcome =
   | { status: "offline"; message: string; snapshotId?: string }
   | { status: "error"; message: string; snapshotId?: string };
 
-interface ResolvePublishConflictsArgs {
+interface ResolveSyncConflictsArgs {
   projectDir: string;
   resolutions: ConflictResolutionChoice[];
   localId: string;
@@ -419,10 +420,10 @@ interface Window {
     disconnectHost(host: string): Promise<{ ok: boolean }>;
     listHostConnections(): Promise<HostConnectionInfo[]>;
     forgeTokenUrl(host: string): Promise<string | null>;
-    // Publish / sync (#15 publish phase, ADR 0006 D5)
-    getPublishStatus(projectDir: string, fetch?: boolean): Promise<PublishStatusInfo>;
-    publishChanges(projectDir: string, message?: string): Promise<PublishOutcome>;
-    resolvePublishConflicts(args: ResolvePublishConflictsArgs): Promise<PublishOutcome>;
+    // Sync (#15 sync phase, ADR 0006 D5)
+    getSyncStatus(projectDir: string, fetch?: boolean): Promise<SyncStatusInfo>;
+    syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
+    resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
     startPreview(args: { input: string }): Promise<{
       url: string;
       port: number;

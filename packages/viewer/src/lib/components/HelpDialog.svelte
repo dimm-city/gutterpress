@@ -193,7 +193,7 @@
           <h3>Work with an Online Copy</h3>
           <ul class="steps">
             <li><strong>Open from GitHub</strong> — click <em>Open</em>, then <em>Open from GitHub…</em> to connect your GitHub account, choose a repository, and download a copy of the project to your computer.</li>
-            <li><strong>Publish Changes</strong> — when your project has an online copy, click <em>Publish</em> to send your latest work to it. If you're offline, your work stays saved on this computer and you can publish when you're back online. If your copy and the online copy both changed, print-md lists each file that differs and lets you choose: keep your version, use the online version, or keep both copies.</li>
+            <li><strong>Sync Changes</strong> — when your project has an online copy, click <em>Sync</em> to send your latest work to it. If you're offline, your work stays saved on this computer and it will sync when you're back online. If your copy and the online copy both changed, print-md lists each file that differs and lets you choose: keep your version, use the online version, or keep both copies.</li>
             <li><strong>Other hosting services</strong> — if your project lives somewhere other than GitHub, open the <em>More</em> menu and choose <em>Advanced setup</em> to connect a Git server (such as Gitea or Forgejo).</li>
           </ul>
         </section>

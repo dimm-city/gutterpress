@@ -5,7 +5,7 @@
  * the user pastes a host URL + (optional) username + access token collected by
  * the Advanced Setup UI, and the credential is VERIFIED with a refs probe
  * BEFORE it is saved — a bad paste fails immediately with friendly guidance,
- * never later during a publish.
+ * never later during a sync.
  *
  * The transport is identical for every forge (Gitea, Forgejo, GitLab,
  * Bitbucket, Azure Repos, plain `git http-backend`), so a private Gitea works

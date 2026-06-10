@@ -268,7 +268,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
   });
 
   // Paths changed during the current debounce window. A single edit fires one
-  // event, but multi-file disk rewrites (version restore, publish merge, bulk
+  // event, but multi-file disk rewrites (version restore, sync merge, bulk
   // save) fire a burst — the rebuild must see ALL of them, not just the last
   // event's path, or it splices one (possibly wrong) chapter and leaves the
   // rest of the live preview stale.
@@ -347,7 +347,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
 
         // Incremental: EXACTLY ONE markdown file changed (and still exists) →
         // splice just that chapter in the live shell (re-paginate one chapter,
-        // not the whole doc). Any multi-file change — restore, publish merge —
+        // not the whole doc). Any multi-file change — restore, sync merge —
         // must full-reload instead: a single-chapter splice can only refresh
         // one chapter and would leave the others stale.
         const only = dests.length === 1 ? dests[0]! : null;

@@ -154,7 +154,6 @@ interface ProjectCapabilities {
   canSnapshot: boolean;
   canViewHistory: boolean;
   canRestoreSnapshot: boolean;
-  canPublish: boolean;
   canSync: boolean;
   authManagedByApp: boolean;
 }
@@ -260,22 +259,24 @@ interface ProjectRemoteDiagnosis {
     | "generic"
     | null;
   tokenSettingsUrl: string | null;
-  canPublish: boolean;
+  canSync: boolean;
   /**
-   * @deprecated Same value as canPublish. Do not use in new code — this field
-   * will be removed once all callers have migrated to canPublish.
+   * @deprecated Same value as canSync. Do not use in new code — this field
+   * will be removed once all callers have migrated to canSync.
+   * (Terminology note: the concept formerly called "publish" is now "Sync";
+   * the alias keeps its original name for shape stability.)
    */
   canPublishWhenImplemented: boolean;
   guidance:
     | "local-only"
-    | "connect-github-to-publish"
+    | "connect-github-to-sync"
     | "https-connect-server"
-    | "ready-to-publish"
+    | "ready-to-sync"
     | "ssh-use-own-tools";
 }
 
-// ── Publish / sync surface (#15 publish phase, ADR 0006 D5). Mirrors the lib.
-interface PublishStatusInfo {
+// ── Sync surface (#15 sync phase, ADR 0006 D5). Mirrors the lib.
+interface SyncStatusInfo {
   hasRemote: boolean;
   branch?: string;
   ahead: number | null;
@@ -296,9 +297,9 @@ interface ConflictResolutionChoice {
   choice: "mine" | "theirs" | "both";
 }
 
-type PublishOutcome =
+type SyncOutcome =
   | {
-      status: "published";
+      status: "synced";
       message: string;
       snapshotId?: string;
       mergedRemoteChanges: boolean;
@@ -383,13 +384,13 @@ interface LibModule {
     },
   ) => Promise<ProjectRemoteDiagnosis>;
   knownForgeTokenUrl: (host: string) => string | null;
-  // Publish / sync (#15 publish phase, ADR 0006 D5)
-  publishProject: (options: {
+  // Sync (#15 sync phase, ADR 0006 D5)
+  syncProject: (options: {
     projectDir: string;
     tokenStore?: { get(host: string): Promise<HostCredential | null> };
     message?: string;
     authorName?: string;
-  }) => Promise<PublishOutcome>;
+  }) => Promise<SyncOutcome>;
   resolveConflicts: (options: {
     projectDir: string;
     resolutions: ConflictResolutionChoice[];
@@ -397,12 +398,12 @@ interface LibModule {
     remoteId: string;
     tokenStore?: { get(host: string): Promise<HostCredential | null> };
     authorName?: string;
-  }) => Promise<PublishOutcome>;
-  getPublishStatus: (options: {
+  }) => Promise<SyncOutcome>;
+  getSyncStatus: (options: {
     projectDir: string;
     fetch?: boolean;
     tokenStore?: { get(host: string): Promise<HostCredential | null> };
-  }) => Promise<PublishStatusInfo>;
+  }) => Promise<SyncStatusInfo>;
 }
 
 let libPromise: Promise<LibModule> | null = null;
@@ -842,7 +843,7 @@ let folderChangeDebounce: ReturnType<typeof setTimeout> | null = null;
 // On fire: detect the source; only `local-git-folder` projects snapshot (a
 // plain folder is NEVER auto-`git init`ed — enabling history stays an explicit
 // author opt-in). The lib's per-repo FIFO lock serializes the commit against
-// publish/restore, and its no-empty-snapshot guard turns a clean-tree fire into
+// sync/restore, and its no-empty-snapshot guard turns a clean-tree fire into
 // the expected `isNoChangesError` rejection, swallowed below. Silent on success
 // (the history dialog reloads its list on open).
 let autoSnapshotPending: { dir: string; timer: NodeJS.Timeout } | null = null;
@@ -1158,7 +1159,7 @@ function createWindow() {
   // before the window is destroyed, so closing the app never drops the final
   // work burst from version history. A watchdog (5s — flush + commit) ensures
   // quit is never blocked indefinitely. DELIBERATE POLICY: the snapshot shares
-  // the per-repo FIFO lock, so a publish/restore still in flight at quit time
+  // the per-repo FIFO lock, so a sync/restore still in flight at quit time
   // can consume the whole 5s budget and the final snapshot is then silently
   // dropped — never blocking quit wins over guaranteeing the last snapshot.
   // (The edits themselves are flushed to disk regardless; only the history
@@ -2157,22 +2158,22 @@ ipcMain.handle("remote:forgeTokenUrl", async (_e, host: string) => {
   return lib.knownForgeTokenUrl(host);
 });
 
-// ── Publish / sync (#15 publish phase, ADR 0006 D5) ─────────────────────────
-// Snapshot-first publish + per-file conflict resolution. All git work happens
+// ── Sync (#15 sync phase, ADR 0006 D5) ──────────────────────────────────────
+// Snapshot-first sync + per-file conflict resolution. All git work happens
 // in the lib (isomorphic-git — CLAUDE.md §7) under the per-repo lock; the
 // credential is resolved host-side from the safeStorage store by remote host
-// and NEVER crosses the IPC boundary. Outcomes (published / up-to-date /
+// and NEVER crosses the IPC boundary. Outcomes (synced / up-to-date /
 // conflict / auth / offline / error) are RETURNED, not thrown — the lib maps
 // every failure to an author-friendly status — so handleRemoteErrors only
 // catches argument-validation and truly unexpected faults.
 
 ipcMain.handle(
-  "remote:publishStatus",
-  (_e, projectDir: string, fetch?: boolean): Promise<PublishStatusInfo> =>
-    handleRemoteErrors("remote:publishStatus", async () => {
-      const dir = requireAbsoluteDir("remote:publishStatus", projectDir);
+  "remote:syncStatus",
+  (_e, projectDir: string, fetch?: boolean): Promise<SyncStatusInfo> =>
+    handleRemoteErrors("remote:syncStatus", async () => {
+      const dir = requireAbsoluteDir("remote:syncStatus", projectDir);
       const lib = await loadLib();
-      return lib.getPublishStatus({
+      return lib.getSyncStatus({
         projectDir: dir,
         fetch: fetch === true,
         tokenStore: electronTokenStore,
@@ -2181,12 +2182,12 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
-  "remote:publish",
-  (_e, projectDir: string, message?: string): Promise<PublishOutcome> =>
-    handleRemoteErrors("remote:publish", async () => {
-      const dir = requireAbsoluteDir("remote:publish", projectDir);
+  "remote:sync",
+  (_e, projectDir: string, message?: string): Promise<SyncOutcome> =>
+    handleRemoteErrors("remote:sync", async () => {
+      const dir = requireAbsoluteDir("remote:sync", projectDir);
       const lib = await loadLib();
-      return lib.publishProject({
+      return lib.syncProject({
         projectDir: dir,
         tokenStore: electronTokenStore,
         ...(typeof message === "string" && message.trim()
@@ -2197,7 +2198,7 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
-  "remote:resolveConflicts",
+  "remote:resolveSyncConflicts",
   (
     _e,
     args: {
@@ -2206,12 +2207,12 @@ ipcMain.handle(
       localId: string;
       remoteId: string;
     },
-  ): Promise<PublishOutcome> =>
-    handleRemoteErrors("remote:resolveConflicts", async () => {
+  ): Promise<SyncOutcome> =>
+    handleRemoteErrors("remote:resolveSyncConflicts", async () => {
       if (!args || typeof args.projectDir !== "string") {
-        throw new Error("remote:resolveConflicts requires { projectDir }");
+        throw new Error("remote:resolveSyncConflicts requires { projectDir }");
       }
-      const dir = requireAbsoluteDir("remote:resolveConflicts", args.projectDir);
+      const dir = requireAbsoluteDir("remote:resolveSyncConflicts", args.projectDir);
       if (
         !Array.isArray(args.resolutions) ||
         args.resolutions.length === 0 ||
@@ -2224,7 +2225,7 @@ ipcMain.handle(
         )
       ) {
         throw new Error(
-          "remote:resolveConflicts requires a non-empty resolutions list",
+          "remote:resolveSyncConflicts requires a non-empty resolutions list",
         );
       }
       if (
@@ -2233,7 +2234,7 @@ ipcMain.handle(
         !/^[0-9a-f]{40}$/i.test(args.localId) ||
         !/^[0-9a-f]{40}$/i.test(args.remoteId)
       ) {
-        throw new Error("remote:resolveConflicts requires valid version ids");
+        throw new Error("remote:resolveSyncConflicts requires valid version ids");
       }
       const lib = await loadLib();
       return lib.resolveConflicts({
