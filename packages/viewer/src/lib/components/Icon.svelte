@@ -32,7 +32,8 @@
     | "ellipsis-vertical"
     | "zoom-in"
     | "list"
-    | "history";
+    | "history"
+    | "cloud-upload";
 
   const ICONS: Record<IconName, string> = {
     "folder-open":
@@ -83,6 +84,8 @@
       '<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>',
     "history":
       '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+    "cloud-upload":
+      '<path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m8 17 4-4 4 4"/>',
   };
 </script>
 

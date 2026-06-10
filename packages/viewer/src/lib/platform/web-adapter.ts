@@ -50,6 +50,9 @@ import type {
   RemoteAccessResult,
   ConnectGenericHostArgs,
   HostConnectionInfo,
+  PublishStatusInfo,
+  PublishOutcome,
+  ResolvePublishConflictsArgs,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -336,6 +339,19 @@ export class WebAdapter implements Platform {
 
   forgeTokenUrl(_host: string): Promise<string | null> {
     return Promise.resolve(null);
+  }
+
+  // ── Publish / sync (#15 publish phase) — desktop-only until the PWA lands ──
+  getPublishStatus(_projectDir: string, _fetch?: boolean): Promise<PublishStatusInfo> {
+    return rejectNotImplemented("getPublishStatus");
+  }
+
+  publishChanges(_projectDir: string, _message?: string): Promise<PublishOutcome> {
+    return rejectNotImplemented("publishChanges");
+  }
+
+  resolvePublishConflicts(_args: ResolvePublishConflictsArgs): Promise<PublishOutcome> {
+    return rejectNotImplemented("resolvePublishConflicts");
   }
 
   startPreview(_args: PreviewStartArgs): Promise<PreviewStartResult> {

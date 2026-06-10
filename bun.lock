@@ -7,7 +7,7 @@
     },
     "packages/cli": {
       "name": "@dimm-city/print-md",
-      "version": "0.4.0-beta.22",
+      "version": "0.4.1",
       "bin": {
         "print-md": "./dist/cli.js",
       },
@@ -35,9 +35,10 @@
     },
     "packages/lib": {
       "name": "@dimm-city/print-md-lib",
-      "version": "0.4.0-beta.22",
+      "version": "0.4.1",
       "dependencies": {
         "chokidar": "^5.0.0",
+        "diff3": "0.0.3",
         "glob": "^13.0.0",
         "htmlhint": "^1.9.2",
         "isomorphic-git": "^1.38.4",
@@ -64,7 +65,7 @@
     },
     "packages/viewer": {
       "name": "@dimm-city/print-md-viewer",
-      "version": "0.4.0-beta.22",
+      "version": "0.4.1",
       "dependencies": {
         "@codemirror/autocomplete": "^6.18.4",
         "@codemirror/commands": "^6.8.0",

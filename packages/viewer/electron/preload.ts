@@ -216,6 +216,11 @@ interface ProjectRemoteDiagnosis {
     | "generic"
     | null;
   tokenSettingsUrl: string | null;
+  canPublish: boolean;
+  /**
+   * @deprecated Same value as canPublish. Do not use in new code — this field
+   * will be removed once all callers have migrated to canPublish.
+   */
   canPublishWhenImplemented: boolean;
   guidance:
     | "local-only"
@@ -223,6 +228,55 @@ interface ProjectRemoteDiagnosis {
     | "https-connect-server"
     | "ready-to-publish"
     | "ssh-use-own-tools";
+}
+
+// ── Publish / sync (#15 publish phase, ADR 0006 D5). Mirrors the lib. ──
+interface PublishStatusInfo {
+  hasRemote: boolean;
+  branch?: string;
+  ahead: number | null;
+  behind: number | null;
+  hasUnsnapshottedChanges: boolean;
+  live: boolean;
+  /** True when ahead/behind are lower bounds (walk cap or shallow boundary). */
+  approximate: boolean;
+}
+
+interface ConflictFileInfo {
+  path: string;
+  kind: "both-edited" | "you-deleted" | "online-deleted";
+}
+
+interface ConflictResolutionChoice {
+  path: string;
+  choice: "mine" | "theirs" | "both";
+}
+
+type PublishOutcome =
+  | {
+      status: "published";
+      message: string;
+      snapshotId?: string;
+      mergedRemoteChanges: boolean;
+    }
+  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | {
+      status: "conflict";
+      message: string;
+      files: ConflictFileInfo[];
+      localId: string;
+      remoteId: string;
+      snapshotId?: string;
+    }
+  | { status: "auth"; message: string; snapshotId?: string }
+  | { status: "offline"; message: string; snapshotId?: string }
+  | { status: "error"; message: string; snapshotId?: string };
+
+interface ResolvePublishConflictsArgs {
+  projectDir: string;
+  resolutions: ConflictResolutionChoice[];
+  localId: string;
+  remoteId: string;
 }
 
 interface ConnectGenericHostArgs {
@@ -505,6 +559,24 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("remote:listConnections"),
   forgeTokenUrl: (host: string): Promise<string | null> =>
     ipcRenderer.invoke("remote:forgeTokenUrl", host),
+
+  // ── Publish / sync (#15 publish phase, ADR 0006 D5) ──────────────────────
+  // All git work happens in the lib behind main; credentials are resolved
+  // host-side from the safeStorage store and never cross this bridge.
+  getPublishStatus: (
+    projectDir: string,
+    fetch?: boolean,
+  ): Promise<PublishStatusInfo> =>
+    ipcRenderer.invoke("remote:publishStatus", projectDir, fetch),
+  publishChanges: (
+    projectDir: string,
+    message?: string,
+  ): Promise<PublishOutcome> =>
+    ipcRenderer.invoke("remote:publish", projectDir, message),
+  resolvePublishConflicts: (
+    args: ResolvePublishConflictsArgs,
+  ): Promise<PublishOutcome> =>
+    ipcRenderer.invoke("remote:resolveConflicts", args),
   startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>

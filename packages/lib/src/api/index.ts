@@ -179,6 +179,26 @@ export type {
   ForgeKind,
 } from "../lib/remote-auth/diagnose.ts";
 
+// ── Publish / sync (#15 publish phase, ADR 0006 D5) ──────────────────────────
+export {
+  publishProject,
+  resolveConflicts,
+  getPublishStatus,
+  onlineCopyPath,
+  PUBLISH_SNAPSHOT_MESSAGE,
+} from "../lib/remote-auth/publish.ts";
+
+export type {
+  PublishOutcome,
+  PublishProjectOptions,
+  ResolveConflictsOptions,
+  PublishStatusOptions,
+  PublishStatusResult,
+  ConflictFile,
+  ConflictKind,
+  ConflictResolution,
+} from "../lib/remote-auth/publish.ts";
+
 export type {
   SnapshotEntry,
   InitVersionHistoryOptions,

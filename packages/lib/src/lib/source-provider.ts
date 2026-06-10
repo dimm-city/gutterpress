@@ -97,7 +97,12 @@ export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promi
   return run;
 }
 
-function gitAuthor(name?: string): { name: string; email: string } {
+/**
+ * Resolve the commit author identity from an optional display name (exported
+ * for the publish surface so merge commits carry the same identity as
+ * snapshots).
+ */
+export function gitAuthor(name?: string): { name: string; email: string } {
   const n = (name ?? "").trim();
   return { name: n || DEFAULT_AUTHOR, email: DEFAULT_EMAIL };
 }
@@ -122,11 +127,16 @@ async function stageAll(dir: string): Promise<void> {
  * Used to skip empty snapshots: committing with nothing changed would create an
  * empty commit that pollutes the author-facing history list.
  *
+ * Exported (lock-free) for the publish surface (#15, ADR 0006 D5): publish
+ * holds the repo lock for its whole sequence and needs the same "anything to
+ * snapshot?" check the snapshot op uses. Callers outside a lock should prefer
+ * the provider operations.
+ *
  * NOTE: `statusMatrix`'s default `ignored: false` is REQUIRED behavior here —
  * gitignored files must stay invisible to version history (they are user
  * state, never snapshotted). Do not "optimize" this to `ignored: true`.
  */
-async function hasPendingChanges(dir: string): Promise<boolean> {
+export async function hasPendingChanges(dir: string): Promise<boolean> {
   const status = await git.statusMatrix({ fs, dir });
   // Row shape: [filepath, headStatus, worktreeStatus, stageStatus].
   // Unchanged-and-tracked is [_, 1, 1, 1]; anything else is a pending change.
@@ -228,30 +238,8 @@ class LocalGitSourceProvider implements SourceProvider {
   }
 
   /** Lock-free snapshot impl — callers must already hold the repo lock. */
-  async snapshotUnlocked(options: SnapshotOptions): Promise<SnapshotEntry> {
-    const dir = options.projectDir;
-    if (!(await hasPendingChanges(dir))) {
-      throw new Error(
-        "No changes since the last snapshot — there is nothing new to save.",
-      );
-    }
-    await stageAll(dir);
-    const author = gitAuthor(options.authorName);
-    const id = await git.commit({
-      fs,
-      dir,
-      message: options.message,
-      author,
-    });
-    // Canonical timestamp comes from the committed object itself (matching
-    // what listHistory reads back), not the wall clock at return time.
-    const [head] = await git.log({ fs, dir, depth: 1 });
-    return {
-      id,
-      message: options.message,
-      timestamp: head ? head.commit.author.timestamp * 1000 : Date.now(),
-      author: author.name,
-    };
+  snapshotUnlocked(options: SnapshotOptions): Promise<SnapshotEntry> {
+    return snapshotWorkingTreeUnlocked(options);
   }
 
   listHistory(projectDir: string): Promise<SnapshotEntry[]> {
@@ -283,6 +271,43 @@ class LocalGitSourceProvider implements SourceProvider {
       noUpdateHead: true,
     });
   }
+}
+
+/**
+ * Lock-free snapshot of the full working tree (stage everything + commit).
+ *
+ * Exported for the publish surface (#15, ADR 0006 D5): `publishProject` holds
+ * the per-repo lock for snapshot → fetch → merge → push as ONE sequence, so it
+ * needs the lock-free internal rather than `provider.snapshot()` (taking the
+ * per-method lock inside the publish lock would deadlock the FIFO queue).
+ * Callers outside a lock should use `providerFor(source).snapshot()`.
+ */
+export async function snapshotWorkingTreeUnlocked(
+  options: SnapshotOptions,
+): Promise<SnapshotEntry> {
+  const dir = options.projectDir;
+  if (!(await hasPendingChanges(dir))) {
+    throw new Error(
+      "No changes since the last snapshot — there is nothing new to save.",
+    );
+  }
+  await stageAll(dir);
+  const author = gitAuthor(options.authorName);
+  const id = await git.commit({
+    fs,
+    dir,
+    message: options.message,
+    author,
+  });
+  // Canonical timestamp comes from the committed object itself (matching
+  // what listHistory reads back), not the wall clock at return time.
+  const [head] = await git.log({ fs, dir, depth: 1 });
+  return {
+    id,
+    message: options.message,
+    timestamp: head ? head.commit.author.timestamp * 1000 : Date.now(),
+    author: author.name,
+  };
 }
 
 /** True for the friendly "nothing new to save" rejection from `snapshot()`. */

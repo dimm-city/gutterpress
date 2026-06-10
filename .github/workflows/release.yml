@@ -17,6 +17,11 @@ env:
   PUPPETEER_SKIP_DOWNLOAD: 'true'
   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # GitHub App client id for the device-flow auth (ADR 0006 D1). Public by
+  # design (not a secret). The viewer's electron-vite define bakes it into the
+  # packaged main process; the lib also carries it as an in-code default, so
+  # this env override only matters if the registration is ever rotated.
+  PRINT_MD_GITHUB_CLIENT_ID: ${{ vars.PRINT_MD_GITHUB_CLIENT_ID }}
 
 jobs:
   # ── 1. Gate ────────────────────────────────────────────────────────────────

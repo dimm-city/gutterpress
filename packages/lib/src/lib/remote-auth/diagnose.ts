@@ -66,7 +66,16 @@ export interface ProjectRemoteDiagnosis {
   provider: ForgeKind | null;
   /** Token-settings deep link for recognized non-GitHub forges. */
   tokenSettingsUrl: string | null;
-  /** ADR 0006 D4: hasRemote && smart-HTTPS && credential stored. */
+  /**
+   * ADR 0006 D4: hasRemote && smart-HTTPS && credential stored. The publish
+   * flow (#15 D5) is live, so this is the real "offer the Publish action"
+   * gate, not a future-capability hint.
+   */
+  canPublish: boolean;
+  /**
+   * @deprecated Same value as {@link canPublish}. Do not use in new code —
+   * this field will be removed once all callers have migrated to `canPublish`.
+   */
   canPublishWhenImplemented: boolean;
   guidance: RemoteGuidanceId;
 }
@@ -137,6 +146,7 @@ export async function diagnoseProjectRemote(
       credentialPresent: false,
       provider: null,
       tokenSettingsUrl: null,
+      canPublish: false,
       canPublishWhenImplemented: false,
       guidance: "local-only",
     };
@@ -162,7 +172,7 @@ export async function diagnoseProjectRemote(
   }
 
   const provider = host && protocol !== "none" ? forgeKindForHost(host) : null;
-  const canPublishWhenImplemented = protocol === "https" && credentialPresent;
+  const canPublish = protocol === "https" && credentialPresent;
 
   let guidance: RemoteGuidanceId;
   if (protocol === "ssh") guidance = "ssh-use-own-tools";
@@ -180,7 +190,8 @@ export async function diagnoseProjectRemote(
     credentialPresent,
     provider,
     tokenSettingsUrl: host ? knownForgeTokenUrl(host) : null,
-    canPublishWhenImplemented,
+    canPublish,
+    canPublishWhenImplemented: canPublish,
     guidance,
   };
 }

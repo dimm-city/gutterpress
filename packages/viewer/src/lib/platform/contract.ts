@@ -296,8 +296,85 @@ export interface ProjectRemoteDiagnosis {
   provider: ForgeKind | null;
   /** Token-settings deep link for recognized non-GitHub forges. */
   tokenSettingsUrl: string | null;
+  /** ADR 0006 D4: HTTPS remote + stored credential — the Publish gate. */
+  canPublish: boolean;
+  /**
+   * @deprecated Same value as {@link canPublish}. Do not use in new code —
+   * this field will be removed once all callers have migrated to `canPublish`.
+   */
   canPublishWhenImplemented: boolean;
   guidance: RemoteGuidanceId;
+}
+
+// ── Publish / sync (#15 publish phase, ADR 0006 D5) ───────────────────────────
+//
+// Mirrors the lib's publish types — defined locally so the SPA never
+// value-imports the lib (§8 / ADR 0004). Outcomes are returned (not thrown):
+// the lib maps every failure to an author-friendly status the dialog renders.
+
+/** Ahead/behind summary for the "N changes to publish" UI. */
+export interface PublishStatusInfo {
+  hasRemote: boolean;
+  branch?: string;
+  /** Snapshots not yet online; `null` when there is nothing to compare. */
+  ahead: number | null;
+  /** Online snapshots not yet on this computer; `null` when unknown. */
+  behind: number | null;
+  /** Working-tree edits that Publish would snapshot first. */
+  hasUnsnapshottedChanges: boolean;
+  /** True when the counts include a live check of the online repository. */
+  live: boolean;
+  /**
+   * True when `ahead`/`behind` are lower bounds (the host caps the history
+   * walk and shallow clones hide older history) — render counts as "250+".
+   */
+  approximate: boolean;
+}
+
+/** How one conflicted file differs between the two copies. */
+export type ConflictKind = "both-edited" | "you-deleted" | "online-deleted";
+
+/** One file that changed in both the local and the online copy. */
+export interface ConflictFileInfo {
+  path: string;
+  kind: ConflictKind;
+}
+
+/** The author's per-file decision (Keep mine / Use online / Keep both). */
+export interface ConflictResolutionChoice {
+  path: string;
+  choice: "mine" | "theirs" | "both";
+}
+
+/** Outcome of a publish (or conflict-resolution) attempt. */
+export type PublishOutcome =
+  | {
+      status: "published";
+      message: string;
+      snapshotId?: string;
+      mergedRemoteChanges: boolean;
+    }
+  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | {
+      status: "conflict";
+      message: string;
+      files: ConflictFileInfo[];
+      localId: string;
+      remoteId: string;
+      snapshotId?: string;
+    }
+  | { status: "auth"; message: string; snapshotId?: string }
+  | { status: "offline"; message: string; snapshotId?: string }
+  | { status: "error"; message: string; snapshotId?: string };
+
+/** Inputs for applying the author's conflict choices. */
+export interface ResolvePublishConflictsArgs {
+  projectDir: string;
+  resolutions: ConflictResolutionChoice[];
+  /** Echo of the conflict outcome's `localId`. */
+  localId: string;
+  /** Echo of the conflict outcome's `remoteId`. */
+  remoteId: string;
 }
 
 /** Inputs for the generic "Connect a Git server" token flow. */
@@ -611,6 +688,21 @@ export interface HostServices {
   listHostConnections(): Promise<HostConnectionInfo[]>;
   /** Token-settings deep link for recognized forges; null when unknown. */
   forgeTokenUrl(host: string): Promise<string | null>;
+
+  // ── Publish / sync (#15 publish phase, ADR 0006 D5) ────────────────────────
+  // Snapshot-first publish: the host snapshots unsaved work BEFORE any
+  // network/merge step, fetches, fast-forwards or merges, and pushes.
+  // Conflicts come back as `{ status: "conflict" }` with per-file rows; the
+  // dialog collects "Keep my version / Use the online version / Keep both
+  // copies" and calls resolvePublishConflicts. Credentials are resolved
+  // host-side and never reach the renderer. WebAdapter stubs reject.
+
+  /** Ahead/behind counts vs the online repository ("N changes to publish"). */
+  getPublishStatus(projectDir: string, fetch?: boolean): Promise<PublishStatusInfo>;
+  /** Snapshot-first publish of the project to its online repository. */
+  publishChanges(projectDir: string, message?: string): Promise<PublishOutcome>;
+  /** Apply per-file conflict choices and publish the combined result. */
+  resolvePublishConflicts(args: ResolvePublishConflictsArgs): Promise<PublishOutcome>;
 
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;

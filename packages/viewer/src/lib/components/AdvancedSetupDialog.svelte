@@ -230,7 +230,7 @@
       case "https-connect-server":
         return "This project's online repository is on a Git server print-md doesn't know yet. Connect that server below to prepare it for publishing.";
       case "ready-to-publish":
-        return "This server is connected. print-md can reach the online repository — publishing from the app arrives in an upcoming update.";
+        return "This server is connected. Use Publish Changes in the toolbar to send your work to the online repository.";
       case "ssh-use-own-tools":
         return "This project's online address uses SSH (git@…). Everything on this computer works — preview, snapshots, history, restore. To publish, use your usual Git tool.";
     }

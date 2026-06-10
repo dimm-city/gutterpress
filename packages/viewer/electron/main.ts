@@ -260,6 +260,11 @@ interface ProjectRemoteDiagnosis {
     | "generic"
     | null;
   tokenSettingsUrl: string | null;
+  canPublish: boolean;
+  /**
+   * @deprecated Same value as canPublish. Do not use in new code — this field
+   * will be removed once all callers have migrated to canPublish.
+   */
   canPublishWhenImplemented: boolean;
   guidance:
     | "local-only"
@@ -268,6 +273,48 @@ interface ProjectRemoteDiagnosis {
     | "ready-to-publish"
     | "ssh-use-own-tools";
 }
+
+// ── Publish / sync surface (#15 publish phase, ADR 0006 D5). Mirrors the lib.
+interface PublishStatusInfo {
+  hasRemote: boolean;
+  branch?: string;
+  ahead: number | null;
+  behind: number | null;
+  hasUnsnapshottedChanges: boolean;
+  live: boolean;
+  /** True when ahead/behind are lower bounds (walk cap or shallow boundary). */
+  approximate: boolean;
+}
+
+interface ConflictFileInfo {
+  path: string;
+  kind: "both-edited" | "you-deleted" | "online-deleted";
+}
+
+interface ConflictResolutionChoice {
+  path: string;
+  choice: "mine" | "theirs" | "both";
+}
+
+type PublishOutcome =
+  | {
+      status: "published";
+      message: string;
+      snapshotId?: string;
+      mergedRemoteChanges: boolean;
+    }
+  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | {
+      status: "conflict";
+      message: string;
+      files: ConflictFileInfo[];
+      localId: string;
+      remoteId: string;
+      snapshotId?: string;
+    }
+  | { status: "auth"; message: string; snapshotId?: string }
+  | { status: "offline"; message: string; snapshotId?: string }
+  | { status: "error"; message: string; snapshotId?: string };
 
 interface LibModule {
   startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
@@ -329,6 +376,26 @@ interface LibModule {
     },
   ) => Promise<ProjectRemoteDiagnosis>;
   knownForgeTokenUrl: (host: string) => string | null;
+  // Publish / sync (#15 publish phase, ADR 0006 D5)
+  publishProject: (options: {
+    projectDir: string;
+    tokenStore?: { get(host: string): Promise<HostCredential | null> };
+    message?: string;
+    authorName?: string;
+  }) => Promise<PublishOutcome>;
+  resolveConflicts: (options: {
+    projectDir: string;
+    resolutions: ConflictResolutionChoice[];
+    localId: string;
+    remoteId: string;
+    tokenStore?: { get(host: string): Promise<HostCredential | null> };
+    authorName?: string;
+  }) => Promise<PublishOutcome>;
+  getPublishStatus: (options: {
+    projectDir: string;
+    fetch?: boolean;
+    tokenStore?: { get(host: string): Promise<HostCredential | null> };
+  }) => Promise<PublishStatusInfo>;
 }
 
 let libPromise: Promise<LibModule> | null = null;
@@ -1937,6 +2004,95 @@ ipcMain.handle("remote:forgeTokenUrl", async (_e, host: string) => {
   const lib = await loadLib();
   return lib.knownForgeTokenUrl(host);
 });
+
+// ── Publish / sync (#15 publish phase, ADR 0006 D5) ─────────────────────────
+// Snapshot-first publish + per-file conflict resolution. All git work happens
+// in the lib (isomorphic-git — CLAUDE.md §7) under the per-repo lock; the
+// credential is resolved host-side from the safeStorage store by remote host
+// and NEVER crosses the IPC boundary. Outcomes (published / up-to-date /
+// conflict / auth / offline / error) are RETURNED, not thrown — the lib maps
+// every failure to an author-friendly status — so handleRemoteErrors only
+// catches argument-validation and truly unexpected faults.
+
+ipcMain.handle(
+  "remote:publishStatus",
+  (_e, projectDir: string, fetch?: boolean): Promise<PublishStatusInfo> =>
+    handleRemoteErrors("remote:publishStatus", async () => {
+      const dir = requireAbsoluteDir("remote:publishStatus", projectDir);
+      const lib = await loadLib();
+      return lib.getPublishStatus({
+        projectDir: dir,
+        fetch: fetch === true,
+        tokenStore: electronTokenStore,
+      });
+    }),
+);
+
+ipcMain.handle(
+  "remote:publish",
+  (_e, projectDir: string, message?: string): Promise<PublishOutcome> =>
+    handleRemoteErrors("remote:publish", async () => {
+      const dir = requireAbsoluteDir("remote:publish", projectDir);
+      const lib = await loadLib();
+      return lib.publishProject({
+        projectDir: dir,
+        tokenStore: electronTokenStore,
+        ...(typeof message === "string" && message.trim()
+          ? { message: message.trim() }
+          : {}),
+      });
+    }),
+);
+
+ipcMain.handle(
+  "remote:resolveConflicts",
+  (
+    _e,
+    args: {
+      projectDir: string;
+      resolutions: ConflictResolutionChoice[];
+      localId: string;
+      remoteId: string;
+    },
+  ): Promise<PublishOutcome> =>
+    handleRemoteErrors("remote:resolveConflicts", async () => {
+      if (!args || typeof args.projectDir !== "string") {
+        throw new Error("remote:resolveConflicts requires { projectDir }");
+      }
+      const dir = requireAbsoluteDir("remote:resolveConflicts", args.projectDir);
+      if (
+        !Array.isArray(args.resolutions) ||
+        args.resolutions.length === 0 ||
+        !args.resolutions.every(
+          (r) =>
+            r &&
+            typeof r.path === "string" &&
+            r.path.length > 0 &&
+            (r.choice === "mine" || r.choice === "theirs" || r.choice === "both"),
+        )
+      ) {
+        throw new Error(
+          "remote:resolveConflicts requires a non-empty resolutions list",
+        );
+      }
+      if (
+        typeof args.localId !== "string" ||
+        typeof args.remoteId !== "string" ||
+        !/^[0-9a-f]{40}$/i.test(args.localId) ||
+        !/^[0-9a-f]{40}$/i.test(args.remoteId)
+      ) {
+        throw new Error("remote:resolveConflicts requires valid version ids");
+      }
+      const lib = await loadLib();
+      return lib.resolveConflicts({
+        projectDir: dir,
+        resolutions: args.resolutions,
+        localId: args.localId,
+        remoteId: args.remoteId,
+        tokenStore: electronTokenStore,
+      });
+    }),
+);
 
 ipcMain.handle("api:doctor", async () => {
   const lib = await loadLib();

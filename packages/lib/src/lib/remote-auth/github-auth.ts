@@ -48,25 +48,28 @@ export interface RemoteAuthProvider {
 }
 
 /**
- * Default GitHub App client id — a PLACEHOLDER until the print-md GitHub App
- * is registered. Client IDs are public by design (ADR 0006 D1); never put a
- * client SECRET anywhere in this codebase.
+ * Default GitHub App client id for the registered "print-md" GitHub App
+ * (registered 2026-06-10 under the dimm-city org). Client IDs are public by
+ * design (ADR 0006 D1); never put a client SECRET anywhere in this codebase.
  *
- * Registration checklist (ADR 0006 D1 — release blocking):
- *   1. Register a GitHub App (not an OAuth App) for selected-repository access.
- *   2. Enable "Device flow" (App settings → General).
+ * Registration settings the app relies on (ADR 0006 D1 — if the app is ever
+ * re-registered, these are release blocking):
+ *   1. GitHub App (not an OAuth App) for selected-repository access.
+ *   2. "Device flow" ENABLED (App settings → General).
  *   3. Permissions: Repository → Contents: Read and write. Nothing else.
- *   4. DISABLE "user-to-server token expiration" (App settings → Optional
+ *   4. "User-to-server token expiration" DISABLED (App settings → Optional
  *      features) — refreshing expiring tokens requires the client secret,
  *      which we cannot ship; with expiration left on, every session silently
  *      dies after 8 hours.
- *   5. Replace this constant with the real client id (or set
- *      PRINT_MD_GITHUB_CLIENT_ID).
+ *
+ * Override order: explicit option → PRINT_MD_GITHUB_CLIENT_ID env var → this
+ * default (see {@link resolveGitHubClientId}). The env var exists so a
+ * rotated registration can ship without a code change.
  *
  * Intentionally NOT exported from the public API — hosts resolve through
- * {@link resolveGitHubClientId}; the placeholder is an internal fallback.
+ * {@link resolveGitHubClientId}.
  */
-const DEFAULT_GITHUB_CLIENT_ID = "REPLACE_WITH_PRINT_MD_GITHUB_APP_CLIENT_ID";
+const DEFAULT_GITHUB_CLIENT_ID = "Iv23liuFxmMqnaRNjIK5";
 
 /**
  * Client id resolution: explicit option → env var → placeholder default.

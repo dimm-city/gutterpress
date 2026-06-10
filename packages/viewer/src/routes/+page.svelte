@@ -10,8 +10,10 @@
   import type {
     ProjectCapabilities,
     ProjectClassification,
+    ProjectRemoteDiagnosis,
   } from "$lib/platform/contract";
   import VersionHistoryDialog from "$lib/components/VersionHistoryDialog.svelte";
+  import PublishDialog from "$lib/components/PublishDialog.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
@@ -161,6 +163,63 @@
   // Version history (#13): the toolbar entry shows only when the project's
   // capabilities offer it — enable (plain folder) or view/snapshot/restore
   // (history already on). Publish/sync are NEVER offered for local projects.
+  // Publish (#15 publish phase, ADR 0006 D5): the toolbar entry shows only
+  // when the project's remote diagnosis says publishing is actually possible
+  // (HTTPS remote + a stored connection for its host) — never for plain local
+  // projects, SSH remotes, or unconnected servers.
+  let publishOpen = $state(false);
+  let publishBtn = $state<HTMLButtonElement | undefined>(undefined);
+  let publishDiag = $state<ProjectRemoteDiagnosis | null>(null);
+  let publishAvailable = $derived(
+    !!currentDir &&
+      sourceMode === "folder" &&
+      publishDiag?.canPublish === true,
+  );
+
+  async function refreshPublishDiag(dir: string) {
+    try {
+      const diag = await getPlatform().diagnoseProjectRemote(dir);
+      // Project may have changed while the diagnosis was in flight.
+      if (currentDir === dir) publishDiag = diag;
+    } catch {
+      publishDiag = null;
+    }
+  }
+
+  // Publish completed. Merged online changes land on disk and the preview's
+  // file watcher re-renders on its own (same contract as restore, #13).
+  function onPublishCompleted(mergedRemoteChanges: boolean) {
+    toast?.success(
+      mergedRemoteChanges
+        ? "Published — changes from the online copy were combined in, so the preview will refresh."
+        : "Published — your changes are online.",
+    );
+  }
+
+  // The single Reconnect action (ADR 0006 D7): route to the matching connect
+  // flow — GitHub's device flow, or Advanced Setup for every other server.
+  function onPublishReconnect() {
+    if (publishDiag?.provider === "github") githubOpen = true;
+    else advancedSetupOpen = true;
+  }
+
+  // Completes the D7 Reconnect journey: a connect dialog closing may mean a
+  // new credential was just stored — re-check publishability so the Publish
+  // button and the dialog's auth state reflect it without a project reload.
+  let connectDialogWasOpen = false;
+  $effect(() => {
+    const anyConnectOpen = githubOpen || advancedSetupOpen;
+    if (
+      connectDialogWasOpen &&
+      !anyConnectOpen &&
+      currentDir &&
+      sourceMode === "folder"
+    ) {
+      void refreshPublishDiag(currentDir);
+    }
+    connectDialogWasOpen = anyConnectOpen;
+  });
+
   let versionHistoryOpen = $state(false);
   let versionHistoryBtn = $state<HTMLButtonElement | undefined>(undefined);
   let versionHistoryAvailable = $derived(
@@ -972,6 +1031,7 @@
       // between sessions) and persisted as a hint. Fire-and-forget: a failure
       // must never block the preview.
       projectCapabilities = null;
+      publishDiag = null;
       platform
         .classifyProject(dir)
         .then((result) => {
@@ -979,6 +1039,12 @@
           platform
             .setViewerPrefs({ projectSource: result.source })
             .catch(() => {});
+          // Publish gate (#15 / ADR 0006 D4): the toolbar action appears only
+          // when the diagnosis says the project is actually publishable (HTTPS
+          // remote + a stored connection). Local reads only; fire-and-forget.
+          if (result.capabilities.canPublish) {
+            void refreshPublishDiag(dir);
+          }
         })
         .catch(() => {
           projectCapabilities = null;
@@ -1722,6 +1788,19 @@
           <Icon name="history" /><span class="view-label">History</span>
         </button>
       {/if}
+      <!-- Publish (#15): only when the diagnosis says the project is actually
+           publishable (HTTPS remote + stored connection — ADR 0006 D4). -->
+      {#if publishAvailable}
+        <button
+          bind:this={publishBtn}
+          class="icon-text"
+          onclick={() => (publishOpen = true)}
+          title="Publish your changes to the online repository"
+          aria-label="Publish changes"
+        >
+          <Icon name="cloud-upload" /><span class="view-label">Publish</span>
+        </button>
+      {/if}
       <!-- UX-039: separator before view mode controls -->
       <span class="toolbar-sep" aria-hidden="true"></span>
 
@@ -2026,6 +2105,13 @@
   onSnapshotSaved={onVersionSnapshotSaved}
   onRestored={onVersionRestored}
   triggerEl={versionHistoryBtn}
+/>
+<PublishDialog
+  bind:open={publishOpen}
+  projectDir={sourceMode === "folder" ? currentDir : null}
+  onPublished={onPublishCompleted}
+  onReconnect={onPublishReconnect}
+  triggerEl={publishBtn}
 />
 
 
