@@ -153,7 +153,7 @@ limitations).
 | `packages/cli/tests/compat/preview-smoke.spec.ts` | Playwright test: renders user guide + design guide + feature probe in chromium/firefox/webkit; asserts render completes, page count > 0 and equals the event's `totalPages`, zero collapsed content pages, no uncaught errors, page count within ±20% of the Chromium baseline. **Status: 3/3 passing locally.** |
 | `packages/cli/tests/compat/playwright.config.ts` | Runner config; starts the three preview servers via `webServer` (ports 4111–4113). |
 | `packages/cli/tests/compat/fixtures/feature-probe/` | Synthetic project exercising `position: running()`, custom props in margin boxes, named pages, `string()`, `@column-break`. |
-| `docs/compat/proposed-ci-preview-cross-browser.yml` | **Proposed** GitHub Actions job (not active; existing workflows untouched). |
+| `.github/workflows/preview-cross-browser.yml` | GitHub Actions job running the smoke test on all three engines (PRs touching lib/cli/examples, or manual dispatch). |
 
 Run locally:
 

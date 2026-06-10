@@ -1,11 +1,3 @@
-# PROPOSED workflow — NOT active. Part of the issue #46 Phase 1 deliverable.
-#
-# To activate, copy to .github/workflows/preview-cross-browser.yml (or merge
-# the job into ci.yml). Kept out of .github/workflows/ deliberately: existing
-# CI files must not be modified without review.
-#
-# Runs the cross-browser preview smoke test (packages/cli/tests/compat/) on
-# chromium, firefox, and webkit. Verified locally 2026-06-10 (3/3 passing).
 
 name: Preview cross-browser smoke
 
