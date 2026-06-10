@@ -1,0 +1,54 @@
+# PROPOSED workflow — NOT active. Part of the issue #46 Phase 1 deliverable.
+#
+# To activate, copy to .github/workflows/preview-cross-browser.yml (or merge
+# the job into ci.yml). Kept out of .github/workflows/ deliberately: existing
+# CI files must not be modified without review.
+#
+# Runs the cross-browser preview smoke test (packages/cli/tests/compat/) on
+# chromium, firefox, and webkit. Verified locally 2026-06-10 (3/3 passing).
+
+name: Preview cross-browser smoke
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/lib/src/**"
+      - "packages/cli/src/**"
+      - "packages/cli/tests/compat/**"
+      - "examples/**"
+  workflow_dispatch:
+
+env:
+  PUPPETEER_SKIP_DOWNLOAD: "true"
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+
+jobs:
+  preview-smoke:
+    name: Paged.js preview smoke (chromium + firefox + webkit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun (cached)
+        uses: ./.github/actions/bun
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build lib
+        run: bun run build:lib
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('packages/cli/package.json') }}
+
+      - name: Install Playwright browsers
+        working-directory: packages/cli
+        run: node_modules/.bin/playwright install --with-deps chromium firefox webkit
+
+      - name: Run cross-browser preview smoke test
+        working-directory: packages/cli
+        run: node_modules/.bin/playwright test -c tests/compat/playwright.config.ts

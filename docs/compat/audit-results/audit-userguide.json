@@ -1,0 +1,168 @@
+{
+  "url": "http://127.0.0.1:4101/",
+  "when": "2026-06-10T17:37:43.825Z",
+  "results": [
+    {
+      "engine": "chromium",
+      "url": "http://127.0.0.1:4101/",
+      "ok": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "browserVersion": "148.0.7778.96",
+      "renderMs": 1485,
+      "eventTotalPages": 59,
+      "probes": {
+        "pageCount": 59,
+        "namedPageClasses": [
+          "chapter",
+          "chapter_first",
+          "cover",
+          "cover_first",
+          "named",
+          "toc",
+          "toc_first"
+        ],
+        "namedPageContentTop": {
+          "named": 0,
+          "cover": 0,
+          "cover_first": 0,
+          "toc": 84,
+          "toc_first": 84,
+          "chapter": 240,
+          "chapter_first": 240
+        },
+        "defaultPageContentTop": 84,
+        "marginBoxesWithStringText": 48,
+        "marginBoxSamples": [
+          "Getting Started",
+          "Writing Your Content",
+          "Visual Elements",
+          "Styling & Theming",
+          "TTRPG Extensions",
+          "Plugins",
+          "Validation & Best Practices",
+          "System Setup"
+        ],
+        "marginBoxesWithPageCounter": 58,
+        "marginBoxComputed": {
+          "fontFamily": "\"Helvetica Neue\", Helvetica, Arial, sans-serif",
+          "fontSize": "10px",
+          "color": "rgb(74, 85, 104)"
+        },
+        "runningElement": null,
+        "columns": [],
+        "pageSizes": [
+          "816x1056"
+        ]
+      }
+    },
+    {
+      "engine": "firefox",
+      "url": "http://127.0.0.1:4101/",
+      "ok": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "browserVersion": "150.0.2",
+      "renderMs": 4128,
+      "eventTotalPages": 58,
+      "probes": {
+        "pageCount": 58,
+        "namedPageClasses": [
+          "chapter",
+          "chapter_first",
+          "cover",
+          "cover_first",
+          "named",
+          "toc",
+          "toc_first"
+        ],
+        "namedPageContentTop": {
+          "named": 0,
+          "cover": 0,
+          "cover_first": 0,
+          "toc": 84,
+          "toc_first": 84,
+          "chapter": 240,
+          "chapter_first": 240
+        },
+        "defaultPageContentTop": 84,
+        "marginBoxesWithStringText": 47,
+        "marginBoxSamples": [
+          "Getting Started",
+          "Writing Your Content",
+          "Visual Elements",
+          "Styling & Theming",
+          "TTRPG Extensions",
+          "Plugins",
+          "Validation & Best Practices",
+          "System Setup"
+        ],
+        "marginBoxesWithPageCounter": 57,
+        "marginBoxComputed": {
+          "fontFamily": "\"Helvetica Neue\", \"Helvetica\", \"Arial\", sans-serif",
+          "fontSize": "10px",
+          "color": "rgb(74, 85, 104)"
+        },
+        "runningElement": null,
+        "columns": [],
+        "pageSizes": [
+          "816x1056"
+        ]
+      }
+    },
+    {
+      "engine": "webkit",
+      "url": "http://127.0.0.1:4101/",
+      "ok": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "browserVersion": "26.4",
+      "renderMs": 3356,
+      "eventTotalPages": 53,
+      "probes": {
+        "pageCount": 53,
+        "namedPageClasses": [
+          "chapter",
+          "chapter_first",
+          "cover",
+          "cover_first",
+          "named",
+          "toc",
+          "toc_first"
+        ],
+        "namedPageContentTop": {
+          "named": 0,
+          "cover": 0,
+          "cover_first": 0,
+          "toc": 84,
+          "toc_first": 84,
+          "chapter": 240,
+          "chapter_first": 240
+        },
+        "defaultPageContentTop": 84,
+        "marginBoxesWithStringText": 43,
+        "marginBoxSamples": [
+          "Getting Started",
+          "Writing Your Content",
+          "Visual Elements",
+          "Styling & Theming",
+          "TTRPG Extensions",
+          "Plugins",
+          "Validation & Best Practices",
+          "System Setup"
+        ],
+        "marginBoxesWithPageCounter": 52,
+        "marginBoxComputed": {
+          "fontFamily": "\"Helvetica Neue\", Helvetica, Arial, sans-serif",
+          "fontSize": "10px",
+          "color": "rgb(74, 85, 104)"
+        },
+        "runningElement": null,
+        "columns": [],
+        "pageSizes": [
+          "816x1056"
+        ]
+      }
+    }
+  ]
+}

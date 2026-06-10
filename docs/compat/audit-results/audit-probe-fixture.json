@@ -1,0 +1,165 @@
+{
+  "url": "http://127.0.0.1:4103/",
+  "when": "2026-06-10T17:37:13.659Z",
+  "results": [
+    {
+      "engine": "chromium",
+      "url": "http://127.0.0.1:4103/",
+      "ok": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "browserVersion": "148.0.7778.96",
+      "renderMs": 477,
+      "eventTotalPages": 4,
+      "probes": {
+        "pageCount": 4,
+        "namedPageClasses": [
+          "named",
+          "probe-named",
+          "probe-named_first"
+        ],
+        "namedPageContentTop": {
+          "named": 240,
+          "probe-named": 240,
+          "probe-named_first": 240
+        },
+        "defaultPageContentTop": 84,
+        "marginBoxesWithStringText": 8,
+        "marginBoxSamples": [
+          "Chapter One: Feature Probe",
+          "RUNNING-ELEMENT-SENTINEL",
+          "Chapter Two: Named Page Target",
+          "Chapter Three: Multi-Column"
+        ],
+        "marginBoxesWithPageCounter": 4,
+        "marginBoxComputed": {
+          "fontFamily": "Georgia, serif",
+          "fontSize": "12px",
+          "color": "rgb(170, 34, 34)"
+        },
+        "runningElement": {
+          "movedToMarginBox": true,
+          "stillVisibleInFlow": false
+        },
+        "columns": [
+          {
+            "selector": ".section.probe-columns",
+            "computedColumnCount": "2",
+            "computedColumnGap": "38.4px",
+            "distinctChildLeftEdges": 2,
+            "sectionWidth": 648
+          }
+        ],
+        "pageSizes": [
+          "816x1056"
+        ]
+      }
+    },
+    {
+      "engine": "firefox",
+      "url": "http://127.0.0.1:4103/",
+      "ok": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "browserVersion": "150.0.2",
+      "renderMs": 1751,
+      "eventTotalPages": 4,
+      "probes": {
+        "pageCount": 4,
+        "namedPageClasses": [
+          "named",
+          "probe-named",
+          "probe-named_first"
+        ],
+        "namedPageContentTop": {
+          "named": 240,
+          "probe-named": 240,
+          "probe-named_first": 240
+        },
+        "defaultPageContentTop": 84,
+        "marginBoxesWithStringText": 8,
+        "marginBoxSamples": [
+          "Chapter One: Feature Probe",
+          "RUNNING-ELEMENT-SENTINEL",
+          "Chapter Two: Named Page Target",
+          "Chapter Three: Multi-Column"
+        ],
+        "marginBoxesWithPageCounter": 4,
+        "marginBoxComputed": {
+          "fontFamily": "Georgia, serif",
+          "fontSize": "12px",
+          "color": "rgb(170, 34, 34)"
+        },
+        "runningElement": {
+          "movedToMarginBox": true,
+          "stillVisibleInFlow": false
+        },
+        "columns": [
+          {
+            "selector": ".section.probe-columns",
+            "computedColumnCount": "2",
+            "computedColumnGap": "38.4px",
+            "distinctChildLeftEdges": 2,
+            "sectionWidth": 648
+          }
+        ],
+        "pageSizes": [
+          "816x1056"
+        ]
+      }
+    },
+    {
+      "engine": "webkit",
+      "url": "http://127.0.0.1:4103/",
+      "ok": true,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "browserVersion": "26.4",
+      "renderMs": 1060,
+      "eventTotalPages": 4,
+      "probes": {
+        "pageCount": 4,
+        "namedPageClasses": [
+          "named",
+          "probe-named",
+          "probe-named_first"
+        ],
+        "namedPageContentTop": {
+          "named": 240,
+          "probe-named": 240,
+          "probe-named_first": 240
+        },
+        "defaultPageContentTop": 84,
+        "marginBoxesWithStringText": 8,
+        "marginBoxSamples": [
+          "Chapter One: Feature Probe",
+          "RUNNING-ELEMENT-SENTINEL",
+          "Chapter Two: Named Page Target",
+          "Chapter Three: Multi-Column"
+        ],
+        "marginBoxesWithPageCounter": 4,
+        "marginBoxComputed": {
+          "fontFamily": "Georgia, serif",
+          "fontSize": "12px",
+          "color": "rgb(170, 34, 34)"
+        },
+        "runningElement": {
+          "movedToMarginBox": true,
+          "stillVisibleInFlow": false
+        },
+        "columns": [
+          {
+            "selector": ".section.probe-columns",
+            "computedColumnCount": "2",
+            "computedColumnGap": "38.400002px",
+            "distinctChildLeftEdges": 2,
+            "sectionWidth": 648
+          }
+        ],
+        "pageSizes": [
+          "816x1056"
+        ]
+      }
+    }
+  ]
+}
