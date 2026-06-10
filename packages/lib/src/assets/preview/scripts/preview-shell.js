@@ -102,6 +102,43 @@
     return v ? v.split('\n') : [];
   }
 
+  // Canonical chapter id (inline copy of lib/markdown/chapter-id.ts — this
+  // file is plain embedded JS and cannot import the lib): forward slashes,
+  // no './' prefix, no duplicate slashes.
+  function normId(s) {
+    s = String(s || '').replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+    while (s.indexOf('./') === 0) s = s.slice(2);
+    return s;
+  }
+
+  // Every distinct chapter id present in the live view's page tags.
+  function liveChapterIds(d) {
+    var pages = d.querySelectorAll('.pagedjs_page'), ids = [], i, j;
+    for (i = 0; i < pages.length; i++) {
+      var list = pageChapters(pages[i]);
+      for (j = 0; j < list.length; j++) if (ids.indexOf(list[j]) === -1) ids.push(list[j]);
+    }
+    return ids;
+  }
+
+  // Resolve a broadcast chapter id to the tag string actually used in the
+  // live view. Exact match first (the normal, canonical-everywhere case);
+  // then normalized match, then unique-basename match — defensive layers for
+  // a stale book.html tagged by an older build. Returns null when the chapter
+  // genuinely isn't in the live view (new file, or layout we can't resolve).
+  function resolveChapterId(d, file) {
+    var ids = liveChapterIds(d), i;
+    if (ids.indexOf(file) !== -1) return file;
+    var want = normId(file), hits = [];
+    for (i = 0; i < ids.length; i++) if (normId(ids[i]) === want) hits.push(ids[i]);
+    if (hits.length === 1) return hits[0];
+    if (!hits.length) {
+      var base = want.split('/').pop();
+      for (i = 0; i < ids.length; i++) if (normId(ids[i]).split('/').pop() === base) hits.push(ids[i]);
+    }
+    return hits.length === 1 ? hits[0] : null;
+  }
+
   // Collect the live pages a chapter appears on: `owned` = every page that
   // contains any of it (document order); `shared` = the subset it shares with
   // another chapter (chapter starts or ends mid-page).
@@ -158,6 +195,20 @@
   function spliceChapter(file) {
     var anchor = capture(active);
     tagPages(active);
+    // Presence check BEFORE rendering: if the chapter can't be located in the
+    // live view, the splice can never succeed — go straight to the full swap
+    // instead of paying a wasted single-chapter render first. The log carries
+    // both sides of the identity so any future mismatch is self-diagnosing.
+    var ad0 = fdoc(active);
+    var liveId = ad0 ? resolveChapterId(ad0, file) : null;
+    if (!liveId) {
+      var ids = ad0 ? liveChapterIds(ad0) : [];
+      var detail = 'broadcast "' + file + '" matched no live data-chapter-src tag (new file?); live tags: [' + ids.join(', ') + ']';
+      if (window.console) console.warn('[pmd] incremental splice skipped, full swap: ' + detail);
+      logToServer('splice skipped (full swap) for ' + file + ': ' + detail);
+      swap();
+      return;
+    }
     var f = document.createElement('iframe'); f.style.visibility = 'hidden'; f.setAttribute('aria-hidden', 'true');
     f.src = '/__chapter?file=' + encodeURIComponent(file) + '&t=' + Date.now();
     f.addEventListener('load', function () {
@@ -165,7 +216,7 @@
         try {
           var ad = fdoc(active), sd = fdoc(f);
           var container = ad.querySelector('.pagedjs_pages') || ad.body;
-          var found = pagesFor(ad, file);
+          var found = pagesFor(ad, liveId);
           var newPages = [].slice.call(sd.querySelectorAll('.pagedjs_page'));
           if (!newPages.length) throw new Error('chapter render produced no pages');
           if (!found.owned.length) throw new Error('chapter not present in live view (new file?)');
@@ -198,9 +249,9 @@
             for (i = 0; i < found.shared.length; i++) {
               var frags = found.shared[i].querySelectorAll('.pmd-chapter[data-chapter-src]');
               for (j = 0; j < frags.length; j++) {
-                if (frags[j].getAttribute('data-chapter-src') === file) frags[j].parentNode.removeChild(frags[j]);
+                if (frags[j].getAttribute('data-chapter-src') === liveId) frags[j].parentNode.removeChild(frags[j]);
               }
-              var rest = pageChapters(found.shared[i]).filter(function (c) { return c !== file; });
+              var rest = pageChapters(found.shared[i]).filter(function (c) { return c !== liveId; });
               found.shared[i].setAttribute('data-chapter-srcs', rest.join('\n'));
               if (rest.length) found.shared[i].setAttribute('data-chapter-src', rest[0]);
               else found.shared[i].removeAttribute('data-chapter-src');
@@ -209,8 +260,8 @@
 
           for (i = 0; i < newPages.length; i++) {
             var imp = ad.importNode(newPages[i], true);
-            imp.setAttribute('data-chapter-src', file);
-            imp.setAttribute('data-chapter-srcs', file);
+            imp.setAttribute('data-chapter-src', liveId);
+            imp.setAttribute('data-chapter-srcs', liveId);
             container.insertBefore(imp, at);
           }
           for (j = 0; j < exclusive.length; j++) exclusive[j].parentNode.removeChild(exclusive[j]);

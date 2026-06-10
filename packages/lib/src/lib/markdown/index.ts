@@ -8,6 +8,7 @@ import markdownItFootnote from "markdown-it-footnote";
 import markdownItPaged, { PAGED_CSS } from "./markdown-it-paged.js";
 import markdownItSourceMap from "markdown-it-source-map";
 import { registerImageRule } from "./images";
+import { canonicalChapterId } from "./chapter-id";
 import type { LoadedPlugin } from "./plugins";
 import { applyPlugins } from "./plugins";
 
@@ -127,12 +128,20 @@ export async function renderChapters(
   // (and briefly chapter-file) but it was never required by any consumer.
   let bodyContent = "";
   for (const file of files) {
-    const filePath = join(inputDir, file);
+    // ONE canonical identity per chapter (see chapter-id.ts): the same
+    // normalized string is used to resolve the file on disk AND as the
+    // data-chapter-src tag. The file-watcher broadcasts the identical form,
+    // and the preview shell matches the two strings exactly to splice a
+    // single edited chapter. Normalizing before join() also makes
+    // Windows-authored manifest entries (`chapters\03.md`) readable on
+    // POSIX hosts.
+    const chapterId = canonicalChapterId(file);
+    const filePath = join(inputDir, chapterId);
     try {
       const content = await readFile(filePath, "utf-8");
       const rendered = md.render(content);
       if (opts.wrapChapters) {
-        const safe = String(file).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+        const safe = chapterId.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         bodyContent += `<div class="pmd-chapter" data-chapter-src="${safe}">\n${rendered}\n</div>\n`;
       } else {
         bodyContent += rendered + "\n";

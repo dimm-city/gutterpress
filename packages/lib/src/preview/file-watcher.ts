@@ -12,6 +12,7 @@ import path from 'path';
 import { info, debug, error as logError } from '../utils/logger';
 import { DEBOUNCE } from '../constants';
 import { renderChapters } from '../lib/markdown/index';
+import { canonicalChapterId } from '../lib/markdown/chapter-id';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import { loadPlugins, collectPluginCss } from '../lib/markdown/plugins';
 import { resolveAssetDestName } from '../lib/assets';
@@ -54,8 +55,12 @@ function resolveExternalAssetRoots(
  * it is broadcast to clients (CSS hot-swap hrefs, content-update chapter
  * splices) and compared against the SPA's forward-slash chapter paths, so
  * Windows `path.sep` backslashes must never leak into it.
+ *
+ * Exported for the chapter-identity contract tests: the `content-update`
+ * broadcast derived from this value MUST equal the `data-chapter-src` the
+ * build writes for the same file (see lib/markdown/chapter-id.ts).
  */
-function resolveDestinationForChange(
+export function resolveDestinationForChange(
   filePath: string,
   inputPath: string,
   tempDir: string,
@@ -359,7 +364,10 @@ export function createFileWatcher(state: ServerState): FSWatcher {
           only.event !== 'unlink' &&
           only.event !== 'unlinkDir'
         ) {
-          state.previewServer?.broadcastContentUpdate(only.relativePath);
+          // Broadcast the CANONICAL chapter id — must equal the build's
+          // data-chapter-src for the same file (see lib/markdown/chapter-id.ts)
+          // or the shell can't find the chapter and degrades to a full swap.
+          state.previewServer?.broadcastContentUpdate(canonicalChapterId(only.relativePath));
           info(`Chapter updated: ${only.relativePath}`);
         } else {
           // Tell every connected HMR client to reload.
