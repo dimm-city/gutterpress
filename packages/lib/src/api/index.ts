@@ -140,6 +140,45 @@ export type {
   ProjectProvenance,
 } from "../lib/remote-auth/clone.ts";
 
+// ── Advanced Setup: diagnostics + generic token flow (#14 / ADR 0006 D3/D7) ──
+export {
+  testRemoteAccess,
+  isSshRemoteUrl,
+} from "../lib/remote-auth/test-access.ts";
+
+export type {
+  RemoteAccessResult,
+  RemoteAccessFailureReason,
+  TestRemoteAccessOptions,
+} from "../lib/remote-auth/test-access.ts";
+
+export {
+  GenericTokenAuthProvider,
+  connectGenericHost,
+  knownForgeTokenUrl,
+  normalizeForgeHost,
+} from "../lib/remote-auth/generic-auth.ts";
+
+export type {
+  GenericTokenConnectInput,
+  GenericHostCallbacks,
+  GenericAuthOptions,
+} from "../lib/remote-auth/generic-auth.ts";
+
+export {
+  diagnoseProjectRemote,
+  parseRemoteOrigin,
+  forgeKindForHost,
+} from "../lib/remote-auth/diagnose.ts";
+
+export type {
+  ProjectRemoteDiagnosis,
+  DiagnoseProjectRemoteOptions,
+  RemoteProtocol,
+  RemoteGuidanceId,
+  ForgeKind,
+} from "../lib/remote-auth/diagnose.ts";
+
 export type {
   SnapshotEntry,
   InitVersionHistoryOptions,

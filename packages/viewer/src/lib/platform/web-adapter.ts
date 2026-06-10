@@ -46,6 +46,10 @@ import type {
   RemoteBranch,
   CloneProgressEvent,
   CloneRepositoryArgs,
+  ProjectRemoteDiagnosis,
+  RemoteAccessResult,
+  ConnectGenericHostArgs,
+  HostConnectionInfo,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -305,6 +309,33 @@ export class WebAdapter implements Platform {
 
   onCloneProgress(_cb: (data: CloneProgressEvent) => void): () => void {
     return () => {};
+  }
+
+  // ── Advanced Setup (#14) — desktop-only until the PWA lands ──────────────
+  diagnoseProjectRemote(_projectDir: string): Promise<ProjectRemoteDiagnosis> {
+    return rejectNotImplemented("diagnoseProjectRemote");
+  }
+
+  testRemoteAccess(_url: string): Promise<RemoteAccessResult> {
+    return rejectNotImplemented("testRemoteAccess");
+  }
+
+  connectGenericHost(
+    _args: ConnectGenericHostArgs,
+  ): Promise<{ connected: boolean; host: string; username?: string }> {
+    return rejectNotImplemented("connectGenericHost");
+  }
+
+  disconnectHost(_host: string): Promise<{ ok: boolean }> {
+    return rejectNotImplemented("disconnectHost");
+  }
+
+  listHostConnections(): Promise<HostConnectionInfo[]> {
+    return Promise.resolve([]);
+  }
+
+  forgeTokenUrl(_host: string): Promise<string | null> {
+    return Promise.resolve(null);
   }
 
   startPreview(_args: PreviewStartArgs): Promise<PreviewStartResult> {

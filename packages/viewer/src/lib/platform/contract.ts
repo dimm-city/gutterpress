@@ -245,6 +245,79 @@ export interface CloneRepositoryArgs {
   installationId?: string;
 }
 
+// ── Advanced Setup (#14, ADR 0006 D3/D7) ──────────────────────────────────────
+//
+// Mirrors the lib's diagnose/test-access/generic-auth types — defined locally
+// so the SPA never value-imports the lib (§8 / ADR 0004). Tokens flow renderer
+// → host exactly once (connectGenericHost) and never come back.
+
+/** Why a remote-access probe failed, in machine-readable form. */
+export type RemoteAccessFailureReason =
+  | "auth"
+  | "not-found"
+  | "unreachable"
+  | "ssh-unsupported"
+  | "tls"
+  | "unknown";
+
+/** Outcome of the explicit "Test Remote Access" probe (a refs listing). */
+export type RemoteAccessResult =
+  | { ok: true; defaultBranch?: string; refCount: number }
+  | { ok: false; reason: RemoteAccessFailureReason; message: string };
+
+/** Recognized forge families, for per-provider guidance copy. */
+export type ForgeKind =
+  | "github"
+  | "gitea"
+  | "forgejo"
+  | "gitlab"
+  | "bitbucket"
+  | "azure"
+  | "generic";
+
+/** Machine-readable next-step hint the UI maps to author copy. */
+export type RemoteGuidanceId =
+  | "local-only"
+  | "connect-github-to-publish"
+  | "https-connect-server"
+  | "ready-to-publish"
+  | "ssh-use-own-tools";
+
+/** Environment status for the Advanced Setup panel. Local reads only. */
+export interface ProjectRemoteDiagnosis {
+  classification: ProjectSource;
+  /** Sanitized remote URL (no embedded credentials), when one exists. */
+  remoteUrl?: string;
+  remoteHost?: string;
+  remoteProtocol: "https" | "ssh" | "none";
+  branch?: string;
+  /** A credential for `remoteHost` is stored on this computer. */
+  credentialPresent: boolean;
+  provider: ForgeKind | null;
+  /** Token-settings deep link for recognized non-GitHub forges. */
+  tokenSettingsUrl: string | null;
+  canPublishWhenImplemented: boolean;
+  guidance: RemoteGuidanceId;
+}
+
+/** Inputs for the generic "Connect a Git server" token flow. */
+export interface ConnectGenericHostArgs {
+  host: string;
+  username?: string;
+  token: string;
+  /** Optional repository URL to validate against (full probe must succeed). */
+  repoUrl?: string;
+}
+
+/** Redacted stored-connection entry — never carries tokens. */
+export interface HostConnectionInfo {
+  host: string;
+  kind: "github-app" | "token";
+  username?: string;
+  label?: string;
+  createdAt: number;
+}
+
 // ── User settings (#45) ──────────────────────────────────────────────────────
 //
 // Persisted, section-organised user preferences. Distinct from `ViewerPrefs`
@@ -517,6 +590,27 @@ export interface HostServices {
   cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
   /** Subscribe to clone progress events. Returns an unsubscribe fn. */
   onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
+
+  // ── Advanced Setup (#14, ADR 0006) ─────────────────────────────────────────
+  // Diagnostics are local reads; the ONLY network call is the explicit
+  // `testRemoteAccess` probe (user-initiated). `connectGenericHost` validates
+  // the pasted token with a refs probe BEFORE the host stores it. WebAdapter:
+  // mutations reject; listHostConnections → []; forgeTokenUrl → null.
+
+  /** Classify the project's remote situation for the environment panel. */
+  diagnoseProjectRemote(projectDir: string): Promise<ProjectRemoteDiagnosis>;
+  /** Explicit, user-initiated remote probe (the `git ls-remote` equivalent). */
+  testRemoteAccess(url: string): Promise<RemoteAccessResult>;
+  /** Validate + store a credential for any smart-HTTPS Git host. */
+  connectGenericHost(
+    args: ConnectGenericHostArgs,
+  ): Promise<{ connected: boolean; host: string; username?: string }>;
+  /** Forget the stored connection for a host. */
+  disconnectHost(host: string): Promise<{ ok: boolean }>;
+  /** Redacted list of stored connections (host/username/label — no tokens). */
+  listHostConnections(): Promise<HostConnectionInfo[]>;
+  /** Token-settings deep link for recognized forges; null when unknown. */
+  forgeTokenUrl(host: string): Promise<string | null>;
 
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;

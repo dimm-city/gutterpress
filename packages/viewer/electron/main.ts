@@ -234,6 +234,41 @@ interface GitHubAuthProviderInstance {
   validate(credential: HostCredential): Promise<boolean>;
 }
 
+// ── Advanced Setup surface (#14). Mirrors the lib's diagnose/test-access types.
+type RemoteAccessResult =
+  | { ok: true; defaultBranch?: string; refCount: number }
+  | {
+      ok: false;
+      reason: "auth" | "not-found" | "unreachable" | "ssh-unsupported" | "tls" | "unknown";
+      message: string;
+    };
+
+interface ProjectRemoteDiagnosis {
+  classification: ProjectSource;
+  remoteUrl?: string;
+  remoteHost?: string;
+  remoteProtocol: "https" | "ssh" | "none";
+  branch?: string;
+  credentialPresent: boolean;
+  provider:
+    | "github"
+    | "gitea"
+    | "forgejo"
+    | "gitlab"
+    | "bitbucket"
+    | "azure"
+    | "generic"
+    | null;
+  tokenSettingsUrl: string | null;
+  canPublishWhenImplemented: boolean;
+  guidance:
+    | "local-only"
+    | "connect-github-to-publish"
+    | "https-connect-server"
+    | "ready-to-publish"
+    | "ssh-use-own-tools";
+}
+
 interface LibModule {
   startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
   loadManifestWithPath: (input: string) => Promise<ManifestWithPath>;
@@ -274,6 +309,26 @@ interface LibModule {
     };
   }) => Promise<{ projectDir: string; branch?: string }>;
   sanitizeCloneFolderName: (name: string) => string;
+  // Advanced Setup (#14)
+  testRemoteAccess: (options: {
+    url: string;
+    credential?: HostCredential;
+  }) => Promise<RemoteAccessResult>;
+  connectGenericHost: (input: {
+    host: string;
+    username?: string;
+    token: string;
+    repoUrl?: string;
+  }) => Promise<HostCredential>;
+  diagnoseProjectRemote: (
+    projectDir: string,
+    options?: {
+      tokenStore?: {
+        get(host: string): Promise<HostCredential | null>;
+      };
+    },
+  ) => Promise<ProjectRemoteDiagnosis>;
+  knownForgeTokenUrl: (host: string) => string | null;
 }
 
 let libPromise: Promise<LibModule> | null = null;
@@ -1602,7 +1657,14 @@ const GITHUB_HOST = "github.com";
 // full here and replaced with a terse author-safe message. Token values never
 // appear in lib messages by construction (remote-auth redaction invariant).
 const REMOTE_FRIENDLY_ERROR =
-  /couldn't reach github|reconnect github|connect github|sign-?in|declined|expired|canceled|already has files|valid web url|https|repository couldn't be found|couldn't be downloaded|try again|in progress/i;
+  /couldn't reach github|reconnect github|connect github|sign-?in|declined|expired|canceled|already has files|valid web url|https|repository couldn't be found|couldn't be downloaded|try again|in progress|access token|web address|couldn't reach|didn't accept|wasn't found|certificate|git server/i;
+
+// Strip credential-bearing URL userinfo ("https://user:token@host/…") from
+// any string headed for the log. Transport errors — and especially their raw
+// `.cause` — can echo the request URL verbatim, which may embed a token.
+function redactUrlCredentials(text: string): string {
+  return text.replace(/\/\/[^/\s:]+:[^@\s]+@/g, "//(redacted)@");
+}
 
 async function handleRemoteErrors<T>(
   channel: string,
@@ -1612,14 +1674,16 @@ async function handleRemoteErrors<T>(
     return await fn();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[${channel}] failed: ${msg}`);
-    if (e instanceof Error && e.stack) console.error(e.stack);
-    if (e instanceof Error && e.cause) console.error(`  cause: ${String(e.cause)}`);
+    console.error(`[${channel}] failed: ${redactUrlCredentials(msg)}`);
+    if (e instanceof Error && e.stack) console.error(redactUrlCredentials(e.stack));
+    if (e instanceof Error && e.cause) {
+      console.error(`  cause: ${redactUrlCredentials(String(e.cause))}`);
+    }
     if (REMOTE_FRIENDLY_ERROR.test(msg)) {
       throw new Error(msg);
     }
     throw new Error(
-      "The GitHub operation could not be completed. See the app log for details.",
+      "The online repository operation could not be completed. See the app log for details.",
     );
   }
 }
@@ -1785,6 +1849,94 @@ ipcMain.handle(
       return { projectDir: result.projectDir };
     }),
 );
+
+// ── Advanced Setup (#14, ADR 0006 D3/D7) ─────────────────────────────────────
+// Diagnostics + the universal "Connect a Git server" token flow. All checks
+// are lib functions (no shell commands — CLAUDE.md §7); tokens are validated
+// with a refs probe BEFORE being stored and NEVER cross the IPC boundary back
+// to the renderer (every response below is redacted).
+
+ipcMain.handle("remote:diagnoseProject", (_e, projectDir: string) =>
+  handleRemoteErrors("remote:diagnoseProject", async () => {
+    const dir = requireAbsoluteDir("remote:diagnoseProject", projectDir);
+    const lib = await loadLib();
+    return lib.diagnoseProjectRemote(dir, { tokenStore: electronTokenStore });
+  }),
+);
+
+ipcMain.handle("remote:testRemoteAccess", (_e, url: string) =>
+  handleRemoteErrors("remote:testRemoteAccess", async () => {
+    if (typeof url !== "string" || !url.trim()) {
+      throw new Error("remote:testRemoteAccess requires a remote URL");
+    }
+    const lib = await loadLib();
+    // Use the stored credential for the remote's host, when one exists.
+    // Credentials are keyed hostname[:port] (matching the lib's host
+    // normalization), so a self-hosted forge on a port still resolves.
+    let credential: HostCredential | null = null;
+    try {
+      const u = new URL(url);
+      const host = u.port ? `${u.hostname}:${u.port}` : u.hostname;
+      credential = await electronTokenStore.get(host);
+    } catch {
+      // SSH/scp-like URLs don't parse — the lib classifies them without auth.
+    }
+    return lib.testRemoteAccess({
+      url,
+      ...(credential ? { credential } : {}),
+    });
+  }),
+);
+
+ipcMain.handle(
+  "remote:connectGenericHost",
+  (
+    _e,
+    args: { host: string; username?: string; token: string; repoUrl?: string },
+  ) =>
+    handleRemoteErrors("remote:connectGenericHost", async () => {
+      if (!args || typeof args.host !== "string" || typeof args.token !== "string") {
+        throw new Error("remote:connectGenericHost requires { host, token }");
+      }
+      const lib = await loadLib();
+      // Validates with a refs probe BEFORE returning — a bad paste never
+      // reaches the credential store.
+      const credential = await lib.connectGenericHost({
+        host: args.host,
+        ...(args.username ? { username: args.username } : {}),
+        token: args.token,
+        ...(args.repoUrl ? { repoUrl: args.repoUrl } : {}),
+      });
+      await electronTokenStore.set(credential.host, credential);
+      return {
+        connected: true,
+        host: credential.host,
+        ...(credential.username ? { username: credential.username } : {}),
+      };
+    }),
+);
+
+ipcMain.handle("remote:disconnectHost", (_e, host: string) =>
+  handleRemoteErrors("remote:disconnectHost", async () => {
+    if (typeof host !== "string" || !host.trim()) {
+      throw new Error("remote:disconnectHost requires a host");
+    }
+    await electronTokenStore.delete(host);
+    return { ok: true };
+  }),
+);
+
+// Redacted list only — host/username/label/kind, never tokens or ciphertext.
+ipcMain.handle("remote:listConnections", async () => {
+  return electronTokenStore.listRedacted();
+});
+
+// Pure lookup (no I/O): token-settings deep link for recognized forges.
+ipcMain.handle("remote:forgeTokenUrl", async (_e, host: string) => {
+  if (typeof host !== "string" || !host.trim()) return null;
+  const lib = await loadLib();
+  return lib.knownForgeTokenUrl(host);
+});
 
 ipcMain.handle("api:doctor", async () => {
   const lib = await loadLib();

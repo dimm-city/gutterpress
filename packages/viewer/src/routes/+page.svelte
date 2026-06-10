@@ -18,6 +18,7 @@
   import OpenLocationDialog from "$lib/components/OpenLocationDialog.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
+  import AdvancedSetupDialog from "$lib/components/AdvancedSetupDialog.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
@@ -151,6 +152,9 @@
   // "Open from GitHub" flow (#15)
   let githubOpen = $state(false);
   let openBtn = $state<HTMLButtonElement | undefined>(undefined);
+  // Advanced setup (#14): diagnostics + generic "Connect a Git server"
+  let advancedSetupOpen = $state(false);
+  let advancedSetupBtn = $state<HTMLButtonElement | undefined>(undefined);
   // New-project wizard (#25)
   let newProjectOpen = $state(false);
   let newProjectBtn = $state<HTMLButtonElement | undefined>(undefined);
@@ -1872,6 +1876,16 @@
           <button class="menu-item" onclick={(e) => { settingsOpen = true; closeMenu(e); }}>
             <Icon name="settings" /> Settings
           </button>
+          {#if isDesktop()}
+            <!-- Advanced setup (#14): Git/remote diagnostics + private servers -->
+            <button
+              bind:this={advancedSetupBtn}
+              class="menu-item"
+              onclick={(e) => { advancedSetupOpen = true; closeMenu(e); }}
+            >
+              <Icon name="link" /> Advanced setup
+            </button>
+          {/if}
           <button class="menu-item" onclick={(e) => { helpOpen = true; closeMenu(e); }}>
             <Icon name="circle-help" /> Help &amp; about
           </button>
@@ -1991,7 +2005,13 @@
 <GitHubDialog
   bind:open={githubOpen}
   onOpened={(projectDir) => startFolderPreview(projectDir, "Opening your project…")}
+  onAdvancedSetup={() => (advancedSetupOpen = true)}
   triggerEl={openBtn}
+/>
+<AdvancedSetupDialog
+  bind:open={advancedSetupOpen}
+  projectDir={sourceMode === "folder" ? currentDir : null}
+  triggerEl={advancedSetupBtn}
 />
 <NewProjectWizard
   bind:open={newProjectOpen}

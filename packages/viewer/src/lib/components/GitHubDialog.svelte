@@ -18,11 +18,14 @@
   let {
     open = $bindable(false),
     onOpened,
+    onAdvancedSetup,
     triggerEl,
   }: {
     open?: boolean;
     /** Called with the new local project folder once the download finishes. */
     onOpened?: (projectDir: string) => void;
+    /** "Using a different Git host?" — closes this dialog, opens Advanced Setup (#14). */
+    onAdvancedSetup?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
@@ -281,6 +284,21 @@
           Connect your GitHub account to open the book projects stored there.
           A browser window will ask you to enter a short code — that's it.
         </p>
+        {#if onAdvancedSetup}
+          <p class="hint subtle">
+            Using a different Git host (Gitea, GitLab, Bitbucket, …)?
+            <button
+              type="button"
+              class="link-btn"
+              onclick={() => {
+                open = false;
+                // No triggerEl?.focus() here: Advanced Setup opens next and
+                // takes focus itself; it restores focus when IT closes.
+                onAdvancedSetup?.();
+              }}
+            >Open Advanced setup</button>
+          </p>
+        {/if}
         <footer class="actions">
           <button class="ghost" onclick={close}>Cancel</button>
           <button bind:this={connectBtn} class="primary" onclick={connect} disabled={busy}>

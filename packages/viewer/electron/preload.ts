@@ -190,6 +190,56 @@ interface CloneRepositoryArgs {
   installationId?: string;
 }
 
+// ── Advanced Setup (#14). Mirrors the lib's diagnose/test-access types. ──
+type RemoteAccessResult =
+  | { ok: true; defaultBranch?: string; refCount: number }
+  | {
+      ok: false;
+      reason: "auth" | "not-found" | "unreachable" | "ssh-unsupported" | "tls" | "unknown";
+      message: string;
+    };
+
+interface ProjectRemoteDiagnosis {
+  classification: ProjectSourceHint;
+  remoteUrl?: string;
+  remoteHost?: string;
+  remoteProtocol: "https" | "ssh" | "none";
+  branch?: string;
+  credentialPresent: boolean;
+  provider:
+    | "github"
+    | "gitea"
+    | "forgejo"
+    | "gitlab"
+    | "bitbucket"
+    | "azure"
+    | "generic"
+    | null;
+  tokenSettingsUrl: string | null;
+  canPublishWhenImplemented: boolean;
+  guidance:
+    | "local-only"
+    | "connect-github-to-publish"
+    | "https-connect-server"
+    | "ready-to-publish"
+    | "ssh-use-own-tools";
+}
+
+interface ConnectGenericHostArgs {
+  host: string;
+  username?: string;
+  token: string;
+  repoUrl?: string;
+}
+
+interface HostConnectionInfo {
+  host: string;
+  kind: "github-app" | "token";
+  username?: string;
+  label?: string;
+  createdAt: number;
+}
+
 // Local version history (#13): `SnapshotEntry` / `RestoreVersionResult` /
 // `ProjectClassification` are the ambient declarations in types.d.ts (single
 // electron-side definition; the lib ships no .d.ts to import from yet).
@@ -437,6 +487,24 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("remote:cloneProgress", listener);
     return () => ipcRenderer.removeListener("remote:cloneProgress", listener);
   },
+
+  // ── Advanced Setup (#14) — diagnostics + generic "Connect a Git server" ──
+  // The token in connectGenericHost crosses renderer → main ONCE for the
+  // validate-and-store flow; nothing below ever returns a token.
+  diagnoseProjectRemote: (projectDir: string): Promise<ProjectRemoteDiagnosis> =>
+    ipcRenderer.invoke("remote:diagnoseProject", projectDir),
+  testRemoteAccess: (url: string): Promise<RemoteAccessResult> =>
+    ipcRenderer.invoke("remote:testRemoteAccess", url),
+  connectGenericHost: (
+    args: ConnectGenericHostArgs,
+  ): Promise<{ connected: boolean; host: string; username?: string }> =>
+    ipcRenderer.invoke("remote:connectGenericHost", args),
+  disconnectHost: (host: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("remote:disconnectHost", host),
+  listHostConnections: (): Promise<HostConnectionInfo[]> =>
+    ipcRenderer.invoke("remote:listConnections"),
+  forgeTokenUrl: (host: string): Promise<string | null> =>
+    ipcRenderer.invoke("remote:forgeTokenUrl", host),
   startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>

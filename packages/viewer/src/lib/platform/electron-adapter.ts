@@ -44,6 +44,10 @@ import type {
   RemoteBranch,
   CloneProgressEvent,
   CloneRepositoryArgs,
+  ProjectRemoteDiagnosis,
+  RemoteAccessResult,
+  ConnectGenericHostArgs,
+  HostConnectionInfo,
 } from "./contract";
 
 function bridge(): ElectronBridge {
@@ -255,6 +259,33 @@ export class ElectronAdapter implements Platform {
 
   onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void {
     return bridge().onCloneProgress(cb);
+  }
+
+  // ── Advanced Setup (#14) ──────────────────────────────────────────────────
+  diagnoseProjectRemote(projectDir: string): Promise<ProjectRemoteDiagnosis> {
+    return bridge().diagnoseProjectRemote(projectDir);
+  }
+
+  testRemoteAccess(url: string): Promise<RemoteAccessResult> {
+    return bridge().testRemoteAccess(url);
+  }
+
+  connectGenericHost(
+    args: ConnectGenericHostArgs,
+  ): Promise<{ connected: boolean; host: string; username?: string }> {
+    return bridge().connectGenericHost(args);
+  }
+
+  disconnectHost(host: string): Promise<{ ok: boolean }> {
+    return bridge().disconnectHost(host);
+  }
+
+  listHostConnections(): Promise<HostConnectionInfo[]> {
+    return bridge().listHostConnections();
+  }
+
+  forgeTokenUrl(host: string): Promise<string | null> {
+    return bridge().forgeTokenUrl(host);
   }
 
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {

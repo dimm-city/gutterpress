@@ -165,6 +165,57 @@ interface CloneRepositoryArgs {
   installationId?: string;
 }
 
+// ── Advanced Setup (#14). Mirrors preload.ts + the lib. ─────────────────────
+type RemoteAccessResult =
+  | { ok: true; defaultBranch?: string; refCount: number }
+  | {
+      ok: false;
+      reason: "auth" | "not-found" | "unreachable" | "ssh-unsupported" | "tls" | "unknown";
+      message: string;
+    };
+
+interface ProjectRemoteDiagnosis {
+  classification: ProjectSource;
+  remoteUrl?: string;
+  remoteHost?: string;
+  remoteProtocol: "https" | "ssh" | "none";
+  branch?: string;
+  credentialPresent: boolean;
+  provider:
+    | "github"
+    | "gitea"
+    | "forgejo"
+    | "gitlab"
+    | "bitbucket"
+    | "azure"
+    | "generic"
+    | null;
+  tokenSettingsUrl: string | null;
+  canPublishWhenImplemented: boolean;
+  guidance:
+    | "local-only"
+    | "connect-github-to-publish"
+    | "https-connect-server"
+    | "ready-to-publish"
+    | "ssh-use-own-tools";
+}
+
+interface ConnectGenericHostArgs {
+  host: string;
+  username?: string;
+  token: string;
+  repoUrl?: string;
+}
+
+/** Redacted stored-connection entry — never carries tokens or ciphertext. */
+interface HostConnectionInfo {
+  host: string;
+  kind: "github-app" | "token";
+  username?: string;
+  label?: string;
+  createdAt: number;
+}
+
 // Per-project editor/preview state (#43). Mirrors electron/project-state.ts.
 interface ProjectState {
   currentPage?: number;
@@ -297,6 +348,15 @@ interface Window {
     listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]>;
     cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
     onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
+    // Advanced Setup (#14) — diagnostics + generic "Connect a Git server"
+    diagnoseProjectRemote(projectDir: string): Promise<ProjectRemoteDiagnosis>;
+    testRemoteAccess(url: string): Promise<RemoteAccessResult>;
+    connectGenericHost(
+      args: ConnectGenericHostArgs,
+    ): Promise<{ connected: boolean; host: string; username?: string }>;
+    disconnectHost(host: string): Promise<{ ok: boolean }>;
+    listHostConnections(): Promise<HostConnectionInfo[]>;
+    forgeTokenUrl(host: string): Promise<string | null>;
     startPreview(args: { input: string }): Promise<{
       url: string;
       port: number;

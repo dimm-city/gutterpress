@@ -154,6 +154,31 @@ export const electronTokenStore = {
     });
   },
 
+  /**
+   * Redacted listing for the renderer's "connected servers" UI (#14) — never
+   * decrypts and never includes token ciphertext or values.
+   */
+  listRedacted(): Promise<
+    Array<{
+      host: string;
+      kind: "github-app" | "token";
+      username?: string;
+      label?: string;
+      createdAt: number;
+    }>
+  > {
+    return enqueue(async () => {
+      const data = await readStore();
+      return Object.values(data.credentials).map((entry) => ({
+        host: entry.host,
+        kind: entry.kind,
+        ...(entry.username ? { username: entry.username } : {}),
+        ...(entry.label ? { label: entry.label } : {}),
+        createdAt: entry.createdAt,
+      }));
+    });
+  },
+
   /** Redacted connection status for the renderer — NEVER includes the token. */
   status(host: string): Promise<{ connected: boolean; username?: string; label?: string }> {
     return enqueue(async () => {
