@@ -9,11 +9,14 @@
     open = $bindable(false),
     onOpenFolder,
     onOpenUrl,
+    onOpenGitHub,
     triggerEl,
   }: {
     open?: boolean;
     onOpenFolder?: (path: string) => void;
     onOpenUrl?: (url: string) => void;
+    /** Hand off to the "Open from GitHub" flow (#15). */
+    onOpenGitHub?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
@@ -448,6 +451,17 @@
       {/if}
 
       <footer class="actions">
+        {#if onOpenGitHub}
+          <button
+            class="ghost github-btn"
+            onclick={() => {
+              open = false;
+              onOpenGitHub?.();
+            }}
+            title="Open a book project stored on GitHub"
+          >Open from GitHub…</button>
+        {/if}
+        <span class="actions-spacer"></span>
         <button class="ghost" onclick={close}>Cancel</button>
         <button class="primary" onclick={submit} disabled={!canOpen}>Open</button>
       </footer>
@@ -643,6 +657,7 @@
   .icon-action.remove:hover { color: var(--app-error-text); }
 
   /* Footer actions */
+  .actions-spacer { flex: 1; }
   .actions {
     display: flex;
     gap: 8px;

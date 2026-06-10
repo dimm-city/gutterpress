@@ -40,6 +40,12 @@ import type {
   CreateProjectResult,
   SnapshotEntry,
   RestoreVersionResult,
+  DeviceCodeInfo,
+  RemoteConnection,
+  RemoteRepository,
+  RemoteBranch,
+  CloneProgressEvent,
+  CloneRepositoryArgs,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -261,6 +267,44 @@ export class WebAdapter implements Platform {
 
   restoreSnapshot(_projectDir: string, _id: string): Promise<RestoreVersionResult> {
     return rejectNotImplemented("restoreSnapshot");
+  }
+
+  // ── Managed GitHub integration (#15) — desktop-only; safe stubs on web ─────
+  connectGitHubStart(): Promise<DeviceCodeInfo> {
+    return rejectNotImplemented("connectGitHubStart");
+  }
+
+  connectGitHubWait(): Promise<RemoteConnection> {
+    return rejectNotImplemented("connectGitHubWait");
+  }
+
+  connectGitHubCancel(): Promise<{ ok: boolean }> {
+    return Promise.resolve({ ok: true });
+  }
+
+  disconnectGitHub(): Promise<{ ok: boolean }> {
+    return rejectNotImplemented("disconnectGitHub");
+  }
+
+  // Resolve "not connected" so connection badges simply stay absent on web.
+  getRemoteConnection(_host?: string): Promise<RemoteConnection> {
+    return Promise.resolve({ connected: false });
+  }
+
+  listRemoteRepositories(): Promise<RemoteRepository[]> {
+    return rejectNotImplemented("listRemoteRepositories");
+  }
+
+  listRemoteBranches(_owner: string, _repo: string): Promise<RemoteBranch[]> {
+    return rejectNotImplemented("listRemoteBranches");
+  }
+
+  cloneRemoteRepository(_args: CloneRepositoryArgs): Promise<{ projectDir: string }> {
+    return rejectNotImplemented("cloneRemoteRepository");
+  }
+
+  onCloneProgress(_cb: (data: CloneProgressEvent) => void): () => void {
+    return () => {};
   }
 
   startPreview(_args: PreviewStartArgs): Promise<PreviewStartResult> {

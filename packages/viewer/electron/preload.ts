@@ -151,6 +151,45 @@ interface DiscoveredProject {
   title: string;
 }
 
+// ── Managed GitHub integration (#15). Mirrors the lib's remote-auth types. ──
+interface DeviceCodeInfo {
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+}
+interface RemoteConnection {
+  connected: boolean;
+  username?: string;
+  label?: string;
+}
+interface RemoteRepository {
+  owner: string;
+  name: string;
+  fullName: string;
+  private: boolean;
+  defaultBranch: string;
+  htmlUrl: string;
+  installationId: string;
+}
+interface RemoteBranch {
+  name: string;
+}
+interface CloneProgressEvent {
+  phase: string;
+  loaded: number;
+  total?: number;
+}
+interface CloneRepositoryArgs {
+  url: string;
+  parentDir: string;
+  folderName: string;
+  branch?: string;
+  owner?: string;
+  repo?: string;
+  installationId?: string;
+}
+
 // Local version history (#13): `SnapshotEntry` / `RestoreVersionResult` /
 // `ProjectClassification` are the ambient declarations in types.d.ts (single
 // electron-side definition; the lib ships no .d.ts to import from yet).
@@ -370,6 +409,34 @@ contextBridge.exposeInMainWorld("electron", {
     id: string,
   ): Promise<RestoreVersionResult> =>
     ipcRenderer.invoke("vcs:restoreSnapshot", projectDir, id),
+
+  // ── Managed GitHub integration (#15) — device flow + repo picker + clone ──
+  // Two-phase connect: Start returns the user code to display; Wait resolves
+  // when the user approves in the browser. Tokens never cross this bridge.
+  connectGitHubStart: (): Promise<DeviceCodeInfo> =>
+    ipcRenderer.invoke("remote:connectGitHubStart"),
+  connectGitHubWait: (): Promise<RemoteConnection> =>
+    ipcRenderer.invoke("remote:connectGitHubWait"),
+  connectGitHubCancel: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("remote:connectGitHubCancel"),
+  disconnectGitHub: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("remote:disconnectGitHub"),
+  getRemoteConnection: (host?: string): Promise<RemoteConnection> =>
+    ipcRenderer.invoke("remote:getConnection", host),
+  listRemoteRepositories: (): Promise<RemoteRepository[]> =>
+    ipcRenderer.invoke("remote:listRepositories"),
+  listRemoteBranches: (owner: string, repo: string): Promise<RemoteBranch[]> =>
+    ipcRenderer.invoke("remote:listBranches", owner, repo),
+  cloneRemoteRepository: (
+    args: CloneRepositoryArgs,
+  ): Promise<{ projectDir: string }> =>
+    ipcRenderer.invoke("remote:cloneRepository", args),
+  /** Subscribe to clone progress from main. Returns an unsubscribe fn. */
+  onCloneProgress: (cb: (data: CloneProgressEvent) => void): (() => void) => {
+    const listener = (_e: unknown, data: CloneProgressEvent) => cb(data);
+    ipcRenderer.on("remote:cloneProgress", listener);
+    return () => ipcRenderer.removeListener("remote:cloneProgress", listener);
+  },
   startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>

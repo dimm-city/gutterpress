@@ -50,6 +50,10 @@ import {
   type ProjectState,
   type ProjectStateMap,
 } from "./project-state";
+import {
+  electronTokenStore,
+  type HostCredential,
+} from "./credential-store";
 // The splash markup ships as a string baked into the main bundle (electron-vite
 // inlines `?raw`), so there is no separate file to resolve at runtime.
 import splashHtml from "./splash.html?raw";
@@ -198,6 +202,38 @@ interface SourceProviderOps {
   restore(options: { projectDir: string; id: string }): Promise<void>;
 }
 
+// ── Remote GitHub surface (#15, ADR 0006). Mirrors the lib's remote-auth types.
+interface DeviceCodeInfo {
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+}
+interface RemoteRepository {
+  owner: string;
+  name: string;
+  fullName: string;
+  private: boolean;
+  defaultBranch: string;
+  htmlUrl: string;
+  installationId: string;
+}
+interface RemoteBranch {
+  name: string;
+}
+interface CloneProgressEvent {
+  phase: string;
+  loaded: number;
+  total?: number;
+}
+interface GitHubAuthProviderInstance {
+  connect(callbacks: {
+    onUserCode: (info: DeviceCodeInfo) => void;
+    signal?: AbortSignal;
+  }): Promise<HostCredential>;
+  validate(credential: HostCredential): Promise<boolean>;
+}
+
 interface LibModule {
   startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
   loadManifestWithPath: (input: string) => Promise<ManifestWithPath>;
@@ -215,6 +251,29 @@ interface LibModule {
   }) => Promise<RestoreVersionResult>;
   checkCss: (css: string, from?: string) => PrintSafeWarning[];
   BuildError: new (message: string) => Error;
+  // Remote GitHub (#15)
+  GitHubAuthProvider: new (options?: { clientId?: string }) => GitHubAuthProviderInstance;
+  listGitHubRepositories: (credential: HostCredential) => Promise<RemoteRepository[]>;
+  listGitHubBranches: (
+    credential: HostCredential,
+    owner: string,
+    repo: string,
+  ) => Promise<RemoteBranch[]>;
+  cloneRepository: (options: {
+    url: string;
+    dir: string;
+    credential?: HostCredential;
+    branch?: string;
+    depth?: number;
+    onProgress?: (event: CloneProgressEvent) => void;
+    provenance?: {
+      provider: "github";
+      owner: string;
+      repo: string;
+      installationId?: string;
+    };
+  }) => Promise<{ projectDir: string; branch?: string }>;
+  sanitizeCloneFolderName: (name: string) => string;
 }
 
 let libPromise: Promise<LibModule> | null = null;
@@ -1527,6 +1586,203 @@ ipcMain.handle(
       // Safety contract (#13 / ADR 0006 §D5): the lib snapshots the current
       // state before restoring, so a restore can never lose author work.
       return lib.restoreVersionWithBackup({ projectDir: dir, id });
+    }),
+);
+
+// ── Managed GitHub integration (#15, ADR 0006) ───────────────────────────────
+// Auth (device flow), connection status, repo/branch discovery, clone-and-open.
+// All real work lives in the lib (CLAUDE.md §7: isomorphic-git + plain fetch —
+// never system git/gh); credentials live in the safeStorage-backed store and
+// NEVER cross the IPC boundary (remote:getConnection is redacted status only).
+
+const GITHUB_HOST = "github.com";
+
+// Error sanitization — same pattern as handleVcsErrors: the lib's own
+// author-friendly messages pass through verbatim; anything else is logged in
+// full here and replaced with a terse author-safe message. Token values never
+// appear in lib messages by construction (remote-auth redaction invariant).
+const REMOTE_FRIENDLY_ERROR =
+  /couldn't reach github|reconnect github|connect github|sign-?in|declined|expired|canceled|already has files|valid web url|https|repository couldn't be found|couldn't be downloaded|try again|in progress/i;
+
+async function handleRemoteErrors<T>(
+  channel: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`[${channel}] failed: ${msg}`);
+    if (e instanceof Error && e.stack) console.error(e.stack);
+    if (e instanceof Error && e.cause) console.error(`  cause: ${String(e.cause)}`);
+    if (REMOTE_FRIENDLY_ERROR.test(msg)) {
+      throw new Error(msg);
+    }
+    throw new Error(
+      "The GitHub operation could not be completed. See the app log for details.",
+    );
+  }
+}
+
+// One device-flow connect at a time. `codePromise` resolves with the user code
+// (phase 1 of the two-phase invoke); `donePromise` resolves when the user
+// approves in the browser and the credential is stored (phase 2).
+interface ActiveGitHubConnect {
+  controller: AbortController;
+  codePromise: Promise<DeviceCodeInfo>;
+  donePromise: Promise<{ connected: boolean; username?: string }>;
+}
+let activeGitHubConnect: ActiveGitHubConnect | null = null;
+
+ipcMain.handle("remote:connectGitHubStart", () =>
+  handleRemoteErrors("remote:connectGitHubStart", async () => {
+    // Replace any in-flight attempt (e.g. the user reopened the dialog).
+    activeGitHubConnect?.controller.abort();
+    activeGitHubConnect = null;
+
+    const lib = await loadLib();
+    const controller = new AbortController();
+    let resolveCode!: (info: DeviceCodeInfo) => void;
+    const codePromise = new Promise<DeviceCodeInfo>((resolve) => {
+      resolveCode = resolve;
+    });
+    // Pass the client id explicitly: the lib is externalized, so its own
+    // `process.env` read is NOT rewritten by the build — only THIS expression
+    // is replaced by the electron-vite `define` that bakes the release
+    // client id in. resolveGitHubClientId treats ""/undefined as unset.
+    const provider = new lib.GitHubAuthProvider({
+      clientId: process.env.PRINT_MD_GITHUB_CLIENT_ID ?? "",
+    });
+    const donePromise = provider
+      .connect({ onUserCode: resolveCode, signal: controller.signal })
+      .then(async (credential) => {
+        await electronTokenStore.set(GITHUB_HOST, credential);
+        return {
+          connected: true,
+          ...(credential.username ? { username: credential.username } : {}),
+        };
+      });
+    // Park the rejection until remote:connectGitHubWait consumes it — an
+    // unconsumed failure must not surface as an unhandled rejection.
+    donePromise.catch(() => {});
+    activeGitHubConnect = { controller, codePromise, donePromise };
+    // If connect fails BEFORE producing a user code (offline, bad client id),
+    // codePromise never settles — race it against the failure so the start
+    // call rejects with the friendly message instead of hanging.
+    return await Promise.race([codePromise, donePromise.then(() => codePromise)]);
+  }),
+);
+
+ipcMain.handle("remote:connectGitHubWait", () =>
+  handleRemoteErrors("remote:connectGitHubWait", async () => {
+    const active = activeGitHubConnect;
+    if (!active) {
+      throw new Error("No GitHub sign-in is in progress. Try again.");
+    }
+    try {
+      return await active.donePromise;
+    } finally {
+      if (activeGitHubConnect === active) activeGitHubConnect = null;
+    }
+  }),
+);
+
+ipcMain.handle("remote:connectGitHubCancel", async () => {
+  activeGitHubConnect?.controller.abort();
+  activeGitHubConnect = null;
+  return { ok: true };
+});
+
+ipcMain.handle("remote:disconnectGitHub", () =>
+  handleRemoteErrors("remote:disconnectGitHub", async () => {
+    await electronTokenStore.delete(GITHUB_HOST);
+    return { ok: true };
+  }),
+);
+
+// Redacted status only — the token NEVER crosses the IPC boundary.
+ipcMain.handle("remote:getConnection", async (_e, host?: string) => {
+  return electronTokenStore.status(host || GITHUB_HOST);
+});
+
+async function requireGitHubCredential(): Promise<HostCredential> {
+  const credential = await electronTokenStore.get(GITHUB_HOST);
+  if (!credential) {
+    throw new Error("Connect GitHub first to see your repositories.");
+  }
+  return credential;
+}
+
+ipcMain.handle("remote:listRepositories", () =>
+  handleRemoteErrors("remote:listRepositories", async () => {
+    const lib = await loadLib();
+    return lib.listGitHubRepositories(await requireGitHubCredential());
+  }),
+);
+
+ipcMain.handle(
+  "remote:listBranches",
+  (_e, owner: string, repo: string): Promise<RemoteBranch[]> =>
+    handleRemoteErrors("remote:listBranches", async () => {
+      if (typeof owner !== "string" || typeof repo !== "string" || !owner || !repo) {
+        throw new Error("remote:listBranches requires owner and repo");
+      }
+      const lib = await loadLib();
+      return lib.listGitHubBranches(await requireGitHubCredential(), owner, repo);
+    }),
+);
+
+ipcMain.handle(
+  "remote:cloneRepository",
+  (
+    _e,
+    args: {
+      url: string;
+      parentDir: string;
+      folderName: string;
+      branch?: string;
+      owner?: string;
+      repo?: string;
+      installationId?: string;
+    },
+  ): Promise<{ projectDir: string }> =>
+    handleRemoteErrors("remote:cloneRepository", async () => {
+      if (!args || typeof args.url !== "string" || typeof args.parentDir !== "string") {
+        throw new Error("remote:cloneRepository requires { url, parentDir, folderName }");
+      }
+      if (!path.isAbsolute(args.parentDir)) {
+        throw new Error("remote:cloneRepository requires an absolute destination path");
+      }
+      const lib = await loadLib();
+      // Folder name is renderer-supplied (defaults to the repo name) — the
+      // lib's sanitizer reduces it to a single safe path segment so it can
+      // never escape the chosen parent directory (path-traversal guard).
+      const folderName = lib.sanitizeCloneFolderName(String(args.folderName ?? ""));
+      if (!folderName) {
+        throw new Error("remote:cloneRepository requires a project folder name");
+      }
+      const projectDir = path.join(args.parentDir, folderName);
+      const credential = await electronTokenStore.get(GITHUB_HOST);
+      const result = await lib.cloneRepository({
+        url: args.url,
+        dir: projectDir,
+        ...(credential ? { credential } : {}),
+        ...(args.branch ? { branch: args.branch } : {}),
+        ...(args.owner && args.repo
+          ? {
+              provenance: {
+                provider: "github" as const,
+                owner: args.owner,
+                repo: args.repo,
+                ...(args.installationId ? { installationId: args.installationId } : {}),
+              },
+            }
+          : {}),
+        onProgress: (event: CloneProgressEvent) => {
+          mainWindow?.webContents.send("remote:cloneProgress", event);
+        },
+      });
+      return { projectDir: result.projectDir };
     }),
 );
 

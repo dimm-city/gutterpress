@@ -78,8 +78,12 @@ const DEFAULT_BRANCH = "main";
 // the future fetch/push surface (#15/#16), so keep it here, not in callers.
 const repoQueues = new Map<string, Promise<unknown>>();
 
-/** Run `fn` exclusively per resolved project dir (FIFO promise chaining). */
-function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promise<T> {
+/**
+ * Run `fn` exclusively per resolved project dir (FIFO promise chaining).
+ * Exported for the remote-clone surface (#15) so clone/fetch operations share
+ * the SAME queue as snapshot/restore — ADR 0006 D2 requires one per-repo lock.
+ */
+export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promise<T> {
   const key = path.resolve(projectDir);
   const prev = repoQueues.get(key) ?? Promise.resolve();
   // Chain regardless of the previous op's outcome; a failure must not jam the queue.

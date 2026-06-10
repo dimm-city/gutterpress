@@ -38,6 +38,12 @@ import type {
   CreateProjectResult,
   SnapshotEntry,
   RestoreVersionResult,
+  DeviceCodeInfo,
+  RemoteConnection,
+  RemoteRepository,
+  RemoteBranch,
+  CloneProgressEvent,
+  CloneRepositoryArgs,
 } from "./contract";
 
 function bridge(): ElectronBridge {
@@ -212,6 +218,43 @@ export class ElectronAdapter implements Platform {
 
   restoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult> {
     return bridge().restoreSnapshot(projectDir, id);
+  }
+
+  // ── Managed GitHub integration (#15) — delegate 1:1 to the bridge ─────────
+  connectGitHubStart(): Promise<DeviceCodeInfo> {
+    return bridge().connectGitHubStart();
+  }
+
+  connectGitHubWait(): Promise<RemoteConnection> {
+    return bridge().connectGitHubWait();
+  }
+
+  connectGitHubCancel(): Promise<{ ok: boolean }> {
+    return bridge().connectGitHubCancel();
+  }
+
+  disconnectGitHub(): Promise<{ ok: boolean }> {
+    return bridge().disconnectGitHub();
+  }
+
+  getRemoteConnection(host?: string): Promise<RemoteConnection> {
+    return bridge().getRemoteConnection(host);
+  }
+
+  listRemoteRepositories(): Promise<RemoteRepository[]> {
+    return bridge().listRemoteRepositories();
+  }
+
+  listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]> {
+    return bridge().listRemoteBranches(owner, repo);
+  }
+
+  cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }> {
+    return bridge().cloneRemoteRepository(args);
+  }
+
+  onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void {
+    return bridge().onCloneProgress(cb);
   }
 
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {

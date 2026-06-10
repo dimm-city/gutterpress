@@ -17,6 +17,7 @@
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
   import OpenLocationDialog from "$lib/components/OpenLocationDialog.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
+  import GitHubDialog from "$lib/components/GitHubDialog.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
@@ -147,6 +148,8 @@
   let helpBtn = $state<HTMLButtonElement | undefined>(undefined);
   // Open Location modal
   let openLocationOpen = $state(false);
+  // "Open from GitHub" flow (#15)
+  let githubOpen = $state(false);
   let openBtn = $state<HTMLButtonElement | undefined>(undefined);
   // New-project wizard (#25)
   let newProjectOpen = $state(false);
@@ -1982,6 +1985,12 @@
   bind:open={openLocationOpen}
   onOpenFolder={(path) => startFolderPreview(path)}
   onOpenUrl={openUrl}
+  onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
+  triggerEl={openBtn}
+/>
+<GitHubDialog
+  bind:open={githubOpen}
+  onOpened={(projectDir) => startFolderPreview(projectDir, "Opening your project…")}
   triggerEl={openBtn}
 />
 <NewProjectWizard

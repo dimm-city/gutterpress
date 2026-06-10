@@ -13,6 +13,17 @@ const root = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
+    // Bake the GitHub App client id into the MAIN bundle at build time:
+    // `process.env.PRINT_MD_GITHUB_CLIENT_ID` does not exist on end-user
+    // machines, so release CI sets it (repo secret → env on the viewer build
+    // step; see ADR 0006 release checklist) and this define replaces the
+    // expression with the literal value. When unset it bakes "" — which
+    // resolveGitHubClientId treats as unset (placeholder fallback).
+    define: {
+      "process.env.PRINT_MD_GITHUB_CLIENT_ID": JSON.stringify(
+        process.env.PRINT_MD_GITHUB_CLIENT_ID ?? "",
+      ),
+    },
     build: {
       outDir: "out/main",
       rollupOptions: {

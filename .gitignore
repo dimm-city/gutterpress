@@ -66,3 +66,6 @@ web-ui-signing.key
 
 # Playwright artifacts (cross-browser preview smoke test)
 test-results/
+
+# generated update-manifest baseline (viewer build artifact)
+packages/viewer/version.json

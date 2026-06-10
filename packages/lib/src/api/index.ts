@@ -88,6 +88,58 @@ export {
   restoreVersionWithBackup,
 } from "../lib/source-provider.ts";
 
+// ── Remote Git: auth, discovery, clone (#15 / ADR 0006) ──────────────────────
+export {
+  FileTokenStore,
+  defaultConfigDir,
+  redactCredential,
+  extractUrlCredential,
+  migrateUrlCredential,
+} from "../lib/remote-auth/token-store.ts";
+
+export type {
+  HostCredential,
+  TokenStore,
+  UrlCredentialExtraction,
+} from "../lib/remote-auth/token-store.ts";
+
+export {
+  GitHubAuthProvider,
+  resolveGitHubClientId,
+  GITHUB_HOST,
+} from "../lib/remote-auth/github-auth.ts";
+
+export type {
+  RemoteAuthProvider,
+  HostCallbacks,
+  DeviceCodeInfo,
+  GitHubAuthProviderOptions,
+} from "../lib/remote-auth/github-auth.ts";
+
+export {
+  listGitHubRepositories,
+  listGitHubBranches,
+} from "../lib/remote-auth/github-repos.ts";
+
+export type {
+  RemoteRepository,
+  RemoteBranch,
+} from "../lib/remote-auth/github-repos.ts";
+
+export {
+  cloneRepository,
+  readProjectProvenance,
+  provenancePath,
+  sanitizeCloneFolderName,
+} from "../lib/remote-auth/clone.ts";
+
+export type {
+  CloneRepositoryOptions,
+  CloneRepositoryResult,
+  CloneProgressEvent,
+  ProjectProvenance,
+} from "../lib/remote-auth/clone.ts";
+
 export type {
   SnapshotEntry,
   InitVersionHistoryOptions,

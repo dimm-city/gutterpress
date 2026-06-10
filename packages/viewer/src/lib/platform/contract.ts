@@ -190,6 +190,61 @@ export interface DiscoveredProject {
   title: string;
 }
 
+// ── Managed GitHub integration (#15, ADR 0006) ────────────────────────────────
+//
+// Mirrors the lib's remote-auth types — defined locally so the SPA never
+// value-imports the lib (§8 / ADR 0004). Tokens NEVER reach the renderer:
+// `RemoteConnection` is redacted status only.
+
+/** What the UI shows during the GitHub device flow (code + where to enter it). */
+export interface DeviceCodeInfo {
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+}
+
+/** Redacted connection status for a remote host — never carries the token. */
+export interface RemoteConnection {
+  connected: boolean;
+  username?: string;
+  label?: string;
+}
+
+/** One repository the user can open from GitHub. */
+export interface RemoteRepository {
+  owner: string;
+  name: string;
+  fullName: string;
+  private: boolean;
+  defaultBranch: string;
+  htmlUrl: string;
+  installationId: string;
+}
+
+/** One branch of a remote repository. */
+export interface RemoteBranch {
+  name: string;
+}
+
+/** Coarse clone progress pushed from the host while a project downloads. */
+export interface CloneProgressEvent {
+  phase: string;
+  loaded: number;
+  total?: number;
+}
+
+/** Inputs for cloning a repository into a new local project folder. */
+export interface CloneRepositoryArgs {
+  url: string;
+  parentDir: string;
+  folderName: string;
+  branch?: string;
+  owner?: string;
+  repo?: string;
+  installationId?: string;
+}
+
 // ── User settings (#45) ──────────────────────────────────────────────────────
 //
 // Persisted, section-organised user preferences. Distinct from `ViewerPrefs`
@@ -437,6 +492,31 @@ export interface HostServices {
    * changed), so a restore can never lose work.
    */
   restoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult>;
+
+  // ── Managed GitHub integration (#15, ADR 0006) ────────────────────────────
+  // Two-phase connect: `connectGitHubStart` begins the device flow and
+  // resolves with the code to show the user; `connectGitHubWait` resolves once
+  // the user approves in the browser (the host stores the credential — the
+  // renderer only ever sees redacted status). The WebAdapter stubs reject.
+
+  /** Begin the GitHub device flow; resolves with the code/URL to display. */
+  connectGitHubStart(): Promise<DeviceCodeInfo>;
+  /** Await user approval of the in-flight device flow. */
+  connectGitHubWait(): Promise<RemoteConnection>;
+  /** Cancel an in-flight device flow (user closed the dialog). */
+  connectGitHubCancel(): Promise<{ ok: boolean }>;
+  /** Forget the stored GitHub connection. */
+  disconnectGitHub(): Promise<{ ok: boolean }>;
+  /** Redacted connection status for a host (default github.com). */
+  getRemoteConnection(host?: string): Promise<RemoteConnection>;
+  /** Repositories the user granted the print-md GitHub App. */
+  listRemoteRepositories(): Promise<RemoteRepository[]>;
+  /** Branches of a chosen repository (default branch preselected by the UI). */
+  listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]>;
+  /** Download ("clone") a repository into a new local project folder. */
+  cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
+  /** Subscribe to clone progress events. Returns an unsubscribe fn. */
+  onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
 
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;

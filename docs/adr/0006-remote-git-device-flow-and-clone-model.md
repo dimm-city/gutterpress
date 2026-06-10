@@ -279,3 +279,19 @@ sniffing) is rejected as exactly the brittle surface this ADR exists to avoid.
 4. **#15 publish** — snapshot-first publish + conflict choices (D5). Ships in
    0.5.0 only if the conflict flow is complete; otherwise a fast-follow.
 5. **#16** — closed in favor of #14 (nothing to bundle under §7).
+
+### Release checklist — GitHub App client id
+
+The packaged viewer cannot read `PRINT_MD_GITHUB_CLIENT_ID` from the end
+user's environment; the value is baked into the Electron MAIN bundle at build
+time via an electron-vite `define` (`packages/viewer/electron.vite.config.ts`).
+Before any release that ships the GitHub flow:
+
+1. Set `PRINT_MD_GITHUB_CLIENT_ID` as a repository secret (the client id is
+   public by design — the secret slot is just the distribution mechanism).
+2. Expose it as `env` on the viewer build step of the release workflow
+   (`PRINT_MD_GITHUB_CLIENT_ID: ${{ secrets.PRINT_MD_GITHUB_CLIENT_ID }}`)
+   so the `define` picks it up.
+3. If unset at build time, `""` is baked in — `resolveGitHubClientId` treats
+   empty as unset and falls back to the placeholder, so Connect GitHub fails
+   with a friendly error rather than silently misbehaving.

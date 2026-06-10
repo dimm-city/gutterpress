@@ -120,6 +120,51 @@ interface RestoreVersionResult {
   backupId?: string;
 }
 
+// ── Managed GitHub integration (#15). Mirrors preload.ts + the lib. ─────────
+interface DeviceCodeInfo {
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+}
+
+/** Redacted connection status — never carries the token. */
+interface RemoteConnection {
+  connected: boolean;
+  username?: string;
+  label?: string;
+}
+
+interface RemoteRepository {
+  owner: string;
+  name: string;
+  fullName: string;
+  private: boolean;
+  defaultBranch: string;
+  htmlUrl: string;
+  installationId: string;
+}
+
+interface RemoteBranch {
+  name: string;
+}
+
+interface CloneProgressEvent {
+  phase: string;
+  loaded: number;
+  total?: number;
+}
+
+interface CloneRepositoryArgs {
+  url: string;
+  parentDir: string;
+  folderName: string;
+  branch?: string;
+  owner?: string;
+  repo?: string;
+  installationId?: string;
+}
+
 // Per-project editor/preview state (#43). Mirrors electron/project-state.ts.
 interface ProjectState {
   currentPage?: number;
@@ -242,6 +287,16 @@ interface Window {
       projectDir: string,
       id: string,
     ): Promise<RestoreVersionResult>;
+    // Managed GitHub integration (#15)
+    connectGitHubStart(): Promise<DeviceCodeInfo>;
+    connectGitHubWait(): Promise<RemoteConnection>;
+    connectGitHubCancel(): Promise<{ ok: boolean }>;
+    disconnectGitHub(): Promise<{ ok: boolean }>;
+    getRemoteConnection(host?: string): Promise<RemoteConnection>;
+    listRemoteRepositories(): Promise<RemoteRepository[]>;
+    listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]>;
+    cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
+    onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
     startPreview(args: { input: string }): Promise<{
       url: string;
       port: number;
