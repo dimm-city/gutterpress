@@ -359,6 +359,45 @@ type DeepPartialSettings = {
   [K in keyof AppSettings]?: Partial<AppSettings[K]>;
 };
 
+// ──────────────────────────────────────────────────────────────────────────
+// Safe push-event forwarding (main → renderer).
+//
+// EVERY main→renderer subscription MUST go through forwardPush. Two hard
+// rules, learned from the 0.5.0-rc.3 clone-progress storm:
+//
+//  1. Never pass the raw IpcRendererEvent across the contextBridge — only
+//     the plain, structured-clone-safe payload.
+//  2. Never let the callback's RETURN VALUE cross back into the preload.
+//     contextBridge synchronously serializes a bridged function's return
+//     value with the structured-clone algorithm. A Svelte 5 `$state`
+//     assignment expression (`(p) => (someState = p)`) returns the reactive
+//     Proxy, which is not cloneable — every event then throws
+//     "Uncaught Error: An object could not be cloned." at the cb call site,
+//     thousands of times during a clone. We cannot stop contextBridge from
+//     serializing the return value, so the call is wrapped in try/catch and
+//     failures are reported ONCE per channel instead of as an uncaught
+//     exception storm.
+// ──────────────────────────────────────────────────────────────────────────
+const warnedPushChannels = new Set<string>();
+function forwardPush<T>(channel: string, cb: (data: T) => void): () => void {
+  const listener = (_e: unknown, data: T) => {
+    try {
+      cb(data);
+    } catch (err) {
+      if (!warnedPushChannels.has(channel)) {
+        warnedPushChannels.add(channel);
+        console.warn(
+          `[preload] listener for "${channel}" threw (reported once; ` +
+            `usually a non-cloneable callback return value):`,
+          err,
+        );
+      }
+    }
+  };
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
+
 contextBridge.exposeInMainWorld("electron", {
   // ──────────────────────────────────────────────────────────────────────
   // API version contract.  Must stay in sync with DESKTOP_API in
@@ -380,11 +419,8 @@ contextBridge.exposeInMainWorld("electron", {
     markReady: (): Promise<{ ok: true; pending: boolean; version?: string }> =>
       ipcRenderer.invoke("updater:markReady"),
     /** Subscribe to updater events from main. Returns an unsubscribe fn. */
-    onEvent: (cb: (data: UpdaterEventPayload) => void): (() => void) => {
-      const listener = (_e: unknown, data: UpdaterEventPayload) => cb(data);
-      ipcRenderer.on("updater:event", listener);
-      return () => ipcRenderer.removeListener("updater:event", listener);
-    },
+    onEvent: (cb: (data: UpdaterEventPayload) => void): (() => void) =>
+      forwardPush("updater:event", cb),
   },
 
   // Dialogs
@@ -430,11 +466,10 @@ contextBridge.exposeInMainWorld("electron", {
    * tears down the main-process watcher. The renderer never sees raw fs events.
    */
   watchFolder: (dirPath: string, cb: () => void): (() => void) => {
-    const listener = () => cb();
-    ipcRenderer.on("fs:folderChanged", listener);
+    const off = forwardPush("fs:folderChanged", () => cb());
     void ipcRenderer.invoke("fs:watchFolder", dirPath);
     return () => {
-      ipcRenderer.removeListener("fs:folderChanged", listener);
+      off();
       void ipcRenderer.invoke("fs:unwatchFolder", dirPath);
     };
   },
@@ -470,12 +505,7 @@ contextBridge.exposeInMainWorld("electron", {
   /** Subscribe to OS theme changes from main. Returns an unsubscribe fn. */
   onNativeThemeUpdated: (
     cb: (data: { shouldUseDarkColors: boolean }) => void
-  ): (() => void) => {
-    const listener = (_e: unknown, data: { shouldUseDarkColors: boolean }) =>
-      cb(data);
-    ipcRenderer.on("app:nativeThemeUpdated", listener);
-    return () => ipcRenderer.removeListener("app:nativeThemeUpdated", listener);
-  },
+  ): (() => void) => forwardPush("app:nativeThemeUpdated", cb),
 
   // Open Location modal: recent folders + favorites
   getRecentFolders: (): Promise<
@@ -539,11 +569,8 @@ contextBridge.exposeInMainWorld("electron", {
   ): Promise<{ projectDir: string }> =>
     ipcRenderer.invoke("remote:cloneRepository", args),
   /** Subscribe to clone progress from main. Returns an unsubscribe fn. */
-  onCloneProgress: (cb: (data: CloneProgressEvent) => void): (() => void) => {
-    const listener = (_e: unknown, data: CloneProgressEvent) => cb(data);
-    ipcRenderer.on("remote:cloneProgress", listener);
-    return () => ipcRenderer.removeListener("remote:cloneProgress", listener);
-  },
+  onCloneProgress: (cb: (data: CloneProgressEvent) => void): (() => void) =>
+    forwardPush("remote:cloneProgress", cb),
 
   // ── Advanced Setup (#14) — diagnostics + generic "Connect a Git server" ──
   // The token in connectGenericHost crosses renderer → main ONCE for the
@@ -593,22 +620,11 @@ contextBridge.exposeInMainWorld("electron", {
   // Live PDF-build progress (main → renderer). Returns an unsubscribe fn.
   onBuildProgress: (
     cb: (data: ExportProgressEvent) => void
-  ): (() => void) => {
-    const listener = (
-      _e: unknown,
-      data: ExportProgressEvent
-    ) => cb(data);
-    ipcRenderer.on("build:progress", listener);
-    return () => ipcRenderer.removeListener("build:progress", listener);
-  },
+  ): (() => void) => forwardPush("build:progress", cb),
 
   onUrlPreviewBlocked: (
     cb: (data: UrlPreviewBlockedEvent) => void
-  ): (() => void) => {
-    const listener = (_e: unknown, data: UrlPreviewBlockedEvent) => cb(data);
-    ipcRenderer.on("url-preview:blocked", listener);
-    return () => ipcRenderer.removeListener("url-preview:blocked", listener);
-  },
+  ): (() => void) => forwardPush("url-preview:blocked", cb),
 
   // ──────────────────────────────────────────────────────────────────────
   // Unsaved-changes / crash-recovery surface (#44)
@@ -639,26 +655,21 @@ contextBridge.exposeInMainWorld("electron", {
    * renderer flushes, then calls `app:flushDone` (sent by the buffer store).
    * Returns an unsubscribe fn.
    */
-  onFlushBeforeClose: (cb: () => void): (() => void) => {
-    const listener = () => {
+  onFlushBeforeClose: (cb: () => void): (() => void) =>
+    forwardPush("app:flushBeforeClose", () => {
       // The renderer flushes its buffer, then signals completion so main can
       // destroy the window. Signal even if the cb throws so quit never hangs.
       void Promise.resolve()
         .then(() => cb())
+        .catch(() => {})
         .finally(() => {
           void ipcRenderer.invoke("app:flushDone");
         });
-    };
-    ipcRenderer.on("app:flushBeforeClose", listener);
-    return () => ipcRenderer.removeListener("app:flushBeforeClose", listener);
-  },
+    }),
   /**
    * Subscribe to debounced folder-change notifications carrying the changed
    * file's basename (#44). Returns an unsubscribe fn.
    */
-  onFolderChanged: (cb: (data: { filename: string }) => void): (() => void) => {
-    const listener = (_e: unknown, data: { filename: string }) => cb(data);
-    ipcRenderer.on("fs:folderChanged", listener);
-    return () => ipcRenderer.removeListener("fs:folderChanged", listener);
-  },
+  onFolderChanged: (cb: (data: { filename: string }) => void): (() => void) =>
+    forwardPush("fs:folderChanged", cb),
 });

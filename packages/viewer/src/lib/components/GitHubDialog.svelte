@@ -184,7 +184,14 @@
     cloneProgress = null;
     closeBlocked = false;
     const platform = getPlatform();
-    const unsubscribe = platform.onCloneProgress((p) => (cloneProgress = p));
+    // NOTE: block body on purpose — an expression body `(p) => (cloneProgress = p)`
+    // implicitly RETURNS the Svelte $state proxy, which contextBridge then tries
+    // (and fails) to structured-clone back to the preload: one uncaught
+    // "An object could not be cloned" per progress event (0.5.0-rc.3 storm).
+    // Push-channel callbacks must never return a value.
+    const unsubscribe = platform.onCloneProgress((p) => {
+      cloneProgress = p;
+    });
     try {
       const { projectDir } = await platform.cloneRemoteRepository({
         url: `${selectedRepo.htmlUrl}.git`,
