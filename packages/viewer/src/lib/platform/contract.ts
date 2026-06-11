@@ -641,6 +641,41 @@ export interface ImagePickResult {
   filePath: string | null;
 }
 
+// ── Media panel (#47) ─────────────────────────────────────────────────────────
+//
+// Mirrors the lib's ImageInfo (packages/lib/src/lib/image-inspect.ts) — defined
+// locally so the SPA never value-imports the lib (§8 / ADR 0004).
+
+/** One image file found under the open project folder. */
+export interface MediaImageEntry {
+  /** File basename ("cover.png"). */
+  name: string;
+  /** Project-relative path, "/"-separated — also the markdown src to insert. */
+  relPath: string;
+  /** Absolute path on disk (input to thumbnails / inspection). */
+  path: string;
+  /** File size in bytes. */
+  size: number;
+  mtimeMs: number;
+}
+
+/** Header-parse result for one image (PNG/JPEG/TIFF). */
+export interface MediaImageInfo {
+  width: number;
+  height: number;
+  /** Effective DPI from metadata; 72 when the file carries no density info. */
+  xDpi: number;
+  yDpi: number;
+  hasAlpha: boolean;
+  colorSpace: "srgb" | "gray" | "cmyk" | "";
+}
+
+/** Detail-view payload: size always; `info` null for unparsed formats (SVG…). */
+export interface MediaImageDetails {
+  fileSize: number;
+  info: MediaImageInfo | null;
+}
+
 export interface HostServices {
   /** Integer IPC-surface version; mirrors DESKTOP_API in updater/contract.ts. */
   readonly apiVersion: number;
@@ -663,6 +698,39 @@ export interface HostServices {
    * The WebAdapter stub rejects (desktop-only in 0.4.x).
    */
   copyFile(srcPath: string, destDir: string): Promise<string>;
+
+  // ── Media panel (#47) ──────────────────────────────────────────────────────
+
+  /**
+   * Multi-select variant of {@link pickImageFile} for the Media panel's
+   * "Add images…" import. Returns [] when the user cancels.
+   * The WebAdapter stub rejects (desktop-only until the PWA lands).
+   */
+  pickImageFiles(): Promise<string[]>;
+
+  /**
+   * List every image file under the project folder (#47). Recursive but
+   * bounded host-side (skips hidden/build dirs, depth ≤ 6, ≤ 2000 entries).
+   * The WebAdapter stub rejects (the panel guards with isDesktop()).
+   */
+  listProjectImages(projectDir: string): Promise<MediaImageEntry[]>;
+
+  /**
+   * Small (≤192px) thumbnail data URL for an image, generated and LRU-cached
+   * host-side so the renderer never loads multi-MB originals into the grid.
+   * Returns null when the format can't be thumbnailed (renderer shows a
+   * placeholder icon). The WebAdapter stub resolves null.
+   */
+  imageThumbnail(filePath: string): Promise<string | null>;
+
+  /**
+   * Inspect an image for the detail view (#47): file size plus the lib's
+   * dependency-free header parse (dimensions/DPI/alpha/color space for
+   * PNG/JPEG/TIFF; `info` is null for other formats). Runs in the host — the
+   * parser is Node fs code. No external tools involved. The WebAdapter stub
+   * resolves null.
+   */
+  inspectImage(filePath: string): Promise<MediaImageDetails | null>;
 
   // Shell actions
   openExternal(url: string): Promise<void>;

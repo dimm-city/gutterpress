@@ -30,6 +30,13 @@ export { loadManifest } from "./lib/manifest.ts";
 // ── Platform abstraction contract (#41) — consumed by the viewer ─────────────
 export type { PlatformAdapter, FileStat, FileWriteResult } from "./platform.ts";
 
+// ── Image inspection (#47) — backs the viewer's Media panel detail view ──────
+// Dependency-free header parser (PNG/JPEG/TIFF): width/height, DPI, alpha,
+// coarse color space. No ImageMagick/`identify` needed — safe in the packaged
+// viewer and the compiled CLI binary alike.
+export { inspectImage } from "./lib/image-inspect.ts";
+export type { ImageInfo, ColorSpace } from "./lib/image-inspect.ts";
+
 // ── Print-safety CSS checks (#39) — backs the in-app CSS editor gutter ────────
 // The viewer's CSS editor runs `checkCss` in the renderer (postcss is pure JS)
 // to surface the SAME print-safety findings as the CLI validation pipeline.

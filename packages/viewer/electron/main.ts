@@ -4,6 +4,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeImage,
   nativeTheme,
   protocol,
   session,
@@ -397,6 +398,15 @@ interface LibModule {
     authorName?: string;
   }) => Promise<RestoreVersionResult>;
   checkCss: (css: string, from?: string) => PrintSafeWarning[];
+  // Image inspection (#47) — dependency-free PNG/JPEG/TIFF header parser
+  inspectImage: (path: string) => Promise<{
+    width: number;
+    height: number;
+    xDpi: number;
+    yDpi: number;
+    hasAlpha: boolean;
+    colorSpace: "srgb" | "gray" | "cmyk" | "";
+  } | null>;
   executeValidation: (args: {
     input?: string;
     category?: string;
@@ -1444,6 +1454,217 @@ ipcMain.handle(
     const destPath = path.join(destDir, path.basename(srcPath));
     await copyFile(srcPath, destPath);
     return destPath;
+  },
+);
+
+// ── Multi-select image picker dialog (#47) ───────────────────────────────────
+// Backs the Media panel's "Add images…" import. Same filters as
+// dialog:pickImageFile, plus multiSelections. Returns [] when cancelled.
+ipcMain.handle("dialog:pickImageFiles", async (): Promise<string[]> => {
+  if (!mainWindow) return [];
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: "Add images",
+    properties: ["openFile", "multiSelections"],
+    filters: [
+      {
+        name: "Images",
+        extensions: ["jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "tiff"],
+      },
+    ],
+  });
+  if (res.canceled || res.filePaths.length === 0) return [];
+  return res.filePaths;
+});
+
+// ── Media panel (#47): project image listing / thumbnails / inspection ───────
+
+/** Image extensions surfaced in the Media panel (lowercase, no dot). */
+const MEDIA_IMAGE_EXTS = new Set([
+  "png", "jpg", "jpeg", "webp", "gif", "svg", "tif", "tiff",
+]);
+/** Directories never scanned for project images. */
+const MEDIA_SKIP_DIRS = new Set([
+  "node_modules", "dist", "out", "build", "output", ".svelte-kit",
+]);
+const MEDIA_SCAN_MAX_DEPTH = 6;
+const MEDIA_SCAN_MAX_FILES = 2000;
+
+// Lists every image file under the project folder (recursive, bounded: skips
+// hidden/build dirs, depth ≤ 6, caps at 2000 entries so a pathological folder
+// can never wedge the host or flood the renderer).
+ipcMain.handle(
+  "media:listImages",
+  async (
+    _e,
+    projectDir: string,
+  ): Promise<
+    Array<{ name: string; relPath: string; path: string; size: number; mtimeMs: number }>
+  > => {
+    if (!path.isAbsolute(projectDir)) {
+      throw new Error(`media:listImages requires an absolute path, got: ${projectDir}`);
+    }
+    const results: Array<{
+      name: string;
+      relPath: string;
+      path: string;
+      size: number;
+      mtimeMs: number;
+    }> = [];
+    const walk = async (dir: string, rel: string, depth: number): Promise<void> => {
+      if (depth > MEDIA_SCAN_MAX_DEPTH || results.length >= MEDIA_SCAN_MAX_FILES) return;
+      let entries;
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch {
+        return; // unreadable subdir — skip, don't fail the whole listing
+      }
+      for (const entry of entries) {
+        if (results.length >= MEDIA_SCAN_MAX_FILES) return;
+        if (entry.name.startsWith(".")) continue;
+        const abs = path.join(dir, entry.name);
+        const relChild = rel ? `${rel}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          if (MEDIA_SKIP_DIRS.has(entry.name.toLowerCase())) continue;
+          await walk(abs, relChild, depth + 1);
+        } else if (entry.isFile()) {
+          const ext = entry.name.slice(entry.name.lastIndexOf(".") + 1).toLowerCase();
+          if (!MEDIA_IMAGE_EXTS.has(ext)) continue;
+          try {
+            const s = await stat(abs);
+            results.push({
+              name: entry.name,
+              relPath: relChild,
+              path: abs,
+              size: s.size,
+              mtimeMs: s.mtimeMs,
+            });
+          } catch {
+            // raced deletion — skip
+          }
+        }
+      }
+    };
+    await walk(projectDir, "", 0);
+    results.sort((a, b) => a.relPath.localeCompare(b.relPath));
+    return results;
+  },
+);
+
+// Host-side thumbnail generation + bounded cache. The renderer must NEVER load
+// multi-MB originals into <img> tags for the grid — main decodes (Chromium's
+// nativeImage: PNG/JPEG) and resizes to ≤192px, returning a small data URL.
+// SVG (vector, resolution-independent) and small WebP/GIF files fall back to
+// the original bytes as a data URL; large undecodable files return null and
+// the renderer shows a placeholder icon.
+const THUMB_MAX_PX = 192;
+const THUMB_CACHE_MAX = 300;
+const THUMB_FALLBACK_MAX_BYTES = 512 * 1024;
+const thumbCache = new Map<string, { mtimeMs: number; dataUrl: string | null }>();
+
+const MEDIA_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  svg: "image/svg+xml",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+};
+
+ipcMain.handle(
+  "media:thumbnail",
+  async (_e, filePath: string): Promise<string | null> => {
+    if (!path.isAbsolute(filePath)) {
+      throw new Error(`media:thumbnail requires an absolute path, got: ${filePath}`);
+    }
+    let s;
+    try {
+      s = await stat(filePath);
+    } catch {
+      return null;
+    }
+    const cached = thumbCache.get(filePath);
+    if (cached && cached.mtimeMs === s.mtimeMs) {
+      // refresh LRU position
+      thumbCache.delete(filePath);
+      thumbCache.set(filePath, cached);
+      return cached.dataUrl;
+    }
+
+    const ext = filePath.slice(filePath.lastIndexOf(".") + 1).toLowerCase();
+    let dataUrl: string | null = null;
+    try {
+      if (ext === "svg") {
+        // Vector — ship the source itself (small) so it stays crisp at any size.
+        if (s.size <= THUMB_FALLBACK_MAX_BYTES) {
+          const buf = await readFile(filePath);
+          dataUrl = `data:image/svg+xml;base64,${buf.toString("base64")}`;
+        }
+      } else {
+        const img = nativeImage.createFromPath(filePath);
+        if (!img.isEmpty()) {
+          const { width, height } = img.getSize();
+          const scaled =
+            width > THUMB_MAX_PX || height > THUMB_MAX_PX
+              ? width >= height
+                ? img.resize({ width: THUMB_MAX_PX })
+                : img.resize({ height: THUMB_MAX_PX })
+              : img;
+          dataUrl = scaled.toDataURL();
+        } else if (s.size <= THUMB_FALLBACK_MAX_BYTES && MEDIA_MIME[ext]) {
+          // Formats Chromium's nativeImage won't decode from disk (WebP/GIF):
+          // small originals render fine directly in an <img>.
+          const buf = await readFile(filePath);
+          dataUrl = `data:${MEDIA_MIME[ext]};base64,${buf.toString("base64")}`;
+        }
+      }
+    } catch {
+      dataUrl = null;
+    }
+
+    thumbCache.set(filePath, { mtimeMs: s.mtimeMs, dataUrl });
+    while (thumbCache.size > THUMB_CACHE_MAX) {
+      const oldest = thumbCache.keys().next().value;
+      if (oldest === undefined) break;
+      thumbCache.delete(oldest);
+    }
+    return dataUrl;
+  },
+);
+
+// Detail inspection for the Media panel: file size + the lib's dependency-free
+// header parse (PNG/JPEG/TIFF → dimensions, DPI, alpha, color space). `info`
+// is null for formats the parser doesn't cover (SVG/WebP/GIF) — the renderer
+// degrades to size-only details. No external tools (`identify`) involved.
+ipcMain.handle(
+  "media:inspect",
+  async (
+    _e,
+    filePath: string,
+  ): Promise<{
+    fileSize: number;
+    info: {
+      width: number;
+      height: number;
+      xDpi: number;
+      yDpi: number;
+      hasAlpha: boolean;
+      colorSpace: "srgb" | "gray" | "cmyk" | "";
+    } | null;
+  } | null> => {
+    if (!path.isAbsolute(filePath)) {
+      throw new Error(`media:inspect requires an absolute path, got: ${filePath}`);
+    }
+    let s;
+    try {
+      s = await stat(filePath);
+    } catch {
+      return null;
+    }
+    const lib = await loadLib();
+    const info = await lib.inspectImage(filePath);
+    return { fileSize: s.size, info };
   },
 );
 

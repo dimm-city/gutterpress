@@ -33,6 +33,8 @@ import type {
   ProjectClassification,
   PrintSafeWarning,
   ProblemEntry,
+  MediaImageEntry,
+  MediaImageDetails,
   FileStat,
   FileWriteResult,
   RecoveryEntry,
@@ -143,6 +145,24 @@ export class WebAdapter implements Platform {
 
   copyFile(_srcPath: string, _destDir: string): Promise<string> {
     return rejectNotImplemented("copyFile");
+  }
+
+  // Media panel (#47) — desktop-only until the PWA lands. The panel itself
+  // guards with isDesktop(); thumbnails/inspection degrade to "unavailable".
+  pickImageFiles(): Promise<string[]> {
+    return rejectNotImplemented("pickImageFiles");
+  }
+
+  listProjectImages(_projectDir: string): Promise<MediaImageEntry[]> {
+    return rejectNotImplemented("listProjectImages");
+  }
+
+  imageThumbnail(_filePath: string): Promise<string | null> {
+    return Promise.resolve(null);
+  }
+
+  inspectImage(_filePath: string): Promise<MediaImageDetails | null> {
+    return Promise.resolve(null);
   }
 
   openExternal(_url: string): Promise<void> {

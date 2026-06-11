@@ -1,6 +1,7 @@
 <script lang="ts">
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
   import FileTree from "$lib/components/FileTree.svelte";
+  import MediaPanel from "$lib/components/MediaPanel.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
   import type { RecoveryItem } from "$lib/components/CrashRecoveryDialog.svelte";
@@ -313,6 +314,10 @@
       sourceMode === "folder" &&
       (isNarrow ? paneMode === "edit" : editorOpen),
   );
+
+  // Sidebar tab (#47): "files" (the file tree) or "media" (project images).
+  // Session-scoped UI state — intentionally not persisted.
+  let sidebarTab = $state<"files" | "media">("files");
 
   // MarkdownEditor wraps the full CodeMirror 6 stack (+ lang-markdown's
   // code-language loaders), a ~300 KB chunk. The editor pane is closed by
@@ -2154,11 +2159,43 @@
     >
       {#if editorPaneOpen}
         <aside class="pane file-tree-pane">
-          <FileTree
-            projectDir={currentDir}
-            selectedPath={editorFilePath}
-            onSelectFile={selectEditorFile}
-          />
+          <!-- Sidebar tab switcher (#47): Files (the file tree) | Media (the
+               image panel). Plain segmented buttons — no routing involved. -->
+          <div class="sidebar-tabs" role="tablist" aria-label="Sidebar panels">
+            <button
+              class="sidebar-tab"
+              class:active={sidebarTab === "files"}
+              role="tab"
+              aria-selected={sidebarTab === "files"}
+              onclick={() => (sidebarTab = "files")}
+            >
+              Files
+            </button>
+            <button
+              class="sidebar-tab"
+              class:active={sidebarTab === "media"}
+              role="tab"
+              aria-selected={sidebarTab === "media"}
+              onclick={() => (sidebarTab = "media")}
+            >
+              Media
+            </button>
+          </div>
+          {#if sidebarTab === "media"}
+            <MediaPanel
+              projectDir={currentDir}
+              canInsert={!!editorFilePath && /\.(md|markdown)$/i.test(editorFilePath)}
+              onInsert={(payload) => {
+                editorRef?.runToolbarAction("image", payload);
+              }}
+            />
+          {:else}
+            <FileTree
+              projectDir={currentDir}
+              selectedPath={editorFilePath}
+              onSelectFile={selectEditorFile}
+            />
+          {/if}
         </aside>
         <section class="pane editor-pane" aria-label="Markdown editor">
           {#if externalChange}
@@ -2368,6 +2405,33 @@
   }
   .editor-pane {
     border-right: 1px solid var(--app-border);
+  }
+  /* Sidebar tab switcher (#47): Files | Media */
+  .sidebar-tabs {
+    display: flex;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--app-border);
+    background: var(--app-surface, var(--app-bg));
+  }
+  .sidebar-tab {
+    flex: 1;
+    padding: 7px 4px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--app-text-faint);
+    cursor: pointer;
+  }
+  .sidebar-tab:hover {
+    color: var(--app-text-secondary);
+    background: var(--app-control-hover-bg);
+  }
+  .sidebar-tab.active {
+    color: var(--app-text);
+    border-bottom-color: var(--app-accent);
   }
   .editor-loading {
     flex: 1;

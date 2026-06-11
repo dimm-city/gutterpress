@@ -31,6 +31,8 @@ import type {
   ProjectClassification,
   PrintSafeWarning,
   ProblemEntry,
+  MediaImageEntry,
+  MediaImageDetails,
   FileStat,
   FileWriteResult,
   RecoveryEntry,
@@ -129,6 +131,23 @@ export class ElectronAdapter implements Platform {
 
   copyFile(srcPath: string, destDir: string): Promise<string> {
     return bridge().copyFile(srcPath, destDir);
+  }
+
+  // Media panel (#47) — image listing / thumbnails / inspection / multi-import
+  pickImageFiles(): Promise<string[]> {
+    return bridge().pickImageFiles();
+  }
+
+  listProjectImages(projectDir: string): Promise<MediaImageEntry[]> {
+    return bridge().listProjectImages(projectDir);
+  }
+
+  imageThumbnail(filePath: string): Promise<string | null> {
+    return bridge().imageThumbnail(filePath);
+  }
+
+  inspectImage(filePath: string): Promise<MediaImageDetails | null> {
+    return bridge().inspectImage(filePath);
   }
 
   openExternal(url: string): Promise<void> {

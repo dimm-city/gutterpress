@@ -466,9 +466,34 @@ contextBridge.exposeInMainWorld("electron", {
   // Image picker dialog (#31): file selection filtered to image formats
   pickImageFile: (): Promise<string | null> =>
     ipcRenderer.invoke("dialog:pickImageFile"),
+  // Multi-select image picker (#47): backs the Media panel's "Add images…"
+  pickImageFiles: (): Promise<string[]> =>
+    ipcRenderer.invoke("dialog:pickImageFiles"),
   // Copy a file into a destination directory (#31): backs Insert Image asset copy
   copyFile: (srcPath: string, destDir: string): Promise<string> =>
     ipcRenderer.invoke("fs:copyFile", srcPath, destDir),
+
+  // ── Media panel (#47): project image listing / thumbnails / inspection ──
+  listProjectImages: (
+    projectDir: string,
+  ): Promise<
+    Array<{ name: string; relPath: string; path: string; size: number; mtimeMs: number }>
+  > => ipcRenderer.invoke("media:listImages", projectDir),
+  imageThumbnail: (filePath: string): Promise<string | null> =>
+    ipcRenderer.invoke("media:thumbnail", filePath),
+  inspectImage: (
+    filePath: string,
+  ): Promise<{
+    fileSize: number;
+    info: {
+      width: number;
+      height: number;
+      xDpi: number;
+      yDpi: number;
+      hasAlpha: boolean;
+      colorSpace: "srgb" | "gray" | "cmyk" | "";
+    } | null;
+  } | null> => ipcRenderer.invoke("media:inspect", filePath),
 
   // App actions
   openExternal: (url: string): Promise<void> =>

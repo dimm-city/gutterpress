@@ -341,6 +341,25 @@ interface Window {
     // Image picker + copy (#31) — backs the editor toolbar's Insert Image flow
     pickImageFile(): Promise<string | null>;
     copyFile(srcPath: string, destDir: string): Promise<string>;
+    // Media panel (#47): multi-select import + image listing/thumbnails/inspect
+    pickImageFiles(): Promise<string[]>;
+    listProjectImages(
+      projectDir: string,
+    ): Promise<
+      Array<{ name: string; relPath: string; path: string; size: number; mtimeMs: number }>
+    >;
+    imageThumbnail(filePath: string): Promise<string | null>;
+    inspectImage(filePath: string): Promise<{
+      fileSize: number;
+      info: {
+        width: number;
+        height: number;
+        xDpi: number;
+        yDpi: number;
+        hasAlpha: boolean;
+        colorSpace: "srgb" | "gray" | "cmyk" | "";
+      } | null;
+    } | null>;
     // App actions
     openExternal(url: string): Promise<void>;
     showInFolder(filePath: string): Promise<void>;

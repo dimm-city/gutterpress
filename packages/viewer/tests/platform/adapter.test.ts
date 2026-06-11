@@ -93,6 +93,22 @@ function makeBridge() {
     setDirtyState: rec("setDirtyState", Promise.resolve()),
     onFlushBeforeClose: rec("onFlushBeforeClose", () => {}),
     onFolderChanged: rec("onFolderChanged", () => {}),
+    // #47 Media panel surface
+    pickImageFiles: rec("pickImageFiles", Promise.resolve(["/pick/a.png"])),
+    listProjectImages: rec(
+      "listProjectImages",
+      Promise.resolve([
+        { name: "a.png", relPath: "assets/a.png", path: "/proj/assets/a.png", size: 10, mtimeMs: 1 },
+      ]),
+    ),
+    imageThumbnail: rec("imageThumbnail", Promise.resolve("data:image/png;base64,AAA")),
+    inspectImage: rec(
+      "inspectImage",
+      Promise.resolve({
+        fileSize: 10,
+        info: { width: 100, height: 50, xDpi: 72, yDpi: 72, hasAlpha: false, colorSpace: "srgb" },
+      }),
+    ),
   };
   return { bridge, calls };
 }
@@ -380,4 +396,27 @@ test("WebAdapter: primitives throw, host methods reject, subscriptions are no-op
   await expect(p.setDirtyState(true)).rejects.toThrow(/0\.6\.0/);
   expect(typeof p.onFlushBeforeClose(() => {})).toBe("function");
   expect(typeof p.onFolderChanged(() => {})).toBe("function");
+  // #47 Media panel: listing/import reject (panel guards with isDesktop());
+  // thumbnails + inspection degrade to null so detail chrome renders safely.
+  await expect(p.pickImageFiles()).rejects.toThrow(/0\.6\.0/);
+  await expect(p.listProjectImages("/p")).rejects.toThrow(/0\.6\.0/);
+  await expect(p.imageThumbnail("/p/a.png")).resolves.toBeNull();
+  await expect(p.inspectImage("/p/a.png")).resolves.toBeNull();
+});
+
+test("ElectronAdapter delegates the #47 Media panel surface 1:1 to the bridge", async () => {
+  const { bridge, calls } = makeBridge();
+  // @ts-expect-error test global
+  globalThis.window = { electron: bridge };
+  const p = new ElectronAdapter();
+  await p.pickImageFiles();
+  const images = await p.listProjectImages("/proj");
+  expect(images[0]?.relPath).toBe("assets/a.png");
+  await p.imageThumbnail("/proj/assets/a.png");
+  const details = await p.inspectImage("/proj/assets/a.png");
+  expect(details?.info?.width).toBe(100);
+  expect(calls.find((c) => c.method === "pickImageFiles")?.args).toEqual([]);
+  expect(calls.find((c) => c.method === "listProjectImages")?.args).toEqual(["/proj"]);
+  expect(calls.find((c) => c.method === "imageThumbnail")?.args).toEqual(["/proj/assets/a.png"]);
+  expect(calls.find((c) => c.method === "inspectImage")?.args).toEqual(["/proj/assets/a.png"]);
 });
