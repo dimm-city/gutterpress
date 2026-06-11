@@ -1,7 +1,5 @@
 <script lang="ts">
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
-  import FileTree from "$lib/components/FileTree.svelte";
-  import MediaPanel from "$lib/components/MediaPanel.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
   import type { RecoveryItem } from "$lib/components/CrashRecoveryDialog.svelte";
@@ -374,10 +372,6 @@
       (isNarrow ? paneMode === "edit" : editorOpen),
   );
 
-  // Sidebar tab (#47) moved to LeftPanel — kept for editor pane file tree/media
-  // selection (the LeftPanel's Files/Media tabs handle the left-panel case;
-  // the editor pane still has its own Files|Media switch when open).
-  let sidebarTab = $state<"files" | "media">("files");
 
   // MarkdownEditor wraps the full CodeMirror 6 stack (+ lang-markdown's
   // code-language loaders), a ~300 KB chunk. The editor pane is closed by
@@ -2297,45 +2291,6 @@
       class:show-view={isNarrow && paneMode === "view"}
     >
       {#if editorPaneOpen}
-        <aside class="pane file-tree-pane">
-          <!-- Sidebar tab switcher (#47): Files (the file tree) | Media (the
-               image panel). Plain segmented buttons — no routing involved. -->
-          <div class="sidebar-tabs" role="tablist" aria-label="Sidebar panels">
-            <button
-              class="sidebar-tab"
-              class:active={sidebarTab === "files"}
-              role="tab"
-              aria-selected={sidebarTab === "files"}
-              onclick={() => (sidebarTab = "files")}
-            >
-              Files
-            </button>
-            <button
-              class="sidebar-tab"
-              class:active={sidebarTab === "media"}
-              role="tab"
-              aria-selected={sidebarTab === "media"}
-              onclick={() => (sidebarTab = "media")}
-            >
-              Media
-            </button>
-          </div>
-          {#if sidebarTab === "media"}
-            <MediaPanel
-              projectDir={currentDir}
-              canInsert={!!editorFilePath && /\.(md|markdown)$/i.test(editorFilePath)}
-              onInsert={(payload) => {
-                editorRef?.runToolbarAction("image", payload);
-              }}
-            />
-          {:else}
-            <FileTree
-              projectDir={currentDir}
-              selectedPath={editorFilePath}
-              onSelectFile={selectEditorFile}
-            />
-          {/if}
-        </aside>
         <section class="pane editor-pane" aria-label="Markdown editor">
           {#if externalChange}
             <ExternalEditBanner
@@ -2616,10 +2571,10 @@
     min-height: 0;
     overflow: hidden;
   }
-  /* Editor open: [files | editor | preview]. The preview is weighted heaviest
+  /* Editor open: [editor | preview]. The preview is weighted heaviest
      since it's the primary output for a writer. */
   .workspace.editor-open {
-    grid-template-columns: minmax(150px, 200px) minmax(280px, 1fr) minmax(360px, 1.4fr);
+    grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.4fr);
   }
   .pane {
     min-width: 0;
@@ -2630,33 +2585,6 @@
   }
   .editor-pane {
     border-right: 1px solid var(--app-border);
-  }
-  /* Sidebar tab switcher (#47): Files | Media */
-  .sidebar-tabs {
-    display: flex;
-    flex-shrink: 0;
-    border-bottom: 1px solid var(--app-border);
-    background: var(--app-surface, var(--app-bg));
-  }
-  .sidebar-tab {
-    flex: 1;
-    padding: 7px 4px;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    color: var(--app-text-faint);
-    cursor: pointer;
-  }
-  .sidebar-tab:hover {
-    color: var(--app-text-secondary);
-    background: var(--app-control-hover-bg);
-  }
-  .sidebar-tab.active {
-    color: var(--app-text);
-    border-bottom-color: var(--app-accent);
   }
   .editor-loading {
     flex: 1;
@@ -2688,15 +2616,10 @@
   .preview-pane {
     position: relative;
   }
-  /* Narrow widths: drop the file-tree column, stack editor over preview is
-     avoided (keeps the live preview visible) — instead shrink the tree away
-     and give editor + preview equal space. */
+  /* Narrow widths: give editor + preview equal space. */
   @media screen and (max-width: 1100px) {
     .workspace.editor-open {
       grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.1fr);
-    }
-    .workspace.editor-open .file-tree-pane {
-      display: none;
     }
   }
 
@@ -3336,9 +3259,6 @@
     .workspace.narrow.editor-open {
       grid-template-columns: 1fr;
     }
-    /* The file tree is part of the editing surface; fold it away on small
-       screens so the editor pane gets the full width. */
-    .workspace.narrow .file-tree-pane { display: none; }
     /* DEFAULT narrow = preview only. Driving the single-pane choice from CSS
        defaults (not from the show-* classes alone) means an unset/undefined
        paneMode can never leave BOTH panes stacked in the single column. */

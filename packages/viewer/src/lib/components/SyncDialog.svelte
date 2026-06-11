@@ -135,44 +135,64 @@
     }
   }
 
-  /** Outgoing snapshots not online yet (0 when unknown — sync will tell). */
-  let outgoingCount = $derived(preview?.outgoing.count ?? 0);
-  /** Online snapshots not on this computer; null = couldn't check. */
+  /**
+   * Tri-state per direction (host decides by ref string equality — never a
+   * history walk): true = changes exist, false = none, null = unknown.
+   * Counts are only present when the host could derive them from freshly
+   * fetched commits — render copy WITHOUT a number when `count` is null.
+   */
+  let outgoingHas = $derived(preview ? preview.outgoing.hasChanges : null);
+  let incomingHas = $derived(preview ? preview.incoming.hasChanges : null);
   let incomingCount = $derived(preview ? preview.incoming.count : null);
   /** Working-tree edits the pre-sync snapshot would save. */
   let editsPending = $derived((preview?.changedFiles.count ?? 0) > 0);
-  /** Items under "Your changes to send": commits + the pending-edits row. */
-  let sendCount = $derived(outgoingCount + (editsPending ? 1 : 0));
+  /** Anything of ours to send: outgoing changes or pending edits. */
+  let sendPending = $derived(outgoingHas === true || editsPending);
 
-  /** "2 changes to sync · 4 new..." summary (idle lede + live region). */
+  /** "Changes to send · 4 new..." summary (idle lede + live region). */
   let statusLine = $derived.by(() => {
     if (!preview) return null;
-    // Approximate counts are lower bounds (the host caps the history walk;
-    // shallow clones hide older history) — render them as "250+".
-    const plus = preview.outgoing.approximate ? "+" : "";
     const pieces: string[] = [];
-    if (sendCount > 0) {
-      pieces.push(`${sendCount}${plus} change${sendCount === 1 ? "" : "s"} to sync`);
+    if (sendPending) {
+      pieces.push("You have changes to send");
     }
-    if ((incomingCount ?? 0) > 0) {
-      const inPlus = preview.incoming.approximate ? "+" : "";
-      pieces.push(
-        `${incomingCount}${inPlus} new change${incomingCount === 1 ? "" : "s"} in the online copy`,
-      );
+    if (incomingHas === true) {
+      if (incomingCount !== null && incomingCount > 0) {
+        // Approximate counts are lower bounds (the host budgets the walk over
+        // freshly fetched commits) — render them as "50+".
+        const inPlus = preview.incoming.approximate ? "+" : "";
+        pieces.push(
+          `${incomingCount}${inPlus} new change${incomingCount === 1 ? "" : "s"} in the online copy`,
+        );
+      } else {
+        pieces.push("new changes in the online copy");
+      }
     }
     // Never declare "in sync" from local data while the live check is still
-    // running — the online copy may hold unfetched changes.
-    if (pieces.length === 0) return livePending ? null : "Everything is in sync.";
-    return pieces.join(" · ");
+    // running — the online copy may hold unfetched changes. And never declare
+    // it when either direction is UNKNOWN (sync itself will tell).
+    if (pieces.length === 0) {
+      return !livePending && outgoingHas === false && incomingHas === false
+        ? "Everything is in sync."
+        : null;
+    }
+    // Capitalize the first character: a count-less incoming fragment can be
+    // the ONLY piece, and the lede must start sentence case (judge gate).
+    const line = pieces.join(" · ");
+    return line.charAt(0).toUpperCase() + line.slice(1);
   });
 
   let nothingToSync = $derived(
-    preview !== null && sendCount === 0 && incomingCount === 0 && !livePending,
+    preview !== null &&
+      !livePending &&
+      !editsPending &&
+      outgoingHas === false &&
+      incomingHas === false,
   );
 
   /** Behind-only: nothing of ours to send, but online changes to bring down. */
   let hasOnlineChangesOnly = $derived(
-    preview !== null && sendCount === 0 && (incomingCount ?? 0) > 0,
+    preview !== null && !sendPending && incomingHas === true,
   );
 
   /** "9 hours ago" for the incoming/outgoing commit lists. */
@@ -427,55 +447,51 @@
           <p class="hint">{preview.fetchNotice}</p>
         {/if}
 
-        {#if preview && (incomingCount ?? 0) > 0}
+        {#if preview && incomingHas === true}
           <section class="changes">
             <h3>
-              Incoming changes from the online copy
-              ({incomingCount}{preview.incoming.approximate ? "+" : ""})
+              Incoming changes from the online copy{#if incomingCount !== null && incomingCount > 0}
+                ({incomingCount}{preview.incoming.approximate ? "+" : ""}){/if}
             </h3>
-            <!-- svelte-ignore a11y_no_redundant_roles -- list-style:none strips
-                 list semantics in some screen readers; role="list" restores it. -->
-            <ul class="commit-list" role="list" aria-label="Incoming changes">
-              {#each preview.incoming.commits as c (c.id)}
-                <li class="commit-item">
-                  <span class="commit-message">{c.message || "(no description)"}</span>
-                  <span class="commit-meta">
-                    {relativeTime(c.timestamp)}{c.author ? ` · ${c.author}` : ""}
-                  </span>
-                </li>
-              {/each}
-              {#if (incomingCount ?? 0) > preview.incoming.commits.length}
-                <li class="commit-item more">
-                  …and {(incomingCount ?? 0) - preview.incoming.commits.length} more
-                </li>
-              {/if}
-            </ul>
-            <p class="hint">Syncing brings these changes to this computer.</p>
+            {#if preview.incoming.commits.length > 0}
+              <!-- svelte-ignore a11y_no_redundant_roles -- list-style:none strips
+                   list semantics in some screen readers; role="list" restores it. -->
+              <ul class="commit-list" role="list" aria-label="Incoming changes">
+                {#each preview.incoming.commits as c (c.id)}
+                  <li class="commit-item">
+                    <span class="commit-message">{c.message || "(no description)"}</span>
+                    <span class="commit-meta">
+                      {relativeTime(c.timestamp)}{c.author ? ` · ${c.author}` : ""}
+                    </span>
+                  </li>
+                {/each}
+                {#if incomingCount !== null && incomingCount > preview.incoming.commits.length}
+                  <li class="commit-item more">
+                    …and {incomingCount - preview.incoming.commits.length} more
+                  </li>
+                {/if}
+              </ul>
+              <p class="hint">Syncing brings these changes to this computer.</p>
+            {:else}
+              <p class="hint">
+                New changes are available online. Syncing brings them to this
+                computer.
+              </p>
+            {/if}
           </section>
         {/if}
 
-        {#if preview && sendCount > 0}
+        {#if preview && sendPending}
           <section class="changes">
-            <h3>
-              Your changes to send
-              ({sendCount}{preview.outgoing.approximate ? "+" : ""})
-            </h3>
-            <!-- svelte-ignore a11y_no_redundant_roles -->
-            <ul class="commit-list" role="list" aria-label="Your changes to send">
-              {#each preview.outgoing.commits as c (c.id)}
-                <li class="commit-item">
-                  <span class="commit-message">{c.message || "(no description)"}</span>
-                  <span class="commit-meta">
-                    {relativeTime(c.timestamp)}{c.author ? ` · ${c.author}` : ""}
-                  </span>
-                </li>
-              {/each}
-              {#if outgoingCount > preview.outgoing.commits.length}
-                <li class="commit-item more">
-                  …and {outgoingCount - preview.outgoing.commits.length} more
-                </li>
-              {/if}
-              {#if editsPending}
+            <h3>Your changes to send</h3>
+            {#if outgoingHas === true}
+              <p class="hint">
+                This computer has work that isn't online yet — Sync sends it.
+              </p>
+            {/if}
+            {#if editsPending}
+              <!-- svelte-ignore a11y_no_redundant_roles -->
+              <ul class="commit-list" role="list" aria-label="Your changes to send">
                 <li class="commit-item">
                   <span class="commit-message">
                     Edits not yet snapshotted
@@ -489,9 +505,7 @@
                       : ""}
                   </span>
                 </li>
-              {/if}
-            </ul>
-            {#if editsPending}
+              </ul>
               <p class="hint">Your newest edits will be saved as a snapshot when you sync.</p>
             {/if}
           </section>

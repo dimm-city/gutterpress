@@ -490,16 +490,6 @@
         <span class="tab-label">{tab.label}</span>
       </button>
     {/each}
-    <div class="tab-spacer" aria-hidden="true"></div>
-    <button
-      class="panel-close"
-      onclick={close}
-      title="Close panel (Esc)"
-      aria-label="Close panel"
-      tabindex={open ? 0 : -1}
-    >
-      <Icon name="panel-left-close" size={15} />
-    </button>
   </div>
 
   <!-- Tab panels: inert when closed so no focusable descendants are reachable by Tab -->
@@ -668,15 +658,17 @@
                 <div class="sync-header">
                   <span class="sync-title">Sync with online copy</span>
                   {#if syncPreview}
-                    {#if syncPreview.incoming.count && syncPreview.incoming.count > 0}
+                    {#if syncPreview.incoming.hasChanges}
                       <span class="sync-status-badge info">
-                        {syncPreview.incoming.count}{syncPreview.incoming.approximate ? "+" : ""} incoming
+                        {#if syncPreview.incoming.count}
+                          {syncPreview.incoming.count}{syncPreview.incoming.approximate ? "+" : ""} incoming
+                        {:else}
+                          New changes online
+                        {/if}
                       </span>
-                    {:else if syncPreview.outgoing.count && syncPreview.outgoing.count > 0}
-                      <span class="sync-status-badge">
-                        {syncPreview.outgoing.count}{syncPreview.outgoing.approximate ? "+" : ""} to send
-                      </span>
-                    {:else}
+                    {:else if syncPreview.outgoing.hasChanges}
+                      <span class="sync-status-badge">Changes to send</span>
+                    {:else if syncPreview.incoming.hasChanges === false && syncPreview.outgoing.hasChanges === false}
                       <span class="sync-status-badge">Up to date</span>
                     {/if}
                   {/if}
@@ -910,26 +902,6 @@
     letter-spacing: 0.02em;
     max-width: 100%; overflow: hidden; text-overflow: ellipsis;
   }
-  /* Fixed-width spacer: tabs are flex:1 each, so a flex:1 spacer would steal
-     an equal share of the row from the actual tabs. */
-  .tab-spacer { flex: 0 0 2px; }
-  .panel-close {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 5px 8px;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    color: var(--app-text-muted);
-    cursor: pointer;
-    min-width: 32px;
-    min-height: 32px;
-    flex-shrink: 0;
-    margin-bottom: 2px;
-  }
-  .panel-close:hover { color: var(--app-text); background: var(--app-control-hover-bg); }
-  .panel-close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
 
   /* ── Panel body ──────────────────────────────────────────────────────────── */
   .panel-body {
