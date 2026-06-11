@@ -2979,7 +2979,10 @@
      (e.g. when the app chrome changes).
 
      The toolbar degrades in stages as it narrows:
-       1300cqi — collapse view-mode + zoom into dropdown menus
+       1480cqi — collapse view-mode + zoom into dropdown menus (the FULL
+                 uncollapsed control set measures ~1480px with the Problems
+                 toggle, #28 — at 1400px viewports Save PDF/Settings/Help
+                 were clipped until this stage moved up from 1300)
        1100cqi — trim doc-title / path max-widths
         950cqi — drop button text labels (icon-only, aria-label/title keep a11y)
         820cqi — hide chapter label (icon + chevron only), drop separators
@@ -2991,7 +2994,7 @@
         600cqi — drop "Page" word, open icon-only
         540cqi — compact page nav (drop first/last jump buttons) */
 
-  @container (max-width: 1300px) {
+  @container (max-width: 1480px) {
     /* Swap the inline view-mode buttons + zoom select for compact menu buttons. */
     .view-mode-group { display: none; }
     .zoom-select { display: none; }
