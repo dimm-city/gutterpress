@@ -318,7 +318,6 @@ type PullOutcome =
       message: string;
       snapshotId?: string;
       merged: boolean;
-      incomingApplied: number;
       filesChanged: boolean;
     }
   | { status: "up-to-date"; message: string; snapshotId?: string }

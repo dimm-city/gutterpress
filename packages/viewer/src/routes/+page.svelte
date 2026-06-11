@@ -97,17 +97,21 @@
   // State persisted via ViewerPrefs. Keyed separately from per-project state.
   let leftPanelOpen = $state(false);
   let leftPanelTab = $state<PanelTab>("projects");
+  let leftPanelWidth = $state(260);
   let leftPanelToggleBtn = $state<HTMLButtonElement | undefined>(undefined);
   // Set true once we have loaded panel state from prefs (avoids flicker).
   let leftPanelPrefsLoaded = $state(false);
 
   // ── Incoming-changes modal (fetch-on-open) ────────────────────────────────
   // After a git project with a remote renders, we background-fetch and surface
-  // an "N new changes" modal if the remote tip differs from last-dismissed.
+  // a "new changes online" modal when the online copy has changes.
   let incomingChangesOpen = $state(false);
-  let incomingCommits = $state<Array<{ message: string }>>([]);
-  let incomingCount = $state(0);
-  let lastDismissedRemoteTip = $state<string | null>(null);
+  /**
+   * Project dir the fetch-on-open check already ran for (prompt once per
+   * open). Deliberately NOT $state: it is written inside the effect that
+   * reads it, and a reactive write would retrigger the effect.
+   */
+  let fetchOnOpenDoneFor: string | null = null;
   // "Get changes" pull in flight (modal button disabled while it runs).
   let incomingPullBusy = $state(false);
   // Bumped after an out-of-panel pull so LeftPanel refreshes its History tab.
@@ -134,7 +138,7 @@
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      // Counts as "Not now" — tip is already recorded as seen (lastDismissedRemoteTip set on open).
+      // Counts as "Not now" — the check only re-runs on the next project open.
       incomingChangesOpen = false;
     } else if (e.key === "Tab") {
       // Focus trap: cycle within the modal.
@@ -626,7 +630,7 @@
   $effect(() => {
     if (!leftPanelPrefsLoaded) return;
     getPlatform()
-      .setViewerPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab } })
+      .setViewerPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } })
       .catch(() => {});
   });
 
@@ -640,36 +644,29 @@
 
   // ── Background fetch on project open (fetch-on-open) ─────────────────────
   // After the first renderingComplete, if the project has a syncable remote,
-  // fire a background previewSync to detect incoming changes. Only re-prompt
-  // when the remote tip changes since last dismiss.
+  // fire a background previewSync to detect incoming changes. Runs ONCE per
+  // opened project (the check reports hasChanges only — no tip/commit detail
+  // to dedup re-prompts against).
   $effect(() => {
     if (!currentDir || sourceMode !== "folder" || !projectCapabilities?.canSync) return;
     const dir = currentDir;
     // Wait for rendering to complete (rendering = false) before fetching
     if (rendering) return;
-    // Don't fetch again if already done for this dir
-    let aborted = false;
+    if (fetchOnOpenDoneFor === dir) return;
+    fetchOnOpenDoneFor = dir;
     const run = async () => {
       try {
         const preview = await getPlatform().previewSync(dir);
-        if (aborted || currentDir !== dir) return;
+        // Stale if the user switched projects while the fetch ran.
+        if (currentDir !== dir) return;
         if (!preview.live) return; // fetch failed silently
-        const incomingC = preview.incoming.count ?? 0;
-        if (incomingC <= 0) return;
-        // Get the id of the latest incoming commit to check against last dismiss
-        const latestId = preview.incoming.commits[0]?.id ?? "";
-        if (latestId && latestId === lastDismissedRemoteTip) return;
-        // Surface modal
-        incomingCount = incomingC;
-        incomingCommits = preview.incoming.commits.slice(0, 5).map((c) => ({ message: c.message }));
+        if (preview.incoming.hasChanges !== true) return;
         incomingChangesOpen = true;
-        lastDismissedRemoteTip = latestId;
       } catch {
         // Offline / no auth — silent
       }
     };
     void run();
-    return () => { aborted = true; };
   });
 
   // "Get changes" (incoming-changes modal): pull directly — snapshot-first,
@@ -685,8 +682,7 @@
       if (outcome.status === "pulled") {
         incomingChangesOpen = false;
         historyRefreshKey += 1;
-        const n = outcome.incomingApplied;
-        toast?.success(`${n} ${n === 1 ? "change" : "changes"} applied${outcome.filesChanged ? " — the preview will refresh in a moment." : "."}`);
+        toast?.success(`Changes applied${outcome.filesChanged ? " — the preview will refresh in a moment." : "."}`);
       } else if (outcome.status === "up-to-date") {
         incomingChangesOpen = false;
         toast?.success(outcome.message);
@@ -856,6 +852,7 @@
         if (!leftPanelPrefsLoaded) {
           leftPanelPrefsLoaded = true;
           if (panelPrefs?.activeTab) leftPanelTab = panelPrefs.activeTab;
+          if (typeof panelPrefs?.width === "number") leftPanelWidth = Math.min(480, Math.max(200, panelPrefs.width));
           // Panel open state loaded below after we know if a project exists
         }
 
@@ -2237,9 +2234,10 @@
   </header>
 
   <!-- Global left panel — available in both preview and edit modes -->
-  <div id="left-panel-region" class="left-panel-region" class:panel-open={leftPanelOpen}>
+  <div id="left-panel-region" class="left-panel-region" class:panel-open={leftPanelOpen} style="--left-panel-width: {leftPanelWidth}px">
     <LeftPanel
       bind:open={leftPanelOpen}
+      bind:width={leftPanelWidth}
       bind:activeTab={leftPanelTab}
       projectDir={currentDir}
       projectCapabilities={projectCapabilities}
@@ -2440,16 +2438,7 @@
       </button>
     </header>
     <div class="incoming-body">
-      <p class="incoming-lead">
-        {incomingCount}{incomingCount > 5 ? "+" : ""} new change{incomingCount === 1 ? "" : "s"} from the online copy.
-      </p>
-      {#if incomingCommits.length > 0}
-        <ul class="incoming-commits">
-          {#each incomingCommits as commit}
-            <li class="incoming-commit">{commit.message}</li>
-          {/each}
-        </ul>
-      {/if}
+      <p class="incoming-lead">There are new changes from the online copy.</p>
     </div>
     <footer class="incoming-footer">
       <button class="ghost" onclick={() => (incomingChangesOpen = false)} disabled={incomingPullBusy}>Not now</button>
@@ -2552,7 +2541,7 @@
      The LeftPanel is always in DOM but translateX(-100%) so its flex width = 260px
      even when off-screen. We compensate with a negative margin-left. */
   .left-panel-region:not(.panel-open) .main-content {
-    margin-left: -260px;
+    margin-left: calc(-1 * var(--left-panel-width, 260px));
   }
   /* Narrow screens: panel overlays, so main-content never shifts */
   @media screen and (max-width: 820px) {
@@ -3187,24 +3176,6 @@
     gap: 10px;
   }
   .incoming-lead { margin: 0; font-size: 13px; color: var(--app-text-secondary); }
-  .incoming-commits {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .incoming-commit {
-    font-size: 12px;
-    color: var(--app-text-muted);
-    padding: 4px 8px;
-    background: var(--app-surface-sunken);
-    border-radius: 4px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .incoming-footer {
     display: flex;
     gap: 8px;

@@ -224,6 +224,8 @@ export interface ViewerPrefs {
 export interface LeftPanelPrefs {
   open?: boolean;
   activeTab?: "toc" | "files" | "media" | "projects" | "history";
+  /** Panel width in px (user-resizable, clamped 200–480). */
+  width?: number;
 }
 
 /** A print-md project discovered by the background scan (#27). */
@@ -490,8 +492,6 @@ export type PullOutcome =
       snapshotId?: string;
       /** True when a combine (merge) commit was created (vs fast-forward). */
       merged: boolean;
-      /** How many online commits were applied. */
-      incomingApplied: number;
       /** True when file content changed — the preview should refresh. */
       filesChanged: boolean;
     }

@@ -304,7 +304,6 @@ type PullOutcome =
       message: string;
       snapshotId?: string;
       merged: boolean;
-      incomingApplied: number;
       filesChanged: boolean;
     }
   | { status: "up-to-date"; message: string; snapshotId?: string }
@@ -447,6 +446,7 @@ interface Window {
       leftPanel?: {
         open?: boolean;
         activeTab?: "toc" | "files" | "media" | "projects" | "history";
+        width?: number;
       };
     }>;
     setViewerPrefs(patch: {
@@ -462,6 +462,7 @@ interface Window {
       leftPanel?: {
         open?: boolean;
         activeTab?: "toc" | "files" | "media" | "projects" | "history";
+        width?: number;
       };
     }): Promise<{ ok: boolean }>;
     // Per-project editor/preview state (#43)

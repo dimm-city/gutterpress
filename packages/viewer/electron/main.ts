@@ -386,7 +386,6 @@ type PullOutcome =
       message: string;
       snapshotId?: string;
       merged: boolean;
-      incomingApplied: number;
       filesChanged: boolean;
     }
   | { status: "up-to-date"; message: string; snapshotId?: string }
@@ -733,6 +732,7 @@ interface ViewerPrefs {
   leftPanel?: {
     open?: boolean;
     activeTab?: "toc" | "files" | "media" | "projects" | "history";
+    width?: number;
   };
 }
 
