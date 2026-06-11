@@ -35,3 +35,29 @@ describe("compareSemver prerelease numeric ordering", () => {
     ).toBe(0);
   });
 });
+
+describe("compareSemver against rc-suffixed shell baselines", () => {
+  // The viewer's baked baseline version is the app package version, which
+  // during a release-candidate cycle carries an rc suffix (e.g. 0.5.0-rc.13).
+  // The web-UI version-line rule (see release-web-ui.yml header / ADR 0003)
+  // says a web release must use the NEXT patch/minor above the newest shipped
+  // shell version — these assertions pin that the comparator agrees.
+  test("next patch sorts above any rc of the previous version", () => {
+    expect(compareSemver("0.5.1", "0.5.0-rc.13")).toBeGreaterThan(0);
+    expect(compareSemver("0.5.1", "0.5.0-rc.2")).toBeGreaterThan(0);
+  });
+
+  test("the bare release sorts above its own rc prereleases", () => {
+    expect(compareSemver("0.5.0", "0.5.0-rc.13")).toBeGreaterThan(0);
+    expect(compareSemver("0.5.0-rc.13", "0.5.0")).toBeLessThan(0);
+  });
+
+  test("rc identifiers order numerically (rc.13 > rc.2)", () => {
+    expect(compareSemver("0.5.0-rc.13", "0.5.0-rc.2")).toBeGreaterThan(0);
+    expect(compareSemver("0.5.0-rc.14", "0.5.0-rc.13")).toBeGreaterThan(0);
+  });
+
+  test("an older published web release never beats a newer rc baseline", () => {
+    expect(compareSemver("0.3.0", "0.5.0-rc.13")).toBeLessThan(0);
+  });
+});

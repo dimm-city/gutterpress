@@ -89,6 +89,39 @@ bumped above `DESKTOP_API` in the shell, the shell refuses the update, and the
 user is told to update the installer first. This separates UI-only improvements
 (the common case) from changes that require a coordinated shell update.
 
+### Version-line rule for web-v* releases
+
+The updater offers a release only when its version is **strictly newer** than
+the effective current version — `max(baked baseline, promoted pointer)` — where
+the baked baseline is the app package version, which is often rc-suffixed
+during a release cycle (e.g. `0.5.0-rc.13`).
+
+Two constraints follow:
+
+1. **A web-v release must sort above the baselines of every shipped shell that
+   should receive it.** The rule: use the **next patch/minor above the newest
+   shipped shell version** (newest shell `v0.5.0-rc.13` → publish `web-v0.5.1`).
+   Per semver precedence a bare release outranks its own rc line
+   (`0.5.0 > 0.5.0-rc.13`), so the next patch always clears every rc baseline
+   of the previous version. Pinned by
+   `packages/viewer/tests/updater/compare-semver.test.ts`.
+2. **Web-v versions must never carry a pre-release suffix.** The workflow marks
+   any `-`-suffixed version as a GitHub pre-release, and `fetchWebReleases()`
+   deliberately excludes drafts and pre-releases (no beta channel) — an
+   rc-suffixed web release is invisible to every install.
+
+UI-only changes ship through `release-web-ui.yml` alone (one command:
+`gh workflow run release-web-ui.yml -f version=X.Y.Z`); the full installer
+pipeline is not involved.
+
+### Testability: feed URL override
+
+`PRINT_MD_UPDATER_FEED_URL` redirects the release-list fetch to a local fixture
+server (GitHub `GET /releases` response shape) so the whole
+check→download→verify→stage→promote pipeline can be exercised against a
+packaged build. Signature verification is never bypassed — fixtures must be
+signed with a key whose public half is baked into the build under test.
+
 ## Rejected alternatives
 
 | Alternative | Reason for rejection |

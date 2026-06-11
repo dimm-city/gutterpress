@@ -830,3 +830,165 @@ describe("checkForUpdate – gates", () => {
     expect(typeof state.lastCheckAt).toBe("string");
   });
 });
+
+// ── PRINT_MD_UPDATER_FEED_URL override ────────────────────────────────────
+
+describe("checkForUpdate – feed URL override", () => {
+  let tmpDir: string;
+  let restoreFetch: (() => void) | null = null;
+
+  beforeEach(async () => {
+    tmpDir = await makeTempDir();
+    await ensureLayout();
+  });
+
+  afterEach(async () => {
+    delete process.env.PRINT_MD_UPDATER_FEED_URL;
+    if (restoreFetch) {
+      restoreFetch();
+      restoreFetch = null;
+    }
+    await cleanupDir(tmpDir);
+  });
+
+  test("fetches the release list from the override URL when set", async () => {
+    mock.module("../../electron/updater/verify.js", () => ({
+      sha256Hex: realSha256Hex,
+      verifyManifestSignature: () => true,
+      verifyBundle: () => ({ ok: true }),
+    }));
+    process.env.PRINT_MD_UPDATER_FEED_URL = "http://127.0.0.1:9/releases";
+
+    const seen: string[] = [];
+    const original = global.fetch;
+    (global as unknown as Record<string, unknown>).fetch = async (url: string) => {
+      seen.push(String(url));
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: () => Promise.resolve([]),
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+        text: () => Promise.resolve(""),
+      };
+    };
+    restoreFetch = () => {
+      (global as unknown as Record<string, unknown>).fetch = original;
+    };
+
+    const result = await checkForUpdate();
+    expect(result.available).toBeNull();
+    expect(seen[0]).toBe("http://127.0.0.1:9/releases");
+    expect(seen[0]).not.toContain("api.github.com");
+  });
+});
+
+// ── error surfacing: release problems set phase=error for getStatus() ─────
+
+describe("checkForUpdate – problem reasons surface via getStatus().error", () => {
+  let tmpDir: string;
+  let restoreFetch: (() => void) | null = null;
+
+  beforeEach(async () => {
+    tmpDir = await makeTempDir();
+    await ensureLayout();
+  });
+
+  afterEach(async () => {
+    if (restoreFetch) {
+      restoreFetch();
+      restoreFetch = null;
+    }
+    await cleanupDir(tmpDir);
+  });
+
+  const ghReleasesUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
+
+  test("a web-v release missing its manifest assets reports phase=error", async () => {
+    mock.module("../../electron/updater/verify.js", () => realVerifyExports);
+    restoreFetch = mockFetch((url: string) => {
+      if (url === ghReleasesUrl) {
+        return {
+          ok: true,
+          json: () =>
+            Promise.resolve([
+              {
+                tag_name: "web-v99.0.0",
+                draft: false,
+                prerelease: false,
+                assets: [], // manifest + sig missing — a publishing defect
+              },
+            ]),
+        };
+      }
+      return { ok: false, status: 404, statusText: "Not Found" };
+    });
+
+    const result = await checkForUpdate();
+    expect(result.available).toBeNull();
+    expect(result.reason).toContain("missing manifest");
+
+    const status = await getStatus();
+    expect(status.phase).toBe("error");
+    expect(status.error).toContain("missing manifest");
+  });
+
+  test("a failed signature reports phase=error (fail closed, loudly)", async () => {
+    // Real verify module + a signature from the WRONG key = verification fails.
+    mock.module("../../electron/updater/verify.js", () => realVerifyExports);
+    const manifestObj = makeManifest({ version: "99.0.0" });
+    const manifestBytes = Buffer.from(JSON.stringify(manifestObj));
+    const { privateKey } = makeKeypair(); // not the baked public key's pair
+    const sig = signManifest(manifestBytes, privateKey);
+
+    const manifestUrl = "https://example.com/update-manifest.json";
+    const sigUrl = `${manifestUrl}.sig`;
+    restoreFetch = mockFetch((url: string) => {
+      if (url === ghReleasesUrl) {
+        return {
+          ok: true,
+          json: () =>
+            Promise.resolve([
+              {
+                tag_name: "web-v99.0.0",
+                draft: false,
+                prerelease: false,
+                assets: [
+                  { name: "update-manifest.json", browser_download_url: manifestUrl },
+                  { name: "update-manifest.json.sig", browser_download_url: sigUrl },
+                ],
+              },
+            ]),
+        };
+      }
+      if (url === manifestUrl) {
+        return {
+          ok: true,
+          arrayBuffer: () =>
+            Promise.resolve(
+              manifestBytes.buffer.slice(
+                manifestBytes.byteOffset,
+                manifestBytes.byteOffset + manifestBytes.byteLength
+              ) as ArrayBuffer
+            ),
+        };
+      }
+      if (url === sigUrl) {
+        return {
+          ok: true,
+          arrayBuffer: () =>
+            Promise.resolve(Buffer.from(sig).buffer.slice(0) as ArrayBuffer),
+        };
+      }
+      return { ok: false, status: 404, statusText: "Not Found" };
+    });
+
+    const result = await checkForUpdate();
+    expect(result.available).toBeNull();
+
+    const status = await getStatus();
+    expect(status.phase).toBe("error");
+    // Placeholder vs real key both fail closed; either diagnostic is honest.
+    expect(status.error).toMatch(/signature verification failed|not configured/);
+  });
+});

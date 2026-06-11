@@ -3,6 +3,23 @@ name: Release Web UI Bundle
 # Publishes the SvelteKit static bundle as a GitHub Release on the web-v* tag
 # line — completely separate from the full-installer release (v* tags).
 #
+# TWO-LANE RULE: UI-only changes ship through THIS workflow alone — the full
+# release workflow (release.yml, v* tags) does NOT need to run. One command:
+#
+#   gh workflow run release-web-ui.yml -f version=X.Y.Z
+#
+# VERSION-LINE RULE: the updater only offers versions STRICTLY NEWER than the
+# baseline baked into each shipped shell (the app package version, which may be
+# rc-suffixed, e.g. 0.5.0-rc.13). Therefore:
+#   - Use the NEXT patch/minor above the newest shipped shell version
+#     (newest shell v0.5.0-rc.13 → publish web-v0.5.1).
+#   - NEVER use a pre-release suffix: any version containing "-" is published
+#     as a GitHub pre-release below, and the in-app updater EXCLUDES drafts and
+#     pre-releases (fetchWebReleases in electron/updater/index.ts) — an
+#     rc-suffixed web release will never be delivered to anyone.
+# Semver ordering vs rc baselines is pinned by
+# packages/viewer/tests/updater/compare-semver.test.ts.
+#
 # Each release produces exactly three assets:
 #   web-ui-bundle.zip         — zip of packages/viewer/build/ contents (index.html at root)
 #   update-manifest.json      — manifest contract (schemaVersion:1, sha256, size, …)

@@ -47,7 +47,30 @@ import { verifyManifestSignature, verifyBundle } from "./verify.js";
 
 export const GITHUB_REPO = "dimm-city/print-md";
 
-const RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
+const DEFAULT_RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
+
+// Test/diagnostic override for the releases feed. When set, the updater fetches
+// the release list from this URL instead of the real GitHub API. The response
+// must have the same shape as GET /repos/:owner/:repo/releases. This exists so
+// the full check→download→verify→stage→promote pipeline can be exercised
+// end-to-end against a local fixture server (signatures are still verified
+// against the baked public key — the override does NOT weaken verification).
+// Never set in production; the loud warning makes accidental use visible.
+let warnedFeedOverride = false;
+function releasesUrl(): string {
+  const override = process.env.PRINT_MD_UPDATER_FEED_URL;
+  if (override) {
+    if (!warnedFeedOverride) {
+      warnedFeedOverride = true;
+      console.warn(
+        `[updater] PRINT_MD_UPDATER_FEED_URL override active: ${override}`
+      );
+    }
+    return override;
+  }
+  return DEFAULT_RELEASES_URL;
+}
+
 const WEB_TAG_RE = /^web-v(.+)$/;
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -162,7 +185,7 @@ interface GhRelease {
 }
 
 async function fetchWebReleases(): Promise<GhRelease[]> {
-  const res = await fetch(RELEASES_URL, {
+  const res = await fetch(releasesUrl(), {
     headers: {
       "User-Agent": "print-md-viewer-updater",
       Accept: "application/vnd.github+json",
@@ -246,6 +269,23 @@ async function effectiveCurrentVersion(): Promise<string> {
 // checkForUpdate
 // ──────────────────────────────────────────────────────────────────────────
 
+/**
+ * Record a check outcome that indicates a PROBLEM with the published release
+ * (bad/missing metadata, failed signature) rather than a benign "nothing new".
+ * Sets phase=error + lastError so getStatus() reports it and the manual
+ * "Check for updates" path surfaces the reason to the user instead of a
+ * misleading "You're up to date". Benign outcomes (no releases, already up to
+ * date, downgrade floor, …) must NOT use this — they stay phase=idle so the
+ * silent startup check never alarms anyone.
+ */
+function checkProblem(reason: string): { available: null; reason: string } {
+  phase = "error";
+  lastError = reason;
+  availableVersion = null;
+  console.warn(`[updater] check found a problem: ${reason}`);
+  return { available: null, reason };
+}
+
 export async function checkForUpdate(): Promise<{
   available: UpdateManifest | null;
   reason?: string;
@@ -274,9 +314,9 @@ export async function checkForUpdate(): Promise<{
     const manifestAsset = findAsset(newest, "update-manifest.json");
     const sigAsset = findAsset(newest, "update-manifest.json.sig");
     if (!manifestAsset || !sigAsset) {
-      phase = "idle";
-      availableVersion = null;
-      return { available: null, reason: "release missing manifest or signature asset" };
+      // A web-v release that lacks its metadata is a publishing defect, not a
+      // benign "nothing new" — surface it (phase error → manual check toasts).
+      return checkProblem("release missing manifest or signature asset");
     }
 
     // The two metadata files are independent — fetch them concurrently.
@@ -288,27 +328,20 @@ export async function checkForUpdate(): Promise<{
     // Signature: fail closed. Distinguish "key not configured" (placeholder
     // shipped) from a genuine verification failure so the diagnostic is useful.
     if (!verifyManifestSignature(manifestBytes, sigBytes.toString("utf8").trim())) {
-      phase = "idle";
-      availableVersion = null;
       const reason = isSigningKeyConfigured()
         ? "manifest signature verification failed"
         : "updater signing key not configured (placeholder public key)";
       if (!isSigningKeyConfigured()) {
         console.warn(`[updater] ${reason} — no updates will be applied`);
       }
-      return { available: null, reason };
+      return checkProblem(reason);
     }
 
     let manifest: UpdateManifest;
     try {
       manifest = validateManifest(JSON.parse(manifestBytes.toString("utf8")));
     } catch (e) {
-      phase = "idle";
-      availableVersion = null;
-      return {
-        available: null,
-        reason: `manifest validation failed: ${(e as Error).message}`,
-      };
+      return checkProblem(`manifest validation failed: ${(e as Error).message}`);
     }
 
     // Compatibility gate.

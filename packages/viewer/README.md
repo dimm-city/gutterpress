@@ -262,9 +262,52 @@ Each release publishes exactly three assets:
 | `update-manifest.json.sig` | Ed25519 signature of the exact bytes of `update-manifest.json` (base64) |
 
 Pre-release versions (any semver containing `-`, e.g. `0.2.1-rc.1`) are
-published as GitHub pre-releases and are still picked up by the updater — the
-updater does its own version comparison and does not filter by the GitHub
-pre-release flag.
+published as GitHub pre-releases and are **ignored by the updater** —
+`fetchWebReleases()` excludes drafts AND pre-releases so a beta/rc bundle can
+never be auto-delivered to the stable channel. Web UI releases must therefore
+always use a plain `X.Y.Z` version.
+
+### Version-line rule (which number to use)
+
+The updater compares a release's version against the **baseline** — the app
+package version baked into the shipped shell (e.g. `0.5.0-rc.13`) or any newer
+already-promoted bundle. An update is only offered when the web release version
+is **strictly newer** than that baseline.
+
+**Rule: a web UI release uses the NEXT patch (or minor) above the newest
+shipped shell version, with no pre-release suffix.** Example: if the newest
+installer out in the wild is `v0.5.0-rc.13`, publish `web-v0.5.1`. Per semver,
+`0.5.1 > 0.5.0-rc.13` and even `0.5.0 > 0.5.0-rc.13` (a bare release outranks
+its own rc line) — both orderings are pinned by
+`tests/updater/compare-semver.test.ts`. A web release that does NOT sort above
+every baseline it should reach will be silently reported as "already up to
+date" on those installs.
+
+### Two-lane release rule
+
+UI-only changes do **not** require the full release pipeline. The two lanes
+are completely independent:
+
+| Change touches | Lane | Command |
+|---|---|---|
+| Only `packages/viewer/src/` (the SPA) | `web-v*` web UI release | `gh workflow run release-web-ui.yml -f version=X.Y.Z` |
+| Electron shell, preload, lib, CLI | `v*` full release | normal release workflow |
+
+One command ships a UI-only update; every running install picks it up on its
+next launch (background check) or via **Help → Check for updates**, and applies
+it on restart (or immediately via the "Apply now" banner).
+
+### Testing the updater end-to-end (local feed)
+
+The updater is inert in dev (`app.isPackaged` gate) and normally fetches
+`https://api.github.com/repos/dimm-city/print-md/releases`. For verification,
+a **packaged** build honours the env var `PRINT_MD_UPDATER_FEED_URL`, which
+points the release-list fetch at a local fixture server (response shape =
+GitHub `GET /releases`). Signature verification is NOT bypassed — the manifest
+must verify against the public key baked into the build, so a true end-to-end
+test signs a fixture manifest with a test keypair and builds the shell with the
+matching test public key in `contract.ts` (never commit that key). See
+`scripts/build-web-ui-manifest.mjs` for producing a signed manifest locally.
 
 ### `DESKTOP_API` compatibility contract
 
