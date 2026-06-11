@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Runs every *.test.mjs in this directory against the locally-built packaged
+ * Runs every *.pw.mjs in this directory against the locally-built packaged
  * viewer. Build the app first (`npm run dist:linux` / `:win` / `:mac`), then:
  *
  *   bun run test:ui            # auto-locates the newest packaged app
@@ -57,7 +57,7 @@ console.log(`[run-ui] packaged app: ${exe}`);
 const fixture = join(here, "fixtures", "multichapter");
 
 const tests = readdirSync(here)
-  .filter((f) => f.endsWith(".test.mjs"))
+  .filter((f) => f.endsWith(".pw.mjs"))
   .sort();
 
 let failed = 0;

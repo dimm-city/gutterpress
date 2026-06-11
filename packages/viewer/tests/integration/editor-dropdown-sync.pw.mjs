@@ -16,7 +16,7 @@
  *   - asserts the editor's active file switched to that chapter's file.
  *
  * Usage:
- *   node tests/integration/editor-dropdown-sync.test.mjs <packaged-exe-path> [fixture-dir]
+ *   node tests/integration/editor-dropdown-sync.pw.mjs <packaged-exe-path> [fixture-dir]
  *
  * Exit 0 on pass, 1 on fail.
  */
@@ -32,7 +32,7 @@ function fail(msg) { console.error(`[etest] FAIL: ${msg}`); process.exit(1); }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const [, , exeArg, fixtureArg] = process.argv;
-if (!exeArg) fail("usage: editor-dropdown-sync.test.mjs <packaged-exe-path> [fixture-dir]");
+if (!exeArg) fail("usage: editor-dropdown-sync.pw.mjs <packaged-exe-path> [fixture-dir]");
 const exePath = resolve(exeArg);
 if (!existsSync(exePath)) fail(`packaged exe not found at ${exePath}`);
 

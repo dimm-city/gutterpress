@@ -10,7 +10,7 @@
  * - Asserts the response is 200 and the returned URL serves book.html.
  *
  * Usage:
- *   node tests/integration/electron-driver.test.mjs <main-js-path> <fixture-dir>
+ *   node tests/integration/electron-driver.pw.mjs <main-js-path> <fixture-dir>
  *
  *   <main-js-path> — path to electron-dist/main.js inside the unpacked app
  *   <fixture-dir>  — project directory the test will open
@@ -28,7 +28,7 @@ function fail(msg) { console.error(`[etest] FAIL: ${msg}`); process.exit(1); }
 
 const [, , exeArg, fixtureArg] = process.argv;
 if (!exeArg || !fixtureArg) {
-  fail("usage: electron-driver.test.mjs <packaged-exe-path> <fixture-dir>");
+  fail("usage: electron-driver.pw.mjs <packaged-exe-path> <fixture-dir>");
 }
 const exePath = resolve(exeArg);
 const fixturePath = resolve(fixtureArg);

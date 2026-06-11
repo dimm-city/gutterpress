@@ -10,13 +10,31 @@
 //      with the correct public key so no stub of the verify layer is needed.
 // ──────────────────────────────────────────────────────────────────────────
 
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { describe, expect, test, beforeEach, afterEach, afterAll } from "bun:test";
 import { mock } from "bun:test";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { zipSync } from "fflate";
+// Real verify module, captured BEFORE any mock.module() of it below, so the
+// file-level afterAll can restore it. mock.module() persists for the rest of
+// the process — and leaks into OTHER test files (verify.test.ts) when bun
+// test runs without --isolate. The function references are copied at load
+// time (a plain `import * as ns` is a LIVE binding that bun rewrites when
+// the mock lands, so the namespace object can't be used for restoration).
+// Safe to import here: verify.js only uses node:crypto (no electron).
+import { sha256Hex as realSha256Hex, verifyManifestSignature as realVerifyManifestSignature, verifyBundle as realVerifyBundle } from "../../electron/updater/verify.js";
+
+const realVerifyExports = {
+  sha256Hex: realSha256Hex,
+  verifyManifestSignature: realVerifyManifestSignature,
+  verifyBundle: realVerifyBundle,
+};
+
+afterAll(() => {
+  mock.module("../../electron/updater/verify.js", () => realVerifyExports);
+});
 
 // ── Electron mock (MUST precede web-runtime / engine imports) ────────────
 
