@@ -12,7 +12,7 @@ import {
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import os from "node:os";
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { watch, type FSWatcher } from "node:fs";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
@@ -1405,6 +1405,47 @@ ipcMain.handle("dialog:savePdf", async (_e, defaultName?: string) => {
   if (res.canceled || !res.filePath) return null;
   return res.filePath;
 });
+
+// ── Image picker dialog (#31) ─────────────────────────────────────────────────
+// Backs the editor toolbar's Insert Image dialog. Opens a native file picker
+// filtered to common web/print image formats. Returns null when cancelled.
+ipcMain.handle("dialog:pickImageFile", async (): Promise<string | null> => {
+  if (!mainWindow) return null;
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: "Insert image",
+    properties: ["openFile"],
+    filters: [
+      {
+        name: "Images",
+        extensions: ["jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "tiff"],
+      },
+    ],
+  });
+  if (res.canceled || res.filePaths.length === 0) return null;
+  return res.filePaths[0];
+});
+
+// ── Copy a file into a destination directory (#31) ──────────────────────────
+// Backs the editor toolbar's Insert Image flow: copies an image from anywhere
+// on disk into the project's assets/ folder when it lives outside the project.
+// Returns the absolute path of the copied file.
+ipcMain.handle(
+  "fs:copyFile",
+  async (
+    _e,
+    srcPath: string,
+    destDir: string,
+  ): Promise<string> => {
+    if (!path.isAbsolute(srcPath))
+      throw new Error(`fs:copyFile: srcPath must be absolute, got: ${srcPath}`);
+    if (!path.isAbsolute(destDir))
+      throw new Error(`fs:copyFile: destDir must be absolute, got: ${destDir}`);
+    await mkdir(destDir, { recursive: true });
+    const destPath = path.join(destDir, path.basename(srcPath));
+    await copyFile(srcPath, destPath);
+    return destPath;
+  },
+);
 
 ipcMain.handle("shell:openExternal", async (_e, url: string) => {
   await shell.openExternal(url);

@@ -635,6 +635,12 @@ export interface NativeThemeState {
  * Host RPC services. Host-divergent (IPC vs HTTP) but not part of the narrow
  * filesystem/secrets primitive surface, so kept separate from PlatformAdapter.
  */
+/** Payload types for the image pick/copy host service (#31). */
+export interface ImagePickResult {
+  /** Absolute path chosen by the user, or null when cancelled. */
+  filePath: string | null;
+}
+
 export interface HostServices {
   /** Integer IPC-surface version; mirrors DESKTOP_API in updater/contract.ts. */
   readonly apiVersion: number;
@@ -642,6 +648,21 @@ export interface HostServices {
 
   // Dialogs
   savePdf(defaultName?: string): Promise<string | null>;
+
+  /**
+   * Open a native file-picker dialog filtered to common image formats (#31).
+   * Returns the chosen absolute path, or null when the user cancels.
+   * The WebAdapter stub rejects (desktop-only in 0.4.x).
+   */
+  pickImageFile(): Promise<string | null>;
+
+  /**
+   * Copy a file into a destination directory (#31). Creates `destDir` when
+   * absent. Used by the editor toolbar to import images from outside the project
+   * into assets/. Returns the absolute path of the copied file.
+   * The WebAdapter stub rejects (desktop-only in 0.4.x).
+   */
+  copyFile(srcPath: string, destDir: string): Promise<string>;
 
   // Shell actions
   openExternal(url: string): Promise<void>;

@@ -463,6 +463,12 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("dialog:openDirectory"),
   savePdf: (defaultName?: string): Promise<string | null> =>
     ipcRenderer.invoke("dialog:savePdf", defaultName),
+  // Image picker dialog (#31): file selection filtered to image formats
+  pickImageFile: (): Promise<string | null> =>
+    ipcRenderer.invoke("dialog:pickImageFile"),
+  // Copy a file into a destination directory (#31): backs Insert Image asset copy
+  copyFile: (srcPath: string, destDir: string): Promise<string> =>
+    ipcRenderer.invoke("fs:copyFile", srcPath, destDir),
 
   // App actions
   openExternal: (url: string): Promise<void> =>

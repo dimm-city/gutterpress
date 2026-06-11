@@ -338,6 +338,9 @@ interface Window {
     // Dialogs
     openDirectory(): Promise<string | null>;
     savePdf(defaultName?: string): Promise<string | null>;
+    // Image picker + copy (#31) — backs the editor toolbar's Insert Image flow
+    pickImageFile(): Promise<string | null>;
+    copyFile(srcPath: string, destDir: string): Promise<string>;
     // App actions
     openExternal(url: string): Promise<void>;
     showInFolder(filePath: string): Promise<void>;

@@ -22,6 +22,22 @@
     historyKeymap,
     indentWithTab,
   } from "@codemirror/commands";
+  import {
+    applyBold,
+    applyItalic,
+    applyStrikethrough,
+    applyInlineCode,
+    applyLink,
+    applyBlockquote,
+    applyUnorderedList,
+    applyOrderedList,
+    applyHeading,
+    applyHr,
+    applyPageBreak,
+    applyTable,
+    applyImage,
+  } from "$lib/editor/toolbar-actions";
+  import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
   import { markdown } from "@codemirror/lang-markdown";
   import { css } from "@codemirror/lang-css";
   import { languages } from "@codemirror/language-data";
@@ -212,7 +228,15 @@
         cssLintCompartment.of(cssLintExtensions(lang)),
         cssCompletionCompartment.of(cssCompletionExtensions(lang)),
         syntaxHighlighting(printmdHighlight, { fallback: true }),
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        keymap.of([
+          ...defaultKeymap,
+          ...historyKeymap,
+          indentWithTab,
+          // Editor toolbar keyboard shortcuts (#31)
+          { key: "Ctrl-b", mac: "Cmd-b", run: (v) => { applyBold(v); return true; } },
+          { key: "Ctrl-i", mac: "Cmd-i", run: (v) => { applyItalic(v); return true; } },
+          { key: "Ctrl-k", mac: "Cmd-k", run: (v) => { applyLink(v); return true; } },
+        ]),
         editableTheme,
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
@@ -340,6 +364,46 @@
   }
 
   /**
+   * Execute a toolbar formatting action on the live editor (#31).
+   * Called by the parent page via the editorRef binding. The editor is
+   * focused before dispatch so the transaction lands in the right view.
+   */
+  export function runToolbarAction(
+    action: ToolbarAction,
+    payload?: ToolbarPayload,
+  ): void {
+    if (!view) return;
+    view.focus();
+    switch (action) {
+      case "bold":           applyBold(view); break;
+      case "italic":         applyItalic(view); break;
+      case "strikethrough":  applyStrikethrough(view); break;
+      case "code":           applyInlineCode(view); break;
+      case "link":           applyLink(view); break;
+      case "blockquote":     applyBlockquote(view); break;
+      case "ul":             applyUnorderedList(view); break;
+      case "ol":             applyOrderedList(view); break;
+      case "heading": {
+        const lvl = (payload as { level: 1 | 2 | 3 | 4 } | undefined)?.level ?? 2;
+        applyHeading(view, lvl);
+        break;
+      }
+      case "hr":             applyHr(view); break;
+      case "page-break":     applyPageBreak(view); break;
+      case "table": {
+        const cols = (payload as { cols: number } | undefined)?.cols ?? 3;
+        applyTable(view, cols);
+        break;
+      }
+      case "image": {
+        const img = payload as { src: string; alt: string; width?: string; position?: string } | undefined;
+        if (img) applyImage(view, img.src, img.alt, img.width, img.position);
+        break;
+      }
+    }
+  }
+
+  /**
    * Scroll/move the caret to a 1-based source line (preview→editor sync).
    * Suppresses the cursor-line echo so it doesn't bounce back to the preview.
    */
@@ -370,6 +434,9 @@
   {/if}
   <div class="editor-host" bind:this={host} class:hidden={!filePath}></div>
 </div>
+<!-- Toolbar portals are rendered by the parent via EditorToolbar.svelte placed
+     ABOVE this component in the editor-pane section. The runToolbarAction()
+     export is the coupling point. -->
 
 <style>
   .editor-wrap {

@@ -25,6 +25,8 @@
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
   import AdvancedSetupDialog from "$lib/components/AdvancedSetupDialog.svelte";
   import Icon from "$lib/components/Icon.svelte";
+  import EditorToolbar from "$lib/components/EditorToolbar.svelte";
+  import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
@@ -295,6 +297,7 @@
   let editorRef = $state<{
     focus: () => void;
     revealLine: (line: number) => void;
+    runToolbarAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
   } | null>(null);
   // True below the single-pane breakpoint. Assigned by the matchMedia
   // subscription further down; declared here so the derived below can read it.
@@ -2165,6 +2168,15 @@
               onKeepMine={keepMineExternal}
             />
           {/if}
+          <!-- Editor toolbar (#31): compact formatting bar, visible only when a
+               markdown file is open. Placed above the editor, within the pane. -->
+          <EditorToolbar
+            filePath={editorFilePath}
+            projectDir={currentDir}
+            onAction={(action, payload) => {
+              editorRef?.runToolbarAction(action, payload);
+            }}
+          />
           {#if MarkdownEditor}
             <MarkdownEditor
               bind:this={editorRef}

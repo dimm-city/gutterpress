@@ -136,6 +136,15 @@ export class WebAdapter implements Platform {
     return rejectNotImplemented("savePdf");
   }
 
+  // Image pick / copy (#31) — desktop-only in 0.4.x; stubs reject silently.
+  pickImageFile(): Promise<string | null> {
+    return rejectNotImplemented("pickImageFile");
+  }
+
+  copyFile(_srcPath: string, _destDir: string): Promise<string> {
+    return rejectNotImplemented("copyFile");
+  }
+
   openExternal(_url: string): Promise<void> {
     return rejectNotImplemented("openExternal");
   }

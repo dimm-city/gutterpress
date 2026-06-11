@@ -122,6 +122,15 @@ export class ElectronAdapter implements Platform {
     return bridge().savePdf(defaultName);
   }
 
+  // Image pick / copy (#31) — editor toolbar Insert Image flow
+  pickImageFile(): Promise<string | null> {
+    return bridge().pickImageFile();
+  }
+
+  copyFile(srcPath: string, destDir: string): Promise<string> {
+    return bridge().copyFile(srcPath, destDir);
+  }
+
   openExternal(url: string): Promise<void> {
     return bridge().openExternal(url);
   }

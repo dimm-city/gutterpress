@@ -1,4 +1,10 @@
-# Alpha Chapter {#ch-alpha}
+****# Alpha Chapter {#ch-alpha}
+
+| Header 1 | Header 2 | Header 3 |
+| ------ | ------ | ------ |
+| Cell | Cell | Cell |
+
+
 
 Alpha opening paragraph for the editor↔preview sync test.
 
