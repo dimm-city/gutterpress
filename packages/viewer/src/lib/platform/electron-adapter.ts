@@ -50,6 +50,7 @@ import type {
   ConnectGenericHostArgs,
   HostConnectionInfo,
   SyncStatusInfo,
+  SyncPreviewInfo,
   SyncOutcome,
   ResolveSyncConflictsArgs,
 } from "./contract";
@@ -299,6 +300,10 @@ export class ElectronAdapter implements Platform {
   // ── Sync (#15 sync phase) — delegate 1:1 to the bridge ─────────────────────
   getSyncStatus(projectDir: string, fetch?: boolean): Promise<SyncStatusInfo> {
     return bridge().getSyncStatus(projectDir, fetch);
+  }
+
+  previewSync(projectDir: string): Promise<SyncPreviewInfo> {
+    return bridge().previewSync(projectDir);
   }
 
   syncChanges(projectDir: string, message?: string): Promise<SyncOutcome> {

@@ -20,7 +20,7 @@
   import type {
     ConflictFileInfo,
     SyncOutcome,
-    SyncStatusInfo,
+    SyncPreviewInfo,
   } from "$lib/platform/contract";
 
   let {
@@ -63,7 +63,7 @@
 
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
   let phase = $state<Phase>("checking");
-  let status = $state<SyncStatusInfo | null>(null);
+  let preview = $state<SyncPreviewInfo | null>(null);
   let resultMessage = $state<string | null>(null);
   let conflictFiles = $state<ConflictFileInfo[]>([]);
   let conflictLocalId = $state<string | null>(null);
@@ -80,7 +80,7 @@
   $effect(() => {
     if (!open) return;
     phase = "checking";
-    status = null;
+    preview = null;
     resultMessage = null;
     conflictFiles = [];
     conflictLocalId = null;
@@ -94,39 +94,47 @@
   async function check() {
     if (!projectDir) return;
     const gen = ++loadGen;
+    phase = "checking";
     try {
-      // Live check so "N changes to sync" includes what's new online; the
-      // host degrades to a local count when the network is unavailable.
-      const result = await getPlatform().getSyncStatus(projectDir, true);
+      // Live, fetch-only preview: what's new online (commit details) and
+      // what we would send. The host degrades to local information with a
+      // friendly `fetchNotice` when the remote can't be reached.
+      const result = await getPlatform().previewSync(projectDir);
       if (gen !== loadGen) return;
-      status = result;
+      preview = result;
       phase = "idle";
     } catch (e) {
       if (gen !== loadGen) return;
       // A failed check never blocks syncing — sync itself reports
       // offline/auth in a friendly way.
-      status = null;
+      preview = null;
       phase = "idle";
     }
   }
 
-  /** "2 changes to sync" line for the idle screen. */
+  /** Outgoing snapshots not online yet (0 when unknown — sync will tell). */
+  let outgoingCount = $derived(preview?.outgoing.count ?? 0);
+  /** Online snapshots not on this computer; null = couldn't check. */
+  let incomingCount = $derived(preview ? preview.incoming.count : null);
+  /** Working-tree edits the pre-sync snapshot would save. */
+  let editsPending = $derived((preview?.changedFiles.count ?? 0) > 0);
+  /** Items under "Your changes to send": commits + the pending-edits row. */
+  let sendCount = $derived(outgoingCount + (editsPending ? 1 : 0));
+
+  /** "2 changes to sync · 4 new..." summary (idle lede + live region). */
   let statusLine = $derived.by(() => {
-    if (!status) return null;
+    if (!preview) return null;
     // Approximate counts are lower bounds (the host caps the history walk;
     // shallow clones hide older history) — render them as "250+".
-    const plus = status.approximate ? "+" : "";
+    const plus = preview.outgoing.approximate ? "+" : "";
     const pieces: string[] = [];
-    const ahead = status.ahead ?? 0;
-    const localCount = ahead + (status.hasUnsnapshottedChanges ? 1 : 0);
-    if (localCount > 0) {
-      pieces.push(
-        `${localCount}${plus} change${localCount === 1 ? "" : "s"} to sync`,
-      );
+    if (sendCount > 0) {
+      pieces.push(`${sendCount}${plus} change${sendCount === 1 ? "" : "s"} to sync`);
     }
-    if ((status.behind ?? 0) > 0) {
+    if ((incomingCount ?? 0) > 0) {
+      const inPlus = preview.incoming.approximate ? "+" : "";
       pieces.push(
-        `${status.behind}${plus} new change${status.behind === 1 ? "" : "s"} in the online copy`,
+        `${incomingCount}${inPlus} new change${incomingCount === 1 ? "" : "s"} in the online copy`,
       );
     }
     if (pieces.length === 0) return "Everything is in sync.";
@@ -134,19 +142,29 @@
   });
 
   let nothingToSync = $derived(
-    status !== null &&
-      (status.ahead ?? 1) === 0 &&
-      !status.hasUnsnapshottedChanges &&
-      (status.behind ?? 0) === 0,
+    preview !== null && sendCount === 0 && incomingCount === 0,
   );
 
   /** Behind-only: nothing of ours to send, but online changes to bring down. */
   let hasOnlineChangesOnly = $derived(
-    status !== null &&
-      (status.ahead ?? 1) === 0 &&
-      !status.hasUnsnapshottedChanges &&
-      (status.behind ?? 0) > 0,
+    preview !== null && sendCount === 0 && (incomingCount ?? 0) > 0,
   );
+
+  /** "9 hours ago" for the incoming/outgoing commit lists. */
+  function relativeTime(ms: number): string {
+    const min = Math.round((Date.now() - ms) / 60_000);
+    if (min < 1) return "just now";
+    if (min < 60) return `${min} minute${min === 1 ? "" : "s"} ago`;
+    const hours = Math.round(min / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+    const days = Math.round(hours / 24);
+    if (days < 14) return `${days} day${days === 1 ? "" : "s"} ago`;
+    try {
+      return new Date(ms).toLocaleDateString();
+    } catch {
+      return "";
+    }
+  }
 
   function applyOutcome(outcome: SyncOutcome) {
     resultMessage = outcome.message;
@@ -369,17 +387,93 @@
             A snapshot of your work is saved first, so nothing can be lost.
           </p>
         {/if}
-        {#if status?.hasUnsnapshottedChanges}
-          <p class="hint">Your newest edits will be saved as a snapshot when you sync.</p>
+        {#if preview?.fetchNotice}
+          <!-- The live check failed (offline / rejected connection). Non-
+               blocking: outgoing info is still shown and Sync stays enabled
+               (sync itself reports offline/auth in a friendly way). -->
+          <p class="hint">{preview.fetchNotice}</p>
         {/if}
+
+        {#if preview && (incomingCount ?? 0) > 0}
+          <section class="changes">
+            <h3>
+              Incoming changes from the online copy
+              ({incomingCount}{preview.incoming.approximate ? "+" : ""})
+            </h3>
+            <!-- svelte-ignore a11y_no_redundant_roles -- list-style:none strips
+                 list semantics in some screen readers; role="list" restores it. -->
+            <ul class="commit-list" role="list" aria-label="Incoming changes">
+              {#each preview.incoming.commits as c (c.id)}
+                <li class="commit-item">
+                  <span class="commit-message">{c.message || "(no description)"}</span>
+                  <span class="commit-meta">
+                    {relativeTime(c.timestamp)}{c.author ? ` · ${c.author}` : ""}
+                  </span>
+                </li>
+              {/each}
+              {#if (incomingCount ?? 0) > preview.incoming.commits.length}
+                <li class="commit-item more">
+                  …and {(incomingCount ?? 0) - preview.incoming.commits.length} more
+                </li>
+              {/if}
+            </ul>
+            <p class="hint">Syncing brings these changes to this computer.</p>
+          </section>
+        {/if}
+
+        {#if preview && sendCount > 0}
+          <section class="changes">
+            <h3>
+              Your changes to send
+              ({sendCount}{preview.outgoing.approximate ? "+" : ""})
+            </h3>
+            <!-- svelte-ignore a11y_no_redundant_roles -->
+            <ul class="commit-list" role="list" aria-label="Your changes to send">
+              {#each preview.outgoing.commits as c (c.id)}
+                <li class="commit-item">
+                  <span class="commit-message">{c.message || "(no description)"}</span>
+                  <span class="commit-meta">
+                    {relativeTime(c.timestamp)}{c.author ? ` · ${c.author}` : ""}
+                  </span>
+                </li>
+              {/each}
+              {#if outgoingCount > preview.outgoing.commits.length}
+                <li class="commit-item more">
+                  …and {outgoingCount - preview.outgoing.commits.length} more
+                </li>
+              {/if}
+              {#if editsPending}
+                <li class="commit-item">
+                  <span class="commit-message">
+                    Edits not yet snapshotted
+                    ({preview.changedFiles.count}
+                    file{preview.changedFiles.count === 1 ? "" : "s"})
+                  </span>
+                  <span class="commit-meta">
+                    {preview.changedFiles.sample.map(displayPath).join(", ")}{preview
+                      .changedFiles.count > preview.changedFiles.sample.length
+                      ? `, +${preview.changedFiles.count - preview.changedFiles.sample.length} more`
+                      : ""}
+                  </span>
+                </li>
+              {/if}
+            </ul>
+            {#if editsPending}
+              <p class="hint">Your newest edits will be saved as a snapshot when you sync.</p>
+            {/if}
+          </section>
+        {/if}
+
         <!-- UX-6: when nothing to sync, replace the disabled pseudo-button +
              "Not now" with a single enabled Done that closes the dialog. -->
         {#if nothingToSync}
           <footer class="actions">
+            <button class="ghost" onclick={check}>Refresh</button>
             <button class="primary" onclick={close}>Done</button>
           </footer>
         {:else}
           <footer class="actions">
+            <button class="ghost" onclick={check}>Refresh</button>
             <button class="ghost" onclick={close}>Not now</button>
             <button class="primary" onclick={sync}>
               {hasOnlineChangesOnly ? "Get online changes" : "Sync Changes"}
@@ -591,6 +685,55 @@
     color: var(--app-error-text);
     font-size: 12px;
     line-height: 1.5;
+  }
+  .changes {
+    margin: 0 0 14px;
+  }
+  .changes h3 {
+    margin: 0 0 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--app-text);
+  }
+  .commit-list {
+    list-style: none;
+    margin: 0 0 6px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 180px;
+    overflow-y: auto;
+    border: 1px solid var(--app-border-subtle);
+    border-radius: 6px;
+    padding: 6px 10px;
+  }
+  .commit-item {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 3px 0;
+  }
+  .commit-item + .commit-item {
+    border-top: 1px solid var(--app-border-subtle);
+  }
+  .commit-message {
+    font-size: 12px;
+    color: var(--app-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .commit-meta {
+    font-size: 11px;
+    color: var(--app-text-faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .commit-item.more {
+    font-size: 11px;
+    color: var(--app-text-faint);
   }
   .conflict-list {
     list-style: none;

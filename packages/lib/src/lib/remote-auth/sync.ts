@@ -189,6 +189,68 @@ export interface SyncStatusOptions {
   httpClient?: typeof httpNode;
 }
 
+export interface PreviewSyncOptions {
+  projectDir: string;
+  /** Explicit credential; wins over the token store. */
+  credential?: HostCredential;
+  /** Host-keyed store used to resolve the credential for the remote's host. */
+  tokenStore?: TokenStore;
+  /** Injectable git HTTP transport for tests. */
+  httpClient?: typeof httpNode;
+}
+
+/** One commit in a sync-preview direction list ("ER Update — 9 hours ago"). */
+export interface SyncCommitInfo {
+  id: string;
+  /** First line of the commit message. */
+  message: string;
+  author: string;
+  /** Unix milliseconds (matches SnapshotEntry.timestamp). */
+  timestamp: number;
+}
+
+/** One direction (incoming or outgoing) of a sync preview. */
+export interface SyncDirectionInfo {
+  /**
+   * Commit count for this direction. `null` when unknown — the live check
+   * failed AND there is no local record of the online tip to compare against.
+   */
+  count: number | null;
+  /** Newest-first commit details, capped at {@link PREVIEW_COMMIT_LIMIT}. */
+  commits: SyncCommitInfo[];
+  /** True when `count` is a lower bound (walk cap or shallow boundary). */
+  approximate: boolean;
+}
+
+/**
+ * What a Sync would do, in both directions — backs the Sync dialog's
+ * "Incoming changes from the online copy (4)" / "Your changes to send (1)"
+ * view. Produced by {@link previewSync}, which FETCHES (never merges).
+ */
+export interface SyncPreview {
+  hasRemote: boolean;
+  branch?: string;
+  /** True when `incoming` reflects a successful live fetch just now. */
+  live: boolean;
+  /**
+   * Friendly notice when the live check failed (offline / rejected
+   * connection). The rest of the preview degrades to local information.
+   * Never contains URLs or credentials.
+   */
+  fetchNotice?: string;
+  /** Online commits not on this computer yet (sync would merge them in). */
+  incoming: SyncDirectionInfo;
+  /** Local commits not online yet (sync would push them). */
+  outgoing: SyncDirectionInfo;
+  /**
+   * Working-tree edits the pre-sync snapshot would commit. Paths are
+   * repo-root-relative; for book-subfolder projects the list is scoped to
+   * the book's folder (what Sync's own snapshot is scoped to). `sample` is
+   * capped at {@link PREVIEW_FILE_LIMIT}; `count` is the full total.
+   */
+  changedFiles: { count: number; sample: string[] };
+}
+
 /** Ahead/behind summary for the "N changes to sync" UI. */
 export interface SyncStatusResult {
   hasRemote: boolean;
@@ -923,18 +985,38 @@ async function countCommitsSince(
   tip: string,
   stopAt: string | undefined,
 ): Promise<{ count: number; capped: boolean }> {
-  const commits = await git.log({ fs, dir, ref: tip, depth: AHEAD_BEHIND_CAP + 1 });
-  let count = 0;
-  for (const c of commits) {
-    if (stopAt && c.oid === stopAt) return { count, capped: false };
-    count++;
+  const walk = await commitsSince(dir, tip, stopAt);
+  return { count: walk.commits.length, capped: walk.capped };
+}
+
+/**
+ * Same walk as {@link countCommitsSince}, but keeps the commit details
+ * (summary line / author / date) for the sync-preview lists.
+ */
+async function commitsSince(
+  dir: string,
+  tip: string,
+  stopAt: string | undefined,
+): Promise<{ commits: SyncCommitInfo[]; capped: boolean }> {
+  const log = await git.log({ fs, dir, ref: tip, depth: AHEAD_BEHIND_CAP + 1 });
+  const commits: SyncCommitInfo[] = [];
+  for (const c of log) {
+    if (stopAt && c.oid === stopAt) return { commits, capped: false };
+    commits.push({
+      id: c.oid,
+      message: (c.commit.message ?? "").split("\n", 1)[0]?.trim() ?? "",
+      author: c.commit.author?.name ?? "",
+      timestamp: (c.commit.author?.timestamp ?? 0) * 1000,
+    });
   }
-  if (count > AHEAD_BEHIND_CAP) return { count: AHEAD_BEHIND_CAP, capped: true };
+  if (commits.length > AHEAD_BEHIND_CAP) {
+    return { commits: commits.slice(0, AHEAD_BEHIND_CAP), capped: true };
+  }
   // Walk exhausted without finding `stopAt`: exact only when it reached a
   // root commit; isomorphic-git stops silently at shallow-clone boundaries,
   // which would otherwise masquerade as a complete walk.
-  const sawRoot = commits.some((c) => c.commit.parent.length === 0);
-  return { count, capped: !sawRoot };
+  const sawRoot = log.some((c) => c.commit.parent.length === 0);
+  return { commits, capped: !sawRoot };
 }
 
 /**
@@ -1037,6 +1119,171 @@ export async function getSyncStatus(
       behind: behind.count,
       live,
       approximate: ahead.capped || behind.capped,
+    };
+  });
+}
+
+// ── previewSync ──────────────────────────────────────────────────────────────
+
+/** Commit details listed per direction in a sync preview. */
+export const PREVIEW_COMMIT_LIMIT = 20;
+/** Changed working-tree paths sampled in a sync preview. */
+export const PREVIEW_FILE_LIMIT = 10;
+
+const MSG_PREVIEW_OFFLINE =
+  "Couldn't reach the online repository to check for new changes.";
+const MSG_PREVIEW_AUTH =
+  "The online repository didn't accept the saved connection, so new online changes couldn't be checked.";
+
+function toDirection(walk: {
+  commits: SyncCommitInfo[];
+  capped: boolean;
+}): SyncDirectionInfo {
+  return {
+    count: walk.commits.length,
+    commits: walk.commits.slice(0, PREVIEW_COMMIT_LIMIT),
+    approximate: walk.capped,
+  };
+}
+
+const NO_COMMITS: SyncDirectionInfo = { count: 0, commits: [], approximate: false };
+const UNKNOWN_COMMITS: SyncDirectionInfo = {
+  count: null,
+  commits: [],
+  approximate: false,
+};
+
+/**
+ * What would a Sync do right now? FETCHES the tracked remote branch (never
+ * merges, never pushes, never snapshots) and reports both directions with
+ * commit details, plus the working-tree edits the pre-sync snapshot would
+ * commit. Backs the Sync dialog's open/refresh view.
+ *
+ * Failure model: a failed fetch (offline / rejected connection) NEVER throws —
+ * the preview degrades to local information (the last-fetched record of the
+ * online tip) with a friendly `fetchNotice`. Serialized on the per-repo lock.
+ */
+export async function previewSync(options: PreviewSyncOptions): Promise<SyncPreview> {
+  const http = options.httpClient ?? httpNode;
+  // Same repo-scope rules as syncProject: a book subfolder previews against
+  // the ENCLOSING repository (commit counts are whole-repo — that is what a
+  // sync pushes/pulls), with the changed-file list scoped to the book.
+  const { dir, subPath } = await resolveRepoScope(options.projectDir);
+
+  return withRepoLock(dir, async (): Promise<SyncPreview> => {
+    const branch = (await git.currentBranch({ fs, dir })) ?? undefined;
+
+    // Working-tree edits Sync's snapshot step would commit (book-scoped).
+    const matrix = await git.statusMatrix({
+      fs,
+      dir,
+      ...(subPath ? { filepaths: [subPath] } : {}),
+    });
+    const changed = matrix
+      .filter(([, head, worktree, stage]) => !(head === 1 && worktree === 1 && stage === 1))
+      .map(([filepath]) => filepath);
+    const changedFiles = {
+      count: changed.length,
+      sample: changed.slice(0, PREVIEW_FILE_LIMIT),
+    };
+
+    let transport: RemoteTransport;
+    try {
+      transport = await resolveTransport(dir, options);
+    } catch {
+      return {
+        hasRemote: false,
+        ...(branch ? { branch } : {}),
+        live: false,
+        incoming: NO_COMMITS,
+        outgoing: NO_COMMITS,
+        changedFiles,
+      };
+    }
+    if (!branch) {
+      return {
+        hasRemote: true,
+        live: false,
+        incoming: NO_COMMITS,
+        outgoing: NO_COMMITS,
+        changedFiles,
+      };
+    }
+
+    let live = false;
+    let fetchNotice: string | undefined;
+    let remoteTip: string | null = null;
+    try {
+      remoteTip = await fetchRemoteTip(dir, branch, transport, http);
+      live = true;
+    } catch (e) {
+      fetchNotice =
+        classifyFailure(e) === "auth" ? MSG_PREVIEW_AUTH : MSG_PREVIEW_OFFLINE;
+    }
+    if (!live) {
+      // Degrade to the last-fetched record of the online tip, if any.
+      try {
+        remoteTip = await git.resolveRef({
+          fs,
+          dir,
+          ref: `refs/remotes/${transport.remote}/${branch}`,
+        });
+      } catch {
+        remoteTip = null;
+      }
+    }
+
+    const localTip = await git
+      .resolveRef({ fs, dir, ref: branch })
+      .catch(() => null);
+    const baseResult = {
+      hasRemote: true,
+      branch,
+      live,
+      ...(fetchNotice ? { fetchNotice } : {}),
+      changedFiles,
+    };
+
+    if (!localTip) {
+      // Branch exists but has no commits yet (freshly initialized).
+      return {
+        ...baseResult,
+        incoming: remoteTip
+          ? toDirection(await commitsSince(dir, remoteTip, undefined))
+          : live
+            ? NO_COMMITS
+            : UNKNOWN_COMMITS,
+        outgoing: NO_COMMITS,
+      };
+    }
+    if (!remoteTip) {
+      // Live fetch found no online branch (empty repo) → nothing incoming.
+      // Fetch failed AND no local record → incoming is honestly unknown.
+      return {
+        ...baseResult,
+        incoming: live ? NO_COMMITS : UNKNOWN_COMMITS,
+        outgoing: toDirection(await commitsSince(dir, localTip, undefined)),
+      };
+    }
+    if (remoteTip === localTip) {
+      return { ...baseResult, incoming: NO_COMMITS, outgoing: NO_COMMITS };
+    }
+
+    let mergeBase: string | undefined;
+    try {
+      const bases = (await git.findMergeBase({
+        fs,
+        dir,
+        oids: [localTip, remoteTip],
+      })) as string[];
+      mergeBase = bases[0];
+    } catch {
+      mergeBase = undefined;
+    }
+    return {
+      ...baseResult,
+      incoming: toDirection(await commitsSince(dir, remoteTip, mergeBase)),
+      outgoing: toDirection(await commitsSince(dir, localTip, mergeBase)),
     };
   });
 }

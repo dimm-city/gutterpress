@@ -52,6 +52,7 @@ import type {
   ConnectGenericHostArgs,
   HostConnectionInfo,
   SyncStatusInfo,
+  SyncPreviewInfo,
   SyncOutcome,
   ResolveSyncConflictsArgs,
 } from "./contract";
@@ -349,6 +350,10 @@ export class WebAdapter implements Platform {
   // ── Sync (#15 sync phase) — desktop-only until the PWA lands ───────────────
   getSyncStatus(_projectDir: string, _fetch?: boolean): Promise<SyncStatusInfo> {
     return rejectNotImplemented("getSyncStatus");
+  }
+
+  previewSync(_projectDir: string): Promise<SyncPreviewInfo> {
+    return rejectNotImplemented("previewSync");
   }
 
   syncChanges(_projectDir: string, _message?: string): Promise<SyncOutcome> {

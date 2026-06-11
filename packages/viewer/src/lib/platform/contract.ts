@@ -345,6 +345,54 @@ export interface SyncStatusInfo {
   approximate: boolean;
 }
 
+/** One commit in a sync-preview direction list ("ER Update — 9 hours ago"). */
+export interface SyncCommitInfo {
+  id: string;
+  /** First line of the commit message. */
+  message: string;
+  author: string;
+  /** Unix milliseconds. */
+  timestamp: number;
+}
+
+/** One direction (incoming or outgoing) of a sync preview. */
+export interface SyncDirectionInfo {
+  /**
+   * Commit count. `null` when unknown — the live check failed and there is
+   * no local record of the online tip to compare against.
+   */
+  count: number | null;
+  /** Newest-first commit details (the host caps the list length). */
+  commits: SyncCommitInfo[];
+  /** True when `count` is a lower bound — render as "250+". */
+  approximate: boolean;
+}
+
+/**
+ * Fetch-only "what would a Sync do?" preview. The host FETCHES the online
+ * tip (never merges/pushes/snapshots) and reports both directions plus the
+ * working-tree edits a Sync's snapshot step would commit. A failed fetch
+ * degrades to local information with a friendly `fetchNotice` — it never
+ * rejects for the offline/no-auth case.
+ */
+export interface SyncPreviewInfo {
+  hasRemote: boolean;
+  branch?: string;
+  /** True when `incoming` reflects a successful live fetch just now. */
+  live: boolean;
+  /** Friendly notice when the live check failed (offline / rejected token). */
+  fetchNotice?: string;
+  /** Online commits not on this computer yet (Sync would merge them in). */
+  incoming: SyncDirectionInfo;
+  /** Local commits not online yet (Sync would send them). */
+  outgoing: SyncDirectionInfo;
+  /**
+   * Working-tree edits Sync's snapshot would commit. Paths are shared-folder-
+   * relative (book-scoped for subfolder projects); `sample` is capped.
+   */
+  changedFiles: { count: number; sample: string[] };
+}
+
 /** How one conflicted file differs between the two copies. */
 export type ConflictKind = "both-edited" | "you-deleted" | "online-deleted";
 
@@ -730,6 +778,12 @@ export interface HostServices {
 
   /** Ahead/behind counts vs the online repository ("N changes to sync"). */
   getSyncStatus(projectDir: string, fetch?: boolean): Promise<SyncStatusInfo>;
+  /**
+   * Fetch-only preview of what a Sync would do: incoming commits from the
+   * online copy, outgoing local commits, and the working-tree edits the
+   * pre-sync snapshot would commit. Backs the Sync dialog's open/refresh view.
+   */
+  previewSync(projectDir: string): Promise<SyncPreviewInfo>;
   /** Snapshot-first sync of the project to its online repository. */
   syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
   /** Apply per-file conflict choices and sync the combined result. */

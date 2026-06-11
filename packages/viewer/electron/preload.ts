@@ -251,6 +251,29 @@ interface SyncStatusInfo {
   approximate: boolean;
 }
 
+interface SyncCommitInfo {
+  id: string;
+  message: string;
+  author: string;
+  timestamp: number;
+}
+
+interface SyncDirectionInfo {
+  count: number | null;
+  commits: SyncCommitInfo[];
+  approximate: boolean;
+}
+
+interface SyncPreviewInfo {
+  hasRemote: boolean;
+  branch?: string;
+  live: boolean;
+  fetchNotice?: string;
+  incoming: SyncDirectionInfo;
+  outgoing: SyncDirectionInfo;
+  changedFiles: { count: number; sample: string[] };
+}
+
 interface ConflictFileInfo {
   path: string;
   kind: "both-edited" | "you-deleted" | "online-deleted";
@@ -612,6 +635,9 @@ contextBridge.exposeInMainWorld("electron", {
     fetch?: boolean,
   ): Promise<SyncStatusInfo> =>
     ipcRenderer.invoke("remote:syncStatus", projectDir, fetch),
+  /** Fetch-only "what would a Sync do?" preview (incoming + outgoing). */
+  previewSync: (projectDir: string): Promise<SyncPreviewInfo> =>
+    ipcRenderer.invoke("remote:previewSync", projectDir),
   syncChanges: (
     projectDir: string,
     message?: string,

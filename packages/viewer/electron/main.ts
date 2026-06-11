@@ -305,6 +305,29 @@ interface ConflictResolutionChoice {
   choice: "mine" | "theirs" | "both";
 }
 
+interface SyncCommitInfo {
+  id: string;
+  message: string;
+  author: string;
+  timestamp: number;
+}
+
+interface SyncDirectionInfo {
+  count: number | null;
+  commits: SyncCommitInfo[];
+  approximate: boolean;
+}
+
+interface SyncPreviewInfo {
+  hasRemote: boolean;
+  branch?: string;
+  live: boolean;
+  fetchNotice?: string;
+  incoming: SyncDirectionInfo;
+  outgoing: SyncDirectionInfo;
+  changedFiles: { count: number; sample: string[] };
+}
+
 type SyncOutcome =
   | {
       status: "synced";
@@ -416,6 +439,10 @@ interface LibModule {
     fetch?: boolean;
     tokenStore?: { get(host: string): Promise<HostCredential | null> };
   }) => Promise<SyncStatusInfo>;
+  previewSync: (options: {
+    projectDir: string;
+    tokenStore?: { get(host: string): Promise<HostCredential | null> };
+  }) => Promise<SyncPreviewInfo>;
 }
 
 let libPromise: Promise<LibModule> | null = null;
@@ -2210,6 +2237,21 @@ ipcMain.handle(
       return lib.getSyncStatus({
         projectDir: dir,
         fetch: fetch === true,
+        tokenStore: electronTokenStore,
+      });
+    }),
+);
+
+ipcMain.handle(
+  "remote:previewSync",
+  (_e, projectDir: string): Promise<SyncPreviewInfo> =>
+    handleRemoteErrors("remote:previewSync", async () => {
+      const dir = requireAbsoluteDir("remote:previewSync", projectDir);
+      const lib = await loadLib();
+      // Fetch-only preview (never merges/pushes/snapshots). The lib maps a
+      // failed fetch to a friendly `fetchNotice` instead of throwing.
+      return lib.previewSync({
+        projectDir: dir,
         tokenStore: electronTokenStore,
       });
     }),

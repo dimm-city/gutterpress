@@ -234,6 +234,31 @@ interface SyncStatusInfo {
   approximate: boolean;
 }
 
+interface SyncCommitInfo {
+  id: string;
+  message: string;
+  author: string;
+  timestamp: number;
+}
+
+interface SyncDirectionInfo {
+  /** null when unknown (fetch failed and no local record of the online tip). */
+  count: number | null;
+  commits: SyncCommitInfo[];
+  approximate: boolean;
+}
+
+/** Fetch-only "what would a Sync do?" preview for the Sync dialog. */
+interface SyncPreviewInfo {
+  hasRemote: boolean;
+  branch?: string;
+  live: boolean;
+  fetchNotice?: string;
+  incoming: SyncDirectionInfo;
+  outgoing: SyncDirectionInfo;
+  changedFiles: { count: number; sample: string[] };
+}
+
 interface ConflictFileInfo {
   path: string;
   kind: "both-edited" | "you-deleted" | "online-deleted";
@@ -431,6 +456,7 @@ interface Window {
     forgeTokenUrl(host: string): Promise<string | null>;
     // Sync (#15 sync phase, ADR 0006 D5)
     getSyncStatus(projectDir: string, fetch?: boolean): Promise<SyncStatusInfo>;
+    previewSync(projectDir: string): Promise<SyncPreviewInfo>;
     syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
     resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
     startPreview(args: { input: string }): Promise<{
