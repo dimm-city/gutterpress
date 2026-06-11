@@ -1718,6 +1718,10 @@
       {/if}
     </section>
 
+    <!-- Flexible spacer: absorbs slack between left and center; shrinks when
+         space is tight so left and right sections always remain visible. -->
+    <div class="toolbar-spacer" aria-hidden="true"></div>
+
     <!-- UX-012: center nav only shows when a document is loaded -->
     {#if previewUrl}
       <section class="center">
@@ -1792,6 +1796,10 @@
         </button>
       </section>
     {/if}
+
+    <!-- Mirror spacer on the right of center: symmetric layout, right section
+         stays pinned to the end, center stays centered when both spacers match. -->
+    <div class="toolbar-spacer" aria-hidden="true"></div>
 
     <section class="right">
       <!-- Separator so the page-navigation group reads as a distinct unit and
@@ -2329,39 +2337,48 @@
 
   /* ---- Toolbar ---- */
   .toolbar {
-    /* FLEX, not grid. A `1fr auto 1fr` grid positions the three sections
-       independently, so when the right section is wider than its 1fr column it
-       overflows leftward and OVERLAPS the centered page-nav (seen at ~1280px CSS
-       width, e.g. a 4K display at 300% OS scale). Flex lays the sections out
-       sequentially — they can never overlap; the worst case is a clip, which the
-       responsive collapse below prevents. The center is pushed to the middle by
-       equal-growing left/right spacers. */
+    /* Flex with symmetric spacers for true no-overlap layout.
+       Structure: [left] [spacer] [center] [spacer] [right]
+       The two .toolbar-spacer divs (flex: 1 1 0) absorb all available slack
+       equally, which keeps center visually centered when space permits and —
+       crucially — shrink first before left/right can ever reach each other.
+       Because left and right are flex: 0 0 auto they claim exactly their natural
+       width; the Open button and Save PDF are ALWAYS visible at any viewport
+       width above the point where center controls are already collapsed away.
+       container-type: inline-size enables @container queries so toolbar
+       breakpoints respond to toolbar width, not viewport width — the correct
+       tool for a component that may be constrained by surrounding layout. */
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 0 12px;
     height: 56px;
     flex-shrink: 0;
+    container-type: inline-size;
     background: linear-gradient(to bottom, var(--app-toolbar-from), var(--app-toolbar-to));
     border-bottom: 1px solid var(--app-border);
-    /* Stacking context ABOVE the workspace panes (z-index 50) so dropdown menus
-       that hang below the toolbar paint over the preview, not behind it. overflow
-       must stay visible for the same reason — `overflow: hidden` clips dropdowns. */
+    /* Stacking context ABOVE the workspace panes so dropdown menus that hang
+       below the toolbar paint over the preview, not behind it. overflow must
+       stay visible for the same reason — `overflow: hidden` clips dropdowns. */
     position: relative;
     z-index: 100;
     overflow: visible;
   }
 
+  /* Symmetric flex spacers that keep center visually centered and absorb slack
+     before left/right sections can overlap. */
+  .toolbar-spacer {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
   section { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  /* .left shrinks first (the doc title ellipsises). .center (page-nav) and
-     .right never shrink, so their buttons can't overflow their own box and lap
-     onto a neighbour. The center is centred by auto margins; .right is pinned to
-     the end by margin-left:auto (works whether or not the center is present). If
-     everything still doesn't fit, .right clips past the right edge — which the
-     responsive collapse below avoids by shrinking the right section first. */
-  .left { flex: 0 1 auto; overflow: hidden; }
-  .center { flex: 0 0 auto; margin: 0 auto; }
-  .right { flex: 0 0 auto; margin-left: auto; }
+  /* .left never shrinks — Open button must always be visible and clickable.
+     doc-title / path inside .left truncate via text-overflow on their own.
+     .center and .right are also fixed-size; the spacers absorb all slack. */
+  .left  { flex: 0 0 auto; overflow: hidden; }
+  .center { flex: 0 0 auto; }
+  .right  { flex: 0 0 auto; }
 
   /* ---- Buttons & inputs ---- */
   button, select {
@@ -2441,19 +2458,14 @@
      and the menu buttons hide. Below a breakpoint they swap. */
   /* Narrow + Edit mode: the preview is hidden, so its controls (page navigation,
      single/spread, zoom) are noise — hide them so the edit toolbar is just
-     sidebar / Open / Edit·View / Save / More. Highest specificity wins over the
-     generic responsive rules below. */
+     Open / Edit·View / Save / More. The spacers collapse the gap automatically
+     when center is absent. */
   .toolbar.edit-narrow .center,
   .toolbar.edit-narrow .view-mode-group,
   .toolbar.edit-narrow .view-mode-menu,
   .toolbar.edit-narrow .zoom-select,
   .toolbar.edit-narrow .zoom-menu {
     display: none;
-  }
-  /* Edit mode has no center column (page nav hidden) — collapse the toolbar to
-     two tracks so the controls don't leave a dead gap. (per user) */
-  .toolbar.edit-narrow {
-    grid-template-columns: 1fr auto;
   }
 
   .menu { position: relative; display: none; }
@@ -2756,47 +2768,59 @@
   }
   .update-later:hover { background: var(--app-scrim); }
 
-  /* ---- Responsive breakpoints ----
-     The toolbar degrades in stages as the viewport narrows:
-       1366px — collapse view-mode + zoom into dropdown menu buttons (the
-                segmented control + zoom select are the widest right-side items;
-                collapsing them keeps the full toolbar within ~1280px CSS, e.g. a
-                4K display at 300% OS scale, where it otherwise overflowed)
-       1200px — trim the doc-title/path widths
-       1024px — drop button text labels (icon-only with tooltips/aria-labels)
-        900px — hide the doc title, drop the Save PDF text label
-        820px — single-pane layout (Edit/View toggle); see .workspace.narrow */
-  @media screen and (max-width: 1366px) {
+  /* ---- Toolbar container queries ----
+     @container queries measure the toolbar's own inline size — the correct
+     tool for a component-level layout. This replaces viewport @media queries
+     which were wrong because toolbar width can differ from viewport width
+     (e.g. when the app chrome changes).
+
+     The toolbar degrades in stages as it narrows:
+       1300cqi — collapse view-mode + zoom into dropdown menus
+       1100cqi — trim doc-title / path max-widths
+        950cqi — drop button text labels (icon-only, aria-label/title keep a11y)
+        820cqi — hide chapter label (icon + chevron only), drop separators
+        780cqi — hide doc title, drop Save PDF text label
+        680cqi — hide path
+        600cqi — fold Settings+Help into "More" menu, drop "Page" word, open icon-only
+        540cqi — compact page nav (drop first/last jump buttons) */
+
+  @container (max-width: 1300px) {
     /* Swap the inline view-mode buttons + zoom select for compact menu buttons. */
     .view-mode-group { display: none; }
     .zoom-select { display: none; }
     .menu { display: inline-block; }
   }
-  @media screen and (max-width: 1200px) {
+  @container (max-width: 1100px) {
     .doc-title { max-width: 140px; }
     .path { max-width: 180px; }
   }
-  @media screen and (max-width: 1024px) {
+  @container (max-width: 950px) {
     /* Icon-only buttons: labels drop, aria-label/title keep them accessible. */
     .view-label { display: none; }
   }
-  @media screen and (max-width: 900px) {
-    .doc-title { display: none; }
-    .path { max-width: 140px; }
-    /* UX-006: hide Save PDF text label at 900px, keep button as icon-only */
-    .save-btn-label { display: none; }
-  }
-  @media screen and (max-width: 700px) {
-    .path { display: none; }
-  }
-  @media screen and (max-width: 820px) {
-    /* The chapter-jump menu keeps its icon + chevron but drops its (often long)
-       heading label so it stops eating the center width — which previously
-       pushed the page total "/ N" off-screen behind the right-side controls. */
+  @container (max-width: 820px) {
+    /* The chapter-jump menu keeps its icon + chevron but drops its heading label
+       so it stops eating center width. Also drop group separators to reduce clutter. */
     .chapter-label { display: none; }
     .chapter-summary { max-width: none; }
+    .zoom-select,
+    .zoom-menu,
+    .view-mode-group,
+    .view-mode-menu,
+    .toolbar-sep {
+      display: none;
+    }
   }
-  @media screen and (max-width: 620px) {
+  @container (max-width: 780px) {
+    .doc-title { display: none; }
+    .path { max-width: 140px; }
+    /* UX-006: hide Save PDF text label, keep button as icon-only */
+    .save-btn-label { display: none; }
+  }
+  @container (max-width: 680px) {
+    .path { display: none; }
+  }
+  @container (max-width: 600px) {
     /* Fold Settings + Help into the "More" overflow menu, and drop the "Page"
        word from the pill — so the page navigation keeps room and the toolbar
        never crowds/clips at narrow widths. */
@@ -2807,7 +2831,7 @@
        action never truncates to "Op". */
     .open-label { display: none; }
   }
-  @media screen and (max-width: 560px) {
+  @container (max-width: 540px) {
     /* Compact page navigation: drop the first/last jump buttons, keep prev /
        page-pill / next so navigation still works without overflow. */
     .center .icon-btn:first-child,
@@ -2821,17 +2845,6 @@
      pane is visible. The preview iframe is NEVER unmounted (it owns the live
      PreviewClient); inactive panes are hidden with `display:none`. */
   @media screen and (max-width: 820px) {
-    /* Small screens: drop the zoom + single/spread controls and the group
-       separators entirely — they crowd the bar and merge the controls into an
-       unreadable blob. Toolbar becomes sidebar / Open / Edit·View / page-nav /
-       Save / More. (per user) */
-    .zoom-select,
-    .zoom-menu,
-    .view-mode-group,
-    .view-mode-menu,
-    .toolbar-sep {
-      display: none;
-    }
     .workspace.narrow,
     .workspace.narrow.editor-open {
       grid-template-columns: 1fr;
