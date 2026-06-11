@@ -6,6 +6,10 @@ name: Windows Electron driver test
 #   - the full directory-load flow (renderer → preview server → book.html)
 #   - editor↔preview chapter-dropdown sync (the dropdown must move the editor
 #     across chapters, not just the preview)
+#   - the full History-tab sync scenario (sync-history.pw.mjs): app-path clone
+#     of a multi-book repo subfolder, fetch-on-open modal, Check/Get/Send,
+#     push-when-behind, and the safeStorage credential-store round-trip —
+#     against the lib's in-process git smart-HTTP test server (no system git).
 # Proves the whole stack works on Windows end-to-end.
 
 on:
