@@ -96,9 +96,17 @@ export {
   AUTO_SNAPSHOT_MIN_MINUTES,
   AUTO_SNAPSHOT_MAX_MINUTES,
   AUTO_SNAPSHOT_DEFAULT_MINUTES,
+  HISTORY_PAGE_LIMIT,
 } from "../lib/source-provider.ts";
 
-export type { AutoSnapshotPolicy } from "../lib/source-provider.ts";
+export type {
+  AutoSnapshotPolicy,
+  ListHistoryOptions,
+  HistoryPage,
+} from "../lib/source-provider.ts";
+
+// ── Per-repo isomorphic-git cache (perf) ─────────────────────────────────────
+export { getRepoCache, invalidateRepoCache } from "../lib/git-cache.ts";
 
 // ── Remote Git: auth, discovery, clone (#15 / ADR 0006) ──────────────────────
 export {

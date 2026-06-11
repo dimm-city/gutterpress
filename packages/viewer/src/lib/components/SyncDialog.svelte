@@ -91,10 +91,32 @@
     void check();
   });
 
+  /** True while the live (network) preview is still in flight; the dialog
+   * already shows the instant local preview meanwhile. */
+  let livePending = $state(false);
+
   async function check() {
     if (!projectDir) return;
     const gen = ++loadGen;
     phase = "checking";
+    preview = null;
+    livePending = true;
+    // Two-stage paint: the LOCAL preview (no network — outgoing commits +
+    // pending edits + last-fetched record of the online tip) lands first so
+    // the dialog shows useful content immediately, even on a slow network.
+    // The live fetch then fills/refreshes the incoming side.
+    void getPlatform()
+      .previewSyncLocal(projectDir)
+      .then((local) => {
+        if (gen !== loadGen) return;
+        if (preview === null) {
+          preview = local;
+          phase = "idle";
+        }
+      })
+      .catch(() => {
+        // Local preview is best-effort; the live preview below still paints.
+      });
     try {
       // Live, fetch-only preview: what's new online (commit details) and
       // what we would send. The host degrades to local information with a
@@ -102,12 +124,13 @@
       const result = await getPlatform().previewSync(projectDir);
       if (gen !== loadGen) return;
       preview = result;
+      livePending = false;
       phase = "idle";
     } catch (e) {
       if (gen !== loadGen) return;
       // A failed check never blocks syncing — sync itself reports
       // offline/auth in a friendly way.
-      preview = null;
+      livePending = false;
       phase = "idle";
     }
   }
@@ -137,12 +160,14 @@
         `${incomingCount}${inPlus} new change${incomingCount === 1 ? "" : "s"} in the online copy`,
       );
     }
-    if (pieces.length === 0) return "Everything is in sync.";
+    // Never declare "in sync" from local data while the live check is still
+    // running — the online copy may hold unfetched changes.
+    if (pieces.length === 0) return livePending ? null : "Everything is in sync.";
     return pieces.join(" · ");
   });
 
   let nothingToSync = $derived(
-    preview !== null && sendCount === 0 && incomingCount === 0,
+    preview !== null && sendCount === 0 && incomingCount === 0 && !livePending,
   );
 
   /** Behind-only: nothing of ours to send, but online changes to bring down. */
@@ -385,6 +410,14 @@
           <p class="lede" role="status">
             Sync sends your latest work to this project's online repository.
             A snapshot of your work is saved first, so nothing can be lost.
+          </p>
+        {/if}
+        {#if livePending}
+          <!-- The instant local preview painted; the live fetch is still in
+               flight. The incoming side fills in when it lands. -->
+          <p class="hint busy" role="status">
+            <span class="spinner" aria-hidden="true"></span>
+            Checking the online copy for new changes…
           </p>
         {/if}
         {#if preview?.fetchNotice}

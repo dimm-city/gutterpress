@@ -490,3 +490,122 @@ test("concurrent snapshot calls on the same repo serialize coherently", async ()
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ── History paging (bounded listHistory + load-more continuation) ────────────
+
+test("listHistoryPage pages newest-first with a before-cursor, no dups or gaps", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    for (let i = 1; i <= 7; i++) {
+      // Vary the SIZE per write: consecutive same-size writes within the same
+      // second are invisible to git's stat-based change detection (racy index).
+      await writeFile(
+        path.join(dir, "chapter-01.md"),
+        `# Hello\n\nDraft ${i}.\n${"x".repeat(i)}\n`,
+      );
+      await provider.snapshot({ projectDir: dir, message: `Draft ${i}` });
+    }
+    // 8 commits total (initial + 7). Page size 3 → pages of 3 / 3 / 2.
+    const p1 = await provider.listHistoryPage(dir, { limit: 3 });
+    expect(p1.entries.map((e) => e.message)).toEqual(["Draft 7", "Draft 6", "Draft 5"]);
+    expect(p1.hasMore).toBe(true);
+
+    const p2 = await provider.listHistoryPage(dir, {
+      limit: 3,
+      before: p1.entries.at(-1)!.id,
+    });
+    expect(p2.entries.map((e) => e.message)).toEqual(["Draft 4", "Draft 3", "Draft 2"]);
+    expect(p2.hasMore).toBe(true);
+
+    const p3 = await provider.listHistoryPage(dir, {
+      limit: 3,
+      before: p2.entries.at(-1)!.id,
+    });
+    expect(p3.entries.map((e) => e.message)).toEqual(["Draft 1", "Initial snapshot"]);
+    expect(p3.hasMore).toBe(false);
+
+    // No overlap between pages.
+    const all = [...p1.entries, ...p2.entries, ...p3.entries].map((e) => e.id);
+    expect(new Set(all).size).toBe(all.length);
+    expect(all.length).toBe(8);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("listHistoryPage hasMore is exact at a page boundary (limit == remaining)", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nDraft 1.\n");
+    await provider.snapshot({ projectDir: dir, message: "Draft 1" });
+    // Exactly 2 commits, limit 2 → one full page, hasMore false.
+    const page = await provider.listHistoryPage(dir, { limit: 2 });
+    expect(page.entries.length).toBe(2);
+    expect(page.hasMore).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("listHistoryPage tolerates a garbage/expired cursor", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    const page = await provider.listHistoryPage(dir, {
+      limit: 5,
+      before: "0123456789abcdef0123456789abcdef01234567",
+    });
+    expect(page.entries).toEqual([]);
+    expect(page.hasMore).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("subfolder listHistoryPage pages within the book's own commits", async () => {
+  const dir = await tempDir();
+  try {
+    const { bookA, bookB, dirA, dirB } = await initTwoBookRepo(dir);
+    for (let i = 1; i <= 3; i++) {
+      // Size-varying writes — see the racy-index note in the paging test above.
+      await writeFile(
+        path.join(dirA, "chapter-01.md"),
+        `# A1\n\nDraft ${i}.\n${"a".repeat(i)}\n`,
+      );
+      await bookA.snapshot({ projectDir: dirA, message: `A draft ${i}` });
+      await writeFile(
+        path.join(dirB, "chapter-01.md"),
+        `# B1\n\nDraft ${i}.\n${"b".repeat(i)}\n`,
+      );
+      await bookB.snapshot({ projectDir: dirB, message: `B draft ${i}` });
+    }
+    // Book A: 4 commits touch it (initial + 3). Page size 2 → 2 / 2.
+    const p1 = await bookA.listHistoryPage(dirA, { limit: 2 });
+    expect(p1.entries.map((e) => e.message)).toEqual(["A draft 3", "A draft 2"]);
+    expect(p1.hasMore).toBe(true);
+    const p2 = await bookA.listHistoryPage(dirA, {
+      limit: 2,
+      before: p1.entries.at(-1)!.id,
+    });
+    expect(p2.entries.map((e) => e.message)).toEqual(["A draft 1", "Initial snapshot"]);
+    expect(p2.hasMore).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("listHistory is a bounded page (delegates to listHistoryPage defaults)", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nDraft.\n");
+    await provider.snapshot({ projectDir: dir, message: "Draft" });
+    const viaList = await provider.listHistory(dir);
+    const viaPage = await provider.listHistoryPage(dir);
+    expect(viaList).toEqual(viaPage.entries);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

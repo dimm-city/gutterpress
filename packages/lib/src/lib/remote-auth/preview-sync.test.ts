@@ -272,4 +272,27 @@ describe("previewSync", () => {
       await h.cleanup();
     }
   });
+
+  test("fetch:false previews locally — no network, last-fetched tip, no notice", async () => {
+    const h = await setupClone();
+    try {
+      // New online commit the local repo has NOT fetched yet.
+      await serverCommit(h.serverDir, { "chapter-03.md": "# Three\n" }, "Online three");
+      await localCommit(h.projectDir, { "chapter-04.md": "# Four\n" }, "Local four");
+      // Kill the server: a local preview must not care.
+      await h.server.close();
+
+      const preview = await previewSync({ projectDir: h.projectDir, fetch: false });
+      expect(preview.live).toBe(false);
+      // No fetch attempt → no failure notice (this is the instant first paint).
+      expect(preview.fetchNotice).toBeUndefined();
+      // Outgoing is computed against the last-fetched record of the online
+      // tip; the unfetched online commit is invisible to a local preview.
+      expect(preview.outgoing.count).toBe(1);
+      expect(preview.outgoing.commits[0]!.message).toBe("Local four");
+      expect(preview.incoming.count).toBe(0);
+    } finally {
+      await h.cleanup();
+    }
+  });
 });

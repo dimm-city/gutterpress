@@ -43,6 +43,7 @@ import httpNode from "isomorphic-git/http/node";
 import diff3Merge from "diff3";
 
 import { detectProjectSource } from "../project-source.ts";
+import { getRepoCache } from "../git-cache.ts";
 import {
   gitAuthor,
   gitScopeFor,
@@ -197,6 +198,13 @@ export interface PreviewSyncOptions {
   tokenStore?: TokenStore;
   /** Injectable git HTTP transport for tests. */
   httpClient?: typeof httpNode;
+  /**
+   * `false` skips the live network fetch entirely and previews against the
+   * last-fetched record of the online tip (`live: false`, no `fetchNotice`).
+   * Backs the Sync dialog's instant first paint; the live preview follows.
+   * Default `true`.
+   */
+  fetch?: boolean;
 }
 
 /** One commit in a sync-preview direction list ("ER Update — 9 hours ago"). */
@@ -430,6 +438,7 @@ async function fetchRemoteTip(
       fs,
       http,
       dir,
+      cache: getRepoCache(dir),
       remote: transport.remote,
       ref: branch,
       singleBranch: true,
@@ -508,6 +517,7 @@ export async function syncProject(
           const remoteIsBehind = await git.isDescendent({
             fs,
             dir,
+            cache: getRepoCache(dir),
             oid: localTip,
             ancestor: remoteTip,
             depth: -1,
@@ -520,6 +530,7 @@ export async function syncProject(
               await git.merge({
                 fs,
                 dir,
+                cache: getRepoCache(dir),
                 ours: branch,
                 theirs: remoteTip,
                 author: gitAuthor(options.authorName),
@@ -541,7 +552,7 @@ export async function syncProject(
             // merge() moves the branch ref but does not update the working
             // tree — sync it. The tree is clean (snapshotted above), so the
             // forced checkout can't discard anything.
-            await git.checkout({ fs, dir, ref: branch, force: true });
+            await git.checkout({ fs, dir, cache: getRepoCache(dir), ref: branch, force: true });
             merged = true;
           }
         }
@@ -562,6 +573,7 @@ export async function syncProject(
             fs,
             http,
             dir,
+            cache: getRepoCache(dir),
             remote: transport.remote,
             ref: branch,
             ...onAuthFor(transport.credential),
@@ -650,7 +662,7 @@ async function tryReadBlob(
   filepath: string,
 ): Promise<Uint8Array | null> {
   try {
-    const { blob } = await git.readBlob({ fs, dir, oid, filepath });
+    const { blob } = await git.readBlob({ fs, dir, cache: getRepoCache(dir), oid, filepath });
     return blob;
   } catch {
     return null;
@@ -845,6 +857,7 @@ export async function resolveConflicts(
         await git.merge({
           fs,
           dir,
+          cache: getRepoCache(dir),
           ours: branch,
           theirs: remoteId,
           author,
@@ -873,7 +886,7 @@ export async function resolveConflicts(
         throw e;
       }
       // merge() moves the ref only — sync the working tree to the result.
-      await git.checkout({ fs, dir, ref: branch, force: true });
+      await git.checkout({ fs, dir, cache: getRepoCache(dir), ref: branch, force: true });
 
       // Post-merge step: restore the author's chosen side for delete-involved
       // files that had to be equalized the other way for the merge.
@@ -890,6 +903,7 @@ export async function resolveConflicts(
           fs,
           http,
           dir,
+          cache: getRepoCache(dir),
           remote: transport.remote,
           ref: branch,
           ...onAuthFor(transport.credential),
@@ -910,6 +924,7 @@ export async function resolveConflicts(
           await git.merge({
             fs,
             dir,
+            cache: getRepoCache(dir),
             ours: branch,
             theirs: newRemoteTip,
             author,
@@ -930,7 +945,7 @@ export async function resolveConflicts(
           }
           throw mergeErr;
         }
-        await git.checkout({ fs, dir, ref: branch, force: true });
+        await git.checkout({ fs, dir, cache: getRepoCache(dir), ref: branch, force: true });
         try {
           await doPush();
         } catch (retryErr) {
@@ -998,7 +1013,7 @@ async function commitsSince(
   tip: string,
   stopAt: string | undefined,
 ): Promise<{ commits: SyncCommitInfo[]; capped: boolean }> {
-  const log = await git.log({ fs, dir, ref: tip, depth: AHEAD_BEHIND_CAP + 1 });
+  const log = await git.log({ fs, dir, cache: getRepoCache(dir), ref: tip, depth: AHEAD_BEHIND_CAP + 1 });
   const commits: SyncCommitInfo[] = [];
   for (const c of log) {
     if (stopAt && c.oid === stopAt) return { commits, capped: false };
@@ -1104,6 +1119,7 @@ export async function getSyncStatus(
       const bases = (await git.findMergeBase({
         fs,
         dir,
+        cache: getRepoCache(dir),
         oids: [localTip, remoteTip],
       })) as string[];
       mergeBase = bases[0];
@@ -1174,17 +1190,25 @@ export async function previewSync(options: PreviewSyncOptions): Promise<SyncPrev
     const branch = (await git.currentBranch({ fs, dir })) ?? undefined;
 
     // Working-tree edits Sync's snapshot step would commit (book-scoped).
-    const matrix = await git.statusMatrix({
+    // Started FIRST and awaited LATER so the (disk-bound) status walk runs
+    // CONCURRENTLY with the network fetch below — on a big repo + slow
+    // network these were the two serial multi-second steps of a dialog open.
+    const matrixPromise = git.statusMatrix({
       fs,
       dir,
+      cache: getRepoCache(dir),
       ...(subPath ? { filepaths: [subPath] } : {}),
     });
-    const changed = matrix
-      .filter(([, head, worktree, stage]) => !(head === 1 && worktree === 1 && stage === 1))
-      .map(([filepath]) => filepath);
-    const changedFiles = {
-      count: changed.length,
-      sample: changed.slice(0, PREVIEW_FILE_LIMIT),
+    // Park a no-op handler so a status-walk failure during the fetch can't
+    // surface as an unhandled rejection; the real handling happens where
+    // `changedFilesFrom()` is awaited.
+    matrixPromise.catch(() => {});
+    const changedFilesFrom = async () => {
+      const matrix = await matrixPromise;
+      const changed = matrix
+        .filter(([, head, worktree, stage]) => !(head === 1 && worktree === 1 && stage === 1))
+        .map(([filepath]) => filepath);
+      return { count: changed.length, sample: changed.slice(0, PREVIEW_FILE_LIMIT) };
     };
 
     let transport: RemoteTransport;
@@ -1197,7 +1221,7 @@ export async function previewSync(options: PreviewSyncOptions): Promise<SyncPrev
         live: false,
         incoming: NO_COMMITS,
         outgoing: NO_COMMITS,
-        changedFiles,
+        changedFiles: await changedFilesFrom(),
       };
     }
     if (!branch) {
@@ -1206,20 +1230,24 @@ export async function previewSync(options: PreviewSyncOptions): Promise<SyncPrev
         live: false,
         incoming: NO_COMMITS,
         outgoing: NO_COMMITS,
-        changedFiles,
+        changedFiles: await changedFilesFrom(),
       };
     }
 
     let live = false;
     let fetchNotice: string | undefined;
     let remoteTip: string | null = null;
-    try {
-      remoteTip = await fetchRemoteTip(dir, branch, transport, http);
-      live = true;
-    } catch (e) {
-      fetchNotice =
-        classifyFailure(e) === "auth" ? MSG_PREVIEW_AUTH : MSG_PREVIEW_OFFLINE;
+    if (options.fetch !== false) {
+      // The status walk (matrixPromise) is in flight while this fetch runs.
+      try {
+        remoteTip = await fetchRemoteTip(dir, branch, transport, http);
+        live = true;
+      } catch (e) {
+        fetchNotice =
+          classifyFailure(e) === "auth" ? MSG_PREVIEW_AUTH : MSG_PREVIEW_OFFLINE;
+      }
     }
+    const changedFiles = await changedFilesFrom();
     if (!live) {
       // Degrade to the last-fetched record of the online tip, if any.
       try {
@@ -1274,6 +1302,7 @@ export async function previewSync(options: PreviewSyncOptions): Promise<SyncPrev
       const bases = (await git.findMergeBase({
         fs,
         dir,
+        cache: getRepoCache(dir),
         oids: [localTip, remoteTip],
       })) as string[];
       mergeBase = bases[0];

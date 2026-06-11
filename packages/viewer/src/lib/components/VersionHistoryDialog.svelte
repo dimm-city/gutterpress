@@ -72,6 +72,10 @@
   let notice = $state<string | null>(null);
   let entries = $state<SnapshotEntry[]>([]);
   let loadingList = $state(false);
+  /** Older snapshots exist past the loaded pages ("Show older versions"). */
+  let hasMore = $state(false);
+  /** An older page is being appended (keeps the list visible meanwhile). */
+  let loadingMore = $state(false);
   let snapshotMessage = $state("");
   /** Snapshot id awaiting the plain-language restore confirmation. */
   let confirmRestoreId = $state<string | null>(null);
@@ -163,12 +167,35 @@
     if (!projectDir) return;
     loadingList = true;
     try {
-      entries = await getPlatform().listSnapshots(projectDir);
+      // Bounded first page — a long history must never freeze the dialog.
+      // "Show older versions" appends further pages via the cursor.
+      const page = await getPlatform().listSnapshotsPage(projectDir);
+      entries = page.entries;
+      hasMore = page.hasMore;
     } catch (e) {
       error = friendly(e);
       entries = [];
+      hasMore = false;
     } finally {
       loadingList = false;
+    }
+  }
+
+  async function loadOlder() {
+    if (!projectDir || loadingMore) return;
+    const last = entries[entries.length - 1];
+    if (!last) return;
+    loadingMore = true;
+    try {
+      const page = await getPlatform().listSnapshotsPage(projectDir, {
+        before: last.id,
+      });
+      entries = [...entries, ...page.entries];
+      hasMore = page.hasMore;
+    } catch (e) {
+      error = friendly(e);
+    } finally {
+      loadingMore = false;
     }
   }
 
@@ -420,6 +447,13 @@
               {/if}
             {/each}
           </ul>
+          {#if hasMore}
+            <div class="load-more">
+              <button class="ghost" onclick={loadOlder} disabled={loadingMore || busy}>
+                {loadingMore ? "Loading…" : "Show older versions"}
+              </button>
+            </div>
+          {/if}
         {/if}
       {:else}
         <p class="hint">Version history isn't available for this project.</p>
@@ -644,6 +678,11 @@
     display: flex;
     gap: 8px;
     justify-content: flex-end;
+  }
+  .load-more {
+    display: flex;
+    justify-content: center;
+    margin-top: 10px;
   }
   .actions {
     padding-top: 16px;

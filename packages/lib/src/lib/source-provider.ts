@@ -23,6 +23,7 @@ import {
   detectProjectSource,
   findEnclosingRepoDir,
 } from "./project-source.ts";
+import { getRepoCache } from "./git-cache.ts";
 
 /** One entry in a project's version history (a Git commit, abstracted). */
 export interface SnapshotEntry {
@@ -78,6 +79,27 @@ export interface RestoreSnapshotOptions {
   id: string;
 }
 
+/** Paging inputs for {@link SourceProvider.listHistoryPage}. */
+export interface ListHistoryOptions {
+  /** Max entries per page (clamped to [1, 500]; default {@link HISTORY_PAGE_LIMIT}). */
+  limit?: number;
+  /**
+   * Continuation cursor: the `id` of the LAST entry of the previous page.
+   * The returned page starts strictly after it (newest-first order).
+   */
+  before?: string;
+}
+
+/** One page of version history (see {@link SourceProvider.listHistoryPage}). */
+export interface HistoryPage {
+  entries: SnapshotEntry[];
+  /** True when older entries exist past this page (pass the last id as `before`). */
+  hasMore: boolean;
+}
+
+/** Default history page size. Bounds the commit walk on huge repositories. */
+export const HISTORY_PAGE_LIMIT = 100;
+
 /**
  * The version-control operations a project source can perform. Implementations
  * are selected by `ProjectSource.type` (see {@link providerFor}).
@@ -87,7 +109,13 @@ export interface SourceProvider {
   readonly capabilities: ProjectCapabilities;
   initVersionHistory(options: InitVersionHistoryOptions): Promise<ProjectSource>;
   snapshot(options: SnapshotOptions): Promise<SnapshotEntry>;
+  /**
+   * Newest-first history, BOUNDED to the default page size. A convenience
+   * wrapper over {@link listHistoryPage} — use that for "load more" paging.
+   */
   listHistory(projectDir: string): Promise<SnapshotEntry[]>;
+  /** One page of newest-first history with a `before`-cursor continuation. */
+  listHistoryPage(projectDir: string, options?: ListHistoryOptions): Promise<HistoryPage>;
   restore(options: RestoreSnapshotOptions): Promise<void>;
 }
 
@@ -139,16 +167,18 @@ export function gitAuthor(name?: string): { name: string; email: string } {
  * that repo-relative folder (book-subfolder scoping). Honours `.gitignore`.
  */
 async function stageAll(dir: string, subPath?: string): Promise<void> {
+  const cache = getRepoCache(dir);
   const status = await git.statusMatrix({
     fs,
     dir,
+    cache,
     ...(subPath ? { filepaths: [subPath] } : {}),
   });
   await Promise.all(
     status.map(([filepath, , worktreeStatus]) =>
       worktreeStatus === 0
-        ? git.remove({ fs, dir, filepath })
-        : git.add({ fs, dir, filepath }),
+        ? git.remove({ fs, dir, filepath, cache })
+        : git.add({ fs, dir, filepath, cache }),
     ),
   );
 }
@@ -174,6 +204,7 @@ export async function hasPendingChanges(
   const status = await git.statusMatrix({
     fs,
     dir,
+    cache: getRepoCache(dir),
     ...(subPath ? { filepaths: [subPath] } : {}),
   });
   // Row shape: [filepath, headStatus, worktreeStatus, stageStatus].
@@ -219,6 +250,7 @@ class LocalFolderSourceProvider implements SourceProvider {
       await git.commit({
         fs,
         dir,
+        cache: getRepoCache(dir),
         message: options.initialMessage?.trim() || "Created project",
         author: gitAuthor(options.authorName),
       });
@@ -243,6 +275,10 @@ class LocalFolderSourceProvider implements SourceProvider {
 
   listHistory(): Promise<SnapshotEntry[]> {
     return Promise.resolve([]);
+  }
+
+  listHistoryPage(): Promise<HistoryPage> {
+    return Promise.resolve({ entries: [], hasMore: false });
   }
 
   restore(): Promise<void> {
@@ -302,27 +338,67 @@ class LocalGitSourceProvider implements SourceProvider {
     });
   }
 
-  listHistory(_projectDir: string): Promise<SnapshotEntry[]> {
+  async listHistory(projectDir: string): Promise<SnapshotEntry[]> {
+    return (await this.listHistoryPage(projectDir)).entries;
+  }
+
+  /**
+   * LOCK-FREE by design: `git.log` is a pure read (refs resolved once, then
+   * an object walk over immutable commits/trees), so it can never corrupt
+   * the repo and doesn't need the per-repo write queue. Taking the lock here
+   * used to queue the History dialog behind a running auto-snapshot of a
+   * large working tree — a multi-second stall for a read-only view.
+   */
+  async listHistoryPage(
+    _projectDir: string,
+    options: ListHistoryOptions = {},
+  ): Promise<HistoryPage> {
     const { dir, subPath } = this.scope;
-    return withRepoLock(dir, async () => {
-      // Subfolder projects list only commits that TOUCHED their folder.
-      // isomorphic-git's `log({ filepath })` resolves the tree oid at the
-      // path per commit and emits a commit whenever that oid changes — this
-      // works for directories, walking each commit once. `force: true` keeps
-      // the walk alive past commits where the folder doesn't exist yet
-      // (instead of throwing NotFoundError).
-      const commits = await git.log({
+    const limit = Math.min(500, Math.max(1, options.limit ?? HISTORY_PAGE_LIMIT));
+    const before = options.before;
+    // Subfolder projects list only commits that TOUCHED their folder.
+    // isomorphic-git's `log({ filepath })` resolves the tree oid at the
+    // path per commit and emits a commit whenever that oid changes — this
+    // works for directories, walking each commit once. `force: true` keeps
+    // the walk alive past commits where the folder doesn't exist yet
+    // (instead of throwing NotFoundError).
+    //
+    // `depth` bounds the walk (with `filepath` it counts FILTERED commits,
+    // and may emit one extra trailing entry — sliced below). Continuation
+    // starts the walk AT the cursor commit; the cursor itself can re-appear
+    // in the filtered output and is dropped below. `limit + 2` guarantees
+    // that after dropping the cursor at least `limit + 1` entries remain
+    // whenever older history exists, so `hasMore` can never read false at a
+    // page boundary that still has older entries.
+    let commits;
+    try {
+      commits = await git.log({
         fs,
         dir,
+        cache: getRepoCache(dir),
+        depth: limit + 2,
+        ...(before ? { ref: before } : {}),
         ...(subPath ? { filepath: subPath, force: true } : {}),
       });
-      return commits.map((c) => ({
+    } catch (e) {
+      // A garbage/expired cursor must not crash the history view.
+      if (before && (e as { code?: string })?.code === "NotFoundError") {
+        return { entries: [], hasMore: false };
+      }
+      throw e;
+    }
+    let filtered = before ? commits.filter((c) => c.oid !== before) : commits;
+    const hasMore = filtered.length > limit;
+    if (hasMore) filtered = filtered.slice(0, limit);
+    return {
+      entries: filtered.map((c) => ({
         id: c.oid,
         message: c.commit.message.trim(),
         timestamp: c.commit.author.timestamp * 1000,
         author: c.commit.author.name,
-      }));
-    });
+      })),
+      hasMore,
+    };
   }
 
   restore(options: RestoreSnapshotOptions): Promise<void> {
@@ -340,6 +416,7 @@ class LocalGitSourceProvider implements SourceProvider {
     await git.checkout({
       fs,
       dir,
+      cache: getRepoCache(dir),
       ref: options.id,
       force: true,
       noUpdateHead: true,
@@ -371,15 +448,17 @@ export async function snapshotWorkingTreeUnlocked(
   }
   await stageAll(dir, subPath);
   const author = gitAuthor(options.authorName);
+  const cache = getRepoCache(dir);
   const id = await git.commit({
     fs,
     dir,
+    cache,
     message: options.message,
     author,
   });
   // Canonical timestamp comes from the committed object itself (matching
   // what listHistory reads back), not the wall clock at return time.
-  const [head] = await git.log({ fs, dir, depth: 1 });
+  const [head] = await git.log({ fs, dir, cache, depth: 1 });
   return {
     id,
     message: options.message,
