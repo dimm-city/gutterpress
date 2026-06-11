@@ -635,6 +635,11 @@ async function fetchRemoteTip(
   }
 }
 
+/** First 8 chars of an oid for diagnostic log lines (null-safe). */
+function short(oid: string | null | undefined): string {
+  return oid ? oid.slice(0, 8) : "none";
+}
+
 // ── Tip comparison ───────────────────────────────────────────────────────────
 
 /**
@@ -784,10 +789,21 @@ export async function pullChanges(
       const localTip = await git.resolveRef({ fs, dir, ref: branch });
       const base = snapshotId ? { snapshotId } : {};
 
+      // Field-diagnostic line (stderr → terminal + any log capture). One line
+      // per pull with every input the decision uses — a user's pasted output
+      // identifies the exact branch taken. No secrets: oids + remote name.
+      const relation =
+        !remoteTip || remoteTip === localTip
+          ? null
+          : await relateTips(dir, localTip, remoteTip, cache);
+      console.error(
+        `[sync] pull branch=${branch} remote=${transport.remote} local=${short(localTip)} fetched=${short(remoteTip)} relation=${relation ?? "n/a"}`,
+      );
+
       if (!remoteTip || remoteTip === localTip) {
         return { status: "up-to-date", message: MSG_PULL_UP_TO_DATE, ...base };
       }
-      if ((await relateTips(dir, localTip, remoteTip, cache)) === "local-ahead") {
+      if (relation === "local-ahead") {
         // Everything online is already here (we're strictly ahead).
         return { status: "up-to-date", message: MSG_PULL_UP_TO_DATE, ...base };
       }
@@ -1557,7 +1573,15 @@ async function previewFromRefs(
     return { ...base, incoming: HAS_CHANGES, outgoing: NO_COMMITS };
   }
 
-  switch (await relateTips(dir, localTip, remoteTip, cache)) {
+  const relation = await relateTips(dir, localTip, remoteTip, cache);
+  // Field-diagnostic line (stderr): one line per check with every input the
+  // decision uses, so a user's pasted terminal output identifies the exact
+  // branch taken. Oids + remote name only — no secrets.
+  console.error(
+    `[sync] check branch=${branch} remote=${transport.remote} live=${fetched.live} local=${short(localTip)} tracking=${short(remoteTip)} relation=${relation}${fetched.fetchNotice ? " notice=" + JSON.stringify(fetched.fetchNotice) : ""}`,
+  );
+
+  switch (relation) {
     case "equal":
       return { ...base, incoming: NO_COMMITS, outgoing: NO_COMMITS };
     case "remote-ahead":
