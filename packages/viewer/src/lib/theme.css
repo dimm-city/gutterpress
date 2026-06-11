@@ -57,6 +57,7 @@
   --app-accent-bright: #0088ee;
   --app-accent-border: #0055aa;
   --app-accent-text: #ffffff;
+  /* For outline rings ONLY (focus-visible outlines). Do not use as text/link color — use --app-link for that. */
   --app-focus-ring: #3a6fb5;
 
   /* Page pill (toolbar page indicator) */
@@ -97,7 +98,9 @@
   --app-star: #d4a017;
   --app-code-bg: #e8edf5;
   --app-code-text: #2b4a6f;
-  --app-link: #1f5fa8;
+  /* WCAG AA (≥4.5:1) verified on ALL light surfaces:
+     #1a5fb4 → 6.29:1 #ffffff, 5.72:1 #f4f4f5, 5.33:1 #ececef (sunken) */
+  --app-link: #1a5fb4;
   --app-link-hover: #0066cc;
   --app-scrim: rgba(0, 0, 0, 0.06);
   --app-scrim-strong: rgba(0, 0, 0, 0.1);
@@ -144,6 +147,7 @@
   --app-accent-bright: #0088ee;
   --app-accent-border: #0055aa;
   --app-accent-text: #ffffff;
+  /* For outline rings ONLY (focus-visible outlines). Do not use as text/link color — use --app-link for that. */
   --app-focus-ring: #3a6fb5;
 
   /* Page pill */
@@ -184,6 +188,8 @@
   --app-star: #f5c518;
   --app-code-bg: #2a3040;
   --app-code-text: #99aabb;
+  /* WCAG AA (≥4.5:1) verified on ALL dark surfaces:
+     #6a9fd8 → 6.00:1 #1e1e1e, 5.45:1 #262626 (raised), 5.17:1 #2a2a2a (sunken) */
   --app-link: #6a9fd8;
   --app-link-hover: #88c0f8;
   --app-scrim: rgba(255, 255, 255, 0.06);

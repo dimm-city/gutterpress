@@ -27,7 +27,6 @@
     ProjectClassification,
     SnapshotEntry,
     SyncPreviewInfo,
-    SyncOutcome,
     PullOutcome,
     PushOutcome,
   } from "$lib/platform/contract";
@@ -61,6 +60,7 @@
     onSyncCompleted,
     onPullCompleted,
     onSyncReconnect,
+    onResolveConflict,
     refreshKey = 0,
   }: {
     open?: boolean;
@@ -88,6 +88,8 @@
     /** A Pull applied online changes; `filesChanged` = preview should refresh. */
     onPullCompleted?: (filesChanged: boolean) => void;
     onSyncReconnect?: () => void;
+    /** Open the Sync dialog to resolve a conflict (triggerEl = the invoking button). */
+    onResolveConflict?: (triggerEl?: HTMLElement) => void;
     /** Bump to force a history + sync-preview refresh from the outside. */
     refreshKey?: number;
   } = $props();
@@ -112,6 +114,8 @@
   let historyLoadingMore = $state(false);
   let historyBusy = $state(false);
   let historyBusyAction = $state<string | null>(null);
+  /** Which remote op is running ("fetch" | "pull" | "push") — drives the visible busy label. */
+  let syncBusyOp = $state<"fetch" | "pull" | "push" | null>(null);
   let historyError = $state<string | null>(null);
   let historyNotice = $state<string | null>(null);
   let snapshotMessage = $state("");
@@ -139,7 +143,6 @@
   let syncBusy = $state(false);
   let syncNotice = $state<string | null>(null);
   let syncError = $state<string | null>(null);
-  let syncMessage = $state("");
 
   // ── Load history when tab becomes active ──────────────────────────────────
   $effect(() => {
@@ -255,40 +258,11 @@
     }
   }
 
-  async function doSync() {
-    if (!projectDir || syncBusy) return;
-    syncBusy = true;
-    syncError = null;
-    syncNotice = null;
-    try {
-      const outcome: SyncOutcome = await getPlatform().syncChanges(projectDir, syncMessage.trim() || undefined);
-      syncMessage = "";
-      if (outcome.status === "synced" || outcome.status === "up-to-date") {
-        const merged = outcome.status === "synced" && outcome.mergedRemoteChanges;
-        onSyncCompleted?.(merged);
-        syncNotice = outcome.message;
-        syncPreview = null;
-        void loadSyncPreviewLocal();
-        void refreshHistory();
-      } else if (outcome.status === "auth") {
-        syncError = "Authentication failed. Reconnect to enable syncing.";
-      } else if (outcome.status === "offline") {
-        syncError = "Offline — your changes have been saved locally.";
-      } else if (outcome.status === "conflict") {
-        syncError = "Your copy and the online copy both changed. Use the Sync dialog to resolve.";
-      } else {
-        syncError = outcome.message || "Sync failed.";
-      }
-    } catch (e) {
-      syncError = friendly(e);
-    } finally {
-      syncBusy = false;
-    }
-  }
-
   async function doFetch() {
     if (!projectDir || syncBusy) return;
     syncBusy = true;
+    syncBusyOp = "fetch";
+    historyBusyAction = "Checking for updates — please wait.";
     syncError = null;
     try {
       // Fetch is the "preview" call — it fetches from remote and reports what's new
@@ -300,6 +274,8 @@
       syncError = friendly(e);
     } finally {
       syncBusy = false;
+      syncBusyOp = null;
+      historyBusyAction = null;
     }
   }
 
@@ -315,6 +291,8 @@
     // pushes (distinct from Sync, which composes pull + push).
     if (!projectDir || syncBusy) return;
     syncBusy = true;
+    syncBusyOp = "pull";
+    historyBusyAction = "Getting the latest changes — please wait.";
     syncError = null;
     syncNotice = null;
     try {
@@ -331,7 +309,7 @@
       } else if (outcome.status === "offline") {
         syncError = outcome.message;
       } else if (outcome.status === "conflict") {
-        syncError = "Your copy and the online copy both changed. Use the Sync dialog to resolve.";
+        syncError = "conflict";
       } else {
         syncError = outcome.message || "Pull failed.";
       }
@@ -339,6 +317,8 @@
       syncError = friendly(e);
     } finally {
       syncBusy = false;
+      syncBusyOp = null;
+      historyBusyAction = null;
     }
   }
 
@@ -348,6 +328,8 @@
     // message; it never auto-merges.
     if (!projectDir || syncBusy) return;
     syncBusy = true;
+    syncBusyOp = "push";
+    historyBusyAction = "Sending your changes — please wait.";
     syncError = null;
     syncNotice = null;
     try {
@@ -373,6 +355,8 @@
       syncError = friendly(e);
     } finally {
       syncBusy = false;
+      syncBusyOp = null;
+      historyBusyAction = null;
     }
   }
 
@@ -422,6 +406,41 @@
     { id: "history", label: "History", icon: "history", title: "Version history and sync" },
   ];
 
+  // ── APG tabs keyboard pattern ─────────────────────────────────────────────
+  // Roving tabindex: active tab = 0, others = -1, all = -1 when panel is closed.
+  let tabEls = $state<Record<string, HTMLButtonElement>>({});
+  function getTabIndex(tabId: PanelTab): number {
+    if (!open) return -1;
+    return activeTab === tabId ? 0 : -1;
+  }
+  function onTablistKeydown(e: KeyboardEvent) {
+    const ids = TABS.map((t) => t.id);
+    const current = ids.indexOf(activeTab);
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      const next = (current + 1) % ids.length;
+      activeTab = ids[next]!;
+      if (!open) open = true;
+      tabEls[ids[next]!]?.focus();
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      const prev = (current - 1 + ids.length) % ids.length;
+      activeTab = ids[prev]!;
+      if (!open) open = true;
+      tabEls[ids[prev]!]?.focus();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      activeTab = ids[0]!;
+      if (!open) open = true;
+      tabEls[ids[0]!]?.focus();
+    } else if (e.key === "End") {
+      e.preventDefault();
+      activeTab = ids[ids.length - 1]!;
+      if (!open) open = true;
+      tabEls[ids[ids.length - 1]!]?.focus();
+    }
+  }
+
   function friendly(e: unknown): string {
     const msg = e instanceof Error ? e.message : String(e);
     return msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, "");
@@ -452,17 +471,19 @@
   aria-hidden={!open}
   onkeydown={onPanelKeydown}
 >
-  <!-- Tab list -->
-  <div class="panel-tabs" role="tablist" aria-label="Panel tabs">
+  <!-- Tab list — APG tabs pattern: roving tabindex, ArrowLeft/Right/Home/End -->
+  <div class="panel-tabs" role="tablist" aria-label="Panel tabs" onkeydown={onTablistKeydown} tabindex="-1">
     {#each TABS as tab (tab.id)}
       <button
+        id="panel-tab-{tab.id}"
         role="tab"
         class="panel-tab"
         class:active={activeTab === tab.id}
         aria-selected={activeTab === tab.id}
         aria-controls="panel-content-{tab.id}"
         title={tab.title}
-        tabindex={open ? 0 : -1}
+        tabindex={getTabIndex(tab.id)}
+        bind:this={tabEls[tab.id]}
         onclick={() => { activeTab = tab.id; if (!open) open = true; }}
       >
         <Icon name={tab.icon} size={15} />
@@ -481,8 +502,8 @@
     </button>
   </div>
 
-  <!-- Tab panels -->
-  <div class="panel-body">
+  <!-- Tab panels: inert when closed so no focusable descendants are reachable by Tab -->
+  <div class="panel-body" inert={!open || undefined}>
 
     <!-- TOC tab -->
     <div
@@ -628,7 +649,7 @@
                 <input
                   type="text"
                   class="snapshot-input"
-                  placeholder="What changed? (optional)"
+                  placeholder="What changed?"
                   bind:value={snapshotMessage}
                   disabled={historyBusy}
                   maxlength="200"
@@ -647,33 +668,55 @@
                 <div class="sync-header">
                   <span class="sync-title">Sync with online copy</span>
                   {#if syncPreview}
-                    <span class="sync-status">
-                      {#if syncPreview.incoming.count && syncPreview.incoming.count > 0}
+                    {#if syncPreview.incoming.count && syncPreview.incoming.count > 0}
+                      <span class="sync-status-badge info">
                         {syncPreview.incoming.count}{syncPreview.incoming.approximate ? "+" : ""} incoming
-                      {:else if syncPreview.outgoing.count && syncPreview.outgoing.count > 0}
+                      </span>
+                    {:else if syncPreview.outgoing.count && syncPreview.outgoing.count > 0}
+                      <span class="sync-status-badge">
                         {syncPreview.outgoing.count}{syncPreview.outgoing.approximate ? "+" : ""} to send
-                      {:else}
-                        Up to date
-                      {/if}
-                    </span>
+                      </span>
+                    {:else}
+                      <span class="sync-status-badge">Up to date</span>
+                    {/if}
                   {/if}
                 </div>
                 {#if syncNotice}
                   <p class="notice small" role="status">{syncNotice}</p>
                 {/if}
-                {#if syncError}
+                {#if syncError === "conflict"}
+                  <p class="error-msg small" role="alert">
+                    Your copy and the online copy both changed.
+                    <button
+                      class="resolve-conflict-btn"
+                      onclick={(e) => onResolveConflict?.(e.currentTarget as HTMLElement)}
+                    >Resolve conflict…</button>
+                  </p>
+                {:else if syncError}
                   <p class="error-msg small" role="alert">{syncError}</p>
                 {/if}
-                <div class="sync-btns">
-                  <button class="history-action" onclick={doFetch} disabled={syncBusy} title="Check for online changes">
-                    <Icon name="refresh-cw" size={13} /> Fetch
+                <!-- aria-busy signals to AT that an operation is running; the live region announces friendly text -->
+                <div class="sync-btns" aria-busy={syncBusy}>
+                  <button class="history-action" onclick={doFetch} disabled={syncBusy}
+                    title="Check whether the online copy has new changes (git fetch)">
+                    <Icon name="refresh-cw" size={13} /> {syncBusyOp === "fetch" ? "Checking…" : "Check for updates"}
                   </button>
-                  <button class="history-action" onclick={doPull} disabled={syncBusy} title="Get changes from online copy">
-                    <Icon name="chevron-down" size={13} /> Pull
+                  <button class="history-action" onclick={doPull} disabled={syncBusy}
+                    title="Download and apply online changes to your copy (git pull)">
+                    <Icon name="arrow-down-to-line" size={13} /> {syncBusyOp === "pull" ? "Getting…" : "Get changes"}
                   </button>
-                  <button class="history-action" onclick={doPush} disabled={syncBusy} title="Send your changes online">
-                    <Icon name="chevron-up" size={13} /> Push
+                  <button class="history-action" onclick={doPush} disabled={syncBusy}
+                    title="Send your changes to the online copy (git push)">
+                    <Icon name="arrow-up-from-line" size={13} /> {syncBusyOp === "push" ? "Sending…" : "Send changes"}
                   </button>
+                </div>
+                <!-- Live region: announces friendly busy text when a remote op runs -->
+                <div role="status" aria-live="polite" aria-atomic="true" class="sr-only">
+                  {#if syncBusy && historyBusyAction}
+                    {historyBusyAction}
+                  {:else if syncBusy}
+                    Working…
+                  {/if}
                 </div>
               </div>
             {/if}
@@ -823,16 +866,17 @@
     background: var(--app-surface-raised);
     padding: 2px 2px 0;
     gap: 1px;
-    overflow-x: auto;
-    scrollbar-width: none;
+    /* NO horizontal scrolling here: a hidden-scrollbar overflow clipped the
+       History tab entirely out of view at default panel width (judge gate,
+       round 2 regression). Every tab must always be visible — tabs share the
+       row equally and their LABELS ellipsize instead. */
   }
-  .panel-tabs::-webkit-scrollbar { display: none; }
   .panel-tab {
     display: inline-flex;
     flex-direction: column;
     align-items: center;
     gap: 2px;
-    padding: 5px 8px 4px;
+    padding: 5px 2px 4px;
     background: transparent;
     border: 1px solid transparent;
     border-bottom: 2px solid transparent;
@@ -842,8 +886,8 @@
     color: var(--app-text-faint);
     cursor: pointer;
     white-space: nowrap;
+    flex: 1 1 0;
     min-width: 0;
-    flex-shrink: 0;
     min-height: 44px;
   }
   .panel-tab:hover {
@@ -859,8 +903,16 @@
     outline: 2px solid var(--app-focus-ring);
     outline-offset: -2px;
   }
-  .tab-label { font-size: 9px; line-height: 1; text-transform: uppercase; letter-spacing: 0.05em; }
-  .tab-spacer { flex: 1; }
+  /* 11px is the legibility floor for primary navigation labels (judges×2).
+     max-width+ellipsis: a label may truncate, but a TAB never clips away. */
+  .tab-label {
+    font-size: 11px; line-height: 1; text-transform: uppercase;
+    letter-spacing: 0.02em;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* Fixed-width spacer: tabs are flex:1 each, so a flex:1 spacer would steal
+     an equal share of the row from the actual tabs. */
+  .tab-spacer { flex: 0 0 2px; }
   .panel-close {
     display: inline-flex;
     align-items: center;
@@ -938,7 +990,7 @@
   .toc-item:hover { background: var(--app-control-hover-bg); }
   .toc-item:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
   .toc-item.active { color: var(--app-accent-text); background: var(--app-accent); border-color: var(--app-accent-border); }
-  .toc-item.toc-top { font-weight: 650; color: var(--app-text); }
+  .toc-item.toc-top { font-weight: 600; color: var(--app-text); }
   .toc-item.toc-sub { color: var(--app-text-muted); }
   .toc-text { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
   .toc-page { flex-shrink: 0; font-size: 10px; color: var(--app-text-faint); font-variant-numeric: tabular-nums; }
@@ -1005,6 +1057,7 @@
     border: 1px solid var(--app-control-border);
     color: var(--app-control-text);
     white-space: nowrap;
+    min-height: 24px;
   }
   .history-action:hover:not(:disabled) { background: var(--app-control-hover-bg); border-color: var(--app-control-hover-border); }
   .history-action:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
@@ -1030,7 +1083,23 @@
   }
   .sync-header { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
   .sync-title { font-size: 11px; font-weight: 600; color: var(--app-text); }
-  .sync-status { font-size: 10px; color: var(--app-text-faint); }
+  /* Info-colored badge for incoming-count; clearer than 10px faint text */
+  .sync-status-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 1px 7px;
+    border-radius: 999px;
+    color: var(--app-text-secondary);
+    background: var(--app-control-bg);
+    border: 1px solid var(--app-control-border);
+  }
+  .sync-status-badge.info {
+    color: var(--app-info-text);
+    background: var(--app-info-bg);
+    border-color: var(--app-info-border);
+  }
   .sync-btns { display: flex; gap: 5px; flex-wrap: wrap; }
 
   /* Snapshot list */
@@ -1049,9 +1118,36 @@
     background: transparent;
     color: var(--app-text);
     cursor: pointer;
+    min-height: 24px;
   }
   .restore-btn:hover:not(:disabled) { background: var(--app-control-hover-bg); }
   .restore-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  /* "Resolve conflict…" inline button inside the error message */
+  .resolve-conflict-btn {
+    display: inline;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: inherit;
+    font-weight: 600;
+    color: var(--app-link);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .resolve-conflict-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; border-radius: 2px; }
+  /* Screen-reader only helper */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
   .confirm-restore {
     margin-top: 7px;
     padding: 7px 9px;

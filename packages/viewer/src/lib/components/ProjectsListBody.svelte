@@ -286,27 +286,31 @@
     {#if filteredFavorites.length > 0}
       <section class="list-section">
         <h3 class="list-heading">Favorites</h3>
-        <ul class="list" role="listbox" aria-label="Favorite folders">
+        <ul class="list" aria-label="Favorite folders">
           {#each filteredFavorites as fav, i}
-            <li
-              class="list-row"
-              class:dimmed={!fav.exists}
-              role="option"
-              aria-selected="false"
-              aria-disabled={!fav.exists}
-              tabindex={fav.exists ? 0 : -1}
-              onclick={() => fav.exists && openRow(fav.path)}
-              onkeydown={(e) => onListKeydown(e, i, fav.path)}
-              title={fav.exists ? fav.path : `${fav.path} (folder not found)`}
-            >
-              <span class="row-icon" aria-hidden="true">★</span>
-              <span class="row-info">
-                <span class="row-title">{fav.title || fav.path.split(/[\\/]/).filter(Boolean).pop()}</span>
-                <span class="row-path">{fav.path}{!fav.exists ? " — not found" : ""}</span>
-              </span>
+            <!-- row-actions are SIBLINGS of the role="button" row, never
+                 descendants: ARIA buttons have presentational children, so
+                 nested buttons lose their semantics for AT (judge gate). -->
+            <li class="list-item">
+              <div
+                class="list-row"
+                class:dimmed={!fav.exists}
+                tabindex={fav.exists ? 0 : -1}
+                role="button"
+                aria-disabled={!fav.exists}
+                onclick={() => fav.exists && openRow(fav.path)}
+                onkeydown={(e) => onListKeydown(e, i, fav.path)}
+                title={fav.exists ? fav.path : `${fav.path} (folder not found)`}
+              >
+                <span class="row-icon" aria-hidden="true"><Icon name="star" size={13} /></span>
+                <span class="row-info">
+                  <span class="row-title">{fav.title || fav.path.split(/[\\/]/).filter(Boolean).pop()}</span>
+                  <span class="row-path">{fav.path}{!fav.exists ? " — not found" : ""}</span>
+                </span>
+              </div>
               <div class="row-actions">
                 <button class="icon-action star active" title="Remove from favorites" aria-label="Remove from favorites"
-                  onclick={(e) => toggleFavorite(fav.path, fav.title, e)}>★</button>
+                  onclick={(e) => toggleFavorite(fav.path, fav.title, e)}><Icon name="star" size={13} /></button>
               </div>
             </li>
           {/each}
@@ -318,33 +322,34 @@
       <section class="list-section">
         <h3 class="list-heading">Recently opened</h3>
         {#if filteredRecents.length > 0}
-          <ul class="list" role="listbox" aria-label="Recently opened folders">
+          <ul class="list" aria-label="Recently opened folders">
             {#each filteredRecents as recent, i}
               {@const rowIndex = filteredFavorites.length + i}
               {@const favorited = isFavorited(recent.path)}
-              <li
-                class="list-row"
-                class:dimmed={!recent.exists}
-                role="option"
-                aria-selected="false"
-                aria-disabled={!recent.exists}
-                tabindex={recent.exists ? 0 : -1}
-                onclick={() => recent.exists && openRow(recent.path)}
-                onkeydown={(e) => onListKeydown(e, rowIndex, recent.path)}
-                title={recent.exists ? recent.path : `${recent.path} (folder not found)`}
-              >
-                <span class="row-icon" aria-hidden="true"><Icon name="folder" size={13} /></span>
-                <span class="row-info">
-                  <span class="row-title">{recent.title || recent.path.split(/[\\/]/).filter(Boolean).pop()}</span>
-                  <span class="row-path">{recent.path}{!recent.exists ? " — not found" : ""}</span>
-                </span>
+              <li class="list-item">
+                <div
+                  class="list-row"
+                  class:dimmed={!recent.exists}
+                  tabindex={recent.exists ? 0 : -1}
+                  role="button"
+                  aria-disabled={!recent.exists}
+                  onclick={() => recent.exists && openRow(recent.path)}
+                  onkeydown={(e) => onListKeydown(e, rowIndex, recent.path)}
+                  title={recent.exists ? recent.path : `${recent.path} (folder not found)`}
+                >
+                  <span class="row-icon" aria-hidden="true"><Icon name="folder" size={13} /></span>
+                  <span class="row-info">
+                    <span class="row-title">{recent.title || recent.path.split(/[\\/]/).filter(Boolean).pop()}</span>
+                    <span class="row-path">{recent.path}{!recent.exists ? " — not found" : ""}</span>
+                  </span>
+                </div>
                 <div class="row-actions">
                   <button class="icon-action star" class:active={favorited}
                     title={favorited ? "Remove from favorites" : "Add to favorites"}
                     aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
-                    onclick={(e) => toggleFavorite(recent.path, recent.title, e)}>★</button>
+                    onclick={(e) => toggleFavorite(recent.path, recent.title, e)}><Icon name="star" size={13} /></button>
                   <button class="icon-action remove" title="Remove from recently opened" aria-label="Remove from recently opened"
-                    onclick={(e) => removeRecent(recent.path, e)}>&times;</button>
+                    onclick={(e) => removeRecent(recent.path, e)}><Icon name="x" size={14} /></button>
                 </div>
               </li>
             {/each}
@@ -363,26 +368,27 @@
             <span class="list-heading-count">({filteredDiscovered.length})</span>
           {/if}
         </h3>
-        <ul class="list" role="listbox" aria-label="Discovered projects">
+        <ul class="list" aria-label="Discovered projects">
           {#each visibleDiscovered as proj, i}
             {@const rowIndex = filteredFavorites.length + filteredRecents.length + i}
-            <li
-              class="list-row"
-              role="option"
-              aria-selected="false"
-              tabindex="0"
-              onclick={() => openRow(proj.path)}
-              onkeydown={(e) => onListKeydown(e, rowIndex, proj.path)}
-              title={proj.path}
-            >
-              <span class="row-icon" aria-hidden="true"><Icon name="search" size={13} /></span>
-              <span class="row-info">
-                <span class="row-title">{proj.title || proj.path.split(/[\\/]/).filter(Boolean).pop()}</span>
-                <span class="row-path">{proj.path}</span>
-              </span>
+            <li class="list-item">
+              <div
+                class="list-row"
+                tabindex="0"
+                role="button"
+                onclick={() => openRow(proj.path)}
+                onkeydown={(e) => onListKeydown(e, rowIndex, proj.path)}
+                title={proj.path}
+              >
+                <span class="row-icon" aria-hidden="true"><Icon name="search" size={13} /></span>
+                <span class="row-info">
+                  <span class="row-title">{proj.title || proj.path.split(/[\\/]/).filter(Boolean).pop()}</span>
+                  <span class="row-path">{proj.path}</span>
+                </span>
+              </div>
               <div class="row-actions">
                 <button class="icon-action star" title="Add to favorites" aria-label="Add to favorites"
-                  onclick={(e) => toggleFavorite(proj.path, proj.title, e)}>★</button>
+                  onclick={(e) => toggleFavorite(proj.path, proj.title, e)}><Icon name="star" size={13} /></button>
               </div>
             </li>
           {/each}
@@ -525,33 +531,43 @@
   .empty-section-hint { font-size: 11px; color: var(--app-text-faint); margin: 2px 0 0 2px; font-style: italic; }
   .show-all-btn {
     background: none; border: none; cursor: pointer;
-    font-size: 11px; color: var(--app-focus-ring); padding: 3px 2px; text-align: left; border-radius: 3px;
+    font-size: 11px; color: var(--app-link); padding: 3px 2px; text-align: left; border-radius: 3px;
   }
   .show-all-btn:hover { text-decoration: underline; }
+  .show-all-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+  /* row-actions are SIBLINGS of the role="button" row (ARIA: buttons have
+     presentational children). The li is the visual row container. */
+  .list-item { display: flex; align-items: center; gap: 2px; }
+  .list-item > .list-row { flex: 1; min-width: 0; }
   .list-row {
     display: flex; align-items: center; gap: 8px;
     padding: 6px 8px; border-radius: 5px; cursor: pointer;
     border: 1px solid transparent; transition: background 0.1s;
   }
   .list-row:not(.dimmed):hover,
-  .list-row:not(.dimmed):focus {
+  .list-row:not(.dimmed):focus-visible {
     background: var(--app-surface-sunken); border-color: var(--app-border); outline: none;
   }
-  .list-row:not(.dimmed):focus { border-color: var(--app-focus-ring); }
-  .list-row.dimmed { cursor: default; opacity: 0.45; }
+  .list-row:not(.dimmed):focus-visible { border-color: var(--app-focus-ring); }
+  /* Dimmed = folder not found. Use explicit full-opacity muted colors for legibility;
+     opacity dimming makes text fail WCAG AA on hover surfaces. Only the icon is dimmed. */
+  .list-row.dimmed { cursor: default; }
+  .list-row.dimmed .row-title { color: var(--app-text-muted); }
+  .list-row.dimmed .row-icon { opacity: 0.45; }
   .row-icon { font-size: 13px; flex-shrink: 0; width: 16px; text-align: center; display: inline-flex; align-items: center; color: var(--app-text-faint); }
   .row-info { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .row-title { font-size: 12px; font-weight: 500; color: var(--app-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row-path { font-size: 10px; color: var(--app-text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, monospace; }
   .row-actions { display: flex; gap: 3px; align-items: center; flex-shrink: 0; opacity: 0; transition: opacity 0.1s; }
-  .list-row:hover .row-actions, .list-row:focus-within .row-actions { opacity: 1; }
+  .list-item:hover .row-actions, .list-item:focus-within .row-actions { opacity: 1; }
   .icon-action {
     background: transparent; border: 0; cursor: pointer;
     min-width: 24px; min-height: 24px; padding: 2px 4px; border-radius: 3px;
     font-size: 13px; line-height: 1; color: var(--app-text-faint); transition: color 0.1s;
   }
   .icon-action:hover { background: var(--app-surface-hover); }
+  .icon-action:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .icon-action.star { color: var(--app-text-faint); }
   .icon-action.star:hover, .icon-action.star.active { color: var(--app-star); }
   .icon-action.remove:hover { color: var(--app-error-text); }

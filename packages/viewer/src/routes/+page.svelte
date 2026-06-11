@@ -114,6 +114,48 @@
   let incomingPullBusy = $state(false);
   // Bumped after an out-of-panel pull so LeftPanel refreshes its History tab.
   let historyRefreshKey = $state(0);
+  // Incoming modal: DOM references for focus trap + focus restore.
+  let incomingModalEl = $state<HTMLDivElement | undefined>(undefined);
+  let incomingGetChangesBtn = $state<HTMLButtonElement | undefined>(undefined);
+  // Focus restore target: the element that was active when the modal opened.
+  let incomingFocusRestoreEl = $state<Element | null>(null);
+
+  // Focus trap + initial focus for the incoming-changes modal.
+  $effect(() => {
+    if (incomingChangesOpen && incomingModalEl) {
+      incomingFocusRestoreEl = document.activeElement;
+      // queueMicrotask so the DOM is fully rendered before we focus.
+      queueMicrotask(() => { incomingGetChangesBtn?.focus(); });
+    } else if (!incomingChangesOpen && incomingFocusRestoreEl instanceof HTMLElement) {
+      incomingFocusRestoreEl.focus();
+      incomingFocusRestoreEl = null;
+    }
+  });
+
+  function onIncomingModalKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      // Counts as "Not now" — tip is already recorded as seen (lastDismissedRemoteTip set on open).
+      incomingChangesOpen = false;
+    } else if (e.key === "Tab") {
+      // Focus trap: cycle within the modal.
+      if (!incomingModalEl) return;
+      const focusable = Array.from(
+        incomingModalEl.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    }
+  }
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
@@ -655,8 +697,11 @@
         incomingChangesOpen = false;
         toast?.success(outcome.message);
       } else if (outcome.status === "conflict") {
-        // The Sync dialog owns the per-file conflict choices flow.
+        // The Sync dialog owns the per-file conflict choices flow. The modal
+        // that triggered this is closing, so restore focus to the panel
+        // toggle when the dialog closes (a stable, always-visible element).
         incomingChangesOpen = false;
+        syncBtn = leftPanelToggleBtn;
         syncOpen = true;
       } else if (outcome.status === "auth") {
         incomingChangesOpen = false;
@@ -1601,6 +1646,10 @@
   // Jump the preview (and, if open, the editor) to a heading.
   function jumpToOutline(entry: OutlineEntry) {
     if (!client) return;
+    // Set active index optimistically so the clicked entry highlights immediately
+    // (the async scrollTo may take a frame; without this there's a visible lag).
+    const idx = outline.findIndex((o) => o.index === entry.index);
+    if (idx >= 0) activeOutlineIndex = idx;
     const target: PreviewTarget =
       entry.id != null
         ? { id: entry.id }
@@ -2229,6 +2278,10 @@
         }
       }}
       onSyncReconnect={onSyncReconnect}
+      onResolveConflict={(triggerEl) => {
+        syncBtn = triggerEl as HTMLButtonElement | undefined;
+        openSync();
+      }}
       refreshKey={historyRefreshKey}
     />
 
@@ -2385,11 +2438,11 @@
         <h1 class="empty-title">print-md</h1>
         <p class="empty-tagline">Turn your markdown writing into a print-ready book</p>
         <div class="empty-cta-row">
-          <button bind:this={newProjectBtn} class="primary empty-cta" onclick={() => (newProjectOpen = true)} disabled={busy}>Create a New Book</button>
+          <button bind:this={newProjectBtn} class="primary empty-cta" onclick={() => (newProjectOpen = true)} disabled={busy}>Create a new book</button>
           <button class="ghost empty-cta" onclick={() => {
             leftPanelOpen = true;
             leftPanelTab = "projects";
-          }} disabled={busy}>Open an Existing Book</button>
+          }} disabled={busy}>Open an existing book</button>
         </div>
         <p class="empty-hint">New to print-md? <button type="button" class="link-btn" onclick={openSetupGuide}>Read the getting-started guide →</button></p>
         <p class="empty-hint">Already have a book folder? Open it from the left panel, or preview a published document from a web address.</p>
@@ -2416,7 +2469,15 @@
 <!-- Incoming changes modal (fetch-on-open) -->
 {#if incomingChangesOpen}
   <div class="incoming-backdrop" onclick={() => (incomingChangesOpen = false)} role="presentation"></div>
-  <div class="incoming-modal" role="dialog" aria-modal="true" aria-labelledby="incoming-title">
+  <div
+    class="incoming-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="incoming-title"
+    tabindex="-1"
+    bind:this={incomingModalEl}
+    onkeydown={onIncomingModalKeydown}
+  >
     <header class="incoming-header">
       <h2 id="incoming-title">New changes online</h2>
       <button class="close-btn" onclick={() => (incomingChangesOpen = false)} aria-label="Dismiss">
@@ -2437,7 +2498,12 @@
     </div>
     <footer class="incoming-footer">
       <button class="ghost" onclick={() => (incomingChangesOpen = false)} disabled={incomingPullBusy}>Not now</button>
-      <button class="primary" onclick={() => void pullIncomingChanges()} disabled={incomingPullBusy}>
+      <button
+        class="primary"
+        bind:this={incomingGetChangesBtn}
+        onclick={() => void pullIncomingChanges()}
+        disabled={incomingPullBusy}
+      >
         {incomingPullBusy ? "Getting changes…" : "Get changes"}
       </button>
     </footer>

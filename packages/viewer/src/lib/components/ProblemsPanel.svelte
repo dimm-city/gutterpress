@@ -29,6 +29,21 @@
   let groups = $derived(groupProblems(problems));
   let counts = $derived(problemCounts(problems));
 
+  // Polite live region: announce error/warning counts when lint completes.
+  let lintAnnouncement = $state("");
+  $effect(() => {
+    if (!loading && problems.length > 0) {
+      const e = counts.errors;
+      const w = counts.warnings;
+      const parts: string[] = [];
+      if (e > 0) parts.push(`${e} ${e === 1 ? "error" : "errors"}`);
+      if (w > 0) parts.push(`${w} ${w === 1 ? "warning" : "warnings"}`);
+      lintAnnouncement = parts.length > 0 ? `Problems: ${parts.join(", ")}` : "";
+    } else if (!loading && problems.length === 0) {
+      lintAnnouncement = "";
+    }
+  });
+
   const SEVERITY_ICON = {
     error: "circle-x",
     warning: "triangle-alert",
@@ -40,6 +55,9 @@
     info: "Note",
   } as const;
 </script>
+
+<!-- Polite live region: announces error/warning counts when lint completes -->
+<div role="status" aria-live="polite" aria-atomic="true" class="sr-only">{lintAnnouncement}</div>
 
 <section
   class="problems-panel"
@@ -259,7 +277,7 @@
     gap: 6px;
     padding: 4px 12px 2px;
     font-size: 12px;
-    font-weight: 650;
+    font-weight: 600;
     color: var(--app-text-secondary);
   }
   .group-file-name {
@@ -324,7 +342,10 @@
   .entry-source {
     flex: 0 0 auto;
     font-size: 11px;
-    color: var(--app-text-muted);
+    /* MUST use --app-text-secondary here, NOT muted/faint.
+       Muted/faint text on a control-hover surface (#e4e4e7 light / #333333 dark)
+       fails WCAG AA. Never use muted or faint colors directly on interactive hover rows. */
+    color: var(--app-text-secondary);
     background: var(--app-control-bg);
     border: 1px solid var(--app-control-border);
     border-radius: 4px;
