@@ -722,10 +722,10 @@ describe("resolveConflicts", () => {
 });
 
 describe("getSyncStatus", () => {
-  test("ahead counts local snapshots; behind counts online ones (live fetch)", async () => {
+  test("directions, never counts: local-ahead, diverged-live, unsnapshotted edits", async () => {
     const h = await setupClone();
     try {
-      // Two local snapshots.
+      // Two local snapshots → strictly ahead.
       await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nv3\n");
       await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
       await git.commit({
@@ -743,15 +743,16 @@ describe("getSyncStatus", () => {
         author: SERVER_AUTHOR,
       });
 
-      // Local compare (no network): the clone recorded the remote tip.
+      // Local compare (no network) off the remote-tracking ref: changes to
+      // send exist (null = uncounted), nothing known to be behind.
       const local = await getSyncStatus({ projectDir: h.projectDir });
       expect(local.hasRemote).toBe(true);
-      expect(local.ahead).toBe(2);
+      expect(local.ahead).toBeNull();
       expect(local.behind).toBe(0);
       expect(local.live).toBe(false);
       expect(local.hasUnsnapshottedChanges).toBe(false);
 
-      // One online commit; a live check sees it.
+      // One online commit; a live check sees the divergence.
       await serverCommit(
         h.serverDir,
         { "chapter-02.md": "# Two\n" },
@@ -761,14 +762,31 @@ describe("getSyncStatus", () => {
         projectDir: h.projectDir,
         fetch: true,
       });
-      expect(liveStatus.ahead).toBe(2);
-      expect(liveStatus.behind).toBe(1);
+      expect(liveStatus.ahead).toBeNull();
+      expect(liveStatus.behind).toBeNull();
       expect(liveStatus.live).toBe(true);
 
       // Unsnapshotted working-tree edits are reported separately.
       await writeFile(path.join(h.projectDir, "notes.md"), "draft\n");
       const withEdits = await getSyncStatus({ projectDir: h.projectDir });
       expect(withEdits.hasUnsnapshottedChanges).toBe(true);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("in-sync clone reports 0/0; remote-ahead reports behind null", async () => {
+    const h = await setupClone();
+    try {
+      const clean = await getSyncStatus({ projectDir: h.projectDir });
+      expect(clean.ahead).toBe(0);
+      expect(clean.behind).toBe(0);
+
+      await serverCommit(h.serverDir, { "chapter-02.md": "# Two\n" }, "online add");
+      const live = await getSyncStatus({ projectDir: h.projectDir, fetch: true });
+      expect(live.live).toBe(true);
+      expect(live.ahead).toBe(0);
+      expect(live.behind).toBeNull(); // changes exist online — never counted
     } finally {
       await h.cleanup();
     }
@@ -798,7 +816,7 @@ describe("getSyncStatus", () => {
       expect(status.hasRemote).toBe(true);
       expect(status.live).toBe(false);
       // The local compare still works off the recorded remote-tracking ref.
-      expect(status.ahead).toBe(1);
+      expect(status.ahead).toBeNull();
       expect(status.behind).toBe(0);
       expect(status.approximate).toBe(false);
     } finally {
@@ -822,6 +840,7 @@ describe("getSyncStatus", () => {
     }
   });
 });
+
 
 // ── Book subfolders of a larger repo (scoped sync) ───────────────────────────
 

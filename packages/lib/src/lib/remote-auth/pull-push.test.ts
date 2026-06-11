@@ -7,7 +7,7 @@
  *
  *  - Pull applies remote commits WITHOUT pushing local ones.
  *  - Pull snapshots unsaved work first (D5), fast-forwards, reports
- *    incomingApplied / merged / filesChanged.
+ *    merged / filesChanged.
  *  - Pull conflict leaves the working tree untouched (no markers).
  *  - Push sends local commits only; never merges.
  *  - Push when the remote is ahead (or diverged) → typed "pull-first",
@@ -111,7 +111,6 @@ describe("pullChanges", () => {
       expect(outcome.status).toBe("pulled");
       if (outcome.status !== "pulled") throw new Error("unreachable");
       expect(outcome.merged).toBe(false); // plain fast-forward
-      expect(outcome.incomingApplied).toBe(1);
       expect(outcome.filesChanged).toBe(true);
       // The online file landed in the working tree…
       expect(await readFile(path.join(h.projectDir, "chapter-02.md"), "utf8")).toBe(
@@ -138,7 +137,6 @@ describe("pullChanges", () => {
       expect(outcome.status).toBe("pulled");
       if (outcome.status !== "pulled") throw new Error("unreachable");
       expect(outcome.merged).toBe(true); // combine commit (both sides moved)
-      expect(outcome.incomingApplied).toBe(1);
       expect(outcome.filesChanged).toBe(true);
       // Remote tip unchanged — our commit and the merge were NOT uploaded.
       expect(await serverTip(h)).toBe(remoteOid);

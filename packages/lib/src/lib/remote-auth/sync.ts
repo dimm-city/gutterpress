@@ -1,18 +1,24 @@
 /**
  * Snapshot-first sync + conflict resolution (#15, ADR 0006 D5).
  *
- * Sync sequence (ONE per-repo lock span, pure isomorphic-git — CLAUDE.md §7):
+ * Every operation here is the isomorphic-git library call of the same name
+ * plus minimum glue (pure isomorphic-git — CLAUDE.md §7):
  *
- *   1. Snapshot any working-tree changes FIRST — the author's work is now
- *      unconditionally safe, before any network or merge step can touch it.
- *   2. Fetch the tracked remote branch.
- *   3. Remote unchanged → push. Remote moved → fast-forward or clean merge,
- *      then push. Push rejected because someone synced mid-flight → the
- *      whole fetch/merge/push loop re-runs once.
- *   4. True conflict → abort cleanly (the working tree is NEVER left with
- *      conflict markers — `abortOnConflict` keeps the tree at the pre-merge
- *      snapshot) and return `{ status: "conflict", files }` so the UI can ask
- *      per-file: Keep my version · Use the online version · Keep both copies.
+ *   - previewSync  = `git.fetch` + `git.resolveRef` + `git.isDescendent`
+ *   - pullChanges  = snapshot-if-needed → `git.fetch` + `git.merge` +
+ *     `git.checkout` (fetch and merge stay separate calls — NOT `git.pull` —
+ *     because `git.pull` negotiates the fetch with the LOCAL branch tip as
+ *     the `have`, which on a snapshot-heavy repo makes the server send the
+ *     entire repository; see `fetchRemoteTip` for the hard-won fix)
+ *   - pushChanges  = snapshot-if-needed → `git.push`
+ *   - syncProject  = pullChanges, then pushChanges
+ *
+ *   Snapshot-first invariant (ADR 0006 D5): pull/push commit any unsaved work
+ *   BEFORE any network or merge step can touch it. True conflict → abort
+ *   cleanly (the working tree is NEVER left with conflict markers —
+ *   `abortOnConflict` keeps the tree at the pre-merge snapshot) and return
+ *   `{ status: "conflict", files }` so the UI can ask per-file: Keep my
+ *   version · Use the online version · Keep both copies.
  *
  * `resolveConflicts` applies those choices WITHOUT ever materializing conflict
  * markers: a custom isomorphic-git `mergeDriver` returns the chosen side's
@@ -43,7 +49,6 @@ import httpNode from "isomorphic-git/http/node";
 import diff3Merge from "diff3";
 
 import { detectProjectSource } from "../project-source.ts";
-import { readLastSyncedTip, recordLastSyncedTip } from "./clone.ts";
 import {
   gitAuthor,
   gitScopeFor,
@@ -132,8 +137,6 @@ export type PullOutcome =
        * existed alongside the online ones. False for a plain fast-forward.
        */
       merged: boolean;
-      /** How many online commits were applied (capped walk; ≥ 1). */
-      incomingApplied: number;
       /**
        * True when the working tree CONTENT changed (the tip's tree differs
        * from before) — the host should refresh its preview.
@@ -292,21 +295,18 @@ export interface SyncCommitInfo {
 /** One direction (incoming or outgoing) of a sync preview. */
 export interface SyncDirectionInfo {
   /**
-   * Whether this direction has changes, decided by REF/marker string equality
-   * only (no history walks): `true` = changes exist, `false` = none, `null` =
-   * honestly unknown (no marker / failed live check with nothing to compare).
+   * Whether this direction has changes: tip equality plus the library's
+   * depth-capped `git.isDescendent` decide the direction. `true` = changes
+   * exist (or diverged/unknown — a false "changes" is a harmless no-op
+   * pull/push, while a false "nothing" hides the author's chapters), `false`
+   * = none, `null` = honestly unknown (nothing to compare against).
    */
   hasChanges: boolean | null;
-  /**
-   * Commit count when known. Incoming gets a real count only when the live
-   * fetch just downloaded the commits (they are walked from the fresh pack).
-   * `null` whenever `hasChanges` is `true` without a walked count, or
-   * `hasChanges` is `null`. Outgoing is NEVER counted (no local walks).
-   */
+  /** Always `null` when `hasChanges` is true — the check never counts. */
   count: number | null;
-  /** Newest-first commit details, capped at {@link PREVIEW_COMMIT_LIMIT}. */
+  /** Always `[]` — the check never reads commit details. (IPC-shape compat.) */
   commits: SyncCommitInfo[];
-  /** True when `count` is a lower bound (walk budget or partial walk). */
+  /** Always `false`. (IPC-shape compat.) */
   approximate: boolean;
 }
 
@@ -353,19 +353,19 @@ export interface SyncPreview {
 export interface SyncStatusResult {
   hasRemote: boolean;
   branch?: string;
-  /** Snapshots not yet online. `null` when there is nothing to compare against. */
+  /**
+   * `0` when this direction provably has nothing; `null` when changes exist
+   * (never counted — the status path never walks history for counts) or when
+   * unknown.
+   */
   ahead: number | null;
-  /** Online snapshots not yet on this computer. `null` when unknown. */
+  /** Same convention as `ahead`, for the online side. */
   behind: number | null;
   /** Working-tree edits that would be snapshotted by Sync. */
   hasUnsnapshottedChanges: boolean;
   /** True when the counts include a live check of the online repository. */
   live: boolean;
-  /**
-   * True when `ahead`/`behind` are lower bounds rather than exact: the walk
-   * hit the {@link AHEAD_BEHIND_CAP} or a shallow-clone boundary. The UI
-   * should render such counts as "250+".
-   */
+  /** Always `false`. (IPC-shape compat.) */
   approximate: boolean;
 }
 
@@ -618,155 +618,110 @@ async function fetchRemoteTip(
   }
 }
 
+// ── Tip comparison ───────────────────────────────────────────────────────────
+
+/**
+ * Depth cap for the {@link relateTips} `git.isDescendent` walks. Past this
+ * the relation is reported as diverged-or-unknown, which the callers treat
+ * as "changes in both directions" — a harmless no-op pull/push at worst.
+ */
+const DIRECTION_WALK_DEPTH = 200;
+
+type TipRelation = "equal" | "remote-ahead" | "local-ahead" | "diverged-or-unknown";
+
+/**
+ * How `localTip` relates to `remoteTip`, via the LIBRARY's `git.isDescendent`
+ * with a hard depth cap. The remote-ahead check runs first because it walks
+ * only freshly fetched commits (the walk checks parent ids BEFORE reading
+ * them, so the old local tip object itself is never read). Depth exhausted /
+ * unreadable objects (shallow boundaries) → `"diverged-or-unknown"`: a false
+ * "changes" is a harmless no-op pull/push, while a false "nothing" hides the
+ * author's chapters (the rc.10 lesson).
+ */
+async function relateTips(
+  dir: string,
+  localTip: string,
+  remoteTip: string,
+  cache: GitCache,
+): Promise<TipRelation> {
+  if (localTip === remoteTip) return "equal";
+  try {
+    const remoteAhead = await git.isDescendent({
+      fs,
+      dir,
+      cache,
+      oid: remoteTip,
+      ancestor: localTip,
+      depth: DIRECTION_WALK_DEPTH,
+    });
+    if (remoteAhead) return "remote-ahead";
+    const localAhead = await git.isDescendent({
+      fs,
+      dir,
+      cache,
+      oid: localTip,
+      ancestor: remoteTip,
+      depth: DIRECTION_WALK_DEPTH,
+    });
+    if (localAhead) return "local-ahead";
+  } catch {
+    // MaxDepthError / missing objects — fall through to the safe default.
+  }
+  return "diverged-or-unknown";
+}
+
 // ── syncProject ────────────────────────────────────────────────────────────
 
 /**
- * Snapshot-first sync (ADR 0006 D5). Never throws for expected outcomes —
- * everything is reported through the {@link SyncOutcome} union so hosts can
- * map statuses to author-friendly screens. Serialized on the per-repo lock.
+ * Snapshot-first sync (ADR 0006 D5) — the composition of {@link pullChanges}
+ * then {@link pushChanges}. If someone pushes between our pull and our push,
+ * the push reports pull-first and the pair re-runs ONCE (their commits merge
+ * in on the second pass), then surfaces a friendly "try again" rather than
+ * looping forever. Never throws for expected outcomes — everything is
+ * reported through the {@link SyncOutcome} union.
  */
 export async function syncProject(
   options: SyncProjectOptions,
 ): Promise<SyncOutcome> {
-  const http = options.httpClient ?? httpNode;
-  // Book subfolders of a larger repo sync against the ENCLOSING repository:
-  // the snapshot is scoped to the book's folder, but fetch/merge/push operate
-  // on the whole repo (that is what Git does). The lock keys on the repo root
-  // so two books in one repository serialize.
-  const { dir, subPath } = await resolveRepoScope(options.projectDir);
+  let snapshotId: string | undefined;
+  let pulled = false;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const pull = await pullChanges(options);
+    snapshotId = snapshotId ?? pull.snapshotId;
+    const base = snapshotId ? { snapshotId } : {};
+    if (pull.status === "conflict") return { ...pull, ...base };
+    if (pull.status !== "pulled" && pull.status !== "up-to-date") {
+      return { ...pull, ...base }; // auth / offline / error
+    }
+    pulled = pulled || pull.status === "pulled";
 
-  return withRepoLock(dir, async (): Promise<SyncOutcome> => {
-    // One object cache for this sync operation only — released with it.
-    const cache: GitCache = {};
-    let snapshotId: string | undefined;
-    try {
-      const branch = await currentBranchOrThrow(dir);
-      const transport = await resolveTransport(dir, options);
-
-      // 1 + 1b. Snapshot FIRST — the author's work is now unconditionally
-      //    safe before any network call or merge can run (the D5 invariant).
-      //    Book-scoped, plus the shared-folder safety commit (the merge below
-      //    ends in a FORCED checkout, which would discard sibling-book edits).
-      snapshotId = await snapshotBeforeAction({
-        projectDir: options.projectDir,
-        dir,
-        subPath,
-        message: options.message,
-        authorName: options.authorName,
-        cache,
-        includeSharedFolder: true,
-      });
-
-      // 2–3. fetch → fast-forward/merge → push. If someone syncs between
-      // our fetch and our push, the push is rejected — re-run the loop ONCE
-      // (their commits merge in on the second pass), then surface a friendly
-      // "try again" rather than looping forever.
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
-        const localTip = await git.resolveRef({ fs, dir, ref: branch });
-
-        let merged = false;
-        if (remoteTip && remoteTip !== localTip) {
-          const remoteIsBehind = await git.isDescendent({
-            fs,
-            dir,
-            cache,
-            oid: localTip,
-            ancestor: remoteTip,
-            depth: -1,
-          });
-          if (!remoteIsBehind) {
-            // Remote moved: fast-forward when possible, else a clean merge.
-            // `abortOnConflict` (default true) guarantees a conflicted merge
-            // leaves the working tree and index COMPLETELY untouched.
-            try {
-              await git.merge({
-                fs,
-                dir,
-                cache,
-                ours: branch,
-                theirs: remoteTip,
-                author: gitAuthor(options.authorName),
-                message: "Combined your changes with the online version",
-              });
-            } catch (e) {
-              if (isMergeConflictError(e)) {
-                return {
-                  status: "conflict",
-                  message: MSG_CONFLICT,
-                  files: conflictFilesFrom(e.data),
-                  localId: localTip,
-                  remoteId: remoteTip,
-                  ...(snapshotId ? { snapshotId } : {}),
-                };
-              }
-              throw e;
-            }
-            // merge() moves the branch ref but does not update the working
-            // tree — sync it. The tree is clean (snapshotted above), so the
-            // forced checkout can't discard anything.
-            await git.checkout({ fs, dir, cache, ref: branch, force: true });
-            merged = true;
-          }
-        }
-
-        const tipAfterMerge = await git.resolveRef({ fs, dir, ref: branch });
-        if (remoteTip && tipAfterMerge === remoteTip) {
-          // Fast-forwarded onto the online tip (or already identical):
-          // nothing of ours to upload. This tip is on both sides — record it
-          // so the next "Check for updates" compares by string equality.
-          await recordLastSyncedTip(dir, branch, remoteTip);
-          return {
-            status: "up-to-date",
-            message: merged ? MSG_UP_TO_DATE_PULLED : MSG_UP_TO_DATE,
-            ...(snapshotId ? { snapshotId } : {}),
-          };
-        }
-
-        try {
-          await git.push({
-            fs,
-            http,
-            dir,
-            cache,
-            remote: transport.remote,
-            ref: branch,
-            ...onAuthFor(transport.credential),
-          });
-        } catch (e) {
-          if (isPushRejected(e) && attempt === 0) continue; // re-run loop once
-          if (isPushRejected(e)) {
-            return {
-              status: "error",
-              message: MSG_RACE,
-              ...(snapshotId ? { snapshotId } : {}),
-            };
-          }
-          throw e;
-        }
-        // The pushed tip is now on both sides — record it for the check path.
-        await recordLastSyncedTip(dir, branch, tipAfterMerge);
+    const push = await pushChanges(options);
+    snapshotId = snapshotId ?? push.snapshotId;
+    switch (push.status) {
+      case "pushed":
         return {
           status: "synced",
-          message: merged ? MSG_SYNCED_MERGED : MSG_SYNCED,
-          mergedRemoteChanges: merged,
+          message: pulled ? MSG_SYNCED_MERGED : MSG_SYNCED,
+          mergedRemoteChanges: pulled,
           ...(snapshotId ? { snapshotId } : {}),
         };
-      }
-      // Unreachable (the loop returns or throws), but keeps TS satisfied.
-      return { status: "error", message: MSG_RACE, ...(snapshotId ? { snapshotId } : {}) };
-    } catch (e) {
-      const setupMsg = setupErrorMessage(e);
-      if (setupMsg) {
+      case "up-to-date":
         return {
-          status: "error",
-          message: setupMsg,
+          status: "up-to-date",
+          message: pulled ? MSG_UP_TO_DATE_PULLED : MSG_UP_TO_DATE,
           ...(snapshotId ? { snapshotId } : {}),
         };
-      }
-      return failureOutcome(e, snapshotId);
+      case "pull-first":
+        continue; // someone pushed mid-sync — re-run the pair once
+      default:
+        return { ...push, ...(snapshotId ? { snapshotId } : {}) };
     }
-  });
+  }
+  return {
+    status: "error",
+    message: MSG_RACE,
+    ...(snapshotId ? { snapshotId } : {}),
+  };
 }
 
 // ── pullChanges ──────────────────────────────────────────────────────────────
@@ -813,38 +768,12 @@ export async function pullChanges(
       const base = snapshotId ? { snapshotId } : {};
 
       if (!remoteTip || remoteTip === localTip) {
-        // The online tip (when there is one) is on both sides — record it.
-        if (remoteTip) await recordLastSyncedTip(dir, branch, remoteTip);
         return { status: "up-to-date", message: MSG_PULL_UP_TO_DATE, ...base };
       }
-      const remoteIsBehind = await git.isDescendent({
-        fs,
-        dir,
-        cache,
-        oid: localTip,
-        ancestor: remoteTip,
-        depth: -1,
-      });
-      if (remoteIsBehind) {
+      if ((await relateTips(dir, localTip, remoteTip, cache)) === "local-ahead") {
         // Everything online is already here (we're strictly ahead).
-        await recordLastSyncedTip(dir, branch, remoteTip);
         return { status: "up-to-date", message: MSG_PULL_UP_TO_DATE, ...base };
       }
-
-      // Count the incoming commits BEFORE merging (refs/commit-objects only).
-      let mergeBase: string | undefined;
-      try {
-        const bases = (await git.findMergeBase({
-          fs,
-          dir,
-          cache,
-          oids: [localTip, remoteTip],
-        })) as string[];
-        mergeBase = bases[0];
-      } catch {
-        mergeBase = undefined;
-      }
-      const incoming = await countCommitsSince(dir, remoteTip, mergeBase, cache);
 
       // Fast-forward when possible, else a clean merge. `abortOnConflict`
       // (default true) guarantees a conflicted merge leaves the working tree
@@ -872,12 +801,16 @@ export async function pullChanges(
         }
         throw e;
       }
+      const newTip = await git.resolveRef({ fs, dir, ref: branch });
+      if (newTip === localTip) {
+        // The merge was a no-op (`alreadyMerged`): local was strictly ahead
+        // beyond the depth-capped relation check above.
+        return { status: "up-to-date", message: MSG_PULL_UP_TO_DATE, ...base };
+      }
       // merge() moves the branch ref but does not update the working tree —
       // sync it. The tree is clean (snapshotted above), so the forced
       // checkout can't discard anything.
       await git.checkout({ fs, dir, cache, ref: branch, force: true });
-
-      const newTip = await git.resolveRef({ fs, dir, ref: branch });
       // A fast-forward lands exactly on the online tip; anything else means a
       // combine (merge) commit was created.
       const merged = newTip !== remoteTip;
@@ -888,16 +821,10 @@ export async function pullChanges(
         .commit.tree;
       const treeAfter = (await git.readCommit({ fs, dir, cache, oid: newTip }))
         .commit.tree;
-      // The pulled online tip is now part of local history — record it as the
-      // last tip known to be on both sides (a merge commit on top of it is a
-      // LOCAL change still to send, so the marker is the remote tip, not the
-      // new local tip).
-      await recordLastSyncedTip(dir, branch, remoteTip);
       return {
         status: "pulled",
         message: merged ? MSG_PULLED_MERGED : MSG_PULLED,
         merged,
-        incomingApplied: incoming.count,
         filesChanged: treeBefore !== treeAfter,
         ...base,
       };
@@ -955,7 +882,6 @@ export async function pushChanges(
       const base = snapshotId ? { snapshotId } : {};
 
       if (remoteTip === localTip) {
-        await recordLastSyncedTip(dir, branch, localTip);
         return { status: "up-to-date", message: MSG_PUSH_UP_TO_DATE, ...base };
       }
 
@@ -982,8 +908,6 @@ export async function pushChanges(
         }
         throw e;
       }
-      // The pushed tip is now on both sides — record it for the check path.
-      await recordLastSyncedTip(dir, branch, localTip);
       return { status: "pushed", message: MSG_SYNCED, ...base };
     } catch (e) {
       const setupMsg = setupErrorMessage(e);
@@ -1347,12 +1271,6 @@ export async function resolveConflicts(
         }
       }
 
-      // The pushed tip is now on both sides — record it for the check path.
-      await recordLastSyncedTip(
-        dir,
-        branch,
-        await git.resolveRef({ fs, dir, ref: branch }),
-      );
       return {
         status: "synced",
         message: MSG_SYNCED_MERGED,
@@ -1373,69 +1291,16 @@ export async function resolveConflicts(
   });
 }
 
+
 // ── getSyncStatus ──────────────────────────────────────────────────────────
 
 /**
- * Cap on the ahead/behind history walk. Counts past this are useless to the
- * UI ("250+ changes") and an unbounded `git.log` walk over a long history is
- * the most expensive thing this status call could do.
- */
-const AHEAD_BEHIND_CAP = 250;
-
-/**
- * Commits reachable from `tip` but not from `stopAt` (exclusive), capped at
- * {@link AHEAD_BEHIND_CAP}. `capped` is true when the count is a lower bound:
- * the walk hit the cap, or — on a shallow clone — ended at the shallow
- * boundary (no root commit seen) without finding `stopAt`.
- */
-async function countCommitsSince(
-  dir: string,
-  tip: string,
-  stopAt: string | undefined,
-  cache: GitCache,
-): Promise<{ count: number; capped: boolean }> {
-  const walk = await commitsSince(dir, tip, stopAt, cache);
-  return { count: walk.commits.length, capped: walk.capped };
-}
-
-/**
- * Same walk as {@link countCommitsSince}, but keeps the commit details
- * (summary line / author / date) for the sync-preview lists. Reads COMMIT
- * objects only — never trees or blobs — so it stays fast and small even on
- * repositories with multi-GB packfiles.
- */
-async function commitsSince(
-  dir: string,
-  tip: string,
-  stopAt: string | undefined,
-  cache: GitCache,
-): Promise<{ commits: SyncCommitInfo[]; capped: boolean }> {
-  const log = await git.log({ fs, dir, cache, ref: tip, depth: AHEAD_BEHIND_CAP + 1 });
-  const commits: SyncCommitInfo[] = [];
-  for (const c of log) {
-    if (stopAt && c.oid === stopAt) return { commits, capped: false };
-    commits.push({
-      id: c.oid,
-      message: (c.commit.message ?? "").split("\n", 1)[0]?.trim() ?? "",
-      author: c.commit.author?.name ?? "",
-      timestamp: (c.commit.author?.timestamp ?? 0) * 1000,
-    });
-  }
-  if (commits.length > AHEAD_BEHIND_CAP) {
-    return { commits: commits.slice(0, AHEAD_BEHIND_CAP), capped: true };
-  }
-  // Walk exhausted without finding `stopAt`: exact only when it reached a
-  // root commit; isomorphic-git stops silently at shallow-clone boundaries,
-  // which would otherwise masquerade as a complete walk.
-  const sawRoot = log.some((c) => c.commit.parent.length === 0);
-  return { commits, capped: !sawRoot };
-}
-
-/**
- * Ahead/behind counts vs the tracked remote branch, so the UI can show
- * "2 changes to sync". Local compare by default (no network); pass
- * `fetch: true` (with a credential when the remote needs one) for live counts.
- * A failed live fetch degrades to the local compare (`live: false`).
+ * Ahead/behind summary vs the tracked remote branch. Local compare by default
+ * (no network); pass `fetch: true` (with a credential when the remote needs
+ * one) for a live check. A failed live fetch degrades to the local compare
+ * (`live: false`). Directions come from {@link relateTips} — never a counting
+ * walk, so `ahead`/`behind` are `0` (provably nothing) or `null` (changes
+ * exist / unknown).
  */
 export async function getSyncStatus(
   options: SyncStatusOptions,
@@ -1452,27 +1317,21 @@ export async function getSyncStatus(
     const cache: GitCache = {};
     const branch = (await git.currentBranch({ fs, dir })) ?? undefined;
     const pending = await hasPendingChanges(dir, subPath || undefined, cache);
-    const base: Omit<SyncStatusResult, "ahead" | "behind" | "live" | "approximate"> = {
+    const base = {
       hasRemote: false,
       ...(branch ? { branch } : {}),
       hasUnsnapshottedChanges: pending,
+      approximate: false,
     };
 
     let transport: RemoteTransport;
     try {
       transport = await resolveTransport(dir, options);
     } catch {
-      return { ...base, ahead: null, behind: null, live: false, approximate: false };
+      return { ...base, ahead: null, behind: null, live: false };
     }
     if (!branch) {
-      return {
-        ...base,
-        hasRemote: true,
-        ahead: null,
-        behind: null,
-        live: false,
-        approximate: false,
-      };
+      return { ...base, hasRemote: true, ahead: null, behind: null, live: false };
     }
 
     let live = false;
@@ -1486,84 +1345,62 @@ export async function getSyncStatus(
       }
     }
     if (!remoteTip) {
-      try {
-        remoteTip = await git.resolveRef({
-          fs,
-          dir,
-          ref: `refs/remotes/${transport.remote}/${branch}`,
-        });
-      } catch {
-        remoteTip = null;
-      }
+      remoteTip = await git
+        .resolveRef({ fs, dir, ref: `refs/remotes/${transport.remote}/${branch}` })
+        .catch(() => null);
     }
+    const localTip = await git.resolveRef({ fs, dir, ref: branch }).catch(() => null);
     if (!remoteTip) {
-      // No record of the online tip yet: nothing local has been synced yet.
-      const ahead = await countCommitsSince(dir, branch, undefined, cache);
+      // No record of the online tip: anything local is unsent; a live fetch
+      // proved the remote empty.
       return {
         ...base,
         hasRemote: true,
-        ahead: ahead.count,
+        ahead: localTip ? null : 0,
         behind: live ? 0 : null,
         live,
-        approximate: ahead.capped,
       };
     }
+    if (!localTip) {
+      return { ...base, hasRemote: true, ahead: 0, behind: null, live };
+    }
 
-    const localTip = await git.resolveRef({ fs, dir, ref: branch });
-    if (localTip === remoteTip) {
-      return { ...base, hasRemote: true, ahead: 0, behind: 0, live, approximate: false };
+    switch (await relateTips(dir, localTip, remoteTip, cache)) {
+      case "equal":
+        return { ...base, hasRemote: true, ahead: 0, behind: 0, live };
+      case "local-ahead":
+        return { ...base, hasRemote: true, ahead: null, behind: 0, live };
+      case "remote-ahead":
+        return { ...base, hasRemote: true, ahead: 0, behind: null, live };
+      default:
+        return { ...base, hasRemote: true, ahead: null, behind: null, live };
     }
-    let mergeBase: string | undefined;
-    try {
-      const bases = (await git.findMergeBase({
-        fs,
-        dir,
-        cache,
-        oids: [localTip, remoteTip],
-      })) as string[];
-      mergeBase = bases[0];
-    } catch {
-      mergeBase = undefined;
-    }
-    const ahead = await countCommitsSince(dir, localTip, mergeBase, cache);
-    const behind = await countCommitsSince(dir, remoteTip, mergeBase, cache);
-    return {
-      ...base,
-      hasRemote: true,
-      ahead: ahead.count,
-      behind: behind.count,
-      live,
-      approximate: ahead.capped || behind.capped,
-    };
   });
 }
 
 // ── previewSync ──────────────────────────────────────────────────────────────
-
-/** Commit details listed per direction in a sync preview. */
-export const PREVIEW_COMMIT_LIMIT = 20;
 
 const MSG_PREVIEW_OFFLINE =
   "Couldn't reach the online repository to check for new changes.";
 const MSG_PREVIEW_AUTH =
   "The online repository didn't accept the saved connection, so new online changes couldn't be checked.";
 
-/** Known-empty direction (decided by ref/marker string equality). */
+/** Known-empty direction. */
 const NO_COMMITS: SyncDirectionInfo = {
   hasChanges: false,
   count: 0,
   commits: [],
   approximate: false,
 };
-/** Honestly unknown — nothing to string-compare against. */
+/** Honestly unknown — nothing to compare against. */
 const UNKNOWN_COMMITS: SyncDirectionInfo = {
   hasChanges: null,
   count: null,
   commits: [],
   approximate: false,
 };
-/** Changes exist (by string equality) but were not counted — no walk ran. */
-const CHANGES_UNCOUNTED: SyncDirectionInfo = {
+/** Changes exist (never counted — the check path reads no commit details). */
+const HAS_CHANGES: SyncDirectionInfo = {
   hasChanges: true,
   count: null,
   commits: [],
@@ -1573,101 +1410,25 @@ const CHANGES_UNCOUNTED: SyncDirectionInfo = {
 const EMPTY_CHANGED_FILES: SyncPreview["changedFiles"] = { count: 0, sample: [] };
 
 /**
- * Hard budget on the freshly-fetched-commit walk. Budget exhausted → stop and
- * report what we have with `approximate: true` ("50+ new changes").
- */
-const INCOMING_WALK_BUDGET = 50;
-
-/**
- * Commit details for the incoming list, reading ONLY commits the fetch just
- * downloaded: the walk starts at the NEW remote tip and stops the moment a
- * parent oid string-equals one of `stops` (the local tip, the PRE-fetch
- * remote-tracking value, the last-synced marker) — those old objects are
- * never read, because reading ANY object from one of a large repository's
- * packfiles makes isomorphic-git load that entire pack into memory.
+ * What would a Sync do right now? `git.fetch` the tracked remote branch
+ * (single branch, no tags — never merges, never pushes, never snapshots),
+ * then `git.resolveRef` both tips and decide the direction with the
+ * library's depth-capped `git.isDescendent` ({@link relateTips}):
  *
- * `partialStop` marks stops where the walk ends at a previously-fetched tip
- * rather than a known-local one — the count is then a lower bound
- * (`approximate: true`).
- */
-async function freshIncomingCommits(
-  dir: string,
-  remoteTip: string,
-  stops: Set<string>,
-  partialStops: Set<string>,
-  cache: GitCache,
-): Promise<SyncDirectionInfo> {
-  const commits: SyncCommitInfo[] = [];
-  const seen = new Set<string>();
-  let approximate = false;
-  const frontier: string[] = [remoteTip];
-  while (frontier.length > 0) {
-    const oid = frontier.shift()!;
-    if (seen.has(oid)) continue;
-    seen.add(oid);
-    if (commits.length >= INCOMING_WALK_BUDGET) {
-      approximate = true; // budget exhausted — report what we have + "more"
-      break;
-    }
-    let commit: { message?: string; author?: { name?: string; timestamp?: number }; parent: string[] };
-    try {
-      commit = (await git.readCommit({ fs, dir, cache, oid })).commit;
-    } catch {
-      approximate = true; // unreadable (shouldn't happen for fresh objects)
-      break;
-    }
-    commits.push({
-      id: oid,
-      message: (commit.message ?? "").split("\n", 1)[0]?.trim() ?? "",
-      author: commit.author?.name ?? "",
-      timestamp: (commit.author?.timestamp ?? 0) * 1000,
-    });
-    for (const parent of commit.parent) {
-      if (stops.has(parent)) {
-        // NEVER read the stop object. Ending at a merely previously-fetched
-        // tip means older incoming commits may exist beyond it.
-        if (partialStops.has(parent)) approximate = true;
-        continue;
-      }
-      frontier.push(parent);
-    }
-  }
-  return {
-    hasChanges: true,
-    count: commits.length > 0 ? commits.length : null,
-    commits: commits.slice(0, PREVIEW_COMMIT_LIMIT),
-    approximate,
-  };
-}
-
-/**
- * What would a Sync do right now? Fetch-first, then PURE REF STRING
- * COMPARISON — the check path NEVER walks local history:
+ *   tips equal → up to date · remote descends from local → incoming only ·
+ *   local descends from remote → outgoing only · neither / depth exhausted →
+ *   BOTH (a false "changes" is a harmless no-op pull/push; a false "nothing"
+ *   hides the author's chapters — the rc.10 lesson).
  *
- *   1. FETCH the tracked remote branch (single branch, no tags). Never
- *      merges, never pushes, never snapshots. `fetch: false` skips this and
- *      previews against the last-fetched record of the online tip.
- *   2. Decide incoming/outgoing by comparing oid strings: the local tip, the
- *      just-fetched online tip, the PRE-fetch remote-tracking value, and the
- *      tip recorded at the last successful push/pull/sync (the marker in
- *      `.git/print-md-remote.json`). No merge base is ever computed and no
- *      object that predates this call's fetch is ever read.
- *   3. Incoming commit DETAILS come from walking ONLY the commits the fetch
- *      just downloaded ({@link freshIncomingCommits}), stopping at the old
- *      tips by string equality with a hard budget.
- *
- * Design note (0.5.0 rebuild, round 2): the preview used to count
- * ahead/behind by walking commit history to the merge base. On a large
- * repository reading ANY object from an old packfile makes isomorphic-git
- * load that entire pack into memory (the user's repo has three ~600 MB packs
- * — measured 70 MB → 1.4 GB RSS for one deep walk), which crashed the app on
- * "Check for updates". Counts are therefore only reported when they could be
- * derived from freshly-fetched objects; otherwise `hasChanges` carries the
- * honest yes/no/unknown. The earlier `statusMatrix` working-tree scan is gone
- * for the same reason (`workingTree: "skipped"`).
+ * No commit lists and no counts — `SyncDirectionInfo` carries `hasChanges`
+ * only (the UI renders count-less states as "New changes online" / "Changes
+ * to send").
  *
  * Failure model: a failed fetch (offline / rejected connection) NEVER throws —
- * the preview degrades to local ref information with a friendly `fetchNotice`.
+ * the preview degrades to the existing remote-tracking ref with a friendly
+ * `fetchNotice`. `fetch: false` skips the network entirely and compares
+ * against the existing tracking ref (`live: false`, no notice) — backs the
+ * Sync dialog's instant first paint.
  *
  * Locking: a live preview WRITES `.git` state (the fetch updates the
  * remote-tracking ref and may add packs), so it serializes on the per-repo
@@ -1683,46 +1444,27 @@ export async function previewSync(options: PreviewSyncOptions): Promise<SyncPrev
   const { dir } = await resolveRepoScope(options.projectDir);
 
   if (options.fetch === false) {
-    return previewFromRefs(dir, options, { live: false, remoteTip: null, preFetchTip: null });
+    return previewFromRefs(dir, options, { live: false }, {});
   }
   return withRepoLock(dir, async (): Promise<SyncPreview> => {
-    // One object cache for this preview only — released with it. Only the
-    // fetch transport and the freshly-fetched commit reads touch it.
+    // One object cache for this preview only — released with it.
     const cache: GitCache = {};
     const branch = (await git.currentBranch({ fs, dir })) ?? undefined;
     let transport: RemoteTransport;
     try {
       transport = await resolveTransport(dir, options);
     } catch {
-      return previewFromRefs(dir, options, { live: false, remoteTip: null, preFetchTip: null }, cache);
+      return previewFromRefs(dir, options, { live: false }, cache);
     }
     if (!branch) {
-      return {
-        hasRemote: true,
-        live: false,
-        incoming: NO_COMMITS,
-        outgoing: NO_COMMITS,
-        changedFiles: EMPTY_CHANGED_FILES,
-        workingTree: "skipped",
-      };
-    }
-    // The PRE-fetch remote-tracking value: the boundary between objects this
-    // fetch downloads (safe to read) and old history (never read).
-    let preFetchTip: string | null = null;
-    try {
-      preFetchTip = await git.resolveRef({
-        fs,
-        dir,
-        ref: `refs/remotes/${transport.remote}/${branch}`,
-      });
-    } catch {
-      preFetchTip = null;
+      return previewFromRefs(dir, options, { live: false }, cache);
     }
     let live = false;
     let fetchNotice: string | undefined;
-    let remoteTip: string | null = null;
     try {
-      remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
+      // The fetch updates refs/remotes/<remote>/<branch>; previewFromRefs
+      // reads it back, so live and degraded paths share one comparison.
+      await fetchRemoteTip(dir, branch, transport, http, cache);
       live = true;
     } catch (e) {
       fetchNotice =
@@ -1731,35 +1473,22 @@ export async function previewSync(options: PreviewSyncOptions): Promise<SyncPrev
     return previewFromRefs(
       dir,
       options,
-      { live, remoteTip, preFetchTip, ...(fetchNotice ? { fetchNotice } : {}) },
+      { live, ...(fetchNotice ? { fetchNotice } : {}) },
       cache,
     );
   });
 }
 
 /**
- * Ref-comparison preview core. Inputs are oid strings only:
- *
- *   L = local branch tip · R = online tip (just fetched, or the last-fetched
- *   record when offline/local) · P = PRE-fetch remote-tracking value ·
- *   M = last-synced marker ({@link readLastSyncedTip})
- *
- *   outgoing: R == L → none · L == M → none · M present → changes (uncounted)
- *             · live empty remote with local commits → changes · else unknown
- *   incoming: R == L → none · R == M → none · R moved past P → walk the
- *             freshly-fetched commits for details · else changes-uncounted
- *             when provable (M present / no local commits), unknown otherwise
+ * Comparison core shared by the live and local (`fetch: false`) previews:
+ * local branch tip vs the remote-tracking ref, direction via
+ * {@link relateTips}.
  */
 async function previewFromRefs(
   dir: string,
   options: PreviewSyncOptions,
-  fetched: {
-    live: boolean;
-    remoteTip: string | null;
-    preFetchTip: string | null;
-    fetchNotice?: string;
-  },
-  cache: GitCache = {},
+  fetched: { live: boolean; fetchNotice?: string },
+  cache: GitCache,
 ): Promise<SyncPreview> {
   const branch = (await git.currentBranch({ fs, dir })) ?? undefined;
 
@@ -1777,103 +1506,48 @@ async function previewFromRefs(
       workingTree: "skipped",
     };
   }
-  if (!branch) {
-    return {
-      hasRemote: true,
-      live: fetched.live,
-      ...(fetched.fetchNotice ? { fetchNotice: fetched.fetchNotice } : {}),
-      incoming: NO_COMMITS,
-      outgoing: NO_COMMITS,
-      changedFiles: EMPTY_CHANGED_FILES,
-      workingTree: "skipped",
-    };
-  }
-
-  const { live } = fetched;
-  let remoteTip = fetched.remoteTip;
-  let preFetchTip = fetched.preFetchTip;
-  if (!live) {
-    // Degrade to the last-fetched record of the online tip, if any. Nothing
-    // was fetched in this call, so there are no fresh objects to walk.
-    try {
-      remoteTip = await git.resolveRef({
-        fs,
-        dir,
-        ref: `refs/remotes/${transport.remote}/${branch}`,
-      });
-    } catch {
-      remoteTip = null;
-    }
-    preFetchTip = remoteTip;
-  }
-
-  const localTip = await git
-    .resolveRef({ fs, dir, ref: branch })
-    .catch(() => null);
-  const marker = await readLastSyncedTip(dir, branch);
-  const baseResult = {
+  const base = {
     hasRemote: true,
-    branch,
-    live,
+    ...(branch ? { branch } : {}),
+    live: fetched.live,
     ...(fetched.fetchNotice ? { fetchNotice: fetched.fetchNotice } : {}),
     changedFiles: EMPTY_CHANGED_FILES,
     workingTree: "skipped" as const,
   };
-
-  // ── Outgoing: string equality only, never a local history walk ────────────
-  let outgoing: SyncDirectionInfo;
-  if (!localTip) {
-    outgoing = NO_COMMITS; // no local commits yet — nothing to send
-  } else if (remoteTip && remoteTip === localTip) {
-    outgoing = NO_COMMITS; // local tip IS the online tip
-  } else if (marker) {
-    outgoing = localTip === marker ? NO_COMMITS : CHANGES_UNCOUNTED;
-  } else if (live && !remoteTip) {
-    outgoing = CHANGES_UNCOUNTED; // local commits, provably empty remote
-  } else {
-    outgoing = UNKNOWN_COMMITS; // no marker yet — honestly unknown
+  if (!branch) {
+    return { ...base, incoming: NO_COMMITS, outgoing: NO_COMMITS };
   }
 
-  // ── Incoming: string equality; details only from freshly-fetched commits ──
-  let incoming: SyncDirectionInfo;
+  const remoteTip = await git
+    .resolveRef({ fs, dir, ref: `refs/remotes/${transport.remote}/${branch}` })
+    .catch(() => null);
+  const localTip = await git.resolveRef({ fs, dir, ref: branch }).catch(() => null);
+
   if (!remoteTip) {
-    // Live fetch found no online branch (empty repo) → nothing incoming.
-    // Fetch failed AND no local record → honestly unknown.
-    incoming = live ? NO_COMMITS : UNKNOWN_COMMITS;
-  } else if (localTip && remoteTip === localTip) {
-    incoming = NO_COMMITS; // identical tips
-  } else if (marker && remoteTip === marker) {
-    incoming = NO_COMMITS; // online tip is exactly what we last synced
-  } else if (live && remoteTip !== preFetchTip) {
-    // The fetch just downloaded the commits between P and R — the ONLY
-    // objects this path ever reads. Stop at L/M (exact) or P (partial).
-    const stops = new Set<string>();
-    const partialStops = new Set<string>();
-    if (localTip) stops.add(localTip);
-    if (marker) stops.add(marker);
-    if (preFetchTip && !stops.has(preFetchTip)) {
-      stops.add(preFetchTip);
-      partialStops.add(preFetchTip);
+    if (fetched.live) {
+      // The live fetch found no online branch (a freshly created empty
+      // repo): nothing incoming; anything local has never been sent.
+      return {
+        ...base,
+        incoming: NO_COMMITS,
+        outgoing: localTip ? HAS_CHANGES : NO_COMMITS,
+      };
     }
-    incoming = await freshIncomingCommits(dir, remoteTip, stops, partialStops, cache);
-  } else if (marker || !localTip) {
-    // R != L and R != M with a marker present (or no local commits at all):
-    // online changes provably exist, but they were fetched by an EARLIER
-    // call — reading them now could load old packfiles, so no details.
-    incoming = CHANGES_UNCOUNTED;
-  } else {
-    // No marker and the remote didn't move since the last fetch, but R != L:
-    // without a history walk we can't distinguish "local is ahead" from
-    // "behind/diverged" — and the check path never walks. Report CHANGES
-    // (uncounted), not unknown: the tips provably differ, and the costs are
-    // asymmetric — a false "changes available" makes Get changes a harmless
-    // no-op, while a false "nothing" leaves the author silently out of sync
-    // (the exact cold-start bug hit on 0.5.0-rc.10: tracking ref already
-    // current, local snapshot commits, no marker yet → UI showed nothing
-    // while the online copy had new chapters). The marker self-heals this
-    // after the first successful pull/push/sync.
-    incoming = CHANGES_UNCOUNTED;
+    // No tracking ref and no live check — honestly unknown.
+    return { ...base, incoming: UNKNOWN_COMMITS, outgoing: UNKNOWN_COMMITS };
+  }
+  if (!localTip) {
+    return { ...base, incoming: HAS_CHANGES, outgoing: NO_COMMITS };
   }
 
-  return { ...baseResult, incoming, outgoing };
+  switch (await relateTips(dir, localTip, remoteTip, cache)) {
+    case "equal":
+      return { ...base, incoming: NO_COMMITS, outgoing: NO_COMMITS };
+    case "remote-ahead":
+      return { ...base, incoming: HAS_CHANGES, outgoing: NO_COMMITS };
+    case "local-ahead":
+      return { ...base, incoming: NO_COMMITS, outgoing: HAS_CHANGES };
+    default:
+      return { ...base, incoming: HAS_CHANGES, outgoing: HAS_CHANGES };
+  }
 }

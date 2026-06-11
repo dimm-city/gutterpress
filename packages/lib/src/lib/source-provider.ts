@@ -169,60 +169,107 @@ export function gitAuthor(name?: string): { name: string; email: string } {
 }
 
 /**
- * Stage every working-tree path (added/modified/removed) so the next commit
- * captures the full tree — or, when `subPath` is set, only the tree under
- * that repo-relative folder (book-subfolder scoping). Honours `.gitignore`.
+ * Inline copy of isomorphic-git's internal `worthWalking` (not exported by
+ * the library): true when `filepath` is on the path to — or inside — `root`.
  */
-async function stageAll(
-  dir: string,
-  subPath: string | undefined,
-  cache: GitCache,
-): Promise<void> {
-  const status = await git.statusMatrix({
-    fs,
-    dir,
-    cache,
-    ...(subPath ? { filepaths: [subPath] } : {}),
-  });
-  await Promise.all(
-    status.map(([filepath, , worktreeStatus]) =>
-      worktreeStatus === 0
-        ? git.remove({ fs, dir, filepath, cache })
-        : git.add({ fs, dir, filepath, cache }),
-    ),
-  );
+function worthWalking(filepath: string, root: string | undefined): boolean {
+  if (filepath === "." || root == null || root.length === 0 || root === ".") {
+    return true;
+  }
+  if (root.length >= filepath.length) return root.startsWith(filepath);
+  return filepath.startsWith(root);
+}
+
+/** Workdir-vs-index differences, as `git add -A` staging lists. */
+export interface WorkdirChanges {
+  /** New or modified files to `git.add`. */
+  adds: string[];
+  /** Deleted files to `git.remove`. */
+  removes: string[];
 }
 
 /**
- * True when the working tree differs from HEAD (added/modified/deleted files).
- * Used to skip empty snapshots: committing with nothing changed would create an
- * empty commit that pollutes the author-facing history list.
- *
- * Exported (lock-free) for the sync surface (#15, ADR 0006 D5): sync
- * holds the repo lock for its whole sequence and needs the same "anything to
- * snapshot?" check the snapshot op uses. Callers outside a lock should prefer
- * the provider operations.
- *
- * NOTE: `statusMatrix`'s default `ignored: false` is REQUIRED behavior here —
- * gitignored files must stay invisible to version history (they are user
- * state, never snapshotted). Do not "optimize" this to `ignored: true`.
+ * List workdir-vs-index differences with the library's `git.walk` over the
+ * `WORKDIR` and `STAGE` walkers — deliberately NO `TREE` (HEAD) walker, so a
+ * snapshot check never reads historical packfiles (multi-GB RSS on large
+ * repos). `subPath` scopes the diff to a book subfolder. Honours `.gitignore`
+ * for untracked paths (which also prunes `.git` itself — `isIgnored` always
+ * ignores it), exactly like `statusMatrix` does.
+ */
+export async function listWorkdirChanges(
+  dir: string,
+  subPath?: string,
+  cache: GitCache = {},
+): Promise<WorkdirChanges> {
+  const adds: string[] = [];
+  const removes: string[] = [];
+  await git.walk({
+    fs,
+    dir,
+    cache,
+    trees: [git.WORKDIR(), git.STAGE()],
+    map: async (filepath, [workdir, stage]) => {
+      if (filepath === ".") return;
+      // Subfolder scoping: prune everything outside the book's folder.
+      if (subPath && !worthWalking(filepath, subPath)) return null;
+      // Untracked paths respect .gitignore (returning null prunes the
+      // subtree, so ignored directories are never descended into).
+      if (!stage && workdir && (await git.isIgnored({ fs, dir, filepath }))) {
+        return null;
+      }
+      const [wType, sType] = await Promise.all([
+        workdir ? workdir.type() : Promise.resolve(undefined),
+        stage ? stage.type() : Promise.resolve(undefined),
+      ]);
+      if (wType === "tree" || sType === "tree") {
+        // Recurse into directories; record a file⇄folder swap's blob side.
+        if (sType === "blob") removes.push(filepath);
+        else if (wType === "blob") adds.push(filepath);
+        return;
+      }
+      if (wType === "blob" && !sType) {
+        adds.push(filepath); // new file
+      } else if (!wType && sType === "blob") {
+        removes.push(filepath); // deleted file
+      } else if (wType === "blob" && sType === "blob") {
+        // The WORKDIR walker reuses the index oid when stats match, so an
+        // unchanged file costs a stat, not a rehash.
+        if ((await workdir!.oid()) !== (await stage!.oid())) adds.push(filepath);
+      }
+      // "special"/"commit" entries (sockets, submodules) are skipped.
+      return;
+    },
+  });
+  return { adds, removes };
+}
+
+/** Apply a {@link WorkdirChanges} diff to the index (`git add -A` semantics). */
+async function stageChanges(
+  dir: string,
+  changes: WorkdirChanges,
+  cache: GitCache,
+): Promise<void> {
+  if (changes.adds.length > 0) {
+    await git.add({ fs, dir, cache, filepath: changes.adds });
+  }
+  for (const filepath of changes.removes) {
+    await git.remove({ fs, dir, cache, filepath });
+  }
+}
+
+/**
+ * True when the working tree differs from the index (added/modified/deleted
+ * files). Used to skip empty snapshots. Exported (lock-free) for the sync
+ * surface (#15, ADR 0006 D5) — callers outside a lock should prefer the
+ * provider operations.
  */
 export async function hasPendingChanges(
   dir: string,
   subPath?: string,
   cache: GitCache = {},
 ): Promise<boolean> {
-  const status = await git.statusMatrix({
-    fs,
-    dir,
-    cache,
-    ...(subPath ? { filepaths: [subPath] } : {}),
-  });
-  // Row shape: [filepath, headStatus, worktreeStatus, stageStatus].
-  // Unchanged-and-tracked is [_, 1, 1, 1]; anything else is a pending change.
-  return status.some(
-    ([, head, worktree, stage]) => !(head === 1 && worktree === 1 && stage === 1),
-  );
+  const { adds, removes } = await listWorkdirChanges(dir, subPath, cache);
+  return adds.length > 0 || removes.length > 0;
 }
 
 /**
@@ -258,7 +305,7 @@ class LocalFolderSourceProvider implements SourceProvider {
     return withRepoLock(dir, async () => {
       const cache: GitCache = {};
       await git.init({ fs, dir, defaultBranch: DEFAULT_BRANCH });
-      await stageAll(dir, undefined, cache);
+      await stageChanges(dir, await listWorkdirChanges(dir, undefined, cache), cache);
       await git.commit({
         fs,
         dir,
@@ -399,7 +446,15 @@ class LocalGitSourceProvider implements SourceProvider {
       }
       throw e;
     }
-    let filtered = before ? commits.filter((c) => c.oid !== before) : commits;
+    // isomorphic-git's log can emit a shared ancestor ONCE PER PARENT after a
+    // merge when commit timestamps tie (observed: post-pull merge commits made
+    // within the same second). The UI keys its list on the id — dedupe here.
+    const seen = new Set<string>();
+    let filtered = commits.filter((c) => {
+      if (c.oid === before || seen.has(c.oid)) return false;
+      seen.add(c.oid);
+      return true;
+    });
     const hasMore = filtered.length > limit;
     if (hasMore) filtered = filtered.slice(0, limit);
     return {
@@ -453,15 +508,17 @@ export async function snapshotWorkingTreeUnlocked(
   // repo) limits what is considered/staged to the project's own folder.
   const dir = options.repoRoot ?? options.projectDir;
   const subPath = options.subPath || undefined;
-  // One object cache for this snapshot operation only (check + stage +
+  // One object cache for this snapshot operation only (diff + stage +
   // commit share it), released when the operation returns.
   const cache: GitCache = {};
-  if (!(await hasPendingChanges(dir, subPath, cache))) {
+  // ONE walk decides both "anything to save?" and what to stage.
+  const changes = await listWorkdirChanges(dir, subPath, cache);
+  if (changes.adds.length === 0 && changes.removes.length === 0) {
     throw new Error(
       "No changes since the last snapshot — there is nothing new to save.",
     );
   }
-  await stageAll(dir, subPath, cache);
+  await stageChanges(dir, changes, cache);
   const author = gitAuthor(options.authorName);
   const id = await git.commit({
     fs,
