@@ -1629,6 +1629,24 @@
       toast?.error(e instanceof Error ? e.message : "Could not apply update.");
     }
   }
+
+  /**
+   * RC3-2: Cancel the in-progress render. Optimistically hides the overlay
+   * immediately (<100ms) so the UI feels responsive, then tears down the
+   * preview async. The iframe itself stays mounted and VISIBLE (do NOT set
+   * opacity or hide it — that would re-trigger the Chromium 1fps throttle;
+   * the render simply continues invisibly and finishes harmlessly).
+   */
+  function handleCancelRender() {
+    // Optimistic hide: clear rendering/renderCompleteOverlay first so the
+    // overlay disappears on the next microtask, before any async work.
+    rendering = false;
+    renderCompleteOverlay = false;
+    iframeRevealed = true; // let whatever is in the iframe show; it's fine
+    // Async teardown: flush buffer + stop the preview server. Errors are
+    // swallowed — the user already dismissed the overlay; no UX to update.
+    stopPreview().catch(() => {});
+  }
 </script>
 
 <Toast bind:api={toast} />
@@ -1639,11 +1657,18 @@
   onDiscard={discardRecovery}
   onDismiss={dismissRecovery}
 />
-<LoadingOverlay
-  visible={rendering || renderCompleteOverlay || (busy && !!busyLabel)}
-  label={busyLabel || (renderCompleteOverlay ? "Rendering complete" : renderProgressPage > 0 ? `Laying out page ${renderProgressPage}…` : "Rendering…")}
-  onCancel={rendering ? stopPreview : undefined}
-/>
+
+<!-- RC3-1: App-level overlay for the initial "Opening folder…" busy state ONLY
+     (no preview pane exists yet). Scoped below the toolbar (z-index:50) and
+     all dialogs (1000+). This does NOT cover the preview pane or editor during
+     layout — that's handled by the pane-scoped overlay inside .preview-pane. -->
+{#if busy && !!busyLabel && !previewUrl}
+  <LoadingOverlay
+    visible={true}
+    label={busyLabel}
+    variant="app"
+  />
+{/if}
 
 <!-- Non-blocking PDF export progress: a corner pill that leaves the preview
      fully interactive (the build runs in a separate render window). -->
@@ -2079,6 +2104,19 @@
             }}
           />
         {/key}
+        <!-- RC3-1: Pane-scoped overlay — position:absolute within .preview-pane
+             (which has position:relative). Covers ONLY the preview area; the
+             editor pane, toolbar, and all dialogs remain fully interactive.
+             z-index:10 (above the iframe, below any stacking context above).
+             RC3-2: onCancel calls handleCancelRender which immediately clears
+             rendering/renderCompleteOverlay (optimistic hide <100ms), then
+             tears down async. -->
+        <LoadingOverlay
+          visible={rendering || renderCompleteOverlay}
+          label={renderCompleteOverlay ? "Rendering complete…" : renderProgressPage > 0 ? `Laying out page ${renderProgressPage}…` : "Rendering…"}
+          onCancel={rendering ? handleCancelRender : undefined}
+          variant="pane"
+        />
       </section>
     </div>
   {:else}

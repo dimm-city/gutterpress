@@ -6,19 +6,33 @@
     label = "Loading…",
     cancelLabel,
     onCancel,
+    variant = "app",
   }: {
     visible?: boolean;
     label?: string;
     cancelLabel?: string;
     onCancel?: (() => void) | undefined;
+    /**
+     * "pane"  — position:absolute, scoped to the nearest position:relative
+     *            ancestor (used inside .preview-pane so the overlay covers
+     *            only the preview area, not the editor pane or toolbar).
+     * "app"   — position:fixed from top:56px (below toolbar), z-index:50 so
+     *            it stays below all app dialogs (1000+). Used for the initial
+     *            folder-open busy state when no preview pane exists yet.
+     */
+    variant?: "pane" | "app";
   } = $props();
 </script>
 
 {#if visible}
   <!-- Snaps in when work starts; fades OUT over 400ms when it ends, so on render
-       completion it dissolves while the preview iframe fades in (a cross-fade). -->
+       completion it dissolves while the preview iframe fades in (a cross-fade).
+       variant="pane"  → position:absolute inside .preview-pane (covers preview only).
+       variant="app"   → position:fixed below toolbar, z-index:50 (below dialogs). -->
   <div
     class="loading-overlay"
+    class:variant-pane={variant === "pane"}
+    class:variant-app={variant === "app"}
     role="status"
     aria-live="assertive"
     aria-busy="true"
@@ -36,9 +50,14 @@
 
 <style>
   .loading-overlay {
-    position: fixed;
+    /* position is set by the consumer:
+         - "pane" variant: position:absolute within .preview-pane (covers preview only,
+           not the editor or toolbar). Used during page layout (rendering=true).
+         - "app" variant: position:fixed covering the content area below the toolbar
+           (top:56px), with z-index:50 — below the toolbar (100) and all dialogs
+           (1000+). Used during initial folder open (busy=true, no previewUrl yet).
+       The base rule sets the shared layout; the variant classes override position/inset. */
     inset: 0;
-    top: 56px; /* below toolbar */
     /* TRANSLUCENT on purpose — must never be fully opaque. The preview
        iframe underneath is cross-origin, and Chromium render-throttles a
        cross-origin iframe with no visible pixels (own opacity:0 OR fully
@@ -52,7 +71,25 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 9999;
+    /* Default z-index: below toolbar (100) and all dialogs (1000+) so the
+       overlay never traps interactive UI elements above it. The pane variant
+       only needs to be above the iframe (no z-index stacking contest needed
+       since it lives in a separate stacking context inside .preview-pane). */
+    z-index: 10;
+  }
+
+  /* Pane variant: scoped to .preview-pane (position:relative parent). */
+  .loading-overlay.variant-pane {
+    position: absolute;
+  }
+
+  /* App variant: covers the full content area below the toolbar for the
+     initial "Opening folder…" busy state. z-index:50 keeps it below the
+     toolbar (z-index:100) and all app dialogs (z-index:1000+). */
+  .loading-overlay.variant-app {
+    position: fixed;
+    top: 56px; /* below toolbar */
+    z-index: 50;
   }
 
   .spinner-wrap {
