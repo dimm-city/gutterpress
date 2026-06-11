@@ -11,7 +11,8 @@
  * remote-tracking value · the last-synced marker in
  * `.git/print-md-remote.json`). Commit DETAILS are read exclusively from the
  * commits the fetch just downloaded, with a hard budget. Outgoing is never
- * counted; with no marker it is honestly `hasChanges: null`.
+ * counted; with no marker, differing tips report changes-uncounted (a false
+ * "available" is a harmless no-op pull; a false "nothing" hides real changes).
  */
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";

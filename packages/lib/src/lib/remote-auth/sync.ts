@@ -1862,10 +1862,17 @@ async function previewFromRefs(
     // call — reading them now could load old packfiles, so no details.
     incoming = CHANGES_UNCOUNTED;
   } else {
-    // No marker and the remote didn't move since the last fetch: R != L
-    // alone can't distinguish "local is ahead" from "diverged" without a
-    // history walk — and the check path never walks. Honestly unknown.
-    incoming = UNKNOWN_COMMITS;
+    // No marker and the remote didn't move since the last fetch, but R != L:
+    // without a history walk we can't distinguish "local is ahead" from
+    // "behind/diverged" — and the check path never walks. Report CHANGES
+    // (uncounted), not unknown: the tips provably differ, and the costs are
+    // asymmetric — a false "changes available" makes Get changes a harmless
+    // no-op, while a false "nothing" leaves the author silently out of sync
+    // (the exact cold-start bug hit on 0.5.0-rc.10: tracking ref already
+    // current, local snapshot commits, no marker yet → UI showed nothing
+    // while the online copy had new chapters). The marker self-heals this
+    // after the first successful pull/push/sync.
+    incoming = CHANGES_UNCOUNTED;
   }
 
   return { ...baseResult, incoming, outgoing };
