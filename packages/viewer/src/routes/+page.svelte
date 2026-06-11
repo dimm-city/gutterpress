@@ -8,10 +8,13 @@
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type {
+    ProblemEntry,
     ProjectCapabilities,
     ProjectClassification,
     ProjectRemoteDiagnosis,
   } from "$lib/platform/contract";
+  import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
+  import { problemCounts } from "$lib/problems";
   import VersionHistoryDialog from "$lib/components/VersionHistoryDialog.svelte";
   import SyncDialog from "$lib/components/SyncDialog.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
@@ -570,6 +573,67 @@
     }
   }
 
+  // ── Problems panel (#28) ───────────────────────────────────────────────────
+  // Lint findings for the open project, refreshed after every live-preview
+  // rebuild (the renderingComplete event — which fires for the initial render
+  // AND every watcher-triggered re-render). The toggle button lives in the
+  // toolbar with an errors+warnings count badge.
+  let problemsOpen = $state(false);
+  let problems = $state<ProblemEntry[]>([]);
+  let problemsLoading = $state(false);
+  let problemBadge = $derived(problemCounts(problems).badge);
+
+  function refreshProblems() {
+    if (!isDesktop() || !currentDir || sourceMode !== "folder") return;
+    const dir = currentDir;
+    problemsLoading = true;
+    getPlatform()
+      .lintProject(dir)
+      .then((entries) => {
+        // The project may have changed while the lint was in flight.
+        if (currentDir === dir) problems = entries;
+      })
+      .catch(() => {
+        // Lint failing must never break the preview — show a clean panel.
+        if (currentDir === dir) problems = [];
+      })
+      .finally(() => {
+        problemsLoading = false;
+      });
+  }
+
+  // Closing the project (or switching to a URL preview) clears the findings so
+  // the panel/badge never show a stale project's problems.
+  $effect(() => {
+    if (!currentDir || sourceMode !== "folder") {
+      problems = [];
+      problemsOpen = false;
+    }
+  });
+
+  /**
+   * Open the problem's file in the editor at the offending line. Reuses the
+   * existing cross-chapter reveal (the same path the preview→editor sync and
+   * outline jumps use) — no new navigation machinery.
+   */
+  function openProblem(p: ProblemEntry) {
+    if (!p.filePath || !currentDir) return;
+    // Make sure the editor pane is visible first (narrow = Edit mode pane;
+    // wide = the editor split).
+    if (isNarrow) {
+      setPaneMode("edit");
+    } else if (!editorOpen) {
+      editorOpen = true;
+    }
+    const rel = p.file ?? p.filePath.split(/[\\/]/).pop() ?? p.filePath;
+    if (p.line) {
+      followChapterInEditor(rel, p.line);
+    } else {
+      selectEditorFile(p.filePath);
+    }
+    focusEditorWhenReady();
+  }
+
   // ----------------------------------------------------------------
   // Inject viewer canvas styles into iframe when client + bgColor change
   // ----------------------------------------------------------------
@@ -713,6 +777,9 @@
         toast?.success(`Your book is ready — ${n} ${n === 1 ? 'page' : 'pages'}`);
         // Build the chapter-jump outline from the freshly rendered DOM.
         refreshOutline();
+        // Re-lint the project on every rebuild so the Problems panel tracks
+        // the author's edits (#28).
+        refreshProblems();
         // First project render done → dismiss the splash and reveal the window.
         getPlatform().splashStatus("Ready", 100).catch(() => {});
         getPlatform().rendererReady().catch(() => {});
@@ -1849,6 +1916,30 @@
           <Icon name="pen-line" /><span class="view-label">Edit</span>
         </button>
       {/if}
+      <!-- Problems panel toggle (#28): only for open folder projects (lint is
+           desktop/folder-only, like the editor). The badge counts errors +
+           warnings; the label collapses with the other .view-label text at
+           narrow toolbar widths so it never crowds the layout. -->
+      {#if currentDir && sourceMode === "folder"}
+        <button
+          class="icon-text problems-btn"
+          class:active={problemsOpen}
+          onclick={() => (problemsOpen = !problemsOpen)}
+          title={problemBadge > 0
+            ? `Problems — ${problemBadge} thing${problemBadge === 1 ? "" : "s"} to look at`
+            : "Problems — no problems found"}
+          aria-label="Toggle problems panel"
+          aria-pressed={problemsOpen}
+        >
+          <span class="problems-icon" class:has-problems={problemBadge > 0}>
+            <Icon name={problemBadge > 0 ? "triangle-alert" : "circle-check"} />
+            {#if problemBadge > 0}
+              <span class="problem-badge">{problemBadge > 99 ? "99+" : problemBadge}</span>
+            {/if}
+          </span>
+          <span class="view-label">Problems</span>
+        </button>
+      {/if}
       <!-- Version history (#13): capability-gated — plain folders get the
            Enable prompt; versioned folders get snapshot/history/restore. -->
       {#if versionHistoryAvailable}
@@ -2127,6 +2218,17 @@
         />
       </section>
     </div>
+    <!-- Problems panel (#28): a bottom strip below the workspace (VS Code
+         style). Sibling of .workspace inside the .shell flex column so it
+         never disturbs the workspace grid or the preview iframe. -->
+    {#if problemsOpen && currentDir && sourceMode === "folder"}
+      <ProblemsPanel
+        {problems}
+        loading={problemsLoading}
+        onSelect={openProblem}
+        onClose={() => (problemsOpen = false)}
+      />
+    {/if}
   {:else}
     <div class="empty">
       <div class="empty-hero">
@@ -2446,6 +2548,32 @@
 
   /* UX-014: small text label under/beside view mode icon */
   .view-label { font-size: 11px; }
+
+  /* Problems toggle (#28): the count badge rides the icon's top-right corner
+     so the button costs no extra toolbar width beyond its siblings. */
+  .problems-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  .problems-icon.has-problems { color: var(--app-warning-text); }
+  .problems-btn.active .problems-icon.has-problems { color: inherit; }
+  .problem-badge {
+    position: absolute;
+    top: -7px;
+    right: -9px;
+    min-width: 14px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: var(--app-error-strong);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
 
   /* Edit/View segmented toggle (narrow single-pane mode) */
   .pane-toggle { display: inline-flex; gap: 0; }
@@ -2780,8 +2908,11 @@
         950cqi — drop button text labels (icon-only, aria-label/title keep a11y)
         820cqi — hide chapter label (icon + chevron only), drop separators
         780cqi — hide doc title, drop Save PDF text label
+        740cqi — fold Settings+Help into "More" menu (makes room for the
+                 Problems toggle, #28 — without this the right section
+                 overflowed the toolbar edge at 700px)
         680cqi — hide path
-        600cqi — fold Settings+Help into "More" menu, drop "Page" word, open icon-only
+        600cqi — drop "Page" word, open icon-only
         540cqi — compact page nav (drop first/last jump buttons) */
 
   @container (max-width: 1300px) {
@@ -2817,15 +2948,18 @@
     /* UX-006: hide Save PDF text label, keep button as icon-only */
     .save-btn-label { display: none; }
   }
+  @container (max-width: 740px) {
+    /* Fold Settings + Help into the "More" overflow menu so the right section
+       (Edit/Problems/History/Save) never reaches the toolbar edge. */
+    .opt-inline { display: none; }
+    details.more-menu { display: inline-block; }
+  }
   @container (max-width: 680px) {
     .path { display: none; }
   }
   @container (max-width: 600px) {
-    /* Fold Settings + Help into the "More" overflow menu, and drop the "Page"
-       word from the pill — so the page navigation keeps room and the toolbar
-       never crowds/clips at narrow widths. */
-    .opt-inline { display: none; }
-    details.more-menu { display: inline-block; }
+    /* Drop the "Page" word from the pill so the page navigation keeps room
+       and the toolbar never crowds/clips at narrow widths. */
     .pill-word { display: none; }
     /* Open becomes icon-only (the folder icon is unambiguous) so the primary
        action never truncates to "Op". */

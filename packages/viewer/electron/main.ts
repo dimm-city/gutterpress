@@ -186,6 +186,29 @@ interface PrintSafeWarning {
   column: number;
 }
 
+// One finding from the lib's check runner (mirrors checks/types.ts CheckResult).
+interface LintCheckResult {
+  checkId: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  file?: string;
+  line?: number;
+  column?: number;
+  detail?: string;
+}
+
+// One row pushed to the renderer's Problems panel (#28); mirrors the SPA's
+// ProblemEntry in src/lib/platform/contract.ts.
+interface ProblemEntry {
+  filePath?: string;
+  file?: string;
+  line?: number;
+  column?: number;
+  severity: "error" | "warning" | "info";
+  message: string;
+  source: string;
+}
+
 // Local version history (#13). `SnapshotEntry` / `RestoreVersionResult` are
 // the ambient declarations in types.d.ts (single electron-side definition,
 // mirroring the lib — which ships no .d.ts to import from yet).
@@ -201,6 +224,10 @@ interface SourceProviderOps {
     authorName?: string;
   }): Promise<SnapshotEntry>;
   listHistory(projectDir: string): Promise<SnapshotEntry[]>;
+  listHistoryPage(
+    projectDir: string,
+    options?: { limit?: number; before?: string },
+  ): Promise<SnapshotPage>;
   restore(options: { projectDir: string; id: string }): Promise<void>;
 }
 
@@ -370,6 +397,11 @@ interface LibModule {
     authorName?: string;
   }) => Promise<RestoreVersionResult>;
   checkCss: (css: string, from?: string) => PrintSafeWarning[];
+  executeValidation: (args: {
+    input?: string;
+    category?: string;
+    phase?: string;
+  }) => Promise<{ report: { results: LintCheckResult[] } }>;
   BuildError: new (message: string) => Error;
   // Remote GitHub (#15)
   GitHubAuthProvider: new (options?: { clientId?: string }) => GitHubAuthProviderInstance;
@@ -442,6 +474,8 @@ interface LibModule {
   previewSync: (options: {
     projectDir: string;
     tokenStore?: { get(host: string): Promise<HostCredential | null> };
+    /** `false` = local-only preview (no network fetch). */
+    fetch?: boolean;
   }) => Promise<SyncPreviewInfo>;
 }
 
@@ -1577,6 +1611,46 @@ ipcMain.handle(
   },
 );
 
+// Project-wide source lint for the Problems panel (#28). Runs the lib's
+// pre-build source checks (broken local refs, print-safety CSS, markdown/HTML
+// style, accessibility) via the same executeValidation the CLI `print-md
+// validate` uses, so the panel and the CLI never disagree. Source checks all
+// run in-process (markdownlint/htmlhint are lib production deps — they ship
+// with the packaged app; no external CLI tools are probed for this category).
+ipcMain.handle(
+  "lint:project",
+  async (_e, projectDir: string): Promise<ProblemEntry[]> => {
+    if (!path.isAbsolute(projectDir)) {
+      throw new Error(`lint:project requires an absolute path, got: ${projectDir}`);
+    }
+    const lib = await loadLib();
+    const execution = await lib.executeValidation({
+      input: projectDir,
+      category: "source",
+      phase: "pre-build",
+    });
+    const dirPrefix = projectDir.replace(/[\\/]+$/, "") + path.sep;
+    return execution.report.results.map((r) => {
+      const abs = r.file ? path.resolve(r.file) : undefined;
+      const rel =
+        abs && abs.startsWith(dirPrefix)
+          ? abs.slice(dirPrefix.length).split(path.sep).join("/")
+          : abs
+            ? path.basename(abs)
+            : undefined;
+      return {
+        filePath: abs,
+        file: rel,
+        line: r.line,
+        column: r.column,
+        severity: r.severity,
+        message: r.message,
+        source: r.checkId,
+      };
+    });
+  },
+);
+
 ipcMain.handle("app:getLastProject", async () => {
   const prefs = await readPrefs();
   return existingDirectory(prefs.lastProjectDir);
@@ -1867,7 +1941,34 @@ ipcMain.handle(
       const dir = requireAbsoluteDir("vcs:listSnapshots", projectDir);
       const lib = await loadLib();
       const source = await lib.detectProjectSource(dir);
+      // Bounded to the lib's default page size; use vcs:listSnapshotsPage for
+      // "Show older versions" continuation.
       return lib.providerFor(source).listHistory(dir);
+    }),
+);
+
+ipcMain.handle(
+  "vcs:listSnapshotsPage",
+  (
+    _e,
+    projectDir: string,
+    options?: { limit?: number; before?: string },
+  ): Promise<SnapshotPage> =>
+    handleVcsErrors("vcs:listSnapshotsPage", async () => {
+      const dir = requireAbsoluteDir("vcs:listSnapshotsPage", projectDir);
+      // Validate the continuation cursor before it reaches the lib (it is
+      // used as a git ref); a malformed cursor must never become a ref query.
+      const before = options?.before;
+      if (before !== undefined && !/^[0-9a-f]{40}$/i.test(before)) {
+        throw new Error("vcs:listSnapshotsPage requires a valid snapshot id cursor");
+      }
+      const limit = options?.limit;
+      const lib = await loadLib();
+      const source = await lib.detectProjectSource(dir);
+      return lib.providerFor(source).listHistoryPage(dir, {
+        ...(typeof limit === "number" ? { limit } : {}),
+        ...(before ? { before } : {}),
+      });
     }),
 );
 
@@ -2253,6 +2354,23 @@ ipcMain.handle(
       return lib.previewSync({
         projectDir: dir,
         tokenStore: electronTokenStore,
+      });
+    }),
+);
+
+ipcMain.handle(
+  "remote:previewSyncLocal",
+  (_e, projectDir: string): Promise<SyncPreviewInfo> =>
+    handleRemoteErrors("remote:previewSyncLocal", async () => {
+      const dir = requireAbsoluteDir("remote:previewSyncLocal", projectDir);
+      const lib = await loadLib();
+      // LOCAL-ONLY preview (no network): incoming is computed against the
+      // last-fetched record of the online tip. Backs the Sync dialog's
+      // instant first paint; the live remote:previewSync follows it.
+      return lib.previewSync({
+        projectDir: dir,
+        tokenStore: electronTokenStore,
+        fetch: false,
       });
     }),
 );

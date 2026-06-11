@@ -81,6 +81,21 @@ export interface SnapshotEntry {
   author?: string;
 }
 
+/** One bounded page of version history (mirrors the lib's HistoryPage). */
+export interface SnapshotPage {
+  entries: SnapshotEntry[];
+  /** Older entries exist — pass the last entry's id as `before` to continue. */
+  hasMore: boolean;
+}
+
+/** Paging inputs for {@link HostServices.listSnapshotsPage}. */
+export interface ListSnapshotsOptions {
+  /** Max entries per page (host default: 100). */
+  limit?: number;
+  /** Continuation cursor: the id of the previous page's LAST entry. */
+  before?: string;
+}
+
 /** Result of a safe restore (#13): backupId is the automatic pre-restore snapshot. */
 export interface RestoreVersionResult {
   restoredId: string;
@@ -98,6 +113,25 @@ export interface PrintSafeWarning {
   message: string;
   line: number;
   column: number;
+}
+
+/**
+ * One row in the Problems panel (#28). Mirrors the lib's `CheckResult`
+ * (packages/lib/src/checks/types.ts) plus a resolved absolute path — defined
+ * locally so the SPA never value-imports the lib (§8 / ADR 0004).
+ */
+export interface ProblemEntry {
+  /** Absolute path of the offending file, when the check reported one. */
+  filePath?: string;
+  /** Project-relative display path (falls back to the basename). */
+  file?: string;
+  /** 1-based line number, when known. */
+  line?: number;
+  column?: number;
+  severity: "error" | "warning" | "info";
+  message: string;
+  /** Originating check id (e.g. "source.links.local-refs"). */
+  source: string;
 }
 
 // ── Host RPC payload shapes (mirror electron/preload.ts + types.d.ts) ─────────
@@ -642,6 +676,16 @@ export interface HostServices {
    */
   checkCss(css: string, from?: string): Promise<PrintSafeWarning[]>;
 
+  /**
+   * Run the project's pre-build source lint checks (#28) — broken local
+   * references, print-safety CSS, markdown/HTML style, accessibility — and
+   * return one entry per finding for the Problems panel. Host-side because the
+   * check runner is Node code (fs/glob/postcss). All source checks run
+   * in-process in the packaged app (no external CLI tools). The WebAdapter
+   * stub returns `[]` (lint is non-essential chrome, same as checkCss).
+   */
+  lintProject(projectDir: string): Promise<ProblemEntry[]>;
+
   getViewerPrefs(): Promise<ViewerPrefs>;
   setViewerPrefs(patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }>;
 
@@ -711,8 +755,17 @@ export interface HostServices {
    * with a friendly message when nothing has changed since the last snapshot.
    */
   saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
-  /** List the project's snapshots, newest first. */
+  /** List the project's snapshots, newest first (bounded to one page). */
   listSnapshots(projectDir: string): Promise<SnapshotEntry[]>;
+  /**
+   * One bounded page of snapshots with a continuation cursor — backs the
+   * history dialog's "Show older versions". The walk is capped host-side so
+   * a long history can never freeze the dialog.
+   */
+  listSnapshotsPage(
+    projectDir: string,
+    options?: ListSnapshotsOptions,
+  ): Promise<SnapshotPage>;
   /**
    * Restore the project's files to a chosen snapshot — SAFELY: the host takes
    * an automatic backup snapshot of the current state first (when anything
@@ -784,6 +837,12 @@ export interface HostServices {
    * pre-sync snapshot would commit. Backs the Sync dialog's open/refresh view.
    */
   previewSync(projectDir: string): Promise<SyncPreviewInfo>;
+  /**
+   * Local-only sync preview (NO network): incoming is computed against the
+   * last-fetched record of the online tip (`live: false`). Backs the Sync
+   * dialog's instant first paint while the live previewSync is in flight.
+   */
+  previewSyncLocal(projectDir: string): Promise<SyncPreviewInfo>;
   /** Snapshot-first sync of the project to its online repository. */
   syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
   /** Apply per-file conflict choices and sync the combined result. */

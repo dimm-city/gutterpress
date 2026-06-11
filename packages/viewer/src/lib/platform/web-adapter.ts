@@ -32,6 +32,7 @@ import type {
   DiscoveredProject,
   ProjectClassification,
   PrintSafeWarning,
+  ProblemEntry,
   FileStat,
   FileWriteResult,
   RecoveryEntry,
@@ -39,6 +40,8 @@ import type {
   CreateProjectOptions,
   CreateProjectResult,
   SnapshotEntry,
+  SnapshotPage,
+  ListSnapshotsOptions,
   RestoreVersionResult,
   DeviceCodeInfo,
   RemoteConnection,
@@ -167,6 +170,12 @@ export class WebAdapter implements Platform {
     return Promise.resolve([]);
   }
 
+  // Same degrade-to-clean policy as checkCss: the Problems panel simply shows
+  // "No problems found" on the web until a PWA lint backend exists.
+  lintProject(_projectDir: string): Promise<ProblemEntry[]> {
+    return Promise.resolve([]);
+  }
+
   getViewerPrefs(): Promise<ViewerPrefs> {
     return rejectNotImplemented("getViewerPrefs");
   }
@@ -274,6 +283,14 @@ export class WebAdapter implements Platform {
     return Promise.resolve([]);
   }
 
+  // Empty page (matches listSnapshots) so a history view renders empty.
+  listSnapshotsPage(
+    _projectDir: string,
+    _options?: ListSnapshotsOptions,
+  ): Promise<SnapshotPage> {
+    return Promise.resolve({ entries: [], hasMore: false });
+  }
+
   restoreSnapshot(_projectDir: string, _id: string): Promise<RestoreVersionResult> {
     return rejectNotImplemented("restoreSnapshot");
   }
@@ -354,6 +371,10 @@ export class WebAdapter implements Platform {
 
   previewSync(_projectDir: string): Promise<SyncPreviewInfo> {
     return rejectNotImplemented("previewSync");
+  }
+
+  previewSyncLocal(_projectDir: string): Promise<SyncPreviewInfo> {
+    return rejectNotImplemented("previewSyncLocal");
   }
 
   syncChanges(_projectDir: string, _message?: string): Promise<SyncOutcome> {

@@ -122,6 +122,13 @@ interface SnapshotEntry {
   author?: string;
 }
 
+/** One bounded page of version history (mirrors the lib's HistoryPage). */
+interface SnapshotPage {
+  entries: SnapshotEntry[];
+  /** Older entries exist — pass the last entry's id as `before` to continue. */
+  hasMore: boolean;
+}
+
 /** Result of a safe restore (#13): `backupId` is the automatic pre-restore snapshot. */
 interface RestoreVersionResult {
   restoredId: string;
@@ -348,6 +355,20 @@ interface Window {
       css: string,
       from?: string,
     ): Promise<Array<{ rule: string; severity: "error" | "warning"; message: string; line: number; column: number }>>;
+    // Project-wide source lint for the Problems panel (#28) — runs in main
+    lintProject(
+      projectDir: string,
+    ): Promise<
+      Array<{
+        filePath?: string;
+        file?: string;
+        line?: number;
+        column?: number;
+        severity: "error" | "warning" | "info";
+        message: string;
+        source: string;
+      }>
+    >;
     // File metadata + folder watch (PlatformAdapter, #44)
     statFile(
       filePath: string,
@@ -430,6 +451,10 @@ interface Window {
     enableVersionHistory(projectDir: string): Promise<ProjectClassification>;
     saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
     listSnapshots(projectDir: string): Promise<SnapshotEntry[]>;
+    listSnapshotsPage(
+      projectDir: string,
+      options?: { limit?: number; before?: string },
+    ): Promise<SnapshotPage>;
     restoreSnapshot(
       projectDir: string,
       id: string,
@@ -457,6 +482,8 @@ interface Window {
     // Sync (#15 sync phase, ADR 0006 D5)
     getSyncStatus(projectDir: string, fetch?: boolean): Promise<SyncStatusInfo>;
     previewSync(projectDir: string): Promise<SyncPreviewInfo>;
+    /** Local-only preview (no network) — the Sync dialog's instant first paint. */
+    previewSyncLocal(projectDir: string): Promise<SyncPreviewInfo>;
     syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
     resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
     startPreview(args: { input: string }): Promise<{

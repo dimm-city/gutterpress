@@ -29,6 +29,20 @@ function makeBridge() {
       "listProjectFiles",
       Promise.resolve({ md: ["01-intro.md"], css: ["theme.css"] }),
     ),
+    checkCss: rec("checkCss", Promise.resolve([])),
+    lintProject: rec(
+      "lintProject",
+      Promise.resolve([
+        {
+          filePath: "/proj/01-intro.md",
+          file: "01-intro.md",
+          line: 4,
+          severity: "error",
+          message: "Local reference not found: ./missing.png",
+          source: "source.links.local-refs",
+        },
+      ]),
+    ),
     getStatus: rec("getStatus", Promise.resolve({ ok: true })),
     getLastProject: rec("getLastProject", Promise.resolve(null)),
     getViewerPrefs: rec("getViewerPrefs", Promise.resolve({})),
@@ -160,6 +174,30 @@ test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", asyn
     { name: "My Book", parentDir: "/proj" },
   ]);
   expect(calls.find((c) => c.method === "writeFile")?.args).toEqual(["/a.md", "hello"]);
+});
+
+test("ElectronAdapter delegates lintProject (#28) 1:1 to the bridge", async () => {
+  const { bridge, calls } = makeBridge();
+  // @ts-expect-error test global
+  globalThis.window = { electron: bridge };
+  const p = new ElectronAdapter();
+
+  const entries = await p.lintProject("/proj");
+  expect(entries).toHaveLength(1);
+  expect(entries[0]).toEqual({
+    filePath: "/proj/01-intro.md",
+    file: "01-intro.md",
+    line: 4,
+    severity: "error",
+    message: "Local reference not found: ./missing.png",
+    source: "source.links.local-refs",
+  });
+  expect(calls.find((c) => c.method === "lintProject")?.args).toEqual(["/proj"]);
+});
+
+test("WebAdapter.lintProject degrades to no findings (#28)", async () => {
+  const p = new WebAdapter();
+  await expect(p.lintProject("/proj")).resolves.toEqual([]);
 });
 
 test("ElectronAdapter delegates per-project state (#43) 1:1 to the bridge", async () => {

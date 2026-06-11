@@ -490,6 +490,20 @@ contextBridge.exposeInMainWorld("electron", {
   ): Promise<
     Array<{ rule: string; severity: "error" | "warning"; message: string; line: number; column: number }>
   > => ipcRenderer.invoke("lint:checkCss", css, from),
+  // Project-wide source lint for the Problems panel (#28) — runs in main
+  lintProject: (
+    projectDir: string,
+  ): Promise<
+    Array<{
+      filePath?: string;
+      file?: string;
+      line?: number;
+      column?: number;
+      severity: "error" | "warning" | "info";
+      message: string;
+      source: string;
+    }>
+  > => ipcRenderer.invoke("lint:project", projectDir),
   // File metadata (PlatformAdapter.statFile, #44 — external-edit detection)
   statFile: (
     filePath: string,
@@ -576,6 +590,11 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("vcs:saveSnapshot", projectDir, message),
   listSnapshots: (projectDir: string): Promise<SnapshotEntry[]> =>
     ipcRenderer.invoke("vcs:listSnapshots", projectDir),
+  listSnapshotsPage: (
+    projectDir: string,
+    options?: { limit?: number; before?: string },
+  ): Promise<SnapshotPage> =>
+    ipcRenderer.invoke("vcs:listSnapshotsPage", projectDir, options),
   restoreSnapshot: (
     projectDir: string,
     id: string,
@@ -638,6 +657,9 @@ contextBridge.exposeInMainWorld("electron", {
   /** Fetch-only "what would a Sync do?" preview (incoming + outgoing). */
   previewSync: (projectDir: string): Promise<SyncPreviewInfo> =>
     ipcRenderer.invoke("remote:previewSync", projectDir),
+  /** Local-only preview (no network) — the Sync dialog's instant first paint. */
+  previewSyncLocal: (projectDir: string): Promise<SyncPreviewInfo> =>
+    ipcRenderer.invoke("remote:previewSyncLocal", projectDir),
   syncChanges: (
     projectDir: string,
     message?: string,

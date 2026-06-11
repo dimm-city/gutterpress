@@ -30,6 +30,7 @@ import type {
   DiscoveredProject,
   ProjectClassification,
   PrintSafeWarning,
+  ProblemEntry,
   FileStat,
   FileWriteResult,
   RecoveryEntry,
@@ -37,6 +38,8 @@ import type {
   CreateProjectOptions,
   CreateProjectResult,
   SnapshotEntry,
+  SnapshotPage,
+  ListSnapshotsOptions,
   RestoreVersionResult,
   DeviceCodeInfo,
   RemoteConnection,
@@ -149,6 +152,10 @@ export class ElectronAdapter implements Platform {
     return bridge().checkCss(css, from);
   }
 
+  lintProject(projectDir: string): Promise<ProblemEntry[]> {
+    return bridge().lintProject(projectDir);
+  }
+
   getViewerPrefs(): Promise<ViewerPrefs> {
     return bridge().getViewerPrefs();
   }
@@ -223,6 +230,13 @@ export class ElectronAdapter implements Platform {
 
   listSnapshots(projectDir: string): Promise<SnapshotEntry[]> {
     return bridge().listSnapshots(projectDir);
+  }
+
+  listSnapshotsPage(
+    projectDir: string,
+    options?: ListSnapshotsOptions,
+  ): Promise<SnapshotPage> {
+    return bridge().listSnapshotsPage(projectDir, options);
   }
 
   restoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult> {
@@ -304,6 +318,10 @@ export class ElectronAdapter implements Platform {
 
   previewSync(projectDir: string): Promise<SyncPreviewInfo> {
     return bridge().previewSync(projectDir);
+  }
+
+  previewSyncLocal(projectDir: string): Promise<SyncPreviewInfo> {
+    return bridge().previewSyncLocal(projectDir);
   }
 
   syncChanges(projectDir: string, message?: string): Promise<SyncOutcome> {
