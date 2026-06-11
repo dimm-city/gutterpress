@@ -49,16 +49,14 @@
     height: 100%;
     border: 0;
     background: #5a5a5a;
-    /* Hidden (opacity 0) until paged.js layout is complete, so the user never
-       sees the page/layout shuffle. The `revealed` prop flips to true ~250ms
-       after renderingComplete, at the same moment the LoadingOverlay starts its
-       400ms out:fade — so the pages fade IN as the overlay fades OUT (cross-fade),
-       both over 400ms. */
-    opacity: 0;
-    transition: opacity 400ms ease;
-  }
-
-  iframe.revealed {
+    /* NEVER hide this iframe (opacity/visibility/display) while paged.js is
+       laying out. It is CROSS-ORIGIN (http://127.0.0.1 inside app://), and
+       Chromium throttles invisible cross-origin iframes to ~1fps — which
+       turned a ~10s layout into ~5 minutes (~1 page/sec) on a 287-page book
+       (the 0.4.1 regression, proven by forcing opacity:1 mid-render: the
+       remaining 247 pages completed in <14s). The page/layout shuffle is
+       hidden by the OPAQUE LoadingOverlay sitting on top instead; the
+       cross-fade happens on the overlay, not the iframe. */
     opacity: 1;
   }
 </style>
