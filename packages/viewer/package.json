@@ -20,7 +20,8 @@
     "dist:mac": "npm run dist -- --mac dmg",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "typecheck": "tsc -p electron/tsconfig.json",
-    "test:ui": "node tests/integration/run-ui.mjs"
+    "test:ui": "node tests/integration/run-ui.mjs",
+    "perf-gate": "node tests/perf/render-gate.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.4",
