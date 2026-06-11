@@ -105,9 +105,6 @@ export type {
   HistoryPage,
 } from "../lib/source-provider.ts";
 
-// ── Per-repo isomorphic-git cache (perf) ─────────────────────────────────────
-export { getRepoCache, invalidateRepoCache } from "../lib/git-cache.ts";
-
 // ── Remote Git: auth, discovery, clone (#15 / ADR 0006) ──────────────────────
 export {
   FileTokenStore,
@@ -204,6 +201,8 @@ export type {
 // ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────────
 export {
   syncProject,
+  pullChanges,
+  pushChanges,
   resolveConflicts,
   getSyncStatus,
   previewSync,
@@ -214,6 +213,8 @@ export {
 
 export type {
   SyncOutcome,
+  PullOutcome,
+  PushOutcome,
   SyncProjectOptions,
   ResolveConflictsOptions,
   SyncStatusOptions,

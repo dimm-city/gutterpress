@@ -5,7 +5,11 @@
  * Runs against the REAL in-process smart-HTTP server (see
  * test-support/git-http-server.ts) — no transport mocks. Covers:
  * incoming-only, outgoing-only, both, neither, fetch-failure (offline and
- * auth), and book-subfolder file scoping.
+ * auth), and book-subfolder projects.
+ *
+ * 0.5.0 fetch-first rebuild: the preview NEVER scans the working tree
+ * (`workingTree: "skipped"`, `changedFiles` always empty) — a status walk
+ * loads entire packfiles and made the dialog unusable on large repos.
  */
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
@@ -106,12 +110,13 @@ describe("previewSync", () => {
       expect(preview.incoming).toEqual({ count: 0, commits: [], approximate: false });
       expect(preview.outgoing).toEqual({ count: 0, commits: [], approximate: false });
       expect(preview.changedFiles).toEqual({ count: 0, sample: [] });
+      expect(preview.workingTree).toBe("skipped");
     } finally {
       await h.cleanup();
     }
   });
 
-  test("outgoing-only: local commit + uncommitted edits, with details", async () => {
+  test("outgoing-only: local commit with details; working tree never scanned", async () => {
     const h = await setupClone();
     try {
       await localCommit(
@@ -119,6 +124,8 @@ describe("previewSync", () => {
         { "chapter-01.md": "# One\n\nThird draft.\n" },
         "Local rewrite of chapter one",
       );
+      // Uncommitted edit: invisible to the preview by design (workingTree
+      // "skipped") — syncProject still snapshots it at action time.
       await writeFile(path.join(h.projectDir, "chapter-02.md"), "# Two\n");
 
       const preview = await previewSync({ projectDir: h.projectDir });
@@ -129,8 +136,8 @@ describe("previewSync", () => {
       expect(preview.outgoing.commits[0]!.message).toBe("Local rewrite of chapter one");
       expect(preview.outgoing.commits[0]!.author).toBe("Local");
       expect(preview.outgoing.commits[0]!.timestamp).toBeGreaterThan(0);
-      expect(preview.changedFiles.count).toBe(1);
-      expect(preview.changedFiles.sample).toEqual(["chapter-02.md"]);
+      expect(preview.workingTree).toBe("skipped");
+      expect(preview.changedFiles).toEqual({ count: 0, sample: [] });
     } finally {
       await h.cleanup();
     }
@@ -245,7 +252,7 @@ describe("previewSync", () => {
     }
   });
 
-  test("book subfolder: changed-file list is scoped to the book's folder", async () => {
+  test("book subfolder: previews against the enclosing repo, no tree scan", async () => {
     const h = await setupClone();
     try {
       // Make the clone a shared folder with a book subfolder.
@@ -256,18 +263,17 @@ describe("previewSync", () => {
         { "field-guide/manifest.yaml": "title: Field Guide\n" },
         "Add field guide book",
       );
-      // One pending edit inside the book, one outside it.
+      // Pending edits (inside and outside the book) are invisible to the
+      // preview — the working tree is never scanned.
       await writeFile(path.join(bookDir, "chapter-01.md"), "# FG One\n");
       await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nRoot edit.\n");
 
       const preview = await previewSync({ projectDir: bookDir });
       expect(preview.live).toBe(true);
-      // Commit counts are whole-repo (that is what a sync pushes/pulls)...
+      // Commit counts are whole-repo (that is what a sync pushes/pulls).
       expect(preview.outgoing.count).toBe(1);
-      // ...but the changed-file list is scoped to the book's folder, with
-      // repo-root-relative paths.
-      expect(preview.changedFiles.count).toBe(1);
-      expect(preview.changedFiles.sample).toEqual(["field-guide/chapter-01.md"]);
+      expect(preview.workingTree).toBe("skipped");
+      expect(preview.changedFiles).toEqual({ count: 0, sample: [] });
     } finally {
       await h.cleanup();
     }

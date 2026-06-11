@@ -23,7 +23,14 @@ import {
   detectProjectSource,
   findEnclosingRepoDir,
 } from "./project-source.ts";
-import { getRepoCache } from "./git-cache.ts";
+
+/**
+ * isomorphic-git object cache scoped to ONE operation and released with it.
+ * NEVER hold one in module state: reading any object from a packfile loads
+ * the ENTIRE pack into the cache (multi-GB RSS on large repos). See the
+ * matching note in remote-auth/sync.ts.
+ */
+type GitCache = Record<string, unknown>;
 
 /** One entry in a project's version history (a Git commit, abstracted). */
 export interface SnapshotEntry {
@@ -166,8 +173,11 @@ export function gitAuthor(name?: string): { name: string; email: string } {
  * captures the full tree — or, when `subPath` is set, only the tree under
  * that repo-relative folder (book-subfolder scoping). Honours `.gitignore`.
  */
-async function stageAll(dir: string, subPath?: string): Promise<void> {
-  const cache = getRepoCache(dir);
+async function stageAll(
+  dir: string,
+  subPath: string | undefined,
+  cache: GitCache,
+): Promise<void> {
   const status = await git.statusMatrix({
     fs,
     dir,
@@ -200,11 +210,12 @@ async function stageAll(dir: string, subPath?: string): Promise<void> {
 export async function hasPendingChanges(
   dir: string,
   subPath?: string,
+  cache: GitCache = {},
 ): Promise<boolean> {
   const status = await git.statusMatrix({
     fs,
     dir,
-    cache: getRepoCache(dir),
+    cache,
     ...(subPath ? { filepaths: [subPath] } : {}),
   });
   // Row shape: [filepath, headStatus, worktreeStatus, stageStatus].
@@ -245,12 +256,13 @@ class LocalFolderSourceProvider implements SourceProvider {
       );
     }
     return withRepoLock(dir, async () => {
+      const cache: GitCache = {};
       await git.init({ fs, dir, defaultBranch: DEFAULT_BRANCH });
-      await stageAll(dir);
+      await stageAll(dir, undefined, cache);
       await git.commit({
         fs,
         dir,
-        cache: getRepoCache(dir),
+        cache,
         message: options.initialMessage?.trim() || "Created project",
         author: gitAuthor(options.authorName),
       });
@@ -375,7 +387,7 @@ class LocalGitSourceProvider implements SourceProvider {
       commits = await git.log({
         fs,
         dir,
-        cache: getRepoCache(dir),
+        cache: {}, // per-call cache — never pin packfile buffers across calls
         depth: limit + 2,
         ...(before ? { ref: before } : {}),
         ...(subPath ? { filepath: subPath, force: true } : {}),
@@ -416,7 +428,7 @@ class LocalGitSourceProvider implements SourceProvider {
     await git.checkout({
       fs,
       dir,
-      cache: getRepoCache(dir),
+      cache: {}, // per-call cache — never pin packfile buffers across calls
       ref: options.id,
       force: true,
       noUpdateHead: true,
@@ -441,14 +453,16 @@ export async function snapshotWorkingTreeUnlocked(
   // repo) limits what is considered/staged to the project's own folder.
   const dir = options.repoRoot ?? options.projectDir;
   const subPath = options.subPath || undefined;
-  if (!(await hasPendingChanges(dir, subPath))) {
+  // One object cache for this snapshot operation only (check + stage +
+  // commit share it), released when the operation returns.
+  const cache: GitCache = {};
+  if (!(await hasPendingChanges(dir, subPath, cache))) {
     throw new Error(
       "No changes since the last snapshot — there is nothing new to save.",
     );
   }
-  await stageAll(dir, subPath);
+  await stageAll(dir, subPath, cache);
   const author = gitAuthor(options.authorName);
-  const cache = getRepoCache(dir);
   const id = await git.commit({
     fs,
     dir,

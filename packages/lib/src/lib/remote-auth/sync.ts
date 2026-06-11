@@ -43,7 +43,6 @@ import httpNode from "isomorphic-git/http/node";
 import diff3Merge from "diff3";
 
 import { detectProjectSource } from "../project-source.ts";
-import { getRepoCache } from "../git-cache.ts";
 import {
   gitAuthor,
   gitScopeFor,
@@ -56,6 +55,16 @@ import {
   type HostCredential,
   type TokenStore,
 } from "./token-store.ts";
+
+/**
+ * isomorphic-git object cache, scoped to ONE operation (one function call)
+ * and released with it. NEVER share these across operations or hold them in
+ * module state: reading any object from a packfile makes isomorphic-git load
+ * the ENTIRE pack into the cache (measured ~1.3–3.8 GB RSS on a 2 GB repo),
+ * so a long-lived shared cache pins that memory for the life of the process —
+ * the root cause of the 0.5.0 "sync uses 2 GB" report.
+ */
+type GitCache = Record<string, unknown>;
 
 // ── Result types ──────────────────────────────────────────────────────────────
 
@@ -105,6 +114,59 @@ export type SyncOutcome =
   | { status: "offline"; message: string; snapshotId?: string }
   | { status: "error"; message: string; snapshotId?: string };
 
+/**
+ * Outcome of a pull-only attempt ({@link pullChanges}): fetch + fast-forward/
+ * merge of the online changes, NEVER a push. Conflict semantics are identical
+ * to {@link syncProject} (abortOnConflict — the working tree is never left
+ * with conflict markers).
+ */
+export type PullOutcome =
+  | {
+      status: "pulled";
+      message: string;
+      /** Snapshot taken of unsaved work before pulling, if any. */
+      snapshotId?: string;
+      /**
+       * True when the pull created a combine (merge) commit — local commits
+       * existed alongside the online ones. False for a plain fast-forward.
+       */
+      merged: boolean;
+      /** How many online commits were applied (capped walk; ≥ 1). */
+      incomingApplied: number;
+      /**
+       * True when the working tree CONTENT changed (the tip's tree differs
+       * from before) — the host should refresh its preview.
+       */
+      filesChanged: boolean;
+    }
+  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | {
+      status: "conflict";
+      message: string;
+      files: ConflictFile[];
+      localId: string;
+      remoteId: string;
+      snapshotId?: string;
+    }
+  | { status: "auth"; message: string; snapshotId?: string }
+  | { status: "offline"; message: string; snapshotId?: string }
+  | { status: "error"; message: string; snapshotId?: string };
+
+/**
+ * Outcome of a push-only attempt ({@link pushChanges}): snapshot-if-needed,
+ * then push — NEVER a merge. When the online copy has commits this computer
+ * doesn't have, the result is the typed `"pull-first"` status (the host shows
+ * a plain-language "get the latest changes first" message) — pushChanges
+ * never auto-merges.
+ */
+export type PushOutcome =
+  | { status: "pushed"; message: string; snapshotId?: string }
+  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | { status: "pull-first"; message: string; snapshotId?: string }
+  | { status: "auth"; message: string; snapshotId?: string }
+  | { status: "offline"; message: string; snapshotId?: string }
+  | { status: "error"; message: string; snapshotId?: string };
+
 // ── Author-language copy (never raw git words) ───────────────────────────────
 
 const MSG_UP_TO_DATE = "Everything is in sync.";
@@ -127,6 +189,14 @@ const MSG_SSH_REMOTE =
   "This project's online address uses SSH (git@…), which print-md can't sync to. Switch it to the web (HTTPS) address to sync from here.";
 const MSG_NO_BRANCH =
   "This project's version history isn't on a named branch, so it can't be synced right now.";
+const MSG_PULLED =
+  "The latest online changes were downloaded to this computer.";
+const MSG_PULLED_MERGED =
+  "The latest online changes were combined with your changes on this computer.";
+const MSG_PULL_UP_TO_DATE = "You already have the latest online changes.";
+const MSG_PUSH_UP_TO_DATE = "There's nothing new to send — everything is already online.";
+const MSG_PULL_FIRST =
+  "The online copy has changes you don't have yet. Get the latest changes first, then send yours.";
 
 /** Message recorded on the automatic pre-sync snapshot (D5 invariant). */
 export const SYNC_SNAPSHOT_MESSAGE = "Snapshot before syncing";
@@ -251,12 +321,22 @@ export interface SyncPreview {
   /** Local commits not online yet (sync would push them). */
   outgoing: SyncDirectionInfo;
   /**
-   * Working-tree edits the pre-sync snapshot would commit. Paths are
-   * repo-root-relative; for book-subfolder projects the list is scoped to
-   * the book's folder (what Sync's own snapshot is scoped to). `sample` is
-   * capped at {@link PREVIEW_FILE_LIMIT}; `count` is the full total.
+   * ALWAYS `{ count: 0, sample: [] }` since the 0.5.0 fetch-first rebuild —
+   * the preview never scans the working tree (see `workingTree`). The field
+   * is kept (rather than removed) so existing consumers keep type-checking;
+   * treat it as "no information", not "no edits".
    */
   changedFiles: { count: number; sample: string[] };
+  /**
+   * Honesty marker for `changedFiles`: `"skipped"` means the working tree
+   * was NOT scanned, so `changedFiles` carries no information. On a large
+   * repository a status walk loads entire packfiles (multi-GB RSS), so the
+   * preview never runs one. Unsaved edits are still safe: `syncProject`
+   * snapshots them at action time, and the host's auto-snapshot usually has
+   * already committed them into `outgoing`. Hosts wanting a live
+   * unsaved-edits indicator should use their own file watcher.
+   */
+  workingTree: "skipped";
 }
 
 /** Ahead/behind summary for the "N changes to sync" UI. */
@@ -370,7 +450,14 @@ function classifyFailure(e: unknown): "auth" | "offline" | null {
   return null;
 }
 
-function failureOutcome(e: unknown, snapshotId?: string): SyncOutcome {
+/**
+ * The failure arms shared verbatim by {@link SyncOutcome}, {@link PullOutcome}
+ * and {@link PushOutcome} — so one classifier serves all three operations.
+ */
+function failureOutcome(
+  e: unknown,
+  snapshotId?: string,
+): { status: "auth" | "offline" | "error"; message: string; snapshotId?: string } {
   const kind = classifyFailure(e);
   const base = snapshotId ? { snapshotId } : {};
   if (kind === "auth") return { status: "auth", message: MSG_AUTH, ...base };
@@ -417,6 +504,62 @@ function conflictFilesFrom(data: {
   }));
 }
 
+/** Friendly setup-problem message for the expected gate errors, else null. */
+function setupErrorMessage(e: unknown): string | null {
+  if (
+    e instanceof Error &&
+    (e.message === MSG_NO_REMOTE ||
+      e.message === MSG_SSH_REMOTE ||
+      e.message === MSG_NO_BRANCH)
+  ) {
+    return e.message;
+  }
+  return null;
+}
+
+/**
+ * Snapshot-first step shared by syncProject / pullChanges / pushChanges
+ * (ADR 0006 D5): commit any unsaved work BEFORE any network or merge step.
+ * The working-tree check runs lazily at action time and uses the caller's
+ * function-scoped object cache (released with the operation — this is the
+ * ONLY statusMatrix on these interactive paths).
+ *
+ * `includeSharedFolder` commits sibling-folder edits too — REQUIRED before
+ * any operation that ends in a forced checkout (merge/fast-forward), which
+ * would otherwise discard them. Push never touches the working tree, so it
+ * passes false.
+ */
+async function snapshotBeforeAction(args: {
+  projectDir: string;
+  dir: string;
+  subPath: string;
+  message?: string;
+  authorName?: string;
+  cache: GitCache;
+  includeSharedFolder: boolean;
+}): Promise<string | undefined> {
+  const { projectDir, dir, subPath, cache } = args;
+  let snapshotId: string | undefined;
+  if (await hasPendingChanges(dir, subPath || undefined, cache)) {
+    const snap = await snapshotWorkingTreeUnlocked({
+      projectDir,
+      repoRoot: dir,
+      ...(subPath ? { subPath } : {}),
+      message: args.message?.trim() || SYNC_SNAPSHOT_MESSAGE,
+      authorName: args.authorName,
+    });
+    snapshotId = snap.id;
+  }
+  if (args.includeSharedFolder && subPath && (await hasPendingChanges(dir, undefined, cache))) {
+    await snapshotWorkingTreeUnlocked({
+      projectDir: dir,
+      message: SHARED_FOLDER_SNAPSHOT_MESSAGE,
+      authorName: args.authorName,
+    });
+  }
+  return snapshotId;
+}
+
 async function currentBranchOrThrow(dir: string): Promise<string> {
   const branch = await git.currentBranch({ fs, dir });
   if (!branch) throw new Error(MSG_NO_BRANCH);
@@ -432,13 +575,14 @@ async function fetchRemoteTip(
   branch: string,
   transport: RemoteTransport,
   http: typeof httpNode,
+  cache: GitCache,
 ): Promise<string | null> {
   try {
     const result = await git.fetch({
       fs,
       http,
       dir,
-      cache: getRepoCache(dir),
+      cache,
       remote: transport.remote,
       ref: branch,
       singleBranch: true,
@@ -473,43 +617,33 @@ export async function syncProject(
   const { dir, subPath } = await resolveRepoScope(options.projectDir);
 
   return withRepoLock(dir, async (): Promise<SyncOutcome> => {
+    // One object cache for this sync operation only — released with it.
+    const cache: GitCache = {};
     let snapshotId: string | undefined;
     try {
       const branch = await currentBranchOrThrow(dir);
       const transport = await resolveTransport(dir, options);
 
-      // 1. Snapshot FIRST — the author's work is now unconditionally safe,
-      //    before any network call or merge can run (the D5 invariant).
-      //    Scoped to the book's folder for subfolder projects.
-      if (await hasPendingChanges(dir, subPath || undefined)) {
-        const snap = await snapshotWorkingTreeUnlocked({
-          projectDir: options.projectDir,
-          repoRoot: dir,
-          ...(subPath ? { subPath } : {}),
-          message: options.message?.trim() || SYNC_SNAPSHOT_MESSAGE,
-          authorName: options.authorName,
-        });
-        snapshotId = snap.id;
-      }
-      // 1b. Shared-folder safety: a subfolder project may share the repo with
-      //     sibling books that have their own pending edits. The merge below
-      //     ends in a FORCED checkout, which would discard those edits — so
-      //     they are committed first, honestly labeled. (Repo-root projects
-      //     never hit this: their step-1 snapshot already cleaned the tree.)
-      if (subPath && (await hasPendingChanges(dir))) {
-        await snapshotWorkingTreeUnlocked({
-          projectDir: dir,
-          message: SHARED_FOLDER_SNAPSHOT_MESSAGE,
-          authorName: options.authorName,
-        });
-      }
+      // 1 + 1b. Snapshot FIRST — the author's work is now unconditionally
+      //    safe before any network call or merge can run (the D5 invariant).
+      //    Book-scoped, plus the shared-folder safety commit (the merge below
+      //    ends in a FORCED checkout, which would discard sibling-book edits).
+      snapshotId = await snapshotBeforeAction({
+        projectDir: options.projectDir,
+        dir,
+        subPath,
+        message: options.message,
+        authorName: options.authorName,
+        cache,
+        includeSharedFolder: true,
+      });
 
       // 2–3. fetch → fast-forward/merge → push. If someone syncs between
       // our fetch and our push, the push is rejected — re-run the loop ONCE
       // (their commits merge in on the second pass), then surface a friendly
       // "try again" rather than looping forever.
       for (let attempt = 0; attempt < 2; attempt++) {
-        const remoteTip = await fetchRemoteTip(dir, branch, transport, http);
+        const remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
         const localTip = await git.resolveRef({ fs, dir, ref: branch });
 
         let merged = false;
@@ -517,7 +651,7 @@ export async function syncProject(
           const remoteIsBehind = await git.isDescendent({
             fs,
             dir,
-            cache: getRepoCache(dir),
+            cache,
             oid: localTip,
             ancestor: remoteTip,
             depth: -1,
@@ -530,7 +664,7 @@ export async function syncProject(
               await git.merge({
                 fs,
                 dir,
-                cache: getRepoCache(dir),
+                cache,
                 ours: branch,
                 theirs: remoteTip,
                 author: gitAuthor(options.authorName),
@@ -552,7 +686,7 @@ export async function syncProject(
             // merge() moves the branch ref but does not update the working
             // tree — sync it. The tree is clean (snapshotted above), so the
             // forced checkout can't discard anything.
-            await git.checkout({ fs, dir, cache: getRepoCache(dir), ref: branch, force: true });
+            await git.checkout({ fs, dir, cache, ref: branch, force: true });
             merged = true;
           }
         }
@@ -573,7 +707,7 @@ export async function syncProject(
             fs,
             http,
             dir,
-            cache: getRepoCache(dir),
+            cache,
             remote: transport.remote,
             ref: branch,
             ...onAuthFor(transport.credential),
@@ -599,15 +733,238 @@ export async function syncProject(
       // Unreachable (the loop returns or throws), but keeps TS satisfied.
       return { status: "error", message: MSG_RACE, ...(snapshotId ? { snapshotId } : {}) };
     } catch (e) {
-      if (
-        e instanceof Error &&
-        (e.message === MSG_NO_REMOTE ||
-          e.message === MSG_SSH_REMOTE ||
-          e.message === MSG_NO_BRANCH)
-      ) {
+      const setupMsg = setupErrorMessage(e);
+      if (setupMsg) {
         return {
           status: "error",
-          message: e.message,
+          message: setupMsg,
+          ...(snapshotId ? { snapshotId } : {}),
+        };
+      }
+      return failureOutcome(e, snapshotId);
+    }
+  });
+}
+
+// ── pullChanges ──────────────────────────────────────────────────────────────
+
+/**
+ * Pull-only operation (the History tab's "Pull"): snapshot-if-needed →
+ * fetch → fast-forward or clean merge of the online changes — NEVER a push.
+ *
+ * Same conflict semantics as {@link syncProject}: `abortOnConflict` keeps the
+ * working tree completely untouched and the conflict comes back as
+ * `{ status: "conflict", files }` for the per-file choices dialog. Serialized
+ * on the per-repo lock; one function-scoped object cache, released on return.
+ */
+export async function pullChanges(
+  options: SyncProjectOptions,
+): Promise<PullOutcome> {
+  const http = options.httpClient ?? httpNode;
+  // Same repo-scope rules as syncProject: a book subfolder pulls into the
+  // ENCLOSING repository (that is what Git does); the snapshot is book-scoped.
+  const { dir, subPath } = await resolveRepoScope(options.projectDir);
+
+  return withRepoLock(dir, async (): Promise<PullOutcome> => {
+    // One object cache for this pull only — released with it.
+    const cache: GitCache = {};
+    let snapshotId: string | undefined;
+    try {
+      const branch = await currentBranchOrThrow(dir);
+      const transport = await resolveTransport(dir, options);
+
+      // Snapshot FIRST (D5) — the merge below ends in a forced checkout, so
+      // the shared-folder safety commit applies exactly as in syncProject.
+      snapshotId = await snapshotBeforeAction({
+        projectDir: options.projectDir,
+        dir,
+        subPath,
+        message: options.message,
+        authorName: options.authorName,
+        cache,
+        includeSharedFolder: true,
+      });
+
+      const remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
+      const localTip = await git.resolveRef({ fs, dir, ref: branch });
+      const base = snapshotId ? { snapshotId } : {};
+
+      if (!remoteTip || remoteTip === localTip) {
+        return { status: "up-to-date", message: MSG_PULL_UP_TO_DATE, ...base };
+      }
+      const remoteIsBehind = await git.isDescendent({
+        fs,
+        dir,
+        cache,
+        oid: localTip,
+        ancestor: remoteTip,
+        depth: -1,
+      });
+      if (remoteIsBehind) {
+        // Everything online is already here (we're strictly ahead).
+        return { status: "up-to-date", message: MSG_PULL_UP_TO_DATE, ...base };
+      }
+
+      // Count the incoming commits BEFORE merging (refs/commit-objects only).
+      let mergeBase: string | undefined;
+      try {
+        const bases = (await git.findMergeBase({
+          fs,
+          dir,
+          cache,
+          oids: [localTip, remoteTip],
+        })) as string[];
+        mergeBase = bases[0];
+      } catch {
+        mergeBase = undefined;
+      }
+      const incoming = await countCommitsSince(dir, remoteTip, mergeBase, cache);
+
+      // Fast-forward when possible, else a clean merge. `abortOnConflict`
+      // (default true) guarantees a conflicted merge leaves the working tree
+      // and index COMPLETELY untouched.
+      try {
+        await git.merge({
+          fs,
+          dir,
+          cache,
+          ours: branch,
+          theirs: remoteTip,
+          author: gitAuthor(options.authorName),
+          message: "Combined your changes with the online version",
+        });
+      } catch (e) {
+        if (isMergeConflictError(e)) {
+          return {
+            status: "conflict",
+            message: MSG_CONFLICT,
+            files: conflictFilesFrom(e.data),
+            localId: localTip,
+            remoteId: remoteTip,
+            ...base,
+          };
+        }
+        throw e;
+      }
+      // merge() moves the branch ref but does not update the working tree —
+      // sync it. The tree is clean (snapshotted above), so the forced
+      // checkout can't discard anything.
+      await git.checkout({ fs, dir, cache, ref: branch, force: true });
+
+      const newTip = await git.resolveRef({ fs, dir, ref: branch });
+      // A fast-forward lands exactly on the online tip; anything else means a
+      // combine (merge) commit was created.
+      const merged = newTip !== remoteTip;
+      // "Did the content change?" — compare the commits' tree ids (cheap,
+      // commit objects only). A merge that nets out to the same tree (e.g.
+      // both sides made the identical edit) needs no preview reload.
+      const treeBefore = (await git.readCommit({ fs, dir, cache, oid: localTip }))
+        .commit.tree;
+      const treeAfter = (await git.readCommit({ fs, dir, cache, oid: newTip }))
+        .commit.tree;
+      return {
+        status: "pulled",
+        message: merged ? MSG_PULLED_MERGED : MSG_PULLED,
+        merged,
+        incomingApplied: incoming.count,
+        filesChanged: treeBefore !== treeAfter,
+        ...base,
+      };
+    } catch (e) {
+      const setupMsg = setupErrorMessage(e);
+      if (setupMsg) {
+        return {
+          status: "error",
+          message: setupMsg,
+          ...(snapshotId ? { snapshotId } : {}),
+        };
+      }
+      return failureOutcome(e, snapshotId);
+    }
+  });
+}
+
+// ── pushChanges ──────────────────────────────────────────────────────────────
+
+/**
+ * Push-only operation (the History tab's "Push"): snapshot-if-needed → push.
+ * If the online copy has commits this computer doesn't have (non-fast-forward),
+ * it does NOT auto-merge — the typed `"pull-first"` result tells the host to
+ * show a plain-language "get the latest changes first" message. Serialized on
+ * the per-repo lock; one function-scoped object cache, released on return.
+ */
+export async function pushChanges(
+  options: SyncProjectOptions,
+): Promise<PushOutcome> {
+  const http = options.httpClient ?? httpNode;
+  const { dir, subPath } = await resolveRepoScope(options.projectDir);
+
+  return withRepoLock(dir, async (): Promise<PushOutcome> => {
+    // One object cache for this push only — released with it.
+    const cache: GitCache = {};
+    let snapshotId: string | undefined;
+    try {
+      const branch = await currentBranchOrThrow(dir);
+      const transport = await resolveTransport(dir, options);
+
+      // Snapshot-if-needed (D5) so unsaved work is part of what gets sent.
+      // No shared-folder commit: push never touches the working tree.
+      snapshotId = await snapshotBeforeAction({
+        projectDir: options.projectDir,
+        dir,
+        subPath,
+        message: options.message,
+        authorName: options.authorName,
+        cache,
+        includeSharedFolder: false,
+      });
+
+      const remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
+      const localTip = await git.resolveRef({ fs, dir, ref: branch });
+      const base = snapshotId ? { snapshotId } : {};
+
+      if (remoteTip === localTip) {
+        return { status: "up-to-date", message: MSG_PUSH_UP_TO_DATE, ...base };
+      }
+      if (remoteTip) {
+        const remoteIsContained = await git.isDescendent({
+          fs,
+          dir,
+          cache,
+          oid: localTip,
+          ancestor: remoteTip,
+          depth: -1,
+        });
+        if (!remoteIsContained) {
+          // The online copy is ahead (or diverged): never auto-merge here.
+          return { status: "pull-first", message: MSG_PULL_FIRST, ...base };
+        }
+      }
+
+      try {
+        await git.push({
+          fs,
+          http,
+          dir,
+          cache,
+          remote: transport.remote,
+          ref: branch,
+          ...onAuthFor(transport.credential),
+        });
+      } catch (e) {
+        // The online tip moved between our fetch and the push — same answer.
+        if (isPushRejected(e)) {
+          return { status: "pull-first", message: MSG_PULL_FIRST, ...base };
+        }
+        throw e;
+      }
+      return { status: "pushed", message: MSG_SYNCED, ...base };
+    } catch (e) {
+      const setupMsg = setupErrorMessage(e);
+      if (setupMsg) {
+        return {
+          status: "error",
+          message: setupMsg,
           ...(snapshotId ? { snapshotId } : {}),
         };
       }
@@ -641,11 +998,12 @@ async function uniqueOnlineCopyPath(
   dir: string,
   filepath: string,
   oids: string[],
+  cache: GitCache,
 ): Promise<string> {
   const taken = async (candidate: string): Promise<boolean> => {
     if (fs.existsSync(path.join(dir, candidate))) return true;
     for (const oid of oids) {
-      if ((await tryReadBlob(dir, oid, candidate)) !== null) return true;
+      if ((await tryReadBlob(dir, oid, candidate, cache)) !== null) return true;
     }
     return false;
   };
@@ -660,9 +1018,10 @@ async function tryReadBlob(
   dir: string,
   oid: string,
   filepath: string,
+  cache: GitCache,
 ): Promise<Uint8Array | null> {
   try {
-    const { blob } = await git.readBlob({ fs, dir, cache: getRepoCache(dir), oid, filepath });
+    const { blob } = await git.readBlob({ fs, dir, cache, oid, filepath });
     return blob;
   } catch {
     return null;
@@ -741,6 +1100,8 @@ export async function resolveConflicts(
   }
 
   return withRepoLock(dir, async (): Promise<SyncOutcome> => {
+    // One object cache for this resolve operation only — released with it.
+    const cache: GitCache = {};
     let snapshotId: string | undefined;
     try {
       const branch = await currentBranchOrThrow(dir);
@@ -783,8 +1144,8 @@ export async function resolveConflicts(
 
       for (const resolution of options.resolutions) {
         const filepath = resolution.path;
-        const mine = await tryReadBlob(dir, localTip, filepath);
-        const theirs = await tryReadBlob(dir, remoteId, filepath);
+        const mine = await tryReadBlob(dir, localTip, filepath, cache);
+        const theirs = await tryReadBlob(dir, remoteId, filepath, cache);
 
         if (mine && theirs) {
           // Edited in both copies → settled inside the merge by the driver.
@@ -796,7 +1157,7 @@ export async function resolveConflicts(
               // Uniquified: a pre-existing "(online copy)" file (from an
               // earlier "Keep both") must survive untouched.
               preWrites.push({
-                path: await uniqueOnlineCopyPath(dir, filepath, [localTip, remoteId]),
+                path: await uniqueOnlineCopyPath(dir, filepath, [localTip, remoteId], cache),
                 content: theirs,
               });
             }
@@ -857,7 +1218,7 @@ export async function resolveConflicts(
         await git.merge({
           fs,
           dir,
-          cache: getRepoCache(dir),
+          cache,
           ours: branch,
           theirs: remoteId,
           author,
@@ -886,7 +1247,7 @@ export async function resolveConflicts(
         throw e;
       }
       // merge() moves the ref only — sync the working tree to the result.
-      await git.checkout({ fs, dir, cache: getRepoCache(dir), ref: branch, force: true });
+      await git.checkout({ fs, dir, cache, ref: branch, force: true });
 
       // Post-merge step: restore the author's chosen side for delete-involved
       // files that had to be equalized the other way for the merge.
@@ -903,7 +1264,7 @@ export async function resolveConflicts(
           fs,
           http,
           dir,
-          cache: getRepoCache(dir),
+          cache,
           remote: transport.remote,
           ref: branch,
           ...onAuthFor(transport.credential),
@@ -912,7 +1273,7 @@ export async function resolveConflicts(
         await doPush();
       } catch (e) {
         if (!isPushRejected(e)) throw e;
-        const newRemoteTip = await fetchRemoteTip(dir, branch, transport, http);
+        const newRemoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
         if (!newRemoteTip) {
           return {
             status: "error",
@@ -924,7 +1285,7 @@ export async function resolveConflicts(
           await git.merge({
             fs,
             dir,
-            cache: getRepoCache(dir),
+            cache,
             ours: branch,
             theirs: newRemoteTip,
             author,
@@ -945,7 +1306,7 @@ export async function resolveConflicts(
           }
           throw mergeErr;
         }
-        await git.checkout({ fs, dir, cache: getRepoCache(dir), ref: branch, force: true });
+        await git.checkout({ fs, dir, cache, ref: branch, force: true });
         try {
           await doPush();
         } catch (retryErr) {
@@ -999,21 +1360,25 @@ async function countCommitsSince(
   dir: string,
   tip: string,
   stopAt: string | undefined,
+  cache: GitCache,
 ): Promise<{ count: number; capped: boolean }> {
-  const walk = await commitsSince(dir, tip, stopAt);
+  const walk = await commitsSince(dir, tip, stopAt, cache);
   return { count: walk.commits.length, capped: walk.capped };
 }
 
 /**
  * Same walk as {@link countCommitsSince}, but keeps the commit details
- * (summary line / author / date) for the sync-preview lists.
+ * (summary line / author / date) for the sync-preview lists. Reads COMMIT
+ * objects only — never trees or blobs — so it stays fast and small even on
+ * repositories with multi-GB packfiles.
  */
 async function commitsSince(
   dir: string,
   tip: string,
   stopAt: string | undefined,
+  cache: GitCache,
 ): Promise<{ commits: SyncCommitInfo[]; capped: boolean }> {
-  const log = await git.log({ fs, dir, cache: getRepoCache(dir), ref: tip, depth: AHEAD_BEHIND_CAP + 1 });
+  const log = await git.log({ fs, dir, cache, ref: tip, depth: AHEAD_BEHIND_CAP + 1 });
   const commits: SyncCommitInfo[] = [];
   for (const c of log) {
     if (stopAt && c.oid === stopAt) return { commits, capped: false };
@@ -1051,8 +1416,10 @@ export async function getSyncStatus(
   const { dir, subPath } = await resolveRepoScope(options.projectDir);
 
   return withRepoLock(dir, async (): Promise<SyncStatusResult> => {
+    // One object cache for this status call only — released with it.
+    const cache: GitCache = {};
     const branch = (await git.currentBranch({ fs, dir })) ?? undefined;
-    const pending = await hasPendingChanges(dir, subPath || undefined);
+    const pending = await hasPendingChanges(dir, subPath || undefined, cache);
     const base: Omit<SyncStatusResult, "ahead" | "behind" | "live" | "approximate"> = {
       hasRemote: false,
       ...(branch ? { branch } : {}),
@@ -1080,7 +1447,7 @@ export async function getSyncStatus(
     let remoteTip: string | null = null;
     if (options.fetch) {
       try {
-        remoteTip = await fetchRemoteTip(dir, branch, transport, http);
+        remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
         live = true;
       } catch {
         live = false; // degrade to the local compare below
@@ -1099,7 +1466,7 @@ export async function getSyncStatus(
     }
     if (!remoteTip) {
       // No record of the online tip yet: nothing local has been synced yet.
-      const ahead = await countCommitsSince(dir, branch, undefined);
+      const ahead = await countCommitsSince(dir, branch, undefined, cache);
       return {
         ...base,
         hasRemote: true,
@@ -1119,15 +1486,15 @@ export async function getSyncStatus(
       const bases = (await git.findMergeBase({
         fs,
         dir,
-        cache: getRepoCache(dir),
+        cache,
         oids: [localTip, remoteTip],
       })) as string[];
       mergeBase = bases[0];
     } catch {
       mergeBase = undefined;
     }
-    const ahead = await countCommitsSince(dir, localTip, mergeBase);
-    const behind = await countCommitsSince(dir, remoteTip, mergeBase);
+    const ahead = await countCommitsSince(dir, localTip, mergeBase, cache);
+    const behind = await countCommitsSince(dir, remoteTip, mergeBase, cache);
     return {
       ...base,
       hasRemote: true,
@@ -1143,8 +1510,6 @@ export async function getSyncStatus(
 
 /** Commit details listed per direction in a sync preview. */
 export const PREVIEW_COMMIT_LIMIT = 20;
-/** Changed working-tree paths sampled in a sync preview. */
-export const PREVIEW_FILE_LIMIT = 10;
 
 const MSG_PREVIEW_OFFLINE =
   "Couldn't reach the online repository to check for new changes.";
@@ -1168,61 +1533,59 @@ const UNKNOWN_COMMITS: SyncDirectionInfo = {
   commits: [],
   approximate: false,
 };
+/** The preview never scans the working tree — see {@link SyncPreview.workingTree}. */
+const EMPTY_CHANGED_FILES: SyncPreview["changedFiles"] = { count: 0, sample: [] };
 
 /**
- * What would a Sync do right now? FETCHES the tracked remote branch (never
- * merges, never pushes, never snapshots) and reports both directions with
- * commit details, plus the working-tree edits the pre-sync snapshot would
- * commit. Backs the Sync dialog's open/refresh view.
+ * What would a Sync do right now? Fetch-first and refs-only:
+ *
+ *   1. FETCH the tracked remote branch (single branch, no tags). Never
+ *      merges, never pushes, never snapshots. `fetch: false` skips this and
+ *      previews against the last-fetched record of the online tip.
+ *   2. Compute incoming/outgoing purely from REFS: resolve the local and
+ *      remote-tracking tips and walk COMMIT OBJECTS to the merge base
+ *      (capped). No tree or blob is ever read, and no working tree is
+ *      scanned — see {@link SyncPreview.workingTree}.
+ *
+ * Design note (0.5.0 rebuild): the preview used to run a `statusMatrix` so
+ * `changedFiles` could list unsaved edits. On a large repository that walk
+ * loads entire packfiles (measured ~3.8 GB peak / 2+ s on a 2 GB repo), which
+ * made opening the Sync dialog unusable. The scan is GONE: `changedFiles` is
+ * always empty with `workingTree: "skipped"`. Unsaved edits remain safe —
+ * `syncProject` still snapshots them at action time, and the host's
+ * auto-snapshot (10-min debounce + project-close flush) has usually already
+ * committed them, so they show up honestly in `outgoing`. Hosts that want a
+ * live unsaved-edits indicator should use their own file watcher.
  *
  * Failure model: a failed fetch (offline / rejected connection) NEVER throws —
  * the preview degrades to local information (the last-fetched record of the
- * online tip) with a friendly `fetchNotice`. Serialized on the per-repo lock.
+ * online tip) with a friendly `fetchNotice`.
+ *
+ * Locking: a live preview WRITES `.git` state (the fetch updates the
+ * remote-tracking ref and may add packs), so it serializes on the per-repo
+ * lock. A `fetch: false` preview is a pure ref/commit read and runs
+ * LOCK-FREE — it cannot corrupt anything and must not queue behind a running
+ * auto-snapshot (same rationale as `listHistoryPage`).
  */
 export async function previewSync(options: PreviewSyncOptions): Promise<SyncPreview> {
   const http = options.httpClient ?? httpNode;
   // Same repo-scope rules as syncProject: a book subfolder previews against
   // the ENCLOSING repository (commit counts are whole-repo — that is what a
-  // sync pushes/pulls), with the changed-file list scoped to the book.
-  const { dir, subPath } = await resolveRepoScope(options.projectDir);
+  // sync pushes/pulls).
+  const { dir } = await resolveRepoScope(options.projectDir);
 
+  if (options.fetch === false) {
+    return previewFromRefs(dir, options, { live: false, remoteTip: null });
+  }
   return withRepoLock(dir, async (): Promise<SyncPreview> => {
+    // One object cache for this preview only — released with it.
+    const cache: GitCache = {};
     const branch = (await git.currentBranch({ fs, dir })) ?? undefined;
-
-    // Working-tree edits Sync's snapshot step would commit (book-scoped).
-    // Started FIRST and awaited LATER so the (disk-bound) status walk runs
-    // CONCURRENTLY with the network fetch below — on a big repo + slow
-    // network these were the two serial multi-second steps of a dialog open.
-    const matrixPromise = git.statusMatrix({
-      fs,
-      dir,
-      cache: getRepoCache(dir),
-      ...(subPath ? { filepaths: [subPath] } : {}),
-    });
-    // Park a no-op handler so a status-walk failure during the fetch can't
-    // surface as an unhandled rejection; the real handling happens where
-    // `changedFilesFrom()` is awaited.
-    matrixPromise.catch(() => {});
-    const changedFilesFrom = async () => {
-      const matrix = await matrixPromise;
-      const changed = matrix
-        .filter(([, head, worktree, stage]) => !(head === 1 && worktree === 1 && stage === 1))
-        .map(([filepath]) => filepath);
-      return { count: changed.length, sample: changed.slice(0, PREVIEW_FILE_LIMIT) };
-    };
-
     let transport: RemoteTransport;
     try {
       transport = await resolveTransport(dir, options);
     } catch {
-      return {
-        hasRemote: false,
-        ...(branch ? { branch } : {}),
-        live: false,
-        incoming: NO_COMMITS,
-        outgoing: NO_COMMITS,
-        changedFiles: await changedFilesFrom(),
-      };
+      return previewFromRefs(dir, options, { live: false, remoteTip: null }, cache);
     }
     if (!branch) {
       return {
@@ -1230,89 +1593,135 @@ export async function previewSync(options: PreviewSyncOptions): Promise<SyncPrev
         live: false,
         incoming: NO_COMMITS,
         outgoing: NO_COMMITS,
-        changedFiles: await changedFilesFrom(),
+        changedFiles: EMPTY_CHANGED_FILES,
+        workingTree: "skipped",
       };
     }
-
     let live = false;
     let fetchNotice: string | undefined;
     let remoteTip: string | null = null;
-    if (options.fetch !== false) {
-      // The status walk (matrixPromise) is in flight while this fetch runs.
-      try {
-        remoteTip = await fetchRemoteTip(dir, branch, transport, http);
-        live = true;
-      } catch (e) {
-        fetchNotice =
-          classifyFailure(e) === "auth" ? MSG_PREVIEW_AUTH : MSG_PREVIEW_OFFLINE;
-      }
-    }
-    const changedFiles = await changedFilesFrom();
-    if (!live) {
-      // Degrade to the last-fetched record of the online tip, if any.
-      try {
-        remoteTip = await git.resolveRef({
-          fs,
-          dir,
-          ref: `refs/remotes/${transport.remote}/${branch}`,
-        });
-      } catch {
-        remoteTip = null;
-      }
-    }
-
-    const localTip = await git
-      .resolveRef({ fs, dir, ref: branch })
-      .catch(() => null);
-    const baseResult = {
-      hasRemote: true,
-      branch,
-      live,
-      ...(fetchNotice ? { fetchNotice } : {}),
-      changedFiles,
-    };
-
-    if (!localTip) {
-      // Branch exists but has no commits yet (freshly initialized).
-      return {
-        ...baseResult,
-        incoming: remoteTip
-          ? toDirection(await commitsSince(dir, remoteTip, undefined))
-          : live
-            ? NO_COMMITS
-            : UNKNOWN_COMMITS,
-        outgoing: NO_COMMITS,
-      };
-    }
-    if (!remoteTip) {
-      // Live fetch found no online branch (empty repo) → nothing incoming.
-      // Fetch failed AND no local record → incoming is honestly unknown.
-      return {
-        ...baseResult,
-        incoming: live ? NO_COMMITS : UNKNOWN_COMMITS,
-        outgoing: toDirection(await commitsSince(dir, localTip, undefined)),
-      };
-    }
-    if (remoteTip === localTip) {
-      return { ...baseResult, incoming: NO_COMMITS, outgoing: NO_COMMITS };
-    }
-
-    let mergeBase: string | undefined;
     try {
-      const bases = (await git.findMergeBase({
+      remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
+      live = true;
+    } catch (e) {
+      fetchNotice =
+        classifyFailure(e) === "auth" ? MSG_PREVIEW_AUTH : MSG_PREVIEW_OFFLINE;
+    }
+    return previewFromRefs(
+      dir,
+      options,
+      { live, remoteTip, ...(fetchNotice ? { fetchNotice } : {}) },
+      cache,
+    );
+  });
+}
+
+/**
+ * Refs-only preview core: local tip vs (just-fetched or last-fetched)
+ * remote-tracking tip, commit walks to the merge base. Pure read — safe to
+ * run without the repo lock.
+ */
+async function previewFromRefs(
+  dir: string,
+  options: PreviewSyncOptions,
+  fetched: { live: boolean; remoteTip: string | null; fetchNotice?: string },
+  cache: GitCache = {},
+): Promise<SyncPreview> {
+  const branch = (await git.currentBranch({ fs, dir })) ?? undefined;
+
+  let transport: RemoteTransport;
+  try {
+    transport = await resolveTransport(dir, options);
+  } catch {
+    return {
+      hasRemote: false,
+      ...(branch ? { branch } : {}),
+      live: false,
+      incoming: NO_COMMITS,
+      outgoing: NO_COMMITS,
+      changedFiles: EMPTY_CHANGED_FILES,
+      workingTree: "skipped",
+    };
+  }
+  if (!branch) {
+    return {
+      hasRemote: true,
+      live: fetched.live,
+      ...(fetched.fetchNotice ? { fetchNotice: fetched.fetchNotice } : {}),
+      incoming: NO_COMMITS,
+      outgoing: NO_COMMITS,
+      changedFiles: EMPTY_CHANGED_FILES,
+      workingTree: "skipped",
+    };
+  }
+
+  const { live } = fetched;
+  let remoteTip = fetched.remoteTip;
+  if (!live) {
+    // Degrade to the last-fetched record of the online tip, if any.
+    try {
+      remoteTip = await git.resolveRef({
         fs,
         dir,
-        cache: getRepoCache(dir),
-        oids: [localTip, remoteTip],
-      })) as string[];
-      mergeBase = bases[0];
+        ref: `refs/remotes/${transport.remote}/${branch}`,
+      });
     } catch {
-      mergeBase = undefined;
+      remoteTip = null;
     }
+  }
+
+  const localTip = await git
+    .resolveRef({ fs, dir, ref: branch })
+    .catch(() => null);
+  const baseResult = {
+    hasRemote: true,
+    branch,
+    live,
+    ...(fetched.fetchNotice ? { fetchNotice: fetched.fetchNotice } : {}),
+    changedFiles: EMPTY_CHANGED_FILES,
+    workingTree: "skipped" as const,
+  };
+
+  if (!localTip) {
+    // Branch exists but has no commits yet (freshly initialized).
     return {
       ...baseResult,
-      incoming: toDirection(await commitsSince(dir, remoteTip, mergeBase)),
-      outgoing: toDirection(await commitsSince(dir, localTip, mergeBase)),
+      incoming: remoteTip
+        ? toDirection(await commitsSince(dir, remoteTip, undefined, cache))
+        : live
+          ? NO_COMMITS
+          : UNKNOWN_COMMITS,
+      outgoing: NO_COMMITS,
     };
-  });
+  }
+  if (!remoteTip) {
+    // Live fetch found no online branch (empty repo) → nothing incoming.
+    // Fetch failed AND no local record → incoming is honestly unknown.
+    return {
+      ...baseResult,
+      incoming: live ? NO_COMMITS : UNKNOWN_COMMITS,
+      outgoing: toDirection(await commitsSince(dir, localTip, undefined, cache)),
+    };
+  }
+  if (remoteTip === localTip) {
+    return { ...baseResult, incoming: NO_COMMITS, outgoing: NO_COMMITS };
+  }
+
+  let mergeBase: string | undefined;
+  try {
+    const bases = (await git.findMergeBase({
+      fs,
+      dir,
+      cache,
+      oids: [localTip, remoteTip],
+    })) as string[];
+    mergeBase = bases[0];
+  } catch {
+    mergeBase = undefined;
+  }
+  return {
+    ...baseResult,
+    incoming: toDirection(await commitsSince(dir, remoteTip, mergeBase, cache)),
+    outgoing: toDirection(await commitsSince(dir, localTip, mergeBase, cache)),
+  };
 }
