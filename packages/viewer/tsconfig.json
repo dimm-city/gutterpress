@@ -23,7 +23,6 @@
     "tests/platform/**",
     "tests/recovery/**",
     "tests/editor/**",
-    "tests/media/**",
-    "tests/integration/**"
+    "tests/media/**"
   ]
 }
