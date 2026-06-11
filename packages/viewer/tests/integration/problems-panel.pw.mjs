@@ -16,7 +16,7 @@
  *   5. At 700px window width the toolbar still has zero pairwise overlaps
  *      (getBoundingClientRect audit of every visible toolbar control).
  *
- * Screenshots: /tmp/problems-panel-wide.png, /tmp/problems-panel-narrow.png.
+ * Screenshots: <os tmpdir>/problems-panel-{wide,narrow}.png.
  * Prints the audit JSON for the report.
  *
  * Usage: node tests/integration/problems-panel.pw.mjs [exe-or-main-js] [fixture-dir]
@@ -42,7 +42,9 @@ let cleaned = false;
 function cleanup() {
   if (cleaned) return;
   cleaned = true;
-  try { process.kill(-child.pid, "SIGTERM"); } catch {}
+  // POSIX: signal the whole detached process group. Windows: no process
+  // groups / negative PIDs — kill the direct child instead.
+  try { process.kill(-child.pid, "SIGTERM"); } catch { try { child?.kill(); } catch {} }
   // Throwaway dirs created BY THIS SCRIPT via mkdtemp — safe to remove.
   try { if (fakeHome) rmSync(fakeHome, { recursive: true, force: true }); } catch {}
   try { if (bookDir) rmSync(bookDir, { recursive: true, force: true }); } catch {}
@@ -78,7 +80,8 @@ const electronBin = isMainJs ? require_("electron") : target;
 const appArgv = [...(isMainJs ? [target] : []), `--remote-debugging-port=${PORT}`, "--no-sandbox"];
 
 fakeHome = mkdtempSync(join(tmpdir(), "pmd-problems-home-"));
-const useXvfb = !process.env.DISPLAY;
+// xvfb is a Linux-only headless fallback; Windows/macOS never have DISPLAY.
+const useXvfb = process.platform === "linux" && !process.env.DISPLAY;
 const cmd = useXvfb ? "xvfb-run" : electronBin;
 const cmdArgs = useXvfb ? ["-a", "-s", "-screen 0 1600x1000x24", electronBin, ...appArgv] : appArgv;
 log(`launching: ${cmd} ${cmdArgs.join(" ")} (HOME=${fakeHome}${useXvfb ? ", via xvfb-run" : ""})`);
@@ -251,7 +254,7 @@ if (!risky) fail("risky print-property (filter) finding not listed");
 if (risky.file !== "extra.css") fail(`risky finding grouped under ${risky.file}, expected extra.css`);
 if (!/warning/.test(risky.severity)) fail(`risky severity class ${risky.severity}, expected sev-warning`);
 log("both seeded findings listed with correct file/severity");
-await screenshot("/tmp/problems-panel-wide.png");
+await screenshot(join(tmpdir(), "problems-panel-wide.png"));
 
 // ── 7. click the broken-ref entry → editor opens 01-alpha.md at the line ────
 await evalJs(`(() => {
@@ -265,7 +268,7 @@ for (let i = 0; i < 30; i++) {
   editorState = await evalJs(`(() => {
     const cm = document.querySelector('.cm-editor');
     if (!cm) return null;
-    const selected = document.querySelector('.file-tree-pane [aria-current="true"]')?.textContent?.trim() ?? null;
+    const selected = document.querySelector('.file-tree [aria-current="true"]')?.textContent?.trim() ?? null;
     const lineVisible = [...cm.querySelectorAll('.cm-line')].some((l) => l.textContent.includes('missing-art'));
     return { selected, lineVisible };
   })()`);
@@ -336,7 +339,7 @@ console.log(`[problems-panel] 700px toolbar audit: ${JSON.stringify({ viewport: 
 console.log(`[problems-panel] 700px rects: ${JSON.stringify(audit.rects)}`);
 if (audit.overlaps.length > 0) fail(`toolbar overlaps at 700px: ${JSON.stringify(audit.overlaps)}`);
 if (audit.overflow.length > 0) fail(`toolbar controls overflow at 700px: ${JSON.stringify(audit.overflow)}`);
-await screenshot("/tmp/problems-panel-narrow.png");
+await screenshot(join(tmpdir(), "problems-panel-narrow.png"));
 
 log("PASS: badge, panel contents, click-through navigation, and 700px toolbar audit all verified");
 cleanup();

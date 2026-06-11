@@ -72,11 +72,31 @@ jobs:
 
       - name: Run the viewer UI test suite
         shell: pwsh
+        working-directory: packages/viewer
         # playwright-core is a viewer devDependency (installed by the build
         # step's `bun install`), so the committed runner drives the packaged exe
         # directly — no ad-hoc install or file-copy. It runs every
-        # tests/integration/*.test.mjs (directory-load + editor↔preview sync).
-        run: bun --cwd packages/viewer run test:ui -- "${{ steps.locate.outputs.exe }}"
+        # tests/integration/*.pw.mjs (directory-load, editor↔preview sync,
+        # problems panel, History-tab sync).
+        #
+        # Invoke run-ui.mjs with node DIRECTLY. The previous form —
+        # `bun --cwd packages/viewer run test:ui -- <exe>` — silently drops the
+        # script name in bun 1.3.x (global --cwd + run mis-parse), prints
+        # `bun run` usage, and EXITS 0: a false green where zero tests ran.
+        # To make that class of no-op impossible, this step also asserts the
+        # runner's own summary line with a nonzero, fully-passing test count.
+        run: |
+          node tests/integration/run-ui.mjs "${{ steps.locate.outputs.exe }}" 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\ui-tests.log"
+          $exit = $LASTEXITCODE
+          $log = Get-Content "$env:RUNNER_TEMP\ui-tests.log" -Raw
+          if ($log -notmatch '\[run-ui\] (\d+)/(\d+) UI tests passed') {
+            throw "run-ui summary line missing — the test runner never executed its tests (false green guard)"
+          }
+          $passed = [int]$Matches[1]; $total = [int]$Matches[2]
+          Write-Host "run-ui summary: $passed/$total UI tests passed"
+          if ($total -lt 4) { throw "expected >= 4 UI tests to be discovered, got $total — discovery is broken" }
+          if ($log -notmatch 'sync-history\.pw\.mjs') { throw "sync-history.pw.mjs never executed" }
+          if ($exit -ne 0 -or $passed -ne $total) { throw "UI tests failed: $passed/$total passed (runner exit $exit)" }
 
       - name: Upload diagnostics on failure
         if: failure()

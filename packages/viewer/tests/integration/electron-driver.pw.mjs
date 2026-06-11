@@ -19,6 +19,7 @@
  */
 
 import { _electron as electron } from "playwright-core";
+import { waitForAppWindow } from "./app-window.mjs";
 import { existsSync, mkdtempSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -51,13 +52,9 @@ const electronApp = await electron.launch({
 
 let exitCode = 0;
 try {
-  const page = await electronApp.firstWindow({ timeout: 30_000 });
-  log(`first window opened, url=${page.url()}`);
-
-  await page.waitForLoadState("domcontentloaded");
-  if (!page.url().startsWith("app://")) {
-    fail(`window not on app:// origin (still at ${page.url()})`);
-  }
+  // firstWindow() would return the data:-URL SPLASH screen — wait for the
+  // real SPA window on the app:// origin instead.
+  const page = await waitForAppWindow(electronApp);
   log(`page loaded at ${page.url()}`);
 
   // CRITICAL: verify the SPA actually rendered, not just that the URL

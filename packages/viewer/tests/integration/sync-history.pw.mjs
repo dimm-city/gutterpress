@@ -31,6 +31,7 @@
  */
 
 import { _electron as electron } from "playwright-core";
+import { waitForAppWindow } from "./app-window.mjs";
 import { spawn } from "node:child_process";
 import {
   existsSync,
@@ -129,19 +130,7 @@ async function launchApp(userDataDir) {
   proc.stdout?.on("data", (d) => { mainOutput += d.toString(); });
   // The FIRST window can be the splash (which closes again) — poll for the
   // real SPA window on the app:// origin instead of trusting firstWindow().
-  const deadline = Date.now() + 90_000;
-  let page = null;
-  for (;;) {
-    page = app.windows().find((w) => w.url().startsWith("app://"));
-    if (page) break;
-    if (Date.now() > deadline) {
-      throw new Error(
-        `main app:// window never appeared (windows: ${app.windows().map((w) => w.url()).join(", ") || "none"})`,
-      );
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  await page.waitForLoadState("domcontentloaded");
+  const page = await waitForAppWindow(app);
   await page.waitForFunction(
     () => typeof window.electron?.cloneRemoteRepository === "function",
     { timeout: 30_000 },
@@ -167,6 +156,34 @@ async function waitForFileContains(file, needle, timeoutMs = 15_000) {
     } catch { /* not there yet */ }
     if (Date.now() - start > timeoutMs) {
       throw new Error(`file ${file} never contained "${needle}"`);
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
+/**
+ * Assert that at least one `[sync] <kind>` diagnostic line (lib d1b3764: one
+ * stderr line per sync check/pull, carrying branch/oids/relation) appeared in
+ * the captured main-process output past `sinceOffset`. Polls briefly — pipe
+ * chunks can land after the UI has already updated. NOTE: the lib emits
+ * `[sync] check` and `[sync] pull` only; push has no diagnostic line.
+ */
+async function waitForSyncLine(kind, sinceOffset, where, timeoutMs = 15_000) {
+  const re = new RegExp(`\\[sync\\] ${kind} `);
+  const start = Date.now();
+  for (;;) {
+    const m = mainOutput.slice(sinceOffset).match(re);
+    if (m) {
+      // Quote the whole line — it is the field-diagnosis artifact under test.
+      const lineStart = mainOutput.lastIndexOf("\n", sinceOffset + m.index) + 1;
+      const lineEnd = mainOutput.indexOf("\n", sinceOffset + m.index);
+      log(`diagnostic ${where}: ${mainOutput.slice(lineStart, lineEnd < 0 ? undefined : lineEnd).trim()}`);
+      return;
+    }
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(
+        `no [sync] ${kind} line in main-process output ${where} — lib sync diagnostics missing`,
+      );
     }
     await new Promise((r) => setTimeout(r, 250));
   }
@@ -258,6 +275,7 @@ try {
     }),
   );
   log("phase 2: relaunching with project auto-open + History tab");
+  const phase2Mark = mainOutput.length;
   ({ app, page } = await launchApp(userData2));
   electronApp = app;
 
@@ -269,24 +287,29 @@ try {
     throw new Error(`unexpected modal title: ${modalTitle}`);
   }
   log('fetch-on-open modal appeared ("New changes online")');
+  await waitForSyncLine("check", phase2Mark, "for the fetch-on-open check");
   await page.getByRole("button", { name: "Not now" }).click();
   log('dismissed modal with "Not now" — continuing via the History tab');
 
   // ════ Phase 3: History tab — Check for updates → Get changes ═══════════════
   const checkBtn = page.locator(".sync-btns button", { hasText: "Check for updates" });
   await checkBtn.waitFor({ state: "visible", timeout: 30_000 });
+  const checkMark = mainOutput.length;
   await checkBtn.click();
   await page
     .locator(".sync-status-badge", { hasText: /incoming|New changes online/i })
     .waitFor({ timeout: 60_000 });
   log("Check for updates → incoming badge shown");
+  await waitForSyncLine("check", checkMark, 'for "Check for updates"');
 
   const getBtn = page.locator(".sync-btns button", { hasText: "Get changes" });
+  const pullMark = mainOutput.length;
   await getBtn.click();
   await page
     .locator(".notice.small", { hasText: /downloaded|combined with your changes/i })
     .waitFor({ timeout: 60_000 });
   log("Get changes → success notice shown");
+  await waitForSyncLine("pull", pullMark, 'for "Get changes"');
 
   await waitForFileContains(introFile, "Remote edit one.");
   log("pulled content verified on disk");
@@ -328,7 +351,17 @@ try {
     content: "# Alpha Intro {#ch-intro}\n\nRemote edit two.\n",
     message: "Remote edit #2",
   });
-  writeFileSync(bodyFile, "# Alpha Body {#ch-body}\n\nLocal edit two.\n");
+  // NOTE: the new content MUST differ in LENGTH from "Local edit one." —
+  // isomorphic-git's compareStats() uses second-granularity mtime/ctime +
+  // size, so a same-size rewrite within the same second as the phase-4
+  // snapshot is treated as CLEAN ("racy git"): push skips the snapshot and
+  // the recovery pull's forced checkout silently discards the edit. Real
+  // git smudges racily-clean index entries; isomorphic-git does not (lib
+  // defect, reported separately — at human typing speed it can't trigger).
+  writeFileSync(
+    bodyFile,
+    "# Alpha Body {#ch-body}\n\nLocal edit two, made while the online copy moved ahead.\n",
+  );
   log("remote advanced again + second local edit — Send must demand pull-first");
 
   await sendBtn.click();
@@ -338,10 +371,12 @@ try {
   log("push-when-behind → pull-first message shown (no auto-merge)");
 
   // Recover: Get changes (merges the snapshot with the remote edit) then Send.
+  const pullMark2 = mainOutput.length;
   await getBtn.click();
   await page
     .locator(".notice.small", { hasText: /downloaded|combined with your changes/i })
     .waitFor({ timeout: 60_000 });
+  await waitForSyncLine("pull", pullMark2, "for the recovery pull");
   await waitForFileContains(introFile, "Remote edit two.");
   log("Get changes after pull-first → remote edit two on disk");
 
@@ -350,7 +385,7 @@ try {
     .locator(".notice.small", { hasText: "Your changes are online." })
     .waitFor({ timeout: 60_000 });
   const finalBody = await serverCmd("show", { path: "books/alpha/02-body.md" });
-  if (!finalBody.content.includes("Local edit two.")) {
+  if (!finalBody.content.includes("Local edit two,")) {
     throw new Error(`final pushed content mismatch on server:\n${finalBody.content}`);
   }
   log("recovery Send → local edit two is on the server");

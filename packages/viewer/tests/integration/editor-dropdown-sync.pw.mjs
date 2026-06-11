@@ -1,19 +1,22 @@
 #!/usr/bin/env node
 /**
- * UI regression test: the chapter-jump dropdown must move the EDITOR (not just
+ * UI regression test: the outline (Contents tab) must move the EDITOR (not just
  * the preview) when you jump to a heading in a DIFFERENT chapter.
  *
- * The bug: clicking a dropdown entry for another chapter scrolled the preview to
+ * The bug: clicking an outline entry for another chapter scrolled the preview to
  * that chapter but left the editor on the previously-open file — the two panes
  * desynced. (The jump suppresses the scroll-driven cross-chapter follow, so the
  * jump handler must move the editor itself.)
  *
+ * The chapter UI moved from a toolbar dropdown (.chapter-item) to the left
+ * panel's Contents tab (.toc-item) — this test follows the current surface.
+ *
  * This drives the packaged Electron viewer end-to-end via Playwright:
  *   - launches the app against a fresh userData seeded to auto-open the
- *     multi-chapter fixture,
+ *     multi-chapter fixture with the left panel on the Contents tab,
  *   - opens the editor (auto-selects the first chapter file),
- *   - opens the chapter dropdown and clicks a heading in the LAST chapter,
- *   - asserts the editor's active file switched to that chapter's file.
+ *   - clicks the outline entry for the LAST chapter's heading,
+ *   - asserts the editor's active file (Files tab) switched to that chapter.
  *
  * Usage:
  *   node tests/integration/editor-dropdown-sync.pw.mjs <packaged-exe-path> [fixture-dir]
@@ -22,6 +25,7 @@
  */
 
 import { _electron as electron } from "playwright-core";
+import { waitForAppWindow } from "./app-window.mjs";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,7 +52,10 @@ if (!existsSync(fixturePath)) fail(`fixture not found at ${fixturePath}`);
 const userDataDir = mkdtempSync(join(tmpdir(), "pmd-uitest-"));
 writeFileSync(
   join(userDataDir, "viewer-prefs.json"),
-  JSON.stringify({ lastProjectDir: fixturePath }),
+  JSON.stringify({
+    lastProjectDir: fixturePath,
+    leftPanel: { open: true, activeTab: "toc", width: 300 },
+  }),
 );
 
 log(`launching ${exePath}`);
@@ -60,23 +67,27 @@ const electronApp = await electron.launch({
 
 let exitCode = 0;
 try {
-  const page = await electronApp.firstWindow({ timeout: 30_000 });
-  await page.waitForLoadState("domcontentloaded");
+  // firstWindow() would return the data:-URL SPLASH screen — wait for the
+  // real SPA window on the app:// origin instead.
+  const page = await waitForAppWindow(electronApp);
   log(`window at ${page.url()}`);
 
   // The fixture auto-opens; wait until the preview has rendered and the
-  // chapter-jump dropdown has been built from its outline. The items live inside
-  // a closed <details>, so wait for ATTACHED (present), not visible.
+  // Contents tab has been built from its outline.
   await page
-    .locator(".chapter-item")
+    .locator(".toc-item")
     .first()
-    .waitFor({ state: "attached", timeout: 60_000 });
-  log("project auto-opened, chapter dropdown populated");
+    .waitFor({ state: "visible", timeout: 120_000 });
+  log("project auto-opened, Contents outline populated");
 
-  // Open the editor pane (auto-selects the first chapter file).
+  // Open the editor pane (auto-selects the first chapter file). The active
+  // file lives in the Files tab — its panel is display:none while Contents is
+  // active, so assert on the ATTACHED state and read textContent.
   await page.locator('[aria-label="Toggle markdown editor"]').click();
   await page.locator(".cm-editor").waitFor({ timeout: 15_000 });
-  await page.locator(".file-item.active").waitFor({ timeout: 15_000 });
+  await page
+    .locator(".file-item.active")
+    .waitFor({ state: "attached", timeout: 15_000 });
 
   const before = await page.locator(".file-item.active .file-name").textContent();
   log(`editor opened on: ${before}`);
@@ -84,33 +95,32 @@ try {
     fail("editor unexpectedly started on the jump target; pick a different first file");
   }
 
-  // Open the chapter dropdown and jump to the LAST chapter's heading.
-  await page.locator(".chapter-summary").click();
+  // Jump to the LAST chapter's heading via the Contents tab outline.
   await page
-    .locator(".chapter-item", { hasText: "Gamma Chapter" })
+    .locator(".toc-item", { hasText: "Gamma Chapter" })
     .first()
     .click();
-  log('clicked dropdown entry "Gamma Chapter" (a different chapter)');
+  log('clicked outline entry "Gamma Chapter" (a different chapter)');
 
   // The editor must follow to 03-gamma.md.
   try {
     await page
       .locator('.file-item.active .file-name', { hasText: "03-gamma.md" })
-      .waitFor({ timeout: 10_000 });
+      .waitFor({ state: "attached", timeout: 10_000 });
   } catch {
     const after = await page
       .locator(".file-item.active .file-name")
       .textContent();
     fail(
       `editor did NOT follow the cross-chapter jump: still on "${after}" ` +
-      `after clicking "Gamma Chapter" (expected 03-gamma.md). The dropdown and ` +
+      `after clicking "Gamma Chapter" (expected 03-gamma.md). The outline and ` +
       `the editor/preview follow desynced.`,
     );
   }
 
   const after = await page.locator(".file-item.active .file-name").textContent();
   log(`editor followed to: ${after}`);
-  log("PASS: chapter dropdown moves the editor across chapters, in sync with the preview");
+  log("PASS: the Contents outline moves the editor across chapters, in sync with the preview");
 } catch (err) {
   console.error("[etest] uncaught:", err);
   exitCode = 1;
