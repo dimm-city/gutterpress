@@ -216,6 +216,14 @@ export interface ViewerPrefs {
    * between sessions), so this never overrides a fresh detection.
    */
   projectSource?: ProjectSource;
+  /** Global left panel open state + active tab, persisted across sessions. */
+  leftPanel?: LeftPanelPrefs;
+}
+
+/** Persisted state of the global left panel (open + active tab). */
+export interface LeftPanelPrefs {
+  open?: boolean;
+  activeTab?: "toc" | "files" | "media" | "projects" | "history";
 }
 
 /** A print-md project discovered by the background scan (#27). */
@@ -459,6 +467,50 @@ export type SyncOutcome =
       remoteId: string;
       snapshotId?: string;
     }
+  | { status: "auth"; message: string; snapshotId?: string }
+  | { status: "offline"; message: string; snapshotId?: string }
+  | { status: "error"; message: string; snapshotId?: string };
+
+/**
+ * Outcome of a pull-only attempt (`pullChanges`): get the online changes
+ * (fast-forward or clean merge) — NEVER a push. Conflict semantics identical
+ * to `syncChanges`.
+ */
+export type PullOutcome =
+  | {
+      status: "pulled";
+      message: string;
+      snapshotId?: string;
+      /** True when a combine (merge) commit was created (vs fast-forward). */
+      merged: boolean;
+      /** How many online commits were applied. */
+      incomingApplied: number;
+      /** True when file content changed — the preview should refresh. */
+      filesChanged: boolean;
+    }
+  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | {
+      status: "conflict";
+      message: string;
+      files: ConflictFileInfo[];
+      localId: string;
+      remoteId: string;
+      snapshotId?: string;
+    }
+  | { status: "auth"; message: string; snapshotId?: string }
+  | { status: "offline"; message: string; snapshotId?: string }
+  | { status: "error"; message: string; snapshotId?: string };
+
+/**
+ * Outcome of a push-only attempt (`pushChanges`): send local changes — NEVER
+ * a merge. `"pull-first"` = the online copy has changes this computer doesn't
+ * have yet; the UI shows a plain-language "get the latest changes first"
+ * message.
+ */
+export type PushOutcome =
+  | { status: "pushed"; message: string; snapshotId?: string }
+  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | { status: "pull-first"; message: string; snapshotId?: string }
   | { status: "auth"; message: string; snapshotId?: string }
   | { status: "offline"; message: string; snapshotId?: string }
   | { status: "error"; message: string; snapshotId?: string };
@@ -934,6 +986,16 @@ export interface HostServices {
   previewSyncLocal(projectDir: string): Promise<SyncPreviewInfo>;
   /** Snapshot-first sync of the project to its online repository. */
   syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
+  /**
+   * Pull-only: snapshot-if-needed → fetch → fast-forward/merge the online
+   * changes. NEVER pushes. `filesChanged` tells the UI to refresh the preview.
+   */
+  pullChanges(projectDir: string): Promise<PullOutcome>;
+  /**
+   * Push-only: snapshot-if-needed → push local changes. Returns the typed
+   * `"pull-first"` status when the online copy is ahead — never auto-merges.
+   */
+  pushChanges(projectDir: string): Promise<PushOutcome>;
   /** Apply per-file conflict choices and sync the combined result. */
   resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
 

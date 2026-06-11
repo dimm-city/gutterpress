@@ -59,6 +59,8 @@ import type {
   SyncStatusInfo,
   SyncPreviewInfo,
   SyncOutcome,
+  PullOutcome,
+  PushOutcome,
   ResolveSyncConflictsArgs,
 } from "./contract";
 
@@ -408,6 +410,14 @@ export class WebAdapter implements Platform {
 
   syncChanges(_projectDir: string, _message?: string): Promise<SyncOutcome> {
     return rejectNotImplemented("syncChanges");
+  }
+
+  pullChanges(_projectDir: string): Promise<PullOutcome> {
+    return rejectNotImplemented("pullChanges");
+  }
+
+  pushChanges(_projectDir: string): Promise<PushOutcome> {
+    return rejectNotImplemented("pushChanges");
   }
 
   resolveSyncConflicts(_args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {

@@ -2,6 +2,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Resolve relative to THIS FILE, not process.cwd() — the test must pass no
+// matter where bun/node is invoked from (zero-tolerance: bare `bun test`
+// from the repo root previously failed on this).
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function makePage(offsetTop, offsetWidth = 400, offsetHeight = 600) {
   return {
@@ -95,7 +101,8 @@ function loadPreviewApi(pages, pagesWidth = 808) {
   }
 
   const scriptPath = path.resolve(
-    process.cwd(),
+    __dirname,
+    "..",
     "..",
     "lib",
     "src",

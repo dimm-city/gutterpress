@@ -13,15 +13,14 @@
     ProjectCapabilities,
     ProjectClassification,
     ProjectRemoteDiagnosis,
+    SnapshotEntry,
   } from "$lib/platform/contract";
   import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
   import { problemCounts } from "$lib/problems";
-  import VersionHistoryDialog from "$lib/components/VersionHistoryDialog.svelte";
   import SyncDialog from "$lib/components/SyncDialog.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
-  import OpenLocationDialog from "$lib/components/OpenLocationDialog.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
   import AdvancedSetupDialog from "$lib/components/AdvancedSetupDialog.svelte";
@@ -32,6 +31,8 @@
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { useSettings, _loadSettings } from "$lib/settings.svelte";
+  import LeftPanel from "$lib/components/LeftPanel.svelte";
+  import type { PanelTab } from "$lib/components/LeftPanel.svelte";
 
   type DiagnosticsTool = {
     name: string;
@@ -93,6 +94,26 @@
   let exportTimer = $state<ReturnType<typeof setInterval> | null>(null);
   let saveWarning = $state<string | null>(null);
   let diagnosticsTools = $state<DiagnosticsTool[] | null>(null);
+
+  // ── Left panel (#workspace-restructure) ───────────────────────────────────
+  // State persisted via ViewerPrefs. Keyed separately from per-project state.
+  let leftPanelOpen = $state(false);
+  let leftPanelTab = $state<PanelTab>("projects");
+  let leftPanelToggleBtn = $state<HTMLButtonElement | undefined>(undefined);
+  // Set true once we have loaded panel state from prefs (avoids flicker).
+  let leftPanelPrefsLoaded = $state(false);
+
+  // ── Incoming-changes modal (fetch-on-open) ────────────────────────────────
+  // After a git project with a remote renders, we background-fetch and surface
+  // an "N new changes" modal if the remote tip differs from last-dismissed.
+  let incomingChangesOpen = $state(false);
+  let incomingCommits = $state<Array<{ message: string }>>([]);
+  let incomingCount = $state(0);
+  let lastDismissedRemoteTip = $state<string | null>(null);
+  // "Get changes" pull in flight (modal button disabled while it runs).
+  let incomingPullBusy = $state(false);
+  // Bumped after an out-of-panel pull so LeftPanel refreshes its History tab.
+  let historyRefreshKey = $state(0);
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
@@ -311,8 +332,9 @@
       (isNarrow ? paneMode === "edit" : editorOpen),
   );
 
-  // Sidebar tab (#47): "files" (the file tree) or "media" (project images).
-  // Session-scoped UI state — intentionally not persisted.
+  // Sidebar tab (#47) moved to LeftPanel — kept for editor pane file tree/media
+  // selection (the LeftPanel's Files/Media tabs handle the left-panel case;
+  // the editor pane still has its own Files|Media switch when open).
   let sidebarTab = $state<"files" | "media">("files");
 
   // MarkdownEditor wraps the full CodeMirror 6 stack (+ lang-markdown's
@@ -564,6 +586,96 @@
     recoveryItems = [];
   }
 
+  // ── Persist left panel state on change ────────────────────────────────────
+  $effect(() => {
+    if (!leftPanelPrefsLoaded) return;
+    getPlatform()
+      .setViewerPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab } })
+      .catch(() => {});
+  });
+
+  // ── Auto-open panel on Projects tab when no project ────────────────────────
+  $effect(() => {
+    if (!currentDir && !currentUrl && !busy && lastProjectChecked) {
+      leftPanelOpen = true;
+      leftPanelTab = "projects";
+    }
+  });
+
+  // ── Background fetch on project open (fetch-on-open) ─────────────────────
+  // After the first renderingComplete, if the project has a syncable remote,
+  // fire a background previewSync to detect incoming changes. Only re-prompt
+  // when the remote tip changes since last dismiss.
+  $effect(() => {
+    if (!currentDir || sourceMode !== "folder" || !projectCapabilities?.canSync) return;
+    const dir = currentDir;
+    // Wait for rendering to complete (rendering = false) before fetching
+    if (rendering) return;
+    // Don't fetch again if already done for this dir
+    let aborted = false;
+    const run = async () => {
+      try {
+        const preview = await getPlatform().previewSync(dir);
+        if (aborted || currentDir !== dir) return;
+        if (!preview.live) return; // fetch failed silently
+        const incomingC = preview.incoming.count ?? 0;
+        if (incomingC <= 0) return;
+        // Get the id of the latest incoming commit to check against last dismiss
+        const latestId = preview.incoming.commits[0]?.id ?? "";
+        if (latestId && latestId === lastDismissedRemoteTip) return;
+        // Surface modal
+        incomingCount = incomingC;
+        incomingCommits = preview.incoming.commits.slice(0, 5).map((c) => ({ message: c.message }));
+        incomingChangesOpen = true;
+        lastDismissedRemoteTip = latestId;
+      } catch {
+        // Offline / no auth — silent
+      }
+    };
+    void run();
+    return () => { aborted = true; };
+  });
+
+  // "Get changes" (incoming-changes modal): pull directly — snapshot-first,
+  // fetch + fast-forward/merge, never a push. The preview server's file
+  // watcher re-renders on its own when files change on disk (same contract as
+  // restore, #13); the History tab refreshes via historyRefreshKey.
+  async function pullIncomingChanges() {
+    if (!currentDir || incomingPullBusy) return;
+    const dir = currentDir;
+    incomingPullBusy = true;
+    try {
+      const outcome = await getPlatform().pullChanges(dir);
+      if (outcome.status === "pulled") {
+        incomingChangesOpen = false;
+        historyRefreshKey += 1;
+        const n = outcome.incomingApplied;
+        toast?.success(`${n} ${n === 1 ? "change" : "changes"} applied${outcome.filesChanged ? " — the preview will refresh in a moment." : "."}`);
+      } else if (outcome.status === "up-to-date") {
+        incomingChangesOpen = false;
+        toast?.success(outcome.message);
+      } else if (outcome.status === "conflict") {
+        // The Sync dialog owns the per-file conflict choices flow.
+        incomingChangesOpen = false;
+        syncOpen = true;
+      } else if (outcome.status === "auth") {
+        incomingChangesOpen = false;
+        toast?.error(outcome.message);
+        onSyncReconnect();
+      } else {
+        toast?.error(outcome.message);
+      }
+    } catch (e) {
+      toast?.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      incomingPullBusy = false;
+    }
+  }
+
+  function toggleLeftPanel() {
+    leftPanelOpen = !leftPanelOpen;
+  }
+
   function toggleEditor() {
     if (!currentDir || sourceMode !== "folder") return;
     editorOpen = !editorOpen;
@@ -586,7 +698,7 @@
   let problemsOpen = $state(false);
   let problems = $state<ProblemEntry[]>([]);
   let problemsLoading = $state(false);
-  let problemBadge = $derived(problemCounts(problems).badge);
+  let problemBadge = $derived(problemCounts(problems).badge); // used for ProblemsPanel (informational)
 
   function refreshProblems() {
     if (!isDesktop() || !currentDir || sourceMode !== "folder") return;
@@ -700,13 +812,27 @@
     const platform = getPlatform();
     platform.getViewerPrefs()
       .then(async (prefs) => {
+        // Load persisted left panel state
+        const panelPrefs = prefs.leftPanel;
+        if (!leftPanelPrefsLoaded) {
+          leftPanelPrefsLoaded = true;
+          if (panelPrefs?.activeTab) leftPanelTab = panelPrefs.activeTab;
+          // Panel open state loaded below after we know if a project exists
+        }
+
         const dir = prefs.lastProjectDir;
         if (!dir || previewUrl || currentDir || currentUrl) {
-          // Nothing to reopen — the welcome screen IS the first ready screen, so
-          // dismiss the splash and reveal the (welcome) window now.
+          // No project to reopen — auto-open the panel on Projects tab so
+          // the welcome screen has a useful first action.
+          leftPanelOpen = true;
+          leftPanelTab = "projects";
+          // Dismiss splash and reveal window.
           platform.rendererReady().catch(() => {});
           return;
         }
+        // Restore panel open state from prefs (now we know there is a project)
+        if (!leftPanelPrefsLoaded) leftPanelPrefsLoaded = true;
+        leftPanelOpen = panelPrefs?.open ?? false;
         // Per-project state (#43) is keyed by folder path so opening a
         // different project never pollutes this one's restore point.
         platform.splashStatus("Opening your project…", 45).catch(() => {});
@@ -894,6 +1020,11 @@
       if ((e.ctrlKey || e.metaKey) && (e.key === "e" || e.key === "E")) {
         e.preventDefault();
         toggleEditor();
+      }
+      // Cmd/Ctrl+\ toggles the left panel
+      if ((e.ctrlKey || e.metaKey) && e.key === "\\") {
+        e.preventDefault();
+        toggleLeftPanel();
       }
     }
     window.addEventListener("keydown", onGlobalKey);
@@ -1762,9 +1893,18 @@
 <div class="shell">
   <header class="toolbar" class:edit-narrow={isNarrow && paneMode === "edit"}>
     <section class="left">
-      <button bind:this={openBtn} class="primary icon-text open-btn" onclick={() => (openLocationOpen = true)} disabled={busy} title="Open folder or web address (Ctrl+O)" aria-label="Open folder or web address">
-        <Icon name="folder-open" />
-        <span class="open-label">Open</span>
+      <!-- Panel toggle — far left, first control in navbar -->
+      <button
+        bind:this={leftPanelToggleBtn}
+        class="icon-btn panel-toggle-btn"
+        class:active={leftPanelOpen}
+        onclick={toggleLeftPanel}
+        title="Toggle left panel (Ctrl+\)"
+        aria-label="Toggle left panel"
+        aria-pressed={leftPanelOpen}
+        aria-controls="left-panel-region"
+      >
+        <Icon name="panel-left" />
       </button>
       {#if sourceMode === "url" && currentUrl}
         {#if docTitle}
@@ -1778,7 +1918,7 @@
         <!-- Folder source: show the title/name; full path is the hover tooltip. -->
         <span class="doc-title" title={currentDir}>{docTitle || folderName}</span>
       {:else}
-        <span class="path">No source selected</span>
+        <span class="path no-project">print-md</span>
       {/if}
     </section>
 
@@ -1789,38 +1929,6 @@
     <!-- UX-012: center nav only shows when a document is loaded -->
     {#if previewUrl}
       <section class="center">
-        {#if outline.length > 0}
-          <!-- Chapter / heading jump (UX-013). Built from the rendered outline
-               via the preview bridge; jumps preview + editor together. -->
-          <details class="menu chapter-menu">
-            <summary
-              class="chapter-summary"
-              title="Jump to a chapter or heading"
-              aria-label="Jump to a chapter or heading"
-            >
-              <Icon name="list" />
-              <span class="chapter-label"
-                >{outline[activeOutlineIndex]?.text ?? "Contents"}</span
-              >
-              <Icon name="chevron-down" size={12} />
-            </summary>
-            <div class="menu-panel chapter-panel">
-              {#each outline as entry, i (entry.index)}
-                <button
-                  class="menu-item chapter-item"
-                  class:active={i === activeOutlineIndex}
-                  class:chapter-top={entry.level <= 1}
-                  class:chapter-sub={entry.level >= 3}
-                  style="padding-left: {8 + (entry.level - 1) * 20}px"
-                  onclick={(e) => { jumpToOutline(entry); closeMenu(e); }}
-                >
-                  <span class="chapter-item-text">{entry.text}</span>
-                  <span class="chapter-item-page">{entry.page || ""}</span>
-                </button>
-              {/each}
-            </div>
-          </details>
-        {/if}
         <button class="icon-btn" onclick={firstPage} disabled={rendering} title="First page (Home)" aria-label="First page">
           <Icon name="chevrons-left" />
         </button>
@@ -1911,59 +2019,6 @@
           aria-pressed={editorOpen}
         >
           <Icon name="pen-line" /><span class="view-label">Edit</span>
-        </button>
-      {/if}
-      <!-- Problems panel toggle (#28): only for open folder projects (lint is
-           desktop/folder-only, like the editor). The badge counts errors +
-           warnings; the label collapses with the other .view-label text at
-           narrow toolbar widths so it never crowds the layout. -->
-      {#if currentDir && sourceMode === "folder"}
-        <button
-          class="icon-text problems-btn"
-          class:active={problemsOpen}
-          onclick={() => (problemsOpen = !problemsOpen)}
-          title={problemBadge > 0
-            ? `Problems — ${problemBadge} thing${problemBadge === 1 ? "" : "s"} to look at`
-            : "Problems — no problems found"}
-          aria-label="Toggle problems panel"
-          aria-pressed={problemsOpen}
-        >
-          <span class="problems-icon" class:has-problems={problemBadge > 0}>
-            <Icon name={problemBadge > 0 ? "triangle-alert" : "circle-check"} />
-            {#if problemBadge > 0}
-              <span class="problem-badge">{problemBadge > 99 ? "99+" : problemBadge}</span>
-            {/if}
-          </span>
-          <span class="view-label">Problems</span>
-        </button>
-      {/if}
-      <!-- Version history (#13): capability-gated — plain folders get the
-           Enable prompt; versioned folders get snapshot/history/restore. -->
-      {#if versionHistoryAvailable}
-        <button
-          bind:this={versionHistoryBtn}
-          class="icon-text"
-          onclick={() => (versionHistoryOpen = true)}
-          title="Version history — save snapshots and restore earlier versions"
-          aria-label="Version history"
-        >
-          <Icon name="history" /><span class="view-label">History</span>
-        </button>
-      {/if}
-      <!-- Sync (#15 / UX-2): show whenever project has an HTTPS remote.
-           When no credential stored yet, clicking routes to the connect flow
-           so authors discover syncing exists (ADR 0006 D4/D7). -->
-      {#if syncAvailable}
-        <button
-          bind:this={syncBtn}
-          class="icon-text"
-          onclick={openSync}
-          title={syncDiag?.canSync
-            ? "Sync your changes with the online repository"
-            : "Connect to your online repository to enable syncing"}
-          aria-label={syncDiag?.canSync ? "Sync changes" : "Connect to enable syncing"}
-        >
-          <Icon name="cloud-upload" /><span class="view-label">Sync</span>
         </button>
       {/if}
       <!-- UX-039: separator before view mode controls -->
@@ -2138,6 +2193,48 @@
     </section>
   </header>
 
+  <!-- Global left panel — available in both preview and edit modes -->
+  <div id="left-panel-region" class="left-panel-region" class:panel-open={leftPanelOpen}>
+    <LeftPanel
+      bind:open={leftPanelOpen}
+      bind:activeTab={leftPanelTab}
+      projectDir={currentDir}
+      projectCapabilities={projectCapabilities}
+      projectSharesParentHistory={projectSharesParentHistory}
+      editorFilePath={editorFilePath}
+      sourceMode={sourceMode}
+      outline={outline}
+      activeOutlineIndex={activeOutlineIndex}
+      toggleBtn={leftPanelToggleBtn}
+      onJumpToOutline={jumpToOutline}
+      onSelectEditorFile={(path) => {
+        selectEditorFile(path);
+        if (!editorOpen && currentDir && sourceMode === "folder") {
+          editorOpen = true;
+          focusEditorWhenReady();
+        }
+      }}
+      onInsertImage={(payload) => editorRef?.runToolbarAction("image", { src: payload.src, alt: payload.alt ?? "" })}
+      onProjectChosen={(path) => startFolderPreview(path)}
+      onOpenUrl={openUrl}
+      onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
+      onNewProject={() => (newProjectOpen = true)}
+      onVersionHistoryEnabled={onVersionHistoryEnabled}
+      onSnapshotSaved={(entry) => onVersionSnapshotSaved()}
+      onVersionRestored={onVersionRestored}
+      onSyncCompleted={onSyncCompleted}
+      onPullCompleted={(filesChanged) => {
+        if (filesChanged) {
+          toast?.success("Latest changes applied — the preview will refresh in a moment.");
+        }
+      }}
+      onSyncReconnect={onSyncReconnect}
+      refreshKey={historyRefreshKey}
+    />
+
+    <!-- Main content area (preview + editor) -->
+    <div class="main-content">
+
   {#if previewUrl}
     <div
       class="workspace"
@@ -2270,14 +2367,15 @@
       </section>
     </div>
     <!-- Problems panel (#28): a bottom strip below the workspace (VS Code
-         style). Sibling of .workspace inside the .shell flex column so it
-         never disturbs the workspace grid or the preview iframe. -->
-    {#if problemsOpen && currentDir && sourceMode === "folder"}
+         style). Sibling of .workspace inside the .main-content flex column
+         so it never disturbs the workspace grid or the preview iframe.
+         The panel owns its own toggle strip on its top border. -->
+    {#if currentDir && sourceMode === "folder"}
       <ProblemsPanel
         {problems}
         loading={problemsLoading}
+        bind:open={problemsOpen}
         onSelect={openProblem}
-        onClose={() => (problemsOpen = false)}
       />
     {/if}
   {:else}
@@ -2288,10 +2386,13 @@
         <p class="empty-tagline">Turn your markdown writing into a print-ready book</p>
         <div class="empty-cta-row">
           <button bind:this={newProjectBtn} class="primary empty-cta" onclick={() => (newProjectOpen = true)} disabled={busy}>Create a New Book</button>
-          <button class="ghost empty-cta" onclick={() => (openLocationOpen = true)} disabled={busy}>Open an Existing Book</button>
+          <button class="ghost empty-cta" onclick={() => {
+            leftPanelOpen = true;
+            leftPanelTab = "projects";
+          }} disabled={busy}>Open an Existing Book</button>
         </div>
         <p class="empty-hint">New to print-md? <button type="button" class="link-btn" onclick={openSetupGuide}>Read the getting-started guide →</button></p>
-        <p class="empty-hint">Already have a book folder? Open it under <strong>Open an Existing Book</strong>, or preview a published document from a web address. Your chapters are loaded in order automatically.</p>
+        <p class="empty-hint">Already have a book folder? Open it from the left panel, or preview a published document from a web address.</p>
         {#if urlPreviewError && sourceMode === "url"}
           <div class="open-error" role="alert">
             <strong>Preview unavailable.</strong>
@@ -2306,8 +2407,42 @@
       </div>
     </div>
   {/if}
+
+    </div> <!-- /main-content -->
+  </div> <!-- /left-panel-region -->
 </div>
 </div>
+
+<!-- Incoming changes modal (fetch-on-open) -->
+{#if incomingChangesOpen}
+  <div class="incoming-backdrop" onclick={() => (incomingChangesOpen = false)} role="presentation"></div>
+  <div class="incoming-modal" role="dialog" aria-modal="true" aria-labelledby="incoming-title">
+    <header class="incoming-header">
+      <h2 id="incoming-title">New changes online</h2>
+      <button class="close-btn" onclick={() => (incomingChangesOpen = false)} aria-label="Dismiss">
+        <Icon name="x" size={16} />
+      </button>
+    </header>
+    <div class="incoming-body">
+      <p class="incoming-lead">
+        {incomingCount}{incomingCount > 5 ? "+" : ""} new change{incomingCount === 1 ? "" : "s"} from the online copy.
+      </p>
+      {#if incomingCommits.length > 0}
+        <ul class="incoming-commits">
+          {#each incomingCommits as commit}
+            <li class="incoming-commit">{commit.message}</li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+    <footer class="incoming-footer">
+      <button class="ghost" onclick={() => (incomingChangesOpen = false)} disabled={incomingPullBusy}>Not now</button>
+      <button class="primary" onclick={() => void pullIncomingChanges()} disabled={incomingPullBusy}>
+        {incomingPullBusy ? "Getting changes…" : "Get changes"}
+      </button>
+    </footer>
+  </div>
+{/if}
 
 <HelpDialog
   bind:open={helpOpen}
@@ -2317,18 +2452,11 @@
   {updateReadyVersion}
 />
 <SettingsDialog bind:open={settingsOpen} triggerEl={settingsBtn} />
-<OpenLocationDialog
-  bind:open={openLocationOpen}
-  onOpenFolder={(path) => startFolderPreview(path)}
-  onOpenUrl={openUrl}
-  onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
-  triggerEl={openBtn}
-/>
 <GitHubDialog
   bind:open={githubOpen}
   onOpened={(projectDir) => startFolderPreview(projectDir, "Opening your project…")}
   onAdvancedSetup={() => (advancedSetupOpen = true)}
-  triggerEl={openBtn}
+  triggerEl={leftPanelToggleBtn}
 />
 <AdvancedSetupDialog
   bind:open={advancedSetupOpen}
@@ -2339,16 +2467,6 @@
   bind:open={newProjectOpen}
   onCreated={(projectDir) => startFolderPreview(projectDir, "Opening your new book…")}
   triggerEl={newProjectBtn}
-/>
-<VersionHistoryDialog
-  bind:open={versionHistoryOpen}
-  sharesParentHistory={projectSharesParentHistory}
-  projectDir={currentDir}
-  capabilities={projectCapabilities}
-  onEnabled={onVersionHistoryEnabled}
-  onSnapshotSaved={onVersionSnapshotSaved}
-  onRestored={onVersionRestored}
-  triggerEl={versionHistoryBtn}
 />
 <SyncDialog
   bind:open={syncOpen}
@@ -2381,6 +2499,45 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow: hidden;
+  }
+
+  /* ── Left panel layout region ───────────────────────────────────────────── */
+  /* The left-panel-region is a horizontal flex row containing the LeftPanel
+     component (which manages its own width + transform) and the .main-content.
+     The panel's translateX(-100%) when closed collapses it to zero effective
+     width, so .main-content always gets the full remaining space. */
+  .left-panel-region {
+    display: flex;
+    flex-direction: row;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+  }
+  /* When panel is closed, the LeftPanel has width:260px but translateX(-100%)
+     so it's off-screen. Margin-left on .main-content compensates: 0 when open,
+     -260px when closed so main-content fills the full width. */
+  .left-panel-region .main-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    /* Animate alongside the panel transition */
+    transition: margin-left 0.18s ease-out;
+    margin-left: 0;
+  }
+  /* Panel closed: pull .main-content leftward to fill the panel's "ghost" space.
+     The LeftPanel is always in DOM but translateX(-100%) so its flex width = 260px
+     even when off-screen. We compensate with a negative margin-left. */
+  .left-panel-region:not(.panel-open) .main-content {
+    margin-left: -260px;
+  }
+  /* Narrow screens: panel overlays, so main-content never shifts */
+  @media screen and (max-width: 820px) {
+    .left-panel-region:not(.panel-open) .main-content {
+      margin-left: 0;
+    }
   }
 
   /* ---- Editor workspace: [file-tree | editor | preview] (#38) ---- */
@@ -2653,32 +2810,6 @@
   /* UX-014: small text label under/beside view mode icon */
   .view-label { font-size: 11px; }
 
-  /* Problems toggle (#28): the count badge rides the icon's top-right corner
-     so the button costs no extra toolbar width beyond its siblings. */
-  .problems-icon {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-  }
-  .problems-icon.has-problems { color: var(--app-warning-text); }
-  .problems-btn.active .problems-icon.has-problems { color: inherit; }
-  .problem-badge {
-    position: absolute;
-    top: -7px;
-    right: -9px;
-    min-width: 14px;
-    padding: 0 3px;
-    border-radius: 999px;
-    background: var(--app-error-strong);
-    color: #fff;
-    font-size: 9px;
-    font-weight: 700;
-    line-height: 14px;
-    text-align: center;
-    font-variant-numeric: tabular-nums;
-    pointer-events: none;
-  }
-
   /* Edit/View segmented toggle (narrow single-pane mode) */
   .pane-toggle {
     display: inline-flex;
@@ -2795,74 +2926,6 @@
     color: var(--app-accent-text);
   }
 
-  /* Chapter-jump dropdown (UX-013). Always visible when an outline exists —
-     overrides the generic `.menu { display: none }` (which keeps zoom/view-mode
-     menus collapsed until their narrow breakpoints). Left-aligned, scrollable. */
-  .chapter-menu { display: inline-block; }
-  .chapter-summary {
-    list-style: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    max-width: 220px;
-    padding: 4px 8px;
-    border: 1px solid var(--app-control-border);
-    border-radius: 6px;
-    background: var(--app-control-bg);
-    color: var(--app-control-text);
-    cursor: pointer;
-    font-size: 13px;
-  }
-  .chapter-summary::-webkit-details-marker { display: none; }
-  .chapter-summary:hover,
-  .chapter-menu[open] .chapter-summary {
-    background: var(--app-control-hover-bg);
-    border-color: var(--app-control-hover-border);
-  }
-  .chapter-label {
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .chapter-panel {
-    left: 0;
-    right: auto;
-    min-width: 240px;
-    max-width: 360px;
-    max-height: 60vh;
-    overflow-y: auto;
-  }
-  /* Hierarchy in the jump list: chapters (h1) bold, sub-headings (h3+) lighter,
-     a little breathing room before each chapter so groups are scannable. */
-  .chapter-item {
-    justify-content: space-between;
-    gap: 12px;
-    font-weight: 400;
-    color: var(--app-text-secondary);
-  }
-  .chapter-item.chapter-top {
-    font-weight: 650;
-    color: var(--app-text);
-    margin-top: 7px;
-    padding-top: 7px;
-    border-top: 1px solid var(--app-border);
-  }
-  .chapter-item.chapter-top:first-child {
-    margin-top: 0;
-    padding-top: 6px;
-    border-top: none;
-  }
-  .chapter-item.chapter-sub { color: var(--app-text-muted); }
-  .chapter-item.active { color: var(--app-accent-text); }
-  .chapter-item-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .chapter-item-page {
-    flex: 0 0 auto;
-    opacity: 0.55;
-    font-variant-numeric: tabular-nums;
-    font-size: 11px;
-  }
-
   .page-input {
     background: var(--app-control-bg);
     border: 1px solid var(--app-control-border);
@@ -2888,6 +2951,17 @@
 
   .zoom-select { padding: 5px 6px; }
 
+  /* Panel toggle button — keeps its ghost style as active when panel is open,
+     with the accent fill matching other active toggles (Edit, view mode). */
+  .panel-toggle-btn.active {
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
+  }
+  .panel-toggle-btn.active:hover:not(:disabled) {
+    background: linear-gradient(to bottom, var(--app-accent-bright), var(--app-accent-hover));
+  }
+
   .doc-title {
     color: var(--app-text-secondary);
     font-size: 13px;
@@ -2897,6 +2971,10 @@
     white-space: nowrap;
     max-width: 200px;
     flex-shrink: 1;
+  }
+  .no-project {
+    font-weight: 700;
+    color: var(--app-text-secondary);
   }
 
   /* UX-031: muted token for better contrast */
@@ -3018,44 +3096,53 @@
   /* ---- Toolbar container queries ----
      @container queries measure the toolbar's own inline size — the correct
      tool for a component-level layout. This replaces viewport @media queries
-     which were wrong because toolbar width can differ from viewport width
-     (e.g. when the app chrome changes).
+     which were wrong because toolbar width can differ from viewport width.
 
-     The toolbar degrades in stages as it narrows:
-       1480cqi — collapse view-mode + zoom into dropdown menus (the FULL
-                 uncollapsed control set measures ~1480px with the Problems
-                 toggle, #28 — at 1400px viewports Save PDF/Settings/Help
-                 were clipped until this stage moved up from 1300)
-       1100cqi — trim doc-title / path max-widths
-        950cqi — drop button text labels (icon-only, aria-label/title keep a11y)
-        820cqi — hide chapter label (icon + chevron only), drop separators
-        780cqi — hide doc title, drop Save PDF text label
-        740cqi — fold Settings+Help into "More" menu (makes room for the
-                 Problems toggle, #28 — without this the right section
-                 overflowed the toolbar edge at 700px)
-        680cqi — hide path
-        600cqi — drop "Page" word, open icon-only
-        540cqi — compact page nav (drop first/last jump buttons) */
+     New smaller control set (after workspace restructure): panel-toggle,
+     project-title, page-nav, Edit/View toggle, view-mode, zoom, Save PDF,
+     Settings, Help. No Open, chapter dropdown, Problems, History, or Sync.
 
-  @container (max-width: 1480px) {
+     Measured full-set width at 1200px viewport ≈ 1050px (panel-toggle 40 +
+     title 200 + spacers 200 + page-nav 260 + sep 17 + edit 70 + view-mode-group
+     120 + zoom-select 100 + sep 17 + save-pdf 90 + settings 40 + help 40 = ~1194).
+
+     Collapse stages:
+       1200cqi — collapse view-mode + zoom into dropdown menus
+       1000cqi — trim doc-title / path max-widths
+        850cqi — drop button text labels (icon-only)
+        760cqi — hide doc title, drop Save PDF text label
+        720cqi — fold Settings+Help into "More" menu
+        640cqi — hide path, drop separators
+        580cqi — drop "Page" word
+        520cqi — compact page nav (drop first/last) */
+
+  @container (max-width: 1200px) {
     /* Swap the inline view-mode buttons + zoom select for compact menu buttons. */
     .view-mode-group { display: none; }
     .zoom-select { display: none; }
     .menu { display: inline-block; }
   }
-  @container (max-width: 1100px) {
+  @container (max-width: 1000px) {
     .doc-title { max-width: 140px; }
     .path { max-width: 180px; }
   }
-  @container (max-width: 950px) {
+  @container (max-width: 850px) {
     /* Icon-only buttons: labels drop, aria-label/title keep them accessible. */
     .view-label { display: none; }
   }
-  @container (max-width: 820px) {
-    /* The chapter-jump menu keeps its icon + chevron but drops its heading label
-       so it stops eating center width. Also drop group separators to reduce clutter. */
-    .chapter-label { display: none; }
-    .chapter-summary { max-width: none; }
+  @container (max-width: 760px) {
+    .doc-title { display: none; }
+    .path { max-width: 140px; }
+    /* Hide Save PDF text label, keep button as icon-only */
+    .save-btn-label { display: none; }
+  }
+  @container (max-width: 720px) {
+    /* Fold Settings + Help into the "More" overflow menu */
+    .opt-inline { display: none; }
+    details.more-menu { display: inline-block; }
+  }
+  @container (max-width: 640px) {
+    .path { display: none; }
     .zoom-select,
     .zoom-menu,
     .view-mode-group,
@@ -3064,36 +3151,114 @@
       display: none;
     }
   }
-  @container (max-width: 780px) {
-    .doc-title { display: none; }
-    .path { max-width: 140px; }
-    /* UX-006: hide Save PDF text label, keep button as icon-only */
-    .save-btn-label { display: none; }
-  }
-  @container (max-width: 740px) {
-    /* Fold Settings + Help into the "More" overflow menu so the right section
-       (Edit/Problems/History/Save) never reaches the toolbar edge. */
-    .opt-inline { display: none; }
-    details.more-menu { display: inline-block; }
-  }
-  @container (max-width: 680px) {
-    .path { display: none; }
-  }
-  @container (max-width: 600px) {
-    /* Drop the "Page" word from the pill so the page navigation keeps room
-       and the toolbar never crowds/clips at narrow widths. */
+  @container (max-width: 580px) {
+    /* Drop the "Page" word from the pill */
     .pill-word { display: none; }
-    /* Open becomes icon-only (the folder icon is unambiguous) so the primary
-       action never truncates to "Op". */
-    .open-label { display: none; }
   }
-  @container (max-width: 540px) {
-    /* Compact page navigation: drop the first/last jump buttons, keep prev /
-       page-pill / next so navigation still works without overflow. */
+  @container (max-width: 520px) {
+    /* Compact page navigation: drop the first/last jump buttons */
     .center .icon-btn:first-child,
     .center .icon-btn:last-child { display: none; }
     .page-pill { min-width: 56px; }
   }
+
+  /* ---- Incoming-changes modal ---- */
+  .incoming-backdrop {
+    position: fixed;
+    inset: 0;
+    background: var(--app-backdrop);
+    z-index: 1000;
+  }
+  .incoming-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(440px, 90vw);
+    background: var(--app-surface);
+    border-radius: 8px;
+    box-shadow: 0 14px 40px var(--app-shadow-lg);
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  .incoming-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--app-border-subtle);
+  }
+  .incoming-header h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--app-text); }
+  .incoming-body {
+    padding: 14px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .incoming-lead { margin: 0; font-size: 13px; color: var(--app-text-secondary); }
+  .incoming-commits {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .incoming-commit {
+    font-size: 12px;
+    color: var(--app-text-muted);
+    padding: 4px 8px;
+    background: var(--app-surface-sunken);
+    border-radius: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .incoming-footer {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding: 10px 18px;
+    border-top: 1px solid var(--app-border-subtle);
+  }
+  .incoming-footer .ghost {
+    background: transparent;
+    border: 1px solid var(--app-border);
+    color: var(--app-text-muted);
+    padding: 6px 14px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .incoming-footer .ghost:hover { background: var(--app-surface-hover); }
+  .incoming-footer .primary {
+    background: var(--app-accent);
+    border: 1px solid var(--app-accent-border);
+    color: var(--app-accent-text);
+    padding: 6px 14px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .incoming-footer .primary:hover { background: var(--app-accent-hover); }
+  .close-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: var(--app-text-muted);
+    padding: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    min-height: 28px;
+    cursor: pointer;
+  }
+  .close-btn:hover { color: var(--app-text); background: var(--app-surface-hover); }
+  .close-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 
   /* ---- Small-screen single-pane layout (#responsive) ----
      Below NARROW_QUERY (820px) the editor + preview can't sit side by side.

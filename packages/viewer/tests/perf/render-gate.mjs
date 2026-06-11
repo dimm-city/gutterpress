@@ -143,18 +143,40 @@ async function evalJs(expression) {
 // contaminate the measurement — bring it to the front.
 await send("Page.bringToFront");
 
-// ── 4. open the fixture book via the Open dialog ───────────────────────────
+// ── 4. open the fixture book via the left panel Projects tab ─────────────
+// The workspace restructure removed the standalone Open button. The left panel
+// auto-opens on the Projects tab when no project is loaded.
 let spaReady = false;
 for (let i = 0; i < 60; i++) {
-  if (await evalJs(`!!document.querySelector('button[aria-label="Open folder or web address"]')`)) { spaReady = true; break; }
+  if (await evalJs(`!!document.querySelector('button[aria-label="Toggle left panel"]')`)) { spaReady = true; break; }
   await sleep(1000);
 }
-if (!spaReady) fail("SPA never became interactive (Open button not found in 60s)");
+if (!spaReady) fail("SPA never became interactive (left panel toggle not found in 60s)");
+
+// Wait for the Projects tab to auto-open
+let panelReady = false;
+for (let i = 0; i < 20; i++) {
+  const hasInput = await evalJs(`!!document.querySelector('.projects-body .location-input')`);
+  if (hasInput) { panelReady = true; break; }
+  await sleep(500);
+}
+if (!panelReady) {
+  // Manually open panel and switch to Projects tab
+  await evalJs(`document.querySelector('button[aria-label="Toggle left panel"]').click(); true`);
+  await sleep(500);
+  await evalJs(`(() => {
+    const tabs = [...document.querySelectorAll('.panel-tab')];
+    const t = tabs.find(b => b.textContent.trim().toUpperCase().includes('PROJECTS'));
+    if (t) t.click();
+    return !!t;
+  })()`);
+  await sleep(300);
+}
 
 await evalJs(`(async () => {
-  document.querySelector('button[aria-label="Open folder or web address"]').click();
-  await new Promise((r) => setTimeout(r, 500));
-  const inp = document.querySelector('input');
+  const inp = document.querySelector('.projects-body .location-input');
+  if (!inp) return false;
+  inp.focus();
   const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
   set.call(inp, ${JSON.stringify(book)});
   inp.dispatchEvent(new Event('input', { bubbles: true }));
@@ -162,7 +184,7 @@ await evalJs(`(async () => {
   inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   return true;
 })()`);
-log("open dialog driven; waiting for layout to start…");
+log("projects panel driven; waiting for layout to start…");
 
 const layoutPage = () => evalJs(`(document.body.innerText.match(/Laying out page (\\d+)/) || [])[1] ?? null`);
 const finishedInfo = () =>

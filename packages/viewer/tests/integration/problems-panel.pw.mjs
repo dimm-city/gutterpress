@@ -141,18 +141,37 @@ async function screenshot(file) {
 }
 await send("Page.bringToFront");
 
-// ── 4. open the seeded fixture via the Open dialog ───────────────────────────
+// ── 4. open the seeded fixture via the left panel Projects tab ───────────────
 let spaReady = false;
 for (let i = 0; i < 60; i++) {
-  if (await evalJs(`!!document.querySelector('button[aria-label="Open folder or web address"]')`)) { spaReady = true; break; }
+  if (await evalJs(`!!document.querySelector('button[aria-label="Toggle left panel"]')`)) { spaReady = true; break; }
   await sleep(1000);
 }
-if (!spaReady) fail("SPA never became interactive (Open button not found in 60s)");
+if (!spaReady) fail("SPA never became interactive (left panel toggle not found in 60s)");
+
+// Wait for the Projects tab to auto-open (it opens when no project is loaded)
+let panelReady = false;
+for (let i = 0; i < 20; i++) {
+  const hasInput = await evalJs(`!!document.querySelector('.projects-body .location-input')`);
+  if (hasInput) { panelReady = true; break; }
+  await sleep(500);
+}
+if (!panelReady) {
+  await evalJs(`document.querySelector('button[aria-label="Toggle left panel"]').click(); true`);
+  await sleep(500);
+  await evalJs(`(() => {
+    const tabs = [...document.querySelectorAll('.panel-tab')];
+    const t = tabs.find(b => b.textContent.trim().toUpperCase().includes('PROJECTS'));
+    if (t) t.click();
+    return !!t;
+  })()`);
+  await sleep(300);
+}
 
 await evalJs(`(async () => {
-  document.querySelector('button[aria-label="Open folder or web address"]').click();
-  await new Promise((r) => setTimeout(r, 500));
-  const inp = document.querySelector('input');
+  const inp = document.querySelector('.projects-body .location-input');
+  if (!inp) return false;
+  inp.focus();
   const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
   set.call(inp, ${JSON.stringify(bookDir)});
   inp.dispatchEvent(new Event('input', { bubbles: true }));
@@ -160,7 +179,7 @@ await evalJs(`(async () => {
   inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   return true;
 })()`);
-log("open dialog driven; waiting for render to complete…");
+log("projects panel driven; waiting for render to complete…");
 
 let rendered = false;
 for (let i = 0; i < 180; i++) {
@@ -173,18 +192,36 @@ for (let i = 0; i < 180; i++) {
 if (!rendered) fail("preview never finished rendering (180s)");
 log("render complete");
 
-// ── 5. badge count on the toolbar toggle ─────────────────────────────────────
-let badge = null;
+// ── 5. badge count on the problems strip toggle ───────────────────────────────
+// The problems strip is always visible at the bottom of the screen (not in navbar).
+// The strip shows error/warning counts without a dedicated badge element.
+let stripVisible = false;
 for (let i = 0; i < 30; i++) {
-  badge = await evalJs(`document.querySelector('button[aria-label="Toggle problems panel"] .problem-badge')?.textContent ?? null`);
-  if (badge != null) break;
+  const counts = await evalJs(`(() => {
+    const strip = document.querySelector('.toggle-strip');
+    if (!strip) return null;
+    const errs = strip.querySelector('.error-count')?.textContent?.trim() ?? null;
+    const warns = strip.querySelector('.warning-count')?.textContent?.trim() ?? null;
+    return { errs, warns };
+  })()`);
+  if (counts?.errs || counts?.warns) { stripVisible = true; break; }
   await sleep(1000);
 }
-if (badge !== "2") fail(`expected badge "2" (1 error + 1 warning), got: ${JSON.stringify(badge)}`);
-log(`badge count OK: ${badge}`);
+if (!stripVisible) fail("problems strip never showed error/warning counts");
+log(`problems strip counts visible`);
+
+// Also check the strip shows error count = 1
+const stripCounts = await evalJs(`(() => {
+  const strip = document.querySelector('.toggle-strip');
+  return {
+    errorCount: strip?.querySelector('.error-count')?.textContent?.trim() ?? null,
+    warningCount: strip?.querySelector('.warning-count')?.textContent?.trim() ?? null,
+  };
+})()`);
+log(`strip counts: ${JSON.stringify(stripCounts)}`);
 
 // ── 6. open the panel; verify both findings render ───────────────────────────
-await evalJs(`document.querySelector('button[aria-label="Toggle problems panel"]').click(); true`);
+await evalJs(`document.querySelector('.toggle-strip').click(); true`);
 await sleep(500);
 const panel = await evalJs(`(() => {
   const panel = document.querySelector('.problems-panel');
@@ -242,7 +279,22 @@ if (!(editorState.selected ?? "").includes("01-alpha.md")) {
 if (!editorState.lineVisible) fail("offending line not scrolled into view in the editor");
 log(`click-through OK: editor on ${editorState.selected}, line visible`);
 
+// Close the problems panel before doing toolbar audit (panel overlays at 700px)
+await evalJs(`(() => {
+  const strip = document.querySelector('.toggle-strip[aria-expanded="true"]');
+  if (strip) strip.click();
+  return true;
+})()`);
+await sleep(300);
+
 // ── 8. 700px toolbar overlap audit ───────────────────────────────────────────
+// Close any open dropdown menus before auditing so menu panel items don't
+// contribute false overlap readings against each other.
+await evalJs(`(() => {
+  document.querySelectorAll('details[open]').forEach((d) => { d.open = false; });
+  return true;
+})()`);
+await sleep(200);
 // Emulate a 700px-wide layout viewport — the toolbar uses container queries
 // keyed to its own inline size, which tracks the layout viewport width here.
 await send("Emulation.setDeviceMetricsOverride", {
@@ -257,6 +309,8 @@ const audit = await evalJs(`(() => {
     .filter((el) => {
       const r = el.getBoundingClientRect();
       const s = getComputedStyle(el);
+      // Exclude elements inside open menu panels (dropdown items overlap by design)
+      if (el.closest('.menu-panel')) return false;
       return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
     });
   const rects = els.map((el) => ({

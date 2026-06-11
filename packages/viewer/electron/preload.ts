@@ -125,6 +125,11 @@ interface ViewerPrefs {
   projectStates?: Record<string, ProjectState>;
   projectSearchRoots?: string[];
   projectSource?: ProjectSourceHint;
+  /** Global left panel open state + active tab, persisted across sessions. */
+  leftPanel?: {
+    open?: boolean;
+    activeTab?: "toc" | "files" | "media" | "projects" | "history";
+  };
 }
 
 /** Forward ref used by ViewerPrefs above; full union declared below. */
@@ -300,6 +305,36 @@ type SyncOutcome =
       remoteId: string;
       snapshotId?: string;
     }
+  | { status: "auth"; message: string; snapshotId?: string }
+  | { status: "offline"; message: string; snapshotId?: string }
+  | { status: "error"; message: string; snapshotId?: string };
+
+type PullOutcome =
+  | {
+      status: "pulled";
+      message: string;
+      snapshotId?: string;
+      merged: boolean;
+      incomingApplied: number;
+      filesChanged: boolean;
+    }
+  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | {
+      status: "conflict";
+      message: string;
+      files: ConflictFileInfo[];
+      localId: string;
+      remoteId: string;
+      snapshotId?: string;
+    }
+  | { status: "auth"; message: string; snapshotId?: string }
+  | { status: "offline"; message: string; snapshotId?: string }
+  | { status: "error"; message: string; snapshotId?: string };
+
+type PushOutcome =
+  | { status: "pushed"; message: string; snapshotId?: string }
+  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | { status: "pull-first"; message: string; snapshotId?: string }
   | { status: "auth"; message: string; snapshotId?: string }
   | { status: "offline"; message: string; snapshotId?: string }
   | { status: "error"; message: string; snapshotId?: string };
@@ -696,6 +731,12 @@ contextBridge.exposeInMainWorld("electron", {
     message?: string,
   ): Promise<SyncOutcome> =>
     ipcRenderer.invoke("remote:sync", projectDir, message),
+  /** Pull-only: get online changes (fast-forward/merge). Never pushes. */
+  pullChanges: (projectDir: string): Promise<PullOutcome> =>
+    ipcRenderer.invoke("remote:pullChanges", projectDir),
+  /** Push-only: send local changes. "pull-first" when the remote is ahead. */
+  pushChanges: (projectDir: string): Promise<PushOutcome> =>
+    ipcRenderer.invoke("remote:pushChanges", projectDir),
   resolveSyncConflicts: (
     args: ResolveSyncConflictsArgs,
   ): Promise<SyncOutcome> =>

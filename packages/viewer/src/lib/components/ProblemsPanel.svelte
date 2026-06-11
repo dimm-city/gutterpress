@@ -4,6 +4,10 @@
    * lint findings: file, line, plain-language message, and the originating
    * check. Entirely presentational: the page owns the data (refreshed on each
    * live-preview rebuild) and the click-to-open navigation.
+   *
+   * The panel owns its own toggle strip (the top border strip is always
+   * visible; clicking it expands/collapses the body). The toggle does NOT
+   * live in the navbar any more.
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { ProblemEntry } from "$lib/platform/contract";
@@ -12,13 +16,14 @@
   let {
     problems,
     loading = false,
+    open = $bindable(false),
     onSelect,
-    onClose,
   }: {
     problems: ProblemEntry[];
     loading?: boolean;
+    /** Whether the panel body is expanded. */
+    open?: boolean;
     onSelect?: (problem: ProblemEntry) => void;
-    onClose?: () => void;
   } = $props();
 
   let groups = $derived(groupProblems(problems));
@@ -36,40 +41,56 @@
   } as const;
 </script>
 
-<section class="problems-panel" aria-label="Problems">
-  <header class="panel-header">
-    <h2 class="panel-title">Problems</h2>
-    {#if counts.badge > 0}
-      <span class="panel-counts">
-        {#if counts.errors > 0}
-          <span class="count error-count">
-            <Icon name="circle-x" size={13} />
-            {counts.errors}
-          </span>
-        {/if}
-        {#if counts.warnings > 0}
-          <span class="count warning-count">
-            <Icon name="triangle-alert" size={13} />
-            {counts.warnings}
-          </span>
-        {/if}
-      </span>
-    {/if}
-    {#if loading}
-      <span class="panel-status" role="status">Checking…</span>
-    {/if}
-    <span class="header-spacer"></span>
-    <button
-      class="close-btn"
-      onclick={() => onClose?.()}
-      title="Close problems panel"
-      aria-label="Close problems panel"
-    >
-      <Icon name="x" size={14} />
-    </button>
-  </header>
+<section
+  class="problems-panel"
+  class:expanded={open}
+  aria-label="Problems"
+>
+  <!-- Toggle strip — always visible at the bottom edge.
+       Uses a <button> with aria-expanded so screen readers announce state. -->
+  <button
+    class="toggle-strip"
+    onclick={() => (open = !open)}
+    aria-expanded={open}
+    aria-controls="problems-body"
+    title={open ? "Collapse problems panel" : "Expand problems panel"}
+  >
+    <span class="strip-left">
+      <Icon name={counts.badge > 0 ? "triangle-alert" : "circle-check"} size={13} />
+      <span class="strip-title">Problems</span>
+      {#if counts.badge > 0}
+        <span class="strip-counts">
+          {#if counts.errors > 0}
+            <span class="strip-count error-count">
+              <Icon name="circle-x" size={12} />
+              {counts.errors}
+            </span>
+          {/if}
+          {#if counts.warnings > 0}
+            <span class="strip-count warning-count">
+              <Icon name="triangle-alert" size={12} />
+              {counts.warnings}
+            </span>
+          {/if}
+        </span>
+      {/if}
+      {#if loading}
+        <span class="strip-status" role="status">Checking…</span>
+      {/if}
+    </span>
+    <span class="strip-chevron" aria-hidden="true">
+      <Icon name={open ? "chevron-down" : "chevron-up"} size={13} />
+    </span>
+  </button>
 
-  <div class="panel-body">
+  <!-- Panel body — shown only when expanded -->
+  <div
+    id="problems-body"
+    class="panel-body"
+    role="region"
+    aria-label="Problems list"
+    aria-hidden={!open}
+  >
     {#if problems.length === 0}
       <div class="empty-state" role="status">
         <span class="empty-icon"><Icon name="circle-check" size={18} /></span>
@@ -106,7 +127,6 @@
                       {/if}
                     </button>
                   {:else}
-                    <!-- No file path: not navigable — render as plain list item, not a button -->
                     <div class="entry non-clickable">
                       <span class="entry-severity sev-{entry.severity}">
                         <Icon name={SEVERITY_ICON[entry.severity]} size={14} />
@@ -131,77 +151,85 @@
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    max-height: 32vh;
-    min-height: 0;
-    border-top: 1px solid var(--app-border);
     background: var(--app-surface-raised);
     color: var(--app-text);
+    border-top: 1px solid var(--app-border);
+  }
+  /* Body only shown when expanded */
+  .problems-panel .panel-body {
+    display: none;
+    overflow-y: auto;
+    min-height: 0;
+    max-height: 32vh;
+  }
+  .problems-panel.expanded .panel-body {
+    display: block;
   }
 
-  .panel-header {
+  /* ── Toggle strip ──────────────────────────────────────────────────────── */
+  .toggle-strip {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 6px 12px;
-    border-bottom: 1px solid var(--app-border);
-    flex-shrink: 0;
+    justify-content: space-between;
+    width: 100%;
+    padding: 5px 12px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--app-text-secondary);
+    text-align: left;
+    min-height: 30px;
+    gap: 8px;
   }
-  .panel-title {
-    margin: 0;
+  .expanded .toggle-strip {
+    border-bottom-color: var(--app-border);
+  }
+  .toggle-strip:hover {
+    background: var(--app-control-hover-bg);
+  }
+  .toggle-strip:focus-visible {
+    outline: 2px solid var(--app-focus-ring);
+    outline-offset: -2px;
+  }
+  .strip-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+  .strip-title {
     font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.4px;
     color: var(--app-text-secondary);
   }
-  .panel-counts {
+  .strip-counts {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
-    font-size: 12px;
+    gap: 8px;
     font-variant-numeric: tabular-nums;
   }
-  .count {
+  .strip-count {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
+    font-size: 11px;
   }
   .error-count { color: var(--app-error-text); }
   .warning-count { color: var(--app-warning-text); }
-  .panel-status {
-    font-size: 11px;
-    color: var(--app-text-faint);
-  }
-  .header-spacer { flex: 1; }
-  .close-btn {
+  .strip-status { font-size: 11px; color: var(--app-text-faint); }
+  .strip-chevron {
+    flex-shrink: 0;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    color: var(--app-text-muted);
-    padding: 3px 5px;
-    cursor: pointer;
-    /* WCAG 2.5.8: minimum target size 24×24px */
-    min-width: 26px;
-    min-height: 26px;
-  }
-  .close-btn:hover {
-    background: var(--app-control-hover-bg);
-    color: var(--app-text);
-  }
-  .close-btn:focus-visible {
-    outline: 2px solid var(--app-focus-ring);
-    outline-offset: 2px;
+    color: var(--app-text-faint);
   }
 
-  .panel-body {
-    overflow-y: auto;
-    min-height: 0;
-  }
-
-  /* Empty state — friendly, icon + color (not color-only) */
+  /* ── Panel body ──────────────────────────────────────────────────────────── */
   .empty-state {
     display: flex;
     align-items: center;
@@ -276,7 +304,6 @@
     outline: 2px solid var(--app-focus-ring);
     outline-offset: -2px;
   }
-  /* Non-navigable entries: plain div, no interactive affordances */
   .entry.non-clickable { cursor: default; }
 
   .entry-severity {

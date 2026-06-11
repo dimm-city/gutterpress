@@ -57,6 +57,8 @@ import type {
   SyncStatusInfo,
   SyncPreviewInfo,
   SyncOutcome,
+  PullOutcome,
+  PushOutcome,
   ResolveSyncConflictsArgs,
 } from "./contract";
 
@@ -354,6 +356,14 @@ export class ElectronAdapter implements Platform {
 
   syncChanges(projectDir: string, message?: string): Promise<SyncOutcome> {
     return bridge().syncChanges(projectDir, message);
+  }
+
+  pullChanges(projectDir: string): Promise<PullOutcome> {
+    return bridge().pullChanges(projectDir);
+  }
+
+  pushChanges(projectDir: string): Promise<PushOutcome> {
+    return bridge().pushChanges(projectDir);
   }
 
   resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {

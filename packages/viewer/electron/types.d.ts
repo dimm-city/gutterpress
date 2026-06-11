@@ -296,6 +296,36 @@ type SyncOutcome =
   | { status: "offline"; message: string; snapshotId?: string }
   | { status: "error"; message: string; snapshotId?: string };
 
+type PullOutcome =
+  | {
+      status: "pulled";
+      message: string;
+      snapshotId?: string;
+      merged: boolean;
+      incomingApplied: number;
+      filesChanged: boolean;
+    }
+  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | {
+      status: "conflict";
+      message: string;
+      files: ConflictFileInfo[];
+      localId: string;
+      remoteId: string;
+      snapshotId?: string;
+    }
+  | { status: "auth"; message: string; snapshotId?: string }
+  | { status: "offline"; message: string; snapshotId?: string }
+  | { status: "error"; message: string; snapshotId?: string };
+
+type PushOutcome =
+  | { status: "pushed"; message: string; snapshotId?: string }
+  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | { status: "pull-first"; message: string; snapshotId?: string }
+  | { status: "auth"; message: string; snapshotId?: string }
+  | { status: "offline"; message: string; snapshotId?: string }
+  | { status: "error"; message: string; snapshotId?: string };
+
 interface ResolveSyncConflictsArgs {
   projectDir: string;
   resolutions: ConflictResolutionChoice[];
@@ -412,6 +442,10 @@ interface Window {
       projectStates?: Record<string, ProjectState>;
       projectSearchRoots?: string[];
       projectSource?: ProjectSource;
+      leftPanel?: {
+        open?: boolean;
+        activeTab?: "toc" | "files" | "media" | "projects" | "history";
+      };
     }>;
     setViewerPrefs(patch: {
       lastProjectDir?: string | null;
@@ -423,6 +457,10 @@ interface Window {
       projectStates?: Record<string, ProjectState>;
       projectSearchRoots?: string[];
       projectSource?: ProjectSource;
+      leftPanel?: {
+        open?: boolean;
+        activeTab?: "toc" | "files" | "media" | "projects" | "history";
+      };
     }): Promise<{ ok: boolean }>;
     // Per-project editor/preview state (#43)
     getViewerProjectState(projectDir: string): Promise<ProjectState | null>;
@@ -507,6 +545,10 @@ interface Window {
     /** Local-only preview (no network) — the Sync dialog's instant first paint. */
     previewSyncLocal(projectDir: string): Promise<SyncPreviewInfo>;
     syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
+    /** Pull-only: get online changes (fast-forward/merge). Never pushes. */
+    pullChanges(projectDir: string): Promise<PullOutcome>;
+    /** Push-only: send local changes. "pull-first" when the remote is ahead. */
+    pushChanges(projectDir: string): Promise<PushOutcome>;
     resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
     startPreview(args: { input: string }): Promise<{
       url: string;

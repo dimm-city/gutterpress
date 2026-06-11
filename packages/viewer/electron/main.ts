@@ -376,6 +376,40 @@ type SyncOutcome =
   | { status: "offline"; message: string; snapshotId?: string }
   | { status: "error"; message: string; snapshotId?: string };
 
+// Pull-only outcome (remote:pullChanges) — mirrors the lib's PullOutcome.
+type PullOutcome =
+  | {
+      status: "pulled";
+      message: string;
+      snapshotId?: string;
+      merged: boolean;
+      incomingApplied: number;
+      filesChanged: boolean;
+    }
+  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | {
+      status: "conflict";
+      message: string;
+      files: ConflictFileInfo[];
+      localId: string;
+      remoteId: string;
+      snapshotId?: string;
+    }
+  | { status: "auth"; message: string; snapshotId?: string }
+  | { status: "offline"; message: string; snapshotId?: string }
+  | { status: "error"; message: string; snapshotId?: string };
+
+// Push-only outcome (remote:pushChanges) — mirrors the lib's PushOutcome.
+// "pull-first" = the online copy is ahead; the UI shows a plain-language
+// "get the latest changes first" message (never auto-merges).
+type PushOutcome =
+  | { status: "pushed"; message: string; snapshotId?: string }
+  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | { status: "pull-first"; message: string; snapshotId?: string }
+  | { status: "auth"; message: string; snapshotId?: string }
+  | { status: "offline"; message: string; snapshotId?: string }
+  | { status: "error"; message: string; snapshotId?: string };
+
 interface LibModule {
   startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
   loadManifestWithPath: (input: string) => Promise<ManifestWithPath>;
@@ -468,6 +502,18 @@ interface LibModule {
     message?: string;
     authorName?: string;
   }) => Promise<SyncOutcome>;
+  pullChanges: (options: {
+    projectDir: string;
+    tokenStore?: { get(host: string): Promise<HostCredential | null> };
+    message?: string;
+    authorName?: string;
+  }) => Promise<PullOutcome>;
+  pushChanges: (options: {
+    projectDir: string;
+    tokenStore?: { get(host: string): Promise<HostCredential | null> };
+    message?: string;
+    authorName?: string;
+  }) => Promise<PushOutcome>;
   resolveConflicts: (options: {
     projectDir: string;
     resolutions: ConflictResolutionChoice[];
@@ -680,6 +726,11 @@ interface ViewerPrefs {
    * hint, not the source of truth.
    */
   projectSource?: ProjectSource;
+  /** Global left panel open state + active tab, persisted across sessions. */
+  leftPanel?: {
+    open?: boolean;
+    activeTab?: "toc" | "files" | "media" | "projects" | "history";
+  };
 }
 
 function prefsPath(): string {
@@ -2649,6 +2700,36 @@ ipcMain.handle(
         ...(typeof message === "string" && message.trim()
           ? { message: message.trim() }
           : {}),
+      });
+    }),
+);
+
+ipcMain.handle(
+  "remote:pullChanges",
+  (_e, projectDir: string): Promise<PullOutcome> =>
+    handleRemoteErrors("remote:pullChanges", async () => {
+      const dir = requireAbsoluteDir("remote:pullChanges", projectDir);
+      const lib = await loadLib();
+      // Pull-only: snapshot-if-needed → fetch → fast-forward/merge. NEVER
+      // pushes. Expected failures come back as typed statuses, not throws.
+      return lib.pullChanges({
+        projectDir: dir,
+        tokenStore: electronTokenStore,
+      });
+    }),
+);
+
+ipcMain.handle(
+  "remote:pushChanges",
+  (_e, projectDir: string): Promise<PushOutcome> =>
+    handleRemoteErrors("remote:pushChanges", async () => {
+      const dir = requireAbsoluteDir("remote:pushChanges", projectDir);
+      const lib = await loadLib();
+      // Push-only: snapshot-if-needed → push. When the online copy is ahead
+      // the lib returns the typed "pull-first" status — it never auto-merges.
+      return lib.pushChanges({
+        projectDir: dir,
+        tokenStore: electronTokenStore,
       });
     }),
 );
