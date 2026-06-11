@@ -42,8 +42,16 @@ test("credential file is written with 0600 permissions", async () => {
   const { dir, store } = await tempStore();
   try {
     await store.set("github.com", cred("github.com"));
-    const mode = (await stat(store.filePath)).mode & 0o777;
-    expect(mode).toBe(0o600);
+    if (process.platform === "win32") {
+      // Windows has no POSIX mode bits: chmod is a no-op there and stat
+      // reports the default 0o666. The store file lives under the user's
+      // profile directory, protected by NTFS ACLs — assert it exists and
+      // leave the mode check to POSIX platforms.
+      expect((await stat(store.filePath)).isFile()).toBe(true);
+    } else {
+      const mode = (await stat(store.filePath)).mode & 0o777;
+      expect(mode).toBe(0o600);
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
