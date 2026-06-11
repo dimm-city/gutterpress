@@ -667,16 +667,17 @@ async function relateTips(
   cache: GitCache,
 ): Promise<TipRelation> {
   if (localTip === remoteTip) return "equal";
+  // LOCAL-AHEAD FIRST, and each walk in its OWN try/catch. The local-ahead
+  // walk descends only the commits THIS computer added on top (snapshots —
+  // a handful), so it terminates almost immediately. The old order walked
+  // the REMOTE's ancestry first, which on any repo with more than
+  // DIRECTION_WALK_DEPTH commits of history throws MaxDepthError when local
+  // is ahead — and the shared try/catch then SKIPPED the local-ahead check,
+  // reporting "diverged-or-unknown" forever. Field bug (Windows, 2026-06-11,
+  // diagnosed from the [sync] lines): local ahead after a successful pull,
+  // badge stuck on "New changes online" while pull truthfully said
+  // up-to-date.
   try {
-    const remoteAhead = await git.isDescendent({
-      fs,
-      dir,
-      cache,
-      oid: remoteTip,
-      ancestor: localTip,
-      depth: DIRECTION_WALK_DEPTH,
-    });
-    if (remoteAhead) return "remote-ahead";
     const localAhead = await git.isDescendent({
       fs,
       dir,
@@ -687,7 +688,21 @@ async function relateTips(
     });
     if (localAhead) return "local-ahead";
   } catch {
-    // MaxDepthError / missing objects — fall through to the safe default.
+    // MaxDepthError / missing objects — this direction is unknown; the
+    // other walk still gets its chance.
+  }
+  try {
+    const remoteAhead = await git.isDescendent({
+      fs,
+      dir,
+      cache,
+      oid: remoteTip,
+      ancestor: localTip,
+      depth: DIRECTION_WALK_DEPTH,
+    });
+    if (remoteAhead) return "remote-ahead";
+  } catch {
+    // Same: fall through to the safe default.
   }
   return "diverged-or-unknown";
 }

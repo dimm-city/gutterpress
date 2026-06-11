@@ -154,6 +154,39 @@ describe("previewSync", () => {
     }
   });
 
+  test("local ahead with DEEP remote history → still outgoing only (regression)", async () => {
+    // Field bug (Windows, 2026-06-11): on a repo with more history than the
+    // direction-walk depth cap, the remote-ancestry walk threw MaxDepthError
+    // and the shared try/catch skipped the local-ahead check — a local that
+    // was simply ahead reported "diverged-or-unknown" and the UI showed a
+    // phantom "New changes online" forever. The local-ahead walk must run
+    // first and each walk must fail independently.
+    const h = await setupClone();
+    try {
+      // Deepen the SERVER history past the walk cap (empty commits are fine —
+      // chain depth is what matters), then pull it into the local clone so
+      // the local history is equally deep.
+      for (let i = 0; i < 210; i++) {
+        await git.commit({ fs, dir: h.serverDir, message: `deep ${i}`, author: SERVER_AUTHOR });
+      }
+      await serverCommit(h.serverDir, { "base.md": "base" }, "base after deep history");
+      const pulled = await pullChanges({ projectDir: h.projectDir });
+      expect(pulled.status).toBe("pulled");
+      // The regression needs MORE local history than the walk cap — assert it.
+      const depth = (await git.log({ fs, dir: h.projectDir, depth: 250 })).length;
+      expect(depth).toBeGreaterThan(200);
+      // Now strictly ahead: a couple of local snapshots on top of the tip.
+      await localCommit(h.projectDir, { "draft.md": "# Draft" }, "snapshot 1");
+      await localCommit(h.projectDir, { "draft2.md": "# Draft 2" }, "snapshot 2");
+      const preview = await previewSync({ projectDir: h.projectDir });
+      expect(preview.live).toBe(true);
+      expect(preview.incoming).toEqual(NONE);
+      expect(preview.outgoing).toEqual(SOME);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
   test("diverged → changes in BOTH directions", async () => {
     const h = await setupClone();
     try {
