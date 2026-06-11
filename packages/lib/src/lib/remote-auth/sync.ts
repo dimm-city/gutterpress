@@ -611,9 +611,26 @@ async function fetchRemoteTip(
     return result.fetchHead ?? null;
   } catch (e) {
     // A brand-new empty repository has no refs to fetch — that's "remote has
-    // nothing", not a failure.
+    // nothing", not a failure. ONLY NoRefspecError means that. A 404/
+    // NotFoundError from GitHub means the saved connection CANNOT ACCESS the
+    // repository (GitHub masks private repos as "not found" for unauthorized
+    // tokens) — treating it as "empty remote" made pull report "already the
+    // latest" while the user was provably behind (rc.12 field bug). Re-throw
+    // as an auth-class failure so check/pull/push surface "reconnect" loudly
+    // instead of lying.
     const code = (e as { code?: string })?.code;
-    if (code === "NotFoundError" || code === "NoRefspecError") return null;
+    if (code === "NoRefspecError") return null;
+    if (
+      code === "NotFoundError" ||
+      (e as { data?: { statusCode?: number } })?.data?.statusCode === 404
+    ) {
+      const err = new Error(
+        "The online repository couldn't be accessed with the saved connection. Reconnect and try again.",
+      ) as Error & { code: string; data: { statusCode: number } };
+      err.code = "HttpError";
+      err.data = { statusCode: 401 };
+      throw err;
+    }
     throw e;
   }
 }
