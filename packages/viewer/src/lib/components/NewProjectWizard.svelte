@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
 
   let {
@@ -162,7 +163,7 @@
   >
     <header class="dialog-header">
       <h2 id="new-project-title">Create a new book</h2>
-      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close">&times;</button>
+      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
 
     <div class="dialog-body">
@@ -301,14 +302,21 @@
   .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
   .close {
     background: transparent;
-    border: 0;
+    border: 1px solid transparent;
+    border-radius: 5px;
     color: var(--app-text-muted);
-    font-size: 22px;
     line-height: 1;
     cursor: pointer;
-    padding: 0 4px;
+    padding: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* WCAG 2.5.8: minimum target size 24x24px */
+    min-width: 28px;
+    min-height: 28px;
   }
-  .close:hover { color: var(--app-text); }
+  .close:hover { color: var(--app-text); background: var(--app-surface-hover); }
+  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .dialog-body {
     padding: 18px;
     display: flex;

@@ -96,10 +96,6 @@
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
-  // Iframe stays invisible (opacity 0) while paged.js lays the book out, then
-  // fades in once rendering is done — hiding the page/layout shuffle. The loading
-  // overlay fades out at the same moment, so the two cross-fade.
-  let iframeRevealed = $state(false);
   let currentPage = $state(1);
   let totalPages = $state(0);
   let pageEditing = $state(false);
@@ -402,7 +398,8 @@
     if (dir && file.startsWith(dir + "/")) return file.slice(dir.length + 1);
     return file.split("/").pop() ?? null;
   });
-  let dirtyPath = $derived(buffer && buffer.isDirty ? buffer.filePath : null);
+  /** Save-state derived from the buffer phase for the editor status bar. */
+  let editorSavePhase = $derived(buffer?.phase ?? "clean");
 
   // External-edit conflict banner state (#44). Derived from the buffer's
   // pending external change so Reload / Keep mine route back through it.
@@ -824,9 +821,7 @@
         }
       } else if (e.name === "ready") {
         rendering = true;
-        // New render starting — hide the iframe again so the re-paginate /
-        // layout shuffle stays hidden; it fades back in on renderingComplete.
-        iframeRevealed = false;
+        // New render starting — overlay covers the layout shuffle; fades out on renderingComplete.
         renderProgressPage = 0;
         outline = [];
         activeOutlineIndex = 0;
@@ -1158,9 +1153,7 @@
           projectCapabilities = null;
         });
       docTitle = data.title ?? null;
-      // Force iframe remount by nulling first; reset reveal so the new iframe
-      // starts hidden until its own first renderingComplete.
-      iframeRevealed = false;
+      // Force iframe remount by nulling first; reset overlay for the new iframe.
       previewUrl = null;
       await Promise.resolve();
       previewUrl = data.url;
@@ -1241,8 +1234,7 @@
     // The editor is folder-only; close it for web previews.
     editorOpen = false;
     buffer?.reset();
-    // Force iframe remount by nulling first; reset reveal for the new iframe.
-    iframeRevealed = false;
+    // Force iframe remount by nulling first.
     previewUrl = null;
     queueMicrotask(() => {
       previewUrl = url;
@@ -1568,14 +1560,12 @@
   }
 
   /**
-   * Cross-fade the settled pages in. Called ONLY after the post-render zoom has
-   * been applied, so the layout is fully still. Waits one animation frame so the
-   * zoom reflow has painted, then fades the iframe in (revealed) while the
-   * loading overlay fades out (out:fade) — a single reveal path, no timers.
+   * Dismiss the loading overlay once the post-render zoom has settled.
+   * Waits one animation frame so the zoom reflow has painted before the
+   * overlay fades out (out:fade) — a single reveal path, no timers.
    */
   function revealSettledPages() {
     requestAnimationFrame(() => {
-      iframeRevealed = true;
       renderCompleteOverlay = false;
     });
   }
@@ -1717,7 +1707,6 @@
     // overlay disappears on the next microtask, before any async work.
     rendering = false;
     renderCompleteOverlay = false;
-    iframeRevealed = true; // let whatever is in the iframe show; it's fine
     // Async teardown: flush buffer + stop the preview server. Errors are
     // swallowed — the user already dismissed the overlay; no UX to update.
     stopPreview().catch(() => {});
@@ -2214,6 +2203,20 @@
               editorRef?.runToolbarAction(action, payload);
             }}
           />
+          <!-- Save-state indicator: unobtrusive status bar below the toolbar.
+               Visible only when a file is open. aria-live="polite" announces
+               phase transitions to screen readers without interrupting. -->
+          {#if editorFilePath}
+            <div class="editor-status-bar" aria-live="polite" aria-atomic="true">
+              {#if editorSavePhase === "dirty" || editorSavePhase === "saving"}
+                <span class="save-status saving">Saving…</span>
+              {:else if editorSavePhase === "clean" && buffer?.filePath}
+                <span class="save-status saved">Saved</span>
+              {:else if editorSavePhase === "error"}
+                <span class="save-status save-error">Save error</span>
+              {/if}
+            </div>
+          {/if}
           {#if MarkdownEditor}
             <MarkdownEditor
               bind:this={editorRef}
@@ -2242,7 +2245,6 @@
           <PreviewFrame
             url={previewUrl}
             bind:client
-            revealed={iframeRevealed}
             onError={(msg) => {
               if (sourceMode === "url") {
                 urlPreviewError = "This website could not be previewed inside print-md.";
@@ -2441,6 +2443,25 @@
     color: var(--app-text-faint);
     font-size: 13px;
   }
+  /* Save-state indicator — a thin status bar below the editor toolbar. */
+  .editor-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 2px 10px;
+    min-height: 20px;
+    border-bottom: 1px solid var(--app-border-subtle);
+    background: var(--app-surface);
+    flex-shrink: 0;
+  }
+  .save-status {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    transition: opacity 0.2s;
+  }
+  .save-status.saving { color: var(--app-text-faint); }
+  .save-status.saved  { color: var(--app-text-faint); }
+  .save-status.save-error { color: var(--app-error-text); }
   .preview-pane {
     position: relative;
   }
@@ -2592,6 +2613,13 @@
     opacity: 0.4;
     cursor: not-allowed;
   }
+  /* Explicit focus ring for all toolbar interactive elements — replaces UA
+     default (browser-specific yellow ring) with the app's consistent ring. */
+  button:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--app-focus-ring);
+    outline-offset: 2px;
+  }
 
   .icon-btn {
     padding: 5px 8px;
@@ -2652,10 +2680,25 @@
   }
 
   /* Edit/View segmented toggle (narrow single-pane mode) */
-  .pane-toggle { display: inline-flex; gap: 0; }
-  .pane-toggle .seg { border-radius: 0; }
-  .pane-toggle .seg:first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
-  .pane-toggle .seg:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; margin-left: -1px; }
+  .pane-toggle {
+    display: inline-flex;
+    gap: 0;
+    background: var(--app-control-bg);
+    border: 1px solid var(--app-control-border);
+    border-radius: 7px;
+    padding: 2px;
+  }
+  .pane-toggle .seg {
+    border-radius: 5px;
+    border: 1px solid transparent;
+    background: transparent;
+  }
+  /* Active segment: filled accent, matching .view-mode-group button.active */
+  .pane-toggle .seg.active {
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
+  }
 
   /* ---- Collapsible dropdown menus (view-mode + zoom) ---- */
   /* On wide screens the inline controls (.view-mode-group / .zoom-select) show

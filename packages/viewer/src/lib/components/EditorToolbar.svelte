@@ -83,6 +83,32 @@
   let imageSrc = $state("");        // picked absolute path from host
   let imageBusy = $state(false);
   let imageError = $state("");
+  let imageDialogEl = $state<HTMLDivElement | undefined>(undefined);
+  /** The toolbar button that opened the image dialog — focus is restored on close. */
+  let imageDialogTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
+
+  function imageDialogFocusableElements() {
+    return Array.from(
+      imageDialogEl?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ) ?? []
+    );
+  }
+
+  function imageTrapFocus(e: KeyboardEvent) {
+    if (e.key !== "Tab") return;
+    const focusable = imageDialogFocusableElements();
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) return;
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   async function pickImage() {
     if (!isDesktop()) return;
@@ -149,6 +175,8 @@
     imagePosition = "";
     imageOpen = false;
     imageBusy = false;
+    imageDialogTriggerEl?.focus();
+    imageDialogTriggerEl = undefined;
   }
 
   function cancelImage() {
@@ -159,6 +187,15 @@
     imageError = "";
     imageOpen = false;
     imageBusy = false;
+    imageDialogTriggerEl?.focus();
+    imageDialogTriggerEl = undefined;
+  }
+
+  function openImageDialog(e: MouseEvent) {
+    imageDialogTriggerEl = e.currentTarget as HTMLButtonElement;
+    imageOpen = true;
+    // Focus the first focusable element inside the dialog after it mounts.
+    queueMicrotask(() => imageDialogFocusableElements()[0]?.focus());
   }
 
   // ── "More" overflow menu (shown at narrow toolbar widths via @container) ────
@@ -352,7 +389,7 @@
     {#if isDesktop()}
       <button
         class="tb-btn"
-        onclick={() => (imageOpen = true)}
+        onclick={openImageDialog}
         title="Insert image"
         aria-label="Insert image"
       >
@@ -393,7 +430,7 @@
         <button class="popup-item" role="menuitem" onclick={() => { onAction("page-break"); moreOpen = false; }}>Page break</button>
         <button class="popup-item" role="menuitem" onclick={() => { tableOpen = true; moreOpen = false; }}>Insert table…</button>
         {#if isDesktop()}
-          <button class="popup-item" role="menuitem" onclick={() => { imageOpen = true; moreOpen = false; }}>Insert image…</button>
+          <button class="popup-item" role="menuitem" onclick={(e) => { openImageDialog(e); moreOpen = false; }}>Insert image…</button>
         {/if}
       </div>
     {/if}
@@ -405,10 +442,16 @@
 {#if imageOpen}
 <div class="image-dialog-backdrop" role="none" onclick={cancelImage}></div>
 <div
+  bind:this={imageDialogEl}
   class="image-dialog"
   role="dialog"
   aria-modal="true"
   aria-label="Insert image"
+  tabindex="-1"
+  onkeydown={(e) => {
+    if (e.key === "Escape") { cancelImage(); return; }
+    imageTrapFocus(e);
+  }}
 >
   <h3 class="image-dialog-title">Insert image</h3>
 
@@ -545,14 +588,17 @@
     font-size: 11px;
     line-height: 1;
     transition: background 0.1s, color 0.1s;
+    /* WCAG 2.5.8: minimum target size 24×24px */
+    min-width: 26px;
+    min-height: 26px;
   }
   .tb-btn:hover {
     background: var(--app-control-hover-bg, rgba(255,255,255,0.1));
     color: var(--app-text, #d8dee9);
   }
   .tb-btn:focus-visible {
-    outline: 2px solid var(--app-accent, #4ea1ff);
-    outline-offset: 1px;
+    outline: 2px solid var(--app-focus-ring, #3a6fb5);
+    outline-offset: 2px;
   }
   .tb-btn:active {
     background: var(--app-control-active-bg, rgba(255,255,255,0.16));
@@ -598,8 +644,8 @@
     background: var(--app-control-hover-bg, rgba(255,255,255,0.1));
   }
   .popup-item:focus-visible {
-    outline: 2px solid var(--app-accent, #4ea1ff);
-    outline-offset: -1px;
+    outline: 2px solid var(--app-focus-ring, #3a6fb5);
+    outline-offset: 2px;
   }
 
   .popup-hr {
@@ -649,7 +695,7 @@
     width: 100%;
     padding: 5px 8px;
     background: var(--app-accent, #4ea1ff);
-    color: #fff;
+    color: var(--app-accent-text, #ffffff);
     border: none;
     border-radius: 3px;
     font-size: 12px;
@@ -821,7 +867,7 @@
   .image-error {
     margin: 0;
     font-size: 12px;
-    color: var(--cm-invalid, #ff6b6b);
+    color: var(--app-error-text, #b42318);
   }
 
   .image-actions {
@@ -849,7 +895,7 @@
     border: none;
     border-radius: 4px;
     background: var(--app-accent, #4ea1ff);
-    color: #fff;
+    color: var(--app-accent-text, #ffffff);
     font-size: 12px;
     cursor: pointer;
     font-weight: 600;
@@ -862,32 +908,7 @@
     cursor: not-allowed;
   }
 
-  /* Light-theme overrides */
-  :global([data-theme="light"]) .editor-toolbar {
-    background: var(--app-surface, #f3f4f6);
-    border-bottom-color: var(--app-border, rgba(0,0,0,0.1));
-  }
-  :global([data-theme="light"]) .tb-btn {
-    color: var(--app-text, #1f2328);
-  }
-  :global([data-theme="light"]) .toolbar-popup,
-  :global([data-theme="light"]) .image-dialog {
-    background: var(--app-surface, #ffffff);
-    border-color: var(--app-border, rgba(0,0,0,0.12));
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  }
-  :global([data-theme="light"]) .popup-item,
-  :global([data-theme="light"]) .image-dialog-title,
-  :global([data-theme="light"]) .image-label,
-  :global([data-theme="light"]) .image-hint,
-  :global([data-theme="light"]) .image-path-hint {
-    color: var(--app-text, #1f2328);
-  }
-  :global([data-theme="light"]) .image-input,
-  :global([data-theme="light"]) .image-select,
-  :global([data-theme="light"]) .popup-input {
-    background: var(--app-bg, #ffffff);
-    border-color: var(--app-border, rgba(0,0,0,0.2));
-    color: var(--app-text, #1f2328);
-  }
+  /* Theme tokens already handle light/dark via :root and :root[data-theme="dark"].
+     The hand-rolled [data-theme="light"] override block was removed because all
+     colour rules now reference app tokens — no hardcoded hex overrides needed. */
 </style>

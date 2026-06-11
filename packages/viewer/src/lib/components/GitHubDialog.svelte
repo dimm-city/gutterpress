@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   /**
    * "Open from GitHub" flow (#15, ADR 0006): Connect (device-flow code) →
    * choose repository → choose branch + destination folder → download → the
@@ -339,7 +340,7 @@
         disabled={step === "cloning"}
         title="Close (Esc)"
         aria-label="Close"
-      >&times;</button>
+      ><Icon name="x" size={16} /></button>
     </header>
 
     <div class="dialog-body">
@@ -578,14 +579,21 @@
   .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
   .close {
     background: transparent;
-    border: 0;
+    border: 1px solid transparent;
+    border-radius: 5px;
     color: var(--app-text-muted);
-    font-size: 22px;
     line-height: 1;
     cursor: pointer;
-    padding: 0 4px;
+    padding: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* WCAG 2.5.8: minimum target size 24x24px */
+    min-width: 28px;
+    min-height: 28px;
   }
-  .close:hover:not(:disabled) { color: var(--app-text); }
+  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  .close:hover:not(:disabled) { color: var(--app-text); background: var(--app-surface-hover); }
   .close:disabled { opacity: 0.4; cursor: default; }
   .dialog-body {
     padding: 16px 18px;

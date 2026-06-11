@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
 
   type RecentFolder = { path: string; title: string; openedAt: string; exists: boolean };
@@ -301,8 +302,8 @@
     onkeydown={trapFocus}
   >
     <header class="dialog-header">
-      <h2 id="open-location-title">Open Location</h2>
-      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close">&times;</button>
+      <h2 id="open-location-title">Open location</h2>
+      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
 
     <div class="dialog-body">
@@ -594,14 +595,21 @@
   .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
   .close {
     background: transparent;
-    border: 0;
+    border: 1px solid transparent;
+    border-radius: 5px;
     color: var(--app-text-muted);
-    font-size: 22px;
     line-height: 1;
     cursor: pointer;
-    padding: 0 4px;
+    padding: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* WCAG 2.5.8: minimum target size 24x24px */
+    min-width: 28px;
+    min-height: 28px;
   }
-  .close:hover { color: var(--app-text); }
+  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  .close:hover { color: var(--app-text); background: var(--app-surface-hover); }
   .dialog-body {
     padding: 16px 18px 12px;
     display: flex;
@@ -768,6 +776,9 @@
     background: transparent;
     border: 0;
     cursor: pointer;
+    /* WCAG 2.5.8: minimum target size 24x24px */
+    min-width: 24px;
+    min-height: 24px;
     padding: 2px 4px;
     border-radius: 4px;
     font-size: 14px;

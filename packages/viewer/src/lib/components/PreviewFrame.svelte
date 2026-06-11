@@ -1,12 +1,10 @@
 <script lang="ts">
   import { PreviewClient } from "../preview-client";
 
-  let { url, client = $bindable(), onError, revealed = false }: {
+  let { url, client = $bindable(), onError }: {
     url: string;
     client?: PreviewClient;
     onError?: (msg: string) => void;
-    /** When false the iframe is invisible (opacity 0). Set to true to fade it in. */
-    revealed?: boolean;
   } = $props();
 
   let frame = $state<HTMLIFrameElement | undefined>(undefined);
@@ -32,7 +30,7 @@
   });
 </script>
 
-<iframe bind:this={frame} src={url} title="print-md preview" class:revealed></iframe>
+<iframe bind:this={frame} src={url} title="print-md preview"></iframe>
 
 <style>
   /*
@@ -55,7 +53,7 @@
        turned a ~10s layout into ~5 minutes (~1 page/sec) on a 287-page book
        (the 0.4.1 regression, proven by forcing opacity:1 mid-render: the
        remaining 247 pages completed in <14s). The page/layout shuffle is
-       hidden by the OPAQUE LoadingOverlay sitting on top instead; the
+       hidden by the TRANSLUCENT LoadingOverlay sitting on top instead; the
        cross-fade happens on the overlay, not the iframe. */
     opacity: 1;
   }

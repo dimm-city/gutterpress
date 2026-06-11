@@ -376,7 +376,7 @@
     <header class="dialog-header">
       <h2 id="sync-title">
         <Icon name="cloud-upload" />
-        Sync Changes
+        Sync changes
       </h2>
       <button
         class="close"
@@ -384,7 +384,7 @@
         disabled={phase === "syncing"}
         title="Close (Esc)"
         aria-label="Close"
-      >&times;</button>
+      ><Icon name="x" size={16} /></button>
     </header>
 
     <div class="dialog-body">
@@ -509,7 +509,7 @@
             <button class="ghost" onclick={check}>Refresh</button>
             <button class="ghost" onclick={close}>Not now</button>
             <button class="primary" onclick={sync}>
-              {hasOnlineChangesOnly ? "Get online changes" : "Sync Changes"}
+              {hasOnlineChangesOnly ? "Get online changes" : "Sync changes"}
             </button>
           </footer>
         {/if}
@@ -645,14 +645,21 @@
   }
   .close {
     background: transparent;
-    border: 0;
+    border: 1px solid transparent;
+    border-radius: 5px;
     color: var(--app-text-muted);
-    font-size: 22px;
     line-height: 1;
     cursor: pointer;
-    padding: 0 4px;
+    padding: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* WCAG 2.5.8: minimum target size 24×24px */
+    min-width: 28px;
+    min-height: 28px;
   }
-  .close:hover:not(:disabled) { color: var(--app-text); }
+  .close:hover:not(:disabled) { color: var(--app-text); background: var(--app-surface-hover); }
+  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .close:disabled { opacity: 0.4; cursor: default; }
   .dialog-body {
     padding: 16px 18px;
@@ -813,8 +820,9 @@
     border-radius: 6px;
     font-size: 12px;
   }
-  .conflict-item select:focus {
-    outline: none;
+  .conflict-item select:focus-visible {
+    outline: 2px solid var(--app-focus-ring);
+    outline-offset: 2px;
     border-color: var(--app-focus-ring);
   }
   .actions {
@@ -833,8 +841,13 @@
     border: 1px solid transparent;
   }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
-  .primary:hover:not(:disabled) { background: var(--app-accent-hover); }
+  .primary {
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
+  }
+  .primary:hover:not(:disabled) { background: var(--app-accent-hover); border-color: var(--app-accent-border); }
+  .primary:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
   .ghost:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
 </style>

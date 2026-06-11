@@ -306,8 +306,9 @@
           (confirmRestoreId = confirmRestoreId === entry.id ? null : entry.id)}
         disabled={busy}
         aria-expanded={confirmRestoreId === entry.id}
+        aria-label={"Restore version: " + entry.message + ", " + relativeTime(entry.timestamp)}
       >
-        Restore Version
+        Restore version
       </button>
     {/if}
   </div>
@@ -347,9 +348,9 @@
     <header class="dialog-header">
       <h2 id="vh-title">
         <Icon name="history" />
-        Version History
+        Version history
       </h2>
-      <button class="close" onclick={close} disabled={busy} title="Close (Esc)" aria-label="Close">&times;</button>
+      <button class="close" onclick={close} disabled={busy} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
 
     <div class="dialog-body">
@@ -384,7 +385,7 @@
         <footer class="actions">
           <button class="ghost" onclick={close}>Not now</button>
           <button bind:this={enableBtn} class="primary" onclick={enable} disabled={busy}>
-            {busy ? "Enabling…" : "Enable Version History"}
+            {busy ? "Enabling…" : "Enable version history"}
           </button>
         </footer>
       {:else if canHistory}
@@ -408,7 +409,7 @@
               }}
             />
             <button class="primary" onclick={saveSnapshot} disabled={busy}>
-              {busy ? "Saving…" : "Save Snapshot"}
+              {busy ? "Saving…" : "Save snapshot"}
             </button>
           </div>
         {/if}
@@ -508,14 +509,21 @@
   }
   .close {
     background: transparent;
-    border: 0;
+    border: 1px solid transparent;
+    border-radius: 5px;
     color: var(--app-text-muted);
-    font-size: 22px;
     line-height: 1;
     cursor: pointer;
-    padding: 0 4px;
+    padding: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* WCAG 2.5.8: minimum target size 24×24px */
+    min-width: 28px;
+    min-height: 28px;
   }
-  .close:hover { color: var(--app-text); }
+  .close:hover { color: var(--app-text); background: var(--app-surface-hover); }
+  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .dialog-body {
     padding: 16px 18px;
     overflow-y: auto;
@@ -578,8 +586,9 @@
     border-radius: 6px;
     font-size: 13px;
   }
-  .snapshot-row input:focus {
-    outline: none;
+  .snapshot-row input:focus-visible {
+    outline: 2px solid var(--app-focus-ring);
+    outline-offset: 2px;
     border-color: var(--app-focus-ring);
   }
 
@@ -660,6 +669,7 @@
     cursor: pointer;
   }
   .restore-btn:hover:not(:disabled) { background: var(--app-control-hover-bg); }
+  .restore-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .confirm {
     margin-top: 10px;
     padding: 10px 12px;
@@ -698,8 +708,13 @@
     border: 1px solid transparent;
   }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
-  .primary:hover:not(:disabled) { background: var(--app-accent-hover); }
+  .primary {
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
+  }
+  .primary:hover:not(:disabled) { background: var(--app-accent-hover); border-color: var(--app-accent-border); }
+  .primary:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
   .ghost:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
 </style>

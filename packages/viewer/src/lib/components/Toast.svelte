@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
+
   export type ToastType = "success" | "error" | "warning" | "info";
 
   interface ToastItem {
@@ -96,7 +98,7 @@
             {toast.action.label}
           </button>
         {/if}
-        <button class="toast-close" aria-label="Dismiss" onclick={() => dismiss(toast.id)}>&times;</button>
+        <button class="toast-close" aria-label="Dismiss" onclick={() => dismiss(toast.id)}><Icon name="x" size={14} /></button>
       </div>
   {/each}
 </div>
@@ -178,13 +180,20 @@
     flex-shrink: 0;
     background: transparent;
     border: none;
+    border-radius: 5px;
     color: inherit;
     cursor: pointer;
-    font-size: 18px;
     line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* WCAG 2.5.8: minimum target size 24x24px */
+    min-width: 24px;
+    min-height: 24px;
     padding: 0;
     opacity: 0.7;
     margin-left: 4px;
   }
   .toast-close:hover { opacity: 1; }
+  .toast-close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; opacity: 1; }
 </style>

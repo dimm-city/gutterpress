@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   /**
    * Advanced Setup (#14, ADR 0006) — the one place in the app where mild Git
    * vocabulary is allowed ("access token", "branch"), kept gentle. Four
@@ -295,7 +296,7 @@
   >
     <header class="dialog-header">
       <h2 id="advanced-setup-title">Advanced setup</h2>
-      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close">&times;</button>
+      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
 
     <div class="dialog-body">
@@ -546,14 +547,21 @@
   .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
   .close {
     background: transparent;
-    border: 0;
+    border: 1px solid transparent;
+    border-radius: 5px;
     color: var(--app-text-muted);
-    font-size: 22px;
     line-height: 1;
     cursor: pointer;
-    padding: 0 4px;
+    padding: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* WCAG 2.5.8: minimum target size 24x24px */
+    min-width: 28px;
+    min-height: 28px;
   }
-  .close:hover { color: var(--app-text); }
+  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  .close:hover { color: var(--app-text); background: var(--app-surface-hover); }
   .dialog-body {
     padding: 16px 18px;
     display: flex;
