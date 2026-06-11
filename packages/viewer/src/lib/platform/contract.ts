@@ -400,13 +400,20 @@ export interface SyncCommitInfo {
 /** One direction (incoming or outgoing) of a sync preview. */
 export interface SyncDirectionInfo {
   /**
-   * Commit count. `null` when unknown — the live check failed and there is
-   * no local record of the online tip to compare against.
+   * Whether this direction has changes, decided host-side by ref string
+   * equality (never a history walk on a possibly-huge repository):
+   * `true` = changes exist, `false` = none, `null` = honestly unknown.
+   */
+  hasChanges: boolean | null;
+  /**
+   * Commit count when known. Incoming is counted only when the live check
+   * just downloaded the commits; outgoing is never counted. `null` = no
+   * count — render copy without a number ("New changes are available").
    */
   count: number | null;
   /** Newest-first commit details (the host caps the list length). */
   commits: SyncCommitInfo[];
-  /** True when `count` is a lower bound — render as "250+". */
+  /** True when `count` is a lower bound — render as "50+". */
   approximate: boolean;
 }
 

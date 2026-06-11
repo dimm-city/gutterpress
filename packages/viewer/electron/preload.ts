@@ -264,6 +264,9 @@ interface SyncCommitInfo {
 }
 
 interface SyncDirectionInfo {
+  /** true = changes exist, false = none, null = honestly unknown. */
+  hasChanges: boolean | null;
+  /** Count when derivable from freshly fetched commits; null = no number. */
   count: number | null;
   commits: SyncCommitInfo[];
   approximate: boolean;

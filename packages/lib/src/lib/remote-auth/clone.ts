@@ -105,6 +105,63 @@ export function provenancePath(projectDir: string): string {
   return path.join(projectDir, ".git", PROVENANCE_FILE);
 }
 
+// ── Last-synced-tip marker (shares the provenance sidecar) ──────────────────
+//
+// The sync check path ("Check for updates" / previewSync) decides whether
+// there is anything to send by STRING EQUALITY against the tip recorded at
+// the last successful push/pull/sync — never by walking local history (on a
+// large repository a history walk loads entire packfiles: measured gigabytes
+// of RSS, the 0.5.0 "Check for updates crashes the app" report). Keyed by
+// branch; a missing marker means outgoing is honestly UNKNOWN, never guessed.
+
+const OID_RE = /^[0-9a-f]{40}$/;
+
+/** Tip recorded at the last successful push/pull/sync for `branch`, if any. */
+export async function readLastSyncedTip(
+  dir: string,
+  branch: string,
+): Promise<string | null> {
+  try {
+    const raw = JSON.parse(
+      await readFile(provenancePath(dir), "utf8"),
+    ) as { lastSyncedTips?: Record<string, string> };
+    const tip = raw?.lastSyncedTips?.[branch];
+    return typeof tip === "string" && OID_RE.test(tip) ? tip : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Record a tip known to exist on BOTH sides (just pushed, just pulled, or
+ * just cloned). Best-effort — callers never fail over marker writes; other
+ * sidecar fields (clone provenance) are preserved.
+ */
+export async function recordLastSyncedTip(
+  dir: string,
+  branch: string,
+  oid: string,
+): Promise<void> {
+  try {
+    let raw: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(await readFile(provenancePath(dir), "utf8"));
+      if (parsed && typeof parsed === "object") raw = parsed;
+    } catch {
+      /* absent or unreadable — start fresh */
+    }
+    const tips =
+      raw.lastSyncedTips && typeof raw.lastSyncedTips === "object"
+        ? (raw.lastSyncedTips as Record<string, string>)
+        : {};
+    tips[branch] = oid;
+    raw.lastSyncedTips = tips;
+    await writeFile(provenancePath(dir), JSON.stringify(raw, null, 2), "utf8");
+  } catch {
+    /* best-effort */
+  }
+}
+
 /** Read recorded provider provenance for a project, if any. Never throws. */
 export async function readProjectProvenance(
   projectDir: string,
@@ -290,6 +347,19 @@ export async function cloneRepository(
       branch = (await git.currentBranch({ fs, dir })) ?? undefined;
     } catch {
       branch = undefined;
+    }
+
+    // Record the cloned tip as the last-synced marker (a clone IS the initial
+    // successful pull): the sync check path decides "do I have changes to
+    // send?" by string equality against this marker — never by walking local
+    // history. Best-effort, like the provenance write above.
+    if (branch) {
+      try {
+        const tip = await git.resolveRef({ fs, dir, ref: branch });
+        await recordLastSyncedTip(dir, branch, tip);
+      } catch {
+        /* non-fatal */
+      }
     }
     return { projectDir: dir, ...(branch ? { branch } : {}) };
   });

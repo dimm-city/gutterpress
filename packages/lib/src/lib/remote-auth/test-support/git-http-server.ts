@@ -51,6 +51,19 @@ export function parsePktLines(body: Buffer): string[] {
 
 // ── Fixture repo + object walking ─────────────────────────────────────────────
 
+/**
+ * isomorphic-git location options: a worktree repo (`dir`) or a bare repo
+ * (`gitdir`). Bare support exists so the server can serve a real `--bare`
+ * clone (used by the large-repo sync repro scripts).
+ */
+type RepoLoc = { dir: string } | { gitdir: string };
+
+function repoLocFor(repoDir: string): RepoLoc {
+  return fs.existsSync(path.join(repoDir, ".git"))
+    ? { dir: repoDir }
+    : { gitdir: repoDir };
+}
+
 export async function createFixtureRepo(
   dir: string,
 ): Promise<{ head: string; first: string }> {
@@ -67,17 +80,28 @@ export async function createFixtureRepo(
   return { head, first };
 }
 
-/** Collect commit+tree+blob oids reachable from `commit`, to `depth` commits. */
+/**
+ * Collect commit+tree+blob oids reachable from `commit`, to `depth` commits.
+ *
+ * `stopCommits` (the client's `have` lines) bounds the walk like a real
+ * upload-pack: commits the client already has are neither read nor included.
+ * `skipTrees` (the root trees of those have-commits) prunes tree recursion so
+ * a fetch of message-only commits on a multi-GB repo packs ONLY the new
+ * commit objects instead of re-walking the whole project tree.
+ */
 export async function collectOids(
-  dir: string,
+  repo: RepoLoc,
   commit: string,
   depth: number,
+  opts: { stopCommits?: Set<string>; skipTrees?: Set<string> } = {},
 ): Promise<string[]> {
+  const stopCommits = opts.stopCommits ?? new Set<string>();
+  const skipTrees = opts.skipTrees ?? new Set<string>();
   const oids = new Set<string>();
   async function walkTree(treeOid: string): Promise<void> {
-    if (oids.has(treeOid)) return;
+    if (oids.has(treeOid) || skipTrees.has(treeOid)) return;
     oids.add(treeOid);
-    const { tree } = await git.readTree({ fs, dir, oid: treeOid });
+    const { tree } = await git.readTree({ fs, ...repo, oid: treeOid });
     for (const entry of tree) {
       if (entry.type === "tree") await walkTree(entry.oid);
       else oids.add(entry.oid);
@@ -88,9 +112,9 @@ export async function collectOids(
   for (let d = 0; d < depth && frontier.length > 0; d++) {
     const next: string[] = [];
     for (const oid of frontier) {
-      if (oids.has(oid)) continue;
+      if (oids.has(oid) || stopCommits.has(oid)) continue;
       oids.add(oid);
-      const { commit: c } = await git.readCommit({ fs, dir, oid });
+      const { commit: c } = await git.readCommit({ fs, ...repo, oid });
       await walkTree(c.tree);
       next.push(...c.parent);
     }
@@ -126,6 +150,8 @@ export async function startGitServer(
       ).toString("base64")
     : null;
 
+  const repo = repoLocFor(repoDir);
+
   const server = http.createServer((req, res) => {
     void (async () => {
       authHeaders.push(req.headers.authorization);
@@ -139,8 +165,8 @@ export async function startGitServer(
         res.end("auth required");
         return;
       }
-      const head = await git.resolveRef({ fs, dir: repoDir, ref: "HEAD" });
-      const branch = (await git.currentBranch({ fs, dir: repoDir })) ?? "main";
+      const head = await git.resolveRef({ fs, ...repo, ref: "HEAD" });
+      const branch = (await git.currentBranch({ fs, ...repo })) ?? "main";
 
       if (
         req.method === "GET" &&
@@ -218,14 +244,34 @@ export async function startGitServer(
         const deepen = lines.find((l) => l.startsWith("deepen "));
         const depth = deepen ? parseInt(deepen.split(" ")[1]!, 10) : Infinity;
 
-        const oids = await collectOids(repoDir, want, depth);
-        const { packfile } = await git.packObjects({ fs, dir: repoDir, oids });
+        // Honor the client's `have` lines like a real upload-pack: stop the
+        // commit walk at commits the client already has, and prune their root
+        // trees so the pack carries only what the client is missing. (The
+        // pack may reference objects the client has — that is exactly what a
+        // real fetch pack does.)
+        const stopCommits = new Set(
+          lines
+            .filter((l) => l.startsWith("have "))
+            .map((l) => l.split(" ")[1]!),
+        );
+        const skipTrees = new Set<string>();
+        for (const haveOid of stopCommits) {
+          try {
+            const { commit } = await git.readCommit({ fs, ...repo, oid: haveOid });
+            skipTrees.add(commit.tree);
+          } catch {
+            // Unknown have — ignore it (a real server does the same).
+          }
+        }
+
+        const oids = await collectOids(repo, want, depth, { stopCommits, skipTrees });
+        const { packfile } = await git.packObjects({ fs, ...repo, oids });
 
         const parts: Buffer[] = [];
         if (deepen) {
           // Shallow section: the boundary commit(s) the client must record in
           // .git/shallow, terminated by a flush-pkt.
-          const { commit } = await git.readCommit({ fs, dir: repoDir, oid: want });
+          const { commit } = await git.readCommit({ fs, ...repo, oid: want });
           if (commit.parent.length > 0 && depth === 1) {
             parts.push(pkt(`shallow ${want}\n`));
           }
@@ -319,14 +365,21 @@ async function applyPush(
   commands: Array<{ oldOid: string; newOid: string; ref: string }>,
   packfile: Buffer,
 ): Promise<string[]> {
+  const repo = repoLocFor(repoDir);
+  const gitdir = "gitdir" in repo ? repo.gitdir : path.join(repo.dir, ".git");
   // A push always carries a pack (possibly with zero objects — 32 bytes of
   // header + trailer). Index anything non-trivial so the new objects resolve.
   if (packfile.length > 0) {
     const name = `pack-push-${Date.now()}-${pushCounter++}.pack`;
-    const rel = path.join(".git", "objects", "pack", name);
-    await mkdir(path.dirname(path.join(repoDir, rel)), { recursive: true });
-    await writeFile(path.join(repoDir, rel), packfile);
-    await git.indexPack({ fs, dir: repoDir, filepath: rel });
+    const abs = path.join(gitdir, "objects", "pack", name);
+    await mkdir(path.dirname(abs), { recursive: true });
+    await writeFile(abs, packfile);
+    await git.indexPack({
+      fs,
+      dir: repoDir,
+      gitdir,
+      filepath: path.relative(repoDir, abs),
+    });
   }
   const report: string[] = [];
   for (const cmd of commands) {
@@ -336,7 +389,7 @@ async function applyPush(
     // touch the ref. (Exercised by the sync race tests.)
     let current: string | null = null;
     try {
-      current = await git.resolveRef({ fs, dir: repoDir, ref: cmd.ref });
+      current = await git.resolveRef({ fs, ...repo, ref: cmd.ref });
     } catch {
       current = null;
     }
@@ -345,11 +398,11 @@ async function applyPush(
       continue;
     }
     if (cmd.newOid === ZERO_OID) {
-      await git.deleteRef({ fs, dir: repoDir, ref: cmd.ref });
+      await git.deleteRef({ fs, ...repo, ref: cmd.ref });
     } else {
       await git.writeRef({
         fs,
-        dir: repoDir,
+        ...repo,
         ref: cmd.ref,
         value: cmd.newOid,
         force: true,
