@@ -115,7 +115,12 @@ async function getWsUrl() {
   }
   fail("CDP endpoint / app:// page target never appeared (60s)");
 }
-const ws = new WebSocket(await getWsUrl());
+// Node < 22 has no global WebSocket (the CI runner's setup-node is 20) — fall
+// back to playwright-core's bundled `ws` client, which mirrors the browser
+// onopen/onmessage/onerror surface.
+const WebSocketImpl =
+  globalThis.WebSocket ?? require_("playwright-core/lib/utilsBundle").ws;
+const ws = new WebSocketImpl(await getWsUrl());
 let msgId = 0;
 const pending = new Map();
 ws.onmessage = (ev) => {

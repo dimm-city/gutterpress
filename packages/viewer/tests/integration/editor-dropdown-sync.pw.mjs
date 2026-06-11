@@ -26,7 +26,7 @@
 
 import { _electron as electron } from "playwright-core";
 import { waitForAppWindow } from "./app-window.mjs";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -42,10 +42,17 @@ if (!existsSync(exePath)) fail(`packaged exe not found at ${exePath}`);
 
 // Fixture defaults to the co-located one; overridable for callers that run the
 // test from a different working directory.
-const fixturePath = fixtureArg
+const srcFixture = fixtureArg
   ? resolve(fixtureArg)
   : resolve(__dirname, "fixtures", "multichapter");
-if (!existsSync(fixturePath)) fail(`fixture not found at ${fixturePath}`);
+if (!existsSync(srcFixture)) fail(`fixture not found at ${srcFixture}`);
+
+// Open a temp COPY outside any git repository. The committed fixture lives
+// inside the print-md repo, so the app sees a syncable project and the
+// fetch-on-open "New changes online" modal can pop mid-test (network-timing
+// dependent) and its backdrop intercepts the outline click.
+const fixturePath = mkdtempSync(join(tmpdir(), "pmd-uitest-fixture-"));
+cpSync(srcFixture, fixturePath, { recursive: true });
 
 // Seed a throwaway userData so the app auto-opens the fixture on launch (the
 // same path as picking it once before) — no native Open dialog needed.
