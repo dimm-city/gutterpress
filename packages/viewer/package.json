@@ -1,7 +1,7 @@
 {
   "name": "@dimm-city/print-md-viewer",
   "private": true,
-  "version": "0.5.0-rc.7",
+  "version": "0.5.0-rc.8",
   "type": "module",
   "main": "out/main/main.js",
   "author": "itlackey",
