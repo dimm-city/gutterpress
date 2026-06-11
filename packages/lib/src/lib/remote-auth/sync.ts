@@ -588,13 +588,22 @@ async function fetchRemoteTip(
   cache: GitCache,
 ): Promise<string | null> {
   try {
+    // CRITICAL: with singleBranch, isomorphic-git sends exactly ONE `have` —
+    // the oid that `ref` resolves to LOCALLY. If that is the local branch tip
+    // (which is usually an auto-snapshot commit the server has never seen),
+    // the server finds no common base and sends the ENTIRE repository as one
+    // pack (multi-GB download, buffered in memory → OOM crash on big repos).
+    // So `ref` must be the REMOTE-TRACKING ref — by definition the last tip
+    // the server gave us, so it always finds the common base and sends only
+    // the new commits. `remoteRef` (what we ask FOR) stays the branch.
     const result = await git.fetch({
       fs,
       http,
       dir,
       cache,
       remote: transport.remote,
-      ref: branch,
+      ref: `refs/remotes/${transport.remote}/${branch}`,
+      remoteRef: branch,
       singleBranch: true,
       tags: false,
       ...onAuthFor(transport.credential),
