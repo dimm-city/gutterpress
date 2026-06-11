@@ -13,15 +13,9 @@ name: Windows lib integration tests
 # both platforms stay covered by one workflow.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'packages/lib/**'
-      - '.github/workflows/windows-lib-test.yml'
-  pull_request:
-    paths:
-      - 'packages/lib/**'
-      - '.github/workflows/windows-lib-test.yml'
+  # Manual + release-time only: Windows runners bill 2x minutes, and the
+  # per-push signal belongs to the Linux suites. Run before releases or when
+  # touching git/sync/electron platform code (user cost mandate 2026-06-11).
   workflow_dispatch:
 
 env:

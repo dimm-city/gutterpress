@@ -9,17 +9,9 @@ name: Windows Electron driver test
 # Proves the whole stack works on Windows end-to-end.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'packages/viewer/**'
-      - 'packages/lib/**'
-      - '.github/workflows/windows-electron-test.yml'
-  pull_request:
-    paths:
-      - 'packages/viewer/**'
-      - 'packages/lib/**'
-      - '.github/workflows/windows-electron-test.yml'
+  # Manual + release-time only: Windows runners bill 2x minutes, and the
+  # per-push signal belongs to the Linux suites. Run before releases or when
+  # touching git/sync/electron platform code (user cost mandate 2026-06-11).
   workflow_dispatch:
 
 env:
