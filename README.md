@@ -8,11 +8,11 @@ print-md is a desktop application (with a CLI for power users) that turns a fold
 
 **[→ Download the latest release](https://github.com/dimm-city/print-md/releases/latest)**
 
-| Platform | Download | What to do |
+| Platform | Download (from the latest release) | What to do |
 |---|---|---|
-| **Windows** | `print-md-viewer-0.2.0-win.zip` | Extract, then run `print-md-viewer.exe` |
-| **macOS** | `print-md-viewer-0.2.0-arm64.dmg` | Open the disk image, drag the app to Applications |
-| **Linux** | `print-md-viewer-0.2.0.AppImage` | `chmod +x` the file, then double-click or run it |
+| **Windows** | `print-md-viewer-<version>-win.zip` | Extract, then run `print-md-viewer.exe` |
+| **macOS** | `print-md-viewer-<version>-arm64.dmg` | Open the disk image, drag the app to Applications |
+| **Linux** | `print-md-viewer-<version>.AppImage` | `chmod +x` the file, then double-click or run it |
 
 The desktop app is fully self-contained — no Bun, Node, or other runtime to install. The only thing you may need is a Chromium-based browser (Chrome, Edge, Brave, etc) installed on the machine for the **Save PDF** feature; see the [User Guide: Chapter 8 — System Setup](./examples/print-md-user-guide/08-system-setup.md) for details.
 
