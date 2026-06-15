@@ -16,7 +16,6 @@
   } from "$lib/platform/contract";
   import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
   import { problemCounts } from "$lib/problems";
-  import SyncDialog from "$lib/components/SyncDialog.svelte";
   import SyncStatusPill from "$lib/components/SyncStatusPill.svelte";
   import ConflictChoicesDialog from "$lib/components/ConflictChoicesDialog.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
@@ -105,62 +104,8 @@
   // Set true once we have loaded panel state from prefs (avoids flicker).
   let leftPanelPrefsLoaded = $state(false);
 
-  // ── Incoming-changes modal (fetch-on-open) ────────────────────────────────
-  // After a git project with a remote renders, we background-fetch and surface
-  // a "new changes online" modal when the online copy has changes.
-  let incomingChangesOpen = $state(false);
-  /**
-   * Project dir the fetch-on-open check already ran for (prompt once per
-   * open). Deliberately NOT $state: it is written inside the effect that
-   * reads it, and a reactive write would retrigger the effect.
-   */
-  let fetchOnOpenDoneFor: string | null = null;
-  // "Get changes" pull in flight (modal button disabled while it runs).
-  let incomingPullBusy = $state(false);
-  // Bumped after an out-of-panel pull so LeftPanel refreshes its History tab.
+  // Bumped after a pull so LeftPanel refreshes its History tab.
   let historyRefreshKey = $state(0);
-  // Incoming modal: DOM references for focus trap + focus restore.
-  let incomingModalEl = $state<HTMLDivElement | undefined>(undefined);
-  let incomingGetChangesBtn = $state<HTMLButtonElement | undefined>(undefined);
-  // Focus restore target: the element that was active when the modal opened.
-  let incomingFocusRestoreEl = $state<Element | null>(null);
-
-  // Focus trap + initial focus for the incoming-changes modal.
-  $effect(() => {
-    if (incomingChangesOpen && incomingModalEl) {
-      incomingFocusRestoreEl = document.activeElement;
-      // queueMicrotask so the DOM is fully rendered before we focus.
-      queueMicrotask(() => { incomingGetChangesBtn?.focus(); });
-    } else if (!incomingChangesOpen && incomingFocusRestoreEl instanceof HTMLElement) {
-      incomingFocusRestoreEl.focus();
-      incomingFocusRestoreEl = null;
-    }
-  });
-
-  function onIncomingModalKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      // Counts as "Not now" — the check only re-runs on the next project open.
-      incomingChangesOpen = false;
-    } else if (e.key === "Tab") {
-      // Focus trap: cycle within the modal.
-      if (!incomingModalEl) return;
-      const focusable = Array.from(
-        incomingModalEl.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        )
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0]!;
-      const last = focusable[focusable.length - 1]!;
-      if (e.shiftKey) {
-        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
-      } else {
-        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
-      }
-    }
-  }
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
@@ -230,16 +175,6 @@
   // New-project wizard (#25)
   let newProjectOpen = $state(false);
   let newProjectBtn = $state<HTMLButtonElement | undefined>(undefined);
-  // Version history (#13): the toolbar entry shows only when the project's
-  // capabilities offer it — enable (plain folder) or view/snapshot/restore
-  // (history already on). Sync is NEVER offered for local projects.
-  // Sync (#15 sync phase, ADR 0006 D5): the toolbar entry shows when the
-  // project has an HTTPS remote (connected or not) — never for plain local
-  // projects, SSH remotes, or no-remote projects. When no credential is stored
-  // yet, clicking the button routes to the matching connect flow so authors
-  // discover syncing exists and learn how to enable it (UX-2 fix).
-  let syncOpen = $state(false);
-  let syncBtn = $state<HTMLButtonElement | undefined>(undefined);
   let syncDiag = $state<ProjectRemoteDiagnosis | null>(null);
   // ConflictChoicesDialog (#transparent-sync §6.1): opened by the ambient
   // SyncStatusPill when the auto-sync orchestrator reports a conflict.
@@ -247,24 +182,6 @@
   let conflictFiles = $state<ConflictFileInfo[]>([]);
   let conflictLocalId = $state<string | null>(null);
   let conflictRemoteId = $state<string | null>(null);
-  /** True when the project has an HTTPS remote (credential may or may not be stored). */
-  let syncAvailable = $derived(
-    !!currentDir &&
-      sourceMode === "folder" &&
-      (syncDiag?.guidance === "connect-github-to-sync" ||
-        syncDiag?.guidance === "https-connect-server" ||
-        syncDiag?.guidance === "ready-to-sync"),
-  );
-
-  function openSync() {
-    if (!syncDiag?.canSync) {
-      // No stored credential — route straight to the matching connect flow so
-      // the author learns how to enable syncing (ADR 0006 D7 reuse).
-      onSyncReconnect();
-    } else {
-      syncOpen = true;
-    }
-  }
 
   async function refreshSyncDiag(dir: string) {
     try {
@@ -361,8 +278,7 @@
   // history features are available (scoped to the book by the host); the
   // dialog shows a quiet "shares history with its parent folder" hint.
   let projectSharesParentHistory = $state(false);
-  // The book's path relative to that shared folder ("" for standalone
-  // projects) — SyncDialog uses it to label conflict files outside the book.
+  // The book's path relative to that shared folder ("" for standalone projects).
   let projectSubPath = $state("");
   let versionHistoryAvailable = $derived(
     !!currentDir &&
@@ -695,71 +611,6 @@
       leftPanelTab = "projects";
     }
   });
-
-  // ── Background fetch on project open (fetch-on-open) ─────────────────────
-  // After the first renderingComplete, if the project has a syncable remote,
-  // fire a background previewSync to detect incoming changes. Runs ONCE per
-  // opened project (the check reports hasChanges only — no tip/commit detail
-  // to dedup re-prompts against).
-  $effect(() => {
-    if (!currentDir || sourceMode !== "folder" || !projectCapabilities?.canSync) return;
-    const dir = currentDir;
-    // Wait for rendering to complete (rendering = false) before fetching
-    if (rendering) return;
-    if (fetchOnOpenDoneFor === dir) return;
-    fetchOnOpenDoneFor = dir;
-    const run = async () => {
-      try {
-        const preview = await getPlatform().previewSync(dir);
-        // Stale if the user switched projects while the fetch ran.
-        if (currentDir !== dir) return;
-        if (!preview.live) return; // fetch failed silently
-        if (preview.incoming.hasChanges !== true) return;
-        incomingChangesOpen = true;
-      } catch {
-        // Offline / no auth — silent
-      }
-    };
-    void run();
-  });
-
-  // "Get changes" (incoming-changes modal): pull directly — snapshot-first,
-  // fetch + fast-forward/merge, never a push. The preview server's file
-  // watcher re-renders on its own when files change on disk (same contract as
-  // restore, #13); the History tab refreshes via historyRefreshKey.
-  async function pullIncomingChanges() {
-    if (!currentDir || incomingPullBusy) return;
-    const dir = currentDir;
-    incomingPullBusy = true;
-    try {
-      const outcome = await getPlatform().pullChanges(dir);
-      if (outcome.status === "pulled") {
-        incomingChangesOpen = false;
-        historyRefreshKey += 1;
-        toast?.success(`Changes applied${outcome.filesChanged ? " — the preview will refresh in a moment." : "."}`);
-      } else if (outcome.status === "up-to-date") {
-        incomingChangesOpen = false;
-        toast?.success(outcome.message);
-      } else if (outcome.status === "conflict") {
-        // The Sync dialog owns the per-file conflict choices flow. The modal
-        // that triggered this is closing, so restore focus to the panel
-        // toggle when the dialog closes (a stable, always-visible element).
-        incomingChangesOpen = false;
-        syncBtn = leftPanelToggleBtn;
-        syncOpen = true;
-      } else if (outcome.status === "auth") {
-        incomingChangesOpen = false;
-        toast?.error(outcome.message);
-        onSyncReconnect();
-      } else {
-        toast?.error(outcome.message);
-      }
-    } catch (e) {
-      toast?.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      incomingPullBusy = false;
-    }
-  }
 
   function toggleLeftPanel() {
     leftPanelOpen = !leftPanelOpen;
@@ -2230,7 +2081,6 @@
           projectDir={currentDir}
           onReconnect={onSyncReconnect}
           onConflict={onPillConflict}
-          onDetails={openSync}
         />
       {/if}
       <!-- UX-039: separator before Save PDF -->
@@ -2332,17 +2182,7 @@
       onVersionHistoryEnabled={onVersionHistoryEnabled}
       onSnapshotSaved={(entry) => onVersionSnapshotSaved()}
       onVersionRestored={onVersionRestored}
-      onSyncCompleted={onSyncCompleted}
-      onPullCompleted={(filesChanged) => {
-        if (filesChanged) {
-          toast?.success("Latest changes applied — the preview will refresh in a moment.");
-        }
-      }}
       onSyncReconnect={onSyncReconnect}
-      onResolveConflict={(triggerEl) => {
-        syncBtn = triggerEl as HTMLButtonElement | undefined;
-        openSync();
-      }}
       refreshKey={historyRefreshKey}
     />
 
@@ -2488,41 +2328,6 @@
 </div>
 </div>
 
-<!-- Incoming changes modal (fetch-on-open) -->
-{#if incomingChangesOpen}
-  <div class="incoming-backdrop" onclick={() => (incomingChangesOpen = false)} role="presentation"></div>
-  <div
-    class="incoming-modal"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="incoming-title"
-    tabindex="-1"
-    bind:this={incomingModalEl}
-    onkeydown={onIncomingModalKeydown}
-  >
-    <header class="incoming-header">
-      <h2 id="incoming-title">New changes online</h2>
-      <button class="close-btn" onclick={() => (incomingChangesOpen = false)} aria-label="Dismiss">
-        <Icon name="x" size={16} />
-      </button>
-    </header>
-    <div class="incoming-body">
-      <p class="incoming-lead">There are new changes from the online copy.</p>
-    </div>
-    <footer class="incoming-footer">
-      <button class="ghost" onclick={() => (incomingChangesOpen = false)} disabled={incomingPullBusy}>Not now</button>
-      <button
-        class="primary"
-        bind:this={incomingGetChangesBtn}
-        onclick={() => void pullIncomingChanges()}
-        disabled={incomingPullBusy}
-      >
-        {incomingPullBusy ? "Getting changes…" : "Get changes"}
-      </button>
-    </footer>
-  </div>
-{/if}
-
 <HelpDialog
   bind:open={helpOpen}
   triggerEl={helpBtn}
@@ -2546,14 +2351,6 @@
   bind:open={newProjectOpen}
   onCreated={(projectDir) => startFolderPreview(projectDir, "Opening your new book…")}
   triggerEl={newProjectBtn}
-/>
-<SyncDialog
-  bind:open={syncOpen}
-  projectDir={sourceMode === "folder" ? currentDir : null}
-  bookSubPath={projectSubPath}
-  onSynced={onSyncCompleted}
-  onReconnect={onSyncReconnect}
-  triggerEl={syncBtn}
 />
 <!-- ConflictChoicesDialog (#transparent-sync §6.1): opened by the ambient
      SyncStatusPill when the auto-sync orchestrator surfaces a conflict.
@@ -3227,86 +3024,6 @@
     .center .icon-btn:last-child { display: none; }
     .page-pill { min-width: 56px; }
   }
-
-  /* ---- Incoming-changes modal ---- */
-  .incoming-backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--app-backdrop);
-    z-index: 1000;
-  }
-  .incoming-modal {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: min(440px, 90vw);
-    background: var(--app-surface);
-    border-radius: 8px;
-    box-shadow: 0 14px 40px var(--app-shadow-lg);
-    z-index: 1001;
-    display: flex;
-    flex-direction: column;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  }
-  .incoming-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--app-border-subtle);
-  }
-  .incoming-header h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--app-text); }
-  .incoming-body {
-    padding: 14px 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .incoming-lead { margin: 0; font-size: 13px; color: var(--app-text-secondary); }
-  .incoming-footer {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    padding: 10px 18px;
-    border-top: 1px solid var(--app-border-subtle);
-  }
-  .incoming-footer .ghost {
-    background: transparent;
-    border: 1px solid var(--app-border);
-    color: var(--app-text-muted);
-    padding: 6px 14px;
-    border-radius: 4px;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .incoming-footer .ghost:hover { background: var(--app-surface-hover); }
-  .incoming-footer .primary {
-    background: var(--app-accent);
-    border: 1px solid var(--app-accent-border);
-    color: var(--app-accent-text);
-    padding: 6px 14px;
-    border-radius: 4px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .incoming-footer .primary:hover { background: var(--app-accent-hover); }
-  .close-btn {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    color: var(--app-text-muted);
-    padding: 4px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 28px;
-    min-height: 28px;
-    cursor: pointer;
-  }
-  .close-btn:hover { color: var(--app-text); background: var(--app-surface-hover); }
-  .close-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 
   /* ---- Small-screen single-pane layout (#responsive) ----
      Below NARROW_QUERY (820px) the editor + preview can't sit side by side.

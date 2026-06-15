@@ -26,9 +26,6 @@
     ProjectCapabilities,
     ProjectClassification,
     SnapshotEntry,
-    SyncPreviewInfo,
-    PullOutcome,
-    PushOutcome,
   } from "$lib/platform/contract";
 
   export type PanelTab = "toc" | "files" | "media" | "projects" | "history";
@@ -58,10 +55,7 @@
     onVersionHistoryEnabled,
     onSnapshotSaved,
     onVersionRestored,
-    onSyncCompleted,
-    onPullCompleted,
     onSyncReconnect,
-    onResolveConflict,
     refreshKey = 0,
   }: {
     open?: boolean;
@@ -87,13 +81,8 @@
     onVersionHistoryEnabled?: (result: ProjectClassification) => void;
     onSnapshotSaved?: (entry: SnapshotEntry) => void;
     onVersionRestored?: (backupId?: string) => void;
-    onSyncCompleted?: (mergedRemoteChanges: boolean) => void;
-    /** A Pull applied online changes; `filesChanged` = preview should refresh. */
-    onPullCompleted?: (filesChanged: boolean) => void;
     onSyncReconnect?: () => void;
-    /** Open the Sync dialog to resolve a conflict (triggerEl = the invoking button). */
-    onResolveConflict?: (triggerEl?: HTMLElement) => void;
-    /** Bump to force a history + sync-preview refresh from the outside. */
+    /** Bump to force a history refresh from the outside. */
     refreshKey?: number;
   } = $props();
 
@@ -102,7 +91,6 @@
   let canHistory = $derived(projectCapabilities?.canViewHistory ?? false);
   let canSnapshot = $derived(projectCapabilities?.canSnapshot ?? false);
   let canRestore = $derived(projectCapabilities?.canRestoreSnapshot ?? false);
-  let canSync = $derived(projectCapabilities?.canSync ?? false);
   let historyAvailable = $derived(!!projectDir && sourceMode === "folder" && !!projectCapabilities && (canEnable || canHistory));
 
   // ── History tab state ─────────────────────────────────────────────────────
@@ -117,8 +105,6 @@
   let historyLoadingMore = $state(false);
   let historyBusy = $state(false);
   let historyBusyAction = $state<string | null>(null);
-  /** Which remote op is running ("fetch" | "pull" | "push") — drives the visible busy label. */
-  let syncBusyOp = $state<"fetch" | "pull" | "push" | null>(null);
   let historyError = $state<string | null>(null);
   let historyNotice = $state<string | null>(null);
   let snapshotMessage = $state("");
@@ -141,23 +127,10 @@
     return out;
   });
 
-  // ── Sync state (History tab) ──────────────────────────────────────────────
-  let syncPreview = $state<SyncPreviewInfo | null>(null);
-  let syncBusy = $state(false);
-  let syncNotice = $state<string | null>(null);
-  let syncError = $state<string | null>(null);
-
   // ── Load history when tab becomes active ──────────────────────────────────
   $effect(() => {
     if (open && activeTab === "history" && canHistory && projectDir && !historyLoading && !historyEntries.length) {
       void refreshHistory();
-    }
-  });
-
-  // ── Load sync preview when history tab opens and canSync ──────────────────
-  $effect(() => {
-    if (open && activeTab === "history" && canSync && projectDir && !syncPreview && !syncBusy) {
-      void loadSyncPreviewLocal();
     }
   });
 
@@ -252,123 +225,12 @@
     }
   }
 
-  async function loadSyncPreviewLocal() {
-    if (!projectDir) return;
-    try {
-      syncPreview = await getPlatform().previewSyncLocal(projectDir);
-    } catch {
-      // silent
-    }
-  }
-
-  async function doFetch() {
-    if (!projectDir || syncBusy) return;
-    syncBusy = true;
-    syncBusyOp = "fetch";
-    historyBusyAction = "Checking for updates — please wait.";
-    syncError = null;
-    try {
-      // Fetch is the "preview" call — it fetches from remote and reports what's new
-      syncPreview = await getPlatform().previewSync(projectDir);
-      if (syncPreview.fetchNotice) {
-        syncError = syncPreview.fetchNotice;
-      }
-    } catch (e) {
-      syncError = friendly(e);
-    } finally {
-      syncBusy = false;
-      syncBusyOp = null;
-      historyBusyAction = null;
-    }
-  }
-
-  /** Refresh the counts + list after any sync-family operation completed. */
-  function refreshAfterSyncOp() {
-    syncPreview = null;
-    void loadSyncPreviewLocal();
-    void refreshHistory();
-  }
-
-  async function doPull() {
-    // Pull-only: snapshot-if-needed → fetch → fast-forward/merge. NEVER
-    // pushes (distinct from Sync, which composes pull + push).
-    if (!projectDir || syncBusy) return;
-    syncBusy = true;
-    syncBusyOp = "pull";
-    historyBusyAction = "Getting the latest changes — please wait.";
-    syncError = null;
-    syncNotice = null;
-    try {
-      const outcome: PullOutcome = await getPlatform().pullChanges(projectDir);
-      if (outcome.status === "pulled") {
-        syncNotice = outcome.message;
-        onPullCompleted?.(outcome.filesChanged);
-        refreshAfterSyncOp();
-      } else if (outcome.status === "up-to-date") {
-        syncNotice = outcome.message;
-        refreshAfterSyncOp();
-      } else if (outcome.status === "auth") {
-        syncError = "Authentication failed. Reconnect to enable syncing.";
-      } else if (outcome.status === "offline") {
-        syncError = outcome.message;
-      } else if (outcome.status === "conflict") {
-        syncError = "conflict";
-      } else {
-        syncError = outcome.message || "Pull failed.";
-      }
-    } catch (e) {
-      syncError = friendly(e);
-    } finally {
-      syncBusy = false;
-      syncBusyOp = null;
-      historyBusyAction = null;
-    }
-  }
-
-  async function doPush() {
-    // Push-only: snapshot-if-needed → push. When the online copy is ahead
-    // the host returns "pull-first" — shown as a plain-language inline
-    // message; it never auto-merges.
-    if (!projectDir || syncBusy) return;
-    syncBusy = true;
-    syncBusyOp = "push";
-    historyBusyAction = "Sending your changes — please wait.";
-    syncError = null;
-    syncNotice = null;
-    try {
-      const outcome: PushOutcome = await getPlatform().pushChanges(projectDir);
-      if (outcome.status === "pushed") {
-        syncNotice = outcome.message;
-        onSyncCompleted?.(false);
-        refreshAfterSyncOp();
-      } else if (outcome.status === "up-to-date") {
-        syncNotice = outcome.message;
-        refreshAfterSyncOp();
-      } else if (outcome.status === "pull-first") {
-        syncError = outcome.message;
-        refreshAfterSyncOp();
-      } else if (outcome.status === "auth") {
-        syncError = "Authentication failed. Reconnect to enable syncing.";
-      } else if (outcome.status === "offline") {
-        syncError = outcome.message;
-      } else {
-        syncError = outcome.message || "Push failed.";
-      }
-    } catch (e) {
-      syncError = friendly(e);
-    } finally {
-      syncBusy = false;
-      syncBusyOp = null;
-      historyBusyAction = null;
-    }
-  }
-
-  // ── External refresh (e.g. the incoming-changes modal pulled directly) ────
+  // ── External refresh ──────────────────────────────────────────────────────
   let lastRefreshKey = 0;
   $effect(() => {
     if (refreshKey !== lastRefreshKey) {
       lastRefreshKey = refreshKey;
-      if (projectDir && canHistory) refreshAfterSyncOp();
+      if (projectDir && canHistory) void refreshHistory();
     }
   });
 
@@ -395,9 +257,6 @@
     historyNotice = null;
     historyBusy = false;
     confirmRestoreId = null;
-    syncPreview = null;
-    syncError = null;
-    syncNotice = null;
   });
 
   // ── Tab definitions ───────────────────────────────────────────────────────
@@ -707,67 +566,6 @@
                 <button class="history-action primary small" onclick={saveSnapshot} disabled={historyBusy}>
                   {historyBusy && historyBusyAction?.includes("snapshot") ? "Saving…" : "Save snapshot"}
                 </button>
-              </div>
-            {/if}
-
-            <!-- Sync controls (gated by canSync) -->
-            {#if canSync}
-              <div class="sync-section">
-                <div class="sync-header">
-                  <span class="sync-title">Sync with online copy</span>
-                  {#if syncPreview}
-                    {#if syncPreview.incoming.hasChanges}
-                      <span class="sync-status-badge info">
-                        {#if syncPreview.incoming.count}
-                          {syncPreview.incoming.count}{syncPreview.incoming.approximate ? "+" : ""} incoming
-                        {:else}
-                          New changes online
-                        {/if}
-                      </span>
-                    {:else if syncPreview.outgoing.hasChanges}
-                      <span class="sync-status-badge">Changes to send</span>
-                    {:else if syncPreview.incoming.hasChanges === false && syncPreview.outgoing.hasChanges === false}
-                      <span class="sync-status-badge">Up to date</span>
-                    {/if}
-                  {/if}
-                </div>
-                {#if syncNotice}
-                  <p class="notice small" role="status">{syncNotice}</p>
-                {/if}
-                {#if syncError === "conflict"}
-                  <p class="error-msg small" role="alert">
-                    Your copy and the online copy both changed.
-                    <button
-                      class="resolve-conflict-btn"
-                      onclick={(e) => onResolveConflict?.(e.currentTarget as HTMLElement)}
-                    >Resolve conflict…</button>
-                  </p>
-                {:else if syncError}
-                  <p class="error-msg small" role="alert">{syncError}</p>
-                {/if}
-                <!-- aria-busy signals to AT that an operation is running; the live region announces friendly text -->
-                <div class="sync-btns" aria-busy={syncBusy}>
-                  <button class="history-action" onclick={doFetch} disabled={syncBusy}
-                    title="Check whether the online copy has new changes (git fetch)">
-                    <Icon name="refresh-cw" size={13} /> {syncBusyOp === "fetch" ? "Checking…" : "Check for updates"}
-                  </button>
-                  <button class="history-action" onclick={doPull} disabled={syncBusy}
-                    title="Download and apply online changes to your copy (git pull)">
-                    <Icon name="arrow-down-to-line" size={13} /> {syncBusyOp === "pull" ? "Getting…" : "Get changes"}
-                  </button>
-                  <button class="history-action" onclick={doPush} disabled={syncBusy}
-                    title="Send your changes to the online copy (git push)">
-                    <Icon name="arrow-up-from-line" size={13} /> {syncBusyOp === "push" ? "Sending…" : "Send changes"}
-                  </button>
-                </div>
-                <!-- Live region: announces friendly busy text when a remote op runs -->
-                <div role="status" aria-live="polite" aria-atomic="true" class="sr-only">
-                  {#if syncBusy && historyBusyAction}
-                    {historyBusyAction}
-                  {:else if syncBusy}
-                    Working…
-                  {/if}
-                </div>
               </div>
             {/if}
 
@@ -1133,36 +931,6 @@
   .history-action.small { padding: 4px 8px; font-size: 11px; }
   .history-action.load-more { align-self: center; margin-top: 4px; }
 
-  /* Sync section */
-  .sync-section {
-    border: 1px solid var(--app-border);
-    border-radius: 6px;
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .sync-header { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
-  .sync-title { font-size: 11px; font-weight: 600; color: var(--app-text); }
-  /* Info-colored badge for incoming-count; clearer than 10px faint text */
-  .sync-status-badge {
-    display: inline-flex;
-    align-items: center;
-    font-size: 11px;
-    font-weight: 500;
-    padding: 1px 7px;
-    border-radius: 999px;
-    color: var(--app-text-secondary);
-    background: var(--app-control-bg);
-    border: 1px solid var(--app-control-border);
-  }
-  .sync-status-badge.info {
-    color: var(--app-info-text);
-    background: var(--app-info-bg);
-    border-color: var(--app-info-border);
-  }
-  .sync-btns { display: flex; gap: 5px; flex-wrap: wrap; }
-
   /* Snapshot list */
   .snapshot-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
   .snapshot-item { border: 1px solid var(--app-border); border-radius: 5px; padding: 7px 9px; }
@@ -1183,32 +951,6 @@
   }
   .restore-btn:hover:not(:disabled) { background: var(--app-control-hover-bg); }
   .restore-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-  /* "Resolve conflict…" inline button inside the error message */
-  .resolve-conflict-btn {
-    display: inline;
-    background: none;
-    border: none;
-    padding: 0;
-    font-size: inherit;
-    font-weight: 600;
-    color: var(--app-link);
-    cursor: pointer;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-  .resolve-conflict-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; border-radius: 2px; }
-  /* Screen-reader only helper */
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-    border: 0;
-  }
   .confirm-restore {
     margin-top: 7px;
     padding: 7px 9px;
