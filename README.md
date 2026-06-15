@@ -30,7 +30,7 @@ The desktop app is fully self-contained — no Bun, Node, or other runtime to in
 
 3. **Click Save PDF**. Done.
 
-For richer projects (cover art, fonts, a multi-chapter book with running headers, page numbers, etc), copy one of the example projects in [`examples/`](./examples/) as a starting point — `dc-design-guide` is the most complete reference.
+For richer projects (cover art, fonts, a multi-chapter book with running headers, page numbers, etc), copy one of the example projects in [`examples/`](./examples/) as a starting point — `with-design-guide` is the most complete reference.
 
 ## Learn more
 
@@ -64,8 +64,8 @@ See [docs/](./docs/) for technical architecture, ADRs, and developer references.
 
 Browse the [`examples/`](./examples/) directory for real projects you can copy:
 
-- **`dc-design-guide`** — the most complete reference. A 100+ page design guide for the Dimm City TTRPG that exercises every layout feature: custom fonts, page templates, columns, sidebars, callouts, a custom plugin.
-- **`with-design-guide`** — a smaller starter with the same plugin patterns.
+- **`with-design-guide`** — the most complete reference. A multi-chapter design guide that exercises the layout features: custom fonts, page templates, columns, sidebars, callouts, and a custom plugin.
+- **`print-md-user-guide`** — the comprehensive user guide, authored in print-md itself.
 - **`with-validation`** — focused on the pre-/post-build validation pipeline.
 
 ## Project layout

@@ -116,7 +116,7 @@ source:
     - chapter-02.md
 ```
 
-The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`. See [docs/user-guide.md](../../docs/user-guide.md#configuration) for the comprehensive reference.
+The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`. See the [Source Files & manifest guide](../../docs/SOURCE-FILES-GUIDE.md) for the comprehensive reference.
 
 ## Commands
 
@@ -230,7 +230,7 @@ This package is part of the [print-md monorepo](../../README.md). The CLI itself
 bun install
 
 # Run CLI from source
-bun packages/cli/src/cli.ts build ./examples/dc-design-guide
+bun packages/cli/src/cli.ts build ./examples/with-design-guide/design-guide
 
 # Build the standalone binary for the current platform
 bun --cwd packages/cli scripts/compile.ts bun-linux-x64 ./dist/print-md-cli-linux-x64

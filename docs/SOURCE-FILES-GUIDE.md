@@ -201,7 +201,7 @@ print-md build ./my-book --format html --out ./_site
 
 ```bash
 # Use the debug script
-bun tools/debug-manifest.ts ./my-book
+bun packages/cli/tools/debug-manifest.ts ./my-book
 
 # Output will show:
 # 🔍 Source configuration analysis:
@@ -262,6 +262,6 @@ Or just omit `source.files` to get all `.md` files alphabetically.
 
 ## See Also
 
-- [manifest.yaml Reference](./manifest-schema.md)
-- [Example Manifest](../example-manifest-with-files.yaml)
-- [Debug Script](../tools/debug-manifest.ts)
+- [Schema autocomplete & manifest reference](./schema-autocomplete.md)
+- [Example Manifest](../examples/print-md-user-guide/manifest.yaml)
+- [Debug Script](../packages/cli/tools/debug-manifest.ts)

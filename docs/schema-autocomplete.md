@@ -451,8 +451,8 @@ The schema is maintained in sync with print-md's Zod validation schema. When new
 
 ## Related Documentation
 
-- [User Guide](./user-guide.md) - Complete print-md usage guide
-- [Theme Customization](./theme-customization.md) - CSS styling guide
+- [User Guide](../examples/print-md-user-guide/) - Complete print-md usage guide
+- [Design Guides](./design-guides.md) - CSS styling and companion design-guide pattern
 - [README](../README.md) - Project overview and quick start
 
 ---

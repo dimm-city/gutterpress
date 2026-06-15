@@ -332,8 +332,8 @@ Bun.serve (packages/cli/src/preview/http-server.ts)
   `server.publish(topic, data)`), and request routing natively — exactly the
   surface print-md needs, with no native bindings to extract under
   `bun build --compile`.
-- See `docs/adr/0001-no-bundlers-at-runtime.md` for the full rationale and
-  links to the upstream Bun issues that motivated the change.
+- See the "No bundlers at runtime" rule in `CLAUDE.md` §1 for the full rationale
+  and links to the upstream Bun issues that motivated the change.
 
 ### File Watching
 
@@ -468,7 +468,8 @@ validate:
     textDensityRange: { min: 200, max: 5000 }
 ```
 
-See the [Validation Guide](validation.md) for full configuration reference.
+See the [`with-validation` example](../examples/with-validation/README.md) for a
+worked validation configuration.
 
 ### Validation
 
@@ -611,7 +612,7 @@ See [User Guide: Chapter 6 — Plugins](../examples/print-md-user-guide/06-plugi
   Vite's CSS pipeline and module graph, plus a compile-time regex plugin to
   rewrite `package.json` reads in `node_modules/vite`. Removing Vite
   removed both layers of workarounds.
-- See `docs/adr/0001-no-bundlers-at-runtime.md`.
+- See the "No bundlers at runtime" rule in `CLAUDE.md` §1.
 
 ### 4. Why Electron + SvelteKit for the Desktop Viewer?
 

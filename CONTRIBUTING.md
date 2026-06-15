@@ -111,8 +111,8 @@ print-md/                        # Workspace root (private)
 
 ### Key architectural boundaries
 
-- **`packages/cli/src/`** — No bundlers at runtime (see
-  `docs/adr/0001-no-bundlers-at-runtime.md`). Use `Bun.serve` for any server
+- **`packages/cli/src/`** — No bundlers at runtime (see the "No bundlers at
+  runtime" rule in `CLAUDE.md` §1). Use `Bun.serve` for any server
   needs, not Vite/Rollup/esbuild.
 - **`packages/viewer/`** — Vite/Rollup are intentional here (SvelteKit build).
   `@dimm-city/print-md` is SSR-external so it is never bundled by Vite.
@@ -330,7 +330,8 @@ The project uses automated tools to monitor and update dependencies securely:
 
    If you discover a security vulnerability:
    - **Do not** create a public GitHub issue for critical vulnerabilities
-   - Follow the process outlined in [SECURITY.md](./SECURITY.md)
+   - Report it privately via the repository's GitHub Security Advisories
+     ("Report a vulnerability" under the **Security** tab)
    - Email maintainers directly for critical issues
    - Provide detailed reproduction steps
    - Allow reasonable time for fix before disclosure
