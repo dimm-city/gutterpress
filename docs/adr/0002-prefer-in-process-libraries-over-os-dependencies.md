@@ -2,7 +2,7 @@
 
 **Status:** Proposed (2026-06-01)
 **Supersedes / relates to:** ADR 0001 (No bundlers at runtime)
-**Research:** [`docs/os-dependency-replacement-research.md`](../os-dependency-replacement-research.md)
+**Research:** `os-dependency-replacement-research.md` (kept local under `.docs-archive/`)
 
 ## Context
 
@@ -113,7 +113,7 @@ This decision establishes a priority order and a set of guardrails; it does
 
 1. **Phase 1 (free wins) — ✅ SHIPPED:** grep → `node:fs`; markdownlint-cli2 →
    `markdownlint` lib; htmlhint CLI → `htmlhint` lib. No fidelity loss, removes 2
-   system deps. See [`docs/phase-1-os-dependency-removal-plan.md`](../phase-1-os-dependency-removal-plan.md).
+   system deps. (Plan kept local under `.docs-archive/`.)
 2. **Phase 2 (PDF inspection) — ✅ SHIPPED:** Poppler + general qpdf-inspection
    checks → **`unpdf`** (a serverless-tuned PDF.js build; raw `pdfjs-dist`
    crashes under `bun build --compile` with `DOMMatrix is not defined`, unpdf does
@@ -155,6 +155,6 @@ This decision establishes a priority order and a set of guardrails; it does
 
 ## Sources
 
-See [`docs/os-dependency-replacement-research.md`](../os-dependency-replacement-research.md)
+See `os-dependency-replacement-research.md` (kept local under `.docs-archive/`)
 for the full per-tool evaluation with pros/cons, confidence levels, and citations.
 </content>
