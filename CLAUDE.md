@@ -157,8 +157,7 @@ auto-install missing npm packages. Authoring guide lives in [User Guide: Chapter
 **Block container syntax** (`:::name ... :::` via `markdown-it-container`) was
 removed 2026-05-17. The DC plugin's `@marker` family (`@page`, `@section`,
 `@sidebar`, `@callout`, etc.) is the canonical author surface for wrapped
-blocks. See `docs/migrations/2026-05-removing-container-syntax.md` for the
-mapping. Do NOT reintroduce `markdown-it-container` to core.
+blocks. Do NOT reintroduce `markdown-it-container` to core.
 
 ### 6. `markdown-it-paged` owns its full contract
 
@@ -466,7 +465,7 @@ it's unreliable in paged.js.
 
 ## Background reading
 
-- ADR `docs/adr/0001-no-bundlers-at-runtime.md`
+- The "No bundlers at runtime" rule (§1 above)
 - `packages/viewer/README.md` — viewer dev and packaging instructions
 - [Single-file executable — Bun](https://bun.com/docs/bundler/executables)
 - [Embed directory in executable with `bun build --compile` (#5445)](https://github.com/oven-sh/bun/issues/5445)

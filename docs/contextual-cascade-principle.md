@@ -2,7 +2,7 @@
 
 **The recommended CSS architecture pattern for print-md projects.**
 
-This document explains the pattern, why it exists, and how to apply it. For the canonical end-to-end implementation, see the [Dimm City design guide](../examples/dc-design-guide/).
+This document explains the pattern, why it exists, and how to apply it. For a worked end-to-end implementation, see the [design-guide example](../examples/with-design-guide/design-guide/).
 
 ---
 
@@ -197,7 +197,7 @@ In `dc-components.css`:
 
 Authors write `@section .two-column .col-split .dc-citizen-file` once and **every element inside it** picks up form-styling. The same section component dropped into any other chapter/page/book produces the same character-sheet look — no setup required.
 
-See [`examples/dc-design-guide/css/dc-components.css`](../examples/dc-design-guide/css/dc-components.css) for the full implementation and [`examples/dc-design-guide/302-example-chapter-opener.md`](../examples/dc-design-guide/302-example-chapter-opener.md) for the markdown usage.
+See the [design-guide example](../examples/with-design-guide/design-guide/) for a worked implementation of components and their markdown usage.
 
 ---
 
@@ -215,19 +215,18 @@ See [`examples/dc-design-guide/css/dc-components.css`](../examples/dc-design-gui
 
 ---
 
-## Reference: the DC design guide
+## Reference: the design-guide example
 
-The Dimm City design guide is the reference implementation of this pattern. It demonstrates:
+The [`with-design-guide`](../examples/with-design-guide/) example is the reference implementation of this pattern. It demonstrates:
 
-- 7-file CSS layered architecture (`dc-tokens`, `dc-core`, `dc-components`, `page-templates`, `page-rules`, `dg-overrides`, `fg-overrides`)
-- Multiple section components (`.dc-citizen-file`, `.dc-npc-stat`, `.dc-card-grid`, `.dc-card`, etc.)
-- A working `markdown-it-paged` plugin enhancement (auto-cascade of chapter counter classes to child pages)
-- The full markdown-author authoring surface
+- A layered stylesheet (`design-guide/styles/guide.css`) defining components via `var(--dc-X, fallback)` patterns
+- Multiple section components keyed off `.section.dc-*` classes
+- The full markdown-author authoring surface across its numbered chapters
 
 Files to study:
-- [`examples/dc-design-guide/css/dc-components.css`](../examples/dc-design-guide/css/dc-components.css) — components, with `var(--dc-X, fallback)` patterns
-- [`examples/dc-design-guide/css/fg-overrides.css`](../examples/dc-design-guide/css/fg-overrides.css) — per-book overrides using natural selector chains
-- [`examples/dc-design-guide/30[1-7]-example-*.md`](../examples/dc-design-guide/) — markdown demonstrating the authoring patterns
+- [`design-guide/styles/guide.css`](../examples/with-design-guide/design-guide/styles/guide.css) — components and their `var(--dc-X, fallback)` patterns
+- [`design-guide/03-components.md`](../examples/with-design-guide/design-guide/03-components.md) — markdown demonstrating the component authoring patterns
+- [`design-guide/06-markdown-reference.md`](../examples/with-design-guide/design-guide/06-markdown-reference.md) — the full author-facing markdown surface
 
 ---
 

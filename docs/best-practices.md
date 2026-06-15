@@ -2,7 +2,7 @@
 
 Professional guidelines for creating high-quality print documents with Print-md.
 
-> **For CSS architecture** — variant patterns, component organization, how to express styling intent without scattering classes through markdown — see [The Contextual Cascade Principle](./contextual-cascade-principle.md). It's the recommended pattern for any non-trivial print-md project and the architecture demonstrated in the [DC design guide](../examples/dc-design-guide/).
+> **For CSS architecture** — variant patterns, component organization, how to express styling intent without scattering classes through markdown — see [The Contextual Cascade Principle](./contextual-cascade-principle.md). It's the recommended pattern for any non-trivial print-md project and the architecture demonstrated in the [design-guide example](../examples/with-design-guide/).
 
 ## File Organization
 
