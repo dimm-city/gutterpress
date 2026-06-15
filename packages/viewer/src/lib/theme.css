@@ -70,7 +70,11 @@
 
   /* Accent (primary actions, focus) */
   --app-accent: #0066cc;
-  --app-accent-hover: #0077dd;
+  /* #0072d6 (not #0077dd): the primary-button gradient's light top stop must
+     clear WCAG AA (4.5:1) against white --app-accent-text. #0077dd was 4.48:1;
+     #0072d6 is 4.80:1 and stays brighter than --app-accent so hovers still
+     brighten. (Three-judge gate accessibility finding, 2026-06-15.) */
+  --app-accent-hover: #0072d6;
   --app-accent-bright: #0088ee;
   --app-accent-border: #0055aa;
   --app-accent-text: #ffffff;
@@ -167,7 +171,11 @@
 
   /* Accent */
   --app-accent: #0066cc;
-  --app-accent-hover: #0077dd;
+  /* #0072d6 (not #0077dd): the primary-button gradient's light top stop must
+     clear WCAG AA (4.5:1) against white --app-accent-text. #0077dd was 4.48:1;
+     #0072d6 is 4.80:1 and stays brighter than --app-accent so hovers still
+     brighten. (Three-judge gate accessibility finding, 2026-06-15.) */
+  --app-accent-hover: #0072d6;
   --app-accent-bright: #0088ee;
   --app-accent-border: #0055aa;
   --app-accent-text: #ffffff;
