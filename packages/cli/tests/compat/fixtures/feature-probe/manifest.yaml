@@ -1,0 +1,17 @@
+title: "Cross-Browser Feature Probe"
+authors:
+  - "print-md compat tests"
+
+styles:
+  - styles/probe.css
+
+source:
+  files:
+    - 01-features.md
+  assets:
+    - styles
+
+page:
+  width: 612
+  height: 792
+  tolerance: 0.5

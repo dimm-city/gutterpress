@@ -1,0 +1,60 @@
+
+name: Viewer render-perf gate
+
+# Catches the v0.4.1..v0.5.0-rc.3 class of regression: hiding the cross-origin
+# preview iframe (opacity:0 / opaque cover) makes Chromium render-throttle it
+# to ~1fps, so paged.js layout crawls at ~1 page/sec instead of 10-30+.
+# Fix tag: render-fix-iframe-visibility.
+#
+# Verified 2026-06-10 that the throttle reproduces identically under xvfb-run
+# (broken ≈1.0 pp/s, healthy ≈20 pp/s) — it keys off iframe visibility, not
+# GPU/display — so this gate is valid headless. (The window-level show:false
+# throttle is a DIFFERENT bug class that xvfb cannot reproduce; this gate does
+# not claim to cover it.)
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/viewer/src/**"
+      - "packages/viewer/electron/**"
+      - "packages/lib/src/preview/**"
+      - "packages/lib/src/assets/preview/**"
+      - "packages/viewer/tests/perf/**"
+      - ".github/workflows/render-perf-gate.yml"
+  workflow_dispatch:
+
+env:
+  PUPPETEER_SKIP_DOWNLOAD: "true"
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+
+jobs:
+  render-perf:
+    name: Packaged-app render speed (xvfb)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun (cached)
+        uses: ./.github/actions/bun
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build lib
+        run: bun run build:lib
+
+      - name: Build viewer (SPA + electron main)
+        working-directory: packages/viewer
+        run: |
+          npm run build
+          npm run electron:build
+
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Run render-perf gate
+        working-directory: packages/viewer
+        # No DISPLAY on the runner → the gate wraps electron in xvfb-run itself.
+        run: node tests/perf/render-gate.mjs

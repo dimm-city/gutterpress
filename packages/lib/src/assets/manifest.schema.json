@@ -1,0 +1,325 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/dimm-city/print-md/manifest.schema.json",
+  "title": "print-md Manifest",
+  "description": "Configuration file for print-md markdown-to-PDF converter",
+  "type": "object",
+  "required": ["title", "authors"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Document title",
+      "minLength": 1,
+      "examples": ["My Book Title", "Technical Documentation", "Game Module"]
+    },
+    "authors": {
+      "type": "array",
+      "description": "List of document authors",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "examples": [
+        ["John Doe"],
+        ["Jane Smith", "John Doe"]
+      ]
+    },
+    "description": {
+      "type": "string",
+      "description": "Document description or summary"
+    },
+    "page": {
+      "type": "object",
+      "description": "Page format configuration",
+      "properties": {
+        "size": {
+          "type": "string",
+          "description": "Page size (e.g., letter, a4, 6x9, or custom like '8.5in 11in')",
+          "default": "letter",
+          "examples": ["letter", "a4", "a5", "legal", "6in 9in", "8.5in 11in"]
+        },
+        "margins": {
+          "type": "object",
+          "description": "Page margins with CSS units",
+          "properties": {
+            "top": {
+              "type": "string",
+              "description": "Top margin (e.g., 0.75in, 2cm)",
+              "examples": ["0.75in", "1in", "2cm"]
+            },
+            "bottom": {
+              "type": "string",
+              "description": "Bottom margin (e.g., 0.75in, 2cm)",
+              "examples": ["0.75in", "1in", "2cm"]
+            },
+            "inside": {
+              "type": "string",
+              "description": "Inside/left margin for two-sided printing",
+              "examples": ["0.875in", "1in", "2.5cm"]
+            },
+            "outside": {
+              "type": "string",
+              "description": "Outside/right margin for two-sided printing",
+              "examples": ["0.625in", "0.75in", "2cm"]
+            },
+            "left": {
+              "type": "string",
+              "description": "Left margin (alternative to inside/outside)",
+              "examples": ["1in", "2.5cm"]
+            },
+            "right": {
+              "type": "string",
+              "description": "Right margin (alternative to inside/outside)",
+              "examples": ["1in", "2.5cm"]
+            }
+          },
+          "anyOf": [
+            {
+              "required": ["top", "bottom", "inside", "outside"]
+            },
+            {
+              "required": ["top", "bottom", "left", "right"]
+            }
+          ]
+        },
+        "bleed": {
+          "type": "string",
+          "description": "Bleed area for print (typically 0.125in)",
+          "examples": ["0.125in", "3mm"]
+        }
+      }
+    },
+    "styles": {
+      "type": "array",
+      "description": "List of CSS files to include (applied in order)",
+      "default": [],
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^(?!\\.\\.).+\\.css$",
+        "description": "Relative path to CSS file (cannot start with ../)"
+      },
+      "examples": [
+        ["themes/classic.css"],
+        ["themes/modern.css", "custom.css"],
+        ["themes/parchment.css", "styles/override.css"]
+      ]
+    },
+    "files": {
+      "type": "array",
+      "description": "Explicit file ordering (optional - defaults to alphabetical)",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^.+\\.md$",
+        "description": "Relative path to markdown file"
+      },
+      "examples": [
+        ["chapter-01.md", "chapter-02.md"],
+        ["frontmatter/title.md", "chapters/intro.md", "appendix.md"]
+      ]
+    },
+    "extensions": {
+      "type": "array",
+      "description": "Markdown extensions to enable (deprecated - use plugins instead)",
+      "items": {
+        "type": "string",
+        "enum": ["ttrpg", "dimmCity", "containers"]
+      },
+      "examples": [
+        ["ttrpg"],
+        ["dimmCity"],
+        ["ttrpg", "dimmCity"]
+      ]
+    },
+    "plugins": {
+      "type": "array",
+      "description": "Markdown-it plugins to load (local files, npm packages, or built-in)",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "minLength": 1,
+            "description": "Plugin path/name (shorthand syntax)",
+            "examples": [
+              "./plugins/my-plugin.js",
+              "ttrpg",
+              "print-md-plugin-callouts"
+            ]
+          },
+          {
+            "type": "object",
+            "description": "Plugin configuration object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["local", "package", "builtin", "remote"],
+                "description": "Plugin type (auto-detected if omitted)"
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!\\.\\.).+\\.(m?js|ts)$",
+                "description": "Path to local plugin file (cannot start with ../)"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Plugin name (for package/builtin plugins)"
+              },
+              "version": {
+                "type": "string",
+                "description": "Plugin version constraint (for package plugins)",
+                "examples": ["^1.0.0", "~2.1.0", "1.2.3"]
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Plugin URL (for remote plugins)"
+              },
+              "integrity": {
+                "type": "string",
+                "description": "Subresource integrity hash (for remote plugins)",
+                "pattern": "^(sha256|sha384|sha512)-[A-Za-z0-9+/=]+$"
+              },
+              "enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether plugin is enabled"
+              },
+              "options": {
+                "type": "object",
+                "description": "Plugin-specific options",
+                "additionalProperties": true
+              },
+              "priority": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000,
+                "default": 100,
+                "description": "Plugin load priority (higher = earlier)"
+              }
+            }
+          }
+        ]
+      },
+      "examples": [
+        ["ttrpg", "./plugins/my-plugin.js"],
+        [
+          {
+            "name": "print-md-plugin-callouts",
+            "version": "^1.0.0",
+            "options": {
+              "types": ["note", "warning"]
+            }
+          }
+        ],
+        [
+          "ttrpg",
+          {
+            "type": "local",
+            "path": "./plugins/custom-syntax.js",
+            "priority": 200,
+            "options": {
+              "strict": true
+            }
+          }
+        ]
+      ]
+    },
+    "disableDefaultStyles": {
+      "type": "boolean",
+      "description": "Disable default foundation CSS styles",
+      "default": false
+    },
+    "version": {
+      "type": "string",
+      "description": "Document version number",
+      "examples": ["1.0.0", "2.1"]
+    },
+    "date": {
+      "type": "string",
+      "description": "Publication or revision date",
+      "examples": ["2025-11-19", "November 19, 2025"]
+    },
+    "pageFormat": {
+      "type": "object",
+      "description": "Page format configuration (alias for 'page')",
+      "properties": {
+        "size": {
+          "type": "string",
+          "description": "Page size",
+          "examples": ["letter", "a4"]
+        },
+        "margins": {
+          "type": "object",
+          "properties": {
+            "top": {"type": "string"},
+            "bottom": {"type": "string"},
+            "left": {"type": "string"},
+            "right": {"type": "string"},
+            "inside": {"type": "string"},
+            "outside": {"type": "string"}
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "My Book",
+      "authors": ["Author Name"],
+      "description": "A sample book",
+      "page": {
+        "size": "letter",
+        "margins": {
+          "top": "1in",
+          "bottom": "1in",
+          "left": "1in",
+          "right": "1in"
+        }
+      },
+      "styles": ["themes/classic.css"],
+      "files": ["chapter-01.md", "chapter-02.md"]
+    },
+    {
+      "title": "Technical Documentation",
+      "authors": ["Tech Team"],
+      "page": {
+        "size": "a4",
+        "margins": {
+          "top": "0.75in",
+          "bottom": "0.75in",
+          "inside": "1in",
+          "outside": "0.75in"
+        },
+        "bleed": "0.125in"
+      },
+      "styles": ["themes/modern.css", "custom.css"],
+      "extensions": []
+    },
+    {
+      "title": "TTRPG Adventure Module",
+      "authors": ["Game Master"],
+      "description": "A D&D 5e adventure for level 3-5 characters",
+      "page": {
+        "size": "letter",
+        "margins": {
+          "top": "0.75in",
+          "bottom": "0.75in",
+          "left": "1in",
+          "right": "1in"
+        }
+      },
+      "styles": ["themes/parchment.css", "ttrpg.css"],
+      "files": [
+        "overview.md",
+        "part-1.md",
+        "part-2.md",
+        "appendix.md"
+      ],
+      "extensions": ["ttrpg", "dimmCity"]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+title: My Book
+authors:
+  - Author Name
+
+# The book and the companion design guide both consume the same shared CSS,
+# so the guide always documents what the book actually ships. The stylesheet
+# path here matches the flattened asset destination (the `shared/` folder
+# is copied directly into the output dir).
+styles:
+  - ../guide/styles/main.css
+
+source:
+  assets:
+    - guide/styles/
+
+# Letter (8.5" x 11"). Match this to your design-guide manifest so the guide's
+# screenshots and dimensions reflect the book's real page geometry.
+page:
+  width: 612
+  height: 792
+  tolerance: 0.5

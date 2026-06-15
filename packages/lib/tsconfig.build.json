@@ -1,0 +1,21 @@
+{
+  // Declaration-emit-only config for shipping .d.ts alongside the bun-built
+  // dist/ JS. The runtime JS is produced by scripts/build.ts (Bun.build); this
+  // only generates the parallel type surface that `tsc`-based consumers (the
+  // CLI, the viewer, external TS plugin authors) resolve via the package
+  // "types" export condition. See scripts/build.ts.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  // Exclude the embedded asset tree: those files are imported only via
+  // `with { type: "file" }` (resolved to string paths, never as modules). The
+  // vendored paged.polyfill.js trips declaration emit (TS9005); its sibling
+  // paged.polyfill.d.ts supplies the opaque string type when import-reached.
+  "include": ["src"],
+  "exclude": ["dist", "tests", "scripts", "src/assets", "**/*.test.ts"]
+}

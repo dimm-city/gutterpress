@@ -1,0 +1,8 @@
+title: "Multi-chapter sync fixture"
+authors:
+  - "print-md tests"
+source:
+  files:
+    - 01-alpha.md
+    - 02-beta.md
+    - 03-gamma.md

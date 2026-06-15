@@ -1,0 +1,27 @@
+# Keep the build context small + reproducible. The builder reinstalls deps and
+# recompiles the binary, so none of the generated/heavy trees are needed.
+.git
+**/node_modules
+dist
+**/dist
+**/build
+**/.svelte-kit
+packages/viewer/electron-dist
+
+# Big sample content + scratch output — the image takes projects via a mount.
+examples
+packages/cli/tests
+.reviews
+.tmp
+.trash
+_site
+**/*.pdf
+**/*.AppImage
+**/*.dmg
+**/*-win.zip
+
+# Local tooling noise
+.github
+!.github/README.npm.md
+.vscode
+*.log

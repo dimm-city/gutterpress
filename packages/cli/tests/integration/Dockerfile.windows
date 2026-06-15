@@ -1,0 +1,20 @@
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
+
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+RUN [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+RUN $gitUrl = 'https://github.com/git-for-windows/git/releases/download/v2.42.0.windows.2/Git-2.42.0.2-64-bit.exe'; \
+    Invoke-WebRequest -Uri $gitUrl -OutFile 'git-installer.exe'; \
+    Start-Process -Wait -FilePath 'git-installer.exe' -ArgumentList '/VERYSILENT','/NORESTART','/NOCANCEL','/SP-','/COMPONENTS=icons,ext\reg\shellhere,assoc,assoc_sh'; \
+    Remove-Item 'git-installer.exe' -Force
+
+ENV PAGEDMD_TEST=true
+
+WORKDIR C:\pagedmd
+
+COPY . .
+
+RUN New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE 'Desktop') | Out-Null
+
+CMD ["powershell", "-ExecutionPolicy", "Bypass", "-File", "C:\\pagedmd\\tests\\integration\\run-install-test.ps1"]

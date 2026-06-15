@@ -1,0 +1,471 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 1.2.3, or 1.2.3-beta.1 for a prerelease). Stable releases must be dispatched from the default branch; prerelease versions (with a '-') may ALSO be dispatched from a release/* branch. Bumps package.json, builds all artifacts, verifies on Windows, then creates a GitHub release."
+        required: true
+        type: string
+      skip_npm_publish:
+        description: "Skip publishing to npm. Default false — npm publishes via OIDC trusted publishing. Set true only to intentionally hold back the npm release."
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PUPPETEER_SKIP_DOWNLOAD: 'true'
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # GitHub App client id for the device-flow auth (ADR 0006 D1). Public by
+  # design (not a secret). The viewer's electron-vite define bakes it into the
+  # packaged main process; the lib also carries it as an in-code default, so
+  # this env override only matters if the registration is ever rotated.
+  PRINT_MD_GITHUB_CLIENT_ID: ${{ vars.PRINT_MD_GITHUB_CLIENT_ID }}
+
+jobs:
+  # ── 1. Gate ────────────────────────────────────────────────────────────────
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      # Test the branch the release is dispatched from (default branch for a
+      # stable release, or a release/* branch for a prerelease).
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run tests
+        run: bun --filter '*' test
+
+  # ── 2. Version bump & tag ─────────────────────────────────────────────────
+  version:
+    name: Bump Version & Tag
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      # Stable releases come from the default branch. PRERELEASE versions (the
+      # version string contains a '-', e.g. 0.4.0-beta.1) may also be cut from a
+      # release/* branch, so a release line can ship betas to testers before it
+      # merges to the default branch. Anything else is rejected.
+      - name: Validate dispatch branch and version
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          DEFAULT="${{ github.event.repository.default_branch }}"
+          VERSION="${{ inputs.version }}"
+          if [ "$BRANCH" = "$DEFAULT" ]; then
+            echo "Dispatched from default branch ($BRANCH)."
+          elif [[ "$BRANCH" == release/* ]] && echo "$VERSION" | grep -qE '-'; then
+            echo "Dispatched from release branch ($BRANCH) with prerelease version ($VERSION)."
+          else
+            echo "::error::Releases must be dispatched from $DEFAULT, or from a release/* branch with a prerelease version (e.g. 0.4.0-beta.1). Got branch=$BRANCH version=$VERSION"
+            exit 1
+          fi
+
+      # Check out (and later push the bump commit + tag to) the branch the
+      # release was dispatched from — main for stable, release/* for a beta.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Bump version in package.json
+        run: |
+          VERSION="${{ inputs.version }}"
+          VERSION="$VERSION" node -e "
+            const fs = require('fs');
+            for (const pkg of ['packages/cli/package.json', 'packages/lib/package.json', 'packages/viewer/package.json']) {
+              const p = JSON.parse(fs.readFileSync(pkg, 'utf8'));
+              p.version = process.env.VERSION;
+              fs.writeFileSync(pkg, JSON.stringify(p, null, 2) + '\n');
+            }
+          "
+
+      - name: Commit and tag
+        id: tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages/cli/package.json packages/lib/package.json packages/viewer/package.json
+
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: bump version to ${{ inputs.version }}"
+            git push
+          fi
+
+          if git rev-parse -q --verify "refs/tags/v${{ inputs.version }}" >/dev/null; then
+            git tag -d "v${{ inputs.version }}"
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/v${{ inputs.version }}" >/dev/null; then
+            git push origin ":refs/tags/v${{ inputs.version }}"
+          fi
+
+          git tag "v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+          echo "tag=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+
+          # A version with a '-' (e.g. 0.4.0-beta.1) is a prerelease: it marks
+          # the GitHub release as a pre-release and publishes npm under `next`,
+          # not `latest`.
+          if echo "${{ inputs.version }}" | grep -qE '-'; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── 3. Build all artifacts in parallel ────────────────────────────────────
+  #
+  # All three jobs fan out from `version` simultaneously:
+  #   build-cli          — 5 CLI binaries via Bun cross-compile (ubuntu)
+  #   build-viewer-linux — AppImage + Windows zip (ubuntu)
+  #   build-viewer-mac   — macOS DMG (macos — cannot cross-compile)
+  #
+  # All artifacts are uploaded as GitHub Actions artifacts and assembled
+  # into the GitHub Release in one shot by the `github-release` job.
+
+  build-cli:
+    name: CLI / ${{ matrix.artifact }}
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: bun-linux-x64
+            artifact: print-md-cli-linux-x64
+          - target: bun-linux-arm64
+            artifact: print-md-cli-linux-arm64
+          - target: bun-darwin-x64
+            artifact: print-md-cli-macos-x64
+          - target: bun-darwin-arm64
+            artifact: print-md-cli-macos-arm64
+          - target: bun-windows-x64
+            artifact: print-md-cli-windows-x64.exe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build standalone binary
+        run: bun --cwd packages/cli scripts/compile.ts ${{ matrix.target }} ../../${{ matrix.artifact }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  build-viewer-linux:
+    name: Viewer / Linux AppImage
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build lib dist
+        run: bun run build
+        working-directory: packages/lib
+
+      # IMPORTANT: package the viewer with `npm run`, never `bun run`. The
+      # `dist:*` scripts invoke electron-builder, which spawns worker processes
+      # via `process.execPath`; under Bun that points at the Bun ELF binary and
+      # the workers fail (Node can't parse it). Keep electron-builder on
+      # node/npm. (See electron-builder.yml `npmRebuild: false` for the related
+      # workspace:* guard.)
+      - name: Build Linux AppImage
+        working-directory: packages/viewer
+        run: npm run dist:linux
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewer-linux
+          path: packages/viewer/dist/*.AppImage
+          if-no-files-found: error
+
+  build-viewer-windows:
+    name: Viewer / Windows zip
+    needs: version
+    # electron-builder handles Electron download, exe rename, icon embedding, zip.
+    # No afterPack hook: the lib ships as a normal node_modules dependency that
+    # electron-builder walks automatically (see electron-builder.yml).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build lib dist
+        run: bun run build
+        working-directory: packages/lib
+
+      - name: Build Windows zip
+        working-directory: packages/viewer
+        run: npm run dist:win
+
+      - name: Upload Windows zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewer-windows
+          # electron-builder default for `--win zip` is
+          # ${productName}-${version}-win.zip
+          path: packages/viewer/dist/*-win.zip
+          if-no-files-found: error
+
+  build-viewer-mac:
+    name: Viewer / macOS DMG
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # No version patch needed — this job checks out the tag the `version`
+      # job already bumped and committed (ref: needs.version.outputs.tag).
+
+      - name: Install Xcode command-line tools
+        run: xcode-select --install || true
+
+      - name: Build lib dist
+        run: bun run build
+        working-directory: packages/lib
+
+      - name: Build macOS DMG
+        working-directory: packages/viewer
+        run: npm run dist:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewer-mac
+          path: packages/viewer/dist/*.dmg
+          if-no-files-found: error
+
+  # ── 4. Publish to npm (skippable) ─────────────────────────────────────────
+  publish-npm:
+    name: Publish to npm
+    needs: [version]
+    if: ${{ !inputs.skip_npm_publish }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build lib dist
+        run: bun run build
+        working-directory: packages/lib
+
+      # OIDC trusted publishing (no long-lived token) requires npm >= 11.5.1;
+      # node 20 ships npm 10.x, so update it. Provenance attestation is implied
+      # by trusted publishing but kept explicit below.
+      - name: Update npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Skip if already published
+        run: |
+          if npm view "@dimm-city/print-md@${{ inputs.version }}" version &>/dev/null; then
+            echo "Version ${{ inputs.version }} already published — skipping."
+            echo "ALREADY_PUBLISHED=true" >> "$GITHUB_ENV"
+          fi
+
+      # Pure OIDC trusted publishing — no NODE_AUTH_TOKEN. The id-token: write
+      # permission (above) lets npm mint a short-lived credential. Prerequisite:
+      # @dimm-city/print-md must be configured as a Trusted Publisher for this
+      # repo + workflow on npmjs.com (Settings → Trusted Publishers).
+      # Prereleases publish under the `next` dist-tag so `npm install
+      # @dimm-city/print-md` (which resolves `latest`) never picks up a beta.
+      - name: Publish to npm
+        if: ${{ env.ALREADY_PUBLISHED != 'true' }}
+        working-directory: packages/cli
+        run: |
+          if [ "${{ needs.version.outputs.prerelease }}" = "true" ]; then
+            npm publish --provenance --access public --tag next
+          else
+            npm publish --provenance --access public
+          fi
+
+  # ── 5b. Publish the CLI Docker image to GHCR ──────────────────────────────
+  # Builds the root Dockerfile (CLI bundle + Chromium/Ghostscript/qpdf) and
+  # pushes it to ghcr.io/<owner>/print-md. Tags the exact version always;
+  # `latest` only for stable releases (a version without a "-" prerelease tag).
+  publish-docker:
+    name: Publish Docker image
+    needs: [version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - name: Compute image tags
+        id: imgtags
+        run: |
+          REPO_LC="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          TAGS="$REPO_LC:${{ inputs.version }}"
+          # Stable (no "-" prerelease suffix) also updates :latest.
+          case "${{ inputs.version }}" in
+            *-*) ;;
+            *) TAGS="$TAGS"$'\n'"$REPO_LC:latest" ;;
+          esac
+          { echo "tags<<EOF"; printf '%s\n' "$TAGS"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push CLI image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.imgtags.outputs.tags }}
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── 6. Create release with ALL artifacts ──────────────────────────────────
+  #
+  # Waits for every build job before creating the release. Users see a complete
+  # release — no partial-artifact window.
+
+  github-release:
+    name: Create GitHub Release
+    needs:
+      - version
+      - build-cli
+      - build-viewer-linux
+      - build-viewer-windows
+      - build-viewer-mac
+      - publish-npm
+    if: |
+      always() &&
+      needs.version.result == 'success' &&
+      needs.build-cli.result == 'success' &&
+      needs.build-viewer-linux.result == 'success' &&
+      needs.build-viewer-windows.result == 'success' &&
+      needs.build-viewer-mac.result == 'success' &&
+      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - name: Download CLI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+          pattern: "print-md-*"
+
+      - name: Download viewer artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+          pattern: "viewer-*"
+
+      - name: Verify release assets were downloaded
+        run: |
+          if [ -z "$(ls -A dist)" ]; then
+            echo "No release assets were downloaded into dist/."
+            exit 1
+          fi
+
+      - name: Create GitHub release
+        run: |
+          TAG="${{ needs.version.outputs.tag }}"
+          REPO="${{ github.repository }}"
+
+          PRERELEASE_FLAG=""
+          if [ "${{ needs.version.outputs.prerelease }}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          # Delete any existing release for this tag (could be a stub left
+          # over from an earlier failed run). The tag itself is kept — the
+          # version job already pointed it at the current commit.
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Deleting existing release $TAG to recreate with current artifacts..."
+            gh release delete "$TAG" --yes --repo "$REPO"
+          fi
+
+          gh release create "$TAG" \
+            --repo "$REPO" \
+            --title "print-md $TAG" \
+            --generate-notes \
+            $PRERELEASE_FLAG \
+            dist/*
+        env:
+          GH_TOKEN: ${{ github.token }}

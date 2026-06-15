@@ -1,0 +1,58 @@
+{
+  "name": "@dimm-city/print-md-lib",
+  "version": "0.5.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./api": {
+      "types": "./dist/api/index.d.ts",
+      "bun": "./src/api/index.ts",
+      "default": "./dist/api/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "profiles/",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "dependencies": {
+    "chokidar": "^5.0.0",
+    "diff3": "0.0.3",
+    "glob": "^13.0.0",
+    "htmlhint": "^1.9.2",
+    "isomorphic-git": "^1.38.4",
+    "markdown-it": "^14.1.0",
+    "markdown-it-attrs": "^4.3.0",
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-source-map": "^0.1.1",
+    "markdownlint": "^0.40.0",
+    "pagedjs": "^0.4.3",
+    "pdf-lib": "^1.17.1",
+    "postcss": "^8.5.15",
+    "puppeteer-core": "^25.0.4",
+    "unpdf": "^1.6.2",
+    "ws": "^8.18.2",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5"
+  }
+}

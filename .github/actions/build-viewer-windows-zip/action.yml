@@ -1,0 +1,22 @@
+name: Build viewer Windows zip
+description: >
+  Set up Node, install workspace deps, build the lib dist, and package the
+  Electron viewer into packages/viewer/dist/*-win.zip. Run after the Bun
+  setup action (./.github/actions/bun) so `bun` is on PATH.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+    - name: Install workspace deps
+      shell: bash
+      run: bun install --frozen-lockfile
+    - name: Build lib dist
+      shell: bash
+      working-directory: packages/lib
+      run: bun run build
+    - name: Package viewer (dist:win)
+      shell: bash
+      working-directory: packages/viewer
+      run: npm run dist:win

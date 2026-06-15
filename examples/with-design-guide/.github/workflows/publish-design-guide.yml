@@ -1,0 +1,87 @@
+# Publish the companion design guide as a static site.
+#
+# Triggers on changes under design-guide/ or shared/ — the two paths whose
+# content the guide depends on. Builds the static site with
+# `print-md build --format html`, which produces a directory containing the
+# print-md viewer (index.html) wrapping the rendered book HTML
+# (book.html), the viewer scripts and styles, and the user assets.
+#
+# GitHub Pages repo settings:
+#   Settings → Pages → Source: GitHub Actions
+#
+# Azure Static Web Apps:
+#   Create a Static Web App, then add
+#   AZURE_STATIC_WEB_APPS_API_TOKEN
+#   as a repository secret and uncomment the Azure step below.
+#
+# Drop this file into your book repo as
+#   .github/workflows/publish-design-guide.yml
+# and adjust the `working-directory` / paths if your design guide lives
+# somewhere other than ./design-guide.
+
+name: Publish design guide
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "design-guide/**"
+      - "shared/**"
+      - ".github/workflows/publish-design-guide.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install print-md (and any plugins)
+        run: bun add -d @dimm-city/print-md
+
+      - name: Build the design guide as a static site
+        # Produces ./design-guide-site/ containing index.html (the print-md
+        # viewer chrome), book.html, preview/, and the user assets.
+        run: bunx print-md build ./design-guide --format html --out ./design-guide-site
+
+      # Uncomment this step to deploy the prebuilt static site to Azure
+      # Static Web Apps instead of (or alongside) GitHub Pages.
+      #
+      # - name: Deploy to Azure Static Web Apps
+      #   uses: Azure/static-web-apps-deploy@v1
+      #   with:
+      #     action: upload
+      #     app_location: ./design-guide-site
+      #     output_location: ""
+      #     skip_app_build: true
+      #     azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./design-guide-site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

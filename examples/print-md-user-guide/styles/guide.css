@@ -1,0 +1,799 @@
+/* =============================================================================
+   PRINT-MD USER GUIDE — Stylesheet  (guide.css)
+   ─────────────────────────────────────────────────────────────────────────────
+   Single stylesheet for the Print-md User Guide example project.
+   Demonstrates print-md CSS capabilities: tokens, page rules, typography,
+   components, and layout utilities.
+
+   § 1  BRAND TOKENS       ← Colors, fonts, type scale.
+   § 2  PAGE SETUP         ← Page geometry, running headers, folios.
+   § 3  BASE TYPOGRAPHY    ← Headings, body, links, code, tables.
+   § 4  COMPONENTS         ← Callouts, sidebars, pull quotes, spec blocks.
+   § 5  LAYOUT UTILITIES   ← Columns, floats, page breaks, cover page.
+   § 6  GUIDE CHROME       ← Visual helpers specific to this guide.
+   § 7  CHAPTER OVERRIDES  ← Chapter-scoped rules via chapter IDs.
+   § 8  BOOK LAYER         ← Project-specific customizations.
+   ============================================================================= */
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 1  BRAND TOKENS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Palette ────────────────────────────────────────────────── */
+  --color-ink:         #1c2333;   /* primary body text              */
+  --color-ink-muted:   #4a5568;   /* captions, secondary labels     */
+  --color-ink-faint:   #a0aec0;   /* rules, placeholders            */
+  --color-accent:      #2b6cb0;   /* headings, links, key accents   */
+  --color-accent-alt:  #c05621;   /* highlights, warnings, CTAs     */
+  --color-accent-tip:  #276749;   /* tip accent                     */
+  --color-paper:       #ffffff;   /* page background                */
+  --color-tint:        #ebf4ff;   /* callout / sidebar fills        */
+  --color-tint-warn:   #fffbeb;   /* warning callout fill           */
+  --color-tint-tip:    #f0fff4;   /* tip callout fill               */
+  --color-tint-danger: #fff5f5;   /* danger callout fill            */
+  --color-rule:        #cbd5e0;   /* borders, horizontal rules      */
+
+  /* ── Typography ─────────────────────────────────────────────── */
+  --font-body:    "Georgia", "Times New Roman", serif;
+  --font-display: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+  --font-mono:    "Menlo", "Consolas", "Courier New", monospace;
+
+  /* ── Type Scale ─────────────────────────────────────────────── */
+  --fs-display:  30pt;
+  --fs-h1:       22pt;
+  --fs-h2:       15pt;
+  --fs-h3:       12pt;
+  --fs-h4:       10.5pt;
+  --fs-body:     10.5pt;
+  --fs-small:     9pt;
+  --fs-micro:     7.5pt;
+
+  /* ── Border shortcuts ───────────────────────────────────────── */
+  --border-thin:   1pt solid var(--color-rule);
+  --border-accent: 3pt solid var(--color-accent);
+  --border-alt:    3pt solid var(--color-accent-alt);
+  --border-tip:    3pt solid var(--color-accent-tip);
+  --border-danger: 3pt solid #e53e3e;
+  --radius-sm:     2pt;
+  --radius-md:     4pt;
+
+  /* ── Spacing scale ──────────────────────────────────────────── */
+  --space-xs:  0.35em;
+  --space-sm:  0.65em;
+  --space-md:  1em;
+  --space-lg:  1.5em;
+  --space-xl:  2em;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 2  PAGE SETUP
+   ───────────────────────────────────────────────────────────────────────────── */
+
+h1 { string-set: chapter-title content(); }
+
+@page {
+  size: 8.5in 11in;
+  margin: 0.875in 0.875in 1in;
+
+  @top-center {
+    content: string(chapter-title);
+    font-family: var(--font-display);
+    font-size: var(--fs-micro);
+    color: var(--color-ink-faint);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding-bottom: 4pt;
+    border-bottom: var(--border-thin);
+  }
+
+  @bottom-center {
+    content: counter(page);
+    font-family: var(--font-display);
+    font-size: var(--fs-micro);
+    color: var(--color-ink-muted);
+  }
+}
+
+@page :left {
+  margin-left: 1in;
+  margin-right: 0.75in;
+  @top-left {
+    content: string(chapter-title);
+    font-family: var(--font-display);
+    font-size: var(--fs-micro);
+    color: var(--color-ink-faint);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding-bottom: 4pt;
+    border-bottom: 1pt solid var(--color-rule);
+  }
+  @top-center    { content: none; }
+  @bottom-left   {
+    content: counter(page);
+    font-family: var(--font-display);
+    font-size: var(--fs-micro);
+    font-weight: 600;
+    color: var(--color-ink-muted);
+  }
+  @bottom-center { content: none; }
+  @bottom-right  { content: none; }
+}
+
+@page :right {
+  margin-left: 0.75in;
+  margin-right: 1in;
+  @top-right {
+    content: string(chapter-title);
+    font-family: var(--font-display);
+    font-size: var(--fs-micro);
+    color: var(--color-ink-faint);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding-bottom: 4pt;
+    border-bottom: 1pt solid var(--color-rule);
+  }
+  @top-center    { content: none; }
+  @bottom-right  {
+    content: counter(page);
+    font-family: var(--font-display);
+    font-size: var(--fs-micro);
+    font-weight: 600;
+    color: var(--color-ink-muted);
+  }
+  @bottom-center { content: none; }
+  @bottom-left   { content: none; }
+}
+
+@page chapter {
+  margin-top: 2.5in;
+  @top-left   { content: none; border: none; padding: 0; }
+  @top-center { content: none; border: none; padding: 0; }
+  @top-right  { content: none; border: none; padding: 0; }
+}
+
+@page cover {
+  margin: 0;
+  @top-left   { content: none; }
+  @top-center { content: none; }
+  @top-right  { content: none; }
+  @bottom-left   { content: none; }
+  @bottom-center { content: none; }
+  @bottom-right  { content: none; }
+}
+
+@page toc {
+  @top-left   { content: none; border: none; padding: 0; }
+  @top-center { content: none; border: none; padding: 0; }
+  @top-right  { content: none; border: none; padding: 0; }
+}
+
+@page :blank {
+  @top-left   { content: none; }
+  @top-center { content: none; }
+  @top-right  { content: none; }
+  @bottom-left   { content: none; }
+  @bottom-center { content: none; }
+  @bottom-right  { content: none; }
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 3  BASE TYPOGRAPHY
+   ───────────────────────────────────────────────────────────────────────────── */
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--color-ink);
+  background-color: var(--color-paper);
+  margin: 0;
+  hyphens: auto;
+  orphans: 3;
+  widows: 3;
+  counter-reset: chapter;
+}
+
+.pagedjs_sheet {
+  background-color: var(--color-paper);
+}
+
+h1 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 700;
+  color: var(--color-accent);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.5em;
+  padding-top: 0.5in;
+  break-before: page;
+  page: chapter;
+  counter-increment: chapter;
+}
+
+h1::before {
+  content: counter(chapter, decimal-leading-zero);
+  display: block;
+  font-family: var(--font-display);
+  font-size: 64pt;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-rule);
+  letter-spacing: -0.04em;
+  margin: 0 0 0.15em;
+  padding-bottom: 0.15em;
+  border-bottom: 3pt solid var(--color-accent);
+}
+
+h2 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 600;
+  color: var(--color-ink);
+  border-bottom: 1.5pt solid var(--color-accent);
+  padding-bottom: 0.2em;
+  margin: 1.5em 0 0.5em;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+h3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 600;
+  color: var(--color-ink);
+  margin: 1.2em 0 0.3em;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+h4 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h4);
+  font-weight: 700;
+  color: var(--color-ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 1em 0 0.3em;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+p {
+  margin: 0 0 0.6em;
+  text-align: justify;
+}
+
+h1 + p, h2 + p, h3 + p, h4 + p { text-indent: 0; }
+
+h2 + p, h2 + ul, h2 + ol, h2 + pre, h2 + blockquote,
+h3 + p, h3 + ul, h3 + ol, h3 + pre,
+h4 + p, h4 + ul, h4 + ol {
+  break-before: avoid;
+  page-break-before: avoid;
+}
+
+/* Keep a short intro paragraph with the code block it introduces */
+p + pre {
+  break-before: avoid;
+  page-break-before: avoid;
+}
+
+strong { font-weight: 700; }
+em     { font-style: italic; }
+
+a { color: var(--color-accent); text-decoration: none; }
+/* Only print URL for external https links — suppress relative paths, fragments, localhost */
+a[href^="https://"]::after {
+  content: " (" attr(href) ")";
+  font-size: 7pt;
+  color: var(--color-ink-faint);
+}
+a[href^="http://"]::after {
+  content: " (" attr(href) ")";
+  font-size: 7pt;
+  color: var(--color-ink-faint);
+}
+a[href^="http://localhost"]::after,
+a[href^="#"]::after,
+a.download::after { content: none; }
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.87em;
+  background: var(--color-tint);
+  color: var(--color-accent);
+  padding: 0.05em 0.28em;
+  border-radius: var(--radius-sm);
+}
+
+pre {
+  background: #f7fafc;
+  border-left: var(--border-accent);
+  padding: 0.7em 0.9em;
+  margin: 0.7em 0 0.75em;
+  /* allow code blocks to flow across pages — prevents large gaps on content-heavy pages */
+  overflow: hidden;
+}
+
+pre code {
+  background: transparent;
+  color: var(--color-ink);
+  padding: 0;
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+
+blockquote {
+  border-left: var(--border-alt);
+  background: var(--color-tint-warn);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin: 0.9em 0;
+  padding: 0.45em 0.7em;
+  color: var(--color-ink-muted);
+  font-style: italic;
+}
+
+blockquote p { text-align: left; margin: 0 0 0.35em; }
+blockquote p:last-child { margin-bottom: 0; }
+
+ul, ol {
+  margin: 0 0 0.8em 1.35em;
+  padding: 0;
+}
+
+li {
+  margin-bottom: 0.2em;
+  line-height: 1.5;
+}
+
+li p { margin: 0; }
+
+hr {
+  border: none;
+  border-top: var(--border-thin);
+  margin: 1.8em 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0 1.1em;
+  font-size: var(--fs-small);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+thead { background-color: var(--color-accent); color: #fff; }
+
+th {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-align: left;
+  padding: 4pt 7pt;
+  font-size: var(--fs-small);
+}
+
+td {
+  padding: 3.5pt 10pt 3.5pt 7pt;
+  border-bottom: var(--border-thin);
+  vertical-align: top;
+}
+
+tr:nth-child(even) td { background-color: #f7fafc; }
+
+img { max-width: 100%; display: block; }
+
+figure {
+  margin: 0.9em 0 1.4em;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+figcaption {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  color: var(--color-ink-muted);
+  margin-top: 0.35em;
+  line-height: 1.35;
+  font-style: italic;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 4  COMPONENTS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Callout base ── */
+.callout,
+.callout-note,
+.callout-warning,
+.callout-caution,
+.callout-tip,
+.callout-danger {
+  padding: 0.6em 0.85em;
+  margin: 0.9em 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.callout, .callout-note {
+  border-left: var(--border-accent);
+  background: var(--color-tint);
+}
+
+.callout-warning, .callout-caution {
+  border-left: var(--border-alt);
+  background: var(--color-tint-warn);
+}
+
+.callout-tip {
+  border-left: var(--border-tip);
+  background: var(--color-tint-tip);
+}
+
+.callout-danger {
+  border-left: var(--border-danger);
+  background: var(--color-tint-danger);
+}
+
+.callout-label {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-accent);
+  margin-bottom: 0.3em;
+}
+
+.callout-warning .callout-label,
+.callout-caution .callout-label { color: var(--color-accent-alt); }
+.callout-tip .callout-label     { color: var(--color-accent-tip); }
+.callout-danger .callout-label  { color: #c53030; }
+
+.callout p:last-child,
+.callout-note p:last-child,
+.callout-warning p:last-child,
+.callout-caution p:last-child,
+.callout-tip p:last-child,
+.callout-danger p:last-child { margin-bottom: 0; }
+
+/* ── Sidebar ── */
+.sidebar {
+  float: right;
+  width: 38%;
+  margin: 0 0 0.8em 1em;
+  padding: 0.6em 0.85em;
+  background: var(--color-tint);
+  border-left: var(--border-accent);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.sidebar p:last-child { margin-bottom: 0; }
+
+/* ── Pull quote ── */
+.pull-quote {
+  border-top: 2pt solid var(--color-accent);
+  border-bottom: 2pt solid var(--color-accent);
+  padding: 0.75em 0;
+  margin: 1.4em 0.4in;
+  text-align: center;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.pull-quote p {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-style: italic;
+  color: var(--color-ink-muted);
+  line-height: 1.35;
+  text-align: center;
+  margin: 0;
+}
+
+/* ── Lede / intro paragraph ── */
+.lede, .intro {
+  font-family: var(--font-display);
+  font-size: 12pt;
+  line-height: 1.5;
+  color: var(--color-ink-muted);
+  font-style: italic;
+  margin: 0 0 1.1em;
+  break-before: avoid;
+  page-break-before: avoid;
+}
+
+/* ── Spec block ── */
+.spec-block {
+  border: var(--border-thin);
+  border-top: 2.5pt solid var(--color-accent);
+  padding: 0.6em 0.85em;
+  margin: 0.75em 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ── Numbered steps ── */
+.steps {
+  list-style: none;
+  margin: 0.75em 0 1.1em;
+  padding: 0;
+  counter-reset: steps;
+}
+
+.steps li {
+  display: flex;
+  gap: 0.7em;
+  align-items: baseline;
+  margin-bottom: 0.45em;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  counter-increment: steps;
+}
+
+.steps li::before {
+  content: counter(steps, decimal-leading-zero);
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--color-accent);
+  min-width: 2em;
+  flex-shrink: 0;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 5  LAYOUT UTILITIES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.two-column {
+  columns: 2;
+  column-gap: 0.4in;
+  column-rule: var(--border-thin);
+}
+
+.three-column {
+  columns: 3;
+  column-gap: 0.3in;
+  column-rule: var(--border-thin);
+}
+
+.no-break     { break-inside: avoid; page-break-inside: avoid; }
+.break-before { break-before: page;  page-break-before: always; }
+.keep-next    { break-after: avoid;  page-break-after: avoid; }
+
+.img-float-right,
+.img-float-left { width: 44%; }
+
+.img-float-right { float: right; margin: 0 0 0.8em 1em; }
+.img-float-left  { float: left;  margin: 0 1em 0.8em 0; }
+
+/* ── Cover page ── */
+.cover-page {
+  page: cover;
+  height: 9in;
+  background-color: var(--color-accent);
+  padding: 1.5in 1in 1.25in;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
+}
+
+.cover-top { display: block; }
+
+.cover-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.25em;
+  break-before: auto;
+  page: cover;
+}
+
+.cover-subtitle {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 300;
+  color: rgba(255,255,255,0.75);
+  margin: 0 0 1.25em;
+}
+
+.cover-rule {
+  width: 2in;
+  height: 2.5pt;
+  background: var(--color-accent-alt);
+  margin: 0;
+}
+
+.cover-bottom { display: block; }
+
+.cover-version {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  color: rgba(255,255,255,0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0 0 0.6em;
+}
+
+.cover-author {
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* ── Grid: two independent columns ── */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4in;
+  align-items: start;
+  margin: 0.75em 0 1.1em;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 6  GUIDE CHROME
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Spec label ── */
+.spec-label {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  color: var(--color-ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-bottom: 1pt dashed var(--color-rule);
+  padding-bottom: 2pt;
+  margin: 1.2em 0 0.4em;
+}
+
+/* ── Example frame ── */
+.example {
+  border: var(--border-thin);
+  border-radius: var(--radius-md);
+  padding: 0.9em;
+  margin: 0.55em 0 1em;
+  background: #fff;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.example > *:last-child { margin-bottom: 0; }
+
+/* ── Syntax table (for quick reference tables) ── */
+.syntax-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-small);
+  margin: 0.4em 0 1.1em;
+}
+
+.syntax-table th {
+  background: var(--color-ink);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 3.5pt 7pt;
+  text-align: left;
+}
+
+.syntax-table td {
+  padding: 3.5pt 7pt;
+  border-bottom: var(--border-thin);
+  vertical-align: middle;
+}
+
+.syntax-table td:first-child {
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+
+.syntax-table tr:nth-child(even) td { background: #f7fafc; }
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 7  CHAPTER OVERRIDES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Cover: no chapter counter before h1 ── */
+.cover-title::before,
+#ch-cover h1::before { content: none; }
+
+/* ── TOC: no forced page break, no counter ── */
+#ch-toc h1 {
+  break-before: auto;
+  page-break-before: auto;
+  page: toc;
+}
+
+#ch-toc h1::before { content: none; }
+
+/* ── TOC: chapter entry links ── */
+#ch-toc ol { margin-left: 0; padding: 0; list-style: none; margin-bottom: 1.5em; }
+
+#ch-toc ol li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  border-bottom: 1pt dotted var(--color-rule);
+  padding: 0.45em 0;
+  margin-bottom: 0;
+  font-family: var(--font-display);
+  font-size: 11pt;
+}
+
+#ch-toc ol li::before {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--color-accent);
+  min-width: 1.8em;
+}
+
+#ch-toc ol li:nth-child(1)::before { content: "01"; }
+#ch-toc ol li:nth-child(2)::before { content: "02"; }
+#ch-toc ol li:nth-child(3)::before { content: "03"; }
+#ch-toc ol li:nth-child(4)::before { content: "04"; }
+#ch-toc ol li:nth-child(5)::before { content: "05"; }
+#ch-toc ol li:nth-child(6)::before { content: "06"; }
+#ch-toc ol li:nth-child(7)::before { content: "07"; }
+#ch-toc ol li:nth-child(8)::before { content: "08"; }
+
+/* ── Validation chapter: keep the check-category tables together ── */
+#ch-validation table {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ── System setup chapter: compact spacing for command tables ── */
+#ch-system pre {
+  margin: 0.5em 0 0.75em;
+}
+
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 8  BOOK LAYER
+   Add project-specific customizations here.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Quick-reference command boxes throughout the guide */
+.cmd-ref {
+  background: #f7fafc;
+  border: var(--border-thin);
+  border-left: var(--border-accent);
+  padding: 0.5em 0.85em;
+  margin: 0.75em 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.cmd-ref p { margin: 0.15em 0; text-align: left; }

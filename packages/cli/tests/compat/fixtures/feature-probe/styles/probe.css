@@ -1,0 +1,64 @@
+/* Cross-browser feature probe stylesheet (issue #46).
+ *
+ * Each rule exercises one Paged.js feature flagged as suspect outside
+ * Chromium. The audit script (audit-probe.mjs) measures the rendered DOM, so
+ * values here are intentionally distinctive / easy to assert on.
+ */
+
+:root {
+  /* Custom properties consumed INSIDE @page margin boxes — suspect feature. */
+  --probe-margin-font: Georgia, serif;
+  --probe-margin-color: rgb(170, 34, 34);
+  --probe-margin-size: 9pt;
+}
+
+/* string-set / string() running header — suspect feature. */
+h1 {
+  string-set: probe-title content();
+  break-before: page;
+}
+
+@page {
+  size: 8.5in 11in;
+  margin: 0.875in;
+
+  @top-center {
+    content: string(probe-title);
+    font-family: var(--probe-margin-font);
+    font-size: var(--probe-margin-size);
+    color: var(--probe-margin-color);
+  }
+
+  @bottom-center {
+    content: counter(page);
+  }
+
+  /* position: running() target slot — suspect feature. */
+  @bottom-left {
+    content: element(probe-running);
+  }
+}
+
+/* Named page — suspect feature. Distinctive margin-top so the audit can
+ * measure whether the rule applied. */
+@page probe-named {
+  margin-top: 2.5in;
+}
+
+.page.probe-named {
+  page: probe-named;
+}
+
+/* position: running() — pulls the sentinel paragraph out of the flow and into
+ * the @bottom-left margin box. Not used by any shipped example, so the probe
+ * fixture covers it. */
+.rh-probe {
+  position: running(probe-running);
+  font-size: 8pt;
+}
+
+/* Multi-column section — suspect feature. */
+.section.probe-columns {
+  columns: 2;
+  column-gap: 0.4in;
+}

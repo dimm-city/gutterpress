@@ -1,0 +1,32 @@
+title: "Your Book Title — Design Guide"
+authors:
+  - Your Name
+
+# The single stylesheet used by both this design guide and the book.
+# Edit § 1 BRAND TOKENS in styles/guide.css to apply your branding.
+styles:
+  - styles/guide.css
+
+source:
+  files:
+    - 00-toc.md
+    - 00-overview.md
+    - 01-typography.md
+    - 02-palette.md
+    - 03-components.md
+    - 04-page-templates.md
+    - 05-layout.md
+    - 06-markdown-reference.md
+    - 101-publishing.md
+  assets:
+    - styles
+
+# Page geometry — change here to match your book's trim size.
+# Values are in points (72pt = 1in). Common sizes:
+#   US Letter:       612 × 792  (8.5 × 11 in)
+#   Trade 6×9:       432 × 648  (6 × 9 in)
+#   Digest 5.5×8.5:  396 × 612  (5.5 × 8.5 in)
+page:
+  width: 612
+  height: 792
+  tolerance: 0.5

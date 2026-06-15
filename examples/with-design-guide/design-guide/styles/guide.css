@@ -1,0 +1,1008 @@
+/* =============================================================================
+   YOUR BOOK — Design Guide Stylesheet  (guide.css)
+   ─────────────────────────────────────────────────────────────────────────────
+   This single file powers both your book PDF and the published design guide.
+   It is structured in eight sections — only § 1 and § 8 need to be edited
+   for most projects. The rest is a battle-tested print system you inherit.
+
+   § 1  BRAND TOKENS       ← Start here. Change colors, fonts, type scale.
+   § 2  PAGE SETUP         ← Page geometry, running headers, folios.
+   § 3  BASE TYPOGRAPHY    ← Headings, body, links, code, tables.
+   § 4  COMPONENTS         ← Callouts, sidebars, pull quotes, spec blocks.
+   § 5  LAYOUT UTILITIES   ← Columns, floats, page breaks, cover page.
+   § 6  DESIGN GUIDE CHROME← Swatches, specimen labels, example frames.
+   § 7  CHAPTER OVERRIDES  ← Chapter-scoped rules via @chapter markers.
+   § 8  YOUR BOOK LAYER    ← Add your book-specific rules here.
+
+   Quick start:
+     1. Edit § 1 BRAND TOKENS — colors, fonts, type scale.
+     2. Run `print-md preview design-guide` to see changes live.
+     3. Add book-specific rules to § 8 YOUR BOOK LAYER.
+     4. Commit — book and guide stay in sync automatically.
+   ============================================================================= */
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 0  CUSTOM FONTS   (optional — delete if using system fonts only)
+   ───────────────────────────────────────────────────────────────────────────── */
+/* Uncomment and edit to load custom local fonts. Place font files in a
+   fonts/ directory alongside this stylesheet and update the urls below.
+   Repeat the @font-face block once per weight/style combination.
+
+@font-face {
+  font-family: "YourBodyFont";
+  src: url("../fonts/your-body-font-regular.woff2") format("woff2"),
+       url("../fonts/your-body-font-regular.ttf")  format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+
+@font-face {
+  font-family: "YourDisplayFont";
+  src: url("../fonts/your-display-font-bold.woff2") format("woff2"),
+       url("../fonts/your-display-font-bold.ttf")  format("truetype");
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+
+   Then update --font-body and --font-display in § 1 BRAND TOKENS below.
+*/
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 1  BRAND TOKENS   ←  CUSTOMIZE HERE
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Palette ────────────────────────────────────────────────── */
+  --color-ink:         #1a1a2e;   /* primary body text              */
+  --color-ink-muted:   #4a4a66;   /* captions, secondary labels     */
+  --color-ink-faint:   #9a9ab8;   /* rules, placeholders            */
+  --color-accent:      #1b4f8a;   /* headings, links, key accents   */
+  --color-accent-alt:  #c0532a;   /* highlights, warnings, CTAs     */
+  --color-paper:       #ffffff;   /* page background                */
+  --color-tint:        #f0f4fa;   /* callout / sidebar fills        */
+  --color-tint-warn:   #fef6ec;   /* warning callout fill           */
+  --color-tint-tip:    #edf7f0;   /* tip callout fill               */
+  --color-rule:        #d0d4e8;   /* borders, horizontal rules      */
+
+  /* ── Typography ─────────────────────────────────────────────── */
+  --font-body:    "Georgia", "Times New Roman", serif;
+  --font-display: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+  --font-mono:    "Menlo", "Consolas", "Courier New", monospace;
+
+  /* ── Type Scale ─────────────────────────────────────────────── */
+  --fs-display:  32pt;
+  --fs-h1:       24pt;
+  --fs-h2:       16pt;
+  --fs-h3:       13pt;
+  --fs-h4:       11pt;
+  --fs-body:     11pt;
+  --fs-small:     9pt;
+  --fs-micro:     8pt;
+
+  /* ── Border shortcuts ───────────────────────────────────────── */
+  --border-thin:   1pt solid var(--color-rule);
+  --border-accent: 3pt solid var(--color-accent);
+  --border-alt:    3pt solid var(--color-accent-alt);
+  --border-tip:    3pt solid #2a8a56;
+  --radius-sm:     3pt;
+  --radius-md:     5pt;
+
+  /* ── Spacing scale ──────────────────────────────────────────── */
+  --space-xs:  0.35em;  /* tight: callout label gap, chip margin  */
+  --space-sm:  0.65em;  /* standard: callout padding, list gap    */
+  --space-md:  1em;     /* paragraph: callout/spec margins        */
+  --space-lg:  1.5em;   /* generous: pull quote, section margin   */
+  --space-xl:  2em;     /* wide: hr margin, section separation    */
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 2  PAGE SETUP   — geometry, running headers, folios
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* string-set captures h1 text into a named string for @page margin boxes below.
+   Paged.js reads this before pagination, so it's always the current chapter. */
+h1 { string-set: chapter-title content(); }
+
+/* ── Default body pages ── */
+@page {
+  size: 8.5in 11in;
+  margin: 0.875in 0.875in 1in;
+
+  @top-center {
+    content: string(chapter-title);
+    font-family: var(--font-display);
+    font-size: var(--fs-micro);
+    color: var(--color-ink-faint);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding-bottom: 4pt;
+    border-bottom: var(--border-thin);
+  }
+
+  @bottom-center {
+    content: counter(page);
+    font-family: var(--font-display);
+    font-size: var(--fs-micro);
+    color: var(--color-ink-muted);
+  }
+}
+
+@page :left {
+  margin-left: 1in;
+  margin-right: 0.75in;
+  @top-left {
+    content: string(chapter-title);
+    font-family: var(--font-display);
+    font-size: var(--fs-micro);
+    color: var(--color-ink-faint);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding-bottom: 4pt;
+    border-bottom: 1pt solid var(--color-rule);
+  }
+  @top-center    { content: none; }
+  @bottom-left   {
+    content: counter(page);
+    font-family: var(--font-display);
+    font-size: var(--fs-micro);
+    font-weight: 600;
+    color: var(--color-ink-muted);
+  }
+  @bottom-center { content: none; }
+  @bottom-right  { content: none; }
+}
+
+@page :right {
+  margin-left: 0.75in;
+  margin-right: 1in;
+  @top-right {
+    content: string(chapter-title);
+    font-family: var(--font-display);
+    font-size: var(--fs-micro);
+    color: var(--color-ink-faint);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding-bottom: 4pt;
+    border-bottom: 1pt solid var(--color-rule);
+  }
+  @top-center    { content: none; }
+  @bottom-right  {
+    content: counter(page);
+    font-family: var(--font-display);
+    font-size: var(--fs-micro);
+    font-weight: 600;
+    color: var(--color-ink-muted);
+  }
+  @bottom-center { content: none; }
+  @bottom-left   { content: none; }
+}
+
+/* ── Chapter opener: large top margin, no running header ── */
+@page chapter {
+  margin-top: 2.5in;
+  @top-left   { content: none; border: none; padding: 0; }
+  @top-center { content: none; border: none; padding: 0; }
+  @top-right  { content: none; border: none; padding: 0; }
+}
+
+/* ── Cover: full page, no chrome ── */
+@page cover {
+  margin: 0;
+  @top-left   { content: none; }
+  @top-center { content: none; }
+  @top-right  { content: none; }
+  @bottom-left   { content: none; }
+  @bottom-center { content: none; }
+  @bottom-right  { content: none; }
+}
+
+/* ── Full-bleed spread: no chrome ── */
+@page full-bleed {
+  margin: 0;
+  @top-left   { content: none; }
+  @top-center { content: none; }
+  @top-right  { content: none; }
+  @bottom-left   { content: none; }
+  @bottom-center { content: none; }
+  @bottom-right  { content: none; }
+}
+
+/* ── Auto-inserted blank pages ── */
+@page :blank {
+  @top-left   { content: none; }
+  @top-center { content: none; }
+  @top-right  { content: none; }
+  @bottom-left   { content: none; }
+  @bottom-center { content: none; }
+  @bottom-right  { content: none; }
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 3  BASE TYPOGRAPHY
+   ───────────────────────────────────────────────────────────────────────────── */
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.45;
+  color: var(--color-ink);
+  background-color: var(--color-paper);
+  margin: 0;
+  hyphens: auto;
+  orphans: 4;
+  widows: 4;
+  counter-reset: chapter;
+}
+
+/* Paged.js generates transparent .pagedjs_sheet elements — explicitly set the paper
+   colour here so the viewer canvas colour never bleeds onto the visible page surface. */
+.pagedjs_sheet {
+  background-color: var(--color-paper);
+}
+
+/* H1: chapter title — page-breaks before, uses chapter @page */
+h1 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 700;
+  color: var(--color-accent);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.5em;
+  padding-top: 0.6in;
+  break-before: page;
+  page: chapter;
+  counter-increment: chapter;
+}
+
+/* Automatic chapter number — CSS counter, no HTML required */
+h1::before {
+  content: counter(chapter, decimal-leading-zero);
+  display: block;
+  font-family: var(--font-display);
+  font-size: 72pt;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-rule);
+  letter-spacing: -0.04em;
+  margin: 0 0 0.2em;
+  padding-bottom: 0.15em;
+  border-bottom: 4pt solid var(--color-accent);
+}
+
+/* Inline specimen — same visual as h1 but no page break or named page */
+.type-h1 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 700;
+  color: var(--color-accent);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0.2em 0 0.6em;
+}
+
+h2 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 600;
+  color: var(--color-ink);
+  border-bottom: 2pt solid var(--color-accent);
+  padding-bottom: 0.2em;
+  margin: 1.6em 0 0.5em;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+h3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 600;
+  color: var(--color-ink);
+  margin: 1.3em 0 0.35em;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+h4 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h4);
+  font-weight: 700;
+  color: var(--color-ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 1.1em 0 0.3em;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+p {
+  margin: 0 0 0.65em;
+  text-align: justify;
+}
+
+h1 + p, h2 + p, h3 + p, h4 + p { text-indent: 0; }
+
+/* Keep the first block after each heading on the same page as the heading */
+h2 + p, h2 + ul, h2 + ol, h2 + pre, h2 + .callout, h2 + blockquote,
+h3 + p, h3 + ul, h3 + ol, h3 + pre,
+h4 + p, h4 + ul, h4 + ol {
+  break-before: avoid;
+  page-break-before: avoid;
+}
+
+strong { font-weight: 700; }
+em     { font-style: italic; }
+
+a { color: var(--color-accent); text-decoration: none; }
+a[href]::after {
+  content: " (" attr(href) ")";
+  font-size: 7.5pt;
+  color: var(--color-ink-faint);
+}
+a[href^="#"]::after,
+a.download::after { content: none; }
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--color-tint);
+  color: var(--color-accent);
+  padding: 0.05em 0.3em;
+  border-radius: var(--radius-sm);
+}
+
+pre {
+  background: var(--color-tint);
+  border-left: var(--border-accent);
+  padding: 0.75em 1em;
+  margin: 0.75em 0 1.1em;
+  /* both properties required — break-* is spec, page-break-* is Paged.js legacy */
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+pre code {
+  background: transparent;
+  color: var(--color-ink);
+  padding: 0;
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+
+blockquote {
+  border-left: var(--border-alt);
+  background: var(--color-tint);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin: 1em 0;
+  padding: 0.5em 0.75em 0.5em 0.75em;
+  color: var(--color-ink-muted);
+  font-style: italic;
+}
+
+blockquote p { text-align: left; margin: 0 0 0.4em; }
+
+ul, ol {
+  margin: 0 0 0.8em 1.4em;
+  padding: 0;
+}
+
+li {
+  margin-bottom: 0.25em;
+  line-height: 1.5;
+}
+
+li p { margin: 0; }
+
+hr {
+  border: none;
+  border-top: var(--border-thin);
+  margin: 2em 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.8em 0 1.2em;
+  font-size: var(--fs-small);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+thead { background-color: var(--color-accent); color: #fff; }
+
+th {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-align: left;
+  padding: 5pt 8pt;
+  font-size: var(--fs-small);
+}
+
+td {
+  padding: 4pt 12pt 4pt 8pt;
+  border-bottom: var(--border-thin);
+  vertical-align: top;
+}
+
+tr:nth-child(even) td { background-color: var(--color-tint); }
+
+dl { margin: 0.8em 0 1em; }
+
+dt {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 0.6em;
+}
+
+dd {
+  margin-left: 1.2em;
+  margin-bottom: 0.15em;
+}
+
+img { max-width: 100%; display: block; }
+
+figure {
+  margin: 1em 0 1.5em;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+figcaption {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  color: var(--color-ink-muted);
+  margin-top: 0.4em;
+  line-height: 1.35;
+  font-style: italic;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 4  COMPONENTS
+   Use via container blocks:  ::: callout-note … :::
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Callout base — shared by all variants ── */
+.callout,
+.callout-note,
+.callout-warning,
+.callout-caution,
+.callout-tip {
+  padding: 0.65em 0.9em;
+  margin: 1em 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ── Callout: Note / Info ── */
+.callout,
+.callout-note {
+  border-left: var(--border-accent);
+  background: var(--color-tint);
+}
+
+/* ── Callout: Warning / Caution ── */
+.callout-warning,
+.callout-caution {
+  border-left: var(--border-alt);
+  background: var(--color-tint-warn);
+}
+
+/* ── Callout: Tip / Success ── */
+.callout-tip {
+  border-left: var(--border-tip);
+  background: var(--color-tint-tip);
+}
+
+/* Callout label — add a <span class="callout-label">NOTE</span> */
+.callout-label {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-accent);
+  margin-bottom: 0.35em;
+}
+
+.callout-warning .callout-label,
+.callout-caution .callout-label { color: var(--color-accent-alt); }
+.callout-tip .callout-label     { color: #2a8a56; }
+
+.callout p:last-child,
+.callout-note p:last-child,
+.callout-warning p:last-child,
+.callout-caution p:last-child,
+.callout-tip p:last-child { margin-bottom: 0; }
+
+/* ── Sidebar: floated aside ── */
+.sidebar {
+  float: right;
+  width: 38%;
+  margin: 0 0 0.8em 1em;
+  padding: 0.65em 0.9em;
+  background: var(--color-tint);
+  border-left: var(--border-accent);
+  font-size: var(--fs-small);
+  line-height: 1.45;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.sidebar p:last-child { margin-bottom: 0; }
+
+/* ── Pull quote ── */
+.pull-quote {
+  border-top: 2pt solid var(--color-accent);
+  border-bottom: 2pt solid var(--color-accent);
+  padding: 0.8em 0;
+  margin: 1.5em 0.4in;
+  text-align: center;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.pull-quote p {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-style: italic;
+  color: var(--color-ink-muted);
+  line-height: 1.35;
+  text-align: center;
+  margin: 0;
+}
+
+.pull-quote .attribution {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-ink-faint);
+  margin-top: 0.5em;
+}
+
+/* ── Spec block (key/value data) ── */
+.spec-block {
+  border: var(--border-thin);
+  border-top: 3pt solid var(--color-accent);
+  padding: 0.65em 0.9em;
+  margin: 0.8em 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.spec-block-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-accent);
+  margin-bottom: 0.4em;
+}
+
+.spec-row {
+  display: flex;
+  gap: 0.5em;
+  margin: 0 0 0.2em;
+  font-size: var(--fs-small);
+  align-items: baseline;
+}
+
+.spec-key {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--color-ink-muted);
+  min-width: 32%;
+  flex-shrink: 0;
+}
+
+.spec-val { color: var(--color-ink); }
+
+/* ── Intro / lede paragraph ── */
+.lede, .intro {
+  font-family: var(--font-display);
+  font-size: 13pt;
+  line-height: 1.45;
+  color: var(--color-ink-muted);
+  font-style: italic;
+  margin: 0 0 1.2em;
+  break-before: avoid;
+  page-break-before: avoid;
+}
+
+/* ── Chapter number decoration ── */
+.chapter-num {
+  font-family: var(--font-display);
+  font-size: 72pt;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-rule);
+  margin: 0 0 -0.1em;
+  letter-spacing: -0.04em;
+}
+
+/* ── Numbered step list ── */
+.steps {
+  list-style: none;
+  margin: 0.8em 0 1.2em;
+  padding: 0;
+  counter-reset: steps;
+}
+
+.steps li {
+  display: flex;
+  gap: 0.75em;
+  align-items: baseline;
+  margin-bottom: 0.5em;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  counter-increment: steps;
+}
+
+.steps li::before {
+  content: counter(steps, decimal-leading-zero);
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--color-accent);
+  min-width: 2em;
+  flex-shrink: 0;
+}
+
+/* ── Glossary / term list ── */
+.glossary {
+  margin: 0.8em 0 1.2em;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.glossary-term {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  color: var(--color-accent);
+  margin: 0.8em 0 0.15em;
+}
+
+.glossary-def {
+  margin: 0 0 0.2em 1.2em;
+  color: var(--color-ink);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 5  LAYOUT UTILITIES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.two-column {
+  columns: 2;
+  column-gap: 0.4in;
+  column-rule: var(--border-thin);
+}
+
+.three-column {
+  columns: 3;
+  column-gap: 0.3in;
+  column-rule: var(--border-thin);
+}
+
+.no-break     { break-inside: avoid; page-break-inside: avoid; }
+.break-before { break-before: page;  page-break-before: always; }
+.keep-next    { break-after: avoid;  page-break-after: avoid; }
+
+.img-float-right,
+.img-float-left {
+  width: 44%;
+}
+
+.img-float-right { float: right; margin: 0 0 0.8em 1em; }
+.img-float-left  { float: left;  margin: 0 1em 0.8em 0; }
+
+/* ── Cover page (used on the first page) ── */
+.cover-page {
+  page: cover;
+  min-height: 9in;
+  background-color: var(--color-accent);
+  padding: 1.5in 1in;
+}
+
+.cover-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.25em;
+  break-before: auto;
+  page: cover;
+}
+
+.cover-subtitle {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  font-weight: 300;
+  color: rgba(255,255,255,0.7);
+  margin: 0 0 1.5em;
+}
+
+.cover-rule {
+  width: 2.5in;
+  height: 3pt;
+  background: var(--color-accent-alt);
+  margin: 0 0 1.5em;
+}
+
+.cover-author {
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin: 4em 0 0;
+}
+
+/* ── CSS grid — two equal columns, independent flow ── */
+/* Unlike .two-column (CSS columns, text flows between), .grid keeps
+   each child independent. Use for side-by-side blocks, comparison tables,
+   or any layout where left and right don't share a single text flow. */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4in;
+  align-items: start;
+  margin: 0.8em 0 1.2em;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 6  DESIGN GUIDE CHROME
+   Visual helpers visible only in this guide — not in the book PDF.
+   The book manifest points to its own stylesheet, not guide.css.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Color palette swatches ── */
+.palette {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110pt, 1fr));
+  gap: 9pt;
+  margin: 0.8em 0 1.4em;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.swatch {
+  border: var(--border-thin);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  break-inside: avoid;
+}
+
+.swatch-color {
+  background: var(--swatch, #ccc);
+  height: 46pt;
+  display: block;
+}
+
+.swatch-body { padding: 5pt 7pt 7pt; }
+
+.swatch-name {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.swatch-var,
+.swatch-hex {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 7pt;
+}
+
+.swatch-var { color: var(--color-accent); margin-top: 2pt; }
+.swatch-hex { color: var(--color-ink-faint); }
+
+/* ── Specimen label ── */
+.spec-label {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  color: var(--color-ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-bottom: 1pt dashed var(--color-rule);
+  padding-bottom: 2pt;
+  margin: 1.3em 0 0.45em;
+}
+
+/* ── Example frame ── */
+.example {
+  border: var(--border-thin);
+  border-radius: var(--radius-md);
+  padding: 1em;
+  margin: 0.6em 0 1.1em;
+  background: #fff;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.example > *:last-child { margin-bottom: 0; }
+
+/* ── Usage annotation ── */
+.usage {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  color: var(--color-ink-muted);
+  margin: -0.3em 0 0.9em;
+  line-height: 1.4;
+}
+
+/* ── Token reference table ── */
+.token-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-small);
+  margin: 0.4em 0 1.2em;
+  break-inside: avoid;
+}
+
+.token-table th {
+  background: var(--color-ink);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 4pt 8pt;
+  text-align: left;
+}
+
+.token-table td {
+  padding: 4pt 8pt;
+  border-bottom: var(--border-thin);
+  vertical-align: middle;
+}
+
+.token-table td:first-child {
+  font-family: var(--font-mono);
+  font-size: 8pt;
+  color: var(--color-accent);
+}
+
+.token-table tr:nth-child(even) td { background: var(--color-tint); }
+
+.color-chip {
+  display: inline-block;
+  width: 14pt;
+  height: 14pt;
+  border-radius: 2pt;
+  border: var(--border-thin);
+  vertical-align: middle;
+  margin-right: 4pt;
+}
+
+/* ── Download button ── */
+a.download {
+  display: inline-block;
+  padding: 5pt 14pt;
+  background: var(--color-accent);
+  color: #fff;
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+a.download::after { content: none; }
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 7  CHAPTER-SPECIFIC OVERRIDES
+   Scoped rules using markdown-it-paged @chapter markers.
+   Each chapter wraps its content in <div class="chapter" id="ch-name">.
+   These rules override or extend §3–§6 for a single chapter only.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Chapter wrapper base — transparent block, no width/display side-effects ── */
+.chapter {
+  display: block;
+  width: 100%;
+}
+
+/* ── TOC: first chapter needs no forced page break (nothing precedes it) ── */
+#ch-toc h1 {
+  break-before: auto;
+  page-break-before: auto;
+}
+
+/* ── CLI Reference: fix flag-table column proportioning ── */
+.chapter#ch-cli table {
+  table-layout: fixed;
+}
+
+.chapter#ch-cli td:first-child  { width: 26%; }  /* Flag column */
+.chapter#ch-cli td:nth-child(2) { width: 13%; }  /* Default column */
+/* Description column fills the remaining 61% automatically */
+
+/* ── Palette: ensure swatch grids never split across a page break ── */
+.chapter#ch-palette .palette {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ── Components: keep example frames fully contained ── */
+.chapter#ch-components .example {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ── Markdown Reference: tighten code block spacing for dense reference pages ── */
+.chapter#ch-reference pre {
+  margin: 0.5em 0 0.8em;
+}
+
+/* ── Layout: keep the layout class reference table on one page ── */
+.chapter#ch-layout .token-table {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ── Overview: indent the "Keeping in sync" workflow list ── */
+.chapter#ch-overview ol {
+  margin-left: 1.6em;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   § 8  YOUR BOOK LAYER
+   Add book-specific rules here. This section is intentionally empty in the
+   starter kit — it's where your customizations live.
+
+   Design principles for this section:
+   • Override only what differs from the defaults in §3–§5.
+   • Prefer scoping to your @chapter IDs: .chapter#ch-name selector
+   • Use tokens from §1 rather than raw values: var(--color-accent)
+   • Keep rules small — if a pattern repeats across chapters, promote it to §4.
+
+   Examples:
+     .chapter#ch-worldbuilding h2 { border-color: var(--color-accent-alt); }
+     .chapter#ch-bestiary table  { font-size: var(--fs-micro); }
+     .cover-page                 { background: var(--color-ink); }
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* your book rules go here */
+
+/* ── Custom callout variant pattern ── */
+/* To create a new callout type (e.g. a "DM Note" callout):
+   1. Add a tint token to § 1: --color-tint-dm: #f5eeff;
+   2. Add a border token: --border-dm: 3pt solid #7b2fbe;
+   3. Add a label color: (or use an existing accent variable)
+   4. Add CSS rules here:
+
+.callout-dm {
+  border-left: var(--border-dm);
+  background: var(--color-tint-dm);
+}
+.callout-dm .callout-label { color: #7b2fbe; }
+
+   5. Register the container in src/lib/markdown/index.ts:
+      md.use(markdownItContainer, "callout-dm", createNamedContainer("callout-dm"));
+   6. Use in markdown: ::: callout-dm ... :::
+*/

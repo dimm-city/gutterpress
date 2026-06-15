@@ -1,0 +1,74 @@
+# dependencies (bun install)
+node_modules
+.notes
+
+# output
+out
+dist
+*.tgz
+
+# temporary test files
+.tmp/
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
+.claude/
+dist/
+
+# Code index and reference files (can be regenerated)
+.references/
+examples/field-guide/
+# CLI test scratch / generated output (was previously covered by a blanket
+# `tests/` ignore; keep just these specific generated paths ignored).
+/packages/cli/tests/field-guide/
+/packages/cli/tests/field-guide-bak/
+/packages/cli/tests/field-guide-input/
+/packages/cli/tests/field-guide.pdf
+# (Removed a blanket `tests/` ignore: there is no root-level scratch tests dir —
+# the only tests/ dirs are packages/{cli,lib,viewer}/tests, which are all
+# committed. The blanket rule matched them at any depth and, via git's
+# "can't re-include under an excluded parent" rule, forced `git add -f` and
+# broke negations for any NEW test file. Package test dirs are tracked normally.)
+.reviews/
+*.zip
+*.skill
+.trash/
+.akm-run/
+review/
+review_screenshots/
+_site/dc-design-guide-migration-check/
+.print-md-stage/
+web-ui-signing.key
+
+# Playwright artifacts (cross-browser preview smoke test)
+test-results/
+
+# generated update-manifest baseline (viewer build artifact)
+packages/viewer/version.json
+
+# Local-only plan/history docs (moved out of the repo to keep assets small)
+.docs-archive/
