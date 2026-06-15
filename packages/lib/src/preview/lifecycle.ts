@@ -77,7 +77,6 @@ async function cleanupOrphanTempDirs(): Promise<void> {
  */
 export async function initializePreviewDirectories(
   inputPath: string,
-  assetsSourceDir: string,
   config?: ResolvedConfig
 ): Promise<string> {
   // Reap any orphan temp dirs from previous runs before creating ours.
@@ -97,12 +96,9 @@ export async function initializePreviewDirectories(
   }
 
   // Preview assets (paged.polyfill.js, pagedjs-bridge.js, pagedjs-interface.js,
-  // favicon, manifest.schema.json) used to be copied here. They're now
-  // served directly from the process-wide embedded-assets dir by the HTTP
-  // server (see http-server.ts EMBEDDED_PREFIXES). assetsSourceDir is kept
-  // as a parameter for API stability and so callers that still need the
-  // path (e.g., the CLI's HTML build pipeline) can reach it.
-  void assetsSourceDir;
+  // favicon, manifest.schema.json) are served directly from the process-wide
+  // embedded-assets dir by the HTTP server (see http-server.ts EMBEDDED_PREFIXES),
+  // not copied into the per-project temp dir.
 
   // Copy manifest assets (e.g., ../_shared directories)
   if (inputPath && config?.source?.assets) {
@@ -119,16 +115,6 @@ export async function initializePreviewDirectories(
   }
 
   return tempDir;
-}
-
-/**
- * Resolve the preview assets directory path. In dev this is `src/assets`;
- * in the standalone binary the assets are extracted to a temp dir so they
- * can be served from a real filesystem path.
- */
-export async function resolveAssetsDir(): Promise<string> {
-  const { getAssetsDir } = await import('../lib/embedded-assets');
-  return getAssetsDir();
 }
 
 /**
@@ -150,7 +136,6 @@ export async function validateInputPath(inputPath: string): Promise<void> {
  */
 export async function initializeConfiguration(
   inputPath: string,
-  _options: PreviewServerOptions
 ): Promise<ResolvedConfig> {
   if (!inputPath) return resolveConfig({}, {});
   const manifest = await loadManifest(inputPath);

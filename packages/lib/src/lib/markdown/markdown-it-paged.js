@@ -188,7 +188,6 @@ function plugin(md, pluginOptions = {}) {
   const options = {
     implicitPage: false,
     preferPagesInSpreads: false,
-    warnOnBreakWithoutScope: true,
     ...pluginOptions,
   };
 

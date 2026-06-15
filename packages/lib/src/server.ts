@@ -13,7 +13,6 @@ import { info, warn } from './utils/logger';
 import type { PreviewServerOptions } from './types';
 import {
   validateInputPath,
-  resolveAssetsDir,
   initializePreviewDirectories,
   initializeConfiguration,
   restartPreview as executeRestartPreview,
@@ -72,7 +71,7 @@ export async function startPreviewServer(
   }
 
   // Stage 2: Initialize configuration (needed for manifest assets)
-  const config = await initializeConfiguration(inputPath, options);
+  const config = await initializeConfiguration(inputPath);
 
   // Detect shared/parent asset dirs (e.g. ../dc-design-guide/fonts) that don't
   // resolve — silently missing shared CSS/fonts is the #1 cause of "wrong
@@ -91,14 +90,13 @@ export async function startPreviewServer(
   }
 
   // Stage 3: Setup directories (with config for manifest assets)
-  const assetsSourceDir = await resolveAssetsDir();
-  const tempDir = await initializePreviewDirectories(inputPath, assetsSourceDir, config);
+  const tempDir = await initializePreviewDirectories(inputPath, config);
 
   // Generate initial HTML (or a placeholder when there's no input yet)
   await generateAndWriteHtml(inputPath, tempDir, config);
 
   // Stage 4: Create state
-  const state = createServerState(inputPath, tempDir, assetsSourceDir, config, options);
+  const state = createServerState(inputPath, tempDir, config, options);
 
   // Stage 5: Define restart function
   const restartPreview = async (newInputPath: string): Promise<void> => {
@@ -112,11 +110,7 @@ export async function startPreviewServer(
   }
 
   // Stage 7: Create preview HTTP/WebSocket server
-  state.previewServer = await createPreviewServer(
-    state,
-    availablePort,
-    restartPreview
-  );
+  state.previewServer = await createPreviewServer(state, availablePort);
 
   // Stage 8: Start file watching if enabled
   startFileWatcher(state);

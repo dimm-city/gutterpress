@@ -45,7 +45,6 @@ function createTestServerState(
     isRebuilding: false,
     previewServer: null,
     isShuttingDown: false,
-    assetsSourceDir: tempDir,
   };
 }
 
