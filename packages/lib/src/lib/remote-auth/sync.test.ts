@@ -25,7 +25,6 @@ import {
   onlineCopyPath,
   syncProject,
   SYNC_SNAPSHOT_MESSAGE,
-  SHARED_FOLDER_SNAPSHOT_MESSAGE,
   resolveConflicts,
   type SyncOutcome,
 } from "./sync.ts";
@@ -842,10 +841,10 @@ describe("getSyncStatus", () => {
 });
 
 
-// ── Book subfolders of a larger repo (scoped sync) ───────────────────────────
+// ── Opening a subfolder syncs the WHOLE enclosing repo (no per-book scoping) ──
 
-describe("syncProject for a book subfolder", () => {
-  test("syncs through the ENCLOSING repo: scoped book snapshot, whole-repo push", async () => {
+describe("syncProject opened on a subfolder", () => {
+  test("syncs the whole enclosing repo (one snapshot, whole tree) — plain git, no scoping", async () => {
     const h = await setupClone();
     try {
       const dirA = path.join(h.projectDir, "book-a");
@@ -855,8 +854,8 @@ describe("syncProject for a book subfolder", () => {
       await writeFile(path.join(dirA, "chapter-01.md"), "# A\n\nBook A draft.\n");
       await writeFile(path.join(dirB, "chapter-01.md"), "# B\n\nBook B draft.\n");
 
-      // Status BEFORE sync, from the book folder: the unsnapshotted flag is
-      // scoped to the book; remote/branch resolve from the enclosing repo.
+      // Status from the subfolder resolves the ENCLOSING repo; the
+      // unsnapshotted flag reflects the whole repo (a project is its git repo).
       const status = await getSyncStatus({ projectDir: dirA });
       expect(status.hasRemote).toBe(true);
       expect(status.branch).toBe("main");
@@ -864,13 +863,13 @@ describe("syncProject for a book subfolder", () => {
 
       const outcome = await syncProject({
         projectDir: dirA,
-        message: "Book A snapshot",
+        message: "Snapshot before syncing",
       });
       expect(outcome.status).toBe("synced");
       if (outcome.status !== "synced") throw new Error("unreachable");
       expect(outcome.snapshotId).toBeDefined();
 
-      // Both books reached the server — the push moves the whole repository.
+      // Both books reached the server — one push of the whole repository.
       expect(await serverFile(h.serverDir, "book-a/chapter-01.md")).toBe(
         "# A\n\nBook A draft.\n",
       );
@@ -878,31 +877,20 @@ describe("syncProject for a book subfolder", () => {
         "# B\n\nBook B draft.\n",
       );
 
-      // The commit shapes are honest: book A's snapshot carries the author's
-      // message and contains ONLY book A; the sibling edits were committed
-      // separately under the shared-folder safety message.
-      const log = await git.log({ fs, dir: h.projectDir, depth: 3 });
-      const messages = log.map((c) => c.commit.message.trim());
-      expect(messages).toContain("Book A snapshot");
-      expect(messages).toContain(SHARED_FOLDER_SNAPSHOT_MESSAGE);
-      const snapTree = await git.readCommit({
+      // ONE snapshot commit, and it contains the WHOLE tree — book B included.
+      // (No special per-book scoping, no extra "shared folder" commit.)
+      const snap = await git.readCommit({
         fs,
         dir: h.projectDir,
         oid: outcome.snapshotId!,
       });
-      const bookASnapshot = log.find(
-        (c) => c.commit.message.trim() === "Book A snapshot",
-      )!;
-      expect(bookASnapshot.oid).toBe(outcome.snapshotId!);
-      // Book A's scoped snapshot must NOT contain book B.
-      await expect(
-        git.readBlob({
-          fs,
-          dir: h.projectDir,
-          oid: snapTree.oid,
-          filepath: "book-b/chapter-01.md",
-        }),
-      ).rejects.toThrow();
+      const blobB = await git.readBlob({
+        fs,
+        dir: h.projectDir,
+        oid: snap.oid,
+        filepath: "book-b/chapter-01.md",
+      });
+      expect(new TextDecoder().decode(blobB.blob)).toBe("# B\n\nBook B draft.\n");
 
       expect(await isClean(h.projectDir)).toBe(true);
     } finally {

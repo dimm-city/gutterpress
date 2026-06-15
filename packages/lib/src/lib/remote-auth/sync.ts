@@ -206,25 +206,14 @@ const MSG_PULL_FIRST =
 export const SYNC_SNAPSHOT_MESSAGE = "Snapshot before syncing";
 
 /**
- * Message recorded when a book that shares its repository with sibling
- * folders has pending changes OUTSIDE its own folder at sync time. Those
- * changes must be committed too before any merge/checkout step (the forced
- * post-merge checkout would otherwise discard them — the D5 "never lose
- * work" invariant applies to the whole shared folder).
+ * The git repo directory for a project dir. A project IS its git repo, so this
+ * walks up to the enclosing repo root (opening a subfolder syncs the whole
+ * repo — plain git, no per-book scoping). Anything unclassifiable is itself.
  */
-export const SHARED_FOLDER_SNAPSHOT_MESSAGE =
-  "Snapshot of other changes in this shared folder before syncing";
-
-/**
- * Resolve the repository root + book subfolder scope for a project dir.
- * A repo-root project (or anything unclassifiable) scopes to itself.
- */
-async function resolveRepoScope(
-  projectDir: string,
-): Promise<{ dir: string; subPath: string }> {
+async function repoDirFor(projectDir: string): Promise<string> {
   const source = await detectProjectSource(projectDir);
   if (source.type === "local-git-folder") return gitScopeFor(source);
-  return { dir: projectDir, subPath: "" };
+  return projectDir;
 }
 
 
@@ -529,45 +518,27 @@ function setupErrorMessage(e: unknown): string | null {
 
 /**
  * Snapshot-first step shared by syncProject / pullChanges / pushChanges
- * (ADR 0006 D5): commit any unsaved work BEFORE any network or merge step.
- * The working-tree check runs lazily at action time and uses the caller's
- * function-scoped object cache (released with the operation — this is the
- * ONLY statusMatrix on these interactive paths).
- *
- * `includeSharedFolder` commits sibling-folder edits too — REQUIRED before
- * any operation that ends in a forced checkout (merge/fast-forward), which
- * would otherwise discard them. Push never touches the working tree, so it
- * passes false.
+ * (ADR 0006 D5): commit any unsaved work in the WHOLE repo BEFORE any network
+ * or merge step, so a forced post-merge checkout can never discard it. The
+ * working-tree check runs lazily at action time on the caller's function-scoped
+ * object cache (released with the operation).
  */
 async function snapshotBeforeAction(args: {
   projectDir: string;
   dir: string;
-  subPath: string;
   message?: string;
   authorName?: string;
   cache: GitCache;
-  includeSharedFolder: boolean;
 }): Promise<string | undefined> {
-  const { projectDir, dir, subPath, cache } = args;
-  let snapshotId: string | undefined;
-  if (await hasPendingChanges(dir, subPath || undefined, cache)) {
-    const snap = await snapshotWorkingTreeUnlocked({
-      projectDir,
-      repoRoot: dir,
-      ...(subPath ? { subPath } : {}),
-      message: args.message?.trim() || SYNC_SNAPSHOT_MESSAGE,
-      authorName: args.authorName,
-    });
-    snapshotId = snap.id;
-  }
-  if (args.includeSharedFolder && subPath && (await hasPendingChanges(dir, undefined, cache))) {
-    await snapshotWorkingTreeUnlocked({
-      projectDir: dir,
-      message: SHARED_FOLDER_SNAPSHOT_MESSAGE,
-      authorName: args.authorName,
-    });
-  }
-  return snapshotId;
+  const { projectDir, dir, cache } = args;
+  if (!(await hasPendingChanges(dir, cache))) return undefined;
+  const snap = await snapshotWorkingTreeUnlocked({
+    projectDir,
+    repoRoot: dir,
+    message: args.message?.trim() || SYNC_SNAPSHOT_MESSAGE,
+    authorName: args.authorName,
+  });
+  return snap.id;
 }
 
 async function currentBranchOrThrow(dir: string): Promise<string> {
@@ -746,9 +717,9 @@ export async function pullChanges(
   options: SyncProjectOptions,
 ): Promise<PullOutcome> {
   const http = options.httpClient ?? httpNode;
-  // Same repo-scope rules as syncProject: a book subfolder pulls into the
-  // ENCLOSING repository (that is what Git does); the snapshot is book-scoped.
-  const { dir, subPath } = await resolveRepoScope(options.projectDir);
+  // A project is its git repo: pull operates on the enclosing repo root
+  // (opening a subfolder syncs the whole repo — that is what Git does).
+  const dir = await repoDirFor(options.projectDir);
 
   return withRepoLock(dir, async (): Promise<PullOutcome> => {
     // One object cache for this pull only — released with it.
@@ -759,15 +730,13 @@ export async function pullChanges(
       const transport = await resolveTransport(dir, options);
 
       // Snapshot FIRST (D5) — the merge below ends in a forced checkout, so
-      // the shared-folder safety commit applies exactly as in syncProject.
+      // committing the whole working tree first guarantees nothing is lost.
       snapshotId = await snapshotBeforeAction({
         projectDir: options.projectDir,
         dir,
-        subPath,
         message: options.message,
         authorName: options.authorName,
         cache,
-        includeSharedFolder: true,
       });
 
       const remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
@@ -866,7 +835,7 @@ export async function pushChanges(
   options: SyncProjectOptions,
 ): Promise<PushOutcome> {
   const http = options.httpClient ?? httpNode;
-  const { dir, subPath } = await resolveRepoScope(options.projectDir);
+  const dir = await repoDirFor(options.projectDir);
 
   return withRepoLock(dir, async (): Promise<PushOutcome> => {
     // One object cache for this push only — released with it.
@@ -877,15 +846,12 @@ export async function pushChanges(
       const transport = await resolveTransport(dir, options);
 
       // Snapshot-if-needed (D5) so unsaved work is part of what gets sent.
-      // No shared-folder commit: push never touches the working tree.
       snapshotId = await snapshotBeforeAction({
         projectDir: options.projectDir,
         dir,
-        subPath,
         message: options.message,
         authorName: options.authorName,
         cache,
-        includeSharedFolder: false,
       });
 
       const remoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
@@ -1045,7 +1011,7 @@ export async function resolveConflicts(
   // Same repo-scope rules as syncProject: conflict resolution for a book
   // subfolder runs against the enclosing repository (conflict paths are
   // repo-root-relative), with the entry snapshot scoped to the book.
-  const { dir, subPath } = await resolveRepoScope(options.projectDir);
+  const dir = await repoDirFor(options.projectDir);
 
   // Normalize both ids once at entry — every oid comparison below is lowercase.
   const normalizedLocalId = options.localId.toLowerCase();
@@ -1069,26 +1035,16 @@ export async function resolveConflicts(
       const transport = await resolveTransport(dir, options);
       const author = gitAuthor(options.authorName);
 
-      // Safety: capture any edits made while the choices dialog was open
-      // (scoped to the book for subfolder projects).
-      if (await hasPendingChanges(dir, subPath || undefined)) {
+      // Safety: capture any edits (whole tree) made while the choices dialog
+      // was open, before the merge's forced checkout can touch them.
+      if (await hasPendingChanges(dir)) {
         const snap = await snapshotWorkingTreeUnlocked({
           projectDir: options.projectDir,
           repoRoot: dir,
-          ...(subPath ? { subPath } : {}),
           message: SYNC_SNAPSHOT_MESSAGE,
           authorName: options.authorName,
         });
         snapshotId = snap.id;
-      }
-      // Shared-folder safety (see syncProject step 1b): sibling-book edits
-      // must be committed before the merge's forced checkout can run.
-      if (subPath && (await hasPendingChanges(dir))) {
-        await snapshotWorkingTreeUnlocked({
-          projectDir: dir,
-          message: SHARED_FOLDER_SNAPSHOT_MESSAGE,
-          authorName: options.authorName,
-        });
       }
 
       const localTip = await git.resolveRef({ fs, dir, ref: branch });
@@ -1317,17 +1273,15 @@ export async function getSyncStatus(
   options: SyncStatusOptions,
 ): Promise<SyncStatusResult> {
   const http = options.httpClient ?? httpNode;
-  // Subfolder projects read the ENCLOSING repo's branch/remote; the
-  // unsnapshotted-changes flag is scoped to the book's own folder (what a
-  // Sync would actually snapshot). Ahead/behind compare whole-repo tips —
-  // that is what a sync pushes/pulls.
-  const { dir, subPath } = await resolveRepoScope(options.projectDir);
+  // A project is its git repo: status reads the enclosing repo's branch/remote
+  // and compares whole-repo tips (that is what a sync pushes/pulls).
+  const dir = await repoDirFor(options.projectDir);
 
   return withRepoLock(dir, async (): Promise<SyncStatusResult> => {
     // One object cache for this status call only — released with it.
     const cache: GitCache = {};
     const branch = (await git.currentBranch({ fs, dir })) ?? undefined;
-    const pending = await hasPendingChanges(dir, subPath || undefined, cache);
+    const pending = await hasPendingChanges(dir, cache);
     const base = {
       hasRemote: false,
       ...(branch ? { branch } : {}),
@@ -1448,7 +1402,7 @@ export async function previewSync(options: PreviewSyncOptions): Promise<SyncPrev
   // Same repo-scope rules as syncProject: a book subfolder previews against
   // the ENCLOSING repository (changes are whole-repo — that is what a sync
   // pushes/pulls).
-  const { dir } = await resolveRepoScope(options.projectDir);
+  const dir = await repoDirFor(options.projectDir);
 
   if (options.fetch === false) {
     return previewFromRefs(dir, options, { live: false }, {});

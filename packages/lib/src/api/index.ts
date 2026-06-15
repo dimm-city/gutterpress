@@ -213,7 +213,6 @@ export {
   previewSync,
   onlineCopyPath,
   SYNC_SNAPSHOT_MESSAGE,
-  SHARED_FOLDER_SNAPSHOT_MESSAGE,
 } from "../lib/remote-auth/sync.ts";
 
 export type {

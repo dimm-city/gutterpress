@@ -58,26 +58,23 @@ export interface SnapshotOptions {
   authorName?: string;
   /**
    * Root of the Git repository the commit goes to. Defaults to `projectDir`.
-   * For a book subfolder of a larger repo this is the enclosing repo root.
+   * When the project is a subfolder of a repo, this is the enclosing repo root
+   * (the snapshot commits the whole tree — plain git, no per-folder scoping).
    */
   repoRoot?: string;
-  /**
-   * When set (non-empty), the snapshot stages ONLY paths under this
-   * repo-relative folder — changes elsewhere in the repository (other books)
-   * stay out of this project's snapshots.
-   */
-  subPath?: string;
 }
 
 /**
- * Resolve the repo root + subfolder scope for a classified source. For a
- * repo-root project `dir === source.path` and `subPath` is "". Defensive:
- * older persisted sources without `repoRoot` fall back to the project path.
+ * The git repo directory a project's operations run against. A project IS its
+ * git repo: opening a subfolder of a multi-book repo just opens the repo, and
+ * every operation (snapshot, history, restore, sync) runs on the repo root over
+ * the WHOLE tree — plain git semantics, no per-book scoping. Defensive: older
+ * persisted sources without `repoRoot` fall back to the project path.
  */
 export function gitScopeFor(
   source: Extract<ProjectSource, { type: "local-git-folder" }>,
-): { dir: string; subPath: string } {
-  return { dir: source.repoRoot || source.path, subPath: source.subPath || "" };
+): string {
+  return source.repoRoot || source.path;
 }
 
 /** Inputs for restoring the working tree to a prior snapshot. */
@@ -168,18 +165,6 @@ export function gitAuthor(name?: string): { name: string; email: string } {
   return { name: n || DEFAULT_AUTHOR, email: DEFAULT_EMAIL };
 }
 
-/**
- * Inline copy of isomorphic-git's internal `worthWalking` (not exported by
- * the library): true when `filepath` is on the path to — or inside — `root`.
- */
-function worthWalking(filepath: string, root: string | undefined): boolean {
-  if (filepath === "." || root == null || root.length === 0 || root === ".") {
-    return true;
-  }
-  if (root.length >= filepath.length) return root.startsWith(filepath);
-  return filepath.startsWith(root);
-}
-
 /** Workdir-vs-index differences, as `git add -A` staging lists. */
 export interface WorkdirChanges {
   /** New or modified files to `git.add`. */
@@ -192,13 +177,12 @@ export interface WorkdirChanges {
  * List workdir-vs-index differences with the library's `git.walk` over the
  * `WORKDIR` and `STAGE` walkers — deliberately NO `TREE` (HEAD) walker, so a
  * snapshot check never reads historical packfiles (multi-GB RSS on large
- * repos). `subPath` scopes the diff to a book subfolder. Honours `.gitignore`
- * for untracked paths (which also prunes `.git` itself — `isIgnored` always
+ * repos). Whole-tree (a project is its git repo). Honours `.gitignore` for
+ * untracked paths (which also prunes `.git` itself — `isIgnored` always
  * ignores it), exactly like `statusMatrix` does.
  */
 export async function listWorkdirChanges(
   dir: string,
-  subPath?: string,
   cache: GitCache = {},
 ): Promise<WorkdirChanges> {
   const adds: string[] = [];
@@ -210,8 +194,6 @@ export async function listWorkdirChanges(
     trees: [git.WORKDIR(), git.STAGE()],
     map: async (filepath, [workdir, stage]) => {
       if (filepath === ".") return;
-      // Subfolder scoping: prune everything outside the book's folder.
-      if (subPath && !worthWalking(filepath, subPath)) return null;
       // Untracked paths respect .gitignore (returning null prunes the
       // subtree, so ignored directories are never descended into).
       if (!stage && workdir && (await git.isIgnored({ fs, dir, filepath }))) {
@@ -265,10 +247,9 @@ async function stageChanges(
  */
 export async function hasPendingChanges(
   dir: string,
-  subPath?: string,
   cache: GitCache = {},
 ): Promise<boolean> {
-  const { adds, removes } = await listWorkdirChanges(dir, subPath, cache);
+  const { adds, removes } = await listWorkdirChanges(dir, cache);
   return adds.length > 0 || removes.length > 0;
 }
 
@@ -305,7 +286,7 @@ class LocalFolderSourceProvider implements SourceProvider {
     return withRepoLock(dir, async () => {
       const cache: GitCache = {};
       await git.init({ fs, dir, defaultBranch: DEFAULT_BRANCH });
-      await stageChanges(dir, await listWorkdirChanges(dir, undefined, cache), cache);
+      await stageChanges(dir, await listWorkdirChanges(dir, cache), cache);
       await git.commit({
         fs,
         dir,
@@ -356,12 +337,12 @@ class LocalFolderSourceProvider implements SourceProvider {
 class LocalGitSourceProvider implements SourceProvider {
   readonly source: ProjectSource;
   readonly capabilities: ProjectCapabilities;
-  /** Repo root + subfolder scope every git operation runs against. */
-  private readonly scope: { dir: string; subPath: string };
+  /** The git repo root every operation runs against (whole tree). */
+  private readonly dir: string;
   constructor(source: Extract<ProjectSource, { type: "local-git-folder" }>) {
     this.source = source;
     this.capabilities = capabilitiesFor(source);
-    this.scope = gitScopeFor(source);
+    this.dir = gitScopeFor(source);
   }
 
   async initVersionHistory(
@@ -384,17 +365,12 @@ class LocalGitSourceProvider implements SourceProvider {
   }
 
   snapshot(options: SnapshotOptions): Promise<SnapshotEntry> {
-    // Lock keys on the REPO ROOT, so two books in the same repo serialize.
-    return withRepoLock(this.scope.dir, () => this.snapshotUnlocked(options));
+    return withRepoLock(this.dir, () => this.snapshotUnlocked(options));
   }
 
   /** Lock-free snapshot impl — callers must already hold the repo lock. */
   snapshotUnlocked(options: SnapshotOptions): Promise<SnapshotEntry> {
-    return snapshotWorkingTreeUnlocked({
-      ...options,
-      repoRoot: this.scope.dir,
-      ...(this.scope.subPath ? { subPath: this.scope.subPath } : {}),
-    });
+    return snapshotWorkingTreeUnlocked({ ...options, repoRoot: this.dir });
   }
 
   async listHistory(projectDir: string): Promise<SnapshotEntry[]> {
@@ -412,23 +388,14 @@ class LocalGitSourceProvider implements SourceProvider {
     _projectDir: string,
     options: ListHistoryOptions = {},
   ): Promise<HistoryPage> {
-    const { dir, subPath } = this.scope;
+    const dir = this.dir;
     const limit = Math.min(500, Math.max(1, options.limit ?? HISTORY_PAGE_LIMIT));
     const before = options.before;
-    // Subfolder projects list only commits that TOUCHED their folder.
-    // isomorphic-git's `log({ filepath })` resolves the tree oid at the
-    // path per commit and emits a commit whenever that oid changes — this
-    // works for directories, walking each commit once. `force: true` keeps
-    // the walk alive past commits where the folder doesn't exist yet
-    // (instead of throwing NotFoundError).
-    //
-    // `depth` bounds the walk (with `filepath` it counts FILTERED commits,
-    // and may emit one extra trailing entry — sliced below). Continuation
-    // starts the walk AT the cursor commit; the cursor itself can re-appear
-    // in the filtered output and is dropped below. `limit + 2` guarantees
-    // that after dropping the cursor at least `limit + 1` entries remain
-    // whenever older history exists, so `hasMore` can never read false at a
-    // page boundary that still has older entries.
+    // Whole-repo history (a project is its git repo). `depth` bounds the walk;
+    // continuation starts AT the cursor commit (dropped below). `limit + 2`
+    // guarantees that after dropping the cursor at least `limit + 1` entries
+    // remain whenever older history exists, so `hasMore` can never read false
+    // at a page boundary that still has older entries.
     let commits;
     try {
       commits = await git.log({
@@ -437,7 +404,6 @@ class LocalGitSourceProvider implements SourceProvider {
         cache: {}, // per-call cache — never pin packfile buffers across calls
         depth: limit + 2,
         ...(before ? { ref: before } : {}),
-        ...(subPath ? { filepath: subPath, force: true } : {}),
       });
     } catch (e) {
       // A garbage/expired cursor must not crash the history view.
@@ -469,25 +435,21 @@ class LocalGitSourceProvider implements SourceProvider {
   }
 
   restore(options: RestoreSnapshotOptions): Promise<void> {
-    return withRepoLock(this.scope.dir, () => this.restoreUnlocked(options));
+    return withRepoLock(this.dir, () => this.restoreUnlocked(options));
   }
 
   /** Lock-free restore impl — callers must already hold the repo lock. */
   async restoreUnlocked(options: RestoreSnapshotOptions): Promise<void> {
-    // Restore the working tree to the given commit, keeping HEAD on its branch
-    // (a non-destructive "restore files to this point" — does not rewrite
-    // history). `force` overwrites the working tree with the snapshot contents.
-    // Subfolder projects restore ONLY their own paths — sibling books in the
-    // same repository are never touched.
-    const { dir, subPath } = this.scope;
+    // Restore the WHOLE working tree to the given commit, keeping HEAD on its
+    // branch (a non-destructive "restore files to this point" — does not
+    // rewrite history). `force` overwrites the working tree with the snapshot.
     await git.checkout({
       fs,
-      dir,
+      dir: this.dir,
       cache: {}, // per-call cache — never pin packfile buffers across calls
       ref: options.id,
       force: true,
       noUpdateHead: true,
-      ...(subPath ? { filepaths: [subPath] } : {}),
     });
   }
 }
@@ -504,15 +466,14 @@ class LocalGitSourceProvider implements SourceProvider {
 export async function snapshotWorkingTreeUnlocked(
   options: SnapshotOptions,
 ): Promise<SnapshotEntry> {
-  // The commit goes to the repo root; `subPath` (book subfolder of a larger
-  // repo) limits what is considered/staged to the project's own folder.
+  // The commit goes to the repo root and stages the WHOLE working tree (a
+  // project is its git repo — plain `git add -A` semantics).
   const dir = options.repoRoot ?? options.projectDir;
-  const subPath = options.subPath || undefined;
   // One object cache for this snapshot operation only (diff + stage +
   // commit share it), released when the operation returns.
   const cache: GitCache = {};
   // ONE walk decides both "anything to save?" and what to stage.
-  const changes = await listWorkdirChanges(dir, subPath, cache);
+  const changes = await listWorkdirChanges(dir, cache);
   if (changes.adds.length === 0 && changes.removes.length === 0) {
     throw new Error(
       "No changes since the last snapshot — there is nothing new to save.",
@@ -728,14 +689,14 @@ export async function restoreVersionWithBackup(
     );
   }
   const provider = new LocalGitSourceProvider(source);
-  const scope = gitScopeFor(source);
+  const repoDir = gitScopeFor(source);
   // One lock span for the whole backup+restore sequence so nothing can slip
   // in between the safety snapshot and the restore (uses the providers'
   // *Unlocked internals — taking the per-method lock here would deadlock).
-  // Lock + pending-check key on the repo root, scoped to the book's subPath.
-  return withRepoLock(scope.dir, async () => {
+  // Lock + pending-check key on the repo root (whole tree).
+  return withRepoLock(repoDir, async () => {
     let backupId: string | undefined;
-    if (await hasPendingChanges(scope.dir, scope.subPath || undefined)) {
+    if (await hasPendingChanges(repoDir)) {
       const backup = await provider.snapshotUnlocked({
         projectDir,
         message: RESTORE_BACKUP_MESSAGE,
