@@ -69,3 +69,6 @@ test-results/
 
 # generated update-manifest baseline (viewer build artifact)
 packages/viewer/version.json
+
+# Local-only plan/history docs (moved out of the repo to keep assets small)
+.docs-archive/
