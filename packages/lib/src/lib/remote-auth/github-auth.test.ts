@@ -26,7 +26,7 @@ function scriptedProvider(tokenResponses: unknown[], userBody: unknown = { login
   /** Parsed JSON bodies of POSTs, keyed by URL fragment, for request asserts. */
   const requestBodies: Array<{ url: string; body: Record<string, unknown> }> = [];
   let pollIndex = 0;
-  const fetchImpl = (async (url: RequestInfo | URL, init?: RequestInit) => {
+  const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url);
     calls.push(u);
     if (init?.body) {
@@ -40,7 +40,7 @@ function scriptedProvider(tokenResponses: unknown[], userBody: unknown = { login
     }
     if (u.includes("api.github.com/user")) return jsonResponse(userBody);
     throw new Error(`unexpected url ${u}`);
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
   const provider = new GitHubAuthProvider({
     clientId: "test-client-id",
     fetchImpl,
@@ -133,7 +133,7 @@ test("network failure maps to the offline message and never leaks internals", as
     clientId: "test-client-id",
     fetchImpl: (async () => {
       throw new TypeError("fetch failed: ENOTFOUND github.com");
-    }) as typeof fetch,
+    }) as unknown as typeof fetch,
     sleepImpl: async () => {},
   });
   await expect(provider.connect({ onUserCode: () => {} })).rejects.toThrow(
@@ -145,7 +145,7 @@ test("validate returns true on 200, false on 401/403", async () => {
   const make = (status: number) =>
     new GitHubAuthProvider({
       clientId: "test-client-id",
-      fetchImpl: (async () => new Response("{}", { status })) as typeof fetch,
+      fetchImpl: (async () => new Response("{}", { status })) as unknown as typeof fetch,
     });
   const cred = {
     host: "github.com",

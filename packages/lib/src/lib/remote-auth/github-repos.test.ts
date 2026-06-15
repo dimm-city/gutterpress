@@ -41,7 +41,7 @@ test("lists user repos via /user/repos with pagination (2 pages), preserving API
   ];
   const page2 = [repoBody("aa-oldest")];
   const requested: string[] = [];
-  const fetchImpl = (async (url: RequestInfo | URL) => {
+  const fetchImpl = (async (url: string | URL | Request) => {
     const u = String(url);
     requested.push(u);
     if (u.includes("/user/repos?")) {
@@ -49,7 +49,7 @@ test("lists user repos via /user/repos with pagination (2 pages), preserving API
       return jsonResponse(page === "1" ? page1 : page2);
     }
     throw new Error(`unexpected url ${u}`);
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 
   const repos = await listGitHubRepositories(CRED, { fetchImpl });
   expect(repos.length).toBe(101);
@@ -67,7 +67,7 @@ test("lists user repos via /user/repos with pagination (2 pages), preserving API
 });
 
 test("401 maps to a reconnect message", async () => {
-  const fetchImpl = (async () => jsonResponse({ message: "Bad credentials" }, 401)) as typeof fetch;
+  const fetchImpl = (async () => jsonResponse({ message: "Bad credentials" }, 401)) as unknown as typeof fetch;
   await expect(listGitHubRepositories(CRED, { fetchImpl })).rejects.toThrow(
     /reconnect github/i,
   );
@@ -76,7 +76,7 @@ test("401 maps to a reconnect message", async () => {
 test("network failure maps to the offline message", async () => {
   const fetchImpl = (async () => {
     throw new TypeError("fetch failed");
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
   await expect(listGitHubRepositories(CRED, { fetchImpl })).rejects.toThrow(
     /couldn't reach github/i,
   );
@@ -86,11 +86,11 @@ test("listBranches paginates and sends the documented headers", async () => {
   const page1 = Array.from({ length: 100 }, (_, i) => ({ name: `b${i}` }));
   const page2 = [{ name: "main" }];
   let sawHeaders: Record<string, string> | null = null;
-  const fetchImpl = (async (url: RequestInfo | URL, init?: RequestInit) => {
+  const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
     sawHeaders = (init?.headers ?? {}) as Record<string, string>;
     const page = new URL(String(url)).searchParams.get("page");
     return jsonResponse(page === "1" ? page1 : page2);
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 
   const branches = await listGitHubBranches(CRED, "octocat", "book", { fetchImpl });
   expect(branches.length).toBe(101);
@@ -114,7 +114,7 @@ function treeResponse(
 
 test("listRepoBooks finds every directory holding a print-md manifest (root counts)", async () => {
   const requested: string[] = [];
-  const fetchImpl = (async (url: RequestInfo | URL) => {
+  const fetchImpl = (async (url: string | URL | Request) => {
     const u = String(url);
     requested.push(u);
     return treeResponse([
@@ -129,7 +129,7 @@ test("listRepoBooks finds every directory holding a print-md manifest (root coun
       { path: "books/notes/not-print-md.yaml", type: "blob" },
       { path: "books/notes/print-md.yaml.bak", type: "blob" },
     ]);
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 
   const books = await listRepoBooks(CRED, "octocat", "books", "main", { fetchImpl });
   expect(books).toEqual([
@@ -148,14 +148,14 @@ test("listRepoBooks returns [] when no manifest exists anywhere", async () => {
       { path: "README.md", type: "blob" },
       { path: "src", type: "tree" },
       { path: "src/index.ts", type: "blob" },
-    ])) as typeof fetch;
+    ])) as unknown as typeof fetch;
   const books = await listRepoBooks(CRED, "octocat", "code", "main", { fetchImpl });
   expect(books).toEqual([]);
 });
 
 test("listRepoBooks truncated tree → falls back to root + top-level dir scans", async () => {
   const requested: string[] = [];
-  const fetchImpl = (async (url: RequestInfo | URL) => {
+  const fetchImpl = (async (url: string | URL | Request) => {
     const u = String(url);
     requested.push(u);
     if (u.includes("?recursive=1")) {
@@ -180,7 +180,7 @@ test("listRepoBooks truncated tree → falls back to root + top-level dir scans"
       return treeResponse([{ path: "logo.png", type: "blob" }]);
     }
     throw new Error(`unexpected url ${u}`);
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 
   const books = await listRepoBooks(CRED, "octocat", "big", "main", { fetchImpl });
   expect(books).toEqual([
@@ -192,7 +192,7 @@ test("listRepoBooks truncated tree → falls back to root + top-level dir scans"
 });
 
 test("listRepoBooks maps 401 to the reconnect message", async () => {
-  const fetchImpl = (async () => jsonResponse({ message: "Bad credentials" }, 401)) as typeof fetch;
+  const fetchImpl = (async () => jsonResponse({ message: "Bad credentials" }, 401)) as unknown as typeof fetch;
   await expect(
     listRepoBooks(CRED, "octocat", "books", "main", { fetchImpl }),
   ).rejects.toThrow(/reconnect github/i);

@@ -51,7 +51,7 @@ describe('isPortAvailable', () => {
     // we KNOW was bindable a moment ago rather than a hardcoded guess that may
     // be occupied on a busy CI runner (the old fixed 59999 was flaky).
     const probe = Bun.serve({ port: 0, fetch: () => new Response('probe') });
-    const freedPort = probe.port;
+    const freedPort = probe.port!; // a just-bound server always has a port
     probe.stop(true);
     await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -68,7 +68,7 @@ describe('isPortAvailable', () => {
         return new Response('test');
       },
     });
-    const testPort = server.port;
+    const testPort = server.port!; // a just-bound server always has a port
 
     try {
       const result = await isPortAvailable(testPort);
