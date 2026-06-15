@@ -66,8 +66,10 @@ Default, author-facing layout primitives belong in the most general reusable
 layer that can own them:
 
 1. Put generic markdown authoring behavior in core print-md / `markdown-it-paged`
-2. Put DC-specific component chrome and macro semantics in the DC plugin and `dc-components.css`
-3. Put book-specific positioning and context-only break tuning in `fg-overrides.css`
+2. Put project-specific component chrome and macro semantics in that project's
+   plugin and component CSS layer
+3. Put book-specific positioning and context-only break tuning in that book's
+   override CSS layer
 
 If a behavior is broadly useful to non-technical authors using simple markdown,
 fix the default/core primitive first instead of solving it only in a project or
@@ -142,10 +144,9 @@ Reasons:
   1. Any of the hundreds of markdown-it plugins on npm Just Works in print-md.
   2. Plugin authors cannot reliably import from `@dimm-city/print-md` because
      the compiled binary has no `node_modules` for plugin code to resolve
-     against. If a plugin needs an internal helper, it must inline-copy it.
-     See `examples/dc-design-guide/plugins/dimm-city-plugin.js` for an
-     example: its marker parser is an inlined copy of `markdown-it-paged`'s
-     `parseMarkerLine`, not an import.
+     against. If a plugin needs an internal helper, it must inline-copy it
+     (e.g. a plugin's marker parser should be an inlined copy of
+     `markdown-it-paged`'s `parseMarkerLine`, not an import).
   3. `packages/cli/src/index.ts` re-exports type-only definitions
      (`PrintMdPlugin`, `PrintMdPluginMetadata`, `PrintMdPluginExport`) for
      TypeScript plugin authors. Types only — zero runtime coupling.
@@ -254,214 +255,29 @@ only thing that keeps an Electron UI portable to web, testable without a host,
 and free of the "works in `vite dev`, crashes in the packaged app" trap. Build
 the typed adapter seam **first**, before the first feature adds a host call.
 
-## DC Design Guide
+## Design-guide / DC-brand work has moved out of this repo
 
-The `examples/dc-design-guide/` folder is the **canonical design reference** for
-the Dimm City print system. Once complete, it is the single source of truth for:
+The Dimm City design guide — the seven-file CSS layer contract, the
+`dc-components`/`fg-overrides` ownership rules, the Contextual Cascade pattern's
+DC-specific application, the specialty variant system, the frozen chapter-opener
+composite, and the R1–R12 paged.js CSS anti-patterns — used to live in
+`examples/dc-design-guide/` here. That example was removed (commit `db0f0fc`)
+and the full design guide now lives in the **`dc-op-manual`** repo
+(`dc-op-manual/dc-design-guide/`). Do that work there, against that repo's
+own guidance.
 
-- Every CSS component, token, and layout rule
-- The Dimm City plugin's macro system and emitted class names
-- Authoring patterns for the Field Guide and any future DC book
+What remains relevant to **this** repo:
 
-### Design guide as source of truth
-
-Any change to `css/dc-brand.css`, `css/page-rules.css`, `css/content-templates.css`,
-or `plugins/dimm-city-plugin.js` should be reflected in the design guide documentation.
-If the design guide documents one behaviour and the code does another, the code is wrong.
-
-### Per-page styling via `@page` named classes
-
-Individual page layout — image position, column arrangement, decorative elements
-specific to one spread — is done via `@page .class-name` in markdown. A class used
-only once is not an anti-pattern; it is the intended mechanism. Do not generalise
-one-off page classes into reusable components unless the pattern genuinely recurs.
-
-
-### CSS layer contract (seven-file hierarchy)
-
-Each CSS file has a strict ownership boundary. Read the ARCHITECTURAL CONTRACT
-comment in the first 50 lines of each file before adding any rule.
-
-| File | Owns |
-|---|---|
-| `dc-tokens.css` | `:root` tokens, `@font-face`, `* { print-color-adjust }` |
-| `dc-core.css` | `html`/`body` baseline, element resets, heading defaults |
-| `dc-components.css` | Every `.dc-*` + `.pmd-*` component (base + thin variants), specialty parent-container overrides |
-| `page-templates.css` | **ALL `columns:N` rules** (exclusive), `.page.*` layouts, paged wrapper scaffolding, print utilities |
-| `page-rules.css` | `@page` declarations, named pages, Paged.js counter fixes |
-| `dg-overrides.css` | `div.chapter` scaffolding, `.specimen` chrome, guide-specific footer |
-| `fg-overrides.css` | Context-scoped layout rules only: `.page.*`, `.example-*`, `.section.two-column` selectors and pure break control |
-
-### Contextual Cascade Principle — variant assignment via CSS, not markdown
-
-The DC design guide demonstrates the recommended pattern for print-md projects:
-component variants flow from the document's natural hierarchy (chapter id →
-page template class → section component class) via CSS selector chains that
-set component custom properties — NOT via utility classes the author has to
-apply to wrappers or per-element class attributes.
-
-Authors write semantic markdown only (`@section .dc-X`). Components in
-`dc-components.css` expose their look via `var(--dc-X, fallback)` patterns
-and work in any context with no setup. Per-book overrides in
-`fg-overrides.css` use natural selector chains to set component custom
-properties for that book's variant choices.
-
-`@section .dc-X` is the **minimum viable parent** for any variant. Chapter
-and page selectors are layered on top only when a variant needs scope-
-specific overrides. See [`docs/contextual-cascade-principle.md`](./docs/contextual-cascade-principle.md)
-for the full pattern explanation with worked examples.
-
-**FORBIDDEN:** utility variant classes on wrappers (`.dc-accent-X`,
-`.variant-Y`); per-element class attributes for styling (`{.dc-table-blue}`
-on tables); HTML wrappers in markdown for styling; raw values in per-book
-overrides (always set component custom properties, never the raw property).
-
-### Component style isolation — CORE CONSTRAINT
-
-> **All component styles belong in `dc-components.css`. The override files
-> (`fg-overrides.css`, `dg-overrides.css`) must NOT contain bare `.dc-*` style
-> rules — they exist only for layout context and document-specific positioning.**
-
-The test: if a selector is `.dc-something { ... }` with no page/chapter context
-qualifier, it belongs in `dc-components.css`. Period.
-
-**What belongs in `fg-overrides.css`:**
-- Selectors scoped to a page or chapter class: `.page.card-grid`, `.example-rules >`, `.page.citizen-file`
-- Pure CSS break control (`break-before/after/inside`) on bare component selectors
-- Document-specific element overrides: `.page.chapter-04 h4`, `.chapter-start > blockquote`
-- Field-guide-only image utility classes: `.fg-art-*`
-
-**What does NOT belong in `fg-overrides.css`:**
-- Any `.dc-*` rule without a context-scope qualifier
-- Spacing, font-size, padding, color, or margin changes to components
-- Any rule that would need to be duplicated in a second DC project
-
-This constraint is what makes `dc-components.css` a reusable component library.
-A new DC project imports `dc-components.css` and gets all correct default values
-with zero override files required.
-
-### Specialty variant system
-
-Card variants (skill cards, path shells, specialty cards) are controlled by the
-`.dc-specialty.<name>` parent container. Authors wrap the full specialty section in
-`@specialty .augmerc` and every card inside inherits the augmerc shape and accent
-automatically. Do NOT add `variant=` attributes to `@skill`, `@continue`, or
-`@learning-path` macros.
-
-### 🔒 Frozen components (do not modify without approval)
-
-**Chapter-opener / intro composite** — APPROVED 2026-05-25 after 14
-iterations on the DC design guide. The author markdown surface is:
-
-```
-@chapter C.01
-@page intro
-@section
-# Who Do You Dream to Be?
-```
-
-The implementation surface (DO NOT modify without explicit per-change
-user approval — full surface list in project memory
-`feedback_chapter_opener_frozen.md`):
-
-- `packages/lib/src/lib/markdown/markdown-it-paged.js` — `@chapter NAME`
-  parsing, `chapterLabel` context, `data-chapter-label` propagation, and
-  `<div class="chapter-opener">` element injection.
-- `examples/dc-design-guide/css/dc-tokens.css` — `--dc-chapter-opener-*`
-  token defaults (co-located with `--space-*` / `--clip-banner` deps;
-  cross-file `var()` chains are unreliable in paged.js).
-- `examples/dc-design-guide/css/dc-components.css` — `.chapter-opener`
-  badge, the `.chapter[data-chapter-label] > .page[data-page="intro"] >
-  .section` substrate variant chain, the chevron auto-extension via
-  shared `.dc-chevron` selector lists, and the `filter: drop-shadow()`
-  on the intro page that produces the composite's cohesive shadow.
-
-Only approved customisation: per-chapter token overrides at the chapter
-id scope (`#ch-name .chapter { --dc-chapter-opener-accent: ... }`).
-
-If a future task seems to require a chapter-opener change, STOP and
-ask the user. Cite the frozen-component memory and request explicit
-approval. Diagnostic notes on the paged.js quirks the architecture
-relies on are in AKM `memory:paged-js-css-quirks-discovered-2026-05-25`.
-
-### CSS anti-patterns (learned the hard way over 8 gate iterations)
-
-Apply these BEFORE making any CSS edit. Each rule came from a user callout
-of "lazy shortcut" or "poor architecture" during the 2026-05-25 DC gate.
-Durable notes live in AKM memory `print-css-architectural-anti-patterns`
-and project memory `feedback_css_architectural_anti_patterns.md`.
-
-**R1. Component-level rule before per-page override.** Before writing
-`.page.X > .Y`, ask: is this expressible at the component level? If yes,
-change the component default. Per-page selectors are one-offs that don't
-compose.
-
-**R2. Verify selectors target classes that exist in rendered DOM.** Grep
-the plugin source or inspect the DOM before writing a CSS selector against
-a class. The `@lede` macro emits `.dc-intro`, NOT `.dc-lede` — five
-iterations of dead selectors lived in fg-overrides.css because no one
-checked the plugin.
-
-**R3. Flush attachment = single-direction margins.** Components space
-themselves via `margin-bottom` only; `margin-top: 0`. Consecutive siblings
-collapse to the bottom-margin gap. First sibling after a chevron is
-automatically flush. NEVER use negative margins or z-index to mask a wrong
-margin convention.
-
-**R4. Block sibling beside a float — source order or BFC, NEVER z-index.**
-If a styled block "covers" a float, the root cause is normal CSS float
-behaviour (blocks extend full-width behind floats). Three fixes, ranked:
-(1) reorder DOM source so visual order matches; (2) `display: flow-root`
-on the sibling block (creates BFC, block shrinks beside float); (3)
-`clear: both` (block sits below float). Z-index is for stacking situations
-(overlays, modals, decorative pseudos), not for layout flow.
-
-**R5. Don't shrink a block that's meant to be full-width.** If the intent
-is "pullquote spans the section width, image floats below it", the answer
-is source order (pullquote first, image second). Reaching for `display:
-flow-root` to shrink the pullquote breaks the intent.
-
-**R6. The "CSS or DOM order?" diagnostic.** Before any CSS layout fight:
-write the intended visual order (top-to-bottom, left-to-right), compare
-to current DOM order, and if they don't match the fix is source order not
-CSS. CSS is only the right tool when intent can't be expressed by source
-order (true 2D grids, overlays, components used across multiple contexts).
-
-**R7. Response to user callout of "lazy" or "poor architecture".** Revert
-the shortcut; restate the intent in plain language; identify the right
-primitive; apply at the component level. Do NOT respond with another
-shortcut variant.
-
-**R8. Composite shadows = `filter: drop-shadow()` on the wrapper.** Per-element
-`box-shadow` on stacked children with different widths/clips produces
-stepped offsets. `filter: drop-shadow(<offset>)` on the common wrapper
-follows the union silhouette of all visible descendants — one continuous
-shadow respecting clip paths.
-
-**R9. Co-locate dependent CSS custom properties.** Paged.js resolves
-cross-stylesheet `var()` chains unreliably. If `--x: var(--y)`, declare
-both `--x` and `--y` in the same `:root` block (same file). Otherwise the
-chain can resolve to `""` and the property comes out empty.
-
-**R10. Selector chains on `.page` survive paged.js; `::before` on `.page`/
-`.chapter` does NOT.** Paged.js's polisher strips static pseudo-element
-declarations on those classes (likely because `@page` is a CSS at-rule
-it processes specially). For visible composite elements that can't be a
-pseudo, inject a real DOM element via the markdown plugin. Selector
-CHAINS through `.page[data-page="X"]` to descendants are fine.
-
-**R11. Split visual-edge tokens from content-edge tokens.** A clipped
-composite has two edges: the visual edge (where the substrate ends) and
-the content edge (where body text ends). Conflating them makes body text
-flush with the clip — cramped. Use two tokens: `--clip-tail` and
-`--pad-right: calc(var(--clip-tail) + var(--space-md))`.
-
-**R12. Propagation > tree-walking.** CSS `attr()` reads the SAME element
-only. When a CSS rule needs context from a parent ("this is in a labeled
-chapter"), have the markdown plugin propagate the context as a data
-attribute on the child. Don't try to walk up the tree with `:has()` —
-it's unreliable in paged.js.
-
+- The general, brand-agnostic CSS architecture pattern is documented in
+  [`docs/contextual-cascade-principle.md`](./docs/contextual-cascade-principle.md),
+  with a worked implementation in [`examples/with-design-guide/`](./examples/with-design-guide/).
+- The frozen chapter-opener's **plugin** half still lives in this repo at
+  `packages/lib/src/lib/markdown/markdown-it-paged.js` (`@chapter` parsing,
+  `data-chapter-label` propagation, `.chapter-opener` injection); its CSS half
+  moved to dc-op-manual. The full frozen contract and the durable paged.js CSS
+  anti-patterns are preserved in AKM
+  (`memory:print-md-dc-design-guide-frozen-chapter-opener-historical`,
+  `memory:print-css-architectural-anti-patterns`).
 
 ## Background reading
 
