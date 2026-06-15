@@ -7,6 +7,7 @@
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type {
+    ConflictFileInfo,
     ProblemEntry,
     ProjectCapabilities,
     ProjectClassification,
@@ -16,6 +17,8 @@
   import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
   import { problemCounts } from "$lib/problems";
   import SyncDialog from "$lib/components/SyncDialog.svelte";
+  import SyncStatusPill from "$lib/components/SyncStatusPill.svelte";
+  import ConflictChoicesDialog from "$lib/components/ConflictChoicesDialog.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
@@ -238,6 +241,12 @@
   let syncOpen = $state(false);
   let syncBtn = $state<HTMLButtonElement | undefined>(undefined);
   let syncDiag = $state<ProjectRemoteDiagnosis | null>(null);
+  // ConflictChoicesDialog (#transparent-sync §6.1): opened by the ambient
+  // SyncStatusPill when the auto-sync orchestrator reports a conflict.
+  let conflictOpen = $state(false);
+  let conflictFiles = $state<ConflictFileInfo[]>([]);
+  let conflictLocalId = $state<string | null>(null);
+  let conflictRemoteId = $state<string | null>(null);
   /** True when the project has an HTTPS remote (credential may or may not be stored). */
   let syncAvailable = $derived(
     !!currentDir &&
@@ -282,6 +291,51 @@
   function onSyncReconnect() {
     if (syncDiag?.provider === "github") githubOpen = true;
     else advancedSetupOpen = true;
+  }
+
+  /**
+   * Called by the ambient SyncStatusPill when the auto-sync orchestrator emits
+   * a conflict state (§6.1). Opens the ConflictChoicesDialog immediately with
+   * the file list from the status event, then fetches the conflict IDs
+   * (localId/remoteId) via syncChanges — the only path that returns a
+   * SyncOutcome carrying those IDs. The confirm button stays disabled until the
+   * IDs arrive (ConflictChoicesDialog guards on !localId || !remoteId).
+   */
+  function onPillConflict(files: ConflictFileInfo[]) {
+    if (!currentDir) return;
+    conflictFiles = files;
+    conflictLocalId = null;
+    conflictRemoteId = null;
+    conflictOpen = true;
+    // The SyncStatus payload does not carry localId/remoteId — those are only
+    // in the SyncOutcome returned by syncChanges (contract.ts lines 527-528).
+    // Fetch them now so ConflictChoicesDialog.confirm() can call resolveSyncConflicts.
+    const dir = currentDir;
+    getPlatform()
+      .syncChanges(dir)
+      .then((outcome) => {
+        // Discard if the user switched projects or already closed the dialog.
+        if (currentDir !== dir || !conflictOpen) return;
+        if (outcome.status === "conflict") {
+          conflictFiles = outcome.files;
+          conflictLocalId = outcome.localId;
+          conflictRemoteId = outcome.remoteId;
+        } else if (outcome.status === "synced") {
+          // Conflict resolved on its own (race between pill event + sync call).
+          conflictOpen = false;
+          onSyncCompleted(outcome.mergedRemoteChanges);
+        } else if (outcome.status === "up-to-date") {
+          conflictOpen = false;
+          onSyncCompleted(false);
+        }
+        // auth/offline/error: leave the dialog open so the user can still
+        // "Decide later"; the confirm button remains disabled.
+      })
+      .catch(() => {
+        // Network/host error: leave the dialog open at the file list view.
+        // The confirm button stays disabled; the History panel's advanced Sync
+        // surface remains available as a fallback.
+      });
   }
 
   // Completes the D7 Reconnect journey: a connect dialog closing may mean a
@@ -2169,6 +2223,16 @@
         </div>
       </details>
 
+      <!-- Ambient sync status pill (transparent-sync §5.1): always-visible, no
+           counts, no Git jargon. Visible only when a synced project is open. -->
+      {#if currentDir && sourceMode === "folder" && syncDiag?.canSync}
+        <SyncStatusPill
+          projectDir={currentDir}
+          onReconnect={onSyncReconnect}
+          onConflict={onPillConflict}
+          onDetails={openSync}
+        />
+      {/if}
       <!-- UX-039: separator before Save PDF -->
       <span class="toolbar-sep" aria-hidden="true"></span>
       <!-- UX-006: Save PDF always visible; icon-only at narrow widths -->
@@ -2490,6 +2554,25 @@
   onSynced={onSyncCompleted}
   onReconnect={onSyncReconnect}
   triggerEl={syncBtn}
+/>
+<!-- ConflictChoicesDialog (#transparent-sync §6.1): opened by the ambient
+     SyncStatusPill when the auto-sync orchestrator surfaces a conflict.
+     Plain-language "Keep my version / Use the online version / Keep both"
+     with "Keep both" as the highlighted lossless default. -->
+<ConflictChoicesDialog
+  bind:open={conflictOpen}
+  projectDir={sourceMode === "folder" ? currentDir : null}
+  bookSubPath={projectSubPath}
+  files={conflictFiles}
+  localId={conflictLocalId}
+  remoteId={conflictRemoteId}
+  onResolved={(mergedRemoteChanges) => {
+    onSyncCompleted(mergedRemoteChanges);
+    conflictFiles = [];
+    conflictLocalId = null;
+    conflictRemoteId = null;
+  }}
+  onReconnect={onSyncReconnect}
 />
 
 

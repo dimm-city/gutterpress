@@ -62,6 +62,7 @@ import type {
   PullOutcome,
   PushOutcome,
   ResolveSyncConflictsArgs,
+  SyncStatus,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -393,6 +394,19 @@ export class WebAdapter implements Platform {
 
   forgeTokenUrl(_host: string): Promise<string | null> {
     return Promise.resolve(null);
+  }
+
+  // ── Auto-sync orchestrator seam — desktop-only; safe stubs on web ───────────
+  // The ambient pill simply stays absent (no handler is ever called) when
+  // running in a browser; setAutoSync is a silent no-op so callers need no guard.
+  onSyncStatus(_handler: (status: SyncStatus) => void): () => void {
+    // Never emits on the web — return a no-op unsubscribe.
+    return () => {};
+  }
+
+  setAutoSync(_enabled: boolean): Promise<void> {
+    // Auto-sync is desktop-only until the PWA sync backend lands in 0.6.0.
+    return Promise.resolve();
   }
 
   // ── Sync (#15 sync phase) — desktop-only until the PWA lands ───────────────

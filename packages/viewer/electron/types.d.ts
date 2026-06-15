@@ -542,6 +542,11 @@ interface Window {
     disconnectHost(host: string): Promise<{ ok: boolean }>;
     listHostConnections(): Promise<HostConnectionInfo[]>;
     forgeTokenUrl(host: string): Promise<string | null>;
+    // Auto-sync orchestrator seam (transparent sync, §4.4 integration plan)
+    /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn. */
+    onSyncStatus(cb: (data: unknown) => void): () => void;
+    /** Enable or disable the auto-sync master switch. */
+    setAutoSync(enabled: boolean): Promise<void>;
     // Sync (#15 sync phase, ADR 0006 D5)
     getSyncStatus(projectDir: string, fetch?: boolean): Promise<SyncStatusInfo>;
     previewSync(projectDir: string): Promise<SyncPreviewInfo>;

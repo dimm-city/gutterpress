@@ -90,17 +90,22 @@ export {
   restoreVersionWithBackup,
   isNoChangesError,
   autoSnapshotDelayMs,
+  autoSyncDelayMs,
   isGitInternalPath,
   AUTO_SNAPSHOT_MESSAGE,
   RESTORE_BACKUP_MESSAGE,
   AUTO_SNAPSHOT_MIN_MINUTES,
   AUTO_SNAPSHOT_MAX_MINUTES,
   AUTO_SNAPSHOT_DEFAULT_MINUTES,
+  AUTO_SYNC_MIN_MINUTES,
+  AUTO_SYNC_MAX_MINUTES,
+  AUTO_SYNC_DEFAULT_MINUTES,
   HISTORY_PAGE_LIMIT,
 } from "../lib/source-provider.ts";
 
 export type {
   AutoSnapshotPolicy,
+  AutoSyncPolicy,
   ListHistoryOptions,
   HistoryPage,
 } from "../lib/source-provider.ts";

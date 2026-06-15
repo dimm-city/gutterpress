@@ -714,6 +714,23 @@ contextBridge.exposeInMainWorld("electron", {
   forgeTokenUrl: (host: string): Promise<string | null> =>
     ipcRenderer.invoke("remote:forgeTokenUrl", host),
 
+  // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ─
+  // Main emits `sync:status` push events whenever the orchestrator state machine
+  // transitions. The renderer subscribes via onSyncStatus to drive the ambient
+  // pill without polling. setAutoSync is a one-way prefs setter (invoke, no
+  // blocking reply needed — the orchestrator picks up the change on next trigger).
+
+  /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn. */
+  onSyncStatus: (cb: (data: unknown) => void): (() => void) =>
+    forwardPush("sync:status", cb),
+
+  /**
+   * Enable or disable the auto-sync master switch. Fire-and-forget —
+   * no reply payload; the orchestrator picks up the prefs change immediately.
+   */
+  setAutoSync: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke("sync:setAutoSync", enabled),
+
   // ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────
   // All git work happens in the lib behind main; credentials are resolved
   // host-side from the safeStorage store and never cross this bridge.

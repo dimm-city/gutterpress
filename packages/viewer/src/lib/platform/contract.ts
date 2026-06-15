@@ -364,6 +364,58 @@ export interface ProjectRemoteDiagnosis {
   guidance: RemoteGuidanceId;
 }
 
+// ── Auto-sync orchestrator status (transparent sync, §4.4 integration plan) ──
+//
+// Defined locally here — decoupled from the lib — so the SPA never
+// value-imports the lib (§8 / ADR 0004). Main emits `sync:status` events with
+// this payload; the renderer drives the ambient status pill from it.
+
+/**
+ * Ambient sync state emitted by the host auto-sync orchestrator and surfaced
+ * to the renderer via the `onSyncStatus` subscription.
+ *
+ * States:
+ *   idle        — no sync scheduled or needed (local-only project, or auto-sync OFF)
+ *   syncing     — commit→fetch→merge→push in flight ("Saving changes…")
+ *   synced      — last sync completed and remote is up to date
+ *   up-to-date  — sync ran; nothing needed (no local or remote changes)
+ *   offline     — network unavailable; changes are saved locally
+ *   auth        — credential missing or rejected ("Reconnect your repository")
+ *   conflict    — a content conflict needs the author's attention
+ *   error       — a transient/unexpected sync failure; treated like offline by the pill
+ */
+export type SyncState =
+  | "idle"
+  | "syncing"
+  | "synced"
+  | "up-to-date"
+  | "offline"
+  | "auth"
+  | "conflict"
+  | "error";
+
+/**
+ * Payload pushed to the renderer whenever the auto-sync orchestrator's state
+ * changes. `projectDir` scopes the event to one open project (the host may
+ * manage multiple). `files` is populated only on `"conflict"`.
+ */
+export interface SyncStatus {
+  state: SyncState;
+  /** Absolute path of the project this status applies to. */
+  projectDir: string;
+  /**
+   * Conflict file list — present (non-empty) only when `state === "conflict"`.
+   * Uses `ConflictFileInfo` (defined below) so the shape stays single-sourced
+   * and cannot drift from the lib's ConflictFile.kind values.
+   */
+  files?: ConflictFileInfo[];
+  /**
+   * ISO-8601 timestamp of the last completed sync attempt, or null when none
+   * has run in this session. Lets the pill show "last synced 2 min ago".
+   */
+  lastSyncAt: string | null;
+}
+
 // ── Sync (#15 sync phase, ADR 0006 D5) ────────────────────────────────────────
 //
 // Mirrors the lib's sync types — defined locally so the SPA never
@@ -594,6 +646,16 @@ export interface AppSettings {
     autoSnapshot: boolean;
     /** Minutes of quiet after the last edit before a snapshot fires (floor 5). */
     autoSnapshotMinutes: number;
+    /**
+     * Automatically sync to the remote in the background when a remote is
+     * configured (transparent-sync plan §6). Defaults ON for projects with
+     * canSync; local-only projects are never auto-synced regardless of this
+     * setting. The author sees only the ambient sync:status pill and is
+     * interrupted only when a real content conflict requires a choice.
+     */
+    autoSync: boolean;
+    /** Periodic safety-sync cadence in minutes (clamped to [1, 1440]). */
+    autoSyncMinutes: number;
   };
   advanced: {
     fileWatcherInterval: number;
@@ -627,6 +689,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   versionHistory: {
     autoSnapshot: true,
     autoSnapshotMinutes: 10,
+    autoSync: true,      // transparent-sync plan §6: ON by default when canSync
+    autoSyncMinutes: 2,  // ~2 min periodic safety cadence
   },
   advanced: {
     fileWatcherInterval: 300,
@@ -968,6 +1032,32 @@ export interface HostServices {
   listHostConnections(): Promise<HostConnectionInfo[]>;
   /** Token-settings deep link for recognized forges; null when unknown. */
   forgeTokenUrl(host: string): Promise<string | null>;
+
+  // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ───
+  //
+  // The host auto-sync orchestrator (electron/main.ts) emits `sync:status`
+  // events whenever its state machine transitions. The renderer subscribes here
+  // to drive the ambient status pill without polling.
+
+  /**
+   * Subscribe to ambient sync-status updates from the host orchestrator.
+   * The handler fires on every subsequent transition (`syncing`, `synced`,
+   * `offline`, `auth`, `conflict`, …). NOTE: there is NO initial replay — a
+   * handler that subscribes after a sync has already settled stays uninvoked
+   * until the next transition, so callers should render a sensible default
+   * (e.g. blank/idle) until the first event. Returns an unsubscribe fn — call
+   * it in `onDestroy` to prevent leaks. The WebAdapter stub never emits and
+   * returns a no-op unsubscribe.
+   */
+  onSyncStatus(handler: (status: SyncStatus) => void): () => void;
+
+  /**
+   * Enable or disable the auto-sync master switch for the current project.
+   * Persisted via the host settings store (equivalent to toggling
+   * `versionHistory.autoSync` in AppSettings). The WebAdapter stub is a no-op
+   * (auto-sync is desktop-only until the PWA lands).
+   */
+  setAutoSync(enabled: boolean): Promise<void>;
 
   // ── Sync (#15 sync phase, ADR 0006 D5) ─────────────────────────────────────
   // Snapshot-first sync: the host snapshots unsaved work BEFORE any

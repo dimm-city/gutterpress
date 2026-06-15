@@ -655,6 +655,57 @@ export function isGitInternalPath(p: string): boolean {
   return p.split(/[\\/]+/).some((segment) => segment === ".git");
 }
 
+// ── Automatic sync (transparent-sync integration plan §4.3) ──────────────────
+
+/** User-facing auto-sync policy (mirrors the viewer's settings group). */
+export interface AutoSyncPolicy {
+  /** Master switch — automatic sync defaults ON when a remote is configured. */
+  autoSync: boolean;
+  /** Periodic safety cadence in minutes (clamped, like the snapshot cadence). */
+  autoSyncMinutes: number;
+}
+
+/**
+ * Cadence bounds for the periodic safety sync. The floor (1 min) is lower than
+ * the snapshot floor because a network round-trip is cheaper than a full tree
+ * walk, and the transparent-sync plan targets ~2 min as the default cadence.
+ * The ceiling matches the snapshot ceiling (one day = effectively paused).
+ */
+export const AUTO_SYNC_MIN_MINUTES = 1;
+export const AUTO_SYNC_MAX_MINUTES = 24 * 60;
+export const AUTO_SYNC_DEFAULT_MINUTES = 2;
+
+/**
+ * Resolve the periodic-safety-sync interval (ms) for the host's auto-sync
+ * orchestrator, or `null` when auto-sync is disabled. Pure — the testable core
+ * of the trigger policy (the timer and the actual `syncProject` call live in
+ * the Electron main process, per CLAUDE.md §8).
+ *
+ * Modelled exactly on `autoSnapshotDelayMs`: a missing or partial policy means
+ * "defaults" (enabled, 2 min); a non-finite/absurd minutes value falls back to
+ * the default and is then clamped into [AUTO_SYNC_MIN_MINUTES,
+ * AUTO_SYNC_MAX_MINUTES].
+ *
+ * Note: the host orchestrator ALSO debounces on file-change triggers; this
+ * cadence governs only the periodic safety timer (§4.2 "Periodic safety").
+ */
+export function autoSyncDelayMs(
+  policy: Partial<AutoSyncPolicy> | undefined,
+): number | null {
+  const enabled = policy?.autoSync ?? true;
+  if (!enabled) return null;
+  const raw = policy?.autoSyncMinutes;
+  const minutes =
+    typeof raw === "number" && Number.isFinite(raw) && raw > 0
+      ? raw
+      : AUTO_SYNC_DEFAULT_MINUTES;
+  const clamped = Math.min(
+    AUTO_SYNC_MAX_MINUTES,
+    Math.max(AUTO_SYNC_MIN_MINUTES, minutes),
+  );
+  return clamped * 60_000;
+}
+
 /**
  * Restore the working tree to a prior snapshot SAFELY (#13): if the current
  * state has unsaved-to-history changes, an automatic safety snapshot is

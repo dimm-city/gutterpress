@@ -60,6 +60,7 @@ import type {
   PullOutcome,
   PushOutcome,
   ResolveSyncConflictsArgs,
+  SyncStatus,
 } from "./contract";
 
 function bridge(): ElectronBridge {
@@ -339,6 +340,15 @@ export class ElectronAdapter implements Platform {
 
   forgeTokenUrl(host: string): Promise<string | null> {
     return bridge().forgeTokenUrl(host);
+  }
+
+  // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ──
+  onSyncStatus(handler: (status: SyncStatus) => void): () => void {
+    return bridge().onSyncStatus(handler as (data: unknown) => void);
+  }
+
+  setAutoSync(enabled: boolean): Promise<void> {
+    return bridge().setAutoSync(enabled);
   }
 
   // ── Sync (#15 sync phase) — delegate 1:1 to the bridge ─────────────────────
