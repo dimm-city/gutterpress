@@ -642,69 +642,39 @@ function short(oid: string | null | undefined): string {
 
 // ── Tip comparison ───────────────────────────────────────────────────────────
 
-/**
- * Depth cap for the {@link relateTips} `git.isDescendent` walks. Past this
- * the relation is reported as diverged-or-unknown, which the callers treat
- * as "changes in both directions" — a harmless no-op pull/push at worst.
- */
-const DIRECTION_WALK_DEPTH = 200;
+/** Which side(s) have commits the other lacks. */
+interface TipDirections {
+  /** The online copy has commits this computer doesn't (a sync would pull). */
+  incoming: boolean;
+  /** This computer has commits the online copy doesn't (a sync would push). */
+  outgoing: boolean;
+}
 
-type TipRelation = "equal" | "remote-ahead" | "local-ahead" | "diverged-or-unknown";
-
 /**
- * How `localTip` relates to `remoteTip`, via the LIBRARY's `git.isDescendent`
- * with a hard depth cap. The remote-ahead check runs first because it walks
- * only freshly fetched commits (the walk checks parent ids BEFORE reading
- * them, so the old local tip object itself is never read). Depth exhausted /
- * unreadable objects (shallow boundaries) → `"diverged-or-unknown"`: a false
- * "changes" is a harmless no-op pull/push, while a false "nothing" hides the
- * author's chapters (the rc.10 lesson).
+ * Compare two commit tips the way Git does: find their merge base.
+ *   base === remote → nothing incoming (we already have the online history).
+ *   base === local  → nothing outgoing (the online copy already has ours).
+ * Equal tips → neither; unrelated histories (no base) → both.
+ *
+ * One `git.findMergeBase` call — the standard library primitive, no depth cap,
+ * no two-walk dance. It walks back only to the common ancestor (the divergence
+ * is normally a handful of commits), so it is cheap regardless of total
+ * history depth — which is exactly why it fixes the deep-history "phantom
+ * incoming" field bug the old depth-capped walk caused.
  */
-async function relateTips(
+async function compareTips(
   dir: string,
   localTip: string,
   remoteTip: string,
   cache: GitCache,
-): Promise<TipRelation> {
-  if (localTip === remoteTip) return "equal";
-  // LOCAL-AHEAD FIRST, and each walk in its OWN try/catch. The local-ahead
-  // walk descends only the commits THIS computer added on top (snapshots —
-  // a handful), so it terminates almost immediately. The old order walked
-  // the REMOTE's ancestry first, which on any repo with more than
-  // DIRECTION_WALK_DEPTH commits of history throws MaxDepthError when local
-  // is ahead — and the shared try/catch then SKIPPED the local-ahead check,
-  // reporting "diverged-or-unknown" forever. Field bug (Windows, 2026-06-11,
-  // diagnosed from the [sync] lines): local ahead after a successful pull,
-  // badge stuck on "New changes online" while pull truthfully said
-  // up-to-date.
-  try {
-    const localAhead = await git.isDescendent({
-      fs,
-      dir,
-      cache,
-      oid: localTip,
-      ancestor: remoteTip,
-      depth: DIRECTION_WALK_DEPTH,
-    });
-    if (localAhead) return "local-ahead";
-  } catch {
-    // MaxDepthError / missing objects — this direction is unknown; the
-    // other walk still gets its chance.
-  }
-  try {
-    const remoteAhead = await git.isDescendent({
-      fs,
-      dir,
-      cache,
-      oid: remoteTip,
-      ancestor: localTip,
-      depth: DIRECTION_WALK_DEPTH,
-    });
-    if (remoteAhead) return "remote-ahead";
-  } catch {
-    // Same: fall through to the safe default.
-  }
-  return "diverged-or-unknown";
+): Promise<TipDirections> {
+  if (localTip === remoteTip) return { incoming: false, outgoing: false };
+  const bases = await git.findMergeBase({ fs, dir, cache, oids: [localTip, remoteTip] });
+  const base = bases[0];
+  return {
+    incoming: base !== remoteTip, // online has commits past the common base
+    outgoing: base !== localTip, // we have commits past the common base
+  };
 }
 
 // ── syncProject ────────────────────────────────────────────────────────────
@@ -804,28 +774,21 @@ export async function pullChanges(
       const localTip = await git.resolveRef({ fs, dir, ref: branch });
       const base = snapshotId ? { snapshotId } : {};
 
-      // Field-diagnostic line (stderr → terminal + any log capture). One line
-      // per pull with every input the decision uses — a user's pasted output
-      // identifies the exact branch taken. No secrets: oids + remote name.
-      const relation =
-        !remoteTip || remoteTip === localTip
-          ? null
-          : await relateTips(dir, localTip, remoteTip, cache);
+      // Field-diagnostic line (stderr → terminal + any log capture): one line
+      // per pull with the inputs the decision uses. No secrets: oids + remote.
       console.error(
-        `[sync] pull branch=${branch} remote=${transport.remote} local=${short(localTip)} fetched=${short(remoteTip)} relation=${relation ?? "n/a"}`,
+        `[sync] pull branch=${branch} remote=${transport.remote} local=${short(localTip)} fetched=${short(remoteTip)}`,
       );
 
       if (!remoteTip || remoteTip === localTip) {
         return { status: "up-to-date", message: MSG_PULL_UP_TO_DATE, ...base };
       }
-      if (relation === "local-ahead") {
-        // Everything online is already here (we're strictly ahead).
-        return { status: "up-to-date", message: MSG_PULL_UP_TO_DATE, ...base };
-      }
 
-      // Fast-forward when possible, else a clean merge. `abortOnConflict`
-      // (default true) guarantees a conflicted merge leaves the working tree
-      // and index COMPLETELY untouched.
+      // Let git.merge decide: it fast-forwards when local is behind, makes a
+      // combine commit when both sides moved, no-ops (`alreadyMerged`) when we
+      // are already ahead, and throws MergeConflictError on a true conflict.
+      // `abortOnConflict` (default true) guarantees a conflicted merge leaves
+      // the working tree and index COMPLETELY untouched.
       try {
         await git.merge({
           fs,
@@ -851,8 +814,8 @@ export async function pullChanges(
       }
       const newTip = await git.resolveRef({ fs, dir, ref: branch });
       if (newTip === localTip) {
-        // The merge was a no-op (`alreadyMerged`): local was strictly ahead
-        // beyond the depth-capped relation check above.
+        // The merge was a no-op (`alreadyMerged`): we were already ahead of
+        // the online tip, so there was nothing to bring down.
         return { status: "up-to-date", message: MSG_PULL_UP_TO_DATE, ...base };
       }
       // merge() moves the branch ref but does not update the working tree —
@@ -1346,9 +1309,9 @@ export async function resolveConflicts(
  * Ahead/behind summary vs the tracked remote branch. Local compare by default
  * (no network); pass `fetch: true` (with a credential when the remote needs
  * one) for a live check. A failed live fetch degrades to the local compare
- * (`live: false`). Directions come from {@link relateTips} — never a counting
- * walk, so `ahead`/`behind` are `0` (provably nothing) or `null` (changes
- * exist / unknown).
+ * (`live: false`). Directions come from {@link compareTips} (the merge base) —
+ * never a counting walk, so `ahead`/`behind` are `0` (provably nothing) or
+ * `null` (changes exist / unknown).
  */
 export async function getSyncStatus(
   options: SyncStatusOptions,
@@ -1413,16 +1376,16 @@ export async function getSyncStatus(
       return { ...base, hasRemote: true, ahead: 0, behind: null, live };
     }
 
-    switch (await relateTips(dir, localTip, remoteTip, cache)) {
-      case "equal":
-        return { ...base, hasRemote: true, ahead: 0, behind: 0, live };
-      case "local-ahead":
-        return { ...base, hasRemote: true, ahead: null, behind: 0, live };
-      case "remote-ahead":
-        return { ...base, hasRemote: true, ahead: 0, behind: null, live };
-      default:
-        return { ...base, hasRemote: true, ahead: null, behind: null, live };
-    }
+    // Directions via the merge base; never a counting walk, so ahead/behind
+    // are `0` (provably nothing) or `null` (changes exist — uncounted).
+    const { incoming, outgoing } = await compareTips(dir, localTip, remoteTip, cache);
+    return {
+      ...base,
+      hasRemote: true,
+      ahead: outgoing ? null : 0,
+      behind: incoming ? null : 0,
+      live,
+    };
   });
 }
 
@@ -1460,13 +1423,9 @@ const EMPTY_CHANGED_FILES: SyncPreview["changedFiles"] = { count: 0, sample: [] 
 /**
  * What would a Sync do right now? `git.fetch` the tracked remote branch
  * (single branch, no tags — never merges, never pushes, never snapshots),
- * then `git.resolveRef` both tips and decide the direction with the
- * library's depth-capped `git.isDescendent` ({@link relateTips}):
- *
- *   tips equal → up to date · remote descends from local → incoming only ·
- *   local descends from remote → outgoing only · neither / depth exhausted →
- *   BOTH (a false "changes" is a harmless no-op pull/push; a false "nothing"
- *   hides the author's chapters — the rc.10 lesson).
+ * then `git.resolveRef` both tips and decide the direction from the merge
+ * base ({@link compareTips}): base === remote → nothing incoming · base ===
+ * local → nothing outgoing · unrelated histories → BOTH.
  *
  * No commit lists and no counts — `SyncDirectionInfo` carries `hasChanges`
  * only (the UI renders count-less states as "New changes online" / "Changes
@@ -1530,7 +1489,7 @@ export async function previewSync(options: PreviewSyncOptions): Promise<SyncPrev
 /**
  * Comparison core shared by the live and local (`fetch: false`) previews:
  * local branch tip vs the remote-tracking ref, direction via
- * {@link relateTips}.
+ * {@link compareTips} (the merge base).
  */
 async function previewFromRefs(
   dir: string,
@@ -1588,22 +1547,17 @@ async function previewFromRefs(
     return { ...base, incoming: HAS_CHANGES, outgoing: NO_COMMITS };
   }
 
-  const relation = await relateTips(dir, localTip, remoteTip, cache);
+  const { incoming, outgoing } = await compareTips(dir, localTip, remoteTip, cache);
   // Field-diagnostic line (stderr): one line per check with every input the
   // decision uses, so a user's pasted terminal output identifies the exact
   // branch taken. Oids + remote name only — no secrets.
   console.error(
-    `[sync] check branch=${branch} remote=${transport.remote} live=${fetched.live} local=${short(localTip)} tracking=${short(remoteTip)} relation=${relation}${fetched.fetchNotice ? " notice=" + JSON.stringify(fetched.fetchNotice) : ""}`,
+    `[sync] check branch=${branch} remote=${transport.remote} live=${fetched.live} local=${short(localTip)} tracking=${short(remoteTip)} incoming=${incoming} outgoing=${outgoing}${fetched.fetchNotice ? " notice=" + JSON.stringify(fetched.fetchNotice) : ""}`,
   );
 
-  switch (relation) {
-    case "equal":
-      return { ...base, incoming: NO_COMMITS, outgoing: NO_COMMITS };
-    case "remote-ahead":
-      return { ...base, incoming: HAS_CHANGES, outgoing: NO_COMMITS };
-    case "local-ahead":
-      return { ...base, incoming: NO_COMMITS, outgoing: HAS_CHANGES };
-    default:
-      return { ...base, incoming: HAS_CHANGES, outgoing: HAS_CHANGES };
-  }
+  return {
+    ...base,
+    incoming: incoming ? HAS_CHANGES : NO_COMMITS,
+    outgoing: outgoing ? HAS_CHANGES : NO_COMMITS,
+  };
 }
