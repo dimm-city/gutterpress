@@ -1318,6 +1318,39 @@ function cancelAllAutoSyncTimers(): void {
  */
 const AUTO_SYNC_EXTRA_DEBOUNCE_MS = 30_000; // 30 s on top of snapshot settle
 
+/** Prompt initial pull after a project opens — seconds, NOT coupled to the
+ *  10-min snapshot debounce (that coupling delayed the open pull ~10.5 min and
+ *  hid incoming teammate changes until the user happened to edit something). */
+const AUTO_SYNC_OPEN_DELAY_MS = 4_000;
+
+/**
+ * Start the periodic safety-sync interval for `dir` (idempotent — no-op if it's
+ * already running). Pulls/pushes every `autoSyncMinutes` (default 2 min) so
+ * incoming changes arrive even when the author never edits anything. Must be
+ * armed on project OPEN, not only on the first file change — otherwise a
+ * view-only session never pulls. Respects the master switch + conflict latch.
+ */
+function armAutoSyncInterval(dir: string): void {
+  void (async () => {
+    try {
+      const [lib, settings] = await Promise.all([loadLib(), readSettings()]);
+      if (watchedDir !== dir) return; // project switched while awaiting
+      const periodicMs = lib.autoSyncDelayMs(settings.versionHistory);
+      if (periodicMs === null) return; // auto-sync disabled
+      const state = getOrCreateAutoSyncState(dir);
+      if (state.conflictLatched) return; // paused until user resolves
+      if (!state.intervalHandle) {
+        state.intervalHandle = setInterval(() => {
+          void runAutoSync(dir);
+        }, periodicMs);
+        if (typeof state.intervalHandle.unref === "function") state.intervalHandle.unref();
+      }
+    } catch (e) {
+      console.warn("[auto-sync] armAutoSyncInterval failed (non-fatal):", e);
+    }
+  })();
+}
+
 function scheduleAutoSync(dir: string): void {
   void (async () => {
     try {
@@ -1330,7 +1363,9 @@ function scheduleAutoSync(dir: string): void {
       const state = getOrCreateAutoSyncState(dir);
       if (state.conflictLatched) return; // paused until user resolves
 
-      // Arm the file-change debounce: snapshot debounce + extra gap.
+      // Arm the file-change debounce: snapshot debounce + extra gap (so the
+      // local snapshot commits the burst before this push). The periodic
+      // interval below is what guarantees PULLS happen promptly regardless.
       const snapshotMs = lib.autoSnapshotDelayMs(settings.versionHistory) ?? 0;
       const syncDebounceMs = snapshotMs + AUTO_SYNC_EXTRA_DEBOUNCE_MS;
 
@@ -1340,18 +1375,12 @@ function scheduleAutoSync(dir: string): void {
         void runAutoSync(dir);
       }, syncDebounceMs);
       if (typeof state.debounceTimer.unref === "function") state.debounceTimer.unref();
-
-      // Arm the periodic safety interval if not already running.
-      if (!state.intervalHandle) {
-        state.intervalHandle = setInterval(() => {
-          void runAutoSync(dir);
-        }, periodicMs);
-        if (typeof state.intervalHandle.unref === "function") state.intervalHandle.unref();
-      }
     } catch (e) {
       console.warn("[auto-sync] scheduleAutoSync failed (non-fatal):", e);
     }
   })();
+  // Ensure the periodic safety interval is running (idempotent).
+  armAutoSyncInterval(dir);
 }
 
 /**
@@ -3253,20 +3282,16 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   // open to pull any teammate changes that arrived since last session.
   // Normalize so the map key and watchedDir comparison use the same canonical form.
   const openedDir = path.resolve(activePreview.inputPath);
-  void (async () => {
-    try {
-      const [lib2, settings2] = await Promise.all([loadLib(), readSettings()]);
-      const snapshotMs = lib2.autoSnapshotDelayMs(settings2.versionHistory) ?? 0;
-      const syncMs = snapshotMs + AUTO_SYNC_EXTRA_DEBOUNCE_MS;
-      const timer = setTimeout(() => {
-        // Only run if the same project is still open.
-        if (watchedDir === openedDir) triggerAutoSyncOnce(openedDir);
-      }, syncMs);
-      if (typeof timer.unref === "function") timer.unref();
-    } catch {
-      // Non-fatal: the periodic and file-change triggers will catch up.
-    }
-  })();
+  // Start the periodic safety-sync interval now (idempotent) so incoming changes
+  // pull even in a view-only session with no edits — it must NOT wait for the
+  // first file change. Then do a PROMPT initial pull a few seconds after open
+  // (not coupled to the 10-min snapshot debounce — that delayed it ~10.5 min and
+  // hid teammate changes). syncProject snapshots-first, so a prompt run is safe.
+  armAutoSyncInterval(openedDir);
+  const initialSyncTimer = setTimeout(() => {
+    if (watchedDir === openedDir) triggerAutoSyncOnce(openedDir);
+  }, AUTO_SYNC_OPEN_DELAY_MS);
+  if (typeof initialSyncTimer.unref === "function") initialSyncTimer.unref();
 
   return {
     url: activePreview.url,
