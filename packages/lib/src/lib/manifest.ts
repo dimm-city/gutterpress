@@ -12,24 +12,10 @@ import { DTRPG_PRESET, PRESETS } from "./presets";
 export async function loadManifest(
   pathOrDir?: string
 ): Promise<PrintMdManifest> {
-  const candidates = pathOrDir
-    ? [
-        resolve(pathOrDir),
-        resolve(pathOrDir, "manifest.yaml"),
-        resolve(pathOrDir, "manifest.yml"),
-      ]
-    : [
-        resolve("manifest.yaml"),
-        resolve("manifest.yml"),
-      ];
-
-  for (const p of candidates) {
-    if (existsSync(p) && statSync(p).isFile()) {
-      const raw = await readFile(p, "utf8");
-      return (parseYaml(raw) as PrintMdManifest) ?? {};
-    }
-  }
-  return {};
+  // Thin wrapper over loadManifestWithPath — the candidate-resolution loop
+  // lives there; callers that don't need the directory use this.
+  const { manifest } = await loadManifestWithPath(pathOrDir);
+  return manifest;
 }
 
 /**
@@ -104,7 +90,6 @@ function normalizePluginConfig(plugin: string | PluginConfig): ResolvedPluginCon
   return {
     path: plugin.path,
     name: plugin.name,
-    version: plugin.version,
     priority: plugin.priority ?? 100,
     options: plugin.options ?? {},
   };

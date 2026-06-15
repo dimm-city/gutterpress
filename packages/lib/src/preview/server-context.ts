@@ -25,8 +25,6 @@ export interface ServerState {
   isShuttingDown: boolean;
   /** Temporary directory for preview files */
   tempDir: string;
-  /** Assets source directory */
-  assetsSourceDir: string;
   /** Resolved configuration */
   config: ResolvedConfig;
   /** Server options */
@@ -39,7 +37,6 @@ export interface ServerState {
 export function createServerState(
   inputPath: string,
   tempDir: string,
-  assetsSourceDir: string,
   config: ResolvedConfig,
   options: PreviewServerOptions
 ): ServerState {
@@ -51,7 +48,6 @@ export function createServerState(
     previewServer: null,
     isShuttingDown: false,
     tempDir,
-    assetsSourceDir,
     config,
     options,
   };

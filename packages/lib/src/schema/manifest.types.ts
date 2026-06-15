@@ -93,7 +93,6 @@ export interface PrintMdManifest {
 export interface ResolvedPluginConfig {
   path?: string;
   name?: string;
-  version?: string;
   priority: number;
   options: Record<string, unknown>;
 }

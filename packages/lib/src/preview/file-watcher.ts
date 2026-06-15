@@ -20,7 +20,6 @@ import { BOOK_HTML_FILENAME } from '../lib/viewer';
 import type { ServerState } from './server-context';
 import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
 import { getAssetPath } from '../lib/embedded-assets';
-import { prepaginatePreviewHtml } from '../lib/build-runner';
 
 /**
  * Build the list of asset roots that live outside the input path and need
@@ -121,15 +120,10 @@ const EMPTY_BOOK_HTML = `<!doctype html>
 /**
  * Whether the incremental live-preview (shell + per-chapter splice) is active.
  * DEFAULT ON; opt out with PRINTMD_PREVIEW_INCREMENTAL=0 to fall back to the
- * direct book.html preview (CSS hot-swap + full reload on content). The static
- * pre-pagination experiment (PRINTMD_PREVIEW_PREPAGINATE=1) takes precedence and
- * disables incremental, since it ships engine-less HTML the splice can't use.
+ * direct book.html preview (CSS hot-swap + full reload on content).
  */
 export function incrementalPreviewEnabled(): boolean {
-  return (
-    process.env.PRINTMD_PREVIEW_INCREMENTAL !== "0" &&
-    process.env.PRINTMD_PREVIEW_PREPAGINATE !== "1"
-  );
+  return process.env.PRINTMD_PREVIEW_INCREMENTAL !== "0";
 }
 
 export async function generateAndWriteHtml(
@@ -184,20 +178,6 @@ export async function generateAndWriteHtml(
   // and splice a single edited chapter without disturbing the others.
   if (incremental && /<\/head>/i.test(output)) {
     output = output.replace(/<\/head>/i, '<style>.pmd-chapter{break-before:page}</style>\n</head>');
-  }
-
-  // Opt-in: pre-paginate at build time in the warm pooled browser so the preview
-  // browser loads STATIC pages on each hot reload (no runtime re-pagination, no
-  // screenshifting). Falls back to the polyfill output on any error so the
-  // preview never breaks. Enable with PRINTMD_PREVIEW_PREPAGINATE=1.
-  if (process.env.PRINTMD_PREVIEW_PREPAGINATE === "1") {
-    try {
-      const staticHtml = await prepaginatePreviewHtml(output, tempDir);
-      await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), staticHtml, "utf-8");
-      return;
-    } catch (err) {
-      debug(`Pre-pagination failed, serving runtime-polyfill HTML: ${err}`);
-    }
   }
 
   await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), output, "utf-8");

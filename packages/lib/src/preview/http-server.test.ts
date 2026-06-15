@@ -40,7 +40,6 @@ function makeState(tempDir: string): ServerState {
     previewServer: null,
     isShuttingDown: false,
     tempDir,
-    assetsSourceDir: tempDir,
     config,
     options,
   };
@@ -52,7 +51,7 @@ describe('isPortAvailable', () => {
     // we KNOW was bindable a moment ago rather than a hardcoded guess that may
     // be occupied on a busy CI runner (the old fixed 59999 was flaky).
     const probe = Bun.serve({ port: 0, fetch: () => new Response('probe') });
-    const freedPort = probe.port;
+    const freedPort = probe.port!; // a just-bound server always has a port
     probe.stop(true);
     await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -69,7 +68,7 @@ describe('isPortAvailable', () => {
         return new Response('test');
       },
     });
-    const testPort = server.port;
+    const testPort = server.port!; // a just-bound server always has a port
 
     try {
       const result = await isPortAvailable(testPort);
@@ -168,7 +167,7 @@ describe('createPreviewServer', () => {
     await writeFile(join(tempDir, 'note.txt'), 'hello world');
 
     const state = makeState(tempDir);
-    server = await createPreviewServer(state, port, async () => {});
+    server = await createPreviewServer(state, port);
 
     const res = await fetch(`http://localhost:${port}/note.txt`);
     expect(res.status).toBe(200);
@@ -186,7 +185,7 @@ describe('createPreviewServer', () => {
     );
 
     const state = makeState(tempDir);
-    server = await createPreviewServer(state, port, async () => {});
+    server = await createPreviewServer(state, port);
 
     const res = await fetch(`http://localhost:${port}/`);
     expect(res.status).toBe(200);
@@ -209,7 +208,7 @@ describe('createPreviewServer', () => {
     );
 
     const state = makeState(tempDir);
-    server = await createPreviewServer(state, port, async () => {});
+    server = await createPreviewServer(state, port);
 
     const res = await fetch(`http://localhost:${port}/book.html`);
     expect(res.status).toBe(200);
@@ -223,7 +222,7 @@ describe('createPreviewServer', () => {
 
   test('returns 404 for missing file', async () => {
     const state = makeState(tempDir);
-    server = await createPreviewServer(state, port, async () => {});
+    server = await createPreviewServer(state, port);
 
     const res = await fetch(`http://localhost:${port}/nope.txt`);
     expect(res.status).toBe(404);
@@ -231,7 +230,7 @@ describe('createPreviewServer', () => {
 
   test('refuses to serve files outside tempDir (path traversal)', async () => {
     const state = makeState(tempDir);
-    server = await createPreviewServer(state, port, async () => {});
+    server = await createPreviewServer(state, port);
 
     const res = await fetch(`http://localhost:${port}/../../etc/passwd`);
     // Either 404 (resolve outside tempDir -> null) or 400 — never 200.
@@ -241,7 +240,7 @@ describe('createPreviewServer', () => {
 
   test('routes /api/status through the dispatcher', async () => {
     const state = makeState(tempDir);
-    server = await createPreviewServer(state, port, async () => {});
+    server = await createPreviewServer(state, port);
 
     const res = await fetch(`http://localhost:${port}/api/status`);
     expect(res.status).toBe(200);
@@ -252,7 +251,7 @@ describe('createPreviewServer', () => {
 
   test('returns 404 for unknown /api/* route', async () => {
     const state = makeState(tempDir);
-    server = await createPreviewServer(state, port, async () => {});
+    server = await createPreviewServer(state, port);
 
     const res = await fetch(`http://localhost:${port}/api/does-not-exist`);
     expect(res.status).toBe(404);
@@ -260,7 +259,7 @@ describe('createPreviewServer', () => {
 
   test('broadcastReload publishes full-reload over WebSocket', async () => {
     const state = makeState(tempDir);
-    server = await createPreviewServer(state, port, async () => {});
+    server = await createPreviewServer(state, port);
 
     const ws = new WebSocket(`ws://localhost:${port}/__print-md-hmr`);
 
@@ -298,7 +297,7 @@ describe('createPreviewServer', () => {
     await writeFile(join(tempDir, 'sub', 'data.json'), '{"ok":true}');
 
     const state = makeState(tempDir);
-    server = await createPreviewServer(state, port, async () => {});
+    server = await createPreviewServer(state, port);
 
     const res = await fetch(`http://localhost:${port}/sub/data.json`);
     expect(res.status).toBe(200);

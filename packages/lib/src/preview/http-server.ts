@@ -334,7 +334,6 @@ async function pipeWebResponse(webRes: Response, res: http.ServerResponse): Prom
 export async function createPreviewServer(
   state: ServerState,
   port: number,
-  restartPreviewFn: (newPath: string) => Promise<void>
 ): Promise<PreviewServer> {
   const clients = new Set<WebSocket>();
 
@@ -362,7 +361,7 @@ export async function createPreviewServer(
           Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : v ?? ''])
         ),
       });
-      const webRes = await handleApiRequest(webReq, state, restartPreviewFn);
+      const webRes = await handleApiRequest(webReq, state);
       if (webRes) {
         await pipeWebResponse(webRes, res);
         return;
@@ -432,8 +431,7 @@ export async function createPreviewServer(
 
     // 3c. Preview shell: serve the double-buffering / incremental shell at "/".
     // DEFAULT ON (incremental). Opt out with PRINTMD_PREVIEW_INCREMENTAL=0.
-    if (url.pathname === '/' &&
-        (incrementalPreviewEnabled() || process.env.PRINTMD_PREVIEW_SHELL === '1')) {
+    if (url.pathname === '/' && incrementalPreviewEnabled()) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       res.end(SHELL_HTML);
       return;

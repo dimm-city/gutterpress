@@ -21,11 +21,9 @@ import httpNode from "isomorphic-git/http/node";
 
 import { cloneRepository } from "./clone.ts";
 import {
-  getSyncStatus,
   onlineCopyPath,
   syncProject,
   SYNC_SNAPSHOT_MESSAGE,
-  SHARED_FOLDER_SNAPSHOT_MESSAGE,
   resolveConflicts,
   type SyncOutcome,
 } from "./sync.ts";
@@ -721,131 +719,10 @@ describe("resolveConflicts", () => {
   });
 });
 
-describe("getSyncStatus", () => {
-  test("directions, never counts: local-ahead, diverged-live, unsnapshotted edits", async () => {
-    const h = await setupClone();
-    try {
-      // Two local snapshots → strictly ahead.
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nv3\n");
-      await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
-      await git.commit({
-        fs,
-        dir: h.projectDir,
-        message: "local one",
-        author: SERVER_AUTHOR,
-      });
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nv4\n");
-      await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
-      await git.commit({
-        fs,
-        dir: h.projectDir,
-        message: "local two",
-        author: SERVER_AUTHOR,
-      });
+// ── Opening a subfolder syncs the WHOLE enclosing repo (no per-book scoping) ──
 
-      // Local compare (no network) off the remote-tracking ref: changes to
-      // send exist (null = uncounted), nothing known to be behind.
-      const local = await getSyncStatus({ projectDir: h.projectDir });
-      expect(local.hasRemote).toBe(true);
-      expect(local.ahead).toBeNull();
-      expect(local.behind).toBe(0);
-      expect(local.live).toBe(false);
-      expect(local.hasUnsnapshottedChanges).toBe(false);
-
-      // One online commit; a live check sees the divergence.
-      await serverCommit(
-        h.serverDir,
-        { "chapter-02.md": "# Two\n" },
-        "online add",
-      );
-      const liveStatus = await getSyncStatus({
-        projectDir: h.projectDir,
-        fetch: true,
-      });
-      expect(liveStatus.ahead).toBeNull();
-      expect(liveStatus.behind).toBeNull();
-      expect(liveStatus.live).toBe(true);
-
-      // Unsnapshotted working-tree edits are reported separately.
-      await writeFile(path.join(h.projectDir, "notes.md"), "draft\n");
-      const withEdits = await getSyncStatus({ projectDir: h.projectDir });
-      expect(withEdits.hasUnsnapshottedChanges).toBe(true);
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("in-sync clone reports 0/0; remote-ahead reports behind null", async () => {
-    const h = await setupClone();
-    try {
-      const clean = await getSyncStatus({ projectDir: h.projectDir });
-      expect(clean.ahead).toBe(0);
-      expect(clean.behind).toBe(0);
-
-      await serverCommit(h.serverDir, { "chapter-02.md": "# Two\n" }, "online add");
-      const live = await getSyncStatus({ projectDir: h.projectDir, fetch: true });
-      expect(live.live).toBe(true);
-      expect(live.ahead).toBe(0);
-      expect(live.behind).toBeNull(); // changes exist online — never counted
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("live fetch failure degrades to the local compare (live: false)", async () => {
-    const h = await setupClone();
-    try {
-      // One local snapshot, then the remote becomes unreachable.
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nv3\n");
-      await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
-      await git.commit({
-        fs,
-        dir: h.projectDir,
-        message: "local one",
-        author: SERVER_AUTHOR,
-      });
-      await git.deleteRemote({ fs, dir: h.projectDir, remote: "origin" });
-      await git.addRemote({
-        fs,
-        dir: h.projectDir,
-        remote: "origin",
-        url: "http://127.0.0.1:1/unreachable.git",
-      });
-
-      const status = await getSyncStatus({ projectDir: h.projectDir, fetch: true });
-      expect(status.hasRemote).toBe(true);
-      expect(status.live).toBe(false);
-      // The local compare still works off the recorded remote-tracking ref.
-      expect(status.ahead).toBeNull();
-      expect(status.behind).toBe(0);
-      expect(status.approximate).toBe(false);
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("no remote → hasRemote false, counts null", async () => {
-    const dir = await tempDir("pmd-sync-noremote-");
-    try {
-      await git.init({ fs, dir, defaultBranch: "main" });
-      await writeFile(path.join(dir, "a.md"), "hi\n");
-      await git.add({ fs, dir, filepath: "a.md" });
-      await git.commit({ fs, dir, message: "init", author: SERVER_AUTHOR });
-      const status = await getSyncStatus({ projectDir: dir });
-      expect(status.hasRemote).toBe(false);
-      expect(status.ahead).toBeNull();
-      expect(status.behind).toBeNull();
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-
-// ── Book subfolders of a larger repo (scoped sync) ───────────────────────────
-
-describe("syncProject for a book subfolder", () => {
-  test("syncs through the ENCLOSING repo: scoped book snapshot, whole-repo push", async () => {
+describe("syncProject opened on a subfolder", () => {
+  test("syncs the whole enclosing repo (one snapshot, whole tree) — plain git, no scoping", async () => {
     const h = await setupClone();
     try {
       const dirA = path.join(h.projectDir, "book-a");
@@ -855,22 +732,17 @@ describe("syncProject for a book subfolder", () => {
       await writeFile(path.join(dirA, "chapter-01.md"), "# A\n\nBook A draft.\n");
       await writeFile(path.join(dirB, "chapter-01.md"), "# B\n\nBook B draft.\n");
 
-      // Status BEFORE sync, from the book folder: the unsnapshotted flag is
-      // scoped to the book; remote/branch resolve from the enclosing repo.
-      const status = await getSyncStatus({ projectDir: dirA });
-      expect(status.hasRemote).toBe(true);
-      expect(status.branch).toBe("main");
-      expect(status.hasUnsnapshottedChanges).toBe(true);
-
+      // Syncing from the subfolder operates on the ENCLOSING repo (a project is
+      // its git repo) — one whole-tree snapshot, then push.
       const outcome = await syncProject({
         projectDir: dirA,
-        message: "Book A snapshot",
+        message: "Snapshot before syncing",
       });
       expect(outcome.status).toBe("synced");
       if (outcome.status !== "synced") throw new Error("unreachable");
       expect(outcome.snapshotId).toBeDefined();
 
-      // Both books reached the server — the push moves the whole repository.
+      // Both books reached the server — one push of the whole repository.
       expect(await serverFile(h.serverDir, "book-a/chapter-01.md")).toBe(
         "# A\n\nBook A draft.\n",
       );
@@ -878,31 +750,20 @@ describe("syncProject for a book subfolder", () => {
         "# B\n\nBook B draft.\n",
       );
 
-      // The commit shapes are honest: book A's snapshot carries the author's
-      // message and contains ONLY book A; the sibling edits were committed
-      // separately under the shared-folder safety message.
-      const log = await git.log({ fs, dir: h.projectDir, depth: 3 });
-      const messages = log.map((c) => c.commit.message.trim());
-      expect(messages).toContain("Book A snapshot");
-      expect(messages).toContain(SHARED_FOLDER_SNAPSHOT_MESSAGE);
-      const snapTree = await git.readCommit({
+      // ONE snapshot commit, and it contains the WHOLE tree — book B included.
+      // (No special per-book scoping, no extra "shared folder" commit.)
+      const snap = await git.readCommit({
         fs,
         dir: h.projectDir,
         oid: outcome.snapshotId!,
       });
-      const bookASnapshot = log.find(
-        (c) => c.commit.message.trim() === "Book A snapshot",
-      )!;
-      expect(bookASnapshot.oid).toBe(outcome.snapshotId!);
-      // Book A's scoped snapshot must NOT contain book B.
-      await expect(
-        git.readBlob({
-          fs,
-          dir: h.projectDir,
-          oid: snapTree.oid,
-          filepath: "book-b/chapter-01.md",
-        }),
-      ).rejects.toThrow();
+      const blobB = await git.readBlob({
+        fs,
+        dir: h.projectDir,
+        oid: snap.oid,
+        filepath: "book-b/chapter-01.md",
+      });
+      expect(new TextDecoder().decode(blobB.blob)).toBe("# B\n\nBook B draft.\n");
 
       expect(await isClean(h.projectDir)).toBe(true);
     } finally {

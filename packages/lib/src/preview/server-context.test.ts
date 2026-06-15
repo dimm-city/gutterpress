@@ -12,7 +12,6 @@ describe('Server Context', () => {
     test('creates server state with correct initial values', () => {
       const inputPath = '/test/input';
       const tempDir = '/tmp/test';
-      const assetsDir = '/assets';
       const config = resolveConfig({}, {});
       const options: PreviewServerOptions = {
         port: 3000,
@@ -22,11 +21,10 @@ describe('Server Context', () => {
         openBrowser: true,
       };
 
-      const state = createServerState(inputPath, tempDir, assetsDir, config, options);
+      const state = createServerState(inputPath, tempDir, config, options);
 
       expect(state.currentInputPath).toBe(inputPath);
       expect(state.tempDir).toBe(tempDir);
-      expect(state.assetsSourceDir).toBe(assetsDir);
       expect(state.config).toBe(config);
       expect(state.options).toBe(options);
       expect(state.currentWatcher).toBeNull();

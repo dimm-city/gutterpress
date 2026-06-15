@@ -13,6 +13,8 @@ import {
   autoSnapshotDelayMs,
   isNoChangesError,
   isGitInternalPath,
+  AUTO_SYNC_DEFAULT_MINUTES,
+  autoSyncDelayMs,
 } from "./source-provider";
 
 async function tempDir(): Promise<string> {
@@ -306,6 +308,32 @@ test("autoSnapshotDelayMs: defaults, disable, clamping, garbage", () => {
   ).toBe(AUTO_SNAPSHOT_DEFAULT_MINUTES * 60_000);
 });
 
+test("autoSyncDelayMs: defaults, disable, clamping, non-finite fallback", () => {
+  // Missing policy → defaults (enabled, 2 minutes).
+  expect(autoSyncDelayMs(undefined)).toBe(AUTO_SYNC_DEFAULT_MINUTES * 60_000);
+  // Explicit value passes through.
+  expect(autoSyncDelayMs({ autoSync: true, autoSyncMinutes: 5 })).toBe(5 * 60_000);
+  // Disabled → null (the host never arms the periodic timer).
+  expect(autoSyncDelayMs({ autoSync: false, autoSyncMinutes: 2 })).toBe(null);
+  // Floor: never below 1 minute.
+  expect(autoSyncDelayMs({ autoSync: true, autoSyncMinutes: 0.1 })).toBe(1 * 60_000);
+  // Ceiling: never above a day.
+  expect(
+    autoSyncDelayMs({ autoSync: true, autoSyncMinutes: 99_999 }),
+  ).toBe(24 * 60 * 60_000);
+  // Non-finite minutes → fallback to default, then clamp.
+  expect(
+    autoSyncDelayMs({ autoSync: true, autoSyncMinutes: Number.NaN }),
+  ).toBe(AUTO_SYNC_DEFAULT_MINUTES * 60_000);
+  expect(
+    autoSyncDelayMs({ autoSync: true, autoSyncMinutes: -5 }),
+  ).toBe(AUTO_SYNC_DEFAULT_MINUTES * 60_000);
+  // Partial policy: only autoSync false set, minutes absent → null.
+  expect(autoSyncDelayMs({ autoSync: false })).toBe(null);
+  // Partial policy: only minutes set, switch defaults ON.
+  expect(autoSyncDelayMs({ autoSyncMinutes: 3 })).toBe(3 * 60_000);
+});
+
 test("isGitInternalPath matches .git segments only", () => {
   expect(isGitInternalPath(".git")).toBe(true);
   expect(isGitInternalPath(".git/index")).toBe(true);
@@ -372,17 +400,17 @@ async function initTwoBookRepo(dir: string) {
   };
 }
 
-test("subfolder snapshot stages ONLY the book's own files", async () => {
+test("subfolder snapshot commits the WHOLE repo (a project is its git repo)", async () => {
   const dir = await tempDir();
   try {
     const { bookA, dirA, dirB } = await initTwoBookRepo(dir);
-    // Edits in BOTH books; book A snapshots — B's edit must stay pending.
+    // Edits in BOTH books; snapshotting from book A commits the whole tree.
     await writeFile(path.join(dirA, "chapter-01.md"), "# A1\n\nSecond draft A.\n");
     await writeFile(path.join(dirB, "chapter-01.md"), "# B1\n\nSecond draft B.\n");
     const snap = await bookA.snapshot({ projectDir: dirA, message: "A second draft" });
     expect(snap.id).toMatch(/^[0-9a-f]{40}$/);
 
-    // The committed tree contains A's new content but NOT B's (B unstaged).
+    // The committed tree contains BOTH books' new content (plain git add -A).
     const git = (await import("isomorphic-git")).default;
     const fsMod = await import("node:fs");
     const a = await git.readBlob({
@@ -392,17 +420,17 @@ test("subfolder snapshot stages ONLY the book's own files", async () => {
     const b = await git.readBlob({
       fs: fsMod, dir, oid: snap.id, filepath: "book-b/chapter-01.md",
     });
-    expect(Buffer.from(b.blob).toString()).toContain("First draft B.");
-    // B's working-tree edit survives, still pending for B's own snapshot.
-    expect(await readFile(path.join(dirB, "chapter-01.md"), "utf8")).toContain(
-      "Second draft B.",
-    );
+    expect(Buffer.from(b.blob).toString()).toContain("Second draft B.");
+    // Nothing left pending — the whole tree was committed in one snapshot.
+    await expect(
+      bookA.snapshot({ projectDir: dirA, message: "nothing new" }),
+    ).rejects.toThrow(/no changes/i);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("subfolder listHistory shows only commits touching the book", async () => {
+test("subfolder listHistory shows the WHOLE repo history", async () => {
   const dir = await tempDir();
   try {
     const { bookA, bookB, dirA, dirB } = await initTwoBookRepo(dir);
@@ -411,50 +439,42 @@ test("subfolder listHistory shows only commits touching the book", async () => {
     await writeFile(path.join(dirB, "chapter-01.md"), "# B1\n\nSecond draft B.\n");
     await bookB.snapshot({ projectDir: dirB, message: "B change" });
 
-    const historyA = await bookA.listHistory(dirA);
-    const historyB = await bookB.listHistory(dirB);
-    // Changes in book B never appear in book A's history (and vice versa);
-    // the shared initial snapshot (created both folders) appears in both.
-    expect(historyA.map((e) => e.message)).toEqual(["A change", "Initial snapshot"]);
-    expect(historyB.map((e) => e.message)).toEqual(["B change", "Initial snapshot"]);
+    // A project is its git repo: both subfolders see the SAME whole-repo
+    // history (newest-first), not a per-book slice.
+    const whole = ["B change", "A change", "Initial snapshot"];
+    expect((await bookA.listHistory(dirA)).map((e) => e.message)).toEqual(whole);
+    expect((await bookB.listHistory(dirB)).map((e) => e.message)).toEqual(whole);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("subfolder restore touches only the book's own files", async () => {
+test("subfolder restore restores the WHOLE repo; safe-restore backs up unsaved work", async () => {
   const dir = await tempDir();
   try {
-    const { bookA, bookB, dirA, dirB } = await initTwoBookRepo(dir);
+    const { bookA, dirA, dirB } = await initTwoBookRepo(dir);
     const initial = (await bookA.listHistory(dirA))[0]!;
     await writeFile(path.join(dirA, "chapter-01.md"), "# A1\n\nRewritten A.\n");
-    await bookA.snapshot({ projectDir: dirA, message: "A rewrite" });
-    await writeFile(path.join(dirB, "chapter-01.md"), "# B1\n\nUncommitted B work.\n");
+    await writeFile(path.join(dirB, "chapter-01.md"), "# B1\n\nRewritten B.\n");
+    await bookA.snapshot({ projectDir: dirA, message: "Rewrite both" });
 
-    // Restore book A to the initial snapshot — book B's uncommitted work
-    // must be untouched.
-    await bookA.restore({ projectDir: dirA, id: initial.id });
-    expect(await readFile(path.join(dirA, "chapter-01.md"), "utf8")).toContain(
-      "First draft A.",
-    );
-    expect(await readFile(path.join(dirB, "chapter-01.md"), "utf8")).toContain(
-      "Uncommitted B work.",
-    );
-
-    // Safe-restore path: backup snapshot is likewise subfolder-scoped.
+    // Unsaved edits across the repo before restoring to the initial commit.
     await writeFile(path.join(dirA, "chapter-01.md"), "# A1\n\nUnsaved A.\n");
-    const latestA = (await bookA.listHistory(dirA))[0]!;
-    const result = await restoreVersionWithBackup({ projectDir: dirA, id: latestA.id });
+    await writeFile(path.join(dirB, "chapter-01.md"), "# B1\n\nUnsaved B.\n");
+    const result = await restoreVersionWithBackup({ projectDir: dirA, id: initial.id });
     expect(result.backupId).toMatch(/^[0-9a-f]{40}$/);
-    // B untouched by the backup+restore sequence.
-    expect(await readFile(path.join(dirB, "chapter-01.md"), "utf8")).toContain(
-      "Uncommitted B work.",
-    );
-    // The backup commit appears in A's history, not B's.
-    const historyB = await bookB.listHistory(dirB);
-    expect(historyB.some((e) => e.message === RESTORE_BACKUP_MESSAGE)).toBe(false);
-    const historyA = await bookA.listHistory(dirA);
-    expect(historyA[0]!.message).toBe(RESTORE_BACKUP_MESSAGE);
+
+    // Whole tree restored to the initial commit — BOTH books reverted.
+    expect(await readFile(path.join(dirA, "chapter-01.md"), "utf8")).toContain("First draft A.");
+    expect(await readFile(path.join(dirB, "chapter-01.md"), "utf8")).toContain("First draft B.");
+
+    // Nothing is lost: the unsaved edits to BOTH books are in the backup commit.
+    const git = (await import("isomorphic-git")).default;
+    const fsMod = await import("node:fs");
+    const ua = await git.readBlob({ fs: fsMod, dir, oid: result.backupId!, filepath: "book-a/chapter-01.md" });
+    const ub = await git.readBlob({ fs: fsMod, dir, oid: result.backupId!, filepath: "book-b/chapter-01.md" });
+    expect(Buffer.from(ua.blob).toString()).toContain("Unsaved A.");
+    expect(Buffer.from(ub.blob).toString()).toContain("Unsaved B.");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -564,7 +584,7 @@ test("listHistoryPage tolerates a garbage/expired cursor", async () => {
   }
 });
 
-test("subfolder listHistoryPage pages within the book's own commits", async () => {
+test("subfolder listHistoryPage pages the WHOLE repo history", async () => {
   const dir = await tempDir();
   try {
     const { bookA, bookB, dirA, dirB } = await initTwoBookRepo(dir);
@@ -581,15 +601,14 @@ test("subfolder listHistoryPage pages within the book's own commits", async () =
       );
       await bookB.snapshot({ projectDir: dirB, message: `B draft ${i}` });
     }
-    // Book A: 4 commits touch it (initial + 3). Page size 2 → 2 / 2.
-    const p1 = await bookA.listHistoryPage(dirA, { limit: 2 });
-    expect(p1.entries.map((e) => e.message)).toEqual(["A draft 3", "A draft 2"]);
+    // 7 commits total (initial + 3×A + 3×B). A subfolder pages the WHOLE repo
+    // newest-first — A and B commits interleaved, not a per-book slice.
+    const whole = ["B draft 3", "A draft 3", "B draft 2", "A draft 2", "B draft 1", "A draft 1", "Initial snapshot"];
+    const p1 = await bookA.listHistoryPage(dirA, { limit: 4 });
+    expect(p1.entries.map((e) => e.message)).toEqual(whole.slice(0, 4));
     expect(p1.hasMore).toBe(true);
-    const p2 = await bookA.listHistoryPage(dirA, {
-      limit: 2,
-      before: p1.entries.at(-1)!.id,
-    });
-    expect(p2.entries.map((e) => e.message)).toEqual(["A draft 1", "Initial snapshot"]);
+    const p2 = await bookA.listHistoryPage(dirA, { limit: 4, before: p1.entries.at(-1)!.id });
+    expect(p2.entries.map((e) => e.message)).toEqual(whole.slice(4));
     expect(p2.hasMore).toBe(false);
   } finally {
     await rm(dir, { recursive: true, force: true });

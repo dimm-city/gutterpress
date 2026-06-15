@@ -354,14 +354,59 @@ export interface ProjectRemoteDiagnosis {
   tokenSettingsUrl: string | null;
   /** ADR 0006 D4: HTTPS remote + stored credential — the Sync gate. */
   canSync: boolean;
-  /**
-   * @deprecated Same value as {@link canSync}. Do not use in new code —
-   * this field will be removed once all callers have migrated to `canSync`.
-   * (Terminology note: the concept formerly called "publish" is now "Sync";
-   * the alias keeps its original name for shape stability.)
-   */
-  canPublishWhenImplemented: boolean;
   guidance: RemoteGuidanceId;
+}
+
+// ── Auto-sync orchestrator status (transparent sync, §4.4 integration plan) ──
+//
+// Defined locally here — decoupled from the lib — so the SPA never
+// value-imports the lib (§8 / ADR 0004). Main emits `sync:status` events with
+// this payload; the renderer drives the ambient status pill from it.
+
+/**
+ * Ambient sync state emitted by the host auto-sync orchestrator and surfaced
+ * to the renderer via the `onSyncStatus` subscription.
+ *
+ * States:
+ *   idle        — no sync scheduled or needed (local-only project, or auto-sync OFF)
+ *   syncing     — commit→fetch→merge→push in flight ("Saving changes…")
+ *   synced      — last sync completed and remote is up to date
+ *   up-to-date  — sync ran; nothing needed (no local or remote changes)
+ *   offline     — network unavailable; changes are saved locally
+ *   auth        — credential missing or rejected ("Reconnect your repository")
+ *   conflict    — a content conflict needs the author's attention
+ *   error       — a transient/unexpected sync failure; treated like offline by the pill
+ */
+export type SyncState =
+  | "idle"
+  | "syncing"
+  | "synced"
+  | "up-to-date"
+  | "offline"
+  | "auth"
+  | "conflict"
+  | "error";
+
+/**
+ * Payload pushed to the renderer whenever the auto-sync orchestrator's state
+ * changes. `projectDir` scopes the event to one open project (the host may
+ * manage multiple). `files` is populated only on `"conflict"`.
+ */
+export interface SyncStatus {
+  state: SyncState;
+  /** Absolute path of the project this status applies to. */
+  projectDir: string;
+  /**
+   * Conflict file list — present (non-empty) only when `state === "conflict"`.
+   * Uses `ConflictFileInfo` (defined below) so the shape stays single-sourced
+   * and cannot drift from the lib's ConflictFile.kind values.
+   */
+  files?: ConflictFileInfo[];
+  /**
+   * ISO-8601 timestamp of the last completed sync attempt, or null when none
+   * has run in this session. Lets the pill show "last synced 2 min ago".
+   */
+  lastSyncAt: string | null;
 }
 
 // ── Sync (#15 sync phase, ADR 0006 D5) ────────────────────────────────────────
@@ -369,80 +414,6 @@ export interface ProjectRemoteDiagnosis {
 // Mirrors the lib's sync types — defined locally so the SPA never
 // value-imports the lib (§8 / ADR 0004). Outcomes are returned (not thrown):
 // the lib maps every failure to an author-friendly status the dialog renders.
-
-/** Ahead/behind summary for the "N changes to sync" UI. */
-export interface SyncStatusInfo {
-  hasRemote: boolean;
-  branch?: string;
-  /** Snapshots not yet online; `null` when there is nothing to compare. */
-  ahead: number | null;
-  /** Online snapshots not yet on this computer; `null` when unknown. */
-  behind: number | null;
-  /** Working-tree edits that Sync would snapshot first. */
-  hasUnsnapshottedChanges: boolean;
-  /** True when the counts include a live check of the online repository. */
-  live: boolean;
-  /**
-   * True when `ahead`/`behind` are lower bounds (the host caps the history
-   * walk and shallow clones hide older history) — render counts as "250+".
-   */
-  approximate: boolean;
-}
-
-/** One commit in a sync-preview direction list ("ER Update — 9 hours ago"). */
-export interface SyncCommitInfo {
-  id: string;
-  /** First line of the commit message. */
-  message: string;
-  author: string;
-  /** Unix milliseconds. */
-  timestamp: number;
-}
-
-/** One direction (incoming or outgoing) of a sync preview. */
-export interface SyncDirectionInfo {
-  /**
-   * Whether this direction has changes, decided host-side by ref string
-   * equality (never a history walk on a possibly-huge repository):
-   * `true` = changes exist, `false` = none, `null` = honestly unknown.
-   */
-  hasChanges: boolean | null;
-  /**
-   * Commit count when known. Incoming is counted only when the live check
-   * just downloaded the commits; outgoing is never counted. `null` = no
-   * count — render copy without a number ("New changes are available").
-   */
-  count: number | null;
-  /** Newest-first commit details (the host caps the list length). */
-  commits: SyncCommitInfo[];
-  /** True when `count` is a lower bound — render as "50+". */
-  approximate: boolean;
-}
-
-/**
- * Fetch-only "what would a Sync do?" preview. The host FETCHES the online
- * tip (never merges/pushes/snapshots) and reports both directions plus the
- * working-tree edits a Sync's snapshot step would commit. A failed fetch
- * degrades to local information with a friendly `fetchNotice` — it never
- * rejects for the offline/no-auth case.
- */
-export interface SyncPreviewInfo {
-  hasRemote: boolean;
-  branch?: string;
-  /** True when `incoming` reflects a successful live fetch just now. */
-  live: boolean;
-  /** Friendly notice when the live check failed (offline / rejected token). */
-  fetchNotice?: string;
-  /** Online commits not on this computer yet (Sync would merge them in). */
-  incoming: SyncDirectionInfo;
-  /** Local commits not online yet (Sync would send them). */
-  outgoing: SyncDirectionInfo;
-  /**
-   * Working-tree edits Sync's snapshot would commit. Paths are shared-folder-
-   * relative (book-scoped for subfolder projects); `sample` is capped.
-   */
-  changedFiles: { count: number; sample: string[] };
-}
 
 /** How one conflicted file differs between the two copies. */
 export type ConflictKind = "both-edited" | "you-deleted" | "online-deleted";
@@ -476,48 +447,6 @@ export type SyncOutcome =
       remoteId: string;
       snapshotId?: string;
     }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
-
-/**
- * Outcome of a pull-only attempt (`pullChanges`): get the online changes
- * (fast-forward or clean merge) — NEVER a push. Conflict semantics identical
- * to `syncChanges`.
- */
-export type PullOutcome =
-  | {
-      status: "pulled";
-      message: string;
-      snapshotId?: string;
-      /** True when a combine (merge) commit was created (vs fast-forward). */
-      merged: boolean;
-      /** True when file content changed — the preview should refresh. */
-      filesChanged: boolean;
-    }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
-  | {
-      status: "conflict";
-      message: string;
-      files: ConflictFileInfo[];
-      localId: string;
-      remoteId: string;
-      snapshotId?: string;
-    }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
-
-/**
- * Outcome of a push-only attempt (`pushChanges`): send local changes — NEVER
- * a merge. `"pull-first"` = the online copy has changes this computer doesn't
- * have yet; the UI shows a plain-language "get the latest changes first"
- * message.
- */
-export type PushOutcome =
-  | { status: "pushed"; message: string; snapshotId?: string }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
-  | { status: "pull-first"; message: string; snapshotId?: string }
   | { status: "auth"; message: string; snapshotId?: string }
   | { status: "offline"; message: string; snapshotId?: string }
   | { status: "error"; message: string; snapshotId?: string };
@@ -594,6 +523,16 @@ export interface AppSettings {
     autoSnapshot: boolean;
     /** Minutes of quiet after the last edit before a snapshot fires (floor 5). */
     autoSnapshotMinutes: number;
+    /**
+     * Automatically sync to the remote in the background when a remote is
+     * configured (transparent-sync plan §6). Defaults ON for projects with
+     * canSync; local-only projects are never auto-synced regardless of this
+     * setting. The author sees only the ambient sync:status pill and is
+     * interrupted only when a real content conflict requires a choice.
+     */
+    autoSync: boolean;
+    /** Periodic safety-sync cadence in minutes (clamped to [1, 1440]). */
+    autoSyncMinutes: number;
   };
   advanced: {
     fileWatcherInterval: number;
@@ -627,6 +566,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   versionHistory: {
     autoSnapshot: true,
     autoSnapshotMinutes: 10,
+    autoSync: true,      // transparent-sync plan §6: ON by default when canSync
+    autoSyncMinutes: 2,  // ~2 min periodic safety cadence
   },
   advanced: {
     fileWatcherInterval: 300,
@@ -969,40 +910,43 @@ export interface HostServices {
   /** Token-settings deep link for recognized forges; null when unknown. */
   forgeTokenUrl(host: string): Promise<string | null>;
 
-  // ── Sync (#15 sync phase, ADR 0006 D5) ─────────────────────────────────────
-  // Snapshot-first sync: the host snapshots unsaved work BEFORE any
-  // network/merge step, fetches, fast-forwards or merges, and pushes.
-  // Conflicts come back as `{ status: "conflict" }` with per-file rows; the
-  // dialog collects "Keep my version / Use the online version / Keep both
-  // copies" and calls resolveSyncConflicts. Credentials are resolved
-  // host-side and never reach the renderer. WebAdapter stubs reject.
+  // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ───
+  //
+  // The host auto-sync orchestrator (electron/main.ts) emits `sync:status`
+  // events whenever its state machine transitions. The renderer subscribes here
+  // to drive the ambient status pill without polling.
 
-  /** Ahead/behind counts vs the online repository ("N changes to sync"). */
-  getSyncStatus(projectDir: string, fetch?: boolean): Promise<SyncStatusInfo>;
   /**
-   * Fetch-only preview of what a Sync would do: incoming commits from the
-   * online copy, outgoing local commits, and the working-tree edits the
-   * pre-sync snapshot would commit. Backs the Sync dialog's open/refresh view.
+   * Subscribe to ambient sync-status updates from the host orchestrator.
+   * The handler fires on every subsequent transition (`syncing`, `synced`,
+   * `offline`, `auth`, `conflict`, …). NOTE: there is NO initial replay — a
+   * handler that subscribes after a sync has already settled stays uninvoked
+   * until the next transition, so callers should render a sensible default
+   * (e.g. blank/idle) until the first event. Returns an unsubscribe fn — call
+   * it in `onDestroy` to prevent leaks. The WebAdapter stub never emits and
+   * returns a no-op unsubscribe.
    */
-  previewSync(projectDir: string): Promise<SyncPreviewInfo>;
+  onSyncStatus(handler: (status: SyncStatus) => void): () => void;
+
   /**
-   * Local-only sync preview (NO network): incoming is computed against the
-   * last-fetched record of the online tip (`live: false`). Backs the Sync
-   * dialog's instant first paint while the live previewSync is in flight.
+   * Enable or disable the auto-sync master switch for the current project.
+   * Persisted via the host settings store (equivalent to toggling
+   * `versionHistory.autoSync` in AppSettings). The WebAdapter stub is a no-op
+   * (auto-sync is desktop-only until the PWA lands).
    */
-  previewSyncLocal(projectDir: string): Promise<SyncPreviewInfo>;
-  /** Snapshot-first sync of the project to its online repository. */
+  setAutoSync(enabled: boolean): Promise<void>;
+
+  // ── Sync (#15 sync phase, ADR 0006 D5) ─────────────────────────────────────
+  // Transparent auto-sync runs in the host (snapshot-first → fetch → merge →
+  // push). The renderer never operates sync; it only triggers a sync to
+  // surface a conflict and then applies the per-file choices. Credentials are
+  // resolved host-side and never reach the renderer. WebAdapter stubs reject.
+
+  /**
+   * Snapshot-first sync of the project to its online repository. Conflicts come
+   * back as `{ status: "conflict" }` with per-file rows for the choices dialog.
+   */
   syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
-  /**
-   * Pull-only: snapshot-if-needed → fetch → fast-forward/merge the online
-   * changes. NEVER pushes. `filesChanged` tells the UI to refresh the preview.
-   */
-  pullChanges(projectDir: string): Promise<PullOutcome>;
-  /**
-   * Push-only: snapshot-if-needed → push local changes. Returns the typed
-   * `"pull-first"` status when the online copy is ahead — never auto-merges.
-   */
-  pushChanges(projectDir: string): Promise<PushOutcome>;
   /** Apply per-file conflict choices and sync the combined result. */
   resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
 

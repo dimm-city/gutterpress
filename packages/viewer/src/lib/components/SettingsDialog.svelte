@@ -2,6 +2,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
+  import { getPlatform, isDesktop } from "$lib/platform";
 
   let {
     open = $bindable(false),
@@ -243,6 +244,27 @@
             value={s.versionHistory.autoSnapshotMinutes}
             disabled={!s.versionHistory.autoSnapshot}
             onchange={(e) => settings.set({ versionHistory: { autoSnapshotMinutes: Number((e.currentTarget as HTMLInputElement).value) } })}
+          />
+        </div>
+        <!-- Auto-sync toggle (transparent-sync plan §6 / §8 step 7). Default ON
+             for projects with a remote; local-only projects never auto-sync
+             regardless of this toggle (the host enforces the canSync gate). -->
+        <div class="row row-toggle">
+          <div class="row-label">
+            <label for="set-auto-sync">Automatically keep changes in sync</label>
+            <span class="row-hint">When a repository is connected, changes are saved to it in the background — you see only a small status indicator and are asked only when two copies conflict</span>
+          </div>
+          <input
+            id="set-auto-sync"
+            type="checkbox"
+            checked={s.versionHistory.autoSync}
+            onchange={(e) => {
+              const enabled = (e.currentTarget as HTMLInputElement).checked;
+              settings.set({ versionHistory: { autoSync: enabled } });
+              // Notify the host orchestrator immediately so the change takes effect
+              // without waiting for a settings reload cycle (§4.3).
+              if (isDesktop()) getPlatform().setAutoSync(enabled).catch(() => {});
+            }}
           />
         </div>
       </section>

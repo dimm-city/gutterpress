@@ -54,12 +54,9 @@ import type {
   RemoteAccessResult,
   ConnectGenericHostArgs,
   HostConnectionInfo,
-  SyncStatusInfo,
-  SyncPreviewInfo,
   SyncOutcome,
-  PullOutcome,
-  PushOutcome,
   ResolveSyncConflictsArgs,
+  SyncStatus,
 } from "./contract";
 
 function bridge(): ElectronBridge {
@@ -341,29 +338,18 @@ export class ElectronAdapter implements Platform {
     return bridge().forgeTokenUrl(host);
   }
 
+  // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ──
+  onSyncStatus(handler: (status: SyncStatus) => void): () => void {
+    return bridge().onSyncStatus(handler as (data: unknown) => void);
+  }
+
+  setAutoSync(enabled: boolean): Promise<void> {
+    return bridge().setAutoSync(enabled);
+  }
+
   // ── Sync (#15 sync phase) — delegate 1:1 to the bridge ─────────────────────
-  getSyncStatus(projectDir: string, fetch?: boolean): Promise<SyncStatusInfo> {
-    return bridge().getSyncStatus(projectDir, fetch);
-  }
-
-  previewSync(projectDir: string): Promise<SyncPreviewInfo> {
-    return bridge().previewSync(projectDir);
-  }
-
-  previewSyncLocal(projectDir: string): Promise<SyncPreviewInfo> {
-    return bridge().previewSyncLocal(projectDir);
-  }
-
   syncChanges(projectDir: string, message?: string): Promise<SyncOutcome> {
     return bridge().syncChanges(projectDir, message);
-  }
-
-  pullChanges(projectDir: string): Promise<PullOutcome> {
-    return bridge().pullChanges(projectDir);
-  }
-
-  pushChanges(projectDir: string): Promise<PushOutcome> {
-    return bridge().pushChanges(projectDir);
   }
 
   resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {

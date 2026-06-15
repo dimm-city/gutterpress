@@ -56,12 +56,9 @@ import type {
   RemoteAccessResult,
   ConnectGenericHostArgs,
   HostConnectionInfo,
-  SyncStatusInfo,
-  SyncPreviewInfo,
   SyncOutcome,
-  PullOutcome,
-  PushOutcome,
   ResolveSyncConflictsArgs,
+  SyncStatus,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -395,29 +392,22 @@ export class WebAdapter implements Platform {
     return Promise.resolve(null);
   }
 
+  // ── Auto-sync orchestrator seam — desktop-only; safe stubs on web ───────────
+  // The ambient pill simply stays absent (no handler is ever called) when
+  // running in a browser; setAutoSync is a silent no-op so callers need no guard.
+  onSyncStatus(_handler: (status: SyncStatus) => void): () => void {
+    // Never emits on the web — return a no-op unsubscribe.
+    return () => {};
+  }
+
+  setAutoSync(_enabled: boolean): Promise<void> {
+    // Auto-sync is desktop-only until the PWA sync backend lands in 0.6.0.
+    return Promise.resolve();
+  }
+
   // ── Sync (#15 sync phase) — desktop-only until the PWA lands ───────────────
-  getSyncStatus(_projectDir: string, _fetch?: boolean): Promise<SyncStatusInfo> {
-    return rejectNotImplemented("getSyncStatus");
-  }
-
-  previewSync(_projectDir: string): Promise<SyncPreviewInfo> {
-    return rejectNotImplemented("previewSync");
-  }
-
-  previewSyncLocal(_projectDir: string): Promise<SyncPreviewInfo> {
-    return rejectNotImplemented("previewSyncLocal");
-  }
-
   syncChanges(_projectDir: string, _message?: string): Promise<SyncOutcome> {
     return rejectNotImplemented("syncChanges");
-  }
-
-  pullChanges(_projectDir: string): Promise<PullOutcome> {
-    return rejectNotImplemented("pullChanges");
-  }
-
-  pushChanges(_projectDir: string): Promise<PushOutcome> {
-    return rejectNotImplemented("pushChanges");
   }
 
   resolveSyncConflicts(_args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {

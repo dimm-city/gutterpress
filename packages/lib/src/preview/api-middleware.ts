@@ -19,7 +19,6 @@ import type { ServerState } from './server-context.ts';
 export async function handleApiRequest(
   request: Request,
   state: ServerState,
-  _restartPreviewFn: (newPath: string) => Promise<void>
 ): Promise<Response | null> {
   const url = new URL(request.url);
   const { pathname } = url;
