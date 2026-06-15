@@ -354,13 +354,6 @@ export interface ProjectRemoteDiagnosis {
   tokenSettingsUrl: string | null;
   /** ADR 0006 D4: HTTPS remote + stored credential — the Sync gate. */
   canSync: boolean;
-  /**
-   * @deprecated Same value as {@link canSync}. Do not use in new code —
-   * this field will be removed once all callers have migrated to `canSync`.
-   * (Terminology note: the concept formerly called "publish" is now "Sync";
-   * the alias keeps its original name for shape stability.)
-   */
-  canPublishWhenImplemented: boolean;
   guidance: RemoteGuidanceId;
 }
 

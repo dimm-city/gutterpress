@@ -58,12 +58,27 @@ interface AppSettings {
   preview: {
     defaultZoom: string;
     viewMode: "single" | "two-column";
+    /**
+     * On small/narrow viewports the editor and preview can't sit side by side,
+     * so the workspace collapses to a single pane and this picks which one is
+     * shown. Ignored above the responsive breakpoint (split layout). (#responsive)
+     */
+    paneMode: "edit" | "view";
   };
   versionHistory: {
     /** Save automatic snapshots after edits settle (RC1-3). Default ON. */
     autoSnapshot: boolean;
     /** Minutes of quiet after the last edit before a snapshot fires. */
     autoSnapshotMinutes: number;
+    /**
+     * Automatically sync to the remote in the background when a remote is
+     * configured (transparent-sync plan §6). Defaults ON for projects with
+     * canSync; local-only projects are never auto-synced regardless of this
+     * setting.
+     */
+    autoSync: boolean;
+    /** Periodic safety-sync cadence in minutes (clamped to [1, 1440]). */
+    autoSyncMinutes: number;
   };
   advanced: {
     fileWatcherInterval: number;
@@ -214,13 +229,6 @@ interface ProjectRemoteDiagnosis {
     | null;
   tokenSettingsUrl: string | null;
   canSync: boolean;
-  /**
-   * @deprecated Same value as canSync. Do not use in new code — this field
-   * will be removed once all callers have migrated to canSync.
-   * (Terminology note: the concept formerly called "publish" is now "Sync";
-   * the alias keeps its original name for shape stability.)
-   */
-  canPublishWhenImplemented: boolean;
   guidance:
     | "local-only"
     | "connect-github-to-sync"

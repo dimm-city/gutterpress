@@ -298,13 +298,6 @@ interface ProjectRemoteDiagnosis {
     | null;
   tokenSettingsUrl: string | null;
   canSync: boolean;
-  /**
-   * @deprecated Same value as canSync. Do not use in new code — this field
-   * will be removed once all callers have migrated to canSync.
-   * (Terminology note: the concept formerly called "publish" is now "Sync";
-   * the alias keeps its original name for shape stability.)
-   */
-  canPublishWhenImplemented: boolean;
   guidance:
     | "local-only"
     | "connect-github-to-sync"
@@ -1288,17 +1281,6 @@ function scheduleAutoSync(dir: string): void {
   })();
   // Ensure the periodic safety interval is running (idempotent).
   armAutoSyncInterval(dir);
-}
-
-/**
- * Trigger an immediate sync for `dir` on project-open / app-start / network-
- * restored / manual force. Unlike scheduleAutoSync this does NOT arm a debounce
- * — it fires runAutoSync once right away (after the auto-snapshot has had a
- * chance to settle). Called after the first auto-snapshot fires (or immediately
- * on network-restored, since auto-snapshot runs first anyway).
- */
-function triggerAutoSyncOnce(dir: string): void {
-  void runAutoSync(dir);
 }
 
 function stopFolderWatch(): void {
@@ -3120,7 +3102,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   // hid teammate changes). syncProject snapshots-first, so a prompt run is safe.
   armAutoSyncInterval(openedDir);
   const initialSyncTimer = setTimeout(() => {
-    if (watchedDir === openedDir) triggerAutoSyncOnce(openedDir);
+    if (watchedDir === openedDir) void runAutoSync(openedDir);
   }, AUTO_SYNC_OPEN_DELAY_MS);
   if (typeof initialSyncTimer.unref === "function") initialSyncTimer.unref();
 
@@ -3211,30 +3193,25 @@ ipcMain.handle(
       (err as Error & { code?: string }).code = "SYNC_CONFLICT";
       throw err;
     }
-    // Attempt a pre-export sync if we're online, the project has a remote, and
-    // auto-sync is active. Failures here are soft (we warn, not block), since
-    // the user's local content is still valid and fully snapshotted.
-    let exportSyncWarning: string | undefined;
+    // Attempt a pre-export sync when online + canSync. Its only hard effect is
+    // the conflict BLOCK below (a PDF must not be built over an unresolved
+    // conflict); every other outcome is soft — the PDF uses local content,
+    // which is always valid and fully snapshotted. Gate errors are non-fatal.
     try {
       const exportSource = await lib.detectProjectSource(exportDir);
       if (exportSource.type === "local-git-folder") {
         // Credential-aware gate (ADR 0006 D4) — NOT capabilitiesFor().canSync,
         // which is hasRemote-only and would attempt a pre-export syncProject
-        // (returning auth) and a spurious "could not connect" toast for SSH or
-        // uncredentialed-HTTPS projects on every export.
+        // (returning auth) for SSH or uncredentialed-HTTPS projects on every export.
         const exportDiag = await lib.diagnoseProjectRemote(exportDir, {
           tokenStore: electronTokenStore,
         });
         if (exportDiag.canSync && net.isOnline()) {
-          // Sync first — the result doesn't block export even if it partially fails.
           const syncOutcome = await lib.syncProject({
             projectDir: exportDir,
             tokenStore: electronTokenStore,
           });
-          if (syncOutcome.status === "offline") {
-            exportSyncWarning =
-              "Offline — this PDF may not include recent changes from teammates.";
-          } else if (syncOutcome.status === "conflict") {
+          if (syncOutcome.status === "conflict") {
             // A conflict surfaced mid-export-gate: latch and block.
             const state = getOrCreateAutoSyncState(exportDir);
             state.conflictLatched = true;
@@ -3252,17 +3229,9 @@ ipcMain.handle(
             );
             (conflictErr as Error & { code?: string }).code = "SYNC_CONFLICT";
             throw conflictErr;
-          } else if (syncOutcome.status === "auth") {
-            exportSyncWarning =
-              "Could not connect to your repository. The PDF uses only local content.";
-          } else if (syncOutcome.status === "error") {
-            exportSyncWarning =
-              "Could not check for teammate changes before saving. The PDF uses only local content.";
           }
-          // synced / up-to-date → no warning needed; proceed cleanly.
-        } else if (exportDiag.canSync && !net.isOnline()) {
-          exportSyncWarning =
-            "Offline — this PDF may not include recent changes from teammates.";
+          // synced / up-to-date / offline / auth / error → export proceeds with
+          // local content (the ambient pill already reflects the sync state).
         }
       }
     } catch (gateErr) {
@@ -3270,12 +3239,6 @@ ipcMain.handle(
       if ((gateErr as Error & { code?: string }).code === "SYNC_CONFLICT") throw gateErr;
       const msg = gateErr instanceof Error ? gateErr.message : String(gateErr);
       console.warn(`[api:build] pre-export sync gate failed (non-fatal): ${msg}`);
-      exportSyncWarning =
-        "Could not check for teammate changes before saving. The PDF uses only local content.";
-    }
-    // Emit the warning to the renderer (it will surface a non-blocking toast).
-    if (exportSyncWarning) {
-      mainWindow?.webContents.send("build:syncWarning", { message: exportSyncWarning });
     }
     // ── end PDF-export safety gate ────────────────────────────────────────────
 
@@ -3651,7 +3614,7 @@ app.whenReady().then(async () => {
     const isNowOnline = net.isOnline();
     if (!wasOnline && isNowOnline && watchedDir) {
       console.log("[auto-sync] network restored (online poll) — triggering sync");
-      triggerAutoSyncOnce(watchedDir);
+      void runAutoSync(watchedDir);
     }
     wasOnline = isNowOnline;
   }, 15_000);
@@ -3665,7 +3628,7 @@ app.whenReady().then(async () => {
       const t = setTimeout(() => {
         if (watchedDir === resumedDir) {
           console.log("[auto-sync] system resumed — triggering sync");
-          triggerAutoSyncOnce(resumedDir);
+          void runAutoSync(resumedDir);
         }
       }, 3_000);
       if (typeof t.unref === "function") t.unref();
