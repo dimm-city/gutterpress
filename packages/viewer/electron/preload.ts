@@ -245,43 +245,6 @@ interface ProjectRemoteDiagnosis {
 }
 
 // ── Sync (#15 sync phase, ADR 0006 D5). Mirrors the lib. ──
-interface SyncStatusInfo {
-  hasRemote: boolean;
-  branch?: string;
-  ahead: number | null;
-  behind: number | null;
-  hasUnsnapshottedChanges: boolean;
-  live: boolean;
-  /** True when ahead/behind are lower bounds (walk cap or shallow boundary). */
-  approximate: boolean;
-}
-
-interface SyncCommitInfo {
-  id: string;
-  message: string;
-  author: string;
-  timestamp: number;
-}
-
-interface SyncDirectionInfo {
-  /** true = changes exist, false = none, null = honestly unknown. */
-  hasChanges: boolean | null;
-  /** Count when derivable from freshly fetched commits; null = no number. */
-  count: number | null;
-  commits: SyncCommitInfo[];
-  approximate: boolean;
-}
-
-interface SyncPreviewInfo {
-  hasRemote: boolean;
-  branch?: string;
-  live: boolean;
-  fetchNotice?: string;
-  incoming: SyncDirectionInfo;
-  outgoing: SyncDirectionInfo;
-  changedFiles: { count: number; sample: string[] };
-}
-
 interface ConflictFileInfo {
   path: string;
   kind: "both-edited" | "you-deleted" | "online-deleted";
@@ -308,35 +271,6 @@ type SyncOutcome =
       remoteId: string;
       snapshotId?: string;
     }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
-
-type PullOutcome =
-  | {
-      status: "pulled";
-      message: string;
-      snapshotId?: string;
-      merged: boolean;
-      filesChanged: boolean;
-    }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
-  | {
-      status: "conflict";
-      message: string;
-      files: ConflictFileInfo[];
-      localId: string;
-      remoteId: string;
-      snapshotId?: string;
-    }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
-
-type PushOutcome =
-  | { status: "pushed"; message: string; snapshotId?: string }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
-  | { status: "pull-first"; message: string; snapshotId?: string }
   | { status: "auth"; message: string; snapshotId?: string }
   | { status: "offline"; message: string; snapshotId?: string }
   | { status: "error"; message: string; snapshotId?: string };
@@ -733,29 +667,14 @@ contextBridge.exposeInMainWorld("electron", {
 
   // ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────
   // All git work happens in the lib behind main; credentials are resolved
-  // host-side from the safeStorage store and never cross this bridge.
-  getSyncStatus: (
-    projectDir: string,
-    fetch?: boolean,
-  ): Promise<SyncStatusInfo> =>
-    ipcRenderer.invoke("remote:syncStatus", projectDir, fetch),
-  /** Fetch-only "what would a Sync do?" preview (incoming + outgoing). */
-  previewSync: (projectDir: string): Promise<SyncPreviewInfo> =>
-    ipcRenderer.invoke("remote:previewSync", projectDir),
-  /** Local-only preview (no network) — the Sync dialog's instant first paint. */
-  previewSyncLocal: (projectDir: string): Promise<SyncPreviewInfo> =>
-    ipcRenderer.invoke("remote:previewSyncLocal", projectDir),
+  // host-side from the safeStorage store and never cross this bridge. The
+  // transparent auto-sync orchestrator drives syncProject itself; the renderer
+  // only triggers a sync for conflict resolution and applies the choices.
   syncChanges: (
     projectDir: string,
     message?: string,
   ): Promise<SyncOutcome> =>
     ipcRenderer.invoke("remote:sync", projectDir, message),
-  /** Pull-only: get online changes (fast-forward/merge). Never pushes. */
-  pullChanges: (projectDir: string): Promise<PullOutcome> =>
-    ipcRenderer.invoke("remote:pullChanges", projectDir),
-  /** Push-only: send local changes. "pull-first" when the remote is ahead. */
-  pushChanges: (projectDir: string): Promise<PushOutcome> =>
-    ipcRenderer.invoke("remote:pushChanges", projectDir),
   resolveSyncConflicts: (
     args: ResolveSyncConflictsArgs,
   ): Promise<SyncOutcome> =>

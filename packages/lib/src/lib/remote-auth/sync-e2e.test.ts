@@ -29,7 +29,7 @@ import git from "isomorphic-git";
 import { detectProjectSource } from "../project-source.ts";
 import { providerFor } from "../source-provider.ts";
 import { cloneRepository } from "./clone.ts";
-import { previewSync, pullChanges, pushChanges } from "./sync.ts";
+import { pullChanges, pushChanges } from "./sync.ts";
 import {
   startGitServer,
   tempDir,
@@ -174,16 +174,7 @@ describe("sync e2e — app-cloned multi-book repo, project is a subfolder", () =
     expect(pushB.status).toBe("pushed");
     expect(await serverTip()).toBe(remoteSnap2.id);
 
-    // ── Step 5: previewSync on A shows incoming changes ──
-    const preview = await previewSync({ projectDir: projectA });
-    logStep("previewSync(A)", preview);
-    expect(preview.hasRemote).toBe(true);
-    expect(preview.live).toBe(true);
-    expect(preview.incoming.hasChanges).toBe(true);
-    // A has its local snapshot too, so outgoing changes must also show.
-    expect(preview.outgoing.hasChanges).toBe(true);
-
-    // ── Step 6: pullChanges applies the online commits ──
+    // ── Step 5: pullChanges applies the online commits (combine with local) ──
     const tipBeforePull = await git.resolveRef({ fs, dir: repoA, ref: "main" });
     const pull = await pullChanges({ projectDir: projectA });
     logStep("pullChanges(A)", pull);

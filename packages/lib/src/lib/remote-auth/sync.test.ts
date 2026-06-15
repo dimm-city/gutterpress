@@ -21,7 +21,6 @@ import httpNode from "isomorphic-git/http/node";
 
 import { cloneRepository } from "./clone.ts";
 import {
-  getSyncStatus,
   onlineCopyPath,
   syncProject,
   SYNC_SNAPSHOT_MESSAGE,
@@ -720,127 +719,6 @@ describe("resolveConflicts", () => {
   });
 });
 
-describe("getSyncStatus", () => {
-  test("directions, never counts: local-ahead, diverged-live, unsnapshotted edits", async () => {
-    const h = await setupClone();
-    try {
-      // Two local snapshots → strictly ahead.
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nv3\n");
-      await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
-      await git.commit({
-        fs,
-        dir: h.projectDir,
-        message: "local one",
-        author: SERVER_AUTHOR,
-      });
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nv4\n");
-      await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
-      await git.commit({
-        fs,
-        dir: h.projectDir,
-        message: "local two",
-        author: SERVER_AUTHOR,
-      });
-
-      // Local compare (no network) off the remote-tracking ref: changes to
-      // send exist (null = uncounted), nothing known to be behind.
-      const local = await getSyncStatus({ projectDir: h.projectDir });
-      expect(local.hasRemote).toBe(true);
-      expect(local.ahead).toBeNull();
-      expect(local.behind).toBe(0);
-      expect(local.live).toBe(false);
-      expect(local.hasUnsnapshottedChanges).toBe(false);
-
-      // One online commit; a live check sees the divergence.
-      await serverCommit(
-        h.serverDir,
-        { "chapter-02.md": "# Two\n" },
-        "online add",
-      );
-      const liveStatus = await getSyncStatus({
-        projectDir: h.projectDir,
-        fetch: true,
-      });
-      expect(liveStatus.ahead).toBeNull();
-      expect(liveStatus.behind).toBeNull();
-      expect(liveStatus.live).toBe(true);
-
-      // Unsnapshotted working-tree edits are reported separately.
-      await writeFile(path.join(h.projectDir, "notes.md"), "draft\n");
-      const withEdits = await getSyncStatus({ projectDir: h.projectDir });
-      expect(withEdits.hasUnsnapshottedChanges).toBe(true);
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("in-sync clone reports 0/0; remote-ahead reports behind null", async () => {
-    const h = await setupClone();
-    try {
-      const clean = await getSyncStatus({ projectDir: h.projectDir });
-      expect(clean.ahead).toBe(0);
-      expect(clean.behind).toBe(0);
-
-      await serverCommit(h.serverDir, { "chapter-02.md": "# Two\n" }, "online add");
-      const live = await getSyncStatus({ projectDir: h.projectDir, fetch: true });
-      expect(live.live).toBe(true);
-      expect(live.ahead).toBe(0);
-      expect(live.behind).toBeNull(); // changes exist online — never counted
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("live fetch failure degrades to the local compare (live: false)", async () => {
-    const h = await setupClone();
-    try {
-      // One local snapshot, then the remote becomes unreachable.
-      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nv3\n");
-      await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
-      await git.commit({
-        fs,
-        dir: h.projectDir,
-        message: "local one",
-        author: SERVER_AUTHOR,
-      });
-      await git.deleteRemote({ fs, dir: h.projectDir, remote: "origin" });
-      await git.addRemote({
-        fs,
-        dir: h.projectDir,
-        remote: "origin",
-        url: "http://127.0.0.1:1/unreachable.git",
-      });
-
-      const status = await getSyncStatus({ projectDir: h.projectDir, fetch: true });
-      expect(status.hasRemote).toBe(true);
-      expect(status.live).toBe(false);
-      // The local compare still works off the recorded remote-tracking ref.
-      expect(status.ahead).toBeNull();
-      expect(status.behind).toBe(0);
-      expect(status.approximate).toBe(false);
-    } finally {
-      await h.cleanup();
-    }
-  });
-
-  test("no remote → hasRemote false, counts null", async () => {
-    const dir = await tempDir("pmd-sync-noremote-");
-    try {
-      await git.init({ fs, dir, defaultBranch: "main" });
-      await writeFile(path.join(dir, "a.md"), "hi\n");
-      await git.add({ fs, dir, filepath: "a.md" });
-      await git.commit({ fs, dir, message: "init", author: SERVER_AUTHOR });
-      const status = await getSyncStatus({ projectDir: dir });
-      expect(status.hasRemote).toBe(false);
-      expect(status.ahead).toBeNull();
-      expect(status.behind).toBeNull();
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-
 // ── Opening a subfolder syncs the WHOLE enclosing repo (no per-book scoping) ──
 
 describe("syncProject opened on a subfolder", () => {
@@ -854,13 +732,8 @@ describe("syncProject opened on a subfolder", () => {
       await writeFile(path.join(dirA, "chapter-01.md"), "# A\n\nBook A draft.\n");
       await writeFile(path.join(dirB, "chapter-01.md"), "# B\n\nBook B draft.\n");
 
-      // Status from the subfolder resolves the ENCLOSING repo; the
-      // unsnapshotted flag reflects the whole repo (a project is its git repo).
-      const status = await getSyncStatus({ projectDir: dirA });
-      expect(status.hasRemote).toBe(true);
-      expect(status.branch).toBe("main");
-      expect(status.hasUnsnapshottedChanges).toBe(true);
-
+      // Syncing from the subfolder operates on the ENCLOSING repo (a project is
+      // its git repo) — one whole-tree snapshot, then push.
       const outcome = await syncProject({
         projectDir: dirA,
         message: "Snapshot before syncing",

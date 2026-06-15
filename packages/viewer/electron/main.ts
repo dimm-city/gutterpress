@@ -314,17 +314,6 @@ interface ProjectRemoteDiagnosis {
 }
 
 // ── Sync surface (#15 sync phase, ADR 0006 D5). Mirrors the lib.
-interface SyncStatusInfo {
-  hasRemote: boolean;
-  branch?: string;
-  ahead: number | null;
-  behind: number | null;
-  hasUnsnapshottedChanges: boolean;
-  live: boolean;
-  /** True when ahead/behind are lower bounds (walk cap or shallow boundary). */
-  approximate: boolean;
-}
-
 interface ConflictFileInfo {
   path: string;
   kind: "both-edited" | "you-deleted" | "online-deleted";
@@ -333,32 +322,6 @@ interface ConflictFileInfo {
 interface ConflictResolutionChoice {
   path: string;
   choice: "mine" | "theirs" | "both";
-}
-
-interface SyncCommitInfo {
-  id: string;
-  message: string;
-  author: string;
-  timestamp: number;
-}
-
-interface SyncDirectionInfo {
-  /** true = changes exist, false = none, null = honestly unknown. */
-  hasChanges: boolean | null;
-  /** Count when derivable from freshly fetched commits; null = no number. */
-  count: number | null;
-  commits: SyncCommitInfo[];
-  approximate: boolean;
-}
-
-interface SyncPreviewInfo {
-  hasRemote: boolean;
-  branch?: string;
-  live: boolean;
-  fetchNotice?: string;
-  incoming: SyncDirectionInfo;
-  outgoing: SyncDirectionInfo;
-  changedFiles: { count: number; sample: string[] };
 }
 
 type SyncOutcome =
@@ -377,39 +340,6 @@ type SyncOutcome =
       remoteId: string;
       snapshotId?: string;
     }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
-
-// Pull-only outcome (remote:pullChanges) — mirrors the lib's PullOutcome.
-type PullOutcome =
-  | {
-      status: "pulled";
-      message: string;
-      snapshotId?: string;
-      merged: boolean;
-      filesChanged: boolean;
-    }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
-  | {
-      status: "conflict";
-      message: string;
-      files: ConflictFileInfo[];
-      localId: string;
-      remoteId: string;
-      snapshotId?: string;
-    }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
-
-// Push-only outcome (remote:pushChanges) — mirrors the lib's PushOutcome.
-// "pull-first" = the online copy is ahead; the UI shows a plain-language
-// "get the latest changes first" message (never auto-merges).
-type PushOutcome =
-  | { status: "pushed"; message: string; snapshotId?: string }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
-  | { status: "pull-first"; message: string; snapshotId?: string }
   | { status: "auth"; message: string; snapshotId?: string }
   | { status: "offline"; message: string; snapshotId?: string }
   | { status: "error"; message: string; snapshotId?: string };
@@ -510,18 +440,6 @@ interface LibModule {
     message?: string;
     authorName?: string;
   }) => Promise<SyncOutcome>;
-  pullChanges: (options: {
-    projectDir: string;
-    tokenStore?: { get(host: string): Promise<HostCredential | null> };
-    message?: string;
-    authorName?: string;
-  }) => Promise<PullOutcome>;
-  pushChanges: (options: {
-    projectDir: string;
-    tokenStore?: { get(host: string): Promise<HostCredential | null> };
-    message?: string;
-    authorName?: string;
-  }) => Promise<PushOutcome>;
   resolveConflicts: (options: {
     projectDir: string;
     resolutions: ConflictResolutionChoice[];
@@ -530,17 +448,6 @@ interface LibModule {
     tokenStore?: { get(host: string): Promise<HostCredential | null> };
     authorName?: string;
   }) => Promise<SyncOutcome>;
-  getSyncStatus: (options: {
-    projectDir: string;
-    fetch?: boolean;
-    tokenStore?: { get(host: string): Promise<HostCredential | null> };
-  }) => Promise<SyncStatusInfo>;
-  previewSync: (options: {
-    projectDir: string;
-    tokenStore?: { get(host: string): Promise<HostCredential | null> };
-    /** `false` = local-only preview (no network fetch). */
-    fetch?: boolean;
-  }) => Promise<SyncPreviewInfo>;
 }
 
 let libPromise: Promise<LibModule> | null = null;
@@ -3001,52 +2908,6 @@ ipcMain.handle("remote:forgeTokenUrl", async (_e, host: string) => {
 // catches argument-validation and truly unexpected faults.
 
 ipcMain.handle(
-  "remote:syncStatus",
-  (_e, projectDir: string, fetch?: boolean): Promise<SyncStatusInfo> =>
-    handleRemoteErrors("remote:syncStatus", async () => {
-      const dir = requireAbsoluteDir("remote:syncStatus", projectDir);
-      const lib = await loadLib();
-      return lib.getSyncStatus({
-        projectDir: dir,
-        fetch: fetch === true,
-        tokenStore: electronTokenStore,
-      });
-    }),
-);
-
-ipcMain.handle(
-  "remote:previewSync",
-  (_e, projectDir: string): Promise<SyncPreviewInfo> =>
-    handleRemoteErrors("remote:previewSync", async () => {
-      const dir = requireAbsoluteDir("remote:previewSync", projectDir);
-      const lib = await loadLib();
-      // Fetch-only preview (never merges/pushes/snapshots). The lib maps a
-      // failed fetch to a friendly `fetchNotice` instead of throwing.
-      return lib.previewSync({
-        projectDir: dir,
-        tokenStore: electronTokenStore,
-      });
-    }),
-);
-
-ipcMain.handle(
-  "remote:previewSyncLocal",
-  (_e, projectDir: string): Promise<SyncPreviewInfo> =>
-    handleRemoteErrors("remote:previewSyncLocal", async () => {
-      const dir = requireAbsoluteDir("remote:previewSyncLocal", projectDir);
-      const lib = await loadLib();
-      // LOCAL-ONLY preview (no network): incoming is computed against the
-      // last-fetched record of the online tip. Backs the Sync dialog's
-      // instant first paint; the live remote:previewSync follows it.
-      return lib.previewSync({
-        projectDir: dir,
-        tokenStore: electronTokenStore,
-        fetch: false,
-      });
-    }),
-);
-
-ipcMain.handle(
   "remote:sync",
   (_e, projectDir: string, message?: string): Promise<SyncOutcome> =>
     handleRemoteErrors("remote:sync", async () => {
@@ -3058,36 +2919,6 @@ ipcMain.handle(
         ...(typeof message === "string" && message.trim()
           ? { message: message.trim() }
           : {}),
-      });
-    }),
-);
-
-ipcMain.handle(
-  "remote:pullChanges",
-  (_e, projectDir: string): Promise<PullOutcome> =>
-    handleRemoteErrors("remote:pullChanges", async () => {
-      const dir = requireAbsoluteDir("remote:pullChanges", projectDir);
-      const lib = await loadLib();
-      // Pull-only: snapshot-if-needed → fetch → fast-forward/merge. NEVER
-      // pushes. Expected failures come back as typed statuses, not throws.
-      return lib.pullChanges({
-        projectDir: dir,
-        tokenStore: electronTokenStore,
-      });
-    }),
-);
-
-ipcMain.handle(
-  "remote:pushChanges",
-  (_e, projectDir: string): Promise<PushOutcome> =>
-    handleRemoteErrors("remote:pushChanges", async () => {
-      const dir = requireAbsoluteDir("remote:pushChanges", projectDir);
-      const lib = await loadLib();
-      // Push-only: snapshot-if-needed → push. When the online copy is ahead
-      // the lib returns the typed "pull-first" status — it never auto-merges.
-      return lib.pushChanges({
-        projectDir: dir,
-        tokenStore: electronTokenStore,
       });
     }),
 );

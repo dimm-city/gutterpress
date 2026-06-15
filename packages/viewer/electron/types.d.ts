@@ -230,44 +230,6 @@ interface ProjectRemoteDiagnosis {
 }
 
 // ── Sync (#15 sync phase, ADR 0006 D5). Mirrors preload.ts. ─────────────────
-interface SyncStatusInfo {
-  hasRemote: boolean;
-  branch?: string;
-  ahead: number | null;
-  behind: number | null;
-  hasUnsnapshottedChanges: boolean;
-  live: boolean;
-  /** True when ahead/behind are lower bounds (walk cap or shallow boundary). */
-  approximate: boolean;
-}
-
-interface SyncCommitInfo {
-  id: string;
-  message: string;
-  author: string;
-  timestamp: number;
-}
-
-interface SyncDirectionInfo {
-  /** true = changes exist, false = none, null = honestly unknown. */
-  hasChanges: boolean | null;
-  /** Count when derivable from freshly fetched commits; null = no number. */
-  count: number | null;
-  commits: SyncCommitInfo[];
-  approximate: boolean;
-}
-
-/** Fetch-only "what would a Sync do?" preview for the Sync dialog. */
-interface SyncPreviewInfo {
-  hasRemote: boolean;
-  branch?: string;
-  live: boolean;
-  fetchNotice?: string;
-  incoming: SyncDirectionInfo;
-  outgoing: SyncDirectionInfo;
-  changedFiles: { count: number; sample: string[] };
-}
-
 interface ConflictFileInfo {
   path: string;
   kind: "both-edited" | "you-deleted" | "online-deleted";
@@ -294,35 +256,6 @@ type SyncOutcome =
       remoteId: string;
       snapshotId?: string;
     }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
-
-type PullOutcome =
-  | {
-      status: "pulled";
-      message: string;
-      snapshotId?: string;
-      merged: boolean;
-      filesChanged: boolean;
-    }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
-  | {
-      status: "conflict";
-      message: string;
-      files: ConflictFileInfo[];
-      localId: string;
-      remoteId: string;
-      snapshotId?: string;
-    }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
-
-type PushOutcome =
-  | { status: "pushed"; message: string; snapshotId?: string }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
-  | { status: "pull-first"; message: string; snapshotId?: string }
   | { status: "auth"; message: string; snapshotId?: string }
   | { status: "offline"; message: string; snapshotId?: string }
   | { status: "error"; message: string; snapshotId?: string };
@@ -547,16 +480,9 @@ interface Window {
     onSyncStatus(cb: (data: unknown) => void): () => void;
     /** Enable or disable the auto-sync master switch. */
     setAutoSync(enabled: boolean): Promise<void>;
-    // Sync (#15 sync phase, ADR 0006 D5)
-    getSyncStatus(projectDir: string, fetch?: boolean): Promise<SyncStatusInfo>;
-    previewSync(projectDir: string): Promise<SyncPreviewInfo>;
-    /** Local-only preview (no network) — the Sync dialog's instant first paint. */
-    previewSyncLocal(projectDir: string): Promise<SyncPreviewInfo>;
+    // Sync (#15 sync phase, ADR 0006 D5). Auto-sync runs in main; the renderer
+    // only triggers a sync to surface conflicts and then applies the choices.
     syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
-    /** Pull-only: get online changes (fast-forward/merge). Never pushes. */
-    pullChanges(projectDir: string): Promise<PullOutcome>;
-    /** Push-only: send local changes. "pull-first" when the remote is ahead. */
-    pushChanges(projectDir: string): Promise<PushOutcome>;
     resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
     startPreview(args: { input: string }): Promise<{
       url: string;
