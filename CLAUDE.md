@@ -203,7 +203,7 @@ are unaffected by this rule — this rule governs the new Git/source surface onl
 > [!ALERT]
 > This is a **non-negotiable core architecture requirement** for the viewer and
 > for **every Electron application started in this org** — it is the gold
-> standard, applied by default. See ADR `docs/adr/0004-platform-abstraction.md`.
+> standard, applied by default. See ADR 0004 (platform abstraction; kept under `.docs-archive/`).
 
 The viewer is an Electron shell hosting a **static SvelteKit SPA**. The SPA is
 written so it could run unchanged in a browser PWA tomorrow. To make that true —

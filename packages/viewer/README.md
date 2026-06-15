@@ -126,9 +126,9 @@ npm run build
 npm run electron:build
 
 # 3. Package as platform installer (electron-builder)
-npm run dist:linux   # → dist/print-md-viewer-0.2.0.AppImage
-npm run dist:win     # → dist/print-md-viewer-0.2.0-win.zip
-npm run dist:mac     # → dist/print-md-viewer-0.2.0-arm64.dmg
+npm run dist:linux   # → dist/print-md-viewer-<version>.AppImage
+npm run dist:win     # → dist/print-md-viewer-<version>-win.zip
+npm run dist:mac     # → dist/print-md-viewer-<version>-arm64.dmg
 ```
 
 Each `dist:*` script runs the build and electron:build steps automatically
@@ -138,7 +138,7 @@ before packaging.
 
 ```bash
 npm run dist:win
-# Output: dist/print-md-viewer-0.2.0-win.zip
+# Output: dist/print-md-viewer-<version>-win.zip
 ```
 
 Extract the zip and run `print-md-viewer.exe`. The release CI runs this on
@@ -149,7 +149,7 @@ config for the right platform.
 
 ```bash
 npm run dist:mac
-# Output: dist/print-md-viewer-0.2.0-arm64.dmg
+# Output: dist/print-md-viewer-<version>-arm64.dmg
 ```
 
 Code-signing and notarization require macOS credentials configured in the

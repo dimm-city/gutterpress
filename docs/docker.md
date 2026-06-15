@@ -109,5 +109,4 @@ build-pdf:
 | `fonts-liberation`, `fonts-dejavu-core`, fontconfig | base fonts (your project fonts come from the mount) |
 
 Poppler, ImageMagick, `htmlhint`, `markdownlint-cli2`, and stylelint are **no
-longer installed** — those checks now run in-process inside the bundle (see
-[ADR 0002](adr/0002-prefer-in-process-libraries-over-os-dependencies.md)).
+longer installed** — those checks now run in-process inside the bundle.
