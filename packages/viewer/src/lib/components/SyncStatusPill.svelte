@@ -92,7 +92,9 @@
       case "auth":
         return "Reconnect your repository";
       case "conflict":
-        return "Changes happened in two places — tap to review";
+        // Kept short so the actionable "tap to review" survives the pill's
+        // max-width and never truncates (three-judge gate finding).
+        return "Changes in two places — tap to review";
       case "error":
         // Treat errors like offline from the pill's perspective (§5.1).
         return "Offline — changes are saved on this computer";

@@ -298,23 +298,26 @@
       {:else}
         <p class="error-msg" role="alert">{errorMessage}</p>
       {/if}
-
-      <footer class="actions">
-        {#if phase === "error"}
-          <button class="ghost" onclick={close}>Close</button>
-          <button class="primary" onclick={confirm}>Try again</button>
-        {:else}
-          <button class="ghost" onclick={close} disabled={phase === "resolving"}>Decide later</button>
-          <button
-            class="primary"
-            onclick={confirm}
-            disabled={phase === "resolving" || files.length === 0 || !localId || !remoteId}
-          >
-            {phase === "resolving" ? "Applying choices…" : "Use these choices"}
-          </button>
-        {/if}
-      </footer>
     </div>
+
+    <!-- Footer is a PINNED sibling of the scroll region (not inside it), so the
+         commit and the safe-escape are always visible no matter how many files
+         are listed (three-judge gate finding). -->
+    <footer class="actions">
+      {#if phase === "error"}
+        <button class="ghost" onclick={close}>Close</button>
+        <button class="primary" onclick={confirm}>Try again</button>
+      {:else}
+        <button class="ghost" onclick={close} disabled={phase === "resolving"}>Decide later</button>
+        <button
+          class="primary"
+          onclick={confirm}
+          disabled={phase === "resolving" || files.length === 0 || !localId || !remoteId}
+        >
+          {phase === "resolving" ? "Applying choices…" : "Use these choices"}
+        </button>
+      {/if}
+    </footer>
   </div>
 {/if}
 
@@ -529,14 +532,21 @@
     color: var(--app-accent-text, #fff);
     font-weight: 600;
   }
-  /* "Keep both" is the recommended option — give it a subtle star when not selected. */
+  /* "Keep both" is the recommended option. When NOT selected it gets a faint
+     accent tint + accent border so it reads as endorsed at a glance — clearly
+     distinct from the neutral buttons AND from the solid-fill selected state
+     (three-judge gate finding: a lone star was too quiet / conflated the two). */
   .choice-btn.recommended:not(.selected) {
     border-color: var(--app-focus-ring);
     color: var(--app-text);
+    background: var(--app-accent-subtle, color-mix(in srgb, var(--app-focus-ring) 14%, transparent));
+  }
+  .choice-btn.recommended:not(.selected):hover:not(:disabled) {
+    background: var(--app-accent-subtle-hover, color-mix(in srgb, var(--app-focus-ring) 22%, transparent));
   }
   .rec-badge {
     font-size: 10px;
-    opacity: 0.6;
+    opacity: 0.7;
     flex-shrink: 0;
   }
   .choice-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -552,13 +562,15 @@
     line-height: 1.5;
   }
 
+  /* Pinned action bar — sibling of the scroll region, always visible. */
   .actions {
     display: flex;
     gap: 8px;
     justify-content: flex-end;
-    padding-top: 16px;
-    margin-top: 8px;
+    flex-shrink: 0;
+    padding: 14px 18px;
     border-top: 1px solid var(--app-border-subtle);
+    background: var(--app-surface);
   }
   .actions button {
     padding: 6px 14px;
