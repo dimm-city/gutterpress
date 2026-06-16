@@ -124,9 +124,9 @@ describe("recovering state — phase-driven copy", () => {
     expect(src.includes("Saving a backup of your work first")).toBe(true);
   });
 
-  test("shows 'Putting things right…' for phase=repairing", () => {
+  test("shows 'Almost done…' for phase=repairing", () => {
     const src = readSource();
-    expect(src.includes("Putting things right")).toBe(true);
+    expect(src.includes("Almost done")).toBe(true);
   });
 
   test("shows persistent reassurance subtext during repair", () => {
@@ -136,9 +136,9 @@ describe("recovering state — phase-driven copy", () => {
     expect(src.includes("only takes a moment")).toBe(true);
   });
 
-  test("shows a title 'Fixing a sync problem' while recovering", () => {
+  test("shows a calm title 'Tidying up your sync' while recovering", () => {
     const src = readSource();
-    expect(src.includes("Fixing a sync problem")).toBe(true);
+    expect(src.includes("Tidying up your sync")).toBe(true);
   });
 });
 
@@ -236,10 +236,10 @@ describe("recovered state — success copy and Done button", () => {
     expect(src.includes("your work is safe")).toBe(true);
   });
 
-  test("renders a Done button in the recovered state", () => {
+  test("renders a 'Got it' button in the recovered state", () => {
     const src = readSource();
-    // The Done button fires onDone and is only shown in the recovered state.
-    expect(src.includes("Done")).toBe(true);
+    // The dismiss button fires onDone and is only shown in the recovered state.
+    expect(src.includes("Got it")).toBe(true);
   });
 
   test("Done button references onDone callback", () => {

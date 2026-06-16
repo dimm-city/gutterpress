@@ -179,6 +179,27 @@
     choices = Object.fromEntries(files.map((f) => [f.path, choice]));
   }
 
+  /**
+   * Radiogroup keyboard model: Arrow keys move AND select within a file's
+   * three choices (roving tabindex — only the checked radio is tab-focusable),
+   * matching the WAI-ARIA radio pattern (three-judge a11y finding).
+   */
+  const CHOICE_ORDER = ["mine", "theirs", "both"] as const;
+  function onRadioKey(e: KeyboardEvent, filePath: string) {
+    if (phase === "resolving") return;
+    const fwd = e.key === "ArrowRight" || e.key === "ArrowDown";
+    const back = e.key === "ArrowLeft" || e.key === "ArrowUp";
+    if (!fwd && !back) return;
+    e.preventDefault();
+    const cur = CHOICE_ORDER.indexOf(choices[filePath] ?? "both");
+    const next = CHOICE_ORDER[(cur + (fwd ? 1 : -1) + CHOICE_ORDER.length) % CHOICE_ORDER.length]!;
+    choices[filePath] = next;
+    const group = e.currentTarget as HTMLElement;
+    queueMicrotask(() =>
+      group.querySelector<HTMLElement>('[aria-checked="true"]')?.focus(),
+    );
+  }
+
   function focusableElements() {
     return Array.from(
       dialogEl?.querySelectorAll<HTMLElement>(
@@ -323,7 +344,12 @@
               {/if}
 
               <!-- Three-button choice (§6.1) — segmented for clarity -->
-              <div class="choice-group" role="radiogroup" aria-label={`Choose version for ${label}`}>
+              <div
+                class="choice-group"
+                role="radiogroup"
+                aria-label={`Choose version for ${label}`}
+                onkeydown={(e) => onRadioKey(e, file.path)}
+              >
                 <button
                   role="radio"
                   class="choice-btn"
@@ -331,6 +357,7 @@
                   onclick={() => (choices[file.path] = "mine")}
                   disabled={phase === "resolving"}
                   aria-checked={choices[file.path] === "mine"}
+                  tabindex={choices[file.path] === "mine" ? 0 : -1}
                   title="Use what's on this computer"
                 >
                   Keep my version
@@ -342,6 +369,7 @@
                   onclick={() => (choices[file.path] = "theirs")}
                   disabled={phase === "resolving"}
                   aria-checked={choices[file.path] === "theirs"}
+                  tabindex={choices[file.path] === "theirs" ? 0 : -1}
                   title="Use what a teammate changed online"
                 >
                   Use the online version
@@ -353,6 +381,7 @@
                   onclick={() => (choices[file.path] = "both")}
                   disabled={phase === "resolving"}
                   aria-checked={choices[file.path] === "both"}
+                  tabindex={choices[file.path] === "both" || !choices[file.path] ? 0 : -1}
                   title="Save yours and add the online version as a copy next to it"
                 >
                   Keep both
@@ -559,7 +588,9 @@
   }
   .file-explain {
     font-size: 11px;
-    color: var(--app-text-faint);
+    /* Meaning-bearing text — keep ≥4.5:1 (use secondary, not faint).
+       Three-judge a11y finding. */
+    color: var(--app-text-secondary);
     line-height: 1.4;
   }
 

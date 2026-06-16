@@ -34,7 +34,7 @@
     switch (p) {
       case "checking":  return "Checking your project…";
       case "backup":    return "Saving a backup of your work first…";
-      case "repairing": return "Putting things right…";
+      case "repairing": return "Almost done…";
       case "done":      return "Finishing up…";
       default:          return "Working…";
     }
@@ -64,6 +64,7 @@
     class="recovery-overlay pane"
     role="status"
     aria-live="polite"
+    aria-atomic="false"
     aria-busy={state === "recovering"}
     out:fade={{ duration: 400 }}
   >
@@ -72,7 +73,7 @@
         <!-- Spinner (decorative) -->
         <div class="spinner" aria-hidden="true"></div>
 
-        <h2 class="title">Fixing a sync problem</h2>
+        <h2 class="title">Tidying up your sync</h2>
         <p class="phase-line">{phaseMessage(phase)}</p>
         <p class="reassurance">
           Your work was backed up first. This only takes a moment.
@@ -94,7 +95,7 @@
           </button>
         {/if}
 
-        <button class="done-btn" onclick={onDone}>Done</button>
+        <button class="done-btn" onclick={onDone}>Got it</button>
       {/if}
     </div>
   </div>

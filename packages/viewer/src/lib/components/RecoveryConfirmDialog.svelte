@@ -12,6 +12,7 @@
    *  - NO node:* / fs / path / url / isomorphic-git imports
    *  - All host work via getPlatform()
    */
+  import Icon from "$lib/components/Icon.svelte";
   import { getPlatform } from "$lib/platform";
   import type { RecoveryConfirmRequest } from "$lib/platform/contract";
 
@@ -30,6 +31,15 @@
   /** Prevent double-answering the gate. */
   let answered = $state(false);
   let dialogEl = $state<HTMLElement | undefined>(undefined);
+  /** Status announced to assistive tech when the author answers. */
+  let statusMsg = $state("");
+
+  /**
+   * High-risk repairs get a calmer-but-more-careful treatment than medium:
+   * a warning glyph, an accent edge, and a "take your time" subline — so the
+   * two confirmations don't read identically (three-judge gate finding).
+   */
+  let isHigh = $derived(request?.confirmation.risk === "high");
 
   // Reset answered state whenever dialog opens with a new request.
   $effect(() => {
@@ -53,6 +63,9 @@
   async function answer(approved: boolean) {
     if (!request || answered) return;
     answered = true;
+    statusMsg = approved
+      ? "Applying the fix…"
+      : "Cancelled — nothing was changed.";
     open = false;
     triggerEl?.focus();
     await getPlatform().respondRecoveryConfirm(request.requestId, approved);
@@ -88,17 +101,21 @@
   <div
     bind:this={dialogEl}
     class="dialog"
+    class:high={isHigh}
     role="dialog"
     aria-modal="true"
     aria-labelledby="recovery-confirm-title"
     tabindex="-1"
     onkeydown={trapFocus}
   >
-    <!-- Live region for status announcements -->
-    <div class="sr-only" role="status" aria-live="polite"></div>
+    <!-- Live region for status announcements (populated when the author answers). -->
+    <div class="sr-only" role="status" aria-live="polite">{statusMsg}</div>
 
-    <header class="dialog-header">
-      <h2 id="recovery-confirm-title">We can fix this — your choice</h2>
+    <header class="dialog-header" class:high={isHigh}>
+      <h2 id="recovery-confirm-title">
+        {#if isHigh}<span class="warn-glyph" aria-hidden="true"><Icon name="triangle-alert" size={18} /></span>{/if}
+        We can fix this — your choice
+      </h2>
     </header>
 
     <div class="dialog-body">
@@ -106,6 +123,9 @@
         To get your project syncing again, we need to {request.confirmation.summary}.
         We already saved a backup of everything, so nothing is lost.
       </p>
+      {#if isHigh}
+        <p class="caution-line">Take your time — there's no rush, and your backup is safe either way.</p>
+      {/if}
 
       <div class="backup-row" role="note">
         <span class="backup-label">✓ Backup saved</span>
@@ -166,6 +186,12 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   }
 
+  /* High-risk: a calm-but-distinct accent so it never reads identical to the
+     medium dialog (three-judge gate). Amber edge + warning glyph, not alarm. */
+  .dialog.high {
+    border-top: 3px solid var(--app-warning, #d9a441);
+  }
+
   .dialog-header {
     padding: 18px 20px 14px;
     border-bottom: 1px solid var(--app-border-subtle);
@@ -177,6 +203,22 @@
     font-size: 16px;
     font-weight: 600;
     color: var(--app-text);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .warn-glyph {
+    color: var(--app-warning, #d9a441);
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .caution-line {
+    margin: 0 0 4px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--app-text-faint, var(--app-text-muted));
   }
 
   .dialog-body {
