@@ -1173,6 +1173,22 @@ async function runAutoSync(dir: string): Promise<void> {
     const now = new Date().toISOString();
     autoSyncLastAt.set(dir, now);
 
+    // ── Out-of-memory guard ──────────────────────────────────────────────────
+    // A RangeError / "Array buffer allocation failed" is a TRANSIENT resource
+    // failure (e.g. isomorphic-git reading a large packfile), NOT structural
+    // repo damage. It must NEVER trigger the recovery subsystem (backup +
+    // reclone) — doing so would zip the whole repo and OOM again. Treat it as a
+    // plain transient error; the snapshot already saved the author's work.
+    if (e instanceof RangeError || /allocation failed|out of memory|heap/i.test(msg)) {
+      emitSyncStatus({ state: "error", projectDir: dir, lastSyncAt: now });
+      state.inFlight = false;
+      if (state.runAgain) {
+        state.runAgain = false;
+        void runAutoSync(dir);
+      }
+      return;
+    }
+
     // ── Recovery routing (Foundation delta) ──────────────────────────────────
     // Classify the error. If classifiable, route through recover(). Otherwise
     // keep the old behavior (emit 'error', allow future attempts).

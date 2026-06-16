@@ -47,6 +47,27 @@ describe("inspectRepo — missing .git dir", () => {
   });
 });
 
+describe("inspectRepo — opened at a SUBFOLDER of the repo (regression)", () => {
+  // A project is often opened at a subfolder of its git repo ("opening a
+  // subfolder syncs the whole repo"). inspectRepo MUST resolve the real git
+  // root, not check the raw opened dir for `.git` — otherwise every such
+  // project false-positives missing_git_dir and runs the destructive
+  // missing-history recovery (which OOMs zipping a large `.git`).
+  test("hasGitDir=true when the opened dir is a subfolder of the repo", async () => {
+    const root = await makeTempDir();
+    await makeCleanRepo(root);
+    const sub = path.join(root, "book", "chapters");
+    fs.mkdirSync(sub, { recursive: true });
+    await writeFile(path.join(sub, "01.md"), "# One\n");
+
+    const health = await inspectRepo({ repoDir: sub });
+
+    expect(health.hasGitDir).toBe(true);
+    expect(health.isDetachedHead).toBe(false);
+    expect(health.currentBranch).toBe("main");
+  });
+});
+
 describe("inspectRepo — clean healthy repo", () => {
   test("hasGitDir=true, all flags false", async () => {
     const dir = await makeTempDir();
