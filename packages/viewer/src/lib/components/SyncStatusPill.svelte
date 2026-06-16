@@ -218,12 +218,17 @@
 {/if}
 
 <style>
+  /* Plain status TEXT — no border, no chip background. Matches the status bar's
+     "All changes saved" indicator (same size/colour) so the two read as one
+     row of ambient status text rather than a button-y pill. */
   .sync-pill {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 3px 9px;
-    border-radius: 999px;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
     font-size: 11px;
     line-height: 1.4;
     white-space: nowrap;
@@ -231,34 +236,32 @@
     text-overflow: ellipsis;
     max-width: 260px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    /* Default: informational / synced state */
-    background: transparent;
-    border: 1px solid var(--app-border-subtle);
-    color: var(--app-text-faint);
+    color: var(--app-text-secondary);
     cursor: default;
     user-select: none;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    transition: color 0.15s;
   }
 
-  /* "Saving changes…" — slightly more prominent while in flight. */
+  /* "Saving changes…" — same text colour while in flight (spinner carries the cue). */
   .sync-pill.active {
     color: var(--app-text-secondary);
-    border-color: var(--app-border);
   }
 
-  /* auth / conflict — needs attention, rendered like a subtle warning. */
+  /* auth / conflict — needs attention: a warning text colour (still no chrome),
+     and clickable so the author can act on it. */
   .sync-pill.warning {
     color: var(--app-warning-text, #b45309);
-    border-color: var(--app-warning-border, #fbbf24);
-    background: var(--app-warning-bg, rgba(251, 191, 36, 0.08));
     cursor: pointer;
   }
   button.sync-pill.warning:hover {
-    background: var(--app-warning-bg-hover, rgba(251, 191, 36, 0.16));
+    color: var(--app-warning-text-hover, var(--app-text));
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
   button.sync-pill:focus-visible {
     outline: 2px solid var(--app-focus-ring);
     outline-offset: 2px;
+    border-radius: 2px;
   }
 
   .pill-text {

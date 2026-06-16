@@ -15,6 +15,7 @@
    */
   import SyncStatusPill from "$lib/components/SyncStatusPill.svelte";
   import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
+  import Icon from "$lib/components/Icon.svelte";
   import type { ConflictFileInfo, ProblemEntry } from "$lib/platform/contract";
 
   let {
@@ -117,14 +118,29 @@
 </script>
 
 <div class="status-bar" role="status" aria-label="Application status">
-  <!-- Left cluster: sync pill + save indicator + action buttons -->
+  <!-- Left cluster: [sync refresh icon] [sync pill] | [save indicator] [Save now] -->
   <div class="status-left">
+    {#if showForceSync}
+      <!-- Sync now — a bare refresh icon at the far left; spins while syncing. -->
+      <button
+        class="status-icon-btn"
+        class:spinning={forceSyncing}
+        onclick={onForceSync}
+        disabled={forceSyncing}
+        aria-label={forceSyncing ? "Syncing…" : "Sync changes now"}
+        title={forceSyncing ? "Syncing…" : "Sync changes now"}
+      >
+        <Icon name="refresh-cw" size={14} />
+      </button>
+    {/if}
     {#if showSync}
       <SyncStatusPill
         {projectDir}
         onReconnect={onReconnect}
         onConflict={onConflict}
       />
+    {/if}
+    {#if (showSync || showForceSync) && fileOpen}
       <span class="status-sep" aria-hidden="true"></span>
     {/if}
     {#if fileOpen}
@@ -143,18 +159,6 @@
         aria-label="Save changes now"
         title="Save changes now"
       >Save now</button>
-    {/if}
-    {#if showForceSave && showForceSync}
-      <span class="status-sep" aria-hidden="true"></span>
-    {/if}
-    {#if showForceSync}
-      <button
-        class="status-action"
-        onclick={onForceSync}
-        disabled={forceSyncing}
-        aria-label={forceSyncing ? "Syncing…" : "Sync changes now"}
-        title={forceSyncing ? "Syncing…" : "Sync changes now"}
-      >{forceSyncing ? "Syncing…" : "Sync now"}</button>
     {/if}
   </div>
 
@@ -234,6 +238,41 @@
   .status-action:disabled {
     opacity: 0.5;
     cursor: default;
+  }
+
+  /* ── Sync-now icon button (bare refresh icon, far left) ──────────────────── */
+  .status-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border: none;
+    background: transparent;
+    color: var(--app-text-secondary);
+    cursor: pointer;
+    border-radius: 3px;
+    flex-shrink: 0;
+    transition: color 0.12s, background 0.12s;
+  }
+  .status-icon-btn:hover:not(:disabled) {
+    color: var(--app-text);
+    background: var(--app-surface-hover, rgba(255, 255, 255, 0.06));
+  }
+  .status-icon-btn:focus-visible {
+    outline: 2px solid var(--app-accent, #4a9eff);
+    outline-offset: 1px;
+  }
+  .status-icon-btn:disabled {
+    cursor: default;
+  }
+  /* Spin the refresh glyph while a sync is in flight. */
+  .status-icon-btn.spinning :global(svg) {
+    animation: status-sync-spin 0.8s linear infinite;
+  }
+  @keyframes status-sync-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   /* ── Save indicator ───────────────────────────────────────────────────── */
