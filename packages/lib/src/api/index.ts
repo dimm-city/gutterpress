@@ -233,3 +233,23 @@ export type {
   RestoreVersionResult,
   SourceProvider,
 } from "../lib/source-provider.ts";
+
+// ── Sync recovery (#15, ADR 0006 D5 — node-side only; never imported by renderer) ──
+// The recovery subsystem lives entirely in the host (main process / CLI).
+// Import-type is safe in the SPA; value imports must only reach the host.
+export { recover, classifyGitError, inspectRepo } from "../lib/remote-auth/recovery/dispatch.ts";
+
+export type {
+  RecoverFn,
+  RecoveryContext,
+  RecoveryResult,
+  SyncErrorKind,
+  RecoveryRisk,
+  ManualGuidance,
+  RepoHealth,
+  RecoveryBackup,
+  RepairConfirmation,
+  ConfirmationGate,
+  FaultInjector,
+  FaultPoint,
+} from "../lib/remote-auth/recovery/dispatch.ts";

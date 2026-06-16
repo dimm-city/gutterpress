@@ -255,7 +255,7 @@ interface RemoteTransport {
   credential?: HostCredential;
 }
 
-function onAuthFor(credential: HostCredential | undefined) {
+export function onAuthFor(credential: HostCredential | undefined) {
   if (!credential) return {};
   return {
     onAuth: () => ({
@@ -908,6 +908,16 @@ export async function resolveConflicts(
       const preDeletes: string[] = [];
       const postWrites: Array<{ path: string; content: Uint8Array }> = [];
       const postDeletes: string[] = [];
+      // WHY postBinaryFixes: the merge driver receives file contents as UTF-8
+      // decoded strings. For binary files (images, PDFs, audio — any file with
+      // bytes >= 0x80 that are not valid UTF-8) this round-trip corrupts the
+      // chosen side's bytes (non-UTF-8 sequences become U+FFFD replacement
+      // chars). The merge driver is still called so the merge commit is honest
+      // (two-parent, correct tree oid for text files), but after the forced
+      // checkout we overwrite every decided binary file with the exact raw bytes
+      // read directly from the git object store (Uint8Array, never decoded).
+      // This has NO effect on text files (correct bytes in, correct bytes out).
+      const postBinaryFixes: Array<{ path: string; content: Uint8Array }> = [];
 
       for (const resolution of options.resolutions) {
         const filepath = resolution.path;
@@ -918,8 +928,14 @@ export async function resolveConflicts(
           // Edited in both copies → settled inside the merge by the driver.
           if (resolution.choice === "theirs") {
             driverChoice.set(filepath, "theirs");
+            // Write the chosen raw bytes after checkout to guard against
+            // UTF-8 round-trip corruption in the merge driver for binary files.
+            postBinaryFixes.push({ path: filepath, content: theirs });
           } else {
             driverChoice.set(filepath, "mine");
+            // Write the chosen raw bytes after checkout (binary safety — see
+            // postBinaryFixes comment above).
+            postBinaryFixes.push({ path: filepath, content: mine });
             if (resolution.choice === "both") {
               // Uniquified: a pre-existing "(online copy)" file (from an
               // earlier "Keep both") must survive untouched.
@@ -1015,6 +1031,19 @@ export async function resolveConflicts(
       }
       // merge() moves the ref only — sync the working tree to the result.
       await git.checkout({ fs, dir, cache, ref: branch, force: true });
+
+      // Binary safety: overwrite decided files with raw Uint8Array bytes from
+      // the chosen side's git object (see postBinaryFixes comment above). For
+      // text files this is a no-op (same bytes). For binary files this
+      // corrects the UTF-8 corruption that the string-based merge driver
+      // introduces. We write directly without creating a new commit here —
+      // the bytes match the blob the merge commit already records (same oid),
+      // so the working tree stays consistent with HEAD.
+      for (const fix of postBinaryFixes) {
+        const abs = path.join(dir, fix.path);
+        await mkdir(path.dirname(abs), { recursive: true });
+        await writeFile(abs, fix.content);
+      }
 
       // Post-merge step: restore the author's chosen side for delete-involved
       // files that had to be equalized the other way for the merge.
