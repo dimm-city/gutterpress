@@ -59,6 +59,8 @@ import type {
   SyncOutcome,
   ResolveSyncConflictsArgs,
   SyncStatus,
+  RecoveryConfirmRequest,
+  ConflictPreview,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -403,6 +405,21 @@ export class WebAdapter implements Platform {
   setAutoSync(_enabled: boolean): Promise<void> {
     // Auto-sync is desktop-only until the PWA sync backend lands in 0.6.0.
     return Promise.resolve();
+  }
+
+  // ── Sync recovery seam — desktop-only; safe stubs on web ─────────────────
+  onRecoveryConfirm(_handler: (req: RecoveryConfirmRequest) => void): () => void {
+    // Recovery is desktop-only — return a no-op unsubscribe.
+    return () => {};
+  }
+
+  respondRecoveryConfirm(_requestId: string, _approved: boolean): Promise<void> {
+    // No-op on web — recovery only runs in the Electron host.
+    return Promise.resolve();
+  }
+
+  getConflictPreview(_projectDir: string, _path: string): Promise<ConflictPreview> {
+    return rejectNotImplemented("getConflictPreview");
   }
 
   // ── Sync (#15 sync phase) — desktop-only until the PWA lands ───────────────

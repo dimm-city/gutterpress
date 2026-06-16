@@ -90,7 +90,7 @@
       case "offline":
         return "Offline — changes are saved on this computer";
       case "auth":
-        return "Reconnect your repository";
+        return "Reconnect your project";
       case "conflict":
         // Kept short so the actionable "tap to review" survives the pill's
         // max-width and never truncates (three-judge gate finding).
@@ -98,19 +98,57 @@
       case "error":
         // Treat errors like offline from the pill's perspective (§5.1).
         return "Offline — changes are saved on this computer";
+      case "recovering":
+        // Calm, task-named, no alarm word in the always-visible chrome
+        // (three-judge gate: keep "problem" out of the ambient pill).
+        return "Tidying up sync…";
+      case "recovered":
+        // Brief confirmation; auto-clears to "Everything is in sync" (see effect).
+        return "Sync all set";
       case "idle":
       default:
         return null;
     }
   });
 
+  /**
+   * Full-sentence aria-label so screen-reader users get the reassuring context
+   * the terse visible chip omits — and a guaranteed closure signal for recovery
+   * even if the overlay was dismissed/auto-cleared (three-judge a11y finding).
+   */
+  let ariaLabel = $derived.by((): string | null => {
+    switch (syncState) {
+      case "recovering":
+        return "A sync problem is being fixed automatically. Your work is backed up.";
+      case "recovered":
+        return "A sync problem was fixed. Your work is safe.";
+      default:
+        return pillText;
+    }
+  });
+
   /** True for states that are visually "quiet" (no action needed). */
   let isQuiet = $derived(
-    syncState === "synced" || syncState === "up-to-date" || syncState === "idle",
+    syncState === "synced" ||
+      syncState === "up-to-date" ||
+      syncState === "idle" ||
+      syncState === "recovered",
   );
 
   /** True when the pill should pulse/animate (a sync is actively running). */
-  let isActive = $derived(syncState === "syncing");
+  let isActive = $derived(syncState === "syncing" || syncState === "recovering");
+
+  // Auto-clear the brief "Sync all set" confirmation back to the quiet
+  // in-sync state after ~4s (three-judge gate: a confirmation, not a badge).
+  // A newer status event overrides it naturally (this only fires if nothing
+  // else has arrived). The recovering label is event-driven, never timed.
+  $effect(() => {
+    if (syncState !== "recovered") return;
+    const t = setTimeout(() => {
+      if (syncState === "recovered") syncState = "synced";
+    }, 4000);
+    return () => clearTimeout(t);
+  });
 
   /** True for states that require user attention. */
   let isWarning = $derived(syncState === "auth" || syncState === "conflict");
@@ -146,7 +184,7 @@
       class:active={isActive}
       class:warning={isWarning}
       onclick={handleClick}
-      aria-label={pillText}
+      aria-label={ariaLabel}
       title={pillText}
     >
       {#if isActive}
@@ -168,7 +206,7 @@
       role="status"
       aria-live="polite"
       aria-atomic="true"
-      aria-label={pillText}
+      aria-label={ariaLabel}
       title={pillText}
     >
       {#if isActive}
@@ -180,12 +218,17 @@
 {/if}
 
 <style>
+  /* Plain status TEXT — no border, no chip background. Matches the status bar's
+     "All changes saved" indicator (same size/colour) so the two read as one
+     row of ambient status text rather than a button-y pill. */
   .sync-pill {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 3px 9px;
-    border-radius: 999px;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
     font-size: 11px;
     line-height: 1.4;
     white-space: nowrap;
@@ -193,34 +236,32 @@
     text-overflow: ellipsis;
     max-width: 260px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    /* Default: informational / synced state */
-    background: transparent;
-    border: 1px solid var(--app-border-subtle);
-    color: var(--app-text-faint);
+    color: var(--app-text-secondary);
     cursor: default;
     user-select: none;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    transition: color 0.15s;
   }
 
-  /* "Saving changes…" — slightly more prominent while in flight. */
+  /* "Saving changes…" — same text colour while in flight (spinner carries the cue). */
   .sync-pill.active {
     color: var(--app-text-secondary);
-    border-color: var(--app-border);
   }
 
-  /* auth / conflict — needs attention, rendered like a subtle warning. */
+  /* auth / conflict — needs attention: a warning text colour (still no chrome),
+     and clickable so the author can act on it. */
   .sync-pill.warning {
     color: var(--app-warning-text, #b45309);
-    border-color: var(--app-warning-border, #fbbf24);
-    background: var(--app-warning-bg, rgba(251, 191, 36, 0.08));
     cursor: pointer;
   }
   button.sync-pill.warning:hover {
-    background: var(--app-warning-bg-hover, rgba(251, 191, 36, 0.16));
+    color: var(--app-warning-text-hover, var(--app-text));
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
   button.sync-pill:focus-visible {
     outline: 2px solid var(--app-focus-ring);
     outline-offset: 2px;
+    border-radius: 2px;
   }
 
   .pill-text {

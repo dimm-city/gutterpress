@@ -22,13 +22,14 @@
  * Inclusions: all user-visible files + .git/ (for full recovery)
  */
 
-import * as fs from "node:fs";
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { once } from "node:events";
+import { mkdir, open, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 import type { RecoveryBackup, RecoveryContext } from "./types.ts";
 
-// ── CRC-32 (inlined — no import, no dependency) ──────────────────────────────
+// ── CRC-32 (inlined, INCREMENTAL — bounded memory for streaming) ─────────────
 
 const CRC_TABLE: Uint32Array = (() => {
   const t = new Uint32Array(256);
@@ -42,108 +43,33 @@ const CRC_TABLE: Uint32Array = (() => {
   return t;
 })();
 
-function crc32(buf: Uint8Array): number {
-  let crc = 0xffffffff;
+const CRC_INIT = 0xffffffff;
+function crc32Update(crc: number, buf: Uint8Array): number {
+  let c = crc;
   for (let i = 0; i < buf.length; i++) {
-    crc = CRC_TABLE[(crc ^ buf[i]!) & 0xff]! ^ (crc >>> 8);
+    c = CRC_TABLE[(c ^ buf[i]!) & 0xff]! ^ (c >>> 8);
   }
+  return c >>> 0;
+}
+function crc32Final(crc: number): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-// ── STORE-method ZIP writer (inlined) ────────────────────────────────────────
-
-interface ZipEntry {
-  /** Path inside the zip (forward slashes, no leading slash). */
-  name: string;
-  data: Uint8Array;
-}
+// ── ZIP byte helpers ──────────────────────────────────────────────────────────
 
 function writeUint16LE(buf: Buffer, offset: number, val: number): void {
-  buf.writeUInt16LE(val >>> 0, offset);
+  buf.writeUInt16LE(val & 0xffff, offset);
 }
 function writeUint32LE(buf: Buffer, offset: number, val: number): void {
   buf.writeUInt32LE(val >>> 0, offset);
 }
 
-/**
- * Build a STORE-method ZIP buffer from an array of entries.
- * Each entry is: local file header + raw bytes.
- * Followed by: central directory + end-of-central-directory record.
- */
-function buildStoreZip(entries: ZipEntry[]): Buffer {
-  const localHeaders: Buffer[] = [];
-  const centralDirEntries: Buffer[] = [];
-  const offsets: number[] = [];
-
-  let offset = 0;
-
-  for (const entry of entries) {
-    const nameBytes = Buffer.from(entry.name, "utf8");
-    const data = entry.data;
-    const crc = crc32(data);
-    const size = data.length;
-
-    // Local file header (30 bytes + name)
-    const lhSize = 30 + nameBytes.length;
-    const lh = Buffer.alloc(lhSize, 0);
-    writeUint32LE(lh, 0, 0x04034b50); // signature
-    writeUint16LE(lh, 4, 20);          // version needed (2.0)
-    writeUint16LE(lh, 6, 0);           // general purpose bit flag
-    writeUint16LE(lh, 8, 0);           // compression: STORE
-    writeUint16LE(lh, 10, 0);          // last mod time
-    writeUint16LE(lh, 12, 0);          // last mod date
-    writeUint32LE(lh, 14, crc);        // crc-32
-    writeUint32LE(lh, 18, size);       // compressed size
-    writeUint32LE(lh, 22, size);       // uncompressed size
-    writeUint16LE(lh, 26, nameBytes.length); // file name length
-    writeUint16LE(lh, 28, 0);          // extra field length
-    nameBytes.copy(lh, 30);
-
-    offsets.push(offset);
-    localHeaders.push(lh);
-    localHeaders.push(Buffer.from(data));
-    offset += lhSize + size;
-
-    // Central directory entry (46 bytes + name)
-    const cdSize = 46 + nameBytes.length;
-    const cd = Buffer.alloc(cdSize, 0);
-    writeUint32LE(cd, 0, 0x02014b50); // signature
-    writeUint16LE(cd, 4, 20);          // version made by
-    writeUint16LE(cd, 6, 20);          // version needed
-    writeUint16LE(cd, 8, 0);           // general purpose bit flag
-    writeUint16LE(cd, 10, 0);          // compression: STORE
-    writeUint16LE(cd, 12, 0);          // last mod time
-    writeUint16LE(cd, 14, 0);          // last mod date
-    writeUint32LE(cd, 16, crc);        // crc-32
-    writeUint32LE(cd, 20, size);       // compressed size
-    writeUint32LE(cd, 24, size);       // uncompressed size
-    writeUint16LE(cd, 28, nameBytes.length); // file name length
-    writeUint16LE(cd, 30, 0);          // extra field length
-    writeUint16LE(cd, 32, 0);          // file comment length
-    writeUint16LE(cd, 34, 0);          // disk number start
-    writeUint16LE(cd, 36, 0);          // internal attributes
-    writeUint32LE(cd, 38, 0);          // external attributes
-    writeUint32LE(cd, 42, offsets[offsets.length - 1]!); // relative offset of local header
-    nameBytes.copy(cd, 46);
-    centralDirEntries.push(cd);
-  }
-
-  const cdBuf = Buffer.concat(centralDirEntries);
-  const cdOffset = offset;
-  const cdSize2 = cdBuf.length;
-
-  // End of central directory record (22 bytes)
-  const eocd = Buffer.alloc(22, 0);
-  writeUint32LE(eocd, 0, 0x06054b50); // signature
-  writeUint16LE(eocd, 4, 0);           // disk number
-  writeUint16LE(eocd, 6, 0);           // disk with start of cd
-  writeUint16LE(eocd, 8, entries.length);  // entries on disk
-  writeUint16LE(eocd, 10, entries.length); // total entries
-  writeUint32LE(eocd, 12, cdSize2);    // size of central directory
-  writeUint32LE(eocd, 16, cdOffset);   // offset of start of cd
-  writeUint16LE(eocd, 20, 0);          // comment length
-
-  return Buffer.concat([...localHeaders, cdBuf, eocd]);
+/** Write to a stream with backpressure (await `drain` when the buffer is full). */
+async function writeChunk(
+  stream: import("node:fs").WriteStream,
+  buf: Uint8Array,
+): Promise<void> {
+  if (!stream.write(buf)) await once(stream, "drain");
 }
 
 // ── File walker ───────────────────────────────────────────────────────────────
@@ -220,33 +146,117 @@ export async function createRecoveryZip(
   await walkDir(ctx.repoDir, ctx.repoDir, relPaths);
   relPaths.sort();
 
-  // Build zip entries.
-  const zipEntries: ZipEntry[] = [];
-  for (const rel of relPaths) {
-    const abs = path.join(ctx.repoDir, rel);
-    let data: Buffer;
-    try {
-      data = await readFile(abs);
-    } catch {
-      continue; // Skip unreadable files.
+  // STREAM each file's bytes straight to disk — NEVER hold the whole repo (or a
+  // large packfile) in memory. Memory use is O(one chunk + the central
+  // directory headers), not O(repo size). This is what makes the backup safe on
+  // large repos (the old whole-buffer writer OOM'd on a big .git). Uses ZIP
+  // data descriptors (flag bit 3) so the CRC/size — unknown until the file has
+  // been streamed — are written AFTER the data, keeping it a single read pass.
+  const names: string[] = [];
+  const central: Buffer[] = [];
+  const out = createWriteStream(zipPath);
+  let offset = 0;
+  try {
+    for (const rel of relPaths) {
+      const abs = path.join(ctx.repoDir, rel);
+      let st;
+      try {
+        st = await stat(abs);
+      } catch {
+        continue; // Unreadable — skip.
+      }
+      if (!st.isFile()) continue;
+
+      const name = rel.split(path.sep).join("/");
+      const nameBytes = Buffer.from(name, "utf8");
+      const localOffset = offset;
+
+      // Local file header (crc/sizes deferred to the data descriptor → 0 here).
+      const lh = Buffer.alloc(30 + nameBytes.length, 0);
+      writeUint32LE(lh, 0, 0x04034b50);
+      writeUint16LE(lh, 4, 20);
+      writeUint16LE(lh, 6, 0x0008); // bit 3: sizes/crc in a trailing data descriptor
+      writeUint16LE(lh, 8, 0); // STORE
+      writeUint16LE(lh, 26, nameBytes.length);
+      nameBytes.copy(lh, 30);
+      await writeChunk(out, lh);
+      offset += lh.length;
+
+      // Stream the file data, computing CRC + size incrementally.
+      let crc = CRC_INIT;
+      let size = 0;
+      try {
+        const rs = createReadStream(abs);
+        for await (const chunk of rs as AsyncIterable<Buffer>) {
+          crc = crc32Update(crc, chunk);
+          size += chunk.length;
+          await writeChunk(out, chunk);
+          offset += chunk.length;
+        }
+      } catch {
+        // File vanished/locked mid-read — the data descriptor still closes the
+        // entry consistently with whatever bytes were written.
+      }
+      crc = crc32Final(crc);
+
+      // Data descriptor (with signature): crc, compressed size, uncompressed size.
+      const dd = Buffer.alloc(16, 0);
+      writeUint32LE(dd, 0, 0x08074b50);
+      writeUint32LE(dd, 4, crc);
+      writeUint32LE(dd, 8, size);
+      writeUint32LE(dd, 12, size);
+      await writeChunk(out, dd);
+      offset += dd.length;
+
+      // Central directory entry (real crc/size; carries the data-descriptor flag).
+      const cd = Buffer.alloc(46 + nameBytes.length, 0);
+      writeUint32LE(cd, 0, 0x02014b50);
+      writeUint16LE(cd, 4, 20);
+      writeUint16LE(cd, 6, 20);
+      writeUint16LE(cd, 8, 0x0008);
+      writeUint16LE(cd, 10, 0);
+      writeUint32LE(cd, 16, crc);
+      writeUint32LE(cd, 20, size);
+      writeUint32LE(cd, 24, size);
+      writeUint16LE(cd, 28, nameBytes.length);
+      writeUint32LE(cd, 42, localOffset);
+      nameBytes.copy(cd, 46);
+      central.push(cd);
+      names.push(name);
     }
-    // Forward slashes in zip entry names.
-    zipEntries.push({ name: rel.split(path.sep).join("/"), data: new Uint8Array(data) });
+
+    // Central directory + end-of-central-directory record.
+    const cdStart = offset;
+    for (const cd of central) {
+      await writeChunk(out, cd);
+      offset += cd.length;
+    }
+    const cdSize = offset - cdStart;
+
+    const eocd = Buffer.alloc(22, 0);
+    writeUint32LE(eocd, 0, 0x06054b50);
+    writeUint16LE(eocd, 8, names.length);
+    writeUint16LE(eocd, 10, names.length);
+    writeUint32LE(eocd, 12, cdSize);
+    writeUint32LE(eocd, 16, cdStart);
+    await writeChunk(out, eocd);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      out.on("error", reject);
+      out.end(resolve);
+    });
   }
 
-  const zipBuf = buildStoreZip(zipEntries);
-  await writeFile(zipPath, zipBuf);
-
-  // Verify the zip is readable immediately — read FROM DISK, not from the
-  // in-memory buffer, so a truncated or failed disk write is caught here
-  // rather than silently passing a self-verify against the in-memory data.
+  // Verify FROM DISK (positioned reads of the EOCD + central directory only —
+  // never the whole zip), so a truncated/failed write is caught and a huge
+  // backup is verified without reading it back into memory.
   await ctx.faults?.before("backup_verify");
   await assertZipReadable(zipPath);
 
   return {
     zipPath,
     createdAt: new Date(now).toISOString(),
-    entries: zipEntries.map((e) => e.name),
+    entries: names,
   };
 }
 
@@ -303,23 +313,58 @@ export function parseZipEntries(buf: Buffer): ZipEntryInfo[] {
 /**
  * Assert that a zip file at `zipPath` is readable and parseable.
  * Throws with a descriptive error if not.
+ *
+ * MEMORY-SAFE: reads only the end-of-central-directory record (file tail) and
+ * the central directory via positioned reads — NEVER the file data. A multi-GB
+ * backup is verified without reading it back into memory.
  */
 export async function assertZipReadable(zipPath: string): Promise<void> {
-  let buf: Buffer;
+  let handle;
   try {
-    buf = await readFile(zipPath);
+    handle = await open(zipPath, "r");
   } catch (e) {
     throw new Error(`Backup zip not readable at ${zipPath}: ${e}`);
   }
-  const entries = parseZipEntries(buf);
-  if (entries.length === 0) {
-    // An empty zip is technically valid but suspicious — warn via error.
-    throw new Error(`Backup zip appears empty or corrupt at ${zipPath}`);
+  try {
+    const { size } = await handle.stat();
+    if (size < 22) throw new Error(`Backup zip appears empty or corrupt at ${zipPath}`);
+
+    // EOCD is in the last 22 bytes + up to a 65535-byte comment.
+    const tailLen = Math.min(size, 65557);
+    const tail = Buffer.alloc(tailLen);
+    await handle.read(tail, 0, tailLen, size - tailLen);
+
+    let e = -1;
+    for (let i = tail.length - 22; i >= 0; i--) {
+      if (tail.readUInt32LE(i) === 0x06054b50) {
+        e = i;
+        break;
+      }
+    }
+    if (e < 0) throw new Error(`Backup zip has no end-of-archive record at ${zipPath}`);
+
+    const cdCount = tail.readUInt16LE(e + 8);
+    const cdSize = tail.readUInt32LE(e + 12);
+    const cdOffset = tail.readUInt32LE(e + 16);
+    if (cdCount === 0) throw new Error(`Backup zip appears empty or corrupt at ${zipPath}`);
+
+    // Read just the central directory and confirm it starts with a CD signature.
+    const cd = Buffer.alloc(Math.min(cdSize, size));
+    await handle.read(cd, 0, cd.length, cdOffset);
+    if (cd.length < 4 || cd.readUInt32LE(0) !== 0x02014b50) {
+      throw new Error(`Backup zip central directory is corrupt at ${zipPath}`);
+    }
+  } finally {
+    await handle.close();
   }
 }
 
 /**
  * Return the list of entries inside a zip file (as ZipEntryInfo objects).
+ *
+ * @internal TEST-ONLY: reads the WHOLE zip into memory to expose entry content.
+ * NEVER call this in a production path — a large backup would OOM. Production
+ * verification uses {@link assertZipReadable} (positioned reads, memory-safe).
  * Used by tests to assert which files were backed up and inspect content.
  */
 export async function zipEntries(zipPath: string): Promise<ZipEntryInfo[]> {

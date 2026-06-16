@@ -18,7 +18,8 @@ import path from "node:path";
 
 import git from "isomorphic-git";
 
-import { gitDirFor, hasPendingChanges } from "../../source-provider.ts";
+import { detectProjectSource } from "../../project-source.ts";
+import { gitDirFor, gitScopeFor, hasPendingChanges } from "../../source-provider.ts";
 import type { RepoHealth, RecoveryContext } from "./types.ts";
 
 /**
@@ -26,7 +27,22 @@ import type { RepoHealth, RecoveryContext } from "./types.ts";
  * Never throws — on any error the relevant flag is set conservatively.
  */
 export async function inspectRepo(ctx: Pick<RecoveryContext, "repoDir">): Promise<RepoHealth> {
-  const repoDir = ctx.repoDir;
+  // CRITICAL: resolve the ACTUAL git root. A project is often opened at a
+  // SUBFOLDER of its repo ("opening a subfolder syncs the whole repo"), so
+  // checking the raw opened dir for `.git` would false-positive `missing_git_dir`
+  // on every such project — which then runs the destructive missing-history
+  // recovery (and OOMs zipping a large `.git`). Use the SAME resolution as the
+  // sync path (detectProjectSource → gitScopeFor) so health and sync agree.
+  // Genuine missing-git (no `.git` anywhere up the tree) classifies as
+  // local-folder, so repoDir stays the opened dir and hasGitDir is correctly
+  // false — the real recovery case is preserved.
+  let repoDir = ctx.repoDir;
+  try {
+    const source = await detectProjectSource(ctx.repoDir);
+    if (source.type === "local-git-folder") repoDir = gitScopeFor(source);
+  } catch {
+    // Classification failed — fall back to the opened dir.
+  }
 
   // ── .git presence ────────────────────────────────────────────────────────
   const gitDir = gitDirFor(repoDir);

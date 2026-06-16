@@ -675,6 +675,23 @@ contextBridge.exposeInMainWorld("electron", {
   setAutoSync: (enabled: boolean): Promise<void> =>
     ipcRenderer.invoke("sync:setAutoSync", enabled),
 
+  // ── Sync recovery seam (Foundation — §8 / ADR 0004) ─────────────────────
+  // Main sends 'recovery:confirm-request' push events when the recovery subsystem
+  // needs the author to approve a risky repair. The renderer answers via
+  // respondRecoveryConfirm (invoke, awaited by main's pending-resolver map).
+
+  /** Subscribe to risky-repair confirm requests from main. Returns unsubscribe fn. */
+  onRecoveryConfirm: (cb: (data: unknown) => void): (() => void) =>
+    forwardPush("recovery:confirm-request", cb),
+
+  /** Send the author's approval/rejection to main. */
+  respondRecoveryConfirm: (requestId: string, approved: boolean): Promise<void> =>
+    ipcRenderer.invoke("recovery:confirm-response", { requestId, approved }),
+
+  /** Fetch yours/theirs text for a conflicted file. */
+  getConflictPreview: (projectDir: string, path: string): Promise<unknown> =>
+    ipcRenderer.invoke("sync:getConflictPreview", { projectDir, path }),
+
   // ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────
   // All git work happens in the lib behind main; credentials are resolved
   // host-side from the safeStorage store and never cross this bridge. The

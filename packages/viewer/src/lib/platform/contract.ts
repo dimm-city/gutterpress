@@ -376,6 +376,8 @@ export interface ProjectRemoteDiagnosis {
  *   auth        — credential missing or rejected ("Reconnect your repository")
  *   conflict    — a content conflict needs the author's attention
  *   error       — a transient/unexpected sync failure; treated like offline by the pill
+ *   recovering  — automated repair in progress (translucent overlay, non-dismissable)
+ *   recovered   — repair completed successfully; overlay auto-dismisses after ~1.8s
  */
 export type SyncState =
   | "idle"
@@ -385,7 +387,75 @@ export type SyncState =
   | "offline"
   | "auth"
   | "conflict"
-  | "error";
+  | "error"
+  | "recovering"
+  | "recovered";
+
+// ── Recovery types — defined locally; no lib value import in the SPA ─────────
+//
+// These mirror the lib's recovery types but are defined here so the SPA never
+// needs to value-import @dimm-city/print-md-lib (§8 / ADR 0004). The host
+// (electron/main.ts) maps the lib types to these before emitting.
+
+/**
+ * Progress information emitted while an automated repair is running.
+ * Present on `SyncStatus` when `state === "recovering"`.
+ */
+export interface RecoveryProgressInfo {
+  phase: "checking" | "backup" | "repairing" | "done";
+  risk: "none" | "low" | "medium" | "high";
+  message?: string;
+}
+
+/**
+ * Plain-language guidance shown when a repair is blocked or fails.
+ * Local mirror of the lib's `ManualGuidance` — no git jargon in any field
+ * except `supportDetails` (which is only shown behind a "Copy details" action).
+ */
+export interface ManualGuidanceInfo {
+  userSummary: string;
+  recommendedNextStep: string;
+  recommendedAction: string;
+  safeNextSteps?: string[];
+  supportDetails?: string;
+  backupZipPath?: string;
+}
+
+/**
+ * What a risky-repair confirmation dialog shows the author.
+ * Local mirror of the lib's `RepairConfirmation`.
+ */
+export interface RepairConfirmationInfo {
+  repair: string;
+  risk: "none" | "low" | "medium" | "high";
+  /** Plain-language summary — no git words. */
+  summary: string;
+  backupZipPath: string;
+  willChangeLocalFiles: boolean;
+  willChangeGitMetadata: boolean;
+  willChangeRemote: boolean;
+  canBeUndoneFromBackup: boolean;
+}
+
+/**
+ * Payload sent from main to the renderer when a risky repair needs the
+ * author's approval before proceeding.
+ */
+export interface RecoveryConfirmRequest {
+  requestId: string;
+  projectDir: string;
+  confirmation: RepairConfirmationInfo;
+}
+
+/**
+ * Yours/theirs text for the conflict preview disclosure in ConflictChoicesDialog.
+ */
+export interface ConflictPreview {
+  mine: string;
+  theirs: string;
+  kind: ConflictKind;
+  isBinary: boolean;
+}
 
 /**
  * Payload pushed to the renderer whenever the auto-sync orchestrator's state
@@ -407,6 +477,22 @@ export interface SyncStatus {
    * has run in this session. Lets the pill show "last synced 2 min ago".
    */
   lastSyncAt: string | null;
+  /**
+   * Recovery progress info — present when `state === "recovering"`.
+   * Drives the RecoveryOverlay progress copy.
+   */
+  recovery?: RecoveryProgressInfo;
+  /**
+   * Manual guidance — present when `state === "error"` and the failure was
+   * classified (not an unexpected throw). Drives the RecoveryGuidanceDialog.
+   */
+  guidance?: ManualGuidanceInfo;
+  /**
+   * Absolute path to the backup zip created before the repair attempt, when
+   * one was made. Present on `"recovered"` and `"error"` (after a classified
+   * failure) so the UI can offer "Show backup".
+   */
+  backupZipPath?: string;
 }
 
 // ── Sync (#15 sync phase, ADR 0006 D5) ────────────────────────────────────────
@@ -919,14 +1005,50 @@ export interface HostServices {
   /**
    * Subscribe to ambient sync-status updates from the host orchestrator.
    * The handler fires on every subsequent transition (`syncing`, `synced`,
-   * `offline`, `auth`, `conflict`, …). NOTE: there is NO initial replay — a
-   * handler that subscribes after a sync has already settled stays uninvoked
-   * until the next transition, so callers should render a sensible default
-   * (e.g. blank/idle) until the first event. Returns an unsubscribe fn — call
-   * it in `onDestroy` to prevent leaks. The WebAdapter stub never emits and
-   * returns a no-op unsubscribe.
+   * `offline`, `auth`, `conflict`, `recovering`, `recovered`, …). NOTE: there
+   * is NO initial replay — a handler that subscribes after a sync has already
+   * settled stays uninvoked until the next transition, so callers should render
+   * a sensible default (e.g. blank/idle) until the first event. Returns an
+   * unsubscribe fn — call it in `onDestroy` to prevent leaks. The WebAdapter
+   * stub never emits and returns a no-op unsubscribe.
    */
   onSyncStatus(handler: (status: SyncStatus) => void): () => void;
+
+  // ── Sync recovery seam (Foundation — §8 / ADR 0004) ───────────────────────
+  //
+  // Recovery runs in the host (main.ts). These three methods are the only
+  // recovery-related surface the renderer needs:
+  //   1. Receive risky-repair confirmation requests from main.
+  //   2. Send the author's answer back to main.
+  //   3. Fetch yours/theirs text for the conflict-preview disclosure.
+  //
+  // All git/lib work stays in main. Credentials never cross this seam.
+
+  /**
+   * Subscribe to risky-repair confirmation requests from the host. When the
+   * recovery subsystem needs the author to approve a medium/high-risk repair
+   * before proceeding, it sends a `RecoveryConfirmRequest` here. The renderer
+   * shows `RecoveryConfirmDialog` and calls `respondRecoveryConfirm` with the
+   * author's answer. Returns an unsubscribe fn.
+   * WebAdapter: returns a no-op unsubscribe (recovery is desktop-only).
+   */
+  onRecoveryConfirm(handler: (req: RecoveryConfirmRequest) => void): () => void;
+
+  /**
+   * Send the author's approval or rejection back to main to unblock a pending
+   * risky repair. `requestId` must match the id in the `RecoveryConfirmRequest`.
+   * WebAdapter: resolves immediately (no-op).
+   */
+  respondRecoveryConfirm(requestId: string, approved: boolean): Promise<void>;
+
+  /**
+   * Fetch the yours/theirs text for one conflicted file so the author can
+   * compare before choosing. Called lazily when the user expands the "Compare
+   * versions" disclosure inside `ConflictChoicesDialog`. Returns the preview
+   * payload (or throws on path-traversal / isBinary:true).
+   * WebAdapter: rejects with "not implemented" (recovery is desktop-only).
+   */
+  getConflictPreview(projectDir: string, path: string): Promise<ConflictPreview>;
 
   /**
    * Enable or disable the auto-sync master switch for the current project.

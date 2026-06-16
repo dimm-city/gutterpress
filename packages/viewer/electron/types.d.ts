@@ -237,6 +237,31 @@ interface ProjectRemoteDiagnosis {
     | "ssh-use-own-tools";
 }
 
+// ── Sync recovery seam (Foundation — §8 / ADR 0004). Mirrors contract.ts. ───
+// Defined locally so the renderer never value-imports the lib.
+
+interface RecoveryConfirmRequest {
+  requestId: string;
+  projectDir: string;
+  confirmation: {
+    repair: string;
+    risk: "none" | "low" | "medium" | "high";
+    summary: string;
+    backupZipPath: string;
+    willChangeLocalFiles: boolean;
+    willChangeGitMetadata: boolean;
+    willChangeRemote: boolean;
+    canBeUndoneFromBackup: boolean;
+  };
+}
+
+interface ConflictPreview {
+  mine: string;
+  theirs: string;
+  kind: "both-edited" | "you-deleted" | "online-deleted";
+  isBinary: boolean;
+}
+
 // ── Sync (#15 sync phase, ADR 0006 D5). Mirrors preload.ts. ─────────────────
 interface ConflictFileInfo {
   path: string;
@@ -484,10 +509,19 @@ interface Window {
     listHostConnections(): Promise<HostConnectionInfo[]>;
     forgeTokenUrl(host: string): Promise<string | null>;
     // Auto-sync orchestrator seam (transparent sync, §4.4 integration plan)
-    /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn. */
+    /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn.
+     *  Note: data may carry `recovery`, `guidance`, and `backupZipPath` fields
+     *  when state is 'recovering', 'recovered', or 'error' (classified failure). */
     onSyncStatus(cb: (data: unknown) => void): () => void;
     /** Enable or disable the auto-sync master switch. */
     setAutoSync(enabled: boolean): Promise<void>;
+    // Sync recovery seam (Foundation — §8 / ADR 0004)
+    /** Subscribe to risky-repair confirm requests from main. Returns unsubscribe fn. */
+    onRecoveryConfirm(cb: (data: unknown) => void): () => void;
+    /** Send the author's approval/rejection to main to unblock a pending repair. */
+    respondRecoveryConfirm(requestId: string, approved: boolean): Promise<void>;
+    /** Fetch yours/theirs text for one conflicted file. */
+    getConflictPreview(projectDir: string, path: string): Promise<ConflictPreview>;
     // Sync (#15 sync phase, ADR 0006 D5). Auto-sync runs in main; the renderer
     // only triggers a sync to surface conflicts and then applies the choices.
     syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;

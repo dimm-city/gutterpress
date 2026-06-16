@@ -17,6 +17,7 @@
   import { getPlatform } from "$lib/platform";
   import type {
     ConflictFileInfo,
+    ConflictPreview,
     ConflictResolutionChoice,
     SyncOutcome,
   } from "$lib/platform/contract";
@@ -51,11 +52,18 @@
   let errorMessage = $state<string | null>(null);
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
 
+  /** Track which file disclosures are expanded (path → boolean). */
+  let previewExpanded = $state<Record<string, boolean>>({});
+  /** Memoised preview results (path → ConflictPreview | null | "loading" | "error"). */
+  let previewCache = $state<Record<string, ConflictPreview | null | "loading" | "error">>({});
+
   // Reset and default choices whenever the dialog opens or the file list changes.
   $effect(() => {
     if (!open) return;
     phase = "choosing";
     errorMessage = null;
+    previewExpanded = {};
+    previewCache = {};
     // Default: "both" for both-edited (safest, lossless), "mine" for deletion conflicts.
     choices = Object.fromEntries(
       files.map((f) => [
@@ -107,6 +115,28 @@
     );
   }
 
+  /**
+   * Toggle the "Compare versions" disclosure for a text file.
+   * On first expand, lazily fetches the preview via getPlatform().getConflictPreview()
+   * and memoises the result so subsequent toggles don't re-fetch.
+   */
+  async function togglePreview(filePath: string) {
+    const wasExpanded = previewExpanded[filePath] ?? false;
+    previewExpanded = { ...previewExpanded, [filePath]: !wasExpanded };
+
+    // Only fetch on first expand and only for text (non-binary) files.
+    if (!wasExpanded && !(filePath in previewCache) && !isBinary(filePath) && projectDir) {
+      previewCache = { ...previewCache, [filePath]: "loading" };
+      try {
+        const result = await getPlatform().getConflictPreview(projectDir, filePath);
+        previewCache = { ...previewCache, [filePath]: result };
+      } catch {
+        // Preview failed — fall back to the no-preview message; don't break choices.
+        previewCache = { ...previewCache, [filePath]: "error" };
+      }
+    }
+  }
+
   async function confirm() {
     if (!projectDir || !localId || !remoteId || phase === "resolving") return;
     phase = "resolving";
@@ -147,6 +177,27 @@
 
   function setAll(choice: "mine" | "theirs" | "both") {
     choices = Object.fromEntries(files.map((f) => [f.path, choice]));
+  }
+
+  /**
+   * Radiogroup keyboard model: Arrow keys move AND select within a file's
+   * three choices (roving tabindex — only the checked radio is tab-focusable),
+   * matching the WAI-ARIA radio pattern (three-judge a11y finding).
+   */
+  const CHOICE_ORDER = ["mine", "theirs", "both"] as const;
+  function onRadioKey(e: KeyboardEvent, filePath: string) {
+    if (phase === "resolving") return;
+    const fwd = e.key === "ArrowRight" || e.key === "ArrowDown";
+    const back = e.key === "ArrowLeft" || e.key === "ArrowUp";
+    if (!fwd && !back) return;
+    e.preventDefault();
+    const cur = CHOICE_ORDER.indexOf(choices[filePath] ?? "both");
+    const next = CHOICE_ORDER[(cur + (fwd ? 1 : -1) + CHOICE_ORDER.length) % CHOICE_ORDER.length]!;
+    choices[filePath] = next;
+    const group = e.currentTarget as HTMLElement;
+    queueMicrotask(() =>
+      group.querySelector<HTMLElement>('[aria-checked="true"]')?.focus(),
+    );
   }
 
   function focusableElements() {
@@ -253,8 +304,52 @@
                 <span class="file-explain">{kindExplanation(file.kind)}{binary ? " Binary file — no preview available." : ""}</span>
               </div>
 
+              <!-- "Compare versions" disclosure — text files only (§ feature spec) -->
+              {#if file.kind === "both-edited" && !binary}
+                {@const expanded = previewExpanded[file.path] ?? false}
+                {@const cachedPreview = previewCache[file.path]}
+                <div class="preview-disclosure">
+                  <button
+                    class="disclosure-btn"
+                    aria-expanded={expanded}
+                    onclick={() => togglePreview(file.path)}
+                    disabled={phase === "resolving"}
+                  >
+                    <span class="disclosure-arrow" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+                    Compare versions
+                  </button>
+                  {#if expanded}
+                    <div class="preview-panes">
+                      {#if cachedPreview === "loading"}
+                        <p class="preview-loading" aria-live="polite">Loading preview…</p>
+                      {:else if cachedPreview === "error" || cachedPreview === null || (typeof cachedPreview === "object" && cachedPreview.isBinary)}
+                        <p class="preview-unavailable">No preview for this kind of file.</p>
+                      {:else if typeof cachedPreview === "object"}
+                        <div class="pane-row">
+                          <div class="preview-pane" aria-label="Your version">
+                            <div class="pane-label">Your version</div>
+                            <pre class="pane-content">{cachedPreview.mine}</pre>
+                          </div>
+                          <div class="preview-pane" aria-label="The online version">
+                            <div class="pane-label">The online version</div>
+                            <pre class="pane-content">{cachedPreview.theirs}</pre>
+                          </div>
+                        </div>
+                      {:else}
+                        <p class="preview-unavailable">No preview for this kind of file.</p>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+
               <!-- Three-button choice (§6.1) — segmented for clarity -->
-              <div class="choice-group" role="radiogroup" aria-label={`Choose version for ${label}`}>
+              <div
+                class="choice-group"
+                role="radiogroup"
+                aria-label={`Choose version for ${label}`}
+                onkeydown={(e) => onRadioKey(e, file.path)}
+              >
                 <button
                   role="radio"
                   class="choice-btn"
@@ -262,6 +357,7 @@
                   onclick={() => (choices[file.path] = "mine")}
                   disabled={phase === "resolving"}
                   aria-checked={choices[file.path] === "mine"}
+                  tabindex={choices[file.path] === "mine" ? 0 : -1}
                   title="Use what's on this computer"
                 >
                   Keep my version
@@ -273,6 +369,7 @@
                   onclick={() => (choices[file.path] = "theirs")}
                   disabled={phase === "resolving"}
                   aria-checked={choices[file.path] === "theirs"}
+                  tabindex={choices[file.path] === "theirs" ? 0 : -1}
                   title="Use what a teammate changed online"
                 >
                   Use the online version
@@ -284,6 +381,7 @@
                   onclick={() => (choices[file.path] = "both")}
                   disabled={phase === "resolving"}
                   aria-checked={choices[file.path] === "both"}
+                  tabindex={choices[file.path] === "both" || !choices[file.path] ? 0 : -1}
                   title="Save yours and add the online version as a copy next to it"
                 >
                   Keep both
@@ -490,7 +588,9 @@
   }
   .file-explain {
     font-size: 11px;
-    color: var(--app-text-faint);
+    /* Meaning-bearing text — keep ≥4.5:1 (use secondary, not faint).
+       Three-judge a11y finding. */
+    color: var(--app-text-secondary);
     line-height: 1.4;
   }
 
@@ -589,4 +689,80 @@
   .primary:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
   .ghost:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
+
+  /* "Compare versions" disclosure — text-file preview panes */
+  .preview-disclosure {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .disclosure-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: 1px solid var(--app-border);
+    border-radius: 5px;
+    color: var(--app-text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 3px 8px;
+    align-self: flex-start;
+    line-height: 1.5;
+  }
+  .disclosure-btn:hover:not(:disabled) { color: var(--app-text); background: var(--app-surface-hover); }
+  .disclosure-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  .disclosure-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .disclosure-arrow { font-size: 10px; }
+
+  .preview-panes { display: flex; flex-direction: column; gap: 6px; }
+  .pane-row {
+    display: flex;
+    gap: 8px;
+  }
+  .preview-pane {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--app-border-subtle);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .pane-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--app-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 4px 8px;
+    background: var(--app-surface-sunken);
+    border-bottom: 1px solid var(--app-border-subtle);
+    flex-shrink: 0;
+  }
+  .pane-content {
+    margin: 0;
+    padding: 8px;
+    font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-y: auto;
+    max-height: 200px;
+    background: var(--app-surface-sunken);
+    color: var(--app-text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .preview-loading {
+    margin: 0;
+    font-size: 11px;
+    color: var(--app-text-faint);
+    padding: 4px 0;
+  }
+  .preview-unavailable {
+    margin: 0;
+    font-size: 11px;
+    color: var(--app-text-faint);
+    padding: 4px 0;
+  }
 </style>
