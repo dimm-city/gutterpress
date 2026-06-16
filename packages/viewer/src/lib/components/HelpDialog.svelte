@@ -167,9 +167,9 @@
   <div bind:this={dialogEl} class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1" onkeydown={trapFocus}>
     <header class="dialog-header">
       <div class="dialog-title-group">
-        <h2 id="help-title">Help &amp; About</h2>
+        <h2 id="help-title">About Print MD</h2>
         {#if data?.webUiVersion}
-          <span class="web-ui-version">Web UI v{data.webUiVersion}</span>
+          <span class="web-ui-version">v{data.webUiVersion}</span>
         {/if}
       </div>
       <button class="close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
