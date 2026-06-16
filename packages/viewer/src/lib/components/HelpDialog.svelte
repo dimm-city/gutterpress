@@ -166,7 +166,12 @@
 
   <div bind:this={dialogEl} class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1" onkeydown={trapFocus}>
     <header class="dialog-header">
-      <h2 id="help-title">Help &amp; About</h2>
+      <div class="dialog-title-group">
+        <h2 id="help-title">Help &amp; About</h2>
+        {#if data?.webUiVersion}
+          <span class="web-ui-version">Web UI v{data.webUiVersion}</span>
+        {/if}
+      </div>
       <button class="close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
 
@@ -348,7 +353,9 @@
     padding: 14px 18px;
     border-bottom: 1px solid var(--app-border-subtle);
   }
+  .dialog-title-group { display: flex; align-items: baseline; gap: 10px; }
   .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .web-ui-version { font-size: 11px; color: var(--app-text-faint); font-weight: 400; white-space: nowrap; }
   .close {
     background: transparent;
     border: 1px solid transparent;

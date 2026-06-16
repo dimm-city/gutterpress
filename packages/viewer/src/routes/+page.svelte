@@ -17,9 +17,8 @@
     RecoveryProgressInfo,
     SnapshotEntry,
   } from "$lib/platform/contract";
-  import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
   import { problemCounts } from "$lib/problems";
-  import SyncStatusPill from "$lib/components/SyncStatusPill.svelte";
+  import StatusBar from "$lib/components/StatusBar.svelte";
   import ConflictChoicesDialog from "$lib/components/ConflictChoicesDialog.svelte";
   import RecoveryOverlay from "$lib/components/RecoveryOverlay.svelte";
   import RecoveryConfirmDialog from "$lib/components/RecoveryConfirmDialog.svelte";
@@ -182,6 +181,9 @@
   let newProjectOpen = $state(false);
   let newProjectBtn = $state<HTMLButtonElement | undefined>(undefined);
   let syncDiag = $state<ProjectRemoteDiagnosis | null>(null);
+  // Manual force-save / force-sync state for the status bar action buttons.
+  let forceSaving = $state(false);
+  let forceSyncing = $state(false);
   // ConflictChoicesDialog (#transparent-sync §6.1): opened by the ambient
   // SyncStatusPill when the auto-sync orchestrator reports a conflict.
   let conflictOpen = $state(false);
@@ -221,6 +223,13 @@
         ? "Synced — changes from the online copy were combined in, so the preview will refresh."
         : "Synced — your changes are online.",
     );
+    // A sync may add new commits to the project's git history (both push and
+    // pull sides). Bump the key so the History tab reflects the new state.
+    historyRefreshKey += 1;
+    // If remote changes landed on disk, re-lint immediately (the preview
+    // file-watcher re-renders and fires refreshProblems via renderingComplete,
+    // but a manual refresh here catches edge cases where no re-render fires).
+    if (mergedRemoteChanges) refreshProblems();
   }
 
   // The single Reconnect action (ADR 0006 D7): route to the matching connect
@@ -386,15 +395,19 @@
 
   // A restore rewrote project files on disk (#13). The preview server's file
   // watcher re-renders on its own; the editor buffer reconciles via the folder
-  // watcher (#44). Just confirm in the toast.
+  // watcher (#44). Confirm in the toast and refresh history so the new backup
+  // entry is visible immediately.
   function onVersionRestored() {
     toast?.success("Project restored — the preview will refresh in a moment.");
+    historyRefreshKey += 1;
   }
 
   // A snapshot was saved (#13) — same toast pattern as onVersionRestored, so
   // version-history feedback is consistent (the dialog itself shows no notice).
+  // Bump the key so the History tab list updates without requiring a tab switch.
   function onVersionSnapshotSaved() {
     toast?.success("Snapshot saved.");
+    historyRefreshKey += 1;
   }
   // Official setup guide for first-time writers (MVP "Download starter template").
   const SETUP_GUIDE_URL =
@@ -1277,6 +1290,12 @@
       }
       currentDir = dir;
       currentUrl = null;
+      // Clear stale problems from the previous project immediately so the badge
+      // and panel don't show the old project's findings while the new one renders.
+      problems = [];
+      // Bump historyRefreshKey so the History tab reloads its list for the new
+      // project as soon as capabilities arrive (LeftPanel's effect guards on canHistory).
+      historyRefreshKey += 1;
       // Preload the first file into the editor buffer when a folder opens, so the
       // editor pane is never empty whenever it's shown (and switching to edit is
       // instant). Action-driven (folder open), not an effect, and independent of
@@ -1879,6 +1898,60 @@
     // swallowed — the user already dismissed the overlay; no UX to update.
     stopPreview().catch(() => {});
   }
+
+  // ── Force-save / Force-sync (status bar action buttons) ───────────────────
+  /**
+   * Immediately flush the editor buffer to disk, bypassing the debounce.
+   * Mirrors the same flush path used on project-switch and window-close.
+   */
+  async function handleForceSave() {
+    if (!buffer || forceSaving) return;
+    forceSaving = true;
+    try {
+      await buffer.flush();
+    } catch (e) {
+      toast?.error(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      forceSaving = false;
+    }
+  }
+
+  /**
+   * Trigger an immediate sync for the open project.
+   * Reuses the same getPlatform().syncChanges() path the auto-orchestrator uses.
+   * Only callable when the project canSync (guarded in StatusBar via showForceSync).
+   */
+  async function handleForceSync() {
+    const dir = currentDir;
+    if (!dir || forceSyncing) return;
+    forceSyncing = true;
+    try {
+      const outcome = await getPlatform().syncChanges(dir);
+      if (currentDir !== dir) return; // Project switched mid-sync.
+      if (outcome.status === "conflict") {
+        // Route through the existing conflict dialog path.
+        conflictFiles = outcome.files;
+        conflictLocalId = outcome.localId;
+        conflictRemoteId = outcome.remoteId;
+        conflictOpen = true;
+      } else if (outcome.status === "synced") {
+        onSyncCompleted(outcome.mergedRemoteChanges);
+      } else if (outcome.status === "up-to-date") {
+        toast?.info("Already up to date — no changes to sync.");
+      } else if (outcome.status === "auth") {
+        toast?.error("Not connected. Use Connect in the sidebar to set up syncing.");
+      } else if (outcome.status === "offline") {
+        toast?.info("You appear to be offline. Try again when connected.");
+      } else {
+        // Generic error state — surface the message if available.
+        toast?.error("Sync failed. Check your connection and try again.");
+      }
+    } catch (e) {
+      toast?.error(`Sync failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      if (currentDir === dir) forceSyncing = false;
+    }
+  }
 </script>
 
 <Toast bind:api={toast} />
@@ -1959,65 +2032,79 @@
       {/if}
     </section>
 
-    <!-- Flexible spacer: absorbs slack between left and center; shrinks when
-         space is tight so left and right sections always remain visible. -->
-    <div class="toolbar-spacer" aria-hidden="true"></div>
+    <!-- Center column: absolutely positioned so the page-nav group is always
+         truly centered in the toolbar regardless of left/right section widths.
+         The Edit toggle sits immediately left of the nav group within this column. -->
+    <div class="toolbar-center-col">
+      <!-- Edit / View pane toggle — left of the page-nav group on wide screens;
+           on narrow screens the pane-toggle radiogroup is used instead (in .right). -->
+      {#if !isNarrow}
+        <button
+          class="icon-text"
+          class:active={editorOpen}
+          onclick={toggleEditor}
+          disabled={!currentDir || sourceMode === "url"}
+          title="Toggle markdown editor (Ctrl+E)"
+          aria-label="Toggle markdown editor"
+          aria-pressed={editorOpen}
+        >
+          <Icon name="pen-line" /><span class="view-label">Edit</span>
+        </button>
+        <span class="toolbar-sep" aria-hidden="true"></span>
+      {/if}
 
-    <!-- UX-012: center nav only shows when a document is loaded -->
-    {#if previewUrl}
-      <section class="center">
-        <button class="icon-btn" onclick={firstPage} disabled={rendering} title="First page (Home)" aria-label="First page">
-          <Icon name="chevrons-left" />
-        </button>
-        <button class="icon-btn" onclick={prevPage} disabled={rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
-          <Icon name="chevron-left" />
-        </button>
-        {#if pageEditing}
-          <input
-            bind:this={pageEditInput}
-            type="number"
-            class="page-input"
-            min="1"
-            max={totalPages || 1}
-            bind:value={pageEditValue}
-            onblur={commitPageEdit}
-            onkeydown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commitPageEdit();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                cancelPageEdit();
-              }
-            }}
-            aria-label="Go to page"
-          />
-        {:else}
-          <button class="page-pill" onclick={beginPageEdit} disabled={rendering} aria-label="Edit current page">
-            <span class="pill-word">Page&nbsp;</span>{currentPage} / {totalPages || "—"}
+      <!-- UX-012: center nav only shows when a document is loaded -->
+      {#if previewUrl}
+        <section class="center">
+          <button class="icon-btn" onclick={firstPage} disabled={rendering} title="First page (Home)" aria-label="First page">
+            <Icon name="chevrons-left" />
           </button>
-        {/if}
-        <button class="icon-btn" onclick={nextPage} disabled={rendering} title="Next page (Right/PageDown)" aria-label="Next page">
-          <Icon name="chevron-right" />
-        </button>
-        <button class="icon-btn" onclick={lastPage} disabled={rendering} title="Last page (End)" aria-label="Last page">
-          <Icon name="chevrons-right" />
-        </button>
-      </section>
-    {/if}
+          <button class="icon-btn" onclick={prevPage} disabled={rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
+            <Icon name="chevron-left" />
+          </button>
+          {#if pageEditing}
+            <input
+              bind:this={pageEditInput}
+              type="number"
+              class="page-input"
+              min="1"
+              max={totalPages || 1}
+              bind:value={pageEditValue}
+              onblur={commitPageEdit}
+              onkeydown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitPageEdit();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  cancelPageEdit();
+                }
+              }}
+              aria-label="Go to page"
+            />
+          {:else}
+            <button class="page-pill" onclick={beginPageEdit} disabled={rendering} aria-label="Edit current page">
+              <span class="pill-word">Page&nbsp;</span>{currentPage} / {totalPages || "—"}
+            </button>
+          {/if}
+          <button class="icon-btn" onclick={nextPage} disabled={rendering} title="Next page (Right/PageDown)" aria-label="Next page">
+            <Icon name="chevron-right" />
+          </button>
+          <button class="icon-btn" onclick={lastPage} disabled={rendering} title="Last page (End)" aria-label="Last page">
+            <Icon name="chevrons-right" />
+          </button>
+        </section>
+      {/if}
+    </div>
 
-    <!-- Mirror spacer on the right of center: symmetric layout, right section
-         stays pinned to the end, center stays centered when both spacers match. -->
+    <!-- Flex spacer: pushes .right to the far end. -->
     <div class="toolbar-spacer" aria-hidden="true"></div>
 
     <section class="right">
-      <!-- Separator so the page-navigation group reads as a distinct unit and
-           doesn't visually merge into the mode toggle beside it. -->
-      <span class="toolbar-sep" aria-hidden="true"></span>
-      <!-- Edit / View pane toggle. On wide viewports this toggles the editor
-           split open/closed alongside the preview (#38). On narrow viewports
-           the layout is single-pane, and this switches which pane is shown
-           (#responsive). Disabled until a project folder is open. -->
+      <!-- On narrow viewports the layout is single-pane; this radiogroup
+           switches which pane is shown (#responsive). Disabled until a project
+           folder is open. On wide viewports the Edit button lives in the center
+           column (left of the page-nav group) instead. -->
       {#if isNarrow}
         <div class="pane-toggle" role="radiogroup" aria-label="Edit or view mode">
           <button
@@ -2045,18 +2132,6 @@
             <Icon name="eye" /><span class="view-label">View</span>
           </button>
         </div>
-      {:else}
-        <button
-          class="icon-text"
-          class:active={editorOpen}
-          onclick={toggleEditor}
-          disabled={!currentDir || sourceMode === "url"}
-          title="Toggle markdown editor (Ctrl+E)"
-          aria-label="Toggle markdown editor"
-          aria-pressed={editorOpen}
-        >
-          <Icon name="pen-line" /><span class="view-label">Edit</span>
-        </button>
       {/if}
       <!-- UX-039: separator before view mode controls -->
       <span class="toolbar-sep" aria-hidden="true"></span>
@@ -2161,15 +2236,6 @@
         </div>
       </details>
 
-      <!-- Ambient sync status pill (transparent-sync §5.1): always-visible, no
-           counts, no Git jargon. Visible only when a synced project is open. -->
-      {#if currentDir && sourceMode === "folder" && syncDiag?.canSync}
-        <SyncStatusPill
-          projectDir={currentDir}
-          onReconnect={onSyncReconnect}
-          onConflict={onPillConflict}
-        />
-      {/if}
       <!-- UX-039: separator before Save PDF -->
       <span class="toolbar-sep" aria-hidden="true"></span>
       <!-- UX-006: Save PDF always visible; icon-only at narrow widths -->
@@ -2380,18 +2446,6 @@
         />
       </section>
     </div>
-    <!-- Problems panel (#28): a bottom strip below the workspace (VS Code
-         style). Sibling of .workspace inside the .main-content flex column
-         so it never disturbs the workspace grid or the preview iframe.
-         The panel owns its own toggle strip on its top border. -->
-    {#if currentDir && sourceMode === "folder"}
-      <ProblemsPanel
-        {problems}
-        loading={problemsLoading}
-        bind:open={problemsOpen}
-        onSelect={openProblem}
-      />
-    {/if}
   {:else}
     <div class="empty">
       <div class="empty-hero">
@@ -2424,6 +2478,28 @@
 
     </div> <!-- /main-content -->
   </div> <!-- /left-panel-region -->
+
+  <!-- StatusBar: always-visible bottom bar with sync pill, save indicator,
+       and problems panel toggle. Sits below the left-panel-region in the
+       .shell flex column so it spans the full window width. Never covers
+       the preview iframe (normal layout flow). -->
+  <StatusBar
+    projectDir={currentDir}
+    sourceMode={sourceMode}
+    canSync={!!(syncDiag?.canSync)}
+    savePhase={editorSavePhase}
+    fileOpen={!!editorFilePath}
+    {forceSaving}
+    {forceSyncing}
+    {problems}
+    problemsLoading={problemsLoading}
+    bind:problemsOpen={problemsOpen}
+    onProblemSelect={openProblem}
+    onReconnect={onSyncReconnect}
+    onConflict={onPillConflict}
+    onForceSave={handleForceSave}
+    onForceSync={handleForceSync}
+  />
 </div>
 </div>
 
@@ -2675,14 +2751,11 @@
 
   /* ---- Toolbar ---- */
   .toolbar {
-    /* Flex with symmetric spacers for true no-overlap layout.
-       Structure: [left] [spacer] [center] [spacer] [right]
-       The two .toolbar-spacer divs (flex: 1 1 0) absorb all available slack
-       equally, which keeps center visually centered when space permits and —
-       crucially — shrink first before left/right can ever reach each other.
-       Because left and right are flex: 0 0 auto they claim exactly their natural
-       width; the Open button and Save PDF are ALWAYS visible at any viewport
-       width above the point where center controls are already collapsed away.
+    /* Flex layout: [left] [spacer] [right] with .toolbar-center-col absolutely
+       centered via position:absolute + left:50% + translateX(-50%).
+       This guarantees the page-nav group (+ Edit toggle) is always at the
+       horizontal midpoint of the toolbar regardless of left/right section widths.
+       The single .toolbar-spacer absorbs remaining slack between left and right.
        container-type: inline-size enables @container queries so toolbar
        breakpoints respond to toolbar width, not viewport width — the correct
        tool for a component that may be constrained by surrounding layout. */
@@ -2703,17 +2776,38 @@
     overflow: visible;
   }
 
-  /* Symmetric flex spacers that keep center visually centered and absorb slack
-     before left/right sections can overlap. */
+  /* Single flex spacer pushes .right to the far end; the center column is
+     absolutely positioned so it is always mathematically centered. */
   .toolbar-spacer {
     flex: 1 1 0;
     min-width: 0;
   }
 
+  /* Center column: absolutely centered in the toolbar so the page-nav group
+     is always at 50% regardless of left/right section widths. Contains the
+     Edit toggle (left of nav) and the page-nav section. pointer-events: none
+     on the wrapper prevents the transparent sides from swallowing clicks;
+     each interactive child restores pointer-events. */
+  .toolbar-center-col {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    pointer-events: none;
+  }
+  .toolbar-center-col > *,
+  .toolbar-center-col button,
+  .toolbar-center-col input,
+  .toolbar-center-col .center {
+    pointer-events: auto;
+  }
+
   section { display: flex; align-items: center; gap: 6px; min-width: 0; }
   /* .left never shrinks — Open button must always be visible and clickable.
      doc-title / path inside .left truncate via text-overflow on their own.
-     .center and .right are also fixed-size; the spacers absorb all slack. */
+     .right is also fixed-size; the single spacer absorbs slack between them. */
   .left  { flex: 0 0 auto; overflow: hidden; }
   .center { flex: 0 0 auto; }
   .right  { flex: 0 0 auto; }
@@ -2820,7 +2914,7 @@
      single/spread, zoom) are noise — hide them so the edit toolbar is just
      Open / Edit·View / Save / More. The spacers collapse the gap automatically
      when center is absent. */
-  .toolbar.edit-narrow .center,
+  .toolbar.edit-narrow .toolbar-center-col,
   .toolbar.edit-narrow .view-mode-group,
   .toolbar.edit-narrow .view-mode-menu,
   .toolbar.edit-narrow .zoom-select,
