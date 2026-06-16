@@ -361,6 +361,10 @@ export async function assertZipReadable(zipPath: string): Promise<void> {
 
 /**
  * Return the list of entries inside a zip file (as ZipEntryInfo objects).
+ *
+ * @internal TEST-ONLY: reads the WHOLE zip into memory to expose entry content.
+ * NEVER call this in a production path — a large backup would OOM. Production
+ * verification uses {@link assertZipReadable} (positioned reads, memory-safe).
  * Used by tests to assert which files were backed up and inspect content.
  */
 export async function zipEntries(zipPath: string): Promise<ZipEntryInfo[]> {

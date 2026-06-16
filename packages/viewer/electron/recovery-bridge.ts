@@ -87,6 +87,12 @@ export interface ConflictFile {
 
 export interface TokenStore {
   get(host: string): Promise<HostCredential | null>;
+  /**
+   * Clear a stored credential for a host. Required by recover-auth (it deletes
+   * the rejected credential on an `auth` outcome) — without it in this contract,
+   * wiring a get-only store would silently skip the credential clear.
+   */
+  delete(host: string): Promise<void>;
 }
 
 // ── Pending confirm resolver map ──────────────────────────────────────────────
