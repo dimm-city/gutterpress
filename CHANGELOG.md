@@ -3,6 +3,47 @@
 All notable changes to print-md are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.5.2] - 2026-06-16
+
+### Added
+
+- **Automatic recovery from sync problems.** If print-md ever finds your project
+  in a confusing version-control state, it now quietly puts things right — saving
+  a backup of your work **first** — and shows only a small "Tidying up your sync"
+  message while it does. You're asked to decide **only** when a repair could be
+  risky (with a plain-language confirmation that notes the backup), and if it
+  can't safely continue it stops and shows simple next steps plus where the backup
+  was saved. Your files are never deleted and the online copy is never forced.
+- **Compare versions in a conflict.** When the same text file changed in two
+  places, the "Changes happened in two places" screen now has a **Compare
+  versions** view showing *your version* next to *the online version*, so you can
+  choose with confidence. "Keep both" stays the recommended, lossless default.
+- **A bottom status bar.** Sync status and a saving indicator ("Saving…" /
+  "All changes saved") are now always visible at the bottom of the window, with a
+  one-click refresh to **sync now** and a **Save now** action — so you can always
+  see, and force, where your work stands.
+
+### Changed
+
+- The Edit toggle now sits to the left of the page-navigation buttons, which stay
+  centered in the toolbar.
+- Sync and save status moved out of the toolbar into the calm, always-readable
+  bottom status bar; the sync indicator reads as plain status text rather than a
+  button.
+
+### Fixed
+
+- A healthy, in-sync project opened from a **subfolder** could wrongly be treated
+  as damaged and trigger a "repair" — which, in some setups, could exhaust memory
+  and crash the app. Recovery now correctly recognises the project's repository
+  and only runs for genuinely broken projects.
+- Recovery backups are now **streamed to disk**, so backing up a large project no
+  longer risks running out of memory.
+- The **History** tab and the **Problems** list now refresh after saves, syncs,
+  snapshots, and restores instead of going stale.
+- The Help window now shows the web UI version without expanding the system
+  details.
+
 ## [0.5.1] - 2026-06-15
 
 ### Added
