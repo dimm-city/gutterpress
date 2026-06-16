@@ -267,3 +267,30 @@ describe("createRecoveryZip — repoSlug sanitization", () => {
     expect(slugPart).not.toContain("!");
   });
 });
+
+describe("createRecoveryZip — large file streams without buffering (regression)", () => {
+  // The backup must STREAM file bytes to disk, never hold the whole file (or the
+  // whole zip) in memory — otherwise a large `.git` packfile OOMs the process
+  // (the 600MB/15MB-RSS proof). This guards the streaming + data-descriptor
+  // path on a multi-chunk file and verifies the content round-trips exactly.
+  test("backs up a multi-MB file and the content round-trips", async () => {
+    const dir = await makeTempDir();
+    await git.init({ fs, dir, defaultBranch: "main" });
+    // 5 MB → spans ~80 read-stream chunks, exercising incremental CRC + backpressure.
+    const big = Buffer.alloc(5 * 1024 * 1024);
+    for (let i = 0; i < big.length; i++) big[i] = i & 0xff;
+    await writeFile(path.join(dir, "big.bin"), big);
+    await writeFile(path.join(dir, "small.md"), "# small\n");
+
+    const ctx = makeCtx(dir);
+    const backup = await createRecoveryZip(ctx, "detached_head");
+
+    await expect(assertZipReadable(backup.zipPath)).resolves.toBeUndefined();
+    const entries = await zipEntries(backup.zipPath);
+    const bigEntry = entries.find((e) => e.name === "big.bin");
+    expect(bigEntry).toBeDefined();
+    expect(bigEntry!.size).toBe(big.length);
+    // Content must match byte-for-byte (CRC/size were written via data descriptor).
+    expect(Buffer.from(bigEntry!.data).equals(big)).toBe(true);
+  });
+});

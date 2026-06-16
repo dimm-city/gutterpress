@@ -278,7 +278,12 @@ describe("confirm timeout (real code)", () => {
 describe("buildRecoveryContext (real code)", () => {
   test("sets projectDir, repoDir, branch, repoSlug, confirmation from lib stubs", async () => {
     const libStub = {
-      findEnclosingRepoDir: async (_dir: string) => "/repo",
+      // The project is opened at a subfolder; its OWN repo root is /repo.
+      detectProjectSource: async (dir: string) => ({
+        type: "local-git-folder",
+        repoRoot: "/repo",
+        path: dir,
+      }),
       diagnoseProjectRemote: async (_dir: string, _opts?: unknown) => ({
         branch: "main",
         remoteUrl: undefined as string | undefined,
@@ -300,7 +305,7 @@ describe("buildRecoveryContext (real code)", () => {
 
   test("authorName is undefined when not passed (consistent with syncProject)", async () => {
     const libStub = {
-      findEnclosingRepoDir: async (_dir: string) => undefined,
+      detectProjectSource: async (_dir: string) => ({ type: "local-folder" }),
       diagnoseProjectRemote: async () => ({ branch: "main", remoteUrl: undefined as string | undefined }),
     };
     const tokenStoreStub = { get: async (_h: string) => null as null };
@@ -311,7 +316,7 @@ describe("buildRecoveryContext (real code)", () => {
 
   test("authorName is threaded when passed", async () => {
     const libStub = {
-      findEnclosingRepoDir: async (_dir: string) => undefined,
+      detectProjectSource: async (_dir: string) => ({ type: "local-folder" }),
       diagnoseProjectRemote: async () => ({ branch: "main", remoteUrl: undefined as string | undefined }),
     };
     const tokenStoreStub = { get: async (_h: string) => null as null };

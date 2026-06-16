@@ -195,7 +195,12 @@ export function hostConfirmationGate(
 // ── buildRecoveryContext ──────────────────────────────────────────────────────
 
 interface LibForContext {
-  findEnclosingRepoDir(dir: string): Promise<string | undefined>;
+  // Canonical repo-root resolution — the SAME the sync path uses. Do NOT use
+  // findEnclosingRepoDir here: it is ancestor-only (it skips the project's own
+  // .git), so for a project that IS its own repo root it returns a parent repo
+  // (e.g. ~/.git) — and the backup would then zip the entire HOME directory and
+  // OOM. detectProjectSource returns the project's OWN repoRoot.
+  detectProjectSource(dir: string): Promise<{ type: string; path?: string; repoRoot?: string }>;
   diagnoseProjectRemote(
     dir: string,
     opts?: { tokenStore?: { get(host: string): Promise<HostCredential | null> } },
@@ -219,7 +224,18 @@ export async function buildRecoveryContext(
   tokenStore: TokenStore,
   authorName?: string,
 ): Promise<RecoveryContext> {
-  const repoDir = (await lib.findEnclosingRepoDir(projectDir)) ?? projectDir;
+  // Resolve the project's OWN repo root (not an ancestor repo). This is what the
+  // backup walks — getting it wrong (e.g. ~/.git) zips the whole home dir → OOM.
+  let source: { type: string; path?: string; repoRoot?: string } | null = null;
+  try {
+    source = await lib.detectProjectSource(projectDir);
+  } catch {
+    source = null;
+  }
+  const repoDir =
+    source && source.type === "local-git-folder"
+      ? source.repoRoot ?? source.path ?? projectDir
+      : projectDir;
   const diag = await lib.diagnoseProjectRemote(projectDir, { tokenStore }).catch(() => ({
     branch: undefined as string | undefined,
     remoteUrl: undefined as string | undefined,
