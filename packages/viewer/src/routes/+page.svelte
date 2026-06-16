@@ -8,16 +8,22 @@
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type {
     ConflictFileInfo,
+    ManualGuidanceInfo,
     ProblemEntry,
     ProjectCapabilities,
     ProjectClassification,
     ProjectRemoteDiagnosis,
+    RecoveryConfirmRequest,
+    RecoveryProgressInfo,
     SnapshotEntry,
   } from "$lib/platform/contract";
   import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
   import { problemCounts } from "$lib/problems";
   import SyncStatusPill from "$lib/components/SyncStatusPill.svelte";
   import ConflictChoicesDialog from "$lib/components/ConflictChoicesDialog.svelte";
+  import RecoveryOverlay from "$lib/components/RecoveryOverlay.svelte";
+  import RecoveryConfirmDialog from "$lib/components/RecoveryConfirmDialog.svelte";
+  import RecoveryGuidanceDialog from "$lib/components/RecoveryGuidanceDialog.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
@@ -183,6 +189,20 @@
   let conflictLocalId = $state<string | null>(null);
   let conflictRemoteId = $state<string | null>(null);
 
+  // ── Recovery UI state (transparent sync recovery) ────────────────────────────
+  // RecoveryOverlay: shown during automated repair (non-blocking scrim over preview pane).
+  let recoveryOverlayVisible = $state(false);
+  let recoveryOverlayPhase = $state<RecoveryProgressInfo["phase"]>("checking");
+  let recoveryOverlayState = $state<"recovering" | "recovered">("recovering");
+  let recoveryBackupZipPath = $state<string | undefined>(undefined);
+  // RecoveryGuidanceDialog: shown when repair is blocked / classifiable error.
+  let recoveryGuidanceOpen = $state(false);
+  let recoveryGuidance = $state<ManualGuidanceInfo | undefined>(undefined);
+  let recoveryGuidanceBackupPath = $state<string | null>(null);
+  // RecoveryConfirmDialog: shown when host needs author approval for a risky repair.
+  let recoveryConfirmOpen = $state(false);
+  let recoveryConfirmRequest = $state<RecoveryConfirmRequest | undefined>(undefined);
+
   async function refreshSyncDiag(dir: string) {
     try {
       const diag = await getPlatform().diagnoseProjectRemote(dir);
@@ -271,6 +291,73 @@
     }
     connectDialogWasOpen = anyConnectOpen;
   });
+
+  // ── Recovery overlay subscription ────────────────────────────────────────────
+  // Subscribe to the host's sync:status channel for recovering/recovered/error
+  // states so the RecoveryOverlay (and RecoveryGuidanceDialog on blocked failure)
+  // appear/disappear transparently. The SyncStatusPill already handles the
+  // conflict/auth/syncing/synced states — this effect handles ONLY the new
+  // recovery-specific transitions (recovering, recovered, error-with-guidance).
+  // Per §8 / ADR 0004: runs in the SPA, no lib value imports, all host work
+  // through getPlatform().
+  $effect(() => {
+    if (!isDesktop()) return;
+    const off = getPlatform().onSyncStatus((status) => {
+      // Scope to the currently open project.
+      if (status.projectDir !== currentDir) return;
+
+      if (status.state === "recovering") {
+        // Automated repair in progress — show the non-dismissable overlay.
+        recoveryOverlayVisible = true;
+        recoveryOverlayState = "recovering";
+        recoveryOverlayPhase = status.recovery?.phase ?? "checking";
+        recoveryBackupZipPath = status.backupZipPath;
+        // Close guidance dialog if a new recovery attempt starts.
+        recoveryGuidanceOpen = false;
+      } else if (status.state === "recovered") {
+        // Repair completed — transition overlay to success state; it auto-dismisses.
+        recoveryOverlayVisible = true;
+        recoveryOverlayState = "recovered";
+        recoveryBackupZipPath = status.backupZipPath ?? recoveryBackupZipPath;
+      } else if (status.state === "error" && status.guidance) {
+        // Classified failure that needs manual guidance — hide overlay, open dialog.
+        recoveryOverlayVisible = false;
+        recoveryGuidance = status.guidance;
+        recoveryGuidanceBackupPath = status.backupZipPath ?? null;
+        recoveryGuidanceOpen = true;
+      } else {
+        // Any other state (synced/up-to-date/offline/auth/conflict/idle) — if the
+        // overlay was showing (e.g. from a previous recovery cycle), hide it.
+        if (status.state !== "syncing") {
+          recoveryOverlayVisible = false;
+        }
+      }
+    });
+    return () => off?.();
+  });
+
+  // ── Recovery confirm subscription ─────────────────────────────────────────────
+  // The host fires onRecoveryConfirm when a medium/high-risk repair needs author
+  // approval. Show RecoveryConfirmDialog; the dialog answers the gate via
+  // respondRecoveryConfirm. Recovery must NOT proceed until the author responds.
+  $effect(() => {
+    if (!isDesktop()) return;
+    const off = getPlatform().onRecoveryConfirm((req: RecoveryConfirmRequest) => {
+      recoveryConfirmRequest = req;
+      recoveryConfirmOpen = true;
+    });
+    return () => off?.();
+  });
+
+  /** Show a backup zip in the system file manager. */
+  function showBackupInFolder(path: string) {
+    getPlatform().showInFolder(path).catch(() => {});
+  }
+
+  /** Called when the RecoveryOverlay auto-dismiss or Done button fires. */
+  function onRecoveryOverlayDone() {
+    recoveryOverlayVisible = false;
+  }
 
   let versionHistoryOpen = $state(false);
   let versionHistoryBtn = $state<HTMLButtonElement | undefined>(undefined);
@@ -2279,6 +2366,18 @@
           onCancel={rendering ? handleCancelRender : undefined}
           variant="pane"
         />
+        <!-- Recovery overlay: pane-scoped, position:absolute, TRANSLUCENT scrim.
+             Non-dismissable during repair; auto-dismisses after ~1.8s on success.
+             Hard rule (memory: never hide cross-origin preview iframe): scrim is
+             translucent (var(--app-overlay) + backdrop-filter:blur), never opaque. -->
+        <RecoveryOverlay
+          visible={recoveryOverlayVisible}
+          phase={recoveryOverlayPhase}
+          state={recoveryOverlayState}
+          backupZipPath={recoveryBackupZipPath}
+          onShowBackup={recoveryBackupZipPath ? () => showBackupInFolder(recoveryBackupZipPath!) : undefined}
+          onDone={onRecoveryOverlayDone}
+        />
       </section>
     </div>
     <!-- Problems panel (#28): a bottom strip below the workspace (VS Code
@@ -2372,6 +2471,26 @@
   onReconnect={onSyncReconnect}
 />
 
+<!-- RecoveryConfirmDialog: risky-repair confirmation gate. Shown when the host
+     recovery subsystem needs author approval before proceeding with a
+     medium/high-risk repair. Always answers the gate (approved or rejected) via
+     getPlatform().respondRecoveryConfirm so the host is never left hanging. -->
+<RecoveryConfirmDialog
+  bind:open={recoveryConfirmOpen}
+  request={recoveryConfirmRequest}
+  onShowBackup={(path) => showBackupInFolder(path)}
+/>
+
+<!-- RecoveryGuidanceDialog: shown when automated recovery is blocked or fails
+     with a classified error. Plain-language guidance + recommended next step +
+     optional safe-steps list. No Git jargon. -->
+<RecoveryGuidanceDialog
+  bind:open={recoveryGuidanceOpen}
+  guidance={recoveryGuidance}
+  backupZipPath={recoveryGuidanceBackupPath}
+  onShowBackup={(path) => showBackupInFolder(path)}
+  onPrimary={onSyncReconnect}
+/>
 
 <style>
   :global(html, body) {

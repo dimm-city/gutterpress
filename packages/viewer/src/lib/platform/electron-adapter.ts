@@ -57,6 +57,8 @@ import type {
   SyncOutcome,
   ResolveSyncConflictsArgs,
   SyncStatus,
+  RecoveryConfirmRequest,
+  ConflictPreview,
 } from "./contract";
 
 function bridge(): ElectronBridge {
@@ -345,6 +347,20 @@ export class ElectronAdapter implements Platform {
 
   setAutoSync(enabled: boolean): Promise<void> {
     return bridge().setAutoSync(enabled);
+  }
+
+  // ── Sync recovery seam (Foundation — §8 / ADR 0004) ───────────────────────
+
+  onRecoveryConfirm(handler: (req: RecoveryConfirmRequest) => void): () => void {
+    return bridge().onRecoveryConfirm(handler as (data: unknown) => void);
+  }
+
+  respondRecoveryConfirm(requestId: string, approved: boolean): Promise<void> {
+    return bridge().respondRecoveryConfirm(requestId, approved);
+  }
+
+  getConflictPreview(projectDir: string, path: string): Promise<ConflictPreview> {
+    return bridge().getConflictPreview(projectDir, path);
   }
 
   // ── Sync (#15 sync phase) — delegate 1:1 to the bridge ─────────────────────

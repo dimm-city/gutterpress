@@ -57,6 +57,14 @@ import {
   electronTokenStore,
   type HostCredential,
 } from "./credential-store";
+import {
+  setRecoveryBridgeWindow,
+  handleConfirmResponse,
+  rejectAllPendingConfirms,
+  buildRecoveryContext,
+  classifyFromHealth,
+  getConflictPreviewImpl,
+} from "./recovery-bridge";
 // The splash markup ships as a string baked into the main bundle (electron-vite
 // inlines `?raw`), so there is no separate file to resolve at runtime.
 import splashHtml from "./splash.html?raw";
@@ -441,6 +449,36 @@ interface LibModule {
     tokenStore?: { get(host: string): Promise<HostCredential | null> };
     authorName?: string;
   }) => Promise<SyncOutcome>;
+  // Sync recovery (#15 ADR 0006 D5 — node-side only)
+  recover: (
+    kind: string,
+    ctx: object,
+    error?: unknown,
+  ) => Promise<{
+    status: "recovered" | "retry_later" | "needs_user" | "blocked" | "failed_no_changes_made" | "failed_backup_available";
+    message: string;
+    backupZipPath?: string;
+    retryAfterMs?: number;
+    guidance?: object;
+    files?: Array<{ path: string; kind: string }>;
+  }>;
+  classifyGitError: (
+    err: unknown,
+    health?: object,
+  ) => string;
+  inspectRepo: (ctx: { repoDir: string }) => Promise<{
+    hasGitDir: boolean;
+    currentBranch?: string;
+    isDetachedHead: boolean;
+    hasStaleLock: boolean;
+    lockAgeMs?: number;
+    hasInterruptedMerge: boolean;
+    hasInterruptedRebase: boolean;
+    hasInterruptedCherryPick: boolean;
+    hasLocalChanges: boolean;
+  }>;
+  findEnclosingRepoDir: (dir: string) => Promise<string | undefined>;
+  onlineCopyPath: (absPath: string) => string;
 }
 
 let libPromise: Promise<LibModule> | null = null;
@@ -1044,7 +1082,9 @@ interface SyncStatusPayload {
     | "offline"
     | "auth"
     | "conflict"
-    | "error";
+    | "error"
+    | "recovering"
+    | "recovered";
   /** Absolute path of the project this status applies to. */
   projectDir: string;
   /** Present (non-empty) only when state === "conflict". */
@@ -1054,6 +1094,19 @@ interface SyncStatusPayload {
    * or null when none has run in this session.
    */
   lastSyncAt: string | null;
+  /**
+   * Recovery progress — present when state === "recovering".
+   * Both `phase` and `risk` are required to match RecoveryProgressInfo in contract.ts.
+   */
+  recovery?: {
+    phase: "checking" | "backup" | "repairing" | "done";
+    risk: "none" | "low" | "medium" | "high";
+    message?: string;
+  };
+  /** Manual guidance — present when state === "error" and failure was classified. */
+  guidance?: object;
+  /** Backup zip path — present on "recovered" and classified "error". */
+  backupZipPath?: string;
 }
 
 /** Per-project last-sync timestamp, updated on every completed runAutoSync. */
@@ -1119,12 +1172,131 @@ async function runAutoSync(dir: string): Promise<void> {
     console.error(`[auto-sync] syncProject threw for ${dir}: ${msg}`);
     const now = new Date().toISOString();
     autoSyncLastAt.set(dir, now);
-    emitSyncStatus({ state: "error", projectDir: dir, lastSyncAt: now });
-    state.inFlight = false;
-    // On unexpected throw, allow future attempts (not a conflict-latch situation).
-    if (state.runAgain) {
-      state.runAgain = false;
-      void runAutoSync(dir);
+
+    // ── Recovery routing (Foundation delta) ──────────────────────────────────
+    // Classify the error. If classifiable, route through recover(). Otherwise
+    // keep the old behavior (emit 'error', allow future attempts).
+    let kind: string;
+    let health: object | undefined;
+    try {
+      health = await lib.inspectRepo({ repoDir: dir });
+      kind = lib.classifyGitError(e, health);
+    } catch {
+      kind = "unknown";
+    }
+
+    if (kind === "unknown") {
+      // Old behavior — no recovery attempt for unclassifiable errors.
+      emitSyncStatus({ state: "error", projectDir: dir, lastSyncAt: now });
+      state.inFlight = false;
+      if (state.runAgain) {
+        state.runAgain = false;
+        void runAutoSync(dir);
+      }
+      return;
+    }
+
+    // Emit 'recovering' so the UI can show the non-intrusive overlay.
+    // Include `risk: "none"` to satisfy RecoveryProgressInfo (both fields required).
+    emitSyncStatus({
+      state: "recovering",
+      projectDir: dir,
+      lastSyncAt: now,
+      recovery: { phase: "checking", risk: "none" },
+    });
+
+    // Build the RecoveryContext (resolves repoDir, credential, etc.).
+    // Uses the same lib/electronTokenStore already in scope.
+    let ctx: object;
+    try {
+      ctx = await buildRecoveryContext(dir, lib, electronTokenStore);
+    } catch (ctxErr) {
+      console.error(`[auto-sync] buildRecoveryContext failed for ${dir}:`, ctxErr);
+      emitSyncStatus({ state: "error", projectDir: dir, lastSyncAt: now });
+      state.inFlight = false;
+      return;
+    }
+
+    let result: Awaited<ReturnType<typeof lib.recover>>;
+    try {
+      result = await lib.recover(kind, ctx, e);
+    } catch (recoverErr) {
+      console.error(`[auto-sync] recover() threw for ${dir}:`, recoverErr);
+      emitSyncStatus({ state: "error", projectDir: dir, lastSyncAt: now });
+      state.inFlight = false;
+      return;
+    } finally {
+      // Single-flight invariant: always reset, even on throw.
+      state.inFlight = false;
+    }
+
+    // Map RecoveryResult → emit.
+    switch (result.status) {
+      case "recovered": {
+        autoSyncLastAt.set(dir, new Date().toISOString());
+        emitSyncStatus({
+          state: "recovered",
+          projectDir: dir,
+          lastSyncAt: autoSyncLastAt.get(dir) ?? now,
+          backupZipPath: result.backupZipPath,
+        });
+        // Resume the single-flight follow-up path.
+        if (state.runAgain) {
+          state.runAgain = false;
+          void runAutoSync(dir);
+        }
+        break;
+      }
+
+      case "retry_later": {
+        emitSyncStatus({ state: "offline", projectDir: dir, lastSyncAt: now });
+        // Re-arm after the requested delay.
+        const delay = result.retryAfterMs ?? 60_000;
+        const retryTimer = setTimeout(() => {
+          if (autoSyncStates.has(dir)) void runAutoSync(dir);
+        }, delay);
+        if (typeof retryTimer.unref === "function") retryTimer.unref();
+        break;
+      }
+
+      case "needs_user": {
+        if (result.files && result.files.length > 0) {
+          // Surface as a conflict so the existing dialog handles it.
+          // Cancel the periodic timer consistent with the normal conflict path.
+          state.conflictLatched = true;
+          state.runAgain = false;
+          cancelAutoSyncTimer(dir);
+          emitSyncStatus({
+            state: "conflict",
+            files: result.files as ConflictFileInfo[],
+            projectDir: dir,
+            lastSyncAt: now,
+          });
+        } else {
+          // Auth / credential issue.
+          emitSyncStatus({ state: "auth", projectDir: dir, lastSyncAt: now });
+        }
+        break;
+      }
+
+      case "blocked":
+      case "failed_no_changes_made":
+      case "failed_backup_available": {
+        // Latch: do not churn on a structural failure the recovery subsystem
+        // says is blocked. Show guidance so the author knows what to do.
+        // Cancel the periodic timer consistent with the normal conflict path.
+        state.conflictLatched = true;
+        state.runAgain = false;
+        cancelAutoSyncTimer(dir);
+        emitSyncStatus({
+          state: "error",
+          projectDir: dir,
+          lastSyncAt: now,
+          guidance: result.guidance,
+          backupZipPath: "backupZipPath" in result ? result.backupZipPath : undefined,
+        });
+        break;
+      }
     }
     return;
   }
@@ -1422,6 +1594,8 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
+  // Register the window with recovery-bridge so it can send IPC push events.
+  setRecoveryBridgeWindow(mainWindow);
   mainWindow.once("ready-to-show", () => slog("renderer ready-to-show (first paint)"));
   mainWindow.webContents.on("did-start-loading", () => slog("renderer did-start-loading"));
   mainWindow.webContents.on("dom-ready", () => slog("renderer dom-ready"));
@@ -1576,6 +1750,9 @@ function createWindow() {
   mainWindow.on("closed", () => {
     nativeTheme.removeListener("updated", onNativeThemeUpdated);
     stopFolderWatch();
+    // Reject any pending recovery confirm requests so they don't hang.
+    rejectAllPendingConfirms();
+    setRecoveryBridgeWindow(null);
     mainWindow = null;
   });
   return mainWindow;
@@ -2968,6 +3145,50 @@ ipcMain.handle(
     }),
 );
 
+// ── Sync recovery IPC (Foundation — §8 / ADR 0004) ──────────────────────────
+
+/**
+ * The renderer answers a risky-repair confirmation request. Main's pending
+ * resolver map (in recovery-bridge.ts) receives the answer and unblocks the
+ * awaiting recover() call.
+ */
+ipcMain.handle(
+  "recovery:confirm-response",
+  (_e, { requestId, approved }: { requestId: string; approved: boolean }) => {
+    if (typeof requestId !== "string" || typeof approved !== "boolean") {
+      throw new Error("recovery:confirm-response requires { requestId: string, approved: boolean }");
+    }
+    const found = handleConfirmResponse(requestId, approved);
+    if (!found) {
+      console.warn(`[recovery] stale/unknown requestId ignored: ${requestId}`);
+    }
+  },
+);
+
+/**
+ * Return the yours/theirs text for one conflicted file so the author can
+ * compare before choosing in ConflictChoicesDialog.
+ */
+ipcMain.handle(
+  "sync:getConflictPreview",
+  async (_e, rawArgs: unknown) => {
+    const args = rawArgs as { projectDir?: string; path?: string; kind?: string };
+    if (!args?.projectDir || !args?.path) {
+      throw new Error("sync:getConflictPreview requires { projectDir, path }");
+    }
+    const dir = requireAbsoluteDir("sync:getConflictPreview", args.projectDir);
+    return handleRemoteErrors("sync:getConflictPreview", async () => {
+      const lib = await loadLib();
+      return getConflictPreviewImpl(
+        dir,
+        args.path!,
+        (args.kind ?? "both-edited") as "both-edited" | "you-deleted" | "online-deleted",
+        lib.onlineCopyPath,
+      );
+    });
+  },
+);
+
 // ── Auto-sync settings IPC (transparent-sync plan §4.3) ─────────────────────
 // The renderer calls setAutoSync(true|false) from the Settings panel. We persist
 // the flag into settings.versionHistory.autoSync and, if re-enabled, re-arm the
@@ -3101,10 +3322,123 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   // (not coupled to the 10-min snapshot debounce — that delayed it ~10.5 min and
   // hid teammate changes). syncProject snapshots-first, so a prompt run is safe.
   armAutoSyncInterval(openedDir);
-  const initialSyncTimer = setTimeout(() => {
-    if (watchedDir === openedDir) void runAutoSync(openedDir);
-  }, AUTO_SYNC_OPEN_DELAY_MS);
-  if (typeof initialSyncTimer.unref === "function") initialSyncTimer.unref();
+
+  // Preflight recovery: before the initial sync, inspect the repo for structural
+  // conditions (stale lock, interrupted merge, detached head, missing git dir).
+  // If a recoverable condition is detected, route through recover() BEFORE the
+  // first runAutoSync so the author sees a transparent repair on open rather than
+  // a sync error. guard: only for local-git-folder projects.
+  //
+  // CONCURRENCY: preflight acquires the single-flight lock (state.inFlight=true)
+  // for the duration of recover() so runAutoSync cannot call lib.syncProject
+  // concurrently on the same repo. The initialSyncTimer is cancelled while
+  // preflight holds the lock; if runAutoSync fires (e.g. interval) it arms
+  // runAgain instead. After preflight releases the lock we either honour runAgain
+  // or, for a healthy repo, schedule a fresh initialSyncTimer.
+  void (async () => {
+    // Acquire single-flight lock before any git I/O.
+    const syncState = getOrCreateAutoSyncState(openedDir);
+    if (syncState.inFlight) {
+      // Another sync is already in flight (unusual at open time) — skip preflight.
+      return;
+    }
+    syncState.inFlight = true;
+
+    try {
+      const source = await lib.detectProjectSource(openedDir);
+      if (source.type !== "local-git-folder") {
+        // Not a git project — release immediately and let the normal initial sync proceed.
+        syncState.inFlight = false;
+        setTimeout(() => {
+          if (watchedDir === openedDir) void runAutoSync(openedDir);
+        }, AUTO_SYNC_OPEN_DELAY_MS);
+        return;
+      }
+
+      const health = await lib.inspectRepo({ repoDir: openedDir });
+      const kind = classifyFromHealth(health);
+      if (kind === null) {
+        // Healthy repo — release lock and schedule the normal initial sync.
+        syncState.inFlight = false;
+        const t = setTimeout(() => {
+          if (watchedDir === openedDir) void runAutoSync(openedDir);
+        }, AUTO_SYNC_OPEN_DELAY_MS);
+        if (typeof (t as NodeJS.Timeout).unref === "function") (t as NodeJS.Timeout).unref();
+        return;
+      }
+
+      console.log(`[preflight] structural condition '${kind}' detected for ${openedDir}; recovering before first sync`);
+      emitSyncStatus({
+        state: "recovering",
+        projectDir: openedDir,
+        lastSyncAt: autoSyncLastAt.get(openedDir) ?? null,
+        recovery: { phase: "checking", risk: "none" },
+      });
+
+      const ctx = await buildRecoveryContext(openedDir, lib, electronTokenStore);
+      let result: Awaited<ReturnType<typeof lib.recover>>;
+      try {
+        result = await lib.recover(kind, ctx);
+      } finally {
+        // Always release the single-flight lock when recover() settles.
+        syncState.inFlight = false;
+      }
+
+      const now = new Date().toISOString();
+      autoSyncLastAt.set(openedDir, now);
+
+      if (result.status === "recovered") {
+        emitSyncStatus({
+          state: "recovered",
+          projectDir: openedDir,
+          lastSyncAt: now,
+          backupZipPath: result.backupZipPath,
+        });
+        // Honour runAgain (set by any sync that fired while we held the lock).
+        if (syncState.runAgain) {
+          syncState.runAgain = false;
+          void runAutoSync(openedDir);
+        }
+      } else if (result.status === "retry_later") {
+        emitSyncStatus({ state: "offline", projectDir: openedDir, lastSyncAt: now });
+      } else if (result.status === "needs_user" && result.files && result.files.length > 0) {
+        // Conflict-latch: stop the periodic timer to avoid churning.
+        syncState.conflictLatched = true;
+        syncState.runAgain = false;
+        cancelAutoSyncTimer(openedDir);
+        emitSyncStatus({
+          state: "conflict",
+          files: result.files as ConflictFileInfo[],
+          projectDir: openedDir,
+          lastSyncAt: now,
+        });
+      } else {
+        // blocked / failed / needs_user (auth) — latch and show guidance.
+        syncState.conflictLatched = true;
+        syncState.runAgain = false;
+        cancelAutoSyncTimer(openedDir);
+        emitSyncStatus({
+          state: "error",
+          projectDir: openedDir,
+          lastSyncAt: now,
+          guidance: "guidance" in result ? result.guidance : undefined,
+          backupZipPath: "backupZipPath" in result ? result.backupZipPath : undefined,
+        });
+      }
+    } catch (err) {
+      // Preflight is non-blocking: always release the lock so the project is not
+      // permanently wedged. Then let the normal initial sync proceed.
+      syncState.inFlight = false;
+      console.warn("[preflight] recovery failed (non-fatal):", err);
+      const t = setTimeout(() => {
+        if (watchedDir === openedDir) void runAutoSync(openedDir);
+      }, AUTO_SYNC_OPEN_DELAY_MS);
+      if (typeof (t as NodeJS.Timeout).unref === "function") (t as NodeJS.Timeout).unref();
+    }
+  })();
+  // NOTE: the initialSyncTimer that used to be here has been moved inside the
+  // preflight IIFE above so the first runAutoSync is always deferred until after
+  // preflight releases its single-flight lock.
 
   return {
     url: activePreview.url,
