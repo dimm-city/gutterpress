@@ -9,12 +9,14 @@
    * No Git jargon in any always-visible string. PWA-clean (CLAUDE.md §8 / ADR 0004).
    */
   import Icon from "$lib/components/Icon.svelte";
+  import OperationLogDialog from "$lib/components/OperationLogDialog.svelte";
   import type { ManualGuidanceInfo } from "$lib/platform/contract";
 
   let {
     open = $bindable(false),
     guidance,
     backupZipPath: backupZipPathProp,
+    logFilePath,
     onShowBackup,
     onPrimary,
     triggerEl,
@@ -23,6 +25,8 @@
     guidance?: ManualGuidanceInfo;
     /** Fallback backup path from SyncStatus when not present in guidance (Integrate handoff). */
     backupZipPath?: string | null;
+    /** Operation log path from SyncStatus — backs the "View log" button. */
+    logFilePath?: string | null;
     onShowBackup?: (path: string) => void;
     onPrimary?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
@@ -30,6 +34,8 @@
 
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
   let copyAnnouncement = $state<string>("");
+  let logDialogOpen = $state<boolean>(false);
+  let viewLogBtn = $state<HTMLButtonElement | undefined>(undefined);
 
   // Derive backup path: prefer guidance prop, fall back to the explicit backupZipPath prop
   // (which the Integrate parent merges from SyncStatus.backupZipPath when needed).
@@ -187,9 +193,28 @@
             <button class="ghost small" onclick={copyDetails}>
               Copy details for support
             </button>
+            {#if logFilePath}
+              <button
+                bind:this={viewLogBtn}
+                class="ghost small"
+                onclick={() => { logDialogOpen = true; }}
+              >
+                View log
+              </button>
+            {/if}
             {#if copyAnnouncement}
               <span class="copy-confirm">{copyAnnouncement}</span>
             {/if}
+          </div>
+        {:else if logFilePath}
+          <div class="copy-details-row">
+            <button
+              bind:this={viewLogBtn}
+              class="ghost small"
+              onclick={() => { logDialogOpen = true; }}
+            >
+              View log
+            </button>
           </div>
         {/if}
       {/if}
@@ -200,6 +225,12 @@
     </footer>
   </div>
 {/if}
+
+<OperationLogDialog
+  bind:open={logDialogOpen}
+  logFilePath={logFilePath}
+  triggerEl={viewLogBtn}
+/>
 
 <svelte:window
   onkeydown={(e) => {

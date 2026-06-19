@@ -493,6 +493,13 @@ export interface SyncStatus {
    * failure) so the UI can offer "Show backup".
    */
   backupZipPath?: string;
+  /**
+   * Absolute path to the operation log file written during the sync/recovery
+   * attempt. Present on `"recovered"`, `"error"`, and `"conflict"` states so
+   * the UI can offer "View log" for debugging. The log contains timestamped
+   * steps (fetch, merge, backup, etc.) but never secrets.
+   */
+  logFile?: string;
 }
 
 // ── Sync (#15 sync phase, ADR 0006 D5) ────────────────────────────────────────
@@ -1072,6 +1079,14 @@ export interface HostServices {
   /** Apply per-file conflict choices and sync the combined result. */
   resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
 
+  /**
+   * Read the contents of an operation log file (e.g. the sync/recovery log
+   * referenced by `SyncStatus.logFile`). Returns the raw text contents, or
+   * null when the file doesn't exist or can't be read. The WebAdapter stub
+   * resolves null (no file system in the browser).
+   */
+  readLogFile(filePath: string): Promise<string | null>;
+
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;
   stopPreview(): Promise<{ stopped: boolean }>;
@@ -1137,4 +1152,6 @@ export interface ElectronBridge extends HostServices {
    * to change events for `path` and returns an unsubscribe fn.
    */
   watchFolder(path: string, cb: () => void): () => void;
+  /** Read an operation log file for the recovery/sync log viewer. */
+  readLogFile(path: string): Promise<string | null>;
 }

@@ -7,6 +7,7 @@ import {
   providerFor,
   restoreVersionWithBackup,
   gitDirFor,
+  listWorkdirChanges,
   RESTORE_BACKUP_MESSAGE,
   AUTO_SNAPSHOT_MESSAGE,
   AUTO_SNAPSHOT_DEFAULT_MINUTES,
@@ -624,6 +625,35 @@ test("listHistory is a bounded page (delegates to listHistoryPage defaults)", as
     const viaList = await provider.listHistory(dir);
     const viaPage = await provider.listHistoryPage(dir);
     expect(viaList).toEqual(viaPage.entries);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("same-byte-length edits are detected (racy index)", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    // "aaa" = 3 bytes
+    await writeFile(path.join(dir, "chapter-01.md"), "aaa");
+    await provider.snapshot({ projectDir: dir, message: "First" });
+
+    // "bbb" = 3 bytes — same length, different content
+    await writeFile(path.join(dir, "chapter-01.md"), "bbb");
+    const changes = await listWorkdirChanges(dir);
+    expect(changes.adds).toContain("chapter-01.md");
+
+    // snapshot succeeds and the committed content is "bbb", not "aaa"
+    const snap = await provider.snapshot({ projectDir: dir, message: "Second" });
+    const gitMod = (await import("isomorphic-git")).default;
+    const fsMod = await import("node:fs");
+    const blob = await gitMod.readBlob({
+      fs: fsMod,
+      dir,
+      oid: snap.id,
+      filepath: "chapter-01.md",
+    });
+    expect(Buffer.from(blob.blob).toString()).toBe("bbb");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

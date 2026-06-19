@@ -187,14 +187,14 @@ export function makeManualGuidance(
       return {
         ...base,
         userSummary:
-          "This project and the online copy don't share the same history, so they can't be combined automatically.",
+          "This project and the online copy were created separately and don't share a starting point.",
         recommendedNextStep:
-          "Check that you're syncing to the correct online project, then reconnect.",
-        recommendedAction: "Reconnect",
+          "Let print-md combine your work with the online version into one project.",
+        recommendedAction: "Combine projects",
         safeNextSteps: [
-          "Nothing was changed on this computer or online.",
-          "Make sure the online address points to the right project.",
-          "Contact support if you're unsure which copy to keep.",
+          "Your work will be saved in a safety copy before anything changes.",
+          "Both your local changes and the online version will be kept.",
+          "You may need to review a few files after combining.",
         ],
         supportDetails,
       };

@@ -53,6 +53,7 @@ import type {
 // ── The module under test — expected to NOT exist yet (TDD stage 1) ──────────
 // This import will fail until recover-wrong-remote.ts is implemented.
 import { recover } from "./recover-wrong-remote.ts";
+import { BACKUP_ROOT } from "./backup.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -467,7 +468,7 @@ describe("recover (wrong_remote_or_branch) — remote HEAD unchanged", () => {
 // ── No backup zip created (policy: createBackup:false) ───────────────────────
 //
 // wrong_remote_or_branch is a pure-block kind — no repair is attempted,
-// so no backup zip should be created under /tmp/print-sync-recovery/.
+// so no backup zip should be created under the OS temp recovery root.
 
 describe("recover (wrong_remote_or_branch) — no backup zip created", () => {
   test("result does not include backupZipPath (no backup for pure block)", async () => {
@@ -484,11 +485,11 @@ describe("recover (wrong_remote_or_branch) — no backup zip created", () => {
     }
   });
 
-  test("no file appears under /tmp/print-sync-recovery/ for this kind", async () => {
+  test("no file appears under the OS temp recovery root for this kind", async () => {
     const { projectDir, remoteUrl, closeServer } = await makeFixture();
     try {
       // Record backup dir size before.
-      const backupBase = "/tmp/print-sync-recovery/test-book";
+      const backupBase = path.join(BACKUP_ROOT, "test-book");
       const beforeCount = fs.existsSync(backupBase)
         ? fs.readdirSync(backupBase).length
         : 0;

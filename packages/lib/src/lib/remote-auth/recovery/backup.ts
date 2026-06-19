@@ -1,30 +1,47 @@
 /**
- * /tmp zip backup creation and verification for the sync-recovery subsystem.
+ * Temp-dir zip backup creation and verification for the sync-recovery subsystem.
  *
  * Creates a STORE-method (no compression) ZIP of the project's user files plus
  * .git/, writing it to:
- *   /tmp/print-sync-recovery/<repo-slug>/<ISO-timestamp>-<reason>.zip
+ *   <os.tmpdir()>/print-sync-recovery/<repo-slug>/<ISO-timestamp>-<reason>.zip
+ *
+ * The backup root is `os.tmpdir()` (NOT a hardcoded "/tmp") so it is correct on
+ * Windows/macOS/Linux — the viewer ships on all three (CLAUDE.md §8). A literal
+ * "/tmp" would make every risky-repair backup throw on Windows.
  *
  * WHY a bespoke inlined writer instead of a dependency:
  *   - packages/lib has no zip library (fflate, adm-zip, jszip are absent).
  *   - Adding a dependency adds a build surface and potential native bindings.
  *   - STORE-method ZIP is ~150 lines: local file header + raw bytes, central
  *     directory, end-of-central-directory record, CRC-32 with an inlined
- *     table. Zero imports beyond node:fs/node:path. Survives bun build
+ *     table. Zero imports beyond node:fs/node:os/node:path. Survives bun build
  *     --compile cleanly (no runtime package.json reads, no native bindings,
  *     no computed-path dynamic imports — CLAUDE.md §1/§3).
  *
  * Verification (assertZipReadable / zipEntries): parses the EOCD + central
- * directory. For STORE entries, stored bytes ARE the file bytes, so a content
- * check needs no inflate. The same reader backs test zip-assertions helpers.
+ * directory. assertZipReadable validates EVERY central-directory entry's
+ * signature and bounds (not just the first) via positioned reads of the central
+ * directory only — never the file data — so it stays memory-safe on multi-GB
+ * backups while still catching corruption in any later entry. For STORE entries,
+ * stored bytes ARE the file bytes, so a content check needs no inflate. The same
+ * reader backs test zip-assertions helpers.
  *
- * Exclusions: node_modules/, .print-sync/cache/
- * Inclusions: all user-visible files + .git/ (for full recovery)
+ * Retention: createRecoveryZip prunes stale backups (best-effort, never throws)
+ * before writing a new one — see pruneOldBackups — so old backups do not fill
+ * the disk over time.
+ *
+ * Exclusions: node_modules/, .print-sync/cache/, and **.git/config**. The git
+ * config file is deliberately dropped from the backup because it can carry an
+ * embedded credential (e.g. a tokenized remote URL) and is reconstructable on
+ * recovery (the remote is reconfigured from the stored connection). All other
+ * .git/ contents (objects, refs, HEAD) ARE included so recovery still works.
+ * Inclusions: all user-visible files + .git/ (minus config, for full recovery)
  */
 
 import { createReadStream, createWriteStream } from "node:fs";
 import { once } from "node:events";
-import { mkdir, open, readdir, readFile, stat } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rm, stat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 import type { RecoveryBackup, RecoveryContext } from "./types.ts";
@@ -75,12 +92,20 @@ async function writeChunk(
 // ── File walker ───────────────────────────────────────────────────────────────
 
 const EXCLUDED_DIRS = new Set(["node_modules"]);
-const EXCLUDED_PATHS = [".print-sync/cache"];
+// Path-prefix exclusions, expressed with forward slashes. `isExcluded`
+// normalizes the (OS-native) relative path to forward slashes before matching,
+// so these work on Windows (\) and POSIX (/) alike.
+//   - .print-sync/cache : transient cache, never needed for recovery
+//   - .git/config       : may embed a credential (tokenized remote URL); it is
+//     reconstructable on recovery, so we deliberately drop it (BUG 3).
+const EXCLUDED_PATHS = [".print-sync/cache", ".git/config"];
 
 function isExcluded(relPath: string): boolean {
-  const parts = relPath.split(path.sep);
+  // Normalize to forward slashes so prefix matching is separator-agnostic.
+  const normalized = relPath.split(path.sep).join("/");
+  const parts = normalized.split("/");
   if (parts[0] && EXCLUDED_DIRS.has(parts[0])) return true;
-  return EXCLUDED_PATHS.some((p) => relPath.startsWith(p));
+  return EXCLUDED_PATHS.some((p) => normalized === p || normalized.startsWith(p + "/"));
 }
 
 /** Walk a directory recursively, collecting all file paths relative to root. */
@@ -117,12 +142,108 @@ function safeTimestamp(now: number): string {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export const BACKUP_ROOT = "/tmp/print-sync-recovery";
+/**
+ * Root directory for all sync-recovery backups.
+ *
+ * Computed from `os.tmpdir()` (NOT hardcoded "/tmp") so it resolves to a real
+ * temp dir on Windows, macOS, and Linux. A literal "/tmp" does not exist on
+ * Windows and would make every risky-repair backup throw there (CLAUDE.md §8).
+ */
+export const BACKUP_ROOT = path.join(os.tmpdir(), "print-sync-recovery");
+
+/** Default retention window for backups: zips older than this are pruned. */
+const DEFAULT_BACKUP_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+/** Default cap on retained backups per repo-slug (newest kept). */
+const DEFAULT_BACKUP_MAX_PER_SLUG = 20;
+
+export interface PruneOldBackupsOptions {
+  /** Backup root to prune under. Defaults to {@link BACKUP_ROOT}. */
+  root?: string;
+  /** Restrict pruning to a single repo-slug subfolder. */
+  slug?: string;
+  /** Remove zips with an mtime older than this many ms. Default 7 days. */
+  ttlMs?: number;
+  /** After TTL pruning, keep at most this many newest zips per slug. */
+  maxPerSlug?: number;
+  /** Clock override (tests). Returns epoch ms. */
+  now?: () => number;
+}
 
 /**
- * Create a /tmp zip backup of the project directory (user files + .git/).
- * Calls ctx.faults?.before("backup_create") then ctx.faults?.before("backup_verify")
- * so tests can inject failures at each step.
+ * Remove stale recovery backups so they do not accumulate forever and fill the
+ * disk (BUG 2). Two independent policies are applied per repo-slug folder:
+ *   1. TTL — delete any zip whose mtime is older than `ttlMs` (default 7 days).
+ *   2. Cap — keep only the newest `maxPerSlug` zips (default 20), delete the rest.
+ *
+ * BEST-EFFORT and SILENT: this never throws and never blocks backup creation.
+ * Any unreadable dir, racing delete, or stat failure is ignored — a failure to
+ * prune must never prevent the user's work from being backed up.
+ */
+export async function pruneOldBackups(opts: PruneOldBackupsOptions = {}): Promise<void> {
+  const root = opts.root ?? BACKUP_ROOT;
+  const ttlMs = opts.ttlMs ?? DEFAULT_BACKUP_TTL_MS;
+  const maxPerSlug = opts.maxPerSlug ?? DEFAULT_BACKUP_MAX_PER_SLUG;
+  const now = opts.now?.() ?? Date.now();
+
+  // Determine which slug folders to scan.
+  let slugDirs: string[];
+  try {
+    if (opts.slug) {
+      slugDirs = [path.join(root, opts.slug)];
+    } else {
+      const names = await readdir(root);
+      slugDirs = names.map((n) => path.join(root, n));
+    }
+  } catch {
+    return; // Root missing/unreadable — nothing to prune.
+  }
+
+  for (const slugDir of slugDirs) {
+    let zipNames: string[];
+    try {
+      zipNames = (await readdir(slugDir)).filter((n) => n.endsWith(".zip"));
+    } catch {
+      continue; // Missing/unreadable slug folder — skip.
+    }
+
+    // Stat each zip once; tolerate races (a vanished file is fine to ignore).
+    const stats: { abs: string; mtimeMs: number }[] = [];
+    for (const name of zipNames) {
+      const abs = path.join(slugDir, name);
+      try {
+        const s = await stat(abs);
+        if (s.isFile()) stats.push({ abs, mtimeMs: s.mtimeMs });
+      } catch {
+        // ignore
+      }
+    }
+
+    // Policy 1 — TTL: collect zips older than the window.
+    const toRemove = new Set<string>();
+    for (const s of stats) {
+      if (now - s.mtimeMs > ttlMs) toRemove.add(s.abs);
+    }
+
+    // Policy 2 — cap: of the survivors, keep only the newest `maxPerSlug`.
+    const survivors = stats
+      .filter((s) => !toRemove.has(s.abs))
+      .sort((a, b) => b.mtimeMs - a.mtimeMs); // newest first
+    for (const s of survivors.slice(maxPerSlug)) toRemove.add(s.abs);
+
+    for (const abs of toRemove) {
+      try {
+        await rm(abs, { force: true });
+      } catch {
+        // ignore — best effort
+      }
+    }
+  }
+}
+
+/**
+ * Create a temp-dir zip backup of the project directory (user files + .git/,
+ * minus .git/config). Calls ctx.faults?.before("backup_create") then
+ * ctx.faults?.before("backup_verify") so tests can inject failures at each step.
  *
  * Returns a RecoveryBackup describing the zip, or throws on failure.
  */
@@ -136,6 +257,11 @@ export async function createRecoveryZip(
   const ts = safeTimestamp(now);
   const safeReason = reason.replace(/[^a-z0-9_-]/gi, "_").toLowerCase();
   const slug = ctx.repoSlug.replace(/[^a-z0-9_-]/gi, "_").toLowerCase();
+
+  // Best-effort retention sweep BEFORE writing the new backup so old zips never
+  // accumulate. Never throws, never blocks the new backup (BUG 2). Scoped to
+  // this slug so a large stash under another project can't slow this path.
+  await pruneOldBackups({ slug, now: () => now });
 
   const zipDir = path.join(BACKUP_ROOT, slug);
   await mkdir(zipDir, { recursive: true });
@@ -314,6 +440,12 @@ export function parseZipEntries(buf: Buffer): ZipEntryInfo[] {
  * Assert that a zip file at `zipPath` is readable and parseable.
  * Throws with a descriptive error if not.
  *
+ * Validates EVERY central-directory entry — each entry's CD signature
+ * (0x02014b50) and that its variable-length fields stay within the central
+ * directory bounds. A zip whose FIRST entry is intact but whose LATER entries
+ * are corrupt is rejected (BUG 4): checking only entry 0 let truncated/garbled
+ * tails slip through.
+ *
  * MEMORY-SAFE: reads only the end-of-central-directory record (file tail) and
  * the central directory via positioned reads — NEVER the file data. A multi-GB
  * backup is verified without reading it back into memory.
@@ -347,12 +479,40 @@ export async function assertZipReadable(zipPath: string): Promise<void> {
     const cdSize = tail.readUInt32LE(e + 12);
     const cdOffset = tail.readUInt32LE(e + 16);
     if (cdCount === 0) throw new Error(`Backup zip appears empty or corrupt at ${zipPath}`);
+    if (cdOffset + cdSize > size) {
+      throw new Error(`Backup zip central directory runs past end of file at ${zipPath}`);
+    }
 
-    // Read just the central directory and confirm it starts with a CD signature.
+    // Read the whole central directory once (positioned read — file data is
+    // never touched), then walk all cdCount entries verifying each signature
+    // and that its name/extra/comment fields stay inside the CD buffer.
     const cd = Buffer.alloc(Math.min(cdSize, size));
     await handle.read(cd, 0, cd.length, cdOffset);
-    if (cd.length < 4 || cd.readUInt32LE(0) !== 0x02014b50) {
-      throw new Error(`Backup zip central directory is corrupt at ${zipPath}`);
+
+    let pos = 0;
+    for (let i = 0; i < cdCount; i++) {
+      // Fixed 46-byte CD header must fit.
+      if (pos + 46 > cd.length) {
+        throw new Error(
+          `Backup zip central directory entry ${i + 1}/${cdCount} is truncated at ${zipPath}`,
+        );
+      }
+      if (cd.readUInt32LE(pos) !== 0x02014b50) {
+        throw new Error(
+          `Backup zip central directory entry ${i + 1}/${cdCount} is corrupt at ${zipPath}`,
+        );
+      }
+      const nameLen = cd.readUInt16LE(pos + 28);
+      const extraLen = cd.readUInt16LE(pos + 30);
+      const commentLen = cd.readUInt16LE(pos + 32);
+      const next = pos + 46 + nameLen + extraLen + commentLen;
+      // Variable-length fields must stay within the central directory.
+      if (next > cd.length) {
+        throw new Error(
+          `Backup zip central directory entry ${i + 1}/${cdCount} overflows the directory at ${zipPath}`,
+        );
+      }
+      pos = next;
     }
   } finally {
     await handle.close();

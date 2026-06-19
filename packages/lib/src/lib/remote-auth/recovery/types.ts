@@ -69,7 +69,7 @@ export interface ManualGuidance {
 
 /** The backup zip created before a risky repair. */
 export interface RecoveryBackup {
-  /** Absolute path to the zip file under /tmp/print-sync-recovery/. */
+  /** Absolute path to the zip file under os.tmpdir()/print-sync-recovery/. */
   zipPath: string;
   /** ISO timestamp the backup was created. */
   createdAt: string;
@@ -145,9 +145,13 @@ export interface RepoHealth {
   currentBranch?: string;
   /** True when HEAD is detached (no named branch). */
   isDetachedHead: boolean;
-  /** True when .git/index.lock exists (a previous operation may have died). */
+  /**
+   * True when a leftover git lock file exists (a previous operation may have
+   * died). Detects any of index.lock, HEAD.lock, config.lock, packed-refs.lock,
+   * or a per-ref refs/**\/*.lock — the same set the stale-lock handler scans.
+   */
   hasStaleLock: boolean;
-  /** How old the lock file is in milliseconds, when it exists. */
+  /** How old the YOUNGEST detected lock file is in milliseconds, when present. */
   lockAgeMs?: number;
   /** True when a MERGE_HEAD file exists (interrupted merge). */
   hasInterruptedMerge: boolean;
@@ -219,6 +223,12 @@ export interface RecoveryContext {
   faults?: FaultInjector;
   /** Clock override (tests only). Returns epoch ms. */
   now?: () => number;
+  /**
+   * Optional path to a log file for debugging. When set, each recovery step
+   * (backup, fetch, merge, checkout, etc.) is appended as a timestamped line.
+   * Never logs secrets — only repo slug, branch, short OIDs, outcome status.
+   */
+  logFile?: string;
 }
 
 // ── Dispatcher contract ──────────────────────────────────────────────────────

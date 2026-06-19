@@ -4,7 +4,7 @@
  * WHAT: When a project folder has lost its .git/ directory (e.g. it was
  * accidentally deleted, or the project was moved from a zip that stripped
  * hidden directories), this handler:
- *   1. Backs up the current folder contents to /tmp/print-sync-recovery/.
+ *   1. Backs up the current folder contents to os.tmpdir()/print-sync-recovery/.
  *   2. Asks the user to confirm a risky repair.
  *   3. Clones the remote into a TEMP directory (never over the working dir).
  *   4. Copies only the .git/ metadata from the temp clone into the project dir.

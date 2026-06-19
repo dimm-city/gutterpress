@@ -159,6 +159,10 @@ export class ElectronAdapter implements Platform {
     return bridge().showInFolder(filePath);
   }
 
+  readLogFile(filePath: string): Promise<string | null> {
+    return bridge().readLogFile(filePath);
+  }
+
   getStatus(): Promise<{ ok: boolean; runtime: string; name: string }> {
     return bridge().getStatus();
   }

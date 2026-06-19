@@ -77,6 +77,25 @@ async function placeLockFile(repoDir: string, ageMs: number, now: number): Promi
   return lockPath;
 }
 
+/**
+ * Create a lock file at an arbitrary path UNDER .git (e.g. "HEAD.lock" or
+ * "refs/heads/main.lock"), creating any missing parent directories, and age it
+ * via mtime exactly like {@link placeLockFile}.
+ */
+async function placeNamedLock(
+  repoDir: string,
+  relUnderGit: string,
+  ageMs: number,
+  now: number,
+): Promise<string> {
+  const lockPath = path.join(gitDirFor(repoDir), ...relUnderGit.split("/"));
+  await fs.promises.mkdir(path.dirname(lockPath), { recursive: true });
+  await writeFile(lockPath, "lock\n");
+  const mtimeSecs = (now - ageMs) / 1000;
+  await utimes(lockPath, mtimeSecs, mtimeSecs);
+  return lockPath;
+}
+
 /** Build a RecoveryContext for a test repo. */
 function makeCtx(
   repoDir: string,
@@ -537,5 +556,237 @@ describe("recover-stale-lock — lock age boundary", () => {
     const result = await recover(ctx);
 
     expect(result.status).toBe("recovered");
+  });
+});
+
+// ── BUG 3: lock files BEYOND index.lock ───────────────────────────────────────
+//
+// A crash can leave HEAD.lock, config.lock, packed-refs.lock, or a per-branch
+// refs/heads/<name>.lock behind. The handler must detect and (after the same
+// age check + confirmation) remove these too, not only index.lock.
+
+describe("recover-stale-lock — BUG 3: HEAD.lock", () => {
+  test("a stale HEAD.lock is removed and recovery succeeds", async () => {
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+
+    const nowMs = Date.now();
+    const lockPath = await placeNamedLock(dir, "HEAD.lock", STALE_LOCK_AGE_MS, nowMs);
+
+    const ctx = makeCtx(dir, nowMs);
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("recovered");
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
+  test("a stale config.lock is removed and recovery succeeds", async () => {
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+
+    const nowMs = Date.now();
+    const lockPath = await placeNamedLock(dir, "config.lock", STALE_LOCK_AGE_MS, nowMs);
+
+    const ctx = makeCtx(dir, nowMs);
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("recovered");
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
+  test("a stale packed-refs.lock is removed and recovery succeeds", async () => {
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+
+    const nowMs = Date.now();
+    const lockPath = await placeNamedLock(dir, "packed-refs.lock", STALE_LOCK_AGE_MS, nowMs);
+
+    const ctx = makeCtx(dir, nowMs);
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("recovered");
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+});
+
+describe("recover-stale-lock — BUG 3: refs/heads/<branch>.lock", () => {
+  test("a stale refs/heads/main.lock is removed and recovery succeeds", async () => {
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+
+    const nowMs = Date.now();
+    const lockPath = await placeNamedLock(
+      dir,
+      "refs/heads/main.lock",
+      STALE_LOCK_AGE_MS,
+      nowMs,
+    );
+
+    const ctx = makeCtx(dir, nowMs);
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("recovered");
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
+  test("user file chapter-01.md is preserved when a branch lock is removed", async () => {
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+
+    const nowMs = Date.now();
+    await placeNamedLock(dir, "refs/heads/main.lock", STALE_LOCK_AGE_MS, nowMs);
+
+    const ctx = makeCtx(dir, nowMs);
+    await recover(ctx);
+
+    const content = fs.readFileSync(path.join(dir, "chapter-01.md"), "utf8");
+    expect(content).toBe("# Chapter One\n\nContent.\n");
+  });
+});
+
+describe("recover-stale-lock — BUG 3: a fresh non-index lock blocks removal", () => {
+  test("a fresh HEAD.lock returns retry_later and is NOT deleted", async () => {
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+
+    const nowMs = Date.now();
+    const lockPath = await placeNamedLock(dir, "HEAD.lock", FRESH_LOCK_AGE_MS, nowMs);
+
+    const ctx = makeCtx(dir, nowMs);
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("retry_later");
+    expect(fs.existsSync(lockPath)).toBe(true);
+  });
+
+  test("a fresh refs/heads/main.lock returns retry_later and is NOT deleted", async () => {
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+
+    const nowMs = Date.now();
+    const lockPath = await placeNamedLock(
+      dir,
+      "refs/heads/main.lock",
+      FRESH_LOCK_AGE_MS,
+      nowMs,
+    );
+
+    const ctx = makeCtx(dir, nowMs);
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("retry_later");
+    expect(fs.existsSync(lockPath)).toBe(true);
+  });
+
+  test("when a stale HEAD.lock coexists with a FRESH index.lock, nothing is deleted", async () => {
+    // Mixed ages: one stale, one fresh. A fresh lock means a live process may
+    // still hold the repo, so the handler must NOT delete ANY lock yet.
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+
+    const nowMs = Date.now();
+    const staleHead = await placeNamedLock(dir, "HEAD.lock", STALE_LOCK_AGE_MS, nowMs);
+    const freshIndex = await placeLockFile(dir, FRESH_LOCK_AGE_MS, nowMs);
+
+    const ctx = makeCtx(dir, nowMs);
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("retry_later");
+    expect(fs.existsSync(staleHead)).toBe(true);
+    expect(fs.existsSync(freshIndex)).toBe(true);
+  });
+});
+
+describe("recover-stale-lock — BUG 3: multiple stale locks", () => {
+  test("removes index.lock AND HEAD.lock AND refs/heads/main.lock together", async () => {
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+
+    const nowMs = Date.now();
+    const indexLock = await placeLockFile(dir, STALE_LOCK_AGE_MS, nowMs);
+    const headLock = await placeNamedLock(dir, "HEAD.lock", STALE_LOCK_AGE_MS, nowMs);
+    const branchLock = await placeNamedLock(
+      dir,
+      "refs/heads/main.lock",
+      STALE_LOCK_AGE_MS,
+      nowMs,
+    );
+
+    const ctx = makeCtx(dir, nowMs);
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("recovered");
+    expect(fs.existsSync(indexLock)).toBe(false);
+    expect(fs.existsSync(headLock)).toBe(false);
+    expect(fs.existsSync(branchLock)).toBe(false);
+  });
+
+  test("DENY leaves every stale lock in place", async () => {
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+
+    const nowMs = Date.now();
+    const headLock = await placeNamedLock(dir, "HEAD.lock", STALE_LOCK_AGE_MS, nowMs);
+    const branchLock = await placeNamedLock(
+      dir,
+      "refs/heads/main.lock",
+      STALE_LOCK_AGE_MS,
+      nowMs,
+    );
+
+    const ctx = makeCtx(dir, nowMs, { confirmation: denyGate });
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("blocked");
+    expect(fs.existsSync(headLock)).toBe(true);
+    expect(fs.existsSync(branchLock)).toBe(true);
+  });
+
+  test("non-index stale lock confirmation keeps the jargon-free stale_lock metadata", async () => {
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+
+    const nowMs = Date.now();
+    await placeNamedLock(dir, "HEAD.lock", STALE_LOCK_AGE_MS, nowMs);
+
+    let capturedReq: Parameters<ConfirmationGate["confirmRepair"]>[0] | undefined;
+    const ctx = makeCtx(dir, nowMs, {
+      confirmation: {
+        confirmRepair: async (req) => {
+          capturedReq = req;
+          return true;
+        },
+      },
+    });
+    await recover(ctx);
+
+    expect(capturedReq).toBeDefined();
+    expect(capturedReq!.repair).toBe("stale_lock");
+    expect(capturedReq!.risk).toBe("low");
+    expect(capturedReq!.willChangeLocalFiles).toBe(false);
+    expect(capturedReq!.willChangeGitMetadata).toBe(true);
+    expect(capturedReq!.willChangeRemote).toBe(false);
+  });
+});
+
+describe("recover-stale-lock — BUG 3: fault injection still fail-safe for non-index locks", () => {
+  test("fault at remove_index_lock leaves a HEAD.lock untouched and reports failure", async () => {
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+
+    const nowMs = Date.now();
+    const headLock = await placeNamedLock(dir, "HEAD.lock", STALE_LOCK_AGE_MS, nowMs);
+
+    const ctx = makeCtx(dir, nowMs, {
+      faults: {
+        before: async (point: FaultPoint) => {
+          if (point === "remove_index_lock") throw new Error("injected: cannot delete");
+        },
+      },
+    });
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("failed_no_changes_made");
+    expect(fs.existsSync(headLock)).toBe(true);
   });
 });

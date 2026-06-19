@@ -13,7 +13,7 @@
  *
  * Safety invariant matrix (see HARD RULES §5):
  *   ✓ no force-push (every test with a remote: spy push calls)
- *   ✓ backup zip created under /tmp/print-sync-recovery/ before any repair
+ *   ✓ backup zip created under the OS temp recovery root (os.tmpdir()/print-sync-recovery) before any repair
  *   ✓ zip contains user file (chapter.md) + .git/HEAD
  *   ✓ chapter.md still present and unmodified after recovery (all paths)
  *   ✓ backup_create fault → failed_no_changes_made, .git/index NOT deleted, no
@@ -38,7 +38,7 @@ import { tmpdir } from "node:os";
 
 import git from "isomorphic-git";
 
-import { assertZipReadable, zipEntries } from "./backup.ts";
+import { assertZipReadable, BACKUP_ROOT, zipEntries } from "./backup.ts";
 import type {
   RecoveryContext,
   RecoveryResult,
@@ -145,7 +145,7 @@ describe("recover-corrupt-index — happy path", () => {
     expect(r.backupZipPath!.length).toBeGreaterThan(0);
   });
 
-  test("backup zip is created under /tmp/print-sync-recovery/", async () => {
+  test("backup zip is created under the OS temp recovery root", async () => {
     const dir = await makeTempDir();
     await makeCorruptIndexRepo(dir);
 
@@ -153,7 +153,7 @@ describe("recover-corrupt-index — happy path", () => {
     const result = await recover(ctx) as Extract<RecoveryResult, { status: "recovered" }>;
 
     expect(result.backupZipPath).toBeDefined();
-    expect(result.backupZipPath!.startsWith("/tmp/print-sync-recovery/")).toBe(true);
+    expect(result.backupZipPath!.startsWith(BACKUP_ROOT + path.sep)).toBe(true);
     expect(fs.existsSync(result.backupZipPath!)).toBe(true);
   });
 

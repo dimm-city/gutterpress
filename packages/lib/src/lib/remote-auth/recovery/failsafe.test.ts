@@ -27,7 +27,7 @@ import { tmpdir } from "node:os";
 
 import git from "isomorphic-git";
 
-import { assertZipReadable } from "./backup.ts";
+import { assertZipReadable, BACKUP_ROOT } from "./backup.ts";
 import { withBackupGate, failSafeNoRepair } from "./failsafe.ts";
 import type {
   RecoveryContext,
@@ -495,20 +495,21 @@ describe("failSafeNoRepair", () => {
   });
 
   test("returns failed_backup_available when backup path given", () => {
+    const fakeZip = path.join(BACKUP_ROOT, "test-book", "fake.zip");
     const result = failSafeNoRepair(
       { repoSlug: "test-book", remoteUrl: undefined },
       "detached_head",
-      "/tmp/print-sync-recovery/test-book/fake.zip",
+      fakeZip,
     );
 
     expect(result.status).toBe("failed_backup_available");
     const r = result as Extract<RecoveryResult, { status: "failed_backup_available" }>;
-    expect(r.backupZipPath).toBe("/tmp/print-sync-recovery/test-book/fake.zip");
+    expect(r.backupZipPath).toBe(fakeZip);
     expect(r.guidance).toBeDefined();
   });
 
   test("guidance backupZipPath matches the supplied path", () => {
-    const zipPath = "/tmp/print-sync-recovery/test-book/fake.zip";
+    const zipPath = path.join(BACKUP_ROOT, "test-book", "fake.zip");
     const result = failSafeNoRepair(
       { repoSlug: "test-book", remoteUrl: undefined },
       "corrupt_index",

@@ -60,6 +60,7 @@ import {
   type HostCredential,
   type TokenStore,
 } from "./token-store.ts";
+import { resolveLogger, shortOid } from "./operation-log.ts";
 
 /**
  * isomorphic-git object cache, scoped to ONE operation (one function call)
@@ -200,6 +201,8 @@ const MSG_PULL_UP_TO_DATE = "You already have the latest online changes.";
 const MSG_PUSH_UP_TO_DATE = "There's nothing new to send — everything is already online.";
 const MSG_PULL_FIRST =
   "The online copy has changes you don't have yet. Get the latest changes first, then send yours.";
+const MSG_EXPIRED_CHOICES =
+  "Those combine choices have expired. Please run Sync again.";
 
 /** Message recorded on the automatic pre-sync snapshot (D5 invariant). */
 export const SYNC_SNAPSHOT_MESSAGE = "Snapshot before syncing";
@@ -229,7 +232,42 @@ export interface SyncProjectOptions {
   authorName?: string;
   /** Injectable git HTTP transport for tests. */
   httpClient?: typeof httpNode;
+  /**
+   * Bounded retry policy for {@link syncProject}'s pull→push race loop. The
+   * loop is ALWAYS bounded (never infinite) and the snapshot-first guarantee
+   * holds on every path. Defaults to {@link DEFAULT_SYNC_RETRY}. `sleep` is
+   * injectable so tests can drive backoff deterministically.
+   */
+  retry?: SyncRetryOptions;
+  /**
+   * Optional path to a log file for debugging sync/recovery operations.
+   * When set, each step (snapshot, fetch, merge, push, conflict) is appended
+   * as a timestamped line. Never logs secrets.
+   */
+  logFile?: string;
 }
+
+/** Bounded retry policy for the sync race loop (BUG 6). */
+export interface SyncRetryOptions {
+  /** Max pull→push passes before giving up. Clamped to ≥ 1. Default 3. */
+  attempts?: number;
+  /** Delay between passes, in ms. Clamped to ≥ 0. Default 150. */
+  backoffMs?: number;
+  /** Injectable delay (tests only); defaults to a real timer. */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Default sync retry budget (BUG 6): 3 bounded passes with a short backoff.
+ * A fast-moving remote can race the push once or twice without the user seeing
+ * the false "Someone else synced at the same moment" message; a remote that
+ * genuinely races EVERY pass still terminates with that friendly message and
+ * the work safely snapshotted.
+ */
+export const DEFAULT_SYNC_RETRY: Required<Omit<SyncRetryOptions, "sleep">> = {
+  attempts: 3,
+  backoffMs: 150,
+};
 
 export interface ResolveConflictsOptions {
   projectDir: string;
@@ -242,6 +280,15 @@ export interface ResolveConflictsOptions {
   tokenStore?: TokenStore;
   authorName?: string;
   httpClient?: typeof httpNode;
+  /**
+   * When true, the merge is allowed to combine two commits that share no
+   * common ancestor (unrelated histories). Set by the unrelated-histories
+   * recovery path; regular merge conflicts leave this false (the local and
+   * remote share a common base, so `allowUnrelatedHistories` is unnecessary).
+   */
+  allowUnrelatedHistories?: boolean;
+  /** Optional log file for debugging conflict resolution steps. */
+  logFile?: string;
 }
 
 
@@ -317,13 +364,26 @@ async function resolveTransport(
 
 /** Classify a transport/merge failure into the D5/D7 outcome buckets. */
 function classifyFailure(e: unknown): "auth" | "offline" | null {
-  const err = e as { code?: string; data?: { statusCode?: number }; message?: string };
+  const err = e as {
+    code?: string;
+    data?: { statusCode?: number; prettyDetails?: string };
+    message?: string;
+  };
   if (err?.code === "HttpError") {
     const status = err.data?.statusCode;
     if (status === 401 || status === 403) return "auth";
   }
-  const msg = err?.message ?? String(e);
-  if (/\b401\b|\b403\b|unauthorized|authentication|not authorized/i.test(msg)) {
+  // A server-side push rejection (GitPushError) that is NOT a non-fast-forward
+  // (those are handled by isPushRejected → pull-first) is a permission/policy
+  // problem: fold its per-ref report-status (`data.prettyDetails`) into the
+  // scanned text so "permission denied"/"forbidden"/hook-declined surfaces as
+  // auth (the user reconnects), not a generic error or a false race message.
+  const msg = `${err?.message ?? String(e)} ${err?.data?.prettyDetails ?? ""}`;
+  if (
+    /\b401\b|\b403\b|unauthorized|authentication|not authorized|permission denied|forbidden|access denied|not allowed to push|pre-receive hook declined|hook declined/i.test(
+      msg,
+    )
+  ) {
     return "auth";
   }
   if (
@@ -365,18 +425,37 @@ function isMergeConflictError(
 function isPushRejected(e: unknown): boolean {
   const code = (e as { code?: string })?.code;
   // Client-side check: isomorphic-git compares against the server's fresh ref
-  // advertisement before uploading and throws PushRejectedError itself.
-  if (code === "PushRejectedError") return true;
+  // advertisement before uploading and throws PushRejectedError itself. It
+  // carries a typed `data.reason` — ONLY a genuine non-fast-forward is fixable
+  // by pulling first. Other reasons (e.g. "tag-exists") are NOT, so they must
+  // fall through to the friendly auth/error classifier (a permission/policy
+  // rejection that pulling can't fix should never trigger the pull-first/retry
+  // loop — that wastes round-trips and emits a confusing "someone else synced"
+  // message instead of a useful one). A reason-less PushRejectedError keeps the
+  // historical non-fast-forward meaning for back-compat.
+  if (code === "PushRejectedError") {
+    const reason = (e as { data?: { reason?: string } })?.data?.reason;
+    return reason === undefined || reason === "not-fast-forward";
+  }
   // Server-side check: if the ref moves BETWEEN the advertisement and the
   // server applying the update, the rejection arrives as a report-status
-  // "ng <ref> non-fast-forward" line, surfaced as GitPushError.
+  // "ng <ref> non-fast-forward" line, surfaced as GitPushError. Only the
+  // report-status that actually says non-fast-forward is a pull-first case; a
+  // permission/hook decline ("permission denied", "pre-receive hook declined")
+  // is an auth-class problem handled by classifyFailure, not a race.
   if (code === "GitPushError") {
-    return /non-fast-forward/i.test((e as Error)?.message ?? "");
+    const msg =
+      ((e as { data?: { prettyDetails?: string } })?.data?.prettyDetails ?? "") +
+      " " +
+      ((e as Error)?.message ?? "");
+    return /non-fast-forward|would not be a fast-forward|not a simple fast-forward/i.test(
+      msg,
+    );
   }
   return false;
 }
 
-function conflictFilesFrom(data: {
+export function conflictFilesFrom(data: {
   filepaths: string[];
   bothModified: string[];
   deleteByUs: string[];
@@ -500,25 +579,46 @@ function short(oid: string | null | undefined): string {
 
 // ── syncProject ────────────────────────────────────────────────────────────
 
+/** Real-timer sleep used as the default backoff between sync passes. */
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Snapshot-first sync (ADR 0006 D5) — the composition of {@link pullChanges}
  * then {@link pushChanges}. If someone pushes between our pull and our push,
- * the push reports pull-first and the pair re-runs ONCE (their commits merge
- * in on the second pass), then surfaces a friendly "try again" rather than
- * looping forever. Never throws for expected outcomes — everything is
+ * the push reports pull-first and the pair re-runs (their commits merge in on
+ * the next pass), with a short backoff between passes. The loop is ALWAYS
+ * bounded by `retry.attempts` (BUG 6 — a fast-moving remote no longer triggers
+ * a FALSE race message after only two attempts); a remote that genuinely races
+ * every pass surfaces a friendly "try again" rather than looping forever. The
+ * snapshot-first guarantee holds on every path (the work is saved locally
+ * before any network step). Never throws for expected outcomes — everything is
  * reported through the {@link SyncOutcome} union.
  */
 export async function syncProject(
   options: SyncProjectOptions,
 ): Promise<SyncOutcome> {
+  const logger = resolveLogger(options.logFile, "sync");
+  // Bounded, defaulted retry policy. attempts ≥ 1, backoffMs ≥ 0 (clamped so a
+  // caller can never request an unbounded or negative-delay loop).
+  const attempts = Math.max(1, options.retry?.attempts ?? DEFAULT_SYNC_RETRY.attempts);
+  const backoffMs = Math.max(0, options.retry?.backoffMs ?? DEFAULT_SYNC_RETRY.backoffMs);
+  const sleep = options.retry?.sleep ?? defaultSleep;
+
   let snapshotId: string | undefined;
   let pulled = false;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    logger.info("sync", `sync pass ${attempt + 1}/${attempts}`);
     const pull = await pullChanges(options);
     snapshotId = snapshotId ?? pull.snapshotId;
     const base = snapshotId ? { snapshotId } : {};
-    if (pull.status === "conflict") return { ...pull, ...base };
+    if (pull.status === "conflict") {
+      logger.warn("sync", `pull conflict`, { files: pull.files.map((f) => f.path) });
+      return { ...pull, ...base };
+    }
     if (pull.status !== "pulled" && pull.status !== "up-to-date") {
+      logger.warn("sync", `pull non-success`, { status: pull.status });
       return { ...pull, ...base }; // auth / offline / error
     }
     pulled = pulled || pull.status === "pulled";
@@ -527,6 +627,7 @@ export async function syncProject(
     snapshotId = snapshotId ?? push.snapshotId;
     switch (push.status) {
       case "pushed":
+        logger.info("sync", `synced`, { pulled });
         return {
           status: "synced",
           message: pulled ? MSG_SYNCED_MERGED : MSG_SYNCED,
@@ -534,17 +635,25 @@ export async function syncProject(
           ...(snapshotId ? { snapshotId } : {}),
         };
       case "up-to-date":
+        logger.info("sync", `up-to-date`, { pulled });
         return {
           status: "up-to-date",
           message: pulled ? MSG_UP_TO_DATE_PULLED : MSG_UP_TO_DATE,
           ...(snapshotId ? { snapshotId } : {}),
         };
       case "pull-first":
-        continue; // someone pushed mid-sync — re-run the pair once
+        logger.info("sync", `push rejected (non-fast-forward) — retrying`);
+        // Someone pushed mid-sync — re-run the pair. Back off briefly before
+        // the next pass (skip the sleep after the final attempt, since the
+        // loop is about to exit). Their commits merge in on the next pull.
+        if (attempt < attempts - 1 && backoffMs > 0) await sleep(backoffMs);
+        continue;
       default:
+        logger.warn("sync", `push non-success`, { status: push.status });
         return { ...push, ...(snapshotId ? { snapshotId } : {}) };
     }
   }
+  logger.error("sync", `exhausted ${attempts} retry attempts (race)`);
   return {
     status: "error",
     message: MSG_RACE,
@@ -595,9 +704,10 @@ export async function pullChanges(
 
       // Field-diagnostic line (stderr → terminal + any log capture): one line
       // per pull with the inputs the decision uses. No secrets: oids + remote.
-      console.error(
-        `[sync] pull branch=${branch} remote=${transport.remote} local=${short(localTip)} fetched=${short(remoteTip)}`,
-      );
+      const logLine = `[sync] pull branch=${branch} remote=${transport.remote} local=${short(localTip)} fetched=${short(remoteTip)}`;
+      console.error(logLine);
+      const logger = resolveLogger(options.logFile, "sync");
+      logger.info("pull", `branch=${branch} local=${short(localTip)} fetched=${short(remoteTip)}`);
 
       if (!remoteTip || remoteTip === localTip) {
         return { status: "up-to-date", message: MSG_PULL_UP_TO_DATE, ...base };
@@ -620,6 +730,12 @@ export async function pullChanges(
         });
       } catch (e) {
         if (isMergeConflictError(e)) {
+          const conflictPaths = conflictFilesFrom(e.data).map((f) => f.path);
+          logger.warn("pull", `merge conflict`, {
+            files: conflictPaths,
+            local: short(localTip),
+            remote: short(remoteTip),
+          });
           return {
             status: "conflict",
             message: MSG_CONFLICT,
@@ -805,6 +921,26 @@ async function tryReadBlob(
   }
 }
 
+/**
+ * True when `oid` resolves to a real COMMIT object in this repo. Used to reject
+ * well-formed-but-nonexistent ids (BUG 5) before any merge work — a stale id
+ * from an expired conflict dialog must surface a friendly "run Sync again"
+ * message, not an unhandled isomorphic-git throw. Reads the commit on the
+ * caller's function-scoped cache (released with the operation).
+ */
+async function isRealCommit(
+  dir: string,
+  oid: string,
+  cache: GitCache,
+): Promise<boolean> {
+  try {
+    await git.readCommit({ fs, dir, cache, oid });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Replicates isomorphic-git's default diff3 merge for UNDECIDED files. */
 const LINEBREAKS = /^.*(\r?\n|$)/gm;
 function defaultDiff3(
@@ -858,6 +994,13 @@ export async function resolveConflicts(
   options: ResolveConflictsOptions,
 ): Promise<SyncOutcome> {
   const http = options.httpClient ?? httpNode;
+  const logger = resolveLogger(options.logFile, "sync");
+  logger.info("resolve", "starting conflict resolution", {
+    files: options.resolutions.map((r) => `${r.path}:${r.choice}`),
+    local: shortOid(options.localId),
+    remote: shortOid(options.remoteId),
+    allowUnrelated: options.allowUnrelatedHistories ?? false,
+  });
   // Same repo-scope rules as syncProject: conflict resolution for a book
   // subfolder runs against the enclosing repository (conflict paths are
   // repo-root-relative), with the entry snapshot scoped to the book.
@@ -872,7 +1015,7 @@ export async function resolveConflicts(
   ) {
     return {
       status: "error",
-      message: "Those combine choices have expired. Please run Sync again.",
+      message: MSG_EXPIRED_CHOICES,
     };
   }
 
@@ -884,6 +1027,19 @@ export async function resolveConflicts(
       const branch = await currentBranchOrThrow(dir);
       const transport = await resolveTransport(dir, options);
       const author = gitAuthor(options.authorName);
+
+      // Verify both ids are REAL commit objects in this repo before doing any
+      // work (BUG 5). A well-formed-but-garbage hex id passes the regex above
+      // but would later make isomorphic-git throw deep in the merge, producing
+      // a generic "error" with no guidance. Read each commit up front; if
+      // either is missing/expired, return the SAME friendly expired-choices
+      // message as the regex-fail path — and nothing has been changed.
+      const bothExist =
+        (await isRealCommit(dir, normalizedLocalId, cache)) &&
+        (await isRealCommit(dir, normalizedRemoteId, cache));
+      if (!bothExist) {
+        return { status: "error", message: MSG_EXPIRED_CHOICES };
+      }
 
       // Safety: capture any edits (whole tree) made while the choices dialog
       // was open, before the merge's forced checkout can touch them.
@@ -1006,6 +1162,7 @@ export async function resolveConflicts(
           theirs: remoteId,
           author,
           message: "Combined your changes with the online version",
+          allowUnrelatedHistories: options.allowUnrelatedHistories ?? false,
           mergeDriver: ({ contents, path: filepath }) => {
             const base = contents[0] ?? "";
             const mine = contents[1] ?? "";
@@ -1130,8 +1287,11 @@ export async function resolveConflicts(
           e.message === MSG_SSH_REMOTE ||
           e.message === MSG_NO_BRANCH)
       ) {
+        logger.error("resolve", `setup error`, { error: e.message });
         return { status: "error", message: e.message, ...(snapshotId ? { snapshotId } : {}) };
       }
+      const errMsg = e instanceof Error ? e.message : String(e);
+      logger.error("resolve", `unexpected error`, { error: errMsg });
       return failureOutcome(e, snapshotId);
     }
   });

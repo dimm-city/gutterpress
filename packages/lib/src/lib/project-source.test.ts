@@ -219,3 +219,81 @@ test("malformed .git config does not crash detection", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ── Corrupt / missing HEAD must stay a (damaged) repo, not a plain folder ─────
+//
+// A repo whose `.git/HEAD` is MISSING or unreadable is a CORRUPT repository, NOT
+// a pristine `local-folder`. It MUST still classify as `local-git-folder` so the
+// recovery subsystem treats it as a damaged repo to repair (re-fetch/re-attach)
+// rather than a brand-new folder to "set up a remote" for. The `.git/` directory
+// is the sole signal — HEAD readability only affects `branch`, never the type.
+// (Classification is gated on `isDirectory(.git)`, so HEAD damage can never make
+// it fall through to `local-folder`; these tests lock that invariant.)
+
+test("'.git' dir present but HEAD MISSING → local-git-folder, branch undefined (NOT local-folder)", async () => {
+  const dir = await tempDir();
+  try {
+    const gitDir = path.join(dir, ".git");
+    await mkdir(gitDir, { recursive: true });
+    // A repo whose HEAD was lost (e.g. interrupted write / truncated checkout).
+    // Write a config so it clearly looks like a repo, but NO HEAD file at all.
+    await writeFile(
+      path.join(gitDir, "config"),
+      "[core]\n\trepositoryformatversion = 0\n",
+    );
+    const source = await detectProjectSource(dir);
+    // The damaged repo is still a repo — never a pristine folder.
+    expect(source.type).toBe("local-git-folder");
+    expect(source.type).not.toBe("local-folder");
+    if (source.type === "local-git-folder") {
+      expect(source.repoRoot).toBe(dir);
+      expect(source.subPath).toBe("");
+      expect(source.branch).toBeUndefined();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("'.git' dir present with GARBAGE HEAD → local-git-folder, branch undefined", async () => {
+  const dir = await tempDir();
+  try {
+    const gitDir = path.join(dir, ".git");
+    await mkdir(gitDir, { recursive: true });
+    await writeFile(
+      path.join(gitDir, "config"),
+      "[core]\n\trepositoryformatversion = 0\n",
+    );
+    // Non-ref, non-SHA garbage — parseHeadBranch must yield undefined, and the
+    // folder must remain a (damaged) repo.
+    await writeFile(path.join(gitDir, "HEAD"), "this is not a valid HEAD\n");
+    const source = await detectProjectSource(dir);
+    expect(source.type).toBe("local-git-folder");
+    if (source.type === "local-git-folder") {
+      expect(source.repoRoot).toBe(dir);
+      expect(source.branch).toBeUndefined();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a truly plain folder (no .git ANYWHERE) still returns local-folder", async () => {
+  const dir = await tempDir();
+  try {
+    // Sanity counter-case: without any `.git` up the tree, it is NOT a repo.
+    const source = await detectProjectSource(dir);
+    expect(source).toEqual({ type: "local-folder", path: dir });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("parseHeadBranch returns undefined for garbage / empty HEAD content", () => {
+  // Detached HEAD (raw SHA) and outright garbage both yield no branch name.
+  expect(parseHeadBranch("not a ref at all")).toBeUndefined();
+  expect(parseHeadBranch("")).toBeUndefined();
+  expect(
+    parseHeadBranch("ref: refs/tags/v1.0.0\n"),
+  ).toBeUndefined(); // a tag ref is not a branch
+});

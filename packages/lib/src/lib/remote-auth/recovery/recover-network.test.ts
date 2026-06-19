@@ -40,6 +40,7 @@ import {
 
 // ── The module under test (does not exist yet — will fail to import) ──────────
 import { recover } from "./recover-network.ts";
+import { BACKUP_ROOT } from "./backup.ts";
 import type { RecoveryContext, RecoveryResult } from "./types.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -444,9 +445,9 @@ describe("recover-network — no backup zip created", () => {
 
       await recover(ctx);
 
-      // No zip should exist under /tmp/print-sync-recovery/net-test-no-backup/
+      // No zip should exist under the OS temp recovery root for this slug.
       const slug = "net-test-no-backup";
-      const backupDir = path.join("/tmp/print-sync-recovery", slug);
+      const backupDir = path.join(BACKUP_ROOT, slug);
       let found = false;
       try {
         const entries = fs.readdirSync(backupDir);

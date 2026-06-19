@@ -15,7 +15,8 @@
  *     copies silently drift from the real code.
  *
  * Verifies:
- * 1. classifyFromHealth priority chain (missing_git_dir > stale_lock > merge > rebase > cherry-pick > detached)
+ * 1. classifyFromHealth priority chain (missing_git_dir > stale_lock > merge >
+ *    rebase/cherry-pick → safe "unknown" > detached)
  * 2. hostConfirmationGate + handleConfirmResponse roundtrip for confirmed/rejected
  * 3. rejectAllPendingConfirms defaults all pending to false (safe when renderer crashes)
  * 4. Confirm timeout resolves false (default-safe, inFlight cannot be permanently wedged)
@@ -86,12 +87,12 @@ describe("classifyFromHealth priority chain (real code)", () => {
     ).toBe("missing_git_dir");
   });
 
-  test("stale_lock (old enough) beats merge/rebase/detached", () => {
+  test("stale_lock (old enough, ≥ 2 min) beats merge/rebase/detached", () => {
     expect(
       classifyFromHealth({
         ...makeGoodHealth(),
         hasStaleLock: true,
-        lockAgeMs: 60_000,
+        lockAgeMs: 150_000,
         hasInterruptedMerge: true,
         isDetachedHead: true,
       }),
@@ -109,16 +110,18 @@ describe("classifyFromHealth priority chain (real code)", () => {
     ).toBe("merge_conflict");
   });
 
-  test("non_fast_forward (rebase) beats detached", () => {
+  test("interrupted rebase maps to the safe 'unknown' kind (BUG 1 — not non_fast_forward)", () => {
+    // An interrupted rebase is not a non-fast-forward push rejection; routing it
+    // there would run syncProject on a repo stuck mid-rebase. "unknown" → fail-safe.
     expect(
       classifyFromHealth({ ...makeGoodHealth(), hasInterruptedRebase: true, isDetachedHead: true }),
-    ).toBe("non_fast_forward");
+    ).toBe("unknown");
   });
 
-  test("cherry-pick maps to merge_conflict", () => {
+  test("cherry-pick maps to the safe 'unknown' kind (BUG 1 — not merge_conflict)", () => {
     expect(
       classifyFromHealth({ ...makeGoodHealth(), hasInterruptedCherryPick: true }),
-    ).toBe("merge_conflict");
+    ).toBe("unknown");
   });
 
   test("detached_head (lowest priority) → detached_head when nothing else active", () => {
@@ -127,10 +130,12 @@ describe("classifyFromHealth priority chain (real code)", () => {
     ).toBe("detached_head");
   });
 
-  test("unknown kind — emits error, does NOT call recover() (routing contract)", () => {
-    // classifyFromHealth only returns known SyncErrorKind values or null;
-    // it never returns "unknown". This verifies "unknown" is not a valid output.
+  test("healthy repo is never classified as 'unknown' (only rebase/cherry-pick map there)", () => {
+    // classifyFromHealth returns "unknown" ONLY for an interrupted rebase or
+    // cherry-pick (BUG 1's safe mapping). A healthy snapshot must yield null, so
+    // it can never be mistaken for the fail-safe path.
     const result = classifyFromHealth(makeGoodHealth());
+    expect(result).toBeNull();
     expect(result).not.toBe("unknown");
   });
 });

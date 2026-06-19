@@ -63,6 +63,7 @@ import {
   rejectAllPendingConfirms,
   buildRecoveryContext,
   classifyFromHealth,
+  decideRunAgainAfterPreflight,
   getConflictPreviewImpl,
 } from "./recovery-bridge";
 // The splash markup ships as a string baked into the main bundle (electron-vite
@@ -440,6 +441,7 @@ interface LibModule {
     tokenStore?: { get(host: string): Promise<HostCredential | null> };
     message?: string;
     authorName?: string;
+    logFile?: string;
   }) => Promise<SyncOutcome>;
   resolveConflicts: (options: {
     projectDir: string;
@@ -448,6 +450,7 @@ interface LibModule {
     remoteId: string;
     tokenStore?: { get(host: string): Promise<HostCredential | null> };
     authorName?: string;
+    logFile?: string;
   }) => Promise<SyncOutcome>;
   // Sync recovery (#15 ADR 0006 D5 — node-side only)
   recover: (
@@ -919,6 +922,15 @@ function recoveryDir(): string {
   return path.join(app.getPath("userData"), "recovery");
 }
 
+// ── Operation log path ──────────────────────────────────────────────────────
+// The sync/recovery operation log lives under userData/logs/. One file per
+// project slug so logs from different projects don't interleave. The file is
+// appended to (not truncated) so a user can see history across sessions.
+function operationLogPath(repoSlug: string): string {
+  const slug = repoSlug.replace(/[^a-zA-Z0-9_-]/g, "_") || "repo";
+  return path.join(app.getPath("userData"), "logs", `${slug}.log`);
+}
+
 // A single shallow folder watcher for the open project. fs.watch is coarse and
 // fires multiple times per save, so changes are debounced before notifying the
 // renderer. Only one project is open at a time, so a single watcher suffices.
@@ -1107,6 +1119,8 @@ interface SyncStatusPayload {
   guidance?: object;
   /** Backup zip path — present on "recovered" and classified "error". */
   backupZipPath?: string;
+  /** Operation log path — present on "recovered", "error", and "conflict". */
+  logFile?: string;
 }
 
 /** Per-project last-sync timestamp, updated on every completed runAutoSync. */
@@ -1161,11 +1175,17 @@ async function runAutoSync(dir: string): Promise<void> {
   state.inFlight = true;
   emitSyncStatus({ state: "syncing", projectDir: dir, lastSyncAt: autoSyncLastAt.get(dir) ?? null });
 
+  // Compute the operation log path for this project so sync + recovery share
+  // one log file the user can view when something goes wrong.
+  const dirBasename = path.basename(dir);
+  const logFile = operationLogPath(dirBasename);
+
   let outcome: SyncOutcome;
   try {
     outcome = await lib.syncProject({
       projectDir: dir,
       tokenStore: electronTokenStore,
+      logFile,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -1225,7 +1245,7 @@ async function runAutoSync(dir: string): Promise<void> {
     // Uses the same lib/electronTokenStore already in scope.
     let ctx: object;
     try {
-      ctx = await buildRecoveryContext(dir, lib, electronTokenStore);
+      ctx = await buildRecoveryContext(dir, lib, electronTokenStore, undefined, logFile);
     } catch (ctxErr) {
       console.error(`[auto-sync] buildRecoveryContext failed for ${dir}:`, ctxErr);
       emitSyncStatus({ state: "error", projectDir: dir, lastSyncAt: now });
@@ -1255,6 +1275,7 @@ async function runAutoSync(dir: string): Promise<void> {
           projectDir: dir,
           lastSyncAt: autoSyncLastAt.get(dir) ?? now,
           backupZipPath: result.backupZipPath,
+          logFile,
         });
         // Resume the single-flight follow-up path.
         if (state.runAgain) {
@@ -1287,6 +1308,7 @@ async function runAutoSync(dir: string): Promise<void> {
             files: result.files as ConflictFileInfo[],
             projectDir: dir,
             lastSyncAt: now,
+            logFile,
           });
         } else {
           // Auth / credential issue.
@@ -1310,6 +1332,7 @@ async function runAutoSync(dir: string): Promise<void> {
           lastSyncAt: now,
           guidance: result.guidance,
           backupZipPath: "backupZipPath" in result ? result.backupZipPath : undefined,
+          logFile,
         });
         break;
       }
@@ -2162,6 +2185,22 @@ ipcMain.handle("shell:openExternal", async (_e, url: string) => {
 
 ipcMain.handle("shell:showInFolder", async (_e, filePath: string) => {
   shell.showItemInFolder(filePath);
+});
+
+// ── Operation log reader (sync/recovery log viewer) ──────────────────────────
+// Reads the operation log file written by the lib's operation-log.ts during
+// sync/recovery/snapshot operations. Returns null when the file doesn't exist
+// (e.g. logging was not configured for this operation). Used by the recovery
+// dialogs to show "View log" when a sync or recovery completes or fails.
+ipcMain.handle("log:read", async (_e, filePath: string): Promise<string | null> => {
+  if (!path.isAbsolute(filePath)) {
+    return null;
+  }
+  try {
+    return await readFile(filePath, "utf-8");
+  } catch {
+    return null;
+  }
 });
 
 // ── Filesystem primitives (PlatformAdapter, #41) ──────────────────────────
@@ -3144,6 +3183,7 @@ ipcMain.handle(
         localId: args.localId,
         remoteId: args.remoteId,
         tokenStore: electronTokenStore,
+        logFile: operationLogPath(path.basename(dir)),
       });
       // §6.1: After successful resolution, clear the conflict latch so auto-sync
       // resumes the transparent flow. The latch was set (and the timer cancelled)
@@ -3391,7 +3431,8 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
         recovery: { phase: "checking", risk: "none" },
       });
 
-      const ctx = await buildRecoveryContext(openedDir, lib, electronTokenStore);
+      const preflightLogFile = operationLogPath(path.basename(openedDir));
+      const ctx = await buildRecoveryContext(openedDir, lib, electronTokenStore, undefined, preflightLogFile);
       let result: Awaited<ReturnType<typeof lib.recover>>;
       try {
         result = await lib.recover(kind, ctx);
@@ -3403,18 +3444,22 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       const now = new Date().toISOString();
       autoSyncLastAt.set(openedDir, now);
 
+      // Snapshot the pending auto-sync trigger BEFORE the per-status branches:
+      // runAutoSync may have set runAgain while we held the single-flight lock.
+      // A single authoritative decision below (decideRunAgainAfterPreflight)
+      // decides its fate so it is never silently dropped (BUG 3). The latching
+      // branches still clear runAgain themselves for their own emit logic; the
+      // post-chain decision is the one place that may actually re-run it.
+      const pendingRunAgain = syncState.runAgain;
+
       if (result.status === "recovered") {
         emitSyncStatus({
           state: "recovered",
           projectDir: openedDir,
           lastSyncAt: now,
           backupZipPath: result.backupZipPath,
+          logFile: preflightLogFile,
         });
-        // Honour runAgain (set by any sync that fired while we held the lock).
-        if (syncState.runAgain) {
-          syncState.runAgain = false;
-          void runAutoSync(openedDir);
-        }
       } else if (result.status === "retry_later") {
         emitSyncStatus({ state: "offline", projectDir: openedDir, lastSyncAt: now });
       } else if (result.status === "needs_user" && result.files && result.files.length > 0) {
@@ -3427,6 +3472,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
           files: result.files as ConflictFileInfo[],
           projectDir: openedDir,
           lastSyncAt: now,
+          logFile: preflightLogFile,
         });
       } else {
         // blocked / failed / needs_user (auth) — latch and show guidance.
@@ -3439,7 +3485,20 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
           lastSyncAt: now,
           guidance: "guidance" in result ? result.guidance : undefined,
           backupZipPath: "backupZipPath" in result ? result.backupZipPath : undefined,
+          logFile: preflightLogFile,
         });
+      }
+
+      // Honour (or intentionally suppress) the pending auto-sync trigger now that
+      // recover() has settled and the lock is released. For non-latching outcomes
+      // (recovered / retry_later) a queued trigger PROCEEDS — fixing the silent
+      // drop on the retry_later path. For latching outcomes (conflict/blocked/
+      // failed) the latch suppresses it. Always clear the flag so it can't leak
+      // into a later run. (BUG 3 — see decideRunAgainAfterPreflight.)
+      const runAgainDecision = decideRunAgainAfterPreflight(result.status, pendingRunAgain);
+      syncState.runAgain = false;
+      if (runAgainDecision === "run") {
+        void runAutoSync(openedDir);
       }
     } catch (err) {
       // Preflight is non-blocking: always release the lock so the project is not

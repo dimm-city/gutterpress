@@ -128,10 +128,10 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     risk: "high",
     createBackup: true,
     requireConfirmation: true,
-    mayChangeLocalFiles: false,
-    mayChangeGitMetadata: false,
+    mayChangeLocalFiles: true,
+    mayChangeGitMetadata: true,
     mayChangeRemote: false,
-    automate: false, // always block; no auto-fix
+    automate: false, // requires confirmation; clean merge updates the working tree
   },
   wrong_remote_or_branch: {
     risk: "none",

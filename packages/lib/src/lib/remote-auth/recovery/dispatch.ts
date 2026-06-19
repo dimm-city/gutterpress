@@ -14,6 +14,7 @@
  */
 
 import type { RecoveryContext, RecoveryResult, SyncErrorKind } from "./types.ts";
+import { resolveLogger } from "../operation-log.ts";
 
 // ── Handler imports ───────────────────────────────────────────────────────────
 
@@ -62,34 +63,63 @@ export async function recover(
   ctx: RecoveryContext,
   error?: unknown,
 ): Promise<RecoveryResult> {
+  const logger = resolveLogger(ctx.logFile, "recovery");
+  const errCode = (error as { code?: string })?.code;
+  logger.info("dispatch", `dispatching recovery`, {
+    kind,
+    repo: ctx.repoSlug,
+    branch: ctx.branch,
+    ...(errCode ? { errCode } : {}),
+  });
+
+  let result: RecoveryResult;
   switch (kind) {
     case "non_fast_forward":
-      return recoverNonFastForward(ctx, error);
+      result = await recoverNonFastForward(ctx, error);
+      break;
     case "merge_conflict":
-      return recoverMergeConflict(ctx, error);
+      result = await recoverMergeConflict(ctx, error);
+      break;
     case "binary_conflict":
-      return recoverBinaryConflict(ctx, error);
+      result = await recoverBinaryConflict(ctx, error);
+      break;
     case "auth_required":
-      return recoverAuth(ctx, error);
+      result = await recoverAuth(ctx, error);
+      break;
     case "network_unavailable":
-      return recoverNetwork(ctx, error);
+      result = await recoverNetwork(ctx, error);
+      break;
     case "detached_head":
-      return recoverDetachedHead(ctx, error);
+      result = await recoverDetachedHead(ctx, error);
+      break;
     case "stale_lock":
-      return recoverStaleLock(ctx, error);
+      result = await recoverStaleLock(ctx, error);
+      break;
     case "corrupt_index":
-      return recoverCorruptIndex(ctx, error);
+      result = await recoverCorruptIndex(ctx, error);
+      break;
     case "missing_git_dir":
-      return recoverMissingGitDir(ctx, error);
+      result = await recoverMissingGitDir(ctx, error);
+      break;
     case "missing_or_corrupt_objects":
-      return recoverMissingObjects(ctx, error);
+      result = await recoverMissingObjects(ctx, error);
+      break;
     case "unrelated_histories":
-      return recoverUnrelatedHistories(ctx, error);
+      result = await recoverUnrelatedHistories(ctx, error);
+      break;
     case "wrong_remote_or_branch":
-      return recoverWrongRemote(ctx, error);
+      result = await recoverWrongRemote(ctx, error);
+      break;
     case "unknown":
-      return recoverUnknown(ctx, error);
+      result = await recoverUnknown(ctx, error);
+      break;
   }
+
+  logger.info("dispatch", `recovery complete`, {
+    kind,
+    result: result.status,
+  });
+  return result;
 }
 
 // ── Re-export the public type surface ────────────────────────────────────────

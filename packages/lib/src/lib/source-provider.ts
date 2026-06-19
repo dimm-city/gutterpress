@@ -23,6 +23,14 @@ import {
   detectProjectSource,
   findEnclosingRepoDir,
 } from "./project-source.ts";
+import { createFileLogger } from "./remote-auth/operation-log.ts";
+
+const noopLogger: { debug(): void; info(): void; warn(): void; error(): void } = {
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+};
 
 /**
  * isomorphic-git object cache scoped to ONE operation and released with it.
@@ -62,6 +70,8 @@ export interface SnapshotOptions {
    * (the snapshot commits the whole tree — plain git, no per-folder scoping).
    */
   repoRoot?: string;
+  /** Optional log file for debugging snapshot operations. */
+  logFile?: string;
 }
 
 /**
@@ -214,9 +224,25 @@ export async function listWorkdirChanges(
       } else if (!wType && sType === "blob") {
         removes.push(filepath); // deleted file
       } else if (wType === "blob" && sType === "blob") {
-        // The WORKDIR walker reuses the index oid when stats match, so an
-        // unchanged file costs a stat, not a rehash.
-        if ((await workdir!.oid()) !== (await stage!.oid())) adds.push(filepath);
+        // Two-phase change detection:
+        //   Phase 1 (fast path): the WORKDIR walker reuses the index oid when
+        //   stats match, so a stat mismatch (different size or mtime) means
+        //   the file definitely changed — no file read needed.
+        //   Phase 2 (racy-index guard): when stats match, the walker returns
+        //   the cached index oid without rehashing, so a same-byte-length edit
+        //   within the same second is invisible. Read and hash the actual file
+        //   content to catch it. This only runs for files whose stats match,
+        //   so unchanged files with drifted stats (the common "definitely
+        //   changed" case) stay on the fast path.
+        const workdirOid = await workdir!.oid();
+        const stageOid = await stage!.oid();
+        if (workdirOid !== stageOid) {
+          adds.push(filepath);
+        } else {
+          const fileBytes = await fs.promises.readFile(path.join(dir, filepath as string));
+          const { oid: actualOid } = await git.hashBlob({ object: fileBytes });
+          if (actualOid !== stageOid) adds.push(filepath);
+        }
       }
       // "special"/"commit" entries (sockets, submodules) are skipped.
       return;
@@ -466,19 +492,25 @@ class LocalGitSourceProvider implements SourceProvider {
 export async function snapshotWorkingTreeUnlocked(
   options: SnapshotOptions,
 ): Promise<SnapshotEntry> {
-  // The commit goes to the repo root and stages the WHOLE working tree (a
-  // project is its git repo — plain `git add -A` semantics).
   const dir = options.repoRoot ?? options.projectDir;
+  const logger = options.logFile
+    ? createFileLogger(options.logFile, "snapshot")
+    : noopLogger;
   // One object cache for this snapshot operation only (diff + stage +
   // commit share it), released when the operation returns.
   const cache: GitCache = {};
   // ONE walk decides both "anything to save?" and what to stage.
   const changes = await listWorkdirChanges(dir, cache);
   if (changes.adds.length === 0 && changes.removes.length === 0) {
+    logger.debug("snapshot", "no changes — skipping");
     throw new Error(
       "No changes since the last snapshot — there is nothing new to save.",
     );
   }
+  logger.info("snapshot", "committing", {
+    adds: changes.adds.length,
+    removes: changes.removes.length,
+  });
   await stageChanges(dir, changes, cache);
   const author = gitAuthor(options.authorName);
   const id = await git.commit({

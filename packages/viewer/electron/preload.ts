@@ -482,6 +482,10 @@ contextBridge.exposeInMainWorld("electron", {
   showInFolder: (filePath: string): Promise<void> =>
     ipcRenderer.invoke("shell:showInFolder", filePath),
 
+  // Operation log reader (sync/recovery log viewer)
+  readLogFile: (filePath: string): Promise<string | null> =>
+    ipcRenderer.invoke("log:read", filePath),
+
   // Filesystem primitives (PlatformAdapter, #41 — editor seam for #38/#39)
   readFile: (filePath: string): Promise<string> =>
     ipcRenderer.invoke("fs:readFile", filePath),

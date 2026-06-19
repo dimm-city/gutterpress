@@ -360,6 +360,8 @@ interface Window {
     // App actions
     openExternal(url: string): Promise<void>;
     showInFolder(filePath: string): Promise<void>;
+    /** Read an operation log file for the recovery/sync log viewer. */
+    readLogFile(filePath: string): Promise<string | null>;
     // Filesystem primitives (PlatformAdapter, #41)
     readFile(filePath: string): Promise<string>;
     writeFile(filePath: string, content: string): Promise<{ mtimeMs: number }>;

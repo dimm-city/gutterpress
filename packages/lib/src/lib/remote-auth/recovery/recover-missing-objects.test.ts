@@ -35,7 +35,7 @@ import { tmpdir } from "node:os";
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
 
-import { assertZipReadable } from "./backup.ts";
+import { assertZipReadable, BACKUP_ROOT } from "./backup.ts";
 import type { HostCredential } from "../token-store.ts";
 import type {
   RecoveryContext,
@@ -430,7 +430,7 @@ describe("recover-missing-objects — I5 backup created before repair", () => {
     }
   });
 
-  test("backupZipPath is under /tmp/print-sync-recovery/ when present", async () => {
+  test("backupZipPath is under the OS temp recovery root when present", async () => {
     const harness = await setupRemoteHarness();
     try {
       const ctx = makeCtx(harness.clientDir, {
@@ -446,7 +446,7 @@ describe("recover-missing-objects — I5 backup created before repair", () => {
           : undefined);
 
       if (zipPath) {
-        expect(zipPath).toMatch(/\/tmp\/print-sync-recovery\//);
+        expect(zipPath.startsWith(BACKUP_ROOT + path.sep)).toBe(true);
       }
     } finally {
       await harness.cleanup();

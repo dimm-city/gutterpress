@@ -20,6 +20,7 @@
 import { createRecoveryZip } from "./backup.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";
 import { policyFor } from "./policy.ts";
+import { resolveLogger } from "../operation-log.ts";
 import type {
   RecoveryContext,
   RecoveryResult,
@@ -67,14 +68,20 @@ export async function withBackupGate(
   error?: unknown,
 ): Promise<RecoveryResult> {
   const policy = policyFor(kind);
+  const logger = resolveLogger(ctx.logFile, "recovery");
   let backupZipPath: string | undefined;
 
   // ── Step 1: create backup if required ─────────────────────────────────────
   if (policy.createBackup) {
+    logger.info("backup", "creating backup zip", { kind, repo: ctx.repoSlug });
     try {
       const backup = await createRecoveryZip(ctx, kind);
       backupZipPath = backup.zipPath;
+      logger.info("backup", "backup created", { path: backupZipPath });
     } catch (backupErr) {
+      logger.error("backup", "backup creation failed", {
+        error: String(backupErr instanceof Error ? backupErr.message : backupErr),
+      });
       // Backup failed — fail safe with NO subsequent writes.
       return failSafeNoRepair(ctx, kind, undefined, backupErr);
     }
@@ -94,6 +101,7 @@ export async function withBackupGate(
       canBeUndoneFromBackup: !!backupZipPath,
     });
     if (!approved) {
+      logger.info("confirm", "user denied repair — blocked", { kind });
       const blockedGuidance = makeManualGuidance(ctx, kind, error, backupZipPath);
       return {
         status: "blocked",
@@ -102,12 +110,19 @@ export async function withBackupGate(
         ...(backupZipPath ? { backupZipPath } : {}),
       };
     }
+    logger.info("confirm", "user approved repair", { kind });
   }
 
   // ── Step 3: run the risky repair ────────────────────────────────────────────
   try {
-    return await risky(backupZipPath);
+    const result = await risky(backupZipPath);
+    logger.info("repair", "repair completed", { kind, result: result.status });
+    return result;
   } catch (repairErr) {
+    logger.error("repair", "repair threw after backup", {
+      kind,
+      error: String(repairErr instanceof Error ? repairErr.message : repairErr),
+    });
     // Repair threw after backup was created.
     return failSafeNoRepair(ctx, kind, backupZipPath, repairErr);
   }

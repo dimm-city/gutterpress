@@ -174,6 +174,12 @@ export class WebAdapter implements Platform {
     return rejectNotImplemented("showInFolder");
   }
 
+  readLogFile(_filePath: string): Promise<string | null> {
+    // No file system in the browser — resolve null so callers can
+    // gracefully hide the "View log" button.
+    return Promise.resolve(null);
+  }
+
   getStatus(): Promise<{ ok: boolean; runtime: string; name: string }> {
     return rejectNotImplemented("getStatus");
   }

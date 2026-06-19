@@ -1,34 +1,55 @@
 /**
- * recover-stale-lock.ts — remove a stale .git/index.lock file.
+ * recover-stale-lock.ts — remove stale .git lock files left by a crash.
  *
  * WHY: When a write operation is interrupted (power loss, forced kill, crash)
  * the version-tracking system leaves a lock file behind. Every subsequent
  * operation fails until the lock is removed. This handler automates that
  * cleanup with a conservative age check and a user confirmation gate.
  *
- * Decision logic:
- *   FRESH lock (age < STALE_THRESHOLD_MS) → someone else may still hold it;
- *     return retry_later so the caller can check again shortly.
+ * A crash does NOT only leave `.git/index.lock`. Depending on what was being
+ * written when the process died, git can leave any of:
+ *   - index.lock          (staging the index)
+ *   - HEAD.lock           (moving HEAD)
+ *   - config.lock         (writing config)
+ *   - packed-refs.lock    (repacking refs)
+ *   - refs/**\/<name>.lock (updating a single ref, e.g. refs/heads/main.lock)
+ * If the stuck lock is any of these and we only ever looked at index.lock, the
+ * repo would stay unusable forever. So this handler scans the known top-level
+ * lock files PLUS a shallow scan of `.git/refs/**` for `*.lock` files.
+ *
+ * Decision logic (applied to the WHOLE candidate set, not just index.lock):
  *   NO lock at all → the race was already won; return retry_later (safe to
  *     retry the original operation immediately).
- *   STALE lock (age ≥ STALE_THRESHOLD_MS) → request user confirmation, then
- *     delete; return recovered.
+ *   ANY lock is FRESH (age < STALE_THRESHOLD_MS) → a live process may still
+ *     hold the repo. Deleting a lock another process holds would corrupt an
+ *     in-flight write, so we delete NOTHING and return retry_later — even if
+ *     other locks in the set are stale. One fresh lock blocks the whole sweep.
+ *   ALL locks are STALE (age ≥ STALE_THRESHOLD_MS) → request user confirmation
+ *     once, then remove every stale lock; return recovered.
+ *
+ * Why "any fresh → retry_later" (and not "remove the stale ones"): the locks
+ * in the set may belong to the SAME interrupted-or-live operation. We cannot
+ * tell a crashed lock from a live one except by age, so the safe rule is: if
+ * the youngest lock could still be held, leave them all alone for now.
  *
  * Safety invariants:
  *   - Never force-pushes (this repair is entirely local).
  *   - No backup zip (policy.createBackup = false for stale_lock; a lock file
  *     is trivially recreatable and contains no user data).
  *   - Confirmation required (policy.requireConfirmation = true).
- *   - Fault hook ctx.faults?.before("remove_index_lock") fires just before
- *     the unlink so tests can assert the fail-safe path.
+ *   - Fault hook ctx.faults?.before("remove_index_lock") fires once, just
+ *     before the FIRST unlink, so tests can assert the fail-safe path. If it
+ *     throws, nothing is removed.
+ *   - Only locks proven stale are removed; a fresh lock is never touched.
  *   - User content files are never touched.
  *
  * Author-facing copy lives in manual-guidance.ts (stale_lock case). No git
- * words, no file paths, no tokens in any user-visible string.
+ * words, no file paths, no tokens in any user-visible string — the copy here
+ * says "leftover lock" / "temporary lock", never "lock file"/"index"/"ref".
  */
 
 import * as fs from "node:fs";
-import { unlink, stat } from "node:fs/promises";
+import { readdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { gitDirFor } from "../../source-provider.ts";
@@ -42,19 +63,79 @@ import type { RecoveryContext, RecoveryResult } from "./types.ts";
  * A lock younger than this is considered "fresh" — another process may still
  * hold it. 2 minutes is the conservative safe minimum (most git operations
  * complete in under 10 seconds; 2 min gives a wide margin for slow machines).
+ *
+ * NOTE: kept at exactly 2 minutes (120_000 ms). The viewer's preflight uses the
+ * same magnitude; do not change it without updating that constant in lockstep.
  */
-const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
+const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes (120_000 ms)
 
 /**
- * How long the caller should wait before retrying when the lock is fresh.
- * We suggest retrying after the remaining time until the lock would be stale.
+ * Known top-level lock files git may leave directly under `.git/`. These are
+ * scanned in addition to a shallow walk of `.git/refs/**` for `*.lock` files.
  */
-const RETRY_AFTER_MS = STALE_THRESHOLD_MS; // retry after the full threshold
+const TOP_LEVEL_LOCK_NAMES = [
+  "index.lock",
+  "HEAD.lock",
+  "config.lock",
+  "packed-refs.lock",
+] as const;
+
+// ── Lock discovery ──────────────────────────────────────────────────────────
+
+interface LockCandidate {
+  /** Absolute path to the lock file. */
+  path: string;
+  /** Age in ms relative to `now` (now - mtime). */
+  ageMs: number;
+}
+
+/**
+ * Recursively collect `*.lock` file paths under a directory. Best-effort and
+ * never throws — an unreadable subdirectory is skipped. Used to find per-ref
+ * locks like `refs/heads/main.lock` or `refs/tags/v1.lock` at any depth.
+ */
+async function collectRefLockPaths(dir: string, out: string[]): Promise<void> {
+  let entries: fs.Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return; // Missing/unreadable — nothing to collect here.
+  }
+  for (const entry of entries) {
+    const abs = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await collectRefLockPaths(abs, out);
+    } else if (entry.isFile() && entry.name.endsWith(".lock")) {
+      out.push(abs);
+    }
+  }
+}
+
+/**
+ * Gather every candidate lock file (top-level + refs/**) with its age.
+ * Locks that vanish between discovery and stat are simply dropped (a racing
+ * delete is fine to ignore). Never throws.
+ */
+async function findLockCandidates(gitDir: string, now: number): Promise<LockCandidate[]> {
+  const paths: string[] = TOP_LEVEL_LOCK_NAMES.map((name) => path.join(gitDir, name));
+  await collectRefLockPaths(path.join(gitDir, "refs"), paths);
+
+  const candidates: LockCandidate[] = [];
+  for (const p of paths) {
+    try {
+      const s = await stat(p);
+      if (s.isFile()) candidates.push({ path: p, ageMs: now - s.mtimeMs });
+    } catch {
+      // Not present (or unreadable) — skip.
+    }
+  }
+  return candidates;
+}
 
 // ── Handler ──────────────────────────────────────────────────────────────────
 
 /**
- * Attempt to recover from a stale .git/index.lock file.
+ * Attempt to recover from stale .git lock files (index.lock and friends).
  *
  * Implements the RecoverFn contract from types.ts.
  */
@@ -65,18 +146,13 @@ export async function recover(
   const kind = "stale_lock" as const;
   const policy = policyFor(kind);
   const now = ctx.now ? ctx.now() : Date.now();
-  const lockPath = path.join(gitDirFor(ctx.repoDir), "index.lock");
+  const gitDir = gitDirFor(ctx.repoDir);
 
-  // ── Check whether the lock exists and how old it is ───────────────────────
+  // ── Discover all candidate lock files and their ages ──────────────────────
+  const candidates = await findLockCandidates(gitDir, now);
 
-  let lockAgeMs: number | undefined;
-
-  try {
-    const lockStat = await stat(lockPath);
-    lockAgeMs = now - lockStat.mtimeMs;
-  } catch {
-    // Lock file does not exist (or is not accessible). The other process may
-    // have already removed it — treat as a fresh disappearance: safe to retry.
+  // ── No lock at all: the race was already won — safe to retry immediately ──
+  if (candidates.length === 0) {
     return {
       status: "retry_later",
       message:
@@ -85,20 +161,24 @@ export async function recover(
     };
   }
 
-  // ── Fresh lock: another process may still hold it ─────────────────────────
-
-  if (lockAgeMs < STALE_THRESHOLD_MS) {
-    const remaining = STALE_THRESHOLD_MS - lockAgeMs;
+  // ── Any fresh lock: a live process may still hold it — touch nothing ──────
+  //
+  // Use the YOUNGEST lock's age to decide: if even one lock could still be held
+  // by a running operation, deleting any of them risks corrupting that write.
+  // We back off for the remaining time until the youngest lock would be stale.
+  const youngestAge = Math.min(...candidates.map((c) => c.ageMs));
+  if (youngestAge < STALE_THRESHOLD_MS) {
     return {
       status: "retry_later",
       message:
         "Another operation is in progress. Try again in a moment.",
-      retryAfterMs: remaining,
+      retryAfterMs: STALE_THRESHOLD_MS - youngestAge,
     };
   }
 
-  // ── Stale lock: ask the user before removing ──────────────────────────────
+  // From here every candidate is stale (≥ threshold) and eligible for removal.
 
+  // ── Stale lock(s): ask the user before removing ───────────────────────────
   if (policy.requireConfirmation) {
     const guidance = makeManualGuidance(ctx, kind, undefined, undefined);
     const approved = await ctx.confirmation.confirmRepair({
@@ -123,14 +203,24 @@ export async function recover(
     }
   }
 
-  // ── Remove the lock file ──────────────────────────────────────────────────
-
+  // ── Remove every stale lock file ──────────────────────────────────────────
+  //
+  // The fault hook fires ONCE before the first unlink so an injected failure
+  // (or a real fs error) leaves the whole set in place and reports a no-op.
   try {
     await ctx.faults?.before("remove_index_lock");
-    await unlink(lockPath);
+    for (const candidate of candidates) {
+      // Tolerate a lock that vanished since discovery (another process cleaned
+      // it up) — its absence is the desired end state, not an error.
+      try {
+        await unlink(candidate.path);
+      } catch (perFileErr) {
+        if (fs.existsSync(candidate.path)) throw perFileErr;
+      }
+    }
   } catch (removeErr) {
-    // Removal failed (fault injection or real error). No backup was created
-    // (createBackup=false), so we return failed_no_changes_made.
+    // Removal failed. No backup was created (createBackup=false), so the result
+    // is failed_no_changes_made.
     const guidance = makeManualGuidance(ctx, kind, removeErr, undefined);
     return {
       status: "failed_no_changes_made",
@@ -139,10 +229,15 @@ export async function recover(
     };
   }
 
-  // Verify the lock is gone (defensive — unlink should have thrown on failure)
-  const lockGone = !fs.existsSync(lockPath);
-  if (!lockGone) {
-    const guidance = makeManualGuidance(ctx, kind, new Error("lock file still present after removal"), undefined);
+  // Verify the locks are gone (defensive — unlink should have thrown on failure).
+  const stillPresent = candidates.find((c) => fs.existsSync(c.path));
+  if (stillPresent) {
+    const guidance = makeManualGuidance(
+      ctx,
+      kind,
+      new Error("a leftover lock was still present after removal"),
+      undefined,
+    );
     return {
       status: "failed_no_changes_made",
       message: guidance.userSummary,

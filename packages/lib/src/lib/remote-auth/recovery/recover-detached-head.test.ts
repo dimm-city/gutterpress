@@ -34,7 +34,7 @@ import { tmpdir } from "node:os";
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
 
-import { assertZipReadable, zipEntries } from "./backup.ts";
+import { assertZipReadable, BACKUP_ROOT, zipEntries } from "./backup.ts";
 import type {
   RecoveryContext,
   RecoveryResult,
@@ -393,7 +393,7 @@ describe("recover detached_head — Case B: orphan commit, user confirms", () =>
     expect(result.status).toBe("recovered");
     const r = result as Extract<RecoveryResult, { status: "recovered" }>;
     expect(r.backupZipPath).toBeDefined();
-    expect(r.backupZipPath!.startsWith("/tmp/print-sync-recovery/")).toBe(true);
+    expect(r.backupZipPath!.startsWith(BACKUP_ROOT + path.sep)).toBe(true);
     await expect(assertZipReadable(r.backupZipPath!)).resolves.toBeUndefined();
   });
 });
@@ -835,5 +835,208 @@ describe("recover detached_head — safety: guidance fields always present", () 
     expect(summary).not.toContain("detached head");
     expect(summary).not.toContain("git ref");
     expect(summary).not.toContain("refs/heads");
+  });
+});
+
+// ── BUG 1: branch discovery (do not blindly assume "main") ────────────────────
+//
+// When HEAD is detached and ctx.branch is empty, the handler must discover the
+// branch the detached commit actually belongs to rather than checking the user
+// out onto "main" (which silently relocates work for any non-"main" repo).
+
+/** Initialize a minimal local repo whose only branch is the given name. */
+async function initRepoOnBranch(dir: string, branch: string): Promise<string> {
+  await git.init({ fs, dir, defaultBranch: branch });
+  await writeFile(path.join(dir, "chapter-01.md"), "# Chapter One\n\nInitial content.\n");
+  await git.add({ fs, dir, filepath: "chapter-01.md" });
+  return git.commit({ fs, dir, message: "initial commit", author: AUTHOR });
+}
+
+describe("recover detached_head — BUG 1: branch discovery when ctx.branch is empty", () => {
+  test("repo whose only branch is 'master' recovers onto 'master', not 'main'", async () => {
+    const dir = await makeTempDir("dh-bug1-master-");
+    const sha = await initRepoOnBranch(dir, "master");
+    await detachHead(dir, sha);
+
+    expect(await currentBranch(dir)).toBeUndefined(); // confirm detached
+
+    // ctx.branch is empty → the handler must DISCOVER the real branch.
+    const ctx = makeLocalCtx(dir, { branch: "" });
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("recovered");
+    expect(await currentBranch(dir)).toBe("master");
+  });
+
+  test("does NOT create a stray 'main' branch when recovering a 'master' repo", async () => {
+    const dir = await makeTempDir("dh-bug1-no-main-");
+    const sha = await initRepoOnBranch(dir, "master");
+    await detachHead(dir, sha);
+
+    const ctx = makeLocalCtx(dir, { branch: "" });
+    await recover(ctx);
+
+    const branches = await listBranches(dir);
+    expect(branches).toContain("master");
+    expect(branches).not.toContain("main");
+  });
+
+  test("explicit ctx.branch still wins over discovery", async () => {
+    // The repo's only branch is "master", but ctx.branch explicitly names
+    // "develop". The explicit value must win (the discovery path is skipped).
+    const dir = await makeTempDir("dh-bug1-explicit-");
+    const sha = await initRepoOnBranch(dir, "master");
+    // Add a second branch "develop" at the same commit so the checkout target exists.
+    await git.branch({ fs, dir, ref: "develop", object: sha });
+    await detachHead(dir, sha);
+
+    const ctx = makeLocalCtx(dir, { branch: "develop" });
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("recovered");
+    expect(await currentBranch(dir)).toBe("develop");
+  });
+
+  test("falls back to origin's default branch when ctx.branch is empty and many local branches exist", async () => {
+    // Two local branches that both contain HEAD make tip-reachability ambiguous;
+    // the handler should consult refs/remotes/origin/HEAD for the default.
+    const dir = await makeTempDir("dh-bug1-origin-head-");
+    const sha = await initRepoOnBranch(dir, "trunk");
+    // A second branch at the same commit creates ambiguity for tip matching.
+    await git.branch({ fs, dir, ref: "feature", object: sha });
+    // Record the remote's default branch as "trunk".
+    const originDir = path.join(dir, ".git", "refs", "remotes", "origin");
+    await fs.promises.mkdir(originDir, { recursive: true });
+    await writeFile(path.join(originDir, "HEAD"), "ref: refs/remotes/origin/trunk\n");
+    await detachHead(dir, sha);
+
+    const ctx = makeLocalCtx(dir, { branch: "" });
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("recovered");
+    expect(await currentBranch(dir)).toBe("trunk");
+  });
+
+  test("falls back to 'main' as a last resort when discovery finds nothing usable", async () => {
+    // A 'main' branch exists alongside another branch, no origin/HEAD hint, and
+    // HEAD is detached at a commit reachable from both — discovery is ambiguous,
+    // so the documented final fallback ("main") applies.
+    const dir = await makeTempDir("dh-bug1-fallback-main-");
+    const sha = await initRepoOnBranch(dir, "main");
+    await git.branch({ fs, dir, ref: "side", object: sha });
+    await detachHead(dir, sha);
+
+    const ctx = makeLocalCtx(dir, { branch: "" });
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("recovered");
+    expect(await currentBranch(dir)).toBe("main");
+  });
+});
+
+// ── BUG 2: forced checkout is safe after work is preserved ────────────────────
+//
+// The rescue branch + verified /tmp backup hold the prior state, so a forced
+// checkout onto the named branch cannot lose work even with a dirty tree.
+
+describe("recover detached_head — BUG 2: forced checkout survives a dirty tree", () => {
+  test("recovers even when a non-forced checkout would hit a working-tree conflict", async () => {
+    // This builds the EXACT state that makes isomorphic-git's NON-forced
+    // checkout throw CheckoutConflictError, proving the forced checkout is
+    // required (and safe, because work is already on the rescue branch):
+    //   - base commit ignores "draft.md" and tracks chapter-01.md
+    //   - the named branch ("main") advances to TRACK draft.md
+    //   - HEAD is detached back at the base; the workdir has a still-ignored
+    //     local draft.md AND a real edit to chapter-01.md
+    // Case C commits the real chapter edit to the rescue branch, but the ignored
+    // draft.md stays untracked — so checking out "main" (which wants to write a
+    // tracked draft.md over the untracked one) would fail without `force`.
+    const dir = await makeTempDir("dh-bug2-conflict-");
+
+    await git.init({ fs, dir, defaultBranch: "main" });
+    await writeFile(path.join(dir, "chapter-01.md"), "# Chapter One\n");
+    await writeFile(path.join(dir, ".gitignore"), "draft.md\n");
+    await git.add({ fs, dir, filepath: "chapter-01.md" });
+    await git.add({ fs, dir, filepath: ".gitignore" });
+    const baseSha = await git.commit({ fs, dir, message: "base", author: AUTHOR });
+
+    // main advances: stop ignoring draft.md and start tracking it.
+    await writeFile(path.join(dir, ".gitignore"), "\n");
+    await writeFile(path.join(dir, "draft.md"), "# Tracked draft on main\n");
+    await git.add({ fs, dir, filepath: ".gitignore" });
+    await git.add({ fs, dir, filepath: "draft.md" });
+    await git.commit({ fs, dir, message: "main tracks draft", author: AUTHOR });
+
+    // Detach back at the base commit and reset the tree to match it.
+    await detachHead(dir, baseSha);
+    await git.checkout({ fs, dir, ref: baseSha, force: true });
+
+    // Local work: an ignored draft.md (invisible to staging) and a real edit.
+    await writeFile(path.join(dir, "draft.md"), "# my ignored local draft\n");
+    const editedChapter = "# Chapter One\n\nReal tracked edit to preserve.\n";
+    await writeFile(path.join(dir, "chapter-01.md"), editedChapter);
+
+    const ctx = makeLocalCtx(dir, {
+      confirmation: { confirmRepair: async () => true },
+    });
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("recovered");
+    expect(await currentBranch(dir)).toBe("main");
+
+    // The real tracked edit must survive on the rescue branch.
+    const branches = await listBranches(dir);
+    const recBranch = branches.find((b) => b.startsWith("recovery/detached-head-"));
+    expect(recBranch).toBeDefined();
+    const recSha = await git.resolveRef({ fs, dir, ref: `refs/heads/${recBranch}` });
+    const { blob } = await git.readBlob({ fs, dir, oid: recSha, filepath: "chapter-01.md" });
+    expect(new TextDecoder().decode(blob)).toBe(editedChapter);
+  });
+
+  test("Case C with uncommitted edits still recovers onto the named branch", async () => {
+    const dir = await makeTempDir("dh-bug2-dirty-");
+    const sha = await initRepo(dir);
+    await detachHead(dir, sha);
+
+    // A longer (detectable) edit to a tracked file PLUS a new untracked file —
+    // a genuinely dirty tree at entry.
+    await writeFile(path.join(dir, "chapter-01.md"), "# Chapter One\n\nA longer edited body for detection.\n");
+    await writeFile(path.join(dir, "scratch.md"), "# Scratch\n\nUntracked work.\n");
+
+    const ctx = makeLocalCtx(dir, {
+      confirmation: { confirmRepair: async () => true },
+    });
+    const result = await recover(ctx);
+
+    expect(result.status).toBe("recovered");
+    expect(await currentBranch(dir)).toBe("main");
+  });
+
+  test("Case C: the rescue branch holds the prior (edited) state", async () => {
+    const dir = await makeTempDir("dh-bug2-rescue-state-");
+    const sha = await initRepo(dir);
+    await detachHead(dir, sha);
+
+    const editedBody = "# Chapter One\n\nA substantially longer edited body kept here.\n";
+    await writeFile(path.join(dir, "chapter-01.md"), editedBody);
+
+    const ctx = makeLocalCtx(dir, {
+      confirmation: { confirmRepair: async () => true },
+    });
+    await recover(ctx);
+
+    // The rescue branch must exist and hold the EDITED chapter content.
+    const branches = await listBranches(dir);
+    const recBranch = branches.find((b) => b.startsWith("recovery/detached-head-"));
+    expect(recBranch).toBeDefined();
+
+    const recSha = await git.resolveRef({ fs, dir, ref: `refs/heads/${recBranch}` });
+    const { blob } = await git.readBlob({
+      fs,
+      dir,
+      oid: recSha,
+      filepath: "chapter-01.md",
+    });
+    expect(new TextDecoder().decode(blob)).toBe(editedBody);
   });
 });

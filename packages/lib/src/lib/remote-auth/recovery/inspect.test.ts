@@ -47,6 +47,44 @@ describe("inspectRepo — missing .git dir", () => {
   });
 });
 
+describe("inspectRepo — present-but-corrupt .git (HEAD missing/garbage)", () => {
+  // A repo whose `.git/` exists but whose HEAD is MISSING or unreadable is a
+  // DAMAGED repo, not a brand-new folder. hasGitDir MUST stay true so the
+  // classifier routes to a repair-the-existing-repo path. If hasGitDir went
+  // false here, classifyGitError returns `missing_git_dir`, whose handler
+  // CLONES and talks about "setting up a remote" — the wrong fix for a repo
+  // that already exists and only lost its HEAD.
+  test("hasGitDir=true when .git exists but HEAD is missing", async () => {
+    const dir = await makeTempDir();
+    await makeCleanRepo(dir);
+    // Simulate a lost HEAD (interrupted write / truncated checkout).
+    fs.rmSync(path.join(dir, ".git", "HEAD"));
+
+    const health = await inspectRepo({ repoDir: dir });
+
+    // The repo EXISTS — it is damaged, not absent.
+    expect(health.hasGitDir).toBe(true);
+  });
+
+  test("hasGitDir=true when .git exists but HEAD is garbage", async () => {
+    const dir = await makeTempDir();
+    await makeCleanRepo(dir);
+    fs.writeFileSync(path.join(dir, ".git", "HEAD"), "not a valid head at all\n");
+
+    const health = await inspectRepo({ repoDir: dir });
+
+    expect(health.hasGitDir).toBe(true);
+  });
+
+  test("does not throw when HEAD is missing", async () => {
+    const dir = await makeTempDir();
+    await makeCleanRepo(dir);
+    fs.rmSync(path.join(dir, ".git", "HEAD"));
+
+    await expect(inspectRepo({ repoDir: dir })).resolves.toBeDefined();
+  });
+});
+
 describe("inspectRepo — opened at a SUBFOLDER of the repo (regression)", () => {
   // A project is often opened at a subfolder of its git repo ("opening a
   // subfolder syncs the whole repo"). inspectRepo MUST resolve the real git
@@ -155,6 +193,78 @@ describe("inspectRepo — stale lock", () => {
 
     expect(health.hasStaleLock).toBe(false);
     expect(health.lockAgeMs).toBeUndefined();
+  });
+
+  // A crash does NOT only leave index.lock — git can also leave HEAD.lock,
+  // config.lock, packed-refs.lock, or a per-ref lock (refs/**/*.lock). The
+  // stale-lock recovery handler scans ALL of these, so preflight health MUST
+  // detect them too — otherwise a stuck HEAD.lock / ref lock leaves the repo
+  // unusable forever because the handler is never triggered.
+  test("hasStaleLock=true when only .git/HEAD.lock exists", async () => {
+    const dir = await makeTempDir();
+    await makeCleanRepo(dir);
+    fs.writeFileSync(path.join(dir, ".git", "HEAD.lock"), "");
+
+    const health = await inspectRepo({ repoDir: dir });
+
+    expect(health.hasStaleLock).toBe(true);
+    expect(health.lockAgeMs).toBeDefined();
+    expect(typeof health.lockAgeMs).toBe("number");
+  });
+
+  test("hasStaleLock=true when only .git/config.lock exists", async () => {
+    const dir = await makeTempDir();
+    await makeCleanRepo(dir);
+    fs.writeFileSync(path.join(dir, ".git", "config.lock"), "");
+
+    const health = await inspectRepo({ repoDir: dir });
+
+    expect(health.hasStaleLock).toBe(true);
+  });
+
+  test("hasStaleLock=true when only .git/packed-refs.lock exists", async () => {
+    const dir = await makeTempDir();
+    await makeCleanRepo(dir);
+    fs.writeFileSync(path.join(dir, ".git", "packed-refs.lock"), "");
+
+    const health = await inspectRepo({ repoDir: dir });
+
+    expect(health.hasStaleLock).toBe(true);
+  });
+
+  test("hasStaleLock=true when a per-ref lock (refs/heads/main.lock) exists", async () => {
+    const dir = await makeTempDir();
+    await makeCleanRepo(dir);
+    const refLock = path.join(dir, ".git", "refs", "heads", "main.lock");
+    fs.mkdirSync(path.dirname(refLock), { recursive: true });
+    fs.writeFileSync(refLock, "");
+
+    const health = await inspectRepo({ repoDir: dir });
+
+    expect(health.hasStaleLock).toBe(true);
+    expect(health.lockAgeMs).toBeDefined();
+  });
+
+  test("lockAgeMs reflects the YOUNGEST lock when several exist", async () => {
+    const dir = await makeTempDir();
+    await makeCleanRepo(dir);
+    const gitDir = path.join(dir, ".git");
+    const indexLock = path.join(gitDir, "index.lock");
+    const headLock = path.join(gitDir, "HEAD.lock");
+    fs.writeFileSync(indexLock, "");
+    fs.writeFileSync(headLock, "");
+    // Backdate index.lock so HEAD.lock is the youngest; lockAgeMs should track
+    // the youngest (smallest age) — matching the handler's "if ANY lock is
+    // fresh, wait" rule, where the youngest decides whether to back off.
+    const old = new Date(Date.now() - 60 * 60 * 1000); // 1 hour ago
+    fs.utimesSync(indexLock, old, old);
+
+    const health = await inspectRepo({ repoDir: dir });
+
+    expect(health.hasStaleLock).toBe(true);
+    expect(health.lockAgeMs).toBeDefined();
+    // Youngest (HEAD.lock, just written) → small age, far below the 1h backdate.
+    expect(health.lockAgeMs!).toBeLessThan(60 * 60 * 1000);
   });
 });
 

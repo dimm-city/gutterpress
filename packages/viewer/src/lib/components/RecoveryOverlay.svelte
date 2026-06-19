@@ -12,12 +12,14 @@
    * no solid background colour.
    */
   import { fade } from "svelte/transition";
+  import OperationLogDialog from "$lib/components/OperationLogDialog.svelte";
 
   let {
     visible = false,
     phase = "checking" as "checking" | "backup" | "repairing" | "done",
     state = "recovering" as "recovering" | "recovered",
     backupZipPath,
+    logFilePath,
     onShowBackup,
     onDone,
   }: {
@@ -25,9 +27,14 @@
     phase?: "checking" | "backup" | "repairing" | "done";
     state?: "recovering" | "recovered";
     backupZipPath?: string;
+    /** Operation log path — backs the "View log" link on the success screen. */
+    logFilePath?: string | null;
     onShowBackup?: (() => void) | undefined;
     onDone?: (() => void) | undefined;
   } = $props();
+
+  let logDialogOpen = $state<boolean>(false);
+  let viewLogBtn = $state<HTMLButtonElement | undefined>(undefined);
 
   /** Phase-driven copy shown while the host is repairing. */
   function phaseMessage(p: typeof phase): string {
@@ -95,11 +102,27 @@
           </button>
         {/if}
 
+        {#if logFilePath}
+          <button
+            bind:this={viewLogBtn}
+            class="show-backup-link"
+            onclick={() => { logDialogOpen = true; }}
+          >
+            View log
+          </button>
+        {/if}
+
         <button class="done-btn" onclick={onDone}>Got it</button>
       {/if}
     </div>
   </div>
 {/if}
+
+<OperationLogDialog
+  bind:open={logDialogOpen}
+  logFilePath={logFilePath}
+  triggerEl={viewLogBtn}
+/>
 
 <style>
   .recovery-overlay {

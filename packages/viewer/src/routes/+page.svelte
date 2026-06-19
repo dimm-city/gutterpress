@@ -197,10 +197,12 @@
   let recoveryOverlayPhase = $state<RecoveryProgressInfo["phase"]>("checking");
   let recoveryOverlayState = $state<"recovering" | "recovered">("recovering");
   let recoveryBackupZipPath = $state<string | undefined>(undefined);
+  let recoveryLogFilePath = $state<string | null>(null);
   // RecoveryGuidanceDialog: shown when repair is blocked / classifiable error.
   let recoveryGuidanceOpen = $state(false);
   let recoveryGuidance = $state<ManualGuidanceInfo | undefined>(undefined);
   let recoveryGuidanceBackupPath = $state<string | null>(null);
+  let recoveryGuidanceLogPath = $state<string | null>(null);
   // RecoveryConfirmDialog: shown when host needs author approval for a risky repair.
   let recoveryConfirmOpen = $state(false);
   let recoveryConfirmRequest = $state<RecoveryConfirmRequest | undefined>(undefined);
@@ -321,6 +323,7 @@
         recoveryOverlayState = "recovering";
         recoveryOverlayPhase = status.recovery?.phase ?? "checking";
         recoveryBackupZipPath = status.backupZipPath;
+        recoveryLogFilePath = status.logFile ?? null;
         // Close guidance dialog if a new recovery attempt starts.
         recoveryGuidanceOpen = false;
       } else if (status.state === "recovered") {
@@ -328,11 +331,13 @@
         recoveryOverlayVisible = true;
         recoveryOverlayState = "recovered";
         recoveryBackupZipPath = status.backupZipPath ?? recoveryBackupZipPath;
+        recoveryLogFilePath = status.logFile ?? recoveryLogFilePath;
       } else if (status.state === "error" && status.guidance) {
         // Classified failure that needs manual guidance — hide overlay, open dialog.
         recoveryOverlayVisible = false;
         recoveryGuidance = status.guidance;
         recoveryGuidanceBackupPath = status.backupZipPath ?? null;
+        recoveryGuidanceLogPath = status.logFile ?? null;
         recoveryGuidanceOpen = true;
       } else {
         // Any other state (synced/up-to-date/offline/auth/conflict/idle) — if the
@@ -2441,6 +2446,7 @@
           phase={recoveryOverlayPhase}
           state={recoveryOverlayState}
           backupZipPath={recoveryBackupZipPath}
+          logFilePath={recoveryLogFilePath}
           onShowBackup={recoveryBackupZipPath ? () => showBackupInFolder(recoveryBackupZipPath!) : undefined}
           onDone={onRecoveryOverlayDone}
         />
@@ -2564,6 +2570,7 @@
   bind:open={recoveryGuidanceOpen}
   guidance={recoveryGuidance}
   backupZipPath={recoveryGuidanceBackupPath}
+  logFilePath={recoveryGuidanceLogPath}
   onShowBackup={(path) => showBackupInFolder(path)}
   onPrimary={onSyncReconnect}
 />

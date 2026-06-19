@@ -34,6 +34,7 @@ import httpNode from "isomorphic-git/http/node";
 
 import { cloneRepository } from "../clone.ts";
 import { recover } from "./recover-non-fast-forward.ts";
+import { BACKUP_ROOT } from "./backup.ts";
 import type { ConfirmationGate, RecoveryContext } from "./types.ts";
 import {
   createFixtureRepo,
@@ -375,10 +376,10 @@ describe("recover (non_fast_forward)", () => {
 
   // ── No backup zip created ───────────────────────────────────────────────────
 
-  test("no backup zip created under /tmp/print-sync-recovery (policy.createBackup=false)", async () => {
+  test("no backup zip created under the OS temp recovery root (policy.createBackup=false)", async () => {
     const h = await setupAliceBob();
     try {
-      const backupRoot = "/tmp/print-sync-recovery/test-repo";
+      const backupRoot = path.join(BACKUP_ROOT, "test-repo");
       // Note the backup root before recovery; collect the set of existing zips.
       let existingZips: string[] = [];
       try {

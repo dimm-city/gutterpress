@@ -78,6 +78,8 @@ export interface RecoveryContext {
   tokenStore?: TokenStore;
   authorName?: string;
   confirmation: ConfirmationGate;
+  /** Optional log file path for debugging recovery operations. */
+  logFile?: string;
 }
 
 export interface ConflictFile {
@@ -229,6 +231,7 @@ export async function buildRecoveryContext(
   lib: LibForContext,
   tokenStore: TokenStore,
   authorName?: string,
+  logFile?: string,
 ): Promise<RecoveryContext> {
   // Resolve the project's OWN repo root (not an ancestor repo). This is what the
   // backup walks — getting it wrong (e.g. ~/.git) zips the whole home dir → OOM.
@@ -274,12 +277,20 @@ export async function buildRecoveryContext(
     tokenStore,
     authorName,
     confirmation: hostConfirmationGate(projectDir),
+    ...(logFile ? { logFile } : {}),
   };
 }
 
 // ── classifyFromHealth ────────────────────────────────────────────────────────
 
-const STALE_LOCK_THRESHOLD_MS = 30_000; // 30 s
+const STALE_LOCK_THRESHOLD_MS = 120_000; // 2 minutes
+// MUST stay in sync with recover-stale-lock.ts's STALE_THRESHOLD_MS
+// (packages/lib/src/lib/remote-auth/recovery/recover-stale-lock.ts). If the
+// preflight gate is SHORTER than the handler's threshold, a lock whose age sits
+// between the two values passes preflight (classified stale_lock) but the
+// handler then returns retry_later ("too fresh") — an infinite preflight→retry
+// loop. Keeping both at 120_000 guarantees the preflight only routes a lock the
+// handler will actually act on. (BUG 2)
 
 /**
  * Classify a structural repo condition from a RepoHealth snapshot alone.
@@ -293,10 +304,86 @@ export function classifyFromHealth(health: RepoHealth): SyncErrorKind | null {
   if (health.hasStaleLock && (health.lockAgeMs ?? 0) > STALE_LOCK_THRESHOLD_MS)
     return "stale_lock";
   if (health.hasInterruptedMerge) return "merge_conflict";
-  if (health.hasInterruptedRebase) return "non_fast_forward";
-  if (health.hasInterruptedCherryPick) return "merge_conflict";
+  // An interrupted rebase / cherry-pick is NOT a non-fast-forward push rejection
+  // and is NOT an in-tree merge conflict — and there is no dedicated rebase
+  // recovery kind. Routing either to a structural repair (non_fast_forward →
+  // syncProject on a repo stuck mid-rebase, or merge_conflict → conflict UI on a
+  // repo with no conflict files) produces a confusing failure. "unknown" is the
+  // safe mapping: its handler does a fail-safe no-op with generic guidance and
+  // never runs a risky repair, so the author is told to finish/abort the
+  // interrupted operation instead of having us guess wrong. (BUG 1)
+  if (health.hasInterruptedRebase) return "unknown";
+  if (health.hasInterruptedCherryPick) return "unknown";
   if (health.isDetachedHead) return "detached_head";
   return null;
+}
+
+// ── decideRunAgainAfterPreflight ──────────────────────────────────────────────
+
+/** The terminal status values a recover() call can settle with (mirrors the
+ *  lib RecoveryResult union — see recovery/types.ts). Declared locally because
+ *  the lib has no .d.ts (see header note). */
+export type RecoveryResultStatus =
+  | "recovered"
+  | "retry_later"
+  | "needs_user"
+  | "blocked"
+  | "failed_no_changes_made"
+  | "failed_backup_available";
+
+/** What the preflight orchestrator should do with a pending `runAgain` flag once
+ *  recover() settles and the single-flight lock is released. */
+export type RunAgainDecision =
+  /** No trigger was queued while preflight held the lock — do nothing. */
+  | "none"
+  /** A trigger was queued and the outcome is non-latching — run the queued sync. */
+  | "run"
+  /** A trigger was queued but the outcome latches (conflict/blocked/failed) — the
+   *  latch intentionally suppresses it; clear the flag without running. */
+  | "suppress";
+
+/**
+ * Decide the fate of a pending auto-sync trigger after preflight recovery.
+ *
+ * WHY (BUG 3): the api:preview preflight IIFE holds the single-flight lock while
+ * recover() runs. If runAutoSync fires during that window it sets `runAgain`
+ * instead of syncing. Previously main.ts only honored `runAgain` on the
+ * `recovered` branch — so on `retry_later` (and any non-`recovered` non-latching
+ * path) the queued sync was silently dropped and the author's sync never ran.
+ *
+ * Centralizing the decision here keeps the rule testable and consistent with the
+ * runAutoSync invariants:
+ *   - Non-latching outcomes (recovered, retry_later): a pending trigger is
+ *     allowed to proceed ("run"). This is the dropped-trigger fix.
+ *   - Latching outcomes (needs_user conflict, blocked, failed_*): the
+ *     conflict-latch deliberately pauses auto-sync, so a pending trigger is
+ *     suppressed ("suppress") rather than run.
+ *   - Any unrecognized status fails SAFE to "suppress" (never auto-run on a
+ *     state we don't understand).
+ *
+ * @param status   The terminal status returned by lib.recover().
+ * @param runAgain Whether a trigger was queued while preflight held the lock.
+ */
+export function decideRunAgainAfterPreflight(
+  status: RecoveryResultStatus,
+  runAgain: boolean,
+): RunAgainDecision {
+  if (!runAgain) return "none";
+  switch (status) {
+    case "recovered":
+    case "retry_later":
+      // Non-latching: honor the queued sync (BUG 3 fix).
+      return "run";
+    case "needs_user":
+    case "blocked":
+    case "failed_no_changes_made":
+    case "failed_backup_available":
+      // Latching: the conflict-latch suppresses the queued sync.
+      return "suppress";
+    default:
+      // Forward-compatible fail-safe: never auto-run on an unknown state.
+      return "suppress";
+  }
 }
 
 // ── getConflictPreviewImpl ────────────────────────────────────────────────────
