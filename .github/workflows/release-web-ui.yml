@@ -76,7 +76,7 @@ jobs:
 
       # ── 2. Checkout ────────────────────────────────────────────────────────
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           # For workflow_dispatch we check out the default branch and will
           # create the tag below. For tag pushes the ref is already the tag.
