@@ -3,6 +3,24 @@
 All notable changes to print-md are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.5.4] - 2026-06-22
+
+### Added
+
+- **Definition lists.** print-md now parses the standard PHP-Markdown-Extra /
+  Pandoc definition-list syntax — a `Term` line, then a `: definition` line —
+  emitting plain `<dl><dt><dd>`. Implemented via the canonical `markdown-it-deflist`
+  plugin in the core markdown pipeline (definition lists are not part of
+  CommonMark/markdown-it core). Purely additive: content without the `: `
+  definition-line syntax renders unchanged.
+
+### Fixed
+
+- **Recovery overlay crash.** The recovery overlay took a prop named `state`,
+  which shadowed Svelte's `$state` rune and miscompiled state reads into store
+  auto-subscriptions — crashing the overlay with `state.subscribe is not a
+  function` in production builds. The prop is now `recoveryState`.
+
 ## [0.5.2] - 2026-06-16
 
 ### Added

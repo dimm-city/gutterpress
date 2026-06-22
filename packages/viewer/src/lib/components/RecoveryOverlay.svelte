@@ -17,7 +17,11 @@
   let {
     visible = false,
     phase = "checking" as "checking" | "backup" | "repairing" | "done",
-    state = "recovering" as "recovering" | "recovered",
+    // NOTE: do NOT name this prop `state` — a `state` binding in scope shadows
+    // the `$state` rune and silently miscompiles `$state(...)` calls below into
+    // store auto-subscriptions (`state.subscribe is not a function`). See the
+    // 0.5.4 RecoveryOverlay crash regression.
+    recoveryState = "recovering" as "recovering" | "recovered",
     backupZipPath,
     logFilePath,
     onShowBackup,
@@ -25,7 +29,7 @@
   }: {
     visible?: boolean;
     phase?: "checking" | "backup" | "repairing" | "done";
-    state?: "recovering" | "recovered";
+    recoveryState?: "recovering" | "recovered";
     backupZipPath?: string;
     /** Operation log path — backs the "View log" link on the success screen. */
     logFilePath?: string | null;
@@ -52,7 +56,7 @@
 
   $effect(() => {
     clearTimeout(autoDismissTimer);
-    if (state === "recovered" && visible) {
+    if (recoveryState === "recovered" && visible) {
       autoDismissTimer = setTimeout(() => {
         onDone?.();
       }, 1800);
@@ -72,11 +76,11 @@
     role="status"
     aria-live="polite"
     aria-atomic="false"
-    aria-busy={state === "recovering"}
+    aria-busy={recoveryState === "recovering"}
     out:fade={{ duration: 400 }}
   >
     <div class="content-wrap">
-      {#if state === "recovering"}
+      {#if recoveryState === "recovering"}
         <!-- Spinner (decorative) -->
         <div class="spinner" aria-hidden="true"></div>
 
@@ -88,7 +92,7 @@
         <!-- No cancel / close button while recovering — intentionally omitted. -->
 
       {:else}
-        <!-- state === "recovered" -->
+        <!-- recoveryState === "recovered" -->
         <div class="check-icon" aria-hidden="true">✓</div>
 
         <h2 class="title">All set</h2>

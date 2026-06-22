@@ -7,7 +7,7 @@
     },
     "packages/cli": {
       "name": "@dimm-city/print-md",
-      "version": "0.4.1",
+      "version": "0.5.3",
       "bin": {
         "print-md": "./dist/cli.js",
       },
@@ -35,7 +35,7 @@
     },
     "packages/lib": {
       "name": "@dimm-city/print-md-lib",
-      "version": "0.4.1",
+      "version": "0.5.3",
       "dependencies": {
         "chokidar": "^5.0.0",
         "diff3": "0.0.3",
@@ -44,6 +44,7 @@
         "isomorphic-git": "^1.38.4",
         "markdown-it": "^14.1.0",
         "markdown-it-attrs": "^4.3.0",
+        "markdown-it-deflist": "^3.0.1",
         "markdown-it-footnote": "^4.0.0",
         "markdown-it-source-map": "^0.1.1",
         "markdownlint": "^0.40.0",
@@ -65,7 +66,7 @@
     },
     "packages/viewer": {
       "name": "@dimm-city/print-md-viewer",
-      "version": "0.4.1",
+      "version": "0.5.3",
       "dependencies": {
         "@codemirror/autocomplete": "^6.18.4",
         "@codemirror/commands": "^6.8.0",
@@ -940,6 +941,8 @@
     "markdown-it": ["markdown-it@14.1.1", "", { "dependencies": { "argparse": "^2.0.1", "entities": "^4.4.0", "linkify-it": "^5.0.0", "mdurl": "^2.0.0", "punycode.js": "^2.3.1", "uc.micro": "^2.1.0" }, "bin": { "markdown-it": "bin/markdown-it.mjs" } }, "sha512-BuU2qnTti9YKgK5N+IeMubp14ZUKUUw7yeJbkjtosvHiP0AZ5c8IAgEMk79D0eC8F23r4Ac/q8cAIFdm2FtyoA=="],
 
     "markdown-it-attrs": ["markdown-it-attrs@4.3.1", "", { "peerDependencies": { "markdown-it": ">= 9.0.0" } }, "sha512-/ko6cba+H6gdZ0DOw7BbNMZtfuJTRp9g/IrGIuz8lYc/EfnmWRpaR3CFPnNbVz0LDvF8Gf1hFGPqrQqq7De0rg=="],
+
+    "markdown-it-deflist": ["markdown-it-deflist@3.0.1", "", {}, "sha512-pPtXxihDMi9jrwLLQ+Jra/FM20F/FFJWiVjXf0Js6Lwp7LFj+MuK6cUJNMVTRL+n9d/JqF4MEqYZwSMgVodK5g=="],
 
     "markdown-it-footnote": ["markdown-it-footnote@4.0.0", "", {}, "sha512-WYJ7urf+khJYl3DqofQpYfEYkZKbmXmwxQV8c8mO/hGIhgZ1wOe7R4HLFNwqx7TjILbnC98fuyeSsin19JdFcQ=="],
 

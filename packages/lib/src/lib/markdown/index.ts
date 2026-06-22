@@ -7,6 +7,7 @@ import markdownItAttrs from "markdown-it-attrs";
 import markdownItFootnote from "markdown-it-footnote";
 import markdownItPaged, { PAGED_CSS } from "./markdown-it-paged.js";
 import markdownItSourceMap from "markdown-it-source-map";
+import markdownItDeflist from "markdown-it-deflist";
 import { registerImageRule } from "./images";
 import { canonicalChapterId } from "./chapter-id";
 import type { LoadedPlugin } from "./plugins";
@@ -16,8 +17,13 @@ import { applyPlugins } from "./plugins";
  * Create a fully-configured MarkdownIt instance.
  *
  * Built-in pipeline (runs before any user plugins):
- *   markdown-it-attrs → markdown-it-footnote → markdown-it-source-map
- *   → markdown-it-paged
+ *   markdown-it-attrs → markdown-it-footnote → markdown-it-deflist →
+ *   markdown-it-source-map → markdown-it-paged
+ *
+ * markdown-it-deflist adds the standard (PHP Markdown Extra / Pandoc)
+ * definition-list syntax — `Term` / `: definition` — emitting plain
+ * `<dl><dt><dd>`. It is not in CommonMark/markdown-it core; this is the
+ * canonical markdown-it plugin for it.
  *
  * Block container syntax (`:::name ... :::`) was removed 2026-05-17 in favor
  * of the @marker family. See docs/migrations/2026-05-removing-container-syntax.md
@@ -48,6 +54,7 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
 
   md.use(unwrap(markdownItAttrs));
   md.use(unwrap(markdownItFootnote));
+  md.use(unwrap(markdownItDeflist));
   md.use(unwrap(markdownItSourceMap));
   md.use(unwrap(markdownItPaged));
 

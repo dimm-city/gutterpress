@@ -2444,7 +2444,7 @@
         <RecoveryOverlay
           visible={recoveryOverlayVisible}
           phase={recoveryOverlayPhase}
-          state={recoveryOverlayState}
+          recoveryState={recoveryOverlayState}
           backupZipPath={recoveryBackupZipPath}
           logFilePath={recoveryLogFilePath}
           onShowBackup={recoveryBackupZipPath ? () => showBackupInFolder(recoveryBackupZipPath!) : undefined}

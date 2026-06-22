@@ -37,6 +37,7 @@
     "isomorphic-git": "^1.38.4",
     "markdown-it": "^14.1.0",
     "markdown-it-attrs": "^4.3.0",
+    "markdown-it-deflist": "^3.0.1",
     "markdown-it-footnote": "^4.0.0",
     "markdown-it-source-map": "^0.1.1",
     "markdownlint": "^0.40.0",
