@@ -28,14 +28,14 @@
 import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ConflictFileInfo } from "../src/lib/platform/contract";
+import type { ConflictFileInfo } from "../../src/lib/platform/contract";
 
 // ── PWA-cleanliness scan ──────────────────────────────────────────────────────
 
 describe("PWA-cleanliness — ConflictChoicesDialog must not value-import lib", () => {
   const componentPath = path.resolve(
     __dirname,
-    "../src/lib/components/ConflictChoicesDialog.svelte",
+    "../../src/lib/components/ConflictChoicesDialog.svelte",
   );
 
   test("component file exists", () => {
@@ -269,7 +269,7 @@ describe("getConflictPreview rejection → graceful fallback", () => {
 describe("ConflictChoicesDialog.svelte source must contain the preview disclosure", () => {
   const componentPath = path.resolve(
     __dirname,
-    "../src/lib/components/ConflictChoicesDialog.svelte",
+    "../../src/lib/components/ConflictChoicesDialog.svelte",
   );
 
   test("contains a 'Compare versions' disclosure button", () => {
@@ -325,7 +325,7 @@ describe("ConflictChoicesDialog.svelte source must contain the preview disclosur
 describe("REGRESSION GUARD — gate-passed ConflictChoicesDialog invariants", () => {
   const componentPath = path.resolve(
     __dirname,
-    "../src/lib/components/ConflictChoicesDialog.svelte",
+    "../../src/lib/components/ConflictChoicesDialog.svelte",
   );
 
   test("still has three choice buttons: Keep my version / Use the online version / Keep both", () => {

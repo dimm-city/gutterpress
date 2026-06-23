@@ -24,13 +24,13 @@
 import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { ManualGuidanceInfo } from "../src/lib/platform/contract";
+import type { ManualGuidanceInfo } from "../../src/lib/platform/contract";
 
 // ── Path to the component under test ─────────────────────────────────────────
 
 const COMPONENT_PATH = path.resolve(
   __dirname,
-  "../src/lib/components/RecoveryGuidanceDialog.svelte",
+  "../../src/lib/components/RecoveryGuidanceDialog.svelte",
 );
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────

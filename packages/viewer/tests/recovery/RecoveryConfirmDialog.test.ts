@@ -68,7 +68,7 @@ function makeRequest(overrides: Partial<RepairConfirmationInfo> = {}): RecoveryC
 
 const COMPONENT_PATH = path.resolve(
   __dirname,
-  "../src/lib/components/RecoveryConfirmDialog.svelte",
+  "../../src/lib/components/RecoveryConfirmDialog.svelte",
 );
 
 const FORBIDDEN_VALUE_IMPORTS = [

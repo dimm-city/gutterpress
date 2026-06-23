@@ -23,7 +23,6 @@
     "tests/platform/**",
     "tests/recovery/**",
     "tests/editor/**",
-    "tests/media/**",
-    "tests/*.test.ts"
+    "tests/media/**"
   ]
 }

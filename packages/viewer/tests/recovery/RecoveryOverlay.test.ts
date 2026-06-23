@@ -36,7 +36,7 @@ import { resolve } from "node:path";
 
 const COMPONENT_PATH = resolve(
   import.meta.dir,
-  "../src/lib/components/RecoveryOverlay.svelte",
+  "../../src/lib/components/RecoveryOverlay.svelte",
 );
 
 // ── Helper: read the component source (fails if file absent — the first red) ──
