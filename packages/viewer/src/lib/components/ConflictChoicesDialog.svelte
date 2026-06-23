@@ -347,6 +347,7 @@
               <div
                 class="choice-group"
                 role="radiogroup"
+                tabindex="-1"
                 aria-label={`Choose version for ${label}`}
                 onkeydown={(e) => onRadioKey(e, file.path)}
               >
