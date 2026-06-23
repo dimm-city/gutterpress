@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────────────────────────────────
 // semver.ts — dependency-free semver comparison shared by the updater
-// (index.ts: pick newest web-v* release) and web-runtime.ts (decide whether a
-// promoted bundle out-ranks the baked baseline). Kept as a leaf module (no
-// electron/fs imports) so both can use it without an import cycle.
+// (index.ts: is the registry candidate newer than current?) and web-runtime.ts
+// (decide whether a promoted runtime out-ranks the baked baseline). Kept as a
+// leaf module (no electron/fs imports) so both can use it without an import cycle.
 //
 // Compares dotted numeric cores; a prerelease tag sorts BEFORE its release
 // (standard semver precedence, simplified).
