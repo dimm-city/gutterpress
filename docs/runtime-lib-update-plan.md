@@ -199,7 +199,19 @@ current/previous slots, prune, failed-version blocklist, the renderer watchdog.
   `tar.ts` (gunzip + USTAR reader, strips `package/`), `integrity.ts` (SSRI
   verify, fail-closed), `npm-source.ts` (packument → `UpdateCandidate` per
   channel) + 13 unit tests. Not yet wired into the engine.
-- **Phase 2b — engine + main rewire + test migration: ⏳ REMAINING.** Spec below.
+- **Phase 2b — engine + main rewire + test migration: ✅ DONE, committed
+  `569b115`; review fixes `4621a04`; nit `2310b48`. Approved by 2 reviewers
+  (security + architecture), VERDICT: APPROVE.** Engine swapped to
+  npm/SSRI/tar.gz; one runtime store via `resolveActive()`; main-process lib
+  health probe + rollback; Ed25519/manifest/web-v* deleted; package ships
+  `dist/index.js` + `ui/` + `printmd.requiresDesktopApi`; CI publishes via npm
+  OIDC. svelte-check 0/0, electron tsc clean, viewer 399 + lib 882 + cli 12 pass,
+  §8 renderer clean, real `npm pack` tarball verified end-to-end.
+
+**All phases complete.** Remaining is operational, not code: configure
+`@dimm-city/print-md` as a Trusted Publisher on npmjs.com (already referenced by
+`release.yml`); optionally remove the now-unused `WEB_UI_SIGNING_KEY` GitHub
+secret.
 
 ### Phase 2b spec (one atomic, verified change)
 
