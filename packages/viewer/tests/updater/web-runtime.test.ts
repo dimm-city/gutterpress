@@ -36,6 +36,7 @@ const {
   readState,
   writeState,
   resolveWebRoot,
+  resolveActive,
   ensureLayout,
   webRuntimeDir,
   bundledWebRoot,
@@ -268,14 +269,17 @@ describe("resolveWebRoot", () => {
   test("returns pointer path when current.json points at a versions/ dir with index.html", async () => {
     await withTempDir(async (tmpDir) => {
       // Containment guard: the pointer is only honored inside web-runtime/versions/.
+      // A promoted runtime is an extracted package: ui/ (SPA) + dist/index.js.
       const fakeRoot = path.join(tmpDir, "web-runtime", "versions", "3.0.0");
-      await mkdir(fakeRoot, { recursive: true });
-      await writeFile(path.join(fakeRoot, "index.html"), "<html></html>", "utf8");
+      await mkdir(path.join(fakeRoot, "ui"), { recursive: true });
+      await mkdir(path.join(fakeRoot, "dist"), { recursive: true });
+      await writeFile(path.join(fakeRoot, "ui", "index.html"), "<html></html>", "utf8");
+      await writeFile(path.join(fakeRoot, "dist", "index.js"), "export {};", "utf8");
 
       await writePointer("current", { version: "3.0.0", path: fakeRoot });
 
       const result = await resolveWebRoot();
-      expect(result).toBe(fakeRoot);
+      expect(result).toBe(path.join(fakeRoot, "ui"));
     });
   });
 
@@ -337,12 +341,57 @@ describe("resolveWebRoot", () => {
   test("serves a promoted pointer that IS strictly newer than the baked baseline", async () => {
     await withTempDir(async (tmpDir) => {
       const newerRoot = path.join(tmpDir, "web-runtime", "versions", "999.0.0");
-      await mkdir(newerRoot, { recursive: true });
-      await writeFile(path.join(newerRoot, "index.html"), "<html>newer</html>", "utf8");
+      await mkdir(path.join(newerRoot, "ui"), { recursive: true });
+      await mkdir(path.join(newerRoot, "dist"), { recursive: true });
+      await writeFile(path.join(newerRoot, "ui", "index.html"), "<html>newer</html>", "utf8");
+      await writeFile(path.join(newerRoot, "dist", "index.js"), "export {};", "utf8");
       await writePointer("current", { version: "999.0.0", path: newerRoot });
 
       const result = await resolveWebRoot();
-      expect(result).toBe(newerRoot);
+      expect(result).toBe(path.join(newerRoot, "ui"));
+    });
+  });
+});
+
+// ── resolveActive (web root + library entry together) ──────────────────────
+
+describe("resolveActive", () => {
+  test("returns the promoted ui/ web root + dist/index.js lib entry when newer", async () => {
+    await withTempDir(async (tmpDir) => {
+      const root = path.join(tmpDir, "web-runtime", "versions", "999.0.0");
+      await mkdir(path.join(root, "ui"), { recursive: true });
+      await mkdir(path.join(root, "dist"), { recursive: true });
+      await writeFile(path.join(root, "ui", "index.html"), "<html></html>", "utf8");
+      await writeFile(path.join(root, "dist", "index.js"), "export {};", "utf8");
+      await writePointer("current", { version: "999.0.0", path: root });
+
+      const active = await resolveActive();
+      expect(active.version).toBe("999.0.0");
+      expect(active.webRoot).toBe(path.join(root, "ui"));
+      expect(active.libEntry).toBe(path.join(root, "dist", "index.js"));
+    });
+  });
+
+  test("falls back to the baked runtime (null libEntry) when nothing is promoted", async () => {
+    await withTempDir(async () => {
+      const active = await resolveActive();
+      expect(active.webRoot).toBe(bundledWebRoot());
+      expect(active.libEntry).toBeNull();
+      expect(active.version).toBe(await readBaselineVersion());
+    });
+  });
+
+  test("falls back wholesale when the engine half (dist/index.js) is missing", async () => {
+    await withTempDir(async (tmpDir) => {
+      // UI present but engine absent → never serve a mismatched ui+lib pair.
+      const root = path.join(tmpDir, "web-runtime", "versions", "999.0.0");
+      await mkdir(path.join(root, "ui"), { recursive: true });
+      await writeFile(path.join(root, "ui", "index.html"), "<html></html>", "utf8");
+      await writePointer("current", { version: "999.0.0", path: root });
+
+      const active = await resolveActive();
+      expect(active.webRoot).toBe(bundledWebRoot());
+      expect(active.libEntry).toBeNull();
     });
   });
 });

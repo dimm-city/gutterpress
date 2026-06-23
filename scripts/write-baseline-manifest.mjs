@@ -7,9 +7,9 @@
 // downgrade floor (minimumSeenVersion) and the displayed "current version"
 // accurate on a fresh install before any web-v* update is applied.
 //
-// This is the UNSIGNED local baseline marker. The authoritative, signed
-// manifest for an update lives next to web-ui-bundle.zip in the GitHub Release
-// (see build-web-ui-manifest.mjs) — that one is the one verified at download.
+// This is just the baked-in baseline version marker. Runtime updates are
+// resolved from the npm registry and verified by `dist.integrity` (SSRI) —
+// there is no signed local manifest. See docs/runtime-lib-update-plan.md.
 // ──────────────────────────────────────────────────────────────────────────
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -44,13 +44,12 @@ if (!m) {
 }
 const requiresDesktopApi = Number(m[1]);
 
+// Slim baseline marker: readBaselineVersion() reads `.version`; requiresDesktopApi
+// is kept for parity with the published package's `printmd.requiresDesktopApi`.
 const manifest = {
   schemaVersion: 1,
-  kind: 'web-ui-bundle',
   version,
   requiresDesktopApi,
-  assets: { bundle: { name: 'web-ui-bundle.zip', sha256: '', size: 0 } },
-  releasedAt: '',
 };
 
 const out = join(buildDir, 'update-manifest.json');

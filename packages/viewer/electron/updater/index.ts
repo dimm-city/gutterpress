@@ -1,21 +1,20 @@
 // ──────────────────────────────────────────────────────────────────────────
-// updater/index.ts — core web-UI auto-update engine (main process only)
+// updater/index.ts — core runtime auto-update engine (main process only)
 //
-// Networking and filesystem mutation for the web-UI bundle live ONLY here (and
-// the thin main.ts wiring that calls it). Never in the renderer.
+// The runtime (SPA + engine) is the single npm package @dimm-city/print-md.
+// Networking and filesystem mutation live ONLY here (and the thin main.ts
+// wiring that calls it). Never in the renderer.
 //
 // Flow:
-//   checkForUpdate()  -> finds newest web-v* release, validates+verifies its
-//                        manifest, applies the downgrade/failed/compat gates.
-//   downloadAndStage()-> downloads the bundle zip, verifies it, extracts into
+//   checkForUpdate()  -> resolve the newest version for the channel from the
+//                        npm registry; apply compat/downgrade/failed/newer gates.
+//   downloadAndStage()-> download the tarball, verify it against the registry
+//                        SSRI integrity, extract dist/ + ui/ + package.json into
 //                        versions/<v>.staging with path-traversal guards, then
-//                        atomically renames to versions/<v> and records
-//                        staged.json. Staging != current.
+//                        atomically rename to versions/<v> and record staged.json.
 //   promoteStaged()   -> previous := current; current := staged; clear staged.
 //   rollback()        -> current := previous; record bad version as failed.
-//   pruneVersions()   -> after a healthy promote, rm version dirs that are not
-//                        the current/previous pointer path. Only inside
-//                        web-runtime/versions/.
+//   pruneVersions()   -> after a healthy promote, rm version dirs not pointed to.
 //
 // All public functions are failure-tolerant: they log via console.warn/error
 // and return structured results; they never throw out to callers.
@@ -23,7 +22,6 @@
 
 import path from "node:path";
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { unzipSync } from "fflate";
 import { compareSemver } from "./semver.js";
 
 import {
@@ -37,41 +35,19 @@ import {
   type Pointer,
   type State,
 } from "./web-runtime.js";
+import { DESKTOP_API } from "./contract.js";
 import {
-  DESKTOP_API,
-  isSigningKeyConfigured,
-  type UpdateManifest,
-} from "./contract.js";
-import { validateManifest } from "./manifest-validator.js";
-import { verifyManifestSignature, verifyBundle } from "./verify.js";
+  resolveCandidate,
+  type Channel,
+  type UpdateCandidate,
+} from "./npm-source.js";
+import { verifyIntegrity } from "./integrity.js";
+import { readTarGz } from "./tar.js";
 
-export const GITHUB_REPO = "dimm-city/print-md";
-
-const DEFAULT_RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
-
-// Test/diagnostic override for the releases feed. When set, the updater fetches
-// the release list from this URL instead of the real GitHub API. The response
-// must have the same shape as GET /repos/:owner/:repo/releases. This exists so
-// the full check→download→verify→stage→promote pipeline can be exercised
-// end-to-end against a local fixture server (signatures are still verified
-// against the baked public key — the override does NOT weaken verification).
-// Never set in production; the loud warning makes accidental use visible.
-let warnedFeedOverride = false;
-function releasesUrl(): string {
-  const override = process.env.PRINT_MD_UPDATER_FEED_URL;
-  if (override) {
-    if (!warnedFeedOverride) {
-      warnedFeedOverride = true;
-      console.warn(
-        `[updater] PRINT_MD_UPDATER_FEED_URL override active: ${override}`
-      );
-    }
-    return override;
-  }
-  return DEFAULT_RELEASES_URL;
+/** Channel to track. Override only for testing the beta (next) line. */
+function channel(): Channel {
+  return process.env.PRINT_MD_UPDATER_CHANNEL === "beta" ? "beta" : "stable";
 }
-
-const WEB_TAG_RE = /^web-v(.+)$/;
 
 // ──────────────────────────────────────────────────────────────────────────
 // In-memory phase tracking + in-flight guard (mirrors activeExportSession in
@@ -85,22 +61,20 @@ let lastError: string | null = null;
 let availableVersion: string | null = null;
 let inFlight: Promise<unknown> | null = null;
 
-// Newest release found by the last checkForUpdate(), reused by downloadAndStage
-// to avoid a second identical GitHub API round-trip (and the extra rate-limit
-// hit) on the common check→stage path.
-let cachedRelease: { version: string; rel: GhRelease } | null = null;
+// Newest candidate found by the last checkForUpdate(), reused by downloadAndStage
+// to avoid a second identical registry round-trip on the common check→stage path.
+let cachedCandidate: UpdateCandidate | null = null;
 
-// Network guards: every fetch is time-bounded so a stalled connection can't
-// hang an IPC handler forever, and downloads are size-capped to prevent a
-// compromised/oversized release from exhausting memory (the integrity check
-// runs only after the full buffer is resident, so the cap must come first).
+// Network guards: every fetch is time-bounded so a stalled connection can't hang
+// an IPC handler forever, and downloads are size-capped to prevent an oversized
+// release from exhausting memory (integrity runs only after the full buffer is
+// resident, so the cap must come first).
 const FETCH_TIMEOUT_MS = 30_000;
-const MAX_BUNDLE_BYTES = 256 * 1024 * 1024; // 256 MB hard ceiling
-const MAX_META_BYTES = 1 * 1024 * 1024; // manifest/sig are tiny
+const MAX_TARBALL_BYTES = 256 * 1024 * 1024; // 256 MB hard ceiling
 
 // A version is only treated as permanently bad after this many health-gate
 // failures, so a single transient miss (slow cold start, window closed before
-// markReady) does not blocklist an otherwise-good bundle forever.
+// markReady) does not blocklist an otherwise-good runtime forever.
 const MAX_HEALTH_FAILURES = 2;
 
 /** Failure count recorded for a version; legacy string entries = blocked. */
@@ -135,8 +109,7 @@ export interface UpdaterStatus {
 
 // ──────────────────────────────────────────────────────────────────────────
 // staged.json — a dedicated small pointer for a verified-but-not-promoted
-// bundle. The shared State interface is fixed, so staged info lives here.
-// { version, path } where path is the ABSOLUTE versions/<version> dir.
+// runtime. { version, path } where path is the ABSOLUTE versions/<version> dir.
 // ──────────────────────────────────────────────────────────────────────────
 
 interface Staged {
@@ -169,66 +142,6 @@ export async function clearStaged(): Promise<void> {
   await rm(stagedPath(), { force: true }).catch(() => {});
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-// GitHub releases — web-v* line only. Never /releases/latest (installer line).
-// ──────────────────────────────────────────────────────────────────────────
-
-interface GhAsset {
-  name: string;
-  browser_download_url: string;
-}
-interface GhRelease {
-  tag_name: string;
-  draft?: boolean;
-  prerelease?: boolean;
-  assets: GhAsset[];
-}
-
-async function fetchWebReleases(): Promise<GhRelease[]> {
-  const res = await fetch(releasesUrl(), {
-    headers: {
-      "User-Agent": "print-md-viewer-updater",
-      Accept: "application/vnd.github+json",
-    },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
-  if (!res.ok) {
-    throw new Error(`GitHub releases request failed: ${res.status} ${res.statusText}`);
-  }
-  const data = (await res.json()) as GhRelease[];
-  if (!Array.isArray(data)) {
-    throw new Error("GitHub releases response was not an array");
-  }
-  // Drafts AND prereleases are excluded: a GitHub pre-release (beta/rc) must
-  // never be auto-delivered to the stable channel. There is no beta channel.
-  return data.filter(
-    (r) => WEB_TAG_RE.test(r.tag_name) && !r.draft && !r.prerelease
-  );
-}
-
-/** Version string extracted from a web-v* tag. */
-function tagVersion(tagName: string): string | null {
-  const m = WEB_TAG_RE.exec(tagName);
-  return m ? m[1]! : null;
-}
-
-/** Newest web-v* release by semver of its tag version. */
-function pickNewest(releases: GhRelease[]): GhRelease | null {
-  let best: { rel: GhRelease; version: string } | null = null;
-  for (const rel of releases) {
-    const v = tagVersion(rel.tag_name);
-    if (!v) continue;
-    if (!best || compareSemver(v, best.version) > 0) {
-      best = { rel, version: v };
-    }
-  }
-  return best?.rel ?? null;
-}
-
-function findAsset(rel: GhRelease, name: string): GhAsset | null {
-  return rel.assets.find((a) => a.name === name) ?? null;
-}
-
 async function downloadBuffer(url: string, maxBytes: number): Promise<Buffer> {
   const res = await fetch(url, {
     headers: { "User-Agent": "print-md-viewer-updater" },
@@ -249,14 +162,12 @@ async function downloadBuffer(url: string, maxBytes: number): Promise<Buffer> {
   return Buffer.from(ab);
 }
 
-/** Effective current web-UI version: current pointer || baseline manifest. */
+/** Effective current runtime version: current pointer || baseline manifest. */
 async function effectiveCurrentVersion(): Promise<string> {
-  // The UI actually loaded is the NEWER of the baked-in baseline and any
-  // promoted bundle — resolveWebRoot() serves the baked UI whenever it is >=
-  // the pointer. Compare against that maximum so a published web bundle is only
-  // treated as "newer" when it beats what is genuinely on screen. Returning the
-  // raw pointer here (ignoring a newer baked baseline) is what made a freshly
-  // built/upgraded app keep pulling and promoting an OLDER published bundle.
+  // The runtime actually loaded is the NEWER of the baked-in baseline and any
+  // promoted bundle — resolveActive() serves the baked runtime whenever it is >=
+  // the pointer. Compare against that maximum so a published version is only
+  // treated as "newer" when it beats what is genuinely running.
   const baseline = await readBaselineVersion();
   const ptr = await readPointer("current");
   if (ptr?.version && compareSemver(ptr.version, baseline) > 0) {
@@ -271,12 +182,11 @@ async function effectiveCurrentVersion(): Promise<string> {
 
 /**
  * Record a check outcome that indicates a PROBLEM with the published release
- * (bad/missing metadata, failed signature) rather than a benign "nothing new".
- * Sets phase=error + lastError so getStatus() reports it and the manual
- * "Check for updates" path surfaces the reason to the user instead of a
- * misleading "You're up to date". Benign outcomes (no releases, already up to
- * date, downgrade floor, …) must NOT use this — they stay phase=idle so the
- * silent startup check never alarms anyone.
+ * (incomplete metadata) rather than a benign "nothing new". Sets phase=error +
+ * lastError so getStatus() reports it and the manual "Check for updates" path
+ * surfaces the reason. Benign outcomes (no version, already up to date,
+ * downgrade floor, …) must NOT use this — they stay phase=idle so the silent
+ * startup check never alarms anyone.
  */
 function checkProblem(reason: string): { available: null; reason: string } {
   phase = "error";
@@ -287,65 +197,27 @@ function checkProblem(reason: string): { available: null; reason: string } {
 }
 
 export async function checkForUpdate(): Promise<{
-  available: UpdateManifest | null;
+  available: UpdateCandidate | null;
   reason?: string;
 }> {
   phase = "checking";
   lastError = null;
   try {
-    const releases = await fetchWebReleases();
-    const newest = pickNewest(releases);
+    const { candidate, reason } = await resolveCandidate(channel());
 
     // Record the check time regardless of outcome.
     const state = await readState();
     state.lastCheckAt = new Date().toISOString();
     await writeState(state);
 
-    if (!newest) {
+    if (!candidate) {
       phase = "idle";
       availableVersion = null;
-      return { available: null, reason: "no web-ui releases found" };
+      return { available: null, reason: reason ?? "no published version" };
     }
 
-    // Cache the newest release so downloadAndStage need not re-fetch the list.
-    const newestVersion = tagVersion(newest.tag_name);
-    if (newestVersion) cachedRelease = { version: newestVersion, rel: newest };
-
-    const manifestAsset = findAsset(newest, "update-manifest.json");
-    const sigAsset = findAsset(newest, "update-manifest.json.sig");
-    if (!manifestAsset || !sigAsset) {
-      // A web-v release that lacks its metadata is a publishing defect, not a
-      // benign "nothing new" — surface it (phase error → manual check toasts).
-      return checkProblem("release missing manifest or signature asset");
-    }
-
-    // The two metadata files are independent — fetch them concurrently.
-    const [manifestBytes, sigBytes] = await Promise.all([
-      downloadBuffer(manifestAsset.browser_download_url, MAX_META_BYTES),
-      downloadBuffer(sigAsset.browser_download_url, MAX_META_BYTES),
-    ]);
-
-    // Signature: fail closed. Distinguish "key not configured" (placeholder
-    // shipped) from a genuine verification failure so the diagnostic is useful.
-    if (!verifyManifestSignature(manifestBytes, sigBytes.toString("utf8").trim())) {
-      const reason = isSigningKeyConfigured()
-        ? "manifest signature verification failed"
-        : "updater signing key not configured (placeholder public key)";
-      if (!isSigningKeyConfigured()) {
-        console.warn(`[updater] ${reason} — no updates will be applied`);
-      }
-      return checkProblem(reason);
-    }
-
-    let manifest: UpdateManifest;
-    try {
-      manifest = validateManifest(JSON.parse(manifestBytes.toString("utf8")));
-    } catch (e) {
-      return checkProblem(`manifest validation failed: ${(e as Error).message}`);
-    }
-
-    // Compatibility gate.
-    if (manifest.requiresDesktopApi > DESKTOP_API) {
+    // Compatibility gate: never pull a runtime that needs a newer shell.
+    if (candidate.requiresDesktopApi > DESKTOP_API) {
       phase = "idle";
       availableVersion = null;
       return { available: null, reason: "needs newer app" };
@@ -354,7 +226,7 @@ export async function checkForUpdate(): Promise<{
     // Downgrade guard: ignore versions <= minimumSeenVersion.
     if (
       state.minimumSeenVersion &&
-      compareSemver(manifest.version, state.minimumSeenVersion) <= 0
+      compareSemver(candidate.version, state.minimumSeenVersion) <= 0
     ) {
       phase = "idle";
       availableVersion = null;
@@ -362,7 +234,7 @@ export async function checkForUpdate(): Promise<{
     }
 
     // Skip versions that have failed the health gate too many times.
-    if (isVersionBlocked(state, manifest.version)) {
+    if (isVersionBlocked(state, candidate.version)) {
       phase = "idle";
       availableVersion = null;
       return { available: null, reason: "version previously failed" };
@@ -370,15 +242,16 @@ export async function checkForUpdate(): Promise<{
 
     // Strictly newer than current?
     const current = await effectiveCurrentVersion();
-    if (compareSemver(manifest.version, current) <= 0) {
+    if (compareSemver(candidate.version, current) <= 0) {
       phase = "idle";
       availableVersion = null;
       return { available: null, reason: "already up to date" };
     }
 
+    cachedCandidate = candidate;
     phase = "idle";
-    availableVersion = manifest.version;
-    return { available: manifest };
+    availableVersion = candidate.version;
+    return { available: candidate };
   } catch (e) {
     lastError = (e as Error).message;
     phase = "error";
@@ -391,9 +264,8 @@ export async function checkForUpdate(): Promise<{
 // downloadAndStage
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Reject any zip entry that would escape `root` (.. segments or absolute). */
+/** Reject any tar entry that would escape `root` (.. segments or absolute). */
 function safeJoin(root: string, entryName: string): string | null {
-  // fflate normalizes separators to "/" already; reject absolute and traversal.
   if (entryName.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(entryName)) return null;
   if (entryName.split(/[\\/]/).some((seg) => seg === "..")) return null;
   const target = path.resolve(root, entryName);
@@ -401,8 +273,21 @@ function safeJoin(root: string, entryName: string): string | null {
   return target;
 }
 
+/**
+ * Files the viewer actually needs from the package tarball: the engine (dist/,
+ * minus the unused CLI binary and type declarations) + the SPA (ui/) + the
+ * package.json (carries the version the diagnostics read). Everything else
+ * (README, LICENSE) is skipped to keep the extracted runtime lean.
+ */
+function wantedEntry(name: string): boolean {
+  if (name === "package.json") return true;
+  if (name.endsWith(".d.ts")) return false;
+  if (name === "dist/cli.js") return false;
+  return name.startsWith("dist/") || name.startsWith("ui/");
+}
+
 export async function downloadAndStage(
-  manifest: UpdateManifest
+  candidate: UpdateCandidate
 ): Promise<{ staged: boolean; reason?: string }> {
   if (inFlight) {
     return { staged: false, reason: "an update operation is already in progress" };
@@ -410,82 +295,50 @@ export async function downloadAndStage(
   const run = (async (): Promise<{ staged: boolean; reason?: string }> => {
     phase = "downloading";
     lastError = null;
-    const version = manifest.version;
-    const downloadsDir = path.join(webRuntimeDir(), "downloads");
-    const partPath = path.join(downloadsDir, `web-v${version}.zip.part`);
-    const zipPath = path.join(downloadsDir, `web-v${version}.zip`);
+    const version = candidate.version;
     const versionsDir = path.join(webRuntimeDir(), "versions");
     const stagingDir = path.join(versionsDir, `${version}.staging`);
     const finalDir = path.join(versionsDir, version);
 
     try {
-      await mkdir(downloadsDir, { recursive: true });
+      await mkdir(versionsDir, { recursive: true });
 
-      // Locate the bundle on the matching web-v* release. Reuse the release
-      // cached by checkForUpdate when it matches; otherwise fetch the list.
-      let rel: GhRelease | null =
-        cachedRelease?.version === version ? cachedRelease.rel : null;
-      if (!rel) {
-        const releases = await fetchWebReleases();
-        rel = releases.find((r) => tagVersion(r.tag_name) === version) ?? null;
-      }
-      if (!rel) {
-        phase = "error";
-        return { staged: false, reason: "release for staged version not found" };
-      }
-      const bundleAsset = findAsset(rel, manifest.assets.bundle.name);
-      if (!bundleAsset) {
-        phase = "error";
-        return { staged: false, reason: "bundle asset not found on release" };
-      }
-
-      // Download to .part, then verify, then rename to .zip. The signed
-      // manifest's size is trusted (sig verified upstream), so cap the download
-      // near it, bounded by the absolute ceiling.
-      const cap = Math.min(
-        MAX_BUNDLE_BYTES,
-        Math.max(manifest.assets.bundle.size, 0) + 4096
-      );
-      const zipBytes = await downloadBuffer(bundleAsset.browser_download_url, cap);
-      await writeFile(partPath, zipBytes);
-
-      const integrity = verifyBundle(zipBytes, manifest.assets.bundle);
+      // Download the tarball and verify it against the registry SSRI integrity
+      // BEFORE touching disk beyond the in-memory buffer.
+      const tgzBytes = await downloadBuffer(candidate.tarball, MAX_TARBALL_BYTES);
+      const integrity = verifyIntegrity(tgzBytes, candidate.integrity);
       if (!integrity.ok) {
-        await rm(partPath, { force: true }).catch(() => {});
         phase = "error";
-        return { staged: false, reason: `bundle verification failed: ${integrity.reason}` };
+        return { staged: false, reason: `integrity check failed: ${integrity.reason}` };
       }
-      await rename(partPath, zipPath);
 
       // Fresh staging dir.
       await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
       await mkdir(stagingDir, { recursive: true });
 
-      // Extract with traversal guards on EVERY entry.
-      const entries = unzipSync(new Uint8Array(zipBytes));
-      for (const [name, data] of Object.entries(entries)) {
-        if (name.endsWith("/")) continue; // directory marker
-        const target = safeJoin(stagingDir, name);
+      // Extract the wanted entries with traversal guards on EVERY entry.
+      const entries = readTarGz(new Uint8Array(tgzBytes));
+      for (const entry of entries) {
+        if (!wantedEntry(entry.name)) continue;
+        const target = safeJoin(stagingDir, entry.name);
         if (!target) {
           await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
-          await rm(zipPath, { force: true }).catch(() => {});
           phase = "error";
-          return { staged: false, reason: `unsafe zip entry rejected: ${name}` };
+          return { staged: false, reason: `unsafe tar entry rejected: ${entry.name}` };
         }
         await mkdir(path.dirname(target), { recursive: true });
-        await writeFile(target, Buffer.from(data));
+        await writeFile(target, Buffer.from(entry.data));
       }
 
-      // Post-extract structural assertions.
-      const indexOk = await fileExists(path.join(stagingDir, "index.html"));
-      const appOk = await dirExists(path.join(stagingDir, "_app"));
-      if (!indexOk || !appOk) {
+      // Post-extract structural assertions: both engine and SPA must be present.
+      const libOk = await fileExists(path.join(stagingDir, "dist", "index.js"));
+      const uiOk = await fileExists(path.join(stagingDir, "ui", "index.html"));
+      if (!libOk || !uiOk) {
         await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
-        await rm(zipPath, { force: true }).catch(() => {});
         phase = "error";
         return {
           staged: false,
-          reason: "extracted bundle missing index.html or _app/",
+          reason: "extracted package missing dist/index.js or ui/index.html",
         };
       }
 
@@ -496,9 +349,6 @@ export async function downloadAndStage(
       // Record staged pointer (NOT current).
       await writeStaged({ version, path: finalDir });
 
-      // Downloaded zip is no longer needed once extracted.
-      await rm(zipPath, { force: true }).catch(() => {});
-
       phase = "staged";
       availableVersion = version;
       return { staged: true };
@@ -506,7 +356,6 @@ export async function downloadAndStage(
       lastError = (e as Error).message;
       phase = "error";
       console.warn("[updater] downloadAndStage failed (non-fatal):", lastError);
-      await rm(partPath, { force: true }).catch(() => {});
       await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
       return { staged: false, reason: lastError };
     }
@@ -526,13 +375,6 @@ async function fileExists(p: string): Promise<boolean> {
     return false;
   }
 }
-async function dirExists(p: string): Promise<boolean> {
-  try {
-    return (await stat(p)).isDirectory();
-  } catch {
-    return false;
-  }
-}
 
 // ──────────────────────────────────────────────────────────────────────────
 // promoteStaged — used by "apply on next launch" AND "apply now".
@@ -547,9 +389,9 @@ export async function promoteStaged(): Promise<{
     const staged = await readStaged();
     if (!staged) return { promoted: false };
 
-    // The staged dir must still have a valid index.html.
-    if (!(await fileExists(path.join(staged.path, "index.html")))) {
-      console.warn("[updater] staged bundle missing index.html; clearing staged");
+    // The staged dir must still have a valid SPA entry.
+    if (!(await fileExists(path.join(staged.path, "ui", "index.html")))) {
+      console.warn("[updater] staged runtime missing ui/index.html; clearing staged");
       await clearStaged();
       return { promoted: false };
     }
@@ -599,8 +441,8 @@ export async function rollback(reason: string): Promise<boolean> {
       await writePointer("current", previous);
       state.currentVersion = previous.version;
     } else {
-      // No previous to fall back to — drop the current pointer so resolveWebRoot
-      // returns the bundled-in-asar build.
+      // No previous to fall back to — drop the current pointer so resolveActive
+      // returns the bundled-in-asar runtime.
       await rm(path.join(webRuntimeDir(), "current.json"), { force: true }).catch(
         () => {}
       );
@@ -672,11 +514,8 @@ export async function getStatus(): Promise<UpdaterStatus> {
   const current = await readPointer("current");
   const staged = await readStaged();
   const state = await readState();
-  // Report the version actually SERVED, mirroring resolveWebRoot()'s rule: a
+  // Report the version actually SERVED, mirroring resolveActive()'s rule: a
   // promoted pointer only wins if it is strictly newer than the baked baseline.
-  // Otherwise the baked UI is on screen, so currentVersion must be the baseline
-  // — not a stale pointer left in userData (which previously made the Help
-  // modal show e.g. 0.2.3 while 0.3.0 was actually rendered).
   const baseline = await readBaselineVersion();
   const currentVersion =
     current && compareSemver(current.version, baseline) > 0

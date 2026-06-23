@@ -316,6 +316,14 @@ jobs:
         run: bun run build
         working-directory: packages/lib
 
+      # The published @dimm-city/print-md package is the single runtime: it must
+      # contain the viewer SPA under ui/ (build-npm.ts copies packages/viewer/
+      # build → ui/) so the desktop viewer can download+serve it at runtime
+      # (docs/runtime-lib-update-plan.md). Build the SPA before publish.
+      - name: Build viewer SPA (bundled into the npm package as ui/)
+        run: bun run build
+        working-directory: packages/viewer
+
       # OIDC trusted publishing (no long-lived token) requires npm >= 11.5.1;
       # node 20 ships npm 10.x, so update it. Provenance attestation is implied
       # by trusted publishing but kept explicit below.

@@ -130,28 +130,55 @@ export function bundledWebRoot(): string {
   return path.resolve(__dirname, "../../build");
 }
 
-export async function resolveWebRoot(): Promise<string> {
+// The bare module specifier for the baked-in library: when no newer runtime is
+// promoted, the Electron main process imports the lib bundled in the asar via
+// this specifier (resolves to node_modules/@dimm-city/print-md/dist/index.js).
+export const BUNDLED_LIB_SPECIFIER = "@dimm-city/print-md";
+
+export interface ActiveRuntime {
+  /** Version actually active (promoted bundle's, or the baked baseline). */
+  version: string;
+  /** Directory the app:// protocol serves the SPA from. */
+  webRoot: string;
+  /**
+   * Absolute path to the active library entry (versions/<v>/dist/index.js) when
+   * a newer runtime is promoted; null means "use the baked-in asar lib via
+   * BUNDLED_LIB_SPECIFIER".
+   */
+  libEntry: string | null;
+}
+
+/**
+ * Resolve the active runtime — BOTH the SPA web root and the library entry —
+ * from a single promoted pointer. A promoted runtime is an extracted npm
+ * package: `versions/<v>/ui` (SPA) + `versions/<v>/dist/index.js` (engine). It
+ * wins only when STRICTLY NEWER than the baked-in baseline AND both halves are
+ * present on disk; otherwise the app falls back wholesale to the baked SPA +
+ * asar lib (never a mismatched mix). The pointer path is containment-guarded
+ * (isInsideVersions) so a poisoned pointer can't redirect the app:// root or the
+ * library import outside versions/.
+ */
+export async function resolveActive(): Promise<ActiveRuntime> {
+  const baseline = await readBaselineVersion();
   try {
     const ptr = await readPointer("current");
-    if (ptr && isInsideVersions(ptr.path)) {
-      // A promoted web bundle only wins if it is STRICTLY NEWER than the
-      // baked-in baseline. Otherwise the app's own shipped UI is at least as
-      // new and must take precedence — a fresh install or an upgraded desktop
-      // build must never be shadowed by an older promoted bundle still sitting
-      // in userData (e.g. web-v0.2.3 promoted before the app was bumped to
-      // 0.3.0). resolveWebRoot used to honor any current pointer
-      // unconditionally, which made stale promotions permanently override
-      // newer baked UI.
-      const baseline = await readBaselineVersion();
-      if (compareSemver(ptr.version, baseline) > 0) {
-        await readFile(path.join(ptr.path, "index.html"));
-        return ptr.path;
-      }
+    if (ptr && isInsideVersions(ptr.path) && compareSemver(ptr.version, baseline) > 0) {
+      const webRoot = path.join(ptr.path, "ui");
+      const libEntry = path.join(ptr.path, "dist", "index.js");
+      // Both halves must exist or we use neither (avoid a UI/engine mismatch).
+      await readFile(path.join(webRoot, "index.html"));
+      await readFile(libEntry);
+      return { version: ptr.version, webRoot, libEntry };
     }
   } catch {
-    // fall through to bundled root
+    // fall through to baked-in runtime
   }
-  return bundledWebRoot();
+  return { version: baseline, webRoot: bundledWebRoot(), libEntry: null };
+}
+
+/** Back-compat thin wrapper: just the SPA web root from {@link resolveActive}. */
+export async function resolveWebRoot(): Promise<string> {
+  return (await resolveActive()).webRoot;
 }
 
 // Containment guard: a current.json pointer is only honored if it resolves to a

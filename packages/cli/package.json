@@ -35,8 +35,12 @@
       "default": "./dist/index.js"
     }
   },
+  "printmd": {
+    "requiresDesktopApi": 2
+  },
   "files": [
     "dist/",
+    "ui/",
     "README.md",
     "LICENSE"
   ],

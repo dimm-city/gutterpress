@@ -24,9 +24,11 @@ import {
   clearRecovery as clearRecoveryStore,
   listRecovery as listRecoveryStore,
 } from "./recovery";
+import { pathToFileURL } from "node:url";
 import {
   ensureLayout,
-  resolveWebRoot,
+  resolveActive,
+  BUNDLED_LIB_SPECIFIER,
   readPointer,
   readState,
   writeState,
@@ -498,9 +500,39 @@ class ExportCanceledError extends Error {
 
 function loadLib(): Promise<LibModule> {
   if (!libPromise) {
-    libPromise = import("@dimm-city/print-md") as Promise<LibModule>;
+    // Load the active library: a promoted runtime's dist/index.js (resolved by
+    // absolute file URL so an update applies without a new installer), or the
+    // baked-in asar lib via its bare specifier when nothing newer is promoted.
+    libPromise = (async () => {
+      const { libEntry } = await resolveActive();
+      const spec = libEntry ? pathToFileURL(libEntry).href : BUNDLED_LIB_SPECIFIER;
+      return (await import(spec)) as LibModule;
+    })();
   }
   return libPromise;
+}
+
+// Main-process health probe for the active library. The renderer's markReady
+// proves the SPA booted but says nothing about the engine — a runtime whose
+// dist/index.js fails to load or parse would leave every IPC handler erroring
+// behind a healthy-looking window. Resets the cache, re-imports the active lib
+// under a timeout, and calls one pure export (splitOutPath) to confirm the
+// module parsed and is callable. Used after a promote to gate rollback.
+async function probeLibHealth(): Promise<boolean> {
+  libPromise = null;
+  try {
+    const lib = await Promise.race([
+      loadLib(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("lib health probe timed out")), 5000)
+      ),
+    ]);
+    lib.splitOutPath(undefined, "pdf");
+    return true;
+  } catch (e) {
+    console.warn("[updater] lib health probe failed:", (e as Error).message);
+    return false;
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -1807,7 +1839,7 @@ function createWindow() {
 let activeWebRoot = path.resolve(__dirname, "../../build");
 
 async function refreshWebRoot(): Promise<void> {
-  activeWebRoot = await resolveWebRoot();
+  activeWebRoot = (await resolveActive()).webRoot;
 }
 
 const MIME: Record<string, string> = {
@@ -3873,6 +3905,17 @@ ipcMain.handle("updater:applyNow", async () => {
   const { promoted, version } = await promoteStaged();
   if (!promoted || !version) return { applied: false };
   await refreshWebRoot();
+  // Probe the promoted ENGINE in-process before reloading the UI: a runtime
+  // whose dist/index.js won't load must roll back immediately (the renderer's
+  // markReady can't prove the engine works). resetting libPromise happens inside
+  // probeLibHealth so the next loadLib() picks up whichever lib wins.
+  if (!(await probeLibHealth())) {
+    await rollback("library health probe failed after promote");
+    await refreshWebRoot();
+    libPromise = null;
+    sendUpdaterEvent({ type: "rolledback", version });
+    return { applied: false };
+  }
   armHealthWatchdog(version);
   mainWindow?.webContents.reload();
   return { applied: true, version };
@@ -3981,7 +4024,17 @@ app.whenReady().then(async () => {
       const current = await readPointer("current");
       const state = await readState();
       if (current && state.lastHealthyVersion !== current.version) {
-        armHealthWatchdog(current.version);
+        // Probe the promoted engine in-process first; a library that fails to
+        // load must roll back to the previous/baked runtime immediately rather
+        // than wait on the renderer watchdog (which only checks the SPA).
+        if (!(await probeLibHealth())) {
+          await rollback("library health probe failed at startup");
+          await refreshWebRoot();
+          libPromise = null;
+          sendUpdaterEvent({ type: "rolledback", version: current.version });
+        } else {
+          armHealthWatchdog(current.version);
+        }
       }
     } catch (err) {
       console.warn("[updater] health-gate arming failed (non-fatal):", err);

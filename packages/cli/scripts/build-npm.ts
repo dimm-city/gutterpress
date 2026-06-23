@@ -127,3 +127,30 @@ if (dtsCount === 0) {
   process.exit(1);
 }
 console.log(`✓ dist/ type declarations copied from lib (${dtsCount} files)`);
+
+// ── Bundle the viewer SPA into ui/ ────────────────────────────────────────────
+// `@dimm-city/print-md` is the single runtime package: the Electron viewer
+// downloads it from npm and serves the SPA from ui/ + loads the engine from
+// dist/index.js (docs/runtime-lib-update-plan.md). Copy the built SvelteKit
+// static output (packages/viewer/build) into ui/. Requires the viewer to have
+// been built first — in a release the viewer SPA build runs before this. When
+// absent (CLI-only dev build), warn loudly but don't fail: a published package
+// without ui/ simply can't drive viewer runtime updates.
+const viewerBuild = join(ROOT, "../viewer/build");
+await rm(join(ROOT, "ui"), { recursive: true, force: true });
+if (await Bun.file(join(viewerBuild, "index.html")).exists()) {
+  let uiCount = 0;
+  for (const rel of new Bun.Glob("**/*").scanSync({ cwd: viewerBuild })) {
+    const dest = join(ROOT, "ui", rel);
+    await mkdir(dirname(dest), { recursive: true });
+    await copyFile(join(viewerBuild, rel), dest);
+    uiCount++;
+  }
+  console.log(`✓ ui/ SPA copied from viewer build (${uiCount} files)`);
+} else {
+  console.warn(
+    "⚠ packages/viewer/build/index.html not found — publishing WITHOUT ui/. " +
+      "Build the viewer SPA first (npm --prefix packages/viewer run build) for a " +
+      "release that can drive viewer runtime updates.",
+  );
+}
