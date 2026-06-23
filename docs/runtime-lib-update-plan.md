@@ -189,6 +189,58 @@ current/previous slots, prune, failed-version blocklist, the renderer watchdog.
 
 ---
 
+## 7a. Implementation status (live)
+
+- **Phase 1 — package consolidation: ✅ DONE, committed `847b89e`, reviewed, green.**
+  `@dimm-city/print-md` is the single package (CLI bin + self-contained
+  `dist/index.js` lib entry + copied `.d.ts`); viewer migrated off
+  `@dimm-city/print-md-lib`. svelte-check 0/0; viewer 451 + lib 882 + cli 12 pass.
+- **Phase 2a — npm source primitives: ✅ DONE, committed `51719a1`, green.**
+  `tar.ts` (gunzip + USTAR reader, strips `package/`), `integrity.ts` (SSRI
+  verify, fail-closed), `npm-source.ts` (packument → `UpdateCandidate` per
+  channel) + 13 unit tests. Not yet wired into the engine.
+- **Phase 2b — engine + main rewire + test migration: ⏳ REMAINING.** Spec below.
+
+### Phase 2b spec (one atomic, verified change)
+
+Simplification adopted to cut churn: **reuse the existing `web-runtime.ts` store
+and its `<userData>/web-runtime/` dir** — do NOT introduce a parallel
+`runtime-store.ts` or migrate the userData path (pure churn + a 358-line test
+migration for a cosmetic rename). Just teach the existing store to resolve the
+lib entry alongside the web root.
+
+1. **`web-runtime.ts`** — add `resolveActive(): Promise<{ version, webRoot, libEntry }>`:
+   when the `current` pointer is inside `versions/` AND strictly newer than the
+   baked baseline AND `versions/<v>/ui/index.html` + `versions/<v>/dist/index.js`
+   exist → `{ webRoot: <v>/ui, libEntry: <v>/dist/index.js }`; else
+   `{ webRoot: bundledWebRoot(), libEntry: null }` (null = use the bare asar
+   specifier `@dimm-city/print-md`). Keep `resolveWebRoot()` as a thin
+   `resolveActive().webRoot` wrapper so existing callers/tests are untouched.
+2. **`index.ts`** — replace the GitHub-release path with npm: `checkForUpdate`
+   calls `resolveCandidate(channel)`; `downloadAndStage` downloads the tarball
+   (cap), `verifyIntegrity(bytes, candidate.integrity)`, `readTarGz`, extracts
+   `dist/` + `ui/` + `package.json` into `versions/<v>/` under the traversal
+   guard, asserts `dist/index.js` + `ui/index.html`. Keep promote/rollback/prune/
+   blocklist/downgrade-floor unchanged. Compat gate: `candidate.requiresDesktopApi
+   > DESKTOP_API`.
+3. **`main.ts`** — `loadLib()` → `const { libEntry } = await resolveActive();`
+   `import(libEntry ? pathToFileURL(libEntry).href : "@dimm-city/print-md")`;
+   `refreshWebRoot()` uses `resolveActive().webRoot`; on promote set
+   `libPromise = null` before `webContents.reload()` and run a main-process lib
+   health probe (`lib.classifyGitError(...)`), rolling back on failure.
+4. **Delete** `verify.ts` (+ `verify.test.ts`), `manifest-validator.ts` (+ test),
+   and the Ed25519 bits of `contract.ts` (`WEB_UI_PUBLIC_KEY`,
+   `isSigningKeyConfigured`, `UpdateManifest`); keep `DESKTOP_API`.
+5. **`engine.test.ts`** — swap the GitHub-releases fixture server for an npm
+   packument + tarball fixture server (build a `.tgz` with the `tar.test.ts`
+   helper); assert the full check→download→verify→extract→promote→rollback path.
+6. **Package fields (deferred from P1)** — add `printmd.requiresDesktopApi` to
+   `@dimm-city/print-md` package.json; extend `build-npm.ts` to copy
+   `packages/viewer/build/` → `ui/` and add `ui` to `files`.
+7. **CI** — `release.yml` keeps publishing `@dimm-city/print-md` (OIDC +
+   provenance); ensure it includes `dist/index.js` + `ui/`. Retire
+   `release-web-ui.yml` + the signing key.
+
 ## 8. Risks / spikes
 
 - **R1 — puppeteer-core (✅ RESOLVED, spike 2026-06-23):** it is already lazily imported
