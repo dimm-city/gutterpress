@@ -23,8 +23,17 @@
     "url": "https://github.com/dimm-city/print-md/issues"
   },
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
     "print-md": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/lib-entry.ts",
+      "default": "./dist/index.js"
+    }
   },
   "files": [
     "dist/",
@@ -32,8 +41,9 @@
     "LICENSE"
   ],
   "scripts": {
+    "build:lib": "bun --cwd ../lib run build && bun scripts/build-npm.ts",
     "build:npm": "bun scripts/build-npm.ts",
-    "prepublishOnly": "bun run build:npm",
+    "prepublishOnly": "bun run build:lib",
     "compile": "bun scripts/compile.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"

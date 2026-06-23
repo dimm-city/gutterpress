@@ -8,7 +8,7 @@
    * the gate — never leave the promise hanging.
    *
    * PWA-clean (CLAUDE.md §8 / ADR 0004):
-   *  - NO value imports from @dimm-city/print-md-lib
+   *  - NO value imports from @dimm-city/print-md
    *  - NO node:* / fs / path / url / isomorphic-git imports
    *  - All host work via getPlatform()
    */

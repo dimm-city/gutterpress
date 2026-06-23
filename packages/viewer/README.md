@@ -192,7 +192,7 @@ packages/viewer/
 
 The viewer supports **silent, incremental updates to the SvelteKit SPA bundle**.
 Only the UI layer is auto-updated. The Electron shell, Node.js runtime, and
-`@dimm-city/print-md-lib` are **not** auto-updated — they ship as part of the
+`@dimm-city/print-md` are **not** auto-updated — they ship as part of the
 platform installer (`v*` tag line) and must be upgraded by re-downloading and
 re-installing the app.
 
@@ -202,7 +202,7 @@ re-installing the app.
 |---|---|
 | SvelteKit SPA (`build/`) | Auto-update via `web-v*` releases |
 | Electron shell / Node runtime | Manual installer re-download (`v*` releases) |
-| `@dimm-city/print-md-lib` | Manual installer re-download (`v*` releases) |
+| `@dimm-city/print-md` | Manual installer re-download (`v*` releases) |
 
 The SPA is a pure static bundle (HTML/JS/CSS). Swapping it requires only a file
 system pointer swap and a `BrowserWindow` reload — no process restart, no
@@ -442,7 +442,7 @@ created during `electron:hmr` or `electron:dev` runs.
 - **Build** — `electron-vite` builds the ESM main + preload into `out/`
   (externalizing electron + the lib); SvelteKit's adapter-static builds the
   renderer into `build/`. No CJS↔ESM interop trick: the ESM main just does
-  `await import("@dimm-city/print-md-lib")`, cached so subsequent IPC calls
+  `await import("@dimm-city/print-md")`, cached so subsequent IPC calls
   reuse the module. Packaged with asar (puppeteer-core unpacked).
 - **Preview iframe** — `lib.startPreviewServer` returns an `http://127.0.0.1:N`
   URL that the renderer puts in `<iframe src={url}>`. Iframe is cross-origin

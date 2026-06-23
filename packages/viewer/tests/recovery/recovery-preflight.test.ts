@@ -23,7 +23,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { classifyFromHealth } from "../../electron/recovery-bridge";
-import type { RepoHealth } from "@dimm-city/print-md-lib";
+import type { RepoHealth } from "@dimm-city/print-md";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

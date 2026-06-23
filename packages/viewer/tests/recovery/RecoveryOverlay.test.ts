@@ -6,7 +6,7 @@
  * target state after the component is implemented.
  *
  * Coverage areas:
- * 1. PWA-cleanliness: the module must not value-import @dimm-city/print-md-lib
+ * 1. PWA-cleanliness: the module must not value-import @dimm-city/print-md
  * 2. "recovering" state: correct phase copy, no dismiss affordance, a11y attrs
  * 3. Escape/backdrop ignored while recovering (non-dismissable mid-repair)
  * 4. "recovered" state: calm success copy, Done button fires onDone
@@ -56,14 +56,14 @@ describe("PWA-cleanliness (CLAUDE.md §8 / ADR 0004)", () => {
     expect(() => readSource()).not.toThrow();
   });
 
-  test("does not value-import @dimm-city/print-md-lib (import type only)", () => {
+  test("does not value-import @dimm-city/print-md (import type only)", () => {
     const src = readSource();
     // Any non-type import of the lib in the SPA is a §8 violation.
     // "import type { … } from …" is fine — it's erased at build time.
     // A value import (e.g. bare import { X } or import X from the lib) is forbidden.
     // We allow: import type
     const valueImportPattern =
-      /import\s+(?!type\s)(?:\{[^}]*\}|[\w*]+)\s+from\s+["']@dimm-city\/print-md-lib["']/;
+      /import\s+(?!type\s)(?:\{[^}]*\}|[\w*]+)\s+from\s+["']@dimm-city\/print-md["']/;
     expect(valueImportPattern.test(src)).toBe(false);
   });
 
@@ -520,12 +520,12 @@ describe("out:fade cross-fade (LoadingOverlay structural match)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // (This is the test FILE'S own PWA-cleanliness check — meta.)
 
-test("this test file itself does not value-import @dimm-city/print-md-lib", () => {
+test("this test file itself does not value-import @dimm-city/print-md", () => {
   const testSrc = readFileSync(
     resolve(import.meta.dir, "RecoveryOverlay.test.ts"),
     "utf-8",
   );
   const valueImportPattern =
-    /import\s+(?!type\s)(?:\{[^}]*\}|[\w*]+)\s+from\s+["']@dimm-city\/print-md-lib["']/;
+    /import\s+(?!type\s)(?:\{[^}]*\}|[\w*]+)\s+from\s+["']@dimm-city\/print-md["']/;
   expect(valueImportPattern.test(testSrc)).toBe(false);
 });

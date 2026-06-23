@@ -2,7 +2,7 @@ appId: city.dimm.print-md-viewer
 productName: print-md-viewer
 
 # The ESM Electron main (out/main/main.js, built by electron-vite) dynamic-
-# imports @dimm-city/print-md-lib from node_modules at runtime (electron/main.ts
+# imports @dimm-city/print-md from node_modules at runtime (electron/main.ts
 # loadLib()). The lib's package.json `files` field constrains what ships (dist/ +
 # profiles/). electron-builder copies the lib and its transitive deps
 # (puppeteer-core, markdown-it, etc.) automatically from the workspace
@@ -11,11 +11,16 @@ files:
   - out/**
   - build/**
   - package.json
+  # The viewer loads @dimm-city/print-md's self-contained library entry
+  # (dist/index.js) in the main process; it never runs the CLI binary (cli.js,
+  # ~4.5MB) nor needs the bundled .d.ts declarations. Exclude both from the asar.
+  - "!**/node_modules/@dimm-city/print-md/dist/cli.js"
+  - "!**/node_modules/@dimm-city/print-md/dist/**/*.d.ts"
 
 extraMetadata:
   main: out/main/main.js
 
-# The viewer depends on the private workspace lib via `"@dimm-city/print-md-lib":
+# The viewer depends on the private workspace lib via `"@dimm-city/print-md":
 # "workspace:*"`. electron-builder must NOT run `npm install --production` during
 # packaging — npm rejects the `workspace:*` protocol (EUNSUPPORTEDPROTOCOL) and
 # the lib is unpublished. We rely on the already-installed (bun) workspace
@@ -36,7 +41,7 @@ directories:
   buildResources: build-resources
 
 # Native deps and large optionals are installed via the viewer's package.json
-# dependencies (@dimm-city/print-md-lib → its transitive deps). electron-builder
+# dependencies (@dimm-city/print-md → its transitive deps). electron-builder
 # copies them automatically from the workspace node_modules at packaging time.
 linux:
   target:

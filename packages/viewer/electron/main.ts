@@ -86,7 +86,7 @@ slog("main.js evaluated");
 // ──────────────────────────────────────────────────────────────────────────
 // Lib loader
 //
-// Both this main process and @dimm-city/print-md-lib are ESM, so it's a plain
+// Both this main process and @dimm-city/print-md are ESM, so it's a plain
 // dynamic import. The lib ships as a normal node_modules package (its package
 // "files" field limits what electron-builder packages to dist/ + profiles/) —
 // no afterPack hook, no symlink dance, no require()/Function() interop trick.
@@ -498,7 +498,7 @@ class ExportCanceledError extends Error {
 
 function loadLib(): Promise<LibModule> {
   if (!libPromise) {
-    libPromise = import("@dimm-city/print-md-lib") as Promise<LibModule>;
+    libPromise = import("@dimm-city/print-md") as Promise<LibModule>;
   }
   return libPromise;
 }
@@ -2642,7 +2642,7 @@ ipcMain.handle(
 // ── New-project scaffold (#25) ───────────────────────────────────────────────
 // Thin pass-through to the shared lib's scaffoldProject — the scaffolding logic
 // (template copy, placeholder fill, optional Git init via isomorphic-git) lives
-// in @dimm-city/print-md-lib, NOT here (issue #25 requirement). The renderer
+// in @dimm-city/print-md, NOT here (issue #25 requirement). The renderer
 // wizard collects inputs and the lib does the work.
 ipcMain.handle(
   "app:createProject",
