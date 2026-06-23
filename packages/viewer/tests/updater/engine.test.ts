@@ -336,4 +336,89 @@ describe("promote → status → rollback", () => {
         .catch(() => false),
     ).toBe(true);
   });
+
+  test("promoteStaged refuses a staged dir whose ui/index.html vanished", async () => {
+    setRegistry({ latest: NEWER }, [publish(NEWER)]);
+    const { available } = await checkForUpdate();
+    await downloadAndStage(available!);
+    await rm(path.join(webRuntimeDir(), "versions", NEWER, "ui", "index.html"), { force: true });
+    const { promoted } = await promoteStaged();
+    expect(promoted).toBe(false);
+    expect(await readStaged()).toBeNull();
+  });
+});
+
+// ── security + edge cases ────────────────────────────────────────────────────
+
+describe("security + edge cases", () => {
+  test("rejects a tar entry that tries to traverse out of the staging dir", async () => {
+    setRegistry({ latest: NEWER }, [
+      publish(NEWER, {
+        files: {
+          "package/package.json": JSON.stringify({ name: "@dimm-city/print-md", version: NEWER }),
+          "package/dist/index.js": "export const x = 1;",
+          "package/ui/index.html": "<!doctype html>",
+          // Passes wantedEntry (starts with dist/) but escapes via ../ — must be
+          // rejected by safeJoin, aborting the stage.
+          "package/dist/../../../evil.js": "pwned",
+        },
+      }),
+    ]);
+    const { available } = await checkForUpdate();
+    const res = await downloadAndStage(available!);
+    expect(res.staged).toBe(false);
+    expect(res.reason).toContain("unsafe tar entry");
+    // Nothing escaped: no evil.js beside web-runtime/.
+    const escaped = path.join(webRuntimeDir(), "..", "evil.js");
+    expect(await stat(escaped).then(() => true).catch(() => false)).toBe(false);
+  });
+
+  test("rejects a candidate whose version string is not path-safe", async () => {
+    const res = await downloadAndStage({
+      version: "../../evil",
+      tarball: `${base}/t/x.tgz`,
+      integrity: "sha512-AAAA",
+      requiresDesktopApi: 0,
+    });
+    expect(res.staged).toBe(false);
+    expect(res.reason).toContain("unsafe version");
+  });
+
+  test("the in-flight guard rejects a concurrent downloadAndStage", async () => {
+    setRegistry({ latest: NEWER }, [publish(NEWER)]);
+    const { available } = await checkForUpdate();
+    const [a, b] = await Promise.all([
+      downloadAndStage(available!),
+      downloadAndStage(available!),
+    ]);
+    const results = [a, b];
+    expect(results.filter((r) => r.staged)).toHaveLength(1);
+    expect(results.find((r) => !r.staged)?.reason).toContain("already in progress");
+  });
+
+  test("a single health failure (count=1) does NOT block the version", async () => {
+    const state = await readState();
+    state.failedVersions[NEWER] = { reason: "transient", count: 1 };
+    await writeState(state);
+    setRegistry({ latest: NEWER }, [publish(NEWER)]);
+    const { available } = await checkForUpdate();
+    expect(available?.version).toBe(NEWER);
+  });
+
+  test("a legacy string failedVersions entry is treated as blocked", async () => {
+    const state = await readState();
+    (state.failedVersions as Record<string, unknown>)[NEWER] = "blocked by old format";
+    await writeState(state);
+    setRegistry({ latest: NEWER }, [publish(NEWER)]);
+    const { available, reason } = await checkForUpdate();
+    expect(available).toBeNull();
+    expect(reason).toBe("version previously failed");
+  });
+
+  test("getStatus reports phase=error after a failed stage", async () => {
+    setRegistry({ latest: NEWER }, [publish(NEWER, { integrityOverride: "sha512-AAAA" })]);
+    const { available } = await checkForUpdate();
+    await downloadAndStage(available!);
+    expect((await getStatus()).phase).toBe("error");
+  });
 });

@@ -394,6 +394,21 @@ describe("resolveActive", () => {
       expect(active.libEntry).toBeNull();
     });
   });
+
+  test("falls back when inside versions/ but ui/index.html is absent (engine present)", async () => {
+    await withTempDir(async (tmpDir) => {
+      // The mirror of the previous case: a path that IS inside versions/ and has
+      // the engine but no SPA entry — still a wholesale fallback.
+      const root = path.join(tmpDir, "web-runtime", "versions", "999.0.0");
+      await mkdir(path.join(root, "dist"), { recursive: true });
+      await writeFile(path.join(root, "dist", "index.js"), "export {};", "utf8");
+      await writePointer("current", { version: "999.0.0", path: root });
+
+      const active = await resolveActive();
+      expect(active.webRoot).toBe(bundledWebRoot());
+      expect(active.libEntry).toBeNull();
+    });
+  });
 });
 
 // ── webRuntimeDir ─────────────────────────────────────────────────────────

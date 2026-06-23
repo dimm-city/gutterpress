@@ -11,7 +11,7 @@
 // closed on anything we can't check.
 // ──────────────────────────────────────────────────────────────────────────
 
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 const ALGO_STRENGTH: Record<string, number> = { sha512: 3, sha384: 2, sha256: 1 };
 
@@ -40,9 +40,9 @@ function parseSsri(integrity: string): { algorithm: string; base64: string }[] {
 
 /**
  * Verify `bytes` against an SSRI `integrity` string. Picks the strongest hash
- * present (sha512 > sha384 > sha256), recomputes it, and constant-comparison is
- * unnecessary here (the expected digest is public), so a plain string compare of
- * the base64 digests is used. Fails closed: unknown/empty integrity → not ok.
+ * present (sha512 > sha384 > sha256), recomputes it, and compares the raw digest
+ * buffers with timingSafeEqual. Fails closed: unknown/empty integrity, an
+ * unparseable expected digest, or a length/value mismatch → not ok.
  */
 export function verifyIntegrity(
   bytes: Uint8Array,
@@ -56,13 +56,15 @@ export function verifyIntegrity(
     (a, b) => (ALGO_STRENGTH[b.algorithm] ?? 0) - (ALGO_STRENGTH[a.algorithm] ?? 0),
   );
   const { algorithm, base64 } = hashes[0]!;
-  let actual: string;
+  let actual: Buffer;
+  let expected: Buffer;
   try {
-    actual = createHash(algorithm).update(bytes).digest("base64");
+    actual = createHash(algorithm).update(bytes).digest();
+    expected = Buffer.from(base64, "base64");
   } catch (e) {
-    return { ok: false, reason: `hash failed: ${(e as Error).message}` };
+    return { ok: false, reason: `hash failed: ${(e as Error).message}`, algorithm };
   }
-  if (actual !== base64) {
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     return { ok: false, reason: `${algorithm} mismatch`, algorithm };
   }
   return { ok: true, algorithm };

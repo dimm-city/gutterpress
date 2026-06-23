@@ -51,6 +51,15 @@ describe("resolveCandidate from the npm registry", () => {
   });
 
   test("beta channel resolves the 'next' dist-tag; requiresDesktopApi defaults to 0", async () => {
+    packument = {
+      "dist-tags": { latest: "0.6.0", next: "0.7.0-rc.1" },
+      versions: {
+        "0.7.0-rc.1": {
+          version: "0.7.0-rc.1",
+          dist: { tarball: `${base}/t/0.7.0.tgz`, integrity: "sha512-BBBB" },
+        },
+      },
+    };
     const { candidate } = await resolveCandidate("beta");
     expect(candidate?.version).toBe("0.7.0-rc.1");
     expect(candidate?.requiresDesktopApi).toBe(0);

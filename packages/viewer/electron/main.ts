@@ -508,6 +508,12 @@ function loadLib(): Promise<LibModule> {
       const spec = libEntry ? pathToFileURL(libEntry).href : BUNDLED_LIB_SPECIFIER;
       return (await import(spec)) as LibModule;
     })();
+    // Never cache a rejected import: a transient failure (disk hiccup, a
+    // mid-rollback read) must not permanently disable every lib-backed IPC —
+    // the next loadLib() retries. The current caller still sees the rejection.
+    libPromise.catch(() => {
+      libPromise = null;
+    });
   }
   return libPromise;
 }
@@ -3900,8 +3906,21 @@ ipcMain.handle("updater:check", async () => {
   return getStatus();
 });
 
+let applyInFlight = false;
 ipcMain.handle("updater:applyNow", async () => {
   if (!updaterEnabled()) return { applied: false };
+  // Single-flight: a double-invoked applyNow must not run two concurrent
+  // promote/probe/rollback sequences racing on the same pointers.
+  if (applyInFlight) return { applied: false };
+  applyInFlight = true;
+  try {
+    return await doApplyNow();
+  } finally {
+    applyInFlight = false;
+  }
+});
+
+async function doApplyNow(): Promise<{ applied: boolean; version?: string }> {
   const { promoted, version } = await promoteStaged();
   if (!promoted || !version) return { applied: false };
   await refreshWebRoot();
@@ -3919,7 +3938,7 @@ ipcMain.handle("updater:applyNow", async () => {
   armHealthWatchdog(version);
   mainWindow?.webContents.reload();
   return { applied: true, version };
-});
+}
 
 ipcMain.handle("updater:markReady", async () => {
   // No-op when nothing is pending (e.g. a normal startup with no update).

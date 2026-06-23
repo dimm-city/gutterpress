@@ -61,9 +61,10 @@ let lastError: string | null = null;
 let availableVersion: string | null = null;
 let inFlight: Promise<unknown> | null = null;
 
-// Newest candidate found by the last checkForUpdate(), reused by downloadAndStage
-// to avoid a second identical registry round-trip on the common check→stage path.
-let cachedCandidate: UpdateCandidate | null = null;
+// A version string is interpolated into filesystem paths (versions/<v>), so it
+// must be a safe semver-ish token even though it originates from the registry —
+// reject anything that could traverse or escape (path separators, .., NUL, …).
+const SAFE_VERSION = /^[A-Za-z0-9][A-Za-z0-9.+-]*$/;
 
 // Network guards: every fetch is time-bounded so a stalled connection can't hang
 // an IPC handler forever, and downloads are size-capped to prevent an oversized
@@ -248,7 +249,6 @@ export async function checkForUpdate(): Promise<{
       return { available: null, reason: "already up to date" };
     }
 
-    cachedCandidate = candidate;
     phase = "idle";
     availableVersion = candidate.version;
     return { available: candidate };
@@ -264,12 +264,13 @@ export async function checkForUpdate(): Promise<{
 // downloadAndStage
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Reject any tar entry that would escape `root` (.. segments or absolute). */
+/** Reject any tar entry that would escape `root` (.. segments or absolute) or
+ * resolve to `root` itself (an empty/"." entry is not valid file content). */
 function safeJoin(root: string, entryName: string): string | null {
   if (entryName.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(entryName)) return null;
   if (entryName.split(/[\\/]/).some((seg) => seg === "..")) return null;
   const target = path.resolve(root, entryName);
-  if (target !== root && !target.startsWith(root + path.sep)) return null;
+  if (target === root || !target.startsWith(root + path.sep)) return null;
   return target;
 }
 
@@ -296,6 +297,12 @@ export async function downloadAndStage(
     phase = "downloading";
     lastError = null;
     const version = candidate.version;
+    // Defense-in-depth: never build a filesystem path from an unsafe version
+    // (the version comes from the registry; a hostile one could traverse).
+    if (!SAFE_VERSION.test(version)) {
+      phase = "error";
+      return { staged: false, reason: `unsafe version string: ${version}` };
+    }
     const versionsDir = path.join(webRuntimeDir(), "versions");
     const stagingDir = path.join(versionsDir, `${version}.staging`);
     const finalDir = path.join(versionsDir, version);

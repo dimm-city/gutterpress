@@ -63,14 +63,19 @@ function registryBase(): string {
 
 /** Registry URL for the runtime package's packument (scoped name is encoded). */
 export function packumentUrl(): string {
-  return `${registryBase()}/${RUNTIME_PACKAGE.replace("/", "%2f")}`;
+  // Encode the scope slash (%2f) but keep the leading @ — the npm registry's
+  // canonical form for a scoped packument. replaceAll guards a malformed name.
+  return `${registryBase()}/${RUNTIME_PACKAGE.replace(/\//g, "%2f")}`;
 }
 
 async function fetchPackument(): Promise<Packument> {
   const res = await fetch(packumentUrl(), {
     headers: {
       "User-Agent": "print-md-viewer-updater",
-      // Abbreviated packument: smaller, still carries dist + dist-tags.
+      // Abbreviated packument: smaller, still carries dist + dist-tags. NOTE:
+      // npmjs.com includes custom package.json fields (printmd.requiresDesktopApi)
+      // in this format; a proxy that strips them makes requiresDesktopApi default
+      // to 0 (= "compatible with any shell") — fail-open on compat by design.
       Accept: "application/vnd.npm.install-v1+json, application/json",
     },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -78,11 +83,18 @@ async function fetchPackument(): Promise<Packument> {
   if (!res.ok) {
     throw new Error(`registry request failed: ${res.status} ${res.statusText}`);
   }
+  // Cap the body BEFORE parsing: an absent/mendacious Content-Length must not let
+  // a hostile registry stream an unbounded packument into the heap (mirrors the
+  // post-buffer cap on the tarball download).
   const declared = Number(res.headers?.get?.("content-length") ?? "");
   if (Number.isFinite(declared) && declared > MAX_PACKUMENT_BYTES) {
     throw new Error(`packument too large: ${declared} bytes`);
   }
-  return (await res.json()) as Packument;
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength > MAX_PACKUMENT_BYTES) {
+    throw new Error(`packument too large: ${buf.byteLength} bytes`);
+  }
+  return JSON.parse(new TextDecoder().decode(buf)) as Packument;
 }
 
 /**

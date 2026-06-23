@@ -13,9 +13,12 @@ files:
   - package.json
   # The viewer loads @dimm-city/print-md's self-contained library entry
   # (dist/index.js) in the main process; it never runs the CLI binary (cli.js,
-  # ~4.5MB) nor needs the bundled .d.ts declarations. Exclude both from the asar.
+  # ~4.5MB) nor needs the bundled .d.ts declarations. The SPA it serves is the
+  # baked build/ (above), NOT the package's ui/ (that copy is only for the npm
+  # runtime download). Exclude all three from the asar.
   - "!**/node_modules/@dimm-city/print-md/dist/cli.js"
   - "!**/node_modules/@dimm-city/print-md/dist/**/*.d.ts"
+  - "!**/node_modules/@dimm-city/print-md/ui/**"
 
 extraMetadata:
   main: out/main/main.js
