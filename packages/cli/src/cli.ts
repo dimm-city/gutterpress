@@ -1,6 +1,7 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 import { defineCommand, runMain } from "citty";
+import pkg from "../package.json" with { type: "json" };
 
 // Subcommands are loaded lazily so `--version` and `--help` (and any single
 // subcommand) only pay the import cost of what they actually use — e.g.
@@ -18,13 +19,10 @@ const SUBCOMMANDS = {
   preflight: () => import("./commands/preflight").then((m) => m.default),
 } as const;
 
-// Injected at build time by scripts/compile.ts and scripts/build-npm.ts (Bun
-// `define`) from packages/cli/package.json. The compiled binary cannot read
-// package.json at runtime (CLAUDE.md §3), so the version is baked in. Falls back
-// to a dev marker when run from source via `bun src/cli.ts`.
-declare const __PMD_VERSION__: string | undefined;
-const VERSION =
-  typeof __PMD_VERSION__ === "string" ? __PMD_VERSION__ : "0.0.0-dev";
+// The package.json version is inlined by the bundler at build time (a JSON
+// import, not a runtime read), so the standalone binary — which can't read
+// package.json at runtime (CLAUDE.md §3) — still reports the right version.
+const VERSION = pkg.version;
 
 const main = defineCommand({
   meta: {

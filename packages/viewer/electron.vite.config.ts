@@ -6,7 +6,7 @@ import { dirname, resolve } from "node:path";
 // "type": "module"). The renderer is NOT built here: it's a SvelteKit
 // adapter-static SPA built separately by `vite build` into build/, and served
 // by main via the app:// protocol. externalizeDepsPlugin keeps the runtime deps
-// (@dimm-city/print-md-lib and its graph) out of the bundle so electron-builder
+// (@dimm-city/print-md and its graph) out of the bundle so electron-builder
 // ships them from node_modules.
 const root = dirname(fileURLToPath(import.meta.url));
 
@@ -37,7 +37,7 @@ export default defineConfig({
         // own injected require banner ("Identifier 'require' has already been
         // declared") and crashes the main process on launch. It's a production
         // dependency, so electron-builder ships it from node_modules.
-        external: ["electron", "@dimm-city/print-md-lib", "fflate"],
+        external: ["electron", "@dimm-city/print-md", "fflate"],
         input: resolve(root, "electron/main.ts"),
         output: { format: "es", entryFileNames: "main.js" },
       },

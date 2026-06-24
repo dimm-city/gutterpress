@@ -104,7 +104,7 @@ function loadPreviewApi(pages, pagesWidth = 808) {
     __dirname,
     "..",
     "..",
-    "lib",
+    "cli",
     "src",
     "assets",
     "preview",

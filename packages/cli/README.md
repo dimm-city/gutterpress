@@ -223,7 +223,7 @@ The binary is self-contained except for the system tools described in [User Guid
 
 ## Development
 
-This package is part of the [print-md monorepo](../../README.md). The CLI itself is a thin shell over [`@dimm-city/print-md-lib`](../lib/) — almost all logic lives there.
+This package is part of the [print-md monorepo](../../README.md). It is the single published package — both the runtime library (`exports`) and the `print-md` CLI (`bin`) live here under `src/`.
 
 ```sh
 # From repo root

@@ -10,7 +10,7 @@
  *
  * NEVER imported by the renderer. Node/lib-side only.
  *
- * NOTE: The lib module is declared as `declare module "@dimm-city/print-md-lib"`
+ * NOTE: The lib module is declared as `declare module "@dimm-city/print-md"`
  * (no .d.ts yet), so we CANNOT use the lib's TypeScript types here. All types
  * for the lib's surface are defined locally below, structurally compatible with
  * the runtime values the lib returns.
@@ -24,7 +24,7 @@ import type { HostCredential } from "./credential-store";
 
 // ── Local type mirrors for the lib recovery surface ───────────────────────────
 // These mirror the lib's types but are defined locally because the lib has no
-// .d.ts yet (types.d.ts declares `declare module "@dimm-city/print-md-lib"`).
+// .d.ts yet (types.d.ts declares `declare module "@dimm-city/print-md"`).
 
 export interface RepairConfirmation {
   repair: string;
@@ -285,7 +285,7 @@ export async function buildRecoveryContext(
 
 const STALE_LOCK_THRESHOLD_MS = 120_000; // 2 minutes
 // MUST stay in sync with recover-stale-lock.ts's STALE_THRESHOLD_MS
-// (packages/lib/src/lib/remote-auth/recovery/recover-stale-lock.ts). If the
+// (packages/cli/src/lib/remote-auth/recovery/recover-stale-lock.ts). If the
 // preflight gate is SHORTER than the handler's threshold, a lock whose age sits
 // between the two values passes preflight (classified stale_lock) but the
 // handler then returns retry_later ("too fresh") — an infinite preflight→retry

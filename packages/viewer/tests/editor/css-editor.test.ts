@@ -7,7 +7,7 @@ import {
   pagedMediaCompletionSource,
 } from "../../src/lib/editor/css-editor";
 import { __resetPlatform } from "../../src/lib/platform/index";
-import { checkCss, type PrintSafeWarning } from "@dimm-city/print-md-lib";
+import { checkCss, type PrintSafeWarning } from "@dimm-city/print-md";
 import { EditorState } from "@codemirror/state";
 import { CompletionContext } from "@codemirror/autocomplete";
 

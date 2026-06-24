@@ -18,8 +18,8 @@ on:
     paths:
       - "packages/viewer/src/**"
       - "packages/viewer/electron/**"
-      - "packages/lib/src/preview/**"
-      - "packages/lib/src/assets/preview/**"
+      - "packages/cli/src/preview/**"
+      - "packages/cli/src/assets/preview/**"
       - "packages/viewer/tests/perf/**"
       - ".github/workflows/render-perf-gate.yml"
   workflow_dispatch:
@@ -43,7 +43,7 @@ jobs:
         run: bun install
 
       - name: Build lib
-        run: bun run build:lib
+        run: bun run build
 
       - name: Build viewer (SPA + electron main)
         working-directory: packages/viewer

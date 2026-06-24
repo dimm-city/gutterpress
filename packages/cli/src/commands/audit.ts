@@ -1,6 +1,6 @@
 import { defineCommand } from "citty";
 import { resolve } from "node:path";
-import { log, executeAndReport, type OutputFormat } from "@dimm-city/print-md-lib";
+import { log, executeAndReport, type OutputFormat } from "../index.ts";
 
 export default defineCommand({
   meta: { name: "audit", description: "Run asset-only validation checks" },

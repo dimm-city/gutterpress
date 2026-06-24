@@ -12,9 +12,9 @@ runs:
     - name: Install workspace deps
       shell: bash
       run: bun install --frozen-lockfile
-    - name: Build lib dist
+    - name: Build package dist
       shell: bash
-      working-directory: packages/lib
+      working-directory: packages/cli
       run: bun run build
     - name: Package viewer (dist:win)
       shell: bash

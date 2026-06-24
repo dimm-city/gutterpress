@@ -6,7 +6,7 @@ import {
   reportMissingTools,
   executeValidation,
   type ValidationExecutionResult,
-} from "@dimm-city/print-md-lib";
+} from "../index.ts";
 
 type PreflightStatus = "GO" | "FIX" | "NO-GO";
 

@@ -7,7 +7,7 @@ import {
   BuildError,
   type BuildFormat,
   type PdfxFlavor,
-} from "@dimm-city/print-md-lib";
+} from "../index.ts";
 
 function parseFormat(raw: unknown): BuildFormat {
   if (raw === undefined || raw === "") return "pdf";

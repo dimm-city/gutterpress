@@ -73,8 +73,7 @@ Browse the [`examples/`](./examples/) directory for real projects you can copy:
 ```
 print-md/
 ├─ packages/
-│  ├─ cli/        — @dimm-city/print-md       — npm CLI + standalone binary
-│  ├─ lib/        — @dimm-city/print-md-lib   — shared runtime (markdown, preview, build, lint)
+│  ├─ cli/        — @dimm-city/print-md       — library + CLI + standalone binary (markdown, preview, build, lint)
 │  └─ viewer/     — @dimm-city/print-md-viewer — Electron desktop app
 ├─ examples/      — Sample projects
 └─ docs/          — Authoring, architecture, system requirements

@@ -21,7 +21,7 @@ const scriptPath = path.resolve(
   __dirname,
   "..",
   "..",
-  "lib",
+  "cli",
   "src",
   "assets",
   "preview",

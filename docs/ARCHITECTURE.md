@@ -19,11 +19,10 @@ This document describes the architecture, design decisions, and implementation d
 
 ### Monorepo structure
 
-The repo is a Bun workspace with three packages:
+The repo is a Bun workspace with two packages:
 
-- **`packages/cli/`** (`@dimm-city/print-md`) — CLI binary. Thin shell over `@dimm-city/print-md-lib`. Distributed as a standalone compiled binary via `bun build --compile`.
-- **`packages/lib/`** (`@dimm-city/print-md-lib`, private) — all runtime logic: markdown rendering, preview HTTP server, PDF generation, lint, validation. Pure ESM. Consumed by both the CLI and the viewer as a workspace dependency.
-- **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron + SvelteKit desktop app. Imports `@dimm-city/print-md-lib` as a workspace dependency.
+- **`packages/cli/`** (`@dimm-city/print-md`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). Standard build: `bun build` (3 entrypoints, `--packages=external`) + `tsc` for `.d.ts`. Also distributed as a standalone compiled binary via `bun build --compile`.
+- **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron + SvelteKit desktop app. Depends on `@dimm-city/print-md` (workspace) and loads its library entry in the Electron main process.
 
 ### Key Features
 
@@ -625,7 +624,7 @@ See [User Guide: Chapter 6 — Plugins](../examples/print-md-user-guide/06-plugi
   served by Electron through a custom `app://` protocol handler. No
   in-process HTTP server, no bundled Bun runtime. The renderer reaches
   the lib through `ipcMain.handle()` rather than `fetch()`.
-- The lib (`@dimm-city/print-md-lib`) is Node.js-compatible at runtime
+- The lib (`@dimm-city/print-md`) is Node.js-compatible at runtime
   (`node:http` + `ws` instead of `Bun.serve`, `node:fs` instead of
   `Bun.file`). Electron's bundled Node runs it directly via a dynamic
   `import()` from main.js — no subprocess required.
@@ -726,4 +725,4 @@ export function validateSafePath(targetPath: string, basePath: string): boolean 
 ---
 
 **Last Updated**: 2026-06-03
-**Version**: 0.2.0 (packages/cli + packages/lib + packages/viewer)
+**Version**: 0.2.0 (packages/cli + packages/viewer)

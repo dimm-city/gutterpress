@@ -1,7 +1,7 @@
 import { defineCommand } from "citty";
 import { resolve } from "node:path";
-import { scaffoldProject } from "@dimm-city/print-md-lib";
-import type { CreateProjectError } from "@dimm-city/print-md-lib";
+import { scaffoldProject } from "../index.ts";
+import type { CreateProjectError } from "../index.ts";
 
 /**
  * `print-md new` — scaffold a new project from an embedded starter template.

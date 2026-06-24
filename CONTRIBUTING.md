@@ -89,17 +89,16 @@ bun run electron:dev # Full Electron + SvelteKit
 ```
 print-md/                        # Workspace root (private)
 ├── packages/
-│   ├── cli/                     # @dimm-city/print-md — CLI (thin shell over print-md-lib)
+│   ├── cli/                     # @dimm-city/print-md — library + CLI (all runtime logic + the print-md command)
 │   │   ├── src/
-│   │   │   ├── cli.ts           # CLI entry point
+│   │   │   ├── cli.ts           # CLI entry point (bin)
+│   │   │   ├── index.ts         # Library entry (exports)
 │   │   │   ├── api/index.ts     # Library API (runBuild, startPreviewServer, …)
-│   │   │   ├── commands/        # Command implementations
-│   │   │   ├── lib/             # Core libraries
+│   │   │   ├── commands/        # CLI command implementations
+│   │   │   ├── lib/             # Core libraries (markdown, preview, PDF, lint)
 │   │   │   ├── checks/          # Validation check system
 │   │   │   └── preview/         # Headless preview server (Bun.serve + chokidar)
-│   │   ├── scripts/compile.ts   # Binary compile wrapper
 │   │   └── tests/               # Bun test suite
-│   ├── lib/                     # @dimm-city/print-md-lib — all runtime logic (markdown rendering, preview server, PDF generation)
 │   └── viewer/                  # @dimm-city/print-md-viewer — Electron + SvelteKit desktop app
 │       ├── electron/            # Electron main process
 │       └── src/                 # SvelteKit UI + server routes
