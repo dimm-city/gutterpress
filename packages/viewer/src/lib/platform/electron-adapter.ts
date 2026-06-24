@@ -60,17 +60,10 @@ import type {
   RecoveryConfirmRequest,
   ConflictPreview,
   FolderRef,
+  FileRef,
   PlatformCapabilities,
 } from "./contract";
-
-/**
- * Last non-empty path segment, splitting on both POSIX and Windows separators.
- * A tiny local helper (NOT node:path) so the renderer stays PWA-clean (§8 /
- * ADR 0004) — importing node:path as a value would drag node code into the SPA.
- */
-function basename(p: string): string {
-  return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
-}
+import { basenameOf, fileRef } from "./paths";
 
 function bridge(): ElectronBridge {
   const b = window.electron;
@@ -93,7 +86,7 @@ export class ElectronAdapter implements Platform {
   async openFolder(): Promise<FolderRef | null> {
     const path = await bridge().openDirectory();
     if (path == null) return null;
-    return { key: path, displayName: basename(path) };
+    return { key: path, displayName: basenameOf(path) };
   }
 
   readFile(path: string): Promise<string> {
@@ -151,9 +144,12 @@ export class ElectronAdapter implements Platform {
     return bridge().savePdf(defaultName);
   }
 
-  // Image pick / copy (#31) — editor toolbar Insert Image flow
-  pickImageFile(): Promise<string | null> {
-    return bridge().pickImageFile();
+  // Image pick / copy (#31) — editor toolbar Insert Image flow.
+  // #61: translation seam — the bridge returns the chosen path string; wrap it
+  // into a host-neutral FileRef (key = path, displayName = basename).
+  async pickImageFile(): Promise<FileRef | null> {
+    const path = await bridge().pickImageFile();
+    return path == null ? null : fileRef(path);
   }
 
   copyFile(srcPath: string, destDir: string): Promise<string> {
@@ -256,7 +252,7 @@ export class ElectronAdapter implements Platform {
     const rows = await bridge().getRecentFolders();
     return rows.map((r) => ({
       key: r.path,
-      displayName: basename(r.path),
+      displayName: basenameOf(r.path),
       title: r.title,
       openedAt: r.openedAt,
       exists: r.exists,
@@ -267,7 +263,7 @@ export class ElectronAdapter implements Platform {
     const rows = await bridge().getFavorites();
     return rows.map((f) => ({
       key: f.path,
-      displayName: basename(f.path),
+      displayName: basenameOf(f.path),
       title: f.title,
       exists: f.exists,
     }));

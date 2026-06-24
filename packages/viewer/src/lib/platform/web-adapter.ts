@@ -62,6 +62,7 @@ import type {
   RecoveryConfirmRequest,
   ConflictPreview,
   FolderRef,
+  FileRef,
   PlatformCapabilities,
 } from "./contract";
 
@@ -162,7 +163,8 @@ export class WebAdapter implements Platform {
   }
 
   // Image pick / copy (#31) — desktop-only in 0.4.x; stubs reject silently.
-  pickImageFile(): Promise<string | null> {
+  // #61: signature tracks the FileRef-returning contract (FSA picker in 0.6.0).
+  pickImageFile(): Promise<FileRef | null> {
     return rejectNotImplemented("pickImageFile");
   }
 

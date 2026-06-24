@@ -99,6 +99,9 @@ function makeBridge() {
     setDirtyState: rec("setDirtyState", Promise.resolve()),
     onFlushBeforeClose: rec("onFlushBeforeClose", () => {}),
     onFolderChanged: rec("onFolderChanged", () => {}),
+    // #31 Insert Image — single file picker (returns a raw path string at the bridge)
+    pickImageFile: rec("pickImageFile", Promise.resolve("/pick/cover.png")),
+    copyFile: rec("copyFile", Promise.resolve("/proj/assets/cover.png")),
     // #47 Media panel surface
     pickImageFiles: rec("pickImageFiles", Promise.resolve(["/pick/a.png"])),
     listProjectImages: rec(
@@ -428,6 +431,46 @@ test("WebAdapter: primitives throw, host methods reject, subscriptions are no-op
   await expect(p.listProjectImages("/p")).rejects.toThrow(/0\.6\.0/);
   await expect(p.imageThumbnail("/p/a.png")).resolves.toBeNull();
   await expect(p.inspectImage("/p/a.png")).resolves.toBeNull();
+});
+
+test("ElectronAdapter.pickImageFile wraps the bridge path → host-neutral FileRef (#61)", async () => {
+  const { bridge, calls } = makeBridge();
+  // @ts-expect-error test global
+  globalThis.window = { electron: bridge };
+  const p = new ElectronAdapter();
+
+  // #61: the bridge returns the chosen absolute path (a string); the adapter
+  // wraps it into a FileRef { key = path, displayName = basename } so the
+  // renderer never assumes path-string semantics (PWA/FSA-ready).
+  await expect(p.pickImageFile()).resolves.toEqual({
+    key: "/pick/cover.png",
+    displayName: "cover.png",
+  });
+  expect(calls.find((c) => c.method === "pickImageFile")?.args).toEqual([]);
+
+  // copyFile still takes/returns raw path strings (no FileRef at this seam).
+  await expect(p.copyFile("/pick/cover.png", "/proj/assets")).resolves.toBe(
+    "/proj/assets/cover.png",
+  );
+  expect(calls.find((c) => c.method === "copyFile")?.args).toEqual([
+    "/pick/cover.png",
+    "/proj/assets",
+  ]);
+});
+
+test("ElectronAdapter.pickImageFile returns null when the dialog is cancelled (#61)", async () => {
+  const { bridge } = makeBridge();
+  // dialog cancelled → bridge resolves null; adapter must return null, NOT fileRef(null).
+  (bridge as Record<string, unknown>).pickImageFile = () => Promise.resolve(null);
+  // @ts-expect-error test global
+  globalThis.window = { electron: bridge };
+  const p = new ElectronAdapter();
+  await expect(p.pickImageFile()).resolves.toBeNull();
+});
+
+test("WebAdapter.pickImageFile rejects until the PWA adapter lands (#61)", async () => {
+  const p = new WebAdapter();
+  await expect(p.pickImageFile()).rejects.toThrow(/0\.6\.0/);
 });
 
 test("ElectronAdapter delegates the #47 Media panel surface 1:1 to the bridge", async () => {

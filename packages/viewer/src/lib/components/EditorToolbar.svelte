@@ -18,6 +18,7 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { basenameOf } from "$lib/platform/paths";
 
   let {
     /** Current file path — toolbar is only active for .md files. */
@@ -115,9 +116,11 @@
     imageError = "";
     imageBusy = true;
     try {
+      // #61: the picker returns a host-neutral FileRef; the path math below
+      // operates on the raw host key.
       const picked = await getPlatform().pickImageFile();
       if (!picked) return;
-      imageSrc = picked;
+      imageSrc = picked.key;
       imageError = "";
     } catch {
       imageError = "Could not open the image picker.";
@@ -145,8 +148,7 @@
         const assetsDir = projectDir.replace(/[\\/]+$/, "") + sep + "assets";
         const copied = await getPlatform().copyFile(imageSrc, assetsDir);
         // Build a relative path from the project root (assets/filename).
-        const filename = copied.split(/[\\/]/).pop() ?? copied;
-        finalSrc = "assets/" + filename;
+        finalSrc = "assets/" + basenameOf(copied);
       } else if (projectDir) {
         // Image is inside the project: compute project-relative path.
         const norm = (s: string) => s.replace(/\\/g, "/");
@@ -154,7 +156,7 @@
         const srcNorm = norm(imageSrc);
         finalSrc = srcNorm.startsWith(projNorm + "/")
           ? srcNorm.slice(projNorm.length + 1)
-          : srcNorm.split("/").pop() ?? srcNorm;
+          : basenameOf(srcNorm);
       }
     } catch (e) {
       imageError =
@@ -164,7 +166,7 @@
     }
     onAction("image", {
       src: finalSrc,
-      alt: imageAlt || finalSrc.split(/[\\/]/).pop() || "image",
+      alt: imageAlt || basenameOf(finalSrc) || "image",
       width: imageWidth || undefined,
       position: imagePosition || undefined,
     });
