@@ -399,16 +399,31 @@ test("WebAdapter.getSettings returns defaults merged with localStorage, setSetti
 test("WebAdapter: primitives throw, host methods reject, subscriptions are no-ops", async () => {
   const p = new WebAdapter();
   expect(p.platform).toBe("web");
-  expect(() => p.openFolder()).toThrow(/0\.6\.0/);
-  expect(() => p.watchFolder("/p", () => {})).toThrow(/0\.6\.0/);
-  expect(() => p.listDir("/p")).toThrow(/0\.6\.0/);
+  // #33 Phase 1: the FSA fs primitives are implemented. With no folder opened
+  // (and no FSA picker on this environment) they fail gracefully rather than
+  // with the old 0.6.0 stub message:
+  //  - openFolder rejects "not supported" when showDirectoryPicker is absent.
+  //  - listDir/listProjectFiles reject because no root handle is registered.
+  //  - statFile resolves { exists:false } (never throws) so callers can probe.
+  await expect(p.openFolder()).rejects.toThrow(/File System Access|not supported/i);
+  await expect(p.listDir("web:none/p")).rejects.toThrow(/handle/i);
+  await expect(p.listProjectFiles("web:none")).rejects.toThrow(/handle/i);
+  await expect(p.statFile("web:none/p")).resolves.toEqual({
+    size: 0,
+    mtimeMs: 0,
+    exists: false,
+  });
+  // watchFolder: no FS-watch API on web, but the contract returns an unsubscribe
+  // fn — it must be a safe no-op, NOT a throw (callers do `const off = watch(...)`).
+  const off = p.watchFolder("/p", () => {});
+  expect(typeof off).toBe("function");
+  expect(() => off()).not.toThrow();
   await expect(
     p.startPreview({ input: { key: "/p", displayName: "p" } }),
   ).rejects.toThrow(/0\.6\.0/);
   await expect(p.setViewerPrefs({})).rejects.toThrow(/0\.6\.0/);
   await expect(p.getViewerProjectState("/p")).rejects.toThrow(/0\.6\.0/);
   await expect(p.setViewerProjectState("/p", {})).rejects.toThrow(/0\.6\.0/);
-  await expect(p.listProjectFiles("/p")).rejects.toThrow(/0\.6\.0/);
   // Project discovery resolves to [] on web (no scan), not a rejection.
   await expect(p.discoverProjects()).resolves.toEqual([]);
   await expect(p.classifyProject("/p")).rejects.toThrow(/0\.6\.0/);
@@ -416,9 +431,8 @@ test("WebAdapter: primitives throw, host methods reject, subscriptions are no-op
   // Subscriptions must return a callable unsubscribe (the app stores it).
   expect(typeof p.onBuildProgress(() => {})).toBe("function");
   expect(typeof p.onUrlPreviewBlocked(() => {})).toBe("function");
-  // #44 unsaved-changes surface is desktop-only: primitives throw, recovery
-  // writes reject, listRecovery resolves to [], subscriptions are no-ops.
-  expect(() => p.statFile("/p")).toThrow(/0\.6\.0/);
+  // #44 unsaved-changes surface is desktop-only: recovery writes reject,
+  // listRecovery resolves to [], subscriptions are no-ops.
   await expect(p.writeRecovery("/p", "x", 0)).rejects.toThrow(/0\.6\.0/);
   await expect(p.clearRecovery("/p")).rejects.toThrow(/0\.6\.0/);
   await expect(p.listRecovery("/p")).resolves.toEqual([]);
@@ -471,6 +485,175 @@ test("ElectronAdapter.pickImageFile returns null when the dialog is cancelled (#
 test("WebAdapter.pickImageFile rejects until the PWA adapter lands (#61)", async () => {
   const p = new WebAdapter();
   await expect(p.pickImageFile()).rejects.toThrow(/0\.6\.0/);
+});
+
+// ── #33 Phase 1: FSA fs primitives behind the WebAdapter ─────────────────────
+
+// A tiny in-memory FSA mock (same shape as web-fs.test.ts) so the adapter can be
+// exercised end-to-end (openFolder → read/write/list) without a real browser.
+function makeFsaTree() {
+  class MockFile {
+    readonly kind = "file" as const;
+    constructor(
+      public name: string,
+      public contents = "",
+      public lastModified = 1000,
+    ) {}
+    async getFile() {
+      return {
+        name: this.name,
+        lastModified: this.lastModified,
+        size: new TextEncoder().encode(this.contents).length,
+        text: () => Promise.resolve(this.contents),
+      };
+    }
+    async createWritable() {
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
+      const self = this;
+      return {
+        async write(d: string) {
+          self.contents = d;
+        },
+        async close() {
+          self.lastModified = 2000;
+        },
+      };
+    }
+  }
+  class MockDir {
+    readonly kind = "directory" as const;
+    children = new Map<string, MockFile | MockDir>();
+    constructor(public name: string) {}
+    addFile(n: string, c = "") {
+      const f = new MockFile(n, c);
+      this.children.set(n, f);
+      return f;
+    }
+    async getDirectoryHandle(n: string, o?: { create?: boolean }) {
+      let c = this.children.get(n);
+      if (!c && o?.create) c = (() => {
+        const d = new MockDir(n);
+        this.children.set(n, d);
+        return d;
+      })();
+      if (!c || c.kind !== "directory") throw new DOMException("NotFound", "NotFoundError");
+      return c;
+    }
+    async getFileHandle(n: string, o?: { create?: boolean }) {
+      let c = this.children.get(n);
+      if (!c && o?.create) c = this.addFile(n);
+      if (!c || c.kind !== "file") throw new DOMException("NotFound", "NotFoundError");
+      return c;
+    }
+    async *entries() {
+      for (const e of this.children) yield e;
+    }
+  }
+  const root = new MockDir("my-book");
+  root.addFile("01-intro.md", "# Intro\n");
+  root.addFile("theme.css", "body{}");
+  return root;
+}
+
+test("WebAdapter.capabilities reports FSA-present set when showDirectoryPicker exists (#33)", () => {
+  // @ts-expect-error test global
+  globalThis.window = { showDirectoryPicker: () => {} };
+  try {
+    const p = new WebAdapter();
+    expect(p.capabilities()).toEqual({
+      nativeSavePath: false,
+      showInFolder: false,
+      persistentFolderAccess: true,
+    });
+  } finally {
+    // @ts-expect-error test global
+    globalThis.window = undefined;
+  }
+});
+
+test("WebAdapter.capabilities reports all-false without FSA (Safari/no-FSA) (#33)", () => {
+  // @ts-expect-error test global
+  globalThis.window = {};
+  try {
+    const p = new WebAdapter();
+    expect(p.capabilities()).toEqual({
+      nativeSavePath: false,
+      showInFolder: false,
+      persistentFolderAccess: false,
+    });
+  } finally {
+    // @ts-expect-error test global
+    globalThis.window = undefined;
+  }
+});
+
+test("WebAdapter.openFolder registers the handle and returns {key, displayName} (#33)", async () => {
+  const root = makeFsaTree();
+  // @ts-expect-error test global
+  globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
+  try {
+    const p = new WebAdapter();
+    const ref = await p.openFolder();
+    expect(ref).not.toBeNull();
+    expect(ref!.displayName).toBe("my-book");
+    expect(typeof ref!.key).toBe("string");
+
+    // The returned key resolves back to the open root for reads.
+    await expect(p.readFile(`${ref!.key}/01-intro.md`)).resolves.toBe("# Intro\n");
+  } finally {
+    // @ts-expect-error test global
+    globalThis.window = undefined;
+  }
+});
+
+test("WebAdapter.openFolder returns null when the picker is cancelled (AbortError) (#33)", async () => {
+  // @ts-expect-error test global
+  globalThis.window = {
+    showDirectoryPicker: () =>
+      Promise.reject(new DOMException("The user aborted a request.", "AbortError")),
+  };
+  try {
+    const p = new WebAdapter();
+    await expect(p.openFolder()).resolves.toBeNull();
+  } finally {
+    // @ts-expect-error test global
+    globalThis.window = undefined;
+  }
+});
+
+test("WebAdapter read/write/list/stat/listProjectFiles work against an opened folder (#33)", async () => {
+  const root = makeFsaTree();
+  // @ts-expect-error test global
+  globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
+  try {
+    const p = new WebAdapter();
+    const ref = (await p.openFolder())!;
+    const SEP = "/";
+
+    // listDir at the project root.
+    const entries = await p.listDir(ref.key);
+    const names = entries.map((e) => e.name).sort();
+    expect(names).toEqual(["01-intro.md", "theme.css"]);
+
+    // statFile.
+    const stat = await p.statFile(`${ref.key}${SEP}01-intro.md`);
+    expect(stat.exists).toBe(true);
+    expect(stat.size).toBe(new TextEncoder().encode("# Intro\n").length);
+
+    // writeFile → returns a re-stat mtime, and readFile sees the new content.
+    const w = await p.writeFile(`${ref.key}${SEP}01-intro.md`, "# New\n");
+    expect(w.mtimeMs).toBe(2000);
+    await expect(p.readFile(`${ref.key}${SEP}01-intro.md`)).resolves.toBe("# New\n");
+
+    // listProjectFiles filters md/css.
+    await expect(p.listProjectFiles(ref.key)).resolves.toEqual({
+      md: ["01-intro.md"],
+      css: ["theme.css"],
+    });
+  } finally {
+    // @ts-expect-error test global
+    globalThis.window = undefined;
+  }
 });
 
 test("ElectronAdapter delegates the #47 Media panel surface 1:1 to the bridge", async () => {

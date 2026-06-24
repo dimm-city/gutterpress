@@ -12,6 +12,18 @@
  * API in 0.6.0.
  */
 import { DEFAULT_SETTINGS } from "./contract";
+import { basenameOf } from "./paths";
+import {
+  registerHandle,
+  resolveHandle,
+  splitPath,
+  readFileFromRoot,
+  writeFileToRoot,
+  listDirFromRoot,
+  statFileFromRoot,
+  listProjectFilesFromRoot,
+  hasFsa,
+} from "./web-fs";
 import type {
   Platform,
   ViewerPrefs,
@@ -104,49 +116,115 @@ export class WebAdapter implements Platform {
   readonly apiVersion = 0;
   readonly updater = webUpdater;
 
-  // #49: conservative capability set so the UI degrades gracefully on the web
-  // without branching on `platform === "web"`.
+  // #49/#33: capability set so the UI degrades gracefully on the web without
+  // branching on `platform === "web"`.
   //
-  // Safari/OPFS fallback decision: Safari has no File System Access API, so a
-  // Web build cannot keep a persistent native folder handle. When the PWA
-  // adapter lands it will degrade via these flags — no persistent folder access
-  // means OPFS-or-prompt-each-session, and no native save path means build
-  // output is delivered via BuildResult.downloadUrl (a browser download) rather
-  // than written to a chosen path. We report the conservative (false) set for
-  // all three now; full FSA detection is deferred to the PWA adapter.
+  // - nativeSavePath:false — the browser can't write to a chosen FS path; build
+  //   output is delivered via BuildResult.downloadUrl (a browser download).
+  // - showInFolder:false — no OS file manager to reveal in.
+  // - persistentFolderAccess — TRUE on Chrome/Edge (File System Access API +
+  //   IndexedDB-persistable handles), FALSE on Safari/no-FSA.
+  //
+  // TODO (Phase 6): the Safari/no-FSA branch keeps all three false and will gain
+  // an OPFS + <input webkitdirectory> import/export fallback. Phase 1 targets
+  // Chrome/Edge only.
   capabilities(): PlatformCapabilities {
     return {
       nativeSavePath: false,
       showInFolder: false,
-      persistentFolderAccess: false,
+      persistentFolderAccess: hasFsa(),
     };
   }
 
-  // ── PlatformAdapter primitives — implemented in 0.6.0 ─────────────────────
-  // #49: returns a FolderRef (key + displayName) once the PWA File System
-  // Access adapter lands; throws until then (same as the other primitives).
-  openFolder(): Promise<FolderRef | null> {
-    return notImplemented("openFolder");
+  /**
+   * Resolve a Platform path string ("<rootKey>/<relpath>") to its open root
+   * `FileSystemDirectoryHandle` plus the project-root-relative path. Throws a
+   * clear error if the root key isn't a registered (open) directory handle.
+   */
+  private resolveRoot(path: string): { root: FileSystemDirectoryHandle; relPath: string } {
+    const { rootKey, segments } = splitPath(path);
+    const handle = resolveHandle(rootKey);
+    if (handle.kind !== "directory") {
+      throw new Error(`Path key "${rootKey}" does not refer to a folder handle.`);
+    }
+    return { root: handle as FileSystemDirectoryHandle, relPath: segments.join("/") };
   }
 
-  readFile(_path: string): Promise<string> {
-    return notImplemented("readFile");
+  // ── PlatformAdapter primitives — #33 Phase 1 (File System Access API) ──────
+  // The opened folder's root handle is stashed in the web-fs registry; its
+  // opaque id becomes FolderRef.key. Subsequent fs calls take a Platform path
+  // string "<rootKey>/<relpath>" which resolveRoot() maps back to the handle.
+
+  /**
+   * Open the OS directory picker (Chrome/Edge), register the chosen root handle,
+   * and return a host-neutral FolderRef. Resolves null when the user cancels
+   * (the picker rejects with an AbortError). Rejects when no FSA picker exists
+   * (e.g. Safari — Phase 6 will add the import/export fallback).
+   */
+  async openFolder(): Promise<FolderRef | null> {
+    const picker = globalThis.window?.showDirectoryPicker;
+    if (typeof picker !== "function") {
+      throw new Error(
+        "openFolder: the File System Access API is not supported in this browser " +
+          "(Safari import/export fallback is not implemented yet).",
+      );
+    }
+    let handle: FileSystemDirectoryHandle;
+    try {
+      // Bind the receiver — `showDirectoryPicker` is a native method and throws
+      // "Illegal invocation" if invoked detached from `window`. Using the
+      // typeof-narrowed `picker` ref keeps TS happy; `.call` restores `this`.
+      handle = await picker.call(globalThis.window, { mode: "readwrite" });
+    } catch (err) {
+      // The user cancelled the picker → DOMException "AbortError" → return null
+      // (matches the Electron adapter's null-on-cancel contract). Re-throw any
+      // other error (e.g. SecurityError) so the caller can surface it.
+      if (err instanceof DOMException && err.name === "AbortError") return null;
+      throw err;
+    }
+    const key = registerHandle(handle);
+    return { key, displayName: basenameOf(handle.name) };
   }
 
-  writeFile(_path: string, _content: string): Promise<FileWriteResult> {
-    return notImplemented("writeFile");
+  // `async` so a thrown resolveRoot (unknown/unopened key) becomes a rejected
+  // promise, matching the Promise-returning contract (never a sync throw).
+  async readFile(path: string): Promise<string> {
+    const { root, relPath } = this.resolveRoot(path);
+    return readFileFromRoot(root, relPath);
   }
 
-  listDir(_path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>> {
-    return notImplemented("listDir");
+  async writeFile(path: string, content: string): Promise<FileWriteResult> {
+    const { root, relPath } = this.resolveRoot(path);
+    return writeFileToRoot(root, relPath, content);
   }
 
-  statFile(_path: string): Promise<FileStat> {
-    return notImplemented("statFile");
+  async listDir(
+    path: string,
+  ): Promise<Array<{ name: string; path: string; isDir: boolean }>> {
+    const { rootKey } = splitPath(path);
+    const { root, relPath } = this.resolveRoot(path);
+    // Pass rootKey so each returned entry's `path` is "<rootKey>/<relpath>",
+    // which round-trips straight back into readFile/writeFile/statFile.
+    return listDirFromRoot(root, relPath, rootKey);
   }
 
+  statFile(path: string): Promise<FileStat> {
+    // statFile must never throw (callers probe with it) — a missing/unregistered
+    // root resolves to { exists:false } just like a missing file.
+    let resolved: { root: FileSystemDirectoryHandle; relPath: string };
+    try {
+      resolved = this.resolveRoot(path);
+    } catch {
+      return Promise.resolve({ size: 0, mtimeMs: 0, exists: false });
+    }
+    return statFileFromRoot(resolved.root, resolved.relPath);
+  }
+
+  // No FS-watch API on the web (single-writer); external-edit detection lands in
+  // a later phase. Per the contract this returns an unsubscribe fn, so it must be
+  // a safe no-op (NOT a throw) — callers do `const off = watchFolder(...)`.
   watchFolder(_path: string, _cb: () => void): () => void {
-    return notImplemented("watchFolder");
+    return () => {};
   }
 
   getSecret(_key: string): Promise<string | null> {
@@ -220,8 +298,12 @@ export class WebAdapter implements Platform {
     return Promise.resolve();
   }
 
-  listProjectFiles(_projectDir: string): Promise<{ md: string[]; css: string[] }> {
-    return rejectNotImplemented("listProjectFiles");
+  // #33 Phase 1: shallow listing of the project root's .md/.css files (#42), the
+  // web equivalent of the Electron listProjectFiles IPC. `projectDir` is the
+  // FolderRef.key (the registry id of the open root handle).
+  async listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }> {
+    const { root } = this.resolveRoot(projectDir);
+    return listProjectFilesFromRoot(root);
   }
 
   // Lint is non-essential chrome — degrade to "no warnings" rather than reject,
