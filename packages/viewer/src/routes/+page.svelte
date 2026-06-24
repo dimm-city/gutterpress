@@ -1307,6 +1307,11 @@
       // Clear stale problems from the previous project immediately so the badge
       // and panel don't show the old project's findings while the new one renders.
       problems = [];
+      // Close the operation-log dialog and drop the prior project's log path so
+      // a switch can never surface one project's log under another (paired with
+      // the {#key currentDir} remount of OperationLogDialog below).
+      logDialogOpen = false;
+      logFilePath = null;
       // Bump historyRefreshKey so the History tab reloads its list for the new
       // project as soon as capabilities arrive (LeftPanel's effect guards on canHistory).
       historyRefreshKey += 1;
@@ -2520,8 +2525,13 @@
 </div>
 </div>
 
-<!-- Operation log viewer — opened from the StatusBar git/sync status pill. -->
-<OperationLogDialog bind:open={logDialogOpen} logFilePath={logFilePath} />
+<!-- Operation log viewer — opened from the StatusBar git/sync status pill.
+     Keyed by currentDir so switching projects remounts the dialog and its
+     internal logContent resets — prevents one project's log briefly showing
+     for another when the pill is clicked before a new log path is observed. -->
+{#key currentDir}
+  <OperationLogDialog bind:open={logDialogOpen} logFilePath={logFilePath} />
+{/key}
 
 <HelpDialog
   bind:open={helpOpen}
