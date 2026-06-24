@@ -75,6 +75,11 @@
   // Per-screen state
   let previewUrl = $state<string | null>(null);
   let currentDir = $state<string | null>(null);
+  // Adapter-precomputed display name for the open folder (#49), when the folder
+  // was opened via a FolderRef-returning path (picker / recents / favorites).
+  // Null when opened by raw key (e.g. reopened-last-project) — folderName then
+  // falls back to deriving the basename from currentDir.
+  let currentFolderDisplayName = $state<string | null>(null);
   let currentUrl = $state<string | null>(null);
   let sourceMode = $state<"folder" | "url">("folder");
   let docTitle = $state<string | null>(null);
@@ -84,8 +89,12 @@
   // it. No new buttons yet; the data is simply available.
   let projectCapabilities = $state<ProjectCapabilities | null>(null);
   // Folder name (basename) for the toolbar label; the full path is the tooltip.
+  // Folder name for the toolbar label (#49): prefer the adapter-precomputed
+  // FolderRef.displayName; fall back to the basename of the key when the folder
+  // was opened by raw key (reopened last project / typed path).
   let folderName = $derived(
-    currentDir ? (currentDir.split(/[\\/]/).filter(Boolean).pop() ?? currentDir) : ""
+    currentFolderDisplayName ??
+      (currentDir ? (currentDir.split(/[\\/]/).filter(Boolean).pop() ?? currentDir) : "")
   );
   let busy = $state(false);
   let busyLabel = $state("");
@@ -658,7 +667,9 @@
   let recoveryScanDir = $state<string | null>(null);
 
   function basenameOf(p: string): string {
-    return p.split(/[\\/]/).pop() ?? p;
+    // filter(Boolean) so a trailing separator (e.g. ".../proj/") yields the
+    // folder name, not "" — matches the adapter's basename() (electron-adapter.ts).
+    return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
   }
 
   async function scanForRecovery(dir: string) {
@@ -1279,7 +1290,10 @@
   async function startFolderPreview(
     dir: string,
     label = "Starting preview…",
-    restoreState: PersistedProjectState | null = null
+    restoreState: PersistedProjectState | null = null,
+    // #49: adapter-precomputed display name when the folder was opened via a
+    // FolderRef (picker/recents/favorites). Null when opened by raw key.
+    displayName: string | null = null,
   ) {
     openError = null;
     urlPreviewError = null;
@@ -1293,7 +1307,12 @@
         return;
       }
       const platform = getPlatform();
-      const data = await platform.startPreview({ input: dir });
+      // #49: the app-facing contract takes a FolderRef. `dir` is the key; the
+      // displayName is the adapter-precomputed one when available, else the
+      // basename of the key.
+      const data = await platform.startPreview({
+        input: { key: dir, displayName: displayName ?? basenameOf(dir) },
+      });
       sourceMode = "folder";
       // New folder: flush + clear any file selected from a previous project so
       // the editor pane doesn't point at a stale path (#44 — flush first so a
@@ -1303,6 +1322,7 @@
         buffer.reset();
       }
       currentDir = dir;
+      currentFolderDisplayName = displayName;
       currentUrl = null;
       // Clear stale problems from the previous project immediately so the badge
       // and panel don't show the old project's findings while the new one renders.
@@ -1383,6 +1403,7 @@
     } catch (e) {
       previewUrl = null;
       currentDir = null;
+      currentFolderDisplayName = null;
       docTitle = null;
       rendering = false;
       openError = e instanceof Error ? e.message : String(e);
@@ -1402,15 +1423,18 @@
     let handedOff = false;
     try {
       const platform = getPlatform();
-      const dir = await platform.openFolder();
-      if (!dir) return;
+      // #49: the picker returns a host-neutral FolderRef. Use `.key` wherever
+      // the raw path string is needed (per-project state, preview) and carry
+      // `.displayName` for the toolbar label.
+      const folder = await platform.openFolder();
+      if (!folder) return;
       // Per-project state (#43): restore whatever was saved for THIS folder
       // (page, view mode, …) regardless of which project was last open.
       const restoreState = await platform
-        .getViewerProjectState(dir)
+        .getViewerProjectState(folder.key)
         .catch(() => null);
       handedOff = true;
-      await startFolderPreview(dir, "Starting preview…", restoreState);
+      await startFolderPreview(folder.key, "Starting preview…", restoreState, folder.displayName);
     } finally {
       if (!handedOff) {
         busy = false;
@@ -1427,6 +1451,7 @@
     sourceMode = "url";
     currentUrl = url;
     currentDir = null;
+    currentFolderDisplayName = null;
     docTitle = null;
     // The editor is folder-only; close it for web previews.
     editorOpen = false;
@@ -1474,6 +1499,7 @@
     await getPlatform().stopPreview().catch(() => {});
     previewUrl = null;
     currentDir = null;
+    currentFolderDisplayName = null;
     currentUrl = null;
     docTitle = null;
     rendering = false;
@@ -1500,8 +1526,9 @@
       return;
     }
     const platform = getPlatform();
-    const sep = inputDir.includes("\\") ? "\\" : "/";
-    const defaultName = (inputDir.split(sep).pop() ?? "book") + ".pdf";
+    // #49: use the adapter-precomputed displayName for the default filename,
+    // falling back to the basename of the key.
+    const defaultName = (currentFolderDisplayName ?? basenameOf(inputDir) ?? "book") + ".pdf";
     const outPath = await platform.savePdf(defaultName);
     if (!outPath) return;
 
@@ -1530,7 +1557,8 @@
         }
       );
       const data = await platform.build({
-        input: inputDir,
+        // #49: the app-facing contract takes a FolderRef (key + displayName).
+        input: { key: inputDir, displayName: currentFolderDisplayName ?? basenameOf(inputDir) },
         format: "pdf",
         out: outPath,
         // Validation is skipped for the quick "Save PDF" action by design —

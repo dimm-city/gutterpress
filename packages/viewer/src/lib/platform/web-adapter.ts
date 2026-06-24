@@ -61,6 +61,8 @@ import type {
   SyncStatus,
   RecoveryConfirmRequest,
   ConflictPreview,
+  FolderRef,
+  PlatformCapabilities,
 } from "./contract";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
@@ -101,8 +103,28 @@ export class WebAdapter implements Platform {
   readonly apiVersion = 0;
   readonly updater = webUpdater;
 
+  // #49: conservative capability set so the UI degrades gracefully on the web
+  // without branching on `platform === "web"`.
+  //
+  // Safari/OPFS fallback decision: Safari has no File System Access API, so a
+  // Web build cannot keep a persistent native folder handle. When the PWA
+  // adapter lands it will degrade via these flags — no persistent folder access
+  // means OPFS-or-prompt-each-session, and no native save path means build
+  // output is delivered via BuildResult.downloadUrl (a browser download) rather
+  // than written to a chosen path. We report the conservative (false) set for
+  // all three now; full FSA detection is deferred to the PWA adapter.
+  capabilities(): PlatformCapabilities {
+    return {
+      nativeSavePath: false,
+      showInFolder: false,
+      persistentFolderAccess: false,
+    };
+  }
+
   // ── PlatformAdapter primitives — implemented in 0.6.0 ─────────────────────
-  openFolder(): Promise<string | null> {
+  // #49: returns a FolderRef (key + displayName) once the PWA File System
+  // Access adapter lands; throws until then (same as the other primitives).
+  openFolder(): Promise<FolderRef | null> {
     return notImplemented("openFolder");
   }
 

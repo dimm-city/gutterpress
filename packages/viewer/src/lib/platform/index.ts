@@ -24,6 +24,8 @@ export type {
   DeepPartial,
   RecentFolderEntry,
   FavoriteEntry,
+  FolderRef,
+  PlatformCapabilities,
   PreviewStartArgs,
   PreviewStartResult,
   BuildArgs,

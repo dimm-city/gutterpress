@@ -186,7 +186,7 @@
 
   async function pickDestination() {
     const dir = await getPlatform().openFolder();
-    if (dir) destination = dir;
+    if (dir) destination = dir.key;
   }
 
   /**

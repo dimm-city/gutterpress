@@ -161,15 +161,33 @@ export interface UpdaterApi {
   onEvent(cb: (event: UpdaterEvent) => void): () => void;
 }
 
+/**
+ * A host-neutral reference to a project folder (#49).
+ *
+ * The app-facing contract deals in `FolderRef`, never raw path strings, so the
+ * UI makes no assumptions about path-string semantics. On Electron the `key` is
+ * the folder's absolute path; on a future PWA (File System Access API) it will
+ * be a serialized FSA handle id. The `displayName` is precomputed by the adapter
+ * (the folder basename) so the UI never has to split a path itself.
+ */
+export interface FolderRef {
+  /** Stable key for equality / dedup / persistence. Electron: absolute path. PWA: serialized FSA handle id. */
+  key: string;
+  /** Human-readable basename, precomputed by the adapter. */
+  displayName: string;
+}
+
 export interface RecentFolderEntry {
-  path: string;
+  key: string;
+  displayName: string;
   title: string;
   openedAt: string;
   exists: boolean;
 }
 
 export interface FavoriteEntry {
-  path: string;
+  key: string;
+  displayName: string;
   title: string;
   exists: boolean;
 }
@@ -678,7 +696,7 @@ export type DeepPartial<T> = {
 };
 
 export interface PreviewStartArgs {
-  input: string;
+  input: FolderRef;
 }
 
 export interface PreviewStartResult {
@@ -690,7 +708,7 @@ export interface PreviewStartResult {
 }
 
 export interface BuildArgs {
-  input: string;
+  input: FolderRef;
   format: "pdf" | "html" | "pdfx";
   out?: string;
   title?: string;
@@ -709,6 +727,12 @@ export interface BuildResult {
   htmlPath?: string;
   pdfPath?: string;
   fingerprintPath?: string;
+  /**
+   * Web save-as path (#49): on a future PWA, build returns a download token/URL
+   * and the adapter triggers a browser download. Unused/undefined on Electron,
+   * which writes the output to a real path (`pdfPath`/`htmlPath`).
+   */
+  downloadUrl?: string;
 }
 
 export interface ExportProgressEvent {
@@ -773,10 +797,31 @@ export interface MediaImageDetails {
   info: MediaImageInfo | null;
 }
 
+/**
+ * Coarse host capability flags (#49) so the UI can degrade gracefully without
+ * branching on `platform === "web"`. Electron returns all-true; the Web adapter
+ * returns the conservative set (see WebAdapter.capabilities for the Safari/OPFS
+ * rationale).
+ */
+export interface PlatformCapabilities {
+  /** The host can write build output to a real, user-chosen filesystem path. */
+  nativeSavePath: boolean;
+  /** The host can reveal a file/folder in the OS file manager. */
+  showInFolder: boolean;
+  /** The host can persist a folder handle across sessions (FSA on PWA). */
+  persistentFolderAccess: boolean;
+}
+
 export interface HostServices {
   /** Integer IPC-surface version; mirrors DESKTOP_API in updater/contract.ts. */
   readonly apiVersion: number;
   readonly updater: UpdaterApi;
+
+  /**
+   * Coarse host capability flags (#49). Lets the UI degrade gracefully
+   * (Safari/OPFS) without branching on the platform name. Electron: all-true.
+   */
+  capabilities(): PlatformCapabilities;
 
   // Dialogs
   savePdf(defaultName?: string): Promise<string | null>;
@@ -1133,22 +1178,52 @@ export interface HostServices {
   onFolderChanged(cb: (data: FolderChangedEvent) => void): () => void;
 }
 
-/** The complete host surface the viewer app consumes through `getPlatform()`. */
-export interface Platform extends PlatformAdapter, HostServices {}
+/**
+ * The complete host surface the viewer app consumes through `getPlatform()`.
+ *
+ * `openFolder` is overridden here (#49) to return a host-neutral `FolderRef`
+ * instead of the lib `PlatformAdapter`'s raw `string` path — so the renderer
+ * never assumes path-string semantics. The adapter is the translation seam
+ * (Electron wraps the picker's path; the future PWA will return an FSA handle
+ * ref). Every other `PlatformAdapter` primitive is inherited unchanged.
+ */
+export interface Platform extends Omit<PlatformAdapter, "openFolder">, HostServices {
+  /**
+   * Open a native folder picker. Resolves with a {@link FolderRef} (key +
+   * precomputed displayName), or null when the user cancels. The Electron
+   * adapter wraps the chosen absolute path; the Web adapter is a 0.6.0 stub.
+   */
+  openFolder(): Promise<FolderRef | null>;
+}
 
 /**
  * The raw `window.electron` bridge shape exposed by `electron/preload.ts`.
- * Differs from `Platform` in exactly three members the adapter maps/owns:
- * `openDirectory` (→ `Platform.openFolder`), `readFile`, and `writeFile`
- * (the raw fs IPC behind `PlatformAdapter.readFile`/`writeFile`).
+ * Differs from `Platform` only in the members the adapter maps/owns: the fs IPC
+ * (`openDirectory` → `Platform.openFolder`, `readFile`, `writeFile`), the
+ * FolderRef translation seam (`getRecentFolders`/`getFavorites`/`startPreview`/
+ * `build` keep raw path strings here; #49), and `capabilities()` (synthesised by
+ * the adapter, not an IPC — Omitted so it can't be called on the raw bridge).
  * ONLY `electron-adapter.ts` (and the `Window` global) should reference this —
  * everything else goes through `Platform`.
  */
-export interface ElectronBridge extends HostServices {
+export interface ElectronBridge
+  extends Omit<
+    HostServices,
+    "getRecentFolders" | "getFavorites" | "startPreview" | "build" | "capabilities"
+  > {
   openDirectory(): Promise<string | null>;
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<FileWriteResult>;
   listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
+  // #49: the IPC layer keeps raw path-string semantics — the ElectronAdapter is
+  // the translation seam that wraps these into FolderRef-shaped entries / unwraps
+  // FolderRef.key back into the string `input` the existing IPC expects.
+  getRecentFolders(): Promise<
+    Array<{ path: string; title: string; openedAt: string; exists: boolean }>
+  >;
+  getFavorites(): Promise<Array<{ path: string; title: string; exists: boolean }>>;
+  startPreview(args: { input: string } & Omit<PreviewStartArgs, "input">): Promise<PreviewStartResult>;
+  build(args: { input: string } & Omit<BuildArgs, "input">): Promise<BuildResult>;
   /** Raw fs stat IPC behind `PlatformAdapter.statFile` (#44). */
   statFile(path: string): Promise<FileStat>;
   /**
