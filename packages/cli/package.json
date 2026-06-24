@@ -36,6 +36,10 @@
     "./api": {
       "types": "./dist/api/index.d.ts",
       "default": "./dist/api/index.js"
+    },
+    "./render": {
+      "types": "./dist/render.d.ts",
+      "default": "./dist/render.js"
     }
   },
   "files": [
@@ -44,7 +48,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "rimraf dist && bun build src/index.ts src/api/index.ts src/cli.ts --target=node --packages=external --splitting --outdir=dist && tsc -p tsconfig.build.json",
+    "build": "rimraf dist && bun build src/index.ts src/api/index.ts src/cli.ts src/render.ts --target=node --packages=external --splitting --outdir=dist && tsc -p tsconfig.build.json",
     "prepublishOnly": "bun run build",
     "test": "bun test",
     "typecheck": "tsc --noEmit"

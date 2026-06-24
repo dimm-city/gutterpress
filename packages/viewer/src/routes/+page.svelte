@@ -111,6 +111,14 @@
   let saveWarning = $state<string | null>(null);
   let diagnosticsTools = $state<DiagnosticsTool[] | null>(null);
 
+  // #33 Phase 4: PDF/build gating via the capabilities() seam (NOT a
+  // `platform === "web"` branch). `nativeSavePath` is true on the desktop host
+  // (Electron writes the PDF to a chosen path) and false on the web (no
+  // puppeteer / printToPDF in the browser). When false the "Save PDF" control is
+  // replaced with a short "requires the desktop app" note (acceptance criterion).
+  // Desktop is UNCHANGED: nativeSavePath:true → canSavePdf:true → identical UI.
+  const canSavePdf = $derived(getPlatform().capabilities().nativeSavePath);
+
   // ── Left panel (#workspace-restructure) ───────────────────────────────────
   // State persisted via ViewerPrefs. Keyed separately from per-project state.
   let leftPanelOpen = $state(false);
@@ -1109,10 +1117,12 @@
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (t?.isContentEditable || t?.closest?.(".cm-editor")) return;
 
-      // UX-006: Ctrl/Cmd+S saves PDF
+      // UX-006: Ctrl/Cmd+S saves PDF (desktop only — #33 Phase 4: the web host
+      // can't write a PDF, so the shortcut is inert there, matching the hidden
+      // toolbar button).
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        savePdf();
+        if (canSavePdf) savePdf();
         return;
       }
 
@@ -1587,6 +1597,45 @@
     } finally {
       offProgress?.();
       resetExportState();
+    }
+  }
+
+  // #33 Phase 5: HTML export on web. PDF is desktop-only (puppeteer/printToPDF),
+  // so on the web (capabilities().nativeSavePath === false) the export delivers a
+  // standalone book.html instead — build() renders it in-browser and returns a
+  // blob: downloadUrl, which this handler turns into a browser download. Desktop
+  // is UNCHANGED: it never reaches here (canSavePdf gates the Save PDF button and
+  // build() returns a path-based result there, handled by savePdf()).
+  async function exportHtml() {
+    const inputDir = currentDir;
+    if (!inputDir || busy || exporting || sourceMode === "url") return;
+    exporting = true;
+    try {
+      const displayName = currentFolderDisplayName ?? basenameOf(inputDir) ?? "book";
+      const data = await getPlatform().build({
+        input: { key: inputDir, displayName },
+        format: "html",
+      });
+      // The web delivery is a downloadUrl (blob:); turn it into a download via a
+      // transient <a download> click. Gate on its presence so a path-based
+      // (desktop) result would never trigger this branch.
+      if (data.downloadUrl) {
+        const a = document.createElement("a");
+        a.href = data.downloadUrl;
+        a.download = `${displayName}.html`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // Revoke after the click has handed the URL to the browser's download.
+        // The adapter transfers object-URL ownership here (it does NOT revoke
+        // build() download URLs), so the SPA owns the lifecycle.
+        setTimeout(() => URL.revokeObjectURL(data.downloadUrl!), 0);
+        toast?.success("HTML exported");
+      }
+    } catch (e) {
+      toast?.error(e instanceof Error ? e.message : "HTML export failed");
+    } finally {
+      exporting = false;
     }
   }
 
@@ -2281,23 +2330,47 @@
 
       <!-- UX-039: separator before Save PDF -->
       <span class="toolbar-sep" aria-hidden="true"></span>
-      <!-- UX-006: Save PDF always visible; icon-only at narrow widths -->
-      <button
-        class="primary save-btn icon-text"
-        onclick={savePdf}
-        disabled={busy || exporting || !currentDir || sourceMode === "url"}
-        title="Save as PDF (Ctrl+S)"
-      >
-        <Icon name="file-down" />
-        <span class="save-btn-label">{exporting ? "Saving…" : "Save PDF"}</span>
-      </button>
-      <!-- UX-023: explain why Save PDF is disabled -->
-      {#if !currentDir && !busy}
-        <span class="save-hint">Open a folder first</span>
-      {:else if sourceMode === "url"}
-        <span class="save-hint">Not available for web previews</span>
-      {:else if saveWarning}
-        <span class="save-hint save-warning" role="alert">{saveWarning}</span>
+      <!-- #33 Phase 4: PDF export is desktop-only (puppeteer/printToPDF). On the
+           web (capabilities().nativeSavePath === false) the control is replaced
+           with a short "requires the desktop app" note. On desktop
+           (nativeSavePath:true) this is UNCHANGED. -->
+      {#if canSavePdf}
+        <!-- UX-006: Save PDF always visible; icon-only at narrow widths -->
+        <button
+          class="primary save-btn icon-text"
+          onclick={savePdf}
+          disabled={busy || exporting || !currentDir || sourceMode === "url"}
+          title="Save as PDF (Ctrl+S)"
+        >
+          <Icon name="file-down" />
+          <span class="save-btn-label">{exporting ? "Saving…" : "Save PDF"}</span>
+        </button>
+        <!-- UX-023: explain why Save PDF is disabled -->
+        {#if !currentDir && !busy}
+          <span class="save-hint">Open a folder first</span>
+        {:else if sourceMode === "url"}
+          <span class="save-hint">Not available for web previews</span>
+        {:else if saveWarning}
+          <span class="save-hint save-warning" role="alert">{saveWarning}</span>
+        {/if}
+      {:else}
+        <!-- #33 Phase 5: PDF is desktop-only; on the web export a standalone
+             book.html instead (build({format:"html"}) → blob downloadUrl). -->
+        <button
+          class="primary save-btn icon-text"
+          onclick={exportHtml}
+          disabled={busy || exporting || !currentDir || sourceMode === "url"}
+          title="Export as HTML"
+        >
+          <Icon name="file-down" />
+          <span class="save-btn-label">{exporting ? "Exporting…" : "Export HTML"}</span>
+        </button>
+        {#if !currentDir && !busy}
+          <span class="save-hint">Open a folder first</span>
+        {:else if sourceMode === "url"}
+          <span class="save-hint">Not available for web previews</span>
+        {/if}
+        <span class="save-hint" role="note">PDF export requires the desktop app</span>
       {/if}
       <!-- Settings panel (#45): gear icon + Cmd/Ctrl+, shortcut. Inline on wide
            screens; folds into the "More" menu when space is tight. -->

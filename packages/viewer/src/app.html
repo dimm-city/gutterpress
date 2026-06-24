@@ -4,6 +4,13 @@
     <meta charset="utf-8" />
     <link rel="icon" href="%sveltekit.assets%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- PWA install manifest (#33). Harmless under Electron's app:// — the
+         desktop shell never installs a PWA and never registers the service
+         worker (SW registration is gated on !isDesktop() in +layout.svelte).
+         Relative href matches paths.relative=true so it resolves under any
+         static host or the app:// root. -->
+    <link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
+    <meta name="theme-color" content="#5a5a5a" />
     <title>print-md viewer</title>
     <script>
       // No-flash theme injection (#48). Runs before first paint so the app
