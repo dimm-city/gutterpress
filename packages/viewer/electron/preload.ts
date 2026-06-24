@@ -105,6 +105,23 @@ interface SnippetEntry {
   fileName: string;
   variables: string[];
 }
+type PluginKind = "local" | "npm";
+interface ProjectPluginEntry {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+}
+interface PluginValidationResult {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+  ok: boolean;
+  error?: string;
+}
+interface RecommendedPlugin {
+  name: string;
+  description: string;
+}
 
 interface RecentFolderEntry {
   path: string;
@@ -631,6 +648,24 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("snip:save", projectDir, name, body),
   deleteSnippet: (projectDir: string, fileName: string): Promise<void> =>
     ipcRenderer.invoke("snip:delete", projectDir, fileName),
+
+  // Plugin manager (#30) — manifest read/write/toggle + load-test, via the lib.
+  // No auto-install (§5): addNpmPlugin only records the entry.
+  listPlugins: (projectDir: string): Promise<ProjectPluginEntry[]> =>
+    ipcRenderer.invoke("plugin:list", projectDir),
+  setPluginEnabled: (
+    projectDir: string,
+    ref: string,
+    enabled: boolean,
+  ): Promise<void> => ipcRenderer.invoke("plugin:setEnabled", projectDir, ref, enabled),
+  addNpmPlugin: (projectDir: string, packageName: string): Promise<ProjectPluginEntry> =>
+    ipcRenderer.invoke("plugin:addNpm", projectDir, packageName),
+  importLocalPlugin: (projectDir: string): Promise<ProjectPluginEntry | null> =>
+    ipcRenderer.invoke("plugin:import", projectDir),
+  validatePlugins: (projectDir: string): Promise<PluginValidationResult[]> =>
+    ipcRenderer.invoke("plugin:validate", projectDir),
+  listRecommendedPlugins: (): Promise<RecommendedPlugin[]> =>
+    ipcRenderer.invoke("plugin:recommended"),
 
   // Local version history (#13) — isomorphic-git in main, via the lib
   enableVersionHistory: (projectDir: string): Promise<ProjectClassification> =>

@@ -198,6 +198,24 @@ interface SnippetEntry {
   fileName: string;
   variables: string[];
 }
+// Plugin manager (#30). Mirror the lib's plugin-manager types.
+type PluginKind = "local" | "npm";
+interface ProjectPluginEntry {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+}
+interface PluginValidationResult {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+  ok: boolean;
+  error?: string;
+}
+interface RecommendedPlugin {
+  name: string;
+  description: string;
+}
 interface CreateProjectResult {
   projectDir: string;
   manifestPath: string;
@@ -395,6 +413,20 @@ interface LibModule {
     body: string,
   ) => Promise<SnippetEntry>;
   deleteSnippet: (projectDir: string, fileName: string) => Promise<void>;
+  // Plugin manager (#30)
+  listProjectPlugins: (projectDir: string) => Promise<ProjectPluginEntry[]>;
+  setPluginEnabled: (
+    projectDir: string,
+    ref: string,
+    enabled: boolean,
+  ) => Promise<void>;
+  addNpmPlugin: (projectDir: string, packageName: string) => Promise<ProjectPluginEntry>;
+  addLocalPlugin: (
+    projectDir: string,
+    sourcePath: string,
+  ) => Promise<ProjectPluginEntry & { path: string }>;
+  validateProjectPlugins: (projectDir: string) => Promise<PluginValidationResult[]>;
+  RECOMMENDED_PLUGINS: RecommendedPlugin[];
   // Automatic snapshots (RC1-3)
   AUTO_SNAPSHOT_MESSAGE: string;
   isNoChangesError: (e: unknown) => boolean;
@@ -2786,6 +2818,82 @@ ipcMain.handle(
     }
     const lib = await loadLib();
     return lib.deleteSnippet(projectDir, fileName);
+  },
+);
+
+// ── Plugin manager (#30) ──────────────────────────────────────────────────────
+// Thin pass-throughs to the lib's plugin-manager. Per CLAUDE.md §5 the host
+// NEVER auto-installs npm packages — `addNpmPlugin` only records a manifest
+// entry; `plugin:validate` load-tests each plugin via the lib's fail-fast
+// loader and reports which resolve vs need install.
+
+ipcMain.handle(
+  "plugin:list",
+  async (_e, projectDir: string): Promise<ProjectPluginEntry[]> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("plugin:list requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.listProjectPlugins(projectDir);
+  },
+);
+
+ipcMain.handle(
+  "plugin:setEnabled",
+  async (_e, projectDir: string, ref: string, enabled: boolean): Promise<void> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("plugin:setEnabled requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.setPluginEnabled(projectDir, ref, Boolean(enabled));
+  },
+);
+
+ipcMain.handle(
+  "plugin:addNpm",
+  async (_e, projectDir: string, packageName: string): Promise<ProjectPluginEntry> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("plugin:addNpm requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.addNpmPlugin(projectDir, packageName);
+  },
+);
+
+ipcMain.handle(
+  "plugin:import",
+  async (_e, projectDir: string): Promise<ProjectPluginEntry | null> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("plugin:import requires an absolute projectDir");
+    }
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: "Choose a plugin file or folder",
+      properties: ["openFile", "openDirectory"],
+      filters: [{ name: "Plugin", extensions: ["js", "mjs", "cjs", "ts"] }],
+    });
+    if (res.canceled || res.filePaths.length === 0) return null;
+    const lib = await loadLib();
+    return lib.addLocalPlugin(projectDir, res.filePaths[0]!);
+  },
+);
+
+ipcMain.handle(
+  "plugin:validate",
+  async (_e, projectDir: string): Promise<PluginValidationResult[]> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("plugin:validate requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.validateProjectPlugins(projectDir);
+  },
+);
+
+ipcMain.handle(
+  "plugin:recommended",
+  async (): Promise<RecommendedPlugin[]> => {
+    const lib = await loadLib();
+    return lib.RECOMMENDED_PLUGINS;
   },
 );
 

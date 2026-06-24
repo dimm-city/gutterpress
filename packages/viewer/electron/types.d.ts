@@ -143,6 +143,25 @@ interface SnippetEntry {
   variables: string[];
 }
 
+// Plugin manager (#30). Mirrors the lib's plugin-manager types.
+type PluginKind = "local" | "npm";
+interface ProjectPluginEntry {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+}
+interface PluginValidationResult {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+  ok: boolean;
+  error?: string;
+}
+interface RecommendedPlugin {
+  name: string;
+  description: string;
+}
+
 // Local version history (#13). Mirrors the lib's source-provider types.
 interface SnapshotEntry {
   id: string;
@@ -502,6 +521,13 @@ interface Window {
     readSnippet(projectDir: string, fileName: string): Promise<string>;
     saveSnippet(projectDir: string, name: string, body: string): Promise<SnippetEntry>;
     deleteSnippet(projectDir: string, fileName: string): Promise<void>;
+    // Plugin manager (#30)
+    listPlugins(projectDir: string): Promise<ProjectPluginEntry[]>;
+    setPluginEnabled(projectDir: string, ref: string, enabled: boolean): Promise<void>;
+    addNpmPlugin(projectDir: string, packageName: string): Promise<ProjectPluginEntry>;
+    importLocalPlugin(projectDir: string): Promise<ProjectPluginEntry | null>;
+    validatePlugins(projectDir: string): Promise<PluginValidationResult[]>;
+    listRecommendedPlugins(): Promise<RecommendedPlugin[]>;
     // Local version history (#13)
     enableVersionHistory(projectDir: string): Promise<ProjectClassification>;
     saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;

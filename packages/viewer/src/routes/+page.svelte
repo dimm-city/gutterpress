@@ -34,6 +34,7 @@
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
+  import PluginManager from "$lib/components/PluginManager.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
@@ -484,6 +485,16 @@
   function openSnippetPicker() {
     if (!isDesktop() || !currentDir) return;
     snippetPickerRef?.show();
+  }
+
+  // Plugin manager (#30) — opened from the overflow menu (desktop + project).
+  let pluginManagerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
+  let pluginManagerOpen = $state(false);
+  let pluginManagerBtn = $state<HTMLButtonElement | undefined>(undefined);
+
+  function openPluginManager() {
+    if (!isDesktop() || !currentDir) return;
+    pluginManagerRef?.show(pluginManagerBtn);
   }
 
   // "Save as template" (#29) — capture the open project as a reusable template.
@@ -2649,6 +2660,16 @@
               <Icon name="puzzle" /> Save as template…
             </button>
           {/if}
+          {#if isDesktop() && currentDir}
+            <!-- Plugin manager (#30): discover/enable/import markdown-it plugins -->
+            <button
+              bind:this={pluginManagerBtn}
+              class="menu-item"
+              onclick={(e) => { openPluginManager(); closeMenu(e); }}
+            >
+              <Icon name="puzzle" /> Plugins…
+            </button>
+          {/if}
           <button class="menu-item" onclick={(e) => { helpOpen = true; closeMenu(e); }}>
             <Icon name="circle-help" /> Help &amp; about
           </button>
@@ -2911,6 +2932,13 @@
   projectDir={currentDir}
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
   onInsert={(text) => editorRef?.insertSnippet(text)}
+/>
+<!-- Plugin manager (#30): list/enable/disable, import (local/npm), recommended,
+     validate-by-load. Desktop-only (host file IO + module loading). -->
+<PluginManager
+  bind:this={pluginManagerRef}
+  bind:open={pluginManagerOpen}
+  projectDir={currentDir}
 />
 <!-- Save-as-template name prompt (#29). Minimal modal: name + confirm. -->
 {#if saveTemplateOpen}

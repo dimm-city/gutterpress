@@ -110,6 +110,23 @@ export {
 } from "../lib/snippets.ts";
 export type { SnippetEntry } from "../lib/snippets.ts";
 
+// ── Plugin manager (#30) ──────────────────────────────────────────────────────
+export {
+  listProjectPlugins,
+  setPluginEnabled,
+  addLocalPlugin,
+  addNpmPlugin,
+  validateProjectPlugins,
+  RECOMMENDED_PLUGINS,
+  PLUGINS_DIR,
+} from "../lib/plugin-manager.ts";
+export type {
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
+  PluginKind,
+} from "../lib/plugin-manager.ts";
+
 export {
   providerFor,
   restoreVersionWithBackup,

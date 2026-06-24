@@ -163,6 +163,41 @@ export interface SnippetEntry {
   variables: string[];
 }
 
+// ── Plugin manager (#30) ──────────────────────────────────────────────────────
+//
+// Mirror the lib's plugin-manager types — defined locally so the SPA never
+// value-imports the lib (§8 / ADR 0004).
+
+/** How a plugin entry is referenced in the manifest. */
+export type PluginKind = "local" | "npm";
+
+/** One configured plugin, as surfaced to the manager UI. */
+export interface ProjectPluginEntry {
+  /** Stable reference: the manifest `path` (local) or `name` (npm). */
+  ref: string;
+  /** `"local"` (file path) or `"npm"` (package name). */
+  kind: PluginKind;
+  /** Per-project enable flag (manifest `enabled: false` = disabled). */
+  enabled: boolean;
+}
+
+/** Result of load-testing one configured plugin. */
+export interface PluginValidationResult {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+  /** `true` when the plugin loaded OK (or is disabled and skipped). */
+  ok: boolean;
+  /** The loader's fail-fast error message when `ok` is `false`. */
+  error?: string;
+}
+
+/** A curated, informational plugin recommendation (NOT auto-installed). */
+export interface RecommendedPlugin {
+  name: string;
+  description: string;
+}
+
 // ── Host RPC payload shapes (mirror electron/preload.ts + types.d.ts) ─────────
 
 export interface UpdaterStatus {
@@ -1047,6 +1082,33 @@ export interface HostServices {
   saveSnippet(projectDir: string, name: string, body: string): Promise<SnippetEntry>;
   /** Delete a snippet by filename. */
   deleteSnippet(projectDir: string, fileName: string): Promise<void>;
+
+  // ── Plugin manager (#30) ─────────────────────────────────────────────────────
+  // Thin pass-throughs to the shared lib's plugin-manager (one impl for CLI +
+  // viewer). Per CLAUDE.md §5 the host NEVER auto-installs npm packages — it
+  // only records the manifest entry; `validatePlugins` surfaces whether each
+  // configured plugin resolves/loads. Desktop-only in v1; the WebAdapter stubs
+  // reject (mutations) / return [] (lists) and `RECOMMENDED_PLUGINS` is static.
+
+  /** List the open project's configured plugins with their enable flags. */
+  listPlugins(projectDir: string): Promise<ProjectPluginEntry[]>;
+  /** Enable/disable a plugin by its ref (manifest path or npm name). */
+  setPluginEnabled(projectDir: string, ref: string, enabled: boolean): Promise<void>;
+  /** Add an npm plugin by NAME (records the entry only — no install, §5). */
+  addNpmPlugin(projectDir: string, packageName: string): Promise<ProjectPluginEntry>;
+  /**
+   * Pick a local plugin file/folder and import it into the project's
+   * `plugins/` dir, adding a manifest entry. Resolves null when the user
+   * cancels the picker. WebAdapter: rejects (desktop-only in v1).
+   */
+  importLocalPlugin(projectDir: string): Promise<ProjectPluginEntry | null>;
+  /**
+   * Load-test every configured plugin through the lib loader and report which
+   * load OK vs error (with the message). Reuses the fail-fast loader (§5).
+   */
+  validatePlugins(projectDir: string): Promise<PluginValidationResult[]>;
+  /** The static curated recommended-plugins list (informational, one-click add). */
+  listRecommendedPlugins(): Promise<RecommendedPlugin[]>;
 
   // ── Local version history (#13) ───────────────────────────────────────────
   // All four run in the host (isomorphic-git via the lib — CLAUDE.md §7); the

@@ -41,6 +41,9 @@ import type {
   CreateProjectResult,
   TemplateInfo,
   SnippetEntry,
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -323,6 +326,26 @@ export class ElectronAdapter implements Platform {
   }
   deleteSnippet(projectDir: string, fileName: string): Promise<void> {
     return bridge().deleteSnippet(projectDir, fileName);
+  }
+
+  // ── Plugin manager (#30) — delegate 1:1 to the bridge ──────────────────────
+  listPlugins(projectDir: string): Promise<ProjectPluginEntry[]> {
+    return bridge().listPlugins(projectDir);
+  }
+  setPluginEnabled(projectDir: string, ref: string, enabled: boolean): Promise<void> {
+    return bridge().setPluginEnabled(projectDir, ref, enabled);
+  }
+  addNpmPlugin(projectDir: string, packageName: string): Promise<ProjectPluginEntry> {
+    return bridge().addNpmPlugin(projectDir, packageName);
+  }
+  importLocalPlugin(projectDir: string): Promise<ProjectPluginEntry | null> {
+    return bridge().importLocalPlugin(projectDir);
+  }
+  validatePlugins(projectDir: string): Promise<PluginValidationResult[]> {
+    return bridge().validatePlugins(projectDir);
+  }
+  listRecommendedPlugins(): Promise<RecommendedPlugin[]> {
+    return bridge().listRecommendedPlugins();
   }
 
   // ── Local version history (#13) — delegate 1:1 to the bridge ───────────────

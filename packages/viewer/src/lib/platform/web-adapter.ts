@@ -65,6 +65,9 @@ import type {
   CreateProjectResult,
   TemplateInfo,
   SnippetEntry,
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -680,6 +683,28 @@ export class WebAdapter implements Platform {
   }
   deleteSnippet(_projectDir: string, _fileName: string): Promise<void> {
     return rejectNotImplemented("deleteSnippet");
+  }
+
+  // ── Plugin manager (#30) — desktop-only in v1; reject/empty on web ─────────
+  // The manifest read/write/toggle + load-test all run node-side in the host.
+  // The UI guards with isDesktop() so these stubs are only hit defensively.
+  listPlugins(_projectDir: string): Promise<ProjectPluginEntry[]> {
+    return Promise.resolve([]);
+  }
+  setPluginEnabled(_projectDir: string, _ref: string, _enabled: boolean): Promise<void> {
+    return rejectNotImplemented("setPluginEnabled");
+  }
+  addNpmPlugin(_projectDir: string, _packageName: string): Promise<ProjectPluginEntry> {
+    return rejectNotImplemented("addNpmPlugin");
+  }
+  importLocalPlugin(_projectDir: string): Promise<ProjectPluginEntry | null> {
+    return rejectNotImplemented("importLocalPlugin");
+  }
+  validatePlugins(_projectDir: string): Promise<PluginValidationResult[]> {
+    return Promise.resolve([]);
+  }
+  listRecommendedPlugins(): Promise<RecommendedPlugin[]> {
+    return Promise.resolve([]);
   }
 
   // ── Local version history (#13) — desktop-only; reject/empty on web ────────
