@@ -50,7 +50,8 @@ jobs:
         run: bun install
 
       - name: Build CLI npm bundle
-        run: bun --cwd packages/cli run build
+        working-directory: packages/cli
+        run: bun run build
 
       - name: Build viewer (static SPA + Electron main)
         run: |
