@@ -3,61 +3,24 @@ import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 import type { ResolvedPluginConfig } from "../../schema/manifest.types";
-import type MarkdownIt from "markdown-it";
 
-/**
- * Plugin author API.
- *
- * A print-md plugin is a standard markdown-it plugin — any plugin from npm
- * with the signature `(md, options) => void` will work, including the entire
- * markdown-it plugin ecosystem.
- *
- * Authors of *new* plugins can `import type { PrintMdPlugin } from
- * '@dimm-city/print-md'` for type-only support; no runtime dependency on
- * print-md is required (or recommended).
- */
-export type PrintMdPlugin = (
-  md: MarkdownIt,
-  options?: Record<string, unknown>
-) => void;
-
-/**
- * Optional metadata a plugin may export alongside its default plugin function.
- * Surfaced in load-time log lines so users can see which plugins are active.
- */
-export interface PrintMdPluginMetadata {
-  name?: string;
-  version?: string;
-  description?: string;
-  author?: string;
-  keywords?: string[];
-}
-
-/**
- * Full shape a plugin module may export. Only `default` is required.
- *
- * ```ts
- * const plugin: PrintMdPlugin = (md) => { ... };
- * export default plugin;
- * export const metadata: PrintMdPluginMetadata = { name: 'my-plugin', version: '1.0.0' };
- * export const css = `.my-class { color: red; }`;
- * ```
- */
-export interface PrintMdPluginExport {
-  default: PrintMdPlugin;
-  metadata?: PrintMdPluginMetadata;
-  /** CSS injected into <head> after user stylesheets. Use sparingly — has equal cascade specificity. */
-  css?: string;
-}
-
-/** Internal representation of a loaded plugin, ready for `md.use()`. */
-export interface LoadedPlugin {
-  name: string;
-  plugin: PrintMdPlugin;
-  metadata?: PrintMdPluginMetadata;
-  css?: string;
-  options: Record<string, unknown>;
-}
+// The plugin author API + the markdown-it factory now live in the node-free
+// `renderer.ts` so the browser/PWA WebAdapter can import the pure render core
+// (#33). This node-coupled module is the plugin *loader* (`node:fs`/`node:path`/
+// `node:url`/`node:module`). The types/values are re-exported below so existing
+// callers (`import { applyPlugins, ... } from "./plugins"`) are unaffected.
+import type {
+  PrintMdPlugin,
+  PrintMdPluginMetadata,
+  LoadedPlugin,
+} from "./renderer";
+export type {
+  PrintMdPlugin,
+  PrintMdPluginMetadata,
+  PrintMdPluginExport,
+  LoadedPlugin,
+} from "./renderer";
+export { applyPlugins, collectPluginCss } from "./renderer";
 
 /**
  * Resolve and import an npm plugin package.
@@ -224,35 +187,3 @@ export async function loadPlugins(
   return plugins;
 }
 
-/**
- * Apply loaded plugins to a markdown-it instance.
- *
- * Throws if a plugin's `(md, options) => void` call itself throws — usually
- * a sign that the plugin is incompatible with this markdown-it version or
- * has a bug in its `apply` phase.
- */
-export function applyPlugins(md: MarkdownIt, plugins: LoadedPlugin[]): void {
-  for (const { name, plugin, options, metadata } of plugins) {
-    try {
-      md.use(plugin, options);
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to apply plugin "${name}": ${errorMsg}`);
-    }
-    if (metadata?.name) {
-      console.log(`Loaded plugin: ${metadata.name} v${metadata.version ?? "?"}`);
-    } else {
-      console.log(`Loaded plugin: ${name}`);
-    }
-  }
-}
-
-/**
- * Collect CSS from all loaded plugins, concatenated in load order.
- */
-export function collectPluginCss(plugins: LoadedPlugin[]): string {
-  return plugins
-    .map((p) => p.css)
-    .filter((css): css is string => typeof css === "string" && css.length > 0)
-    .join("\n\n");
-}

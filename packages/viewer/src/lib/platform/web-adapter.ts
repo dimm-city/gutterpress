@@ -24,6 +24,13 @@ import {
   listProjectFilesFromRoot,
   hasFsa,
 } from "./web-fs";
+// §8 / ADR 0004: VALUE import of the PURE, node-free render core ONLY
+// (`@dimm-city/print-md/render`). This subpath transitively imports markdown-it
+// + the inlined paged plugin and contains ZERO `node:*`/`fs`/`path`/`url`, so it
+// stays PWA-clean in the renderer bundle. NEVER import build-runner / index
+// (those drag puppeteer + node:fs). This is what lets the in-browser preview
+// (#33 Phase 2) render entirely client-side with no localhost server.
+import { assembleBookHtml } from "@dimm-city/print-md/render";
 import type {
   Platform,
   ViewerPrefs,
@@ -543,12 +550,112 @@ export class WebAdapter implements Platform {
     return rejectNotImplemented("resolveSyncConflicts");
   }
 
-  startPreview(_args: PreviewStartArgs): Promise<PreviewStartResult> {
-    return rejectNotImplemented("startPreview");
+  // ── In-browser live preview (#33 Phase 2) — no server, no Chromium ──────────
+  // The last object URL minted by startPreview, revoked by stopPreview (and
+  // before minting the next one) so blob memory isn't leaked across renders.
+  private lastPreviewUrl: string | null = null;
+
+  /**
+   * Render the opened project's markdown to a paginated `book.html` ENTIRELY in
+   * the browser and hand back a `blob:` object URL for the existing preview
+   * iframe — the web analogue of the Electron localhost preview server.
+   *
+   * Pipeline (plan §2):
+   *  1. resolve the root FileSystemDirectoryHandle from `input.key`;
+   *  2. list the project's `.md`/`.css` (FSA), read them via `web-fs`;
+   *  3. run the PURE `assembleBookHtml` (markdown-it + paged plugin) with an
+   *     FSA-backed `readText` — the SAME render core the CLI uses;
+   *  4. INLINE the project CSS into the document (a blob-URL doc can't resolve
+   *     relative `css/*` hrefs), wrap it in a Blob, and return its object URL.
+   *
+   * Paged.js then paginates in the iframe's own browser context exactly as on
+   * desktop — `+page.svelte` needs no change (it just points the iframe at the
+   * returned `url`).
+   *
+   * KNOWN PHASE-2 GAPS (tracked for later phases — intentionally not silent):
+   *  - OFFLINE: the assembled HTML loads paged.js from the unpkg CDN (the lib's
+   *    default). Phase 4 (service worker + offline) will ship a same-origin
+   *    vendored `paged.polyfill.js` and rewrite this URL so preview works
+   *    offline; today web preview needs network access.
+   *  - MANIFEST: chapters are listed in alphabetical order (listProjectFiles),
+   *    matching the CLI's no-manifest fallback. A project `manifest.yaml` with a
+   *    custom `source.files` order or `plugins` is NOT yet parsed here, so such
+   *    projects can preview in a different order than the CLI build. A later
+   *    phase will parse the manifest (the `yaml` dep is browser-safe).
+   */
+  async startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {
+    const { root } = this.resolveRoot(args.input.key);
+    const { md, css } = await listProjectFilesFromRoot(root);
+
+    if (md.length === 0) {
+      throw new Error(
+        `No markdown files found in "${args.input.displayName}". ` +
+          "Add a .md file to preview this project.",
+      );
+    }
+
+    // Inline the project CSS: a blob-URL document has no base path, so relative
+    // <link href="css/print.css"> would 404. Read each .css and concatenate it
+    // into a single <style> block instead. Pass styles:[] to the assembler so it
+    // emits no unresolvable <link> tags.
+    const projectCss = (
+      await Promise.all(
+        css.map(async (name) => {
+          try {
+            return await readFileFromRoot(root, name);
+          } catch (err) {
+            // Don't fail the whole preview for one unreadable stylesheet, but
+            // don't drop it silently either — surface which file + why.
+            console.warn(`[web preview] skipping unreadable CSS "${name}":`, err);
+            return "";
+          }
+        }),
+      )
+    )
+      .filter((s) => s.length > 0)
+      .join("\n\n");
+
+    let html = await assembleBookHtml({
+      files: md,
+      readText: (relPath) => readFileFromRoot(root, relPath),
+      styles: [],
+      title: args.input.displayName,
+    });
+
+    // Inject the inlined project CSS just before </head> (after the assembler's
+    // own paged-plugin <style> so project rules win on equal specificity, same
+    // cascade order as the linked stylesheet would have had).
+    if (projectCss) {
+      const styleTag = `  <style data-project-css>\n${projectCss}\n</style>\n`;
+      html = html.includes("</head>")
+        ? html.replace("</head>", styleTag + "</head>")
+        : styleTag + html;
+    }
+
+    // Revoke a prior preview URL before minting a new one (no blob leak across
+    // re-previews); stopPreview() also revokes on teardown.
+    if (this.lastPreviewUrl) {
+      URL.revokeObjectURL(this.lastPreviewUrl);
+      this.lastPreviewUrl = null;
+    }
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    this.lastPreviewUrl = url;
+
+    return {
+      url,
+      port: 0, // no server on web
+      input: args.input.key,
+      title: args.input.displayName ?? null,
+    };
   }
 
   stopPreview(): Promise<{ stopped: boolean }> {
-    return rejectNotImplemented("stopPreview");
+    if (this.lastPreviewUrl) {
+      URL.revokeObjectURL(this.lastPreviewUrl);
+      this.lastPreviewUrl = null;
+    }
+    return Promise.resolve({ stopped: true });
   }
 
   cancelExport(_exportId: string): Promise<{ canceled: boolean }> {
