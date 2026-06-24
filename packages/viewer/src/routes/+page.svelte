@@ -37,6 +37,16 @@
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
+  import { onMount } from "svelte";
+  import {
+    NARROW_BREAKPOINT,
+    type MobileTab,
+    paneModeForTab,
+    editorSurfaceForTab,
+    tabFromPaneMode,
+    adjacentTab,
+    keyboardOffset,
+  } from "$lib/editor/mobile-layout";
   import { useSettings, _loadSettings } from "$lib/settings.svelte";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
@@ -1904,7 +1914,7 @@
   // Below this width the editor + preview can't sit side by side, so the
   // workspace collapses to one pane and the Edit / View toggle picks which one
   // shows. Above it, the side-by-side split is used and paneMode is ignored.
-  const NARROW_QUERY = "(max-width: 820px)";
+  const NARROW_QUERY = `(max-width: ${NARROW_BREAKPOINT}px)`;
   // matchMedia subscription (a genuine lifecycle subscription — the idiomatic
   // use of $effect). On a resize INTO narrow while in edit mode, make sure a
   // file is loaded so the editor isn't empty (the tree is hidden when narrow).
@@ -1939,6 +1949,132 @@
       if (wasClosed) focusEditorWhenReady();
     }
   }
+
+  // ── Mobile tab bar (#34): Markdown / CSS / Preview ─────────────────────────
+  // The single-column (narrow) layout switches the one visible pane between the
+  // markdown editor, the CSS editor, and the preview. Both editor tabs share the
+  // existing editor pane (the CSS editing surface is the SAME CodeMirror editor
+  // with a CSS language mode, #39); the tab just loads the relevant file. The
+  // persisted two-state `paneMode` ("edit"/"view") is the source of truth so the
+  // existing restore + wide-screen behaviour is untouched.
+  //
+  // `editorSurface` tracks whether the editor currently holds the markdown or
+  // CSS file so the tab bar highlights the right tab without a parallel store.
+  let editorSurface = $state<"markdown" | "css">("markdown");
+  // The open file's actual extension decides the surface (covers preview→editor
+  // chapter follow + recovery + ensureEditorFile picking a file on its own).
+  let openFileIsCss = $derived(
+    !!editorFilePath && /\.css$/i.test(editorFilePath),
+  );
+  // Active mobile tab, derived from the persisted paneMode + which file is open.
+  // No new persistence: reload restores via paneMode, then the open file decides
+  // markdown vs css.
+  let mobileTab = $derived<MobileTab>(
+    tabFromPaneMode(paneMode, openFileIsCss || editorSurface === "css"),
+  );
+
+  /**
+   * Find the project's primary CSS file so the CSS tab can open it. Prefers a
+   * top-level `.css` (e.g. style.css / theme.css); falls back to the first
+   * `.css` anywhere the lister returns. Returns null when the project has none.
+   * Mirrors ensureEditorFile's listDir-based discovery (no new host capability).
+   */
+  async function findProjectCssFile(): Promise<string | null> {
+    if (!currentDir || !isDesktop()) return null;
+    try {
+      const entries = (await getPlatform().listDir(currentDir)).filter((e) => !e.isDir);
+      const css = entries
+        .filter((e) => /\.css$/i.test(e.name))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return css[0]?.path ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Switch the visible mobile pane. Preview → view mode; Markdown/CSS → edit
+   * mode with the matching file loaded into the shared editor. Markdown opens
+   * the project's first markdown file (ensureEditorFile); CSS opens the project
+   * CSS file, surfacing a toast when the project has none.
+   */
+  function selectMobileTab(tab: MobileTab) {
+    const mode = paneModeForTab(tab);
+    setPaneMode(mode);
+    const surface = editorSurfaceForTab(tab);
+    if (surface === "markdown") {
+      editorSurface = "markdown";
+      // Only swap files if the editor is currently on a CSS file; otherwise keep
+      // the author's open chapter (ensureEditorFile is a no-op when one is open).
+      if (openFileIsCss) {
+        void (async () => {
+          const buf = ensureBuffer();
+          buf.reset();
+          await ensureEditorFile();
+        })();
+      } else {
+        void ensureEditorFile();
+      }
+      focusEditorWhenReady();
+    } else if (surface === "css") {
+      editorSurface = "css";
+      void (async () => {
+        const cssPath = await findProjectCssFile();
+        if (cssPath) {
+          selectEditorFile(cssPath);
+          focusEditorWhenReady();
+        } else {
+          toast?.info?.("This project has no CSS file to edit.");
+        }
+      })();
+    }
+  }
+
+  /**
+   * Keyboard navigation for the mobile tablist (WAI-ARIA tabs pattern):
+   * Left/Up = previous, Right/Down = next, Home/End = first/last. Activates the
+   * focused tab (automatic activation) and moves focus to its button.
+   */
+  function onMobileTabKeydown(e: KeyboardEvent) {
+    let next: MobileTab | null = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = adjacentTab(mobileTab, 1);
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = adjacentTab(mobileTab, -1);
+    else if (e.key === "Home") next = "markdown";
+    else if (e.key === "End") next = "preview";
+    if (!next) return;
+    e.preventDefault();
+    selectMobileTab(next);
+    queueMicrotask(() => {
+      document
+        .querySelector<HTMLButtonElement>(`#mobile-tab-${next}`)
+        ?.focus();
+    });
+  }
+
+  // ── Virtual-keyboard handling (#34) ────────────────────────────────────────
+  // When the on-screen keyboard opens on a touch device, the visual viewport
+  // shrinks while the layout viewport stays put — pushing the editor toolbar
+  // (anchored at the top of the editor pane) fine, but leaving the content area
+  // partly hidden behind the keyboard. We expose the occluded height as a CSS
+  // custom property (--kbd-offset) the narrow editor pane uses to shrink its
+  // height so the toolbar + content stay above the keyboard. Pure computation
+  // lives in keyboardOffset(); this is the DOM glue. onMount (NOT $effect) per
+  // the runes rule: a real lifecycle subscription with an explicit teardown.
+  let keyboardInset = $state(0);
+  onMount(() => {
+    const vv = window.visualViewport;
+    if (!vv) return; // No visualViewport support: nothing to adjust.
+    const update = () => {
+      keyboardInset = keyboardOffset(window.innerHeight, vv.height, vv.offsetTop);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  });
 
   // ── Auto-update actions ────────────────────────────────────────────────
 
@@ -2145,8 +2281,12 @@
         <span class="toolbar-sep" aria-hidden="true"></span>
       {/if}
 
-      <!-- UX-012: center nav only shows when a document is loaded -->
-      {#if previewUrl}
+      <!-- UX-012: center nav only shows when a document is loaded. #34: on narrow
+           viewports it is hidden — the absolutely-centered page-nav group would
+           collide with the right-aligned Markdown/CSS/Preview tab bar at 390px,
+           and the tab bar is the priority control there (the preview still
+           scrolls/swipes for page navigation). -->
+      {#if previewUrl && !isNarrow}
         <section class="center">
           <button class="icon-btn" onclick={firstPage} disabled={rendering} title="First page (Home)" aria-label="First page">
             <Icon name="chevrons-left" />
@@ -2198,30 +2338,65 @@
            folder is open. On wide viewports the Edit button lives in the center
            column (left of the page-nav group) instead. -->
       {#if isNarrow}
-        <div class="pane-toggle" role="radiogroup" aria-label="Edit or view mode">
+        <!-- #34: three-tab single-pane switcher (Markdown / CSS / Preview).
+             Real WAI-ARIA tabs: role=tablist + tab, aria-selected, roving
+             tabindex, arrow/Home/End navigation. The tabpanels are the existing
+             editor + preview panes in .workspace below (linked via aria-controls
+             on the active tab). On wide viewports the Edit button in the center
+             column is used instead. -->
+        <div
+          class="pane-toggle"
+          role="tablist"
+          aria-label="Markdown, CSS, or Preview"
+          aria-orientation="horizontal"
+        >
           <button
-            role="radio"
+            id="mobile-tab-markdown"
+            role="tab"
             class="icon-text seg"
-            class:active={paneMode === "edit"}
-            onclick={() => setPaneMode("edit")}
+            class:active={mobileTab === "markdown"}
+            onclick={() => selectMobileTab("markdown")}
+            onkeydown={onMobileTabKeydown}
             disabled={!currentDir || sourceMode === "url"}
             title="Edit your markdown"
-            aria-label="Edit mode"
-            aria-checked={paneMode === "edit"}
+            aria-label="Markdown"
+            aria-selected={mobileTab === "markdown"}
+            aria-controls="mobile-panel-editor"
+            tabindex={mobileTab === "markdown" ? 0 : -1}
           >
-            <Icon name="pen-line" /><span class="view-label">Edit</span>
+            <Icon name="pen-line" /><span class="view-label">Markdown</span>
           </button>
           <button
-            role="radio"
+            id="mobile-tab-css"
+            role="tab"
             class="icon-text seg"
-            class:active={paneMode === "view"}
-            onclick={() => setPaneMode("view")}
+            class:active={mobileTab === "css"}
+            onclick={() => selectMobileTab("css")}
+            onkeydown={onMobileTabKeydown}
+            disabled={!currentDir || sourceMode === "url"}
+            title="Edit the project's CSS"
+            aria-label="CSS"
+            aria-selected={mobileTab === "css"}
+            aria-controls="mobile-panel-editor"
+            tabindex={mobileTab === "css" ? 0 : -1}
+          >
+            <Icon name="palette" /><span class="view-label">CSS</span>
+          </button>
+          <button
+            id="mobile-tab-preview"
+            role="tab"
+            class="icon-text seg"
+            class:active={mobileTab === "preview"}
+            onclick={() => selectMobileTab("preview")}
+            onkeydown={onMobileTabKeydown}
             disabled={!previewUrl}
             title="Preview your book"
-            aria-label="View mode"
-            aria-checked={paneMode === "view"}
+            aria-label="Preview"
+            aria-selected={mobileTab === "preview"}
+            aria-controls="mobile-panel-preview"
+            tabindex={mobileTab === "preview" ? 0 : -1}
           >
-            <Icon name="eye" /><span class="view-label">View</span>
+            <Icon name="eye" /><span class="view-label">Preview</span>
           </button>
         </div>
       {/if}
@@ -2465,9 +2640,15 @@
       class:narrow={isNarrow}
       class:show-edit={isNarrow && paneMode === "edit"}
       class:show-view={isNarrow && paneMode === "view"}
+      style="--kbd-offset: {keyboardInset}px"
     >
       {#if editorPaneOpen}
-        <section class="pane editor-pane" aria-label="Markdown editor">
+        <section
+          class="pane editor-pane"
+          id="mobile-panel-editor"
+          role={isNarrow ? "tabpanel" : undefined}
+          aria-label={mobileTab === "css" ? "CSS editor" : "Markdown editor"}
+        >
           {#if externalChange}
             <ExternalEditBanner
               fileName={externalFileName}
@@ -2520,6 +2701,9 @@
       {/if}
       <section
         class="pane preview-pane"
+        id="mobile-panel-preview"
+        role={isNarrow ? "tabpanel" : undefined}
+        aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
         inert={isNarrow && paneMode === "edit" ? true : undefined}
       >
         {#key previewUrl}
@@ -3386,12 +3570,87 @@
       border-right: none;
     }
     .workspace.narrow.show-edit .preview-pane {
+      /* Keep the cross-origin preview iframe MOUNTED and rendered (just collapsed
+         to 0x0 + clipped) when the editor tab is active — never opacity:0 / a
+         cover, per the "never hide the preview iframe" rule (that throttled
+         Chromium to ~1fps in 0.4.1). overflow:hidden + 0x0 hides it without the
+         opacity throttle trigger; it returns to full size on the Preview tab. */
       position: absolute;
       width: 0;
       height: 0;
       overflow: hidden;
       pointer-events: none;
-      opacity: 0;
+    }
+
+    /* #34 No horizontal scroll at 390px: the workspace + its panes never exceed
+       the single column. The split-mode minmax() track floors (280px editor /
+       360px preview) would force overflow on a 390px screen, so collapse them. */
+    .workspace.narrow {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+    .workspace.narrow .pane {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    /* #34 Virtual-keyboard handling: when the on-screen keyboard is open,
+       --kbd-offset (computed from visualViewport) is the occluded height. Shrink
+       the visible editor pane by that amount so its toolbar + content stay above
+       the keyboard instead of being covered. 0 when no keyboard (default). */
+    .workspace.narrow.show-edit .editor-pane {
+      max-height: calc(100% - var(--kbd-offset, 0px));
+    }
+  }
+
+  /* #34 Touch-optimised toolbar — coarse pointer (phones/tablets) gets ≥44×44px
+     tap targets per WCAG 2.5.5 / Apple HIG, WITHOUT affecting the desktop
+     (mouse) layout. Scoped to (pointer: coarse) so a desktop user with a mouse
+     sees the unchanged compact toolbar. The narrow media query alone is not
+     enough (a desktop window narrowed below 820px must NOT get fat buttons),
+     hence the pointer query. */
+  @media (pointer: coarse) {
+    .toolbar .icon-btn,
+    .toolbar .icon-text,
+    .toolbar .menu-summary,
+    .pane-toggle .seg,
+    .zoom-select,
+    .toolbar .primary {
+      min-width: 44px;
+      min-height: 44px;
+    }
+    /* Generous padding so the larger hit area is comfortable, not cramped. */
+    .toolbar .icon-btn,
+    .toolbar .menu-summary {
+      padding: 10px 12px;
+    }
+    .pane-toggle {
+      padding: 3px;
+    }
+    .pane-toggle .seg {
+      padding: 8px 12px;
+    }
+    /* The editor's own formatting toolbar buttons inherit the touch sizing too,
+       since they're equally finger-driven on a phone. */
+    .editor-pane :global(.tb-btn) {
+      min-width: 40px;
+      min-height: 40px;
+    }
+  }
+
+  /* #34 Pinch-to-zoom on the preview. The preview is a cross-origin iframe with
+     a JS `zoom` control (the toolbar). On touch devices we additionally allow
+     the OS pinch gesture to scale the preview container natively: touch-action
+     `pinch-zoom` opts the pane into browser-native pinch scaling without the
+     pane intercepting it for scrolling. This is purely additive — the existing
+     toolbar zoom (postMessage → iframe setZoom) is unchanged, and on a desktop
+     (fine pointer) nothing here applies. We never hide/opacity the iframe (that
+     would trigger the Chromium 1fps throttle), so the gesture scales the live,
+     visible preview. */
+  @media (pointer: coarse) {
+    .preview-pane {
+      touch-action: pinch-zoom;
     }
   }
 </style>
