@@ -39,6 +39,8 @@ import type {
   FolderChangedEvent,
   CreateProjectOptions,
   CreateProjectResult,
+  TemplateInfo,
+  SnippetEntry,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -295,6 +297,32 @@ export class ElectronAdapter implements Platform {
 
   createProject(options: CreateProjectOptions): Promise<CreateProjectResult> {
     return bridge().createProject(options);
+  }
+
+  // ── Project templates + snippets (#29) — delegate 1:1 to the bridge ─────────
+  listBuiltInTemplates(): Promise<TemplateInfo[]> {
+    return bridge().listBuiltInTemplates();
+  }
+  listCustomTemplates(): Promise<TemplateInfo[]> {
+    return bridge().listCustomTemplates();
+  }
+  saveProjectAsTemplate(projectDir: string, name: string): Promise<TemplateInfo> {
+    return bridge().saveProjectAsTemplate(projectDir, name);
+  }
+  importTemplateFromFolder(): Promise<TemplateInfo | null> {
+    return bridge().importTemplateFromFolder();
+  }
+  listSnippets(projectDir: string): Promise<SnippetEntry[]> {
+    return bridge().listSnippets(projectDir);
+  }
+  readSnippet(projectDir: string, fileName: string): Promise<string> {
+    return bridge().readSnippet(projectDir, fileName);
+  }
+  saveSnippet(projectDir: string, name: string, body: string): Promise<SnippetEntry> {
+    return bridge().saveSnippet(projectDir, name, body);
+  }
+  deleteSnippet(projectDir: string, fileName: string): Promise<void> {
+    return bridge().deleteSnippet(projectDir, fileName);
   }
 
   // ── Local version history (#13) — delegate 1:1 to the bridge ───────────────

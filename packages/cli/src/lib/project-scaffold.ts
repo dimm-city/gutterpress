@@ -24,19 +24,19 @@
  * throws `CreateProjectError` with code `target-exists` (consistent with the
  * global never-delete-user-data rule).
  */
-import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, copyFile, cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { constants as FS } from "node:fs";
 import path from "node:path";
 
 import { getAssetPath } from "./embedded-assets.ts";
 
 /**
- * Which embedded starter template to scaffold from. `"book"` is the only
- * template shipped in v1 (a single sample chapter + assets/ + a minimal
- * manifest); the union exists so additional templates (e.g. `"ttrpg"`) slot in
- * without a signature change.
+ * Which embedded starter template to scaffold from. Each id maps to a directory
+ * under `assets/templates/<id>/` (a `manifest.yaml` + a `chapter-01.md`), baked
+ * into the binary via `embedded-assets.ts`. `"book"` is the default; the others
+ * give non-technical authors a head start for common formats (#29).
  */
-export type ProjectTemplateId = "book";
+export type ProjectTemplateId = "book" | "ttrpg" | "zine" | "technical";
 
 /**
  * How (or whether) to put the new project under local version history.
@@ -67,6 +67,13 @@ export interface CreateProjectOptions {
   folderName?: string;
   /** Which embedded template to scaffold from. Defaults to `"book"`. */
   template?: ProjectTemplateId;
+  /**
+   * Absolute path to a CUSTOM template directory to scaffold from (#29). When
+   * set, the whole directory is copied (minus its metadata sidecar) instead of a
+   * built-in template, and `template` is ignored. Used by the wizard when the
+   * author picks a saved/imported template.
+   */
+  templateDir?: string;
   /** Version-history mode for the new project. Defaults to `"local-git"`. */
   versionHistory?: ProjectVersionHistoryMode;
 }
@@ -202,16 +209,34 @@ export async function scaffoldProject(
   }
 
   const template = options.template ?? "book";
+  const customTemplateDir = options.templateDir;
 
-  // 1. COPY the embedded template files to the target. The empty `assets/` dir
-  // is created explicitly (an empty directory can't be an embedded asset).
+  // 1. COPY the template files to the target.
   try {
-    const tplManifest = await getAssetPath(`templates/${template}/manifest.yaml`);
-    const tplChapter = await getAssetPath(`templates/${template}/chapter-01.md`);
     await mkdir(projectDir, { recursive: true });
-    await mkdir(path.join(projectDir, "assets"), { recursive: true });
-    await copyFile(tplManifest, path.join(projectDir, "manifest.yaml"));
-    await copyFile(tplChapter, path.join(projectDir, "chapter-01.md"));
+    if (customTemplateDir) {
+      // CUSTOM template: copy the whole directory tree (minus the metadata
+      // sidecar). The author's saved files become the new project's files.
+      const entries = await readdir(customTemplateDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name === ".print-md-template.json") continue;
+        await cp(
+          path.join(customTemplateDir, entry.name),
+          path.join(projectDir, entry.name),
+          { recursive: true },
+        );
+      }
+      // Ensure an assets/ dir exists even when the template didn't ship one.
+      await mkdir(path.join(projectDir, "assets"), { recursive: true });
+    } else {
+      // BUILT-IN template: copy the two embedded files. The empty `assets/` dir
+      // is created explicitly (an empty directory can't be an embedded asset).
+      const tplManifest = await getAssetPath(`templates/${template}/manifest.yaml`);
+      const tplChapter = await getAssetPath(`templates/${template}/chapter-01.md`);
+      await mkdir(path.join(projectDir, "assets"), { recursive: true });
+      await copyFile(tplManifest, path.join(projectDir, "manifest.yaml"));
+      await copyFile(tplChapter, path.join(projectDir, "chapter-01.md"));
+    }
   } catch (e) {
     throw new CreateProjectErrorImpl(
       "scaffold-io",
@@ -221,7 +246,6 @@ export async function scaffoldProject(
 
   // 2. FILL IN the copied files (placeholder substitution).
   const manifestPath = path.join(projectDir, "manifest.yaml");
-  const openFile = path.join(projectDir, "chapter-01.md");
   const author = (options.author ?? "").trim() || DEFAULT_AUTHOR;
   const outputPdf = `${slug}.pdf`;
 
@@ -231,11 +255,17 @@ export async function scaffoldProject(
     "{{OUTPUT_PDF}}": escapeYamlScalar(outputPdf),
   };
 
+  // Which file the viewer opens first: the manifest's first source file when we
+  // can read it (custom templates may not have chapter-01.md), else chapter-01.
+  let openFile = path.join(projectDir, "chapter-01.md");
   try {
     await fillTemplateFile(manifestPath, substitutions);
-    // The chapter substitutes only {{TITLE}} (plain Markdown, no YAML escaping
-    // needed — pass the raw name).
-    await fillTemplateFile(openFile, { "{{TITLE}}": name });
+    const firstSource = await firstSourceFile(manifestPath);
+    if (firstSource) openFile = path.join(projectDir, firstSource);
+    // The opened chapter substitutes only {{TITLE}} (plain Markdown, no YAML
+    // escaping needed — pass the raw name). Best-effort: a custom template's
+    // chapter may have no placeholder at all.
+    await fillTemplateFile(openFile, { "{{TITLE}}": name }).catch(() => {});
   } catch (e) {
     throw new CreateProjectErrorImpl(
       "scaffold-io",
@@ -275,6 +305,26 @@ export async function scaffoldProject(
     result.versionHistoryError = versionHistoryError;
   }
   return result;
+}
+
+/**
+ * Best-effort: read the first `source.files` entry from a manifest so the wizard
+ * can open it. A light regex (not a full YAML parse) keeps this dependency-free;
+ * returns undefined when no list item is found.
+ */
+async function firstSourceFile(manifestPath: string): Promise<string | undefined> {
+  let text: string;
+  try {
+    text = await readFile(manifestPath, "utf8");
+  } catch {
+    return undefined;
+  }
+  // Find the `files:` list and return its first `- value` entry.
+  const filesIdx = text.search(/^\s*files:\s*$/m);
+  if (filesIdx === -1) return undefined;
+  const rest = text.slice(filesIdx);
+  const m = rest.match(/^\s*-\s*"?([^"\n]+?)"?\s*$/m);
+  return m ? m[1]!.trim() : undefined;
 }
 
 /** Read a copied template file, replace every placeholder, write it back. */

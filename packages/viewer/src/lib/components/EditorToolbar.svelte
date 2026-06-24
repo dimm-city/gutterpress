@@ -47,7 +47,8 @@
     | "hr"
     | "page-break"
     | "table"
-    | "image";
+    | "image"
+    | "snippet";
 
   export type ToolbarPayload =
     | { level: 1 | 2 | 3 | 4 }           // heading
@@ -396,6 +397,16 @@
         aria-label="Insert image"
       >
         <Icon name="image" size={14} />
+      </button>
+
+      <!-- Snippet picker (desktop only): insert a reusable markdown fragment (#29). -->
+      <button
+        class="tb-btn"
+        onclick={() => onAction("snippet")}
+        title="Insert snippet (Ctrl/Cmd+Shift+S)"
+        aria-label="Insert snippet"
+      >
+        <Icon name="puzzle" size={14} />
       </button>
     {/if}
   </div>

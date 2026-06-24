@@ -179,8 +179,24 @@ interface CreateProjectOptions {
   author?: string;
   parentDir: string;
   folderName?: string;
-  template?: "book";
+  template?: "book" | "ttrpg" | "zine" | "technical";
+  /** Absolute path to a custom template directory (#29); overrides `template`. */
+  templateDir?: string;
   versionHistory?: "local-git" | "none";
+}
+
+// Project templates + snippets (#29). Mirror the lib's TemplateInfo/SnippetEntry.
+interface TemplateInfo {
+  id: string;
+  label: string;
+  description: string;
+  kind: "builtin" | "custom";
+  dir?: string;
+}
+interface SnippetEntry {
+  name: string;
+  fileName: string;
+  variables: string[];
 }
 interface CreateProjectResult {
   projectDir: string;
@@ -358,6 +374,27 @@ interface LibModule {
   capabilitiesFor: (source: ProjectSource) => ProjectCapabilities;
   scaffoldProject: (options: CreateProjectOptions) => Promise<CreateProjectResult>;
   providerFor: (source: ProjectSource) => SourceProviderOps;
+  // Project templates + snippets (#29)
+  listBuiltInTemplates: () => Promise<TemplateInfo[]>;
+  listCustomTemplates: (templatesRoot: string) => Promise<TemplateInfo[]>;
+  saveProjectAsTemplate: (options: {
+    projectDir: string;
+    name: string;
+    templatesRoot: string;
+  }) => Promise<TemplateInfo>;
+  importTemplateFromFolder: (options: {
+    sourceDir: string;
+    name?: string;
+    templatesRoot: string;
+  }) => Promise<TemplateInfo>;
+  listSnippets: (projectDir: string) => Promise<SnippetEntry[]>;
+  readSnippet: (projectDir: string, fileName: string) => Promise<string>;
+  saveSnippet: (
+    projectDir: string,
+    name: string,
+    body: string,
+  ) => Promise<SnippetEntry>;
+  deleteSnippet: (projectDir: string, fileName: string) => Promise<void>;
   // Automatic snapshots (RC1-3)
   AUTO_SNAPSHOT_MESSAGE: string;
   isNoChangesError: (e: unknown) => boolean;
@@ -2662,6 +2699,93 @@ ipcMain.handle(
     }
     const lib = await loadLib();
     return lib.scaffoldProject(options);
+  },
+);
+
+// ── Project templates + snippets (#29) ───────────────────────────────────────
+// Thin pass-throughs to the shared lib (one implementation for CLI + viewer).
+// Custom templates live under `userData/templates/`; snippets live inside the
+// open project's `snippets/` folder (so they travel with the project).
+function templatesRoot(): string {
+  return path.join(app.getPath("userData"), "templates");
+}
+
+ipcMain.handle("tpl:listBuiltIn", async (): Promise<TemplateInfo[]> => {
+  const lib = await loadLib();
+  return lib.listBuiltInTemplates();
+});
+
+ipcMain.handle("tpl:listCustom", async (): Promise<TemplateInfo[]> => {
+  const lib = await loadLib();
+  return lib.listCustomTemplates(templatesRoot());
+});
+
+ipcMain.handle(
+  "tpl:saveAsTemplate",
+  async (_e, projectDir: string, name: string): Promise<TemplateInfo> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("tpl:saveAsTemplate requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.saveProjectAsTemplate({ projectDir, name, templatesRoot: templatesRoot() });
+  },
+);
+
+ipcMain.handle("tpl:importFromFolder", async (): Promise<TemplateInfo | null> => {
+  if (!mainWindow) return null;
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: "Choose a template folder",
+    properties: ["openDirectory"],
+  });
+  if (res.canceled || res.filePaths.length === 0) return null;
+  const lib = await loadLib();
+  return lib.importTemplateFromFolder({
+    sourceDir: res.filePaths[0]!,
+    templatesRoot: templatesRoot(),
+  });
+});
+
+ipcMain.handle(
+  "snip:list",
+  async (_e, projectDir: string): Promise<SnippetEntry[]> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("snip:list requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.listSnippets(projectDir);
+  },
+);
+
+ipcMain.handle(
+  "snip:read",
+  async (_e, projectDir: string, fileName: string): Promise<string> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("snip:read requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.readSnippet(projectDir, fileName);
+  },
+);
+
+ipcMain.handle(
+  "snip:save",
+  async (_e, projectDir: string, name: string, body: string): Promise<SnippetEntry> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("snip:save requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.saveSnippet(projectDir, name, body);
+  },
+);
+
+ipcMain.handle(
+  "snip:delete",
+  async (_e, projectDir: string, fileName: string): Promise<void> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("snip:delete requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.deleteSnippet(projectDir, fileName);
   },
 );
 

@@ -85,6 +85,31 @@ export type {
   CreateProjectError,
 } from "../lib/project-scaffold.ts";
 
+// ── Project templates (#29) ───────────────────────────────────────────────────
+export {
+  listBuiltInTemplates,
+  listCustomTemplates,
+  saveProjectAsTemplate,
+  importTemplateFromFolder,
+  BUILT_IN_TEMPLATE_IDS,
+} from "../lib/project-templates.ts";
+export type {
+  TemplateInfo,
+  SaveProjectAsTemplateOptions,
+} from "../lib/project-templates.ts";
+
+// ── Snippets (#29) ────────────────────────────────────────────────────────────
+export {
+  extractVariables,
+  substituteVariables,
+  listSnippets,
+  readSnippet,
+  saveSnippet,
+  deleteSnippet,
+  SNIPPETS_DIR,
+} from "../lib/snippets.ts";
+export type { SnippetEntry } from "../lib/snippets.ts";
+
 export {
   providerFor,
   restoreVersionWithBackup,

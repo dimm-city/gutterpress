@@ -1,7 +1,7 @@
 import { defineCommand } from "citty";
 import { resolve } from "node:path";
-import { scaffoldProject } from "../index.ts";
-import type { CreateProjectError } from "../index.ts";
+import { scaffoldProject, BUILT_IN_TEMPLATE_IDS } from "../index.ts";
+import type { CreateProjectError, ProjectTemplateId } from "../index.ts";
 
 /**
  * `print-md new` — scaffold a new project from an embedded starter template.
@@ -34,6 +34,10 @@ export default defineCommand({
       type: "string",
       description: "Folder name to create (default: a slug of the project name)",
     },
+    template: {
+      type: "string",
+      description: `Starter template: ${BUILT_IN_TEMPLATE_IDS.join(", ")} (default: book)`,
+    },
     git: {
       type: "boolean",
       description: "Initialise local version history (default: true; use --no-git to skip)",
@@ -46,12 +50,24 @@ export default defineCommand({
       typeof args.dir === "string" && args.dir ? args.dir : process.cwd(),
     );
 
+    let template: ProjectTemplateId | undefined;
+    if (typeof args.template === "string" && args.template) {
+      if (!(BUILT_IN_TEMPLATE_IDS as readonly string[]).includes(args.template)) {
+        console.error(
+          `Unknown template "${args.template}". Choose one of: ${BUILT_IN_TEMPLATE_IDS.join(", ")}.`,
+        );
+        process.exit(2);
+      }
+      template = args.template as ProjectTemplateId;
+    }
+
     try {
       const result = await scaffoldProject({
         name,
         author: typeof args.author === "string" ? args.author : undefined,
         parentDir,
         folderName: typeof args.folder === "string" && args.folder ? args.folder : undefined,
+        template,
         versionHistory: args.git === false ? "none" : "local-git",
       });
 

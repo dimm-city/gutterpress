@@ -63,6 +63,8 @@ import type {
   FolderChangedEvent,
   CreateProjectOptions,
   CreateProjectResult,
+  TemplateInfo,
+  SnippetEntry,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -642,6 +644,42 @@ export class WebAdapter implements Platform {
   // New-project scaffold (#25) — desktop-only in 0.4.0.
   createProject(_options: CreateProjectOptions): Promise<CreateProjectResult> {
     return rejectNotImplemented("createProject");
+  }
+
+  // ── Project templates + snippets (#29) ──────────────────────────────────────
+  // Built-in template metadata is static (safe to surface in a future PWA
+  // wizard). Everything that touches the host filesystem — custom templates,
+  // save-as-template, folder import, and per-project snippets — is desktop-only
+  // in v1; the renderer guards these behind isDesktop(). Snippets over the FSA
+  // project root are a documented follow-up (see CLAUDE.md §8 / issue #29).
+  async listBuiltInTemplates(): Promise<TemplateInfo[]> {
+    return [
+      { id: "book", label: "Book", description: "A clean starting point for a novel, memoir, or any long-form book.", kind: "builtin" },
+      { id: "ttrpg", label: "TTRPG supplement", description: "Rules, stat blocks, and tables for a tabletop roleplaying supplement.", kind: "builtin" },
+      { id: "zine", label: "Zine", description: "A short, personal zine made to be printed, folded, and shared.", kind: "builtin" },
+      { id: "technical", label: "Technical document", description: "A manual or guide with steps, reference tables, and code examples.", kind: "builtin" },
+    ];
+  }
+  async listCustomTemplates(): Promise<TemplateInfo[]> {
+    return [];
+  }
+  saveProjectAsTemplate(_projectDir: string, _name: string): Promise<TemplateInfo> {
+    return rejectNotImplemented("saveProjectAsTemplate");
+  }
+  importTemplateFromFolder(): Promise<TemplateInfo | null> {
+    return rejectNotImplemented("importTemplateFromFolder");
+  }
+  listSnippets(_projectDir: string): Promise<SnippetEntry[]> {
+    return Promise.resolve([]);
+  }
+  readSnippet(_projectDir: string, _fileName: string): Promise<string> {
+    return rejectNotImplemented("readSnippet");
+  }
+  saveSnippet(_projectDir: string, _name: string, _body: string): Promise<SnippetEntry> {
+    return rejectNotImplemented("saveSnippet");
+  }
+  deleteSnippet(_projectDir: string, _fileName: string): Promise<void> {
+    return rejectNotImplemented("deleteSnippet");
   }
 
   // ── Local version history (#13) — desktop-only; reject/empty on web ────────

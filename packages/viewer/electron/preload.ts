@@ -80,7 +80,8 @@ interface CreateProjectOptions {
   author?: string;
   parentDir: string;
   folderName?: string;
-  template?: "book";
+  template?: "book" | "ttrpg" | "zine" | "technical";
+  templateDir?: string;
   versionHistory?: "local-git" | "none";
 }
 interface CreateProjectResult {
@@ -89,6 +90,20 @@ interface CreateProjectResult {
   openFile: string;
   versionHistory: "local-git" | "none";
   versionHistoryError?: string;
+}
+
+// Project templates + snippets (#29).
+interface TemplateInfo {
+  id: string;
+  label: string;
+  description: string;
+  kind: "builtin" | "custom";
+  dir?: string;
+}
+interface SnippetEntry {
+  name: string;
+  fileName: string;
+  variables: string[];
 }
 
 interface RecentFolderEntry {
@@ -598,6 +613,24 @@ contextBridge.exposeInMainWorld("electron", {
   // New-project scaffold (#25)
   createProject: (options: CreateProjectOptions): Promise<CreateProjectResult> =>
     ipcRenderer.invoke("app:createProject", options),
+
+  // Project templates + snippets (#29)
+  listBuiltInTemplates: (): Promise<TemplateInfo[]> =>
+    ipcRenderer.invoke("tpl:listBuiltIn"),
+  listCustomTemplates: (): Promise<TemplateInfo[]> =>
+    ipcRenderer.invoke("tpl:listCustom"),
+  saveProjectAsTemplate: (projectDir: string, name: string): Promise<TemplateInfo> =>
+    ipcRenderer.invoke("tpl:saveAsTemplate", projectDir, name),
+  importTemplateFromFolder: (): Promise<TemplateInfo | null> =>
+    ipcRenderer.invoke("tpl:importFromFolder"),
+  listSnippets: (projectDir: string): Promise<SnippetEntry[]> =>
+    ipcRenderer.invoke("snip:list", projectDir),
+  readSnippet: (projectDir: string, fileName: string): Promise<string> =>
+    ipcRenderer.invoke("snip:read", projectDir, fileName),
+  saveSnippet: (projectDir: string, name: string, body: string): Promise<SnippetEntry> =>
+    ipcRenderer.invoke("snip:save", projectDir, name, body),
+  deleteSnippet: (projectDir: string, fileName: string): Promise<void> =>
+    ipcRenderer.invoke("snip:delete", projectDir, fileName),
 
   // Local version history (#13) — isomorphic-git in main, via the lib
   enableVersionHistory: (projectDir: string): Promise<ProjectClassification> =>
