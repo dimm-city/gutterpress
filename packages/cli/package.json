@@ -31,12 +31,10 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "bun": "./src/index.ts",
       "default": "./dist/index.js"
     },
     "./api": {
       "types": "./dist/api/index.d.ts",
-      "bun": "./src/api/index.ts",
       "default": "./dist/api/index.js"
     }
   },
@@ -47,7 +45,6 @@
   ],
   "scripts": {
     "build": "rimraf dist && bun build src/index.ts src/api/index.ts src/cli.ts --target=node --packages=external --splitting --outdir=dist && tsc -p tsconfig.build.json",
-    "compile": "bun build src/cli.ts --compile --outfile=print-md",
     "prepublishOnly": "bun run build",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
