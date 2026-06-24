@@ -59,7 +59,18 @@ import type {
   SyncStatus,
   RecoveryConfirmRequest,
   ConflictPreview,
+  FolderRef,
+  PlatformCapabilities,
 } from "./contract";
+
+/**
+ * Last non-empty path segment, splitting on both POSIX and Windows separators.
+ * A tiny local helper (NOT node:path) so the renderer stays PWA-clean (§8 /
+ * ADR 0004) — importing node:path as a value would drag node code into the SPA.
+ */
+function basename(p: string): string {
+  return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
+}
 
 function bridge(): ElectronBridge {
   const b = window.electron;
@@ -76,8 +87,13 @@ export class ElectronAdapter implements Platform {
   readonly platform = "electron" as const;
 
   // ── PlatformAdapter primitives ──────────────────────────────────────────
-  openFolder(): Promise<string | null> {
-    return bridge().openDirectory();
+  // #49: translation seam — the bridge returns the chosen absolute path (a
+  // string); wrap it into a host-neutral FolderRef (key = path, displayName =
+  // basename) so the renderer never assumes path-string semantics.
+  async openFolder(): Promise<FolderRef | null> {
+    const path = await bridge().openDirectory();
+    if (path == null) return null;
+    return { key: path, displayName: basename(path) };
   }
 
   readFile(path: string): Promise<string> {
@@ -119,6 +135,16 @@ export class ElectronAdapter implements Platform {
 
   get updater(): UpdaterApi {
     return bridge().updater;
+  }
+
+  // #49: Electron is the full-capability host — native save paths, OS file
+  // manager reveal, and persistent folder access are all available.
+  capabilities(): PlatformCapabilities {
+    return {
+      nativeSavePath: true,
+      showInFolder: true,
+      persistentFolderAccess: true,
+    };
   }
 
   savePdf(defaultName?: string): Promise<string | null> {
@@ -224,12 +250,27 @@ export class ElectronAdapter implements Platform {
     return bridge().onNativeThemeUpdated(cb);
   }
 
-  getRecentFolders(): Promise<RecentFolderEntry[]> {
-    return bridge().getRecentFolders();
+  // #49: the bridge returns raw path-keyed rows; map each to a FolderRef-shaped
+  // entry (key = path, displayName = basename) for the app-facing contract.
+  async getRecentFolders(): Promise<RecentFolderEntry[]> {
+    const rows = await bridge().getRecentFolders();
+    return rows.map((r) => ({
+      key: r.path,
+      displayName: basename(r.path),
+      title: r.title,
+      openedAt: r.openedAt,
+      exists: r.exists,
+    }));
   }
 
-  getFavorites(): Promise<FavoriteEntry[]> {
-    return bridge().getFavorites();
+  async getFavorites(): Promise<FavoriteEntry[]> {
+    const rows = await bridge().getFavorites();
+    return rows.map((f) => ({
+      key: f.path,
+      displayName: basename(f.path),
+      title: f.title,
+      exists: f.exists,
+    }));
   }
 
   toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }> {
@@ -376,8 +417,10 @@ export class ElectronAdapter implements Platform {
     return bridge().resolveSyncConflicts(args);
   }
 
+  // #49: unwrap FolderRef.key → the string `input` the existing IPC expects.
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {
-    return bridge().startPreview(args);
+    const { input, ...rest } = args;
+    return bridge().startPreview({ ...rest, input: input.key });
   }
 
   stopPreview(): Promise<{ stopped: boolean }> {
@@ -388,8 +431,10 @@ export class ElectronAdapter implements Platform {
     return bridge().cancelExport(exportId);
   }
 
+  // #49: unwrap FolderRef.key → the string `input` the existing IPC expects.
   build(args: BuildArgs): Promise<BuildResult> {
-    return bridge().build(args);
+    const { input, ...rest } = args;
+    return bridge().build({ ...rest, input: input.key });
   }
 
   doctor(): Promise<unknown> {

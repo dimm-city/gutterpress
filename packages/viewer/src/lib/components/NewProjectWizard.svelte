@@ -104,7 +104,7 @@
     error = null;
     try {
       const dir = await getPlatform().openFolder();
-      if (dir) parentDir = dir;
+      if (dir) parentDir = dir.key;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }

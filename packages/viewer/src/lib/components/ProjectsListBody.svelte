@@ -11,8 +11,17 @@
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
 
-  type RecentFolder = { path: string; title: string; openedAt: string; exists: boolean };
-  type FavoriteFolder = { path: string; title: string; exists: boolean };
+  // #49: recents/favorites are FolderRef-shaped (key + precomputed displayName)
+  // in the app-facing contract. Discovered projects still come back path-keyed
+  // from the host scan (a raw filesystem path is the right unit there).
+  type RecentFolder = {
+    key: string;
+    displayName: string;
+    title: string;
+    openedAt: string;
+    exists: boolean;
+  };
+  type FavoriteFolder = { key: string; displayName: string; title: string; exists: boolean };
   type DiscoveredProject = { path: string; title: string };
 
   let {
@@ -115,19 +124,20 @@
   }
 
   let filteredFavorites = $derived(
-    favorites.filter((f) => matchesFilter(f.path, f.title, effectiveFilter))
+    favorites.filter((f) => matchesFilter(f.key, f.title, effectiveFilter))
   );
   let filteredRecents = $derived(
-    recents.filter((r) => matchesFilter(r.path, r.title, effectiveFilter))
+    recents.filter((r) => matchesFilter(r.key, r.title, effectiveFilter))
   );
 
   const DISCOVERED_CAP = 8;
   let discoveredExpanded = $state(false);
 
   let filteredDiscovered = $derived.by<DiscoveredProject[]>(() => {
+    // #49: dedup discovered against recents/favorites by FolderRef.key.
     const shown = new Set<string>([
-      ...filteredFavorites.map((f) => f.path),
-      ...filteredRecents.map((r) => r.path),
+      ...filteredFavorites.map((f) => f.key),
+      ...filteredRecents.map((r) => r.key),
     ]);
     return discovered.filter(
       (d) => !shown.has(d.path) && matchesFilter(d.path, d.title, effectiveFilter)
@@ -138,12 +148,17 @@
     discoveredExpanded ? filteredDiscovered : filteredDiscovered.slice(0, DISCOVERED_CAP)
   );
 
+  // #49: `path` here is the host-neutral key (a FolderRef.key for recents /
+  // favorites, the raw scan path for discovered) — the unit openRow/onChosen
+  // and keyboard nav operate on.
   let allRows = $derived.by<
     Array<{ path: string; title: string; exists: boolean; isFavorite: boolean }>
   >(() => {
-    const favRows = filteredFavorites.map((f) => ({ ...f, isFavorite: true }));
+    const favRows = filteredFavorites.map((f) => ({
+      path: f.key, title: f.title, exists: f.exists, isFavorite: true,
+    }));
     const recentRows = filteredRecents.map((r) => ({
-      path: r.path, title: r.title, exists: r.exists, isFavorite: false,
+      path: r.key, title: r.title, exists: r.exists, isFavorite: false,
     }));
     const discoveredRows = visibleDiscovered.map((d) => ({
       path: d.path, title: d.title, exists: true, isFavorite: false,
@@ -164,8 +179,8 @@
     discoveredExpanded = false;
   });
 
-  function isFavorited(path: string): boolean {
-    return favorites.some((f) => f.path === path);
+  function isFavorited(key: string): boolean {
+    return favorites.some((f) => f.key === key);
   }
 
   async function openRow(path: string) {
@@ -218,7 +233,7 @@
     if (!isDesktop()) return;
     const dir = await getPlatform().openFolder();
     if (!dir) return;
-    onChosen?.(dir);
+    onChosen?.(dir.key);
   }
 
   function onListKeydown(e: KeyboardEvent, rowIndex: number, path: string) {
@@ -298,19 +313,19 @@
                 tabindex={fav.exists ? 0 : -1}
                 role="button"
                 aria-disabled={!fav.exists}
-                onclick={() => fav.exists && openRow(fav.path)}
-                onkeydown={(e) => onListKeydown(e, i, fav.path)}
-                title={fav.exists ? fav.path : `${fav.path} (folder not found)`}
+                onclick={() => fav.exists && openRow(fav.key)}
+                onkeydown={(e) => onListKeydown(e, i, fav.key)}
+                title={fav.exists ? fav.key : `${fav.key} (folder not found)`}
               >
                 <span class="row-icon" aria-hidden="true"><Icon name="star" size={13} /></span>
                 <span class="row-info">
-                  <span class="row-title">{fav.title || fav.path.split(/[\\/]/).filter(Boolean).pop()}</span>
-                  <span class="row-path">{fav.path}{!fav.exists ? " — not found" : ""}</span>
+                  <span class="row-title">{fav.title || fav.displayName}</span>
+                  <span class="row-path">{fav.key}{!fav.exists ? " — not found" : ""}</span>
                 </span>
               </div>
               <div class="row-actions">
                 <button class="icon-action star active" title="Remove from favorites" aria-label="Remove from favorites"
-                  onclick={(e) => toggleFavorite(fav.path, fav.title, e)}><Icon name="star" size={13} /></button>
+                  onclick={(e) => toggleFavorite(fav.key, fav.title, e)}><Icon name="star" size={13} /></button>
               </div>
             </li>
           {/each}
@@ -325,7 +340,7 @@
           <ul class="list" aria-label="Recently opened folders">
             {#each filteredRecents as recent, i}
               {@const rowIndex = filteredFavorites.length + i}
-              {@const favorited = isFavorited(recent.path)}
+              {@const favorited = isFavorited(recent.key)}
               <li class="list-item">
                 <div
                   class="list-row"
@@ -333,23 +348,23 @@
                   tabindex={recent.exists ? 0 : -1}
                   role="button"
                   aria-disabled={!recent.exists}
-                  onclick={() => recent.exists && openRow(recent.path)}
-                  onkeydown={(e) => onListKeydown(e, rowIndex, recent.path)}
-                  title={recent.exists ? recent.path : `${recent.path} (folder not found)`}
+                  onclick={() => recent.exists && openRow(recent.key)}
+                  onkeydown={(e) => onListKeydown(e, rowIndex, recent.key)}
+                  title={recent.exists ? recent.key : `${recent.key} (folder not found)`}
                 >
                   <span class="row-icon" aria-hidden="true"><Icon name="folder" size={13} /></span>
                   <span class="row-info">
-                    <span class="row-title">{recent.title || recent.path.split(/[\\/]/).filter(Boolean).pop()}</span>
-                    <span class="row-path">{recent.path}{!recent.exists ? " — not found" : ""}</span>
+                    <span class="row-title">{recent.title || recent.displayName}</span>
+                    <span class="row-path">{recent.key}{!recent.exists ? " — not found" : ""}</span>
                   </span>
                 </div>
                 <div class="row-actions">
                   <button class="icon-action star" class:active={favorited}
                     title={favorited ? "Remove from favorites" : "Add to favorites"}
                     aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
-                    onclick={(e) => toggleFavorite(recent.path, recent.title, e)}><Icon name="star" size={13} /></button>
+                    onclick={(e) => toggleFavorite(recent.key, recent.title, e)}><Icon name="star" size={13} /></button>
                   <button class="icon-action remove" title="Remove from recently opened" aria-label="Remove from recently opened"
-                    onclick={(e) => removeRecent(recent.path, e)}><Icon name="x" size={14} /></button>
+                    onclick={(e) => removeRecent(recent.key, e)}><Icon name="x" size={14} /></button>
                 </div>
               </li>
             {/each}

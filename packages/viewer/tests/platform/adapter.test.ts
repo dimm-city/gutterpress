@@ -53,8 +53,14 @@ function makeBridge() {
     setSettings: rec("setSettings", Promise.resolve({ ok: true })),
     getNativeTheme: rec("getNativeTheme", Promise.resolve({ shouldUseDarkColors: true })),
     onNativeThemeUpdated: rec("onNativeThemeUpdated", () => {}),
-    getRecentFolders: rec("getRecentFolders", Promise.resolve([])),
-    getFavorites: rec("getFavorites", Promise.resolve([])),
+    getRecentFolders: rec(
+      "getRecentFolders",
+      Promise.resolve([{ path: "/proj", title: "My Book", openedAt: "2026-01-01", exists: true }]),
+    ),
+    getFavorites: rec(
+      "getFavorites",
+      Promise.resolve([{ path: "/proj", title: "My Book", exists: true }]),
+    ),
     toggleFavorite: rec("toggleFavorite", Promise.resolve({ favorited: true })),
     removeRecent: rec("removeRecent", Promise.resolve({ ok: true })),
     discoverProjects: rec("discoverProjects", Promise.resolve([])),
@@ -149,7 +155,8 @@ test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", asyn
   globalThis.window = { electron: bridge };
   const p = new ElectronAdapter();
 
-  await expect(p.openFolder()).resolves.toBe("/proj");
+  // #49: openFolder wraps the bridge's path string into a host-neutral FolderRef.
+  await expect(p.openFolder()).resolves.toEqual({ key: "/proj", displayName: "proj" });
   await expect(p.readFile("/a.md")).resolves.toBe("file-body");
   await p.writeFile("/a.md", "hello");
   await expect(p.listDir("/proj")).resolves.toEqual([
@@ -159,8 +166,17 @@ test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", asyn
     md: ["01-intro.md"],
     css: ["theme.css"],
   });
-  await p.build({ input: "/proj", format: "pdf" });
+  await p.build({ input: { key: "/proj", displayName: "proj" }, format: "pdf" });
+  await p.startPreview({ input: { key: "/proj", displayName: "proj" } });
   await p.doctor();
+
+  // #49: recents/favorites rows map path → key + derived displayName, other fields forwarded.
+  await expect(p.getRecentFolders()).resolves.toEqual([
+    { key: "/proj", displayName: "proj", title: "My Book", openedAt: "2026-01-01", exists: true },
+  ]);
+  await expect(p.getFavorites()).resolves.toEqual([
+    { key: "/proj", displayName: "proj", title: "My Book", exists: true },
+  ]);
   await expect(p.classifyProject("/proj")).resolves.toEqual({
     source: { type: "local-folder", path: "/proj" },
     capabilities: { canSnapshot: false },
@@ -183,6 +199,14 @@ test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", asyn
   expect(methods).toContain("listProjectFiles");
   expect(calls.find((c) => c.method === "listProjectFiles")?.args).toEqual(["/proj"]);
   expect(methods).toContain("build");
+  // #49: the adapter unwraps FolderRef.key → the string `input` the IPC expects.
+  expect(calls.find((c) => c.method === "build")?.args).toEqual([
+    { input: "/proj", format: "pdf" },
+  ]);
+  // #49: startPreview likewise unwraps FolderRef.key → the string `input` the IPC expects.
+  expect(calls.find((c) => c.method === "startPreview")?.args).toEqual([
+    { input: "/proj" },
+  ]);
   expect(methods).toContain("classifyProject");
   expect(calls.find((c) => c.method === "classifyProject")?.args).toEqual(["/proj"]);
   expect(methods).toContain("createProject");
@@ -375,7 +399,9 @@ test("WebAdapter: primitives throw, host methods reject, subscriptions are no-op
   expect(() => p.openFolder()).toThrow(/0\.6\.0/);
   expect(() => p.watchFolder("/p", () => {})).toThrow(/0\.6\.0/);
   expect(() => p.listDir("/p")).toThrow(/0\.6\.0/);
-  await expect(p.startPreview({ input: "/p" })).rejects.toThrow(/0\.6\.0/);
+  await expect(
+    p.startPreview({ input: { key: "/p", displayName: "p" } }),
+  ).rejects.toThrow(/0\.6\.0/);
   await expect(p.setViewerPrefs({})).rejects.toThrow(/0\.6\.0/);
   await expect(p.getViewerProjectState("/p")).rejects.toThrow(/0\.6\.0/);
   await expect(p.setViewerProjectState("/p", {})).rejects.toThrow(/0\.6\.0/);
