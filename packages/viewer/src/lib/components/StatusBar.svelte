@@ -25,6 +25,10 @@
     sourceMode = "folder" as "folder" | "url",
     /** Whether the project has sync capability (canSync). */
     canSync = false,
+    /** Whether the project keeps local version history (canSnapshot) — true for
+     *  any local-git project even without a syncable remote. Drives the pill so
+     *  local-only projects still get a clickable "Version history" affordance. */
+    canSnapshot = false,
     /** Current save phase from the editor buffer. */
     savePhase = "clean" as "clean" | "dirty" | "saving" | "error",
     /** Whether a file is currently open in the editor. */
@@ -56,6 +60,7 @@
     projectDir?: string | null;
     sourceMode?: "folder" | "url";
     canSync?: boolean;
+    canSnapshot?: boolean;
     savePhase?: "clean" | "dirty" | "saving" | "error";
     fileOpen?: boolean;
     forceSaving?: boolean;
@@ -112,8 +117,11 @@
     !!projectDir && sourceMode === "folder" && canSync,
   );
 
+  // Show the status pill for any folder project that can sync OR keep local
+  // version history. canSync projects get sync status; local-only projects get
+  // the "Version history on" label (both open the operation log on click).
   let showSync = $derived(
-    !!projectDir && sourceMode === "folder" && canSync,
+    !!projectDir && sourceMode === "folder" && (canSync || canSnapshot),
   );
 
   let showProblems = $derived(

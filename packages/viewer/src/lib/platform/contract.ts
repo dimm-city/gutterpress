@@ -389,7 +389,11 @@ export type SyncState =
   | "conflict"
   | "error"
   | "recovering"
-  | "recovered";
+  | "recovered"
+  // "local" — a local-git project with no syncable remote. No sync runs, but
+  // version history (auto-snapshots) is active; the status pill shows a
+  // clickable "Version history on" label that opens the operation log.
+  | "local";
 
 // ── Recovery types — defined locally; no lib value import in the SPA ─────────
 //

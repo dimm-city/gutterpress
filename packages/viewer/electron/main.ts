@@ -234,6 +234,8 @@ interface SourceProviderOps {
     projectDir: string;
     message: string;
     authorName?: string;
+    /** Operation-log path; snapshots are recorded there when provided. */
+    logFile?: string;
   }): Promise<SnapshotEntry>;
   listHistory(projectDir: string): Promise<SnapshotEntry[]>;
   listHistoryPage(
@@ -970,6 +972,10 @@ async function runAutoSnapshot(dir: string): Promise<void> {
     await lib.providerFor(source).snapshot({
       projectDir: dir,
       message: lib.AUTO_SNAPSHOT_MESSAGE,
+      // Record the snapshot in the project's operation log so the bottom-bar
+      // "Version history" affordance shows it (local-git projects have no
+      // remote/sync, but they DO snapshot — those snapshots must be logged).
+      logFile: operationLogPath(path.basename(dir)),
     });
   } catch (e) {
     const lib = await loadLib().catch(() => null);
@@ -1096,7 +1102,11 @@ interface SyncStatusPayload {
     | "conflict"
     | "error"
     | "recovering"
-    | "recovered";
+    | "recovered"
+    // "local" — a local-git project with no syncable remote. There is no sync,
+    // but version history (auto-snapshots) is active; the pill surfaces a
+    // clickable "Version history on" label that opens the operation log.
+    | "local";
   /** Absolute path of the project this status applies to. */
   projectDir: string;
   /** Present (non-empty) only when state === "conflict". */
@@ -2722,6 +2732,8 @@ ipcMain.handle(
       return lib.providerFor(source).snapshot({
         projectDir: dir,
         message: message?.trim() || "Saved snapshot",
+        // Log manual snapshots too (same operation log the bottom-bar shows).
+        logFile: operationLogPath(path.basename(dir)),
       });
     }),
 );
@@ -3378,6 +3390,41 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   // (not coupled to the 10-min snapshot debounce — that delayed it ~10.5 min and
   // hid teammate changes). syncProject snapshots-first, so a prompt run is safe.
   armAutoSyncInterval(openedDir);
+
+  // Local-git projects with no syncable remote get no sync status, so the
+  // bottom-bar pill would stay hidden — yet they DO keep version history via
+  // auto-snapshots. Emit a one-shot "local" status (carrying the operation-log
+  // path) so the pill shows a clickable "Version history on" label that opens
+  // the log. Isolated from the sync/recovery flow below; canSync projects get
+  // their status from runAutoSync and ignore this branch.
+  void (async () => {
+    try {
+      const source = await lib.detectProjectSource(openedDir);
+      if (source.type !== "local-git-folder") return;
+      const diag = await lib.diagnoseProjectRemote(openedDir, {
+        tokenStore: electronTokenStore,
+      });
+      if (diag.canSync) return; // sync flow owns the status for syncable repos
+      const localStatus = {
+        state: "local" as const,
+        projectDir: openedDir,
+        lastSyncAt: null,
+        logFile: operationLogPath(path.basename(openedDir)),
+      };
+      // "sync:status" is a fire-and-forget event with no replay, so an emit that
+      // beats the renderer's pill subscription is lost. Emit now (fast-mounted
+      // renderers) AND re-emit after the same open delay the canSync path relies
+      // on, by which point the pill has subscribed. Guarded by watchedDir so a
+      // project switch before the delay cancels the stale re-emit.
+      emitSyncStatus(localStatus);
+      const t = setTimeout(() => {
+        if (watchedDir === openedDir) emitSyncStatus(localStatus);
+      }, AUTO_SYNC_OPEN_DELAY_MS);
+      if (typeof (t as NodeJS.Timeout).unref === "function") (t as NodeJS.Timeout).unref();
+    } catch {
+      // Non-fatal: the pill simply stays hidden if detection/diagnosis fails.
+    }
+  })();
 
   // Preflight recovery: before the initial sync, inspect the repo for structural
   // conditions (stale lock, interrupted merge, detached head, missing git dir).

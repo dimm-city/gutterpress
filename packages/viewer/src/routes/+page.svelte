@@ -2502,6 +2502,7 @@
     projectDir={currentDir}
     sourceMode={sourceMode}
     canSync={!!(syncDiag?.canSync)}
+    canSnapshot={!!(projectCapabilities?.canSnapshot)}
     savePhase={editorSavePhase}
     fileOpen={!!editorFilePath}
     {forceSaving}
