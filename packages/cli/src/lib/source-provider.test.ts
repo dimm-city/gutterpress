@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { mkdir, mkdtemp, writeFile, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, readFile, rm, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { detectProjectSource } from "./project-source";
@@ -630,16 +630,30 @@ test("listHistory is a bounded page (delegates to listHistoryPage defaults)", as
   }
 });
 
-test("same-byte-length edits are detected (racy index)", async () => {
+// Regression guard for GitHub issue #50 (silent data loss): a file rewritten
+// with DIFFERENT content of the SAME byte length within the same mtime second
+// must still be detected as changed. isomorphic-git's WORKDIR walker reuses the
+// cached index oid when size+mtime match, so without the Phase 2 racy-index
+// guard in listWorkdirChanges() (source-provider.ts) the edit is invisible and
+// the snapshot silently drops it. This test pins identical mtimes via utimes()
+// so the guard's content-rehash path is ALWAYS exercised (independent of how
+// fast the writes happen) — it FAILS if that else-branch is removed.
+test("same-byte-length edits are detected (racy index) — issue #50", async () => {
   const dir = await tempDir();
+  const file = path.join(dir, "chapter-01.md");
   try {
     const provider = await initProject(dir);
     // "aaa" = 3 bytes
-    await writeFile(path.join(dir, "chapter-01.md"), "aaa");
+    await writeFile(file, "aaa");
     await provider.snapshot({ projectDir: dir, message: "First" });
+    const stagedStat = await stat(file);
 
-    // "bbb" = 3 bytes — same length, different content
-    await writeFile(path.join(dir, "chapter-01.md"), "bbb");
+    // "bbb" = 3 bytes — same length, different content.
+    await writeFile(file, "bbb");
+    // Force the worst case: identical size AND identical mtime/atime as the
+    // staged version, so the stat fast path cannot see the change and only the
+    // Phase 2 content rehash can catch it.
+    await utimes(file, stagedStat.atime, stagedStat.mtime);
     const changes = await listWorkdirChanges(dir);
     expect(changes.adds).toContain("chapter-01.md");
 
