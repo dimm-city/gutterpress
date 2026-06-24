@@ -215,6 +215,60 @@ const STATIC_MIME: Record<string, string> = {
   ".otf": "font/otf",
 };
 
+/**
+ * Start a localhost static file server rooted at `dir`, serving `defaultFile`
+ * for the `/` path. Returns the chosen port and a `close()` that resolves once
+ * the server has shut down.
+ *
+ * Path-traversal protection: any request that resolves outside `dir` gets 403;
+ * a missing file gets 404; `STATIC_MIME` maps the extension (falling back to
+ * application/octet-stream). Shared by the static-HTML pagination pass and the
+ * PDF render pass — both stage HTML + assets into a temp dir and need a real
+ * HTTP origin so relative asset URLs resolve.
+ */
+function createStaticFileServer(
+  dir: string,
+  defaultFile: string
+): Promise<{ port: number; close: () => Promise<void> }> {
+  const root = path.resolve(dir);
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url!, "http://127.0.0.1");
+    // Both current callers navigate straight to `/${filename}`, so the `"/"`
+    // → defaultFile branch is a convenience fallback (e.g. a future caller
+    // hitting the bare origin); it is not exercised on the render path today.
+    const relative =
+      url.pathname === "/"
+        ? defaultFile
+        : decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+    const filePath = path.resolve(root, relative);
+    if (filePath !== root && !filePath.startsWith(root + path.sep)) {
+      res.writeHead(403);
+      res.end("Forbidden");
+      return;
+    }
+    try {
+      const data = await fsp.readFile(filePath);
+      const ct =
+        STATIC_MIME[path.extname(filePath).toLowerCase()] ??
+        "application/octet-stream";
+      res.writeHead(200, { "Content-Type": ct });
+      res.end(data);
+    } catch {
+      res.writeHead(404);
+      res.end("Not found");
+    }
+  });
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const port = (server.address() as net.AddressInfo).port;
+      resolve({
+        port,
+        close: () => new Promise<void>((r) => server.close(() => r())),
+      });
+    });
+  });
+}
+
 /** Input handed to a PDF renderer: a URL serving the staged HTML + assets. */
 export interface PdfRenderInput {
   /** URL of the staged HTML on a local HTTP server (assets resolve relative). */
@@ -250,6 +304,43 @@ export type PdfRenderer = (input: PdfRenderInput) => Promise<void>;
  *  this budget; it is also the puppeteer protocolTimeout for the pooled browser. */
 const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * Drive a puppeteer `page` to fully paginate the document at `url`: set the
+ * viewport + timeouts, navigate (waiting for network idle so vendored assets +
+ * the polyfill load), wait for web fonts, then block until Paged.js signals
+ * `window.__PAGED_RENDERED__ === true` (best-effort — falls through on timeout
+ * exactly as the original callers did).
+ *
+ * Shared navigate+wait sequence for BOTH render paths. Callers keep their own
+ * tails: the PDF path calls `page.pdf()`; the static-HTML path serializes the
+ * DOM. Per-caller knobs (viewport, timeout) are passed in so behavior is never
+ * silently changed.
+ */
+async function paginateAndCapture(
+  // puppeteer-core Page; typed `any` to avoid a top-level value import of the
+  // heavy lazy-loaded dep (the lib only imports puppeteer-core dynamically).
+  page: any,
+  url: string,
+  timeoutMs: number,
+  viewport: { width: number; height: number } = { width: 1920, height: 1080 }
+): Promise<void> {
+  await page.setViewport(viewport);
+  page.setDefaultNavigationTimeout(timeoutMs);
+  page.setDefaultTimeout(timeoutMs);
+
+  await page.goto(url, { waitUntil: "networkidle0" });
+
+  await page.evaluate(() => (globalThis as any).document.fonts.ready);
+
+  await page
+    .waitForFunction(() => (globalThis as any).__PAGED_RENDERED__ === true, {
+      timeout: timeoutMs,
+    })
+    .catch(() => {});
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 /** Default renderer: system Chromium via puppeteer-core (pooled + pre-warmable). */
 const puppeteerPdfRenderer: PdfRenderer = async ({
   url,
@@ -262,21 +353,9 @@ const puppeteerPdfRenderer: PdfRenderer = async ({
   const browser = await getBrowser(timeoutMs);
   const page = await browser.newPage();
   try {
-    await page.setViewport({ width: 1920, height: 1080 });
-    page.setDefaultNavigationTimeout(timeoutMs);
-    page.setDefaultTimeout(timeoutMs);
-
-    await page.goto(url, { waitUntil: "networkidle0" });
+    await paginateAndCapture(page, url, timeoutMs);
 
     /* eslint-disable @typescript-eslint/no-explicit-any */
-    await page.evaluate(() => (globalThis as any).document.fonts.ready);
-
-    await page
-      .waitForFunction(() => (globalThis as any).__PAGED_RENDERED__ === true, {
-        timeout: timeoutMs,
-      })
-      .catch(() => {});
-
     const pagedInfo = await page.evaluate(() => {
       const g = globalThis as any;
       const pages = g.document.querySelectorAll(".pagedjs_page");
@@ -329,58 +408,24 @@ const puppeteerPdfRenderer: PdfRenderer = async ({
  * This is the same headless engine the PDF path uses — the only difference is we
  * capture `document.documentElement.outerHTML` instead of (or before) printing.
  */
-async function paginateToStaticHtml(stagedHtml: string): Promise<string> {
+export async function paginateToStaticHtml(stagedHtml: string): Promise<string> {
   const stageDir = path.dirname(path.resolve(stagedHtml));
   const htmlFilename = path.basename(stagedHtml);
 
-  const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url!, "http://127.0.0.1");
-    const relative =
-      url.pathname === "/"
-        ? htmlFilename
-        : decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-    const filePath = path.resolve(stageDir, relative);
-    if (filePath !== stageDir && !filePath.startsWith(stageDir + path.sep)) {
-      res.writeHead(403);
-      res.end("Forbidden");
-      return;
-    }
-    try {
-      const data = await fsp.readFile(filePath);
-      const ct =
-        STATIC_MIME[path.extname(filePath).toLowerCase()] ??
-        "application/octet-stream";
-      res.writeHead(200, { "Content-Type": ct });
-      res.end(data);
-    } catch {
-      res.writeHead(404);
-      res.end("Not found");
-    }
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const port = (server.address() as net.AddressInfo).port;
+  const server = await createStaticFileServer(stageDir, htmlFilename);
 
   try {
     // Reuse the pre-warmed pooled browser; open a fresh page, close the PAGE.
     const browser = await getBrowser(RENDER_TIMEOUT_MS);
     const page = await browser.newPage();
     try {
-      await page.setViewport({ width: 1920, height: 1080 });
-      page.setDefaultNavigationTimeout(RENDER_TIMEOUT_MS);
-      page.setDefaultTimeout(RENDER_TIMEOUT_MS);
-
-      await page.goto(`http://127.0.0.1:${port}/${htmlFilename}`, {
-        waitUntil: "networkidle0",
-      });
+      await paginateAndCapture(
+        page,
+        `http://127.0.0.1:${server.port}/${htmlFilename}`,
+        RENDER_TIMEOUT_MS
+      );
 
       /* eslint-disable @typescript-eslint/no-explicit-any */
-      await page.evaluate(() => (globalThis as any).document.fonts.ready);
-      await page
-        .waitForFunction(() => (globalThis as any).__PAGED_RENDERED__ === true, {
-          timeout: RENDER_TIMEOUT_MS,
-        })
-        .catch(() => {});
-
       const result = await page.evaluate(() => {
         const g = globalThis as any;
         const count = g.document.querySelectorAll(".pagedjs_page").length;
@@ -399,7 +444,7 @@ async function paginateToStaticHtml(stagedHtml: string): Promise<string> {
       await page.close();
     }
   } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await server.close();
   }
 }
 
@@ -501,7 +546,7 @@ export async function shipRuntimePaginatedHtml(
   await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
 }
 
-async function renderHtmlToPdf(
+export async function renderHtmlToPdf(
   inputHtml: string,
   outPdf: string,
   renderer: PdfRenderer = puppeteerPdfRenderer,
@@ -510,40 +555,17 @@ async function renderHtmlToPdf(
   const stageDir = path.dirname(path.resolve(inputHtml));
   const htmlFilename = path.basename(inputHtml);
 
-  const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url!, "http://127.0.0.1");
-    const relative =
-      url.pathname === "/"
-        ? htmlFilename
-        : decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-    const filePath = path.resolve(stageDir, relative);
-    if (filePath !== stageDir && !filePath.startsWith(stageDir + path.sep)) {
-      res.writeHead(403);
-      res.end("Forbidden");
-      return;
-    }
-    try {
-      const data = await fsp.readFile(filePath);
-      const ct = STATIC_MIME[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
-      res.writeHead(200, { "Content-Type": ct });
-      res.end(data);
-    } catch {
-      res.writeHead(404);
-      res.end("Not found");
-    }
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const port = (server.address() as net.AddressInfo).port;
+  const server = await createStaticFileServer(stageDir, htmlFilename);
 
   try {
     await renderer({
-      url: `http://127.0.0.1:${port}/${htmlFilename}`,
+      url: `http://127.0.0.1:${server.port}/${htmlFilename}`,
       outPdf,
       timeoutMs: RENDER_TIMEOUT_MS,
       captureStaticHtmlTo,
     });
   } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await server.close();
   }
 }
 
