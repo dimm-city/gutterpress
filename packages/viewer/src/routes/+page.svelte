@@ -1600,6 +1600,45 @@
     }
   }
 
+  // #33 Phase 5: HTML export on web. PDF is desktop-only (puppeteer/printToPDF),
+  // so on the web (capabilities().nativeSavePath === false) the export delivers a
+  // standalone book.html instead — build() renders it in-browser and returns a
+  // blob: downloadUrl, which this handler turns into a browser download. Desktop
+  // is UNCHANGED: it never reaches here (canSavePdf gates the Save PDF button and
+  // build() returns a path-based result there, handled by savePdf()).
+  async function exportHtml() {
+    const inputDir = currentDir;
+    if (!inputDir || busy || exporting || sourceMode === "url") return;
+    exporting = true;
+    try {
+      const displayName = currentFolderDisplayName ?? basenameOf(inputDir) ?? "book";
+      const data = await getPlatform().build({
+        input: { key: inputDir, displayName },
+        format: "html",
+      });
+      // The web delivery is a downloadUrl (blob:); turn it into a download via a
+      // transient <a download> click. Gate on its presence so a path-based
+      // (desktop) result would never trigger this branch.
+      if (data.downloadUrl) {
+        const a = document.createElement("a");
+        a.href = data.downloadUrl;
+        a.download = `${displayName}.html`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // Revoke after the click has handed the URL to the browser's download.
+        // The adapter transfers object-URL ownership here (it does NOT revoke
+        // build() download URLs), so the SPA owns the lifecycle.
+        setTimeout(() => URL.revokeObjectURL(data.downloadUrl!), 0);
+        toast?.success("HTML exported");
+      }
+    } catch (e) {
+      toast?.error(e instanceof Error ? e.message : "HTML export failed");
+    } finally {
+      exporting = false;
+    }
+  }
+
   async function cancelExport() {
     if (!activeExportId) return;
     exportState = "canceling";
@@ -2315,6 +2354,22 @@
           <span class="save-hint save-warning" role="alert">{saveWarning}</span>
         {/if}
       {:else}
+        <!-- #33 Phase 5: PDF is desktop-only; on the web export a standalone
+             book.html instead (build({format:"html"}) → blob downloadUrl). -->
+        <button
+          class="primary save-btn icon-text"
+          onclick={exportHtml}
+          disabled={busy || exporting || !currentDir || sourceMode === "url"}
+          title="Export as HTML"
+        >
+          <Icon name="file-down" />
+          <span class="save-btn-label">{exporting ? "Exporting…" : "Export HTML"}</span>
+        </button>
+        {#if !currentDir && !busy}
+          <span class="save-hint">Open a folder first</span>
+        {:else if sourceMode === "url"}
+          <span class="save-hint">Not available for web previews</span>
+        {/if}
         <span class="save-hint" role="note">PDF export requires the desktop app</span>
       {/if}
       <!-- Settings panel (#45): gear icon + Cmd/Ctrl+, shortcut. Inline on wide

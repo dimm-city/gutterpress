@@ -813,13 +813,30 @@ export class WebAdapter implements Platform {
    *    projects can preview in a different order than the CLI build. A later
    *    phase will parse the manifest (the `yaml` dep is browser-safe).
    */
-  async startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {
-    const { root } = this.resolveRoot(args.input.key);
+  /**
+   * Render the opened project's markdown to a complete, standalone `book.html`
+   * STRING — the shared core behind both `startPreview` (Blob URL for the
+   * iframe) and `build({format:"html"})` (Blob URL for a download). Keeping ONE
+   * assembly path means the exported HTML is byte-identical to what the user
+   * previews: same inlined project CSS, same same-origin paged.js rewrite.
+   *
+   * Pipeline (plan §2):
+   *  1. resolve the root FileSystemDirectoryHandle from `input.key`;
+   *  2. list the project's `.md`/`.css` (FSA), read them via `web-fs`;
+   *  3. run the PURE `assembleBookHtml` (markdown-it + paged plugin) with an
+   *     FSA-backed `readText` — the SAME render core the CLI uses;
+   *  4. INLINE the project CSS (a blob-URL doc can't resolve relative `css/*`
+   *     hrefs) and rewrite the CDN paged.js reference to the same-origin copy.
+   *
+   * Throws (rejects, via the `async` callers) when the folder has no `.md`.
+   */
+  private async renderBookHtml(input: FolderRef): Promise<string> {
+    const { root } = this.resolveRoot(input.key);
     const { md, css } = await listProjectFilesFromRoot(root);
 
     if (md.length === 0) {
       throw new Error(
-        `No markdown files found in "${args.input.displayName}". ` +
+        `No markdown files found in "${input.displayName}". ` +
           "Add a .md file to preview this project.",
       );
     }
@@ -834,9 +851,9 @@ export class WebAdapter implements Platform {
           try {
             return await readFileFromRoot(root, name);
           } catch (err) {
-            // Don't fail the whole preview for one unreadable stylesheet, but
+            // Don't fail the whole render for one unreadable stylesheet, but
             // don't drop it silently either — surface which file + why.
-            console.warn(`[web preview] skipping unreadable CSS "${name}":`, err);
+            console.warn(`[web render] skipping unreadable CSS "${name}":`, err);
             return "";
           }
         }),
@@ -849,11 +866,11 @@ export class WebAdapter implements Platform {
       files: md,
       readText: (relPath) => readFileFromRoot(root, relPath),
       styles: [],
-      title: args.input.displayName,
+      title: input.displayName,
     });
 
     // #33 Phase 4 (offline): rewrite the render core's CDN paged.js reference to
-    // the same-origin vendored copy so the preview works offline (the SW
+    // the same-origin vendored copy so the preview/export works offline (the SW
     // precaches /vendor/paged.polyfill.js). A blob: document inherits this page's
     // origin, so the absolute path resolves same-origin. Match any unpkg pinned
     // version so a future paged.js bump in the lib still rewrites cleanly.
@@ -871,6 +888,12 @@ export class WebAdapter implements Platform {
         ? html.replace("</head>", styleTag + "</head>")
         : styleTag + html;
     }
+
+    return html;
+  }
+
+  async startPreview(args: PreviewStartArgs): Promise<PreviewStartResult> {
+    const html = await this.renderBookHtml(args.input);
 
     // Revoke a prior preview URL before minting a new one (no blob leak across
     // re-previews); stopPreview() also revokes on teardown.
@@ -902,8 +925,55 @@ export class WebAdapter implements Platform {
     return rejectNotImplemented("cancelExport");
   }
 
-  build(_args: BuildArgs): Promise<BuildResult> {
-    return rejectNotImplemented("build");
+  /**
+   * #33 Phase 5: build/export on web.
+   *
+   * - `format:"html"` — render the full standalone `book.html` IN-BROWSER
+   *   (the SAME `renderBookHtml` path as the live preview, so the export matches
+   *   what the author sees: inlined project CSS + same-origin paged.js) and hand
+   *   it back as a `blob:` object URL on `BuildResult.downloadUrl`. The SPA turns
+   *   that into a browser download (an `<a download>` click). There is no
+   *   filesystem write on web; `outDir`/`htmlPath` are nominal display values
+   *   (the contract requires `outDir`), the download URL is the real delivery.
+   *
+   *   OBJECT-URL LIFECYCLE: unlike the preview URL (which the adapter owns and
+   *   revokes in stopPreview / before the next preview), a download URL must
+   *   stay alive until the browser has finished fetching it for the <a download>
+   *   click — revoking too early aborts the download. So OWNERSHIP TRANSFERS to
+   *   the SPA: the caller revokes it after the click (see +page.svelte's HTML
+   *   export handler). The adapter intentionally does NOT track or revoke it.
+   *
+   * - `format:"pdf"|"pdfx"` — reject with an explicit desktop-only message. PDF
+   *   uses Chromium's printToPDF (Electron) / puppeteer (CLI), neither of which
+   *   exists in the browser. `capabilities().nativeSavePath` is already false and
+   *   the SPA hides the PDF control on web (Phase 4), so this is a belt-and-braces
+   *   guard with a clear message rather than the generic 0.6.0 stub.
+   */
+  async build(args: BuildArgs): Promise<BuildResult> {
+    if (args.format !== "html") {
+      throw new Error(
+        "PDF export requires the desktop app. " +
+          "On the web you can export HTML; PDF (and PDF/X) are available in the " +
+          "print-md desktop app or CLI.",
+      );
+    }
+
+    const html = await this.renderBookHtml(args.input);
+
+    // Ownership of this object URL transfers to the SPA (see jsdoc): it must
+    // outlive this call so the <a download> click can fetch it; the SPA revokes
+    // it after triggering the download.
+    const blob = new Blob([html], { type: "text/html" });
+    const downloadUrl = URL.createObjectURL(blob);
+
+    // A nominal filename/dir for display only — the browser download names the
+    // file from the <a download> attribute the SPA sets, not from these.
+    const fileName = `${args.input.displayName || "book"}.html`;
+    return {
+      outDir: args.input.displayName || "",
+      htmlPath: fileName,
+      downloadUrl,
+    };
   }
 
   doctor(): Promise<unknown> {

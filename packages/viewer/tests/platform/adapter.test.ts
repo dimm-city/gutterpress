@@ -801,6 +801,81 @@ test("WebAdapter.startPreview throws when the project has no markdown (#33)", as
   }
 });
 
+// ── #33 Phase 5: HTML export on web + PDF gating ─────────────────────────────
+
+test("WebAdapter.build({format:'html'}) returns a blob downloadUrl with the rendered book (#33 Phase 5)", async () => {
+  const root = makeFsaTree();
+  root.addFile("02-body.md", "## Body\n\nSentinel content here.\n");
+  // @ts-expect-error test global
+  globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
+  const urls = stubObjectUrls();
+  try {
+    const p = new WebAdapter(new InMemoryWebStore());
+    const ref = (await p.openFolder())!;
+
+    const result = await p.build({ input: ref, format: "html" });
+
+    // The web delivery is a blob: object URL the SPA turns into a download.
+    expect(result.downloadUrl).toBeDefined();
+    expect(result.downloadUrl).toMatch(/^blob:/);
+    expect(urls.created).toHaveLength(1);
+    // The adapter must NOT revoke the download URL — ownership transfers to the
+    // SPA, which revokes it only after triggering the <a download> click.
+    expect(urls.revoked).toHaveLength(0);
+    // The contract requires outDir; a sensible html filename is exposed too.
+    expect(typeof result.outDir).toBe("string");
+    expect(result.htmlPath).toMatch(/\.html$/);
+
+    // The blob contains the SAME rendered book.html as startPreview: rendered
+    // markdown + inlined project CSS + the same-origin paged.js polyfill.
+    const html = await urls.blobs.get(result.downloadUrl!)!.text();
+    expect(html).toContain(">Intro</h1>"); // from 01-intro.md (# Intro)
+    expect(html).toContain("Sentinel content here."); // from 02-body.md
+    expect(html).toContain("data-project-css"); // theme.css inlined
+    expect(html).toContain("body{}"); // theme.css contents inlined
+    expect(html).toContain('src="/vendor/paged.polyfill.js"');
+    expect(html).not.toContain("unpkg.com");
+  } finally {
+    urls.restore();
+    // @ts-expect-error test global
+    globalThis.window = undefined;
+  }
+});
+
+test("WebAdapter.build({format:'pdf'}) rejects with a desktop-only message (#33 Phase 5)", async () => {
+  const p = new WebAdapter(new InMemoryWebStore());
+  await expect(
+    p.build({ input: { key: "web:none", displayName: "p" }, format: "pdf" }),
+  ).rejects.toThrow(/PDF export requires the desktop app/i);
+});
+
+test("WebAdapter.build({format:'pdfx'}) rejects with a desktop-only message (#33 Phase 5)", async () => {
+  const p = new WebAdapter(new InMemoryWebStore());
+  await expect(
+    p.build({ input: { key: "web:none", displayName: "p" }, format: "pdfx" }),
+  ).rejects.toThrow(/PDF export requires the desktop app/i);
+});
+
+test("WebAdapter.build({format:'html'}) throws when the project has no markdown (#33 Phase 5)", async () => {
+  const emptyRoot = (() => {
+    const r = makeFsaTree();
+    r.children.delete("01-intro.md");
+    return r;
+  })();
+  // @ts-expect-error test global
+  globalThis.window = { showDirectoryPicker: () => Promise.resolve(emptyRoot) };
+  const urls = stubObjectUrls();
+  try {
+    const p = new WebAdapter(new InMemoryWebStore());
+    const ref = (await p.openFolder())!;
+    await expect(p.build({ input: ref, format: "html" })).rejects.toThrow(/no markdown/i);
+  } finally {
+    urls.restore();
+    // @ts-expect-error test global
+    globalThis.window = undefined;
+  }
+});
+
 test("ElectronAdapter delegates the #47 Media panel surface 1:1 to the bridge", async () => {
   const { bridge, calls } = makeBridge();
   // @ts-expect-error test global
