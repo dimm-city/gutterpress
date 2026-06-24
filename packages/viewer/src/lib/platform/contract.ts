@@ -177,6 +177,23 @@ export interface FolderRef {
   displayName: string;
 }
 
+/**
+ * A host-neutral reference to a FILE (#61), analogous to {@link FolderRef}.
+ *
+ * The app-facing contract returns a `FileRef` from the native file picker
+ * instead of a raw path string, so the UI makes no assumptions about path-string
+ * semantics. On Electron the `key` is the file's absolute path; on a future PWA
+ * (File System Access API) it will be a serialized FSA file-handle id. The
+ * `displayName` is precomputed by the adapter (the file basename) so the UI never
+ * has to split a path itself.
+ */
+export interface FileRef {
+  /** Stable key for IPC / persistence. Electron: absolute path. PWA: serialized FSA handle id. */
+  key: string;
+  /** Human-readable basename, precomputed by the adapter. */
+  displayName: string;
+}
+
 export interface RecentFolderEntry {
   key: string;
   displayName: string;
@@ -828,10 +845,12 @@ export interface HostServices {
 
   /**
    * Open a native file-picker dialog filtered to common image formats (#31).
-   * Returns the chosen absolute path, or null when the user cancels.
-   * The WebAdapter stub rejects (desktop-only in 0.4.x).
+   * Resolves with a host-neutral {@link FileRef} (key + precomputed basename),
+   * or null when the user cancels (#61). The ElectronAdapter is the sole
+   * path→FileRef translation seam; the bridge keeps the raw path string.
+   * The WebAdapter stub rejects (desktop-only until the PWA lands).
    */
-  pickImageFile(): Promise<string | null>;
+  pickImageFile(): Promise<FileRef | null>;
 
   /**
    * Copy a file into a destination directory (#31). Creates `destDir` when
@@ -1209,7 +1228,12 @@ export interface Platform extends Omit<PlatformAdapter, "openFolder">, HostServi
 export interface ElectronBridge
   extends Omit<
     HostServices,
-    "getRecentFolders" | "getFavorites" | "startPreview" | "build" | "capabilities"
+    | "getRecentFolders"
+    | "getFavorites"
+    | "startPreview"
+    | "build"
+    | "capabilities"
+    | "pickImageFile"
   > {
   openDirectory(): Promise<string | null>;
   readFile(path: string): Promise<string>;
@@ -1233,4 +1257,7 @@ export interface ElectronBridge
   watchFolder(path: string, cb: () => void): () => void;
   /** Read an operation log file for the recovery/sync log viewer. */
   readLogFile(path: string): Promise<string | null>;
+  // #61: the file-picker IPC keeps the raw path string — the ElectronAdapter is
+  // the translation seam that wraps it into a host-neutral FileRef.
+  pickImageFile(): Promise<string | null>;
 }

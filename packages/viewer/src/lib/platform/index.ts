@@ -25,6 +25,7 @@ export type {
   RecentFolderEntry,
   FavoriteEntry,
   FolderRef,
+  FileRef,
   PlatformCapabilities,
   PreviewStartArgs,
   PreviewStartResult,

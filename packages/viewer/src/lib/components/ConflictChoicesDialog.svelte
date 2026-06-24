@@ -15,6 +15,7 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform } from "$lib/platform";
+  import { basenameOf } from "$lib/platform/paths";
   import type {
     ConflictFileInfo,
     ConflictPreview,
@@ -88,7 +89,7 @@
   function fileLabel(filePath: string): string {
     const display = displayPath(filePath);
     // Try to make a chapter-like label from the filename.
-    const name = display.split("/").pop() ?? display;
+    const name = basenameOf(display);
     // Strip extension and de-kebab for a readable label ("03-chapter.md" → "03 chapter").
     return name
       .replace(/\.[^.]+$/, "")

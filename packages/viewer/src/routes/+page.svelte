@@ -36,6 +36,7 @@
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { basenameOf } from "$lib/platform/paths";
   import { useSettings, _loadSettings } from "$lib/settings.svelte";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
@@ -666,11 +667,6 @@
   let recoveryItems = $state<RecoveryItem[]>([]);
   let recoveryScanDir = $state<string | null>(null);
 
-  function basenameOf(p: string): string {
-    // filter(Boolean) so a trailing separator (e.g. ".../proj/") yields the
-    // folder name, not "" — matches the adapter's basename() (electron-adapter.ts).
-    return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
-  }
 
   async function scanForRecovery(dir: string) {
     if (!isDesktop()) return;
