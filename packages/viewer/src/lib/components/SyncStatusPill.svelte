@@ -98,6 +98,10 @@
         return "Everything is in sync";
       case "offline":
         return "Offline — changes are saved on this computer";
+      case "local":
+        // Local-git project, no remote: version history is on (auto-snapshots).
+        // Clickable → opens the operation log (§5.2 advanced-path reachability).
+        return "Version history on";
       case "auth":
         return "Reconnect your project";
       case "conflict":
@@ -141,7 +145,8 @@
     syncState === "synced" ||
       syncState === "up-to-date" ||
       syncState === "idle" ||
-      syncState === "recovered",
+      syncState === "recovered" ||
+      syncState === "local",
   );
 
   /** True when the pill should pulse/animate (a sync is actively running). */
