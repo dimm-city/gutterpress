@@ -1213,6 +1213,18 @@ export interface Platform extends Omit<PlatformAdapter, "openFolder">, HostServi
    * adapter wraps the chosen absolute path; the Web adapter is a 0.6.0 stub.
    */
   openFolder(): Promise<FolderRef | null>;
+
+  /**
+   * Re-open a previously opened project by its `key` (from a recents/favorites
+   * entry), restoring host access to it. On a PWA this reloads the persisted
+   * File System Access handle from IndexedDB and re-requests its read/write
+   * permission — which the browser only grants inside a USER GESTURE, so the SPA
+   * MUST call this directly from the recents "Reopen" click handler. On Electron
+   * the key is already an absolute path with standing access, so this just
+   * re-wraps it as a FolderRef. Rejects when access cannot be restored
+   * (permission denied, or the saved handle is gone).
+   */
+  reopenFolder(key: string): Promise<FolderRef>;
 }
 
 /**

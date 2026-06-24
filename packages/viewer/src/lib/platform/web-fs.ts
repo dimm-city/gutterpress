@@ -67,6 +67,17 @@ export function registerHandle(handle: FileSystemHandle): string {
   return key;
 }
 
+/**
+ * Re-register a handle under an EXISTING key (vs {@link registerHandle}, which
+ * mints a fresh key). Used when reopening a persisted project (#33 Phase 3): the
+ * key was minted in a prior session and stored in IndexedDB alongside the
+ * handle; on reload the handle is restored under that same key so every recents/
+ * favorites/project-state row keeps resolving.
+ */
+export function reRegisterHandle(key: string, handle: FileSystemHandle): void {
+  registry.set(key, handle);
+}
+
 /** Resolve a registry key back to its handle; throws if the key is unknown. */
 export function resolveHandle(key: string): FileSystemHandle {
   const handle = registry.get(key);

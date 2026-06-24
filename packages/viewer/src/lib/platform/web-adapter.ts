@@ -15,6 +15,7 @@ import { DEFAULT_SETTINGS } from "./contract";
 import { basenameOf } from "./paths";
 import {
   registerHandle,
+  reRegisterHandle,
   resolveHandle,
   splitPath,
   readFileFromRoot,
@@ -31,6 +32,8 @@ import {
 // (those drag puppeteer + node:fs). This is what lets the in-browser preview
 // (#33 Phase 2) render entirely client-side with no localhost server.
 import { assembleBookHtml } from "@dimm-city/print-md/render";
+import { IndexedDbWebStore } from "./web-store";
+import type { WebStore } from "./web-store";
 import type {
   Platform,
   ViewerPrefs,
@@ -87,6 +90,52 @@ import type {
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
 
+// ── Persistence (#33 Phase 3) ─────────────────────────────────────────────────
+// IndexedDB object-store names + record shapes the adapter persists. Handles are
+// stored verbatim (FileSystemDirectoryHandle is structured-cloneable); the rest
+// are plain JSON-able rows keyed by FolderRef.key.
+const STORE_HANDLES = "handles";
+const STORE_RECENTS = "recents";
+const STORE_FAVORITES = "favorites";
+const STORE_PREFS = "prefs";
+const STORE_PROJECT_STATES = "projectStates";
+const STORE_META = "meta";
+const PREFS_KEY = "singleton";
+const LAST_PROJECT_KEY = "lastProjectKey";
+
+/** A persisted FSA handle row. */
+interface HandleRecord {
+  key: string;
+  handle: FileSystemDirectoryHandle;
+  displayName: string;
+}
+
+/** A persisted recents row (RecentFolderEntry minus the runtime `exists`). */
+interface RecentRecord {
+  key: string;
+  displayName: string;
+  title: string;
+  openedAt: string;
+}
+
+/** A persisted favorites row (FavoriteEntry minus the runtime `exists`). */
+interface FavoriteRecord {
+  key: string;
+  displayName: string;
+  title: string;
+}
+
+/**
+ * The subset of the FSA permission API the adapter needs. These live on
+ * `FileSystemHandle` at runtime (Chrome/Edge) but are not in the baseline TS DOM
+ * lib, so we narrow to this minimal shape rather than widen the global types.
+ */
+type PermissionDescriptor = { mode?: "read" | "readwrite" };
+interface PermissionedHandle {
+  queryPermission?(desc?: PermissionDescriptor): Promise<PermissionState>;
+  requestPermission?(desc?: PermissionDescriptor): Promise<PermissionState>;
+}
+
 function notImplemented(method: string): never {
   throw new Error(`${method}: ${NOT_IMPL}`);
 }
@@ -122,6 +171,15 @@ export class WebAdapter implements Platform {
   readonly platform = "web" as const;
   readonly apiVersion = 0;
   readonly updater = webUpdater;
+
+  // #33 Phase 3: the persistence seam. Defaults to the IndexedDB-backed store in
+  // production; unit tests inject an InMemoryWebStore so the adapter logic is
+  // tested without a real browser IndexedDB.
+  private readonly store: WebStore;
+
+  constructor(store?: WebStore) {
+    this.store = store ?? new IndexedDbWebStore();
+  }
 
   // #49/#33: capability set so the UI degrades gracefully on the web without
   // branching on `platform === "web"`.
@@ -190,7 +248,99 @@ export class WebAdapter implements Platform {
       throw err;
     }
     const key = registerHandle(handle);
-    return { key, displayName: basenameOf(handle.name) };
+    const displayName = basenameOf(handle.name);
+    // #33 Phase 3: persist the handle + a recents entry so the project survives a
+    // page reload (the handle is reloaded + re-permissioned via reopenFolder).
+    // Best-effort: the folder is already open in the in-memory registry, so a
+    // persistence failure (quota, private mode) must NOT fail the open itself.
+    try {
+      await this.persistOpenedFolder(key, handle, displayName);
+    } catch (err) {
+      console.warn(`[web] could not persist opened folder "${displayName}":`, err);
+    }
+    return { key, displayName };
+  }
+
+  // ── FSA handle persistence + reopen (#33 Phase 3, plan §4) ──────────────────
+
+  /** Store the handle, upsert a recents row, and mark it the last project. */
+  private async persistOpenedFolder(
+    key: string,
+    handle: FileSystemDirectoryHandle,
+    displayName: string,
+  ): Promise<void> {
+    const record: HandleRecord = { key, handle, displayName };
+    await this.store.put(STORE_HANDLES, key, record);
+    // Preserve any title the user/SPA already set for this project on re-open;
+    // only fall back to the basename for a brand-new recents row.
+    const existing = (await this.store.get(STORE_RECENTS, key)) as RecentRecord | undefined;
+    const recent: RecentRecord = {
+      key,
+      displayName,
+      title: existing?.title ?? displayName,
+      openedAt: new Date().toISOString(),
+    };
+    await this.store.put(STORE_RECENTS, key, recent);
+    await this.store.put(STORE_META, LAST_PROJECT_KEY, key);
+  }
+
+  /**
+   * Re-open a previously persisted folder by its `key` (the "reopen recent"
+   * click in the SPA drives this — a USER GESTURE is required for FSA's
+   * `requestPermission`, so this method MUST be called from an event handler).
+   *
+   * Flow (plan §4):
+   *  1. Load the persisted `{handle}` from IndexedDB; clear-error if absent/stale.
+   *  2. `queryPermission({mode:"readwrite"})`; if not already "granted", call
+   *     `requestPermission(...)` (the gesture-driven prompt).
+   *  3. On "granted", re-register the handle in the in-memory registry so the fs
+   *     primitives resolve `key` → handle for the rest of the session, and return
+   *     a FolderRef. On denial, throw a clear error the UI can surface.
+   *
+   * The SPA wires its recents list so each "Reopen <name>" button's onclick calls
+   * `getPlatform().reopenFolder(entry.key)`; the click satisfies the gesture
+   * requirement. After it resolves the app proceeds exactly as after openFolder
+   * (same FolderRef shape).
+   */
+  async reopenFolder(key: string): Promise<FolderRef> {
+    const record = (await this.store.get(STORE_HANDLES, key)) as HandleRecord | undefined;
+    if (!record || !record.handle) {
+      throw new Error(
+        `Cannot reopen folder "${key}": no saved access to it was found. ` +
+          "Open the folder again to grant access.",
+      );
+    }
+    const handle = record.handle;
+    const perm = handle as unknown as PermissionedHandle;
+    const desc: PermissionDescriptor = { mode: "readwrite" };
+
+    let state: PermissionState = "granted";
+    if (typeof perm.queryPermission === "function") {
+      state = await perm.queryPermission(desc);
+    }
+    if (state !== "granted" && typeof perm.requestPermission === "function") {
+      // Must be inside a user gesture (the recents "Reopen" click) — see jsdoc.
+      state = await perm.requestPermission(desc);
+    }
+    if (state !== "granted") {
+      throw new Error(
+        `Permission to access "${record.displayName}" was denied. ` +
+          "Click “Reopen” and allow access to edit this project again.",
+      );
+    }
+
+    reRegisterHandle(key, handle);
+    // Refresh the recents timestamp + last-project pointer on reopen.
+    const existing = (await this.store.get(STORE_RECENTS, key)) as RecentRecord | undefined;
+    const recent: RecentRecord = {
+      key,
+      displayName: record.displayName,
+      title: existing?.title ?? record.displayName,
+      openedAt: new Date().toISOString(),
+    };
+    await this.store.put(STORE_RECENTS, key, recent);
+    await this.store.put(STORE_META, LAST_PROJECT_KEY, key);
+    return { key, displayName: record.displayName };
   }
 
   // `async` so a thrown resolveRoot (unknown/unopened key) becomes a rejected
@@ -293,8 +443,11 @@ export class WebAdapter implements Platform {
     return rejectNotImplemented("getStatus");
   }
 
-  getLastProject(): Promise<string | null> {
-    return rejectNotImplemented("getLastProject");
+  // #33 Phase 3: the last-opened folder key (its handle + recents row are
+  // persisted; the SPA reopens it via reopenFolder on a user gesture).
+  async getLastProject(): Promise<string | null> {
+    const key = (await this.store.get(STORE_META, LAST_PROJECT_KEY)) as string | undefined;
+    return key ?? null;
   }
   // No splash window on the web — these are safe no-ops (a PWA would use its own
   // loading UI, not a host splash).
@@ -325,23 +478,35 @@ export class WebAdapter implements Platform {
     return Promise.resolve([]);
   }
 
-  getViewerPrefs(): Promise<ViewerPrefs> {
-    return rejectNotImplemented("getViewerPrefs");
+  // ── Viewer prefs (#33 Phase 3) — a single IndexedDB blob, merge-patched ──────
+  async getViewerPrefs(): Promise<ViewerPrefs> {
+    const stored = (await this.store.get(STORE_PREFS, PREFS_KEY)) as ViewerPrefs | undefined;
+    return stored ?? {};
   }
 
-  setViewerPrefs(_patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> {
-    return rejectNotImplemented("setViewerPrefs");
+  async setViewerPrefs(patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> {
+    const current = (await this.store.get(STORE_PREFS, PREFS_KEY)) as ViewerPrefs | undefined;
+    await this.store.put(STORE_PREFS, PREFS_KEY, { ...(current ?? {}), ...patch });
+    return { ok: true };
   }
 
-  getViewerProjectState(_projectDir: string): Promise<ProjectState | null> {
-    return rejectNotImplemented("getViewerProjectState");
+  // ── Per-project state (#33 Phase 3) — keyed by FolderRef.key, merge-patched ──
+  async getViewerProjectState(projectDir: string): Promise<ProjectState | null> {
+    const stored = (await this.store.get(STORE_PROJECT_STATES, projectDir)) as
+      | ProjectState
+      | undefined;
+    return stored ?? null;
   }
 
-  setViewerProjectState(
-    _projectDir: string,
-    _patch: Partial<ProjectState>,
+  async setViewerProjectState(
+    projectDir: string,
+    patch: Partial<ProjectState>,
   ): Promise<{ ok: boolean }> {
-    return rejectNotImplemented("setViewerProjectState");
+    const current = (await this.store.get(STORE_PROJECT_STATES, projectDir)) as
+      | ProjectState
+      | undefined;
+    await this.store.put(STORE_PROJECT_STATES, projectDir, { ...(current ?? {}), ...patch });
+    return { ok: true };
   }
 
   // Settings (#45) — genuinely implemented on web via localStorage so the
@@ -386,20 +551,76 @@ export class WebAdapter implements Platform {
     return () => mql.removeEventListener("change", listener);
   }
 
-  getRecentFolders(): Promise<RecentFolderEntry[]> {
-    return rejectNotImplemented("getRecentFolders");
+  // ── Recents / favorites (#33 Phase 3) — IndexedDB-backed, key+displayName ────
+  // Each row references its persisted FSA handle by key; `exists` reflects
+  // whether that handle is still saved (so a row whose handle was dropped shows
+  // as stale rather than silently failing on reopen).
+
+  private async handleExists(key: string): Promise<boolean> {
+    const record = (await this.store.get(STORE_HANDLES, key)) as HandleRecord | undefined;
+    return Boolean(record?.handle);
   }
 
-  getFavorites(): Promise<FavoriteEntry[]> {
-    return rejectNotImplemented("getFavorites");
+  async getRecentFolders(): Promise<RecentFolderEntry[]> {
+    const rows = (await this.store.list(STORE_RECENTS)).map((r) => r.value as RecentRecord);
+    // Newest first (openedAt is an ISO string → lexicographic == chronological).
+    rows.sort((a, b) => (b.openedAt ?? "").localeCompare(a.openedAt ?? ""));
+    const out: RecentFolderEntry[] = [];
+    for (const r of rows) {
+      out.push({
+        key: r.key,
+        displayName: r.displayName,
+        title: r.title,
+        openedAt: r.openedAt,
+        exists: await this.handleExists(r.key),
+      });
+    }
+    return out;
   }
 
-  toggleFavorite(_folderPath: string, _title: string): Promise<{ favorited: boolean }> {
-    return rejectNotImplemented("toggleFavorite");
+  async getFavorites(): Promise<FavoriteEntry[]> {
+    const rows = (await this.store.list(STORE_FAVORITES)).map((r) => r.value as FavoriteRecord);
+    const out: FavoriteEntry[] = [];
+    for (const f of rows) {
+      out.push({
+        key: f.key,
+        displayName: f.displayName,
+        title: f.title,
+        exists: await this.handleExists(f.key),
+      });
+    }
+    return out;
   }
 
-  removeRecent(_folderPath: string): Promise<{ ok: boolean }> {
-    return rejectNotImplemented("removeRecent");
+  async toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }> {
+    const existing = (await this.store.get(STORE_FAVORITES, folderPath)) as
+      | FavoriteRecord
+      | undefined;
+    if (existing) {
+      await this.store.delete(STORE_FAVORITES, folderPath);
+      return { favorited: false };
+    }
+    // Derive displayName from the persisted handle/recents row when available so
+    // a favorite carries the same basename the recents entry shows.
+    const handle = (await this.store.get(STORE_HANDLES, folderPath)) as
+      | HandleRecord
+      | undefined;
+    const recent = (await this.store.get(STORE_RECENTS, folderPath)) as
+      | RecentRecord
+      | undefined;
+    const displayName = handle?.displayName ?? recent?.displayName ?? basenameOf(folderPath);
+    const record: FavoriteRecord = { key: folderPath, displayName, title };
+    await this.store.put(STORE_FAVORITES, folderPath, record);
+    return { favorited: true };
+  }
+
+  async removeRecent(folderPath: string): Promise<{ ok: boolean }> {
+    await this.store.delete(STORE_RECENTS, folderPath);
+    // If we just removed the last-opened project, clear the pointer too so
+    // getLastProject() doesn't resurface a key the user explicitly dropped.
+    const last = (await this.store.get(STORE_META, LAST_PROJECT_KEY)) as string | undefined;
+    if (last === folderPath) await this.store.delete(STORE_META, LAST_PROJECT_KEY);
+    return { ok: true };
   }
 
   // Project discovery (#27) — no background filesystem scan on the PWA (File

@@ -1,6 +1,7 @@
 import { test, expect, beforeEach, afterEach } from "bun:test";
 import { ElectronAdapter } from "../../src/lib/platform/electron-adapter";
 import { WebAdapter } from "../../src/lib/platform/web-adapter";
+import { InMemoryWebStore } from "../../src/lib/platform/web-store";
 import { getPlatform, isDesktop, __resetPlatform } from "../../src/lib/platform/index";
 
 // ── Test harness: a fake window.electron that records calls ──────────────────
@@ -397,7 +398,7 @@ test("WebAdapter.getSettings returns defaults merged with localStorage, setSetti
 });
 
 test("WebAdapter: primitives throw, host methods reject, subscriptions are no-ops", async () => {
-  const p = new WebAdapter();
+  const p = new WebAdapter(new InMemoryWebStore());
   expect(p.platform).toBe("web");
   // #33 Phase 1: the FSA fs primitives are implemented. With no folder opened
   // (and no FSA picker on this environment) they fail gracefully rather than
@@ -424,9 +425,11 @@ test("WebAdapter: primitives throw, host methods reject, subscriptions are no-op
   await expect(
     p.startPreview({ input: { key: "web:none", displayName: "p" } }),
   ).rejects.toThrow(/handle/i);
-  await expect(p.setViewerPrefs({})).rejects.toThrow(/0\.6\.0/);
-  await expect(p.getViewerProjectState("/p")).rejects.toThrow(/0\.6\.0/);
-  await expect(p.setViewerProjectState("/p", {})).rejects.toThrow(/0\.6\.0/);
+  // #33 Phase 3: prefs + per-project state are now IndexedDB-backed (here the
+  // injected in-memory store), so they round-trip instead of rejecting.
+  await expect(p.setViewerPrefs({})).resolves.toEqual({ ok: true });
+  await expect(p.getViewerProjectState("/p")).resolves.toBeNull();
+  await expect(p.setViewerProjectState("/p", {})).resolves.toEqual({ ok: true });
   // Project discovery resolves to [] on web (no scan), not a rejection.
   await expect(p.discoverProjects()).resolves.toEqual([]);
   await expect(p.classifyProject("/p")).rejects.toThrow(/0\.6\.0/);
@@ -595,7 +598,7 @@ test("WebAdapter.openFolder registers the handle and returns {key, displayName} 
   // @ts-expect-error test global
   globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
   try {
-    const p = new WebAdapter();
+    const p = new WebAdapter(new InMemoryWebStore());
     const ref = await p.openFolder();
     expect(ref).not.toBeNull();
     expect(ref!.displayName).toBe("my-book");
@@ -629,7 +632,7 @@ test("WebAdapter read/write/list/stat/listProjectFiles work against an opened fo
   // @ts-expect-error test global
   globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
   try {
-    const p = new WebAdapter();
+    const p = new WebAdapter(new InMemoryWebStore());
     const ref = (await p.openFolder())!;
     const SEP = "/";
 
@@ -704,7 +707,7 @@ test("WebAdapter.startPreview renders book.html in-browser → blob URL (#33 Pha
   globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
   const urls = stubObjectUrls();
   try {
-    const p = new WebAdapter();
+    const p = new WebAdapter(new InMemoryWebStore());
     const ref = (await p.openFolder())!;
 
     const result = await p.startPreview({ input: ref });
@@ -737,7 +740,7 @@ test("WebAdapter.stopPreview revokes the last object URL (#33 Phase 2)", async (
   globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
   const urls = stubObjectUrls();
   try {
-    const p = new WebAdapter();
+    const p = new WebAdapter(new InMemoryWebStore());
     const ref = (await p.openFolder())!;
     const result = await p.startPreview({ input: ref });
 
@@ -756,7 +759,7 @@ test("WebAdapter.startPreview revokes the prior URL before minting a new one (#3
   globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
   const urls = stubObjectUrls();
   try {
-    const p = new WebAdapter();
+    const p = new WebAdapter(new InMemoryWebStore());
     const ref = (await p.openFolder())!;
     const first = await p.startPreview({ input: ref });
     const second = await p.startPreview({ input: ref });
@@ -781,7 +784,7 @@ test("WebAdapter.startPreview throws when the project has no markdown (#33)", as
   globalThis.window = { showDirectoryPicker: () => Promise.resolve(emptyRoot) };
   const urls = stubObjectUrls();
   try {
-    const p = new WebAdapter();
+    const p = new WebAdapter(new InMemoryWebStore());
     const ref = (await p.openFolder())!;
     await expect(p.startPreview({ input: ref })).rejects.toThrow(/no markdown/i);
   } finally {
