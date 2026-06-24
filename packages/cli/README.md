@@ -2,7 +2,7 @@
 
 Command-line interface for print-md — markdown to print-ready PDF.
 
-The CLI is for power users who want to script builds, run in CI, batch-process projects, or work outside the desktop app. If you just want to write a book and export a PDF, use the [desktop app](../../README.md#get-the-desktop-app) instead.
+The CLI is for power users who want to script builds, run in CI, batch-process projects, or work outside the desktop app. If you just want to write a book and export a PDF, use the [desktop app](https://github.com/dimm-city/print-md#get-the-desktop-app) instead.
 
 ## Install
 
@@ -26,34 +26,9 @@ Move the binary somewhere on your `PATH`, mark it executable (`chmod +x`), and y
 npm install -g @dimm-city/print-md
 ```
 
-This installs the CLI for `node`-based projects. Same surface area as the binary.
-
-### With Docker (full PDF/X pipeline pre-installed)
-
-No need to install Chromium, Ghostscript, or qpdf — the image bundles
-everything the `lint → build → validate` pipeline needs, including the PDF/X
-(CMYK) pre-print path. (All other validation runs in-process; Poppler and
-ImageMagick are no longer used.) Mount your project at `/work`:
-
-```sh
-docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" \
-    ghcr.io/dimm-city/print-md build my-book --out dist/my-book.pdf --format pdfx
-```
-
-See [docs/docker.md](../../docs/docker.md) for the full guide.
-
-### From source (development only)
-
-```sh
-git clone https://github.com/dimm-city/print-md.git
-cd print-md
-bun install
-bun packages/cli/src/cli.ts --help
-```
-
 ## System requirements
 
-The CLI needs a Chromium-based browser for PDF generation, and a few external tools for PDF post-processing and validation depending on which features you use. See [User Guide: Chapter 8 — System Setup](../../examples/print-md-user-guide/08-system-setup.md) for the full per-feature requirements matrix.
+The CLI needs a Chromium-based browser for PDF generation, and a few external tools for PDF post-processing and validation depending on which features you use. See [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md) for the full per-feature requirements matrix.
 
 The short version: you almost certainly want **Ghostscript** installed for PDF output, and **Chrome** / **Chromium** / **Edge** for the actual render.
 
@@ -91,11 +66,11 @@ my-book/
 └─ images/            ← images referenced from markdown or CSS
 ```
 
-See [User Guide: Chapter 1 — Getting Started](../../examples/print-md-user-guide/01-getting-started.md) for a full first-project walkthrough and [examples/](../../examples/) for working starters.
+See [User Guide: Chapter 1 — Getting Started](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/01-getting-started.md) for a full first-project walkthrough and [examples/](https://github.com/dimm-city/print-md/tree/main/examples) for working starters.
 
 ## Manifest
 
-`manifest.yaml` is where you control everything that isn't authored in markdown — book title, the page-size preset, custom styles, plugin loading, validation rules, PDF/X configuration. The schema lives in [`docs/schema-autocomplete.md`](../../docs/schema-autocomplete.md) for YAML autocomplete in editors.
+`manifest.yaml` is where you control everything that isn't authored in markdown — book title, the page-size preset, custom styles, plugin loading, validation rules, PDF/X configuration. The schema lives in [`docs/schema-autocomplete.md`](https://github.com/dimm-city/print-md/blob/main/docs/schema-autocomplete.md) for YAML autocomplete in editors.
 
 Minimal example:
 
@@ -116,7 +91,7 @@ source:
     - chapter-02.md
 ```
 
-The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`. See the [Source Files & manifest guide](../../docs/SOURCE-FILES-GUIDE.md) for the comprehensive reference.
+The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`. See the [configuration reference](https://github.com/dimm-city/print-md/blob/main/docs/user-guide.md#configuration) for details.
 
 ## Commands
 
@@ -165,7 +140,7 @@ Common print-unsafe patterns the plugin flags: remote `url(...)` references in C
 
 ### `print-md validate`
 
-Run the validation pipeline (pre-build source checks and/or post-build PDF checks). Tools that aren't installed are skipped with a warning — they don't fail the run. See [User Guide: Chapter 7 — Validation](../../examples/print-md-user-guide/07-validation.md) for the full check list and [User Guide: Chapter 8 — System Setup](../../examples/print-md-user-guide/08-system-setup.md) for which external tools each check needs.
+Run the validation pipeline (pre-build source checks and/or post-build PDF checks). Tools that aren't installed are skipped with a warning — they don't fail the run. See [User Guide: Chapter 7 — Validation](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/07-validation.md) for the full check list and [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md) for which external tools each check needs.
 
 ```sh
 print-md validate [input-dir] [options]
@@ -196,7 +171,7 @@ plugins:
     priority: 10
 ```
 
-See [User Guide: Chapter 6 — Plugins](../../examples/print-md-user-guide/06-plugins.md) for authoring custom plugins.
+See [User Guide: Chapter 6 — Plugins](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/06-plugins.md) for authoring custom plugins.
 
 ## CI / scripting
 
@@ -212,35 +187,22 @@ The standalone binary is the easiest way — drop it in a GitHub Actions step an
     ./print-md build ./my-book --out dist/my-book.pdf
 ```
 
-The binary is self-contained except for the system tools described in [User Guide: Chapter 8 — System Setup](../../examples/print-md-user-guide/08-system-setup.md). On a runner with Chrome and Ghostscript present, you don't need a separate Node or Bun install.
+The binary is self-contained except for the system tools described in [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md). On a runner with Chrome and Ghostscript present, you don't need a separate Node or Bun install.
 
 ## Troubleshooting
 
-- **`spawn gs ENOENT`** — Ghostscript not installed. Plain `--format pdf` keeps working (only loses the `/Creator` metadata stamp). PDF/X builds genuinely need it. See [User Guide: Chapter 8 — System Setup](../../examples/print-md-user-guide/08-system-setup.md).
+- **`spawn gs ENOENT`** — Ghostscript not installed. Plain `--format pdf` keeps working (only loses the `/Creator` metadata stamp). PDF/X builds genuinely need it. See [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md).
 - **`No Chrome or Chromium binary found`** — install Chrome/Chromium/Edge, or set `CHROMIUM_PATH=/path/to/chrome` in your environment.
 - **`Tool "X" not found — skipping`** during validate — that's the graceful path; the check requires `X` and isn't available. Install the tool or accept the skip.
-- **All validate checks skipped on Windows** — fixed in an earlier release (used `which`, which isn't on stock Windows); now uses `where.exe`.
+- **All validate checks skipped on Windows** — was a bug pre-0.1.7 (used `which`, which isn't on stock Windows); fixed to use `where.exe`.
 
-## Development
+## Links
 
-This package is part of the [print-md monorepo](../../README.md). It is the single published package — both the runtime library (`exports`) and the `print-md` CLI (`bin`) live here under `src/`.
-
-```sh
-# From repo root
-bun install
-
-# Run CLI from source
-bun packages/cli/src/cli.ts build ./examples/with-design-guide/design-guide
-
-# Build the standalone binary for the current platform
-bun --cwd packages/cli scripts/compile.ts bun-linux-x64 ./dist/print-md-cli-linux-x64
-
-# Build the npm tarball
-bun --cwd packages/cli scripts/build-npm.ts
-```
-
-See [`CONTRIBUTING.md`](../../CONTRIBUTING.md) for the contributor workflow and [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) for the architectural rules of this package (no bundlers at runtime, lazy-loaded heavy deps, etc).
+- [GitHub repository](https://github.com/dimm-city/print-md)
+- [Report an issue](https://github.com/dimm-city/print-md/issues)
+- [Full user guide](https://github.com/dimm-city/print-md/tree/main/examples/print-md-user-guide)
+- [Desktop app](https://github.com/dimm-city/print-md/releases/latest)
 
 ## License
 
-[MPL-2.0](../../LICENSE)
+[MPL-2.0](https://github.com/dimm-city/print-md/blob/main/LICENSE)
