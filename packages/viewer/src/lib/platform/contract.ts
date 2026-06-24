@@ -1198,14 +1198,19 @@ export interface Platform extends Omit<PlatformAdapter, "openFolder">, HostServi
 
 /**
  * The raw `window.electron` bridge shape exposed by `electron/preload.ts`.
- * Differs from `Platform` in exactly three members the adapter maps/owns:
- * `openDirectory` (→ `Platform.openFolder`), `readFile`, and `writeFile`
- * (the raw fs IPC behind `PlatformAdapter.readFile`/`writeFile`).
+ * Differs from `Platform` only in the members the adapter maps/owns: the fs IPC
+ * (`openDirectory` → `Platform.openFolder`, `readFile`, `writeFile`), the
+ * FolderRef translation seam (`getRecentFolders`/`getFavorites`/`startPreview`/
+ * `build` keep raw path strings here; #49), and `capabilities()` (synthesised by
+ * the adapter, not an IPC — Omitted so it can't be called on the raw bridge).
  * ONLY `electron-adapter.ts` (and the `Window` global) should reference this —
  * everything else goes through `Platform`.
  */
 export interface ElectronBridge
-  extends Omit<HostServices, "getRecentFolders" | "getFavorites" | "startPreview" | "build"> {
+  extends Omit<
+    HostServices,
+    "getRecentFolders" | "getFavorites" | "startPreview" | "build" | "capabilities"
+  > {
   openDirectory(): Promise<string | null>;
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<FileWriteResult>;

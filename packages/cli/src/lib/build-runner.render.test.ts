@@ -97,7 +97,7 @@ testIf(
 );
 
 testIf(
-  "renderHtmlToPdf produces a non-empty PDF with the expected page size",
+  "renderHtmlToPdf produces a non-empty, valid PDF with a page tree",
   async () => {
     const { stagedBook, cleanup } = await stageMinimalBook();
     const outPdf = join(stagedBook, "..", "out.pdf");
