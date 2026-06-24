@@ -15,7 +15,7 @@ import {
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import os from "node:os";
-import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { watch, type FSWatcher } from "node:fs";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
@@ -3405,11 +3405,22 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
         tokenStore: electronTokenStore,
       });
       if (diag.canSync) return; // sync flow owns the status for syncable repos
+      const logFile = operationLogPath(path.basename(openedDir));
+      // Ensure the log file exists (empty) so the viewer's log dialog shows the
+      // intended "No log entries recorded." empty state rather than "The log
+      // file could not be found." when no snapshot has been taken yet. appendFile
+      // with "" creates the file if absent and never truncates an existing one.
+      try {
+        await mkdir(path.dirname(logFile), { recursive: true });
+        await appendFile(logFile, "");
+      } catch {
+        // Non-fatal: the dialog falls back to its not-found message.
+      }
       const localStatus = {
         state: "local" as const,
         projectDir: openedDir,
         lastSyncAt: null,
-        logFile: operationLogPath(path.basename(openedDir)),
+        logFile,
       };
       // "sync:status" is a fire-and-forget event with no replay, so an emit that
       // beats the renderer's pill subscription is lost. Emit now (fast-mounted
