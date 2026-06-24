@@ -90,6 +90,11 @@ import type {
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
 
+// #33 Phase 4: same-origin path of the vendored paged.js polyfill the viewer
+// ships in static/vendor/. The service worker precaches it; startPreview
+// rewrites the render core's CDN URL to this so preview works offline.
+const VENDOR_PAGED_POLYFILL_URL = "/vendor/paged.polyfill.js";
+
 // ── Persistence (#33 Phase 3) ─────────────────────────────────────────────────
 // IndexedDB object-store names + record shapes the adapter persists. Handles are
 // stored verbatim (FileSystemDirectoryHandle is structured-cloneable); the rest
@@ -793,11 +798,15 @@ export class WebAdapter implements Platform {
    * desktop — `+page.svelte` needs no change (it just points the iframe at the
    * returned `url`).
    *
+   * OFFLINE (#33 Phase 4): the pure render core emits the unpkg CDN `<script>`
+   * for paged.js; this adapter REWRITES it to the same-origin, vendored
+   * `/vendor/paged.polyfill.js` (shipped in the viewer `static/` dir + precached
+   * by the service worker). A `blob:` document inherits the creating page's
+   * origin, so an absolute-path URL resolves same-origin and is SW-cacheable —
+   * which makes the in-browser preview work fully offline once the shell is
+   * cached.
+   *
    * KNOWN PHASE-2 GAPS (tracked for later phases — intentionally not silent):
-   *  - OFFLINE: the assembled HTML loads paged.js from the unpkg CDN (the lib's
-   *    default). Phase 4 (service worker + offline) will ship a same-origin
-   *    vendored `paged.polyfill.js` and rewrite this URL so preview works
-   *    offline; today web preview needs network access.
    *  - MANIFEST: chapters are listed in alphabetical order (listProjectFiles),
    *    matching the CLI's no-manifest fallback. A project `manifest.yaml` with a
    *    custom `source.files` order or `plugins` is NOT yet parsed here, so such
@@ -842,6 +851,16 @@ export class WebAdapter implements Platform {
       styles: [],
       title: args.input.displayName,
     });
+
+    // #33 Phase 4 (offline): rewrite the render core's CDN paged.js reference to
+    // the same-origin vendored copy so the preview works offline (the SW
+    // precaches /vendor/paged.polyfill.js). A blob: document inherits this page's
+    // origin, so the absolute path resolves same-origin. Match any unpkg pinned
+    // version so a future paged.js bump in the lib still rewrites cleanly.
+    html = html.replace(
+      /https:\/\/unpkg\.com\/pagedjs@[^/]+\/dist\/paged\.polyfill\.js/g,
+      VENDOR_PAGED_POLYFILL_URL,
+    );
 
     // Inject the inlined project CSS just before </head> (after the assembler's
     // own paged-plugin <style> so project rules win on equal specificity, same

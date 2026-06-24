@@ -727,6 +727,13 @@ test("WebAdapter.startPreview renders book.html in-browser → blob URL (#33 Pha
     expect(html).toContain("paged.polyfill.js");
     expect(html).toContain("data-project-css"); // theme.css inlined
     expect(html).toContain("body{}"); // theme.css contents inlined
+
+    // #33 Phase 4: the paged.js runtime must be referenced from a SAME-ORIGIN,
+    // service-worker-cacheable path (so preview works OFFLINE), NOT from the
+    // unpkg CDN the pure render core defaults to. A blob: document inherits the
+    // creating page's origin, so an absolute-path URL resolves same-origin.
+    expect(html).toContain('src="/vendor/paged.polyfill.js"');
+    expect(html).not.toContain("unpkg.com");
   } finally {
     urls.restore();
     // @ts-expect-error test global

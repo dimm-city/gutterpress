@@ -111,6 +111,14 @@
   let saveWarning = $state<string | null>(null);
   let diagnosticsTools = $state<DiagnosticsTool[] | null>(null);
 
+  // #33 Phase 4: PDF/build gating via the capabilities() seam (NOT a
+  // `platform === "web"` branch). `nativeSavePath` is true on the desktop host
+  // (Electron writes the PDF to a chosen path) and false on the web (no
+  // puppeteer / printToPDF in the browser). When false the "Save PDF" control is
+  // replaced with a short "requires the desktop app" note (acceptance criterion).
+  // Desktop is UNCHANGED: nativeSavePath:true → canSavePdf:true → identical UI.
+  const canSavePdf = $derived(getPlatform().capabilities().nativeSavePath);
+
   // ── Left panel (#workspace-restructure) ───────────────────────────────────
   // State persisted via ViewerPrefs. Keyed separately from per-project state.
   let leftPanelOpen = $state(false);
@@ -1109,10 +1117,12 @@
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (t?.isContentEditable || t?.closest?.(".cm-editor")) return;
 
-      // UX-006: Ctrl/Cmd+S saves PDF
+      // UX-006: Ctrl/Cmd+S saves PDF (desktop only — #33 Phase 4: the web host
+      // can't write a PDF, so the shortcut is inert there, matching the hidden
+      // toolbar button).
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        savePdf();
+        if (canSavePdf) savePdf();
         return;
       }
 
@@ -2281,23 +2291,31 @@
 
       <!-- UX-039: separator before Save PDF -->
       <span class="toolbar-sep" aria-hidden="true"></span>
-      <!-- UX-006: Save PDF always visible; icon-only at narrow widths -->
-      <button
-        class="primary save-btn icon-text"
-        onclick={savePdf}
-        disabled={busy || exporting || !currentDir || sourceMode === "url"}
-        title="Save as PDF (Ctrl+S)"
-      >
-        <Icon name="file-down" />
-        <span class="save-btn-label">{exporting ? "Saving…" : "Save PDF"}</span>
-      </button>
-      <!-- UX-023: explain why Save PDF is disabled -->
-      {#if !currentDir && !busy}
-        <span class="save-hint">Open a folder first</span>
-      {:else if sourceMode === "url"}
-        <span class="save-hint">Not available for web previews</span>
-      {:else if saveWarning}
-        <span class="save-hint save-warning" role="alert">{saveWarning}</span>
+      <!-- #33 Phase 4: PDF export is desktop-only (puppeteer/printToPDF). On the
+           web (capabilities().nativeSavePath === false) the control is replaced
+           with a short "requires the desktop app" note. On desktop
+           (nativeSavePath:true) this is UNCHANGED. -->
+      {#if canSavePdf}
+        <!-- UX-006: Save PDF always visible; icon-only at narrow widths -->
+        <button
+          class="primary save-btn icon-text"
+          onclick={savePdf}
+          disabled={busy || exporting || !currentDir || sourceMode === "url"}
+          title="Save as PDF (Ctrl+S)"
+        >
+          <Icon name="file-down" />
+          <span class="save-btn-label">{exporting ? "Saving…" : "Save PDF"}</span>
+        </button>
+        <!-- UX-023: explain why Save PDF is disabled -->
+        {#if !currentDir && !busy}
+          <span class="save-hint">Open a folder first</span>
+        {:else if sourceMode === "url"}
+          <span class="save-hint">Not available for web previews</span>
+        {:else if saveWarning}
+          <span class="save-hint save-warning" role="alert">{saveWarning}</span>
+        {/if}
+      {:else}
+        <span class="save-hint" role="note">PDF export requires the desktop app</span>
       {/if}
       <!-- Settings panel (#45): gear icon + Cmd/Ctrl+, shortcut. Inline on wide
            screens; folds into the "More" menu when space is tight. -->
