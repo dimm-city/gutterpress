@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildPreflightPayload, toPreflightMarkdown } from "./preflight";
-import type { ValidationExecutionResult } from "@dimm-city/print-md-lib";
+import type { ValidationExecutionResult } from "../index.ts";
 
 function makeExecution(overrides: Partial<ValidationExecutionResult> = {}): ValidationExecutionResult {
   return {

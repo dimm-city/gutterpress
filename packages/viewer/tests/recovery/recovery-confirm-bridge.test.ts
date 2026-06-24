@@ -23,7 +23,7 @@ import {
   rejectAllPendingConfirms,
   setRecoveryBridgeWindow,
 } from "../../electron/recovery-bridge";
-import type { RepairConfirmation } from "@dimm-city/print-md-lib";
+import type { RepairConfirmation } from "@dimm-city/print-md";
 
 // ── Mock BrowserWindow ────────────────────────────────────────────────────────
 // We stub the BrowserWindow so the bridge can send IPC events without Electron.

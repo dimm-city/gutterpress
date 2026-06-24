@@ -2,10 +2,10 @@ appId: city.dimm.print-md-viewer
 productName: print-md-viewer
 
 # The ESM Electron main (out/main/main.js, built by electron-vite) dynamic-
-# imports @dimm-city/print-md-lib from node_modules at runtime (electron/main.ts
-# loadLib()). The lib's package.json `files` field constrains what ships (dist/ +
-# profiles/). electron-builder copies the lib and its transitive deps
-# (puppeteer-core, markdown-it, etc.) automatically from the workspace
+# imports @dimm-city/print-md from node_modules at runtime (electron/main.ts
+# loadLib() → its dist/index.js). That package's `files` field ships dist/;
+# electron-builder copies it and its transitive deps (puppeteer-core,
+# markdown-it, isomorphic-git, etc.) automatically from the workspace
 # node_modules via package.json `dependencies` — no manual list, no afterPack.
 files:
   - out/**
@@ -15,16 +15,15 @@ files:
 extraMetadata:
   main: out/main/main.js
 
-# The viewer depends on the private workspace lib via `"@dimm-city/print-md-lib":
-# "workspace:*"`. electron-builder must NOT run `npm install --production` during
-# packaging — npm rejects the `workspace:*` protocol (EUNSUPPORTEDPROTOCOL) and
-# the lib is unpublished. We rely on the already-installed (bun) workspace
-# node_modules and pure-JS deps (no native addons to rebuild), so disable the
-# rebuild step explicitly rather than depending on the default.
+# The viewer depends on @dimm-city/print-md via `"workspace:*"`.
+# electron-builder must NOT run `npm install --production` during packaging — npm
+# rejects the `workspace:*` protocol (EUNSUPPORTEDPROTOCOL). We rely on the
+# already-installed (bun) workspace node_modules and pure-JS deps (no native
+# addons to rebuild), so disable the rebuild step explicitly.
 npmRebuild: false
 
-# asar (Electron's default) — smaller, faster to scan on Windows. The lib reads
-# its embedded assets (favicon, paged.polyfill, ICC) via fs from inside the
+# asar (Electron's default) — smaller, faster to scan on Windows. The package
+# reads its embedded assets (favicon, paged.polyfill, ICC) via fs from inside the
 # archive, which Electron's patched fs handles. puppeteer-core is unpacked so it
 # has real on-disk paths when driving system Chrome.
 asar: true
@@ -36,7 +35,7 @@ directories:
   buildResources: build-resources
 
 # Native deps and large optionals are installed via the viewer's package.json
-# dependencies (@dimm-city/print-md-lib → its transitive deps). electron-builder
+# dependencies (@dimm-city/print-md → its transitive deps). electron-builder
 # copies them automatically from the workspace node_modules at packaging time.
 linux:
   target:

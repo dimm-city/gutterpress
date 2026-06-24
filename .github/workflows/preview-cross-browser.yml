@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
-      - "packages/lib/src/**"
+      - "packages/cli/src/**"
       - "packages/cli/src/**"
       - "packages/cli/tests/compat/**"
       - "examples/**"
@@ -29,7 +29,7 @@ jobs:
         run: bun install
 
       - name: Build lib
-        run: bun run build:lib
+        run: bun run build
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4

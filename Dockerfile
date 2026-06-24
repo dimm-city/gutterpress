@@ -5,7 +5,7 @@
 # A self-contained image with EVERYTHING the lint → build → validate pipeline
 # needs to turn a markdown project into a validated, print-ready PDF — including
 # the full PDF/X (CMYK) pre-print path:
-#   - the print-md CLI (Node bundle: src + @dimm-city/print-md-lib compiled in)
+#   - the print-md CLI (Node bundle: src + @dimm-city/print-md compiled in)
 #   - Chromium            (PDF rendering via Paged.js — REQUIRED for any PDF)
 #   - Ghostscript         (PDF/X CMYK conversion + ink-coverage validation)
 #   - qpdf                (PDF/X annotation stripping + OutputIntent validation)
@@ -37,10 +37,9 @@ WORKDIR /src
 COPY . .
 
 RUN bun install --frozen-lockfile
-# Bundles src/cli.ts + the (private, workspace) lib into packages/cli/dist/cli.js
-# (+ the lib's embedded assets), keeping the npm runtime deps external (installed
-# in the runtime stage). (cd + `bun run`; `bun --cwd <dir> run` mis-parses in Bun.)
-RUN cd packages/cli && bun run build:npm
+# Standard build: emits dist/cli.js (the bin) + dist/index.js (lib) with runtime
+# deps kept external (`--packages=external`), installed in the runtime stage.
+RUN cd packages/cli && bun run build
 
 # ── Stage 2: runtime with all OS + lint dependencies ─────────────────────────
 # node:20-bookworm-slim gives us Node on Debian 12, whose apt has a real
@@ -66,12 +65,10 @@ ENV PUPPETEER_SKIP_DOWNLOAD=1 \
 
 WORKDIR /app
 
-# Install ONLY the CLI's production runtime deps (the externals the bundle
-# expects: puppeteer-core, markdown-it*, pagedjs, chokidar, ws, yaml, glob,
-# citty). The in-process check deps (markdownlint, htmlhint, unpdf, pdf-lib) are
-# bundled into dist/cli.js, not installed here. We synthesize a minimal
-# package.json with just `dependencies` — the original's devDependencies carry
-# the workspace:* lib (already bundled into dist/cli.js), which npm can't parse.
+# Install the package's runtime deps. dist/ is built with `--packages=external`,
+# so all `dependencies` (markdown-it*, pagedjs, puppeteer-core, isomorphic-git,
+# markdownlint, postcss, …) are resolved here from a synthesized minimal
+# package.json (just `name`/`version`/`dependencies`, dropping devDependencies).
 COPY --from=builder /src/packages/cli/package.json ./cli-package.json
 RUN node -e "const p=require('./cli-package.json'); require('fs').writeFileSync('./package.json', JSON.stringify({name:p.name,version:p.version,private:true,type:'module',dependencies:p.dependencies},null,2))" \
     && rm cli-package.json \

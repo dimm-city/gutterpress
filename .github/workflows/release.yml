@@ -85,7 +85,7 @@ jobs:
           VERSION="${{ inputs.version }}"
           VERSION="$VERSION" node -e "
             const fs = require('fs');
-            for (const pkg of ['packages/cli/package.json', 'packages/lib/package.json', 'packages/viewer/package.json']) {
+            for (const pkg of ['packages/cli/package.json', 'packages/viewer/package.json']) {
               const p = JSON.parse(fs.readFileSync(pkg, 'utf8'));
               p.version = process.env.VERSION;
               fs.writeFileSync(pkg, JSON.stringify(p, null, 2) + '\n');
@@ -97,7 +97,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add packages/cli/package.json packages/lib/package.json packages/viewer/package.json
+          git add packages/cli/package.json packages/viewer/package.json
 
           if ! git diff --cached --quiet; then
             git commit -m "chore: bump version to ${{ inputs.version }}"
@@ -166,7 +166,8 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build standalone binary
-        run: bun --cwd packages/cli scripts/compile.ts ${{ matrix.target }} ../../${{ matrix.artifact }}
+        working-directory: packages/cli
+        run: bun build src/cli.ts --compile --target=${{ matrix.target }} --outfile=../../${{ matrix.artifact }}
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
@@ -190,9 +191,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build lib dist
+      - name: Build package dist
         run: bun run build
-        working-directory: packages/lib
+        working-directory: packages/cli
 
       # IMPORTANT: package the viewer with `npm run`, never `bun run`. The
       # `dist:*` scripts invoke electron-builder, which spawns worker processes
@@ -230,9 +231,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build lib dist
+      - name: Build package dist
         run: bun run build
-        working-directory: packages/lib
+        working-directory: packages/cli
 
       - name: Build Windows zip
         working-directory: packages/viewer
@@ -269,9 +270,9 @@ jobs:
       - name: Install Xcode command-line tools
         run: xcode-select --install || true
 
-      - name: Build lib dist
+      - name: Build package dist
         run: bun run build
-        working-directory: packages/lib
+        working-directory: packages/cli
 
       - name: Build macOS DMG
         working-directory: packages/viewer
@@ -312,9 +313,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build lib dist
+      - name: Build package dist
         run: bun run build
-        working-directory: packages/lib
+        working-directory: packages/cli
 
       # OIDC trusted publishing (no long-lived token) requires npm >= 11.5.1;
       # node 20 ships npm 10.x, so update it. Provenance attestation is implied

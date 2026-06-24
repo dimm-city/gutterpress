@@ -2,7 +2,7 @@
  * Viewer-facing platform contract (#41).
  *
  * `PlatformAdapter` (the narrow, genuinely host-divergent primitive surface) is
- * the canonical contract and lives in `@dimm-city/print-md-lib`. The viewer adds
+ * the canonical contract and lives in `@dimm-city/print-md`. The viewer adds
  * `HostServices` — the host RPC surface (preview/build/doctor/prefs/updater/
  * dialogs) that is *also* host-divergent (Electron IPC today, HTTP in a future
  * PWA) but is viewer-specific, so it is defined here rather than in the lib.
@@ -19,7 +19,7 @@ import type {
   FileWriteResult,
   CreateProjectOptions,
   CreateProjectResult,
-} from "@dimm-city/print-md-lib";
+} from "@dimm-city/print-md";
 
 export type {
   PlatformAdapter,
@@ -104,7 +104,7 @@ export interface RestoreVersionResult {
 
 /**
  * One CSS print-safety warning (#39). Mirrors the lib's `PrintSafeWarning`
- * (packages/lib/src/lib/printsafe.ts) — defined locally so the SPA never imports
+ * (packages/cli/src/lib/printsafe.ts) — defined locally so the SPA never imports
  * the lib (and its postcss/node deps) into the renderer bundle.
  */
 export interface PrintSafeWarning {
@@ -117,7 +117,7 @@ export interface PrintSafeWarning {
 
 /**
  * One row in the Problems panel (#28). Mirrors the lib's `CheckResult`
- * (packages/lib/src/checks/types.ts) plus a resolved absolute path — defined
+ * (packages/cli/src/checks/types.ts) plus a resolved absolute path — defined
  * locally so the SPA never value-imports the lib (§8 / ADR 0004).
  */
 export interface ProblemEntry {
@@ -394,7 +394,7 @@ export type SyncState =
 // ── Recovery types — defined locally; no lib value import in the SPA ─────────
 //
 // These mirror the lib's recovery types but are defined here so the SPA never
-// needs to value-import @dimm-city/print-md-lib (§8 / ADR 0004). The host
+// needs to value-import @dimm-city/print-md (§8 / ADR 0004). The host
 // (electron/main.ts) maps the lib types to these before emitting.
 
 /**
@@ -736,7 +736,7 @@ export interface ImagePickResult {
 
 // ── Media panel (#47) ─────────────────────────────────────────────────────────
 //
-// Mirrors the lib's ImageInfo (packages/lib/src/lib/image-inspect.ts) — defined
+// Mirrors the lib's ImageInfo (packages/cli/src/lib/image-inspect.ts) — defined
 // locally so the SPA never value-imports the lib (§8 / ADR 0004).
 
 /** One image file found under the open project folder. */

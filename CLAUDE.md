@@ -2,24 +2,25 @@
 
 ## Monorepo layout
 
-This repo is a Bun workspace with three packages:
+This repo is a Bun workspace with two packages:
 
-- **`packages/cli/`** (`@dimm-city/print-md`) — the markdown-to-PDF CLI. A
-  thin shell over `@dimm-city/print-md-lib`. Ships as a standalone binary
-  via `bun build --compile` AND as an npm package. The no-bundlers rule
-  (§1 below) applies to this package.
-- **`packages/lib/`** (`@dimm-city/print-md-lib`, private) — all runtime
-  logic: markdown rendering, preview HTTP server, PDF generation via
-  puppeteer-core, lint, validation. Pure ESM. Built with `bun build`
-  (target: node) to `dist/`. Consumed by both the CLI and the viewer as a
-  workspace dependency.
+- **`packages/cli/`** (`@dimm-city/print-md`) — the single published package:
+  ALL runtime logic (markdown rendering, preview HTTP server, PDF generation via
+  puppeteer-core, lint, validation — under `src/`) **and** the CLI entry
+  (`src/cli.ts`). It exposes a library (`exports` → `dist/index.js`) and a CLI
+  (`bin` → `dist/cli.js`). Built the standard way: `bun build` (the three
+  entrypoints, `--target=node --packages=external --splitting`) + `tsc` for
+  `.d.ts` — see the package.json `build` script; deps are normal `dependencies`,
+  not bundled. Also ships as a standalone single-file binary via `bun build
+  --compile` (the `compile` script / release `bun build … --compile`). The
+  no-bundlers-at-runtime rule (§1 below) applies to this package.
 - **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron desktop
   app with a static SvelteKit SPA frontend. The SPA is built with
   `@sveltejs/adapter-static` and served by Electron via a custom `app://`
   protocol handler. The 3 API endpoints (status, preview, build) are
   `ipcMain.handle()` calls, not HTTP routes. The Electron main + preload are
   built by **electron-vite** to `out/main/main.js` + `out/preload/`; the main
-  is ESM and loads the lib with a plain dynamic `import("@dimm-city/print-md-lib")`
+  is ESM and loads the lib with a plain dynamic `import("@dimm-city/print-md")`
   (no CJS→ESM `new Function` bridge — that was removed when the build moved to
   electron-vite + asar, commit `c5e75ae`). No afterPack hook; electron-builder
   packages the lib + its transitive deps from the workspace `node_modules` via
@@ -37,10 +38,10 @@ compile, tests) but NOT for end users of the packaged viewer.
 
 ## What print-md ships
 
-A standalone binary built with `bun build --compile` (see
-`packages/cli/scripts/compile.ts`). Users download a single executable from
-GitHub Releases — no Node, no Bun, no `node_modules` on the host. The CLI also
-runs from source via `bun packages/cli/src/cli.ts` during development.
+A standalone binary built with `bun build --compile` (the package.json
+`compile` script: `bun build src/cli.ts --compile …`). Users download a single
+executable from GitHub Releases — no Node, no Bun, no `node_modules` on the host.
+The CLI also runs from source via `bun packages/cli/src/cli.ts` during development.
 
 ## print-md Primary Goals
 > [!ALERT]
@@ -118,7 +119,7 @@ source rewrites** (`scripts/compile-plugin.ts` was removed when stylelint was
 dropped). stylelint was the one offender: it read its own `package.json` and
 `css-tree` data at runtime AND loaded its ~200 rule modules via a computed-path
 dynamic `import()` that no bundler can embed. CSS print-safety checks now run on
-**postcss** (`packages/lib/src/lib/printsafe.ts`), which bundles cleanly.
+**postcss** (`packages/cli/src/lib/printsafe.ts`), which bundles cleanly.
 
 If a future dep breaks under `--compile` (runtime `package.json`/data reads,
 `createRequire` JSON, or computed-path dynamic imports), prefer to **drop it**
@@ -188,7 +189,7 @@ The upcoming project-source / version-history / GitHub features (milestones
   `local-folder` (no Git) when Git can't or shouldn't be used.
 - **Shared lib, not duplicated.** Project scaffolding (with embedded-asset
   templates), source-type detection/capabilities, and the Git/provider layer
-  live in `@dimm-city/print-md-lib` and are consumed by **both** the CLI
+  live in `@dimm-city/print-md` and are consumed by **both** the CLI
   (`print-md new`, etc.) and the viewer — one implementation, two thin
   front-ends.
 
@@ -213,7 +214,7 @@ UI and the host, and it is honoured absolutely:
 **The renderer (the SPA, everything under `packages/viewer/src/`) MUST stay
 "PWA-clean": it contains ZERO platform/host code.**
 
-- **No runtime imports from `@dimm-city/print-md-lib`** in the SPA. `import type`
+- **No runtime imports from `@dimm-city/print-md`** in the SPA. `import type`
   is fine (erased at build). A *value* import (e.g. `import { checkCss }`) drags
   the Node-target lib — and its transitive `fileURLToPath`/`node:*`/`postcss`/
   `isomorphic-git` code — into the browser bundle, which builds fine (vite shims
@@ -272,7 +273,7 @@ What remains relevant to **this** repo:
   [`docs/contextual-cascade-principle.md`](./docs/contextual-cascade-principle.md),
   with a worked implementation in [`examples/with-design-guide/`](./examples/with-design-guide/).
 - The frozen chapter-opener's **plugin** half still lives in this repo at
-  `packages/lib/src/lib/markdown/markdown-it-paged.js` (`@chapter` parsing,
+  `packages/cli/src/lib/markdown/markdown-it-paged.js` (`@chapter` parsing,
   `data-chapter-label` propagation, `.chapter-opener` injection); its CSS half
   moved to dc-op-manual. The full frozen contract and the durable paged.js CSS
   anti-patterns are preserved in AKM

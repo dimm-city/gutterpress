@@ -1,5 +1,5 @@
 import { defineCommand } from "citty";
-import { log, executeAndReport, type OutputFormat } from "@dimm-city/print-md-lib";
+import { log, executeAndReport, type OutputFormat } from "../index.ts";
 
 export default defineCommand({
   meta: {

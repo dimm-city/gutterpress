@@ -10,7 +10,7 @@ import {
   openPath,
   type BuildFormat,
   type PdfxFlavor,
-} from "@dimm-city/print-md-lib";
+} from "../index.ts";
 
 export function resolvePort(raw: unknown): number {
   if (raw === undefined || raw === "") return 3579;

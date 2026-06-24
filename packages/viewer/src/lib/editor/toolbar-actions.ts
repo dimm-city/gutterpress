@@ -236,7 +236,7 @@ export function applyHr(view: EditorView): void {
 
 // ── Page break ───────────────────────────────────────────────────────────────
 // The canonical print-md author token is `@page-break` on its own line.
-// Source: packages/lib/src/lib/markdown/markdown-it-paged.js line 13.
+// Source: packages/cli/src/lib/markdown/markdown-it-paged.js line 13.
 
 export function applyPageBreak(view: EditorView): void {
   const { from } = mainSel(view);

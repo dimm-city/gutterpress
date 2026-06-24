@@ -1,0 +1,29 @@
+{
+  // Declaration-emit-only config: ships .d.ts for the LIBRARY surface
+  // (index.ts + api/index.ts and their transitive types) alongside the
+  // bun-built dist/ JS. The runtime JS is produced by `bun build` (see the
+  // package.json "build" script); this only generates the parallel type surface
+  // that tsc-based consumers (the viewer, external TS plugin authors) resolve
+  // via the package "types" export condition.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "exclude": [
+    "dist",
+    "tests",
+    "tools",
+    "src/assets",
+    "**/*.test.ts",
+    // The CLI entry + commands are not part of the importable library API, and
+    // cli.ts imports ../package.json (outside rootDir) — exclude them from the
+    // declaration build.
+    "src/cli.ts",
+    "src/commands"
+  ]
+}

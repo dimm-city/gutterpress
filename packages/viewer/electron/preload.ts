@@ -296,7 +296,7 @@ interface HostConnectionInfo {
 // `ProjectClassification` are the ambient declarations in types.d.ts (single
 // electron-side definition; the lib ships no .d.ts to import from yet).
 
-// Project source classification (#12). Mirrors @dimm-city/print-md-lib.
+// Project source classification (#12). Mirrors @dimm-city/print-md.
 type ProjectSource =
   | { type: "local-folder"; path: string }
   | {

@@ -1,7 +1,7 @@
 import { defineCommand } from "citty";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { runLint } from "@dimm-city/print-md-lib";
+import { runLint } from "../index.ts";
 
 export default defineCommand({
   meta: {

@@ -33,7 +33,7 @@
     "@codemirror/lint": "^6.8.4",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.36.2",
-    "@dimm-city/print-md-lib": "workspace:*",
+    "@dimm-city/print-md": "workspace:*",
     "@lezer/highlight": "^1.2.3",
     "fflate": "^0.8.2"
   },
