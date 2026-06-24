@@ -208,10 +208,10 @@ current/previous slots, prune, failed-version blocklist, the renderer watchdog.
   OIDC. svelte-check 0/0, electron tsc clean, viewer 399 + lib 882 + cli 12 pass,
   §8 renderer clean, real `npm pack` tarball verified end-to-end.
 
-**All phases complete.** Remaining is operational, not code: configure
-`@dimm-city/print-md` as a Trusted Publisher on npmjs.com (already referenced by
-`release.yml`); optionally remove the now-unused `WEB_UI_SIGNING_KEY` GitHub
-secret.
+**All phases complete; ready to release.** npm OIDC trusted publishing for
+`@dimm-city/print-md` is configured (`release.yml` publish-npm job has
+`id-token: write` + `--provenance`, no token). Only optional cleanup remains:
+remove the now-unused `WEB_UI_SIGNING_KEY` GitHub secret.
 
 ### Phase 2b spec (one atomic, verified change)
 
