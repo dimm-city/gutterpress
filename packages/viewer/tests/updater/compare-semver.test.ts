@@ -39,8 +39,9 @@ describe("compareSemver prerelease numeric ordering", () => {
 describe("compareSemver against rc-suffixed shell baselines", () => {
   // The viewer's baked baseline version is the app package version, which
   // during a release-candidate cycle carries an rc suffix (e.g. 0.5.0-rc.13).
-  // A published runtime update must sort strictly above the baked baseline for
-  // the updater to apply it — these assertions pin that the comparator agrees.
+  // The web-UI version-line rule (see release-web-ui.yml header / ADR 0003)
+  // says a web release must use the NEXT patch/minor above the newest shipped
+  // shell version — these assertions pin that the comparator agrees.
   test("next patch sorts above any rc of the previous version", () => {
     expect(compareSemver("0.5.1", "0.5.0-rc.13")).toBeGreaterThan(0);
     expect(compareSemver("0.5.1", "0.5.0-rc.2")).toBeGreaterThan(0);

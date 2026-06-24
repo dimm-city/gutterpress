@@ -14,7 +14,7 @@
  *  - supportDetails text NOT in the DOM until copy action (jargon-containment)
  *  - Jargon scan on always-visible text passes (no git words shown inline)
  *  - a11y: role="dialog", aria-modal, aria-labelledby present
- *  - PWA-clean: no value import of @dimm-city/print-md in the component source
+ *  - PWA-clean: no value import of @dimm-city/print-md-lib in the component source
  *  - Esc closes the dialog
  *  - Backdrop click closes the dialog
  *  - "Show backup" row hidden when no backupZipPath on either prop or guidance
@@ -87,12 +87,12 @@ describe("RecoveryGuidanceDialog — module exists and is PWA-clean", () => {
     expect(source.length).toBeGreaterThan(0);
   });
 
-  test("does NOT value-import @dimm-city/print-md (PWA-clean §8)", async () => {
+  test("does NOT value-import @dimm-city/print-md-lib (PWA-clean §8)", async () => {
     const source = await readFile(COMPONENT_PATH, "utf-8");
     // Allow `import type` but reject any value import (no `import {` without `type`)
     // Pattern: `import {` or `import *` or `import defaultName` from the lib
     const valueImportPattern =
-      /import\s+(?!type\s)(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)\s+from\s+['"]@dimm-city\/print-md['"]/;
+      /import\s+(?!type\s)(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)\s+from\s+['"]@dimm-city\/print-md-lib['"]/;
     expect(valueImportPattern.test(source)).toBe(false);
   });
 

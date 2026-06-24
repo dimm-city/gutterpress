@@ -24,7 +24,7 @@
  */
 
 import { describe, test, expect, afterEach } from "bun:test";
-import type { RepoHealth } from "@dimm-city/print-md";
+import type { RepoHealth } from "@dimm-city/print-md-lib";
 import {
   classifyFromHealth,
   hostConfirmationGate,

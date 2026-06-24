@@ -12,11 +12,6 @@ on:
         required: false
         type: boolean
         default: false
-      skip_viewer:
-        description: "Skip building the Electron viewer installers. Set true for a RUNTIME release: the UI/engine ship via the npm package (which viewers auto-update from) + a GitHub release, without rebuilding/redistributing the desktop installers. The CLI binaries are still built and attached."
-        required: false
-        type: boolean
-        default: false
 
 env:
   PUPPETEER_SKIP_DOWNLOAD: 'true'
@@ -182,7 +177,6 @@ jobs:
   build-viewer-linux:
     name: Viewer / Linux AppImage
     needs: version
-    if: ${{ !inputs.skip_viewer }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -220,7 +214,6 @@ jobs:
   build-viewer-windows:
     name: Viewer / Windows zip
     needs: version
-    if: ${{ !inputs.skip_viewer }}
     # electron-builder handles Electron download, exe rename, icon embedding, zip.
     # No afterPack hook: the lib ships as a normal node_modules dependency that
     # electron-builder walks automatically (see electron-builder.yml).
@@ -257,7 +250,6 @@ jobs:
   build-viewer-mac:
     name: Viewer / macOS DMG
     needs: version
-    if: ${{ !inputs.skip_viewer }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -323,14 +315,6 @@ jobs:
       - name: Build lib dist
         run: bun run build
         working-directory: packages/lib
-
-      # The published @dimm-city/print-md package is the single runtime: it must
-      # contain the viewer SPA under ui/ (build-npm.ts copies packages/viewer/
-      # build → ui/) so the desktop viewer can download+serve it at runtime
-      # (docs/runtime-lib-update-plan.md). Build the SPA before publish.
-      - name: Build viewer SPA (bundled into the npm package as ui/)
-        run: bun run build
-        working-directory: packages/viewer
 
       # OIDC trusted publishing (no long-lived token) requires npm >= 11.5.1;
       # node 20 ships npm 10.x, so update it. Provenance attestation is implied
@@ -422,15 +406,13 @@ jobs:
       - build-viewer-windows
       - build-viewer-mac
       - publish-npm
-    # Viewer builds may be intentionally skipped for a runtime (npm-only)
-    # release — tolerate 'skipped' for them the same way npm publish is tolerated.
     if: |
       always() &&
       needs.version.result == 'success' &&
       needs.build-cli.result == 'success' &&
-      (needs.build-viewer-linux.result == 'success' || needs.build-viewer-linux.result == 'skipped') &&
-      (needs.build-viewer-windows.result == 'success' || needs.build-viewer-windows.result == 'skipped') &&
-      (needs.build-viewer-mac.result == 'success' || needs.build-viewer-mac.result == 'skipped') &&
+      needs.build-viewer-linux.result == 'success' &&
+      needs.build-viewer-windows.result == 'success' &&
+      needs.build-viewer-mac.result == 'success' &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
@@ -448,7 +430,6 @@ jobs:
           pattern: "print-md-*"
 
       - name: Download viewer artifacts
-        if: ${{ !inputs.skip_viewer }}
         uses: actions/download-artifact@v4
         with:
           path: dist/

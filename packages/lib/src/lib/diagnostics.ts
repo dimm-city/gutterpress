@@ -116,11 +116,7 @@ async function readLibVersion(): Promise<string> {
     // bun build emits the diagnostics code into a bundled chunk whose depth in
     // dist/ is not fixed (dist/index.js, dist/api/index.js, or dist/chunk-*.js),
     // so a hard-coded "../.." overshoots. Walk up from the running module and
-    // return the version of the first matching package.json. Accept either the
-    // internal source package name ("@dimm-city/print-md-lib", when consumed from
-    // the workspace) OR the consolidated published package ("@dimm-city/print-md",
-    // into which the lib is bundled for the CLI npm package and the viewer
-    // runtime) — the self-contained bundle's nearest package.json is the latter.
+    // return the version of the FIRST package.json named "@dimm-city/print-md-lib".
     let dir = dirname(fileURLToPath(import.meta.url));
     for (let i = 0; i < 6; i++) {
       try {
@@ -128,11 +124,7 @@ async function readLibVersion(): Promise<string> {
           name?: string;
           version?: string;
         };
-        if (
-          (pkg.name === "@dimm-city/print-md-lib" ||
-            pkg.name === "@dimm-city/print-md") &&
-          pkg.version
-        ) {
+        if (pkg.name === "@dimm-city/print-md-lib" && pkg.version) {
           cachedLibVersion = pkg.version;
           return cachedLibVersion;
         }

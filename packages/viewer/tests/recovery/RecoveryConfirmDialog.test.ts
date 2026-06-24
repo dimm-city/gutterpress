@@ -5,7 +5,7 @@
  * host recovery subsystem needs author approval before a medium/high-risk repair.
  *
  * Architecture constraints verified here (CLAUDE.md §8 / ADR 0004):
- *  - The component file must NOT value-import @dimm-city/print-md
+ *  - The component file must NOT value-import @dimm-city/print-md-lib
  *  - The component file must NOT import node:* / fs / path / url / isomorphic-git
  *  - All host work goes through getPlatform() (verified by source scan)
  *
@@ -73,7 +73,7 @@ const COMPONENT_PATH = path.resolve(
 
 const FORBIDDEN_VALUE_IMPORTS = [
   // lib value import — would drag Node / isomorphic-git into the browser bundle
-  /from\s+["']@dimm-city\/print-md["']/,
+  /from\s+["']@dimm-city\/print-md-lib["']/,
   // Node built-ins in the renderer (§8 NEVER list)
   /from\s+["']node:/,
   /require\s*\(\s*["']node:/,
@@ -90,7 +90,7 @@ describe("RecoveryConfirmDialog — PWA-cleanliness (§8)", () => {
     expect(fs.existsSync(COMPONENT_PATH)).toBe(true);
   });
 
-  test("component does NOT value-import @dimm-city/print-md", () => {
+  test("component does NOT value-import @dimm-city/print-md-lib", () => {
     if (!fs.existsSync(COMPONENT_PATH)) return;
     const src = fs.readFileSync(COMPONENT_PATH, "utf8");
     for (const pattern of FORBIDDEN_VALUE_IMPORTS) {

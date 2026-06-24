@@ -12,8 +12,8 @@
  * Usage: bun scripts/build-npm.ts
  */
 
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { copyFile, readFile, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 const ROOT = join(import.meta.dirname, "..");
 
@@ -72,85 +72,3 @@ const normalizedOutput = output.replace(/^(?:#!.*\n|\/\/ @bun\n)+/, "");
 await writeFile(outputPath, `#!/usr/bin/env node\n${normalizedOutput}`);
 
 console.log("✓ dist/cli.js built for npm distribution");
-
-// ── Self-contained library entry (dist/index.js) ──────────────────────────────
-// `@dimm-city/print-md` is also importable as a library: the viewer's Electron
-// main process loads it (in-asar baseline, and — once shipped — the npm-sourced
-// runtime update; see docs/runtime-lib-update-plan.md). Unlike cli.js (which
-// keeps runtime deps external and relies on `npm install`), this entry is FULLY
-// self-contained — every dependency is inlined EXCEPT puppeteer-core, which
-// stays external + lazily imported (browser-pool.ts) and is never reached on the
-// viewer's PDF path (it renders via Electron's own Chromium). This lets the
-// extracted package load via `import(fileURL)` from any path with no
-// node_modules present. Verified by the R1/R2 spike (2026-06-23).
-const libEntry = await Bun.build({
-  entrypoints: [join(ROOT, "../lib/src/index.ts")],
-  outdir: join(ROOT, "dist"),
-  target: "node",
-  format: "esm",
-  // Only puppeteer-core stays external; everything else is inlined so the file
-  // loads from an arbitrary directory with no node_modules.
-  external: ["puppeteer-core"],
-  // Resolve the lib via its `bun` export condition (src/) so its
-  // `with { type: "file" }` assets are re-emitted next to index.js — same reason
-  // cli.js uses it above.
-  conditions: ["bun"],
-  sourcemap: "none",
-  minify: false,
-});
-
-if (!libEntry.success) {
-  for (const log of libEntry.logs) console.error(log);
-  process.exit(1);
-}
-console.log("✓ dist/index.js built (self-contained library entry)");
-
-// ── Type declarations for the library entry ───────────────────────────────────
-// The viewer renderer (svelte-check / tsc) and tests `import type { … }` from
-// `@dimm-city/print-md`. Bun.build does not emit declarations, so copy the lib's
-// already-generated .d.ts tree (packages/lib/dist/**/*.d.ts) into dist/. Only
-// .d.ts files are copied so they sit beside the self-contained index.js without
-// overwriting it. Requires the lib to have been built first (see build:lib).
-const libDist = join(ROOT, "../lib/dist");
-const dtsFiles = new Bun.Glob("**/*.d.ts").scanSync({ cwd: libDist });
-let dtsCount = 0;
-for (const rel of dtsFiles) {
-  const dest = join(ROOT, "dist", rel);
-  await mkdir(dirname(dest), { recursive: true });
-  await copyFile(join(libDist, rel), dest);
-  dtsCount++;
-}
-if (dtsCount === 0) {
-  console.error(
-    "✗ no .d.ts found in packages/lib/dist — run the lib build first (bun --cwd packages/lib build)",
-  );
-  process.exit(1);
-}
-console.log(`✓ dist/ type declarations copied from lib (${dtsCount} files)`);
-
-// ── Bundle the viewer SPA into ui/ ────────────────────────────────────────────
-// `@dimm-city/print-md` is the single runtime package: the Electron viewer
-// downloads it from npm and serves the SPA from ui/ + loads the engine from
-// dist/index.js (docs/runtime-lib-update-plan.md). Copy the built SvelteKit
-// static output (packages/viewer/build) into ui/. Requires the viewer to have
-// been built first — in a release the viewer SPA build runs before this. When
-// absent (CLI-only dev build), warn loudly but don't fail: a published package
-// without ui/ simply can't drive viewer runtime updates.
-const viewerBuild = join(ROOT, "../viewer/build");
-await rm(join(ROOT, "ui"), { recursive: true, force: true });
-if (await Bun.file(join(viewerBuild, "index.html")).exists()) {
-  let uiCount = 0;
-  for (const rel of new Bun.Glob("**/*").scanSync({ cwd: viewerBuild })) {
-    const dest = join(ROOT, "ui", rel);
-    await mkdir(dirname(dest), { recursive: true });
-    await copyFile(join(viewerBuild, rel), dest);
-    uiCount++;
-  }
-  console.log(`✓ ui/ SPA copied from viewer build (${uiCount} files)`);
-} else {
-  console.warn(
-    "⚠ packages/viewer/build/index.html not found — publishing WITHOUT ui/. " +
-      "Build the viewer SPA first (npm --prefix packages/viewer run build) for a " +
-      "release that can drive viewer runtime updates.",
-  );
-}

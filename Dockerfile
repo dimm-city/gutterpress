@@ -37,14 +37,10 @@ WORKDIR /src
 COPY . .
 
 RUN bun install --frozen-lockfile
-# Build the lib first (dist/ + .d.ts), THEN bundle the CLI: build:npm now also
-# emits the library entry (dist/index.js) and copies the lib's .d.ts, which
-# requires packages/lib/dist to exist — without this it fails the d.ts-copy
-# guard. The CLI image only runs dist/cli.js; the extra library entry/types it
-# also produces are harmless. (cd + `bun run`; `bun --cwd <dir> run` mis-parses
-# in Bun. viewer SPA isn't built here, so build:npm just skips ui/ with a warning.)
-RUN cd packages/lib && bun run build \
- && cd ../cli && bun run build:npm
+# Bundles src/cli.ts + the (private, workspace) lib into packages/cli/dist/cli.js
+# (+ the lib's embedded assets), keeping the npm runtime deps external (installed
+# in the runtime stage). (cd + `bun run`; `bun --cwd <dir> run` mis-parses in Bun.)
+RUN cd packages/cli && bun run build:npm
 
 # ── Stage 2: runtime with all OS + lint dependencies ─────────────────────────
 # node:20-bookworm-slim gives us Node on Debian 12, whose apt has a real

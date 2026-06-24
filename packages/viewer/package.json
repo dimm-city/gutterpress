@@ -1,7 +1,7 @@
 {
   "name": "@dimm-city/print-md-viewer",
   "private": true,
-  "version": "0.6.0-beta.1",
+  "version": "0.5.4",
   "type": "module",
   "main": "out/main/main.js",
   "author": "itlackey",
@@ -33,7 +33,7 @@
     "@codemirror/lint": "^6.8.4",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.36.2",
-    "@dimm-city/print-md": "workspace:*",
+    "@dimm-city/print-md-lib": "workspace:*",
     "@lezer/highlight": "^1.2.3",
     "fflate": "^0.8.2"
   },

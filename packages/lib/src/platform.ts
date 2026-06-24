@@ -10,9 +10,8 @@
  * This module is **types only** — it is imported by the browser SPA via
  * `import type`, so it must never pull in a Node runtime dependency.
  *
- * Canonical source: `@dimm-city/print-md-lib`, published to consumers as part of
- * `@dimm-city/print-md`. The viewer re-exports these types from
- * `src/lib/platform/` and implements them in `electron-adapter.ts` /
+ * Canonical home: `@dimm-city/print-md-lib`. The viewer re-exports these types
+ * from `src/lib/platform/` and implements them in `electron-adapter.ts` /
  * `web-adapter.ts`. Keep the implementations in lockstep with this contract.
  */
 

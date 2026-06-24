@@ -1,7 +1,7 @@
 // The lib ships no .d.ts yet (see docs/build-pipeline-followups.md). main.ts
 // dynamic-imports it and casts the result to its own LibModule interface, so an
 // untyped module declaration is all that's needed for the electron typecheck.
-declare module "@dimm-city/print-md";
+declare module "@dimm-city/print-md-lib";
 
 // `?raw` imports (electron-vite/vite) return the file contents as a string. Used
 // for the splash markup, which is baked into the main bundle.
@@ -90,7 +90,7 @@ type DeepPartialSettings = {
   [K in keyof AppSettings]?: Partial<AppSettings[K]>;
 };
 
-// Project source classification (#12). Mirrors @dimm-city/print-md.
+// Project source classification (#12). Mirrors @dimm-city/print-md-lib.
 type ProjectSource =
   | { type: "local-folder"; path: string }
   | {

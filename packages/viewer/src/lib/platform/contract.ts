@@ -2,7 +2,7 @@
  * Viewer-facing platform contract (#41).
  *
  * `PlatformAdapter` (the narrow, genuinely host-divergent primitive surface) is
- * the canonical contract and lives in `@dimm-city/print-md`. The viewer adds
+ * the canonical contract and lives in `@dimm-city/print-md-lib`. The viewer adds
  * `HostServices` — the host RPC surface (preview/build/doctor/prefs/updater/
  * dialogs) that is *also* host-divergent (Electron IPC today, HTTP in a future
  * PWA) but is viewer-specific, so it is defined here rather than in the lib.
@@ -19,7 +19,7 @@ import type {
   FileWriteResult,
   CreateProjectOptions,
   CreateProjectResult,
-} from "@dimm-city/print-md";
+} from "@dimm-city/print-md-lib";
 
 export type {
   PlatformAdapter,
@@ -394,7 +394,7 @@ export type SyncState =
 // ── Recovery types — defined locally; no lib value import in the SPA ─────────
 //
 // These mirror the lib's recovery types but are defined here so the SPA never
-// needs to value-import @dimm-city/print-md (§8 / ADR 0004). The host
+// needs to value-import @dimm-city/print-md-lib (§8 / ADR 0004). The host
 // (electron/main.ts) maps the lib types to these before emitting.
 
 /**

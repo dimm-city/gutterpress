@@ -21,9 +21,9 @@ This document describes the architecture, design decisions, and implementation d
 
 The repo is a Bun workspace with three packages:
 
-- **`packages/cli/`** (`@dimm-city/print-md`) — the single published package: the CLI binary **and** the importable runtime library (`dist/index.js`, a self-contained bundle of the lib). Distributed as a standalone compiled binary via `bun build --compile` and as the npm package.
-- **`packages/lib/`** (`@dimm-city/print-md-lib`, private) — all runtime logic: markdown rendering, preview HTTP server, PDF generation, lint, validation. Pure ESM. **Internal source package**: consumed by the CLI's own commands and bundled into `@dimm-city/print-md`; not published separately.
-- **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron + SvelteKit desktop app. Depends on `@dimm-city/print-md` (workspace) and loads its library entry in the Electron main process.
+- **`packages/cli/`** (`@dimm-city/print-md`) — CLI binary. Thin shell over `@dimm-city/print-md-lib`. Distributed as a standalone compiled binary via `bun build --compile`.
+- **`packages/lib/`** (`@dimm-city/print-md-lib`, private) — all runtime logic: markdown rendering, preview HTTP server, PDF generation, lint, validation. Pure ESM. Consumed by both the CLI and the viewer as a workspace dependency.
+- **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron + SvelteKit desktop app. Imports `@dimm-city/print-md-lib` as a workspace dependency.
 
 ### Key Features
 

@@ -13,7 +13,7 @@
  *      without breaking the three choice buttons.
  *   4. REGRESSION GUARD — defaults, choices, payload, focus-trap invariants.
  *   5. PWA-cleanliness — the component source must not value-import
- *      @dimm-city/print-md (CLAUDE.md §8 / ADR 0004).
+ *      @dimm-city/print-md-lib (CLAUDE.md §8 / ADR 0004).
  *   6. Copy / jargon scan — no git words in any author-visible rendered string.
  *
  * Test strategy: unit-level logic tests only (no Svelte/DOM rendering harness
@@ -22,7 +22,7 @@
  * detect whether the feature has been wired correctly. All assertions that depend
  * on a live DOM should fail at the "component not implemented" stage.
  *
- * Renderer rule: no value import from @dimm-city/print-md.
+ * Renderer rule: no value import from @dimm-city/print-md-lib.
  */
 
 import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
@@ -42,14 +42,14 @@ describe("PWA-cleanliness — ConflictChoicesDialog must not value-import lib", 
     expect(fs.existsSync(componentPath)).toBe(true);
   });
 
-  test("does not contain a value import of @dimm-city/print-md", () => {
+  test("does not contain a value import of @dimm-city/print-md-lib", () => {
     const source = fs.readFileSync(componentPath, "utf-8");
     // Allow `import type` but not a value import (no `import {` or `import *`)
     // from the lib package.
     const valueImportPattern =
-      /import\s+(?!type\s)\{[^}]*\}\s+from\s+["']@dimm-city\/print-md["']/;
+      /import\s+(?!type\s)\{[^}]*\}\s+from\s+["']@dimm-city\/print-md-lib["']/;
     const defaultImportPattern =
-      /import\s+(?!type\s)\w+\s+from\s+["']@dimm-city\/print-md["']/;
+      /import\s+(?!type\s)\w+\s+from\s+["']@dimm-city\/print-md-lib["']/;
     expect(valueImportPattern.test(source)).toBe(false);
     expect(defaultImportPattern.test(source)).toBe(false);
   });

@@ -11,7 +11,7 @@
    * readable at a glance — not sporadic or hard to see.
    *
    * PWA-clean: all host work via getPlatform() (CLAUDE.md §8 / ADR 0004).
-   * No node: builtins or @dimm-city/print-md value imports.
+   * No node: builtins or @dimm-city/print-md-lib value imports.
    */
   import SyncStatusPill from "$lib/components/SyncStatusPill.svelte";
   import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
