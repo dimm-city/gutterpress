@@ -31,18 +31,23 @@
     onConflict,
     /**
      * Called when the quiet pill (synced/offline/syncing) is clicked (§5.2).
-     * Should open the SyncDialog details/advanced view.
+     * Receives the project's operation-log path (or null if none yet) so the
+     * parent can open the OperationLogDialog showing the git/sync activity log.
      */
     onDetails,
   }: {
     projectDir?: string | null;
     onReconnect?: () => void;
     onConflict?: (files: ConflictFileInfo[]) => void;
-    onDetails?: () => void;
+    onDetails?: (logFilePath: string | null) => void;
   } = $props();
 
   let syncState = $state<SyncState>("idle");
   let conflictFiles = $state<ConflictFileInfo[]>([]);
+  // Last-known operation-log path for this project, carried on the status stream
+  // (SyncStatus.logFile). Retained across status transitions so clicking the
+  // pill can always open the log once any sync/recovery has emitted a path.
+  let logFilePath = $state<string | null>(null);
 
   // Subscribe to the host orchestrator's status stream. Re-subscribe whenever
   // the project dir changes (or the component mounts/unmounts).
@@ -51,6 +56,8 @@
   $effect(() => {
     unsubscribe?.();
     unsubscribe = null;
+    // Reset per-project state so a previous project's log path never leaks.
+    logFilePath = null;
     // Only subscribe when running in the desktop host (the WebAdapter stub is a
     // safe no-op but we skip the wiring on the web path for clarity).
     if (!isDesktop() || !projectDir) {
@@ -63,6 +70,8 @@
       if (status.projectDir !== projectDir) return;
       syncState = status.state;
       conflictFiles = status.files ?? [];
+      // Retain the latest non-empty log path (later "idle" events omit it).
+      if (status.logFile) logFilePath = status.logFile;
     });
     // Return the cleanup function for Svelte's $effect cleanup.
     return () => {
@@ -159,9 +168,9 @@
     } else if (syncState === "conflict") {
       onConflict?.(conflictFiles);
     } else if (onDetails) {
-      // Quiet states (synced/offline/syncing) open the Sync details view when
-      // an onDetails handler is wired — satisfies §5.2 advanced-path reachability.
-      onDetails();
+      // Quiet states (synced/offline/syncing) open the operation log when an
+      // onDetails handler is wired — satisfies §5.2 advanced-path reachability.
+      onDetails(logFilePath);
     }
   }
 
@@ -255,6 +264,17 @@
   }
   button.sync-pill.warning:hover {
     color: var(--app-warning-text-hover, var(--app-text));
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  /* Quiet states are clickable too (view the git/sync activity log). Keep the
+     affordance ambient per §5.1 — a pointer + the same subtle underline-brighten
+     as the warning hover, but in the neutral text colour (no button chrome). */
+  button.sync-pill:not(.warning) {
+    cursor: pointer;
+  }
+  button.sync-pill:not(.warning):hover {
+    color: var(--app-text);
     text-decoration: underline;
     text-underline-offset: 2px;
   }

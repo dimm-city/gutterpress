@@ -25,6 +25,7 @@
   import RecoveryGuidanceDialog from "$lib/components/RecoveryGuidanceDialog.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
+  import OperationLogDialog from "$lib/components/OperationLogDialog.svelte";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
@@ -158,6 +159,14 @@
   // Toast controller (populated by Toast.svelte via bind:api)
   let toast = $state<ToastController | null>(null);
   let helpOpen = $state(false);
+  // Operation-log viewer: opened from the StatusBar git/sync pill. Holds the
+  // current project's log path (carried on the sync status stream).
+  let logDialogOpen = $state(false);
+  let logFilePath = $state<string | null>(null);
+  function showProjectLog(filePath: string | null): void {
+    logFilePath = filePath;
+    logDialogOpen = true;
+  }
   let userSetViewMode = $state(false);
   let openError = $state<string | null>(null);
   let urlPreviewError = $state<string | null>(null);
@@ -2503,11 +2512,15 @@
     onProblemSelect={openProblem}
     onReconnect={onSyncReconnect}
     onConflict={onPillConflict}
+    onShowLog={showProjectLog}
     onForceSave={handleForceSave}
     onForceSync={handleForceSync}
   />
 </div>
 </div>
+
+<!-- Operation log viewer — opened from the StatusBar git/sync status pill. -->
+<OperationLogDialog bind:open={logDialogOpen} logFilePath={logFilePath} />
 
 <HelpDialog
   bind:open={helpOpen}

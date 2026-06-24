@@ -45,6 +45,9 @@
     onReconnect = undefined as (() => void) | undefined,
     /** Called when the sync pill reports a conflict. */
     onConflict = undefined as ((files: ConflictFileInfo[]) => void) | undefined,
+    /** Called when the sync/git status pill is clicked in a quiet state —
+     *  receives the project's operation-log path (or null) to view the log. */
+    onShowLog = undefined as ((logFilePath: string | null) => void) | undefined,
     /** Called when the author clicks "Save now". */
     onForceSave = undefined as (() => void) | undefined,
     /** Called when the author clicks "Sync now". */
@@ -63,6 +66,7 @@
     onProblemSelect?: (p: ProblemEntry) => void;
     onReconnect?: () => void;
     onConflict?: (files: ConflictFileInfo[]) => void;
+    onShowLog?: (logFilePath: string | null) => void;
     onForceSave?: () => void;
     onForceSync?: () => void;
   } = $props();
@@ -138,6 +142,7 @@
         {projectDir}
         onReconnect={onReconnect}
         onConflict={onConflict}
+        onDetails={onShowLog}
       />
     {/if}
     {#if (showSync || showForceSync) && fileOpen}
