@@ -535,12 +535,19 @@
   let pluginManagerOpen = $state(false);
   let pluginManagerBtn = $state<HTMLButtonElement | undefined>(undefined);
 
-  function openPluginManager(trigger?: HTMLButtonElement) {
-    if (!currentDir) return;
+  /** Guard the project-styling actions: needs a project open, desktop only for
+   *  now. Returns true (and toasts on web) when the action can't run. */
+  function notAvailableHere(thing: string): boolean {
+    if (!currentDir) return true;
     if (!isDesktop()) {
-      toast?.info?.("Plugins are managed in the desktop app for now.");
-      return;
+      toast?.info?.(`${thing} are available in the desktop app for now.`);
+      return true;
     }
+    return false;
+  }
+
+  function openPluginManager(trigger?: HTMLButtonElement) {
+    if (notAvailableHere("Plugins")) return;
     pluginManagerRef?.show(trigger ?? pluginManagerBtn);
   }
 
@@ -550,11 +557,7 @@
   let themeManagerBtn = $state<HTMLButtonElement | undefined>(undefined);
 
   function openThemeManager(trigger?: HTMLButtonElement) {
-    if (!currentDir) return;
-    if (!isDesktop()) {
-      toast?.info?.("Themes are managed in the desktop app for now.");
-      return;
-    }
+    if (notAvailableHere("Themes")) return;
     themeManagerRef?.show(trigger ?? themeManagerBtn);
   }
 
@@ -573,11 +576,7 @@
   let designPanelOpen = $state(false);
 
   function openDesign(trigger?: HTMLButtonElement) {
-    if (!currentDir) return;
-    if (!isDesktop()) {
-      toast?.info?.("Design controls are available in the desktop app for now.");
-      return;
-    }
+    if (notAvailableHere("Design controls")) return;
     designPanelRef?.show(trigger);
   }
 
@@ -596,16 +595,11 @@
    * (when given) is the button to restore focus to after the picker.
    */
   async function openStyles(trigger?: HTMLButtonElement) {
-    if (!currentDir) return;
-    if (!isDesktop()) {
-      toast?.info?.(
-        "Style editing is available in the desktop app for now — browse the Files panel to open a .css file.",
-      );
-      return;
-    }
+    if (notAvailableHere("Style editing")) return;
+    const dir = currentDir!; // notAvailableHere guarantees a project is open
     let list: ProjectStyle[];
     try {
-      list = await getPlatform().listProjectStyles(currentDir);
+      list = await getPlatform().listProjectStyles(dir);
     } catch (e) {
       toast?.error?.(
         `Could not list styles: ${e instanceof Error ? e.message : String(e)}`,
@@ -718,35 +712,6 @@
     }
   }
 
-  /**
-   * Insert an image even when no chapter is open yet (UX audit P3#8: the Media
-   * "Insert" button used to dead-end behind a disabled state, telling the author
-   * to go open a file first). If no markdown chapter is open, open one and the
-   * editor pane, then insert once the editor has mounted AND loaded that chapter
-   * — a bounded rAF retry, so there's no race (we never insert into an unloaded
-   * doc) and no infinite loop (gives up with a clear toast).
-   */
-  function insertImageIntoChapter(payload: { src: string; alt?: string }) {
-    const isMd = (p: string | null) => !!p && /\.(md|markdown)$/i.test(p);
-    if (!isMd(editorFilePath)) {
-      void ensureEditorFile();
-      editorOpen = true;
-    }
-    let tries = 0;
-    const tryInsert = () => {
-      if (editorRef && isMd(editorFilePath)) {
-        editorRef.runToolbarAction("image", { src: payload.src, alt: payload.alt ?? "" });
-        focusEditorWhenReady();
-        return;
-      }
-      if (tries++ < 120) {
-        requestAnimationFrame(tryInsert);
-      } else {
-        toast?.info?.("Open a markdown chapter, then insert the image.");
-      }
-    };
-    requestAnimationFrame(tryInsert);
-  }
   $effect(() => {
     if (editorRef && pendingEditorFocus) {
       pendingEditorFocus = false;
@@ -2906,7 +2871,7 @@
       onOpenThemes={() => openThemeManager()}
       onOpenPlugins={() => openPluginManager()}
       onOpenDesign={() => openDesign()}
-      onInsertImage={(payload) => insertImageIntoChapter(payload)}
+      onInsertImage={(payload) => editorRef?.runToolbarAction("image", { src: payload.src, alt: payload.alt ?? "" })}
       onProjectChosen={(path) => startFolderPreview(path)}
       onOpenUrl={openUrl}
       onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}

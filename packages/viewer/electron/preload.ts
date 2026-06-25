@@ -146,14 +146,6 @@ interface ProjectStyle {
   displayName: string;
   active: boolean;
 }
-interface StyleToken {
-  name: string;
-  value: string;
-  kind: "color" | "length" | "text";
-  label: string;
-  number?: number;
-  unit?: string;
-}
 
 interface RecentFolderEntry {
   path: string;
@@ -726,12 +718,6 @@ contextBridge.exposeInMainWorld("electron", {
   // Style resolver (audit B2/G1) — manifest-aware CSS resolution via the lib
   listProjectStyles: (projectDir: string): Promise<ProjectStyle[]> =>
     ipcRenderer.invoke("project:listStyles", projectDir),
-
-  // Style tokens (guided Design panel) — read/write :root custom properties
-  readStyleTokens: (cssPath: string): Promise<StyleToken[]> =>
-    ipcRenderer.invoke("style:readTokens", cssPath),
-  writeStyleToken: (cssPath: string, name: string, value: string): Promise<string> =>
-    ipcRenderer.invoke("style:writeToken", cssPath, name, value),
 
   // Local version history (#13) — isomorphic-git in main, via the lib
   enableVersionHistory: (projectDir: string): Promise<ProjectClassification> =>

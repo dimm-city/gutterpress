@@ -72,7 +72,6 @@ import type {
   ThemeInfo,
   ApplyThemeTarget,
   ProjectStyle,
-  StyleToken,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -754,13 +753,6 @@ export class WebAdapter implements Platform {
     return Promise.resolve([]);
   }
 
-  // ── Style tokens (guided Design panel) — desktop-only until FSA web lands ──
-  readStyleTokens(_cssPath: string): Promise<StyleToken[]> {
-    return Promise.resolve([]);
-  }
-  writeStyleToken(_cssPath: string, _name: string, _value: string): Promise<string> {
-    return rejectNotImplemented("writeStyleToken");
-  }
 
   // ── Local version history (#13) — desktop-only; reject/empty on web ────────
   enableVersionHistory(_projectDir: string): Promise<ProjectClassification> {

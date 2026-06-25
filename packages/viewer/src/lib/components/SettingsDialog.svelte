@@ -44,11 +44,11 @@
     }
   }
 
-  $effect(() => {
-    if (open) {
-      queueMicrotask(focusFirstElement);
-    }
-  });
+  // Focus the first control when the dialog opens. A `use:` action on the
+  // {#if open} dialog node runs on mount (= on open) — no $effect.
+  function autofocusOnOpen(_node: HTMLElement) {
+    queueMicrotask(focusFirstElement);
+  }
 
   function close() {
     open = false;
@@ -65,6 +65,7 @@
 
   <div
     bind:this={dialogEl}
+    use:autofocusOnOpen
     class="dialog"
     role="dialog"
     aria-modal="true"

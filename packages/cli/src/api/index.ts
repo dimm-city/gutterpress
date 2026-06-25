@@ -151,13 +151,9 @@ export type {
   BuiltInThemeId,
 } from "../lib/theme-manager.ts";
 
-// ── Style resolver (CSS-editor file resolution; audit B2/G1) ──────────────────
-export { listProjectStyles } from "../lib/style-resolver.ts";
+// ── Stylesheet resolution (renderer links them; editor edits them — one source) ──
+export { listProjectStyles, resolveActiveStyles } from "../lib/style-resolver.ts";
 export type { ProjectStyle } from "../lib/style-resolver.ts";
-
-// ── Style tokens (guided custom-property editing — the "Design" panel) ────────
-export { readStyleTokens, writeStyleToken } from "../lib/style-tokens.ts";
-export type { StyleToken, StyleTokenKind } from "../lib/style-tokens.ts";
 
 export {
   providerFor,

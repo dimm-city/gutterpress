@@ -245,25 +245,6 @@ export interface ProjectStyle {
   active: boolean;
 }
 
-// Mirrors the lib's `StyleToken` (packages/cli/src/lib/style-tokens.ts) —
-// defined locally so the SPA never value-imports the lib (§8 / ADR 0004). One
-// editable `:root` custom property surfaced to the guided Design panel.
-export type StyleTokenKind = "color" | "length" | "text";
-export interface StyleToken {
-  /** The custom-property name, e.g. `--heading-color`. */
-  name: string;
-  /** The raw declared value, e.g. `#cc0000` or `1.5rem`. */
-  value: string;
-  /** Which guided control to render. */
-  kind: StyleTokenKind;
-  /** Human label derived from the name, e.g. "Heading color". */
-  label: string;
-  /** For `length`: the numeric part. */
-  number?: number;
-  /** For `length`: the unit (px, rem, em, …). */
-  unit?: string;
-}
-
 // ── Host RPC payload shapes (mirror electron/preload.ts + types.d.ts) ─────────
 
 export interface UpdaterStatus {
@@ -1227,19 +1208,6 @@ export interface HostServices {
    * until the FSA web adapter lands — audit G3).
    */
   listProjectStyles(projectDir: string): Promise<ProjectStyle[]>;
-
-  /**
-   * Read the `:root` custom properties of a stylesheet for the guided Design
-   * panel (color pickers + size controls). Thin pass-through to the shared lib
-   * (postcss). The WebAdapter stub returns `[]` until the FSA web adapter lands.
-   */
-  readStyleTokens(cssPath: string): Promise<StyleToken[]>;
-  /**
-   * Set one `:root` custom property in a stylesheet, preserving the rest, and
-   * return the new file contents. The preview hot-swaps the edited stylesheet.
-   * The WebAdapter stub rejects until the FSA web adapter lands.
-   */
-  writeStyleToken(cssPath: string, name: string, value: string): Promise<string>;
 
   // ── Local version history (#13) ───────────────────────────────────────────
   // All four run in the host (isomorphic-git via the lib — CLAUDE.md §7); the

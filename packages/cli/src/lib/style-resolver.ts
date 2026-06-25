@@ -1,31 +1,20 @@
 /**
- * Style resolver — resolve a project's editable stylesheets for the viewer's
- * CSS editor (audit B2/G1).
+ * Stylesheet resolution — the SINGLE source of truth for "which stylesheet(s)
+ * does this project use?". Both the renderer (which `<link>`s them into the
+ * book) and the viewer's Design/Edit-CSS surface (which edits them) consume
+ * `resolveActiveStyles`, so the file an author edits is always the file the
+ * preview renders. Keeping these in one place is what prevents the
+ * "updating the design doesn't change the preview" class of bug.
  *
- * The CSS editor must open the file that actually styles the book — the
- * manifest's `styles:` list (the ACTIVE set) — and let the author switch among
- * the project's other stylesheets (root `.css`, `styles/*.css`,
- * `themes/<id>/theme.css`). `findProjectCssFile` in the renderer only knew
- * about the alphabetical-first ROOT `.css`, so after applying a theme it opened
- * the wrong file.
+ * Pure Node fs/path + the lib's manifest parser — NO subprocess, NO bundler, NO
+ * runtime package.json reads — so it bundles under `bun build --compile` and
+ * runs in the packaged viewer (CLAUDE.md §1/§3).
  *
- * This is the SHARED resolution used by both front-ends (CLI + viewer) through
- * the platform seam. It is pure Node fs/path + the lib's manifest parser — NO
- * subprocess, NO bundler, NO runtime package.json reads — so it bundles cleanly
- * under `bun build --compile` and runs in the packaged viewer (CLAUDE.md §1/§3).
- *
- * Resolution:
- *   1. Read the manifest `styles:` list (relative to the manifest dir). Each
- *      entry is an ACTIVE stylesheet, returned in manifest order, marked
- *      `active: true` — even if the file is missing (so the editor can surface
- *      a wired-but-missing stylesheet).
- *   2. Discover other `.css` files: the project root, `styles/`, and each
- *      `themes/<id>/theme.css`. Anything already in the manifest list is NOT
- *      duplicated. Discovered (non-active) files are sorted alphabetically by
- *      their relative path and appended after the active set.
- *
- * When there are no manifest styles, ALL discovered files are returned (none
- * active), alphabetically — preserving the old alphabetical-fallback behaviour.
+ * - `resolveActiveStyles` → the ACTIVE set (rendered AND edited): the manifest
+ *   `styles:` list if present, else the first conventional stylesheet the
+ *   project actually has, else `[]` (no stylesheet — never a phantom link).
+ * - `listProjectStyles` → the active set (marked `active`) plus the project's
+ *   OTHER discovered `.css` files, for the editor's "switch stylesheet" picker.
  */
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
@@ -45,6 +34,19 @@ export interface ProjectStyle {
 /** Subdirectories we scan (one level) for additional stylesheets. */
 const STYLES_SUBDIR = "styles";
 const THEMES_SUBDIR = "themes";
+
+/**
+ * Conventional single-stylesheet locations, in priority order, used when a
+ * project has no manifest `styles:`. `styles/book.css` is what `print-md new`
+ * and "set up as a book" scaffold; the `css/*` names are the legacy convention.
+ */
+const FALLBACK_PRIORITY = [
+  "styles/book.css",
+  "css/print.css",
+  "css/index.css",
+  "css/style.css",
+  "css/main.css",
+];
 
 /** Project-relative, forward-slash display path for an absolute css path. */
 function relDisplay(projectDir: string, absPath: string): string {
@@ -74,16 +76,19 @@ function cssFilesFrom(dir: string, entries: import("node:fs").Dirent[]): string[
  */
 async function discoverCssFiles(projectDir: string): Promise<string[]> {
   const stylesDir = path.join(projectDir, STYLES_SUBDIR);
+  const cssDir = path.join(projectDir, "css");
   const themesRoot = path.join(projectDir, THEMES_SUBDIR);
-  const [rootEntries, stylesEntries, themeEntries] = await Promise.all([
+  const [rootEntries, stylesEntries, cssEntries, themeEntries] = await Promise.all([
     dirEntries(projectDir),
     dirEntries(stylesDir),
+    dirEntries(cssDir),
     dirEntries(themesRoot),
   ]);
 
   const found = new Set<string>([
     ...cssFilesFrom(projectDir, rootEntries),
     ...cssFilesFrom(stylesDir, stylesEntries),
+    ...cssFilesFrom(cssDir, cssEntries),
   ]);
 
   // themes/<id>/theme.css — one level of theme folders.
@@ -97,41 +102,75 @@ async function discoverCssFiles(projectDir: string): Promise<string[]> {
 }
 
 /**
- * Resolve a project's editable stylesheets: the manifest `styles:` set (active,
- * in order) followed by the other discovered `.css` files (alphabetical).
- * `projectDir` must be an absolute path. Returns `[]` for a project with no
- * stylesheets.
+ * THE canonical "which stylesheet does this project use?" resolver — consumed by
+ * BOTH the renderer (to `<link>` them) and the editor (to edit them), so they
+ * can never disagree. Returns project-relative paths:
+ *   1. the manifest `styles:` list, if it has any entries; else
+ *   2. the first conventional stylesheet the project actually has
+ *      (`FALLBACK_PRIORITY`); else
+ *   3. the first discovered `.css` anywhere we scan (deterministic); else
+ *   4. `[]` — the project has no stylesheet (an honest empty, never a phantom
+ *      link to a missing file).
+ * `manifestStyles` is the manifest's `styles:` value (the caller already has it
+ * resolved); pass `undefined` to have it read from the manifest.
+ */
+export async function resolveActiveStyles(
+  projectDir: string,
+  manifestStyles?: string[],
+): Promise<string[]> {
+  let configured = manifestStyles;
+  if (configured === undefined) {
+    const { manifest } = await loadManifestWithPath(projectDir);
+    configured = Array.isArray(manifest.styles) ? manifest.styles : [];
+  }
+  const manifest = configured.filter((s) => typeof s === "string" && s.trim().length > 0);
+  if (manifest.length > 0) return manifest;
+
+  for (const rel of FALLBACK_PRIORITY) {
+    if (existsSync(path.join(projectDir, rel))) return [rel];
+  }
+
+  const discovered = await discoverCssFiles(projectDir);
+  if (discovered.length > 0) {
+    const first = discovered
+      .map((abs) => relDisplay(projectDir, abs))
+      .sort((a, b) => a.localeCompare(b))[0]!;
+    return [first];
+  }
+  return [];
+}
+
+/**
+ * Resolve a project's editable stylesheets for the picker: the ACTIVE set
+ * (`resolveActiveStyles`, marked `active: true`) followed by the project's OTHER
+ * discovered `.css` files (alphabetical). `projectDir` must be absolute. Returns
+ * `[]` for a project with no stylesheets at all.
  */
 export async function listProjectStyles(projectDir: string): Promise<ProjectStyle[]> {
-  // The manifest read and the css-dir discovery are independent — run together.
-  const [{ manifest, manifestDir }, discoveredAbs] = await Promise.all([
+  const [{ manifest }, discoveredAbs] = await Promise.all([
     loadManifestWithPath(projectDir),
     discoverCssFiles(projectDir),
   ]);
+  const activeRels = await resolveActiveStyles(
+    projectDir,
+    Array.isArray(manifest.styles) ? manifest.styles : undefined,
+  );
 
-  const activeRels = Array.isArray(manifest.styles) ? manifest.styles : [];
   const out: ProjectStyle[] = [];
   const seen = new Set<string>();
 
-  // 1. Active styles first, in manifest order. Resolved relative to the
-  //    manifest dir (the lib resolves `styles:` against the manifest location).
+  // 1. Active styles first (exactly what the renderer links), in order.
   for (const rel of activeRels) {
-    if (typeof rel !== "string" || rel.trim().length === 0) continue;
-    const abs = path.resolve(manifestDir, rel);
+    const abs = path.resolve(projectDir, rel);
     if (seen.has(abs)) continue;
     seen.add(abs);
     out.push({ path: abs, displayName: relDisplay(projectDir, abs), active: true });
   }
 
-  // 2. Discovered files (root, styles/, themes/*/theme.css), excluding any
-  //    already listed as active. Sorted alphabetically by display path.
+  // 2. Other discovered files, excluding any already active. Sorted by path.
   const discovered = discoveredAbs
     .filter((abs) => !seen.has(abs))
-    .map((abs) => ({
-      path: abs,
-      displayName: relDisplay(projectDir, abs),
-      active: false,
-    }))
+    .map((abs) => ({ path: abs, displayName: relDisplay(projectDir, abs), active: false }))
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 
   out.push(...discovered);
