@@ -17,70 +17,17 @@ function makeBridge() {
     apiVersion: 1,
     updater: { getStatus: rec("updater.getStatus", Promise.resolve({})) },
     openDirectory: rec("openDirectory", Promise.resolve("/proj")),
-    savePdf: rec("savePdf", Promise.resolve("/out.pdf")),
-    openExternal: rec("openExternal", Promise.resolve()),
-    showInFolder: rec("showInFolder", Promise.resolve()),
     readFile: rec("readFile", Promise.resolve("file-body")),
     writeFile: rec("writeFile", Promise.resolve()),
     listDir: rec(
       "listDir",
       Promise.resolve([{ name: "a.md", path: "/proj/a.md", isDir: false }]),
     ),
-    checkCss: rec("checkCss", Promise.resolve([])),
-    lintProject: rec(
-      "lintProject",
-      Promise.resolve([
-        {
-          filePath: "/proj/01-intro.md",
-          file: "01-intro.md",
-          line: 4,
-          severity: "error",
-          message: "Local reference not found: ./missing.png",
-          source: "source.links.local-refs",
-        },
-      ]),
-    ),
-    getStatus: rec("getStatus", Promise.resolve({ ok: true })),
-    getViewerPrefs: rec("getViewerPrefs", Promise.resolve({})),
-    setViewerPrefs: rec("setViewerPrefs", Promise.resolve({ ok: true })),
-    getViewerProjectState: rec("getViewerProjectState", Promise.resolve({ currentPage: 5 })),
-    setViewerProjectState: rec("setViewerProjectState", Promise.resolve({ ok: true })),
-    getSettings: rec("getSettings", Promise.resolve({ appearance: { previewBg: "#abc" } })),
-    setSettings: rec("setSettings", Promise.resolve({ ok: true })),
-    getNativeTheme: rec("getNativeTheme", Promise.resolve({ shouldUseDarkColors: true })),
     onNativeThemeUpdated: rec("onNativeThemeUpdated", () => {}),
-    getRecentFolders: rec(
-      "getRecentFolders",
-      Promise.resolve([{ path: "/proj", title: "My Book", openedAt: "2026-01-01", exists: true }]),
-    ),
-    getFavorites: rec(
-      "getFavorites",
-      Promise.resolve([{ path: "/proj", title: "My Book", exists: true }]),
-    ),
-    toggleFavorite: rec("toggleFavorite", Promise.resolve({ favorited: true })),
-    removeRecent: rec("removeRecent", Promise.resolve({ ok: true })),
-    discoverProjects: rec("discoverProjects", Promise.resolve([])),
-    classifyProject: rec(
-      "classifyProject",
-      Promise.resolve({
-        source: { type: "local-folder", path: "/proj" },
-        capabilities: { canSnapshot: false },
-      }),
-    ),
-    createProject: rec(
-      "createProject",
-      Promise.resolve({
-        projectDir: "/proj/my-book",
-        manifestPath: "/proj/my-book/manifest.yaml",
-        openFile: "/proj/my-book/chapter-01.md",
-        versionHistory: "local-git",
-      }),
-    ),
     startPreview: rec("startPreview", Promise.resolve({ url: "x" })),
     stopPreview: rec("stopPreview", Promise.resolve({ stopped: true })),
     cancelExport: rec("cancelExport", Promise.resolve({ canceled: true })),
     build: rec("build", Promise.resolve({ outDir: "/out" })),
-    doctor: rec("doctor", Promise.resolve({})),
     onBuildProgress: rec("onBuildProgress", () => {}),
     onUrlPreviewBlocked: rec("onUrlPreviewBlocked", () => {}),
     // #44 unsaved-changes / recovery surface
@@ -92,28 +39,40 @@ function makeBridge() {
     writeRecovery: rec("writeRecovery", Promise.resolve({ ok: true })),
     clearRecovery: rec("clearRecovery", Promise.resolve({ ok: true })),
     listRecovery: rec("listRecovery", Promise.resolve([])),
-    setDirtyState: rec("setDirtyState", Promise.resolve()),
     onFlushBeforeClose: rec("onFlushBeforeClose", () => {}),
     onFolderChanged: rec("onFolderChanged", () => {}),
-    // #31 Insert Image — single file picker (returns a raw path string at the bridge)
-    pickImageFile: rec("pickImageFile", Promise.resolve("/pick/cover.png")),
-    copyFile: rec("copyFile", Promise.resolve("/proj/assets/cover.png")),
-    // #47 Media panel surface
-    pickImageFiles: rec("pickImageFiles", Promise.resolve(["/pick/a.png"])),
-    listProjectImages: rec(
-      "listProjectImages",
-      Promise.resolve([
-        { name: "a.png", relPath: "assets/a.png", path: "/proj/assets/a.png", size: 10, mtimeMs: 1 },
-      ]),
-    ),
-    imageThumbnail: rec("imageThumbnail", Promise.resolve("data:image/png;base64,AAA")),
-    inspectImage: rec(
-      "inspectImage",
-      Promise.resolve({
-        fileSize: 10,
-        info: { width: 100, height: 50, xDpi: 72, yDpi: 72, hasAlpha: false, colorSpace: "srgb" },
-      }),
-    ),
+    // Version history surface (#13)
+    enableVersionHistory: rec("enableVersionHistory", Promise.resolve({ source: {}, capabilities: {} })),
+    saveSnapshot: rec("saveSnapshot", Promise.resolve({ id: "sha1", message: "snap", timestamp: 1 })),
+    listSnapshots: rec("listSnapshots", Promise.resolve([])),
+    listSnapshotsPage: rec("listSnapshotsPage", Promise.resolve({ entries: [], hasMore: false })),
+    restoreSnapshot: rec("restoreSnapshot", Promise.resolve({ ok: true })),
+    // GitHub integration (#15)
+    connectGitHubStart: rec("connectGitHubStart", Promise.resolve({})),
+    connectGitHubWait: rec("connectGitHubWait", Promise.resolve({})),
+    connectGitHubCancel: rec("connectGitHubCancel", Promise.resolve({ ok: true })),
+    disconnectGitHub: rec("disconnectGitHub", Promise.resolve({ ok: true })),
+    getRemoteConnection: rec("getRemoteConnection", Promise.resolve({})),
+    listRemoteRepositories: rec("listRemoteRepositories", Promise.resolve([])),
+    listRemoteBranches: rec("listRemoteBranches", Promise.resolve([])),
+    listRepoBooks: rec("listRepoBooks", Promise.resolve([])),
+    cloneRemoteRepository: rec("cloneRemoteRepository", Promise.resolve({ projectDir: "/proj" })),
+    onCloneProgress: rec("onCloneProgress", () => {}),
+    // Advanced setup (#14)
+    diagnoseProjectRemote: rec("diagnoseProjectRemote", Promise.resolve({})),
+    testRemoteAccess: rec("testRemoteAccess", Promise.resolve({})),
+    connectGenericHost: rec("connectGenericHost", Promise.resolve({ connected: true, host: "h" })),
+    disconnectHost: rec("disconnectHost", Promise.resolve({ ok: true })),
+    listHostConnections: rec("listHostConnections", Promise.resolve([])),
+    forgeTokenUrl: rec("forgeTokenUrl", Promise.resolve(null)),
+    // Sync surface
+    onSyncStatus: rec("onSyncStatus", () => {}),
+    setAutoSync: rec("setAutoSync", Promise.resolve()),
+    onRecoveryConfirm: rec("onRecoveryConfirm", () => {}),
+    respondRecoveryConfirm: rec("respondRecoveryConfirm", Promise.resolve()),
+    getConflictPreview: rec("getConflictPreview", Promise.resolve({})),
+    syncChanges: rec("syncChanges", Promise.resolve({ status: "synced" })),
+    resolveSyncConflicts: rec("resolveSyncConflicts", Promise.resolve({ status: "synced" })),
   };
   return { bridge, calls };
 }
@@ -163,27 +122,6 @@ test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", asyn
   ]);
   await p.build({ input: { key: "/proj", displayName: "proj" }, format: "pdf" });
   await p.startPreview({ input: { key: "/proj", displayName: "proj" } });
-  await p.doctor();
-
-  // #49: recents/favorites rows map path → key + derived displayName, other fields forwarded.
-  await expect(p.getRecentFolders()).resolves.toEqual([
-    { key: "/proj", displayName: "proj", title: "My Book", openedAt: "2026-01-01", exists: true },
-  ]);
-  await expect(p.getFavorites()).resolves.toEqual([
-    { key: "/proj", displayName: "proj", title: "My Book", exists: true },
-  ]);
-  await expect(p.classifyProject("/proj")).resolves.toEqual({
-    source: { type: "local-folder", path: "/proj" },
-    capabilities: { canSnapshot: false },
-  });
-  await expect(
-    p.createProject({ name: "My Book", parentDir: "/proj" }),
-  ).resolves.toEqual({
-    projectDir: "/proj/my-book",
-    manifestPath: "/proj/my-book/manifest.yaml",
-    openFile: "/proj/my-book/chapter-01.md",
-    versionHistory: "local-git",
-  });
   expect(p.apiVersion).toBe(1);
 
   const methods = calls.map((c) => c.method);
@@ -200,59 +138,9 @@ test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", asyn
   expect(calls.find((c) => c.method === "startPreview")?.args).toEqual([
     { input: "/proj" },
   ]);
-  expect(methods).toContain("classifyProject");
-  expect(calls.find((c) => c.method === "classifyProject")?.args).toEqual(["/proj"]);
-  expect(methods).toContain("createProject");
-  expect(calls.find((c) => c.method === "createProject")?.args).toEqual([
-    { name: "My Book", parentDir: "/proj" },
-  ]);
   expect(calls.find((c) => c.method === "writeFile")?.args).toEqual(["/a.md", "hello"]);
 });
 
-test("ElectronAdapter delegates lintProject (#28) 1:1 to the bridge", async () => {
-  const { bridge, calls } = makeBridge();
-  // @ts-expect-error test global
-  globalThis.window = { electron: bridge };
-  const p = new ElectronAdapter();
-
-  const entries = await p.lintProject("/proj");
-  expect(entries).toHaveLength(1);
-  expect(entries[0]).toEqual({
-    filePath: "/proj/01-intro.md",
-    file: "01-intro.md",
-    line: 4,
-    severity: "error",
-    message: "Local reference not found: ./missing.png",
-    source: "source.links.local-refs",
-  });
-  expect(calls.find((c) => c.method === "lintProject")?.args).toEqual(["/proj"]);
-});
-
-test("WebAdapter.lintProject degrades to no findings (#28)", async () => {
-  const p = new WebAdapter();
-  await expect(p.lintProject("/proj")).resolves.toEqual([]);
-});
-
-test("ElectronAdapter delegates per-project state (#43) 1:1 to the bridge", async () => {
-  const { bridge, calls } = makeBridge();
-  // @ts-expect-error test global
-  globalThis.window = { electron: bridge };
-  const p = new ElectronAdapter();
-
-  await expect(p.getViewerProjectState("/proj")).resolves.toEqual({ currentPage: 5 });
-  await expect(p.setViewerProjectState("/proj", { currentPage: 9 })).resolves.toEqual({
-    ok: true,
-  });
-
-  const methods = calls.map((c) => c.method);
-  expect(methods).toContain("getViewerProjectState");
-  expect(methods).toContain("setViewerProjectState");
-  expect(calls.find((c) => c.method === "getViewerProjectState")?.args).toEqual(["/proj"]);
-  expect(calls.find((c) => c.method === "setViewerProjectState")?.args).toEqual([
-    "/proj",
-    { currentPage: 9 },
-  ]);
-});
 
 test("ElectronAdapter throws for scaffold-only methods (no IPC behind them)", () => {
   const { bridge } = makeBridge();
@@ -276,7 +164,6 @@ test("ElectronAdapter delegates the #44 unsaved-changes surface 1:1 to the bridg
   await expect(p.writeRecovery("/p", "x", 42)).resolves.toEqual({ ok: true });
   await expect(p.clearRecovery("/p")).resolves.toEqual({ ok: true });
   await expect(p.listRecovery("/p")).resolves.toEqual([]);
-  await p.setDirtyState(true);
   const offFlush = p.onFlushBeforeClose(() => {});
   expect(typeof offFlush).toBe("function");
   const offFolder = p.onFolderChanged(() => {});
@@ -288,47 +175,26 @@ test("ElectronAdapter delegates the #44 unsaved-changes surface 1:1 to the bridg
   expect(methods).toContain("writeRecovery");
   expect(methods).toContain("clearRecovery");
   expect(methods).toContain("listRecovery");
-  expect(methods).toContain("setDirtyState");
   expect(methods).toContain("onFlushBeforeClose");
   expect(methods).toContain("onFolderChanged");
   expect(calls.find((c) => c.method === "statFile")?.args).toEqual(["/p"]);
   expect(calls.find((c) => c.method === "writeRecovery")?.args).toEqual(["/p", "x", 42]);
-  expect(calls.find((c) => c.method === "setDirtyState")?.args).toEqual([true]);
 });
 
-test("ElectronAdapter delegates getSettings/setSettings 1:1 to the bridge", async () => {
+test("ElectronAdapter delegates onNativeThemeUpdated 1:1 to the bridge", async () => {
   const { bridge, calls } = makeBridge();
   // @ts-expect-error test global
   globalThis.window = { electron: bridge };
   const p = new ElectronAdapter();
 
-  await expect(p.getSettings()).resolves.toEqual({ appearance: { previewBg: "#abc" } });
-  await expect(p.setSettings({ appearance: { previewBg: "#123" } })).resolves.toEqual({ ok: true });
-
-  const methods = calls.map((c) => c.method);
-  expect(methods).toContain("getSettings");
-  expect(methods).toContain("setSettings");
-  expect(calls.find((c) => c.method === "setSettings")?.args).toEqual([
-    { appearance: { previewBg: "#123" } },
-  ]);
-});
-
-test("ElectronAdapter delegates getNativeTheme/onNativeThemeUpdated 1:1 to the bridge", async () => {
-  const { bridge, calls } = makeBridge();
-  // @ts-expect-error test global
-  globalThis.window = { electron: bridge };
-  const p = new ElectronAdapter();
-
-  await expect(p.getNativeTheme()).resolves.toEqual({ shouldUseDarkColors: true });
   const unsub = p.onNativeThemeUpdated(() => {});
   expect(typeof unsub).toBe("function");
 
   const methods = calls.map((c) => c.method);
-  expect(methods).toContain("getNativeTheme");
   expect(methods).toContain("onNativeThemeUpdated");
 });
 
-test("WebAdapter.getNativeTheme reads matchMedia; onNativeThemeUpdated subscribes", async () => {
+test("WebAdapter.onNativeThemeUpdated subscribes to matchMedia changes", async () => {
   const listeners: Array<(e: { matches: boolean }) => void> = [];
   // @ts-expect-error test global
   globalThis.matchMedia = (_q: string) => ({
@@ -342,7 +208,6 @@ test("WebAdapter.getNativeTheme reads matchMedia; onNativeThemeUpdated subscribe
   });
   try {
     const p = new WebAdapter();
-    await expect(p.getNativeTheme()).resolves.toEqual({ shouldUseDarkColors: true });
 
     let received: boolean | null = null;
     const unsub = p.onNativeThemeUpdated((s) => (received = s.shouldUseDarkColors));
@@ -354,35 +219,6 @@ test("WebAdapter.getNativeTheme reads matchMedia; onNativeThemeUpdated subscribe
   } finally {
     // @ts-expect-error test global
     globalThis.matchMedia = undefined;
-  }
-});
-
-test("WebAdapter.getSettings returns defaults merged with localStorage, setSettings persists", async () => {
-  const store = new Map<string, string>();
-  // @ts-expect-error test global
-  globalThis.localStorage = {
-    getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
-  };
-  try {
-    const p = new WebAdapter();
-    // Defaults are returned when nothing is stored.
-    const defaults = await p.getSettings();
-    expect(defaults.appearance.previewBg).toBe("#5a5a5a");
-    expect(defaults.preview.viewMode).toBe("two-column");
-
-    // A patch persists and merges over defaults on the next read.
-    await expect(p.setSettings({ appearance: { previewBg: "#101010" } })).resolves.toEqual({
-      ok: true,
-    });
-    const after = await p.getSettings();
-    expect(after.appearance.previewBg).toBe("#101010");
-    // Unrelated sections retain their defaults.
-    expect(after.preview.viewMode).toBe("two-column");
-  } finally {
-    // @ts-expect-error test global
-    globalThis.localStorage = undefined;
   }
 });
 
@@ -413,15 +249,6 @@ test("WebAdapter: primitives throw, host methods reject, subscriptions are no-op
   await expect(
     p.startPreview({ input: { key: "web:none", displayName: "p" } }),
   ).rejects.toThrow(/handle/i);
-  // #33 Phase 3: prefs + per-project state are now IndexedDB-backed (here the
-  // injected in-memory store), so they round-trip instead of rejecting.
-  await expect(p.setViewerPrefs({})).resolves.toEqual({ ok: true });
-  await expect(p.getViewerProjectState("/p")).resolves.toBeNull();
-  await expect(p.setViewerProjectState("/p", {})).resolves.toEqual({ ok: true });
-  // Project discovery resolves to [] on web (no scan), not a rejection.
-  await expect(p.discoverProjects()).resolves.toEqual([]);
-  await expect(p.classifyProject("/p")).rejects.toThrow(/0\.6\.0/);
-  await expect(p.createProject({ name: "X", parentDir: "/p" })).rejects.toThrow(/0\.6\.0/);
   // Subscriptions must return a callable unsubscribe (the app stores it).
   expect(typeof p.onBuildProgress(() => {})).toBe("function");
   expect(typeof p.onUrlPreviewBlocked(() => {})).toBe("function");
@@ -430,50 +257,8 @@ test("WebAdapter: primitives throw, host methods reject, subscriptions are no-op
   await expect(p.writeRecovery("/p", "x", 0)).rejects.toThrow(/0\.6\.0/);
   await expect(p.clearRecovery("/p")).rejects.toThrow(/0\.6\.0/);
   await expect(p.listRecovery("/p")).resolves.toEqual([]);
-  await expect(p.setDirtyState(true)).rejects.toThrow(/0\.6\.0/);
   expect(typeof p.onFlushBeforeClose(() => {})).toBe("function");
   expect(typeof p.onFolderChanged(() => {})).toBe("function");
-  // #47 Media panel: listing/import reject (panel guards with isDesktop());
-  // thumbnails + inspection degrade to null so detail chrome renders safely.
-  await expect(p.pickImageFiles()).rejects.toThrow(/0\.6\.0/);
-  await expect(p.listProjectImages("/p")).rejects.toThrow(/0\.6\.0/);
-  await expect(p.imageThumbnail("/p/a.png")).resolves.toBeNull();
-  await expect(p.inspectImage("/p/a.png")).resolves.toBeNull();
-});
-
-test("ElectronAdapter.pickImageFile wraps the bridge path → host-neutral FileRef (#61)", async () => {
-  const { bridge, calls } = makeBridge();
-  // @ts-expect-error test global
-  globalThis.window = { electron: bridge };
-  const p = new ElectronAdapter();
-
-  // #61: the bridge returns the chosen absolute path (a string); the adapter
-  // wraps it into a FileRef { key = path, displayName = basename } so the
-  // renderer never assumes path-string semantics (PWA/FSA-ready).
-  await expect(p.pickImageFile()).resolves.toEqual({
-    key: "/pick/cover.png",
-    displayName: "cover.png",
-  });
-  expect(calls.find((c) => c.method === "pickImageFile")?.args).toEqual([]);
-
-  // copyFile still takes/returns raw path strings (no FileRef at this seam).
-  await expect(p.copyFile("/pick/cover.png", "/proj/assets")).resolves.toBe(
-    "/proj/assets/cover.png",
-  );
-  expect(calls.find((c) => c.method === "copyFile")?.args).toEqual([
-    "/pick/cover.png",
-    "/proj/assets",
-  ]);
-});
-
-test("ElectronAdapter.pickImageFile returns null when the dialog is cancelled (#61)", async () => {
-  const { bridge } = makeBridge();
-  // dialog cancelled → bridge resolves null; adapter must return null, NOT fileRef(null).
-  (bridge as Record<string, unknown>).pickImageFile = () => Promise.resolve(null);
-  // @ts-expect-error test global
-  globalThis.window = { electron: bridge };
-  const p = new ElectronAdapter();
-  await expect(p.pickImageFile()).resolves.toBeNull();
 });
 
 test("WebAdapter.pickImageFile rejects until the PWA adapter lands (#61)", async () => {
@@ -858,19 +643,3 @@ test("WebAdapter.build({format:'html'}) throws when the project has no markdown 
   }
 });
 
-test("ElectronAdapter delegates the #47 Media panel surface 1:1 to the bridge", async () => {
-  const { bridge, calls } = makeBridge();
-  // @ts-expect-error test global
-  globalThis.window = { electron: bridge };
-  const p = new ElectronAdapter();
-  await p.pickImageFiles();
-  const images = await p.listProjectImages("/proj");
-  expect(images[0]?.relPath).toBe("assets/a.png");
-  await p.imageThumbnail("/proj/assets/a.png");
-  const details = await p.inspectImage("/proj/assets/a.png");
-  expect(details?.info?.width).toBe(100);
-  expect(calls.find((c) => c.method === "pickImageFiles")?.args).toEqual([]);
-  expect(calls.find((c) => c.method === "listProjectImages")?.args).toEqual(["/proj"]);
-  expect(calls.find((c) => c.method === "imageThumbnail")?.args).toEqual(["/proj/assets/a.png"]);
-  expect(calls.find((c) => c.method === "inspectImage")?.args).toEqual(["/proj/assets/a.png"]);
-});

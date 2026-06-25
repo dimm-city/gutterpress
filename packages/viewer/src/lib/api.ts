@@ -1,10 +1,10 @@
 /**
  * Typed fetch client for SvelteKit +server.ts API routes.
  *
- * Each method corresponds to a route under src/routes/api/. Methods are added
- * here in each phase as IPC handlers are migrated to server routes. The
- * platform adapter (getPlatform()) remains in use for all handlers not yet
- * migrated.
+ * Each method corresponds to a route under src/routes/api/. The platform
+ * adapter (getPlatform()) remains in use for push-channel subscriptions and
+ * complex orchestration flows (preview, build, vcs, sync, updater) that cannot
+ * be expressed as simple request/reply routes.
  *
  * All methods throw on non-OK responses (with the response body as the message).
  */
@@ -116,10 +116,7 @@ export interface ProjectFileEntry {
   css: string[];
 }
 
-/**
- * Typed API client. Methods are added here as IPC handlers are migrated
- * to +server.ts routes in Phase 2 and beyond.
- */
+/** Typed API client for all server routes under src/routes/api/. */
 export const api = {
   /** Low-level helpers exposed for direct use when needed. */
   _post: post,

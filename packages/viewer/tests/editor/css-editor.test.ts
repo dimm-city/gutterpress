@@ -6,26 +6,30 @@ import {
   pagedMediaCompletions,
   pagedMediaCompletionSource,
 } from "../../src/lib/editor/css-editor";
-import { __resetPlatform } from "../../src/lib/platform/index";
 import { checkCss, type PrintSafeWarning } from "@dimm-city/print-md";
 import { EditorState } from "@codemirror/state";
 import { CompletionContext } from "@codemirror/autocomplete";
 
-// cssDiagnosticsSource now runs the lint via getPlatform().checkCss (IPC) so the
-// SPA never bundles postcss. In tests (node, not the browser) we install a fake
-// bridge whose checkCss calls the REAL lib checkCss — exercising the same
-// warning→diagnostic mapping the app uses, end to end.
+// cssDiagnosticsSource calls api.lint.checkCss which posts to /api/lint/check-css.
+// In tests there is no running server, so we mock globalThis.fetch to call the
+// real lib checkCss directly — exercising the same warning→diagnostic mapping.
+const origFetch = globalThis.fetch;
 beforeEach(() => {
-  __resetPlatform();
-  // @ts-expect-error test global
-  globalThis.window = {
-    electron: { checkCss: (css: string, from?: string) => Promise.resolve(checkCss(css, from)) },
+  // @ts-expect-error test stub
+  globalThis.fetch = async (url: string, init?: RequestInit) => {
+    if (typeof url === "string" && url.endsWith("/api/lint/check-css")) {
+      const body = init?.body ? JSON.parse(init.body as string) : {};
+      const warnings = checkCss(body.content ?? "", body.cssPath ?? undefined);
+      return new Response(JSON.stringify(warnings), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return origFetch(url, init);
   };
 });
 afterEach(() => {
-  // @ts-expect-error test global
-  globalThis.window = undefined;
-  __resetPlatform();
+  globalThis.fetch = origFetch;
 });
 
 // ── languageForPath ──────────────────────────────────────────────────────────

@@ -2,8 +2,8 @@
  * useSettings() — the reactive, persisted user-settings store (#45).
  *
  * A Svelte 5 `$state`-backed module store (not a class, no legacy Svelte
- * stores). It loads `AppSettings` from the platform adapter once at first
- * access and writes every change back through `getPlatform().setSettings()`.
+ * stores). It loads `AppSettings` from the host (via `api.app.getSettings`) once
+ * at first access and writes every change back through `api.app.setSettings()`.
  *
  * Reads are reactive: components that reference `useSettings().current.<...>`
  * inside a `$derived`/`$effect`/template re-run when a setting changes.
