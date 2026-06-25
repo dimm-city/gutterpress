@@ -516,11 +516,15 @@
           <p>Open a project folder to browse media.</p>
         </div>
       {:else}
-        <MediaPanel
-          {projectDir}
-          canInsert={!!editorFilePath && /\.(md|markdown)$/i.test(editorFilePath)}
-          onInsert={(payload) => onInsertImage?.(payload)}
-        />
+        <!-- {#key projectDir}: remount MediaPanel on project switch (it loads in
+             onMount), instead of a projectDir-watching $effect. -->
+        {#key projectDir}
+          <MediaPanel
+            {projectDir}
+            canInsert={!!editorFilePath && /\.(md|markdown)$/i.test(editorFilePath)}
+            onInsert={(payload) => onInsertImage?.(payload)}
+          />
+        {/key}
       {/if}
     </div>
 
