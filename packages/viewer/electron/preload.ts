@@ -585,64 +585,18 @@ contextBridge.exposeInMainWorld("electron", {
   // Lib API (replaces /api/* HTTP routes)
   getStatus: (): Promise<{ ok: boolean; runtime: string; name: string }> =>
     ipcRenderer.invoke("api:status"),
-  getLastProject: (): Promise<string | null> =>
-    ipcRenderer.invoke("app:getLastProject"),
-  splashStatus: (status?: string, progress?: number, sub?: string): Promise<void> =>
-    ipcRenderer.invoke("app:splashStatus", status, progress, sub),
-  rendererReady: (): Promise<void> => ipcRenderer.invoke("app:rendererReady"),
-  getViewerPrefs: (): Promise<ViewerPrefs> =>
-    ipcRenderer.invoke("app:getViewerPrefs"),
-  setViewerPrefs: (patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("app:setViewerPrefs", patch),
-  // Per-project editor/preview state (#43)
-  getViewerProjectState: (projectDir: string): Promise<ProjectState | null> =>
-    ipcRenderer.invoke("app:getViewerProjectState", projectDir),
-  setViewerProjectState: (
-    projectDir: string,
-    patch: Partial<ProjectState>,
-  ): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("app:setViewerProjectState", projectDir, patch),
-  getSettings: (): Promise<AppSettings> =>
-    ipcRenderer.invoke("app:getSettings"),
-  setSettings: (patch: DeepPartialSettings): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("app:setSettings", patch),
+  // app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
+  // app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
+  // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
+  // app:getFavorites, app:toggleFavorite, app:removeRecent, app:discoverProjects,
+  // app:classifyProject, app:createProject, app:adoptFolder
+  // — migrated to SvelteKit server routes (Phase 2B). No IPC bridge needed.
 
-  // Native (OS) theme surface (#48)
-  getNativeTheme: (): Promise<{ shouldUseDarkColors: boolean }> =>
-    ipcRenderer.invoke("app:getNativeTheme"),
+  // Native (OS) theme surface (#48) — push channel kept as IPC (main→renderer)
   /** Subscribe to OS theme changes from main. Returns an unsubscribe fn. */
   onNativeThemeUpdated: (
     cb: (data: { shouldUseDarkColors: boolean }) => void
   ): (() => void) => forwardPush("app:nativeThemeUpdated", cb),
-
-  // Open Location modal: recent folders + favorites
-  getRecentFolders: (): Promise<
-    Array<{ path: string; title: string; openedAt: string; exists: boolean }>
-  > => ipcRenderer.invoke("app:getRecentFolders"),
-  getFavorites: (): Promise<
-    Array<{ path: string; title: string; exists: boolean }>
-  > => ipcRenderer.invoke("app:getFavorites"),
-  toggleFavorite: (
-    folderPath: string,
-    title: string
-  ): Promise<{ favorited: boolean }> =>
-    ipcRenderer.invoke("app:toggleFavorite", folderPath, title),
-  removeRecent: (folderPath: string): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("app:removeRecent", folderPath),
-  discoverProjects: (): Promise<DiscoveredProject[]> =>
-    ipcRenderer.invoke("app:discoverProjects"),
-
-  // Project source classification (#12)
-  classifyProject: (
-    path: string,
-  ): Promise<{ source: ProjectSource; capabilities: ProjectCapabilities }> =>
-    ipcRenderer.invoke("app:classifyProject", { path }),
-
-  // New-project scaffold (#25)
-  createProject: (options: CreateProjectOptions): Promise<CreateProjectResult> =>
-    ipcRenderer.invoke("app:createProject", options),
-  adoptFolder: (options: AdoptFolderOptions): Promise<CreateProjectResult> =>
-    ipcRenderer.invoke("app:adoptFolder", options),
 
   // Project templates + snippets (#29)
   listBuiltInTemplates: (): Promise<TemplateInfo[]> =>
@@ -857,9 +811,7 @@ contextBridge.exposeInMainWorld("electron", {
     Array<{ filePath: string; recoveryPath: string; savedAt: number; baseMtimeMs: number }>
   > => ipcRenderer.invoke("recovery:list", projectDir),
 
-  /** Push the renderer's pending-save state to main for the close gate (#44). */
-  setDirtyState: (isDirty: boolean): Promise<void> =>
-    ipcRenderer.invoke("app:setDirtyState", isDirty),
+  // app:setDirtyState — migrated to server route (Phase 2B).
   /**
    * Subscribe to main's request to flush before the window closes (#44). The
    * renderer flushes, then calls `app:flushDone` (sent by the buffer store).

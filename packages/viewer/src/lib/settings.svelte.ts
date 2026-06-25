@@ -12,8 +12,9 @@
  * Settings are durable user preferences persisted to `userData/app-settings.json`
  * on desktop and `localStorage` on web.
  */
-import { getPlatform, DEFAULT_SETTINGS } from "$lib/platform";
+import { DEFAULT_SETTINGS } from "$lib/platform";
 import type { AppSettings, DeepPartial } from "$lib/platform";
+import { api } from "$lib/api";
 
 // The single reactive settings object. Seeded with defaults so reads are valid
 // before the async load resolves; `_loadSettings()` overwrites with persisted
@@ -42,10 +43,10 @@ function mergeInto(base: AppSettings, patch: DeepPartial<AppSettings>): AppSetti
  */
 export function _loadSettings(): Promise<void> {
   if (loadPromise) return loadPromise;
-  loadPromise = getPlatform()
+  loadPromise = api.app
     .getSettings()
     .then((loaded) => {
-      state.current = loaded;
+      state.current = loaded as unknown as AppSettings;
       state.loaded = true;
     })
     .catch(() => {
@@ -61,7 +62,7 @@ export function _loadSettings(): Promise<void> {
  */
 function set(patch: DeepPartial<AppSettings>): void {
   state.current = mergeInto(state.current, patch);
-  getPlatform().setSettings(patch).catch(() => {});
+  api.app.setSettings(patch as Record<string, unknown>).catch(() => {});
 }
 
 /** Reset one section to its defaults and persist. */

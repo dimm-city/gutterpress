@@ -17,6 +17,7 @@
 import { getPlatform } from "$lib/platform";
 import { useSettings } from "$lib/settings.svelte";
 import type { NativeThemeState } from "$lib/platform";
+import { api } from "$lib/api";
 
 export type ThemeMode = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
@@ -74,7 +75,7 @@ export function initTheme(): void {
   // finish loading via the reactive read below.
   state.mode = settings.current.appearance.theme;
 
-  platform
+  api.app
     .getNativeTheme()
     .then((s: NativeThemeState) => {
       state.osDark = s.shouldUseDarkColors;

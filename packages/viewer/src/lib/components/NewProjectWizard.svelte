@@ -160,7 +160,7 @@
     error = null;
     try {
       const tpl = selectedTemplate;
-      const result = await getPlatform().createProject({
+      const result = await api.app.createProject({
         name: name.trim(),
         author: author.trim() || undefined,
         parentDir,
@@ -171,7 +171,7 @@
             : undefined,
         templateDir: tpl && tpl.kind === "custom" ? tpl.dir : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",
-      });
+      }) as { projectDir: string };
       open = false;
       onCreated?.(result.projectDir);
     } catch (e) {

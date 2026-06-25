@@ -1001,15 +1001,8 @@ export interface HostServices {
 
   // Lib API / app state
   getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
-  getLastProject(): Promise<string | null>;
-
-  // ── Splash coordination ──────────────────────────────────────────────────
-  // Push human-readable startup status to the host splash (a no-op on the web,
-  // which has no splash window), then signal that the first meaningful screen
-  // (a rendered project OR the welcome screen) is ready so the host can reveal
-  // the main window and dismiss the splash.
-  splashStatus(status?: string, progress?: number, sub?: string): Promise<void>;
-  rendererReady(): Promise<void>;
+  // app:getLastProject, app:splashStatus, app:rendererReady — migrated to
+  // server routes (Phase 2B).
 
   // listProjectFiles migrated to server route (src/routes/api/fs/list-project-files)
 
@@ -1032,62 +1025,15 @@ export interface HostServices {
    */
   lintProject(projectDir: string): Promise<ProblemEntry[]>;
 
-  getViewerPrefs(): Promise<ViewerPrefs>;
-  setViewerPrefs(patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }>;
+  // app:getViewerPrefs, app:setViewerPrefs, app:getViewerProjectState,
+  // app:setViewerProjectState, app:getSettings, app:setSettings,
+  // app:getNativeTheme, app:getRecentFolders, app:getFavorites,
+  // app:toggleFavorite, app:removeRecent, app:discoverProjects,
+  // app:classifyProject, app:createProject, app:adoptFolder
+  // — migrated to SvelteKit server routes (Phase 2B).
 
-  /**
-   * Per-project editor/preview state (#43). Reads the bucket keyed by
-   * `projectDir`; returns `null` when absent or corrupt (silent fail → the app
-   * opens page 1). The WebAdapter stub rejects.
-   */
-  getViewerProjectState(projectDir: string): Promise<ProjectState | null>;
-  /**
-   * Merge-patch a project's state bucket (#43), upserting the key. Only writes
-   * the project-keyed bucket — never the deprecated top-level page/mode.
-   */
-  setViewerProjectState(
-    projectDir: string,
-    patch: Partial<ProjectState>,
-  ): Promise<{ ok: boolean }>;
-  getSettings(): Promise<AppSettings>;
-  setSettings(patch: DeepPartial<AppSettings>): Promise<{ ok: boolean }>;
-
-  // Native (OS) theme (#48)
-  getNativeTheme(): Promise<NativeThemeState>;
+  // Native (OS) theme (#48) — push channel kept (main→renderer push, not request/reply)
   onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void;
-
-  getRecentFolders(): Promise<RecentFolderEntry[]>;
-  getFavorites(): Promise<FavoriteEntry[]>;
-  toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }>;
-  removeRecent(folderPath: string): Promise<{ ok: boolean }>;
-
-  /**
-   * Background scan (#27) of `projectSearchRoots` for print-md projects
-   * (folders containing manifest.yaml/.yml) not already in recents/favorites.
-   * Shallow (depth ≤ 3). The WebAdapter stub returns `[]`.
-   */
-  discoverProjects(): Promise<DiscoveredProject[]>;
-
-  /**
-   * Classify an opened folder as `local-folder` / `local-git-folder` (#12) and
-   * return its capabilities. The WebAdapter stub rejects. Always called after a
-   * preview starts; never relies on the cached `ViewerPrefs.projectSource`.
-   */
-  classifyProject(path: string): Promise<ProjectClassification>;
-
-  /**
-   * Scaffold a new project from an embedded starter template (#25). A thin
-   * pass-through to the lib's `scaffoldProject` — the wizard collects inputs and
-   * the lib does the work (template copy, placeholder fill, optional local Git
-   * init). The WebAdapter stub rejects (the wizard is desktop-only in 0.4.0).
-   */
-  createProject(options: CreateProjectOptions): Promise<CreateProjectResult>;
-  /**
-   * Adopt an EXISTING folder as a print-md project, in place (the "set up this
-   * folder as a book" action when the author opens a non-project folder). Thin
-   * pass-through to the shared lib; non-destructive. The WebAdapter stub rejects.
-   */
-  adoptFolder(options: AdoptFolderOptions): Promise<CreateProjectResult>;
 
   // ── Project templates + snippets (#29) ──────────────────────────────────────
   // Thin pass-throughs to the shared lib (one impl for CLI + viewer). Templates
@@ -1381,10 +1327,7 @@ export interface HostServices {
   listRecovery(projectDir: string): Promise<RecoveryEntry[]>;
 
   /**
-   * Push the renderer's pending-save state to main so the window `close` gate
-   * can flush before quitting (#44). Renderer → main, fire-and-forget.
-   */
-  setDirtyState(isDirty: boolean): Promise<void>;
+  // app:setDirtyState — migrated to server route (Phase 2B).
   /**
    * Subscribe to the main process's request to flush before the window closes
    * (#44). The renderer flushes its buffer then signals completion; main waits
@@ -1432,17 +1375,15 @@ export interface Platform extends Omit<PlatformAdapter, "openFolder">, HostServi
  * The raw `window.electron` bridge shape exposed by `electron/preload.ts`.
  * Differs from `Platform` only in the members the adapter maps/owns: the fs IPC
  * (`openDirectory` → `Platform.openFolder`, `readFile`, `writeFile`), the
- * FolderRef translation seam (`getRecentFolders`/`getFavorites`/`startPreview`/
- * `build` keep raw path strings here; #49), and `capabilities()` (synthesised by
- * the adapter, not an IPC — Omitted so it can't be called on the raw bridge).
+ * FolderRef translation seam (`startPreview`/`build` keep raw path strings here;
+ * #49), and `capabilities()` (synthesised by the adapter, not an IPC — Omitted
+ * so it can't be called on the raw bridge).
  * ONLY `electron-adapter.ts` (and the `Window` global) should reference this —
  * everything else goes through `Platform`.
  */
 export interface ElectronBridge
   extends Omit<
     HostServices,
-    | "getRecentFolders"
-    | "getFavorites"
     | "startPreview"
     | "build"
     | "capabilities"
@@ -1452,12 +1393,8 @@ export interface ElectronBridge
   writeFile(path: string, content: string): Promise<FileWriteResult>;
   listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
   // #49: the IPC layer keeps raw path-string semantics — the ElectronAdapter is
-  // the translation seam that wraps these into FolderRef-shaped entries / unwraps
-  // FolderRef.key back into the string `input` the existing IPC expects.
-  getRecentFolders(): Promise<
-    Array<{ path: string; title: string; openedAt: string; exists: boolean }>
-  >;
-  getFavorites(): Promise<Array<{ path: string; title: string; exists: boolean }>>;
+  // the translation seam that unwraps FolderRef.key back into the string `input`
+  // the existing IPC expects.
   startPreview(args: { input: string } & Omit<PreviewStartArgs, "input">): Promise<PreviewStartResult>;
   build(args: { input: string } & Omit<BuildArgs, "input">): Promise<BuildResult>;
   /** Raw fs stat IPC behind `PlatformAdapter.statFile` (#44). */

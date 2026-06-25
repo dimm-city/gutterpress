@@ -231,7 +231,7 @@
     if (!dir || !isDesktop()) return;
     adopting = true;
     try {
-      await getPlatform().adoptFolder({ dir });
+      await api.app.adoptFolder({ dir });
       openError = null;
       failedOpenDir = null;
       adoptBannerDismissed = true;
@@ -476,8 +476,8 @@
   // the re-classified source hint — same as what classifyProject does on open.
   function onVersionHistoryEnabled(result: ProjectClassification) {
     projectCapabilities = result.capabilities;
-    getPlatform()
-      .setViewerPrefs({ projectSource: result.source })
+    api.app
+      .setViewerPrefs({ projectSource: result.source } as Record<string, unknown>)
       .catch(() => {});
   }
 
@@ -830,7 +830,7 @@
   $effect(() => {
     if (!isDesktop() || !buffer) return;
     const pending = buffer.hasPendingSave;
-    getPlatform().setDirtyState(pending).catch(() => {});
+    api.app.setDirtyState(pending).catch(() => {});
   });
 
   // Keep the recovery-enabled toggle (#45) in sync with the live setting.
@@ -969,8 +969,8 @@
   // ── Persist left panel state on change ────────────────────────────────────
   $effect(() => {
     if (!leftPanelPrefsLoaded) return;
-    getPlatform()
-      .setViewerPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } })
+    api.app
+      .setViewerPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } } as Record<string, unknown>)
       .catch(() => {});
   });
 
@@ -1119,14 +1119,17 @@
 
     autoOpeningLastProject = true;
     lastProjectChecked = true;
-    const platform = getPlatform();
-    platform.getViewerPrefs()
-      .then(async (prefs) => {
+    api.app.getViewerPrefs()
+      .then(async (prefsRaw) => {
+        const prefs = prefsRaw as {
+          lastProjectDir?: string;
+          leftPanel?: { activeTab?: string; width?: number; open?: boolean };
+        };
         // Load persisted left panel state
         const panelPrefs = prefs.leftPanel;
         if (!leftPanelPrefsLoaded) {
           leftPanelPrefsLoaded = true;
-          if (panelPrefs?.activeTab) leftPanelTab = panelPrefs.activeTab;
+          if (panelPrefs?.activeTab) leftPanelTab = panelPrefs.activeTab as typeof leftPanelTab;
           if (typeof panelPrefs?.width === "number") leftPanelWidth = Math.min(480, Math.max(200, panelPrefs.width));
           // Panel open state loaded below after we know if a project exists
         }
@@ -1138,7 +1141,7 @@
           leftPanelOpen = true;
           leftPanelTab = "projects";
           // Dismiss splash and reveal window.
-          platform.rendererReady().catch(() => {});
+          api.app.rendererReady().catch(() => {});
           return;
         }
         // Restore panel open state from prefs (now we know there is a project)
@@ -1146,8 +1149,8 @@
         leftPanelOpen = panelPrefs?.open ?? false;
         // Per-project state (#43) is keyed by folder path so opening a
         // different project never pollutes this one's restore point.
-        platform.splashStatus("Opening your project…", 45).catch(() => {});
-        const restoreState = await platform
+        api.app.splashStatus("Opening your project…", 45).catch(() => {});
+        const restoreState = await api.app
           .getViewerProjectState(dir)
           .catch(() => null);
         await startFolderPreview(dir, "Reopening previous folder…", restoreState);
@@ -1165,7 +1168,7 @@
       })
       .catch(() => {
         // If reopen failed, still reveal the window (don't strand on the splash).
-        platform.rendererReady().catch(() => {});
+        api.app.rendererReady().catch(() => {});
       })
       .finally(() => {
         autoOpeningLastProject = false;
@@ -1234,8 +1237,8 @@
         // the author's edits (#28).
         refreshProblems();
         // First project render done → dismiss the splash and reveal the window.
-        getPlatform().splashStatus("Ready", 100).catch(() => {});
-        getPlatform().rendererReady().catch(() => {});
+        api.app.splashStatus("Ready", 100).catch(() => {});
+        api.app.rendererReady().catch(() => {});
       } else if (e.name === "sourceLineChanged") {
         // Preview→editor sync: the reader scrolled. Follow in the editor and
         // update the active outline entry — but not while the editor itself is
@@ -1263,7 +1266,7 @@
           totalPages = e.detail.totalPages ?? totalPages;
           // Live splash sub-status during the (potentially multi-second) render.
           const pg = e.detail.totalPages ?? renderProgressPage;
-          if (pg) getPlatform().splashStatus(undefined, undefined, `Laying out page ${pg}`).catch(() => {});
+          if (pg) api.app.splashStatus(undefined, undefined, `Laying out page ${pg}`).catch(() => {});
         } else {
           syncPageState(e.detail);
         }
@@ -1273,7 +1276,7 @@
         renderProgressPage = 0;
         outline = [];
         activeOutlineIndex = 0;
-        getPlatform().splashStatus("Rendering pages…", 70).catch(() => {});
+        api.app.splashStatus("Rendering pages…", 70).catch(() => {});
         client?.call<number>("getTotalPages").then((n) => {
           if (n > 0) {
             totalPages = n;
@@ -1622,20 +1625,21 @@
       projectSharesParentHistory = false;
       projectSubPath = "";
       syncDiag = null;
-      platform
+      api.app
         .classifyProject(dir)
         .then((result) => {
-          projectCapabilities = result.capabilities;
+          const typedResult = result as { source: { type: string; subPath?: string }; capabilities: ProjectCapabilities };
+          projectCapabilities = typedResult.capabilities;
           projectSubPath =
-            result.source.type === "local-git-folder" ? result.source.subPath : "";
+            typedResult.source.type === "local-git-folder" ? (typedResult.source.subPath ?? "") : "";
           projectSharesParentHistory = projectSubPath !== "";
-          platform
-            .setViewerPrefs({ projectSource: result.source })
+          api.app
+            .setViewerPrefs({ projectSource: typedResult.source } as Record<string, unknown>)
             .catch(() => {});
           // Sync gate (#15 / ADR 0006 D4): the toolbar action appears only
           // when the diagnosis says the project is actually syncable (HTTPS
           // remote + a stored connection). Local reads only; fire-and-forget.
-          if (result.capabilities.canSync) {
+          if (typedResult.capabilities.canSync) {
             void refreshSyncDiag(dir);
           }
         })
@@ -1698,14 +1702,13 @@
     busyLabel = "Opening folder…";
     let handedOff = false;
     try {
-      const platform = getPlatform();
       // #49: the picker returns a path string; wrap into a host-neutral FolderRef.
       const pathStr = await api.dialog.openDirectory();
       if (!pathStr) return;
       const folder = { key: pathStr, displayName: basenameOf(pathStr) };
       // Per-project state (#43): restore whatever was saved for THIS folder
       // (page, view mode, …) regardless of which project was last open.
-      const restoreState = await platform
+      const restoreState = await api.app
         .getViewerProjectState(folder.key)
         .catch(() => null);
       handedOff = true;
@@ -1928,7 +1931,7 @@
     // Per-project state (#43): write to the folder-keyed bucket so this never
     // overwrites another project's saved page/view. The main process also
     // updates lastProjectDir, so reopening lands on this project.
-    getPlatform().setViewerProjectState(currentDir, patch).catch(() => {});
+    api.app.setViewerProjectState(currentDir, patch as Record<string, unknown>).catch(() => {});
   }
 
   function restoreProjectPage(page: number) {
@@ -1940,7 +1943,7 @@
         totalPages = state.totalPages ?? totalPages;
         if (!pageEditing) pageEditValue = String(currentPage);
         if (currentDir) {
-          getPlatform().setViewerProjectState(currentDir, { currentPage }).catch(() => {});
+          api.app.setViewerProjectState(currentDir, { currentPage }).catch(() => {});
         }
       })
       .catch(() => {})

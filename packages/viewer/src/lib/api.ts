@@ -114,4 +114,50 @@ export const api = {
     listProjectFiles: (projectDir: string) =>
       post<ProjectFileEntry>('/api/fs/list-project-files', { projectDir }),
   },
+
+  app: {
+    /** Get viewer prefs (lastProjectDir, recentFolders, projectStates, etc.). */
+    getViewerPrefs: () => get<Record<string, unknown>>('/api/app/viewer-prefs'),
+    /** Shallow-merge patch into viewer prefs. */
+    setViewerPrefs: (prefs: Record<string, unknown>) => post<{ ok: boolean }>('/api/app/viewer-prefs', prefs),
+    /** Get per-project editor/preview state for the given projectDir. */
+    getViewerProjectState: (projectDir: string) =>
+      post<Record<string, unknown> | null>('/api/app/viewer-project-state/get', { projectDir }),
+    /** Set per-project editor/preview state for the given projectDir. */
+    setViewerProjectState: (projectDir: string, state: Record<string, unknown>) =>
+      post<{ ok: boolean }>('/api/app/viewer-project-state/set', { projectDir, state }),
+    /** Get app settings (merged with defaults). */
+    getSettings: () => get<Record<string, unknown>>('/api/app/settings'),
+    /** Deep-merge patch into app settings. */
+    setSettings: (settings: Record<string, unknown>) => post<{ ok: boolean }>('/api/app/settings', settings),
+    /** Get the OS native dark/light theme preference. */
+    getNativeTheme: () => get<{ shouldUseDarkColors: boolean }>('/api/app/native-theme'),
+    /** Get the recent folders list (with exists flag). */
+    getRecentFolders: () => get<Array<{ path: string; title: string; exists: boolean }>>('/api/app/recent-folders'),
+    /** Get the favorites list (with exists flag). */
+    getFavorites: () => get<Array<{ path: string; title: string; exists: boolean }>>('/api/app/favorites'),
+    /** Toggle a folder in the favorites list. */
+    toggleFavorite: (path: string, title: string) =>
+      post<{ favorited: boolean }>('/api/app/favorites/toggle', { path, title }),
+    /** Remove a folder from the recent list. */
+    removeRecent: (path: string) => post<{ ok: boolean }>('/api/app/recent/remove', { path }),
+    /** Discover print-md projects under the configured search roots. */
+    discoverProjects: () => post<unknown[]>('/api/app/discover-projects', {}),
+    /** Classify a project folder (source type + capabilities). */
+    classifyProject: (projectDir: string) =>
+      post<{ source: unknown; capabilities: unknown }>('/api/app/classify-project', { projectDir }),
+    /** Scaffold a new project from a template. */
+    createProject: (opts: Record<string, unknown>) => post<unknown>('/api/app/create-project', opts),
+    /** Adopt an existing folder as a print-md project. */
+    adoptFolder: (opts: Record<string, unknown>) => post<unknown>('/api/app/adopt-folder', opts),
+    /** Push a splash status update (status text, progress 0-100, sub-status). */
+    splashStatus: (status?: string, progress?: number, sub?: string) =>
+      post<{ ok: boolean }>('/api/app/splash-status', { status, progress, sub }),
+    /** Signal that the renderer first screen is ready (closes the splash). */
+    rendererReady: () => post<{ ok: boolean }>('/api/app/renderer-ready', {}),
+    /** Push the renderer dirty state to the main process close gate. */
+    setDirtyState: (dirty: boolean) => post<{ ok: boolean }>('/api/app/dirty-state', { dirty }),
+    /** Signal that the renderer has flushed its buffer (close gate reply). */
+    flushDone: () => post<{ ok: boolean }>('/api/app/flush-done', {}),
+  },
 };

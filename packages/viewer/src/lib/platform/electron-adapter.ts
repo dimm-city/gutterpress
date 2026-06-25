@@ -4,7 +4,7 @@
  *
  * Every implemented method delegates 1:1 to the preload bridge, so behaviour is
  * identical to the pre-#41 direct calls. The #44 surface (statFile, watchFolder,
- * and the writeRecovery/clearRecovery/listRecovery/setDirtyState/onFlushBeforeClose/
+ * and the writeRecovery/clearRecovery/listRecovery/onFlushBeforeClose/
  * onFolderChanged recovery methods) plus getSecret/setSecret (#12) are SCAFFOLDED
  * only — the contract/types exist but there is no IPC behind them yet, so they
  * throw a descriptive error rather than delegate to a non-existent bridge method.
@@ -13,21 +13,14 @@
 import type {
   Platform,
   ElectronBridge,
-  ViewerPrefs,
-  ProjectState,
-  AppSettings,
-  DeepPartial,
   PreviewStartArgs,
   PreviewStartResult,
   BuildArgs,
   BuildResult,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
-  RecentFolderEntry,
-  FavoriteEntry,
   UpdaterApi,
   NativeThemeState,
-  DiscoveredProject,
   ProjectClassification,
   PrintSafeWarning,
   ProblemEntry,
@@ -37,9 +30,6 @@ import type {
   FileWriteResult,
   RecoveryEntry,
   FolderChangedEvent,
-  CreateProjectOptions,
-  AdoptFolderOptions,
-  CreateProjectResult,
   TemplateInfo,
   SnippetEntry,
   ProjectPluginEntry,
@@ -177,15 +167,7 @@ export class ElectronAdapter implements Platform {
     return bridge().getStatus();
   }
 
-  getLastProject(): Promise<string | null> {
-    return bridge().getLastProject();
-  }
-  splashStatus(status?: string, progress?: number, sub?: string): Promise<void> {
-    return bridge().splashStatus(status, progress, sub);
-  }
-  rendererReady(): Promise<void> {
-    return bridge().rendererReady();
-  }
+  // getLastProject, splashStatus, rendererReady — migrated to server routes (Phase 2B)
 
   // listProjectFiles migrated to server route
 
@@ -197,87 +179,16 @@ export class ElectronAdapter implements Platform {
     return bridge().lintProject(projectDir);
   }
 
-  getViewerPrefs(): Promise<ViewerPrefs> {
-    return bridge().getViewerPrefs();
-  }
-
-  setViewerPrefs(patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> {
-    return bridge().setViewerPrefs(patch);
-  }
-
-  getViewerProjectState(projectDir: string): Promise<ProjectState | null> {
-    return bridge().getViewerProjectState(projectDir);
-  }
-
-  setViewerProjectState(
-    projectDir: string,
-    patch: Partial<ProjectState>,
-  ): Promise<{ ok: boolean }> {
-    return bridge().setViewerProjectState(projectDir, patch);
-  }
-
-  getSettings(): Promise<AppSettings> {
-    return bridge().getSettings();
-  }
-
-  setSettings(patch: DeepPartial<AppSettings>): Promise<{ ok: boolean }> {
-    return bridge().setSettings(patch);
-  }
-
-  getNativeTheme(): Promise<NativeThemeState> {
-    return bridge().getNativeTheme();
-  }
+  // getViewerPrefs, setViewerPrefs, getViewerProjectState, setViewerProjectState,
+  // getSettings, setSettings, getNativeTheme — migrated to server routes (Phase 2B)
 
   onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void {
     return bridge().onNativeThemeUpdated(cb);
   }
 
-  // #49: the bridge returns raw path-keyed rows; map each to a FolderRef-shaped
-  // entry (key = path, displayName = basename) for the app-facing contract.
-  async getRecentFolders(): Promise<RecentFolderEntry[]> {
-    const rows = await bridge().getRecentFolders();
-    return rows.map((r) => ({
-      key: r.path,
-      displayName: basenameOf(r.path),
-      title: r.title,
-      openedAt: r.openedAt,
-      exists: r.exists,
-    }));
-  }
-
-  async getFavorites(): Promise<FavoriteEntry[]> {
-    const rows = await bridge().getFavorites();
-    return rows.map((f) => ({
-      key: f.path,
-      displayName: basenameOf(f.path),
-      title: f.title,
-      exists: f.exists,
-    }));
-  }
-
-  toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }> {
-    return bridge().toggleFavorite(folderPath, title);
-  }
-
-  removeRecent(folderPath: string): Promise<{ ok: boolean }> {
-    return bridge().removeRecent(folderPath);
-  }
-
-  discoverProjects(): Promise<DiscoveredProject[]> {
-    return bridge().discoverProjects();
-  }
-
-  classifyProject(path: string): Promise<ProjectClassification> {
-    return bridge().classifyProject(path);
-  }
-
-  createProject(options: CreateProjectOptions): Promise<CreateProjectResult> {
-    return bridge().createProject(options);
-  }
-
-  adoptFolder(options: AdoptFolderOptions): Promise<CreateProjectResult> {
-    return bridge().adoptFolder(options);
-  }
+  // getRecentFolders, getFavorites, toggleFavorite, removeRecent,
+  // discoverProjects, classifyProject, createProject, adoptFolder
+  // — migrated to server routes (Phase 2B)
 
   // ── Project templates + snippets (#29) — delegate 1:1 to the bridge ─────────
   listBuiltInTemplates(): Promise<TemplateInfo[]> {
@@ -534,9 +445,7 @@ export class ElectronAdapter implements Platform {
     return bridge().listRecovery(projectDir);
   }
 
-  setDirtyState(isDirty: boolean): Promise<void> {
-    return bridge().setDirtyState(isDirty);
-  }
+  // setDirtyState — migrated to server route (Phase 2B)
 
   onFlushBeforeClose(cb: () => void): () => void {
     return bridge().onFlushBeforeClose(cb);

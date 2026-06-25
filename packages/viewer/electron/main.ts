@@ -23,6 +23,8 @@ import { pathToFileURL } from "node:url";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
 import { registerWriteHooks } from "./server-bridge/write-hooks";
 import { registerWatchHooks } from "./server-bridge/watch-hooks";
+import { registerAppHooks } from "./server-bridge/app-hooks";
+import { registerPrefsHooks } from "./server-bridge/prefs-hooks";
 import {
   writeRecovery as writeRecoveryStore,
   clearRecovery as clearRecoveryStore,
@@ -2048,6 +2050,16 @@ registerWatchHooks({
   stopFolderWatch,
   getWatchedDir: () => watchedDir,
 });
+registerAppHooks({
+  updateSplash,
+  showMainWindowAndCloseSplash,
+  setRendererDirty: (isDirty: boolean) => { rendererDirty = !!isDirty; },
+  resolveFlush: () => { rendererDirty = false; flushResolve?.(); },
+  sendToRenderer: (channel: string, ...args: unknown[]) => {
+    mainWindow?.webContents.send(channel, ...args);
+  },
+});
+// registerPrefsHooks is called after discoverScanDeps is initialized (below)
 
 // ──────────────────────────────────────────────────────────────────────────
 // IPC handlers (replace the deleted /api/* SvelteKit routes)
@@ -2380,12 +2392,9 @@ ipcMain.handle(
 );
 
 // ── Unsaved-changes close gate (#44) ────────────────────────────────────────
-// The renderer pushes its pending-save state; main reads it in the `close`
-// handler. `app:flushDone` is the renderer's reply that its buffer is flushed.
-ipcMain.handle("app:setDirtyState", async (_e, isDirty: boolean): Promise<void> => {
-  rendererDirty = !!isDirty;
-});
-
+// app:setDirtyState migrated to server route (src/routes/api/app/dirty-state).
+// app:flushDone kept as IPC: the preload's onFlushBeforeClose fires it from
+// within the renderer via ipcRenderer.invoke — cannot route through fetch.
 ipcMain.handle("app:flushDone", async (): Promise<void> => {
   rendererDirty = false;
   flushResolve?.();
@@ -2474,138 +2483,11 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle("app:getLastProject", async () => {
-  const prefs = await readPrefs();
-  return existingDirectory(prefs.lastProjectDir);
-});
-
-// ── Splash coordination ──────────────────────────────────────────────────────
-// The renderer pushes human-readable status while it boots/renders, and signals
-// when its first screen (a rendered project OR the welcome screen) is ready —
-// at which point we reveal the main window and dismiss the splash.
-ipcMain.handle(
-  "app:splashStatus",
-  async (_e, status?: string, progress?: number, sub?: string) => {
-    updateSplash(status, progress, sub);
-  },
-);
-
-ipcMain.handle("app:rendererReady", async () => {
-  updateSplash("Ready", 100);
-  showMainWindowAndCloseSplash();
-});
-
-ipcMain.handle("app:getViewerPrefs", async () => {
-  const prefs = await readPrefs();
-  return {
-    ...prefs,
-    lastProjectDir: await existingDirectory(prefs.lastProjectDir),
-  };
-});
-
-ipcMain.handle("app:setViewerPrefs", async (_e, patch: Partial<ViewerPrefs>) => {
-  const current = await readPrefs();
-  await writePrefs({ ...current, ...patch });
-  return { ok: true };
-});
-
-// ── Per-project editor/preview state (#43) ──────────────────────────────────
-// Read/merge the per-project bucket in viewer-prefs.json projectStates. Keying
-// by folder path means opening project B never overwrites project A's page,
-// view mode, open chapter, etc. Corrupt/missing state fails silently to null so
-// the renderer falls back to first-page defaults.
-ipcMain.handle(
-  "app:getViewerProjectState",
-  async (_e, projectDir: string): Promise<ProjectState | null> => {
-    if (!projectDir || typeof projectDir !== "string") return null;
-    try {
-      const prefs = await readPrefs();
-      return readProjectState(prefs.projectStates, projectDir);
-    } catch {
-      return null;
-    }
-  },
-);
-
-ipcMain.handle(
-  "app:setViewerProjectState",
-  async (
-    _e,
-    projectDir: string,
-    patch: Partial<ProjectState>,
-  ): Promise<{ ok: boolean }> => {
-    if (!projectDir || typeof projectDir !== "string") return { ok: false };
-    const current = await readPrefs();
-    await writePrefs({
-      ...current,
-      lastProjectDir: projectDir,
-      projectStates: writeProjectState(current.projectStates, projectDir, patch),
-    });
-    return { ok: true };
-  },
-);
-
-ipcMain.handle("app:getSettings", async () => {
-  return readSettings();
-});
-
-ipcMain.handle("app:setSettings", async (_e, patch: DeepPartialSettings) => {
-  const current = await readSettings();
-  await writeSettings(mergeSettings(current, patch));
-  return { ok: true };
-});
-
-// ── Native (OS) theme surface (#48) ─────────────────────────────────────────
-// One-shot query of the OS dark/light preference. The renderer's theme
-// controller resolves "system" against this. Pushed updates come via the
-// nativeTheme "updated" listener registered in createWindow().
-ipcMain.handle("app:getNativeTheme", async () => {
-  return { shouldUseDarkColors: nativeTheme.shouldUseDarkColors };
-});
-
-ipcMain.handle("app:getRecentFolders", async () => {
-  const prefs = await readPrefs();
-  const recents = prefs.recentFolders ?? [];
-  return Promise.all(
-    recents.map(async (r) => ({
-      ...r,
-      exists: (await existingDirectory(r.path)) !== null,
-    }))
-  );
-});
-
-ipcMain.handle("app:getFavorites", async () => {
-  const prefs = await readPrefs();
-  const favorites = prefs.favorites ?? [];
-  return Promise.all(
-    favorites.map(async (f) => ({
-      ...f,
-      exists: (await existingDirectory(f.path)) !== null,
-    }))
-  );
-});
-
-ipcMain.handle(
-  "app:toggleFavorite",
-  async (_e, folderPath: string, title: string) => {
-    const current = await readPrefs();
-    const { favorites, favorited } = toggleFavoriteFolder(current.favorites, {
-      path: folderPath,
-      title,
-    });
-    await writePrefs({ ...current, favorites });
-    return { favorited };
-  }
-);
-
-ipcMain.handle("app:removeRecent", async (_e, folderPath: string) => {
-  const current = await readPrefs();
-  await writePrefs({
-    ...current,
-    recentFolders: removeRecentFolder(current.recentFolders, folderPath),
-  });
-  return { ok: true };
-});
+// app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
+// app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
+// app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
+// app:getFavorites, app:toggleFavorite, app:removeRecent
+// — all migrated to SvelteKit server routes (src/routes/api/app/*) in Phase 2B.
 
 // ── Project discovery (#27) ─────────────────────────────────────────────────
 // Shallow (depth ≤ 3) BFS scan of projectSearchRoots for print-md projects
@@ -2634,70 +2516,37 @@ const discoverScanDeps: ScanDeps = {
   basename: (p: string) => basename(p),
 };
 
-ipcMain.handle("app:discoverProjects", async () => {
-  const prefs = await readPrefs();
-  const roots =
-    prefs.projectSearchRoots && prefs.projectSearchRoots.length > 0
-      ? prefs.projectSearchRoots
-      : defaultProjectSearchRoots();
-  const exclude = new Set<string>([
-    ...(prefs.recentFolders ?? []).map((r) => r.path),
-    ...(prefs.favorites ?? []).map((f) => f.path),
-  ]);
-  try {
-    return await scanForProjects(roots, exclude, discoverScanDeps);
-  } catch {
-    return [];
-  }
+// Register prefs/settings hooks for server routes (Phase 2B).
+// Must be AFTER discoverScanDeps is initialized.
+registerPrefsHooks({
+  readPrefs: readPrefs as () => Promise<Record<string, unknown>>,
+  writePrefs: writePrefs as (p: Record<string, unknown>) => Promise<void>,
+  readSettings: readSettings as () => Promise<Record<string, unknown>>,
+  writeSettings: writeSettings as (s: Record<string, unknown>) => Promise<void>,
+  existingDirectory,
+  readProjectState: readProjectState as (states: Record<string, unknown> | undefined, dir: string) => unknown,
+  writeProjectState: writeProjectState as (states: Record<string, unknown> | undefined, dir: string, patch: Record<string, unknown>) => Record<string, unknown>,
+  mergeSettings: mergeSettings as (base: Record<string, unknown>, patch: Record<string, unknown>) => Record<string, unknown>,
+  defaultProjectSearchRoots,
+  scanForProjects: (roots: string[], exclude: Set<string>) => scanForProjects(roots, exclude, discoverScanDeps),
+  toggleFavoriteFolder: toggleFavoriteFolder as (
+    favorites: Array<{ path: string; title: string }> | undefined,
+    entry: { path: string; title: string }
+  ) => { favorites: Array<{ path: string; title: string }>; favorited: boolean },
+  removeRecentFolder: removeRecentFolder as (
+    recents: Array<{ path: string; [k: string]: unknown }> | undefined,
+    targetPath: string
+  ) => Array<{ path: string; [k: string]: unknown }>,
+  loadLib: loadLib as () => Promise<{
+    detectProjectSource: (path: string) => Promise<unknown>;
+    capabilitiesFor: (source: unknown) => unknown;
+    scaffoldProject: (opts: unknown) => Promise<unknown>;
+    adoptFolder: (opts: unknown) => Promise<unknown>;
+  }>,
 });
 
-// ── Project source classification (#12) ──────────────────────────────────────
-// Classify an opened folder as local-folder / local-git-folder (hasRemote
-// true/false) via the lib's pure Node-fs detector. Always re-classified on
-// folder open by the renderer — never relies solely on the cached
-// ViewerPrefs.projectSource (a user may add/remove `.git` between sessions).
-ipcMain.handle(
-  "app:classifyProject",
-  async (_e, args: { path?: string }) => {
-    const folderPath = args?.path;
-    if (!folderPath || typeof folderPath !== "string") {
-      throw new Error("app:classifyProject requires a 'path' string");
-    }
-    const lib = await loadLib();
-    const source = await lib.detectProjectSource(folderPath);
-    const capabilities = lib.capabilitiesFor(source);
-    return { source, capabilities };
-  },
-);
-
-// ── New-project scaffold (#25) ───────────────────────────────────────────────
-// Thin pass-through to the shared lib's scaffoldProject — the scaffolding logic
-// (template copy, placeholder fill, optional Git init via isomorphic-git) lives
-// in @dimm-city/print-md, NOT here (issue #25 requirement). The renderer
-// wizard collects inputs and the lib does the work.
-ipcMain.handle(
-  "app:createProject",
-  async (_e, options: CreateProjectOptions): Promise<CreateProjectResult> => {
-    if (!options || typeof options.name !== "string" || typeof options.parentDir !== "string") {
-      throw new Error("app:createProject requires { name, parentDir }");
-    }
-    const lib = await loadLib();
-    return lib.scaffoldProject(options);
-  },
-);
-
-// Adopt an EXISTING folder as a print-md project, in place (#: "set up this
-// folder as a book"). Thin pass-through; the lib does the non-destructive work.
-ipcMain.handle(
-  "app:adoptFolder",
-  async (_e, options: AdoptFolderOptions): Promise<CreateProjectResult> => {
-    if (!options || typeof options.dir !== "string" || !path.isAbsolute(options.dir)) {
-      throw new Error("app:adoptFolder requires an absolute { dir }");
-    }
-    const lib = await loadLib();
-    return lib.adoptFolder(options);
-  },
-);
+// app:discoverProjects, app:classifyProject, app:createProject, app:adoptFolder
+// — migrated to SvelteKit server routes (src/routes/api/app/*) in Phase 2B.
 
 // ── Project templates + snippets (#29) ───────────────────────────────────────
 // Thin pass-throughs to the shared lib (one implementation for CLI + viewer).

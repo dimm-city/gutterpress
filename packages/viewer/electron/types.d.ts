@@ -449,101 +449,16 @@ interface Window {
     watchFolder(dirPath: string, cb: () => void): () => void;
     // Lib API
     getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
-    getLastProject(): Promise<string | null>;
-    // Splash coordination: push status while booting, then signal first-screen ready.
-    splashStatus(status?: string, progress?: number, sub?: string): Promise<void>;
-    rendererReady(): Promise<void>;
-    getViewerPrefs(): Promise<{
-      lastProjectDir?: string | null;
-      sidebarOpen?: boolean;
-      currentPage?: number;
-      viewMode?: "single" | "two-column";
-      recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
-      favorites?: Array<{ path: string; title: string }>;
-      projectStates?: Record<string, ProjectState>;
-      projectSearchRoots?: string[];
-      projectSource?: ProjectSource;
-      leftPanel?: {
-        open?: boolean;
-        activeTab?: "toc" | "files" | "media" | "projects" | "history";
-        width?: number;
-      };
-    }>;
-    setViewerPrefs(patch: {
-      lastProjectDir?: string | null;
-      sidebarOpen?: boolean;
-      currentPage?: number;
-      viewMode?: "single" | "two-column";
-      recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
-      favorites?: Array<{ path: string; title: string }>;
-      projectStates?: Record<string, ProjectState>;
-      projectSearchRoots?: string[];
-      projectSource?: ProjectSource;
-      leftPanel?: {
-        open?: boolean;
-        activeTab?: "toc" | "files" | "media" | "projects" | "history";
-        width?: number;
-      };
-    }): Promise<{ ok: boolean }>;
-    // Per-project editor/preview state (#43)
-    getViewerProjectState(projectDir: string): Promise<ProjectState | null>;
-    setViewerProjectState(
-      projectDir: string,
-      patch: ProjectState,
-    ): Promise<{ ok: boolean }>;
-    // User settings (#45)
-    getSettings(): Promise<AppSettings>;
-    setSettings(patch: DeepPartialSettings): Promise<{ ok: boolean }>;
-    // Native (OS) theme surface (#48)
-    getNativeTheme(): Promise<{ shouldUseDarkColors: boolean }>;
+    // app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
+    // app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
+    // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
+    // app:getFavorites, app:toggleFavorite, app:removeRecent, app:discoverProjects,
+    // app:classifyProject, app:createProject, app:adoptFolder
+    // — migrated to SvelteKit server routes (Phase 2B).
+    // Native (OS) theme surface (#48) — push channel kept as IPC (main→renderer)
     onNativeThemeUpdated(
       cb: (data: { shouldUseDarkColors: boolean }) => void
     ): () => void;
-    // Open Location modal: recent folders + favorites
-    getRecentFolders(): Promise<
-      Array<{ path: string; title: string; openedAt: string; exists: boolean }>
-    >;
-    getFavorites(): Promise<
-      Array<{ path: string; title: string; exists: boolean }>
-    >;
-    toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }>;
-    removeRecent(folderPath: string): Promise<{ ok: boolean }>;
-    // Project discovery (#27)
-    discoverProjects(): Promise<Array<{ path: string; title: string }>>;
-    // Project source classification (#12)
-    classifyProject(path: string): Promise<{
-      source: ProjectSource;
-      capabilities: ProjectCapabilities;
-    }>;
-    // New-project scaffold (#25)
-    createProject(options: {
-      name: string;
-      author?: string;
-      parentDir: string;
-      folderName?: string;
-      template?: "book" | "ttrpg" | "zine" | "technical";
-      templateDir?: string;
-      versionHistory?: "local-git" | "none";
-    }): Promise<{
-      projectDir: string;
-      manifestPath: string;
-      openFile: string;
-      versionHistory: "local-git" | "none";
-      versionHistoryError?: string;
-    }>;
-    adoptFolder(options: {
-      dir: string;
-      title?: string;
-      author?: string;
-      template?: "book" | "ttrpg" | "zine" | "technical";
-      versionHistory?: "local-git" | "none";
-    }): Promise<{
-      projectDir: string;
-      manifestPath: string;
-      openFile: string;
-      versionHistory: "local-git" | "none";
-      versionHistoryError?: string;
-    }>;
     // Project templates + snippets (#29)
     listBuiltInTemplates(): Promise<TemplateInfo[]>;
     listCustomTemplates(): Promise<TemplateInfo[]>;
@@ -676,7 +591,7 @@ interface Window {
         baseMtimeMs: number;
       }>
     >;
-    setDirtyState(isDirty: boolean): Promise<void>;
+    // app:setDirtyState — migrated to server route (Phase 2B)
     onFlushBeforeClose(cb: () => void): () => void;
     onFolderChanged(cb: (data: { filename: string }) => void): () => void;
   };
