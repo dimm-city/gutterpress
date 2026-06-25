@@ -1,0 +1,58 @@
+/* =============================================================================
+   Clean Book — print-md built-in theme (theme.css)
+   A calm, classic long-form book look. Customize the tokens in :root.
+   ============================================================================= */
+
+:root {
+  --color-ink:        #1a1a1a;   /* body text                 */
+  --color-ink-muted:  #555555;   /* captions, secondary text  */
+  --color-accent:     #2b4c7e;   /* headings, links           */
+  --color-paper:      #ffffff;   /* page background           */
+  --color-rule:       #d9d9d9;   /* borders, rules            */
+
+  --font-body:    "Georgia", "Times New Roman", serif;
+  --font-display: "Georgia", "Times New Roman", serif;
+  --font-mono:    "Menlo", "Consolas", monospace;
+
+  --scale-h1: 2.1rem;
+  --scale-h2: 1.5rem;
+  --scale-h3: 1.2rem;
+  --leading:  1.55;
+}
+
+@page {
+  size: 6in 9in;
+  margin: 0.85in 0.75in;
+}
+
+body {
+  color: var(--color-ink);
+  background: var(--color-paper);
+  font-family: var(--font-body);
+  line-height: var(--leading);
+  font-size: 11pt;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  color: var(--color-accent);
+  line-height: 1.2;
+  font-weight: 600;
+}
+h1 { font-size: var(--scale-h1); margin: 0 0 0.6em; }
+h2 { font-size: var(--scale-h2); margin: 1.4em 0 0.4em; }
+h3 { font-size: var(--scale-h3); margin: 1.2em 0 0.3em; }
+
+p { margin: 0 0 0.8em; text-align: justify; hyphens: auto; }
+
+a { color: var(--color-accent); text-decoration: none; }
+
+blockquote {
+  margin: 1em 0; padding: 0.2em 0 0.2em 1em;
+  border-left: 3px solid var(--color-rule);
+  color: var(--color-ink-muted); font-style: italic;
+}
+
+code, pre { font-family: var(--font-mono); font-size: 0.9em; }
+
+hr { border: 0; border-top: 1px solid var(--color-rule); margin: 1.5em 0; }

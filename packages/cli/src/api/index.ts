@@ -127,6 +127,28 @@ export type {
   PluginKind,
 } from "../lib/plugin-manager.ts";
 
+// ── Theme manager (#32) ───────────────────────────────────────────────────────
+export {
+  listBuiltInThemes,
+  resolveBuiltInTheme,
+  listProjectThemes,
+  getActiveTheme,
+  applyTheme,
+  importThemeFromFolder,
+  importThemeFromUrl,
+  readThemeCss,
+  removeProjectTheme,
+  BUILT_IN_THEME_IDS,
+  THEMES_DIR,
+} from "../lib/theme-manager.ts";
+export type {
+  ThemeInfo,
+  ThemeMetadata,
+  ResolvedTheme,
+  ApplyThemeTarget,
+  BuiltInThemeId,
+} from "../lib/theme-manager.ts";
+
 export {
   providerFor,
   restoreVersionWithBackup,

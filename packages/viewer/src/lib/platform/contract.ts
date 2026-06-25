@@ -198,6 +198,32 @@ export interface RecommendedPlugin {
   description: string;
 }
 
+// ── Theme manager (#32) ───────────────────────────────────────────────────────
+//
+// Mirror the lib's theme-manager types — defined locally so the SPA never
+// value-imports the lib (§8 / ADR 0004).
+
+/** Author-friendly metadata for one theme (built-in or project). */
+export interface ThemeInfo {
+  /** Stable id (a built-in id, or a slug for imported/applied themes). */
+  id: string;
+  /** Display name. */
+  name: string;
+  /** Theme author, when known. */
+  author?: string;
+  /** One-line description. */
+  description: string;
+  /** `"builtin"` (embedded) or `"project"` (copied into the project). */
+  kind: "builtin" | "project";
+  /** Optional preview image path relative to the theme folder. */
+  preview?: string | null;
+}
+
+/** Which theme to apply: a built-in id, or a project theme already on disk. */
+export type ApplyThemeTarget =
+  | { kind: "builtin"; id: string }
+  | { kind: "project"; id: string };
+
 // ── Host RPC payload shapes (mirror electron/preload.ts + types.d.ts) ─────────
 
 export interface UpdaterStatus {
@@ -1109,6 +1135,41 @@ export interface HostServices {
   validatePlugins(projectDir: string): Promise<PluginValidationResult[]>;
   /** The static curated recommended-plugins list (informational, one-click add). */
   listRecommendedPlugins(): Promise<RecommendedPlugin[]>;
+
+  // ── Theme manager (#32) ──────────────────────────────────────────────────────
+  // Thin pass-throughs to the shared lib's theme-manager (one impl for CLI +
+  // viewer). Apply COPIES the theme folder into the project's themes/ dir and
+  // wires the manifest styles; import accepts a local folder (native dialog) or
+  // a URL (raw CSS or theme folder), fetched with the lib's global fetch.
+  // `readThemeCss` feeds the renderer's sandboxed thumbnail preview (the
+  // renderer never touches fs). Desktop-only in v1; the WebAdapter lists the
+  // built-ins (static metadata) and rejects the host-fs operations.
+
+  /** List the built-in starter themes (static metadata + embedded css). */
+  listBuiltInThemes(): Promise<ThemeInfo[]>;
+  /** List the themes copied into the project's `themes/` folder. */
+  listProjectThemes(projectDir: string): Promise<ThemeInfo[]>;
+  /** The project's currently active theme, or null when none is applied. */
+  getActiveTheme(projectDir: string): Promise<ThemeInfo | null>;
+  /**
+   * Apply a theme: copy its folder into `themes/<id>/` and wire the manifest so
+   * its `theme.css` is the active stylesheet. Returns the applied theme.
+   */
+  applyTheme(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo>;
+  /**
+   * Pick a folder and import it as a project theme. Resolves null when the user
+   * cancels the picker. WebAdapter: rejects (desktop-only in v1).
+   */
+  importThemeFromFolder(projectDir: string): Promise<ThemeInfo | null>;
+  /** Import a theme from a URL (raw CSS or a theme folder). */
+  importThemeFromUrl(projectDir: string, url: string): Promise<ThemeInfo>;
+  /** Read a theme's CSS for the thumbnail preview (builtin or project). */
+  readThemeCss(
+    projectDir: string | null,
+    source: { kind: "builtin" | "project"; id: string },
+  ): Promise<string>;
+  /** Remove an imported/applied project theme folder (never built-ins). */
+  removeProjectTheme(projectDir: string, id: string): Promise<void>;
 
   // ── Local version history (#13) ───────────────────────────────────────────
   // All four run in the host (isomorphic-git via the lib — CLAUDE.md §7); the

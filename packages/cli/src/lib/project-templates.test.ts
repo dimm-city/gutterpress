@@ -77,13 +77,13 @@ test("saveProjectAsTemplate captures an existing project as a reusable template"
     expect(saved.label).toBe("My Template");
 
     // Files copied under templatesRoot/<id>/.
-    const files = await readdir(saved.dir);
+    const files = await readdir(saved.dir!);
     expect(files).toContain("manifest.yaml");
     expect(files).toContain("chapter-01.md");
     expect(files).toContain("chapter-02.md");
 
     // Authored title is re-tokenised back to {{TITLE}} so the template is reusable.
-    const manifest = await readFile(path.join(saved.dir, "manifest.yaml"), "utf8");
+    const manifest = await readFile(path.join(saved.dir!, "manifest.yaml"), "utf8");
     expect(manifest).toContain("{{TITLE}}");
     expect(manifest).not.toContain("My Source");
   } finally {
@@ -120,7 +120,7 @@ test("saveProjectAsTemplate re-tokenises the authors block, NOT a leading source
       name: "Retok Template",
       templatesRoot,
     });
-    const manifest = await readFile(path.join(saved.dir, "manifest.yaml"), "utf8");
+    const manifest = await readFile(path.join(saved.dir!, "manifest.yaml"), "utf8");
 
     expect(manifest).toContain('title: "{{TITLE}}"');
     // The source filename survives; the author is tokenised.

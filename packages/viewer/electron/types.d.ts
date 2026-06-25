@@ -162,6 +162,19 @@ interface RecommendedPlugin {
   description: string;
 }
 
+// Theme manager (#32). Mirrors the lib's theme-manager types.
+interface ThemeInfo {
+  id: string;
+  name: string;
+  author?: string;
+  description: string;
+  kind: "builtin" | "project";
+  preview?: string | null;
+}
+type ApplyThemeTarget =
+  | { kind: "builtin"; id: string }
+  | { kind: "project"; id: string };
+
 // Local version history (#13). Mirrors the lib's source-provider types.
 interface SnapshotEntry {
   id: string;
@@ -528,6 +541,18 @@ interface Window {
     importLocalPlugin(projectDir: string): Promise<ProjectPluginEntry | null>;
     validatePlugins(projectDir: string): Promise<PluginValidationResult[]>;
     listRecommendedPlugins(): Promise<RecommendedPlugin[]>;
+    // Theme manager (#32)
+    listBuiltInThemes(): Promise<ThemeInfo[]>;
+    listProjectThemes(projectDir: string): Promise<ThemeInfo[]>;
+    getActiveTheme(projectDir: string): Promise<ThemeInfo | null>;
+    applyTheme(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo>;
+    importThemeFromFolder(projectDir: string): Promise<ThemeInfo | null>;
+    importThemeFromUrl(projectDir: string, url: string): Promise<ThemeInfo>;
+    readThemeCss(
+      projectDir: string | null,
+      source: { kind: "builtin" | "project"; id: string },
+    ): Promise<string>;
+    removeProjectTheme(projectDir: string, id: string): Promise<void>;
     // Local version history (#13)
     enableVersionHistory(projectDir: string): Promise<ProjectClassification>;
     saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;

@@ -68,6 +68,8 @@ import type {
   ProjectPluginEntry,
   PluginValidationResult,
   RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -705,6 +707,39 @@ export class WebAdapter implements Platform {
   }
   listRecommendedPlugins(): Promise<RecommendedPlugin[]> {
     return Promise.resolve([]);
+  }
+
+  // ── Theme manager (#32) — desktop-only in v1; reject/empty on web ──────────
+  // Theme apply/import all touch the host filesystem (copy folders, write the
+  // manifest), so the UI guards with isDesktop(). Built-in metadata + reading a
+  // built-in theme's CSS COULD work on web later (embedded css), but in v1 the
+  // panel is desktop-only, so these stubs are only hit defensively.
+  listBuiltInThemes(): Promise<ThemeInfo[]> {
+    return Promise.resolve([]);
+  }
+  listProjectThemes(_projectDir: string): Promise<ThemeInfo[]> {
+    return Promise.resolve([]);
+  }
+  getActiveTheme(_projectDir: string): Promise<ThemeInfo | null> {
+    return Promise.resolve(null);
+  }
+  applyTheme(_projectDir: string, _target: ApplyThemeTarget): Promise<ThemeInfo> {
+    return rejectNotImplemented("applyTheme");
+  }
+  importThemeFromFolder(_projectDir: string): Promise<ThemeInfo | null> {
+    return rejectNotImplemented("importThemeFromFolder");
+  }
+  importThemeFromUrl(_projectDir: string, _url: string): Promise<ThemeInfo> {
+    return rejectNotImplemented("importThemeFromUrl");
+  }
+  readThemeCss(
+    _projectDir: string | null,
+    _source: { kind: "builtin" | "project"; id: string },
+  ): Promise<string> {
+    return rejectNotImplemented("readThemeCss");
+  }
+  removeProjectTheme(_projectDir: string, _id: string): Promise<void> {
+    return rejectNotImplemented("removeProjectTheme");
   }
 
   // ── Local version history (#13) — desktop-only; reject/empty on web ────────

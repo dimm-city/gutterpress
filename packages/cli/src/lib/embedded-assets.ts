@@ -51,6 +51,17 @@ import tplZineChapter01 from "../assets/templates/zine/chapter-01.md" with { typ
 import tplTechnicalManifest from "../assets/templates/technical/manifest.yaml" with { type: "file" };
 import tplTechnicalChapter01 from "../assets/templates/technical/chapter-01.md" with { type: "file" };
 
+// Built-in themes (#32). Each = theme.css + theme.json, baked in so the Theme
+// Manager (compiled binary + viewer) lists/applies from one embedded source.
+import themeCleanBookCss from "../assets/themes/clean-book/theme.css" with { type: "file" };
+import themeCleanBookJson from "../assets/themes/clean-book/theme.json" with { type: "file" };
+import themeTtrpgCss from "../assets/themes/ttrpg-supplement/theme.css" with { type: "file" };
+import themeTtrpgJson from "../assets/themes/ttrpg-supplement/theme.json" with { type: "file" };
+import themeZineCss from "../assets/themes/zine/theme.css" with { type: "file" };
+import themeZineJson from "../assets/themes/zine/theme.json" with { type: "file" };
+import themeTechnicalCss from "../assets/themes/technical-doc/theme.css" with { type: "file" };
+import themeTechnicalJson from "../assets/themes/technical-doc/theme.json" with { type: "file" };
+
 // Resolve paths relative to this module's location so that relative string
 // paths produced by bun build --target node work regardless of CWD.
 const __libdir = dirname(fileURLToPath(import.meta.url));
@@ -76,6 +87,14 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "templates/zine/chapter-01.md":           abs(filePath(tplZineChapter01)),
   "templates/technical/manifest.yaml":      abs(filePath(tplTechnicalManifest)),
   "templates/technical/chapter-01.md":      abs(filePath(tplTechnicalChapter01)),
+  "themes/clean-book/theme.css":            abs(filePath(themeCleanBookCss)),
+  "themes/clean-book/theme.json":           abs(filePath(themeCleanBookJson)),
+  "themes/ttrpg-supplement/theme.css":      abs(filePath(themeTtrpgCss)),
+  "themes/ttrpg-supplement/theme.json":     abs(filePath(themeTtrpgJson)),
+  "themes/zine/theme.css":                  abs(filePath(themeZineCss)),
+  "themes/zine/theme.json":                 abs(filePath(themeZineJson)),
+  "themes/technical-doc/theme.css":         abs(filePath(themeTechnicalCss)),
+  "themes/technical-doc/theme.json":        abs(filePath(themeTechnicalJson)),
 };
 
 let extractPromise: Promise<string> | null = null;

@@ -122,6 +122,18 @@ interface RecommendedPlugin {
   name: string;
   description: string;
 }
+// Theme manager (#32).
+interface ThemeInfo {
+  id: string;
+  name: string;
+  author?: string;
+  description: string;
+  kind: "builtin" | "project";
+  preview?: string | null;
+}
+type ApplyThemeTarget =
+  | { kind: "builtin"; id: string }
+  | { kind: "project"; id: string };
 
 interface RecentFolderEntry {
   path: string;
@@ -666,6 +678,28 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("plugin:validate", projectDir),
   listRecommendedPlugins: (): Promise<RecommendedPlugin[]> =>
     ipcRenderer.invoke("plugin:recommended"),
+
+  // Theme manager (#32) — list/apply/import themes via the lib. Apply copies the
+  // theme folder into the project + wires the manifest; import accepts a folder
+  // (native dialog) or URL; readThemeCss feeds the renderer's thumbnail preview.
+  listBuiltInThemes: (): Promise<ThemeInfo[]> =>
+    ipcRenderer.invoke("theme:listBuiltIn"),
+  listProjectThemes: (projectDir: string): Promise<ThemeInfo[]> =>
+    ipcRenderer.invoke("theme:listProject", projectDir),
+  getActiveTheme: (projectDir: string): Promise<ThemeInfo | null> =>
+    ipcRenderer.invoke("theme:getActive", projectDir),
+  applyTheme: (projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> =>
+    ipcRenderer.invoke("theme:apply", projectDir, target),
+  importThemeFromFolder: (projectDir: string): Promise<ThemeInfo | null> =>
+    ipcRenderer.invoke("theme:importFromFolder", projectDir),
+  importThemeFromUrl: (projectDir: string, url: string): Promise<ThemeInfo> =>
+    ipcRenderer.invoke("theme:importFromUrl", projectDir, url),
+  readThemeCss: (
+    projectDir: string | null,
+    source: { kind: "builtin" | "project"; id: string },
+  ): Promise<string> => ipcRenderer.invoke("theme:readCss", projectDir, source),
+  removeProjectTheme: (projectDir: string, id: string): Promise<void> =>
+    ipcRenderer.invoke("theme:remove", projectDir, id),
 
   // Local version history (#13) — isomorphic-git in main, via the lib
   enableVersionHistory: (projectDir: string): Promise<ProjectClassification> =>

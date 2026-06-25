@@ -35,6 +35,7 @@
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
   import PluginManager from "$lib/components/PluginManager.svelte";
+  import ThemeManager from "$lib/components/ThemeManager.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
@@ -495,6 +496,16 @@
   function openPluginManager() {
     if (!isDesktop() || !currentDir) return;
     pluginManagerRef?.show(pluginManagerBtn);
+  }
+
+  // Theme manager (#32) — opened from the overflow menu (desktop + project).
+  let themeManagerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
+  let themeManagerOpen = $state(false);
+  let themeManagerBtn = $state<HTMLButtonElement | undefined>(undefined);
+
+  function openThemeManager() {
+    if (!isDesktop() || !currentDir) return;
+    themeManagerRef?.show(themeManagerBtn);
   }
 
   // "Save as template" (#29) — capture the open project as a reusable template.
@@ -2670,6 +2681,16 @@
               <Icon name="puzzle" /> Plugins…
             </button>
           {/if}
+          {#if isDesktop() && currentDir}
+            <!-- Theme manager (#32): browse/preview/apply/import themes -->
+            <button
+              bind:this={themeManagerBtn}
+              class="menu-item"
+              onclick={(e) => { openThemeManager(); closeMenu(e); }}
+            >
+              <Icon name="palette" /> Themes…
+            </button>
+          {/if}
           <button class="menu-item" onclick={(e) => { helpOpen = true; closeMenu(e); }}>
             <Icon name="circle-help" /> Help &amp; about
           </button>
@@ -2938,6 +2959,11 @@
 <PluginManager
   bind:this={pluginManagerRef}
   bind:open={pluginManagerOpen}
+  projectDir={currentDir}
+/>
+<ThemeManager
+  bind:this={themeManagerRef}
+  bind:open={themeManagerOpen}
   projectDir={currentDir}
 />
 <!-- Save-as-template name prompt (#29). Minimal modal: name + confirm. -->

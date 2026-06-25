@@ -44,6 +44,8 @@ import type {
   ProjectPluginEntry,
   PluginValidationResult,
   RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -346,6 +348,35 @@ export class ElectronAdapter implements Platform {
   }
   listRecommendedPlugins(): Promise<RecommendedPlugin[]> {
     return bridge().listRecommendedPlugins();
+  }
+
+  // ── Theme manager (#32) — delegate 1:1 to the bridge ───────────────────────
+  listBuiltInThemes(): Promise<ThemeInfo[]> {
+    return bridge().listBuiltInThemes();
+  }
+  listProjectThemes(projectDir: string): Promise<ThemeInfo[]> {
+    return bridge().listProjectThemes(projectDir);
+  }
+  getActiveTheme(projectDir: string): Promise<ThemeInfo | null> {
+    return bridge().getActiveTheme(projectDir);
+  }
+  applyTheme(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> {
+    return bridge().applyTheme(projectDir, target);
+  }
+  importThemeFromFolder(projectDir: string): Promise<ThemeInfo | null> {
+    return bridge().importThemeFromFolder(projectDir);
+  }
+  importThemeFromUrl(projectDir: string, url: string): Promise<ThemeInfo> {
+    return bridge().importThemeFromUrl(projectDir, url);
+  }
+  readThemeCss(
+    projectDir: string | null,
+    source: { kind: "builtin" | "project"; id: string },
+  ): Promise<string> {
+    return bridge().readThemeCss(projectDir, source);
+  }
+  removeProjectTheme(projectDir: string, id: string): Promise<void> {
+    return bridge().removeProjectTheme(projectDir, id);
   }
 
   // ── Local version history (#13) — delegate 1:1 to the bridge ───────────────

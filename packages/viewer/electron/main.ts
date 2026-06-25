@@ -216,6 +216,18 @@ interface RecommendedPlugin {
   name: string;
   description: string;
 }
+// Theme manager (#32). Mirror the lib's theme-manager types.
+interface ThemeInfo {
+  id: string;
+  name: string;
+  author?: string;
+  description: string;
+  kind: "builtin" | "project";
+  preview?: string | null;
+}
+type ApplyThemeTarget =
+  | { kind: "builtin"; id: string }
+  | { kind: "project"; id: string };
 interface CreateProjectResult {
   projectDir: string;
   manifestPath: string;
@@ -427,6 +439,18 @@ interface LibModule {
   ) => Promise<ProjectPluginEntry & { path: string }>;
   validateProjectPlugins: (projectDir: string) => Promise<PluginValidationResult[]>;
   RECOMMENDED_PLUGINS: RecommendedPlugin[];
+  // Theme manager (#32)
+  listBuiltInThemes: () => Promise<ThemeInfo[]>;
+  listProjectThemes: (projectDir: string) => Promise<ThemeInfo[]>;
+  getActiveTheme: (projectDir: string) => Promise<ThemeInfo | null>;
+  applyTheme: (projectDir: string, target: ApplyThemeTarget) => Promise<ThemeInfo>;
+  importThemeFromFolder: (projectDir: string, sourceDir: string) => Promise<ThemeInfo>;
+  importThemeFromUrl: (projectDir: string, url: string) => Promise<ThemeInfo>;
+  readThemeCss: (
+    projectDir: string | null,
+    source: { kind: "builtin" | "project"; id: string },
+  ) => Promise<string>;
+  removeProjectTheme: (projectDir: string, id: string) => Promise<void>;
   // Automatic snapshots (RC1-3)
   AUTO_SNAPSHOT_MESSAGE: string;
   isNoChangesError: (e: unknown) => boolean;
@@ -2894,6 +2918,105 @@ ipcMain.handle(
   async (): Promise<RecommendedPlugin[]> => {
     const lib = await loadLib();
     return lib.RECOMMENDED_PLUGINS;
+  },
+);
+
+// ── Theme manager (#32) ───────────────────────────────────────────────────────
+// Thin pass-throughs to the lib's theme-manager (one impl for CLI + viewer).
+// Built-in themes are embedded; apply COPIES the theme folder into the project's
+// themes/ dir and wires the manifest styles list. Import accepts a local folder
+// (native dialog) or a URL (raw CSS or a theme folder), fetched with the lib's
+// global `fetch`. readThemeCss feeds the renderer's sandboxed thumbnail preview.
+
+ipcMain.handle("theme:listBuiltIn", async (): Promise<ThemeInfo[]> => {
+  const lib = await loadLib();
+  return lib.listBuiltInThemes();
+});
+
+ipcMain.handle(
+  "theme:listProject",
+  async (_e, projectDir: string): Promise<ThemeInfo[]> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("theme:listProject requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.listProjectThemes(projectDir);
+  },
+);
+
+ipcMain.handle(
+  "theme:getActive",
+  async (_e, projectDir: string): Promise<ThemeInfo | null> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("theme:getActive requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.getActiveTheme(projectDir);
+  },
+);
+
+ipcMain.handle(
+  "theme:apply",
+  async (_e, projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("theme:apply requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.applyTheme(projectDir, target);
+  },
+);
+
+ipcMain.handle(
+  "theme:importFromFolder",
+  async (_e, projectDir: string): Promise<ThemeInfo | null> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("theme:importFromFolder requires an absolute projectDir");
+    }
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: "Choose a theme folder",
+      properties: ["openDirectory"],
+    });
+    if (res.canceled || res.filePaths.length === 0) return null;
+    const lib = await loadLib();
+    return lib.importThemeFromFolder(projectDir, res.filePaths[0]!);
+  },
+);
+
+ipcMain.handle(
+  "theme:importFromUrl",
+  async (_e, projectDir: string, url: string): Promise<ThemeInfo> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("theme:importFromUrl requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.importThemeFromUrl(projectDir, url);
+  },
+);
+
+ipcMain.handle(
+  "theme:readCss",
+  async (
+    _e,
+    projectDir: string | null,
+    source: { kind: "builtin" | "project"; id: string },
+  ): Promise<string> => {
+    if (projectDir != null && (typeof projectDir !== "string" || !path.isAbsolute(projectDir))) {
+      throw new Error("theme:readCss requires an absolute projectDir or null");
+    }
+    const lib = await loadLib();
+    return lib.readThemeCss(projectDir, source);
+  },
+);
+
+ipcMain.handle(
+  "theme:remove",
+  async (_e, projectDir: string, id: string): Promise<void> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("theme:remove requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.removeProjectTheme(projectDir, id);
   },
 );
 
