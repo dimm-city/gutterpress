@@ -59,8 +59,8 @@
   let previewCache = $state<Record<string, ConflictPreview | null | "loading" | "error">>({});
 
   // Reset and default choices whenever the dialog opens or the file list changes.
-  $effect(() => {
-    if (!open) return;
+  // Runs on open (the {#if open} dialog node mounts) — no $effect.
+  function onOpen(_node: HTMLElement) {
     phase = "choosing";
     errorMessage = null;
     previewExpanded = {};
@@ -73,7 +73,7 @@
       ]),
     );
     queueMicrotask(() => dialogEl?.focus());
-  });
+  }
 
   function isOutsideBook(filePath: string): boolean {
     return !!bookSubPath && !filePath.startsWith(bookSubPath + "/");
@@ -236,6 +236,7 @@
 
   <div
     bind:this={dialogEl}
+    use:onOpen
     class="dialog"
     role="dialog"
     aria-modal="true"
