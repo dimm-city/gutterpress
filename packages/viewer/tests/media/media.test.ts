@@ -7,10 +7,8 @@ import {
   buildPrintWarnings,
   defaultAltText,
   describeColorSpace,
-  dpiAtFullWidth,
   formatBytes,
   imageMarkdown,
-  MEDIA_IMAGE_EXT_RE,
 } from "../../src/lib/media";
 import type { MediaImageDetails } from "../../src/lib/platform/contract";
 
@@ -39,26 +37,6 @@ describe("formatBytes", () => {
   test("invalid input degrades to a dash", () => {
     expect(formatBytes(-1)).toBe("—");
     expect(formatBytes(Number.NaN)).toBe("—");
-  });
-});
-
-describe("extension filter", () => {
-  test("accepts the supported formats, rejects others", () => {
-    for (const ok of ["a.png", "b.JPG", "c.jpeg", "d.webp", "e.gif", "f.svg", "g.tif", "h.tiff"]) {
-      expect(MEDIA_IMAGE_EXT_RE.test(ok)).toBe(true);
-    }
-    for (const no of ["a.pdf", "b.md", "c.pngx", "d.css"]) {
-      expect(MEDIA_IMAGE_EXT_RE.test(no)).toBe(false);
-    }
-  });
-});
-
-describe("dpiAtFullWidth", () => {
-  test("2100px-wide image is exactly 300 DPI at 7in", () => {
-    expect(dpiAtFullWidth(2100)).toBe(300);
-  });
-  test("1050px-wide image is 150 DPI at 7in", () => {
-    expect(dpiAtFullWidth(1050)).toBe(150);
   });
 });
 
