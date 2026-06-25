@@ -46,6 +46,7 @@ import type {
   RecommendedPlugin,
   ThemeInfo,
   ApplyThemeTarget,
+  ProjectStyle,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -377,6 +378,11 @@ export class ElectronAdapter implements Platform {
   }
   removeProjectTheme(projectDir: string, id: string): Promise<void> {
     return bridge().removeProjectTheme(projectDir, id);
+  }
+
+  // ── Style resolver (audit B2/G1) — delegate 1:1 to the bridge ──────────────
+  listProjectStyles(projectDir: string): Promise<ProjectStyle[]> {
+    return bridge().listProjectStyles(projectDir);
   }
 
   // ── Local version history (#13) — delegate 1:1 to the bridge ───────────────

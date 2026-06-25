@@ -70,6 +70,7 @@ import type {
   RecommendedPlugin,
   ThemeInfo,
   ApplyThemeTarget,
+  ProjectStyle,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -740,6 +741,11 @@ export class WebAdapter implements Platform {
   }
   removeProjectTheme(_projectDir: string, _id: string): Promise<void> {
     return rejectNotImplemented("removeProjectTheme");
+  }
+
+  // ── Style resolver (audit B2/G1) — desktop-only editing (G3); empty on web ──
+  listProjectStyles(_projectDir: string): Promise<ProjectStyle[]> {
+    return Promise.resolve([]);
   }
 
   // ── Local version history (#13) — desktop-only; reject/empty on web ────────

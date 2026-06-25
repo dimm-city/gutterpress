@@ -149,6 +149,10 @@ export type {
   BuiltInThemeId,
 } from "../lib/theme-manager.ts";
 
+// ── Style resolver (CSS-editor file resolution; audit B2/G1) ──────────────────
+export { listProjectStyles } from "../lib/style-resolver.ts";
+export type { ProjectStyle } from "../lib/style-resolver.ts";
+
 export {
   providerFor,
   restoreVersionWithBackup,

@@ -228,6 +228,12 @@ interface ThemeInfo {
 type ApplyThemeTarget =
   | { kind: "builtin"; id: string }
   | { kind: "project"; id: string };
+// Style resolver (audit B2/G1). Mirror the lib's ProjectStyle.
+interface ProjectStyle {
+  path: string;
+  displayName: string;
+  active: boolean;
+}
 interface CreateProjectResult {
   projectDir: string;
   manifestPath: string;
@@ -451,6 +457,8 @@ interface LibModule {
     source: { kind: "builtin" | "project"; id: string },
   ) => Promise<string>;
   removeProjectTheme: (projectDir: string, id: string) => Promise<void>;
+  // Style resolver (audit B2/G1)
+  listProjectStyles: (projectDir: string) => Promise<ProjectStyle[]>;
   // Automatic snapshots (RC1-3)
   AUTO_SNAPSHOT_MESSAGE: string;
   isNoChangesError: (e: unknown) => boolean;
@@ -3017,6 +3025,22 @@ ipcMain.handle(
     }
     const lib = await loadLib();
     return lib.removeProjectTheme(projectDir, id);
+  },
+);
+
+// ── Style resolver (project:listStyles, audit B2/G1) ──────────────────────────
+// Resolve the project's editable stylesheets for the CSS editor: the manifest
+// `styles:` set (active, in order) followed by other discovered `.css` files
+// (root, styles/, themes/*/theme.css). Thin pass-through to the shared lib so
+// the CLI and viewer resolve CSS identically.
+ipcMain.handle(
+  "project:listStyles",
+  async (_e, projectDir: string): Promise<ProjectStyle[]> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("project:listStyles requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.listProjectStyles(projectDir);
   },
 );
 

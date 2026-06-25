@@ -25,9 +25,16 @@
   let {
     open = $bindable(false),
     projectDir,
+    /**
+     * Called after a theme is successfully applied, with the applied theme's id
+     * (audit M2). The parent uses it to offer/auto-open the new theme's CSS for
+     * editing. Optional — omitting it leaves behavior unchanged.
+     */
+    onApplied,
   }: {
     open?: boolean;
     projectDir: string | null;
+    onApplied?: (themeId: string) => void;
   } = $props();
 
   let triggerEl = $state<HTMLButtonElement | undefined>(undefined);
@@ -139,6 +146,7 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
       const applied = await getPlatform().applyTheme(projectDir, target);
       activeId = applied.id;
       await refresh();
+      onApplied?.(applied.id);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
