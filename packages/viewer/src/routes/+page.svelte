@@ -222,6 +222,7 @@
   let advancedSetupBtn = $state<HTMLButtonElement | undefined>(undefined);
   // New-project wizard (#25)
   let newProjectOpen = $state(false);
+  let newProjectWizardRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
   let newProjectBtn = $state<HTMLButtonElement | undefined>(undefined);
   let syncDiag = $state<ProjectRemoteDiagnosis | null>(null);
   // Manual force-save / force-sync state for the status bar action buttons.
@@ -2857,7 +2858,7 @@
       onProjectChosen={(path) => startFolderPreview(path)}
       onOpenUrl={openUrl}
       onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
-      onNewProject={() => (newProjectOpen = true)}
+      onNewProject={() => newProjectWizardRef?.show()}
       onVersionHistoryEnabled={onVersionHistoryEnabled}
       onSnapshotSaved={(entry) => onVersionSnapshotSaved()}
       onVersionRestored={onVersionRestored}
@@ -3010,7 +3011,7 @@
         <h1 class="empty-title">print-md</h1>
         <p class="empty-tagline">Turn your markdown writing into a print-ready book</p>
         <div class="empty-cta-row">
-          <button bind:this={newProjectBtn} class="primary empty-cta" onclick={() => (newProjectOpen = true)} disabled={busy}>Create a new book</button>
+          <button bind:this={newProjectBtn} class="primary empty-cta" onclick={() => newProjectWizardRef?.show(newProjectBtn)} disabled={busy}>Create a new book</button>
           <button class="ghost empty-cta" onclick={() => {
             leftPanelOpen = true;
             leftPanelTab = "projects";
@@ -3090,6 +3091,7 @@
   triggerEl={advancedSetupBtn}
 />
 <NewProjectWizard
+  bind:this={newProjectWizardRef}
   bind:open={newProjectOpen}
   onCreated={(projectDir) => startFolderPreview(projectDir, "Opening your new book…")}
   triggerEl={newProjectBtn}
