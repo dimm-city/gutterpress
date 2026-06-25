@@ -98,15 +98,7 @@ export class ElectronAdapter implements Platform {
     return { key: path, displayName: basenameOf(path) };
   }
 
-  // On Electron the key IS the absolute path and the host always has standing
-  // filesystem access — there is no handle to reload or permission to re-grant
-  // (that is the PWA's concern). Re-opening a recent is just re-wrapping the
-  // path as a FolderRef. (#33 Phase 3)
-  reopenFolder(key: string): Promise<FolderRef> {
-    return Promise.resolve({ key, displayName: basenameOf(key) });
-  }
-
-  readFile(path: string): Promise<string> {
+readFile(path: string): Promise<string> {
     return bridge().readFile(path);
   }
 
@@ -206,21 +198,14 @@ export class ElectronAdapter implements Platform {
     return bridge().getStatus();
   }
 
-  getLastProject(): Promise<string | null> {
-    return bridge().getLastProject();
-  }
-  splashStatus(status?: string, progress?: number, sub?: string): Promise<void> {
+splashStatus(status?: string, progress?: number, sub?: string): Promise<void> {
     return bridge().splashStatus(status, progress, sub);
   }
   rendererReady(): Promise<void> {
     return bridge().rendererReady();
   }
 
-  listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }> {
-    return bridge().listProjectFiles(projectDir);
-  }
-
-  checkCss(css: string, from?: string): Promise<PrintSafeWarning[]> {
+checkCss(css: string, from?: string): Promise<PrintSafeWarning[]> {
     return bridge().checkCss(css, from);
   }
 
@@ -381,10 +366,6 @@ export class ElectronAdapter implements Platform {
   ): Promise<string> {
     return bridge().readThemeCss(projectDir, source);
   }
-  removeProjectTheme(projectDir: string, id: string): Promise<void> {
-    return bridge().removeProjectTheme(projectDir, id);
-  }
-
   // ── Style resolver (audit B2/G1) — delegate 1:1 to the bridge ──────────────
   listProjectStyles(projectDir: string): Promise<ProjectStyle[]> {
     return bridge().listProjectStyles(projectDir);

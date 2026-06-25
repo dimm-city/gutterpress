@@ -551,11 +551,7 @@ contextBridge.exposeInMainWorld("electron", {
     dirPath: string,
   ): Promise<Array<{ name: string; path: string; isDir: boolean }>> =>
     ipcRenderer.invoke("fs:listDir", dirPath),
-  listProjectFiles: (
-    projectDir: string,
-  ): Promise<{ md: string[]; css: string[] }> =>
-    ipcRenderer.invoke("fs:listProjectFiles", projectDir),
-  // CSS print-safety lint (#39) — runs in main (postcss can't bundle into the SPA)
+// CSS print-safety lint (#39) — runs in main (postcss can't bundle into the SPA)
   checkCss: (
     css: string,
     from?: string,
@@ -598,9 +594,7 @@ contextBridge.exposeInMainWorld("electron", {
   // Lib API (replaces /api/* HTTP routes)
   getStatus: (): Promise<{ ok: boolean; runtime: string; name: string }> =>
     ipcRenderer.invoke("api:status"),
-  getLastProject: (): Promise<string | null> =>
-    ipcRenderer.invoke("app:getLastProject"),
-  splashStatus: (status?: string, progress?: number, sub?: string): Promise<void> =>
+splashStatus: (status?: string, progress?: number, sub?: string): Promise<void> =>
     ipcRenderer.invoke("app:splashStatus", status, progress, sub),
   rendererReady: (): Promise<void> => ipcRenderer.invoke("app:rendererReady"),
   getViewerPrefs: (): Promise<ViewerPrefs> =>
@@ -712,10 +706,8 @@ contextBridge.exposeInMainWorld("electron", {
     projectDir: string | null,
     source: { kind: "builtin" | "project"; id: string },
   ): Promise<string> => ipcRenderer.invoke("theme:readCss", projectDir, source),
-  removeProjectTheme: (projectDir: string, id: string): Promise<void> =>
-    ipcRenderer.invoke("theme:remove", projectDir, id),
 
-  // Style resolver (audit B2/G1) — manifest-aware CSS resolution via the lib
+// Style resolver (audit B2/G1) — manifest-aware CSS resolution via the lib
   listProjectStyles: (projectDir: string): Promise<ProjectStyle[]> =>
     ipcRenderer.invoke("project:listStyles", projectDir),
 

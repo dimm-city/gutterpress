@@ -26,10 +26,6 @@ function makeBridge() {
       "listDir",
       Promise.resolve([{ name: "a.md", path: "/proj/a.md", isDir: false }]),
     ),
-    listProjectFiles: rec(
-      "listProjectFiles",
-      Promise.resolve({ md: ["01-intro.md"], css: ["theme.css"] }),
-    ),
     checkCss: rec("checkCss", Promise.resolve([])),
     lintProject: rec(
       "lintProject",
@@ -45,7 +41,6 @@ function makeBridge() {
       ]),
     ),
     getStatus: rec("getStatus", Promise.resolve({ ok: true })),
-    getLastProject: rec("getLastProject", Promise.resolve(null)),
     getViewerPrefs: rec("getViewerPrefs", Promise.resolve({})),
     setViewerPrefs: rec("setViewerPrefs", Promise.resolve({ ok: true })),
     getViewerProjectState: rec("getViewerProjectState", Promise.resolve({ currentPage: 5 })),
@@ -166,10 +161,6 @@ test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", asyn
   await expect(p.listDir("/proj")).resolves.toEqual([
     { name: "a.md", path: "/proj/a.md", isDir: false },
   ]);
-  await expect(p.listProjectFiles("/proj")).resolves.toEqual({
-    md: ["01-intro.md"],
-    css: ["theme.css"],
-  });
   await p.build({ input: { key: "/proj", displayName: "proj" }, format: "pdf" });
   await p.startPreview({ input: { key: "/proj", displayName: "proj" } });
   await p.doctor();
@@ -200,8 +191,6 @@ test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", asyn
   expect(methods).toContain("readFile");
   expect(methods).toContain("writeFile");
   expect(methods).toContain("listDir");
-  expect(methods).toContain("listProjectFiles");
-  expect(calls.find((c) => c.method === "listProjectFiles")?.args).toEqual(["/proj"]);
   expect(methods).toContain("build");
   // #49: the adapter unwraps FolderRef.key → the string `input` the IPC expects.
   expect(calls.find((c) => c.method === "build")?.args).toEqual([
@@ -404,11 +393,10 @@ test("WebAdapter: primitives throw, host methods reject, subscriptions are no-op
   // (and no FSA picker on this environment) they fail gracefully rather than
   // with the old 0.6.0 stub message:
   //  - openFolder rejects "not supported" when showDirectoryPicker is absent.
-  //  - listDir/listProjectFiles reject because no root handle is registered.
+  //  - listDir rejects because no root handle is registered.
   //  - statFile resolves { exists:false } (never throws) so callers can probe.
   await expect(p.openFolder()).rejects.toThrow(/File System Access|not supported/i);
   await expect(p.listDir("web:none/p")).rejects.toThrow(/handle/i);
-  await expect(p.listProjectFiles("web:none")).rejects.toThrow(/handle/i);
   await expect(p.statFile("web:none/p")).resolves.toEqual({
     size: 0,
     mtimeMs: 0,
@@ -627,7 +615,7 @@ test("WebAdapter.openFolder returns null when the picker is cancelled (AbortErro
   }
 });
 
-test("WebAdapter read/write/list/stat/listProjectFiles work against an opened folder (#33)", async () => {
+test("WebAdapter read/write/list/stat work against an opened folder (#33)", async () => {
   const root = makeFsaTree();
   // @ts-expect-error test global
   globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
@@ -650,12 +638,6 @@ test("WebAdapter read/write/list/stat/listProjectFiles work against an opened fo
     const w = await p.writeFile(`${ref.key}${SEP}01-intro.md`, "# New\n");
     expect(w.mtimeMs).toBe(2000);
     await expect(p.readFile(`${ref.key}${SEP}01-intro.md`)).resolves.toBe("# New\n");
-
-    // listProjectFiles filters md/css.
-    await expect(p.listProjectFiles(ref.key)).resolves.toEqual({
-      md: ["01-intro.md"],
-      css: ["theme.css"],
-    });
   } finally {
     // @ts-expect-error test global
     globalThis.window = undefined;

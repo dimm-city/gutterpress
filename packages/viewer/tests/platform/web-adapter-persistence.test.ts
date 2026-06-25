@@ -81,71 +81,9 @@ test("openFolder persists the handle to the store and records a recents entry", 
     expect(recents[0]!.exists).toBe(true);
     expect(typeof recents[0]!.openedAt).toBe("string");
 
-    // getLastProject points at the just-opened key.
-    expect(await adapter.getLastProject()).toBe(key);
   } finally {
     clearPicker();
   }
-});
-
-// ── reload simulation: fresh registry, populated store → reopen reloads ───────
-
-test("reopenFolder reloads a persisted handle across a reload and requests permission", async () => {
-  const handle = new MockDirHandle("my-book", { perm: "prompt", requestResult: "granted" });
-  stubPicker(handle);
-  let key: string;
-  let store: InMemoryWebStore;
-  try {
-    const first = makeAdapter();
-    store = first.store;
-    const ref = await first.adapter.openFolder();
-    key = ref!.key;
-  } finally {
-    clearPicker();
-  }
-
-  // Simulate a page reload: brand-new adapter (empty in-memory registry) sharing
-  // the SAME persisted store. The handle is NOT in the registry now.
-  resetRegistry();
-  const { adapter: reloaded } = makeAdapter(store!);
-
-  // Reopening drives the permission re-grant gesture (perm was "prompt").
-  const ref2 = await reloaded.reopenFolder(key!);
-  expect(ref2).not.toBeNull();
-  expect(ref2!.key).toBe(key!);
-  expect(ref2!.displayName).toBe("my-book");
-  expect(handle.requestCalls).toBe(1);
-
-  // After reopen the handle is back in the registry → fs primitives resolve it.
-  // (readFile would walk it; here we just assert the key resolves without throw
-  // via a no-arg listProjectFiles call path is covered elsewhere — assert the
-  // ref is usable by re-reopening without a second request when already granted.)
-  const ref3 = await reloaded.reopenFolder(key!);
-  expect(ref3!.key).toBe(key!);
-  // Already granted now → no second prompt.
-  expect(handle.requestCalls).toBe(1);
-});
-
-test("reopenFolder surfaces a clear error when permission is denied", async () => {
-  const handle = new MockDirHandle("my-book", { perm: "prompt", requestResult: "denied" });
-  stubPicker(handle);
-  let key: string;
-  let store: InMemoryWebStore;
-  try {
-    const first = makeAdapter();
-    store = first.store;
-    key = (await first.adapter.openFolder())!.key;
-  } finally {
-    clearPicker();
-  }
-  resetRegistry();
-  const { adapter: reloaded } = makeAdapter(store!);
-  await expect(reloaded.reopenFolder(key!)).rejects.toThrow(/permission/i);
-});
-
-test("reopenFolder errors clearly when the key has no persisted handle", async () => {
-  const { adapter } = makeAdapter();
-  await expect(adapter.reopenFolder("web:never-saved")).rejects.toThrow();
 });
 
 // ── recents / favorites round-trip ────────────────────────────────────────────
@@ -196,25 +134,6 @@ test("removeRecent drops a recents entry", async () => {
   const res = await adapter.removeRecent(key!);
   expect(res.ok).toBe(true);
   expect(await adapter.getRecentFolders()).toHaveLength(0);
-});
-
-test("removeRecent clears the last-project pointer when it was the removed key", async () => {
-  const handle = new MockDirHandle("my-book");
-  stubPicker(handle);
-  let key: string;
-  let store: InMemoryWebStore;
-  try {
-    const a = makeAdapter();
-    store = a.store;
-    key = (await a.adapter.openFolder())!.key;
-  } finally {
-    clearPicker();
-  }
-  const { adapter } = makeAdapter(store!);
-  expect(await adapter.getLastProject()).toBe(key!);
-  await adapter.removeRecent(key!);
-  // The user explicitly dropped it → getLastProject must not resurface it.
-  expect(await adapter.getLastProject()).toBeNull();
 });
 
 test("getRecentFolders returns newest-first", async () => {
