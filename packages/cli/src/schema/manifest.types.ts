@@ -6,6 +6,12 @@ export interface PluginConfig {
   version?: string;
   priority?: number;
   options?: Record<string, unknown>;
+  /**
+   * Per-project enable flag (#30). Absent or `true` = active; `false` = the
+   * entry stays in the manifest (reversible toggle) but is skipped by
+   * `resolveConfig` so it is not loaded at build/preview time.
+   */
+  enabled?: boolean;
 }
 
 export interface PrintMdManifest {

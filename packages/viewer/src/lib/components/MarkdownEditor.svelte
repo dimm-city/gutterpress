@@ -363,6 +363,28 @@
     view?.focus();
   }
 
+  /** Current selection text (empty string when there is no selection) (#29). */
+  export function getSelectionText(): string {
+    if (!view) return "";
+    const { from, to } = view.state.selection.main;
+    return view.state.sliceDoc(from, to);
+  }
+
+  /**
+   * Insert a snippet at the cursor, replacing any selection (#29). The caret is
+   * placed at the end of the inserted text. The view is focused first so the
+   * transaction lands in the right place.
+   */
+  export function insertSnippet(text: string): void {
+    if (!view) return;
+    view.focus();
+    const { from, to } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+    });
+  }
+
   /**
    * Execute a toolbar formatting action on the live editor (#31).
    * Called by the parent page via the editorRef binding. The editor is

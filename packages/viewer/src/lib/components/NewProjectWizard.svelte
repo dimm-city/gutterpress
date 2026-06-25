@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import type { TemplateInfo } from "$lib/platform/contract";
 
   let {
     open = $bindable(false),
@@ -21,6 +22,49 @@
   let author = $state("");
   let parentDir = $state<string | null>(null);
   let useVersionHistory = $state(true);
+
+  // Template selection (#29). Built-in + custom templates, loaded on open.
+  let templates = $state<TemplateInfo[]>([]);
+  let selectedTemplate = $state<TemplateInfo | null>(null);
+  let importing = $state(false);
+
+  const BUILTIN_IDS = ["book", "ttrpg", "zine", "technical"];
+
+  async function loadTemplates() {
+    try {
+      const builtins = await getPlatform().listBuiltInTemplates();
+      let customs: TemplateInfo[] = [];
+      try {
+        customs = await getPlatform().listCustomTemplates();
+      } catch {
+        customs = [];
+      }
+      templates = [...builtins, ...customs];
+      // Default to the "book" built-in (or the first template available).
+      selectedTemplate =
+        templates.find((t) => t.id === "book") ?? templates[0] ?? null;
+    } catch {
+      templates = [];
+      selectedTemplate = null;
+    }
+  }
+
+  async function importTemplate() {
+    if (!isDesktop()) return;
+    importing = true;
+    error = null;
+    try {
+      const imported = await getPlatform().importTemplateFromFolder();
+      if (imported) {
+        await loadTemplates();
+        selectedTemplate = templates.find((t) => t.id === imported.id) ?? imported;
+      }
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    } finally {
+      importing = false;
+    }
+  }
 
   let creating = $state(false);
   let error = $state<string | null>(null);
@@ -55,6 +99,7 @@
   $effect(() => {
     if (open) {
       reset();
+      void loadTemplates();
       queueMicrotask(() => nameInput?.focus());
     }
   });
@@ -122,10 +167,17 @@
     creating = true;
     error = null;
     try {
+      const tpl = selectedTemplate;
       const result = await getPlatform().createProject({
         name: name.trim(),
         author: author.trim() || undefined,
         parentDir,
+        // Built-in templates pass an id; custom templates pass the directory.
+        template:
+          tpl && tpl.kind === "builtin" && BUILTIN_IDS.includes(tpl.id)
+            ? (tpl.id as "book" | "ttrpg" | "zine" | "technical")
+            : undefined,
+        templateDir: tpl && tpl.kind === "custom" ? tpl.dir : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",
       });
       open = false;
@@ -205,6 +257,37 @@
             }}
           />
         </label>
+
+        {#if templates.length > 0}
+          <div class="field">
+            <span>Start from a template</span>
+            <ul class="template-list" role="radiogroup" aria-label="Project template">
+              {#each templates as tpl (tpl.kind + ":" + tpl.id)}
+                <li>
+                  <button
+                    type="button"
+                    class="template-card"
+                    class:selected={selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
+                    role="radio"
+                    aria-checked={selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
+                    onclick={() => (selectedTemplate = tpl)}
+                  >
+                    <span class="template-label">
+                      {tpl.label}
+                      {#if tpl.kind === "custom"}<em class="template-tag">custom</em>{/if}
+                    </span>
+                    <span class="template-desc">{tpl.description}</span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+            {#if isDesktop()}
+              <button type="button" class="import-tpl" onclick={importTemplate} disabled={importing}>
+                {importing ? "Importing…" : "Import template from folder…"}
+              </button>
+            {/if}
+          </div>
+        {/if}
 
         {#if folderPreview}
           <p class="hint">
@@ -341,6 +424,30 @@
     outline: none;
     border-color: var(--app-focus-ring);
   }
+  .template-list {
+    list-style: none; margin: 0; padding: 0;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+  .template-card {
+    display: flex; flex-direction: column; gap: 3px; width: 100%;
+    text-align: left; padding: 8px 10px; border-radius: 6px;
+    background: var(--app-surface-sunken); border: 1px solid var(--app-border);
+    color: var(--app-text-secondary); cursor: pointer;
+  }
+  .template-card:hover { background: var(--app-surface-hover); }
+  .template-card.selected { border-color: var(--app-focus-ring); background: var(--app-surface-hover); }
+  .template-card:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .template-label { font-size: 13px; font-weight: 600; color: var(--app-text); display: flex; align-items: center; gap: 6px; }
+  .template-tag { font-size: 10px; font-style: normal; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-faint); border: 1px solid var(--app-border); border-radius: 3px; padding: 0 4px; }
+  .template-desc { font-size: 11px; color: var(--app-text-faint); line-height: 1.35; }
+  .import-tpl {
+    align-self: flex-start; margin-top: 2px; background: transparent;
+    border: 1px solid var(--app-border); border-radius: 5px; cursor: pointer;
+    color: var(--app-text-muted); font-size: 12px; padding: 5px 10px;
+  }
+  .import-tpl:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
+  .import-tpl:disabled { opacity: 0.5; cursor: default; }
+
   .hint { margin: 0; font-size: 12px; color: var(--app-text-faint); }
   .hint code {
     font-family: ui-monospace, monospace;

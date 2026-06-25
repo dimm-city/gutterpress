@@ -148,9 +148,12 @@ export function resolveConfig(
     );
   }
 
-  // Resolve plugins from CLI overrides or manifest
+  // Resolve plugins from CLI overrides or manifest. A plugin entry with
+  // `enabled: false` (#30 per-project toggle) stays in the manifest but is
+  // skipped here so it is never loaded at build/preview time.
   const rawPlugins = c.plugins ?? m.plugins ?? [];
   const plugins = rawPlugins
+    .filter((p) => typeof p === "string" || p.enabled !== false)
     .map(normalizePluginConfig)
     .sort((a, b) => b.priority - a.priority); // Higher priority loads first
 

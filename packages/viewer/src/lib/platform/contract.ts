@@ -134,6 +134,96 @@ export interface ProblemEntry {
   source: string;
 }
 
+// ── Project templates + snippets (#29) ────────────────────────────────────────
+//
+// Mirror the lib's TemplateInfo / SnippetEntry — defined locally so the SPA
+// never value-imports the lib (§8 / ADR 0004).
+
+/** Author-friendly metadata for one project template (built-in or custom). */
+export interface TemplateInfo {
+  /** Stable id (a built-in ProjectTemplateId, or a slug for custom templates). */
+  id: string;
+  /** Display name shown in the wizard. */
+  label: string;
+  /** One-line description shown under the label. */
+  description: string;
+  /** `"builtin"` (embedded) or `"custom"` (user-saved / imported). */
+  kind: "builtin" | "custom";
+  /** For custom templates: absolute directory the files live in. */
+  dir?: string;
+}
+
+/** One snippet's metadata for the picker (body is read lazily). */
+export interface SnippetEntry {
+  /** Display name derived from the filename stem. */
+  name: string;
+  /** On-disk filename (stable id for read/delete), e.g. `callout.md`. */
+  fileName: string;
+  /** Distinct `{{variable}}` names parsed from the body, in first-seen order. */
+  variables: string[];
+}
+
+// ── Plugin manager (#30) ──────────────────────────────────────────────────────
+//
+// Mirror the lib's plugin-manager types — defined locally so the SPA never
+// value-imports the lib (§8 / ADR 0004).
+
+/** How a plugin entry is referenced in the manifest. */
+export type PluginKind = "local" | "npm";
+
+/** One configured plugin, as surfaced to the manager UI. */
+export interface ProjectPluginEntry {
+  /** Stable reference: the manifest `path` (local) or `name` (npm). */
+  ref: string;
+  /** `"local"` (file path) or `"npm"` (package name). */
+  kind: PluginKind;
+  /** Per-project enable flag (manifest `enabled: false` = disabled). */
+  enabled: boolean;
+}
+
+/** Result of load-testing one configured plugin. */
+export interface PluginValidationResult {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+  /** `true` when the plugin loaded OK (or is disabled and skipped). */
+  ok: boolean;
+  /** The loader's fail-fast error message when `ok` is `false`. */
+  error?: string;
+}
+
+/** A curated, informational plugin recommendation (NOT auto-installed). */
+export interface RecommendedPlugin {
+  name: string;
+  description: string;
+}
+
+// ── Theme manager (#32) ───────────────────────────────────────────────────────
+//
+// Mirror the lib's theme-manager types — defined locally so the SPA never
+// value-imports the lib (§8 / ADR 0004).
+
+/** Author-friendly metadata for one theme (built-in or project). */
+export interface ThemeInfo {
+  /** Stable id (a built-in id, or a slug for imported/applied themes). */
+  id: string;
+  /** Display name. */
+  name: string;
+  /** Theme author, when known. */
+  author?: string;
+  /** One-line description. */
+  description: string;
+  /** `"builtin"` (embedded) or `"project"` (copied into the project). */
+  kind: "builtin" | "project";
+  /** Optional preview image path relative to the theme folder. */
+  preview?: string | null;
+}
+
+/** Which theme to apply: a built-in id, or a project theme already on disk. */
+export type ApplyThemeTarget =
+  | { kind: "builtin"; id: string }
+  | { kind: "project"; id: string };
+
 // ── Host RPC payload shapes (mirror electron/preload.ts + types.d.ts) ─────────
 
 export interface UpdaterStatus {
@@ -986,6 +1076,100 @@ export interface HostServices {
    * init). The WebAdapter stub rejects (the wizard is desktop-only in 0.4.0).
    */
   createProject(options: CreateProjectOptions): Promise<CreateProjectResult>;
+
+  // ── Project templates + snippets (#29) ──────────────────────────────────────
+  // Thin pass-throughs to the shared lib (one impl for CLI + viewer). Templates
+  // are listed for the New Project wizard; "Save as template" captures the open
+  // project; snippets are reusable markdown fragments stored per-project. The
+  // WebAdapter stubs degrade: built-in templates list works (static metadata),
+  // custom-template + save-as + folder-import reject (desktop-only in v1), and
+  // snippets work via the FSA project root.
+
+  /** List the built-in starter templates (static metadata). */
+  listBuiltInTemplates(): Promise<TemplateInfo[]>;
+  /** List the user's saved/imported custom templates. WebAdapter: returns []. */
+  listCustomTemplates(): Promise<TemplateInfo[]>;
+  /**
+   * Save the open project as a reusable custom template under the host's
+   * templates dir. WebAdapter: rejects (desktop-only in v1).
+   */
+  saveProjectAsTemplate(projectDir: string, name: string): Promise<TemplateInfo>;
+  /**
+   * Pick a folder and import it as a custom template. Resolves null when the
+   * user cancels. WebAdapter: rejects (desktop-only in v1).
+   */
+  importTemplateFromFolder(): Promise<TemplateInfo | null>;
+
+  /** List the open project's snippets. WebAdapter: reads the FSA project root. */
+  listSnippets(projectDir: string): Promise<SnippetEntry[]>;
+  /** Read one snippet's raw body. WebAdapter: reads the FSA project root. */
+  readSnippet(projectDir: string, fileName: string): Promise<string>;
+  /** Save a snippet body under the project's `snippets/` folder. */
+  saveSnippet(projectDir: string, name: string, body: string): Promise<SnippetEntry>;
+  /** Delete a snippet by filename. */
+  deleteSnippet(projectDir: string, fileName: string): Promise<void>;
+
+  // ── Plugin manager (#30) ─────────────────────────────────────────────────────
+  // Thin pass-throughs to the shared lib's plugin-manager (one impl for CLI +
+  // viewer). Per CLAUDE.md §5 the host NEVER auto-installs npm packages — it
+  // only records the manifest entry; `validatePlugins` surfaces whether each
+  // configured plugin resolves/loads. Desktop-only in v1; the WebAdapter stubs
+  // reject (mutations) / return [] (lists) and `RECOMMENDED_PLUGINS` is static.
+
+  /** List the open project's configured plugins with their enable flags. */
+  listPlugins(projectDir: string): Promise<ProjectPluginEntry[]>;
+  /** Enable/disable a plugin by its ref (manifest path or npm name). */
+  setPluginEnabled(projectDir: string, ref: string, enabled: boolean): Promise<void>;
+  /** Add an npm plugin by NAME (records the entry only — no install, §5). */
+  addNpmPlugin(projectDir: string, packageName: string): Promise<ProjectPluginEntry>;
+  /**
+   * Pick a local plugin file/folder and import it into the project's
+   * `plugins/` dir, adding a manifest entry. Resolves null when the user
+   * cancels the picker. WebAdapter: rejects (desktop-only in v1).
+   */
+  importLocalPlugin(projectDir: string): Promise<ProjectPluginEntry | null>;
+  /**
+   * Load-test every configured plugin through the lib loader and report which
+   * load OK vs error (with the message). Reuses the fail-fast loader (§5).
+   */
+  validatePlugins(projectDir: string): Promise<PluginValidationResult[]>;
+  /** The static curated recommended-plugins list (informational, one-click add). */
+  listRecommendedPlugins(): Promise<RecommendedPlugin[]>;
+
+  // ── Theme manager (#32) ──────────────────────────────────────────────────────
+  // Thin pass-throughs to the shared lib's theme-manager (one impl for CLI +
+  // viewer). Apply COPIES the theme folder into the project's themes/ dir and
+  // wires the manifest styles; import accepts a local folder (native dialog) or
+  // a URL (raw CSS or theme folder), fetched with the lib's global fetch.
+  // `readThemeCss` feeds the renderer's sandboxed thumbnail preview (the
+  // renderer never touches fs). Desktop-only in v1; the WebAdapter lists the
+  // built-ins (static metadata) and rejects the host-fs operations.
+
+  /** List the built-in starter themes (static metadata + embedded css). */
+  listBuiltInThemes(): Promise<ThemeInfo[]>;
+  /** List the themes copied into the project's `themes/` folder. */
+  listProjectThemes(projectDir: string): Promise<ThemeInfo[]>;
+  /** The project's currently active theme, or null when none is applied. */
+  getActiveTheme(projectDir: string): Promise<ThemeInfo | null>;
+  /**
+   * Apply a theme: copy its folder into `themes/<id>/` and wire the manifest so
+   * its `theme.css` is the active stylesheet. Returns the applied theme.
+   */
+  applyTheme(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo>;
+  /**
+   * Pick a folder and import it as a project theme. Resolves null when the user
+   * cancels the picker. WebAdapter: rejects (desktop-only in v1).
+   */
+  importThemeFromFolder(projectDir: string): Promise<ThemeInfo | null>;
+  /** Import a theme from a URL (raw CSS or a theme folder). */
+  importThemeFromUrl(projectDir: string, url: string): Promise<ThemeInfo>;
+  /** Read a theme's CSS for the thumbnail preview (builtin or project). */
+  readThemeCss(
+    projectDir: string | null,
+    source: { kind: "builtin" | "project"; id: string },
+  ): Promise<string>;
+  /** Remove an imported/applied project theme folder (never built-ins). */
+  removeProjectTheme(projectDir: string, id: string): Promise<void>;
 
   // ── Local version history (#13) ───────────────────────────────────────────
   // All four run in the host (isomorphic-git via the lib — CLAUDE.md §7); the

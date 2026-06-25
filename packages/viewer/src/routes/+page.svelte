@@ -33,6 +33,9 @@
   import Icon from "$lib/components/Icon.svelte";
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
+  import SnippetPicker from "$lib/components/SnippetPicker.svelte";
+  import PluginManager from "$lib/components/PluginManager.svelte";
+  import ThemeManager from "$lib/components/ThemeManager.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
@@ -472,7 +475,73 @@
     focus: () => void;
     revealLine: (line: number) => void;
     runToolbarAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
+    getSelectionText: () => string;
+    insertSnippet: (text: string) => void;
   } | null>(null);
+
+  // Snippet picker (#29) — opened via the toolbar button or Ctrl/Cmd+Shift+S.
+  let snippetPickerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
+  let snippetPickerOpen = $state(false);
+
+  function openSnippetPicker() {
+    if (!isDesktop() || !currentDir) return;
+    snippetPickerRef?.show();
+  }
+
+  // Plugin manager (#30) — opened from the overflow menu (desktop + project).
+  let pluginManagerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
+  let pluginManagerOpen = $state(false);
+  let pluginManagerBtn = $state<HTMLButtonElement | undefined>(undefined);
+
+  function openPluginManager() {
+    if (!isDesktop() || !currentDir) return;
+    pluginManagerRef?.show(pluginManagerBtn);
+  }
+
+  // Theme manager (#32) — opened from the overflow menu (desktop + project).
+  let themeManagerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
+  let themeManagerOpen = $state(false);
+  let themeManagerBtn = $state<HTMLButtonElement | undefined>(undefined);
+
+  function openThemeManager() {
+    if (!isDesktop() || !currentDir) return;
+    themeManagerRef?.show(themeManagerBtn);
+  }
+
+  // "Save as template" (#29) — capture the open project as a reusable template.
+  let saveTemplateOpen = $state(false);
+  let saveTemplateName = $state("");
+  let saveTemplateBusy = $state(false);
+  let saveTemplateError = $state<string | null>(null);
+
+  function openSaveAsTemplate() {
+    if (!isDesktop() || !currentDir) return;
+    saveTemplateName = "";
+    saveTemplateError = null;
+    saveTemplateOpen = true;
+  }
+
+  async function confirmSaveAsTemplate() {
+    if (!currentDir) return;
+    if (!saveTemplateName.trim()) {
+      saveTemplateError = "Give your template a name.";
+      return;
+    }
+    saveTemplateBusy = true;
+    saveTemplateError = null;
+    try {
+      const tpl = await getPlatform().saveProjectAsTemplate(
+        currentDir,
+        saveTemplateName.trim(),
+      );
+      saveTemplateOpen = false;
+      toast?.success(`Saved “${tpl.label}” as a template.`);
+    } catch (e) {
+      saveTemplateError = e instanceof Error ? e.message : String(e);
+    } finally {
+      saveTemplateBusy = false;
+    }
+  }
   // True below the single-pane breakpoint. Assigned by the matchMedia
   // subscription further down; declared here so the derived below can read it.
   let isNarrow = $state(false);
@@ -1105,6 +1174,11 @@
       if ((e.ctrlKey || e.metaKey) && e.key === "\\") {
         e.preventDefault();
         toggleLeftPanel();
+      }
+      // Cmd/Ctrl+Shift+S opens the snippet picker (#29) when a project is open.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        openSnippetPicker();
       }
     }
     window.addEventListener("keydown", onGlobalKey);
@@ -2588,6 +2662,35 @@
               <Icon name="link" /> Advanced setup
             </button>
           {/if}
+          {#if isDesktop() && currentDir}
+            <!-- Save as template (#29): capture this project as a reusable starter -->
+            <button
+              class="menu-item"
+              onclick={(e) => { openSaveAsTemplate(); closeMenu(e); }}
+            >
+              <Icon name="puzzle" /> Save as template…
+            </button>
+          {/if}
+          {#if isDesktop() && currentDir}
+            <!-- Plugin manager (#30): discover/enable/import markdown-it plugins -->
+            <button
+              bind:this={pluginManagerBtn}
+              class="menu-item"
+              onclick={(e) => { openPluginManager(); closeMenu(e); }}
+            >
+              <Icon name="puzzle" /> Plugins…
+            </button>
+          {/if}
+          {#if isDesktop() && currentDir}
+            <!-- Theme manager (#32): browse/preview/apply/import themes -->
+            <button
+              bind:this={themeManagerBtn}
+              class="menu-item"
+              onclick={(e) => { openThemeManager(); closeMenu(e); }}
+            >
+              <Icon name="palette" /> Themes…
+            </button>
+          {/if}
           <button class="menu-item" onclick={(e) => { helpOpen = true; closeMenu(e); }}>
             <Icon name="circle-help" /> Help &amp; about
           </button>
@@ -2662,6 +2765,10 @@
             filePath={editorFilePath}
             projectDir={currentDir}
             onAction={(action, payload) => {
+              if (action === "snippet") {
+                openSnippetPicker();
+                return;
+              }
               editorRef?.runToolbarAction(action, payload);
             }}
           />
@@ -2838,6 +2945,58 @@
   onCreated={(projectDir) => startFolderPreview(projectDir, "Opening your new book…")}
   triggerEl={newProjectBtn}
 />
+<!-- Snippet picker (#29): insert a reusable markdown fragment at the cursor,
+     prompting for {{variable}} placeholders. Desktop-only (file IO host gate). -->
+<SnippetPicker
+  bind:this={snippetPickerRef}
+  bind:open={snippetPickerOpen}
+  projectDir={currentDir}
+  getSelectionText={() => editorRef?.getSelectionText() ?? ""}
+  onInsert={(text) => editorRef?.insertSnippet(text)}
+/>
+<!-- Plugin manager (#30): list/enable/disable, import (local/npm), recommended,
+     validate-by-load. Desktop-only (host file IO + module loading). -->
+<PluginManager
+  bind:this={pluginManagerRef}
+  bind:open={pluginManagerOpen}
+  projectDir={currentDir}
+/>
+<ThemeManager
+  bind:this={themeManagerRef}
+  bind:open={themeManagerOpen}
+  projectDir={currentDir}
+/>
+<!-- Save-as-template name prompt (#29). Minimal modal: name + confirm. -->
+{#if saveTemplateOpen}
+  <div class="save-tpl-backdrop" role="presentation" onclick={() => (saveTemplateOpen = false)}></div>
+  <div class="save-tpl-dialog" role="dialog" aria-modal="true" aria-labelledby="save-tpl-title">
+    <h2 id="save-tpl-title">Save as template</h2>
+    <p class="save-tpl-lead">
+      Save this project as a reusable starter you can pick when creating a new book.
+    </p>
+    <label class="save-tpl-field">
+      <span>Template name</span>
+      <!-- svelte-ignore a11y_autofocus -->
+      <input
+        type="text"
+        bind:value={saveTemplateName}
+        placeholder="My Template"
+        autocomplete="off"
+        autofocus
+        onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirmSaveAsTemplate(); } }}
+      />
+    </label>
+    {#if saveTemplateError}
+      <p class="save-tpl-error" role="alert">{saveTemplateError}</p>
+    {/if}
+    <div class="save-tpl-actions">
+      <button class="ghost" onclick={() => (saveTemplateOpen = false)} disabled={saveTemplateBusy}>Cancel</button>
+      <button class="primary" onclick={confirmSaveAsTemplate} disabled={saveTemplateBusy}>
+        {saveTemplateBusy ? "Saving…" : "Save template"}
+      </button>
+    </div>
+  </div>
+{/if}
 <!-- ConflictChoicesDialog (#transparent-sync §6.1): opened by the ambient
      SyncStatusPill when the auto-sync orchestrator surfaces a conflict.
      Plain-language "Keep my version / Use the online version / Keep both"
@@ -3653,4 +3812,31 @@
       touch-action: pinch-zoom;
     }
   }
+
+  /* Save-as-template prompt (#29) */
+  .save-tpl-backdrop { position: fixed; inset: 0; background: var(--app-backdrop); z-index: 1000; }
+  .save-tpl-dialog {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: min(420px, 94vw); background: var(--app-surface); color: var(--app-text-secondary);
+    border-radius: 8px; box-shadow: 0 14px 40px var(--app-shadow-lg); z-index: 1001;
+    padding: 18px; display: flex; flex-direction: column; gap: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  .save-tpl-dialog h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .save-tpl-lead { margin: 0; font-size: 13px; color: var(--app-text-muted); }
+  .save-tpl-field { display: flex; flex-direction: column; gap: 6px; }
+  .save-tpl-field > span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
+  .save-tpl-field input {
+    background: var(--app-surface-sunken); border: 1px solid var(--app-border);
+    color: var(--app-text-secondary); padding: 8px 10px; border-radius: 6px; font-size: 14px;
+  }
+  .save-tpl-field input:focus { outline: none; border-color: var(--app-focus-ring); }
+  .save-tpl-error { color: var(--app-error-text); font-size: 12px; margin: 0; }
+  .save-tpl-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .save-tpl-actions button { padding: 7px 16px; font-size: 13px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; }
+  .save-tpl-actions button:disabled { opacity: 0.45; cursor: default; }
+  .save-tpl-actions .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
+  .save-tpl-actions .primary:not(:disabled):hover { background: var(--app-accent-hover); }
+  .save-tpl-actions .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
+  .save-tpl-actions .ghost:not(:disabled):hover { background: var(--app-surface-hover); color: var(--app-text); }
 </style>

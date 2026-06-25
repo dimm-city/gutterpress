@@ -80,7 +80,8 @@ interface CreateProjectOptions {
   author?: string;
   parentDir: string;
   folderName?: string;
-  template?: "book";
+  template?: "book" | "ttrpg" | "zine" | "technical";
+  templateDir?: string;
   versionHistory?: "local-git" | "none";
 }
 interface CreateProjectResult {
@@ -90,6 +91,49 @@ interface CreateProjectResult {
   versionHistory: "local-git" | "none";
   versionHistoryError?: string;
 }
+
+// Project templates + snippets (#29).
+interface TemplateInfo {
+  id: string;
+  label: string;
+  description: string;
+  kind: "builtin" | "custom";
+  dir?: string;
+}
+interface SnippetEntry {
+  name: string;
+  fileName: string;
+  variables: string[];
+}
+type PluginKind = "local" | "npm";
+interface ProjectPluginEntry {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+}
+interface PluginValidationResult {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+  ok: boolean;
+  error?: string;
+}
+interface RecommendedPlugin {
+  name: string;
+  description: string;
+}
+// Theme manager (#32).
+interface ThemeInfo {
+  id: string;
+  name: string;
+  author?: string;
+  description: string;
+  kind: "builtin" | "project";
+  preview?: string | null;
+}
+type ApplyThemeTarget =
+  | { kind: "builtin"; id: string }
+  | { kind: "project"; id: string };
 
 interface RecentFolderEntry {
   path: string;
@@ -598,6 +642,64 @@ contextBridge.exposeInMainWorld("electron", {
   // New-project scaffold (#25)
   createProject: (options: CreateProjectOptions): Promise<CreateProjectResult> =>
     ipcRenderer.invoke("app:createProject", options),
+
+  // Project templates + snippets (#29)
+  listBuiltInTemplates: (): Promise<TemplateInfo[]> =>
+    ipcRenderer.invoke("tpl:listBuiltIn"),
+  listCustomTemplates: (): Promise<TemplateInfo[]> =>
+    ipcRenderer.invoke("tpl:listCustom"),
+  saveProjectAsTemplate: (projectDir: string, name: string): Promise<TemplateInfo> =>
+    ipcRenderer.invoke("tpl:saveAsTemplate", projectDir, name),
+  importTemplateFromFolder: (): Promise<TemplateInfo | null> =>
+    ipcRenderer.invoke("tpl:importFromFolder"),
+  listSnippets: (projectDir: string): Promise<SnippetEntry[]> =>
+    ipcRenderer.invoke("snip:list", projectDir),
+  readSnippet: (projectDir: string, fileName: string): Promise<string> =>
+    ipcRenderer.invoke("snip:read", projectDir, fileName),
+  saveSnippet: (projectDir: string, name: string, body: string): Promise<SnippetEntry> =>
+    ipcRenderer.invoke("snip:save", projectDir, name, body),
+  deleteSnippet: (projectDir: string, fileName: string): Promise<void> =>
+    ipcRenderer.invoke("snip:delete", projectDir, fileName),
+
+  // Plugin manager (#30) — manifest read/write/toggle + load-test, via the lib.
+  // No auto-install (§5): addNpmPlugin only records the entry.
+  listPlugins: (projectDir: string): Promise<ProjectPluginEntry[]> =>
+    ipcRenderer.invoke("plugin:list", projectDir),
+  setPluginEnabled: (
+    projectDir: string,
+    ref: string,
+    enabled: boolean,
+  ): Promise<void> => ipcRenderer.invoke("plugin:setEnabled", projectDir, ref, enabled),
+  addNpmPlugin: (projectDir: string, packageName: string): Promise<ProjectPluginEntry> =>
+    ipcRenderer.invoke("plugin:addNpm", projectDir, packageName),
+  importLocalPlugin: (projectDir: string): Promise<ProjectPluginEntry | null> =>
+    ipcRenderer.invoke("plugin:import", projectDir),
+  validatePlugins: (projectDir: string): Promise<PluginValidationResult[]> =>
+    ipcRenderer.invoke("plugin:validate", projectDir),
+  listRecommendedPlugins: (): Promise<RecommendedPlugin[]> =>
+    ipcRenderer.invoke("plugin:recommended"),
+
+  // Theme manager (#32) — list/apply/import themes via the lib. Apply copies the
+  // theme folder into the project + wires the manifest; import accepts a folder
+  // (native dialog) or URL; readThemeCss feeds the renderer's thumbnail preview.
+  listBuiltInThemes: (): Promise<ThemeInfo[]> =>
+    ipcRenderer.invoke("theme:listBuiltIn"),
+  listProjectThemes: (projectDir: string): Promise<ThemeInfo[]> =>
+    ipcRenderer.invoke("theme:listProject", projectDir),
+  getActiveTheme: (projectDir: string): Promise<ThemeInfo | null> =>
+    ipcRenderer.invoke("theme:getActive", projectDir),
+  applyTheme: (projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> =>
+    ipcRenderer.invoke("theme:apply", projectDir, target),
+  importThemeFromFolder: (projectDir: string): Promise<ThemeInfo | null> =>
+    ipcRenderer.invoke("theme:importFromFolder", projectDir),
+  importThemeFromUrl: (projectDir: string, url: string): Promise<ThemeInfo> =>
+    ipcRenderer.invoke("theme:importFromUrl", projectDir, url),
+  readThemeCss: (
+    projectDir: string | null,
+    source: { kind: "builtin" | "project"; id: string },
+  ): Promise<string> => ipcRenderer.invoke("theme:readCss", projectDir, source),
+  removeProjectTheme: (projectDir: string, id: string): Promise<void> =>
+    ipcRenderer.invoke("theme:remove", projectDir, id),
 
   // Local version history (#13) — isomorphic-git in main, via the lib
   enableVersionHistory: (projectDir: string): Promise<ProjectClassification> =>

@@ -63,6 +63,13 @@ import type {
   FolderChangedEvent,
   CreateProjectOptions,
   CreateProjectResult,
+  TemplateInfo,
+  SnippetEntry,
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -642,6 +649,97 @@ export class WebAdapter implements Platform {
   // New-project scaffold (#25) — desktop-only in 0.4.0.
   createProject(_options: CreateProjectOptions): Promise<CreateProjectResult> {
     return rejectNotImplemented("createProject");
+  }
+
+  // ── Project templates + snippets (#29) ──────────────────────────────────────
+  // Built-in template metadata is static (safe to surface in a future PWA
+  // wizard). Everything that touches the host filesystem — custom templates,
+  // save-as-template, folder import, and per-project snippets — is desktop-only
+  // in v1; the renderer guards these behind isDesktop(). Snippets over the FSA
+  // project root are a documented follow-up (see CLAUDE.md §8 / issue #29).
+  async listBuiltInTemplates(): Promise<TemplateInfo[]> {
+    return [
+      { id: "book", label: "Book", description: "A clean starting point for a novel, memoir, or any long-form book.", kind: "builtin" },
+      { id: "ttrpg", label: "TTRPG supplement", description: "Rules, stat blocks, and tables for a tabletop roleplaying supplement.", kind: "builtin" },
+      { id: "zine", label: "Zine", description: "A short, personal zine made to be printed, folded, and shared.", kind: "builtin" },
+      { id: "technical", label: "Technical document", description: "A manual or guide with steps, reference tables, and code examples.", kind: "builtin" },
+    ];
+  }
+  async listCustomTemplates(): Promise<TemplateInfo[]> {
+    return [];
+  }
+  saveProjectAsTemplate(_projectDir: string, _name: string): Promise<TemplateInfo> {
+    return rejectNotImplemented("saveProjectAsTemplate");
+  }
+  importTemplateFromFolder(): Promise<TemplateInfo | null> {
+    return rejectNotImplemented("importTemplateFromFolder");
+  }
+  listSnippets(_projectDir: string): Promise<SnippetEntry[]> {
+    return Promise.resolve([]);
+  }
+  readSnippet(_projectDir: string, _fileName: string): Promise<string> {
+    return rejectNotImplemented("readSnippet");
+  }
+  saveSnippet(_projectDir: string, _name: string, _body: string): Promise<SnippetEntry> {
+    return rejectNotImplemented("saveSnippet");
+  }
+  deleteSnippet(_projectDir: string, _fileName: string): Promise<void> {
+    return rejectNotImplemented("deleteSnippet");
+  }
+
+  // ── Plugin manager (#30) — desktop-only in v1; reject/empty on web ─────────
+  // The manifest read/write/toggle + load-test all run node-side in the host.
+  // The UI guards with isDesktop() so these stubs are only hit defensively.
+  listPlugins(_projectDir: string): Promise<ProjectPluginEntry[]> {
+    return Promise.resolve([]);
+  }
+  setPluginEnabled(_projectDir: string, _ref: string, _enabled: boolean): Promise<void> {
+    return rejectNotImplemented("setPluginEnabled");
+  }
+  addNpmPlugin(_projectDir: string, _packageName: string): Promise<ProjectPluginEntry> {
+    return rejectNotImplemented("addNpmPlugin");
+  }
+  importLocalPlugin(_projectDir: string): Promise<ProjectPluginEntry | null> {
+    return rejectNotImplemented("importLocalPlugin");
+  }
+  validatePlugins(_projectDir: string): Promise<PluginValidationResult[]> {
+    return Promise.resolve([]);
+  }
+  listRecommendedPlugins(): Promise<RecommendedPlugin[]> {
+    return Promise.resolve([]);
+  }
+
+  // ── Theme manager (#32) — desktop-only in v1; reject/empty on web ──────────
+  // Theme apply/import all touch the host filesystem (copy folders, write the
+  // manifest), so the UI guards with isDesktop(). Built-in metadata + reading a
+  // built-in theme's CSS COULD work on web later (embedded css), but in v1 the
+  // panel is desktop-only, so these stubs are only hit defensively.
+  listBuiltInThemes(): Promise<ThemeInfo[]> {
+    return Promise.resolve([]);
+  }
+  listProjectThemes(_projectDir: string): Promise<ThemeInfo[]> {
+    return Promise.resolve([]);
+  }
+  getActiveTheme(_projectDir: string): Promise<ThemeInfo | null> {
+    return Promise.resolve(null);
+  }
+  applyTheme(_projectDir: string, _target: ApplyThemeTarget): Promise<ThemeInfo> {
+    return rejectNotImplemented("applyTheme");
+  }
+  importThemeFromFolder(_projectDir: string): Promise<ThemeInfo | null> {
+    return rejectNotImplemented("importThemeFromFolder");
+  }
+  importThemeFromUrl(_projectDir: string, _url: string): Promise<ThemeInfo> {
+    return rejectNotImplemented("importThemeFromUrl");
+  }
+  readThemeCss(
+    _projectDir: string | null,
+    _source: { kind: "builtin" | "project"; id: string },
+  ): Promise<string> {
+    return rejectNotImplemented("readThemeCss");
+  }
+  removeProjectTheme(_projectDir: string, _id: string): Promise<void> {
+    return rejectNotImplemented("removeProjectTheme");
   }
 
   // ── Local version history (#13) — desktop-only; reject/empty on web ────────

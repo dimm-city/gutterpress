@@ -179,9 +179,55 @@ interface CreateProjectOptions {
   author?: string;
   parentDir: string;
   folderName?: string;
-  template?: "book";
+  template?: "book" | "ttrpg" | "zine" | "technical";
+  /** Absolute path to a custom template directory (#29); overrides `template`. */
+  templateDir?: string;
   versionHistory?: "local-git" | "none";
 }
+
+// Project templates + snippets (#29). Mirror the lib's TemplateInfo/SnippetEntry.
+interface TemplateInfo {
+  id: string;
+  label: string;
+  description: string;
+  kind: "builtin" | "custom";
+  dir?: string;
+}
+interface SnippetEntry {
+  name: string;
+  fileName: string;
+  variables: string[];
+}
+// Plugin manager (#30). Mirror the lib's plugin-manager types.
+type PluginKind = "local" | "npm";
+interface ProjectPluginEntry {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+}
+interface PluginValidationResult {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+  ok: boolean;
+  error?: string;
+}
+interface RecommendedPlugin {
+  name: string;
+  description: string;
+}
+// Theme manager (#32). Mirror the lib's theme-manager types.
+interface ThemeInfo {
+  id: string;
+  name: string;
+  author?: string;
+  description: string;
+  kind: "builtin" | "project";
+  preview?: string | null;
+}
+type ApplyThemeTarget =
+  | { kind: "builtin"; id: string }
+  | { kind: "project"; id: string };
 interface CreateProjectResult {
   projectDir: string;
   manifestPath: string;
@@ -358,6 +404,53 @@ interface LibModule {
   capabilitiesFor: (source: ProjectSource) => ProjectCapabilities;
   scaffoldProject: (options: CreateProjectOptions) => Promise<CreateProjectResult>;
   providerFor: (source: ProjectSource) => SourceProviderOps;
+  // Project templates + snippets (#29)
+  listBuiltInTemplates: () => Promise<TemplateInfo[]>;
+  listCustomTemplates: (templatesRoot: string) => Promise<TemplateInfo[]>;
+  saveProjectAsTemplate: (options: {
+    projectDir: string;
+    name: string;
+    templatesRoot: string;
+  }) => Promise<TemplateInfo>;
+  importTemplateFromFolder: (options: {
+    sourceDir: string;
+    name?: string;
+    templatesRoot: string;
+  }) => Promise<TemplateInfo>;
+  listSnippets: (projectDir: string) => Promise<SnippetEntry[]>;
+  readSnippet: (projectDir: string, fileName: string) => Promise<string>;
+  saveSnippet: (
+    projectDir: string,
+    name: string,
+    body: string,
+  ) => Promise<SnippetEntry>;
+  deleteSnippet: (projectDir: string, fileName: string) => Promise<void>;
+  // Plugin manager (#30)
+  listProjectPlugins: (projectDir: string) => Promise<ProjectPluginEntry[]>;
+  setPluginEnabled: (
+    projectDir: string,
+    ref: string,
+    enabled: boolean,
+  ) => Promise<void>;
+  addNpmPlugin: (projectDir: string, packageName: string) => Promise<ProjectPluginEntry>;
+  addLocalPlugin: (
+    projectDir: string,
+    sourcePath: string,
+  ) => Promise<ProjectPluginEntry & { path: string }>;
+  validateProjectPlugins: (projectDir: string) => Promise<PluginValidationResult[]>;
+  RECOMMENDED_PLUGINS: RecommendedPlugin[];
+  // Theme manager (#32)
+  listBuiltInThemes: () => Promise<ThemeInfo[]>;
+  listProjectThemes: (projectDir: string) => Promise<ThemeInfo[]>;
+  getActiveTheme: (projectDir: string) => Promise<ThemeInfo | null>;
+  applyTheme: (projectDir: string, target: ApplyThemeTarget) => Promise<ThemeInfo>;
+  importThemeFromFolder: (projectDir: string, sourceDir: string) => Promise<ThemeInfo>;
+  importThemeFromUrl: (projectDir: string, url: string) => Promise<ThemeInfo>;
+  readThemeCss: (
+    projectDir: string | null,
+    source: { kind: "builtin" | "project"; id: string },
+  ) => Promise<string>;
+  removeProjectTheme: (projectDir: string, id: string) => Promise<void>;
   // Automatic snapshots (RC1-3)
   AUTO_SNAPSHOT_MESSAGE: string;
   isNoChangesError: (e: unknown) => boolean;
@@ -2662,6 +2755,268 @@ ipcMain.handle(
     }
     const lib = await loadLib();
     return lib.scaffoldProject(options);
+  },
+);
+
+// ── Project templates + snippets (#29) ───────────────────────────────────────
+// Thin pass-throughs to the shared lib (one implementation for CLI + viewer).
+// Custom templates live under `userData/templates/`; snippets live inside the
+// open project's `snippets/` folder (so they travel with the project).
+function templatesRoot(): string {
+  return path.join(app.getPath("userData"), "templates");
+}
+
+ipcMain.handle("tpl:listBuiltIn", async (): Promise<TemplateInfo[]> => {
+  const lib = await loadLib();
+  return lib.listBuiltInTemplates();
+});
+
+ipcMain.handle("tpl:listCustom", async (): Promise<TemplateInfo[]> => {
+  const lib = await loadLib();
+  return lib.listCustomTemplates(templatesRoot());
+});
+
+ipcMain.handle(
+  "tpl:saveAsTemplate",
+  async (_e, projectDir: string, name: string): Promise<TemplateInfo> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("tpl:saveAsTemplate requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.saveProjectAsTemplate({ projectDir, name, templatesRoot: templatesRoot() });
+  },
+);
+
+ipcMain.handle("tpl:importFromFolder", async (): Promise<TemplateInfo | null> => {
+  if (!mainWindow) return null;
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: "Choose a template folder",
+    properties: ["openDirectory"],
+  });
+  if (res.canceled || res.filePaths.length === 0) return null;
+  const lib = await loadLib();
+  return lib.importTemplateFromFolder({
+    sourceDir: res.filePaths[0]!,
+    templatesRoot: templatesRoot(),
+  });
+});
+
+ipcMain.handle(
+  "snip:list",
+  async (_e, projectDir: string): Promise<SnippetEntry[]> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("snip:list requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.listSnippets(projectDir);
+  },
+);
+
+ipcMain.handle(
+  "snip:read",
+  async (_e, projectDir: string, fileName: string): Promise<string> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("snip:read requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.readSnippet(projectDir, fileName);
+  },
+);
+
+ipcMain.handle(
+  "snip:save",
+  async (_e, projectDir: string, name: string, body: string): Promise<SnippetEntry> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("snip:save requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.saveSnippet(projectDir, name, body);
+  },
+);
+
+ipcMain.handle(
+  "snip:delete",
+  async (_e, projectDir: string, fileName: string): Promise<void> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("snip:delete requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.deleteSnippet(projectDir, fileName);
+  },
+);
+
+// ── Plugin manager (#30) ──────────────────────────────────────────────────────
+// Thin pass-throughs to the lib's plugin-manager. Per CLAUDE.md §5 the host
+// NEVER auto-installs npm packages — `addNpmPlugin` only records a manifest
+// entry; `plugin:validate` load-tests each plugin via the lib's fail-fast
+// loader and reports which resolve vs need install.
+
+ipcMain.handle(
+  "plugin:list",
+  async (_e, projectDir: string): Promise<ProjectPluginEntry[]> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("plugin:list requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.listProjectPlugins(projectDir);
+  },
+);
+
+ipcMain.handle(
+  "plugin:setEnabled",
+  async (_e, projectDir: string, ref: string, enabled: boolean): Promise<void> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("plugin:setEnabled requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.setPluginEnabled(projectDir, ref, Boolean(enabled));
+  },
+);
+
+ipcMain.handle(
+  "plugin:addNpm",
+  async (_e, projectDir: string, packageName: string): Promise<ProjectPluginEntry> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("plugin:addNpm requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.addNpmPlugin(projectDir, packageName);
+  },
+);
+
+ipcMain.handle(
+  "plugin:import",
+  async (_e, projectDir: string): Promise<ProjectPluginEntry | null> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("plugin:import requires an absolute projectDir");
+    }
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: "Choose a plugin file or folder",
+      properties: ["openFile", "openDirectory"],
+      filters: [{ name: "Plugin", extensions: ["js", "mjs", "cjs", "ts"] }],
+    });
+    if (res.canceled || res.filePaths.length === 0) return null;
+    const lib = await loadLib();
+    return lib.addLocalPlugin(projectDir, res.filePaths[0]!);
+  },
+);
+
+ipcMain.handle(
+  "plugin:validate",
+  async (_e, projectDir: string): Promise<PluginValidationResult[]> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("plugin:validate requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.validateProjectPlugins(projectDir);
+  },
+);
+
+ipcMain.handle(
+  "plugin:recommended",
+  async (): Promise<RecommendedPlugin[]> => {
+    const lib = await loadLib();
+    return lib.RECOMMENDED_PLUGINS;
+  },
+);
+
+// ── Theme manager (#32) ───────────────────────────────────────────────────────
+// Thin pass-throughs to the lib's theme-manager (one impl for CLI + viewer).
+// Built-in themes are embedded; apply COPIES the theme folder into the project's
+// themes/ dir and wires the manifest styles list. Import accepts a local folder
+// (native dialog) or a URL (raw CSS or a theme folder), fetched with the lib's
+// global `fetch`. readThemeCss feeds the renderer's sandboxed thumbnail preview.
+
+ipcMain.handle("theme:listBuiltIn", async (): Promise<ThemeInfo[]> => {
+  const lib = await loadLib();
+  return lib.listBuiltInThemes();
+});
+
+ipcMain.handle(
+  "theme:listProject",
+  async (_e, projectDir: string): Promise<ThemeInfo[]> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("theme:listProject requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.listProjectThemes(projectDir);
+  },
+);
+
+ipcMain.handle(
+  "theme:getActive",
+  async (_e, projectDir: string): Promise<ThemeInfo | null> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("theme:getActive requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.getActiveTheme(projectDir);
+  },
+);
+
+ipcMain.handle(
+  "theme:apply",
+  async (_e, projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("theme:apply requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.applyTheme(projectDir, target);
+  },
+);
+
+ipcMain.handle(
+  "theme:importFromFolder",
+  async (_e, projectDir: string): Promise<ThemeInfo | null> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("theme:importFromFolder requires an absolute projectDir");
+    }
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: "Choose a theme folder",
+      properties: ["openDirectory"],
+    });
+    if (res.canceled || res.filePaths.length === 0) return null;
+    const lib = await loadLib();
+    return lib.importThemeFromFolder(projectDir, res.filePaths[0]!);
+  },
+);
+
+ipcMain.handle(
+  "theme:importFromUrl",
+  async (_e, projectDir: string, url: string): Promise<ThemeInfo> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("theme:importFromUrl requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.importThemeFromUrl(projectDir, url);
+  },
+);
+
+ipcMain.handle(
+  "theme:readCss",
+  async (
+    _e,
+    projectDir: string | null,
+    source: { kind: "builtin" | "project"; id: string },
+  ): Promise<string> => {
+    if (projectDir != null && (typeof projectDir !== "string" || !path.isAbsolute(projectDir))) {
+      throw new Error("theme:readCss requires an absolute projectDir or null");
+    }
+    const lib = await loadLib();
+    return lib.readThemeCss(projectDir, source);
+  },
+);
+
+ipcMain.handle(
+  "theme:remove",
+  async (_e, projectDir: string, id: string): Promise<void> => {
+    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
+      throw new Error("theme:remove requires an absolute projectDir");
+    }
+    const lib = await loadLib();
+    return lib.removeProjectTheme(projectDir, id);
   },
 );
 

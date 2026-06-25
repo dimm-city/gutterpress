@@ -39,6 +39,13 @@ import type {
   FolderChangedEvent,
   CreateProjectOptions,
   CreateProjectResult,
+  TemplateInfo,
+  SnippetEntry,
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -295,6 +302,81 @@ export class ElectronAdapter implements Platform {
 
   createProject(options: CreateProjectOptions): Promise<CreateProjectResult> {
     return bridge().createProject(options);
+  }
+
+  // ── Project templates + snippets (#29) — delegate 1:1 to the bridge ─────────
+  listBuiltInTemplates(): Promise<TemplateInfo[]> {
+    return bridge().listBuiltInTemplates();
+  }
+  listCustomTemplates(): Promise<TemplateInfo[]> {
+    return bridge().listCustomTemplates();
+  }
+  saveProjectAsTemplate(projectDir: string, name: string): Promise<TemplateInfo> {
+    return bridge().saveProjectAsTemplate(projectDir, name);
+  }
+  importTemplateFromFolder(): Promise<TemplateInfo | null> {
+    return bridge().importTemplateFromFolder();
+  }
+  listSnippets(projectDir: string): Promise<SnippetEntry[]> {
+    return bridge().listSnippets(projectDir);
+  }
+  readSnippet(projectDir: string, fileName: string): Promise<string> {
+    return bridge().readSnippet(projectDir, fileName);
+  }
+  saveSnippet(projectDir: string, name: string, body: string): Promise<SnippetEntry> {
+    return bridge().saveSnippet(projectDir, name, body);
+  }
+  deleteSnippet(projectDir: string, fileName: string): Promise<void> {
+    return bridge().deleteSnippet(projectDir, fileName);
+  }
+
+  // ── Plugin manager (#30) — delegate 1:1 to the bridge ──────────────────────
+  listPlugins(projectDir: string): Promise<ProjectPluginEntry[]> {
+    return bridge().listPlugins(projectDir);
+  }
+  setPluginEnabled(projectDir: string, ref: string, enabled: boolean): Promise<void> {
+    return bridge().setPluginEnabled(projectDir, ref, enabled);
+  }
+  addNpmPlugin(projectDir: string, packageName: string): Promise<ProjectPluginEntry> {
+    return bridge().addNpmPlugin(projectDir, packageName);
+  }
+  importLocalPlugin(projectDir: string): Promise<ProjectPluginEntry | null> {
+    return bridge().importLocalPlugin(projectDir);
+  }
+  validatePlugins(projectDir: string): Promise<PluginValidationResult[]> {
+    return bridge().validatePlugins(projectDir);
+  }
+  listRecommendedPlugins(): Promise<RecommendedPlugin[]> {
+    return bridge().listRecommendedPlugins();
+  }
+
+  // ── Theme manager (#32) — delegate 1:1 to the bridge ───────────────────────
+  listBuiltInThemes(): Promise<ThemeInfo[]> {
+    return bridge().listBuiltInThemes();
+  }
+  listProjectThemes(projectDir: string): Promise<ThemeInfo[]> {
+    return bridge().listProjectThemes(projectDir);
+  }
+  getActiveTheme(projectDir: string): Promise<ThemeInfo | null> {
+    return bridge().getActiveTheme(projectDir);
+  }
+  applyTheme(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> {
+    return bridge().applyTheme(projectDir, target);
+  }
+  importThemeFromFolder(projectDir: string): Promise<ThemeInfo | null> {
+    return bridge().importThemeFromFolder(projectDir);
+  }
+  importThemeFromUrl(projectDir: string, url: string): Promise<ThemeInfo> {
+    return bridge().importThemeFromUrl(projectDir, url);
+  }
+  readThemeCss(
+    projectDir: string | null,
+    source: { kind: "builtin" | "project"; id: string },
+  ): Promise<string> {
+    return bridge().readThemeCss(projectDir, source);
+  }
+  removeProjectTheme(projectDir: string, id: string): Promise<void> {
+    return bridge().removeProjectTheme(projectDir, id);
   }
 
   // ── Local version history (#13) — delegate 1:1 to the bridge ───────────────

@@ -129,6 +129,52 @@ interface ProjectClassification {
   capabilities: ProjectCapabilities;
 }
 
+// Project templates + snippets (#29). Mirror the lib's TemplateInfo/SnippetEntry.
+interface TemplateInfo {
+  id: string;
+  label: string;
+  description: string;
+  kind: "builtin" | "custom";
+  dir?: string;
+}
+interface SnippetEntry {
+  name: string;
+  fileName: string;
+  variables: string[];
+}
+
+// Plugin manager (#30). Mirrors the lib's plugin-manager types.
+type PluginKind = "local" | "npm";
+interface ProjectPluginEntry {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+}
+interface PluginValidationResult {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+  ok: boolean;
+  error?: string;
+}
+interface RecommendedPlugin {
+  name: string;
+  description: string;
+}
+
+// Theme manager (#32). Mirrors the lib's theme-manager types.
+interface ThemeInfo {
+  id: string;
+  name: string;
+  author?: string;
+  description: string;
+  kind: "builtin" | "project";
+  preview?: string | null;
+}
+type ApplyThemeTarget =
+  | { kind: "builtin"; id: string }
+  | { kind: "project"; id: string };
+
 // Local version history (#13). Mirrors the lib's source-provider types.
 interface SnapshotEntry {
   id: string;
@@ -469,7 +515,8 @@ interface Window {
       author?: string;
       parentDir: string;
       folderName?: string;
-      template?: "book";
+      template?: "book" | "ttrpg" | "zine" | "technical";
+      templateDir?: string;
       versionHistory?: "local-git" | "none";
     }): Promise<{
       projectDir: string;
@@ -478,6 +525,34 @@ interface Window {
       versionHistory: "local-git" | "none";
       versionHistoryError?: string;
     }>;
+    // Project templates + snippets (#29)
+    listBuiltInTemplates(): Promise<TemplateInfo[]>;
+    listCustomTemplates(): Promise<TemplateInfo[]>;
+    saveProjectAsTemplate(projectDir: string, name: string): Promise<TemplateInfo>;
+    importTemplateFromFolder(): Promise<TemplateInfo | null>;
+    listSnippets(projectDir: string): Promise<SnippetEntry[]>;
+    readSnippet(projectDir: string, fileName: string): Promise<string>;
+    saveSnippet(projectDir: string, name: string, body: string): Promise<SnippetEntry>;
+    deleteSnippet(projectDir: string, fileName: string): Promise<void>;
+    // Plugin manager (#30)
+    listPlugins(projectDir: string): Promise<ProjectPluginEntry[]>;
+    setPluginEnabled(projectDir: string, ref: string, enabled: boolean): Promise<void>;
+    addNpmPlugin(projectDir: string, packageName: string): Promise<ProjectPluginEntry>;
+    importLocalPlugin(projectDir: string): Promise<ProjectPluginEntry | null>;
+    validatePlugins(projectDir: string): Promise<PluginValidationResult[]>;
+    listRecommendedPlugins(): Promise<RecommendedPlugin[]>;
+    // Theme manager (#32)
+    listBuiltInThemes(): Promise<ThemeInfo[]>;
+    listProjectThemes(projectDir: string): Promise<ThemeInfo[]>;
+    getActiveTheme(projectDir: string): Promise<ThemeInfo | null>;
+    applyTheme(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo>;
+    importThemeFromFolder(projectDir: string): Promise<ThemeInfo | null>;
+    importThemeFromUrl(projectDir: string, url: string): Promise<ThemeInfo>;
+    readThemeCss(
+      projectDir: string | null,
+      source: { kind: "builtin" | "project"; id: string },
+    ): Promise<string>;
+    removeProjectTheme(projectDir: string, id: string): Promise<void>;
     // Local version history (#13)
     enableVersionHistory(projectDir: string): Promise<ProjectClassification>;
     saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
