@@ -3404,8 +3404,8 @@ ipcMain.handle(
 // Health gate + watchdog (Phase 6): after a promote (either "apply now" or
 // "apply on next launch"), we arm a 10s watchdog. The renderer calls
 // updater:markReady once it boots; on time we record the version healthy and
-// prune old bundles. If the deadline elapses with no markReady, we rollback,
-// refresh the web root, and reload the window to recover from a bad bundle.
+// prune old bundles. If the deadline elapses with no markReady, we rollback
+// and relaunch the app so the new process picks up the restored bundle.
 // ──────────────────────────────────────────────────────────────────────────
 
 // Generous enough that a healthy static SPA (sub-second boot) never trips it,
@@ -3455,9 +3455,12 @@ function armHealthWatchdog(version: string) {
         `[updater] health watchdog expired for ${version}; rolling back`
       );
       await rollback("renderer did not mark ready");
-      await refreshWebRoot();
       sendUpdaterEvent({ type: "rolledback", version });
-      mainWindow?.webContents.reload();
+      // With adapter-node the SvelteKit handler is a Node module loaded at
+      // startup — a window reload cannot pick up the restored bundle. Relaunch
+      // the entire process so the new instance mounts the rolled-back bundle.
+      app.relaunch();
+      app.exit(0);
     })();
   }, HEALTH_WATCHDOG_MS);
   // Don't keep the event loop alive on the watchdog alone.
@@ -3525,9 +3528,13 @@ ipcMain.handle("updater:applyNow", async () => {
   if (!updaterEnabled()) return { applied: false };
   const { promoted, version } = await promoteStaged();
   if (!promoted || !version) return { applied: false };
-  await refreshWebRoot();
-  armHealthWatchdog(version);
-  mainWindow?.webContents.reload();
+  // With adapter-node the SvelteKit handler is a Node module loaded at
+  // startup — a window reload cannot pick up new server routes. Relaunch
+  // the entire process so the new instance mounts the promoted bundle.
+  // The new process will arm its own health watchdog on startup.
+  app.relaunch();
+  app.exit(0);
+  // app.exit() is synchronous; this return is never reached but satisfies TS.
   return { applied: true, version };
 });
 
