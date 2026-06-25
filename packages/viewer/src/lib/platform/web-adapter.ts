@@ -53,10 +53,7 @@ import type {
   NativeThemeState,
   DiscoveredProject,
   ProjectClassification,
-  PrintSafeWarning,
-  ProblemEntry,
-  MediaImageEntry,
-  MediaImageDetails,
+  // PrintSafeWarning, ProblemEntry, MediaImageEntry, MediaImageDetails — removed (Phase 2C)
   FileStat,
   FileWriteResult,
   RecoveryEntry,
@@ -427,17 +424,7 @@ export class WebAdapter implements Platform {
     return rejectNotImplemented("pickImageFiles");
   }
 
-  listProjectImages(_projectDir: string): Promise<MediaImageEntry[]> {
-    return rejectNotImplemented("listProjectImages");
-  }
-
-  imageThumbnail(_filePath: string): Promise<string | null> {
-    return Promise.resolve(null);
-  }
-
-  inspectImage(_filePath: string): Promise<MediaImageDetails | null> {
-    return Promise.resolve(null);
-  }
+  // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
 
   openExternal(_url: string): Promise<void> {
     return rejectNotImplemented("openExternal");
@@ -453,9 +440,7 @@ export class WebAdapter implements Platform {
     return Promise.resolve(null);
   }
 
-  getStatus(): Promise<{ ok: boolean; runtime: string; name: string }> {
-    return rejectNotImplemented("getStatus");
-  }
+  // getStatus migrated to server route (Phase 2C)
 
   // #33 Phase 3: the last-opened folder key (its handle + recents row are
   // persisted; the SPA reopens it via reopenFolder on a user gesture).
@@ -480,17 +465,7 @@ export class WebAdapter implements Platform {
     return listProjectFilesFromRoot(root);
   }
 
-  // Lint is non-essential chrome — degrade to "no warnings" rather than reject,
-  // so a future PWA editor still renders without a gutter until lint lands.
-  checkCss(_css: string, _from?: string): Promise<PrintSafeWarning[]> {
-    return Promise.resolve([]);
-  }
-
-  // Same degrade-to-clean policy as checkCss: the Problems panel simply shows
-  // "No problems found" on the web until a PWA lint backend exists.
-  lintProject(_projectDir: string): Promise<ProblemEntry[]> {
-    return Promise.resolve([]);
-  }
+  // checkCss, lintProject migrated to server routes (Phase 2C)
 
   // ── Viewer prefs (#33 Phase 3) — a single IndexedDB blob, merge-patched ──────
   async getViewerPrefs(): Promise<ViewerPrefs> {
@@ -1085,9 +1060,7 @@ export class WebAdapter implements Platform {
     };
   }
 
-  doctor(): Promise<unknown> {
-    return rejectNotImplemented("doctor");
-  }
+  // doctor migrated to server route (Phase 2C)
 
   onBuildProgress(_cb: (data: ExportProgressEvent) => void): () => void {
     return () => {};

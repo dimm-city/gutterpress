@@ -22,10 +22,7 @@ import type {
   UpdaterApi,
   NativeThemeState,
   ProjectClassification,
-  PrintSafeWarning,
-  ProblemEntry,
-  MediaImageEntry,
-  MediaImageDetails,
+  // PrintSafeWarning, ProblemEntry, MediaImageEntry, MediaImageDetails — removed (Phase 2C)
   FileStat,
   FileWriteResult,
   RecoveryEntry,
@@ -147,37 +144,11 @@ export class ElectronAdapter implements Platform {
   }
 
   // savePdf, pickImageFile, copyFile, pickImageFiles migrated to server routes
-
-  // Media panel (#47) — image listing / thumbnails / inspection
-  listProjectImages(projectDir: string): Promise<MediaImageEntry[]> {
-    return bridge().listProjectImages(projectDir);
-  }
-
-  imageThumbnail(filePath: string): Promise<string | null> {
-    return bridge().imageThumbnail(filePath);
-  }
-
-  inspectImage(filePath: string): Promise<MediaImageDetails | null> {
-    return bridge().inspectImage(filePath);
-  }
-
+  // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
   // openExternal, showInFolder, readLogFile migrated to server routes
-
-  getStatus(): Promise<{ ok: boolean; runtime: string; name: string }> {
-    return bridge().getStatus();
-  }
-
+  // getStatus, checkCss, lintProject migrated to server routes (Phase 2C)
   // getLastProject, splashStatus, rendererReady — migrated to server routes (Phase 2B)
-
   // listProjectFiles migrated to server route
-
-  checkCss(css: string, from?: string): Promise<PrintSafeWarning[]> {
-    return bridge().checkCss(css, from);
-  }
-
-  lintProject(projectDir: string): Promise<ProblemEntry[]> {
-    return bridge().lintProject(projectDir);
-  }
 
   // getViewerPrefs, setViewerPrefs, getViewerProjectState, setViewerProjectState,
   // getSettings, setSettings, getNativeTheme — migrated to server routes (Phase 2B)
@@ -416,9 +387,7 @@ export class ElectronAdapter implements Platform {
     return bridge().build({ ...rest, input: input.key });
   }
 
-  doctor(): Promise<unknown> {
-    return bridge().doctor();
-  }
+  // doctor migrated to server route (Phase 2C)
 
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void {
     return bridge().onBuildProgress(cb);

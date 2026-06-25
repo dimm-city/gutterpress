@@ -508,29 +508,8 @@ contextBridge.exposeInMainWorld("electron", {
   openDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke("dialog:openDirectory"),
 
-  // ── Media panel (#47): project image listing / thumbnails / inspection ──
-  listProjectImages: (
-    projectDir: string,
-  ): Promise<
-    Array<{ name: string; relPath: string; path: string; size: number; mtimeMs: number }>
-  > => ipcRenderer.invoke("media:listImages", projectDir),
-  imageThumbnail: (filePath: string): Promise<string | null> =>
-    ipcRenderer.invoke("media:thumbnail", filePath),
-  inspectImage: (
-    filePath: string,
-  ): Promise<{
-    fileSize: number;
-    info: {
-      width: number;
-      height: number;
-      xDpi: number;
-      yDpi: number;
-      hasAlpha: boolean;
-      colorSpace: "srgb" | "gray" | "cmyk" | "";
-    } | null;
-  } | null> => ipcRenderer.invoke("media:inspect", filePath),
-
   // openExternal, showInFolder, readLogFile migrated to server routes
+  // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
 
   // Filesystem primitives (PlatformAdapter, #41 — editor seam for #38/#39)
   readFile: (filePath: string): Promise<string> =>
@@ -542,27 +521,7 @@ contextBridge.exposeInMainWorld("electron", {
   ): Promise<Array<{ name: string; path: string; isDir: boolean }>> =>
     ipcRenderer.invoke("fs:listDir", dirPath),
   // listProjectFiles migrated to server route
-  // CSS print-safety lint (#39) — runs in main (postcss can't bundle into the SPA)
-  checkCss: (
-    css: string,
-    from?: string,
-  ): Promise<
-    Array<{ rule: string; severity: "error" | "warning"; message: string; line: number; column: number }>
-  > => ipcRenderer.invoke("lint:checkCss", css, from),
-  // Project-wide source lint for the Problems panel (#28) — runs in main
-  lintProject: (
-    projectDir: string,
-  ): Promise<
-    Array<{
-      filePath?: string;
-      file?: string;
-      line?: number;
-      column?: number;
-      severity: "error" | "warning" | "info";
-      message: string;
-      source: string;
-    }>
-  > => ipcRenderer.invoke("lint:project", projectDir),
+  // checkCss, lintProject migrated to server routes (Phase 2C)
   // File metadata (PlatformAdapter.statFile, #44 — external-edit detection)
   statFile: (
     filePath: string,
@@ -582,9 +541,7 @@ contextBridge.exposeInMainWorld("electron", {
     };
   },
 
-  // Lib API (replaces /api/* HTTP routes)
-  getStatus: (): Promise<{ ok: boolean; runtime: string; name: string }> =>
-    ipcRenderer.invoke("api:status"),
+  // getStatus migrated to server route (Phase 2C)
   // app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
   // app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
   // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
@@ -779,7 +736,7 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("api:cancelExport", exportId),
   build: (args: BuildArgs): Promise<BuildResult> =>
     ipcRenderer.invoke("api:build", args),
-  doctor: (): Promise<unknown> => ipcRenderer.invoke("api:doctor"),
+  // doctor migrated to server route (Phase 2C)
 
   // Live PDF-build progress (main → renderer). Returns an unsubscribe fn.
   onBuildProgress: (

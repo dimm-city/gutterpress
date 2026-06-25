@@ -54,14 +54,13 @@
   let loadSeq = 0;
 
   async function loadThumbnails(list: MediaImageEntry[], seq: number): Promise<void> {
-    const platform = getPlatform();
     const queue = list.slice(0, THUMB_LIMIT);
     let next = 0;
     const worker = async () => {
       while (next < queue.length && seq === loadSeq) {
         const entry = queue[next++];
         try {
-          const url = await platform.imageThumbnail(entry.path);
+          const url = await api.media.thumbnail(entry.path);
           if (seq !== loadSeq) return;
           thumbs[entry.relPath] = url;
         } catch {
@@ -86,7 +85,7 @@
     loading = true;
     error = null;
     try {
-      const list = await getPlatform().listProjectImages(dir);
+      const list = await api.media.listImages(dir);
       if (seq !== loadSeq) return;
       images = list;
       thumbs = {}; // bounded: rebuilt per load, never accumulates across loads
@@ -139,7 +138,7 @@
     details = null;
     detailsLoading = true;
     try {
-      details = await getPlatform().inspectImage(entry.path);
+      details = await api.media.inspect(entry.path);
     } catch {
       details = null;
     } finally {

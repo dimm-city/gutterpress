@@ -1014,8 +1014,7 @@
     if (!isDesktop() || !currentDir || sourceMode !== "folder") return;
     const dir = currentDir;
     problemsLoading = true;
-    getPlatform()
-      .lintProject(dir)
+    api.lint.project(dir)
       .then((entries) => {
         // The project may have changed while the lint was in flight.
         if (currentDir === dir) problems = entries;
@@ -1081,7 +1080,7 @@
 
   $effect(() => {
     if (diagnosticsTools) return;
-    getPlatform().doctor()
+    api.doctor()
       .then((data) => {
         diagnosticsTools = (data as { tools?: DiagnosticsTool[] }).tools ?? [];
       })

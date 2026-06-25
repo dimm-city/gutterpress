@@ -971,59 +971,16 @@ export interface HostServices {
   capabilities(): PlatformCapabilities;
 
   // savePdf, pickImageFile, copyFile, pickImageFiles migrated to server routes
-  // ── Media panel (#47) ──────────────────────────────────────────────────────
-
-  /**
-   * List every image file under the project folder (#47). Recursive but
-   * bounded host-side (skips hidden/build dirs, depth ≤ 6, ≤ 2000 entries).
-   * The WebAdapter stub rejects (the panel guards with isDesktop()).
-   */
-  listProjectImages(projectDir: string): Promise<MediaImageEntry[]>;
-
-  /**
-   * Small (≤192px) thumbnail data URL for an image, generated and LRU-cached
-   * host-side so the renderer never loads multi-MB originals into the grid.
-   * Returns null when the format can't be thumbnailed (renderer shows a
-   * placeholder icon). The WebAdapter stub resolves null.
-   */
-  imageThumbnail(filePath: string): Promise<string | null>;
-
-  /**
-   * Inspect an image for the detail view (#47): file size plus the lib's
-   * dependency-free header parse (dimensions/DPI/alpha/color space for
-   * PNG/JPEG/TIFF; `info` is null for other formats). Runs in the host — the
-   * parser is Node fs code. No external tools involved. The WebAdapter stub
-   * resolves null.
-   */
-  inspectImage(filePath: string): Promise<MediaImageDetails | null>;
-
+  // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
   // openExternal, showInFolder migrated to server routes
 
   // Lib API / app state
-  getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
+  // getStatus migrated to server route (Phase 2C)
   // app:getLastProject, app:splashStatus, app:rendererReady — migrated to
   // server routes (Phase 2B).
 
   // listProjectFiles migrated to server route (src/routes/api/fs/list-project-files)
-
-  /**
-   * Run the CSS print-safety lint (#39) and return warnings for the editor
-   * gutter. Host-side because it is postcss-based and postcss's `node:url`
-   * usage cannot bundle into the browser SPA — so the UI calls this instead of
-   * importing `checkCss` directly. Same check `print-md validate` uses, so the
-   * gutter and CLI never disagree. The WebAdapter stub returns `[]`.
-   */
-  checkCss(css: string, from?: string): Promise<PrintSafeWarning[]>;
-
-  /**
-   * Run the project's pre-build source lint checks (#28) — broken local
-   * references, print-safety CSS, markdown/HTML style, accessibility — and
-   * return one entry per finding for the Problems panel. Host-side because the
-   * check runner is Node code (fs/glob/postcss). All source checks run
-   * in-process in the packaged app (no external CLI tools). The WebAdapter
-   * stub returns `[]` (lint is non-essential chrome, same as checkCss).
-   */
-  lintProject(projectDir: string): Promise<ProblemEntry[]>;
+  // checkCss, lintProject migrated to server routes (Phase 2C)
 
   // app:getViewerPrefs, app:setViewerPrefs, app:getViewerProjectState,
   // app:setViewerProjectState, app:getSettings, app:setSettings,
@@ -1307,7 +1264,7 @@ export interface HostServices {
   stopPreview(): Promise<{ stopped: boolean }>;
   cancelExport(exportId: string): Promise<{ canceled: boolean }>;
   build(args: BuildArgs): Promise<BuildResult>;
-  doctor(): Promise<unknown>;
+  // doctor migrated to server route (Phase 2C)
 
   // Event subscriptions (return an unsubscribe fn)
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;

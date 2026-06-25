@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import Icon from "$lib/components/Icon.svelte";
 
@@ -81,7 +81,7 @@
         error = "Electron bridge unavailable — run via the viewer app (not vite dev in a browser).";
         return;
       }
-      data = (await getPlatform().doctor()) as Diagnostics;
+      data = (await api.doctor()) as Diagnostics;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {

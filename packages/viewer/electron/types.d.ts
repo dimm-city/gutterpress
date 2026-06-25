@@ -396,26 +396,8 @@ interface Window {
     // Dialogs
     // savePdf, pickImageFile, pickImageFiles, copyFile migrated to server routes
     openDirectory(): Promise<string | null>;
-    // Media panel (#47): image listing/thumbnails/inspect
-    // (pickImageFiles migrated to server route)
-    listProjectImages(
-      projectDir: string,
-    ): Promise<
-      Array<{ name: string; relPath: string; path: string; size: number; mtimeMs: number }>
-    >;
-    imageThumbnail(filePath: string): Promise<string | null>;
-    inspectImage(filePath: string): Promise<{
-      fileSize: number;
-      info: {
-        width: number;
-        height: number;
-        xDpi: number;
-        yDpi: number;
-        hasAlpha: boolean;
-        colorSpace: "srgb" | "gray" | "cmyk" | "";
-      } | null;
-    } | null>;
     // openExternal, showInFolder, readLogFile migrated to server routes
+    // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
     // listProjectFiles migrated to server route
     // Filesystem primitives (PlatformAdapter, #41)
     readFile(filePath: string): Promise<string>;
@@ -423,32 +405,13 @@ interface Window {
     listDir(
       dirPath: string,
     ): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
-    // CSS print-safety lint (#39) — runs in main; postcss can't bundle into the SPA
-    checkCss(
-      css: string,
-      from?: string,
-    ): Promise<Array<{ rule: string; severity: "error" | "warning"; message: string; line: number; column: number }>>;
-    // Project-wide source lint for the Problems panel (#28) — runs in main
-    lintProject(
-      projectDir: string,
-    ): Promise<
-      Array<{
-        filePath?: string;
-        file?: string;
-        line?: number;
-        column?: number;
-        severity: "error" | "warning" | "info";
-        message: string;
-        source: string;
-      }>
-    >;
+    // checkCss, lintProject migrated to server routes (Phase 2C)
     // File metadata + folder watch (PlatformAdapter, #44)
     statFile(
       filePath: string,
     ): Promise<{ mtimeMs: number; size: number; exists: boolean }>;
     watchFolder(dirPath: string, cb: () => void): () => void;
-    // Lib API
-    getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
+    // getStatus, doctor migrated to server routes (Phase 2C)
     // app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
     // app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
     // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
@@ -567,7 +530,7 @@ interface Window {
       pdfPath?: string;
       fingerprintPath?: string;
     }>;
-    doctor(): Promise<unknown>;
+    // doctor migrated to server route (Phase 2C)
     // Event subscriptions
     onBuildProgress(cb: (data: {
       exportId: string;

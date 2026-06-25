@@ -9,8 +9,8 @@
  *    extension. The editor holds the language in a `Compartment` so switching
  *    files reconfigures the language without recreating the EditorView.
  *  - {@link cssDiagnosticsSource} runs the print-safety lint via
- *    `getPlatform().checkCss(...)` (an IPC call into the main process), NOT by
- *    importing the lib. `checkCss` is postcss-based and postcss's `node:url`
+ *    `api.lint.checkCss(...)` (a server route running in the Electron main process),
+ *    NOT by importing the lib. `checkCss` is postcss-based and postcss's `node:url`
  *    usage crashes the renderer if bundled into the SPA — so the UI stays clean
  *    of platform/node code and the host runs it. Same check `print-md validate`
  *    uses, so the gutter and CLI never disagree. (Async — CodeMirror's linter
@@ -21,7 +21,7 @@
  */
 
 import type { PrintSafeWarning } from "$lib/platform";
-import { getPlatform } from "$lib/platform";
+import { api } from "$lib/api";
 import type { Diagnostic } from "@codemirror/lint";
 import type { EditorState } from "@codemirror/state";
 import type {
@@ -104,7 +104,7 @@ export function toCssDiagnostic(
  */
 export async function cssDiagnosticsSource(state: EditorState): Promise<Diagnostic[]> {
   const doc = state.doc;
-  const warnings = await getPlatform().checkCss(doc.toString());
+  const warnings = await api.lint.checkCss('', doc.toString());
   return warnings.map((w) => {
     const d = toCssDiagnostic(
       w,

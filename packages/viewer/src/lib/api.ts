@@ -160,4 +160,55 @@ export const api = {
     /** Signal that the renderer has flushed its buffer (close gate reply). */
     flushDone: () => post<{ ok: boolean }>('/api/app/flush-done', {}),
   },
+
+  media: {
+    /** List all image files under a project directory (recursive, bounded). */
+    listImages: (projectDir: string) =>
+      post<Array<{ name: string; relPath: string; path: string; size: number; mtimeMs: number }>>(
+        '/api/media/list-images',
+        { projectDir },
+      ),
+    /** Generate a small (≤192px) thumbnail data URL for an image. Returns null when unavailable. */
+    thumbnail: (imagePath: string, width?: number, height?: number) =>
+      post<string | null>('/api/media/thumbnail', { imagePath, width, height }),
+    /** Inspect an image file — returns file size + header metadata (dimensions, DPI, alpha, color space). */
+    inspect: (imagePath: string) =>
+      post<{
+        fileSize: number;
+        info: {
+          width: number;
+          height: number;
+          xDpi: number;
+          yDpi: number;
+          hasAlpha: boolean;
+          colorSpace: 'srgb' | 'gray' | 'cmyk' | '';
+        } | null;
+      } | null>('/api/media/inspect', { imagePath }),
+  },
+
+  lint: {
+    /** Run CSS print-safety lint on the given CSS content. Returns an array of warnings. */
+    checkCss: (cssPath: string, content: string) =>
+      post<Array<{ rule: string; severity: 'error' | 'warning'; message: string; line: number; column: number }>>(
+        '/api/lint/check-css',
+        { cssPath, content },
+      ),
+    /** Run project-wide pre-build source lint checks. Returns problem entries for the Problems panel. */
+    project: (projectDir: string) =>
+      post<Array<{
+        filePath?: string;
+        file?: string;
+        line?: number;
+        column?: number;
+        severity: 'error' | 'warning' | 'info';
+        message: string;
+        source: string;
+      }>>('/api/lint/project', { projectDir }),
+  },
+
+  /** Health check — returns { ok: true, name, runtime }. */
+  status: () => get<{ ok: boolean; name: string; runtime: string }>('/api/status'),
+
+  /** System diagnostics (tool paths, versions, Chromium/Electron info). */
+  doctor: () => get<unknown>('/api/doctor'),
 };
