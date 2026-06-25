@@ -495,9 +495,13 @@
   let pluginManagerOpen = $state(false);
   let pluginManagerBtn = $state<HTMLButtonElement | undefined>(undefined);
 
-  function openPluginManager() {
-    if (!isDesktop() || !currentDir) return;
-    pluginManagerRef?.show(pluginManagerBtn);
+  function openPluginManager(trigger?: HTMLButtonElement) {
+    if (!currentDir) return;
+    if (!isDesktop()) {
+      toast?.info?.("Plugins are managed in the desktop app for now.");
+      return;
+    }
+    pluginManagerRef?.show(trigger ?? pluginManagerBtn);
   }
 
   // Theme manager (#32) — opened from the overflow menu (desktop + project).
@@ -505,9 +509,13 @@
   let themeManagerOpen = $state(false);
   let themeManagerBtn = $state<HTMLButtonElement | undefined>(undefined);
 
-  function openThemeManager() {
-    if (!isDesktop() || !currentDir) return;
-    themeManagerRef?.show(themeManagerBtn);
+  function openThemeManager(trigger?: HTMLButtonElement) {
+    if (!currentDir) return;
+    if (!isDesktop()) {
+      toast?.info?.("Themes are managed in the desktop app for now.");
+      return;
+    }
+    themeManagerRef?.show(trigger ?? themeManagerBtn);
   }
 
   // Style picker (CSS-editing audit G1/G2) — a viewport-independent "Edit
@@ -534,7 +542,13 @@
    * (when given) is the button to restore focus to after the picker.
    */
   async function openStyles(trigger?: HTMLButtonElement) {
-    if (!isDesktop() || !currentDir) return;
+    if (!currentDir) return;
+    if (!isDesktop()) {
+      toast?.info?.(
+        "Style editing is available in the desktop app for now — browse the Files panel to open a .css file.",
+      );
+      return;
+    }
     let list: ProjectStyle[];
     try {
       list = await getPlatform().listProjectStyles(currentDir);
@@ -2663,6 +2677,35 @@
         {/if}
         <span class="save-hint" role="note">PDF export requires the desktop app</span>
       {/if}
+      <!-- Project styling actions (#30/#32/G1): visible, labelled entry points for
+           Themes, Plugins, and Styles so authors can find them without digging
+           through the overflow menu. Shown whenever a project folder is open;
+           fold into the "More" menu at narrow widths via opt-inline. On web they
+           toast a "desktop app for now" notice (handled in the open* functions). -->
+      {#if currentDir}
+        <span class="toolbar-sep" aria-hidden="true"></span>
+        <button
+          class="icon-btn icon-text opt-inline"
+          onclick={(e) => openThemeManager(e.currentTarget as HTMLButtonElement)}
+          title="Browse and apply themes"
+        >
+          <Icon name="palette" /> <span class="opt-label">Themes</span>
+        </button>
+        <button
+          class="icon-btn icon-text opt-inline"
+          onclick={(e) => openPluginManager(e.currentTarget as HTMLButtonElement)}
+          title="Manage markdown plugins"
+        >
+          <Icon name="puzzle" /> <span class="opt-label">Plugins</span>
+        </button>
+        <button
+          class="icon-btn icon-text opt-inline"
+          onclick={(e) => void openStyles(e.currentTarget as HTMLButtonElement)}
+          title="Open a CSS stylesheet to edit"
+        >
+          <Icon name="pen-line" /> <span class="opt-label">Styles</span>
+        </button>
+      {/if}
       <!-- Settings panel (#45): gear icon + Cmd/Ctrl+, shortcut. Inline on wide
            screens; folds into the "More" menu when space is tight. -->
       <button
@@ -2713,27 +2756,29 @@
               <Icon name="puzzle" /> Save as template…
             </button>
           {/if}
-          {#if isDesktop() && currentDir}
-            <!-- Plugin manager (#30): discover/enable/import markdown-it plugins -->
+          {#if currentDir}
+            <!-- Plugin manager (#30): discover/enable/import markdown-it plugins.
+                 Narrow-width fallback for the inline header button; on web it
+                 toasts a "desktop app for now" notice. -->
             <button
               bind:this={pluginManagerBtn}
               class="menu-item"
-              onclick={(e) => { openPluginManager(); closeMenu(e); }}
+              onclick={(e) => { openPluginManager(e.currentTarget as HTMLButtonElement); closeMenu(e); }}
             >
               <Icon name="puzzle" /> Plugins…
             </button>
           {/if}
-          {#if isDesktop() && currentDir}
+          {#if currentDir}
             <!-- Theme manager (#32): browse/preview/apply/import themes -->
             <button
               bind:this={themeManagerBtn}
               class="menu-item"
-              onclick={(e) => { openThemeManager(); closeMenu(e); }}
+              onclick={(e) => { openThemeManager(e.currentTarget as HTMLButtonElement); closeMenu(e); }}
             >
               <Icon name="palette" /> Themes…
             </button>
           {/if}
-          {#if isDesktop() && currentDir}
+          {#if currentDir}
             <!-- Edit styles (audit G1/G2): viewport-independent CSS-file entry
                  point. Manifest-aware: opens the active stylesheet (or a picker
                  when there are several). -->

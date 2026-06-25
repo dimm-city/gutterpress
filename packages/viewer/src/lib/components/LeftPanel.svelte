@@ -463,11 +463,13 @@
           <p>Open a project folder to see its files.</p>
         </div>
       {:else}
-        <FileTree
-          {projectDir}
-          selectedPath={editorFilePath}
-          onSelectFile={onSelectEditorFile}
-        />
+        {#key projectDir}
+          <FileTree
+            {projectDir}
+            selectedPath={editorFilePath}
+            onSelectFile={onSelectEditorFile}
+          />
+        {/key}
       {/if}
     </div>
 
