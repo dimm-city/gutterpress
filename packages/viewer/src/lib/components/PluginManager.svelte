@@ -15,12 +15,12 @@
    *   on web; this dialog guards with the `projectDir` it is given.
    */
   import Icon from "$lib/components/Icon.svelte";
-  import { getPlatform } from "$lib/platform";
+  import { api } from "$lib/api";
   import type {
     ProjectPluginEntry,
     PluginValidationResult,
     RecommendedPlugin,
-  } from "$lib/platform/contract";
+  } from "$lib/api";
 
   let {
     open = $bindable(false),
@@ -67,8 +67,8 @@
     loading = true;
     try {
       const [list, recs] = await Promise.all([
-        getPlatform().listPlugins(projectDir),
-        getPlatform().listRecommendedPlugins(),
+        api.plugin.list(projectDir),
+        api.plugin.recommended(),
       ]);
       plugins = list;
       recommended = recs;
@@ -85,7 +85,7 @@
     if (!projectDir) return;
     validating = true;
     try {
-      const results = await getPlatform().validatePlugins(projectDir);
+      const results = await api.plugin.validate(projectDir);
       validation = Object.fromEntries(results.map((r) => [r.ref, r]));
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -104,7 +104,7 @@
     busyRef = entry.ref;
     error = null;
     try {
-      await getPlatform().setPluginEnabled(projectDir, entry.ref, !entry.enabled);
+      await api.plugin.setEnabled(projectDir, entry.ref, !entry.enabled);
       await refresh();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -117,7 +117,7 @@
     if (!projectDir) return;
     error = null;
     try {
-      const added = await getPlatform().importLocalPlugin(projectDir);
+      const added = await api.plugin.addLocal(projectDir);
       if (added) await refresh();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -134,7 +134,7 @@
     error = null;
     busyRef = name;
     try {
-      await getPlatform().addNpmPlugin(projectDir, name);
+      await api.plugin.addNpm(projectDir, name);
       npmName = "";
       await refresh();
     } catch (e) {
@@ -149,7 +149,7 @@
     error = null;
     busyRef = rec.name;
     try {
-      await getPlatform().addNpmPlugin(projectDir, rec.name);
+      await api.plugin.addNpm(projectDir, rec.name);
       await refresh();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);

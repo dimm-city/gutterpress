@@ -10,9 +10,10 @@
    * `$effect`: tokens load in `show()` (a user gesture), writes happen in input
    * handlers (debounced).
    */
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
-  import type { StyleToken, ProjectStyle } from "$lib/platform/contract";
+  import type { StyleToken } from "$lib/platform/contract";
+  import type { ProjectStyle } from "$lib/api";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import Icon from "$lib/components/Icon.svelte";
 
@@ -123,7 +124,7 @@
     error = null;
     tokens = [];
     try {
-      const styles: ProjectStyle[] = await getPlatform().listProjectStyles(projectDir);
+      const styles: ProjectStyle[] = await api.project.listStyles(projectDir);
       const active = styles.find((s) => s.active) ?? styles[0];
       if (!active) {
         cssPath = null;

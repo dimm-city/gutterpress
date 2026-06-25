@@ -130,44 +130,7 @@ interface ProjectClassification {
 }
 
 
-// Plugin manager (#30). Mirrors the lib's plugin-manager types.
-type PluginKind = "local" | "npm";
-interface ProjectPluginEntry {
-  ref: string;
-  kind: PluginKind;
-  enabled: boolean;
-}
-interface PluginValidationResult {
-  ref: string;
-  kind: PluginKind;
-  enabled: boolean;
-  ok: boolean;
-  error?: string;
-}
-interface RecommendedPlugin {
-  name: string;
-  description: string;
-}
-
-// Theme manager (#32). Mirrors the lib's theme-manager types.
-interface ThemeInfo {
-  id: string;
-  name: string;
-  author?: string;
-  description: string;
-  kind: "builtin" | "project";
-  preview?: string | null;
-}
-type ApplyThemeTarget =
-  | { kind: "builtin"; id: string }
-  | { kind: "project"; id: string };
-
-// Style resolver (audit B2/G1). Mirrors the lib's ProjectStyle.
-interface ProjectStyle {
-  path: string;
-  displayName: string;
-  active: boolean;
-}
+// plugin:*, theme:*, project:listStyles types removed — migrated to server routes (Phase 2E).
 interface StyleToken {
   name: string;
   value: string;
@@ -410,27 +373,7 @@ interface Window {
       cb: (data: { shouldUseDarkColors: boolean }) => void
     ): () => void;
     // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from ElectronBridge.
-    // Plugin manager (#30)
-    listPlugins(projectDir: string): Promise<ProjectPluginEntry[]>;
-    setPluginEnabled(projectDir: string, ref: string, enabled: boolean): Promise<void>;
-    addNpmPlugin(projectDir: string, packageName: string): Promise<ProjectPluginEntry>;
-    importLocalPlugin(projectDir: string): Promise<ProjectPluginEntry | null>;
-    validatePlugins(projectDir: string): Promise<PluginValidationResult[]>;
-    listRecommendedPlugins(): Promise<RecommendedPlugin[]>;
-    // Theme manager (#32)
-    listBuiltInThemes(): Promise<ThemeInfo[]>;
-    listProjectThemes(projectDir: string): Promise<ThemeInfo[]>;
-    getActiveTheme(projectDir: string): Promise<ThemeInfo | null>;
-    applyTheme(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo>;
-    importThemeFromFolder(projectDir: string): Promise<ThemeInfo | null>;
-    importThemeFromUrl(projectDir: string, url: string): Promise<ThemeInfo>;
-    readThemeCss(
-      projectDir: string | null,
-      source: { kind: "builtin" | "project"; id: string },
-    ): Promise<string>;
-    removeProjectTheme(projectDir: string, id: string): Promise<void>;
-    // Style resolver (audit B2/G1)
-    listProjectStyles(projectDir: string): Promise<ProjectStyle[]>;
+    // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from ElectronBridge.
     // Local version history (#13)
     enableVersionHistory(projectDir: string): Promise<ProjectClassification>;
     saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;

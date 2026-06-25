@@ -47,6 +47,54 @@ export interface SnippetEntry {
   variables: string[];
 }
 
+// ── Plugin manager types ────────────────────────────────────────────────────
+
+export type PluginKind = 'local' | 'npm';
+
+export interface ProjectPluginEntry {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+}
+
+export interface PluginValidationResult {
+  ref: string;
+  kind: PluginKind;
+  enabled: boolean;
+  ok: boolean;
+  error?: string;
+}
+
+export interface RecommendedPlugin {
+  name: string;
+  label?: string;
+  description: string;
+  builtin?: boolean;
+}
+
+// ── Theme manager types ─────────────────────────────────────────────────────
+
+export interface ThemeInfo {
+  id: string;
+  name: string;
+  author?: string;
+  description: string;
+  kind: 'builtin' | 'project';
+  preview?: string | null;
+}
+
+export type ApplyThemeTarget =
+  | { kind: 'builtin'; id: string }
+  | { kind: 'project'; id: string };
+
+// ── Style resolver type ─────────────────────────────────────────────────────
+
+export interface ProjectStyle {
+  path: string;
+  displayName: string;
+  active: boolean;
+}
+
 export interface FileWriteResult {
   mtimeMs: number;
 }
@@ -244,6 +292,58 @@ export const api = {
     /** Delete a snippet by filename. */
     delete: (projectDir: string, fileName: string) =>
       post<{ ok: boolean }>('/api/snip/delete', { projectDir, fileName }),
+  },
+
+  plugin: {
+    /** List the open project's configured plugins. */
+    list: (projectDir: string) =>
+      post<ProjectPluginEntry[]>('/api/plugin/list', { projectDir }),
+    /** Enable or disable a configured plugin by ref. */
+    setEnabled: (projectDir: string, ref: string, enabled: boolean) =>
+      post<{ ok: boolean }>('/api/plugin/set-enabled', { projectDir, ref, enabled }),
+    /** Add an npm package as a plugin entry in the manifest. */
+    addNpm: (projectDir: string, packageName: string) =>
+      post<ProjectPluginEntry>('/api/plugin/add-npm', { projectDir, packageName }),
+    /** Open a native file picker and import the chosen file/folder as a local plugin. Resolves null when cancelled. */
+    addLocal: (projectDir: string) =>
+      post<ProjectPluginEntry | null>('/api/plugin/add-local', { projectDir }),
+    /** Load-test every configured plugin; reports ok/error per entry. */
+    validate: (projectDir: string) =>
+      post<PluginValidationResult[]>('/api/plugin/validate', { projectDir }),
+    /** Get the curated list of recommended plugins (static, no projectDir needed). */
+    recommended: () => get<RecommendedPlugin[]>('/api/plugin/recommended'),
+  },
+
+  theme: {
+    /** List all built-in themes (static metadata). */
+    listBuiltIn: () => get<ThemeInfo[]>('/api/theme/built-in'),
+    /** List themes already imported into the project. */
+    listProject: (projectDir: string) =>
+      post<ThemeInfo[]>('/api/theme/project', { projectDir }),
+    /** Get the currently active theme for the project. Returns null when none applied. */
+    getActive: (projectDir: string) =>
+      post<ThemeInfo | null>('/api/theme/active', { projectDir }),
+    /** Apply a built-in or project theme. Copies files and wires the manifest. */
+    apply: (projectDir: string, target: ApplyThemeTarget) =>
+      post<ThemeInfo>('/api/theme/apply', { projectDir, target }),
+    /** Open a native folder picker and import the selected folder as a theme. Resolves null when cancelled. */
+    importFromFolder: (projectDir: string) =>
+      post<ThemeInfo | null>('/api/theme/import-from-folder', { projectDir }),
+    /** Import a theme from a remote URL (raw CSS or theme folder). */
+    importFromUrl: (projectDir: string, url: string) =>
+      post<ThemeInfo>('/api/theme/import-from-url', { projectDir, url }),
+    /** Read the raw CSS of a theme (built-in or project) for preview rendering. */
+    readCss: (projectDir: string | null, source: { kind: 'builtin' | 'project'; id: string }) =>
+      post<string>('/api/theme/read-css', { projectDir, source }),
+    /** Remove a project-local theme by id. */
+    remove: (projectDir: string, id: string) =>
+      post<{ ok: true }>('/api/theme/remove', { projectDir, id }),
+  },
+
+  project: {
+    /** Resolve the project's editable stylesheets for the CSS editor picker. */
+    listStyles: (projectDir: string) =>
+      post<ProjectStyle[]>('/api/project/list-styles', { projectDir }),
   },
 
   /** Health check — returns { ok: true, name, runtime }. */

@@ -13,11 +13,11 @@
     ProjectCapabilities,
     ProjectClassification,
     ProjectRemoteDiagnosis,
-    ProjectStyle,
     RecoveryConfirmRequest,
     RecoveryProgressInfo,
     SnapshotEntry,
   } from "$lib/platform/contract";
+  import type { ProjectStyle } from "$lib/api";
   import { problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import ConflictChoicesDialog from "$lib/components/ConflictChoicesDialog.svelte";
@@ -606,7 +606,7 @@
     }
     let list: ProjectStyle[];
     try {
-      list = await getPlatform().listProjectStyles(currentDir);
+      list = await api.project.listStyles(currentDir);
     } catch (e) {
       toast?.error?.(
         `Could not list styles: ${e instanceof Error ? e.message : String(e)}`,

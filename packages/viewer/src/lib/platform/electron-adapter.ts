@@ -24,16 +24,11 @@ import type {
   ProjectClassification,
   // PrintSafeWarning, ProblemEntry, MediaImageEntry, MediaImageDetails — removed (Phase 2C)
   // TemplateInfo, SnippetEntry — removed (Phase 2D)
+  // ProjectPluginEntry, PluginValidationResult, RecommendedPlugin, ThemeInfo, ApplyThemeTarget, ProjectStyle — removed (Phase 2E)
   FileStat,
   FileWriteResult,
   RecoveryEntry,
   FolderChangedEvent,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-  ThemeInfo,
-  ApplyThemeTarget,
-  ProjectStyle,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -161,62 +156,7 @@ export class ElectronAdapter implements Platform {
   // — migrated to server routes (Phase 2B)
 
   // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from ElectronAdapter.
-
-  // ── Plugin manager (#30) — delegate 1:1 to the bridge ──────────────────────
-  listPlugins(projectDir: string): Promise<ProjectPluginEntry[]> {
-    return bridge().listPlugins(projectDir);
-  }
-  setPluginEnabled(projectDir: string, ref: string, enabled: boolean): Promise<void> {
-    return bridge().setPluginEnabled(projectDir, ref, enabled);
-  }
-  addNpmPlugin(projectDir: string, packageName: string): Promise<ProjectPluginEntry> {
-    return bridge().addNpmPlugin(projectDir, packageName);
-  }
-  importLocalPlugin(projectDir: string): Promise<ProjectPluginEntry | null> {
-    return bridge().importLocalPlugin(projectDir);
-  }
-  validatePlugins(projectDir: string): Promise<PluginValidationResult[]> {
-    return bridge().validatePlugins(projectDir);
-  }
-  listRecommendedPlugins(): Promise<RecommendedPlugin[]> {
-    return bridge().listRecommendedPlugins();
-  }
-
-  // ── Theme manager (#32) — delegate 1:1 to the bridge ───────────────────────
-  listBuiltInThemes(): Promise<ThemeInfo[]> {
-    return bridge().listBuiltInThemes();
-  }
-  listProjectThemes(projectDir: string): Promise<ThemeInfo[]> {
-    return bridge().listProjectThemes(projectDir);
-  }
-  getActiveTheme(projectDir: string): Promise<ThemeInfo | null> {
-    return bridge().getActiveTheme(projectDir);
-  }
-  applyTheme(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> {
-    return bridge().applyTheme(projectDir, target);
-  }
-  importThemeFromFolder(projectDir: string): Promise<ThemeInfo | null> {
-    return bridge().importThemeFromFolder(projectDir);
-  }
-  importThemeFromUrl(projectDir: string, url: string): Promise<ThemeInfo> {
-    return bridge().importThemeFromUrl(projectDir, url);
-  }
-  readThemeCss(
-    projectDir: string | null,
-    source: { kind: "builtin" | "project"; id: string },
-  ): Promise<string> {
-    return bridge().readThemeCss(projectDir, source);
-  }
-  removeProjectTheme(projectDir: string, id: string): Promise<void> {
-    return bridge().removeProjectTheme(projectDir, id);
-  }
-
-  // ── Style resolver (audit B2/G1) — delegate 1:1 to the bridge ──────────────
-  listProjectStyles(projectDir: string): Promise<ProjectStyle[]> {
-    return bridge().listProjectStyles(projectDir);
-  }
-
-
+  // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from ElectronAdapter.
 
   // ── Local version history (#13) — delegate 1:1 to the bridge ───────────────
   enableVersionHistory(projectDir: string): Promise<ProjectClassification> {

@@ -19,8 +19,8 @@
    *   dialog guards with the `projectDir` it is given.
    */
   import Icon from "$lib/components/Icon.svelte";
-  import { getPlatform } from "$lib/platform";
-  import type { ThemeInfo, ApplyThemeTarget } from "$lib/platform/contract";
+  import { api } from "$lib/api";
+  import type { ThemeInfo, ApplyThemeTarget } from "$lib/api";
 
   let {
     open = $bindable(false),
@@ -85,7 +85,7 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
     const key = keyOf(t);
     if (thumbs[key]) return;
     try {
-      const css = await getPlatform().readThemeCss(
+      const css = await api.theme.readCss(
         t.kind === "builtin" ? null : projectDir,
         { kind: t.kind, id: t.id },
       );
@@ -117,9 +117,9 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
     loading = true;
     try {
       const [bi, pt, active] = await Promise.all([
-        getPlatform().listBuiltInThemes(),
-        projectDir ? getPlatform().listProjectThemes(projectDir) : Promise.resolve([]),
-        projectDir ? getPlatform().getActiveTheme(projectDir) : Promise.resolve(null),
+        api.theme.listBuiltIn(),
+        projectDir ? api.theme.listProject(projectDir) : Promise.resolve([]),
+        projectDir ? api.theme.getActive(projectDir) : Promise.resolve(null),
       ]);
       builtIns = bi;
       projectThemes = pt;
@@ -143,7 +143,7 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
     error = null;
     try {
       const target: ApplyThemeTarget = { kind: t.kind, id: t.id };
-      const applied = await getPlatform().applyTheme(projectDir, target);
+      const applied = await api.theme.apply(projectDir, target);
       activeId = applied.id;
       onApplied?.(applied.id);
       // Land the author on the re-rendered preview rather than keeping them in
@@ -160,7 +160,7 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
     if (!projectDir) return;
     error = null;
     try {
-      const added = await getPlatform().importThemeFromFolder(projectDir);
+      const added = await api.theme.importFromFolder(projectDir);
       if (added) await refresh();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -177,7 +177,7 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
     error = null;
     busyId = "__url__";
     try {
-      await getPlatform().importThemeFromUrl(projectDir, u);
+      await api.theme.importFromUrl(projectDir, u);
       url = "";
       await refresh();
     } catch (e) {
