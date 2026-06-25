@@ -1,7 +1,7 @@
 <script lang="ts">
   import "$lib/theme.css";
   import { onMount } from "svelte";
-  import { _loadSettings } from "$lib/settings.svelte";
+  import { _loadSettings, useSettings } from "$lib/settings.svelte";
   import { initTheme, syncThemeFromSettings } from "$lib/theme.svelte";
   import { isDesktop } from "$lib/platform";
 
@@ -32,16 +32,27 @@
   // The no-flash inline script in app.html has already painted the cached
   // theme synchronously; this refines it with the canonical persisted value
   // and wires up live OS-change tracking.
-  $effect(() => {
+  onMount(() => {
     initTheme();
   });
 
   // Follow the Settings "Theme" control: when appearance.theme changes in the
-  // store, re-resolve and re-apply. Reading the reactive setting inside the
-  // effect registers the dependency.
-  $effect(() => {
+  // store, re-resolve and re-apply.
+  // use: action on the layout root — update() fires whenever the reactive theme
+  // value changes, keeping document[data-theme] in sync without $effect.
+  function watchTheme(_node: HTMLElement, _theme: string) {
     syncThemeFromSettings();
-  });
+    return {
+      update(_newTheme: string) {
+        syncThemeFromSettings();
+      },
+    };
+  }
+
+  // Read the reactive theme value so Svelte tracks it for the use: action.
+  let currentTheme = $derived(useSettings().current.appearance.theme);
 </script>
 
-{@render children?.()}
+<div use:watchTheme={currentTheme} style="display:contents">
+  {@render children?.()}
+</div>

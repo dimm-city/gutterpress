@@ -7,30 +7,27 @@
     onError?: (msg: string) => void;
   } = $props();
 
-  let frame = $state<HTMLIFrameElement | undefined>(undefined);
-
-  $effect(() => {
-    if (!frame) return;
+  // Wire the PreviewClient to the iframe on mount, tear down on destroy — a
+  // use: action on the <iframe>, not a $effect (no `frame` state needed).
+  function wirePreview(node: HTMLIFrameElement) {
     const c = new PreviewClient();
     client = c;
-    const onLoad = () => {
-      c.attach(frame!.contentWindow);
+    const onLoad = () => c.attach(node.contentWindow);
+    const onErr = () => onError?.(`Preview iframe failed to load ${url}`);
+    node.addEventListener("load", onLoad);
+    node.addEventListener("error", onErr);
+    return {
+      destroy() {
+        node.removeEventListener("load", onLoad);
+        node.removeEventListener("error", onErr);
+        c.detach();
+        client = undefined;
+      },
     };
-    const onErr = (_e: Event) => {
-      onError?.(`Preview iframe failed to load ${url}`);
-    };
-    frame.addEventListener("load", onLoad);
-    frame.addEventListener("error", onErr);
-    return () => {
-      frame!.removeEventListener("load", onLoad);
-      frame!.removeEventListener("error", onErr);
-      c.detach();
-      client = undefined;
-    };
-  });
+  }
 </script>
 
-<iframe bind:this={frame} src={url} title="print-md preview"></iframe>
+<iframe use:wirePreview src={url} title="print-md preview"></iframe>
 
 <style>
   /*

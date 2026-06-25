@@ -55,7 +55,7 @@
     pagedMediaCompletionSource,
     type EditorLanguage,
   } from "$lib/editor/css-editor";
-  import { untrack } from "svelte";
+  import { untrack, onMount } from "svelte";
 
   let {
     filePath = null,
@@ -256,16 +256,17 @@
     });
   }
 
-  // Mount the EditorView once the host node exists. Only `host` is a tracked
-  // dependency — the content/filePath reads are wrapped in untrack(). Otherwise
-  // every keystroke (which mutates `content`) re-runs this effect, and its
-  // cleanup destroys + recreates the whole EditorView, collapsing the caret to 0
-  // and dropping focus ("editor jumps / loses focus while typing"). Subsequent
-  // content/file changes are handled by the doc-swap effect below, on the SAME
-  // view instance.
+  // Mount the EditorView once the host node exists.
+  // onMount runs once after the DOM is ready; host is bound before onMount fires
+  // because bind:this resolves before the component finishes mounting.
+  // Content/filePath reads are wrapped in untrack() so changes during editing
+  // don't destroy + recreate the view (which would collapse the caret to 0 and
+  // drop focus — "editor jumps / loses focus while typing"). Subsequent
+  // content/file changes are handled by the doc-swap use: action below, on the
+  // SAME view instance.
   let detachScroll: (() => void) | null = null;
-  $effect(() => {
-    if (!host || view) return;
+  onMount(() => {
+    if (!host) return;
     untrack(() => {
       currentLanguage = languageForPath(filePath);
       appliedPath = filePath;
@@ -296,14 +297,13 @@
   });
 
   // Swap the document when the selected file (or its loaded content) changes.
-  // Keyed on filePath so re-loading the SAME file (e.g. external edit) replaces
-  // text only when content actually differs from what's in the view.
-  $effect(() => {
-    const nextDoc = content;
-    // Track filePath so the effect re-runs on file switch even if content
-    // happens to match.
-    const nextPath = filePath;
-    const nextLang = languageForPath(filePath);
+  // use: action on the host element — update() fires whenever [filePath, content]
+  // changes, keeping the live CodeMirror view in sync without $effect.
+  type DocSlot = { path: string | null; doc: string };
+
+  function applyDocSlot(slot: DocSlot) {
+    const { path: nextPath, doc: nextDoc } = slot;
+    const nextLang = languageForPath(nextPath);
     if (!view) return;
 
     // Switching to a different file is a fresh document: the prior caret/scroll
@@ -356,7 +356,20 @@
       });
     }
     applyingExternal = false;
-  });
+  }
+
+  function watchDocSlot(_node: HTMLElement, slot: DocSlot) {
+    // Don't call applyDocSlot on initial mount — onMount initialises the view
+    // from the same content/filePath via buildState. The first update() call
+    // (from a real prop change) is when the swap is needed.
+    return {
+      update(newSlot: DocSlot) {
+        applyDocSlot(newSlot);
+      },
+    };
+  }
+
+  let docSlot = $derived({ path: filePath, doc: content });
 
   /** Move keyboard focus into the editor (used when the pane is opened). */
   export function focus(): void {
@@ -454,7 +467,7 @@
       <p>Select a file from the list to start editing.</p>
     </div>
   {/if}
-  <div class="editor-host" bind:this={host} class:hidden={!filePath}></div>
+  <div class="editor-host" bind:this={host} class:hidden={!filePath} use:watchDocSlot={docSlot}></div>
 </div>
 <!-- Toolbar portals are rendered by the parent via EditorToolbar.svelte placed
      ABOVE this component in the editor-pane section. The runToolbarAction()

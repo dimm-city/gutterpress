@@ -371,79 +371,11 @@
   // Completes the D7 Reconnect journey: a connect dialog closing may mean a
   // new credential was just stored — re-check syncability so the Sync
   // button and the dialog's auth state reflect it without a project reload.
+  // Handled by watchConnectDialogs use: action on the sentinel <span> near the dialogs.
   let connectDialogWasOpen = false;
-  $effect(() => {
-    const anyConnectOpen = githubOpen || advancedSetupOpen;
-    if (
-      connectDialogWasOpen &&
-      !anyConnectOpen &&
-      currentDir &&
-      sourceMode === "folder"
-    ) {
-      void refreshSyncDiag(currentDir);
-    }
-    connectDialogWasOpen = anyConnectOpen;
-  });
 
-  // ── Recovery overlay subscription ────────────────────────────────────────────
-  // Subscribe to the host's sync:status channel for recovering/recovered/error
-  // states so the RecoveryOverlay (and RecoveryGuidanceDialog on blocked failure)
-  // appear/disappear transparently. The SyncStatusPill already handles the
-  // conflict/auth/syncing/synced states — this effect handles ONLY the new
-  // recovery-specific transitions (recovering, recovered, error-with-guidance).
-  // Per §8 / ADR 0004: runs in the SPA, no lib value imports, all host work
-  // through getPlatform().
-  $effect(() => {
-    if (!isDesktop()) return;
-    const off = getPlatform().onSyncStatus((status) => {
-      // Scope to the currently open project.
-      if (status.projectDir !== currentDir) return;
-
-      if (status.state === "recovering") {
-        // Automated repair in progress — show the non-dismissable overlay.
-        recoveryOverlayVisible = true;
-        recoveryOverlayState = "recovering";
-        recoveryOverlayPhase = status.recovery?.phase ?? "checking";
-        recoveryBackupZipPath = status.backupZipPath;
-        recoveryLogFilePath = status.logFile ?? null;
-        // Close guidance dialog if a new recovery attempt starts.
-        recoveryGuidanceOpen = false;
-      } else if (status.state === "recovered") {
-        // Repair completed — transition overlay to success state; it auto-dismisses.
-        recoveryOverlayVisible = true;
-        recoveryOverlayState = "recovered";
-        recoveryBackupZipPath = status.backupZipPath ?? recoveryBackupZipPath;
-        recoveryLogFilePath = status.logFile ?? recoveryLogFilePath;
-      } else if (status.state === "error" && status.guidance) {
-        // Classified failure that needs manual guidance — hide overlay, open dialog.
-        recoveryOverlayVisible = false;
-        recoveryGuidance = status.guidance;
-        recoveryGuidanceBackupPath = status.backupZipPath ?? null;
-        recoveryGuidanceLogPath = status.logFile ?? null;
-        recoveryGuidanceOpen = true;
-      } else {
-        // Any other state (synced/up-to-date/offline/auth/conflict/idle) — if the
-        // overlay was showing (e.g. from a previous recovery cycle), hide it.
-        if (status.state !== "syncing") {
-          recoveryOverlayVisible = false;
-        }
-      }
-    });
-    return () => off?.();
-  });
-
-  // ── Recovery confirm subscription ─────────────────────────────────────────────
-  // The host fires onRecoveryConfirm when a medium/high-risk repair needs author
-  // approval. Show RecoveryConfirmDialog; the dialog answers the gate via
-  // respondRecoveryConfirm. Recovery must NOT proceed until the author responds.
-  $effect(() => {
-    if (!isDesktop()) return;
-    const off = getPlatform().onRecoveryConfirm((req: RecoveryConfirmRequest) => {
-      recoveryConfirmRequest = req;
-      recoveryConfirmOpen = true;
-    });
-    return () => off?.();
-  });
+  // ── Recovery overlay + confirm subscriptions ─────────────────────────────────
+  // Moved to onMount below (search for "onSyncStatus" to find the combined onMount).
 
   /** Show a backup zip in the system file manager. */
   function showBackupInFolder(path: string) {
@@ -712,39 +644,8 @@
     }
   }
 
-  $effect(() => {
-    if (editorRef && pendingEditorFocus) {
-      pendingEditorFocus = false;
-      requestAnimationFrame(() => editorRef?.focus());
-    }
-  });
-  $effect(() => {
-    if (
-      !editorOpen ||
-      !currentDir ||
-      MarkdownEditor ||
-      editorModuleLoading ||
-      editorModuleFailed
-    )
-      return;
-    editorModuleLoading = true;
-    import("$lib/components/MarkdownEditor.svelte")
-      .then((m) => {
-        MarkdownEditor = m.default;
-      })
-      .catch((e) => {
-        // Mark as failed so the effect doesn't immediately re-run and retry —
-        // that turned a single failed chunk fetch into an infinite error-toast
-        // loop. Surface ONE error; the editor pane shows a Retry affordance.
-        editorModuleFailed = true;
-        toast?.error(
-          `Could not open the editor: ${e instanceof Error ? e.message : String(e)}`,
-        );
-      })
-      .finally(() => {
-        editorModuleLoading = false;
-      });
-  });
+  // Editor focus + module load: handled by onEditorMounted use: action
+  // and ensureEditorModule() called at the point of editor open (toggleEditor/setPaneMode).
 
   // Construct lazily on first desktop use so the WebAdapter path never touches
   // it (the editor is desktop-only). One buffer for the lifetime of the app.
@@ -789,40 +690,9 @@
     return buffer;
   }
 
-  // Push the buffer's pending-save state to main so the window close gate can
-  // flush before quitting (#44). Fire-and-forget; main never reads our memory.
-  $effect(() => {
-    if (!isDesktop() || !buffer) return;
-    const pending = buffer.hasPendingSave;
-    getPlatform().setDirtyState(pending).catch(() => {});
-  });
-
-  // Keep the recovery-enabled toggle (#45) in sync with the live setting.
-  $effect(() => {
-    const enabled = settings.current.editor.crashRecovery;
-    if (buffer) buffer.setRecoveryEnabled(enabled);
-  });
-
-  // External-edit detection (#44): watch the open folder; on any debounced
-  // change, ask the buffer to reconcile the open document against disk. The
-  // watcher is torn down when the folder closes / switches to URL mode.
-  $effect(() => {
-    if (!isDesktop()) return;
-    const dir = currentDir;
-    if (!dir || sourceMode !== "folder") return;
-    const off = getPlatform().watchFolder(dir, () => {
-      buffer?.reconcileExternalChange().catch(() => {});
-    });
-    return () => off?.();
-  });
-
-  // Window close gate (#44): when main asks the renderer to flush before
-  // closing, flush the buffer. The preload wrapper signals main when done.
-  $effect(() => {
-    if (!isDesktop()) return;
-    const off = getPlatform().onFlushBeforeClose(() => buffer?.flush() ?? Promise.resolve());
-    return () => off?.();
-  });
+  // Buffer side-effects handled by use: actions (watchDirtyState,
+  // watchCrashRecoverySetting, watchFolderForEdits) on sentinel elements,
+  // and onFlushBeforeClose is in an onMount below.
 
   /**
    * Open a file in the editor (#44). Flushes any pending save on the currently
@@ -930,21 +800,8 @@
     recoveryItems = [];
   }
 
-  // ── Persist left panel state on change ────────────────────────────────────
-  $effect(() => {
-    if (!leftPanelPrefsLoaded) return;
-    getPlatform()
-      .setViewerPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } })
-      .catch(() => {});
-  });
-
-  // ── Auto-open panel on Projects tab when no project ────────────────────────
-  $effect(() => {
-    if (!currentDir && !currentUrl && !busy && lastProjectChecked) {
-      leftPanelOpen = true;
-      leftPanelTab = "projects";
-    }
-  });
+  // Left panel persistence + auto-open handled by watchLeftPanelState and
+  // watchNoProject use: actions on sentinel elements in the template.
 
   function toggleLeftPanel() {
     leftPanelOpen = !leftPanelOpen;
@@ -993,14 +850,7 @@
       });
   }
 
-  // Closing the project (or switching to a URL preview) clears the findings so
-  // the panel/badge never show a stale project's problems.
-  $effect(() => {
-    if (!currentDir || sourceMode !== "folder") {
-      problems = [];
-      problemsOpen = false;
-    }
-  });
+  // Closing the project clears findings — handled by watchProjectActive use: action.
 
   /**
    * Open the problem's file in the editor at the offending line. Reuses the
@@ -1025,41 +875,11 @@
     focusEditorWhenReady();
   }
 
-  // ----------------------------------------------------------------
-  // Inject viewer canvas styles into iframe when client + bgColor change
-  // ----------------------------------------------------------------
-  $effect(() => {
-    if (!client) return;
-    // Inject once on client attach; renderingComplete will re-inject with final bg
-    client.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
-  });
+  // Client style injection and viewMode sync → handled by watchClient use: action.
+  // diagnosticsTools → loaded by onMount.
+  // saveWarning cleared inline in renderingComplete + startFolderPreview.
 
-  // Apply view-mode changes that originate from the Settings panel (which writes
-  // the settings store directly rather than calling applyViewMode). Keeps the
-  // rendered spread in sync with the derived viewMode without a reload.
-  $effect(() => {
-    const mode = viewMode;
-    if (!client || rendering) return;
-    client.call("setViewMode", [mode]).catch(() => {});
-  });
-
-  $effect(() => {
-    if (diagnosticsTools) return;
-    getPlatform().doctor()
-      .then((data) => {
-        diagnosticsTools = (data as { tools?: DiagnosticsTool[] }).tools ?? [];
-      })
-      .catch(() => {});
-  });
-
-  $effect(() => {
-    if (!saveWarning) return;
-    if (currentDir && !rendering && sourceMode === "folder") {
-      saveWarning = null;
-    }
-  });
-
-  $effect(() => {
+  onMount(() => {
     const off = getPlatform().onUrlPreviewBlocked((event: UrlPreviewBlockedEvent) => {
       if (sourceMode !== "url") return;
       if (!previewUrl) return;
@@ -1069,18 +889,10 @@
     return () => off?.();
   });
 
-  $effect(() => {
-    if (pageEditing) {
-      queueMicrotask(() => pageEditInput?.focus());
-    }
-  });
+  // pageEditInput is focused directly from beginPageEdit() — no reactive watcher needed.
 
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
-    if (lastProjectChecked) return;
-    if (previewUrl || currentDir || currentUrl || busy || openError || urlPreviewError) return;
-    if (autoOpeningLastProject) return;
-
     autoOpeningLastProject = true;
     lastProjectChecked = true;
     const platform = getPlatform();
@@ -1139,132 +951,255 @@
   // ----------------------------------------------------------------
   // Hook PreviewClient events when it appears
   // ----------------------------------------------------------------
-  $effect(() => {
-    if (!client) return;
-    const off = client.on((e) => {
-      if (e.name === "renderingComplete") {
-        const n = e.detail.totalPages ?? 0;
-        totalPages = n;
-        renderProgressPage = n;
-        rendering = false;
-        // Keep the overlay up while the post-render layout settles. The pages
-        // stay invisible (iframe opacity 0) through the view-mode switch AND the
-        // async zoom round-trips; only once the zoom is actually applied do we
-        // cross-fade — see the revealSettledPages() call at the end of the
-        // settle sequence below. This is what prevents the visible page JUMP:
-        // we never reveal before the layout has stopped moving.
-        renderCompleteOverlay = true;
-        // Inject canvas styles now that Paged.js is done
-        client?.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
-        client?.injectStyles("debug", DEBUG_STYLES);
-        // Set initial view mode (auto if user hasn't chosen)
-        const auto = window.innerWidth < 1280 ? "single" : "two-column";
-        const restorePage = pendingRestorePage;
-        const restoreMode = pendingRestoreViewMode;
-        pendingRestorePage = null;
-        pendingRestoreViewMode = null;
-        const mode = restoreMode ?? (userSetViewMode ? viewMode : auto);
-        // Drive the whole settle sequence to completion, THEN reveal. The reveal
-        // is gated on the zoom promise resolving — not a magic timer — so the
-        // fade always uncovers a completely still layout. Reveal is in a finally
-        // so the pages are never stranded invisible if a zoom call rejects.
-        (async () => {
-          applyViewMode(mode, false);
-          try {
-            // "Fit to width" must ALWAYS measure-and-fit, never assume 100% fits.
-            // A two-page spread (~1656px) overflows a 1400px pane at 100%,
-            // clipping the right page — so fit even on wide screens. Awaiting
-            // applyFitWidthZoom() waits for both postMessage round-trips
-            // (getPageDimensions + setZoom), i.e. until the JUMP has happened.
-            if (zoom === "fit-width") {
-              await applyFitWidthZoom();
-            } else {
-              await client?.call("setZoom", [Number(zoom)]);
+  // use: action — subscribes to client events each time the client instance
+  // changes (new iframe → new PreviewClient). Unsubscribes via destroy().
+  function watchClient(_node: HTMLElement, c: typeof client) {
+    let off: (() => void) | undefined;
+    const subscribe = (c2: typeof client) => {
+      off?.();
+      off = undefined;
+      if (!c2) return;
+      // Inject initial styles on client attach.
+      c2.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
+      // Subscribe to client events.
+      off = c2.on((e) => {
+        if (e.name === "renderingComplete") {
+          const n = e.detail.totalPages ?? 0;
+          totalPages = n;
+          renderProgressPage = n;
+          rendering = false;
+          // Keep the overlay up while the post-render layout settles. The pages
+          // stay invisible (iframe opacity 0) through the view-mode switch AND the
+          // async zoom round-trips; only once the zoom is actually applied do we
+          // cross-fade — see the revealSettledPages() call at the end of the
+          // settle sequence below. This is what prevents the visible page JUMP:
+          // we never reveal before the layout has stopped moving.
+          renderCompleteOverlay = true;
+          // Inject canvas styles now that Paged.js is done
+          c2.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
+          c2.injectStyles("debug", DEBUG_STYLES);
+          // Set initial view mode (auto if user hasn't chosen)
+          const auto = window.innerWidth < 1280 ? "single" : "two-column";
+          const restorePage = pendingRestorePage;
+          const restoreMode = pendingRestoreViewMode;
+          pendingRestorePage = null;
+          pendingRestoreViewMode = null;
+          const mode = restoreMode ?? (userSetViewMode ? viewMode : auto);
+          // Drive the whole settle sequence to completion, THEN reveal. The reveal
+          // is gated on the zoom promise resolving — not a magic timer — so the
+          // fade always uncovers a completely still layout. Reveal is in a finally
+          // so the pages are never stranded invisible if a zoom call rejects.
+          (async () => {
+            applyViewMode(mode, false);
+            try {
+              // "Fit to width" must ALWAYS measure-and-fit, never assume 100% fits.
+              // A two-page spread (~1656px) overflows a 1400px pane at 100%,
+              // clipping the right page — so fit even on wide screens. Awaiting
+              // applyFitWidthZoom() waits for both postMessage round-trips
+              // (getPageDimensions + setZoom), i.e. until the JUMP has happened.
+              if (zoom === "fit-width") {
+                await applyFitWidthZoom();
+              } else {
+                await c2?.call("setZoom", [Number(zoom)]);
+              }
+            } catch {
+              // Zoom failed — still reveal below so pages aren't stranded hidden.
+            } finally {
+              revealSettledPages();
             }
-          } catch {
-            // Zoom failed — still reveal below so pages aren't stranded hidden.
-          } finally {
-            revealSettledPages();
+          })();
+          if (restorePage && restorePage > 1) {
+            queueMicrotask(() => restoreProjectPage(restorePage));
           }
-        })();
-        if (restorePage && restorePage > 1) {
-          queueMicrotask(() => restoreProjectPage(restorePage));
-        }
-        // UX-011: improved success toast copy
-        toast?.success(`Your book is ready — ${n} ${n === 1 ? 'page' : 'pages'}`);
-        // Build the chapter-jump outline from the freshly rendered DOM.
-        refreshOutline();
-        // Re-lint the project on every rebuild so the Problems panel tracks
-        // the author's edits (#28).
-        refreshProblems();
-        // First project render done → dismiss the splash and reveal the window.
-        getPlatform().splashStatus("Ready", 100).catch(() => {});
-        getPlatform().rendererReady().catch(() => {});
-      } else if (e.name === "sourceLineChanged") {
-        // Preview→editor sync: the reader scrolled. Follow in the editor and
-        // update the active outline entry — but not while the editor itself is
-        // driving the preview (echo guard).
-        const line = e.detail.sourceLine;
-        const chap = e.detail.chapter;
-        if (typeof line === "number") {
-          updateActiveOutline(line);
-          if (Date.now() >= suppressPreviewSyncUntil && editorPaneOpen) {
-            if (chap === editorChapter) {
-              editorRef?.revealLine(line);
-            } else if (chap && currentDir && !buffer?.isDirty) {
-              // Scrolled into a DIFFERENT chapter: follow it by opening that
-              // chapter's file, then reveal the line once it has loaded. Skipped
-              // when there are unsaved edits so it never yanks the file away mid-
-              // edit. This is what makes the editor track the whole book, not
-              // just the one open chapter (the "sporadic" complaint).
-              followChapterInEditor(chap, line);
+          // Clear any stale "not ready yet" save warning from before this render.
+          if (saveWarning && currentDir && sourceMode === "folder") saveWarning = null;
+          // UX-011: improved success toast copy
+          toast?.success(`Your book is ready — ${n} ${n === 1 ? 'page' : 'pages'}`);
+          // Build the chapter-jump outline from the freshly rendered DOM.
+          refreshOutline();
+          // Re-lint the project on every rebuild so the Problems panel tracks
+          // the author's edits (#28).
+          refreshProblems();
+          // First project render done → dismiss the splash and reveal the window.
+          getPlatform().splashStatus("Ready", 100).catch(() => {});
+          getPlatform().rendererReady().catch(() => {});
+        } else if (e.name === "sourceLineChanged") {
+          // Preview→editor sync: the reader scrolled. Follow in the editor and
+          // update the active outline entry — but not while the editor itself is
+          // driving the preview (echo guard).
+          const line = e.detail.sourceLine;
+          const chap = e.detail.chapter;
+          if (typeof line === "number") {
+            updateActiveOutline(line);
+            if (Date.now() >= suppressPreviewSyncUntil && editorPaneOpen) {
+              if (chap === editorChapter) {
+                editorRef?.revealLine(line);
+              } else if (chap && currentDir && !buffer?.isDirty) {
+                // Scrolled into a DIFFERENT chapter: follow it by opening that
+                // chapter's file, then reveal the line once it has loaded. Skipped
+                // when there are unsaved edits so it never yanks the file away mid-
+                // edit. This is what makes the editor track the whole book, not
+                // just the one open chapter (the "sporadic" complaint).
+                followChapterInEditor(chap, line);
+              }
             }
           }
-        }
-      } else if (e.name === "pageChanged") {
-        if (rendering) {
-          renderProgressPage = e.detail.totalPages ?? renderProgressPage;
-          totalPages = e.detail.totalPages ?? totalPages;
-          // Live splash sub-status during the (potentially multi-second) render.
-          const pg = e.detail.totalPages ?? renderProgressPage;
-          if (pg) getPlatform().splashStatus(undefined, undefined, `Laying out page ${pg}`).catch(() => {});
-        } else {
-          syncPageState(e.detail);
-        }
-      } else if (e.name === "ready") {
-        rendering = true;
-        // New render starting — overlay covers the layout shuffle; fades out on renderingComplete.
-        renderProgressPage = 0;
-        outline = [];
-        activeOutlineIndex = 0;
-        getPlatform().splashStatus("Rendering pages…", 70).catch(() => {});
-        client?.call<number>("getTotalPages").then((n) => {
-          if (n > 0) {
-            totalPages = n;
+        } else if (e.name === "pageChanged") {
+          if (rendering) {
+            renderProgressPage = e.detail.totalPages ?? renderProgressPage;
+            totalPages = e.detail.totalPages ?? totalPages;
+            // Live splash sub-status during the (potentially multi-second) render.
+            const pg = e.detail.totalPages ?? renderProgressPage;
+            if (pg) getPlatform().splashStatus(undefined, undefined, `Laying out page ${pg}`).catch(() => {});
+          } else {
+            syncPageState(e.detail);
           }
-        }).catch(() => {});
+        } else if (e.name === "ready") {
+          rendering = true;
+          // New render starting — overlay covers the layout shuffle; fades out on renderingComplete.
+          renderProgressPage = 0;
+          outline = [];
+          activeOutlineIndex = 0;
+          getPlatform().splashStatus("Rendering pages…", 70).catch(() => {});
+          c2?.call<number>("getTotalPages").then((n) => {
+            if (n > 0) {
+              totalPages = n;
+            }
+          }).catch(() => {});
+        }
+      });
+      // Apply viewMode whenever the client is freshly attached.
+      if (!rendering) c2.call("setViewMode", [viewMode]).catch(() => {});
+    };
+    subscribe(c);
+    return {
+      update(c2: typeof client) { subscribe(c2); },
+      destroy() { off?.(); },
+    };
+  }
+
+  /**
+   * use: action watching viewMode — syncs the Settings-panel-driven viewMode
+   * change back into the already-open client (applies view mode changes that
+   * originate from the Settings panel rather than the toolbar buttons).
+   */
+  function watchViewMode(_node: HTMLElement, mode: string) {
+    if (client && !rendering) client.call("setViewMode", [mode]).catch(() => {});
+    return {
+      update(m: string) {
+        if (client && !rendering) client.call("setViewMode", [m]).catch(() => {});
+      },
+    };
+  }
+
+  // ----------------------------------------------------------------
+  // use: actions for buffer + panel + project side-effects
+  // ----------------------------------------------------------------
+
+  /** Sync hasPendingSave to main so the window-close gate can flush before quit. */
+  function watchDirtyState(_node: HTMLElement, pending: boolean) {
+    if (isDesktop()) getPlatform().setDirtyState(pending).catch(() => {});
+    return {
+      update(p: boolean) {
+        if (isDesktop()) getPlatform().setDirtyState(p).catch(() => {});
+      },
+    };
+  }
+
+  /** Keep the EditorBuffer crash-recovery toggle in sync with the live setting. */
+  function watchCrashRecoverySetting(_node: HTMLElement, enabled: boolean) {
+    if (buffer) buffer.setRecoveryEnabled(enabled);
+    return {
+      update(e: boolean) {
+        if (buffer) buffer.setRecoveryEnabled(e);
+      },
+    };
+  }
+
+  /** Watch the open folder for external file changes so the buffer can reconcile. */
+  function watchFolderForEdits(_node: HTMLElement, dir: string | null) {
+    if (!isDesktop()) return {};
+    let off: (() => void) | undefined;
+    const subscribe = (d: string | null) => {
+      off?.();
+      off = undefined;
+      if (!d || sourceMode !== "folder") return;
+      off = getPlatform().watchFolder(d, () => {
+        buffer?.reconcileExternalChange().catch(() => {});
+      });
+    };
+    subscribe(dir);
+    return {
+      update(d: string | null) { subscribe(d); },
+      destroy() { off?.(); },
+    };
+  }
+
+  /** Persist left-panel open/tab/width prefs whenever they change. */
+  function watchLeftPanelState(
+    _node: HTMLElement,
+    v: { open: boolean; tab: PanelTab; width: number; loaded: boolean },
+  ) {
+    const persist = (p: typeof v) => {
+      if (!p.loaded) return;
+      getPlatform()
+        .setViewerPrefs({ leftPanel: { open: p.open, activeTab: p.tab, width: p.width } })
+        .catch(() => {});
+    };
+    persist(v);
+    return { update: persist };
+  }
+
+  /** Auto-open Projects tab when no project is loaded. */
+  function watchNoProject(
+    _node: HTMLElement,
+    v: { dir: string | null; url: string | null; busy: boolean; checked: boolean },
+  ) {
+    const run = (p: typeof v) => {
+      if (!p.dir && !p.url && !p.busy && p.checked) {
+        leftPanelOpen = true;
+        leftPanelTab = "projects";
       }
-    });
-    return off;
-  });
+    };
+    run(v);
+    return { update: run };
+  }
+
+  /** Clear problems when the project is closed or switched to URL mode. */
+  function watchProjectActive(_node: HTMLElement, v: { dir: string | null; mode: string }) {
+    const run = (p: typeof v) => {
+      if (!p.dir || p.mode !== "folder") {
+        problems = [];
+        problemsOpen = false;
+      }
+    };
+    run(v);
+    return { update: run };
+  }
+
+  /** Detect connect-dialog close and refresh sync diagnostics. */
+  function watchConnectDialogs(_node: HTMLElement, anyOpen: boolean) {
+    const run = (open: boolean) => {
+      if (connectDialogWasOpen && !open && currentDir && sourceMode === "folder") {
+        void refreshSyncDiag(currentDir);
+      }
+      connectDialogWasOpen = open;
+    };
+    run(anyOpen);
+    return { update: run };
+  }
 
   // ----------------------------------------------------------------
   // Auto-update: markReady on mount (health gate) + event subscription
   // ----------------------------------------------------------------
-
-  // markReady tells main the new bundle booted successfully, clearing the
-  // health watchdog armed after an apply/launch-promote. If it does not arrive
-  // before the watchdog elapses (and the window is still open), main rolls the
-  // bundle back this session. Harmless no-op when nothing is pending.
-  $effect(() => {
-    if (!isDesktop()) return;
-    getPlatform().updater.markReady().catch(() => {});
-  });
-
-  // Check for an already-staged update on load, then subscribe to future events.
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
     const platform = getPlatform();
+
+    // markReady tells main the new bundle booted successfully, clearing the
+    // health watchdog armed after an apply/launch-promote. Harmless no-op when
+    // nothing is pending.
+    platform.updater.markReady().catch(() => {});
 
     // Peek at current status so we can surface a banner immediately if a
     // bundle was staged during a previous run.
@@ -1277,12 +1212,6 @@
       .catch(() => {});
 
     // Subscribe to future events from main.
-    // Events fire for BOTH the silent background launch check and the manual
-    // "Check for updates" button. Only react to "staged" here (show the banner
-    // live, e.g. when the background check stages an update). "uptodate"/"error"
-    // are intentionally silent — surfacing them here would toast on every
-    // launch and would double-toast during a manual check (which drives its own
-    // feedback from the IPC return value in checkForUpdates()).
     const off = platform.updater.onEvent((event: { type: string; version?: string }) => {
       if (event.type === "staged") {
         updateReadyVersion = event.version ?? null;
@@ -1295,7 +1224,7 @@
   // ----------------------------------------------------------------
   // Global keyboard shortcuts (available without a loaded document)
   // ----------------------------------------------------------------
-  $effect(() => {
+  onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
       // Cmd/Ctrl+, opens the Settings panel (toggles closed if already open).
       if ((e.ctrlKey || e.metaKey) && e.key === ",") {
@@ -1323,12 +1252,12 @@
   });
 
   // ----------------------------------------------------------------
-  // Keyboard shortcuts
+  // Keyboard shortcuts (preview nav — gated on previewUrl in handler)
   // ----------------------------------------------------------------
-  $effect(() => {
-    if (!previewUrl) return;
-
+  onMount(() => {
     function onKey(e: KeyboardEvent) {
+      // Only active when a preview is open.
+      if (!previewUrl) return;
       // Don't intercept when focus is in an input/textarea/select, or inside
       // the CodeMirror editor (#38) — its content node is a contenteditable
       // DIV, so a tagName check alone would let preview-nav keys (arrows,
@@ -1394,11 +1323,11 @@
   // ----------------------------------------------------------------
   // Responsive auto view-mode on resize (unless user locked it)
   // ----------------------------------------------------------------
-  $effect(() => {
-    if (!previewUrl) return;
+  onMount(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     function onResize() {
-      if (userSetViewMode) return;
+      // Only active when a preview is open and the user hasn't locked view mode.
+      if (!previewUrl || userSetViewMode) return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         const auto = window.innerWidth < 1280 ? "single" : "two-column";
@@ -1927,6 +1856,7 @@
     if (rendering) return;
     pageEditing = true;
     pageEditValue = String(currentPage);
+    queueMicrotask(() => pageEditInput?.focus());
   }
   function cancelPageEdit() {
     pageEditing = false;
@@ -2140,10 +2070,11 @@
   // workspace collapses to one pane and the Edit / View toggle picks which one
   // shows. Above it, the side-by-side split is used and paneMode is ignored.
   const NARROW_QUERY = `(max-width: ${NARROW_BREAKPOINT}px)`;
-  // matchMedia subscription (a genuine lifecycle subscription — the idiomatic
-  // use of $effect). On a resize INTO narrow while in edit mode, make sure a
-  // file is loaded so the editor isn't empty (the tree is hidden when narrow).
-  $effect(() => {
+  // matchMedia subscription — one-time lifecycle setup. onMount (not $effect)
+  // per the project runes rule. On a resize INTO narrow while in edit mode,
+  // make sure a file is loaded so the editor isn't empty (the tree is hidden
+  // when narrow).
+  onMount(() => {
     const mq = window.matchMedia(NARROW_QUERY);
     isNarrow = mq.matches;
     const onChange = (e: MediaQueryListEvent) => {
@@ -2426,6 +2357,18 @@
     {/if}
   </div>
 {/if}
+
+<!-- Reactive sentinel elements for use: actions that watch state and produce side effects.
+     All are hidden (display:none), contain no meaningful DOM, and only serve as
+     action attachment points. Listed before the app shell so they mount early. -->
+<span hidden use:watchDirtyState={buffer?.hasPendingSave ?? false}></span>
+<span hidden use:watchCrashRecoverySetting={settings.current.editor.crashRecovery}></span>
+<span hidden use:watchFolderForEdits={currentDir}></span>
+<span hidden use:watchLeftPanelState={{ open: leftPanelOpen, tab: leftPanelTab, width: leftPanelWidth, loaded: leftPanelPrefsLoaded }}></span>
+<span hidden use:watchNoProject={{ dir: currentDir, url: currentUrl, busy, checked: lastProjectChecked }}></span>
+<span hidden use:watchProjectActive={{ dir: currentDir, mode: sourceMode }}></span>
+<span hidden use:watchClient={client}></span>
+<span hidden use:watchViewMode={viewMode}></span>
 
 <div class="app-root">
 {#if updateReadyVersion}
@@ -3120,6 +3063,7 @@
   {updateReadyVersion}
 />
 <SettingsDialog bind:open={settingsOpen} triggerEl={settingsBtn} />
+<span hidden use:watchConnectDialogs={githubOpen || advancedSetupOpen}></span>
 <GitHubDialog
   bind:open={githubOpen}
   onOpened={(projectDir) => startFolderPreview(projectDir, "Opening your project…")}

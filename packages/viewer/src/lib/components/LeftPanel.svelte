@@ -134,10 +134,24 @@
   });
 
   // ── Load history when tab becomes active ──────────────────────────────────
-  $effect(() => {
-    if (open && activeTab === "history" && canHistory && projectDir && !historyLoading && !historyEntries.length) {
-      void refreshHistory();
+  // use: action on the aside — update() fires when any of the tracked slot
+  // values change; we trigger a load only when the conditions are met.
+  type HistoryLoadSlot = {
+    open: boolean; tab: typeof activeTab; canHistory: boolean;
+    dir: string | null; loading: boolean; hasEntries: boolean;
+  };
+  function watchHistoryLoad(_node: HTMLElement, slot: HistoryLoadSlot) {
+    function maybeLoad(s: HistoryLoadSlot) {
+      if (s.open && s.tab === "history" && s.canHistory && s.dir && !s.loading && !s.hasEntries) {
+        void refreshHistory();
+      }
     }
+    // Don't fire on initial mount — the panel starts closed/on "projects".
+    return { update(s: HistoryLoadSlot) { maybeLoad(s); } };
+  }
+  let historyLoadSlot = $derived({
+    open, tab: activeTab, canHistory, dir: projectDir,
+    loading: historyLoading, hasEntries: historyEntries.length > 0,
   });
 
   async function refreshHistory() {
@@ -232,13 +246,20 @@
   }
 
   // ── External refresh ──────────────────────────────────────────────────────
-  let lastRefreshKey = 0;
-  $effect(() => {
-    if (refreshKey !== lastRefreshKey) {
-      lastRefreshKey = refreshKey;
-      if (projectDir && canHistory) void refreshHistory();
-    }
-  });
+  // use: action on the aside — update() fires when refreshKey changes.
+  type RefreshSlot = { key: number; dir: string | null; canHistory: boolean };
+  function watchRefreshKey(_node: HTMLElement, slot: RefreshSlot) {
+    let lastKey = slot.key;
+    return {
+      update(s: RefreshSlot) {
+        if (s.key !== lastKey) {
+          lastKey = s.key;
+          if (s.dir && s.canHistory) void refreshHistory();
+        }
+      },
+    };
+  }
+  let refreshSlot = $derived({ key: refreshKey, dir: projectDir, canHistory });
 
   // ── Panel close ──────────────────────────────────────────────────────────
   function close() {
@@ -255,15 +276,19 @@
   }
 
   // ── Reset history state when project changes ──────────────────────────────
-  $effect(() => {
-    projectDir; // track
-    historyEntries = [];
-    historyHasMore = false;
-    historyError = null;
-    historyNotice = null;
-    historyBusy = false;
-    confirmRestoreId = null;
-  });
+  // use: action on the aside — update() fires when projectDir changes.
+  function watchProjectDir(_node: HTMLElement, _dir: string | null) {
+    return {
+      update(_newDir: string | null) {
+        historyEntries = [];
+        historyHasMore = false;
+        historyError = null;
+        historyNotice = null;
+        historyBusy = false;
+        confirmRestoreId = null;
+      },
+    };
+  }
 
   // ── Tab definitions ───────────────────────────────────────────────────────
   // ── Resizable width ──────────────────────────────────────────────────────
@@ -372,6 +397,9 @@
   aria-hidden={!open}
   inert={!open || undefined}
   onkeydown={onPanelKeydown}
+  use:watchHistoryLoad={historyLoadSlot}
+  use:watchRefreshKey={refreshSlot}
+  use:watchProjectDir={projectDir}
 >
   <!-- Resize handle: drag or Arrow keys. WAI-ARIA window-splitter pattern:
        a focusable role="separator" IS interactive per the ARIA spec; the

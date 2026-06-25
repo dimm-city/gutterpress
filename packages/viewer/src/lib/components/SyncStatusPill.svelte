@@ -18,6 +18,7 @@
   import { onDestroy } from "svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
   import type { SyncStatus, SyncState, ConflictFileInfo } from "$lib/platform/contract";
+  // (onMount not needed — subscription wired via use: action)
 
   let {
     /** Currently-open project directory — pill is hidden when null. */
@@ -53,32 +54,42 @@
   // the project dir changes (or the component mounts/unmounts).
   let unsubscribe: (() => void) | null = null;
 
-  $effect(() => {
+  function subscribeForDir(dir: string | null) {
     unsubscribe?.();
     unsubscribe = null;
     // Reset per-project state so a previous project's log path never leaks.
     logFilePath = null;
     // Only subscribe when running in the desktop host (the WebAdapter stub is a
     // safe no-op but we skip the wiring on the web path for clarity).
-    if (!isDesktop() || !projectDir) {
+    if (!isDesktop() || !dir) {
       syncState = "idle";
       conflictFiles = [];
       return;
     }
     unsubscribe = getPlatform().onSyncStatus((status: SyncStatus) => {
       // Scope to this project only (the host may manage multiple open windows).
-      if (status.projectDir !== projectDir) return;
+      if (status.projectDir !== dir) return;
       syncState = status.state;
       conflictFiles = status.files ?? [];
       // Retain the latest non-empty log path (later "idle" events omit it).
       if (status.logFile) logFilePath = status.logFile;
     });
-    // Return the cleanup function for Svelte's $effect cleanup.
-    return () => {
-      unsubscribe?.();
-      unsubscribe = null;
+  }
+
+  // use: action on the pill wrapper — update() fires whenever projectDir changes,
+  // re-wiring the sync subscription without $effect.
+  function watchProjectDir(_node: HTMLElement, dir: string | null) {
+    subscribeForDir(dir);
+    return {
+      update(newDir: string | null) {
+        subscribeForDir(newDir);
+      },
+      destroy() {
+        unsubscribe?.();
+        unsubscribe = null;
+      },
     };
-  });
+  }
 
   onDestroy(() => {
     unsubscribe?.();
@@ -156,13 +167,22 @@
   // in-sync state after ~4s (three-judge gate: a confirmation, not a badge).
   // A newer status event overrides it naturally (this only fires if nothing
   // else has arrived). The recovering label is event-driven, never timed.
-  $effect(() => {
-    if (syncState !== "recovered") return;
-    const t = setTimeout(() => {
-      if (syncState === "recovered") syncState = "synced";
-    }, 4000);
-    return () => clearTimeout(t);
-  });
+  // use: action on the pill wrapper — update() fires whenever syncState changes.
+  function watchSyncState(_node: HTMLElement, state: SyncState) {
+    let t = 0;
+    function arm(s: SyncState) {
+      clearTimeout(t);
+      if (s !== "recovered") return;
+      t = setTimeout(() => {
+        if (syncState === "recovered") syncState = "synced";
+      }, 4000) as unknown as number;
+    }
+    arm(state);
+    return {
+      update(newState: SyncState) { arm(newState); },
+      destroy() { clearTimeout(t); },
+    };
+  }
 
   /** True for states that require user attention. */
   let isWarning = $derived(syncState === "auth" || syncState === "conflict");
@@ -189,6 +209,9 @@
   );
 </script>
 
+<!-- Stable root: use: actions need a DOM node that is always present.
+     display:contents collapses this span so it has no layout effect. -->
+<span style="display:contents" use:watchProjectDir={projectDir} use:watchSyncState={syncState}>
 {#if pillText !== null && projectDir}
   {#if interactive}
     <!-- Auth and conflict pills are buttons — they invite an action. -->
@@ -230,6 +253,7 @@
     </div>
   {/if}
 {/if}
+</span>
 
 <style>
   /* Plain status TEXT — no border, no chip background. Matches the status bar's
