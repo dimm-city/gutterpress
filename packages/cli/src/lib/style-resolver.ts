@@ -51,14 +51,17 @@ function relDisplay(projectDir: string, absPath: string): string {
   return path.relative(projectDir, absPath).split(path.sep).join("/");
 }
 
-/** List `.css` files directly inside `dir` (absolute paths). Missing dir → []. */
-async function cssFilesIn(dir: string): Promise<string[]> {
-  let entries: import("node:fs").Dirent[];
+/** `readdir` with file types; a missing/unreadable dir yields []. */
+async function dirEntries(dir: string): Promise<import("node:fs").Dirent[]> {
   try {
-    entries = await readdir(dir, { withFileTypes: true });
+    return await readdir(dir, { withFileTypes: true });
   } catch {
     return [];
   }
+}
+
+/** Absolute paths of `.css` files directly inside an already-listed dir. */
+function cssFilesFrom(dir: string, entries: import("node:fs").Dirent[]): string[] {
   return entries
     .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".css"))
     .map((e) => path.join(dir, e.name));
@@ -66,22 +69,24 @@ async function cssFilesIn(dir: string): Promise<string[]> {
 
 /**
  * Discover candidate stylesheets under a project: root `.css`, `styles/*.css`,
- * and `themes/<id>/theme.css`. Returns absolute paths (deduped).
+ * and `themes/<id>/theme.css`. Returns absolute paths (deduped). The three
+ * top-level directory reads are independent, so they run in parallel.
  */
 async function discoverCssFiles(projectDir: string): Promise<string[]> {
-  const found = new Set<string>();
+  const stylesDir = path.join(projectDir, STYLES_SUBDIR);
+  const themesRoot = path.join(projectDir, THEMES_SUBDIR);
+  const [rootEntries, stylesEntries, themeEntries] = await Promise.all([
+    dirEntries(projectDir),
+    dirEntries(stylesDir),
+    dirEntries(themesRoot),
+  ]);
 
-  for (const p of await cssFilesIn(projectDir)) found.add(p);
-  for (const p of await cssFilesIn(path.join(projectDir, STYLES_SUBDIR))) found.add(p);
+  const found = new Set<string>([
+    ...cssFilesFrom(projectDir, rootEntries),
+    ...cssFilesFrom(stylesDir, stylesEntries),
+  ]);
 
   // themes/<id>/theme.css — one level of theme folders.
-  const themesRoot = path.join(projectDir, THEMES_SUBDIR);
-  let themeEntries: import("node:fs").Dirent[] = [];
-  try {
-    themeEntries = await readdir(themesRoot, { withFileTypes: true });
-  } catch {
-    themeEntries = [];
-  }
   for (const entry of themeEntries) {
     if (!entry.isDirectory()) continue;
     const themeCss = path.join(themesRoot, entry.name, "theme.css");
@@ -98,7 +103,11 @@ async function discoverCssFiles(projectDir: string): Promise<string[]> {
  * stylesheets.
  */
 export async function listProjectStyles(projectDir: string): Promise<ProjectStyle[]> {
-  const { manifest, manifestDir } = await loadManifestWithPath(projectDir);
+  // The manifest read and the css-dir discovery are independent — run together.
+  const [{ manifest, manifestDir }, discoveredAbs] = await Promise.all([
+    loadManifestWithPath(projectDir),
+    discoverCssFiles(projectDir),
+  ]);
 
   const activeRels = Array.isArray(manifest.styles) ? manifest.styles : [];
   const out: ProjectStyle[] = [];
@@ -116,7 +125,7 @@ export async function listProjectStyles(projectDir: string): Promise<ProjectStyl
 
   // 2. Discovered files (root, styles/, themes/*/theme.css), excluding any
   //    already listed as active. Sorted alphabetically by display path.
-  const discovered = (await discoverCssFiles(projectDir))
+  const discovered = discoveredAbs
     .filter((abs) => !seen.has(abs))
     .map((abs) => ({
       path: abs,

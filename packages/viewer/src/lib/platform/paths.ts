@@ -19,6 +19,19 @@ export function basenameOf(p: string): string {
 }
 
 /**
+ * Join a host base path with child segments using the base's native separator
+ * (Windows `\` if the base contains one, else POSIX `/`). Pure string op — the
+ * single source of truth for the renderer's `base.includes("\\") ? "\\" : "/"`
+ * path-building (it had accreted across `+page.svelte`). NOTE: building host
+ * paths in the renderer is itself a bandaid the host should remove (#61 —
+ * return a ref instead of a path); this just centralizes it until then.
+ */
+export function joinPath(base: string, ...segments: string[]): string {
+  const sep = base.includes("\\") ? "\\" : "/";
+  return [base.replace(/[\\/]+$/, ""), ...segments].join(sep);
+}
+
+/**
  * Wrap a host file path into a host-neutral {@link FileRef} (#61), analogous to
  * the adapter's FolderRef wrapping (#49). `key` is the host path / FSA handle id;
  * `displayName` is the precomputed basename so the UI never splits a path itself.

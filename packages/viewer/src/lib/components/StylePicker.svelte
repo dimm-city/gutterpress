@@ -46,10 +46,20 @@
    * user gesture — no `$effect` reaction on `open`, per the runes-mode rule.
    * Records the trigger element for focus restoration on close.
    */
-  export async function show(trigger?: HTMLButtonElement): Promise<void> {
+  export async function show(
+    trigger?: HTMLButtonElement,
+    preloaded?: ProjectStyle[],
+  ): Promise<void> {
     if (trigger) triggerEl = trigger;
     open = true;
-    await refresh();
+    // The opener (openStyles) usually already resolved the list to decide
+    // single-vs-many; reuse it to avoid a second IPC + fs resolve per open.
+    if (preloaded) {
+      styles = preloaded;
+      error = null;
+    } else {
+      await refresh();
+    }
     queueMicrotask(() =>
       dialogEl?.querySelector<HTMLElement>("button.style-row, button.close")?.focus(),
     );
