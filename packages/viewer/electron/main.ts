@@ -184,6 +184,14 @@ interface CreateProjectOptions {
   templateDir?: string;
   versionHistory?: "local-git" | "none";
 }
+// Adopt an existing folder as a project. Mirrors the lib's AdoptFolderOptions.
+interface AdoptFolderOptions {
+  dir: string;
+  title?: string;
+  author?: string;
+  template?: "book" | "ttrpg" | "zine" | "technical";
+  versionHistory?: "local-git" | "none";
+}
 
 // Project templates + snippets (#29). Mirror the lib's TemplateInfo/SnippetEntry.
 interface TemplateInfo {
@@ -418,6 +426,7 @@ interface LibModule {
   detectProjectSource: (folderPath: string) => Promise<ProjectSource>;
   capabilitiesFor: (source: ProjectSource) => ProjectCapabilities;
   scaffoldProject: (options: CreateProjectOptions) => Promise<CreateProjectResult>;
+  adoptFolder: (options: AdoptFolderOptions) => Promise<CreateProjectResult>;
   providerFor: (source: ProjectSource) => SourceProviderOps;
   // Project templates + snippets (#29)
   listBuiltInTemplates: () => Promise<TemplateInfo[]>;
@@ -2778,6 +2787,19 @@ ipcMain.handle(
     }
     const lib = await loadLib();
     return lib.scaffoldProject(options);
+  },
+);
+
+// Adopt an EXISTING folder as a print-md project, in place (#: "set up this
+// folder as a book"). Thin pass-through; the lib does the non-destructive work.
+ipcMain.handle(
+  "app:adoptFolder",
+  async (_e, options: AdoptFolderOptions): Promise<CreateProjectResult> => {
+    if (!options || typeof options.dir !== "string" || !path.isAbsolute(options.dir)) {
+      throw new Error("app:adoptFolder requires an absolute { dir }");
+    }
+    const lib = await loadLib();
+    return lib.adoptFolder(options);
   },
 );
 

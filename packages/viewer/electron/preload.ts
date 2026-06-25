@@ -84,6 +84,13 @@ interface CreateProjectOptions {
   templateDir?: string;
   versionHistory?: "local-git" | "none";
 }
+interface AdoptFolderOptions {
+  dir: string;
+  title?: string;
+  author?: string;
+  template?: "book" | "ttrpg" | "zine" | "technical";
+  versionHistory?: "local-git" | "none";
+}
 interface CreateProjectResult {
   projectDir: string;
   manifestPath: string;
@@ -655,6 +662,8 @@ contextBridge.exposeInMainWorld("electron", {
   // New-project scaffold (#25)
   createProject: (options: CreateProjectOptions): Promise<CreateProjectResult> =>
     ipcRenderer.invoke("app:createProject", options),
+  adoptFolder: (options: AdoptFolderOptions): Promise<CreateProjectResult> =>
+    ipcRenderer.invoke("app:adoptFolder", options),
 
   // Project templates + snippets (#29)
   listBuiltInTemplates: (): Promise<TemplateInfo[]> =>

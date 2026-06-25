@@ -62,6 +62,7 @@ import type {
   RecoveryEntry,
   FolderChangedEvent,
   CreateProjectOptions,
+  AdoptFolderOptions,
   CreateProjectResult,
   TemplateInfo,
   SnippetEntry,
@@ -651,6 +652,10 @@ export class WebAdapter implements Platform {
   // New-project scaffold (#25) — desktop-only in 0.4.0.
   createProject(_options: CreateProjectOptions): Promise<CreateProjectResult> {
     return rejectNotImplemented("createProject");
+  }
+
+  adoptFolder(_options: AdoptFolderOptions): Promise<CreateProjectResult> {
+    return rejectNotImplemented("adoptFolder");
   }
 
   // ── Project templates + snippets (#29) ──────────────────────────────────────

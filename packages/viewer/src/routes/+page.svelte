@@ -203,6 +203,44 @@
   }
   let userSetViewMode = $state(false);
   let openError = $state<string | null>(null);
+  // The folder a failed open was attempted on, so we can offer to adopt it.
+  let failedOpenDir = $state<string | null>(null);
+  let adopting = $state(false);
+  // A loose markdown folder opens fine (no manifest = defaults), but has no
+  // editable styles or version history. When the OPENED folder has no manifest,
+  // offer a non-blocking "set it up as a book" affordance. Default true so the
+  // banner stays hidden until a check proves the manifest is absent.
+  let currentFolderHasManifest = $state(true);
+  let adoptBannerDismissed = $state(false);
+  let showAdoptBanner = $derived(
+    isDesktop() &&
+      !!currentDir &&
+      sourceMode === "folder" &&
+      !currentFolderHasManifest &&
+      !adoptBannerDismissed,
+  );
+  // The rarer case: an open that genuinely FAILED with "not a project".
+  let canAdoptFailedFolder = $derived(
+    !!failedOpenDir && !!openError && /manifest|print-md\.yaml|No such file/i.test(openError),
+  );
+
+  /** Turn an existing folder into a print-md book (manifest + book.css + git),
+   *  then (re)open it. Used by both the error CTA and the no-manifest banner. */
+  async function setUpAsBook(dir: string) {
+    if (!dir || !isDesktop()) return;
+    adopting = true;
+    try {
+      await getPlatform().adoptFolder({ dir });
+      openError = null;
+      failedOpenDir = null;
+      adoptBannerDismissed = true;
+      await startFolderPreview(dir, "Setting up your book…");
+    } catch (e) {
+      openError = e instanceof Error ? e.message : String(e);
+    } finally {
+      adopting = false;
+    }
+  }
   let urlPreviewError = $state<string | null>(null);
 
   // ── Auto-update state ──────────────────────────────────────────────────
@@ -1520,6 +1558,7 @@
     displayName: string | null = null,
   ) {
     openError = null;
+    failedOpenDir = null;
     urlPreviewError = null;
     saveWarning = null;
     renderCompleteOverlay = false;
@@ -1548,6 +1587,16 @@
       currentDir = dir;
       currentFolderDisplayName = displayName;
       currentUrl = null;
+      // Detect a "loose" folder (no manifest) so we can offer to set it up as a
+      // book. Default true (banner hidden) until the listing proves it's absent.
+      currentFolderHasManifest = true;
+      adoptBannerDismissed = false;
+      void getPlatform()
+        .listDir(dir)
+        .then((entries) => {
+          currentFolderHasManifest = entries.some((e) => /^manifest\.ya?ml$/i.test(e.name));
+        })
+        .catch(() => { currentFolderHasManifest = true; });
       // Clear stale problems from the previous project immediately so the badge
       // and panel don't show the old project's findings while the new one renders.
       problems = [];
@@ -1631,6 +1680,9 @@
       docTitle = null;
       rendering = false;
       openError = e instanceof Error ? e.message : String(e);
+      // Remember the folder so we can offer to set it up as a book when the
+      // failure was "this isn't a print-md project".
+      failedOpenDir = dir;
     } finally {
       busy = false;
       busyLabel = "";
@@ -2869,6 +2921,24 @@
     <!-- Main content area (preview + editor) -->
     <div class="main-content">
 
+  <!-- Loose-folder nudge: a plain folder renders fine but has no manifest,
+       editable styles, or version history. Offer a one-click setup (adopt). -->
+  {#if showAdoptBanner}
+    <div class="adopt-banner" role="status">
+      <span class="adopt-banner-text">
+        This folder isn't set up as a book yet — set it up to edit its design and keep a history of changes.
+      </span>
+      <div class="adopt-banner-actions">
+        <button class="primary" onclick={() => currentDir && setUpAsBook(currentDir)} disabled={adopting}>
+          {adopting ? "Setting up…" : "Set up as a book"}
+        </button>
+        <button class="ghost" onclick={() => (adoptBannerDismissed = true)} disabled={adopting} aria-label="Dismiss">
+          Not now
+        </button>
+      </div>
+    </div>
+  {/if}
+
   {#if previewUrl}
     <div
       class="workspace"
@@ -3028,6 +3098,12 @@
           <div class="open-error" role="alert">
             <strong>Couldn't open that folder.</strong>
             <p>{friendlyFolderError(openError)}</p>
+            {#if canAdoptFailedFolder}
+              <p class="adopt-hint">It's a regular folder — want to turn it into a print-md book? We'll use any Markdown already inside it.</p>
+              <button class="primary adopt-btn" onclick={() => failedOpenDir && setUpAsBook(failedOpenDir)} disabled={adopting}>
+                {adopting ? "Setting up…" : "Set up this folder as a book"}
+              </button>
+            {/if}
           </div>
         {/if}
       </div>
@@ -3807,6 +3883,48 @@
   }
   .open-error strong { display: block; margin-bottom: 4px; font-size: 13px; }
   .open-error p { margin: 0; color: var(--app-error-text); }
+  .adopt-hint { margin-top: 8px !important; color: var(--app-text-secondary) !important; }
+  .adopt-btn {
+    margin-top: 10px;
+    padding: 7px 14px;
+    font-size: 13px;
+    border-radius: 6px;
+    border: 1px solid var(--app-accent-border);
+    background: var(--app-accent);
+    color: var(--app-accent-text);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .adopt-btn:hover:not(:disabled) { background: var(--app-accent-hover); }
+  .adopt-btn:disabled { opacity: 0.6; cursor: default; }
+
+  .adopt-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 8px 14px;
+    background: var(--app-info-bg, var(--app-surface));
+    border-bottom: 1px solid var(--app-border);
+    font-size: 13px;
+    color: var(--app-text);
+    flex-shrink: 0;
+  }
+  .adopt-banner-text { flex: 1 1 240px; min-width: 0; }
+  .adopt-banner-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .adopt-banner-actions button {
+    padding: 5px 12px;
+    font-size: 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .adopt-banner-actions .primary { background: var(--app-accent); color: var(--app-accent-text); border-color: var(--app-accent-border); font-weight: 600; }
+  .adopt-banner-actions .primary:hover:not(:disabled) { background: var(--app-accent-hover); }
+  .adopt-banner-actions .ghost { background: transparent; color: var(--app-text-secondary); border-color: var(--app-border); }
+  .adopt-banner-actions .ghost:hover:not(:disabled) { background: var(--app-control-hover-bg); }
+  .adopt-banner-actions button:disabled { opacity: 0.6; cursor: default; }
 
   /* ---- Auto-update banner ---- */
   .update-banner {

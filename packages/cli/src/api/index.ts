@@ -72,6 +72,7 @@ export type {
 // ── Project scaffolding (#25) ─────────────────────────────────────────────────
 export {
   scaffoldProject,
+  adoptFolder,
   slugifyProjectName,
   escapeYamlScalar,
 } from "../lib/project-scaffold.ts";
@@ -80,6 +81,7 @@ export type {
   ProjectTemplateId,
   ProjectVersionHistoryMode,
   CreateProjectOptions,
+  AdoptFolderOptions,
   CreateProjectResult,
   CreateProjectErrorCode,
   CreateProjectError,

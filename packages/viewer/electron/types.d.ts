@@ -540,6 +540,19 @@ interface Window {
       versionHistory: "local-git" | "none";
       versionHistoryError?: string;
     }>;
+    adoptFolder(options: {
+      dir: string;
+      title?: string;
+      author?: string;
+      template?: "book" | "ttrpg" | "zine" | "technical";
+      versionHistory?: "local-git" | "none";
+    }): Promise<{
+      projectDir: string;
+      manifestPath: string;
+      openFile: string;
+      versionHistory: "local-git" | "none";
+      versionHistoryError?: string;
+    }>;
     // Project templates + snippets (#29)
     listBuiltInTemplates(): Promise<TemplateInfo[]>;
     listCustomTemplates(): Promise<TemplateInfo[]>;

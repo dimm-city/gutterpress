@@ -38,6 +38,7 @@ import type {
   RecoveryEntry,
   FolderChangedEvent,
   CreateProjectOptions,
+  AdoptFolderOptions,
   CreateProjectResult,
   TemplateInfo,
   SnippetEntry,
@@ -304,6 +305,10 @@ export class ElectronAdapter implements Platform {
 
   createProject(options: CreateProjectOptions): Promise<CreateProjectResult> {
     return bridge().createProject(options);
+  }
+
+  adoptFolder(options: AdoptFolderOptions): Promise<CreateProjectResult> {
+    return bridge().adoptFolder(options);
   }
 
   // ── Project templates + snippets (#29) — delegate 1:1 to the bridge ─────────

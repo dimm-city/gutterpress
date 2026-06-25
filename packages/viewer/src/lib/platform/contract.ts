@@ -18,6 +18,7 @@ import type {
   FileStat,
   FileWriteResult,
   CreateProjectOptions,
+  AdoptFolderOptions,
   CreateProjectResult,
 } from "@dimm-city/print-md";
 
@@ -28,6 +29,7 @@ export type {
   FileStat,
   FileWriteResult,
   CreateProjectOptions,
+  AdoptFolderOptions,
   CreateProjectResult,
 };
 
@@ -1112,6 +1114,12 @@ export interface HostServices {
    * init). The WebAdapter stub rejects (the wizard is desktop-only in 0.4.0).
    */
   createProject(options: CreateProjectOptions): Promise<CreateProjectResult>;
+  /**
+   * Adopt an EXISTING folder as a print-md project, in place (the "set up this
+   * folder as a book" action when the author opens a non-project folder). Thin
+   * pass-through to the shared lib; non-destructive. The WebAdapter stub rejects.
+   */
+  adoptFolder(options: AdoptFolderOptions): Promise<CreateProjectResult>;
 
   // ── Project templates + snippets (#29) ──────────────────────────────────────
   // Thin pass-throughs to the shared lib (one impl for CLI + viewer). Templates
