@@ -41,7 +41,7 @@
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
-  import { basenameOf } from "$lib/platform/paths";
+  import { basenameOf, joinPath } from "$lib/platform/paths";
   import { onMount } from "svelte";
   import {
     NARROW_BREAKPOINT,
@@ -515,22 +515,25 @@
   // exactly one stylesheet, open it directly; if several, show the picker (the
   // active stylesheet sorted first). Used by both the Document menu / editor
   // toolbar (all sizes) and the mobile CSS tab (B2 manifest-aware resolution).
-  let stylePickerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
-  let stylePickerOpen = $state(false);
-  let stylesMenuBtn = $state<HTMLButtonElement | undefined>(undefined);
+  let stylePickerRef = $state<{
+    show: (t?: HTMLButtonElement, preloaded?: ProjectStyle[]) => void;
+  } | null>(null);
+
+  /** Open one stylesheet (absolute path) in the shared editor and reveal it. */
+  function openStyleFile(absPath: string) {
+    editorOpen = true;
+    selectEditorFile(absPath);
+    focusEditorWhenReady();
+  }
 
   /**
    * Open the project's styles for editing (audit G1/G2/B2). Resolves the
    * stylesheets via the shared lib (manifest `styles:` first); opens a single
-   * stylesheet directly, shows the picker for several, and toasts when none.
-   * `trigger` (when given) is the button to restore focus to after the picker.
-   * `focusEditor` reveals + focuses the editor after a direct open (the mobile
-   * CSS-tab flow wants this; the menu flow leaves focus management to the user).
+   * stylesheet directly, shows the picker for several (handing it the list we
+   * already fetched so it does not re-resolve), and toasts when none. `trigger`
+   * (when given) is the button to restore focus to after the picker.
    */
-  async function openStyles(
-    trigger?: HTMLButtonElement,
-    opts: { focusEditor?: boolean } = {},
-  ) {
+  async function openStyles(trigger?: HTMLButtonElement) {
     if (!isDesktop() || !currentDir) return;
     let list: ProjectStyle[];
     try {
@@ -548,21 +551,10 @@
       return;
     }
     if (list.length === 1) {
-      selectEditorFile(list[0]!.path);
-      if (opts.focusEditor) {
-        editorOpen = true;
-        focusEditorWhenReady();
-      }
+      openStyleFile(list[0]!.path);
       return;
     }
-    stylePickerRef?.show(trigger);
-  }
-
-  /** Open one chosen stylesheet (from the StylePicker) in the shared editor. */
-  function openStyleFile(absPath: string) {
-    editorOpen = true;
-    selectEditorFile(absPath);
-    focusEditorWhenReady();
+    stylePickerRef?.show(trigger, list);
   }
 
   /**
@@ -572,11 +564,7 @@
    */
   function onThemeApplied(themeId: string) {
     if (!isDesktop() || !currentDir) return;
-    const sep = currentDir.includes("\\") ? "\\" : "/";
-    const cssPath = `${currentDir}${sep}themes${sep}${themeId}${sep}theme.css`;
-    editorOpen = true;
-    selectEditorFile(cssPath);
-    focusEditorWhenReady();
+    openStyleFile(joinPath(currentDir, "themes", themeId, "theme.css"));
   }
 
   // "Save as template" (#29) — capture the open project as a reusable template.
@@ -2154,7 +2142,7 @@
     } else if (surface === "css") {
       // Manifest-aware CSS resolution (B2): open the active stylesheet directly,
       // or show the picker when there are several.
-      void openStyles(undefined, { focusEditor: true });
+      void openStyles();
     }
   }
 
@@ -2750,9 +2738,8 @@
                  point. Manifest-aware: opens the active stylesheet (or a picker
                  when there are several). -->
             <button
-              bind:this={stylesMenuBtn}
               class="menu-item"
-              onclick={(e) => { void openStyles(stylesMenuBtn); closeMenu(e); }}
+              onclick={(e) => { void openStyles(e.currentTarget as HTMLButtonElement); closeMenu(e); }}
             >
               <Icon name="palette" /> Edit styles…
             </button>
@@ -2862,7 +2849,7 @@
                 <button
                   class="edit-styles-btn"
                   title="Edit project styles (CSS)"
-                  onclick={(e) => void openStyles(e.currentTarget as HTMLButtonElement, { focusEditor: true })}
+                  onclick={(e) => void openStyles(e.currentTarget as HTMLButtonElement)}
                 >
                   <Icon name="palette" size={12} /> Styles
                 </button>
@@ -3054,7 +3041,6 @@
      by openStyles() only when there are several (single-style opens directly). -->
 <StylePicker
   bind:this={stylePickerRef}
-  bind:open={stylePickerOpen}
   projectDir={currentDir}
   onChoose={openStyleFile}
 />

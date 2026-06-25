@@ -833,6 +833,7 @@ interface AppSettings {
   preview: {
     defaultZoom: string;
     viewMode: "single" | "two-column";
+    paneMode: "edit" | "view";
   };
   versionHistory: {
     /** Save automatic snapshots after edits settle (RC1-3). Default ON. */
@@ -870,6 +871,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   preview: {
     defaultZoom: "fit-width",
     viewMode: "two-column",
+    // Keep in sync with the renderer's canonical DEFAULT_SETTINGS (contract.ts).
+    paneMode: "view",
   },
   versionHistory: {
     autoSnapshot: true,
@@ -2787,9 +2790,7 @@ ipcMain.handle("tpl:listCustom", async (): Promise<TemplateInfo[]> => {
 ipcMain.handle(
   "tpl:saveAsTemplate",
   async (_e, projectDir: string, name: string): Promise<TemplateInfo> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("tpl:saveAsTemplate requires an absolute projectDir");
-    }
+    requireAbsoluteDir("tpl:saveAsTemplate", projectDir);
     const lib = await loadLib();
     return lib.saveProjectAsTemplate({ projectDir, name, templatesRoot: templatesRoot() });
   },
@@ -2812,9 +2813,7 @@ ipcMain.handle("tpl:importFromFolder", async (): Promise<TemplateInfo | null> =>
 ipcMain.handle(
   "snip:list",
   async (_e, projectDir: string): Promise<SnippetEntry[]> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("snip:list requires an absolute projectDir");
-    }
+    requireAbsoluteDir("snip:list", projectDir);
     const lib = await loadLib();
     return lib.listSnippets(projectDir);
   },
@@ -2823,9 +2822,7 @@ ipcMain.handle(
 ipcMain.handle(
   "snip:read",
   async (_e, projectDir: string, fileName: string): Promise<string> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("snip:read requires an absolute projectDir");
-    }
+    requireAbsoluteDir("snip:read", projectDir);
     const lib = await loadLib();
     return lib.readSnippet(projectDir, fileName);
   },
@@ -2834,9 +2831,7 @@ ipcMain.handle(
 ipcMain.handle(
   "snip:save",
   async (_e, projectDir: string, name: string, body: string): Promise<SnippetEntry> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("snip:save requires an absolute projectDir");
-    }
+    requireAbsoluteDir("snip:save", projectDir);
     const lib = await loadLib();
     return lib.saveSnippet(projectDir, name, body);
   },
@@ -2845,9 +2840,7 @@ ipcMain.handle(
 ipcMain.handle(
   "snip:delete",
   async (_e, projectDir: string, fileName: string): Promise<void> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("snip:delete requires an absolute projectDir");
-    }
+    requireAbsoluteDir("snip:delete", projectDir);
     const lib = await loadLib();
     return lib.deleteSnippet(projectDir, fileName);
   },
@@ -2862,9 +2855,7 @@ ipcMain.handle(
 ipcMain.handle(
   "plugin:list",
   async (_e, projectDir: string): Promise<ProjectPluginEntry[]> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("plugin:list requires an absolute projectDir");
-    }
+    requireAbsoluteDir("plugin:list", projectDir);
     const lib = await loadLib();
     return lib.listProjectPlugins(projectDir);
   },
@@ -2873,9 +2864,7 @@ ipcMain.handle(
 ipcMain.handle(
   "plugin:setEnabled",
   async (_e, projectDir: string, ref: string, enabled: boolean): Promise<void> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("plugin:setEnabled requires an absolute projectDir");
-    }
+    requireAbsoluteDir("plugin:setEnabled", projectDir);
     const lib = await loadLib();
     return lib.setPluginEnabled(projectDir, ref, Boolean(enabled));
   },
@@ -2884,9 +2873,7 @@ ipcMain.handle(
 ipcMain.handle(
   "plugin:addNpm",
   async (_e, projectDir: string, packageName: string): Promise<ProjectPluginEntry> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("plugin:addNpm requires an absolute projectDir");
-    }
+    requireAbsoluteDir("plugin:addNpm", projectDir);
     const lib = await loadLib();
     return lib.addNpmPlugin(projectDir, packageName);
   },
@@ -2895,9 +2882,7 @@ ipcMain.handle(
 ipcMain.handle(
   "plugin:import",
   async (_e, projectDir: string): Promise<ProjectPluginEntry | null> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("plugin:import requires an absolute projectDir");
-    }
+    requireAbsoluteDir("plugin:import", projectDir);
     if (!mainWindow) return null;
     const res = await dialog.showOpenDialog(mainWindow, {
       title: "Choose a plugin file or folder",
@@ -2913,9 +2898,7 @@ ipcMain.handle(
 ipcMain.handle(
   "plugin:validate",
   async (_e, projectDir: string): Promise<PluginValidationResult[]> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("plugin:validate requires an absolute projectDir");
-    }
+    requireAbsoluteDir("plugin:validate", projectDir);
     const lib = await loadLib();
     return lib.validateProjectPlugins(projectDir);
   },
@@ -2944,9 +2927,7 @@ ipcMain.handle("theme:listBuiltIn", async (): Promise<ThemeInfo[]> => {
 ipcMain.handle(
   "theme:listProject",
   async (_e, projectDir: string): Promise<ThemeInfo[]> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("theme:listProject requires an absolute projectDir");
-    }
+    requireAbsoluteDir("theme:listProject", projectDir);
     const lib = await loadLib();
     return lib.listProjectThemes(projectDir);
   },
@@ -2955,9 +2936,7 @@ ipcMain.handle(
 ipcMain.handle(
   "theme:getActive",
   async (_e, projectDir: string): Promise<ThemeInfo | null> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("theme:getActive requires an absolute projectDir");
-    }
+    requireAbsoluteDir("theme:getActive", projectDir);
     const lib = await loadLib();
     return lib.getActiveTheme(projectDir);
   },
@@ -2966,9 +2945,7 @@ ipcMain.handle(
 ipcMain.handle(
   "theme:apply",
   async (_e, projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("theme:apply requires an absolute projectDir");
-    }
+    requireAbsoluteDir("theme:apply", projectDir);
     const lib = await loadLib();
     return lib.applyTheme(projectDir, target);
   },
@@ -2977,9 +2954,7 @@ ipcMain.handle(
 ipcMain.handle(
   "theme:importFromFolder",
   async (_e, projectDir: string): Promise<ThemeInfo | null> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("theme:importFromFolder requires an absolute projectDir");
-    }
+    requireAbsoluteDir("theme:importFromFolder", projectDir);
     if (!mainWindow) return null;
     const res = await dialog.showOpenDialog(mainWindow, {
       title: "Choose a theme folder",
@@ -2994,9 +2969,7 @@ ipcMain.handle(
 ipcMain.handle(
   "theme:importFromUrl",
   async (_e, projectDir: string, url: string): Promise<ThemeInfo> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("theme:importFromUrl requires an absolute projectDir");
-    }
+    requireAbsoluteDir("theme:importFromUrl", projectDir);
     const lib = await loadLib();
     return lib.importThemeFromUrl(projectDir, url);
   },
@@ -3020,9 +2993,7 @@ ipcMain.handle(
 ipcMain.handle(
   "theme:remove",
   async (_e, projectDir: string, id: string): Promise<void> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("theme:remove requires an absolute projectDir");
-    }
+    requireAbsoluteDir("theme:remove", projectDir);
     const lib = await loadLib();
     return lib.removeProjectTheme(projectDir, id);
   },
@@ -3036,9 +3007,7 @@ ipcMain.handle(
 ipcMain.handle(
   "project:listStyles",
   async (_e, projectDir: string): Promise<ProjectStyle[]> => {
-    if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
-      throw new Error("project:listStyles requires an absolute projectDir");
-    }
+    requireAbsoluteDir("project:listStyles", projectDir);
     const lib = await loadLib();
     return lib.listProjectStyles(projectDir);
   },
