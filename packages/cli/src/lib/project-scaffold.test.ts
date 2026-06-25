@@ -48,6 +48,8 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
     expect(manifest).toContain('- "Jane Writer"');
     expect(manifest).toContain("test-book.pdf");
     expect(manifest).toContain("chapter-01.md");
+    // The manifest references the scaffolded stylesheet.
+    expect(manifest).toContain("styles/book.css");
 
     const chapter = await readFile(result.openFile, "utf8");
     expect(chapter).toContain("Test Book");
@@ -55,6 +57,11 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
 
     // assets/ dir exists.
     expect((await stat(path.join(result.projectDir, "assets"))).isDirectory()).toBe(true);
+    // styles/book.css scaffolded with editable :root custom properties so the
+    // guided Design panel is never empty on a fresh project.
+    const bookCss = await readFile(path.join(result.projectDir, "styles", "book.css"), "utf8");
+    expect(bookCss).toContain(":root");
+    expect(bookCss).toMatch(/--color-ink|--color-accent/);
     // No git when versionHistory: "none".
     const source = await detectProjectSource(result.projectDir);
     expect(source.type).toBe("local-folder");

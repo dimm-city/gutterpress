@@ -39,6 +39,20 @@ import { getAssetPath } from "./embedded-assets.ts";
 export type ProjectTemplateId = "book" | "ttrpg" | "zine" | "technical";
 
 /**
+ * The bundled theme each built-in template scaffolds as its starter
+ * `styles/book.css`. The theme.css files are complete, token-driven stylesheets
+ * (a documented `:root` block + the rules that use it), so a fresh project opens
+ * with a real look AND immediately-editable settings in the guided Design panel
+ * — never an empty "no stylesheet" dead-end (UX audit P2#7).
+ */
+const STARTER_THEME_FOR_TEMPLATE: Record<ProjectTemplateId, string> = {
+  book: "clean-book",
+  ttrpg: "ttrpg-supplement",
+  zine: "zine",
+  technical: "technical-doc",
+};
+
+/**
  * How (or whether) to put the new project under local version history.
  *
  * - `"local-git"` — default. Initialise a local Git repo with one initial
@@ -236,6 +250,13 @@ export async function scaffoldProject(
       await mkdir(path.join(projectDir, "assets"), { recursive: true });
       await copyFile(tplManifest, path.join(projectDir, "manifest.yaml"));
       await copyFile(tplChapter, path.join(projectDir, "chapter-01.md"));
+      // Scaffold styles/book.css from the template's starter theme so the
+      // project opens with a real, fully-editable stylesheet (the manifest
+      // references styles/book.css). Never an empty Design panel (audit P2#7).
+      const starterThemeId = STARTER_THEME_FOR_TEMPLATE[template] ?? "clean-book";
+      const starterCss = await getAssetPath(`themes/${starterThemeId}/theme.css`);
+      await mkdir(path.join(projectDir, "styles"), { recursive: true });
+      await copyFile(starterCss, path.join(projectDir, "styles", "book.css"));
     }
   } catch (e) {
     throw new CreateProjectErrorImpl(
