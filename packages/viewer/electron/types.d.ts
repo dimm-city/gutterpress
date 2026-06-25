@@ -181,6 +181,14 @@ interface ProjectStyle {
   displayName: string;
   active: boolean;
 }
+interface StyleToken {
+  name: string;
+  value: string;
+  kind: "color" | "length" | "text";
+  label: string;
+  number?: number;
+  unit?: string;
+}
 
 // Local version history (#13). Mirrors the lib's source-provider types.
 interface SnapshotEntry {
@@ -421,7 +429,10 @@ interface Window {
     listDir(
       dirPath: string,
     ): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
-// CSS print-safety lint (#39) — runs in main; postcss can't bundle into the SPA
+    listProjectFiles(
+      projectDir: string,
+    ): Promise<{ md: string[]; css: string[] }>;
+    // CSS print-safety lint (#39) — runs in main; postcss can't bundle into the SPA
     checkCss(
       css: string,
       from?: string,
@@ -447,6 +458,7 @@ interface Window {
     watchFolder(dirPath: string, cb: () => void): () => void;
     // Lib API
     getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
+    getLastProject(): Promise<string | null>;
     // Splash coordination: push status while booting, then signal first-screen ready.
     splashStatus(status?: string, progress?: number, sub?: string): Promise<void>;
     rendererReady(): Promise<void>;
@@ -568,6 +580,7 @@ interface Window {
       projectDir: string | null,
       source: { kind: "builtin" | "project"; id: string },
     ): Promise<string>;
+    removeProjectTheme(projectDir: string, id: string): Promise<void>;
     // Style resolver (audit B2/G1)
     listProjectStyles(projectDir: string): Promise<ProjectStyle[]>;
     // Local version history (#13)

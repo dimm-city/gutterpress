@@ -29,14 +29,19 @@
   let groups = $derived(groupProblems(problems));
   let counts = $derived(problemCounts(problems));
 
-  // Polite live region text — a pure function of loading/problems, so $derived,
-  // not an $effect-written state.
-  const lintAnnouncement = $derived.by(() => {
-    if (loading || problems.length === 0) return "";
-    const parts: string[] = [];
-    if (counts.errors > 0) parts.push(`${counts.errors} ${counts.errors === 1 ? "error" : "errors"}`);
-    if (counts.warnings > 0) parts.push(`${counts.warnings} ${counts.warnings === 1 ? "warning" : "warnings"}`);
-    return parts.length > 0 ? `Problems: ${parts.join(", ")}` : "";
+  // Polite live region: announce error/warning counts when lint completes.
+  let lintAnnouncement = $state("");
+  $effect(() => {
+    if (!loading && problems.length > 0) {
+      const e = counts.errors;
+      const w = counts.warnings;
+      const parts: string[] = [];
+      if (e > 0) parts.push(`${e} ${e === 1 ? "error" : "errors"}`);
+      if (w > 0) parts.push(`${w} ${w === 1 ? "warning" : "warnings"}`);
+      lintAnnouncement = parts.length > 0 ? `Problems: ${parts.join(", ")}` : "";
+    } else if (!loading && problems.length === 0) {
+      lintAnnouncement = "";
+    }
   });
 
   const SEVERITY_ICON = {

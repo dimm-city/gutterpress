@@ -23,7 +23,7 @@
  * Exit 0 on pass, 1 on fail.
  */
 import { spawn } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync, existsSync, appendFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, existsSync, appendFileSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -66,10 +66,13 @@ cpSync(srcFixture, bookDir, { recursive: true });
 // Error: local image reference that does not exist on disk (source.links.local-refs).
 appendFileSync(join(bookDir, "01-alpha.md"), "\n![Missing art](./missing-art.png)\n");
 // Warning: risky print property (source.stylelint → printsafe/no-risky-print-effects).
-// The CSS lint runs over the manifest's `styles` list (falling back to the
-// preset default css/print.css when omitted), so declare the file explicitly.
+// The CSS lint runs over the manifest's `styles` list, so add extra.css to the
+// EXISTING styles array — appending a new `styles:` key would produce a
+// duplicate YAML key which breaks manifest parsing.
 writeFileSync(join(bookDir, "extra.css"), "h1 {\n  filter: blur(1px);\n}\n");
-appendFileSync(join(bookDir, "manifest.yaml"), "\nstyles:\n  - extra.css\n");
+const manifestPath = join(bookDir, "manifest.yaml");
+const manifest = readFileSync(manifestPath, "utf8");
+writeFileSync(manifestPath, manifest.replace(/^(styles:.*\n(?:  - .*\n)*)/m, "$1  - extra.css\n"));
 log(`seeded fixture: ${bookDir}`);
 
 // ── 2. launch the built app (render-gate.mjs pattern) ───────────────────────
@@ -95,6 +98,7 @@ child = spawn(cmd, cmdArgs, {
     XDG_CONFIG_HOME: join(fakeHome, ".config"),
     XDG_CACHE_HOME: join(fakeHome, ".cache"),
     XDG_DATA_HOME: join(fakeHome, ".local", "share"),
+    ELECTRON_DISABLE_GPU: "1",
   },
 });
 child.stdout.on("data", () => {});
@@ -187,18 +191,19 @@ await evalJs(`(async () => {
   inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   return true;
 })()`);
-log("projects panel driven; waiting for render to complete…");
+log("projects panel driven; waiting for project to open…");
 
-let rendered = false;
-for (let i = 0; i < 180; i++) {
-  const done = await evalJs(
-    `(() => { const t = document.body.innerText; return !/Laying out page/.test(t) && /Page[\\s\\u00a0]*\\d+ \\/ \\d+/.test(t); })()`,
-  );
-  if (done) { rendered = true; break; }
+// Wait for the Contents outline to populate — same signal the editor-dropdown-sync
+// test uses (120s). This fires once markdown-it has parsed the files and the
+// outline is built, long before full paged.js layout completes.
+let projectOpen = false;
+for (let i = 0; i < 120; i++) {
+  const open = await evalJs(`!!(document.querySelector('.toc-item') || document.querySelector('.file-item'))`);
+  if (open) { projectOpen = true; break; }
   await sleep(1000);
 }
-if (!rendered) fail("preview never finished rendering (180s)");
-log("render complete");
+if (!projectOpen) fail("project never opened — no TOC items or file items appeared (120s)");
+log("project opened");
 
 // ── 5. badge count on the problems strip toggle ───────────────────────────────
 // The problems strip is always visible at the bottom of the screen (not in navbar).

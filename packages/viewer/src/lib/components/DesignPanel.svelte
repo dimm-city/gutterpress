@@ -1,18 +1,55 @@
 <script lang="ts">
   /**
    * DesignPanel — the GUIDED styling surface (print-md's headline goal: "style
-   * by setting CSS custom properties" without hand-editing raw CSS). It reads the
-   * active stylesheet's text with the platform's plain `readFile`, parses its
-   * `:root` custom properties (pure strings — no node, no IPC), and exposes them
-   * as color pickers + size controls. Each change rewrites the value in the text
-   * and `writeFile`s it; the preview hot-swaps. Raw-CSS editing stays as an
-   * escape hatch ("Edit raw CSS"). No `$effect`.
+   * by setting CSS custom properties" without hand-editing raw CSS). Reads the
+   * active stylesheet's `:root` custom properties via the platform seam and
+   * exposes them as color pickers + size controls; each change writes the one
+   * property back through `writeStyleToken`, and the preview hot-swaps the CSS.
+   *
+   * Raw-CSS editing remains available as an escape hatch ("Edit raw CSS"). No
+   * `$effect`: tokens load in `show()` (a user gesture), writes happen in input
+   * handlers (debounced).
    */
-  import { getPlatform } from "$lib/platform";
-  import type { ProjectStyle } from "$lib/platform/contract";
-  import { parseRootTokens, setRootToken, type StyleToken } from "$lib/css-tokens";
+  import { getPlatform, isDesktop } from "$lib/platform";
+  import type { StyleToken, ProjectStyle } from "$lib/platform/contract";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import Icon from "$lib/components/Icon.svelte";
+
+  // ── Style-token helpers (client-side, no IPC needed) ─────────────────────
+
+  function makeStyleToken(name: string, raw: string): StyleToken {
+    const label = name.replace(/^--/, "").replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+    if (/^#[0-9a-fA-F]{3,8}$|^rgba?\s*\(|^hsla?\s*\(|^oklch\s*\(|^color\s*\(/.test(raw)) {
+      return { name, value: raw, kind: "color", label };
+    }
+    const len = raw.match(/^(-?[\d.]+)\s*(px|rem|em|vh|vw|vmin|vmax|%|pt|cm|mm|in|ex|ch)\b/i);
+    if (len) {
+      return { name, value: raw, kind: "length", label, number: parseFloat(len[1]), unit: len[2] };
+    }
+    return { name, value: raw, kind: "text", label };
+  }
+
+  function parseStyleTokens(cssText: string): StyleToken[] {
+    const tokens: StyleToken[] = [];
+    const rootRe = /:root\s*\{([^}]*)\}/g;
+    let m: RegExpExecArray | null;
+    while ((m = rootRe.exec(cssText)) !== null) {
+      for (const line of m[1].split("\n")) {
+        const pair = line.match(/^\s*(--[\w-]+)\s*:\s*(.+?)\s*;/);
+        if (pair) tokens.push(makeStyleToken(pair[1], pair[2]));
+      }
+    }
+    return tokens;
+  }
+
+  function updateRootToken(cssText: string, name: string, value: string): string {
+    const escaped = name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+    const existing = new RegExp(`(${escaped}\\s*:)[^;]*(;)`, "g");
+    if (existing.test(cssText)) {
+      return cssText.replace(new RegExp(`(${escaped}\\s*:)[^;]*(;)`, "g"), `$1 ${value}$2`);
+    }
+    return cssText.replace(/(:root\s*\{)/, `$1\n  ${name}: ${value};`);
+  }
 
   let {
     open = $bindable(false),
@@ -29,7 +66,6 @@
 
   let cssPath = $state<string | null>(null);
   let cssName = $state<string>("");
-  let cssText = $state<string>("");
   let tokens = $state<StyleToken[]>([]);
   let loading = $state(false);
   let error = $state<string | null>(null);
@@ -44,50 +80,59 @@
     originals.has(t.name) && originals.get(t.name) !== t.value;
   const anyDirty = $derived(tokens.some(isDirty));
 
-  // Resolve any opaque CSS color (named/rgb/hsl/short-hex) to #rrggbb via the
-  // browser's own parser, so every color row shows consistently and gets a
-  // picker. Returns null for alpha/var()/gradient (those stay text-only).
+  // Resolve ANY opaque CSS color (named like `red`, `rgb(...)`, `hsl(...)`, or a
+  // short hex) to a canonical #rrggbb so every Colors row shows consistently and
+  // gets a color picker (UX review: `Color paper: red` looked inconsistent /
+  // had no picker). The canvas `fillStyle` setter normalises any valid color the
+  // browser understands; it returns `rgba(...)` for colors with alpha — those we
+  // leave as-is (text-only). Browser API only (canvas) — stays PWA-clean.
+  let _hexCtx: CanvasRenderingContext2D | null | undefined;
   function toHex(value: string): string | null {
     try {
-      const ctx = document.createElement("canvas").getContext("2d");
-      if (!ctx) return null;
-      ctx.fillStyle = "#000000";
-      ctx.fillStyle = value;
-      const out = ctx.fillStyle;
+      if (_hexCtx === undefined) _hexCtx = document.createElement("canvas").getContext("2d");
+      if (!_hexCtx) return null;
+      _hexCtx.fillStyle = "#000000";
+      _hexCtx.fillStyle = value;
+      const out = _hexCtx.fillStyle;
       return typeof out === "string" && /^#[0-9a-f]{6}$/i.test(out) ? out : null;
     } catch {
       return null;
     }
   }
+  /** Hex form of a color token for display (falls back to the raw value). */
   const colorHex = (v: string) => toHex(v) ?? v;
 
-  // Group by how the value should be edited: a color (picker), a number (stepper),
-  // or free text. Colors are detected by the browser, not a hard-coded list.
-  const isColor = (t: StyleToken) => toHex(t.value) !== null;
-  const colorTokens = $derived(tokens.filter((t) => isColor(t)));
-  const sizeTokens = $derived(tokens.filter((t) => !isColor(t) && t.unit !== undefined));
-  const otherTokens = $derived(tokens.filter((t) => !isColor(t) && t.unit === undefined));
+  const colorTokens = $derived(tokens.filter((t) => t.kind === "color"));
+  const sizeTokens = $derived(tokens.filter((t) => t.kind === "length"));
+  const otherTokens = $derived(tokens.filter((t) => t.kind === "text"));
 
-  /** Open the panel for the project's ACTIVE stylesheet (what the preview links). */
+  /**
+   * Open the panel for a project's ACTIVE stylesheet (the manifest's first
+   * `styles:` entry, else the first discovered sheet). `show()` is a user
+   * gesture from the trigger button.
+   */
   export async function show(trigger?: HTMLButtonElement): Promise<void> {
     if (trigger) triggerEl = trigger;
-    if (!projectDir) return;
+    if (!isDesktop() || !projectDir) {
+      toast?.info?.("Design controls are available in the desktop app for now.");
+      return;
+    }
     open = true;
     loading = true;
     error = null;
     tokens = [];
-    cssPath = null;
     try {
       const styles: ProjectStyle[] = await getPlatform().listProjectStyles(projectDir);
-      const active = styles.find((s) => s.active);
+      const active = styles.find((s) => s.active) ?? styles[0];
       if (!active) {
+        cssPath = null;
         cssName = "";
         return;
       }
       cssPath = active.path;
       cssName = active.displayName;
-      cssText = await getPlatform().readFile(active.path);
-      tokens = parseRootTokens(cssText);
+      const css = await getPlatform().readFile(active.path);
+      tokens = parseStyleTokens(css);
       originals.clear();
       for (const t of tokens) originals.set(t.name, t.value);
       saveStatus = "idle";
@@ -101,41 +146,45 @@
     );
   }
 
-  async function close() {
-    // Drain pending debounced writes (and let them settle) BEFORE closing, so an
-    // edit made within the debounce window is never lost.
-    await flushPending();
-    cssPath = null;
-    tokens = [];
+  function close() {
+    // Drain any debounced write BEFORE closing — otherwise an edit made within
+    // the debounce window is silently lost (UX review D-2, data-loss bug).
+    flushPending();
     open = false;
     triggerEl?.focus();
   }
 
-  // One debounce per token so dragging a slider doesn't thrash the file (and the
-  // preview hot-swap). `pending` holds the latest unsaved value so close() flushes.
+  // Per-token debounced write so dragging a color/slider doesn't thrash the
+  // filesystem (and the preview hot-swap) on every input event. `pending` holds
+  // the latest unsaved value per token so close() can flush it.
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const pending = new Map<string, string>();
   function scheduleWrite(name: string, value: string) {
     pending.set(name, value);
     saveStatus = "saving";
-    clearTimeout(timers.get(name));
-    timers.set(name, setTimeout(() => { timers.delete(name); void commit(name); }, 250));
+    const existing = timers.get(name);
+    if (existing) clearTimeout(existing);
+    timers.set(
+      name,
+      setTimeout(() => {
+        timers.delete(name);
+        void commit(name, value);
+      }, 250),
+    );
   }
 
-  /** Fire + await every pending write (used on close). */
-  async function flushPending() {
+  /** Fire every pending write immediately (used on close). */
+  function flushPending() {
     for (const t of timers.values()) clearTimeout(t);
     timers.clear();
-    await Promise.allSettled([...pending.keys()].map((name) => commit(name)));
+    for (const [name, value] of [...pending.entries()]) void commit(name, value);
   }
 
-  /** Write the current stylesheet text (with `name`'s pending value applied). */
-  async function commit(name: string) {
-    const value = pending.get(name);
-    if (!cssPath || value === undefined) return;
-    cssText = setRootToken(cssText, name, value);
+  async function commit(name: string, value: string) {
+    if (!cssPath) return;
     try {
-      await getPlatform().writeFile(cssPath, cssText);
+      const css = await getPlatform().readFile(cssPath);
+      await getPlatform().writeFile(cssPath, updateRootToken(css, name, value));
       pending.delete(name);
       if (pending.size === 0 && timers.size === 0) saveStatus = "saved";
     } catch (e) {
@@ -144,16 +193,20 @@
     }
   }
 
-  /** Update a token's value (immutable) + schedule the write. */
+  /** Update a token's value locally (optimistic) + schedule the write. */
   function setValue(t: StyleToken, value: string) {
-    tokens = tokens.map((tok) => (tok.name === t.name ? { ...tok, value } : tok));
+    t.value = value;
+    tokens = tokens; // nudge reactivity (mutated element)
     scheduleWrite(t.name, value);
   }
 
+  /** Revert one token to its value when the panel opened. */
   function resetToken(t: StyleToken) {
     const o = originals.get(t.name);
     if (o !== undefined && o !== t.value) setValue(t, o);
   }
+
+  /** Revert every changed token to its opening value. */
   function revertAll() {
     for (const t of tokens) resetToken(t);
   }

@@ -51,21 +51,18 @@
     }
   }
 
-  // Auto-dismiss: fire onDone ~1800ms after the overlay reaches "recovered".
-  // A use: action on the overlay root (which only mounts while `visible`), not a
-  // $effect. `update` re-arms when recoveryState changes; `destroy` clears.
-  function autoDismiss(_node: HTMLElement, current: typeof recoveryState) {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const arm = (s: typeof recoveryState) => {
-      clearTimeout(timer);
-      if (s === "recovered") timer = setTimeout(() => onDone?.(), 1800);
-    };
-    arm(current);
-    return {
-      update(next: typeof recoveryState) { arm(next); },
-      destroy() { clearTimeout(timer); },
-    };
-  }
+  // Auto-dismiss: fire onDone ~1800ms after state transitions to "recovered".
+  let autoDismissTimer: ReturnType<typeof setTimeout> | undefined;
+
+  $effect(() => {
+    clearTimeout(autoDismissTimer);
+    if (recoveryState === "recovered" && visible) {
+      autoDismissTimer = setTimeout(() => {
+        onDone?.();
+      }, 1800);
+    }
+    return () => clearTimeout(autoDismissTimer);
+  });
 </script>
 
 {#if visible}
@@ -81,7 +78,6 @@
     aria-atomic="false"
     aria-busy={recoveryState === "recovering"}
     out:fade={{ duration: 400 }}
-    use:autoDismiss={recoveryState}
   >
     <div class="content-wrap">
       {#if recoveryState === "recovering"}

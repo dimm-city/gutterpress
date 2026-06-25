@@ -23,7 +23,6 @@
     type MediaWarning,
   } from "$lib/media";
   import Icon from "$lib/components/Icon.svelte";
-  import { onMount } from "svelte";
 
   let {
     projectDir,
@@ -111,11 +110,13 @@
   // already debounces fs:folderChanged; one extra renderer-side guard merges
   // bursts while a refresh is in flight).
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-  // Load on mount + watch the folder, cleaning up on destroy. The parent wraps
-  // this in {#key projectDir} so a project switch remounts it — no $effect.
-  onMount(() => {
+  $effect(() => {
+    const dir = projectDir;
+    selected = null;
+    details = null;
+    notice = null;
     void refresh();
-    if (!projectDir || !isDesktop()) return;
+    if (!dir || !isDesktop()) return;
     const off = getPlatform().onFolderChanged(() => {
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {

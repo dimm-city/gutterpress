@@ -465,6 +465,7 @@ interface LibModule {
     projectDir: string | null,
     source: { kind: "builtin" | "project"; id: string },
   ) => Promise<string>;
+  removeProjectTheme: (projectDir: string, id: string) => Promise<void>;
   // Style resolver (audit B2/G1)
   listProjectStyles: (projectDir: string) => Promise<ProjectStyle[]>;
   // Automatic snapshots (RC1-3)
@@ -2489,6 +2490,37 @@ ipcMain.handle(
   },
 );
 
+// ── Project file listing (fs:listProjectFiles, #42) ───────────────────────
+// Backs the chapter-list sidebar. Returns the top-level `.md` and `.css`
+// files of the opened project directory, each sorted by filename. Shallow by
+// design (a v1 constraint — subdirectory layouts are not surfaced). The path
+// MUST be absolute and is constrained to the project directory; only files
+// (not directories) at the top level are returned.
+ipcMain.handle(
+  "fs:listProjectFiles",
+  async (
+    _e,
+    projectDir: string,
+  ): Promise<{ md: string[]; css: string[] }> => {
+    if (!path.isAbsolute(projectDir)) {
+      throw new Error(
+        `fs:listProjectFiles requires an absolute path, got: ${projectDir}`,
+      );
+    }
+    const entries = await readdir(projectDir, { withFileTypes: true });
+    const md: string[] = [];
+    const css: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const lower = entry.name.toLowerCase();
+      if (lower.endsWith(".md")) md.push(entry.name);
+      else if (lower.endsWith(".css")) css.push(entry.name);
+    }
+    md.sort((a, b) => a.localeCompare(b));
+    css.sort((a, b) => a.localeCompare(b));
+    return { md, css };
+  },
+);
 
 ipcMain.handle("api:status", async () => {
   return { name: "@dimm-city/print-md-viewer", runtime: "node", ok: true };
@@ -2546,6 +2578,10 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle("app:getLastProject", async () => {
+  const prefs = await readPrefs();
+  return existingDirectory(prefs.lastProjectDir);
+});
 
 // ── Splash coordination ──────────────────────────────────────────────────────
 // The renderer pushes human-readable status while it boots/renders, and signals
@@ -2988,6 +3024,14 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(
+  "theme:remove",
+  async (_e, projectDir: string, id: string): Promise<void> => {
+    requireAbsoluteDir("theme:remove", projectDir);
+    const lib = await loadLib();
+    return lib.removeProjectTheme(projectDir, id);
+  },
+);
 
 // ── Style resolver (project:listStyles, audit B2/G1) ──────────────────────────
 // Resolve the project's editable stylesheets for the CSS editor: the manifest

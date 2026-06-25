@@ -88,11 +88,12 @@
     }
   }
 
-  // Runs on open (the {#if open} dialog node mounts) — no $effect.
-  function onOpen(_node: HTMLElement) {
-    queueMicrotask(focusFirstElement);
-    if (!data && !loading) load();
-  }
+  $effect(() => {
+    if (open) {
+      queueMicrotask(focusFirstElement);
+      if (!data && !loading) load();
+    }
+  });
 
   function close() {
     open = false;
@@ -163,7 +164,7 @@
 {#if open}
   <div class="backdrop" onclick={close} role="presentation"></div>
 
-  <div bind:this={dialogEl} use:onOpen class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1" onkeydown={trapFocus}>
+  <div bind:this={dialogEl} class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1" onkeydown={trapFocus}>
     <header class="dialog-header">
       <div class="dialog-title-group">
         <h2 id="help-title">About Print MD</h2>

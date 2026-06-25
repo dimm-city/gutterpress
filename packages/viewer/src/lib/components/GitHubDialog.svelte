@@ -70,31 +70,32 @@
     ),
   );
 
-  // Runs on open (the {#if open} dialog node mounts) — no $effect. Full reset so
-  // a previous session's repos/branches/destination never leak into a reopen;
-  // init() repopulates from the host.
-  function onOpen(_node: HTMLElement) {
-    error = null;
-    filter = "";
-    code = null;
-    selectedRepo = null;
-    cloneProgress = null;
-    closeBlocked = false;
-    username = null;
-    repos = [];
-    branches = [];
-    branch = "";
-    destination = null;
-    folderName = "";
-    books = [];
-    booksLoading = false;
-    loadGen++;
-    step = "connect";
-    // Lead with the primary action (Connect); if init() finds an existing
-    // connection it moves to the repo list and focuses the search input.
-    queueMicrotask(() => (connectBtn ?? dialogEl)?.focus());
-    void init();
-  }
+  $effect(() => {
+    if (open) {
+      // Full reset — a previous session's repos/branches/destination must
+      // never leak into a reopen; init() repopulates from the host.
+      error = null;
+      filter = "";
+      code = null;
+      selectedRepo = null;
+      cloneProgress = null;
+      closeBlocked = false;
+      username = null;
+      repos = [];
+      branches = [];
+      branch = "";
+      destination = null;
+      folderName = "";
+      books = [];
+      booksLoading = false;
+      loadGen++;
+      step = "connect";
+      // Lead with the primary action (Connect); if init() finds an existing
+      // connection it moves to the repo list and focuses the search input.
+      queueMicrotask(() => (connectBtn ?? dialogEl)?.focus());
+      void init();
+    }
+  });
 
   async function init() {
     if (!isDesktop()) return;
@@ -322,7 +323,6 @@
 
   <div
     bind:this={dialogEl}
-    use:onOpen
     class="dialog"
     role="dialog"
     aria-modal="true"

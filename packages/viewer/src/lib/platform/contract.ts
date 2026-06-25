@@ -200,6 +200,8 @@ export interface RecommendedPlugin {
   /** Short plain-language feature name (the row title; `name` is demoted). */
   label?: string;
   description: string;
+  /** print-md ships this plugin — "Add" enables it instantly, no install. */
+  builtin?: boolean;
 }
 
 // ── Theme manager (#32) ───────────────────────────────────────────────────────
@@ -241,6 +243,25 @@ export interface ProjectStyle {
   displayName: string;
   /** True when the stylesheet is in the manifest `styles:` list (the active set). */
   active: boolean;
+}
+
+// Mirrors the lib's `StyleToken` (packages/cli/src/lib/style-tokens.ts) —
+// defined locally so the SPA never value-imports the lib (§8 / ADR 0004). One
+// editable `:root` custom property surfaced to the guided Design panel.
+export type StyleTokenKind = "color" | "length" | "text";
+export interface StyleToken {
+  /** The custom-property name, e.g. `--heading-color`. */
+  name: string;
+  /** The raw declared value, e.g. `#cc0000` or `1.5rem`. */
+  value: string;
+  /** Which guided control to render. */
+  kind: StyleTokenKind;
+  /** Human label derived from the name, e.g. "Heading color". */
+  label: string;
+  /** For `length`: the numeric part. */
+  number?: number;
+  /** For `length`: the unit (px, rem, em, …). */
+  unit?: string;
 }
 
 // ── Host RPC payload shapes (mirror electron/preload.ts + types.d.ts) ─────────
@@ -1008,6 +1029,7 @@ export interface HostServices {
 
   // Lib API / app state
   getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
+  getLastProject(): Promise<string | null>;
 
   // ── Splash coordination ──────────────────────────────────────────────────
   // Push human-readable startup status to the host splash (a no-op on the web,
@@ -1016,6 +1038,14 @@ export interface HostServices {
   // the main window and dismiss the splash.
   splashStatus(status?: string, progress?: number, sub?: string): Promise<void>;
   rendererReady(): Promise<void>;
+
+  /**
+   * List the top-level `.md` and `.css` files of an opened project directory
+   * (#42), each sorted by filename. Shallow by design (subdirectory layouts
+   * are not surfaced in v1). `projectDir` must be an absolute path. Backs the
+   * chapter-list sidebar. The WebAdapter stub rejects.
+   */
+  listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }>;
 
   /**
    * Run the CSS print-safety lint (#39) and return warnings for the editor
@@ -1184,6 +1214,9 @@ export interface HostServices {
     projectDir: string | null,
     source: { kind: "builtin" | "project"; id: string },
   ): Promise<string>;
+  /** Remove an imported/applied project theme folder (never built-ins). */
+  removeProjectTheme(projectDir: string, id: string): Promise<void>;
+
   // ── Style resolver (CSS editor; audit B2/G1) ────────────────────────────────
   /**
    * Resolve the project's editable stylesheets for the CSS editor: the manifest
@@ -1421,6 +1454,18 @@ export interface Platform extends Omit<PlatformAdapter, "openFolder">, HostServi
    * adapter wraps the chosen absolute path; the Web adapter is a 0.6.0 stub.
    */
   openFolder(): Promise<FolderRef | null>;
+
+  /**
+   * Re-open a previously opened project by its `key` (from a recents/favorites
+   * entry), restoring host access to it. On a PWA this reloads the persisted
+   * File System Access handle from IndexedDB and re-requests its read/write
+   * permission — which the browser only grants inside a USER GESTURE, so the SPA
+   * MUST call this directly from the recents "Reopen" click handler. On Electron
+   * the key is already an absolute path with standing access, so this just
+   * re-wraps it as a FolderRef. Rejects when access cannot be restored
+   * (permission denied, or the saved handle is gone).
+   */
+  reopenFolder(key: string): Promise<FolderRef>;
 }
 
 /**

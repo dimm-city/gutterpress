@@ -9,18 +9,18 @@
 import type { MediaImageDetails } from "./platform/contract";
 
 /** File extensions the Media panel surfaces (mirrors main's MEDIA_IMAGE_EXTS). */
-const MEDIA_IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|tiff?)$/i;
+export const MEDIA_IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|tiff?)$/i;
 
 /**
  * The print width (inches) the "full page width" guidance assumes: a US-letter
  * page with typical 0.75in margins → ~7in of content width. Guidance only — a
  * gentle heuristic for non-technical authors, not a hard validation.
  */
-const FULL_WIDTH_INCHES = 7;
+export const FULL_WIDTH_INCHES = 7;
 /** Target print resolution the guidance steers authors toward. */
-const TARGET_DPI = 300;
+export const TARGET_DPI = 300;
 /** Pixel width that reaches TARGET_DPI at FULL_WIDTH_INCHES (= 2100). */
-const TARGET_FULL_WIDTH_PX = TARGET_DPI * FULL_WIDTH_INCHES;
+export const TARGET_FULL_WIDTH_PX = TARGET_DPI * FULL_WIDTH_INCHES;
 
 /** "1.2 MB" / "640 KB" / "312 B" — human-readable file size. */
 export function formatBytes(bytes: number): string {
@@ -56,7 +56,7 @@ export interface MediaWarning {
  * Computed from pixel width (NOT the file's embedded DPI metadata, which only
  * states intent) — `width / FULL_WIDTH_INCHES`, rounded.
  */
-function dpiAtFullWidth(widthPx: number): number {
+export function dpiAtFullWidth(widthPx: number): number {
   return Math.round(widthPx / FULL_WIDTH_INCHES);
 }
 

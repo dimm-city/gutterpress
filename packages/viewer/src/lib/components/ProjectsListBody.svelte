@@ -10,7 +10,6 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
-  import { onMount } from "svelte";
 
   // #49: recents/favorites are FolderRef-shaped (key + precomputed displayName)
   // in the app-facing contract. Discovered projects still come back path-keyed
@@ -91,7 +90,7 @@
   }
 
   // Load on mount
-  onMount(() => {
+  $effect(() => {
     void loadLists();
   });
 
@@ -174,15 +173,11 @@
     return allRows.length > 0;
   });
 
-  // Reset expansion when filteredDiscovered changes (use: action on containerEl).
-  // The action's update() fires whenever the tracked value changes.
-  function watchDiscovered(_node: HTMLElement, _items: typeof filteredDiscovered) {
-    return {
-      update(_newItems: typeof filteredDiscovered) {
-        discoveredExpanded = false;
-      },
-    };
-  }
+  // Reset expansion on filter change
+  $effect(() => {
+    filteredDiscovered; // track
+    discoveredExpanded = false;
+  });
 
   function isFavorited(key: string): boolean {
     return favorites.some((f) => f.key === key);
@@ -266,7 +261,7 @@
   }
 </script>
 
-<div class="projects-body" class:compact bind:this={containerEl} use:watchDiscovered={filteredDiscovered}>
+<div class="projects-body" class:compact bind:this={containerEl}>
   <!-- Address/filter input -->
   <div class="input-section">
     <div class="input-with-browse">

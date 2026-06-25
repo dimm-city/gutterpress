@@ -9,4 +9,4 @@ source:
 styles:
   - themes/ttrpg-supplement/theme.css
 plugins:
-  - markdown-it-mark
+  - name: markdown-it-mark

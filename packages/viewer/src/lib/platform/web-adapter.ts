@@ -15,6 +15,7 @@ import { DEFAULT_SETTINGS } from "./contract";
 import { basenameOf } from "./paths";
 import {
   registerHandle,
+  reRegisterHandle,
   resolveHandle,
   splitPath,
   readFileFromRoot,
@@ -138,6 +139,17 @@ interface FavoriteRecord {
   title: string;
 }
 
+/**
+ * The subset of the FSA permission API the adapter needs. These live on
+ * `FileSystemHandle` at runtime (Chrome/Edge) but are not in the baseline TS DOM
+ * lib, so we narrow to this minimal shape rather than widen the global types.
+ */
+type PermissionDescriptor = { mode?: "read" | "readwrite" };
+interface PermissionedHandle {
+  queryPermission?(desc?: PermissionDescriptor): Promise<PermissionState>;
+  requestPermission?(desc?: PermissionDescriptor): Promise<PermissionState>;
+}
+
 function notImplemented(method: string): never {
   throw new Error(`${method}: ${NOT_IMPL}`);
 }
@@ -252,7 +264,8 @@ export class WebAdapter implements Platform {
     const key = registerHandle(handle);
     const displayName = basenameOf(handle.name);
     // #33 Phase 3: persist the handle + a recents entry so the project survives a
-    // page reload. Best-effort: the folder is already open in the in-memory registry, so a
+    // page reload (the handle is reloaded + re-permissioned via reopenFolder).
+    // Best-effort: the folder is already open in the in-memory registry, so a
     // persistence failure (quota, private mode) must NOT fail the open itself.
     try {
       await this.persistOpenedFolder(key, handle, displayName);
@@ -283,6 +296,65 @@ export class WebAdapter implements Platform {
     };
     await this.store.put(STORE_RECENTS, key, recent);
     await this.store.put(STORE_META, LAST_PROJECT_KEY, key);
+  }
+
+  /**
+   * Re-open a previously persisted folder by its `key` (the "reopen recent"
+   * click in the SPA drives this — a USER GESTURE is required for FSA's
+   * `requestPermission`, so this method MUST be called from an event handler).
+   *
+   * Flow (plan §4):
+   *  1. Load the persisted `{handle}` from IndexedDB; clear-error if absent/stale.
+   *  2. `queryPermission({mode:"readwrite"})`; if not already "granted", call
+   *     `requestPermission(...)` (the gesture-driven prompt).
+   *  3. On "granted", re-register the handle in the in-memory registry so the fs
+   *     primitives resolve `key` → handle for the rest of the session, and return
+   *     a FolderRef. On denial, throw a clear error the UI can surface.
+   *
+   * The SPA wires its recents list so each "Reopen <name>" button's onclick calls
+   * `getPlatform().reopenFolder(entry.key)`; the click satisfies the gesture
+   * requirement. After it resolves the app proceeds exactly as after openFolder
+   * (same FolderRef shape).
+   */
+  async reopenFolder(key: string): Promise<FolderRef> {
+    const record = (await this.store.get(STORE_HANDLES, key)) as HandleRecord | undefined;
+    if (!record || !record.handle) {
+      throw new Error(
+        `Cannot reopen folder "${key}": no saved access to it was found. ` +
+          "Open the folder again to grant access.",
+      );
+    }
+    const handle = record.handle;
+    const perm = handle as unknown as PermissionedHandle;
+    const desc: PermissionDescriptor = { mode: "readwrite" };
+
+    let state: PermissionState = "granted";
+    if (typeof perm.queryPermission === "function") {
+      state = await perm.queryPermission(desc);
+    }
+    if (state !== "granted" && typeof perm.requestPermission === "function") {
+      // Must be inside a user gesture (the recents "Reopen" click) — see jsdoc.
+      state = await perm.requestPermission(desc);
+    }
+    if (state !== "granted") {
+      throw new Error(
+        `Permission to access "${record.displayName}" was denied. ` +
+          "Click “Reopen” and allow access to edit this project again.",
+      );
+    }
+
+    reRegisterHandle(key, handle);
+    // Refresh the recents timestamp + last-project pointer on reopen.
+    const existing = (await this.store.get(STORE_RECENTS, key)) as RecentRecord | undefined;
+    const recent: RecentRecord = {
+      key,
+      displayName: record.displayName,
+      title: existing?.title ?? record.displayName,
+      openedAt: new Date().toISOString(),
+    };
+    await this.store.put(STORE_RECENTS, key, recent);
+    await this.store.put(STORE_META, LAST_PROJECT_KEY, key);
+    return { key, displayName: record.displayName };
   }
 
   // `async` so a thrown resolveRoot (unknown/unopened key) becomes a rejected
@@ -385,6 +457,12 @@ export class WebAdapter implements Platform {
     return rejectNotImplemented("getStatus");
   }
 
+  // #33 Phase 3: the last-opened folder key (its handle + recents row are
+  // persisted; the SPA reopens it via reopenFolder on a user gesture).
+  async getLastProject(): Promise<string | null> {
+    const key = (await this.store.get(STORE_META, LAST_PROJECT_KEY)) as string | undefined;
+    return key ?? null;
+  }
   // No splash window on the web — these are safe no-ops (a PWA would use its own
   // loading UI, not a host splash).
   splashStatus(): Promise<void> {
@@ -392,6 +470,14 @@ export class WebAdapter implements Platform {
   }
   rendererReady(): Promise<void> {
     return Promise.resolve();
+  }
+
+  // #33 Phase 1: shallow listing of the project root's .md/.css files (#42), the
+  // web equivalent of the Electron listProjectFiles IPC. `projectDir` is the
+  // FolderRef.key (the registry id of the open root handle).
+  async listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }> {
+    const { root } = this.resolveRoot(projectDir);
+    return listProjectFilesFromRoot(root);
   }
 
   // Lint is non-essential chrome — degrade to "no warnings" rather than reject,
@@ -658,11 +744,14 @@ export class WebAdapter implements Platform {
   ): Promise<string> {
     return rejectNotImplemented("readThemeCss");
   }
+  removeProjectTheme(_projectDir: string, _id: string): Promise<void> {
+    return rejectNotImplemented("removeProjectTheme");
+  }
+
   // ── Style resolver (audit B2/G1) — desktop-only editing (G3); empty on web ──
   listProjectStyles(_projectDir: string): Promise<ProjectStyle[]> {
     return Promise.resolve([]);
   }
-
 
   // ── Local version history (#13) — desktop-only; reject/empty on web ────────
   enableVersionHistory(_projectDir: string): Promise<ProjectClassification> {

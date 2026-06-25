@@ -47,11 +47,11 @@
   );
   const supportDetails = $derived(guidance?.supportDetails ?? null);
 
-  // Runs on open (the {#if open} dialog node mounts) — no $effect.
-  function onOpen(_node: HTMLElement) {
+  $effect(() => {
+    if (!open) return;
     copyAnnouncement = "";
     queueMicrotask(() => dialogEl?.focus());
-  }
+  });
 
   function focusableElements() {
     return Array.from(
@@ -130,7 +130,6 @@
 
   <div
     bind:this={dialogEl}
-    use:onOpen
     class="dialog"
     role="dialog"
     aria-modal="true"

@@ -28,10 +28,8 @@
   let loading = $state<boolean>(false);
   let error = $state<string>("");
 
-  // Loads the log when the dialog opens (the {#if open} node mounts) and cancels
-  // on close (the action's destroy) — no $effect.
-  function onOpen(_node: HTMLElement) {
-    if (!logFilePath) return;
+  $effect(() => {
+    if (!open || !logFilePath) return;
     loading = true;
     error = "";
     logContent = "";
@@ -40,10 +38,14 @@
     let cancelled = false;
     (async () => {
       try {
-        const content = await getPlatform().readLogFile(logFilePath);
+        const platform = getPlatform();
+        const content = await platform.readLogFile(logFilePath);
         if (cancelled) return;
-        if (content === null) error = "The log file could not be found.";
-        else logContent = content;
+        if (content === null) {
+          error = "The log file could not be found.";
+        } else {
+          logContent = content;
+        }
       } catch (e) {
         if (cancelled) return;
         error = e instanceof Error ? e.message : String(e);
@@ -52,8 +54,8 @@
       }
     })();
 
-    return { destroy() { cancelled = true; } };
-  }
+    return () => { cancelled = true; };
+  });
 
   function close() {
     open = false;
@@ -94,7 +96,6 @@
 
   <div
     bind:this={dialogEl}
-    use:onOpen
     class="dialog"
     role="dialog"
     aria-modal="true"

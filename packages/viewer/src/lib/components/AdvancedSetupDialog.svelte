@@ -65,10 +65,11 @@
   let disconnecting = $state<string | null>(null);
   let disconnectError = $state<string | null>(null);
 
-  // Full reset + initial load when the dialog opens (the {#if open} node
-  // mounts) — a use: action on the dialog, not a $effect. Bumping loadGen also
-  // invalidates any load still in flight from a previous open.
-  function onOpen(_node: HTMLElement) {
+  $effect(() => {
+    if (!open) return;
+    // Full reset on every open — especially the token field. Bumping the
+    // generation here also invalidates any load still in flight from a
+    // previous open.
     loadGen += 1;
     diag = null;
     testResult = null;
@@ -82,36 +83,26 @@
     tokenUrl = null;
     queueMicrotask(() => dialogEl?.focus());
     void load();
-  }
+  });
 
-  // Resolve the token-settings deep link as the user (re)sets the server
-  // address — a use: action on the input bound to `serverInput`, debounced.
-  // `update` re-runs on every serverInput change (typed or programmatic).
-  function resolveTokenUrl(_node: HTMLInputElement, value: string) {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const run = (raw: string) => {
-      clearTimeout(timer);
-      const v = raw.trim();
-      if (!v) {
-        tokenUrl = null;
-        return;
-      }
-      timer = setTimeout(() => {
-        getPlatform()
-          .forgeTokenUrl(v)
-          .then((url) => {
-            // Ignore stale answers after further typing.
-            if (serverInput.trim() === v) tokenUrl = url;
-          })
-          .catch(() => (tokenUrl = null));
-      }, 300);
-    };
-    run(value);
-    return {
-      update(next: string) { run(next); },
-      destroy() { clearTimeout(timer); },
-    };
-  }
+  // Resolve the token-settings deep link as the user types a server address.
+  $effect(() => {
+    const value = serverInput.trim();
+    if (!value) {
+      tokenUrl = null;
+      return;
+    }
+    const timer = setTimeout(() => {
+      getPlatform()
+        .forgeTokenUrl(value)
+        .then((url) => {
+          // Ignore stale answers after further typing.
+          if (serverInput.trim() === value) tokenUrl = url;
+        })
+        .catch(() => (tokenUrl = null));
+    }, 300);
+    return () => clearTimeout(timer);
+  });
 
   async function load() {
     if (!isDesktop()) return;
@@ -296,7 +287,6 @@
 
   <div
     bind:this={dialogEl}
-    use:onOpen
     class="dialog"
     role="dialog"
     aria-modal="true"
@@ -396,7 +386,6 @@
           <input
             type="text"
             bind:value={serverInput}
-            use:resolveTokenUrl={serverInput}
             placeholder="git.example.com"
             spellcheck="false"
             autocomplete="off"
