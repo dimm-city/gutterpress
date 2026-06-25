@@ -21,6 +21,8 @@ import { watch, type FSWatcher } from "node:fs";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
+import { registerWriteHooks } from "./server-bridge/write-hooks";
+import { registerWatchHooks } from "./server-bridge/watch-hooks";
 import {
   writeRecovery as writeRecoveryStore,
   clearRecovery as clearRecoveryStore,
@@ -2031,6 +2033,23 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 // ──────────────────────────────────────────────────────────────────────────
+// Register write hooks for server routes (Phase 2A)
+// The SvelteKit handler runs in this same process but in a separate Vite
+// bundle scope. We use globalThis to pass the live hook references so the
+// fs:writeFile server route can trigger auto-snapshot/sync debounce.
+// ──────────────────────────────────────────────────────────────────────────
+registerWriteHooks({
+  scheduleAutoSnapshot,
+  scheduleAutoSync,
+  getWatchedDir: () => watchedDir,
+});
+registerWatchHooks({
+  startFolderWatch,
+  stopFolderWatch,
+  getWatchedDir: () => watchedDir,
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // IPC handlers (replace the deleted /api/* SvelteKit routes)
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -2044,76 +2063,9 @@ ipcMain.handle("dialog:openDirectory", async () => {
   return res.filePaths[0];
 });
 
-ipcMain.handle("dialog:savePdf", async (_e, defaultName?: string) => {
-  if (!mainWindow) return null;
-  const res = await dialog.showSaveDialog(mainWindow, {
-    title: "Save PDF",
-    defaultPath: defaultName ?? "book.pdf",
-    filters: [{ name: "PDF", extensions: ["pdf"] }],
-  });
-  if (res.canceled || !res.filePath) return null;
-  return res.filePath;
-});
-
-// ── Image picker dialog (#31) ─────────────────────────────────────────────────
-// Backs the editor toolbar's Insert Image dialog. Opens a native file picker
-// filtered to common web/print image formats. Returns null when cancelled.
-ipcMain.handle("dialog:pickImageFile", async (): Promise<string | null> => {
-  if (!mainWindow) return null;
-  const res = await dialog.showOpenDialog(mainWindow, {
-    title: "Insert image",
-    properties: ["openFile"],
-    filters: [
-      {
-        name: "Images",
-        extensions: ["jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "tiff"],
-      },
-    ],
-  });
-  if (res.canceled || res.filePaths.length === 0) return null;
-  return res.filePaths[0];
-});
-
-// ── Copy a file into a destination directory (#31) ──────────────────────────
-// Backs the editor toolbar's Insert Image flow: copies an image from anywhere
-// on disk into the project's assets/ folder when it lives outside the project.
-// Returns the absolute path of the copied file.
-ipcMain.handle(
-  "fs:copyFile",
-  async (
-    _e,
-    srcPath: string,
-    destDir: string,
-  ): Promise<string> => {
-    if (!path.isAbsolute(srcPath))
-      throw new Error(`fs:copyFile: srcPath must be absolute, got: ${srcPath}`);
-    if (!path.isAbsolute(destDir))
-      throw new Error(`fs:copyFile: destDir must be absolute, got: ${destDir}`);
-    await mkdir(destDir, { recursive: true });
-    const destPath = path.join(destDir, path.basename(srcPath));
-    await copyFile(srcPath, destPath);
-    return destPath;
-  },
-);
-
-// ── Multi-select image picker dialog (#47) ───────────────────────────────────
-// Backs the Media panel's "Add images…" import. Same filters as
-// dialog:pickImageFile, plus multiSelections. Returns [] when cancelled.
-ipcMain.handle("dialog:pickImageFiles", async (): Promise<string[]> => {
-  if (!mainWindow) return [];
-  const res = await dialog.showOpenDialog(mainWindow, {
-    title: "Add images",
-    properties: ["openFile", "multiSelections"],
-    filters: [
-      {
-        name: "Images",
-        extensions: ["jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "tiff"],
-      },
-    ],
-  });
-  if (res.canceled || res.filePaths.length === 0) return [];
-  return res.filePaths;
-});
+// dialog:savePdf, dialog:pickImageFile, dialog:pickImageFiles, fs:copyFile
+// migrated to SvelteKit server routes (src/routes/api/dialog/* and
+// src/routes/api/fs/copy-file) — see Phase 2A migration.
 
 // ── Media panel (#47): project image listing / thumbnails / inspection ───────
 
@@ -2307,29 +2259,9 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle("shell:openExternal", async (_e, url: string) => {
-  await shell.openExternal(url);
-});
-
-ipcMain.handle("shell:showInFolder", async (_e, filePath: string) => {
-  shell.showItemInFolder(filePath);
-});
-
-// ── Operation log reader (sync/recovery log viewer) ──────────────────────────
-// Reads the operation log file written by the lib's operation-log.ts during
-// sync/recovery/snapshot operations. Returns null when the file doesn't exist
-// (e.g. logging was not configured for this operation). Used by the recovery
-// dialogs to show "View log" when a sync or recovery completes or fails.
-ipcMain.handle("log:read", async (_e, filePath: string): Promise<string | null> => {
-  if (!path.isAbsolute(filePath)) {
-    return null;
-  }
-  try {
-    return await readFile(filePath, "utf-8");
-  } catch {
-    return null;
-  }
-});
+// shell:openExternal, shell:showInFolder, log:read migrated to SvelteKit
+// server routes (src/routes/api/shell/* and src/routes/api/log/read) —
+// see Phase 2A migration.
 
 // ── Filesystem primitives (PlatformAdapter, #41) ──────────────────────────
 // Backs ElectronAdapter.readFile/writeFile. No current consumer in 0.4.0 — the
@@ -2483,37 +2415,8 @@ ipcMain.handle(
   },
 );
 
-// ── Project file listing (fs:listProjectFiles, #42) ───────────────────────
-// Backs the chapter-list sidebar. Returns the top-level `.md` and `.css`
-// files of the opened project directory, each sorted by filename. Shallow by
-// design (a v1 constraint — subdirectory layouts are not surfaced). The path
-// MUST be absolute and is constrained to the project directory; only files
-// (not directories) at the top level are returned.
-ipcMain.handle(
-  "fs:listProjectFiles",
-  async (
-    _e,
-    projectDir: string,
-  ): Promise<{ md: string[]; css: string[] }> => {
-    if (!path.isAbsolute(projectDir)) {
-      throw new Error(
-        `fs:listProjectFiles requires an absolute path, got: ${projectDir}`,
-      );
-    }
-    const entries = await readdir(projectDir, { withFileTypes: true });
-    const md: string[] = [];
-    const css: string[] = [];
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      const lower = entry.name.toLowerCase();
-      if (lower.endsWith(".md")) md.push(entry.name);
-      else if (lower.endsWith(".css")) css.push(entry.name);
-    }
-    md.sort((a, b) => a.localeCompare(b));
-    css.sort((a, b) => a.localeCompare(b));
-    return { md, css };
-  },
-);
+// fs:listProjectFiles migrated to SvelteKit server route
+// (src/routes/api/fs/list-project-files) — see Phase 2A migration.
 
 ipcMain.handle("api:status", async () => {
   return { name: "@dimm-city/print-md-viewer", runtime: "node", ok: true };

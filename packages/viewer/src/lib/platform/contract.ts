@@ -970,34 +970,8 @@ export interface HostServices {
    */
   capabilities(): PlatformCapabilities;
 
-  // Dialogs
-  savePdf(defaultName?: string): Promise<string | null>;
-
-  /**
-   * Open a native file-picker dialog filtered to common image formats (#31).
-   * Resolves with a host-neutral {@link FileRef} (key + precomputed basename),
-   * or null when the user cancels (#61). The ElectronAdapter is the sole
-   * path→FileRef translation seam; the bridge keeps the raw path string.
-   * The WebAdapter stub rejects (desktop-only until the PWA lands).
-   */
-  pickImageFile(): Promise<FileRef | null>;
-
-  /**
-   * Copy a file into a destination directory (#31). Creates `destDir` when
-   * absent. Used by the editor toolbar to import images from outside the project
-   * into assets/. Returns the absolute path of the copied file.
-   * The WebAdapter stub rejects (desktop-only in 0.4.x).
-   */
-  copyFile(srcPath: string, destDir: string): Promise<string>;
-
+  // savePdf, pickImageFile, copyFile, pickImageFiles migrated to server routes
   // ── Media panel (#47) ──────────────────────────────────────────────────────
-
-  /**
-   * Multi-select variant of {@link pickImageFile} for the Media panel's
-   * "Add images…" import. Returns [] when the user cancels.
-   * The WebAdapter stub rejects (desktop-only until the PWA lands).
-   */
-  pickImageFiles(): Promise<string[]>;
 
   /**
    * List every image file under the project folder (#47). Recursive but
@@ -1023,9 +997,7 @@ export interface HostServices {
    */
   inspectImage(filePath: string): Promise<MediaImageDetails | null>;
 
-  // Shell actions
-  openExternal(url: string): Promise<void>;
-  showInFolder(filePath: string): Promise<void>;
+  // openExternal, showInFolder migrated to server routes
 
   // Lib API / app state
   getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
@@ -1039,13 +1011,7 @@ export interface HostServices {
   splashStatus(status?: string, progress?: number, sub?: string): Promise<void>;
   rendererReady(): Promise<void>;
 
-  /**
-   * List the top-level `.md` and `.css` files of an opened project directory
-   * (#42), each sorted by filename. Shallow by design (subdirectory layouts
-   * are not surfaced in v1). `projectDir` must be an absolute path. Backs the
-   * chapter-list sidebar. The WebAdapter stub rejects.
-   */
-  listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }>;
+  // listProjectFiles migrated to server route (src/routes/api/fs/list-project-files)
 
   /**
    * Run the CSS print-safety lint (#39) and return warnings for the editor
@@ -1388,13 +1354,7 @@ export interface HostServices {
   /** Apply per-file conflict choices and sync the combined result. */
   resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
 
-  /**
-   * Read the contents of an operation log file (e.g. the sync/recovery log
-   * referenced by `SyncStatus.logFile`). Returns the raw text contents, or
-   * null when the file doesn't exist or can't be read. The WebAdapter stub
-   * resolves null (no file system in the browser).
-   */
-  readLogFile(filePath: string): Promise<string | null>;
+  // readLogFile migrated to server route (src/routes/api/log/read)
 
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;
@@ -1486,7 +1446,6 @@ export interface ElectronBridge
     | "startPreview"
     | "build"
     | "capabilities"
-    | "pickImageFile"
   > {
   openDirectory(): Promise<string | null>;
   readFile(path: string): Promise<string>;
@@ -1508,8 +1467,4 @@ export interface ElectronBridge
    * to change events for `path` and returns an unsubscribe fn.
    */
   watchFolder(path: string, cb: () => void): () => void;
-  // readLogFile is inherited unchanged from HostServices (raw path both sides).
-  // #61: the file-picker IPC keeps the raw path string — the ElectronAdapter is
-  // the translation seam that wraps it into a host-neutral FileRef.
-  pickImageFile(): Promise<string | null>;
 }

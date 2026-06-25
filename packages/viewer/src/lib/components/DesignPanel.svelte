@@ -11,6 +11,7 @@
    * handlers (debounced).
    */
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { api } from "$lib/api";
   import type { StyleToken, ProjectStyle } from "$lib/platform/contract";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import Icon from "$lib/components/Icon.svelte";
@@ -131,7 +132,7 @@
       }
       cssPath = active.path;
       cssName = active.displayName;
-      const css = await getPlatform().readFile(active.path);
+      const css = await api.fs.readFile(active.path);
       tokens = parseStyleTokens(css);
       originals.clear();
       for (const t of tokens) originals.set(t.name, t.value);
@@ -183,8 +184,8 @@
   async function commit(name: string, value: string) {
     if (!cssPath) return;
     try {
-      const css = await getPlatform().readFile(cssPath);
-      await getPlatform().writeFile(cssPath, updateRootToken(css, name, value));
+      const css = await api.fs.readFile(cssPath);
+      await api.fs.writeFile(cssPath, updateRootToken(css, name, value));
       pending.delete(name);
       if (pending.size === 0 && timers.size === 0) saveStatus = "saved";
     } catch (e) {

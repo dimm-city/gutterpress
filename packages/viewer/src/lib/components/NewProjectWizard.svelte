@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { api } from "$lib/api";
   import type { TemplateInfo } from "$lib/platform/contract";
 
   let {
@@ -139,8 +140,8 @@
     }
     error = null;
     try {
-      const dir = await getPlatform().openFolder();
-      if (dir) parentDir = dir.key;
+      const pathStr = await api.dialog.openDirectory();
+      if (pathStr) parentDir = pathStr;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }

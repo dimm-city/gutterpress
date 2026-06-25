@@ -10,6 +10,7 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { api } from "$lib/api";
 
   // #49: recents/favorites are FolderRef-shaped (key + precomputed displayName)
   // in the app-facing contract. Discovered projects still come back path-keyed
@@ -231,9 +232,9 @@
       return;
     }
     if (!isDesktop()) return;
-    const dir = await getPlatform().openFolder();
-    if (!dir) return;
-    onChosen?.(dir.key);
+    const pathStr = await api.dialog.openDirectory();
+    if (!pathStr) return;
+    onChosen?.(pathStr);
   }
 
   function onListKeydown(e: KeyboardEvent, rowIndex: number, path: string) {

@@ -20,6 +20,7 @@
    * All host work goes through getPlatform() (§8 / ADR 0004).
    */
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { api } from "$lib/api";
   import type {
     ProjectRemoteDiagnosis,
     RemoteAccessResult,
@@ -208,7 +209,7 @@
   }
 
   function openLink(url: string) {
-    getPlatform().openExternal(url).catch(() => {});
+    api.shell.openExternal(url).catch(() => {});
   }
 
   // ── Display helpers ────────────────────────────────────────────────────────

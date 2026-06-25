@@ -16,7 +16,7 @@
    * a plain event handler.
    */
   import { onMount } from "svelte";
-  import { getPlatform } from "$lib/platform";
+  import { api } from "$lib/api";
   import Icon from "$lib/components/Icon.svelte";
 
   let {
@@ -67,8 +67,7 @@
     loading = true;
     error = null;
     let cancelled = false;
-    getPlatform()
-      .listDir(dir)
+    api.fs.listDir(dir)
       .then((entries) => {
         if (cancelled) return;
         rootEntries = visibleEntries(entries);
@@ -93,7 +92,7 @@
     delete nextErrors[dir];
     errorByPath = nextErrors;
     try {
-      const entries = await getPlatform().listDir(dir);
+      const entries = await api.fs.listDir(dir);
       childrenByPath = { ...childrenByPath, [dir]: visibleEntries(entries) };
     } catch (e) {
       errorByPath = {

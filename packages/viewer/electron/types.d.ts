@@ -394,13 +394,10 @@ interface Window {
     apiVersion: number;
     updater: ElectronUpdater;
     // Dialogs
+    // savePdf, pickImageFile, pickImageFiles, copyFile migrated to server routes
     openDirectory(): Promise<string | null>;
-    savePdf(defaultName?: string): Promise<string | null>;
-    // Image picker + copy (#31) — backs the editor toolbar's Insert Image flow
-    pickImageFile(): Promise<string | null>;
-    copyFile(srcPath: string, destDir: string): Promise<string>;
-    // Media panel (#47): multi-select import + image listing/thumbnails/inspect
-    pickImageFiles(): Promise<string[]>;
+    // Media panel (#47): image listing/thumbnails/inspect
+    // (pickImageFiles migrated to server route)
     listProjectImages(
       projectDir: string,
     ): Promise<
@@ -418,20 +415,14 @@ interface Window {
         colorSpace: "srgb" | "gray" | "cmyk" | "";
       } | null;
     } | null>;
-    // App actions
-    openExternal(url: string): Promise<void>;
-    showInFolder(filePath: string): Promise<void>;
-    /** Read an operation log file for the recovery/sync log viewer. */
-    readLogFile(filePath: string): Promise<string | null>;
+    // openExternal, showInFolder, readLogFile migrated to server routes
+    // listProjectFiles migrated to server route
     // Filesystem primitives (PlatformAdapter, #41)
     readFile(filePath: string): Promise<string>;
     writeFile(filePath: string, content: string): Promise<{ mtimeMs: number }>;
     listDir(
       dirPath: string,
     ): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
-    listProjectFiles(
-      projectDir: string,
-    ): Promise<{ md: string[]; css: string[] }>;
     // CSS print-safety lint (#39) — runs in main; postcss can't bundle into the SPA
     checkCss(
       css: string,

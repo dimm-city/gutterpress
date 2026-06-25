@@ -504,19 +504,9 @@ contextBridge.exposeInMainWorld("electron", {
   },
 
   // Dialogs
+  // savePdf, pickImageFile, pickImageFiles, copyFile migrated to server routes
   openDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke("dialog:openDirectory"),
-  savePdf: (defaultName?: string): Promise<string | null> =>
-    ipcRenderer.invoke("dialog:savePdf", defaultName),
-  // Image picker dialog (#31): file selection filtered to image formats
-  pickImageFile: (): Promise<string | null> =>
-    ipcRenderer.invoke("dialog:pickImageFile"),
-  // Multi-select image picker (#47): backs the Media panel's "Add images…"
-  pickImageFiles: (): Promise<string[]> =>
-    ipcRenderer.invoke("dialog:pickImageFiles"),
-  // Copy a file into a destination directory (#31): backs Insert Image asset copy
-  copyFile: (srcPath: string, destDir: string): Promise<string> =>
-    ipcRenderer.invoke("fs:copyFile", srcPath, destDir),
 
   // ── Media panel (#47): project image listing / thumbnails / inspection ──
   listProjectImages: (
@@ -540,15 +530,7 @@ contextBridge.exposeInMainWorld("electron", {
     } | null;
   } | null> => ipcRenderer.invoke("media:inspect", filePath),
 
-  // App actions
-  openExternal: (url: string): Promise<void> =>
-    ipcRenderer.invoke("shell:openExternal", url),
-  showInFolder: (filePath: string): Promise<void> =>
-    ipcRenderer.invoke("shell:showInFolder", filePath),
-
-  // Operation log reader (sync/recovery log viewer)
-  readLogFile: (filePath: string): Promise<string | null> =>
-    ipcRenderer.invoke("log:read", filePath),
+  // openExternal, showInFolder, readLogFile migrated to server routes
 
   // Filesystem primitives (PlatformAdapter, #41 — editor seam for #38/#39)
   readFile: (filePath: string): Promise<string> =>
@@ -559,10 +541,7 @@ contextBridge.exposeInMainWorld("electron", {
     dirPath: string,
   ): Promise<Array<{ name: string; path: string; isDir: boolean }>> =>
     ipcRenderer.invoke("fs:listDir", dirPath),
-  listProjectFiles: (
-    projectDir: string,
-  ): Promise<{ md: string[]; css: string[] }> =>
-    ipcRenderer.invoke("fs:listProjectFiles", projectDir),
+  // listProjectFiles migrated to server route
   // CSS print-safety lint (#39) — runs in main (postcss can't bundle into the SPA)
   checkCss: (
     css: string,

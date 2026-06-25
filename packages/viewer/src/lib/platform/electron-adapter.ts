@@ -69,10 +69,9 @@ import type {
   RecoveryConfirmRequest,
   ConflictPreview,
   FolderRef,
-  FileRef,
   PlatformCapabilities,
 } from "./contract";
-import { basenameOf, fileRef } from "./paths";
+import { basenameOf } from "./paths";
 
 function bridge(): ElectronBridge {
   const b = window.electron;
@@ -157,27 +156,9 @@ export class ElectronAdapter implements Platform {
     };
   }
 
-  savePdf(defaultName?: string): Promise<string | null> {
-    return bridge().savePdf(defaultName);
-  }
+  // savePdf, pickImageFile, copyFile, pickImageFiles migrated to server routes
 
-  // Image pick / copy (#31) — editor toolbar Insert Image flow.
-  // #61: translation seam — the bridge returns the chosen path string; wrap it
-  // into a host-neutral FileRef (key = path, displayName = basename).
-  async pickImageFile(): Promise<FileRef | null> {
-    const path = await bridge().pickImageFile();
-    return path == null ? null : fileRef(path);
-  }
-
-  copyFile(srcPath: string, destDir: string): Promise<string> {
-    return bridge().copyFile(srcPath, destDir);
-  }
-
-  // Media panel (#47) — image listing / thumbnails / inspection / multi-import
-  pickImageFiles(): Promise<string[]> {
-    return bridge().pickImageFiles();
-  }
-
+  // Media panel (#47) — image listing / thumbnails / inspection
   listProjectImages(projectDir: string): Promise<MediaImageEntry[]> {
     return bridge().listProjectImages(projectDir);
   }
@@ -190,17 +171,7 @@ export class ElectronAdapter implements Platform {
     return bridge().inspectImage(filePath);
   }
 
-  openExternal(url: string): Promise<void> {
-    return bridge().openExternal(url);
-  }
-
-  showInFolder(filePath: string): Promise<void> {
-    return bridge().showInFolder(filePath);
-  }
-
-  readLogFile(filePath: string): Promise<string | null> {
-    return bridge().readLogFile(filePath);
-  }
+  // openExternal, showInFolder, readLogFile migrated to server routes
 
   getStatus(): Promise<{ ok: boolean; runtime: string; name: string }> {
     return bridge().getStatus();
@@ -216,9 +187,7 @@ export class ElectronAdapter implements Platform {
     return bridge().rendererReady();
   }
 
-  listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }> {
-    return bridge().listProjectFiles(projectDir);
-  }
+  // listProjectFiles migrated to server route
 
   checkCss(css: string, from?: string): Promise<PrintSafeWarning[]> {
     return bridge().checkCss(css, from);

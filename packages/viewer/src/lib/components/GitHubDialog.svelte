@@ -9,6 +9,8 @@
    */
   import { tick } from "svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { api } from "$lib/api";
+  import { basenameOf } from "$lib/platform/paths";
   import type {
     DeviceCodeInfo,
     RemoteRepository,
@@ -119,7 +121,7 @@
       code = info;
       step = "code";
       // Open the verification page for the user; the code stays visible here.
-      platform.openExternal(info.verificationUri).catch(() => {});
+      api.shell.openExternal(info.verificationUri).catch(() => {});
       const conn = await platform.connectGitHubWait();
       username = conn.username ?? null;
       await loadRepos();
@@ -185,8 +187,8 @@
   }
 
   async function pickDestination() {
-    const dir = await getPlatform().openFolder();
-    if (dir) destination = dir.key;
+    const pathStr = await api.dialog.openDirectory();
+    if (pathStr) destination = pathStr;
   }
 
   /**
@@ -386,7 +388,7 @@
             <button
               type="button"
               class="link-btn"
-              onclick={() => code && getPlatform().openExternal(code.verificationUri).catch(() => {})}
+              onclick={() => code && api.shell.openExternal(code.verificationUri).catch(() => {})}
             >{code.verificationUri}</button>
           {/if}
         </p>

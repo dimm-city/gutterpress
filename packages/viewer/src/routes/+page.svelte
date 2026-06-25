@@ -43,6 +43,7 @@
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { basenameOf, joinPath } from "$lib/platform/paths";
+  import { api } from "$lib/api";
   import { onMount } from "svelte";
   import {
     NARROW_BREAKPOINT,
@@ -447,7 +448,7 @@
 
   /** Show a backup zip in the system file manager. */
   function showBackupInFolder(path: string) {
-    getPlatform().showInFolder(path).catch(() => {});
+    api.shell.showInFolder(path).catch(() => {});
   }
 
   /** Called when the RecoveryOverlay auto-dismiss or Done button fires. */
@@ -501,7 +502,7 @@
     "https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/01-getting-started.md";
 
   function openSetupGuide() {
-    getPlatform().openExternal(SETUP_GUIDE_URL).catch(() => {});
+    api.shell.openExternal(SETUP_GUIDE_URL).catch(() => {});
   }
 
   // ── In-app markdown editor (#38) + unsaved-changes (#44) ──────────────────
@@ -890,7 +891,7 @@
     const buf = ensureBuffer();
     if (buf.filePath) return;
     try {
-      const files = (await getPlatform().listDir(currentDir)).filter((e) => !e.isDir);
+      const files = (await api.fs.listDir(currentDir)).filter((e) => !e.isDir);
       const pick =
         files.filter((e) => /\.md$/i.test(e.name)).sort((a, b) => a.name.localeCompare(b.name))[0] ||
         files.find((e) => /\.(md|css)$/i.test(e.name));
@@ -943,7 +944,7 @@
       // userData). Read them, then load into the buffer against the current disk
       // baseline — restoreContent marks the buffer dirty so it re-saves on the
       // next debounce, preserving the recovered edits.
-      const recovered = await getPlatform().readFile(item.recoveryPath);
+      const recovered = await api.fs.readFile(item.recoveryPath);
       await buf.restoreContent(item.filePath, recovered);
       editorOpen = true;
       focusEditorWhenReady();
@@ -1591,8 +1592,7 @@
       // book. Default true (banner hidden) until the listing proves it's absent.
       currentFolderHasManifest = true;
       adoptBannerDismissed = false;
-      void getPlatform()
-        .listDir(dir)
+      void api.fs.listDir(dir)
         .then((entries) => {
           currentFolderHasManifest = entries.some((e) => /^manifest\.ya?ml$/i.test(e.name));
         })
@@ -1699,11 +1699,10 @@
     let handedOff = false;
     try {
       const platform = getPlatform();
-      // #49: the picker returns a host-neutral FolderRef. Use `.key` wherever
-      // the raw path string is needed (per-project state, preview) and carry
-      // `.displayName` for the toolbar label.
-      const folder = await platform.openFolder();
-      if (!folder) return;
+      // #49: the picker returns a path string; wrap into a host-neutral FolderRef.
+      const pathStr = await api.dialog.openDirectory();
+      if (!pathStr) return;
+      const folder = { key: pathStr, displayName: basenameOf(pathStr) };
       // Per-project state (#43): restore whatever was saved for THIS folder
       // (page, view mode, …) regardless of which project was last open.
       const restoreState = await platform
@@ -1745,7 +1744,7 @@
 
   function openInBrowser() {
     if (!currentUrl) return;
-    getPlatform().openExternal(currentUrl).catch(() => {});
+    api.shell.openExternal(currentUrl).catch(() => {});
   }
 
   function getSaveReadinessWarning(): string | null {
@@ -1805,7 +1804,7 @@
     // #49: use the adapter-precomputed displayName for the default filename,
     // falling back to the basename of the key.
     const defaultName = (currentFolderDisplayName ?? basenameOf(inputDir) ?? "book") + ".pdf";
-    const outPath = await platform.savePdf(defaultName);
+    const outPath = await api.dialog.savePdf(defaultName);
     if (!outPath) return;
 
     // Non-blocking: the build runs in a separate render window, so keep the
@@ -1854,7 +1853,7 @@
       toast?.success(`PDF saved to ${savedPdfPath}`, 8000, {
         label: "Show in Folder",
         onClick: () => {
-          void getPlatform().showInFolder(savedPdfPath).catch(() => {});
+          void api.shell.showInFolder(savedPdfPath).catch(() => {});
         },
       });
       await new Promise((resolve) => setTimeout(resolve, 2000));
