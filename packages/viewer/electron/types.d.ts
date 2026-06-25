@@ -181,6 +181,14 @@ interface ProjectStyle {
   displayName: string;
   active: boolean;
 }
+interface StyleToken {
+  name: string;
+  value: string;
+  kind: "color" | "length" | "text";
+  label: string;
+  number?: number;
+  unit?: string;
+}
 
 // Local version history (#13). Mirrors the lib's source-provider types.
 interface SnapshotEntry {
@@ -562,6 +570,9 @@ interface Window {
     removeProjectTheme(projectDir: string, id: string): Promise<void>;
     // Style resolver (audit B2/G1)
     listProjectStyles(projectDir: string): Promise<ProjectStyle[]>;
+    // Style tokens (guided Design panel)
+    readStyleTokens(cssPath: string): Promise<StyleToken[]>;
+    writeStyleToken(cssPath: string, name: string, value: string): Promise<string>;
     // Local version history (#13)
     enableVersionHistory(projectDir: string): Promise<ProjectClassification>;
     saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;

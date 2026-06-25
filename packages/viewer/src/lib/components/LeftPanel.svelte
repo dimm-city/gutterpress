@@ -49,7 +49,7 @@
     onSelectEditorFile,
     onOpenThemes,
     onOpenPlugins,
-    onOpenStyles,
+    onOpenDesign,
     onInsertImage,
     onProjectChosen,
     onOpenUrl,
@@ -78,7 +78,7 @@
     onSelectEditorFile?: (path: string) => void;
     onOpenThemes?: () => void;
     onOpenPlugins?: () => void;
-    onOpenStyles?: () => void;
+    onOpenDesign?: () => void;
     onInsertImage?: (payload: { src: string; alt?: string }) => void;
     onProjectChosen?: (path: string) => void;
     onOpenUrl?: (url: string) => void;
@@ -482,14 +482,14 @@
             <Icon name="palette" size={15} /> Themes
           </button>
           <div class="files-actions-secondary">
-            <button class="files-action" onclick={() => onOpenStyles?.()}>
-              <Icon name="code" size={14} /> Edit CSS
+            <button class="files-action" onclick={() => onOpenDesign?.()}>
+              <Icon name="pen-line" size={14} /> Design
             </button>
             <button class="files-action" onclick={() => onOpenPlugins?.()}>
               <Icon name="puzzle" size={14} /> Plugins
             </button>
           </div>
-          <p class="files-actions-hint">Themes pick a look; Edit CSS fine-tunes it.</p>
+          <p class="files-actions-hint">Themes pick a look; Design fine-tunes its colors &amp; sizes.</p>
         </div>
         {#key projectDir}
           <FileTree

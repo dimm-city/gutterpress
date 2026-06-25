@@ -38,6 +38,7 @@
   import PluginManager from "$lib/components/PluginManager.svelte";
   import ThemeManager from "$lib/components/ThemeManager.svelte";
   import StylePicker from "$lib/components/StylePicker.svelte";
+  import DesignPanel from "$lib/components/DesignPanel.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
@@ -526,6 +527,20 @@
   let stylePickerRef = $state<{
     show: (t?: HTMLButtonElement, preloaded?: ProjectStyle[]) => void;
   } | null>(null);
+
+  // Guided Design panel (custom-property editor) — the primary styling surface;
+  // raw CSS editing is the escape hatch inside it.
+  let designPanelRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
+  let designPanelOpen = $state(false);
+
+  function openDesign(trigger?: HTMLButtonElement) {
+    if (!currentDir) return;
+    if (!isDesktop()) {
+      toast?.info?.("Design controls are available in the desktop app for now.");
+      return;
+    }
+    designPanelRef?.show(trigger);
+  }
 
   /** Open one stylesheet (absolute path) in the shared editor and reveal it. */
   function openStyleFile(absPath: string) {
@@ -2837,7 +2852,7 @@
       }}
       onOpenThemes={() => openThemeManager()}
       onOpenPlugins={() => openPluginManager()}
-      onOpenStyles={() => void openStyles()}
+      onOpenDesign={() => openDesign()}
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => startFolderPreview(path)}
       onOpenUrl={openUrl}
@@ -3107,6 +3122,16 @@
   bind:this={stylePickerRef}
   projectDir={currentDir}
   onChoose={openStyleFile}
+/>
+<!-- Guided Design panel: the primary styling surface (color/size controls over
+     the active stylesheet's :root custom properties). "Edit raw CSS" routes to
+     the existing editor as the escape hatch. -->
+<DesignPanel
+  bind:this={designPanelRef}
+  bind:open={designPanelOpen}
+  projectDir={currentDir}
+  {toast}
+  onEditRawCss={openStyleFile}
 />
 <!-- Save-as-template name prompt (#29). Minimal modal: name + confirm. -->
 {#if saveTemplateOpen}

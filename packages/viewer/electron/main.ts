@@ -234,6 +234,15 @@ interface ProjectStyle {
   displayName: string;
   active: boolean;
 }
+// Style tokens (guided Design panel). Mirror the lib's StyleToken.
+interface StyleToken {
+  name: string;
+  value: string;
+  kind: "color" | "length" | "text";
+  label: string;
+  number?: number;
+  unit?: string;
+}
 interface CreateProjectResult {
   projectDir: string;
   manifestPath: string;
@@ -459,6 +468,9 @@ interface LibModule {
   removeProjectTheme: (projectDir: string, id: string) => Promise<void>;
   // Style resolver (audit B2/G1)
   listProjectStyles: (projectDir: string) => Promise<ProjectStyle[]>;
+  // Style tokens (guided Design panel)
+  readStyleTokens: (cssPath: string) => Promise<StyleToken[]>;
+  writeStyleToken: (cssPath: string, name: string, value: string) => Promise<string>;
   // Automatic snapshots (RC1-3)
   AUTO_SNAPSHOT_MESSAGE: string;
   isNoChangesError: (e: unknown) => boolean;
@@ -3010,6 +3022,39 @@ ipcMain.handle(
     requireAbsoluteDir("project:listStyles", projectDir);
     const lib = await loadLib();
     return lib.listProjectStyles(projectDir);
+  },
+);
+
+// Guided Design panel: read/write a stylesheet's :root custom properties via
+// the shared lib (postcss). The renderer only ever passes a .css path it got
+// from listStyles (project-scoped); we additionally require an absolute .css
+// path so the renderer can't drive arbitrary file writes.
+function requireCssPath(channel: string, cssPath: unknown): string {
+  if (typeof cssPath !== "string" || !path.isAbsolute(cssPath) || !/\.css$/i.test(cssPath)) {
+    throw new Error(`${channel} requires an absolute .css file path`);
+  }
+  return cssPath;
+}
+ipcMain.handle(
+  "style:readTokens",
+  async (_e, cssPath: string): Promise<StyleToken[]> => {
+    requireCssPath("style:readTokens", cssPath);
+    const lib = await loadLib();
+    return lib.readStyleTokens(cssPath);
+  },
+);
+ipcMain.handle(
+  "style:writeToken",
+  async (_e, cssPath: string, name: string, value: string): Promise<string> => {
+    requireCssPath("style:writeToken", cssPath);
+    if (typeof name !== "string" || !name.startsWith("--")) {
+      throw new Error("style:writeToken requires a custom-property name (--…)");
+    }
+    if (typeof value !== "string") {
+      throw new Error("style:writeToken requires a string value");
+    }
+    const lib = await loadLib();
+    return lib.writeStyleToken(cssPath, name, value);
   },
 );
 

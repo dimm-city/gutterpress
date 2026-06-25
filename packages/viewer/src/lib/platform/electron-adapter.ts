@@ -47,6 +47,7 @@ import type {
   ThemeInfo,
   ApplyThemeTarget,
   ProjectStyle,
+  StyleToken,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -383,6 +384,14 @@ export class ElectronAdapter implements Platform {
   // ── Style resolver (audit B2/G1) — delegate 1:1 to the bridge ──────────────
   listProjectStyles(projectDir: string): Promise<ProjectStyle[]> {
     return bridge().listProjectStyles(projectDir);
+  }
+
+  // ── Style tokens (guided Design panel) — delegate 1:1 to the bridge ────────
+  readStyleTokens(cssPath: string): Promise<StyleToken[]> {
+    return bridge().readStyleTokens(cssPath);
+  }
+  writeStyleToken(cssPath: string, name: string, value: string): Promise<string> {
+    return bridge().writeStyleToken(cssPath, name, value);
   }
 
   // ── Local version history (#13) — delegate 1:1 to the bridge ───────────────

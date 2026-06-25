@@ -71,6 +71,7 @@ import type {
   ThemeInfo,
   ApplyThemeTarget,
   ProjectStyle,
+  StyleToken,
   SnapshotEntry,
   SnapshotPage,
   ListSnapshotsOptions,
@@ -746,6 +747,14 @@ export class WebAdapter implements Platform {
   // ── Style resolver (audit B2/G1) — desktop-only editing (G3); empty on web ──
   listProjectStyles(_projectDir: string): Promise<ProjectStyle[]> {
     return Promise.resolve([]);
+  }
+
+  // ── Style tokens (guided Design panel) — desktop-only until FSA web lands ──
+  readStyleTokens(_cssPath: string): Promise<StyleToken[]> {
+    return Promise.resolve([]);
+  }
+  writeStyleToken(_cssPath: string, _name: string, _value: string): Promise<string> {
+    return rejectNotImplemented("writeStyleToken");
   }
 
   // ── Local version history (#13) — desktop-only; reject/empty on web ────────
