@@ -56,47 +56,48 @@ export interface PluginValidationResult {
   error?: string;
 }
 
-/** A curated, informational recommendation (NOT auto-installed — §5). */
+/** A curated markdown feature an author can turn on. */
 export interface RecommendedPlugin {
   /** The npm package name (also the manifest entry that "Add" writes). */
   name: string;
   /** One-line author-friendly description. */
   description: string;
+  /**
+   * True when print-md ships this plugin (see `BUILTIN_OPTIONAL_PLUGINS`):
+   * "Add" enables it instantly, no install, works offline. All entries below
+   * are built-in — the always-on defaults (attrs/footnote/deflist, applied
+   * unconditionally in renderer.ts) are intentionally NOT listed here, since
+   * recommending the author "add" something already active is pure confusion.
+   */
+  builtin: true;
 }
 
 /**
- * Curated list of real, popular `markdown-it-*` plugins. This is informational
- * + one-click-add ONLY: clicking "Add" writes a manifest entry; the user still
- * installs the package with their own package manager (§5 — no auto-install).
+ * Curated, BUILT-IN opt-in markdown features. Each is bundled with print-md
+ * (`BUILTIN_OPTIONAL_PLUGINS`), so clicking "Add" writes the manifest entry AND
+ * the feature works immediately — no terminal, no install, offline. This is the
+ * non-technical-author happy path: "turn on a feature → it works".
  */
 export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
   {
-    name: "markdown-it-footnote",
-    description: "Footnotes (`[^1]` references and definitions) — great for print citations.",
-  },
-  {
-    name: "markdown-it-deflist",
-    description: "Definition lists (`Term` / `: definition`) for glossaries and stat blocks.",
-  },
-  {
-    name: "markdown-it-attrs",
-    description: "Add HTML attributes/classes to any element with `{.class #id key=val}`.",
-  },
-  {
     name: "markdown-it-mark",
     description: "Highlighted text with `==marked==` → `<mark>`.",
+    builtin: true,
   },
   {
     name: "markdown-it-sub",
     description: "Subscript text with `H~2~O`.",
+    builtin: true,
   },
   {
     name: "markdown-it-sup",
     description: "Superscript text with `29^th^`.",
+    builtin: true,
   },
   {
     name: "markdown-it-abbr",
     description: "Abbreviations: define `*[HTML]: Hyper Text…` and get `<abbr>` tooltips.",
+    builtin: true,
   },
 ];
 

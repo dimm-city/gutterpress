@@ -163,11 +163,18 @@
     return plugins.some((p) => p.ref === name);
   }
 
-  /** Status for one configured plugin: ok / error / disabled / checking. */
+  /**
+   * Status for one configured plugin: ok / error / disabled / checking.
+   * `detail` is a plain-language line safe to show non-technical authors;
+   * `raw` is the technical error (absolute paths / shell commands) tucked
+   * behind a "Show details" disclosure so the card isn't a scary console dump
+   * (UX review: raw path in the card body reads as broken/alarming).
+   */
   function statusOf(entry: ProjectPluginEntry): {
     label: string;
     kind: "ok" | "error" | "disabled" | "checking";
     detail?: string;
+    raw?: string;
   } {
     if (!entry.enabled) return { label: "Disabled", kind: "disabled" };
     const v = validation[entry.ref];
@@ -179,7 +186,10 @@
     return {
       label: needsInstall ? "Not installed" : "Error",
       kind: "error",
-      detail: v.error,
+      detail: needsInstall
+        ? `This plugin isn't installed yet, so it's skipped in the preview. Add it to your project, then click “Re-check”.`
+        : "This plugin couldn't load. See details below, then click “Re-check”.",
+      raw: v.error,
     };
   }
 </script>
@@ -247,6 +257,12 @@
                   {#if st.detail}
                     <p class="status-detail">{st.detail}</p>
                   {/if}
+                  {#if st.raw}
+                    <details class="status-raw">
+                      <summary>Show details</summary>
+                      <pre>{st.raw}</pre>
+                    </details>
+                  {/if}
                 </div>
                 <button
                   class="toggle"
@@ -265,9 +281,41 @@
         {/if}
       </section>
 
-      <!-- Import -->
+      <!-- Markdown features (built-in, opt-in): the happy path. Turning one on
+           writes the manifest entry AND it works immediately — print-md ships
+           these, so there's no install step. -->
       <section class="block">
-        <h3>Add a plugin</h3>
+        <h3>Markdown features</h3>
+        <p class="hint">Turn a feature on and it works instantly — these are built in, nothing to install.</p>
+        <ul class="rec-list">
+          {#each recommended as rec (rec.name)}
+            <li>
+              <div class="rec-main">
+                <span class="plugin-name">{rec.name}</span>
+                <p class="rec-desc">{rec.description}</p>
+              </div>
+              {#if isConfigured(rec.name)}
+                <span class="added"><Icon name="circle-check" size={12} /> On</span>
+              {:else}
+                <button
+                  class="primary small"
+                  disabled={busyRef === rec.name || !projectDir}
+                  onclick={() => addRecommended(rec)}
+                >
+                  Turn on
+                </button>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      </section>
+
+      <!-- Advanced: arbitrary npm / local plugins. Unlike the built-ins above,
+           an npm package typed here must already be present in the project —
+           print-md does not install packages (§5). Tucked behind a disclosure
+           so non-technical authors aren't faced with it by default. -->
+      <details class="block advanced">
+        <summary>Advanced: add another plugin</summary>
         <div class="add-row">
           <input
             class="npm-input"
@@ -283,37 +331,10 @@
           <Icon name="folder" size={14} /> Import from local file or folder…
         </button>
         <p class="hint">
-          Adding by name records the plugin in your manifest. print-md does not
-          install packages for you — run <code>npm install &lt;name&gt;</code>
-          (or <code>bun add</code>) in the project, then “Re-check”.
+          A plugin added by npm name must already be installed in your project.
+          Local files are referenced directly. Built-in features (above) need none of this.
         </p>
-      </section>
-
-      <!-- Recommended -->
-      <section class="block">
-        <h3>Recommended</h3>
-        <ul class="rec-list">
-          {#each recommended as rec (rec.name)}
-            <li>
-              <div class="rec-main">
-                <span class="plugin-name">{rec.name}</span>
-                <p class="rec-desc">{rec.description}</p>
-              </div>
-              {#if isConfigured(rec.name)}
-                <span class="added">Added</span>
-              {:else}
-                <button
-                  class="ghost small"
-                  disabled={busyRef === rec.name || !projectDir}
-                  onclick={() => addRecommended(rec)}
-                >
-                  <Icon name="plus" size={13} /> Add
-                </button>
-              {/if}
-            </li>
-          {/each}
-        </ul>
-      </section>
+      </details>
     </div>
 
     <footer class="actions">
@@ -354,12 +375,24 @@
 
   .dialog-body { padding: 18px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; flex: 1; }
   .block { display: flex; flex-direction: column; gap: 10px; }
+  details.advanced { display: block; }
+  details.advanced > summary {
+    cursor: pointer;
+    user-select: none;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--app-text-muted);
+    padding: 4px 0;
+    list-style-position: inside;
+  }
+  details.advanced > summary:hover { color: var(--app-text); }
+  details.advanced[open] > summary { margin-bottom: 8px; }
+  details.advanced > :not(summary) { margin-bottom: 8px; }
   .block-head { display: flex; align-items: center; justify-content: space-between; }
   .block h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--app-text); text-transform: uppercase; letter-spacing: 0.04em; }
   .muted { margin: 0; font-size: 13px; color: var(--app-text-muted); }
   .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
   .hint { margin: 0; font-size: 11.5px; color: var(--app-text-faint); line-height: 1.4; }
-  .hint code { background: var(--app-surface-sunken); padding: 1px 4px; border-radius: 3px; font-size: 11px; }
 
   .plugin-list, .rec-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .plugin-list li, .rec-list li {
@@ -377,6 +410,22 @@
   .status.checking { color: var(--app-text-faint); }
   .status.disabled { color: var(--app-text-faint); }
   .status-detail { margin: 0; font-size: 11px; color: var(--app-error-text); word-break: break-word; line-height: 1.35; }
+  .status-raw { margin: 2px 0 0; }
+  .status-raw > summary { font-size: 11px; color: var(--app-text-muted); cursor: pointer; user-select: none; }
+  .status-raw > summary:hover { color: var(--app-text); }
+  .status-raw pre {
+    margin: 4px 0 0;
+    padding: 6px 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--app-text-muted);
+    background: var(--app-control-bg);
+    border: 1px solid var(--app-border);
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+  }
 
   .rec-desc { margin: 0; font-size: 11.5px; color: var(--app-text-muted); line-height: 1.4; }
   .added { font-size: 11px; color: var(--app-text-faint); font-style: italic; flex-shrink: 0; }

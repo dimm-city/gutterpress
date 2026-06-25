@@ -264,13 +264,33 @@ describe("plugin-manager", () => {
   });
 
   describe("RECOMMENDED_PLUGINS", () => {
-    test("has at least 5 real markdown-it plugins with name + description", () => {
-      expect(RECOMMENDED_PLUGINS.length).toBeGreaterThanOrEqual(5);
+    test("are real markdown-it plugins with name + description, all built-in", () => {
+      expect(RECOMMENDED_PLUGINS.length).toBeGreaterThanOrEqual(4);
       for (const p of RECOMMENDED_PLUGINS) {
         expect(typeof p.name).toBe("string");
         expect(p.name).toMatch(/^markdown-it/);
         expect(typeof p.description).toBe("string");
         expect(p.description.length).toBeGreaterThan(0);
+        // Every recommended entry must be bundled so "Turn on" works offline.
+        expect(p.builtin).toBe(true);
+      }
+    });
+
+    test("every recommended plugin is in the bundled built-in registry", async () => {
+      const { BUILTIN_OPTIONAL_PLUGINS } = await import("./markdown/renderer");
+      for (const p of RECOMMENDED_PLUGINS) {
+        expect(typeof BUILTIN_OPTIONAL_PLUGINS[p.name]).toBe("function");
+      }
+    });
+
+    test("does NOT recommend the always-on default plugins (redundant)", () => {
+      const names = RECOMMENDED_PLUGINS.map((p) => p.name);
+      for (const builtinDefault of [
+        "markdown-it-attrs",
+        "markdown-it-footnote",
+        "markdown-it-deflist",
+      ]) {
+        expect(names).not.toContain(builtinDefault);
       }
     });
   });

@@ -565,20 +565,24 @@
       return;
     }
     if (list.length === 1) {
+      // Direct-open the sole stylesheet, but NAME it so the editor appearing
+      // isn't a surprise (UX review QA-3: same button, predictable outcome).
       openStyleFile(list[0]!.path);
+      toast?.info?.(`Editing ${list[0]!.displayName}`);
       return;
     }
     stylePickerRef?.show(trigger, list);
   }
 
   /**
-   * After a theme is applied (audit M2), auto-open the applied theme's CSS so the
-   * author can tweak it immediately. The applied theme always lives at
-   * `themes/<id>/theme.css` (theme-manager apply contract).
+   * After a theme is applied: land the author on the re-rendered PREVIEW with a
+   * confirmation — do NOT dump the raw `theme.css` into the editor behind the
+   * dialog (UX audit: that was jarring and unasked-for). Fine-tuning is an
+   * explicit choice via "Edit CSS". The ThemeManager closes itself on apply.
    */
-  function onThemeApplied(themeId: string) {
-    if (!isDesktop() || !currentDir) return;
-    openStyleFile(joinPath(currentDir, "themes", themeId, "theme.css"));
+  function onThemeApplied(_themeId: string) {
+    if (!currentDir) return;
+    toast?.success?.("Theme applied — your preview is updating. Use “Edit CSS” to fine-tune.");
   }
 
   // "Save as template" (#29) — capture the open project as a reusable template.
@@ -2677,35 +2681,6 @@
         {/if}
         <span class="save-hint" role="note">PDF export requires the desktop app</span>
       {/if}
-      <!-- Project styling actions (#30/#32/G1): visible, labelled entry points for
-           Themes, Plugins, and Styles so authors can find them without digging
-           through the overflow menu. Shown whenever a project folder is open;
-           fold into the "More" menu at narrow widths via opt-inline. On web they
-           toast a "desktop app for now" notice (handled in the open* functions). -->
-      {#if currentDir}
-        <span class="toolbar-sep" aria-hidden="true"></span>
-        <button
-          class="icon-btn icon-text opt-inline"
-          onclick={(e) => openThemeManager(e.currentTarget as HTMLButtonElement)}
-          title="Browse and apply themes"
-        >
-          <Icon name="palette" /> <span class="opt-label">Themes</span>
-        </button>
-        <button
-          class="icon-btn icon-text opt-inline"
-          onclick={(e) => openPluginManager(e.currentTarget as HTMLButtonElement)}
-          title="Manage markdown plugins"
-        >
-          <Icon name="puzzle" /> <span class="opt-label">Plugins</span>
-        </button>
-        <button
-          class="icon-btn icon-text opt-inline"
-          onclick={(e) => void openStyles(e.currentTarget as HTMLButtonElement)}
-          title="Open a CSS stylesheet to edit"
-        >
-          <Icon name="pen-line" /> <span class="opt-label">Styles</span>
-        </button>
-      {/if}
       <!-- Settings panel (#45): gear icon + Cmd/Ctrl+, shortcut. Inline on wide
            screens; folds into the "More" menu when space is tight. -->
       <button
@@ -2819,6 +2794,9 @@
           focusEditorWhenReady();
         }
       }}
+      onOpenThemes={() => openThemeManager()}
+      onOpenPlugins={() => openPluginManager()}
+      onOpenStyles={() => void openStyles()}
       onInsertImage={(payload) => editorRef?.runToolbarAction("image", { src: payload.src, alt: payload.alt ?? "" })}
       onProjectChosen={(path) => startFolderPreview(path)}
       onOpenUrl={openUrl}

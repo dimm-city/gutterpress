@@ -169,7 +169,6 @@
 {/snippet}
 
 <nav class="file-tree" aria-label="Project files">
-  <div class="file-tree-header">Files</div>
   {#if loading}
     <p class="file-tree-msg">Loading…</p>
   {:else if error}
@@ -195,16 +194,6 @@
     background: var(--app-surface, var(--app-bg));
     border-right: 1px solid var(--app-border);
     font-size: 13px;
-  }
-  .file-tree-header {
-    padding: 8px 12px;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--app-text-faint);
-    border-bottom: 1px solid var(--app-border);
-    flex-shrink: 0;
   }
   .file-tree-msg {
     margin: 0;

@@ -149,6 +149,44 @@ describe("plugin loader", () => {
       ).rejects.toThrow(/bad-does-not-exist/);
     });
 
+    test("with onError: skips the bad plugin, keeps the good ones, reports each failure", async () => {
+      fixture("ok.mjs", `export default function (md) {}`);
+
+      const failures: Array<{ ref: string; message: string }> = [];
+      const loaded = await loadPlugins(
+        [
+          cfg({ path: "ok.mjs" }),
+          cfg({ path: "./missing.mjs" }),
+          cfg({ name: "this-package-does-not-exist-xyz" }),
+        ],
+        TMP_ROOT,
+        (ref, err) => failures.push({ ref, message: err.message })
+      );
+
+      // The one valid plugin still loads; the two broken entries are skipped.
+      expect(loaded).toHaveLength(1);
+      expect(loaded[0]!.name).toBe("ok.mjs");
+      // Every skip is reported loudly (not silent) with its offending ref.
+      expect(failures).toHaveLength(2);
+      expect(failures.map((f) => f.ref)).toEqual([
+        "./missing.mjs",
+        "this-package-does-not-exist-xyz",
+      ]);
+      expect(failures[1]!.message).toMatch(/not found/);
+    });
+
+    test("resolves a built-in opt-in plugin by name with NO install", async () => {
+      // markdown-it-mark is bundled (BUILTIN_OPTIONAL_PLUGINS) — enabling it
+      // must work offline from an empty dir, not require a project install.
+      const loaded = await loadPlugins(
+        [cfg({ name: "markdown-it-mark" })],
+        TMP_ROOT,
+      );
+      expect(loaded).toHaveLength(1);
+      expect(loaded[0]!.name).toBe("markdown-it-mark");
+      expect(typeof loaded[0]!.plugin).toBe("function");
+    });
+
     test("loads multiple plugins in order", async () => {
       fixture("p1.mjs", `export default function (md) {}`);
       fixture("p2.mjs", `export default function (md) {}`);

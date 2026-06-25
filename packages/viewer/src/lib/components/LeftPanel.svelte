@@ -47,6 +47,9 @@
     toggleBtn,
     onJumpToOutline,
     onSelectEditorFile,
+    onOpenThemes,
+    onOpenPlugins,
+    onOpenStyles,
     onInsertImage,
     onProjectChosen,
     onOpenUrl,
@@ -73,6 +76,9 @@
     toggleBtn?: HTMLButtonElement | undefined;
     onJumpToOutline?: (entry: OutlineEntry) => void;
     onSelectEditorFile?: (path: string) => void;
+    onOpenThemes?: () => void;
+    onOpenPlugins?: () => void;
+    onOpenStyles?: () => void;
     onInsertImage?: (payload: { src: string; alt?: string }) => void;
     onProjectChosen?: (path: string) => void;
     onOpenUrl?: (url: string) => void;
@@ -463,6 +469,28 @@
           <p>Open a project folder to see its files.</p>
         </div>
       {:else}
+        <!-- Project styling actions (#30/#32/G1): discoverable, labelled entry
+             points. They live here (not the width-fragile top toolbar) so the
+             panel's vertical room can hold them. On web the handlers toast a
+             "desktop app for now" notice.
+             IA (from UX review): Themes is the PRIMARY action (pick a whole
+             look); "Edit CSS" (Styles) and Plugins are secondary. Discrete
+             buttons with gaps + a primary so the row doesn't read as one fused
+             segmented control. A caption signposts Themes-vs-CSS. -->
+        <div class="files-actions">
+          <button class="files-action primary" onclick={() => onOpenThemes?.()}>
+            <Icon name="palette" size={15} /> Themes
+          </button>
+          <div class="files-actions-secondary">
+            <button class="files-action" onclick={() => onOpenStyles?.()}>
+              <Icon name="code" size={14} /> Edit CSS
+            </button>
+            <button class="files-action" onclick={() => onOpenPlugins?.()}>
+              <Icon name="puzzle" size={14} /> Plugins
+            </button>
+          </div>
+          <p class="files-actions-hint">Themes pick a look; Edit CSS fine-tunes it.</p>
+        </div>
         {#key projectDir}
           <FileTree
             {projectDir}
@@ -923,6 +951,59 @@
   .history-action:hover:not(:disabled) { background: var(--app-control-hover-bg); border-color: var(--app-control-hover-border); }
   .history-action:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .history-action:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* Files-tab styling actions. Themes is the primary action; Edit CSS + Plugins
+     are secondary (a separate row). Discrete buttons with gaps + a primary so
+     the group never reads as one fused segmented control (UX review). */
+  .files-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border-bottom: 1px solid var(--app-border);
+    flex-shrink: 0;
+  }
+  .files-actions-secondary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .files-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: center;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    background: var(--app-control-bg);
+    border: 1px solid var(--app-control-border);
+    color: var(--app-control-text);
+    white-space: nowrap;
+    min-height: 28px;
+  }
+  /* Secondary buttons size to content and sit left-aligned (not stretched). */
+  .files-actions-secondary .files-action { flex: 0 1 auto; }
+  /* Primary: full-width, accent-filled — the clear "start here" action. */
+  .files-action.primary {
+    width: 100%;
+    background: var(--app-accent);
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
+    font-weight: 600;
+  }
+  .files-action.primary:hover { background: var(--app-accent-hover); }
+  .files-action:not(.primary):hover { background: var(--app-control-hover-bg); border-color: var(--app-control-hover-border); }
+  .files-action:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  .files-action :global(svg) { flex: 0 0 auto; }
+  .files-actions-hint {
+    margin: 1px 0 0;
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--app-text-faint);
+  }
   .history-action.primary {
     background: var(--app-accent);
     border-color: var(--app-accent-border);

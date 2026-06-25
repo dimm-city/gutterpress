@@ -145,8 +145,10 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
       const target: ApplyThemeTarget = { kind: t.kind, id: t.id };
       const applied = await getPlatform().applyTheme(projectDir, target);
       activeId = applied.id;
-      await refresh();
       onApplied?.(applied.id);
+      // Land the author on the re-rendered preview rather than keeping them in
+      // the picker over a stale grid (UX audit). Reopening is one click away.
+      close();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {

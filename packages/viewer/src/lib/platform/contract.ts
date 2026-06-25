@@ -196,6 +196,8 @@ export interface PluginValidationResult {
 export interface RecommendedPlugin {
   name: string;
   description: string;
+  /** print-md ships this plugin — "Add" enables it instantly, no install. */
+  builtin?: boolean;
 }
 
 // ── Theme manager (#32) ───────────────────────────────────────────────────────

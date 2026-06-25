@@ -6,10 +6,10 @@
  */
 
 import { watch, type FSWatcher } from 'chokidar';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'path';
-import { info, debug, error as logError } from '../utils/logger';
+import { info, debug, warn, error as logError } from '../utils/logger';
 import { DEBOUNCE } from '../constants';
 import { renderChapters } from '../lib/markdown/index';
 import { canonicalChapterId } from '../lib/markdown/chapter-id';
@@ -139,7 +139,12 @@ export async function generateAndWriteHtml(
   let plugins;
   let pluginCss = '';
   if (config.plugins && config.plugins.length > 0) {
-    plugins = await loadPlugins(config.plugins, inputPath);
+    // Live preview degrades gracefully: a plugin the author enabled but hasn't
+    // installed yet is skipped (with a loud warning) so the rest of the document
+    // still renders instead of the whole preview going blank. Build/export keep
+    // fail-fast (no onError) — a final artifact must not silently drop a plugin.
+    plugins = await loadPlugins(config.plugins, inputPath, (ref, err) =>
+      warn(`Skipping plugin "${ref}" in preview — ${err.message}`));
     pluginCss = collectPluginCss(plugins);
   }
 
@@ -198,7 +203,12 @@ export async function renderChapterPreviewHtml(
   let plugins;
   let pluginCss = '';
   if (config.plugins && config.plugins.length > 0) {
-    plugins = await loadPlugins(config.plugins, inputPath);
+    // Live preview degrades gracefully: a plugin the author enabled but hasn't
+    // installed yet is skipped (with a loud warning) so the rest of the document
+    // still renders instead of the whole preview going blank. Build/export keep
+    // fail-fast (no onError) — a final artifact must not silently drop a plugin.
+    plugins = await loadPlugins(config.plugins, inputPath, (ref, err) =>
+      warn(`Skipping plugin "${ref}" in preview — ${err.message}`));
     pluginCss = collectPluginCss(plugins);
   }
   const html = await renderChapters(inputPath, {
@@ -292,7 +302,12 @@ export function createFileWatcher(state: ServerState): FSWatcher {
             externalRoots
           );
           if (!dest) continue;
-          if (existsSync(changedPath)) {
+          // A watch event can fire for a DIRECTORY (e.g. applying a theme
+          // creates `themes/<id>/`, bumping the parent dir's mtime). copyFile
+          // throws EISDIR on a directory, which previously aborted the entire
+          // rebuild and froze the live preview. The contained file gets its own
+          // event and is mirrored on its own; skip the directory itself.
+          if (existsSync(changedPath) && statSync(changedPath).isFile()) {
             await fsp.mkdir(path.dirname(dest.destPath), { recursive: true });
             await fsp.copyFile(changedPath, dest.destPath);
             debug(`Updated: ${dest.relativePath}`);

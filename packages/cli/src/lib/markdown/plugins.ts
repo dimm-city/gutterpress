@@ -21,6 +21,7 @@ export type {
   LoadedPlugin,
 } from "./renderer";
 export { applyPlugins, collectPluginCss } from "./renderer";
+import { BUILTIN_OPTIONAL_PLUGINS } from "./renderer";
 
 /**
  * Resolve and import an npm plugin package.
@@ -131,6 +132,17 @@ export async function loadPlugin(
     );
   }
 
+  // Built-in opt-in plugins resolve from the bundled registry — no project
+  // install, no network, works offline and in the compiled binary. This is the
+  // happy path for the viewer's recommended plugins.
+  if (!config.path && config.name && BUILTIN_OPTIONAL_PLUGINS[config.name]) {
+    return {
+      name: config.name,
+      plugin: BUILTIN_OPTIONAL_PLUGINS[config.name]!,
+      options: config.options,
+    };
+  }
+
   try {
     if (config.path) {
       const pluginPath = resolve(baseDir, config.path);
@@ -171,18 +183,39 @@ export async function loadPlugin(
 /**
  * Load all plugins from the resolved configuration.
  *
- * Fails fast: if any plugin fails to load, the build aborts with the
- * underlying error. Silent skipping was previously the default and made
- * misconfigured manifests very hard to diagnose (markers stopped
- * transforming with no obvious reason).
+ * Two failure modes, selected by whether `onError` is supplied:
+ *
+ *   - **Fail-fast (no `onError`)** — the default for build/export/validate. If
+ *     any plugin fails to load, the whole operation aborts with the underlying
+ *     error. A final artifact must never silently omit author-configured
+ *     formatting.
+ *   - **Degrade-and-report (`onError` supplied)** — for the LIVE PREVIEW. A
+ *     plugin that can't load (e.g. a recommended npm plugin the author enabled
+ *     but hasn't installed yet) is skipped, `onError` is invoked with the
+ *     offending ref + error, and the rest of the document still renders. This
+ *     is NOT silent skipping (the failure mode §5 warns against): the caller
+ *     surfaces every skip loudly (preview warns in its log; the Plugins panel
+ *     shows the plugin as "Not installed" with fix instructions).
  */
 export async function loadPlugins(
   configs: ResolvedPluginConfig[],
-  baseDir: string
+  baseDir: string,
+  onError?: (pluginRef: string, error: Error) => void
 ): Promise<LoadedPlugin[]> {
   const plugins: LoadedPlugin[] = [];
   for (const config of configs) {
-    plugins.push(await loadPlugin(config, baseDir));
+    if (!onError) {
+      plugins.push(await loadPlugin(config, baseDir));
+      continue;
+    }
+    try {
+      plugins.push(await loadPlugin(config, baseDir));
+    } catch (error) {
+      onError(
+        config.path ?? config.name ?? "(unspecified)",
+        error instanceof Error ? error : new Error(String(error))
+      );
+    }
   }
   return plugins;
 }
