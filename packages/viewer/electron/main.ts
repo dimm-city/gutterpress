@@ -1070,9 +1070,11 @@ let folderChangeDebounce: ReturnType<typeof setTimeout> | null = null;
 // open project + folder-watch events) ARMS/RESETS one timer; it fires after N
 // minutes of quiet (settings.versionHistory, default ON / 10 min, floor 5) so
 // each snapshot marks the end of a work burst — never a commit per keystroke.
-// On fire: detect the source; only `local-git-folder` projects snapshot (a
-// plain folder is NEVER auto-`git init`ed — enabling history stays an explicit
-// author opt-in). The lib's per-repo FIFO lock serializes the commit against
+// On fire: detect the source; only a `local-git-folder` that IS its own repo
+// root snapshots. A plain folder is NEVER auto-`git init`ed (enabling history
+// stays an explicit opt-in), and a folder nested INSIDE a larger repo (subPath
+// set) is NEVER auto-snapshotted — that would silently commit to the enclosing
+// repo. The lib's per-repo FIFO lock serializes the commit against
 // sync/restore, and its no-empty-snapshot guard turns a clean-tree fire into
 // the expected `isNoChangesError` rejection, swallowed below. Silent on success
 // (the history dialog reloads its list on open).
@@ -1094,6 +1096,16 @@ async function runAutoSnapshot(dir: string): Promise<void> {
     if (lib.autoSnapshotDelayMs(settings.versionHistory) === null) return;
     const source = await lib.detectProjectSource(dir);
     if (source.type !== "local-git-folder") return;
+    // Never AUTO-snapshot a folder that lives inside a LARGER repo (subPath
+    // set): a silent automatic commit would land in — and sweep unrelated files
+    // from — the ENCLOSING repository (e.g. opening a folder that happens to sit
+    // inside another git repo). Explicit user snapshots and multi-book remote
+    // sync still work via the version-history UI; only the AUTOMATIC commit is
+    // suppressed here.
+    if (source.subPath !== "") {
+      console.info(`[auto-snapshot] skipped: ${dir} is a subfolder of an enclosing repo (${source.repoRoot})`);
+      return;
+    }
     await lib.providerFor(source).snapshot({
       projectDir: dir,
       message: lib.AUTO_SNAPSHOT_MESSAGE,
