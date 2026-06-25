@@ -42,23 +42,21 @@
   let isHigh = $derived(request?.confirmation.risk === "high");
 
   // Reset answered state whenever dialog opens with a new request.
-  $effect(() => {
-    if (open && request) {
-      answered = false;
-      // Focus the appropriate button after the DOM settles.
-      queueMicrotask(() => {
-        if (!dialogEl) return;
-        const risk = request?.confirmation.risk;
-        if (risk === "high") {
-          const notNowBtn = dialogEl.querySelector<HTMLElement>("button[data-action='not-now']");
-          notNowBtn?.focus();
-        } else {
-          const continueBtn = dialogEl.querySelector<HTMLElement>("button[data-action='continue']");
-          continueBtn?.focus();
-        }
-      });
-    }
-  });
+  // Runs on open (the {#if open} dialog node mounts) — no $effect.
+  function onOpen(_node: HTMLElement) {
+    if (!request) return;
+    answered = false;
+    // Focus the appropriate button after the DOM settles.
+    queueMicrotask(() => {
+      if (!dialogEl) return;
+      const risk = request?.confirmation.risk;
+      const sel =
+        risk === "high"
+          ? "button[data-action='not-now']"
+          : "button[data-action='continue']";
+      dialogEl.querySelector<HTMLElement>(sel)?.focus();
+    });
+  }
 
   async function answer(approved: boolean) {
     if (!request || answered) return;
@@ -100,6 +98,7 @@
 
   <div
     bind:this={dialogEl}
+    use:onOpen
     class="dialog"
     class:high={isHigh}
     role="dialog"
