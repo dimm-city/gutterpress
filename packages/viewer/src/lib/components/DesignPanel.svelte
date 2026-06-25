@@ -177,12 +177,14 @@
 {/snippet}
 
 {#if open}
-  <div class="backdrop" onclick={close} role="presentation"></div>
+  <!-- Non-modal side drawer (NOT a centered modal): the live preview must stay
+       visible so the author sees each color/size change take effect — that's the
+       whole point of guided editing (design review P1). No backdrop scrim over
+       the preview iframe (also avoids throttling it). -->
   <div
     bind:this={dialogEl}
     class="dialog"
     role="dialog"
-    aria-modal="true"
     aria-labelledby="design-panel-title"
     tabindex="-1"
   >
@@ -193,7 +195,7 @@
       </div>
       {#if saveStatus !== "idle"}
         <span class="save-status {saveStatus}" aria-live="polite">
-          {saveStatus === "saving" ? "Saving…" : "Saved"}
+          {saveStatus === "saving" ? "Saving…" : "Changes saved"}
         </span>
       {/if}
       <button class="close" onclick={close} title="Close (Esc)" aria-label="Close">
@@ -227,19 +229,23 @@
               <div class="row">
                 <label for={`tok-${t.name}`}>{t.label}</label>
                 <div class="control color">
-                  <span class="swatch" style="background: {t.value}"></span>
                   {#if isHex(t.value)}
+                    <!-- The color input IS the swatch when the value is a hex. -->
                     <input
                       id={`tok-${t.name}`}
                       type="color"
                       value={t.value}
                       oninput={(e) => setValue(t, e.currentTarget.value)}
+                      title={t.value}
                     />
+                  {:else}
+                    <span class="swatch" style="background: {t.value}" title={t.value}></span>
                   {/if}
                   <input
                     class="text"
                     type="text"
                     value={t.value}
+                    title={t.value}
                     oninput={(e) => setValue(t, e.currentTarget.value)}
                     aria-label={`${t.label} value`}
                   />
@@ -285,6 +291,7 @@
                     class="text wide"
                     type="text"
                     value={t.value}
+                    title={t.value}
                     oninput={(e) => setValue(t, e.currentTarget.value)}
                   />
                 </div>
@@ -304,8 +311,8 @@
           </button>
         {/if}
         {#if anyDirty}
-          <button class="ghost" onclick={revertAll} title="Undo all changes made in this session">
-            <Icon name="refresh-cw" size={14} /> Revert all
+          <button class="ghost" onclick={revertAll} title="Undo every change made since you opened Design">
+            <Icon name="refresh-cw" size={14} /> Undo changes
           </button>
         {/if}
       </div>
@@ -321,26 +328,23 @@
 />
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--app-scrim, rgba(0, 0, 0, 0.45));
-    z-index: 60;
-  }
   .dialog {
     position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: min(560px, calc(100vw - 32px));
-    max-height: calc(100vh - 64px);
+    top: 0;
+    right: 0;
+    height: 100vh;
+    width: min(380px, calc(100vw - 32px));
     display: flex;
     flex-direction: column;
     background: var(--app-bg);
-    border: 1px solid var(--app-border);
-    border-radius: 12px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+    border-left: 1px solid var(--app-border);
+    box-shadow: -16px 0 40px rgba(0, 0, 0, 0.28);
     z-index: 61;
+    animation: drawer-in 160ms ease-out;
+  }
+  @keyframes drawer-in {
+    from { transform: translateX(16px); opacity: 0.6; }
+    to { transform: translateX(0); opacity: 1; }
   }
   .dialog-header {
     display: flex;
