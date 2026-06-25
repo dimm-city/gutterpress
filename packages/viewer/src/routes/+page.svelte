@@ -663,6 +663,36 @@
       pendingEditorFocus = true;
     }
   }
+
+  /**
+   * Insert an image even when no chapter is open yet (UX audit P3#8: the Media
+   * "Insert" button used to dead-end behind a disabled state, telling the author
+   * to go open a file first). If no markdown chapter is open, open one and the
+   * editor pane, then insert once the editor has mounted AND loaded that chapter
+   * — a bounded rAF retry, so there's no race (we never insert into an unloaded
+   * doc) and no infinite loop (gives up with a clear toast).
+   */
+  function insertImageIntoChapter(payload: { src: string; alt?: string }) {
+    const isMd = (p: string | null) => !!p && /\.(md|markdown)$/i.test(p);
+    if (!isMd(editorFilePath)) {
+      void ensureEditorFile();
+      editorOpen = true;
+    }
+    let tries = 0;
+    const tryInsert = () => {
+      if (editorRef && isMd(editorFilePath)) {
+        editorRef.runToolbarAction("image", { src: payload.src, alt: payload.alt ?? "" });
+        focusEditorWhenReady();
+        return;
+      }
+      if (tries++ < 120) {
+        requestAnimationFrame(tryInsert);
+      } else {
+        toast?.info?.("Open a markdown chapter, then insert the image.");
+      }
+    };
+    requestAnimationFrame(tryInsert);
+  }
   $effect(() => {
     if (editorRef && pendingEditorFocus) {
       pendingEditorFocus = false;
@@ -1065,7 +1095,18 @@
         const restoreState = await platform
           .getViewerProjectState(dir)
           .catch(() => null);
-        return startFolderPreview(dir, "Reopening previous folder…", restoreState);
+        await startFolderPreview(dir, "Reopening previous folder…", restoreState);
+        // If the saved project no longer opens (moved/renamed/deleted),
+        // startFolderPreview sets openError but does NOT throw. Don't strand the
+        // author on an error screen at launch — clear it and fall through to the
+        // welcome/Projects panel so their first action is "open or create".
+        if (openError) {
+          openError = null;
+          leftPanelOpen = true;
+          leftPanelTab = "projects";
+          toast?.info?.("Couldn't reopen your last project — it may have moved. Pick or create one to start.");
+        }
+        return;
       })
       .catch(() => {
         // If reopen failed, still reveal the window (don't strand on the splash).
@@ -2797,7 +2838,7 @@
       onOpenThemes={() => openThemeManager()}
       onOpenPlugins={() => openPluginManager()}
       onOpenStyles={() => void openStyles()}
-      onInsertImage={(payload) => editorRef?.runToolbarAction("image", { src: payload.src, alt: payload.alt ?? "" })}
+      onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => startFolderPreview(path)}
       onOpenUrl={openUrl}
       onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}

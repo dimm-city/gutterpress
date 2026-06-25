@@ -516,9 +516,12 @@
           <p>Open a project folder to browse media.</p>
         </div>
       {:else}
+        <!-- Insert is available whenever a folder project is open: the host
+             handler opens a chapter first if none is, so the button never
+             dead-ends (UX audit P3#8). -->
         <MediaPanel
           {projectDir}
-          canInsert={!!editorFilePath && /\.(md|markdown)$/i.test(editorFilePath)}
+          canInsert={!!projectDir && sourceMode === "folder"}
           onInsert={(payload) => onInsertImage?.(payload)}
         />
       {/if}
