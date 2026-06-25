@@ -271,6 +271,10 @@ describe("plugin-manager", () => {
         expect(p.name).toMatch(/^markdown-it/);
         expect(typeof p.description).toBe("string");
         expect(p.description.length).toBeGreaterThan(0);
+        // A short, plain-language label (not the markdown-it-* id) for the title.
+        expect(typeof p.label).toBe("string");
+        expect(p.label.length).toBeGreaterThan(0);
+        expect(p.label).not.toMatch(/^markdown-it/);
         // Every recommended entry must be bundled so "Turn on" works offline.
         expect(p.builtin).toBe(true);
       }

@@ -291,8 +291,9 @@
           {#each recommended as rec (rec.name)}
             <li>
               <div class="rec-main">
-                <span class="plugin-name">{rec.name}</span>
+                <span class="rec-label">{rec.label ?? rec.name}</span>
                 <p class="rec-desc">{rec.description}</p>
+                <span class="rec-pkg">{rec.name}</span>
               </div>
               {#if isConfigured(rec.name)}
                 <span class="added"><Icon name="circle-check" size={12} /> On</span>
@@ -428,6 +429,8 @@
   }
 
   .rec-desc { margin: 0; font-size: 11.5px; color: var(--app-text-muted); line-height: 1.4; }
+  .rec-label { font-size: 13px; font-weight: 600; color: var(--app-text); }
+  .rec-pkg { font-size: 10.5px; color: var(--app-text-faint); font-family: ui-monospace, monospace; }
   .added { font-size: 11px; color: var(--app-text-faint); font-style: italic; flex-shrink: 0; }
 
   /* Toggle switch */

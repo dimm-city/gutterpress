@@ -44,8 +44,27 @@
     originals.has(t.name) && originals.get(t.name) !== t.value;
   const anyDirty = $derived(tokens.some(isDirty));
 
-  const HEX_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
-  const isHex = (v: string) => HEX_RE.test(v.trim());
+  // Resolve ANY opaque CSS color (named like `red`, `rgb(...)`, `hsl(...)`, or a
+  // short hex) to a canonical #rrggbb so every Colors row shows consistently and
+  // gets a color picker (UX review: `Color paper: red` looked inconsistent /
+  // had no picker). The canvas `fillStyle` setter normalises any valid color the
+  // browser understands; it returns `rgba(...)` for colors with alpha — those we
+  // leave as-is (text-only). Browser API only (canvas) — stays PWA-clean.
+  let _hexCtx: CanvasRenderingContext2D | null | undefined;
+  function toHex(value: string): string | null {
+    try {
+      if (_hexCtx === undefined) _hexCtx = document.createElement("canvas").getContext("2d");
+      if (!_hexCtx) return null;
+      _hexCtx.fillStyle = "#000000";
+      _hexCtx.fillStyle = value;
+      const out = _hexCtx.fillStyle;
+      return typeof out === "string" && /^#[0-9a-f]{6}$/i.test(out) ? out : null;
+    } catch {
+      return null;
+    }
+  }
+  /** Hex form of a color token for display (falls back to the raw value). */
+  const colorHex = (v: string) => toHex(v) ?? v;
 
   const colorTokens = $derived(tokens.filter((t) => t.kind === "color"));
   const sizeTokens = $derived(tokens.filter((t) => t.kind === "length"));
@@ -229,22 +248,24 @@
               <div class="row">
                 <label for={`tok-${t.name}`}>{t.label}</label>
                 <div class="control color">
-                  {#if isHex(t.value)}
-                    <!-- The color input IS the swatch when the value is a hex. -->
+                  {#if toHex(t.value)}
+                    <!-- The color input IS the swatch; it resolves any opaque
+                         color (named/rgb/hsl/hex) to a hex the picker can edit. -->
                     <input
                       id={`tok-${t.name}`}
                       type="color"
-                      value={t.value}
+                      value={colorHex(t.value)}
                       oninput={(e) => setValue(t, e.currentTarget.value)}
                       title={t.value}
                     />
                   {:else}
+                    <!-- Alpha/var()/gradient — show a swatch, edit as text. -->
                     <span class="swatch" style="background: {t.value}" title={t.value}></span>
                   {/if}
                   <input
                     class="text"
                     type="text"
-                    value={t.value}
+                    value={colorHex(t.value)}
                     title={t.value}
                     oninput={(e) => setValue(t, e.currentTarget.value)}
                     aria-label={`${t.label} value`}

@@ -60,6 +60,10 @@ export interface PluginValidationResult {
 export interface RecommendedPlugin {
   /** The npm package name (also the manifest entry that "Add" writes). */
   name: string;
+  /** Short, plain-language feature name shown as the row title (the package
+   *  name is demoted to secondary text — a non-technical author shouldn't have
+   *  to read `markdown-it-*` ids to pick a feature). */
+  label: string;
   /** One-line author-friendly description. */
   description: string;
   /**
@@ -81,22 +85,26 @@ export interface RecommendedPlugin {
 export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
   {
     name: "markdown-it-mark",
+    label: "Highlight",
     description: "Highlighted text with `==marked==` → `<mark>`.",
     builtin: true,
   },
   {
     name: "markdown-it-sub",
+    label: "Subscript",
     description: "Subscript text with `H~2~O`.",
     builtin: true,
   },
   {
     name: "markdown-it-sup",
+    label: "Superscript",
     description: "Superscript text with `29^th^`.",
     builtin: true,
   },
   {
     name: "markdown-it-abbr",
-    description: "Abbreviations: define `*[HTML]: Hyper Text…` and get `<abbr>` tooltips.",
+    label: "Abbreviations",
+    description: "Define `*[HTML]: Hyper Text…` and get `<abbr>` tooltips.",
     builtin: true,
   },
 ];

@@ -197,6 +197,8 @@ export interface PluginValidationResult {
 /** A curated, informational plugin recommendation (NOT auto-installed). */
 export interface RecommendedPlugin {
   name: string;
+  /** Short plain-language feature name (the row title; `name` is demoted). */
+  label?: string;
   description: string;
   /** print-md ships this plugin — "Add" enables it instantly, no install. */
   builtin?: boolean;
