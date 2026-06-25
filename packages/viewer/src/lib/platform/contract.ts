@@ -1477,8 +1477,7 @@ export interface ElectronBridge
    * to change events for `path` and returns an unsubscribe fn.
    */
   watchFolder(path: string, cb: () => void): () => void;
-  /** Read an operation log file for the recovery/sync log viewer. */
-  readLogFile(path: string): Promise<string | null>;
+  // readLogFile is inherited unchanged from HostServices (raw path both sides).
   // #61: the file-picker IPC keeps the raw path string — the ElectronAdapter is
   // the translation seam that wraps it into a host-neutral FileRef.
   pickImageFile(): Promise<string | null>;
