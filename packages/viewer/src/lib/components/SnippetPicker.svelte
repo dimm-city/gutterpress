@@ -195,11 +195,15 @@
           <ul class="snippet-list">
             {#each snippets as entry (entry.fileName)}
               <li>
-                <button class="snippet-row" onclick={() => choose(entry)}>
+                <button class="snippet-row" onclick={() => choose(entry)} title={`Insert “${entry.name}” at the cursor`}>
                   <span class="snippet-name">{entry.name}</span>
-                  {#if entry.variables.length > 0}
-                    <span class="snippet-vars">{entry.variables.length} field{entry.variables.length === 1 ? "" : "s"}</span>
-                  {/if}
+                  <span class="snippet-row-end">
+                    {#if entry.variables.length > 0}
+                      <span class="snippet-vars">{entry.variables.length} field{entry.variables.length === 1 ? "" : "s"}</span>
+                    {/if}
+                    <span class="snippet-insert">Insert</span>
+                    <Icon name="chevron-right" size={14} />
+                  </span>
                 </button>
                 <button
                   class="snippet-del"
@@ -281,13 +285,24 @@
   .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
   .snippet-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
   .snippet-list li { display: flex; align-items: stretch; gap: 4px; }
+  /* A clickable list item, NOT a text input — distinct from the sunken input
+     styling so authors see it affords "insert at cursor" (the core action). */
   .snippet-row {
     flex: 1; display: flex; align-items: center; justify-content: space-between;
     gap: 10px; text-align: left; padding: 8px 10px; border-radius: 6px;
-    background: var(--app-surface-sunken); border: 1px solid var(--app-border);
-    color: var(--app-text-secondary); cursor: pointer; font-size: 13px;
+    background: var(--app-surface); border: 1px solid var(--app-border);
+    color: var(--app-text); cursor: pointer; font-size: 13px; font-weight: 500;
   }
-  .snippet-row:hover { background: var(--app-surface-hover); color: var(--app-text); }
+  .snippet-row:hover {
+    background: var(--app-accent-soft, var(--app-surface-hover));
+    border-color: var(--app-accent, var(--app-focus-ring));
+  }
+  .snippet-row:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .snippet-row-end { display: flex; align-items: center; gap: 8px; color: var(--app-text-muted); }
+  /* "Insert" hint stays subtle until hover/focus so the row reads clean at rest. */
+  .snippet-insert { font-size: 11px; font-weight: 600; opacity: 0; transition: opacity 0.12s; }
+  .snippet-row:hover .snippet-insert,
+  .snippet-row:focus-visible .snippet-insert { opacity: 1; color: var(--app-accent, var(--app-text)); }
   .snippet-vars { font-size: 11px; color: var(--app-text-faint); }
   .snippet-del {
     background: transparent; border: 1px solid var(--app-border); border-radius: 6px;
