@@ -18,6 +18,8 @@ import os from "node:os";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { watch, type FSWatcher } from "node:fs";
+import { createServer } from "node:http";
+import { pathToFileURL } from "node:url";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
 import {
   writeRecovery as writeRecoveryStore,
@@ -1945,74 +1947,65 @@ async function refreshWebRoot(): Promise<void> {
   activeWebRoot = await resolveWebRoot();
 }
 
-const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "application/javascript",
-  ".mjs": "application/javascript",
-  ".css": "text/css",
-  ".json": "application/json",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".ico": "image/x-icon",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-};
+// ── SvelteKit HTTP bridge (adapter-node) ─────────────────────────────────────
+// adapter-node emits a Node.js HTTP handler to build/handler.js. We start a
+// local HTTP server bound to 127.0.0.1 on an OS-assigned port, then forward
+// all app:// requests to it via fetch. This lets +server.ts routes run in the
+// Electron main process where they can import { dialog, shell } from 'electron'
+// directly, while the renderer stays PWA-clean (fetch('/api/...') only).
+let skServerPort: number | null = null;
 
-function mimeFor(p: string): string {
-  return MIME[path.extname(p).toLowerCase()] ?? "application/octet-stream";
+function getSvelteKitHandlerPath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "app.asar", "build", "handler.js")
+    : path.join(__dirname, "..", "..", "build", "handler.js");
 }
+
+async function startSvelteKitServer(): Promise<number> {
+  if (skServerPort) return skServerPort;
+  const handlerPath = getSvelteKitHandlerPath();
+  slog(`loading SvelteKit handler from ${handlerPath}`);
+  const { handler } = (await import(pathToFileURL(handlerPath).href)) as {
+    handler: Parameters<typeof createServer>[0];
+  };
+  const server = createServer(handler);
+  return new Promise<number>((resolve, reject) => {
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      if (!addr || typeof addr === "string") {
+        reject(new Error("Failed to get SvelteKit server address"));
+        return;
+      }
+      skServerPort = addr.port;
+      slog(`SvelteKit server listening on 127.0.0.1:${skServerPort}`);
+      resolve(skServerPort);
+    });
+    server.on("error", reject);
+  });
+}
+
 
 function registerAppProtocol() {
   protocol.handle("app", async (req) => {
+    if (skServerPort === null) {
+      return new Response("SvelteKit server not started", { status: 503 });
+    }
     const url = new URL(req.url);
-    let pathname = decodeURIComponent(url.pathname);
-    if (!pathname || pathname === "/") pathname = "/index.html";
-
-    // strip leading "/" before joining so path.join treats it as relative
-    const rel = pathname.replace(/^\/+/, "");
-    const candidate = path.resolve(activeWebRoot, rel);
-
-    // Boundary check.
-    if (
-      candidate !== activeWebRoot &&
-      !candidate.startsWith(activeWebRoot + path.sep)
-    ) {
-      console.error(`[app://] boundary violation: ${candidate}`);
-      return new Response("Forbidden", { status: 403 });
-    }
-
-    // Try the exact file first.
+    const targetUrl =
+      "http://127.0.0.1:" + skServerPort + url.pathname + url.search;
     try {
-      const rt = Date.now();
-      const data = await readFile(candidate);
-      const dt = Date.now() - rt;
-      if (dt > 40) slog(`app:// SLOW read ${dt}ms ${rel}`);
-      return new Response(data, {
-        headers: { "content-type": mimeFor(candidate) },
+      const proxyReq = new Request(targetUrl, {
+        method: req.method,
+        headers: req.headers,
+        body:
+          req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
+        // @ts-expect-error — duplex is required for streaming POST bodies in Node 18+
+        duplex: "half",
       });
-    } catch {
-      // fall through to SPA fallback
-    }
-
-    // adapter-static SPA fallback: serve index.html for unknown paths so
-    // client-side routing works.
-    try {
-      const data = await readFile(path.join(activeWebRoot, "index.html"));
-      return new Response(data, {
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
+      return await fetch(proxyReq);
     } catch (e) {
-      console.error(
-        `[app://] FATAL: index.html not found at ${activeWebRoot}/index.html (${(e as Error).message})`
-      );
-      return new Response(
-        `static root missing at ${activeWebRoot}`,
-        { status: 500 }
-      );
+      console.error(`[app://] proxy error for ${url.pathname}:`, e);
+      return new Response("Proxy error: " + String(e), { status: 502 });
     }
   });
 }
@@ -4398,6 +4391,17 @@ app.whenReady().then(async () => {
   updateSplash("Preparing the interface…", 18);
   await refreshWebRoot();
   slog("web root resolved");
+  // In dev mode (VITE_DEV_SERVER_URL set) the SvelteKit dev server is already
+  // running externally — skip the local handler.js launch. In prod, start the
+  // adapter-node HTTP server and wire it to the app:// protocol.
+  if (!process.env.VITE_DEV_SERVER_URL) {
+    try {
+      await startSvelteKitServer();
+    } catch (err) {
+      console.error("[sk-server] failed to start SvelteKit server:", err);
+      // Non-fatal: registerAppProtocol will return 503 until skServerPort is set.
+    }
+  }
   registerAppProtocol();
   registerUrlPreviewHeaderWatch();
   updateSplash("Loading print-md…", 28);
