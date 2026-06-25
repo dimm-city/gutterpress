@@ -200,8 +200,6 @@ export interface RecommendedPlugin {
   /** Short plain-language feature name (the row title; `name` is demoted). */
   label?: string;
   description: string;
-  /** print-md ships this plugin — "Add" enables it instantly, no install. */
-  builtin?: boolean;
 }
 
 // ── Theme manager (#32) ───────────────────────────────────────────────────────

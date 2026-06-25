@@ -93,13 +93,6 @@ export function initTheme(): void {
   apply();
 }
 
-/** Stop listening for OS theme changes (test/teardown). */
-export function teardownTheme(): void {
-  unsubscribeOs?.();
-  unsubscribeOs = null;
-  state.initialized = false;
-}
-
 /**
  * Re-read the persisted theme mode from the settings store and re-apply. Call
  * this from a reactive `$effect` so the document follows the Settings control.
@@ -119,15 +112,3 @@ export function setThemeMode(mode: ThemeMode): void {
   apply();
 }
 
-/** Reactive accessors for UI. */
-export function useTheme() {
-  return {
-    get mode(): ThemeMode {
-      return state.mode;
-    },
-    get resolved(): ResolvedTheme {
-      return state.resolved;
-    },
-    setMode: setThemeMode,
-  };
-}
