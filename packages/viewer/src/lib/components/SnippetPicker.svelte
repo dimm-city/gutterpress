@@ -5,7 +5,7 @@
    *
    * Architecture:
    * - Snippets live in the open project's `snippets/` folder. The host does the
-   *   file IO via `getPlatform().listSnippets / readSnippet / saveSnippet`. The
+   *   file IO via `api.snip.*` server routes. The
    *   variable substitution is pure renderer code (`snippet-vars.ts`) so no Node
    *   lib is pulled into the SPA bundle (§8 / ADR 0004).
    * - The component owns no editor knowledge: it calls `onInsert(text)` with the
@@ -13,8 +13,8 @@
    * - Desktop-only in v1 (file IO host gate); the trigger is hidden on web.
    */
   import Icon from "$lib/components/Icon.svelte";
-  import { getPlatform } from "$lib/platform";
-  import type { SnippetEntry } from "$lib/platform/contract";
+  import { api } from "$lib/api";
+  import type { SnippetEntry } from "$lib/api";
   import { extractVariables, substituteVariables } from "$lib/editor/snippet-vars";
 
   let {
@@ -76,7 +76,7 @@
     error = null;
     loading = true;
     try {
-      snippets = await getPlatform().listSnippets(projectDir);
+      snippets = await api.snip.list(projectDir);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
       snippets = [];
@@ -94,7 +94,7 @@
     if (!projectDir) return;
     error = null;
     try {
-      const body = await getPlatform().readSnippet(projectDir, entry.fileName);
+      const body = await api.snip.read(projectDir, entry.fileName);
       const vars = extractVariables(body);
       if (vars.length === 0) {
         onInsert(body);
@@ -140,7 +140,7 @@
     }
     error = null;
     try {
-      await getPlatform().saveSnippet(projectDir, saveName.trim(), saveBody);
+      await api.snip.save(projectDir, saveName.trim(), saveBody);
       await refresh();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -150,7 +150,7 @@
   async function remove(entry: SnippetEntry) {
     if (!projectDir) return;
     try {
-      await getPlatform().deleteSnippet(projectDir, entry.fileName);
+      await api.snip.delete(projectDir, entry.fileName);
       await refresh();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);

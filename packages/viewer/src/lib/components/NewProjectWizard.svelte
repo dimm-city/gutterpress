@@ -1,8 +1,8 @@
 <script lang="ts">
   import Icon from "$lib/components/Icon.svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
+  import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
-  import type { TemplateInfo } from "$lib/platform/contract";
+  import type { TemplateInfo } from "$lib/api";
 
   let {
     open = $bindable(false),
@@ -31,10 +31,10 @@
 
   async function loadTemplates() {
     try {
-      const builtins = await getPlatform().listBuiltInTemplates();
+      const builtins = await api.tpl.listBuiltIn();
       let customs: TemplateInfo[] = [];
       try {
-        customs = await getPlatform().listCustomTemplates();
+        customs = await api.tpl.listCustom();
       } catch {
         customs = [];
       }
@@ -53,7 +53,7 @@
     importing = true;
     error = null;
     try {
-      const imported = await getPlatform().importTemplateFromFolder();
+      const imported = await api.tpl.importFromFolder();
       if (imported) {
         await loadTemplates();
         selectedTemplate = templates.find((t) => t.id === imported.id) ?? imported;

@@ -23,12 +23,11 @@ import type {
   NativeThemeState,
   ProjectClassification,
   // PrintSafeWarning, ProblemEntry, MediaImageEntry, MediaImageDetails — removed (Phase 2C)
+  // TemplateInfo, SnippetEntry — removed (Phase 2D)
   FileStat,
   FileWriteResult,
   RecoveryEntry,
   FolderChangedEvent,
-  TemplateInfo,
-  SnippetEntry,
   ProjectPluginEntry,
   PluginValidationResult,
   RecommendedPlugin,
@@ -161,31 +160,7 @@ export class ElectronAdapter implements Platform {
   // discoverProjects, classifyProject, createProject, adoptFolder
   // — migrated to server routes (Phase 2B)
 
-  // ── Project templates + snippets (#29) — delegate 1:1 to the bridge ─────────
-  listBuiltInTemplates(): Promise<TemplateInfo[]> {
-    return bridge().listBuiltInTemplates();
-  }
-  listCustomTemplates(): Promise<TemplateInfo[]> {
-    return bridge().listCustomTemplates();
-  }
-  saveProjectAsTemplate(projectDir: string, name: string): Promise<TemplateInfo> {
-    return bridge().saveProjectAsTemplate(projectDir, name);
-  }
-  importTemplateFromFolder(): Promise<TemplateInfo | null> {
-    return bridge().importTemplateFromFolder();
-  }
-  listSnippets(projectDir: string): Promise<SnippetEntry[]> {
-    return bridge().listSnippets(projectDir);
-  }
-  readSnippet(projectDir: string, fileName: string): Promise<string> {
-    return bridge().readSnippet(projectDir, fileName);
-  }
-  saveSnippet(projectDir: string, name: string, body: string): Promise<SnippetEntry> {
-    return bridge().saveSnippet(projectDir, name, body);
-  }
-  deleteSnippet(projectDir: string, fileName: string): Promise<void> {
-    return bridge().deleteSnippet(projectDir, fileName);
-  }
+  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from ElectronAdapter.
 
   // ── Plugin manager (#30) — delegate 1:1 to the bridge ──────────────────────
   listPlugins(projectDir: string): Promise<ProjectPluginEntry[]> {

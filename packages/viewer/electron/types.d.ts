@@ -129,19 +129,6 @@ interface ProjectClassification {
   capabilities: ProjectCapabilities;
 }
 
-// Project templates + snippets (#29). Mirror the lib's TemplateInfo/SnippetEntry.
-interface TemplateInfo {
-  id: string;
-  label: string;
-  description: string;
-  kind: "builtin" | "custom";
-  dir?: string;
-}
-interface SnippetEntry {
-  name: string;
-  fileName: string;
-  variables: string[];
-}
 
 // Plugin manager (#30). Mirrors the lib's plugin-manager types.
 type PluginKind = "local" | "npm";
@@ -422,15 +409,7 @@ interface Window {
     onNativeThemeUpdated(
       cb: (data: { shouldUseDarkColors: boolean }) => void
     ): () => void;
-    // Project templates + snippets (#29)
-    listBuiltInTemplates(): Promise<TemplateInfo[]>;
-    listCustomTemplates(): Promise<TemplateInfo[]>;
-    saveProjectAsTemplate(projectDir: string, name: string): Promise<TemplateInfo>;
-    importTemplateFromFolder(): Promise<TemplateInfo | null>;
-    listSnippets(projectDir: string): Promise<SnippetEntry[]>;
-    readSnippet(projectDir: string, fileName: string): Promise<string>;
-    saveSnippet(projectDir: string, name: string, body: string): Promise<SnippetEntry>;
-    deleteSnippet(projectDir: string, fileName: string): Promise<void>;
+    // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from ElectronBridge.
     // Plugin manager (#30)
     listPlugins(projectDir: string): Promise<ProjectPluginEntry[]>;
     setPluginEnabled(projectDir: string, ref: string, enabled: boolean): Promise<void>;

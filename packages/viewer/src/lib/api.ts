@@ -33,6 +33,20 @@ async function get<T>(url: string): Promise<T> {
 
 // ── Local type declarations (mirrors from contract.ts — no import to keep SPA clean) ─
 
+export interface TemplateInfo {
+  id: string;
+  label: string;
+  description: string;
+  kind: 'builtin' | 'custom';
+  dir?: string;
+}
+
+export interface SnippetEntry {
+  name: string;
+  fileName: string;
+  variables: string[];
+}
+
 export interface FileWriteResult {
   mtimeMs: number;
 }
@@ -204,6 +218,32 @@ export const api = {
         message: string;
         source: string;
       }>>('/api/lint/project', { projectDir }),
+  },
+
+  tpl: {
+    /** List the built-in starter templates (static metadata). */
+    listBuiltIn: () => get<TemplateInfo[]>('/api/tpl/built-in'),
+    /** List the user's saved/imported custom templates. */
+    listCustom: (templatesRoot?: string) =>
+      post<TemplateInfo[]>('/api/tpl/custom', templatesRoot !== undefined ? { templatesRoot } : {}),
+    /** Save the open project as a reusable custom template. */
+    saveAsTemplate: (opts: unknown) => post<TemplateInfo>('/api/tpl/save-as-template', opts),
+    /** Open a native folder picker and import the selected folder as a template. Resolves null when cancelled. */
+    importFromFolder: () => post<TemplateInfo | null>('/api/tpl/import-from-folder', {}),
+  },
+
+  snip: {
+    /** List the open project's snippets. */
+    list: (projectDir: string) => post<SnippetEntry[]>('/api/snip/list', { projectDir }),
+    /** Read one snippet's raw body. */
+    read: (projectDir: string, fileName: string) =>
+      post<string>('/api/snip/read', { projectDir, fileName }),
+    /** Save a snippet body under the project's snippets/ folder. */
+    save: (projectDir: string, name: string, body: string) =>
+      post<SnippetEntry>('/api/snip/save', { projectDir, name, body }),
+    /** Delete a snippet by filename. */
+    delete: (projectDir: string, fileName: string) =>
+      post<{ ok: boolean }>('/api/snip/delete', { projectDir, fileName }),
   },
 
   /** Health check — returns { ok: true, name, runtime }. */

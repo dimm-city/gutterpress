@@ -662,10 +662,10 @@
     saveTemplateBusy = true;
     saveTemplateError = null;
     try {
-      const tpl = await getPlatform().saveProjectAsTemplate(
-        currentDir,
-        saveTemplateName.trim(),
-      );
+      const tpl = await api.tpl.saveAsTemplate({
+        projectDir: currentDir,
+        name: saveTemplateName.trim(),
+      });
       saveTemplateOpen = false;
       toast?.success(`Saved “${tpl.label}” as a template.`);
     } catch (e) {

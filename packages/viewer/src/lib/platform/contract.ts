@@ -136,34 +136,7 @@ export interface ProblemEntry {
   source: string;
 }
 
-// ── Project templates + snippets (#29) ────────────────────────────────────────
-//
-// Mirror the lib's TemplateInfo / SnippetEntry — defined locally so the SPA
-// never value-imports the lib (§8 / ADR 0004).
-
-/** Author-friendly metadata for one project template (built-in or custom). */
-export interface TemplateInfo {
-  /** Stable id (a built-in ProjectTemplateId, or a slug for custom templates). */
-  id: string;
-  /** Display name shown in the wizard. */
-  label: string;
-  /** One-line description shown under the label. */
-  description: string;
-  /** `"builtin"` (embedded) or `"custom"` (user-saved / imported). */
-  kind: "builtin" | "custom";
-  /** For custom templates: absolute directory the files live in. */
-  dir?: string;
-}
-
-/** One snippet's metadata for the picker (body is read lazily). */
-export interface SnippetEntry {
-  /** Display name derived from the filename stem. */
-  name: string;
-  /** On-disk filename (stable id for read/delete), e.g. `callout.md`. */
-  fileName: string;
-  /** Distinct `{{variable}}` names parsed from the body, in first-seen order. */
-  variables: string[];
-}
+// TemplateInfo and SnippetEntry migrated to $lib/api.ts (Phase 2D — tpl/snip server routes).
 
 // ── Plugin manager (#30) ──────────────────────────────────────────────────────
 //
@@ -992,37 +965,7 @@ export interface HostServices {
   // Native (OS) theme (#48) — push channel kept (main→renderer push, not request/reply)
   onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void;
 
-  // ── Project templates + snippets (#29) ──────────────────────────────────────
-  // Thin pass-throughs to the shared lib (one impl for CLI + viewer). Templates
-  // are listed for the New Project wizard; "Save as template" captures the open
-  // project; snippets are reusable markdown fragments stored per-project. The
-  // WebAdapter stubs degrade: built-in templates list works (static metadata),
-  // custom-template + save-as + folder-import reject (desktop-only in v1), and
-  // snippets work via the FSA project root.
-
-  /** List the built-in starter templates (static metadata). */
-  listBuiltInTemplates(): Promise<TemplateInfo[]>;
-  /** List the user's saved/imported custom templates. WebAdapter: returns []. */
-  listCustomTemplates(): Promise<TemplateInfo[]>;
-  /**
-   * Save the open project as a reusable custom template under the host's
-   * templates dir. WebAdapter: rejects (desktop-only in v1).
-   */
-  saveProjectAsTemplate(projectDir: string, name: string): Promise<TemplateInfo>;
-  /**
-   * Pick a folder and import it as a custom template. Resolves null when the
-   * user cancels. WebAdapter: rejects (desktop-only in v1).
-   */
-  importTemplateFromFolder(): Promise<TemplateInfo | null>;
-
-  /** List the open project's snippets. WebAdapter: reads the FSA project root. */
-  listSnippets(projectDir: string): Promise<SnippetEntry[]>;
-  /** Read one snippet's raw body. WebAdapter: reads the FSA project root. */
-  readSnippet(projectDir: string, fileName: string): Promise<string>;
-  /** Save a snippet body under the project's `snippets/` folder. */
-  saveSnippet(projectDir: string, name: string, body: string): Promise<SnippetEntry>;
-  /** Delete a snippet by filename. */
-  deleteSnippet(projectDir: string, fileName: string): Promise<void>;
+  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from HostServices.
 
   // ── Plugin manager (#30) ─────────────────────────────────────────────────────
   // Thin pass-throughs to the shared lib's plugin-manager (one impl for CLI +

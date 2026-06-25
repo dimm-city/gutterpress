@@ -199,19 +199,6 @@ interface AdoptFolderOptions {
   versionHistory?: "local-git" | "none";
 }
 
-// Project templates + snippets (#29). Mirror the lib's TemplateInfo/SnippetEntry.
-interface TemplateInfo {
-  id: string;
-  label: string;
-  description: string;
-  kind: "builtin" | "custom";
-  dir?: string;
-}
-interface SnippetEntry {
-  name: string;
-  fileName: string;
-  variables: string[];
-}
 // Plugin manager (#30). Mirror the lib's plugin-manager types.
 type PluginKind = "local" | "npm";
 interface ProjectPluginEntry {
@@ -425,27 +412,7 @@ interface LibModule {
   scaffoldProject: (options: CreateProjectOptions) => Promise<CreateProjectResult>;
   adoptFolder: (options: AdoptFolderOptions) => Promise<CreateProjectResult>;
   providerFor: (source: ProjectSource) => SourceProviderOps;
-  // Project templates + snippets (#29)
-  listBuiltInTemplates: () => Promise<TemplateInfo[]>;
-  listCustomTemplates: (templatesRoot: string) => Promise<TemplateInfo[]>;
-  saveProjectAsTemplate: (options: {
-    projectDir: string;
-    name: string;
-    templatesRoot: string;
-  }) => Promise<TemplateInfo>;
-  importTemplateFromFolder: (options: {
-    sourceDir: string;
-    name?: string;
-    templatesRoot: string;
-  }) => Promise<TemplateInfo>;
-  listSnippets: (projectDir: string) => Promise<SnippetEntry[]>;
-  readSnippet: (projectDir: string, fileName: string) => Promise<string>;
-  saveSnippet: (
-    projectDir: string,
-    name: string,
-    body: string,
-  ) => Promise<SnippetEntry>;
-  deleteSnippet: (projectDir: string, fileName: string) => Promise<void>;
+  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from LibModule.
   // Plugin manager (#30)
   listProjectPlugins: (projectDir: string) => Promise<ProjectPluginEntry[]>;
   setPluginEnabled: (
@@ -2315,82 +2282,9 @@ registerPrefsHooks({
 // app:discoverProjects, app:classifyProject, app:createProject, app:adoptFolder
 // — migrated to SvelteKit server routes (src/routes/api/app/*) in Phase 2B.
 
-// ── Project templates + snippets (#29) ───────────────────────────────────────
-// Thin pass-throughs to the shared lib (one implementation for CLI + viewer).
-// Custom templates live under `userData/templates/`; snippets live inside the
-// open project's `snippets/` folder (so they travel with the project).
-function templatesRoot(): string {
-  return path.join(app.getPath("userData"), "templates");
-}
-
-ipcMain.handle("tpl:listBuiltIn", async (): Promise<TemplateInfo[]> => {
-  const lib = await loadLib();
-  return lib.listBuiltInTemplates();
-});
-
-ipcMain.handle("tpl:listCustom", async (): Promise<TemplateInfo[]> => {
-  const lib = await loadLib();
-  return lib.listCustomTemplates(templatesRoot());
-});
-
-ipcMain.handle(
-  "tpl:saveAsTemplate",
-  async (_e, projectDir: string, name: string): Promise<TemplateInfo> => {
-    requireAbsoluteDir("tpl:saveAsTemplate", projectDir);
-    const lib = await loadLib();
-    return lib.saveProjectAsTemplate({ projectDir, name, templatesRoot: templatesRoot() });
-  },
-);
-
-ipcMain.handle("tpl:importFromFolder", async (): Promise<TemplateInfo | null> => {
-  if (!mainWindow) return null;
-  const res = await dialog.showOpenDialog(mainWindow, {
-    title: "Choose a template folder",
-    properties: ["openDirectory"],
-  });
-  if (res.canceled || res.filePaths.length === 0) return null;
-  const lib = await loadLib();
-  return lib.importTemplateFromFolder({
-    sourceDir: res.filePaths[0]!,
-    templatesRoot: templatesRoot(),
-  });
-});
-
-ipcMain.handle(
-  "snip:list",
-  async (_e, projectDir: string): Promise<SnippetEntry[]> => {
-    requireAbsoluteDir("snip:list", projectDir);
-    const lib = await loadLib();
-    return lib.listSnippets(projectDir);
-  },
-);
-
-ipcMain.handle(
-  "snip:read",
-  async (_e, projectDir: string, fileName: string): Promise<string> => {
-    requireAbsoluteDir("snip:read", projectDir);
-    const lib = await loadLib();
-    return lib.readSnippet(projectDir, fileName);
-  },
-);
-
-ipcMain.handle(
-  "snip:save",
-  async (_e, projectDir: string, name: string, body: string): Promise<SnippetEntry> => {
-    requireAbsoluteDir("snip:save", projectDir);
-    const lib = await loadLib();
-    return lib.saveSnippet(projectDir, name, body);
-  },
-);
-
-ipcMain.handle(
-  "snip:delete",
-  async (_e, projectDir: string, fileName: string): Promise<void> => {
-    requireAbsoluteDir("snip:delete", projectDir);
-    const lib = await loadLib();
-    return lib.deleteSnippet(projectDir, fileName);
-  },
-);
+// tpl:listBuiltIn, tpl:listCustom, tpl:saveAsTemplate, tpl:importFromFolder,
+// snip:list, snip:read, snip:save, snip:delete
+// — migrated to SvelteKit server routes (src/routes/api/tpl/*, src/routes/api/snip/*) in Phase 2D.
 
 // ── Plugin manager (#30) ──────────────────────────────────────────────────────
 // Thin pass-throughs to the lib's plugin-manager. Per CLAUDE.md §5 the host
