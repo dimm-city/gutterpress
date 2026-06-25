@@ -13,6 +13,7 @@
     ProjectCapabilities,
     ProjectClassification,
     ProjectRemoteDiagnosis,
+    ProjectStyle,
     RecoveryConfirmRequest,
     RecoveryProgressInfo,
     SnapshotEntry,
@@ -36,6 +37,7 @@
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
   import PluginManager from "$lib/components/PluginManager.svelte";
   import ThemeManager from "$lib/components/ThemeManager.svelte";
+  import StylePicker from "$lib/components/StylePicker.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
@@ -506,6 +508,75 @@
   function openThemeManager() {
     if (!isDesktop() || !currentDir) return;
     themeManagerRef?.show(themeManagerBtn);
+  }
+
+  // Style picker (CSS-editing audit G1/G2) — a viewport-independent "Edit
+  // styles" affordance backed by the manifest-aware `listProjectStyles` IPC. If
+  // exactly one stylesheet, open it directly; if several, show the picker (the
+  // active stylesheet sorted first). Used by both the Document menu / editor
+  // toolbar (all sizes) and the mobile CSS tab (B2 manifest-aware resolution).
+  let stylePickerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
+  let stylePickerOpen = $state(false);
+  let stylesMenuBtn = $state<HTMLButtonElement | undefined>(undefined);
+
+  /**
+   * Open the project's styles for editing (audit G1/G2/B2). Resolves the
+   * stylesheets via the shared lib (manifest `styles:` first); opens a single
+   * stylesheet directly, shows the picker for several, and toasts when none.
+   * `trigger` (when given) is the button to restore focus to after the picker.
+   * `focusEditor` reveals + focuses the editor after a direct open (the mobile
+   * CSS-tab flow wants this; the menu flow leaves focus management to the user).
+   */
+  async function openStyles(
+    trigger?: HTMLButtonElement,
+    opts: { focusEditor?: boolean } = {},
+  ) {
+    if (!isDesktop() || !currentDir) return;
+    let list: ProjectStyle[];
+    try {
+      list = await getPlatform().listProjectStyles(currentDir);
+    } catch (e) {
+      toast?.error?.(
+        `Could not list styles: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return;
+    }
+    if (list.length === 0) {
+      toast?.info?.(
+        "This project has no stylesheet to edit yet. Apply a theme or add a .css file.",
+      );
+      return;
+    }
+    if (list.length === 1) {
+      selectEditorFile(list[0]!.path);
+      if (opts.focusEditor) {
+        editorOpen = true;
+        focusEditorWhenReady();
+      }
+      return;
+    }
+    stylePickerRef?.show(trigger);
+  }
+
+  /** Open one chosen stylesheet (from the StylePicker) in the shared editor. */
+  function openStyleFile(absPath: string) {
+    editorOpen = true;
+    selectEditorFile(absPath);
+    focusEditorWhenReady();
+  }
+
+  /**
+   * After a theme is applied (audit M2), auto-open the applied theme's CSS so the
+   * author can tweak it immediately. The applied theme always lives at
+   * `themes/<id>/theme.css` (theme-manager apply contract).
+   */
+  function onThemeApplied(themeId: string) {
+    if (!isDesktop() || !currentDir) return;
+    const sep = currentDir.includes("\\") ? "\\" : "/";
+    const cssPath = `${currentDir}${sep}themes${sep}${themeId}${sep}theme.css`;
+    editorOpen = true;
+    selectEditorFile(cssPath);
+    focusEditorWhenReady();
   }
 
   // "Save as template" (#29) — capture the open project as a reusable template.
@@ -2032,11 +2103,11 @@
   // persisted two-state `paneMode` ("edit"/"view") is the source of truth so the
   // existing restore + wide-screen behaviour is untouched.
   //
-  // `editorSurface` tracks whether the editor currently holds the markdown or
-  // CSS file so the tab bar highlights the right tab without a parallel store.
-  let editorSurface = $state<"markdown" | "css">("markdown");
-  // The open file's actual extension decides the surface (covers preview→editor
-  // chapter follow + recovery + ensureEditorFile picking a file on its own).
+  // M1 (single source of truth): the highlighted editor tab is derived SOLELY
+  // from the open file's extension (`openFileIsCss`) — no parallel
+  // `editorSurface` state that could get stuck on "css" when no CSS file is
+  // actually open. This also covers preview→editor chapter follow + recovery +
+  // ensureEditorFile picking a file on its own.
   let openFileIsCss = $derived(
     !!editorFilePath && /\.css$/i.test(editorFilePath),
   );
@@ -2044,45 +2115,35 @@
   // No new persistence: reload restores via paneMode, then the open file decides
   // markdown vs css.
   let mobileTab = $derived<MobileTab>(
-    tabFromPaneMode(paneMode, openFileIsCss || editorSurface === "css"),
+    tabFromPaneMode(paneMode, openFileIsCss),
   );
-
-  /**
-   * Find the project's primary CSS file so the CSS tab can open it. Prefers a
-   * top-level `.css` (e.g. style.css / theme.css); falls back to the first
-   * `.css` anywhere the lister returns. Returns null when the project has none.
-   * Mirrors ensureEditorFile's listDir-based discovery (no new host capability).
-   */
-  async function findProjectCssFile(): Promise<string | null> {
-    if (!currentDir || !isDesktop()) return null;
-    try {
-      const entries = (await getPlatform().listDir(currentDir)).filter((e) => !e.isDir);
-      const css = entries
-        .filter((e) => /\.css$/i.test(e.name))
-        .sort((a, b) => a.name.localeCompare(b.name));
-      return css[0]?.path ?? null;
-    } catch {
-      return null;
-    }
-  }
 
   /**
    * Switch the visible mobile pane. Preview → view mode; Markdown/CSS → edit
    * mode with the matching file loaded into the shared editor. Markdown opens
-   * the project's first markdown file (ensureEditorFile); CSS opens the project
-   * CSS file, surfacing a toast when the project has none.
+   * the project's first markdown file (ensureEditorFile); CSS now routes through
+   * the manifest-aware `openStyles` (audit B2) — the active stylesheet, with a
+   * picker when there are several — instead of the old root-only alphabetical
+   * scan.
    */
   function selectMobileTab(tab: MobileTab) {
     const mode = paneModeForTab(tab);
     setPaneMode(mode);
     const surface = editorSurfaceForTab(tab);
     if (surface === "markdown") {
-      editorSurface = "markdown";
       // Only swap files if the editor is currently on a CSS file; otherwise keep
       // the author's open chapter (ensureEditorFile is a no-op when one is open).
       if (openFileIsCss) {
         void (async () => {
           const buf = ensureBuffer();
+          // B1 (data-loss fix): flush any pending debounced CSS save BEFORE
+          // resetting the buffer — reset() only cancels the timer + clears
+          // content, so without this an edit made inside the autosave window
+          // is silently dropped when switching to Markdown.
+          if (buf.filePath && buf.hasPendingSave) {
+            toast?.info?.("Saving…");
+            await buf.flush().catch(() => {});
+          }
           buf.reset();
           await ensureEditorFile();
         })();
@@ -2091,16 +2152,9 @@
       }
       focusEditorWhenReady();
     } else if (surface === "css") {
-      editorSurface = "css";
-      void (async () => {
-        const cssPath = await findProjectCssFile();
-        if (cssPath) {
-          selectEditorFile(cssPath);
-          focusEditorWhenReady();
-        } else {
-          toast?.info?.("This project has no CSS file to edit.");
-        }
-      })();
+      // Manifest-aware CSS resolution (B2): open the active stylesheet directly,
+      // or show the picker when there are several.
+      void openStyles(undefined, { focusEditor: true });
     }
   }
 
@@ -2691,6 +2745,18 @@
               <Icon name="palette" /> Themes…
             </button>
           {/if}
+          {#if isDesktop() && currentDir}
+            <!-- Edit styles (audit G1/G2): viewport-independent CSS-file entry
+                 point. Manifest-aware: opens the active stylesheet (or a picker
+                 when there are several). -->
+            <button
+              bind:this={stylesMenuBtn}
+              class="menu-item"
+              onclick={(e) => { void openStyles(stylesMenuBtn); closeMenu(e); }}
+            >
+              <Icon name="palette" /> Edit styles…
+            </button>
+          {/if}
           <button class="menu-item" onclick={(e) => { helpOpen = true; closeMenu(e); }}>
             <Icon name="circle-help" /> Help &amp; about
           </button>
@@ -2777,12 +2843,29 @@
                phase transitions to screen readers without interrupting. -->
           {#if editorFilePath}
             <div class="editor-status-bar" aria-live="polite" aria-atomic="true">
+              <!-- N1: show the open file's name so the author always knows
+                   which file (markdown chapter OR stylesheet) they're editing. -->
+              <span class="open-file-name" title={editorChapter ?? undefined}>
+                {#if openFileIsCss}<Icon name="palette" size={12} />{/if}
+                {editorChapter ?? ""}
+              </span>
               {#if editorSavePhase === "dirty" || editorSavePhase === "saving"}
                 <span class="save-status saving">Saving…</span>
               {:else if editorSavePhase === "clean" && buffer?.filePath}
                 <span class="save-status saved">Saved</span>
               {:else if editorSavePhase === "error"}
                 <span class="save-status save-error">Save error</span>
+              {/if}
+              {#if isDesktop() && currentDir}
+                <!-- G1/G2: viewport-independent "Edit styles" affordance living
+                     in the editor pane (works on desktop AND mobile). -->
+                <button
+                  class="edit-styles-btn"
+                  title="Edit project styles (CSS)"
+                  onclick={(e) => void openStyles(e.currentTarget as HTMLButtonElement, { focusEditor: true })}
+                >
+                  <Icon name="palette" size={12} /> Styles
+                </button>
               {/if}
             </div>
           {/if}
@@ -2965,6 +3048,15 @@
   bind:this={themeManagerRef}
   bind:open={themeManagerOpen}
   projectDir={currentDir}
+  onApplied={onThemeApplied}
+/>
+<!-- Style picker (audit G1/G2): choose which project stylesheet to edit. Opened
+     by openStyles() only when there are several (single-style opens directly). -->
+<StylePicker
+  bind:this={stylePickerRef}
+  bind:open={stylePickerOpen}
+  projectDir={currentDir}
+  onChoose={openStyleFile}
 />
 <!-- Save-as-template name prompt (#29). Minimal modal: name + confirm. -->
 {#if saveTemplateOpen}
@@ -3139,12 +3231,46 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
+    gap: 10px;
     padding: 2px 10px;
     min-height: 20px;
     border-bottom: 1px solid var(--app-border-subtle);
     background: var(--app-surface);
     flex-shrink: 0;
   }
+  /* N1: open-file name pushed to the left; the save-status + Styles button stay
+     on the right (justify-content: flex-end). */
+  .open-file-name {
+    margin-right: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    color: var(--app-text-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .edit-styles-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--app-border);
+    background: transparent;
+    color: var(--app-text-muted);
+    cursor: pointer;
+  }
+  .edit-styles-btn:hover {
+    background: var(--app-surface-hover);
+    color: var(--app-text);
+    border-color: var(--app-accent, var(--app-focus-ring));
+  }
+  .edit-styles-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .save-status {
     font-size: 11px;
     font-variant-numeric: tabular-nums;

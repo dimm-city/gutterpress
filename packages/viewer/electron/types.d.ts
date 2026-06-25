@@ -175,6 +175,13 @@ type ApplyThemeTarget =
   | { kind: "builtin"; id: string }
   | { kind: "project"; id: string };
 
+// Style resolver (audit B2/G1). Mirrors the lib's ProjectStyle.
+interface ProjectStyle {
+  path: string;
+  displayName: string;
+  active: boolean;
+}
+
 // Local version history (#13). Mirrors the lib's source-provider types.
 interface SnapshotEntry {
   id: string;
@@ -553,6 +560,8 @@ interface Window {
       source: { kind: "builtin" | "project"; id: string },
     ): Promise<string>;
     removeProjectTheme(projectDir: string, id: string): Promise<void>;
+    // Style resolver (audit B2/G1)
+    listProjectStyles(projectDir: string): Promise<ProjectStyle[]>;
     // Local version history (#13)
     enableVersionHistory(projectDir: string): Promise<ProjectClassification>;
     saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;

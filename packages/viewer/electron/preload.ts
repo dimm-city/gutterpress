@@ -134,6 +134,11 @@ interface ThemeInfo {
 type ApplyThemeTarget =
   | { kind: "builtin"; id: string }
   | { kind: "project"; id: string };
+interface ProjectStyle {
+  path: string;
+  displayName: string;
+  active: boolean;
+}
 
 interface RecentFolderEntry {
   path: string;
@@ -700,6 +705,10 @@ contextBridge.exposeInMainWorld("electron", {
   ): Promise<string> => ipcRenderer.invoke("theme:readCss", projectDir, source),
   removeProjectTheme: (projectDir: string, id: string): Promise<void> =>
     ipcRenderer.invoke("theme:remove", projectDir, id),
+
+  // Style resolver (audit B2/G1) — manifest-aware CSS resolution via the lib
+  listProjectStyles: (projectDir: string): Promise<ProjectStyle[]> =>
+    ipcRenderer.invoke("project:listStyles", projectDir),
 
   // Local version history (#13) — isomorphic-git in main, via the lib
   enableVersionHistory: (projectDir: string): Promise<ProjectClassification> =>

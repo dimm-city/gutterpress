@@ -224,6 +224,21 @@ export type ApplyThemeTarget =
   | { kind: "builtin"; id: string }
   | { kind: "project"; id: string };
 
+// ── Style resolver (CSS editor; audit B2/G1) ──────────────────────────────────
+//
+// Mirrors the lib's `ProjectStyle` (packages/cli/src/lib/style-resolver.ts) —
+// defined locally so the SPA never value-imports the lib (§8 / ADR 0004).
+
+/** One resolvable project stylesheet surfaced to the CSS-editor picker. */
+export interface ProjectStyle {
+  /** Absolute path to the `.css` file (the editor's open key). */
+  path: string;
+  /** Project-relative, "/"-separated display name (e.g. `themes/dark/theme.css`). */
+  displayName: string;
+  /** True when the stylesheet is in the manifest `styles:` list (the active set). */
+  active: boolean;
+}
+
 // ── Host RPC payload shapes (mirror electron/preload.ts + types.d.ts) ─────────
 
 export interface UpdaterStatus {
@@ -1170,6 +1185,17 @@ export interface HostServices {
   ): Promise<string>;
   /** Remove an imported/applied project theme folder (never built-ins). */
   removeProjectTheme(projectDir: string, id: string): Promise<void>;
+
+  // ── Style resolver (CSS editor; audit B2/G1) ────────────────────────────────
+  /**
+   * Resolve the project's editable stylesheets for the CSS editor: the manifest
+   * `styles:` set (active, in manifest order) followed by other discovered
+   * `.css` files (root, `styles/`, and each theme's `theme.css`), each tagged
+   * whether active. Thin pass-through to the shared lib so the CLI and viewer resolve
+   * CSS identically. The WebAdapter stub returns `[]` (editing is desktop-gated
+   * until the FSA web adapter lands — audit G3).
+   */
+  listProjectStyles(projectDir: string): Promise<ProjectStyle[]>;
 
   // ── Local version history (#13) ───────────────────────────────────────────
   // All four run in the host (isomorphic-git via the lib — CLAUDE.md §7); the
