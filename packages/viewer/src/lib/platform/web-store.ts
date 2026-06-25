@@ -41,7 +41,7 @@ export interface WebStore {
 }
 
 /** The object-store names the WebAdapter uses (also the IndexedDB store list). */
-export const WEB_STORE_NAMES = [
+const WEB_STORE_NAMES = [
   "handles",
   "recents",
   "favorites",

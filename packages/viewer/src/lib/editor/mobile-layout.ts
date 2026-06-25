@@ -18,7 +18,7 @@
 export const NARROW_BREAKPOINT = 820;
 
 /** iPhone-14 logical viewport width — the acceptance target (#34). */
-export const MOBILE_TARGET_WIDTH = 390;
+const MOBILE_TARGET_WIDTH = 390;
 
 /** Workspace layout mode derived purely from the viewport width. */
 export type LayoutMode = "single-column" | "split";
@@ -31,7 +31,7 @@ export type LayoutMode = "single-column" | "split";
  * is used. Boundary is inclusive of the breakpoint (820px → single-column),
  * matching `(max-width: 820px)` in CSS so JS and CSS never disagree.
  */
-export function layoutModeFor(
+function layoutModeFor(
   width: number,
   breakpoint: number = NARROW_BREAKPOINT,
 ): LayoutMode {
@@ -54,7 +54,7 @@ export function isNarrowWidth(
 export type MobileTab = "markdown" | "css" | "preview";
 
 /** Ordered tab list — also the order arrow-key navigation cycles through. */
-export const MOBILE_TABS: readonly MobileTab[] = ["markdown", "css", "preview"] as const;
+const MOBILE_TABS: readonly MobileTab[] = ["markdown", "css", "preview"] as const;
 
 /** Which physical pane a tab maps to. */
 export type WorkspacePane = "editor" | "preview";
@@ -69,7 +69,7 @@ export type EditorSurface = "markdown" | "css";
  * lets the three-way tab bar reuse the existing two-pane (editor|preview)
  * workspace + the persisted `paneMode` ("edit" | "view").
  */
-export function paneForTab(tab: MobileTab): WorkspacePane {
+function paneForTab(tab: MobileTab): WorkspacePane {
   return tab === "preview" ? "preview" : "editor";
 }
 
