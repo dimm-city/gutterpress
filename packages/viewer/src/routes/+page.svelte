@@ -836,6 +836,20 @@
     });
   });
 
+  // Re-inject viewer canvas styles when the preview background colour changes
+  // in Settings. The initial injection happens in the renderingComplete handler;
+  // this subscriber catches live changes without requiring a re-render.
+  onMount(() => {
+    let lastBg: string | undefined;
+    return settings.subscribe((s) => {
+      const bg = s.appearance.previewBg;
+      if (bg !== lastBg && client) {
+        lastBg = bg;
+        client.injectStyles("viewer-canvas", buildViewerStyles(bg));
+      }
+    });
+  });
+
   // External-edit detection (#44): watch the open folder; on any debounced
   // change, ask the buffer to reconcile the open document against disk.
   // Managed imperatively: started in startFolderPreview, stopped in stopPreview / openUrl.
@@ -992,6 +1006,7 @@
     // focus-switch into the editing surface (#38). Closing returns focus to
     // the document (preview iframe / window) implicitly.
     if (editorOpen) {
+      loadEditorModule();
       void ensureEditorFile();
       // Defer until the pane (and CodeMirror view) is mounted. The editor
       // component is lazy-loaded, so focus may need to wait for it to arrive.
@@ -1666,6 +1681,13 @@
       // Remember the folder so we can offer to set it up as a book when the
       // failure was "this isn't a print-md project".
       failedOpenDir = dir;
+      // Re-open the Projects panel so the user can try again without being
+      // stranded — mirrors the old autoOpenPanel $effect behaviour.
+      if (lastProjectChecked) {
+        leftPanelOpen = true;
+        leftPanelTab = "projects";
+        leftPanelRef?.notifyOpened();
+      }
     } finally {
       busy = false;
       busyLabel = "";
