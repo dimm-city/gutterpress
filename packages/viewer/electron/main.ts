@@ -2032,16 +2032,7 @@ registerAppHooks({
 // IPC handlers (replace the deleted /api/* SvelteKit routes)
 // ──────────────────────────────────────────────────────────────────────────
 
-ipcMain.handle("dialog:openDirectory", async () => {
-  if (!mainWindow) return null;
-  const res = await dialog.showOpenDialog(mainWindow, {
-    title: "Open print-md project",
-    properties: ["openDirectory"],
-  });
-  if (res.canceled || res.filePaths.length === 0) return null;
-  return res.filePaths[0];
-});
-
+// dialog:openDirectory migrated to SvelteKit server route (src/routes/api/dialog/open-directory).
 // dialog:savePdf, dialog:pickImageFile, dialog:pickImageFiles, fs:copyFile
 // migrated to SvelteKit server routes (src/routes/api/dialog/* and
 // src/routes/api/fs/copy-file) — see Phase 2A migration.
@@ -2058,67 +2049,8 @@ ipcMain.handle("dialog:openDirectory", async () => {
 // see Phase 2A migration.
 
 // ── Filesystem primitives (PlatformAdapter, #41) ──────────────────────────
-// Backs ElectronAdapter.readFile/writeFile. No current consumer in 0.4.0 — the
-// in-app editor (#38/#39) is the first. The renderer is our own trusted SPA;
-// paths must be absolute so a relative path can't resolve against the main
-// process CWD by accident.
-// Callers MUST constrain filePath to a user-opened project directory; there is
-// no global path allowlist by design — the renderer is our own trusted SPA.
-ipcMain.handle("fs:readFile", async (_e, filePath: string): Promise<string> => {
-  if (!path.isAbsolute(filePath)) {
-    throw new Error(`fs:readFile requires an absolute path, got: ${filePath}`);
-  }
-  return await readFile(filePath, "utf-8");
-});
-
-ipcMain.handle(
-  "fs:writeFile",
-  async (_e, filePath: string, content: string): Promise<{ mtimeMs: number }> => {
-    if (!path.isAbsolute(filePath)) {
-      throw new Error(`fs:writeFile requires an absolute path, got: ${filePath}`);
-    }
-    await mkdir(path.dirname(filePath), { recursive: true });
-    await writeFile(filePath, content, "utf-8");
-    // Edit signal for the auto-snapshot debounce (RC1-3): every in-app save
-    // inside the open project re-arms the quiet-period timer. (The folder
-    // watcher also fires for top-level files; this covers nested paths too.)
-    // Also arm the sync debounce (strictly longer than snapshot — §4.2).
-    if (watchedDir) {
-      const resolved = path.resolve(filePath);
-      const root = path.resolve(watchedDir);
-      if (resolved === root || resolved.startsWith(root + path.sep)) {
-        scheduleAutoSnapshot(watchedDir);
-        scheduleAutoSync(watchedDir);
-      }
-    }
-    // Return the post-write mtime so the editor can record its on-disk baseline
-    // (#44) and suppress the self-echo from its own folder watcher.
-    const s = await stat(filePath);
-    return { mtimeMs: s.mtimeMs };
-  },
-);
-
-// ── File metadata (PlatformAdapter.statFile, #44 — external-edit detection) ──
-// Resolves with `exists: false` (zeroed metadata) rather than rejecting when the
-// path is absent, so the editor can tell "deleted out from under us" from an IO
-// error. The path MUST be absolute (renderer is our trusted SPA).
-ipcMain.handle(
-  "fs:statFile",
-  async (
-    _e,
-    filePath: string,
-  ): Promise<{ mtimeMs: number; size: number; exists: boolean }> => {
-    if (!path.isAbsolute(filePath)) {
-      throw new Error(`fs:statFile requires an absolute path, got: ${filePath}`);
-    }
-    try {
-      const s = await stat(filePath);
-      return { mtimeMs: s.mtimeMs, size: s.size, exists: true };
-    } catch {
-      return { mtimeMs: 0, size: 0, exists: false };
-    }
-  },
-);
+// fs:readFile, fs:writeFile, fs:statFile migrated to SvelteKit server routes
+// (src/routes/api/fs/*) — see Phase 2A migration.
 
 // ── Folder watching (PlatformAdapter.watchFolder, #44) ──────────────────────
 // Backs external-edit detection: a shallow fs.watch on the open project whose
@@ -2157,29 +2089,7 @@ ipcMain.handle("app:flushDone", async (): Promise<void> => {
 });
 
 // ── Directory listing (PlatformAdapter.listDir, #38) ──────────────────────
-// Backs the in-app editor's file-tree sidebar. Returns the immediate entries
-// of `dirPath` (single level, no recursion) as {name, path, isDir}. The path
-// MUST be absolute (a relative path could resolve against the main-process CWD
-// by accident); the renderer is our own trusted SPA and always passes a
-// user-opened project directory.
-ipcMain.handle(
-  "fs:listDir",
-  async (
-    _e,
-    dirPath: string,
-  ): Promise<Array<{ name: string; path: string; isDir: boolean }>> => {
-    if (!path.isAbsolute(dirPath)) {
-      throw new Error(`fs:listDir requires an absolute path, got: ${dirPath}`);
-    }
-    const entries = await readdir(dirPath, { withFileTypes: true });
-    return entries.map((entry) => ({
-      name: entry.name,
-      path: path.join(dirPath, entry.name),
-      isDir: entry.isDirectory(),
-    }));
-  },
-);
-
+// fs:listDir migrated to SvelteKit server route (src/routes/api/fs/list-dir).
 // fs:listProjectFiles migrated to SvelteKit server route
 // (src/routes/api/fs/list-project-files) — see Phase 2A migration.
 
@@ -2310,8 +2220,6 @@ async function handleVcsErrors<T>(
   }
 }
 
-// vcs:enableVersionHistory migrated to SvelteKit server route (src/routes/api/vcs/enable-version-history/+server.ts).
-
 ipcMain.handle(
   "vcs:saveSnapshot",
   (_e, projectDir: string, message?: string): Promise<SnapshotEntry> =>
@@ -2328,8 +2236,7 @@ ipcMain.handle(
     }),
 );
 
-// vcs:listSnapshots, vcs:listSnapshotsPage, vcs:restoreSnapshot
-// — migrated to SvelteKit server routes (src/routes/api/vcs/*) in this refactor.
+// vcs:listSnapshots, vcs:listSnapshotsPage, vcs:restoreSnapshot — migrated to SvelteKit server routes (src/routes/api/vcs/*).
 
 // ── Managed GitHub integration (#15, ADR 0006) ───────────────────────────────
 // Auth (device flow), connection status, repo/branch discovery, clone-and-open.

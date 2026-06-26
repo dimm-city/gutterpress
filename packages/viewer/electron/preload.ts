@@ -460,28 +460,14 @@ contextBridge.exposeInMainWorld("electron", {
 
   // Dialogs
   // savePdf, pickImageFile, pickImageFiles, copyFile migrated to server routes
-  openDirectory: (): Promise<string | null> =>
-    ipcRenderer.invoke("dialog:openDirectory"),
-
+  // openDirectory migrated to server route (api.dialog.openDirectory)
   // openExternal, showInFolder, readLogFile migrated to server routes
   // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
 
-  // Filesystem primitives (PlatformAdapter, #41 — editor seam for #38/#39)
-  readFile: (filePath: string): Promise<string> =>
-    ipcRenderer.invoke("fs:readFile", filePath),
-  writeFile: (filePath: string, content: string): Promise<{ mtimeMs: number }> =>
-    ipcRenderer.invoke("fs:writeFile", filePath, content),
-  listDir: (
-    dirPath: string,
-  ): Promise<Array<{ name: string; path: string; isDir: boolean }>> =>
-    ipcRenderer.invoke("fs:listDir", dirPath),
+  // Filesystem primitives migrated to SvelteKit server routes (api.fs.*)
+  // readFile, writeFile, listDir, statFile migrated to server routes
   // listProjectFiles migrated to server route
   // checkCss, lintProject migrated to server routes (Phase 2C)
-  // File metadata (PlatformAdapter.statFile, #44 — external-edit detection)
-  statFile: (
-    filePath: string,
-  ): Promise<{ mtimeMs: number; size: number; exists: boolean }> =>
-    ipcRenderer.invoke("fs:statFile", filePath),
   /**
    * Watch a project folder for changes (#44). Subscribes to debounced
    * `fs:folderChanged` events for `dirPath` and returns an unsubscribe fn that

@@ -345,21 +345,14 @@ interface Window {
     updater: ElectronUpdater;
     // Dialogs
     // savePdf, pickImageFile, pickImageFiles, copyFile migrated to server routes
-    openDirectory(): Promise<string | null>;
+    // openDirectory migrated to server route (api.dialog.openDirectory)
     // openExternal, showInFolder, readLogFile migrated to server routes
     // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
     // listProjectFiles migrated to server route
-    // Filesystem primitives (PlatformAdapter, #41)
-    readFile(filePath: string): Promise<string>;
-    writeFile(filePath: string, content: string): Promise<{ mtimeMs: number }>;
-    listDir(
-      dirPath: string,
-    ): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
+    // Filesystem primitives migrated to server routes (api.fs.*)
+    // readFile, writeFile, listDir, statFile migrated to server routes
     // checkCss, lintProject migrated to server routes (Phase 2C)
     // File metadata + folder watch (PlatformAdapter, #44)
-    statFile(
-      filePath: string,
-    ): Promise<{ mtimeMs: number; size: number; exists: boolean }>;
     watchFolder(dirPath: string, cb: () => void): () => void;
     // getStatus, doctor migrated to server routes (Phase 2C)
     // app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,

@@ -41,6 +41,7 @@ import type {
   PlatformCapabilities,
 } from "./contract";
 import { basenameOf } from "./paths";
+import { api } from "$lib/api";
 
 function bridge(): ElectronBridge {
   const b = window.electron;
@@ -61,7 +62,7 @@ export class ElectronAdapter implements Platform {
   // string); wrap it into a host-neutral FolderRef (key = path, displayName =
   // basename) so the renderer never assumes path-string semantics.
   async openFolder(): Promise<FolderRef | null> {
-    const path = await bridge().openDirectory();
+    const path = await api.dialog.openDirectory();
     if (path == null) return null;
     return { key: path, displayName: basenameOf(path) };
   }
@@ -75,19 +76,19 @@ export class ElectronAdapter implements Platform {
   }
 
   readFile(path: string): Promise<string> {
-    return bridge().readFile(path);
+    return api.fs.readFile(path);
   }
 
   writeFile(path: string, content: string): Promise<FileWriteResult> {
-    return bridge().writeFile(path, content);
+    return api.fs.writeFile(path, content);
   }
 
   listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>> {
-    return bridge().listDir(path);
+    return api.fs.listDir(path);
   }
 
   statFile(path: string): Promise<FileStat> {
-    return bridge().statFile(path);
+    return api.fs.statFile(path);
   }
 
   watchFolder(path: string, cb: () => void): () => void {

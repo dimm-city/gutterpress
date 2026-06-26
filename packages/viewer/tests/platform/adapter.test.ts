@@ -16,13 +16,6 @@ function makeBridge() {
   const bridge = {
     apiVersion: 1,
     updater: { getStatus: rec("updater.getStatus", Promise.resolve({})) },
-    openDirectory: rec("openDirectory", Promise.resolve("/proj")),
-    readFile: rec("readFile", Promise.resolve("file-body")),
-    writeFile: rec("writeFile", Promise.resolve()),
-    listDir: rec(
-      "listDir",
-      Promise.resolve([{ name: "a.md", path: "/proj/a.md", isDir: false }]),
-    ),
     onNativeThemeUpdated: rec("onNativeThemeUpdated", () => {}),
     startPreview: rec("startPreview", Promise.resolve({ url: "x" })),
     stopPreview: rec("stopPreview", Promise.resolve({ stopped: true })),
@@ -31,10 +24,6 @@ function makeBridge() {
     onBuildProgress: rec("onBuildProgress", () => {}),
     onUrlPreviewBlocked: rec("onUrlPreviewBlocked", () => {}),
     // #44 unsaved-changes / recovery surface
-    statFile: rec(
-      "statFile",
-      Promise.resolve({ mtimeMs: 123, size: 7, exists: true }),
-    ),
     watchFolder: rec("watchFolder", () => {}),
     writeRecovery: rec("writeRecovery", Promise.resolve({ ok: true })),
     clearRecovery: rec("clearRecovery", Promise.resolve({ ok: true })),
@@ -113,22 +102,22 @@ test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", asyn
   globalThis.window = { electron: bridge };
   const p = new ElectronAdapter();
 
-  // #49: openFolder wraps the bridge's path string into a host-neutral FolderRef.
-  await expect(p.openFolder()).resolves.toEqual({ key: "/proj", displayName: "proj" });
-  await expect(p.readFile("/a.md")).resolves.toBe("file-body");
-  await p.writeFile("/a.md", "hello");
-  await expect(p.listDir("/proj")).resolves.toEqual([
-    { name: "a.md", path: "/proj/a.md", isDir: false },
-  ]);
+  // openFolder now calls api.dialog.openDirectory() (a fetch POST), not bridge().openDirectory()
+  const origFetch = globalThis.fetch;
+  // @ts-expect-error test global
+  globalThis.fetch = async (_url: string) => ({ ok: true, json: async () => "/proj" });
+  try {
+    // #49: openFolder wraps the path string into a host-neutral FolderRef.
+    await expect(p.openFolder()).resolves.toEqual({ key: "/proj", displayName: "proj" });
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+
   await p.build({ input: { key: "/proj", displayName: "proj" }, format: "pdf" });
   await p.startPreview({ input: { key: "/proj", displayName: "proj" } });
   expect(p.apiVersion).toBe(1);
 
   const methods = calls.map((c) => c.method);
-  expect(methods).toContain("openDirectory");
-  expect(methods).toContain("readFile");
-  expect(methods).toContain("writeFile");
-  expect(methods).toContain("listDir");
   expect(methods).toContain("build");
   // #49: the adapter unwraps FolderRef.key → the string `input` the IPC expects.
   expect(calls.find((c) => c.method === "build")?.args).toEqual([
@@ -138,7 +127,6 @@ test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", asyn
   expect(calls.find((c) => c.method === "startPreview")?.args).toEqual([
     { input: "/proj" },
   ]);
-  expect(calls.find((c) => c.method === "writeFile")?.args).toEqual(["/a.md", "hello"]);
 });
 
 
@@ -158,7 +146,6 @@ test("ElectronAdapter delegates the #44 unsaved-changes surface 1:1 to the bridg
   globalThis.window = { electron: bridge };
   const p = new ElectronAdapter();
 
-  await expect(p.statFile("/p")).resolves.toEqual({ mtimeMs: 123, size: 7, exists: true });
   const unwatch = p.watchFolder("/p", () => {});
   expect(typeof unwatch).toBe("function");
   const offFlush = p.onFlushBeforeClose(() => {});
@@ -167,11 +154,9 @@ test("ElectronAdapter delegates the #44 unsaved-changes surface 1:1 to the bridg
   expect(typeof offFolder).toBe("function");
 
   const methods = calls.map((c) => c.method);
-  expect(methods).toContain("statFile");
   expect(methods).toContain("watchFolder");
   expect(methods).toContain("onFlushBeforeClose");
   expect(methods).toContain("onFolderChanged");
-  expect(calls.find((c) => c.method === "statFile")?.args).toEqual(["/p"]);
 });
 
 test("ElectronAdapter delegates onNativeThemeUpdated 1:1 to the bridge", async () => {
