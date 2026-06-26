@@ -42,7 +42,7 @@
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
-  import { api } from "$lib/api";
+  import { api, type SyncOutcome } from "$lib/api";
   import { basenameOf, joinPath } from "$lib/platform/paths";
   import { onMount } from "svelte";
   import {
@@ -292,7 +292,7 @@
 
   async function refreshSyncDiag(dir: string) {
     try {
-      const diag = await getPlatform().diagnoseProjectRemote(dir);
+      const diag = await api.remote.diagnoseProjectRemote(dir);
       // Project may have changed while the diagnosis was in flight.
       if (currentDir === dir) syncDiag = diag;
     } catch {
@@ -342,9 +342,9 @@
     // in the SyncOutcome returned by syncChanges (contract.ts lines 527-528).
     // Fetch them now so ConflictChoicesDialog.confirm() can call resolveSyncConflicts.
     const dir = currentDir;
-    getPlatform()
+    api.remote
       .syncChanges(dir)
-      .then((outcome) => {
+      .then((outcome: SyncOutcome) => {
         // Discard if the user switched projects or already closed the dialog.
         if (currentDir !== dir || !conflictOpen) return;
         if (outcome.status === "conflict") {
@@ -2390,7 +2390,7 @@
 
   /**
    * Trigger an immediate sync for the open project.
-   * Reuses the same getPlatform().syncChanges() path the auto-orchestrator uses.
+   * Reuses the same api.remote.syncChanges() path the auto-orchestrator uses.
    * Only callable when the project canSync (guarded in StatusBar via showForceSync).
    */
   async function handleForceSync() {
@@ -2398,7 +2398,7 @@
     if (!dir || forceSyncing) return;
     forceSyncing = true;
     try {
-      const outcome = await getPlatform().syncChanges(dir);
+      const outcome = await api.remote.syncChanges(dir);
       if (currentDir !== dir) return; // Project switched mid-sync.
       if (outcome.status === "conflict") {
         // Route through the existing conflict dialog path.

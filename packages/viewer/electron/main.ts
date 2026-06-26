@@ -2339,6 +2339,16 @@ ipcMain.handle(
 
 const GITHUB_HOST = "github.com";
 
+// Expose lib + tokenStore for remote SvelteKit server routes (Phase 2F).
+// The routes live in a separate Vite bundle and cannot directly import from
+// main.ts; they access loadLib / electronTokenStore / GITHUB_HOST through
+// this hook (same pattern as __printMdUpdaterGetStatus__ for /api/doctor).
+(globalThis as unknown as Record<string, unknown>).__printMdRemoteHooks__ = {
+  loadLib,
+  tokenStore: electronTokenStore,
+  GITHUB_HOST,
+};
+
 // Error sanitization — same pattern as handleVcsErrors: the lib's own
 // author-friendly messages pass through verbatim; anything else is logged in
 // full here and replaced with a terse author-safe message. Token values never
@@ -2444,59 +2454,9 @@ ipcMain.handle("remote:connectGitHubCancel", async () => {
   return { ok: true };
 });
 
-ipcMain.handle("remote:disconnectGitHub", () =>
-  handleRemoteErrors("remote:disconnectGitHub", async () => {
-    await electronTokenStore.delete(GITHUB_HOST);
-    return { ok: true };
-  }),
-);
-
-// Redacted status only — the token NEVER crosses the IPC boundary.
-ipcMain.handle("remote:getConnection", (_e, host?: string) =>
-  electronTokenStore.status(host || GITHUB_HOST),
-);
-
-async function requireGitHubCredential(): Promise<HostCredential> {
-  const credential = await electronTokenStore.get(GITHUB_HOST);
-  if (!credential) {
-    throw new Error("Connect GitHub first to see your repositories.");
-  }
-  return credential;
-}
-
-ipcMain.handle("remote:listRepositories", () =>
-  handleRemoteErrors("remote:listRepositories", async () => {
-    const lib = await loadLib();
-    return lib.listGitHubRepositories(await requireGitHubCredential());
-  }),
-);
-
-ipcMain.handle(
-  "remote:listBranches",
-  (_e, owner: string, repo: string): Promise<RemoteBranch[]> =>
-    handleRemoteErrors("remote:listBranches", async () => {
-      if (typeof owner !== "string" || typeof repo !== "string" || !owner || !repo) {
-        throw new Error("remote:listBranches requires owner and repo");
-      }
-      const lib = await loadLib();
-      return lib.listGitHubBranches(await requireGitHubCredential(), owner, repo);
-    }),
-);
-
-ipcMain.handle(
-  "remote:listRepoBooks",
-  (_e, owner: string, repo: string, branch: string): Promise<RepoBook[]> =>
-    handleRemoteErrors("remote:listRepoBooks", async () => {
-      if (
-        typeof owner !== "string" || typeof repo !== "string" ||
-        typeof branch !== "string" || !owner || !repo || !branch
-      ) {
-        throw new Error("remote:listRepoBooks requires owner, repo and branch");
-      }
-      const lib = await loadLib();
-      return lib.listRepoBooks(await requireGitHubCredential(), owner, repo, branch);
-    }),
-);
+// remote:disconnectGitHub, remote:getConnection, remote:listRepositories,
+// remote:listBranches, remote:listRepoBooks — migrated to SvelteKit server
+// routes (Phase 2F). Accessed via __printMdRemoteHooks__ globalThis hook.
 
 /**
  * Validate a renderer-supplied book subfolder path (repo-relative, "/"
@@ -2574,118 +2534,10 @@ ipcMain.handle(
     }),
 );
 
-// ── Advanced Setup (#14, ADR 0006 D3/D7) ─────────────────────────────────────
-// Diagnostics + the universal "Connect a Git server" token flow. All checks
-// are lib functions (no shell commands — CLAUDE.md §7); tokens are validated
-// with a refs probe BEFORE being stored and NEVER cross the IPC boundary back
-// to the renderer (every response below is redacted).
-
-ipcMain.handle("remote:diagnoseProject", (_e, projectDir: string) =>
-  handleRemoteErrors("remote:diagnoseProject", async () => {
-    const dir = requireAbsoluteDir("remote:diagnoseProject", projectDir);
-    const lib = await loadLib();
-    return lib.diagnoseProjectRemote(dir, { tokenStore: electronTokenStore });
-  }),
-);
-
-ipcMain.handle("remote:testRemoteAccess", (_e, url: string) =>
-  handleRemoteErrors("remote:testRemoteAccess", async () => {
-    if (typeof url !== "string" || !url.trim()) {
-      throw new Error("remote:testRemoteAccess requires a remote URL");
-    }
-    const lib = await loadLib();
-    // Use the stored credential for the remote's host, when one exists.
-    // Credentials are keyed hostname[:port] (matching the lib's host
-    // normalization), so a self-hosted forge on a port still resolves.
-    let credential: HostCredential | null = null;
-    try {
-      const u = new URL(url);
-      const host = u.port ? `${u.hostname}:${u.port}` : u.hostname;
-      credential = await electronTokenStore.get(host);
-    } catch {
-      // SSH/scp-like URLs don't parse — the lib classifies them without auth.
-    }
-    return lib.testRemoteAccess({
-      url,
-      ...(credential ? { credential } : {}),
-    });
-  }),
-);
-
-ipcMain.handle(
-  "remote:connectGenericHost",
-  (
-    _e,
-    args: { host: string; username?: string; token: string; repoUrl?: string },
-  ) =>
-    handleRemoteErrors("remote:connectGenericHost", async () => {
-      if (!args || typeof args.host !== "string" || typeof args.token !== "string") {
-        throw new Error("remote:connectGenericHost requires { host, token }");
-      }
-      const lib = await loadLib();
-      // Validates with a refs probe BEFORE returning — a bad paste never
-      // reaches the credential store.
-      const credential = await lib.connectGenericHost({
-        host: args.host,
-        ...(args.username ? { username: args.username } : {}),
-        token: args.token,
-        ...(args.repoUrl ? { repoUrl: args.repoUrl } : {}),
-      });
-      await electronTokenStore.set(credential.host, credential);
-      return {
-        connected: true,
-        host: credential.host,
-        ...(credential.username ? { username: credential.username } : {}),
-      };
-    }),
-);
-
-ipcMain.handle("remote:disconnectHost", (_e, host: string) =>
-  handleRemoteErrors("remote:disconnectHost", async () => {
-    if (typeof host !== "string" || !host.trim()) {
-      throw new Error("remote:disconnectHost requires a host");
-    }
-    await electronTokenStore.delete(host);
-    return { ok: true };
-  }),
-);
-
-// Redacted list only — host/username/label/kind, never tokens or ciphertext.
-ipcMain.handle("remote:listConnections", async () => {
-  return electronTokenStore.listRedacted();
-});
-
-// Pure lookup (no I/O): token-settings deep link for recognized forges.
-ipcMain.handle("remote:forgeTokenUrl", async (_e, host: string) => {
-  if (typeof host !== "string" || !host.trim()) return null;
-  const lib = await loadLib();
-  return lib.knownForgeTokenUrl(host);
-});
-
-// ── Sync (#15 sync phase, ADR 0006 D5) ──────────────────────────────────────
-// Snapshot-first sync + per-file conflict resolution. All git work happens
-// in the lib (isomorphic-git — CLAUDE.md §7) under the per-repo lock; the
-// credential is resolved host-side from the safeStorage store by remote host
-// and NEVER crosses the IPC boundary. Outcomes (synced / up-to-date /
-// conflict / auth / offline / error) are RETURNED, not thrown — the lib maps
-// every failure to an author-friendly status — so handleRemoteErrors only
-// catches argument-validation and truly unexpected faults.
-
-ipcMain.handle(
-  "remote:sync",
-  (_e, projectDir: string, message?: string): Promise<SyncOutcome> =>
-    handleRemoteErrors("remote:sync", async () => {
-      const dir = requireAbsoluteDir("remote:sync", projectDir);
-      const lib = await loadLib();
-      return lib.syncProject({
-        projectDir: dir,
-        tokenStore: electronTokenStore,
-        ...(typeof message === "string" && message.trim()
-          ? { message: message.trim() }
-          : {}),
-      });
-    }),
-);
+// remote:diagnoseProject, remote:testRemoteAccess, remote:connectGenericHost,
+// remote:disconnectHost, remote:listConnections, remote:forgeTokenUrl,
+// remote:sync — migrated to SvelteKit server routes (Phase 2F).
+// Accessed via __printMdRemoteHooks__ globalThis hook.
 
 ipcMain.handle(
   "remote:resolveSyncConflicts",

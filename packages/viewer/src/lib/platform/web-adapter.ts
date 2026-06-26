@@ -65,15 +65,8 @@ import type {
   SnapshotEntry,
   DeviceCodeInfo,
   RemoteConnection,
-  RemoteRepository,
-  RemoteBranch,
-  RepoBook,
   CloneProgressEvent,
   CloneRepositoryArgs,
-  ProjectRemoteDiagnosis,
-  RemoteAccessResult,
-  ConnectGenericHostArgs,
-  HostConnectionInfo,
   SyncOutcome,
   ResolveSyncConflictsArgs,
   SyncStatus,
@@ -645,26 +638,8 @@ export class WebAdapter implements Platform {
     return Promise.resolve({ ok: true });
   }
 
-  disconnectGitHub(): Promise<{ ok: boolean }> {
-    return rejectNotImplemented("disconnectGitHub");
-  }
-
-  // Resolve "not connected" so connection badges simply stay absent on web.
-  getRemoteConnection(_host?: string): Promise<RemoteConnection> {
-    return Promise.resolve({ connected: false });
-  }
-
-  listRemoteRepositories(): Promise<RemoteRepository[]> {
-    return rejectNotImplemented("listRemoteRepositories");
-  }
-
-  listRemoteBranches(_owner: string, _repo: string): Promise<RemoteBranch[]> {
-    return rejectNotImplemented("listRemoteBranches");
-  }
-
-  listRepoBooks(_owner: string, _repo: string, _branch: string): Promise<RepoBook[]> {
-    return rejectNotImplemented("listRepoBooks");
-  }
+  // disconnectGitHub, getRemoteConnection, listRemoteRepositories,
+  // listRemoteBranches, listRepoBooks — migrated to server routes (Phase 2F).
 
   cloneRemoteRepository(_args: CloneRepositoryArgs): Promise<{ projectDir: string }> {
     return rejectNotImplemented("cloneRemoteRepository");
@@ -674,32 +649,8 @@ export class WebAdapter implements Platform {
     return () => {};
   }
 
-  // ── Advanced Setup (#14) — desktop-only until the PWA lands ──────────────
-  diagnoseProjectRemote(_projectDir: string): Promise<ProjectRemoteDiagnosis> {
-    return rejectNotImplemented("diagnoseProjectRemote");
-  }
-
-  testRemoteAccess(_url: string): Promise<RemoteAccessResult> {
-    return rejectNotImplemented("testRemoteAccess");
-  }
-
-  connectGenericHost(
-    _args: ConnectGenericHostArgs,
-  ): Promise<{ connected: boolean; host: string; username?: string }> {
-    return rejectNotImplemented("connectGenericHost");
-  }
-
-  disconnectHost(_host: string): Promise<{ ok: boolean }> {
-    return rejectNotImplemented("disconnectHost");
-  }
-
-  listHostConnections(): Promise<HostConnectionInfo[]> {
-    return Promise.resolve([]);
-  }
-
-  forgeTokenUrl(_host: string): Promise<string | null> {
-    return Promise.resolve(null);
-  }
+  // diagnoseProjectRemote, testRemoteAccess, connectGenericHost, disconnectHost,
+  // listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
 
   // ── Auto-sync orchestrator seam — desktop-only; safe stubs on web ───────────
   // The ambient pill simply stays absent (no handler is ever called) when
@@ -727,10 +678,7 @@ export class WebAdapter implements Platform {
 
   // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
 
-  // ── Sync (#15 sync phase) — desktop-only until the PWA lands ───────────────
-  syncChanges(_projectDir: string, _message?: string): Promise<SyncOutcome> {
-    return rejectNotImplemented("syncChanges");
-  }
+  // syncChanges — migrated to server route (Phase 2F).
 
   resolveSyncConflicts(_args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {
     return rejectNotImplemented("resolveSyncConflicts");

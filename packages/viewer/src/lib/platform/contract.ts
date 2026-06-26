@@ -990,41 +990,14 @@ export interface HostServices {
   connectGitHubWait(): Promise<RemoteConnection>;
   /** Cancel an in-flight device flow (user closed the dialog). */
   connectGitHubCancel(): Promise<{ ok: boolean }>;
-  /** Forget the stored GitHub connection. */
-  disconnectGitHub(): Promise<{ ok: boolean }>;
-  /** Redacted connection status for a host (default github.com). */
-  getRemoteConnection(host?: string): Promise<RemoteConnection>;
-  /** Repositories the user granted the print-md GitHub App. */
-  listRemoteRepositories(): Promise<RemoteRepository[]>;
-  /** Branches of a chosen repository (default branch preselected by the UI). */
-  listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]>;
-  /** Book folders (print-md.yaml/.yml) inside a repository branch. */
-  listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]>;
+  // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
+  // listRepoBooks, diagnoseProjectRemote, testRemoteAccess, connectGenericHost,
+  // disconnectHost, listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
+
   /** Download ("clone") a repository into a new local project folder. */
   cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
   /** Subscribe to clone progress events. Returns an unsubscribe fn. */
   onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
-
-  // ── Advanced Setup (#14, ADR 0006) ─────────────────────────────────────────
-  // Diagnostics are local reads; the ONLY network call is the explicit
-  // `testRemoteAccess` probe (user-initiated). `connectGenericHost` validates
-  // the pasted token with a refs probe BEFORE the host stores it. WebAdapter:
-  // mutations reject; listHostConnections → []; forgeTokenUrl → null.
-
-  /** Classify the project's remote situation for the environment panel. */
-  diagnoseProjectRemote(projectDir: string): Promise<ProjectRemoteDiagnosis>;
-  /** Explicit, user-initiated remote probe (the `git ls-remote` equivalent). */
-  testRemoteAccess(url: string): Promise<RemoteAccessResult>;
-  /** Validate + store a credential for any smart-HTTPS Git host. */
-  connectGenericHost(
-    args: ConnectGenericHostArgs,
-  ): Promise<{ connected: boolean; host: string; username?: string }>;
-  /** Forget the stored connection for a host. */
-  disconnectHost(host: string): Promise<{ ok: boolean }>;
-  /** Redacted list of stored connections (host/username/label — no tokens). */
-  listHostConnections(): Promise<HostConnectionInfo[]>;
-  /** Token-settings deep link for recognized forges; null when unknown. */
-  forgeTokenUrl(host: string): Promise<string | null>;
 
   // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ───
   //
@@ -1081,17 +1054,9 @@ export interface HostServices {
    */
   setAutoSync(enabled: boolean): Promise<void>;
 
-  // ── Sync (#15 sync phase, ADR 0006 D5) ─────────────────────────────────────
-  // Transparent auto-sync runs in the host (snapshot-first → fetch → merge →
-  // push). The renderer never operates sync; it only triggers a sync to
-  // surface a conflict and then applies the per-file choices. Credentials are
-  // resolved host-side and never reach the renderer. WebAdapter stubs reject.
+  // syncChanges — migrated to server route (Phase 2F).
 
-  /**
-   * Snapshot-first sync of the project to its online repository. Conflicts come
-   * back as `{ status: "conflict" }` with per-file rows for the choices dialog.
-   */
-  syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
+  // ── Sync (#15 sync phase, ADR 0006 D5) ─────────────────────────────────────
   /** Apply per-file conflict choices and sync the combined result. */
   resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
 

@@ -529,16 +529,8 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("remote:connectGitHubWait"),
   connectGitHubCancel: (): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("remote:connectGitHubCancel"),
-  disconnectGitHub: (): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("remote:disconnectGitHub"),
-  getRemoteConnection: (host?: string): Promise<RemoteConnection> =>
-    ipcRenderer.invoke("remote:getConnection", host),
-  listRemoteRepositories: (): Promise<RemoteRepository[]> =>
-    ipcRenderer.invoke("remote:listRepositories"),
-  listRemoteBranches: (owner: string, repo: string): Promise<RemoteBranch[]> =>
-    ipcRenderer.invoke("remote:listBranches", owner, repo),
-  listRepoBooks: (owner: string, repo: string, branch: string): Promise<RepoBook[]> =>
-    ipcRenderer.invoke("remote:listRepoBooks", owner, repo, branch),
+  // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
+  // listRepoBooks — migrated to server routes (Phase 2F).
   cloneRemoteRepository: (
     args: CloneRepositoryArgs,
   ): Promise<{ projectDir: string }> =>
@@ -547,23 +539,8 @@ contextBridge.exposeInMainWorld("electron", {
   onCloneProgress: (cb: (data: CloneProgressEvent) => void): (() => void) =>
     forwardPush("remote:cloneProgress", cb),
 
-  // ── Advanced Setup (#14) — diagnostics + generic "Connect a Git server" ──
-  // The token in connectGenericHost crosses renderer → main ONCE for the
-  // validate-and-store flow; nothing below ever returns a token.
-  diagnoseProjectRemote: (projectDir: string): Promise<ProjectRemoteDiagnosis> =>
-    ipcRenderer.invoke("remote:diagnoseProject", projectDir),
-  testRemoteAccess: (url: string): Promise<RemoteAccessResult> =>
-    ipcRenderer.invoke("remote:testRemoteAccess", url),
-  connectGenericHost: (
-    args: ConnectGenericHostArgs,
-  ): Promise<{ connected: boolean; host: string; username?: string }> =>
-    ipcRenderer.invoke("remote:connectGenericHost", args),
-  disconnectHost: (host: string): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("remote:disconnectHost", host),
-  listHostConnections: (): Promise<HostConnectionInfo[]> =>
-    ipcRenderer.invoke("remote:listConnections"),
-  forgeTokenUrl: (host: string): Promise<string | null> =>
-    ipcRenderer.invoke("remote:forgeTokenUrl", host),
+  // diagnoseProjectRemote, testRemoteAccess, connectGenericHost, disconnectHost,
+  // listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
 
   // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ─
   // Main emits `sync:status` push events whenever the orchestrator state machine
@@ -597,16 +574,9 @@ contextBridge.exposeInMainWorld("electron", {
 
   // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
 
+  // syncChanges — migrated to server route (Phase 2F).
+
   // ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────
-  // All git work happens in the lib behind main; credentials are resolved
-  // host-side from the safeStorage store and never cross this bridge. The
-  // transparent auto-sync orchestrator drives syncProject itself; the renderer
-  // only triggers a sync for conflict resolution and applies the choices.
-  syncChanges: (
-    projectDir: string,
-    message?: string,
-  ): Promise<SyncOutcome> =>
-    ipcRenderer.invoke("remote:sync", projectDir, message),
   resolveSyncConflicts: (
     args: ResolveSyncConflictsArgs,
   ): Promise<SyncOutcome> =>

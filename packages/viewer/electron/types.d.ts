@@ -382,22 +382,12 @@ interface Window {
     connectGitHubStart(): Promise<DeviceCodeInfo>;
     connectGitHubWait(): Promise<RemoteConnection>;
     connectGitHubCancel(): Promise<{ ok: boolean }>;
-    disconnectGitHub(): Promise<{ ok: boolean }>;
-    getRemoteConnection(host?: string): Promise<RemoteConnection>;
-    listRemoteRepositories(): Promise<RemoteRepository[]>;
-    listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]>;
-    listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]>;
+    // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
+    // listRepoBooks — migrated to server routes (Phase 2F).
     cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
     onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
-    // Advanced Setup (#14) — diagnostics + generic "Connect a Git server"
-    diagnoseProjectRemote(projectDir: string): Promise<ProjectRemoteDiagnosis>;
-    testRemoteAccess(url: string): Promise<RemoteAccessResult>;
-    connectGenericHost(
-      args: ConnectGenericHostArgs,
-    ): Promise<{ connected: boolean; host: string; username?: string }>;
-    disconnectHost(host: string): Promise<{ ok: boolean }>;
-    listHostConnections(): Promise<HostConnectionInfo[]>;
-    forgeTokenUrl(host: string): Promise<string | null>;
+    // diagnoseProjectRemote, testRemoteAccess, connectGenericHost, disconnectHost,
+    // listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
     // Auto-sync orchestrator seam (transparent sync, §4.4 integration plan)
     /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn.
      *  Note: data may carry `recovery`, `guidance`, and `backupZipPath` fields
@@ -411,9 +401,8 @@ interface Window {
     /** Send the author's approval/rejection to main to unblock a pending repair. */
     respondRecoveryConfirm(requestId: string, approved: boolean): Promise<void>;
     // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
-    // Sync (#15 sync phase, ADR 0006 D5). Auto-sync runs in main; the renderer
-    // only triggers a sync to surface conflicts and then applies the choices.
-    syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
+    // syncChanges — migrated to server route (Phase 2F)
+    // Sync (#15 sync phase, ADR 0006 D5).
     resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
     startPreview(args: { input: string }): Promise<{
       url: string;

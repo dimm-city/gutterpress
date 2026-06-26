@@ -31,15 +31,8 @@ import type {
   SnapshotEntry,
   DeviceCodeInfo,
   RemoteConnection,
-  RemoteRepository,
-  RemoteBranch,
-  RepoBook,
   CloneProgressEvent,
   CloneRepositoryArgs,
-  ProjectRemoteDiagnosis,
-  RemoteAccessResult,
-  ConnectGenericHostArgs,
-  HostConnectionInfo,
   SyncOutcome,
   ResolveSyncConflictsArgs,
   SyncStatus,
@@ -174,25 +167,10 @@ export class ElectronAdapter implements Platform {
     return bridge().connectGitHubCancel();
   }
 
-  disconnectGitHub(): Promise<{ ok: boolean }> {
-    return bridge().disconnectGitHub();
-  }
-
-  getRemoteConnection(host?: string): Promise<RemoteConnection> {
-    return bridge().getRemoteConnection(host);
-  }
-
-  listRemoteRepositories(): Promise<RemoteRepository[]> {
-    return bridge().listRemoteRepositories();
-  }
-
-  listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]> {
-    return bridge().listRemoteBranches(owner, repo);
-  }
-
-  listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]> {
-    return bridge().listRepoBooks(owner, repo, branch);
-  }
+  // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
+  // listRepoBooks, diagnoseProjectRemote, testRemoteAccess, connectGenericHost,
+  // disconnectHost, listHostConnections, forgeTokenUrl, syncChanges
+  // — migrated to SvelteKit server routes (Phase 2F).
 
   cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }> {
     return bridge().cloneRemoteRepository(args);
@@ -200,33 +178,6 @@ export class ElectronAdapter implements Platform {
 
   onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void {
     return bridge().onCloneProgress(cb);
-  }
-
-  // ── Advanced Setup (#14) ──────────────────────────────────────────────────
-  diagnoseProjectRemote(projectDir: string): Promise<ProjectRemoteDiagnosis> {
-    return bridge().diagnoseProjectRemote(projectDir);
-  }
-
-  testRemoteAccess(url: string): Promise<RemoteAccessResult> {
-    return bridge().testRemoteAccess(url);
-  }
-
-  connectGenericHost(
-    args: ConnectGenericHostArgs,
-  ): Promise<{ connected: boolean; host: string; username?: string }> {
-    return bridge().connectGenericHost(args);
-  }
-
-  disconnectHost(host: string): Promise<{ ok: boolean }> {
-    return bridge().disconnectHost(host);
-  }
-
-  listHostConnections(): Promise<HostConnectionInfo[]> {
-    return bridge().listHostConnections();
-  }
-
-  forgeTokenUrl(host: string): Promise<string | null> {
-    return bridge().forgeTokenUrl(host);
   }
 
   // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ──
@@ -250,10 +201,7 @@ export class ElectronAdapter implements Platform {
 
   // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
 
-  // ── Sync (#15 sync phase) — delegate 1:1 to the bridge ─────────────────────
-  syncChanges(projectDir: string, message?: string): Promise<SyncOutcome> {
-    return bridge().syncChanges(projectDir, message);
-  }
+  // syncChanges — migrated to server route (Phase 2F).
 
   resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {
     return bridge().resolveSyncConflicts(args);

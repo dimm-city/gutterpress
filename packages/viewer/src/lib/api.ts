@@ -145,6 +145,102 @@ export interface VcsProjectClassification {
   capabilities: unknown;
 }
 
+// ── Remote connection types (#15, #14) ─────────────────────────────────────────
+// Mirrors contract.ts / preload.ts shapes — defined locally so the SPA never
+// value-imports the lib or the Electron-side modules (§8 / ADR 0004).
+
+export interface RemoteConnection {
+  connected: boolean;
+  username?: string;
+  label?: string;
+}
+
+export interface RemoteRepository {
+  owner: string;
+  name: string;
+  fullName: string;
+  private: boolean;
+  defaultBranch: string;
+  htmlUrl: string;
+}
+
+export interface RemoteBranch {
+  name: string;
+}
+
+export interface RepoBook {
+  path: string;
+  name: string;
+}
+
+export type RemoteAccessResult =
+  | { ok: true; defaultBranch?: string; refCount: number }
+  | {
+      ok: false;
+      reason: 'auth' | 'not-found' | 'unreachable' | 'ssh-unsupported' | 'tls' | 'unknown';
+      message: string;
+    };
+
+export interface ProjectRemoteDiagnosis {
+  classification: any;
+  remoteUrl?: string;
+  remoteHost?: string;
+  remoteProtocol: 'https' | 'ssh' | 'none';
+  branch?: string;
+  credentialPresent: boolean;
+  provider:
+    | 'github'
+    | 'gitea'
+    | 'forgejo'
+    | 'gitlab'
+    | 'bitbucket'
+    | 'azure'
+    | 'generic'
+    | null;
+  tokenSettingsUrl: string | null;
+  canSync: boolean;
+  guidance:
+    | 'local-only'
+    | 'connect-github-to-sync'
+    | 'https-connect-server'
+    | 'ready-to-sync'
+    | 'ssh-use-own-tools';
+}
+
+export interface ConnectGenericHostArgs {
+  host: string;
+  username?: string;
+  token: string;
+  repoUrl?: string;
+}
+
+export interface HostConnectionInfo {
+  host: string;
+  kind: 'github-oauth' | 'token';
+  username?: string;
+  label?: string;
+  createdAt: number;
+}
+
+export type SyncOutcome =
+  | {
+      status: 'synced';
+      message: string;
+      snapshotId?: string;
+      mergedRemoteChanges: boolean;
+    }
+  | { status: 'up-to-date'; message: string; snapshotId?: string }
+  | {
+      status: 'conflict';
+      message: string;
+      files: Array<{ path: string; kind: 'both-edited' | 'you-deleted' | 'online-deleted' }>;
+      localId: string;
+      remoteId: string;
+      snapshotId?: string;
+    }
+  | { status: 'auth'; message: string; snapshotId?: string }
+  | { status: 'offline'; message: string; snapshotId?: string }
+  | { status: 'error'; message: string; snapshotId?: string };
 
 /** Typed API client for all server routes under src/routes/api/. */
 export const api = {
@@ -406,5 +502,66 @@ export const api = {
       post<{ entries: SnapshotEntry[]; hasMore: boolean }>('/api/vcs/list-snapshots-page', { projectDir, ...options }),
     restoreSnapshot: (projectDir: string, id: string) =>
       post<{ restoredId: string; backupId?: string }>('/api/vcs/restore-snapshot', { projectDir, id }),
+  },
+
+  remote: {
+    /** Forget the stored GitHub connection. */
+    disconnectGitHub: () => post<{ ok: boolean }>('/api/remote/disconnect-github'),
+
+    /**
+     * Redacted connection status for a host (default github.com).
+     * NEVER returns the token — only { connected, username?, label? }.
+     */
+    getRemoteConnection: (host?: string) =>
+      post<RemoteConnection>('/api/remote/get-connection', host ? { host } : {}),
+
+    /** Repositories the user granted the print-md GitHub App. */
+    listRemoteRepositories: () =>
+      post<RemoteRepository[]>('/api/remote/list-repositories'),
+
+    /** Branches of a chosen repository. */
+    listRemoteBranches: (owner: string, repo: string) =>
+      post<RemoteBranch[]>('/api/remote/list-branches', { owner, repo }),
+
+    /** Book folders (print-md.yaml/.yml) inside a repository branch. */
+    listRepoBooks: (owner: string, repo: string, branch: string) =>
+      post<RepoBook[]>('/api/remote/list-repo-books', { owner, repo, branch }),
+
+    /** Classify the project's remote situation for the environment panel. */
+    diagnoseProjectRemote: (projectDir: string) =>
+      post<ProjectRemoteDiagnosis>('/api/remote/diagnose-project', { projectDir }),
+
+    /** Explicit, user-initiated remote probe (the git ls-remote equivalent). */
+    testRemoteAccess: (url: string) =>
+      post<RemoteAccessResult>('/api/remote/test-remote-access', { url }),
+
+    /**
+     * Validate + store a credential for any smart-HTTPS Git host.
+     * Response is redacted — never includes the token.
+     */
+    connectGenericHost: (args: ConnectGenericHostArgs) =>
+      post<{ connected: boolean; host: string; username?: string }>(
+        '/api/remote/connect-generic-host',
+        args,
+      ),
+
+    /** Forget the stored connection for a host. */
+    disconnectHost: (host: string) =>
+      post<{ ok: boolean }>('/api/remote/disconnect-host', { host }),
+
+    /** Redacted list of stored connections (host/username/label — no tokens). */
+    listHostConnections: () =>
+      post<HostConnectionInfo[]>('/api/remote/list-connections'),
+
+    /** Token-settings deep link for recognized forges; null when unknown. */
+    forgeTokenUrl: (host: string) =>
+      post<string | null>('/api/remote/forge-token-url', { host }),
+
+    /** Snapshot-first sync of the project to its online repository. */
+    syncChanges: (projectDir: string, message?: string) =>
+      post<SyncOutcome>('/api/remote/sync', {
+        projectDir,
+        ...(message ? { message } : {}),
+      }),
   },
 };

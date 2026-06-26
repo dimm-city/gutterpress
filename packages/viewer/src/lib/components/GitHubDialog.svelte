@@ -102,7 +102,7 @@
   async function init() {
     if (!isDesktop()) return;
     try {
-      const conn = await getPlatform().getRemoteConnection();
+      const conn = await api.remote.getRemoteConnection();
       if (conn.connected) {
         username = conn.username ?? null;
         await loadRepos();
@@ -150,7 +150,7 @@
     await tick();
     dialogEl?.focus();
     try {
-      repos = await getPlatform().listRemoteRepositories();
+      repos = await api.remote.listRemoteRepositories() as RemoteRepository[];
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
@@ -178,10 +178,10 @@
     destination = null;
     step = "configure";
     // Branch list loads in the background; the default is already selected.
-    getPlatform()
+    api.remote
       .listRemoteBranches(repo.owner, repo.name)
       .then((list) => {
-        if (list.length > 0) branches = list;
+        if (list.length > 0) branches = list as RemoteBranch[];
       })
       .catch(() => {});
   }
@@ -207,11 +207,11 @@
     const gen = ++loadGen;
     let found: RepoBook[] = [];
     try {
-      found = await getPlatform().listRepoBooks(
+      found = await api.remote.listRepoBooks(
         selectedRepo.owner,
         selectedRepo.name,
         branch,
-      );
+      ) as RepoBook[];
     } catch {
       // Book discovery is best-effort — fall back to the repository root.
       found = [];
@@ -268,7 +268,7 @@
 
   async function disconnect() {
     try {
-      await getPlatform().disconnectGitHub();
+      await api.remote.disconnectGitHub();
     } catch {
       /* non-fatal */
     }
