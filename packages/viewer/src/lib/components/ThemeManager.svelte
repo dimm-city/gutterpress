@@ -157,6 +157,21 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
     }
   }
 
+  async function remove(t: ThemeInfo) {
+    if (!projectDir || t.kind !== "project") return;
+    busyId = t.id;
+    error = null;
+    try {
+      await api.theme.remove(projectDir, t.id);
+      if (activeId === t.id) activeId = null;
+      await refresh();
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    } finally {
+      busyId = null;
+    }
+  }
+
   async function importFolder() {
     if (!projectDir) return;
     error = null;
@@ -230,6 +245,17 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
           onclick={() => apply(t)}
         >
           {busyId === t.id ? "Applying…" : "Apply"}
+        </button>
+      {/if}
+      {#if t.kind === "project"}
+        <button
+          class="danger small"
+          disabled={busyId === t.id || !projectDir}
+          onclick={() => remove(t)}
+          title="Remove this theme from the project"
+          aria-label={`Remove ${t.name}`}
+        >
+          <Icon name="trash" size={13} />
         </button>
       {/if}
     </div>

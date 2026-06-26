@@ -33,10 +33,13 @@
     open = $bindable(false),
     projectDir,
     triggerEl,
+    onClosed,
   }: {
     open?: boolean;
     projectDir: string | null;
     triggerEl?: HTMLButtonElement | undefined;
+    /** Called whenever the dialog closes. Useful for post-close refresh. */
+    onClosed?: () => void;
   } = $props();
 
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
@@ -257,6 +260,7 @@
     tokenInput = ""; // belt and braces — never carry a token across closes
     open = false;
     triggerEl?.focus();
+    onClosed?.();
   }
 </script>
 

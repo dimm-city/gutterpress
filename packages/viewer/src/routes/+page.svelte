@@ -372,19 +372,12 @@
   // Completes the D7 Reconnect journey: a connect dialog closing may mean a
   // new credential was just stored — re-check syncability so the Sync
   // button and the dialog's auth state reflect it without a project reload.
-  let connectDialogWasOpen = false;
-  $effect(() => {
-    const anyConnectOpen = githubOpen || advancedSetupOpen;
-    if (
-      connectDialogWasOpen &&
-      !anyConnectOpen &&
-      currentDir &&
-      sourceMode === "folder"
-    ) {
+  // Called by onClosed on both GitHubDialog and AdvancedSetupDialog.
+  function onConnectDialogClosed() {
+    if (currentDir && sourceMode === "folder") {
       void refreshSyncDiag(currentDir);
     }
-    connectDialogWasOpen = anyConnectOpen;
-  });
+  }
 
   // ── Recovery overlay subscription ────────────────────────────────────────────
   // Subscribe to the host's sync:status channel for recovering/recovered/error
@@ -394,7 +387,7 @@
   // recovery-specific transitions (recovering, recovered, error-with-guidance).
   // Per §8 / ADR 0004: runs in the SPA, no lib value imports, all host work
   // through getPlatform().
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
     const off = getPlatform().onSyncStatus((status) => {
       // Scope to the currently open project.
@@ -437,7 +430,7 @@
   // The host fires onRecoveryConfirm when a medium/high-risk repair needs author
   // approval. Show RecoveryConfirmDialog; the dialog answers the gate via
   // respondRecoveryConfirm. Recovery must NOT proceed until the author responds.
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
     const off = getPlatform().onRecoveryConfirm((req: RecoveryConfirmRequest) => {
       recoveryConfirmRequest = req;
@@ -585,6 +578,7 @@
   /** Open one stylesheet (absolute path) in the shared editor and reveal it. */
   function openStyleFile(absPath: string) {
     editorOpen = true;
+    loadEditorModule();
     selectEditorFile(absPath);
     focusEditorWhenReady();
   }
@@ -701,22 +695,50 @@
     typeof import("$lib/components/MarkdownEditor.svelte")["default"] | null
   >(null);
   let editorModuleLoading = $state(false);
-  // Set when the lazy import of the editor chunk fails, so the load effect does
+  // Set when the lazy import of the editor chunk fails, so the load logic does
   // NOT immediately retry (which spammed an infinite error-toast loop). Cleared
   // by an explicit user "Retry".
   let editorModuleFailed = $state(false);
+
+  /** Kick off the lazy MarkdownEditor import if needed. Guards against duplicate
+   * loads: no-ops when it's already loading, loaded, or failed. */
+  function loadEditorModule() {
+    if (!editorOpen || !currentDir || MarkdownEditor || editorModuleLoading || editorModuleFailed) return;
+    editorModuleLoading = true;
+    import("$lib/components/MarkdownEditor.svelte")
+      .then((m) => {
+        MarkdownEditor = m.default;
+      })
+      .catch((e) => {
+        // Mark as failed so repeated calls don't retry — that turned a single
+        // failed chunk fetch into an infinite error-toast loop. Surface ONE
+        // error; the editor pane shows a Retry affordance.
+        editorModuleFailed = true;
+        toast?.error(
+          `Could not open the editor: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      })
+      .finally(() => {
+        editorModuleLoading = false;
+      });
+  }
+
   function retryEditorLoad() {
     editorModuleFailed = false;
+    loadEditorModule();
   }
-  // Set when the editor is opened before its (lazy) component has mounted, so
-  // the focus request is honored once editorRef becomes available.
-  let pendingEditorFocus = $state(false);
   function focusEditorWhenReady() {
-    if (editorRef) {
-      requestAnimationFrame(() => editorRef?.focus());
-    } else {
-      pendingEditorFocus = true;
-    }
+    // If the editor component isn't mounted yet, retry via rAF until it is
+    // (bounded to 120 frames, ~2 s at 60 fps) — same pattern as tryInsert below.
+    let tries = 0;
+    const tryFocus = () => {
+      if (editorRef) {
+        requestAnimationFrame(() => editorRef?.focus());
+      } else if (tries++ < 120) {
+        requestAnimationFrame(tryFocus);
+      }
+    };
+    requestAnimationFrame(tryFocus);
   }
 
   /**
@@ -732,6 +754,7 @@
     if (!isMd(editorFilePath)) {
       void ensureEditorFile();
       editorOpen = true;
+      loadEditorModule();
     }
     let tries = 0;
     const tryInsert = () => {
@@ -748,39 +771,6 @@
     };
     requestAnimationFrame(tryInsert);
   }
-  $effect(() => {
-    if (editorRef && pendingEditorFocus) {
-      pendingEditorFocus = false;
-      requestAnimationFrame(() => editorRef?.focus());
-    }
-  });
-  $effect(() => {
-    if (
-      !editorOpen ||
-      !currentDir ||
-      MarkdownEditor ||
-      editorModuleLoading ||
-      editorModuleFailed
-    )
-      return;
-    editorModuleLoading = true;
-    import("$lib/components/MarkdownEditor.svelte")
-      .then((m) => {
-        MarkdownEditor = m.default;
-      })
-      .catch((e) => {
-        // Mark as failed so the effect doesn't immediately re-run and retry —
-        // that turned a single failed chunk fetch into an infinite error-toast
-        // loop. Surface ONE error; the editor pane shows a Retry affordance.
-        editorModuleFailed = true;
-        toast?.error(
-          `Could not open the editor: ${e instanceof Error ? e.message : String(e)}`,
-        );
-      })
-      .finally(() => {
-        editorModuleLoading = false;
-      });
-  });
 
   // Construct lazily on first desktop use so the WebAdapter path never touches
   // it (the editor is desktop-only). One buffer for the lifetime of the app.
@@ -820,23 +810,25 @@
         recoveryEnabled: settings.current.editor.crashRecovery,
         onError: (msg) => toast?.error(msg),
         onAutoReloaded: () => toast?.info?.("Reloaded from disk"),
+        // Push pending-save state to main so the window close gate can flush
+        // before quitting (#44). Called whenever hasPendingSave changes.
+        onDirty: (pending) => {
+          if (isDesktop()) {
+            api.app.setDirtyState(pending).catch(() => {});
+          }
+        },
       });
     }
     return buffer;
   }
 
-  // Push the buffer's pending-save state to main so the window close gate can
-  // flush before quitting (#44). Fire-and-forget; main never reads our memory.
-  $effect(() => {
-    if (!isDesktop() || !buffer) return;
-    const pending = buffer.hasPendingSave;
-    api.app.setDirtyState(pending).catch(() => {});
-  });
-
   // Keep the recovery-enabled toggle (#45) in sync with the live setting.
-  $effect(() => {
-    const enabled = settings.current.editor.crashRecovery;
-    if (buffer) buffer.setRecoveryEnabled(enabled);
+  // Subscribe via the settings observer so the buffer is updated whenever the
+  // setting changes (e.g. SettingsDialog toggle), without using $effect.
+  onMount(() => {
+    return settings.subscribe((s) => {
+      buffer?.setRecoveryEnabled(s.editor.crashRecovery);
+    });
   });
 
   // External-edit detection (#44): watch the open folder; on any debounced
@@ -947,6 +939,7 @@
       const recovered = await api.fs.readFile(item.recoveryPath);
       await buf.restoreContent(item.filePath, recovered);
       editorOpen = true;
+      loadEditorModule();
       focusEditorWhenReady();
     } catch (e) {
       toast?.error(
@@ -1050,6 +1043,7 @@
       setPaneMode("edit");
     } else if (!editorOpen) {
       editorOpen = true;
+      loadEditorModule();
     }
     const rel = p.file ?? p.filePath.split(/[\\/]/).pop() ?? p.filePath;
     if (p.line) {
@@ -2206,6 +2200,7 @@
     if (mode === "edit" && currentDir && sourceMode === "folder") {
       const wasClosed = !editorOpen;
       editorOpen = true;
+      loadEditorModule();
       void ensureEditorFile();
       if (wasClosed) focusEditorWhenReady();
     }
@@ -2901,6 +2896,7 @@
         selectEditorFile(path);
         if (!editorOpen && currentDir && sourceMode === "folder") {
           editorOpen = true;
+          loadEditorModule();
           focusEditorWhenReady();
         }
       }}
@@ -3160,12 +3156,14 @@
   bind:open={githubOpen}
   onOpened={(projectDir) => startFolderPreview(projectDir, "Opening your project…")}
   onAdvancedSetup={() => (advancedSetupOpen = true)}
+  onClosed={onConnectDialogClosed}
   triggerEl={leftPanelToggleBtn}
 />
 <AdvancedSetupDialog
   bind:open={advancedSetupOpen}
   projectDir={sourceMode === "folder" ? currentDir : null}
   triggerEl={advancedSetupBtn}
+  onClosed={onConnectDialogClosed}
 />
 <NewProjectWizard
   bind:this={newProjectWizardRef}

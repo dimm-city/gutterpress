@@ -865,18 +865,10 @@ export interface Platform extends Omit<PlatformAdapter, "openFolder">, HostServi
    */
   openFolder(): Promise<FolderRef | null>;
 
-  /**
-   * Re-open a previously opened project by its `key` (from a recents/favorites
-   * entry), restoring host access to it. On a PWA this reloads the persisted
-   * File System Access handle from IndexedDB and re-requests its read/write
-   * permission — which the browser only grants inside a USER GESTURE, so the SPA
-   * MUST call this directly from the recents "Reopen" click handler. On Electron
-   * the key is already an absolute path with standing access, so this just
-   * re-wraps it as a FolderRef. Rejects when access cannot be restored
-   * (permission denied, or the saved handle is gone).
-   */
-  reopenFolder(key: string): Promise<FolderRef>;
 }
+// NOTE: reopenFolder was removed from HostServices (no SPA caller in v1).
+// The WebAdapter retains its implementation for the FSA permission re-grant
+// flow that will be wired up when the PWA ships.
 
 /**
  * The raw `window.electron` bridge shape exposed by `electron/preload.ts`.
