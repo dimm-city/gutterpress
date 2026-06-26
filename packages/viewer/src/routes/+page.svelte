@@ -568,6 +568,10 @@
     show: (t?: HTMLButtonElement, preloaded?: ProjectStyle[]) => void;
   } | null>(null);
 
+  // A1: Tracks the paths of active stylesheets (from the last listStyles call).
+  // Used to show a "not active" hint when editing an inactive stylesheet.
+  let activeStylePaths = $state<string[]>([]);
+
   // Guided Design panel (custom-property editor) — the primary styling surface;
   // raw CSS editing is the escape hatch inside it.
   let designPanelRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
@@ -619,6 +623,8 @@
       );
       return;
     }
+    // A1: cache active paths for the "not active" editor hint.
+    activeStylePaths = list.filter((s) => s.active).map((s) => s.path);
     if (list.length === 1) {
       // Direct-open the sole stylesheet, but NAME it so the editor appearing
       // isn't a surprise (UX review QA-3: same button, predictable outcome).
@@ -2227,6 +2233,15 @@
   let openFileIsCss = $derived(
     !!editorFilePath && /\.css$/i.test(editorFilePath),
   );
+  // A1: true when editing a CSS file that is not in the active stylesheets list.
+  // Only meaningful once activeStylePaths is populated (non-empty), so the hint
+  // is hidden until the user has interacted with styles at least once.
+  let cssFileIsInactive = $derived(
+    openFileIsCss &&
+      activeStylePaths.length > 0 &&
+      !!editorFilePath &&
+      !activeStylePaths.includes(editorFilePath),
+  );
   // Active mobile tab, derived from the persisted paneMode + which file is open.
   // No new persistence: reload restores via paneMode, then the open file decides
   // markdown vs css.
@@ -2994,12 +3009,16 @@
               {:else if editorSavePhase === "error"}
                 <span class="save-status save-error">Save error</span>
               {/if}
+              <!-- A1: "not active" hint when editing an inactive stylesheet. -->
+              {#if cssFileIsInactive}
+                <span class="css-inactive-hint" title="This file is not in your book's active stylesheets — edits here won't affect the rendered output">not active</span>
+              {/if}
               {#if isDesktop() && currentDir}
                 <!-- G1/G2: viewport-independent "Edit styles" affordance living
                      in the editor pane (works on desktop AND mobile). -->
                 <button
                   class="edit-styles-btn"
-                  title="Edit project styles (CSS)"
+                  title="Edit your book's styles / appearance"
                   onclick={(e) => void openStyles(e.currentTarget as HTMLButtonElement)}
                 >
                   <Icon name="palette" size={12} /> Styles
@@ -3433,6 +3452,15 @@
   .save-status.saving { color: var(--app-text-faint); }
   .save-status.saved  { color: var(--app-text-faint); }
   .save-status.save-error { color: var(--app-error-text); }
+  /* A1: amber "not active" chip shown when the open CSS file is not in the
+     project's active stylesheets. Muted styling — informational, not alarming. */
+  .css-inactive-hint {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+    color: var(--app-warning-text, #b08020);
+    background: var(--app-warning-soft, color-mix(in srgb, #b08020 12%, transparent));
+    border: 1px solid color-mix(in srgb, #b08020 30%, transparent);
+    border-radius: 4px; padding: 1px 6px; white-space: nowrap; flex-shrink: 0;
+  }
   .preview-pane {
     position: relative;
   }
