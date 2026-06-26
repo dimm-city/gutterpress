@@ -1,5 +1,5 @@
 /**
- * Shared helper for remote server routes (Phase 2F).
+ * Shared helper for remote server routes.
  *
  * Provides typed access to the __printMdRemoteHooks__ global that main.ts
  * registers so the SvelteKit server-side bundle (a separate Vite chunk from

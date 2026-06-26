@@ -2182,8 +2182,8 @@ registerPrefsHooks({
 // from app:classifyProject. Paths MUST be absolute (trusted SPA, but a relative
 // path could resolve against the main-process CWD by accident).
 
-// Expose loadLib for VCS SvelteKit server routes.
-(globalThis as unknown as Record<string, unknown>).__printMdVcsHooks__ = { loadLib };
+// Expose loadLib + operationLogPath for VCS SvelteKit server routes.
+(globalThis as unknown as Record<string, unknown>).__printMdVcsHooks__ = { loadLib, operationLogPath };
 
 function requireAbsoluteDir(channel: string, projectDir: unknown): string {
   if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
@@ -2220,23 +2220,7 @@ async function handleVcsErrors<T>(
   }
 }
 
-ipcMain.handle(
-  "vcs:saveSnapshot",
-  (_e, projectDir: string, message?: string): Promise<SnapshotEntry> =>
-    handleVcsErrors("vcs:saveSnapshot", async () => {
-      const dir = requireAbsoluteDir("vcs:saveSnapshot", projectDir);
-      const lib = await loadLib();
-      const source = await lib.detectProjectSource(dir);
-      return lib.providerFor(source).snapshot({
-        projectDir: dir,
-        message: message?.trim() || "Saved snapshot",
-        // Log manual snapshots too (same operation log the bottom-bar shows).
-        logFile: operationLogPath(path.basename(dir)),
-      });
-    }),
-);
-
-// vcs:listSnapshots, vcs:listSnapshotsPage, vcs:restoreSnapshot — migrated to SvelteKit server routes (src/routes/api/vcs/*).
+// vcs:saveSnapshot, vcs:listSnapshots, vcs:listSnapshotsPage, vcs:restoreSnapshot — migrated to SvelteKit server routes (src/routes/api/vcs/*).
 
 // ── Managed GitHub integration (#15, ADR 0006) ───────────────────────────────
 // Auth (device flow), connection status, repo/branch discovery, clone-and-open.

@@ -367,10 +367,8 @@ interface Window {
     ): () => void;
     // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from ElectronBridge.
     // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from ElectronBridge.
-    // Local version history (#13)
-    // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot
-    // — migrated to SvelteKit server routes (src/routes/api/vcs/*).
-    saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
+    // Local version history (#13) — all migrated to SvelteKit server routes (src/routes/api/vcs/*):
+    // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot, saveSnapshot.
     // Managed GitHub integration (#15)
     connectGitHubStart(): Promise<DeviceCodeInfo>;
     connectGitHubWait(): Promise<RemoteConnection>;

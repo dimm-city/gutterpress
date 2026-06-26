@@ -36,7 +36,6 @@ function makeBridgeWithRecovery() {
     watchFolder: rec("watchFolder", () => {}),
     onFlushBeforeClose: rec("onFlushBeforeClose", () => {}),
     onFolderChanged: rec("onFolderChanged", () => {}),
-    saveSnapshot: rec("saveSnapshot", Promise.resolve({})),
     connectGitHubStart: rec("connectGitHubStart", Promise.resolve({})),
     connectGitHubWait: rec("connectGitHubWait", Promise.resolve({ connected: false })),
     connectGitHubCancel: rec("connectGitHubCancel", Promise.resolve({ ok: true })),

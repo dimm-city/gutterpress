@@ -147,12 +147,10 @@ export class ElectronAdapter implements Platform {
   // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from ElectronAdapter.
   // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from ElectronAdapter.
 
-  // ── Local version history (#13) — delegate 1:1 to the bridge ───────────────
-  // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot
-  // — migrated to SvelteKit server routes (src/routes/api/vcs/*).
+  // ── Local version history (#13) — all migrated to SvelteKit server routes (src/routes/api/vcs/*).
 
   saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry> {
-    return bridge().saveSnapshot(projectDir, message);
+    return api.vcs.saveSnapshot(projectDir, message);
   }
 
   // ── Managed GitHub integration (#15) — delegate 1:1 to the bridge ─────────

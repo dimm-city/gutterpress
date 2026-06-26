@@ -502,6 +502,8 @@ export const api = {
       post<{ entries: SnapshotEntry[]; hasMore: boolean }>('/api/vcs/list-snapshots-page', { projectDir, ...options }),
     restoreSnapshot: (projectDir: string, id: string) =>
       post<{ restoredId: string; backupId?: string }>('/api/vcs/restore-snapshot', { projectDir, id }),
+    saveSnapshot: (projectDir: string, message?: string) =>
+      post<SnapshotEntry>('/api/vcs/save-snapshot', { projectDir, message }),
   },
 
   remote: {

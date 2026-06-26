@@ -27,8 +27,6 @@ function makeBridge() {
     watchFolder: rec("watchFolder", () => {}),
     onFlushBeforeClose: rec("onFlushBeforeClose", () => {}),
     onFolderChanged: rec("onFolderChanged", () => {}),
-    // Version history surface (#13) — saveSnapshot stays on bridge; others migrated to server routes
-    saveSnapshot: rec("saveSnapshot", Promise.resolve({ id: "sha1", message: "snap", timestamp: 1 })),
     // GitHub integration (#15) — connect/clone stay on bridge; read methods migrated to server routes
     connectGitHubStart: rec("connectGitHubStart", Promise.resolve({})),
     connectGitHubWait: rec("connectGitHubWait", Promise.resolve({})),
