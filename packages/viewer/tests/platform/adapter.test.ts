@@ -25,42 +25,21 @@ function makeBridge() {
     onUrlPreviewBlocked: rec("onUrlPreviewBlocked", () => {}),
     // #44 unsaved-changes / recovery surface
     watchFolder: rec("watchFolder", () => {}),
-    writeRecovery: rec("writeRecovery", Promise.resolve({ ok: true })),
-    clearRecovery: rec("clearRecovery", Promise.resolve({ ok: true })),
-    listRecovery: rec("listRecovery", Promise.resolve([])),
     onFlushBeforeClose: rec("onFlushBeforeClose", () => {}),
     onFolderChanged: rec("onFolderChanged", () => {}),
-    // Version history surface (#13)
-    enableVersionHistory: rec("enableVersionHistory", Promise.resolve({ source: {}, capabilities: {} })),
+    // Version history surface (#13) — saveSnapshot stays on bridge; others migrated to server routes
     saveSnapshot: rec("saveSnapshot", Promise.resolve({ id: "sha1", message: "snap", timestamp: 1 })),
-    listSnapshots: rec("listSnapshots", Promise.resolve([])),
-    listSnapshotsPage: rec("listSnapshotsPage", Promise.resolve({ entries: [], hasMore: false })),
-    restoreSnapshot: rec("restoreSnapshot", Promise.resolve({ ok: true })),
-    // GitHub integration (#15)
+    // GitHub integration (#15) — connect/clone stay on bridge; read methods migrated to server routes
     connectGitHubStart: rec("connectGitHubStart", Promise.resolve({})),
     connectGitHubWait: rec("connectGitHubWait", Promise.resolve({})),
     connectGitHubCancel: rec("connectGitHubCancel", Promise.resolve({ ok: true })),
-    disconnectGitHub: rec("disconnectGitHub", Promise.resolve({ ok: true })),
-    getRemoteConnection: rec("getRemoteConnection", Promise.resolve({})),
-    listRemoteRepositories: rec("listRemoteRepositories", Promise.resolve([])),
-    listRemoteBranches: rec("listRemoteBranches", Promise.resolve([])),
-    listRepoBooks: rec("listRepoBooks", Promise.resolve([])),
     cloneRemoteRepository: rec("cloneRemoteRepository", Promise.resolve({ projectDir: "/proj" })),
     onCloneProgress: rec("onCloneProgress", () => {}),
-    // Advanced setup (#14)
-    diagnoseProjectRemote: rec("diagnoseProjectRemote", Promise.resolve({})),
-    testRemoteAccess: rec("testRemoteAccess", Promise.resolve({})),
-    connectGenericHost: rec("connectGenericHost", Promise.resolve({ connected: true, host: "h" })),
-    disconnectHost: rec("disconnectHost", Promise.resolve({ ok: true })),
-    listHostConnections: rec("listHostConnections", Promise.resolve([])),
-    forgeTokenUrl: rec("forgeTokenUrl", Promise.resolve(null)),
     // Sync surface
     onSyncStatus: rec("onSyncStatus", () => {}),
     setAutoSync: rec("setAutoSync", Promise.resolve()),
     onRecoveryConfirm: rec("onRecoveryConfirm", () => {}),
     respondRecoveryConfirm: rec("respondRecoveryConfirm", Promise.resolve()),
-    getConflictPreview: rec("getConflictPreview", Promise.resolve({})),
-    syncChanges: rec("syncChanges", Promise.resolve({ status: "synced" })),
     resolveSyncConflicts: rec("resolveSyncConflicts", Promise.resolve({ status: "synced" })),
   };
   return { bridge, calls };
