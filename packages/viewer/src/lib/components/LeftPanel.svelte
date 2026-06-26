@@ -21,12 +21,13 @@
   import MediaPanel from "$lib/components/MediaPanel.svelte";
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { api } from "$lib/api";
   import type { OutlineEntry } from "$lib/preview-client";
   import type {
     ProjectCapabilities,
     ProjectClassification,
-    SnapshotEntry,
   } from "$lib/platform/contract";
+  import type { SnapshotEntry } from "$lib/api";
 
   export type PanelTab = "toc" | "files" | "media" | "projects" | "history";
 
@@ -144,7 +145,7 @@
     if (!projectDir) return;
     historyLoading = true;
     try {
-      const page = await getPlatform().listSnapshotsPage(projectDir);
+      const page = await api.vcs.listSnapshotsPage(projectDir);
       historyEntries = page.entries;
       historyHasMore = page.hasMore;
     } catch (e) {
@@ -162,7 +163,7 @@
     if (!last) return;
     historyLoadingMore = true;
     try {
-      const page = await getPlatform().listSnapshotsPage(projectDir, { before: last.id });
+      const page = await api.vcs.listSnapshotsPage(projectDir, { before: last.id });
       historyEntries = [...historyEntries, ...page.entries];
       historyHasMore = page.hasMore;
     } catch (e) {
@@ -178,8 +179,8 @@
     historyBusyAction = "Turning on version history — please wait.";
     historyError = null;
     try {
-      const result = await getPlatform().enableVersionHistory(projectDir);
-      onVersionHistoryEnabled?.(result);
+      const result = await api.vcs.enableVersionHistory(projectDir);
+      onVersionHistoryEnabled?.(result as ProjectClassification);
       historyNotice = "Version history is now enabled. Your first snapshot has been saved.";
       await refreshHistory();
     } catch (e) {
@@ -216,7 +217,7 @@
     historyError = null;
     historyNotice = null;
     try {
-      const result = await getPlatform().restoreSnapshot(projectDir, id);
+      const result = await api.vcs.restoreSnapshot(projectDir, id);
       confirmRestoreId = null;
       onVersionRestored?.(result.backupId);
       historyNotice = result.backupId

@@ -969,40 +969,14 @@ export interface HostServices {
   // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from HostServices.
 
   // ── Local version history (#13) ───────────────────────────────────────────
-  // All four run in the host (isomorphic-git via the lib — CLAUDE.md §7); the
-  // UI derives which to OFFER from `classifyProject().capabilities`. The
-  // WebAdapter stubs reject (mutations) / return [] (listSnapshots).
-
-  /**
-   * Turn on local version history for a plain folder (`git init` + first
-   * snapshot, all isomorphic-git). Returns the re-classified source +
-   * capabilities so the UI can swap "Enable Version History" for the
-   * snapshot/history actions without a separate classify round-trip.
-   */
-  enableVersionHistory(projectDir: string): Promise<ProjectClassification>;
+  // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot
+  // — migrated to SvelteKit server routes (src/routes/api/vcs/*).
   /**
    * Save an explicit snapshot of the project's current state. `message` is
    * optional author text; the host substitutes a default when blank. Rejects
    * with a friendly message when nothing has changed since the last snapshot.
    */
   saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
-  /** List the project's snapshots, newest first (bounded to one page). */
-  listSnapshots(projectDir: string): Promise<SnapshotEntry[]>;
-  /**
-   * One bounded page of snapshots with a continuation cursor — backs the
-   * history dialog's "Show older versions". The walk is capped host-side so
-   * a long history can never freeze the dialog.
-   */
-  listSnapshotsPage(
-    projectDir: string,
-    options?: ListSnapshotsOptions,
-  ): Promise<SnapshotPage>;
-  /**
-   * Restore the project's files to a chosen snapshot — SAFELY: the host takes
-   * an automatic backup snapshot of the current state first (when anything
-   * changed), so a restore can never lose work.
-   */
-  restoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult>;
 
   // ── Managed GitHub integration (#15, ADR 0006) ────────────────────────────
   // Two-phase connect: `connectGitHubStart` begins the device flow and

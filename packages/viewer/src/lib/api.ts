@@ -132,6 +132,19 @@ export interface ConflictPreview {
   isBinary: boolean;
 }
 
+export interface SnapshotEntry {
+  id: string;
+  message: string;
+  timestamp: number;
+  author?: string;
+}
+
+/** Mirrors contract.ts ProjectClassification — defined locally to keep SPA bundle clean. */
+export interface VcsProjectClassification {
+  source: unknown;
+  capabilities: unknown;
+}
+
 
 /** Typed API client for all server routes under src/routes/api/. */
 export const api = {
@@ -382,5 +395,16 @@ export const api = {
     /** Fetch the yours/theirs text for one conflicted file for comparison. */
     getConflictPreview: (projectDir: string, path: string, kind?: ConflictKind) =>
       post<ConflictPreview>('/api/sync/get-conflict-preview', { projectDir, path, kind }),
+  },
+
+  vcs: {
+    enableVersionHistory: (projectDir: string) =>
+      post<VcsProjectClassification>('/api/vcs/enable-version-history', { projectDir }),
+    listSnapshots: (projectDir: string) =>
+      post<SnapshotEntry[]>('/api/vcs/list-snapshots', { projectDir }),
+    listSnapshotsPage: (projectDir: string, options?: { limit?: number; before?: string }) =>
+      post<{ entries: SnapshotEntry[]; hasMore: boolean }>('/api/vcs/list-snapshots-page', { projectDir, ...options }),
+    restoreSnapshot: (projectDir: string, id: string) =>
+      post<{ restoredId: string; backupId?: string }>('/api/vcs/restore-snapshot', { projectDir, id }),
   },
 };

@@ -29,9 +29,6 @@ import type {
   FileWriteResult,
   FolderChangedEvent,
   SnapshotEntry,
-  SnapshotPage,
-  ListSnapshotsOptions,
-  RestoreVersionResult,
   DeviceCodeInfo,
   RemoteConnection,
   RemoteRepository,
@@ -157,27 +154,11 @@ export class ElectronAdapter implements Platform {
   // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from ElectronAdapter.
 
   // ── Local version history (#13) — delegate 1:1 to the bridge ───────────────
-  enableVersionHistory(projectDir: string): Promise<ProjectClassification> {
-    return bridge().enableVersionHistory(projectDir);
-  }
+  // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot
+  // — migrated to SvelteKit server routes (src/routes/api/vcs/*).
 
   saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry> {
     return bridge().saveSnapshot(projectDir, message);
-  }
-
-  listSnapshots(projectDir: string): Promise<SnapshotEntry[]> {
-    return bridge().listSnapshots(projectDir);
-  }
-
-  listSnapshotsPage(
-    projectDir: string,
-    options?: ListSnapshotsOptions,
-  ): Promise<SnapshotPage> {
-    return bridge().listSnapshotsPage(projectDir, options);
-  }
-
-  restoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult> {
-    return bridge().restoreSnapshot(projectDir, id);
   }
 
   // ── Managed GitHub integration (#15) — delegate 1:1 to the bridge ─────────

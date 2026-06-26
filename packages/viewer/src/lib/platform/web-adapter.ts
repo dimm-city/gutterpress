@@ -63,9 +63,6 @@ import type {
   // TemplateInfo, SnippetEntry — removed (Phase 2D)
   // ProjectPluginEntry, PluginValidationResult, RecommendedPlugin, ThemeInfo, ApplyThemeTarget, ProjectStyle — removed (Phase 2E)
   SnapshotEntry,
-  SnapshotPage,
-  ListSnapshotsOptions,
-  RestoreVersionResult,
   DeviceCodeInfo,
   RemoteConnection,
   RemoteRepository,
@@ -628,29 +625,11 @@ export class WebAdapter implements Platform {
   // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from WebAdapter.
 
   // ── Local version history (#13) — desktop-only; reject/empty on web ────────
-  enableVersionHistory(_projectDir: string): Promise<ProjectClassification> {
-    return rejectNotImplemented("enableVersionHistory");
-  }
+  // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot
+  // — migrated to SvelteKit server routes (src/routes/api/vcs/*).
 
   saveSnapshot(_projectDir: string, _message?: string): Promise<SnapshotEntry> {
     return rejectNotImplemented("saveSnapshot");
-  }
-
-  // Resolve to [] (like listRecovery) so a history view simply renders empty.
-  listSnapshots(_projectDir: string): Promise<SnapshotEntry[]> {
-    return Promise.resolve([]);
-  }
-
-  // Empty page (matches listSnapshots) so a history view renders empty.
-  listSnapshotsPage(
-    _projectDir: string,
-    _options?: ListSnapshotsOptions,
-  ): Promise<SnapshotPage> {
-    return Promise.resolve({ entries: [], hasMore: false });
-  }
-
-  restoreSnapshot(_projectDir: string, _id: string): Promise<RestoreVersionResult> {
-    return rejectNotImplemented("restoreSnapshot");
   }
 
   // ── Managed GitHub integration (#15) — desktop-only; safe stubs on web ─────

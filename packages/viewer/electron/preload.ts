@@ -515,22 +515,10 @@ contextBridge.exposeInMainWorld("electron", {
   // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from contextBridge.
 
   // Local version history (#13) — isomorphic-git in main, via the lib
-  enableVersionHistory: (projectDir: string): Promise<ProjectClassification> =>
-    ipcRenderer.invoke("vcs:enableVersionHistory", projectDir),
+  // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot
+  // — migrated to SvelteKit server routes (src/routes/api/vcs/*).
   saveSnapshot: (projectDir: string, message?: string): Promise<SnapshotEntry> =>
     ipcRenderer.invoke("vcs:saveSnapshot", projectDir, message),
-  listSnapshots: (projectDir: string): Promise<SnapshotEntry[]> =>
-    ipcRenderer.invoke("vcs:listSnapshots", projectDir),
-  listSnapshotsPage: (
-    projectDir: string,
-    options?: { limit?: number; before?: string },
-  ): Promise<SnapshotPage> =>
-    ipcRenderer.invoke("vcs:listSnapshotsPage", projectDir, options),
-  restoreSnapshot: (
-    projectDir: string,
-    id: string,
-  ): Promise<RestoreVersionResult> =>
-    ipcRenderer.invoke("vcs:restoreSnapshot", projectDir, id),
 
   // ── Managed GitHub integration (#15) — device flow + repo picker + clone ──
   // Two-phase connect: Start returns the user code to display; Wait resolves

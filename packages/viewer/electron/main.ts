@@ -2272,6 +2272,9 @@ registerPrefsHooks({
 // from app:classifyProject. Paths MUST be absolute (trusted SPA, but a relative
 // path could resolve against the main-process CWD by accident).
 
+// Expose loadLib for VCS SvelteKit server routes.
+(globalThis as unknown as Record<string, unknown>).__printMdVcsHooks__ = { loadLib };
+
 function requireAbsoluteDir(channel: string, projectDir: unknown): string {
   if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
     throw new Error(`${channel} requires an absolute project path`);
@@ -2307,20 +2310,7 @@ async function handleVcsErrors<T>(
   }
 }
 
-ipcMain.handle("vcs:enableVersionHistory", (_e, projectDir: string) =>
-  handleVcsErrors("vcs:enableVersionHistory", async () => {
-    const dir = requireAbsoluteDir("vcs:enableVersionHistory", projectDir);
-    const lib = await loadLib();
-    const source = await lib.detectProjectSource(dir);
-    await lib.providerFor(source).initVersionHistory({
-      projectDir: dir,
-      initialMessage: "Initial snapshot",
-    });
-    // Re-classify so the renderer gets the upgraded source + capabilities.
-    const upgraded = await lib.detectProjectSource(dir);
-    return { source: upgraded, capabilities: lib.capabilitiesFor(upgraded) };
-  }),
-);
+// vcs:enableVersionHistory migrated to SvelteKit server route (src/routes/api/vcs/enable-version-history/+server.ts).
 
 ipcMain.handle(
   "vcs:saveSnapshot",
@@ -2338,60 +2328,8 @@ ipcMain.handle(
     }),
 );
 
-ipcMain.handle(
-  "vcs:listSnapshots",
-  (_e, projectDir: string): Promise<SnapshotEntry[]> =>
-    handleVcsErrors("vcs:listSnapshots", async () => {
-      const dir = requireAbsoluteDir("vcs:listSnapshots", projectDir);
-      const lib = await loadLib();
-      const source = await lib.detectProjectSource(dir);
-      // Bounded to the lib's default page size; use vcs:listSnapshotsPage for
-      // "Show older versions" continuation.
-      return lib.providerFor(source).listHistory(dir);
-    }),
-);
-
-ipcMain.handle(
-  "vcs:listSnapshotsPage",
-  (
-    _e,
-    projectDir: string,
-    options?: { limit?: number; before?: string },
-  ): Promise<SnapshotPage> =>
-    handleVcsErrors("vcs:listSnapshotsPage", async () => {
-      const dir = requireAbsoluteDir("vcs:listSnapshotsPage", projectDir);
-      // Validate the continuation cursor before it reaches the lib (it is
-      // used as a git ref); a malformed cursor must never become a ref query.
-      const before = options?.before;
-      if (before !== undefined && !/^[0-9a-f]{40}$/i.test(before)) {
-        throw new Error("vcs:listSnapshotsPage requires a valid snapshot id cursor");
-      }
-      const limit = options?.limit;
-      const lib = await loadLib();
-      const source = await lib.detectProjectSource(dir);
-      return lib.providerFor(source).listHistoryPage(dir, {
-        ...(typeof limit === "number" ? { limit } : {}),
-        ...(before ? { before } : {}),
-      });
-    }),
-);
-
-ipcMain.handle(
-  "vcs:restoreSnapshot",
-  (_e, projectDir: string, id: string): Promise<RestoreVersionResult> =>
-    handleVcsErrors("vcs:restoreSnapshot", async () => {
-      const dir = requireAbsoluteDir("vcs:restoreSnapshot", projectDir);
-      // Snapshot ids are full commit SHAs — reject anything else before it
-      // reaches the lib (a partial/garbage ref must never hit checkout).
-      if (typeof id !== "string" || !/^[0-9a-f]{40}$/i.test(id)) {
-        throw new Error("vcs:restoreSnapshot requires a valid snapshot id");
-      }
-      const lib = await loadLib();
-      // Safety contract (#13 / ADR 0006 §D5): the lib snapshots the current
-      // state before restoring, so a restore can never lose author work.
-      return lib.restoreVersionWithBackup({ projectDir: dir, id });
-    }),
-);
+// vcs:listSnapshots, vcs:listSnapshotsPage, vcs:restoreSnapshot
+// — migrated to SvelteKit server routes (src/routes/api/vcs/*) in this refactor.
 
 // ── Managed GitHub integration (#15, ADR 0006) ───────────────────────────────
 // Auth (device flow), connection status, repo/branch discovery, clone-and-open.
