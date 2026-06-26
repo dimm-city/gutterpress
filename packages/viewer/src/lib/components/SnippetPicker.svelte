@@ -16,6 +16,7 @@
   import { api } from "$lib/api";
   import type { SnippetEntry } from "$lib/api";
   import { extractVariables, substituteVariables } from "$lib/editor/snippet-vars";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
@@ -168,6 +169,7 @@
     aria-modal="true"
     aria-labelledby="snippet-picker-title"
     tabindex="-1"
+    onkeydown={(e) => trapFocus(e, dialogEl)}
   >
     <header class="dialog-header">
       <h2 id="snippet-picker-title">

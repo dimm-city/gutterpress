@@ -2,6 +2,7 @@
   import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import Icon from "$lib/components/Icon.svelte";
+  import { trapFocus } from "$lib/a11y";
 
   interface ToolStatus {
     name: string;
@@ -46,33 +47,6 @@
   let copied = $state(false);
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
 
-  function focusableElements() {
-    return Array.from(
-      dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
-      ) ?? []
-    );
-  }
-
-  function focusFirstElement() {
-    focusableElements()[0]?.focus();
-  }
-
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab") return;
-    const focusable = focusableElements();
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-
   async function load() {
     loading = true;
     error = null;
@@ -91,7 +65,7 @@
 
   $effect(() => {
     if (open) {
-      queueMicrotask(focusFirstElement);
+      queueMicrotask(() => dialogEl?.querySelector<HTMLElement>('button:not([disabled]), [href], input:not([disabled])')?.focus());
       if (!data && !loading) load();
     }
   });
@@ -165,7 +139,7 @@
 {#if open}
   <div class="backdrop" onclick={close} role="presentation"></div>
 
-  <div bind:this={dialogEl} class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1" onkeydown={trapFocus}>
+  <div bind:this={dialogEl} class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1" onkeydown={(e) => trapFocus(e, dialogEl)}>
     <header class="dialog-header">
       <div class="dialog-title-group">
         <h2 id="help-title">About Print MD</h2>

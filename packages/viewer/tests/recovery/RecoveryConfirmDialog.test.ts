@@ -398,14 +398,12 @@ describe("RecoveryConfirmDialog — decision flow (source analysis)", () => {
     expect(lc).toMatch(/nothing is lost|safe|saved/);
   });
 
-  test("focus trap: trapFocus function handles Tab key cycling", () => {
+  test("focus trap: trapFocus is imported from shared a11y util and wired to the dialog", () => {
     const src = readSource();
     if (!src) return;
-    // Must implement focus trap logic for Tab key
-    expect(src).toMatch(/trapFocus|Tab.*focus|focus.*Tab/);
-    // Must handle wrapping from last to first
-    expect(src).toMatch(/first|last/);
-    // Must call preventDefault on Tab at boundary
-    expect(src).toContain("preventDefault");
+    // Must import the shared trapFocus utility (D1 refactor — no longer inlined)
+    expect(src).toMatch(/import.*trapFocus.*\$lib\/a11y/);
+    // Must wire trapFocus to the dialog container's onkeydown handler
+    expect(src).toMatch(/onkeydown=.*trapFocus/);
   });
 });

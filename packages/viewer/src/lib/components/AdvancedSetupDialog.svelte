@@ -27,6 +27,7 @@
     RemoteConnection,
     HostConnectionInfo,
   } from "$lib/platform/contract";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
@@ -252,29 +253,6 @@
     return safe || "The connection test failed. See the app log for details.";
   }
 
-  function focusableElements() {
-    return Array.from(
-      dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    );
-  }
-
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab") return;
-    const focusable = focusableElements();
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-
   function close() {
     tokenInput = ""; // belt and braces — never carry a token across closes
     open = false;
@@ -292,7 +270,7 @@
     aria-modal="true"
     aria-labelledby="advanced-setup-title"
     tabindex="-1"
-    onkeydown={trapFocus}
+    onkeydown={(e) => trapFocus(e, dialogEl)}
   >
     <header class="dialog-header">
       <h2 id="advanced-setup-title">Advanced setup</h2>

@@ -20,6 +20,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import type { ProjectStyle } from "$lib/api";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
@@ -92,30 +93,6 @@
     close();
   }
 
-  /**
-   * Keep Tab focus inside the modal (WCAG 2.1.2). The dialog is aria-modal, but
-   * the browser doesn't enforce containment for keyboard-only users, so cycle
-   * focus across the dialog's focusable elements on Tab / Shift+Tab.
-   */
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab" || !dialogEl) return;
-    const items = Array.from(
-      dialogEl.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      ),
-    ).filter((el) => !el.hasAttribute("disabled") && el.offsetParent !== null);
-    if (items.length === 0) return;
-    const first = items[0]!;
-    const last = items[items.length - 1]!;
-    const active = dialogEl.ownerDocument.activeElement as HTMLElement | null;
-    if (e.shiftKey && active === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
 </script>
 
 {#if open}
@@ -128,7 +105,7 @@
     aria-modal="true"
     aria-labelledby="style-picker-title"
     tabindex="-1"
-    onkeydown={trapFocus}
+    onkeydown={(e) => trapFocus(e, dialogEl)}
   >
     <header class="dialog-header">
       <h2 id="style-picker-title">Edit styles</h2>

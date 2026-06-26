@@ -15,6 +15,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform } from "$lib/platform";
   import type { RecoveryConfirmRequest } from "$lib/platform/contract";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
@@ -71,28 +72,6 @@
     await getPlatform().respondRecoveryConfirm(request.requestId, approved);
   }
 
-  function focusableElements(): HTMLElement[] {
-    return Array.from(
-      dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    );
-  }
-
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab") return;
-    const focusable = focusableElements();
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
 </script>
 
 {#if open && request}
@@ -106,7 +85,7 @@
     aria-modal="true"
     aria-labelledby="recovery-confirm-title"
     tabindex="-1"
-    onkeydown={trapFocus}
+    onkeydown={(e) => trapFocus(e, dialogEl)}
   >
     <!-- Live region for status announcements (populated when the author answers). -->
     <div class="sr-only" role="status" aria-live="polite">{statusMsg}</div>
