@@ -72,6 +72,11 @@ import {
   decideRunAgainAfterPreflight,
   getConflictPreviewImpl,
 } from "./recovery-bridge";
+import type {
+  SnapshotEntry,
+  SnapshotPage,
+  RestoreVersionResult,
+} from "./bridge-types";
 // The splash markup ships as a string baked into the main bundle (electron-vite
 // inlines `?raw`), so there is no separate file to resolve at runtime.
 import splashHtml from "./splash.html?raw";
