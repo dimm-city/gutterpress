@@ -86,6 +86,12 @@
     tokenUrl = null;
     queueMicrotask(() => dialogEl?.focus());
     void load();
+    return {
+      destroy() {
+        clearTimeout(serverInputTimer);
+        serverInputTimer = undefined;
+      },
+    };
   }
 
   function onServerInput(e: Event) {

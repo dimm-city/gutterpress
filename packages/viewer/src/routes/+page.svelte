@@ -1109,6 +1109,7 @@
           // the welcome screen has a useful first action.
           leftPanelOpen = true;
           leftPanelTab = "projects";
+          leftPanelRef?.notifyOpened();
           // Dismiss splash and reveal window.
           api.app.rendererReady().catch(() => {});
           return;
@@ -1116,6 +1117,7 @@
         // Restore panel open state from prefs (now we know there is a project)
         if (!leftPanelPrefsLoaded) leftPanelPrefsLoaded = true;
         leftPanelOpen = panelPrefs?.open ?? false;
+        if (leftPanelOpen) leftPanelRef?.notifyOpened();
         // Per-project state (#43) is keyed by folder path so opening a
         // different project never pollutes this one's restore point.
         api.app.splashStatus("Opening your project…", 45).catch(() => {});
@@ -1131,6 +1133,7 @@
           openError = null;
           leftPanelOpen = true;
           leftPanelTab = "projects";
+          leftPanelRef?.notifyOpened();
           toast?.info?.("Couldn't reopen your last project — it may have moved. Pick or create one to start.");
         }
         return;
@@ -1605,6 +1608,10 @@
           api.app
             .setViewerPrefs({ projectSource: typedResult.source } as Record<string, unknown>)
             .catch(() => {});
+          // Re-notify so the History tab can load now that canHistory is set.
+          // The earlier notifyHistoryRefresh() at folder-open time may have been
+          // a no-op because projectCapabilities was still null.
+          leftPanelRef?.notifyHistoryRefresh();
           // Sync gate (#15 / ADR 0006 D4): the toolbar action appears only
           // when the diagnosis says the project is actually syncable (HTTPS
           // remote + a stored connection). Local reads only; fire-and-forget.
@@ -1774,6 +1781,7 @@
     if (lastProjectChecked) {
       leftPanelOpen = true;
       leftPanelTab = "projects";
+      leftPanelRef?.notifyOpened();
     }
   }
 
@@ -3094,6 +3102,7 @@
           <button class="ghost empty-cta" onclick={() => {
             leftPanelOpen = true;
             leftPanelTab = "projects";
+            leftPanelRef?.notifyOpened();
           }} disabled={busy}>Open an existing book</button>
         </div>
         <p class="empty-hint">New to print-md? <button type="button" class="link-btn" onclick={openSetupGuide}>Read the getting-started guide →</button></p>

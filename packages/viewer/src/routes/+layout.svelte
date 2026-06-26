@@ -38,6 +38,9 @@
   onMount(() => {
     initTheme();
     syncThemeFromSettings();
+    // Re-sync once the async settings load resolves — the initial call above
+    // may fire before persisted settings have been fetched from the host.
+    _loadSettings().then(() => syncThemeFromSettings()).catch(() => {});
   });
 </script>
 

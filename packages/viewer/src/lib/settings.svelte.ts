@@ -51,6 +51,9 @@ export function _loadSettings(): Promise<void> {
     .then((loaded) => {
       state.current = loaded as unknown as AppSettings;
       state.loaded = true;
+      // Notify imperative subscribers (subscribe() callers) so they can react
+      // to the persisted values that just arrived.
+      for (const fn of [...subscribers]) fn(state.current);
     })
     .catch(() => {
       // Keep the defaults already in `state.current`.
@@ -66,7 +69,7 @@ export function _loadSettings(): Promise<void> {
 function set(patch: DeepPartial<AppSettings>): void {
   state.current = mergeInto(state.current, patch);
   api.app.setSettings(patch as Record<string, unknown>).catch(() => {});
-  for (const fn of subscribers) fn(state.current);
+  for (const fn of [...subscribers]) fn(state.current);
 }
 
 /** Reset one section to its defaults and persist. */
