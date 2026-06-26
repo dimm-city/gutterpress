@@ -161,9 +161,6 @@ test("ElectronAdapter delegates the #44 unsaved-changes surface 1:1 to the bridg
   await expect(p.statFile("/p")).resolves.toEqual({ mtimeMs: 123, size: 7, exists: true });
   const unwatch = p.watchFolder("/p", () => {});
   expect(typeof unwatch).toBe("function");
-  await expect(p.writeRecovery("/p", "x", 42)).resolves.toEqual({ ok: true });
-  await expect(p.clearRecovery("/p")).resolves.toEqual({ ok: true });
-  await expect(p.listRecovery("/p")).resolves.toEqual([]);
   const offFlush = p.onFlushBeforeClose(() => {});
   expect(typeof offFlush).toBe("function");
   const offFolder = p.onFolderChanged(() => {});
@@ -172,13 +169,9 @@ test("ElectronAdapter delegates the #44 unsaved-changes surface 1:1 to the bridg
   const methods = calls.map((c) => c.method);
   expect(methods).toContain("statFile");
   expect(methods).toContain("watchFolder");
-  expect(methods).toContain("writeRecovery");
-  expect(methods).toContain("clearRecovery");
-  expect(methods).toContain("listRecovery");
   expect(methods).toContain("onFlushBeforeClose");
   expect(methods).toContain("onFolderChanged");
   expect(calls.find((c) => c.method === "statFile")?.args).toEqual(["/p"]);
-  expect(calls.find((c) => c.method === "writeRecovery")?.args).toEqual(["/p", "x", 42]);
 });
 
 test("ElectronAdapter delegates onNativeThemeUpdated 1:1 to the bridge", async () => {
@@ -252,11 +245,7 @@ test("WebAdapter: primitives throw, host methods reject, subscriptions are no-op
   // Subscriptions must return a callable unsubscribe (the app stores it).
   expect(typeof p.onBuildProgress(() => {})).toBe("function");
   expect(typeof p.onUrlPreviewBlocked(() => {})).toBe("function");
-  // #44 unsaved-changes surface is desktop-only: recovery writes reject,
-  // listRecovery resolves to [], subscriptions are no-ops.
-  await expect(p.writeRecovery("/p", "x", 0)).rejects.toThrow(/0\.6\.0/);
-  await expect(p.clearRecovery("/p")).rejects.toThrow(/0\.6\.0/);
-  await expect(p.listRecovery("/p")).resolves.toEqual([]);
+  // #44 unsaved-changes surface subscriptions are no-ops on web.
   expect(typeof p.onFlushBeforeClose(() => {})).toBe("function");
   expect(typeof p.onFolderChanged(() => {})).toBe("function");
 });

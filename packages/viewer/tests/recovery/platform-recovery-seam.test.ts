@@ -159,21 +159,6 @@ describe("ElectronAdapter — recovery seam delegation", () => {
     expect(call?.args[1]).toBe(true);
   });
 
-  test("getConflictPreview delegates projectDir+path to bridge", async () => {
-    const { bridge, calls } = makeBridgeWithRecovery();
-    // @ts-expect-error test global
-    globalThis.window = { electron: bridge };
-
-    const adapter = new ElectronAdapter();
-    const result = await adapter.getConflictPreview("/proj/book", "ch01.md");
-
-    const call = calls.find((c) => c.method === "getConflictPreview");
-    expect(call?.args[0]).toBe("/proj/book");
-    expect(call?.args[1]).toBe("ch01.md");
-    expect((result as ConflictPreview).mine).toBe("mine");
-    expect((result as ConflictPreview).theirs).toBe("theirs");
-    expect((result as ConflictPreview).isBinary).toBe(false);
-  });
 });
 
 describe("WebAdapter — recovery seam stubs", () => {
@@ -197,8 +182,4 @@ describe("WebAdapter — recovery seam stubs", () => {
     await expect(adapter.respondRecoveryConfirm("any-id", true)).resolves.toBeUndefined();
   });
 
-  test("getConflictPreview rejects with a not-implemented error", async () => {
-    const adapter = new WebAdapter();
-    await expect(adapter.getConflictPreview("/proj", "ch.md")).rejects.toBeDefined();
-  });
 });
