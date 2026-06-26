@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
 
   export type ToastType = "success" | "error" | "warning" | "info";
@@ -65,7 +66,7 @@
   }
 
   // Publish the API object through the bindable prop so the parent can call it
-  $effect(() => {
+  onMount(() => {
     api = {
       show,
       success: (m, d, a) => show(m, "success", d, a),

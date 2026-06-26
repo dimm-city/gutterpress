@@ -15,7 +15,7 @@
    * No counts (§3.5 — counts require history walks).
    * PWA-clean: all host work via getPlatform() (CLAUDE.md §8 / ADR 0004).
    */
-  import { onDestroy } from "svelte";
+  import { onMount } from "svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
   import type { SyncStatus, SyncState, ConflictFileInfo } from "$lib/platform/contract";
 
@@ -49,13 +49,10 @@
   // pill can always open the log once any sync/recovery has emitted a path.
   let logFilePath = $state<string | null>(null);
 
-  // Subscribe to the host orchestrator's status stream. Re-subscribe whenever
-  // the project dir changes (or the component mounts/unmounts).
-  let unsubscribe: (() => void) | null = null;
-
-  $effect(() => {
-    unsubscribe?.();
-    unsubscribe = null;
+  // Subscribe to the host orchestrator's status stream on mount.
+  // The parent wraps this component in {#key projectDir} so onMount fires fresh
+  // whenever projectDir changes, providing the same re-subscription behaviour.
+  onMount(() => {
     // Reset per-project state so a previous project's log path never leaks.
     logFilePath = null;
     // Only subscribe when running in the desktop host (the WebAdapter stub is a
@@ -65,24 +62,26 @@
       conflictFiles = [];
       return;
     }
-    unsubscribe = getPlatform().onSyncStatus((status: SyncStatus) => {
+    const unsubscribe = getPlatform().onSyncStatus((status: SyncStatus) => {
       // Scope to this project only (the host may manage multiple open windows).
       if (status.projectDir !== projectDir) return;
       syncState = status.state;
       conflictFiles = status.files ?? [];
       // Retain the latest non-empty log path (later "idle" events omit it).
       if (status.logFile) logFilePath = status.logFile;
+      // Auto-clear "recovered" confirmation back to "synced" after ~4s.
+      if (recoveredTimer) { clearTimeout(recoveredTimer); recoveredTimer = null; }
+      if (status.state === "recovered") {
+        recoveredTimer = setTimeout(() => {
+          recoveredTimer = null;
+          if (syncState === "recovered") syncState = "synced";
+        }, 4000);
+      }
     });
-    // Return the cleanup function for Svelte's $effect cleanup.
     return () => {
-      unsubscribe?.();
-      unsubscribe = null;
+      unsubscribe();
+      if (recoveredTimer) { clearTimeout(recoveredTimer); recoveredTimer = null; }
     };
-  });
-
-  onDestroy(() => {
-    unsubscribe?.();
-    unsubscribe = null;
   });
 
   /**
@@ -154,15 +153,9 @@
 
   // Auto-clear the brief "Sync all set" confirmation back to the quiet
   // in-sync state after ~4s (three-judge gate: a confirmation, not a badge).
-  // A newer status event overrides it naturally (this only fires if nothing
-  // else has arrived). The recovering label is event-driven, never timed.
-  $effect(() => {
-    if (syncState !== "recovered") return;
-    const t = setTimeout(() => {
-      if (syncState === "recovered") syncState = "synced";
-    }, 4000);
-    return () => clearTimeout(t);
-  });
+  // The timer is started directly in the onSyncStatus handler when "recovered"
+  // arrives — no reactive tracking needed.
+  let recoveredTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** True for states that require user attention. */
   let isWarning = $derived(syncState === "auth" || syncState === "conflict");

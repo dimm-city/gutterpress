@@ -12,6 +12,7 @@
    * reach the renderer), inspection, and file copies. Renderer-side thumbnail
    * state is bounded (THUMB_LIMIT) so a huge project can't balloon memory.
    */
+  import { onMount } from "svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import type { MediaImageEntry, MediaImageDetails } from "$lib/platform/contract";
@@ -106,17 +107,18 @@
     }
   }
 
-  // Load on project change + refresh on watcher pushes (debounced — the host
-  // already debounces fs:folderChanged; one extra renderer-side guard merges
-  // bursts while a refresh is in flight).
+  // Load on mount + refresh on watcher pushes (debounced — the host already
+  // debounces fs:folderChanged; one extra renderer-side guard merges bursts
+  // while a refresh is in flight).
+  // The parent wraps this component in {#key projectDir} so onMount fires fresh
+  // whenever projectDir changes, providing the same re-subscription behaviour.
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-  $effect(() => {
-    const dir = projectDir;
+  onMount(() => {
     selected = null;
     details = null;
     notice = null;
     void refresh();
-    if (!dir || !isDesktop()) return;
+    if (!projectDir || !isDesktop()) return;
     const off = getPlatform().onFolderChanged(() => {
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
