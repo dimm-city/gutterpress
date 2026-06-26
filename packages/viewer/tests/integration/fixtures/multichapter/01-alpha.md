@@ -17,7 +17,8 @@ chapters land on distinct pages in the rendered preview.
 
 More alpha body text to push the next chapter onto a later page.
 
-adfsdf
-test
+Additional alpha body text to pad the chapter length.
 
-# asdfasdfas
+## Alpha Section Three
+
+Closing section of the alpha chapter.

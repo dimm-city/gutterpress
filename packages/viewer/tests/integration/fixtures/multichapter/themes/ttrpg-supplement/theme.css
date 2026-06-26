@@ -7,7 +7,7 @@
   --color-ink:        #241a12;   /* body text                 */
   --color-ink-muted:  #5c4a36;   /* captions, secondary text  */
   --color-accent:     #7a2222;   /* headings, key accents     */
-  --color-paper:      red;   /* parchment page background */
+  --color-paper:      #fdf6e3;   /* parchment page background */
   --color-tint:       #efe3c8;   /* stat-block / callout fill */
   --color-rule:       #b89a6a;   /* borders, rules            */
 

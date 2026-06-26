@@ -39,7 +39,10 @@ export const POST: RequestHandler = async ({ request }) => {
     const hooks = getHooks();
     if (!hooks) return error(503, 'Conflict preview hooks not registered');
 
-    const kind = (body.kind ?? 'both-edited') as ConflictKind;
+    const VALID_KINDS: ReadonlySet<string> = new Set(['both-edited', 'you-deleted', 'online-deleted']);
+    const rawKind = body.kind ?? 'both-edited';
+    if (!VALID_KINDS.has(rawKind)) return error(400, `sync:getConflictPreview: invalid kind "${rawKind}"; must be both-edited | you-deleted | online-deleted`);
+    const kind = rawKind as ConflictKind;
     const result = await hooks.getConflictPreview(body.projectDir, body.path, kind);
     return json(result);
   } catch (e) {

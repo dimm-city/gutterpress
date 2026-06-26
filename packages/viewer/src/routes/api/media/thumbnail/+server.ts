@@ -17,6 +17,7 @@ const MEDIA_MIME: Record<string, string> = {
   svg: 'image/svg+xml',
   tif: 'image/tiff',
   tiff: 'image/tiff',
+  avif: 'image/avif',
 };
 
 export const POST: RequestHandler = async ({ request }) => {

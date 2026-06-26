@@ -100,7 +100,7 @@ export function toCssDiagnostic(
 
 /**
  * Map an EditorState's CSS document through `checkCss` into CodeMirror
- * diagnostics. Pure and synchronous — `checkCss` runs postcss in the renderer.
+ * diagnostics. Async — delegates to the host via `api.lint.checkCss` (server route).
  */
 export async function cssDiagnosticsSource(state: EditorState): Promise<Diagnostic[]> {
   const doc = state.doc;

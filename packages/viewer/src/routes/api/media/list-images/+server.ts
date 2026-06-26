@@ -5,7 +5,7 @@ import type { RequestHandler } from './$types';
 
 /** Image extensions surfaced in the Media panel (lowercase, no dot). */
 const MEDIA_IMAGE_EXTS = new Set([
-  'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'tif', 'tiff',
+  'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'tif', 'tiff', 'avif',
 ]);
 /** Directories never scanned for project images. */
 const MEDIA_SKIP_DIRS = new Set([

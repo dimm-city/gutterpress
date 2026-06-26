@@ -5,11 +5,9 @@
    * Browsable project tree: lists folders AND editable files, and lets the
    * author expand any subfolder to reach files nested anywhere in the project
    * (e.g. `themes/<id>/theme.css`, `styles/print.css`, `css/…`). Folder
-   * children are loaded lazily on first expand via `platform.listDir`, which is
-   * implemented on BOTH adapters (Electron + the File System Access WebAdapter),
-   * so the tree works on every device — desktop and web/PWA alike. There is no
-   * `isDesktop()` gate; the parent only mounts this when a folder project is
-   * open (`sourceMode === "folder"`).
+   * children are loaded lazily on first expand via `api.fs.listDir` (server route
+   * in Electron main). There is no `isDesktop()` gate; the parent only mounts
+   * this when a folder project is open (`sourceMode === "folder"`).
    *
    * The root load runs in `onMount`; the parent wraps this in `{#key projectDir}`
    * so switching projects remounts the tree (no `$effect`). Folder expansion is
