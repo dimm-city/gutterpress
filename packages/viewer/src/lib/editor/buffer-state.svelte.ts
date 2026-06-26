@@ -42,6 +42,13 @@ export interface EditorBufferOptions {
   onExternalConflict?: () => void;
   /** Called when an external edit is safely auto-reloaded (buffer was clean). */
   onAutoReloaded?: (filePath: string) => void;
+  /**
+   * Called whenever the buffer's pending-save state changes. Receives `true`
+   * when there are unsaved edits (dirty or saving) and `false` once clean.
+   * Use this to push dirty state to the host (e.g. window close gate) without
+   * a reactive `$effect` in the component.
+   */
+  onDirty?: (pending: boolean) => void;
 }
 
 export class EditorBuffer {
@@ -69,6 +76,16 @@ export class EditorBuffer {
     return this.opts.platform;
   }
 
+  /** Set phase and notify the onDirty callback when pending-save state changes. */
+  private setPhase(next: EditorBufferPhase): void {
+    const wasPending = this.hasPendingSave;
+    this.phase = next;
+    const nowPending = this.hasPendingSave;
+    if (wasPending !== nowPending) {
+      this.opts.onDirty?.(nowPending);
+    }
+  }
+
   /** Toggle crash-recovery snapshotting at runtime (#45 setting). */
   setRecoveryEnabled(enabled: boolean): void {
     this.opts.recoveryEnabled = enabled;
@@ -89,12 +106,12 @@ export class EditorBuffer {
       this.content = text;
       this.diskContent = text;
       this.diskMtimeMs = st?.mtimeMs ?? 0;
-      this.phase = "clean";
+      this.setPhase("clean");
     } catch (e) {
       this.content = "";
       this.diskContent = "";
       this.diskMtimeMs = 0;
-      this.phase = "error";
+      this.setPhase("error");
       this.opts.onError?.(
         `Could not open file: ${e instanceof Error ? e.message : String(e)}`,
       );
@@ -120,7 +137,7 @@ export class EditorBuffer {
     }
     this.diskMtimeMs = st?.mtimeMs ?? 0;
     this.content = recovered;
-    this.phase = this.isDirty ? "dirty" : "clean";
+    this.setPhase(this.isDirty ? "dirty" : "clean");
     if (this.isDirty) this.scheduleSave();
   }
 
@@ -128,7 +145,7 @@ export class EditorBuffer {
   edit(text: string): void {
     this.content = text;
     if (!this.filePath) return;
-    this.phase = this.isDirty ? "dirty" : "clean";
+    this.setPhase(this.isDirty ? "dirty" : "clean");
     if (this.isDirty) {
       this.scheduleSave();
       this.scheduleRecovery();
@@ -164,14 +181,14 @@ export class EditorBuffer {
     const filePath = this.filePath;
     if (!filePath) return;
     const snapshot = this.content;
-    this.phase = "saving";
+    this.setPhase("saving");
     try {
       const { mtimeMs } = await this.platform.writeFile(filePath, snapshot);
       // Only adopt the new baseline if the buffer still matches what we wrote;
       // a keystroke during the await leaves the buffer dirty for the next save.
       this.diskContent = snapshot;
       this.diskMtimeMs = mtimeMs;
-      this.phase = this.content === snapshot ? "clean" : "dirty";
+      this.setPhase(this.content === snapshot ? "clean" : "dirty");
       // A successful disk save clears the crash-recovery sidecar.
       if (this.opts.recoveryEnabled !== false) {
         api.recovery.clear(filePath).catch(() => {});
@@ -179,7 +196,7 @@ export class EditorBuffer {
       this.opts.onSaved?.(filePath);
       if (this.phase === "dirty") this.scheduleSave();
     } catch (e) {
-      this.phase = "error";
+      this.setPhase("error");
       this.opts.onError?.(
         `Save failed: ${e instanceof Error ? e.message : String(e)}`,
       );
@@ -237,7 +254,7 @@ export class EditorBuffer {
       // Author's edit already matches disk — just refresh the baseline.
       this.diskContent = diskContent;
       this.diskMtimeMs = stat.mtimeMs;
-      this.phase = "clean";
+      this.setPhase("clean");
       return;
     }
     if (diskContent === this.diskContent) {
@@ -254,7 +271,7 @@ export class EditorBuffer {
       this.content = diskContent;
       this.diskContent = diskContent;
       this.diskMtimeMs = stat.mtimeMs;
-      this.phase = "clean";
+      this.setPhase("clean");
       this.opts.onAutoReloaded?.(filePath);
     }
   }
@@ -266,7 +283,7 @@ export class EditorBuffer {
     this.content = ext.diskContent;
     this.diskContent = ext.diskContent;
     this.diskMtimeMs = ext.diskMtimeMs;
-    this.phase = "clean";
+    this.setPhase("clean");
     this.externalChange = null;
     if (this.filePath && this.opts.recoveryEnabled !== false) {
       api.recovery.clear(this.filePath).catch(() => {});
@@ -281,7 +298,7 @@ export class EditorBuffer {
     this.diskMtimeMs = ext.diskMtimeMs;
     this.externalChange = null;
     // content stays; isDirty is recomputed against the unchanged diskContent.
-    this.phase = this.isDirty ? "dirty" : "clean";
+    this.setPhase(this.isDirty ? "dirty" : "clean");
     if (this.isDirty) this.scheduleSave();
   }
 
@@ -292,7 +309,7 @@ export class EditorBuffer {
     this.content = "";
     this.diskContent = "";
     this.diskMtimeMs = 0;
-    this.phase = "clean";
+    this.setPhase("clean");
     this.externalChange = null;
   }
 

@@ -11,6 +11,7 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
@@ -28,8 +29,8 @@
   let loading = $state<boolean>(false);
   let error = $state<string>("");
 
-  $effect(() => {
-    if (!open || !logFilePath) return;
+  function onDialogMount(_el: HTMLElement) {
+    if (!logFilePath) return;
     loading = true;
     error = "";
     logContent = "";
@@ -53,31 +54,12 @@
       }
     })();
 
-    return () => { cancelled = true; };
-  });
+    return { destroy() { cancelled = true; } };
+  }
 
   function close() {
     open = false;
     triggerEl?.focus();
-  }
-
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab") return;
-    const focusable = Array.from(
-      dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    );
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
   }
 
   async function copyLog() {
@@ -100,7 +82,8 @@
     aria-modal="true"
     aria-labelledby="log-title"
     tabindex="-1"
-    onkeydown={trapFocus}
+    onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:onDialogMount
   >
     <header class="dialog-header">
       <h2 id="log-title">

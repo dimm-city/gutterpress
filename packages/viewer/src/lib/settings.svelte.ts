@@ -26,6 +26,9 @@ const state = $state<{ current: AppSettings; loaded: boolean }>({
 
 let loadPromise: Promise<void> | null = null;
 
+/** Subscribers notified after every `set()` call with the updated settings. */
+const subscribers: Array<(settings: AppSettings) => void> = [];
+
 function mergeInto(base: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
   const out = { ...base } as Record<string, unknown>;
   for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
@@ -48,6 +51,9 @@ export function _loadSettings(): Promise<void> {
     .then((loaded) => {
       state.current = loaded as unknown as AppSettings;
       state.loaded = true;
+      // Notify imperative subscribers (subscribe() callers) so they can react
+      // to the persisted values that just arrived.
+      for (const fn of [...subscribers]) fn(state.current);
     })
     .catch(() => {
       // Keep the defaults already in `state.current`.
@@ -63,6 +69,7 @@ export function _loadSettings(): Promise<void> {
 function set(patch: DeepPartial<AppSettings>): void {
   state.current = mergeInto(state.current, patch);
   api.app.setSettings(patch as Record<string, unknown>).catch(() => {});
+  for (const fn of [...subscribers]) fn(state.current);
 }
 
 /** Reset one section to its defaults and persist. */
@@ -85,5 +92,17 @@ export function useSettings() {
     },
     set,
     resetSection,
+    /**
+     * Subscribe to settings changes. The callback is called after every `set()`
+     * with the full updated `AppSettings`. Returns an unsubscribe function.
+     * Use in `onMount` with its return teardown instead of `$effect`.
+     */
+    subscribe(fn: (settings: AppSettings) => void): () => void {
+      subscribers.push(fn);
+      return () => {
+        const i = subscribers.indexOf(fn);
+        if (i >= 0) subscribers.splice(i, 1);
+      };
+    },
   };
 }

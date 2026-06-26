@@ -55,7 +55,7 @@
     pagedMediaCompletionSource,
     type EditorLanguage,
   } from "$lib/editor/css-editor";
-  import { untrack } from "svelte";
+  import { onMount } from "svelte";
 
   let {
     filePath = null,
@@ -256,35 +256,31 @@
     });
   }
 
-  // Mount the EditorView once the host node exists. Only `host` is a tracked
-  // dependency — the content/filePath reads are wrapped in untrack(). Otherwise
-  // every keystroke (which mutates `content`) re-runs this effect, and its
-  // cleanup destroys + recreates the whole EditorView, collapsing the caret to 0
-  // and dropping focus ("editor jumps / loses focus while typing"). Subsequent
-  // content/file changes are handled by the doc-swap effect below, on the SAME
-  // view instance.
+  // Mount the EditorView once the host node exists.
+  // The parent wraps this component in {#key filePath} so onMount fires fresh
+  // for each new file, providing the same file-switch doc-swap behaviour.
+  // Same-file content updates (external edits while the file is open) are
+  // handled by the exported updateContent() method called from the parent.
   let detachScroll: (() => void) | null = null;
-  $effect(() => {
-    if (!host || view) return;
-    untrack(() => {
-      currentLanguage = languageForPath(filePath);
-      appliedPath = filePath;
-      view = new EditorView({ state: buildState(content), parent: host });
-      // Editor→preview scroll sync: emit the top visible line as the user
-      // scrolls (rAF-coalesced). Bound to scrollDOM rather than updateListener
-      // because pure scrolling doesn't produce editor transactions.
-      const v = view;
-      const onScroll = () => {
-        if (anchorRaf) return;
-        anchorRaf = requestAnimationFrame(() => {
-          anchorRaf = 0;
-          const line = topVisibleLine(v);
-          if (line != null) emitAnchorLine(line, "scroll");
-        });
-      };
-      v.scrollDOM.addEventListener("scroll", onScroll, { passive: true });
-      detachScroll = () => v.scrollDOM.removeEventListener("scroll", onScroll);
-    });
+  onMount(() => {
+    if (!host) return;
+    currentLanguage = languageForPath(filePath);
+    appliedPath = filePath;
+    view = new EditorView({ state: buildState(content), parent: host });
+    // Editor→preview scroll sync: emit the top visible line as the user
+    // scrolls (rAF-coalesced). Bound to scrollDOM rather than updateListener
+    // because pure scrolling doesn't produce editor transactions.
+    const v = view;
+    const onScroll = () => {
+      if (anchorRaf) return;
+      anchorRaf = requestAnimationFrame(() => {
+        anchorRaf = 0;
+        const line = topVisibleLine(v);
+        if (line != null) emitAnchorLine(line, "scroll");
+      });
+    };
+    v.scrollDOM.addEventListener("scroll", onScroll, { passive: true });
+    detachScroll = () => v.scrollDOM.removeEventListener("scroll", onScroll);
     return () => {
       if (anchorRaf) cancelAnimationFrame(anchorRaf);
       anchorRaf = 0;
@@ -295,68 +291,35 @@
     };
   });
 
-  // Swap the document when the selected file (or its loaded content) changes.
-  // Keyed on filePath so re-loading the SAME file (e.g. external edit) replaces
-  // text only when content actually differs from what's in the view.
-  $effect(() => {
-    const nextDoc = content;
-    // Track filePath so the effect re-runs on file switch even if content
-    // happens to match.
-    const nextPath = filePath;
-    const nextLang = languageForPath(filePath);
+  /**
+   * Apply an externally-updated content for the currently-open file (e.g. an
+   * external editor saved the same file). Preserves caret and scroll position
+   * so the editor never jumps mid-edit. Called by the parent when the file
+   * content changes without a file switch (same filePath, different content).
+   */
+  export function updateContent(nextDoc: string): void {
     if (!view) return;
-
-    // Switching to a different file is a fresh document: the prior caret/scroll
-    // is meaningless against new content, so let the replace reset to the top.
-    // Re-applying content for the SAME file (external-edit reload) preserves the
-    // caret/scroll so the editor never jumps mid-edit (#38).
-    const sameFile = nextPath === appliedPath;
-    appliedPath = nextPath;
-
-    // Reconfigure language + CSS-only extensions when switching to a file of a
-    // different type (e.g. .md → .css). Compartment.reconfigure swaps the
-    // extension without tearing the view down (same instance, new mode).
-    if (nextLang !== currentLanguage) {
-      currentLanguage = nextLang;
-      view.dispatch({
-        effects: [
-          languageCompartment.reconfigure(languageExtension(nextLang)),
-          cssLintCompartment.reconfigure(cssLintExtensions(nextLang)),
-          cssCompletionCompartment.reconfigure(cssCompletionExtensions(nextLang)),
-        ],
-      });
-    }
-
     const current = view.state.doc.toString();
     if (current === nextDoc) return;
     applyingExternal = true;
-    if (sameFile) {
-      // Same-file content replace (external-edit reload): a naive full-document
-      // dispatch collapses the selection to offset 0 and snaps scroll to the top
-      // — the editor would "jump" mid-edit. Clamp the existing selection into the
-      // new document and keep the viewport anchored to the caret.
-      const prevSel = view.state.selection;
-      const docLen = nextDoc.length;
-      const clampedSel = prevSel.ranges.map((r) =>
-        EditorSelection.range(Math.min(r.anchor, docLen), Math.min(r.head, docLen)),
-      );
-      view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: nextDoc },
-        selection: EditorSelection.create(
-          clampedSel,
-          Math.min(prevSel.mainIndex, clampedSel.length - 1),
-        ),
-        effects: EditorView.scrollIntoView(Math.min(prevSel.main.head, docLen)),
-        scrollIntoView: false,
-      });
-    } else {
-      // Different file: fresh document, reset caret/scroll to the top.
-      view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: nextDoc },
-      });
-    }
+    // Same-file content replace: clamp existing selection into the new document
+    // and keep the viewport anchored to the caret.
+    const prevSel = view.state.selection;
+    const docLen = nextDoc.length;
+    const clampedSel = prevSel.ranges.map((r) =>
+      EditorSelection.range(Math.min(r.anchor, docLen), Math.min(r.head, docLen)),
+    );
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: nextDoc },
+      selection: EditorSelection.create(
+        clampedSel,
+        Math.min(prevSel.mainIndex, clampedSel.length - 1),
+      ),
+      effects: EditorView.scrollIntoView(Math.min(prevSel.main.head, docLen)),
+      scrollIntoView: false,
+    });
     applyingExternal = false;
-  });
+  }
 
   /** Move keyboard focus into the editor (used when the pane is opened). */
   export function focus(): void {

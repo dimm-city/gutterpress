@@ -22,6 +22,42 @@ import type {
   CreateProjectResult,
 } from "@dimm-city/print-md";
 
+// Shared IPC payload types — imported from the single source of truth.
+// Both electron/bridge-types.ts and this file reference shared-types.ts,
+// so these types cannot drift between the host and renderer sides.
+import type {
+  UpdaterStatus,
+  UpdaterEventPayload,
+  AppSettings,
+  DeepPartial,
+  ProjectState,
+  ViewerPrefs as SharedViewerPrefs,
+  LeftPanelPrefs,
+  DeviceCodeInfo,
+  RemoteConnection,
+  RemoteRepository,
+  RemoteBranch,
+  RepoBook,
+  CloneProgressEvent,
+  CloneRepositoryArgs,
+  RemoteAccessResult,
+  ProjectRemoteDiagnosis as SharedProjectRemoteDiagnosis,
+  ConflictKind,
+  ConflictFileInfo,
+  ConflictResolutionChoice,
+  SyncOutcome,
+  ResolveSyncConflictsArgs,
+  ConnectGenericHostArgs,
+  HostConnectionInfo,
+  SnapshotEntry,
+  SnapshotPage,
+  RestoreVersionResult,
+  PreviewStartResult,
+  BuildResult,
+  ExportProgressEvent,
+  UrlPreviewBlockedEvent,
+} from "./shared-types";
+
 export type {
   PlatformAdapter,
   ProjectSource,
@@ -31,6 +67,37 @@ export type {
   CreateProjectOptions,
   AdoptFolderOptions,
   CreateProjectResult,
+};
+
+// Re-export the shared IPC payload types for consumers of contract.ts.
+export type {
+  UpdaterStatus,
+  UpdaterEventPayload,
+  AppSettings,
+  DeepPartial,
+  ProjectState,
+  DeviceCodeInfo,
+  RemoteConnection,
+  RemoteRepository,
+  RemoteBranch,
+  RepoBook,
+  CloneProgressEvent,
+  CloneRepositoryArgs,
+  RemoteAccessResult,
+  ConflictKind,
+  ConflictFileInfo,
+  ConflictResolutionChoice,
+  SyncOutcome,
+  ResolveSyncConflictsArgs,
+  ConnectGenericHostArgs,
+  HostConnectionInfo,
+  SnapshotEntry,
+  SnapshotPage,
+  RestoreVersionResult,
+  PreviewStartResult,
+  BuildResult,
+  ExportProgressEvent,
+  UrlPreviewBlockedEvent,
 };
 
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
@@ -67,28 +134,8 @@ export interface ProjectClassification {
 
 // ── Local version history (#13) ───────────────────────────────────────────────
 //
-// Mirrors the lib's source-provider types — defined locally so the SPA never
-// value-imports the lib (and its isomorphic-git/node deps) into the renderer
-// bundle (§8 / ADR 0004).
-
-/** One entry in a project's version history (a Git commit, abstracted). */
-export interface SnapshotEntry {
-  /** Opaque revision id (a commit SHA for the local provider). */
-  id: string;
-  /** Author-supplied or auto-generated snapshot message. */
-  message: string;
-  /** Epoch milliseconds the snapshot was taken. */
-  timestamp: number;
-  /** Display name recorded for the snapshot author, if any. */
-  author?: string;
-}
-
-/** One bounded page of version history (mirrors the lib's HistoryPage). */
-export interface SnapshotPage {
-  entries: SnapshotEntry[];
-  /** Older entries exist — pass the last entry's id as `before` to continue. */
-  hasMore: boolean;
-}
+// SnapshotEntry, SnapshotPage, RestoreVersionResult imported from shared-types
+// (exported at the top of this file). Defined once, not mirrored.
 
 /** Paging inputs for {@link HostServices.listSnapshotsPage}. */
 export interface ListSnapshotsOptions {
@@ -96,12 +143,6 @@ export interface ListSnapshotsOptions {
   limit?: number;
   /** Continuation cursor: the id of the previous page's LAST entry. */
   before?: string;
-}
-
-/** Result of a safe restore (#13): backupId is the automatic pre-restore snapshot. */
-export interface RestoreVersionResult {
-  restoredId: string;
-  backupId?: string;
 }
 
 /**
@@ -237,24 +278,13 @@ export interface StyleToken {
   unit?: string;
 }
 
-// ── Host RPC payload shapes (mirror electron/preload.ts + types.d.ts) ─────────
+// ── Host RPC payload shapes ────────────────────────────────────────────────
+//
+// UpdaterStatus and UpdaterEventPayload are imported from shared-types above
+// (exported at the top of this file). UpdaterEvent is an alias for the same type.
 
-export interface UpdaterStatus {
-  currentVersion: string | null;
-  stagedVersion: string | null;
-  availableVersion: string | null;
-  phase: "idle" | "checking" | "downloading" | "staged" | "error";
-  lastCheckAt: string | null;
-  error: string | null;
-}
-
-export type UpdaterEvent =
-  | { type: "available"; version: string }
-  | { type: "staged"; version: string }
-  | { type: "uptodate"; reason?: string }
-  | { type: "healthy"; version: string }
-  | { type: "rolledback"; version: string }
-  | { type: "error"; message: string };
+/** Alias so existing code referencing UpdaterEvent continues to compile. */
+export type UpdaterEvent = UpdaterEventPayload;
 
 export interface UpdaterApi {
   getStatus(): Promise<UpdaterStatus>;
@@ -312,59 +342,11 @@ export interface FavoriteEntry {
   exists: boolean;
 }
 
-/**
- * Per-project editor/preview state keyed by folder path (#43).
- *
- * `currentPage` and `viewMode` are live today; the remaining fields are written
- * by the forthcoming in-app editor (#38) / chapter list (#42). They are carried
- * through JSON as dead schema now so #38 can persist them without further
- * main.ts changes.
- */
-export interface ProjectState {
-  currentPage?: number;
-  viewMode?: "single" | "two-column";
-  lastChapter?: string;
-  sidebarOpen?: boolean;
-  cursorLine?: number;
-  editorScroll?: number;
-  splitPaneRatio?: number;
-}
+// ProjectState and ViewerPrefs are imported from shared-types above
+// (re-exported at the top of this file). ViewerPrefs.leftPanel is typed as
+// LeftPanelPrefs — both defined in shared-types.ts and re-exported here.
 
-export interface ViewerPrefs {
-  lastProjectDir?: string | null;
-  /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
-  sidebarOpen?: boolean;
-  /** @deprecated (#43) migration fallback — read `projectStates[dir]` instead. */
-  currentPage?: number;
-  /** @deprecated (#43) migration fallback — read `projectStates[dir]` instead. */
-  viewMode?: "single" | "two-column";
-  recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
-  favorites?: Array<{ path: string; title: string }>;
-  /** Per-project editor/preview state keyed by folder path (#43). */
-  projectStates?: Record<string, ProjectState>;
-  /**
-   * Root directories scanned by `discoverProjects()` (#27). Defaults to
-   * `[~/Documents, ~/Desktop]` in the main process when unset. No Settings UI
-   * yet — that belongs to #45.
-   */
-  projectSearchRoots?: string[];
-  /**
-   * Last classified source of the open project (#12). A cached hint only — the
-   * app always re-classifies on folder open (a user may add/remove `.git`
-   * between sessions), so this never overrides a fresh detection.
-   */
-  projectSource?: ProjectSource;
-  /** Global left panel open state + active tab, persisted across sessions. */
-  leftPanel?: LeftPanelPrefs;
-}
-
-/** Persisted state of the global left panel (open + active tab). */
-export interface LeftPanelPrefs {
-  open?: boolean;
-  activeTab?: "toc" | "files" | "media" | "projects" | "history";
-  /** Panel width in px (user-resizable, clamped 200–480). */
-  width?: number;
-}
+export type { SharedViewerPrefs as ViewerPrefs, LeftPanelPrefs };
 
 /** A print-md project discovered by the background scan (#27). */
 export interface DiscoveredProject {
@@ -374,76 +356,15 @@ export interface DiscoveredProject {
 
 // ── Managed GitHub integration (#15, ADR 0006) ────────────────────────────────
 //
-// Mirrors the lib's remote-auth types — defined locally so the SPA never
-// value-imports the lib (§8 / ADR 0004). Tokens NEVER reach the renderer:
-// `RemoteConnection` is redacted status only.
-
-/** What the UI shows during the GitHub device flow (code + where to enter it). */
-export interface DeviceCodeInfo {
-  userCode: string;
-  verificationUri: string;
-  expiresIn: number;
-  interval: number;
-}
-
-/** Redacted connection status for a remote host — never carries the token. */
-export interface RemoteConnection {
-  connected: boolean;
-  username?: string;
-  label?: string;
-}
-
-/** One repository the user can open from GitHub. */
-export interface RemoteRepository {
-  owner: string;
-  name: string;
-  fullName: string;
-  private: boolean;
-  defaultBranch: string;
-  htmlUrl: string;
-}
-
-/** One branch of a remote repository. */
-export interface RemoteBranch {
-  name: string;
-}
-
-/** One print-md book found inside a repository (Choose-a-book step). */
-export interface RepoBook {
-  /** Book folder relative to the repo root, "/"-separated ("" = the root). */
-  path: string;
-  /** Display name (folder basename; the repo name for the root). */
-  name: string;
-}
-
-/** Coarse clone progress pushed from the host while a project downloads. */
-export interface CloneProgressEvent {
-  phase: string;
-  loaded: number;
-  total?: number;
-}
-
-/** Inputs for cloning a repository into a new local project folder. */
-export interface CloneRepositoryArgs {
-  url: string;
-  parentDir: string;
-  folderName: string;
-  branch?: string;
-  owner?: string;
-  repo?: string;
-  /**
-   * Book subfolder to open after the clone (repo-relative, "/"-separated).
-   * The whole repository is still downloaded once; the chosen folder opens
-   * as the project. Empty/absent opens the repository root.
-   */
-  subPath?: string;
-}
+// DeviceCodeInfo, RemoteConnection, RemoteRepository, RemoteBranch, RepoBook,
+// CloneProgressEvent, CloneRepositoryArgs imported from shared-types above
+// (re-exported at the top of this file).
 
 // ── Advanced Setup (#14, ADR 0006 D3/D7) ──────────────────────────────────────
 //
-// Mirrors the lib's diagnose/test-access/generic-auth types — defined locally
-// so the SPA never value-imports the lib (§8 / ADR 0004). Tokens flow renderer
-// → host exactly once (connectGenericHost) and never come back.
+// RemoteAccessResult and ProjectRemoteDiagnosis imported from shared-types above
+// (re-exported at the top of this file). The refined ForgeKind / RemoteGuidanceId
+// named aliases below give consumers more semantic type names.
 
 /** Why a remote-access probe failed, in machine-readable form. */
 export type RemoteAccessFailureReason =
@@ -453,11 +374,6 @@ export type RemoteAccessFailureReason =
   | "ssh-unsupported"
   | "tls"
   | "unknown";
-
-/** Outcome of the explicit "Test Remote Access" probe (a refs listing). */
-export type RemoteAccessResult =
-  | { ok: true; defaultBranch?: string; refCount: number }
-  | { ok: false; reason: RemoteAccessFailureReason; message: string };
 
 /** Recognized forge families, for per-provider guidance copy. */
 export type ForgeKind =
@@ -477,23 +393,8 @@ export type RemoteGuidanceId =
   | "ready-to-sync"
   | "ssh-use-own-tools";
 
-/** Environment status for the Advanced Setup panel. Local reads only. */
-export interface ProjectRemoteDiagnosis {
-  classification: ProjectSource;
-  /** Sanitized remote URL (no embedded credentials), when one exists. */
-  remoteUrl?: string;
-  remoteHost?: string;
-  remoteProtocol: "https" | "ssh" | "none";
-  branch?: string;
-  /** A credential for `remoteHost` is stored on this computer. */
-  credentialPresent: boolean;
-  provider: ForgeKind | null;
-  /** Token-settings deep link for recognized non-GitHub forges. */
-  tokenSettingsUrl: string | null;
-  /** ADR 0006 D4: HTTPS remote + stored credential — the Sync gate. */
-  canSync: boolean;
-  guidance: RemoteGuidanceId;
-}
+/** Environment status for the Advanced Setup panel — re-exported from shared-types. */
+export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
 
 // ── Auto-sync orchestrator status (transparent sync, §4.4 integration plan) ──
 //
@@ -646,139 +547,21 @@ export interface SyncStatus {
 
 // ── Sync (#15 sync phase, ADR 0006 D5) ────────────────────────────────────────
 //
-// Mirrors the lib's sync types — defined locally so the SPA never
-// value-imports the lib (§8 / ADR 0004). Outcomes are returned (not thrown):
-// the lib maps every failure to an author-friendly status the dialog renders.
-
-/** How one conflicted file differs between the two copies. */
-export type ConflictKind = "both-edited" | "you-deleted" | "online-deleted";
-
-/** One file that changed in both the local and the online copy. */
-export interface ConflictFileInfo {
-  path: string;
-  kind: ConflictKind;
-}
-
-/** The author's per-file decision (Keep mine / Use online / Keep both). */
-export interface ConflictResolutionChoice {
-  path: string;
-  choice: "mine" | "theirs" | "both";
-}
-
-/** Outcome of a sync (or conflict-resolution) attempt. */
-export type SyncOutcome =
-  | {
-      status: "synced";
-      message: string;
-      snapshotId?: string;
-      mergedRemoteChanges: boolean;
-    }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
-  | {
-      status: "conflict";
-      message: string;
-      files: ConflictFileInfo[];
-      localId: string;
-      remoteId: string;
-      snapshotId?: string;
-    }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
-
-/** Inputs for applying the author's conflict choices. */
-export interface ResolveSyncConflictsArgs {
-  projectDir: string;
-  resolutions: ConflictResolutionChoice[];
-  /** Echo of the conflict outcome's `localId`. */
-  localId: string;
-  /** Echo of the conflict outcome's `remoteId`. */
-  remoteId: string;
-}
-
-/** Inputs for the generic "Connect a Git server" token flow. */
-export interface ConnectGenericHostArgs {
-  host: string;
-  username?: string;
-  token: string;
-  /** Optional repository URL to validate against (full probe must succeed). */
-  repoUrl?: string;
-}
-
-/** Redacted stored-connection entry — never carries tokens. */
-export interface HostConnectionInfo {
-  host: string;
-  kind: "github-oauth" | "token";
-  username?: string;
-  label?: string;
-  createdAt: number;
-}
+// ConflictKind, ConflictFileInfo, ConflictResolutionChoice, SyncOutcome,
+// ResolveSyncConflictsArgs, ConnectGenericHostArgs, HostConnectionInfo
+// imported from shared-types above (re-exported at the top of this file).
 
 // ── User settings (#45) ──────────────────────────────────────────────────────
 //
-// Persisted, section-organised user preferences. Distinct from `ViewerPrefs`
-// (session/per-project state). Stored in `userData/app-settings.json` on desktop
-// and `localStorage` on the web PWA.
-//
-// Adding a new setting requires ONE line: add the key + default to the relevant
-// section of `DEFAULT_SETTINGS` (its type is inferred). A matching UI control in
-// `SettingsDialog.svelte` is the only other change needed.
-
-export interface AppSettings {
-  editor: {
-    fontFamily: string;
-    fontSize: number;
-    lineHeight: number;
-    spellCheckLanguage: string;
-    autoSaveDelay: number;
-    /** Write crash-recovery sidecar snapshots while editing (#44). */
-    crashRecovery: boolean;
-  };
-  appearance: {
-    theme: "light" | "dark" | "system";
-    previewBg: string;
-  };
-  preview: {
-    defaultZoom: string;
-    viewMode: "single" | "two-column";
-    /**
-     * On small/narrow viewports the editor and preview can't sit side by side,
-     * so the workspace collapses to a single pane and this picks which one is
-     * shown. Ignored above the responsive breakpoint (split layout). (#responsive)
-     */
-    paneMode: "edit" | "view";
-  };
-  versionHistory: {
-    /**
-     * Save automatic snapshots while the author works (RC1-3): the host arms a
-     * quiet-period timer on every save and snapshots when edits settle, plus on
-     * project close / app quit. Only for projects that already have version
-     * history — a plain folder is never auto-initialised. Default ON.
-     */
-    autoSnapshot: boolean;
-    /** Minutes of quiet after the last edit before a snapshot fires (floor 5). */
-    autoSnapshotMinutes: number;
-    /**
-     * Automatically sync to the remote in the background when a remote is
-     * configured (transparent-sync plan §6). Defaults ON for projects with
-     * canSync; local-only projects are never auto-synced regardless of this
-     * setting. The author sees only the ambient sync:status pill and is
-     * interrupted only when a real content conflict requires a choice.
-     */
-    autoSync: boolean;
-    /** Periodic safety-sync cadence in minutes (clamped to [1, 1440]). */
-    autoSyncMinutes: number;
-  };
-  advanced: {
-    fileWatcherInterval: number;
-    logLevel: "error" | "warn" | "info" | "debug";
-  };
-}
+// AppSettings is imported from shared-types above (re-exported at the top of
+// this file). Adding a new setting: add the key + default to DEFAULT_SETTINGS
+// AND update shared-types.ts. A matching UI control in SettingsDialog.svelte
+// is the only other change needed.
 
 /**
- * Canonical defaults. The single source of truth for the settings schema — its
- * shape defines `AppSettings`. The inline `+page.svelte` defaults that used to
- * live as local `$state` (#5a5a5a / two-column / fit-width) now live here.
+ * Canonical defaults. The single source of truth for the settings schema.
+ * The inline `+page.svelte` defaults that used to live as local `$state`
+ * (#5a5a5a / two-column / fit-width) now live here.
  */
 export const DEFAULT_SETTINGS: AppSettings = {
   editor: {
@@ -810,21 +593,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
 };
 
-/** A recursively-optional view of `T` — used for settings patches. */
-export type DeepPartial<T> = {
-  [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
-};
+// DeepPartial, PreviewStartResult, BuildResult, ExportProgressEvent,
+// UrlPreviewBlockedEvent imported from shared-types above (re-exported at
+// the top of this file).
 
 export interface PreviewStartArgs {
   input: FolderRef;
-}
-
-export interface PreviewStartResult {
-  url: string;
-  port: number;
-  input: string;
-  title: string | null;
-  missingSharedAssets?: string[];
 }
 
 export interface BuildArgs {
@@ -839,32 +613,6 @@ export interface BuildArgs {
   skipLint?: boolean;
   skipPreValidate?: boolean;
   skipPostValidate?: boolean;
-}
-
-export interface BuildResult {
-  exportId?: string;
-  outDir: string;
-  htmlPath?: string;
-  pdfPath?: string;
-  fingerprintPath?: string;
-  /**
-   * Web save-as path (#49): on a future PWA, build returns a download token/URL
-   * and the adapter triggers a browser download. Unused/undefined on Electron,
-   * which writes the output to a real path (`pdfPath`/`htmlPath`).
-   */
-  downloadUrl?: string;
-}
-
-export interface ExportProgressEvent {
-  exportId: string;
-  state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
-  pages?: number;
-  message?: string;
-}
-
-export interface UrlPreviewBlockedEvent {
-  url: string;
-  reason: string;
 }
 
 /** OS appearance state (#48). Resolved against "system" theme mode. */
@@ -1108,18 +856,10 @@ export interface Platform extends Omit<PlatformAdapter, "openFolder">, HostServi
    */
   openFolder(): Promise<FolderRef | null>;
 
-  /**
-   * Re-open a previously opened project by its `key` (from a recents/favorites
-   * entry), restoring host access to it. On a PWA this reloads the persisted
-   * File System Access handle from IndexedDB and re-requests its read/write
-   * permission — which the browser only grants inside a USER GESTURE, so the SPA
-   * MUST call this directly from the recents "Reopen" click handler. On Electron
-   * the key is already an absolute path with standing access, so this just
-   * re-wraps it as a FolderRef. Rejects when access cannot be restored
-   * (permission denied, or the saved handle is gone).
-   */
-  reopenFolder(key: string): Promise<FolderRef>;
 }
+// NOTE: reopenFolder was removed from HostServices (no SPA caller in v1).
+// The WebAdapter retains its implementation for the FSA permission re-grant
+// flow that will be wired up when the PWA ships.
 
 /**
  * The raw `window.electron` bridge shape exposed by `electron/preload.ts`.

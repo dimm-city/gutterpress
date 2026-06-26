@@ -27,15 +27,19 @@
     RemoteConnection,
     HostConnectionInfo,
   } from "$lib/platform/contract";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
     projectDir,
     triggerEl,
+    onClosed,
   }: {
     open?: boolean;
     projectDir: string | null;
     triggerEl?: HTMLButtonElement | undefined;
+    /** Called whenever the dialog closes. Useful for post-close refresh. */
+    onClosed?: () => void;
   } = $props();
 
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
@@ -66,11 +70,9 @@
   let disconnecting = $state<string | null>(null);
   let disconnectError = $state<string | null>(null);
 
-  $effect(() => {
-    if (!open) return;
-    // Full reset on every open — especially the token field. Bumping the
-    // generation here also invalidates any load still in flight from a
-    // previous open.
+  let serverInputTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function onDialogMount(_el: HTMLElement) {
     loadGen += 1;
     diag = null;
     testResult = null;
@@ -84,26 +86,26 @@
     tokenUrl = null;
     queueMicrotask(() => dialogEl?.focus());
     void load();
-  });
+    return {
+      destroy() {
+        clearTimeout(serverInputTimer);
+        serverInputTimer = undefined;
+      },
+    };
+  }
 
-  // Resolve the token-settings deep link as the user types a server address.
-  $effect(() => {
+  function onServerInput(e: Event) {
+    serverInput = (e.currentTarget as HTMLInputElement).value;
+    clearTimeout(serverInputTimer);
     const value = serverInput.trim();
-    if (!value) {
-      tokenUrl = null;
-      return;
-    }
-    const timer = setTimeout(() => {
+    if (!value) { tokenUrl = null; return; }
+    serverInputTimer = setTimeout(() => {
       api.remote
         .forgeTokenUrl(value)
-        .then((url) => {
-          // Ignore stale answers after further typing.
-          if (serverInput.trim() === value) tokenUrl = url;
-        })
+        .then((url) => { if (serverInput.trim() === value) tokenUrl = url; })
         .catch(() => (tokenUrl = null));
     }, 300);
-    return () => clearTimeout(timer);
-  });
+  }
 
   async function load() {
     if (!isDesktop()) return;
@@ -252,33 +254,11 @@
     return safe || "The connection test failed. See the app log for details.";
   }
 
-  function focusableElements() {
-    return Array.from(
-      dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    );
-  }
-
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab") return;
-    const focusable = focusableElements();
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-
   function close() {
     tokenInput = ""; // belt and braces — never carry a token across closes
     open = false;
     triggerEl?.focus();
+    onClosed?.();
   }
 </script>
 
@@ -292,7 +272,8 @@
     aria-modal="true"
     aria-labelledby="advanced-setup-title"
     tabindex="-1"
-    onkeydown={trapFocus}
+    onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:onDialogMount
   >
     <header class="dialog-header">
       <h2 id="advanced-setup-title">Advanced setup</h2>
@@ -385,7 +366,8 @@
           <span>Server address</span>
           <input
             type="text"
-            bind:value={serverInput}
+            value={serverInput}
+            oninput={onServerInput}
             placeholder="git.example.com"
             spellcheck="false"
             autocomplete="off"

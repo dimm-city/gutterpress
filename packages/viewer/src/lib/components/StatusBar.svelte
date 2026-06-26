@@ -146,12 +146,14 @@
       </button>
     {/if}
     {#if showSync}
-      <SyncStatusPill
-        {projectDir}
-        onReconnect={onReconnect}
-        onConflict={onConflict}
-        onDetails={onShowLog}
-      />
+      {#key projectDir}
+        <SyncStatusPill
+          {projectDir}
+          onReconnect={onReconnect}
+          onConflict={onConflict}
+          onDetails={onShowLog}
+        />
+      {/key}
     {/if}
     {#if (showSync || showForceSync) && fileOpen}
       <span class="status-sep" aria-hidden="true"></span>

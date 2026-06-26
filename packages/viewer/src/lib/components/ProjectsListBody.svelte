@@ -8,6 +8,7 @@
    * The parent passes callback props for actions so this component is purely
    * presentational with data-loading.
    */
+  import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
@@ -105,7 +106,7 @@
   }
 
   // Load on mount
-  $effect(() => {
+  onMount(() => {
     void loadLists();
   });
 
@@ -146,7 +147,10 @@
   );
 
   const DISCOVERED_CAP = 8;
-  let discoveredExpanded = $state(false);
+  // expandedForFilter: the effectiveFilter value at the time the user clicked
+  // "Show all". When the filter changes, this no longer matches effectiveFilter
+  // and the list collapses again — no $effect needed.
+  let expandedForFilter = $state<string | null>(null);
 
   let filteredDiscovered = $derived.by<DiscoveredProject[]>(() => {
     // #49: dedup discovered against recents/favorites by FolderRef.key.
@@ -158,6 +162,9 @@
       (d) => !shown.has(d.path) && matchesFilter(d.path, d.title, effectiveFilter)
     );
   });
+
+  // Expanded only when the user explicitly expanded FOR the current filter.
+  let discoveredExpanded = $derived(expandedForFilter === effectiveFilter);
 
   let visibleDiscovered = $derived(
     discoveredExpanded ? filteredDiscovered : filteredDiscovered.slice(0, DISCOVERED_CAP)
@@ -186,12 +193,6 @@
     if (!v) return false;
     if (isLiteralPath(v) || isUrl(v)) return true;
     return allRows.length > 0;
-  });
-
-  // Reset expansion on filter change
-  $effect(() => {
-    filteredDiscovered; // track
-    discoveredExpanded = false;
   });
 
   function isFavorited(key: string): boolean {
@@ -424,7 +425,7 @@
           {/each}
         </ul>
         {#if filteredDiscovered.length > DISCOVERED_CAP}
-          <button class="show-all-btn" onclick={() => (discoveredExpanded = !discoveredExpanded)}>
+          <button class="show-all-btn" onclick={() => (expandedForFilter = discoveredExpanded ? null : effectiveFilter)}>
             {discoveredExpanded ? "Show fewer" : `Show all ${filteredDiscovered.length} discovered`}
           </button>
         {/if}

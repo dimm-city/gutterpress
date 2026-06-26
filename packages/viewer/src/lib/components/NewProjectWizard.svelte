@@ -3,6 +3,7 @@
   import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import type { TemplateInfo } from "$lib/api";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
@@ -110,29 +111,6 @@
     triggerEl?.focus();
   }
 
-  function focusableElements() {
-    return Array.from(
-      dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    );
-  }
-
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab") return;
-    const focusable = focusableElements();
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-
   async function chooseLocation() {
     if (!isDesktop()) {
       error = "Creating a project needs the desktop app.";
@@ -203,7 +181,7 @@
     aria-modal="true"
     aria-labelledby="new-project-title"
     tabindex="-1"
-    onkeydown={trapFocus}
+    onkeydown={(e) => trapFocus(e, dialogEl)}
   >
     <header class="dialog-header">
       <h2 id="new-project-title">Create a new book</h2>

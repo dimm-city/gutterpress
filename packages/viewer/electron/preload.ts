@@ -1,78 +1,37 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type {
+  UpdaterStatus,
+  UpdaterEventPayload,
+  DeviceCodeInfo,
+  RemoteConnection,
+  RemoteRepository,
+  RemoteBranch,
+  RepoBook,
+  CloneProgressEvent,
+  CloneRepositoryArgs,
+  ConflictFileInfo,
+  ConflictResolutionChoice,
+  SyncOutcome,
+  ResolveSyncConflictsArgs,
+  RawPreviewStartArgs,
+  PreviewStartResult,
+  RawBuildArgs,
+  BuildResult,
+  ExportProgressEvent,
+  UrlPreviewBlockedEvent,
+} from "./bridge-types";
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
  * Renderer never imports node:* or electron itself — all native work
  * happens here, in the preload, or in main via ipcRenderer.invoke.
+ *
+ * Shared IPC payload types (UpdaterStatus, SyncOutcome, AppSettings, etc.)
+ * are imported from ./bridge-types (which re-exports from
+ * src/lib/platform/shared-types.ts). No more duplicate type declarations.
  */
 
-// ──────────────────────────────────────────────────────────────────────────
-// Updater types — mirror electron/updater/contract.ts; kept local so the
-// preload never imports from the main-process updater module.
-// ──────────────────────────────────────────────────────────────────────────
-
-interface UpdaterStatus {
-  currentVersion: string | null;
-  stagedVersion: string | null;
-  availableVersion: string | null;
-  phase: "idle" | "checking" | "downloading" | "staged" | "error";
-  lastCheckAt: string | null;
-  error: string | null;
-}
-
-type UpdaterEventPayload =
-  | { type: "available"; version: string }
-  | { type: "staged"; version: string }
-  | { type: "uptodate"; reason?: string }
-  | { type: "healthy"; version: string }
-  | { type: "rolledback"; version: string }
-  | { type: "error"; message: string };
-
-interface PreviewStartArgs {
-  input: string;
-}
-
-interface PreviewStartResult {
-  url: string;
-  port: number;
-  input: string;
-  title: string | null;
-  missingSharedAssets?: string[];
-}
-
-interface BuildArgs {
-  input: string;
-  format: "pdf" | "html" | "pdfx";
-  out?: string;
-  title?: string;
-  pdfxFlavor?: string;
-  icc?: string;
-  manifest?: string;
-  stripAnnotations?: boolean;
-  skipLint?: boolean;
-  skipPreValidate?: boolean;
-  skipPostValidate?: boolean;
-}
-
-interface BuildResult {
-  exportId?: string;
-  outDir: string;
-  htmlPath?: string;
-  pdfPath?: string;
-  fingerprintPath?: string;
-}
-
-interface ExportProgressEvent {
-  exportId: string;
-  state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
-  pages?: number;
-  message?: string;
-}
-
-interface UrlPreviewBlockedEvent {
-  url: string;
-  reason: string;
-}
+// ── Types used only in preload (not shared with the renderer contract) ────
 
 // New-project scaffold (#25). Mirrors the lib's CreateProjectOptions/Result.
 interface CreateProjectOptions {
@@ -113,7 +72,6 @@ interface StyleToken {
 interface RecentFolderEntry {
   path: string;
   title: string;
-  openedAt: string;
 }
 
 interface FavoriteEntry {
@@ -121,278 +79,14 @@ interface FavoriteEntry {
   title: string;
 }
 
-interface ProjectState {
-  currentPage?: number;
-  viewMode?: "single" | "two-column";
-  lastChapter?: string;
-  sidebarOpen?: boolean;
-  cursorLine?: number;
-  editorScroll?: number;
-  splitPaneRatio?: number;
-}
-
-interface ViewerPrefs {
-  lastProjectDir?: string | null;
-  /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
-  sidebarOpen?: boolean;
-  /** @deprecated (#43) migration fallback — use projectStates[dir]. */
-  currentPage?: number;
-  /** @deprecated (#43) migration fallback — use projectStates[dir]. */
-  viewMode?: "single" | "two-column";
-  recentFolders?: RecentFolderEntry[];
-  favorites?: FavoriteEntry[];
-  projectStates?: Record<string, ProjectState>;
-  projectSearchRoots?: string[];
-  projectSource?: ProjectSourceHint;
-  /** Global left panel open state + active tab, persisted across sessions. */
-  leftPanel?: {
-    open?: boolean;
-    activeTab?: "toc" | "files" | "media" | "projects" | "history";
-    /** Panel width in px (user-resizable, clamped 200–480). */
-    width?: number;
-  };
-}
-
-/** Forward ref used by ViewerPrefs above; full union declared below. */
-type ProjectSourceHint =
-  | { type: "local-folder"; path: string }
-  | {
-      type: "local-git-folder";
-      path: string;
-      repoRoot: string;
-      subPath: string;
-      hasRemote: boolean;
-      remoteUrl?: string;
-      branch?: string;
-    }
-  | {
-      type: "managed-github";
-      owner: string;
-      repo: string;
-      branch: string;
-      rootPath?: string;
-    };
-
 interface DiscoveredProject {
   path: string;
   title: string;
 }
 
-// ── Managed GitHub integration (#15). Mirrors the lib's remote-auth types. ──
-interface DeviceCodeInfo {
-  userCode: string;
-  verificationUri: string;
-  expiresIn: number;
-  interval: number;
-}
-interface RemoteConnection {
-  connected: boolean;
-  username?: string;
-  label?: string;
-}
-interface RemoteRepository {
-  owner: string;
-  name: string;
-  fullName: string;
-  private: boolean;
-  defaultBranch: string;
-  htmlUrl: string;
-}
-interface RemoteBranch {
-  name: string;
-}
-interface RepoBook {
-  /** Book folder relative to the repo root ("" = the root itself). */
-  path: string;
-  /** Display name (folder basename; the repo name for the root). */
-  name: string;
-}
-interface CloneProgressEvent {
-  phase: string;
-  loaded: number;
-  total?: number;
-}
-interface CloneRepositoryArgs {
-  url: string;
-  parentDir: string;
-  folderName: string;
-  branch?: string;
-  owner?: string;
-  repo?: string;
-  /** Book subfolder to open after the clone ("" / absent = repo root). */
-  subPath?: string;
-}
-
-// ── Advanced Setup (#14). Mirrors the lib's diagnose/test-access types. ──
-type RemoteAccessResult =
-  | { ok: true; defaultBranch?: string; refCount: number }
-  | {
-      ok: false;
-      reason: "auth" | "not-found" | "unreachable" | "ssh-unsupported" | "tls" | "unknown";
-      message: string;
-    };
-
-interface ProjectRemoteDiagnosis {
-  classification: ProjectSourceHint;
-  remoteUrl?: string;
-  remoteHost?: string;
-  remoteProtocol: "https" | "ssh" | "none";
-  branch?: string;
-  credentialPresent: boolean;
-  provider:
-    | "github"
-    | "gitea"
-    | "forgejo"
-    | "gitlab"
-    | "bitbucket"
-    | "azure"
-    | "generic"
-    | null;
-  tokenSettingsUrl: string | null;
-  canSync: boolean;
-  guidance:
-    | "local-only"
-    | "connect-github-to-sync"
-    | "https-connect-server"
-    | "ready-to-sync"
-    | "ssh-use-own-tools";
-}
-
-// ── Sync (#15 sync phase, ADR 0006 D5). Mirrors the lib. ──
-interface ConflictFileInfo {
-  path: string;
-  kind: "both-edited" | "you-deleted" | "online-deleted";
-}
-
-interface ConflictResolutionChoice {
-  path: string;
-  choice: "mine" | "theirs" | "both";
-}
-
-type SyncOutcome =
-  | {
-      status: "synced";
-      message: string;
-      snapshotId?: string;
-      mergedRemoteChanges: boolean;
-    }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
-  | {
-      status: "conflict";
-      message: string;
-      files: ConflictFileInfo[];
-      localId: string;
-      remoteId: string;
-      snapshotId?: string;
-    }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
-
-interface ResolveSyncConflictsArgs {
-  projectDir: string;
-  resolutions: ConflictResolutionChoice[];
-  localId: string;
-  remoteId: string;
-}
-
-interface ConnectGenericHostArgs {
-  host: string;
-  username?: string;
-  token: string;
-  repoUrl?: string;
-}
-
-interface HostConnectionInfo {
-  host: string;
-  kind: "github-oauth" | "token";
-  username?: string;
-  label?: string;
-  createdAt: number;
-}
-
 // Local version history (#13): `SnapshotEntry` / `RestoreVersionResult` /
-// `ProjectClassification` are the ambient declarations in types.d.ts (single
-// electron-side definition; the lib ships no .d.ts to import from yet).
-
-// Project source classification (#12). Mirrors @dimm-city/print-md.
-type ProjectSource =
-  | { type: "local-folder"; path: string }
-  | {
-      type: "local-git-folder";
-      path: string;
-      repoRoot: string;
-      subPath: string;
-      hasRemote: boolean;
-      remoteUrl?: string;
-      branch?: string;
-    }
-  | {
-      type: "managed-github";
-      owner: string;
-      repo: string;
-      branch: string;
-      rootPath?: string;
-    };
-
-interface ProjectCapabilities {
-  canRead: boolean;
-  canWriteLocal: boolean;
-  canEnableVersionHistory: boolean;
-  canSnapshot: boolean;
-  canViewHistory: boolean;
-  canRestoreSnapshot: boolean;
-  canSync: boolean;
-  authManagedByApp: boolean;
-}
-
-interface AppSettings {
-  editor: {
-    fontFamily: string;
-    fontSize: number;
-    lineHeight: number;
-    spellCheckLanguage: string;
-    autoSaveDelay: number;
-    crashRecovery: boolean;
-  };
-  appearance: {
-    theme: "light" | "dark" | "system";
-    previewBg: string;
-  };
-  preview: {
-    defaultZoom: string;
-    viewMode: "single" | "two-column";
-    /**
-     * On small/narrow viewports the editor and preview can't sit side by side,
-     * so the workspace collapses to a single pane and this picks which one is
-     * shown. Ignored above the responsive breakpoint (split layout). (#responsive)
-     */
-    paneMode: "edit" | "view";
-  };
-  versionHistory: {
-    /** Save automatic snapshots after edits settle (RC1-3). Default ON. */
-    autoSnapshot: boolean;
-    /** Minutes of quiet after the last edit before a snapshot fires. */
-    autoSnapshotMinutes: number;
-    /**
-     * Automatically sync to the remote in the background when a remote is
-     * configured (transparent-sync plan §6). Defaults ON for projects with
-     * canSync; local-only projects are never auto-synced regardless of this
-     * setting.
-     */
-    autoSync: boolean;
-    /** Periodic safety-sync cadence in minutes (clamped to [1, 1440]). */
-    autoSyncMinutes: number;
-  };
-  advanced: {
-    fileWatcherInterval: number;
-    logLevel: "error" | "warn" | "info" | "debug";
-  };
-}
-
-type DeepPartialSettings = {
-  [K in keyof AppSettings]?: Partial<AppSettings[K]>;
-};
+// `ProjectClassification` are defined in `src/lib/platform/shared-types.ts`
+// and re-exported here via `electron/bridge-types.ts`.
 
 // ──────────────────────────────────────────────────────────────────────────
 // Safe push-event forwarding (main → renderer).
@@ -564,13 +258,13 @@ contextBridge.exposeInMainWorld("electron", {
     args: ResolveSyncConflictsArgs,
   ): Promise<SyncOutcome> =>
     ipcRenderer.invoke("remote:resolveSyncConflicts", args),
-  startPreview: (args: PreviewStartArgs): Promise<PreviewStartResult> =>
+  startPreview: (args: RawPreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>
     ipcRenderer.invoke("api:stopPreview"),
   cancelExport: (exportId: string): Promise<{ canceled: boolean }> =>
     ipcRenderer.invoke("api:cancelExport", exportId),
-  build: (args: BuildArgs): Promise<BuildResult> =>
+  build: (args: RawBuildArgs): Promise<BuildResult> =>
     ipcRenderer.invoke("api:build", args),
   // doctor migrated to server route (Phase 2C)
 

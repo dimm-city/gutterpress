@@ -145,8 +145,6 @@
   // Set true once we have loaded panel state from prefs (avoids flicker).
   let leftPanelPrefsLoaded = $state(false);
 
-  // Bumped after a pull so LeftPanel refreshes its History tab.
-  let historyRefreshKey = $state(0);
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
@@ -310,7 +308,7 @@
     );
     // A sync may add new commits to the project's git history (both push and
     // pull sides). Bump the key so the History tab reflects the new state.
-    historyRefreshKey += 1;
+    leftPanelRef?.notifyHistoryRefresh();
     // If remote changes landed on disk, re-lint immediately (the preview
     // file-watcher re-renders and fires refreshProblems via renderingComplete,
     // but a manual refresh here catches edge cases where no re-render fires).
@@ -372,19 +370,12 @@
   // Completes the D7 Reconnect journey: a connect dialog closing may mean a
   // new credential was just stored — re-check syncability so the Sync
   // button and the dialog's auth state reflect it without a project reload.
-  let connectDialogWasOpen = false;
-  $effect(() => {
-    const anyConnectOpen = githubOpen || advancedSetupOpen;
-    if (
-      connectDialogWasOpen &&
-      !anyConnectOpen &&
-      currentDir &&
-      sourceMode === "folder"
-    ) {
+  // Called by onClosed on both GitHubDialog and AdvancedSetupDialog.
+  function onConnectDialogClosed() {
+    if (currentDir && sourceMode === "folder") {
       void refreshSyncDiag(currentDir);
     }
-    connectDialogWasOpen = anyConnectOpen;
-  });
+  }
 
   // ── Recovery overlay subscription ────────────────────────────────────────────
   // Subscribe to the host's sync:status channel for recovering/recovered/error
@@ -394,7 +385,7 @@
   // recovery-specific transitions (recovering, recovered, error-with-guidance).
   // Per §8 / ADR 0004: runs in the SPA, no lib value imports, all host work
   // through getPlatform().
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
     const off = getPlatform().onSyncStatus((status) => {
       // Scope to the currently open project.
@@ -437,7 +428,7 @@
   // The host fires onRecoveryConfirm when a medium/high-risk repair needs author
   // approval. Show RecoveryConfirmDialog; the dialog answers the gate via
   // respondRecoveryConfirm. Recovery must NOT proceed until the author responds.
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
     const off = getPlatform().onRecoveryConfirm((req: RecoveryConfirmRequest) => {
       recoveryConfirmRequest = req;
@@ -487,7 +478,7 @@
   // entry is visible immediately.
   function onVersionRestored() {
     toast?.success("Project restored — the preview will refresh in a moment.");
-    historyRefreshKey += 1;
+    leftPanelRef?.notifyHistoryRefresh();
   }
 
   // A snapshot was saved (#13) — same toast pattern as onVersionRestored, so
@@ -495,7 +486,7 @@
   // Bump the key so the History tab list updates without requiring a tab switch.
   function onVersionSnapshotSaved() {
     toast?.success("Snapshot saved.");
-    historyRefreshKey += 1;
+    leftPanelRef?.notifyHistoryRefresh();
   }
   // Official setup guide for first-time writers (MVP "Download starter template").
   const SETUP_GUIDE_URL =
@@ -520,6 +511,7 @@
     runToolbarAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
     getSelectionText: () => string;
     insertSnippet: (text: string) => void;
+    updateContent: (content: string) => void;
   } | null>(null);
 
   // Snippet picker (#29) — opened via the toolbar button or Ctrl/Cmd+Shift+S.
@@ -568,6 +560,10 @@
     show: (t?: HTMLButtonElement, preloaded?: ProjectStyle[]) => void;
   } | null>(null);
 
+  // A1: Tracks the paths of active stylesheets (from the last listStyles call).
+  // Used to show a "not active" hint when editing an inactive stylesheet.
+  let activeStylePaths = $state<string[]>([]);
+
   // Guided Design panel (custom-property editor) — the primary styling surface;
   // raw CSS editing is the escape hatch inside it.
   let designPanelRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
@@ -585,6 +581,7 @@
   /** Open one stylesheet (absolute path) in the shared editor and reveal it. */
   function openStyleFile(absPath: string) {
     editorOpen = true;
+    loadEditorModule();
     selectEditorFile(absPath);
     focusEditorWhenReady();
   }
@@ -619,6 +616,8 @@
       );
       return;
     }
+    // A1: cache active paths for the "not active" editor hint.
+    activeStylePaths = list.filter((s) => s.active).map((s) => s.path);
     if (list.length === 1) {
       // Direct-open the sole stylesheet, but NAME it so the editor appearing
       // isn't a surprise (UX review QA-3: same button, predictable outcome).
@@ -701,22 +700,50 @@
     typeof import("$lib/components/MarkdownEditor.svelte")["default"] | null
   >(null);
   let editorModuleLoading = $state(false);
-  // Set when the lazy import of the editor chunk fails, so the load effect does
+  // Set when the lazy import of the editor chunk fails, so the load logic does
   // NOT immediately retry (which spammed an infinite error-toast loop). Cleared
   // by an explicit user "Retry".
   let editorModuleFailed = $state(false);
+
+  /** Kick off the lazy MarkdownEditor import if needed. Guards against duplicate
+   * loads: no-ops when it's already loading, loaded, or failed. */
+  function loadEditorModule() {
+    if (!editorOpen || !currentDir || MarkdownEditor || editorModuleLoading || editorModuleFailed) return;
+    editorModuleLoading = true;
+    import("$lib/components/MarkdownEditor.svelte")
+      .then((m) => {
+        MarkdownEditor = m.default;
+      })
+      .catch((e) => {
+        // Mark as failed so repeated calls don't retry — that turned a single
+        // failed chunk fetch into an infinite error-toast loop. Surface ONE
+        // error; the editor pane shows a Retry affordance.
+        editorModuleFailed = true;
+        toast?.error(
+          `Could not open the editor: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      })
+      .finally(() => {
+        editorModuleLoading = false;
+      });
+  }
+
   function retryEditorLoad() {
     editorModuleFailed = false;
+    loadEditorModule();
   }
-  // Set when the editor is opened before its (lazy) component has mounted, so
-  // the focus request is honored once editorRef becomes available.
-  let pendingEditorFocus = $state(false);
   function focusEditorWhenReady() {
-    if (editorRef) {
-      requestAnimationFrame(() => editorRef?.focus());
-    } else {
-      pendingEditorFocus = true;
-    }
+    // If the editor component isn't mounted yet, retry via rAF until it is
+    // (bounded to 120 frames, ~2 s at 60 fps) — same pattern as tryInsert below.
+    let tries = 0;
+    const tryFocus = () => {
+      if (editorRef) {
+        requestAnimationFrame(() => editorRef?.focus());
+      } else if (tries++ < 120) {
+        requestAnimationFrame(tryFocus);
+      }
+    };
+    requestAnimationFrame(tryFocus);
   }
 
   /**
@@ -732,6 +759,7 @@
     if (!isMd(editorFilePath)) {
       void ensureEditorFile();
       editorOpen = true;
+      loadEditorModule();
     }
     let tries = 0;
     const tryInsert = () => {
@@ -748,39 +776,6 @@
     };
     requestAnimationFrame(tryInsert);
   }
-  $effect(() => {
-    if (editorRef && pendingEditorFocus) {
-      pendingEditorFocus = false;
-      requestAnimationFrame(() => editorRef?.focus());
-    }
-  });
-  $effect(() => {
-    if (
-      !editorOpen ||
-      !currentDir ||
-      MarkdownEditor ||
-      editorModuleLoading ||
-      editorModuleFailed
-    )
-      return;
-    editorModuleLoading = true;
-    import("$lib/components/MarkdownEditor.svelte")
-      .then((m) => {
-        MarkdownEditor = m.default;
-      })
-      .catch((e) => {
-        // Mark as failed so the effect doesn't immediately re-run and retry —
-        // that turned a single failed chunk fetch into an infinite error-toast
-        // loop. Surface ONE error; the editor pane shows a Retry affordance.
-        editorModuleFailed = true;
-        toast?.error(
-          `Could not open the editor: ${e instanceof Error ? e.message : String(e)}`,
-        );
-      })
-      .finally(() => {
-        editorModuleLoading = false;
-      });
-  });
 
   // Construct lazily on first desktop use so the WebAdapter path never touches
   // it (the editor is desktop-only). One buffer for the lifetime of the app.
@@ -820,41 +815,46 @@
         recoveryEnabled: settings.current.editor.crashRecovery,
         onError: (msg) => toast?.error(msg),
         onAutoReloaded: () => toast?.info?.("Reloaded from disk"),
+        // Push pending-save state to main so the window close gate can flush
+        // before quitting (#44). Called whenever hasPendingSave changes.
+        onDirty: (pending) => {
+          if (isDesktop()) {
+            api.app.setDirtyState(pending).catch(() => {});
+          }
+        },
       });
     }
     return buffer;
   }
 
-  // Push the buffer's pending-save state to main so the window close gate can
-  // flush before quitting (#44). Fire-and-forget; main never reads our memory.
-  $effect(() => {
-    if (!isDesktop() || !buffer) return;
-    const pending = buffer.hasPendingSave;
-    api.app.setDirtyState(pending).catch(() => {});
-  });
-
   // Keep the recovery-enabled toggle (#45) in sync with the live setting.
-  $effect(() => {
-    const enabled = settings.current.editor.crashRecovery;
-    if (buffer) buffer.setRecoveryEnabled(enabled);
+  // Subscribe via the settings observer so the buffer is updated whenever the
+  // setting changes (e.g. SettingsDialog toggle), without using $effect.
+  onMount(() => {
+    return settings.subscribe((s) => {
+      buffer?.setRecoveryEnabled(s.editor.crashRecovery);
+    });
   });
 
   // External-edit detection (#44): watch the open folder; on any debounced
-  // change, ask the buffer to reconcile the open document against disk. The
-  // watcher is torn down when the folder closes / switches to URL mode.
-  $effect(() => {
+  // change, ask the buffer to reconcile the open document against disk.
+  // Managed imperatively: started in startFolderPreview, stopped in stopPreview / openUrl.
+  let _watchFolderOff: (() => void) | undefined;
+  function startFolderWatch(dir: string) {
     if (!isDesktop()) return;
-    const dir = currentDir;
-    if (!dir || sourceMode !== "folder") return;
-    const off = getPlatform().watchFolder(dir, () => {
+    _watchFolderOff?.();
+    _watchFolderOff = getPlatform().watchFolder(dir, () => {
       buffer?.reconcileExternalChange().catch(() => {});
-    });
-    return () => off?.();
-  });
+    }) ?? undefined;
+  }
+  function stopFolderWatch() {
+    _watchFolderOff?.();
+    _watchFolderOff = undefined;
+  }
 
   // Window close gate (#44): when main asks the renderer to flush before
   // closing, flush the buffer. The preload wrapper signals main when done.
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
     const off = getPlatform().onFlushBeforeClose(() => buffer?.flush() ?? Promise.resolve());
     return () => off?.();
@@ -903,6 +903,8 @@
 
   function reloadExternal() {
     buffer?.acceptExternal();
+    // Push the accepted external content into the editor immediately.
+    if (buffer) editorRef?.updateContent(buffer.content);
   }
 
   function keepMineExternal() {
@@ -947,6 +949,7 @@
       const recovered = await api.fs.readFile(item.recoveryPath);
       await buf.restoreContent(item.filePath, recovered);
       editorOpen = true;
+      loadEditorModule();
       focusEditorWhenReady();
     } catch (e) {
       toast?.error(
@@ -967,23 +970,19 @@
   }
 
   // ── Persist left panel state on change ────────────────────────────────────
-  $effect(() => {
+  function persistLeftPanelPrefs() {
     if (!leftPanelPrefsLoaded) return;
     api.app
       .setViewerPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } } as Record<string, unknown>)
       .catch(() => {});
-  });
+  }
 
-  // ── Auto-open panel on Projects tab when no project ────────────────────────
-  $effect(() => {
-    if (!currentDir && !currentUrl && !busy && lastProjectChecked) {
-      leftPanelOpen = true;
-      leftPanelTab = "projects";
-    }
-  });
+  let leftPanelRef = $state<LeftPanel | undefined>(undefined);
 
   function toggleLeftPanel() {
     leftPanelOpen = !leftPanelOpen;
+    if (leftPanelOpen) leftPanelRef?.notifyOpened();
+    persistLeftPanelPrefs();
   }
 
   function toggleEditor() {
@@ -1028,14 +1027,7 @@
       });
   }
 
-  // Closing the project (or switching to a URL preview) clears the findings so
-  // the panel/badge never show a stale project's problems.
-  $effect(() => {
-    if (!currentDir || sourceMode !== "folder") {
-      problems = [];
-      problemsOpen = false;
-    }
-  });
+  // Problems are cleared in stopPreview() and openUrl() — no reactive effect needed.
 
   /**
    * Open the problem's file in the editor at the offending line. Reuses the
@@ -1050,6 +1042,7 @@
       setPaneMode("edit");
     } else if (!editorOpen) {
       editorOpen = true;
+      loadEditorModule();
     }
     const rel = p.file ?? p.filePath.split(/[\\/]/).pop() ?? p.filePath;
     if (p.line) {
@@ -1060,26 +1053,11 @@
     focusEditorWhenReady();
   }
 
-  // ----------------------------------------------------------------
-  // Inject viewer canvas styles into iframe when client + bgColor change
-  // ----------------------------------------------------------------
-  $effect(() => {
-    if (!client) return;
-    // Inject once on client attach; renderingComplete will re-inject with final bg
-    client.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
-  });
+  // Canvas styles are injected by the renderingComplete handler (which already
+  // calls client.injectStyles). View-mode changes from the Settings panel are
+  // handled by the onViewModeChange callback passed to SettingsDialog.
 
-  // Apply view-mode changes that originate from the Settings panel (which writes
-  // the settings store directly rather than calling applyViewMode). Keeps the
-  // rendered spread in sync with the derived viewMode without a reload.
-  $effect(() => {
-    const mode = viewMode;
-    if (!client || rendering) return;
-    client.call("setViewMode", [mode]).catch(() => {});
-  });
-
-  $effect(() => {
-    if (diagnosticsTools) return;
+  onMount(() => {
     api.doctor()
       .then((data) => {
         diagnosticsTools = (data as { tools?: DiagnosticsTool[] }).tools ?? [];
@@ -1087,14 +1065,10 @@
       .catch(() => {});
   });
 
-  $effect(() => {
-    if (!saveWarning) return;
-    if (currentDir && !rendering && sourceMode === "folder") {
-      saveWarning = null;
-    }
-  });
+  // saveWarning is cleared in startFolderPreview (saveWarning = null at top) and
+  // in the renderingComplete handler. No reactive effect needed.
 
-  $effect(() => {
+  onMount(() => {
     const off = getPlatform().onUrlPreviewBlocked((event: UrlPreviewBlockedEvent) => {
       if (sourceMode !== "url") return;
       if (!previewUrl) return;
@@ -1104,13 +1078,9 @@
     return () => off?.();
   });
 
-  $effect(() => {
-    if (pageEditing) {
-      queueMicrotask(() => pageEditInput?.focus());
-    }
-  });
+  // pageEditInput focus is triggered directly in beginPageEdit() — see below.
 
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
     if (lastProjectChecked) return;
     if (previewUrl || currentDir || currentUrl || busy || openError || urlPreviewError) return;
@@ -1139,6 +1109,7 @@
           // the welcome screen has a useful first action.
           leftPanelOpen = true;
           leftPanelTab = "projects";
+          leftPanelRef?.notifyOpened();
           // Dismiss splash and reveal window.
           api.app.rendererReady().catch(() => {});
           return;
@@ -1146,6 +1117,7 @@
         // Restore panel open state from prefs (now we know there is a project)
         if (!leftPanelPrefsLoaded) leftPanelPrefsLoaded = true;
         leftPanelOpen = panelPrefs?.open ?? false;
+        if (leftPanelOpen) leftPanelRef?.notifyOpened();
         // Per-project state (#43) is keyed by folder path so opening a
         // different project never pollutes this one's restore point.
         api.app.splashStatus("Opening your project…", 45).catch(() => {});
@@ -1161,6 +1133,7 @@
           openError = null;
           leftPanelOpen = true;
           leftPanelTab = "projects";
+          leftPanelRef?.notifyOpened();
           toast?.info?.("Couldn't reopen your last project — it may have moved. Pick or create one to start.");
         }
         return;
@@ -1175,11 +1148,12 @@
   });
 
   // ----------------------------------------------------------------
-  // Hook PreviewClient events when it appears
-  // ----------------------------------------------------------------
-  $effect(() => {
-    if (!client) return;
-    const off = client.on((e) => {
+  // Subscribe to PreviewClient events when a client is created by PreviewFrame.
+  // Hooked via onClientReady callback on the PreviewFrame component (imperative,
+  // not $effect). Cleanup is handled when the client is replaced (PreviewFrame
+  // remounts on previewUrl change via {#key previewUrl}).
+  function onClientReady(c: PreviewClient) {
+    c.on((e) => {
       if (e.name === "renderingComplete") {
         const n = e.detail.totalPages ?? 0;
         totalPages = n;
@@ -1283,8 +1257,7 @@
         }).catch(() => {});
       }
     });
-    return off;
-  });
+  }
 
   // ----------------------------------------------------------------
   // Auto-update: markReady on mount (health gate) + event subscription
@@ -1294,13 +1267,13 @@
   // health watchdog armed after an apply/launch-promote. If it does not arrive
   // before the watchdog elapses (and the window is still open), main rolls the
   // bundle back this session. Harmless no-op when nothing is pending.
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
     getPlatform().updater.markReady().catch(() => {});
   });
 
   // Check for an already-staged update on load, then subscribe to future events.
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
     const platform = getPlatform();
 
@@ -1333,7 +1306,7 @@
   // ----------------------------------------------------------------
   // Global keyboard shortcuts (available without a loaded document)
   // ----------------------------------------------------------------
-  $effect(() => {
+  onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
       // Cmd/Ctrl+, opens the Settings panel (toggles closed if already open).
       if ((e.ctrlKey || e.metaKey) && e.key === ",") {
@@ -1361,12 +1334,12 @@
   });
 
   // ----------------------------------------------------------------
-  // Keyboard shortcuts
+  // Keyboard shortcuts (preview navigation — active whenever a preview is open)
   // ----------------------------------------------------------------
-  $effect(() => {
-    if (!previewUrl) return;
-
+  onMount(() => {
     function onKey(e: KeyboardEvent) {
+      // Only active when a preview URL is loaded.
+      if (!previewUrl) return;
       // Don't intercept when focus is in an input/textarea/select, or inside
       // the CodeMirror editor (#38) — its content node is a contenteditable
       // DIV, so a tagName check alone would let preview-nav keys (arrows,
@@ -1432,11 +1405,10 @@
   // ----------------------------------------------------------------
   // Responsive auto view-mode on resize (unless user locked it)
   // ----------------------------------------------------------------
-  $effect(() => {
-    if (!previewUrl) return;
+  onMount(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     function onResize() {
-      if (userSetViewMode) return;
+      if (!previewUrl || userSetViewMode) return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         const auto = window.innerWidth < 1280 ? "single" : "two-column";
@@ -1588,6 +1560,7 @@
         buffer.reset();
       }
       currentDir = dir;
+      leftPanelRef?.resetHistoryState();
       currentFolderDisplayName = displayName;
       currentUrl = null;
       // Detect a "loose" folder (no manifest) so we can offer to set it up as a
@@ -1609,7 +1582,7 @@
       logFilePath = null;
       // Bump historyRefreshKey so the History tab reloads its list for the new
       // project as soon as capabilities arrive (LeftPanel's effect guards on canHistory).
-      historyRefreshKey += 1;
+      leftPanelRef?.notifyHistoryRefresh();
       // Preload the first file into the editor buffer when a folder opens, so the
       // editor pane is never empty whenever it's shown (and switching to edit is
       // instant). Action-driven (folder open), not an effect, and independent of
@@ -1635,6 +1608,10 @@
           api.app
             .setViewerPrefs({ projectSource: typedResult.source } as Record<string, unknown>)
             .catch(() => {});
+          // Re-notify so the History tab can load now that canHistory is set.
+          // The earlier notifyHistoryRefresh() at folder-open time may have been
+          // a no-op because projectCapabilities was still null.
+          leftPanelRef?.notifyHistoryRefresh();
           // Sync gate (#15 / ADR 0006 D4): the toolbar action appears only
           // when the diagnosis says the project is actually syncable (HTTPS
           // remote + a stored connection). Local reads only; fire-and-forget.
@@ -1676,9 +1653,12 @@
       }
       // Crash-recovery offer (#44): scan for snapshots left by an unclean exit.
       void scanForRecovery(dir);
+      // Start watching for external edits (replaces old $effect on currentDir).
+      startFolderWatch(dir);
     } catch (e) {
       previewUrl = null;
       currentDir = null;
+      leftPanelRef?.resetHistoryState();
       currentFolderDisplayName = null;
       docTitle = null;
       rendering = false;
@@ -1728,11 +1708,15 @@
     sourceMode = "url";
     currentUrl = url;
     currentDir = null;
+    leftPanelRef?.resetHistoryState();
     currentFolderDisplayName = null;
     docTitle = null;
     // The editor is folder-only; close it for web previews.
     editorOpen = false;
     buffer?.reset();
+    stopFolderWatch();
+    problems = [];
+    problemsOpen = false;
     // Force iframe remount by nulling first.
     previewUrl = null;
     queueMicrotask(() => {
@@ -1774,8 +1758,10 @@
     // drops an in-flight auto-save (#44).
     if (buffer) await buffer.flush().catch(() => {});
     await getPlatform().stopPreview().catch(() => {});
+    stopFolderWatch();
     previewUrl = null;
     currentDir = null;
+    leftPanelRef?.resetHistoryState();
     currentFolderDisplayName = null;
     currentUrl = null;
     docTitle = null;
@@ -1789,6 +1775,14 @@
     buffer?.reset();
     recoveryScanDir = null;
     recoveryItems = [];
+    // Clear stale problems and auto-open panel on projects tab.
+    problems = [];
+    problemsOpen = false;
+    if (lastProjectChecked) {
+      leftPanelOpen = true;
+      leftPanelTab = "projects";
+      leftPanelRef?.notifyOpened();
+    }
   }
 
   async function savePdf() {
@@ -1963,6 +1957,7 @@
     if (rendering) return;
     pageEditing = true;
     pageEditValue = String(currentPage);
+    queueMicrotask(() => pageEditInput?.focus());
   }
   function cancelPageEdit() {
     pageEditing = false;
@@ -2179,7 +2174,7 @@
   // matchMedia subscription (a genuine lifecycle subscription — the idiomatic
   // use of $effect). On a resize INTO narrow while in edit mode, make sure a
   // file is loaded so the editor isn't empty (the tree is hidden when narrow).
-  $effect(() => {
+  onMount(() => {
     const mq = window.matchMedia(NARROW_QUERY);
     isNarrow = mq.matches;
     const onChange = (e: MediaQueryListEvent) => {
@@ -2206,6 +2201,7 @@
     if (mode === "edit" && currentDir && sourceMode === "folder") {
       const wasClosed = !editorOpen;
       editorOpen = true;
+      loadEditorModule();
       void ensureEditorFile();
       if (wasClosed) focusEditorWhenReady();
     }
@@ -2226,6 +2222,15 @@
   // ensureEditorFile picking a file on its own.
   let openFileIsCss = $derived(
     !!editorFilePath && /\.css$/i.test(editorFilePath),
+  );
+  // A1: true when editing a CSS file that is not in the active stylesheets list.
+  // Only meaningful once activeStylePaths is populated (non-empty), so the hint
+  // is hidden until the user has interacted with styles at least once.
+  let cssFileIsInactive = $derived(
+    openFileIsCss &&
+      activeStylePaths.length > 0 &&
+      !!editorFilePath &&
+      !activeStylePaths.includes(editorFilePath),
   );
   // Active mobile tab, derived from the persisted paneMode + which file is open.
   // No new persistence: reload restores via paneMode, then the open file decides
@@ -2885,6 +2890,7 @@
   <!-- Global left panel — available in both preview and edit modes -->
   <div id="left-panel-region" class="left-panel-region" class:panel-open={leftPanelOpen} style="--left-panel-width: {leftPanelWidth}px">
     <LeftPanel
+      bind:this={leftPanelRef}
       bind:open={leftPanelOpen}
       bind:width={leftPanelWidth}
       bind:activeTab={leftPanelTab}
@@ -2901,6 +2907,7 @@
         selectEditorFile(path);
         if (!editorOpen && currentDir && sourceMode === "folder") {
           editorOpen = true;
+          loadEditorModule();
           focusEditorWhenReady();
         }
       }}
@@ -2916,7 +2923,7 @@
       onSnapshotSaved={(entry) => onVersionSnapshotSaved()}
       onVersionRestored={onVersionRestored}
       onSyncReconnect={onSyncReconnect}
-      refreshKey={historyRefreshKey}
+      onPanelStateChange={persistLeftPanelPrefs}
     />
 
     <!-- Main content area (preview + editor) -->
@@ -2994,12 +3001,16 @@
               {:else if editorSavePhase === "error"}
                 <span class="save-status save-error">Save error</span>
               {/if}
+              <!-- A1: "not active" hint when editing an inactive stylesheet. -->
+              {#if cssFileIsInactive}
+                <span class="css-inactive-hint" title="This file is not in your book's active stylesheets — edits here won't affect the rendered output">not active</span>
+              {/if}
               {#if isDesktop() && currentDir}
                 <!-- G1/G2: viewport-independent "Edit styles" affordance living
                      in the editor pane (works on desktop AND mobile). -->
                 <button
                   class="edit-styles-btn"
-                  title="Edit project styles (CSS)"
+                  title="Edit your book's styles / appearance"
                   onclick={(e) => void openStyles(e.currentTarget as HTMLButtonElement)}
                 >
                   <Icon name="palette" size={12} /> Styles
@@ -3008,6 +3019,7 @@
             </div>
           {/if}
           {#if MarkdownEditor}
+            {#key editorFilePath}
             <MarkdownEditor
               bind:this={editorRef}
               filePath={editorFilePath}
@@ -3015,6 +3027,7 @@
               onChange={onEditorChange}
               onAnchorLine={onEditorAnchorLine}
             />
+            {/key}
           {:else if editorModuleFailed}
             <div class="editor-loading" role="alert">
               <p>The editor failed to load.</p>
@@ -3038,6 +3051,7 @@
           <PreviewFrame
             url={previewUrl}
             bind:client
+            onClientReady={onClientReady}
             onError={(msg) => {
               if (sourceMode === "url") {
                 urlPreviewError = "This website could not be previewed inside print-md.";
@@ -3064,6 +3078,7 @@
              Non-dismissable during repair; auto-dismisses after ~1.8s on success.
              Hard rule (memory: never hide cross-origin preview iframe): scrim is
              translucent (var(--app-overlay) + backdrop-filter:blur), never opaque. -->
+        {#key recoveryOverlayState}
         <RecoveryOverlay
           visible={recoveryOverlayVisible}
           phase={recoveryOverlayPhase}
@@ -3073,6 +3088,7 @@
           onShowBackup={recoveryBackupZipPath ? () => showBackupInFolder(recoveryBackupZipPath!) : undefined}
           onDone={onRecoveryOverlayDone}
         />
+        {/key}
       </section>
     </div>
   {:else}
@@ -3086,6 +3102,7 @@
           <button class="ghost empty-cta" onclick={() => {
             leftPanelOpen = true;
             leftPanelTab = "projects";
+            leftPanelRef?.notifyOpened();
           }} disabled={busy}>Open an existing book</button>
         </div>
         <p class="empty-hint">New to print-md? <button type="button" class="link-btn" onclick={openSetupGuide}>Read the getting-started guide →</button></p>
@@ -3155,17 +3172,24 @@
   {checkingUpdates}
   {updateReadyVersion}
 />
-<SettingsDialog bind:open={settingsOpen} triggerEl={settingsBtn} />
+<SettingsDialog
+  bind:open={settingsOpen}
+  triggerEl={settingsBtn}
+  onViewModeChange={(mode) => { if (client && !rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
+  onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
+/>
 <GitHubDialog
   bind:open={githubOpen}
   onOpened={(projectDir) => startFolderPreview(projectDir, "Opening your project…")}
   onAdvancedSetup={() => (advancedSetupOpen = true)}
+  onClosed={onConnectDialogClosed}
   triggerEl={leftPanelToggleBtn}
 />
 <AdvancedSetupDialog
   bind:open={advancedSetupOpen}
   projectDir={sourceMode === "folder" ? currentDir : null}
   triggerEl={advancedSetupBtn}
+  onClosed={onConnectDialogClosed}
 />
 <NewProjectWizard
   bind:this={newProjectWizardRef}
@@ -3433,6 +3457,15 @@
   .save-status.saving { color: var(--app-text-faint); }
   .save-status.saved  { color: var(--app-text-faint); }
   .save-status.save-error { color: var(--app-error-text); }
+  /* A1: amber "not active" chip shown when the open CSS file is not in the
+     project's active stylesheets. Muted styling — informational, not alarming. */
+  .css-inactive-hint {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+    color: var(--app-warning-text, #b08020);
+    background: var(--app-warning-soft, color-mix(in srgb, #b08020 12%, transparent));
+    border: 1px solid color-mix(in srgb, #b08020 30%, transparent);
+    border-radius: 4px; padding: 1px 6px; white-space: nowrap; flex-shrink: 0;
+  }
   .preview-pane {
     position: relative;
   }

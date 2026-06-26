@@ -3,52 +3,30 @@
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
     onClose,
     triggerEl,
+    onViewModeChange,
+    onCrashRecoveryChange,
   }: {
     open?: boolean;
     onClose?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
+    /** Called immediately when the user changes the view mode setting. */
+    onViewModeChange?: (mode: "single" | "two-column") => void;
+    /** Called immediately when the user toggles crash recovery. */
+    onCrashRecoveryChange?: (enabled: boolean) => void;
   } = $props();
 
   const settings = useSettings();
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
 
-  function focusableElements() {
-    return Array.from(
-      dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
-      ) ?? []
-    );
+  function onDialogMount(_el: HTMLElement) {
+    queueMicrotask(() => dialogEl?.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')?.focus());
   }
-
-  function focusFirstElement() {
-    focusableElements()[0]?.focus();
-  }
-
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab") return;
-    const focusable = focusableElements();
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-
-  $effect(() => {
-    if (open) {
-      queueMicrotask(focusFirstElement);
-    }
-  });
 
   function close() {
     open = false;
@@ -70,7 +48,8 @@
     aria-modal="true"
     aria-labelledby="settings-title"
     tabindex="-1"
-    onkeydown={trapFocus}
+    onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:onDialogMount
   >
     <header class="dialog-header">
       <h2 id="settings-title">Settings</h2>
@@ -118,7 +97,7 @@
           <select
             id="set-viewmode"
             value={s.preview.viewMode}
-            onchange={(e) => settings.set({ preview: { viewMode: (e.currentTarget as HTMLSelectElement).value as "single" | "two-column" } })}
+            onchange={(e) => { const mode = (e.currentTarget as HTMLSelectElement).value as "single" | "two-column"; settings.set({ preview: { viewMode: mode } }); onViewModeChange?.(mode); }}
           >
             <option value="single">Single page</option>
             <option value="two-column">Two pages side by side</option>
@@ -210,7 +189,7 @@
             id="set-crash-recovery"
             type="checkbox"
             checked={s.editor.crashRecovery}
-            onchange={(e) => settings.set({ editor: { crashRecovery: (e.currentTarget as HTMLInputElement).checked } })}
+            onchange={(e) => { const enabled = (e.currentTarget as HTMLInputElement).checked; settings.set({ editor: { crashRecovery: enabled } }); onCrashRecoveryChange?.(enabled); }}
           />
         </div>
       </section>

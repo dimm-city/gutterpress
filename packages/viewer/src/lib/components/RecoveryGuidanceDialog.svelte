@@ -11,6 +11,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import OperationLogDialog from "$lib/components/OperationLogDialog.svelte";
   import type { ManualGuidanceInfo } from "$lib/platform/contract";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
@@ -47,33 +48,9 @@
   );
   const supportDetails = $derived(guidance?.supportDetails ?? null);
 
-  $effect(() => {
-    if (!open) return;
+  function onDialogMount(_el: HTMLElement) {
     copyAnnouncement = "";
     queueMicrotask(() => dialogEl?.focus());
-  });
-
-  function focusableElements() {
-    return Array.from(
-      dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    );
-  }
-
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab") return;
-    const focusable = focusableElements();
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
   }
 
   function close() {
@@ -135,7 +112,8 @@
     aria-modal="true"
     aria-labelledby="guidance-title"
     tabindex="-1"
-    onkeydown={trapFocus}
+    onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:onDialogMount
   >
     <header class="dialog-header">
       <h2 id="guidance-title">

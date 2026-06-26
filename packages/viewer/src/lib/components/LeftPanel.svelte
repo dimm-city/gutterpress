@@ -14,6 +14,7 @@
    * - Responsive: at <=820px the panel overlays with a translucent scrim (doesn't
    *   crush the preview).
    */
+  import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import type { ComponentProps } from "svelte";
   type IconName = ComponentProps<typeof Icon>["name"];
@@ -60,7 +61,7 @@
     onSnapshotSaved,
     onVersionRestored,
     onSyncReconnect,
-    refreshKey = 0,
+    onPanelStateChange,
   }: {
     open?: boolean;
     activeTab?: PanelTab;
@@ -89,8 +90,8 @@
     onSnapshotSaved?: (entry: SnapshotEntry) => void;
     onVersionRestored?: (backupId?: string) => void;
     onSyncReconnect?: () => void;
-    /** Bump to force a history refresh from the outside. */
-    refreshKey?: number;
+    /** Called whenever tab or width changes so the parent can persist the state. */
+    onPanelStateChange?: () => void;
   } = $props();
 
   // Derived capabilities for History tab
@@ -134,12 +135,23 @@
     return out;
   });
 
-  // ── Load history when tab becomes active ──────────────────────────────────
-  $effect(() => {
-    if (open && activeTab === "history" && canHistory && projectDir && !historyLoading && !historyEntries.length) {
+  // ── Load history when history tab becomes active ─────────────────────────
+  // Called from the tab onclick, keyboard nav, and onMount (for initial state).
+  // Guards duplicated here so multiple callers are safe.
+  function maybeLoadHistory() {
+    if (canHistory && projectDir && !historyLoading && !historyEntries.length) {
       void refreshHistory();
     }
+  }
+
+  onMount(() => {
+    if (open && activeTab === "history") maybeLoadHistory();
   });
+
+  /** Called by the parent when the panel is opened externally (e.g. toolbar toggle). */
+  export function notifyOpened() {
+    if (activeTab === "history") maybeLoadHistory();
+  }
 
   async function refreshHistory() {
     if (!projectDir) return;
@@ -233,13 +245,10 @@
   }
 
   // ── External refresh ──────────────────────────────────────────────────────
-  let lastRefreshKey = 0;
-  $effect(() => {
-    if (refreshKey !== lastRefreshKey) {
-      lastRefreshKey = refreshKey;
-      if (projectDir && canHistory) void refreshHistory();
-    }
-  });
+  /** Called by the parent to force a history refresh (e.g. after save/restore). */
+  export function notifyHistoryRefresh() {
+    if (projectDir && canHistory) void refreshHistory();
+  }
 
   // ── Panel close ──────────────────────────────────────────────────────────
   function close() {
@@ -256,15 +265,15 @@
   }
 
   // ── Reset history state when project changes ──────────────────────────────
-  $effect(() => {
-    projectDir; // track
+  /** Called by the parent (via bind:this) whenever the active project changes. */
+  export function resetHistoryState() {
     historyEntries = [];
     historyHasMore = false;
     historyError = null;
     historyNotice = null;
     historyBusy = false;
     confirmRestoreId = null;
-  });
+  }
 
   // ── Tab definitions ───────────────────────────────────────────────────────
   // ── Resizable width ──────────────────────────────────────────────────────
@@ -285,15 +294,16 @@
       (e.currentTarget as HTMLElement | null)?.releasePointerCapture?.(ev.pointerId);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      onPanelStateChange?.();
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   }
   function onResizeKeydown(e: KeyboardEvent) {
-    if (e.key === "ArrowLeft") { e.preventDefault(); width = clampWidth(width - 16); }
-    else if (e.key === "ArrowRight") { e.preventDefault(); width = clampWidth(width + 16); }
-    else if (e.key === "Home") { e.preventDefault(); width = PANEL_MIN_W; }
-    else if (e.key === "End") { e.preventDefault(); width = PANEL_MAX_W; }
+    if (e.key === "ArrowLeft") { e.preventDefault(); width = clampWidth(width - 16); onPanelStateChange?.(); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); width = clampWidth(width + 16); onPanelStateChange?.(); }
+    else if (e.key === "Home") { e.preventDefault(); width = PANEL_MIN_W; onPanelStateChange?.(); }
+    else if (e.key === "End") { e.preventDefault(); width = PANEL_MAX_W; onPanelStateChange?.(); }
   }
 
   // Projects first (user request): opening/switching books is the entry-point
@@ -322,22 +332,26 @@
       activeTab = ids[next]!;
       if (!open) open = true;
       tabEls[ids[next]!]?.focus();
+      if (ids[next] === "history") maybeLoadHistory();
     } else if (e.key === "ArrowLeft") {
       e.preventDefault();
       const prev = (current - 1 + ids.length) % ids.length;
       activeTab = ids[prev]!;
       if (!open) open = true;
       tabEls[ids[prev]!]?.focus();
+      if (ids[prev] === "history") maybeLoadHistory();
     } else if (e.key === "Home") {
       e.preventDefault();
       activeTab = ids[0]!;
       if (!open) open = true;
       tabEls[ids[0]!]?.focus();
+      if (ids[0] === "history") maybeLoadHistory();
     } else if (e.key === "End") {
       e.preventDefault();
       activeTab = ids[ids.length - 1]!;
       if (!open) open = true;
       tabEls[ids[ids.length - 1]!]?.focus();
+      if (ids[ids.length - 1] === "history") maybeLoadHistory();
     }
   }
 
@@ -405,7 +419,7 @@
         title={tab.title}
         tabindex={getTabIndex(tab.id)}
         bind:this={tabEls[tab.id]}
-        onclick={() => { activeTab = tab.id; if (!open) open = true; }}
+        onclick={() => { activeTab = tab.id; if (!open) open = true; if (tab.id === "history") maybeLoadHistory(); onPanelStateChange?.(); }}
       >
         <Icon name={tab.icon} size={15} />
         <span class="tab-label">{tab.label}</span>
@@ -520,11 +534,13 @@
         <!-- Insert is available whenever a folder project is open: the host
              handler opens a chapter first if none is, so the button never
              dead-ends (UX audit P3#8). -->
-        <MediaPanel
-          {projectDir}
-          canInsert={!!projectDir && sourceMode === "folder"}
-          onInsert={(payload) => onInsertImage?.(payload)}
-        />
+        {#key projectDir}
+          <MediaPanel
+            {projectDir}
+            canInsert={!!projectDir && sourceMode === "folder"}
+            onInsert={(payload) => onInsertImage?.(payload)}
+          />
+        {/key}
       {/if}
     </div>
 

@@ -21,6 +21,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import type { ThemeInfo, ApplyThemeTarget } from "$lib/api";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
@@ -156,6 +157,21 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
     }
   }
 
+  async function remove(t: ThemeInfo) {
+    if (!projectDir || t.kind !== "project") return;
+    busyId = t.id;
+    error = null;
+    try {
+      await api.theme.remove(projectDir, t.id);
+      if (activeId === t.id) activeId = null;
+      await refresh();
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    } finally {
+      busyId = null;
+    }
+  }
+
   async function importFolder() {
     if (!projectDir) return;
     error = null;
@@ -216,6 +232,7 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
         <span class="theme-name">{t.name}</span>
         {#if isActive(t)}<span class="badge">Active</span>{/if}
       </div>
+      <p class="theme-id">{t.kind === "builtin" ? "built-in" : `themes/${t.id}`}</p>
       {#if t.description}<p class="theme-desc">{t.description}</p>{/if}
       {#if t.author}<p class="theme-author">by {t.author}</p>{/if}
     </div>
@@ -229,6 +246,17 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
           onclick={() => apply(t)}
         >
           {busyId === t.id ? "Applying…" : "Apply"}
+        </button>
+      {/if}
+      {#if t.kind === "project"}
+        <button
+          class="danger small"
+          disabled={busyId === t.id || !projectDir}
+          onclick={() => remove(t)}
+          title="Remove this theme from the project"
+          aria-label={`Remove ${t.name}`}
+        >
+          <Icon name="trash" size={13} />
         </button>
       {/if}
     </div>
@@ -245,6 +273,7 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
     aria-modal="true"
     aria-labelledby="theme-manager-title"
     tabindex="-1"
+    onkeydown={(e) => trapFocus(e, dialogEl)}
   >
     <header class="dialog-header">
       <h2 id="theme-manager-title">Themes</h2>
@@ -389,10 +418,11 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
   .theme-name-row { display: flex; align-items: center; gap: 8px; }
   .theme-name { font-size: 13px; font-weight: 600; color: var(--app-text); }
   .badge {
-    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
     color: var(--app-text-on-accent); background: var(--app-focus-ring);
     padding: 1px 6px; border-radius: 999px;
   }
+  .theme-id { margin: 0; font-size: 10px; color: var(--app-text-faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .theme-desc { margin: 0; font-size: 11.5px; color: var(--app-text-muted); line-height: 1.4; }
   .theme-author { margin: 0; font-size: 11px; color: var(--app-text-faint); }
 

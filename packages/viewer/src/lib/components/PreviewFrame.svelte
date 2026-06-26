@@ -1,18 +1,22 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { PreviewClient } from "../preview-client";
 
-  let { url, client = $bindable(), onError }: {
+  let { url, client = $bindable(), onError, onClientReady }: {
     url: string;
     client?: PreviewClient;
     onError?: (msg: string) => void;
+    /** Called when a new PreviewClient is created and attached to this frame. */
+    onClientReady?: (c: PreviewClient) => void;
   } = $props();
 
   let frame = $state<HTMLIFrameElement | undefined>(undefined);
 
-  $effect(() => {
+  onMount(() => {
     if (!frame) return;
     const c = new PreviewClient();
     client = c;
+    onClientReady?.(c);
     const onLoad = () => {
       c.attach(frame!.contentWindow);
     };

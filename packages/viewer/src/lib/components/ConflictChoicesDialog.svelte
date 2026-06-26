@@ -23,6 +23,7 @@
     ConflictResolutionChoice,
     SyncOutcome,
   } from "$lib/platform/contract";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
@@ -59,14 +60,11 @@
   /** Memoised preview results (path → ConflictPreview | null | "loading" | "error"). */
   let previewCache = $state<Record<string, ConflictPreview | null | "loading" | "error">>({});
 
-  // Reset and default choices whenever the dialog opens or the file list changes.
-  $effect(() => {
-    if (!open) return;
+  function onDialogMount(_el: HTMLElement) {
     phase = "choosing";
     errorMessage = null;
     previewExpanded = {};
     previewCache = {};
-    // Default: "both" for both-edited (safest, lossless), "mine" for deletion conflicts.
     choices = Object.fromEntries(
       files.map((f) => [
         f.path,
@@ -74,7 +72,7 @@
       ]),
     );
     queueMicrotask(() => dialogEl?.focus());
-  });
+  }
 
   function isOutsideBook(filePath: string): boolean {
     return !!bookSubPath && !filePath.startsWith(bookSubPath + "/");
@@ -203,29 +201,6 @@
     );
   }
 
-  function focusableElements() {
-    return Array.from(
-      dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    );
-  }
-
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab") return;
-    const focusable = focusableElements();
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-
   function close() {
     if (phase === "resolving") return; // can't interrupt — host is mid-operation
     open = false;
@@ -243,7 +218,8 @@
     aria-modal="true"
     aria-labelledby="conflict-title"
     tabindex="-1"
-    onkeydown={trapFocus}
+    onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:onDialogMount
   >
     <header class="dialog-header">
       <h2 id="conflict-title">

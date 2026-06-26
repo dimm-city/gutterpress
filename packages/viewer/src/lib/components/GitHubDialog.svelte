@@ -18,11 +18,13 @@
     RepoBook,
     CloneProgressEvent,
   } from "$lib/platform/contract";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
     onOpened,
     onAdvancedSetup,
+    onClosed,
     triggerEl,
   }: {
     open?: boolean;
@@ -30,6 +32,8 @@
     onOpened?: (projectDir: string) => void;
     /** "Using a different Git host?" — closes this dialog, opens Advanced Setup (#14). */
     onAdvancedSetup?: () => void;
+    /** Called whenever the dialog closes (any path). Useful for post-close refresh. */
+    onClosed?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
@@ -72,32 +76,26 @@
     ),
   );
 
-  $effect(() => {
-    if (open) {
-      // Full reset — a previous session's repos/branches/destination must
-      // never leak into a reopen; init() repopulates from the host.
-      error = null;
-      filter = "";
-      code = null;
-      selectedRepo = null;
-      cloneProgress = null;
-      closeBlocked = false;
-      username = null;
-      repos = [];
-      branches = [];
-      branch = "";
-      destination = null;
-      folderName = "";
-      books = [];
-      booksLoading = false;
-      loadGen++;
-      step = "connect";
-      // Lead with the primary action (Connect); if init() finds an existing
-      // connection it moves to the repo list and focuses the search input.
-      queueMicrotask(() => (connectBtn ?? dialogEl)?.focus());
-      void init();
-    }
-  });
+  function onDialogMount(_el: HTMLElement) {
+    error = null;
+    filter = "";
+    code = null;
+    selectedRepo = null;
+    cloneProgress = null;
+    closeBlocked = false;
+    username = null;
+    repos = [];
+    branches = [];
+    branch = "";
+    destination = null;
+    folderName = "";
+    books = [];
+    booksLoading = false;
+    loadGen++;
+    step = "connect";
+    queueMicrotask(() => (connectBtn ?? dialogEl)?.focus());
+    void init();
+  }
 
   async function init() {
     if (!isDesktop()) return;
@@ -165,6 +163,7 @@
   /** Hand off to Advanced Setup (#14) — shared by the connect + repos steps. */
   function goAdvancedSetup() {
     open = false;
+    onClosed?.();
     // No triggerEl?.focus() here: Advanced Setup opens next and takes focus
     // itself; it restores focus when IT closes.
     onAdvancedSetup?.();
@@ -257,6 +256,7 @@
       });
       open = false;
       triggerEl?.focus();
+      onClosed?.();
       onOpened?.(projectDir);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -289,6 +289,7 @@
     }
     open = false;
     triggerEl?.focus();
+    onClosed?.();
   }
 
   function progressLabel(p: CloneProgressEvent | null): string {
@@ -300,24 +301,6 @@
     return "Downloading your project…";
   }
 
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab") return;
-    const focusable = Array.from(
-      dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    );
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
 </script>
 
 {#if open}
@@ -330,7 +313,8 @@
     aria-modal="true"
     aria-labelledby="github-dialog-title"
     tabindex="-1"
-    onkeydown={trapFocus}
+    onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:onDialogMount
   >
     <header class="dialog-header">
       <h2 id="github-dialog-title">

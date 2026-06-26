@@ -67,14 +67,6 @@ export class ElectronAdapter implements Platform {
     return { key: path, displayName: basenameOf(path) };
   }
 
-  // On Electron the key IS the absolute path and the host always has standing
-  // filesystem access — there is no handle to reload or permission to re-grant
-  // (that is the PWA's concern). Re-opening a recent is just re-wrapping the
-  // path as a FolderRef. (#33 Phase 3)
-  reopenFolder(key: string): Promise<FolderRef> {
-    return Promise.resolve({ key, displayName: basenameOf(key) });
-  }
-
   readFile(path: string): Promise<string> {
     return api.fs.readFile(path);
   }

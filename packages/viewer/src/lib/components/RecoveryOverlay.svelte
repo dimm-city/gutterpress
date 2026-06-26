@@ -11,6 +11,7 @@
    * ~1 fps. We use var(--app-overlay) + backdrop-filter:blur only — no opacity:0,
    * no solid background colour.
    */
+  import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import OperationLogDialog from "$lib/components/OperationLogDialog.svelte";
 
@@ -52,10 +53,11 @@
   }
 
   // Auto-dismiss: fire onDone ~1800ms after state transitions to "recovered".
+  // The parent wraps this component in {#key recoveryState} so onMount fires
+  // fresh whenever recoveryState changes.
   let autoDismissTimer: ReturnType<typeof setTimeout> | undefined;
 
-  $effect(() => {
-    clearTimeout(autoDismissTimer);
+  onMount(() => {
     if (recoveryState === "recovered" && visible) {
       autoDismissTimer = setTimeout(() => {
         onDone?.();

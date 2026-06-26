@@ -20,6 +20,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import type { ProjectStyle } from "$lib/api";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
@@ -92,30 +93,6 @@
     close();
   }
 
-  /**
-   * Keep Tab focus inside the modal (WCAG 2.1.2). The dialog is aria-modal, but
-   * the browser doesn't enforce containment for keyboard-only users, so cycle
-   * focus across the dialog's focusable elements on Tab / Shift+Tab.
-   */
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab" || !dialogEl) return;
-    const items = Array.from(
-      dialogEl.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      ),
-    ).filter((el) => !el.hasAttribute("disabled") && el.offsetParent !== null);
-    if (items.length === 0) return;
-    const first = items[0]!;
-    const last = items[items.length - 1]!;
-    const active = dialogEl.ownerDocument.activeElement as HTMLElement | null;
-    if (e.shiftKey && active === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
 </script>
 
 {#if open}
@@ -128,7 +105,7 @@
     aria-modal="true"
     aria-labelledby="style-picker-title"
     tabindex="-1"
-    onkeydown={trapFocus}
+    onkeydown={(e) => trapFocus(e, dialogEl)}
   >
     <header class="dialog-header">
       <h2 id="style-picker-title">Edit styles</h2>
@@ -160,7 +137,12 @@
                 title={`Edit ${entry.displayName}`}
               >
                 <span class="style-icon"><Icon name="palette" size={14} /></span>
-                <span class="style-name">{entry.displayName}</span>
+                <span class="style-name">
+                  {entry.displayName}
+                  {#if entry.path}
+                    <span class="style-path">{entry.path.replace(/\\/g, "/").split("/").pop()}</span>
+                  {/if}
+                </span>
                 <span class="style-row-end">
                   {#if entry.active}
                     <span class="style-active">Active</span>
@@ -229,12 +211,17 @@
   .style-name {
     flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    display: flex; flex-direction: column; gap: 1px;
+  }
+  .style-path {
+    font-size: 10px; font-weight: 400; color: var(--app-text-faint);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   /* Never let the trailing group shrink — the name ellipsizes instead, so the
      Active badge + chevron stay visible even for long nested paths at 390px. */
   .style-row-end { display: flex; align-items: center; gap: 8px; color: var(--app-text-muted); flex-shrink: 0; }
   .style-active {
-    font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
     color: var(--app-text-on-accent); background: var(--app-accent, var(--app-focus-ring));
     border-radius: 4px; padding: 2px 6px;
   }

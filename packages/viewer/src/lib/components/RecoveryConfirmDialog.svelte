@@ -15,6 +15,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform } from "$lib/platform";
   import type { RecoveryConfirmRequest } from "$lib/platform/contract";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
@@ -41,24 +42,18 @@
    */
   let isHigh = $derived(request?.confirmation.risk === "high");
 
-  // Reset answered state whenever dialog opens with a new request.
-  $effect(() => {
-    if (open && request) {
-      answered = false;
-      // Focus the appropriate button after the DOM settles.
-      queueMicrotask(() => {
-        if (!dialogEl) return;
-        const risk = request?.confirmation.risk;
-        if (risk === "high") {
-          const notNowBtn = dialogEl.querySelector<HTMLElement>("button[data-action='not-now']");
-          notNowBtn?.focus();
-        } else {
-          const continueBtn = dialogEl.querySelector<HTMLElement>("button[data-action='continue']");
-          continueBtn?.focus();
-        }
-      });
-    }
-  });
+  function onDialogMount(_el: HTMLElement) {
+    answered = false;
+    queueMicrotask(() => {
+      if (!dialogEl) return;
+      const risk = request?.confirmation.risk;
+      if (risk === "high") {
+        dialogEl.querySelector<HTMLElement>("button[data-action='not-now']")?.focus();
+      } else {
+        dialogEl.querySelector<HTMLElement>("button[data-action='continue']")?.focus();
+      }
+    });
+  }
 
   async function answer(approved: boolean) {
     if (!request || answered) return;
@@ -71,28 +66,6 @@
     await getPlatform().respondRecoveryConfirm(request.requestId, approved);
   }
 
-  function focusableElements(): HTMLElement[] {
-    return Array.from(
-      dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    );
-  }
-
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab") return;
-    const focusable = focusableElements();
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
 </script>
 
 {#if open && request}
@@ -106,7 +79,8 @@
     aria-modal="true"
     aria-labelledby="recovery-confirm-title"
     tabindex="-1"
-    onkeydown={trapFocus}
+    onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:onDialogMount
   >
     <!-- Live region for status announcements (populated when the author answers). -->
     <div class="sr-only" role="status" aria-live="polite">{statusMsg}</div>
