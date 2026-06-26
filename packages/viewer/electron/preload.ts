@@ -85,8 +85,8 @@ interface DiscoveredProject {
 }
 
 // Local version history (#13): `SnapshotEntry` / `RestoreVersionResult` /
-// `ProjectClassification` are the ambient declarations in types.d.ts (single
-// electron-side definition; the lib ships no .d.ts to import from yet).
+// `ProjectClassification` are defined in `src/lib/platform/shared-types.ts`
+// and re-exported here via `electron/bridge-types.ts`.
 
 // ──────────────────────────────────────────────────────────────────────────
 // Safe push-event forwarding (main → renderer).

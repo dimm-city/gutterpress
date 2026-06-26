@@ -32,6 +32,7 @@ import type {
   DeepPartial,
   ProjectState,
   ViewerPrefs as SharedViewerPrefs,
+  LeftPanelPrefs,
   DeviceCodeInfo,
   RemoteConnection,
   RemoteRepository,
@@ -342,20 +343,10 @@ export interface FavoriteEntry {
 }
 
 // ProjectState and ViewerPrefs are imported from shared-types above
-// (re-exported at the top of this file). ViewerPrefs.leftPanel uses the
-// LeftPanelPrefs shape below — structurally equivalent to the inline type
-// in shared-types.
+// (re-exported at the top of this file). ViewerPrefs.leftPanel is typed as
+// LeftPanelPrefs — both defined in shared-types.ts and re-exported here.
 
-/** Persisted state of the global left panel (open + active tab). */
-export interface LeftPanelPrefs {
-  open?: boolean;
-  activeTab?: "toc" | "files" | "media" | "projects" | "history";
-  /** Panel width in px (user-resizable, clamped 200–480). */
-  width?: number;
-}
-
-/** ViewerPrefs re-exported from shared-types; leftPanel is typed as LeftPanelPrefs. */
-export type { SharedViewerPrefs as ViewerPrefs };
+export type { SharedViewerPrefs as ViewerPrefs, LeftPanelPrefs };
 
 /** A print-md project discovered by the background scan (#27). */
 export interface DiscoveredProject {

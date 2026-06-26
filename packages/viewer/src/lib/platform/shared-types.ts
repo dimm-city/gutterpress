@@ -167,12 +167,15 @@ export interface ViewerPrefs {
    */
   projectSource?: ProjectSource;
   /** Global left panel open state + active tab, persisted across sessions. */
-  leftPanel?: {
-    open?: boolean;
-    activeTab?: "toc" | "files" | "media" | "projects" | "history";
-    /** Panel width in px (user-resizable, clamped 200–480). */
-    width?: number;
-  };
+  leftPanel?: LeftPanelPrefs;
+}
+
+/** Persisted state of the global left panel (open + active tab). */
+export interface LeftPanelPrefs {
+  open?: boolean;
+  activeTab?: "toc" | "files" | "media" | "projects" | "history";
+  /** Panel width in px (user-resizable, clamped 200–480). */
+  width?: number;
 }
 
 // ── Managed GitHub integration (#15, ADR 0006) ────────────────────────────

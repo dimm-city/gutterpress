@@ -23,7 +23,7 @@ export function trapFocus(
   if (e.key !== "Tab" || !dialogEl) return;
   const items = Array.from(
     dialogEl.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      'button, [href], input, select, summary, textarea, [tabindex]:not([tabindex="-1"])',
     ),
   ).filter((el) => !el.hasAttribute("disabled") && el.offsetParent !== null);
   if (items.length === 0) return;
