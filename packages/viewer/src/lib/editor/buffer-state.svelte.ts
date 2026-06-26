@@ -67,6 +67,9 @@ export class EditorBuffer {
   private opts: EditorBufferOptions;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+  // Monotonic generation counter for concurrent load() suppression. Only the
+  // most recent load's result is applied; earlier stale reads are discarded.
+  private loadGen = 0;
 
   constructor(opts: EditorBufferOptions) {
     this.opts = opts;
@@ -95,19 +98,34 @@ export class EditorBuffer {
     }
   }
 
-  /** Load a file from disk into the buffer, clearing any prior pending state. */
+  /**
+   * Load a file from disk into the buffer, clearing any prior pending state.
+   *
+   * `filePath` and `content` are set TOGETHER (after the async read resolves)
+   * so the parent's `{#key filePath}` remount reads the correct `content`
+   * prop. Setting `filePath` first — as the old code did — caused the remount
+   * to read stale content (the read hadn't resolved yet), and the doc-swap
+   * `$effect` that previously pushed the loaded text afterward was removed
+   * in the $effect elimination pass. A generation counter guards against
+   * stale results when two loads race (e.g. rapid file selection).
+   */
   async load(filePath: string): Promise<void> {
     this.cancelTimers();
-    this.filePath = filePath;
+    const gen = ++this.loadGen;
     this.externalChange = null;
     try {
       const text = await this.platform.readFile(filePath);
+      if (gen !== this.loadGen) return; // a newer load superseded this one
       const st = await this.platform.statFile(filePath).catch(() => null);
+      if (gen !== this.loadGen) return;
+      this.filePath = filePath;
       this.content = text;
       this.diskContent = text;
       this.diskMtimeMs = st?.mtimeMs ?? 0;
       this.setPhase("clean");
     } catch (e) {
+      if (gen !== this.loadGen) return;
+      this.filePath = filePath;
       this.content = "";
       this.diskContent = "";
       this.diskMtimeMs = 0;
@@ -122,21 +140,24 @@ export class EditorBuffer {
    * Load recovered content (from a crash-recovery snapshot) for `filePath`.
    * Marks the buffer dirty against the current disk baseline so it saves on the
    * next debounce.
+   *
+   * `filePath` and `content` are set together (the recovered text is known
+   * synchronously) before the async disk-baseline read, so the parent's
+   * `{#key filePath}` remount reads the correct content prop — same rationale
+   * as {@link load}.
    */
   async restoreContent(filePath: string, recovered: string): Promise<void> {
     this.cancelTimers();
-    this.filePath = filePath;
     this.externalChange = null;
+    this.filePath = filePath;
+    this.content = recovered;
     const st = await this.platform.statFile(filePath).catch(() => null);
-    // The disk baseline is whatever is currently on disk; recovered content is
-    // the (dirtier) in-memory version we want to keep.
     try {
       this.diskContent = await this.platform.readFile(filePath);
     } catch {
       this.diskContent = "";
     }
     this.diskMtimeMs = st?.mtimeMs ?? 0;
-    this.content = recovered;
     this.setPhase(this.isDirty ? "dirty" : "clean");
     if (this.isDirty) this.scheduleSave();
   }

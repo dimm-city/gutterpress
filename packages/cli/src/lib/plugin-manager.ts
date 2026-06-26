@@ -109,13 +109,24 @@ export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
   },
 ];
 
-/** A string entry like `./x` or `/x` or `C:\x` is a local file path. */
+/**
+ * A string entry like `./x` or `/x` or `C:\x` is a local file path.
+ *
+ * Also detects bare relative paths that lack the `./` prefix (e.g.
+ * `plugins/my-plugin.js`): npm package names cannot contain `/` unless
+ * scoped (`@scope/name`), and never end in a file extension.
+ */
 function isLocalRef(ref: string): boolean {
   return (
     ref.startsWith("./") ||
     ref.startsWith("../") ||
     ref.startsWith("/") ||
-    /^[a-zA-Z]:[\\/]/.test(ref)
+    /^[a-zA-Z]:[\\/]/.test(ref) ||
+    // A file extension → definitely a local file, not an npm name.
+    /\.(m?js|cjs|ts)$/i.test(ref) ||
+    // Contains a path separator but isn't a scoped npm package.
+    // (npm names can only contain "/" in the "@scope/name" form.)
+    (!ref.startsWith("@") && ref.includes("/"))
   );
 }
 
@@ -169,6 +180,11 @@ function refKind(ref: string): PluginKind {
 /**
  * List the project's configured plugins with their per-project enable flag.
  * Returns `[]` when there is no manifest or no `plugins:` list.
+ *
+ * For object-form entries, the kind is taken from the manifest KEY (`path:` →
+ * local, `name:` → npm) rather than guessing from the value. This correctly
+ * classifies e.g. `path: plugins/foo.js` (no `./` prefix) as local. Scalar
+ * (string) entries fall back to the {@link isLocalRef} heuristic.
  */
 export async function listProjectPlugins(
   projectDir: string,
@@ -182,11 +198,18 @@ export async function listProjectPlugins(
     const ref = itemRef(item);
     if (!ref) continue;
     let enabled = true;
+    let kind: PluginKind;
     if (isMap(item)) {
       const e = item.get("enabled");
       if (e === false) enabled = false;
+      // The manifest key explicitly says local (path:) or npm (name:).
+      if (item.has("path")) kind = "local";
+      else if (item.has("name")) kind = "npm";
+      else kind = refKind(ref);
+    } else {
+      kind = refKind(ref);
     }
-    out.push({ ref, kind: refKind(ref), enabled });
+    out.push({ ref, kind, enabled });
   }
   return out;
 }
