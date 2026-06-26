@@ -28,18 +28,15 @@
   // appearance.theme. (Idempotent — +page.svelte also calls it.)
   _loadSettings();
 
-  // Initialise theming on mount (sets document data-theme + OS subscription).
+  // Initialise theming on mount (sets document data-theme + OS subscription)
+  // and sync with any already-loaded settings value.
   // The no-flash inline script in app.html has already painted the cached
   // theme synchronously; this refines it with the canonical persisted value
-  // and wires up live OS-change tracking.
-  $effect(() => {
+  // and wires up live OS-change tracking. setThemeMode() (called from
+  // SettingsDialog) calls apply() directly, so no reactive tracking is needed
+  // beyond this initial sync.
+  onMount(() => {
     initTheme();
-  });
-
-  // Follow the Settings "Theme" control: when appearance.theme changes in the
-  // store, re-resolve and re-apply. Reading the reactive setting inside the
-  // effect registers the dependency.
-  $effect(() => {
     syncThemeFromSettings();
   });
 </script>

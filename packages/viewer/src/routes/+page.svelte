@@ -145,8 +145,6 @@
   // Set true once we have loaded panel state from prefs (avoids flicker).
   let leftPanelPrefsLoaded = $state(false);
 
-  // Bumped after a pull so LeftPanel refreshes its History tab.
-  let historyRefreshKey = $state(0);
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
@@ -310,7 +308,7 @@
     );
     // A sync may add new commits to the project's git history (both push and
     // pull sides). Bump the key so the History tab reflects the new state.
-    historyRefreshKey += 1;
+    leftPanelRef?.notifyHistoryRefresh();
     // If remote changes landed on disk, re-lint immediately (the preview
     // file-watcher re-renders and fires refreshProblems via renderingComplete,
     // but a manual refresh here catches edge cases where no re-render fires).
@@ -487,7 +485,7 @@
   // entry is visible immediately.
   function onVersionRestored() {
     toast?.success("Project restored — the preview will refresh in a moment.");
-    historyRefreshKey += 1;
+    leftPanelRef?.notifyHistoryRefresh();
   }
 
   // A snapshot was saved (#13) — same toast pattern as onVersionRestored, so
@@ -495,7 +493,7 @@
   // Bump the key so the History tab list updates without requiring a tab switch.
   function onVersionSnapshotSaved() {
     toast?.success("Snapshot saved.");
-    historyRefreshKey += 1;
+    leftPanelRef?.notifyHistoryRefresh();
   }
   // Official setup guide for first-time writers (MVP "Download starter template").
   const SETUP_GUIDE_URL =
@@ -520,6 +518,7 @@
     runToolbarAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
     getSelectionText: () => string;
     insertSnippet: (text: string) => void;
+    updateContent: (content: string) => void;
   } | null>(null);
 
   // Snippet picker (#29) — opened via the toolbar button or Ctrl/Cmd+Shift+S.
@@ -903,6 +902,8 @@
 
   function reloadExternal() {
     buffer?.acceptExternal();
+    // Push the accepted external content into the editor immediately.
+    if (buffer) editorRef?.updateContent(buffer.content);
   }
 
   function keepMineExternal() {
@@ -982,8 +983,11 @@
     }
   });
 
+  let leftPanelRef = $state<LeftPanel | undefined>(undefined);
+
   function toggleLeftPanel() {
     leftPanelOpen = !leftPanelOpen;
+    if (leftPanelOpen) leftPanelRef?.notifyOpened();
   }
 
   function toggleEditor() {
@@ -1588,6 +1592,7 @@
         buffer.reset();
       }
       currentDir = dir;
+      leftPanelRef?.resetHistoryState();
       currentFolderDisplayName = displayName;
       currentUrl = null;
       // Detect a "loose" folder (no manifest) so we can offer to set it up as a
@@ -1609,7 +1614,7 @@
       logFilePath = null;
       // Bump historyRefreshKey so the History tab reloads its list for the new
       // project as soon as capabilities arrive (LeftPanel's effect guards on canHistory).
-      historyRefreshKey += 1;
+      leftPanelRef?.notifyHistoryRefresh();
       // Preload the first file into the editor buffer when a folder opens, so the
       // editor pane is never empty whenever it's shown (and switching to edit is
       // instant). Action-driven (folder open), not an effect, and independent of
@@ -1679,6 +1684,7 @@
     } catch (e) {
       previewUrl = null;
       currentDir = null;
+      leftPanelRef?.resetHistoryState();
       currentFolderDisplayName = null;
       docTitle = null;
       rendering = false;
@@ -1728,6 +1734,7 @@
     sourceMode = "url";
     currentUrl = url;
     currentDir = null;
+    leftPanelRef?.resetHistoryState();
     currentFolderDisplayName = null;
     docTitle = null;
     // The editor is folder-only; close it for web previews.
@@ -1776,6 +1783,7 @@
     await getPlatform().stopPreview().catch(() => {});
     previewUrl = null;
     currentDir = null;
+    leftPanelRef?.resetHistoryState();
     currentFolderDisplayName = null;
     currentUrl = null;
     docTitle = null;
@@ -2885,6 +2893,7 @@
   <!-- Global left panel — available in both preview and edit modes -->
   <div id="left-panel-region" class="left-panel-region" class:panel-open={leftPanelOpen} style="--left-panel-width: {leftPanelWidth}px">
     <LeftPanel
+      bind:this={leftPanelRef}
       bind:open={leftPanelOpen}
       bind:width={leftPanelWidth}
       bind:activeTab={leftPanelTab}
@@ -2916,7 +2925,6 @@
       onSnapshotSaved={(entry) => onVersionSnapshotSaved()}
       onVersionRestored={onVersionRestored}
       onSyncReconnect={onSyncReconnect}
-      refreshKey={historyRefreshKey}
     />
 
     <!-- Main content area (preview + editor) -->
@@ -3008,6 +3016,7 @@
             </div>
           {/if}
           {#if MarkdownEditor}
+            {#key editorFilePath}
             <MarkdownEditor
               bind:this={editorRef}
               filePath={editorFilePath}
@@ -3015,6 +3024,7 @@
               onChange={onEditorChange}
               onAnchorLine={onEditorAnchorLine}
             />
+            {/key}
           {:else if editorModuleFailed}
             <div class="editor-loading" role="alert">
               <p>The editor failed to load.</p>
@@ -3064,6 +3074,7 @@
              Non-dismissable during repair; auto-dismisses after ~1.8s on success.
              Hard rule (memory: never hide cross-origin preview iframe): scrim is
              translucent (var(--app-overlay) + backdrop-filter:blur), never opaque. -->
+        {#key recoveryOverlayState}
         <RecoveryOverlay
           visible={recoveryOverlayVisible}
           phase={recoveryOverlayPhase}
@@ -3073,6 +3084,7 @@
           onShowBackup={recoveryBackupZipPath ? () => showBackupInFolder(recoveryBackupZipPath!) : undefined}
           onDone={onRecoveryOverlayDone}
         />
+        {/key}
       </section>
     </div>
   {:else}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { PreviewClient } from "../preview-client";
 
   let { url, client = $bindable(), onError }: {
@@ -9,7 +10,7 @@
 
   let frame = $state<HTMLIFrameElement | undefined>(undefined);
 
-  $effect(() => {
+  onMount(() => {
     if (!frame) return;
     const c = new PreviewClient();
     client = c;
