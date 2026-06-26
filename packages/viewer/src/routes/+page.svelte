@@ -837,21 +837,24 @@
   });
 
   // External-edit detection (#44): watch the open folder; on any debounced
-  // change, ask the buffer to reconcile the open document against disk. The
-  // watcher is torn down when the folder closes / switches to URL mode.
-  $effect(() => {
+  // change, ask the buffer to reconcile the open document against disk.
+  // Managed imperatively: started in startFolderPreview, stopped in stopPreview / openUrl.
+  let _watchFolderOff: (() => void) | undefined;
+  function startFolderWatch(dir: string) {
     if (!isDesktop()) return;
-    const dir = currentDir;
-    if (!dir || sourceMode !== "folder") return;
-    const off = getPlatform().watchFolder(dir, () => {
+    _watchFolderOff?.();
+    _watchFolderOff = getPlatform().watchFolder(dir, () => {
       buffer?.reconcileExternalChange().catch(() => {});
-    });
-    return () => off?.();
-  });
+    }) ?? undefined;
+  }
+  function stopFolderWatch() {
+    _watchFolderOff?.();
+    _watchFolderOff = undefined;
+  }
 
   // Window close gate (#44): when main asks the renderer to flush before
   // closing, flush the buffer. The preload wrapper signals main when done.
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
     const off = getPlatform().onFlushBeforeClose(() => buffer?.flush() ?? Promise.resolve());
     return () => off?.();
@@ -967,26 +970,19 @@
   }
 
   // ── Persist left panel state on change ────────────────────────────────────
-  $effect(() => {
+  function persistLeftPanelPrefs() {
     if (!leftPanelPrefsLoaded) return;
     api.app
       .setViewerPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } } as Record<string, unknown>)
       .catch(() => {});
-  });
-
-  // ── Auto-open panel on Projects tab when no project ────────────────────────
-  $effect(() => {
-    if (!currentDir && !currentUrl && !busy && lastProjectChecked) {
-      leftPanelOpen = true;
-      leftPanelTab = "projects";
-    }
-  });
+  }
 
   let leftPanelRef = $state<LeftPanel | undefined>(undefined);
 
   function toggleLeftPanel() {
     leftPanelOpen = !leftPanelOpen;
     if (leftPanelOpen) leftPanelRef?.notifyOpened();
+    persistLeftPanelPrefs();
   }
 
   function toggleEditor() {
@@ -1031,14 +1027,7 @@
       });
   }
 
-  // Closing the project (or switching to a URL preview) clears the findings so
-  // the panel/badge never show a stale project's problems.
-  $effect(() => {
-    if (!currentDir || sourceMode !== "folder") {
-      problems = [];
-      problemsOpen = false;
-    }
-  });
+  // Problems are cleared in stopPreview() and openUrl() — no reactive effect needed.
 
   /**
    * Open the problem's file in the editor at the offending line. Reuses the
@@ -1064,26 +1053,11 @@
     focusEditorWhenReady();
   }
 
-  // ----------------------------------------------------------------
-  // Inject viewer canvas styles into iframe when client + bgColor change
-  // ----------------------------------------------------------------
-  $effect(() => {
-    if (!client) return;
-    // Inject once on client attach; renderingComplete will re-inject with final bg
-    client.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
-  });
+  // Canvas styles are injected by the renderingComplete handler (which already
+  // calls client.injectStyles). View-mode changes from the Settings panel are
+  // handled by the onViewModeChange callback passed to SettingsDialog.
 
-  // Apply view-mode changes that originate from the Settings panel (which writes
-  // the settings store directly rather than calling applyViewMode). Keeps the
-  // rendered spread in sync with the derived viewMode without a reload.
-  $effect(() => {
-    const mode = viewMode;
-    if (!client || rendering) return;
-    client.call("setViewMode", [mode]).catch(() => {});
-  });
-
-  $effect(() => {
-    if (diagnosticsTools) return;
+  onMount(() => {
     api.doctor()
       .then((data) => {
         diagnosticsTools = (data as { tools?: DiagnosticsTool[] }).tools ?? [];
@@ -1091,14 +1065,10 @@
       .catch(() => {});
   });
 
-  $effect(() => {
-    if (!saveWarning) return;
-    if (currentDir && !rendering && sourceMode === "folder") {
-      saveWarning = null;
-    }
-  });
+  // saveWarning is cleared in startFolderPreview (saveWarning = null at top) and
+  // in the renderingComplete handler. No reactive effect needed.
 
-  $effect(() => {
+  onMount(() => {
     const off = getPlatform().onUrlPreviewBlocked((event: UrlPreviewBlockedEvent) => {
       if (sourceMode !== "url") return;
       if (!previewUrl) return;
@@ -1108,13 +1078,9 @@
     return () => off?.();
   });
 
-  $effect(() => {
-    if (pageEditing) {
-      queueMicrotask(() => pageEditInput?.focus());
-    }
-  });
+  // pageEditInput focus is triggered directly in beginPageEdit() — see below.
 
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
     if (lastProjectChecked) return;
     if (previewUrl || currentDir || currentUrl || busy || openError || urlPreviewError) return;
@@ -1179,11 +1145,12 @@
   });
 
   // ----------------------------------------------------------------
-  // Hook PreviewClient events when it appears
-  // ----------------------------------------------------------------
-  $effect(() => {
-    if (!client) return;
-    const off = client.on((e) => {
+  // Subscribe to PreviewClient events when a client is created by PreviewFrame.
+  // Hooked via onClientReady callback on the PreviewFrame component (imperative,
+  // not $effect). Cleanup is handled when the client is replaced (PreviewFrame
+  // remounts on previewUrl change via {#key previewUrl}).
+  function onClientReady(c: PreviewClient) {
+    c.on((e) => {
       if (e.name === "renderingComplete") {
         const n = e.detail.totalPages ?? 0;
         totalPages = n;
@@ -1287,8 +1254,7 @@
         }).catch(() => {});
       }
     });
-    return off;
-  });
+  }
 
   // ----------------------------------------------------------------
   // Auto-update: markReady on mount (health gate) + event subscription
@@ -1298,13 +1264,13 @@
   // health watchdog armed after an apply/launch-promote. If it does not arrive
   // before the watchdog elapses (and the window is still open), main rolls the
   // bundle back this session. Harmless no-op when nothing is pending.
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
     getPlatform().updater.markReady().catch(() => {});
   });
 
   // Check for an already-staged update on load, then subscribe to future events.
-  $effect(() => {
+  onMount(() => {
     if (!isDesktop()) return;
     const platform = getPlatform();
 
@@ -1337,7 +1303,7 @@
   // ----------------------------------------------------------------
   // Global keyboard shortcuts (available without a loaded document)
   // ----------------------------------------------------------------
-  $effect(() => {
+  onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
       // Cmd/Ctrl+, opens the Settings panel (toggles closed if already open).
       if ((e.ctrlKey || e.metaKey) && e.key === ",") {
@@ -1365,12 +1331,12 @@
   });
 
   // ----------------------------------------------------------------
-  // Keyboard shortcuts
+  // Keyboard shortcuts (preview navigation — active whenever a preview is open)
   // ----------------------------------------------------------------
-  $effect(() => {
-    if (!previewUrl) return;
-
+  onMount(() => {
     function onKey(e: KeyboardEvent) {
+      // Only active when a preview URL is loaded.
+      if (!previewUrl) return;
       // Don't intercept when focus is in an input/textarea/select, or inside
       // the CodeMirror editor (#38) — its content node is a contenteditable
       // DIV, so a tagName check alone would let preview-nav keys (arrows,
@@ -1436,11 +1402,10 @@
   // ----------------------------------------------------------------
   // Responsive auto view-mode on resize (unless user locked it)
   // ----------------------------------------------------------------
-  $effect(() => {
-    if (!previewUrl) return;
+  onMount(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     function onResize() {
-      if (userSetViewMode) return;
+      if (!previewUrl || userSetViewMode) return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         const auto = window.innerWidth < 1280 ? "single" : "two-column";
@@ -1681,6 +1646,8 @@
       }
       // Crash-recovery offer (#44): scan for snapshots left by an unclean exit.
       void scanForRecovery(dir);
+      // Start watching for external edits (replaces old $effect on currentDir).
+      startFolderWatch(dir);
     } catch (e) {
       previewUrl = null;
       currentDir = null;
@@ -1740,6 +1707,9 @@
     // The editor is folder-only; close it for web previews.
     editorOpen = false;
     buffer?.reset();
+    stopFolderWatch();
+    problems = [];
+    problemsOpen = false;
     // Force iframe remount by nulling first.
     previewUrl = null;
     queueMicrotask(() => {
@@ -1781,6 +1751,7 @@
     // drops an in-flight auto-save (#44).
     if (buffer) await buffer.flush().catch(() => {});
     await getPlatform().stopPreview().catch(() => {});
+    stopFolderWatch();
     previewUrl = null;
     currentDir = null;
     leftPanelRef?.resetHistoryState();
@@ -1797,6 +1768,13 @@
     buffer?.reset();
     recoveryScanDir = null;
     recoveryItems = [];
+    // Clear stale problems and auto-open panel on projects tab.
+    problems = [];
+    problemsOpen = false;
+    if (lastProjectChecked) {
+      leftPanelOpen = true;
+      leftPanelTab = "projects";
+    }
   }
 
   async function savePdf() {
@@ -1971,6 +1949,7 @@
     if (rendering) return;
     pageEditing = true;
     pageEditValue = String(currentPage);
+    queueMicrotask(() => pageEditInput?.focus());
   }
   function cancelPageEdit() {
     pageEditing = false;
@@ -2187,7 +2166,7 @@
   // matchMedia subscription (a genuine lifecycle subscription — the idiomatic
   // use of $effect). On a resize INTO narrow while in edit mode, make sure a
   // file is loaded so the editor isn't empty (the tree is hidden when narrow).
-  $effect(() => {
+  onMount(() => {
     const mq = window.matchMedia(NARROW_QUERY);
     isNarrow = mq.matches;
     const onChange = (e: MediaQueryListEvent) => {
@@ -2936,6 +2915,7 @@
       onSnapshotSaved={(entry) => onVersionSnapshotSaved()}
       onVersionRestored={onVersionRestored}
       onSyncReconnect={onSyncReconnect}
+      onPanelStateChange={persistLeftPanelPrefs}
     />
 
     <!-- Main content area (preview + editor) -->
@@ -3063,6 +3043,7 @@
           <PreviewFrame
             url={previewUrl}
             bind:client
+            onClientReady={onClientReady}
             onError={(msg) => {
               if (sourceMode === "url") {
                 urlPreviewError = "This website could not be previewed inside print-md.";
@@ -3182,7 +3163,12 @@
   {checkingUpdates}
   {updateReadyVersion}
 />
-<SettingsDialog bind:open={settingsOpen} triggerEl={settingsBtn} />
+<SettingsDialog
+  bind:open={settingsOpen}
+  triggerEl={settingsBtn}
+  onViewModeChange={(mode) => { if (client && !rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
+  onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
+/>
 <GitHubDialog
   bind:open={githubOpen}
   onOpened={(projectDir) => startFolderPreview(projectDir, "Opening your project…")}

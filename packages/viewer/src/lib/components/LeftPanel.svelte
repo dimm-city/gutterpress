@@ -61,6 +61,7 @@
     onSnapshotSaved,
     onVersionRestored,
     onSyncReconnect,
+    onPanelStateChange,
   }: {
     open?: boolean;
     activeTab?: PanelTab;
@@ -89,6 +90,8 @@
     onSnapshotSaved?: (entry: SnapshotEntry) => void;
     onVersionRestored?: (backupId?: string) => void;
     onSyncReconnect?: () => void;
+    /** Called whenever tab or width changes so the parent can persist the state. */
+    onPanelStateChange?: () => void;
   } = $props();
 
   // Derived capabilities for History tab
@@ -291,15 +294,16 @@
       (e.currentTarget as HTMLElement | null)?.releasePointerCapture?.(ev.pointerId);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      onPanelStateChange?.();
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   }
   function onResizeKeydown(e: KeyboardEvent) {
-    if (e.key === "ArrowLeft") { e.preventDefault(); width = clampWidth(width - 16); }
-    else if (e.key === "ArrowRight") { e.preventDefault(); width = clampWidth(width + 16); }
-    else if (e.key === "Home") { e.preventDefault(); width = PANEL_MIN_W; }
-    else if (e.key === "End") { e.preventDefault(); width = PANEL_MAX_W; }
+    if (e.key === "ArrowLeft") { e.preventDefault(); width = clampWidth(width - 16); onPanelStateChange?.(); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); width = clampWidth(width + 16); onPanelStateChange?.(); }
+    else if (e.key === "Home") { e.preventDefault(); width = PANEL_MIN_W; onPanelStateChange?.(); }
+    else if (e.key === "End") { e.preventDefault(); width = PANEL_MAX_W; onPanelStateChange?.(); }
   }
 
   // Projects first (user request): opening/switching books is the entry-point
@@ -415,7 +419,7 @@
         title={tab.title}
         tabindex={getTabIndex(tab.id)}
         bind:this={tabEls[tab.id]}
-        onclick={() => { activeTab = tab.id; if (!open) open = true; if (tab.id === "history") maybeLoadHistory(); }}
+        onclick={() => { activeTab = tab.id; if (!open) open = true; if (tab.id === "history") maybeLoadHistory(); onPanelStateChange?.(); }}
       >
         <Icon name={tab.icon} size={15} />
         <span class="tab-label">{tab.label}</span>
