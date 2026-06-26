@@ -23,6 +23,7 @@
     open = $bindable(false),
     onOpened,
     onAdvancedSetup,
+    onClosed,
     triggerEl,
   }: {
     open?: boolean;
@@ -30,6 +31,8 @@
     onOpened?: (projectDir: string) => void;
     /** "Using a different Git host?" — closes this dialog, opens Advanced Setup (#14). */
     onAdvancedSetup?: () => void;
+    /** Called whenever the dialog closes (any path). Useful for post-close refresh. */
+    onClosed?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
@@ -165,6 +168,7 @@
   /** Hand off to Advanced Setup (#14) — shared by the connect + repos steps. */
   function goAdvancedSetup() {
     open = false;
+    onClosed?.();
     // No triggerEl?.focus() here: Advanced Setup opens next and takes focus
     // itself; it restores focus when IT closes.
     onAdvancedSetup?.();
@@ -257,6 +261,7 @@
       });
       open = false;
       triggerEl?.focus();
+      onClosed?.();
       onOpened?.(projectDir);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -289,6 +294,7 @@
     }
     open = false;
     triggerEl?.focus();
+    onClosed?.();
   }
 
   function progressLabel(p: CloneProgressEvent | null): string {

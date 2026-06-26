@@ -496,8 +496,6 @@ export const api = {
   vcs: {
     enableVersionHistory: (projectDir: string) =>
       post<VcsProjectClassification>('/api/vcs/enable-version-history', { projectDir }),
-    listSnapshots: (projectDir: string) =>
-      post<SnapshotEntry[]>('/api/vcs/list-snapshots', { projectDir }),
     listSnapshotsPage: (projectDir: string, options?: { limit?: number; before?: string }) =>
       post<{ entries: SnapshotEntry[]; hasMore: boolean }>('/api/vcs/list-snapshots-page', { projectDir, ...options }),
     restoreSnapshot: (projectDir: string, id: string) =>
