@@ -232,6 +232,7 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
         <span class="theme-name">{t.name}</span>
         {#if isActive(t)}<span class="badge">Active</span>{/if}
       </div>
+      <p class="theme-id">{t.kind === "builtin" ? "built-in" : `themes/${t.id}`}</p>
       {#if t.description}<p class="theme-desc">{t.description}</p>{/if}
       {#if t.author}<p class="theme-author">by {t.author}</p>{/if}
     </div>
@@ -417,10 +418,11 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
   .theme-name-row { display: flex; align-items: center; gap: 8px; }
   .theme-name { font-size: 13px; font-weight: 600; color: var(--app-text); }
   .badge {
-    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
     color: var(--app-text-on-accent); background: var(--app-focus-ring);
     padding: 1px 6px; border-radius: 999px;
   }
+  .theme-id { margin: 0; font-size: 10px; color: var(--app-text-faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .theme-desc { margin: 0; font-size: 11.5px; color: var(--app-text-muted); line-height: 1.4; }
   .theme-author { margin: 0; font-size: 11px; color: var(--app-text-faint); }
 

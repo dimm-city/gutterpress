@@ -137,7 +137,12 @@
                 title={`Edit ${entry.displayName}`}
               >
                 <span class="style-icon"><Icon name="palette" size={14} /></span>
-                <span class="style-name">{entry.displayName}</span>
+                <span class="style-name">
+                  {entry.displayName}
+                  {#if entry.path}
+                    <span class="style-path">{entry.path.replace(/\\/g, "/").split("/").pop()}</span>
+                  {/if}
+                </span>
                 <span class="style-row-end">
                   {#if entry.active}
                     <span class="style-active">Active</span>
@@ -206,12 +211,17 @@
   .style-name {
     flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    display: flex; flex-direction: column; gap: 1px;
+  }
+  .style-path {
+    font-size: 10px; font-weight: 400; color: var(--app-text-faint);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   /* Never let the trailing group shrink — the name ellipsizes instead, so the
      Active badge + chevron stay visible even for long nested paths at 390px. */
   .style-row-end { display: flex; align-items: center; gap: 8px; color: var(--app-text-muted); flex-shrink: 0; }
   .style-active {
-    font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
     color: var(--app-text-on-accent); background: var(--app-accent, var(--app-focus-ring));
     border-radius: 4px; padding: 2px 6px;
   }
