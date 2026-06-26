@@ -11,6 +11,7 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
@@ -61,25 +62,6 @@
     triggerEl?.focus();
   }
 
-  function trapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab") return;
-    const focusable = Array.from(
-      dialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    );
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-
   async function copyLog() {
     if (!logContent) return;
     try {
@@ -100,7 +82,7 @@
     aria-modal="true"
     aria-labelledby="log-title"
     tabindex="-1"
-    onkeydown={trapFocus}
+    onkeydown={(e) => trapFocus(e, dialogEl)}
   >
     <header class="dialog-header">
       <h2 id="log-title">

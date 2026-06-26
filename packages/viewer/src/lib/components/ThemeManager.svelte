@@ -21,6 +21,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import type { ThemeInfo, ApplyThemeTarget } from "$lib/api";
+  import { trapFocus } from "$lib/a11y";
 
   let {
     open = $bindable(false),
@@ -245,6 +246,7 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
     aria-modal="true"
     aria-labelledby="theme-manager-title"
     tabindex="-1"
+    onkeydown={(e) => trapFocus(e, dialogEl)}
   >
     <header class="dialog-header">
       <h2 id="theme-manager-title">Themes</h2>
