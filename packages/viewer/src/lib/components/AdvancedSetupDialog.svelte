@@ -70,11 +70,9 @@
   let disconnecting = $state<string | null>(null);
   let disconnectError = $state<string | null>(null);
 
-  $effect(() => {
-    if (!open) return;
-    // Full reset on every open — especially the token field. Bumping the
-    // generation here also invalidates any load still in flight from a
-    // previous open.
+  let serverInputTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function onDialogMount(_el: HTMLElement) {
     loadGen += 1;
     diag = null;
     testResult = null;
@@ -88,26 +86,20 @@
     tokenUrl = null;
     queueMicrotask(() => dialogEl?.focus());
     void load();
-  });
+  }
 
-  // Resolve the token-settings deep link as the user types a server address.
-  $effect(() => {
+  function onServerInput(e: Event) {
+    serverInput = (e.currentTarget as HTMLInputElement).value;
+    clearTimeout(serverInputTimer);
     const value = serverInput.trim();
-    if (!value) {
-      tokenUrl = null;
-      return;
-    }
-    const timer = setTimeout(() => {
+    if (!value) { tokenUrl = null; return; }
+    serverInputTimer = setTimeout(() => {
       api.remote
         .forgeTokenUrl(value)
-        .then((url) => {
-          // Ignore stale answers after further typing.
-          if (serverInput.trim() === value) tokenUrl = url;
-        })
+        .then((url) => { if (serverInput.trim() === value) tokenUrl = url; })
         .catch(() => (tokenUrl = null));
     }, 300);
-    return () => clearTimeout(timer);
-  });
+  }
 
   async function load() {
     if (!isDesktop()) return;
@@ -275,6 +267,7 @@
     aria-labelledby="advanced-setup-title"
     tabindex="-1"
     onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:onDialogMount
   >
     <header class="dialog-header">
       <h2 id="advanced-setup-title">Advanced setup</h2>
@@ -367,7 +360,8 @@
           <span>Server address</span>
           <input
             type="text"
-            bind:value={serverInput}
+            value={serverInput}
+            oninput={onServerInput}
             placeholder="git.example.com"
             spellcheck="false"
             autocomplete="off"

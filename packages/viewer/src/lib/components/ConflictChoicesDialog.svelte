@@ -60,14 +60,11 @@
   /** Memoised preview results (path → ConflictPreview | null | "loading" | "error"). */
   let previewCache = $state<Record<string, ConflictPreview | null | "loading" | "error">>({});
 
-  // Reset and default choices whenever the dialog opens or the file list changes.
-  $effect(() => {
-    if (!open) return;
+  function onDialogMount(_el: HTMLElement) {
     phase = "choosing";
     errorMessage = null;
     previewExpanded = {};
     previewCache = {};
-    // Default: "both" for both-edited (safest, lossless), "mine" for deletion conflicts.
     choices = Object.fromEntries(
       files.map((f) => [
         f.path,
@@ -75,7 +72,7 @@
       ]),
     );
     queueMicrotask(() => dialogEl?.focus());
-  });
+  }
 
   function isOutsideBook(filePath: string): boolean {
     return !!bookSubPath && !filePath.startsWith(bookSubPath + "/");
@@ -222,6 +219,7 @@
     aria-labelledby="conflict-title"
     tabindex="-1"
     onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:onDialogMount
   >
     <header class="dialog-header">
       <h2 id="conflict-title">

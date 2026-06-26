@@ -29,8 +29,8 @@
   let loading = $state<boolean>(false);
   let error = $state<string>("");
 
-  $effect(() => {
-    if (!open || !logFilePath) return;
+  function onDialogMount(_el: HTMLElement) {
+    if (!logFilePath) return;
     loading = true;
     error = "";
     logContent = "";
@@ -54,8 +54,8 @@
       }
     })();
 
-    return () => { cancelled = true; };
-  });
+    return { destroy() { cancelled = true; } };
+  }
 
   function close() {
     open = false;
@@ -83,6 +83,7 @@
     aria-labelledby="log-title"
     tabindex="-1"
     onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:onDialogMount
   >
     <header class="dialog-header">
       <h2 id="log-title">

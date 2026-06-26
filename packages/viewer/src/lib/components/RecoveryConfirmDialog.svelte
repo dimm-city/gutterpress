@@ -42,24 +42,18 @@
    */
   let isHigh = $derived(request?.confirmation.risk === "high");
 
-  // Reset answered state whenever dialog opens with a new request.
-  $effect(() => {
-    if (open && request) {
-      answered = false;
-      // Focus the appropriate button after the DOM settles.
-      queueMicrotask(() => {
-        if (!dialogEl) return;
-        const risk = request?.confirmation.risk;
-        if (risk === "high") {
-          const notNowBtn = dialogEl.querySelector<HTMLElement>("button[data-action='not-now']");
-          notNowBtn?.focus();
-        } else {
-          const continueBtn = dialogEl.querySelector<HTMLElement>("button[data-action='continue']");
-          continueBtn?.focus();
-        }
-      });
-    }
-  });
+  function onDialogMount(_el: HTMLElement) {
+    answered = false;
+    queueMicrotask(() => {
+      if (!dialogEl) return;
+      const risk = request?.confirmation.risk;
+      if (risk === "high") {
+        dialogEl.querySelector<HTMLElement>("button[data-action='not-now']")?.focus();
+      } else {
+        dialogEl.querySelector<HTMLElement>("button[data-action='continue']")?.focus();
+      }
+    });
+  }
 
   async function answer(approved: boolean) {
     if (!request || answered) return;
@@ -86,6 +80,7 @@
     aria-labelledby="recovery-confirm-title"
     tabindex="-1"
     onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:onDialogMount
   >
     <!-- Live region for status announcements (populated when the author answers). -->
     <div class="sr-only" role="status" aria-live="polite">{statusMsg}</div>

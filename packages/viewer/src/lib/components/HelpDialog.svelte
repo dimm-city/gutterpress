@@ -63,12 +63,10 @@
     }
   }
 
-  $effect(() => {
-    if (open) {
-      queueMicrotask(() => dialogEl?.querySelector<HTMLElement>('button:not([disabled]), [href], input:not([disabled])')?.focus());
-      if (!data && !loading) load();
-    }
-  });
+  function onDialogMount(_el: HTMLElement) {
+    queueMicrotask(() => dialogEl?.querySelector<HTMLElement>('button:not([disabled]), [href], input:not([disabled])')?.focus());
+    if (!data && !loading) load();
+  }
 
   function close() {
     open = false;
@@ -139,7 +137,7 @@
 {#if open}
   <div class="backdrop" onclick={close} role="presentation"></div>
 
-  <div bind:this={dialogEl} class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1" onkeydown={(e) => trapFocus(e, dialogEl)}>
+  <div bind:this={dialogEl} class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1" onkeydown={(e) => trapFocus(e, dialogEl)} use:onDialogMount>
     <header class="dialog-header">
       <div class="dialog-title-group">
         <h2 id="help-title">About Print MD</h2>

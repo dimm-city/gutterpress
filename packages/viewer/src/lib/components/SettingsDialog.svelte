@@ -9,20 +9,24 @@
     open = $bindable(false),
     onClose,
     triggerEl,
+    onViewModeChange,
+    onCrashRecoveryChange,
   }: {
     open?: boolean;
     onClose?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
+    /** Called immediately when the user changes the view mode setting. */
+    onViewModeChange?: (mode: "single" | "two-column") => void;
+    /** Called immediately when the user toggles crash recovery. */
+    onCrashRecoveryChange?: (enabled: boolean) => void;
   } = $props();
 
   const settings = useSettings();
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
 
-  $effect(() => {
-    if (open) {
-      queueMicrotask(() => dialogEl?.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')?.focus());
-    }
-  });
+  function onDialogMount(_el: HTMLElement) {
+    queueMicrotask(() => dialogEl?.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')?.focus());
+  }
 
   function close() {
     open = false;
@@ -45,6 +49,7 @@
     aria-labelledby="settings-title"
     tabindex="-1"
     onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:onDialogMount
   >
     <header class="dialog-header">
       <h2 id="settings-title">Settings</h2>
@@ -92,7 +97,7 @@
           <select
             id="set-viewmode"
             value={s.preview.viewMode}
-            onchange={(e) => settings.set({ preview: { viewMode: (e.currentTarget as HTMLSelectElement).value as "single" | "two-column" } })}
+            onchange={(e) => { const mode = (e.currentTarget as HTMLSelectElement).value as "single" | "two-column"; settings.set({ preview: { viewMode: mode } }); onViewModeChange?.(mode); }}
           >
             <option value="single">Single page</option>
             <option value="two-column">Two pages side by side</option>
@@ -184,7 +189,7 @@
             id="set-crash-recovery"
             type="checkbox"
             checked={s.editor.crashRecovery}
-            onchange={(e) => settings.set({ editor: { crashRecovery: (e.currentTarget as HTMLInputElement).checked } })}
+            onchange={(e) => { const enabled = (e.currentTarget as HTMLInputElement).checked; settings.set({ editor: { crashRecovery: enabled } }); onCrashRecoveryChange?.(enabled); }}
           />
         </div>
       </section>

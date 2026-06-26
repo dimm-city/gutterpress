@@ -48,11 +48,10 @@
   );
   const supportDetails = $derived(guidance?.supportDetails ?? null);
 
-  $effect(() => {
-    if (!open) return;
+  function onDialogMount(_el: HTMLElement) {
     copyAnnouncement = "";
     queueMicrotask(() => dialogEl?.focus());
-  });
+  }
 
   function close() {
     open = false;
@@ -114,6 +113,7 @@
     aria-labelledby="guidance-title"
     tabindex="-1"
     onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:onDialogMount
   >
     <header class="dialog-header">
       <h2 id="guidance-title">
