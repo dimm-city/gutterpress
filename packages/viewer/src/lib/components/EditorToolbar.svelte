@@ -19,6 +19,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
+  import { api } from "$lib/api";
 
   let {
     /** Current file path — toolbar is only active for .md files. */
@@ -117,11 +118,9 @@
     imageError = "";
     imageBusy = true;
     try {
-      // #61: the picker returns a host-neutral FileRef; the path math below
-      // operates on the raw host key.
-      const picked = await getPlatform().pickImageFile();
+      const picked = await api.dialog.pickImageFile();
       if (!picked) return;
-      imageSrc = picked.key;
+      imageSrc = picked;
       imageError = "";
     } catch {
       imageError = "Could not open the image picker.";
@@ -147,7 +146,7 @@
       ) {
         const sep = projectDir.includes("\\") ? "\\" : "/";
         const assetsDir = projectDir.replace(/[\\/]+$/, "") + sep + "assets";
-        const copied = await getPlatform().copyFile(imageSrc, assetsDir);
+        const copied = await api.fs.copyFile(imageSrc, assetsDir);
         // Build a relative path from the project root (assets/filename).
         finalSrc = "assets/" + basenameOf(copied);
       } else if (projectDir) {

@@ -18,7 +18,13 @@ import os from "node:os";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { watch, type FSWatcher } from "node:fs";
+import { createServer } from "node:http";
+import { pathToFileURL } from "node:url";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
+import { registerWriteHooks } from "./server-bridge/write-hooks";
+import { registerWatchHooks } from "./server-bridge/watch-hooks";
+import { registerAppHooks } from "./server-bridge/app-hooks";
+import { registerPrefsHooks } from "./server-bridge/prefs-hooks";
 import {
   writeRecovery as writeRecoveryStore,
   clearRecovery as clearRecoveryStore,
@@ -184,20 +190,15 @@ interface CreateProjectOptions {
   templateDir?: string;
   versionHistory?: "local-git" | "none";
 }
+// Adopt an existing folder as a project. Mirrors the lib's AdoptFolderOptions.
+interface AdoptFolderOptions {
+  dir: string;
+  title?: string;
+  author?: string;
+  template?: "book" | "ttrpg" | "zine" | "technical";
+  versionHistory?: "local-git" | "none";
+}
 
-// Project templates + snippets (#29). Mirror the lib's TemplateInfo/SnippetEntry.
-interface TemplateInfo {
-  id: string;
-  label: string;
-  description: string;
-  kind: "builtin" | "custom";
-  dir?: string;
-}
-interface SnippetEntry {
-  name: string;
-  fileName: string;
-  variables: string[];
-}
 // Plugin manager (#30). Mirror the lib's plugin-manager types.
 type PluginKind = "local" | "npm";
 interface ProjectPluginEntry {
@@ -409,28 +410,9 @@ interface LibModule {
   detectProjectSource: (folderPath: string) => Promise<ProjectSource>;
   capabilitiesFor: (source: ProjectSource) => ProjectCapabilities;
   scaffoldProject: (options: CreateProjectOptions) => Promise<CreateProjectResult>;
+  adoptFolder: (options: AdoptFolderOptions) => Promise<CreateProjectResult>;
   providerFor: (source: ProjectSource) => SourceProviderOps;
-  // Project templates + snippets (#29)
-  listBuiltInTemplates: () => Promise<TemplateInfo[]>;
-  listCustomTemplates: (templatesRoot: string) => Promise<TemplateInfo[]>;
-  saveProjectAsTemplate: (options: {
-    projectDir: string;
-    name: string;
-    templatesRoot: string;
-  }) => Promise<TemplateInfo>;
-  importTemplateFromFolder: (options: {
-    sourceDir: string;
-    name?: string;
-    templatesRoot: string;
-  }) => Promise<TemplateInfo>;
-  listSnippets: (projectDir: string) => Promise<SnippetEntry[]>;
-  readSnippet: (projectDir: string, fileName: string) => Promise<string>;
-  saveSnippet: (
-    projectDir: string,
-    name: string,
-    body: string,
-  ) => Promise<SnippetEntry>;
-  deleteSnippet: (projectDir: string, fileName: string) => Promise<void>;
+  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from LibModule.
   // Plugin manager (#30)
   listProjectPlugins: (projectDir: string) => Promise<ProjectPluginEntry[]>;
   setPluginEnabled: (
@@ -1049,9 +1031,11 @@ let folderChangeDebounce: ReturnType<typeof setTimeout> | null = null;
 // open project + folder-watch events) ARMS/RESETS one timer; it fires after N
 // minutes of quiet (settings.versionHistory, default ON / 10 min, floor 5) so
 // each snapshot marks the end of a work burst — never a commit per keystroke.
-// On fire: detect the source; only `local-git-folder` projects snapshot (a
-// plain folder is NEVER auto-`git init`ed — enabling history stays an explicit
-// author opt-in). The lib's per-repo FIFO lock serializes the commit against
+// On fire: detect the source; only a `local-git-folder` that IS its own repo
+// root snapshots. A plain folder is NEVER auto-`git init`ed (enabling history
+// stays an explicit opt-in), and a folder nested INSIDE a larger repo (subPath
+// set) is NEVER auto-snapshotted — that would silently commit to the enclosing
+// repo. The lib's per-repo FIFO lock serializes the commit against
 // sync/restore, and its no-empty-snapshot guard turns a clean-tree fire into
 // the expected `isNoChangesError` rejection, swallowed below. Silent on success
 // (the history dialog reloads its list on open).
@@ -1073,6 +1057,16 @@ async function runAutoSnapshot(dir: string): Promise<void> {
     if (lib.autoSnapshotDelayMs(settings.versionHistory) === null) return;
     const source = await lib.detectProjectSource(dir);
     if (source.type !== "local-git-folder") return;
+    // Never AUTO-snapshot a folder that lives inside a LARGER repo (subPath
+    // set): a silent automatic commit would land in — and sweep unrelated files
+    // from — the ENCLOSING repository (e.g. opening a folder that happens to sit
+    // inside another git repo). Explicit user snapshots and multi-book remote
+    // sync still work via the version-history UI; only the AUTOMATIC commit is
+    // suppressed here.
+    if (source.subPath !== "") {
+      console.info(`[auto-snapshot] skipped: ${dir} is a subfolder of an enclosing repo (${source.repoRoot})`);
+      return;
+    }
     await lib.providerFor(source).snapshot({
       projectDir: dir,
       message: lib.AUTO_SNAPSHOT_MESSAGE,
@@ -1924,74 +1918,65 @@ async function refreshWebRoot(): Promise<void> {
   activeWebRoot = await resolveWebRoot();
 }
 
-const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "application/javascript",
-  ".mjs": "application/javascript",
-  ".css": "text/css",
-  ".json": "application/json",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".ico": "image/x-icon",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-};
+// ── SvelteKit HTTP bridge (adapter-node) ─────────────────────────────────────
+// adapter-node emits a Node.js HTTP handler to build/handler.js. We start a
+// local HTTP server bound to 127.0.0.1 on an OS-assigned port, then forward
+// all app:// requests to it via fetch. This lets +server.ts routes run in the
+// Electron main process where they can import { dialog, shell } from 'electron'
+// directly, while the renderer stays PWA-clean (fetch('/api/...') only).
+let skServerPort: number | null = null;
 
-function mimeFor(p: string): string {
-  return MIME[path.extname(p).toLowerCase()] ?? "application/octet-stream";
+function getSvelteKitHandlerPath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "app.asar", "build", "handler.js")
+    : path.join(__dirname, "..", "..", "build", "handler.js");
 }
+
+async function startSvelteKitServer(): Promise<number> {
+  if (skServerPort) return skServerPort;
+  const handlerPath = getSvelteKitHandlerPath();
+  slog(`loading SvelteKit handler from ${handlerPath}`);
+  const { handler } = (await import(pathToFileURL(handlerPath).href)) as {
+    handler: Parameters<typeof createServer>[0];
+  };
+  const server = createServer(handler);
+  return new Promise<number>((resolve, reject) => {
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      if (!addr || typeof addr === "string") {
+        reject(new Error("Failed to get SvelteKit server address"));
+        return;
+      }
+      skServerPort = addr.port;
+      slog(`SvelteKit server listening on 127.0.0.1:${skServerPort}`);
+      resolve(skServerPort);
+    });
+    server.on("error", reject);
+  });
+}
+
 
 function registerAppProtocol() {
   protocol.handle("app", async (req) => {
+    if (skServerPort === null) {
+      return new Response("SvelteKit server not started", { status: 503 });
+    }
     const url = new URL(req.url);
-    let pathname = decodeURIComponent(url.pathname);
-    if (!pathname || pathname === "/") pathname = "/index.html";
-
-    // strip leading "/" before joining so path.join treats it as relative
-    const rel = pathname.replace(/^\/+/, "");
-    const candidate = path.resolve(activeWebRoot, rel);
-
-    // Boundary check.
-    if (
-      candidate !== activeWebRoot &&
-      !candidate.startsWith(activeWebRoot + path.sep)
-    ) {
-      console.error(`[app://] boundary violation: ${candidate}`);
-      return new Response("Forbidden", { status: 403 });
-    }
-
-    // Try the exact file first.
+    const targetUrl =
+      "http://127.0.0.1:" + skServerPort + url.pathname + url.search;
     try {
-      const rt = Date.now();
-      const data = await readFile(candidate);
-      const dt = Date.now() - rt;
-      if (dt > 40) slog(`app:// SLOW read ${dt}ms ${rel}`);
-      return new Response(data, {
-        headers: { "content-type": mimeFor(candidate) },
+      const proxyReq = new Request(targetUrl, {
+        method: req.method,
+        headers: req.headers,
+        body:
+          req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
+        // @ts-expect-error — duplex is required for streaming POST bodies in Node 18+
+        duplex: "half",
       });
-    } catch {
-      // fall through to SPA fallback
-    }
-
-    // adapter-static SPA fallback: serve index.html for unknown paths so
-    // client-side routing works.
-    try {
-      const data = await readFile(path.join(activeWebRoot, "index.html"));
-      return new Response(data, {
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
+      return await fetch(proxyReq);
     } catch (e) {
-      console.error(
-        `[app://] FATAL: index.html not found at ${activeWebRoot}/index.html (${(e as Error).message})`
-      );
-      return new Response(
-        `static root missing at ${activeWebRoot}`,
-        { status: 500 }
-      );
+      console.error(`[app://] proxy error for ${url.pathname}:`, e);
+      return new Response("Proxy error: " + String(e), { status: 502 });
     }
   });
 }
@@ -2017,368 +2002,55 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 // ──────────────────────────────────────────────────────────────────────────
+// Register write hooks for server routes (Phase 2A)
+// The SvelteKit handler runs in this same process but in a separate Vite
+// bundle scope. We use globalThis to pass the live hook references so the
+// fs:writeFile server route can trigger auto-snapshot/sync debounce.
+// ──────────────────────────────────────────────────────────────────────────
+registerWriteHooks({
+  scheduleAutoSnapshot,
+  scheduleAutoSync,
+  getWatchedDir: () => watchedDir,
+});
+registerWatchHooks({
+  startFolderWatch,
+  stopFolderWatch,
+  getWatchedDir: () => watchedDir,
+});
+registerAppHooks({
+  updateSplash,
+  showMainWindowAndCloseSplash,
+  setRendererDirty: (isDirty: boolean) => { rendererDirty = !!isDirty; },
+  resolveFlush: () => { rendererDirty = false; flushResolve?.(); },
+  sendToRenderer: (channel: string, ...args: unknown[]) => {
+    mainWindow?.webContents.send(channel, ...args);
+  },
+});
+// registerPrefsHooks is called after discoverScanDeps is initialized (below)
+
+// ──────────────────────────────────────────────────────────────────────────
 // IPC handlers (replace the deleted /api/* SvelteKit routes)
 // ──────────────────────────────────────────────────────────────────────────
 
-ipcMain.handle("dialog:openDirectory", async () => {
-  if (!mainWindow) return null;
-  const res = await dialog.showOpenDialog(mainWindow, {
-    title: "Open print-md project",
-    properties: ["openDirectory"],
-  });
-  if (res.canceled || res.filePaths.length === 0) return null;
-  return res.filePaths[0];
-});
-
-ipcMain.handle("dialog:savePdf", async (_e, defaultName?: string) => {
-  if (!mainWindow) return null;
-  const res = await dialog.showSaveDialog(mainWindow, {
-    title: "Save PDF",
-    defaultPath: defaultName ?? "book.pdf",
-    filters: [{ name: "PDF", extensions: ["pdf"] }],
-  });
-  if (res.canceled || !res.filePath) return null;
-  return res.filePath;
-});
-
-// ── Image picker dialog (#31) ─────────────────────────────────────────────────
-// Backs the editor toolbar's Insert Image dialog. Opens a native file picker
-// filtered to common web/print image formats. Returns null when cancelled.
-ipcMain.handle("dialog:pickImageFile", async (): Promise<string | null> => {
-  if (!mainWindow) return null;
-  const res = await dialog.showOpenDialog(mainWindow, {
-    title: "Insert image",
-    properties: ["openFile"],
-    filters: [
-      {
-        name: "Images",
-        extensions: ["jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "tiff"],
-      },
-    ],
-  });
-  if (res.canceled || res.filePaths.length === 0) return null;
-  return res.filePaths[0];
-});
-
-// ── Copy a file into a destination directory (#31) ──────────────────────────
-// Backs the editor toolbar's Insert Image flow: copies an image from anywhere
-// on disk into the project's assets/ folder when it lives outside the project.
-// Returns the absolute path of the copied file.
-ipcMain.handle(
-  "fs:copyFile",
-  async (
-    _e,
-    srcPath: string,
-    destDir: string,
-  ): Promise<string> => {
-    if (!path.isAbsolute(srcPath))
-      throw new Error(`fs:copyFile: srcPath must be absolute, got: ${srcPath}`);
-    if (!path.isAbsolute(destDir))
-      throw new Error(`fs:copyFile: destDir must be absolute, got: ${destDir}`);
-    await mkdir(destDir, { recursive: true });
-    const destPath = path.join(destDir, path.basename(srcPath));
-    await copyFile(srcPath, destPath);
-    return destPath;
-  },
-);
-
-// ── Multi-select image picker dialog (#47) ───────────────────────────────────
-// Backs the Media panel's "Add images…" import. Same filters as
-// dialog:pickImageFile, plus multiSelections. Returns [] when cancelled.
-ipcMain.handle("dialog:pickImageFiles", async (): Promise<string[]> => {
-  if (!mainWindow) return [];
-  const res = await dialog.showOpenDialog(mainWindow, {
-    title: "Add images",
-    properties: ["openFile", "multiSelections"],
-    filters: [
-      {
-        name: "Images",
-        extensions: ["jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "tiff"],
-      },
-    ],
-  });
-  if (res.canceled || res.filePaths.length === 0) return [];
-  return res.filePaths;
-});
+// dialog:openDirectory migrated to SvelteKit server route (src/routes/api/dialog/open-directory).
+// dialog:savePdf, dialog:pickImageFile, dialog:pickImageFiles, fs:copyFile
+// migrated to SvelteKit server routes (src/routes/api/dialog/* and
+// src/routes/api/fs/copy-file) — see Phase 2A migration.
 
 // ── Media panel (#47): project image listing / thumbnails / inspection ───────
 
-/** Image extensions surfaced in the Media panel (lowercase, no dot). */
-const MEDIA_IMAGE_EXTS = new Set([
-  "png", "jpg", "jpeg", "webp", "gif", "svg", "tif", "tiff",
-]);
-/** Directories never scanned for project images. */
-const MEDIA_SKIP_DIRS = new Set([
-  "node_modules", "dist", "out", "build", "output", ".svelte-kit",
-]);
-const MEDIA_SCAN_MAX_DEPTH = 6;
-const MEDIA_SCAN_MAX_FILES = 2000;
+// media:listImages, media:thumbnail, media:inspect migrated to SvelteKit server routes
+// (src/routes/api/media/*) — see Phase 2C migration.
 
-// Lists every image file under the project folder (recursive, bounded: skips
-// hidden/build dirs, depth ≤ 6, caps at 2000 entries so a pathological folder
-// can never wedge the host or flood the renderer).
-ipcMain.handle(
-  "media:listImages",
-  async (
-    _e,
-    projectDir: string,
-  ): Promise<
-    Array<{ name: string; relPath: string; path: string; size: number; mtimeMs: number }>
-  > => {
-    if (!path.isAbsolute(projectDir)) {
-      throw new Error(`media:listImages requires an absolute path, got: ${projectDir}`);
-    }
-    const results: Array<{
-      name: string;
-      relPath: string;
-      path: string;
-      size: number;
-      mtimeMs: number;
-    }> = [];
-    const walk = async (dir: string, rel: string, depth: number): Promise<void> => {
-      if (depth > MEDIA_SCAN_MAX_DEPTH || results.length >= MEDIA_SCAN_MAX_FILES) return;
-      let entries;
-      try {
-        entries = await readdir(dir, { withFileTypes: true });
-      } catch {
-        return; // unreadable subdir — skip, don't fail the whole listing
-      }
-      for (const entry of entries) {
-        if (results.length >= MEDIA_SCAN_MAX_FILES) return;
-        if (entry.name.startsWith(".")) continue;
-        const abs = path.join(dir, entry.name);
-        const relChild = rel ? `${rel}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
-          if (MEDIA_SKIP_DIRS.has(entry.name.toLowerCase())) continue;
-          await walk(abs, relChild, depth + 1);
-        } else if (entry.isFile()) {
-          const ext = entry.name.slice(entry.name.lastIndexOf(".") + 1).toLowerCase();
-          if (!MEDIA_IMAGE_EXTS.has(ext)) continue;
-          try {
-            const s = await stat(abs);
-            results.push({
-              name: entry.name,
-              relPath: relChild,
-              path: abs,
-              size: s.size,
-              mtimeMs: s.mtimeMs,
-            });
-          } catch {
-            // raced deletion — skip
-          }
-        }
-      }
-    };
-    await walk(projectDir, "", 0);
-    results.sort((a, b) => a.relPath.localeCompare(b.relPath));
-    return results;
-  },
-);
+// (thumbnail/inspect handlers removed — migrated to server routes)
 
-// Host-side thumbnail generation + bounded cache. The renderer must NEVER load
-// multi-MB originals into <img> tags for the grid — main decodes (Chromium's
-// nativeImage: PNG/JPEG) and resizes to ≤192px, returning a small data URL.
-// SVG (vector, resolution-independent) and small WebP/GIF files fall back to
-// the original bytes as a data URL; large undecodable files return null and
-// the renderer shows a placeholder icon.
-const THUMB_MAX_PX = 192;
-const THUMB_CACHE_MAX = 300;
-const THUMB_FALLBACK_MAX_BYTES = 512 * 1024;
-const thumbCache = new Map<string, { mtimeMs: number; dataUrl: string | null }>();
-
-const MEDIA_MIME: Record<string, string> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  webp: "image/webp",
-  gif: "image/gif",
-  svg: "image/svg+xml",
-  tif: "image/tiff",
-  tiff: "image/tiff",
-};
-
-ipcMain.handle(
-  "media:thumbnail",
-  async (_e, filePath: string): Promise<string | null> => {
-    if (!path.isAbsolute(filePath)) {
-      throw new Error(`media:thumbnail requires an absolute path, got: ${filePath}`);
-    }
-    let s;
-    try {
-      s = await stat(filePath);
-    } catch {
-      return null;
-    }
-    const cached = thumbCache.get(filePath);
-    if (cached && cached.mtimeMs === s.mtimeMs) {
-      // refresh LRU position
-      thumbCache.delete(filePath);
-      thumbCache.set(filePath, cached);
-      return cached.dataUrl;
-    }
-
-    const ext = filePath.slice(filePath.lastIndexOf(".") + 1).toLowerCase();
-    let dataUrl: string | null = null;
-    try {
-      if (ext === "svg") {
-        // Vector — ship the source itself (small) so it stays crisp at any size.
-        if (s.size <= THUMB_FALLBACK_MAX_BYTES) {
-          const buf = await readFile(filePath);
-          dataUrl = `data:image/svg+xml;base64,${buf.toString("base64")}`;
-        }
-      } else {
-        const img = nativeImage.createFromPath(filePath);
-        if (!img.isEmpty()) {
-          const { width, height } = img.getSize();
-          const scaled =
-            width > THUMB_MAX_PX || height > THUMB_MAX_PX
-              ? width >= height
-                ? img.resize({ width: THUMB_MAX_PX })
-                : img.resize({ height: THUMB_MAX_PX })
-              : img;
-          dataUrl = scaled.toDataURL();
-        } else if (s.size <= THUMB_FALLBACK_MAX_BYTES && MEDIA_MIME[ext]) {
-          // Formats Chromium's nativeImage won't decode from disk (WebP/GIF):
-          // small originals render fine directly in an <img>.
-          const buf = await readFile(filePath);
-          dataUrl = `data:${MEDIA_MIME[ext]};base64,${buf.toString("base64")}`;
-        }
-      }
-    } catch {
-      dataUrl = null;
-    }
-
-    thumbCache.set(filePath, { mtimeMs: s.mtimeMs, dataUrl });
-    while (thumbCache.size > THUMB_CACHE_MAX) {
-      const oldest = thumbCache.keys().next().value;
-      if (oldest === undefined) break;
-      thumbCache.delete(oldest);
-    }
-    return dataUrl;
-  },
-);
-
-// Detail inspection for the Media panel: file size + the lib's dependency-free
-// header parse (PNG/JPEG/TIFF → dimensions, DPI, alpha, color space). `info`
-// is null for formats the parser doesn't cover (SVG/WebP/GIF) — the renderer
-// degrades to size-only details. No external tools (`identify`) involved.
-ipcMain.handle(
-  "media:inspect",
-  async (
-    _e,
-    filePath: string,
-  ): Promise<{
-    fileSize: number;
-    info: {
-      width: number;
-      height: number;
-      xDpi: number;
-      yDpi: number;
-      hasAlpha: boolean;
-      colorSpace: "srgb" | "gray" | "cmyk" | "";
-    } | null;
-  } | null> => {
-    if (!path.isAbsolute(filePath)) {
-      throw new Error(`media:inspect requires an absolute path, got: ${filePath}`);
-    }
-    let s;
-    try {
-      s = await stat(filePath);
-    } catch {
-      return null;
-    }
-    const lib = await loadLib();
-    const info = await lib.inspectImage(filePath);
-    return { fileSize: s.size, info };
-  },
-);
-
-ipcMain.handle("shell:openExternal", async (_e, url: string) => {
-  await shell.openExternal(url);
-});
-
-ipcMain.handle("shell:showInFolder", async (_e, filePath: string) => {
-  shell.showItemInFolder(filePath);
-});
-
-// ── Operation log reader (sync/recovery log viewer) ──────────────────────────
-// Reads the operation log file written by the lib's operation-log.ts during
-// sync/recovery/snapshot operations. Returns null when the file doesn't exist
-// (e.g. logging was not configured for this operation). Used by the recovery
-// dialogs to show "View log" when a sync or recovery completes or fails.
-ipcMain.handle("log:read", async (_e, filePath: string): Promise<string | null> => {
-  if (!path.isAbsolute(filePath)) {
-    return null;
-  }
-  try {
-    return await readFile(filePath, "utf-8");
-  } catch {
-    return null;
-  }
-});
+// shell:openExternal, shell:showInFolder, log:read migrated to SvelteKit
+// server routes (src/routes/api/shell/* and src/routes/api/log/read) —
+// see Phase 2A migration.
 
 // ── Filesystem primitives (PlatformAdapter, #41) ──────────────────────────
-// Backs ElectronAdapter.readFile/writeFile. No current consumer in 0.4.0 — the
-// in-app editor (#38/#39) is the first. The renderer is our own trusted SPA;
-// paths must be absolute so a relative path can't resolve against the main
-// process CWD by accident.
-// Callers MUST constrain filePath to a user-opened project directory; there is
-// no global path allowlist by design — the renderer is our own trusted SPA.
-ipcMain.handle("fs:readFile", async (_e, filePath: string): Promise<string> => {
-  if (!path.isAbsolute(filePath)) {
-    throw new Error(`fs:readFile requires an absolute path, got: ${filePath}`);
-  }
-  return await readFile(filePath, "utf-8");
-});
-
-ipcMain.handle(
-  "fs:writeFile",
-  async (_e, filePath: string, content: string): Promise<{ mtimeMs: number }> => {
-    if (!path.isAbsolute(filePath)) {
-      throw new Error(`fs:writeFile requires an absolute path, got: ${filePath}`);
-    }
-    await mkdir(path.dirname(filePath), { recursive: true });
-    await writeFile(filePath, content, "utf-8");
-    // Edit signal for the auto-snapshot debounce (RC1-3): every in-app save
-    // inside the open project re-arms the quiet-period timer. (The folder
-    // watcher also fires for top-level files; this covers nested paths too.)
-    // Also arm the sync debounce (strictly longer than snapshot — §4.2).
-    if (watchedDir) {
-      const resolved = path.resolve(filePath);
-      const root = path.resolve(watchedDir);
-      if (resolved === root || resolved.startsWith(root + path.sep)) {
-        scheduleAutoSnapshot(watchedDir);
-        scheduleAutoSync(watchedDir);
-      }
-    }
-    // Return the post-write mtime so the editor can record its on-disk baseline
-    // (#44) and suppress the self-echo from its own folder watcher.
-    const s = await stat(filePath);
-    return { mtimeMs: s.mtimeMs };
-  },
-);
-
-// ── File metadata (PlatformAdapter.statFile, #44 — external-edit detection) ──
-// Resolves with `exists: false` (zeroed metadata) rather than rejecting when the
-// path is absent, so the editor can tell "deleted out from under us" from an IO
-// error. The path MUST be absolute (renderer is our trusted SPA).
-ipcMain.handle(
-  "fs:statFile",
-  async (
-    _e,
-    filePath: string,
-  ): Promise<{ mtimeMs: number; size: number; exists: boolean }> => {
-    if (!path.isAbsolute(filePath)) {
-      throw new Error(`fs:statFile requires an absolute path, got: ${filePath}`);
-    }
-    try {
-      const s = await stat(filePath);
-      return { mtimeMs: s.mtimeMs, size: s.size, exists: true };
-    } catch {
-      return { mtimeMs: 0, size: 0, exists: false };
-    }
-  },
-);
+// fs:readFile, fs:writeFile, fs:statFile migrated to SvelteKit server routes
+// (src/routes/api/fs/*) — see Phase 2A migration.
 
 // ── Folder watching (PlatformAdapter.watchFolder, #44) ──────────────────────
 // Backs external-edit detection: a shallow fs.watch on the open project whose
@@ -2398,297 +2070,37 @@ ipcMain.handle("fs:unwatchFolder", async (_e, dirPath: string): Promise<void> =>
 
 // ── Crash recovery (#44) ────────────────────────────────────────────────────
 // Sidecar snapshots under userData/recovery/. Never touches the user's file.
-ipcMain.handle(
-  "recovery:write",
-  async (
-    _e,
-    filePath: string,
-    content: string,
-    baseMtimeMs: number,
-  ): Promise<{ ok: boolean }> => {
-    if (!path.isAbsolute(filePath)) {
-      throw new Error(`recovery:write requires an absolute path, got: ${filePath}`);
-    }
-    return writeRecoveryStore(recoveryDir(), filePath, content, baseMtimeMs);
-  },
-);
-
-ipcMain.handle(
-  "recovery:clear",
-  async (_e, filePath: string): Promise<{ ok: boolean }> => {
-    if (!path.isAbsolute(filePath)) {
-      throw new Error(`recovery:clear requires an absolute path, got: ${filePath}`);
-    }
-    return clearRecoveryStore(recoveryDir(), filePath);
-  },
-);
-
-ipcMain.handle(
-  "recovery:list",
-  async (_e, projectDir: string) => {
-    if (!path.isAbsolute(projectDir)) {
-      throw new Error(`recovery:list requires an absolute path, got: ${projectDir}`);
-    }
-    return listRecoveryStore(recoveryDir(), projectDir);
-  },
-);
+// Exposed via SvelteKit server routes (src/routes/api/recovery/*) through
+// globalThis hooks — no IPC needed.
+(globalThis as unknown as Record<string, unknown>).__printMdRecoveryHooks__ = {
+  write: (filePath: string, content: string, baseMtimeMs: number) =>
+    writeRecoveryStore(recoveryDir(), filePath, content, baseMtimeMs),
+  clear: (filePath: string) => clearRecoveryStore(recoveryDir(), filePath),
+  list: (projectDir: string) => listRecoveryStore(recoveryDir(), projectDir),
+};
 
 // ── Unsaved-changes close gate (#44) ────────────────────────────────────────
-// The renderer pushes its pending-save state; main reads it in the `close`
-// handler. `app:flushDone` is the renderer's reply that its buffer is flushed.
-ipcMain.handle("app:setDirtyState", async (_e, isDirty: boolean): Promise<void> => {
-  rendererDirty = !!isDirty;
-});
-
+// app:setDirtyState migrated to server route (src/routes/api/app/dirty-state).
+// app:flushDone kept as IPC: the preload's onFlushBeforeClose fires it from
+// within the renderer via ipcRenderer.invoke — cannot route through fetch.
 ipcMain.handle("app:flushDone", async (): Promise<void> => {
   rendererDirty = false;
   flushResolve?.();
 });
 
 // ── Directory listing (PlatformAdapter.listDir, #38) ──────────────────────
-// Backs the in-app editor's file-tree sidebar. Returns the immediate entries
-// of `dirPath` (single level, no recursion) as {name, path, isDir}. The path
-// MUST be absolute (a relative path could resolve against the main-process CWD
-// by accident); the renderer is our own trusted SPA and always passes a
-// user-opened project directory.
-ipcMain.handle(
-  "fs:listDir",
-  async (
-    _e,
-    dirPath: string,
-  ): Promise<Array<{ name: string; path: string; isDir: boolean }>> => {
-    if (!path.isAbsolute(dirPath)) {
-      throw new Error(`fs:listDir requires an absolute path, got: ${dirPath}`);
-    }
-    const entries = await readdir(dirPath, { withFileTypes: true });
-    return entries.map((entry) => ({
-      name: entry.name,
-      path: path.join(dirPath, entry.name),
-      isDir: entry.isDirectory(),
-    }));
-  },
-);
+// fs:listDir migrated to SvelteKit server route (src/routes/api/fs/list-dir).
+// fs:listProjectFiles migrated to SvelteKit server route
+// (src/routes/api/fs/list-project-files) — see Phase 2A migration.
 
-// ── Project file listing (fs:listProjectFiles, #42) ───────────────────────
-// Backs the chapter-list sidebar. Returns the top-level `.md` and `.css`
-// files of the opened project directory, each sorted by filename. Shallow by
-// design (a v1 constraint — subdirectory layouts are not surfaced). The path
-// MUST be absolute and is constrained to the project directory; only files
-// (not directories) at the top level are returned.
-ipcMain.handle(
-  "fs:listProjectFiles",
-  async (
-    _e,
-    projectDir: string,
-  ): Promise<{ md: string[]; css: string[] }> => {
-    if (!path.isAbsolute(projectDir)) {
-      throw new Error(
-        `fs:listProjectFiles requires an absolute path, got: ${projectDir}`,
-      );
-    }
-    const entries = await readdir(projectDir, { withFileTypes: true });
-    const md: string[] = [];
-    const css: string[] = [];
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      const lower = entry.name.toLowerCase();
-      if (lower.endsWith(".md")) md.push(entry.name);
-      else if (lower.endsWith(".css")) css.push(entry.name);
-    }
-    md.sort((a, b) => a.localeCompare(b));
-    css.sort((a, b) => a.localeCompare(b));
-    return { md, css };
-  },
-);
+// api:status, lint:checkCss, lint:project, api:doctor migrated to SvelteKit server routes
+// (src/routes/api/status, src/routes/api/lint/*, src/routes/api/doctor) — see Phase 2C.
 
-ipcMain.handle("api:status", async () => {
-  return { name: "@dimm-city/print-md-viewer", runtime: "node", ok: true };
-});
-
-// CSS print-safety lint for the in-app CSS editor (#39). Runs in the main
-// process: checkCss is postcss-based, and postcss's node:url usage crashes the
-// renderer if bundled into the SPA. Routing through IPC keeps a single source of
-// truth (the same checkCss `print-md validate` uses) without bundling postcss.
-ipcMain.handle(
-  "lint:checkCss",
-  async (_e, css: string, from?: string): Promise<PrintSafeWarning[]> => {
-    const lib = await loadLib();
-    return lib.checkCss(css, from);
-  },
-);
-
-// Project-wide source lint for the Problems panel (#28). Runs the lib's
-// pre-build source checks (broken local refs, print-safety CSS, markdown/HTML
-// style, accessibility) via the same executeValidation the CLI `print-md
-// validate` uses, so the panel and the CLI never disagree. Source checks all
-// run in-process (markdownlint/htmlhint are lib production deps — they ship
-// with the packaged app; no external CLI tools are probed for this category).
-ipcMain.handle(
-  "lint:project",
-  async (_e, projectDir: string): Promise<ProblemEntry[]> => {
-    if (!path.isAbsolute(projectDir)) {
-      throw new Error(`lint:project requires an absolute path, got: ${projectDir}`);
-    }
-    const lib = await loadLib();
-    const execution = await lib.executeValidation({
-      input: projectDir,
-      category: "source",
-      phase: "pre-build",
-    });
-    const dirPrefix = projectDir.replace(/[\\/]+$/, "") + path.sep;
-    return execution.report.results.map((r) => {
-      const abs = r.file ? path.resolve(r.file) : undefined;
-      const rel =
-        abs && abs.startsWith(dirPrefix)
-          ? abs.slice(dirPrefix.length).split(path.sep).join("/")
-          : abs
-            ? path.basename(abs)
-            : undefined;
-      return {
-        filePath: abs,
-        file: rel,
-        line: r.line,
-        column: r.column,
-        severity: r.severity,
-        message: r.message,
-        source: r.checkId,
-      };
-    });
-  },
-);
-
-ipcMain.handle("app:getLastProject", async () => {
-  const prefs = await readPrefs();
-  return existingDirectory(prefs.lastProjectDir);
-});
-
-// ── Splash coordination ──────────────────────────────────────────────────────
-// The renderer pushes human-readable status while it boots/renders, and signals
-// when its first screen (a rendered project OR the welcome screen) is ready —
-// at which point we reveal the main window and dismiss the splash.
-ipcMain.handle(
-  "app:splashStatus",
-  async (_e, status?: string, progress?: number, sub?: string) => {
-    updateSplash(status, progress, sub);
-  },
-);
-
-ipcMain.handle("app:rendererReady", async () => {
-  updateSplash("Ready", 100);
-  showMainWindowAndCloseSplash();
-});
-
-ipcMain.handle("app:getViewerPrefs", async () => {
-  const prefs = await readPrefs();
-  return {
-    ...prefs,
-    lastProjectDir: await existingDirectory(prefs.lastProjectDir),
-  };
-});
-
-ipcMain.handle("app:setViewerPrefs", async (_e, patch: Partial<ViewerPrefs>) => {
-  const current = await readPrefs();
-  await writePrefs({ ...current, ...patch });
-  return { ok: true };
-});
-
-// ── Per-project editor/preview state (#43) ──────────────────────────────────
-// Read/merge the per-project bucket in viewer-prefs.json projectStates. Keying
-// by folder path means opening project B never overwrites project A's page,
-// view mode, open chapter, etc. Corrupt/missing state fails silently to null so
-// the renderer falls back to first-page defaults.
-ipcMain.handle(
-  "app:getViewerProjectState",
-  async (_e, projectDir: string): Promise<ProjectState | null> => {
-    if (!projectDir || typeof projectDir !== "string") return null;
-    try {
-      const prefs = await readPrefs();
-      return readProjectState(prefs.projectStates, projectDir);
-    } catch {
-      return null;
-    }
-  },
-);
-
-ipcMain.handle(
-  "app:setViewerProjectState",
-  async (
-    _e,
-    projectDir: string,
-    patch: Partial<ProjectState>,
-  ): Promise<{ ok: boolean }> => {
-    if (!projectDir || typeof projectDir !== "string") return { ok: false };
-    const current = await readPrefs();
-    await writePrefs({
-      ...current,
-      lastProjectDir: projectDir,
-      projectStates: writeProjectState(current.projectStates, projectDir, patch),
-    });
-    return { ok: true };
-  },
-);
-
-ipcMain.handle("app:getSettings", async () => {
-  return readSettings();
-});
-
-ipcMain.handle("app:setSettings", async (_e, patch: DeepPartialSettings) => {
-  const current = await readSettings();
-  await writeSettings(mergeSettings(current, patch));
-  return { ok: true };
-});
-
-// ── Native (OS) theme surface (#48) ─────────────────────────────────────────
-// One-shot query of the OS dark/light preference. The renderer's theme
-// controller resolves "system" against this. Pushed updates come via the
-// nativeTheme "updated" listener registered in createWindow().
-ipcMain.handle("app:getNativeTheme", async () => {
-  return { shouldUseDarkColors: nativeTheme.shouldUseDarkColors };
-});
-
-ipcMain.handle("app:getRecentFolders", async () => {
-  const prefs = await readPrefs();
-  const recents = prefs.recentFolders ?? [];
-  return Promise.all(
-    recents.map(async (r) => ({
-      ...r,
-      exists: (await existingDirectory(r.path)) !== null,
-    }))
-  );
-});
-
-ipcMain.handle("app:getFavorites", async () => {
-  const prefs = await readPrefs();
-  const favorites = prefs.favorites ?? [];
-  return Promise.all(
-    favorites.map(async (f) => ({
-      ...f,
-      exists: (await existingDirectory(f.path)) !== null,
-    }))
-  );
-});
-
-ipcMain.handle(
-  "app:toggleFavorite",
-  async (_e, folderPath: string, title: string) => {
-    const current = await readPrefs();
-    const { favorites, favorited } = toggleFavoriteFolder(current.favorites, {
-      path: folderPath,
-      title,
-    });
-    await writePrefs({ ...current, favorites });
-    return { favorited };
-  }
-);
-
-ipcMain.handle("app:removeRecent", async (_e, folderPath: string) => {
-  const current = await readPrefs();
-  await writePrefs({
-    ...current,
-    recentFolders: removeRecentFolder(current.recentFolders, folderPath),
-  });
-  return { ok: true };
-});
+// app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
+// app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
+// app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
+// app:getFavorites, app:toggleFavorite, app:removeRecent
+// — all migrated to SvelteKit server routes (src/routes/api/app/*) in Phase 2B.
 
 // ── Project discovery (#27) ─────────────────────────────────────────────────
 // Shallow (depth ≤ 3) BFS scan of projectSearchRoots for print-md projects
@@ -2717,301 +2129,51 @@ const discoverScanDeps: ScanDeps = {
   basename: (p: string) => basename(p),
 };
 
-ipcMain.handle("app:discoverProjects", async () => {
-  const prefs = await readPrefs();
-  const roots =
-    prefs.projectSearchRoots && prefs.projectSearchRoots.length > 0
-      ? prefs.projectSearchRoots
-      : defaultProjectSearchRoots();
-  const exclude = new Set<string>([
-    ...(prefs.recentFolders ?? []).map((r) => r.path),
-    ...(prefs.favorites ?? []).map((f) => f.path),
-  ]);
-  try {
-    return await scanForProjects(roots, exclude, discoverScanDeps);
-  } catch {
-    return [];
-  }
+// Register prefs/settings hooks for server routes (Phase 2B).
+// Must be AFTER discoverScanDeps is initialized.
+registerPrefsHooks({
+  readPrefs: readPrefs as () => Promise<Record<string, unknown>>,
+  writePrefs: writePrefs as (p: Record<string, unknown>) => Promise<void>,
+  readSettings: readSettings as () => Promise<Record<string, unknown>>,
+  writeSettings: writeSettings as (s: Record<string, unknown>) => Promise<void>,
+  existingDirectory,
+  readProjectState: readProjectState as (states: Record<string, unknown> | undefined, dir: string) => unknown,
+  writeProjectState: writeProjectState as (states: Record<string, unknown> | undefined, dir: string, patch: Record<string, unknown>) => Record<string, unknown>,
+  mergeSettings: mergeSettings as (base: Record<string, unknown>, patch: Record<string, unknown>) => Record<string, unknown>,
+  defaultProjectSearchRoots,
+  scanForProjects: (roots: string[], exclude: Set<string>) => scanForProjects(roots, exclude, discoverScanDeps),
+  toggleFavoriteFolder: toggleFavoriteFolder as (
+    favorites: Array<{ path: string; title: string }> | undefined,
+    entry: { path: string; title: string }
+  ) => { favorites: Array<{ path: string; title: string }>; favorited: boolean },
+  removeRecentFolder: removeRecentFolder as (
+    recents: Array<{ path: string; [k: string]: unknown }> | undefined,
+    targetPath: string
+  ) => Array<{ path: string; [k: string]: unknown }>,
+  loadLib: loadLib as () => Promise<{
+    detectProjectSource: (path: string) => Promise<unknown>;
+    capabilitiesFor: (source: unknown) => unknown;
+    scaffoldProject: (opts: unknown) => Promise<unknown>;
+    adoptFolder: (opts: unknown) => Promise<unknown>;
+  }>,
 });
 
-// ── Project source classification (#12) ──────────────────────────────────────
-// Classify an opened folder as local-folder / local-git-folder (hasRemote
-// true/false) via the lib's pure Node-fs detector. Always re-classified on
-// folder open by the renderer — never relies solely on the cached
-// ViewerPrefs.projectSource (a user may add/remove `.git` between sessions).
-ipcMain.handle(
-  "app:classifyProject",
-  async (_e, args: { path?: string }) => {
-    const folderPath = args?.path;
-    if (!folderPath || typeof folderPath !== "string") {
-      throw new Error("app:classifyProject requires a 'path' string");
-    }
-    const lib = await loadLib();
-    const source = await lib.detectProjectSource(folderPath);
-    const capabilities = lib.capabilitiesFor(source);
-    return { source, capabilities };
-  },
-);
+// Expose the updater getStatus for the /api/doctor server route.
+// The route imports electron directly for app/process; it needs getStatus via globalThis
+// because updater/index.ts is a separate Vite bundle from the SvelteKit handler.
+(globalThis as unknown as Record<string, unknown>).__printMdUpdaterGetStatus__ = getStatus;
 
-// ── New-project scaffold (#25) ───────────────────────────────────────────────
-// Thin pass-through to the shared lib's scaffoldProject — the scaffolding logic
-// (template copy, placeholder fill, optional Git init via isomorphic-git) lives
-// in @dimm-city/print-md, NOT here (issue #25 requirement). The renderer
-// wizard collects inputs and the lib does the work.
-ipcMain.handle(
-  "app:createProject",
-  async (_e, options: CreateProjectOptions): Promise<CreateProjectResult> => {
-    if (!options || typeof options.name !== "string" || typeof options.parentDir !== "string") {
-      throw new Error("app:createProject requires { name, parentDir }");
-    }
-    const lib = await loadLib();
-    return lib.scaffoldProject(options);
-  },
-);
+// app:discoverProjects, app:classifyProject, app:createProject, app:adoptFolder
+// — migrated to SvelteKit server routes (src/routes/api/app/*) in Phase 2B.
 
-// ── Project templates + snippets (#29) ───────────────────────────────────────
-// Thin pass-throughs to the shared lib (one implementation for CLI + viewer).
-// Custom templates live under `userData/templates/`; snippets live inside the
-// open project's `snippets/` folder (so they travel with the project).
-function templatesRoot(): string {
-  return path.join(app.getPath("userData"), "templates");
-}
+// tpl:listBuiltIn, tpl:listCustom, tpl:saveAsTemplate, tpl:importFromFolder,
+// snip:list, snip:read, snip:save, snip:delete
+// — migrated to SvelteKit server routes (src/routes/api/tpl/*, src/routes/api/snip/*) in Phase 2D.
 
-ipcMain.handle("tpl:listBuiltIn", async (): Promise<TemplateInfo[]> => {
-  const lib = await loadLib();
-  return lib.listBuiltInTemplates();
-});
-
-ipcMain.handle("tpl:listCustom", async (): Promise<TemplateInfo[]> => {
-  const lib = await loadLib();
-  return lib.listCustomTemplates(templatesRoot());
-});
-
-ipcMain.handle(
-  "tpl:saveAsTemplate",
-  async (_e, projectDir: string, name: string): Promise<TemplateInfo> => {
-    requireAbsoluteDir("tpl:saveAsTemplate", projectDir);
-    const lib = await loadLib();
-    return lib.saveProjectAsTemplate({ projectDir, name, templatesRoot: templatesRoot() });
-  },
-);
-
-ipcMain.handle("tpl:importFromFolder", async (): Promise<TemplateInfo | null> => {
-  if (!mainWindow) return null;
-  const res = await dialog.showOpenDialog(mainWindow, {
-    title: "Choose a template folder",
-    properties: ["openDirectory"],
-  });
-  if (res.canceled || res.filePaths.length === 0) return null;
-  const lib = await loadLib();
-  return lib.importTemplateFromFolder({
-    sourceDir: res.filePaths[0]!,
-    templatesRoot: templatesRoot(),
-  });
-});
-
-ipcMain.handle(
-  "snip:list",
-  async (_e, projectDir: string): Promise<SnippetEntry[]> => {
-    requireAbsoluteDir("snip:list", projectDir);
-    const lib = await loadLib();
-    return lib.listSnippets(projectDir);
-  },
-);
-
-ipcMain.handle(
-  "snip:read",
-  async (_e, projectDir: string, fileName: string): Promise<string> => {
-    requireAbsoluteDir("snip:read", projectDir);
-    const lib = await loadLib();
-    return lib.readSnippet(projectDir, fileName);
-  },
-);
-
-ipcMain.handle(
-  "snip:save",
-  async (_e, projectDir: string, name: string, body: string): Promise<SnippetEntry> => {
-    requireAbsoluteDir("snip:save", projectDir);
-    const lib = await loadLib();
-    return lib.saveSnippet(projectDir, name, body);
-  },
-);
-
-ipcMain.handle(
-  "snip:delete",
-  async (_e, projectDir: string, fileName: string): Promise<void> => {
-    requireAbsoluteDir("snip:delete", projectDir);
-    const lib = await loadLib();
-    return lib.deleteSnippet(projectDir, fileName);
-  },
-);
-
-// ── Plugin manager (#30) ──────────────────────────────────────────────────────
-// Thin pass-throughs to the lib's plugin-manager. Per CLAUDE.md §5 the host
-// NEVER auto-installs npm packages — `addNpmPlugin` only records a manifest
-// entry; `plugin:validate` load-tests each plugin via the lib's fail-fast
-// loader and reports which resolve vs need install.
-
-ipcMain.handle(
-  "plugin:list",
-  async (_e, projectDir: string): Promise<ProjectPluginEntry[]> => {
-    requireAbsoluteDir("plugin:list", projectDir);
-    const lib = await loadLib();
-    return lib.listProjectPlugins(projectDir);
-  },
-);
-
-ipcMain.handle(
-  "plugin:setEnabled",
-  async (_e, projectDir: string, ref: string, enabled: boolean): Promise<void> => {
-    requireAbsoluteDir("plugin:setEnabled", projectDir);
-    const lib = await loadLib();
-    return lib.setPluginEnabled(projectDir, ref, Boolean(enabled));
-  },
-);
-
-ipcMain.handle(
-  "plugin:addNpm",
-  async (_e, projectDir: string, packageName: string): Promise<ProjectPluginEntry> => {
-    requireAbsoluteDir("plugin:addNpm", projectDir);
-    const lib = await loadLib();
-    return lib.addNpmPlugin(projectDir, packageName);
-  },
-);
-
-ipcMain.handle(
-  "plugin:import",
-  async (_e, projectDir: string): Promise<ProjectPluginEntry | null> => {
-    requireAbsoluteDir("plugin:import", projectDir);
-    if (!mainWindow) return null;
-    const res = await dialog.showOpenDialog(mainWindow, {
-      title: "Choose a plugin file or folder",
-      properties: ["openFile", "openDirectory"],
-      filters: [{ name: "Plugin", extensions: ["js", "mjs", "cjs", "ts"] }],
-    });
-    if (res.canceled || res.filePaths.length === 0) return null;
-    const lib = await loadLib();
-    return lib.addLocalPlugin(projectDir, res.filePaths[0]!);
-  },
-);
-
-ipcMain.handle(
-  "plugin:validate",
-  async (_e, projectDir: string): Promise<PluginValidationResult[]> => {
-    requireAbsoluteDir("plugin:validate", projectDir);
-    const lib = await loadLib();
-    return lib.validateProjectPlugins(projectDir);
-  },
-);
-
-ipcMain.handle(
-  "plugin:recommended",
-  async (): Promise<RecommendedPlugin[]> => {
-    const lib = await loadLib();
-    return lib.RECOMMENDED_PLUGINS;
-  },
-);
-
-// ── Theme manager (#32) ───────────────────────────────────────────────────────
-// Thin pass-throughs to the lib's theme-manager (one impl for CLI + viewer).
-// Built-in themes are embedded; apply COPIES the theme folder into the project's
-// themes/ dir and wires the manifest styles list. Import accepts a local folder
-// (native dialog) or a URL (raw CSS or a theme folder), fetched with the lib's
-// global `fetch`. readThemeCss feeds the renderer's sandboxed thumbnail preview.
-
-ipcMain.handle("theme:listBuiltIn", async (): Promise<ThemeInfo[]> => {
-  const lib = await loadLib();
-  return lib.listBuiltInThemes();
-});
-
-ipcMain.handle(
-  "theme:listProject",
-  async (_e, projectDir: string): Promise<ThemeInfo[]> => {
-    requireAbsoluteDir("theme:listProject", projectDir);
-    const lib = await loadLib();
-    return lib.listProjectThemes(projectDir);
-  },
-);
-
-ipcMain.handle(
-  "theme:getActive",
-  async (_e, projectDir: string): Promise<ThemeInfo | null> => {
-    requireAbsoluteDir("theme:getActive", projectDir);
-    const lib = await loadLib();
-    return lib.getActiveTheme(projectDir);
-  },
-);
-
-ipcMain.handle(
-  "theme:apply",
-  async (_e, projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> => {
-    requireAbsoluteDir("theme:apply", projectDir);
-    const lib = await loadLib();
-    return lib.applyTheme(projectDir, target);
-  },
-);
-
-ipcMain.handle(
-  "theme:importFromFolder",
-  async (_e, projectDir: string): Promise<ThemeInfo | null> => {
-    requireAbsoluteDir("theme:importFromFolder", projectDir);
-    if (!mainWindow) return null;
-    const res = await dialog.showOpenDialog(mainWindow, {
-      title: "Choose a theme folder",
-      properties: ["openDirectory"],
-    });
-    if (res.canceled || res.filePaths.length === 0) return null;
-    const lib = await loadLib();
-    return lib.importThemeFromFolder(projectDir, res.filePaths[0]!);
-  },
-);
-
-ipcMain.handle(
-  "theme:importFromUrl",
-  async (_e, projectDir: string, url: string): Promise<ThemeInfo> => {
-    requireAbsoluteDir("theme:importFromUrl", projectDir);
-    const lib = await loadLib();
-    return lib.importThemeFromUrl(projectDir, url);
-  },
-);
-
-ipcMain.handle(
-  "theme:readCss",
-  async (
-    _e,
-    projectDir: string | null,
-    source: { kind: "builtin" | "project"; id: string },
-  ): Promise<string> => {
-    if (projectDir != null && (typeof projectDir !== "string" || !path.isAbsolute(projectDir))) {
-      throw new Error("theme:readCss requires an absolute projectDir or null");
-    }
-    const lib = await loadLib();
-    return lib.readThemeCss(projectDir, source);
-  },
-);
-
-ipcMain.handle(
-  "theme:remove",
-  async (_e, projectDir: string, id: string): Promise<void> => {
-    requireAbsoluteDir("theme:remove", projectDir);
-    const lib = await loadLib();
-    return lib.removeProjectTheme(projectDir, id);
-  },
-);
-
-// ── Style resolver (project:listStyles, audit B2/G1) ──────────────────────────
-// Resolve the project's editable stylesheets for the CSS editor: the manifest
-// `styles:` set (active, in order) followed by other discovered `.css` files
-// (root, styles/, themes/*/theme.css). Thin pass-through to the shared lib so
-// the CLI and viewer resolve CSS identically.
-ipcMain.handle(
-  "project:listStyles",
-  async (_e, projectDir: string): Promise<ProjectStyle[]> => {
-    requireAbsoluteDir("project:listStyles", projectDir);
-    const lib = await loadLib();
-    return lib.listProjectStyles(projectDir);
-  },
-);
+// plugin:list, plugin:setEnabled, plugin:addNpm, plugin:import, plugin:validate, plugin:recommended,
+// theme:listBuiltIn, theme:listProject, theme:getActive, theme:apply, theme:importFromFolder,
+// theme:importFromUrl, theme:readCss, theme:remove, project:listStyles
+// — migrated to SvelteKit server routes (src/routes/api/plugin/*, src/routes/api/theme/*, src/routes/api/project/*) in Phase 2E.
 
 // ── Local version history (#13) ──────────────────────────────────────────────
 // Thin pass-throughs to the lib's source-provider operations (isomorphic-git —
@@ -3019,6 +2181,9 @@ ipcMain.handle(
 // the platform adapter; capability gating (which actions to even show) comes
 // from app:classifyProject. Paths MUST be absolute (trusted SPA, but a relative
 // path could resolve against the main-process CWD by accident).
+
+// Expose loadLib for VCS SvelteKit server routes.
+(globalThis as unknown as Record<string, unknown>).__printMdVcsHooks__ = { loadLib };
 
 function requireAbsoluteDir(channel: string, projectDir: unknown): string {
   if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
@@ -3055,21 +2220,6 @@ async function handleVcsErrors<T>(
   }
 }
 
-ipcMain.handle("vcs:enableVersionHistory", (_e, projectDir: string) =>
-  handleVcsErrors("vcs:enableVersionHistory", async () => {
-    const dir = requireAbsoluteDir("vcs:enableVersionHistory", projectDir);
-    const lib = await loadLib();
-    const source = await lib.detectProjectSource(dir);
-    await lib.providerFor(source).initVersionHistory({
-      projectDir: dir,
-      initialMessage: "Initial snapshot",
-    });
-    // Re-classify so the renderer gets the upgraded source + capabilities.
-    const upgraded = await lib.detectProjectSource(dir);
-    return { source: upgraded, capabilities: lib.capabilitiesFor(upgraded) };
-  }),
-);
-
 ipcMain.handle(
   "vcs:saveSnapshot",
   (_e, projectDir: string, message?: string): Promise<SnapshotEntry> =>
@@ -3086,60 +2236,7 @@ ipcMain.handle(
     }),
 );
 
-ipcMain.handle(
-  "vcs:listSnapshots",
-  (_e, projectDir: string): Promise<SnapshotEntry[]> =>
-    handleVcsErrors("vcs:listSnapshots", async () => {
-      const dir = requireAbsoluteDir("vcs:listSnapshots", projectDir);
-      const lib = await loadLib();
-      const source = await lib.detectProjectSource(dir);
-      // Bounded to the lib's default page size; use vcs:listSnapshotsPage for
-      // "Show older versions" continuation.
-      return lib.providerFor(source).listHistory(dir);
-    }),
-);
-
-ipcMain.handle(
-  "vcs:listSnapshotsPage",
-  (
-    _e,
-    projectDir: string,
-    options?: { limit?: number; before?: string },
-  ): Promise<SnapshotPage> =>
-    handleVcsErrors("vcs:listSnapshotsPage", async () => {
-      const dir = requireAbsoluteDir("vcs:listSnapshotsPage", projectDir);
-      // Validate the continuation cursor before it reaches the lib (it is
-      // used as a git ref); a malformed cursor must never become a ref query.
-      const before = options?.before;
-      if (before !== undefined && !/^[0-9a-f]{40}$/i.test(before)) {
-        throw new Error("vcs:listSnapshotsPage requires a valid snapshot id cursor");
-      }
-      const limit = options?.limit;
-      const lib = await loadLib();
-      const source = await lib.detectProjectSource(dir);
-      return lib.providerFor(source).listHistoryPage(dir, {
-        ...(typeof limit === "number" ? { limit } : {}),
-        ...(before ? { before } : {}),
-      });
-    }),
-);
-
-ipcMain.handle(
-  "vcs:restoreSnapshot",
-  (_e, projectDir: string, id: string): Promise<RestoreVersionResult> =>
-    handleVcsErrors("vcs:restoreSnapshot", async () => {
-      const dir = requireAbsoluteDir("vcs:restoreSnapshot", projectDir);
-      // Snapshot ids are full commit SHAs — reject anything else before it
-      // reaches the lib (a partial/garbage ref must never hit checkout).
-      if (typeof id !== "string" || !/^[0-9a-f]{40}$/i.test(id)) {
-        throw new Error("vcs:restoreSnapshot requires a valid snapshot id");
-      }
-      const lib = await loadLib();
-      // Safety contract (#13 / ADR 0006 §D5): the lib snapshots the current
-      // state before restoring, so a restore can never lose author work.
-      return lib.restoreVersionWithBackup({ projectDir: dir, id });
-    }),
-);
+// vcs:listSnapshots, vcs:listSnapshotsPage, vcs:restoreSnapshot — migrated to SvelteKit server routes (src/routes/api/vcs/*).
 
 // ── Managed GitHub integration (#15, ADR 0006) ───────────────────────────────
 // Auth (device flow), connection status, repo/branch discovery, clone-and-open.
@@ -3148,6 +2245,16 @@ ipcMain.handle(
 // NEVER cross the IPC boundary (remote:getConnection is redacted status only).
 
 const GITHUB_HOST = "github.com";
+
+// Expose lib + tokenStore for remote SvelteKit server routes (Phase 2F).
+// The routes live in a separate Vite bundle and cannot directly import from
+// main.ts; they access loadLib / electronTokenStore / GITHUB_HOST through
+// this hook (same pattern as __printMdUpdaterGetStatus__ for /api/doctor).
+(globalThis as unknown as Record<string, unknown>).__printMdRemoteHooks__ = {
+  loadLib,
+  tokenStore: electronTokenStore,
+  GITHUB_HOST,
+};
 
 // Error sanitization — same pattern as handleVcsErrors: the lib's own
 // author-friendly messages pass through verbatim; anything else is logged in
@@ -3254,59 +2361,9 @@ ipcMain.handle("remote:connectGitHubCancel", async () => {
   return { ok: true };
 });
 
-ipcMain.handle("remote:disconnectGitHub", () =>
-  handleRemoteErrors("remote:disconnectGitHub", async () => {
-    await electronTokenStore.delete(GITHUB_HOST);
-    return { ok: true };
-  }),
-);
-
-// Redacted status only — the token NEVER crosses the IPC boundary.
-ipcMain.handle("remote:getConnection", (_e, host?: string) =>
-  electronTokenStore.status(host || GITHUB_HOST),
-);
-
-async function requireGitHubCredential(): Promise<HostCredential> {
-  const credential = await electronTokenStore.get(GITHUB_HOST);
-  if (!credential) {
-    throw new Error("Connect GitHub first to see your repositories.");
-  }
-  return credential;
-}
-
-ipcMain.handle("remote:listRepositories", () =>
-  handleRemoteErrors("remote:listRepositories", async () => {
-    const lib = await loadLib();
-    return lib.listGitHubRepositories(await requireGitHubCredential());
-  }),
-);
-
-ipcMain.handle(
-  "remote:listBranches",
-  (_e, owner: string, repo: string): Promise<RemoteBranch[]> =>
-    handleRemoteErrors("remote:listBranches", async () => {
-      if (typeof owner !== "string" || typeof repo !== "string" || !owner || !repo) {
-        throw new Error("remote:listBranches requires owner and repo");
-      }
-      const lib = await loadLib();
-      return lib.listGitHubBranches(await requireGitHubCredential(), owner, repo);
-    }),
-);
-
-ipcMain.handle(
-  "remote:listRepoBooks",
-  (_e, owner: string, repo: string, branch: string): Promise<RepoBook[]> =>
-    handleRemoteErrors("remote:listRepoBooks", async () => {
-      if (
-        typeof owner !== "string" || typeof repo !== "string" ||
-        typeof branch !== "string" || !owner || !repo || !branch
-      ) {
-        throw new Error("remote:listRepoBooks requires owner, repo and branch");
-      }
-      const lib = await loadLib();
-      return lib.listRepoBooks(await requireGitHubCredential(), owner, repo, branch);
-    }),
-);
+// remote:disconnectGitHub, remote:getConnection, remote:listRepositories,
+// remote:listBranches, remote:listRepoBooks — migrated to SvelteKit server
+// routes (Phase 2F). Accessed via __printMdRemoteHooks__ globalThis hook.
 
 /**
  * Validate a renderer-supplied book subfolder path (repo-relative, "/"
@@ -3384,118 +2441,10 @@ ipcMain.handle(
     }),
 );
 
-// ── Advanced Setup (#14, ADR 0006 D3/D7) ─────────────────────────────────────
-// Diagnostics + the universal "Connect a Git server" token flow. All checks
-// are lib functions (no shell commands — CLAUDE.md §7); tokens are validated
-// with a refs probe BEFORE being stored and NEVER cross the IPC boundary back
-// to the renderer (every response below is redacted).
-
-ipcMain.handle("remote:diagnoseProject", (_e, projectDir: string) =>
-  handleRemoteErrors("remote:diagnoseProject", async () => {
-    const dir = requireAbsoluteDir("remote:diagnoseProject", projectDir);
-    const lib = await loadLib();
-    return lib.diagnoseProjectRemote(dir, { tokenStore: electronTokenStore });
-  }),
-);
-
-ipcMain.handle("remote:testRemoteAccess", (_e, url: string) =>
-  handleRemoteErrors("remote:testRemoteAccess", async () => {
-    if (typeof url !== "string" || !url.trim()) {
-      throw new Error("remote:testRemoteAccess requires a remote URL");
-    }
-    const lib = await loadLib();
-    // Use the stored credential for the remote's host, when one exists.
-    // Credentials are keyed hostname[:port] (matching the lib's host
-    // normalization), so a self-hosted forge on a port still resolves.
-    let credential: HostCredential | null = null;
-    try {
-      const u = new URL(url);
-      const host = u.port ? `${u.hostname}:${u.port}` : u.hostname;
-      credential = await electronTokenStore.get(host);
-    } catch {
-      // SSH/scp-like URLs don't parse — the lib classifies them without auth.
-    }
-    return lib.testRemoteAccess({
-      url,
-      ...(credential ? { credential } : {}),
-    });
-  }),
-);
-
-ipcMain.handle(
-  "remote:connectGenericHost",
-  (
-    _e,
-    args: { host: string; username?: string; token: string; repoUrl?: string },
-  ) =>
-    handleRemoteErrors("remote:connectGenericHost", async () => {
-      if (!args || typeof args.host !== "string" || typeof args.token !== "string") {
-        throw new Error("remote:connectGenericHost requires { host, token }");
-      }
-      const lib = await loadLib();
-      // Validates with a refs probe BEFORE returning — a bad paste never
-      // reaches the credential store.
-      const credential = await lib.connectGenericHost({
-        host: args.host,
-        ...(args.username ? { username: args.username } : {}),
-        token: args.token,
-        ...(args.repoUrl ? { repoUrl: args.repoUrl } : {}),
-      });
-      await electronTokenStore.set(credential.host, credential);
-      return {
-        connected: true,
-        host: credential.host,
-        ...(credential.username ? { username: credential.username } : {}),
-      };
-    }),
-);
-
-ipcMain.handle("remote:disconnectHost", (_e, host: string) =>
-  handleRemoteErrors("remote:disconnectHost", async () => {
-    if (typeof host !== "string" || !host.trim()) {
-      throw new Error("remote:disconnectHost requires a host");
-    }
-    await electronTokenStore.delete(host);
-    return { ok: true };
-  }),
-);
-
-// Redacted list only — host/username/label/kind, never tokens or ciphertext.
-ipcMain.handle("remote:listConnections", async () => {
-  return electronTokenStore.listRedacted();
-});
-
-// Pure lookup (no I/O): token-settings deep link for recognized forges.
-ipcMain.handle("remote:forgeTokenUrl", async (_e, host: string) => {
-  if (typeof host !== "string" || !host.trim()) return null;
-  const lib = await loadLib();
-  return lib.knownForgeTokenUrl(host);
-});
-
-// ── Sync (#15 sync phase, ADR 0006 D5) ──────────────────────────────────────
-// Snapshot-first sync + per-file conflict resolution. All git work happens
-// in the lib (isomorphic-git — CLAUDE.md §7) under the per-repo lock; the
-// credential is resolved host-side from the safeStorage store by remote host
-// and NEVER crosses the IPC boundary. Outcomes (synced / up-to-date /
-// conflict / auth / offline / error) are RETURNED, not thrown — the lib maps
-// every failure to an author-friendly status — so handleRemoteErrors only
-// catches argument-validation and truly unexpected faults.
-
-ipcMain.handle(
-  "remote:sync",
-  (_e, projectDir: string, message?: string): Promise<SyncOutcome> =>
-    handleRemoteErrors("remote:sync", async () => {
-      const dir = requireAbsoluteDir("remote:sync", projectDir);
-      const lib = await loadLib();
-      return lib.syncProject({
-        projectDir: dir,
-        tokenStore: electronTokenStore,
-        ...(typeof message === "string" && message.trim()
-          ? { message: message.trim() }
-          : {}),
-      });
-    }),
-);
+// remote:diagnoseProject, remote:testRemoteAccess, remote:connectGenericHost,
+// remote:disconnectHost, remote:listConnections, remote:forgeTokenUrl,
+// remote:sync — migrated to SvelteKit server routes (Phase 2F).
+// Accessed via __printMdRemoteHooks__ globalThis hook.
 
 ipcMain.handle(
   "remote:resolveSyncConflicts",
@@ -3581,29 +2530,18 @@ ipcMain.handle(
   },
 );
 
-/**
- * Return the yours/theirs text for one conflicted file so the author can
- * compare before choosing in ConflictChoicesDialog.
- */
-ipcMain.handle(
-  "sync:getConflictPreview",
-  async (_e, rawArgs: unknown) => {
-    const args = rawArgs as { projectDir?: string; path?: string; kind?: string };
-    if (!args?.projectDir || !args?.path) {
-      throw new Error("sync:getConflictPreview requires { projectDir, path }");
-    }
-    const dir = requireAbsoluteDir("sync:getConflictPreview", args.projectDir);
-    return handleRemoteErrors("sync:getConflictPreview", async () => {
-      const lib = await loadLib();
-      return getConflictPreviewImpl(
-        dir,
-        args.path!,
-        (args.kind ?? "both-edited") as "both-edited" | "you-deleted" | "online-deleted",
-        lib.onlineCopyPath,
-      );
-    });
+// sync:getConflictPreview — migrated to SvelteKit server route
+// (src/routes/api/sync/get-conflict-preview). Exposed via globalThis hook.
+(globalThis as unknown as Record<string, unknown>).__printMdConflictPreviewHooks__ = {
+  getConflictPreview: async (
+    projectDir: string,
+    relativePath: string,
+    kind: "both-edited" | "you-deleted" | "online-deleted",
+  ) => {
+    const lib = await loadLib();
+    return getConflictPreviewImpl(projectDir, relativePath, kind, lib.onlineCopyPath);
   },
-);
+};
 
 // ── Auto-sync settings IPC (transparent-sync plan §4.3) ─────────────────────
 // The renderer calls setAutoSync(true|false) from the Settings panel. We persist
@@ -3636,38 +2574,7 @@ ipcMain.handle("sync:setAutoSync", async (_e, enabled: boolean) => {
   return { ok: true, autoSync: enabled };
 });
 
-ipcMain.handle("api:doctor", async () => {
-  const lib = await loadLib();
-  const diag = await lib.getSystemDiagnostics();
-  // Web-UI bundle version: the current updater pointer (or the baked baseline).
-  // This is distinct from viewerVersion (the Electron shell) — after a web-UI
-  // auto-update they diverge, so surface both.
-  const webUiVersion = (await getStatus().catch(() => null))?.currentVersion ?? null;
-  const externalTools = diag.tools.filter(
-    (tool) => tool.bin !== "chrome / chromium / msedge"
-  );
-  return {
-    ...diag,
-    tools: [
-      {
-        name: "Chromium (built-in via Electron)",
-        bin: "electron",
-        found: true,
-        path: "Bundled with the viewer app",
-        version: process.versions.chrome,
-        usedBy: [
-          { feature: "Preview rendering and Save PDF", severity: "required" },
-        ],
-        installHint: "No setup required in the viewer app.",
-      },
-      ...externalTools,
-    ],
-    viewerVersion: app.getVersion(),
-    webUiVersion,
-    electronVersion: process.versions.electron,
-    chromeVersion: process.versions.chrome,
-  };
-});
+// (api:doctor handler removed — migrated to server route)
 
 ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   const input = args?.input;
@@ -4157,8 +3064,8 @@ ipcMain.handle(
 // Health gate + watchdog (Phase 6): after a promote (either "apply now" or
 // "apply on next launch"), we arm a 10s watchdog. The renderer calls
 // updater:markReady once it boots; on time we record the version healthy and
-// prune old bundles. If the deadline elapses with no markReady, we rollback,
-// refresh the web root, and reload the window to recover from a bad bundle.
+// prune old bundles. If the deadline elapses with no markReady, we rollback
+// and relaunch the app so the new process picks up the restored bundle.
 // ──────────────────────────────────────────────────────────────────────────
 
 // Generous enough that a healthy static SPA (sub-second boot) never trips it,
@@ -4208,9 +3115,12 @@ function armHealthWatchdog(version: string) {
         `[updater] health watchdog expired for ${version}; rolling back`
       );
       await rollback("renderer did not mark ready");
-      await refreshWebRoot();
       sendUpdaterEvent({ type: "rolledback", version });
-      mainWindow?.webContents.reload();
+      // With adapter-node the SvelteKit handler is a Node module loaded at
+      // startup — a window reload cannot pick up the restored bundle. Relaunch
+      // the entire process so the new instance mounts the rolled-back bundle.
+      app.relaunch();
+      app.exit(0);
     })();
   }, HEALTH_WATCHDOG_MS);
   // Don't keep the event loop alive on the watchdog alone.
@@ -4278,9 +3188,13 @@ ipcMain.handle("updater:applyNow", async () => {
   if (!updaterEnabled()) return { applied: false };
   const { promoted, version } = await promoteStaged();
   if (!promoted || !version) return { applied: false };
-  await refreshWebRoot();
-  armHealthWatchdog(version);
-  mainWindow?.webContents.reload();
+  // With adapter-node the SvelteKit handler is a Node module loaded at
+  // startup — a window reload cannot pick up new server routes. Relaunch
+  // the entire process so the new instance mounts the promoted bundle.
+  // The new process will arm its own health watchdog on startup.
+  app.relaunch();
+  app.exit(0);
+  // app.exit() is synchronous; this return is never reached but satisfies TS.
   return { applied: true, version };
 });
 
@@ -4364,6 +3278,17 @@ app.whenReady().then(async () => {
   updateSplash("Preparing the interface…", 18);
   await refreshWebRoot();
   slog("web root resolved");
+  // In dev mode (VITE_DEV_SERVER_URL set) the SvelteKit dev server is already
+  // running externally — skip the local handler.js launch. In prod, start the
+  // adapter-node HTTP server and wire it to the app:// protocol.
+  if (!process.env.VITE_DEV_SERVER_URL) {
+    try {
+      await startSvelteKitServer();
+    } catch (err) {
+      console.error("[sk-server] failed to start SvelteKit server:", err);
+      // Non-fatal: registerAppProtocol will return 503 until skServerPort is set.
+    }
+  }
   registerAppProtocol();
   registerUrlPreviewHeaderWatch();
   updateSplash("Loading print-md…", 28);

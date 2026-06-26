@@ -4,5 +4,7 @@ authors:
 source:
   files:
     - chapter-01.md
+styles:
+  - styles/book.css
 output:
   filename: "{{OUTPUT_PDF}}"

@@ -6,11 +6,11 @@
    * during sync, recovery, and snapshot operations. The log helps the user
    * (or support) understand what steps ran and where things went wrong.
    *
-   * PWA-clean (CLAUDE.md §8 / ADR 0004): uses `getPlatform().readLogFile()` —
+   * PWA-clean (CLAUDE.md §8 / ADR 0004): uses `api.log.read()` —
    * no direct fs/Node access. The log is fetched from the host on open.
    */
   import Icon from "$lib/components/Icon.svelte";
-  import { getPlatform } from "$lib/platform";
+  import { api } from "$lib/api";
 
   let {
     open = $bindable(false),
@@ -38,8 +38,7 @@
     let cancelled = false;
     (async () => {
       try {
-        const platform = getPlatform();
-        const content = await platform.readLogFile(logFilePath);
+        const content = await api.log.read(logFilePath);
         if (cancelled) return;
         if (content === null) {
           error = "The log file could not be found.";

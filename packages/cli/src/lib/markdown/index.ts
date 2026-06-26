@@ -1,9 +1,9 @@
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { BOOK_HTML_FILENAME } from "../viewer";
 import { canonicalChapterId } from "./chapter-id";
 import { assembleBookHtml } from "./assemble";
+import { resolveActiveStyles } from "../style-resolver";
 import type { LoadedPlugin } from "./renderer";
 
 // Re-export the pure render core so existing callers
@@ -11,20 +11,6 @@ import type { LoadedPlugin } from "./renderer";
 // The factory + plugin author types now live in the node-free `renderer.ts`
 // (so the browser/PWA can import them) and are surfaced here unchanged.
 export { createMarkdownRenderer } from "./renderer";
-
-/**
- * Resolve which CSS files to link. Uses the explicit list if provided,
- * otherwise tries common names in the input directory.
- */
-function resolveStyles(inputDir: string, configured?: string[]): string[] {
-  if (configured && configured.length > 0) return configured;
-
-  const fallbacks = ["css/print.css", "css/index.css", "css/style.css", "css/main.css"];
-  for (const c of fallbacks) {
-    if (existsSync(join(inputDir, c))) return [c];
-  }
-  return ["css/print.css"];
-}
 
 /**
  * Render all chapter markdown files to a single HTML string.
@@ -55,7 +41,9 @@ export async function renderChapters(
     wrapChapters?: boolean;
   } = {}
 ): Promise<string> {
-  const styles = resolveStyles(inputDir, opts.styles);
+  // The SAME resolver the editor uses, so the rendered <link> is always the file
+  // the Design/Edit-CSS surface edits (no "design doesn't change preview").
+  const styles = await resolveActiveStyles(inputDir, opts.styles);
 
   // Determine which files to process
   let files: string[];

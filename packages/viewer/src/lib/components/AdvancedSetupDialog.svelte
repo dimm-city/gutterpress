@@ -20,6 +20,7 @@
    * All host work goes through getPlatform() (§8 / ADR 0004).
    */
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { api } from "$lib/api";
   import type {
     ProjectRemoteDiagnosis,
     RemoteAccessResult,
@@ -93,7 +94,7 @@
       return;
     }
     const timer = setTimeout(() => {
-      getPlatform()
+      api.remote
         .forgeTokenUrl(value)
         .then((url) => {
           // Ignore stale answers after further typing.
@@ -107,19 +108,18 @@
   async function load() {
     if (!isDesktop()) return;
     const gen = ++loadGen;
-    const platform = getPlatform();
     diag = null;
     diagLoading = true;
     try {
       const [conn, list] = await Promise.all([
-        platform.getRemoteConnection().catch(() => null),
-        platform.listHostConnections().catch(() => []),
+        api.remote.getRemoteConnection().catch(() => null),
+        api.remote.listHostConnections().catch(() => [] as HostConnectionInfo[]),
       ]);
       if (gen !== loadGen) return;
       github = conn;
-      connections = list;
+      connections = list as HostConnectionInfo[];
       if (projectDir) {
-        const result = await platform.diagnoseProjectRemote(projectDir);
+        const result = await api.remote.diagnoseProjectRemote(projectDir) as ProjectRemoteDiagnosis;
         if (gen !== loadGen) return;
         diag = result;
         // Pre-fill the connect form with this project's server when it needs one.
@@ -144,7 +144,7 @@
     testing = true;
     testResult = null;
     try {
-      testResult = await getPlatform().testRemoteAccess(diag.remoteUrl);
+      testResult = await api.remote.testRemoteAccess(diag.remoteUrl) as RemoteAccessResult;
     } catch (e) {
       testResult = { ok: false, reason: "unknown", message: friendly(e) };
     } finally {
@@ -158,7 +158,7 @@
     connectNotice = null;
     connecting = true;
     try {
-      const result = await getPlatform().connectGenericHost({
+      const result = await api.remote.connectGenericHost({
         host: serverInput,
         ...(usernameInput.trim() ? { username: usernameInput.trim() } : {}),
         token: tokenInput,
@@ -173,9 +173,9 @@
       // The token has done its job — never keep it in renderer state.
       tokenInput = "";
       connectNotice = `Connected to ${result.host}.`;
-      connections = await getPlatform().listHostConnections().catch(() => connections);
+      connections = await api.remote.listHostConnections().catch(() => connections) as HostConnectionInfo[];
       if (projectDir) {
-        diag = await getPlatform().diagnoseProjectRemote(projectDir).catch(() => diag);
+        diag = await api.remote.diagnoseProjectRemote(projectDir).catch(() => diag) as ProjectRemoteDiagnosis;
       }
     } catch (e) {
       connectError = friendly(e);
@@ -195,10 +195,10 @@
     disconnecting = host;
     disconnectError = null;
     try {
-      await getPlatform().disconnectHost(host);
+      await api.remote.disconnectHost(host);
       connections = connections.filter((c) => c.host !== host);
       if (projectDir) {
-        diag = await getPlatform().diagnoseProjectRemote(projectDir).catch(() => diag);
+        diag = await api.remote.diagnoseProjectRemote(projectDir).catch(() => diag) as ProjectRemoteDiagnosis;
       }
     } catch (e) {
       disconnectError = friendly(e);
@@ -208,7 +208,7 @@
   }
 
   function openLink(url: string) {
-    getPlatform().openExternal(url).catch(() => {});
+    api.shell.openExternal(url).catch(() => {});
   }
 
   // ── Display helpers ────────────────────────────────────────────────────────

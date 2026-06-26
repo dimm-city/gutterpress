@@ -1,5 +1,4 @@
-// Force full client-side rendering. adapter-static otherwise tries to
-// prerender every route, which is meaningless for a single-page Electron
-// shell that talks to the host via the platform adapter (not network).
+// Force full client-side rendering. The SPA pages are not prerendered —
+// adapter-node serves them dynamically. All "API" work goes through
+// +server.ts routes (Phase 2+) or the platform adapter (legacy IPC).
 export const ssr = false;
-export const prerender = true;

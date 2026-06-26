@@ -1,10 +1,12 @@
 import { test, expect } from "bun:test";
-import { mkdtemp, readFile, stat, rm } from "node:fs/promises";
+import { mkdtemp, readFile, stat, rm, writeFile, mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
   scaffoldProject,
+  adoptFolder,
   slugifyProjectName,
   escapeYamlScalar,
 } from "./project-scaffold.ts";
@@ -48,6 +50,8 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
     expect(manifest).toContain('- "Jane Writer"');
     expect(manifest).toContain("test-book.pdf");
     expect(manifest).toContain("chapter-01.md");
+    // The manifest references the scaffolded stylesheet.
+    expect(manifest).toContain("styles/book.css");
 
     const chapter = await readFile(result.openFile, "utf8");
     expect(chapter).toContain("Test Book");
@@ -55,6 +59,11 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
 
     // assets/ dir exists.
     expect((await stat(path.join(result.projectDir, "assets"))).isDirectory()).toBe(true);
+    // styles/book.css scaffolded with editable :root custom properties so the
+    // guided Design panel is never empty on a fresh project.
+    const bookCss = await readFile(path.join(result.projectDir, "styles", "book.css"), "utf8");
+    expect(bookCss).toContain(":root");
+    expect(bookCss).toMatch(/--color-ink|--color-accent/);
     // No git when versionHistory: "none".
     const source = await detectProjectSource(result.projectDir);
     expect(source.type).toBe("local-folder");
@@ -162,4 +171,54 @@ test("provider snapshot + restore round-trips the working tree", async () => {
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
+});
+
+test("adoptFolder: uses existing markdown + scaffolds manifest/book.css in place", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-"));
+  await writeFile(path.join(dir, "intro.md"), "# Intro\n\nHello.", "utf8");
+  await writeFile(path.join(dir, "02-body.md"), "# Body\n", "utf8");
+
+  const result = await adoptFolder({ dir, versionHistory: "none" });
+
+  expect(result.projectDir).toBe(dir);
+  // Opens the first existing markdown file (alphabetical), not a scaffolded one.
+  expect(result.openFile).toBe(path.join(dir, "02-body.md"));
+
+  const manifest = await readFile(result.manifestPath, "utf8");
+  expect(manifest).toContain("02-body.md");
+  expect(manifest).toContain("intro.md");
+  expect(manifest).toContain("styles/book.css");
+  // No chapter-01.md scaffolded when the folder already has markdown.
+  expect(existsSync(path.join(dir, "chapter-01.md"))).toBe(false);
+
+  const bookCss = await readFile(path.join(dir, "styles", "book.css"), "utf8");
+  expect(bookCss).toContain(":root");
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("adoptFolder: scaffolds a chapter when the folder has no markdown", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-empty-"));
+  const result = await adoptFolder({ dir, title: "Fresh", versionHistory: "none" });
+  expect(result.openFile).toBe(path.join(dir, "chapter-01.md"));
+  expect(existsSync(path.join(dir, "chapter-01.md"))).toBe(true);
+  expect(await readFile(result.manifestPath, "utf8")).toContain('title: "Fresh"');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("adoptFolder: refuses a folder that is already a project", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-existing-"));
+  await writeFile(path.join(dir, "manifest.yaml"), "title: x\n", "utf8");
+  await expect(adoptFolder({ dir, versionHistory: "none" })).rejects.toThrow(/already a print-md project/i);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("adoptFolder: never overwrites an existing styles/book.css", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-css-"));
+  await writeFile(path.join(dir, "doc.md"), "# Doc\n", "utf8");
+  await mkdir(path.join(dir, "styles"), { recursive: true });
+  await writeFile(path.join(dir, "styles", "book.css"), "/* mine */ :root{}", "utf8");
+  await adoptFolder({ dir, versionHistory: "none" });
+  expect(await readFile(path.join(dir, "styles", "book.css"), "utf8")).toContain("/* mine */");
+  await rm(dir, { recursive: true, force: true });
 });

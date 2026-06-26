@@ -24,8 +24,8 @@
  * throws `CreateProjectError` with code `target-exists` (consistent with the
  * global never-delete-user-data rule).
  */
-import { access, copyFile, cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { constants as FS } from "node:fs";
+import { access, copyFile, cp, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { constants as FS, existsSync } from "node:fs";
 import path from "node:path";
 
 import { getAssetPath } from "./embedded-assets.ts";
@@ -37,6 +37,20 @@ import { getAssetPath } from "./embedded-assets.ts";
  * give non-technical authors a head start for common formats (#29).
  */
 export type ProjectTemplateId = "book" | "ttrpg" | "zine" | "technical";
+
+/**
+ * The bundled theme each built-in template scaffolds as its starter
+ * `styles/book.css`. The theme.css files are complete, token-driven stylesheets
+ * (a documented `:root` block + the rules that use it), so a fresh project opens
+ * with a real look AND immediately-editable settings in the guided Design panel
+ * — never an empty "no stylesheet" dead-end (UX audit P2#7).
+ */
+const STARTER_THEME_FOR_TEMPLATE: Record<ProjectTemplateId, string> = {
+  book: "clean-book",
+  ttrpg: "ttrpg-supplement",
+  zine: "zine",
+  technical: "technical-doc",
+};
 
 /**
  * How (or whether) to put the new project under local version history.
@@ -236,6 +250,13 @@ export async function scaffoldProject(
       await mkdir(path.join(projectDir, "assets"), { recursive: true });
       await copyFile(tplManifest, path.join(projectDir, "manifest.yaml"));
       await copyFile(tplChapter, path.join(projectDir, "chapter-01.md"));
+      // Scaffold styles/book.css from the template's starter theme so the
+      // project opens with a real, fully-editable stylesheet (the manifest
+      // references styles/book.css). Never an empty Design panel (audit P2#7).
+      const starterThemeId = STARTER_THEME_FOR_TEMPLATE[template] ?? "clean-book";
+      const starterCss = await getAssetPath(`themes/${starterThemeId}/theme.css`);
+      await mkdir(path.join(projectDir, "styles"), { recursive: true });
+      await copyFile(starterCss, path.join(projectDir, "styles", "book.css"));
     }
   } catch (e) {
     throw new CreateProjectErrorImpl(
@@ -304,6 +325,133 @@ export async function scaffoldProject(
   if (versionHistoryError !== undefined) {
     result.versionHistoryError = versionHistoryError;
   }
+  return result;
+}
+
+/** Options for adopting an EXISTING folder as a print-md project (in place). */
+export interface AdoptFolderOptions {
+  /** Absolute path of the existing folder to set up as a book. */
+  dir: string;
+  /** Book title. Defaults to a prettified version of the folder name. */
+  title?: string;
+  /** Author display name. Optional. */
+  author?: string;
+  /** Template whose starter theme/chapter is used. Defaults to `"book"`. */
+  template?: ProjectTemplateId;
+  /** Version-history mode. Defaults to `"local-git"`. */
+  versionHistory?: ProjectVersionHistoryMode;
+}
+
+/** "my-cool-book" / "my_cool_book" → "My Cool Book". */
+function prettifyFolderName(base: string): string {
+  const words = base.replace(/[-_]+/g, " ").trim();
+  return words.replace(/\b\w/g, (c) => c.toUpperCase()) || "Untitled Book";
+}
+
+/**
+ * Adopt an EXISTING folder as a print-md project, in place (no new subfolder).
+ * Writes a `manifest.yaml` (using the folder's existing top-level `.md` files as
+ * `source.files`, or scaffolding a `chapter-01.md` when there are none), copies
+ * a starter `styles/book.css`, and optionally initialises local version history.
+ *
+ * NON-DESTRUCTIVE (global never-overwrite rule): refuses if the folder is
+ * already a project, and never overwrites an existing `manifest.yaml`,
+ * `styles/book.css`, or any markdown file.
+ */
+export async function adoptFolder(options: AdoptFolderOptions): Promise<CreateProjectResult> {
+  const dir = options.dir;
+  if (typeof dir !== "string" || !path.isAbsolute(dir)) {
+    throw new CreateProjectErrorImpl("scaffold-io", "An absolute folder path is required.");
+  }
+  let st;
+  try {
+    st = await stat(dir);
+  } catch {
+    throw new CreateProjectErrorImpl("scaffold-io", `Folder not found: ${dir}`);
+  }
+  if (!st.isDirectory()) {
+    throw new CreateProjectErrorImpl("scaffold-io", `Not a folder: ${dir}`);
+  }
+  if (existsSync(path.join(dir, "manifest.yaml")) || existsSync(path.join(dir, "print-md.yaml"))) {
+    throw new CreateProjectErrorImpl(
+      "target-exists",
+      "This folder is already a print-md project.",
+    );
+  }
+
+  const template = options.template ?? "book";
+  const title = (options.title ?? "").trim() || prettifyFolderName(path.basename(dir));
+  const author = (options.author ?? "").trim() || DEFAULT_AUTHOR;
+  const slug = slugifyProjectName(title) || "book";
+
+  let mdFiles: string[];
+  try {
+    // 1. Use existing top-level markdown as the source; scaffold one if none.
+    const entries = await readdir(dir, { withFileTypes: true });
+    mdFiles = entries
+      .filter((e) => e.isFile() && /\.(md|markdown)$/i.test(e.name))
+      .map((e) => e.name)
+      .sort((a, b) => a.localeCompare(b));
+    if (mdFiles.length === 0) {
+      const tplChapter = await getAssetPath(`templates/${template}/chapter-01.md`);
+      await copyFile(tplChapter, path.join(dir, "chapter-01.md"));
+      await fillTemplateFile(path.join(dir, "chapter-01.md"), { "{{TITLE}}": title }).catch(() => {});
+      mdFiles = ["chapter-01.md"];
+    }
+
+    // 2. Starter stylesheet (don't clobber an existing styles/book.css).
+    const themeId = STARTER_THEME_FOR_TEMPLATE[template] ?? "clean-book";
+    await mkdir(path.join(dir, "styles"), { recursive: true });
+    const bookCssPath = path.join(dir, "styles", "book.css");
+    if (!existsSync(bookCssPath)) {
+      await copyFile(await getAssetPath(`themes/${themeId}/theme.css`), bookCssPath);
+    }
+
+    // 3. Write the manifest referencing the discovered files + book.css.
+    const filesYaml = mdFiles.map((f) => `    - "${escapeYamlScalar(f)}"`).join("\n");
+    const manifest =
+      `title: "${escapeYamlScalar(title)}"\n` +
+      `authors:\n  - "${escapeYamlScalar(author)}"\n` +
+      `source:\n  files:\n${filesYaml}\n` +
+      `styles:\n  - styles/book.css\n` +
+      `output:\n  filename: "${escapeYamlScalar(slug)}.pdf"\n`;
+    await writeFile(path.join(dir, "manifest.yaml"), manifest, "utf8");
+    await mkdir(path.join(dir, "assets"), { recursive: true });
+  } catch (e) {
+    if (e instanceof CreateProjectErrorImpl) throw e;
+    throw new CreateProjectErrorImpl(
+      "scaffold-io",
+      `Could not set up the folder: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+
+  // 4. Optional local version history (same escape-hatch as scaffoldProject).
+  const requested = options.versionHistory ?? "local-git";
+  let versionHistory: ProjectVersionHistoryMode = "none";
+  let versionHistoryError: string | undefined;
+  if (requested === "local-git") {
+    try {
+      const { providerFor } = await import("./source-provider.ts");
+      const provider = providerFor({ type: "local-folder", path: dir });
+      await provider.initVersionHistory({
+        projectDir: dir,
+        authorName: options.author?.trim() || undefined,
+        initialMessage: "Set up as a print-md book",
+      });
+      versionHistory = "local-git";
+    } catch (e) {
+      versionHistory = "none";
+      versionHistoryError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  const result: CreateProjectResult = {
+    projectDir: dir,
+    manifestPath: path.join(dir, "manifest.yaml"),
+    openFile: path.join(dir, mdFiles[0]!),
+    versionHistory,
+  };
+  if (versionHistoryError !== undefined) result.versionHistoryError = versionHistoryError;
   return result;
 }
 

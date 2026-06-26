@@ -1,7 +1,8 @@
 <script lang="ts">
   import Icon from "$lib/components/Icon.svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
-  import type { TemplateInfo } from "$lib/platform/contract";
+  import { isDesktop } from "$lib/platform";
+  import { api } from "$lib/api";
+  import type { TemplateInfo } from "$lib/api";
 
   let {
     open = $bindable(false),
@@ -14,10 +15,8 @@
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
-  // Two steps: details (name + author), then location (folder picker + create).
-  type Step = "details" | "location";
-  let step = $state<Step>("details");
-
+  // Single screen (UX audit P3#10): name, author, template, folder and history
+  // are one short form — no Continue/Back step split.
   let name = $state("");
   let author = $state("");
   let parentDir = $state<string | null>(null);
@@ -32,10 +31,10 @@
 
   async function loadTemplates() {
     try {
-      const builtins = await getPlatform().listBuiltInTemplates();
+      const builtins = await api.tpl.listBuiltIn();
       let customs: TemplateInfo[] = [];
       try {
-        customs = await getPlatform().listCustomTemplates();
+        customs = await api.tpl.listCustom();
       } catch {
         customs = [];
       }
@@ -54,7 +53,7 @@
     importing = true;
     error = null;
     try {
-      const imported = await getPlatform().importTemplateFromFolder();
+      const imported = await api.tpl.importFromFolder();
       if (imported) {
         await loadTemplates();
         selectedTemplate = templates.find((t) => t.id === imported.id) ?? imported;
@@ -84,10 +83,10 @@
     return slug;
   });
 
-  let canContinue = $derived(name.trim().length > 0 && folderPreview.length > 0);
+  let nameValid = $derived(name.trim().length > 0 && folderPreview.length > 0);
+  let canCreate = $derived(nameValid && !!parentDir && !creating);
 
   function reset() {
-    step = "details";
     name = "";
     author = "";
     parentDir = null;
@@ -96,13 +95,15 @@
     error = null;
   }
 
-  $effect(() => {
-    if (open) {
-      reset();
-      void loadTemplates();
-      queueMicrotask(() => nameInput?.focus());
-    }
-  });
+  /** Open the wizard (a user gesture from the parent) — resets + loads templates.
+   *  No `$effect` on `open`, matching the other dialogs' show() pattern. */
+  export function show(trigger?: HTMLButtonElement): void {
+    if (trigger) triggerEl = trigger;
+    reset();
+    open = true;
+    void loadTemplates();
+    queueMicrotask(() => nameInput?.focus());
+  }
 
   function close() {
     open = false;
@@ -132,15 +133,6 @@
     }
   }
 
-  function goToLocation() {
-    if (!canContinue) {
-      error = "Give your book a name to continue.";
-      return;
-    }
-    error = null;
-    step = "location";
-  }
-
   async function chooseLocation() {
     if (!isDesktop()) {
       error = "Creating a project needs the desktop app.";
@@ -148,8 +140,8 @@
     }
     error = null;
     try {
-      const dir = await getPlatform().openFolder();
-      if (dir) parentDir = dir.key;
+      const pathStr = await api.dialog.openDirectory();
+      if (pathStr) parentDir = pathStr;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
@@ -168,7 +160,7 @@
     error = null;
     try {
       const tpl = selectedTemplate;
-      const result = await getPlatform().createProject({
+      const result = await api.app.createProject({
         name: name.trim(),
         author: author.trim() || undefined,
         parentDir,
@@ -179,7 +171,7 @@
             : undefined,
         templateDir: tpl && tpl.kind === "custom" ? tpl.dir : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",
-      });
+      }) as { projectDir: string };
       open = false;
       onCreated?.(result.projectDir);
     } catch (e) {
@@ -219,127 +211,97 @@
     </header>
 
     <div class="dialog-body">
-      {#if step === "details"}
-        <p class="lead">Let's set up your book. You can change any of this later.</p>
+      <p class="lead">Let's set up your book. You can change any of this later.</p>
 
-        <label class="field" for="np-name">
-          <span>What's your book called?</span>
-          <input
-            id="np-name"
-            bind:this={nameInput}
-            bind:value={name}
-            type="text"
-            placeholder="My First Book"
-            autocomplete="off"
-            spellcheck="false"
-            onkeydown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                goToLocation();
-              }
-            }}
-          />
-        </label>
+      <label class="field" for="np-name">
+        <span>What's your book called?</span>
+        <input
+          id="np-name"
+          bind:this={nameInput}
+          bind:value={name}
+          type="text"
+          placeholder="My First Book"
+          autocomplete="off"
+          spellcheck="false"
+          onkeydown={(e) => { if (e.key === "Enter" && canCreate) { e.preventDefault(); void create(); } }}
+        />
+      </label>
 
-        <label class="field" for="np-author">
-          <span>Who's writing it? <em class="optional">(optional)</em></span>
-          <input
-            id="np-author"
-            bind:value={author}
-            type="text"
-            placeholder="Your name"
-            autocomplete="off"
-            onkeydown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                goToLocation();
-              }
-            }}
-          />
-        </label>
+      <label class="field" for="np-author">
+        <span>Who's writing it? <em class="optional">(optional)</em></span>
+        <input
+          id="np-author"
+          bind:value={author}
+          type="text"
+          placeholder="Your name"
+          autocomplete="off"
+          onkeydown={(e) => { if (e.key === "Enter" && canCreate) { e.preventDefault(); void create(); } }}
+        />
+      </label>
 
-        {#if templates.length > 0}
-          <div class="field">
-            <span>Start from a template</span>
-            <ul class="template-list" role="radiogroup" aria-label="Project template">
-              {#each templates as tpl (tpl.kind + ":" + tpl.id)}
-                <li>
-                  <button
-                    type="button"
-                    class="template-card"
-                    class:selected={selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
-                    role="radio"
-                    aria-checked={selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
-                    onclick={() => (selectedTemplate = tpl)}
-                  >
-                    <span class="template-label">
-                      {tpl.label}
-                      {#if tpl.kind === "custom"}<em class="template-tag">custom</em>{/if}
-                    </span>
-                    <span class="template-desc">{tpl.description}</span>
-                  </button>
-                </li>
-              {/each}
-            </ul>
-            {#if isDesktop()}
-              <button type="button" class="import-tpl" onclick={importTemplate} disabled={importing}>
-                {importing ? "Importing…" : "Import template from folder…"}
-              </button>
-            {/if}
-          </div>
-        {/if}
+      {#if templates.length > 0}
+        <div class="field">
+          <span>Start from a template</span>
+          <ul class="template-list" role="radiogroup" aria-label="Project template">
+            {#each templates as tpl (tpl.kind + ":" + tpl.id)}
+              <li>
+                <button
+                  type="button"
+                  class="template-card"
+                  class:selected={selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
+                  role="radio"
+                  aria-checked={selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
+                  onclick={() => (selectedTemplate = tpl)}
+                >
+                  <span class="template-label">
+                    {tpl.label}
+                    {#if tpl.kind === "custom"}<em class="template-tag">custom</em>{/if}
+                  </span>
+                  <span class="template-desc">{tpl.description}</span>
+                </button>
+              </li>
+            {/each}
+          </ul>
+          {#if isDesktop()}
+            <button type="button" class="import-tpl" onclick={importTemplate} disabled={importing}>
+              {importing ? "Importing…" : "Import template from folder…"}
+            </button>
+          {/if}
+        </div>
+      {/if}
 
-        {#if folderPreview}
-          <p class="hint">
-            We'll create a folder named <code>{folderPreview}</code> for your book.
-          </p>
-        {/if}
-
-        {#if error}
-          <p class="error" role="alert">{error}</p>
-        {/if}
-
-        <footer class="actions">
-          <button class="ghost" onclick={close}>Cancel</button>
-          <button class="primary" onclick={goToLocation} disabled={!canContinue}>
-            Continue
-          </button>
-        </footer>
-      {:else}
-        <p class="lead">Where should we save <strong>{name.trim()}</strong>?</p>
-
+      <div class="field">
+        <span>Where should we save it?</span>
         <div class="location-row">
           <button class="ghost browse" onclick={chooseLocation} disabled={creating}>
             Choose folder…
           </button>
           {#if parentDir}
-            <span class="location-path" title={parentDir}>{parentDir}</span>
+            <span class="location-path" title={parentDir}>{parentDir}{folderPreview ? `/${folderPreview}` : ""}</span>
           {:else}
             <span class="location-empty">No folder chosen yet</span>
           {/if}
         </div>
+      </div>
 
-        <label class="checkbox">
-          <input type="checkbox" bind:checked={useVersionHistory} disabled={creating} />
-          <span>
-            Keep a history of my changes
-            <em class="optional">(lets you go back to earlier versions — recommended)</em>
-          </span>
-        </label>
+      <label class="checkbox">
+        <input type="checkbox" bind:checked={useVersionHistory} disabled={creating} />
+        <span>
+          Keep a history of my changes
+          <em class="optional">(lets you go back to earlier versions — recommended)</em>
+        </span>
+      </label>
 
-        {#if error}
-          <p class="error" role="alert">{error}</p>
-        {/if}
-
-        <footer class="actions">
-          <button class="ghost" onclick={() => (step = "details")} disabled={creating}>
-            Back
-          </button>
-          <button class="primary" onclick={create} disabled={!parentDir || creating}>
-            {creating ? "Creating…" : "Create book"}
-          </button>
-        </footer>
+      {#if error}
+        <p class="error" role="alert">{error}</p>
       {/if}
+
+      <footer class="actions">
+        <button class="ghost" onclick={close}>Cancel</button>
+        <button class="primary" onclick={create} disabled={!canCreate}>
+          {creating ? "Creating…" : "Create book"}
+        </button>
+      </footer>
     </div>
   </div>
 {/if}
@@ -448,13 +410,6 @@
   .import-tpl:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
   .import-tpl:disabled { opacity: 0.5; cursor: default; }
 
-  .hint { margin: 0; font-size: 12px; color: var(--app-text-faint); }
-  .hint code {
-    font-family: ui-monospace, monospace;
-    background: var(--app-surface-sunken);
-    padding: 1px 5px;
-    border-radius: 4px;
-  }
   .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
 
   .location-row {

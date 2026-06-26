@@ -9,4 +9,4 @@ chapter the preview is showing.
 
 ## Beta Section Two
 
-More beta body text.
+More beta body text to close the chapter.

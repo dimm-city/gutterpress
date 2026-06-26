@@ -152,9 +152,22 @@ Reasons:
      (`PrintMdPlugin`, `PrintMdPluginMetadata`, `PrintMdPluginExport`) for
      TypeScript plugin authors. Types only — zero runtime coupling.
 
-Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) fails fast on any
-load error with messages identifying the offending manifest entry; it does NOT
-auto-install missing npm packages. Authoring guide lives in [User Guide: Chapter 6 — Plugins](./examples/print-md-user-guide/06-plugins.md).
+Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) does NOT auto-install
+missing npm packages, and has two load modes via `loadPlugins(configs, baseDir,
+onError?)`:
+
+  - **Fail-fast (no `onError`)** — build/export/validate. Any load error aborts
+    the whole operation with a message identifying the offending manifest entry.
+    A final artifact must never silently omit author-configured formatting.
+  - **Degrade-and-report (`onError` supplied)** — the LIVE PREVIEW only. A plugin
+    the author enabled but hasn't installed yet is skipped, `onError` fires
+    (the preview `warn`s; the viewer Plugins panel already shows it as "Not
+    installed" with fix instructions), and the rest of the document still
+    renders. This is NOT the silent-skip that the loader deliberately removed —
+    every skip is surfaced loudly. Rationale: one uninstalled plugin must not
+    blank a non-technical author's entire preview.
+
+Authoring guide lives in [User Guide: Chapter 6 — Plugins](./examples/print-md-user-guide/06-plugins.md).
 
 **Block container syntax** (`:::name ... :::` via `markdown-it-container`) was
 removed 2026-05-17. The DC plugin's `@marker` family (`@page`, `@section`,

@@ -18,8 +18,8 @@
    * handles the 0/1 cases gracefully if called directly.
    */
   import Icon from "$lib/components/Icon.svelte";
-  import { getPlatform } from "$lib/platform";
-  import type { ProjectStyle } from "$lib/platform/contract";
+  import { api } from "$lib/api";
+  import type { ProjectStyle } from "$lib/api";
 
   let {
     open = $bindable(false),
@@ -73,7 +73,7 @@
     error = null;
     loading = true;
     try {
-      styles = await getPlatform().listProjectStyles(projectDir);
+      styles = await api.project.listStyles(projectDir);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
       styles = [];

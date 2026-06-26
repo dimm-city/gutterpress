@@ -4,74 +4,44 @@
  *
  * Every implemented method delegates 1:1 to the preload bridge, so behaviour is
  * identical to the pre-#41 direct calls. The #44 surface (statFile, watchFolder,
- * and the writeRecovery/clearRecovery/listRecovery/setDirtyState/onFlushBeforeClose/
- * onFolderChanged recovery methods) plus getSecret/setSecret (#12) are SCAFFOLDED
- * only — the contract/types exist but there is no IPC behind them yet, so they
- * throw a descriptive error rather than delegate to a non-existent bridge method.
+ * setDirtyState, onFlushBeforeClose, onFolderChanged) plus getSecret/setSecret (#12)
+ * are SCAFFOLDED only — the contract/types exist but there is no IPC behind them yet,
+ * so they throw a descriptive error rather than delegate to a non-existent bridge method.
  * Wire them up (preload + main IPC) when implementing #44 / #12.
+ * writeRecovery/clearRecovery/listRecovery/getConflictPreview — migrated to server routes.
  */
 import type {
   Platform,
   ElectronBridge,
-  ViewerPrefs,
-  ProjectState,
-  AppSettings,
-  DeepPartial,
   PreviewStartArgs,
   PreviewStartResult,
   BuildArgs,
   BuildResult,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
-  RecentFolderEntry,
-  FavoriteEntry,
   UpdaterApi,
   NativeThemeState,
-  DiscoveredProject,
   ProjectClassification,
-  PrintSafeWarning,
-  ProblemEntry,
-  MediaImageEntry,
-  MediaImageDetails,
+  // PrintSafeWarning, ProblemEntry, MediaImageEntry, MediaImageDetails — removed (Phase 2C)
+  // TemplateInfo, SnippetEntry — removed (Phase 2D)
+  // ProjectPluginEntry, PluginValidationResult, RecommendedPlugin, ThemeInfo, ApplyThemeTarget, ProjectStyle — removed (Phase 2E)
   FileStat,
   FileWriteResult,
-  RecoveryEntry,
   FolderChangedEvent,
-  CreateProjectOptions,
-  CreateProjectResult,
-  TemplateInfo,
-  SnippetEntry,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-  ThemeInfo,
-  ApplyThemeTarget,
-  ProjectStyle,
   SnapshotEntry,
-  SnapshotPage,
-  ListSnapshotsOptions,
-  RestoreVersionResult,
   DeviceCodeInfo,
   RemoteConnection,
-  RemoteRepository,
-  RemoteBranch,
-  RepoBook,
   CloneProgressEvent,
   CloneRepositoryArgs,
-  ProjectRemoteDiagnosis,
-  RemoteAccessResult,
-  ConnectGenericHostArgs,
-  HostConnectionInfo,
   SyncOutcome,
   ResolveSyncConflictsArgs,
   SyncStatus,
   RecoveryConfirmRequest,
-  ConflictPreview,
   FolderRef,
-  FileRef,
   PlatformCapabilities,
 } from "./contract";
-import { basenameOf, fileRef } from "./paths";
+import { basenameOf } from "./paths";
+import { api } from "$lib/api";
 
 function bridge(): ElectronBridge {
   const b = window.electron;
@@ -92,7 +62,7 @@ export class ElectronAdapter implements Platform {
   // string); wrap it into a host-neutral FolderRef (key = path, displayName =
   // basename) so the renderer never assumes path-string semantics.
   async openFolder(): Promise<FolderRef | null> {
-    const path = await bridge().openDirectory();
+    const path = await api.dialog.openDirectory();
     if (path == null) return null;
     return { key: path, displayName: basenameOf(path) };
   }
@@ -106,19 +76,19 @@ export class ElectronAdapter implements Platform {
   }
 
   readFile(path: string): Promise<string> {
-    return bridge().readFile(path);
+    return api.fs.readFile(path);
   }
 
   writeFile(path: string, content: string): Promise<FileWriteResult> {
-    return bridge().writeFile(path, content);
+    return api.fs.writeFile(path, content);
   }
 
   listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>> {
-    return bridge().listDir(path);
+    return api.fs.listDir(path);
   }
 
   statFile(path: string): Promise<FileStat> {
-    return bridge().statFile(path);
+    return api.fs.statFile(path);
   }
 
   watchFolder(path: string, cb: () => void): () => void {
@@ -156,257 +126,33 @@ export class ElectronAdapter implements Platform {
     };
   }
 
-  savePdf(defaultName?: string): Promise<string | null> {
-    return bridge().savePdf(defaultName);
-  }
+  // savePdf, pickImageFile, copyFile, pickImageFiles migrated to server routes
+  // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
+  // openExternal, showInFolder, readLogFile migrated to server routes
+  // getStatus, checkCss, lintProject migrated to server routes (Phase 2C)
+  // getLastProject, splashStatus, rendererReady — migrated to server routes (Phase 2B)
+  // listProjectFiles migrated to server route
 
-  // Image pick / copy (#31) — editor toolbar Insert Image flow.
-  // #61: translation seam — the bridge returns the chosen path string; wrap it
-  // into a host-neutral FileRef (key = path, displayName = basename).
-  async pickImageFile(): Promise<FileRef | null> {
-    const path = await bridge().pickImageFile();
-    return path == null ? null : fileRef(path);
-  }
-
-  copyFile(srcPath: string, destDir: string): Promise<string> {
-    return bridge().copyFile(srcPath, destDir);
-  }
-
-  // Media panel (#47) — image listing / thumbnails / inspection / multi-import
-  pickImageFiles(): Promise<string[]> {
-    return bridge().pickImageFiles();
-  }
-
-  listProjectImages(projectDir: string): Promise<MediaImageEntry[]> {
-    return bridge().listProjectImages(projectDir);
-  }
-
-  imageThumbnail(filePath: string): Promise<string | null> {
-    return bridge().imageThumbnail(filePath);
-  }
-
-  inspectImage(filePath: string): Promise<MediaImageDetails | null> {
-    return bridge().inspectImage(filePath);
-  }
-
-  openExternal(url: string): Promise<void> {
-    return bridge().openExternal(url);
-  }
-
-  showInFolder(filePath: string): Promise<void> {
-    return bridge().showInFolder(filePath);
-  }
-
-  readLogFile(filePath: string): Promise<string | null> {
-    return bridge().readLogFile(filePath);
-  }
-
-  getStatus(): Promise<{ ok: boolean; runtime: string; name: string }> {
-    return bridge().getStatus();
-  }
-
-  getLastProject(): Promise<string | null> {
-    return bridge().getLastProject();
-  }
-  splashStatus(status?: string, progress?: number, sub?: string): Promise<void> {
-    return bridge().splashStatus(status, progress, sub);
-  }
-  rendererReady(): Promise<void> {
-    return bridge().rendererReady();
-  }
-
-  listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }> {
-    return bridge().listProjectFiles(projectDir);
-  }
-
-  checkCss(css: string, from?: string): Promise<PrintSafeWarning[]> {
-    return bridge().checkCss(css, from);
-  }
-
-  lintProject(projectDir: string): Promise<ProblemEntry[]> {
-    return bridge().lintProject(projectDir);
-  }
-
-  getViewerPrefs(): Promise<ViewerPrefs> {
-    return bridge().getViewerPrefs();
-  }
-
-  setViewerPrefs(patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> {
-    return bridge().setViewerPrefs(patch);
-  }
-
-  getViewerProjectState(projectDir: string): Promise<ProjectState | null> {
-    return bridge().getViewerProjectState(projectDir);
-  }
-
-  setViewerProjectState(
-    projectDir: string,
-    patch: Partial<ProjectState>,
-  ): Promise<{ ok: boolean }> {
-    return bridge().setViewerProjectState(projectDir, patch);
-  }
-
-  getSettings(): Promise<AppSettings> {
-    return bridge().getSettings();
-  }
-
-  setSettings(patch: DeepPartial<AppSettings>): Promise<{ ok: boolean }> {
-    return bridge().setSettings(patch);
-  }
-
-  getNativeTheme(): Promise<NativeThemeState> {
-    return bridge().getNativeTheme();
-  }
+  // getViewerPrefs, setViewerPrefs, getViewerProjectState, setViewerProjectState,
+  // getSettings, setSettings, getNativeTheme — migrated to server routes (Phase 2B)
 
   onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void {
     return bridge().onNativeThemeUpdated(cb);
   }
 
-  // #49: the bridge returns raw path-keyed rows; map each to a FolderRef-shaped
-  // entry (key = path, displayName = basename) for the app-facing contract.
-  async getRecentFolders(): Promise<RecentFolderEntry[]> {
-    const rows = await bridge().getRecentFolders();
-    return rows.map((r) => ({
-      key: r.path,
-      displayName: basenameOf(r.path),
-      title: r.title,
-      openedAt: r.openedAt,
-      exists: r.exists,
-    }));
-  }
+  // getRecentFolders, getFavorites, toggleFavorite, removeRecent,
+  // discoverProjects, classifyProject, createProject, adoptFolder
+  // — migrated to server routes (Phase 2B)
 
-  async getFavorites(): Promise<FavoriteEntry[]> {
-    const rows = await bridge().getFavorites();
-    return rows.map((f) => ({
-      key: f.path,
-      displayName: basenameOf(f.path),
-      title: f.title,
-      exists: f.exists,
-    }));
-  }
-
-  toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }> {
-    return bridge().toggleFavorite(folderPath, title);
-  }
-
-  removeRecent(folderPath: string): Promise<{ ok: boolean }> {
-    return bridge().removeRecent(folderPath);
-  }
-
-  discoverProjects(): Promise<DiscoveredProject[]> {
-    return bridge().discoverProjects();
-  }
-
-  classifyProject(path: string): Promise<ProjectClassification> {
-    return bridge().classifyProject(path);
-  }
-
-  createProject(options: CreateProjectOptions): Promise<CreateProjectResult> {
-    return bridge().createProject(options);
-  }
-
-  // ── Project templates + snippets (#29) — delegate 1:1 to the bridge ─────────
-  listBuiltInTemplates(): Promise<TemplateInfo[]> {
-    return bridge().listBuiltInTemplates();
-  }
-  listCustomTemplates(): Promise<TemplateInfo[]> {
-    return bridge().listCustomTemplates();
-  }
-  saveProjectAsTemplate(projectDir: string, name: string): Promise<TemplateInfo> {
-    return bridge().saveProjectAsTemplate(projectDir, name);
-  }
-  importTemplateFromFolder(): Promise<TemplateInfo | null> {
-    return bridge().importTemplateFromFolder();
-  }
-  listSnippets(projectDir: string): Promise<SnippetEntry[]> {
-    return bridge().listSnippets(projectDir);
-  }
-  readSnippet(projectDir: string, fileName: string): Promise<string> {
-    return bridge().readSnippet(projectDir, fileName);
-  }
-  saveSnippet(projectDir: string, name: string, body: string): Promise<SnippetEntry> {
-    return bridge().saveSnippet(projectDir, name, body);
-  }
-  deleteSnippet(projectDir: string, fileName: string): Promise<void> {
-    return bridge().deleteSnippet(projectDir, fileName);
-  }
-
-  // ── Plugin manager (#30) — delegate 1:1 to the bridge ──────────────────────
-  listPlugins(projectDir: string): Promise<ProjectPluginEntry[]> {
-    return bridge().listPlugins(projectDir);
-  }
-  setPluginEnabled(projectDir: string, ref: string, enabled: boolean): Promise<void> {
-    return bridge().setPluginEnabled(projectDir, ref, enabled);
-  }
-  addNpmPlugin(projectDir: string, packageName: string): Promise<ProjectPluginEntry> {
-    return bridge().addNpmPlugin(projectDir, packageName);
-  }
-  importLocalPlugin(projectDir: string): Promise<ProjectPluginEntry | null> {
-    return bridge().importLocalPlugin(projectDir);
-  }
-  validatePlugins(projectDir: string): Promise<PluginValidationResult[]> {
-    return bridge().validatePlugins(projectDir);
-  }
-  listRecommendedPlugins(): Promise<RecommendedPlugin[]> {
-    return bridge().listRecommendedPlugins();
-  }
-
-  // ── Theme manager (#32) — delegate 1:1 to the bridge ───────────────────────
-  listBuiltInThemes(): Promise<ThemeInfo[]> {
-    return bridge().listBuiltInThemes();
-  }
-  listProjectThemes(projectDir: string): Promise<ThemeInfo[]> {
-    return bridge().listProjectThemes(projectDir);
-  }
-  getActiveTheme(projectDir: string): Promise<ThemeInfo | null> {
-    return bridge().getActiveTheme(projectDir);
-  }
-  applyTheme(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> {
-    return bridge().applyTheme(projectDir, target);
-  }
-  importThemeFromFolder(projectDir: string): Promise<ThemeInfo | null> {
-    return bridge().importThemeFromFolder(projectDir);
-  }
-  importThemeFromUrl(projectDir: string, url: string): Promise<ThemeInfo> {
-    return bridge().importThemeFromUrl(projectDir, url);
-  }
-  readThemeCss(
-    projectDir: string | null,
-    source: { kind: "builtin" | "project"; id: string },
-  ): Promise<string> {
-    return bridge().readThemeCss(projectDir, source);
-  }
-  removeProjectTheme(projectDir: string, id: string): Promise<void> {
-    return bridge().removeProjectTheme(projectDir, id);
-  }
-
-  // ── Style resolver (audit B2/G1) — delegate 1:1 to the bridge ──────────────
-  listProjectStyles(projectDir: string): Promise<ProjectStyle[]> {
-    return bridge().listProjectStyles(projectDir);
-  }
+  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from ElectronAdapter.
+  // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from ElectronAdapter.
 
   // ── Local version history (#13) — delegate 1:1 to the bridge ───────────────
-  enableVersionHistory(projectDir: string): Promise<ProjectClassification> {
-    return bridge().enableVersionHistory(projectDir);
-  }
+  // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot
+  // — migrated to SvelteKit server routes (src/routes/api/vcs/*).
 
   saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry> {
     return bridge().saveSnapshot(projectDir, message);
-  }
-
-  listSnapshots(projectDir: string): Promise<SnapshotEntry[]> {
-    return bridge().listSnapshots(projectDir);
-  }
-
-  listSnapshotsPage(
-    projectDir: string,
-    options?: ListSnapshotsOptions,
-  ): Promise<SnapshotPage> {
-    return bridge().listSnapshotsPage(projectDir, options);
-  }
-
-  restoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult> {
-    return bridge().restoreSnapshot(projectDir, id);
   }
 
   // ── Managed GitHub integration (#15) — delegate 1:1 to the bridge ─────────
@@ -422,25 +168,10 @@ export class ElectronAdapter implements Platform {
     return bridge().connectGitHubCancel();
   }
 
-  disconnectGitHub(): Promise<{ ok: boolean }> {
-    return bridge().disconnectGitHub();
-  }
-
-  getRemoteConnection(host?: string): Promise<RemoteConnection> {
-    return bridge().getRemoteConnection(host);
-  }
-
-  listRemoteRepositories(): Promise<RemoteRepository[]> {
-    return bridge().listRemoteRepositories();
-  }
-
-  listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]> {
-    return bridge().listRemoteBranches(owner, repo);
-  }
-
-  listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]> {
-    return bridge().listRepoBooks(owner, repo, branch);
-  }
+  // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
+  // listRepoBooks, diagnoseProjectRemote, testRemoteAccess, connectGenericHost,
+  // disconnectHost, listHostConnections, forgeTokenUrl, syncChanges
+  // — migrated to SvelteKit server routes (Phase 2F).
 
   cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }> {
     return bridge().cloneRemoteRepository(args);
@@ -448,33 +179,6 @@ export class ElectronAdapter implements Platform {
 
   onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void {
     return bridge().onCloneProgress(cb);
-  }
-
-  // ── Advanced Setup (#14) ──────────────────────────────────────────────────
-  diagnoseProjectRemote(projectDir: string): Promise<ProjectRemoteDiagnosis> {
-    return bridge().diagnoseProjectRemote(projectDir);
-  }
-
-  testRemoteAccess(url: string): Promise<RemoteAccessResult> {
-    return bridge().testRemoteAccess(url);
-  }
-
-  connectGenericHost(
-    args: ConnectGenericHostArgs,
-  ): Promise<{ connected: boolean; host: string; username?: string }> {
-    return bridge().connectGenericHost(args);
-  }
-
-  disconnectHost(host: string): Promise<{ ok: boolean }> {
-    return bridge().disconnectHost(host);
-  }
-
-  listHostConnections(): Promise<HostConnectionInfo[]> {
-    return bridge().listHostConnections();
-  }
-
-  forgeTokenUrl(host: string): Promise<string | null> {
-    return bridge().forgeTokenUrl(host);
   }
 
   // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ──
@@ -496,14 +200,9 @@ export class ElectronAdapter implements Platform {
     return bridge().respondRecoveryConfirm(requestId, approved);
   }
 
-  getConflictPreview(projectDir: string, path: string): Promise<ConflictPreview> {
-    return bridge().getConflictPreview(projectDir, path);
-  }
+  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
 
-  // ── Sync (#15 sync phase) — delegate 1:1 to the bridge ─────────────────────
-  syncChanges(projectDir: string, message?: string): Promise<SyncOutcome> {
-    return bridge().syncChanges(projectDir, message);
-  }
+  // syncChanges — migrated to server route (Phase 2F).
 
   resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {
     return bridge().resolveSyncConflicts(args);
@@ -529,9 +228,7 @@ export class ElectronAdapter implements Platform {
     return bridge().build({ ...rest, input: input.key });
   }
 
-  doctor(): Promise<unknown> {
-    return bridge().doctor();
-  }
+  // doctor migrated to server route (Phase 2C)
 
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void {
     return bridge().onBuildProgress(cb);
@@ -541,26 +238,10 @@ export class ElectronAdapter implements Platform {
     return bridge().onUrlPreviewBlocked(cb);
   }
 
-  // ── Unsaved changes / recovery (#44) — delegate 1:1 to the bridge ──────────
-  writeRecovery(
-    filePath: string,
-    content: string,
-    baseMtimeMs: number,
-  ): Promise<{ ok: boolean }> {
-    return bridge().writeRecovery(filePath, content, baseMtimeMs);
-  }
+  // writeRecovery, clearRecovery, listRecovery — migrated to server routes
+  // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
 
-  clearRecovery(filePath: string): Promise<{ ok: boolean }> {
-    return bridge().clearRecovery(filePath);
-  }
-
-  listRecovery(projectDir: string): Promise<RecoveryEntry[]> {
-    return bridge().listRecovery(projectDir);
-  }
-
-  setDirtyState(isDirty: boolean): Promise<void> {
-    return bridge().setDirtyState(isDirty);
-  }
+  // setDirtyState — migrated to server route (Phase 2B)
 
   onFlushBeforeClose(cb: () => void): () => void {
     return bridge().onFlushBeforeClose(cb);

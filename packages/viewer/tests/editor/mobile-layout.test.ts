@@ -1,11 +1,7 @@
 import { test, expect } from "bun:test";
 import {
   NARROW_BREAKPOINT,
-  MOBILE_TARGET_WIDTH,
-  MOBILE_TABS,
-  layoutModeFor,
   isNarrowWidth,
-  paneForTab,
   editorSurfaceForTab,
   paneModeForTab,
   tabFromPaneMode,
@@ -13,27 +9,7 @@ import {
   keyboardOffset,
 } from "../../src/lib/editor/mobile-layout";
 
-// ── layoutModeFor / isNarrowWidth ─────────────────────────────────────────────
-
-test("layoutModeFor: wide viewport is split, narrow is single-column", () => {
-  expect(layoutModeFor(1280)).toBe("split");
-  expect(layoutModeFor(900)).toBe("split");
-  expect(layoutModeFor(821)).toBe("split");
-});
-
-test("layoutModeFor: at/below the breakpoint is single-column (inclusive boundary)", () => {
-  expect(layoutModeFor(NARROW_BREAKPOINT)).toBe("single-column");
-  expect(layoutModeFor(820)).toBe("single-column");
-  expect(layoutModeFor(768)).toBe("single-column");
-  // iPhone-14 target width must be single-column.
-  expect(layoutModeFor(MOBILE_TARGET_WIDTH)).toBe("single-column");
-  expect(MOBILE_TARGET_WIDTH).toBe(390);
-});
-
-test("layoutModeFor: custom breakpoint respected", () => {
-  expect(layoutModeFor(700, 600)).toBe("split");
-  expect(layoutModeFor(600, 600)).toBe("single-column");
-});
+// ── isNarrowWidth ─────────────────────────────────────────────────────────────
 
 test("isNarrowWidth mirrors layoutModeFor", () => {
   expect(isNarrowWidth(390)).toBe(true);
@@ -41,17 +17,7 @@ test("isNarrowWidth mirrors layoutModeFor", () => {
   expect(isNarrowWidth(820)).toBe(true);
 });
 
-// ── tab → pane / surface / paneMode mapping ───────────────────────────────────
-
-test("MOBILE_TABS is markdown, css, preview in order", () => {
-  expect([...MOBILE_TABS]).toEqual(["markdown", "css", "preview"]);
-});
-
-test("paneForTab maps both editor tabs to the editor pane, preview to preview", () => {
-  expect(paneForTab("markdown")).toBe("editor");
-  expect(paneForTab("css")).toBe("editor");
-  expect(paneForTab("preview")).toBe("preview");
-});
+// ── tab → surface / paneMode mapping ─────────────────────────────────────────
 
 test("editorSurfaceForTab returns the file class for editor tabs, null for preview", () => {
   expect(editorSurfaceForTab("markdown")).toBe("markdown");

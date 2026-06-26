@@ -9,6 +9,8 @@
    */
   import { tick } from "svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { api } from "$lib/api";
+  import { basenameOf } from "$lib/platform/paths";
   import type {
     DeviceCodeInfo,
     RemoteRepository,
@@ -100,7 +102,7 @@
   async function init() {
     if (!isDesktop()) return;
     try {
-      const conn = await getPlatform().getRemoteConnection();
+      const conn = await api.remote.getRemoteConnection();
       if (conn.connected) {
         username = conn.username ?? null;
         await loadRepos();
@@ -119,7 +121,7 @@
       code = info;
       step = "code";
       // Open the verification page for the user; the code stays visible here.
-      platform.openExternal(info.verificationUri).catch(() => {});
+      api.shell.openExternal(info.verificationUri).catch(() => {});
       const conn = await platform.connectGitHubWait();
       username = conn.username ?? null;
       await loadRepos();
@@ -148,7 +150,7 @@
     await tick();
     dialogEl?.focus();
     try {
-      repos = await getPlatform().listRemoteRepositories();
+      repos = await api.remote.listRemoteRepositories() as RemoteRepository[];
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
@@ -176,17 +178,17 @@
     destination = null;
     step = "configure";
     // Branch list loads in the background; the default is already selected.
-    getPlatform()
+    api.remote
       .listRemoteBranches(repo.owner, repo.name)
       .then((list) => {
-        if (list.length > 0) branches = list;
+        if (list.length > 0) branches = list as RemoteBranch[];
       })
       .catch(() => {});
   }
 
   async function pickDestination() {
-    const dir = await getPlatform().openFolder();
-    if (dir) destination = dir.key;
+    const pathStr = await api.dialog.openDirectory();
+    if (pathStr) destination = pathStr;
   }
 
   /**
@@ -205,11 +207,11 @@
     const gen = ++loadGen;
     let found: RepoBook[] = [];
     try {
-      found = await getPlatform().listRepoBooks(
+      found = await api.remote.listRepoBooks(
         selectedRepo.owner,
         selectedRepo.name,
         branch,
-      );
+      ) as RepoBook[];
     } catch {
       // Book discovery is best-effort — fall back to the repository root.
       found = [];
@@ -266,7 +268,7 @@
 
   async function disconnect() {
     try {
-      await getPlatform().disconnectGitHub();
+      await api.remote.disconnectGitHub();
     } catch {
       /* non-fatal */
     }
@@ -386,7 +388,7 @@
             <button
               type="button"
               class="link-btn"
-              onclick={() => code && getPlatform().openExternal(code.verificationUri).catch(() => {})}
+              onclick={() => code && api.shell.openExternal(code.verificationUri).catch(() => {})}
             >{code.verificationUri}</button>
           {/if}
         </p>

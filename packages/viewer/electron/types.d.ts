@@ -129,57 +129,15 @@ interface ProjectClassification {
   capabilities: ProjectCapabilities;
 }
 
-// Project templates + snippets (#29). Mirror the lib's TemplateInfo/SnippetEntry.
-interface TemplateInfo {
-  id: string;
+
+// plugin:*, theme:*, project:listStyles types removed — migrated to server routes (Phase 2E).
+interface StyleToken {
+  name: string;
+  value: string;
+  kind: "color" | "length" | "text";
   label: string;
-  description: string;
-  kind: "builtin" | "custom";
-  dir?: string;
-}
-interface SnippetEntry {
-  name: string;
-  fileName: string;
-  variables: string[];
-}
-
-// Plugin manager (#30). Mirrors the lib's plugin-manager types.
-type PluginKind = "local" | "npm";
-interface ProjectPluginEntry {
-  ref: string;
-  kind: PluginKind;
-  enabled: boolean;
-}
-interface PluginValidationResult {
-  ref: string;
-  kind: PluginKind;
-  enabled: boolean;
-  ok: boolean;
-  error?: string;
-}
-interface RecommendedPlugin {
-  name: string;
-  description: string;
-}
-
-// Theme manager (#32). Mirrors the lib's theme-manager types.
-interface ThemeInfo {
-  id: string;
-  name: string;
-  author?: string;
-  description: string;
-  kind: "builtin" | "project";
-  preview?: string | null;
-}
-type ApplyThemeTarget =
-  | { kind: "builtin"; id: string }
-  | { kind: "project"; id: string };
-
-// Style resolver (audit B2/G1). Mirrors the lib's ProjectStyle.
-interface ProjectStyle {
-  path: string;
-  displayName: string;
-  active: boolean;
+  number?: number;
+  unit?: string;
 }
 
 // Local version history (#13). Mirrors the lib's source-provider types.
@@ -386,214 +344,43 @@ interface Window {
     apiVersion: number;
     updater: ElectronUpdater;
     // Dialogs
-    openDirectory(): Promise<string | null>;
-    savePdf(defaultName?: string): Promise<string | null>;
-    // Image picker + copy (#31) — backs the editor toolbar's Insert Image flow
-    pickImageFile(): Promise<string | null>;
-    copyFile(srcPath: string, destDir: string): Promise<string>;
-    // Media panel (#47): multi-select import + image listing/thumbnails/inspect
-    pickImageFiles(): Promise<string[]>;
-    listProjectImages(
-      projectDir: string,
-    ): Promise<
-      Array<{ name: string; relPath: string; path: string; size: number; mtimeMs: number }>
-    >;
-    imageThumbnail(filePath: string): Promise<string | null>;
-    inspectImage(filePath: string): Promise<{
-      fileSize: number;
-      info: {
-        width: number;
-        height: number;
-        xDpi: number;
-        yDpi: number;
-        hasAlpha: boolean;
-        colorSpace: "srgb" | "gray" | "cmyk" | "";
-      } | null;
-    } | null>;
-    // App actions
-    openExternal(url: string): Promise<void>;
-    showInFolder(filePath: string): Promise<void>;
-    /** Read an operation log file for the recovery/sync log viewer. */
-    readLogFile(filePath: string): Promise<string | null>;
-    // Filesystem primitives (PlatformAdapter, #41)
-    readFile(filePath: string): Promise<string>;
-    writeFile(filePath: string, content: string): Promise<{ mtimeMs: number }>;
-    listDir(
-      dirPath: string,
-    ): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
-    listProjectFiles(
-      projectDir: string,
-    ): Promise<{ md: string[]; css: string[] }>;
-    // CSS print-safety lint (#39) — runs in main; postcss can't bundle into the SPA
-    checkCss(
-      css: string,
-      from?: string,
-    ): Promise<Array<{ rule: string; severity: "error" | "warning"; message: string; line: number; column: number }>>;
-    // Project-wide source lint for the Problems panel (#28) — runs in main
-    lintProject(
-      projectDir: string,
-    ): Promise<
-      Array<{
-        filePath?: string;
-        file?: string;
-        line?: number;
-        column?: number;
-        severity: "error" | "warning" | "info";
-        message: string;
-        source: string;
-      }>
-    >;
+    // savePdf, pickImageFile, pickImageFiles, copyFile migrated to server routes
+    // openDirectory migrated to server route (api.dialog.openDirectory)
+    // openExternal, showInFolder, readLogFile migrated to server routes
+    // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
+    // listProjectFiles migrated to server route
+    // Filesystem primitives migrated to server routes (api.fs.*)
+    // readFile, writeFile, listDir, statFile migrated to server routes
+    // checkCss, lintProject migrated to server routes (Phase 2C)
     // File metadata + folder watch (PlatformAdapter, #44)
-    statFile(
-      filePath: string,
-    ): Promise<{ mtimeMs: number; size: number; exists: boolean }>;
     watchFolder(dirPath: string, cb: () => void): () => void;
-    // Lib API
-    getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
-    getLastProject(): Promise<string | null>;
-    // Splash coordination: push status while booting, then signal first-screen ready.
-    splashStatus(status?: string, progress?: number, sub?: string): Promise<void>;
-    rendererReady(): Promise<void>;
-    getViewerPrefs(): Promise<{
-      lastProjectDir?: string | null;
-      sidebarOpen?: boolean;
-      currentPage?: number;
-      viewMode?: "single" | "two-column";
-      recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
-      favorites?: Array<{ path: string; title: string }>;
-      projectStates?: Record<string, ProjectState>;
-      projectSearchRoots?: string[];
-      projectSource?: ProjectSource;
-      leftPanel?: {
-        open?: boolean;
-        activeTab?: "toc" | "files" | "media" | "projects" | "history";
-        width?: number;
-      };
-    }>;
-    setViewerPrefs(patch: {
-      lastProjectDir?: string | null;
-      sidebarOpen?: boolean;
-      currentPage?: number;
-      viewMode?: "single" | "two-column";
-      recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
-      favorites?: Array<{ path: string; title: string }>;
-      projectStates?: Record<string, ProjectState>;
-      projectSearchRoots?: string[];
-      projectSource?: ProjectSource;
-      leftPanel?: {
-        open?: boolean;
-        activeTab?: "toc" | "files" | "media" | "projects" | "history";
-        width?: number;
-      };
-    }): Promise<{ ok: boolean }>;
-    // Per-project editor/preview state (#43)
-    getViewerProjectState(projectDir: string): Promise<ProjectState | null>;
-    setViewerProjectState(
-      projectDir: string,
-      patch: ProjectState,
-    ): Promise<{ ok: boolean }>;
-    // User settings (#45)
-    getSettings(): Promise<AppSettings>;
-    setSettings(patch: DeepPartialSettings): Promise<{ ok: boolean }>;
-    // Native (OS) theme surface (#48)
-    getNativeTheme(): Promise<{ shouldUseDarkColors: boolean }>;
+    // getStatus, doctor migrated to server routes (Phase 2C)
+    // app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
+    // app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
+    // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
+    // app:getFavorites, app:toggleFavorite, app:removeRecent, app:discoverProjects,
+    // app:classifyProject, app:createProject, app:adoptFolder
+    // — migrated to SvelteKit server routes (Phase 2B).
+    // Native (OS) theme surface (#48) — push channel kept as IPC (main→renderer)
     onNativeThemeUpdated(
       cb: (data: { shouldUseDarkColors: boolean }) => void
     ): () => void;
-    // Open Location modal: recent folders + favorites
-    getRecentFolders(): Promise<
-      Array<{ path: string; title: string; openedAt: string; exists: boolean }>
-    >;
-    getFavorites(): Promise<
-      Array<{ path: string; title: string; exists: boolean }>
-    >;
-    toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }>;
-    removeRecent(folderPath: string): Promise<{ ok: boolean }>;
-    // Project discovery (#27)
-    discoverProjects(): Promise<Array<{ path: string; title: string }>>;
-    // Project source classification (#12)
-    classifyProject(path: string): Promise<{
-      source: ProjectSource;
-      capabilities: ProjectCapabilities;
-    }>;
-    // New-project scaffold (#25)
-    createProject(options: {
-      name: string;
-      author?: string;
-      parentDir: string;
-      folderName?: string;
-      template?: "book" | "ttrpg" | "zine" | "technical";
-      templateDir?: string;
-      versionHistory?: "local-git" | "none";
-    }): Promise<{
-      projectDir: string;
-      manifestPath: string;
-      openFile: string;
-      versionHistory: "local-git" | "none";
-      versionHistoryError?: string;
-    }>;
-    // Project templates + snippets (#29)
-    listBuiltInTemplates(): Promise<TemplateInfo[]>;
-    listCustomTemplates(): Promise<TemplateInfo[]>;
-    saveProjectAsTemplate(projectDir: string, name: string): Promise<TemplateInfo>;
-    importTemplateFromFolder(): Promise<TemplateInfo | null>;
-    listSnippets(projectDir: string): Promise<SnippetEntry[]>;
-    readSnippet(projectDir: string, fileName: string): Promise<string>;
-    saveSnippet(projectDir: string, name: string, body: string): Promise<SnippetEntry>;
-    deleteSnippet(projectDir: string, fileName: string): Promise<void>;
-    // Plugin manager (#30)
-    listPlugins(projectDir: string): Promise<ProjectPluginEntry[]>;
-    setPluginEnabled(projectDir: string, ref: string, enabled: boolean): Promise<void>;
-    addNpmPlugin(projectDir: string, packageName: string): Promise<ProjectPluginEntry>;
-    importLocalPlugin(projectDir: string): Promise<ProjectPluginEntry | null>;
-    validatePlugins(projectDir: string): Promise<PluginValidationResult[]>;
-    listRecommendedPlugins(): Promise<RecommendedPlugin[]>;
-    // Theme manager (#32)
-    listBuiltInThemes(): Promise<ThemeInfo[]>;
-    listProjectThemes(projectDir: string): Promise<ThemeInfo[]>;
-    getActiveTheme(projectDir: string): Promise<ThemeInfo | null>;
-    applyTheme(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo>;
-    importThemeFromFolder(projectDir: string): Promise<ThemeInfo | null>;
-    importThemeFromUrl(projectDir: string, url: string): Promise<ThemeInfo>;
-    readThemeCss(
-      projectDir: string | null,
-      source: { kind: "builtin" | "project"; id: string },
-    ): Promise<string>;
-    removeProjectTheme(projectDir: string, id: string): Promise<void>;
-    // Style resolver (audit B2/G1)
-    listProjectStyles(projectDir: string): Promise<ProjectStyle[]>;
+    // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from ElectronBridge.
+    // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from ElectronBridge.
     // Local version history (#13)
-    enableVersionHistory(projectDir: string): Promise<ProjectClassification>;
+    // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot
+    // — migrated to SvelteKit server routes (src/routes/api/vcs/*).
     saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
-    listSnapshots(projectDir: string): Promise<SnapshotEntry[]>;
-    listSnapshotsPage(
-      projectDir: string,
-      options?: { limit?: number; before?: string },
-    ): Promise<SnapshotPage>;
-    restoreSnapshot(
-      projectDir: string,
-      id: string,
-    ): Promise<RestoreVersionResult>;
     // Managed GitHub integration (#15)
     connectGitHubStart(): Promise<DeviceCodeInfo>;
     connectGitHubWait(): Promise<RemoteConnection>;
     connectGitHubCancel(): Promise<{ ok: boolean }>;
-    disconnectGitHub(): Promise<{ ok: boolean }>;
-    getRemoteConnection(host?: string): Promise<RemoteConnection>;
-    listRemoteRepositories(): Promise<RemoteRepository[]>;
-    listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]>;
-    listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]>;
+    // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
+    // listRepoBooks — migrated to server routes (Phase 2F).
     cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
     onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
-    // Advanced Setup (#14) — diagnostics + generic "Connect a Git server"
-    diagnoseProjectRemote(projectDir: string): Promise<ProjectRemoteDiagnosis>;
-    testRemoteAccess(url: string): Promise<RemoteAccessResult>;
-    connectGenericHost(
-      args: ConnectGenericHostArgs,
-    ): Promise<{ connected: boolean; host: string; username?: string }>;
-    disconnectHost(host: string): Promise<{ ok: boolean }>;
-    listHostConnections(): Promise<HostConnectionInfo[]>;
-    forgeTokenUrl(host: string): Promise<string | null>;
+    // diagnoseProjectRemote, testRemoteAccess, connectGenericHost, disconnectHost,
+    // listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
     // Auto-sync orchestrator seam (transparent sync, §4.4 integration plan)
     /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn.
      *  Note: data may carry `recovery`, `guidance`, and `backupZipPath` fields
@@ -606,11 +393,9 @@ interface Window {
     onRecoveryConfirm(cb: (data: unknown) => void): () => void;
     /** Send the author's approval/rejection to main to unblock a pending repair. */
     respondRecoveryConfirm(requestId: string, approved: boolean): Promise<void>;
-    /** Fetch yours/theirs text for one conflicted file. */
-    getConflictPreview(projectDir: string, path: string): Promise<ConflictPreview>;
-    // Sync (#15 sync phase, ADR 0006 D5). Auto-sync runs in main; the renderer
-    // only triggers a sync to surface conflicts and then applies the choices.
-    syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
+    // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
+    // syncChanges — migrated to server route (Phase 2F)
+    // Sync (#15 sync phase, ADR 0006 D5).
     resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
     startPreview(args: { input: string }): Promise<{
       url: string;
@@ -640,7 +425,7 @@ interface Window {
       pdfPath?: string;
       fingerprintPath?: string;
     }>;
-    doctor(): Promise<unknown>;
+    // doctor migrated to server route (Phase 2C)
     // Event subscriptions
     onBuildProgress(cb: (data: {
       exportId: string;
@@ -649,21 +434,8 @@ interface Window {
       message?: string;
     }) => void): () => void;
     onUrlPreviewBlocked(cb: (data: { url: string; reason: string }) => void): () => void;
-    // Unsaved-changes / crash-recovery surface (#44)
-    writeRecovery(
-      filePath: string,
-      content: string,
-      baseMtimeMs: number,
-    ): Promise<{ ok: boolean }>;
-    clearRecovery(filePath: string): Promise<{ ok: boolean }>;
-    listRecovery(projectDir: string): Promise<
-      Array<{
-        filePath: string;
-        recoveryPath: string;
-        savedAt: number;
-        baseMtimeMs: number;
-      }>
-    >;
+    // writeRecovery, clearRecovery, listRecovery — migrated to server routes
+    // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
     setDirtyState(isDirty: boolean): Promise<void>;
     onFlushBeforeClose(cb: () => void): () => void;
     onFolderChanged(cb: (data: { filename: string }) => void): () => void;

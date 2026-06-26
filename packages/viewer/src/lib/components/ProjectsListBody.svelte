@@ -10,6 +10,7 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { api } from "$lib/api";
 
   // #49: recents/favorites are FolderRef-shaped (key + precomputed displayName)
   // in the app-facing contract. Discovered projects still come back path-keyed
@@ -64,17 +65,31 @@
     await loadLists();
   }
 
+  function basenameOf(p: string): string {
+    return p.split('/').filter(Boolean).pop() ?? p.split('\\').filter(Boolean).pop() ?? p;
+  }
+
   async function loadLists() {
     if (!isDesktop()) return;
     loading = true;
     try {
-      const platform = getPlatform();
-      const [r, f] = await Promise.all([
-        platform.getRecentFolders(),
-        platform.getFavorites(),
+      const [rawR, rawF] = await Promise.all([
+        api.app.getRecentFolders(),
+        api.app.getFavorites(),
       ]);
-      recents = r;
-      favorites = f;
+      recents = rawR.map((r) => ({
+        key: r.path,
+        displayName: basenameOf(r.path),
+        title: r.title,
+        openedAt: (r as { openedAt?: string }).openedAt ?? '',
+        exists: r.exists,
+      }));
+      favorites = rawF.map((f) => ({
+        key: f.path,
+        displayName: basenameOf(f.path),
+        title: f.title,
+        exists: f.exists,
+      }));
     } catch {
       // non-fatal
     } finally {
@@ -82,9 +97,9 @@
     }
     // Background scan — non-blocking
     if (isDesktop()) {
-      getPlatform()
+      api.app
         .discoverProjects()
-        .then((r) => { discovered = r; })
+        .then((r) => { discovered = r as typeof discovered; })
         .catch(() => {});
     }
   }
@@ -189,13 +204,13 @@
 
   async function removeRecent(path: string, e: MouseEvent | KeyboardEvent) {
     e.stopPropagation();
-    await getPlatform().removeRecent(path).catch(() => {});
+    await api.app.removeRecent(path).catch(() => {});
     await loadLists();
   }
 
   async function toggleFavorite(path: string, title: string, e: MouseEvent | KeyboardEvent) {
     e.stopPropagation();
-    await getPlatform().toggleFavorite(path, title).catch(() => {});
+    await api.app.toggleFavorite(path, title).catch(() => {});
     await loadLists();
   }
 
@@ -231,9 +246,9 @@
       return;
     }
     if (!isDesktop()) return;
-    const dir = await getPlatform().openFolder();
-    if (!dir) return;
-    onChosen?.(dir.key);
+    const pathStr = await api.dialog.openDirectory();
+    if (!pathStr) return;
+    onChosen?.(pathStr);
   }
 
   function onListKeydown(e: KeyboardEvent, rowIndex: number, path: string) {

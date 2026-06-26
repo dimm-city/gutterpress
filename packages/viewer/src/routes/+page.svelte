@@ -13,11 +13,11 @@
     ProjectCapabilities,
     ProjectClassification,
     ProjectRemoteDiagnosis,
-    ProjectStyle,
     RecoveryConfirmRequest,
     RecoveryProgressInfo,
     SnapshotEntry,
   } from "$lib/platform/contract";
+  import type { ProjectStyle } from "$lib/api";
   import { problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import ConflictChoicesDialog from "$lib/components/ConflictChoicesDialog.svelte";
@@ -38,9 +38,11 @@
   import PluginManager from "$lib/components/PluginManager.svelte";
   import ThemeManager from "$lib/components/ThemeManager.svelte";
   import StylePicker from "$lib/components/StylePicker.svelte";
+  import DesignPanel from "$lib/components/DesignPanel.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { api, type SyncOutcome } from "$lib/api";
   import { basenameOf, joinPath } from "$lib/platform/paths";
   import { onMount } from "svelte";
   import {
@@ -202,6 +204,44 @@
   }
   let userSetViewMode = $state(false);
   let openError = $state<string | null>(null);
+  // The folder a failed open was attempted on, so we can offer to adopt it.
+  let failedOpenDir = $state<string | null>(null);
+  let adopting = $state(false);
+  // A loose markdown folder opens fine (no manifest = defaults), but has no
+  // editable styles or version history. When the OPENED folder has no manifest,
+  // offer a non-blocking "set it up as a book" affordance. Default true so the
+  // banner stays hidden until a check proves the manifest is absent.
+  let currentFolderHasManifest = $state(true);
+  let adoptBannerDismissed = $state(false);
+  let showAdoptBanner = $derived(
+    isDesktop() &&
+      !!currentDir &&
+      sourceMode === "folder" &&
+      !currentFolderHasManifest &&
+      !adoptBannerDismissed,
+  );
+  // The rarer case: an open that genuinely FAILED with "not a project".
+  let canAdoptFailedFolder = $derived(
+    !!failedOpenDir && !!openError && /manifest|print-md\.yaml|No such file/i.test(openError),
+  );
+
+  /** Turn an existing folder into a print-md book (manifest + book.css + git),
+   *  then (re)open it. Used by both the error CTA and the no-manifest banner. */
+  async function setUpAsBook(dir: string) {
+    if (!dir || !isDesktop()) return;
+    adopting = true;
+    try {
+      await api.app.adoptFolder({ dir });
+      openError = null;
+      failedOpenDir = null;
+      adoptBannerDismissed = true;
+      await startFolderPreview(dir, "Setting up your book…");
+    } catch (e) {
+      openError = e instanceof Error ? e.message : String(e);
+    } finally {
+      adopting = false;
+    }
+  }
   let urlPreviewError = $state<string | null>(null);
 
   // ── Auto-update state ──────────────────────────────────────────────────
@@ -221,6 +261,7 @@
   let advancedSetupBtn = $state<HTMLButtonElement | undefined>(undefined);
   // New-project wizard (#25)
   let newProjectOpen = $state(false);
+  let newProjectWizardRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
   let newProjectBtn = $state<HTMLButtonElement | undefined>(undefined);
   let syncDiag = $state<ProjectRemoteDiagnosis | null>(null);
   // Manual force-save / force-sync state for the status bar action buttons.
@@ -251,7 +292,7 @@
 
   async function refreshSyncDiag(dir: string) {
     try {
-      const diag = await getPlatform().diagnoseProjectRemote(dir);
+      const diag = await api.remote.diagnoseProjectRemote(dir);
       // Project may have changed while the diagnosis was in flight.
       if (currentDir === dir) syncDiag = diag;
     } catch {
@@ -301,9 +342,9 @@
     // in the SyncOutcome returned by syncChanges (contract.ts lines 527-528).
     // Fetch them now so ConflictChoicesDialog.confirm() can call resolveSyncConflicts.
     const dir = currentDir;
-    getPlatform()
+    api.remote
       .syncChanges(dir)
-      .then((outcome) => {
+      .then((outcome: SyncOutcome) => {
         // Discard if the user switched projects or already closed the dialog.
         if (currentDir !== dir || !conflictOpen) return;
         if (outcome.status === "conflict") {
@@ -407,7 +448,7 @@
 
   /** Show a backup zip in the system file manager. */
   function showBackupInFolder(path: string) {
-    getPlatform().showInFolder(path).catch(() => {});
+    api.shell.showInFolder(path).catch(() => {});
   }
 
   /** Called when the RecoveryOverlay auto-dismiss or Done button fires. */
@@ -435,8 +476,8 @@
   // the re-classified source hint — same as what classifyProject does on open.
   function onVersionHistoryEnabled(result: ProjectClassification) {
     projectCapabilities = result.capabilities;
-    getPlatform()
-      .setViewerPrefs({ projectSource: result.source })
+    api.app
+      .setViewerPrefs({ projectSource: result.source } as Record<string, unknown>)
       .catch(() => {});
   }
 
@@ -461,7 +502,7 @@
     "https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/01-getting-started.md";
 
   function openSetupGuide() {
-    getPlatform().openExternal(SETUP_GUIDE_URL).catch(() => {});
+    api.shell.openExternal(SETUP_GUIDE_URL).catch(() => {});
   }
 
   // ── In-app markdown editor (#38) + unsaved-changes (#44) ──────────────────
@@ -495,9 +536,13 @@
   let pluginManagerOpen = $state(false);
   let pluginManagerBtn = $state<HTMLButtonElement | undefined>(undefined);
 
-  function openPluginManager() {
-    if (!isDesktop() || !currentDir) return;
-    pluginManagerRef?.show(pluginManagerBtn);
+  function openPluginManager(trigger?: HTMLButtonElement) {
+    if (!currentDir) return;
+    if (!isDesktop()) {
+      toast?.info?.("Plugins are managed in the desktop app for now.");
+      return;
+    }
+    pluginManagerRef?.show(trigger ?? pluginManagerBtn);
   }
 
   // Theme manager (#32) — opened from the overflow menu (desktop + project).
@@ -505,9 +550,13 @@
   let themeManagerOpen = $state(false);
   let themeManagerBtn = $state<HTMLButtonElement | undefined>(undefined);
 
-  function openThemeManager() {
-    if (!isDesktop() || !currentDir) return;
-    themeManagerRef?.show(themeManagerBtn);
+  function openThemeManager(trigger?: HTMLButtonElement) {
+    if (!currentDir) return;
+    if (!isDesktop()) {
+      toast?.info?.("Themes are managed in the desktop app for now.");
+      return;
+    }
+    themeManagerRef?.show(trigger ?? themeManagerBtn);
   }
 
   // Style picker (CSS-editing audit G1/G2) — a viewport-independent "Edit
@@ -518,6 +567,20 @@
   let stylePickerRef = $state<{
     show: (t?: HTMLButtonElement, preloaded?: ProjectStyle[]) => void;
   } | null>(null);
+
+  // Guided Design panel (custom-property editor) — the primary styling surface;
+  // raw CSS editing is the escape hatch inside it.
+  let designPanelRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
+  let designPanelOpen = $state(false);
+
+  function openDesign(trigger?: HTMLButtonElement) {
+    if (!currentDir) return;
+    if (!isDesktop()) {
+      toast?.info?.("Design controls are available in the desktop app for now.");
+      return;
+    }
+    designPanelRef?.show(trigger);
+  }
 
   /** Open one stylesheet (absolute path) in the shared editor and reveal it. */
   function openStyleFile(absPath: string) {
@@ -534,10 +597,16 @@
    * (when given) is the button to restore focus to after the picker.
    */
   async function openStyles(trigger?: HTMLButtonElement) {
-    if (!isDesktop() || !currentDir) return;
+    if (!currentDir) return;
+    if (!isDesktop()) {
+      toast?.info?.(
+        "Style editing is available in the desktop app for now — browse the Files panel to open a .css file.",
+      );
+      return;
+    }
     let list: ProjectStyle[];
     try {
-      list = await getPlatform().listProjectStyles(currentDir);
+      list = await api.project.listStyles(currentDir);
     } catch (e) {
       toast?.error?.(
         `Could not list styles: ${e instanceof Error ? e.message : String(e)}`,
@@ -551,20 +620,24 @@
       return;
     }
     if (list.length === 1) {
+      // Direct-open the sole stylesheet, but NAME it so the editor appearing
+      // isn't a surprise (UX review QA-3: same button, predictable outcome).
       openStyleFile(list[0]!.path);
+      toast?.info?.(`Editing ${list[0]!.displayName}`);
       return;
     }
     stylePickerRef?.show(trigger, list);
   }
 
   /**
-   * After a theme is applied (audit M2), auto-open the applied theme's CSS so the
-   * author can tweak it immediately. The applied theme always lives at
-   * `themes/<id>/theme.css` (theme-manager apply contract).
+   * After a theme is applied: land the author on the re-rendered PREVIEW with a
+   * confirmation — do NOT dump the raw `theme.css` into the editor behind the
+   * dialog (UX audit: that was jarring and unasked-for). Fine-tuning is an
+   * explicit choice via "Edit CSS". The ThemeManager closes itself on apply.
    */
-  function onThemeApplied(themeId: string) {
-    if (!isDesktop() || !currentDir) return;
-    openStyleFile(joinPath(currentDir, "themes", themeId, "theme.css"));
+  function onThemeApplied(_themeId: string) {
+    if (!currentDir) return;
+    toast?.success?.("Theme applied — your preview is updating. Use “Edit CSS” to fine-tune.");
   }
 
   // "Save as template" (#29) — capture the open project as a reusable template.
@@ -589,10 +662,10 @@
     saveTemplateBusy = true;
     saveTemplateError = null;
     try {
-      const tpl = await getPlatform().saveProjectAsTemplate(
-        currentDir,
-        saveTemplateName.trim(),
-      );
+      const tpl = await api.tpl.saveAsTemplate({
+        projectDir: currentDir,
+        name: saveTemplateName.trim(),
+      });
       saveTemplateOpen = false;
       toast?.success(`Saved “${tpl.label}” as a template.`);
     } catch (e) {
@@ -644,6 +717,36 @@
     } else {
       pendingEditorFocus = true;
     }
+  }
+
+  /**
+   * Insert an image even when no chapter is open yet (UX audit P3#8: the Media
+   * "Insert" button used to dead-end behind a disabled state, telling the author
+   * to go open a file first). If no markdown chapter is open, open one and the
+   * editor pane, then insert once the editor has mounted AND loaded that chapter
+   * — a bounded rAF retry, so there's no race (we never insert into an unloaded
+   * doc) and no infinite loop (gives up with a clear toast).
+   */
+  function insertImageIntoChapter(payload: { src: string; alt?: string }) {
+    const isMd = (p: string | null) => !!p && /\.(md|markdown)$/i.test(p);
+    if (!isMd(editorFilePath)) {
+      void ensureEditorFile();
+      editorOpen = true;
+    }
+    let tries = 0;
+    const tryInsert = () => {
+      if (editorRef && isMd(editorFilePath)) {
+        editorRef.runToolbarAction("image", { src: payload.src, alt: payload.alt ?? "" });
+        focusEditorWhenReady();
+        return;
+      }
+      if (tries++ < 120) {
+        requestAnimationFrame(tryInsert);
+      } else {
+        toast?.info?.("Open a markdown chapter, then insert the image.");
+      }
+    };
+    requestAnimationFrame(tryInsert);
   }
   $effect(() => {
     if (editorRef && pendingEditorFocus) {
@@ -727,7 +830,7 @@
   $effect(() => {
     if (!isDesktop() || !buffer) return;
     const pending = buffer.hasPendingSave;
-    getPlatform().setDirtyState(pending).catch(() => {});
+    api.app.setDirtyState(pending).catch(() => {});
   });
 
   // Keep the recovery-enabled toggle (#45) in sync with the live setting.
@@ -788,7 +891,7 @@
     const buf = ensureBuffer();
     if (buf.filePath) return;
     try {
-      const files = (await getPlatform().listDir(currentDir)).filter((e) => !e.isDir);
+      const files = (await api.fs.listDir(currentDir)).filter((e) => !e.isDir);
       const pick =
         files.filter((e) => /\.md$/i.test(e.name)).sort((a, b) => a.name.localeCompare(b.name))[0] ||
         files.find((e) => /\.(md|css)$/i.test(e.name));
@@ -820,7 +923,7 @@
     recoveryScanDir = dir;
     if (!settings.current.editor.crashRecovery) return;
     try {
-      const entries = await getPlatform().listRecovery(dir);
+      const entries = await api.recovery.list(dir);
       recoveryItems = entries.map((e) => ({
         filePath: e.filePath,
         recoveryPath: e.recoveryPath,
@@ -841,7 +944,7 @@
       // userData). Read them, then load into the buffer against the current disk
       // baseline — restoreContent marks the buffer dirty so it re-saves on the
       // next debounce, preserving the recovered edits.
-      const recovered = await getPlatform().readFile(item.recoveryPath);
+      const recovered = await api.fs.readFile(item.recoveryPath);
       await buf.restoreContent(item.filePath, recovered);
       editorOpen = true;
       focusEditorWhenReady();
@@ -855,7 +958,7 @@
   function discardRecovery(item: RecoveryItem) {
     recoveryItems = recoveryItems.filter((i) => i.filePath !== item.filePath);
     if (isDesktop()) {
-      getPlatform().clearRecovery(item.filePath).catch(() => {});
+      api.recovery.clear(item.filePath).catch(() => {});
     }
   }
 
@@ -866,8 +969,8 @@
   // ── Persist left panel state on change ────────────────────────────────────
   $effect(() => {
     if (!leftPanelPrefsLoaded) return;
-    getPlatform()
-      .setViewerPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } })
+    api.app
+      .setViewerPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } } as Record<string, unknown>)
       .catch(() => {});
   });
 
@@ -911,8 +1014,7 @@
     if (!isDesktop() || !currentDir || sourceMode !== "folder") return;
     const dir = currentDir;
     problemsLoading = true;
-    getPlatform()
-      .lintProject(dir)
+    api.lint.project(dir)
       .then((entries) => {
         // The project may have changed while the lint was in flight.
         if (currentDir === dir) problems = entries;
@@ -978,7 +1080,7 @@
 
   $effect(() => {
     if (diagnosticsTools) return;
-    getPlatform().doctor()
+    api.doctor()
       .then((data) => {
         diagnosticsTools = (data as { tools?: DiagnosticsTool[] }).tools ?? [];
       })
@@ -1016,14 +1118,17 @@
 
     autoOpeningLastProject = true;
     lastProjectChecked = true;
-    const platform = getPlatform();
-    platform.getViewerPrefs()
-      .then(async (prefs) => {
+    api.app.getViewerPrefs()
+      .then(async (prefsRaw) => {
+        const prefs = prefsRaw as {
+          lastProjectDir?: string;
+          leftPanel?: { activeTab?: string; width?: number; open?: boolean };
+        };
         // Load persisted left panel state
         const panelPrefs = prefs.leftPanel;
         if (!leftPanelPrefsLoaded) {
           leftPanelPrefsLoaded = true;
-          if (panelPrefs?.activeTab) leftPanelTab = panelPrefs.activeTab;
+          if (panelPrefs?.activeTab) leftPanelTab = panelPrefs.activeTab as typeof leftPanelTab;
           if (typeof panelPrefs?.width === "number") leftPanelWidth = Math.min(480, Math.max(200, panelPrefs.width));
           // Panel open state loaded below after we know if a project exists
         }
@@ -1035,7 +1140,7 @@
           leftPanelOpen = true;
           leftPanelTab = "projects";
           // Dismiss splash and reveal window.
-          platform.rendererReady().catch(() => {});
+          api.app.rendererReady().catch(() => {});
           return;
         }
         // Restore panel open state from prefs (now we know there is a project)
@@ -1043,15 +1148,26 @@
         leftPanelOpen = panelPrefs?.open ?? false;
         // Per-project state (#43) is keyed by folder path so opening a
         // different project never pollutes this one's restore point.
-        platform.splashStatus("Opening your project…", 45).catch(() => {});
-        const restoreState = await platform
+        api.app.splashStatus("Opening your project…", 45).catch(() => {});
+        const restoreState = await api.app
           .getViewerProjectState(dir)
           .catch(() => null);
-        return startFolderPreview(dir, "Reopening previous folder…", restoreState);
+        await startFolderPreview(dir, "Reopening previous folder…", restoreState);
+        // If the saved project no longer opens (moved/renamed/deleted),
+        // startFolderPreview sets openError but does NOT throw. Don't strand the
+        // author on an error screen at launch — clear it and fall through to the
+        // welcome/Projects panel so their first action is "open or create".
+        if (openError) {
+          openError = null;
+          leftPanelOpen = true;
+          leftPanelTab = "projects";
+          toast?.info?.("Couldn't reopen your last project — it may have moved. Pick or create one to start.");
+        }
+        return;
       })
       .catch(() => {
         // If reopen failed, still reveal the window (don't strand on the splash).
-        platform.rendererReady().catch(() => {});
+        api.app.rendererReady().catch(() => {});
       })
       .finally(() => {
         autoOpeningLastProject = false;
@@ -1120,8 +1236,8 @@
         // the author's edits (#28).
         refreshProblems();
         // First project render done → dismiss the splash and reveal the window.
-        getPlatform().splashStatus("Ready", 100).catch(() => {});
-        getPlatform().rendererReady().catch(() => {});
+        api.app.splashStatus("Ready", 100).catch(() => {});
+        api.app.rendererReady().catch(() => {});
       } else if (e.name === "sourceLineChanged") {
         // Preview→editor sync: the reader scrolled. Follow in the editor and
         // update the active outline entry — but not while the editor itself is
@@ -1149,7 +1265,7 @@
           totalPages = e.detail.totalPages ?? totalPages;
           // Live splash sub-status during the (potentially multi-second) render.
           const pg = e.detail.totalPages ?? renderProgressPage;
-          if (pg) getPlatform().splashStatus(undefined, undefined, `Laying out page ${pg}`).catch(() => {});
+          if (pg) api.app.splashStatus(undefined, undefined, `Laying out page ${pg}`).catch(() => {});
         } else {
           syncPageState(e.detail);
         }
@@ -1159,7 +1275,7 @@
         renderProgressPage = 0;
         outline = [];
         activeOutlineIndex = 0;
-        getPlatform().splashStatus("Rendering pages…", 70).catch(() => {});
+        api.app.splashStatus("Rendering pages…", 70).catch(() => {});
         client?.call<number>("getTotalPages").then((n) => {
           if (n > 0) {
             totalPages = n;
@@ -1445,6 +1561,7 @@
     displayName: string | null = null,
   ) {
     openError = null;
+    failedOpenDir = null;
     urlPreviewError = null;
     saveWarning = null;
     renderCompleteOverlay = false;
@@ -1473,6 +1590,15 @@
       currentDir = dir;
       currentFolderDisplayName = displayName;
       currentUrl = null;
+      // Detect a "loose" folder (no manifest) so we can offer to set it up as a
+      // book. Default true (banner hidden) until the listing proves it's absent.
+      currentFolderHasManifest = true;
+      adoptBannerDismissed = false;
+      void api.fs.listDir(dir)
+        .then((entries) => {
+          currentFolderHasManifest = entries.some((e) => /^manifest\.ya?ml$/i.test(e.name));
+        })
+        .catch(() => { currentFolderHasManifest = true; });
       // Clear stale problems from the previous project immediately so the badge
       // and panel don't show the old project's findings while the new one renders.
       problems = [];
@@ -1498,20 +1624,21 @@
       projectSharesParentHistory = false;
       projectSubPath = "";
       syncDiag = null;
-      platform
+      api.app
         .classifyProject(dir)
         .then((result) => {
-          projectCapabilities = result.capabilities;
+          const typedResult = result as { source: { type: string; subPath?: string }; capabilities: ProjectCapabilities };
+          projectCapabilities = typedResult.capabilities;
           projectSubPath =
-            result.source.type === "local-git-folder" ? result.source.subPath : "";
+            typedResult.source.type === "local-git-folder" ? (typedResult.source.subPath ?? "") : "";
           projectSharesParentHistory = projectSubPath !== "";
-          platform
-            .setViewerPrefs({ projectSource: result.source })
+          api.app
+            .setViewerPrefs({ projectSource: typedResult.source } as Record<string, unknown>)
             .catch(() => {});
           // Sync gate (#15 / ADR 0006 D4): the toolbar action appears only
           // when the diagnosis says the project is actually syncable (HTTPS
           // remote + a stored connection). Local reads only; fire-and-forget.
-          if (result.capabilities.canSync) {
+          if (typedResult.capabilities.canSync) {
             void refreshSyncDiag(dir);
           }
         })
@@ -1556,6 +1683,9 @@
       docTitle = null;
       rendering = false;
       openError = e instanceof Error ? e.message : String(e);
+      // Remember the folder so we can offer to set it up as a book when the
+      // failure was "this isn't a print-md project".
+      failedOpenDir = dir;
     } finally {
       busy = false;
       busyLabel = "";
@@ -1571,15 +1701,13 @@
     busyLabel = "Opening folder…";
     let handedOff = false;
     try {
-      const platform = getPlatform();
-      // #49: the picker returns a host-neutral FolderRef. Use `.key` wherever
-      // the raw path string is needed (per-project state, preview) and carry
-      // `.displayName` for the toolbar label.
-      const folder = await platform.openFolder();
-      if (!folder) return;
+      // #49: the picker returns a path string; wrap into a host-neutral FolderRef.
+      const pathStr = await api.dialog.openDirectory();
+      if (!pathStr) return;
+      const folder = { key: pathStr, displayName: basenameOf(pathStr) };
       // Per-project state (#43): restore whatever was saved for THIS folder
       // (page, view mode, …) regardless of which project was last open.
-      const restoreState = await platform
+      const restoreState = await api.app
         .getViewerProjectState(folder.key)
         .catch(() => null);
       handedOff = true;
@@ -1618,7 +1746,7 @@
 
   function openInBrowser() {
     if (!currentUrl) return;
-    getPlatform().openExternal(currentUrl).catch(() => {});
+    api.shell.openExternal(currentUrl).catch(() => {});
   }
 
   function getSaveReadinessWarning(): string | null {
@@ -1678,7 +1806,7 @@
     // #49: use the adapter-precomputed displayName for the default filename,
     // falling back to the basename of the key.
     const defaultName = (currentFolderDisplayName ?? basenameOf(inputDir) ?? "book") + ".pdf";
-    const outPath = await platform.savePdf(defaultName);
+    const outPath = await api.dialog.savePdf(defaultName);
     if (!outPath) return;
 
     // Non-blocking: the build runs in a separate render window, so keep the
@@ -1727,7 +1855,7 @@
       toast?.success(`PDF saved to ${savedPdfPath}`, 8000, {
         label: "Show in Folder",
         onClick: () => {
-          void getPlatform().showInFolder(savedPdfPath).catch(() => {});
+          void api.shell.showInFolder(savedPdfPath).catch(() => {});
         },
       });
       await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -1802,7 +1930,7 @@
     // Per-project state (#43): write to the folder-keyed bucket so this never
     // overwrites another project's saved page/view. The main process also
     // updates lastProjectDir, so reopening lands on this project.
-    getPlatform().setViewerProjectState(currentDir, patch).catch(() => {});
+    api.app.setViewerProjectState(currentDir, patch as Record<string, unknown>).catch(() => {});
   }
 
   function restoreProjectPage(page: number) {
@@ -1814,7 +1942,7 @@
         totalPages = state.totalPages ?? totalPages;
         if (!pageEditing) pageEditValue = String(currentPage);
         if (currentDir) {
-          getPlatform().setViewerProjectState(currentDir, { currentPage }).catch(() => {});
+          api.app.setViewerProjectState(currentDir, { currentPage }).catch(() => {});
         }
       })
       .catch(() => {})
@@ -2262,7 +2390,7 @@
 
   /**
    * Trigger an immediate sync for the open project.
-   * Reuses the same getPlatform().syncChanges() path the auto-orchestrator uses.
+   * Reuses the same api.remote.syncChanges() path the auto-orchestrator uses.
    * Only callable when the project canSync (guarded in StatusBar via showForceSync).
    */
   async function handleForceSync() {
@@ -2270,7 +2398,7 @@
     if (!dir || forceSyncing) return;
     forceSyncing = true;
     try {
-      const outcome = await getPlatform().syncChanges(dir);
+      const outcome = await api.remote.syncChanges(dir);
       if (currentDir !== dir) return; // Project switched mid-sync.
       if (outcome.status === "conflict") {
         // Route through the existing conflict dialog path.
@@ -2713,27 +2841,29 @@
               <Icon name="puzzle" /> Save as template…
             </button>
           {/if}
-          {#if isDesktop() && currentDir}
-            <!-- Plugin manager (#30): discover/enable/import markdown-it plugins -->
+          {#if currentDir}
+            <!-- Plugin manager (#30): discover/enable/import markdown-it plugins.
+                 Narrow-width fallback for the inline header button; on web it
+                 toasts a "desktop app for now" notice. -->
             <button
               bind:this={pluginManagerBtn}
               class="menu-item"
-              onclick={(e) => { openPluginManager(); closeMenu(e); }}
+              onclick={(e) => { openPluginManager(e.currentTarget as HTMLButtonElement); closeMenu(e); }}
             >
               <Icon name="puzzle" /> Plugins…
             </button>
           {/if}
-          {#if isDesktop() && currentDir}
+          {#if currentDir}
             <!-- Theme manager (#32): browse/preview/apply/import themes -->
             <button
               bind:this={themeManagerBtn}
               class="menu-item"
-              onclick={(e) => { openThemeManager(); closeMenu(e); }}
+              onclick={(e) => { openThemeManager(e.currentTarget as HTMLButtonElement); closeMenu(e); }}
             >
               <Icon name="palette" /> Themes…
             </button>
           {/if}
-          {#if isDesktop() && currentDir}
+          {#if currentDir}
             <!-- Edit styles (audit G1/G2): viewport-independent CSS-file entry
                  point. Manifest-aware: opens the active stylesheet (or a picker
                  when there are several). -->
@@ -2774,11 +2904,14 @@
           focusEditorWhenReady();
         }
       }}
-      onInsertImage={(payload) => editorRef?.runToolbarAction("image", { src: payload.src, alt: payload.alt ?? "" })}
+      onOpenThemes={() => openThemeManager()}
+      onOpenPlugins={() => openPluginManager()}
+      onOpenDesign={() => openDesign()}
+      onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => startFolderPreview(path)}
       onOpenUrl={openUrl}
       onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
-      onNewProject={() => (newProjectOpen = true)}
+      onNewProject={() => newProjectWizardRef?.show()}
       onVersionHistoryEnabled={onVersionHistoryEnabled}
       onSnapshotSaved={(entry) => onVersionSnapshotSaved()}
       onVersionRestored={onVersionRestored}
@@ -2788,6 +2921,24 @@
 
     <!-- Main content area (preview + editor) -->
     <div class="main-content">
+
+  <!-- Loose-folder nudge: a plain folder renders fine but has no manifest,
+       editable styles, or version history. Offer a one-click setup (adopt). -->
+  {#if showAdoptBanner}
+    <div class="adopt-banner" role="status">
+      <span class="adopt-banner-text">
+        This folder isn't set up as a book yet — set it up to edit its design and keep a history of changes.
+      </span>
+      <div class="adopt-banner-actions">
+        <button class="primary" onclick={() => currentDir && setUpAsBook(currentDir)} disabled={adopting}>
+          {adopting ? "Setting up…" : "Set up as a book"}
+        </button>
+        <button class="ghost" onclick={() => (adoptBannerDismissed = true)} disabled={adopting} aria-label="Dismiss">
+          Not now
+        </button>
+      </div>
+    </div>
+  {/if}
 
   {#if previewUrl}
     <div
@@ -2931,7 +3082,7 @@
         <h1 class="empty-title">print-md</h1>
         <p class="empty-tagline">Turn your markdown writing into a print-ready book</p>
         <div class="empty-cta-row">
-          <button bind:this={newProjectBtn} class="primary empty-cta" onclick={() => (newProjectOpen = true)} disabled={busy}>Create a new book</button>
+          <button bind:this={newProjectBtn} class="primary empty-cta" onclick={() => newProjectWizardRef?.show(newProjectBtn)} disabled={busy}>Create a new book</button>
           <button class="ghost empty-cta" onclick={() => {
             leftPanelOpen = true;
             leftPanelTab = "projects";
@@ -2948,6 +3099,12 @@
           <div class="open-error" role="alert">
             <strong>Couldn't open that folder.</strong>
             <p>{friendlyFolderError(openError)}</p>
+            {#if canAdoptFailedFolder}
+              <p class="adopt-hint">It's a regular folder — want to turn it into a print-md book? We'll use any Markdown already inside it.</p>
+              <button class="primary adopt-btn" onclick={() => failedOpenDir && setUpAsBook(failedOpenDir)} disabled={adopting}>
+                {adopting ? "Setting up…" : "Set up this folder as a book"}
+              </button>
+            {/if}
           </div>
         {/if}
       </div>
@@ -3011,6 +3168,7 @@
   triggerEl={advancedSetupBtn}
 />
 <NewProjectWizard
+  bind:this={newProjectWizardRef}
   bind:open={newProjectOpen}
   onCreated={(projectDir) => startFolderPreview(projectDir, "Opening your new book…")}
   triggerEl={newProjectBtn}
@@ -3043,6 +3201,16 @@
   bind:this={stylePickerRef}
   projectDir={currentDir}
   onChoose={openStyleFile}
+/>
+<!-- Guided Design panel: the primary styling surface (color/size controls over
+     the active stylesheet's :root custom properties). "Edit raw CSS" routes to
+     the existing editor as the escape hatch. -->
+<DesignPanel
+  bind:this={designPanelRef}
+  bind:open={designPanelOpen}
+  projectDir={currentDir}
+  {toast}
+  onEditRawCss={openStyleFile}
 />
 <!-- Save-as-template name prompt (#29). Minimal modal: name + confirm. -->
 {#if saveTemplateOpen}
@@ -3716,6 +3884,48 @@
   }
   .open-error strong { display: block; margin-bottom: 4px; font-size: 13px; }
   .open-error p { margin: 0; color: var(--app-error-text); }
+  .adopt-hint { margin-top: 8px !important; color: var(--app-text-secondary) !important; }
+  .adopt-btn {
+    margin-top: 10px;
+    padding: 7px 14px;
+    font-size: 13px;
+    border-radius: 6px;
+    border: 1px solid var(--app-accent-border);
+    background: var(--app-accent);
+    color: var(--app-accent-text);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .adopt-btn:hover:not(:disabled) { background: var(--app-accent-hover); }
+  .adopt-btn:disabled { opacity: 0.6; cursor: default; }
+
+  .adopt-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 8px 14px;
+    background: var(--app-info-bg, var(--app-surface));
+    border-bottom: 1px solid var(--app-border);
+    font-size: 13px;
+    color: var(--app-text);
+    flex-shrink: 0;
+  }
+  .adopt-banner-text { flex: 1 1 240px; min-width: 0; }
+  .adopt-banner-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .adopt-banner-actions button {
+    padding: 5px 12px;
+    font-size: 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .adopt-banner-actions .primary { background: var(--app-accent); color: var(--app-accent-text); border-color: var(--app-accent-border); font-weight: 600; }
+  .adopt-banner-actions .primary:hover:not(:disabled) { background: var(--app-accent-hover); }
+  .adopt-banner-actions .ghost { background: transparent; color: var(--app-text-secondary); border-color: var(--app-border); }
+  .adopt-banner-actions .ghost:hover:not(:disabled) { background: var(--app-control-hover-bg); }
+  .adopt-banner-actions button:disabled { opacity: 0.6; cursor: default; }
 
   /* ---- Auto-update banner ---- */
   .update-banner {

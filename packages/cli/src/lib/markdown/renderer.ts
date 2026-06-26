@@ -20,6 +20,15 @@ import markdownItFootnote from "markdown-it-footnote";
 import markdownItPaged from "./markdown-it-paged.js";
 import markdownItSourceMap from "markdown-it-source-map";
 import markdownItDeflist from "markdown-it-deflist";
+// Optional, opt-in markdown features. Bundled so they're available WITHOUT any
+// install step — enabling one (via the manifest / the viewer's plugin manager)
+// resolves it from this registry instead of the project's node_modules. This is
+// what makes "add a plugin → it just works, offline" true for non-technical
+// authors, and works in the `bun build --compile` binary too (static imports).
+import markdownItMark from "markdown-it-mark";
+import markdownItSub from "markdown-it-sub";
+import markdownItSup from "markdown-it-sup";
+import markdownItAbbr from "markdown-it-abbr";
 import { registerImageRule } from "./images";
 
 /**
@@ -75,6 +84,30 @@ export interface LoadedPlugin {
   css?: string;
   options: Record<string, unknown>;
 }
+
+/** Unwrap `{ default: fn }` CJS/ESM interop to the plugin function. */
+function unwrapPlugin<T>(plugin: T): T {
+  return (plugin && typeof plugin === "object" && "default" in (plugin as object)
+    ? (plugin as unknown as { default: T }).default
+    : plugin) as T;
+}
+
+/**
+ * Bundled, opt-in markdown plugins keyed by their npm name. Enabling one of
+ * these (manifest `plugins: - <name>` or the viewer's plugin manager) resolves
+ * it from HERE — no project install, no network, works offline and in the
+ * compiled binary. The plugin loader (`plugins.ts`) consults this map before
+ * trying to resolve a package from the project's node_modules, so a
+ * non-technical author gets the feature instantly instead of a "not installed"
+ * error. (attrs/footnote/deflist are NOT here — they are always-on defaults
+ * applied unconditionally below.)
+ */
+export const BUILTIN_OPTIONAL_PLUGINS: Record<string, PrintMdPlugin> = {
+  "markdown-it-mark": unwrapPlugin(markdownItMark) as PrintMdPlugin,
+  "markdown-it-sub": unwrapPlugin(markdownItSub) as PrintMdPlugin,
+  "markdown-it-sup": unwrapPlugin(markdownItSup) as PrintMdPlugin,
+  "markdown-it-abbr": unwrapPlugin(markdownItAbbr) as PrintMdPlugin,
+};
 
 /**
  * Create a fully-configured MarkdownIt instance.

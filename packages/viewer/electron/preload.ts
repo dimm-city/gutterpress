@@ -84,6 +84,13 @@ interface CreateProjectOptions {
   templateDir?: string;
   versionHistory?: "local-git" | "none";
 }
+interface AdoptFolderOptions {
+  dir: string;
+  title?: string;
+  author?: string;
+  template?: "book" | "ttrpg" | "zine" | "technical";
+  versionHistory?: "local-git" | "none";
+}
 interface CreateProjectResult {
   projectDir: string;
   manifestPath: string;
@@ -92,52 +99,15 @@ interface CreateProjectResult {
   versionHistoryError?: string;
 }
 
-// Project templates + snippets (#29).
-interface TemplateInfo {
-  id: string;
+// plugin:*, theme:*, project:listStyles types removed — migrated to server routes (Phase 2E).
+
+interface StyleToken {
+  name: string;
+  value: string;
+  kind: "color" | "length" | "text";
   label: string;
-  description: string;
-  kind: "builtin" | "custom";
-  dir?: string;
-}
-interface SnippetEntry {
-  name: string;
-  fileName: string;
-  variables: string[];
-}
-type PluginKind = "local" | "npm";
-interface ProjectPluginEntry {
-  ref: string;
-  kind: PluginKind;
-  enabled: boolean;
-}
-interface PluginValidationResult {
-  ref: string;
-  kind: PluginKind;
-  enabled: boolean;
-  ok: boolean;
-  error?: string;
-}
-interface RecommendedPlugin {
-  name: string;
-  description: string;
-}
-// Theme manager (#32).
-interface ThemeInfo {
-  id: string;
-  name: string;
-  author?: string;
-  description: string;
-  kind: "builtin" | "project";
-  preview?: string | null;
-}
-type ApplyThemeTarget =
-  | { kind: "builtin"; id: string }
-  | { kind: "project"; id: string };
-interface ProjectStyle {
-  path: string;
-  displayName: string;
-  active: boolean;
+  number?: number;
+  unit?: string;
 }
 
 interface RecentFolderEntry {
@@ -489,91 +459,15 @@ contextBridge.exposeInMainWorld("electron", {
   },
 
   // Dialogs
-  openDirectory: (): Promise<string | null> =>
-    ipcRenderer.invoke("dialog:openDirectory"),
-  savePdf: (defaultName?: string): Promise<string | null> =>
-    ipcRenderer.invoke("dialog:savePdf", defaultName),
-  // Image picker dialog (#31): file selection filtered to image formats
-  pickImageFile: (): Promise<string | null> =>
-    ipcRenderer.invoke("dialog:pickImageFile"),
-  // Multi-select image picker (#47): backs the Media panel's "Add images…"
-  pickImageFiles: (): Promise<string[]> =>
-    ipcRenderer.invoke("dialog:pickImageFiles"),
-  // Copy a file into a destination directory (#31): backs Insert Image asset copy
-  copyFile: (srcPath: string, destDir: string): Promise<string> =>
-    ipcRenderer.invoke("fs:copyFile", srcPath, destDir),
+  // savePdf, pickImageFile, pickImageFiles, copyFile migrated to server routes
+  // openDirectory migrated to server route (api.dialog.openDirectory)
+  // openExternal, showInFolder, readLogFile migrated to server routes
+  // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
 
-  // ── Media panel (#47): project image listing / thumbnails / inspection ──
-  listProjectImages: (
-    projectDir: string,
-  ): Promise<
-    Array<{ name: string; relPath: string; path: string; size: number; mtimeMs: number }>
-  > => ipcRenderer.invoke("media:listImages", projectDir),
-  imageThumbnail: (filePath: string): Promise<string | null> =>
-    ipcRenderer.invoke("media:thumbnail", filePath),
-  inspectImage: (
-    filePath: string,
-  ): Promise<{
-    fileSize: number;
-    info: {
-      width: number;
-      height: number;
-      xDpi: number;
-      yDpi: number;
-      hasAlpha: boolean;
-      colorSpace: "srgb" | "gray" | "cmyk" | "";
-    } | null;
-  } | null> => ipcRenderer.invoke("media:inspect", filePath),
-
-  // App actions
-  openExternal: (url: string): Promise<void> =>
-    ipcRenderer.invoke("shell:openExternal", url),
-  showInFolder: (filePath: string): Promise<void> =>
-    ipcRenderer.invoke("shell:showInFolder", filePath),
-
-  // Operation log reader (sync/recovery log viewer)
-  readLogFile: (filePath: string): Promise<string | null> =>
-    ipcRenderer.invoke("log:read", filePath),
-
-  // Filesystem primitives (PlatformAdapter, #41 — editor seam for #38/#39)
-  readFile: (filePath: string): Promise<string> =>
-    ipcRenderer.invoke("fs:readFile", filePath),
-  writeFile: (filePath: string, content: string): Promise<{ mtimeMs: number }> =>
-    ipcRenderer.invoke("fs:writeFile", filePath, content),
-  listDir: (
-    dirPath: string,
-  ): Promise<Array<{ name: string; path: string; isDir: boolean }>> =>
-    ipcRenderer.invoke("fs:listDir", dirPath),
-  listProjectFiles: (
-    projectDir: string,
-  ): Promise<{ md: string[]; css: string[] }> =>
-    ipcRenderer.invoke("fs:listProjectFiles", projectDir),
-  // CSS print-safety lint (#39) — runs in main (postcss can't bundle into the SPA)
-  checkCss: (
-    css: string,
-    from?: string,
-  ): Promise<
-    Array<{ rule: string; severity: "error" | "warning"; message: string; line: number; column: number }>
-  > => ipcRenderer.invoke("lint:checkCss", css, from),
-  // Project-wide source lint for the Problems panel (#28) — runs in main
-  lintProject: (
-    projectDir: string,
-  ): Promise<
-    Array<{
-      filePath?: string;
-      file?: string;
-      line?: number;
-      column?: number;
-      severity: "error" | "warning" | "info";
-      message: string;
-      source: string;
-    }>
-  > => ipcRenderer.invoke("lint:project", projectDir),
-  // File metadata (PlatformAdapter.statFile, #44 — external-edit detection)
-  statFile: (
-    filePath: string,
-  ): Promise<{ mtimeMs: number; size: number; exists: boolean }> =>
-    ipcRenderer.invoke("fs:statFile", filePath),
+  // Filesystem primitives migrated to SvelteKit server routes (api.fs.*)
+  // readFile, writeFile, listDir, statFile migrated to server routes
+  // listProjectFiles migrated to server route
+  // checkCss, lintProject migrated to server routes (Phase 2C)
   /**
    * Watch a project folder for changes (#44). Subscribes to debounced
    * `fs:folderChanged` events for `dirPath` and returns an unsubscribe fn that
@@ -588,145 +482,29 @@ contextBridge.exposeInMainWorld("electron", {
     };
   },
 
-  // Lib API (replaces /api/* HTTP routes)
-  getStatus: (): Promise<{ ok: boolean; runtime: string; name: string }> =>
-    ipcRenderer.invoke("api:status"),
-  getLastProject: (): Promise<string | null> =>
-    ipcRenderer.invoke("app:getLastProject"),
-  splashStatus: (status?: string, progress?: number, sub?: string): Promise<void> =>
-    ipcRenderer.invoke("app:splashStatus", status, progress, sub),
-  rendererReady: (): Promise<void> => ipcRenderer.invoke("app:rendererReady"),
-  getViewerPrefs: (): Promise<ViewerPrefs> =>
-    ipcRenderer.invoke("app:getViewerPrefs"),
-  setViewerPrefs: (patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("app:setViewerPrefs", patch),
-  // Per-project editor/preview state (#43)
-  getViewerProjectState: (projectDir: string): Promise<ProjectState | null> =>
-    ipcRenderer.invoke("app:getViewerProjectState", projectDir),
-  setViewerProjectState: (
-    projectDir: string,
-    patch: Partial<ProjectState>,
-  ): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("app:setViewerProjectState", projectDir, patch),
-  getSettings: (): Promise<AppSettings> =>
-    ipcRenderer.invoke("app:getSettings"),
-  setSettings: (patch: DeepPartialSettings): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("app:setSettings", patch),
+  // getStatus migrated to server route (Phase 2C)
+  // app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
+  // app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
+  // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
+  // app:getFavorites, app:toggleFavorite, app:removeRecent, app:discoverProjects,
+  // app:classifyProject, app:createProject, app:adoptFolder
+  // — migrated to SvelteKit server routes (Phase 2B). No IPC bridge needed.
 
-  // Native (OS) theme surface (#48)
-  getNativeTheme: (): Promise<{ shouldUseDarkColors: boolean }> =>
-    ipcRenderer.invoke("app:getNativeTheme"),
+  // Native (OS) theme surface (#48) — push channel kept as IPC (main→renderer)
   /** Subscribe to OS theme changes from main. Returns an unsubscribe fn. */
   onNativeThemeUpdated: (
     cb: (data: { shouldUseDarkColors: boolean }) => void
   ): (() => void) => forwardPush("app:nativeThemeUpdated", cb),
 
-  // Open Location modal: recent folders + favorites
-  getRecentFolders: (): Promise<
-    Array<{ path: string; title: string; openedAt: string; exists: boolean }>
-  > => ipcRenderer.invoke("app:getRecentFolders"),
-  getFavorites: (): Promise<
-    Array<{ path: string; title: string; exists: boolean }>
-  > => ipcRenderer.invoke("app:getFavorites"),
-  toggleFavorite: (
-    folderPath: string,
-    title: string
-  ): Promise<{ favorited: boolean }> =>
-    ipcRenderer.invoke("app:toggleFavorite", folderPath, title),
-  removeRecent: (folderPath: string): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("app:removeRecent", folderPath),
-  discoverProjects: (): Promise<DiscoveredProject[]> =>
-    ipcRenderer.invoke("app:discoverProjects"),
+  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from contextBridge.
 
-  // Project source classification (#12)
-  classifyProject: (
-    path: string,
-  ): Promise<{ source: ProjectSource; capabilities: ProjectCapabilities }> =>
-    ipcRenderer.invoke("app:classifyProject", { path }),
-
-  // New-project scaffold (#25)
-  createProject: (options: CreateProjectOptions): Promise<CreateProjectResult> =>
-    ipcRenderer.invoke("app:createProject", options),
-
-  // Project templates + snippets (#29)
-  listBuiltInTemplates: (): Promise<TemplateInfo[]> =>
-    ipcRenderer.invoke("tpl:listBuiltIn"),
-  listCustomTemplates: (): Promise<TemplateInfo[]> =>
-    ipcRenderer.invoke("tpl:listCustom"),
-  saveProjectAsTemplate: (projectDir: string, name: string): Promise<TemplateInfo> =>
-    ipcRenderer.invoke("tpl:saveAsTemplate", projectDir, name),
-  importTemplateFromFolder: (): Promise<TemplateInfo | null> =>
-    ipcRenderer.invoke("tpl:importFromFolder"),
-  listSnippets: (projectDir: string): Promise<SnippetEntry[]> =>
-    ipcRenderer.invoke("snip:list", projectDir),
-  readSnippet: (projectDir: string, fileName: string): Promise<string> =>
-    ipcRenderer.invoke("snip:read", projectDir, fileName),
-  saveSnippet: (projectDir: string, name: string, body: string): Promise<SnippetEntry> =>
-    ipcRenderer.invoke("snip:save", projectDir, name, body),
-  deleteSnippet: (projectDir: string, fileName: string): Promise<void> =>
-    ipcRenderer.invoke("snip:delete", projectDir, fileName),
-
-  // Plugin manager (#30) — manifest read/write/toggle + load-test, via the lib.
-  // No auto-install (§5): addNpmPlugin only records the entry.
-  listPlugins: (projectDir: string): Promise<ProjectPluginEntry[]> =>
-    ipcRenderer.invoke("plugin:list", projectDir),
-  setPluginEnabled: (
-    projectDir: string,
-    ref: string,
-    enabled: boolean,
-  ): Promise<void> => ipcRenderer.invoke("plugin:setEnabled", projectDir, ref, enabled),
-  addNpmPlugin: (projectDir: string, packageName: string): Promise<ProjectPluginEntry> =>
-    ipcRenderer.invoke("plugin:addNpm", projectDir, packageName),
-  importLocalPlugin: (projectDir: string): Promise<ProjectPluginEntry | null> =>
-    ipcRenderer.invoke("plugin:import", projectDir),
-  validatePlugins: (projectDir: string): Promise<PluginValidationResult[]> =>
-    ipcRenderer.invoke("plugin:validate", projectDir),
-  listRecommendedPlugins: (): Promise<RecommendedPlugin[]> =>
-    ipcRenderer.invoke("plugin:recommended"),
-
-  // Theme manager (#32) — list/apply/import themes via the lib. Apply copies the
-  // theme folder into the project + wires the manifest; import accepts a folder
-  // (native dialog) or URL; readThemeCss feeds the renderer's thumbnail preview.
-  listBuiltInThemes: (): Promise<ThemeInfo[]> =>
-    ipcRenderer.invoke("theme:listBuiltIn"),
-  listProjectThemes: (projectDir: string): Promise<ThemeInfo[]> =>
-    ipcRenderer.invoke("theme:listProject", projectDir),
-  getActiveTheme: (projectDir: string): Promise<ThemeInfo | null> =>
-    ipcRenderer.invoke("theme:getActive", projectDir),
-  applyTheme: (projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo> =>
-    ipcRenderer.invoke("theme:apply", projectDir, target),
-  importThemeFromFolder: (projectDir: string): Promise<ThemeInfo | null> =>
-    ipcRenderer.invoke("theme:importFromFolder", projectDir),
-  importThemeFromUrl: (projectDir: string, url: string): Promise<ThemeInfo> =>
-    ipcRenderer.invoke("theme:importFromUrl", projectDir, url),
-  readThemeCss: (
-    projectDir: string | null,
-    source: { kind: "builtin" | "project"; id: string },
-  ): Promise<string> => ipcRenderer.invoke("theme:readCss", projectDir, source),
-  removeProjectTheme: (projectDir: string, id: string): Promise<void> =>
-    ipcRenderer.invoke("theme:remove", projectDir, id),
-
-  // Style resolver (audit B2/G1) — manifest-aware CSS resolution via the lib
-  listProjectStyles: (projectDir: string): Promise<ProjectStyle[]> =>
-    ipcRenderer.invoke("project:listStyles", projectDir),
+  // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from contextBridge.
 
   // Local version history (#13) — isomorphic-git in main, via the lib
-  enableVersionHistory: (projectDir: string): Promise<ProjectClassification> =>
-    ipcRenderer.invoke("vcs:enableVersionHistory", projectDir),
+  // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot
+  // — migrated to SvelteKit server routes (src/routes/api/vcs/*).
   saveSnapshot: (projectDir: string, message?: string): Promise<SnapshotEntry> =>
     ipcRenderer.invoke("vcs:saveSnapshot", projectDir, message),
-  listSnapshots: (projectDir: string): Promise<SnapshotEntry[]> =>
-    ipcRenderer.invoke("vcs:listSnapshots", projectDir),
-  listSnapshotsPage: (
-    projectDir: string,
-    options?: { limit?: number; before?: string },
-  ): Promise<SnapshotPage> =>
-    ipcRenderer.invoke("vcs:listSnapshotsPage", projectDir, options),
-  restoreSnapshot: (
-    projectDir: string,
-    id: string,
-  ): Promise<RestoreVersionResult> =>
-    ipcRenderer.invoke("vcs:restoreSnapshot", projectDir, id),
 
   // ── Managed GitHub integration (#15) — device flow + repo picker + clone ──
   // Two-phase connect: Start returns the user code to display; Wait resolves
@@ -737,16 +515,8 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("remote:connectGitHubWait"),
   connectGitHubCancel: (): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("remote:connectGitHubCancel"),
-  disconnectGitHub: (): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("remote:disconnectGitHub"),
-  getRemoteConnection: (host?: string): Promise<RemoteConnection> =>
-    ipcRenderer.invoke("remote:getConnection", host),
-  listRemoteRepositories: (): Promise<RemoteRepository[]> =>
-    ipcRenderer.invoke("remote:listRepositories"),
-  listRemoteBranches: (owner: string, repo: string): Promise<RemoteBranch[]> =>
-    ipcRenderer.invoke("remote:listBranches", owner, repo),
-  listRepoBooks: (owner: string, repo: string, branch: string): Promise<RepoBook[]> =>
-    ipcRenderer.invoke("remote:listRepoBooks", owner, repo, branch),
+  // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
+  // listRepoBooks — migrated to server routes (Phase 2F).
   cloneRemoteRepository: (
     args: CloneRepositoryArgs,
   ): Promise<{ projectDir: string }> =>
@@ -755,23 +525,8 @@ contextBridge.exposeInMainWorld("electron", {
   onCloneProgress: (cb: (data: CloneProgressEvent) => void): (() => void) =>
     forwardPush("remote:cloneProgress", cb),
 
-  // ── Advanced Setup (#14) — diagnostics + generic "Connect a Git server" ──
-  // The token in connectGenericHost crosses renderer → main ONCE for the
-  // validate-and-store flow; nothing below ever returns a token.
-  diagnoseProjectRemote: (projectDir: string): Promise<ProjectRemoteDiagnosis> =>
-    ipcRenderer.invoke("remote:diagnoseProject", projectDir),
-  testRemoteAccess: (url: string): Promise<RemoteAccessResult> =>
-    ipcRenderer.invoke("remote:testRemoteAccess", url),
-  connectGenericHost: (
-    args: ConnectGenericHostArgs,
-  ): Promise<{ connected: boolean; host: string; username?: string }> =>
-    ipcRenderer.invoke("remote:connectGenericHost", args),
-  disconnectHost: (host: string): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("remote:disconnectHost", host),
-  listHostConnections: (): Promise<HostConnectionInfo[]> =>
-    ipcRenderer.invoke("remote:listConnections"),
-  forgeTokenUrl: (host: string): Promise<string | null> =>
-    ipcRenderer.invoke("remote:forgeTokenUrl", host),
+  // diagnoseProjectRemote, testRemoteAccess, connectGenericHost, disconnectHost,
+  // listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
 
   // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ─
   // Main emits `sync:status` push events whenever the orchestrator state machine
@@ -803,20 +558,11 @@ contextBridge.exposeInMainWorld("electron", {
   respondRecoveryConfirm: (requestId: string, approved: boolean): Promise<void> =>
     ipcRenderer.invoke("recovery:confirm-response", { requestId, approved }),
 
-  /** Fetch yours/theirs text for a conflicted file. */
-  getConflictPreview: (projectDir: string, path: string): Promise<unknown> =>
-    ipcRenderer.invoke("sync:getConflictPreview", { projectDir, path }),
+  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
+
+  // syncChanges — migrated to server route (Phase 2F).
 
   // ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────
-  // All git work happens in the lib behind main; credentials are resolved
-  // host-side from the safeStorage store and never cross this bridge. The
-  // transparent auto-sync orchestrator drives syncProject itself; the renderer
-  // only triggers a sync for conflict resolution and applies the choices.
-  syncChanges: (
-    projectDir: string,
-    message?: string,
-  ): Promise<SyncOutcome> =>
-    ipcRenderer.invoke("remote:sync", projectDir, message),
   resolveSyncConflicts: (
     args: ResolveSyncConflictsArgs,
   ): Promise<SyncOutcome> =>
@@ -829,7 +575,7 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("api:cancelExport", exportId),
   build: (args: BuildArgs): Promise<BuildResult> =>
     ipcRenderer.invoke("api:build", args),
-  doctor: (): Promise<unknown> => ipcRenderer.invoke("api:doctor"),
+  // doctor migrated to server route (Phase 2C)
 
   // Live PDF-build progress (main → renderer). Returns an unsubscribe fn.
   onBuildProgress: (
@@ -840,30 +586,10 @@ contextBridge.exposeInMainWorld("electron", {
     cb: (data: UrlPreviewBlockedEvent) => void
   ): (() => void) => forwardPush("url-preview:blocked", cb),
 
-  // ──────────────────────────────────────────────────────────────────────
-  // Unsaved-changes / crash-recovery surface (#44)
-  // ──────────────────────────────────────────────────────────────────────
+  // writeRecovery, clearRecovery, listRecovery — migrated to server routes
+  // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
 
-  /** Write a debounced crash-recovery snapshot of the open buffer (#44). */
-  writeRecovery: (
-    filePath: string,
-    content: string,
-    baseMtimeMs: number,
-  ): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("recovery:write", filePath, content, baseMtimeMs),
-  /** Clear a recovery snapshot after a successful disk save (#44). */
-  clearRecovery: (filePath: string): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("recovery:clear", filePath),
-  /** List pending recovery snapshots for an opened project, newest first (#44). */
-  listRecovery: (
-    projectDir: string,
-  ): Promise<
-    Array<{ filePath: string; recoveryPath: string; savedAt: number; baseMtimeMs: number }>
-  > => ipcRenderer.invoke("recovery:list", projectDir),
-
-  /** Push the renderer's pending-save state to main for the close gate (#44). */
-  setDirtyState: (isDirty: boolean): Promise<void> =>
-    ipcRenderer.invoke("app:setDirtyState", isDirty),
+  // app:setDirtyState — migrated to server route (Phase 2B).
   /**
    * Subscribe to main's request to flush before the window closes (#44). The
    * renderer flushes, then calls `app:flushDone` (sent by the buffer store).

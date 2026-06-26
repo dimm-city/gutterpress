@@ -18,6 +18,7 @@ import type {
   FileStat,
   FileWriteResult,
   CreateProjectOptions,
+  AdoptFolderOptions,
   CreateProjectResult,
 } from "@dimm-city/print-md";
 
@@ -28,6 +29,7 @@ export type {
   FileStat,
   FileWriteResult,
   CreateProjectOptions,
+  AdoptFolderOptions,
   CreateProjectResult,
 };
 
@@ -134,34 +136,7 @@ export interface ProblemEntry {
   source: string;
 }
 
-// ── Project templates + snippets (#29) ────────────────────────────────────────
-//
-// Mirror the lib's TemplateInfo / SnippetEntry — defined locally so the SPA
-// never value-imports the lib (§8 / ADR 0004).
-
-/** Author-friendly metadata for one project template (built-in or custom). */
-export interface TemplateInfo {
-  /** Stable id (a built-in ProjectTemplateId, or a slug for custom templates). */
-  id: string;
-  /** Display name shown in the wizard. */
-  label: string;
-  /** One-line description shown under the label. */
-  description: string;
-  /** `"builtin"` (embedded) or `"custom"` (user-saved / imported). */
-  kind: "builtin" | "custom";
-  /** For custom templates: absolute directory the files live in. */
-  dir?: string;
-}
-
-/** One snippet's metadata for the picker (body is read lazily). */
-export interface SnippetEntry {
-  /** Display name derived from the filename stem. */
-  name: string;
-  /** On-disk filename (stable id for read/delete), e.g. `callout.md`. */
-  fileName: string;
-  /** Distinct `{{variable}}` names parsed from the body, in first-seen order. */
-  variables: string[];
-}
+// TemplateInfo and SnippetEntry migrated to $lib/api.ts (Phase 2D — tpl/snip server routes).
 
 // ── Plugin manager (#30) ──────────────────────────────────────────────────────
 //
@@ -195,7 +170,11 @@ export interface PluginValidationResult {
 /** A curated, informational plugin recommendation (NOT auto-installed). */
 export interface RecommendedPlugin {
   name: string;
+  /** Short plain-language feature name (the row title; `name` is demoted). */
+  label?: string;
   description: string;
+  /** print-md ships this plugin — "Add" enables it instantly, no install. */
+  builtin?: boolean;
 }
 
 // ── Theme manager (#32) ───────────────────────────────────────────────────────
@@ -237,6 +216,25 @@ export interface ProjectStyle {
   displayName: string;
   /** True when the stylesheet is in the manifest `styles:` list (the active set). */
   active: boolean;
+}
+
+// Mirrors the lib's `StyleToken` (packages/cli/src/lib/style-tokens.ts) —
+// defined locally so the SPA never value-imports the lib (§8 / ADR 0004). One
+// editable `:root` custom property surfaced to the guided Design panel.
+export type StyleTokenKind = "color" | "length" | "text";
+export interface StyleToken {
+  /** The custom-property name, e.g. `--heading-color`. */
+  name: string;
+  /** The raw declared value, e.g. `#cc0000` or `1.5rem`. */
+  value: string;
+  /** Which guided control to render. */
+  kind: StyleTokenKind;
+  /** Human label derived from the name, e.g. "Heading color". */
+  label: string;
+  /** For `length`: the numeric part. */
+  number?: number;
+  /** For `length`: the unit (px, rem, em, …). */
+  unit?: string;
 }
 
 // ── Host RPC payload shapes (mirror electron/preload.ts + types.d.ts) ─────────
@@ -945,293 +943,40 @@ export interface HostServices {
    */
   capabilities(): PlatformCapabilities;
 
-  // Dialogs
-  savePdf(defaultName?: string): Promise<string | null>;
-
-  /**
-   * Open a native file-picker dialog filtered to common image formats (#31).
-   * Resolves with a host-neutral {@link FileRef} (key + precomputed basename),
-   * or null when the user cancels (#61). The ElectronAdapter is the sole
-   * path→FileRef translation seam; the bridge keeps the raw path string.
-   * The WebAdapter stub rejects (desktop-only until the PWA lands).
-   */
-  pickImageFile(): Promise<FileRef | null>;
-
-  /**
-   * Copy a file into a destination directory (#31). Creates `destDir` when
-   * absent. Used by the editor toolbar to import images from outside the project
-   * into assets/. Returns the absolute path of the copied file.
-   * The WebAdapter stub rejects (desktop-only in 0.4.x).
-   */
-  copyFile(srcPath: string, destDir: string): Promise<string>;
-
-  // ── Media panel (#47) ──────────────────────────────────────────────────────
-
-  /**
-   * Multi-select variant of {@link pickImageFile} for the Media panel's
-   * "Add images…" import. Returns [] when the user cancels.
-   * The WebAdapter stub rejects (desktop-only until the PWA lands).
-   */
-  pickImageFiles(): Promise<string[]>;
-
-  /**
-   * List every image file under the project folder (#47). Recursive but
-   * bounded host-side (skips hidden/build dirs, depth ≤ 6, ≤ 2000 entries).
-   * The WebAdapter stub rejects (the panel guards with isDesktop()).
-   */
-  listProjectImages(projectDir: string): Promise<MediaImageEntry[]>;
-
-  /**
-   * Small (≤192px) thumbnail data URL for an image, generated and LRU-cached
-   * host-side so the renderer never loads multi-MB originals into the grid.
-   * Returns null when the format can't be thumbnailed (renderer shows a
-   * placeholder icon). The WebAdapter stub resolves null.
-   */
-  imageThumbnail(filePath: string): Promise<string | null>;
-
-  /**
-   * Inspect an image for the detail view (#47): file size plus the lib's
-   * dependency-free header parse (dimensions/DPI/alpha/color space for
-   * PNG/JPEG/TIFF; `info` is null for other formats). Runs in the host — the
-   * parser is Node fs code. No external tools involved. The WebAdapter stub
-   * resolves null.
-   */
-  inspectImage(filePath: string): Promise<MediaImageDetails | null>;
-
-  // Shell actions
-  openExternal(url: string): Promise<void>;
-  showInFolder(filePath: string): Promise<void>;
+  // savePdf, pickImageFile, copyFile, pickImageFiles migrated to server routes
+  // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
+  // openExternal, showInFolder migrated to server routes
 
   // Lib API / app state
-  getStatus(): Promise<{ ok: boolean; runtime: string; name: string }>;
-  getLastProject(): Promise<string | null>;
+  // getStatus migrated to server route (Phase 2C)
+  // app:getLastProject, app:splashStatus, app:rendererReady — migrated to
+  // server routes (Phase 2B).
 
-  // ── Splash coordination ──────────────────────────────────────────────────
-  // Push human-readable startup status to the host splash (a no-op on the web,
-  // which has no splash window), then signal that the first meaningful screen
-  // (a rendered project OR the welcome screen) is ready so the host can reveal
-  // the main window and dismiss the splash.
-  splashStatus(status?: string, progress?: number, sub?: string): Promise<void>;
-  rendererReady(): Promise<void>;
+  // listProjectFiles migrated to server route (src/routes/api/fs/list-project-files)
+  // checkCss, lintProject migrated to server routes (Phase 2C)
 
-  /**
-   * List the top-level `.md` and `.css` files of an opened project directory
-   * (#42), each sorted by filename. Shallow by design (subdirectory layouts
-   * are not surfaced in v1). `projectDir` must be an absolute path. Backs the
-   * chapter-list sidebar. The WebAdapter stub rejects.
-   */
-  listProjectFiles(projectDir: string): Promise<{ md: string[]; css: string[] }>;
+  // app:getViewerPrefs, app:setViewerPrefs, app:getViewerProjectState,
+  // app:setViewerProjectState, app:getSettings, app:setSettings,
+  // app:getNativeTheme, app:getRecentFolders, app:getFavorites,
+  // app:toggleFavorite, app:removeRecent, app:discoverProjects,
+  // app:classifyProject, app:createProject, app:adoptFolder
+  // — migrated to SvelteKit server routes (Phase 2B).
 
-  /**
-   * Run the CSS print-safety lint (#39) and return warnings for the editor
-   * gutter. Host-side because it is postcss-based and postcss's `node:url`
-   * usage cannot bundle into the browser SPA — so the UI calls this instead of
-   * importing `checkCss` directly. Same check `print-md validate` uses, so the
-   * gutter and CLI never disagree. The WebAdapter stub returns `[]`.
-   */
-  checkCss(css: string, from?: string): Promise<PrintSafeWarning[]>;
-
-  /**
-   * Run the project's pre-build source lint checks (#28) — broken local
-   * references, print-safety CSS, markdown/HTML style, accessibility — and
-   * return one entry per finding for the Problems panel. Host-side because the
-   * check runner is Node code (fs/glob/postcss). All source checks run
-   * in-process in the packaged app (no external CLI tools). The WebAdapter
-   * stub returns `[]` (lint is non-essential chrome, same as checkCss).
-   */
-  lintProject(projectDir: string): Promise<ProblemEntry[]>;
-
-  getViewerPrefs(): Promise<ViewerPrefs>;
-  setViewerPrefs(patch: Partial<ViewerPrefs>): Promise<{ ok: boolean }>;
-
-  /**
-   * Per-project editor/preview state (#43). Reads the bucket keyed by
-   * `projectDir`; returns `null` when absent or corrupt (silent fail → the app
-   * opens page 1). The WebAdapter stub rejects.
-   */
-  getViewerProjectState(projectDir: string): Promise<ProjectState | null>;
-  /**
-   * Merge-patch a project's state bucket (#43), upserting the key. Only writes
-   * the project-keyed bucket — never the deprecated top-level page/mode.
-   */
-  setViewerProjectState(
-    projectDir: string,
-    patch: Partial<ProjectState>,
-  ): Promise<{ ok: boolean }>;
-  getSettings(): Promise<AppSettings>;
-  setSettings(patch: DeepPartial<AppSettings>): Promise<{ ok: boolean }>;
-
-  // Native (OS) theme (#48)
-  getNativeTheme(): Promise<NativeThemeState>;
+  // Native (OS) theme (#48) — push channel kept (main→renderer push, not request/reply)
   onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void;
 
-  getRecentFolders(): Promise<RecentFolderEntry[]>;
-  getFavorites(): Promise<FavoriteEntry[]>;
-  toggleFavorite(folderPath: string, title: string): Promise<{ favorited: boolean }>;
-  removeRecent(folderPath: string): Promise<{ ok: boolean }>;
-
-  /**
-   * Background scan (#27) of `projectSearchRoots` for print-md projects
-   * (folders containing manifest.yaml/.yml) not already in recents/favorites.
-   * Shallow (depth ≤ 3). The WebAdapter stub returns `[]`.
-   */
-  discoverProjects(): Promise<DiscoveredProject[]>;
-
-  /**
-   * Classify an opened folder as `local-folder` / `local-git-folder` (#12) and
-   * return its capabilities. The WebAdapter stub rejects. Always called after a
-   * preview starts; never relies on the cached `ViewerPrefs.projectSource`.
-   */
-  classifyProject(path: string): Promise<ProjectClassification>;
-
-  /**
-   * Scaffold a new project from an embedded starter template (#25). A thin
-   * pass-through to the lib's `scaffoldProject` — the wizard collects inputs and
-   * the lib does the work (template copy, placeholder fill, optional local Git
-   * init). The WebAdapter stub rejects (the wizard is desktop-only in 0.4.0).
-   */
-  createProject(options: CreateProjectOptions): Promise<CreateProjectResult>;
-
-  // ── Project templates + snippets (#29) ──────────────────────────────────────
-  // Thin pass-throughs to the shared lib (one impl for CLI + viewer). Templates
-  // are listed for the New Project wizard; "Save as template" captures the open
-  // project; snippets are reusable markdown fragments stored per-project. The
-  // WebAdapter stubs degrade: built-in templates list works (static metadata),
-  // custom-template + save-as + folder-import reject (desktop-only in v1), and
-  // snippets work via the FSA project root.
-
-  /** List the built-in starter templates (static metadata). */
-  listBuiltInTemplates(): Promise<TemplateInfo[]>;
-  /** List the user's saved/imported custom templates. WebAdapter: returns []. */
-  listCustomTemplates(): Promise<TemplateInfo[]>;
-  /**
-   * Save the open project as a reusable custom template under the host's
-   * templates dir. WebAdapter: rejects (desktop-only in v1).
-   */
-  saveProjectAsTemplate(projectDir: string, name: string): Promise<TemplateInfo>;
-  /**
-   * Pick a folder and import it as a custom template. Resolves null when the
-   * user cancels. WebAdapter: rejects (desktop-only in v1).
-   */
-  importTemplateFromFolder(): Promise<TemplateInfo | null>;
-
-  /** List the open project's snippets. WebAdapter: reads the FSA project root. */
-  listSnippets(projectDir: string): Promise<SnippetEntry[]>;
-  /** Read one snippet's raw body. WebAdapter: reads the FSA project root. */
-  readSnippet(projectDir: string, fileName: string): Promise<string>;
-  /** Save a snippet body under the project's `snippets/` folder. */
-  saveSnippet(projectDir: string, name: string, body: string): Promise<SnippetEntry>;
-  /** Delete a snippet by filename. */
-  deleteSnippet(projectDir: string, fileName: string): Promise<void>;
-
-  // ── Plugin manager (#30) ─────────────────────────────────────────────────────
-  // Thin pass-throughs to the shared lib's plugin-manager (one impl for CLI +
-  // viewer). Per CLAUDE.md §5 the host NEVER auto-installs npm packages — it
-  // only records the manifest entry; `validatePlugins` surfaces whether each
-  // configured plugin resolves/loads. Desktop-only in v1; the WebAdapter stubs
-  // reject (mutations) / return [] (lists) and `RECOMMENDED_PLUGINS` is static.
-
-  /** List the open project's configured plugins with their enable flags. */
-  listPlugins(projectDir: string): Promise<ProjectPluginEntry[]>;
-  /** Enable/disable a plugin by its ref (manifest path or npm name). */
-  setPluginEnabled(projectDir: string, ref: string, enabled: boolean): Promise<void>;
-  /** Add an npm plugin by NAME (records the entry only — no install, §5). */
-  addNpmPlugin(projectDir: string, packageName: string): Promise<ProjectPluginEntry>;
-  /**
-   * Pick a local plugin file/folder and import it into the project's
-   * `plugins/` dir, adding a manifest entry. Resolves null when the user
-   * cancels the picker. WebAdapter: rejects (desktop-only in v1).
-   */
-  importLocalPlugin(projectDir: string): Promise<ProjectPluginEntry | null>;
-  /**
-   * Load-test every configured plugin through the lib loader and report which
-   * load OK vs error (with the message). Reuses the fail-fast loader (§5).
-   */
-  validatePlugins(projectDir: string): Promise<PluginValidationResult[]>;
-  /** The static curated recommended-plugins list (informational, one-click add). */
-  listRecommendedPlugins(): Promise<RecommendedPlugin[]>;
-
-  // ── Theme manager (#32) ──────────────────────────────────────────────────────
-  // Thin pass-throughs to the shared lib's theme-manager (one impl for CLI +
-  // viewer). Apply COPIES the theme folder into the project's themes/ dir and
-  // wires the manifest styles; import accepts a local folder (native dialog) or
-  // a URL (raw CSS or theme folder), fetched with the lib's global fetch.
-  // `readThemeCss` feeds the renderer's sandboxed thumbnail preview (the
-  // renderer never touches fs). Desktop-only in v1; the WebAdapter lists the
-  // built-ins (static metadata) and rejects the host-fs operations.
-
-  /** List the built-in starter themes (static metadata + embedded css). */
-  listBuiltInThemes(): Promise<ThemeInfo[]>;
-  /** List the themes copied into the project's `themes/` folder. */
-  listProjectThemes(projectDir: string): Promise<ThemeInfo[]>;
-  /** The project's currently active theme, or null when none is applied. */
-  getActiveTheme(projectDir: string): Promise<ThemeInfo | null>;
-  /**
-   * Apply a theme: copy its folder into `themes/<id>/` and wire the manifest so
-   * its `theme.css` is the active stylesheet. Returns the applied theme.
-   */
-  applyTheme(projectDir: string, target: ApplyThemeTarget): Promise<ThemeInfo>;
-  /**
-   * Pick a folder and import it as a project theme. Resolves null when the user
-   * cancels the picker. WebAdapter: rejects (desktop-only in v1).
-   */
-  importThemeFromFolder(projectDir: string): Promise<ThemeInfo | null>;
-  /** Import a theme from a URL (raw CSS or a theme folder). */
-  importThemeFromUrl(projectDir: string, url: string): Promise<ThemeInfo>;
-  /** Read a theme's CSS for the thumbnail preview (builtin or project). */
-  readThemeCss(
-    projectDir: string | null,
-    source: { kind: "builtin" | "project"; id: string },
-  ): Promise<string>;
-  /** Remove an imported/applied project theme folder (never built-ins). */
-  removeProjectTheme(projectDir: string, id: string): Promise<void>;
-
-  // ── Style resolver (CSS editor; audit B2/G1) ────────────────────────────────
-  /**
-   * Resolve the project's editable stylesheets for the CSS editor: the manifest
-   * `styles:` set (active, in manifest order) followed by other discovered
-   * `.css` files (root, `styles/`, and each theme's `theme.css`), each tagged
-   * whether active. Thin pass-through to the shared lib so the CLI and viewer resolve
-   * CSS identically. The WebAdapter stub returns `[]` (editing is desktop-gated
-   * until the FSA web adapter lands — audit G3).
-   */
-  listProjectStyles(projectDir: string): Promise<ProjectStyle[]>;
+  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from HostServices.
+  // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from HostServices.
 
   // ── Local version history (#13) ───────────────────────────────────────────
-  // All four run in the host (isomorphic-git via the lib — CLAUDE.md §7); the
-  // UI derives which to OFFER from `classifyProject().capabilities`. The
-  // WebAdapter stubs reject (mutations) / return [] (listSnapshots).
-
-  /**
-   * Turn on local version history for a plain folder (`git init` + first
-   * snapshot, all isomorphic-git). Returns the re-classified source +
-   * capabilities so the UI can swap "Enable Version History" for the
-   * snapshot/history actions without a separate classify round-trip.
-   */
-  enableVersionHistory(projectDir: string): Promise<ProjectClassification>;
+  // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot
+  // — migrated to SvelteKit server routes (src/routes/api/vcs/*).
   /**
    * Save an explicit snapshot of the project's current state. `message` is
    * optional author text; the host substitutes a default when blank. Rejects
    * with a friendly message when nothing has changed since the last snapshot.
    */
   saveSnapshot(projectDir: string, message?: string): Promise<SnapshotEntry>;
-  /** List the project's snapshots, newest first (bounded to one page). */
-  listSnapshots(projectDir: string): Promise<SnapshotEntry[]>;
-  /**
-   * One bounded page of snapshots with a continuation cursor — backs the
-   * history dialog's "Show older versions". The walk is capped host-side so
-   * a long history can never freeze the dialog.
-   */
-  listSnapshotsPage(
-    projectDir: string,
-    options?: ListSnapshotsOptions,
-  ): Promise<SnapshotPage>;
-  /**
-   * Restore the project's files to a chosen snapshot — SAFELY: the host takes
-   * an automatic backup snapshot of the current state first (when anything
-   * changed), so a restore can never lose work.
-   */
-  restoreSnapshot(projectDir: string, id: string): Promise<RestoreVersionResult>;
 
   // ── Managed GitHub integration (#15, ADR 0006) ────────────────────────────
   // Two-phase connect: `connectGitHubStart` begins the device flow and
@@ -1245,41 +990,14 @@ export interface HostServices {
   connectGitHubWait(): Promise<RemoteConnection>;
   /** Cancel an in-flight device flow (user closed the dialog). */
   connectGitHubCancel(): Promise<{ ok: boolean }>;
-  /** Forget the stored GitHub connection. */
-  disconnectGitHub(): Promise<{ ok: boolean }>;
-  /** Redacted connection status for a host (default github.com). */
-  getRemoteConnection(host?: string): Promise<RemoteConnection>;
-  /** Repositories the user granted the print-md GitHub App. */
-  listRemoteRepositories(): Promise<RemoteRepository[]>;
-  /** Branches of a chosen repository (default branch preselected by the UI). */
-  listRemoteBranches(owner: string, repo: string): Promise<RemoteBranch[]>;
-  /** Book folders (print-md.yaml/.yml) inside a repository branch. */
-  listRepoBooks(owner: string, repo: string, branch: string): Promise<RepoBook[]>;
+  // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
+  // listRepoBooks, diagnoseProjectRemote, testRemoteAccess, connectGenericHost,
+  // disconnectHost, listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
+
   /** Download ("clone") a repository into a new local project folder. */
   cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
   /** Subscribe to clone progress events. Returns an unsubscribe fn. */
   onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
-
-  // ── Advanced Setup (#14, ADR 0006) ─────────────────────────────────────────
-  // Diagnostics are local reads; the ONLY network call is the explicit
-  // `testRemoteAccess` probe (user-initiated). `connectGenericHost` validates
-  // the pasted token with a refs probe BEFORE the host stores it. WebAdapter:
-  // mutations reject; listHostConnections → []; forgeTokenUrl → null.
-
-  /** Classify the project's remote situation for the environment panel. */
-  diagnoseProjectRemote(projectDir: string): Promise<ProjectRemoteDiagnosis>;
-  /** Explicit, user-initiated remote probe (the `git ls-remote` equivalent). */
-  testRemoteAccess(url: string): Promise<RemoteAccessResult>;
-  /** Validate + store a credential for any smart-HTTPS Git host. */
-  connectGenericHost(
-    args: ConnectGenericHostArgs,
-  ): Promise<{ connected: boolean; host: string; username?: string }>;
-  /** Forget the stored connection for a host. */
-  disconnectHost(host: string): Promise<{ ok: boolean }>;
-  /** Redacted list of stored connections (host/username/label — no tokens). */
-  listHostConnections(): Promise<HostConnectionInfo[]>;
-  /** Token-settings deep link for recognized forges; null when unknown. */
-  forgeTokenUrl(host: string): Promise<string | null>;
 
   // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ───
   //
@@ -1326,14 +1044,7 @@ export interface HostServices {
    */
   respondRecoveryConfirm(requestId: string, approved: boolean): Promise<void>;
 
-  /**
-   * Fetch the yours/theirs text for one conflicted file so the author can
-   * compare before choosing. Called lazily when the user expands the "Compare
-   * versions" disclosure inside `ConflictChoicesDialog`. Returns the preview
-   * payload (or throws on path-traversal / isBinary:true).
-   * WebAdapter: rejects with "not implemented" (recovery is desktop-only).
-   */
-  getConflictPreview(projectDir: string, path: string): Promise<ConflictPreview>;
+  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
 
   /**
    * Enable or disable the auto-sync master switch for the current project.
@@ -1343,57 +1054,30 @@ export interface HostServices {
    */
   setAutoSync(enabled: boolean): Promise<void>;
 
-  // ── Sync (#15 sync phase, ADR 0006 D5) ─────────────────────────────────────
-  // Transparent auto-sync runs in the host (snapshot-first → fetch → merge →
-  // push). The renderer never operates sync; it only triggers a sync to
-  // surface a conflict and then applies the per-file choices. Credentials are
-  // resolved host-side and never reach the renderer. WebAdapter stubs reject.
+  // syncChanges — migrated to server route (Phase 2F).
 
-  /**
-   * Snapshot-first sync of the project to its online repository. Conflicts come
-   * back as `{ status: "conflict" }` with per-file rows for the choices dialog.
-   */
-  syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
+  // ── Sync (#15 sync phase, ADR 0006 D5) ─────────────────────────────────────
   /** Apply per-file conflict choices and sync the combined result. */
   resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
 
-  /**
-   * Read the contents of an operation log file (e.g. the sync/recovery log
-   * referenced by `SyncStatus.logFile`). Returns the raw text contents, or
-   * null when the file doesn't exist or can't be read. The WebAdapter stub
-   * resolves null (no file system in the browser).
-   */
-  readLogFile(filePath: string): Promise<string | null>;
+  // readLogFile migrated to server route (src/routes/api/log/read)
 
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;
   stopPreview(): Promise<{ stopped: boolean }>;
   cancelExport(exportId: string): Promise<{ canceled: boolean }>;
   build(args: BuildArgs): Promise<BuildResult>;
-  doctor(): Promise<unknown>;
+  // doctor migrated to server route (Phase 2C)
 
   // Event subscriptions (return an unsubscribe fn)
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;
   onUrlPreviewBlocked(cb: (data: UrlPreviewBlockedEvent) => void): () => void;
 
-  // ── Unsaved changes / recovery (#44) — Phase-0 stubs, no impl yet ──────────
-
-  /** Write a debounced crash-recovery snapshot of the open buffer (#44). */
-  writeRecovery(
-    filePath: string,
-    content: string,
-    baseMtimeMs: number,
-  ): Promise<{ ok: boolean }>;
-  /** Clear the recovery snapshot for a file after a successful disk save (#44). */
-  clearRecovery(filePath: string): Promise<{ ok: boolean }>;
-  /** List pending recovery snapshots for an opened project, newest first (#44). */
-  listRecovery(projectDir: string): Promise<RecoveryEntry[]>;
+  // writeRecovery, clearRecovery, listRecovery — migrated to server routes
+  // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
 
   /**
-   * Push the renderer's pending-save state to main so the window `close` gate
-   * can flush before quitting (#44). Renderer → main, fire-and-forget.
-   */
-  setDirtyState(isDirty: boolean): Promise<void>;
+  // app:setDirtyState — migrated to server route (Phase 2B).
   /**
    * Subscribe to the main process's request to flush before the window closes
    * (#44). The renderer flushes its buffer then signals completion; main waits
@@ -1441,33 +1125,26 @@ export interface Platform extends Omit<PlatformAdapter, "openFolder">, HostServi
  * The raw `window.electron` bridge shape exposed by `electron/preload.ts`.
  * Differs from `Platform` only in the members the adapter maps/owns: the fs IPC
  * (`openDirectory` → `Platform.openFolder`, `readFile`, `writeFile`), the
- * FolderRef translation seam (`getRecentFolders`/`getFavorites`/`startPreview`/
- * `build` keep raw path strings here; #49), and `capabilities()` (synthesised by
- * the adapter, not an IPC — Omitted so it can't be called on the raw bridge).
+ * FolderRef translation seam (`startPreview`/`build` keep raw path strings here;
+ * #49), and `capabilities()` (synthesised by the adapter, not an IPC — Omitted
+ * so it can't be called on the raw bridge).
  * ONLY `electron-adapter.ts` (and the `Window` global) should reference this —
  * everything else goes through `Platform`.
  */
 export interface ElectronBridge
   extends Omit<
     HostServices,
-    | "getRecentFolders"
-    | "getFavorites"
     | "startPreview"
     | "build"
     | "capabilities"
-    | "pickImageFile"
   > {
   openDirectory(): Promise<string | null>;
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<FileWriteResult>;
   listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
   // #49: the IPC layer keeps raw path-string semantics — the ElectronAdapter is
-  // the translation seam that wraps these into FolderRef-shaped entries / unwraps
-  // FolderRef.key back into the string `input` the existing IPC expects.
-  getRecentFolders(): Promise<
-    Array<{ path: string; title: string; openedAt: string; exists: boolean }>
-  >;
-  getFavorites(): Promise<Array<{ path: string; title: string; exists: boolean }>>;
+  // the translation seam that unwraps FolderRef.key back into the string `input`
+  // the existing IPC expects.
   startPreview(args: { input: string } & Omit<PreviewStartArgs, "input">): Promise<PreviewStartResult>;
   build(args: { input: string } & Omit<BuildArgs, "input">): Promise<BuildResult>;
   /** Raw fs stat IPC behind `PlatformAdapter.statFile` (#44). */
@@ -1477,8 +1154,4 @@ export interface ElectronBridge
    * to change events for `path` and returns an unsubscribe fn.
    */
   watchFolder(path: string, cb: () => void): () => void;
-  // readLogFile is inherited unchanged from HostServices (raw path both sides).
-  // #61: the file-picker IPC keeps the raw path string — the ElectronAdapter is
-  // the translation seam that wraps it into a host-neutral FileRef.
-  pickImageFile(): Promise<string | null>;
 }

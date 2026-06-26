@@ -28,92 +28,32 @@ function makeBridgeWithRecovery() {
       return ret;
     };
 
-  // All the required bridge members (minimal subset needed for ElectronAdapter)
+  // Minimal bridge members matching the current preload.ts contextBridge surface
   const bridge = {
     apiVersion: 1,
     updater: { getStatus: rec("updater.getStatus", Promise.resolve({})) },
-    openDirectory: rec("openDirectory", Promise.resolve(null)),
-    savePdf: rec("savePdf", Promise.resolve(null)),
-    openExternal: rec("openExternal", Promise.resolve()),
-    showInFolder: rec("showInFolder", Promise.resolve()),
-    readFile: rec("readFile", Promise.resolve("")),
-    writeFile: rec("writeFile", Promise.resolve({ mtimeMs: 0 })),
-    listDir: rec("listDir", Promise.resolve([])),
-    listProjectFiles: rec("listProjectFiles", Promise.resolve({ md: [], css: [] })),
-    checkCss: rec("checkCss", Promise.resolve([])),
-    lintProject: rec("lintProject", Promise.resolve([])),
-    statFile: rec("statFile", Promise.resolve({ mtimeMs: 0, size: 0, exists: false })),
-    watchFolder: rec("watchFolder", () => {}),
-    getStatus: rec("getStatus", Promise.resolve({ ok: true })),
-    getLastProject: rec("getLastProject", Promise.resolve(null)),
-    getViewerPrefs: rec("getViewerPrefs", Promise.resolve({})),
-    setViewerPrefs: rec("setViewerPrefs", Promise.resolve({ ok: true })),
-    getViewerProjectState: rec("getViewerProjectState", Promise.resolve(null)),
-    setViewerProjectState: rec("setViewerProjectState", Promise.resolve({ ok: true })),
-    getSettings: rec("getSettings", Promise.resolve({})),
-    setSettings: rec("setSettings", Promise.resolve({ ok: true })),
-    getNativeTheme: rec("getNativeTheme", Promise.resolve({ shouldUseDarkColors: false })),
     onNativeThemeUpdated: rec("onNativeThemeUpdated", () => {}),
-    getRecentFolders: rec("getRecentFolders", Promise.resolve([])),
-    getFavorites: rec("getFavorites", Promise.resolve([])),
-    toggleFavorite: rec("toggleFavorite", Promise.resolve({ favorited: false })),
-    removeRecent: rec("removeRecent", Promise.resolve({ ok: true })),
-    discoverProjects: rec("discoverProjects", Promise.resolve([])),
-    classifyProject: rec("classifyProject", Promise.resolve({ source: { type: "local-folder", path: "/" }, capabilities: {} })),
-    createProject: rec("createProject", Promise.resolve({ projectDir: "/p", manifestPath: "/p/manifest.yaml", openFile: "/p/ch.md", versionHistory: "none" })),
+    watchFolder: rec("watchFolder", () => {}),
+    onFlushBeforeClose: rec("onFlushBeforeClose", () => {}),
+    onFolderChanged: rec("onFolderChanged", () => {}),
+    saveSnapshot: rec("saveSnapshot", Promise.resolve({})),
+    connectGitHubStart: rec("connectGitHubStart", Promise.resolve({})),
+    connectGitHubWait: rec("connectGitHubWait", Promise.resolve({ connected: false })),
+    connectGitHubCancel: rec("connectGitHubCancel", Promise.resolve({ ok: true })),
+    cloneRemoteRepository: rec("cloneRemoteRepository", Promise.resolve({ projectDir: "/p" })),
+    onCloneProgress: rec("onCloneProgress", () => {}),
+    onSyncStatus: rec("onSyncStatus", () => {}),
+    setAutoSync: rec("setAutoSync", Promise.resolve()),
+    resolveSyncConflicts: rec("resolveSyncConflicts", Promise.resolve({ status: "synced", message: "", mergedRemoteChanges: false })),
     startPreview: rec("startPreview", Promise.resolve({ url: "x" })),
     stopPreview: rec("stopPreview", Promise.resolve({ stopped: true })),
     cancelExport: rec("cancelExport", Promise.resolve({ canceled: false })),
     build: rec("build", Promise.resolve({ outDir: "/out" })),
-    doctor: rec("doctor", Promise.resolve({})),
     onBuildProgress: rec("onBuildProgress", () => {}),
     onUrlPreviewBlocked: rec("onUrlPreviewBlocked", () => {}),
-    splashStatus: rec("splashStatus", Promise.resolve()),
-    rendererReady: rec("rendererReady", Promise.resolve()),
-    writeRecovery: rec("writeRecovery", Promise.resolve({ ok: true })),
-    clearRecovery: rec("clearRecovery", Promise.resolve({ ok: true })),
-    listRecovery: rec("listRecovery", Promise.resolve([])),
-    setDirtyState: rec("setDirtyState", Promise.resolve()),
-    onFlushBeforeClose: rec("onFlushBeforeClose", () => {}),
-    onFolderChanged: rec("onFolderChanged", () => {}),
-    pickImageFile: rec("pickImageFile", Promise.resolve(null)),
-    copyFile: rec("copyFile", Promise.resolve("/dest")),
-    pickImageFiles: rec("pickImageFiles", Promise.resolve([])),
-    listProjectImages: rec("listProjectImages", Promise.resolve([])),
-    imageThumbnail: rec("imageThumbnail", Promise.resolve(null)),
-    inspectImage: rec("inspectImage", Promise.resolve(null)),
-    connectGitHubStart: rec("connectGitHubStart", Promise.resolve({})),
-    connectGitHubWait: rec("connectGitHubWait", Promise.resolve({ connected: false })),
-    connectGitHubCancel: rec("connectGitHubCancel", Promise.resolve({ ok: true })),
-    disconnectGitHub: rec("disconnectGitHub", Promise.resolve({ ok: true })),
-    getRemoteConnection: rec("getRemoteConnection", Promise.resolve({ connected: false })),
-    listRemoteRepositories: rec("listRemoteRepositories", Promise.resolve([])),
-    listRemoteBranches: rec("listRemoteBranches", Promise.resolve([])),
-    listRepoBooks: rec("listRepoBooks", Promise.resolve([])),
-    cloneRemoteRepository: rec("cloneRemoteRepository", Promise.resolve({ projectDir: "/p" })),
-    onCloneProgress: rec("onCloneProgress", () => {}),
-    diagnoseProjectRemote: rec("diagnoseProjectRemote", Promise.resolve({})),
-    testRemoteAccess: rec("testRemoteAccess", Promise.resolve({ ok: false, reason: "unknown", message: "" })),
-    connectGenericHost: rec("connectGenericHost", Promise.resolve({ connected: false, host: "" })),
-    disconnectHost: rec("disconnectHost", Promise.resolve({ ok: true })),
-    listHostConnections: rec("listHostConnections", Promise.resolve([])),
-    forgeTokenUrl: rec("forgeTokenUrl", Promise.resolve(null)),
-    onSyncStatus: rec("onSyncStatus", () => {}),
-    setAutoSync: rec("setAutoSync", Promise.resolve()),
-    syncChanges: rec("syncChanges", Promise.resolve({ status: "up-to-date", message: "" })),
-    resolveSyncConflicts: rec("resolveSyncConflicts", Promise.resolve({ status: "synced", message: "", mergedRemoteChanges: false })),
-    enableVersionHistory: rec("enableVersionHistory", Promise.resolve({})),
-    saveSnapshot: rec("saveSnapshot", Promise.resolve({})),
-    listSnapshots: rec("listSnapshots", Promise.resolve([])),
-    listSnapshotsPage: rec("listSnapshotsPage", Promise.resolve({ entries: [], hasMore: false })),
-    restoreSnapshot: rec("restoreSnapshot", Promise.resolve({ restoredId: "x" })),
-    // ── Recovery seam (new) ──────────────────────────────────────────────────
+    // ── Recovery seam ────────────────────────────────────────────────────────
     onRecoveryConfirm: rec("onRecoveryConfirm", () => {}),
     respondRecoveryConfirm: rec("respondRecoveryConfirm", Promise.resolve()),
-    getConflictPreview: rec(
-      "getConflictPreview",
-      Promise.resolve({ mine: "mine", theirs: "theirs", kind: "both-edited", isBinary: false }),
-    ),
   };
 
   return { bridge, calls };
@@ -161,21 +101,6 @@ describe("ElectronAdapter — recovery seam delegation", () => {
     expect(call?.args[1]).toBe(true);
   });
 
-  test("getConflictPreview delegates projectDir+path to bridge", async () => {
-    const { bridge, calls } = makeBridgeWithRecovery();
-    // @ts-expect-error test global
-    globalThis.window = { electron: bridge };
-
-    const adapter = new ElectronAdapter();
-    const result = await adapter.getConflictPreview("/proj/book", "ch01.md");
-
-    const call = calls.find((c) => c.method === "getConflictPreview");
-    expect(call?.args[0]).toBe("/proj/book");
-    expect(call?.args[1]).toBe("ch01.md");
-    expect((result as ConflictPreview).mine).toBe("mine");
-    expect((result as ConflictPreview).theirs).toBe("theirs");
-    expect((result as ConflictPreview).isBinary).toBe(false);
-  });
 });
 
 describe("WebAdapter — recovery seam stubs", () => {
@@ -199,8 +124,4 @@ describe("WebAdapter — recovery seam stubs", () => {
     await expect(adapter.respondRecoveryConfirm("any-id", true)).resolves.toBeUndefined();
   });
 
-  test("getConflictPreview rejects with a not-implemented error", async () => {
-    const adapter = new WebAdapter();
-    await expect(adapter.getConflictPreview("/proj", "ch.md")).rejects.toBeDefined();
-  });
 });

@@ -53,44 +53,24 @@ import type {
   NativeThemeState,
   DiscoveredProject,
   ProjectClassification,
-  PrintSafeWarning,
-  ProblemEntry,
-  MediaImageEntry,
-  MediaImageDetails,
+  // PrintSafeWarning, ProblemEntry, MediaImageEntry, MediaImageDetails — removed (Phase 2C)
   FileStat,
   FileWriteResult,
-  RecoveryEntry,
   FolderChangedEvent,
   CreateProjectOptions,
+  AdoptFolderOptions,
   CreateProjectResult,
-  TemplateInfo,
-  SnippetEntry,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-  ThemeInfo,
-  ApplyThemeTarget,
-  ProjectStyle,
+  // TemplateInfo, SnippetEntry — removed (Phase 2D)
+  // ProjectPluginEntry, PluginValidationResult, RecommendedPlugin, ThemeInfo, ApplyThemeTarget, ProjectStyle — removed (Phase 2E)
   SnapshotEntry,
-  SnapshotPage,
-  ListSnapshotsOptions,
-  RestoreVersionResult,
   DeviceCodeInfo,
   RemoteConnection,
-  RemoteRepository,
-  RemoteBranch,
-  RepoBook,
   CloneProgressEvent,
   CloneRepositoryArgs,
-  ProjectRemoteDiagnosis,
-  RemoteAccessResult,
-  ConnectGenericHostArgs,
-  HostConnectionInfo,
   SyncOutcome,
   ResolveSyncConflictsArgs,
   SyncStatus,
   RecoveryConfirmRequest,
-  ConflictPreview,
   FolderRef,
   FileRef,
   PlatformCapabilities,
@@ -426,17 +406,7 @@ export class WebAdapter implements Platform {
     return rejectNotImplemented("pickImageFiles");
   }
 
-  listProjectImages(_projectDir: string): Promise<MediaImageEntry[]> {
-    return rejectNotImplemented("listProjectImages");
-  }
-
-  imageThumbnail(_filePath: string): Promise<string | null> {
-    return Promise.resolve(null);
-  }
-
-  inspectImage(_filePath: string): Promise<MediaImageDetails | null> {
-    return Promise.resolve(null);
-  }
+  // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
 
   openExternal(_url: string): Promise<void> {
     return rejectNotImplemented("openExternal");
@@ -452,9 +422,7 @@ export class WebAdapter implements Platform {
     return Promise.resolve(null);
   }
 
-  getStatus(): Promise<{ ok: boolean; runtime: string; name: string }> {
-    return rejectNotImplemented("getStatus");
-  }
+  // getStatus migrated to server route (Phase 2C)
 
   // #33 Phase 3: the last-opened folder key (its handle + recents row are
   // persisted; the SPA reopens it via reopenFolder on a user gesture).
@@ -479,17 +447,7 @@ export class WebAdapter implements Platform {
     return listProjectFilesFromRoot(root);
   }
 
-  // Lint is non-essential chrome — degrade to "no warnings" rather than reject,
-  // so a future PWA editor still renders without a gutter until lint lands.
-  checkCss(_css: string, _from?: string): Promise<PrintSafeWarning[]> {
-    return Promise.resolve([]);
-  }
-
-  // Same degrade-to-clean policy as checkCss: the Problems panel simply shows
-  // "No problems found" on the web until a PWA lint backend exists.
-  lintProject(_projectDir: string): Promise<ProblemEntry[]> {
-    return Promise.resolve([]);
-  }
+  // checkCss, lintProject migrated to server routes (Phase 2C)
 
   // ── Viewer prefs (#33 Phase 3) — a single IndexedDB blob, merge-patched ──────
   async getViewerPrefs(): Promise<ViewerPrefs> {
@@ -652,126 +610,19 @@ export class WebAdapter implements Platform {
     return rejectNotImplemented("createProject");
   }
 
-  // ── Project templates + snippets (#29) ──────────────────────────────────────
-  // Built-in template metadata is static (safe to surface in a future PWA
-  // wizard). Everything that touches the host filesystem — custom templates,
-  // save-as-template, folder import, and per-project snippets — is desktop-only
-  // in v1; the renderer guards these behind isDesktop(). Snippets over the FSA
-  // project root are a documented follow-up (see CLAUDE.md §8 / issue #29).
-  async listBuiltInTemplates(): Promise<TemplateInfo[]> {
-    return [
-      { id: "book", label: "Book", description: "A clean starting point for a novel, memoir, or any long-form book.", kind: "builtin" },
-      { id: "ttrpg", label: "TTRPG supplement", description: "Rules, stat blocks, and tables for a tabletop roleplaying supplement.", kind: "builtin" },
-      { id: "zine", label: "Zine", description: "A short, personal zine made to be printed, folded, and shared.", kind: "builtin" },
-      { id: "technical", label: "Technical document", description: "A manual or guide with steps, reference tables, and code examples.", kind: "builtin" },
-    ];
-  }
-  async listCustomTemplates(): Promise<TemplateInfo[]> {
-    return [];
-  }
-  saveProjectAsTemplate(_projectDir: string, _name: string): Promise<TemplateInfo> {
-    return rejectNotImplemented("saveProjectAsTemplate");
-  }
-  importTemplateFromFolder(): Promise<TemplateInfo | null> {
-    return rejectNotImplemented("importTemplateFromFolder");
-  }
-  listSnippets(_projectDir: string): Promise<SnippetEntry[]> {
-    return Promise.resolve([]);
-  }
-  readSnippet(_projectDir: string, _fileName: string): Promise<string> {
-    return rejectNotImplemented("readSnippet");
-  }
-  saveSnippet(_projectDir: string, _name: string, _body: string): Promise<SnippetEntry> {
-    return rejectNotImplemented("saveSnippet");
-  }
-  deleteSnippet(_projectDir: string, _fileName: string): Promise<void> {
-    return rejectNotImplemented("deleteSnippet");
+  adoptFolder(_options: AdoptFolderOptions): Promise<CreateProjectResult> {
+    return rejectNotImplemented("adoptFolder");
   }
 
-  // ── Plugin manager (#30) — desktop-only in v1; reject/empty on web ─────────
-  // The manifest read/write/toggle + load-test all run node-side in the host.
-  // The UI guards with isDesktop() so these stubs are only hit defensively.
-  listPlugins(_projectDir: string): Promise<ProjectPluginEntry[]> {
-    return Promise.resolve([]);
-  }
-  setPluginEnabled(_projectDir: string, _ref: string, _enabled: boolean): Promise<void> {
-    return rejectNotImplemented("setPluginEnabled");
-  }
-  addNpmPlugin(_projectDir: string, _packageName: string): Promise<ProjectPluginEntry> {
-    return rejectNotImplemented("addNpmPlugin");
-  }
-  importLocalPlugin(_projectDir: string): Promise<ProjectPluginEntry | null> {
-    return rejectNotImplemented("importLocalPlugin");
-  }
-  validatePlugins(_projectDir: string): Promise<PluginValidationResult[]> {
-    return Promise.resolve([]);
-  }
-  listRecommendedPlugins(): Promise<RecommendedPlugin[]> {
-    return Promise.resolve([]);
-  }
-
-  // ── Theme manager (#32) — desktop-only in v1; reject/empty on web ──────────
-  // Theme apply/import all touch the host filesystem (copy folders, write the
-  // manifest), so the UI guards with isDesktop(). Built-in metadata + reading a
-  // built-in theme's CSS COULD work on web later (embedded css), but in v1 the
-  // panel is desktop-only, so these stubs are only hit defensively.
-  listBuiltInThemes(): Promise<ThemeInfo[]> {
-    return Promise.resolve([]);
-  }
-  listProjectThemes(_projectDir: string): Promise<ThemeInfo[]> {
-    return Promise.resolve([]);
-  }
-  getActiveTheme(_projectDir: string): Promise<ThemeInfo | null> {
-    return Promise.resolve(null);
-  }
-  applyTheme(_projectDir: string, _target: ApplyThemeTarget): Promise<ThemeInfo> {
-    return rejectNotImplemented("applyTheme");
-  }
-  importThemeFromFolder(_projectDir: string): Promise<ThemeInfo | null> {
-    return rejectNotImplemented("importThemeFromFolder");
-  }
-  importThemeFromUrl(_projectDir: string, _url: string): Promise<ThemeInfo> {
-    return rejectNotImplemented("importThemeFromUrl");
-  }
-  readThemeCss(
-    _projectDir: string | null,
-    _source: { kind: "builtin" | "project"; id: string },
-  ): Promise<string> {
-    return rejectNotImplemented("readThemeCss");
-  }
-  removeProjectTheme(_projectDir: string, _id: string): Promise<void> {
-    return rejectNotImplemented("removeProjectTheme");
-  }
-
-  // ── Style resolver (audit B2/G1) — desktop-only editing (G3); empty on web ──
-  listProjectStyles(_projectDir: string): Promise<ProjectStyle[]> {
-    return Promise.resolve([]);
-  }
+  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from WebAdapter.
+  // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from WebAdapter.
 
   // ── Local version history (#13) — desktop-only; reject/empty on web ────────
-  enableVersionHistory(_projectDir: string): Promise<ProjectClassification> {
-    return rejectNotImplemented("enableVersionHistory");
-  }
+  // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot
+  // — migrated to SvelteKit server routes (src/routes/api/vcs/*).
 
   saveSnapshot(_projectDir: string, _message?: string): Promise<SnapshotEntry> {
     return rejectNotImplemented("saveSnapshot");
-  }
-
-  // Resolve to [] (like listRecovery) so a history view simply renders empty.
-  listSnapshots(_projectDir: string): Promise<SnapshotEntry[]> {
-    return Promise.resolve([]);
-  }
-
-  // Empty page (matches listSnapshots) so a history view renders empty.
-  listSnapshotsPage(
-    _projectDir: string,
-    _options?: ListSnapshotsOptions,
-  ): Promise<SnapshotPage> {
-    return Promise.resolve({ entries: [], hasMore: false });
-  }
-
-  restoreSnapshot(_projectDir: string, _id: string): Promise<RestoreVersionResult> {
-    return rejectNotImplemented("restoreSnapshot");
   }
 
   // ── Managed GitHub integration (#15) — desktop-only; safe stubs on web ─────
@@ -787,26 +638,8 @@ export class WebAdapter implements Platform {
     return Promise.resolve({ ok: true });
   }
 
-  disconnectGitHub(): Promise<{ ok: boolean }> {
-    return rejectNotImplemented("disconnectGitHub");
-  }
-
-  // Resolve "not connected" so connection badges simply stay absent on web.
-  getRemoteConnection(_host?: string): Promise<RemoteConnection> {
-    return Promise.resolve({ connected: false });
-  }
-
-  listRemoteRepositories(): Promise<RemoteRepository[]> {
-    return rejectNotImplemented("listRemoteRepositories");
-  }
-
-  listRemoteBranches(_owner: string, _repo: string): Promise<RemoteBranch[]> {
-    return rejectNotImplemented("listRemoteBranches");
-  }
-
-  listRepoBooks(_owner: string, _repo: string, _branch: string): Promise<RepoBook[]> {
-    return rejectNotImplemented("listRepoBooks");
-  }
+  // disconnectGitHub, getRemoteConnection, listRemoteRepositories,
+  // listRemoteBranches, listRepoBooks — migrated to server routes (Phase 2F).
 
   cloneRemoteRepository(_args: CloneRepositoryArgs): Promise<{ projectDir: string }> {
     return rejectNotImplemented("cloneRemoteRepository");
@@ -816,32 +649,8 @@ export class WebAdapter implements Platform {
     return () => {};
   }
 
-  // ── Advanced Setup (#14) — desktop-only until the PWA lands ──────────────
-  diagnoseProjectRemote(_projectDir: string): Promise<ProjectRemoteDiagnosis> {
-    return rejectNotImplemented("diagnoseProjectRemote");
-  }
-
-  testRemoteAccess(_url: string): Promise<RemoteAccessResult> {
-    return rejectNotImplemented("testRemoteAccess");
-  }
-
-  connectGenericHost(
-    _args: ConnectGenericHostArgs,
-  ): Promise<{ connected: boolean; host: string; username?: string }> {
-    return rejectNotImplemented("connectGenericHost");
-  }
-
-  disconnectHost(_host: string): Promise<{ ok: boolean }> {
-    return rejectNotImplemented("disconnectHost");
-  }
-
-  listHostConnections(): Promise<HostConnectionInfo[]> {
-    return Promise.resolve([]);
-  }
-
-  forgeTokenUrl(_host: string): Promise<string | null> {
-    return Promise.resolve(null);
-  }
+  // diagnoseProjectRemote, testRemoteAccess, connectGenericHost, disconnectHost,
+  // listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
 
   // ── Auto-sync orchestrator seam — desktop-only; safe stubs on web ───────────
   // The ambient pill simply stays absent (no handler is ever called) when
@@ -867,14 +676,9 @@ export class WebAdapter implements Platform {
     return Promise.resolve();
   }
 
-  getConflictPreview(_projectDir: string, _path: string): Promise<ConflictPreview> {
-    return rejectNotImplemented("getConflictPreview");
-  }
+  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
 
-  // ── Sync (#15 sync phase) — desktop-only until the PWA lands ───────────────
-  syncChanges(_projectDir: string, _message?: string): Promise<SyncOutcome> {
-    return rejectNotImplemented("syncChanges");
-  }
+  // syncChanges — migrated to server route (Phase 2F).
 
   resolveSyncConflicts(_args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {
     return rejectNotImplemented("resolveSyncConflicts");
@@ -1080,9 +884,7 @@ export class WebAdapter implements Platform {
     };
   }
 
-  doctor(): Promise<unknown> {
-    return rejectNotImplemented("doctor");
-  }
+  // doctor migrated to server route (Phase 2C)
 
   onBuildProgress(_cb: (data: ExportProgressEvent) => void): () => void {
     return () => {};
@@ -1092,22 +894,8 @@ export class WebAdapter implements Platform {
     return () => {};
   }
 
-  // ── Unsaved changes / recovery (#44) — desktop-only; reject/no-op on web ───
-  writeRecovery(
-    _filePath: string,
-    _content: string,
-    _baseMtimeMs: number,
-  ): Promise<{ ok: boolean }> {
-    return rejectNotImplemented("writeRecovery");
-  }
-
-  clearRecovery(_filePath: string): Promise<{ ok: boolean }> {
-    return rejectNotImplemented("clearRecovery");
-  }
-
-  listRecovery(_projectDir: string): Promise<RecoveryEntry[]> {
-    return Promise.resolve([]);
-  }
+  // writeRecovery, clearRecovery, listRecovery — migrated to server routes
+  // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
 
   setDirtyState(_isDirty: boolean): Promise<void> {
     return rejectNotImplemented("setDirtyState");

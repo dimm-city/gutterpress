@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { listProjectStyles } from "./style-resolver";
+import { listProjectStyles, resolveActiveStyles } from "./style-resolver";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `style-resolver-tests-${Date.now()}`);
 
@@ -89,7 +89,7 @@ describe("listProjectStyles", () => {
     expect(styles[1]!.active).toBe(true);
   });
 
-  test("no manifest styles → alphabetical fallback, none marked active", async () => {
+  test("no manifest styles → first discovered is ACTIVE (matches the renderer)", async () => {
     const dir = projectDir();
     write(dir, "z.css", "");
     write(dir, "a.css", "");
@@ -97,18 +97,30 @@ describe("listProjectStyles", () => {
 
     const styles = await listProjectStyles(dir);
     expect(styles.length).toBe(2);
-    expect(styles.every((s) => !s.active)).toBe(true);
+    // The first discovered (alphabetical) is the one the preview renders, so it
+    // is active; the rest are switchable but not active.
     expect(styles[0]!.path).toBe(join(dir, "a.css"));
+    expect(styles[0]!.active).toBe(true);
     expect(styles[1]!.path).toBe(join(dir, "z.css"));
+    expect(styles[1]!.active).toBe(false);
   });
 
-  test("no manifest at all → discovered files, none active", async () => {
+  test("no manifest at all → the single discovered file is ACTIVE", async () => {
     const dir = projectDir();
     write(dir, "main.css", "");
     const styles = await listProjectStyles(dir);
     expect(styles.length).toBe(1);
-    expect(styles[0]!.active).toBe(false);
+    expect(styles[0]!.active).toBe(true);
     expect(styles[0]!.path).toBe(join(dir, "main.css"));
+  });
+
+  test("no manifest styles → styles/book.css preferred over other discovered", async () => {
+    const dir = projectDir();
+    write(dir, "a.css", "");
+    write(dir, "styles/book.css", ":root{}");
+    const styles = await listProjectStyles(dir);
+    const active = styles.find((s) => s.active);
+    expect(active!.path).toBe(join(dir, "styles/book.css"));
   });
 
   test("empty project → empty array", async () => {
@@ -134,5 +146,44 @@ describe("listProjectStyles", () => {
     const matches = styles.filter((s) => s.path === join(dir, "style.css"));
     expect(matches.length).toBe(1);
     expect(matches[0]!.active).toBe(true);
+  });
+});
+
+describe("resolveActiveStyles (the one resolver the renderer + editor share)", () => {
+  beforeEach(() => { mkdirSync(TMP_ROOT, { recursive: true }); });
+  afterEach(() => { rmSync(TMP_ROOT, { recursive: true, force: true }); });
+
+  test("returns the manifest styles verbatim when present", async () => {
+    const dir = projectDir();
+    expect(await resolveActiveStyles(dir, ["themes/x/theme.css"])).toEqual(["themes/x/theme.css"]);
+  });
+
+  test("no manifest → prefers styles/book.css, then css/print.css, then css/index.css", async () => {
+    const dir = projectDir();
+    write(dir, "css/index.css", "");
+    expect(await resolveActiveStyles(dir, [])).toEqual(["css/index.css"]);
+    write(dir, "css/print.css", "");
+    expect(await resolveActiveStyles(dir, [])).toEqual(["css/print.css"]);
+    write(dir, "styles/book.css", "");
+    expect(await resolveActiveStyles(dir, [])).toEqual(["styles/book.css"]);
+  });
+
+  test("no manifest, no conventional file → first discovered .css", async () => {
+    const dir = projectDir();
+    write(dir, "weird-name.css", "");
+    expect(await resolveActiveStyles(dir, [])).toEqual(["weird-name.css"]);
+  });
+
+  test("no stylesheet at all → [] (never a phantom css/print.css link)", async () => {
+    const dir = projectDir();
+    expect(await resolveActiveStyles(dir, [])).toEqual([]);
+  });
+
+  test("the editor's ACTIVE set === resolveActiveStyles (renderer/editor agree)", async () => {
+    const dir = projectDir();
+    write(dir, "styles/book.css", ":root{}");
+    write(dir, "other.css", "");
+    const active = (await listProjectStyles(dir)).filter((s) => s.active).map((s) => s.displayName);
+    expect(active).toEqual(await resolveActiveStyles(dir, undefined));
   });
 });

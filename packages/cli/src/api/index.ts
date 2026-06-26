@@ -72,6 +72,7 @@ export type {
 // ── Project scaffolding (#25) ─────────────────────────────────────────────────
 export {
   scaffoldProject,
+  adoptFolder,
   slugifyProjectName,
   escapeYamlScalar,
 } from "../lib/project-scaffold.ts";
@@ -80,6 +81,7 @@ export type {
   ProjectTemplateId,
   ProjectVersionHistoryMode,
   CreateProjectOptions,
+  AdoptFolderOptions,
   CreateProjectResult,
   CreateProjectErrorCode,
   CreateProjectError,
@@ -149,8 +151,8 @@ export type {
   BuiltInThemeId,
 } from "../lib/theme-manager.ts";
 
-// ── Style resolver (CSS-editor file resolution; audit B2/G1) ──────────────────
-export { listProjectStyles } from "../lib/style-resolver.ts";
+// ── Stylesheet resolution (renderer links them; editor edits them — one source) ──
+export { listProjectStyles, resolveActiveStyles } from "../lib/style-resolver.ts";
 export type { ProjectStyle } from "../lib/style-resolver.ts";
 
 export {

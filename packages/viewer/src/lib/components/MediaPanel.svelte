@@ -13,6 +13,7 @@
    * state is bounded (THUMB_LIMIT) so a huge project can't balloon memory.
    */
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { api } from "$lib/api";
   import type { MediaImageEntry, MediaImageDetails } from "$lib/platform/contract";
   import {
     buildPrintWarnings,
@@ -53,14 +54,13 @@
   let loadSeq = 0;
 
   async function loadThumbnails(list: MediaImageEntry[], seq: number): Promise<void> {
-    const platform = getPlatform();
     const queue = list.slice(0, THUMB_LIMIT);
     let next = 0;
     const worker = async () => {
       while (next < queue.length && seq === loadSeq) {
         const entry = queue[next++];
         try {
-          const url = await platform.imageThumbnail(entry.path);
+          const url = await api.media.thumbnail(entry.path);
           if (seq !== loadSeq) return;
           thumbs[entry.relPath] = url;
         } catch {
@@ -85,7 +85,7 @@
     loading = true;
     error = null;
     try {
-      const list = await getPlatform().listProjectImages(dir);
+      const list = await api.media.listImages(dir);
       if (seq !== loadSeq) return;
       images = list;
       thumbs = {}; // bounded: rebuilt per load, never accumulates across loads
@@ -138,7 +138,7 @@
     details = null;
     detailsLoading = true;
     try {
-      details = await getPlatform().inspectImage(entry.path);
+      details = await api.media.inspect(entry.path);
     } catch {
       details = null;
     } finally {
@@ -170,7 +170,7 @@
     importBusy = true;
     notice = null;
     try {
-      const picked = await getPlatform().pickImageFiles();
+      const picked = await api.dialog.pickImageFiles();
       if (picked.length === 0) return;
       // Project convention: an existing images/ dir wins, else assets/
       // (created on demand) — same destination the editor toolbar uses.
@@ -178,14 +178,14 @@
       const sep = base.includes("\\") ? "\\" : "/";
       let destName = "assets";
       try {
-        const entries = await getPlatform().listDir(base);
+        const entries = await api.fs.listDir(base);
         if (entries.some((e) => e.isDir && e.name === "images")) destName = "images";
       } catch {
         // listDir failure → fall through to assets/
       }
       const destDir = base + sep + destName;
       for (const src of picked) {
-        await getPlatform().copyFile(src, destDir);
+        await api.fs.copyFile(src, destDir);
       }
       notice = `Added ${picked.length} image${picked.length === 1 ? "" : "s"} to ${destName}/.`;
       await refresh();
@@ -269,7 +269,7 @@
             Open a markdown file in the editor to insert images.
           </p>
         {/if}
-        <button class="ghost-btn" onclick={() => getPlatform().showInFolder(sel.path)}>
+        <button class="ghost-btn" onclick={() => api.shell.showInFolder(sel.path).catch(() => {})}>
           Show in folder
         </button>
       </div>

@@ -16,3 +16,9 @@ chapters land on distinct pages in the rendered preview.
 ## Alpha Section Two
 
 More alpha body text to push the next chapter onto a later page.
+
+Additional alpha body text to pad the chapter length.
+
+## Alpha Section Three
+
+Closing section of the alpha chapter.
