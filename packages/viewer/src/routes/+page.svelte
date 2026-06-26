@@ -42,8 +42,8 @@
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
-  import { basenameOf, joinPath } from "$lib/platform/paths";
   import { api } from "$lib/api";
+  import { basenameOf, joinPath } from "$lib/platform/paths";
   import { onMount } from "svelte";
   import {
     NARROW_BREAKPOINT,
@@ -923,7 +923,7 @@
     recoveryScanDir = dir;
     if (!settings.current.editor.crashRecovery) return;
     try {
-      const entries = await getPlatform().listRecovery(dir);
+      const entries = await api.recovery.list(dir);
       recoveryItems = entries.map((e) => ({
         filePath: e.filePath,
         recoveryPath: e.recoveryPath,
@@ -958,7 +958,7 @@
   function discardRecovery(item: RecoveryItem) {
     recoveryItems = recoveryItems.filter((i) => i.filePath !== item.filePath);
     if (isDesktop()) {
-      getPlatform().clearRecovery(item.filePath).catch(() => {});
+      api.recovery.clear(item.filePath).catch(() => {});
     }
   }
 

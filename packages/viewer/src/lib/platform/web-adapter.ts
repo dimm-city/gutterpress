@@ -56,7 +56,6 @@ import type {
   // PrintSafeWarning, ProblemEntry, MediaImageEntry, MediaImageDetails — removed (Phase 2C)
   FileStat,
   FileWriteResult,
-  RecoveryEntry,
   FolderChangedEvent,
   CreateProjectOptions,
   AdoptFolderOptions,
@@ -82,7 +81,6 @@ import type {
   ResolveSyncConflictsArgs,
   SyncStatus,
   RecoveryConfirmRequest,
-  ConflictPreview,
   FolderRef,
   FileRef,
   PlatformCapabilities,
@@ -748,9 +746,7 @@ export class WebAdapter implements Platform {
     return Promise.resolve();
   }
 
-  getConflictPreview(_projectDir: string, _path: string): Promise<ConflictPreview> {
-    return rejectNotImplemented("getConflictPreview");
-  }
+  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
 
   // ── Sync (#15 sync phase) — desktop-only until the PWA lands ───────────────
   syncChanges(_projectDir: string, _message?: string): Promise<SyncOutcome> {
@@ -971,22 +967,8 @@ export class WebAdapter implements Platform {
     return () => {};
   }
 
-  // ── Unsaved changes / recovery (#44) — desktop-only; reject/no-op on web ───
-  writeRecovery(
-    _filePath: string,
-    _content: string,
-    _baseMtimeMs: number,
-  ): Promise<{ ok: boolean }> {
-    return rejectNotImplemented("writeRecovery");
-  }
-
-  clearRecovery(_filePath: string): Promise<{ ok: boolean }> {
-    return rejectNotImplemented("clearRecovery");
-  }
-
-  listRecovery(_projectDir: string): Promise<RecoveryEntry[]> {
-    return Promise.resolve([]);
-  }
+  // writeRecovery, clearRecovery, listRecovery — migrated to server routes
+  // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
 
   setDirtyState(_isDirty: boolean): Promise<void> {
     return rejectNotImplemented("setDirtyState");

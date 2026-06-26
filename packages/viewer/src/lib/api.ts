@@ -116,6 +116,23 @@ export interface ProjectFileEntry {
   css: string[];
 }
 
+export interface RecoveryEntry {
+  filePath: string;
+  recoveryPath: string;
+  savedAt: number;
+  baseMtimeMs: number;
+}
+
+export type ConflictKind = 'both-edited' | 'you-deleted' | 'online-deleted';
+
+export interface ConflictPreview {
+  mine: string;
+  theirs: string;
+  kind: ConflictKind;
+  isBinary: boolean;
+}
+
+
 /** Typed API client for all server routes under src/routes/api/. */
 export const api = {
   /** Low-level helpers exposed for direct use when needed. */
@@ -348,4 +365,22 @@ export const api = {
 
   /** System diagnostics (tool paths, versions, Chromium/Electron info). */
   doctor: () => get<unknown>('/api/doctor'),
+
+  recovery: {
+    /** Write a debounced crash-recovery snapshot of the open buffer (#44). */
+    write: (filePath: string, content: string, baseMtimeMs: number) =>
+      post<{ ok: boolean }>('/api/recovery/write', { filePath, content, baseMtimeMs }),
+    /** Clear a recovery snapshot after a successful disk save (#44). */
+    clear: (filePath: string) =>
+      post<{ ok: boolean }>('/api/recovery/clear', { filePath }),
+    /** List pending recovery snapshots for an opened project, newest first (#44). */
+    list: (projectDir: string) =>
+      post<RecoveryEntry[]>('/api/recovery/list', { projectDir }),
+  },
+
+  sync: {
+    /** Fetch the yours/theirs text for one conflicted file for comparison. */
+    getConflictPreview: (projectDir: string, path: string, kind?: ConflictKind) =>
+      post<ConflictPreview>('/api/sync/get-conflict-preview', { projectDir, path, kind }),
+  },
 };

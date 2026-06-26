@@ -15,6 +15,7 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform } from "$lib/platform";
+  import { api } from "$lib/api";
   import { basenameOf } from "$lib/platform/paths";
   import type {
     ConflictFileInfo,
@@ -118,8 +119,8 @@
 
   /**
    * Toggle the "Compare versions" disclosure for a text file.
-   * On first expand, lazily fetches the preview via getPlatform().getConflictPreview()
-   * and memoises the result so subsequent toggles don't re-fetch.
+   * On first expand, lazily fetches the preview via the server route and
+   * memoises the result so subsequent toggles don't re-fetch.
    */
   async function togglePreview(filePath: string) {
     const wasExpanded = previewExpanded[filePath] ?? false;
@@ -129,7 +130,8 @@
     if (!wasExpanded && !(filePath in previewCache) && !isBinary(filePath) && projectDir) {
       previewCache = { ...previewCache, [filePath]: "loading" };
       try {
-        const result = await getPlatform().getConflictPreview(projectDir, filePath);
+        const fileEntry = files.find((f) => f.path === filePath);
+        const result = await api.sync.getConflictPreview(projectDir, filePath, fileEntry?.kind);
         previewCache = { ...previewCache, [filePath]: result };
       } catch {
         // Preview failed — fall back to the no-preview message; don't break choices.

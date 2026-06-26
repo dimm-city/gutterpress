@@ -418,8 +418,7 @@ interface Window {
     onRecoveryConfirm(cb: (data: unknown) => void): () => void;
     /** Send the author's approval/rejection to main to unblock a pending repair. */
     respondRecoveryConfirm(requestId: string, approved: boolean): Promise<void>;
-    /** Fetch yours/theirs text for one conflicted file. */
-    getConflictPreview(projectDir: string, path: string): Promise<ConflictPreview>;
+    // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
     // Sync (#15 sync phase, ADR 0006 D5). Auto-sync runs in main; the renderer
     // only triggers a sync to surface conflicts and then applies the choices.
     syncChanges(projectDir: string, message?: string): Promise<SyncOutcome>;
@@ -461,22 +460,9 @@ interface Window {
       message?: string;
     }) => void): () => void;
     onUrlPreviewBlocked(cb: (data: { url: string; reason: string }) => void): () => void;
-    // Unsaved-changes / crash-recovery surface (#44)
-    writeRecovery(
-      filePath: string,
-      content: string,
-      baseMtimeMs: number,
-    ): Promise<{ ok: boolean }>;
-    clearRecovery(filePath: string): Promise<{ ok: boolean }>;
-    listRecovery(projectDir: string): Promise<
-      Array<{
-        filePath: string;
-        recoveryPath: string;
-        savedAt: number;
-        baseMtimeMs: number;
-      }>
-    >;
-    // app:setDirtyState — migrated to server route (Phase 2B)
+    // writeRecovery, clearRecovery, listRecovery — migrated to server routes
+    // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
+    setDirtyState(isDirty: boolean): Promise<void>;
     onFlushBeforeClose(cb: () => void): () => void;
     onFolderChanged(cb: (data: { filename: string }) => void): () => void;
   };

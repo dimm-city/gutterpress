@@ -2138,40 +2138,14 @@ ipcMain.handle("fs:unwatchFolder", async (_e, dirPath: string): Promise<void> =>
 
 // ── Crash recovery (#44) ────────────────────────────────────────────────────
 // Sidecar snapshots under userData/recovery/. Never touches the user's file.
-ipcMain.handle(
-  "recovery:write",
-  async (
-    _e,
-    filePath: string,
-    content: string,
-    baseMtimeMs: number,
-  ): Promise<{ ok: boolean }> => {
-    if (!path.isAbsolute(filePath)) {
-      throw new Error(`recovery:write requires an absolute path, got: ${filePath}`);
-    }
-    return writeRecoveryStore(recoveryDir(), filePath, content, baseMtimeMs);
-  },
-);
-
-ipcMain.handle(
-  "recovery:clear",
-  async (_e, filePath: string): Promise<{ ok: boolean }> => {
-    if (!path.isAbsolute(filePath)) {
-      throw new Error(`recovery:clear requires an absolute path, got: ${filePath}`);
-    }
-    return clearRecoveryStore(recoveryDir(), filePath);
-  },
-);
-
-ipcMain.handle(
-  "recovery:list",
-  async (_e, projectDir: string) => {
-    if (!path.isAbsolute(projectDir)) {
-      throw new Error(`recovery:list requires an absolute path, got: ${projectDir}`);
-    }
-    return listRecoveryStore(recoveryDir(), projectDir);
-  },
-);
+// Exposed via SvelteKit server routes (src/routes/api/recovery/*) through
+// globalThis hooks — no IPC needed.
+(globalThis as unknown as Record<string, unknown>).__printMdRecoveryHooks__ = {
+  write: (filePath: string, content: string, baseMtimeMs: number) =>
+    writeRecoveryStore(recoveryDir(), filePath, content, baseMtimeMs),
+  clear: (filePath: string) => clearRecoveryStore(recoveryDir(), filePath),
+  list: (projectDir: string) => listRecoveryStore(recoveryDir(), projectDir),
+};
 
 // ── Unsaved-changes close gate (#44) ────────────────────────────────────────
 // app:setDirtyState migrated to server route (src/routes/api/app/dirty-state).
@@ -2859,29 +2833,18 @@ ipcMain.handle(
   },
 );
 
-/**
- * Return the yours/theirs text for one conflicted file so the author can
- * compare before choosing in ConflictChoicesDialog.
- */
-ipcMain.handle(
-  "sync:getConflictPreview",
-  async (_e, rawArgs: unknown) => {
-    const args = rawArgs as { projectDir?: string; path?: string; kind?: string };
-    if (!args?.projectDir || !args?.path) {
-      throw new Error("sync:getConflictPreview requires { projectDir, path }");
-    }
-    const dir = requireAbsoluteDir("sync:getConflictPreview", args.projectDir);
-    return handleRemoteErrors("sync:getConflictPreview", async () => {
-      const lib = await loadLib();
-      return getConflictPreviewImpl(
-        dir,
-        args.path!,
-        (args.kind ?? "both-edited") as "both-edited" | "you-deleted" | "online-deleted",
-        lib.onlineCopyPath,
-      );
-    });
+// sync:getConflictPreview — migrated to SvelteKit server route
+// (src/routes/api/sync/get-conflict-preview). Exposed via globalThis hook.
+(globalThis as unknown as Record<string, unknown>).__printMdConflictPreviewHooks__ = {
+  getConflictPreview: async (
+    projectDir: string,
+    relativePath: string,
+    kind: "both-edited" | "you-deleted" | "online-deleted",
+  ) => {
+    const lib = await loadLib();
+    return getConflictPreviewImpl(projectDir, relativePath, kind, lib.onlineCopyPath);
   },
-);
+};
 
 // ── Auto-sync settings IPC (transparent-sync plan §4.3) ─────────────────────
 // The renderer calls setAutoSync(true|false) from the Settings panel. We persist

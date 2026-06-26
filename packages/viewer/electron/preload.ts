@@ -607,9 +607,7 @@ contextBridge.exposeInMainWorld("electron", {
   respondRecoveryConfirm: (requestId: string, approved: boolean): Promise<void> =>
     ipcRenderer.invoke("recovery:confirm-response", { requestId, approved }),
 
-  /** Fetch yours/theirs text for a conflicted file. */
-  getConflictPreview: (projectDir: string, path: string): Promise<unknown> =>
-    ipcRenderer.invoke("sync:getConflictPreview", { projectDir, path }),
+  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
 
   // ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────
   // All git work happens in the lib behind main; credentials are resolved
@@ -644,26 +642,8 @@ contextBridge.exposeInMainWorld("electron", {
     cb: (data: UrlPreviewBlockedEvent) => void
   ): (() => void) => forwardPush("url-preview:blocked", cb),
 
-  // ──────────────────────────────────────────────────────────────────────
-  // Unsaved-changes / crash-recovery surface (#44)
-  // ──────────────────────────────────────────────────────────────────────
-
-  /** Write a debounced crash-recovery snapshot of the open buffer (#44). */
-  writeRecovery: (
-    filePath: string,
-    content: string,
-    baseMtimeMs: number,
-  ): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("recovery:write", filePath, content, baseMtimeMs),
-  /** Clear a recovery snapshot after a successful disk save (#44). */
-  clearRecovery: (filePath: string): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("recovery:clear", filePath),
-  /** List pending recovery snapshots for an opened project, newest first (#44). */
-  listRecovery: (
-    projectDir: string,
-  ): Promise<
-    Array<{ filePath: string; recoveryPath: string; savedAt: number; baseMtimeMs: number }>
-  > => ipcRenderer.invoke("recovery:list", projectDir),
+  // writeRecovery, clearRecovery, listRecovery — migrated to server routes
+  // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
 
   // app:setDirtyState — migrated to server route (Phase 2B).
   /**

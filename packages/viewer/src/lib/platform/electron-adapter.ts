@@ -4,11 +4,11 @@
  *
  * Every implemented method delegates 1:1 to the preload bridge, so behaviour is
  * identical to the pre-#41 direct calls. The #44 surface (statFile, watchFolder,
- * and the writeRecovery/clearRecovery/listRecovery/onFlushBeforeClose/
- * onFolderChanged recovery methods) plus getSecret/setSecret (#12) are SCAFFOLDED
- * only — the contract/types exist but there is no IPC behind them yet, so they
- * throw a descriptive error rather than delegate to a non-existent bridge method.
+ * setDirtyState, onFlushBeforeClose, onFolderChanged) plus getSecret/setSecret (#12)
+ * are SCAFFOLDED only — the contract/types exist but there is no IPC behind them yet,
+ * so they throw a descriptive error rather than delegate to a non-existent bridge method.
  * Wire them up (preload + main IPC) when implementing #44 / #12.
+ * writeRecovery/clearRecovery/listRecovery/getConflictPreview — migrated to server routes.
  */
 import type {
   Platform,
@@ -27,7 +27,6 @@ import type {
   // ProjectPluginEntry, PluginValidationResult, RecommendedPlugin, ThemeInfo, ApplyThemeTarget, ProjectStyle — removed (Phase 2E)
   FileStat,
   FileWriteResult,
-  RecoveryEntry,
   FolderChangedEvent,
   SnapshotEntry,
   SnapshotPage,
@@ -48,7 +47,6 @@ import type {
   ResolveSyncConflictsArgs,
   SyncStatus,
   RecoveryConfirmRequest,
-  ConflictPreview,
   FolderRef,
   PlatformCapabilities,
 } from "./contract";
@@ -269,9 +267,7 @@ export class ElectronAdapter implements Platform {
     return bridge().respondRecoveryConfirm(requestId, approved);
   }
 
-  getConflictPreview(projectDir: string, path: string): Promise<ConflictPreview> {
-    return bridge().getConflictPreview(projectDir, path);
-  }
+  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
 
   // ── Sync (#15 sync phase) — delegate 1:1 to the bridge ─────────────────────
   syncChanges(projectDir: string, message?: string): Promise<SyncOutcome> {
@@ -312,22 +308,8 @@ export class ElectronAdapter implements Platform {
     return bridge().onUrlPreviewBlocked(cb);
   }
 
-  // ── Unsaved changes / recovery (#44) — delegate 1:1 to the bridge ──────────
-  writeRecovery(
-    filePath: string,
-    content: string,
-    baseMtimeMs: number,
-  ): Promise<{ ok: boolean }> {
-    return bridge().writeRecovery(filePath, content, baseMtimeMs);
-  }
-
-  clearRecovery(filePath: string): Promise<{ ok: boolean }> {
-    return bridge().clearRecovery(filePath);
-  }
-
-  listRecovery(projectDir: string): Promise<RecoveryEntry[]> {
-    return bridge().listRecovery(projectDir);
-  }
+  // writeRecovery, clearRecovery, listRecovery — migrated to server routes
+  // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
 
   // setDirtyState — migrated to server route (Phase 2B)
 

@@ -1097,14 +1097,7 @@ export interface HostServices {
    */
   respondRecoveryConfirm(requestId: string, approved: boolean): Promise<void>;
 
-  /**
-   * Fetch the yours/theirs text for one conflicted file so the author can
-   * compare before choosing. Called lazily when the user expands the "Compare
-   * versions" disclosure inside `ConflictChoicesDialog`. Returns the preview
-   * payload (or throws on path-traversal / isBinary:true).
-   * WebAdapter: rejects with "not implemented" (recovery is desktop-only).
-   */
-  getConflictPreview(projectDir: string, path: string): Promise<ConflictPreview>;
+  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
 
   /**
    * Enable or disable the auto-sync master switch for the current project.
@@ -1141,18 +1134,8 @@ export interface HostServices {
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;
   onUrlPreviewBlocked(cb: (data: UrlPreviewBlockedEvent) => void): () => void;
 
-  // ── Unsaved changes / recovery (#44) — Phase-0 stubs, no impl yet ──────────
-
-  /** Write a debounced crash-recovery snapshot of the open buffer (#44). */
-  writeRecovery(
-    filePath: string,
-    content: string,
-    baseMtimeMs: number,
-  ): Promise<{ ok: boolean }>;
-  /** Clear the recovery snapshot for a file after a successful disk save (#44). */
-  clearRecovery(filePath: string): Promise<{ ok: boolean }>;
-  /** List pending recovery snapshots for an opened project, newest first (#44). */
-  listRecovery(projectDir: string): Promise<RecoveryEntry[]>;
+  // writeRecovery, clearRecovery, listRecovery — migrated to server routes
+  // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
 
   /**
   // app:setDirtyState — migrated to server route (Phase 2B).

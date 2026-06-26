@@ -15,6 +15,7 @@
  * is simply never constructed/used.
  */
 import type { Platform } from "$lib/platform/contract";
+import { api } from "$lib/api";
 
 export type EditorBufferPhase = "clean" | "dirty" | "saving" | "error";
 
@@ -153,7 +154,7 @@ export class EditorBuffer {
     const filePath = this.filePath;
     if (!filePath || this.opts.recoveryEnabled === false) return;
     try {
-      await this.platform.writeRecovery(filePath, this.content, this.diskMtimeMs);
+      await api.recovery.write(filePath, this.content, this.diskMtimeMs);
     } catch {
       // Recovery is best-effort; never surface as a hard error.
     }
@@ -173,7 +174,7 @@ export class EditorBuffer {
       this.phase = this.content === snapshot ? "clean" : "dirty";
       // A successful disk save clears the crash-recovery sidecar.
       if (this.opts.recoveryEnabled !== false) {
-        this.platform.clearRecovery(filePath).catch(() => {});
+        api.recovery.clear(filePath).catch(() => {});
       }
       this.opts.onSaved?.(filePath);
       if (this.phase === "dirty") this.scheduleSave();
@@ -268,7 +269,7 @@ export class EditorBuffer {
     this.phase = "clean";
     this.externalChange = null;
     if (this.filePath && this.opts.recoveryEnabled !== false) {
-      this.platform.clearRecovery(this.filePath).catch(() => {});
+      api.recovery.clear(this.filePath).catch(() => {});
     }
   }
 
