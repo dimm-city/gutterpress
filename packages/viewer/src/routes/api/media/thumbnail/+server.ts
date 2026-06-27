@@ -51,7 +51,17 @@ export const POST: RequestHandler = async ({ request }) => {
           dataUrl = `data:image/svg+xml;base64,${buf.toString('base64')}`;
         }
       } else {
-        const img = nativeImage.createFromPath(filePath);
+        let img = nativeImage.createFromPath(filePath);
+        if (img.isEmpty()) {
+          // Some formats (notably WebP/GIF from disk paths) can decode from
+          // bytes even when createFromPath() returns empty.
+          try {
+            const buf = await readFile(filePath);
+            img = nativeImage.createFromBuffer(buf);
+          } catch {
+            // keep `img` empty and fall through to raw-byte fallback
+          }
+        }
         if (!img.isEmpty()) {
           const { width, height } = img.getSize();
           const scaled =

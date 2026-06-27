@@ -95,6 +95,19 @@ export interface ProjectStyle {
   active: boolean;
 }
 
+// ── Project configuration view (#PCV) — author-facing manifest subset ──────
+// Declared locally (mirrors the lib's `ProjectConfigFields`) so the SPA bundle
+// stays free of value imports from `@dimm-city/print-md` (§8 renderer purity).
+
+export interface ProjectConfigFields {
+  title?: string;
+  authors?: string[];
+  /** `output.filename`; the built PDF's name. */
+  outputFilename?: string;
+  /** `source.files` — null is the deliberate "all chapter files" sentinel. */
+  sourceFiles?: string[] | null;
+}
+
 export interface FileWriteResult {
   mtimeMs: number;
 }
@@ -467,6 +480,21 @@ export const api = {
     /** Resolve the project's editable stylesheets for the CSS editor picker. */
     listStyles: (projectDir: string) =>
       post<ProjectStyle[]>('/api/project/list-styles', { projectDir }),
+  },
+
+  manifest: {
+    /** Read the author-facing manifest subset for the Config view's Details section. */
+    read: (projectDir: string) =>
+      post<ProjectConfigFields>('/api/manifest/read', { projectDir }),
+    /** Apply the author-facing manifest field updates (one yaml round-trip). */
+    setFields: (projectDir: string, updates: ProjectConfigFields) =>
+      post<ProjectConfigFields>('/api/manifest/set-fields', { projectDir, updates }),
+  },
+
+  style: {
+    /** Replace the manifest's active `styles:` list (reorder + toggle). */
+    setActive: (projectDir: string, paths: string[]) =>
+      post<string[]>('/api/style/set-active', { projectDir, paths }),
   },
 
   /** Health check — returns { ok: true, name, runtime }. */

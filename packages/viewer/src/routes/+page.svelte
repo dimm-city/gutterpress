@@ -17,7 +17,6 @@
     RecoveryProgressInfo,
     SnapshotEntry,
   } from "$lib/platform/contract";
-  import type { ProjectStyle } from "$lib/api";
   import { problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import ConflictChoicesDialog from "$lib/components/ConflictChoicesDialog.svelte";
@@ -35,10 +34,7 @@
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
-  import PluginManager from "$lib/components/PluginManager.svelte";
-  import ThemeManager from "$lib/components/ThemeManager.svelte";
-  import StylePicker from "$lib/components/StylePicker.svelte";
-  import DesignPanel from "$lib/components/DesignPanel.svelte";
+  import ProjectConfigPanel from "$lib/components/ProjectConfigPanel.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
@@ -524,62 +520,46 @@
   }
 
   // Plugin manager (#30) — opened from the overflow menu (desktop + project).
-  let pluginManagerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
-  let pluginManagerOpen = $state(false);
-  let pluginManagerBtn = $state<HTMLButtonElement | undefined>(undefined);
+  // ── Project Configuration view (#PCV) ───────────────────────────────────────
+  // The unified surface that replaced the four retired modal managers
+  // (PluginManager, ThemeManager, StylePicker, DesignPanel). It renders INLINE
+  // in the editor pane — `editorView === "config"` swaps CodeMirror out for the
+  // ProjectConfigPanel so the author manages details/theme/styles/design/plugins
+  // with the live preview mounted next to it (the #38 "never unmount the preview
+  // iframe" invariant is preserved because only the EDITOR side swaps).
+  let editorView = $state<"editor" | "config">("editor");
 
-  function openPluginManager(trigger?: HTMLButtonElement) {
-    if (!currentDir) return;
+  /**
+   * One button → the whole project configuration view. Opens the editor pane
+   * (so the panel has a frame to render into) and switches it to the config
+   * view. Does NOT lazy-load the CodeMirror editor module — the config panel has
+   // no need for it, keeping first-open cheap.
+   */
+  function openProjectConfig(): void {
+    if (!currentDir || sourceMode !== "folder") return;
     if (!isDesktop()) {
-      toast?.info?.("Plugins are managed in the desktop app for now.");
+      toast?.info?.("Project configuration is available in the desktop app for now.");
       return;
     }
-    pluginManagerRef?.show(trigger ?? pluginManagerBtn);
+    editorView = "config";
+    editorOpen = true;            // wide split: ensure the editor pane is visible
+    if (isNarrow) setPaneMode("edit"); // narrow single-pane: show the editor side
   }
 
-  // Theme manager (#32) — opened from the overflow menu (desktop + project).
-  let themeManagerRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
-  let themeManagerOpen = $state(false);
-  let themeManagerBtn = $state<HTMLButtonElement | undefined>(undefined);
-
-  function openThemeManager(trigger?: HTMLButtonElement) {
-    if (!currentDir) return;
-    if (!isDesktop()) {
-      toast?.info?.("Themes are managed in the desktop app for now.");
-      return;
-    }
-    themeManagerRef?.show(trigger ?? themeManagerBtn);
+  /** Close the config view → back to the raw CodeMirror editor. */
+  function closeProjectConfig(): void {
+    editorView = "editor";
+    focusEditorWhenReady();
   }
 
-  // Style picker (CSS-editing audit G1/G2) — a viewport-independent "Edit
-  // styles" affordance backed by the manifest-aware `listProjectStyles` IPC. If
-  // exactly one stylesheet, open it directly; if several, show the picker (the
-  // active stylesheet sorted first). Used by both the Document menu / editor
-  // toolbar (all sizes) and the mobile CSS tab (B2 manifest-aware resolution).
-  let stylePickerRef = $state<{
-    show: (t?: HTMLButtonElement, preloaded?: ProjectStyle[]) => void;
-  } | null>(null);
-
-  // A1: Tracks the paths of active stylesheets (from the last listStyles call).
-  // Used to show a "not active" hint when editing an inactive stylesheet.
-  let activeStylePaths = $state<string[]>([]);
-
-  // Guided Design panel (custom-property editor) — the primary styling surface;
-  // raw CSS editing is the escape hatch inside it.
-  let designPanelRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
-  let designPanelOpen = $state(false);
-
-  function openDesign(trigger?: HTMLButtonElement) {
-    if (!currentDir) return;
-    if (!isDesktop()) {
-      toast?.info?.("Design controls are available in the desktop app for now.");
-      return;
-    }
-    designPanelRef?.show(trigger);
-  }
-
-  /** Open one stylesheet (absolute path) in the shared editor and reveal it. */
+  /**
+   * Open one stylesheet (absolute path) in the shared editor and reveal it.
+   * Used as the "Edit raw CSS" escape hatch from the Config view's Design
+   * section AND from its Styles section's per-row "Edit" button — both routes
+   * flip `editorView` back to "editor" so the author lands on the file.
+   */
   function openStyleFile(absPath: string) {
+    editorView = "editor";
     editorOpen = true;
     loadEditorModule();
     selectEditorFile(absPath);
@@ -587,56 +567,12 @@
   }
 
   /**
-   * Open the project's styles for editing (audit G1/G2/B2). Resolves the
-   * stylesheets via the shared lib (manifest `styles:` first); opens a single
-   * stylesheet directly, shows the picker for several (handing it the list we
-   * already fetched so it does not re-resolve), and toasts when none. `trigger`
-   * (when given) is the button to restore focus to after the picker.
-   */
-  async function openStyles(trigger?: HTMLButtonElement) {
-    if (!currentDir) return;
-    if (!isDesktop()) {
-      toast?.info?.(
-        "Style editing is available in the desktop app for now — browse the Files panel to open a .css file.",
-      );
-      return;
-    }
-    let list: ProjectStyle[];
-    try {
-      list = await api.project.listStyles(currentDir);
-    } catch (e) {
-      toast?.error?.(
-        `Could not list styles: ${e instanceof Error ? e.message : String(e)}`,
-      );
-      return;
-    }
-    if (list.length === 0) {
-      toast?.info?.(
-        "This project has no stylesheet to edit yet. Apply a theme or add a .css file.",
-      );
-      return;
-    }
-    // A1: cache active paths for the "not active" editor hint.
-    activeStylePaths = list.filter((s) => s.active).map((s) => s.path);
-    if (list.length === 1) {
-      // Direct-open the sole stylesheet, but NAME it so the editor appearing
-      // isn't a surprise (UX review QA-3: same button, predictable outcome).
-      openStyleFile(list[0]!.path);
-      toast?.info?.(`Editing ${list[0]!.displayName}`);
-      return;
-    }
-    stylePickerRef?.show(trigger, list);
-  }
-
-  /**
-   * After a theme is applied: land the author on the re-rendered PREVIEW with a
-   * confirmation — do NOT dump the raw `theme.css` into the editor behind the
-   * dialog (UX audit: that was jarring and unasked-for). Fine-tuning is an
-   * explicit choice via "Edit CSS". The ThemeManager closes itself on apply.
+   * After a theme is applied from the Config view: surface a confirmation toast.
+   * The config panel stays open so the author can immediately fine-tune via the
+   * Design section; the preview (mounted alongside) updates on its own.
    */
   function onThemeApplied(_themeId: string) {
-    if (!currentDir) return;
-    toast?.success?.("Theme applied — your preview is updating. Use “Edit CSS” to fine-tune.");
+    toast?.success?.("Theme applied — your preview is updating. Use Design to fine-tune.");
   }
 
   // "Save as template" (#29) — capture the open project as a reusable template.
@@ -2245,15 +2181,6 @@
   let openFileIsCss = $derived(
     !!editorFilePath && /\.css$/i.test(editorFilePath),
   );
-  // A1: true when editing a CSS file that is not in the active stylesheets list.
-  // Only meaningful once activeStylePaths is populated (non-empty), so the hint
-  // is hidden until the user has interacted with styles at least once.
-  let cssFileIsInactive = $derived(
-    openFileIsCss &&
-      activeStylePaths.length > 0 &&
-      !!editorFilePath &&
-      !activeStylePaths.includes(editorFilePath),
-  );
   // Active mobile tab, derived from the persisted paneMode + which file is open.
   // No new persistence: reload restores via paneMode, then the open file decides
   // markdown vs css.
@@ -2262,12 +2189,10 @@
   );
 
   /**
-   * Switch the visible mobile pane. Preview → view mode; Markdown/CSS → edit
-   * mode with the matching file loaded into the shared editor. Markdown opens
-   * the project's first markdown file (ensureEditorFile); CSS now routes through
-   * the manifest-aware `openStyles` (audit B2) — the active stylesheet, with a
-   * picker when there are several — instead of the old root-only alphabetical
-   * scan.
+   * Switch the visible mobile pane. Preview → view mode; Markdown → edit mode
+   * with the first markdown file loaded; CSS → the unified Project
+   * Configuration view (its Styles section picks a stylesheet; its Design
+   * section fine-tunes tokens) — replacing the retired manifest-aware picker.
    */
   function selectMobileTab(tab: MobileTab) {
     const mode = paneModeForTab(tab);
@@ -2295,9 +2220,11 @@
       }
       focusEditorWhenReady();
     } else if (surface === "css") {
-      // Manifest-aware CSS resolution (B2): open the active stylesheet directly,
-      // or show the picker when there are several.
-      void openStyles();
+      // The CSS tab now opens the unified Project Configuration view (its
+      // Styles section lets the author pick which stylesheet to edit; the
+      // Design section fine-tunes tokens). The old manifest-aware picker was
+      // retired along with the four modal managers (#PCV).
+      openProjectConfig();
     }
   }
 
@@ -2869,36 +2796,15 @@
             </button>
           {/if}
           {#if currentDir}
-            <!-- Plugin manager (#30): discover/enable/import markdown-it plugins.
-                 Narrow-width fallback for the inline header button; on web it
-                 toasts a "desktop app for now" notice. -->
-            <button
-              bind:this={pluginManagerBtn}
-              class="menu-item"
-              onclick={(e) => { openPluginManager(e.currentTarget as HTMLButtonElement); closeMenu(e); }}
-            >
-              <Icon name="puzzle" /> Plugins…
-            </button>
-          {/if}
-          {#if currentDir}
-            <!-- Theme manager (#32): browse/preview/apply/import themes -->
-            <button
-              bind:this={themeManagerBtn}
-              class="menu-item"
-              onclick={(e) => { openThemeManager(e.currentTarget as HTMLButtonElement); closeMenu(e); }}
-            >
-              <Icon name="palette" /> Themes…
-            </button>
-          {/if}
-          {#if currentDir}
-            <!-- Edit styles (audit G1/G2): viewport-independent CSS-file entry
-                 point. Manifest-aware: opens the active stylesheet (or a picker
-                 when there are several). -->
+            <!-- Project Configuration view (#PCV): one button → manage details,
+                 appearance/theme, styles, design tokens, and plugins. Replaces
+                 the retired Plugins/Themes/Edit-styles menu items + their four
+                 modal managers. -->
             <button
               class="menu-item"
-              onclick={(e) => { void openStyles(e.currentTarget as HTMLButtonElement); closeMenu(e); }}
+              onclick={(e) => { openProjectConfig(); closeMenu(e); }}
             >
-              <Icon name="palette" /> Edit styles…
+              <Icon name="settings" /> Configure project…
             </button>
           {/if}
           <button class="menu-item" onclick={(e) => { helpOpen = true; closeMenu(e); }}>
@@ -2933,9 +2839,7 @@
           focusEditorWhenReady();
         }
       }}
-      onOpenThemes={() => openThemeManager()}
-      onOpenPlugins={() => openPluginManager()}
-      onOpenDesign={() => openDesign()}
+      onOpenProjectConfig={openProjectConfig}
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => startFolderPreview(path)}
       onOpenUrl={openUrl}
@@ -2983,82 +2887,94 @@
           class="pane editor-pane"
           id="mobile-panel-editor"
           role={isNarrow ? "tabpanel" : undefined}
-          aria-label={mobileTab === "css" ? "CSS editor" : "Markdown editor"}
+          aria-label={editorView === "config" ? "Project configuration" : (mobileTab === "css" ? "CSS editor" : "Markdown editor")}
         >
-          {#if externalChange}
-            <ExternalEditBanner
-              fileName={externalFileName}
-              onReload={reloadExternal}
-              onKeepMine={keepMineExternal}
+          {#if editorView === "config"}
+            <!-- Project Configuration view (#PCV): replaces CodeMirror in the
+                 editor pane. The preview iframe stays mounted alongside (the
+                 #38 "never unmount the preview" invariant is untouched — only
+                 the editor side swaps). -->
+            <ProjectConfigPanel
+              projectDir={currentDir}
+              {toast}
+              onThemeApplied={onThemeApplied}
+              onEditRawCss={openStyleFile}
+              onClose={closeProjectConfig}
             />
-          {/if}
-          <!-- Editor toolbar (#31): compact formatting bar, visible only when a
-               markdown file is open. Placed above the editor, within the pane. -->
-          <EditorToolbar
-            filePath={editorFilePath}
-            projectDir={currentDir}
-            onAction={(action, payload) => {
-              if (action === "snippet") {
-                openSnippetPicker();
-                return;
-              }
-              editorRef?.runToolbarAction(action, payload);
-            }}
-          />
-          <!-- Save-state indicator: unobtrusive status bar below the toolbar.
-               Visible only when a file is open. aria-live="polite" announces
-               phase transitions to screen readers without interrupting. -->
-          {#if editorFilePath}
-            <div class="editor-status-bar" aria-live="polite" aria-atomic="true">
-              <!-- N1: show the open file's name so the author always knows
-                   which file (markdown chapter OR stylesheet) they're editing. -->
-              <span class="open-file-name" title={editorChapter ?? undefined}>
-                {#if openFileIsCss}<Icon name="palette" size={12} />{/if}
-                {editorChapter ?? ""}
-              </span>
-              {#if editorSavePhase === "dirty" || editorSavePhase === "saving"}
-                <span class="save-status saving">Saving…</span>
-              {:else if editorSavePhase === "clean" && buffer?.filePath}
-                <span class="save-status saved">Saved</span>
-              {:else if editorSavePhase === "error"}
-                <span class="save-status save-error">Save error</span>
-              {/if}
-              <!-- A1: "not active" hint when editing an inactive stylesheet. -->
-              {#if cssFileIsInactive}
-                <span class="css-inactive-hint" title="This file is not in your book's active stylesheets — edits here won't affect the rendered output">not active</span>
-              {/if}
-              {#if isDesktop() && currentDir}
-                <!-- G1/G2: viewport-independent "Edit styles" affordance living
-                     in the editor pane (works on desktop AND mobile). -->
-                <button
-                  class="edit-styles-btn"
-                  title="Edit your book's styles / appearance"
-                  onclick={(e) => void openStyles(e.currentTarget as HTMLButtonElement)}
-                >
-                  <Icon name="palette" size={12} /> Styles
-                </button>
-              {/if}
-            </div>
-          {/if}
-          {#if MarkdownEditor}
-            {#key editorFilePath}
-            <MarkdownEditor
-              bind:this={editorRef}
-              filePath={editorFilePath}
-              content={editorContent}
-              onChange={onEditorChange}
-              onAnchorLine={onEditorAnchorLine}
-            />
-            {/key}
-          {:else if editorModuleFailed}
-            <div class="editor-loading" role="alert">
-              <p>The editor failed to load.</p>
-              <button class="primary" onclick={retryEditorLoad}>Retry</button>
-            </div>
           {:else}
-            <div class="editor-loading" role="status" aria-live="polite">
-              Loading editor…
-            </div>
+            {#if externalChange}
+              <ExternalEditBanner
+                fileName={externalFileName}
+                onReload={reloadExternal}
+                onKeepMine={keepMineExternal}
+              />
+            {/if}
+            <!-- Editor toolbar (#31): compact formatting bar, visible only when a
+                 markdown file is open. Placed above the editor, within the pane. -->
+            <EditorToolbar
+              filePath={editorFilePath}
+              projectDir={currentDir}
+              onAction={(action, payload) => {
+                if (action === "snippet") {
+                  openSnippetPicker();
+                  return;
+                }
+                editorRef?.runToolbarAction(action, payload);
+              }}
+            />
+            <!-- Save-state indicator: unobtrusive status bar below the toolbar.
+                 Visible only when a file is open. aria-live="polite" announces
+                 phase transitions to screen readers without interrupting. -->
+            {#if editorFilePath}
+              <div class="editor-status-bar" aria-live="polite" aria-atomic="true">
+                <!-- N1: show the open file's name so the author always knows
+                     which file (markdown chapter OR stylesheet) they're editing. -->
+                <span class="open-file-name" title={editorChapter ?? undefined}>
+                  {#if openFileIsCss}<Icon name="palette" size={12} />{/if}
+                  {editorChapter ?? ""}
+                </span>
+                {#if editorSavePhase === "dirty" || editorSavePhase === "saving"}
+                  <span class="save-status saving">Saving…</span>
+                {:else if editorSavePhase === "clean" && buffer?.filePath}
+                  <span class="save-status saved">Saved</span>
+                {:else if editorSavePhase === "error"}
+                  <span class="save-status save-error">Save error</span>
+                {/if}
+                {#if isDesktop() && currentDir}
+                  <!-- G1/G2: viewport-independent "Configure project" affordance
+                       living in the editor pane (works on desktop AND mobile).
+                       Opens the unified Config view that replaced the four modal
+                       managers (Styles/Plugins/Themes/Design). -->
+                  <button
+                    class="edit-styles-btn"
+                    title="Open project settings, styles, and appearance"
+                    onclick={openProjectConfig}
+                  >
+                    <Icon name="settings" size={12} /> Configure
+                  </button>
+                {/if}
+              </div>
+            {/if}
+            {#if MarkdownEditor}
+              {#key editorFilePath}
+              <MarkdownEditor
+                bind:this={editorRef}
+                filePath={editorFilePath}
+                content={editorContent}
+                onChange={onEditorChange}
+                onAnchorLine={onEditorAnchorLine}
+              />
+              {/key}
+            {:else if editorModuleFailed}
+              <div class="editor-loading" role="alert">
+                <p>The editor failed to load.</p>
+                <button class="primary" onclick={retryEditorLoad}>Retry</button>
+              </div>
+            {:else}
+              <div class="editor-loading" role="status" aria-live="polite">
+                Loading editor…
+              </div>
+            {/if}
           {/if}
         </section>
       {/if}
@@ -3228,36 +3144,9 @@
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
   onInsert={(text) => editorRef?.insertSnippet(text)}
 />
-<!-- Plugin manager (#30): list/enable/disable, import (local/npm), recommended,
-     validate-by-load. Desktop-only (host file IO + module loading). -->
-<PluginManager
-  bind:this={pluginManagerRef}
-  bind:open={pluginManagerOpen}
-  projectDir={currentDir}
-/>
-<ThemeManager
-  bind:this={themeManagerRef}
-  bind:open={themeManagerOpen}
-  projectDir={currentDir}
-  onApplied={onThemeApplied}
-/>
-<!-- Style picker (audit G1/G2): choose which project stylesheet to edit. Opened
-     by openStyles() only when there are several (single-style opens directly). -->
-<StylePicker
-  bind:this={stylePickerRef}
-  projectDir={currentDir}
-  onChoose={openStyleFile}
-/>
-<!-- Guided Design panel: the primary styling surface (color/size controls over
-     the active stylesheet's :root custom properties). "Edit raw CSS" routes to
-     the existing editor as the escape hatch. -->
-<DesignPanel
-  bind:this={designPanelRef}
-  bind:open={designPanelOpen}
-  projectDir={currentDir}
-  {toast}
-  onEditRawCss={openStyleFile}
-/>
+<!-- The Project Configuration view (#PCV) replaces the retired PluginManager,
+     ThemeManager, StylePicker, and DesignPanel modal dialogs. It renders inline
+     in the editor pane (above); no modal mount point is needed here. -->
 <!-- Save-as-template name prompt (#29). Minimal modal: name + confirm. -->
 {#if saveTemplateOpen}
   <div class="save-tpl-backdrop" role="presentation" onclick={() => (saveTemplateOpen = false)}></div>
@@ -3479,15 +3368,6 @@
   .save-status.saving { color: var(--app-text-faint); }
   .save-status.saved  { color: var(--app-text-faint); }
   .save-status.save-error { color: var(--app-error-text); }
-  /* A1: amber "not active" chip shown when the open CSS file is not in the
-     project's active stylesheets. Muted styling — informational, not alarming. */
-  .css-inactive-hint {
-    font-size: 10px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
-    color: var(--app-warning-text, #b08020);
-    background: var(--app-warning-soft, color-mix(in srgb, #b08020 12%, transparent));
-    border: 1px solid color-mix(in srgb, #b08020 30%, transparent);
-    border-radius: 4px; padding: 1px 6px; white-space: nowrap; flex-shrink: 0;
-  }
   .preview-pane {
     position: relative;
   }

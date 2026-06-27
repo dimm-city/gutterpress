@@ -49,9 +49,7 @@
     toggleBtn,
     onJumpToOutline,
     onSelectEditorFile,
-    onOpenThemes,
-    onOpenPlugins,
-    onOpenDesign,
+    onOpenProjectConfig,
     onInsertImage,
     onProjectChosen,
     onOpenUrl,
@@ -78,9 +76,9 @@
     toggleBtn?: HTMLButtonElement | undefined;
     onJumpToOutline?: (entry: OutlineEntry) => void;
     onSelectEditorFile?: (path: string) => void;
-    onOpenThemes?: () => void;
-    onOpenPlugins?: () => void;
-    onOpenDesign?: () => void;
+    /** Open the unified Project Configuration view (#PCV) that subsumes the
+     *  retired Themes/Design/Plugins/Edit-CSS modal managers. */
+    onOpenProjectConfig?: () => void;
     onInsertImage?: (payload: { src: string; alt?: string }) => void;
     onProjectChosen?: (path: string) => void;
     onOpenUrl?: (url: string) => void;
@@ -484,27 +482,16 @@
           <p>Open a project folder to see its files.</p>
         </div>
       {:else}
-        <!-- Project styling actions (#30/#32/G1): discoverable, labelled entry
-             points. They live here (not the width-fragile top toolbar) so the
-             panel's vertical room can hold them. On web the handlers toast a
-             "desktop app for now" notice.
-             IA (from UX review): Themes is the PRIMARY action (pick a whole
-             look); "Edit CSS" (Styles) and Plugins are secondary. Discrete
-             buttons with gaps + a primary so the row doesn't read as one fused
-             segmented control. A caption signposts Themes-vs-CSS. -->
+        <!-- Project configuration entry (#PCV): one button → manage the whole project
+             — details, appearance/theme, styles, design tokens, and plugins.
+             Replaces the retired Themes/Design/Plugins three-button row. Lives
+             here in the Files tab (not the width-fragile top toolbar) so the
+             label is always legible. -->
         <div class="files-actions">
-          <button class="files-action primary" onclick={() => onOpenThemes?.()}>
-            <Icon name="palette" size={15} /> Themes
+          <button class="files-action primary" onclick={() => onOpenProjectConfig?.()}>
+            <Icon name="settings" size={15} /> Configure project
           </button>
-          <div class="files-actions-secondary">
-            <button class="files-action" onclick={() => onOpenDesign?.()}>
-              <Icon name="pen-line" size={14} /> Design
-            </button>
-            <button class="files-action" onclick={() => onOpenPlugins?.()}>
-              <Icon name="puzzle" size={14} /> Plugins
-            </button>
-          </div>
-          <p class="files-actions-hint">Themes pick a look; Design fine-tunes its colors &amp; sizes.</p>
+          <p class="files-actions-hint">Manage project details, theme, styles, colors, and plugins.</p>
         </div>
         {#key projectDir}
           <FileTree
@@ -983,11 +970,6 @@
     border-bottom: 1px solid var(--app-border);
     flex-shrink: 0;
   }
-  .files-actions-secondary {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
   .files-action {
     display: inline-flex;
     align-items: center;
@@ -1004,8 +986,6 @@
     white-space: nowrap;
     min-height: 28px;
   }
-  /* Secondary buttons size to content and sit left-aligned (not stretched). */
-  .files-actions-secondary .files-action { flex: 0 1 auto; }
   /* Primary: full-width, accent-filled — the clear "start here" action. */
   .files-action.primary {
     width: 100%;

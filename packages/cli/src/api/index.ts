@@ -155,6 +155,14 @@ export type {
 export { listProjectStyles, resolveActiveStyles } from "../lib/style-resolver.ts";
 export type { ProjectStyle } from "../lib/style-resolver.ts";
 
+// ── Project configuration view (#PCV) — author-facing manifest field writers ──
+export {
+  readManifestFields,
+  setManifestFields,
+  setActiveStyles,
+} from "../lib/manifest-config.ts";
+export type { ProjectConfigFields } from "../lib/manifest-config.ts";
+
 export {
   providerFor,
   restoreVersionWithBackup,
