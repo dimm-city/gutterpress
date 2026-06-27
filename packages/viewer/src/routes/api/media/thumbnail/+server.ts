@@ -3,6 +3,14 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { RequestHandler } from './$types';
 
+interface MediaHooks {
+  createThumbnail: (filePath: string, maxPx: number) => Promise<string | null>;
+}
+
+function getHooks(): MediaHooks | null {
+  return (globalThis as unknown as { __printMdMediaHooks__?: MediaHooks }).__printMdMediaHooks__ ?? null;
+}
+
 const THUMB_MAX_PX = 192;
 const THUMB_CACHE_MAX = 300;
 const THUMB_FALLBACK_MAX_BYTES = 512 * 1024;
@@ -41,7 +49,6 @@ export const POST: RequestHandler = async ({ request }) => {
       return json(cached.dataUrl);
     }
 
-    const { nativeImage } = await import('electron');
     const ext = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase();
     let dataUrl: string | null = null;
     try {
@@ -51,27 +58,10 @@ export const POST: RequestHandler = async ({ request }) => {
           dataUrl = `data:image/svg+xml;base64,${buf.toString('base64')}`;
         }
       } else {
-        let img = nativeImage.createFromPath(filePath);
-        if (img.isEmpty()) {
-          // Some formats (notably WebP/GIF from disk paths) can decode from
-          // bytes even when createFromPath() returns empty.
-          try {
-            const buf = await readFile(filePath);
-            img = nativeImage.createFromBuffer(buf);
-          } catch {
-            // keep `img` empty and fall through to raw-byte fallback
-          }
-        }
-        if (!img.isEmpty()) {
-          const { width, height } = img.getSize();
-          const scaled =
-            width > THUMB_MAX_PX || height > THUMB_MAX_PX
-              ? width >= height
-                ? img.resize({ width: THUMB_MAX_PX })
-                : img.resize({ height: THUMB_MAX_PX })
-              : img;
-          dataUrl = scaled.toDataURL();
-        } else if (s.size <= THUMB_FALLBACK_MAX_BYTES && MEDIA_MIME[ext]) {
+        const hooks = getHooks();
+        if (!hooks) return error(503, 'Media hooks not registered');
+        dataUrl = await hooks.createThumbnail(filePath, THUMB_MAX_PX);
+        if (!dataUrl && s.size <= THUMB_FALLBACK_MAX_BYTES && MEDIA_MIME[ext]) {
           const buf = await readFile(filePath);
           dataUrl = `data:${MEDIA_MIME[ext]};base64,${buf.toString('base64')}`;
         }

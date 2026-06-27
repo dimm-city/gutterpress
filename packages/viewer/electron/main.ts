@@ -2101,6 +2101,41 @@ ipcMain.handle("app:flushDone", async (): Promise<void> => {
 // api:status, lint:checkCss, lint:project, api:doctor migrated to SvelteKit server routes
 // (src/routes/api/status, src/routes/api/lint/*, src/routes/api/doctor) — see Phase 2C.
 
+// Media thumbnail generation is exposed through a hook instead of importing
+// `electron` from the SvelteKit handler bundle. Packaged adapter-node routes run
+// in a different ESM context, and importing Electron there can fail.
+(globalThis as unknown as Record<string, unknown>).__printMdMediaHooks__ = {
+  async createThumbnail(filePath: string, maxPx: number): Promise<string | null> {
+    const ext = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase();
+    if (ext === 'svg') {
+      const s = await stat(filePath);
+      if (s.size > 512 * 1024) return null;
+      const buf = await readFile(filePath);
+      return `data:image/svg+xml;base64,${buf.toString('base64')}`;
+    }
+
+    let img = nativeImage.createFromPath(filePath);
+    if (img.isEmpty()) {
+      try {
+        const buf = await readFile(filePath);
+        img = nativeImage.createFromBuffer(buf);
+      } catch {
+        return null;
+      }
+    }
+    if (img.isEmpty()) return null;
+
+    const { width, height } = img.getSize();
+    const scaled =
+      width > maxPx || height > maxPx
+        ? width >= height
+          ? img.resize({ width: maxPx })
+          : img.resize({ height: maxPx })
+        : img;
+    return scaled.toDataURL();
+  },
+};
+
 // app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
 // app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
 // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
