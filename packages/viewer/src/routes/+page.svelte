@@ -2463,26 +2463,8 @@
     </section>
 
     <!-- Center column: absolutely positioned so the page-nav group is always
-         truly centered in the toolbar regardless of left/right section widths.
-         The Edit toggle sits immediately left of the nav group within this column. -->
+         truly centered in the toolbar regardless of left/right section widths. -->
     <div class="toolbar-center-col">
-      <!-- Edit / View pane toggle — left of the page-nav group on wide screens;
-           on narrow screens the pane-toggle radiogroup is used instead (in .right). -->
-      {#if !isNarrow}
-        <button
-          class="icon-text"
-          class:active={editorOpen}
-          onclick={toggleEditor}
-          disabled={!currentDir || sourceMode === "url"}
-          title="Toggle markdown editor (Ctrl+E)"
-          aria-label="Toggle markdown editor"
-          aria-pressed={editorOpen}
-        >
-          <Icon name="pen-line" /><span class="view-label">Edit</span>
-        </button>
-        <span class="toolbar-sep" aria-hidden="true"></span>
-      {/if}
-
       <!-- UX-012: center nav only shows when a document is loaded. #34: on narrow
            viewports it is hidden — the absolutely-centered page-nav group would
            collide with the right-aligned Markdown/CSS/Preview tab bar at 390px,
@@ -2662,25 +2644,7 @@
         </div>
       </details>
 
-      <!-- Zoom: a select on wide screens; collapses into a menu button when
-           space is tight. -->
-      <select
-        class="zoom-select"
-        value={zoom}
-        onchange={(e) => applyZoom((e.currentTarget as HTMLSelectElement).value)}
-        disabled={!previewUrl}
-        aria-label="Zoom level"
-        title="Zoom — F fits the page to the window, + / − zoom in and out"
-      >
-        <option value="fit-width">Fit to width</option>
-        <option value="0.25">25%</option>
-        <option value="0.5">50%</option>
-        <option value="0.75">75%</option>
-        <option value="1">100%</option>
-        <option value="1.25">125%</option>
-        <option value="1.5">150%</option>
-        <option value="2">200%</option>
-      </select>
+      <!-- Zoom: always use the compact icon button so the toolbar stays tight. -->
       <details class="menu zoom-menu">
         <summary
           class="icon-btn menu-summary"
@@ -2704,6 +2668,20 @@
           {/each}
         </div>
       </details>
+
+      {#if !isNarrow}
+        <button
+          class="icon-btn"
+          class:active={editorOpen}
+          onclick={toggleEditor}
+          disabled={!currentDir || sourceMode === "url"}
+          title="Toggle markdown editor (Ctrl+E)"
+          aria-label="Toggle markdown editor"
+          aria-pressed={editorOpen}
+        >
+          <Icon name="pen-line" />
+        </button>
+      {/if}
 
       <!-- UX-039: separator before Save PDF -->
       <span class="toolbar-sep" aria-hidden="true"></span>
@@ -3503,7 +3481,7 @@
   .right  { flex: 0 0 auto; }
 
   /* ---- Buttons & inputs ---- */
-  button, select {
+  button {
     background: var(--app-control-bg);
     border: 1px solid var(--app-control-border);
     color: var(--app-control-text);
@@ -3532,14 +3510,13 @@
     border-color: var(--app-accent-border);
     color: var(--app-accent-text);
   }
-  button:disabled, select:disabled {
+  button:disabled {
     opacity: 0.4;
     cursor: not-allowed;
   }
   /* Explicit focus ring for all toolbar interactive elements — replaces UA
      default (browser-specific yellow ring) with the app's consistent ring. */
-  button:focus-visible,
-  select:focus-visible {
+  button:focus-visible {
     outline: 2px solid var(--app-focus-ring);
     outline-offset: 2px;
   }
@@ -3598,8 +3575,8 @@
   }
 
   /* ---- Collapsible dropdown menus (view-mode + zoom) ---- */
-  /* On wide screens the inline controls (.view-mode-group / .zoom-select) show
-     and the menu buttons hide. Below a breakpoint they swap. */
+  /* View mode swaps between inline segmented buttons and a menu button. Zoom is
+     always compact and always uses its menu button. */
   /* Narrow + Edit mode: the preview is hidden, so its controls (page navigation,
      single/spread, zoom) are noise — hide them so the edit toolbar is just
      Open / Edit·View / Save / More. The spacers collapse the gap automatically
@@ -3607,12 +3584,12 @@
   .toolbar.edit-narrow .toolbar-center-col,
   .toolbar.edit-narrow .view-mode-group,
   .toolbar.edit-narrow .view-mode-menu,
-  .toolbar.edit-narrow .zoom-select,
   .toolbar.edit-narrow .zoom-menu {
     display: none;
   }
 
   .menu { position: relative; display: none; }
+  details.zoom-menu { display: inline-block; }
   /* The "More" overflow menu uses higher specificity (details.more-menu) than
      the generic `.menu { display: inline-block }` shown at <=980px, so it stays
      hidden until its own <=620px breakpoint. */
@@ -3714,8 +3691,6 @@
     background: linear-gradient(to bottom, var(--app-pill-from), var(--app-pill-to));
     border-color: var(--app-control-hover-border);
   }
-
-  .zoom-select { padding: 5px 6px; }
 
   /* Panel toggle button — keeps its ghost style as active when panel is open,
      with the accent fill matching other active toggles (Edit, view mode). */
@@ -3911,11 +3886,11 @@
      Settings, Help. No Open, chapter dropdown, Problems, History, or Sync.
 
      Measured full-set width at 1200px viewport ≈ 1050px (panel-toggle 40 +
-     title 200 + spacers 200 + page-nav 260 + sep 17 + edit 70 + view-mode-group
-     120 + zoom-select 100 + sep 17 + save-pdf 90 + settings 40 + help 40 = ~1194).
+     title 200 + spacers 200 + page-nav 260 + sep 17 + edit 40 + view-mode-group
+     120 + zoom 40 + sep 17 + save-pdf 90 + settings 40 + help 40 = ~1064).
 
      Collapse stages:
-       1200cqi — collapse view-mode + zoom into dropdown menus
+       1200cqi — collapse view-mode into a dropdown menu
        1000cqi — trim doc-title / path max-widths
         850cqi — drop button text labels (icon-only)
         760cqi — hide doc title, drop Save PDF text label
@@ -3925,9 +3900,9 @@
         520cqi — compact page nav (drop first/last) */
 
   @container (max-width: 1200px) {
-    /* Swap the inline view-mode buttons + zoom select for compact menu buttons. */
+    /* Swap the inline view-mode buttons for a compact menu button. Zoom is
+       already compact and always visible. */
     .view-mode-group { display: none; }
-    .zoom-select { display: none; }
     .menu { display: inline-block; }
   }
   @container (max-width: 1000px) {
@@ -3951,7 +3926,6 @@
   }
   @container (max-width: 640px) {
     .path { display: none; }
-    .zoom-select,
     .zoom-menu,
     .view-mode-group,
     .view-mode-menu,
@@ -4035,7 +4009,6 @@
     .toolbar .icon-text,
     .toolbar .menu-summary,
     .pane-toggle .seg,
-    .zoom-select,
     .toolbar .primary {
       min-width: 44px;
       min-height: 44px;
