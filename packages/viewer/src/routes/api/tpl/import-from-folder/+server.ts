@@ -1,18 +1,18 @@
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { join } from 'node:path';
+import { getDesktopHooks } from '$lib/server/host-hooks.js';
 
 export const POST: RequestHandler = async () => {
   try {
-    const { dialog, BrowserWindow, app } = await import('electron');
-    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
-    if (!win) return json(null);
-    const res = await dialog.showOpenDialog(win, {
+    const hooks = getDesktopHooks();
+    if (!hooks) return new Response('Desktop hooks not registered', { status: 503 });
+    const res = await hooks.showOpenDialog({
       title: 'Choose a template folder',
       properties: ['openDirectory'],
     });
     if (res.canceled || res.filePaths.length === 0) return json(null);
-    const templatesRoot = join(app.getPath('userData'), 'templates');
+    const templatesRoot = join(hooks.getUserDataPath(), 'templates');
     const lib = await import('@dimm-city/print-md');
     const result = await lib.importTemplateFromFolder({
       sourceDir: res.filePaths[0]!,
@@ -21,6 +21,6 @@ export const POST: RequestHandler = async () => {
     return json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return error(500, msg);
+    return new Response(msg, { status: 500 });
   }
 };

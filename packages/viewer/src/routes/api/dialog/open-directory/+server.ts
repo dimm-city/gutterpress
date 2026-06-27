@@ -1,12 +1,12 @@
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
+import { getDesktopHooks } from '$lib/server/host-hooks.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async () => {
   try {
-    const { dialog, BrowserWindow } = await import('electron');
-    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
-    if (!win) return json(null);
-    const res = await dialog.showOpenDialog(win, {
+    const hooks = getDesktopHooks();
+    if (!hooks) return new Response('Desktop hooks not registered', { status: 503 });
+    const res = await hooks.showOpenDialog({
       title: 'Open print-md project',
       properties: ['openDirectory'],
     });
@@ -14,6 +14,6 @@ export const POST: RequestHandler = async () => {
     return json(res.filePaths[0]);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return error(500, msg);
+    return new Response(msg, { status: 500 });
   }
 };

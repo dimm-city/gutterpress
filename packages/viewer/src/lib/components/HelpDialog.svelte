@@ -50,9 +50,9 @@
   async function load() {
     loading = true;
     error = null;
-    try {
-      if (!isDesktop()) {
-        error = "Electron bridge unavailable — run via the viewer app (not vite dev in a browser).";
+      try {
+        if (!isDesktop()) {
+        error = "Desktop system details are only available in the viewer app.";
         return;
       }
       data = (await api.doctor()) as Diagnostics;
@@ -141,9 +141,6 @@
     <header class="dialog-header">
       <div class="dialog-title-group">
         <h2 id="help-title">About Print MD</h2>
-        {#if data?.webUiVersion}
-          <span class="web-ui-version">v{data.webUiVersion}</span>
-        {/if}
       </div>
       <button class="close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
@@ -155,6 +152,12 @@
         <p class="status error">{error}</p>
         <button class="primary" onclick={load}>Retry</button>
       {:else if data}
+        <section class="version-strip" aria-label="Loaded versions">
+          <div><strong>Viewer:</strong> {data.viewerVersion}</div>
+          <div><strong>UI:</strong> {data.webUiVersion ?? "—"}</div>
+          <div><strong>Lib:</strong> {data.libVersion}</div>
+        </section>
+
         <section class="getting-started">
           <h3>Getting Started</h3>
           <ol class="steps">
@@ -221,7 +224,7 @@
 
         <section class="versions">
           <div><strong>Viewer:</strong> {data.viewerVersion}</div>
-          <div><strong>Web UI:</strong> {data.webUiVersion ?? "—"}</div>
+          <div><strong>UI:</strong> {data.webUiVersion ?? "—"}</div>
           <div><strong>Lib:</strong> {data.libVersion}</div>
           <div>
             <strong>Runtime:</strong>
@@ -328,7 +331,6 @@
   }
   .dialog-title-group { display: flex; align-items: baseline; gap: 10px; }
   .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  .web-ui-version { font-size: 11px; color: var(--app-text-faint); font-weight: 400; white-space: nowrap; }
   .close {
     background: transparent;
     border: 1px solid transparent;
@@ -362,6 +364,28 @@
   .gs-note { margin: 0; font-size: 12px; color: var(--app-text-faint); }
   .inline-link { background: none; border: none; color: var(--app-link); cursor: pointer; font-size: 12px; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
   .inline-link:hover { color: var(--app-link-hover); }
+
+  .version-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0 0 18px;
+  }
+  .version-strip > div {
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--app-surface-raised);
+    font-size: 12px;
+    color: var(--app-text-secondary);
+  }
+  .version-strip strong {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--app-text-faint);
+  }
 
   /* System info collapsible */
   .system-info { margin-top: 8px; }
@@ -448,6 +472,9 @@
     text-align: right;
   }
   @media (max-width: 640px) {
+    .version-strip {
+      grid-template-columns: 1fr;
+    }
     .tool-row {
       grid-template-columns: auto minmax(0, 1fr);
     }

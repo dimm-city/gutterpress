@@ -2101,6 +2101,29 @@ ipcMain.handle("app:flushDone", async (): Promise<void> => {
 // api:status, lint:checkCss, lint:project, api:doctor migrated to SvelteKit server routes
 // (src/routes/api/status, src/routes/api/lint/*, src/routes/api/doctor) — see Phase 2C.
 
+(globalThis as unknown as Record<string, unknown>).__printMdDesktopHooks__ = {
+  showOpenDialog: async (options: Record<string, unknown>) => {
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+    return win
+      ? await dialog.showOpenDialog(win, options as Electron.OpenDialogOptions)
+      : await dialog.showOpenDialog(options as Electron.OpenDialogOptions);
+  },
+  showSaveDialog: async (options: Record<string, unknown>) => {
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+    return win
+      ? await dialog.showSaveDialog(win, options as Electron.SaveDialogOptions)
+      : await dialog.showSaveDialog(options as Electron.SaveDialogOptions);
+  },
+  openExternal: async (url: string) => {
+    await shell.openExternal(url);
+  },
+  showItemInFolder: (filePath: string) => {
+    shell.showItemInFolder(filePath);
+  },
+  getNativeTheme: () => ({ shouldUseDarkColors: nativeTheme.shouldUseDarkColors }),
+  getUserDataPath: () => app.getPath('userData'),
+};
+
 // Media thumbnail generation is exposed through a hook instead of importing
 // `electron` from the SvelteKit handler bundle. Packaged adapter-node routes run
 // in a different ESM context, and importing Electron there can fail.
@@ -2198,10 +2221,12 @@ registerPrefsHooks({
   }>,
 });
 
-// Expose the updater getStatus for the /api/doctor server route.
-// The route imports electron directly for app/process; it needs getStatus via globalThis
-// because updater/index.ts is a separate Vite bundle from the SvelteKit handler.
-(globalThis as unknown as Record<string, unknown>).__printMdUpdaterGetStatus__ = getStatus;
+// Expose doctor-route hooks through globalThis so the SvelteKit handler never
+// imports `electron` directly in the packaged app.
+(globalThis as unknown as Record<string, unknown>).__printMdDoctorHooks__ = {
+  getUpdaterStatus: getStatus,
+  getViewerVersion: () => app.getVersion(),
+};
 
 // app:discoverProjects, app:classifyProject, app:createProject, app:adoptFolder
 // — migrated to SvelteKit server routes (src/routes/api/app/*) in Phase 2B.

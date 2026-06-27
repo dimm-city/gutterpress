@@ -241,6 +241,7 @@
   // ── Auto-update state ──────────────────────────────────────────────────
   /** Non-null when a staged bundle is ready to apply. */
   let updateReadyVersion = $state<string | null>(null);
+  let updateBannerDismissed = $state(false);
   let checkingUpdates = $state(false);
 
   // UX-026: focus-restoration reference for the Help dialog
@@ -1234,6 +1235,7 @@
       .then((status: { stagedVersion: string | null }) => {
         if (status.stagedVersion) {
           updateReadyVersion = status.stagedVersion;
+          updateBannerDismissed = false;
         }
       })
       .catch(() => {});
@@ -1248,6 +1250,7 @@
     const off = platform.updater.onEvent((event: { type: string; version?: string }) => {
       if (event.type === "staged") {
         updateReadyVersion = event.version ?? null;
+        updateBannerDismissed = false;
       }
     });
 
@@ -2286,6 +2289,7 @@
       if (status.stagedVersion) {
         // An update was downloaded + staged — the banner appears; no toast.
         updateReadyVersion = status.stagedVersion;
+        updateBannerDismissed = false;
       } else if (status.phase === "error") {
         toast?.error(status.error ?? "Update check failed.");
       } else {
@@ -2418,11 +2422,11 @@
 {/if}
 
 <div class="app-root">
-{#if updateReadyVersion}
+{#if updateReadyVersion && !updateBannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     <span class="update-banner-msg">Update ready (v{updateReadyVersion})</span>
     <button class="update-apply" onclick={applyUpdate}>Apply now</button>
-    <button class="update-later" onclick={() => (updateReadyVersion = null)}>Later</button>
+    <button class="update-later" onclick={() => (updateBannerDismissed = true)}>Later</button>
   </div>
 {/if}
 
