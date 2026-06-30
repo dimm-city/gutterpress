@@ -569,7 +569,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     fontSize: 14,
     lineHeight: 1.6,
     spellCheckLanguage: "en-US",
-    autoSaveDelay: 1000,
+    autoSaveDelay: 2500,
     crashRecovery: true,
   },
   appearance: {
@@ -586,6 +586,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     autoSnapshotMinutes: 10,
     autoSync: true,      // transparent-sync plan §6: ON by default when canSync
     autoSyncMinutes: 2,  // ~2 min periodic safety cadence
+  },
+  gitIdentity: {
+    authorName: "",
+    authorEmail: "",
   },
   advanced: {
     fileWatcherInterval: 300,

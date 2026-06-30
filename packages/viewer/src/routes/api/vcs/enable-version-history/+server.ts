@@ -1,12 +1,13 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { isAbsolute } from 'node:path';
+import { gitIdentityArgs } from '$lib/server/settings';
 
 // Local type — do NOT import from contract.ts or the lib (keeps SPA bundle clean).
 interface LibModule {
   detectProjectSource: (dir: string) => Promise<unknown>;
   providerFor: (source: unknown) => {
-    initVersionHistory: (opts: { projectDir: string; initialMessage?: string }) => Promise<unknown>;
+    initVersionHistory: (opts: { projectDir: string; initialMessage?: string; authorName?: string; authorEmail?: string }) => Promise<unknown>;
   };
   capabilitiesFor: (source: unknown) => unknown;
 }
@@ -40,6 +41,7 @@ export const POST: RequestHandler = async ({ request }) => {
     await lib.providerFor(source).initVersionHistory({
       projectDir,
       initialMessage: 'Initial snapshot',
+      ...(await gitIdentityArgs()),
     });
     // Re-classify so the renderer gets the upgraded source + capabilities.
     const upgraded = await lib.detectProjectSource(projectDir);

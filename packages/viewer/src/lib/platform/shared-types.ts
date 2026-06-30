@@ -115,6 +115,12 @@ export interface AppSettings {
     /** Periodic safety-sync cadence in minutes (clamped to [1, 1440]). */
     autoSyncMinutes: number;
   };
+  gitIdentity: {
+    /** Optional commit author name. Empty means use existing repo config, then print-md default. */
+    authorName: string;
+    /** Optional commit author email. Empty means use existing repo config, then print-md default. */
+    authorEmail: string;
+  };
   advanced: {
     fileWatcherInterval: number;
     logLevel: "error" | "warn" | "info" | "debug";

@@ -190,7 +190,7 @@ export class EditorBuffer {
 
   private async doRecovery(): Promise<void> {
     const filePath = this.filePath;
-    if (!filePath || this.opts.recoveryEnabled === false) return;
+    if (!filePath || this.opts.recoveryEnabled === false || !this.isDirty) return;
     try {
       await api.recovery.write(filePath, this.content, this.diskMtimeMs);
     } catch {
@@ -210,6 +210,10 @@ export class EditorBuffer {
       this.diskContent = snapshot;
       this.diskMtimeMs = mtimeMs;
       this.setPhase(this.content === snapshot ? "clean" : "dirty");
+      if (this.recoveryTimer) {
+        clearTimeout(this.recoveryTimer);
+        this.recoveryTimer = null;
+      }
       // A successful disk save clears the crash-recovery sidecar.
       if (this.opts.recoveryEnabled !== false) {
         api.recovery.clear(filePath).catch(() => {});

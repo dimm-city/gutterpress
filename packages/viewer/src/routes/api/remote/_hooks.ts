@@ -27,7 +27,7 @@ export interface LibModule {
   testRemoteAccess?(args: { url: string; credential?: unknown }): Promise<unknown>;
   connectGenericHost?(args: { host: string; username?: string; token: string; repoUrl?: string }): Promise<{ host: string; username?: string; kind: string; token: string; label?: string; createdAt: number }>;
   knownForgeTokenUrl?(host: string): Promise<string | null>;
-  syncProject?(args: { projectDir: string; tokenStore: TokenStore; message?: string }): Promise<unknown>;
+  syncProject?(args: { projectDir: string; tokenStore: TokenStore; message?: string; authorName?: string; authorEmail?: string }): Promise<unknown>;
 }
 
 export interface RemoteHooks {

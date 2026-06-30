@@ -17,6 +17,7 @@ import path from "node:path";
 import os from "node:os";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
+import * as fs from "node:fs";
 import { watch, type FSWatcher } from "node:fs";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
@@ -81,11 +82,18 @@ import type {
 // inlines `?raw`), so there is no separate file to resolve at runtime.
 import splashHtml from "./splash.html?raw";
 
+function appIconPath(): string {
+  const packaged = path.resolve(process.resourcesPath ?? "", "build-resources/icon.png");
+  const dev = path.resolve(__dirname, "../../build-resources/icon.png");
+  return fs.existsSync(packaged) ? packaged : dev;
+}
+
 // ── Startup timing instrumentation (diagnose the ~10s launch stall) ──────────
 // Prints "[startup +Nms] <milestone>" so a slow launch log pinpoints exactly
 // which phase stalls (Electron init → web-root → window create → renderer load
 // → first paint → preview). Cheap; safe to leave in for a beta.
 const __startupT0 = Date.now();
+const APP_USER_MODEL_ID = "city.dimm.print-md-viewer";
 function slog(msg: string): void {
   console.log(`[startup +${Date.now() - __startupT0}ms] ${msg}`);
 }
@@ -836,6 +844,10 @@ interface AppSettings {
     /** Periodic safety-sync cadence in minutes (clamped to [1, 1440]). */
     autoSyncMinutes: number;
   };
+  gitIdentity: {
+    authorName: string;
+    authorEmail: string;
+  };
   advanced: {
     fileWatcherInterval: number;
     logLevel: "error" | "warn" | "info" | "debug";
@@ -848,7 +860,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     fontSize: 14,
     lineHeight: 1.6,
     spellCheckLanguage: "en-US",
-    autoSaveDelay: 1000,
+    autoSaveDelay: 2500,
     crashRecovery: true,
   },
   appearance: {
@@ -866,6 +878,10 @@ const DEFAULT_SETTINGS: AppSettings = {
     autoSnapshotMinutes: 10,
     autoSync: true,      // transparent-sync plan §6: ON by default when canSync
     autoSyncMinutes: 2,  // ~2 min periodic safety cadence
+  },
+  gitIdentity: {
+    authorName: "",
+    authorEmail: "",
   },
   advanced: {
     fileWatcherInterval: 300,
@@ -946,6 +962,7 @@ function createSplashWindow(): void {
     show: true,
     backgroundColor: "#1e1e1e",
     title: "print-md",
+    icon: appIconPath(),
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
   void splashWindow.loadURL(
@@ -1725,6 +1742,7 @@ function createWindow() {
     width: 1400,
     height: 900,
     backgroundColor: "#1e1e1e",
+    icon: appIconPath(),
     // Created hidden, then immediately shown INACTIVE (see mainWindow.showInactive()
     // after loadURL). It must be VISIBLE during the first render so paged.js's
     // requestAnimationFrame loop produces frames (a hidden window stalls it on real
@@ -3307,6 +3325,7 @@ app.whenReady().then(async () => {
   // proceed to create a contending window.
   if (!gotSingleInstanceLock) return;
   slog("app whenReady");
+  app.setAppUserModelId?.(APP_USER_MODEL_ID);
   // Show the splash immediately — branded feedback while everything below runs.
   createSplashWindow();
   // Apply any staged update from a previous session BEFORE resolving the web
@@ -3348,7 +3367,7 @@ app.whenReady().then(async () => {
   // window anyway so the splash can't strand the user. Generous (60s) so a large
   // book on a slow machine finishes rendering and dismisses the splash on its own
   // signal rather than being cut off mid-render by the timeout.
-  splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 60_000);
+  splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 15_000);
 
   // Health-gate any current bundle that hasn't been confirmed healthy yet —
   // whether just promoted this launch or left unconfirmed by a prior session

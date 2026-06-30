@@ -14,7 +14,7 @@ export const POST: RequestHandler = async ({ request }) => {
     if (!Array.isArray(body.paths)) {
       return error(400, 'style/set-active requires a paths array');
     }
-    const lib = await import('@dimm-city/print-md');
+    const lib = await import('@dimm-city/print-md/api');
     return json(await lib.setActiveStyles(body.projectDir, body.paths));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

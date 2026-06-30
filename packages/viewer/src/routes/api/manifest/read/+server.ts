@@ -8,7 +8,7 @@ export const POST: RequestHandler = async ({ request }) => {
     if (!projectDir || !isAbsolute(projectDir)) {
       return error(400, 'manifest/read requires an absolute projectDir');
     }
-    const lib = await import('@dimm-city/print-md');
+    const lib = await import('@dimm-city/print-md/api');
     return json(await lib.readManifestFields(projectDir));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

@@ -14,7 +14,7 @@ export const POST: RequestHandler = async ({ request }) => {
     if (!body.updates || typeof body.updates !== 'object') {
       return error(400, 'manifest/set-fields requires an updates object');
     }
-    const lib = await import('@dimm-city/print-md');
+    const lib = await import('@dimm-city/print-md/api');
     return json(await lib.setManifestFields(body.projectDir, body.updates as Parameters<typeof lib.setManifestFields>[1]));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

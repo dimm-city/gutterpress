@@ -16,7 +16,14 @@
   import SyncStatusPill from "$lib/components/SyncStatusPill.svelte";
   import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
   import Icon from "$lib/components/Icon.svelte";
+  import { onMount } from "svelte";
   import type { ConflictFileInfo, ProblemEntry } from "$lib/platform/contract";
+
+  let isCompact = $state(false);
+
+  function updateCompact() {
+    isCompact = typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches;
+  }
 
   let {
     /** Currently-open project directory. Bar is shown when non-null. */
@@ -56,6 +63,8 @@
     onForceSave = undefined as (() => void) | undefined,
     /** Called when the author clicks "Sync now". */
     onForceSync = undefined as (() => void) | undefined,
+    onOpenSettings = undefined as (() => void) | undefined,
+    onOpenHelp = undefined as (() => void) | undefined,
   }: {
     projectDir?: string | null;
     sourceMode?: "folder" | "url";
@@ -74,6 +83,8 @@
     onShowLog?: (logFilePath: string | null) => void;
     onForceSave?: () => void;
     onForceSync?: () => void;
+    onOpenSettings?: () => void;
+    onOpenHelp?: () => void;
   } = $props();
 
   /** Human-readable save label — always has a value so the bar never goes blank. */
@@ -106,6 +117,11 @@
         return "saved";
     }
   });
+  let saveStateIcon = $derived.by<"refresh-cw" | "triangle-alert" | "circle-check">(() => {
+    if (forceSaving || savePhase === "saving" || savePhase === "dirty") return "refresh-cw";
+    if (savePhase === "error") return "triangle-alert";
+    return "circle-check";
+  });
 
   /** Show "Save now" when there are unsaved edits and no force-save in progress. */
   let showForceSave = $derived(
@@ -124,10 +140,12 @@
     !!projectDir && sourceMode === "folder" && (canSync || canSnapshot),
   );
 
-  let showProblems = $derived(
-    !!projectDir && sourceMode === "folder",
-  );
+  let showProblems = $derived(!isCompact && !!projectDir && sourceMode === "folder");
+
+  onMount(updateCompact);
 </script>
+
+<svelte:window onresize={updateCompact} />
 
 <div class="status-bar" role="status" aria-label="Application status">
   <!-- Left cluster: [sync refresh icon] [sync pill] | [save indicator] [Save now] -->
@@ -163,8 +181,8 @@
         class="save-indicator {saveClass}"
         aria-live="polite"
         aria-atomic="true"
-        title={saveLabel}
-      >{saveLabel}</span>
+        title={savePhase === "dirty" || savePhase === "saving" ? "pending changes need to be saved" : saveLabel}
+      ><Icon name={saveStateIcon} size={13} /><span class="save-text">{saveLabel}</span></span>
     {/if}
     {#if showForceSave}
       <button
@@ -188,6 +206,14 @@
       />
     </div>
   {/if}
+  <div class="shell-actions" aria-label="Application actions">
+    <button class="status-icon-btn" onclick={onOpenSettings} title="Settings (Ctrl+,)" aria-label="Settings">
+      <Icon name="settings" size={14} />
+    </button>
+    <button class="status-icon-btn" onclick={onOpenHelp} title="Help and about" aria-label="Help and about">
+      <Icon name="circle-help" size={14} />
+    </button>
+  </div>
 </div>
 
 <style>
@@ -200,7 +226,7 @@
     /* The bar is a flex row; ProblemsPanel sits in the right cluster and
        grows upward when expanded (flex-direction: column-reverse inside). */
     position: relative;
-    z-index: 10;
+    z-index: 300;
     /* Never cover the preview iframe — normal document flow, no overlap. */
     overflow: visible;
   }
@@ -292,6 +318,9 @@
 
   /* ── Save indicator ───────────────────────────────────────────────────── */
   .save-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     font-size: 11px;
     white-space: nowrap;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -310,6 +339,16 @@
   .save-indicator.save-error {
     color: var(--app-error-text);
     font-weight: 600;
+  }
+
+  @media screen and (max-width: 820px) {
+    .status-left :global(.sync-pill),
+    .save-text,
+    .status-sep,
+    .status-action,
+    .status-right {
+      display: none;
+    }
   }
 
   /* ── Right cluster ────────────────────────────────────────────────────── */
@@ -358,5 +397,14 @@
     border: 1px solid var(--app-border);
     border-bottom: none;
     box-shadow: 0 -4px 16px var(--app-shadow-md, rgba(0,0,0,0.12));
+    z-index: 300;
+  }
+  .shell-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    border-left: 1px solid var(--app-border);
+    flex: 0 0 auto;
   }
 </style>

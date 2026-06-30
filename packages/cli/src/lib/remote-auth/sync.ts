@@ -230,6 +230,7 @@ export interface SyncProjectOptions {
   /** Snapshot message for unsaved work (defaults to a friendly one). */
   message?: string;
   authorName?: string;
+  authorEmail?: string;
   /** Injectable git HTTP transport for tests. */
   httpClient?: typeof httpNode;
   /**
@@ -279,6 +280,7 @@ export interface ResolveConflictsOptions {
   credential?: HostCredential;
   tokenStore?: TokenStore;
   authorName?: string;
+  authorEmail?: string;
   httpClient?: typeof httpNode;
   /**
    * When true, the merge is allowed to combine two commits that share no
@@ -494,6 +496,7 @@ async function snapshotBeforeAction(args: {
   dir: string;
   message?: string;
   authorName?: string;
+  authorEmail?: string;
   cache: GitCache;
 }): Promise<string | undefined> {
   const { projectDir, dir, cache } = args;
@@ -503,6 +506,7 @@ async function snapshotBeforeAction(args: {
     repoRoot: dir,
     message: args.message?.trim() || SYNC_SNAPSHOT_MESSAGE,
     authorName: args.authorName,
+    authorEmail: args.authorEmail,
   });
   return snap.id;
 }
@@ -695,6 +699,7 @@ export async function pullChanges(
         dir,
         message: options.message,
         authorName: options.authorName,
+        authorEmail: options.authorEmail,
         cache,
       });
 
@@ -725,7 +730,7 @@ export async function pullChanges(
           cache,
           ours: branch,
           theirs: remoteTip,
-          author: gitAuthor(options.authorName),
+          author: gitAuthor(options.authorName, options.authorEmail),
           message: "Combined your changes with the online version",
         });
       } catch (e) {
@@ -817,6 +822,7 @@ export async function pushChanges(
         dir,
         message: options.message,
         authorName: options.authorName,
+        authorEmail: options.authorEmail,
         cache,
       });
 
@@ -1034,7 +1040,7 @@ export async function resolveConflicts(
     try {
       const branch = await currentBranchOrThrow(dir);
       const transport = await resolveTransport(dir, options);
-      const author = gitAuthor(options.authorName);
+      const author = gitAuthor(options.authorName, options.authorEmail);
 
       // Verify both ids are REAL commit objects in this repo before doing any
       // work (BUG 5). A well-formed-but-garbage hex id passes the regex above
@@ -1057,6 +1063,7 @@ export async function resolveConflicts(
           repoRoot: dir,
           message: SYNC_SNAPSHOT_MESSAGE,
           authorName: options.authorName,
+          authorEmail: options.authorEmail,
         });
         snapshotId = snap.id;
       }
@@ -1145,6 +1152,7 @@ export async function resolveConflicts(
             projectDir: dir,
             message,
             authorName: options.authorName,
+            authorEmail: options.authorEmail,
           });
         }
       };
@@ -1304,5 +1312,3 @@ export async function resolveConflicts(
     }
   });
 }
-
-

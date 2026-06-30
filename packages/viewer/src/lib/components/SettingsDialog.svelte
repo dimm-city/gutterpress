@@ -248,6 +248,34 @@
         </div>
       </section>
 
+      <!-- Git identity ------------------------------------------------------ -->
+      <section class="group">
+        <div class="group-head">
+          <h3>Git identity</h3>
+          <button class="reset" onclick={() => settings.resetSection("gitIdentity")} title="Reset git identity to defaults">Reset</button>
+        </div>
+        <div class="row">
+          <label for="set-git-author-name">Author name</label>
+          <input
+            id="set-git-author-name"
+            type="text"
+            value={s.gitIdentity.authorName}
+            placeholder="Use existing Git name"
+            onchange={(e) => settings.set({ gitIdentity: { authorName: (e.currentTarget as HTMLInputElement).value } })}
+          />
+        </div>
+        <div class="row">
+          <label for="set-git-author-email">Author email</label>
+          <input
+            id="set-git-author-email"
+            type="email"
+            value={s.gitIdentity.authorEmail}
+            placeholder="Use existing Git email"
+            onchange={(e) => settings.set({ gitIdentity: { authorEmail: (e.currentTarget as HTMLInputElement).value } })}
+          />
+        </div>
+      </section>
+
       <!-- Advanced (collapsed by default) --------------------------------- -->
       <!-- Developer-oriented knobs (file-watch polling, log verbosity). Hidden
            behind a disclosure so a non-technical writer never has to reason

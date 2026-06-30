@@ -11,6 +11,11 @@ files:
   - out/**
   - build/**
   - package.json
+  - build-resources/**
+
+extraResources:
+  - from: build-resources/icon.png
+    to: build-resources/icon.png
 
 extraMetadata:
   main: out/main/main.js

@@ -56,6 +56,7 @@ export interface SnapshotEntry {
 export interface InitVersionHistoryOptions {
   projectDir: string;
   authorName?: string;
+  authorEmail?: string;
   initialMessage?: string;
 }
 
@@ -64,6 +65,7 @@ export interface SnapshotOptions {
   projectDir: string;
   message: string;
   authorName?: string;
+  authorEmail?: string;
   /**
    * Root of the Git repository the commit goes to. Defaults to `projectDir`.
    * When the project is a subfolder of a repo, this is the enclosing repo root
@@ -170,9 +172,26 @@ export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promi
  * for the sync surface so merge commits carry the same identity as
  * snapshots).
  */
-export function gitAuthor(name?: string): { name: string; email: string } {
+export function gitAuthor(name?: string, email?: string): { name: string; email: string } {
   const n = (name ?? "").trim();
-  return { name: n || DEFAULT_AUTHOR, email: DEFAULT_EMAIL };
+  const e = (email ?? "").trim();
+  return { name: n || DEFAULT_AUTHOR, email: e || DEFAULT_EMAIL };
+}
+
+export async function readGitAuthor(dir: string): Promise<{ name?: string; email?: string }> {
+  const [name, email] = await Promise.all([
+    git.getConfig({ fs, dir, path: "user.name" }).catch(() => undefined),
+    git.getConfig({ fs, dir, path: "user.email" }).catch(() => undefined),
+  ]);
+  return {
+    name: typeof name === "string" ? name : undefined,
+    email: typeof email === "string" ? email : undefined,
+  };
+}
+
+async function resolveGitAuthor(dir: string, name?: string, email?: string): Promise<{ name: string; email: string }> {
+  const existing = await readGitAuthor(dir);
+  return gitAuthor(name || existing.name, email || existing.email);
 }
 
 /** Workdir-vs-index differences, as `git add -A` staging lists. */
@@ -318,7 +337,7 @@ class LocalFolderSourceProvider implements SourceProvider {
         dir,
         cache,
         message: options.initialMessage?.trim() || "Created project",
-        author: gitAuthor(options.authorName),
+        author: await resolveGitAuthor(dir, options.authorName, options.authorEmail),
       });
       return {
         type: "local-git-folder",
@@ -383,6 +402,7 @@ class LocalGitSourceProvider implements SourceProvider {
         projectDir: options.projectDir,
         message: options.initialMessage?.trim() || "Created project",
         authorName: options.authorName,
+        authorEmail: options.authorEmail,
       });
     } catch (e) {
       if (!isNoChangesError(e)) throw e;
@@ -512,7 +532,7 @@ export async function snapshotWorkingTreeUnlocked(
     removes: changes.removes.length,
   });
   await stageChanges(dir, changes, cache);
-  const author = gitAuthor(options.authorName);
+  const author = await resolveGitAuthor(dir, options.authorName, options.authorEmail);
   const id = await git.commit({
     fs,
     dir,
