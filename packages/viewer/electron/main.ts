@@ -400,8 +400,9 @@ type SyncOutcome =
       message: string;
       snapshotId?: string;
       mergedRemoteChanges: boolean;
+      filesChanged?: boolean;
     }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | { status: "up-to-date"; message: string; snapshotId?: string; filesChanged?: boolean }
   | {
       status: "conflict";
       message: string;
@@ -410,9 +411,9 @@ type SyncOutcome =
       remoteId: string;
       snapshotId?: string;
     }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
+  | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
+  | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
+  | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
 
 interface LibModule {
   startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
@@ -1251,6 +1252,8 @@ interface SyncStatusPayload {
   backupZipPath?: string;
   /** Operation log path — present on "recovered", "error", and "conflict". */
   logFile?: string;
+  /** True when the completed sync/recovery changed files in the local worktree. */
+  filesChanged?: boolean;
 }
 
 /** Per-project last-sync timestamp, updated on every completed runAutoSync. */
@@ -1480,7 +1483,12 @@ async function runAutoSync(dir: string): Promise<void> {
   switch (outcome.status) {
     case "synced":
     case "up-to-date":
-      emitSyncStatus({ state: outcome.status, projectDir: dir, lastSyncAt: completedAt });
+      emitSyncStatus({
+        state: outcome.status,
+        projectDir: dir,
+        lastSyncAt: completedAt,
+        ...(outcome.filesChanged ? { filesChanged: true } : {}),
+      });
       break;
 
     case "conflict":
@@ -1499,16 +1507,31 @@ async function runAutoSync(dir: string): Promise<void> {
       return;
 
     case "auth":
-      emitSyncStatus({ state: "auth", projectDir: dir, lastSyncAt: completedAt });
+      emitSyncStatus({
+        state: "auth",
+        projectDir: dir,
+        lastSyncAt: completedAt,
+        ...(outcome.filesChanged ? { filesChanged: true } : {}),
+      });
       break;
 
     case "offline":
-      emitSyncStatus({ state: "offline", projectDir: dir, lastSyncAt: completedAt });
+      emitSyncStatus({
+        state: "offline",
+        projectDir: dir,
+        lastSyncAt: completedAt,
+        ...(outcome.filesChanged ? { filesChanged: true } : {}),
+      });
       break;
 
     case "error":
     default:
-      emitSyncStatus({ state: "error", projectDir: dir, lastSyncAt: completedAt });
+      emitSyncStatus({
+        state: "error",
+        projectDir: dir,
+        lastSyncAt: completedAt,
+        ...(outcome.filesChanged ? { filesChanged: true } : {}),
+      });
       break;
   }
 

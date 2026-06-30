@@ -249,6 +249,28 @@ describe("syncProject", () => {
     }
   });
 
+  test("remote-only fast-forward reports filesChanged so open buffers reconcile", async () => {
+    const h = await setupClone();
+    try {
+      await serverCommit(
+        h.serverDir,
+        { "chapter-01.md": "# One\n\nEdited online.\n" },
+        "online edit",
+      );
+
+      const outcome = await syncProject({ projectDir: h.projectDir });
+
+      expect(outcome.status).toBe("up-to-date");
+      if (outcome.status !== "up-to-date") throw new Error("unreachable");
+      expect(outcome.filesChanged).toBe(true);
+      expect(await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8")).toBe(
+        "# One\n\nEdited online.\n",
+      );
+    } finally {
+      await h.cleanup();
+    }
+  });
+
   test("remote moved with no overlap → merge commit pushed, both histories present", async () => {
     const h = await setupClone();
     try {

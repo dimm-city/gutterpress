@@ -49,9 +49,27 @@ linux:
   category: Office
 
 win:
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
   target:
-    - zip
+    - target: nsis
+      arch:
+        - x64
+    - target: zip
+      arch:
+        - x64
   icon: build-resources/icon.ico
+
+nsis:
+  # Windows users should be able to download one file and run it. Keep this as
+  # a user-level installer so it works without administrator privileges, while
+  # still creating the normal Start Menu/Desktop entry points.
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: print-md viewer
 
 mac:
   target:

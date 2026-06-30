@@ -1,7 +1,7 @@
-name: Build viewer Windows zip
+name: Build viewer Windows installer and zip
 description: >
   Set up Node, install workspace deps, build the lib dist, and package the
-  Electron viewer into packages/viewer/dist/*-win.zip. Run after the Bun
+  Electron viewer into packages/viewer/dist/*.exe and packages/viewer/dist/*.zip. Run after the Bun
   setup action (./.github/actions/bun) so `bun` is on PATH.
 runs:
   using: composite

@@ -543,6 +543,8 @@ export interface SyncStatus {
    * steps (fetch, merge, backup, etc.) but never secrets.
    */
   logFile?: string;
+  /** True when the completed sync/recovery changed files in the local worktree. */
+  filesChanged?: boolean;
 }
 
 // ── Sync (#15 sync phase, ADR 0006 D5) ────────────────────────────────────────

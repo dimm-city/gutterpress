@@ -140,8 +140,9 @@ jobs:
   #
   # All three jobs fan out from `version` simultaneously:
   #   build-cli          — 5 CLI binaries via Bun cross-compile (ubuntu)
-  #   build-viewer-linux — AppImage + Windows zip (ubuntu)
-  #   build-viewer-mac   — macOS DMG (macos — cannot cross-compile)
+  #   build-viewer-linux   — Linux AppImage (ubuntu)
+  #   build-viewer-windows — Windows installer + portable zip (windows)
+  #   build-viewer-mac     — macOS DMG (macos — cannot cross-compile)
   #
   # All artifacts are uploaded as GitHub Actions artifacts and assembled
   # into the GitHub Release in one shot by the `github-release` job.
@@ -225,7 +226,7 @@ jobs:
           if-no-files-found: error
 
   build-viewer-windows:
-    name: Viewer / Windows zip
+    name: Viewer / Windows installer + zip
     needs: version
     if: ${{ !inputs.skip_viewer }}
     # electron-builder handles Electron download, exe rename, icon embedding, zip.
@@ -248,17 +249,17 @@ jobs:
         run: bun run build
         working-directory: packages/cli
 
-      - name: Build Windows zip
+      - name: Build Windows installer and zip
         working-directory: packages/viewer
         run: npm run dist:win
 
-      - name: Upload Windows zip
+      - name: Upload Windows installer and zip
         uses: actions/upload-artifact@v4
         with:
           name: viewer-windows
-          # electron-builder default for `--win zip` is
-          # ${productName}-${version}-win.zip
-          path: packages/viewer/dist/*-win.zip
+          path: |
+            packages/viewer/dist/*.exe
+            packages/viewer/dist/*.zip
           if-no-files-found: error
 
   build-viewer-mac:

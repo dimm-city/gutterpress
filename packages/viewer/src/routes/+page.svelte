@@ -39,6 +39,7 @@
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api, type SyncOutcome } from "$lib/api";
   import { basenameOf, joinPath } from "$lib/platform/paths";
+  import { shouldReconcileAfterSync } from "$lib/sync-status";
   import { onMount } from "svelte";
   import {
     NARROW_BREAKPOINT,
@@ -301,9 +302,15 @@
     }
   }
 
-  // Sync completed. Merged online changes land on disk and the preview's
-  // file watcher re-renders on its own (same contract as restore, #13).
-  function onSyncCompleted(mergedRemoteChanges: boolean) {
+  function onSyncFilesChanged() {
+    buffer?.reconcileExternalChange().catch(() => {});
+    refreshProblems();
+  }
+
+  // Sync completed. Online changes may land on disk even when the final outcome
+  // is "up-to-date" (pull fast-forwarded, then push had nothing to send), so the
+  // file-change signal is separate from the user-facing merge/sync copy.
+  function onSyncCompleted(mergedRemoteChanges: boolean, filesChanged = mergedRemoteChanges) {
     toast?.success(
       mergedRemoteChanges
         ? "Synced — changes from the online copy were combined in, so the preview will refresh."
@@ -315,7 +322,7 @@
     // If remote changes landed on disk, re-lint immediately (the preview
     // file-watcher re-renders and fires refreshProblems via renderingComplete,
     // but a manual refresh here catches edge cases where no re-render fires).
-    if (mergedRemoteChanges) refreshProblems();
+    if (filesChanged) onSyncFilesChanged();
   }
 
   // The single Reconnect action (ADR 0006 D7): route to the matching connect
@@ -355,10 +362,10 @@
         } else if (outcome.status === "synced") {
           // Conflict resolved on its own (race between pill event + sync call).
           conflictOpen = false;
-          onSyncCompleted(outcome.mergedRemoteChanges);
+          onSyncCompleted(outcome.mergedRemoteChanges, outcome.filesChanged === true);
         } else if (outcome.status === "up-to-date") {
           conflictOpen = false;
-          onSyncCompleted(false);
+          onSyncCompleted(false, outcome.filesChanged === true);
         }
         // auth/offline/error: leave the dialog open so the user can still
         // "Decide later"; the confirm button remains disabled.
@@ -393,6 +400,9 @@
     const off = getPlatform().onSyncStatus((status) => {
       // Scope to the currently open project.
       if (status.projectDir !== currentDir) return;
+      if (shouldReconcileAfterSync(status)) {
+        onSyncFilesChanged();
+      }
 
       if (status.state === "recovering") {
         // Automated repair in progress — show the non-dismissable overlay.
@@ -2464,14 +2474,18 @@
         conflictRemoteId = outcome.remoteId;
         conflictOpen = true;
       } else if (outcome.status === "synced") {
-        onSyncCompleted(outcome.mergedRemoteChanges);
+        onSyncCompleted(outcome.mergedRemoteChanges, outcome.filesChanged === true);
       } else if (outcome.status === "up-to-date") {
-        toast?.info("Already up to date — no changes to sync.");
+        if (outcome.filesChanged) onSyncCompleted(false, true);
+        else toast?.info("Already up to date — no changes to sync.");
       } else if (outcome.status === "auth") {
+        if (outcome.filesChanged) onSyncFilesChanged();
         toast?.error("Not connected. Use Connect in the sidebar to set up syncing.");
       } else if (outcome.status === "offline") {
+        if (outcome.filesChanged) onSyncFilesChanged();
         toast?.info("You appear to be offline. Try again when connected.");
       } else {
+        if (outcome.filesChanged) onSyncFilesChanged();
         // Generic error state — surface the message if available.
         toast?.error("Sync failed. Check your connection and try again.");
       }

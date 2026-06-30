@@ -104,8 +104,10 @@ export type SyncOutcome =
       snapshotId?: string;
       /** True when online changes were merged into the local copy. */
       mergedRemoteChanges: boolean;
+      /** True when pulling online changes changed the local working tree. */
+      filesChanged?: boolean;
     }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | { status: "up-to-date"; message: string; snapshotId?: string; filesChanged?: boolean }
   | {
       status: "conflict";
       message: string;
@@ -116,9 +118,9 @@ export type SyncOutcome =
       remoteId: string;
       snapshotId?: string;
     }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
+  | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
+  | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
+  | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
 
 /**
  * Outcome of a pull-only attempt ({@link pullChanges}): fetch + fast-forward/
@@ -612,6 +614,7 @@ export async function syncProject(
 
   let snapshotId: string | undefined;
   let pulled = false;
+  let filesChanged = false;
   for (let attempt = 0; attempt < attempts; attempt++) {
     logger.info("sync", `sync pass ${attempt + 1}/${attempts}`);
     const pull = await pullChanges(options);
@@ -626,6 +629,7 @@ export async function syncProject(
       return { ...pull, ...base }; // auth / offline / error
     }
     pulled = pulled || pull.status === "pulled";
+    filesChanged = filesChanged || (pull.status === "pulled" && pull.filesChanged);
 
     const push = await pushChanges(options);
     snapshotId = snapshotId ?? push.snapshotId;
@@ -636,6 +640,7 @@ export async function syncProject(
           status: "synced",
           message: pulled ? MSG_SYNCED_MERGED : MSG_SYNCED,
           mergedRemoteChanges: pulled,
+          ...(filesChanged ? { filesChanged: true } : {}),
           ...(snapshotId ? { snapshotId } : {}),
         };
       case "up-to-date":
@@ -643,6 +648,7 @@ export async function syncProject(
         return {
           status: "up-to-date",
           message: pulled ? MSG_UP_TO_DATE_PULLED : MSG_UP_TO_DATE,
+          ...(filesChanged ? { filesChanged: true } : {}),
           ...(snapshotId ? { snapshotId } : {}),
         };
       case "pull-first":
@@ -654,13 +660,18 @@ export async function syncProject(
         continue;
       default:
         logger.warn("sync", `push non-success`, { status: push.status });
-        return { ...push, ...(snapshotId ? { snapshotId } : {}) };
+        return {
+          ...push,
+          ...(filesChanged ? { filesChanged: true } : {}),
+          ...(snapshotId ? { snapshotId } : {}),
+        };
     }
   }
   logger.error("sync", `exhausted ${attempts} retry attempts (race)`);
   return {
     status: "error",
     message: MSG_RACE,
+    ...(filesChanged ? { filesChanged: true } : {}),
     ...(snapshotId ? { snapshotId } : {}),
   };
 }

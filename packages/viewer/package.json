@@ -16,7 +16,7 @@
     "electron:hmr": "npm run electron:build && concurrently -k -n vite,electron -c cyan,magenta \"vite dev --port 5173 --strictPort\" \"wait-on http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron out/main/main.js\"",
     "dist": "npm run build && npm run electron:build && electron-builder --config electron-builder.yml",
     "dist:linux": "npm run dist -- --linux AppImage",
-    "dist:win": "npm run dist -- --win zip",
+    "dist:win": "npm run dist -- --win nsis zip",
     "dist:mac": "npm run dist -- --mac dmg",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint 'src/**/*.svelte' 'src/**/*.svelte.ts'",
