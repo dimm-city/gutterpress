@@ -2890,6 +2890,7 @@
       bind:width={leftPanelWidth}
       bind:activeTab={leftPanelTab}
       projectDir={currentDir}
+      projectDisplayName={currentFolderDisplayName}
       projectCapabilities={projectCapabilities}
       projectSharesParentHistory={projectSharesParentHistory}
       editorFilePath={editorFilePath}

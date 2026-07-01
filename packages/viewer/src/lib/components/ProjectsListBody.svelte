@@ -32,6 +32,8 @@
     onOpenGitHub,
     onNewProject,
     onBrowse,
+    currentProjectPath = null,
+    currentProjectDisplayName = null,
     filterInput = "",
     compact = false,
   }: {
@@ -45,6 +47,9 @@
     onNewProject?: () => void;
     /** Trigger a native folder picker and call onChosen with the result. */
     onBrowse?: () => void;
+    /** Currently open project, when this list is hosted inside the workspace panel. */
+    currentProjectPath?: string | null;
+    currentProjectDisplayName?: string | null;
     /** External filter text (e.g. from a search input in the parent). */
     filterInput?: string;
     /** Compact layout for use inside a panel tab (no outer padding). */
@@ -138,6 +143,15 @@
     if (!term) return true;
     return path.toLowerCase().includes(term) || (title ?? "").toLowerCase().includes(term);
   }
+
+  let currentProject = $derived.by<
+    { key: string; displayName: string } | null
+  >(() => {
+    if (!currentProjectPath) return null;
+    const displayName = currentProjectDisplayName ?? basenameOf(currentProjectPath);
+    if (!matchesFilter(currentProjectPath, displayName, effectiveFilter)) return null;
+    return { key: currentProjectPath, displayName };
+  });
 
   let filteredFavorites = $derived(
     favorites.filter((f) => matchesFilter(f.key, f.title, effectiveFilter))
@@ -314,6 +328,20 @@
 
   <!-- Scrollable list region -->
   <div class="lists">
+    {#if currentProject}
+      <section class="list-section">
+        <h3 class="list-heading">Currently open</h3>
+        <div class="current-project-row" title={currentProject.key}>
+          <span class="row-icon" aria-hidden="true"><Icon name="folder-open" size={13} /></span>
+          <span class="row-info">
+            <span class="row-title">{currentProject.displayName}</span>
+            <span class="row-path">{currentProject.key}</span>
+          </span>
+          <span class="current-project-badge">Open</span>
+        </div>
+      </section>
+    {/if}
+
     {#if filteredFavorites.length > 0}
       <section class="list-section">
         <h3 class="list-heading">Favorites</h3>
@@ -576,6 +604,15 @@
     padding: 6px 8px; border-radius: 5px; cursor: pointer;
     border: 1px solid transparent; transition: background 0.1s;
   }
+  .current-project-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--app-border);
+    background: var(--app-surface-sunken);
+  }
   .list-row:not(.dimmed):hover,
   .list-row:not(.dimmed):focus-visible {
     background: var(--app-surface-sunken); border-color: var(--app-border); outline: none;
@@ -590,6 +627,16 @@
   .row-info { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .row-title { font-size: 12px; font-weight: 500; color: var(--app-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row-path { font-size: 10px; color: var(--app-text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, monospace; }
+  .current-project-badge {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--app-accent-text);
+    background: var(--app-accent);
+    border: 1px solid var(--app-accent-border);
+    border-radius: 999px;
+    padding: 2px 7px;
+  }
   .row-actions { display: flex; gap: 3px; align-items: center; flex-shrink: 0; opacity: 0; transition: opacity 0.1s; }
   .list-item:hover .row-actions, .list-item:focus-within .row-actions { opacity: 1; }
   .icon-action {

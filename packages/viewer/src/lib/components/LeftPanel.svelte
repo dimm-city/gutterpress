@@ -39,6 +39,7 @@
     width = $bindable(260),
     // Project context
     projectDir = null,
+    projectDisplayName = null,
     projectCapabilities = null,
     projectSharesParentHistory = false,
     editorFilePath = null,
@@ -67,6 +68,7 @@
     /** Panel width in px, user-resizable (clamped 200–480), persisted. */
     width?: number;
     projectDir?: string | null;
+    projectDisplayName?: string | null;
     projectCapabilities?: ProjectCapabilities | null;
     projectSharesParentHistory?: boolean;
     editorFilePath?: string | null;
@@ -531,6 +533,8 @@
       <h2 class="panel-heading">Projects</h2>
       <ProjectsListBody
         compact
+        currentProjectPath={sourceMode === "folder" ? projectDir : null}
+        currentProjectDisplayName={sourceMode === "folder" ? projectDisplayName : null}
         onChosen={(path) => { onProjectChosen?.(path); }}
         onOpenUrl={(url) => { onOpenUrl?.(url); }}
         onOpenGitHub={isDesktop() ? onOpenGitHub : undefined}
