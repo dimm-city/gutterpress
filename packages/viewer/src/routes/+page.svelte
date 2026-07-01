@@ -359,10 +359,11 @@
         // for confirmation before the backup + repair.
         void handleForceSync();
         break;
-      case "open_log":
       default:
-        // Generic/unknown: do nothing here (the dialog closes). Never fall back
-        // to reconnect for the unknown case — that was the original defect.
+        // Forward-compat safety net for an unrecognized key: do nothing (the
+        // dialog closes). Never fall back to reconnect — that was the original
+        // defect. (The generic/unknown failure now maps to "sync" above, so its
+        // "Try again" button actually retries the sync.)
         break;
     }
   }

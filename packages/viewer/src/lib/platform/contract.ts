@@ -460,8 +460,7 @@ export type RecoveryActionKey =
   | "reconnect"
   | "resolve_conflict"
   | "restore_repo"
-  | "check_connection"
-  | "open_log";
+  | "check_connection";
 
 /**
  * Plain-language guidance shown when a repair is blocked or fails.

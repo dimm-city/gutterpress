@@ -269,7 +269,8 @@ export function makeManualGuidance(
           "Something unexpected went wrong while syncing. Your work is saved on this computer.",
         recommendedNextStep: "Try syncing again. If the problem continues, contact support.",
         recommendedAction: "Try again",
-        recommendedActionKey: "open_log",
+        // "Try again" retries the sync — never a dead no-op, and never reconnect.
+        recommendedActionKey: "sync",
         safeNextSteps: [
           "Your work is saved on this computer.",
           "Nothing was changed online.",

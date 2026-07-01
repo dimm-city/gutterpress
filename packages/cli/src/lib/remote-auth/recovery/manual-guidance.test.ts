@@ -25,7 +25,8 @@ const EXPECTED: Record<SyncErrorKind, RecoveryActionKey> = {
   wrong_remote_or_branch: "check_connection",
   interrupted_rebase: "restore_repo",
   interrupted_cherry_pick: "restore_repo",
-  unknown: "open_log",
+  // "Try again" copy → retry the sync (not a dead no-op).
+  unknown: "sync",
 };
 
 describe("makeManualGuidance — machine action key", () => {
@@ -49,7 +50,7 @@ describe("makeManualGuidance — machine action key", () => {
       "restore_repo",
     );
     expect(makeManualGuidance(ctx, "unknown").recommendedActionKey).toBe(
-      "open_log",
+      "sync",
     );
     expect(
       makeManualGuidance(ctx, "non_fast_forward").recommendedActionKey,

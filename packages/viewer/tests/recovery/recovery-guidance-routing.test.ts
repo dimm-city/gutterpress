@@ -53,7 +53,6 @@ describe("RecoveryGuidanceDialog CTA routing (+page.svelte)", () => {
       "sync",
       "resolve_conflict",
       "restore_repo",
-      "open_log",
     ]) {
       expect(body).toContain(`"${key}"`);
     }
@@ -72,16 +71,28 @@ describe("RecoveryGuidanceDialog CTA routing (+page.svelte)", () => {
     expect(reconnectCall).toBeGreaterThan(reconnectIdx);
   });
 
-  test("the generic/unknown (open_log/default) branch does NOT fall back to reconnect", async () => {
+  test("the default (unrecognized-key) branch does NOT fall back to reconnect", async () => {
     const src = await readFile(PAGE_PATH, "utf-8");
     const body = extractRoutingFn(src);
-    // Isolate everything from the open_log/default label to the end of the switch.
-    const defaultIdx = Math.max(body.indexOf('case "open_log"'), body.indexOf("default:"));
+    // Isolate everything from the default label to the end of the switch.
+    const defaultIdx = body.indexOf("default:");
     expect(defaultIdx).toBeGreaterThan(-1);
     const tail = body.slice(defaultIdx);
     // The default arm must never invoke the reconnect flow — the exact original bug.
     expect(tail).not.toContain("onSyncReconnect()");
     expect(tail).not.toContain("advancedSetupOpen = true");
     expect(tail).not.toContain("githubOpen = true");
+  });
+
+  test("the generic/unknown failure maps to a real retry (sync), not a dead no-op", async () => {
+    // Guards the Codex review finding: the unknown guidance's "Try again" button
+    // must perform an action. The lib maps `unknown` → "sync"; here we assert the
+    // router's "sync" case actually invokes the retry path.
+    const src = await readFile(PAGE_PATH, "utf-8");
+    const body = extractRoutingFn(src);
+    const syncIdx = body.indexOf('case "sync"');
+    expect(syncIdx).toBeGreaterThan(-1);
+    const afterSync = body.slice(syncIdx);
+    expect(afterSync).toMatch(/handleForceSync\(\)/);
   });
 });
