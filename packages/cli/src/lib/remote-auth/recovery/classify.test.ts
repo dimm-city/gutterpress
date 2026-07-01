@@ -237,6 +237,43 @@ describe("classifyGitError — all 13 SyncErrorKind values", () => {
   });
 });
 
+// ── Interrupted rebase / cherry-pick beat detached_head (ordering guard) ───────
+//
+// An in-progress rebase usually leaves HEAD detached, so a mid-rebase repo also
+// reports isDetachedHead=true. The interrupted-operation checks MUST run BEFORE
+// the detached-head check or the abort-based repair never fires (the repo would
+// be sent down the detached-head rescue path instead).
+
+describe("classifyGitError — interrupted rebase/cherry-pick ordering", () => {
+  const rebaseHealth: RepoHealth = {
+    ...healthyRepo,
+    hasInterruptedRebase: true,
+    isDetachedHead: true, // a rebase detaches HEAD
+    currentBranch: undefined,
+  };
+  const cherryPickHealth: RepoHealth = {
+    ...healthyRepo,
+    hasInterruptedCherryPick: true,
+  };
+
+  test("interrupted rebase → interrupted_rebase EVEN WHEN isDetachedHead is true", () => {
+    expect(classifyGitError(undefined, rebaseHealth)).toBe("interrupted_rebase");
+    expect(classifyGitError(undefined, rebaseHealth)).not.toBe("detached_head");
+  });
+
+  test("interrupted cherry-pick → interrupted_cherry_pick even with detached HEAD", () => {
+    expect(
+      classifyGitError(undefined, { ...cherryPickHealth, isDetachedHead: true }),
+    ).toBe("interrupted_cherry_pick");
+  });
+
+  test("rebase beats cherry-pick when both are somehow present", () => {
+    expect(
+      classifyGitError(undefined, { ...rebaseHealth, hasInterruptedCherryPick: true }),
+    ).toBe("interrupted_rebase");
+  });
+});
+
 // ── BUG 1: transient/transport errors beat structural health ──────────────────
 //
 // A repo can be in a recoverable structural state (detached HEAD, stale lock)

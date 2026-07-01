@@ -30,6 +30,8 @@ import { recover as recoverMissingGitDir } from "./recover-missing-git-dir.ts";
 import { recover as recoverMissingObjects } from "./recover-missing-objects.ts";
 import { recover as recoverUnrelatedHistories } from "./recover-unrelated-histories.ts";
 import { recover as recoverWrongRemote } from "./recover-wrong-remote.ts";
+import { recover as recoverInterruptedRebase } from "./recover-interrupted-rebase.ts";
+import { recover as recoverInterruptedCherryPick } from "./recover-interrupted-cherry-pick.ts";
 
 // ── Unknown-kind fallback ─────────────────────────────────────────────────────
 
@@ -109,6 +111,12 @@ export async function recover(
       break;
     case "wrong_remote_or_branch":
       result = await recoverWrongRemote(ctx, error);
+      break;
+    case "interrupted_rebase":
+      result = await recoverInterruptedRebase(ctx, error);
+      break;
+    case "interrupted_cherry_pick":
+      result = await recoverInterruptedCherryPick(ctx, error);
       break;
     case "unknown":
       result = await recoverUnknown(ctx, error);

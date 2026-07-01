@@ -332,6 +332,42 @@
     else advancedSetupOpen = true;
   }
 
+  // Route the RecoveryGuidanceDialog's primary button by the guidance's machine
+  // action key — NOT always-reconnect (the exact bug this fixes). Each branch
+  // targets the flow the error kind actually calls for.
+  function onRecoveryGuidancePrimary() {
+    switch (recoveryGuidance?.recommendedActionKey) {
+      case "reconnect":
+        onSyncReconnect();
+        break;
+      case "check_connection":
+        advancedSetupOpen = true;
+        break;
+      case "sync":
+        // Retry the sync; handleForceSync also routes conflicts to the chooser.
+        void handleForceSync();
+        break;
+      case "resolve_conflict":
+        // Re-run the sync so the conflict chooser opens with fresh file IDs
+        // (handleForceSync sets conflictOpen on a "conflict" outcome).
+        void handleForceSync();
+        break;
+      case "restore_repo":
+        // Re-run the sync/recovery path: the orchestrator re-classifies the repo
+        // state and dispatches the matching recovery handler (e.g. the
+        // interrupted-rebase / interrupted-cherry-pick abort), which re-prompts
+        // for confirmation before the backup + repair.
+        void handleForceSync();
+        break;
+      default:
+        // Forward-compat safety net for an unrecognized key: do nothing (the
+        // dialog closes). Never fall back to reconnect — that was the original
+        // defect. (The generic/unknown failure now maps to "sync" above, so its
+        // "Try again" button actually retries the sync.)
+        break;
+    }
+  }
+
   /**
    * Called by the ambient SyncStatusPill when the auto-sync orchestrator emits
    * a conflict state (§6.1). Opens the ConflictChoicesDialog immediately with
@@ -3255,7 +3291,7 @@
   backupZipPath={recoveryGuidanceBackupPath}
   logFilePath={recoveryGuidanceLogPath}
   onShowBackup={(path) => showBackupInFolder(path)}
-  onPrimary={onSyncReconnect}
+  onPrimary={onRecoveryGuidancePrimary}
 />
 
 <style>

@@ -21,6 +21,8 @@ const ALL_KINDS: SyncErrorKind[] = [
   "missing_or_corrupt_objects",
   "unrelated_histories",
   "wrong_remote_or_branch",
+  "interrupted_rebase",
+  "interrupted_cherry_pick",
   "unknown",
 ];
 
@@ -45,6 +47,8 @@ describe("recoveryPolicy — dangerous paths always require backup + confirmatio
     "missing_git_dir",
     "missing_or_corrupt_objects",
     "unrelated_histories",
+    "interrupted_rebase",
+    "interrupted_cherry_pick",
   ];
 
   for (const kind of dangerousKinds) {
@@ -117,6 +121,20 @@ describe("recoveryPolicy — risk levels", () => {
 
   test("stale_lock has risk=low", () => {
     expect(policyFor("stale_lock").risk).toBe("low");
+  });
+
+  test("interrupted_rebase has risk=medium and backup+confirm", () => {
+    const p = policyFor("interrupted_rebase");
+    expect(p.risk).toBe("medium");
+    expect(p.createBackup).toBe(true);
+    expect(p.requireConfirmation).toBe(true);
+  });
+
+  test("interrupted_cherry_pick has risk=medium and backup+confirm", () => {
+    const p = policyFor("interrupted_cherry_pick");
+    expect(p.risk).toBe("medium");
+    expect(p.createBackup).toBe(true);
+    expect(p.requireConfirmation).toBe(true);
   });
 });
 

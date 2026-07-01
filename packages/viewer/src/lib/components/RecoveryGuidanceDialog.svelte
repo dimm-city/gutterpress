@@ -58,28 +58,6 @@
     triggerEl?.focus();
   }
 
-  /**
-   * Plain-language label for the lib's machine `recommendedAction` key. The raw
-   * key (e.g. "reconnect_repo") must NEVER reach the button face — it's a code
-   * token meaningless to an author (three-judge gate, unanimous finding).
-   */
-  function actionLabel(action: string | undefined): string {
-    switch (action) {
-      case "reconnect_repo":
-        return "Reconnect this folder";
-      case "choose_file_version":
-        return "Choose which version to keep";
-      case "restore_from_backup":
-        return "Restore from the backup";
-      case "clone_fresh_copy":
-        return "Make a fresh copy";
-      case "contact_support":
-        return "Get help";
-      default:
-        return "Continue";
-    }
-  }
-
   function handlePrimary() {
     onPrimary?.();
     close();
@@ -141,7 +119,7 @@
         <div class="recommended-step" role="note">
           <p class="step-text">{guidance.recommendedNextStep}</p>
           <button class="primary" onclick={handlePrimary}>
-            {actionLabel(guidance.recommendedAction)}
+            {guidance.recommendedAction}
           </button>
         </div>
 

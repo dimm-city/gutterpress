@@ -142,6 +142,28 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeRemote: false,
     automate: false, // block with guidance
   },
+  // An interrupted rebase/cherry-pick is aborted: the branch ref is rewound (or
+  // the half-applied index/worktree state cleared) and the operation-state dirs
+  // are removed. This resets local files back to the last working state, so it
+  // always makes a backup first and always asks the author to confirm.
+  interrupted_rebase: {
+    risk: "medium",
+    createBackup: true,
+    requireConfirmation: true,
+    mayChangeLocalFiles: true,
+    mayChangeGitMetadata: true,
+    mayChangeRemote: false,
+    automate: false,
+  },
+  interrupted_cherry_pick: {
+    risk: "medium",
+    createBackup: true,
+    requireConfirmation: true,
+    mayChangeLocalFiles: true,
+    mayChangeGitMetadata: true,
+    mayChangeRemote: false,
+    automate: false,
+  },
   unknown: {
     risk: "none",
     createBackup: false,
