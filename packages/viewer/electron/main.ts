@@ -81,6 +81,11 @@ import type {
 } from "./bridge-types";
 // The splash markup ships as a string baked into the main bundle (electron-vite
 // inlines `?raw`), so there is no separate file to resolve at runtime.
+// tsc (moduleResolution: bundler) resolves `./splash.html?raw` to the real
+// `splash.html` file, which it can't type — the `declare module "*.html?raw"`
+// ambient is shadowed by that on-disk file. electron-vite handles the import at
+// build time; the suppression documents the tsc-only gap.
+// @ts-expect-error vite `?raw` string import — resolved by electron-vite, not tsc
 import splashHtml from "./splash.html?raw";
 
 function appIconPath(): string {
@@ -612,7 +617,7 @@ class ExportCanceledError extends Error {
 
 function loadLib(): Promise<LibModule> {
   if (!libPromise) {
-    libPromise = import("@dimm-city/print-md") as Promise<LibModule>;
+    libPromise = import("@dimm-city/print-md") as unknown as Promise<LibModule>;
   }
   return libPromise;
 }
@@ -2253,19 +2258,19 @@ const discoverScanDeps: ScanDeps = {
 registerPrefsHooks({
   readPrefs: readPrefs as () => Promise<Record<string, unknown>>,
   writePrefs: writePrefs as (p: Record<string, unknown>) => Promise<void>,
-  readSettings: readSettings as () => Promise<Record<string, unknown>>,
-  writeSettings: writeSettings as (s: Record<string, unknown>) => Promise<void>,
+  readSettings: readSettings as unknown as () => Promise<Record<string, unknown>>,
+  writeSettings: writeSettings as unknown as (s: Record<string, unknown>) => Promise<void>,
   existingDirectory,
   readProjectState: readProjectState as (states: Record<string, unknown> | undefined, dir: string) => unknown,
   writeProjectState: writeProjectState as (states: Record<string, unknown> | undefined, dir: string, patch: Record<string, unknown>) => Record<string, unknown>,
-  mergeSettings: mergeSettings as (base: Record<string, unknown>, patch: Record<string, unknown>) => Record<string, unknown>,
+  mergeSettings: mergeSettings as unknown as (base: Record<string, unknown>, patch: Record<string, unknown>) => Record<string, unknown>,
   defaultProjectSearchRoots,
   scanForProjects: (roots: string[], exclude: Set<string>) => scanForProjects(roots, exclude, discoverScanDeps),
   toggleFavoriteFolder: toggleFavoriteFolder as (
     favorites: Array<{ path: string; title: string }> | undefined,
     entry: { path: string; title: string }
   ) => { favorites: Array<{ path: string; title: string }>; favorited: boolean },
-  removeRecentFolder: removeRecentFolder as (
+  removeRecentFolder: removeRecentFolder as unknown as (
     recents: Array<{ path: string; [k: string]: unknown }> | undefined,
     targetPath: string
   ) => Array<{ path: string; [k: string]: unknown }>,
