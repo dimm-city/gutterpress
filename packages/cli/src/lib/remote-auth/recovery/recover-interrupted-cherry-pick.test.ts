@@ -203,3 +203,35 @@ describe("recover interrupted_cherry_pick — copy discipline", () => {
     expect(r.guidance.supportDetails).toContain("interrupted_cherry_pick");
   });
 });
+
+// ── TOCTOU: marker vanished before recovery ─────────────────────────────────────
+
+describe("recover interrupted_cherry_pick — marker vanished before recovery", () => {
+  test("no CHERRY_PICK_HEAD → no-op recovered; worktree preserved, no backup, no confirm", async () => {
+    const dir = await makeTempDir("cp-vanished-");
+    await initRepo(dir);
+    // The cherry-pick was finished/aborted externally between inspect and recover:
+    // NO CHERRY_PICK_HEAD. A local edit is present that must NOT be discarded.
+    await writeFile(path.join(dir, "chapter-01.md"), "LOCAL EDIT — keep me\n");
+
+    let confirmCalled = false;
+    const gate: ConfirmationGate = {
+      confirmRepair: async () => {
+        confirmCalled = true;
+        return true;
+      },
+    };
+
+    const result = await recover(makeCtx(dir, { confirmation: gate }));
+
+    expect(result.status).toBe("recovered");
+    // No destructive path was entered: no confirmation prompt, no backup.
+    expect(confirmCalled).toBe(false);
+    const r = result as Extract<RecoveryResult, { status: "recovered" }>;
+    expect(r.backupZipPath ?? "").toBe("");
+    // The dirty worktree was NOT force-reset — the local edit survives.
+    expect(fs.readFileSync(path.join(dir, "chapter-01.md"), "utf8")).toBe(
+      "LOCAL EDIT — keep me\n",
+    );
+  });
+});

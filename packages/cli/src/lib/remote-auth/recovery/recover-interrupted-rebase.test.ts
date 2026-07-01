@@ -284,6 +284,39 @@ describe("recover interrupted_rebase — mid-repair fault", () => {
   });
 });
 
+// ── TOCTOU: marker vanished before recovery ─────────────────────────────────────
+
+describe("recover interrupted_rebase — marker vanished before recovery", () => {
+  test("no rebase marker → no-op recovered; branch NOT rewound off stale ORIG_HEAD, no backup/confirm", async () => {
+    const dir = await makeTempDir("ir-vanished-");
+    const { firstSha } = await initTwoCommitRepo(dir);
+    const tip = await resolveMain(dir);
+    // The rebase was finished/aborted externally between inspect and recover: NO
+    // rebase-merge/rebase-apply marker. A STALE ORIG_HEAD from an unrelated op
+    // points at the old first commit — the handler must NOT use it to rewind.
+    await writeFile(path.join(dir, ".git", "ORIG_HEAD"), `${firstSha}\n`);
+
+    let confirmCalled = false;
+    const gate: ConfirmationGate = {
+      confirmRepair: async () => {
+        confirmCalled = true;
+        return true;
+      },
+    };
+
+    const result = await recover(makeCtx(dir, { confirmation: gate }));
+
+    expect(result.status).toBe("recovered");
+    // No destructive path was entered: no confirmation prompt, no backup.
+    expect(confirmCalled).toBe(false);
+    const r = result as Extract<RecoveryResult, { status: "recovered" }>;
+    expect(r.backupZipPath ?? "").toBe("");
+    // The branch was NOT rewound to the stale ORIG_HEAD; HEAD stays attached at tip.
+    expect(await resolveMain(dir)).toBe(tip);
+    expect(await currentBranch(dir)).toBe("main");
+  });
+});
+
 // ── Repo-lock serialization ─────────────────────────────────────────────────────
 
 describe("recover interrupted_rebase — runs under the per-repo lock", () => {

@@ -91,13 +91,28 @@ function successMessage(hadLocalChanges: boolean): string {
 }
 
 export const recover: RecoverFn = async (ctx) => {
-  return withRepoLock(ctx.repoDir, () =>
-    withBackupGate(ctx, KIND, async (backupZipPath) => {
-      const dir = ctx.repoDir;
-      const gitDir = gitDirFor(dir);
-      const rebaseMerge = path.join(gitDir, "rebase-merge");
-      const rebaseApply = path.join(gitDir, "rebase-apply");
+  return withRepoLock(ctx.repoDir, async () => {
+    const dir = ctx.repoDir;
+    const gitDir = gitDirFor(dir);
+    const rebaseMerge = path.join(gitDir, "rebase-merge");
+    const rebaseApply = path.join(gitDir, "rebase-apply");
 
+    // TOCTOU guard: the interrupted rebase may have been finished or aborted
+    // externally (e.g. the author ran an abort in a terminal) between the
+    // preflight classification and now. If no rebase marker remains there is
+    // nothing to abort — return a benign no-op WITHOUT creating a backup,
+    // prompting, or touching any ref/worktree. Falling through here would let the
+    // code below rewind a branch off a possibly-stale `.git/ORIG_HEAD` left by an
+    // unrelated operation, unexpectedly moving refs. (Copilot review.)
+    if (!fs.existsSync(rebaseMerge) && !fs.existsSync(rebaseApply)) {
+      return {
+        status: "recovered",
+        message:
+          "Your project was already back to its last working state; no changes were needed.",
+      } satisfies RecoveryResult;
+    }
+
+    return withBackupGate(ctx, KIND, async (backupZipPath) => {
       // Capture the working-tree state BEFORE aborting (best-effort) so the
       // success copy can honestly report whether in-progress edits were reset.
       let hadLocalChanges = false;
@@ -184,6 +199,6 @@ export const recover: RecoverFn = async (ctx) => {
         message: successMessage(hadLocalChanges),
         backupZipPath: backupZipPath ?? "",
       } satisfies RecoveryResult;
-    }),
-  );
+    });
+  });
 };
