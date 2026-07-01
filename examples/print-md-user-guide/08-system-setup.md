@@ -165,9 +165,13 @@ Markdown linting auto-detects `.markdownlint.{yaml,yml,json,jsonc}` (and the
 `.markdownlint-cli2.{yaml,jsonc}` variants) in the source directory; HTML
 linting auto-detects `.htmlhintrc`.
 
-### `stylelint` — bundled
+### CSS print-safety linting — built in (no stylelint)
 
-Bundled with print-md for CSS linting (`print-md lint`). No installation required.
+`print-md lint` checks CSS for print-safety issues (remote URLs, rasterizing
+effects, Paged.js crash-prone selectors) using print-md's own postcss-based
+checks. **stylelint is not used or required** — it can't be bundled into the
+`bun build --compile` binary, so these checks run in-process everywhere,
+including from the standalone binary.
 
 ## Configuration
 

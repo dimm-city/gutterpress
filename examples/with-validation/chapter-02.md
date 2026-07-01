@@ -22,9 +22,6 @@ Print vendors typically require CMYK color spaces. The validation system checks:
 - **Source images** via `asset.image.color-space` (pre-build)
 - **Rendered PDF** via `pdf.print.color-spaces` (post-build)
 
-> [!sidebar]
-> This callout type is specific to TTRPG projects. Because it is not in this project's `allowedCallouts` list, the `source.callout-validation` check will flag it.
-
 ## Font Embedding
 
 All fonts must be fully embedded in the PDF. The `pdf.print.embedded-fonts` check verifies this in-process (via the bundled PDF.js engine — no external tool). Missing or partially embedded fonts will cause errors.

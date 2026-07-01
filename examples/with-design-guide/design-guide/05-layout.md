@@ -2,7 +2,7 @@
 
 # Layout
 
-<div class="lede">Utilities for multi-column text, image placement, and page-break control. All are CSS classes that can be applied via markdown attributes or container blocks.</div>
+<div class="lede">Utilities for multi-column text, image placement, and page-break control. All are CSS classes applied via markdown attributes or `@section` markers.</div>
 
 ---
 
@@ -11,23 +11,23 @@
 The `.two-column` class divides a container into two equal columns with a hairline column rule. Best for glossaries, reference lists, FAQ sections, and any content with short entries.
 
 ```markdown
-::: two-column
+@section .two-column
 Column content flows left to right automatically.
-Add `---{.column-break}` to force content to the right column.
-:::
+Add `@column-break` to force content to the right column.
+@end-section
 ```
 
-::: two-column
+@section .two-column
 
 **Column flow** — text runs from the bottom of the left column to the top of the right column automatically, based on the available column height.
 
-**Column break** — add `---{.column-break}` (no space before `{`) anywhere inside the container to push subsequent content to the right column unconditionally.
+**Column break** — add `@column-break` on its own line anywhere inside the section to push subsequent content to the right column unconditionally.
 
-**Page breaks** — a two-column block breaks across pages normally. Wrap the entire block in `::: container … :::` to keep it on one page.
+**Page breaks** — a two-column block breaks across pages normally. Add `.no-break` to the `@section` classes to keep the entire block on one page.
 
 **Headings inside** — H3 and H4 headings work inside two-column blocks. H1 and H2 span the full width because they carry a border-bottom that doesn't respect column boundaries.
 
-:::
+@end-section
 
 ---
 
@@ -35,7 +35,7 @@ Add `---{.column-break}` to force content to the right column.
 
 `.three-column` follows the same rules as two-column but divides the content into three narrower columns. Use for very short entries (index items, skill lists) where each entry is two lines or fewer.
 
-::: three-column
+@section .three-column
 
 Alpha · first entry in a longer list.
 
@@ -49,7 +49,7 @@ Epsilon · fifth entry showing the automatic flow behavior.
 
 Zeta · sixth entry. Three columns suit dense, short-form reference content.
 
-:::
+@end-section
 
 ---
 
@@ -65,7 +65,7 @@ Float an image alongside body text using `.img-float-right` or `.img-float-left`
     <span style="font-family: var(--font-display); font-size: var(--fs-small); color: var(--color-ink-faint);">Image placeholder</span>
   </div>
   <p>Body text flows to the left of the floated image. The image occupies 44% of the text column width, leaving 56% for the paragraph. This balance keeps the image prominent without overwhelming the text.</p>
-  <p style="clear: both;">After the float clears, text returns to full width. Add an empty paragraph or a container below the float to clear it explicitly.</p>
+  <p style="clear: both;">After the float clears, text returns to full width. Add an empty paragraph below the float to clear it explicitly.</p>
 </div>
 </div>
 
@@ -107,12 +107,12 @@ Wrap images in a `<figure>` element for proper captioning. The `figcaption` rend
 | `.break-before` | Start block on a new page |
 | `.keep-next` | Keep block on the same page as the next element |
 
-**Applied via container** — wrap any block in a container with the class:
+**Applied via `@section`** — wrap any block in a section with the class:
 
 ```markdown
-::: container {.no-break}
+@section .no-break
 Content that must not split across a page break.
-:::
+@end-section
 ```
 
 **Applied via heading attribute** — force a new page before a specific heading:
@@ -128,15 +128,15 @@ Content that must not split across a page break.
 <table class="token-table">
 <thead><tr><th>Class / Syntax</th><th>Applied via</th><th>Effect</th></tr></thead>
 <tbody>
-<tr><td>.two-column</td><td>::: two-column</td><td>Two equal CSS columns with column rule</td></tr>
-<tr><td>.three-column</td><td>::: three-column</td><td>Three narrow columns for dense lists</td></tr>
+<tr><td>.two-column</td><td>@section .two-column</td><td>Two equal CSS columns with column rule</td></tr>
+<tr><td>.three-column</td><td>@section .three-column</td><td>Three narrow columns for dense lists</td></tr>
 <tr><td>.img-float-right</td><td>![alt](src){.img-float-right}</td><td>Float image right, 44% width, text wraps</td></tr>
 <tr><td>.img-float-left</td><td>![alt](src){.img-float-left}</td><td>Float image left, 44% width, text wraps</td></tr>
-<tr><td>.no-break</td><td>::: container {.no-break}</td><td>Prevent block from splitting across pages</td></tr>
+<tr><td>.no-break</td><td>@section .no-break</td><td>Prevent block from splitting across pages</td></tr>
 <tr><td>.break-before</td><td>## Heading {.break-before}</td><td>Force new page before this element</td></tr>
-<tr><td>.keep-next</td><td>::: container {.keep-next}</td><td>Keep block on same page as next element</td></tr>
+<tr><td>.keep-next</td><td>@section .keep-next</td><td>Keep block on same page as next element</td></tr>
 <tr><td>.lede</td><td>&lt;div class="lede"&gt;…&lt;/div&gt;</td><td>13pt italic intro paragraph after H1</td></tr>
-<tr><td>---{.column-break}</td><td>Inside two/three-column block</td><td>Force remaining content to next column</td></tr>
+<tr><td>@column-break</td><td>Inside a two/three-column @section</td><td>Force remaining content to next column</td></tr>
 </tbody>
 </table>
 

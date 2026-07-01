@@ -64,7 +64,7 @@ See [docs/](./docs/) for technical architecture, ADRs, and developer references.
 
 Browse the [`examples/`](./examples/) directory for real projects you can copy:
 
-- **`with-design-guide`** — the most complete reference. A multi-chapter design guide that exercises the layout features: custom fonts, page templates, columns, sidebars, callouts, and a custom plugin.
+- **`with-design-guide`** — the most complete reference. A multi-chapter design guide that exercises the layout features: custom fonts, page templates, columns, sidebars, and callouts.
 - **`print-md-user-guide`** — the comprehensive user guide, authored in print-md itself.
 - **`with-validation`** — focused on the pre-/post-build validation pipeline.
 

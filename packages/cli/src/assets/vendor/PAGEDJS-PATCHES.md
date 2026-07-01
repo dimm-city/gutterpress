@@ -175,8 +175,8 @@ div.chapter h2 + p,
 div.chapter h3 + p { margin-top: 0; }
 ```
 
-The print-md stylelint plugin (`src/stylelint/printsafe-plugin.ts`) flags this
-pattern via the `printsafe/no-pagedjs-crash-selectors` rule.
+Print-md's own postcss-based print-safety checks (`src/lib/printsafe.ts`) flag
+this pattern via the `printsafe/no-pagedjs-crash-selectors` rule.
 
 **Justification:** An unhandled `SyntaxError` that blanks the entire output is
 the worst possible failure mode for a print tool. Skipping an unsupported

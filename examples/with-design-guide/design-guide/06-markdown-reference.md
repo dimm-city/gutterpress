@@ -2,7 +2,7 @@
 
 # Markdown Reference
 
-<div class="lede">Every print-md syntax feature with live examples. This chapter is a complete reference — consult it when you can't remember which directive, container, or attribute to use.</div>
+<div class="lede">Every print-md syntax feature with live examples. This chapter is a complete reference — consult it when you can't remember which marker or attribute to use.</div>
 
 ---
 
@@ -22,7 +22,7 @@ Generated HTML:
 ```html
 <div class="chapter typography" id="ch-typography">
 <div class="page opener" id="pg-intro" data-page="..." data-template="chapter">
-<div class="region type-scale" id="sec-scale" data-section="..." data-region="main">
+<div class="section type-scale" id="sec-scale" data-section="..." data-region="main">
 ```
 
 Chapter IDs unlock precise CSS targeting without specificity battles:
@@ -69,20 +69,20 @@ Wraps content in `<div class="page">`. Use inside a chapter or spread for explic
 ## Token Reference
 ```
 
-### @break — Hard Break
+### @page-break — Hard Break
 
-Forces a page break **without** generating a `<div class="page">` wrapper element. Use `@break` when you need a page change but don't want a targetable `page` div — for example, inside a `@spread` to separate the left and right pages, or to end a `@section` block.
+Forces a page break **without** generating a `<div class="page">` wrapper element. Use `@page-break` when you need a page change but don't want a targetable `page` div.
 
 **Key distinction from `@page`:**
 - `@page` wraps all following content in `<div class="page [class]">` — CSS rules targeting `.page` apply to it.
-- `@break` emits `<div class="md-break" aria-hidden="true"></div>` and closes the nearest open scope (section, page, or spread). No wrapper for content to live inside.
+- `@page-break` emits `<div class="md-page-break" aria-hidden="true"></div>` — no wrapper for content to live inside, and it does not close any open `@section`/`@page`/`@spread`.
 
-**Syntax** — `@break` on its own line.
+**Syntax** — `@page-break` on its own line.
 
 ```markdown
 Content before the break.
 
-@end-section
+@page-break
 
 Content starts on the next page.
 ```
@@ -99,11 +99,11 @@ Wraps content in `<div class="spread">`. Use for facing-page layouts where left 
 Content that spans both pages of a spread.
 ```
 
-### @section — Region Block
+### @section / @end-section — Region Block
 
-Wraps content in `<div class="region">`. Use to group a logical block within a page — equivalent to `break-inside: avoid` plus an addressable ID.
+Wraps content in `<div class="section">`. Use to group a logical block within a page — equivalent to `break-inside: avoid` plus an addressable ID. Close with `@end-section`.
 
-**Syntax** — `@section #id .class region=name`
+**Syntax** — `@section #id .class region=name` … `@end-section`
 
 ```markdown
 @section #sec-type-scale .type-scale region=main
@@ -111,118 +111,169 @@ Wraps content in `<div class="region">`. Use to group a logical block within a p
 ## Type Scale
 
 Specimen content here...
+
+@end-section
 ```
 
 **Live example** — this callout is inside a `@section` and will stay on one page:
 
-@section
+@section .no-break
 
-::: callout-note
 <span class="callout-label">Note</span>
-This callout and any content immediately following it are wrapped in a `@section` block. Paged.js will push the entire block to the next page rather than split it mid-block.
-:::
+This callout is wrapped in a `@section .no-break` block. Paged.js will push the entire block to the next page rather than split it mid-block.
+
+@end-section
 
 ---
 
-## Container Blocks
+## Styled Blocks
 
-Triple-colon fences wrap content in a styled `<div>`. The word after `:::` sets the container type.
+Print-md has no block-container plugin — every styled block is just a `@section` (or `@page`) carrying the CSS class the stylesheet targets, or raw HTML for content with no page-break requirement.
 
-### ::: container — Avoid Page Break
+### Avoid a Page Break
 
-Prevents the content from splitting across a page.
+@section .no-break
 
-::: container
-This `container` block will stay on one page. Use it around tables, spec blocks, callouts, and any multi-line element that must read as a unit.
-:::
+This `@section .no-break` block will stay on one page. Use it around tables, spec blocks, callouts, and any multi-line element that must read as a unit.
 
-### ::: two-column — Two Columns
+@end-section
+
+```markdown
+@section .no-break
+Content that must stay on one page.
+@end-section
+```
+
+### Two Columns
 
 Flows content in two equal CSS columns.
 
-::: two-column
+@section .two-column
 
-Left column content. Use `---{.column-break}` to force content into the right column early.
+Left column content. Use `@column-break` to force content into the right column early.
 
----{.column-break}
+@column-break
 
 Right column content. The column rule runs between both columns.
 
-:::
+@end-section
 
-### ::: sidebar — Sidebar Block
+```markdown
+@section .two-column
+Left column content. Use `@column-break` to force content into the right column early.
+
+@column-break
+
+Right column content. The column rule runs between both columns.
+@end-section
+```
+
+### Sidebar
 
 Floats content as a right-aligned aside.
 
-::: sidebar
+@section .sidebar
+
 **Sidebar.** Floated right at 38% width. Use for supplementary notes, cross-references, or examples that support but don't interrupt the body flow.
-:::
+
+@end-section
 
 A body paragraph flows to the left of the sidebar. The paragraph will wrap around the floated aside until it clears the bottom of the sidebar element.
 
-### ::: callout-note, ::: callout-warning, ::: callout-tip
+```markdown
+@section .sidebar
+**Sidebar.** Floated right at 38% width.
+@end-section
 
-Styled information panels with a labeled type.
+A body paragraph flows to the left of the sidebar.
+```
 
-::: callout-note
+### Callouts
+
+Styled information panels with a labeled type — `.callout-note`, `.callout-warning`, `.callout-tip`.
+
+@section .callout-note
+
 <span class="callout-label">Note</span>
 Standard informational callout. Blue left border, tinted background.
-:::
 
-::: callout-warning
+@end-section
+
+@section .callout-warning
+
 <span class="callout-label">Warning</span>
 Action-required callout. Orange left border, warm-tinted background.
-:::
 
-::: callout-tip
+@end-section
+
+@section .callout-tip
+
 <span class="callout-label">Tip</span>
 Positive guidance callout. Green left border, cool-tinted background.
-:::
 
-### ::: pull-quote — Pull Quote
+@end-section
+
+```markdown
+@section .callout-note
+<span class="callout-label">Note</span>
+Standard informational callout.
+@end-section
+```
+
+### Pull Quote
 
 Large centered excerpt with decorative rules above and below.
 
-::: pull-quote
+@section .pull-quote
+
 The measure of good design is whether the reader notices the design at all.
 
 <span class="attribution">— Design Guide, Chapter 3</span>
-:::
 
-### ::: wrapper — Generic Wrapper with Classes
-
-The most flexible container — applies any CSS class from the stylesheet to a content block. Use when no named container fits your need.
-
-**Syntax** — `::: wrapper {.class-name}` … `:::`
-
-::: wrapper {.callout}
-<span class="callout-label">Generic wrapper</span>
-This block uses `::: wrapper {.callout}` — applying the `.callout` class without registering a new named container. Any CSS class from `guide.css` or `§ 8 YOUR BOOK LAYER` can be passed this way.
-:::
+@end-section
 
 ```markdown
-::: wrapper {.callout}
-Content inside gets `class="callout"` on its div.
-:::
+@section .pull-quote
+The measure of good design is whether the reader notices the design at all.
 
-::: wrapper {.my-custom-class key="value"}
-Accepts classes, IDs, and data attributes.
-:::
+<span class="attribution">— Design Guide, Chapter 3</span>
+@end-section
 ```
 
-For side-by-side blocks that don't share text flow, use `.grid`:
+### Any Custom Class
 
-::: wrapper {.grid}
+`@section` accepts any class from `guide.css` or `§ 8 YOUR BOOK LAYER` — no registration step is needed for a new class.
 
-::: wrapper {.example}
+@section .callout
+
+<span class="callout-label">Generic section</span>
+This block uses `@section .callout` — applying the `.callout` class directly.
+
+@end-section
+
+```markdown
+@section .callout
+Content inside gets `class="section callout"` on its wrapping div.
+@end-section
+
+@section .my-custom-class key="value"
+Accepts classes, IDs, and data attributes.
+@end-section
+```
+
+For side-by-side blocks that don't share text flow, use `.grid` on a plain `<div>`:
+
+<div class="grid">
+
+<div class="example">
 **Left block** — independent content, does not flow into the right block.
-:::
+</div>
 
-::: wrapper {.example}
+<div class="example">
 **Right block** — equal width, aligned to the top of the left block.
-:::
+</div>
 
-:::
+</div>
 
 ---
 
@@ -312,19 +363,29 @@ code here
 
 ## Column Break
 
-Forces a column break inside a two-column container. No space before the `{`.
+Forces a column break inside a two- or three-column `@section`.
 
-**Syntax** — `---{.column-break}`
+**Syntax** — `@column-break` on its own line.
 
-::: two-column
+@section .two-column
 
 Left column content. The break below pushes everything after it into the right column.
 
----{.column-break}
+@column-break
 
 Right column content. This paragraph begins here because of the column break directive above it.
 
-:::
+@end-section
+
+```markdown
+@section .two-column
+Left column content. The break below pushes everything after it into the right column.
+
+@column-break
+
+Right column content.
+@end-section
+```
 
 ---
 

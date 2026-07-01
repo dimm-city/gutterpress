@@ -41,11 +41,6 @@ validate:
     markdownlint: ".markdownlint.yaml"   # Path to markdownlint config
     htmlhint: ".htmlhintrc"              # Path to htmlhint config
     # stylelint: false                   # Uncomment to disable CSS linting
-    allowedCallouts:
-      - sidebar
-      - note
-      - warning
-      - tip
 
   # Asset validation
   assets:

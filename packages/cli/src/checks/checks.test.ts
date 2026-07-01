@@ -776,7 +776,6 @@ describe("Tool Check", () => {
     // migrated to in-process libs in Phases 1 & 2 (grep/markdownlint/htmlhint →
     // pure JS; Poppler + general qpdf inspection → PDF.js via unpdf).
     const noToolChecks = new Set([
-      "source.callout-validation",
       "source.links.local-refs",
       "source.accessibility.alt-text",
       "source.accessibility.heading-order",
