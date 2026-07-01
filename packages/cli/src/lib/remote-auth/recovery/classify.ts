@@ -216,6 +216,12 @@ export function classifyGitError(err: unknown, health?: RepoHealth): SyncErrorKi
 
   // (3) Structural health (only after a transport error has been ruled out).
   if (health) {
+    // CRITICAL ORDERING: an in-progress rebase usually leaves HEAD detached, so
+    // a mid-rebase repo also reports isDetachedHead. The interrupted-operation
+    // checks MUST run BEFORE the detached-head check, or the abort-based repair
+    // never fires and the repo is sent down the (wrong) detached-head rescue.
+    if (health.hasInterruptedRebase) return "interrupted_rebase";
+    if (health.hasInterruptedCherryPick) return "interrupted_cherry_pick";
     if (health.isDetachedHead) return "detached_head";
     if (health.hasStaleLock) return "stale_lock";
   }

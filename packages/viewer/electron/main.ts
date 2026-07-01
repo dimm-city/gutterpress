@@ -71,6 +71,7 @@ import {
   buildRecoveryContext,
   classifyFromHealth,
   decideRunAgainAfterPreflight,
+  buildPreflightDiagnostics,
   getConflictPreviewImpl,
 } from "./recovery-bridge";
 import type {
@@ -581,7 +582,21 @@ interface LibModule {
   }>;
   findEnclosingRepoDir: (dir: string) => Promise<string | undefined>;
   onlineCopyPath: (absPath: string) => string;
+  // Structured operation logger (node-side only). Lets the host write preflight
+  // diagnostics to the SAME operation-log file the recovery subsystem writes to.
+  resolveLogger: (
+    logFile: string | undefined,
+    operation: string,
+  ) => {
+    debug(step: string, message: string, data?: PreflightLogData): void;
+    info(step: string, message: string, data?: PreflightLogData): void;
+    warn(step: string, message: string, data?: PreflightLogData): void;
+    error(step: string, message: string, data?: PreflightLogData): void;
+  };
 }
+
+/** Flat key-value fields for the operation log (mirrors the lib's LogData). */
+type PreflightLogData = Record<string, string | number | boolean | string[] | undefined>;
 
 let libPromise: Promise<LibModule> | null = null;
 let activeExportSession: ExportSession | null = null;
@@ -2803,6 +2818,10 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
     }
     syncState.inFlight = true;
 
+    // Declared outside the try so the catch block can log to the same file even
+    // if a step before ctx-creation throws (guarded: may still be undefined).
+    let plog: ReturnType<typeof lib.resolveLogger> | undefined;
+
     try {
       const source = await lib.detectProjectSource(openedDir);
       if (source.type !== "local-git-folder") {
@@ -2836,6 +2855,18 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
 
       const preflightLogFile = operationLogPath(path.basename(openedDir));
       const ctx = await buildRecoveryContext(openedDir, lib, electronTokenStore, undefined, preflightLogFile);
+
+      // Write the FULL structural diagnosis to the operation log BEFORE dispatching
+      // recover(), so support sees WHY a kind was chosen (which health signal, repo
+      // root vs opened dir, whether local changes existed) — not just a one-word
+      // kind. Same file + format the recovery subsystem itself writes to.
+      plog = lib.resolveLogger(preflightLogFile, "preflight");
+      plog.info(
+        "detect",
+        "structural condition detected on open",
+        buildPreflightDiagnostics(openedDir, ctx.repoDir, health, kind),
+      );
+
       let result: Awaited<ReturnType<typeof lib.recover>>;
       try {
         result = await lib.recover(kind, ctx);
@@ -2863,6 +2894,25 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
           backupZipPath: result.backupZipPath,
           logFile: preflightLogFile,
         });
+        // The repo is healthy again: clear any conflict-latch and RESUME sync so
+        // the fix isn't left paused. If a trigger was already queued while we held
+        // the lock, decideRunAgainAfterPreflight below will run it ("run") — so
+        // only schedule the deferred sync here when nothing is queued, to avoid a
+        // double-run on the same repo.
+        syncState.conflictLatched = false;
+        if (!pendingRunAgain) {
+          plog.info("resume", "recovered — scheduling deferred sync", {
+            reason: "no queued trigger",
+          });
+          const t = setTimeout(() => {
+            if (watchedDir === openedDir) void runAutoSync(openedDir);
+          }, AUTO_SYNC_OPEN_DELAY_MS);
+          if (typeof (t as NodeJS.Timeout).unref === "function") (t as NodeJS.Timeout).unref();
+        } else {
+          plog.info("resume", "recovered — honoring queued trigger", {
+            reason: "runAgain pending",
+          });
+        }
       } else if (result.status === "retry_later") {
         emitSyncStatus({ state: "offline", projectDir: openedDir, lastSyncAt: now });
       } else if (result.status === "needs_user" && result.files && result.files.length > 0) {
@@ -2908,6 +2958,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       // permanently wedged. Then let the normal initial sync proceed.
       syncState.inFlight = false;
       console.warn("[preflight] recovery failed (non-fatal):", err);
+      plog?.error("preflight", "recovery failed (non-fatal)", { error: String(err) });
       const t = setTimeout(() => {
         if (watchedDir === openedDir) void runAutoSync(openedDir);
       }, AUTO_SYNC_OPEN_DELAY_MS);

@@ -40,6 +40,7 @@ export function makeManualGuidance(
           "The online copy has new changes. Your work is saved — please sync again to combine everything.",
         recommendedNextStep: "Sync your project to combine your changes with the online version.",
         recommendedAction: "Sync now",
+        recommendedActionKey: "sync",
         safeNextSteps: [
           "Your changes are saved on this computer and won't be lost.",
           "Syncing will combine your version and the online version automatically.",
@@ -55,6 +56,7 @@ export function makeManualGuidance(
         recommendedNextStep:
           "Review the files that changed in both places and pick which version to keep for each one.",
         recommendedAction: "Review changes",
+        recommendedActionKey: "resolve_conflict",
         safeNextSteps: [
           'Choose "Keep my version", "Use the online version", or "Keep both" for each file.',
           "A safety copy of your work was saved before anything changed.",
@@ -70,6 +72,7 @@ export function makeManualGuidance(
         recommendedNextStep:
           "Choose which version of the file to keep — yours or the online copy.",
         recommendedAction: "Choose version",
+        recommendedActionKey: "resolve_conflict",
         safeNextSteps: [
           "Only one version of this file can be kept. You can also save both under different names.",
           "A safety copy of your work was taken before anything changed.",
@@ -85,6 +88,7 @@ export function makeManualGuidance(
         recommendedNextStep:
           "Reconnect your account and try syncing again.",
         recommendedAction: "Reconnect",
+        recommendedActionKey: "reconnect",
         safeNextSteps: [
           "Your work is saved on this computer.",
           "Nothing was sent or changed online.",
@@ -99,6 +103,7 @@ export function makeManualGuidance(
           "print-md couldn't reach the online repository. Check your connection and try again.",
         recommendedNextStep: "Check your internet connection and try syncing again.",
         recommendedAction: "Try again",
+        recommendedActionKey: "sync",
         safeNextSteps: [
           "Your work is saved on this computer.",
           "Nothing was sent or changed online.",
@@ -114,6 +119,7 @@ export function makeManualGuidance(
         recommendedNextStep:
           "Let print-md restore your project to a normal state so syncing works again.",
         recommendedAction: "Restore to normal",
+        recommendedActionKey: "restore_repo",
         safeNextSteps: [
           "A safety copy of your project will be saved before anything is changed.",
           "None of your content files will be removed or overwritten.",
@@ -129,6 +135,7 @@ export function makeManualGuidance(
         recommendedNextStep:
           "Allow print-md to clear the leftover lock so syncing works again.",
         recommendedAction: "Clear and retry",
+        recommendedActionKey: "restore_repo",
         safeNextSteps: [
           "This is a safe operation — only the temporary lock file is removed.",
           "Your content and version history are untouched.",
@@ -144,6 +151,7 @@ export function makeManualGuidance(
         recommendedNextStep:
           "Allow print-md to rebuild the tracking information from your version history.",
         recommendedAction: "Rebuild",
+        recommendedActionKey: "restore_repo",
         safeNextSteps: [
           "A safety copy of your project will be saved before anything is changed.",
           "Your content files and history are not affected.",
@@ -159,6 +167,7 @@ export function makeManualGuidance(
         recommendedNextStep:
           "Allow print-md to reconnect your project to its online version history.",
         recommendedAction: "Recover history",
+        recommendedActionKey: "restore_repo",
         safeNextSteps: [
           "A safety copy of your files will be saved first.",
           "Your content files will not be overwritten.",
@@ -175,6 +184,7 @@ export function makeManualGuidance(
         recommendedNextStep:
           "Allow print-md to try fetching the missing history from the online copy.",
         recommendedAction: "Fetch missing history",
+        recommendedActionKey: "restore_repo",
         safeNextSteps: [
           "A safety copy of your project will be saved first.",
           "Your current content files are not at risk.",
@@ -191,12 +201,49 @@ export function makeManualGuidance(
         recommendedNextStep:
           "Let print-md combine your work with the online version into one project.",
         recommendedAction: "Combine projects",
+        recommendedActionKey: "restore_repo",
         safeNextSteps: [
           "Your work will be saved in a safety copy before anything changes.",
           "Both your local changes and the online version will be kept.",
           "You may need to review a few files after combining.",
         ],
         supportDetails,
+      };
+
+    case "interrupted_rebase":
+      return {
+        ...base,
+        userSummary:
+          "Your project's last update didn't finish, so it can't be synced yet.",
+        recommendedNextStep:
+          "Let print-md undo the unfinished update and return your project to its last working state.",
+        recommendedAction: "Restore to normal",
+        recommendedActionKey: "restore_repo",
+        safeNextSteps: [
+          "A safety copy of your project is saved before anything is changed.",
+          "None of your content files are deleted.",
+          "Any unfinished edits are kept in that safety copy so you can retrieve them.",
+        ],
+        // supportDetails is technical (behind a copy button) — it MUST name the
+        // real state so support can act, unlike the jargon-free fields above.
+        supportDetails: `Interrupted rebase detected. ${supportDetails}`,
+      };
+
+    case "interrupted_cherry_pick":
+      return {
+        ...base,
+        userSummary:
+          "Your project's last update didn't finish, so it can't be synced yet.",
+        recommendedNextStep:
+          "Let print-md undo the unfinished update and return your project to its last working state.",
+        recommendedAction: "Restore to normal",
+        recommendedActionKey: "restore_repo",
+        safeNextSteps: [
+          "A safety copy of your project is saved before anything is changed.",
+          "None of your content files are deleted.",
+          "Any unfinished edits are kept in that safety copy so you can retrieve them.",
+        ],
+        supportDetails: `Interrupted cherry-pick detected. ${supportDetails}`,
       };
 
     case "wrong_remote_or_branch":
@@ -207,6 +254,7 @@ export function makeManualGuidance(
         recommendedNextStep:
           "Check the online address for this project and reconnect with the correct one.",
         recommendedAction: "Check connection",
+        recommendedActionKey: "check_connection",
         safeNextSteps: [
           "Nothing was changed on this computer or online.",
           "You may need to update the online address in your project settings.",
@@ -221,6 +269,7 @@ export function makeManualGuidance(
           "Something unexpected went wrong while syncing. Your work is saved on this computer.",
         recommendedNextStep: "Try syncing again. If the problem continues, contact support.",
         recommendedAction: "Try again",
+        recommendedActionKey: "open_log",
         safeNextSteps: [
           "Your work is saved on this computer.",
           "Nothing was changed online.",

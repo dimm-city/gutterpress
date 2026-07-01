@@ -451,6 +451,19 @@ export interface RecoveryProgressInfo {
 }
 
 /**
+ * Machine token for the primary CTA — the host switches on this to route the
+ * guidance dialog's primary button. Local mirror of the lib's
+ * `RecoveryActionKey` (no lib value import in the SPA, §8 / ADR 0004).
+ */
+export type RecoveryActionKey =
+  | "sync"
+  | "reconnect"
+  | "resolve_conflict"
+  | "restore_repo"
+  | "check_connection"
+  | "open_log";
+
+/**
  * Plain-language guidance shown when a repair is blocked or fails.
  * Local mirror of the lib's `ManualGuidance` — no git jargon in any field
  * except `supportDetails` (which is only shown behind a "Copy details" action).
@@ -459,6 +472,7 @@ export interface ManualGuidanceInfo {
   userSummary: string;
   recommendedNextStep: string;
   recommendedAction: string;
+  recommendedActionKey: RecoveryActionKey;
   safeNextSteps?: string[];
   supportDetails?: string;
   backupZipPath?: string;

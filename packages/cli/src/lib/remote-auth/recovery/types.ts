@@ -32,7 +32,24 @@ export type SyncErrorKind =
   | "missing_or_corrupt_objects"
   | "unrelated_histories"
   | "wrong_remote_or_branch"
+  | "interrupted_rebase"
+  | "interrupted_cherry_pick"
   | "unknown";
+
+// ── Primary-action keys ──────────────────────────────────────────────────────
+
+/**
+ * Machine token for the primary CTA in the guidance dialog. The host switches
+ * on this to route the button to the right flow. The human-readable label the
+ * button shows lives in `ManualGuidance.recommendedAction` (never this token).
+ */
+export type RecoveryActionKey =
+  | "sync"
+  | "reconnect"
+  | "resolve_conflict"
+  | "restore_repo"
+  | "check_connection"
+  | "open_log";
 
 // ── Risk levels ──────────────────────────────────────────────────────────────
 
@@ -59,6 +76,8 @@ export interface ManualGuidance {
   recommendedNextStep: string;
   /** Action label for the primary button in the UI. */
   recommendedAction: string;
+  /** Machine token the host switches on to route the primary button's action. */
+  recommendedActionKey: RecoveryActionKey;
   /** Optional secondary steps (shown as a list). */
   safeNextSteps?: string[];
   /** Details for a support ticket — may contain technical info. */
@@ -177,6 +196,8 @@ export type FaultPoint =
   | "fetch"
   | "merge"
   | "checkout_branch"
+  | "abort_interrupted_operation"
+  | "remove_operation_state"
   | "create_recovery_branch"
   | "commit_recovery_snapshot"
   | "remove_index_lock"

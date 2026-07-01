@@ -66,6 +66,8 @@ export type SyncErrorKind =
   | "missing_or_corrupt_objects"
   | "unrelated_histories"
   | "wrong_remote_or_branch"
+  | "interrupted_rebase"
+  | "interrupted_cherry_pick"
   | "unknown";
 
 export interface RecoveryContext {
@@ -305,17 +307,72 @@ export function classifyFromHealth(health: RepoHealth): SyncErrorKind | null {
     return "stale_lock";
   if (health.hasInterruptedMerge) return "merge_conflict";
   // An interrupted rebase / cherry-pick is NOT a non-fast-forward push rejection
-  // and is NOT an in-tree merge conflict — and there is no dedicated rebase
-  // recovery kind. Routing either to a structural repair (non_fast_forward →
-  // syncProject on a repo stuck mid-rebase, or merge_conflict → conflict UI on a
-  // repo with no conflict files) produces a confusing failure. "unknown" is the
-  // safe mapping: its handler does a fail-safe no-op with generic guidance and
-  // never runs a risky repair, so the author is told to finish/abort the
-  // interrupted operation instead of having us guess wrong. (BUG 1)
-  if (health.hasInterruptedRebase) return "unknown";
-  if (health.hasInterruptedCherryPick) return "unknown";
+  // and is NOT an in-tree merge conflict. Each now has a dedicated abort-based
+  // repair (recover-interrupted-rebase.ts / recover-interrupted-cherry-pick.ts):
+  // it saves a backup, then undoes the unfinished operation and returns the repo
+  // to its last working state — no longer the safe no-op that "unknown" was.
+  // ORDERING: these MUST precede the detached-head check because an in-progress
+  // rebase usually detaches HEAD; classifying it as detached_head would run the
+  // wrong (rescue-branch) repair instead of the abort.
+  if (health.hasInterruptedRebase) return "interrupted_rebase";
+  if (health.hasInterruptedCherryPick) return "interrupted_cherry_pick";
   if (health.isDetachedHead) return "detached_head";
   return null;
+}
+
+// ── Preflight diagnostics (structured operation-log fields) ───────────────────
+
+/** Local mirror of the lib's LogData shape (operation-log.ts). Defined here
+ *  because the lib has no .d.ts (see header note). Values are the plain scalar
+ *  types the file logger can serialize — no secrets. */
+export type LogData = Record<string, string | number | boolean | string[] | undefined>;
+
+/**
+ * The SINGLE health signal that drove classification, mirroring
+ * `classifyFromHealth`'s exact decision order. Used to record WHY a kind was
+ * chosen in the operation log, so the logged reason always matches the kind.
+ *
+ * MUST stay in lockstep with classifyFromHealth's guard order — same guards,
+ * same order — so a healthy repo maps to "none" and every recoverable repo maps
+ * to the one signal that classifyFromHealth acted on.
+ */
+export function preflightStructuralReason(health: RepoHealth): string {
+  if (!health.hasGitDir) return "health.missingGitDir";
+  if (health.hasStaleLock && (health.lockAgeMs ?? 0) > STALE_LOCK_THRESHOLD_MS)
+    return "health.hasStaleLock";
+  if (health.hasInterruptedMerge) return "health.hasInterruptedMerge";
+  if (health.hasInterruptedRebase) return "health.hasInterruptedRebase";
+  if (health.hasInterruptedCherryPick) return "health.hasInterruptedCherryPick";
+  if (health.isDetachedHead) return "health.isDetachedHead";
+  return "none";
+}
+
+/**
+ * Build a flat, secret-free record of the preflight decision inputs for the
+ * operation log. Every health boolean is recorded (so support can see the FULL
+ * picture, not just the one-word kind), plus the opened dir vs repo root, the
+ * chosen kind, and the single reason that drove it.
+ */
+export function buildPreflightDiagnostics(
+  openedDir: string,
+  repoDir: string,
+  health: RepoHealth,
+  kind: SyncErrorKind | null,
+): LogData {
+  return {
+    openedDir,
+    repoDir,
+    repoRootDiffers: repoDir !== openedDir,
+    kind: kind ?? "none",
+    reason: preflightStructuralReason(health),
+    hasGitDir: health.hasGitDir,
+    hasInterruptedMerge: health.hasInterruptedMerge,
+    hasInterruptedRebase: health.hasInterruptedRebase,
+    hasInterruptedCherryPick: health.hasInterruptedCherryPick,
+    hasStaleLock: health.hasStaleLock,
+    isDetachedHead: health.isDetachedHead,
+    hasLocalChanges: health.hasLocalChanges,
+  };
 }
 
 // ── decideRunAgainAfterPreflight ──────────────────────────────────────────────

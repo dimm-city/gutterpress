@@ -11,8 +11,8 @@
  * 4. Interrupted merge → returns "merge_conflict"
  * 5. Missing git dir → returns "missing_git_dir"
  * 6. Detached head → returns "detached_head"
- * 7. Interrupted rebase → returns the safe "unknown" kind (NOT non_fast_forward; BUG 1)
- * 8. Interrupted cherry-pick → returns the safe "unknown" kind (NOT merge_conflict; BUG 1)
+ * 7. Interrupted rebase → returns "interrupted_rebase" (first-class abort repair)
+ * 8. Interrupted cherry-pick → returns "interrupted_cherry_pick" (first-class abort repair)
  *
  * The stale-lock threshold (120_000 ms) MUST match recover-stale-lock.ts's
  * STALE_THRESHOLD_MS — see the BUG 2 describe block below.
@@ -78,16 +78,16 @@ describe("classifyFromHealth (real implementation)", () => {
     ).toBe("merge_conflict");
   });
 
-  test("interrupted rebase → unknown (safe fail-safe, NOT non_fast_forward; BUG 1)", () => {
+  test("interrupted rebase → interrupted_rebase (first-class abort repair)", () => {
     expect(
       classifyFromHealth({ ...makeHealthy(), hasInterruptedRebase: true }),
-    ).toBe("unknown");
+    ).toBe("interrupted_rebase");
   });
 
-  test("interrupted cherry-pick → unknown (safe fail-safe, NOT merge_conflict; BUG 1)", () => {
+  test("interrupted cherry-pick → interrupted_cherry_pick (first-class abort repair)", () => {
     expect(
       classifyFromHealth({ ...makeHealthy(), hasInterruptedCherryPick: true }),
-    ).toBe("unknown");
+    ).toBe("interrupted_cherry_pick");
   });
 
   test("detached head (lowest priority when git dir is present) → detached_head", () => {
@@ -115,22 +115,33 @@ describe("classifyFromHealth (real implementation)", () => {
   });
 });
 
-// ── BUG 1: interrupted-rebase must NOT classify as non_fast_forward ────────────
-// An interrupted rebase is NOT a non-fast-forward push rejection. Routing it to
-// non_fast_forward makes the dispatcher run syncProject on a repo stuck mid-rebase.
-// There is no dedicated rebase recovery kind, so the safe mapping is "unknown"
-// (fail-safe no-op + generic guidance, never a risky repair).
-describe("BUG 1 — interrupted rebase/cherry-pick safe mapping", () => {
+// ── Interrupted rebase/cherry-pick are first-class recovery kinds ─────────────
+// An interrupted rebase is NOT a non-fast-forward push rejection and an
+// interrupted cherry-pick is NOT an in-tree merge conflict. They each get a
+// dedicated abort-based repair, so they classify to their own kinds — never to
+// a wrong repair path, and (since a rebase detaches HEAD) never to detached_head.
+describe("interrupted rebase/cherry-pick first-class mapping", () => {
   test("interrupted rebase does NOT classify as non_fast_forward", () => {
     expect(
       classifyFromHealth({ ...makeHealthy(), hasInterruptedRebase: true }),
     ).not.toBe("non_fast_forward");
   });
 
-  test("interrupted rebase yields the safe 'unknown' kind", () => {
+  test("interrupted rebase yields the interrupted_rebase kind", () => {
     expect(
       classifyFromHealth({ ...makeHealthy(), hasInterruptedRebase: true }),
-    ).toBe("unknown");
+    ).toBe("interrupted_rebase");
+  });
+
+  test("interrupted rebase beats detached_head (a rebase detaches HEAD)", () => {
+    expect(
+      classifyFromHealth({
+        ...makeHealthy(),
+        hasInterruptedRebase: true,
+        isDetachedHead: true,
+        currentBranch: undefined,
+      }),
+    ).toBe("interrupted_rebase");
   });
 
   test("interrupted cherry-pick does NOT classify as merge_conflict (no false repair)", () => {
@@ -139,10 +150,10 @@ describe("BUG 1 — interrupted rebase/cherry-pick safe mapping", () => {
     ).not.toBe("merge_conflict");
   });
 
-  test("interrupted cherry-pick yields the safe 'unknown' kind", () => {
+  test("interrupted cherry-pick yields the interrupted_cherry_pick kind", () => {
     expect(
       classifyFromHealth({ ...makeHealthy(), hasInterruptedCherryPick: true }),
-    ).toBe("unknown");
+    ).toBe("interrupted_cherry_pick");
   });
 });
 

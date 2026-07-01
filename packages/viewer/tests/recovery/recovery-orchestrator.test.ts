@@ -110,18 +110,18 @@ describe("classifyFromHealth priority chain (real code)", () => {
     ).toBe("merge_conflict");
   });
 
-  test("interrupted rebase maps to the safe 'unknown' kind (BUG 1 — not non_fast_forward)", () => {
-    // An interrupted rebase is not a non-fast-forward push rejection; routing it
-    // there would run syncProject on a repo stuck mid-rebase. "unknown" → fail-safe.
+  test("interrupted rebase maps to interrupted_rebase (first-class, beats detached_head)", () => {
+    // An interrupted rebase is not a non-fast-forward push rejection and it
+    // usually detaches HEAD; the dedicated abort repair must win over both.
     expect(
       classifyFromHealth({ ...makeGoodHealth(), hasInterruptedRebase: true, isDetachedHead: true }),
-    ).toBe("unknown");
+    ).toBe("interrupted_rebase");
   });
 
-  test("cherry-pick maps to the safe 'unknown' kind (BUG 1 — not merge_conflict)", () => {
+  test("cherry-pick maps to interrupted_cherry_pick (first-class, not merge_conflict)", () => {
     expect(
       classifyFromHealth({ ...makeGoodHealth(), hasInterruptedCherryPick: true }),
-    ).toBe("unknown");
+    ).toBe("interrupted_cherry_pick");
   });
 
   test("detached_head (lowest priority) → detached_head when nothing else active", () => {
@@ -130,10 +130,9 @@ describe("classifyFromHealth priority chain (real code)", () => {
     ).toBe("detached_head");
   });
 
-  test("healthy repo is never classified as 'unknown' (only rebase/cherry-pick map there)", () => {
-    // classifyFromHealth returns "unknown" ONLY for an interrupted rebase or
-    // cherry-pick (BUG 1's safe mapping). A healthy snapshot must yield null, so
-    // it can never be mistaken for the fail-safe path.
+  test("healthy repo is never classified as 'unknown'", () => {
+    // classifyFromHealth returns a concrete structural kind or null; a healthy
+    // snapshot must yield null, so it can never be mistaken for a repair path.
     const result = classifyFromHealth(makeGoodHealth());
     expect(result).toBeNull();
     expect(result).not.toBe("unknown");

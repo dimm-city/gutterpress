@@ -317,6 +317,12 @@ export type {
 // Import-type is safe in the SPA; value imports must only reach the host.
 export { recover, classifyGitError, inspectRepo } from "../lib/remote-auth/recovery/dispatch.ts";
 
+// Structured operation logger (node-side only; the SPA never value-imports it).
+// Exposed so the host can write preflight diagnostics to the SAME operation-log
+// file the recovery subsystem writes to, in the SAME format.
+export { resolveLogger, shortOid } from "../lib/remote-auth/operation-log.ts";
+export type { OperationLogger, LogData } from "../lib/remote-auth/operation-log.ts";
+
 export type {
   RecoverFn,
   RecoveryContext,
