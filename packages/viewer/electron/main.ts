@@ -2920,6 +2920,15 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
         }
       } else if (result.status === "retry_later") {
         emitSyncStatus({ state: "offline", projectDir: openedDir, lastSyncAt: now });
+        // Honor the handler's requested delay (same idiom as the mid-sync
+        // retry_later arm) instead of waiting for the generic periodic timer —
+        // e.g. a fresh-but-not-stale lock asks to be re-checked as soon as it
+        // ages past the threshold, not minutes later.
+        const delay = result.retryAfterMs ?? 60_000;
+        const retryTimer = setTimeout(() => {
+          if (watchedDir === openedDir) void runAutoSync(openedDir);
+        }, delay);
+        if (typeof retryTimer.unref === "function") retryTimer.unref();
       } else if (result.status === "needs_user" && result.files && result.files.length > 0) {
         // Conflict-latch: stop the periodic timer to avoid churning.
         syncState.conflictLatched = true;
