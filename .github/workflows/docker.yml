@@ -1,8 +1,13 @@
 name: Docker image
 
 # Builds and publishes the print-md CLI container to GitHub Container Registry.
-# Runs on published releases (tagged with the release version + latest) and on
-# demand. Multi-arch (amd64 + arm64) via QEMU/buildx.
+# Multi-arch (amd64 + arm64) via QEMU/buildx.
+#
+# NORMAL PATH: release.yml's github-release job dispatches this workflow at
+# the release tag after creating the GitHub release. The `release: published`
+# trigger below can only fire for manually-published releases — releases
+# created by release.yml use GITHUB_TOKEN, whose events GitHub suppresses
+# (workflow_dispatch is the documented exception).
 
 on:
   release:
@@ -40,7 +45,13 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.event_name == 'release' && github.event.release.prerelease == false }}
+            # `latest` for stable versions only: release events that aren't
+            # prereleases, or dispatches for a stable version (no '-' in the
+            # tag) running AT the matching release tag ref — release.yml
+            # dispatches with `--ref v<version> -f tag=<version>`. The ref
+            # match keeps ad-hoc dispatches (e.g. tag "test" from a branch)
+            # from ever overwriting `latest`.
+            type=raw,value=latest,enable=${{ (github.event_name == 'release' && github.event.release.prerelease == false) || (github.event_name == 'workflow_dispatch' && !contains(inputs.tag, '-') && github.ref == format('refs/tags/v{0}', inputs.tag)) }}
             type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - uses: docker/build-push-action@v6
