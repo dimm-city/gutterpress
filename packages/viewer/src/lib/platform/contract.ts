@@ -289,8 +289,8 @@ export type UpdaterEvent = UpdaterEventPayload;
 export interface UpdaterApi {
   getStatus(): Promise<UpdaterStatus>;
   check(): Promise<UpdaterStatus>;
+  /** Quit and install the downloaded update (restart). */
   applyNow(): Promise<{ applied: boolean; version?: string }>;
-  markReady(): Promise<{ ok: true; pending: boolean; version?: string }>;
   onEvent(cb: (event: UpdaterEvent) => void): () => void;
 }
 
@@ -700,7 +700,7 @@ export interface PlatformCapabilities {
 }
 
 export interface HostServices {
-  /** Integer IPC-surface version; mirrors DESKTOP_API in updater/contract.ts. */
+  /** Integer IPC-surface version; mirrors DESKTOP_API in electron/preload.ts. */
   readonly apiVersion: number;
   readonly updater: UpdaterApi;
 

@@ -1,21 +1,42 @@
 # PWA / WebAdapter Implementation Plan (Issue #33)
 
-> Status: **design spike** (feasibility + architecture). No implementation in this
-> pass. This document is the buildable plan for the team to execute next.
+> Status: **partially shipped, plan revised 2026-07-02.** The FSA folder-open
+> path, the service worker, and the manifest are implemented (Phases 1 and 4
+> below are marked accordingly). Two architecture changes since the original
+> spike are folded in throughout:
+>
+> 1. **Desktop auto-update is now electron-updater** (full-app updates from the
+>    GitHub Releases feed; see `packages/viewer/README.md` "Auto-update"). The
+>    custom web-UI hot-swap system (`web-runtime.ts`, Ed25519-signed `web-v*`
+>    bundles) this document originally coexisted with was **deleted** — every
+>    reference has been updated.
+> 2. **The viewer build is `adapter-node`, not `adapter-static`** (handler.js +
+>    client/ + server/; `ssr=false`, relative paths unchanged). Host
+>    capabilities are `+server.ts` routes backed by hooks the Electron main
+>    registers on `globalThis`. This *adds* a delivery target: the same build
+>    runs on any **node-backed website** (§3).
 >
 > Governing rule: **CLAUDE.md §8** (platform abstraction; the renderer stays
-> PWA-clean; all host work goes through the five-layer seam). The whole point of
-> the `Platform` adapter was to make this PWA possible — this plan adds **one new
-> adapter** (`WebAdapter`) and changes **nothing** in the SPA.
+> PWA-clean; all host work goes through the platform seam). The whole point of
+> the `Platform` adapter was to make this PWA possible — this plan fills in
+> **one adapter** (`WebAdapter`) and changes **nothing** in the SPA.
 
 ---
 
 ## 0. Executive summary
 
-The viewer is already a static SvelteKit SPA (`adapter-static`, `ssr=false`,
-relative paths) that talks to its host **only** through `getPlatform()` →
+The viewer is a SvelteKit SPA (`ssr=false`, relative paths, built with
+`adapter-node`) that talks to its host **only** through `getPlatform()` →
 `Platform = PlatformAdapter & HostServices`. Electron is one implementation;
-this plan fills in `WebAdapter` (today a throw/no-op stub) as the second.
+this plan fills in `WebAdapter` as the second. The same UI publishes to
+**three targets**:
+
+- **Desktop** — Electron runs the adapter-node `handler.js` in-process;
+  the app updates as a whole via **electron-updater** (GitHub Releases feed).
+- **Node-backed website** — the identical adapter-node build deployed to any
+  Node host (§3); updates by redeploy.
+- **PWA / static host** — the client bundle + service worker on any static
+  host; updates via the SW (§5).
 
 Three facts make #33 tractable with the **simplest possible** architecture:
 
@@ -134,7 +155,7 @@ Verdicts: ✅ Implementable now · 🟡 Degrade via `capabilities()`/no-op · �
 | `listProjectImages/imageThumbnail/inspectImage/pickImageFiles` | media IPC | 🟡 thumbnail/inspect→`null`; listProjectImages could be ✅ via FSA later | Media panel guards with `isDesktop()`; keep degraded for v1 |
 | `pickImageFile(): FileRef\|null` | dialog→FileRef | ✅ later via `showOpenFilePicker()`; v1 may keep reject | image insert is post-Phase-1 |
 | `copyFile` | fs copy | 🟡 reject (no cross-FS copy without handles); image-insert deferred | — |
-| `updater.*` | desktop updater | 🟡 PWA uses **service-worker** update, not the DESKTOP_API updater — keep `updater` rejecting; SW handles refresh (§5) | the web auto-update story is the SW, not `web-runtime.ts` |
+| `updater.*` | electron-updater (full-app, GitHub feed) | 🟡 keep `updater` rejecting on web — PWA updates via the **service worker** (§5); a node-backed site updates by redeploy | electron-updater is a desktop concern; the web auto-update story is the SW |
 | `onSyncStatus/setAutoSync` | orchestrator | 🟡 never-emit / no-op already | sync out-of-scope |
 | `onRecoveryConfirm/respondRecoveryConfirm` | recovery IPC | 🟡 no-op already | recovery out-of-scope |
 | `onBuildProgress/onUrlPreviewBlocked/onFolderChanged/onFlushBeforeClose` | event IPC | 🟡 no-op already | no host events on web |
@@ -228,19 +249,55 @@ incremental path desktop-only initially.
 
 ---
 
-## 3. The `--serve` host (CLI)
+## 3. Delivery hosts: node-backed websites and the CLI `--serve` option
 
-Issue #33: "the CLI's `--serve` mode becomes the PWA host when running locally."
+The adapter-node build gives two web delivery shapes for the same SPA; in both,
+the browser has no `window.electron`, so `isDesktop()` is false and the
+**WebAdapter** is selected — the UI behaves identically regardless of which
+host serves it.
 
-**Decision: `--serve` is a *static delivery* host only — not a runtime backend.**
-The WebAdapter is pure-browser; it does not RPC back to the CLI for editing or
-preview. This is the Occam's-razor split: one render path (in-browser), one fs
-path (FSA), no client/server protocol to design, test, or secure.
+### 3a. Node-backed website (adapter-node build, deployed as-is)
 
-What the CLI must serve when hosting the PWA:
-- The **built SPA** (`packages/viewer/build/` — the `adapter-static` output:
-  `index.html` + `_app/`).
-- The **PWA assets**: `manifest.webmanifest`, the service worker, app icons.
+The viewer's `build/` output (handler.js + client/ + server/) runs on any Node
+host — a VPS, a container, a PaaS. This is a first-class publish target: we
+want the UI publishable to node-backed websites, not only as a static PWA.
+
+- The `+server.ts` host-capability routes (api/doctor, api/fs, api/vcs, …) ship
+  in the build but look up their hooks from `globalThis`
+  (`electron/server-bridge/host-hooks.ts`); on a plain Node host nothing
+  registers them, so they return 503/degraded — which the WebAdapter never
+  calls anyway (it is pure-browser). They are inert, not harmful.
+- **Future option this preserves:** a node-backed deployment MAY later register
+  its own server-side hooks (e.g. server-side project storage, a Git proxy for
+  #15-on-web, server-rendered PDF export) behind the same routes — the seam
+  already exists. Out of scope for this milestone; noted so nobody "cleans up"
+  the routes as dead code.
+- Updates: redeploy. No SW required (but the SW still registers and gives the
+  app-shell offline cache for free — it caches static assets only, so it is
+  safe under a node host too).
+
+### 3b. Static/PWA host and the CLI `--serve` convenience option
+
+**Decision: static delivery only — not a runtime backend.** The WebAdapter is
+pure-browser; it does not RPC back to the CLI for editing or preview. This is
+the Occam's-razor split: one render path (in-browser), one fs path (FSA), no
+client/server protocol to design, test, or secure.
+
+**Gap to close first:** the current adapter-node build has **no static
+`index.html`** — `+layout.ts` sets `ssr = false` but does not prerender, so the
+HTML shell is rendered at request time by `handler.js`. Static/PWA hosting
+needs the shell as a file. Minimal fix (keeps one build): add
+`export const prerender = true` alongside `ssr = false` in `+layout.ts` —
+SvelteKit then emits the empty CSR shell to `build/prerendered/`, and the
+static publish artifact is `build/client/` + that shell. (Fallback if
+prerendering fights a route: a second `adapter-static` build config used only
+for the PWA artifact — more build surface, avoid unless needed.)
+
+What a static host (or the CLI) must serve for the PWA:
+- The **client bundle** (`build/client/` — `_app/` + static assets) plus the
+  prerendered `index.html` shell described above.
+- The **PWA assets**: `manifest.webmanifest`, the service worker, app icons
+  (✅ these exist in `static/` and `src/service-worker.ts` today).
 - The **vendored Paged.js** (`/vendor/paged.polyfill.js`) and the preview
   helper scripts, so the in-iframe render can load them offline (the SW caches
   them on first load).
@@ -250,9 +307,8 @@ What the CLI must serve when hosting the PWA:
 Implementation is small and reuses existing infra: the preview server already
 serves static files and `/vendor/*` (`http-server.ts`). Add a CLI flag
 (e.g. `print-md serve [--port]` or `print-md preview --pwa`) that points the
-existing static server at `viewer/build/` instead of a per-project temp dir, and
-serves the manifest/SW. **No new backend endpoints.** (The existing `/api/status`
-can stay for tooling detection.)
+existing static server at the viewer client bundle instead of a per-project
+temp dir, and serves the manifest/SW. **No new backend endpoints.**
 
 > The PWA is equally hostable from **any** static host (GitHub Pages, a CDN) —
 > `--serve` is just the zero-config local option. Hosting it remotely is how
@@ -319,34 +375,33 @@ Linked from `app.html`. Install criteria (Chrome): served over HTTPS (or
 localhost), valid manifest, a registered SW with a `fetch` handler, icons.
 Safari installs via "Add to Home Screen" (manifest honored; no `beforeinstallprompt`).
 
-### Service worker — **app-shell precache + runtime cache**
-SvelteKit `adapter-static` exposes `$service-worker` (`build`, `files`,
-`version`). Add `src/service-worker.ts`:
+### Service worker — **app-shell precache + runtime cache** (✅ shipped)
+SvelteKit exposes `$service-worker` (`build`, `files`, `version`) under
+adapter-node as well. `src/service-worker.ts` exists and implements:
 - **Precache** the app shell on `install`: all `build` assets (`_app/*`),
   `index.html`, the vendored `paged.polyfill.js`, icons. This satisfies the
   acceptance criterion "service worker caches app shell for offline use".
 - **Runtime**: cache-first for the precached shell; network-first (with cache
   fallback) for anything else. **Do not** cache project file *contents* — those
   come from FSA/OPFS, not the network.
-- **Update flow** = the PWA's auto-update story (replaces the DESKTOP_API updater
-  for web): on a new `version`, `install` precaches the new shell, `activate`
-  deletes old caches; prompt-to-reload or reload-on-next-launch. Keep
-  `updater.*` rejecting on web — the SW owns web updates.
+- **Update flow** = the PWA's auto-update story: on a new `version`, `install`
+  precaches the new shell, `activate` deletes old caches; prompt-to-reload or
+  reload-on-next-launch. Keep `updater.*` rejecting on web — the SW owns web
+  updates.
 
-### Coexistence with existing build + `web-v*` auto-update
-- **`adapter-static`**: unchanged. The SW is just another static asset in
-  `build/`. `paths.relative=true` already makes the bundle origin-agnostic.
-- **Electron must NOT register the SW.** The desktop app loads the SPA via the
-  `app://` protocol and updates the UI through `web-runtime.ts` (downloaded,
-  Ed25519-signed `web-v*` bundles promoted in userData). A browser SW under
-  `app://` would collide with that mechanism. **Gate registration**: register
-  the SW only when `!isDesktop()` (no `window.electron`) **and**
-  `'serviceWorker' in navigator`. So:
-  - **Desktop** = `app://` + `web-runtime.ts` promotion (existing).
+### Coexistence with the desktop build + electron-updater
+- The SW is just another static asset in the build. `paths.relative=true`
+  already makes the bundle origin-agnostic.
+- **Electron must NOT register the SW** (✅ enforced in `+layout.svelte`:
+  registration is gated on `!isDesktop()`). The desktop app's UI ships inside
+  the installer and updates **as a whole app via electron-updater**; a SW under
+  `app://` would serve stale cached assets across app updates. So:
+  - **Desktop** = `app://` + electron-updater full-app updates.
+  - **Node-backed website** = HTTP(S), updates by redeploy (SW shell-cache is a
+    harmless bonus).
   - **Web/PWA** = HTTP(S) + service-worker cache + SW update.
-  Two non-overlapping update mechanisms selected by the same `isDesktop()` seam
-  that selects the adapter. The signed `web-v*` bundles are a *desktop* concern
-  and need no change.
+  Non-overlapping update mechanisms selected by the same `isDesktop()` seam
+  that selects the adapter.
 
 ---
 
@@ -372,7 +427,11 @@ Each phase is independently shippable and testable. TDD seam noted per phase.
 The WebAdapter is exercised in `vite dev` / a plain browser (no preload) and in
 unit tests with FSA/IndexedDB mocks.
 
-### Phase 1 — Load + open one folder + read/edit a file (smallest vertical slice)
+### Phase 1 — Load + open one folder + read/edit a file (smallest vertical slice) — 🟡 partially shipped
+> Status: `WebAdapter.openFolder` (`showDirectoryPicker`) and the adapter
+> selection seam are implemented; audit the remaining fs primitives
+> (`readFile`/`writeFile`/`listDir`/`statFile`) against the current
+> `web-adapter.ts` before scheduling the remainder.
 **Goal:** app loads in Chrome with `WebAdapter` selected; user opens a folder via
 `showDirectoryPicker()`; file list shows; opening a `.md` reads it; saving writes
 it back. No preview, no SW, no persistence.
@@ -384,7 +443,10 @@ it back. No preview, no SW, no persistence.
   smoke test: `vite dev`, the app boots without `window.electron` and renders the
   welcome screen (no thrown "not implemented").
 
-### Phase 2 — In-browser preview render (no server, no Chromium)
+### Phase 2 — In-browser preview render (no server, no Chromium) — 🟡 partially shipped
+> Status: `WebAdapter.startPreview`/`stopPreview` with the Blob-URL approach
+> exist in `web-adapter.ts`; verify `assembleBookHtml` parity coverage before
+> closing this phase.
 **Goal:** "Preview renders correctly at mobile viewport sizes."
 - Refactor `renderChapters` → pure `assembleBookHtml({files, readText, …})` +
   Node wrapper (CLI unchanged). Expose `assembleBookHtml` from a browser-safe
@@ -403,11 +465,13 @@ it back. No preview, no SW, no persistence.
 - **TDD:** unit tests with `fake-indexeddb`; assert handle round-trips, key
   stability, `queryPermission`/`requestPermission` flow (mocked).
 
-### Phase 4 — PWA manifest + service worker + offline + install
+### Phase 4 — PWA manifest + service worker + offline + install — 🟡 mostly shipped
 **Goal:** "installable from Chrome/Safari," "SW caches app shell for offline."
-- Add manifest, icons, `src/service-worker.ts` (precache shell + paged.js),
-  register only when `!isDesktop()`.
-- CLI `serve`/`--pwa` static host for `viewer/build/` + manifest/SW/vendor.
+- ✅ Manifest, icons, `src/service-worker.ts` (precache shell + paged.js),
+  registration gated on `!isDesktop()` — all in the tree today.
+- ⬜ **Prerendered static shell** (§3b gap): add `prerender = true` to
+  `+layout.ts` so a static host has an `index.html` to serve.
+- ⬜ CLI `serve`/`--pwa` static host for the client bundle + manifest/SW/vendor.
 - **TDD:** Lighthouse PWA audit (installability) in CI; Playwright offline test
   (go offline, reload, shell still loads). Unit-test SW precache list includes
   `paged.polyfill.js`.
@@ -455,9 +519,11 @@ OPFS working copy, `<input webkitdirectory>` import, zip export, all-false
    to consolidate settings into IndexedDB too, or keep settings in localStorage
    (simpler, already working) and only handles/recents in IndexedDB. Recommend
    the latter (minimal churn).
-7. **`apiVersion` on web.** DESKTOP_API gating logic keys off `apiVersion`;
-   confirm the SPA branches that read it tolerate the web value (the stub uses
-   `0`). Audit `apiVersion` readers before Phase 1 ships.
+7. **`apiVersion` on web.** The `DESKTOP_API` constant now lives inline in
+   `electron/preload.ts` (the old `updater/contract.ts` home was deleted with
+   the hot-swap updater); the WebAdapter reports `0`. Confirm the SPA branches
+   that read `apiVersion` tolerate the web value before Phase 1 closes.
 8. **Service worker vs `app://` collision.** Verified safe by gating SW
-   registration on `!isDesktop()`, but add a regression test that the desktop
-   build never registers a SW (it would break `web-runtime.ts` promotion).
+   registration on `!isDesktop()` (implemented in `+layout.svelte`), but add a
+   regression test that the desktop build never registers a SW — it would
+   serve stale cached assets across electron-updater full-app updates.

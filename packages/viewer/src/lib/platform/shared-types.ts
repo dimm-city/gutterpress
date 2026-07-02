@@ -13,14 +13,13 @@
  * in sync manually" comments.
  */
 
-// ── Web-UI auto-update ─────────────────────────────────────────────────────
+// ── Auto-update (electron-updater — full-app updates from GitHub) ─────────
 
 export interface UpdaterStatus {
   currentVersion: string | null;
+  /** Version downloaded and ready to install on restart. */
   stagedVersion: string | null;
-  availableVersion: string | null;
   phase: "idle" | "checking" | "downloading" | "staged" | "error";
-  lastCheckAt: string | null;
   error: string | null;
 }
 
@@ -28,8 +27,6 @@ export type UpdaterEventPayload =
   | { type: "available"; version: string }
   | { type: "staged"; version: string }
   | { type: "uptodate"; reason?: string }
-  | { type: "healthy"; version: string }
-  | { type: "rolledback"; version: string }
   | { type: "error"; message: string };
 
 // ── Project source classification (#12) ───────────────────────────────────

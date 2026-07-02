@@ -1274,25 +1274,18 @@
   }
 
   // ----------------------------------------------------------------
-  // Auto-update: markReady on mount (health gate) + event subscription
+  // Auto-update: status peek on mount + event subscription
   // ----------------------------------------------------------------
 
-  // markReady tells main the new bundle booted successfully, clearing the
-  // health watchdog armed after an apply/launch-promote. If it does not arrive
-  // before the watchdog elapses (and the window is still open), main rolls the
-  // bundle back this session. Harmless no-op when nothing is pending.
-  onMount(() => {
-    if (!isDesktop()) return;
-    getPlatform().updater.markReady().catch(() => {});
-  });
-
-  // Check for an already-staged update on load, then subscribe to future events.
+  // Surface the restart banner if an update was already downloaded (this
+  // session's background check, or a prior session that never restarted),
+  // then subscribe to future events.
   onMount(() => {
     if (!isDesktop()) return;
     const platform = getPlatform();
 
-    // Peek at current status so we can surface a banner immediately if a
-    // bundle was staged during a previous run.
+    // Peek at current status so we can surface a banner immediately if an
+    // update was downloaded during a previous run.
     platform.updater.getStatus()
       .then((status: { stagedVersion: string | null }) => {
         if (status.stagedVersion) {
@@ -2435,6 +2428,11 @@
         // An update was downloaded + staged — the banner appears; no toast.
         updateReadyVersion = status.stagedVersion;
         updateBannerDismissed = false;
+      } else if (status.phase === "downloading") {
+        // The check resolves as soon as the feed answers; the installer keeps
+        // downloading in the background and the "staged" event shows the
+        // banner when it lands.
+        toast?.info("Update found — downloading in the background.");
       } else if (status.phase === "error") {
         toast?.error(status.error ?? "Update check failed.");
       } else {
@@ -2450,8 +2448,14 @@
   async function applyUpdate() {
     if (!isDesktop()) return;
     try {
-      await getPlatform().updater.applyNow();
-      // Main reloads the window; no further action needed here.
+      const result = await getPlatform().updater.applyNow();
+      // On success main quits, installs the update, and relaunches — this
+      // code never runs. A resolved { applied: false } means the staged
+      // update vanished (state drift); say so instead of silently no-oping.
+      if (!result.applied) {
+        updateReadyVersion = null;
+        toast?.error("The update could not be applied — try checking for updates again.");
+      }
     } catch (e) {
       toast?.error(e instanceof Error ? e.message : "Could not apply update.");
     }
@@ -2574,7 +2578,7 @@
 {#if updateReadyVersion && !updateBannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     <span class="update-banner-msg">Update ready (v{updateReadyVersion})</span>
-    <button class="update-apply" onclick={applyUpdate}>Apply now</button>
+    <button class="update-apply" onclick={applyUpdate}>Restart &amp; update</button>
     <button class="update-later" onclick={() => (updateBannerDismissed = true)}>Later</button>
   </div>
 {/if}

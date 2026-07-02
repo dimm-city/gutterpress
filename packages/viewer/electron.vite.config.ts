@@ -32,12 +32,10 @@ export default defineConfig({
         // caught). Externalize both: electron is provided by the runtime, and
         // the lib (with its puppeteer-core/markdown-it graph) loads from
         // node_modules — keeping main tiny.
-        // fflate is externalized too: bundling its CJS form injects a
-        // `var require = createRequire(...)` that collides with electron-vite's
-        // own injected require banner ("Identifier 'require' has already been
-        // declared") and crashes the main process on launch. It's a production
-        // dependency, so electron-builder ships it from node_modules.
-        external: ["electron", "@dimm-city/print-md", "fflate"],
+        // electron-updater is externalized explicitly (the plugin misses it
+        // under bun's node_modules layout): it's a production dependency, so
+        // electron-builder ships it and its CJS graph from node_modules.
+        external: ["electron", "@dimm-city/print-md", "electron-updater"],
         input: resolve(root, "electron/main.ts"),
         output: { format: "es", entryFileNames: "main.js" },
       },

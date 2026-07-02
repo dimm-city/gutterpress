@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { getDoctorHooks, type UpdaterStatus } from '$lib/server/host-hooks.js';
+import { getDoctorHooks } from '$lib/server/host-hooks.js';
 import { getPrefsHooks } from '../../../../electron/server-bridge/prefs-hooks';
 import type { RequestHandler } from './$types';
 
@@ -30,9 +30,6 @@ export const GET: RequestHandler = async () => {
     const diag = await lib.getSystemDiagnostics();
 
     const doctorHooks = getDoctorHooks();
-    const webUiVersion = doctorHooks
-      ? (await doctorHooks.getUpdaterStatus().catch(() => null))?.currentVersion ?? null
-      : null;
 
     const externalTools = diag.tools.filter(
       (tool) => tool.bin !== 'chrome / chromium / msedge'
@@ -55,7 +52,6 @@ export const GET: RequestHandler = async () => {
         ...externalTools,
       ],
       viewerVersion: doctorHooks ? doctorHooks.getViewerVersion() : 'unknown',
-      webUiVersion,
       electronVersion: process.versions.electron,
       chromeVersion: process.versions.chrome,
     });

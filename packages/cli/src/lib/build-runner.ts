@@ -305,6 +305,25 @@ export type PdfRenderer = (input: PdfRenderInput) => Promise<void>;
  *  this budget; it is also the puppeteer protocolTimeout for the pooled browser. */
 const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
 
+// ── Browser-context globals ─────────────────────────────────────────────────
+// The callbacks passed to page.evaluate()/page.waitForFunction() below execute
+// inside Chromium, not Node. The CLI tsconfig deliberately excludes lib.dom so
+// Node-side code can never touch DOM globals by accident — declare (module-
+// locally) just the browser globals those callbacks use, typed to exactly the
+// shape they consume.
+interface PagedPageElement {
+  outerHTML: string;
+}
+declare const document: {
+  fonts: { ready: Promise<unknown> };
+  documentElement: PagedPageElement;
+  querySelectorAll(selector: string): ArrayLike<PagedPageElement>;
+};
+declare function getComputedStyle(el: PagedPageElement): {
+  width?: string;
+  height?: string;
+};
+
 /**
  * Drive a puppeteer `page` to fully paginate the document at `url`: set the
  * viewport + timeouts, navigate (waiting for network idle so vendored assets +

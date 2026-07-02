@@ -16,7 +16,6 @@
   interface Diagnostics {
     libVersion: string;
     viewerVersion: string;
-    webUiVersion: string | null;
     electronVersion: string;
     chromeVersion: string;
     platform: { os: string; arch: string; release: string; node: string };
@@ -35,7 +34,7 @@
     open?: boolean;
     onClose?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
-    /** Relocated from the toolbar: triggers the manual web-UI update check. */
+    /** Relocated from the toolbar: triggers the manual update check. */
     onCheckForUpdates?: () => void;
     checkingUpdates?: boolean;
     updateReadyVersion?: string | null;
@@ -84,7 +83,7 @@
   function copyReport() {
     if (!data) return;
     const lines = [
-      `print-md viewer ${data.viewerVersion}  ·  web-ui ${data.webUiVersion ?? "—"}`,
+      `print-md viewer ${data.viewerVersion}`,
       `lib ${data.libVersion}  ·  electron ${data.electronVersion}  ·  chromium ${data.chromeVersion}  ·  node ${data.platform.node}`,
       `platform: ${osLabel(data.platform.os)} ${data.platform.arch} (${data.platform.release})`,
       ``,
@@ -154,7 +153,6 @@
       {:else if data}
         <section class="version-strip" aria-label="Loaded versions">
           <div><strong>Viewer:</strong> {data.viewerVersion}</div>
-          <div><strong>UI:</strong> {data.webUiVersion ?? "—"}</div>
           <div><strong>Lib:</strong> {data.libVersion}</div>
         </section>
 
@@ -186,7 +184,7 @@
               {#if updateReadyVersion}
                 An update (v{updateReadyVersion}) is ready to apply — close this dialog and use the banner at the top of the window.
               {:else}
-                print-md keeps its interface up to date automatically. You can also check now.
+                print-md keeps itself up to date automatically. You can also check now.
               {/if}
             </p>
             <button
@@ -225,7 +223,6 @@
 
         <section class="versions">
           <div><strong>Viewer:</strong> {data.viewerVersion}</div>
-          <div><strong>UI:</strong> {data.webUiVersion ?? "—"}</div>
           <div><strong>Lib:</strong> {data.libVersion}</div>
           <div>
             <strong>Runtime:</strong>
