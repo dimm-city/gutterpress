@@ -22,8 +22,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { classifyFromHealth } from "../../../cli/src/lib/remote-auth/recovery/classify.ts";
-import type { RepoHealth } from "@dimm-city/print-md";
+import { classifyFromHealth, type RepoHealth } from "@dimm-city/print-md";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
