@@ -41,6 +41,22 @@ import type { RecoverFn, RecoveryResult } from "./types.ts";
 const KIND = "missing_git_dir" as const;
 
 export const recover: RecoverFn = async (ctx, error?) => {
+  const destGitDir = path.join(ctx.repoDir, ".git");
+
+  // TOCTOU guard: `.git/` may have reappeared between classification and now
+  // (e.g. the author restored the folder or ran an init in a terminal). There
+  // is nothing to repair — and falling through would MERGE a fresh clone's
+  // .git into the existing one (fs.cp merges into an existing directory),
+  // producing a hybrid of two object stores: corruption worse than either
+  // input state. Benign no-op instead.
+  if (fs.existsSync(destGitDir)) {
+    return {
+      status: "recovered",
+      message:
+        "Your project's version history was already back in place; no changes were needed.",
+    } satisfies RecoveryResult;
+  }
+
   // ── Guard: without a remote URL, reclone is impossible ──────────────────────
   if (!ctx.remoteUrl) {
     const guidance = makeManualGuidance(ctx, KIND, error, undefined);
@@ -86,10 +102,21 @@ export const recover: RecoverFn = async (ctx, error?) => {
       // ── Fault point: just before copying .git into project dir ────────────
       await ctx.faults?.before("replace_git_dir");
 
+      // Re-verify `.git/` is STILL absent right before the copy (the backup +
+      // clone above take real time). fs.cp would MERGE into a directory that
+      // appeared in the window — never do that.
+      if (fs.existsSync(destGitDir)) {
+        return {
+          status: "recovered",
+          message:
+            "Your project's version history was already back in place; no changes were needed.",
+          ...(backupZipPath ? { backupZipPath } : {}),
+        } satisfies RecoveryResult;
+      }
+
       // Copy only .git/ from the temp clone into the project dir.
       // The project's user files (everything outside .git/) are never touched.
       const srcGitDir = path.join(tempCloneDir, ".git");
-      const destGitDir = path.join(ctx.repoDir, ".git");
 
       await cp(srcGitDir, destGitDir, { recursive: true });
     } finally {

@@ -896,3 +896,39 @@ describe("recover (missing_git_dir) — no remoteUrl", () => {
     }
   });
 });
+
+// ── TOCTOU: .git reappeared between classification and repair ─────────────────
+//
+// fs.cp MERGES into an existing directory. If `.git/` came back (author
+// restored the folder / ran an init in a terminal) after classification said
+// it was missing, copying a fresh clone's .git on top would produce a hybrid
+// of two object stores — corruption worse than either input. The handler must
+// detect this and no-op without prompting, backing up, or touching the repo.
+
+describe("recover (missing_git_dir) — .git reappeared (TOCTOU guard)", () => {
+  test("existing .git → benign no-op: no confirm, no backup, repo untouched", async () => {
+    const { projectDir, remoteUrl, closeServer, initialHead } = await makeFixture();
+    try {
+      // .git was NEVER removed — classification is stale.
+      let confirmCalled = false;
+      const gate: ConfirmationGate = {
+        confirmRepair: async () => {
+          confirmCalled = true;
+          return true;
+        },
+      };
+      const ctx = makeCtx(projectDir, remoteUrl, { confirmation: gate });
+      const result = await recover(ctx);
+
+      expect(result.status).toBe("recovered");
+      expect(confirmCalled).toBe(false);
+      const r = result as Extract<RecoveryResult, { status: "recovered" }>;
+      expect(r.backupZipPath ?? "").toBe("");
+      // The existing repo is intact — HEAD still resolves to the original tip.
+      const head = await git.resolveRef({ fs, dir: projectDir, ref: "HEAD" });
+      expect(head).toBe(initialHead);
+    } finally {
+      await closeServer();
+    }
+  });
+});

@@ -15,6 +15,8 @@
 
 import type { RecoveryContext, RecoveryResult, SyncErrorKind } from "./types.ts";
 import { resolveLogger } from "../operation-log.ts";
+import { withRepoLock } from "../../source-provider.ts";
+import { policyFor } from "./policy.ts";
 
 // ── Handler imports ───────────────────────────────────────────────────────────
 
@@ -75,6 +77,30 @@ export async function recover(
     ...(errCode ? { errCode } : {}),
   });
 
+  // Per-repo serialization is enforced HERE, uniformly, by policy — not left
+  // to each handler. serializeRepo:true handlers mutate `.git` with raw git.*/
+  // node:fs calls and must never race a concurrent sync/snapshot/restore (all
+  // of which queue on the same withRepoLock). serializeRepo:false handlers are
+  // thin sync.ts delegates whose internals take the (non-reentrant) lock
+  // themselves — wrapping them here would deadlock. Handler bodies must keep
+  // calling ONLY raw git.*/node:fs while inside the lock, for the same reason.
+  const dispatch = () => dispatchToHandler(kind, ctx, error);
+  const result = policyFor(kind).serializeRepo
+    ? await withRepoLock(ctx.repoDir, dispatch)
+    : await dispatch();
+
+  logger.info("dispatch", `recovery complete`, {
+    kind,
+    result: result.status,
+  });
+  return result;
+}
+
+async function dispatchToHandler(
+  kind: SyncErrorKind,
+  ctx: RecoveryContext,
+  error?: unknown,
+): Promise<RecoveryResult> {
   let result: RecoveryResult;
   switch (kind) {
     case "non_fast_forward":
@@ -126,11 +152,6 @@ export async function recover(
       result = await recoverUnknown(ctx, error);
       break;
   }
-
-  logger.info("dispatch", `recovery complete`, {
-    kind,
-    result: result.status,
-  });
   return result;
 }
 

@@ -23,7 +23,8 @@
  *      `.git/MERGE_MODE`).
  *   4. Verify MERGE_HEAD is gone; if not → THROW.
  *
- * Runs inside withRepoLock (per-repo serialization) AND withBackupGate
+ * Per-repo serialization (withRepoLock) is provided by the DISPATCHER via the
+ * policy's serializeRepo flag; this module wraps only withBackupGate
  * (backup → confirm → risky → failsafe). Inside the callback we call ONLY raw
  * git.* / node:fs — never a lock-wrapped lib function — so the FIFO queue can't
  * deadlock. Re-verification uses direct fs.existsSync, not inspectRepo.
@@ -45,7 +46,7 @@ import path from "node:path";
 
 import git from "isomorphic-git";
 
-import { gitDirFor, hasPendingChanges, withRepoLock } from "../../source-provider.ts";
+import { gitDirFor, hasPendingChanges } from "../../source-provider.ts";
 import { withBackupGate } from "./failsafe.ts";
 import type { RecoverFn, RecoveryResult } from "./types.ts";
 
@@ -70,72 +71,70 @@ function successMessage(hadLocalChanges: boolean): string {
 }
 
 export const recover: RecoverFn = async (ctx) => {
-  return withRepoLock(ctx.repoDir, async () => {
-    const dir = ctx.repoDir;
-    const gitDir = gitDirFor(dir);
-    const mergeHead = path.join(gitDir, "MERGE_HEAD");
+  const dir = ctx.repoDir;
+  const gitDir = gitDirFor(dir);
+  const mergeHead = path.join(gitDir, "MERGE_HEAD");
 
-    // TOCTOU guard: the merge may have been finished or aborted externally
-    // (e.g. the author ran an abort in a terminal) between the preflight
-    // classification and now. If MERGE_HEAD is gone there is nothing to abort —
-    // return a benign no-op WITHOUT creating a backup, prompting, or
-    // force-resetting the working tree. Falling through would discard
-    // uncommitted worktree/index state for a repair that is no longer needed.
-    if (!fs.existsSync(mergeHead)) {
-      return {
-        status: "recovered",
-        message:
-          "Your project was already back to its last working state; no changes were needed.",
-      } satisfies RecoveryResult;
+  // TOCTOU guard: the merge may have been finished or aborted externally
+  // (e.g. the author ran an abort in a terminal) between the preflight
+  // classification and now. If MERGE_HEAD is gone there is nothing to abort —
+  // return a benign no-op WITHOUT creating a backup, prompting, or
+  // force-resetting the working tree. Falling through would discard
+  // uncommitted worktree/index state for a repair that is no longer needed.
+  if (!fs.existsSync(mergeHead)) {
+    return {
+      status: "recovered",
+      message:
+        "Your project was already back to its last working state; no changes were needed.",
+    } satisfies RecoveryResult;
+  }
+
+  return withBackupGate(ctx, KIND, async (backupZipPath) => {
+    // Capture the working-tree state BEFORE aborting (best-effort) so the
+    // success copy can honestly report whether in-progress edits were reset.
+    let hadLocalChanges = false;
+    try {
+      hadLocalChanges = await hasPendingChanges(dir);
+    } catch {
+      hadLocalChanges = true; // conservative: assume dirty if we can't tell
     }
 
-    return withBackupGate(ctx, KIND, async (backupZipPath) => {
-      // Capture the working-tree state BEFORE aborting (best-effort) so the
-      // success copy can honestly report whether in-progress edits were reset.
-      let hadLocalChanges = false;
+    // Resolve the branch to reset to. HEAD stays attached during a merge.
+    let branch = (ctx.branch ?? "").trim();
+    if (!branch) {
       try {
-        hadLocalChanges = await hasPendingChanges(dir);
+        branch = (await git.currentBranch({ fs, dir })) ?? "";
       } catch {
-        hadLocalChanges = true; // conservative: assume dirty if we can't tell
+        branch = "";
       }
+    }
+    const checkoutRef = branch || "HEAD";
 
-      // Resolve the branch to reset to. HEAD stays attached during a merge.
-      let branch = (ctx.branch ?? "").trim();
-      if (!branch) {
-        try {
-          branch = (await git.currentBranch({ fs, dir })) ?? "";
-        } catch {
-          branch = "";
-        }
-      }
-      const checkoutRef = branch || "HEAD";
+    // ── Destructive section ─────────────────────────────────────────────────
+    await ctx.faults?.before("after_backup_before_repair");
+    await ctx.faults?.before("abort_interrupted_operation");
 
-      // ── Destructive section ─────────────────────────────────────────────────
-      await ctx.faults?.before("after_backup_before_repair");
-      await ctx.faults?.before("abort_interrupted_operation");
+    // Reset index + worktree to HEAD, discarding the half-applied conflict
+    // state. FORCE is safe: the verified /tmp backup holds everything.
+    await ctx.faults?.before("checkout_branch");
+    await git.checkout({ fs, dir, ref: checkoutRef, force: true });
 
-      // Reset index + worktree to HEAD, discarding the half-applied conflict
-      // state. FORCE is safe: the verified /tmp backup holds everything.
-      await ctx.faults?.before("checkout_branch");
-      await git.checkout({ fs, dir, ref: checkoutRef, force: true });
+    // Remove the transient merge state files (this IS the abort). These live
+    // inside .git and are captured in the backup — removing them is safe.
+    await ctx.faults?.before("remove_operation_state");
+    fs.rmSync(mergeHead, { recursive: true, force: true });
+    fs.rmSync(path.join(gitDir, "MERGE_MSG"), { recursive: true, force: true });
+    fs.rmSync(path.join(gitDir, "MERGE_MODE"), { recursive: true, force: true });
 
-      // Remove the transient merge state files (this IS the abort). These live
-      // inside .git and are captured in the backup — removing them is safe.
-      await ctx.faults?.before("remove_operation_state");
-      fs.rmSync(mergeHead, { recursive: true, force: true });
-      fs.rmSync(path.join(gitDir, "MERGE_MSG"), { recursive: true, force: true });
-      fs.rmSync(path.join(gitDir, "MERGE_MODE"), { recursive: true, force: true });
+    // Verify the abort actually cleared the marker.
+    if (fs.existsSync(mergeHead)) {
+      throw new Error("The unfinished update could not be fully cleared.");
+    }
 
-      // Verify the abort actually cleared the marker.
-      if (fs.existsSync(mergeHead)) {
-        throw new Error("The unfinished update could not be fully cleared.");
-      }
-
-      return {
-        status: "recovered",
-        message: successMessage(hadLocalChanges),
-        backupZipPath: backupZipPath ?? "",
-      } satisfies RecoveryResult;
-    });
+    return {
+      status: "recovered",
+      message: successMessage(hadLocalChanges),
+      backupZipPath: backupZipPath ?? "",
+    } satisfies RecoveryResult;
   });
 };
