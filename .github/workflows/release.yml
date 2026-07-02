@@ -398,8 +398,12 @@ jobs:
           fi
 
   # Docker publish is NOT duplicated here — docker.yml is the single Docker
-  # publish path, triggered by `release: published` (which the `github-release`
-  # job below causes) and handles the multi-arch (amd64+arm64) GHCR push.
+  # publish path (multi-arch amd64+arm64 GHCR push). It is dispatched
+  # explicitly by the github-release job below: its `release: published`
+  # trigger can never fire for our releases, because GitHub suppresses
+  # workflow-triggering events from anything created with the workflow's own
+  # GITHUB_TOKEN (workflow_dispatch is the documented exception, which is why
+  # the explicit dispatch works).
 
   # ── 5b. Verify the Windows CLI binary actually runs ───────────────────────
   # build-cli cross-compiles the Windows binary from ubuntu-latest, so it can
@@ -452,6 +456,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Needed to dispatch docker.yml after the release is created.
+      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -505,3 +511,20 @@ jobs:
             dist/*
         env:
           GH_TOKEN: ${{ github.token }}
+
+      # docker.yml's `release: published` trigger never fires for releases
+      # created with GITHUB_TOKEN (GitHub suppresses those events to prevent
+      # workflow recursion; workflow_dispatch is exempt), so dispatch it
+      # explicitly at the release tag. metadata-action derives the semver
+      # image tags from the tag ref; `latest` stays stable-only (docker.yml
+      # gates it to non-prerelease `release` events, never dispatch runs).
+      - name: Publish Docker image (dispatch docker.yml at the tag)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh workflow run docker.yml \
+            --repo "${{ github.repository }}" \
+            --ref "$TAG" \
+            -f tag="$VERSION"
