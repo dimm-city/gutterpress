@@ -79,11 +79,14 @@ function isNetworkError(message: string): boolean {
  * author can act on. The raw string is never shown to the user — callers
  * that want it for diagnostics log it themselves (main-process log only).
  */
-function friendlyMessage(raw: string): string {
+function friendlyMessage(raw: string, op: "check" | "download"): string {
+  const verb = op === "download" ? "download the update" : "check for updates";
   if (isNetworkError(raw)) {
-    return "Couldn't check for updates. Check your internet connection and try again.";
+    return `Couldn't ${verb}. Check your internet connection and try again.`;
   }
-  return "Update check failed. You can download the latest version from GitHub.";
+  return op === "download"
+    ? "Update download failed. You can download the latest version from GitHub."
+    : "Update check failed. You can download the latest version from GitHub.";
 }
 
 /**
@@ -121,6 +124,9 @@ let downloadInFlight: Promise<void> | null = null;
 // user-visible error (H1): a silent background check that fails offline must
 // not strand the app in phase "error" for the rest of the session.
 let currentOperationSilent = false;
+// Which operation the shared "error" listener should attribute a failure to
+// — check and download errors need different user-facing wording.
+let currentOperation: "check" | "download" = "check";
 let lastCheckAt = 0;
 
 export function getStatus(): UpdaterStatus {
@@ -177,13 +183,16 @@ export function initUpdater(
     if (currentOperationSilent && isNetworkError(raw)) {
       // H1: a silent background check that failed because the user is
       // offline is not an error worth latching — try again next time
-      // (launch, or the throttled focus re-check in main.ts).
+      // (launch, or the throttled focus re-check in main.ts). Also release
+      // the focus-recheck throttle: a failed check must not consume the
+      // window, or coming back online within it would never retry.
       phase = "idle";
       lastError = null;
+      lastCheckAt = 0;
       return;
     }
     phase = "error";
-    lastError = friendlyMessage(raw);
+    lastError = friendlyMessage(raw, currentOperation);
   });
 }
 
@@ -226,6 +235,7 @@ export async function checkForUpdates(options: { silent?: boolean } = {}): Promi
   if (!checkInFlight) {
     checkInFlightSilent = silent;
     currentOperationSilent = silent;
+    currentOperation = "check";
     if (!silent) {
       phase = "checking";
       lastError = null;
@@ -245,9 +255,11 @@ export async function checkForUpdates(options: { silent?: boolean } = {}): Promi
         if (checkInFlightSilent && isNetworkError(raw)) {
           phase = "idle";
           lastError = null;
+          // Release the focus-recheck throttle — see the "error" listener.
+          lastCheckAt = 0;
         } else {
           phase = "error";
-          lastError = friendlyMessage(raw);
+          lastError = friendlyMessage(raw, "check");
         }
       })
       .finally(() => {
@@ -273,6 +285,7 @@ export async function download(): Promise<UpdaterStatus> {
   if (!updaterSupported() || phase !== "available") return getStatus();
   if (!downloadInFlight) {
     currentOperationSilent = false;
+    currentOperation = "download";
     phase = "downloading";
     lastError = null;
     downloadInFlight = activeAutoUpdater
@@ -284,7 +297,7 @@ export async function download(): Promise<UpdaterStatus> {
         const raw = err instanceof Error ? err.message : String(err);
         console.error("[updater] download failed:", raw);
         phase = "error";
-        lastError = friendlyMessage(raw);
+        lastError = friendlyMessage(raw, "download");
       })
       .finally(() => {
         downloadInFlight = null;

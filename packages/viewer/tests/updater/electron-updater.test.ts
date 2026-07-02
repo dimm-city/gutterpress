@@ -32,6 +32,7 @@ const {
   download,
   installNow,
   updaterSupported,
+  shouldBackgroundCheck,
 } = await import("../../electron/updater");
 
 /** A minimal EventEmitter-based double for AutoUpdaterLike. */
@@ -94,6 +95,46 @@ test("silent check: a network failure resets phase to idle, not error (H1)", asy
 
     expect(status.phase).toBe("idle");
     expect(status.error).toBeNull();
+    // The failed check must not consume the focus-recheck throttle window —
+    // coming back online must allow an immediate retry.
+    expect(shouldBackgroundCheck()).toBe(true);
+  });
+});
+
+test("a successful silent check DOES consume the focus-recheck throttle window", async () => {
+  await withAppImage(async () => {
+    const fake = new FakeAutoUpdater();
+    fake.checkImpl = async () => {
+      fake.emit("update-not-available");
+      return null;
+    };
+    initUpdater(() => {}, { autoUpdater: fake });
+
+    await checkForUpdates({ silent: true });
+
+    expect(shouldBackgroundCheck()).toBe(false);
+  });
+});
+
+test("download failure reports a download-flavored friendly message, not a check one", async () => {
+  await withAppImage(async () => {
+    const fake = new FakeAutoUpdater();
+    fake.checkImpl = async () => {
+      fake.emit("update-available", { version: "2.0.0" });
+      return null;
+    };
+    fake.downloadImpl = async () => {
+      throw new Error("net::ERR_CONNECTION_RESET");
+    };
+    initUpdater(() => {}, { autoUpdater: fake });
+
+    await checkForUpdates();
+    const status = await download();
+
+    expect(status.phase).toBe("error");
+    expect(status.error).toBe(
+      "Couldn't download the update. Check your internet connection and try again.",
+    );
   });
 });
 
