@@ -16,31 +16,15 @@
  * delta this module adds is translating SyncOutcome { status: "offline" } →
  * RecoveryResult { status: "retry_later", retryAfterMs }.
  *
- * Backoff: fixed 30 s baseline for the first automated retry. Upper bound is
- * 30 minutes. The caller may implement further jitter or exponential growth
- * by inspecting retryAfterMs and multiplying on subsequent failures.
+ * Backoff: fixed 30 s delay before the next automated retry.
  */
 
+import { makeManualGuidance } from "./manual-guidance.ts";
 import { syncProject } from "../sync.ts";
 import type { RecoveryContext, RecoveryResult } from "./types.ts";
 
-// ── Backoff constants ────────────────────────────────────────────────────────
-
-/** Minimum delay before the next automated retry (30 seconds). */
-const RETRY_AFTER_MS_DEFAULT = 30_000;
-
-/** Maximum delay the handler will ever return. */
-const RETRY_AFTER_MS_MAX = 30 * 60 * 1_000; // 30 minutes
-
-/**
- * Compute a retry delay in milliseconds. The baseline is 30 seconds; callers
- * can supply a jittered multiplier if they track attempt count externally, but
- * this module always clamps to the sane upper bound.
- */
-function retryAfterMs(multiplier = 1): number {
-  const raw = RETRY_AFTER_MS_DEFAULT * Math.max(1, multiplier);
-  return Math.min(raw, RETRY_AFTER_MS_MAX);
-}
+/** Delay before the next automated retry (30 seconds). */
+const RETRY_AFTER_MS = 30_000;
 
 // ── RecoverFn implementation ─────────────────────────────────────────────────
 
@@ -74,7 +58,7 @@ export async function recover(
         status: "retry_later",
         message:
           "Your work is saved on this computer. We'll try sending it online again shortly.",
-        retryAfterMs: retryAfterMs(),
+        retryAfterMs: RETRY_AFTER_MS,
       };
 
     case "synced":
@@ -97,19 +81,32 @@ export async function recover(
       return {
         status: "retry_later",
         message: outcome.message,
-        retryAfterMs: retryAfterMs(),
+        retryAfterMs: RETRY_AFTER_MS,
+      };
+
+    case "conflict":
+      // The network came back and the retry immediately hit a real merge
+      // conflict. Retrying cannot fix a conflict — surface it to the user NOW
+      // with the file list (mirrors recover-merge-conflict.ts) instead of
+      // burning a retry cycle telling the author "we'll try again shortly"
+      // about a condition that needs their decision.
+      return {
+        status: "needs_user",
+        message: outcome.message,
+        guidance: makeManualGuidance(ctx, "merge_conflict"),
+        files: outcome.files,
       };
 
     default:
-      // conflict / pull-first / error — these need a different recovery path
-      // (not network_unavailable). Return retry_later as a safe fallback so the
-      // host retries through the full dispatcher next time rather than silently
-      // dropping the failure.
+      // pull-first / error — these need a different recovery path (not
+      // network_unavailable). Return retry_later as a safe fallback so the
+      // host retries through the full dispatcher next time rather than
+      // silently dropping the failure.
       return {
         status: "retry_later",
         message:
           "Your work is saved on this computer. Sync will be retried shortly.",
-        retryAfterMs: retryAfterMs(),
+        retryAfterMs: RETRY_AFTER_MS,
       };
   }
 }

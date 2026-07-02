@@ -26,13 +26,14 @@
 import { describe, test, expect, afterEach } from "bun:test";
 import type { RepoHealth } from "@dimm-city/print-md";
 import {
-  classifyFromHealth,
   hostConfirmationGate,
   handleConfirmResponse,
   rejectAllPendingConfirms,
   buildRecoveryContext,
   setRecoveryBridgeWindow,
+  preExportSyncGateBlockError,
 } from "../../electron/recovery-bridge";
+import { classifyFromHealth } from "../../../cli/src/lib/remote-auth/recovery/classify.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -87,7 +88,9 @@ describe("classifyFromHealth priority chain (real code)", () => {
     ).toBe("missing_git_dir");
   });
 
-  test("stale_lock (old enough, ≥ 2 min) beats merge/rebase/detached", () => {
+  test("a specific interrupted-op repair beats the generic stale-lock cleanup", () => {
+    // The abort repair for the interrupted operation is the more specific fix;
+    // any leftover lock is re-detected (and cleared) on the following pass.
     expect(
       classifyFromHealth({
         ...makeGoodHealth(),
@@ -96,10 +99,20 @@ describe("classifyFromHealth priority chain (real code)", () => {
         hasInterruptedMerge: true,
         isDetachedHead: true,
       }),
+    ).toBe("interrupted_merge");
+  });
+
+  test("stale_lock (old enough, ≥ 2 min) classifies when it is the only condition", () => {
+    expect(
+      classifyFromHealth({
+        ...makeGoodHealth(),
+        hasStaleLock: true,
+        lockAgeMs: 150_000,
+      }),
     ).toBe("stale_lock");
   });
 
-  test("merge_conflict beats rebase and detached", () => {
+  test("interrupted_rebase beats merge and detached", () => {
     expect(
       classifyFromHealth({
         ...makeGoodHealth(),
@@ -107,7 +120,7 @@ describe("classifyFromHealth priority chain (real code)", () => {
         hasInterruptedRebase: true,
         isDetachedHead: true,
       }),
-    ).toBe("merge_conflict");
+    ).toBe("interrupted_rebase");
   });
 
   test("interrupted rebase maps to interrupted_rebase (first-class, beats detached_head)", () => {
@@ -136,6 +149,65 @@ describe("classifyFromHealth priority chain (real code)", () => {
     const result = classifyFromHealth(makeGoodHealth());
     expect(result).toBeNull();
     expect(result).not.toBe("unknown");
+  });
+});
+
+describe("buildRecoveryContext delegation", () => {
+  // Resolution behavior (repo root, branch fallback, credential, slug) is the
+  // LIB's responsibility now — tested in cli recovery/context.test.ts. The
+  // bridge's job is only: delegate to lib.buildRecoveryContext and attach the
+  // Electron dialog gate.
+  test("delegates to lib.buildRecoveryContext with the host dialog gate attached", async () => {
+    let received: Record<string, unknown> | null = null;
+    const lib = {
+      buildRecoveryContext: async (options: Record<string, unknown>) => {
+        received = options;
+        return { projectDir: options.projectDir, repoDir: "/project" };
+      },
+    };
+    const tokenStore = {
+      get: async () => null,
+      delete: async () => undefined,
+    };
+
+    const ctx = await buildRecoveryContext(
+      "/project",
+      lib as never,
+      tokenStore,
+      "Ada",
+      "/tmp/op.log",
+    );
+
+    expect(ctx.repoDir).toBe("/project");
+    expect(received!.projectDir).toBe("/project");
+    expect(received!.tokenStore).toBe(tokenStore);
+    expect(received!.authorName).toBe("Ada");
+    expect(received!.logFile).toBe("/tmp/op.log");
+    // The host contributes its own ConfirmationGate.
+    expect(typeof (received!.confirmation as { confirmRepair?: unknown }).confirmRepair).toBe(
+      "function",
+    );
+  });
+});
+
+describe("pre-export sync gate error policy", () => {
+  test("RepoNeedsRecovery blocks export instead of being swallowed as a soft sync failure", () => {
+    const err = Object.assign(new Error("repair required"), {
+      code: "RepoNeedsRecovery",
+      kind: "interrupted_merge",
+    });
+
+    const block = preExportSyncGateBlockError(err);
+
+    expect(block).toBeInstanceOf(Error);
+    expect((block as Error & { code?: string }).code).toBe("SYNC_CONFLICT");
+    expect(block?.message).toContain("needs repair");
+  });
+
+  test("ordinary sync gate errors remain non-blocking for export", () => {
+    const err = Object.assign(new Error("offline"), { code: "NetworkUnavailable" });
+
+    expect(preExportSyncGateBlockError(err)).toBeNull();
   });
 });
 
@@ -277,55 +349,8 @@ describe("confirm timeout (real code)", () => {
   });
 });
 
-// ── 5. buildRecoveryContext required fields ───────────────────────────────────
-
-describe("buildRecoveryContext (real code)", () => {
-  test("sets projectDir, repoDir, branch, repoSlug, confirmation from lib stubs", async () => {
-    const libStub = {
-      // The project is opened at a subfolder; its OWN repo root is /repo.
-      detectProjectSource: async (dir: string) => ({
-        type: "local-git-folder",
-        repoRoot: "/repo",
-        path: dir,
-      }),
-      diagnoseProjectRemote: async (_dir: string, _opts?: unknown) => ({
-        branch: "main",
-        remoteUrl: undefined as string | undefined,
-      }),
-    };
-    const tokenStoreStub = {
-      get: async (_host: string) => null as null,
-    };
-
-    const ctx = await buildRecoveryContext("/repo/my-book", libStub, tokenStoreStub);
-
-    expect(ctx.projectDir).toBe("/repo/my-book");
-    expect(ctx.repoDir).toBe("/repo");
-    expect(ctx.branch).toBe("main");
-    expect(typeof ctx.repoSlug).toBe("string");
-    expect(ctx.repoSlug.length).toBeGreaterThan(0);
-    expect(typeof ctx.confirmation.confirmRepair).toBe("function");
-  });
-
-  test("authorName is undefined when not passed (consistent with syncProject)", async () => {
-    const libStub = {
-      detectProjectSource: async (_dir: string) => ({ type: "local-folder" }),
-      diagnoseProjectRemote: async () => ({ branch: "main", remoteUrl: undefined as string | undefined }),
-    };
-    const tokenStoreStub = { get: async (_h: string) => null as null };
-
-    const ctx = await buildRecoveryContext("/proj/book", libStub, tokenStoreStub);
-    expect(ctx.authorName).toBeUndefined();
-  });
-
-  test("authorName is threaded when passed", async () => {
-    const libStub = {
-      detectProjectSource: async (_dir: string) => ({ type: "local-folder" }),
-      diagnoseProjectRemote: async () => ({ branch: "main", remoteUrl: undefined as string | undefined }),
-    };
-    const tokenStoreStub = { get: async (_h: string) => null as null };
-
-    const ctx = await buildRecoveryContext("/proj/book", libStub, tokenStoreStub, "Jane Author");
-    expect(ctx.authorName).toBe("Jane Author");
-  });
-});
+// ── 5. buildRecoveryContext ───────────────────────────────────────────────────
+// The context RESOLUTION (repo root, branch, credential, slug) moved to the
+// lib — packages/cli/src/lib/remote-auth/recovery/context.test.ts covers it.
+// The bridge's remaining responsibility (delegate + attach the dialog gate) is
+// covered by the "buildRecoveryContext delegation" describe above.

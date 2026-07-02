@@ -67,9 +67,11 @@ function isMergeConflictError(e: unknown): boolean {
 }
 
 /**
- * Build guidance with the UI-action label the dispatcher contract requires.
- * The base makeManualGuidance returns "Reconnect"; the feature spec requires
- * the recommendedAction to equal 'reconnect_repo' for UI routing.
+ * Guidance for the blocked paths (no remote configured / remote ref missing):
+ * the repair can't proceed until the project's online connection is fixed, so
+ * the primary CTA routes to the connection settings — with a human label
+ * (recommendedAction is the literal button text; machine tokens live only in
+ * recommendedActionKey).
  */
 function buildGuidance(
   ctx: Parameters<typeof makeManualGuidance>[0],
@@ -79,7 +81,8 @@ function buildGuidance(
   const base = makeManualGuidance(ctx, KIND, error, backupZipPath);
   return {
     ...base,
-    recommendedAction: "reconnect_repo",
+    recommendedAction: "Check connection",
+    recommendedActionKey: "check_connection",
   };
 }
 
@@ -240,11 +243,9 @@ export const recover: RecoverFn = async (ctx, error?) => {
           // Use merge_conflict guidance — the user's situation is now
           // indistinguishable from a regular merge conflict: they need to
           // pick per-file versions. The unrelated_histories guidance is for
-          // the blocked path (no remote / can't combine at all).
-          guidance: {
-            ...makeManualGuidance(ctx, "merge_conflict", error, backupZipPath),
-            recommendedAction: "choose_file_version",
-          },
+          // the blocked path (no remote / can't combine at all). The base
+          // guidance already carries the human label + resolve_conflict key.
+          guidance: makeManualGuidance(ctx, "merge_conflict", error, backupZipPath),
           files: conflictFiles,
           ...(backupZipPath ? { backupZipPath } : {}),
           // Thread OIDs for resolveConflicts (same convention as

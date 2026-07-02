@@ -28,6 +28,14 @@ export interface RecoveryPolicy {
   mayChangeRemote: boolean;
   /** True when the repair can run transparently without prompting the user. */
   automate: boolean;
+  /**
+   * True when the dispatcher must run the handler inside withRepoLock (the
+   * per-repo FIFO queue): every handler that mutates `.git` via RAW git.* /
+   * node:fs calls. MUST be false for the thin sync.ts delegates — they call
+   * lock-wrapped functions (syncProject/pullChanges) internally, and the FIFO
+   * queue is non-reentrant (locking them at the dispatcher would deadlock).
+   */
+  serializeRepo: boolean;
 }
 
 export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
@@ -40,6 +48,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: true,
     mayChangeRemote: true,
     automate: true,
+    serializeRepo: false,
   },
   merge_conflict: {
     risk: "none",
@@ -49,6 +58,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: false,
     mayChangeRemote: false,
     automate: false, // needs user to choose per-file
+    serializeRepo: false,
   },
   binary_conflict: {
     risk: "none",
@@ -58,6 +68,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: false,
     mayChangeRemote: false,
     automate: false, // needs user to choose per-file
+    serializeRepo: false,
   },
   auth_required: {
     risk: "none",
@@ -67,6 +78,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: false,
     mayChangeRemote: false,
     automate: false, // needs user to reconnect
+    serializeRepo: false,
   },
   network_unavailable: {
     risk: "none",
@@ -76,6 +88,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: false,
     mayChangeRemote: false,
     automate: true, // retry later automatically
+    serializeRepo: false,
   },
 
   // ── Structural repairs — always backup + confirm ──────────────────────────
@@ -87,6 +100,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: true,
     mayChangeRemote: false,
     automate: false,
+    serializeRepo: true,
   },
   stale_lock: {
     risk: "low",
@@ -96,6 +110,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: true,
     mayChangeRemote: false,
     automate: false,
+    serializeRepo: true,
   },
   corrupt_index: {
     risk: "medium",
@@ -105,6 +120,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: true,
     mayChangeRemote: false,
     automate: false,
+    serializeRepo: true,
   },
   missing_git_dir: {
     risk: "high",
@@ -114,6 +130,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: true,
     mayChangeRemote: false,
     automate: false,
+    serializeRepo: true,
   },
   missing_or_corrupt_objects: {
     risk: "high",
@@ -123,6 +140,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: true,
     mayChangeRemote: false,
     automate: false,
+    serializeRepo: true,
   },
   unrelated_histories: {
     risk: "high",
@@ -132,6 +150,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: true,
     mayChangeRemote: false,
     automate: false, // requires confirmation; clean merge updates the working tree
+    serializeRepo: true,
   },
   wrong_remote_or_branch: {
     risk: "none",
@@ -141,6 +160,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: false,
     mayChangeRemote: false,
     automate: false, // block with guidance
+    serializeRepo: false,
   },
   // An interrupted rebase/cherry-pick is aborted: the branch ref is rewound (or
   // the half-applied index/worktree state cleared) and the operation-state dirs
@@ -154,6 +174,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: true,
     mayChangeRemote: false,
     automate: false,
+    serializeRepo: true,
   },
   interrupted_cherry_pick: {
     risk: "medium",
@@ -163,6 +184,21 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: true,
     mayChangeRemote: false,
     automate: false,
+    serializeRepo: true,
+  },
+  // An interrupted merge (MERGE_HEAD left by native git run outside the app)
+  // is aborted the same way: the half-applied index/worktree state is cleared
+  // and the marker files removed, resetting local files to the last working
+  // state — so it always makes a backup first and always asks to confirm.
+  interrupted_merge: {
+    risk: "medium",
+    createBackup: true,
+    requireConfirmation: true,
+    mayChangeLocalFiles: true,
+    mayChangeGitMetadata: true,
+    mayChangeRemote: false,
+    automate: false,
+    serializeRepo: true,
   },
   unknown: {
     risk: "none",
@@ -172,6 +208,7 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeGitMetadata: false,
     mayChangeRemote: false,
     automate: false,
+    serializeRepo: false,
   },
 };
 

@@ -317,10 +317,13 @@ describe("recover interrupted_rebase — marker vanished before recovery", () =>
   });
 });
 
-// ── Repo-lock serialization ─────────────────────────────────────────────────────
+// ── Repo-lock serialization (dispatcher-level, via policy serializeRepo) ───────
 
 describe("recover interrupted_rebase — runs under the per-repo lock", () => {
   test("a competing repo op on the same dir waits until recovery releases the lock", async () => {
+    // The lock is acquired by the DISPATCHER (policy serializeRepo), so this
+    // test goes through dispatch.recover — not the bare handler.
+    const { recover: dispatchRecover } = await import("./dispatch.ts");
     const dir = await makeTempDir("ir-lock-");
     const { firstSha } = await initTwoCommitRepo(dir);
     const tip = await resolveMain(dir);
@@ -342,7 +345,10 @@ describe("recover interrupted_rebase — runs under the per-repo lock", () => {
     // recover() synchronously registers itself in the per-repo queue before it
     // returns, so a withRepoLock() call issued right after is guaranteed to queue
     // BEHIND it (same resolved dir → same FIFO chain).
-    const recoveryPromise = recover(makeCtx(dir, { confirmation: gate }));
+    const recoveryPromise = dispatchRecover(
+      "interrupted_rebase",
+      makeCtx(dir, { confirmation: gate }),
+    );
     const competing = withRepoLock(dir, async () => {
       order.push("competing-ran");
     });

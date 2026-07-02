@@ -315,7 +315,17 @@ export type {
 // ── Sync recovery (#15, ADR 0006 D5 — node-side only; never imported by renderer) ──
 // The recovery subsystem lives entirely in the host (main process / CLI).
 // Import-type is safe in the SPA; value imports must only reach the host.
-export { recover, classifyGitError, inspectRepo } from "../lib/remote-auth/recovery/dispatch.ts";
+export {
+  recover,
+  classifyGitError,
+  classifyFromHealth,
+  inspectRepo,
+  buildRecoveryContext,
+  preflightStructuralReason,
+  buildPreflightDiagnostics,
+  RepoNeedsRecoveryError,
+  isRepoNeedsRecoveryError,
+} from "../lib/remote-auth/recovery/dispatch.ts";
 
 // Structured operation logger (node-side only; the SPA never value-imports it).
 // Exposed so the host can write preflight diagnostics to the SAME operation-log

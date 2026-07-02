@@ -3,14 +3,14 @@
  * LOG FILE before dispatching recover(), not just console.log a one-word kind.
  *
  * Two pure helpers make this testable without Electron:
- *   - preflightStructuralReason(health) — the SINGLE health signal that drove
- *     classification. MUST agree with classifyFromHealth's decision order.
+ *   - preflightStructuralReason(kind) — the SINGLE health signal that drove
+ *     classification, derived from the kind classifyFromHealth returned (a
+ *     pure mapping — it cannot drift from the classifier's decision order).
  *   - buildPreflightDiagnostics(openedDir, repoDir, health, kind) — a flat,
  *     secret-free LogData record with every health boolean + repo-root facts.
  *
- * A third test proves the FILE actually receives the structural fields when the
- * lib's resolveLogger writes buildPreflightDiagnostics output (review test-gap
- * #2).
+ * A third test proves the FILE actually receives the structural fields when
+ * resolveLogger writes buildPreflightDiagnostics output (review test-gap #2).
  */
 
 import { describe, test, expect } from "bun:test";
@@ -20,10 +20,10 @@ import path from "node:path";
 import {
   preflightStructuralReason,
   buildPreflightDiagnostics,
-  classifyFromHealth,
-  type RepoHealth,
-} from "../../electron/recovery-bridge";
-import { resolveLogger } from "../../../cli/src/lib/remote-auth/operation-log.ts";
+} from "./inspect.ts";
+import { classifyFromHealth } from "./classify.ts";
+import type { RepoHealth } from "./types.ts";
+import { resolveLogger } from "../operation-log.ts";
 
 // A healthy repo: no structural condition.
 const HEALTHY: RepoHealth = {
@@ -43,56 +43,64 @@ function h(overrides: Partial<RepoHealth>): RepoHealth {
 
 describe("preflightStructuralReason", () => {
   test("healthy repo → 'none'", () => {
-    expect(preflightStructuralReason(HEALTHY)).toBe("none");
+    expect(preflightStructuralReason(classifyFromHealth(HEALTHY))).toBe("none");
   });
 
   test("missing git dir → health.missingGitDir", () => {
-    expect(preflightStructuralReason(h({ hasGitDir: false }))).toBe("health.missingGitDir");
+    expect(
+      preflightStructuralReason(classifyFromHealth(h({ hasGitDir: false }))),
+    ).toBe("health.missingGitDir");
   });
 
   test("stale lock past threshold → health.hasStaleLock", () => {
     expect(
-      preflightStructuralReason(h({ hasStaleLock: true, lockAgeMs: 200_000 })),
+      preflightStructuralReason(
+        classifyFromHealth(h({ hasStaleLock: true, lockAgeMs: 200_000 })),
+      ),
     ).toBe("health.hasStaleLock");
   });
 
   test("fresh lock (below threshold) is NOT a stale-lock reason", () => {
-    // Below STALE_LOCK_THRESHOLD_MS (120s): classifyFromHealth returns null, so
-    // the reason must also be 'none' — they must agree.
+    // Below the shared STALE_LOCK_MIN_AGE_MS (120s): classifyFromHealth returns
+    // null, so the reason must also be 'none' — they agree by construction.
     const health = h({ hasStaleLock: true, lockAgeMs: 1_000 });
-    expect(classifyFromHealth(health)).toBeNull();
-    expect(preflightStructuralReason(health)).toBe("none");
+    const kind = classifyFromHealth(health);
+    expect(kind).toBeNull();
+    expect(preflightStructuralReason(kind)).toBe("none");
   });
 
   test("interrupted merge → health.hasInterruptedMerge", () => {
-    expect(preflightStructuralReason(h({ hasInterruptedMerge: true }))).toBe(
-      "health.hasInterruptedMerge",
-    );
+    expect(
+      preflightStructuralReason(classifyFromHealth(h({ hasInterruptedMerge: true }))),
+    ).toBe("health.hasInterruptedMerge");
   });
 
   test("interrupted rebase → health.hasInterruptedRebase", () => {
-    expect(preflightStructuralReason(h({ hasInterruptedRebase: true }))).toBe(
-      "health.hasInterruptedRebase",
-    );
+    expect(
+      preflightStructuralReason(classifyFromHealth(h({ hasInterruptedRebase: true }))),
+    ).toBe("health.hasInterruptedRebase");
   });
 
   test("interrupted cherry-pick → health.hasInterruptedCherryPick", () => {
-    expect(preflightStructuralReason(h({ hasInterruptedCherryPick: true }))).toBe(
-      "health.hasInterruptedCherryPick",
-    );
+    expect(
+      preflightStructuralReason(
+        classifyFromHealth(h({ hasInterruptedCherryPick: true })),
+      ),
+    ).toBe("health.hasInterruptedCherryPick");
   });
 
   test("detached head → health.isDetachedHead", () => {
-    expect(preflightStructuralReason(h({ isDetachedHead: true }))).toBe(
-      "health.isDetachedHead",
-    );
+    expect(
+      preflightStructuralReason(classifyFromHealth(h({ isDetachedHead: true }))),
+    ).toBe("health.isDetachedHead");
   });
 
   // ── Ordering guard: rebase wins over detached head ──────────────────────────
   test("interrupted rebase AND detached head → names the rebase, not detached", () => {
     const health = h({ hasInterruptedRebase: true, isDetachedHead: true });
-    expect(classifyFromHealth(health)).toBe("interrupted_rebase");
-    expect(preflightStructuralReason(health)).toBe("health.hasInterruptedRebase");
+    const kind = classifyFromHealth(health);
+    expect(kind).toBe("interrupted_rebase");
+    expect(preflightStructuralReason(kind)).toBe("health.hasInterruptedRebase");
   });
 
   // ── Agreement matrix: reason ⇔ classifyFromHealth for every shape ───────────
@@ -112,7 +120,7 @@ describe("preflightStructuralReason", () => {
     ];
     for (const health of matrix) {
       const kind = classifyFromHealth(health);
-      const reason = preflightStructuralReason(health);
+      const reason = preflightStructuralReason(kind);
       if (kind === null) {
         expect(reason).toBe("none");
       } else {

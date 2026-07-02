@@ -434,6 +434,42 @@ describe("recover-network — reconnect follow-up pushes queued work", () => {
 
 // ── 6. No backup zip is created ───────────────────────────────────────────────
 
+describe("recover-network — conflict on retry surfaces to the user", () => {
+  test("conflict outcome returns needs_user with the file list, not retry_later", async () => {
+    const h = await setupOnlineHarness();
+    try {
+      // Diverge both sides on the same file: a new commit on the server…
+      await writeFile(
+        path.join(h.serverDir, "chapter-01.md"),
+        "# One\n\nServer edit.\n",
+      );
+      await git.add({ fs, dir: h.serverDir, filepath: "chapter-01.md" });
+      await git.commit({
+        fs,
+        dir: h.serverDir,
+        message: "server edit",
+        author: TEST_AUTHOR,
+      });
+      // …and an uncommitted local edit (snapshotted by syncProject).
+      await writeFile(
+        path.join(h.projectDir, "chapter-01.md"),
+        "# One\n\nLocal edit.\n",
+      );
+
+      // Network is UP — the "retry" inside recover() hits a genuine merge
+      // conflict. Retrying can never fix that; it must go to the user NOW.
+      const result = await recover(makeCtx(h.projectDir, { httpClient: httpNode }));
+
+      expect(result.status).toBe("needs_user");
+      if (result.status !== "needs_user") throw new Error("unreachable");
+      expect(result.guidance.recommendedActionKey).toBe("resolve_conflict");
+      expect(result.files?.some((f) => f.path === "chapter-01.md")).toBe(true);
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
 describe("recover-network — no backup zip created", () => {
   test("recover() does not create a backup zip for network_unavailable", async () => {
     const h = await setupOnlineHarness();

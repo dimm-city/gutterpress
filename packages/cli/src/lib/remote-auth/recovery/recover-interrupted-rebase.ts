@@ -23,8 +23,9 @@
  *   4. Remove the transient `.git/rebase-merge` and `.git/rebase-apply` dirs.
  *   5. Verify the markers are gone; if not → THROW.
  *
- * The whole body runs inside withRepoLock (per-repo serialization) AND
- * withBackupGate (backup → confirm → risky → failsafe). Inside the callback we
+ * Per-repo serialization (withRepoLock) is provided by the DISPATCHER via the
+ * policy's serializeRepo flag; this module wraps only withBackupGate
+ * (backup → confirm → risky → failsafe). Inside the callback we
  * call ONLY raw git.* / node:fs — never another lock-wrapped lib function — so
  * the FIFO queue can't deadlock. Re-verification uses direct fs.existsSync of
  * the marker paths, NOT inspectRepo (which would re-enter the lock).
@@ -46,7 +47,7 @@ import path from "node:path";
 
 import git from "isomorphic-git";
 
-import { gitDirFor, hasPendingChanges, withRepoLock } from "../../source-provider.ts";
+import { gitDirFor, hasPendingChanges } from "../../source-provider.ts";
 import { withBackupGate } from "./failsafe.ts";
 import type { RecoverFn, RecoveryResult } from "./types.ts";
 
@@ -91,114 +92,112 @@ function successMessage(hadLocalChanges: boolean): string {
 }
 
 export const recover: RecoverFn = async (ctx) => {
-  return withRepoLock(ctx.repoDir, async () => {
-    const dir = ctx.repoDir;
-    const gitDir = gitDirFor(dir);
-    const rebaseMerge = path.join(gitDir, "rebase-merge");
-    const rebaseApply = path.join(gitDir, "rebase-apply");
+  const dir = ctx.repoDir;
+  const gitDir = gitDirFor(dir);
+  const rebaseMerge = path.join(gitDir, "rebase-merge");
+  const rebaseApply = path.join(gitDir, "rebase-apply");
 
-    // TOCTOU guard: the interrupted rebase may have been finished or aborted
-    // externally (e.g. the author ran an abort in a terminal) between the
-    // preflight classification and now. If no rebase marker remains there is
-    // nothing to abort — return a benign no-op WITHOUT creating a backup,
-    // prompting, or touching any ref/worktree. Falling through here would let the
-    // code below rewind a branch off a possibly-stale `.git/ORIG_HEAD` left by an
-    // unrelated operation, unexpectedly moving refs. (Copilot review.)
-    if (!fs.existsSync(rebaseMerge) && !fs.existsSync(rebaseApply)) {
-      return {
-        status: "recovered",
-        message:
-          "Your project was already back to its last working state; no changes were needed.",
-      } satisfies RecoveryResult;
+  // TOCTOU guard: the interrupted rebase may have been finished or aborted
+  // externally (e.g. the author ran an abort in a terminal) between the
+  // preflight classification and now. If no rebase marker remains there is
+  // nothing to abort — return a benign no-op WITHOUT creating a backup,
+  // prompting, or touching any ref/worktree. Falling through here would let the
+  // code below rewind a branch off a possibly-stale `.git/ORIG_HEAD` left by an
+  // unrelated operation, unexpectedly moving refs. (Copilot review.)
+  if (!fs.existsSync(rebaseMerge) && !fs.existsSync(rebaseApply)) {
+    return {
+      status: "recovered",
+      message:
+        "Your project was already back to its last working state; no changes were needed.",
+    } satisfies RecoveryResult;
+  }
+
+  return withBackupGate(ctx, KIND, async (backupZipPath) => {
+    // Capture the working-tree state BEFORE aborting (best-effort) so the
+    // success copy can honestly report whether in-progress edits were reset.
+    let hadLocalChanges = false;
+    try {
+      hadLocalChanges = await hasPendingChanges(dir);
+    } catch {
+      hadLocalChanges = true; // conservative: assume dirty if we can't tell
     }
 
-    return withBackupGate(ctx, KIND, async (backupZipPath) => {
-      // Capture the working-tree state BEFORE aborting (best-effort) so the
-      // success copy can honestly report whether in-progress edits were reset.
-      let hadLocalChanges = false;
-      try {
-        hadLocalChanges = await hasPendingChanges(dir);
-      } catch {
-        hadLocalChanges = true; // conservative: assume dirty if we can't tell
-      }
+    // Re-verify state with DIRECT fs checks (not inspectRepo — it re-enters
+    // the repo lock). Pick whichever backend dir is present.
+    const stateDir = fs.existsSync(rebaseMerge)
+      ? rebaseMerge
+      : fs.existsSync(rebaseApply)
+        ? rebaseApply
+        : undefined;
 
-      // Re-verify state with DIRECT fs checks (not inspectRepo — it re-enters
-      // the repo lock). Pick whichever backend dir is present.
-      const stateDir = fs.existsSync(rebaseMerge)
-        ? rebaseMerge
-        : fs.existsSync(rebaseApply)
-          ? rebaseApply
-          : undefined;
+    // Resolve the pre-rebase commit: <stateDir>/orig-head, else .git/ORIG_HEAD.
+    const origSha =
+      (stateDir ? readShaFile(path.join(stateDir, "orig-head")) : undefined) ??
+      readShaFile(path.join(gitDir, "ORIG_HEAD"));
 
-      // Resolve the pre-rebase commit: <stateDir>/orig-head, else .git/ORIG_HEAD.
-      const origSha =
-        (stateDir ? readShaFile(path.join(stateDir, "orig-head")) : undefined) ??
-        readShaFile(path.join(gitDir, "ORIG_HEAD"));
-
-      // Resolve the branch to restore. `<stateDir>/head-name` holds either a real
-      // "refs/heads/<x>" path OR a git sentinel (e.g. "detached HEAD") when the
-      // rebase was itself started from a detached HEAD. ONLY treat it as a branch
-      // when it is a genuine refs/heads/ path — otherwise a sentinel would be
-      // turned into a bogus `refs/heads/detached HEAD` ref (the checkout then
-      // throws, leaving the markers AND a stray ref behind).
-      let branch: string | undefined;
-      let headNamePresent = false;
-      if (stateDir) {
-        const headName = readLine(path.join(stateDir, "head-name"));
-        if (headName) {
-          headNamePresent = true;
-          if (headName.startsWith("refs/heads/")) {
-            branch = headName.slice("refs/heads/".length).trim() || undefined;
-          }
-          // A present-but-non-branch head-name means the rebase started from a
-          // detached HEAD → leave `branch` undefined and restore detached below.
+    // Resolve the branch to restore. `<stateDir>/head-name` holds either a real
+    // "refs/heads/<x>" path OR a git sentinel (e.g. "detached HEAD") when the
+    // rebase was itself started from a detached HEAD. ONLY treat it as a branch
+    // when it is a genuine refs/heads/ path — otherwise a sentinel would be
+    // turned into a bogus `refs/heads/detached HEAD` ref (the checkout then
+    // throws, leaving the markers AND a stray ref behind).
+    let branch: string | undefined;
+    let headNamePresent = false;
+    if (stateDir) {
+      const headName = readLine(path.join(stateDir, "head-name"));
+      if (headName) {
+        headNamePresent = true;
+        if (headName.startsWith("refs/heads/")) {
+          branch = headName.slice("refs/heads/".length).trim() || undefined;
         }
+        // A present-but-non-branch head-name means the rebase started from a
+        // detached HEAD → leave `branch` undefined and restore detached below.
       }
-      // Fall back to ctx.branch ONLY when head-name was ABSENT (unknown backend or
-      // unreadable) — never when it was present-but-detached, which would wrongly
-      // move ctx.branch onto the pre-rebase commit.
-      if (!branch && !headNamePresent) branch = (ctx.branch ?? "").trim() || undefined;
+    }
+    // Fall back to ctx.branch ONLY when head-name was ABSENT (unknown backend or
+    // unreadable) — never when it was present-but-detached, which would wrongly
+    // move ctx.branch onto the pre-rebase commit.
+    if (!branch && !headNamePresent) branch = (ctx.branch ?? "").trim() || undefined;
 
-      if (!origSha) {
-        // The backup is already created + verified; surfacing the failure here
-        // lets withBackupGate return failed_backup_available (backup is safe).
-        throw new Error("Could not determine the project's last working state to restore.");
-      }
+    if (!origSha) {
+      // The backup is already created + verified; surfacing the failure here
+      // lets withBackupGate return failed_backup_available (backup is safe).
+      throw new Error("Could not determine the project's last working state to restore.");
+    }
 
-      // ── Destructive section ─────────────────────────────────────────────────
-      await ctx.faults?.before("after_backup_before_repair");
-      await ctx.faults?.before("abort_interrupted_operation");
+    // ── Destructive section ─────────────────────────────────────────────────
+    await ctx.faults?.before("after_backup_before_repair");
+    await ctx.faults?.before("abort_interrupted_operation");
 
-      if (branch) {
-        // Named-branch rebase: rewind the branch ref to the pre-rebase commit,
-        // then re-attach HEAD to it and reset the working tree + index to the
-        // restored tip. FORCE is safe: the verified /tmp backup holds everything.
-        await git.writeRef({ fs, dir, ref: `refs/heads/${branch}`, value: origSha, force: true });
-        await ctx.faults?.before("checkout_branch");
-        await git.checkout({ fs, dir, ref: branch, force: true });
-      } else {
-        // Detached-HEAD rebase: there is no branch to move. Restore HEAD (still
-        // detached) to the pre-rebase commit and reset the tree/index to it.
-        await ctx.faults?.before("checkout_branch");
-        await git.checkout({ fs, dir, ref: origSha, force: true });
-      }
+    if (branch) {
+      // Named-branch rebase: rewind the branch ref to the pre-rebase commit,
+      // then re-attach HEAD to it and reset the working tree + index to the
+      // restored tip. FORCE is safe: the verified /tmp backup holds everything.
+      await git.writeRef({ fs, dir, ref: `refs/heads/${branch}`, value: origSha, force: true });
+      await ctx.faults?.before("checkout_branch");
+      await git.checkout({ fs, dir, ref: branch, force: true });
+    } else {
+      // Detached-HEAD rebase: there is no branch to move. Restore HEAD (still
+      // detached) to the pre-rebase commit and reset the tree/index to it.
+      await ctx.faults?.before("checkout_branch");
+      await git.checkout({ fs, dir, ref: origSha, force: true });
+    }
 
-      // Remove the transient operation-state dirs (this IS the abort). These live
-      // inside .git and are captured in the backup — removing them is safe.
-      await ctx.faults?.before("remove_operation_state");
-      if (fs.existsSync(rebaseMerge)) fs.rmSync(rebaseMerge, { recursive: true, force: true });
-      if (fs.existsSync(rebaseApply)) fs.rmSync(rebaseApply, { recursive: true, force: true });
+    // Remove the transient operation-state dirs (this IS the abort). These live
+    // inside .git and are captured in the backup — removing them is safe.
+    await ctx.faults?.before("remove_operation_state");
+    if (fs.existsSync(rebaseMerge)) fs.rmSync(rebaseMerge, { recursive: true, force: true });
+    if (fs.existsSync(rebaseApply)) fs.rmSync(rebaseApply, { recursive: true, force: true });
 
-      // Verify the abort actually cleared the markers.
-      if (fs.existsSync(rebaseMerge) || fs.existsSync(rebaseApply)) {
-        throw new Error("The unfinished update could not be fully cleared.");
-      }
+    // Verify the abort actually cleared the markers.
+    if (fs.existsSync(rebaseMerge) || fs.existsSync(rebaseApply)) {
+      throw new Error("The unfinished update could not be fully cleared.");
+    }
 
-      return {
-        status: "recovered",
-        message: successMessage(hadLocalChanges),
-        backupZipPath: backupZipPath ?? "",
-      } satisfies RecoveryResult;
-    });
+    return {
+      status: "recovered",
+      message: successMessage(hadLocalChanges),
+      backupZipPath: backupZipPath ?? "",
+    } satisfies RecoveryResult;
   });
 };

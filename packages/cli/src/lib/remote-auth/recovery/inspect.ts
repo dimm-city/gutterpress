@@ -12,13 +12,12 @@
  * Notes on two health facts:
  *   - hasGitDir is true whenever `.git/` EXISTS, even with a missing/corrupt
  *     HEAD (a damaged repo is still a repo — see the inline note at the check).
- *   - hasStaleLock scans the SAME lock set as the stale-lock recovery handler
- *     (index.lock + HEAD.lock + config.lock + packed-refs.lock + refs/**\/*.lock)
- *     so health and handler stay in agreement.
+ *   - hasStaleLock uses the stale-lock handler's OWN lock scanner
+ *     (findLockCandidates in recover-stale-lock.ts) — one implementation, so
+ *     health and handler can never disagree about which locks exist.
  *
- * All I/O is synchronous fs.existsSync / fs.statSync / fs.readdirSync to keep
- * this fast and throw-free (the caller must never see an exception from a
- * preflight probe).
+ * All probes are best-effort and throw-free (the caller must never see an
+ * exception from a preflight probe).
  */
 
 import * as fs from "node:fs";
@@ -28,83 +27,24 @@ import git from "isomorphic-git";
 
 import { detectProjectSource } from "../../project-source.ts";
 import { gitDirFor, gitScopeFor, hasPendingChanges } from "../../source-provider.ts";
-import type { RepoHealth, RecoveryContext } from "./types.ts";
-
-/**
- * Known top-level lock files git may leave directly under `.git/` after a crash.
- *
- * MUST stay in lockstep with TOP_LEVEL_LOCK_NAMES in recover-stale-lock.ts: the
- * preflight health probe (here) decides WHETHER the stale-lock handler runs, and
- * the handler decides WHAT to remove. If health scanned fewer paths than the
- * handler, a stuck HEAD.lock / config.lock / packed-refs.lock would never
- * trigger recovery and the repo would stay unusable forever.
- */
-const TOP_LEVEL_LOCK_NAMES = [
-  "index.lock",
-  "HEAD.lock",
-  "config.lock",
-  "packed-refs.lock",
-] as const;
-
-/**
- * Recursively collect `*.lock` file paths under `dir` (best-effort, never
- * throws). Mirrors collectRefLockPaths in recover-stale-lock.ts so health and
- * handler agree on per-ref locks (e.g. refs/heads/main.lock at any depth).
- * Synchronous to keep inspect.ts throw-free and fast.
- */
-function collectRefLockPathsSync(dir: string, out: string[]): void {
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return; // Missing/unreadable — nothing to collect here.
-  }
-  for (const entry of entries) {
-    const abs = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      collectRefLockPathsSync(abs, out);
-    } else if (entry.isFile() && entry.name.endsWith(".lock")) {
-      out.push(abs);
-    }
-  }
-}
-
-/**
- * Scan a `.git` dir for ALL known stale-lock files (top-level + refs/**) and
- * return whether any exist plus the age (ms) of the YOUNGEST lock.
- *
- * The youngest age is the right signal for the handler's decision rule: "if ANY
- * lock is fresh, a live process may still hold it — wait". The smallest age
- * decides whether to back off, so health reports that same value. Returns
- * `lockAgeMs: undefined` when no lock exists (or none could be stat'd). Never
- * throws — a vanished/unreadable lock between readdir and stat is simply skipped.
- */
-function scanStaleLocks(gitDir: string, now: number): {
-  hasStaleLock: boolean;
-  lockAgeMs: number | undefined;
-} {
-  const paths: string[] = TOP_LEVEL_LOCK_NAMES.map((name) => path.join(gitDir, name));
-  collectRefLockPathsSync(path.join(gitDir, "refs"), paths);
-
-  let youngestAgeMs: number | undefined;
-  for (const p of paths) {
-    try {
-      const s = fs.statSync(p);
-      if (!s.isFile()) continue;
-      const ageMs = now - s.mtimeMs;
-      if (youngestAgeMs === undefined || ageMs < youngestAgeMs) youngestAgeMs = ageMs;
-    } catch {
-      // Not present (or unreadable) — skip.
-    }
-  }
-  return { hasStaleLock: youngestAgeMs !== undefined, lockAgeMs: youngestAgeMs };
-}
+import type { LogData } from "../operation-log.ts";
+import { findLockCandidates } from "./recover-stale-lock.ts";
+import type { RepoHealth, RecoveryContext, SyncErrorKind } from "./types.ts";
 
 /**
  * Probe the local repository and return a RepoHealth snapshot.
  * Never throws — on any error the relevant flag is set conservatively.
+ *
+ * `checkLocalChanges: false` skips the hasPendingChanges working-tree walk
+ * (the one non-trivial probe) and reports hasLocalChanges=false. Use it when
+ * only the structural flags matter — e.g. syncProject's preflight, whose
+ * pull step immediately performs the same walk anyway (sync-simplicity
+ * mandate: no redundant walks on the hot path).
  */
-export async function inspectRepo(ctx: Pick<RecoveryContext, "repoDir">): Promise<RepoHealth> {
+export async function inspectRepo(
+  ctx: Pick<RecoveryContext, "repoDir">,
+  opts: { checkLocalChanges?: boolean } = {},
+): Promise<RepoHealth> {
   // CRITICAL: resolve the ACTUAL git root. A project is often opened at a
   // SUBFOLDER of its repo ("opening a subfolder syncs the whole repo"), so
   // checking the raw opened dir for `.git` would false-positive `missing_git_dir`
@@ -165,12 +105,15 @@ export async function inspectRepo(ctx: Pick<RecoveryContext, "repoDir">): Promis
 
   // ── Stale lock ────────────────────────────────────────────────────────────
   //
-  // Detect EVERY known git lock (index.lock, HEAD.lock, config.lock,
-  // packed-refs.lock, and per-ref refs/**/*.lock) — the same set the stale-lock
-  // recovery handler scans — so a stuck lock of any kind actually triggers it.
-  // lockAgeMs reflects the YOUNGEST lock, matching the handler's "if any lock is
-  // fresh, wait" rule (the smallest age decides whether to back off).
-  const { hasStaleLock, lockAgeMs } = scanStaleLocks(gitDir, Date.now());
+  // Detect EVERY known git lock via the stale-lock handler's own scanner —
+  // one implementation for health and handler. lockAgeMs reflects the
+  // YOUNGEST lock, matching the handler's "if any lock is fresh, wait" rule
+  // (the smallest age decides whether to back off).
+  const lockCandidates = await findLockCandidates(gitDir, Date.now());
+  const hasStaleLock = lockCandidates.length > 0;
+  const lockAgeMs = hasStaleLock
+    ? Math.min(...lockCandidates.map((c) => c.ageMs))
+    : undefined;
 
   // ── In-progress operations ────────────────────────────────────────────────
   const hasInterruptedMerge = fs.existsSync(path.join(gitDir, "MERGE_HEAD"));
@@ -181,11 +124,13 @@ export async function inspectRepo(ctx: Pick<RecoveryContext, "repoDir">): Promis
 
   // ── Local changes ─────────────────────────────────────────────────────────
   let hasLocalChanges = false;
-  try {
-    hasLocalChanges = await hasPendingChanges(repoDir);
-  } catch {
-    // If we can't check (e.g. corrupt index), assume dirty.
-    hasLocalChanges = true;
+  if (opts.checkLocalChanges !== false) {
+    try {
+      hasLocalChanges = await hasPendingChanges(repoDir);
+    } catch {
+      // If we can't check (e.g. corrupt index), assume dirty.
+      hasLocalChanges = true;
+    }
   }
 
   return {
@@ -198,5 +143,63 @@ export async function inspectRepo(ctx: Pick<RecoveryContext, "repoDir">): Promis
     hasInterruptedRebase,
     hasInterruptedCherryPick,
     hasLocalChanges,
+  };
+}
+
+// ── Preflight diagnostics (structured operation-log fields) ───────────────────
+// Pure mappers shared by every host that logs WHY a recovery kind was chosen.
+
+/**
+ * The SINGLE health signal that drove classification. Derived from the KIND
+ * classifyFromHealth returned (a pure mapping — it cannot drift from the
+ * classifier's decision order, because it never re-implements it).
+ */
+export function preflightStructuralReason(kind: SyncErrorKind | null): string {
+  switch (kind) {
+    case "missing_git_dir":
+      return "health.missingGitDir";
+    case "stale_lock":
+      return "health.hasStaleLock";
+    case "interrupted_merge":
+      return "health.hasInterruptedMerge";
+    case "interrupted_rebase":
+      return "health.hasInterruptedRebase";
+    case "interrupted_cherry_pick":
+      return "health.hasInterruptedCherryPick";
+    case "detached_head":
+      return "health.isDetachedHead";
+    case null:
+      return "none";
+    default:
+      // Kinds that cannot come from a health-only classification.
+      return "none";
+  }
+}
+
+/**
+ * Build a flat, secret-free record of the preflight decision inputs for the
+ * operation log. Every health boolean is recorded (so support can see the FULL
+ * picture, not just the one-word kind), plus the opened dir vs repo root, the
+ * chosen kind, and the single reason that drove it.
+ */
+export function buildPreflightDiagnostics(
+  openedDir: string,
+  repoDir: string,
+  health: RepoHealth,
+  kind: SyncErrorKind | null,
+): LogData {
+  return {
+    openedDir,
+    repoDir,
+    repoRootDiffers: repoDir !== openedDir,
+    kind: kind ?? "none",
+    reason: preflightStructuralReason(kind),
+    hasGitDir: health.hasGitDir,
+    hasInterruptedMerge: health.hasInterruptedMerge,
+    hasInterruptedRebase: health.hasInterruptedRebase,
+    hasInterruptedCherryPick: health.hasInterruptedCherryPick,
+    hasStaleLock: health.hasStaleLock,
+    isDetachedHead: health.isDetachedHead,
+    hasLocalChanges: health.hasLocalChanges,
   };
 }

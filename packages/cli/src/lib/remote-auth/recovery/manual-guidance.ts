@@ -12,13 +12,42 @@
  * ManualGuidance to its display surface.
  */
 
+import { policyFor } from "./policy.ts";
 import type { ManualGuidance, RecoveryContext, SyncErrorKind } from "./types.ts";
 
 /**
  * Build a ManualGuidance for a given error kind. The guidance is shown when
  * a repair is blocked, failed, or needs user action. Never throws.
+ *
+ * SAFETY-COPY HONESTY: the "a safety copy was saved" reassurance is generated
+ * in ONE place, from the actual `backupZipPath` — never hardcoded per kind.
+ * The backup gate creates (and verifies) the zip BEFORE confirmation, so
+ * whenever this guidance is shown for a backup-requiring kind, a present
+ * backupZipPath means the copy really exists, and an absent one means backup
+ * creation FAILED and nothing was changed (failsafe.ts returns
+ * failed_no_changes_made without any writes). Promising a safety copy in that
+ * second case would be false — the one moment the promise matters most.
  */
 export function makeManualGuidance(
+  ctx: Pick<RecoveryContext, "repoSlug" | "remoteUrl">,
+  kind: SyncErrorKind,
+  error?: unknown,
+  backupZipPath?: string,
+): ManualGuidance {
+  const guidance = buildGuidance(ctx, kind, error, backupZipPath);
+
+  const backupLine = backupZipPath
+    ? "A safety copy of your project was saved first — anything the repair changes can be retrieved from it."
+    : policyFor(kind).createBackup
+      ? "A safety copy could not be saved, so nothing was changed."
+      : undefined;
+  if (backupLine) {
+    guidance.safeNextSteps = [...(guidance.safeNextSteps ?? []), backupLine];
+  }
+  return guidance;
+}
+
+function buildGuidance(
   ctx: Pick<RecoveryContext, "repoSlug" | "remoteUrl">,
   kind: SyncErrorKind,
   error?: unknown,
@@ -121,7 +150,6 @@ export function makeManualGuidance(
         recommendedAction: "Restore to normal",
         recommendedActionKey: "restore_repo",
         safeNextSteps: [
-          "A safety copy of your project will be saved before anything is changed.",
           "None of your content files will be removed or overwritten.",
         ],
         supportDetails,
@@ -153,7 +181,6 @@ export function makeManualGuidance(
         recommendedAction: "Rebuild",
         recommendedActionKey: "restore_repo",
         safeNextSteps: [
-          "A safety copy of your project will be saved before anything is changed.",
           "Your content files and history are not affected.",
         ],
         supportDetails,
@@ -169,7 +196,6 @@ export function makeManualGuidance(
         recommendedAction: "Recover history",
         recommendedActionKey: "restore_repo",
         safeNextSteps: [
-          "A safety copy of your files will be saved first.",
           "Your content files will not be overwritten.",
           "If recovery isn't possible, your content is still intact.",
         ],
@@ -186,7 +212,6 @@ export function makeManualGuidance(
         recommendedAction: "Fetch missing history",
         recommendedActionKey: "restore_repo",
         safeNextSteps: [
-          "A safety copy of your project will be saved first.",
           "Your current content files are not at risk.",
           "If the missing history can't be restored, you'll see manual steps.",
         ],
@@ -203,7 +228,6 @@ export function makeManualGuidance(
         recommendedAction: "Combine projects",
         recommendedActionKey: "restore_repo",
         safeNextSteps: [
-          "Your work will be saved in a safety copy before anything changes.",
           "Both your local changes and the online version will be kept.",
           "You may need to review a few files after combining.",
         ],
@@ -220,9 +244,7 @@ export function makeManualGuidance(
         recommendedAction: "Restore to normal",
         recommendedActionKey: "restore_repo",
         safeNextSteps: [
-          "A safety copy of your project is saved before anything is changed.",
           "None of your content files are deleted.",
-          "Any unfinished edits are kept in that safety copy so you can retrieve them.",
         ],
         // supportDetails is technical (behind a copy button) — it MUST name the
         // real state so support can act, unlike the jargon-free fields above.
@@ -239,11 +261,24 @@ export function makeManualGuidance(
         recommendedAction: "Restore to normal",
         recommendedActionKey: "restore_repo",
         safeNextSteps: [
-          "A safety copy of your project is saved before anything is changed.",
           "None of your content files are deleted.",
-          "Any unfinished edits are kept in that safety copy so you can retrieve them.",
         ],
         supportDetails: `Interrupted cherry-pick detected. ${supportDetails}`,
+      };
+
+    case "interrupted_merge":
+      return {
+        ...base,
+        userSummary:
+          "Your project's last update didn't finish, so it can't be synced yet.",
+        recommendedNextStep:
+          "Let print-md undo the unfinished update and return your project to its last working state.",
+        recommendedAction: "Restore to normal",
+        recommendedActionKey: "restore_repo",
+        safeNextSteps: [
+          "None of your content files are deleted.",
+        ],
+        supportDetails: `Interrupted merge detected. ${supportDetails}`,
       };
 
     case "wrong_remote_or_branch":

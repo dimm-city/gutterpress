@@ -1,25 +1,55 @@
 /**
- * Error-to-kind classifier for the sync-recovery subsystem.
+ * Error-to-kind classifier for the sync-recovery subsystem — the SINGLE
+ * source of truth for git error classification.
  *
  * Maps a thrown error (from isomorphic-git or sync.ts) plus an optional
- * RepoHealth preflight to one of the 13 SyncErrorKind values.
+ * RepoHealth preflight to a SyncErrorKind. The building blocks
+ * (isPushRejected, isMergeConflictError, classifyTransportFailure) are
+ * exported and consumed by sync.ts — there is exactly ONE implementation of
+ * each decoder, not parallel copies "kept in sync by spec".
  *
- * Delegation strategy (reuse sync.ts sub-classifiers where possible):
- *   - isPushRejected  → non_fast_forward
- *   - isMergeConflictError → merge_conflict or binary_conflict
- *   - classifyFailure (auth arm) → auth_required
- *   - classifyFailure (offline arm) → network_unavailable
- * All other paths are genuine delta: decoded from error code/message + health.
+ * classifyFromHealth() is the health-only classifier used by preflight
+ * callers (no thrown error yet — e.g. the viewer at project-open): it returns
+ * null for a healthy repo so the caller can skip recovery entirely.
  *
  * This module is pure — no I/O, no side effects.
  */
 
 import type { RepoHealth, SyncErrorKind } from "./types.ts";
 
-// ── Re-exported isomorphic-git error-code helpers ────────────────────────────
-// These parallel the private helpers in sync.ts, kept in sync by spec.
+/**
+ * Minimum age before a leftover git lock counts as STALE for a preflight
+ * classification. recover-stale-lock.ts imports this same constant as its
+ * act-or-retry threshold, so preflight and handler can never disagree: a lock
+ * young enough to pass preflight is exactly a lock the handler would defer
+ * with retry_later ("a live process may still hold it").
+ */
+export const STALE_LOCK_MIN_AGE_MS = 2 * 60 * 1000; // 2 minutes
 
-function isPushRejected(e: unknown): boolean {
+// ── RepoNeedsRecoveryError ────────────────────────────────────────────────────
+
+/**
+ * Thrown by syncProject's structural preflight when the repo must be repaired
+ * before any sync work can safely run. The `code` string is the STABLE
+ * contract hosts may match on across the dynamic-import boundary (where
+ * `instanceof` is unreliable); `kind` names the repair to dispatch.
+ */
+export class RepoNeedsRecoveryError extends Error {
+  readonly code = "RepoNeedsRecovery";
+  constructor(readonly kind: SyncErrorKind) {
+    super(`The project needs repair before it can sync (${kind}).`);
+    this.name = "RepoNeedsRecoveryError";
+  }
+}
+
+/** Type guard for {@link RepoNeedsRecoveryError} (matches on the stable code). */
+export function isRepoNeedsRecoveryError(e: unknown): e is RepoNeedsRecoveryError {
+  return (e as { code?: string })?.code === "RepoNeedsRecovery";
+}
+
+// ── Shared isomorphic-git error decoders (also used by sync.ts) ──────────────
+
+export function isPushRejected(e: unknown): boolean {
   const code = (e as { code?: string })?.code;
   // PushRejectedError carries a typed `data.reason`. ONLY a genuine
   // non-fast-forward ("not-fast-forward") is fixable by pulling first; other
@@ -47,11 +77,21 @@ function isPushRejected(e: unknown): boolean {
   return false;
 }
 
-function isMergeConflictError(e: unknown): boolean {
+/** Type guard exposing MergeConflictError's per-file payload (used by sync.ts). */
+export function isMergeConflictError(
+  e: unknown,
+): e is {
+  data: {
+    filepaths: string[];
+    bothModified: string[];
+    deleteByUs: string[];
+    deleteByTheirs: string[];
+  };
+} {
   return (e as { code?: string })?.code === "MergeConflictError";
 }
 
-function classifyTransportFailure(e: unknown): "auth_required" | "network_unavailable" | null {
+export function classifyTransportFailure(e: unknown): "auth_required" | "network_unavailable" | null {
   const err = e as { code?: string; data?: { statusCode?: number; prettyDetails?: string }; message?: string };
   if (err?.code === "HttpError") {
     const status = err.data?.statusCode;
@@ -179,6 +219,47 @@ function isWrongRemoteOrBranch(e: unknown): boolean {
   );
 }
 
+// ── Health-only classifier (preflight) ────────────────────────────────────────
+
+/**
+ * Classify a structural repo condition from a RepoHealth snapshot alone.
+ * Used by preflight callers (no thrown error — e.g. project-open), and by
+ * classifyGitError's structural step so there is ONE ordering, not two.
+ *
+ * Returns null for a healthy repo (nothing to recover).
+ *
+ * ORDERING: interrupted-operation checks MUST precede the detached-head check
+ * (an in-progress rebase usually detaches HEAD — the abort repair must win over
+ * the rescue-branch repair), and specific interrupted-op repairs precede the
+ * generic stale-lock cleanup.
+ *
+ * `minLockAgeMs` gates the stale-lock classification: at preflight (the
+ * default, STALE_LOCK_MIN_AGE_MS) a younger lock is treated as healthy because
+ * a live process may still hold it — the same rule recover-stale-lock.ts
+ * applies before acting. Error-path callers pass 0: a lock that just made a
+ * sync THROW is worth routing regardless of age (the handler still re-checks
+ * and returns retry_later while it is fresh).
+ */
+export function classifyFromHealth(
+  health: RepoHealth,
+  opts: { minLockAgeMs?: number } = {},
+): SyncErrorKind | null {
+  const minLockAgeMs = opts.minLockAgeMs ?? STALE_LOCK_MIN_AGE_MS;
+  if (!health.hasGitDir) return "missing_git_dir";
+  if (health.hasInterruptedRebase) return "interrupted_rebase";
+  if (health.hasInterruptedCherryPick) return "interrupted_cherry_pick";
+  // An abandoned native-git merge (MERGE_HEAD + conflict markers in tracked
+  // files) must be caught BEFORE any sync work: left unclassified it falls
+  // through to "unknown" and — worse — the next sync would snapshot the
+  // literal conflict markers into history and push them.
+  if (health.hasInterruptedMerge) return "interrupted_merge";
+  if (health.isDetachedHead) return "detached_head";
+  if (health.hasStaleLock && (health.lockAgeMs ?? 0) >= minLockAgeMs) {
+    return "stale_lock";
+  }
+  return null;
+}
+
 // ── Main classifier ───────────────────────────────────────────────────────────
 
 /**
@@ -205,6 +286,10 @@ function isWrongRemoteOrBranch(e: unknown): boolean {
  *      unrelated histories, missing objects/ref-store, wrong remote/branch).
  */
 export function classifyGitError(err: unknown, health?: RepoHealth): SyncErrorKind {
+  // (0) A preflight rejection already CARRIES its classification — use it
+  //     verbatim rather than re-deriving it from health.
+  if (isRepoNeedsRecoveryError(err)) return err.kind;
+
   // (1) No repo at all — highest priority; a transport error is meaningless
   //     when there is no .git to sync.
   if (health && !health.hasGitDir) return "missing_git_dir";
@@ -215,15 +300,12 @@ export function classifyGitError(err: unknown, health?: RepoHealth): SyncErrorKi
   if (transport) return transport;
 
   // (3) Structural health (only after a transport error has been ruled out).
+  //     Same single ordering as the preflight path — see classifyFromHealth.
+  //     minLockAgeMs 0: a lock that just made a sync throw is worth routing
+  //     regardless of age (the handler re-checks and defers while fresh).
   if (health) {
-    // CRITICAL ORDERING: an in-progress rebase usually leaves HEAD detached, so
-    // a mid-rebase repo also reports isDetachedHead. The interrupted-operation
-    // checks MUST run BEFORE the detached-head check, or the abort-based repair
-    // never fires and the repo is sent down the (wrong) detached-head rescue.
-    if (health.hasInterruptedRebase) return "interrupted_rebase";
-    if (health.hasInterruptedCherryPick) return "interrupted_cherry_pick";
-    if (health.isDetachedHead) return "detached_head";
-    if (health.hasStaleLock) return "stale_lock";
+    const structural = classifyFromHealth(health, { minLockAgeMs: 0 });
+    if (structural) return structural;
   }
 
   // (4) Remaining isomorphic-git error-code / message heuristics.
@@ -237,10 +319,6 @@ export function classifyGitError(err: unknown, health?: RepoHealth): SyncErrorKi
   if (isUnrelatedHistories(err)) return "unrelated_histories";
   if (isMissingObjects(err)) return "missing_or_corrupt_objects";
   if (isWrongRemoteOrBranch(err)) return "wrong_remote_or_branch";
-
-  // ── Stale lock from health (InternalError + lock) ─────────────────────────
-  const code = (err as { code?: string })?.code;
-  if (code === "InternalError" && health?.hasStaleLock) return "stale_lock";
 
   return "unknown";
 }

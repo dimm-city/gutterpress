@@ -69,10 +69,13 @@ import {
   handleConfirmResponse,
   rejectAllPendingConfirms,
   buildRecoveryContext,
-  classifyFromHealth,
   decideRunAgainAfterPreflight,
-  buildPreflightDiagnostics,
   getConflictPreviewImpl,
+  preExportSyncGateBlockError,
+  type SyncErrorKind,
+  type ConfirmationGate,
+  type RecoveryContext,
+  type TokenStore as RecoveryTokenStore,
 } from "./recovery-bridge";
 import type {
   SnapshotEntry,
@@ -574,6 +577,26 @@ interface LibModule {
     err: unknown,
     health?: object,
   ) => string;
+  // Health-only preflight classifier (single source of truth in the lib's
+  // recovery/classify.ts — the viewer no longer keeps its own copy).
+  classifyFromHealth: (health: object) => string | null;
+  // RecoveryContext resolver (recovery/context.ts) — repo root, branch,
+  // credential, slug resolve in the lib; the host adds only its dialog gate.
+  buildRecoveryContext: (options: {
+    projectDir: string;
+    confirmation: ConfirmationGate;
+    tokenStore?: RecoveryTokenStore;
+    authorName?: string;
+    logFile?: string;
+  }) => Promise<RecoveryContext>;
+  // Preflight diagnostics mappers (recovery/inspect.ts) — flat, secret-free
+  // operation-log fields explaining WHY a kind was chosen.
+  buildPreflightDiagnostics: (
+    openedDir: string,
+    repoDir: string,
+    health: object,
+    kind: string | null,
+  ) => PreflightLogData;
   inspectRepo: (ctx: { repoDir: string }) => Promise<{
     hasGitDir: boolean;
     currentBranch?: string;
@@ -2839,7 +2862,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       }
 
       const health = await lib.inspectRepo({ repoDir: openedDir });
-      const kind = classifyFromHealth(health);
+      const kind = lib.classifyFromHealth(health) as SyncErrorKind | null;
       if (kind === null) {
         // Healthy repo — release lock and schedule the normal initial sync.
         syncState.inFlight = false;
@@ -2869,7 +2892,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       plog.info(
         "detect",
         "structural condition detected on open",
-        buildPreflightDiagnostics(openedDir, ctx.repoDir, health, kind),
+        lib.buildPreflightDiagnostics(openedDir, ctx.repoDir, health, kind),
       );
 
       let result: Awaited<ReturnType<typeof lib.recover>>;
@@ -2920,6 +2943,15 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
         }
       } else if (result.status === "retry_later") {
         emitSyncStatus({ state: "offline", projectDir: openedDir, lastSyncAt: now });
+        // Honor the handler's requested delay (same idiom as the mid-sync
+        // retry_later arm) instead of waiting for the generic periodic timer —
+        // e.g. a fresh-but-not-stale lock asks to be re-checked as soon as it
+        // ages past the threshold, not minutes later.
+        const delay = result.retryAfterMs ?? 60_000;
+        const retryTimer = setTimeout(() => {
+          if (watchedDir === openedDir) void runAutoSync(openedDir);
+        }, delay);
+        if (typeof retryTimer.unref === "function") retryTimer.unref();
       } else if (result.status === "needs_user" && result.files && result.files.length > 0) {
         // Conflict-latch: stop the periodic timer to avoid churning.
         syncState.conflictLatched = true;
@@ -3104,7 +3136,8 @@ ipcMain.handle(
       }
     } catch (gateErr) {
       // Re-throw conflict blocks; swallow all other gate errors (non-fatal for export).
-      if ((gateErr as Error & { code?: string }).code === "SYNC_CONFLICT") throw gateErr;
+      const blockErr = preExportSyncGateBlockError(gateErr);
+      if (blockErr) throw blockErr;
       const msg = gateErr instanceof Error ? gateErr.message : String(gateErr);
       console.warn(`[api:build] pre-export sync gate failed (non-fatal): ${msg}`);
     }

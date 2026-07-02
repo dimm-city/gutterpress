@@ -68,6 +68,7 @@ export type SyncErrorKind =
   | "wrong_remote_or_branch"
   | "interrupted_rebase"
   | "interrupted_cherry_pick"
+  | "interrupted_merge"
   | "unknown";
 
 export interface RecoveryContext {
@@ -205,28 +206,25 @@ export function hostConfirmationGate(
 // ── buildRecoveryContext ──────────────────────────────────────────────────────
 
 interface LibForContext {
-  // Canonical repo-root resolution — the SAME the sync path uses. Do NOT use
-  // findEnclosingRepoDir here: it is ancestor-only (it skips the project's own
-  // .git), so for a project that IS its own repo root it returns a parent repo
-  // (e.g. ~/.git) — and the backup would then zip the entire HOME directory and
-  // OOM. detectProjectSource returns the project's OWN repoRoot.
-  detectProjectSource(dir: string): Promise<{ type: string; path?: string; repoRoot?: string }>;
-  diagnoseProjectRemote(
-    dir: string,
-    opts?: { tokenStore?: { get(host: string): Promise<HostCredential | null> } },
-  ): Promise<{ branch?: string; remoteUrl?: string }>;
+  /**
+   * The lib's single RecoveryContext resolver (recovery/context.ts): repo-root
+   * (the project's OWN root, never an ancestor repo), branch, remote URL,
+   * credential, and backup slug all resolve in ONE tested place. The host
+   * contributes only its ConfirmationGate.
+   */
+  buildRecoveryContext(options: {
+    projectDir: string;
+    confirmation: ConfirmationGate;
+    tokenStore?: TokenStore;
+    authorName?: string;
+    logFile?: string;
+  }): Promise<RecoveryContext>;
 }
 
 /**
- * Build a RecoveryContext for a projectDir. Reuses the lib helpers and the
- * electronTokenStore that the orchestrator already calls for canSync checks.
- *
- * Never puts a credential on the returned context unless the host can resolve
- * one — credentials stay in the main process, never reach the renderer.
- *
- * @param authorName Optional display name to use for snapshot commits created
- *   by the recovery subsystem. Threads the same identity the sync orchestrator
- *   uses for syncProject so commit authorship is consistent.
+ * Build a RecoveryContext for a projectDir: delegate the resolution to the lib
+ * and attach the Electron dialog gate. Credentials stay in the main process —
+ * they ride the context to the lib, never to the renderer.
  */
 export async function buildRecoveryContext(
   projectDir: string,
@@ -235,145 +233,27 @@ export async function buildRecoveryContext(
   authorName?: string,
   logFile?: string,
 ): Promise<RecoveryContext> {
-  // Resolve the project's OWN repo root (not an ancestor repo). This is what the
-  // backup walks — getting it wrong (e.g. ~/.git) zips the whole home dir → OOM.
-  let source: { type: string; path?: string; repoRoot?: string } | null = null;
-  try {
-    source = await lib.detectProjectSource(projectDir);
-  } catch {
-    source = null;
-  }
-  const repoDir =
-    source && source.type === "local-git-folder"
-      ? source.repoRoot ?? source.path ?? projectDir
-      : projectDir;
-  const diag = await lib.diagnoseProjectRemote(projectDir, { tokenStore }).catch(() => ({
-    branch: undefined as string | undefined,
-    remoteUrl: undefined as string | undefined,
-  }));
-
-  const branch = diag.branch ?? "main";
-  const remoteUrl = diag.remoteUrl;
-
-  // Resolve credential for the remote host (stays in main)
-  let credential: HostCredential | undefined;
-  if (remoteUrl) {
-    try {
-      const host = new URL(remoteUrl).hostname;
-      credential = (await tokenStore.get(host)) ?? undefined;
-    } catch {
-      // Malformed URL or missing credential — proceed without
-    }
-  }
-
-  // Repo slug from the last path segment (safe for backup naming)
-  const repoSlug = path.basename(repoDir).replace(/[^a-zA-Z0-9_-]/g, "_") || "repo";
-
-  return {
+  return lib.buildRecoveryContext({
     projectDir,
-    repoDir,
-    branch,
-    remoteUrl,
-    repoSlug,
-    credential,
+    confirmation: hostConfirmationGate(projectDir),
     tokenStore,
     authorName,
-    confirmation: hostConfirmationGate(projectDir),
-    ...(logFile ? { logFile } : {}),
-  };
+    logFile,
+  });
 }
 
 // ── classifyFromHealth ────────────────────────────────────────────────────────
+// The health-only preflight classifier now lives in the lib
+// (packages/cli/src/lib/remote-auth/recovery/classify.ts, exported through the
+// @dimm-city/print-md barrel as `classifyFromHealth`) — ONE ordering and ONE
+// stale-lock age threshold shared with the error-path classifier and the
+// stale-lock handler. main.ts calls lib.classifyFromHealth(health) directly.
 
-const STALE_LOCK_THRESHOLD_MS = 120_000; // 2 minutes
-// MUST stay in sync with recover-stale-lock.ts's STALE_THRESHOLD_MS
-// (packages/cli/src/lib/remote-auth/recovery/recover-stale-lock.ts). If the
-// preflight gate is SHORTER than the handler's threshold, a lock whose age sits
-// between the two values passes preflight (classified stale_lock) but the
-// handler then returns retry_later ("too fresh") — an infinite preflight→retry
-// loop. Keeping both at 120_000 guarantees the preflight only routes a lock the
-// handler will actually act on. (BUG 2)
-
-/**
- * Classify a structural repo condition from a RepoHealth snapshot alone.
- * Used by the preflight path at project-open, where there is no thrown error
- * to classify — only the health facts.
- *
- * Returns null for a healthy repo (nothing to recover).
- */
-export function classifyFromHealth(health: RepoHealth): SyncErrorKind | null {
-  if (!health.hasGitDir) return "missing_git_dir";
-  if (health.hasStaleLock && (health.lockAgeMs ?? 0) > STALE_LOCK_THRESHOLD_MS)
-    return "stale_lock";
-  if (health.hasInterruptedMerge) return "merge_conflict";
-  // An interrupted rebase / cherry-pick is NOT a non-fast-forward push rejection
-  // and is NOT an in-tree merge conflict. Each now has a dedicated abort-based
-  // repair (recover-interrupted-rebase.ts / recover-interrupted-cherry-pick.ts):
-  // it saves a backup, then undoes the unfinished operation and returns the repo
-  // to its last working state — no longer the safe no-op that "unknown" was.
-  // ORDERING: these MUST precede the detached-head check because an in-progress
-  // rebase usually detaches HEAD; classifying it as detached_head would run the
-  // wrong (rescue-branch) repair instead of the abort.
-  if (health.hasInterruptedRebase) return "interrupted_rebase";
-  if (health.hasInterruptedCherryPick) return "interrupted_cherry_pick";
-  if (health.isDetachedHead) return "detached_head";
-  return null;
-}
-
-// ── Preflight diagnostics (structured operation-log fields) ───────────────────
-
-/** Local mirror of the lib's LogData shape (operation-log.ts). Defined here
- *  because the lib has no .d.ts (see header note). Values are the plain scalar
- *  types the file logger can serialize — no secrets. */
-export type LogData = Record<string, string | number | boolean | string[] | undefined>;
-
-/**
- * The SINGLE health signal that drove classification, mirroring
- * `classifyFromHealth`'s exact decision order. Used to record WHY a kind was
- * chosen in the operation log, so the logged reason always matches the kind.
- *
- * MUST stay in lockstep with classifyFromHealth's guard order — same guards,
- * same order — so a healthy repo maps to "none" and every recoverable repo maps
- * to the one signal that classifyFromHealth acted on.
- */
-export function preflightStructuralReason(health: RepoHealth): string {
-  if (!health.hasGitDir) return "health.missingGitDir";
-  if (health.hasStaleLock && (health.lockAgeMs ?? 0) > STALE_LOCK_THRESHOLD_MS)
-    return "health.hasStaleLock";
-  if (health.hasInterruptedMerge) return "health.hasInterruptedMerge";
-  if (health.hasInterruptedRebase) return "health.hasInterruptedRebase";
-  if (health.hasInterruptedCherryPick) return "health.hasInterruptedCherryPick";
-  if (health.isDetachedHead) return "health.isDetachedHead";
-  return "none";
-}
-
-/**
- * Build a flat, secret-free record of the preflight decision inputs for the
- * operation log. Every health boolean is recorded (so support can see the FULL
- * picture, not just the one-word kind), plus the opened dir vs repo root, the
- * chosen kind, and the single reason that drove it.
- */
-export function buildPreflightDiagnostics(
-  openedDir: string,
-  repoDir: string,
-  health: RepoHealth,
-  kind: SyncErrorKind | null,
-): LogData {
-  return {
-    openedDir,
-    repoDir,
-    repoRootDiffers: repoDir !== openedDir,
-    kind: kind ?? "none",
-    reason: preflightStructuralReason(health),
-    hasGitDir: health.hasGitDir,
-    hasInterruptedMerge: health.hasInterruptedMerge,
-    hasInterruptedRebase: health.hasInterruptedRebase,
-    hasInterruptedCherryPick: health.hasInterruptedCherryPick,
-    hasStaleLock: health.hasStaleLock,
-    isDetachedHead: health.isDetachedHead,
-    hasLocalChanges: health.hasLocalChanges,
-  };
-}
+// ── Preflight diagnostics ─────────────────────────────────────────────────────
+// preflightStructuralReason + buildPreflightDiagnostics now live in the lib
+// (recovery/inspect.ts, exported through the barrel) — pure mappers shared by
+// every host that logs why a recovery kind was chosen. main.ts calls
+// lib.buildPreflightDiagnostics(...) directly.
 
 // ── decideRunAgainAfterPreflight ──────────────────────────────────────────────
 
@@ -441,6 +321,19 @@ export function decideRunAgainAfterPreflight(
       // Forward-compatible fail-safe: never auto-run on an unknown state.
       return "suppress";
   }
+}
+
+export function preExportSyncGateBlockError(gateErr: unknown): Error | null {
+  const code = (gateErr as Error & { code?: string })?.code;
+  if (code === "SYNC_CONFLICT") return gateErr as Error;
+  if (code === "RepoNeedsRecovery") {
+    const repairErr = new Error(
+      "This project needs repair before saving a PDF. Open the project and allow the repair, then try again.",
+    );
+    (repairErr as Error & { code?: string }).code = "SYNC_CONFLICT";
+    return repairErr;
+  }
+  return null;
 }
 
 // ── getConflictPreviewImpl ────────────────────────────────────────────────────

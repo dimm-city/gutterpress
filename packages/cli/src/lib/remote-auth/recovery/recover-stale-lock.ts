@@ -53,8 +53,8 @@ import { readdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { gitDirFor } from "../../source-provider.ts";
-import { makeManualGuidance } from "./manual-guidance.ts";
-import { policyFor } from "./policy.ts";
+import { STALE_LOCK_MIN_AGE_MS } from "./classify.ts";
+import { withBackupGate } from "./failsafe.ts";
 import type { RecoveryContext, RecoveryResult } from "./types.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -64,16 +64,20 @@ import type { RecoveryContext, RecoveryResult } from "./types.ts";
  * hold it. 2 minutes is the conservative safe minimum (most git operations
  * complete in under 10 seconds; 2 min gives a wide margin for slow machines).
  *
- * NOTE: kept at exactly 2 minutes (120_000 ms). The viewer's preflight uses the
- * same magnitude; do not change it without updating that constant in lockstep.
+ * Shared with the preflight classifier (classify.ts) so a lock young enough
+ * to pass preflight is exactly a lock this handler would defer on — one
+ * constant, no lockstep comments.
  */
-const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes (120_000 ms)
+const STALE_THRESHOLD_MS = STALE_LOCK_MIN_AGE_MS;
 
 /**
  * Known top-level lock files git may leave directly under `.git/`. These are
  * scanned in addition to a shallow walk of `.git/refs/**` for `*.lock` files.
+ * Exported (with findLockCandidates) as the SINGLE lock-discovery
+ * implementation — inspect.ts's health probe consumes the same scan, so
+ * health and handler can never disagree about which locks exist.
  */
-const TOP_LEVEL_LOCK_NAMES = [
+export const TOP_LEVEL_LOCK_NAMES = [
   "index.lock",
   "HEAD.lock",
   "config.lock",
@@ -82,7 +86,7 @@ const TOP_LEVEL_LOCK_NAMES = [
 
 // ── Lock discovery ──────────────────────────────────────────────────────────
 
-interface LockCandidate {
+export interface LockCandidate {
   /** Absolute path to the lock file. */
   path: string;
   /** Age in ms relative to `now` (now - mtime). */
@@ -116,7 +120,7 @@ async function collectRefLockPaths(dir: string, out: string[]): Promise<void> {
  * Locks that vanish between discovery and stat are simply dropped (a racing
  * delete is fine to ignore). Never throws.
  */
-async function findLockCandidates(gitDir: string, now: number): Promise<LockCandidate[]> {
+export async function findLockCandidates(gitDir: string, now: number): Promise<LockCandidate[]> {
   const paths: string[] = TOP_LEVEL_LOCK_NAMES.map((name) => path.join(gitDir, name));
   await collectRefLockPaths(path.join(gitDir, "refs"), paths);
 
@@ -144,7 +148,6 @@ export async function recover(
   _error?: unknown,
 ): Promise<RecoveryResult> {
   const kind = "stale_lock" as const;
-  const policy = policyFor(kind);
   const now = ctx.now ? ctx.now() : Date.now();
   const gitDir = gitDirFor(ctx.repoDir);
 
@@ -177,37 +180,12 @@ export async function recover(
   }
 
   // From here every candidate is stale (≥ threshold) and eligible for removal.
-
-  // ── Stale lock(s): ask the user before removing ───────────────────────────
-  if (policy.requireConfirmation) {
-    const guidance = makeManualGuidance(ctx, kind, undefined, undefined);
-    const approved = await ctx.confirmation.confirmRepair({
-      repair: kind,
-      risk: policy.risk,
-      summary: guidance.recommendedNextStep,
-      backupZipPath: "", // no backup for stale_lock
-      willChangeLocalFiles: policy.mayChangeLocalFiles,
-      willChangeGitMetadata: policy.mayChangeGitMetadata,
-      willChangeRemote: policy.mayChangeRemote,
-      canBeUndoneFromBackup: false,
-    });
-
-    if (!approved) {
-      const blockedGuidance = makeManualGuidance(ctx, kind, undefined, undefined);
-      return {
-        status: "blocked",
-        message: "The repair was cancelled. Nothing was changed.",
-        guidance: blockedGuidance,
-        // No backupZipPath — policy.createBackup is false.
-      };
-    }
-  }
-
-  // ── Remove every stale lock file ──────────────────────────────────────────
-  //
-  // The fault hook fires ONCE before the first unlink so an injected failure
-  // (or a real fs error) leaves the whole set in place and reports a no-op.
-  try {
+  // withBackupGate enforces the policy: no backup (createBackup=false — a lock
+  // file is trivially recreatable), confirmation required, and any throw below
+  // fail-safes to failed_no_changes_made.
+  return withBackupGate(ctx, kind, async () => {
+    // The fault hook fires ONCE before the first unlink so an injected failure
+    // (or a real fs error) leaves the whole set in place and reports a no-op.
     await ctx.faults?.before("remove_index_lock");
     for (const candidate of candidates) {
       // Tolerate a lock that vanished since discovery (another process cleaned
@@ -218,37 +196,17 @@ export async function recover(
         if (fs.existsSync(candidate.path)) throw perFileErr;
       }
     }
-  } catch (removeErr) {
-    // Removal failed. No backup was created (createBackup=false), so the result
-    // is failed_no_changes_made.
-    const guidance = makeManualGuidance(ctx, kind, removeErr, undefined);
-    return {
-      status: "failed_no_changes_made",
-      message: guidance.userSummary,
-      guidance,
-    };
-  }
 
-  // Verify the locks are gone (defensive — unlink should have thrown on failure).
-  const stillPresent = candidates.find((c) => fs.existsSync(c.path));
-  if (stillPresent) {
-    const guidance = makeManualGuidance(
-      ctx,
-      kind,
-      new Error("a leftover lock was still present after removal"),
-      undefined,
-    );
-    return {
-      status: "failed_no_changes_made",
-      message: guidance.userSummary,
-      guidance,
-    };
-  }
+    // Verify the locks are gone (defensive — unlink should have thrown on failure).
+    if (candidates.some((c) => fs.existsSync(c.path))) {
+      throw new Error("a leftover lock was still present after removal");
+    }
 
-  return {
-    status: "recovered",
-    message:
-      "The leftover lock was removed. You can try syncing again.",
-    // No backupZipPath — policy.createBackup is false.
-  };
+    return {
+      status: "recovered",
+      message:
+        "The leftover lock was removed. You can try syncing again.",
+      // No backupZipPath — policy.createBackup is false.
+    } satisfies RecoveryResult;
+  });
 }

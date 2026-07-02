@@ -34,6 +34,7 @@ export type SyncErrorKind =
   | "wrong_remote_or_branch"
   | "interrupted_rebase"
   | "interrupted_cherry_pick"
+  | "interrupted_merge"
   | "unknown";
 
 // ── Primary-action keys ──────────────────────────────────────────────────────
@@ -205,8 +206,7 @@ export type FaultPoint =
   | "clone_temp_repo"
   | "replace_git_dir"
   | "push"
-  | "write_conflict_snapshot"
-  | "write_recovery_log";
+  | "write_conflict_snapshot";
 
 export interface FaultInjector {
   before(point: FaultPoint): Promise<void>;
