@@ -206,8 +206,7 @@ export type FaultPoint =
   | "clone_temp_repo"
   | "replace_git_dir"
   | "push"
-  | "write_conflict_snapshot"
-  | "write_recovery_log";
+  | "write_conflict_snapshot";
 
 export interface FaultInjector {
   before(point: FaultPoint): Promise<void>;
