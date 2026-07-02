@@ -182,6 +182,8 @@ export {
   inspectRepo,
   preflightStructuralReason,
   buildPreflightDiagnostics,
+  verifyRepoReadable,
+  isUnbornRepo,
 } from "./inspect.ts";
 export { buildRecoveryContext } from "./context.ts";
 export type { BuildRecoveryContextOptions } from "./context.ts";

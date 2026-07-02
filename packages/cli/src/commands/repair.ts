@@ -24,10 +24,13 @@ import path from "node:path";
 import {
   buildRecoveryContext,
   classifyFromHealth,
+  classifyGitError,
   defaultConfigDir,
   FileTokenStore,
   inspectRepo,
+  isUnbornRepo,
   recover,
+  verifyRepoReadable,
 } from "../index.ts";
 import { makeManualGuidance } from "../lib/remote-auth/recovery/manual-guidance.ts";
 import type {
@@ -127,7 +130,32 @@ export default defineCommand({
     });
 
     const health = await inspectRepo({ repoDir: ctx.repoDir });
-    const kind = classifyFromHealth(health);
+    // minLockAgeMs: 0 — a stuck lock the author is asking us to look at right
+    // now should be diagnosed regardless of age; the stale-lock HANDLER still
+    // re-checks age itself and returns retry_later while the lock is fresh,
+    // so this only affects what `repair` reports, not whether it acts.
+    let kind = classifyFromHealth(health, { minLockAgeMs: 0 });
+
+    if (kind === null) {
+      // classifyFromHealth only inspects filesystem PRESENCE (lock files,
+      // MERGE_HEAD, HEAD readability) — it never reads a git object, so it
+      // can't see object-store or index corruption. Probe readability (the
+      // same HEAD/commit/tree check the missing-objects repair uses to
+      // verify a fix) before declaring the repo healthy, so corrupt_index /
+      // missing_or_corrupt_objects / unrelated_histories / wrong_remote_or_branch
+      // repos are diagnosed correctly instead of reported "healthy".
+      try {
+        await verifyRepoReadable(ctx.repoDir);
+      } catch (err) {
+        // A fresh `git init` with no commits yet throws the same
+        // NotFoundError as a damaged ref store — but it's healthy, not
+        // corrupt. Only classify when the object store shows the repo ever
+        // had content.
+        if (!isUnbornRepo(ctx.repoDir)) {
+          kind = classifyGitError(err, health);
+        }
+      }
+    }
 
     if (kind === null) {
       console.log("Your project's version history looks healthy. Nothing to repair.");

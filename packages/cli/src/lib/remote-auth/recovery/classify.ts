@@ -253,6 +253,12 @@ export function classifyFromHealth(
   // through to "unknown" and — worse — the next sync would snapshot the
   // literal conflict markers into history and push them.
   if (health.hasInterruptedMerge) return "interrupted_merge";
+  // headUnreadable (HEAD/ref store missing or corrupt) must be checked BEFORE
+  // isDetachedHead: currentBranch() throwing sets headUnreadable, not
+  // isDetachedHead (see inspectRepo), but route both here defensively so a
+  // stale/hand-built health snapshot with both flags set still gets the
+  // correct (more severe) repair.
+  if (health.headUnreadable) return "missing_or_corrupt_objects";
   if (health.isDetachedHead) return "detached_head";
   if (health.hasStaleLock && (health.lockAgeMs ?? 0) >= minLockAgeMs) {
     return "stale_lock";

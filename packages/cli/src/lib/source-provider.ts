@@ -150,12 +150,30 @@ export const SNAPSHOT_STAGING_MARKER = "print-md-snapshot-staging";
 const repoQueues = new Map<string, Promise<unknown>>();
 
 /**
+ * Resolve the lock-map key for a project dir: the REAL (symlink-resolved)
+ * path when possible, falling back to the plain resolved path when
+ * `realpathSync` can't run (e.g. the dir doesn't exist yet, such as the
+ * target of `git init`). Without this, two different-looking paths to the
+ * SAME repo (e.g. one traversing a symlink) would get separate queues and
+ * could interleave writes against the same `.git` — the exact corruption
+ * this lock exists to prevent.
+ */
+function repoLockKey(projectDir: string): string {
+  const resolved = path.resolve(projectDir);
+  try {
+    return fs.realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+/**
  * Run `fn` exclusively per resolved project dir (FIFO promise chaining).
  * Exported for the remote-clone surface (#15) so clone/fetch operations share
  * the SAME queue as snapshot/restore — ADR 0006 D2 requires one per-repo lock.
  */
 export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promise<T> {
-  const key = path.resolve(projectDir);
+  const key = repoLockKey(projectDir);
   const prev = repoQueues.get(key) ?? Promise.resolve();
   // Chain regardless of the previous op's outcome; a failure must not jam the queue.
   const run = prev.then(fn, fn);
@@ -271,8 +289,14 @@ export async function listWorkdirChanges(
   return { adds, removes };
 }
 
-/** Apply a {@link WorkdirChanges} diff to the index (`git add -A` semantics). */
-async function stageChanges(
+/**
+ * Apply a {@link WorkdirChanges} diff to the index (`git add -A` semantics).
+ * Exported so callers that already computed a `WorkdirChanges` via
+ * {@link listWorkdirChanges} (e.g. the detached-HEAD recovery handler) can
+ * stage it without re-walking the tree or falling back to `git.statusMatrix`,
+ * which loads whole packfiles into memory on large repos.
+ */
+export async function stageChanges(
   dir: string,
   changes: WorkdirChanges,
   cache: GitCache,

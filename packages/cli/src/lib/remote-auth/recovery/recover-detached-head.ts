@@ -56,7 +56,7 @@ import * as fsSync from "node:fs";
 
 import git from "isomorphic-git";
 
-import { gitAuthor, hasPendingChanges } from "../../source-provider.ts";
+import { gitAuthor, hasPendingChanges, listWorkdirChanges, stageChanges } from "../../source-provider.ts";
 import { withBackupGate } from "./failsafe.ts";
 import type { RecoveryContext, RecoveryResult } from "./types.ts";
 
@@ -256,18 +256,13 @@ export async function recover(
       await ctx.faults?.before("commit_recovery_snapshot");
 
       // Stage all working-tree changes (adds, modifications, deletions).
-      const matrix = await git.statusMatrix({ fs, dir });
-      for (const [filepath, , workdir, stage] of matrix) {
-        if (workdir !== stage) {
-          if (workdir === 0) {
-            // File deleted from working tree — remove from index.
-            await git.remove({ fs, dir, filepath: filepath as string });
-          } else {
-            // File added or modified — add to index.
-            await git.add({ fs, dir, filepath: filepath as string });
-          }
-        }
-      }
+      // Uses the WORKDIR/STAGE-only walk (listWorkdirChanges), NOT
+      // git.statusMatrix — statusMatrix also walks the HEAD tree, which can
+      // load entire packfiles into memory on large repos (see the OOM note in
+      // source-provider.ts and sync.ts).
+      const cache: Record<string, unknown> = {};
+      const changes = await listWorkdirChanges(dir, cache);
+      await stageChanges(dir, changes, cache);
 
       // Commit staged changes. This creates a new commit on the detached HEAD.
       await git.commit({

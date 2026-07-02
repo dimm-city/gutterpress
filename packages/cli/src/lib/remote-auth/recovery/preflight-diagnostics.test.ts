@@ -30,6 +30,7 @@ const HEALTHY: RepoHealth = {
   hasGitDir: true,
   currentBranch: "main",
   isDetachedHead: false,
+  headUnreadable: false,
   hasStaleLock: false,
   hasInterruptedMerge: false,
   hasInterruptedRebase: false,
