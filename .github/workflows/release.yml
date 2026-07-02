@@ -66,6 +66,7 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       prerelease: ${{ steps.tag.outputs.prerelease }}
+      ui_npm_tag: ${{ steps.tag.outputs.ui_npm_tag }}
     steps:
       # Stable releases come from the default branch. PRERELEASE versions (the
       # version string contains a '-', e.g. 0.4.0-beta.1) may also be cut from a
@@ -134,6 +135,23 @@ jobs:
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          VERSION="${{ inputs.version }}"
+          if [[ "$VERSION" != *-* ]]; then
+            echo "ui_npm_tag=latest" >> "$GITHUB_OUTPUT"
+          else
+            PRE_KIND="${VERSION#*-}"
+            PRE_KIND="${PRE_KIND%%.*}"
+            case "$PRE_KIND" in
+              rc|beta)
+                echo "ui_npm_tag=$PRE_KIND" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "::error::UI npm publish only supports prerelease channels rc or beta. Got version=$VERSION"
+                exit 1
+                ;;
+            esac
           fi
 
   # ── 3. Build all artifacts in parallel ────────────────────────────────────
@@ -359,6 +377,74 @@ jobs:
             npm publish --provenance --access public
           fi
 
+  # ── 5a. Publish the runtime UI package to npm (skippable) ──────────────────
+  publish-ui-npm:
+    name: Publish UI package to npm
+    needs: [version]
+    if: ${{ !inputs.skip_npm_publish }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build runtime bundle
+        working-directory: packages/viewer
+        run: npm run build
+
+      - name: Sanity check bundle artifacts
+        run: |
+          test -f packages/viewer/build/index.html
+          test -f packages/viewer/build/update-manifest.json
+
+      - name: Sanity check package metadata
+        run: |
+          EXPECTED_VERSION="${{ inputs.version }}"
+          node -e '
+            const fs = require("fs");
+            const p = JSON.parse(fs.readFileSync("packages/viewer/package.json", "utf8"));
+            if (p.name !== "@dimm-city/print-md-ui") {
+              throw new Error(`Unexpected package name: ${p.name}`);
+            }
+            if (p.version !== process.env.EXPECTED_VERSION) {
+              throw new Error(`Version mismatch: expected ${process.env.EXPECTED_VERSION}, got ${p.version}`);
+            }
+          '
+
+      - name: Pack dry run
+        working-directory: packages/viewer
+        run: npm pack --dry-run
+
+      - name: Update npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Skip if already published
+        run: |
+          if npm view "@dimm-city/print-md-ui@${{ inputs.version }}" version &>/dev/null; then
+            echo "Version ${{ inputs.version }} already published — skipping."
+            echo "ALREADY_PUBLISHED=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Publish UI package to npm
+        if: ${{ env.ALREADY_PUBLISHED != 'true' }}
+        working-directory: packages/viewer
+        run: npm publish --provenance --tag "${{ needs.version.outputs.ui_npm_tag }}"
+
   # ── 5b. Publish the CLI Docker image to GHCR ──────────────────────────────
   # Builds the root Dockerfile (CLI bundle + Chromium/Ghostscript/qpdf) and
   # pushes it to ghcr.io/<owner>/print-md. Tags the exact version always;
@@ -420,6 +506,7 @@ jobs:
       - build-viewer-windows
       - build-viewer-mac
       - publish-npm
+      - publish-ui-npm
     if: |
       always() &&
       needs.version.result == 'success' &&
@@ -427,7 +514,8 @@ jobs:
       (needs.build-viewer-linux.result == 'success' || needs.build-viewer-linux.result == 'skipped') &&
       (needs.build-viewer-windows.result == 'success' || needs.build-viewer-windows.result == 'skipped') &&
       (needs.build-viewer-mac.result == 'success' || needs.build-viewer-mac.result == 'skipped') &&
-      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
+      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
+      (needs.publish-ui-npm.result == 'success' || needs.publish-ui-npm.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write

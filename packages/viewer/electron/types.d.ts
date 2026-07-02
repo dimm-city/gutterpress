@@ -53,13 +53,13 @@ declare global {
 
   type UpdaterEvent = UpdaterEventPayload;
 
-  interface ElectronUpdater {
-    getStatus(): Promise<UpdaterStatus>;
-    check(): Promise<UpdaterStatus>;
-    applyNow(): Promise<{ applied: boolean; version?: string }>;
-    markReady(): Promise<{ ok: true; pending: boolean; version?: string }>;
-    onEvent(cb: (event: UpdaterEvent) => void): () => void;
-  }
+interface ElectronUpdater {
+  getStatus(): Promise<UpdaterStatus>;
+  check(channel?: AppSettings['updates']['channel']): Promise<UpdaterStatus>;
+  applyNow(): Promise<{ applied: boolean; version?: string }>;
+  markReady(): Promise<{ ok: true; pending: boolean; version?: string }>;
+  onEvent(cb: (event: UpdaterEvent) => void): () => void;
+}
 
   // plugin:*, theme:*, project:listStyles types removed — migrated to server routes (Phase 2E).
   interface StyleToken {

@@ -1,5 +1,5 @@
-appId: city.dimm.print-md-viewer
-productName: print-md-viewer
+appId: city.dimm.print-md-desktop-app
+productName: Print MD Desktop App
 
 # The ESM Electron main (out/main/main.js, built by electron-vite) dynamic-
 # imports @dimm-city/print-md from node_modules at runtime (electron/main.ts

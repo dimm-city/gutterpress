@@ -840,6 +840,9 @@ interface AppSettings {
     fileWatcherInterval: number;
     logLevel: "error" | "warn" | "info" | "debug";
   };
+  updates: {
+    channel: "stable" | "beta" | "rc";
+  };
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -870,6 +873,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   advanced: {
     fileWatcherInterval: 300,
     logLevel: "warn",
+  },
+  updates: {
+    channel: "stable",
   },
 };
 
@@ -3187,8 +3193,8 @@ function clearHealthWatchdog() {
 // Shared check→stage→emit-events flow used by both the background launch check
 // and the manual "Check for updates" IPC. checkForUpdate/downloadAndStage are
 // themselves non-throwing; callers still wrap this defensively.
-async function checkAndStage(): Promise<void> {
-  const { available, reason } = await checkForUpdate();
+async function checkAndStage(channel: AppSettings['updates']['channel'] = 'stable'): Promise<void> {
+  const { available, reason } = await checkForUpdate(channel);
   if (!available) {
     sendUpdaterEvent(
       reason && reason !== "already up to date"
@@ -3221,10 +3227,12 @@ ipcMain.handle("updater:getStatus", async () => {
   return getStatus();
 });
 
-ipcMain.handle("updater:check", async () => {
+ipcMain.handle("updater:check", async (_event, channel?: unknown) => {
   if (!updaterEnabled()) return getStatus();
   try {
-    await checkAndStage();
+    const selectedChannel: AppSettings['updates']['channel'] =
+      channel === 'beta' || channel === 'rc' ? channel : 'stable';
+    await checkAndStage(selectedChannel);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.warn("[updater] manual check failed (non-fatal):", message);

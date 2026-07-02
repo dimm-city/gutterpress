@@ -2,5 +2,5 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async () => {
-  return json({ name: '@dimm-city/print-md-viewer', runtime: 'node', ok: true });
+  return json({ name: '@dimm-city/print-md-ui', runtime: 'node', ok: true });
 };

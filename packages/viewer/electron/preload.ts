@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
   UpdaterStatus,
   UpdaterEventPayload,
+  AppSettings,
   DeviceCodeInfo,
   RemoteConnection,
   RemoteRepository,
@@ -141,8 +142,8 @@ contextBridge.exposeInMainWorld("electron", {
   updater: {
     getStatus: (): Promise<UpdaterStatus> =>
       ipcRenderer.invoke("updater:getStatus"),
-    check: (): Promise<UpdaterStatus> =>
-      ipcRenderer.invoke("updater:check"),
+    check: (channel?: AppSettings['updates']['channel']): Promise<UpdaterStatus> =>
+      ipcRenderer.invoke("updater:check", channel),
     applyNow: (): Promise<{ applied: boolean; version?: string }> =>
       ipcRenderer.invoke("updater:applyNow"),
     markReady: (): Promise<{ ok: true; pending: boolean; version?: string }> =>

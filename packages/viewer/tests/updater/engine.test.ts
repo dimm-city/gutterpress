@@ -15,6 +15,7 @@ import { mock } from "bun:test";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { zipSync } from "fflate";
 // Real verify module, captured BEFORE any mock.module() of it below, so the
@@ -61,7 +62,7 @@ const {
   readStaged,
   writeStaged,
   clearStaged,
-  GITHUB_REPO,
+  WEB_UI_PACKAGE,
 } = await import("../../electron/updater/index.js");
 
 const {
@@ -175,6 +176,57 @@ function mockFetch(
 // Helper to compute sha256 hex
 function sha256Hex(buf: Buffer): string {
   return crypto.createHash("sha256").update(buf).digest("hex");
+}
+
+function tarHeader(name: string, size: number): Buffer {
+  const header = Buffer.alloc(512, 0);
+  header.write(name.slice(0, 100), 0, "utf8");
+  header.write("0000777\0", 100, "ascii");
+  header.write("0000000\0", 108, "ascii");
+  header.write("0000000\0", 116, "ascii");
+  header.write(size.toString(8).padStart(11, "0") + "\0", 124, "ascii");
+  header.write("00000000000\0", 136, "ascii");
+  header.fill(0x20, 148, 156);
+  header[156] = "0".charCodeAt(0);
+  header.write("ustar\0", 257, "ascii");
+  header.write("00", 263, "ascii");
+  let sum = 0;
+  for (let i = 0; i < 512; i++) sum += header[i]!;
+  header.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, "ascii");
+  return header;
+}
+
+function makeNpmTarball(files: Record<string, Buffer>): Buffer {
+  const chunks: Buffer[] = [];
+  for (const [name, bytes] of Object.entries(files)) {
+    chunks.push(tarHeader(name, bytes.length));
+    chunks.push(bytes);
+    const rem = bytes.length % 512;
+    if (rem !== 0) {
+      chunks.push(Buffer.alloc(512 - rem, 0));
+    }
+  }
+  chunks.push(Buffer.alloc(1024, 0));
+  return gzipSync(Buffer.concat(chunks));
+}
+
+function makeRegistryMetadata(version: string, tarball: Buffer, tarballUrl: string, channel: "stable" | "rc" | "beta" = "stable") {
+  const distTags: Record<string, string> = {};
+  if (channel === "stable") distTags.latest = version;
+  if (channel === "rc") distTags.rc = version;
+  if (channel === "beta") distTags.beta = version;
+  return {
+    "dist-tags": distTags,
+    versions: {
+      [version]: {
+        version,
+        dist: {
+          tarball: tarballUrl,
+          integrity: `sha512-${crypto.createHash("sha512").update(tarball).digest("base64")}`,
+        },
+      },
+    },
+  };
 }
 
 // ── readStaged / writeStaged / clearStaged ────────────────────────────────
@@ -485,49 +537,26 @@ describe("downloadAndStage – zip path-traversal guard", () => {
     const manifestBytes = Buffer.from(JSON.stringify(manifestObj));
     const { privateKey } = makeKeypair();
     const sig = signManifest(manifestBytes, privateKey);
-
-    const ghReleasesUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
-    const manifestUrl = `https://github.example.com/releases/download/web-v${version}/update-manifest.json`;
-    const sigUrl = `${manifestUrl}.sig`;
-    const bundleUrl = `https://github.example.com/releases/download/web-v${version}/web-ui-bundle.zip`;
-
-    const ghResponse = [
-      {
-        tag_name: `web-v${version}`,
-        draft: false,
-        prerelease: false,
-        assets: [
-          { name: "update-manifest.json", browser_download_url: manifestUrl },
-          { name: "update-manifest.json.sig", browser_download_url: sigUrl },
-          { name: "web-ui-bundle.zip", browser_download_url: bundleUrl },
-        ],
-      },
-    ];
+    const registryMetaUrl = `https://registry.npmjs.org/${WEB_UI_PACKAGE}`;
+    const tarballUrl = `https://registry.example.com/${version}.tgz`;
+    const tarball = makeNpmTarball({
+      "package/update-manifest.json": manifestBytes,
+      "package/update-manifest.json.sig": Buffer.from(sig + "\n"),
+      "package/web-ui-bundle.zip": zipBuffer,
+    });
+    const registryResponse = makeRegistryMetadata(version, tarball, tarballUrl);
 
     return (url: string): FetchResponse => {
-      if (url === ghReleasesUrl) {
+      if (url === registryMetaUrl) {
         return {
           ok: true,
-          json: () => Promise.resolve(ghResponse),
+          json: () => Promise.resolve(registryResponse),
         };
       }
-      if (url === manifestUrl) {
+      if (url === tarballUrl) {
         return {
           ok: true,
-          arrayBuffer: () => Promise.resolve(manifestBytes.buffer as ArrayBuffer),
-        };
-      }
-      if (url === sigUrl) {
-        return {
-          ok: true,
-          arrayBuffer: () =>
-            Promise.resolve(Buffer.from(sig + "\n").buffer as ArrayBuffer),
-        };
-      }
-      if (url === bundleUrl) {
-        return {
-          ok: true,
-          arrayBuffer: () => Promise.resolve(zipBuffer.buffer.slice(zipBuffer.byteOffset, zipBuffer.byteOffset + zipBuffer.byteLength) as ArrayBuffer),
+          arrayBuffer: () => Promise.resolve(tarball.buffer.slice(tarball.byteOffset, tarball.byteOffset + tarball.byteLength) as ArrayBuffer),
         };
       }
       return { ok: false, status: 404, statusText: "Not Found" };
@@ -614,7 +643,7 @@ describe("downloadAndStage – zip path-traversal guard", () => {
 
 // ── checkForUpdate gates ──────────────────────────────────────────────────
 //
-// These tests mock the GitHub API response and use a mocked verify layer.
+// These tests mock npm registry responses and use a mocked verify layer.
 // We test: newer → available; same/older → not available; failed version →
 // skipped; requiresDesktopApi too high → blocked.
 // ─────────────────────────────────────────────────────────────────────────
@@ -636,44 +665,40 @@ describe("checkForUpdate – gates", () => {
     await cleanupDir(tmpDir);
   });
 
-  const ghReleasesUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
+  const registryMetaUrl = `https://registry.npmjs.org/${WEB_UI_PACKAGE}`;
 
-  function makeFetchForVersion(version: string, requiresDesktopApi = 1) {
+  function makeFetchForVersion(
+    version: string,
+    requiresDesktopApi = 1,
+    channel: "stable" | "rc" | "beta" = "stable"
+  ) {
     const manifestObj = makeManifest({ version, requiresDesktopApi });
     const manifestBytes = Buffer.from(JSON.stringify(manifestObj));
     const { privateKey } = makeKeypair();
     const sig = signManifest(manifestBytes, privateKey);
-
-    const manifestUrl = `https://github.example.com/releases/web-v${version}/update-manifest.json`;
-    const sigUrl = `${manifestUrl}.sig`;
-
-    const releases = [
-      {
-        tag_name: `web-v${version}`,
-        draft: false,
-        prerelease: false,
-        assets: [
-          { name: "update-manifest.json", browser_download_url: manifestUrl },
-          { name: "update-manifest.json.sig", browser_download_url: sigUrl },
-        ],
-      },
-    ];
+    const tarballUrl = `https://registry.example.com/${version}.tgz`;
+    const zip = makeValidZipBuffer();
+    const tarball = makeNpmTarball({
+      "package/update-manifest.json": manifestBytes,
+      "package/update-manifest.json.sig": Buffer.from(sig + "\n"),
+      "package/web-ui-bundle.zip": zip,
+    });
+    const registryResponse = makeRegistryMetadata(version, tarball, tarballUrl, channel);
 
     return (url: string): FetchResponse => {
-      if (url === ghReleasesUrl) {
-        return { ok: true, json: () => Promise.resolve(releases) };
-      }
-      if (url === manifestUrl) {
+      if (url === registryMetaUrl) {
         return {
           ok: true,
-          arrayBuffer: () => Promise.resolve(manifestBytes.buffer.slice(manifestBytes.byteOffset, manifestBytes.byteOffset + manifestBytes.byteLength) as ArrayBuffer),
+          json: () => Promise.resolve(registryResponse),
         };
       }
-      if (url === sigUrl) {
+      if (url === tarballUrl) {
         return {
           ok: true,
           arrayBuffer: () =>
-            Promise.resolve(Buffer.from(sig + "\n").buffer.slice(0) as ArrayBuffer),
+            Promise.resolve(
+              tarball.buffer.slice(tarball.byteOffset, tarball.byteOffset + tarball.byteLength) as ArrayBuffer
+            ),
         };
       }
       return { ok: false, status: 404, statusText: "Not Found" };
@@ -781,19 +806,19 @@ describe("checkForUpdate – gates", () => {
     expect(result.available!.requiresDesktopApi).toBe(DESKTOP_API);
   });
 
-  test("returns available:null with reason when no web-v* releases found", async () => {
+  test("returns available:null with reason when no package is found for the channel", async () => {
     stubVerify();
     restoreFetch = mockFetch((_url: string) => ({
       ok: true,
-      json: () => Promise.resolve([]), // empty releases
+      json: () => Promise.resolve({ "dist-tags": {}, versions: {} }),
     }));
 
     const result = await checkForUpdate();
     expect(result.available).toBeNull();
-    expect(result.reason).toContain("no web-ui releases found");
+    expect(result.reason).toContain("no web-ui package found");
   });
 
-  test("returns available:null when GitHub returns non-200", async () => {
+  test("returns available:null when npm registry returns non-200", async () => {
     stubVerify();
     restoreFetch = mockFetch((_url: string) => ({
       ok: false,
@@ -851,13 +876,13 @@ describe("checkForUpdate – feed URL override", () => {
     await cleanupDir(tmpDir);
   });
 
-  test("fetches the release list from the override URL when set", async () => {
+  test("fetches npm registry metadata from the override URL when set", async () => {
     mock.module("../../electron/updater/verify.js", () => ({
       sha256Hex: realSha256Hex,
       verifyManifestSignature: () => true,
       verifyBundle: () => ({ ok: true }),
     }));
-    process.env.PRINT_MD_UPDATER_FEED_URL = "http://127.0.0.1:9/releases";
+    process.env.PRINT_MD_UPDATER_FEED_URL = "http://127.0.0.1:9/registry";
 
     const seen: string[] = [];
     const original = global.fetch;
@@ -867,7 +892,7 @@ describe("checkForUpdate – feed URL override", () => {
         ok: true,
         status: 200,
         statusText: "OK",
-        json: () => Promise.resolve([]),
+        json: () => Promise.resolve({ "dist-tags": {}, versions: {} }),
         arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
         text: () => Promise.resolve(""),
       };
@@ -878,14 +903,107 @@ describe("checkForUpdate – feed URL override", () => {
 
     const result = await checkForUpdate();
     expect(result.available).toBeNull();
-    expect(seen[0]).toBe("http://127.0.0.1:9/releases");
-    expect(seen[0]).not.toContain("api.github.com");
+    expect(seen[0]).toBe("http://127.0.0.1:9/registry");
+    expect(seen[0]).not.toContain("api.github.com/repos");
   });
 });
 
-// ── error surfacing: release problems set phase=error for getStatus() ─────
+describe("checkForUpdate – channel selection", () => {
+  let tmpDir: string;
+  let restoreFetch: (() => void) | null = null;
+  const registryMetaUrl = `https://registry.npmjs.org/${WEB_UI_PACKAGE}`;
 
-describe("checkForUpdate – problem reasons surface via getStatus().error", () => {
+  function makeFetchForVersion(
+    version: string,
+    channel: "stable" | "rc" | "beta"
+  ) {
+    const manifestObj = makeManifest({ version, requiresDesktopApi: 1 });
+    const manifestBytes = Buffer.from(JSON.stringify(manifestObj));
+    const { privateKey } = makeKeypair();
+    const sig = signManifest(manifestBytes, privateKey);
+    const tarballUrl = `https://registry.example.com/${version}.tgz`;
+    const zip = makeValidZipBuffer();
+    const tarball = makeNpmTarball({
+      "package/update-manifest.json": manifestBytes,
+      "package/update-manifest.json.sig": Buffer.from(sig + "\n"),
+      "package/web-ui-bundle.zip": zip,
+    });
+    const registryResponse = makeRegistryMetadata(version, tarball, tarballUrl, channel);
+
+    return (url: string): FetchResponse => {
+      if (url === registryMetaUrl) {
+        return {
+          ok: true,
+          json: () => Promise.resolve(registryResponse),
+        };
+      }
+      if (url === tarballUrl) {
+        return {
+          ok: true,
+          arrayBuffer: () =>
+            Promise.resolve(
+              tarball.buffer.slice(tarball.byteOffset, tarball.byteOffset + tarball.byteLength) as ArrayBuffer
+            ),
+        };
+      }
+      return { ok: false, status: 404, statusText: "Not Found" };
+    };
+  }
+
+  beforeEach(async () => {
+    tmpDir = await makeTempDir();
+    await ensureLayout();
+  });
+
+  afterEach(async () => {
+    delete process.env.PRINT_MD_UPDATER_CHANNEL;
+    if (restoreFetch) {
+      restoreFetch();
+      restoreFetch = null;
+    }
+    await cleanupDir(tmpDir);
+  });
+
+  test("stable channel uses dist-tags.latest", async () => {
+    mock.module("../../electron/updater/verify.js", () => ({
+      sha256Hex: realSha256Hex,
+      verifyManifestSignature: () => true,
+      verifyBundle: () => ({ ok: true }),
+    }));
+    restoreFetch = mockFetch(makeFetchForVersion("4.0.0", "stable"));
+
+    const result = await checkForUpdate("stable");
+    expect(result.available?.version).toBe("4.0.0");
+  });
+
+  test("rc channel uses dist-tags.rc", async () => {
+    mock.module("../../electron/updater/verify.js", () => ({
+      sha256Hex: realSha256Hex,
+      verifyManifestSignature: () => true,
+      verifyBundle: () => ({ ok: true }),
+    }));
+    restoreFetch = mockFetch(makeFetchForVersion("4.1.0-rc.2", "rc"));
+
+    const result = await checkForUpdate("rc");
+    expect(result.available?.version).toBe("4.1.0-rc.2");
+  });
+
+  test("beta channel uses dist-tags.beta", async () => {
+    mock.module("../../electron/updater/verify.js", () => ({
+      sha256Hex: realSha256Hex,
+      verifyManifestSignature: () => true,
+      verifyBundle: () => ({ ok: true }),
+    }));
+    restoreFetch = mockFetch(makeFetchForVersion("4.2.0-beta.1", "beta"));
+
+    const result = await checkForUpdate("beta");
+    expect(result.available?.version).toBe("4.2.0-beta.1");
+  });
+});
+
+// ── error surfacing: package problems set phase=error for getStatus() ─────
+
+describe("checkForUpdate – package problem reasons surface via getStatus().error", () => {
   let tmpDir: string;
   let restoreFetch: (() => void) | null = null;
 
@@ -902,23 +1020,35 @@ describe("checkForUpdate – problem reasons surface via getStatus().error", () 
     await cleanupDir(tmpDir);
   });
 
-  const ghReleasesUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
+  const registryMetaUrl = `https://registry.npmjs.org/${WEB_UI_PACKAGE}`;
 
-  test("a web-v release missing its manifest assets reports phase=error", async () => {
+  test("a package tarball missing its manifest files reports phase=error", async () => {
     mock.module("../../electron/updater/verify.js", () => realVerifyExports);
+    const zip = makeValidZipBuffer();
+    const tarballUrl = "https://registry.example.com/bad.tgz";
+    const badTarball = makeNpmTarball({
+      "package/web-ui-bundle.zip": zip,
+    });
     restoreFetch = mockFetch((url: string) => {
-      if (url === ghReleasesUrl) {
+      if (url === registryMetaUrl) {
         return {
           ok: true,
           json: () =>
-            Promise.resolve([
-              {
-                tag_name: "web-v99.0.0",
-                draft: false,
-                prerelease: false,
-                assets: [], // manifest + sig missing — a publishing defect
-              },
-            ]),
+            Promise.resolve(
+              makeRegistryMetadata("99.0.0", badTarball, tarballUrl)
+            ),
+        };
+      }
+      if (url === tarballUrl) {
+        return {
+          ok: true,
+          arrayBuffer: () =>
+            Promise.resolve(
+              badTarball.buffer.slice(
+                badTarball.byteOffset,
+                badTarball.byteOffset + badTarball.byteLength
+              ) as ArrayBuffer
+            ),
         };
       }
       return { ok: false, status: 404, statusText: "Not Found" };
@@ -926,11 +1056,11 @@ describe("checkForUpdate – problem reasons surface via getStatus().error", () 
 
     const result = await checkForUpdate();
     expect(result.available).toBeNull();
-    expect(result.reason).toContain("missing manifest");
+    expect(result.reason).toContain("missing update-manifest.json");
 
     const status = await getStatus();
     expect(status.phase).toBe("error");
-    expect(status.error).toContain("missing manifest");
+    expect(status.error).toContain("missing update-manifest.json");
   });
 
   test("a failed signature reports phase=error (fail closed, loudly)", async () => {
@@ -941,43 +1071,30 @@ describe("checkForUpdate – problem reasons surface via getStatus().error", () 
     const { privateKey } = makeKeypair(); // not the baked public key's pair
     const sig = signManifest(manifestBytes, privateKey);
 
-    const manifestUrl = "https://example.com/update-manifest.json";
-    const sigUrl = `${manifestUrl}.sig`;
+    const tarballUrl = "https://registry.example.com/99.0.0.tgz";
+    const zip = makeValidZipBuffer();
+    const tarball = makeNpmTarball({
+      "package/update-manifest.json": manifestBytes,
+      "package/update-manifest.json.sig": Buffer.from(sig),
+      "package/web-ui-bundle.zip": zip,
+    });
     restoreFetch = mockFetch((url: string) => {
-      if (url === ghReleasesUrl) {
+      if (url === registryMetaUrl) {
         return {
           ok: true,
-          json: () =>
-            Promise.resolve([
-              {
-                tag_name: "web-v99.0.0",
-                draft: false,
-                prerelease: false,
-                assets: [
-                  { name: "update-manifest.json", browser_download_url: manifestUrl },
-                  { name: "update-manifest.json.sig", browser_download_url: sigUrl },
-                ],
-              },
-            ]),
+          json: () => Promise.resolve(makeRegistryMetadata("99.0.0", tarball, tarballUrl)),
         };
       }
-      if (url === manifestUrl) {
+      if (url === tarballUrl) {
         return {
           ok: true,
           arrayBuffer: () =>
             Promise.resolve(
-              manifestBytes.buffer.slice(
-                manifestBytes.byteOffset,
-                manifestBytes.byteOffset + manifestBytes.byteLength
+              tarball.buffer.slice(
+                tarball.byteOffset,
+                tarball.byteOffset + tarball.byteLength
               ) as ArrayBuffer
             ),
-        };
-      }
-      if (url === sigUrl) {
-        return {
-          ok: true,
-          arrayBuffer: () =>
-            Promise.resolve(Buffer.from(sig).buffer.slice(0) as ArrayBuffer),
         };
       }
       return { ok: false, status: 404, statusText: "Not Found" };

@@ -1495,7 +1495,7 @@
     busyLabel = label;
     try {
       if (!isDesktop()) {
-        toast?.error("Electron bridge unavailable — run via the viewer app");
+        toast?.error("Electron bridge unavailable — run via the Print MD Desktop App");
         return;
       }
       const platform = getPlatform();
@@ -1635,7 +1635,7 @@
 
   async function openFolder() {
     if (!isDesktop()) {
-      toast?.error("Electron bridge unavailable — run via the viewer app");
+      toast?.error("Electron bridge unavailable — run via the Print MD Desktop App");
       return;
     }
     busy = true;
@@ -1754,7 +1754,7 @@
     const inputDir = currentDir;
     if (!inputDir) return;
     if (!isDesktop()) {
-      toast?.error("Electron bridge unavailable — run via the viewer app");
+      toast?.error("Electron bridge unavailable — run via the Print MD Desktop App");
       return;
     }
     const platform = getPlatform();
@@ -2285,7 +2285,7 @@
     toast?.info("Checking for updates…");
     try {
       const status: { phase: string; stagedVersion: string | null; error: string | null } =
-        await getPlatform().updater.check();
+        await getPlatform().updater.check(settings.current.updates.channel);
       if (status.stagedVersion) {
         // An update was downloaded + staged — the banner appears; no toast.
         updateReadyVersion = status.stagedVersion;

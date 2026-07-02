@@ -7,7 +7,7 @@
     },
     "packages/cli": {
       "name": "@dimm-city/print-md",
-      "version": "0.6.0-beta.5",
+      "version": "0.6.0-beta.12",
       "bin": {
         "print-md": "./dist/cli.js",
       },
@@ -47,8 +47,8 @@
       },
     },
     "packages/viewer": {
-      "name": "@dimm-city/print-md-viewer",
-      "version": "0.6.0-beta.5",
+      "name": "@dimm-city/print-md-ui",
+      "version": "0.6.0-beta.12",
       "dependencies": {
         "@codemirror/autocomplete": "^6.18.4",
         "@codemirror/commands": "^6.8.0",
@@ -193,7 +193,7 @@
 
     "@dimm-city/print-md": ["@dimm-city/print-md@workspace:packages/cli"],
 
-    "@dimm-city/print-md-viewer": ["@dimm-city/print-md-viewer@workspace:packages/viewer"],
+    "@dimm-city/print-md-ui": ["@dimm-city/print-md-ui@workspace:packages/viewer"],
 
     "@electron/asar": ["@electron/asar@3.4.1", "", { "dependencies": { "commander": "^5.0.0", "glob": "^7.1.6", "minimatch": "^3.0.4" }, "bin": { "asar": "bin/asar.js" } }, "sha512-i4/rNPRS84t0vSRa2HorerGRXWyF4vThfHesw0dmcWHp+cspK743UanA0suA5Q5y8kzY2y6YKrvbIUn69BCAiA=="],
 

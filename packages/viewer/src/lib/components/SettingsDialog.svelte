@@ -249,6 +249,26 @@
       </section>
 
       <!-- Advanced (collapsed by default) --------------------------------- -->
+      <section class="group">
+        <div class="group-head">
+          <h3>Updates</h3>
+          <button class="reset" onclick={() => settings.resetSection("updates")} title="Reset update preferences to defaults">Reset</button>
+        </div>
+        <div class="row">
+          <label for="set-update-channel">Update channel</label>
+          <select
+            id="set-update-channel"
+            value={s.updates.channel}
+            onchange={(e) => settings.set({ updates: { channel: (e.currentTarget as HTMLSelectElement).value as "stable" | "beta" | "rc" } })}
+          >
+            <option value="stable">Stable</option>
+            <option value="beta">Beta</option>
+            <option value="rc">Release candidate</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- Advanced (collapsed by default) --------------------------------- -->
       <!-- Developer-oriented knobs (file-watch polling, log verbosity). Hidden
            behind a disclosure so a non-technical writer never has to reason
            about milliseconds or log levels to use the app. -->

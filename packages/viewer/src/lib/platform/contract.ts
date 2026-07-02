@@ -288,7 +288,7 @@ export type UpdaterEvent = UpdaterEventPayload;
 
 export interface UpdaterApi {
   getStatus(): Promise<UpdaterStatus>;
-  check(): Promise<UpdaterStatus>;
+  check(channel?: AppSettings['updates']['channel']): Promise<UpdaterStatus>;
   applyNow(): Promise<{ applied: boolean; version?: string }>;
   markReady(): Promise<{ ok: true; pending: boolean; version?: string }>;
   onEvent(cb: (event: UpdaterEvent) => void): () => void;
@@ -590,6 +590,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   advanced: {
     fileWatcherInterval: 300,
     logLevel: "warn",
+  },
+  updates: {
+    channel: "stable",
   },
 };
 

@@ -119,6 +119,9 @@ export interface AppSettings {
     fileWatcherInterval: number;
     logLevel: "error" | "warn" | "info" | "debug";
   };
+  updates: {
+    channel: "stable" | "beta" | "rc";
+  };
 }
 
 /** A recursively-optional view of `T` — used for settings patches. */

@@ -52,7 +52,7 @@
     error = null;
       try {
         if (!isDesktop()) {
-        error = "Desktop system details are only available in the viewer app.";
+        error = "Desktop system details are only available in the Print MD Desktop App.";
         return;
       }
       data = (await api.doctor()) as Diagnostics;
@@ -84,7 +84,7 @@
   function copyReport() {
     if (!data) return;
     const lines = [
-      `print-md viewer ${data.viewerVersion}  ·  web-ui ${data.webUiVersion ?? "—"}`,
+      `Print MD Desktop App ${data.viewerVersion}  ·  web-ui ${data.webUiVersion ?? "—"}`,
       `lib ${data.libVersion}  ·  electron ${data.electronVersion}  ·  chromium ${data.chromeVersion}  ·  node ${data.platform.node}`,
       `platform: ${osLabel(data.platform.os)} ${data.platform.arch} (${data.platform.release})`,
       ``,
@@ -153,7 +153,7 @@
         <button class="primary" onclick={load}>Retry</button>
       {:else if data}
         <section class="version-strip" aria-label="Loaded versions">
-          <div><strong>Viewer:</strong> {data.viewerVersion}</div>
+          <div><strong>Print MD Desktop App:</strong> {data.viewerVersion}</div>
           <div><strong>UI:</strong> {data.webUiVersion ?? "—"}</div>
           <div><strong>Lib:</strong> {data.libVersion}</div>
         </section>
@@ -223,7 +223,7 @@
           <summary>System info &amp; tool status</summary>
 
         <section class="versions">
-          <div><strong>Viewer:</strong> {data.viewerVersion}</div>
+          <div><strong>Print MD Desktop App:</strong> {data.viewerVersion}</div>
           <div><strong>UI:</strong> {data.webUiVersion ?? "—"}</div>
           <div><strong>Lib:</strong> {data.libVersion}</div>
           <div>

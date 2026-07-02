@@ -5,9 +5,12 @@
 // the thin main.ts wiring that calls it). Never in the renderer.
 //
 // Flow:
-//   checkForUpdate()  -> finds newest web-v* release, validates+verifies its
-//                        manifest, applies the downgrade/failed/compat gates.
-//   downloadAndStage()-> downloads the bundle zip, verifies it, extracts into
+//   checkForUpdate()  -> reads npm registry package metadata for
+//                        @dimm-city/print-md-ui (stable/rc/beta), verifies the
+//                        package tarball via dist.integrity, validates+verifies
+//                        the embedded manifest, applies downgrade/failed/compat gates.
+//   downloadAndStage()-> downloads the package tarball, verifies dist.integrity,
+//                        extracts the embedded bundle zip, verifies it, extracts into
 //                        versions/<v>.staging with path-traversal guards, then
 //                        atomically renames to versions/<v> and records
 //                        staged.json. Staging != current.
@@ -21,8 +24,10 @@
 // and return structured results; they never throw out to callers.
 // ──────────────────────────────────────────────────────────────────────────
 
+import crypto from "node:crypto";
 import path from "node:path";
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { gunzipSync } from "node:zlib";
 import { unzipSync } from "fflate";
 import { compareSemver } from "./semver.js";
 
@@ -45,19 +50,13 @@ import {
 import { validateManifest } from "./manifest-validator.js";
 import { verifyManifestSignature, verifyBundle } from "./verify.js";
 
-export const GITHUB_REPO = "dimm-city/print-md";
+export const WEB_UI_PACKAGE = "@dimm-city/print-md-ui";
 
-const DEFAULT_RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
+const DEFAULT_REGISTRY_URL = `https://registry.npmjs.org/${WEB_UI_PACKAGE}`;
 
-// Test/diagnostic override for the releases feed. When set, the updater fetches
-// the release list from this URL instead of the real GitHub API. The response
-// must have the same shape as GET /repos/:owner/:repo/releases. This exists so
-// the full check→download→verify→stage→promote pipeline can be exercised
-// end-to-end against a local fixture server (signatures are still verified
-// against the baked public key — the override does NOT weaken verification).
-// Never set in production; the loud warning makes accidental use visible.
+// Test/diagnostic override for the npm registry metadata URL.
 let warnedFeedOverride = false;
-function releasesUrl(): string {
+function registryUrl(): string {
   const override = process.env.PRINT_MD_UPDATER_FEED_URL;
   if (override) {
     if (!warnedFeedOverride) {
@@ -68,10 +67,23 @@ function releasesUrl(): string {
     }
     return override;
   }
-  return DEFAULT_RELEASES_URL;
+  return DEFAULT_REGISTRY_URL;
 }
 
-const WEB_TAG_RE = /^web-v(.+)$/;
+type UpdateChannel = "stable" | "rc" | "beta";
+let warnedChannelOverride = false;
+
+function selectedChannel(): UpdateChannel {
+  const raw = (process.env.PRINT_MD_UPDATER_CHANNEL ?? "stable").toLowerCase();
+  if (raw === "stable" || raw === "rc" || raw === "beta") {
+    return raw;
+  }
+  if (!warnedChannelOverride) {
+    warnedChannelOverride = true;
+    console.warn(`[updater] invalid PRINT_MD_UPDATER_CHANNEL=${raw}; using stable`);
+  }
+  return "stable";
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 // In-memory phase tracking + in-flight guard (mirrors activeExportSession in
@@ -85,10 +97,9 @@ let lastError: string | null = null;
 let availableVersion: string | null = null;
 let inFlight: Promise<unknown> | null = null;
 
-// Newest release found by the last checkForUpdate(), reused by downloadAndStage
-// to avoid a second identical GitHub API round-trip (and the extra rate-limit
-// hit) on the common check→stage path.
-let cachedRelease: { version: string; rel: GhRelease } | null = null;
+// Package version metadata cached by checkForUpdate(), reused by
+// downloadAndStage() on the common check→stage path.
+let cachedPackageVersion: { version: string; pkg: RegistryPackageVersion } | null = null;
 
 // Network guards: every fetch is time-bounded so a stalled connection can't
 // hang an IPC handler forever, and downloads are size-capped to prevent a
@@ -97,6 +108,7 @@ let cachedRelease: { version: string; rel: GhRelease } | null = null;
 const FETCH_TIMEOUT_MS = 30_000;
 const MAX_BUNDLE_BYTES = 256 * 1024 * 1024; // 256 MB hard ceiling
 const MAX_META_BYTES = 1 * 1024 * 1024; // manifest/sig are tiny
+const MAX_PACKAGE_BYTES = 256 * 1024 * 1024; // npm tarball hard ceiling
 
 // A version is only treated as permanently bad after this many health-gate
 // failures, so a single transient miss (slow cold start, window closed before
@@ -169,69 +181,149 @@ export async function clearStaged(): Promise<void> {
   await rm(stagedPath(), { force: true }).catch(() => {});
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-// GitHub releases — web-v* line only. Never /releases/latest (installer line).
-// ──────────────────────────────────────────────────────────────────────────
-
-interface GhAsset {
-  name: string;
-  browser_download_url: string;
-}
-interface GhRelease {
-  tag_name: string;
-  draft?: boolean;
-  prerelease?: boolean;
-  assets: GhAsset[];
+interface RegistryPackageVersion {
+  version?: string;
+  dist?: {
+    tarball?: string;
+    integrity?: string;
+  };
 }
 
-async function fetchWebReleases(): Promise<GhRelease[]> {
-  const res = await fetch(releasesUrl(), {
+interface RegistryMetadata {
+  "dist-tags"?: {
+    latest?: string;
+    rc?: string;
+    beta?: string;
+  };
+  versions?: Record<string, RegistryPackageVersion>;
+}
+
+function channelTag(channel: UpdateChannel): "latest" | "rc" | "beta" {
+  if (channel === "stable") return "latest";
+  return channel;
+}
+
+async function fetchRegistryMetadata(): Promise<RegistryMetadata> {
+  const res = await fetch(registryUrl(), {
     headers: {
-      "User-Agent": "print-md-viewer-updater",
-      Accept: "application/vnd.github+json",
+      "User-Agent": "print-md-desktop-app-updater",
+      Accept: "application/json",
     },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
-    throw new Error(`GitHub releases request failed: ${res.status} ${res.statusText}`);
+    throw new Error(`npm registry request failed: ${res.status} ${res.statusText}`);
   }
-  const data = (await res.json()) as GhRelease[];
-  if (!Array.isArray(data)) {
-    throw new Error("GitHub releases response was not an array");
+  const data = (await res.json()) as RegistryMetadata;
+  if (!data || typeof data !== "object") {
+    throw new Error("npm registry response was not an object");
   }
-  // Drafts AND prereleases are excluded: a GitHub pre-release (beta/rc) must
-  // never be auto-delivered to the stable channel. There is no beta channel.
-  return data.filter(
-    (r) => WEB_TAG_RE.test(r.tag_name) && !r.draft && !r.prerelease
-  );
+  return data;
 }
 
-/** Version string extracted from a web-v* tag. */
-function tagVersion(tagName: string): string | null {
-  const m = WEB_TAG_RE.exec(tagName);
-  return m ? m[1]! : null;
+function getVersionFromChannel(
+  meta: RegistryMetadata,
+  channel: UpdateChannel
+): { version: string; pkg: RegistryPackageVersion } | null {
+  const tag = channelTag(channel);
+  const version = meta["dist-tags"]?.[tag];
+  if (typeof version !== "string" || version.trim() === "") {
+    return null;
+  }
+  const pkg = meta.versions?.[version];
+  if (!pkg) {
+    return null;
+  }
+  return { version, pkg };
 }
 
-/** Newest web-v* release by semver of its tag version. */
-function pickNewest(releases: GhRelease[]): GhRelease | null {
-  let best: { rel: GhRelease; version: string } | null = null;
-  for (const rel of releases) {
-    const v = tagVersion(rel.tag_name);
-    if (!v) continue;
-    if (!best || compareSemver(v, best.version) > 0) {
-      best = { rel, version: v };
+function getVersionByExact(
+  meta: RegistryMetadata,
+  version: string
+): RegistryPackageVersion | null {
+  return meta.versions?.[version] ?? null;
+}
+
+function parseIntegrity(
+  integrity: string
+): { algorithm: string; digestBase64: string } | null {
+  const first = integrity.split(" ").find((entry) => entry.includes("-"));
+  if (!first) return null;
+  const idx = first.indexOf("-");
+  if (idx <= 0 || idx === first.length - 1) return null;
+  const algorithm = first.slice(0, idx).toLowerCase();
+  const digestBase64 = first.slice(idx + 1);
+  if (!/^[a-z0-9-]+$/.test(algorithm) || digestBase64.trim() === "") {
+    return null;
+  }
+  return { algorithm, digestBase64 };
+}
+
+function verifyTarballIntegrity(
+  bytes: Buffer,
+  integrity: string
+): { ok: true } | { ok: false; reason: string } {
+  const parsed = parseIntegrity(integrity);
+  if (!parsed) {
+    return { ok: false, reason: "invalid dist.integrity format" };
+  }
+  try {
+    const actual = crypto
+      .createHash(parsed.algorithm)
+      .update(bytes)
+      .digest("base64");
+    if (actual !== parsed.digestBase64) {
+      return { ok: false, reason: "dist.integrity mismatch" };
     }
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: `unsupported dist.integrity algorithm: ${parsed.algorithm}` };
   }
-  return best?.rel ?? null;
 }
 
-function findAsset(rel: GhRelease, name: string): GhAsset | null {
-  return rel.assets.find((a) => a.name === name) ?? null;
+function readTarSize(header: Uint8Array): number {
+  const raw = Buffer.from(header.subarray(124, 136))
+    .toString("utf8")
+    .replace(/\0/g, "")
+    .trim();
+  if (raw === "") return 0;
+  const size = Number.parseInt(raw, 8);
+  return Number.isFinite(size) && size >= 0 ? size : 0;
+}
+
+function extractFilesFromNpmTarball(
+  tarballGz: Buffer,
+  wantedFiles: string[]
+): Map<string, Buffer> {
+  const wanted = new Set(wantedFiles);
+  const out = new Map<string, Buffer>();
+  const tar = gunzipSync(tarballGz);
+  let offset = 0;
+  while (offset + 512 <= tar.length) {
+    const header = tar.subarray(offset, offset + 512);
+    const allZero = header.every((b) => b === 0);
+    if (allZero) break;
+    const name = Buffer.from(header.subarray(0, 100))
+      .toString("utf8")
+      .replace(/\0.*$/, "");
+    const size = readTarSize(header);
+    const contentStart = offset + 512;
+    const contentEnd = contentStart + size;
+    if (contentEnd > tar.length) break;
+
+    if (wanted.has(name)) {
+      out.set(name, Buffer.from(tar.subarray(contentStart, contentEnd)));
+      if (out.size === wanted.size) break;
+    }
+
+    offset = contentStart + Math.ceil(size / 512) * 512;
+  }
+  return out;
 }
 
 async function downloadBuffer(url: string, maxBytes: number): Promise<Buffer> {
   const res = await fetch(url, {
-    headers: { "User-Agent": "print-md-viewer-updater" },
+    headers: { "User-Agent": "print-md-desktop-app-updater" },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
@@ -286,44 +378,54 @@ function checkProblem(reason: string): { available: null; reason: string } {
   return { available: null, reason };
 }
 
-export async function checkForUpdate(): Promise<{
+export async function checkForUpdate(channelOverride?: UpdateChannel): Promise<{
   available: UpdateManifest | null;
   reason?: string;
 }> {
   phase = "checking";
   lastError = null;
   try {
-    const releases = await fetchWebReleases();
-    const newest = pickNewest(releases);
+    const channel = channelOverride ?? selectedChannel();
+    const meta = await fetchRegistryMetadata();
+    const picked = getVersionFromChannel(meta, channel);
 
     // Record the check time regardless of outcome.
     const state = await readState();
     state.lastCheckAt = new Date().toISOString();
     await writeState(state);
 
-    if (!newest) {
+    if (!picked) {
       phase = "idle";
       availableVersion = null;
-      return { available: null, reason: "no web-ui releases found" };
+      return { available: null, reason: `no web-ui package found for ${channel} channel` };
     }
 
-    // Cache the newest release so downloadAndStage need not re-fetch the list.
-    const newestVersion = tagVersion(newest.tag_name);
-    if (newestVersion) cachedRelease = { version: newestVersion, rel: newest };
+    cachedPackageVersion = picked;
 
-    const manifestAsset = findAsset(newest, "update-manifest.json");
-    const sigAsset = findAsset(newest, "update-manifest.json.sig");
-    if (!manifestAsset || !sigAsset) {
-      // A web-v release that lacks its metadata is a publishing defect, not a
-      // benign "nothing new" — surface it (phase error → manual check toasts).
-      return checkProblem("release missing manifest or signature asset");
+    const tarballUrl = picked.pkg.dist?.tarball;
+    const tarballIntegrity = picked.pkg.dist?.integrity;
+    if (typeof tarballUrl !== "string" || typeof tarballIntegrity !== "string") {
+      return checkProblem("package version missing dist.tarball or dist.integrity");
     }
 
-    // The two metadata files are independent — fetch them concurrently.
-    const [manifestBytes, sigBytes] = await Promise.all([
-      downloadBuffer(manifestAsset.browser_download_url, MAX_META_BYTES),
-      downloadBuffer(sigAsset.browser_download_url, MAX_META_BYTES),
+    const tarballBytes = await downloadBuffer(tarballUrl, MAX_PACKAGE_BYTES);
+    const tarballCheck = verifyTarballIntegrity(tarballBytes, tarballIntegrity);
+    if (!tarballCheck.ok) {
+      return checkProblem(`package tarball verification failed: ${tarballCheck.reason}`);
+    }
+
+    const files = extractFilesFromNpmTarball(tarballBytes, [
+      "package/update-manifest.json",
+      "package/update-manifest.json.sig",
     ]);
+    const manifestBytes = files.get("package/update-manifest.json");
+    const sigBytes = files.get("package/update-manifest.json.sig");
+    if (!manifestBytes || !sigBytes) {
+      return checkProblem("package tarball missing update-manifest.json or update-manifest.json.sig");
+    }
+    if (manifestBytes.byteLength > MAX_META_BYTES || sigBytes.byteLength > MAX_META_BYTES) {
+      return checkProblem("manifest metadata files exceed size cap");
+    }
 
     // Signature: fail closed. Distinguish "key not configured" (placeholder
     // shipped) from a genuine verification failure so the diagnostic is useful.
@@ -342,6 +444,12 @@ export async function checkForUpdate(): Promise<{
       manifest = validateManifest(JSON.parse(manifestBytes.toString("utf8")));
     } catch (e) {
       return checkProblem(`manifest validation failed: ${(e as Error).message}`);
+    }
+
+    if (manifest.version !== picked.version) {
+      return checkProblem(
+        `manifest version ${manifest.version} does not match package version ${picked.version}`
+      );
     }
 
     // Compatibility gate.
@@ -421,32 +529,55 @@ export async function downloadAndStage(
     try {
       await mkdir(downloadsDir, { recursive: true });
 
-      // Locate the bundle on the matching web-v* release. Reuse the release
-      // cached by checkForUpdate when it matches; otherwise fetch the list.
-      let rel: GhRelease | null =
-        cachedRelease?.version === version ? cachedRelease.rel : null;
-      if (!rel) {
-        const releases = await fetchWebReleases();
-        rel = releases.find((r) => tagVersion(r.tag_name) === version) ?? null;
+      // Locate exact package version metadata. Reuse cached metadata from
+      // checkForUpdate() when available; otherwise refetch from npm registry.
+      let pkg: RegistryPackageVersion | null =
+        cachedPackageVersion?.version === version ? cachedPackageVersion.pkg : null;
+      if (!pkg) {
+        const meta = await fetchRegistryMetadata();
+        pkg = getVersionByExact(meta, version);
       }
-      if (!rel) {
+      if (!pkg) {
         phase = "error";
-        return { staged: false, reason: "release for staged version not found" };
-      }
-      const bundleAsset = findAsset(rel, manifest.assets.bundle.name);
-      if (!bundleAsset) {
-        phase = "error";
-        return { staged: false, reason: "bundle asset not found on release" };
+        return { staged: false, reason: "package metadata for staged version not found" };
       }
 
-      // Download to .part, then verify, then rename to .zip. The signed
-      // manifest's size is trusted (sig verified upstream), so cap the download
-      // near it, bounded by the absolute ceiling.
-      const cap = Math.min(
-        MAX_BUNDLE_BYTES,
-        Math.max(manifest.assets.bundle.size, 0) + 4096
-      );
-      const zipBytes = await downloadBuffer(bundleAsset.browser_download_url, cap);
+      const tarballUrl = pkg.dist?.tarball;
+      const tarballIntegrity = pkg.dist?.integrity;
+      if (typeof tarballUrl !== "string" || typeof tarballIntegrity !== "string") {
+        phase = "error";
+        return {
+          staged: false,
+          reason: "package version missing dist.tarball or dist.integrity",
+        };
+      }
+
+      const tarballBytes = await downloadBuffer(tarballUrl, MAX_PACKAGE_BYTES);
+      const tarballCheck = verifyTarballIntegrity(tarballBytes, tarballIntegrity);
+      if (!tarballCheck.ok) {
+        phase = "error";
+        return {
+          staged: false,
+          reason: `package tarball verification failed: ${tarballCheck.reason}`,
+        };
+      }
+
+      const extracted = extractFilesFromNpmTarball(tarballBytes, [
+        `package/${manifest.assets.bundle.name}`,
+      ]);
+      const zipBytes = extracted.get(`package/${manifest.assets.bundle.name}`);
+      if (!zipBytes) {
+        phase = "error";
+        return {
+          staged: false,
+          reason: `bundle file ${manifest.assets.bundle.name} not found in package tarball`,
+        };
+      }
+      if (zipBytes.byteLength > MAX_BUNDLE_BYTES) {
+        phase = "error";
+        return { staged: false, reason: "bundle file exceeds size cap" };
+      }
+
       await writeFile(partPath, zipBytes);
 
       const integrity = verifyBundle(zipBytes, manifest.assets.bundle);

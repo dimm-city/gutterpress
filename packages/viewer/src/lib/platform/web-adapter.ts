@@ -154,7 +154,8 @@ function deepMergeSettings(base: AppSettings, patch: DeepPartial<AppSettings>): 
 const webUpdater: UpdaterApi = {
   getStatus: () =>
     rejectNotImplemented("updater.getStatus") as Promise<UpdaterStatus>,
-  check: () => rejectNotImplemented("updater.check") as Promise<UpdaterStatus>,
+  check: (_channel?: AppSettings['updates']['channel']) =>
+    rejectNotImplemented("updater.check") as Promise<UpdaterStatus>,
   applyNow: () => rejectNotImplemented("updater.applyNow"),
   markReady: () => rejectNotImplemented("updater.markReady"),
   onEvent: () => () => {},

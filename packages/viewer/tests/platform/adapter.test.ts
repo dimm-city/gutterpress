@@ -15,7 +15,10 @@ function makeBridge() {
     };
   const bridge = {
     apiVersion: 1,
-    updater: { getStatus: rec("updater.getStatus", Promise.resolve({})) },
+    updater: {
+      getStatus: rec("updater.getStatus", Promise.resolve({})),
+      check: rec("updater.check", Promise.resolve({})),
+    },
     onNativeThemeUpdated: rec("onNativeThemeUpdated", () => {}),
     startPreview: rec("startPreview", Promise.resolve({ url: "x" })),
     stopPreview: rec("stopPreview", Promise.resolve({ stopped: true })),
@@ -71,6 +74,17 @@ test("getPlatform() falls back to WebAdapter without a bridge", () => {
   globalThis.window = {};
   expect(isDesktop()).toBe(false);
   expect(getPlatform()).toBeInstanceOf(WebAdapter);
+});
+
+test("ElectronAdapter updater.check forwards the selected update channel", async () => {
+  const { bridge, calls } = makeBridge();
+  // @ts-expect-error test global
+  globalThis.window = { electron: bridge };
+  const p = new ElectronAdapter();
+
+  await p.updater.check("beta");
+
+  expect(calls.find((c) => c.method === "updater.check")?.args).toEqual(["beta"]);
 });
 
 test("ElectronAdapter maps openFolder → openDirectory and delegates 1:1", async () => {
@@ -593,4 +607,3 @@ test("WebAdapter.build({format:'html'}) throws when the project has no markdown 
     globalThis.window = undefined;
   }
 });
-
