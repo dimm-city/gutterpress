@@ -152,6 +152,17 @@ print-md validate [input-dir] [options]
   --format          text | json               (default: text)
 ```
 
+### `print-md repair`
+
+Diagnose and repair the project's version history — no git knowledge (and no system git) required. Detects the states that block syncing (an update that didn't finish, a leftover lock from a crash, a damaged or missing history) and applies the same safe repair the viewer offers: a safety-copy zip is saved first, and nothing changes without your confirmation.
+
+```sh
+print-md repair [dir]
+
+  --check     Diagnose only — never change anything (exit 1 when repair is needed)
+  --yes       Approve the repair without prompting
+```
+
 ## Plugins
 
 print-md uses [markdown-it](https://github.com/markdown-it/markdown-it) under the hood, so any plugin that follows the `(md, options) => void` signature works out of the box. Load them in `manifest.yaml`:
