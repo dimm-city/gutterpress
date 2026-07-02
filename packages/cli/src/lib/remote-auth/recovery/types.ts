@@ -34,6 +34,7 @@ export type SyncErrorKind =
   | "wrong_remote_or_branch"
   | "interrupted_rebase"
   | "interrupted_cherry_pick"
+  | "interrupted_merge"
   | "unknown";
 
 // ── Primary-action keys ──────────────────────────────────────────────────────

@@ -266,6 +266,21 @@ function buildGuidance(
         supportDetails: `Interrupted cherry-pick detected. ${supportDetails}`,
       };
 
+    case "interrupted_merge":
+      return {
+        ...base,
+        userSummary:
+          "Your project's last update didn't finish, so it can't be synced yet.",
+        recommendedNextStep:
+          "Let print-md undo the unfinished update and return your project to its last working state.",
+        recommendedAction: "Restore to normal",
+        recommendedActionKey: "restore_repo",
+        safeNextSteps: [
+          "None of your content files are deleted.",
+        ],
+        supportDetails: `Interrupted merge detected. ${supportDetails}`,
+      };
+
     case "wrong_remote_or_branch":
       return {
         ...base,

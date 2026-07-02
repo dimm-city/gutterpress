@@ -68,6 +68,7 @@ export type SyncErrorKind =
   | "wrong_remote_or_branch"
   | "interrupted_rebase"
   | "interrupted_cherry_pick"
+  | "interrupted_merge"
   | "unknown";
 
 export interface RecoveryContext {
@@ -305,7 +306,10 @@ export function classifyFromHealth(health: RepoHealth): SyncErrorKind | null {
   if (!health.hasGitDir) return "missing_git_dir";
   if (health.hasStaleLock && (health.lockAgeMs ?? 0) > STALE_LOCK_THRESHOLD_MS)
     return "stale_lock";
-  if (health.hasInterruptedMerge) return "merge_conflict";
+  // An abandoned native-git merge (MERGE_HEAD) has its own abort-based repair
+  // (recover-interrupted-merge.ts) — routing it to merge_conflict would run the
+  // pull-based conflict flow against a repo that is mid-merge, not diverged.
+  if (health.hasInterruptedMerge) return "interrupted_merge";
   // An interrupted rebase / cherry-pick is NOT a non-fast-forward push rejection
   // and is NOT an in-tree merge conflict. Each now has a dedicated abort-based
   // repair (recover-interrupted-rebase.ts / recover-interrupted-cherry-pick.ts):

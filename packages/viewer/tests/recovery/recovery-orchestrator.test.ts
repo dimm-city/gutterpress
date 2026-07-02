@@ -99,7 +99,7 @@ describe("classifyFromHealth priority chain (real code)", () => {
     ).toBe("stale_lock");
   });
 
-  test("merge_conflict beats rebase and detached", () => {
+  test("interrupted_merge beats rebase and detached", () => {
     expect(
       classifyFromHealth({
         ...makeGoodHealth(),
@@ -107,7 +107,7 @@ describe("classifyFromHealth priority chain (real code)", () => {
         hasInterruptedRebase: true,
         isDetachedHead: true,
       }),
-    ).toBe("merge_conflict");
+    ).toBe("interrupted_merge");
   });
 
   test("interrupted rebase maps to interrupted_rebase (first-class, beats detached_head)", () => {

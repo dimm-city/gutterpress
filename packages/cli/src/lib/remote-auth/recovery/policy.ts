@@ -164,6 +164,19 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     mayChangeRemote: false,
     automate: false,
   },
+  // An interrupted merge (MERGE_HEAD left by native git run outside the app)
+  // is aborted the same way: the half-applied index/worktree state is cleared
+  // and the marker files removed, resetting local files to the last working
+  // state — so it always makes a backup first and always asks to confirm.
+  interrupted_merge: {
+    risk: "medium",
+    createBackup: true,
+    requireConfirmation: true,
+    mayChangeLocalFiles: true,
+    mayChangeGitMetadata: true,
+    mayChangeRemote: false,
+    automate: false,
+  },
   unknown: {
     risk: "none",
     createBackup: false,

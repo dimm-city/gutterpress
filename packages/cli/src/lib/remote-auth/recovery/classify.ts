@@ -222,6 +222,11 @@ export function classifyGitError(err: unknown, health?: RepoHealth): SyncErrorKi
     // never fires and the repo is sent down the (wrong) detached-head rescue.
     if (health.hasInterruptedRebase) return "interrupted_rebase";
     if (health.hasInterruptedCherryPick) return "interrupted_cherry_pick";
+    // An abandoned native-git merge (MERGE_HEAD + conflict markers in tracked
+    // files) must be caught BEFORE any sync work: left unclassified it falls
+    // through to "unknown" and — worse — the next sync would snapshot the
+    // literal conflict markers into history and push them.
+    if (health.hasInterruptedMerge) return "interrupted_merge";
     if (health.isDetachedHead) return "detached_head";
     if (health.hasStaleLock) return "stale_lock";
   }

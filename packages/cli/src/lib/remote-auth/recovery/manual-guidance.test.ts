@@ -25,6 +25,7 @@ const EXPECTED: Record<SyncErrorKind, RecoveryActionKey> = {
   wrong_remote_or_branch: "check_connection",
   interrupted_rebase: "restore_repo",
   interrupted_cherry_pick: "restore_repo",
+  interrupted_merge: "restore_repo",
   // "Try again" copy → retry the sync (not a dead no-op).
   unknown: "sync",
 };
@@ -51,6 +52,7 @@ describe("makeManualGuidance — machine action key", () => {
       "unrelated_histories",
       "interrupted_rebase",
       "interrupted_cherry_pick",
+      "interrupted_merge",
     ];
     for (const kind of backupKinds) {
       // With a backup: exactly one safety-copy line, affirming the copy exists.

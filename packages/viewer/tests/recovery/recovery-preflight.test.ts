@@ -72,10 +72,10 @@ describe("classifyFromHealth (real implementation)", () => {
     ).toBe("missing_git_dir");
   });
 
-  test("interrupted merge → merge_conflict", () => {
+  test("interrupted merge → interrupted_merge (first-class abort repair)", () => {
     expect(
       classifyFromHealth({ ...makeHealthy(), hasInterruptedMerge: true }),
-    ).toBe("merge_conflict");
+    ).toBe("interrupted_merge");
   });
 
   test("interrupted rebase → interrupted_rebase (first-class abort repair)", () => {
@@ -111,7 +111,7 @@ describe("classifyFromHealth (real implementation)", () => {
     // merge check precedes detached check in classifyFromHealth
     expect(
       classifyFromHealth({ ...makeHealthy(), hasInterruptedMerge: true, isDetachedHead: true }),
-    ).toBe("merge_conflict");
+    ).toBe("interrupted_merge");
   });
 });
 

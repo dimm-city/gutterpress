@@ -32,6 +32,7 @@ import { recover as recoverUnrelatedHistories } from "./recover-unrelated-histor
 import { recover as recoverWrongRemote } from "./recover-wrong-remote.ts";
 import { recover as recoverInterruptedRebase } from "./recover-interrupted-rebase.ts";
 import { recover as recoverInterruptedCherryPick } from "./recover-interrupted-cherry-pick.ts";
+import { recover as recoverInterruptedMerge } from "./recover-interrupted-merge.ts";
 
 // ── Unknown-kind fallback ─────────────────────────────────────────────────────
 
@@ -117,6 +118,9 @@ export async function recover(
       break;
     case "interrupted_cherry_pick":
       result = await recoverInterruptedCherryPick(ctx, error);
+      break;
+    case "interrupted_merge":
+      result = await recoverInterruptedMerge(ctx, error);
       break;
     case "unknown":
       result = await recoverUnknown(ctx, error);
