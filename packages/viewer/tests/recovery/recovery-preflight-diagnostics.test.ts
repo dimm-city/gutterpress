@@ -27,7 +27,7 @@ import {
   buildPreflightDiagnostics,
   type RepoHealth,
 } from "../../electron/recovery-bridge";
-import { classifyFromHealth } from "../../../cli/src/lib/remote-auth/recovery/classify.ts";
+import { classifyFromHealth } from "@dimm-city/print-md";
 import { resolveLogger } from "../../../cli/src/lib/remote-auth/operation-log.ts";
 
 // A healthy repo: no structural condition.
