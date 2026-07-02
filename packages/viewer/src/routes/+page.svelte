@@ -2428,6 +2428,11 @@
         // An update was downloaded + staged — the banner appears; no toast.
         updateReadyVersion = status.stagedVersion;
         updateBannerDismissed = false;
+      } else if (status.phase === "downloading") {
+        // The check resolves as soon as the feed answers; the installer keeps
+        // downloading in the background and the "staged" event shows the
+        // banner when it lands.
+        toast?.info("Update found — downloading in the background.");
       } else if (status.phase === "error") {
         toast?.error(status.error ?? "Update check failed.");
       } else {
@@ -2443,8 +2448,14 @@
   async function applyUpdate() {
     if (!isDesktop()) return;
     try {
-      await getPlatform().updater.applyNow();
-      // Main quits and installs the update, then relaunches; nothing more to do.
+      const result = await getPlatform().updater.applyNow();
+      // On success main quits, installs the update, and relaunches — this
+      // code never runs. A resolved { applied: false } means the staged
+      // update vanished (state drift); say so instead of silently no-oping.
+      if (!result.applied) {
+        updateReadyVersion = null;
+        toast?.error("The update could not be applied — try checking for updates again.");
+      }
     } catch (e) {
       toast?.error(e instanceof Error ? e.message : "Could not apply update.");
     }

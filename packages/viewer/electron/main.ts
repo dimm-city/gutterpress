@@ -38,11 +38,11 @@ import {
   listRecovery as listRecoveryStore,
 } from "./recovery";
 import {
+  initUpdater,
   updaterSupported,
   checkForUpdates,
   installNow,
   getStatus as getUpdaterStatus,
-  MAC_UPDATE_HINT,
 } from "./updater";
 import type { UpdaterEventPayload } from "./bridge-types";
 import {
@@ -1862,7 +1862,6 @@ registerPrefsHooks({
 // Expose doctor-route hooks through globalThis so the SvelteKit handler never
 // imports `electron` directly in the packaged app.
 registerDoctorHooks({
-  getUpdaterStatus: async () => getUpdaterStatus(),
   getViewerVersion: () => app.getVersion(),
 });
 
@@ -2800,21 +2799,34 @@ ipcMain.handle(
 function sendUpdaterEvent(event: UpdaterEventPayload) {
   mainWindow?.webContents.send("updater:event", event);
 }
+initUpdater(sendUpdaterEvent);
 
 ipcMain.handle("updater:getStatus", async () => {
   return getUpdaterStatus();
 });
 
 ipcMain.handle("updater:check", async () => {
-  // Manual checks on macOS get an honest pointer at GitHub Releases instead
-  // of a misleading "You're up to date".
-  if (app.isPackaged && process.platform === "darwin") {
-    return { ...getUpdaterStatus(), phase: "error", error: MAC_UPDATE_HINT };
-  }
-  return checkForUpdates(sendUpdaterEvent);
+  // Platform gating (incl. the macOS "download from GitHub" hint) lives
+  // inside checkForUpdates() so every caller gets the same honest status.
+  return checkForUpdates();
 });
 
 ipcMain.handle("updater:applyNow", async () => {
+  // Flush unsaved editor state BEFORE the installer spawns: quitAndInstall
+  // launches the NSIS installer (Windows) synchronously and only then quits,
+  // so the installer would otherwise sit waiting on process exit while the
+  // close-gate flush (up to 5s) still runs. Flushing here keeps that window
+  // empty and the data safe; rendererDirty=false afterwards means the close
+  // gate won't need a second flush during the quit sequence.
+  if (rendererDirty && mainWindow && !mainWindow.isDestroyed()) {
+    await new Promise<void>((resolve) => {
+      flushResolve = resolve;
+      mainWindow!.webContents.send("app:flushBeforeClose");
+      // Same watchdog budget as the close gate — never block the install.
+      setTimeout(resolve, 5000);
+    });
+    flushResolve = null;
+  }
   return installNow();
 });
 
@@ -2900,9 +2912,16 @@ app.whenReady().then(async () => {
   // recorded in updater status and surfaced via the "error" event; nothing
   // here can block or break startup.
   if (updaterSupported()) {
-    checkForUpdates(sendUpdaterEvent).catch((err) => {
+    checkForUpdates().catch((err) => {
       console.warn("[updater] background update check failed (non-fatal):", err);
     });
+    // One-time cleanup of the deleted hot-swap updater's userData store
+    // (web-runtime/ bundle versions + pointer files) left behind by
+    // pre-0.7 builds. App-generated cache only; best-effort.
+    rm(path.join(app.getPath("userData"), "web-runtime"), {
+      recursive: true,
+      force: true,
+    }).catch(() => {});
   }
 
   // Pre-warm the lib graph in parallel with SPA boot. The first call to

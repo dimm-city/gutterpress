@@ -44,9 +44,7 @@ declare global {
   interface UpdaterStatus {
     currentVersion: string | null;
     stagedVersion: string | null;
-    availableVersion: string | null;
     phase: "idle" | "checking" | "downloading" | "staged" | "error";
-    lastCheckAt: string | null;
     error: string | null;
   }
 

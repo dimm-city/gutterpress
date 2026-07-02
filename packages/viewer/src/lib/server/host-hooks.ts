@@ -6,5 +6,4 @@ export {
   type DoctorHooks,
   type OpenDialogOptions,
   type SaveDialogOptions,
-  type UpdaterStatus,
 } from '../../../electron/server-bridge/host-hooks';

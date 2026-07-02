@@ -34,12 +34,7 @@ export interface DesktopHooks {
   getUserDataPath: () => string;
 }
 
-export interface UpdaterStatus {
-  currentVersion: string | null;
-}
-
 export interface DoctorHooks {
-  getUpdaterStatus: () => Promise<UpdaterStatus>;
   getViewerVersion: () => string;
 }
 

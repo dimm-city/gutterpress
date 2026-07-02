@@ -26,7 +26,7 @@ import type { UpdaterStatus, UpdaterEventPayload } from "./bridge-types";
 
 const { autoUpdater } = electronUpdater;
 
-export const MAC_UPDATE_HINT =
+const MAC_UPDATE_HINT =
   "Automatic updates aren't available on macOS yet — download the latest release from GitHub.";
 
 /**
@@ -43,76 +43,85 @@ export function updaterSupported(): boolean {
 
 // In-memory status mirror for the renderer's getStatus() polling. The
 // authoritative state lives inside electron-updater; this only tracks what
-// the UI needs between events.
+// the UI needs between events. `downloadedVersion` deliberately survives a
+// later "update-not-available" check: the downloaded installer still applies
+// on quit (autoInstallOnAppQuit), so reporting it staged stays truthful.
 let phase: UpdaterStatus["phase"] = "idle";
 let lastError: string | null = null;
-let availableVersion: string | null = null;
 let downloadedVersion: string | null = null;
-let lastCheckAt: string | null = null;
 
-let wired = false;
+let emitEvent: (event: UpdaterEventPayload) => void = () => {};
 let checkInFlight: Promise<void> | null = null;
 
 export function getStatus(): UpdaterStatus {
   return {
     currentVersion: app.getVersion(),
     stagedVersion: downloadedVersion,
-    availableVersion,
     phase,
-    lastCheckAt,
     error: lastError,
   };
 }
 
-function wireEvents(onEvent: (event: UpdaterEventPayload) => void): void {
-  if (wired) return;
-  wired = true;
+/**
+ * Wire the electron-updater listeners and the single event sink for renderer
+ * push events. Call ONCE from main.ts before any checkForUpdates() call —
+ * events always flow to this sink, never to a per-call callback (a per-call
+ * parameter would advertise routing the implementation can't honor).
+ */
+export function initUpdater(onEvent: (event: UpdaterEventPayload) => void): void {
+  emitEvent = onEvent;
   autoUpdater.autoDownload = true;
   // If the user quits without clicking the banner, install the downloaded
   // update on the way out rather than re-downloading next launch.
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on("update-available", (info) => {
     phase = "downloading";
-    availableVersion = info.version;
-    onEvent({ type: "available", version: info.version });
+    emitEvent({ type: "available", version: info.version });
   });
   autoUpdater.on("update-not-available", () => {
     phase = "idle";
-    availableVersion = null;
-    onEvent({ type: "uptodate" });
+    emitEvent({ type: "uptodate" });
   });
   autoUpdater.on("update-downloaded", (info) => {
     phase = "staged";
     downloadedVersion = info.version;
-    onEvent({ type: "staged", version: info.version });
+    emitEvent({ type: "staged", version: info.version });
   });
   autoUpdater.on("error", (err) => {
     phase = "error";
     lastError = err instanceof Error ? err.message : String(err);
-    onEvent({ type: "error", message: lastError });
+    emitEvent({ type: "error", message: lastError });
   });
 }
 
 /**
- * Check the GitHub release feed and, when a newer version exists, download it
- * before resolving — so a manual "Check for updates" resolves with
- * stagedVersion already set and the renderer shows the restart banner
- * immediately instead of a misleading "up to date" toast mid-download.
- * Concurrent calls (manual check racing the launch check) share one run.
- * Never throws; failures land in phase/error and the "error" event.
+ * Check the GitHub release feed. Resolves once the CHECK completes — when an
+ * update exists the download continues in the background (autoDownload) and
+ * the "staged" event / getStatus().stagedVersion reports completion, so a
+ * manual "Check for updates" never pins the renderer's spinner to a
+ * multi-minute download. The returned status distinguishes the outcomes:
+ * phase "downloading" (update found, fetching), "staged", "error", or "idle"
+ * (up to date). Concurrent calls share one run. Never throws.
  */
-export async function checkForUpdates(
-  onEvent: (event: UpdaterEventPayload) => void
-): Promise<UpdaterStatus> {
-  if (!updaterSupported()) return getStatus();
-  wireEvents(onEvent);
+export async function checkForUpdates(): Promise<UpdaterStatus> {
+  if (!updaterSupported()) {
+    // Manual checks on macOS get an honest pointer at GitHub Releases instead
+    // of a silent idle status that reads as "you're up to date".
+    if (app.isPackaged && process.platform === "darwin") {
+      phase = "error";
+      lastError = MAC_UPDATE_HINT;
+    }
+    return getStatus();
+  }
   if (!checkInFlight) {
     phase = "checking";
     lastError = null;
-    lastCheckAt = new Date().toISOString();
     checkInFlight = (async () => {
       const result = await autoUpdater.checkForUpdates();
-      if (result?.downloadPromise) await result.downloadPromise;
+      // The check itself is done; don't await the download — just make sure
+      // its rejection is observed (the "error" listener records the failure).
+      result?.downloadPromise?.catch(() => {});
+      // No update → the "update-not-available" listener already set idle.
     })()
       .catch((err) => {
         // The "error" listener above already recorded phase/lastError for
@@ -135,8 +144,16 @@ export async function checkForUpdates(
 export function installNow(): { applied: boolean; version?: string } {
   if (!updaterSupported() || !downloadedVersion) return { applied: false };
   const version = downloadedVersion;
+  // Release the single-instance lock BEFORE quitAndInstall: on Linux,
+  // AppImageUpdater spawns the NEW AppImage synchronously inside install(),
+  // while this process is still alive and holding the lock — without this
+  // release the relaunched instance loses the lock race and quits, leaving
+  // the user with no window (update applied, app closed).
+  app.releaseSingleInstanceLock();
   // isSilent=false keeps the NSIS UI defaults; isForceRunAfter=true relaunches
-  // the app when the install completes.
+  // the app when the install completes. quitAndInstall calls app.quit(), so
+  // the unsaved-changes close gate in main.ts still runs (unlike the old
+  // app.exit(0) path, which skipped it).
   autoUpdater.quitAndInstall(false, true);
   return { applied: true, version };
 }

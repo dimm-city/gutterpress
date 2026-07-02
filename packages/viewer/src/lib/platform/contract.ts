@@ -700,7 +700,7 @@ export interface PlatformCapabilities {
 }
 
 export interface HostServices {
-  /** Integer IPC-surface version; mirrors DESKTOP_API in updater/contract.ts. */
+  /** Integer IPC-surface version; mirrors DESKTOP_API in electron/preload.ts. */
   readonly apiVersion: number;
   readonly updater: UpdaterApi;
 
