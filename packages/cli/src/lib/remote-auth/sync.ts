@@ -61,6 +61,13 @@ import {
   type TokenStore,
 } from "./token-store.ts";
 import { resolveLogger, shortOid } from "./operation-log.ts";
+// The single source of truth for git error decoding lives in the recovery
+// classifier — sync.ts consumes it rather than keeping parallel copies.
+import {
+  classifyTransportFailure,
+  isMergeConflictError,
+  isPushRejected,
+} from "./recovery/classify.ts";
 
 /**
  * isomorphic-git object cache, scoped to ONE operation (one function call)
@@ -366,97 +373,27 @@ async function resolveTransport(
   };
 }
 
-/** Classify a transport/merge failure into the D5/D7 outcome buckets. */
-function classifyFailure(e: unknown): "auth" | "offline" | null {
-  const err = e as {
-    code?: string;
-    data?: { statusCode?: number; prettyDetails?: string };
-    message?: string;
-  };
-  if (err?.code === "HttpError") {
-    const status = err.data?.statusCode;
-    if (status === 401 || status === 403) return "auth";
-  }
-  // A server-side push rejection (GitPushError) that is NOT a non-fast-forward
-  // (those are handled by isPushRejected → pull-first) is a permission/policy
-  // problem: fold its per-ref report-status (`data.prettyDetails`) into the
-  // scanned text so "permission denied"/"forbidden"/hook-declined surfaces as
-  // auth (the user reconnects), not a generic error or a false race message.
-  const msg = `${err?.message ?? String(e)} ${err?.data?.prettyDetails ?? ""}`;
-  if (
-    /\b401\b|\b403\b|unauthorized|authentication|not authorized|permission denied|forbidden|access denied|not allowed to push|pre-receive hook declined|hook declined/i.test(
-      msg,
-    )
-  ) {
-    return "auth";
-  }
-  if (
-    /ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|network|fetch failed|couldn't reach|socket hang ?up/i.test(
-      msg,
-    )
-  ) {
-    return "offline";
-  }
-  return null;
-}
-
 /**
  * The failure arms shared verbatim by {@link SyncOutcome}, {@link PullOutcome}
  * and {@link PushOutcome} — so one classifier serves all three operations.
+ * Decoding delegates to the shared recovery classifier
+ * (classifyTransportFailure): auth_required → "auth", network_unavailable →
+ * "offline", anything else → the generic "error" arm.
  */
 function failureOutcome(
   e: unknown,
   snapshotId?: string,
 ): { status: "auth" | "offline" | "error"; message: string; snapshotId?: string } {
-  const kind = classifyFailure(e);
+  const kind = classifyTransportFailure(e);
   const base = snapshotId ? { snapshotId } : {};
-  if (kind === "auth") return { status: "auth", message: MSG_AUTH, ...base };
-  if (kind === "offline") return { status: "offline", message: MSG_OFFLINE, ...base };
+  if (kind === "auth_required") return { status: "auth", message: MSG_AUTH, ...base };
+  if (kind === "network_unavailable") return { status: "offline", message: MSG_OFFLINE, ...base };
   return {
     status: "error",
     message:
       "Syncing didn't complete. Your work is saved on this computer — please try again.",
     ...base,
   };
-}
-
-function isMergeConflictError(
-  e: unknown,
-): e is { data: { filepaths: string[]; bothModified: string[]; deleteByUs: string[]; deleteByTheirs: string[] } } {
-  return (e as { code?: string })?.code === "MergeConflictError";
-}
-
-function isPushRejected(e: unknown): boolean {
-  const code = (e as { code?: string })?.code;
-  // Client-side check: isomorphic-git compares against the server's fresh ref
-  // advertisement before uploading and throws PushRejectedError itself. It
-  // carries a typed `data.reason` — ONLY a genuine non-fast-forward is fixable
-  // by pulling first. Other reasons (e.g. "tag-exists") are NOT, so they must
-  // fall through to the friendly auth/error classifier (a permission/policy
-  // rejection that pulling can't fix should never trigger the pull-first/retry
-  // loop — that wastes round-trips and emits a confusing "someone else synced"
-  // message instead of a useful one). A reason-less PushRejectedError keeps the
-  // historical non-fast-forward meaning for back-compat.
-  if (code === "PushRejectedError") {
-    const reason = (e as { data?: { reason?: string } })?.data?.reason;
-    return reason === undefined || reason === "not-fast-forward";
-  }
-  // Server-side check: if the ref moves BETWEEN the advertisement and the
-  // server applying the update, the rejection arrives as a report-status
-  // "ng <ref> non-fast-forward" line, surfaced as GitPushError. Only the
-  // report-status that actually says non-fast-forward is a pull-first case; a
-  // permission/hook decline ("permission denied", "pre-receive hook declined")
-  // is an auth-class problem handled by classifyFailure, not a race.
-  if (code === "GitPushError") {
-    const msg =
-      ((e as { data?: { prettyDetails?: string } })?.data?.prettyDetails ?? "") +
-      " " +
-      ((e as Error)?.message ?? "");
-    return /non-fast-forward|would not be a fast-forward|not a simple fast-forward/i.test(
-      msg,
-    );
-  }
-  return false;
 }
 
 export function conflictFilesFrom(data: {

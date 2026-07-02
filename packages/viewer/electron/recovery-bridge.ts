@@ -285,44 +285,11 @@ export async function buildRecoveryContext(
 }
 
 // ── classifyFromHealth ────────────────────────────────────────────────────────
-
-const STALE_LOCK_THRESHOLD_MS = 120_000; // 2 minutes
-// MUST stay in sync with recover-stale-lock.ts's STALE_THRESHOLD_MS
-// (packages/cli/src/lib/remote-auth/recovery/recover-stale-lock.ts). If the
-// preflight gate is SHORTER than the handler's threshold, a lock whose age sits
-// between the two values passes preflight (classified stale_lock) but the
-// handler then returns retry_later ("too fresh") — an infinite preflight→retry
-// loop. Keeping both at 120_000 guarantees the preflight only routes a lock the
-// handler will actually act on. (BUG 2)
-
-/**
- * Classify a structural repo condition from a RepoHealth snapshot alone.
- * Used by the preflight path at project-open, where there is no thrown error
- * to classify — only the health facts.
- *
- * Returns null for a healthy repo (nothing to recover).
- */
-export function classifyFromHealth(health: RepoHealth): SyncErrorKind | null {
-  if (!health.hasGitDir) return "missing_git_dir";
-  if (health.hasStaleLock && (health.lockAgeMs ?? 0) > STALE_LOCK_THRESHOLD_MS)
-    return "stale_lock";
-  // An abandoned native-git merge (MERGE_HEAD) has its own abort-based repair
-  // (recover-interrupted-merge.ts) — routing it to merge_conflict would run the
-  // pull-based conflict flow against a repo that is mid-merge, not diverged.
-  if (health.hasInterruptedMerge) return "interrupted_merge";
-  // An interrupted rebase / cherry-pick is NOT a non-fast-forward push rejection
-  // and is NOT an in-tree merge conflict. Each now has a dedicated abort-based
-  // repair (recover-interrupted-rebase.ts / recover-interrupted-cherry-pick.ts):
-  // it saves a backup, then undoes the unfinished operation and returns the repo
-  // to its last working state — no longer the safe no-op that "unknown" was.
-  // ORDERING: these MUST precede the detached-head check because an in-progress
-  // rebase usually detaches HEAD; classifying it as detached_head would run the
-  // wrong (rescue-branch) repair instead of the abort.
-  if (health.hasInterruptedRebase) return "interrupted_rebase";
-  if (health.hasInterruptedCherryPick) return "interrupted_cherry_pick";
-  if (health.isDetachedHead) return "detached_head";
-  return null;
-}
+// The health-only preflight classifier now lives in the lib
+// (packages/cli/src/lib/remote-auth/recovery/classify.ts, exported through the
+// @dimm-city/print-md barrel as `classifyFromHealth`) — ONE ordering and ONE
+// stale-lock age threshold shared with the error-path classifier and the
+// stale-lock handler. main.ts calls lib.classifyFromHealth(health) directly.
 
 // ── Preflight diagnostics (structured operation-log fields) ───────────────────
 
@@ -332,23 +299,30 @@ export function classifyFromHealth(health: RepoHealth): SyncErrorKind | null {
 export type LogData = Record<string, string | number | boolean | string[] | undefined>;
 
 /**
- * The SINGLE health signal that drove classification, mirroring
- * `classifyFromHealth`'s exact decision order. Used to record WHY a kind was
- * chosen in the operation log, so the logged reason always matches the kind.
- *
- * MUST stay in lockstep with classifyFromHealth's guard order — same guards,
- * same order — so a healthy repo maps to "none" and every recoverable repo maps
- * to the one signal that classifyFromHealth acted on.
+ * The SINGLE health signal that drove classification. Derived from the KIND
+ * classifyFromHealth returned (a pure mapping — it cannot drift from the
+ * classifier's decision order, because it never re-implements it).
  */
-export function preflightStructuralReason(health: RepoHealth): string {
-  if (!health.hasGitDir) return "health.missingGitDir";
-  if (health.hasStaleLock && (health.lockAgeMs ?? 0) > STALE_LOCK_THRESHOLD_MS)
-    return "health.hasStaleLock";
-  if (health.hasInterruptedMerge) return "health.hasInterruptedMerge";
-  if (health.hasInterruptedRebase) return "health.hasInterruptedRebase";
-  if (health.hasInterruptedCherryPick) return "health.hasInterruptedCherryPick";
-  if (health.isDetachedHead) return "health.isDetachedHead";
-  return "none";
+export function preflightStructuralReason(kind: SyncErrorKind | null): string {
+  switch (kind) {
+    case "missing_git_dir":
+      return "health.missingGitDir";
+    case "stale_lock":
+      return "health.hasStaleLock";
+    case "interrupted_merge":
+      return "health.hasInterruptedMerge";
+    case "interrupted_rebase":
+      return "health.hasInterruptedRebase";
+    case "interrupted_cherry_pick":
+      return "health.hasInterruptedCherryPick";
+    case "detached_head":
+      return "health.isDetachedHead";
+    case null:
+      return "none";
+    default:
+      // Kinds that cannot come from a health-only classification.
+      return "none";
+  }
 }
 
 /**
@@ -368,7 +342,7 @@ export function buildPreflightDiagnostics(
     repoDir,
     repoRootDiffers: repoDir !== openedDir,
     kind: kind ?? "none",
-    reason: preflightStructuralReason(health),
+    reason: preflightStructuralReason(kind),
     hasGitDir: health.hasGitDir,
     hasInterruptedMerge: health.hasInterruptedMerge,
     hasInterruptedRebase: health.hasInterruptedRebase,

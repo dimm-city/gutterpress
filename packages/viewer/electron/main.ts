@@ -69,10 +69,10 @@ import {
   handleConfirmResponse,
   rejectAllPendingConfirms,
   buildRecoveryContext,
-  classifyFromHealth,
   decideRunAgainAfterPreflight,
   buildPreflightDiagnostics,
   getConflictPreviewImpl,
+  type SyncErrorKind,
 } from "./recovery-bridge";
 import type {
   SnapshotEntry,
@@ -574,6 +574,9 @@ interface LibModule {
     err: unknown,
     health?: object,
   ) => string;
+  // Health-only preflight classifier (single source of truth in the lib's
+  // recovery/classify.ts — the viewer no longer keeps its own copy).
+  classifyFromHealth: (health: object) => string | null;
   inspectRepo: (ctx: { repoDir: string }) => Promise<{
     hasGitDir: boolean;
     currentBranch?: string;
@@ -2839,7 +2842,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       }
 
       const health = await lib.inspectRepo({ repoDir: openedDir });
-      const kind = classifyFromHealth(health);
+      const kind = lib.classifyFromHealth(health) as SyncErrorKind | null;
       if (kind === null) {
         // Healthy repo — release lock and schedule the normal initial sync.
         syncState.inFlight = false;

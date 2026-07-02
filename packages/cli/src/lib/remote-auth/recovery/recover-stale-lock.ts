@@ -53,6 +53,7 @@ import { readdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { gitDirFor } from "../../source-provider.ts";
+import { STALE_LOCK_MIN_AGE_MS } from "./classify.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";
 import { policyFor } from "./policy.ts";
 import type { RecoveryContext, RecoveryResult } from "./types.ts";
@@ -64,10 +65,11 @@ import type { RecoveryContext, RecoveryResult } from "./types.ts";
  * hold it. 2 minutes is the conservative safe minimum (most git operations
  * complete in under 10 seconds; 2 min gives a wide margin for slow machines).
  *
- * NOTE: kept at exactly 2 minutes (120_000 ms). The viewer's preflight uses the
- * same magnitude; do not change it without updating that constant in lockstep.
+ * Shared with the preflight classifier (classify.ts) so a lock young enough
+ * to pass preflight is exactly a lock this handler would defer on — one
+ * constant, no lockstep comments.
  */
-const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes (120_000 ms)
+const STALE_THRESHOLD_MS = STALE_LOCK_MIN_AGE_MS;
 
 /**
  * Known top-level lock files git may leave directly under `.git/`. These are

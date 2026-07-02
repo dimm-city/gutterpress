@@ -26,13 +26,13 @@
 import { describe, test, expect, afterEach } from "bun:test";
 import type { RepoHealth } from "@dimm-city/print-md";
 import {
-  classifyFromHealth,
   hostConfirmationGate,
   handleConfirmResponse,
   rejectAllPendingConfirms,
   buildRecoveryContext,
   setRecoveryBridgeWindow,
 } from "../../electron/recovery-bridge";
+import { classifyFromHealth } from "../../../cli/src/lib/remote-auth/recovery/classify.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -87,7 +87,9 @@ describe("classifyFromHealth priority chain (real code)", () => {
     ).toBe("missing_git_dir");
   });
 
-  test("stale_lock (old enough, ≥ 2 min) beats merge/rebase/detached", () => {
+  test("a specific interrupted-op repair beats the generic stale-lock cleanup", () => {
+    // The abort repair for the interrupted operation is the more specific fix;
+    // any leftover lock is re-detected (and cleared) on the following pass.
     expect(
       classifyFromHealth({
         ...makeGoodHealth(),
@@ -96,10 +98,20 @@ describe("classifyFromHealth priority chain (real code)", () => {
         hasInterruptedMerge: true,
         isDetachedHead: true,
       }),
+    ).toBe("interrupted_merge");
+  });
+
+  test("stale_lock (old enough, ≥ 2 min) classifies when it is the only condition", () => {
+    expect(
+      classifyFromHealth({
+        ...makeGoodHealth(),
+        hasStaleLock: true,
+        lockAgeMs: 150_000,
+      }),
     ).toBe("stale_lock");
   });
 
-  test("interrupted_merge beats rebase and detached", () => {
+  test("interrupted_rebase beats merge and detached", () => {
     expect(
       classifyFromHealth({
         ...makeGoodHealth(),
@@ -107,7 +119,7 @@ describe("classifyFromHealth priority chain (real code)", () => {
         hasInterruptedRebase: true,
         isDetachedHead: true,
       }),
-    ).toBe("interrupted_merge");
+    ).toBe("interrupted_rebase");
   });
 
   test("interrupted rebase maps to interrupted_rebase (first-class, beats detached_head)", () => {

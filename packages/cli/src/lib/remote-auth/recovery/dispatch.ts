@@ -151,7 +151,7 @@ export type {
   FaultPoint,
 } from "./types.ts";
 
-export { classifyGitError } from "./classify.ts";
+export { classifyGitError, classifyFromHealth } from "./classify.ts";
 export { inspectRepo } from "./inspect.ts";
 export { recoveryPolicy, policyFor, detachedHeadWithLocalChangesPolicy } from "./policy.ts";
 export { createRecoveryZip, assertZipReadable, zipEntries } from "./backup.ts";
