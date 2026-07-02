@@ -9,13 +9,8 @@
  *   - buildPreflightDiagnostics(openedDir, repoDir, health, kind) — a flat,
  *     secret-free LogData record with every health boolean + repo-root facts.
  *
- * classifyFromHealth itself lives in the LIB (single source of truth shared
- * with the error-path classifier) — imported from cli source here, the same
- * way this file already imports resolveLogger.
- *
- * A third test proves the FILE actually receives the structural fields when the
- * lib's resolveLogger writes buildPreflightDiagnostics output (review test-gap
- * #2).
+ * A third test proves the FILE actually receives the structural fields when
+ * resolveLogger writes buildPreflightDiagnostics output (review test-gap #2).
  */
 
 import { describe, test, expect } from "bun:test";
@@ -25,10 +20,10 @@ import path from "node:path";
 import {
   preflightStructuralReason,
   buildPreflightDiagnostics,
-  type RepoHealth,
-} from "../../electron/recovery-bridge";
-import { classifyFromHealth } from "@dimm-city/print-md";
-import { resolveLogger } from "../../../cli/src/lib/remote-auth/operation-log.ts";
+} from "./inspect.ts";
+import { classifyFromHealth } from "./classify.ts";
+import type { RepoHealth } from "./types.ts";
+import { resolveLogger } from "../operation-log.ts";
 
 // A healthy repo: no structural condition.
 const HEALTHY: RepoHealth = {

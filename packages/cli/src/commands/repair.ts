@@ -22,17 +22,16 @@ import * as readline from "node:readline/promises";
 import path from "node:path";
 
 import {
+  buildRecoveryContext,
   classifyFromHealth,
   defaultConfigDir,
-  diagnoseProjectRemote,
-  detectProjectSource,
   FileTokenStore,
   inspectRepo,
   recover,
 } from "../index.ts";
 import { makeManualGuidance } from "../lib/remote-auth/recovery/manual-guidance.ts";
 import type {
-  RecoveryContext,
+  ConfirmationGate,
   RecoveryResult,
   RepairConfirmation,
 } from "../lib/remote-auth/recovery/types.ts";
@@ -79,9 +78,18 @@ function printResult(result: RecoveryResult): void {
   }
 }
 
-export async function resolveRepairRepoDir(openedDir: string): Promise<string> {
-  const source = await detectProjectSource(openedDir);
-  return source.type === "local-git-folder" ? source.repoRoot : openedDir;
+/** Terminal confirmation gate: show the summary, then prompt (or honor --yes). */
+function terminalConfirmationGate(autoApprove: boolean): ConfirmationGate {
+  return {
+    confirmRepair: async (req) => {
+      console.log(describeRepair(req));
+      if (autoApprove) {
+        console.log("Proceeding (--yes).");
+        return true;
+      }
+      return promptYesNo("Apply this fix?");
+    },
+  };
 }
 
 export default defineCommand({
@@ -108,10 +116,17 @@ export default defineCommand({
   },
   async run({ args }) {
     const openedDir = path.resolve(args.dir ?? ".");
-    // A project may be opened at a subfolder of its repo — repair the repo root.
-    const repoDir = await resolveRepairRepoDir(openedDir);
 
-    const health = await inspectRepo({ repoDir });
+    // The lib resolves everything (the project's OWN repo root — never an
+    // ancestor repo — branch, remote, credential, backup slug); this command
+    // contributes only the terminal confirmation gate.
+    const ctx = await buildRecoveryContext({
+      projectDir: openedDir,
+      confirmation: terminalConfirmationGate(args.yes),
+      tokenStore: new FileTokenStore(defaultConfigDir()),
+    });
+
+    const health = await inspectRepo({ repoDir: ctx.repoDir });
     const kind = classifyFromHealth(health);
 
     if (kind === null) {
@@ -119,10 +134,7 @@ export default defineCommand({
       return;
     }
 
-    const guidance = makeManualGuidance(
-      { repoSlug: path.basename(repoDir) },
-      kind,
-    );
+    const guidance = makeManualGuidance(ctx, kind);
     console.log(`Found a problem: ${guidance.userSummary}`);
 
     if (args.check) {
@@ -130,44 +142,6 @@ export default defineCommand({
       process.exitCode = 1;
       return;
     }
-
-    // Resolve the remote + credential the structural repairs may need
-    // (fetching missing history, recovering a lost .git). Best-effort — a
-    // local-only project simply repairs without a remote.
-    const tokenStore = new FileTokenStore(defaultConfigDir());
-    let remoteUrl: string | undefined;
-    let credential;
-    let branch = health.currentBranch ?? "";
-    try {
-      const diag = await diagnoseProjectRemote(repoDir, { tokenStore });
-      remoteUrl = diag.remoteUrl;
-      branch = branch || diag.branch || "";
-      if (diag.remoteHost && diag.credentialPresent) {
-        credential = (await tokenStore.get(diag.remoteHost)) ?? undefined;
-      }
-    } catch {
-      // No remote info — the repair proceeds with local facts only.
-    }
-
-    const ctx: RecoveryContext = {
-      projectDir: openedDir,
-      repoDir,
-      branch,
-      remoteUrl,
-      repoSlug: path.basename(repoDir).replace(/[^a-zA-Z0-9_-]/g, "_") || "repo",
-      credential,
-      tokenStore,
-      confirmation: {
-        confirmRepair: async (req) => {
-          console.log(describeRepair(req));
-          if (args.yes) {
-            console.log("Proceeding (--yes).");
-            return true;
-          }
-          return promptYesNo("Apply this fix?");
-        },
-      },
-    };
 
     const result = await recover(kind, ctx);
     console.log("");

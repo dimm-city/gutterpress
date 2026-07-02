@@ -26,6 +26,27 @@ import type { RepoHealth, SyncErrorKind } from "./types.ts";
  */
 export const STALE_LOCK_MIN_AGE_MS = 2 * 60 * 1000; // 2 minutes
 
+// ── RepoNeedsRecoveryError ────────────────────────────────────────────────────
+
+/**
+ * Thrown by syncProject's structural preflight when the repo must be repaired
+ * before any sync work can safely run. The `code` string is the STABLE
+ * contract hosts may match on across the dynamic-import boundary (where
+ * `instanceof` is unreliable); `kind` names the repair to dispatch.
+ */
+export class RepoNeedsRecoveryError extends Error {
+  readonly code = "RepoNeedsRecovery";
+  constructor(readonly kind: SyncErrorKind) {
+    super(`The project needs repair before it can sync (${kind}).`);
+    this.name = "RepoNeedsRecoveryError";
+  }
+}
+
+/** Type guard for {@link RepoNeedsRecoveryError} (matches on the stable code). */
+export function isRepoNeedsRecoveryError(e: unknown): e is RepoNeedsRecoveryError {
+  return (e as { code?: string })?.code === "RepoNeedsRecovery";
+}
+
 // ── Shared isomorphic-git error decoders (also used by sync.ts) ──────────────
 
 export function isPushRejected(e: unknown): boolean {
@@ -265,6 +286,10 @@ export function classifyFromHealth(
  *      unrelated histories, missing objects/ref-store, wrong remote/branch).
  */
 export function classifyGitError(err: unknown, health?: RepoHealth): SyncErrorKind {
+  // (0) A preflight rejection already CARRIES its classification — use it
+  //     verbatim rather than re-deriving it from health.
+  if (isRepoNeedsRecoveryError(err)) return err.kind;
+
   // (1) No repo at all — highest priority; a transport error is meaningless
   //     when there is no .git to sync.
   if (health && !health.hasGitDir) return "missing_git_dir";

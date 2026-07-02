@@ -69,6 +69,7 @@ import {
   classifyTransportFailure,
   isMergeConflictError,
   isPushRejected,
+  RepoNeedsRecoveryError,
 } from "./recovery/classify.ts";
 import { inspectRepo } from "./recovery/inspect.ts";
 
@@ -562,10 +563,7 @@ export async function syncProject(
   const structural = classifyFromHealth(health);
   if (structural) {
     logger.warn("sync", "structural preflight blocked sync", { kind: structural });
-    throw Object.assign(
-      new Error(`The project needs repair before it can sync (${structural}).`),
-      { code: "RepoNeedsRecovery", kind: structural },
-    );
+    throw new RepoNeedsRecoveryError(structural);
   }
   // Bounded, defaulted retry policy. attempts ≥ 1, backoffMs ≥ 0 (clamped so a
   // caller can never request an unbounded or negative-delay loop).

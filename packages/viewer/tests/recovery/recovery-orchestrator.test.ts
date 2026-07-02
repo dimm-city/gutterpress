@@ -152,17 +152,17 @@ describe("classifyFromHealth priority chain (real code)", () => {
   });
 });
 
-describe("buildRecoveryContext branch resolution", () => {
-  test("uses detected local branch when remote diagnosis is unavailable", async () => {
+describe("buildRecoveryContext delegation", () => {
+  // Resolution behavior (repo root, branch fallback, credential, slug) is the
+  // LIB's responsibility now — tested in cli recovery/context.test.ts. The
+  // bridge's job is only: delegate to lib.buildRecoveryContext and attach the
+  // Electron dialog gate.
+  test("delegates to lib.buildRecoveryContext with the host dialog gate attached", async () => {
+    let received: Record<string, unknown> | null = null;
     const lib = {
-      detectProjectSource: async () => ({
-        type: "local-git-folder",
-        path: "/project",
-        repoRoot: "/project",
-        branch: "master",
-      }),
-      diagnoseProjectRemote: async () => {
-        throw new Error("local-only");
+      buildRecoveryContext: async (options: Record<string, unknown>) => {
+        received = options;
+        return { projectDir: options.projectDir, repoDir: "/project" };
       },
     };
     const tokenStore = {
@@ -170,10 +170,23 @@ describe("buildRecoveryContext branch resolution", () => {
       delete: async () => undefined,
     };
 
-    const ctx = await buildRecoveryContext("/project", lib, tokenStore);
+    const ctx = await buildRecoveryContext(
+      "/project",
+      lib as never,
+      tokenStore,
+      "Ada",
+      "/tmp/op.log",
+    );
 
     expect(ctx.repoDir).toBe("/project");
-    expect(ctx.branch).toBe("master");
+    expect(received!.projectDir).toBe("/project");
+    expect(received!.tokenStore).toBe(tokenStore);
+    expect(received!.authorName).toBe("Ada");
+    expect(received!.logFile).toBe("/tmp/op.log");
+    // The host contributes its own ConfirmationGate.
+    expect(typeof (received!.confirmation as { confirmRepair?: unknown }).confirmRepair).toBe(
+      "function",
+    );
   });
 });
 
@@ -336,55 +349,8 @@ describe("confirm timeout (real code)", () => {
   });
 });
 
-// ── 5. buildRecoveryContext required fields ───────────────────────────────────
-
-describe("buildRecoveryContext (real code)", () => {
-  test("sets projectDir, repoDir, branch, repoSlug, confirmation from lib stubs", async () => {
-    const libStub = {
-      // The project is opened at a subfolder; its OWN repo root is /repo.
-      detectProjectSource: async (dir: string) => ({
-        type: "local-git-folder",
-        repoRoot: "/repo",
-        path: dir,
-      }),
-      diagnoseProjectRemote: async (_dir: string, _opts?: unknown) => ({
-        branch: "main",
-        remoteUrl: undefined as string | undefined,
-      }),
-    };
-    const tokenStoreStub = {
-      get: async (_host: string) => null as null,
-    };
-
-    const ctx = await buildRecoveryContext("/repo/my-book", libStub, tokenStoreStub);
-
-    expect(ctx.projectDir).toBe("/repo/my-book");
-    expect(ctx.repoDir).toBe("/repo");
-    expect(ctx.branch).toBe("main");
-    expect(typeof ctx.repoSlug).toBe("string");
-    expect(ctx.repoSlug.length).toBeGreaterThan(0);
-    expect(typeof ctx.confirmation.confirmRepair).toBe("function");
-  });
-
-  test("authorName is undefined when not passed (consistent with syncProject)", async () => {
-    const libStub = {
-      detectProjectSource: async (_dir: string) => ({ type: "local-folder" }),
-      diagnoseProjectRemote: async () => ({ branch: "main", remoteUrl: undefined as string | undefined }),
-    };
-    const tokenStoreStub = { get: async (_h: string) => null as null };
-
-    const ctx = await buildRecoveryContext("/proj/book", libStub, tokenStoreStub);
-    expect(ctx.authorName).toBeUndefined();
-  });
-
-  test("authorName is threaded when passed", async () => {
-    const libStub = {
-      detectProjectSource: async (_dir: string) => ({ type: "local-folder" }),
-      diagnoseProjectRemote: async () => ({ branch: "main", remoteUrl: undefined as string | undefined }),
-    };
-    const tokenStoreStub = { get: async (_h: string) => null as null };
-
-    const ctx = await buildRecoveryContext("/proj/book", libStub, tokenStoreStub, "Jane Author");
-    expect(ctx.authorName).toBe("Jane Author");
-  });
-});
+// ── 5. buildRecoveryContext ───────────────────────────────────────────────────
+// The context RESOLUTION (repo root, branch, credential, slug) moved to the
+// lib — packages/cli/src/lib/remote-auth/recovery/context.test.ts covers it.
+// The bridge's remaining responsibility (delegate + attach the dialog gate) is
+// covered by the "buildRecoveryContext delegation" describe above.

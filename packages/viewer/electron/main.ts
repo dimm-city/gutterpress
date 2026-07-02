@@ -70,10 +70,12 @@ import {
   rejectAllPendingConfirms,
   buildRecoveryContext,
   decideRunAgainAfterPreflight,
-  buildPreflightDiagnostics,
   getConflictPreviewImpl,
   preExportSyncGateBlockError,
   type SyncErrorKind,
+  type ConfirmationGate,
+  type RecoveryContext,
+  type TokenStore as RecoveryTokenStore,
 } from "./recovery-bridge";
 import type {
   SnapshotEntry,
@@ -578,6 +580,23 @@ interface LibModule {
   // Health-only preflight classifier (single source of truth in the lib's
   // recovery/classify.ts — the viewer no longer keeps its own copy).
   classifyFromHealth: (health: object) => string | null;
+  // RecoveryContext resolver (recovery/context.ts) — repo root, branch,
+  // credential, slug resolve in the lib; the host adds only its dialog gate.
+  buildRecoveryContext: (options: {
+    projectDir: string;
+    confirmation: ConfirmationGate;
+    tokenStore?: RecoveryTokenStore;
+    authorName?: string;
+    logFile?: string;
+  }) => Promise<RecoveryContext>;
+  // Preflight diagnostics mappers (recovery/inspect.ts) — flat, secret-free
+  // operation-log fields explaining WHY a kind was chosen.
+  buildPreflightDiagnostics: (
+    openedDir: string,
+    repoDir: string,
+    health: object,
+    kind: string | null,
+  ) => PreflightLogData;
   inspectRepo: (ctx: { repoDir: string }) => Promise<{
     hasGitDir: boolean;
     currentBranch?: string;
@@ -2873,7 +2892,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       plog.info(
         "detect",
         "structural condition detected on open",
-        buildPreflightDiagnostics(openedDir, ctx.repoDir, health, kind),
+        lib.buildPreflightDiagnostics(openedDir, ctx.repoDir, health, kind),
       );
 
       let result: Awaited<ReturnType<typeof lib.recover>>;

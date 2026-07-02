@@ -172,8 +172,19 @@ export type {
   FaultPoint,
 } from "./types.ts";
 
-export { classifyGitError, classifyFromHealth } from "./classify.ts";
-export { inspectRepo } from "./inspect.ts";
+export {
+  classifyGitError,
+  classifyFromHealth,
+  RepoNeedsRecoveryError,
+  isRepoNeedsRecoveryError,
+} from "./classify.ts";
+export {
+  inspectRepo,
+  preflightStructuralReason,
+  buildPreflightDiagnostics,
+} from "./inspect.ts";
+export { buildRecoveryContext } from "./context.ts";
+export type { BuildRecoveryContextOptions } from "./context.ts";
 export { recoveryPolicy, policyFor, detachedHeadWithLocalChangesPolicy } from "./policy.ts";
 export { createRecoveryZip, assertZipReadable, zipEntries } from "./backup.ts";
 export { makeManualGuidance } from "./manual-guidance.ts";

@@ -27,8 +27,9 @@ import git from "isomorphic-git";
 
 import { detectProjectSource } from "../../project-source.ts";
 import { gitDirFor, gitScopeFor, hasPendingChanges } from "../../source-provider.ts";
+import type { LogData } from "../operation-log.ts";
 import { findLockCandidates } from "./recover-stale-lock.ts";
-import type { RepoHealth, RecoveryContext } from "./types.ts";
+import type { RepoHealth, RecoveryContext, SyncErrorKind } from "./types.ts";
 
 /**
  * Probe the local repository and return a RepoHealth snapshot.
@@ -142,5 +143,63 @@ export async function inspectRepo(
     hasInterruptedRebase,
     hasInterruptedCherryPick,
     hasLocalChanges,
+  };
+}
+
+// ── Preflight diagnostics (structured operation-log fields) ───────────────────
+// Pure mappers shared by every host that logs WHY a recovery kind was chosen.
+
+/**
+ * The SINGLE health signal that drove classification. Derived from the KIND
+ * classifyFromHealth returned (a pure mapping — it cannot drift from the
+ * classifier's decision order, because it never re-implements it).
+ */
+export function preflightStructuralReason(kind: SyncErrorKind | null): string {
+  switch (kind) {
+    case "missing_git_dir":
+      return "health.missingGitDir";
+    case "stale_lock":
+      return "health.hasStaleLock";
+    case "interrupted_merge":
+      return "health.hasInterruptedMerge";
+    case "interrupted_rebase":
+      return "health.hasInterruptedRebase";
+    case "interrupted_cherry_pick":
+      return "health.hasInterruptedCherryPick";
+    case "detached_head":
+      return "health.isDetachedHead";
+    case null:
+      return "none";
+    default:
+      // Kinds that cannot come from a health-only classification.
+      return "none";
+  }
+}
+
+/**
+ * Build a flat, secret-free record of the preflight decision inputs for the
+ * operation log. Every health boolean is recorded (so support can see the FULL
+ * picture, not just the one-word kind), plus the opened dir vs repo root, the
+ * chosen kind, and the single reason that drove it.
+ */
+export function buildPreflightDiagnostics(
+  openedDir: string,
+  repoDir: string,
+  health: RepoHealth,
+  kind: SyncErrorKind | null,
+): LogData {
+  return {
+    openedDir,
+    repoDir,
+    repoRootDiffers: repoDir !== openedDir,
+    kind: kind ?? "none",
+    reason: preflightStructuralReason(kind),
+    hasGitDir: health.hasGitDir,
+    hasInterruptedMerge: health.hasInterruptedMerge,
+    hasInterruptedRebase: health.hasInterruptedRebase,
+    hasInterruptedCherryPick: health.hasInterruptedCherryPick,
+    hasStaleLock: health.hasStaleLock,
+    isDetachedHead: health.isDetachedHead,
+    hasLocalChanges: health.hasLocalChanges,
   };
 }
