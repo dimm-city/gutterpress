@@ -42,6 +42,43 @@ describe("makeManualGuidance — machine action key", () => {
     });
   }
 
+  test("backup reassurance is honest — promised only when a backup exists", () => {
+    const backupKinds: SyncErrorKind[] = [
+      "detached_head",
+      "corrupt_index",
+      "missing_git_dir",
+      "missing_or_corrupt_objects",
+      "unrelated_histories",
+      "interrupted_rebase",
+      "interrupted_cherry_pick",
+    ];
+    for (const kind of backupKinds) {
+      // With a backup: exactly one safety-copy line, affirming the copy exists.
+      const withBackup = makeManualGuidance(ctx, kind, undefined, "/tmp/x.zip");
+      const affirm = (withBackup.safeNextSteps ?? []).filter((s) =>
+        /safety copy/i.test(s),
+      );
+      expect(affirm).toHaveLength(1);
+      expect(affirm[0]).toContain("was saved");
+      expect(withBackup.backupZipPath).toBe("/tmp/x.zip");
+
+      // Without a backup (backup creation FAILED): never claim a copy was or
+      // will be saved — say honestly that it couldn't be, and nothing changed.
+      const withoutBackup = makeManualGuidance(ctx, kind);
+      const lines = withoutBackup.safeNextSteps ?? [];
+      expect(lines.some((s) => /safety copy could not be saved/i.test(s))).toBe(true);
+      expect(lines.some((s) => /copy (of your (project|files|work) )?(was|will be|is) saved/i.test(s))).toBe(false);
+      expect(withoutBackup.backupZipPath).toBeUndefined();
+    }
+  });
+
+  test("non-backup kinds get no failed-backup line", () => {
+    for (const kind of ["auth_required", "network_unavailable", "unknown"] as SyncErrorKind[]) {
+      const g = makeManualGuidance(ctx, kind);
+      expect((g.safeNextSteps ?? []).some((s) => /could not be saved/i.test(s))).toBe(false);
+    }
+  });
+
   test("representative kinds map to the expected keys", () => {
     expect(makeManualGuidance(ctx, "auth_required").recommendedActionKey).toBe(
       "reconnect",
