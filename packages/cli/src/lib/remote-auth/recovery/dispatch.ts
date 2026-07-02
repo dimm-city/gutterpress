@@ -15,6 +15,8 @@
 
 import type { RecoveryContext, RecoveryResult, SyncErrorKind } from "./types.ts";
 import { resolveLogger } from "../operation-log.ts";
+import { withRepoLock } from "../../source-provider.ts";
+import { policyFor } from "./policy.ts";
 
 // ── Handler imports ───────────────────────────────────────────────────────────
 
@@ -30,6 +32,9 @@ import { recover as recoverMissingGitDir } from "./recover-missing-git-dir.ts";
 import { recover as recoverMissingObjects } from "./recover-missing-objects.ts";
 import { recover as recoverUnrelatedHistories } from "./recover-unrelated-histories.ts";
 import { recover as recoverWrongRemote } from "./recover-wrong-remote.ts";
+import { recover as recoverInterruptedRebase } from "./recover-interrupted-rebase.ts";
+import { recover as recoverInterruptedCherryPick } from "./recover-interrupted-cherry-pick.ts";
+import { recover as recoverInterruptedMerge } from "./recover-interrupted-merge.ts";
 
 // ── Unknown-kind fallback ─────────────────────────────────────────────────────
 
@@ -72,6 +77,30 @@ export async function recover(
     ...(errCode ? { errCode } : {}),
   });
 
+  // Per-repo serialization is enforced HERE, uniformly, by policy — not left
+  // to each handler. serializeRepo:true handlers mutate `.git` with raw git.*/
+  // node:fs calls and must never race a concurrent sync/snapshot/restore (all
+  // of which queue on the same withRepoLock). serializeRepo:false handlers are
+  // thin sync.ts delegates whose internals take the (non-reentrant) lock
+  // themselves — wrapping them here would deadlock. Handler bodies must keep
+  // calling ONLY raw git.*/node:fs while inside the lock, for the same reason.
+  const dispatch = () => dispatchToHandler(kind, ctx, error);
+  const result = policyFor(kind).serializeRepo
+    ? await withRepoLock(ctx.repoDir, dispatch)
+    : await dispatch();
+
+  logger.info("dispatch", `recovery complete`, {
+    kind,
+    result: result.status,
+  });
+  return result;
+}
+
+async function dispatchToHandler(
+  kind: SyncErrorKind,
+  ctx: RecoveryContext,
+  error?: unknown,
+): Promise<RecoveryResult> {
   let result: RecoveryResult;
   switch (kind) {
     case "non_fast_forward":
@@ -110,15 +139,19 @@ export async function recover(
     case "wrong_remote_or_branch":
       result = await recoverWrongRemote(ctx, error);
       break;
+    case "interrupted_rebase":
+      result = await recoverInterruptedRebase(ctx, error);
+      break;
+    case "interrupted_cherry_pick":
+      result = await recoverInterruptedCherryPick(ctx, error);
+      break;
+    case "interrupted_merge":
+      result = await recoverInterruptedMerge(ctx, error);
+      break;
     case "unknown":
       result = await recoverUnknown(ctx, error);
       break;
   }
-
-  logger.info("dispatch", `recovery complete`, {
-    kind,
-    result: result.status,
-  });
   return result;
 }
 
@@ -139,8 +172,19 @@ export type {
   FaultPoint,
 } from "./types.ts";
 
-export { classifyGitError } from "./classify.ts";
-export { inspectRepo } from "./inspect.ts";
+export {
+  classifyGitError,
+  classifyFromHealth,
+  RepoNeedsRecoveryError,
+  isRepoNeedsRecoveryError,
+} from "./classify.ts";
+export {
+  inspectRepo,
+  preflightStructuralReason,
+  buildPreflightDiagnostics,
+} from "./inspect.ts";
+export { buildRecoveryContext } from "./context.ts";
+export type { BuildRecoveryContextOptions } from "./context.ts";
 export { recoveryPolicy, policyFor, detachedHeadWithLocalChangesPolicy } from "./policy.ts";
 export { createRecoveryZip, assertZipReadable, zipEntries } from "./backup.ts";
 export { makeManualGuidance } from "./manual-guidance.ts";

@@ -51,6 +51,7 @@
     onThemeApplied,
     onEditRawCss,
     onClose,
+    sidebarEmbedded = false,
   }: {
     projectDir: string | null;
     toast?: ToastController | null;
@@ -60,6 +61,7 @@
     onEditRawCss?: (cssPath: string) => void;
     /** Close the config view — return focus to the editor/preview. */
     onClose?: () => void;
+    sidebarEmbedded?: boolean;
   } = $props();
 
   // ── Section state (each section owns its load/error flags; no cross-sections) ─
@@ -194,7 +196,7 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
       );
       thumbs = { ...thumbs, [key]: sampleSrcdoc(css) };
     } catch {
-      // A theme whose CSS can't be read just shows no thumbnail (non-fatal).
+      thumbs = { ...thumbs, [key]: "__fallback__" };
     }
   }
 
@@ -650,7 +652,7 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
   {:else if loadingAll}
     <p class="muted">Loading…</p>
   {:else}
-    <div class="sections">
+    <div class="sections" class:embedded={sidebarEmbedded}>
 
       <!-- (1) Details ─────────────────────────────────────────────────────── -->
       <section class="block">
@@ -942,10 +944,14 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
 {#snippet themeCard(t: ThemeInfo)}
   <li class="theme-card" class:active={isActiveTheme(t)}>
     <div class="thumb">
-      {#if thumbs[keyOf(t)]}
+      {#if thumbs[keyOf(t)] && thumbs[keyOf(t)] !== "__fallback__"}
         <iframe title={`Preview of ${t.name}`} srcdoc={thumbs[keyOf(t)]} sandbox="allow-same-origin" loading="lazy"></iframe>
       {:else}
-        <div class="thumb-placeholder" aria-hidden="true"></div>
+        <div class="thumb-placeholder" role="img" aria-label={`Theme preview loading for ${t.name}`}>
+          <span class="theme-fallback-title">Aa</span>
+          <span class="theme-fallback-line"></span>
+          <span class="theme-fallback-line short"></span>
+        </div>
       {/if}
     </div>
     <div class="theme-info">
@@ -987,8 +993,9 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
     padding: 12px 16px; border-bottom: 1px solid var(--app-border-subtle);
     position: sticky; top: 0; background: var(--app-bg); z-index: 1;
   }
-  .panel-header h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--app-text); }
+  .panel-header h2 { margin: 0; font-size: 12px; font-weight: 700; color: var(--app-text); text-transform: uppercase; letter-spacing: 0.04em; }
   .sections { display: flex; flex-direction: column; gap: 16px; padding: 14px 16px 24px; }
+  .sections.embedded { padding-top: 12px; }
 
   .block { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--app-border-subtle); }
   .block:last-child { border-bottom: none; }
@@ -1046,7 +1053,14 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
   .theme-card.active { border-color: var(--app-focus-ring); }
   .thumb { width: 100%; aspect-ratio: 4 / 3; border-radius: 4px; overflow: hidden; background: var(--app-control-bg); border: 1px solid var(--app-border-subtle); }
   .thumb iframe { width: 100%; height: 100%; border: 0; transform: scale(0.6); transform-origin: top left; width: 167%; height: 167%; }
-  .thumb-placeholder { width: 100%; height: 100%; }
+  .thumb-placeholder {
+    width: 100%; height: 100%; display: grid; place-content: center;
+    gap: 5px; padding: 12px; background:
+      linear-gradient(135deg, var(--app-surface), var(--app-control-bg));
+  }
+  .theme-fallback-title { font-size: 22px; font-weight: 700; color: var(--app-text); line-height: 1; }
+  .theme-fallback-line { display: block; width: 68px; height: 4px; border-radius: 999px; background: var(--app-border-strong); }
+  .theme-fallback-line.short { width: 46px; }
   .theme-info { display: flex; flex-direction: column; gap: 1px; }
   .theme-name { font-size: 12px; font-weight: 600; color: var(--app-text); }
   .theme-author { font-size: 10px; color: var(--app-text-faint); }

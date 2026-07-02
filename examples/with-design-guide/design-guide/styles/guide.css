@@ -464,7 +464,7 @@ figcaption {
 
 /* ─────────────────────────────────────────────────────────────────────────────
    § 4  COMPONENTS
-   Use via container blocks:  ::: callout-note … :::
+   Use via @section markers:  @section .callout-note … @end-section
    ───────────────────────────────────────────────────────────────────────────── */
 
 /* ── Callout base — shared by all variants ── */
@@ -1002,7 +1002,8 @@ a.download::after { content: none; }
 }
 .callout-dm .callout-label { color: #7b2fbe; }
 
-   5. Register the container in src/lib/markdown/index.ts:
-      md.use(markdownItContainer, "callout-dm", createNamedContainer("callout-dm"));
-   6. Use in markdown: ::: callout-dm ... :::
+   5. Use in markdown — no registration needed, @section accepts any class:
+      @section .callout-dm
+      ...
+      @end-section
 */

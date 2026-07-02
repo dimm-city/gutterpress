@@ -23,6 +23,8 @@ export type EditorBufferPhase = "clean" | "dirty" | "saving" | "error";
 export interface ExternalChange {
   diskContent: string;
   diskMtimeMs: number;
+  /** False when the outside change deleted the open file. Omitted for edits. */
+  exists?: false;
 }
 
 export interface EditorBufferOptions {
@@ -61,8 +63,13 @@ export class EditorBuffer {
   externalChange = $state<ExternalChange | null>(null);
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  isDirty = $derived(this.content !== this.diskContent);
-  hasPendingSave = $derived(this.phase === "dirty" || this.phase === "saving");
+  get isDirty(): boolean {
+    return this.content !== this.diskContent;
+  }
+
+  get hasPendingSave(): boolean {
+    return this.phase === "dirty" || this.phase === "saving";
+  }
 
   private opts: EditorBufferOptions;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -148,15 +155,18 @@ export class EditorBuffer {
    */
   async restoreContent(filePath: string, recovered: string): Promise<void> {
     this.cancelTimers();
+    const gen = ++this.loadGen;
     this.externalChange = null;
     this.filePath = filePath;
     this.content = recovered;
     const st = await this.platform.statFile(filePath).catch(() => null);
+    if (gen !== this.loadGen) return;
     try {
       this.diskContent = await this.platform.readFile(filePath);
     } catch {
       this.diskContent = "";
     }
+    if (gen !== this.loadGen) return;
     this.diskMtimeMs = st?.mtimeMs ?? 0;
     this.setPhase(this.isDirty ? "dirty" : "clean");
     if (this.isDirty) this.scheduleSave();
@@ -190,7 +200,7 @@ export class EditorBuffer {
 
   private async doRecovery(): Promise<void> {
     const filePath = this.filePath;
-    if (!filePath || this.opts.recoveryEnabled === false) return;
+    if (!filePath || this.opts.recoveryEnabled === false || !this.isDirty) return;
     try {
       await api.recovery.write(filePath, this.content, this.diskMtimeMs);
     } catch {
@@ -202,19 +212,47 @@ export class EditorBuffer {
     const filePath = this.filePath;
     if (!filePath) return;
     const snapshot = this.content;
+    const baseline = this.diskContent;
+    const gen = this.loadGen;
     this.setPhase("saving");
     try {
+      const external = await this.externalChangeBeforeSave(filePath, baseline);
+      if (external) {
+        if (external.diskContent === snapshot && external.exists !== false) {
+          this.diskContent = external.diskContent;
+          this.diskMtimeMs = external.diskMtimeMs;
+          this.externalChange = null;
+          this.setPhase(this.content === snapshot ? "clean" : "dirty");
+          if (this.phase === "dirty") this.scheduleSave();
+          return;
+        }
+        // Disk moved since this buffer last adopted a baseline. Do not overwrite
+        // teammate/pull/external-editor content until the author explicitly picks
+        // Reload or Keep mine in the existing external-change banner.
+        this.externalChange = external;
+        this.setPhase("dirty");
+        this.opts.onExternalConflict?.();
+        return;
+      }
+
       const { mtimeMs } = await this.platform.writeFile(filePath, snapshot);
+      this.opts.onSaved?.(filePath);
+      if (this.opts.recoveryEnabled !== false) {
+        api.recovery.clear(filePath).catch(() => {});
+      }
+      // The save may have completed after the author switched files. The old
+      // file was written, but this buffer now represents another document, so
+      // never stamp the old snapshot over the new file's clean baseline.
+      if (this.filePath !== filePath || this.loadGen !== gen) return;
       // Only adopt the new baseline if the buffer still matches what we wrote;
       // a keystroke during the await leaves the buffer dirty for the next save.
       this.diskContent = snapshot;
       this.diskMtimeMs = mtimeMs;
       this.setPhase(this.content === snapshot ? "clean" : "dirty");
-      // A successful disk save clears the crash-recovery sidecar.
-      if (this.opts.recoveryEnabled !== false) {
-        api.recovery.clear(filePath).catch(() => {});
+      if (this.recoveryTimer) {
+        clearTimeout(this.recoveryTimer);
+        this.recoveryTimer = null;
       }
-      this.opts.onSaved?.(filePath);
       if (this.phase === "dirty") this.scheduleSave();
     } catch (e) {
       this.setPhase("error");
@@ -262,7 +300,19 @@ export class EditorBuffer {
     } catch {
       return;
     }
-    if (!stat.exists) return; // file removed; nothing to reconcile here
+    if (!stat.exists) {
+      if (this.isDirty) {
+        this.externalChange = { diskContent: "", diskMtimeMs: 0, exists: false };
+        this.opts.onExternalConflict?.();
+      } else {
+        this.content = "";
+        this.diskContent = "";
+        this.diskMtimeMs = 0;
+        this.setPhase("clean");
+        this.opts.onAutoReloaded?.(filePath);
+      }
+      return;
+    }
     // Our own write echo — mtime unchanged from our last known baseline.
     if (stat.mtimeMs === this.diskMtimeMs) return;
     let diskContent: string;
@@ -316,15 +366,17 @@ export class EditorBuffer {
   keepMine(): void {
     const ext = this.externalChange;
     if (!ext) return;
+    this.diskContent = ext.diskContent;
     this.diskMtimeMs = ext.diskMtimeMs;
     this.externalChange = null;
-    // content stays; isDirty is recomputed against the unchanged diskContent.
+    // content stays; isDirty is recomputed against the external disk baseline.
     this.setPhase(this.isDirty ? "dirty" : "clean");
     if (this.isDirty) this.scheduleSave();
   }
 
   /** Drop the buffer entirely (e.g. closing a folder / switching to URL mode). */
   reset(): void {
+    this.loadGen++;
     this.cancelTimers();
     this.filePath = null;
     this.content = "";
@@ -343,5 +395,32 @@ export class EditorBuffer {
       clearTimeout(this.recoveryTimer);
       this.recoveryTimer = null;
     }
+  }
+
+  /**
+   * Return the live disk version when saving would overwrite content that this
+   * buffer has not adopted as its baseline. Reads the file content instead of
+   * trusting mtimes alone so same-timestamp pull/checkouts are still caught.
+   */
+  private async externalChangeBeforeSave(
+    filePath: string,
+    baseline: string,
+  ): Promise<ExternalChange | null> {
+    const stat = await this.platform.statFile(filePath).catch(() => null);
+    if (!stat?.exists) {
+      return baseline === "" && this.diskMtimeMs === 0
+        ? null
+        : { diskContent: "", diskMtimeMs: 0, exists: false };
+    }
+
+    let diskContent: string;
+    try {
+      diskContent = await this.platform.readFile(filePath);
+    } catch {
+      return { diskContent: "", diskMtimeMs: 0, exists: false };
+    }
+    return diskContent === baseline
+      ? null
+      : { diskContent, diskMtimeMs: stat.mtimeMs };
   }
 }

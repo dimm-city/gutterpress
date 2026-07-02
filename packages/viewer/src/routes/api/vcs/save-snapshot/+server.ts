@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { isAbsolute, basename } from 'node:path';
 import type { RequestHandler } from './$types';
+import { gitIdentityArgs } from '$lib/server/settings';
 
 interface SnapshotEntry {
   id: string;
@@ -12,7 +13,7 @@ interface SnapshotEntry {
 interface LibModule {
   detectProjectSource: (dir: string) => Promise<unknown>;
   providerFor: (source: unknown) => {
-    snapshot: (opts: { projectDir: string; message: string; logFile?: string }) => Promise<SnapshotEntry>;
+    snapshot: (opts: { projectDir: string; message: string; logFile?: string; authorName?: string; authorEmail?: string }) => Promise<SnapshotEntry>;
   };
 }
 
@@ -54,6 +55,7 @@ export const POST: RequestHandler = async ({ request }) => {
       await lib.providerFor(source).snapshot({
         projectDir,
         message,
+        ...(await gitIdentityArgs()),
         logFile: hooks.operationLogPath(basename(projectDir)),
       }),
     );

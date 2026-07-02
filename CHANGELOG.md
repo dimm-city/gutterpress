@@ -3,6 +3,22 @@
 All notable changes to print-md are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.6.1] - 2026-07-01
+
+### Added
+
+- **Windows installer.** Full releases now attach a Windows `.exe` installer in
+  addition to the portable zip, so non-technical users can download one file and
+  install print-md without manually extracting folders.
+
+### Fixed
+
+- **Safer sync with open editor files.** The editor now checks the live file on
+  disk before saving, refuses to overwrite pulled/externally changed content, and
+  surfaces the existing Reload / Keep mine choice instead. Background sync now
+  tells the UI when pulled files changed locally, so open buffers and problem
+  checks refresh even when the shallow folder watcher misses nested file updates.
+
 ## [0.5.4] - 2026-06-22
 
 ### Added

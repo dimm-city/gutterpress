@@ -144,12 +144,14 @@ export async function listRecovery(
 ): Promise<RecoveryEntry[]> {
   const index = await readIndex(recoveryDir);
   const out: RecoveryEntry[] = [];
+  const stale: RecoveryEntry[] = [];
   for (const entry of index) {
     if (path.dirname(entry.filePath) !== projectDir) continue;
     // The snapshot bytes must still exist.
     try {
       await stat(entry.recoveryPath);
     } catch {
+      stale.push(entry);
       continue;
     }
     // Skip entries whose disk file moved past the snapshot's baseline mtime —
@@ -159,11 +161,27 @@ export async function listRecovery(
     // (file absent when snapshotted) → always offer.
     try {
       const s = await stat(entry.filePath);
-      if (entry.baseMtimeMs > 0 && s.mtimeMs > entry.baseMtimeMs + 1) continue;
+      if (entry.baseMtimeMs > 0 && s.mtimeMs > entry.baseMtimeMs + 1) {
+        stale.push(entry);
+        continue;
+      }
+      const [diskBytes, recoveryBytes] = await Promise.all([
+        readFile(entry.filePath, "utf-8"),
+        readFile(entry.recoveryPath, "utf-8"),
+      ]).catch(() => [null, null] as const);
+      if (diskBytes != null && recoveryBytes != null && diskBytes === recoveryBytes) {
+        stale.push(entry);
+        continue;
+      }
     } catch {
       // File was deleted on disk — still offer the snapshot.
     }
     out.push(entry);
+  }
+  if (stale.length > 0) {
+    const stalePaths = new Set(stale.map((entry) => entry.filePath));
+    await writeIndex(recoveryDir, index.filter((entry) => !stalePaths.has(entry.filePath)));
+    await Promise.all(stale.map((entry) => rm(entry.recoveryPath, { force: true })));
   }
   return out.sort((a, b) => b.savedAt - a.savedAt);
 }

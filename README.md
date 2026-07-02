@@ -10,7 +10,7 @@ print-md is a desktop application (with a CLI for power users) that turns a fold
 
 | Platform | Download (from the latest release) | What to do |
 |---|---|---|
-| **Windows** | `print-md-viewer-<version>-win.zip` | Extract, then run `print-md-viewer.exe` |
+| **Windows** | `print-md-viewer-<version>-win-x64.exe` | Download and run the installer. Use the `.zip` only if you need a portable copy. |
 | **macOS** | `print-md-viewer-<version>-arm64.dmg` | Open the disk image, drag the app to Applications |
 | **Linux** | `print-md-viewer-<version>.AppImage` | `chmod +x` the file, then double-click or run it |
 
@@ -64,7 +64,7 @@ See [docs/](./docs/) for technical architecture, ADRs, and developer references.
 
 Browse the [`examples/`](./examples/) directory for real projects you can copy:
 
-- **`with-design-guide`** — the most complete reference. A multi-chapter design guide that exercises the layout features: custom fonts, page templates, columns, sidebars, callouts, and a custom plugin.
+- **`with-design-guide`** — the most complete reference. A multi-chapter design guide that exercises the layout features: custom fonts, page templates, columns, sidebars, and callouts.
 - **`print-md-user-guide`** — the comprehensive user guide, authored in print-md itself.
 - **`with-validation`** — focused on the pre-/post-build validation pipeline.
 

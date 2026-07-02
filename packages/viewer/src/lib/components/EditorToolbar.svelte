@@ -26,11 +26,13 @@
     filePath = null,
     /** Called by the parent to route an edit action into the CodeMirror view. */
     onAction,
+    onSave,
     /** Absolute path to the open project, used to compute assets/ destination. */
     projectDir = null,
   }: {
     filePath?: string | null;
     onAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
+    onSave?: () => void;
     projectDir?: string | null;
   } = $props();
 
@@ -234,6 +236,17 @@
 <div class="editor-toolbar" role="toolbar" aria-label="Markdown formatting toolbar">
   <!-- Primary group: always-visible inline formatting -->
   <div class="tb-group primary-group">
+    {#if onSave}
+      <button
+        class="tb-btn save-btn"
+        onclick={onSave}
+        title="Save changes now"
+        aria-label="Save changes now"
+      >
+        <Icon name="save" size={14} />
+      </button>
+      <span class="tb-sep save-sep" aria-hidden="true"></span>
+    {/if}
     <button
       class="tb-btn"
       onclick={() => onAction("bold")}
@@ -557,7 +570,7 @@
     align-items: center;
     gap: 2px;
     padding: 3px 6px;
-    background: var(--app-surface, #252526);
+    background: var(--app-surface-raised, var(--app-surface, #252526));
     border-bottom: 1px solid var(--app-border, rgba(255,255,255,0.08));
     flex-shrink: 0;
     /* width: 100% is required because container-type:inline-size prevents the
@@ -565,7 +578,7 @@
        blocks the normal BFC width inheritance from the flex parent. */
     width: 100%;
     min-height: 32px;
-    overflow: hidden;
+    overflow: visible;
     box-sizing: border-box;
   }
 
@@ -584,6 +597,7 @@
     margin: 0 3px;
     flex-shrink: 0;
   }
+  .save-sep { margin-right: 5px; }
 
   /* ── Toolbar buttons ─────────────────────────────────────────────────────── */
   .tb-btn {
@@ -633,7 +647,7 @@
     border: 1px solid var(--app-border, rgba(255,255,255,0.15));
     border-radius: 4px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    z-index: 200;
+    z-index: 400;
     padding: 4px;
     display: flex;
     flex-direction: column;

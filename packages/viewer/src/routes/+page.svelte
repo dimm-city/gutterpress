@@ -25,7 +25,7 @@
   import RecoveryGuidanceDialog from "$lib/components/RecoveryGuidanceDialog.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
-  import OperationLogDialog from "$lib/components/OperationLogDialog.svelte";
+  import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
@@ -34,12 +34,12 @@
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
-  import ProjectConfigPanel from "$lib/components/ProjectConfigPanel.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api, type SyncOutcome } from "$lib/api";
   import { basenameOf, joinPath } from "$lib/platform/paths";
+  import { shouldReconcileAfterSync } from "$lib/sync-status";
   import { onMount } from "svelte";
   import {
     NARROW_BREAKPOINT,
@@ -50,6 +50,8 @@
     adjacentTab,
     keyboardOffset,
   } from "$lib/editor/mobile-layout";
+  import { commandForSaveShortcut } from "$lib/editor/save-shortcuts";
+  import { clampSplitRatio, splitRatioFromDrag, splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
   import { useSettings, _loadSettings } from "$lib/settings.svelte";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
@@ -190,11 +192,16 @@
   let helpOpen = $state(false);
   // Operation-log viewer: opened from the StatusBar git/sync pill. Holds the
   // current project's log path (carried on the sync status stream).
-  let logDialogOpen = $state(false);
   let logFilePath = $state<string | null>(null);
   function showProjectLog(filePath: string | null): void {
     logFilePath = filePath;
-    logDialogOpen = true;
+    editorView = "activity";
+    editorOpen = true;
+    previewHidden = false;
+  }
+  function closeActivityView(): void {
+    editorView = "editor";
+    focusEditorWhenReady();
   }
   let userSetViewMode = $state(false);
   let openError = $state<string | null>(null);
@@ -295,9 +302,15 @@
     }
   }
 
-  // Sync completed. Merged online changes land on disk and the preview's
-  // file watcher re-renders on its own (same contract as restore, #13).
-  function onSyncCompleted(mergedRemoteChanges: boolean) {
+  function onSyncFilesChanged() {
+    buffer?.reconcileExternalChange().catch(() => {});
+    refreshProblems();
+  }
+
+  // Sync completed. Online changes may land on disk even when the final outcome
+  // is "up-to-date" (pull fast-forwarded, then push had nothing to send), so the
+  // file-change signal is separate from the user-facing merge/sync copy.
+  function onSyncCompleted(mergedRemoteChanges: boolean, filesChanged = mergedRemoteChanges) {
     toast?.success(
       mergedRemoteChanges
         ? "Synced — changes from the online copy were combined in, so the preview will refresh."
@@ -309,7 +322,7 @@
     // If remote changes landed on disk, re-lint immediately (the preview
     // file-watcher re-renders and fires refreshProblems via renderingComplete,
     // but a manual refresh here catches edge cases where no re-render fires).
-    if (mergedRemoteChanges) refreshProblems();
+    if (filesChanged) onSyncFilesChanged();
   }
 
   // The single Reconnect action (ADR 0006 D7): route to the matching connect
@@ -317,6 +330,42 @@
   function onSyncReconnect() {
     if (syncDiag?.provider === "github") githubOpen = true;
     else advancedSetupOpen = true;
+  }
+
+  // Route the RecoveryGuidanceDialog's primary button by the guidance's machine
+  // action key — NOT always-reconnect (the exact bug this fixes). Each branch
+  // targets the flow the error kind actually calls for.
+  function onRecoveryGuidancePrimary() {
+    switch (recoveryGuidance?.recommendedActionKey) {
+      case "reconnect":
+        onSyncReconnect();
+        break;
+      case "check_connection":
+        advancedSetupOpen = true;
+        break;
+      case "sync":
+        // Retry the sync; handleForceSync also routes conflicts to the chooser.
+        void handleForceSync();
+        break;
+      case "resolve_conflict":
+        // Re-run the sync so the conflict chooser opens with fresh file IDs
+        // (handleForceSync sets conflictOpen on a "conflict" outcome).
+        void handleForceSync();
+        break;
+      case "restore_repo":
+        // Re-run the sync/recovery path: the orchestrator re-classifies the repo
+        // state and dispatches the matching recovery handler (e.g. the
+        // interrupted-rebase / interrupted-cherry-pick abort), which re-prompts
+        // for confirmation before the backup + repair.
+        void handleForceSync();
+        break;
+      default:
+        // Forward-compat safety net for an unrecognized key: do nothing (the
+        // dialog closes). Never fall back to reconnect — that was the original
+        // defect. (The generic/unknown failure now maps to "sync" above, so its
+        // "Try again" button actually retries the sync.)
+        break;
+    }
   }
 
   /**
@@ -349,10 +398,10 @@
         } else if (outcome.status === "synced") {
           // Conflict resolved on its own (race between pill event + sync call).
           conflictOpen = false;
-          onSyncCompleted(outcome.mergedRemoteChanges);
+          onSyncCompleted(outcome.mergedRemoteChanges, outcome.filesChanged === true);
         } else if (outcome.status === "up-to-date") {
           conflictOpen = false;
-          onSyncCompleted(false);
+          onSyncCompleted(false, outcome.filesChanged === true);
         }
         // auth/offline/error: leave the dialog open so the user can still
         // "Decide later"; the confirm button remains disabled.
@@ -387,6 +436,9 @@
     const off = getPlatform().onSyncStatus((status) => {
       // Scope to the currently open project.
       if (status.projectDir !== currentDir) return;
+      if (shouldReconcileAfterSync(status)) {
+        onSyncFilesChanged();
+      }
 
       if (status.state === "recovering") {
         // Automated repair in progress — show the non-dismissable overlay.
@@ -502,6 +554,10 @@
   // reconciliation. The old loose editorFilePath/editorContent/saveDebounce
   // state now lives inside the buffer.
   let editorOpen = $state(false);
+  let previewHidden = $state(false);
+  let splitPaneRatio = $state(0.42);
+  let workspaceEl = $state<HTMLElement | undefined>(undefined);
+  let draggingSplit = $state(false);
   let editorRef = $state<{
     focus: () => void;
     revealLine: (line: number) => void;
@@ -522,13 +578,8 @@
 
   // Plugin manager (#30) — opened from the overflow menu (desktop + project).
   // ── Project Configuration view (#PCV) ───────────────────────────────────────
-  // The unified surface that replaced the four retired modal managers
-  // (PluginManager, ThemeManager, StylePicker, DesignPanel). It renders INLINE
-  // in the editor pane — `editorView === "config"` swaps CodeMirror out for the
-  // ProjectConfigPanel so the author manages details/theme/styles/design/plugins
-  // with the live preview mounted next to it (the #38 "never unmount the preview
-  // iframe" invariant is preserved because only the EDITOR side swaps).
-  let editorView = $state<"editor" | "config">("editor");
+  // Project configuration is now a left-sidebar tab, not an editor-pane swap.
+  let editorView = $state<"editor" | "config" | "activity">("editor");
 
   /**
    * One button → the whole project configuration view. Opens the editor pane
@@ -542,9 +593,10 @@
       toast?.info?.("Project configuration is available in the desktop app for now.");
       return;
     }
-    editorView = "config";
-    editorOpen = true;            // wide split: ensure the editor pane is visible
-    if (isNarrow) setPaneMode("edit"); // narrow single-pane: show the editor side
+    leftPanelOpen = true;
+    leftPanelTab = "config";
+    leftPanelRef?.notifyOpened();
+    persistLeftPanelPrefs();
   }
 
   /** Close the config view → back to the raw CodeMirror editor. */
@@ -623,6 +675,16 @@
     !!currentDir &&
       sourceMode === "folder" &&
       (isNarrow ? paneMode === "edit" : editorOpen),
+  );
+  let splitGridColumns = $derived(
+    editorPaneOpen && !isNarrow && !previewHidden
+      ? splitTemplateColumns(splitPaneRatio)
+      : "",
+  );
+  let previewCollapseGridColumns = $derived(
+    editorPaneOpen && !isNarrow && previewHidden
+      ? "minmax(0, 1fr) 0 minmax(0, 0)"
+      : "",
   );
 
 
@@ -1281,6 +1343,19 @@
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
         openSnippetPicker();
+        return;
+      }
+      const saveCommand = commandForSaveShortcut({
+        key: e.key,
+        ctrlOrMeta: e.ctrlKey || e.metaKey,
+        shift: e.shiftKey,
+        editorFileOpen: !!editorFilePath,
+        canSavePdf,
+      });
+      if (saveCommand !== "none") {
+        e.preventDefault();
+        if (saveCommand === "save-source") void handleForceSave();
+        else void savePdf();
       }
     }
     window.addEventListener("keydown", onGlobalKey);
@@ -1294,6 +1369,7 @@
     function onKey(e: KeyboardEvent) {
       // Only active when a preview URL is loaded.
       if (!previewUrl) return;
+      if (e.defaultPrevented) return;
       // Don't intercept when focus is in an input/textarea/select, or inside
       // the CodeMirror editor (#38) — its content node is a contenteditable
       // DIV, so a tagName check alone would let preview-nav keys (arrows,
@@ -1303,10 +1379,10 @@
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (t?.isContentEditable || t?.closest?.(".cm-editor")) return;
 
-      // UX-006: Ctrl/Cmd+S saves PDF (desktop only — #33 Phase 4: the web host
-      // can't write a PDF, so the shortcut is inert there, matching the hidden
-      // toolbar button).
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      // Cmd/Ctrl+Shift+E explicitly exports PDF. Plain Cmd/Ctrl+S is handled by
+      // the global shortcut above as "save source edits" when an editor file is
+      // open, so it never surprises writers by opening PDF export.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'e' || e.key === 'E')) {
         e.preventDefault();
         if (canSavePdf) savePdf();
         return;
@@ -1529,10 +1605,8 @@
       // Clear stale problems from the previous project immediately so the badge
       // and panel don't show the old project's findings while the new one renders.
       problems = [];
-      // Close the operation-log dialog and drop the prior project's log path so
-      // a switch can never surface one project's log under another (paired with
-      // the {#key currentDir} remount of OperationLogDialog below).
-      logDialogOpen = false;
+      // Drop the prior project's log path so the activity view can never surface
+      // one project's log under another.
       logFilePath = null;
       // Bump historyRefreshKey so the History tab reloads its list for the new
       // project as soon as capabilities arrive (LeftPanel's effect guards on canHistory).
@@ -1596,6 +1670,9 @@
         settings.set({ preview: { viewMode: restoredViewMode } });
       }
       userSetViewMode = !!restoredViewMode;
+      if (typeof restoreState?.splitPaneRatio === "number") {
+        splitPaneRatio = clampSplitRatio(restoreState.splitPaneRatio);
+      }
       // Loud signal for the #1 cause of wrong fonts/styles: shared asset dirs
       // (e.g. ../dc-design-guide/fonts) that don't resolve next to this project.
       const missing = data.missingSharedAssets ?? [];
@@ -1733,6 +1810,7 @@
     currentPage = 1;
     pageEditing = false;
     editorOpen = false;
+    previewHidden = false;
     buffer?.reset();
     recoveryScanDir = null;
     recoveryItems = [];
@@ -2146,6 +2224,31 @@
     return () => mq.removeEventListener("change", onChange);
   });
 
+  function previewPaneResize(node: HTMLElement) {
+    if (typeof ResizeObserver === "undefined") return;
+    let lastWidth = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const observer = new ResizeObserver((entries) => {
+      const nextWidth = entries[0]?.contentRect.width ?? 0;
+      if (!shouldRefitPreview(zoom, lastWidth, nextWidth)) {
+        lastWidth = nextWidth;
+        return;
+      }
+      lastWidth = nextWidth;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        void applyFitWidthZoom();
+      }, 80);
+    });
+    observer.observe(node);
+    return {
+      destroy() {
+        observer.disconnect();
+        if (timer) clearTimeout(timer);
+      },
+    };
+  }
+
   // Close the enclosing <details> menu after a menu item is chosen, and return
   // focus to its summary for keyboard users.
   function closeMenu(e: Event) {
@@ -2166,6 +2269,48 @@
       void ensureEditorFile();
       if (wasClosed) focusEditorWhenReady();
     }
+  }
+
+  function togglePreview() {
+    if (!previewUrl || isNarrow) return;
+    previewHidden = !previewHidden;
+    if (previewHidden && currentDir && sourceMode === "folder") {
+      editorOpen = true;
+      loadEditorModule();
+      void ensureEditorFile();
+    }
+  }
+
+  function startSplitDrag(e: PointerEvent) {
+    if (!workspaceEl || isNarrow) return;
+    draggingSplit = true;
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    updateSplitFromPointer(e.clientX, false);
+    e.preventDefault();
+  }
+
+  function updateSplitFromPointer(pointerX: number, persist: boolean) {
+    if (!workspaceEl) return;
+    const rect = workspaceEl.getBoundingClientRect();
+    splitPaneRatio = splitRatioFromDrag({
+      containerLeft: rect.left,
+      containerWidth: rect.width,
+      pointerX,
+    });
+    if (persist) saveViewerPrefs({ splitPaneRatio });
+    if (zoom === "fit-width") applyFitWidthZoom();
+  }
+
+  function moveSplitDrag(e: PointerEvent) {
+    if (!draggingSplit) return;
+    updateSplitFromPointer(e.clientX, false);
+  }
+
+  function stopSplitDrag(e: PointerEvent) {
+    if (!draggingSplit) return;
+    draggingSplit = false;
+    updateSplitFromPointer(e.clientX, true);
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   }
 
   // ── Mobile tab bar (#34): Markdown / CSS / Preview ─────────────────────────
@@ -2365,14 +2510,18 @@
         conflictRemoteId = outcome.remoteId;
         conflictOpen = true;
       } else if (outcome.status === "synced") {
-        onSyncCompleted(outcome.mergedRemoteChanges);
+        onSyncCompleted(outcome.mergedRemoteChanges, outcome.filesChanged === true);
       } else if (outcome.status === "up-to-date") {
-        toast?.info("Already up to date — no changes to sync.");
+        if (outcome.filesChanged) onSyncCompleted(false, true);
+        else toast?.info("Already up to date — no changes to sync.");
       } else if (outcome.status === "auth") {
+        if (outcome.filesChanged) onSyncFilesChanged();
         toast?.error("Not connected. Use Connect in the sidebar to set up syncing.");
       } else if (outcome.status === "offline") {
+        if (outcome.filesChanged) onSyncFilesChanged();
         toast?.info("You appear to be offline. Try again when connected.");
       } else {
+        if (outcome.filesChanged) onSyncFilesChanged();
         // Generic error state — surface the message if available.
         toast?.error("Sync failed. Check your connection and try again.");
       }
@@ -2672,6 +2821,17 @@
       {#if !isNarrow}
         <button
           class="icon-btn"
+          class:active={previewHidden}
+          onclick={togglePreview}
+          disabled={!previewUrl || !currentDir || sourceMode === "url"}
+          title={previewHidden ? "Show preview" : "Hide preview"}
+          aria-label={previewHidden ? "Show preview" : "Hide preview"}
+          aria-pressed={previewHidden}
+        >
+          <Icon name="eye" />
+        </button>
+        <button
+          class="icon-btn"
           class:active={editorOpen}
           onclick={toggleEditor}
           disabled={!currentDir || sourceMode === "url"}
@@ -2695,7 +2855,7 @@
           class="primary save-btn icon-text"
           onclick={savePdf}
           disabled={busy || exporting || !currentDir || sourceMode === "url"}
-          title="Save as PDF (Ctrl+S)"
+          title="Save as PDF (Ctrl+Shift+E)"
         >
           <Icon name="file-down" />
           <span class="save-btn-label">{exporting ? "Saving…" : "Save PDF"}</span>
@@ -2727,37 +2887,13 @@
         {/if}
         <span class="save-hint" role="note">PDF export requires the desktop app</span>
       {/if}
-      <!-- Settings panel (#45): gear icon + Cmd/Ctrl+, shortcut. Inline on wide
-           screens; folds into the "More" menu when space is tight. -->
-      <button
-        bind:this={settingsBtn}
-        class="icon-btn opt-inline"
-        onclick={() => (settingsOpen = true)}
-        title="Settings (Ctrl+,)"
-        aria-label="Settings"
-      >
-        <Icon name="settings" />
-      </button>
-      <!-- UX-026: bind:this for focus restore -->
-      <button
-        bind:this={helpBtn}
-        class="icon-btn opt-inline"
-        onclick={() => (helpOpen = true)}
-        title="Help / About"
-        aria-label="Help and system info"
-      >
-        <Icon name="circle-help" />
-      </button>
-      <!-- Overflow menu: collapses Settings + Help into one button at narrow
-           widths so the toolbar never crowds the page navigation. -->
+      <!-- Overflow menu: holds less-common project actions so the toolbar never
+           crowds page navigation. Settings and Help live in the bottom status bar. -->
       <details class="menu more-menu">
         <summary class="icon-btn menu-summary" title="More" aria-label="More options">
           <Icon name="ellipsis-vertical" />
         </summary>
         <div class="menu-panel menu-panel-right">
-          <button class="menu-item" onclick={(e) => { settingsOpen = true; closeMenu(e); }}>
-            <Icon name="settings" /> Settings
-          </button>
           {#if isDesktop()}
             <!-- Advanced setup (#14): Git/remote diagnostics + private servers -->
             <button
@@ -2777,21 +2913,6 @@
               <Icon name="puzzle" /> Save as template…
             </button>
           {/if}
-          {#if currentDir}
-            <!-- Project Configuration view (#PCV): one button → manage details,
-                 appearance/theme, styles, design tokens, and plugins. Replaces
-                 the retired Plugins/Themes/Edit-styles menu items + their four
-                 modal managers. -->
-            <button
-              class="menu-item"
-              onclick={(e) => { openProjectConfig(); closeMenu(e); }}
-            >
-              <Icon name="settings" /> Configure project…
-            </button>
-          {/if}
-          <button class="menu-item" onclick={(e) => { helpOpen = true; closeMenu(e); }}>
-            <Icon name="circle-help" /> Help &amp; about
-          </button>
         </div>
       </details>
     </section>
@@ -2805,6 +2926,7 @@
       bind:width={leftPanelWidth}
       bind:activeTab={leftPanelTab}
       projectDir={currentDir}
+      projectDisplayName={currentFolderDisplayName}
       projectCapabilities={projectCapabilities}
       projectSharesParentHistory={projectSharesParentHistory}
       editorFilePath={editorFilePath}
@@ -2862,7 +2984,10 @@
       class:narrow={isNarrow}
       class:show-edit={isNarrow && paneMode === "edit"}
       class:show-view={isNarrow && paneMode === "view"}
-      style="--kbd-offset: {keyboardInset}px"
+      class:preview-hidden={previewHidden}
+      class:preview-collapsed={previewHidden}
+      bind:this={workspaceEl}
+      style="--kbd-offset: {keyboardInset}px; {previewCollapseGridColumns ? `grid-template-columns: ${previewCollapseGridColumns};` : splitGridColumns ? `grid-template-columns: ${splitGridColumns};` : ''}"
     >
       {#if editorPaneOpen}
         <section
@@ -2871,18 +2996,8 @@
           role={isNarrow ? "tabpanel" : undefined}
           aria-label={editorView === "config" ? "Project configuration" : (mobileTab === "css" ? "CSS editor" : "Markdown editor")}
         >
-          {#if editorView === "config"}
-            <!-- Project Configuration view (#PCV): replaces CodeMirror in the
-                 editor pane. The preview iframe stays mounted alongside (the
-                 #38 "never unmount the preview" invariant is untouched — only
-                 the editor side swaps). -->
-            <ProjectConfigPanel
-              projectDir={currentDir}
-              {toast}
-              onThemeApplied={onThemeApplied}
-              onEditRawCss={openStyleFile}
-              onClose={closeProjectConfig}
-            />
+          {#if editorView === "activity"}
+            <ProjectActivityView projectDir={currentDir} {logFilePath} onClose={closeActivityView} />
           {:else}
             {#if externalChange}
               <ExternalEditBanner
@@ -2903,40 +3018,8 @@
                 }
                 editorRef?.runToolbarAction(action, payload);
               }}
+              onSave={handleForceSave}
             />
-            <!-- Save-state indicator: unobtrusive status bar below the toolbar.
-                 Visible only when a file is open. aria-live="polite" announces
-                 phase transitions to screen readers without interrupting. -->
-            {#if editorFilePath}
-              <div class="editor-status-bar" aria-live="polite" aria-atomic="true">
-                <!-- N1: show the open file's name so the author always knows
-                     which file (markdown chapter OR stylesheet) they're editing. -->
-                <span class="open-file-name" title={editorChapter ?? undefined}>
-                  {#if openFileIsCss}<Icon name="palette" size={12} />{/if}
-                  {editorChapter ?? ""}
-                </span>
-                {#if editorSavePhase === "dirty" || editorSavePhase === "saving"}
-                  <span class="save-status saving">Saving…</span>
-                {:else if editorSavePhase === "clean" && buffer?.filePath}
-                  <span class="save-status saved">Saved</span>
-                {:else if editorSavePhase === "error"}
-                  <span class="save-status save-error">Save error</span>
-                {/if}
-                {#if isDesktop() && currentDir}
-                  <!-- G1/G2: viewport-independent "Configure project" affordance
-                       living in the editor pane (works on desktop AND mobile).
-                       Opens the unified Config view that replaced the four modal
-                       managers (Styles/Plugins/Themes/Design). -->
-                  <button
-                    class="edit-styles-btn"
-                    title="Open project settings, styles, and appearance"
-                    onclick={openProjectConfig}
-                  >
-                    <Icon name="settings" size={12} /> Configure
-                  </button>
-                {/if}
-              </div>
-            {/if}
             {#if MarkdownEditor}
               {#key editorFilePath}
               <MarkdownEditor
@@ -2959,13 +3042,28 @@
             {/if}
           {/if}
         </section>
+        {#if !isNarrow && !previewHidden}
+          <button
+            type="button"
+            class="splitter"
+            class:dragging={draggingSplit}
+            aria-label="Resize editor and preview panes"
+            title="Resize editor and preview panes"
+            onpointerdown={startSplitDrag}
+            onpointermove={moveSplitDrag}
+            onpointerup={stopSplitDrag}
+            onpointercancel={stopSplitDrag}
+          ></button>
+        {/if}
       {/if}
       <section
         class="pane preview-pane"
+        use:previewPaneResize
         id="mobile-panel-preview"
         role={isNarrow ? "tabpanel" : undefined}
         aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
-        inert={isNarrow && paneMode === "edit" ? true : undefined}
+        aria-hidden={previewHidden}
+        inert={previewHidden || (isNarrow && paneMode === "edit") ? true : undefined}
       >
         {#key previewUrl}
           <PreviewFrame
@@ -3073,17 +3171,11 @@
     onShowLog={showProjectLog}
     onForceSave={handleForceSave}
     onForceSync={handleForceSync}
+    onOpenSettings={() => (settingsOpen = true)}
+    onOpenHelp={() => (helpOpen = true)}
   />
 </div>
 </div>
-
-<!-- Operation log viewer — opened from the StatusBar git/sync status pill.
-     Keyed by currentDir so switching projects remounts the dialog and its
-     internal logContent resets — prevents one project's log briefly showing
-     for another when the pill is clicked before a new log path is observed. -->
-{#key currentDir}
-  <OperationLogDialog bind:open={logDialogOpen} logFilePath={logFilePath} />
-{/key}
 
 <HelpDialog
   bind:open={helpOpen}
@@ -3199,7 +3291,7 @@
   backupZipPath={recoveryGuidanceBackupPath}
   logFilePath={recoveryGuidanceLogPath}
   onShowBackup={(path) => showBackupInFolder(path)}
-  onPrimary={onSyncReconnect}
+  onPrimary={onRecoveryGuidancePrimary}
 />
 
 <style>
@@ -3277,7 +3369,7 @@
   /* Editor open: [editor | preview]. The preview is weighted heaviest
      since it's the primary output for a writer. */
   .workspace.editor-open {
-    grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.4fr);
+    grid-template-columns: minmax(280px, 1fr) 6px minmax(360px, 1.4fr);
   }
   .pane {
     min-width: 0;
@@ -3289,6 +3381,22 @@
   .editor-pane {
     border-right: 1px solid var(--app-border);
   }
+  .splitter {
+    width: 6px;
+    min-width: 6px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: var(--app-border-subtle);
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .splitter:hover,
+  .splitter.dragging,
+  .splitter:focus-visible {
+    background: var(--app-focus-ring);
+    outline: none;
+  }
   .editor-loading {
     flex: 1;
     display: grid;
@@ -3297,66 +3405,13 @@
     color: var(--app-text-faint);
     font-size: 13px;
   }
-  /* Save-state indicator — a thin status bar below the editor toolbar. */
-  .editor-status-bar {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    padding: 2px 10px;
-    min-height: 20px;
-    border-bottom: 1px solid var(--app-border-subtle);
-    background: var(--app-surface);
-    flex-shrink: 0;
-  }
-  /* N1: open-file name pushed to the left; the save-status + Styles button stay
-     on the right (justify-content: flex-end). */
-  .open-file-name {
-    margin-right: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 11px;
-    color: var(--app-text-muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
-  .edit-styles-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    padding: 1px 8px;
-    border-radius: 4px;
-    border: 1px solid var(--app-border);
-    background: transparent;
-    color: var(--app-text-muted);
-    cursor: pointer;
-  }
-  .edit-styles-btn:hover {
-    background: var(--app-surface-hover);
-    color: var(--app-text);
-    border-color: var(--app-accent, var(--app-focus-ring));
-  }
-  .edit-styles-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
-  .save-status {
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-    transition: opacity 0.2s;
-  }
-  .save-status.saving { color: var(--app-text-faint); }
-  .save-status.saved  { color: var(--app-text-faint); }
-  .save-status.save-error { color: var(--app-error-text); }
   .preview-pane {
     position: relative;
   }
   /* Narrow widths: give editor + preview equal space. */
   @media screen and (max-width: 1100px) {
     .workspace.editor-open {
-      grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.1fr);
+      grid-template-columns: minmax(240px, 1fr) 6px minmax(280px, 1.1fr);
     }
   }
 
@@ -3920,8 +3975,6 @@
     .save-btn-label { display: none; }
   }
   @container (max-width: 720px) {
-    /* Fold Settings + Help into the "More" overflow menu */
-    .opt-inline { display: none; }
     details.more-menu { display: inline-block; }
   }
   @container (max-width: 640px) {

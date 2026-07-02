@@ -115,6 +115,12 @@ export interface AppSettings {
     /** Periodic safety-sync cadence in minutes (clamped to [1, 1440]). */
     autoSyncMinutes: number;
   };
+  gitIdentity: {
+    /** Optional commit author name. Empty means use existing repo config, then print-md default. */
+    authorName: string;
+    /** Optional commit author email. Empty means use existing repo config, then print-md default. */
+    authorEmail: string;
+  };
   advanced: {
     fileWatcherInterval: number;
     logLevel: "error" | "warn" | "info" | "debug";
@@ -313,8 +319,9 @@ export type SyncOutcome =
       message: string;
       snapshotId?: string;
       mergedRemoteChanges: boolean;
+      filesChanged?: boolean;
     }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | { status: "up-to-date"; message: string; snapshotId?: string; filesChanged?: boolean }
   | {
       status: "conflict";
       message: string;
@@ -323,9 +330,9 @@ export type SyncOutcome =
       remoteId: string;
       snapshotId?: string;
     }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
+  | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
+  | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
+  | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
 
 /** Inputs for applying the author's conflict choices. */
 export interface ResolveSyncConflictsArgs {

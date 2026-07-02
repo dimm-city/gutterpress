@@ -17,6 +17,7 @@ const SUBCOMMANDS = {
   validate: () => import("./commands/validate").then((m) => m.default),
   audit: () => import("./commands/audit").then((m) => m.default),
   preflight: () => import("./commands/preflight").then((m) => m.default),
+  repair: () => import("./commands/repair").then((m) => m.default),
 } as const;
 
 // The package.json version is inlined by the bundler at build time (a JSON

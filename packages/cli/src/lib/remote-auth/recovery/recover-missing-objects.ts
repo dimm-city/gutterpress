@@ -62,14 +62,16 @@ export const recover: RecoverFn = async (ctx, error?) => {
       // ── No remote → cannot fetch → stop with guidance ──────────────────────
       if (!ctx.remoteUrl) {
         const guidance = makeManualGuidance(ctx, KIND, error, backupZipPath);
-        // Override the action to the "no remote" case: user needs to set up a
-        // remote or get a fresh copy.
+        // No remote → nothing to fetch from. Route the CTA to the connection
+        // settings with a HUMAN label (recommendedAction is the literal button
+        // text; machine tokens belong only in recommendedActionKey).
         return {
           status: "needs_user",
           message: guidance.userSummary,
           guidance: {
             ...guidance,
-            recommendedAction: "clone_fresh_copy",
+            recommendedAction: "Check connection",
+            recommendedActionKey: "check_connection",
             recommendedNextStep:
               "No online copy is connected. Please make a fresh copy of the project from a safe source.",
             safeNextSteps: [
@@ -129,14 +131,14 @@ export const recover: RecoverFn = async (ctx, error?) => {
           message: guidance.userSummary,
           guidance: {
             ...guidance,
-            recommendedAction: "clone_fresh_copy",
+            recommendedAction: "Check connection",
+            recommendedActionKey: "check_connection",
             recommendedNextStep:
               "Your project's history has damage that could not be repaired automatically. " +
               "Please make a fresh copy from your online copy, or contact support for help.",
             safeNextSteps: [
               ...(guidance.safeNextSteps ?? []),
               "Your content files are still on this computer.",
-              ...(backupZipPath ? ["A backup of your project was saved before this attempt."] : []),
             ],
           },
           ...(backupZipPath ? { backupZipPath } : {}),

@@ -672,3 +672,64 @@ test("same-byte-length edits are detected (racy index) — issue #50", async () 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ── Crash-window recovery: staged-but-uncommitted edits are not lost ──────────
+//
+// Staging and commit are two separate writes. A crash between them leaves the
+// index matching the workdir with no commit — the WORKDIR↔STAGE changes walk
+// then reports "nothing to save" forever, silently hiding the edits from
+// snapshot/sync/backup. The staging marker makes the state detectable and the
+// next snapshot commits it.
+
+test("a snapshot interrupted between staging and commit is recovered by the next snapshot", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    const gitMod = (await import("isomorphic-git")).default;
+    const fsMod = await import("node:fs");
+
+    // Simulate the crash window: edit a file, stage it, write the marker —
+    // but never commit (exactly the on-disk state a mid-snapshot crash leaves).
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nEdited draft.\n");
+    await gitMod.add({ fs: fsMod, dir, filepath: "chapter-01.md" });
+    fsMod.writeFileSync(path.join(gitDirFor(dir), "print-md-snapshot-staging"), "");
+
+    // The walk sees workdir == stage: without the marker this would throw
+    // "no changes" and the edit would stay invisible forever.
+    const changes = await listWorkdirChanges(dir, {});
+    expect(changes.adds.length + changes.removes.length).toBe(0);
+
+    const snap = await provider.snapshot({ projectDir: dir, message: "recovered" });
+    expect(snap.id).toBeDefined();
+
+    // The edit is now IN history and the marker is gone.
+    const history = await provider.listHistory(dir);
+    expect(history[0]!.message).toBe("recovered");
+    expect(
+      fsMod.existsSync(path.join(gitDirFor(dir), "print-md-snapshot-staging")),
+    ).toBe(false);
+    // The committed tree contains the edited content.
+    const head = await gitMod.resolveRef({ fs: fsMod, dir, ref: "HEAD" });
+    const { blob } = await gitMod.readBlob({
+      fs: fsMod,
+      dir,
+      oid: head,
+      filepath: "chapter-01.md",
+    });
+    expect(new TextDecoder().decode(blob)).toBe("# Hello\n\nEdited draft.\n");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a clean tree with no stale marker still reports 'no changes'", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    await expect(
+      provider.snapshot({ projectDir: dir, message: "nothing" }),
+    ).rejects.toThrow(/no changes since the last snapshot/i);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -1,6 +1,6 @@
 name: Viewer debug build (Windows)
 
-# Builds the windows viewer zip from any branch and uploads it as an
+# Builds the Windows viewer installer + portable zip from any branch and uploads them as an
 # artifact you can download from the Actions tab. Use this for testing
 # in-progress branches (like fix/first-render-perf) without cutting a
 # release.
@@ -13,7 +13,7 @@ env:
 
 jobs:
   build:
-    name: Build viewer windows zip
+    name: Build viewer Windows installer + zip
     runs-on: windows-latest
     permissions:
       contents: read
@@ -22,13 +22,15 @@ jobs:
 
       - uses: ./.github/actions/bun
 
-      - name: Build viewer Windows zip
+      - name: Build viewer Windows installer and zip
         uses: ./.github/actions/build-viewer-windows-zip
 
-      - name: Upload viewer zip
+      - name: Upload viewer Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: viewer-windows-debug-${{ github.sha }}
-          path: packages/viewer/dist/*-win.zip
+          path: |
+            packages/viewer/dist/*.exe
+            packages/viewer/dist/*.zip
           if-no-files-found: error
           retention-days: 14

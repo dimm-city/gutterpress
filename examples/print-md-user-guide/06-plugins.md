@@ -137,7 +137,7 @@ These run automatically before any user plugins and do not need to be declared i
 
 @end-section
 
-> The `markdown-it-container` (`:::name ... :::`) block syntax was removed in 2026-05-17. Use `@`-prefixed markers instead. See `docs/migrations/2026-05-removing-container-syntax.md` for the migration mapping.
+> The `markdown-it-container` (`:::name ... :::`) block syntax was removed in 2026-05-17. Use `@`-prefixed markers instead — a named block like `::: callout-note ... :::` becomes `@section .callout-note ... @end-section`.
 
 ## Plugin Load Order
 
@@ -163,6 +163,6 @@ Print-md **fails the build** on plugin errors. Silent skipping was the previous 
 
 ## Reference Example
 
-The Dimm City Field Guide plugin at `examples/dc-design-guide/plugins/dimm-city-plugin.js` is a full-featured reference (~1,800 lines) covering custom markers, block rules, token transforms, and CSS shipping. It is a worked example of what a complex plugin looks like — most real-world plugins are far smaller.
+The Dimm City Field Guide plugin — a full-featured reference (~1,800 lines) covering custom markers, block rules, token transforms, and CSS shipping — used to live in this repo under `examples/dc-design-guide/`. That example has moved to the `dc-op-manual` repo (`dc-op-manual/dc-design-guide/`); see it there for a worked example of what a complex plugin looks like. Most real-world plugins are far smaller.
 
 Treat it as a demonstration of the plugin API surface, not a template to copy wholesale.

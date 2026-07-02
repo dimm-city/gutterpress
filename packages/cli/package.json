@@ -1,6 +1,6 @@
 {
   "name": "@dimm-city/print-md",
-  "version": "0.6.0-beta.12",
+  "version": "0.6.2",
   "description": "Markdown-to-PDF converter for professional print layout using Paged.js and Ghostscript.",
   "author": "itlackey",
   "license": "MPL-2.0",

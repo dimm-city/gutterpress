@@ -451,6 +451,18 @@ export interface RecoveryProgressInfo {
 }
 
 /**
+ * Machine token for the primary CTA — the host switches on this to route the
+ * guidance dialog's primary button. Local mirror of the lib's
+ * `RecoveryActionKey` (no lib value import in the SPA, §8 / ADR 0004).
+ */
+export type RecoveryActionKey =
+  | "sync"
+  | "reconnect"
+  | "resolve_conflict"
+  | "restore_repo"
+  | "check_connection";
+
+/**
  * Plain-language guidance shown when a repair is blocked or fails.
  * Local mirror of the lib's `ManualGuidance` — no git jargon in any field
  * except `supportDetails` (which is only shown behind a "Copy details" action).
@@ -459,6 +471,7 @@ export interface ManualGuidanceInfo {
   userSummary: string;
   recommendedNextStep: string;
   recommendedAction: string;
+  recommendedActionKey: RecoveryActionKey;
   safeNextSteps?: string[];
   supportDetails?: string;
   backupZipPath?: string;
@@ -543,6 +556,8 @@ export interface SyncStatus {
    * steps (fetch, merge, backup, etc.) but never secrets.
    */
   logFile?: string;
+  /** True when the completed sync/recovery changed files in the local worktree. */
+  filesChanged?: boolean;
 }
 
 // ── Sync (#15 sync phase, ADR 0006 D5) ────────────────────────────────────────
@@ -569,7 +584,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     fontSize: 14,
     lineHeight: 1.6,
     spellCheckLanguage: "en-US",
-    autoSaveDelay: 1000,
+    autoSaveDelay: 2500,
     crashRecovery: true,
   },
   appearance: {
@@ -586,6 +601,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     autoSnapshotMinutes: 10,
     autoSync: true,      // transparent-sync plan §6: ON by default when canSync
     autoSyncMinutes: 2,  // ~2 min periodic safety cadence
+  },
+  gitIdentity: {
+    authorName: "",
+    authorEmail: "",
   },
   advanced: {
     fileWatcherInterval: 300,

@@ -21,6 +21,8 @@ const ALL_KINDS: SyncErrorKind[] = [
   "missing_or_corrupt_objects",
   "unrelated_histories",
   "wrong_remote_or_branch",
+  "interrupted_rebase",
+  "interrupted_cherry_pick",
   "unknown",
 ];
 
@@ -45,6 +47,8 @@ describe("recoveryPolicy — dangerous paths always require backup + confirmatio
     "missing_git_dir",
     "missing_or_corrupt_objects",
     "unrelated_histories",
+    "interrupted_rebase",
+    "interrupted_cherry_pick",
   ];
 
   for (const kind of dangerousKinds) {
@@ -118,6 +122,20 @@ describe("recoveryPolicy — risk levels", () => {
   test("stale_lock has risk=low", () => {
     expect(policyFor("stale_lock").risk).toBe("low");
   });
+
+  test("interrupted_rebase has risk=medium and backup+confirm", () => {
+    const p = policyFor("interrupted_rebase");
+    expect(p.risk).toBe("medium");
+    expect(p.createBackup).toBe(true);
+    expect(p.requireConfirmation).toBe(true);
+  });
+
+  test("interrupted_cherry_pick has risk=medium and backup+confirm", () => {
+    const p = policyFor("interrupted_cherry_pick");
+    expect(p.risk).toBe("medium");
+    expect(p.createBackup).toBe(true);
+    expect(p.requireConfirmation).toBe(true);
+  });
 });
 
 describe("detachedHeadWithLocalChangesPolicy", () => {
@@ -156,5 +174,48 @@ describe("recoveryPolicy — automate flags", () => {
 
   test("detached_head — automate=false (needs confirmation)", () => {
     expect(policyFor("detached_head").automate).toBe(false);
+  });
+});
+
+describe("recoveryPolicy — serializeRepo (dispatcher-level per-repo lock)", () => {
+  // Handlers that mutate .git with RAW git.*/node:fs calls MUST be serialized
+  // by the dispatcher against concurrent sync/snapshot/restore.
+  const locked: SyncErrorKind[] = [
+    "detached_head",
+    "stale_lock",
+    "corrupt_index",
+    "missing_git_dir",
+    "missing_or_corrupt_objects",
+    "unrelated_histories",
+    "interrupted_rebase",
+    "interrupted_cherry_pick",
+    "interrupted_merge",
+  ];
+  // Thin sync.ts delegates take the (non-reentrant) lock internally —
+  // dispatcher-level locking would DEADLOCK them.
+  const unlocked: SyncErrorKind[] = [
+    "non_fast_forward",
+    "merge_conflict",
+    "binary_conflict",
+    "auth_required",
+    "network_unavailable",
+    "wrong_remote_or_branch",
+    "unknown",
+  ];
+
+  for (const kind of locked) {
+    test(`${kind} — serializeRepo=true (raw .git mutation)`, () => {
+      expect(policyFor(kind).serializeRepo).toBe(true);
+    });
+  }
+  for (const kind of unlocked) {
+    test(`${kind} — serializeRepo=false (sync.ts delegate or no-op)`, () => {
+      expect(policyFor(kind).serializeRepo).toBe(false);
+    });
+  }
+
+  test("every kind is classified exactly once", () => {
+    const all = (Object.keys(recoveryPolicy) as SyncErrorKind[]).sort();
+    expect([...locked, ...unlocked].sort()).toEqual(all);
   });
 });

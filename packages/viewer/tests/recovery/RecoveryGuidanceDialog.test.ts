@@ -137,6 +137,22 @@ describe("RecoveryGuidanceDialog — source structure invariants", () => {
     expect(source).toContain("guidance.recommendedAction");
   });
 
+  test("renders {guidance.recommendedAction} directly as the primary button label", async () => {
+    const source = await readFile(COMPONENT_PATH, "utf-8");
+    // The human label from the lib must reach the button face verbatim.
+    expect(source).toMatch(/\{guidance\.recommendedAction\}/);
+  });
+
+  test("no longer maps the action to a label (actionLabel switch removed)", async () => {
+    const source = await readFile(COMPONENT_PATH, "utf-8");
+    expect(source).not.toContain("actionLabel");
+  });
+
+  test("no hard-coded 'Continue' fallback label remains", async () => {
+    const source = await readFile(COMPONENT_PATH, "utf-8");
+    expect(source).not.toContain('"Continue"');
+  });
+
   test("references guidance.recommendedNextStep in the template", async () => {
     const source = await readFile(COMPONENT_PATH, "utf-8");
     expect(source).toContain("guidance.recommendedNextStep");

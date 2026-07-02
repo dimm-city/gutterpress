@@ -52,6 +52,7 @@ import {
   gitAuthor,
   gitScopeFor,
   hasPendingChanges,
+  snapshotStagingMarkerPath,
   snapshotWorkingTreeUnlocked,
   withRepoLock,
 } from "../source-provider.ts";
@@ -61,6 +62,16 @@ import {
   type TokenStore,
 } from "./token-store.ts";
 import { resolveLogger, shortOid } from "./operation-log.ts";
+// The single source of truth for git error decoding lives in the recovery
+// classifier — sync.ts consumes it rather than keeping parallel copies.
+import {
+  classifyFromHealth,
+  classifyTransportFailure,
+  isMergeConflictError,
+  isPushRejected,
+  RepoNeedsRecoveryError,
+} from "./recovery/classify.ts";
+import { inspectRepo } from "./recovery/inspect.ts";
 
 /**
  * isomorphic-git object cache, scoped to ONE operation (one function call)
@@ -104,8 +115,10 @@ export type SyncOutcome =
       snapshotId?: string;
       /** True when online changes were merged into the local copy. */
       mergedRemoteChanges: boolean;
+      /** True when pulling online changes changed the local working tree. */
+      filesChanged?: boolean;
     }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | { status: "up-to-date"; message: string; snapshotId?: string; filesChanged?: boolean }
   | {
       status: "conflict";
       message: string;
@@ -116,9 +129,9 @@ export type SyncOutcome =
       remoteId: string;
       snapshotId?: string;
     }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
+  | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
+  | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
+  | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
 
 /**
  * Outcome of a pull-only attempt ({@link pullChanges}): fetch + fast-forward/
@@ -230,6 +243,7 @@ export interface SyncProjectOptions {
   /** Snapshot message for unsaved work (defaults to a friendly one). */
   message?: string;
   authorName?: string;
+  authorEmail?: string;
   /** Injectable git HTTP transport for tests. */
   httpClient?: typeof httpNode;
   /**
@@ -279,6 +293,7 @@ export interface ResolveConflictsOptions {
   credential?: HostCredential;
   tokenStore?: TokenStore;
   authorName?: string;
+  authorEmail?: string;
   httpClient?: typeof httpNode;
   /**
    * When true, the merge is allowed to combine two commits that share no
@@ -362,97 +377,27 @@ async function resolveTransport(
   };
 }
 
-/** Classify a transport/merge failure into the D5/D7 outcome buckets. */
-function classifyFailure(e: unknown): "auth" | "offline" | null {
-  const err = e as {
-    code?: string;
-    data?: { statusCode?: number; prettyDetails?: string };
-    message?: string;
-  };
-  if (err?.code === "HttpError") {
-    const status = err.data?.statusCode;
-    if (status === 401 || status === 403) return "auth";
-  }
-  // A server-side push rejection (GitPushError) that is NOT a non-fast-forward
-  // (those are handled by isPushRejected → pull-first) is a permission/policy
-  // problem: fold its per-ref report-status (`data.prettyDetails`) into the
-  // scanned text so "permission denied"/"forbidden"/hook-declined surfaces as
-  // auth (the user reconnects), not a generic error or a false race message.
-  const msg = `${err?.message ?? String(e)} ${err?.data?.prettyDetails ?? ""}`;
-  if (
-    /\b401\b|\b403\b|unauthorized|authentication|not authorized|permission denied|forbidden|access denied|not allowed to push|pre-receive hook declined|hook declined/i.test(
-      msg,
-    )
-  ) {
-    return "auth";
-  }
-  if (
-    /ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|network|fetch failed|couldn't reach|socket hang ?up/i.test(
-      msg,
-    )
-  ) {
-    return "offline";
-  }
-  return null;
-}
-
 /**
  * The failure arms shared verbatim by {@link SyncOutcome}, {@link PullOutcome}
  * and {@link PushOutcome} — so one classifier serves all three operations.
+ * Decoding delegates to the shared recovery classifier
+ * (classifyTransportFailure): auth_required → "auth", network_unavailable →
+ * "offline", anything else → the generic "error" arm.
  */
 function failureOutcome(
   e: unknown,
   snapshotId?: string,
 ): { status: "auth" | "offline" | "error"; message: string; snapshotId?: string } {
-  const kind = classifyFailure(e);
+  const kind = classifyTransportFailure(e);
   const base = snapshotId ? { snapshotId } : {};
-  if (kind === "auth") return { status: "auth", message: MSG_AUTH, ...base };
-  if (kind === "offline") return { status: "offline", message: MSG_OFFLINE, ...base };
+  if (kind === "auth_required") return { status: "auth", message: MSG_AUTH, ...base };
+  if (kind === "network_unavailable") return { status: "offline", message: MSG_OFFLINE, ...base };
   return {
     status: "error",
     message:
       "Syncing didn't complete. Your work is saved on this computer — please try again.",
     ...base,
   };
-}
-
-function isMergeConflictError(
-  e: unknown,
-): e is { data: { filepaths: string[]; bothModified: string[]; deleteByUs: string[]; deleteByTheirs: string[] } } {
-  return (e as { code?: string })?.code === "MergeConflictError";
-}
-
-function isPushRejected(e: unknown): boolean {
-  const code = (e as { code?: string })?.code;
-  // Client-side check: isomorphic-git compares against the server's fresh ref
-  // advertisement before uploading and throws PushRejectedError itself. It
-  // carries a typed `data.reason` — ONLY a genuine non-fast-forward is fixable
-  // by pulling first. Other reasons (e.g. "tag-exists") are NOT, so they must
-  // fall through to the friendly auth/error classifier (a permission/policy
-  // rejection that pulling can't fix should never trigger the pull-first/retry
-  // loop — that wastes round-trips and emits a confusing "someone else synced"
-  // message instead of a useful one). A reason-less PushRejectedError keeps the
-  // historical non-fast-forward meaning for back-compat.
-  if (code === "PushRejectedError") {
-    const reason = (e as { data?: { reason?: string } })?.data?.reason;
-    return reason === undefined || reason === "not-fast-forward";
-  }
-  // Server-side check: if the ref moves BETWEEN the advertisement and the
-  // server applying the update, the rejection arrives as a report-status
-  // "ng <ref> non-fast-forward" line, surfaced as GitPushError. Only the
-  // report-status that actually says non-fast-forward is a pull-first case; a
-  // permission/hook decline ("permission denied", "pre-receive hook declined")
-  // is an auth-class problem handled by classifyFailure, not a race.
-  if (code === "GitPushError") {
-    const msg =
-      ((e as { data?: { prettyDetails?: string } })?.data?.prettyDetails ?? "") +
-      " " +
-      ((e as Error)?.message ?? "");
-    return /non-fast-forward|would not be a fast-forward|not a simple fast-forward/i.test(
-      msg,
-    );
-  }
-  return false;
 }
 
 export function conflictFilesFrom(data: {
@@ -494,15 +439,19 @@ async function snapshotBeforeAction(args: {
   dir: string;
   message?: string;
   authorName?: string;
+  authorEmail?: string;
   cache: GitCache;
 }): Promise<string | undefined> {
   const { projectDir, dir, cache } = args;
-  if (!(await hasPendingChanges(dir, cache))) return undefined;
+  const hasChanges = await hasPendingChanges(dir, cache);
+  const staleStaging = fs.existsSync(snapshotStagingMarkerPath(dir));
+  if (!hasChanges && !staleStaging) return undefined;
   const snap = await snapshotWorkingTreeUnlocked({
     projectDir,
     repoRoot: dir,
     message: args.message?.trim() || SYNC_SNAPSHOT_MESSAGE,
     authorName: args.authorName,
+    authorEmail: args.authorEmail,
   });
   return snap.id;
 }
@@ -600,6 +549,22 @@ export async function syncProject(
   options: SyncProjectOptions,
 ): Promise<SyncOutcome> {
   const logger = resolveLogger(options.logFile, "sync");
+
+  // ── Structural preflight — never touch the tree of a damaged repo ─────────
+  // An interrupted merge/rebase/cherry-pick, detached HEAD, stale lock, or
+  // missing .git must be repaired BEFORE any sync work: the snapshot step
+  // below would otherwise commit whatever is on disk (e.g. the literal
+  // conflict markers a half-done native-git merge leaves in tracked files)
+  // and push it. Throwing a typed error here routes every host through the
+  // same catch → inspectRepo → classifyGitError → recover() path it already
+  // uses for mid-sync failures. checkLocalChanges:false — only the structural
+  // flags matter here, and pull performs the working-tree walk anyway.
+  const health = await inspectRepo({ repoDir: options.projectDir }, { checkLocalChanges: false });
+  const structural = classifyFromHealth(health);
+  if (structural) {
+    logger.warn("sync", "structural preflight blocked sync", { kind: structural });
+    throw new RepoNeedsRecoveryError(structural);
+  }
   // Bounded, defaulted retry policy. attempts ≥ 1, backoffMs ≥ 0 (clamped so a
   // caller can never request an unbounded or negative-delay loop).
   const attempts = Math.max(1, options.retry?.attempts ?? DEFAULT_SYNC_RETRY.attempts);
@@ -608,6 +573,7 @@ export async function syncProject(
 
   let snapshotId: string | undefined;
   let pulled = false;
+  let filesChanged = false;
   for (let attempt = 0; attempt < attempts; attempt++) {
     logger.info("sync", `sync pass ${attempt + 1}/${attempts}`);
     const pull = await pullChanges(options);
@@ -622,6 +588,7 @@ export async function syncProject(
       return { ...pull, ...base }; // auth / offline / error
     }
     pulled = pulled || pull.status === "pulled";
+    filesChanged = filesChanged || (pull.status === "pulled" && pull.filesChanged);
 
     const push = await pushChanges(options);
     snapshotId = snapshotId ?? push.snapshotId;
@@ -632,6 +599,7 @@ export async function syncProject(
           status: "synced",
           message: pulled ? MSG_SYNCED_MERGED : MSG_SYNCED,
           mergedRemoteChanges: pulled,
+          ...(filesChanged ? { filesChanged: true } : {}),
           ...(snapshotId ? { snapshotId } : {}),
         };
       case "up-to-date":
@@ -639,6 +607,7 @@ export async function syncProject(
         return {
           status: "up-to-date",
           message: pulled ? MSG_UP_TO_DATE_PULLED : MSG_UP_TO_DATE,
+          ...(filesChanged ? { filesChanged: true } : {}),
           ...(snapshotId ? { snapshotId } : {}),
         };
       case "pull-first":
@@ -650,13 +619,18 @@ export async function syncProject(
         continue;
       default:
         logger.warn("sync", `push non-success`, { status: push.status });
-        return { ...push, ...(snapshotId ? { snapshotId } : {}) };
+        return {
+          ...push,
+          ...(filesChanged ? { filesChanged: true } : {}),
+          ...(snapshotId ? { snapshotId } : {}),
+        };
     }
   }
   logger.error("sync", `exhausted ${attempts} retry attempts (race)`);
   return {
     status: "error",
     message: MSG_RACE,
+    ...(filesChanged ? { filesChanged: true } : {}),
     ...(snapshotId ? { snapshotId } : {}),
   };
 }
@@ -695,6 +669,7 @@ export async function pullChanges(
         dir,
         message: options.message,
         authorName: options.authorName,
+        authorEmail: options.authorEmail,
         cache,
       });
 
@@ -725,7 +700,7 @@ export async function pullChanges(
           cache,
           ours: branch,
           theirs: remoteTip,
-          author: gitAuthor(options.authorName),
+          author: gitAuthor(options.authorName, options.authorEmail),
           message: "Combined your changes with the online version",
         });
       } catch (e) {
@@ -817,6 +792,7 @@ export async function pushChanges(
         dir,
         message: options.message,
         authorName: options.authorName,
+        authorEmail: options.authorEmail,
         cache,
       });
 
@@ -1034,7 +1010,7 @@ export async function resolveConflicts(
     try {
       const branch = await currentBranchOrThrow(dir);
       const transport = await resolveTransport(dir, options);
-      const author = gitAuthor(options.authorName);
+      const author = gitAuthor(options.authorName, options.authorEmail);
 
       // Verify both ids are REAL commit objects in this repo before doing any
       // work (BUG 5). A well-formed-but-garbage hex id passes the regex above
@@ -1057,6 +1033,7 @@ export async function resolveConflicts(
           repoRoot: dir,
           message: SYNC_SNAPSHOT_MESSAGE,
           authorName: options.authorName,
+          authorEmail: options.authorEmail,
         });
         snapshotId = snap.id;
       }
@@ -1145,6 +1122,7 @@ export async function resolveConflicts(
             projectDir: dir,
             message,
             authorName: options.authorName,
+            authorEmail: options.authorEmail,
           });
         }
       };
@@ -1304,5 +1282,3 @@ export async function resolveConflicts(
     }
   });
 }
-
-

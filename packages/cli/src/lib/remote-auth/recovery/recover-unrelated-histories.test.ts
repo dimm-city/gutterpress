@@ -624,14 +624,17 @@ describe("recover (unrelated_histories)", () => {
     }
   });
 
-  test("no remoteUrl: guidance has reconnect_repo action", async () => {
+  test("no remoteUrl: guidance routes to connection settings with a human label", async () => {
     const fix = await setupCleanMerge();
     try {
       const ctx = makeCtx(fix, { remoteUrl: undefined });
       const result = await recover(ctx);
       expect(result.status).toBe("blocked");
       if (result.status !== "blocked") throw new Error("unreachable");
-      expect(result.guidance.recommendedAction).toBe("reconnect_repo");
+      // recommendedAction is the literal button label — a human phrase, never
+      // a machine token; the machine token lives in recommendedActionKey.
+      expect(result.guidance.recommendedAction).toBe("Check connection");
+      expect(result.guidance.recommendedActionKey).toBe("check_connection");
     } finally {
       await fix.cleanup();
     }

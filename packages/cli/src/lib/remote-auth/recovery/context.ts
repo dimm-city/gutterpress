@@ -1,0 +1,82 @@
+/**
+ * buildRecoveryContext — the ONE place a RecoveryContext is resolved from a
+ * project directory. Both hosts consume it (the viewer's recovery bridge and
+ * `print-md repair`); each supplies only its own ConfirmationGate (dialog vs
+ * terminal prompt). Keeping the resolution here means repo-root, branch,
+ * credential, and slug rules can never drift between hosts.
+ *
+ * Resolution rules (each learned the hard way — see the audit trail):
+ *  - repoDir: the project's OWN repo root via detectProjectSource. NEVER
+ *    findEnclosingRepoDir — it is ancestor-only (skips the project's own
+ *    .git), so a project that IS its own repo root would resolve to a parent
+ *    repo (e.g. ~/.git) and the backup step would zip the entire home
+ *    directory.
+ *  - branch: remote diagnosis first, then the locally detected branch
+ *    (local-only repos on non-"main" branches), then "main".
+ *  - credential: resolved from the token store by remote hostname; stays in
+ *    the calling process — never serialized to a UI layer.
+ *  - repoSlug: last path segment, sanitized for backup file naming.
+ */
+
+import path from "node:path";
+
+import { detectProjectSource } from "../../project-source.ts";
+import { diagnoseProjectRemote } from "../diagnose.ts";
+import type { HostCredential, TokenStore } from "../token-store.ts";
+import type { ConfirmationGate, RecoveryContext } from "./types.ts";
+
+export interface BuildRecoveryContextOptions {
+  /** The directory the user opened (may be a subfolder of its repo). */
+  projectDir: string;
+  /** Host-specific approval gate (dialog, terminal prompt, …). */
+  confirmation: ConfirmationGate;
+  /** Credential store for the remote host, when the host has one. */
+  tokenStore?: TokenStore;
+  /** Display name for snapshot commits created during recovery. */
+  authorName?: string;
+  /** Operation-log file shared with the sync path. */
+  logFile?: string;
+}
+
+/** Resolve everything a recovery handler needs from a project directory. */
+export async function buildRecoveryContext(
+  options: BuildRecoveryContextOptions,
+): Promise<RecoveryContext> {
+  const { projectDir, confirmation, tokenStore, authorName, logFile } = options;
+
+  const source = await detectProjectSource(projectDir).catch(() => null);
+  const gitSource = source && source.type === "local-git-folder" ? source : null;
+  const repoDir = gitSource ? gitSource.repoRoot || gitSource.path : projectDir;
+
+  const diag = await diagnoseProjectRemote(projectDir, { tokenStore }).catch(() => ({
+    branch: undefined as string | undefined,
+    remoteUrl: undefined as string | undefined,
+  }));
+  const branch = diag.branch ?? gitSource?.branch ?? "main";
+  const remoteUrl = diag.remoteUrl;
+
+  let credential: HostCredential | undefined;
+  if (remoteUrl && tokenStore) {
+    try {
+      const host = new URL(remoteUrl).hostname;
+      credential = (await tokenStore.get(host)) ?? undefined;
+    } catch {
+      // Malformed URL or missing credential — proceed without one.
+    }
+  }
+
+  const repoSlug = path.basename(repoDir).replace(/[^a-zA-Z0-9_-]/g, "_") || "repo";
+
+  return {
+    projectDir,
+    repoDir,
+    branch,
+    remoteUrl,
+    repoSlug,
+    credential,
+    tokenStore,
+    authorName,
+    confirmation,
+    ...(logFile ? { logFile } : {}),
+  };
+}

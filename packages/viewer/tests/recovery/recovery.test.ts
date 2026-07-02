@@ -121,3 +121,26 @@ test("listRecovery skips entries the user has saved past (disk newer than snapsh
   const list = await listRecovery(recDir, projDir);
   expect(list).toEqual([]);
 });
+
+test("listRecovery prunes superseded entries so stale prompts do not return next launch", async () => {
+  const file = path.join(projDir, "stale.md");
+  await writeFile(file, "orig", "utf-8");
+  const baseMtime = (await stat(file)).mtimeMs;
+  await writeRecovery(recDir, file, "unsaved sidecar", baseMtime);
+
+  await new Promise((r) => setTimeout(r, 30));
+  await writeFile(file, "saved on disk", "utf-8");
+
+  expect(await listRecovery(recDir, projDir)).toEqual([]);
+  expect(await readIndex(recDir)).toEqual([]);
+});
+
+test("listRecovery prunes entries whose snapshot already matches disk", async () => {
+  const file = path.join(projDir, "saved.md");
+  await writeFile(file, "already saved", "utf-8");
+  const savedMtime = (await stat(file)).mtimeMs;
+  await writeRecovery(recDir, file, "already saved", savedMtime);
+
+  expect(await listRecovery(recDir, projDir)).toEqual([]);
+  expect(await readIndex(recDir)).toEqual([]);
+});

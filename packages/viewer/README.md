@@ -127,7 +127,7 @@ npm run electron:build
 
 # 3. Package as platform installer (electron-builder)
 npm run dist:linux   # → dist/print-md-viewer-<version>.AppImage
-npm run dist:win     # → dist/print-md-viewer-<version>-win.zip
+npm run dist:win     # → dist/print-md-viewer-<version>-win-x64.exe + portable .zip
 npm run dist:mac     # → dist/print-md-viewer-<version>-arm64.dmg
 ```
 
@@ -138,12 +138,12 @@ before packaging.
 
 ```bash
 npm run dist:win
-# Output: dist/print-md-viewer-<version>-win.zip
+# Output: dist/print-md-viewer-<version>-win-x64.exe and dist/print-md-viewer-<version>-win-x64.zip
 ```
 
-Extract the zip and run `print-md-viewer.exe`. The release CI runs this on
-`windows-latest` so the binary is signed by electron-builder's default
-config for the right platform.
+For normal users, download and run the `.exe` installer. It installs per-user
+without requiring administrator privileges and creates Start Menu/Desktop
+shortcuts. The `.zip` remains available as a portable/manual fallback.
 
 ### macOS
 
@@ -183,7 +183,7 @@ packages/viewer/
 ├── static/                  # Static assets served from app:// root (favicon)
 ├── build/                   # SvelteKit static SPA output (git-ignored)
 ├── tests/integration/       # Playwright-driven end-to-end tests
-├── electron-builder.yml     # Packaging config (Linux AppImage, Windows zip, macOS dmg)
+├── electron-builder.yml     # Packaging config (Linux AppImage, Windows installer/zip, macOS dmg)
 ├── svelte.config.js         # adapter-static, paths.relative
 └── package.json
 ```

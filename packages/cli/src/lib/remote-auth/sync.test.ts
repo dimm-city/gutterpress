@@ -249,6 +249,28 @@ describe("syncProject", () => {
     }
   });
 
+  test("remote-only fast-forward reports filesChanged so open buffers reconcile", async () => {
+    const h = await setupClone();
+    try {
+      await serverCommit(
+        h.serverDir,
+        { "chapter-01.md": "# One\n\nEdited online.\n" },
+        "online edit",
+      );
+
+      const outcome = await syncProject({ projectDir: h.projectDir });
+
+      expect(outcome.status).toBe("up-to-date");
+      if (outcome.status !== "up-to-date") throw new Error("unreachable");
+      expect(outcome.filesChanged).toBe(true);
+      expect(await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8")).toBe(
+        "# One\n\nEdited online.\n",
+      );
+    } finally {
+      await h.cleanup();
+    }
+  });
+
   test("remote moved with no overlap → merge commit pushed, both histories present", async () => {
     const h = await setupClone();
     try {
@@ -1242,6 +1264,106 @@ describe("syncProject retry budget (BUG 6)", () => {
       expect(outcome.status).toBe("error");
       // 3 attempts → exactly 2 inter-attempt backoffs (none after the last).
       expect(sleeps).toEqual([25, 25]);
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
+// ── Structural preflight — never touch the tree of a damaged repo ─────────────
+//
+// The C1 scenario from the 2026-07-02 recovery audit: an abandoned native-git
+// merge leaves MERGE_HEAD plus literal conflict markers in tracked files.
+// Before the preflight existed, syncProject's snapshot step would COMMIT those
+// markers and push them to the shared remote. It must instead refuse to touch
+// the tree and throw the typed error the hosts' recovery routing consumes.
+
+describe("syncProject — structural preflight", () => {
+  test("mid-merge repo (MERGE_HEAD): throws RepoNeedsRecovery, snapshots nothing, pushes nothing", async () => {
+    const h = await setupClone();
+    try {
+      const localBefore = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
+      const serverBefore = await serverHead(h.serverDir);
+
+      // Fabricate the abandoned-native-merge state: MERGE_HEAD + conflict
+      // markers in a tracked file.
+      await writeFile(
+        path.join(h.projectDir, ".git", "MERGE_HEAD"),
+        `${localBefore}\n`,
+      );
+      await writeFile(
+        path.join(h.projectDir, "chapter-01.md"),
+        "# One\n\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n",
+      );
+
+      let thrown: unknown;
+      try {
+        await syncProject({ projectDir: h.projectDir });
+      } catch (e) {
+        thrown = e;
+      }
+      expect((thrown as { code?: string })?.code).toBe("RepoNeedsRecovery");
+      expect((thrown as { kind?: string })?.kind).toBe("interrupted_merge");
+
+      // Nothing was committed locally (the conflict markers were NOT
+      // snapshotted into history) and nothing reached the remote.
+      expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(localBefore);
+      expect(await serverHead(h.serverDir)).toBe(serverBefore);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a stale lock (older than the threshold) blocks sync with the stale_lock kind", async () => {
+    const h = await setupClone();
+    try {
+      const lockPath = path.join(h.projectDir, ".git", "index.lock");
+      await writeFile(lockPath, "");
+      // Age the lock past the 2-minute preflight threshold.
+      const old = new Date(Date.now() - 10 * 60 * 1000);
+      fs.utimesSync(lockPath, old, old);
+
+      let thrown: unknown;
+      try {
+        await syncProject({ projectDir: h.projectDir });
+      } catch (e) {
+        thrown = e;
+      }
+      expect((thrown as { code?: string })?.code).toBe("RepoNeedsRecovery");
+      expect((thrown as { kind?: string })?.kind).toBe("stale_lock");
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a FRESH lock does not block sync (a live process may hold it)", async () => {
+    const h = await setupClone();
+    try {
+      // A just-created lock is below the preflight age gate; sync proceeds
+      // normally (nothing to push → up-to-date).
+      await writeFile(path.join(h.projectDir, ".git", "index.lock"), "");
+      const outcome = await syncProject({ projectDir: h.projectDir });
+      expect(outcome.status).toBe("up-to-date");
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("staged-but-uncommitted snapshot marker is recovered and pushed by sync", async () => {
+    const h = await setupClone();
+    try {
+      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nRecovered staged draft.\n");
+      await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
+      fs.writeFileSync(path.join(h.projectDir, ".git", "print-md-snapshot-staging"), "");
+
+      const outcome = await syncProject({ projectDir: h.projectDir });
+
+      expect(outcome.status).toBe("synced");
+      expect("snapshotId" in outcome ? outcome.snapshotId : undefined).toBeDefined();
+      expect(fs.existsSync(path.join(h.projectDir, ".git", "print-md-snapshot-staging"))).toBe(false);
+      expect(await serverHead(h.serverDir)).toBe(
+        await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" }),
+      );
     } finally {
       await h.cleanup();
     }

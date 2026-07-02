@@ -63,7 +63,14 @@
       : "Cancelled — nothing was changed.";
     open = false;
     triggerEl?.focus();
-    await getPlatform().respondRecoveryConfirm(request.requestId, approved);
+    try {
+      await getPlatform().respondRecoveryConfirm(request.requestId, approved);
+    } catch (e) {
+      // The dialog is already closed; a failed IPC response must not surface
+      // as an unhandled rejection (the host's confirm timeout fail-safes to
+      // "denied" on its own).
+      console.error("respondRecoveryConfirm failed:", e);
+    }
   }
 
 </script>

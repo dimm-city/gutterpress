@@ -56,6 +56,7 @@ export interface SnapshotEntry {
 export interface InitVersionHistoryOptions {
   projectDir: string;
   authorName?: string;
+  authorEmail?: string;
   initialMessage?: string;
 }
 
@@ -64,6 +65,7 @@ export interface SnapshotOptions {
   projectDir: string;
   message: string;
   authorName?: string;
+  authorEmail?: string;
   /**
    * Root of the Git repository the commit goes to. Defaults to `projectDir`.
    * When the project is a subfolder of a repo, this is the enclosing repo root
@@ -136,6 +138,7 @@ export interface SourceProvider {
 const DEFAULT_AUTHOR = "print-md";
 const DEFAULT_EMAIL = "noreply@print-md.local";
 const DEFAULT_BRANCH = "main";
+export const SNAPSHOT_STAGING_MARKER = "print-md-snapshot-staging";
 
 // ── Per-repo operation queue ─────────────────────────────────────────────────
 // WHY: isomorphic-git has NO repo locking — two concurrent operations against
@@ -170,9 +173,26 @@ export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promi
  * for the sync surface so merge commits carry the same identity as
  * snapshots).
  */
-export function gitAuthor(name?: string): { name: string; email: string } {
+export function gitAuthor(name?: string, email?: string): { name: string; email: string } {
   const n = (name ?? "").trim();
-  return { name: n || DEFAULT_AUTHOR, email: DEFAULT_EMAIL };
+  const e = (email ?? "").trim();
+  return { name: n || DEFAULT_AUTHOR, email: e || DEFAULT_EMAIL };
+}
+
+export async function readGitAuthor(dir: string): Promise<{ name?: string; email?: string }> {
+  const [name, email] = await Promise.all([
+    git.getConfig({ fs, dir, path: "user.name" }).catch(() => undefined),
+    git.getConfig({ fs, dir, path: "user.email" }).catch(() => undefined),
+  ]);
+  return {
+    name: typeof name === "string" ? name : undefined,
+    email: typeof email === "string" ? email : undefined,
+  };
+}
+
+async function resolveGitAuthor(dir: string, name?: string, email?: string): Promise<{ name: string; email: string }> {
+  const existing = await readGitAuthor(dir);
+  return gitAuthor(name || existing.name, email || existing.email);
 }
 
 /** Workdir-vs-index differences, as `git add -A` staging lists. */
@@ -318,7 +338,7 @@ class LocalFolderSourceProvider implements SourceProvider {
         dir,
         cache,
         message: options.initialMessage?.trim() || "Created project",
-        author: gitAuthor(options.authorName),
+        author: await resolveGitAuthor(dir, options.authorName, options.authorEmail),
       });
       return {
         type: "local-git-folder",
@@ -383,6 +403,7 @@ class LocalGitSourceProvider implements SourceProvider {
         projectDir: options.projectDir,
         message: options.initialMessage?.trim() || "Created project",
         authorName: options.authorName,
+        authorEmail: options.authorEmail,
       });
     } catch (e) {
       if (!isNoChangesError(e)) throw e;
@@ -499,9 +520,19 @@ export async function snapshotWorkingTreeUnlocked(
   // One object cache for this snapshot operation only (diff + stage +
   // commit share it), released when the operation returns.
   const cache: GitCache = {};
+  // Crash-window marker: staging (git.add/remove) and git.commit are two
+  // separate writes. A crash between them leaves the index matching the
+  // workdir with NO commit — and because the changes walk compares
+  // WORKDIR↔STAGE only, every later snapshot would report "nothing to save"
+  // while the edits sit staged-but-uncommitted, invisible, forever. The
+  // marker (written before staging, removed after commit) makes that state
+  // detectable: if it survives into a later snapshot, commit what is staged
+  // even though the walk sees no new changes.
+  const stagingMarker = snapshotStagingMarkerPath(dir);
+  const staleStaging = fs.existsSync(stagingMarker);
   // ONE walk decides both "anything to save?" and what to stage.
   const changes = await listWorkdirChanges(dir, cache);
-  if (changes.adds.length === 0 && changes.removes.length === 0) {
+  if (changes.adds.length === 0 && changes.removes.length === 0 && !staleStaging) {
     logger.debug("snapshot", "no changes — skipping");
     throw new Error(
       "No changes since the last snapshot — there is nothing new to save.",
@@ -510,9 +541,11 @@ export async function snapshotWorkingTreeUnlocked(
   logger.info("snapshot", "committing", {
     adds: changes.adds.length,
     removes: changes.removes.length,
+    ...(staleStaging ? { recoveredStaleStaging: true } : {}),
   });
+  fs.writeFileSync(stagingMarker, "");
   await stageChanges(dir, changes, cache);
-  const author = gitAuthor(options.authorName);
+  const author = await resolveGitAuthor(dir, options.authorName, options.authorEmail);
   const id = await git.commit({
     fs,
     dir,
@@ -520,6 +553,7 @@ export async function snapshotWorkingTreeUnlocked(
     message: options.message,
     author,
   });
+  fs.rmSync(stagingMarker, { force: true });
   // Canonical timestamp comes from the committed object itself (matching
   // what listHistory reads back), not the wall clock at return time.
   const [head] = await git.log({ fs, dir, cache, depth: 1 });
@@ -560,6 +594,11 @@ export function providerFor(source: ProjectSource): SourceProvider {
 /** Resolve the `.git` directory path for a project (used by callers/tests). */
 export function gitDirFor(projectDir: string): string {
   return path.join(projectDir, ".git");
+}
+
+/** Marker written before staging and removed after commit; presence means a prior snapshot may have died after staging. */
+export function snapshotStagingMarkerPath(projectDir: string): string {
+  return path.join(gitDirFor(projectDir), SNAPSHOT_STAGING_MARKER);
 }
 
 // ── Safe restore (#13) ────────────────────────────────────────────────────────

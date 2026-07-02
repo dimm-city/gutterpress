@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { isAbsolute } from 'node:path';
 import { getHooks, handleRemoteErrors } from '../_hooks';
+import { gitIdentityArgs } from '$lib/server/settings';
 
 export const POST: RequestHandler = async ({ request }) => {
   const hooks = getHooks();
@@ -20,9 +21,12 @@ export const POST: RequestHandler = async ({ request }) => {
         if (!lib.syncProject) {
           throw new Error('syncProject not available in this version of the lib');
         }
+        const identity = await gitIdentityArgs();
         return lib.syncProject({
           projectDir: body.projectDir,
           tokenStore: hooks.tokenStore,
+          authorName: identity.authorName,
+          authorEmail: identity.authorEmail,
           ...(typeof body.message === 'string' && body.message.trim()
             ? { message: body.message.trim() }
             : {}),

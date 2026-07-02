@@ -2,7 +2,7 @@
 
 # Components
 
-<div class="lede">Reusable layout blocks authored with triple-colon container syntax. Each section shows the markdown source, a live rendered example, and the CSS class that controls the styling.</div>
+<div class="lede">Reusable layout blocks authored with the `@section` marker. Each section shows the markdown source, a live rendered example, and the CSS class that controls the styling.</div>
 
 ---
 
@@ -10,7 +10,7 @@
 
 Use for supplementary information that expands on the body text but isn't required reading. Default callout type.
 
-**Syntax** — `::: callout-note … :::`
+**Syntax** — `@section .callout-note` … `@end-section`
 
 <div class="example">
 <div class="callout-note">
@@ -20,10 +20,10 @@ This is a note callout. Use it for tips, clarifications, or extra context that s
 </div>
 
 ```markdown
-::: callout-note
+@section .callout-note
 <span class="callout-label">Note</span>
 Your note text here.
-:::
+@end-section
 ```
 
 ---
@@ -32,7 +32,7 @@ Your note text here.
 
 Use for information the reader must act on before proceeding. The altered color draws the eye before the reader moves past.
 
-**Syntax** — `::: callout-warning … :::`
+**Syntax** — `@section .callout-warning` … `@end-section`
 
 <div class="example">
 <div class="callout-warning">
@@ -42,10 +42,10 @@ This action cannot be undone. Verify all settings before proceeding, and keep a 
 </div>
 
 ```markdown
-::: callout-warning
+@section .callout-warning
 <span class="callout-label">Warning</span>
 Your warning text here.
-:::
+@end-section
 ```
 
 ---
@@ -54,7 +54,7 @@ Your warning text here.
 
 Use for positive guidance — best practices, shortcuts, or "nice to know" improvements. Green accent signals a safe, optional action.
 
-**Syntax** — `::: callout-tip … :::`
+**Syntax** — `@section .callout-tip` … `@end-section`
 
 <div class="example">
 <div class="callout-tip">
@@ -64,10 +64,10 @@ Run `print-md preview` with `--verbose` to see exactly which files are being wat
 </div>
 
 ```markdown
-::: callout-tip
+@section .callout-tip
 <span class="callout-label">Tip</span>
 Your tip text here.
-:::
+@end-section
 ```
 
 ---
@@ -76,7 +76,7 @@ Your tip text here.
 
 A floated aside for supplementary reference material. Sidebars run 38% width, float right, and allow body text to wrap alongside. Keep them to 60–120 words.
 
-**Syntax** — `::: sidebar … :::`
+**Syntax** — `@section .sidebar` … `@end-section`
 
 <div class="example">
 <div class="sidebar">
@@ -85,14 +85,14 @@ A floated aside for supplementary reference material. Sidebars run 38% width, fl
 
 </div>
 
-Body text flows alongside the sidebar, demonstrating the float behavior. The sidebar occupies 38% of the column width; the remaining 62% holds the paragraph. At the end of the sidebar the text reverts to full-width flow. Use a `:::` container with `break-inside: avoid` around a sidebar + its accompanying paragraph if you need to prevent them from splitting across a page break.
+Body text flows alongside the sidebar, demonstrating the float behavior. The sidebar occupies 38% of the column width; the remaining 62% holds the paragraph. At the end of the sidebar the text reverts to full-width flow. Use a `@section .no-break` wrapper around a sidebar + its accompanying paragraph if you need to prevent them from splitting across a page break.
 
 </div>
 
 ```markdown
-::: sidebar
+@section .sidebar
 **Sidebar heading.** Sidebar body text (60–120 words).
-:::
+@end-section
 
 Body paragraph that flows alongside the sidebar.
 ```
@@ -103,7 +103,7 @@ Body paragraph that flows alongside the sidebar.
 
 A large-format excerpt from the body text, set off with accent rules above and below. Use sparingly — one per chapter at most.
 
-**Syntax** — `::: pull-quote … :::`
+**Syntax** — `@section .pull-quote` … `@end-section`
 
 <div class="example">
 <div class="pull-quote">
@@ -113,11 +113,11 @@ A large-format excerpt from the body text, set off with accent rules above and b
 </div>
 
 ```markdown
-::: pull-quote
+@section .pull-quote
 The measure of good design is whether the reader notices the design at all.
 
 <span class="attribution">— Source, Chapter N</span>
-:::
+@end-section
 ```
 
 ---
@@ -126,7 +126,7 @@ The measure of good design is whether the reader notices the design at all.
 
 A key/value data panel for reference material: product specs, character stats, API parameters, recipe ingredient lists. Stays on one page.
 
-**Syntax** — Raw HTML block inside a `::: container … :::` fence.
+**Syntax** — Raw HTML, since standard markdown renders HTML blocks as-is. Wrap in `@section .no-break` only if it needs to stay off a page break.
 
 <div class="example">
 <div class="spec-block">
@@ -140,7 +140,6 @@ A key/value data panel for reference material: product specs, character stats, A
 </div>
 
 ```html
-::: container
 <div class="spec-block">
   <div class="spec-block-title">Spec Title</div>
   <div class="spec-row">
@@ -148,7 +147,6 @@ A key/value data panel for reference material: product specs, character stats, A
     <span class="spec-val">Value</span>
   </div>
 </div>
-:::
 ```
 
 ---
@@ -201,9 +199,9 @@ Full-width tables with a colored header, alternating row fills, and text set at 
 
 ## Two-Column Layout
 
-Dense reference content benefits from a two-column layout. Use `::: two-column … :::` to trigger the CSS columns property.
+Dense reference content benefits from a two-column layout. Use `@section .two-column` to trigger the CSS columns property.
 
-**Syntax** — `::: two-column … :::`
+**Syntax** — `@section .two-column` … `@column-break` … `@end-section`
 
 <div class="example">
 <div class="two-column">
@@ -214,21 +212,21 @@ Use two-column layout for glossaries, index-style reference lists, comparison ta
 
 Avoid using two-column for narrative prose — it creates a choppy reading experience and complicates page breaks. Save it for genuinely list-like or reference content.
 
-Add `---{.column-break}` (no space before `{`) anywhere inside the container to force subsequent content into the right column early.
+Add `@column-break` on its own line anywhere inside the section to force subsequent content into the right column early.
 
 </div>
 </div>
 
 ```markdown
-::: two-column
+@section .two-column
 Left column content flows here until it reaches
 the bottom, then continues in the right column.
 
----{.column-break}
+@column-break
 
 Content after the break always starts in the
 right column regardless of left column height.
-:::
+@end-section
 ```
 
 ---
@@ -289,7 +287,7 @@ A definition list for rules terms, jargon, and key concepts. Use at the end of a
 
 ## Creating Custom Callout Variants
 
-The callout component is designed to be extended. To add a project-specific callout type (for example, a "Game Master Note" callout):
+The callout component is designed to be extended. Because `@section` accepts any CSS class name, adding a project-specific callout type (for example, a "Game Master Note" callout) needs no plugin or registration step:
 
 **Step 1 — Add tokens to `§ 1 BRAND TOKENS` in `styles/guide.css`:**
 
@@ -308,19 +306,13 @@ The callout component is designed to be extended. To add a project-specific call
 .callout-gm .callout-label { color: #5050c0; }
 ```
 
-**Step 3 — Register the container** in `src/lib/markdown/index.ts`:
-
-```typescript
-md.use(markdownItContainer, "callout-gm", createNamedContainer("callout-gm"));
-```
-
-**Step 4 — Use in markdown:**
+**Step 3 — Use in markdown:**
 
 ```markdown
-::: callout-gm
+@section .callout-gm
 <span class="callout-label">Game Master</span>
 This note is only for the GM. Players should not read past this point.
-:::
+@end-section
 ```
 
-The same pattern works for any named container — `callout-lore`, `callout-safety`, `callout-example`, etc.
+The same pattern works for any class name — `.callout-lore`, `.callout-safety`, `.callout-example`, etc.

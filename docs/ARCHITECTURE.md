@@ -457,7 +457,6 @@ validate:
     pdf.structure.qpdf: false
   source:
     markdownlint: ".markdownlint.yaml"
-    allowedCallouts: ["sidebar", "ability"]
   assets:
     maxImageSize: 10000000
     minImageDpi: 300
@@ -724,5 +723,5 @@ export function validateSafePath(targetPath: string, basePath: string): boolean 
 
 ---
 
-**Last Updated**: 2026-06-03
-**Version**: 0.2.0 (packages/cli + packages/viewer)
+**Last Updated**: 2026-07-01
+**Version**: 0.6.1 (packages/cli + packages/viewer)

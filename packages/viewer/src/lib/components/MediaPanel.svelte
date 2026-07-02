@@ -30,11 +30,13 @@
     projectDir,
     canInsert = false,
     onInsert,
+    sidebarEmbedded = true,
   }: {
     projectDir: string | null;
     /** True when a markdown file is open in the editor (enables Insert). */
     canInsert?: boolean;
     onInsert?: (payload: { src: string; alt: string }) => void;
+    sidebarEmbedded?: boolean;
   } = $props();
 
   /** Max thumbnails held in renderer state (small host-generated data URLs). */
@@ -349,17 +351,17 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 6px 12px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--app-border);
     flex-shrink: 0;
-    min-height: 30px;
+    min-height: 32px;
   }
   .media-title {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.09em;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--app-text-faint);
+    color: var(--app-text);
   }
   .icon-mini {
     display: inline-flex;

@@ -13,7 +13,7 @@ treatment changes, the guide updates the next time you publish it.
 ## Why bother
 
 - **Author reference.** A click away from the manuscript while you're
-  editing — "what does an `::: sidebar` look like again?".
+  editing — "what does an `@section .sidebar` look like again?".
 - **Editor / co-author alignment.** A link you can paste into a chat to
   agree on tone before someone changes a heading.
 - **Onboarding.** Six months later, future-you (or a new collaborator)

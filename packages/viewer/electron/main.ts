@@ -17,6 +17,7 @@ import path from "node:path";
 import os from "node:os";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
+import * as fs from "node:fs";
 import { watch, type FSWatcher } from "node:fs";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
@@ -68,9 +69,13 @@ import {
   handleConfirmResponse,
   rejectAllPendingConfirms,
   buildRecoveryContext,
-  classifyFromHealth,
   decideRunAgainAfterPreflight,
   getConflictPreviewImpl,
+  preExportSyncGateBlockError,
+  type SyncErrorKind,
+  type ConfirmationGate,
+  type RecoveryContext,
+  type TokenStore as RecoveryTokenStore,
 } from "./recovery-bridge";
 import type {
   SnapshotEntry,
@@ -79,13 +84,25 @@ import type {
 } from "./bridge-types";
 // The splash markup ships as a string baked into the main bundle (electron-vite
 // inlines `?raw`), so there is no separate file to resolve at runtime.
+// tsc (moduleResolution: bundler) resolves `./splash.html?raw` to the real
+// `splash.html` file, which it can't type — the `declare module "*.html?raw"`
+// ambient is shadowed by that on-disk file. electron-vite handles the import at
+// build time; the suppression documents the tsc-only gap.
+// @ts-expect-error vite `?raw` string import — resolved by electron-vite, not tsc
 import splashHtml from "./splash.html?raw";
+
+function appIconPath(): string {
+  const packaged = path.resolve(process.resourcesPath ?? "", "build-resources/icon.png");
+  const dev = path.resolve(__dirname, "../../build-resources/icon.png");
+  return fs.existsSync(packaged) ? packaged : dev;
+}
 
 // ── Startup timing instrumentation (diagnose the ~10s launch stall) ──────────
 // Prints "[startup +Nms] <milestone>" so a slow launch log pinpoints exactly
 // which phase stalls (Electron init → web-root → window create → renderer load
 // → first paint → preview). Cheap; safe to leave in for a beta.
 const __startupT0 = Date.now();
+const APP_USER_MODEL_ID = "city.dimm.print-md-viewer";
 function slog(msg: string): void {
   console.log(`[startup +${Date.now() - __startupT0}ms] ${msg}`);
 }
@@ -392,8 +409,9 @@ type SyncOutcome =
       message: string;
       snapshotId?: string;
       mergedRemoteChanges: boolean;
+      filesChanged?: boolean;
     }
-  | { status: "up-to-date"; message: string; snapshotId?: string }
+  | { status: "up-to-date"; message: string; snapshotId?: string; filesChanged?: boolean }
   | {
       status: "conflict";
       message: string;
@@ -402,9 +420,9 @@ type SyncOutcome =
       remoteId: string;
       snapshotId?: string;
     }
-  | { status: "auth"; message: string; snapshotId?: string }
-  | { status: "offline"; message: string; snapshotId?: string }
-  | { status: "error"; message: string; snapshotId?: string };
+  | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
+  | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
+  | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
 
 interface LibModule {
   startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
@@ -559,6 +577,26 @@ interface LibModule {
     err: unknown,
     health?: object,
   ) => string;
+  // Health-only preflight classifier (single source of truth in the lib's
+  // recovery/classify.ts — the viewer no longer keeps its own copy).
+  classifyFromHealth: (health: object) => string | null;
+  // RecoveryContext resolver (recovery/context.ts) — repo root, branch,
+  // credential, slug resolve in the lib; the host adds only its dialog gate.
+  buildRecoveryContext: (options: {
+    projectDir: string;
+    confirmation: ConfirmationGate;
+    tokenStore?: RecoveryTokenStore;
+    authorName?: string;
+    logFile?: string;
+  }) => Promise<RecoveryContext>;
+  // Preflight diagnostics mappers (recovery/inspect.ts) — flat, secret-free
+  // operation-log fields explaining WHY a kind was chosen.
+  buildPreflightDiagnostics: (
+    openedDir: string,
+    repoDir: string,
+    health: object,
+    kind: string | null,
+  ) => PreflightLogData;
   inspectRepo: (ctx: { repoDir: string }) => Promise<{
     hasGitDir: boolean;
     currentBranch?: string;
@@ -572,7 +610,21 @@ interface LibModule {
   }>;
   findEnclosingRepoDir: (dir: string) => Promise<string | undefined>;
   onlineCopyPath: (absPath: string) => string;
+  // Structured operation logger (node-side only). Lets the host write preflight
+  // diagnostics to the SAME operation-log file the recovery subsystem writes to.
+  resolveLogger: (
+    logFile: string | undefined,
+    operation: string,
+  ) => {
+    debug(step: string, message: string, data?: PreflightLogData): void;
+    info(step: string, message: string, data?: PreflightLogData): void;
+    warn(step: string, message: string, data?: PreflightLogData): void;
+    error(step: string, message: string, data?: PreflightLogData): void;
+  };
 }
+
+/** Flat key-value fields for the operation log (mirrors the lib's LogData). */
+type PreflightLogData = Record<string, string | number | boolean | string[] | undefined>;
 
 let libPromise: Promise<LibModule> | null = null;
 let activeExportSession: ExportSession | null = null;
@@ -588,7 +640,7 @@ class ExportCanceledError extends Error {
 
 function loadLib(): Promise<LibModule> {
   if (!libPromise) {
-    libPromise = import("@dimm-city/print-md") as Promise<LibModule>;
+    libPromise = import("@dimm-city/print-md") as unknown as Promise<LibModule>;
   }
   return libPromise;
 }
@@ -836,6 +888,10 @@ interface AppSettings {
     /** Periodic safety-sync cadence in minutes (clamped to [1, 1440]). */
     autoSyncMinutes: number;
   };
+  gitIdentity: {
+    authorName: string;
+    authorEmail: string;
+  };
   advanced: {
     fileWatcherInterval: number;
     logLevel: "error" | "warn" | "info" | "debug";
@@ -851,7 +907,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     fontSize: 14,
     lineHeight: 1.6,
     spellCheckLanguage: "en-US",
-    autoSaveDelay: 1000,
+    autoSaveDelay: 2500,
     crashRecovery: true,
   },
   appearance: {
@@ -869,6 +925,10 @@ const DEFAULT_SETTINGS: AppSettings = {
     autoSnapshotMinutes: 10,
     autoSync: true,      // transparent-sync plan §6: ON by default when canSync
     autoSyncMinutes: 2,  // ~2 min periodic safety cadence
+  },
+  gitIdentity: {
+    authorName: "",
+    authorEmail: "",
   },
   advanced: {
     fileWatcherInterval: 300,
@@ -952,6 +1012,7 @@ function createSplashWindow(): void {
     show: true,
     backgroundColor: "#1e1e1e",
     title: "print-md",
+    icon: appIconPath(),
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
   void splashWindow.loadURL(
@@ -1240,6 +1301,8 @@ interface SyncStatusPayload {
   backupZipPath?: string;
   /** Operation log path — present on "recovered", "error", and "conflict". */
   logFile?: string;
+  /** True when the completed sync/recovery changed files in the local worktree. */
+  filesChanged?: boolean;
 }
 
 /** Per-project last-sync timestamp, updated on every completed runAutoSync. */
@@ -1469,7 +1532,12 @@ async function runAutoSync(dir: string): Promise<void> {
   switch (outcome.status) {
     case "synced":
     case "up-to-date":
-      emitSyncStatus({ state: outcome.status, projectDir: dir, lastSyncAt: completedAt });
+      emitSyncStatus({
+        state: outcome.status,
+        projectDir: dir,
+        lastSyncAt: completedAt,
+        ...(outcome.filesChanged ? { filesChanged: true } : {}),
+      });
       break;
 
     case "conflict":
@@ -1488,16 +1556,31 @@ async function runAutoSync(dir: string): Promise<void> {
       return;
 
     case "auth":
-      emitSyncStatus({ state: "auth", projectDir: dir, lastSyncAt: completedAt });
+      emitSyncStatus({
+        state: "auth",
+        projectDir: dir,
+        lastSyncAt: completedAt,
+        ...(outcome.filesChanged ? { filesChanged: true } : {}),
+      });
       break;
 
     case "offline":
-      emitSyncStatus({ state: "offline", projectDir: dir, lastSyncAt: completedAt });
+      emitSyncStatus({
+        state: "offline",
+        projectDir: dir,
+        lastSyncAt: completedAt,
+        ...(outcome.filesChanged ? { filesChanged: true } : {}),
+      });
       break;
 
     case "error":
     default:
-      emitSyncStatus({ state: "error", projectDir: dir, lastSyncAt: completedAt });
+      emitSyncStatus({
+        state: "error",
+        projectDir: dir,
+        lastSyncAt: completedAt,
+        ...(outcome.filesChanged ? { filesChanged: true } : {}),
+      });
       break;
   }
 
@@ -1731,6 +1814,7 @@ function createWindow() {
     width: 1400,
     height: 900,
     backgroundColor: "#1e1e1e",
+    icon: appIconPath(),
     // Created hidden, then immediately shown INACTIVE (see mainWindow.showInactive()
     // after loadURL). It must be VISIBLE during the first render so paged.js's
     // requestAnimationFrame loop produces frames (a hidden window stalls it on real
@@ -2203,19 +2287,19 @@ const discoverScanDeps: ScanDeps = {
 registerPrefsHooks({
   readPrefs: readPrefs as () => Promise<Record<string, unknown>>,
   writePrefs: writePrefs as (p: Record<string, unknown>) => Promise<void>,
-  readSettings: readSettings as () => Promise<Record<string, unknown>>,
-  writeSettings: writeSettings as (s: Record<string, unknown>) => Promise<void>,
+  readSettings: readSettings as unknown as () => Promise<Record<string, unknown>>,
+  writeSettings: writeSettings as unknown as (s: Record<string, unknown>) => Promise<void>,
   existingDirectory,
   readProjectState: readProjectState as (states: Record<string, unknown> | undefined, dir: string) => unknown,
   writeProjectState: writeProjectState as (states: Record<string, unknown> | undefined, dir: string, patch: Record<string, unknown>) => Record<string, unknown>,
-  mergeSettings: mergeSettings as (base: Record<string, unknown>, patch: Record<string, unknown>) => Record<string, unknown>,
+  mergeSettings: mergeSettings as unknown as (base: Record<string, unknown>, patch: Record<string, unknown>) => Record<string, unknown>,
   defaultProjectSearchRoots,
   scanForProjects: (roots: string[], exclude: Set<string>) => scanForProjects(roots, exclude, discoverScanDeps),
   toggleFavoriteFolder: toggleFavoriteFolder as (
     favorites: Array<{ path: string; title: string }> | undefined,
     entry: { path: string; title: string }
   ) => { favorites: Array<{ path: string; title: string }>; favorited: boolean },
-  removeRecentFolder: removeRecentFolder as (
+  removeRecentFolder: removeRecentFolder as unknown as (
     recents: Array<{ path: string; [k: string]: unknown }> | undefined,
     targetPath: string
   ) => Array<{ path: string; [k: string]: unknown }>,
@@ -2768,6 +2852,10 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
     }
     syncState.inFlight = true;
 
+    // Declared outside the try so the catch block can log to the same file even
+    // if a step before ctx-creation throws (guarded: may still be undefined).
+    let plog: ReturnType<typeof lib.resolveLogger> | undefined;
+
     try {
       const source = await lib.detectProjectSource(openedDir);
       if (source.type !== "local-git-folder") {
@@ -2780,7 +2868,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       }
 
       const health = await lib.inspectRepo({ repoDir: openedDir });
-      const kind = classifyFromHealth(health);
+      const kind = lib.classifyFromHealth(health) as SyncErrorKind | null;
       if (kind === null) {
         // Healthy repo — release lock and schedule the normal initial sync.
         syncState.inFlight = false;
@@ -2801,6 +2889,18 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
 
       const preflightLogFile = operationLogPath(path.basename(openedDir));
       const ctx = await buildRecoveryContext(openedDir, lib, electronTokenStore, undefined, preflightLogFile);
+
+      // Write the FULL structural diagnosis to the operation log BEFORE dispatching
+      // recover(), so support sees WHY a kind was chosen (which health signal, repo
+      // root vs opened dir, whether local changes existed) — not just a one-word
+      // kind. Same file + format the recovery subsystem itself writes to.
+      plog = lib.resolveLogger(preflightLogFile, "preflight");
+      plog.info(
+        "detect",
+        "structural condition detected on open",
+        lib.buildPreflightDiagnostics(openedDir, ctx.repoDir, health, kind),
+      );
+
       let result: Awaited<ReturnType<typeof lib.recover>>;
       try {
         result = await lib.recover(kind, ctx);
@@ -2828,8 +2928,36 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
           backupZipPath: result.backupZipPath,
           logFile: preflightLogFile,
         });
+        // The repo is healthy again: clear any conflict-latch and RESUME sync so
+        // the fix isn't left paused. If a trigger was already queued while we held
+        // the lock, decideRunAgainAfterPreflight below will run it ("run") — so
+        // only schedule the deferred sync here when nothing is queued, to avoid a
+        // double-run on the same repo.
+        syncState.conflictLatched = false;
+        if (!pendingRunAgain) {
+          plog.info("resume", "recovered — scheduling deferred sync", {
+            reason: "no queued trigger",
+          });
+          const t = setTimeout(() => {
+            if (watchedDir === openedDir) void runAutoSync(openedDir);
+          }, AUTO_SYNC_OPEN_DELAY_MS);
+          if (typeof (t as NodeJS.Timeout).unref === "function") (t as NodeJS.Timeout).unref();
+        } else {
+          plog.info("resume", "recovered — honoring queued trigger", {
+            reason: "runAgain pending",
+          });
+        }
       } else if (result.status === "retry_later") {
         emitSyncStatus({ state: "offline", projectDir: openedDir, lastSyncAt: now });
+        // Honor the handler's requested delay (same idiom as the mid-sync
+        // retry_later arm) instead of waiting for the generic periodic timer —
+        // e.g. a fresh-but-not-stale lock asks to be re-checked as soon as it
+        // ages past the threshold, not minutes later.
+        const delay = result.retryAfterMs ?? 60_000;
+        const retryTimer = setTimeout(() => {
+          if (watchedDir === openedDir) void runAutoSync(openedDir);
+        }, delay);
+        if (typeof retryTimer.unref === "function") retryTimer.unref();
       } else if (result.status === "needs_user" && result.files && result.files.length > 0) {
         // Conflict-latch: stop the periodic timer to avoid churning.
         syncState.conflictLatched = true;
@@ -2873,6 +3001,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       // permanently wedged. Then let the normal initial sync proceed.
       syncState.inFlight = false;
       console.warn("[preflight] recovery failed (non-fatal):", err);
+      plog?.error("preflight", "recovery failed (non-fatal)", { error: String(err) });
       const t = setTimeout(() => {
         if (watchedDir === openedDir) void runAutoSync(openedDir);
       }, AUTO_SYNC_OPEN_DELAY_MS);
@@ -3013,7 +3142,8 @@ ipcMain.handle(
       }
     } catch (gateErr) {
       // Re-throw conflict blocks; swallow all other gate errors (non-fatal for export).
-      if ((gateErr as Error & { code?: string }).code === "SYNC_CONFLICT") throw gateErr;
+      const blockErr = preExportSyncGateBlockError(gateErr);
+      if (blockErr) throw blockErr;
       const msg = gateErr instanceof Error ? gateErr.message : String(gateErr);
       console.warn(`[api:build] pre-export sync gate failed (non-fatal): ${msg}`);
     }
@@ -3315,6 +3445,7 @@ app.whenReady().then(async () => {
   // proceed to create a contending window.
   if (!gotSingleInstanceLock) return;
   slog("app whenReady");
+  app.setAppUserModelId?.(APP_USER_MODEL_ID);
   // Show the splash immediately — branded feedback while everything below runs.
   createSplashWindow();
   // Apply any staged update from a previous session BEFORE resolving the web
@@ -3356,7 +3487,7 @@ app.whenReady().then(async () => {
   // window anyway so the splash can't strand the user. Generous (60s) so a large
   // book on a slow machine finishes rendering and dismisses the splash on its own
   // signal rather than being cut off mid-render by the timeout.
-  splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 60_000);
+  splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 15_000);
 
   // Health-gate any current bundle that hasn't been confirmed healthy yet —
   // whether just promoted this launch or left unconfirmed by a prior session

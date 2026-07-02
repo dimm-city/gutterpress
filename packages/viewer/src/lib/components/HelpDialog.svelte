@@ -163,9 +163,9 @@
           <ol class="steps">
             <li><strong>Open your project folder</strong> — click <em>Open</em> in the toolbar and choose the folder that contains your <code>print-md.yaml</code> file.</li>
             <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Use <em>Single / Two-page</em> to switch between one page and two pages side by side.</li>
-            <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. Your changes are saved automatically as you type.</li>
-            <li><strong>Keep a history of your work</strong> — click <em>History</em> and choose <em>Enable Version History</em> to keep a record of changes on this computer. Snapshots are then saved automatically as you work; use <em>Save Snapshot</em> to name important moments, and <em>Restore Version</em> to return to any earlier snapshot.</li>
-            <li><strong>Save as PDF</strong> — click <em>Save PDF</em> (or press {modKey}+S) when your layout looks right.</li>
+            <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. Your changes auto-save, and {modKey}+S or the editor save button saves immediately.</li>
+            <li><strong>Keep a history of your work</strong> — click the sync/status pill to open the project activity view, then save named snapshots or restore earlier work.</li>
+            <li><strong>Export PDF</strong> — click <em>Save PDF</em> (or press {modKey}+Shift+E) when your layout looks right.</li>
           </ol>
           <p class="gs-note">Don't have a project yet? Visit the <button class="inline-link" onclick={openDocs}>online setup guide</button> to create one.</p>
         </section>
@@ -213,7 +213,8 @@
               <tr><td>Fit to width</td><td>F</td></tr>
               <tr><td>Open folder</td><td>{modKey}+O</td></tr>
               <tr><td>Toggle editor</td><td>{modKey}+E</td></tr>
-              <tr><td>Save PDF</td><td>{modKey}+S</td></tr>
+              <tr><td>Save source edits</td><td>{modKey}+S</td></tr>
+              <tr><td>Export PDF</td><td>{modKey}+Shift+E</td></tr>
               <tr><td>Settings</td><td>{modKey}+,</td></tr>
             </tbody>
           </table>
