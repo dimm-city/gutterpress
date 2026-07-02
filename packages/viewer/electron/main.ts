@@ -41,7 +41,9 @@ import {
   initUpdater,
   updaterSupported,
   checkForUpdates,
+  download as downloadUpdate,
   installNow,
+  shouldBackgroundCheck,
   getStatus as getUpdaterStatus,
 } from "./updater";
 import type { UpdaterEventPayload } from "./bridge-types";
@@ -1406,6 +1408,18 @@ function createWindow() {
   mainWindow.webContents.on("dom-ready", () => slog("renderer dom-ready"));
   mainWindow.webContents.on("did-finish-load", () => slog("renderer did-finish-load"));
   mainWindow.setMenuBarVisibility(false);
+
+  // H1: re-check for updates when the window regains focus, throttled (no
+  // more than once per shouldBackgroundCheck()'s window — default 4h; no
+  // timers, just a last-checked timestamp read at the call site) so this
+  // can't hammer the release feed on every alt-tab. Silent: a network
+  // failure here must not latch a user-visible error either.
+  mainWindow.on("focus", () => {
+    if (!updaterSupported() || !shouldBackgroundCheck()) return;
+    checkForUpdates({ silent: true }).catch((err) => {
+      console.warn("[updater] focus update check failed (non-fatal):", err);
+    });
+  });
 
   // Editable-field context menu. Electron ships no default menu, so inputs
   // (e.g. the Open Location URL/path field) otherwise have no right-click
@@ -2806,9 +2820,14 @@ ipcMain.handle("updater:getStatus", async () => {
 });
 
 ipcMain.handle("updater:check", async () => {
-  // Platform gating (incl. the macOS "download from GitHub" hint) lives
-  // inside checkForUpdates() so every caller gets the same honest status.
+  // Platform gating (incl. the macOS/non-AppImage-Linux "download from
+  // GitHub" hint) lives inside checkForUpdates() so every caller gets the
+  // same honest status. User-initiated (non-silent): failures are reported.
   return checkForUpdates();
+});
+
+ipcMain.handle("updater:download", async () => {
+  return downloadUpdate();
 });
 
 ipcMain.handle("updater:applyNow", async () => {
@@ -2909,21 +2928,24 @@ app.whenReady().then(async () => {
   // signal rather than being cut off mid-render by the timeout.
   splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 15_000);
 
-  // Background check → download on every launch (non-blocking). Errors are
-  // recorded in updater status and surfaced via the "error" event; nothing
-  // here can block or break startup.
+  // Background check on every launch (non-blocking, silent — see H1: a
+  // network failure here resets to idle instead of latching a user-visible
+  // error). Findings still surface normally via the "available"/"staged"
+  // events; nothing here can block or break startup.
   if (updaterSupported()) {
-    checkForUpdates().catch((err) => {
+    checkForUpdates({ silent: true }).catch((err) => {
       console.warn("[updater] background update check failed (non-fatal):", err);
     });
-    // One-time cleanup of the deleted hot-swap updater's userData store
-    // (web-runtime/ bundle versions + pointer files) left behind by
-    // pre-0.7 builds. App-generated cache only; best-effort.
-    rm(path.join(app.getPath("userData"), "web-runtime"), {
-      recursive: true,
-      force: true,
-    }).catch(() => {});
   }
+  // One-time cleanup of the deleted hot-swap updater's userData store
+  // (web-runtime/ bundle versions + pointer files) left behind by pre-0.7
+  // builds. App-generated cache only; best-effort. Not gated on
+  // updaterSupported() — macOS installs (which never enable auto-update)
+  // still carry this pre-0.7 leftover and deserve the same cleanup (L5).
+  rm(path.join(app.getPath("userData"), "web-runtime"), {
+    recursive: true,
+    force: true,
+  }).catch(() => {});
 
   // Pre-warm the lib graph in parallel with SPA boot. The first call to
   // window.electron.startPreview otherwise pays a 300–900ms cold-import

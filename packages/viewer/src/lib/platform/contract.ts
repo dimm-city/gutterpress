@@ -289,6 +289,8 @@ export type UpdaterEvent = UpdaterEventPayload;
 export interface UpdaterApi {
   getStatus(): Promise<UpdaterStatus>;
   check(): Promise<UpdaterStatus>;
+  /** Download the update found by the last check (phase "available"). */
+  download(): Promise<UpdaterStatus>;
   /** Quit and install the downloaded update (restart). */
   applyNow(): Promise<{ applied: boolean; version?: string }>;
   onEvent(cb: (event: UpdaterEvent) => void): () => void;

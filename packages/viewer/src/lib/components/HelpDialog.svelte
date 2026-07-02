@@ -30,6 +30,7 @@
     onCheckForUpdates,
     checkingUpdates = false,
     updateReadyVersion = null,
+    updateAvailableVersion = null,
   }: {
     open?: boolean;
     onClose?: () => void;
@@ -38,6 +39,7 @@
     onCheckForUpdates?: () => void;
     checkingUpdates?: boolean;
     updateReadyVersion?: string | null;
+    updateAvailableVersion?: string | null;
   } = $props();
 
   let data = $state<Diagnostics | null>(null);
@@ -183,8 +185,10 @@
             <p class="updates-note">
               {#if updateReadyVersion}
                 An update (v{updateReadyVersion}) is ready to apply — close this dialog and use the banner at the top of the window.
+              {:else if updateAvailableVersion}
+                An update (v{updateAvailableVersion}) is available — close this dialog and use the banner at the top of the window to download it.
               {:else}
-                print-md keeps itself up to date automatically. You can also check now.
+                print-md checks for updates automatically. You can also check now.
               {/if}
             </p>
             <button

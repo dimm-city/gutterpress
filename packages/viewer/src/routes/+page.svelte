@@ -246,10 +246,13 @@
   let urlPreviewError = $state<string | null>(null);
 
   // ── Auto-update state ──────────────────────────────────────────────────
-  /** Non-null when a staged bundle is ready to apply. */
+  /** Non-null when a staged bundle is ready to apply (restart to update). */
   let updateReadyVersion = $state<string | null>(null);
+  /** Non-null when a check found an update but it hasn't been downloaded yet. */
+  let updateAvailableVersion = $state<string | null>(null);
   let updateBannerDismissed = $state(false);
   let checkingUpdates = $state(false);
+  let downloadingUpdate = $state(false);
 
   // UX-026: focus-restoration reference for the Help dialog
   let helpBtn = $state<HTMLButtonElement | undefined>(undefined);
@@ -1285,26 +1288,34 @@
     const platform = getPlatform();
 
     // Peek at current status so we can surface a banner immediately if an
-    // update was downloaded during a previous run.
+    // update was found or downloaded during a previous run.
     platform.updater.getStatus()
-      .then((status: { stagedVersion: string | null }) => {
+      .then((status: { stagedVersion: string | null; availableVersion: string | null }) => {
         if (status.stagedVersion) {
           updateReadyVersion = status.stagedVersion;
+          updateBannerDismissed = false;
+        } else if (status.availableVersion) {
+          updateAvailableVersion = status.availableVersion;
           updateBannerDismissed = false;
         }
       })
       .catch(() => {});
 
     // Subscribe to future events from main.
-    // Events fire for BOTH the silent background launch check and the manual
-    // "Check for updates" button. Only react to "staged" here (show the banner
-    // live, e.g. when the background check stages an update). "uptodate"/"error"
-    // are intentionally silent — surfacing them here would toast on every
-    // launch and would double-toast during a manual check (which drives its own
-    // feedback from the IPC return value in checkForUpdates()).
+    // Events fire for BOTH the silent background launch/focus check and the
+    // manual "Check for updates" button. React to "available" (show the
+    // Download banner) and "staged" (show the restart banner) live.
+    // "uptodate"/"error" are intentionally silent — surfacing them here would
+    // toast on every launch and would double-toast during a manual check
+    // (which drives its own feedback from the IPC return value in
+    // checkForUpdates()).
     const off = platform.updater.onEvent((event: { type: string; version?: string }) => {
-      if (event.type === "staged") {
+      if (event.type === "available") {
+        updateAvailableVersion = event.version ?? null;
+        updateBannerDismissed = false;
+      } else if (event.type === "staged") {
         updateReadyVersion = event.version ?? null;
+        updateAvailableVersion = null;
         updateBannerDismissed = false;
       }
     });
@@ -2422,17 +2433,23 @@
     checkingUpdates = true;
     toast?.info("Checking for updates…");
     try {
-      const status: { phase: string; stagedVersion: string | null; error: string | null } =
-        await getPlatform().updater.check();
+      const status: {
+        phase: string;
+        stagedVersion: string | null;
+        availableVersion: string | null;
+        error: string | null;
+      } = await getPlatform().updater.check();
       if (status.stagedVersion) {
-        // An update was downloaded + staged — the banner appears; no toast.
+        // An update was already downloaded + staged — the banner appears; no toast.
         updateReadyVersion = status.stagedVersion;
         updateBannerDismissed = false;
-      } else if (status.phase === "downloading") {
-        // The check resolves as soon as the feed answers; the installer keeps
-        // downloading in the background and the "staged" event shows the
-        // banner when it lands.
-        toast?.info("Update found — downloading in the background.");
+      } else if (status.phase === "available") {
+        // Found, not downloaded yet — the Download banner appears; tell the
+        // author explicitly so a manual check reads as "found something" and
+        // not "nothing happened" (M1: downloads are consented, never silent).
+        updateAvailableVersion = status.availableVersion;
+        updateBannerDismissed = false;
+        toast?.info(`Update available (v${status.availableVersion}) — use the banner to download it.`);
       } else if (status.phase === "error") {
         toast?.error(status.error ?? "Update check failed.");
       } else {
@@ -2442,6 +2459,25 @@
       toast?.error(e instanceof Error ? e.message : "Update check failed.");
     } finally {
       checkingUpdates = false;
+    }
+  }
+
+  async function downloadUpdate() {
+    if (!isDesktop()) return;
+    downloadingUpdate = true;
+    try {
+      const status: { phase: string; stagedVersion: string | null; error: string | null } =
+        await getPlatform().updater.download();
+      if (status.stagedVersion) {
+        updateReadyVersion = status.stagedVersion;
+        updateAvailableVersion = null;
+      } else if (status.phase === "error") {
+        toast?.error(status.error ?? "Update download failed.");
+      }
+    } catch (e) {
+      toast?.error(e instanceof Error ? e.message : "Update download failed.");
+    } finally {
+      downloadingUpdate = false;
     }
   }
 
@@ -2575,10 +2611,17 @@
 {/if}
 
 <div class="app-root">
-{#if updateReadyVersion && !updateBannerDismissed}
+{#if (updateReadyVersion || updateAvailableVersion) && !updateBannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
-    <span class="update-banner-msg">Update ready (v{updateReadyVersion})</span>
-    <button class="update-apply" onclick={applyUpdate}>Restart &amp; update</button>
+    {#if updateReadyVersion}
+      <span class="update-banner-msg">Update ready (v{updateReadyVersion})</span>
+      <button class="update-apply" onclick={applyUpdate}>Restart &amp; update</button>
+    {:else}
+      <span class="update-banner-msg">Update available (v{updateAvailableVersion})</span>
+      <button class="update-apply" onclick={downloadUpdate} disabled={downloadingUpdate}>
+        {downloadingUpdate ? "Downloading…" : "Download"}
+      </button>
+    {/if}
     <button class="update-later" onclick={() => (updateBannerDismissed = true)}>Later</button>
   </div>
 {/if}
@@ -3187,6 +3230,7 @@
   onCheckForUpdates={checkForUpdates}
   {checkingUpdates}
   {updateReadyVersion}
+  {updateAvailableVersion}
 />
 <SettingsDialog
   bind:open={settingsOpen}
