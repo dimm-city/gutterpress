@@ -2827,6 +2827,7 @@ ipcMain.handle("updater:applyNow", async () => {
     });
     flushResolve = null;
   }
+  if (updaterSupported() && getUpdaterStatus().stagedVersion) cancelAutoSnapshotTimer();
   return installNow();
 });
 
