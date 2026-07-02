@@ -1348,4 +1348,24 @@ describe("syncProject — structural preflight", () => {
       await h.cleanup();
     }
   });
+
+  test("staged-but-uncommitted snapshot marker is recovered and pushed by sync", async () => {
+    const h = await setupClone();
+    try {
+      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nRecovered staged draft.\n");
+      await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
+      fs.writeFileSync(path.join(h.projectDir, ".git", "print-md-snapshot-staging"), "");
+
+      const outcome = await syncProject({ projectDir: h.projectDir });
+
+      expect(outcome.status).toBe("synced");
+      expect("snapshotId" in outcome ? outcome.snapshotId : undefined).toBeDefined();
+      expect(fs.existsSync(path.join(h.projectDir, ".git", "print-md-snapshot-staging"))).toBe(false);
+      expect(await serverHead(h.serverDir)).toBe(
+        await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" }),
+      );
+    } finally {
+      await h.cleanup();
+    }
+  });
 });

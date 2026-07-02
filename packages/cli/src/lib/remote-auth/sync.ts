@@ -52,6 +52,7 @@ import {
   gitAuthor,
   gitScopeFor,
   hasPendingChanges,
+  snapshotStagingMarkerPath,
   snapshotWorkingTreeUnlocked,
   withRepoLock,
 } from "../source-provider.ts";
@@ -441,7 +442,9 @@ async function snapshotBeforeAction(args: {
   cache: GitCache;
 }): Promise<string | undefined> {
   const { projectDir, dir, cache } = args;
-  if (!(await hasPendingChanges(dir, cache))) return undefined;
+  const hasChanges = await hasPendingChanges(dir, cache);
+  const staleStaging = fs.existsSync(snapshotStagingMarkerPath(dir));
+  if (!hasChanges && !staleStaging) return undefined;
   const snap = await snapshotWorkingTreeUnlocked({
     projectDir,
     repoRoot: dir,

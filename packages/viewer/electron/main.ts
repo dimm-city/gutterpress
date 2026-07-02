@@ -72,6 +72,7 @@ import {
   decideRunAgainAfterPreflight,
   buildPreflightDiagnostics,
   getConflictPreviewImpl,
+  preExportSyncGateBlockError,
   type SyncErrorKind,
 } from "./recovery-bridge";
 import type {
@@ -3116,7 +3117,8 @@ ipcMain.handle(
       }
     } catch (gateErr) {
       // Re-throw conflict blocks; swallow all other gate errors (non-fatal for export).
-      if ((gateErr as Error & { code?: string }).code === "SYNC_CONFLICT") throw gateErr;
+      const blockErr = preExportSyncGateBlockError(gateErr);
+      if (blockErr) throw blockErr;
       const msg = gateErr instanceof Error ? gateErr.message : String(gateErr);
       console.warn(`[api:build] pre-export sync gate failed (non-fatal): ${msg}`);
     }

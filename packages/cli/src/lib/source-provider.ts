@@ -138,6 +138,7 @@ export interface SourceProvider {
 const DEFAULT_AUTHOR = "print-md";
 const DEFAULT_EMAIL = "noreply@print-md.local";
 const DEFAULT_BRANCH = "main";
+export const SNAPSHOT_STAGING_MARKER = "print-md-snapshot-staging";
 
 // ── Per-repo operation queue ─────────────────────────────────────────────────
 // WHY: isomorphic-git has NO repo locking — two concurrent operations against
@@ -527,7 +528,7 @@ export async function snapshotWorkingTreeUnlocked(
   // marker (written before staging, removed after commit) makes that state
   // detectable: if it survives into a later snapshot, commit what is staged
   // even though the walk sees no new changes.
-  const stagingMarker = path.join(gitDirFor(dir), "print-md-snapshot-staging");
+  const stagingMarker = snapshotStagingMarkerPath(dir);
   const staleStaging = fs.existsSync(stagingMarker);
   // ONE walk decides both "anything to save?" and what to stage.
   const changes = await listWorkdirChanges(dir, cache);
@@ -593,6 +594,11 @@ export function providerFor(source: ProjectSource): SourceProvider {
 /** Resolve the `.git` directory path for a project (used by callers/tests). */
 export function gitDirFor(projectDir: string): string {
   return path.join(projectDir, ".git");
+}
+
+/** Marker written before staging and removed after commit; presence means a prior snapshot may have died after staging. */
+export function snapshotStagingMarkerPath(projectDir: string): string {
+  return path.join(gitDirFor(projectDir), SNAPSHOT_STAGING_MARKER);
 }
 
 // ── Safe restore (#13) ────────────────────────────────────────────────────────

@@ -31,6 +31,7 @@ import {
   rejectAllPendingConfirms,
   buildRecoveryContext,
   setRecoveryBridgeWindow,
+  preExportSyncGateBlockError,
 } from "../../electron/recovery-bridge";
 import { classifyFromHealth } from "../../../cli/src/lib/remote-auth/recovery/classify.ts";
 
@@ -148,6 +149,52 @@ describe("classifyFromHealth priority chain (real code)", () => {
     const result = classifyFromHealth(makeGoodHealth());
     expect(result).toBeNull();
     expect(result).not.toBe("unknown");
+  });
+});
+
+describe("buildRecoveryContext branch resolution", () => {
+  test("uses detected local branch when remote diagnosis is unavailable", async () => {
+    const lib = {
+      detectProjectSource: async () => ({
+        type: "local-git-folder",
+        path: "/project",
+        repoRoot: "/project",
+        branch: "master",
+      }),
+      diagnoseProjectRemote: async () => {
+        throw new Error("local-only");
+      },
+    };
+    const tokenStore = {
+      get: async () => null,
+      delete: async () => undefined,
+    };
+
+    const ctx = await buildRecoveryContext("/project", lib, tokenStore);
+
+    expect(ctx.repoDir).toBe("/project");
+    expect(ctx.branch).toBe("master");
+  });
+});
+
+describe("pre-export sync gate error policy", () => {
+  test("RepoNeedsRecovery blocks export instead of being swallowed as a soft sync failure", () => {
+    const err = Object.assign(new Error("repair required"), {
+      code: "RepoNeedsRecovery",
+      kind: "interrupted_merge",
+    });
+
+    const block = preExportSyncGateBlockError(err);
+
+    expect(block).toBeInstanceOf(Error);
+    expect((block as Error & { code?: string }).code).toBe("SYNC_CONFLICT");
+    expect(block?.message).toContain("needs repair");
+  });
+
+  test("ordinary sync gate errors remain non-blocking for export", () => {
+    const err = Object.assign(new Error("offline"), { code: "NetworkUnavailable" });
+
+    expect(preExportSyncGateBlockError(err)).toBeNull();
   });
 });
 

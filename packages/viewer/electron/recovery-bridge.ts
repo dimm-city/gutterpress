@@ -211,7 +211,7 @@ interface LibForContext {
   // .git), so for a project that IS its own repo root it returns a parent repo
   // (e.g. ~/.git) — and the backup would then zip the entire HOME directory and
   // OOM. detectProjectSource returns the project's OWN repoRoot.
-  detectProjectSource(dir: string): Promise<{ type: string; path?: string; repoRoot?: string }>;
+  detectProjectSource(dir: string): Promise<{ type: string; path?: string; repoRoot?: string; branch?: string }>;
   diagnoseProjectRemote(
     dir: string,
     opts?: { tokenStore?: { get(host: string): Promise<HostCredential | null> } },
@@ -238,7 +238,7 @@ export async function buildRecoveryContext(
 ): Promise<RecoveryContext> {
   // Resolve the project's OWN repo root (not an ancestor repo). This is what the
   // backup walks — getting it wrong (e.g. ~/.git) zips the whole home dir → OOM.
-  let source: { type: string; path?: string; repoRoot?: string } | null = null;
+  let source: { type: string; path?: string; repoRoot?: string; branch?: string } | null = null;
   try {
     source = await lib.detectProjectSource(projectDir);
   } catch {
@@ -253,7 +253,9 @@ export async function buildRecoveryContext(
     remoteUrl: undefined as string | undefined,
   }));
 
-  const branch = diag.branch ?? "main";
+  const detectedBranch =
+    source && source.type === "local-git-folder" ? source.branch : undefined;
+  const branch = diag.branch ?? detectedBranch ?? "main";
   const remoteUrl = diag.remoteUrl;
 
   // Resolve credential for the remote host (stays in main)
@@ -419,6 +421,19 @@ export function decideRunAgainAfterPreflight(
       // Forward-compatible fail-safe: never auto-run on an unknown state.
       return "suppress";
   }
+}
+
+export function preExportSyncGateBlockError(gateErr: unknown): Error | null {
+  const code = (gateErr as Error & { code?: string })?.code;
+  if (code === "SYNC_CONFLICT") return gateErr as Error;
+  if (code === "RepoNeedsRecovery") {
+    const repairErr = new Error(
+      "This project needs repair before saving a PDF. Open the project and allow the repair, then try again.",
+    );
+    (repairErr as Error & { code?: string }).code = "SYNC_CONFLICT";
+    return repairErr;
+  }
+  return null;
 }
 
 // ── getConflictPreviewImpl ────────────────────────────────────────────────────

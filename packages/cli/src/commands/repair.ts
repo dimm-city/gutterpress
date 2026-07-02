@@ -25,8 +25,8 @@ import {
   classifyFromHealth,
   defaultConfigDir,
   diagnoseProjectRemote,
+  detectProjectSource,
   FileTokenStore,
-  findEnclosingRepoDir,
   inspectRepo,
   recover,
 } from "../index.ts";
@@ -79,6 +79,11 @@ function printResult(result: RecoveryResult): void {
   }
 }
 
+export async function resolveRepairRepoDir(openedDir: string): Promise<string> {
+  const source = await detectProjectSource(openedDir);
+  return source.type === "local-git-folder" ? source.repoRoot : openedDir;
+}
+
 export default defineCommand({
   meta: {
     name: "repair",
@@ -104,7 +109,7 @@ export default defineCommand({
   async run({ args }) {
     const openedDir = path.resolve(args.dir ?? ".");
     // A project may be opened at a subfolder of its repo — repair the repo root.
-    const repoDir = (await findEnclosingRepoDir(openedDir)) ?? openedDir;
+    const repoDir = await resolveRepairRepoDir(openedDir);
 
     const health = await inspectRepo({ repoDir });
     const kind = classifyFromHealth(health);
