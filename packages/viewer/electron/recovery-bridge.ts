@@ -10,95 +10,21 @@
  *
  * NEVER imported by the renderer. Node/lib-side only.
  *
- * NOTE: The lib module is declared as `declare module "@dimm-city/print-md"`
- * (no .d.ts yet), so we CANNOT use the lib's TypeScript types here. All types
- * for the lib's surface are defined locally below, structurally compatible with
- * the runtime values the lib returns.
+ * Uses the real `@dimm-city/print-md` declarations for the recovery surface.
  */
 
 import path from "node:path";
 import fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import type { BrowserWindow } from "electron";
-import type { HostCredential } from "./credential-store";
-
-// ── Local type mirrors for the lib recovery surface ───────────────────────────
-// These mirror the lib's types but are defined locally because the lib has no
-// .d.ts yet (types.d.ts declares `declare module "@dimm-city/print-md"`).
-
-export interface RepairConfirmation {
-  repair: string;
-  risk: "none" | "low" | "medium" | "high";
-  summary: string;
-  backupZipPath: string;
-  willChangeLocalFiles: boolean;
-  willChangeGitMetadata: boolean;
-  willChangeRemote: boolean;
-  canBeUndoneFromBackup: boolean;
-}
-
-export interface ConfirmationGate {
-  confirmRepair(req: RepairConfirmation): Promise<boolean>;
-}
-
-export interface RepoHealth {
-  hasGitDir: boolean;
-  currentBranch?: string;
-  isDetachedHead: boolean;
-  hasStaleLock: boolean;
-  lockAgeMs?: number;
-  hasInterruptedMerge: boolean;
-  hasInterruptedRebase: boolean;
-  hasInterruptedCherryPick: boolean;
-  hasLocalChanges: boolean;
-}
-
-export type SyncErrorKind =
-  | "non_fast_forward"
-  | "merge_conflict"
-  | "binary_conflict"
-  | "auth_required"
-  | "network_unavailable"
-  | "detached_head"
-  | "stale_lock"
-  | "corrupt_index"
-  | "missing_git_dir"
-  | "missing_or_corrupt_objects"
-  | "unrelated_histories"
-  | "wrong_remote_or_branch"
-  | "interrupted_rebase"
-  | "interrupted_cherry_pick"
-  | "interrupted_merge"
-  | "unknown";
-
-export interface RecoveryContext {
-  projectDir: string;
-  repoDir: string;
-  branch: string;
-  remoteUrl?: string;
-  repoSlug: string;
-  credential?: HostCredential;
-  tokenStore?: TokenStore;
-  authorName?: string;
-  confirmation: ConfirmationGate;
-  /** Optional log file path for debugging recovery operations. */
-  logFile?: string;
-}
-
-export interface ConflictFile {
-  path: string;
-  kind: "both-edited" | "you-deleted" | "online-deleted";
-}
-
-export interface TokenStore {
-  get(host: string): Promise<HostCredential | null>;
-  /**
-   * Clear a stored credential for a host. Required by recover-auth (it deletes
-   * the rejected credential on an `auth` outcome) — without it in this contract,
-   * wiring a get-only store would silently skip the credential clear.
-   */
-  delete(host: string): Promise<void>;
-}
+import type {
+  ConfirmationGate,
+  ConflictKind,
+  RecoveryContext,
+  RecoveryResult,
+  RepairConfirmation,
+  TokenStore,
+} from "@dimm-city/print-md";
 
 // ── Pending confirm resolver map ──────────────────────────────────────────────
 
@@ -205,21 +131,7 @@ export function hostConfirmationGate(
 
 // ── buildRecoveryContext ──────────────────────────────────────────────────────
 
-interface LibForContext {
-  /**
-   * The lib's single RecoveryContext resolver (recovery/context.ts): repo-root
-   * (the project's OWN root, never an ancestor repo), branch, remote URL,
-   * credential, and backup slug all resolve in ONE tested place. The host
-   * contributes only its ConfirmationGate.
-   */
-  buildRecoveryContext(options: {
-    projectDir: string;
-    confirmation: ConfirmationGate;
-    tokenStore?: TokenStore;
-    authorName?: string;
-    logFile?: string;
-  }): Promise<RecoveryContext>;
-}
+type LibForContext = Pick<typeof import("@dimm-city/print-md"), "buildRecoveryContext">;
 
 /**
  * Build a RecoveryContext for a projectDir: delegate the resolution to the lib
@@ -257,16 +169,7 @@ export async function buildRecoveryContext(
 
 // ── decideRunAgainAfterPreflight ──────────────────────────────────────────────
 
-/** The terminal status values a recover() call can settle with (mirrors the
- *  lib RecoveryResult union — see recovery/types.ts). Declared locally because
- *  the lib has no .d.ts (see header note). */
-export type RecoveryResultStatus =
-  | "recovered"
-  | "retry_later"
-  | "needs_user"
-  | "blocked"
-  | "failed_no_changes_made"
-  | "failed_backup_available";
+export type RecoveryResultStatus = RecoveryResult["status"];
 
 /** What the preflight orchestrator should do with a pending `runAgain` flag once
  *  recover() settles and the single-flight lock is released. */
@@ -347,8 +250,6 @@ const BINARY_EXTENSIONS = new Set([
 ]);
 
 const PREVIEW_SIZE_CAP = 256 * 1024; // 256 KB
-
-export type ConflictKind = "both-edited" | "you-deleted" | "online-deleted";
 
 export interface ConflictPreviewResult {
   mine: string;

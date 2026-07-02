@@ -5,8 +5,8 @@
 // the IPC surface version, and the public key used to verify manifests.
 // Import from here; never duplicate the shape elsewhere.
 //
-// Main-process only (it touches node:crypto). The preload mirrors the few
-// values it needs as local literals; the renderer never imports this.
+// Electron-side only. The renderer never imports this; the preload reads
+// DESKTOP_API from here so the shell exposes one canonical version integer.
 // ──────────────────────────────────────────────────────────────────────────
 
 import { createPublicKey } from "node:crypto";

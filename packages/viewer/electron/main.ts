@@ -72,16 +72,40 @@ import {
   decideRunAgainAfterPreflight,
   getConflictPreviewImpl,
   preExportSyncGateBlockError,
-  type SyncErrorKind,
-  type ConfirmationGate,
-  type RecoveryContext,
-  type TokenStore as RecoveryTokenStore,
 } from "./recovery-bridge";
 import type {
-  SnapshotEntry,
-  SnapshotPage,
+  AdoptFolderOptions,
+  ApplyThemeTarget,
+  CheckResult,
+  CloneProgressEvent,
+  ConfirmationGate,
+  CreateProjectOptions,
+  CreateProjectResult,
+  DeviceCodeInfo,
+  PluginValidationResult,
+  PrintSafeWarning,
+  ProjectCapabilities,
+  ProjectPluginEntry,
+  ProjectRemoteDiagnosis,
+  ProjectSource,
+  ProjectStyle,
+  RecommendedPlugin,
+  RecoveryContext,
+  RepoHealth,
+  RemoteAccessResult,
+  RemoteBranch,
+  RemoteRepository,
+  RepoBook,
   RestoreVersionResult,
-} from "./bridge-types";
+  SourceProvider,
+  SyncErrorKind,
+  SyncOutcome,
+  SystemDiagnostics,
+  ThemeInfo,
+  TokenStore as RecoveryTokenStore,
+  ConflictFile as ConflictFileInfo,
+  ConflictResolution as ConflictResolutionChoice,
+} from "@dimm-city/print-md";
 // The splash markup ships as a string baked into the main bundle (electron-vite
 // inlines `?raw`), so there is no separate file to resolve at runtime.
 // tsc (moduleResolution: bundler) resolves `./splash.html?raw` to the real
@@ -154,201 +178,6 @@ interface ManifestWithPath {
   manifest: { title?: string };
   manifestDir: string;
 }
-interface SystemDiagnostics {
-  libVersion: string;
-  platform: { os: string; arch: string; release: string; node: string };
-  tools: Array<{
-    name: string;
-    bin: string;
-    found: boolean;
-    path?: string;
-    version?: string;
-    usedBy: Array<{ feature: string; severity: "required" | "optional" }>;
-    installHint: string;
-  }>;
-  docsUrl: string;
-}
-
-type ProjectSource =
-  | { type: "local-folder"; path: string }
-  | {
-      type: "local-git-folder";
-      path: string;
-      /** Repository root holding the history (equals `path` for repo roots). */
-      repoRoot: string;
-      /** Project dir relative to repoRoot, "/"-separated; "" at the root. */
-      subPath: string;
-      hasRemote: boolean;
-      remoteUrl?: string;
-      branch?: string;
-    }
-  | {
-      type: "managed-github";
-      owner: string;
-      repo: string;
-      branch: string;
-      rootPath?: string;
-    };
-
-interface ProjectCapabilities {
-  canRead: boolean;
-  canWriteLocal: boolean;
-  canEnableVersionHistory: boolean;
-  canSnapshot: boolean;
-  canViewHistory: boolean;
-  canRestoreSnapshot: boolean;
-  canSync: boolean;
-  authManagedByApp: boolean;
-}
-
-// New-project scaffold (#25). Mirrors the lib's CreateProjectOptions/Result.
-interface CreateProjectOptions {
-  name: string;
-  author?: string;
-  parentDir: string;
-  folderName?: string;
-  template?: "book" | "ttrpg" | "zine" | "technical";
-  /** Absolute path to a custom template directory (#29); overrides `template`. */
-  templateDir?: string;
-  versionHistory?: "local-git" | "none";
-}
-// Adopt an existing folder as a project. Mirrors the lib's AdoptFolderOptions.
-interface AdoptFolderOptions {
-  dir: string;
-  title?: string;
-  author?: string;
-  template?: "book" | "ttrpg" | "zine" | "technical";
-  versionHistory?: "local-git" | "none";
-}
-
-// Plugin manager (#30). Mirror the lib's plugin-manager types.
-type PluginKind = "local" | "npm";
-interface ProjectPluginEntry {
-  ref: string;
-  kind: PluginKind;
-  enabled: boolean;
-}
-interface PluginValidationResult {
-  ref: string;
-  kind: PluginKind;
-  enabled: boolean;
-  ok: boolean;
-  error?: string;
-}
-interface RecommendedPlugin {
-  name: string;
-  description: string;
-}
-// Theme manager (#32). Mirror the lib's theme-manager types.
-interface ThemeInfo {
-  id: string;
-  name: string;
-  author?: string;
-  description: string;
-  kind: "builtin" | "project";
-  preview?: string | null;
-}
-type ApplyThemeTarget =
-  | { kind: "builtin"; id: string }
-  | { kind: "project"; id: string };
-// Style resolver (audit B2/G1). Mirror the lib's ProjectStyle.
-interface ProjectStyle {
-  path: string;
-  displayName: string;
-  active: boolean;
-}
-interface CreateProjectResult {
-  projectDir: string;
-  manifestPath: string;
-  openFile: string;
-  versionHistory: "local-git" | "none";
-  versionHistoryError?: string;
-}
-
-interface PrintSafeWarning {
-  rule: string;
-  severity: "error" | "warning";
-  message: string;
-  line: number;
-  column: number;
-}
-
-// One finding from the lib's check runner (mirrors checks/types.ts CheckResult).
-interface LintCheckResult {
-  checkId: string;
-  severity: "error" | "warning" | "info";
-  message: string;
-  file?: string;
-  line?: number;
-  column?: number;
-  detail?: string;
-}
-
-// One row pushed to the renderer's Problems panel (#28); mirrors the SPA's
-// ProblemEntry in src/lib/platform/contract.ts.
-interface ProblemEntry {
-  filePath?: string;
-  file?: string;
-  line?: number;
-  column?: number;
-  severity: "error" | "warning" | "info";
-  message: string;
-  source: string;
-}
-
-// Local version history (#13). `SnapshotEntry` / `RestoreVersionResult` are
-// the ambient declarations in types.d.ts (single electron-side definition,
-// mirroring the lib — which ships no .d.ts to import from yet).
-interface SourceProviderOps {
-  initVersionHistory(options: {
-    projectDir: string;
-    authorName?: string;
-    initialMessage?: string;
-  }): Promise<ProjectSource>;
-  snapshot(options: {
-    projectDir: string;
-    message: string;
-    authorName?: string;
-    /** Operation-log path; snapshots are recorded there when provided. */
-    logFile?: string;
-  }): Promise<SnapshotEntry>;
-  listHistory(projectDir: string): Promise<SnapshotEntry[]>;
-  listHistoryPage(
-    projectDir: string,
-    options?: { limit?: number; before?: string },
-  ): Promise<SnapshotPage>;
-  restore(options: { projectDir: string; id: string }): Promise<void>;
-}
-
-// ── Remote GitHub surface (#15, ADR 0006). Mirrors the lib's remote-auth types.
-interface DeviceCodeInfo {
-  userCode: string;
-  verificationUri: string;
-  expiresIn: number;
-  interval: number;
-}
-interface RemoteRepository {
-  owner: string;
-  name: string;
-  fullName: string;
-  private: boolean;
-  defaultBranch: string;
-  htmlUrl: string;
-}
-interface RemoteBranch {
-  name: string;
-}
-interface RepoBook {
-  /** Book folder relative to the repo root ("" = the root itself). */
-  path: string;
-  /** Display name (folder basename; the repo name for the root). */
-  name: string;
-}
-interface CloneProgressEvent {
-  phase: string;
-  loaded: number;
-  total?: number;
-}
 interface GitHubAuthProviderInstance {
   connect(callbacks: {
     onUserCode: (info: DeviceCodeInfo) => void;
@@ -357,274 +186,7 @@ interface GitHubAuthProviderInstance {
   validate(credential: HostCredential): Promise<boolean>;
 }
 
-// ── Advanced Setup surface (#14). Mirrors the lib's diagnose/test-access types.
-type RemoteAccessResult =
-  | { ok: true; defaultBranch?: string; refCount: number }
-  | {
-      ok: false;
-      reason: "auth" | "not-found" | "unreachable" | "ssh-unsupported" | "tls" | "unknown";
-      message: string;
-    };
-
-interface ProjectRemoteDiagnosis {
-  classification: ProjectSource;
-  remoteUrl?: string;
-  remoteHost?: string;
-  remoteProtocol: "https" | "ssh" | "none";
-  branch?: string;
-  credentialPresent: boolean;
-  provider:
-    | "github"
-    | "gitea"
-    | "forgejo"
-    | "gitlab"
-    | "bitbucket"
-    | "azure"
-    | "generic"
-    | null;
-  tokenSettingsUrl: string | null;
-  canSync: boolean;
-  guidance:
-    | "local-only"
-    | "connect-github-to-sync"
-    | "https-connect-server"
-    | "ready-to-sync"
-    | "ssh-use-own-tools";
-}
-
-// ── Sync surface (#15 sync phase, ADR 0006 D5). Mirrors the lib.
-interface ConflictFileInfo {
-  path: string;
-  kind: "both-edited" | "you-deleted" | "online-deleted";
-}
-
-interface ConflictResolutionChoice {
-  path: string;
-  choice: "mine" | "theirs" | "both";
-}
-
-type SyncOutcome =
-  | {
-      status: "synced";
-      message: string;
-      snapshotId?: string;
-      mergedRemoteChanges: boolean;
-      filesChanged?: boolean;
-    }
-  | { status: "up-to-date"; message: string; snapshotId?: string; filesChanged?: boolean }
-  | {
-      status: "conflict";
-      message: string;
-      files: ConflictFileInfo[];
-      localId: string;
-      remoteId: string;
-      snapshotId?: string;
-    }
-  | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
-  | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
-  | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
-
-interface LibModule {
-  startPreviewServer: (opts: Record<string, unknown>) => Promise<PreviewHandle>;
-  loadManifestWithPath: (input: string) => Promise<ManifestWithPath>;
-  splitOutPath: (out: string | undefined, format: string) => SplitOutPath;
-  runBuild: (opts: Record<string, unknown>) => Promise<BuildResult>;
-  getSystemDiagnostics: () => Promise<SystemDiagnostics>;
-  detectProjectSource: (folderPath: string) => Promise<ProjectSource>;
-  capabilitiesFor: (source: ProjectSource) => ProjectCapabilities;
-  scaffoldProject: (options: CreateProjectOptions) => Promise<CreateProjectResult>;
-  adoptFolder: (options: AdoptFolderOptions) => Promise<CreateProjectResult>;
-  providerFor: (source: ProjectSource) => SourceProviderOps;
-  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from LibModule.
-  // Plugin manager (#30)
-  listProjectPlugins: (projectDir: string) => Promise<ProjectPluginEntry[]>;
-  setPluginEnabled: (
-    projectDir: string,
-    ref: string,
-    enabled: boolean,
-  ) => Promise<void>;
-  addNpmPlugin: (projectDir: string, packageName: string) => Promise<ProjectPluginEntry>;
-  addLocalPlugin: (
-    projectDir: string,
-    sourcePath: string,
-  ) => Promise<ProjectPluginEntry & { path: string }>;
-  validateProjectPlugins: (projectDir: string) => Promise<PluginValidationResult[]>;
-  RECOMMENDED_PLUGINS: RecommendedPlugin[];
-  // Theme manager (#32)
-  listBuiltInThemes: () => Promise<ThemeInfo[]>;
-  listProjectThemes: (projectDir: string) => Promise<ThemeInfo[]>;
-  getActiveTheme: (projectDir: string) => Promise<ThemeInfo | null>;
-  applyTheme: (projectDir: string, target: ApplyThemeTarget) => Promise<ThemeInfo>;
-  importThemeFromFolder: (projectDir: string, sourceDir: string) => Promise<ThemeInfo>;
-  importThemeFromUrl: (projectDir: string, url: string) => Promise<ThemeInfo>;
-  readThemeCss: (
-    projectDir: string | null,
-    source: { kind: "builtin" | "project"; id: string },
-  ) => Promise<string>;
-  removeProjectTheme: (projectDir: string, id: string) => Promise<void>;
-  // Style resolver (audit B2/G1)
-  listProjectStyles: (projectDir: string) => Promise<ProjectStyle[]>;
-  // Automatic snapshots (RC1-3)
-  AUTO_SNAPSHOT_MESSAGE: string;
-  isNoChangesError: (e: unknown) => boolean;
-  autoSnapshotDelayMs: (
-    policy: { autoSnapshot?: boolean; autoSnapshotMinutes?: number } | undefined,
-  ) => number | null;
-  // Auto-sync orchestrator (transparent-sync plan §4.3)
-  autoSyncDelayMs: (
-    policy: { autoSync?: boolean; autoSyncMinutes?: number } | undefined,
-  ) => number | null;
-  restoreVersionWithBackup: (options: {
-    projectDir: string;
-    id: string;
-    authorName?: string;
-  }) => Promise<RestoreVersionResult>;
-  checkCss: (css: string, from?: string) => PrintSafeWarning[];
-  // Image inspection (#47) — dependency-free PNG/JPEG/TIFF header parser
-  inspectImage: (path: string) => Promise<{
-    width: number;
-    height: number;
-    xDpi: number;
-    yDpi: number;
-    hasAlpha: boolean;
-    colorSpace: "srgb" | "gray" | "cmyk" | "";
-  } | null>;
-  executeValidation: (args: {
-    input?: string;
-    category?: string;
-    phase?: string;
-  }) => Promise<{ report: { results: LintCheckResult[] } }>;
-  BuildError: new (message: string) => Error;
-  // Remote GitHub (#15)
-  GitHubAuthProvider: new (options?: { clientId?: string }) => GitHubAuthProviderInstance;
-  listGitHubRepositories: (credential: HostCredential) => Promise<RemoteRepository[]>;
-  listGitHubBranches: (
-    credential: HostCredential,
-    owner: string,
-    repo: string,
-  ) => Promise<RemoteBranch[]>;
-  listRepoBooks: (
-    credential: HostCredential,
-    owner: string,
-    repo: string,
-    branch: string,
-  ) => Promise<RepoBook[]>;
-  cloneRepository: (options: {
-    url: string;
-    dir: string;
-    credential?: HostCredential;
-    branch?: string;
-    depth?: number;
-    onProgress?: (event: CloneProgressEvent) => void;
-    provenance?: {
-      provider: "github";
-      owner: string;
-      repo: string;
-    };
-  }) => Promise<{ projectDir: string; branch?: string }>;
-  sanitizeCloneFolderName: (name: string) => string;
-  // Advanced Setup (#14)
-  testRemoteAccess: (options: {
-    url: string;
-    credential?: HostCredential;
-  }) => Promise<RemoteAccessResult>;
-  connectGenericHost: (input: {
-    host: string;
-    username?: string;
-    token: string;
-    repoUrl?: string;
-  }) => Promise<HostCredential>;
-  diagnoseProjectRemote: (
-    projectDir: string,
-    options?: {
-      tokenStore?: {
-        get(host: string): Promise<HostCredential | null>;
-      };
-    },
-  ) => Promise<ProjectRemoteDiagnosis>;
-  knownForgeTokenUrl: (host: string) => string | null;
-  // Sync (#15 sync phase, ADR 0006 D5)
-  syncProject: (options: {
-    projectDir: string;
-    tokenStore?: { get(host: string): Promise<HostCredential | null> };
-    message?: string;
-    authorName?: string;
-    logFile?: string;
-  }) => Promise<SyncOutcome>;
-  resolveConflicts: (options: {
-    projectDir: string;
-    resolutions: ConflictResolutionChoice[];
-    localId: string;
-    remoteId: string;
-    tokenStore?: { get(host: string): Promise<HostCredential | null> };
-    authorName?: string;
-    logFile?: string;
-  }) => Promise<SyncOutcome>;
-  // Sync recovery (#15 ADR 0006 D5 — node-side only)
-  recover: (
-    kind: string,
-    ctx: object,
-    error?: unknown,
-  ) => Promise<{
-    status: "recovered" | "retry_later" | "needs_user" | "blocked" | "failed_no_changes_made" | "failed_backup_available";
-    message: string;
-    backupZipPath?: string;
-    retryAfterMs?: number;
-    guidance?: object;
-    files?: Array<{ path: string; kind: string }>;
-  }>;
-  classifyGitError: (
-    err: unknown,
-    health?: object,
-  ) => string;
-  // Health-only preflight classifier (single source of truth in the lib's
-  // recovery/classify.ts — the viewer no longer keeps its own copy).
-  classifyFromHealth: (health: object) => string | null;
-  // RecoveryContext resolver (recovery/context.ts) — repo root, branch,
-  // credential, slug resolve in the lib; the host adds only its dialog gate.
-  buildRecoveryContext: (options: {
-    projectDir: string;
-    confirmation: ConfirmationGate;
-    tokenStore?: RecoveryTokenStore;
-    authorName?: string;
-    logFile?: string;
-  }) => Promise<RecoveryContext>;
-  // Preflight diagnostics mappers (recovery/inspect.ts) — flat, secret-free
-  // operation-log fields explaining WHY a kind was chosen.
-  buildPreflightDiagnostics: (
-    openedDir: string,
-    repoDir: string,
-    health: object,
-    kind: string | null,
-  ) => PreflightLogData;
-  inspectRepo: (ctx: { repoDir: string }) => Promise<{
-    hasGitDir: boolean;
-    currentBranch?: string;
-    isDetachedHead: boolean;
-    hasStaleLock: boolean;
-    lockAgeMs?: number;
-    hasInterruptedMerge: boolean;
-    hasInterruptedRebase: boolean;
-    hasInterruptedCherryPick: boolean;
-    hasLocalChanges: boolean;
-  }>;
-  findEnclosingRepoDir: (dir: string) => Promise<string | undefined>;
-  onlineCopyPath: (absPath: string) => string;
-  // Structured operation logger (node-side only). Lets the host write preflight
-  // diagnostics to the SAME operation-log file the recovery subsystem writes to.
-  resolveLogger: (
-    logFile: string | undefined,
-    operation: string,
-  ) => {
-    debug(step: string, message: string, data?: PreflightLogData): void;
-    info(step: string, message: string, data?: PreflightLogData): void;
-    warn(step: string, message: string, data?: PreflightLogData): void;
-    error(step: string, message: string, data?: PreflightLogData): void;
-  };
-}
-
-/** Flat key-value fields for the operation log (mirrors the lib's LogData). */
-type PreflightLogData = Record<string, string | number | boolean | string[] | undefined>;
+type LibModule = typeof import("@dimm-city/print-md");
 
 let libPromise: Promise<LibModule> | null = null;
 let activeExportSession: ExportSession | null = null;
@@ -640,7 +202,7 @@ class ExportCanceledError extends Error {
 
 function loadLib(): Promise<LibModule> {
   if (!libPromise) {
-    libPromise = import("@dimm-city/print-md") as unknown as Promise<LibModule>;
+    libPromise = import("@dimm-city/print-md");
   }
   return libPromise;
 }
@@ -1388,8 +950,8 @@ async function runAutoSync(dir: string): Promise<void> {
     // ── Recovery routing (Foundation delta) ──────────────────────────────────
     // Classify the error. If classifiable, route through recover(). Otherwise
     // keep the old behavior (emit 'error', allow future attempts).
-    let kind: string;
-    let health: object | undefined;
+    let kind: SyncErrorKind;
+    let health: RepoHealth | undefined;
     try {
       health = await lib.inspectRepo({ repoDir: dir });
       kind = lib.classifyGitError(e, health);
@@ -1419,7 +981,7 @@ async function runAutoSync(dir: string): Promise<void> {
 
     // Build the RecoveryContext (resolves repoDir, credential, etc.).
     // Uses the same lib/electronTokenStore already in scope.
-    let ctx: object;
+    let ctx: RecoveryContext;
     try {
       ctx = await buildRecoveryContext(dir, lib, electronTokenStore, undefined, logFile);
     } catch (ctxErr) {

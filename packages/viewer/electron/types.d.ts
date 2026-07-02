@@ -1,7 +1,6 @@
-// The lib ships no .d.ts yet (see docs/build-pipeline-followups.md). main.ts
-// dynamic-imports it and casts the result to its own LibModule interface, so an
-// untyped module declaration is all that's needed for the electron typecheck.
-declare module "@dimm-city/print-md";
+// Electron-side ambient types for the viewer host. `@dimm-city/print-md` now
+// ships real declarations; this file only keeps viewer-specific ambient modules
+// and the window bridge augmentation.
 
 // `?raw` imports (electron-vite/vite) return the file contents as a string. Used
 // for the splash markup, which is baked into the main bundle.
@@ -104,7 +103,7 @@ declare global {
 
   interface Window {
     electron?: {
-      /** Integer IPC-surface version; mirrors DESKTOP_API in updater/contract.ts. */
+      /** Integer IPC-surface version exposed by the preload bridge. */
       apiVersion: number;
       updater: ElectronUpdater;
       // Dialogs

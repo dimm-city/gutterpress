@@ -8,7 +8,7 @@
  * (`./`-prefixed entries, backslashes, duplicate slashes, subdirectories).
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { canonicalChapterId } from "./chapter-id";
@@ -37,6 +37,35 @@ describe("canonicalChapterId", () => {
 
   test("preserves spaces and case", () => {
     expect(canonicalChapterId("chapter-02 1 Augmerc.md")).toBe("chapter-02 1 Augmerc.md");
+  });
+
+  test("stays in lockstep with preview-shell's inline normId copy", async () => {
+    const previewShell = await readFile(
+      new URL("../../assets/preview/scripts/preview-shell.js", import.meta.url),
+      "utf8",
+    );
+    const match = previewShell.match(/function normId\(s\) \{([\s\S]*?)\n  \}/);
+    expect(match).not.toBeNull();
+
+    const previewNormId = new Function(
+      "s",
+      match![1]!,
+    ) as (input: string) => string;
+    const fixtures = [
+      "",
+      "chapter-03.md",
+      "./chapters/03.md",
+      "././a.md",
+      "chapters\\03.md",
+      ".\\chapters\\03.md",
+      "chapters//03.md",
+      "chapters//nested\\03 the players.md",
+      "chapter-02 1 Augmerc.md",
+    ];
+
+    for (const fixture of fixtures) {
+      expect(previewNormId(fixture)).toBe(canonicalChapterId(fixture));
+    }
   });
 });
 

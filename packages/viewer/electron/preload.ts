@@ -20,6 +20,7 @@ import type {
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
 } from "./bridge-types";
+import { DESKTOP_API } from "./updater/contract";
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -129,11 +130,10 @@ function forwardPush<T>(channel: string, cb: (data: T) => void): () => void {
 
 contextBridge.exposeInMainWorld("electron", {
   // ──────────────────────────────────────────────────────────────────────
-  // API version contract.  Must stay in sync with DESKTOP_API in
-  // electron/updater/contract.ts.  The renderer checks this to refuse
-  // running against a stale shell.
+  // API version contract. The renderer checks this to refuse running against
+  // a stale shell.
   // ──────────────────────────────────────────────────────────────────────
-  apiVersion: 2 as const,
+  apiVersion: DESKTOP_API,
 
   // ──────────────────────────────────────────────────────────────────────
   // Web-UI auto-update surface
