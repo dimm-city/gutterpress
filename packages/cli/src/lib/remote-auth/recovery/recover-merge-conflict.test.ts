@@ -252,14 +252,17 @@ describe("recover (merge_conflict) — success path", () => {
     }
   });
 
-  test("needs_user result includes ManualGuidance with recommendedAction 'choose_file_version'", async () => {
+  test("needs_user result includes ManualGuidance routing to the conflict chooser", async () => {
     const h = await setupConflictHarness();
     try {
       const ctx = makeCtx(h);
       const result = await recover(ctx);
       const r = result as Extract<RecoveryResult, { status: "needs_user" }>;
       expect(r.guidance).toBeDefined();
-      expect(r.guidance.recommendedAction).toBe("choose_file_version");
+      // Human label + machine key — never a token in the label field.
+      expect(r.guidance.recommendedActionKey).toBe("resolve_conflict");
+      expect(r.guidance.recommendedAction).not.toMatch(/_/);
+      expect(r.guidance.recommendedAction.length).toBeGreaterThan(0);
     } finally {
       await h.cleanup();
     }

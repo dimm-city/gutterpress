@@ -49,14 +49,11 @@ export const recover: RecoverFn = async (ctx, _error?): Promise<RecoveryResult> 
       return {
         status: "needs_user",
         message: outcome.message,
-        // Override recommendedAction to the per-file chooser action label
-        // expected by the host UI. makeManualGuidance provides the copy;
-        // the action label is set to the canonical per-file-version-choice
-        // action so the host can route directly to the chooser screen.
-        guidance: {
-          ...makeManualGuidance(ctx, "merge_conflict"),
-          recommendedAction: "choose_file_version",
-        },
+        // Base merge_conflict guidance already carries the human "Review
+        // changes" label and the resolve_conflict action key the host routes
+        // to the per-file chooser. (A machine token must never be placed in
+        // recommendedAction — it is the literal button label.)
+        guidance: makeManualGuidance(ctx, "merge_conflict"),
         files: outcome.files,
         // No backupZipPath — policy createBackup=false; pullChanges left a
         // snapshot commit on the local branch as the safety net (D5 invariant).

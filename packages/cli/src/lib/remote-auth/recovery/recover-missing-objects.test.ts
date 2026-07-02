@@ -748,20 +748,24 @@ describe("recover-missing-objects — I9 guidance present on all non-recovered r
     }
   });
 
-  test("guidance recommendedAction matches 'clone_fresh_copy' or 'contact_support' pattern", async () => {
+  test("guidance carries a human button label and the check_connection key", async () => {
     const dir = await makeTempDir();
     await makeTestRepo(dir);
     await damageLooseObject(dir);
 
-    // No remote → cannot fetch → should guide toward manual action.
+    // No remote → cannot fetch → should guide toward the connection settings.
     const ctx = makeCtx(dir);
     const result = await recover(ctx, makeMissingObjectsError());
 
     if (result.status === "needs_user" || result.status === "blocked") {
-      const r = result as { guidance: { recommendedAction: string } };
-      // The spec says recommendedAction should be 'clone_fresh_copy' or
-      // 'contact_support' in the worst case. Accept any non-empty action.
+      const r = result as {
+        guidance: { recommendedAction: string; recommendedActionKey: string };
+      };
+      // recommendedAction is the literal button label — a human phrase, never
+      // a machine token like the old 'clone_fresh_copy'.
+      expect(r.guidance.recommendedAction).not.toMatch(/_/);
       expect(r.guidance.recommendedAction.length).toBeGreaterThan(0);
+      expect(r.guidance.recommendedActionKey).toBe("check_connection");
     }
   });
 });
