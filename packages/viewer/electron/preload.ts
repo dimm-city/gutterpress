@@ -20,7 +20,14 @@ import type {
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
 } from "./bridge-types";
-import { DESKTOP_API } from "./updater/contract";
+/**
+ * Integer IPC-surface contract version shared between the Electron shell and
+ * the SvelteKit SPA. Bump ONLY when an ipcMain.handle() method that the SPA
+ * calls is added or removed. With full-app updates (electron-updater) the
+ * shell and SPA always ship together, so this is a sanity check rather than a
+ * version-skew gate.
+ */
+const DESKTOP_API = 2;
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -136,7 +143,7 @@ contextBridge.exposeInMainWorld("electron", {
   apiVersion: DESKTOP_API,
 
   // ──────────────────────────────────────────────────────────────────────
-  // Web-UI auto-update surface
+  // Auto-update surface (electron-updater — full-app updates from GitHub)
   // ──────────────────────────────────────────────────────────────────────
   updater: {
     getStatus: (): Promise<UpdaterStatus> =>
@@ -145,8 +152,6 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.invoke("updater:check"),
     applyNow: (): Promise<{ applied: boolean; version?: string }> =>
       ipcRenderer.invoke("updater:applyNow"),
-    markReady: (): Promise<{ ok: true; pending: boolean; version?: string }> =>
-      ipcRenderer.invoke("updater:markReady"),
     /** Subscribe to updater events from main. Returns an unsubscribe fn. */
     onEvent: (cb: (data: UpdaterEventPayload) => void): (() => void) =>
       forwardPush("updater:event", cb),

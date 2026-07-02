@@ -289,8 +289,8 @@ export type UpdaterEvent = UpdaterEventPayload;
 export interface UpdaterApi {
   getStatus(): Promise<UpdaterStatus>;
   check(): Promise<UpdaterStatus>;
+  /** Quit and install the downloaded update (restart). */
   applyNow(): Promise<{ applied: boolean; version?: string }>;
-  markReady(): Promise<{ ok: true; pending: boolean; version?: string }>;
   onEvent(cb: (event: UpdaterEvent) => void): () => void;
 }
 

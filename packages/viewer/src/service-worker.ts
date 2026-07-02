@@ -4,9 +4,10 @@
  *
  * §8 / ADR 0004: this is BROWSER-ONLY host code. It never imports the lib or any
  * `node:*` module, and it is REGISTERED only when `!isDesktop()` (see
- * `+layout.svelte`). Under Electron the SPA loads via `app://` and updates via
- * the Ed25519-signed `web-v*` promotion in `web-runtime.ts`; a SW under `app://`
- * would collide with that, so the desktop build must NEVER register this worker.
+ * `+layout.svelte`). Under Electron the SPA loads via `app://` and ships inside
+ * the app (updated as a whole via electron-updater); a SW under `app://` would
+ * serve stale assets across app updates, so the desktop build must NEVER
+ * register this worker.
  *
  * Strategy (plan §5):
  *  - PRECACHE the app shell on `install`: every adapter-static `build` asset

@@ -9,9 +9,10 @@
 
   // PWA service worker (#33 Phase 4). Register ONLY in a real browser
   // (!isDesktop()) — NEVER under Electron, where the SPA loads via app:// and
-  // updates via the signed web-v* promotion (web-runtime.ts); a SW there would
-  // collide with that mechanism. The SW precaches the app shell + vendored
-  // paged.js for offline use. SvelteKit does not auto-register it, so we do.
+  // ships inside the app (updated as a whole via electron-updater); a SW there
+  // would serve stale cached assets across app updates. The SW precaches the
+  // app shell + vendored paged.js for offline use. SvelteKit does not
+  // auto-register it, so we do.
   onMount(() => {
     if (isDesktop()) return;
     if (!("serviceWorker" in navigator)) return;

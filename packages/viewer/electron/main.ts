@@ -38,20 +38,13 @@ import {
   listRecovery as listRecoveryStore,
 } from "./recovery";
 import {
-  ensureLayout,
-  resolveWebRoot,
-  readPointer,
-  readState,
-  writeState,
-} from "./updater/web-runtime";
-import {
-  checkForUpdate,
-  downloadAndStage,
-  promoteStaged,
-  rollback,
-  pruneVersions,
-  getStatus,
-} from "./updater/index";
+  updaterSupported,
+  checkForUpdates,
+  installNow,
+  getStatus as getUpdaterStatus,
+  MAC_UPDATE_HINT,
+} from "./updater";
+import type { UpdaterEventPayload } from "./bridge-types";
 import {
   upsertRecentFolder,
   removeRecentFolder,
@@ -1574,15 +1567,6 @@ function createWindow() {
 // app:// protocol — serves the static SvelteKit SPA from build/
 // ──────────────────────────────────────────────────────────────────────────
 
-// The SPA root is resolved at startup (and refreshable later): a downloaded
-// bundle in userData if present and valid, otherwise the bundled-in-asar
-// build/. Set by refreshWebRoot() before registerAppProtocol()/createWindow().
-let activeWebRoot = path.resolve(__dirname, "../../build");
-
-async function refreshWebRoot(): Promise<void> {
-  activeWebRoot = await resolveWebRoot();
-}
-
 // ── SvelteKit HTTP bridge (adapter-node) ─────────────────────────────────────
 // adapter-node emits a Node.js HTTP handler to build/handler.js. We start a
 // local HTTP server bound to 127.0.0.1 on an OS-assigned port, then forward
@@ -1878,7 +1862,7 @@ registerPrefsHooks({
 // Expose doctor-route hooks through globalThis so the SvelteKit handler never
 // imports `electron` directly in the packaged app.
 registerDoctorHooks({
-  getUpdaterStatus: getStatus,
+  getUpdaterStatus: async () => getUpdaterStatus(),
   getViewerVersion: () => app.getVersion(),
 });
 
@@ -2803,158 +2787,35 @@ ipcMain.handle(
 );
 
 // ──────────────────────────────────────────────────────────────────────────
-// Web-UI auto-updater wiring
+// Auto-updater wiring (electron-updater — full-app updates from GitHub)
 //
-// The updater is ENABLED only in a packaged build with no vite dev server. In
-// dev/HMR it is fully inert: every entry point below short-circuits on
-// updaterEnabled() so the IPC handlers are harmless no-ops and no networking
-// or filesystem mutation happens. Networking lives ONLY in updater/index.ts.
-//
-// Health gate + watchdog (Phase 6): after a promote (either "apply now" or
-// "apply on next launch"), we arm a 10s watchdog. The renderer calls
-// updater:markReady once it boots; on time we record the version healthy and
-// prune old bundles. If the deadline elapses with no markReady, we rollback
-// and relaunch the app so the new process picks up the restored bundle.
+// Active only in a packaged build with no vite dev server, on Windows/Linux
+// (see updaterSupported() in updater.ts; macOS auto-update needs signed
+// builds). In dev the IPC handlers are harmless no-ops. electron-updater
+// downloads updates in the background; the renderer shows a "restart to
+// update" banner on the "staged" event and calls updater:applyNow to quit
+// and install.
 // ──────────────────────────────────────────────────────────────────────────
 
-// Generous enough that a healthy static SPA (sub-second boot) never trips it,
-// while still catching a genuinely broken bundle that never executes JS.
-const HEALTH_WATCHDOG_MS = 30_000;
-
-let pendingHealthCheck: { version: string; timer: NodeJS.Timeout } | null = null;
-
-function updaterEnabled(): boolean {
-  return app.isPackaged && !process.env.VITE_DEV_SERVER_URL;
-}
-
-function sendUpdaterEvent(event: Record<string, unknown>) {
+function sendUpdaterEvent(event: UpdaterEventPayload) {
   mainWindow?.webContents.send("updater:event", event);
 }
 
-async function markHealthy(version: string) {
-  try {
-    const state = await readState();
-    state.lastHealthyVersion = version;
-    state.minimumSeenVersion = version;
-    await writeState(state);
-    await pruneVersions();
-  } catch (err) {
-    console.warn("[updater] markHealthy failed (non-fatal):", err);
-  }
-}
-
-// Arm the watchdog after a promote. The renderer's updater:markReady IPC clears
-// it; otherwise the timer fires and rolls the bundle back.
-function armHealthWatchdog(version: string) {
-  clearHealthWatchdog();
-  const timer = setTimeout(() => {
-    pendingHealthCheck = null;
-    void (async () => {
-      // If the window is gone, the user simply quit/closed before the SPA could
-      // mark ready — that is NOT evidence the bundle is broken. Skip the
-      // rollback (which would otherwise count a failure and could blocklist a
-      // good version); the bundle stays current and is re-gated on next launch.
-      if (!mainWindow || mainWindow.isDestroyed()) {
-        console.warn(
-          `[updater] health watchdog expired for ${version} but window is gone; deferring`
-        );
-        return;
-      }
-      console.warn(
-        `[updater] health watchdog expired for ${version}; rolling back`
-      );
-      await rollback("renderer did not mark ready");
-      sendUpdaterEvent({ type: "rolledback", version });
-      // With adapter-node the SvelteKit handler is a Node module loaded at
-      // startup — a window reload cannot pick up the restored bundle. Relaunch
-      // the entire process so the new instance mounts the rolled-back bundle.
-      app.relaunch();
-      app.exit(0);
-    })();
-  }, HEALTH_WATCHDOG_MS);
-  // Don't keep the event loop alive on the watchdog alone.
-  if (typeof timer.unref === "function") timer.unref();
-  pendingHealthCheck = { version, timer };
-}
-
-function clearHealthWatchdog() {
-  if (pendingHealthCheck) {
-    clearTimeout(pendingHealthCheck.timer);
-    pendingHealthCheck = null;
-  }
-}
-
-// Shared check→stage→emit-events flow used by both the background launch check
-// and the manual "Check for updates" IPC. checkForUpdate/downloadAndStage are
-// themselves non-throwing; callers still wrap this defensively.
-async function checkAndStage(): Promise<void> {
-  const { available, reason } = await checkForUpdate();
-  if (!available) {
-    sendUpdaterEvent(
-      reason && reason !== "already up to date"
-        ? { type: "uptodate", reason }
-        : { type: "uptodate" }
-    );
-    return;
-  }
-  sendUpdaterEvent({ type: "available", version: available.version });
-  const { staged, reason: stageReason } = await downloadAndStage(available);
-  sendUpdaterEvent(
-    staged
-      ? { type: "staged", version: available.version }
-      : { type: "error", message: stageReason ?? "stage failed" }
-  );
-}
-
-// Fire-and-forget background check → stage on launch. Never blocks startup.
-async function runBackgroundUpdate() {
-  try {
-    await checkAndStage();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn("[updater] background update failed (non-fatal):", message);
-    sendUpdaterEvent({ type: "error", message });
-  }
-}
-
 ipcMain.handle("updater:getStatus", async () => {
-  return getStatus();
+  return getUpdaterStatus();
 });
 
 ipcMain.handle("updater:check", async () => {
-  if (!updaterEnabled()) return getStatus();
-  try {
-    await checkAndStage();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn("[updater] manual check failed (non-fatal):", message);
-    sendUpdaterEvent({ type: "error", message });
+  // Manual checks on macOS get an honest pointer at GitHub Releases instead
+  // of a misleading "You're up to date".
+  if (app.isPackaged && process.platform === "darwin") {
+    return { ...getUpdaterStatus(), phase: "error", error: MAC_UPDATE_HINT };
   }
-  return getStatus();
+  return checkForUpdates(sendUpdaterEvent);
 });
 
 ipcMain.handle("updater:applyNow", async () => {
-  if (!updaterEnabled()) return { applied: false };
-  const { promoted, version } = await promoteStaged();
-  if (!promoted || !version) return { applied: false };
-  // With adapter-node the SvelteKit handler is a Node module loaded at
-  // startup — a window reload cannot pick up new server routes. Relaunch
-  // the entire process so the new instance mounts the promoted bundle.
-  // The new process will arm its own health watchdog on startup.
-  app.relaunch();
-  app.exit(0);
-  // app.exit() is synchronous; this return is never reached but satisfies TS.
-  return { applied: true, version };
-});
-
-ipcMain.handle("updater:markReady", async () => {
-  // No-op when nothing is pending (e.g. a normal startup with no update).
-  if (!pendingHealthCheck) return { ok: true, pending: false };
-  const version = pendingHealthCheck.version;
-  clearHealthWatchdog();
-  await markHealthy(version);
-  sendUpdaterEvent({ type: "healthy", version });
-  return { ok: true, pending: true, version };
+  return installNow();
 });
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -3010,24 +2871,8 @@ app.whenReady().then(async () => {
   app.setAppUserModelId?.(APP_USER_MODEL_ID);
   // Show the splash immediately — branded feedback while everything below runs.
   createSplashWindow();
-  // Apply any staged update from a previous session BEFORE resolving the web
-  // root, so refreshWebRoot() picks up the newly promoted bundle. Wrapped so a
-  // userData IO failure (EACCES, disk full) can never prevent createWindow() —
-  // a broken updater must degrade to the bundled fallback, not a blank window.
-  if (updaterEnabled()) {
-    try {
-      updateSplash("Checking for updates…", 8);
-      await ensureLayout();
-      await promoteStaged();
-    } catch (err) {
-      console.warn("[updater] startup promote failed (non-fatal):", err);
-    }
-  }
-  slog("updater promote done");
 
   updateSplash("Preparing the interface…", 18);
-  await refreshWebRoot();
-  slog("web root resolved");
   // In dev mode (VITE_DEV_SERVER_URL set) the SvelteKit dev server is already
   // running externally — skip the local handler.js launch. In prod, start the
   // adapter-node HTTP server and wire it to the app:// protocol.
@@ -3051,28 +2896,12 @@ app.whenReady().then(async () => {
   // signal rather than being cut off mid-render by the timeout.
   splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 15_000);
 
-  // Health-gate any current bundle that hasn't been confirmed healthy yet —
-  // whether just promoted this launch or left unconfirmed by a prior session
-  // that closed before markReady. The renderer must mark ready within the
-  // watchdog window or we roll it back + reload. A bundle already recorded as
-  // healthy (or the bundled fallback, which has no pointer) is not gated, so
-  // markReady is a harmless no-op on a normal launch.
-  if (updaterEnabled()) {
-    try {
-      const current = await readPointer("current");
-      const state = await readState();
-      if (current && state.lastHealthyVersion !== current.version) {
-        armHealthWatchdog(current.version);
-      }
-    } catch (err) {
-      console.warn("[updater] health-gate arming failed (non-fatal):", err);
-    }
-  }
-
-  // Background check → stage on every launch (non-blocking, fire-and-forget).
-  if (updaterEnabled()) {
-    runBackgroundUpdate().catch((err) => {
-      console.warn("[updater] runBackgroundUpdate rejected (non-fatal):", err);
+  // Background check → download on every launch (non-blocking). Errors are
+  // recorded in updater status and surfaced via the "error" event; nothing
+  // here can block or break startup.
+  if (updaterSupported()) {
+    checkForUpdates(sendUpdaterEvent).catch((err) => {
+      console.warn("[updater] background update check failed (non-fatal):", err);
     });
   }
 

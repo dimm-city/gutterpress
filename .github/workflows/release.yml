@@ -218,11 +218,16 @@ jobs:
         working-directory: packages/viewer
         run: npm run dist:linux
 
+      # latest-linux.yml + .blockmap are the electron-updater feed files —
+      # they must ship on the GitHub release next to the AppImage.
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
           name: viewer-linux
-          path: packages/viewer/dist/*.AppImage
+          path: |
+            packages/viewer/dist/*.AppImage
+            packages/viewer/dist/*.blockmap
+            packages/viewer/dist/latest-linux.yml
           if-no-files-found: error
 
   build-viewer-windows:
@@ -253,6 +258,8 @@ jobs:
         working-directory: packages/viewer
         run: npm run dist:win
 
+      # latest.yml + the installer .blockmap are the electron-updater feed —
+      # they must ship on the GitHub release next to the installer.
       - name: Upload Windows installer and zip
         uses: actions/upload-artifact@v4
         with:
@@ -260,6 +267,8 @@ jobs:
           path: |
             packages/viewer/dist/*.exe
             packages/viewer/dist/*.zip
+            packages/viewer/dist/*.blockmap
+            packages/viewer/dist/latest.yml
           if-no-files-found: error
 
   build-viewer-mac:

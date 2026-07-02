@@ -39,6 +39,16 @@ directories:
   output: dist
   buildResources: build-resources
 
+# electron-updater reads the GitHub Releases feed (latest.yml / latest-linux.yml).
+# Declaring the provider here makes electron-builder embed app-update.yml in the
+# packaged app and emit the latest*.yml + .blockmap files into dist/. Publishing
+# itself stays in the release workflow (gh release create) — the dist scripts
+# pass --publish never so a local or CI build can never push to GitHub directly.
+publish:
+  provider: github
+  owner: dimm-city
+  repo: print-md
+
 # Native deps and large optionals are installed via the viewer's package.json
 # dependencies (@dimm-city/print-md → its transitive deps). electron-builder
 # copies them automatically from the workspace node_modules at packaging time.

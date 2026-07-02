@@ -1274,25 +1274,18 @@
   }
 
   // ----------------------------------------------------------------
-  // Auto-update: markReady on mount (health gate) + event subscription
+  // Auto-update: status peek on mount + event subscription
   // ----------------------------------------------------------------
 
-  // markReady tells main the new bundle booted successfully, clearing the
-  // health watchdog armed after an apply/launch-promote. If it does not arrive
-  // before the watchdog elapses (and the window is still open), main rolls the
-  // bundle back this session. Harmless no-op when nothing is pending.
-  onMount(() => {
-    if (!isDesktop()) return;
-    getPlatform().updater.markReady().catch(() => {});
-  });
-
-  // Check for an already-staged update on load, then subscribe to future events.
+  // Surface the restart banner if an update was already downloaded (this
+  // session's background check, or a prior session that never restarted),
+  // then subscribe to future events.
   onMount(() => {
     if (!isDesktop()) return;
     const platform = getPlatform();
 
-    // Peek at current status so we can surface a banner immediately if a
-    // bundle was staged during a previous run.
+    // Peek at current status so we can surface a banner immediately if an
+    // update was downloaded during a previous run.
     platform.updater.getStatus()
       .then((status: { stagedVersion: string | null }) => {
         if (status.stagedVersion) {
@@ -2451,7 +2444,7 @@
     if (!isDesktop()) return;
     try {
       await getPlatform().updater.applyNow();
-      // Main reloads the window; no further action needed here.
+      // Main quits and installs the update, then relaunches; nothing more to do.
     } catch (e) {
       toast?.error(e instanceof Error ? e.message : "Could not apply update.");
     }
@@ -2574,7 +2567,7 @@
 {#if updateReadyVersion && !updateBannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     <span class="update-banner-msg">Update ready (v{updateReadyVersion})</span>
-    <button class="update-apply" onclick={applyUpdate}>Apply now</button>
+    <button class="update-apply" onclick={applyUpdate}>Restart &amp; update</button>
     <button class="update-later" onclick={() => (updateBannerDismissed = true)}>Later</button>
   </div>
 {/if}

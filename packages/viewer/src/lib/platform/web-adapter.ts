@@ -191,7 +191,6 @@ const webUpdater: UpdaterApi = {
     rejectNotImplemented("updater.getStatus") as Promise<UpdaterStatus>,
   check: () => rejectNotImplemented("updater.check") as Promise<UpdaterStatus>,
   applyNow: () => rejectNotImplemented("updater.applyNow"),
-  markReady: () => rejectNotImplemented("updater.markReady"),
   onEvent: () => () => {},
 };
 

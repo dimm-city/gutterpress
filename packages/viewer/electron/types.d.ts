@@ -56,7 +56,6 @@ declare global {
     getStatus(): Promise<UpdaterStatus>;
     check(): Promise<UpdaterStatus>;
     applyNow(): Promise<{ applied: boolean; version?: string }>;
-    markReady(): Promise<{ ok: true; pending: boolean; version?: string }>;
     onEvent(cb: (event: UpdaterEvent) => void): () => void;
   }
 
