@@ -1,23 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import path from 'node:path';
+import { getRecoveryHooks } from '../../../../../electron/server-bridge/recovery-hooks';
 import type { RequestHandler } from './$types';
-
-interface RecoveryEntry {
-  filePath: string;
-  recoveryPath: string;
-  savedAt: number;
-  baseMtimeMs: number;
-}
-
-interface RecoveryHooks {
-  write(filePath: string, content: string, baseMtimeMs: number): Promise<{ ok: boolean }>;
-  clear(filePath: string): Promise<{ ok: boolean }>;
-  list(projectDir: string): Promise<RecoveryEntry[]>;
-}
-
-function getHooks(): RecoveryHooks | null {
-  return (globalThis as unknown as { __printMdRecoveryHooks__?: RecoveryHooks }).__printMdRecoveryHooks__ ?? null;
-}
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
@@ -26,7 +10,7 @@ export const POST: RequestHandler = async ({ request }) => {
     if (!projectDir) return error(400, 'projectDir is required');
     if (!path.isAbsolute(projectDir)) return error(400, `recovery:list requires an absolute path, got: ${projectDir}`);
 
-    const hooks = getHooks();
+    const hooks = getRecoveryHooks();
     if (!hooks) return error(503, 'Recovery hooks not registered');
 
     const result = await hooks.list(projectDir);

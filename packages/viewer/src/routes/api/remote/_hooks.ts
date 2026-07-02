@@ -1,47 +1,18 @@
 /**
  * Shared helper for remote server routes.
  *
- * Provides typed access to the __printMdRemoteHooks__ global that main.ts
- * registers so the SvelteKit server-side bundle (a separate Vite chunk from
- * the Electron main bundle) can reach the lib and credential store.
- *
  * SECURITY: token values never appear in responses. The tokenStore methods
  * exposed here are read-only (status, listRedacted) or credential-lifecycle
  * (delete, set) but the set path only stores results returned by the lib after
  * validation — the raw token is consumed by the lib and never echoed back.
  */
 
-export interface TokenStore {
-  get(host: string): Promise<{ token: string; host: string; username?: string; kind: string; label?: string; createdAt: number } | null>;
-  set(host: string, credential: { token: string; host: string; username?: string; kind: string; label?: string; createdAt: number }): Promise<void>;
-  delete(host: string): Promise<void>;
-  status(host: string): Promise<{ connected: boolean; username?: string; label?: string }>;
-  listRedacted(): Promise<Array<{ host: string; kind: string; username?: string; label?: string; createdAt: number }>>;
-}
-
-export interface LibModule {
-  listGitHubRepositories?(credential: unknown): Promise<unknown[]>;
-  listGitHubBranches?(credential: unknown, owner: string, repo: string): Promise<unknown[]>;
-  listRepoBooks?(credential: unknown, owner: string, repo: string, branch: string): Promise<unknown[]>;
-  diagnoseProjectRemote?(dir: string, opts: { tokenStore: TokenStore }): Promise<unknown>;
-  testRemoteAccess?(args: { url: string; credential?: unknown }): Promise<unknown>;
-  connectGenericHost?(args: { host: string; username?: string; token: string; repoUrl?: string }): Promise<{ host: string; username?: string; kind: string; token: string; label?: string; createdAt: number }>;
-  knownForgeTokenUrl?(host: string): Promise<string | null>;
-  syncProject?(args: { projectDir: string; tokenStore: TokenStore; message?: string; authorName?: string; authorEmail?: string }): Promise<unknown>;
-}
-
-export interface RemoteHooks {
-  loadLib(): Promise<LibModule>;
-  tokenStore: TokenStore;
-  GITHUB_HOST: string;
-}
-
-export function getHooks(): RemoteHooks | null {
-  return (
-    (globalThis as unknown as { __printMdRemoteHooks__?: RemoteHooks }).__printMdRemoteHooks__ ??
-    null
-  );
-}
+export {
+  getRemoteHooks as getHooks,
+  type LibModule,
+  type RemoteHooks,
+  type TokenStore,
+} from '../../../../electron/server-bridge/remote-hooks';
 
 /** Regex matching lib's own author-friendly error messages — pass through verbatim. */
 const REMOTE_FRIENDLY_ERROR =

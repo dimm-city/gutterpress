@@ -1,23 +1,18 @@
 import { json, error } from '@sveltejs/kit';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
+import { getPrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
 import type { RequestHandler } from './$types';
 
-interface PrefsHooks {
-  loadLib: () => Promise<{
-    inspectImage: (filePath: string) => Promise<{
-      width: number;
-      height: number;
-      xDpi: number;
-      yDpi: number;
-      hasAlpha: boolean;
-      colorSpace: 'srgb' | 'gray' | 'cmyk' | '';
-    } | null>;
-  }>;
-}
-
-function getHooks(): PrefsHooks | null {
-  return (globalThis as unknown as { __printMdPrefsHooks__?: PrefsHooks }).__printMdPrefsHooks__ ?? null;
+interface InspectImageLibModule {
+  inspectImage: (filePath: string) => Promise<{
+    width: number;
+    height: number;
+    xDpi: number;
+    yDpi: number;
+    hasAlpha: boolean;
+    colorSpace: 'srgb' | 'gray' | 'cmyk' | '';
+  } | null>;
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -34,7 +29,7 @@ export const POST: RequestHandler = async ({ request }) => {
       return json(null);
     }
 
-    const hooks = getHooks();
+    const hooks = getPrefsHooks<InspectImageLibModule>();
     if (!hooks) return error(503, 'Prefs hooks not registered');
     const lib = await hooks.loadLib();
     const info = await lib.inspectImage(filePath);

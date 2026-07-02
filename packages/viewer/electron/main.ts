@@ -26,6 +26,12 @@ import { registerWriteHooks } from "./server-bridge/write-hooks";
 import { registerWatchHooks } from "./server-bridge/watch-hooks";
 import { registerAppHooks } from "./server-bridge/app-hooks";
 import { registerPrefsHooks } from "./server-bridge/prefs-hooks";
+import { registerRecoveryHooks } from "./server-bridge/recovery-hooks";
+import { registerDesktopHooks, registerDoctorHooks } from "./server-bridge/host-hooks";
+import { registerMediaHooks } from "./server-bridge/media-hooks";
+import { registerVcsHooks } from "./server-bridge/vcs-hooks";
+import { registerRemoteHooks } from "./server-bridge/remote-hooks";
+import { registerConflictPreviewHooks } from "./server-bridge/conflict-preview-hooks";
 import {
   writeRecovery as writeRecoveryStore,
   clearRecovery as clearRecoveryStore,
@@ -1723,12 +1729,12 @@ ipcMain.handle("fs:unwatchFolder", async (_e, dirPath: string): Promise<void> =>
 // Sidecar snapshots under userData/recovery/. Never touches the user's file.
 // Exposed via SvelteKit server routes (src/routes/api/recovery/*) through
 // globalThis hooks — no IPC needed.
-(globalThis as unknown as Record<string, unknown>).__printMdRecoveryHooks__ = {
+registerRecoveryHooks({
   write: (filePath: string, content: string, baseMtimeMs: number) =>
     writeRecoveryStore(recoveryDir(), filePath, content, baseMtimeMs),
   clear: (filePath: string) => clearRecoveryStore(recoveryDir(), filePath),
   list: (projectDir: string) => listRecoveryStore(recoveryDir(), projectDir),
-};
+});
 
 // ── Unsaved-changes close gate (#44) ────────────────────────────────────────
 // app:setDirtyState migrated to server route (src/routes/api/app/dirty-state).
@@ -1747,14 +1753,14 @@ ipcMain.handle("app:flushDone", async (): Promise<void> => {
 // api:status, lint:checkCss, lint:project, api:doctor migrated to SvelteKit server routes
 // (src/routes/api/status, src/routes/api/lint/*, src/routes/api/doctor) — see Phase 2C.
 
-(globalThis as unknown as Record<string, unknown>).__printMdDesktopHooks__ = {
-  showOpenDialog: async (options: Record<string, unknown>) => {
+registerDesktopHooks({
+  showOpenDialog: async (options) => {
     const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
     return win
       ? await dialog.showOpenDialog(win, options as Electron.OpenDialogOptions)
       : await dialog.showOpenDialog(options as Electron.OpenDialogOptions);
   },
-  showSaveDialog: async (options: Record<string, unknown>) => {
+  showSaveDialog: async (options) => {
     const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
     return win
       ? await dialog.showSaveDialog(win, options as Electron.SaveDialogOptions)
@@ -1768,12 +1774,12 @@ ipcMain.handle("app:flushDone", async (): Promise<void> => {
   },
   getNativeTheme: () => ({ shouldUseDarkColors: nativeTheme.shouldUseDarkColors }),
   getUserDataPath: () => app.getPath('userData'),
-};
+});
 
 // Media thumbnail generation is exposed through a hook instead of importing
 // `electron` from the SvelteKit handler bundle. Packaged adapter-node routes run
 // in a different ESM context, and importing Electron there can fail.
-(globalThis as unknown as Record<string, unknown>).__printMdMediaHooks__ = {
+registerMediaHooks({
   async createThumbnail(filePath: string, maxPx: number): Promise<string | null> {
     const ext = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase();
     if (ext === 'svg') {
@@ -1803,7 +1809,7 @@ ipcMain.handle("app:flushDone", async (): Promise<void> => {
         : img;
     return scaled.toDataURL();
   },
-};
+});
 
 // app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
 // app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
@@ -1869,10 +1875,10 @@ registerPrefsHooks({
 
 // Expose doctor-route hooks through globalThis so the SvelteKit handler never
 // imports `electron` directly in the packaged app.
-(globalThis as unknown as Record<string, unknown>).__printMdDoctorHooks__ = {
+registerDoctorHooks({
   getUpdaterStatus: getStatus,
   getViewerVersion: () => app.getVersion(),
-};
+});
 
 // app:discoverProjects, app:classifyProject, app:createProject, app:adoptFolder
 // — migrated to SvelteKit server routes (src/routes/api/app/*) in Phase 2B.
@@ -1894,7 +1900,7 @@ registerPrefsHooks({
 // path could resolve against the main-process CWD by accident).
 
 // Expose loadLib + operationLogPath for VCS SvelteKit server routes.
-(globalThis as unknown as Record<string, unknown>).__printMdVcsHooks__ = { loadLib, operationLogPath };
+registerVcsHooks({ loadLib, operationLogPath });
 
 function requireAbsoluteDir(channel: string, projectDir: unknown): string {
   if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
@@ -1945,11 +1951,11 @@ const GITHUB_HOST = "github.com";
 // The routes live in a separate Vite bundle and cannot directly import from
 // main.ts; they access loadLib / electronTokenStore / GITHUB_HOST through
 // this hook (same pattern as __printMdUpdaterGetStatus__ for /api/doctor).
-(globalThis as unknown as Record<string, unknown>).__printMdRemoteHooks__ = {
+registerRemoteHooks({
   loadLib,
   tokenStore: electronTokenStore,
   GITHUB_HOST,
-};
+});
 
 // Error sanitization — same pattern as handleVcsErrors: the lib's own
 // author-friendly messages pass through verbatim; anything else is logged in
@@ -2227,7 +2233,7 @@ ipcMain.handle(
 
 // sync:getConflictPreview — migrated to SvelteKit server route
 // (src/routes/api/sync/get-conflict-preview). Exposed via globalThis hook.
-(globalThis as unknown as Record<string, unknown>).__printMdConflictPreviewHooks__ = {
+registerConflictPreviewHooks({
   getConflictPreview: async (
     projectDir: string,
     relativePath: string,
@@ -2236,7 +2242,7 @@ ipcMain.handle(
     const lib = await loadLib();
     return getConflictPreviewImpl(projectDir, relativePath, kind, lib.onlineCopyPath);
   },
-};
+});
 
 // ── Auto-sync settings IPC (transparent-sync plan §4.3) ─────────────────────
 // The renderer calls setAutoSync(true|false) from the Settings panel. We persist

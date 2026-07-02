@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getDoctorHooks, type UpdaterStatus } from '$lib/server/host-hooks.js';
+import { getPrefsHooks } from '../../../../electron/server-bridge/prefs-hooks';
 import type { RequestHandler } from './$types';
 
 interface SystemDiagnostics {
@@ -17,19 +18,13 @@ interface SystemDiagnostics {
   docsUrl: string;
 }
 
-interface PrefsHooks {
-  loadLib: () => Promise<{
-    getSystemDiagnostics: () => Promise<SystemDiagnostics>;
-  }>;
-}
-
-function getHooks(): PrefsHooks | null {
-  return (globalThis as unknown as { __printMdPrefsHooks__?: PrefsHooks }).__printMdPrefsHooks__ ?? null;
+interface DoctorLibModule {
+  getSystemDiagnostics: () => Promise<SystemDiagnostics>;
 }
 
 export const GET: RequestHandler = async () => {
   try {
-    const hooks = getHooks();
+    const hooks = getPrefsHooks<DoctorLibModule>();
     if (!hooks) return new Response('Prefs hooks not registered', { status: 503 });
     const lib = await hooks.loadLib();
     const diag = await lib.getSystemDiagnostics();

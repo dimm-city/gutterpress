@@ -1,5 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import path from 'node:path';
+import { getPrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
 import type { RequestHandler } from './$types';
 
 interface LintCheckResult {
@@ -12,18 +13,12 @@ interface LintCheckResult {
   detail?: string;
 }
 
-interface PrefsHooks {
-  loadLib: () => Promise<{
-    executeValidation: (args: {
-      input?: string;
-      category?: string;
-      phase?: string;
-    }) => Promise<{ report: { results: LintCheckResult[] } }>;
-  }>;
-}
-
-function getHooks(): PrefsHooks | null {
-  return (globalThis as unknown as { __printMdPrefsHooks__?: PrefsHooks }).__printMdPrefsHooks__ ?? null;
+interface ValidationLibModule {
+  executeValidation: (args: {
+    input?: string;
+    category?: string;
+    phase?: string;
+  }) => Promise<{ report: { results: LintCheckResult[] } }>;
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -33,7 +28,7 @@ export const POST: RequestHandler = async ({ request }) => {
     if (!projectDir || typeof projectDir !== 'string') return error(400, "'projectDir' string is required");
     if (!path.isAbsolute(projectDir)) return error(400, `lint:project requires an absolute path, got: ${projectDir}`);
 
-    const hooks = getHooks();
+    const hooks = getPrefsHooks<ValidationLibModule>();
     if (!hooks) return error(503, 'Prefs hooks not registered');
     const lib = await hooks.loadLib();
     const execution = await lib.executeValidation({

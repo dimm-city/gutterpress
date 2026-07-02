@@ -1,19 +1,10 @@
 import { json, error } from '@sveltejs/kit';
+import { getPrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
 import type { RequestHandler } from './$types';
-
-interface PrefsHooks {
-  readPrefs: () => Promise<Record<string, unknown>>;
-  defaultProjectSearchRoots: () => string[];
-  scanForProjects: (roots: string[], exclude: Set<string>) => Promise<unknown[]>;
-}
-
-function getHooks(): PrefsHooks | null {
-  return (globalThis as unknown as { __printMdPrefsHooks__?: PrefsHooks }).__printMdPrefsHooks__ ?? null;
-}
 
 export const POST: RequestHandler = async () => {
   try {
-    const hooks = getHooks();
+    const hooks = getPrefsHooks();
     if (!hooks) return error(503, 'Prefs hooks not registered');
     const prefs = await hooks.readPrefs();
     const searchRoots = prefs.projectSearchRoots as string[] | undefined;

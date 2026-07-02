@@ -1,19 +1,10 @@
 import { json, error } from '@sveltejs/kit';
+import { getPrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
 import type { RequestHandler } from './$types';
-
-interface PrefsHooks {
-  readPrefs: () => Promise<Record<string, unknown>>;
-  writePrefs: (prefs: Record<string, unknown>) => Promise<void>;
-  existingDirectory: (dir: string | undefined) => Promise<string | null>;
-}
-
-function getHooks(): PrefsHooks | null {
-  return (globalThis as unknown as { __printMdPrefsHooks__?: PrefsHooks }).__printMdPrefsHooks__ ?? null;
-}
 
 export const GET: RequestHandler = async () => {
   try {
-    const hooks = getHooks();
+    const hooks = getPrefsHooks();
     if (!hooks) return error(503, 'Prefs hooks not registered');
     const prefs = await hooks.readPrefs();
     const lastProjectDir = await hooks.existingDirectory(prefs.lastProjectDir as string | undefined);
@@ -27,7 +18,7 @@ export const GET: RequestHandler = async () => {
 export const POST: RequestHandler = async ({ request }) => {
   try {
     const patch = await request.json().catch(() => ({})) as Record<string, unknown>;
-    const hooks = getHooks();
+    const hooks = getPrefsHooks();
     if (!hooks) return error(503, 'Prefs hooks not registered');
     const current = await hooks.readPrefs();
     await hooks.writePrefs({ ...current, ...patch });

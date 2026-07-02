@@ -1,7 +1,8 @@
 import { json, error } from '@sveltejs/kit';
 import { isAbsolute, basename } from 'node:path';
-import type { RequestHandler } from './$types';
 import { gitIdentityArgs } from '$lib/server/settings';
+import { getVcsHooks } from '../../../../../electron/server-bridge/vcs-hooks';
+import type { RequestHandler } from './$types';
 
 interface SnapshotEntry {
   id: string;
@@ -15,11 +16,6 @@ interface LibModule {
   providerFor: (source: unknown) => {
     snapshot: (opts: { projectDir: string; message: string; logFile?: string; authorName?: string; authorEmail?: string }) => Promise<SnapshotEntry>;
   };
-}
-
-interface VcsHooks {
-  loadLib: () => Promise<LibModule>;
-  operationLogPath: (slug: string) => string;
 }
 
 const VCS_FRIENDLY_ERROR =
@@ -48,7 +44,8 @@ export const POST: RequestHandler = async ({ request }) => {
     : 'Saved snapshot';
 
   try {
-    const hooks = (globalThis as unknown as Record<string, VcsHooks>).__printMdVcsHooks__;
+    const hooks = getVcsHooks<LibModule>();
+    if (!hooks) return error(503, 'VCS hooks not registered');
     const lib = await hooks.loadLib();
     const source = await lib.detectProjectSource(projectDir);
     return json(

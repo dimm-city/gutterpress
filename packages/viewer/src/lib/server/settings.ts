@@ -1,9 +1,6 @@
 import { DEFAULT_SETTINGS } from "$lib/platform/contract";
 import type { AppSettings, DeepPartial } from "$lib/platform/contract";
-
-interface PrefsHooks {
-  readSettings: () => Promise<Record<string, unknown>>;
-}
+import { getPrefsHooks } from '../../../electron/server-bridge/prefs-hooks';
 
 function mergeSettings(base: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
   const out = { ...base } as Record<string, unknown>;
@@ -18,7 +15,7 @@ function mergeSettings(base: AppSettings, patch: DeepPartial<AppSettings>): AppS
 
 export async function readAppSettings(): Promise<AppSettings> {
   try {
-    const hooks = (globalThis as unknown as { __printMdPrefsHooks__?: PrefsHooks }).__printMdPrefsHooks__;
+    const hooks = getPrefsHooks();
     if (!hooks) return DEFAULT_SETTINGS;
     return mergeSettings(DEFAULT_SETTINGS, await hooks.readSettings() as DeepPartial<AppSettings>);
   } catch {

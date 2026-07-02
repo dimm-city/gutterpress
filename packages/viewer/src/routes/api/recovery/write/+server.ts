@@ -1,23 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import path from 'node:path';
+import { getRecoveryHooks } from '../../../../../electron/server-bridge/recovery-hooks';
 import type { RequestHandler } from './$types';
-
-interface RecoveryEntry {
-  filePath: string;
-  recoveryPath: string;
-  savedAt: number;
-  baseMtimeMs: number;
-}
-
-interface RecoveryHooks {
-  write(filePath: string, content: string, baseMtimeMs: number): Promise<{ ok: boolean }>;
-  clear(filePath: string): Promise<{ ok: boolean }>;
-  list(projectDir: string): Promise<RecoveryEntry[]>;
-}
-
-function getHooks(): RecoveryHooks | null {
-  return (globalThis as unknown as { __printMdRecoveryHooks__?: RecoveryHooks }).__printMdRecoveryHooks__ ?? null;
-}
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
@@ -32,7 +16,7 @@ export const POST: RequestHandler = async ({ request }) => {
     if (typeof baseMtimeMs !== 'number') return error(400, 'baseMtimeMs must be a number');
     if (!path.isAbsolute(filePath)) return error(400, `recovery:write requires an absolute path, got: ${filePath}`);
 
-    const hooks = getHooks();
+    const hooks = getRecoveryHooks();
     if (!hooks) return error(503, 'Recovery hooks not registered');
 
     const result = await hooks.write(filePath, content, baseMtimeMs);

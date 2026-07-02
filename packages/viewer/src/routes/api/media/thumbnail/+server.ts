@@ -1,15 +1,8 @@
 import { json, error } from '@sveltejs/kit';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { getMediaHooks } from '../../../../../electron/server-bridge/media-hooks';
 import type { RequestHandler } from './$types';
-
-interface MediaHooks {
-  createThumbnail: (filePath: string, maxPx: number) => Promise<string | null>;
-}
-
-function getHooks(): MediaHooks | null {
-  return (globalThis as unknown as { __printMdMediaHooks__?: MediaHooks }).__printMdMediaHooks__ ?? null;
-}
 
 const THUMB_MAX_PX = 192;
 const THUMB_CACHE_MAX = 300;
@@ -58,7 +51,7 @@ export const POST: RequestHandler = async ({ request }) => {
           dataUrl = `data:image/svg+xml;base64,${buf.toString('base64')}`;
         }
       } else {
-        const hooks = getHooks();
+        const hooks = getMediaHooks();
         if (!hooks) return error(503, 'Media hooks not registered');
         dataUrl = await hooks.createThumbnail(filePath, THUMB_MAX_PX);
         if (!dataUrl && s.size <= THUMB_FALLBACK_MAX_BYTES && MEDIA_MIME[ext]) {

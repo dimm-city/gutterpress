@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { getWriteHooks } from '../../../../../electron/server-bridge/write-hooks';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -17,7 +18,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // Trigger auto-snapshot/sync debounce for edits inside the open project.
     // The hooks are registered by main.ts on startup via globalThis.
-    const hooks = (globalThis as unknown as { __printMdWriteHooks__?: { scheduleAutoSnapshot: (d: string) => void; scheduleAutoSync: (d: string) => void; getWatchedDir: () => string | null } }).__printMdWriteHooks__;
+    const hooks = getWriteHooks();
     if (hooks) {
       const watchedDir = hooks.getWatchedDir();
       if (watchedDir) {

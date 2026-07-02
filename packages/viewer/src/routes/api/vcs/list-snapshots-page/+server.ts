@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { isAbsolute } from 'node:path';
+import { getVcsHooks } from '../../../../../electron/server-bridge/vcs-hooks';
 
 // Local types — do NOT import from contract.ts or the lib (keeps SPA bundle clean).
 interface SnapshotEntry {
@@ -58,7 +59,8 @@ export const POST: RequestHandler = async ({ request }) => {
   const limit = body.limit;
 
   try {
-    const hooks = (globalThis as unknown as Record<string, { loadLib: () => Promise<LibModule> }>).__printMdVcsHooks__;
+    const hooks = getVcsHooks<LibModule>();
+    if (!hooks) return error(503, 'VCS hooks not registered');
     const lib = await hooks.loadLib();
     const source = await lib.detectProjectSource(projectDir);
     return json(

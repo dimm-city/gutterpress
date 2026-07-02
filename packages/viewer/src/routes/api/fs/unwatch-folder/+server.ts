@@ -1,18 +1,13 @@
 import { json, error } from '@sveltejs/kit';
 import path from 'node:path';
+import { getWatchHooks } from '../../../../../electron/server-bridge/watch-hooks';
 import type { RequestHandler } from './$types';
-
-interface WatchHooks {
-  startFolderWatch: (dir: string) => void;
-  stopFolderWatch: () => void;
-  getWatchedDir: () => string | null;
-}
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
     const body = await request.json().catch(() => ({})) as { path?: string };
     const dirPath = body.path;
-    const hooks = (globalThis as unknown as { __printMdWatchHooks__?: WatchHooks }).__printMdWatchHooks__;
+    const hooks = getWatchHooks();
     if (hooks) {
       const watchedDir = hooks.getWatchedDir();
       if (dirPath && path.isAbsolute(dirPath)) {

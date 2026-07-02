@@ -1,20 +1,15 @@
 import { json, error } from '@sveltejs/kit';
+import { getPrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
 import type { RequestHandler } from './$types';
 
-interface PrefsHooks {
-  loadLib: () => Promise<{
-    checkCss: (css: string, from?: string) => Array<{
-      rule: string;
-      severity: 'error' | 'warning';
-      message: string;
-      line: number;
-      column: number;
-    }>;
+interface CssLintLibModule {
+  checkCss: (css: string, from?: string) => Array<{
+    rule: string;
+    severity: 'error' | 'warning';
+    message: string;
+    line: number;
+    column: number;
   }>;
-}
-
-function getHooks(): PrefsHooks | null {
-  return (globalThis as unknown as { __printMdPrefsHooks__?: PrefsHooks }).__printMdPrefsHooks__ ?? null;
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -23,7 +18,7 @@ export const POST: RequestHandler = async ({ request }) => {
     const { cssPath, content } = body;
     if (typeof content !== 'string') return error(400, "'content' string is required");
 
-    const hooks = getHooks();
+    const hooks = getPrefsHooks<CssLintLibModule>();
     if (!hooks) return error(503, 'Prefs hooks not registered');
     const lib = await hooks.loadLib();
     const warnings = lib.checkCss(content, cssPath);

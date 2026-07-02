@@ -1,17 +1,6 @@
 import { json, error } from '@sveltejs/kit';
+import { getAppHooks } from '../../../../../electron/server-bridge/app-hooks';
 import type { RequestHandler } from './$types';
-
-interface AppHooks {
-  updateSplash: (status?: string, progress?: number, sub?: string) => void;
-  showMainWindowAndCloseSplash: () => void;
-  setRendererDirty: (isDirty: boolean) => void;
-  resolveFlush: () => void;
-  sendToRenderer: (channel: string, ...args: unknown[]) => void;
-}
-
-function getHooks(): AppHooks | null {
-  return (globalThis as unknown as { __printMdAppHooks__?: AppHooks }).__printMdAppHooks__ ?? null;
-}
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
@@ -20,7 +9,7 @@ export const POST: RequestHandler = async ({ request }) => {
       progress?: number;
       sub?: string;
     };
-    const hooks = getHooks();
+    const hooks = getAppHooks();
     if (hooks) {
       hooks.updateSplash(body.status, body.progress, body.sub);
     }

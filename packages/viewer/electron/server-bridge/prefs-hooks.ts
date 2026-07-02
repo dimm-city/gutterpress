@@ -9,7 +9,7 @@
  * Server routes call getPrefsHooks() to retrieve them.
  */
 
-export interface PrefsHooks {
+export interface PrefsHooks<LibModule = unknown> {
   readPrefs: () => Promise<Record<string, unknown>>;
   writePrefs: (prefs: Record<string, unknown>) => Promise<void>;
   readSettings: () => Promise<Record<string, unknown>>;
@@ -28,12 +28,7 @@ export interface PrefsHooks {
     recents: Array<{ path: string; [k: string]: unknown }> | undefined,
     targetPath: string
   ) => Array<{ path: string; [k: string]: unknown }>;
-  loadLib: () => Promise<{
-    detectProjectSource: (path: string) => Promise<unknown>;
-    capabilitiesFor: (source: unknown) => unknown;
-    scaffoldProject: (opts: unknown) => Promise<unknown>;
-    adoptFolder: (opts: unknown) => Promise<unknown>;
-  }>;
+  loadLib: () => Promise<LibModule>;
 }
 
 const GLOBAL_KEY = '__printMdPrefsHooks__' as const;
@@ -43,10 +38,10 @@ declare global {
   var __printMdPrefsHooks__: PrefsHooks | undefined;
 }
 
-export function registerPrefsHooks(hooks: PrefsHooks): void {
+export function registerPrefsHooks<LibModule>(hooks: PrefsHooks<LibModule>): void {
   globalThis[GLOBAL_KEY] = hooks;
 }
 
-export function getPrefsHooks(): PrefsHooks | null {
-  return globalThis[GLOBAL_KEY] ?? null;
+export function getPrefsHooks<LibModule = unknown>(): PrefsHooks<LibModule> | null {
+  return (globalThis[GLOBAL_KEY] as PrefsHooks<LibModule> | undefined) ?? null;
 }

@@ -1,30 +1,10 @@
 import { json, error } from '@sveltejs/kit';
 import path from 'node:path';
+import {
+  getConflictPreviewHooks,
+  type ConflictKind,
+} from '../../../../../electron/server-bridge/conflict-preview-hooks';
 import type { RequestHandler } from './$types';
-
-type ConflictKind = 'both-edited' | 'you-deleted' | 'online-deleted';
-
-interface ConflictPreviewResult {
-  mine: string;
-  theirs: string;
-  kind: ConflictKind;
-  isBinary: boolean;
-}
-
-interface ConflictPreviewHooks {
-  getConflictPreview(
-    projectDir: string,
-    relativePath: string,
-    kind: ConflictKind,
-  ): Promise<ConflictPreviewResult>;
-}
-
-function getHooks(): ConflictPreviewHooks | null {
-  return (
-    (globalThis as unknown as { __printMdConflictPreviewHooks__?: ConflictPreviewHooks })
-      .__printMdConflictPreviewHooks__ ?? null
-  );
-}
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
@@ -36,7 +16,7 @@ export const POST: RequestHandler = async ({ request }) => {
     if (!body?.projectDir || !body?.path) return error(400, 'sync:getConflictPreview requires { projectDir, path }');
     if (!path.isAbsolute(body.projectDir)) return error(400, 'sync:getConflictPreview requires an absolute project path');
 
-    const hooks = getHooks();
+    const hooks = getConflictPreviewHooks();
     if (!hooks) return error(503, 'Conflict preview hooks not registered');
 
     const VALID_KINDS: ReadonlySet<string> = new Set(['both-edited', 'you-deleted', 'online-deleted']);
