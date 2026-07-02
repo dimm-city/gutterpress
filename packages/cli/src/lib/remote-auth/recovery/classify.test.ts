@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { classifyGitError } from "./classify.ts";
+import { classifyGitError, classifyFromHealth } from "./classify.ts";
 import type { RepoHealth } from "./types.ts";
 
 // ── Health helpers ────────────────────────────────────────────────────────────
@@ -13,6 +13,7 @@ const healthyRepo: RepoHealth = {
   hasGitDir: true,
   currentBranch: "main",
   isDetachedHead: false,
+  headUnreadable: false,
   hasStaleLock: false,
   hasInterruptedMerge: false,
   hasInterruptedRebase: false,
@@ -189,6 +190,25 @@ describe("classifyGitError — all 13 SyncErrorKind values", () => {
 
   test("detached_head — takes priority even over push rejected", () => {
     expect(classifyGitError(pushRejectedError(), detachedHealth)).toBe("detached_head");
+  });
+
+  // ── headUnreadable (M1): HEAD/ref-store corruption is NOT detachment ───────
+  // git.currentBranch() THROWING (missing/corrupt .git/HEAD) is recorded as
+  // headUnreadable, distinct from isDetachedHead (branch resolves to null
+  // cleanly). classifyFromHealth must route headUnreadable to the
+  // missing/corrupt-objects repair, not the detached-head repair — checking
+  // out a branch on a repo whose HEAD can't be trusted is the wrong fix.
+  test("headUnreadable → missing_or_corrupt_objects, not detached_head", () => {
+    const unreadable: RepoHealth = { ...healthyRepo, headUnreadable: true };
+    expect(classifyFromHealth(unreadable)).toBe("missing_or_corrupt_objects");
+    expect(classifyGitError(new Error("some error"), unreadable)).toBe(
+      "missing_or_corrupt_objects",
+    );
+  });
+
+  test("headUnreadable takes priority over isDetachedHead when both are set", () => {
+    const both: RepoHealth = { ...healthyRepo, headUnreadable: true, isDetachedHead: true };
+    expect(classifyFromHealth(both)).toBe("missing_or_corrupt_objects");
   });
 
   test("stale_lock — health flag (hasStaleLock=true)", () => {

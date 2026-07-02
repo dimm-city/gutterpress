@@ -12,7 +12,9 @@ This repo is a Bun workspace with two packages:
   entrypoints, `--target=node --packages=external --splitting`) + `tsc` for
   `.d.ts` — see the package.json `build` script; deps are normal `dependencies`,
   not bundled. Also ships as a standalone single-file binary via `bun build
-  --compile` (the `compile` script / release `bun build … --compile`). The
+  --compile`, run inline by the `build-cli` job in `.github/workflows/release.yml`
+  (`bun build src/cli.ts --compile --target=<target> --outfile=…`) — there is
+  no separate `compile` package.json script or `scripts/compile.ts`. The
   no-bundlers-at-runtime rule (§1 below) applies to this package.
 - **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron desktop
   app with a static SvelteKit SPA frontend. The SPA is built with
@@ -38,10 +40,12 @@ compile, tests) but NOT for end users of the packaged viewer.
 
 ## What print-md ships
 
-A standalone binary built with `bun build --compile` (the package.json
-`compile` script: `bun build src/cli.ts --compile …`). Users download a single
-executable from GitHub Releases — no Node, no Bun, no `node_modules` on the host.
-The CLI also runs from source via `bun packages/cli/src/cli.ts` during development.
+A standalone binary built with `bun build --compile`, via the inline compile
+step in the release workflow's `build-cli` job (`.github/workflows/release.yml`:
+`bun build src/cli.ts --compile --target=<target> --outfile=…`, one matrix leg
+per platform). Users download a single executable from GitHub Releases —
+no Node, no Bun, no `node_modules` on the host. The CLI also runs from source
+via `bun packages/cli/src/cli.ts` during development.
 
 ## print-md Primary Goals
 > [!ALERT]

@@ -122,8 +122,13 @@ export const recover: RecoverFn = async (ctx) => {
       hadLocalChanges = true; // conservative: assume dirty if we can't tell
     }
 
-    // Re-verify state with DIRECT fs checks (not inspectRepo — it re-enters
-    // the repo lock). Pick whichever backend dir is present.
+    // Re-verify state with DIRECT fs checks (not inspectRepo). inspectRepo is
+    // a broader preflight probe (re-detects the project source, re-scans for
+    // stale locks, walks the working tree for local changes) — overkill for
+    // the one narrow fact this TOCTOU re-check needs (which rebase state dir,
+    // if either, still exists right now) and would re-read stale-by-design
+    // health rather than a fresh, targeted check. Pick whichever backend dir
+    // is present.
     const stateDir = fs.existsSync(rebaseMerge)
       ? rebaseMerge
       : fs.existsSync(rebaseApply)

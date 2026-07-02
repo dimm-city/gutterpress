@@ -165,6 +165,14 @@ export interface RepoHealth {
   /** True when HEAD is detached (no named branch). */
   isDetachedHead: boolean;
   /**
+   * True when HEAD (or the ref store) could not even be READ — distinct from
+   * a clean detached HEAD, where HEAD resolves fine but points at a commit
+   * instead of a branch. This means the repo's ref store or HEAD file is
+   * missing/corrupt, and routes to `missing_or_corrupt_objects` instead of
+   * `detached_head` (see classifyFromHealth).
+   */
+  headUnreadable: boolean;
+  /**
    * True when a leftover git lock file exists (a previous operation may have
    * died). Detects any of index.lock, HEAD.lock, config.lock, packed-refs.lock,
    * or a per-ref refs/**\/*.lock — the same set the stale-lock handler scans.

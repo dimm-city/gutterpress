@@ -44,7 +44,8 @@ declare global {
   interface UpdaterStatus {
     currentVersion: string | null;
     stagedVersion: string | null;
-    phase: "idle" | "checking" | "downloading" | "staged" | "error";
+    availableVersion: string | null;
+    phase: "idle" | "checking" | "available" | "downloading" | "staged" | "error";
     error: string | null;
   }
 
@@ -53,6 +54,7 @@ declare global {
   interface ElectronUpdater {
     getStatus(): Promise<UpdaterStatus>;
     check(): Promise<UpdaterStatus>;
+    download(): Promise<UpdaterStatus>;
     applyNow(): Promise<{ applied: boolean; version?: string }>;
     onEvent(cb: (event: UpdaterEvent) => void): () => void;
   }

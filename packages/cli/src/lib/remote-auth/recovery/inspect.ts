@@ -81,6 +81,7 @@ export async function inspectRepo(
     return {
       hasGitDir: false,
       isDetachedHead: false,
+      headUnreadable: false,
       hasStaleLock: false,
       hasInterruptedMerge: false,
       hasInterruptedRebase: false,
@@ -90,8 +91,20 @@ export async function inspectRepo(
   }
 
   // ── Detached HEAD ────────────────────────────────────────────────────────
+  //
+  // git.currentBranch() has two distinct failure shapes that must NOT be
+  // conflated:
+  //   - Returns `undefined`/`null` — HEAD resolves fine but points directly
+  //     at a commit rather than a branch ref. This IS a clean detached HEAD.
+  //   - THROWS — HEAD (or the ref store) could not even be read (missing or
+  //     corrupt `.git/HEAD`). This is repo CORRUPTION, not detachment: routing
+  //     it to the detached-head repair would try to check out a branch on a
+  //     repo whose HEAD can't be trusted. Record it as `headUnreadable`
+  //     instead so the classifier can route it to the missing/corrupt-objects
+  //     repair (which re-fetches and rebuilds refs).
   let currentBranch: string | undefined;
   let isDetachedHead = false;
+  let headUnreadable = false;
   try {
     const branch = await git.currentBranch({ fs, dir: repoDir });
     if (branch == null) {
@@ -100,7 +113,7 @@ export async function inspectRepo(
       currentBranch = branch;
     }
   } catch {
-    isDetachedHead = true;
+    headUnreadable = true;
   }
 
   // ── Stale lock ────────────────────────────────────────────────────────────
@@ -137,6 +150,7 @@ export async function inspectRepo(
     hasGitDir,
     currentBranch,
     isDetachedHead,
+    headUnreadable,
     hasStaleLock,
     lockAgeMs,
     hasInterruptedMerge,
@@ -144,6 +158,66 @@ export async function inspectRepo(
     hasInterruptedCherryPick,
     hasLocalChanges,
   };
+}
+
+// ── Structural readability probe ───────────────────────────────────────────
+
+/**
+ * Confirm the repo's object store is actually readable: resolve HEAD, read
+ * its commit, and read its root tree. Throws when any step fails (missing or
+ * corrupt object/ref); resolves when the repo is fully readable.
+ *
+ * This is the SAME verification recover-missing-objects.ts performs to check
+ * whether a fetch actually repaired the object store — it is exported here so
+ * that check and the repair command's diagnosis step share ONE implementation
+ * rather than two copies that could drift. `inspectRepo`'s health flags are
+ * all filesystem-presence checks (no object is ever read), so they cannot
+ * detect object-store corruption on their own — callers that need to catch
+ * `corrupt_index` / `missing_or_corrupt_objects` / `unrelated_histories` /
+ * `wrong_remote_or_branch` must run this probe and feed a caught error
+ * through `classifyGitError`.
+ */
+export async function verifyRepoReadable(dir: string): Promise<void> {
+  const headOid = await git.resolveRef({ fs, dir, ref: "HEAD" });
+  const { commit } = await git.readCommit({ fs, dir, oid: headOid });
+  await git.readTree({ fs, dir, oid: commit.tree });
+}
+
+/**
+ * True when HEAD names a branch that simply has no commits yet — a fresh
+ * `git init` before the first snapshot. In that state `verifyRepoReadable`
+ * throws the SAME NotFoundError as a damaged ref store, but the repo is
+ * healthy, not corrupt. The distinguishing signal is the object store: a
+ * fresh repo has NO objects at all, while ref damage on a real repo leaves
+ * loose objects and/or packfiles behind.
+ */
+export function isUnbornRepo(repoDir: string): boolean {
+  const objectsDir = path.join(gitDirFor(repoDir), "objects");
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(objectsDir);
+  } catch {
+    return false; // objects/ missing entirely is damage, not newness
+  }
+  for (const entry of entries) {
+    if (/^[0-9a-f]{2}$/.test(entry)) {
+      try {
+        if (fs.readdirSync(path.join(objectsDir, entry)).length > 0) return false;
+      } catch {
+        // unreadable fan-out dir — treat as possibly-populated
+        return false;
+      }
+    } else if (entry === "pack") {
+      try {
+        if (fs.readdirSync(path.join(objectsDir, entry)).some((f) => f.endsWith(".pack"))) {
+          return false;
+        }
+      } catch {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 // ── Preflight diagnostics (structured operation-log fields) ───────────────────

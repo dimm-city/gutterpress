@@ -49,6 +49,7 @@ import httpNode from "isomorphic-git/http/node";
 
 import { onAuthFor } from "../sync.ts";
 import { withBackupGate } from "./failsafe.ts";
+import { verifyRepoReadable } from "./inspect.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";
 import type { RecoverFn, RecoveryResult } from "./types.ts";
 
@@ -111,10 +112,7 @@ export const recover: RecoverFn = async (ctx, error?) => {
       // there and we must guide the user to get a fresh copy instead.
       let repairVerified = false;
       try {
-        const headOid = await git.resolveRef({ fs, dir: ctx.repoDir, ref: "HEAD" });
-        const { commit } = await git.readCommit({ fs, dir: ctx.repoDir, oid: headOid });
-        // Reading the tree object confirms the commit's root tree is accessible.
-        await git.readTree({ fs, dir: ctx.repoDir, oid: commit.tree });
+        await verifyRepoReadable(ctx.repoDir);
         repairVerified = true;
       } catch {
         // At least one object is still unreadable — the fetch filled pack gaps

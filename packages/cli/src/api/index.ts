@@ -323,6 +323,8 @@ export {
   buildRecoveryContext,
   preflightStructuralReason,
   buildPreflightDiagnostics,
+  verifyRepoReadable,
+  isUnbornRepo,
   RepoNeedsRecoveryError,
   isRepoNeedsRecoveryError,
 } from "../lib/remote-auth/recovery/dispatch.ts";

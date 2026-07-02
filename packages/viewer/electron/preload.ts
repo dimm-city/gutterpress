@@ -27,7 +27,7 @@ import type {
  * shell and SPA always ship together, so this is a sanity check rather than a
  * version-skew gate.
  */
-const DESKTOP_API = 2;
+const DESKTOP_API = 3;
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -150,6 +150,8 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.invoke("updater:getStatus"),
     check: (): Promise<UpdaterStatus> =>
       ipcRenderer.invoke("updater:check"),
+    download: (): Promise<UpdaterStatus> =>
+      ipcRenderer.invoke("updater:download"),
     applyNow: (): Promise<{ applied: boolean; version?: string }> =>
       ipcRenderer.invoke("updater:applyNow"),
     /** Subscribe to updater events from main. Returns an unsubscribe fn. */

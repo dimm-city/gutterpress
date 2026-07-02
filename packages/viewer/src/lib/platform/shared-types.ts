@@ -19,7 +19,9 @@ export interface UpdaterStatus {
   currentVersion: string | null;
   /** Version downloaded and ready to install on restart. */
   stagedVersion: string | null;
-  phase: "idle" | "checking" | "downloading" | "staged" | "error";
+  /** Version found by the last check but not yet downloaded (awaiting user consent). */
+  availableVersion: string | null;
+  phase: "idle" | "checking" | "available" | "downloading" | "staged" | "error";
   error: string | null;
 }
 

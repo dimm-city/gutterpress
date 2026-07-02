@@ -83,6 +83,33 @@ describe("inspectRepo — present-but-corrupt .git (HEAD missing/garbage)", () =
 
     await expect(inspectRepo({ repoDir: dir })).resolves.toBeDefined();
   });
+
+  // M1: git.currentBranch() THROWING (missing/corrupt HEAD) must be recorded
+  // as headUnreadable, NOT isDetachedHead — a clean detached HEAD is when
+  // currentBranch() resolves to null/undefined without throwing. Conflating
+  // the two routed repo corruption into the detached-head repair (which
+  // force-checks-out a branch — the wrong fix when HEAD can't be trusted).
+  test("headUnreadable=true (not isDetachedHead) when HEAD is missing", async () => {
+    const dir = await makeTempDir();
+    await makeCleanRepo(dir);
+    fs.rmSync(path.join(dir, ".git", "HEAD"));
+
+    const health = await inspectRepo({ repoDir: dir });
+
+    expect(health.headUnreadable).toBe(true);
+    expect(health.isDetachedHead).toBe(false);
+  });
+
+  test("headUnreadable=true (not isDetachedHead) when HEAD is garbage", async () => {
+    const dir = await makeTempDir();
+    await makeCleanRepo(dir);
+    fs.writeFileSync(path.join(dir, ".git", "HEAD"), "not a valid head at all\n");
+
+    const health = await inspectRepo({ repoDir: dir });
+
+    expect(health.headUnreadable).toBe(true);
+    expect(health.isDetachedHead).toBe(false);
+  });
 });
 
 describe("inspectRepo — opened at a SUBFOLDER of the repo (regression)", () => {

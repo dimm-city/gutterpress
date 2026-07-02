@@ -677,10 +677,6 @@ export async function pullChanges(
       const localTip = await git.resolveRef({ fs, dir, ref: branch });
       const base = snapshotId ? { snapshotId } : {};
 
-      // Field-diagnostic line (stderr → terminal + any log capture): one line
-      // per pull with the inputs the decision uses. No secrets: oids + remote.
-      const logLine = `[sync] pull branch=${branch} remote=${transport.remote} local=${short(localTip)} fetched=${short(remoteTip)}`;
-      console.error(logLine);
       const logger = resolveLogger(options.logFile, "sync");
       logger.info("pull", `branch=${branch} local=${short(localTip)} fetched=${short(remoteTip)}`);
 
@@ -800,11 +796,6 @@ export async function pushChanges(
       const localTip = await git.resolveRef({ fs, dir, ref: branch });
       const base = snapshotId ? { snapshotId } : {};
 
-      // Field-diagnostic line (stderr → terminal + any log capture): one line
-      // per push with the inputs the decision uses. Mirrors the pull line.
-      // No secrets: oids + remote + whether a snapshot was just created.
-      const logLine = `[sync] push branch=${branch} remote=${transport.remote} local=${short(localTip)} fetched=${short(remoteTip)} snapshot=${snapshotId ? short(snapshotId) : "none"} outcome=${remoteTip === localTip ? "nothing-to-send" : "pushing"}`;
-      console.error(logLine);
       const logger = resolveLogger(options.logFile, "sync");
       logger.info("push", `branch=${branch} local=${short(localTip)} fetched=${short(remoteTip)} snapshot=${snapshotId ? short(snapshotId) : "none"}`);
 
