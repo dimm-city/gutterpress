@@ -64,10 +64,12 @@ import { resolveLogger, shortOid } from "./operation-log.ts";
 // The single source of truth for git error decoding lives in the recovery
 // classifier — sync.ts consumes it rather than keeping parallel copies.
 import {
+  classifyFromHealth,
   classifyTransportFailure,
   isMergeConflictError,
   isPushRejected,
 } from "./recovery/classify.ts";
+import { inspectRepo } from "./recovery/inspect.ts";
 
 /**
  * isomorphic-git object cache, scoped to ONE operation (one function call)
@@ -543,6 +545,25 @@ export async function syncProject(
   options: SyncProjectOptions,
 ): Promise<SyncOutcome> {
   const logger = resolveLogger(options.logFile, "sync");
+
+  // ── Structural preflight — never touch the tree of a damaged repo ─────────
+  // An interrupted merge/rebase/cherry-pick, detached HEAD, stale lock, or
+  // missing .git must be repaired BEFORE any sync work: the snapshot step
+  // below would otherwise commit whatever is on disk (e.g. the literal
+  // conflict markers a half-done native-git merge leaves in tracked files)
+  // and push it. Throwing a typed error here routes every host through the
+  // same catch → inspectRepo → classifyGitError → recover() path it already
+  // uses for mid-sync failures. checkLocalChanges:false — only the structural
+  // flags matter here, and pull performs the working-tree walk anyway.
+  const health = await inspectRepo({ repoDir: options.projectDir }, { checkLocalChanges: false });
+  const structural = classifyFromHealth(health);
+  if (structural) {
+    logger.warn("sync", "structural preflight blocked sync", { kind: structural });
+    throw Object.assign(
+      new Error(`The project needs repair before it can sync (${structural}).`),
+      { code: "RepoNeedsRecovery", kind: structural },
+    );
+  }
   // Bounded, defaulted retry policy. attempts ≥ 1, backoffMs ≥ 0 (clamped so a
   // caller can never request an unbounded or negative-delay loop).
   const attempts = Math.max(1, options.retry?.attempts ?? DEFAULT_SYNC_RETRY.attempts);

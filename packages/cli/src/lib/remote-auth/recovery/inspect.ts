@@ -33,8 +33,17 @@ import type { RepoHealth, RecoveryContext } from "./types.ts";
 /**
  * Probe the local repository and return a RepoHealth snapshot.
  * Never throws — on any error the relevant flag is set conservatively.
+ *
+ * `checkLocalChanges: false` skips the hasPendingChanges working-tree walk
+ * (the one non-trivial probe) and reports hasLocalChanges=false. Use it when
+ * only the structural flags matter — e.g. syncProject's preflight, whose
+ * pull step immediately performs the same walk anyway (sync-simplicity
+ * mandate: no redundant walks on the hot path).
  */
-export async function inspectRepo(ctx: Pick<RecoveryContext, "repoDir">): Promise<RepoHealth> {
+export async function inspectRepo(
+  ctx: Pick<RecoveryContext, "repoDir">,
+  opts: { checkLocalChanges?: boolean } = {},
+): Promise<RepoHealth> {
   // CRITICAL: resolve the ACTUAL git root. A project is often opened at a
   // SUBFOLDER of its repo ("opening a subfolder syncs the whole repo"), so
   // checking the raw opened dir for `.git` would false-positive `missing_git_dir`
@@ -114,11 +123,13 @@ export async function inspectRepo(ctx: Pick<RecoveryContext, "repoDir">): Promis
 
   // ── Local changes ─────────────────────────────────────────────────────────
   let hasLocalChanges = false;
-  try {
-    hasLocalChanges = await hasPendingChanges(repoDir);
-  } catch {
-    // If we can't check (e.g. corrupt index), assume dirty.
-    hasLocalChanges = true;
+  if (opts.checkLocalChanges !== false) {
+    try {
+      hasLocalChanges = await hasPendingChanges(repoDir);
+    } catch {
+      // If we can't check (e.g. corrupt index), assume dirty.
+      hasLocalChanges = true;
+    }
   }
 
   return {
