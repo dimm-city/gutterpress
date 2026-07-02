@@ -65,93 +65,100 @@ function readDesktopApi() {
   return Number(m[1]);
 }
 
-// ── 1. Parse arguments ────────────────────────────────────────────────────────
+export function writeSignedManifestForZip({ zipPath, version, signingKeyPem }) {
+  const resolvedZipPath = resolve(zipPath);
 
-const args = process.argv.slice(2);
-if (args.length < 1) {
-  console.error('Usage: node scripts/build-web-ui-manifest.mjs <zip-path> [version]');
-  console.error('       WEB_UI_VERSION and WEB_UI_SIGNING_KEY must be set in env.');
-  process.exit(1);
-}
+  let zipBytes;
+  try {
+    zipBytes = readFileSync(resolvedZipPath);
+  } catch (err) {
+    throw new Error(`Cannot read zip file at ${resolvedZipPath}: ${err.message}`);
+  }
 
-const zipPath = resolve(args[0]);
-const version = args[1] ?? process.env.WEB_UI_VERSION;
+  const sha256 = createHash('sha256').update(zipBytes).digest('hex');
+  const size = zipBytes.length;
 
-if (!version) {
-  console.error('ERROR: version must be provided as the second argument or via WEB_UI_VERSION env var.');
-  process.exit(1);
-}
-
-const signingKeyPem = process.env.WEB_UI_SIGNING_KEY;
-if (!signingKeyPem) {
-  console.error('ERROR: WEB_UI_SIGNING_KEY env var is required (Ed25519 PKCS8 PEM private key).');
-  process.exit(1);
-}
-
-// ── 2. Compute sha256 + size of the zip ───────────────────────────────────────
-
-let zipBytes;
-try {
-  zipBytes = readFileSync(zipPath);
-} catch (err) {
-  console.error(`ERROR: Cannot read zip file at ${zipPath}: ${err.message}`);
-  process.exit(1);
-}
-
-const sha256 = createHash('sha256').update(zipBytes).digest('hex'); // lowercase hex
-const size = zipBytes.length;                                         // bytes (same buffer hashed)
-
-// ── 3. Build manifest object ──────────────────────────────────────────────────
-
-const manifest = {
-  schemaVersion: 1,
-  kind: 'web-ui-bundle',
-  version,
-  requiresDesktopApi: readDesktopApi(),
-  assets: {
-    bundle: {
-      name: 'web-ui-bundle.zip',
-      sha256,
-      size,
+  const manifest = {
+    schemaVersion: 1,
+    kind: 'web-ui-bundle',
+    version,
+    requiresDesktopApi: readDesktopApi(),
+    assets: {
+      bundle: {
+        name: 'web-ui-bundle.zip',
+        sha256,
+        size,
+      },
     },
-  },
-  releasedAt: new Date().toISOString(),
-};
+    releasedAt: new Date().toISOString(),
+  };
 
-const manifestJson = JSON.stringify(manifest, null, 2) + '\n';
-const manifestBytes = Buffer.from(manifestJson, 'utf8');
+  const manifestJson = JSON.stringify(manifest, null, 2) + '\n';
+  const manifestBytes = Buffer.from(manifestJson, 'utf8');
 
-// ── 4. Sign the manifest bytes with Ed25519 ───────────────────────────────────
-//
-// crypto.sign(null, data, key) — the null algorithm is REQUIRED for Ed25519;
-// Ed25519 has its own hash schedule and rejects any explicit digest algorithm.
-// The private key is imported directly from the PEM string.
+  let sigBytes;
+  try {
+    sigBytes = sign(null, manifestBytes, signingKeyPem);
+  } catch (err) {
+    throw new Error(`Signing failed: ${err.message}`);
+  }
 
-let sigBytes;
-try {
-  sigBytes = sign(null, manifestBytes, signingKeyPem);
-} catch (err) {
-  console.error(`ERROR: Signing failed: ${err.message}`);
-  console.error('Ensure WEB_UI_SIGNING_KEY is a valid Ed25519 PKCS8 PEM private key.');
-  process.exit(1);
+  const sigBase64 = sigBytes.toString('base64');
+  const outDir = dirname(resolvedZipPath);
+  const manifestPath = join(outDir, 'update-manifest.json');
+  const sigPath = join(outDir, 'update-manifest.json.sig');
+
+  writeFileSync(manifestPath, manifestJson, 'utf8');
+  writeFileSync(sigPath, sigBase64, 'utf8');
+
+  return {
+    manifest,
+    manifestJson,
+    manifestPath,
+    sigPath,
+    sigBase64,
+    sigBytes,
+  };
 }
 
-const sigBase64 = sigBytes.toString('base64'); // standard base64, no line breaks
+function isDirectRun() {
+  return process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+}
 
-// ── 5. Write outputs next to the zip ─────────────────────────────────────────
+if (isDirectRun()) {
+  const args = process.argv.slice(2);
+  if (args.length < 1) {
+    console.error('Usage: node scripts/build-web-ui-manifest.mjs <zip-path> [version]');
+    console.error('       WEB_UI_VERSION and WEB_UI_SIGNING_KEY must be set in env.');
+    process.exit(1);
+  }
 
-const outDir = dirname(zipPath);
-const manifestPath = join(outDir, 'update-manifest.json');
-const sigPath = join(outDir, 'update-manifest.json.sig');
+  const zipPath = args[0];
+  const version = args[1] ?? process.env.WEB_UI_VERSION;
+  if (!version) {
+    console.error('ERROR: version must be provided as the second argument or via WEB_UI_VERSION env var.');
+    process.exit(1);
+  }
 
-writeFileSync(manifestPath, manifestJson, 'utf8');
-writeFileSync(sigPath, sigBase64, 'utf8');
+  const signingKeyPem = process.env.WEB_UI_SIGNING_KEY;
+  if (!signingKeyPem) {
+    console.error('ERROR: WEB_UI_SIGNING_KEY env var is required (Ed25519 PKCS8 PEM private key).');
+    process.exit(1);
+  }
 
-// ── 6. Report ─────────────────────────────────────────────────────────────────
-
-console.log(`update-manifest.json written to: ${manifestPath}`);
-console.log(`update-manifest.json.sig written to: ${sigPath}`);
-console.log('');
-console.log('Manifest contents:');
-console.log(manifestJson);
-console.log(`Signature (base64, ${sigBytes.length} raw bytes): ${sigBase64.slice(0, 32)}…`);
+  try {
+    const result = writeSignedManifestForZip({ zipPath, version, signingKeyPem });
+    console.log(`update-manifest.json written to: ${result.manifestPath}`);
+    console.log(`update-manifest.json.sig written to: ${result.sigPath}`);
+    console.log('');
+    console.log('Manifest contents:');
+    console.log(result.manifestJson);
+    console.log(`Signature (base64, ${result.sigBytes.length} raw bytes): ${result.sigBase64.slice(0, 32)}…`);
+  } catch (err) {
+    console.error(`ERROR: ${err.message}`);
+    if (String(err.message).includes('Signing failed')) {
+      console.error('Ensure WEB_UI_SIGNING_KEY is a valid Ed25519 PKCS8 PEM private key.');
+    }
+    process.exit(1);
+  }
+}

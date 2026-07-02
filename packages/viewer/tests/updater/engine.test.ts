@@ -124,22 +124,24 @@ function signManifest(bytes: Buffer, privateKey: crypto.KeyObject): string {
   return crypto.sign(null, bytes, privateKey).toString("base64");
 }
 
-/** Build a valid (index.html + _app/init.js) zip buffer using fflate. */
+/** Build a valid adapter-node runtime zip buffer using fflate. */
 function makeValidZipBuffer(): Buffer {
   const entries: Record<string, Uint8Array> = {
-    "index.html": new TextEncoder().encode("<html><body>ok</body></html>"),
-    "_app/init.js": new TextEncoder().encode("console.log('web-ui');"),
+    "handler.js": new TextEncoder().encode("export const handler = () => new Response('ok');"),
+    "client/app.js": new TextEncoder().encode("console.log('client');"),
+    "server/index.js": new TextEncoder().encode("export const routes = [];"),
   };
   return Buffer.from(zipSync(entries));
 }
 
 /** Build a malicious zip with a path-traversal entry. */
 function makeTraversalZipBuffer(): Buffer {
-  const entries: Record<string, Uint8Array> = {
-    "../escape.txt": new TextEncoder().encode("I escaped!"),
-    "index.html": new TextEncoder().encode("<html></html>"),
-    "_app/init.js": new TextEncoder().encode(""),
-  };
+    const entries: Record<string, Uint8Array> = {
+      "../escape.txt": new TextEncoder().encode("I escaped!"),
+      "handler.js": new TextEncoder().encode("export const handler = () => new Response('ok');"),
+      "client/app.js": new TextEncoder().encode("console.log('client');"),
+      "server/index.js": new TextEncoder().encode("export const routes = [];"),
+    };
   return Buffer.from(zipSync(entries));
 }
 
@@ -287,10 +289,13 @@ describe("promoteStaged", () => {
     expect(result.promoted).toBe(false);
   });
 
-  test("promotes staged → current when staged has index.html", async () => {
+  test("promotes staged → current when staged has a valid runtime bundle", async () => {
     const bundleDir = path.join(tmpDir, "web-runtime", "versions", "3.0.0");
-    await mkdir(bundleDir, { recursive: true });
-    await writeFile(path.join(bundleDir, "index.html"), "<html></html>", "utf8");
+    await mkdir(path.join(bundleDir, "client"), { recursive: true });
+    await mkdir(path.join(bundleDir, "server"), { recursive: true });
+    await writeFile(path.join(bundleDir, "handler.js"), "export const handler = () => new Response('ok');", "utf8");
+    await writeFile(path.join(bundleDir, "client", "app.js"), "console.log('client');", "utf8");
+    await writeFile(path.join(bundleDir, "server", "index.js"), "export const routes = [];", "utf8");
     await writeStaged({ version: "3.0.0", path: bundleDir });
 
     const result = await promoteStaged();
@@ -306,14 +311,20 @@ describe("promoteStaged", () => {
   test("moves old current to previous on promote", async () => {
     // Set up initial current
     const v1Dir = path.join(tmpDir, "web-runtime", "versions", "1.0.0");
-    await mkdir(v1Dir, { recursive: true });
-    await writeFile(path.join(v1Dir, "index.html"), "<html></html>", "utf8");
+    await mkdir(path.join(v1Dir, "client"), { recursive: true });
+    await mkdir(path.join(v1Dir, "server"), { recursive: true });
+    await writeFile(path.join(v1Dir, "handler.js"), "export const handler = () => new Response('ok');", "utf8");
+    await writeFile(path.join(v1Dir, "client", "app.js"), "console.log('client');", "utf8");
+    await writeFile(path.join(v1Dir, "server", "index.js"), "export const routes = [];", "utf8");
     await writePointer("current", { version: "1.0.0", path: v1Dir });
 
     // Stage 2.0.0
     const v2Dir = path.join(tmpDir, "web-runtime", "versions", "2.0.0");
-    await mkdir(v2Dir, { recursive: true });
-    await writeFile(path.join(v2Dir, "index.html"), "<html></html>", "utf8");
+    await mkdir(path.join(v2Dir, "client"), { recursive: true });
+    await mkdir(path.join(v2Dir, "server"), { recursive: true });
+    await writeFile(path.join(v2Dir, "handler.js"), "export const handler = () => new Response('ok');", "utf8");
+    await writeFile(path.join(v2Dir, "client", "app.js"), "console.log('client');", "utf8");
+    await writeFile(path.join(v2Dir, "server", "index.js"), "export const routes = [];", "utf8");
     await writeStaged({ version: "2.0.0", path: v2Dir });
 
     await promoteStaged();
@@ -326,8 +337,11 @@ describe("promoteStaged", () => {
 
   test("clears staged after successful promote", async () => {
     const bundleDir = path.join(tmpDir, "web-runtime", "versions", "5.0.0");
-    await mkdir(bundleDir, { recursive: true });
-    await writeFile(path.join(bundleDir, "index.html"), "<html></html>", "utf8");
+    await mkdir(path.join(bundleDir, "client"), { recursive: true });
+    await mkdir(path.join(bundleDir, "server"), { recursive: true });
+    await writeFile(path.join(bundleDir, "handler.js"), "export const handler = () => new Response('ok');", "utf8");
+    await writeFile(path.join(bundleDir, "client", "app.js"), "console.log('client');", "utf8");
+    await writeFile(path.join(bundleDir, "server", "index.js"), "export const routes = [];", "utf8");
     await writeStaged({ version: "5.0.0", path: bundleDir });
 
     await promoteStaged();
@@ -335,10 +349,13 @@ describe("promoteStaged", () => {
     expect(staged).toBeNull();
   });
 
-  test("returns promoted:false and clears staged when index.html is missing", async () => {
+  test("returns promoted:false and clears staged when handler.js is missing", async () => {
     const bundleDir = path.join(tmpDir, "web-runtime", "versions", "4.0.0");
-    await mkdir(bundleDir, { recursive: true });
-    // Intentionally no index.html
+    await mkdir(path.join(bundleDir, "client"), { recursive: true });
+    await mkdir(path.join(bundleDir, "server"), { recursive: true });
+    // Intentionally no handler.js
+    await writeFile(path.join(bundleDir, "client", "app.js"), "console.log('client');", "utf8");
+    await writeFile(path.join(bundleDir, "server", "index.js"), "export const routes = [];", "utf8");
     await writeStaged({ version: "4.0.0", path: bundleDir });
 
     const result = await promoteStaged();
@@ -607,7 +624,7 @@ describe("downloadAndStage – zip path-traversal guard", () => {
     expect(escaped).toBe(false);
   });
 
-  test("accepts a valid zip with index.html and _app/", async () => {
+  test("accepts a valid zip with handler.js, client/, and server/", async () => {
     mock.module("../../electron/updater/verify.js", () => ({
       sha256Hex: (buf: Buffer | Uint8Array): string =>
         crypto.createHash("sha256").update(buf).digest("hex"),

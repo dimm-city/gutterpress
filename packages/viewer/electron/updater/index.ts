@@ -109,6 +109,7 @@ const FETCH_TIMEOUT_MS = 30_000;
 const MAX_BUNDLE_BYTES = 256 * 1024 * 1024; // 256 MB hard ceiling
 const MAX_META_BYTES = 1 * 1024 * 1024; // manifest/sig are tiny
 const MAX_PACKAGE_BYTES = 256 * 1024 * 1024; // npm tarball hard ceiling
+const MAX_TAR_BYTES = 512 * 1024 * 1024; // decompressed tar hard ceiling
 
 // A version is only treated as permanently bad after this many health-gate
 // failures, so a single transient miss (slow cold start, window closed before
@@ -297,7 +298,7 @@ function extractFilesFromNpmTarball(
 ): Map<string, Buffer> {
   const wanted = new Set(wantedFiles);
   const out = new Map<string, Buffer>();
-  const tar = gunzipSync(tarballGz);
+  const tar = gunzipSync(tarballGz, { maxOutputLength: MAX_TAR_BYTES });
   let offset = 0;
   while (offset + 512 <= tar.length) {
     const header = tar.subarray(offset, offset + 512);
@@ -608,15 +609,13 @@ export async function downloadAndStage(
       }
 
       // Post-extract structural assertions.
-      const indexOk = await fileExists(path.join(stagingDir, "index.html"));
-      const appOk = await dirExists(path.join(stagingDir, "_app"));
-      if (!indexOk || !appOk) {
+      if (!(await hasRuntimeBundle(stagingDir))) {
         await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
         await rm(zipPath, { force: true }).catch(() => {});
         phase = "error";
         return {
           staged: false,
-          reason: "extracted bundle missing index.html or _app/",
+          reason: "extracted bundle missing handler.js, client/, or server/",
         };
       }
 
@@ -665,6 +664,15 @@ async function dirExists(p: string): Promise<boolean> {
   }
 }
 
+async function hasRuntimeBundle(root: string): Promise<boolean> {
+  const [handlerOk, clientOk, serverOk] = await Promise.all([
+    fileExists(path.join(root, "handler.js")),
+    dirExists(path.join(root, "client")),
+    dirExists(path.join(root, "server")),
+  ]);
+  return handlerOk && clientOk && serverOk;
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // promoteStaged — used by "apply on next launch" AND "apply now".
 // previous := current (if any); current := staged; clear staged.
@@ -678,9 +686,9 @@ export async function promoteStaged(): Promise<{
     const staged = await readStaged();
     if (!staged) return { promoted: false };
 
-    // The staged dir must still have a valid index.html.
-    if (!(await fileExists(path.join(staged.path, "index.html")))) {
-      console.warn("[updater] staged bundle missing index.html; clearing staged");
+    // The staged dir must still have a valid adapter-node runtime bundle.
+    if (!(await hasRuntimeBundle(staged.path))) {
+      console.warn("[updater] staged bundle missing handler.js, client/, or server/; clearing staged");
       await clearStaged();
       return { promoted: false };
     }

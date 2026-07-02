@@ -404,14 +404,18 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build runtime bundle
+      - name: Prepare updater payload
         working-directory: packages/viewer
-        run: npm run build
+        run: npm run prepack
+        env:
+          WEB_UI_SIGNING_KEY: ${{ secrets.WEB_UI_SIGNING_KEY }}
 
-      - name: Sanity check bundle artifacts
+      - name: Sanity check updater payload
         run: |
-          test -f packages/viewer/build/index.html
+          test -f packages/viewer/web-ui-bundle.zip
           test -f packages/viewer/build/update-manifest.json
+          test -f packages/viewer/update-manifest.json
+          test -f packages/viewer/update-manifest.json.sig
 
       - name: Sanity check package metadata
         run: |
@@ -430,6 +434,8 @@ jobs:
       - name: Pack dry run
         working-directory: packages/viewer
         run: npm pack --dry-run
+        env:
+          WEB_UI_SIGNING_KEY: ${{ secrets.WEB_UI_SIGNING_KEY }}
 
       - name: Update npm for OIDC trusted publishing
         run: npm install -g npm@latest
@@ -445,6 +451,8 @@ jobs:
         if: ${{ env.ALREADY_PUBLISHED != 'true' }}
         working-directory: packages/viewer
         run: npm publish --provenance --tag "${{ needs.version.outputs.ui_npm_tag }}"
+        env:
+          WEB_UI_SIGNING_KEY: ${{ secrets.WEB_UI_SIGNING_KEY }}
 
   # ── 5b. Publish the CLI Docker image to GHCR ──────────────────────────────
   # Builds the root Dockerfile (CLI bundle + Chromium/Ghostscript/qpdf) and

@@ -258,6 +258,14 @@ describe("readState / writeState", () => {
 // ── resolveWebRoot ────────────────────────────────────────────────────────
 
 describe("resolveWebRoot", () => {
+  async function writeRuntimeBundle(root: string): Promise<void> {
+    await mkdir(path.join(root, "client"), { recursive: true });
+    await mkdir(path.join(root, "server"), { recursive: true });
+    await writeFile(path.join(root, "handler.js"), "export const handler = () => new Response('ok');", "utf8");
+    await writeFile(path.join(root, "client", "app.js"), "console.log('client');", "utf8");
+    await writeFile(path.join(root, "server", "index.js"), "export const routes = [];", "utf8");
+  }
+
   test("falls back to bundledWebRoot() when no current pointer exists", async () => {
     await withTempDir(async () => {
       const result = await resolveWebRoot();
@@ -265,12 +273,11 @@ describe("resolveWebRoot", () => {
     });
   });
 
-  test("returns pointer path when current.json points at a versions/ dir with index.html", async () => {
+  test("returns pointer path when current.json points at a versions/ dir with a valid runtime bundle", async () => {
     await withTempDir(async (tmpDir) => {
       // Containment guard: the pointer is only honored inside web-runtime/versions/.
       const fakeRoot = path.join(tmpDir, "web-runtime", "versions", "3.0.0");
-      await mkdir(fakeRoot, { recursive: true });
-      await writeFile(path.join(fakeRoot, "index.html"), "<html></html>", "utf8");
+      await writeRuntimeBundle(fakeRoot);
 
       await writePointer("current", { version: "3.0.0", path: fakeRoot });
 
@@ -282,10 +289,9 @@ describe("resolveWebRoot", () => {
   test("falls back to bundledWebRoot() when current pointer escapes versions/", async () => {
     await withTempDir(async (tmpDir) => {
       // A pointer outside web-runtime/versions/ (e.g. tampered) must be rejected
-      // even if it has a valid index.html.
+      // even if it has a valid runtime bundle.
       const escapeRoot = path.join(tmpDir, "evil-bundle");
-      await mkdir(escapeRoot, { recursive: true });
-      await writeFile(path.join(escapeRoot, "index.html"), "<html></html>", "utf8");
+      await writeRuntimeBundle(escapeRoot);
 
       await writePointer("current", { version: "9.9.9", path: escapeRoot });
 
@@ -294,9 +300,9 @@ describe("resolveWebRoot", () => {
     });
   });
 
-  test("falls back to bundledWebRoot() when current pointer path has no index.html", async () => {
+  test("falls back to bundledWebRoot() when current pointer path has no handler.js", async () => {
     await withTempDir(async (tmpDir) => {
-      // Point at a real dir that exists but has no index.html
+      // Point at a real dir that exists but has no runtime entrypoint.
       const emptyDir = path.join(tmpDir, "empty-bundle");
       await mkdir(emptyDir, { recursive: true });
 
@@ -325,8 +331,7 @@ describe("resolveWebRoot", () => {
       // shadow the freshly-built baked UI — the web-v0.2.3-shadows-0.3.0 bug.
       const baseline = await readBaselineVersion();
       const staleRoot = path.join(tmpDir, "web-runtime", "versions", baseline);
-      await mkdir(staleRoot, { recursive: true });
-      await writeFile(path.join(staleRoot, "index.html"), "<html>stale</html>", "utf8");
+      await writeRuntimeBundle(staleRoot);
       await writePointer("current", { version: baseline, path: staleRoot });
 
       const result = await resolveWebRoot();
@@ -337,8 +342,7 @@ describe("resolveWebRoot", () => {
   test("serves a promoted pointer that IS strictly newer than the baked baseline", async () => {
     await withTempDir(async (tmpDir) => {
       const newerRoot = path.join(tmpDir, "web-runtime", "versions", "999.0.0");
-      await mkdir(newerRoot, { recursive: true });
-      await writeFile(path.join(newerRoot, "index.html"), "<html>newer</html>", "utf8");
+      await writeRuntimeBundle(newerRoot);
       await writePointer("current", { version: "999.0.0", path: newerRoot });
 
       const result = await resolveWebRoot();

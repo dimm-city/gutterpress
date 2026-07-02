@@ -2022,9 +2022,7 @@ async function refreshWebRoot(): Promise<void> {
 let skServerPort: number | null = null;
 
 function getSvelteKitHandlerPath(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, "app.asar", "build", "handler.js")
-    : path.join(__dirname, "..", "..", "build", "handler.js");
+  return path.join(activeWebRoot, "handler.js");
 }
 
 async function startSvelteKitServer(): Promise<number> {

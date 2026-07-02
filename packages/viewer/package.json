@@ -7,7 +7,10 @@
   "author": "itlackey",
   "description": "Runtime web UI bundle for print-md (SvelteKit static SPA).",
   "files": [
-    "build/**"
+    "build/**",
+    "web-ui-bundle.zip",
+    "update-manifest.json",
+    "update-manifest.json.sig"
   ],
   "publishConfig": {
     "access": "public"
@@ -29,7 +32,7 @@
     "typecheck": "tsc -p electron/tsconfig.json",
     "test:ui": "node tests/integration/run-ui.mjs",
     "perf-gate": "node tests/perf/render-gate.mjs",
-    "prepack": "npm run build"
+    "prepack": "npm run build && node ./scripts/prepare-ui-runtime-package.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.4",

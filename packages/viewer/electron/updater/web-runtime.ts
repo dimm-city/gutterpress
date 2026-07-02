@@ -10,7 +10,7 @@
 //   current.json   -> { version, path }   (path = ABSOLUTE path to versions/<version>)
 //   previous.json  -> { version, path }
 //   state.json     -> State (see interface)
-//   versions/<version>/   (extracted bundle root: index.html + _app/)
+//   versions/<version>/   (extracted runtime root: handler.js + client/ + server/)
 //   downloads/
 //
 // All reads are failure-tolerant (corrupt JSON / missing files fall back and
@@ -19,7 +19,7 @@
 
 import { app } from "electron";
 import path from "node:path";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { compareSemver } from "./semver.js";
 
 export interface Pointer {
@@ -130,6 +130,31 @@ export function bundledWebRoot(): string {
   return path.resolve(__dirname, "../../build");
 }
 
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    return (await stat(p)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function dirExists(p: string): Promise<boolean> {
+  try {
+    return (await stat(p)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function hasRuntimeBundle(root: string): Promise<boolean> {
+  const [handlerOk, clientOk, serverOk] = await Promise.all([
+    fileExists(path.join(root, "handler.js")),
+    dirExists(path.join(root, "client")),
+    dirExists(path.join(root, "server")),
+  ]);
+  return handlerOk && clientOk && serverOk;
+}
+
 export async function resolveWebRoot(): Promise<string> {
   try {
     const ptr = await readPointer("current");
@@ -144,8 +169,9 @@ export async function resolveWebRoot(): Promise<string> {
       // newer baked UI.
       const baseline = await readBaselineVersion();
       if (compareSemver(ptr.version, baseline) > 0) {
-        await readFile(path.join(ptr.path, "index.html"));
-        return ptr.path;
+        if (await hasRuntimeBundle(ptr.path)) {
+          return ptr.path;
+        }
       }
     }
   } catch {
