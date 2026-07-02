@@ -2,15 +2,23 @@ import { DEFAULT_SETTINGS } from "$lib/platform/contract";
 import type { AppSettings, DeepPartial } from "$lib/platform/contract";
 import { getPrefsHooks } from '../../../electron/server-bridge/prefs-hooks';
 
-function mergeSettings(base: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
-  const out = { ...base } as Record<string, unknown>;
-  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
-    const value = patch[key];
-    if (value && typeof value === "object") {
-      out[key] = { ...base[key], ...(value as object) };
-    }
+function mergeSettingsSection<K extends keyof AppSettings>(
+  target: AppSettings,
+  base: AppSettings,
+  key: K,
+  value: DeepPartial<AppSettings>[K],
+): void {
+  if (value && typeof value === "object") {
+    target[key] = { ...base[key], ...value } as AppSettings[K];
   }
-  return out as unknown as AppSettings;
+}
+
+function mergeSettings(base: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
+  const out: AppSettings = { ...base };
+  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
+    mergeSettingsSection(out, base, key, patch[key]);
+  }
+  return out;
 }
 
 export async function readAppSettings(): Promise<AppSettings> {

@@ -9,15 +9,21 @@
  * Server routes call getPrefsHooks() to retrieve them.
  */
 
-export interface PrefsHooks<LibModule = unknown> {
-  readPrefs: () => Promise<Record<string, unknown>>;
-  writePrefs: (prefs: Record<string, unknown>) => Promise<void>;
-  readSettings: () => Promise<Record<string, unknown>>;
-  writeSettings: (settings: Record<string, unknown>) => Promise<void>;
+export interface PrefsHooks<
+  LibModule = unknown,
+  Prefs = Record<string, unknown>,
+  Settings = Record<string, unknown>,
+  ProjectStates = Record<string, unknown> | undefined,
+  RecentFolderEntry extends { path: string } = { path: string; [k: string]: unknown },
+> {
+  readPrefs: () => Promise<Prefs>;
+  writePrefs: (prefs: Prefs) => Promise<void>;
+  readSettings: () => Promise<Settings>;
+  writeSettings: (settings: Settings) => Promise<void>;
   existingDirectory: (dir: string | undefined) => Promise<string | null>;
-  readProjectState: (states: Record<string, unknown> | undefined, dir: string) => unknown;
-  writeProjectState: (states: Record<string, unknown> | undefined, dir: string, patch: Record<string, unknown>) => Record<string, unknown>;
-  mergeSettings: (base: Record<string, unknown>, patch: Record<string, unknown>) => Record<string, unknown>;
+  readProjectState: (states: ProjectStates, dir: string) => unknown;
+  writeProjectState: (states: ProjectStates, dir: string, patch: Record<string, unknown>) => ProjectStates;
+  mergeSettings: (base: Settings, patch: Record<string, unknown>) => Settings;
   defaultProjectSearchRoots: () => string[];
   scanForProjects: (roots: string[], exclude: Set<string>) => Promise<unknown[]>;
   toggleFavoriteFolder: (
@@ -25,9 +31,9 @@ export interface PrefsHooks<LibModule = unknown> {
     entry: { path: string; title: string }
   ) => { favorites: Array<{ path: string; title: string }>; favorited: boolean };
   removeRecentFolder: (
-    recents: Array<{ path: string; [k: string]: unknown }> | undefined,
+    recents: RecentFolderEntry[] | undefined,
     targetPath: string
-  ) => Array<{ path: string; [k: string]: unknown }>;
+  ) => RecentFolderEntry[];
   loadLib: () => Promise<LibModule>;
 }
 
@@ -35,13 +41,29 @@ const GLOBAL_KEY = '__printMdPrefsHooks__' as const;
 
 declare global {
   // eslint-disable-next-line no-var
-  var __printMdPrefsHooks__: PrefsHooks | undefined;
+  var __printMdPrefsHooks__: unknown;
 }
 
-export function registerPrefsHooks<LibModule>(hooks: PrefsHooks<LibModule>): void {
+export function registerPrefsHooks<
+  LibModule,
+  Prefs,
+  Settings,
+  ProjectStates,
+  RecentFolderEntry extends { path: string },
+>(hooks: PrefsHooks<LibModule, Prefs, Settings, ProjectStates, RecentFolderEntry>): void {
   globalThis[GLOBAL_KEY] = hooks;
 }
 
-export function getPrefsHooks<LibModule = unknown>(): PrefsHooks<LibModule> | null {
-  return (globalThis[GLOBAL_KEY] as PrefsHooks<LibModule> | undefined) ?? null;
+export function getPrefsHooks<
+  LibModule = unknown,
+  Prefs = Record<string, unknown>,
+  Settings = Record<string, unknown>,
+  ProjectStates = Record<string, unknown> | undefined,
+  RecentFolderEntry extends { path: string } = { path: string; [k: string]: unknown },
+>(): PrefsHooks<LibModule, Prefs, Settings, ProjectStates, RecentFolderEntry> | null {
+  return (
+    globalThis[GLOBAL_KEY] as
+      | PrefsHooks<LibModule, Prefs, Settings, ProjectStates, RecentFolderEntry>
+      | undefined
+  ) ?? null;
 }

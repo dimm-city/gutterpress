@@ -249,7 +249,7 @@ export async function setPluginEnabled(
     map = new YAMLMap(doc.schema);
     const key = isLocalRef(ref) ? "path" : "name";
     map.set(key, ref);
-    seq.items[idx] = map as unknown as Node;
+    seq.items[idx] = map;
   }
 
   if (enabled) {

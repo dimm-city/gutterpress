@@ -29,15 +29,29 @@ let loadPromise: Promise<void> | null = null;
 /** Subscribers notified after every `set()` call with the updated settings. */
 const subscribers: Array<(settings: AppSettings) => void> = [];
 
-function mergeInto(base: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
-  const out = { ...base } as Record<string, unknown>;
-  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
-    const value = patch[key];
-    if (value && typeof value === "object") {
-      out[key] = { ...base[key], ...(value as object) };
-    }
+function mergeSettingsSection<K extends keyof AppSettings>(
+  target: AppSettings,
+  base: AppSettings,
+  key: K,
+  value: DeepPartial<AppSettings>[K],
+): void {
+  if (value && typeof value === "object") {
+    target[key] = { ...base[key], ...value } as AppSettings[K];
   }
-  return out as unknown as AppSettings;
+}
+
+function isAppSettings(value: unknown): value is AppSettings {
+  if (!value || typeof value !== "object") return false;
+  const settings = value as Partial<AppSettings>;
+  return !!settings.editor && !!settings.appearance && !!settings.preview && !!settings.versionHistory;
+}
+
+function mergeInto(base: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
+  const out: AppSettings = { ...base };
+  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
+    mergeSettingsSection(out, base, key, patch[key]);
+  }
+  return out;
 }
 
 /**
@@ -49,7 +63,9 @@ export function _loadSettings(): Promise<void> {
   loadPromise = api.app
     .getSettings()
     .then((loaded) => {
-      state.current = loaded as unknown as AppSettings;
+      if (isAppSettings(loaded)) {
+        state.current = loaded;
+      }
       state.loaded = true;
       // Notify imperative subscribers (subscribe() callers) so they can react
       // to the persisted values that just arrived.

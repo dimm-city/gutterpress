@@ -37,6 +37,14 @@ export interface ProjectState {
 /** The per-project state map: `{ [folderPath]: ProjectState }`. */
 export type ProjectStateMap = Record<string, ProjectState>;
 
+function setProjectStateField<K extends keyof ProjectState>(
+  state: ProjectState,
+  key: K,
+  value: ProjectState[K],
+): void {
+  state[key] = value;
+}
+
 /**
  * Read a project's state bucket. Returns `null` when absent (so callers fall
  * back to first-page / defaults). Corrupt input is the caller's concern — this
@@ -65,8 +73,7 @@ export function writeProjectState(
   for (const key of Object.keys(patch) as Array<keyof ProjectState>) {
     const value = patch[key];
     if (value !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (merged as any)[key] = value;
+      setProjectStateField(merged, key, value);
     }
   }
   return { ...(states ?? {}), [projectDir]: merged };

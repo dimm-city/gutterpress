@@ -29,7 +29,14 @@ import { getDocumentProxy } from "unpdf";
 import * as pdfjs from "unpdf/pdfjs";
 import type { PDFDocumentProxy, PDFPageProxy } from "unpdf/pdfjs";
 
-const OPS = (pdfjs as unknown as { OPS: Record<string, number> }).OPS;
+function getOps(mod: object): Record<string, number> {
+  if ("OPS" in mod && mod.OPS && typeof mod.OPS === "object") {
+    return mod.OPS as Record<string, number>;
+  }
+  throw new Error("unpdf/pdfjs missing OPS export");
+}
+
+const OPS = getOps(pdfjs);
 
 // ---------------------------------------------------------------------------
 // Document cache (path -> parsed document, keyed by size+mtime)

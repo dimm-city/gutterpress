@@ -509,15 +509,23 @@ function settingsPath(): string {
   return path.join(app.getPath("userData"), "app-settings.json");
 }
 
-function mergeSettings(base: AppSettings, patch: DeepPartialSettings): AppSettings {
-  const out = { ...base } as Record<string, unknown>;
-  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
-    const value = patch[key];
-    if (value && typeof value === "object") {
-      out[key] = { ...base[key], ...value };
-    }
+function mergeSettingsSection<K extends keyof AppSettings>(
+  target: AppSettings,
+  base: AppSettings,
+  key: K,
+  value: DeepPartialSettings[K],
+): void {
+  if (value && typeof value === "object") {
+    target[key] = { ...base[key], ...value } as AppSettings[K];
   }
-  return out as unknown as AppSettings;
+}
+
+function mergeSettings(base: AppSettings, patch: DeepPartialSettings): AppSettings {
+  const out: AppSettings = { ...base };
+  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
+    mergeSettingsSection(out, base, key, patch[key]);
+  }
+  return out;
 }
 
 async function readSettings(): Promise<AppSettings> {
@@ -1847,24 +1855,18 @@ const discoverScanDeps: ScanDeps = {
 // Register prefs/settings hooks for server routes (Phase 2B).
 // Must be AFTER discoverScanDeps is initialized.
 registerPrefsHooks({
-  readPrefs: readPrefs as () => Promise<Record<string, unknown>>,
-  writePrefs: writePrefs as (p: Record<string, unknown>) => Promise<void>,
-  readSettings: readSettings as unknown as () => Promise<Record<string, unknown>>,
-  writeSettings: writeSettings as unknown as (s: Record<string, unknown>) => Promise<void>,
+  readPrefs,
+  writePrefs,
+  readSettings,
+  writeSettings,
   existingDirectory,
-  readProjectState: readProjectState as (states: Record<string, unknown> | undefined, dir: string) => unknown,
-  writeProjectState: writeProjectState as (states: Record<string, unknown> | undefined, dir: string, patch: Record<string, unknown>) => Record<string, unknown>,
-  mergeSettings: mergeSettings as unknown as (base: Record<string, unknown>, patch: Record<string, unknown>) => Record<string, unknown>,
+  readProjectState,
+  writeProjectState,
+  mergeSettings,
   defaultProjectSearchRoots,
   scanForProjects: (roots: string[], exclude: Set<string>) => scanForProjects(roots, exclude, discoverScanDeps),
-  toggleFavoriteFolder: toggleFavoriteFolder as (
-    favorites: Array<{ path: string; title: string }> | undefined,
-    entry: { path: string; title: string }
-  ) => { favorites: Array<{ path: string; title: string }>; favorited: boolean },
-  removeRecentFolder: removeRecentFolder as unknown as (
-    recents: Array<{ path: string; [k: string]: unknown }> | undefined,
-    targetPath: string
-  ) => Array<{ path: string; [k: string]: unknown }>,
+  toggleFavoriteFolder,
+  removeRecentFolder,
   loadLib: loadLib as () => Promise<{
     detectProjectSource: (path: string) => Promise<unknown>;
     capabilitiesFor: (source: unknown) => unknown;

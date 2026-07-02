@@ -85,11 +85,13 @@ export interface LoadedPlugin {
   options: Record<string, unknown>;
 }
 
+function hasDefaultExport<T>(plugin: T): plugin is T & { default: T } {
+  return !!plugin && typeof plugin === "object" && "default" in plugin;
+}
+
 /** Unwrap `{ default: fn }` CJS/ESM interop to the plugin function. */
 function unwrapPlugin<T>(plugin: T): T {
-  return (plugin && typeof plugin === "object" && "default" in (plugin as object)
-    ? (plugin as unknown as { default: T }).default
-    : plugin) as T;
+  return hasDefaultExport(plugin) ? plugin.default : plugin;
 }
 
 /**
@@ -144,9 +146,7 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   // the import surfaces as `{ default: fn }` and `md.use` blows up with
   // "plugin.apply is not a function". Unwrap defensively.
   const unwrap = <T>(plugin: T): T =>
-    (plugin && typeof plugin === "object" && "default" in (plugin as object)
-      ? ((plugin as unknown as { default: T }).default)
-      : plugin);
+    hasDefaultExport(plugin) ? plugin.default : plugin;
 
   md.use(unwrap(markdownItAttrs));
   md.use(unwrap(markdownItFootnote));

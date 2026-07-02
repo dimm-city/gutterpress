@@ -104,7 +104,8 @@ export async function setManifestFields(
     if (updates.outputFilename === undefined || updates.outputFilename === "") {
       doc.deleteIn(["output", "filename"]);
       // Drop a now-empty `output:` map rather than leaving a dangling key.
-      if (isMap(doc.get("output", true)) && (doc.get("output", true) as unknown as { items: unknown[] }).items.length === 0) {
+      const output = doc.get("output", true);
+      if (isMap(output) && output.items.length === 0) {
         doc.delete("output");
       }
     } else {
@@ -116,7 +117,8 @@ export async function setManifestFields(
     const f = updates.sourceFiles;
     if (f === null || (Array.isArray(f) && f.length === 0)) {
       doc.deleteIn(["source", "files"]);
-      if (isMap(doc.get("source", true)) && (doc.get("source", true) as unknown as { items: unknown[] }).items.length === 0) {
+      const source = doc.get("source", true);
+      if (isMap(source) && source.items.length === 0) {
         doc.delete("source");
       }
     } else {

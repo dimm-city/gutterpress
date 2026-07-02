@@ -129,6 +129,33 @@ interface PermissionedHandle {
   requestPermission?(desc?: PermissionDescriptor): Promise<PermissionState>;
 }
 
+function asPermissionedHandle(handle: FileSystemDirectoryHandle): PermissionedHandle {
+  const maybePermissioned = handle as FileSystemDirectoryHandle & {
+    queryPermission?: unknown;
+    requestPermission?: unknown;
+  };
+  const queryPermission = maybePermissioned.queryPermission;
+  const requestPermission = maybePermissioned.requestPermission;
+  return {
+    queryPermission:
+      typeof queryPermission === "function"
+        ? (desc) =>
+            (queryPermission as (desc?: PermissionDescriptor) => Promise<PermissionState>).call(
+              handle,
+              desc,
+            )
+        : undefined,
+    requestPermission:
+      typeof requestPermission === "function"
+        ? (desc) =>
+            (requestPermission as (desc?: PermissionDescriptor) => Promise<PermissionState>).call(
+              handle,
+              desc,
+            )
+        : undefined,
+  };
+}
+
 function notImplemented(method: string): never {
   throw new Error(`${method}: ${NOT_IMPL}`);
 }
@@ -140,15 +167,23 @@ function rejectNotImplemented(method: string): Promise<never> {
 const SETTINGS_KEY = "print-md.app-settings";
 
 /** Recursively merge a settings patch over a base, returning a new object. */
-function deepMergeSettings(base: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
-  const out = { ...base } as Record<string, unknown>;
-  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
-    const value = patch[key];
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      out[key] = { ...base[key], ...(value as object) };
-    }
+function mergeSettingsSection<K extends keyof AppSettings>(
+  target: AppSettings,
+  base: AppSettings,
+  key: K,
+  value: DeepPartial<AppSettings>[K],
+): void {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    target[key] = { ...base[key], ...value } as AppSettings[K];
   }
-  return out as unknown as AppSettings;
+}
+
+function deepMergeSettings(base: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
+  const out: AppSettings = { ...base };
+  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
+    mergeSettingsSection(out, base, key, patch[key]);
+  }
+  return out;
 }
 
 const webUpdater: UpdaterApi = {
@@ -304,7 +339,7 @@ export class WebAdapter implements Platform {
       );
     }
     const handle = record.handle;
-    const perm = handle as unknown as PermissionedHandle;
+    const perm = asPermissionedHandle(handle);
     const desc: PermissionDescriptor = { mode: "readwrite" };
 
     let state: PermissionState = "granted";

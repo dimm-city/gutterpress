@@ -3,6 +3,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
+import type { Page } from "puppeteer-core";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
 import { loadPlugins, collectPluginCss } from "./markdown/plugins";
@@ -304,7 +305,6 @@ export type PdfRenderer = (input: PdfRenderInput) => Promise<void>;
  *  this budget; it is also the puppeteer protocolTimeout for the pooled browser. */
 const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Drive a puppeteer `page` to fully paginate the document at `url`: set the
  * viewport + timeouts, navigate (waiting for network idle so vendored assets +
@@ -318,9 +318,7 @@ const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
  * silently changed.
  */
 async function paginateAndCapture(
-  // puppeteer-core Page; typed `any` to avoid a top-level value import of the
-  // heavy lazy-loaded dep (the lib only imports puppeteer-core dynamically).
-  page: any,
+  page: Page,
   url: string,
   timeoutMs: number,
   viewport: { width: number; height: number } = { width: 1920, height: 1080 }
@@ -331,15 +329,19 @@ async function paginateAndCapture(
 
   await page.goto(url, { waitUntil: "networkidle0" });
 
-  await page.evaluate(() => (globalThis as any).document.fonts.ready);
+  await page.evaluate(() => document.fonts.ready);
 
   await page
-    .waitForFunction(() => (globalThis as any).__PAGED_RENDERED__ === true, {
+    .waitForFunction(
+      () =>
+        (globalThis as typeof globalThis & { __PAGED_RENDERED__?: boolean })
+          .__PAGED_RENDERED__ === true,
+      {
       timeout: timeoutMs,
-    })
+      },
+    )
     .catch(() => {});
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** Default renderer: system Chromium via puppeteer-core (pooled + pre-warmable). */
 const puppeteerPdfRenderer: PdfRenderer = async ({
@@ -355,19 +357,16 @@ const puppeteerPdfRenderer: PdfRenderer = async ({
   try {
     await paginateAndCapture(page, url, timeoutMs);
 
-    /* eslint-disable @typescript-eslint/no-explicit-any */
     const pagedInfo = await page.evaluate(() => {
-      const g = globalThis as any;
-      const pages = g.document.querySelectorAll(".pagedjs_page");
+      const pages = document.querySelectorAll(".pagedjs_page");
       const el = pages[0] ?? null;
-      const s = el ? g.getComputedStyle(el) : null;
+      const s = el ? getComputedStyle(el) : null;
       return {
-        pageCount: pages.length as number,
-        width: s?.width as string | undefined,
-        height: s?.height as string | undefined,
+        pageCount: pages.length,
+        width: s?.width,
+        height: s?.height,
       };
     });
-    /* eslint-enable @typescript-eslint/no-explicit-any */
     log.info(
       `Paged.js rendered ${pagedInfo.pageCount} pages (${pagedInfo.width} × ${pagedInfo.height})`
     );
@@ -384,13 +383,9 @@ const puppeteerPdfRenderer: PdfRenderer = async ({
     // viewer renders the identical artifact the PDF was printed from. Read-only,
     // after page.pdf() — does not perturb the PDF.
     if (captureStaticHtmlTo) {
-      /* eslint-disable @typescript-eslint/no-explicit-any */
       const staticHtml = await page.evaluate(
-        () =>
-          "<!DOCTYPE html>\n" +
-          (globalThis as any).document.documentElement.outerHTML
+        () => "<!DOCTYPE html>\n" + document.documentElement.outerHTML
       );
-      /* eslint-enable @typescript-eslint/no-explicit-any */
       await fsp.writeFile(captureStaticHtmlTo, staticHtml, "utf-8");
     }
   } finally {
@@ -425,17 +420,13 @@ export async function paginateToStaticHtml(stagedHtml: string): Promise<string> 
         RENDER_TIMEOUT_MS
       );
 
-      /* eslint-disable @typescript-eslint/no-explicit-any */
       const result = await page.evaluate(() => {
-        const g = globalThis as any;
-        const count = g.document.querySelectorAll(".pagedjs_page").length;
+        const count = document.querySelectorAll(".pagedjs_page").length;
         return {
-          count: count as number,
-          html:
-            "<!DOCTYPE html>\n" + g.document.documentElement.outerHTML,
+          count,
+          html: "<!DOCTYPE html>\n" + document.documentElement.outerHTML,
         };
       });
-      /* eslint-enable @typescript-eslint/no-explicit-any */
       log.info(
         `Paged.js paginated ${result.count} pages → serialized to static HTML`
       );
