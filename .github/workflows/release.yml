@@ -516,8 +516,8 @@ jobs:
       # created with GITHUB_TOKEN (GitHub suppresses those events to prevent
       # workflow recursion; workflow_dispatch is exempt), so dispatch it
       # explicitly at the release tag. metadata-action derives the semver
-      # image tags from the tag ref; `latest` stays stable-only (docker.yml
-      # gates it to non-prerelease `release` events, never dispatch runs).
+      # image tags from the tag ref; docker.yml applies `latest` only to
+      # stable versions dispatched at their matching v<version> tag ref.
       - name: Publish Docker image (dispatch docker.yml at the tag)
         env:
           GH_TOKEN: ${{ github.token }}
