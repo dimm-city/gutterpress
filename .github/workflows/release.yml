@@ -18,6 +18,10 @@ on:
         type: boolean
         default: false
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 env:
   PUPPETEER_SKIP_DOWNLOAD: 'true'
   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
@@ -40,12 +44,20 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
-      - uses: oven-sh/setup-bun@v2
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v2
         with:
-          bun-version: latest
+          chrome-version: stable
+
+      - name: Setup Bun (cached)
+        uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install
+
+      - name: Configure Puppeteer to use system Chrome
+        run: |
+          echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
 
       # The viewer suite imports @dimm-city/print-md by name (resolves to its
       # built dist/), so build the package before running all-package tests.
@@ -66,16 +78,22 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       prerelease: ${{ steps.tag.outputs.prerelease }}
+    env:
+      VERSION: ${{ inputs.version }}
     steps:
       # Stable releases come from the default branch. PRERELEASE versions (the
       # version string contains a '-', e.g. 0.4.0-beta.1) may also be cut from a
       # release/* branch, so a release line can ship betas to testers before it
       # merges to the default branch. Anything else is rejected.
       - name: Validate dispatch branch and version
+        env:
+          BRANCH: ${{ github.ref_name }}
+          DEFAULT: ${{ github.event.repository.default_branch }}
         run: |
-          BRANCH="${{ github.ref_name }}"
-          DEFAULT="${{ github.event.repository.default_branch }}"
-          VERSION="${{ inputs.version }}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid version format: $VERSION (expected semver, e.g. 1.2.3 or 1.2.3-beta.1)"
+            exit 1
+          fi
           if [ "$BRANCH" = "$DEFAULT" ]; then
             echo "Dispatched from default branch ($BRANCH)."
           elif [[ "$BRANCH" == release/* ]] && echo "$VERSION" | grep -qE '-'; then
@@ -91,10 +109,11 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
+      - uses: ./.github/actions/bun
+
       - name: Bump version in package.json
         run: |
-          VERSION="${{ inputs.version }}"
-          VERSION="$VERSION" node -e "
+          node -e "
             const fs = require('fs');
             for (const pkg of ['packages/cli/package.json', 'packages/viewer/package.json']) {
               const p = JSON.parse(fs.readFileSync(pkg, 'utf8'));
@@ -103,34 +122,41 @@ jobs:
             }
           "
 
+      # Regenerate the lockfile so it stays coherent with the bumped
+      # package.json versions — the tag this commit produces is checked out
+      # by every downstream build job with `--frozen-lockfile`, which fails
+      # if bun.lock is stale relative to the package.json files it describes.
+      - name: Update lockfile
+        run: bun install
+
       - name: Commit and tag
         id: tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add packages/cli/package.json packages/viewer/package.json
+          git add packages/cli/package.json packages/viewer/package.json bun.lock
 
           if ! git diff --cached --quiet; then
-            git commit -m "chore: bump version to ${{ inputs.version }}"
+            git commit -m "chore: bump version to $VERSION"
             git push
           fi
 
-          if git rev-parse -q --verify "refs/tags/v${{ inputs.version }}" >/dev/null; then
-            git tag -d "v${{ inputs.version }}"
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            git tag -d "v$VERSION"
           fi
 
-          if git ls-remote --exit-code --tags origin "refs/tags/v${{ inputs.version }}" >/dev/null; then
-            git push origin ":refs/tags/v${{ inputs.version }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            git push origin ":refs/tags/v$VERSION"
           fi
 
-          git tag "v${{ inputs.version }}"
-          git push origin "v${{ inputs.version }}"
-          echo "tag=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
           # A version with a '-' (e.g. 0.4.0-beta.1) is a prerelease: it marks
           # the GitHub release as a pre-release and publishes npm under `next`,
           # not `latest`.
-          if echo "${{ inputs.version }}" | grep -qE '-'; then
+          if echo "$VERSION" | grep -qE '-'; then
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
@@ -170,9 +196,7 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.tag }}
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -181,11 +205,21 @@ jobs:
         working-directory: packages/cli
         run: bun build src/cli.ts --compile --target=${{ matrix.target }} --outfile=../../${{ matrix.artifact }}
 
+      # Smoke test: fail fast if the compiled binary can't even run. Only
+      # feasible for linux-x64 since this job runs on ubuntu-latest and can't
+      # execute the other targets' binaries.
+      - name: Smoke test binary
+        if: ${{ matrix.target == 'bun-linux-x64' }}
+        run: |
+          chmod +x "${{ matrix.artifact }}"
+          "./${{ matrix.artifact }}" --version
+
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
+          if-no-files-found: error
 
   build-viewer-linux:
     name: Viewer / Linux AppImage
@@ -197,9 +231,7 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.tag }}
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -243,9 +275,7 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.tag }}
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -281,18 +311,13 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.tag }}
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
       # No version patch needed — this job checks out the tag the `version`
       # job already bumped and committed (ref: needs.version.outputs.tag).
-
-      - name: Install Xcode command-line tools
-        run: xcode-select --install || true
 
       - name: Build package dist
         run: bun run build
@@ -314,7 +339,10 @@ jobs:
   # ── 4. Publish to npm (skippable) ─────────────────────────────────────────
   publish-npm:
     name: Publish to npm
-    needs: [version]
+    # build-cli must succeed first — a broken CLI build should never reach npm.
+    # No explicit needs.build-cli.result guard is required: GitHub Actions
+    # skips a job by default when any of its `needs` jobs did not succeed.
+    needs: [version, build-cli]
     if: ${{ !inputs.skip_npm_publish }}
     runs-on: ubuntu-latest
     permissions:
@@ -330,9 +358,7 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - uses: ./.github/actions/bun
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -341,15 +367,17 @@ jobs:
       # build`, which produces dist/ (bun build + tsc) right before packing.
 
       # OIDC trusted publishing (no long-lived token) requires npm >= 11.5.1;
-      # node 20 ships npm 10.x, so update it. Provenance attestation is implied
-      # by trusted publishing but kept explicit below.
+      # node 20 ships npm 10.x, so update it. Pinned to a known-good version
+      # rather than `latest` to keep the publish step reproducible.
       - name: Update npm for OIDC trusted publishing
-        run: npm install -g npm@latest
+        run: npm install -g npm@11.5.2
 
       - name: Skip if already published
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          if npm view "@dimm-city/print-md@${{ inputs.version }}" version &>/dev/null; then
-            echo "Version ${{ inputs.version }} already published — skipping."
+          if npm view "@dimm-city/print-md@$VERSION" version &>/dev/null; then
+            echo "Version $VERSION already published — skipping."
             echo "ALREADY_PUBLISHED=true" >> "$GITHUB_ENV"
           fi
 
@@ -369,52 +397,33 @@ jobs:
             npm publish --provenance --access public
           fi
 
-  # ── 5b. Publish the CLI Docker image to GHCR ──────────────────────────────
-  # Builds the root Dockerfile (CLI bundle + Chromium/Ghostscript/qpdf) and
-  # pushes it to ghcr.io/<owner>/print-md. Tags the exact version always;
-  # `latest` only for stable releases (a version without a "-" prerelease tag).
-  publish-docker:
-    name: Publish Docker image
-    needs: [version]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+  # Docker publish is NOT duplicated here — docker.yml is the single Docker
+  # publish path, triggered by `release: published` (which the `github-release`
+  # job below causes) and handles the multi-arch (amd64+arm64) GHCR push.
+
+  # ── 5b. Verify the Windows CLI binary actually runs ───────────────────────
+  # build-cli cross-compiles the Windows binary from ubuntu-latest, so it can
+  # only be smoke tested on real Windows. This makes the workflow description
+  # ("verifies on Windows") true.
+  verify-windows:
+    name: Verify Windows binary
+    needs: build-cli
+    runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Download Windows binary
+        uses: actions/download-artifact@v4
         with:
-          ref: ${{ needs.version.outputs.tag }}
+          name: print-md-cli-windows-x64.exe
+          path: dist/
 
-      - name: Compute image tags
-        id: imgtags
+      - name: Run --version
+        shell: pwsh
         run: |
-          REPO_LC="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
-          TAGS="$REPO_LC:${{ inputs.version }}"
-          # Stable (no "-" prerelease suffix) also updates :latest.
-          case "${{ inputs.version }}" in
-            *-*) ;;
-            *) TAGS="$TAGS"$'\n'"$REPO_LC:latest" ;;
-          esac
-          { echo "tags<<EOF"; printf '%s\n' "$TAGS"; echo "EOF"; } >> "$GITHUB_OUTPUT"
-
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push CLI image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ steps.imgtags.outputs.tags }}
-          provenance: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          & ".\dist\print-md-cli-windows-x64.exe" --version
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "print-md-cli-windows-x64.exe --version exited with code $LASTEXITCODE"
+            exit 1
+          }
 
   # ── 6. Create release with ALL artifacts ──────────────────────────────────
   #
@@ -430,10 +439,12 @@ jobs:
       - build-viewer-windows
       - build-viewer-mac
       - publish-npm
+      - verify-windows
     if: |
       always() &&
       needs.version.result == 'success' &&
       needs.build-cli.result == 'success' &&
+      needs.verify-windows.result == 'success' &&
       (needs.build-viewer-linux.result == 'success' || needs.build-viewer-linux.result == 'skipped') &&
       (needs.build-viewer-windows.result == 'success' || needs.build-viewer-windows.result == 'skipped') &&
       (needs.build-viewer-mac.result == 'success' || needs.build-viewer-mac.result == 'skipped') &&
