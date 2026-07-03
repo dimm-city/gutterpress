@@ -78,6 +78,7 @@ import {
   AutoSyncOrchestrator,
   type SyncStatusPayload,
 } from "./auto-sync/orchestrator";
+import { AutoSnapshotScheduler } from "./auto-snapshot/scheduler";
 import type {
   AdoptFolderOptions,
   ApplyThemeTarget,
@@ -370,74 +371,33 @@ let folderChangeDebounce: ReturnType<typeof setTimeout> | null = null;
 // sync/restore, and its no-empty-snapshot guard turns a clean-tree fire into
 // the expected `isNoChangesError` rejection, swallowed below. Silent on success
 // (the history dialog reloads its list on open).
-let autoSnapshotPending: { dir: string; timer: NodeJS.Timeout } | null = null;
+// The single scheduler instance (electron/auto-snapshot/scheduler.ts) owns the
+// pending timer + policy + the run/flush/cancel control logic — unit-tested in
+// tests/platform/auto-snapshot-scheduler.test.ts. main.ts wires the injected
+// deps below, keeps thin delegators (scheduleAutoSnapshot/flushAutoSnapshot/
+// cancelAutoSnapshotTimer) for its call sites, and keeps a module-level MIRROR
+// of the pending state (updated ONLY via onPendingChanged) SOLELY so createWindow's
+// `autoSnapshotPending !== null` read stays byte-identical without reaching into
+// the scheduler.
+let autoSnapshotPending: { dir: string } | null = null;
+
+const autoSnapshot = new AutoSnapshotScheduler({
+  loadLib,
+  readSettings,
+  getWatchedDir: () => watchedDir,
+  operationLogPath,
+  onPendingChanged: (dir) => {
+    autoSnapshotPending = dir === null ? null : { dir };
+  },
+});
 
 function cancelAutoSnapshotTimer(): void {
-  if (autoSnapshotPending) {
-    clearTimeout(autoSnapshotPending.timer);
-    autoSnapshotPending = null;
-  }
-}
-
-async function runAutoSnapshot(dir: string): Promise<void> {
-  try {
-    const lib = await loadLib();
-    // Re-check the live policy: the user may have toggled auto-snapshots off
-    // while this timer was already armed.
-    const settings = await readSettings();
-    if (lib.autoSnapshotDelayMs(settings.versionHistory) === null) return;
-    const source = await lib.detectProjectSource(dir);
-    if (source.type !== "local-git-folder") return;
-    // Never AUTO-snapshot a folder that lives inside a LARGER repo (subPath
-    // set): a silent automatic commit would land in — and sweep unrelated files
-    // from — the ENCLOSING repository (e.g. opening a folder that happens to sit
-    // inside another git repo). Explicit user snapshots and multi-book remote
-    // sync still work via the version-history UI; only the AUTOMATIC commit is
-    // suppressed here.
-    if (source.subPath !== "") {
-      console.info(`[auto-snapshot] skipped: ${dir} is a subfolder of an enclosing repo (${source.repoRoot})`);
-      return;
-    }
-    await lib.providerFor(source).snapshot({
-      projectDir: dir,
-      message: lib.AUTO_SNAPSHOT_MESSAGE,
-      // Record the snapshot in the project's operation log so the bottom-bar
-      // "Version history" affordance shows it (local-git projects have no
-      // remote/sync, but they DO snapshot — those snapshots must be logged).
-      logFile: operationLogPath(path.basename(dir)),
-    });
-  } catch (e) {
-    const lib = await loadLib().catch(() => null);
-    if (lib?.isNoChangesError(e)) return; // clean tree — expected, not an error
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[auto-snapshot] failed for ${dir}: ${msg}`);
-    if (e instanceof Error && e.stack) console.error(e.stack);
-  }
+  autoSnapshot.cancel();
 }
 
 /** Arm/reset the debounce timer after an edit signal in `dir`. */
 function scheduleAutoSnapshot(dir: string): void {
-  void (async () => {
-    try {
-      // Read settings + lib policy on every arm so changes apply live.
-      const [lib, settings] = await Promise.all([loadLib(), readSettings()]);
-      // Project may have switched while the awaits above yielded — arming a
-      // timer for the OLD directory would fire a stray snapshot there.
-      if (watchedDir !== dir) return;
-      const delayMs = lib.autoSnapshotDelayMs(settings.versionHistory);
-      cancelAutoSnapshotTimer();
-      if (delayMs === null) return; // automatic snapshots disabled
-      const timer = setTimeout(() => {
-        autoSnapshotPending = null;
-        void runAutoSnapshot(dir);
-      }, delayMs);
-      // Never keep the app alive for a pending snapshot alone.
-      if (typeof timer.unref === "function") timer.unref();
-      autoSnapshotPending = { dir, timer };
-    } catch (e) {
-      console.warn("[auto-snapshot] scheduling failed (non-fatal):", e);
-    }
-  })();
+  autoSnapshot.schedule(dir);
 }
 
 /**
@@ -445,10 +405,7 @@ function scheduleAutoSnapshot(dir: string): void {
  * Returns the in-flight snapshot promise, or `undefined` when nothing pends.
  */
 function flushAutoSnapshot(): Promise<void> | undefined {
-  if (!autoSnapshotPending) return undefined;
-  const dir = autoSnapshotPending.dir;
-  cancelAutoSnapshotTimer();
-  return runAutoSnapshot(dir);
+  return autoSnapshot.flush();
 }
 
 // ── Automatic sync orchestrator (transparent-sync plan §4.1/§4.2/§5.3) ────────
