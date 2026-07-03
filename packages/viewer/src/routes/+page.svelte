@@ -9,12 +9,10 @@
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type {
-    ConflictFileInfo,
     ManualGuidanceInfo,
     ProblemEntry,
     ProjectCapabilities,
     ProjectClassification,
-    ProjectRemoteDiagnosis,
     RecoveryConfirmRequest,
     RecoveryProgressInfo,
     SnapshotEntry,
@@ -39,9 +37,10 @@
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
   import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
+  import { SyncController } from "$lib/routes/sync-controller.svelte";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
-  import { api, type SyncOutcome } from "$lib/api";
+  import { api } from "$lib/api";
   import { basenameOf, joinPath } from "$lib/platform/paths";
   import { shouldReconcileAfterSync } from "$lib/sync-status";
   import { onMount } from "svelte";
@@ -252,16 +251,24 @@
   let newProjectOpen = $state(false);
   let newProjectWizardRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
   let newProjectBtn = $state<HTMLButtonElement | undefined>(undefined);
-  let syncDiag = $state<ProjectRemoteDiagnosis | null>(null);
-  // Manual force-save / force-sync state for the status bar action buttons.
+  // Manual force-save state for the status bar action button.
   let forceSaving = $state(false);
-  let forceSyncing = $state(false);
-  // ConflictChoicesDialog (#transparent-sync §6.1): opened by the ambient
-  // SyncStatusPill when the auto-sync orchestrator reports a conflict.
-  let conflictOpen = $state(false);
-  let conflictFiles = $state<ConflictFileInfo[]>([]);
-  let conflictLocalId = $state<string | null>(null);
-  let conflictRemoteId = $state<string | null>(null);
+  // Sync-outcome routing + conflict/diagnosis state (Phase 5b). Owns the
+  // syncDiag / forceSyncing runes and the ConflictChoicesDialog state
+  // (#transparent-sync §6.1: opened by the ambient SyncStatusPill when the
+  // auto-sync orchestrator reports a conflict). Host coupling injected so the
+  // routing is unit-testable and PWA-clean (§8). onSyncCompleted /
+  // onSyncFilesChanged stay component methods (they touch toast +
+  // leftPanelRef.notifyHistoryRefresh + buffer).
+  const syncController = new SyncController({
+    syncChanges: (dir) => api.remote.syncChanges(dir),
+    diagnose: (dir) => api.remote.diagnoseProjectRemote(dir),
+    currentDir: () => currentDir,
+    toast: () => toast,
+    onSyncCompleted: (mergedRemoteChanges, filesChanged) =>
+      onSyncCompleted(mergedRemoteChanges, filesChanged),
+    onFilesChanged: () => onSyncFilesChanged(),
+  });
 
   // ── Recovery UI state (transparent sync recovery) ────────────────────────────
   // RecoveryOverlay: shown during automated repair (non-blocking scrim over preview pane).
@@ -278,16 +285,6 @@
   // RecoveryConfirmDialog: shown when host needs author approval for a risky repair.
   let recoveryConfirmOpen = $state(false);
   let recoveryConfirmRequest = $state<RecoveryConfirmRequest | undefined>(undefined);
-
-  async function refreshSyncDiag(dir: string) {
-    try {
-      const diag = await api.remote.diagnoseProjectRemote(dir);
-      // Project may have changed while the diagnosis was in flight.
-      if (currentDir === dir) syncDiag = diag;
-    } catch {
-      syncDiag = null;
-    }
-  }
 
   function onSyncFilesChanged() {
     buffer?.reconcileExternalChange().catch(() => {});
@@ -315,7 +312,7 @@
   // The single Reconnect action (ADR 0006 D7): route to the matching connect
   // flow — GitHub's device flow, or Advanced Setup for every other server.
   function onSyncReconnect() {
-    if (syncDiag?.provider === "github") githubOpen = true;
+    if (syncController.syncDiag?.provider === "github") githubOpen = true;
     else advancedSetupOpen = true;
   }
 
@@ -332,19 +329,19 @@
         break;
       case "sync":
         // Retry the sync; handleForceSync also routes conflicts to the chooser.
-        void handleForceSync();
+        void syncController.handleForceSync();
         break;
       case "resolve_conflict":
         // Re-run the sync so the conflict chooser opens with fresh file IDs
         // (handleForceSync sets conflictOpen on a "conflict" outcome).
-        void handleForceSync();
+        void syncController.handleForceSync();
         break;
       case "restore_repo":
         // Re-run the sync/recovery path: the orchestrator re-classifies the repo
         // state and dispatches the matching recovery handler (e.g. the
         // interrupted-rebase / interrupted-cherry-pick abort), which re-prompts
         // for confirmation before the backup + repair.
-        void handleForceSync();
+        void syncController.handleForceSync();
         break;
       default:
         // Forward-compat safety net for an unrecognized key: do nothing (the
@@ -355,58 +352,13 @@
     }
   }
 
-  /**
-   * Called by the ambient SyncStatusPill when the auto-sync orchestrator emits
-   * a conflict state (§6.1). Opens the ConflictChoicesDialog immediately with
-   * the file list from the status event, then fetches the conflict IDs
-   * (localId/remoteId) via syncChanges — the only path that returns a
-   * SyncOutcome carrying those IDs. The confirm button stays disabled until the
-   * IDs arrive (ConflictChoicesDialog guards on !localId || !remoteId).
-   */
-  function onPillConflict(files: ConflictFileInfo[]) {
-    if (!currentDir) return;
-    conflictFiles = files;
-    conflictLocalId = null;
-    conflictRemoteId = null;
-    conflictOpen = true;
-    // The SyncStatus payload does not carry localId/remoteId — those are only
-    // in the SyncOutcome returned by syncChanges (contract.ts lines 527-528).
-    // Fetch them now so ConflictChoicesDialog.confirm() can call resolveSyncConflicts.
-    const dir = currentDir;
-    api.remote
-      .syncChanges(dir)
-      .then((outcome: SyncOutcome) => {
-        // Discard if the user switched projects or already closed the dialog.
-        if (currentDir !== dir || !conflictOpen) return;
-        if (outcome.status === "conflict") {
-          conflictFiles = outcome.files;
-          conflictLocalId = outcome.localId;
-          conflictRemoteId = outcome.remoteId;
-        } else if (outcome.status === "synced") {
-          // Conflict resolved on its own (race between pill event + sync call).
-          conflictOpen = false;
-          onSyncCompleted(outcome.mergedRemoteChanges, outcome.filesChanged === true);
-        } else if (outcome.status === "up-to-date") {
-          conflictOpen = false;
-          onSyncCompleted(false, outcome.filesChanged === true);
-        }
-        // auth/offline/error: leave the dialog open so the user can still
-        // "Decide later"; the confirm button remains disabled.
-      })
-      .catch(() => {
-        // Network/host error: leave the dialog open at the file list view.
-        // The confirm button stays disabled; the History panel's advanced Sync
-        // surface remains available as a fallback.
-      });
-  }
-
   // Completes the D7 Reconnect journey: a connect dialog closing may mean a
   // new credential was just stored — re-check syncability so the Sync
   // button and the dialog's auth state reflect it without a project reload.
   // Called by onClosed on both GitHubDialog and AdvancedSetupDialog.
   function onConnectDialogClosed() {
     if (currentDir && sourceMode === "folder") {
-      void refreshSyncDiag(currentDir);
+      void syncController.refreshSyncDiag(currentDir);
     }
   }
 
@@ -1479,7 +1431,7 @@
       projectCapabilities = null;
       projectSharesParentHistory = false;
       projectSubPath = "";
-      syncDiag = null;
+      syncController.syncDiag = null;
       api.app
         .classifyProject(dir)
         .then((result) => {
@@ -1499,7 +1451,7 @@
           // when the diagnosis says the project is actually syncable (HTTPS
           // remote + a stored connection). Local reads only; fire-and-forget.
           if (typedResult.capabilities.canSync) {
-            void refreshSyncDiag(dir);
+            void syncController.refreshSyncDiag(dir);
           }
         })
         .catch(() => {
@@ -2242,46 +2194,6 @@
     }
   }
 
-  /**
-   * Trigger an immediate sync for the open project.
-   * Reuses the same api.remote.syncChanges() path the auto-orchestrator uses.
-   * Only callable when the project canSync (guarded in StatusBar via showForceSync).
-   */
-  async function handleForceSync() {
-    const dir = currentDir;
-    if (!dir || forceSyncing) return;
-    forceSyncing = true;
-    try {
-      const outcome = await api.remote.syncChanges(dir);
-      if (currentDir !== dir) return; // Project switched mid-sync.
-      if (outcome.status === "conflict") {
-        // Route through the existing conflict dialog path.
-        conflictFiles = outcome.files;
-        conflictLocalId = outcome.localId;
-        conflictRemoteId = outcome.remoteId;
-        conflictOpen = true;
-      } else if (outcome.status === "synced") {
-        onSyncCompleted(outcome.mergedRemoteChanges, outcome.filesChanged === true);
-      } else if (outcome.status === "up-to-date") {
-        if (outcome.filesChanged) onSyncCompleted(false, true);
-        else toast?.info("Already up to date — no changes to sync.");
-      } else if (outcome.status === "auth") {
-        if (outcome.filesChanged) onSyncFilesChanged();
-        toast?.error("Not connected. Use Connect in the sidebar to set up syncing.");
-      } else if (outcome.status === "offline") {
-        if (outcome.filesChanged) onSyncFilesChanged();
-        toast?.info("You appear to be offline. Try again when connected.");
-      } else {
-        if (outcome.filesChanged) onSyncFilesChanged();
-        // Generic error state — surface the message if available.
-        toast?.error("Sync failed. Check your connection and try again.");
-      }
-    } catch (e) {
-      toast?.error(`Sync failed: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      if (currentDir === dir) forceSyncing = false;
-    }
-  }
 </script>
 
 <Toast bind:api={toast} />
@@ -2914,21 +2826,21 @@
   <StatusBar
     projectDir={currentDir}
     sourceMode={sourceMode}
-    canSync={!!(syncDiag?.canSync)}
+    canSync={!!(syncController.syncDiag?.canSync)}
     canSnapshot={!!(projectCapabilities?.canSnapshot)}
     savePhase={editorSavePhase}
     fileOpen={!!editorFilePath}
     {forceSaving}
-    {forceSyncing}
+    forceSyncing={syncController.forceSyncing}
     {problems}
     problemsLoading={problemsLoading}
     bind:problemsOpen={problemsOpen}
     onProblemSelect={openProblem}
     onReconnect={onSyncReconnect}
-    onConflict={onPillConflict}
+    onConflict={(files) => syncController.onPillConflict(files)}
     onShowLog={showProjectLog}
     onForceSave={handleForceSave}
-    onForceSync={handleForceSync}
+    onForceSync={() => syncController.handleForceSync()}
     onOpenSettings={() => (settingsOpen = true)}
     onOpenHelp={() => (helpOpen = true)}
   />
@@ -3016,17 +2928,15 @@
      Plain-language "Keep my version / Use the online version / Keep both"
      with "Keep both" as the highlighted lossless default. -->
 <ConflictChoicesDialog
-  bind:open={conflictOpen}
+  bind:open={syncController.conflictOpen}
   projectDir={sourceMode === "folder" ? currentDir : null}
   bookSubPath={projectSubPath}
-  files={conflictFiles}
-  localId={conflictLocalId}
-  remoteId={conflictRemoteId}
+  files={syncController.conflictFiles}
+  localId={syncController.conflictLocalId}
+  remoteId={syncController.conflictRemoteId}
   onResolved={(mergedRemoteChanges) => {
     onSyncCompleted(mergedRemoteChanges);
-    conflictFiles = [];
-    conflictLocalId = null;
-    conflictRemoteId = null;
+    syncController.clearConflict();
   }}
   onReconnect={onSyncReconnect}
 />
