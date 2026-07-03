@@ -58,6 +58,13 @@ jobs:
           bun --cwd packages/viewer run build
           bun --cwd packages/viewer run electron:build
 
+      # §8 renderer-purity guardrail: fail if host/node code leaked into the
+      # built viewer CLIENT SPA bundle. Scope is build/client/ ONLY —
+      # adapter-node's build/server/ + build/handler.js are host Node code by
+      # design (§8). Self-test: node tools/check-render-purity.test.mjs
+      - name: Check renderer purity (CLAUDE.md §8)
+        run: node tools/check-render-purity.mjs packages/viewer/build/client
+
   type-check:
     name: Type Check
     runs-on: ubuntu-latest
