@@ -74,6 +74,10 @@ import {
   getConflictPreviewImpl,
   preExportSyncGateBlockError,
 } from "./recovery-bridge";
+import {
+  AutoSyncOrchestrator,
+  type SyncStatusPayload,
+} from "./auto-sync/orchestrator";
 import type {
   AdoptFolderOptions,
   ApplyThemeTarget,
@@ -777,496 +781,40 @@ function flushAutoSnapshot(): Promise<void> | undefined {
 // the affected project until re-enabled (by setAutoSync or by conflict resolution).
 // Auto-snapshot keeps running so ongoing edits are never lost.
 
-/** Per-project state for the auto-sync orchestrator. Keyed by projectDir. */
-interface AutoSyncState {
-  /** Debounce timer armed on file-change; fires runAutoSync when it expires. */
-  debounceTimer: NodeJS.Timeout | null;
-  /** Periodic safety-sync interval handle. */
-  intervalHandle: NodeJS.Timeout | null;
-  /** True while syncProject is awaiting a network round-trip. */
-  inFlight: boolean;
-  /** Coalesce burst: run exactly one sync when the current one lands. */
-  runAgain: boolean;
-  /** Conflict-latch: auto-sync is paused until re-enabled for this dir. */
-  conflictLatched: boolean;
-}
-
-// One orchestrator slot per directory. We only ever have one open project, so in
-// practice this is a map of 0 or 1 entries — but the keyed shape makes future
-// multi-project support trivial and keeps the close/switch logic explicit.
-const autoSyncStates = new Map<string, AutoSyncState>();
-
-function getOrCreateAutoSyncState(dir: string): AutoSyncState {
-  let s = autoSyncStates.get(dir);
-  if (!s) {
-    s = {
-      debounceTimer: null,
-      intervalHandle: null,
-      inFlight: false,
-      runAgain: false,
-      conflictLatched: false,
-    };
-    autoSyncStates.set(dir, s);
-  }
-  return s;
-}
-
-/**
- * Payload emitted on the `sync:status` channel. Must match the `SyncStatus`
- * shape in contract.ts EXACTLY — ElectronAdapter.onSyncStatus forwards the raw
- * push payload to the renderer typed as SyncStatus with no transform.
- *
- * Differences from the old internal SyncStatusPayload:
- *  - `state` (not `status`) — matches SyncStatus.state
- *  - `projectDir` is required (not optional) — always scopes the event
- *  - `lastSyncAt` is required (string | null) — lets the pill show relative time
- *  - `message` is dropped — not part of the contract; log it, don't emit it
- *  - `localId`/`remoteId` are dropped — not in SyncStatus; the conflict dialog
- *    fetches them separately via previewSync when the user opens it
- *  - "error" is added to the state union so unexpected throws surface without
- *    misusing "offline" (the renderer can treat "error" as a transient failure)
- */
-interface SyncStatusPayload {
-  state:
-    | "idle"
-    | "syncing"
-    | "synced"
-    | "up-to-date"
-    | "offline"
-    | "auth"
-    | "conflict"
-    | "error"
-    | "recovering"
-    | "recovered"
-    // "local" — a local-git project with no syncable remote. There is no sync,
-    // but version history (auto-snapshots) is active; the pill surfaces a
-    // clickable "Version history on" label that opens the operation log.
-    | "local";
-  /** Absolute path of the project this status applies to. */
-  projectDir: string;
-  /** Present (non-empty) only when state === "conflict". */
-  files?: ConflictFileInfo[];
-  /**
-   * ISO-8601 timestamp of the last completed sync attempt (success or failure),
-   * or null when none has run in this session.
-   */
-  lastSyncAt: string | null;
-  /**
-   * Recovery progress — present when state === "recovering".
-   * Both `phase` and `risk` are required to match RecoveryProgressInfo in contract.ts.
-   */
-  recovery?: {
-    phase: "checking" | "backup" | "repairing" | "done";
-    risk: "none" | "low" | "medium" | "high";
-    message?: string;
-  };
-  /** Manual guidance — present when state === "error" and failure was classified. */
-  guidance?: object;
-  /** Backup zip path — present on "recovered" and classified "error". */
-  backupZipPath?: string;
-  /** Operation log path — present on "recovered", "error", and "conflict". */
-  logFile?: string;
-  /** True when the completed sync/recovery changed files in the local worktree. */
-  filesChanged?: boolean;
-}
-
-/** Per-project last-sync timestamp, updated on every completed runAutoSync. */
-const autoSyncLastAt = new Map<string, string | null>();
+// The single orchestrator instance (electron/auto-sync/orchestrator.ts) owns ALL
+// auto-sync state + timers + the single-flight / runAgain / conflict-latch control
+// logic — unit-tested in tests/platform/auto-sync-orchestrator.test.ts. main.ts
+// wires the injected deps below and forwards its triggers to it; it keeps NO
+// auto-sync module state of its own. The header comment above documents the
+// invariants the orchestrator enforces.
 
 /** Emit a sync status event to the renderer, safe to call when no window exists. */
 function emitSyncStatus(payload: SyncStatusPayload): void {
   mainWindow?.webContents.send("sync:status", payload);
 }
 
-/**
- * Execute one auto-sync for `dir`. This is the ONLY place auto-sync calls the
- * network — always via `lib.syncProject`, never via statusMatrix or any walk.
- * Maps the SyncOutcome to an ambient status and emits it to the renderer.
- */
-async function runAutoSync(dir: string): Promise<void> {
-  const state = getOrCreateAutoSyncState(dir);
-
-  // Single-flight guard: if already in flight, arm the runAgain flag so we run
-  // exactly once more after it completes. Never queue more than one follow-up.
-  if (state.inFlight) {
-    state.runAgain = true;
-    return;
-  }
-
-  // Conflict-latch: if a conflict is pending, do NOT sync again until the user
-  // resolves it. Auto-snapshot keeps running; we just skip network work.
-  if (state.conflictLatched) return;
-
-  // Re-check live policy every run so a settings change applies immediately.
-  const [lib, settings] = await Promise.all([loadLib(), readSettings()]);
-
-  // Guard: watched dir may have changed while we awaited the above.
-  if (watchedDir !== dir) return;
-
-  // Guard: auto-sync policy (master switch).
-  if (lib.autoSyncDelayMs(settings.versionHistory) === null) return;
-
-  // Guard: only local-git-folder projects sync.
-  const source = await lib.detectProjectSource(dir);
-  if (source.type !== "local-git-folder") return;
-
-  // Guard: canSync = HTTPS remote + stored credential. Local-only projects never
-  // auto-sync (transparent-sync plan §6; ADR 0006 D4). Use the credential-aware
-  // diagnosis — NOT capabilitiesFor().canSync, which is hasRemote-only and would
-  // run syncProject on every trigger for SSH or uncredentialed-HTTPS projects
-  // (each returning auth/error, churning the network unattended). Same gate the
-  // renderer pill is shown on, so host and UI agree.
-  const diag = await lib.diagnoseProjectRemote(dir, { tokenStore: electronTokenStore });
-  if (!diag.canSync) return;
-
-  state.inFlight = true;
-  emitSyncStatus({ state: "syncing", projectDir: dir, lastSyncAt: autoSyncLastAt.get(dir) ?? null });
-
-  // Compute the operation log path for this project so sync + recovery share
-  // one log file the user can view when something goes wrong.
-  const dirBasename = path.basename(dir);
-  const logFile = operationLogPath(dirBasename);
-
-  let outcome: SyncOutcome;
-  try {
-    outcome = await lib.syncProject({
-      projectDir: dir,
-      tokenStore: electronTokenStore,
-      logFile,
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[auto-sync] syncProject threw for ${dir}: ${msg}`);
-    const now = new Date().toISOString();
-    autoSyncLastAt.set(dir, now);
-
-    // ── Out-of-memory guard ──────────────────────────────────────────────────
-    // A RangeError / "Array buffer allocation failed" is a TRANSIENT resource
-    // failure (e.g. isomorphic-git reading a large packfile), NOT structural
-    // repo damage. It must NEVER trigger the recovery subsystem (backup +
-    // reclone) — doing so would zip the whole repo and OOM again. Treat it as a
-    // plain transient error; the snapshot already saved the author's work.
-    if (e instanceof RangeError || /allocation failed|out of memory|heap/i.test(msg)) {
-      emitSyncStatus({ state: "error", projectDir: dir, lastSyncAt: now });
-      state.inFlight = false;
-      if (state.runAgain) {
-        state.runAgain = false;
-        void runAutoSync(dir);
-      }
-      return;
-    }
-
-    // ── Recovery routing (Foundation delta) ──────────────────────────────────
-    // Classify the error. If classifiable, route through recover(). Otherwise
-    // keep the old behavior (emit 'error', allow future attempts).
-    let kind: SyncErrorKind;
-    let health: RepoHealth | undefined;
-    try {
-      health = await lib.inspectRepo({ repoDir: dir });
-      kind = lib.classifyGitError(e, health);
-    } catch {
-      kind = "unknown";
-    }
-
-    if (kind === "unknown") {
-      // Old behavior — no recovery attempt for unclassifiable errors.
-      emitSyncStatus({ state: "error", projectDir: dir, lastSyncAt: now });
-      state.inFlight = false;
-      if (state.runAgain) {
-        state.runAgain = false;
-        void runAutoSync(dir);
-      }
-      return;
-    }
-
-    // Emit 'recovering' so the UI can show the non-intrusive overlay.
-    // Include `risk: "none"` to satisfy RecoveryProgressInfo (both fields required).
-    emitSyncStatus({
-      state: "recovering",
-      projectDir: dir,
-      lastSyncAt: now,
-      recovery: { phase: "checking", risk: "none" },
-    });
-
-    // Build the RecoveryContext (resolves repoDir, credential, etc.).
-    // Uses the same lib/electronTokenStore already in scope.
-    let ctx: RecoveryContext;
-    try {
-      ctx = await buildRecoveryContext(dir, lib, electronTokenStore, undefined, logFile);
-    } catch (ctxErr) {
-      console.error(`[auto-sync] buildRecoveryContext failed for ${dir}:`, ctxErr);
-      emitSyncStatus({ state: "error", projectDir: dir, lastSyncAt: now });
-      state.inFlight = false;
-      return;
-    }
-
-    let result: Awaited<ReturnType<typeof lib.recover>>;
-    try {
-      result = await lib.recover(kind, ctx, e);
-    } catch (recoverErr) {
-      console.error(`[auto-sync] recover() threw for ${dir}:`, recoverErr);
-      emitSyncStatus({ state: "error", projectDir: dir, lastSyncAt: now });
-      state.inFlight = false;
-      return;
-    } finally {
-      // Single-flight invariant: always reset, even on throw.
-      state.inFlight = false;
-    }
-
-    // Map RecoveryResult → emit.
-    switch (result.status) {
-      case "recovered": {
-        autoSyncLastAt.set(dir, new Date().toISOString());
-        emitSyncStatus({
-          state: "recovered",
-          projectDir: dir,
-          lastSyncAt: autoSyncLastAt.get(dir) ?? now,
-          backupZipPath: result.backupZipPath,
-          logFile,
-        });
-        // Resume the single-flight follow-up path.
-        if (state.runAgain) {
-          state.runAgain = false;
-          void runAutoSync(dir);
-        }
-        break;
-      }
-
-      case "retry_later": {
-        emitSyncStatus({ state: "offline", projectDir: dir, lastSyncAt: now });
-        // Re-arm after the requested delay.
-        const delay = result.retryAfterMs ?? 60_000;
-        const retryTimer = setTimeout(() => {
-          if (autoSyncStates.has(dir)) void runAutoSync(dir);
-        }, delay);
-        if (typeof retryTimer.unref === "function") retryTimer.unref();
-        break;
-      }
-
-      case "needs_user": {
-        if (result.files && result.files.length > 0) {
-          // Surface as a conflict so the existing dialog handles it.
-          // Cancel the periodic timer consistent with the normal conflict path.
-          state.conflictLatched = true;
-          state.runAgain = false;
-          cancelAutoSyncTimer(dir);
-          emitSyncStatus({
-            state: "conflict",
-            files: result.files as ConflictFileInfo[],
-            projectDir: dir,
-            lastSyncAt: now,
-            logFile,
-          });
-        } else {
-          // Auth / credential issue.
-          emitSyncStatus({ state: "auth", projectDir: dir, lastSyncAt: now });
-        }
-        break;
-      }
-
-      case "blocked":
-      case "failed_no_changes_made":
-      case "failed_backup_available": {
-        // Latch: do not churn on a structural failure the recovery subsystem
-        // says is blocked. Show guidance so the author knows what to do.
-        // Cancel the periodic timer consistent with the normal conflict path.
-        state.conflictLatched = true;
-        state.runAgain = false;
-        cancelAutoSyncTimer(dir);
-        emitSyncStatus({
-          state: "error",
-          projectDir: dir,
-          lastSyncAt: now,
-          guidance: result.guidance,
-          backupZipPath: "backupZipPath" in result ? result.backupZipPath : undefined,
-          logFile,
-        });
-        break;
-      }
-    }
-    return;
-  }
-
-  state.inFlight = false;
-
-  // Record the completion timestamp for this dir; included in every subsequent emit.
-  const completedAt = new Date().toISOString();
-  autoSyncLastAt.set(dir, completedAt);
-
-  // Map outcome → ambient status emit.
-  switch (outcome.status) {
-    case "synced":
-    case "up-to-date":
-      emitSyncStatus({
-        state: outcome.status,
-        projectDir: dir,
-        lastSyncAt: completedAt,
-        ...(outcome.filesChanged ? { filesChanged: true } : {}),
-      });
-      break;
-
-    case "conflict":
-      // Latch: disable auto-sync for this project until the user resolves.
-      state.conflictLatched = true;
-      cancelAutoSyncTimer(dir);
-      emitSyncStatus({
-        state: "conflict",
-        files: outcome.files,
-        projectDir: dir,
-        lastSyncAt: completedAt,
-      });
-      console.warn(`[auto-sync] conflict latched for ${dir} — auto-sync paused until resolved`);
-      // Conflict-latch prevents the runAgain path from firing.
-      state.runAgain = false;
-      return;
-
-    case "auth":
-      emitSyncStatus({
-        state: "auth",
-        projectDir: dir,
-        lastSyncAt: completedAt,
-        ...(outcome.filesChanged ? { filesChanged: true } : {}),
-      });
-      break;
-
-    case "offline":
-      emitSyncStatus({
-        state: "offline",
-        projectDir: dir,
-        lastSyncAt: completedAt,
-        ...(outcome.filesChanged ? { filesChanged: true } : {}),
-      });
-      break;
-
-    case "error":
-    default:
-      emitSyncStatus({
-        state: "error",
-        projectDir: dir,
-        lastSyncAt: completedAt,
-        ...(outcome.filesChanged ? { filesChanged: true } : {}),
-      });
-      break;
-  }
-
-  // Single-flight follow-up: if a trigger fired while we were in-flight, run once.
-  if (state.runAgain) {
-    state.runAgain = false;
-    void runAutoSync(dir);
-  }
-}
-
-/**
- * Cancel the file-change debounce timer and periodic interval for `dir`.
- * Does NOT reset the conflict-latch; that requires an explicit user action.
- */
-function cancelAutoSyncTimer(dir: string): void {
-  const state = autoSyncStates.get(dir);
-  if (!state) return;
-  if (state.debounceTimer) {
-    clearTimeout(state.debounceTimer);
-    state.debounceTimer = null;
-  }
-  if (state.intervalHandle) {
-    clearInterval(state.intervalHandle);
-    state.intervalHandle = null;
-  }
-}
-
-/**
- * Cancel ALL auto-sync activity for ALL tracked dirs. Called on project
- * switch/close so stale timers don't fire after the watcher has moved on.
- */
-function cancelAllAutoSyncTimers(): void {
-  for (const dir of autoSyncStates.keys()) {
-    cancelAutoSyncTimer(dir);
-  }
-  autoSyncStates.clear();
-}
-
-/**
- * Arm/reset the file-change debounce for `dir`. The debounce is STRICTLY LONGER
- * than the snapshot debounce (which defaults to 10 min) so auto-snapshot always
- * commits the burst BEFORE auto-sync pushes it. In addition, syncProject itself
- * snapshots-first, so even a race is safe — it just double-snapshots.
- *
- * The additional sync debounce (30 s on top of the snapshot delay) is short
- * enough to feel transparent to the author but long enough that the snapshot
- * timer almost always fires first.
- */
-const AUTO_SYNC_EXTRA_DEBOUNCE_MS = 30_000; // 30 s on top of snapshot settle
+const autoSync = new AutoSyncOrchestrator({
+  loadLib,
+  tokenStore: electronTokenStore,
+  readSettings,
+  emit: emitSyncStatus,
+  now: Date.now,
+  getWatchedDir: () => watchedDir,
+  operationLogPath,
+  buildRecoveryContext,
+});
 
 /** Prompt initial pull after a project opens — seconds, NOT coupled to the
  *  10-min snapshot debounce (that coupling delayed the open pull ~10.5 min and
  *  hid incoming teammate changes until the user happened to edit something). */
 const AUTO_SYNC_OPEN_DELAY_MS = 4_000;
 
-/**
- * Start the periodic safety-sync interval for `dir` (idempotent — no-op if it's
- * already running). Pulls/pushes every `autoSyncMinutes` (default 2 min) so
- * incoming changes arrive even when the author never edits anything. Must be
- * armed on project OPEN, not only on the first file change — otherwise a
- * view-only session never pulls. Respects the master switch + conflict latch.
- */
-function armAutoSyncInterval(dir: string): void {
-  void (async () => {
-    try {
-      const [lib, settings] = await Promise.all([loadLib(), readSettings()]);
-      if (watchedDir !== dir) return; // project switched while awaiting
-      const periodicMs = lib.autoSyncDelayMs(settings.versionHistory);
-      if (periodicMs === null) return; // auto-sync disabled
-      const state = getOrCreateAutoSyncState(dir);
-      if (state.conflictLatched) return; // paused until user resolves
-      if (!state.intervalHandle) {
-        state.intervalHandle = setInterval(() => {
-          void runAutoSync(dir);
-        }, periodicMs);
-        if (typeof state.intervalHandle.unref === "function") state.intervalHandle.unref();
-      }
-    } catch (e) {
-      console.warn("[auto-sync] armAutoSyncInterval failed (non-fatal):", e);
-    }
-  })();
-}
-
-function scheduleAutoSync(dir: string): void {
-  void (async () => {
-    try {
-      const [lib, settings] = await Promise.all([loadLib(), readSettings()]);
-      // Project may have switched while the awaits above yielded.
-      if (watchedDir !== dir) return;
-      const periodicMs = lib.autoSyncDelayMs(settings.versionHistory);
-      if (periodicMs === null) return; // auto-sync disabled
-
-      const state = getOrCreateAutoSyncState(dir);
-      if (state.conflictLatched) return; // paused until user resolves
-
-      // Arm the file-change debounce: snapshot debounce + extra gap (so the
-      // local snapshot commits the burst before this push). The periodic
-      // interval below is what guarantees PULLS happen promptly regardless.
-      const snapshotMs = lib.autoSnapshotDelayMs(settings.versionHistory) ?? 0;
-      const syncDebounceMs = snapshotMs + AUTO_SYNC_EXTRA_DEBOUNCE_MS;
-
-      if (state.debounceTimer) clearTimeout(state.debounceTimer);
-      state.debounceTimer = setTimeout(() => {
-        state.debounceTimer = null;
-        void runAutoSync(dir);
-      }, syncDebounceMs);
-      if (typeof state.debounceTimer.unref === "function") state.debounceTimer.unref();
-    } catch (e) {
-      console.warn("[auto-sync] scheduleAutoSync failed (non-fatal):", e);
-    }
-  })();
-  // Ensure the periodic safety interval is running (idempotent).
-  armAutoSyncInterval(dir);
-}
-
 function stopFolderWatch(): void {
   // Project switch/close flush point (RC1-3): edits were pending a snapshot —
   // take it now (fire-and-forget) instead of dropping the timer.
   void flushAutoSnapshot();
   // Cancel all sync timers when the watched folder changes (project switch/close).
-  cancelAllAutoSyncTimers();
+  autoSync.cancelAll();
   if (folderChangeDebounce) {
     clearTimeout(folderChangeDebounce);
     folderChangeDebounce = null;
@@ -1310,7 +858,7 @@ function startFolderWatch(dirPath: string): void {
       // Use normalizedDir (the resolved form) so the map key matches watchedDir.
       scheduleAutoSnapshot(normalizedDir);
       // Arm the sync debounce (strictly longer than snapshot — see scheduleAutoSync).
-      scheduleAutoSync(normalizedDir);
+      autoSync.schedule(normalizedDir);
     });
   } catch (e) {
     console.error(`[watch] failed to watch ${dirPath}:`, e);
@@ -1672,7 +1220,7 @@ protocol.registerSchemesAsPrivileged([
 // ──────────────────────────────────────────────────────────────────────────
 registerWriteHooks({
   scheduleAutoSnapshot,
-  scheduleAutoSync,
+  scheduleAutoSync: (dir: string) => autoSync.schedule(dir),
   getWatchedDir: () => watchedDir,
 });
 registerWatchHooks({
@@ -2199,12 +1747,12 @@ ipcMain.handle(
       // when the conflict was first detected; re-arm it now so the resolved content
       // is pushed without requiring the user to toggle Settings off/on.
       const resolvedKey = path.resolve(dir);
-      const resolvedState = autoSyncStates.get(resolvedKey);
+      const resolvedState = autoSync.getState(resolvedKey);
       if (resolvedState) {
         resolvedState.conflictLatched = false;
         // Re-arm the periodic timer (scheduleAutoSync is idempotent — safe to
         // call even if a timer is already running).
-        scheduleAutoSync(resolvedKey);
+        autoSync.schedule(resolvedKey);
       }
       return outcome;
     }),
@@ -2262,14 +1810,14 @@ ipcMain.handle("sync:setAutoSync", async (_e, enabled: boolean) => {
   // When re-enabling, clear the conflict latch for the open project and arm
   // the periodic timer — the author is explicitly asking to resume sync.
   if (enabled && watchedDir) {
-    const state = getOrCreateAutoSyncState(watchedDir);
+    const state = autoSync.getOrCreateState(watchedDir);
     state.conflictLatched = false;
     // Re-arm: scheduleAutoSync will start the interval.
-    scheduleAutoSync(watchedDir);
+    autoSync.schedule(watchedDir);
   }
   // When disabling, cancel all timers for the open project.
   if (!enabled && watchedDir) {
-    cancelAutoSyncTimer(watchedDir);
+    autoSync.cancelTimer(watchedDir);
   }
   return { ok: true, autoSync: enabled };
 });
@@ -2344,7 +1892,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   // first file change. Then do a PROMPT initial pull a few seconds after open
   // (not coupled to the 10-min snapshot debounce — that delayed it ~10.5 min and
   // hid teammate changes). syncProject snapshots-first, so a prompt run is safe.
-  armAutoSyncInterval(openedDir);
+  void autoSync.armInterval(openedDir);
 
   // Local-git projects with no syncable remote get no sync status, so the
   // bottom-bar pill would stay hidden — yet they DO keep version history via
@@ -2406,7 +1954,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   // or, for a healthy repo, schedule a fresh initialSyncTimer.
   void (async () => {
     // Acquire single-flight lock before any git I/O.
-    const syncState = getOrCreateAutoSyncState(openedDir);
+    const syncState = autoSync.getOrCreateState(openedDir);
     if (syncState.inFlight) {
       // Another sync is already in flight (unusual at open time) — skip preflight.
       return;
@@ -2423,7 +1971,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
         // Not a git project — release immediately and let the normal initial sync proceed.
         syncState.inFlight = false;
         setTimeout(() => {
-          if (watchedDir === openedDir) void runAutoSync(openedDir);
+          if (watchedDir === openedDir) void autoSync.run(openedDir);
         }, AUTO_SYNC_OPEN_DELAY_MS);
         return;
       }
@@ -2434,7 +1982,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
         // Healthy repo — release lock and schedule the normal initial sync.
         syncState.inFlight = false;
         const t = setTimeout(() => {
-          if (watchedDir === openedDir) void runAutoSync(openedDir);
+          if (watchedDir === openedDir) void autoSync.run(openedDir);
         }, AUTO_SYNC_OPEN_DELAY_MS);
         if (typeof (t as NodeJS.Timeout).unref === "function") (t as NodeJS.Timeout).unref();
         return;
@@ -2444,7 +1992,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       emitSyncStatus({
         state: "recovering",
         projectDir: openedDir,
-        lastSyncAt: autoSyncLastAt.get(openedDir) ?? null,
+        lastSyncAt: autoSync.getLastSyncAt(openedDir) ?? null,
         recovery: { phase: "checking", risk: "none" },
       });
 
@@ -2471,7 +2019,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       }
 
       const now = new Date().toISOString();
-      autoSyncLastAt.set(openedDir, now);
+      autoSync.setLastSyncAt(openedDir, now);
 
       // Snapshot the pending auto-sync trigger BEFORE the per-status branches:
       // runAutoSync may have set runAgain while we held the single-flight lock.
@@ -2500,7 +2048,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
             reason: "no queued trigger",
           });
           const t = setTimeout(() => {
-            if (watchedDir === openedDir) void runAutoSync(openedDir);
+            if (watchedDir === openedDir) void autoSync.run(openedDir);
           }, AUTO_SYNC_OPEN_DELAY_MS);
           if (typeof (t as NodeJS.Timeout).unref === "function") (t as NodeJS.Timeout).unref();
         } else {
@@ -2516,14 +2064,14 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
         // ages past the threshold, not minutes later.
         const delay = result.retryAfterMs ?? 60_000;
         const retryTimer = setTimeout(() => {
-          if (watchedDir === openedDir) void runAutoSync(openedDir);
+          if (watchedDir === openedDir) void autoSync.run(openedDir);
         }, delay);
         if (typeof retryTimer.unref === "function") retryTimer.unref();
       } else if (result.status === "needs_user" && result.files && result.files.length > 0) {
         // Conflict-latch: stop the periodic timer to avoid churning.
         syncState.conflictLatched = true;
         syncState.runAgain = false;
-        cancelAutoSyncTimer(openedDir);
+        autoSync.cancelTimer(openedDir);
         emitSyncStatus({
           state: "conflict",
           files: result.files as ConflictFileInfo[],
@@ -2535,7 +2083,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
         // blocked / failed / needs_user (auth) — latch and show guidance.
         syncState.conflictLatched = true;
         syncState.runAgain = false;
-        cancelAutoSyncTimer(openedDir);
+        autoSync.cancelTimer(openedDir);
         emitSyncStatus({
           state: "error",
           projectDir: openedDir,
@@ -2555,7 +2103,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       const runAgainDecision = decideRunAgainAfterPreflight(result.status, pendingRunAgain);
       syncState.runAgain = false;
       if (runAgainDecision === "run") {
-        void runAutoSync(openedDir);
+        void autoSync.run(openedDir);
       }
     } catch (err) {
       // Preflight is non-blocking: always release the lock so the project is not
@@ -2564,7 +2112,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       console.warn("[preflight] recovery failed (non-fatal):", err);
       plog?.error("preflight", "recovery failed (non-fatal)", { error: String(err) });
       const t = setTimeout(() => {
-        if (watchedDir === openedDir) void runAutoSync(openedDir);
+        if (watchedDir === openedDir) void autoSync.run(openedDir);
       }, AUTO_SYNC_OPEN_DELAY_MS);
       if (typeof (t as NodeJS.Timeout).unref === "function") (t as NodeJS.Timeout).unref();
     }
@@ -2648,9 +2196,9 @@ ipcMain.handle(
     const exportDir = path.resolve(args.input);
     // Use exportDir (already path.resolve'd) as the canonical key into
     // autoSyncStates so both the hard-block read and the mid-gate conflict write
-    // (getOrCreateAutoSyncState(exportDir) below) use the same key — regardless
+    // (autoSync.getOrCreateState(exportDir) below) use the same key — regardless
     // of whether exportDir happens to equal watchedDir.
-    const exportSyncState = autoSyncStates.get(exportDir);
+    const exportSyncState = autoSync.getState(exportDir);
     if (exportSyncState?.conflictLatched) {
       // Hard block: the author MUST resolve before a PDF can be trusted.
       const err = new Error(
@@ -2680,11 +2228,11 @@ ipcMain.handle(
           });
           if (syncOutcome.status === "conflict") {
             // A conflict surfaced mid-export-gate: latch and block.
-            const state = getOrCreateAutoSyncState(exportDir);
+            const state = autoSync.getOrCreateState(exportDir);
             state.conflictLatched = true;
-            cancelAutoSyncTimer(exportDir);
+            autoSync.cancelTimer(exportDir);
             const gateConflictAt = new Date().toISOString();
-            autoSyncLastAt.set(exportDir, gateConflictAt);
+            autoSync.setLastSyncAt(exportDir, gateConflictAt);
             emitSyncStatus({
               state: "conflict",
               files: syncOutcome.files,
@@ -2975,7 +2523,7 @@ app.whenReady().then(async () => {
     const isNowOnline = net.isOnline();
     if (!wasOnline && isNowOnline && watchedDir) {
       console.log("[auto-sync] network restored (online poll) — triggering sync");
-      void runAutoSync(watchedDir);
+      void autoSync.run(watchedDir);
     }
     wasOnline = isNowOnline;
   }, 15_000);
@@ -2989,7 +2537,7 @@ app.whenReady().then(async () => {
       const t = setTimeout(() => {
         if (watchedDir === resumedDir) {
           console.log("[auto-sync] system resumed — triggering sync");
-          void runAutoSync(resumedDir);
+          void autoSync.run(resumedDir);
         }
       }, 3_000);
       if (typeof t.unref === "function") t.unref();

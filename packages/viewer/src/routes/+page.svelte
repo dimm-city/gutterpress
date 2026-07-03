@@ -4,6 +4,8 @@
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
   import type { RecoveryItem } from "$lib/components/CrashRecoveryDialog.svelte";
   import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
+  import { ExportController } from "$lib/export/export-controller.svelte";
+  import type { ExportProgressEvent } from "$lib/export/export-controller.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type {
@@ -61,12 +63,6 @@
     found: boolean;
     usedBy: Array<{ feature: string; severity: "required" | "optional" }>;
   };
-  type ExportProgressEvent = {
-    exportId: string;
-    state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
-    pages?: number;
-    message?: string;
-  };
   type UrlPreviewBlockedEvent = {
     url: string;
     reason: string;
@@ -116,13 +112,9 @@
   let busyLabel = $state("");
   // PDF export runs in a separate render window, so the UI stays usable — track
   // it separately with a NON-blocking status pill instead of the modal overlay.
-  let exporting = $state(false);
-  let pdfProgress = $state<string | null>(null);
-  let activeExportId = $state<string | null>(null);
-  let exportState = $state<"idle" | "started" | "rendering" | "finalizing" | "canceling" | "success">("idle");
-  let exportPages = $state(0);
-  let exportElapsedSeconds = $state(0);
-  let exportTimer = $state<ReturnType<typeof setInterval> | null>(null);
+  // The whole export FSM (state + 1s ticker + progress label) lives in the
+  // ExportController (Phase 4b); the view drives it via intent methods.
+  const exportController = new ExportController();
   let saveWarning = $state<string | null>(null);
   let diagnosticsTools = $state<DiagnosticsTool[] | null>(null);
 
@@ -1500,64 +1492,6 @@
     return "PDF export failed. Open Help (?) → System tools to check for issues.";
   }
 
-  function startExportTimer() {
-    if (exportTimer) clearInterval(exportTimer);
-    exportElapsedSeconds = 0;
-    exportTimer = setInterval(() => {
-      exportElapsedSeconds += 1;
-      updateExportLabel();
-    }, 1000);
-  }
-
-  function stopExportTimer() {
-    if (exportTimer) {
-      clearInterval(exportTimer);
-      exportTimer = null;
-    }
-  }
-
-  function resetExportState() {
-    stopExportTimer();
-    exporting = false;
-    activeExportId = null;
-    exportState = "idle";
-    exportPages = 0;
-    exportElapsedSeconds = 0;
-    pdfProgress = null;
-  }
-
-  function updateExportLabel() {
-    const elapsed = exportElapsedSeconds >= 3 ? ` ${exportElapsedSeconds}s` : "";
-    if (exportState === "success") {
-      pdfProgress = `PDF saved${elapsed}`;
-      return;
-    }
-    if (exportState === "canceling") {
-      pdfProgress = "Canceling export…";
-      return;
-    }
-    if (exportState === "finalizing") {
-      pdfProgress = exportPages > 0 ? `Finalizing PDF (${exportPages} pages)…${elapsed}` : `Finalizing PDF…${elapsed}`;
-      return;
-    }
-    if (exportState === "rendering") {
-      pdfProgress = exportPages > 0 ? `Exporting page ${exportPages}…${elapsed}` : `Exporting…${elapsed}`;
-      return;
-    }
-    pdfProgress = `Preparing PDF…${elapsed}`;
-  }
-
-  function syncExportProgress(event: ExportProgressEvent) {
-    if (activeExportId && event.exportId !== activeExportId) return;
-    if (!activeExportId) activeExportId = event.exportId;
-    if (event.pages) exportPages = event.pages;
-    if (event.state === "started") exportState = "started";
-    else if (event.state === "rendering") exportState = "rendering";
-    else if (event.state === "finalizing") exportState = "finalizing";
-    else if (event.state === "success") exportState = "success";
-    updateExportLabel();
-  }
-
   async function startFolderPreview(
     dir: string,
     label = "Starting preview…",
@@ -1848,11 +1782,7 @@
 
     // Non-blocking: the build runs in a separate render window, so keep the
     // preview interactive and show progress in a corner pill (not the overlay).
-    exporting = true;
-    exportState = "started";
-    exportPages = 0;
-    pdfProgress = "Preparing PDF…";
-    startExportTimer();
+    exportController.start();
     let offProgress: (() => void) | undefined;
     try {
       // Live progress: Paged.js pagination of large books takes minutes, so show
@@ -1860,14 +1790,13 @@
       offProgress = platform.onBuildProgress(
         (p: ExportProgressEvent) => {
           if (p.state === "canceled") {
-            exportState = "canceling";
-            pdfProgress = "Canceling export…";
+            exportController.markCanceling();
             return;
           }
           if (p.state === "error") {
             return;
           }
-          syncExportProgress(p);
+          exportController.syncProgress(p);
         }
       );
       const data = await platform.build({
@@ -1884,10 +1813,7 @@
         skipPreValidate: true,
         skipPostValidate: true,
       });
-      if (data.exportId) activeExportId = data.exportId;
-      exportState = "success";
-      stopExportTimer();
-      updateExportLabel();
+      exportController.markSuccess(data.exportId);
       const savedPdfPath = data.pdfPath ?? outPath;
       toast?.success(`PDF saved to ${savedPdfPath}`, 8000, {
         label: "Show in Folder",
@@ -1898,13 +1824,13 @@
       await new Promise((resolve) => setTimeout(resolve, 2000));
     } catch (e) {
       if ((e as { code?: string })?.code === "EXPORT_CANCELED") {
-        resetExportState();
+        exportController.reset();
         return;
       }
       toast?.error(friendlyPdfError(e));
     } finally {
       offProgress?.();
-      resetExportState();
+      exportController.reset();
     }
   }
 
@@ -1916,8 +1842,8 @@
   // build() returns a path-based result there, handled by savePdf()).
   async function exportHtml() {
     const inputDir = currentDir;
-    if (!inputDir || busy || exporting || sourceMode === "url") return;
-    exporting = true;
+    if (!inputDir || busy || exportController.exporting || sourceMode === "url") return;
+    exportController.beginSimpleExport();
     try {
       const displayName = currentFolderDisplayName ?? basenameOf(inputDir) ?? "book";
       const data = await getPlatform().build({
@@ -1943,15 +1869,14 @@
     } catch (e) {
       toast?.error(e instanceof Error ? e.message : "HTML export failed");
     } finally {
-      exporting = false;
+      exportController.endSimpleExport();
     }
   }
 
   async function cancelExport() {
-    if (!activeExportId) return;
-    exportState = "canceling";
-    updateExportLabel();
-    await getPlatform().cancelExport(activeExportId).catch(() => {});
+    if (!exportController.activeExportId) return;
+    exportController.markCanceling();
+    await getPlatform().cancelExport(exportController.activeExportId).catch(() => {});
   }
 
   function syncPageState(state: PageState | undefined) {
@@ -2596,16 +2521,16 @@
 
 <!-- Non-blocking PDF export progress: a corner pill that leaves the preview
      fully interactive (the build runs in a separate render window). -->
-{#if exporting && pdfProgress}
+{#if exportController.exporting && exportController.pdfProgress}
   <div class="export-pill" role="status" aria-live="polite" aria-atomic="true">
-    {#if exportState === "success"}
+    {#if exportController.state === "success"}
       <span class="export-success" aria-hidden="true">✓</span>
     {:else}
       <span class="export-spinner" aria-hidden="true"></span>
     {/if}
-    <span class="export-label">{pdfProgress}</span>
-    {#if exportState !== "success" && exportState !== "canceling"}
-      <button class="export-cancel" onclick={cancelExport} disabled={!activeExportId}>Cancel</button>
+    <span class="export-label">{exportController.pdfProgress}</span>
+    {#if exportController.state !== "success" && exportController.state !== "canceling"}
+      <button class="export-cancel" onclick={cancelExport} disabled={!exportController.activeExportId}>Cancel</button>
     {/if}
   </div>
 {/if}
@@ -2901,11 +2826,11 @@
         <button
           class="primary save-btn icon-text"
           onclick={savePdf}
-          disabled={busy || exporting || !currentDir || sourceMode === "url"}
+          disabled={busy || exportController.exporting || !currentDir || sourceMode === "url"}
           title="Save as PDF (Ctrl+Shift+E)"
         >
           <Icon name="file-down" />
-          <span class="save-btn-label">{exporting ? "Saving…" : "Save PDF"}</span>
+          <span class="save-btn-label">{exportController.exporting ? "Saving…" : "Save PDF"}</span>
         </button>
         <!-- UX-023: explain why Save PDF is disabled -->
         {#if !currentDir && !busy}
@@ -2921,11 +2846,11 @@
         <button
           class="primary save-btn icon-text"
           onclick={exportHtml}
-          disabled={busy || exporting || !currentDir || sourceMode === "url"}
+          disabled={busy || exportController.exporting || !currentDir || sourceMode === "url"}
           title="Export as HTML"
         >
           <Icon name="file-down" />
-          <span class="save-btn-label">{exporting ? "Exporting…" : "Export HTML"}</span>
+          <span class="save-btn-label">{exportController.exporting ? "Exporting…" : "Export HTML"}</span>
         </button>
         {#if !currentDir && !busy}
           <span class="save-hint">Open a folder first</span>

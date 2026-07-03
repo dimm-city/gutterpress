@@ -62,6 +62,7 @@ import {
   type TokenStore,
 } from "./token-store.ts";
 import { resolveLogger, shortOid } from "./operation-log.ts";
+import { buildResolutionPlan } from "./resolution-plan.ts";
 // The single source of truth for git error decoding lives in the recovery
 // classifier — sync.ts consumes it rather than keeping parallel copies.
 import {
@@ -1034,66 +1035,15 @@ export async function resolveConflicts(
 
       // Build the per-file plan. "mine" is read from the CURRENT local tip
       // (not the stale localId) so edits made after the conflict was reported
-      // count as the author's version.
-      const driverChoice = new Map<string, "mine" | "theirs">();
-      const preWrites: Array<{ path: string; content: Uint8Array }> = [];
-      const preDeletes: string[] = [];
-      const postWrites: Array<{ path: string; content: Uint8Array }> = [];
-      const postDeletes: string[] = [];
-      // WHY postBinaryFixes: the merge driver receives file contents as UTF-8
-      // decoded strings. For binary files (images, PDFs, audio — any file with
-      // bytes >= 0x80 that are not valid UTF-8) this round-trip corrupts the
-      // chosen side's bytes (non-UTF-8 sequences become U+FFFD replacement
-      // chars). The merge driver is still called so the merge commit is honest
-      // (two-parent, correct tree oid for text files), but after the forced
-      // checkout we overwrite every decided binary file with the exact raw bytes
-      // read directly from the git object store (Uint8Array, never decoded).
-      // This has NO effect on text files (correct bytes in, correct bytes out).
-      const postBinaryFixes: Array<{ path: string; content: Uint8Array }> = [];
-
-      for (const resolution of options.resolutions) {
-        const filepath = resolution.path;
-        const mine = await tryReadBlob(dir, localTip, filepath, cache);
-        const theirs = await tryReadBlob(dir, remoteId, filepath, cache);
-
-        if (mine && theirs) {
-          // Edited in both copies → settled inside the merge by the driver.
-          if (resolution.choice === "theirs") {
-            driverChoice.set(filepath, "theirs");
-            // Write the chosen raw bytes after checkout to guard against
-            // UTF-8 round-trip corruption in the merge driver for binary files.
-            postBinaryFixes.push({ path: filepath, content: theirs });
-          } else {
-            driverChoice.set(filepath, "mine");
-            // Write the chosen raw bytes after checkout (binary safety — see
-            // postBinaryFixes comment above).
-            postBinaryFixes.push({ path: filepath, content: mine });
-            if (resolution.choice === "both") {
-              // Uniquified: a pre-existing "(online copy)" file (from an
-              // earlier "Keep both") must survive untouched.
-              preWrites.push({
-                path: await uniqueOnlineCopyPath(dir, filepath, [localTip, remoteId], cache),
-                content: theirs,
-              });
-            }
-          }
-        } else if (!mine && theirs) {
-          // The author deleted it; the online copy edited it. Equalize to the
-          // online content so the merge is clean; if they chose "mine"
-          // (stay deleted), remove it again right after the merge.
-          preWrites.push({ path: filepath, content: theirs });
-          if (resolution.choice === "mine") postDeletes.push(filepath);
-        } else if (mine && !theirs) {
-          // The online copy deleted it; the author edited it. Equalize to the
-          // deletion so the merge is clean; unless they chose the online
-          // version (accept the deletion), restore their file after the merge.
-          preDeletes.push(filepath);
-          if (resolution.choice !== "theirs") {
-            postWrites.push({ path: filepath, content: mine });
-          }
-        }
-        // (!mine && !theirs): nothing exists on either side — nothing to do.
-      }
+      // count as the author's version. The decision table is a PURE function
+      // (resolution-plan.ts) with the two blob reads injected; sync.ts owns the
+      // git side-effects of applying the plan below.
+      const { driverChoice, preWrites, preDeletes, postWrites, postDeletes, postBinaryFixes } =
+        await buildResolutionPlan(options.resolutions, localTip, remoteId, {
+          readBlob: (oid, filepath) => tryReadBlob(dir, oid, filepath, cache),
+          uniqueOnlineCopyPath: (filepath, oids) =>
+            uniqueOnlineCopyPath(dir, filepath, oids, cache),
+        });
 
       const applyChanges = async (
         writes: Array<{ path: string; content: Uint8Array }>,

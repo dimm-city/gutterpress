@@ -556,6 +556,42 @@ export async function shipRuntimePaginatedHtml(
   await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
 }
 
+/**
+ * Stage a self-contained working copy of the rendered `htmlFile` (book.html)
+ * plus its flattened assets and the vendored Paged.js polyfill into `stageDir`,
+ * then patch the staged HTML to load that polyfill. Both pagination passes —
+ * the static-HTML `--format html` pass and the PDF render pass — need the
+ * identical staged input on a local HTTP origin, so they share this sequence.
+ * `stageDir` is wiped and recreated first. Returns the path to the staged book.
+ */
+export async function stagePaginationInput(
+  htmlFile: string,
+  outDir: string,
+  assetDirs: string[],
+  stageDir: string
+): Promise<string> {
+  await fsp.rm(stageDir, { recursive: true, force: true });
+  await fsp.mkdir(stageDir, { recursive: true });
+  const stagedHtml = path.join(stageDir, BOOK_HTML_FILENAME);
+  await fsp.copyFile(htmlFile, stagedHtml);
+  if (assetDirs.length > 0) {
+    const flattenedAssetDirs = Array.from(
+      new Set(assetDirs.map(resolveAssetDestName))
+    );
+    await copyAssets(outDir, stageDir, flattenedAssetDirs);
+  }
+  // Vendor paged.js from embedded assets (works in compiled binary without node_modules)
+  await fsp.mkdir(path.join(stageDir, "vendor"), { recursive: true });
+  await fsp.copyFile(
+    await getAssetPath("vendor/paged.polyfill.js"),
+    path.join(stageDir, "vendor/paged.polyfill.js")
+  );
+  // Inject the break-inside handler + polyfill so pagination AND its cleanup
+  // (ghost-card dedupe, orphan-page hide) run during the pagination pass.
+  await patchHtmlForPagedjs(stagedHtml, "./vendor/paged.polyfill.js");
+  return stagedHtml;
+}
+
 export async function renderHtmlToPdf(
   inputHtml: string,
   outPdf: string,
@@ -727,24 +763,12 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
     } else {
       // Stage a working copy for the build-time pagination pass (assets + polyfill).
       const htmlStage = path.resolve(".print-md-stage-html");
-      await fsp.rm(htmlStage, { recursive: true, force: true });
-      await fsp.mkdir(htmlStage, { recursive: true });
-      const stagedBook = path.join(htmlStage, BOOK_HTML_FILENAME);
-      await fsp.copyFile(htmlFile, stagedBook);
-      if (assetDirs.length > 0) {
-        const flattenedAssetDirs = Array.from(
-          new Set(assetDirs.map(resolveAssetDestName))
-        );
-        await copyAssets(outDir, htmlStage, flattenedAssetDirs);
-      }
-      await fsp.mkdir(path.join(htmlStage, "vendor"), { recursive: true });
-      await fsp.copyFile(
-        await getAssetPath("vendor/paged.polyfill.js"),
-        path.join(htmlStage, "vendor/paged.polyfill.js")
+      const stagedBook = await stagePaginationInput(
+        htmlFile,
+        outDir,
+        assetDirs,
+        htmlStage
       );
-      // Inject the break-inside handler + polyfill so pagination AND its cleanup
-      // (ghost-card dedupe, orphan-page hide) run during the build pass.
-      await patchHtmlForPagedjs(stagedBook, "./vendor/paged.polyfill.js");
 
       log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
       const paginated = await paginateToStaticHtml(stagedBook);
@@ -797,27 +821,12 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
 
   // Stage build directory
   const stage = path.resolve(".print-md-stage");
-  await fsp.rm(stage, { recursive: true, force: true });
-  await fsp.mkdir(stage, { recursive: true });
-
-  const stagedHtml = path.join(stage, BOOK_HTML_FILENAME);
-  await fsp.copyFile(htmlFile, stagedHtml);
-
-  if (assetDirs.length > 0) {
-    const flattenedAssetDirs = Array.from(
-      new Set(assetDirs.map(resolveAssetDestName))
-    );
-    await copyAssets(outDir, stage, flattenedAssetDirs);
-  }
-
-  // Vendor paged.js from embedded assets (works in compiled binary without node_modules)
-  await fsp.mkdir(path.join(stage, "vendor"), { recursive: true });
-  await fsp.copyFile(
-    await getAssetPath("vendor/paged.polyfill.js"),
-    path.join(stage, "vendor/paged.polyfill.js")
+  const stagedHtml = await stagePaginationInput(
+    htmlFile,
+    outDir,
+    assetDirs,
+    stage
   );
-
-  await patchHtmlForPagedjs(stagedHtml, "./vendor/paged.polyfill.js");
 
   const rawPdf = pdfxMode ? path.join(stage, "raw.pdf") : path.resolve(pdfFile);
   log.info("Rendering HTML to PDF via Chromium+Paged.js");
