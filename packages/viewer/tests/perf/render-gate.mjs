@@ -56,8 +56,25 @@ const FINISH_CAP_S = 300; // layout must END within this (generous)
 const PORT = 9000 + Math.floor(Math.random() * 800);
 
 const log = (m) => console.log(`[render-gate] ${m}`);
+// Diagnostic buffers dumped on failure. The launched app's own stdout/stderr is
+// otherwise swallowed (see the drain handlers below), and the CDP target list is
+// never surfaced — so a startup crash/hang reads as an opaque "never appeared".
+// Capturing both makes CI failures debuggable without changing any pass/fail
+// criterion.
+const childOutput = [];
+let lastCdpList = null;
 const fail = (m) => {
   console.error(`[render-gate] FAIL: ${m}`);
+  if (lastCdpList !== null) {
+    console.error(`[render-gate] last CDP /json/list: ${JSON.stringify(lastCdpList)}`);
+  }
+  if (childOutput.length) {
+    console.error(`[render-gate] --- captured app stdout/stderr (last ${childOutput.length} chunk(s)) ---`);
+    for (const chunk of childOutput) process.stderr.write(chunk);
+    console.error(`\n[render-gate] --- end app output ---`);
+  } else {
+    console.error(`[render-gate] (no app stdout/stderr was captured before failure)`);
+  }
   cleanup();
   process.exit(1);
 };
@@ -90,8 +107,14 @@ const child = spawn(cmd, cmdArgs, {
     XDG_DATA_HOME: join(fakeHome, ".local", "share"),
   },
 });
-child.stdout.on("data", () => {});
-child.stderr.on("data", () => {});
+// Buffer (not discard) the app's output so fail() can dump it — bounded so a
+// chatty app can't grow this unboundedly.
+const bufferChunk = (d) => {
+  childOutput.push(d.toString());
+  if (childOutput.length > 300) childOutput.shift();
+};
+child.stdout.on("data", bufferChunk);
+child.stderr.on("data", bufferChunk);
 let cleaned = false;
 function cleanup() {
   if (cleaned) return;
@@ -111,6 +134,7 @@ async function getWsUrl() {
     try {
       const r = await fetch(`http://127.0.0.1:${PORT}/json/list`);
       const list = await r.json();
+      lastCdpList = list; // remember the most recent target list for failure diagnostics
       const page = list.find((t) => t.type === "page" && String(t.url).startsWith("app://"));
       if (page) return page.webSocketDebuggerUrl;
     } catch {}
