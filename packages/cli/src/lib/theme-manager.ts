@@ -34,10 +34,12 @@
 import { cp, mkdir, readFile, readdir, stat, writeFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { parseDocument, isSeq, YAMLSeq, Scalar } from "yaml";
-import type { Node, Document } from "yaml";
+import { isSeq, Scalar } from "yaml";
+import type { Node } from "yaml";
 
 import { getAssetPath } from "./embedded-assets.ts";
+import { loadManifestDoc, ensureSeq } from "./manifest-doc.ts";
+import { slugify } from "./slug.ts";
 
 /** Folder (relative to the project root) themes are copied into on apply/import. */
 export const THEMES_DIR = "themes";
@@ -142,16 +144,9 @@ function prettify(slug: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-/** Slugify a theme name/url into a safe directory id. */
-function slugify(name: string): string {
-  return (
-    name
-      .normalize("NFKD")
-      .replace(/[̀-ͯ]/g, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "theme"
-  );
+/** Slugify a theme name/url into a safe directory id (never empty — "theme"). */
+function themeSlug(name: string): string {
+  return slugify(name, "theme");
 }
 
 /**
@@ -161,7 +156,7 @@ function slugify(name: string): string {
  * data-loss/exfiltration vector. Returns the resolved themes-dir path.
  */
 function themeDirFor(projectDir: string, id: string): string {
-  if (typeof id !== "string" || id.length === 0 || slugify(id) !== id) {
+  if (typeof id !== "string" || id.length === 0 || themeSlug(id) !== id) {
     throw new Error(`Invalid theme id "${id}".`);
   }
   return path.join(projectDir, THEMES_DIR, id);
@@ -231,25 +226,6 @@ export async function listProjectThemes(projectDir: string): Promise<ThemeInfo[]
 
 // ── Manifest wiring ──────────────────────────────────────────────────────────
 
-/** Resolve `manifest.yaml`/`.yml` inside a project dir; prefers an existing file. */
-function manifestPathFor(projectDir: string): string {
-  const yaml = path.join(projectDir, "manifest.yaml");
-  const yml = path.join(projectDir, "manifest.yml");
-  if (!existsSync(yaml) && existsSync(yml)) return yml;
-  return yaml;
-}
-
-async function loadDoc(projectDir: string): Promise<{ doc: Document.Parsed; file: string }> {
-  const file = manifestPathFor(projectDir);
-  let text = "";
-  try {
-    text = await readFile(file, "utf8");
-  } catch {
-    text = "";
-  }
-  return { doc: parseDocument(text), file };
-}
-
 /** The relative `styles:` href for a project theme's css. */
 function themeStyleHref(id: string): string {
   return `${THEMES_DIR}/${id}/theme.css`;
@@ -266,24 +242,13 @@ function styleHrefOf(item: unknown): string | null {
   return typeof item === "string" ? item : null;
 }
 
-/** The `styles:` sequence, creating it if missing. */
-function ensureStylesSeq(doc: Document.Parsed): YAMLSeq {
-  let seq = doc.get("styles", true);
-  if (!isSeq(seq)) {
-    const fresh = new YAMLSeq(doc.schema);
-    doc.set("styles", fresh);
-    seq = fresh;
-  }
-  return seq as YAMLSeq;
-}
-
 /**
  * Read the project's currently active theme (the theme whose `theme.css` is in
  * the manifest `styles:` list AND whose folder exists under `themes/`). Returns
  * `null` when no theme is applied.
  */
 export async function getActiveTheme(projectDir: string): Promise<ThemeInfo | null> {
-  const { doc } = await loadDoc(projectDir);
+  const { doc } = await loadManifestDoc(projectDir);
   const seq = doc.get("styles", true);
   if (!isSeq(seq)) return null;
   for (const item of seq.items as Node[]) {
@@ -307,8 +272,8 @@ export async function getActiveTheme(projectDir: string): Promise<ThemeInfo | nu
  * formatting round-trip via the yaml Document API.
  */
 async function setActiveThemeStyle(projectDir: string, id: string): Promise<void> {
-  const { doc, file } = await loadDoc(projectDir);
-  const seq = ensureStylesSeq(doc);
+  const { doc, file } = await loadManifestDoc(projectDir);
+  const seq = ensureSeq(doc, "styles");
   const href = themeStyleHref(id);
 
   // Drop any existing theme style entry (we keep exactly one active theme).
@@ -362,10 +327,10 @@ export async function applyTheme(
 /** Ensure a unique id under the project's themes/ folder (suffix on collision). */
 async function uniqueThemeId(projectDir: string, base: string): Promise<string> {
   const root = path.join(projectDir, THEMES_DIR);
-  let id = slugify(base);
+  let id = themeSlug(base);
   let n = 2;
   while (existsSync(path.join(root, id))) {
-    id = `${slugify(base)}-${n++}`;
+    id = `${themeSlug(base)}-${n++}`;
   }
   return id;
 }
@@ -539,7 +504,7 @@ export async function removeProjectTheme(projectDir: string, id: string): Promis
   if (existsSync(dir)) {
     await rm(dir, { recursive: true, force: true });
   }
-  const { doc, file } = await loadDoc(projectDir);
+  const { doc, file } = await loadManifestDoc(projectDir);
   const seq = doc.get("styles", true);
   if (isSeq(seq)) {
     const href = themeStyleHref(id);

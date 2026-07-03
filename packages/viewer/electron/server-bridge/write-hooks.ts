@@ -9,23 +9,13 @@
  * The server route calls getWriteHooks() to retrieve them.
  */
 
+import { createHostBridge } from './create-host-bridge';
+
 export interface WriteHooks {
   scheduleAutoSnapshot: (dir: string) => void;
   scheduleAutoSync: (dir: string) => void;
   getWatchedDir: () => string | null;
 }
 
-const GLOBAL_KEY = '__printMdWriteHooks__' as const;
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __printMdWriteHooks__: WriteHooks | undefined;
-}
-
-export function registerWriteHooks(hooks: WriteHooks): void {
-  globalThis[GLOBAL_KEY] = hooks;
-}
-
-export function getWriteHooks(): WriteHooks | null {
-  return globalThis[GLOBAL_KEY] ?? null;
-}
+export const { register: registerWriteHooks, get: getWriteHooks } =
+  createHostBridge<WriteHooks>('__printMdWriteHooks__');

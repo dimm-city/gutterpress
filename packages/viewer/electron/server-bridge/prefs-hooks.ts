@@ -9,6 +9,8 @@
  * Server routes call getPrefsHooks() to retrieve them.
  */
 
+import { createHostBridge } from './create-host-bridge';
+
 export interface PrefsHooks<
   LibModule = unknown,
   Prefs = Record<string, unknown>,
@@ -37,12 +39,9 @@ export interface PrefsHooks<
   loadLib: () => Promise<LibModule>;
 }
 
-const GLOBAL_KEY = '__printMdPrefsHooks__' as const;
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __printMdPrefsHooks__: unknown;
-}
+// Generic per call-site; the bridge stores the base shape and the wrappers
+// re-apply the type parameters so callers keep `getPrefsHooks<LibModule>()`.
+const bridge = createHostBridge<PrefsHooks>('__printMdPrefsHooks__');
 
 export function registerPrefsHooks<
   LibModule,
@@ -51,7 +50,7 @@ export function registerPrefsHooks<
   ProjectStates,
   RecentFolderEntry extends { path: string },
 >(hooks: PrefsHooks<LibModule, Prefs, Settings, ProjectStates, RecentFolderEntry>): void {
-  globalThis[GLOBAL_KEY] = hooks;
+  bridge.register(hooks as unknown as PrefsHooks);
 }
 
 export function getPrefsHooks<
@@ -61,9 +60,7 @@ export function getPrefsHooks<
   ProjectStates = Record<string, unknown> | undefined,
   RecentFolderEntry extends { path: string } = { path: string; [k: string]: unknown },
 >(): PrefsHooks<LibModule, Prefs, Settings, ProjectStates, RecentFolderEntry> | null {
-  return (
-    globalThis[GLOBAL_KEY] as
-      | PrefsHooks<LibModule, Prefs, Settings, ProjectStates, RecentFolderEntry>
-      | undefined
-  ) ?? null;
+  return bridge.get() as unknown as
+    | PrefsHooks<LibModule, Prefs, Settings, ProjectStates, RecentFolderEntry>
+    | null;
 }

@@ -36,19 +36,18 @@
 
 import { pullChanges } from "../sync.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";
+import { mapOutcomeToResult, syncOptionsFrom } from "./outcome-mapping.ts";
 import type { RecoverFn, RecoveryResult } from "./types.ts";
+
+/** Jargon-free copy shown when both copies changed the same un-mergeable file. */
+const BINARY_CONFLICT_MESSAGE =
+  "Your copy and the online copy both changed files that can't be combined automatically. Choose which version to keep for each file.";
 
 export const recover: RecoverFn = async (ctx, _error): Promise<RecoveryResult> => {
   // Pull without pushing — detects the binary conflict without touching remote.
   let pullOutcome;
   try {
-    pullOutcome = await pullChanges({
-      projectDir: ctx.projectDir,
-      credential: ctx.credential,
-      tokenStore: ctx.tokenStore,
-      authorName: ctx.authorName,
-      httpClient: ctx.httpClient,
-    });
+    pullOutcome = await pullChanges(syncOptionsFrom(ctx));
   } catch (e) {
     // Unexpected throw from pullChanges — fail safe, no changes made.
     return {
@@ -59,72 +58,41 @@ export const recover: RecoverFn = async (ctx, _error): Promise<RecoveryResult> =
     };
   }
 
-  switch (pullOutcome.status) {
-    case "conflict": {
-      // Conflict detected — surface to the user for manual choice.
-      // Thread localId and remoteId through so the caller can invoke
-      // resolveConflicts with the correct OIDs after the user decides.
-      const guidance = makeManualGuidance(ctx, "binary_conflict");
-
-      // Fire the fault hook if provided (allows test to inject failures
-      // at the write_conflict_snapshot point). If it throws we catch it
-      // below and return a safe fallback rather than propagating.
-      try {
-        await ctx.faults?.before("write_conflict_snapshot");
-      } catch (faultErr) {
-        // Fault injected — return needs_user without the snapshot write.
-        // The file list is already known from the pull outcome; we still
-        // surface it so the caller can show the UI (just without snapshot).
-        return {
-          status: "needs_user",
-          message:
-            "Your copy and the online copy both changed files that can't be combined automatically. Choose which version to keep for each file.",
-          guidance,
-          files: pullOutcome.files,
-          // Thread OIDs for resolveConflicts (typed as extra fields beyond RecoveryResult).
-          ...({ localId: pullOutcome.localId, remoteId: pullOutcome.remoteId } as Record<string, string>),
-        } as RecoveryResult & { localId: string; remoteId: string };
-      }
-
-      return {
-        status: "needs_user",
-        message:
-          "Your copy and the online copy both changed files that can't be combined automatically. Choose which version to keep for each file.",
-        guidance,
-        files: pullOutcome.files,
-        // Thread localId/remoteId through so the caller can invoke resolveConflicts.
-        ...({ localId: pullOutcome.localId, remoteId: pullOutcome.remoteId } as Record<string, string>),
-      } as RecoveryResult & { localId: string; remoteId: string };
+  // Fire the fault hook if provided (lets tests inject a failure at the
+  // write_conflict_snapshot point). If it throws we swallow it here and still
+  // surface the conflict below — the file list is already known from the pull
+  // outcome, so the caller can show the chooser regardless.
+  if (pullOutcome.status === "conflict") {
+    try {
+      await ctx.faults?.before("write_conflict_snapshot");
+    } catch {
+      // Fault injected — proceed to the same needs_user result (no snapshot).
     }
+  }
 
-    case "pulled":
-    case "up-to-date":
-      // No conflict after all — the pull succeeded cleanly.
-      return {
-        status: "recovered",
-        message: pullOutcome.message,
-      };
-
-    case "auth":
+  // Default map handles pulled/up-to-date → recovered, auth → needs_user
+  // (auth_required), and offline → retry_later (30 s). This handler
+  // intentionally differs on:
+  //   - conflict: binary_conflict guidance + custom copy, threading the tip
+  //               OIDs through so the caller can invoke resolveConflicts.
+  //   - error:    failed_no_changes_made with binary_conflict guidance (not the
+  //               generic unknown copy) — no repair was run, nothing changed.
+  return mapOutcomeToResult(ctx, pullOutcome, {
+    conflict: (c, o) => {
+      const conflict = o as Extract<typeof pullOutcome, { status: "conflict" }>;
       return {
         status: "needs_user",
-        message: pullOutcome.message,
-        guidance: makeManualGuidance(ctx, "auth_required"),
+        message: BINARY_CONFLICT_MESSAGE,
+        guidance: makeManualGuidance(c, "binary_conflict"),
+        files: conflict.files,
+        localId: conflict.localId,
+        remoteId: conflict.remoteId,
       };
-
-    case "offline":
-      return {
-        status: "retry_later",
-        message: pullOutcome.message,
-        retryAfterMs: 30_000,
-      };
-
-    default:
-      // 'error' or any future status: no repair was run, nothing changed.
-      return {
-        status: "failed_no_changes_made",
-        message: pullOutcome.message,
-        guidance: makeManualGuidance(ctx, "binary_conflict"),
-      };
-  }
+    },
+    error: (c, o) => ({
+      status: "failed_no_changes_made",
+      message: o.message,
+      guidance: makeManualGuidance(c, "binary_conflict"),
+    }),
+  });
 };

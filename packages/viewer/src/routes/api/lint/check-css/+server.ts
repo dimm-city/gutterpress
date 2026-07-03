@@ -1,5 +1,6 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { getPrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
+import { jsonRoute } from '../../_lib/handler';
 import type { RequestHandler } from './$types';
 
 interface CssLintLibModule {
@@ -12,19 +13,12 @@ interface CssLintLibModule {
   }>;
 }
 
-export const POST: RequestHandler = async ({ request }) => {
-  try {
-    const body = await request.json().catch(() => ({})) as { cssPath?: string; content?: string };
-    const { cssPath, content } = body;
-    if (typeof content !== 'string') return error(400, "'content' string is required");
+export const POST: RequestHandler = jsonRoute(async (body: { cssPath?: string; content?: string }) => {
+  const { cssPath, content } = body;
+  if (typeof content !== 'string') error(400, "'content' string is required");
 
-    const hooks = getPrefsHooks<CssLintLibModule>();
-    if (!hooks) return error(503, 'Prefs hooks not registered');
-    const lib = await hooks.loadLib();
-    const warnings = lib.checkCss(content, cssPath);
-    return json(warnings);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return error(500, msg);
-  }
-};
+  const hooks = getPrefsHooks<CssLintLibModule>();
+  if (!hooks) error(503, 'Prefs hooks not registered');
+  const lib = await hooks.loadLib();
+  return lib.checkCss(content, cssPath);
+});

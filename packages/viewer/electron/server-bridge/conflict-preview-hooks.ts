@@ -2,6 +2,8 @@
  * Shared conflict-preview hooks for sync:* server routes.
  */
 
+import { createHostBridge } from './create-host-bridge';
+
 export type ConflictKind = 'both-edited' | 'you-deleted' | 'online-deleted';
 
 export interface ConflictPreviewResult {
@@ -19,17 +21,7 @@ export interface ConflictPreviewHooks {
   ): Promise<ConflictPreviewResult>;
 }
 
-const GLOBAL_KEY = '__printMdConflictPreviewHooks__' as const;
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __printMdConflictPreviewHooks__: ConflictPreviewHooks | undefined;
-}
-
-export function registerConflictPreviewHooks(hooks: ConflictPreviewHooks): void {
-  globalThis[GLOBAL_KEY] = hooks;
-}
-
-export function getConflictPreviewHooks(): ConflictPreviewHooks | null {
-  return globalThis[GLOBAL_KEY] ?? null;
-}
+export const {
+  register: registerConflictPreviewHooks,
+  get: getConflictPreviewHooks,
+} = createHostBridge<ConflictPreviewHooks>('__printMdConflictPreviewHooks__');

@@ -137,6 +137,13 @@ export type RecoveryResult =
       guidance: ManualGuidance;
       files?: ConflictFile[];
       backupZipPath?: string;
+      /**
+       * Conflict tip OIDs threaded through to the host so it can call
+       * resolveConflicts with the correct local/remote versions after the user
+       * chooses. Present on the per-file conflict-chooser paths only.
+       */
+      localId?: string;
+      remoteId?: string;
     }
   | { status: "blocked"; message: string; guidance: ManualGuidance; backupZipPath?: string }
   | {

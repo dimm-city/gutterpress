@@ -17,10 +17,18 @@ This repo is a Bun workspace with two packages:
   no separate `compile` package.json script or `scripts/compile.ts`. The
   no-bundlers-at-runtime rule (§1 below) applies to this package.
 - **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron desktop
-  app with a static SvelteKit SPA frontend. The SPA is built with
-  `@sveltejs/adapter-static` and served by Electron via a custom `app://`
-  protocol handler. The 3 API endpoints (status, preview, build) are
-  `ipcMain.handle()` calls, not HTTP routes. The Electron main + preload are
+  app with a SvelteKit SPA frontend. The SPA is built with
+  `@sveltejs/adapter-node`, which emits a Node HTTP handler (`build/handler.js`).
+  In production the Electron main process starts that handler on a local
+  `127.0.0.1` server (OS-assigned port) and serves the SPA to the window via a
+  custom `app://` protocol handler that proxies every request to the local
+  server with `fetch`. Host capabilities are exposed as ~85
+  `src/routes/api/**/+server.ts` HTTP routes (status, fs, dialog, theme, plugin,
+  remote/sync, vcs, recovery, …) — NOT a handful of `ipcMain.handle()`
+  endpoints. The `ipcMain`/preload bridge is deliberately narrow: it carries
+  only the push-event streams (build progress, folder-changed, sync status,
+  updater events) and the build/preview pipeline calls that need a live
+  BrowserWindow. The Electron main + preload are
   built by **electron-vite** to `out/main/main.js` + `out/preload/`; the main
   is ESM and loads the lib with a plain dynamic `import("@dimm-city/print-md")`
   (no CJS→ESM `new Function` bridge — that was removed when the build moved to
@@ -223,10 +231,24 @@ are unaffected by this rule — this rule governs the new Git/source surface onl
 > for **every Electron application started in this org** — it is the gold
 > standard, applied by default. See ADR 0004 (platform abstraction; kept under `.docs-archive/`).
 
-The viewer is an Electron shell hosting a **static SvelteKit SPA**. The SPA is
-written so it could run unchanged in a browser PWA tomorrow. To make that true —
-and to keep the desktop build correct — there is exactly **one seam** between the
-UI and the host, and it is honoured absolutely:
+The viewer is an Electron shell hosting a **SvelteKit SPA** (built with
+`@sveltejs/adapter-node`). The SPA is written so it could run unchanged in a
+browser PWA tomorrow. To make that true — and to keep the desktop build correct
+— there is exactly **one seam** between the UI and the host, and it is honoured
+absolutely.
+
+**Transport.** In production, Electron main starts the adapter-node handler
+(`build/handler.js`) on a local `127.0.0.1` HTTP server and serves the window
+via the `app://` protocol, which proxies each request to that server with
+`fetch`. Host capabilities the renderer needs are reached two ways: the bulk
+(status, fs, dialog, theme, plugin, remote/sync, vcs, recovery, …) are ordinary
+`src/routes/api/**/+server.ts` HTTP routes the SPA calls with `fetch("/api/…")`;
+a **narrow** `ipcMain`/preload bridge carries only the things a plain HTTP
+request can't — the push-event streams (build progress, folder-changed, sync
+status, updater events) and the preview/build pipeline calls that drive a live
+BrowserWindow. Either way the renderer stays PWA-clean — a `+server.ts` route is
+host Node code that happens to live under `src/routes/`, and it never leaks into
+the client bundle.
 
 **The renderer (the SPA, everything under `packages/viewer/src/`) MUST stay
 "PWA-clean": it contains ZERO platform/host code.**
@@ -244,27 +266,44 @@ UI and the host, and it is honoured absolutely:
   `platform.X(...)` — a platform-agnostic, typed, async API. It never touches
   `window.electron`/`ipcRenderer` directly (only `electron-adapter.ts` may).
 
-**Adding a new host capability** means wiring it across the **five layers**, then
-calling it via `getPlatform()`:
+**Adding a new host capability.** The default path is a **server route** —
+request/response Node work the SPA reaches over HTTP:
 
-1. `electron/main.ts` — `ipcMain.handle("ns:op", …)` (the real Node work)
-2. `electron/preload.ts` — expose it on the `contextBridge` object
-3. `electron/types.d.ts` — add it to the `Window.electron` shape
-4. `src/lib/platform/contract.ts` — add it to `HostServices` + `ElectronBridge`
-   (and define any payload types **locally**, decoupled from the lib)
-5. `ElectronAdapter` (delegate to `bridge().op`) **and** `WebAdapter` (stub:
-   reject / throw / safe no-op until the PWA lands)
+1. `src/routes/api/<ns>/<op>/+server.ts` — the real Node work (may `import`
+   `@dimm-city/print-md`, `node:*`, postcss, isomorphic-git — it runs in main,
+   never in the client bundle)
+2. `src/lib/api` — the typed `fetch("/api/<ns>/<op>")` wrapper the adapter calls
+3. `src/lib/platform/contract.ts` — add it to `HostServices` (define payload
+   types **locally**, decoupled from the lib)
+4. `ElectronAdapter` (call through the `api` wrapper) **and** `WebAdapter`
+   (stub: reject / throw / safe no-op until the PWA lands)
 
-**The canonical fix when node code is needed by the UI:** don't bundle it into
-the renderer — run it in the host and expose a narrow async method. Example:
-CSS print-safety linting (`checkCss`) is postcss-based, so it runs in `main` via
-a `lint:checkCss` IPC and the editor's lint gutter calls
+Use the **IPC bridge** only when a plain request/response won't do — a push
+stream, or a call that must drive a live BrowserWindow (preview/build). That
+path adds two more layers:
+
+- `electron/main.ts` — `ipcMain.handle("ns:op", …)` (or a `webContents.send`
+  push channel)
+- `electron/preload.ts` — expose it on the `contextBridge` object, and
+  `electron/types.d.ts` — add it to the `Window.electron` shape, and
+  `contract.ts` — add it to `ElectronBridge`
+
+Either way the renderer only ever calls `getPlatform().X(...)`; it never
+touches `window.electron`/`ipcRenderer` directly (only `electron-adapter.ts`
+may). **The canonical fix when node code is needed by the UI:** don't bundle it
+into the renderer — run it in the host and expose a narrow async method. Example:
+CSS print-safety linting (`checkCss`) is postcss-based, so it runs host-side (in
+the `api/lint/check-css` server route) and the editor's lint gutter calls
 `getPlatform().checkCss(...)` (CodeMirror accepts a `Promise` lint source).
 
 **Verification (must pass before any viewer change is "done"):** after
-`npm run build`, the SPA bundle must contain no host code —
-`grep -rlE "fileURLToPath|node:module|createRequire|node:fs|node:url|isomorphic-git" build/_app/`
-must output **nothing**. Treat a hit as a release-blocking regression. (The
+`npm run build`, the client SPA bundle must contain no host code — adapter-node
+emits the browser assets to `build/client/`, so
+`grep -rlE "fileURLToPath|node:module|createRequire|node:fs|node:url|isomorphic-git" build/client/_app/`
+must output **nothing**. (The server side — `build/server/`, `build/handler.js`,
+and the `+server.ts` routes compiled into it — is host Node code by design;
+scope the check to `build/client/`.) Treat a hit as a release-blocking
+regression. (The
 `bun build --compile` CLI binary is the *opposite* environment — it bundles the
 lib's Node code on purpose; §1/§3 govern it. This rule governs the renderer.)
 

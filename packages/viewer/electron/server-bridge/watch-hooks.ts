@@ -3,23 +3,13 @@
  * Same globalThis pattern as write-hooks.ts.
  */
 
+import { createHostBridge } from './create-host-bridge';
+
 export interface WatchHooks {
   startFolderWatch: (dir: string) => void;
   stopFolderWatch: () => void;
   getWatchedDir: () => string | null;
 }
 
-const GLOBAL_KEY = '__printMdWatchHooks__' as const;
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __printMdWatchHooks__: WatchHooks | undefined;
-}
-
-export function registerWatchHooks(hooks: WatchHooks): void {
-  globalThis[GLOBAL_KEY] = hooks;
-}
-
-export function getWatchHooks(): WatchHooks | null {
-  return globalThis[GLOBAL_KEY] ?? null;
-}
+export const { register: registerWatchHooks, get: getWatchHooks } =
+  createHostBridge<WatchHooks>('__printMdWatchHooks__');

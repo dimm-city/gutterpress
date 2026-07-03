@@ -1,6 +1,7 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import path from 'node:path';
 import { getPrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
+import { jsonRoute, requireAbsolute } from '../../_lib/handler';
 import type { RequestHandler } from './$types';
 
 interface LintCheckResult {
@@ -21,43 +22,36 @@ interface ValidationLibModule {
   }) => Promise<{ report: { results: LintCheckResult[] } }>;
 }
 
-export const POST: RequestHandler = async ({ request }) => {
-  try {
-    const body = await request.json().catch(() => ({})) as { projectDir?: string };
-    const projectDir = body.projectDir;
-    if (!projectDir || typeof projectDir !== 'string') return error(400, "'projectDir' string is required");
-    if (!path.isAbsolute(projectDir)) return error(400, `lint:project requires an absolute path, got: ${projectDir}`);
+export const POST: RequestHandler = jsonRoute(async (body: { projectDir?: string }) => {
+  const projectDir = body.projectDir;
+  if (!projectDir || typeof projectDir !== 'string') error(400, "'projectDir' string is required");
+  requireAbsolute(projectDir, 'lint:project');
 
-    const hooks = getPrefsHooks<ValidationLibModule>();
-    if (!hooks) return error(503, 'Prefs hooks not registered');
-    const lib = await hooks.loadLib();
-    const execution = await lib.executeValidation({
-      input: projectDir,
-      category: 'source',
-      phase: 'pre-build',
-    });
-    const dirPrefix = projectDir.replace(/[\\/]+$/, '') + path.sep;
-    const problems = execution.report.results.map((r) => {
-      const abs = r.file ? path.resolve(r.file) : undefined;
-      const rel =
-        abs && abs.startsWith(dirPrefix)
-          ? abs.slice(dirPrefix.length).split(path.sep).join('/')
-          : abs
-            ? path.basename(abs)
-            : undefined;
-      return {
-        filePath: abs,
-        file: rel,
-        line: r.line,
-        column: r.column,
-        severity: r.severity,
-        message: r.message,
-        source: r.checkId,
-      };
-    });
-    return json(problems);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return error(500, msg);
-  }
-};
+  const hooks = getPrefsHooks<ValidationLibModule>();
+  if (!hooks) error(503, 'Prefs hooks not registered');
+  const lib = await hooks.loadLib();
+  const execution = await lib.executeValidation({
+    input: projectDir,
+    category: 'source',
+    phase: 'pre-build',
+  });
+  const dirPrefix = projectDir.replace(/[\\/]+$/, '') + path.sep;
+  return execution.report.results.map((r) => {
+    const abs = r.file ? path.resolve(r.file) : undefined;
+    const rel =
+      abs && abs.startsWith(dirPrefix)
+        ? abs.slice(dirPrefix.length).split(path.sep).join('/')
+        : abs
+          ? path.basename(abs)
+          : undefined;
+    return {
+      filePath: abs,
+      file: rel,
+      line: r.line,
+      column: r.column,
+      severity: r.severity,
+      message: r.message,
+      source: r.checkId,
+    };
+  });
+});

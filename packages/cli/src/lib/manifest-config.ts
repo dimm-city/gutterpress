@@ -13,11 +13,11 @@
  * Bundle-safe (CLAUDE.md §1/§3): no runtime package.json reads, no computed
  * dynamic imports, no bundlers.
  */
-import { existsSync } from "node:fs";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { parseDocument, isSeq, isMap, YAMLSeq, Scalar } from "yaml";
 import type { Document } from "yaml";
+import { resolveManifestPath, loadManifestDoc } from "./manifest-doc";
 
 /** The author-facing manifest subset the Config view can read + write. */
 export interface ProjectConfigFields {
@@ -27,26 +27,6 @@ export interface ProjectConfigFields {
   outputFilename?: string;
   /** `source.files` — the markdown inputs (null means "all chapter files"). */
   sourceFiles?: string[] | null;
-}
-
-/** Resolve `manifest.yaml`/`.yml` inside a project dir; prefers an existing file. */
-function manifestPathFor(projectDir: string): string {
-  const yaml = path.join(projectDir, "manifest.yaml");
-  const yml = path.join(projectDir, "manifest.yml");
-  if (!existsSync(yaml) && existsSync(yml)) return yml;
-  return yaml;
-}
-
-/** Load the manifest as a yaml Document (empty doc when absent). */
-async function loadDoc(projectDir: string): Promise<{ doc: Document.Parsed; file: string }> {
-  const file = manifestPathFor(projectDir);
-  let text = "";
-  try {
-    text = await readFile(file, "utf8");
-  } catch {
-    text = "";
-  }
-  return { doc: parseDocument(text), file };
 }
 
 /** Write the doc back, creating the project dir if needed. */
@@ -81,7 +61,7 @@ export async function setManifestFields(
   projectDir: string,
   updates: ProjectConfigFields,
 ): Promise<ProjectConfigFields> {
-  const { doc, file } = await loadDoc(projectDir);
+  const { doc, file } = await loadManifestDoc(projectDir);
 
   if (hasKey(updates, "title")) {
     if (updates.title === undefined || updates.title === "") {
@@ -136,7 +116,7 @@ export async function setManifestFields(
  * surfaces empty/absent fields as empty strings so the form inputs are editable.
  */
 export async function readManifestFields(projectDir: string): Promise<ProjectConfigFields> {
-  const file = manifestPathFor(projectDir);
+  const file = resolveManifestPath(projectDir);
   try {
     const text = await readFile(file, "utf8");
     const doc = parseDocument(text);
@@ -178,7 +158,7 @@ export async function setActiveStyles(
   projectDir: string,
   paths: string[],
 ): Promise<string[]> {
-  const { doc, file } = await loadDoc(projectDir);
+  const { doc, file } = await loadManifestDoc(projectDir);
   if (paths.length === 0) {
     doc.delete("styles");
   } else {

@@ -8,6 +8,7 @@ import {
   stripPaginationRuntime,
   injectNavigationScripts,
   shipRuntimePaginatedHtml,
+  stagePaginationInput,
 } from "./build-runner.ts";
 
 // The break-inside handler block is injected by patchHtmlForPagedjs and ends up
@@ -82,6 +83,46 @@ test("shipRuntimePaginatedHtml rewrites the book + vendors the polyfill", async 
     expect(existsSync(join(dir, "vendor/paged.polyfill.js"))).toBe(true);
     expect(existsSync(join(dir, "preview/scripts/pagedjs-interface.js"))).toBe(true);
     expect(existsSync(join(dir, "preview/scripts/pagedjs-bridge.js"))).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// The shared staging sequence used by BOTH the HTML and PDF pagination passes:
+// wipe/recreate the stage dir, copy the rendered book.html, vendor the Paged.js
+// polyfill, and patch the staged HTML to load it. No Chromium involved.
+test("stagePaginationInput stages book + vendors + patches the polyfill", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pmd-stage-"));
+  try {
+    const { mkdir } = await import("node:fs/promises");
+    const outDir = join(dir, "out");
+    const stageDir = join(dir, "stage");
+    const htmlFile = join(outDir, "book.html");
+    // Write the source book (no assets configured).
+    await mkdir(outDir, { recursive: true });
+    await writeFile(
+      htmlFile,
+      "<!DOCTYPE html><html><head><title>x</title></head><body><p>hi</p></body></html>",
+      "utf-8"
+    );
+
+    // Pre-seed the stage dir with a stale file to prove it gets wiped.
+    await mkdir(stageDir, { recursive: true });
+    await writeFile(join(stageDir, "stale.txt"), "old", "utf-8");
+
+    const stagedHtml = await stagePaginationInput(htmlFile, outDir, [], stageDir);
+
+    // Returns the staged book path inside the stage dir.
+    expect(stagedHtml).toBe(join(stageDir, "book.html"));
+    expect(existsSync(stagedHtml)).toBe(true);
+    // Stage dir was wiped (stale file gone).
+    expect(existsSync(join(stageDir, "stale.txt"))).toBe(false);
+    // Polyfill vendored from embedded assets.
+    expect(existsSync(join(stageDir, "vendor/paged.polyfill.js"))).toBe(true);
+    // Staged HTML patched to load the vendored polyfill + break handler.
+    const staged = await readFile(stagedHtml, "utf-8");
+    expect(staged).toMatch(/vendor\/paged\.polyfill\.js/);
+    expect(staged).toMatch(/BreakInsideAvoidHandler/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

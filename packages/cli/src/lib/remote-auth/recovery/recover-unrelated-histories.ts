@@ -249,12 +249,10 @@ export const recover: RecoverFn = async (ctx, error?) => {
           files: conflictFiles,
           ...(backupZipPath ? { backupZipPath } : {}),
           // Thread OIDs for resolveConflicts (same convention as
-          // recover-binary-conflict.ts — extra fields beyond RecoveryResult).
-          ...({
-            localId: headSha,
-            remoteId: remoteOid,
-          } as Record<string, string>),
-        } as RecoveryResult & { localId: string; remoteId: string };
+          // recover-binary-conflict.ts).
+          localId: headSha,
+          remoteId: remoteOid,
+        } satisfies RecoveryResult;
       }
     },
     error,

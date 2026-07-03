@@ -26,6 +26,7 @@
 
 import { pullChanges } from "../sync.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";
+import { mapOutcomeToResult, syncOptionsFrom } from "./outcome-mapping.ts";
 import type { RecoverFn, RecoveryResult } from "./types.ts";
 
 /**
@@ -36,60 +37,34 @@ import type { RecoverFn, RecoveryResult } from "./types.ts";
  * - auth / offline / error → needs_user with guidance (pass the guidance through)
  */
 export const recover: RecoverFn = async (ctx, _error?): Promise<RecoveryResult> => {
-  const outcome = await pullChanges({
-    projectDir: ctx.projectDir,
-    credential: ctx.credential,
-    tokenStore: ctx.tokenStore,
-    authorName: ctx.authorName,
-    httpClient: ctx.httpClient,
+  const outcome = await pullChanges(syncOptionsFrom(ctx));
+
+  // Default map handles conflict → needs_user with merge_conflict guidance +
+  // files (the intended outcome: surface the per-file chooser; no backupZipPath
+  // — pullChanges left a snapshot commit as the D5 safety net). This handler
+  // intentionally differs on:
+  //   - pulled / up-to-date: friendly fixed copy (not outcome.message).
+  //   - offline: needs_user with network guidance (not retry_later) — the
+  //              conflict path never silently schedules a retry.
+  //   - error:   needs_user with unknown guidance (not failed_no_changes_made).
+  return mapOutcomeToResult(ctx, outcome, {
+    pulled: () => ({
+      status: "recovered",
+      message: "The latest online changes were downloaded to this computer.",
+    }),
+    "up-to-date": () => ({
+      status: "recovered",
+      message: "Everything is already in sync.",
+    }),
+    offline: (c, o) => ({
+      status: "needs_user",
+      message: o.message,
+      guidance: makeManualGuidance(c, "network_unavailable"),
+    }),
+    error: (c, o) => ({
+      status: "needs_user",
+      message: o.message,
+      guidance: makeManualGuidance(c, "unknown"),
+    }),
   });
-
-  switch (outcome.status) {
-    case "conflict":
-      return {
-        status: "needs_user",
-        message: outcome.message,
-        // Base merge_conflict guidance already carries the human "Review
-        // changes" label and the resolve_conflict action key the host routes
-        // to the per-file chooser. (A machine token must never be placed in
-        // recommendedAction — it is the literal button label.)
-        guidance: makeManualGuidance(ctx, "merge_conflict"),
-        files: outcome.files,
-        // No backupZipPath — policy createBackup=false; pullChanges left a
-        // snapshot commit on the local branch as the safety net (D5 invariant).
-      };
-
-    case "pulled":
-    case "up-to-date": {
-      // The pull resolved cleanly — no conflict was present (or it was a
-      // fast-forward). Report recovered so the host can refresh the preview.
-      const msg =
-        outcome.status === "up-to-date"
-          ? "Everything is already in sync."
-          : "The latest online changes were downloaded to this computer.";
-      return { status: "recovered", message: msg };
-    }
-
-    case "auth":
-      return {
-        status: "needs_user",
-        message: outcome.message,
-        guidance: makeManualGuidance(ctx, "auth_required"),
-      };
-
-    case "offline":
-      return {
-        status: "needs_user",
-        message: outcome.message,
-        guidance: makeManualGuidance(ctx, "network_unavailable"),
-      };
-
-    default:
-      // "error" and any future arms
-      return {
-        status: "needs_user",
-        message: outcome.message,
-        guidance: makeManualGuidance(ctx, "unknown"),
-      };
-  }
 };

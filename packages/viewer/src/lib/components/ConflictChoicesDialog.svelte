@@ -17,6 +17,7 @@
   import { getPlatform } from "$lib/platform";
   import { api } from "$lib/api";
   import { basenameOf } from "$lib/platform/paths";
+  import { friendlyHostError } from "$lib/errors";
   import type {
     ConflictFileInfo,
     ConflictPreview,
@@ -171,8 +172,7 @@
       }
     } catch (e) {
       phase = "error";
-      const raw = e instanceof Error ? e.message : String(e);
-      errorMessage = raw.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, "");
+      errorMessage = friendlyHostError(e instanceof Error ? e.message : String(e));
     }
   }
 

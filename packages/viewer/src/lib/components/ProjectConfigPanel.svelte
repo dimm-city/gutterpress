@@ -43,6 +43,12 @@
   } from "$lib/api";
   import type { StyleToken } from "$lib/platform/contract";
   import type { ToastController } from "$lib/components/Toast.svelte";
+  import {
+    parseStyleTokens,
+    applyTokenUpdates,
+    toHex,
+    type TokenUpdate,
+  } from "$lib/style-tokens";
   import Icon from "$lib/components/Icon.svelte";
 
   let {
@@ -98,7 +104,6 @@
   let designError = $state<string | null>(null);
   let designSaveStatus = $state<"idle" | "saving" | "saved">("idle");
   const originals = new Map<string, string>();
-  let _hexCtx: CanvasRenderingContext2D | null | undefined;
 
   // (5) Plugins
   let plugins = $state<ProjectPluginEntry[]>([]);
@@ -109,54 +114,7 @@
   let pluginBusyRef = $state<string | null>(null);
   let npmName = $state("");
 
-  // ── Style-token helpers (client-side; ported from the retired DesignPanel) ─
-
-  function makeStyleToken(name: string, raw: string): StyleToken {
-    const label = name.replace(/^--/, "").replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
-    if (/^#[0-9a-fA-F]{3,8}$|^rgba?\s*\(|^hsla?\s*\(|^oklch\s*\(|^color\s*\(/.test(raw)) {
-      return { name, value: raw, kind: "color", label };
-    }
-    const len = raw.match(/^(-?[\d.]+)\s*(px|rem|em|vh|vw|vmin|vmax|%|pt|cm|mm|in|ex|ch)\b/i);
-    if (len) {
-      return { name, value: raw, kind: "length", label, number: parseFloat(len[1]), unit: len[2] };
-    }
-    return { name, value: raw, kind: "text", label };
-  }
-
-  function parseStyleTokens(cssText: string): StyleToken[] {
-    const out: StyleToken[] = [];
-    const rootRe = /:root\s*\{([^}]*)\}/g;
-    let m: RegExpExecArray | null;
-    while ((m = rootRe.exec(cssText)) !== null) {
-      for (const line of m[1].split("\n")) {
-        const pair = line.match(/^\s*(--[\w-]+)\s*:\s*(.+?)\s*;/);
-        if (pair) out.push(makeStyleToken(pair[1], pair[2]));
-      }
-    }
-    return out;
-  }
-
-  function updateRootToken(cssText: string, name: string, value: string): string {
-    const escaped = name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
-    const existing = new RegExp(`(${escaped}\\s*:)[^;]*(;)`, "g");
-    if (existing.test(cssText)) {
-      return cssText.replace(new RegExp(`(${escaped}\\s*:)[^;]*(;)`, "g"), `$1 ${value}$2`);
-    }
-    return cssText.replace(/(:root\s*\{)/, `$1\n  ${name}: ${value};`);
-  }
-
-  function toHex(value: string): string | null {
-    try {
-      if (_hexCtx === undefined) _hexCtx = document.createElement("canvas").getContext("2d");
-      if (!_hexCtx) return null;
-      _hexCtx.fillStyle = "#000000";
-      _hexCtx.fillStyle = value;
-      const out = _hexCtx.fillStyle;
-      return typeof out === "string" && /^#[0-9a-f]{6}$/i.test(out) ? out : null;
-    } catch {
-      return null;
-    }
-  }
+  // ── Style-token helpers (client-side; extracted to $lib/style-tokens) ─────
   const colorHex = (v: string) => toHex(v) ?? v;
 
   const colorTokens = $derived(tokens.filter((t) => t.kind === "color"));
@@ -450,40 +408,53 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
     }
   }
 
-  // Per-token debounced write (ported from the retired DesignPanel).
-  const tokenTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  // Debounced, serialized token writes. Edits coalesce into `tokenPending`
+  // (keyed by name — last value wins) behind a SINGLE debounce timer. A flush
+  // reads the CSS once, folds ALL pending mutations via `applyTokenUpdates`, and
+  // writes once, so two edits committed in the same tick can't clobber each
+  // other (a per-token read-modify-write did — the second write lost the first).
+  // `commitChain` serializes overlapping flushes, so an unmount flush can't race
+  // the debounce timer's flush onto a stale base string.
   const tokenPending = new Map<string, string>();
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  let commitChain: Promise<void> = Promise.resolve();
 
   function scheduleTokenWrite(name: string, value: string): void {
     tokenPending.set(name, value);
     designSaveStatus = "saving";
-    const existing = tokenTimers.get(name);
-    if (existing) clearTimeout(existing);
-    tokenTimers.set(
-      name,
-      setTimeout(() => {
-        tokenTimers.delete(name);
-        void commitToken(name, value);
-      }, 250),
-    );
+    if (flushTimer) clearTimeout(flushTimer);
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      void flushPendingTokenWrites();
+    }, 250);
   }
 
-  function flushPendingTokenWrites(): void {
-    for (const t of tokenTimers.values()) clearTimeout(t);
-    tokenTimers.clear();
-    for (const [name, value] of [...tokenPending.entries()]) void commitToken(name, value);
+  function flushPendingTokenWrites(): Promise<void> {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    // Chain after any in-flight commit so each read-once/write-once pass sees
+    // the previous write's result instead of a stale snapshot.
+    commitChain = commitChain.then(commitPendingTokens);
+    return commitChain;
   }
 
-  async function commitToken(name: string, value: string): Promise<void> {
-    if (!cssPath) return;
+  async function commitPendingTokens(): Promise<void> {
+    if (!cssPath || tokenPending.size === 0) return;
+    // Drain the coalesced edits into one batch, then read → fold → write once.
+    const updates: TokenUpdate[] = [...tokenPending.entries()].map(([name, value]) => ({ name, value }));
+    tokenPending.clear();
     try {
       const css = await api.fs.readFile(cssPath);
-      await api.fs.writeFile(cssPath, updateRootToken(css, name, value));
-      tokenPending.delete(name);
-      if (tokenPending.size === 0 && tokenTimers.size === 0) designSaveStatus = "saved";
+      await api.fs.writeFile(cssPath, applyTokenUpdates(css, updates));
+      if (tokenPending.size === 0) designSaveStatus = "saved";
     } catch (e) {
+      // Re-queue the failed batch (unless a newer edit already superseded it) so
+      // a later flush can retry, and surface the error.
+      for (const u of updates) if (!tokenPending.has(u.name)) tokenPending.set(u.name, u.value);
       designSaveStatus = "idle";
-      toast?.error?.(`Couldn't save ${name}: ${e instanceof Error ? e.message : String(e)}`);
+      toast?.error?.(`Couldn't save changes: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

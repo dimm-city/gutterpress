@@ -29,6 +29,7 @@ import { constants as FS, existsSync } from "node:fs";
 import path from "node:path";
 
 import { getAssetPath } from "./embedded-assets.ts";
+import { slugify } from "./slug.ts";
 
 /**
  * Which embedded starter template to scaffold from. Each id maps to a directory
@@ -143,12 +144,7 @@ class CreateProjectErrorImpl extends Error implements CreateProjectError {
  * input that contains no usable characters (caller treats that as invalid).
  */
 export function slugifyProjectName(name: string): string {
-  return name
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "") // strip diacritics
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  return slugify(name);
 }
 
 /**

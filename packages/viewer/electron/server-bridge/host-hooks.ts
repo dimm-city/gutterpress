@@ -2,6 +2,8 @@
  * Shared desktop/doctor hooks for server routes that need Electron host APIs.
  */
 
+import { createHostBridge } from './create-host-bridge';
+
 export interface DialogFilter {
   name: string;
   extensions: string[];
@@ -38,28 +40,8 @@ export interface DoctorHooks {
   getViewerVersion: () => string;
 }
 
-const DESKTOP_GLOBAL_KEY = '__printMdDesktopHooks__' as const;
-const DOCTOR_GLOBAL_KEY = '__printMdDoctorHooks__' as const;
+export const { register: registerDesktopHooks, get: getDesktopHooks } =
+  createHostBridge<DesktopHooks>('__printMdDesktopHooks__');
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __printMdDesktopHooks__: DesktopHooks | undefined;
-  // eslint-disable-next-line no-var
-  var __printMdDoctorHooks__: DoctorHooks | undefined;
-}
-
-export function registerDesktopHooks(hooks: DesktopHooks): void {
-  globalThis[DESKTOP_GLOBAL_KEY] = hooks;
-}
-
-export function getDesktopHooks(): DesktopHooks | null {
-  return globalThis[DESKTOP_GLOBAL_KEY] ?? null;
-}
-
-export function registerDoctorHooks(hooks: DoctorHooks): void {
-  globalThis[DOCTOR_GLOBAL_KEY] = hooks;
-}
-
-export function getDoctorHooks(): DoctorHooks | null {
-  return globalThis[DOCTOR_GLOBAL_KEY] ?? null;
-}
+export const { register: registerDoctorHooks, get: getDoctorHooks } =
+  createHostBridge<DoctorHooks>('__printMdDoctorHooks__');
