@@ -1,23 +1,18 @@
-import { json, error } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
+import { error } from '@sveltejs/kit';
 import { isAbsolute } from 'node:path';
+import { jsonRoute } from '../../_lib/handler';
+import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = async ({ request }) => {
-  try {
-    const body = await request.json().catch(() => ({})) as {
-      projectDir?: string;
-      updates?: Record<string, unknown>;
-    };
-    if (!body.projectDir || !isAbsolute(body.projectDir)) {
-      return error(400, 'manifest/set-fields requires an absolute projectDir');
-    }
-    if (!body.updates || typeof body.updates !== 'object') {
-      return error(400, 'manifest/set-fields requires an updates object');
-    }
-    const lib = await import('@dimm-city/print-md/api');
-    return json(await lib.setManifestFields(body.projectDir, body.updates as Parameters<typeof lib.setManifestFields>[1]));
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return error(500, msg);
+export const POST: RequestHandler = jsonRoute(async (body: {
+  projectDir?: string;
+  updates?: Record<string, unknown>;
+}) => {
+  if (!body.projectDir || !isAbsolute(body.projectDir)) {
+    error(400, 'manifest/set-fields requires an absolute projectDir');
   }
-};
+  if (!body.updates || typeof body.updates !== 'object') {
+    error(400, 'manifest/set-fields requires an updates object');
+  }
+  const lib = await import('@dimm-city/print-md/api');
+  return lib.setManifestFields(body.projectDir, body.updates as Parameters<typeof lib.setManifestFields>[1]);
+});

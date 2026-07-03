@@ -1,23 +1,18 @@
-import { json } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
+import { error } from '@sveltejs/kit';
 import { join } from 'node:path';
 import { getDesktopHooks } from '$lib/server/host-hooks.js';
+import { jsonRoute } from '../../_lib/handler';
+import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = async ({ request }) => {
-  try {
-    const body = await request.json().catch(() => ({})) as { templatesRoot?: string };
-    let templatesRoot: string;
-    if (typeof body.templatesRoot === 'string') {
-      templatesRoot = body.templatesRoot;
-    } else {
-      const hooks = getDesktopHooks();
-      if (!hooks) return new Response('Desktop hooks not registered', { status: 503 });
-      templatesRoot = join(hooks.getUserDataPath(), 'templates');
-    }
-    const lib = await import('@dimm-city/print-md');
-    return json(await lib.listCustomTemplates(templatesRoot));
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return new Response(msg, { status: 500 });
+export const POST: RequestHandler = jsonRoute(async (body: { templatesRoot?: string }) => {
+  let templatesRoot: string;
+  if (typeof body.templatesRoot === 'string') {
+    templatesRoot = body.templatesRoot;
+  } else {
+    const hooks = getDesktopHooks();
+    if (!hooks) error(503, 'Desktop hooks not registered');
+    templatesRoot = join(hooks.getUserDataPath(), 'templates');
   }
-};
+  const lib = await import('@dimm-city/print-md');
+  return lib.listCustomTemplates(templatesRoot);
+});
