@@ -37,6 +37,7 @@
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
+  import { activeOutlineIndexForLine } from "$lib/routes/outline";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api, type SyncOutcome } from "$lib/api";
@@ -1868,13 +1869,7 @@
   // the dropdown's current-chapter label + highlight).
   function updateActiveOutline(line: number) {
     if (outline.length === 0) return;
-    let idx = 0;
-    for (let i = 0; i < outline.length; i++) {
-      const sl = outline[i].sourceLine;
-      if (sl != null && sl <= line) idx = i;
-      else if (sl != null && sl > line) break;
-    }
-    activeOutlineIndex = idx;
+    activeOutlineIndex = activeOutlineIndexForLine(outline, line);
   }
 
   // Jump the preview (and, if open, the editor) to a heading.
