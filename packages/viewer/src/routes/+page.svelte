@@ -57,32 +57,14 @@
   import { useSettings, _loadSettings } from "$lib/settings.svelte";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
-
-  type DiagnosticsTool = {
-    name: string;
-    found: boolean;
-    usedBy: Array<{ feature: string; severity: "required" | "optional" }>;
-  };
-  type UrlPreviewBlockedEvent = {
-    url: string;
-    reason: string;
-  };
-  type PageState = {
-    currentPage?: number;
-    totalPages?: number;
-  };
-  // Per-project editor/preview state (#43), keyed by folder path in the main
-  // process. currentPage/viewMode are live; the rest are dead schema for the
-  // forthcoming in-app editor (#38) / chapter list (#42).
-  type PersistedProjectState = {
-    currentPage?: number;
-    viewMode?: "single" | "two-column";
-    lastChapter?: string;
-    sidebarOpen?: boolean;
-    cursorLine?: number;
-    editorScroll?: number;
-    splitPaneRatio?: number;
-  };
+  import { friendlyFolderError, friendlyPdfError } from "$lib/errors";
+  import { UpdateController } from "$lib/update/update-controller.svelte";
+  import type {
+    DiagnosticsTool,
+    UrlPreviewBlockedEvent,
+    PageState,
+    PersistedProjectState,
+  } from "$lib/routes/page-types";
 
   // Per-screen state
   let previewUrl = $state<string | null>(null);
@@ -238,13 +220,11 @@
   let urlPreviewError = $state<string | null>(null);
 
   // ── Auto-update state ──────────────────────────────────────────────────
-  /** Non-null when a staged bundle is ready to apply (restart to update). */
-  let updateReadyVersion = $state<string | null>(null);
-  /** Non-null when a check found an update but it hasn't been downloaded yet. */
-  let updateAvailableVersion = $state<string | null>(null);
-  let updateBannerDismissed = $state(false);
-  let checkingUpdates = $state(false);
-  let downloadingUpdate = $state(false);
+  // The whole update FSM (banner version state, check/download/apply intents,
+  // and the mount-time status peek + event subscription) lives in the
+  // UpdateController (Phase 5); the view drives it via intent methods and reads
+  // its rune getters. Toast feedback is injected through an accessor seam.
+  const updateController = new UpdateController(() => toast);
 
   // UX-026: focus-restoration reference for the Help dialog
   let helpBtn = $state<HTMLButtonElement | undefined>(undefined);
@@ -1274,46 +1254,8 @@
 
   // Surface the restart banner if an update was already downloaded (this
   // session's background check, or a prior session that never restarted),
-  // then subscribe to future events.
-  onMount(() => {
-    if (!isDesktop()) return;
-    const platform = getPlatform();
-
-    // Peek at current status so we can surface a banner immediately if an
-    // update was found or downloaded during a previous run.
-    platform.updater.getStatus()
-      .then((status: { stagedVersion: string | null; availableVersion: string | null }) => {
-        if (status.stagedVersion) {
-          updateReadyVersion = status.stagedVersion;
-          updateBannerDismissed = false;
-        } else if (status.availableVersion) {
-          updateAvailableVersion = status.availableVersion;
-          updateBannerDismissed = false;
-        }
-      })
-      .catch(() => {});
-
-    // Subscribe to future events from main.
-    // Events fire for BOTH the silent background launch/focus check and the
-    // manual "Check for updates" button. React to "available" (show the
-    // Download banner) and "staged" (show the restart banner) live.
-    // "uptodate"/"error" are intentionally silent — surfacing them here would
-    // toast on every launch and would double-toast during a manual check
-    // (which drives its own feedback from the IPC return value in
-    // checkForUpdates()).
-    const off = platform.updater.onEvent((event: { type: string; version?: string }) => {
-      if (event.type === "available") {
-        updateAvailableVersion = event.version ?? null;
-        updateBannerDismissed = false;
-      } else if (event.type === "staged") {
-        updateReadyVersion = event.version ?? null;
-        updateAvailableVersion = null;
-        updateBannerDismissed = false;
-      }
-    });
-
-    return () => off?.();
-  });
+  // then subscribe to future events. Owned by the UpdateController.
+  onMount(() => updateController.init());
 
   // ----------------------------------------------------------------
   // Global keyboard shortcuts (available without a loaded document)
@@ -1451,46 +1393,6 @@
   // ----------------------------------------------------------------
   // Actions
   // ----------------------------------------------------------------
-
-  function friendlyFolderError(msg: string): string {
-    if (/manifest|print-md\.yaml|No such file/i.test(msg)) {
-      return "This doesn't look like a print-md project — we couldn't find a print-md.yaml file. Make sure you're opening the right folder.";
-    }
-    if (/ENOENT|not found/i.test(msg)) {
-      return "The folder couldn't be read. Check that it exists and you have permission to open it.";
-    }
-    if (/permission|EACCES/i.test(msg)) {
-      return "Permission denied. Check that you have access to this folder.";
-    }
-    return "Something went wrong opening this folder. Try again, or choose a different folder.";
-  }
-
-  function friendlyPdfError(e: unknown): string {
-    const msg = e instanceof Error ? e.message : String(e);
-    const code = (e as any)?.code ?? "";
-    if (code === "EXPORT_CANCELED") {
-      return "";
-    }
-    if (code === "BUILD_ERROR") {
-      const firstLine = msg.split("\n")[0]?.trim() ?? msg;
-      return `PDF generation failed: ${firstLine}. Open Help (?) for setup details.`;
-    }
-    if (code === "TOOL_MISSING") {
-      const match = msg.match(/Required system tool not found: ([^\n]+)/);
-      const tool = match?.[1]?.trim() ?? "a required tool";
-      return `PDF export needs "${tool}" installed. Open Help (?) → System tools to see how to install it.`;
-    }
-    if (/chrome|chromium|browser/i.test(msg)) {
-      return "PDF export needs a browser (Chrome or Edge) installed. Open Help (?) for setup details.";
-    }
-    if (/ENOENT|not found/i.test(msg)) {
-      return "Could not find a required program. Open Help (?) → System tools to check what needs to be installed.";
-    }
-    if (/permission|EACCES/i.test(msg)) {
-      return "Permission denied saving the PDF. Try saving to a different folder (like your Desktop).";
-    }
-    return "PDF export failed. Open Help (?) → System tools to check for issues.";
-  }
 
   async function startFolderPreview(
     dir: string,
@@ -2351,77 +2253,6 @@
     };
   });
 
-  // ── Auto-update actions ────────────────────────────────────────────────
-
-  async function checkForUpdates() {
-    if (!isDesktop()) return;
-    checkingUpdates = true;
-    toast?.info("Checking for updates…");
-    try {
-      const status: {
-        phase: string;
-        stagedVersion: string | null;
-        availableVersion: string | null;
-        error: string | null;
-      } = await getPlatform().updater.check();
-      if (status.stagedVersion) {
-        // An update was already downloaded + staged — the banner appears; no toast.
-        updateReadyVersion = status.stagedVersion;
-        updateBannerDismissed = false;
-      } else if (status.phase === "available") {
-        // Found, not downloaded yet — the Download banner appears; tell the
-        // author explicitly so a manual check reads as "found something" and
-        // not "nothing happened" (M1: downloads are consented, never silent).
-        updateAvailableVersion = status.availableVersion;
-        updateBannerDismissed = false;
-        toast?.info(`Update available (v${status.availableVersion}) — use the banner to download it.`);
-      } else if (status.phase === "error") {
-        toast?.error(status.error ?? "Update check failed.");
-      } else {
-        toast?.info("You're up to date.");
-      }
-    } catch (e) {
-      toast?.error(e instanceof Error ? e.message : "Update check failed.");
-    } finally {
-      checkingUpdates = false;
-    }
-  }
-
-  async function downloadUpdate() {
-    if (!isDesktop()) return;
-    downloadingUpdate = true;
-    try {
-      const status: { phase: string; stagedVersion: string | null; error: string | null } =
-        await getPlatform().updater.download();
-      if (status.stagedVersion) {
-        updateReadyVersion = status.stagedVersion;
-        updateAvailableVersion = null;
-      } else if (status.phase === "error") {
-        toast?.error(status.error ?? "Update download failed.");
-      }
-    } catch (e) {
-      toast?.error(e instanceof Error ? e.message : "Update download failed.");
-    } finally {
-      downloadingUpdate = false;
-    }
-  }
-
-  async function applyUpdate() {
-    if (!isDesktop()) return;
-    try {
-      const result = await getPlatform().updater.applyNow();
-      // On success main quits, installs the update, and relaunches — this
-      // code never runs. A resolved { applied: false } means the staged
-      // update vanished (state drift); say so instead of silently no-oping.
-      if (!result.applied) {
-        updateReadyVersion = null;
-        toast?.error("The update could not be applied — try checking for updates again.");
-      }
-    } catch (e) {
-      toast?.error(e instanceof Error ? e.message : "Could not apply update.");
-    }
-  }
-
   /**
    * RC3-2: Cancel the in-progress render. Optimistically hides the overlay
    * immediately (<100ms) so the UI feels responsive, then tears down the
@@ -2536,18 +2367,18 @@
 {/if}
 
 <div class="app-root">
-{#if (updateReadyVersion || updateAvailableVersion) && !updateBannerDismissed}
+{#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
-    {#if updateReadyVersion}
-      <span class="update-banner-msg">Update ready (v{updateReadyVersion})</span>
-      <button class="update-apply" onclick={applyUpdate}>Restart &amp; update</button>
+    {#if updateController.readyVersion}
+      <span class="update-banner-msg">Update ready (v{updateController.readyVersion})</span>
+      <button class="update-apply" onclick={() => updateController.applyNow()}>Restart &amp; update</button>
     {:else}
-      <span class="update-banner-msg">Update available (v{updateAvailableVersion})</span>
-      <button class="update-apply" onclick={downloadUpdate} disabled={downloadingUpdate}>
-        {downloadingUpdate ? "Downloading…" : "Download"}
+      <span class="update-banner-msg">Update available (v{updateController.availableVersion})</span>
+      <button class="update-apply" onclick={() => updateController.download()} disabled={updateController.downloading}>
+        {updateController.downloading ? "Downloading…" : "Download"}
       </button>
     {/if}
-    <button class="update-later" onclick={() => (updateBannerDismissed = true)}>Later</button>
+    <button class="update-later" onclick={() => updateController.dismissBanner()}>Later</button>
   </div>
 {/if}
 
@@ -3152,10 +2983,10 @@
 <HelpDialog
   bind:open={helpOpen}
   triggerEl={helpBtn}
-  onCheckForUpdates={checkForUpdates}
-  {checkingUpdates}
-  {updateReadyVersion}
-  {updateAvailableVersion}
+  onCheckForUpdates={() => updateController.check()}
+  checkingUpdates={updateController.checking}
+  updateReadyVersion={updateController.readyVersion}
+  updateAvailableVersion={updateController.availableVersion}
 />
 <SettingsDialog
   bind:open={settingsOpen}
