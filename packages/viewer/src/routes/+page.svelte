@@ -53,6 +53,7 @@
     keyboardOffset,
   } from "$lib/editor/mobile-layout";
   import { commandForSaveShortcut } from "$lib/editor/save-shortcuts";
+  import { resolveGlobalShortcut, resolvePreviewNavCommand } from "$lib/routes/shortcuts";
   import { clampSplitRatio, splitRatioFromDrag, splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
   import { useSettings, _loadSettings } from "$lib/settings.svelte";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
@@ -1262,23 +1263,28 @@
   // ----------------------------------------------------------------
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
+      const command = resolveGlobalShortcut({
+        ctrlOrMeta: e.ctrlKey || e.metaKey,
+        shift: e.shiftKey,
+        key: e.key,
+      });
       // Cmd/Ctrl+, opens the Settings panel (toggles closed if already open).
-      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+      if (command === "settings") {
         e.preventDefault();
         settingsOpen = !settingsOpen;
       }
       // Cmd/Ctrl+E toggles the in-app editor (#38) when a folder is open.
-      if ((e.ctrlKey || e.metaKey) && (e.key === "e" || e.key === "E")) {
+      if (command === "toggle-editor") {
         e.preventDefault();
         toggleEditor();
       }
       // Cmd/Ctrl+\ toggles the left panel
-      if ((e.ctrlKey || e.metaKey) && e.key === "\\") {
+      if (command === "toggle-left-panel") {
         e.preventDefault();
         toggleLeftPanel();
       }
       // Cmd/Ctrl+Shift+S opens the snippet picker (#29) when a project is open.
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "s" || e.key === "S")) {
+      if (command === "snippet") {
         e.preventDefault();
         openSnippetPicker();
         return;
@@ -1317,49 +1323,47 @@
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (t?.isContentEditable || t?.closest?.(".cm-editor")) return;
 
-      // Cmd/Ctrl+Shift+E explicitly exports PDF. Plain Cmd/Ctrl+S is handled by
-      // the global shortcut above as "save source edits" when an editor file is
-      // open, so it never surprises writers by opening PDF export.
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'e' || e.key === 'E')) {
-        e.preventDefault();
-        if (canSavePdf) savePdf();
-        return;
-      }
+      const command = resolvePreviewNavCommand({
+        ctrlOrMeta: e.ctrlKey || e.metaKey,
+        shift: e.shiftKey,
+        key: e.key,
+      });
 
-      switch (e.key) {
-        case "ArrowRight":
-        case "PageDown":
+      switch (command) {
+        // Cmd/Ctrl+Shift+E explicitly exports PDF. Plain Cmd/Ctrl+S is handled by
+        // the global shortcut above as "save source edits" when an editor file is
+        // open, so it never surprises writers by opening PDF export.
+        case "export-pdf":
+          e.preventDefault();
+          if (canSavePdf) savePdf();
+          return;
+        case "next":
           e.preventDefault();
           nextPage();
           break;
-        case "ArrowLeft":
-        case "PageUp":
+        case "prev":
           e.preventDefault();
           prevPage();
           break;
-        case "Home":
+        case "first":
           e.preventDefault();
           firstPage();
           break;
-        case "End":
+        case "last":
           e.preventDefault();
           lastPage();
           break;
-        case "+":
-        case "=":
+        case "zoom-in":
           e.preventDefault();
           stepZoom(0.25);
           break;
-        case "-":
+        case "zoom-out":
           e.preventDefault();
           stepZoom(-0.25);
           break;
-        case "f":
-        case "F":
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            applyZoom("fit-width");
-          }
+        case "fit-width":
+          e.preventDefault();
+          applyZoom("fit-width");
           break;
         // UX-004: 'D' shortcut for debug removed — non-technical writers should
         // not accidentally trigger debug mode.
