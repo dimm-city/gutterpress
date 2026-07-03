@@ -38,6 +38,7 @@
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
+  import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api, type SyncOutcome } from "$lib/api";
@@ -64,7 +65,6 @@
   import type {
     DiagnosticsTool,
     UrlPreviewBlockedEvent,
-    PageState,
     PersistedProjectState,
   } from "$lib/routes/page-types";
 
@@ -122,11 +122,22 @@
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
-  let currentPage = $state(1);
-  let totalPages = $state(0);
-  let pageEditing = $state(false);
-  let pageEditValue = $state("1");
   let pageEditInput = $state<HTMLInputElement | undefined>(undefined);
+  // Page-navigation FSM (Phase 5): owns currentPage/totalPages/pageEditing/
+  // pageEditValue/restoringSavedState + the host-driven navigation intents.
+  // Host coupling is injected so the component stays a thin composition root.
+  const pageNav = new PageNavController({
+    client: () => client,
+    isRendering: () => rendering,
+    viewMode: () => viewMode,
+    savePrefs: (patch) => saveViewerPrefs(patch),
+    savePageDirect: (page) => {
+      if (currentDir) {
+        api.app.setViewerProjectState(currentDir, { currentPage: page }).catch(() => {});
+      }
+    },
+    onBeginEdit: () => queueMicrotask(() => pageEditInput?.focus()),
+  });
 
   // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
   // outline drives the chapter-jump dropdown; activeOutlineIndex tracks the
@@ -161,7 +172,6 @@
   let lastProjectChecked = $state(false);
   let pendingRestorePage = $state<number | null>(null);
   let pendingRestoreViewMode = $state<"single" | "two-column" | null>(null);
-  let restoringSavedState = $state(false);
 
   // Toast controller (populated by Toast.svelte via bind:api)
   let toast = $state<ToastController | null>(null);
@@ -1147,7 +1157,7 @@
     c.on((e) => {
       if (e.name === "renderingComplete") {
         const n = e.detail.totalPages ?? 0;
-        totalPages = n;
+        pageNav.totalPages = n;
         renderProgressPage = n;
         rendering = false;
         // Keep the overlay up while the post-render layout settles. The pages
@@ -1191,7 +1201,7 @@
           }
         })();
         if (restorePage && restorePage > 1) {
-          queueMicrotask(() => restoreProjectPage(restorePage));
+          queueMicrotask(() => pageNav.restoreProjectPage(restorePage));
         }
         // UX-011: improved success toast copy
         toast?.success(`Your book is ready — ${n} ${n === 1 ? 'page' : 'pages'}`);
@@ -1227,12 +1237,12 @@
       } else if (e.name === "pageChanged") {
         if (rendering) {
           renderProgressPage = e.detail.totalPages ?? renderProgressPage;
-          totalPages = e.detail.totalPages ?? totalPages;
+          pageNav.totalPages = e.detail.totalPages ?? pageNav.totalPages;
           // Live splash sub-status during the (potentially multi-second) render.
           const pg = e.detail.totalPages ?? renderProgressPage;
           if (pg) api.app.splashStatus(undefined, undefined, `Laying out page ${pg}`).catch(() => {});
         } else {
-          syncPageState(e.detail);
+          pageNav.syncPageState(e.detail);
         }
       } else if (e.name === "ready") {
         rendering = true;
@@ -1243,7 +1253,7 @@
         api.app.splashStatus("Rendering pages…", 70).catch(() => {});
         client?.call<number>("getTotalPages").then((n) => {
           if (n > 0) {
-            totalPages = n;
+            pageNav.totalPages = n;
           }
         }).catch(() => {});
       }
@@ -1340,19 +1350,19 @@
           return;
         case "next":
           e.preventDefault();
-          nextPage();
+          pageNav.nextPage();
           break;
         case "prev":
           e.preventDefault();
-          prevPage();
+          pageNav.prevPage();
           break;
         case "first":
           e.preventDefault();
-          firstPage();
+          pageNav.firstPage();
           break;
         case "last":
           e.preventDefault();
-          lastPage();
+          pageNav.lastPage();
           break;
         case "zoom-in":
           e.preventDefault();
@@ -1502,8 +1512,8 @@
       previewUrl = data.url;
       rendering = true;
       renderProgressPage = 0;
-      totalPages = 0;
-      currentPage = 1;
+      pageNav.totalPages = 0;
+      pageNav.currentPage = 1;
       const restoredViewMode = restoreState?.viewMode;
       pendingRestoreViewMode = restoredViewMode ?? null;
       pendingRestorePage = restoreState?.currentPage && restoreState.currentPage > 1
@@ -1606,8 +1616,8 @@
       previewUrl = url;
       rendering = false;
       renderProgressPage = 0;
-      totalPages = 0;
-      currentPage = 1;
+      pageNav.totalPages = 0;
+      pageNav.currentPage = 1;
     });
   }
 
@@ -1651,9 +1661,9 @@
     rendering = false;
     renderProgressPage = 0;
     renderCompleteOverlay = false;
-    totalPages = 0;
-    currentPage = 1;
-    pageEditing = false;
+    pageNav.totalPages = 0;
+    pageNav.currentPage = 1;
+    pageNav.pageEditing = false;
     editorOpen = false;
     previewHidden = false;
     buffer?.reset();
@@ -1786,70 +1796,16 @@
     await getPlatform().cancelExport(exportController.activeExportId).catch(() => {});
   }
 
-  function syncPageState(state: PageState | undefined) {
-    if (!state) return;
-    currentPage = state.currentPage ?? currentPage;
-    totalPages = state.totalPages ?? totalPages;
-    if (!pageEditing) pageEditValue = String(currentPage);
-    saveViewerPrefs({ currentPage });
-  }
-
+  // Page-navigation intents (syncPageState / restoreProjectPage /
+  // runPageCommand / gotoPage / begin|cancel|commitPageEdit /
+  // first|prev|next|lastPage) now live on `pageNav` (PageNavController).
   function saveViewerPrefs(patch: Partial<PersistedProjectState>) {
-    if (!currentDir || sourceMode !== "folder" || rendering || restoringSavedState) return;
+    if (!currentDir || sourceMode !== "folder" || rendering || pageNav.restoringSavedState) return;
     // Per-project state (#43): write to the folder-keyed bucket so this never
     // overwrites another project's saved page/view. The main process also
     // updates lastProjectDir, so reopening lands on this project.
     api.app.setViewerProjectState(currentDir, patch as Record<string, unknown>).catch(() => {});
   }
-
-  function restoreProjectPage(page: number) {
-    if (!client || rendering) return;
-    restoringSavedState = true;
-    client.call<PageState>("goToPage", [page])
-      .then((state) => {
-        currentPage = state.currentPage ?? currentPage;
-        totalPages = state.totalPages ?? totalPages;
-        if (!pageEditing) pageEditValue = String(currentPage);
-        if (currentDir) {
-          api.app.setViewerProjectState(currentDir, { currentPage }).catch(() => {});
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        restoringSavedState = false;
-      });
-  }
-
-  function runPageCommand(cmd: string, args: unknown[] = []) {
-    if (!client || rendering) return;
-    client.call<PageState>(cmd, args).then(syncPageState).catch(() => {});
-  }
-
-  function gotoPage(n: number) {
-    runPageCommand("goToPage", [n]);
-  }
-  function beginPageEdit() {
-    if (rendering) return;
-    pageEditing = true;
-    pageEditValue = String(currentPage);
-    queueMicrotask(() => pageEditInput?.focus());
-  }
-  function cancelPageEdit() {
-    pageEditing = false;
-    pageEditValue = String(currentPage);
-  }
-  function commitPageEdit() {
-    const next = Number(pageEditValue);
-    if (Number.isFinite(next)) {
-      const clamped = Math.max(1, Math.min(totalPages || 1, Math.round(next)));
-      gotoPage(clamped);
-    }
-    pageEditing = false;
-  }
-  function firstPage() { runPageCommand("firstPage"); }
-  function prevPage() { runPageCommand("prevPage", [viewMode]); }
-  function nextPage() { runPageCommand("nextPage", [viewMode]); }
-  function lastPage() { runPageCommand("lastPage"); }
 
   // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
   function refreshOutline() {
@@ -1901,7 +1857,7 @@
     client
       .scrollTo(target, { block: "start" })
       .then((res) => {
-        if (res?.page) syncPageState({ currentPage: res.page, totalPages });
+        if (res?.page) pageNav.syncPageState({ currentPage: res.page, totalPages: pageNav.totalPages });
       })
       .catch(() => {});
   }
@@ -1968,7 +1924,7 @@
       .then((res) => {
         // scrollTo suppresses the book's scroll-driven pageChanged, so reflect
         // the new page in the toolbar from the command's own return value.
-        if (res?.page) syncPageState({ currentPage: res.page, totalPages });
+        if (res?.page) pageNav.syncPageState({ currentPage: res.page, totalPages: pageNav.totalPages });
       })
       .catch(() => {});
   }
@@ -2423,41 +2379,41 @@
            scrolls/swipes for page navigation). -->
       {#if previewUrl && !isNarrow}
         <section class="center">
-          <button class="icon-btn" onclick={firstPage} disabled={rendering} title="First page (Home)" aria-label="First page">
+          <button class="icon-btn" onclick={() => pageNav.firstPage()} disabled={rendering} title="First page (Home)" aria-label="First page">
             <Icon name="chevrons-left" />
           </button>
-          <button class="icon-btn" onclick={prevPage} disabled={rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
+          <button class="icon-btn" onclick={() => pageNav.prevPage()} disabled={rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
             <Icon name="chevron-left" />
           </button>
-          {#if pageEditing}
+          {#if pageNav.pageEditing}
             <input
               bind:this={pageEditInput}
               type="number"
               class="page-input"
               min="1"
-              max={totalPages || 1}
-              bind:value={pageEditValue}
-              onblur={commitPageEdit}
+              max={pageNav.totalPages || 1}
+              bind:value={pageNav.pageEditValue}
+              onblur={() => pageNav.commitPageEdit()}
               onkeydown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  commitPageEdit();
+                  pageNav.commitPageEdit();
                 } else if (e.key === "Escape") {
                   e.preventDefault();
-                  cancelPageEdit();
+                  pageNav.cancelPageEdit();
                 }
               }}
               aria-label="Go to page"
             />
           {:else}
-            <button class="page-pill" onclick={beginPageEdit} disabled={rendering} aria-label="Edit current page">
-              <span class="pill-word">Page&nbsp;</span>{currentPage} / {totalPages || "—"}
+            <button class="page-pill" onclick={() => pageNav.beginPageEdit()} disabled={rendering} aria-label="Edit current page">
+              <span class="pill-word">Page&nbsp;</span>{pageNav.currentPage} / {pageNav.totalPages || "—"}
             </button>
           {/if}
-          <button class="icon-btn" onclick={nextPage} disabled={rendering} title="Next page (Right/PageDown)" aria-label="Next page">
+          <button class="icon-btn" onclick={() => pageNav.nextPage()} disabled={rendering} title="Next page (Right/PageDown)" aria-label="Next page">
             <Icon name="chevron-right" />
           </button>
-          <button class="icon-btn" onclick={lastPage} disabled={rendering} title="Last page (End)" aria-label="Last page">
+          <button class="icon-btn" onclick={() => pageNav.lastPage()} disabled={rendering} title="Last page (End)" aria-label="Last page">
             <Icon name="chevrons-right" />
           </button>
         </section>
