@@ -9,6 +9,8 @@
  * Server routes call getAppHooks() to retrieve them.
  */
 
+import { createHostBridge } from './create-host-bridge';
+
 export interface AppHooks {
   /** Drive the splash window status line / progress bar. */
   updateSplash: (status?: string, progress?: number, sub?: string) => void;
@@ -22,17 +24,5 @@ export interface AppHooks {
   sendToRenderer: (channel: string, ...args: unknown[]) => void;
 }
 
-const GLOBAL_KEY = '__printMdAppHooks__' as const;
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __printMdAppHooks__: AppHooks | undefined;
-}
-
-export function registerAppHooks(hooks: AppHooks): void {
-  globalThis[GLOBAL_KEY] = hooks;
-}
-
-export function getAppHooks(): AppHooks | null {
-  return globalThis[GLOBAL_KEY] ?? null;
-}
+export const { register: registerAppHooks, get: getAppHooks } =
+  createHostBridge<AppHooks>('__printMdAppHooks__');

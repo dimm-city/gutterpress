@@ -20,12 +20,12 @@
  * computed-path dynamic imports, no bundlers. Validation reuses `loadPlugin`
  * from `markdown/plugins.ts`, which already compiles under `bun build --compile`.
  */
-import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { cp, mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { parseDocument, isSeq, isMap, isScalar, YAMLMap, YAMLSeq, Scalar } from "yaml";
-import type { Node, Document } from "yaml";
+import { isSeq, isMap, isScalar, YAMLMap, YAMLSeq, Scalar } from "yaml";
+import type { Node } from "yaml";
 import { loadPlugin } from "./markdown/plugins";
+import { loadManifestDoc, ensureSeq } from "./manifest-doc";
 import type { ResolvedPluginConfig } from "../schema/manifest.types";
 
 /** Folder (relative to the project root) imported local plugins are copied to. */
@@ -130,37 +130,6 @@ function isLocalRef(ref: string): boolean {
   );
 }
 
-/** Resolve `manifest.yaml`/`.yml` inside a project dir; prefers an existing file. */
-function manifestPathFor(projectDir: string): string {
-  const yaml = path.join(projectDir, "manifest.yaml");
-  const yml = path.join(projectDir, "manifest.yml");
-  if (!existsSync(yaml) && existsSync(yml)) return yml;
-  return yaml;
-}
-
-/** Load the manifest as a yaml Document (empty doc when absent). */
-async function loadDoc(projectDir: string): Promise<{ doc: Document.Parsed; file: string }> {
-  const file = manifestPathFor(projectDir);
-  let text = "";
-  try {
-    text = await readFile(file, "utf8");
-  } catch {
-    text = "";
-  }
-  return { doc: parseDocument(text), file };
-}
-
-/** The `plugins:` sequence node, creating it if missing. */
-function ensurePluginsSeq(doc: Document.Parsed): YAMLSeq {
-  let seq = doc.get("plugins", true);
-  if (!isSeq(seq)) {
-    const fresh = new YAMLSeq(doc.schema);
-    doc.set("plugins", fresh);
-    seq = fresh;
-  }
-  return seq as YAMLSeq;
-}
-
 /** The string ref of one plugins-list item (path for objects, the scalar otherwise). */
 function itemRef(item: unknown): string | null {
   if (isScalar(item)) return typeof item.value === "string" ? item.value : null;
@@ -189,7 +158,7 @@ function refKind(ref: string): PluginKind {
 export async function listProjectPlugins(
   projectDir: string,
 ): Promise<ProjectPluginEntry[]> {
-  const { doc } = await loadDoc(projectDir);
+  const { doc } = await loadManifestDoc(projectDir);
   const seq = doc.get("plugins", true);
   if (!isSeq(seq)) return [];
 
@@ -230,7 +199,7 @@ export async function setPluginEnabled(
   ref: string,
   enabled: boolean,
 ): Promise<void> {
-  const { doc, file } = await loadDoc(projectDir);
+  const { doc, file } = await loadManifestDoc(projectDir);
   const seq = doc.get("plugins", true);
   if (!isSeq(seq)) {
     throw new Error(`No plugins are configured in ${path.basename(file)}.`);
@@ -268,8 +237,8 @@ async function appendPlugin(
   ref: string,
   item: unknown,
 ): Promise<void> {
-  const { doc, file } = await loadDoc(projectDir);
-  const seq = ensurePluginsSeq(doc);
+  const { doc, file } = await loadManifestDoc(projectDir);
+  const seq = ensureSeq(doc, "plugins");
   if (indexOfRef(seq, ref) >= 0) return; // idempotent — already present
   seq.add(item);
   await mkdir(projectDir, { recursive: true });

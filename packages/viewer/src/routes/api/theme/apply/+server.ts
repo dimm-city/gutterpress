@@ -1,23 +1,21 @@
-import { json, error } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
+import { error } from '@sveltejs/kit';
 import { isAbsolute } from 'node:path';
+import { jsonRoute } from '../../_lib/handler';
+import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = async ({ request }) => {
-  try {
-    const { projectDir, target } = await request.json().catch(() => ({})) as {
-      projectDir?: string;
-      target?: { kind: 'builtin' | 'project'; id: string };
-    };
+export const POST: RequestHandler = jsonRoute(
+  async (body: {
+    projectDir?: string;
+    target?: { kind: 'builtin' | 'project'; id: string };
+  }) => {
+    const { projectDir, target } = body;
     if (!projectDir || !isAbsolute(projectDir)) {
-      return error(400, 'theme/apply requires an absolute projectDir');
+      error(400, 'theme/apply requires an absolute projectDir');
     }
     if (!target || typeof target.kind !== 'string' || typeof target.id !== 'string') {
-      return error(400, 'theme/apply requires a target { kind, id }');
+      error(400, 'theme/apply requires a target { kind, id }');
     }
     const lib = await import('@dimm-city/print-md');
-    return json(await lib.applyTheme(projectDir, target));
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return error(500, msg);
+    return lib.applyTheme(projectDir, target);
   }
-};
+);

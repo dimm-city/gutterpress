@@ -1,23 +1,18 @@
-import { json, error } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
+import { error } from '@sveltejs/kit';
 import { isAbsolute } from 'node:path';
+import { jsonRoute } from '../../_lib/handler';
+import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = async ({ request }) => {
-  try {
-    const { projectDir, url } = await request.json().catch(() => ({})) as {
-      projectDir?: string;
-      url?: string;
-    };
+export const POST: RequestHandler = jsonRoute(
+  async (body: { projectDir?: string; url?: string }) => {
+    const { projectDir, url } = body;
     if (!projectDir || !isAbsolute(projectDir)) {
-      return error(400, 'theme/import-from-url requires an absolute projectDir');
+      error(400, 'theme/import-from-url requires an absolute projectDir');
     }
     if (typeof url !== 'string' || !url) {
-      return error(400, 'theme/import-from-url requires a url');
+      error(400, 'theme/import-from-url requires a url');
     }
     const lib = await import('@dimm-city/print-md');
-    return json(await lib.importThemeFromUrl(projectDir, url));
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return error(500, msg);
+    return lib.importThemeFromUrl(projectDir, url);
   }
-};
+);

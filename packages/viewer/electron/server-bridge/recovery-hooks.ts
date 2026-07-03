@@ -2,6 +2,8 @@
  * Shared crash-recovery hooks for recovery:* server routes.
  */
 
+import { createHostBridge } from './create-host-bridge';
+
 export interface RecoveryEntry {
   filePath: string;
   recoveryPath: string;
@@ -15,17 +17,5 @@ export interface RecoveryHooks {
   list(projectDir: string): Promise<RecoveryEntry[]>;
 }
 
-const GLOBAL_KEY = '__printMdRecoveryHooks__' as const;
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __printMdRecoveryHooks__: RecoveryHooks | undefined;
-}
-
-export function registerRecoveryHooks(hooks: RecoveryHooks): void {
-  globalThis[GLOBAL_KEY] = hooks;
-}
-
-export function getRecoveryHooks(): RecoveryHooks | null {
-  return globalThis[GLOBAL_KEY] ?? null;
-}
+export const { register: registerRecoveryHooks, get: getRecoveryHooks } =
+  createHostBridge<RecoveryHooks>('__printMdRecoveryHooks__');

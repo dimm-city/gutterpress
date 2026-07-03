@@ -11,6 +11,7 @@
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
 
   // #49: recents/favorites are FolderRef-shaped (key + precomputed displayName)
@@ -69,10 +70,6 @@
 
   export async function reload() {
     await loadLists();
-  }
-
-  function basenameOf(p: string): string {
-    return p.split('/').filter(Boolean).pop() ?? p.split('\\').filter(Boolean).pop() ?? p;
   }
 
   async function loadLists() {
@@ -441,7 +438,7 @@
               >
                 <span class="row-icon" aria-hidden="true"><Icon name="search" size={13} /></span>
                 <span class="row-info">
-                  <span class="row-title">{proj.title || proj.path.split(/[\\/]/).filter(Boolean).pop()}</span>
+                  <span class="row-title">{proj.title || basenameOf(proj.path)}</span>
                   <span class="row-path">{proj.path}</span>
                 </span>
               </div>

@@ -2,6 +2,8 @@
  * Shared remote-operation hooks for remote:* server routes.
  */
 
+import { createHostBridge } from './create-host-bridge';
+
 export interface TokenStore {
   get(host: string): Promise<{ token: string; host: string; username?: string; kind: string; label?: string; createdAt: number } | null>;
   set(host: string, credential: { token: string; host: string; username?: string; kind: string; label?: string; createdAt: number }): Promise<void>;
@@ -27,19 +29,16 @@ export interface RemoteHooks<RemoteLibModule = LibModule, TokenStoreType = Token
   GITHUB_HOST: string;
 }
 
-const GLOBAL_KEY = '__printMdRemoteHooks__' as const;
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __printMdRemoteHooks__: RemoteHooks<unknown, unknown> | undefined;
-}
+// Generic per call-site; the bridge stores the base shape and the wrappers
+// re-apply the type parameters so callers keep `getRemoteHooks<...>()`.
+const bridge = createHostBridge<RemoteHooks<unknown, unknown>>('__printMdRemoteHooks__');
 
 export function registerRemoteHooks<RemoteLibModule, TokenStoreType>(
   hooks: RemoteHooks<RemoteLibModule, TokenStoreType>,
 ): void {
-  globalThis[GLOBAL_KEY] = hooks;
+  bridge.register(hooks as RemoteHooks<unknown, unknown>);
 }
 
 export function getRemoteHooks<RemoteLibModule = LibModule, TokenStoreType = TokenStore>(): RemoteHooks<RemoteLibModule, TokenStoreType> | null {
-  return (globalThis[GLOBAL_KEY] as RemoteHooks<RemoteLibModule, TokenStoreType> | undefined) ?? null;
+  return bridge.get() as RemoteHooks<RemoteLibModule, TokenStoreType> | null;
 }
