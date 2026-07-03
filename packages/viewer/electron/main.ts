@@ -19,6 +19,7 @@ import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, write
 import { basename } from "node:path";
 import * as fs from "node:fs";
 import { watch } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
 import {
   createSettingsStore,
@@ -136,9 +137,19 @@ import {
   startSvelteKitServer,
 } from "./sveltekit-host";
 
+// Module directory, ESM-safe. We do NOT rely on electron-vite's injected
+// `__dirname` shim (`const __dirname = import.meta.dirname`): after main.ts was
+// split into sibling modules the shim stopped covering main.ts's own scope,
+// throwing `__dirname is not defined` inside createSplashWindow → appIconPath and
+// aborting startup before any window opened. `fileURLToPath(import.meta.url)` is
+// the canonical, bundler-independent replacement (import.meta.url is always
+// defined in the ESM main bundle; import.meta.dirname is not). Resolves to
+// out/main/ at runtime.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+
 function appIconPath(): string {
   const packaged = path.resolve(process.resourcesPath ?? "", "build-resources/icon.png");
-  const dev = path.resolve(__dirname, "../../build-resources/icon.png");
+  const dev = path.resolve(HERE, "../../build-resources/icon.png");
   return fs.existsSync(packaged) ? packaged : dev;
 }
 
@@ -152,9 +163,6 @@ function slog(msg: string): void {
   console.log(`[startup +${Date.now() - __startupT0}ms] ${msg}`);
 }
 slog("main.js evaluated");
-
-// __dirname/__filename are injected by electron-vite for the ESM main bundle
-// (resolves to out/main/ at runtime).
 
 // ──────────────────────────────────────────────────────────────────────────
 // Lib loader
@@ -564,7 +572,7 @@ function createWindow() {
     // the splash (with a fallback timeout so the splash can never strand the user).
     show: false,
     webPreferences: {
-      preload: path.resolve(__dirname, "../preload/preload.js"),
+      preload: path.resolve(HERE, "../preload/preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,

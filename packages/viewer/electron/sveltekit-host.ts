@@ -15,16 +15,19 @@
 import { app, protocol } from "electron";
 import path from "node:path";
 import { createServer } from "node:http";
-import { pathToFileURL } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 
-// __dirname/__filename are injected by electron-vite for the ESM main bundle
-// (resolves to out/main/ at runtime); this module is bundled into main.js.
+// Module directory, ESM-safe — see the note on `HERE` in main.ts. Do NOT use the
+// bare `__dirname` electron-vite shim; it is not reliably in scope once the main
+// bundle is split across sibling modules. This module is bundled into main.js, so
+// import.meta.url resolves to out/main/ at runtime.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 let skServerPort: number | null = null;
 
 function getSvelteKitHandlerPath(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, "app.asar", "build", "handler.js")
-    : path.join(__dirname, "..", "..", "build", "handler.js");
+    : path.join(HERE, "..", "..", "build", "handler.js");
 }
 
 export async function startSvelteKitServer(
