@@ -15,6 +15,7 @@
 import { DEFAULT_SETTINGS } from "$lib/platform";
 import type { AppSettings, DeepPartial } from "$lib/platform";
 import { api } from "$lib/api";
+import { deepMergeSettings } from "$lib/settings-merge";
 
 // The single reactive settings object. Seeded with defaults so reads are valid
 // before the async load resolves; `_loadSettings()` overwrites with persisted
@@ -29,29 +30,10 @@ let loadPromise: Promise<void> | null = null;
 /** Subscribers notified after every `set()` call with the updated settings. */
 const subscribers: Array<(settings: AppSettings) => void> = [];
 
-function mergeSettingsSection<K extends keyof AppSettings>(
-  target: AppSettings,
-  base: AppSettings,
-  key: K,
-  value: DeepPartial<AppSettings>[K],
-): void {
-  if (value && typeof value === "object") {
-    target[key] = { ...base[key], ...value } as AppSettings[K];
-  }
-}
-
 function isAppSettings(value: unknown): value is AppSettings {
   if (!value || typeof value !== "object") return false;
   const settings = value as Partial<AppSettings>;
   return !!settings.editor && !!settings.appearance && !!settings.preview && !!settings.versionHistory;
-}
-
-function mergeInto(base: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
-  const out: AppSettings = { ...base };
-  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
-    mergeSettingsSection(out, base, key, patch[key]);
-  }
-  return out;
 }
 
 /**
@@ -83,7 +65,7 @@ export function _loadSettings(): Promise<void> {
  * the platform adapter. Accepts a deep-partial so callers patch one section.
  */
 function set(patch: DeepPartial<AppSettings>): void {
-  state.current = mergeInto(state.current, patch);
+  state.current = deepMergeSettings(state.current, patch);
   api.app.setSettings(patch as Record<string, unknown>).catch(() => {});
   for (const fn of [...subscribers]) fn(state.current);
 }

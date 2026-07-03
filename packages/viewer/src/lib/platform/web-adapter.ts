@@ -34,6 +34,7 @@ import {
 import { assembleBookHtml } from "@dimm-city/print-md/render";
 import { IndexedDbWebStore } from "./web-store";
 import type { WebStore } from "./web-store";
+import { deepMergeSettings } from "../settings-merge";
 import type {
   Platform,
   ViewerPrefs,
@@ -165,26 +166,6 @@ function rejectNotImplemented(method: string): Promise<never> {
 }
 
 const SETTINGS_KEY = "print-md.app-settings";
-
-/** Recursively merge a settings patch over a base, returning a new object. */
-function mergeSettingsSection<K extends keyof AppSettings>(
-  target: AppSettings,
-  base: AppSettings,
-  key: K,
-  value: DeepPartial<AppSettings>[K],
-): void {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    target[key] = { ...base[key], ...value } as AppSettings[K];
-  }
-}
-
-function deepMergeSettings(base: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
-  const out: AppSettings = { ...base };
-  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
-    mergeSettingsSection(out, base, key, patch[key]);
-  }
-  return out;
-}
 
 const webUpdater: UpdaterApi = {
   getStatus: () =>
