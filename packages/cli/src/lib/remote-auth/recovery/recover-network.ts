@@ -19,12 +19,9 @@
  * Backoff: fixed 30 s delay before the next automated retry.
  */
 
-import { makeManualGuidance } from "./manual-guidance.ts";
+import { RETRY_AFTER_MS, mapOutcomeToResult, syncOptionsFrom } from "./outcome-mapping.ts";
 import { syncProject } from "../sync.ts";
 import type { RecoveryContext, RecoveryResult } from "./types.ts";
-
-/** Delay before the next automated retry (30 seconds). */
-const RETRY_AFTER_MS = 30_000;
 
 // ── RecoverFn implementation ─────────────────────────────────────────────────
 
@@ -44,69 +41,35 @@ export async function recover(
   ctx: RecoveryContext,
   _error?: unknown,
 ): Promise<RecoveryResult> {
-  const outcome = await syncProject({
-    projectDir: ctx.projectDir,
-    credential: ctx.credential,
-    tokenStore: ctx.tokenStore,
-    authorName: ctx.authorName,
-    httpClient: ctx.httpClient,
+  const outcome = await syncProject(syncOptionsFrom(ctx));
+
+  // Default map handles synced/up-to-date → recovered and conflict →
+  // needs_user (merge_conflict — retrying cannot fix a conflict, so surface it
+  // NOW with the file list rather than burning a retry cycle). This handler
+  // intentionally differs on:
+  //   - offline: retry_later with soft "we'll try again shortly" copy.
+  //   - auth:    retry_later (not needs_user) so the caller routes to the auth
+  //              recovery handler on the next pass.
+  //   - error:   retry_later fallback (not failed_no_changes_made) so the host
+  //              retries through the full dispatcher next time rather than
+  //              silently dropping the failure.
+  return mapOutcomeToResult(ctx, outcome, {
+    offline: () => ({
+      status: "retry_later",
+      message:
+        "Your work is saved on this computer. We'll try sending it online again shortly.",
+      retryAfterMs: RETRY_AFTER_MS,
+    }),
+    auth: (_c, o) => ({
+      status: "retry_later",
+      message: o.message,
+      retryAfterMs: RETRY_AFTER_MS,
+    }),
+    error: () => ({
+      status: "retry_later",
+      message:
+        "Your work is saved on this computer. Sync will be retried shortly.",
+      retryAfterMs: RETRY_AFTER_MS,
+    }),
   });
-
-  switch (outcome.status) {
-    case "offline":
-      return {
-        status: "retry_later",
-        message:
-          "Your work is saved on this computer. We'll try sending it online again shortly.",
-        retryAfterMs: RETRY_AFTER_MS,
-      };
-
-    case "synced":
-      return {
-        status: "recovered",
-        message: outcome.message,
-      };
-
-    case "up-to-date":
-      // Network was reachable; nothing to push. Still counts as "recovered"
-      // (no pending work was lost and the connection is healthy).
-      return {
-        status: "recovered",
-        message: outcome.message,
-      };
-
-    case "auth":
-      // The network came back but credentials are wrong — surface retry_later
-      // so the caller can route to the auth recovery handler on the next pass.
-      return {
-        status: "retry_later",
-        message: outcome.message,
-        retryAfterMs: RETRY_AFTER_MS,
-      };
-
-    case "conflict":
-      // The network came back and the retry immediately hit a real merge
-      // conflict. Retrying cannot fix a conflict — surface it to the user NOW
-      // with the file list (mirrors recover-merge-conflict.ts) instead of
-      // burning a retry cycle telling the author "we'll try again shortly"
-      // about a condition that needs their decision.
-      return {
-        status: "needs_user",
-        message: outcome.message,
-        guidance: makeManualGuidance(ctx, "merge_conflict"),
-        files: outcome.files,
-      };
-
-    default:
-      // pull-first / error — these need a different recovery path (not
-      // network_unavailable). Return retry_later as a safe fallback so the
-      // host retries through the full dispatcher next time rather than
-      // silently dropping the failure.
-      return {
-        status: "retry_later",
-        message:
-          "Your work is saved on this computer. Sync will be retried shortly.",
-        retryAfterMs: RETRY_AFTER_MS,
-      };
-  }
 }

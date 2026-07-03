@@ -28,6 +28,7 @@
 
 import { syncProject } from "../sync.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";
+import { mapOutcomeToResult, syncOptionsFrom } from "./outcome-mapping.ts";
 import type { RecoveryContext, RecoveryResult } from "./types.ts";
 
 // ── Host extraction ──────────────────────────────────────────────────────────
@@ -84,71 +85,46 @@ export async function recover(
   ctx: RecoveryContext,
   _error?: unknown,
 ): Promise<RecoveryResult> {
-  const outcome = await syncProject({
-    projectDir: ctx.projectDir,
-    credential: ctx.credential,
-    tokenStore: ctx.tokenStore,
-    authorName: ctx.authorName,
-    httpClient: ctx.httpClient,
-  });
+  const outcome = await syncProject(syncOptionsFrom(ctx));
 
-  switch (outcome.status) {
-    case "auth": {
-      // Clear the stale credential so the next reconnect flow starts fresh.
-      const host = hostKeyFor(ctx);
-      if (host && ctx.tokenStore) {
-        try {
-          await ctx.tokenStore.delete(host);
-        } catch {
-          // Best-effort: a store failure must not block the guidance response.
-        }
+  if (outcome.status === "auth") {
+    // Clear the stale credential so the next reconnect flow starts fresh.
+    // Best-effort — a store failure must not block the guidance response.
+    const host = hostKeyFor(ctx);
+    if (host && ctx.tokenStore) {
+      try {
+        await ctx.tokenStore.delete(host);
+      } catch {
+        // Ignored on purpose.
       }
-      const guidance = makeManualGuidance(ctx, "auth_required");
-      return {
-        status: "needs_user",
-        message:
-          "The online repository didn't accept the saved connection. Please reconnect your account to continue syncing.",
-        guidance,
-      };
     }
-
-    case "synced":
-    case "up-to-date":
-      // The credential was valid — sync succeeded (or there was nothing to do).
-      // Do NOT clear the credential on success.
-      return {
-        status: "recovered",
-        message: outcome.message,
-      };
-
-    case "offline":
-      // Network issue rather than an auth issue.
-      return {
-        status: "needs_user",
-        message:
-          "Your work is saved on this computer. Check your connection and try syncing again.",
-        guidance: makeManualGuidance(ctx, "network_unavailable"),
-      };
-
-    case "conflict": {
-      // A content conflict surfaced instead of an auth failure. Surface it
-      // as `needs_user` with conflict guidance so the host can open the
-      // per-file choices dialog.
-      return {
-        status: "needs_user",
-        message: outcome.message,
-        guidance: makeManualGuidance(ctx, "merge_conflict"),
-        files: outcome.files,
-      };
-    }
-
-    default:
-      // error / unexpected — nothing changed; give the author a safe fallback.
-      return {
-        status: "needs_user",
-        message:
-          "Something went wrong while trying to sync. Your work is saved on this computer.",
-        guidance: makeManualGuidance(ctx, "unknown"),
-      };
   }
+
+  // Default map handles synced/up-to-date → recovered and conflict →
+  // needs_user (merge_conflict). This handler intentionally differs on:
+  //   - auth:    author-friendly reconnect copy (not outcome.message).
+  //   - offline: needs_user with network guidance (not retry_later) — an auth
+  //              recovery pass should hand a network problem to the user.
+  //   - error:   needs_user with a safe generic fallback (not
+  //              failed_no_changes_made) — nothing changed.
+  return mapOutcomeToResult(ctx, outcome, {
+    auth: (c) => ({
+      status: "needs_user",
+      message:
+        "The online repository didn't accept the saved connection. Please reconnect your account to continue syncing.",
+      guidance: makeManualGuidance(c, "auth_required"),
+    }),
+    offline: (c) => ({
+      status: "needs_user",
+      message:
+        "Your work is saved on this computer. Check your connection and try syncing again.",
+      guidance: makeManualGuidance(c, "network_unavailable"),
+    }),
+    error: (c) => ({
+      status: "needs_user",
+      message:
+        "Something went wrong while trying to sync. Your work is saved on this computer.",
+      guidance: makeManualGuidance(c, "unknown"),
+    }),
+  });
 }

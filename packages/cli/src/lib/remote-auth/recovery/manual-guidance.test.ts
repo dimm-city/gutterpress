@@ -81,6 +81,103 @@ describe("makeManualGuidance — machine action key", () => {
     }
   });
 
+  // Characterization: full byte-for-byte output for a representative sample of
+  // kinds (plain, prefixed-supportDetails with/without backup, and default).
+  // This must stay green through any DRY refactor of the copy table.
+  test("full output is byte-identical for representative kinds", () => {
+    const err = new Error("boom detail");
+
+    expect(makeManualGuidance(ctx, "non_fast_forward", err)).toEqual({
+      userSummary:
+        "The online copy has new changes. Your work is saved — please sync again to combine everything.",
+      recommendedNextStep:
+        "Sync your project to combine your changes with the online version.",
+      recommendedAction: "Sync now",
+      recommendedActionKey: "sync",
+      safeNextSteps: [
+        "Your changes are saved on this computer and won't be lost.",
+        "Syncing will combine your version and the online version automatically.",
+      ],
+      supportDetails: "Error kind: non_fast_forward. Detail: boom detail",
+    });
+
+    expect(makeManualGuidance(ctx, "interrupted_rebase", err)).toEqual({
+      userSummary:
+        "Your project's last update didn't finish, so it can't be synced yet.",
+      recommendedNextStep:
+        "Let print-md undo the unfinished update and return your project to its last working state.",
+      recommendedAction: "Restore to normal",
+      recommendedActionKey: "restore_repo",
+      safeNextSteps: [
+        "None of your content files are deleted.",
+        "A safety copy could not be saved, so nothing was changed.",
+      ],
+      supportDetails:
+        "Interrupted rebase detected. Error kind: interrupted_rebase. Detail: boom detail",
+    });
+
+    expect(
+      makeManualGuidance(ctx, "interrupted_cherry_pick", err, "/tmp/x.zip"),
+    ).toEqual({
+      backupZipPath: "/tmp/x.zip",
+      userSummary:
+        "Your project's last update didn't finish, so it can't be synced yet.",
+      recommendedNextStep:
+        "Let print-md undo the unfinished update and return your project to its last working state.",
+      recommendedAction: "Restore to normal",
+      recommendedActionKey: "restore_repo",
+      safeNextSteps: [
+        "None of your content files are deleted.",
+        "A safety copy of your project was saved first — anything the repair changes can be retrieved from it.",
+      ],
+      supportDetails:
+        "Interrupted cherry-pick detected. Error kind: interrupted_cherry_pick. Detail: boom detail",
+    });
+
+    expect(makeManualGuidance(ctx, "interrupted_merge", err, "/tmp/x.zip")).toEqual({
+      backupZipPath: "/tmp/x.zip",
+      userSummary:
+        "Your project's last update didn't finish, so it can't be synced yet.",
+      recommendedNextStep:
+        "Let print-md undo the unfinished update and return your project to its last working state.",
+      recommendedAction: "Restore to normal",
+      recommendedActionKey: "restore_repo",
+      safeNextSteps: [
+        "None of your content files are deleted.",
+        "A safety copy of your project was saved first — anything the repair changes can be retrieved from it.",
+      ],
+      supportDetails:
+        "Interrupted merge detected. Error kind: interrupted_merge. Detail: boom detail",
+    });
+
+    expect(makeManualGuidance(ctx, "unknown", err)).toEqual({
+      userSummary:
+        "Something unexpected went wrong while syncing. Your work is saved on this computer.",
+      recommendedNextStep:
+        "Try syncing again. If the problem continues, contact support.",
+      recommendedAction: "Try again",
+      recommendedActionKey: "sync",
+      safeNextSteps: [
+        "Your work is saved on this computer.",
+        "Nothing was changed online.",
+      ],
+      supportDetails: "Error kind: unknown. Detail: boom detail",
+    });
+
+    expect(makeManualGuidance(ctx, "auth_required")).toEqual({
+      userSummary:
+        "The online repository didn't accept the saved connection. You need to reconnect.",
+      recommendedNextStep: "Reconnect your account and try syncing again.",
+      recommendedAction: "Reconnect",
+      recommendedActionKey: "reconnect",
+      safeNextSteps: [
+        "Your work is saved on this computer.",
+        "Nothing was sent or changed online.",
+      ],
+      supportDetails: "Error kind: auth_required",
+    });
+  });
+
   test("representative kinds map to the expected keys", () => {
     expect(makeManualGuidance(ctx, "auth_required").recommendedActionKey).toBe(
       "reconnect",

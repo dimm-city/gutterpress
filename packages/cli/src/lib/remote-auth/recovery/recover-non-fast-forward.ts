@@ -26,55 +26,23 @@
 
 import { syncProject } from "../sync.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";
+import { mapOutcomeToResult, syncOptionsFrom } from "./outcome-mapping.ts";
 import type { RecoverFn } from "./types.ts";
 
 export const recover: RecoverFn = async (ctx, _error) => {
-  const outcome = await syncProject({
-    projectDir: ctx.projectDir,
-    credential: ctx.credential,
-    tokenStore: ctx.tokenStore,
-    authorName: ctx.authorName,
-    httpClient: ctx.httpClient,
+  const outcome = await syncProject(syncOptionsFrom(ctx));
+
+  // Default map already covers synced/up-to-date → recovered, conflict →
+  // needs_user (merge_conflict), auth → needs_user (auth_required), and
+  // offline → retry_later (30 s — long enough not to hammer the network while
+  // the user reconnects, short enough to feel responsive). Only the `error`
+  // arm differs: guidance points at non_fast_forward ("sync again"), not the
+  // generic unknown copy. No repair was run, no remote was changed.
+  return mapOutcomeToResult(ctx, outcome, {
+    error: (c, o) => ({
+      status: "failed_no_changes_made",
+      message: o.message,
+      guidance: makeManualGuidance(c, "non_fast_forward"),
+    }),
   });
-
-  switch (outcome.status) {
-    case "synced":
-    case "up-to-date":
-      return {
-        status: "recovered",
-        message: outcome.message,
-      };
-
-    case "conflict":
-      return {
-        status: "needs_user",
-        message: outcome.message,
-        guidance: makeManualGuidance(ctx, "merge_conflict"),
-        files: outcome.files,
-      };
-
-    case "auth":
-      return {
-        status: "needs_user",
-        message: outcome.message,
-        guidance: makeManualGuidance(ctx, "auth_required"),
-      };
-
-    case "offline":
-      return {
-        status: "retry_later",
-        message: outcome.message,
-        // 30-second retry interval — long enough not to hammer the network
-        // while the user reconnects, short enough to feel responsive.
-        retryAfterMs: 30_000,
-      };
-
-    default:
-      // 'error' or any future status: no repair was run, no remote was changed.
-      return {
-        status: "failed_no_changes_made",
-        message: outcome.message,
-        guidance: makeManualGuidance(ctx, "non_fast_forward"),
-      };
-  }
 };
