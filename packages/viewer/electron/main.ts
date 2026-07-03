@@ -117,6 +117,7 @@ import type {
 // build time; the suppression documents the tsc-only gap.
 // @ts-expect-error vite `?raw` string import — resolved by electron-vite, not tsc
 import splashHtml from "./splash.html?raw";
+import { recoveryDir as recoveryDirImpl, operationLogPath as operationLogPathImpl } from "./recovery-paths";
 import {
   ExportCanceledError,
   electronPdfRenderer,
@@ -507,19 +508,12 @@ function showMainWindowAndCloseSplash(): void {
 }
 
 // ── Unsaved-changes infrastructure (#44) ────────────────────────────────────
-// The recovery sidecar store lives under userData/recovery/.
-function recoveryDir(): string {
-  return path.join(app.getPath("userData"), "recovery");
-}
-
-// ── Operation log path ──────────────────────────────────────────────────────
-// The sync/recovery operation log lives under userData/logs/. One file per
-// project slug so logs from different projects don't interleave. The file is
-// appended to (not truncated) so a user can see history across sessions.
-function operationLogPath(repoSlug: string): string {
-  const slug = repoSlug.replace(/[^a-zA-Z0-9_-]/g, "_") || "repo";
-  return path.join(app.getPath("userData"), "logs", `${slug}.log`);
-}
+// The recovery sidecar store lives under userData/recovery/; the sync/recovery
+// operation log lives under userData/logs/. The pure path/slug builders live in
+// ./recovery-paths; these thin wrappers bind them to the live userData dir.
+const recoveryDir = (): string => recoveryDirImpl(app.getPath("userData"));
+const operationLogPath = (repoSlug: string): string =>
+  operationLogPathImpl(app.getPath("userData"), repoSlug);
 
 // A single shallow folder watcher for the open project. fs.watch is coarse and
 // fires multiple times per save, so changes are debounced before notifying the
