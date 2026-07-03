@@ -27,7 +27,7 @@ export type JsonRouteFn<B = unknown> = (
 export function jsonRoute<B = unknown>(fn: JsonRouteFn<B>) {
   return async (event: RequestEvent): Promise<Response> => {
     try {
-      const body = (await event.request.json().catch(() => ({}))) as B;
+      const body = ((await event.request.json().catch(() => ({}))) ?? {}) as B;
       const result = await fn(body, event);
       return json(result ?? null);
     } catch (e) {

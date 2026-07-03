@@ -38,6 +38,15 @@ test("jsonRoute passes a safely-parsed empty body when JSON is missing/invalid",
   expect(await res.json()).toEqual({ keys: [] });
 });
 
+test("jsonRoute coalesces a literal JSON null body to an empty object", async () => {
+  // A valid `null` body parses successfully (not a parse error), so the catch
+  // never fires; without the `?? {}` coalesce it would reach handlers as null
+  // and crash any that assume an object body.
+  const handler = jsonRoute(async (body: Record<string, unknown>) => ({ keys: Object.keys(body) }));
+  const res = await handler(event(null));
+  expect(await res.json()).toEqual({ keys: [] });
+});
+
 test("jsonRoute maps a thrown plain Error to a 500 with its message", async () => {
   const handler = jsonRoute(async () => {
     throw new Error("boom");

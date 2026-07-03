@@ -57,3 +57,12 @@ test("applyTokenUpdates with no updates returns the input unchanged", () => {
   const base = `:root {\n  --a: #111111;\n}`;
   expect(applyTokenUpdates(base, [])).toBe(base);
 });
+
+test("updateRootToken appends a :root block when the stylesheet has none", () => {
+  // Previously this returned the CSS unchanged, silently dropping the edit.
+  const out = updateRootToken("body { color: red; }", "--a", "#abcdef");
+  expect(out).toContain(":root {");
+  expect(out).toContain("--a: #abcdef;");
+  // The new token must be discoverable by the parser round-trip.
+  expect(parseStyleTokens(out).some((t) => t.name === "--a" && t.value === "#abcdef")).toBe(true);
+});

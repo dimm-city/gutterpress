@@ -37,9 +37,10 @@ export function parseStyleTokens(cssText: string): StyleToken[] {
 }
 
 /**
- * Set a single `:root` custom property's value, replacing every existing
- * declaration or inserting it into the first `:root` block if absent. Returns
- * the new CSS.
+ * Set a single `:root` custom property's value. If the property already exists,
+ * every declaration of it is replaced; otherwise it is inserted into the first
+ * `:root` block. If the stylesheet has no `:root` block at all, one is appended
+ * so the token is never silently dropped. Returns the new CSS.
  */
 export function updateRootToken(cssText: string, name: string, value: string): string {
   const escaped = name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
@@ -47,7 +48,12 @@ export function updateRootToken(cssText: string, name: string, value: string): s
   if (existing.test(cssText)) {
     return cssText.replace(new RegExp(`(${escaped}\\s*:)[^;]*(;)`, "g"), `$1 ${value}$2`);
   }
-  return cssText.replace(/(:root\s*\{)/, `$1\n  ${name}: ${value};`);
+  if (/:root\s*\{/.test(cssText)) {
+    return cssText.replace(/(:root\s*\{)/, `$1\n  ${name}: ${value};`);
+  }
+  // No :root block yet — append one rather than returning the CSS unchanged.
+  const sep = cssText.length > 0 && !cssText.endsWith("\n") ? "\n" : "";
+  return `${cssText}${sep}:root {\n  ${name}: ${value};\n}\n`;
 }
 
 /** One pending token mutation. */
