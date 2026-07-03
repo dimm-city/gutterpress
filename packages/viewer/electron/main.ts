@@ -20,6 +20,11 @@ import { basename } from "node:path";
 import * as fs from "node:fs";
 import { watch, type FSWatcher } from "node:fs";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
+import {
+  createSettingsStore,
+  mergeSettings,
+  type AppSettings,
+} from "./settings-store";
 import { registerWriteHooks } from "./server-bridge/write-hooks";
 import { registerWatchHooks } from "./server-bridge/watch-hooks";
 import { registerAppHooks } from "./server-bridge/app-hooks";
@@ -281,129 +286,18 @@ async function writePrefs(prefs: ViewerPrefs): Promise<void> {
 // ──────────────────────────────────────────────────────────────────────────
 // User settings (#45) — persisted, section-organised user preferences in a
 // SEPARATE file from viewer-prefs.json so session/per-project state and durable
-// user settings don't collide. Shape mirrors AppSettings in
-// src/lib/platform/contract.ts (kept in sync manually).
+// user settings don't collide. The AppSettings shape, DEFAULT_SETTINGS, the
+// pure mergeSettings helpers, and the injected-fs store factory live in
+// ./settings-store (Phase 5b extraction; unit-tested in
+// tests/platform/settings-store.test.ts). main.ts instantiates the store with
+// the live Electron userData dir + node:fs/promises and uses its read/write
+// closures unchanged.
 // ──────────────────────────────────────────────────────────────────────────
 
-interface AppSettings {
-  editor: {
-    fontFamily: string;
-    fontSize: number;
-    lineHeight: number;
-    spellCheckLanguage: string;
-    autoSaveDelay: number;
-    crashRecovery: boolean;
-  };
-  appearance: {
-    theme: "light" | "dark" | "system";
-    previewBg: string;
-  };
-  preview: {
-    defaultZoom: string;
-    viewMode: "single" | "two-column";
-    paneMode: "edit" | "view";
-  };
-  versionHistory: {
-    /** Save automatic snapshots after edits settle (RC1-3). Default ON. */
-    autoSnapshot: boolean;
-    /** Minutes of quiet after the last edit before a snapshot fires. */
-    autoSnapshotMinutes: number;
-    /**
-     * Automatically sync to the remote when a remote is configured (transparent-
-     * sync plan §6). Defaults ON for projects with canSync; local-only projects
-     * are never auto-synced regardless of this setting.
-     */
-    autoSync: boolean;
-    /** Periodic safety-sync cadence in minutes (clamped to [1, 1440]). */
-    autoSyncMinutes: number;
-  };
-  gitIdentity: {
-    authorName: string;
-    authorEmail: string;
-  };
-  advanced: {
-    fileWatcherInterval: number;
-    logLevel: "error" | "warn" | "info" | "debug";
-  };
-}
-
-const DEFAULT_SETTINGS: AppSettings = {
-  editor: {
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    fontSize: 14,
-    lineHeight: 1.6,
-    spellCheckLanguage: "en-US",
-    autoSaveDelay: 2500,
-    crashRecovery: true,
-  },
-  appearance: {
-    theme: "system",
-    previewBg: "#5a5a5a",
-  },
-  preview: {
-    defaultZoom: "fit-width",
-    viewMode: "two-column",
-    // Keep in sync with the renderer's canonical DEFAULT_SETTINGS (contract.ts).
-    paneMode: "view",
-  },
-  versionHistory: {
-    autoSnapshot: true,
-    autoSnapshotMinutes: 10,
-    autoSync: true,      // transparent-sync plan §6: ON by default when canSync
-    autoSyncMinutes: 2,  // ~2 min periodic safety cadence
-  },
-  gitIdentity: {
-    authorName: "",
-    authorEmail: "",
-  },
-  advanced: {
-    fileWatcherInterval: 300,
-    logLevel: "warn",
-  },
-};
-
-type DeepPartialSettings = {
-  [K in keyof AppSettings]?: Partial<AppSettings[K]>;
-};
-
-function settingsPath(): string {
-  return path.join(app.getPath("userData"), "app-settings.json");
-}
-
-function mergeSettingsSection<K extends keyof AppSettings>(
-  target: AppSettings,
-  base: AppSettings,
-  key: K,
-  value: DeepPartialSettings[K],
-): void {
-  if (value && typeof value === "object") {
-    target[key] = { ...base[key], ...value } as AppSettings[K];
-  }
-}
-
-function mergeSettings(base: AppSettings, patch: DeepPartialSettings): AppSettings {
-  const out: AppSettings = { ...base };
-  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
-    mergeSettingsSection(out, base, key, patch[key]);
-  }
-  return out;
-}
-
-async function readSettings(): Promise<AppSettings> {
-  try {
-    const stored = JSON.parse(
-      await readFile(settingsPath(), "utf8"),
-    ) as DeepPartialSettings;
-    return mergeSettings(DEFAULT_SETTINGS, stored);
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
-}
-
-async function writeSettings(settings: AppSettings): Promise<void> {
-  await mkdir(app.getPath("userData"), { recursive: true });
-  await writeFile(settingsPath(), JSON.stringify(settings, null, 2), "utf8");
-}
+const { readSettings, writeSettings } = createSettingsStore({
+  getUserDataDir: () => app.getPath("userData"),
+  fs: { readFile, writeFile, mkdir },
+});
 
 async function existingDirectory(dir: string | undefined): Promise<string | null> {
   if (!dir) return null;
