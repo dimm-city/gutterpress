@@ -18,7 +18,7 @@ import os from "node:os";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import * as fs from "node:fs";
-import { watch, type FSWatcher } from "node:fs";
+import { watch } from "node:fs";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
 import {
   createSettingsStore,
@@ -79,6 +79,7 @@ import {
   type SyncStatusPayload,
 } from "./auto-sync/orchestrator";
 import { AutoSnapshotScheduler } from "./auto-snapshot/scheduler";
+import { FolderWatcher } from "./folder-watch/watcher";
 import type {
   AdoptFolderOptions,
   ApplyThemeTarget,
@@ -354,9 +355,13 @@ const operationLogPath = (repoSlug: string): string =>
 // A single shallow folder watcher for the open project. fs.watch is coarse and
 // fires multiple times per save, so changes are debounced before notifying the
 // renderer. Only one project is open at a time, so a single watcher suffices.
-let folderWatcher: FSWatcher | null = null;
+// The watcher/debounce/normalized-dir state + control logic lives in the
+// FolderWatcher class (electron/folder-watch/watcher.ts; unit-tested in
+// tests/platform/folder-watcher.test.ts) behind injected deps. main.ts keeps
+// thin startFolderWatch/stopFolderWatch delegators (below) and a module-level
+// MIRROR of `watchedDir` (updated ONLY via the watcher's onWatchedDirChanged)
+// SOLELY so the many off-limits reads stay byte-identical.
 let watchedDir: string | null = null;
-let folderChangeDebounce: ReturnType<typeof setTimeout> | null = null;
 
 // ── Automatic snapshots (RC1-3) ──────────────────────────────────────────────
 // Host-side debounced auto-snapshot: every edit signal (fs:writeFile inside the
@@ -456,62 +461,38 @@ const autoSync = new AutoSyncOrchestrator({
  *  hid incoming teammate changes until the user happened to edit something). */
 const AUTO_SYNC_OPEN_DELAY_MS = 4_000;
 
+const folderWatch = new FolderWatcher({
+  watch: (dir, options, cb) => watch(dir, options, cb),
+  resolve: (p) => path.resolve(p),
+  onFolderChanged: (name) =>
+    mainWindow?.webContents.send("fs:folderChanged", { filename: name }),
+  onEditSignal: (dir) => {
+    // Edit signal: external editors and in-app saves both land here. Use the
+    // normalized dir (the resolved form) so the map key matches watchedDir.
+    scheduleAutoSnapshot(dir);
+    // Arm the sync debounce (strictly longer than snapshot — see scheduleAutoSync).
+    autoSync.schedule(dir);
+  },
+  onStop: () => {
+    // Project switch/close flush point (RC1-3): edits were pending a snapshot —
+    // take it now (fire-and-forget) instead of dropping the timer.
+    void flushAutoSnapshot();
+    // Cancel all sync timers when the watched folder changes (project switch/close).
+    autoSync.cancelAll();
+  },
+  // Keep the module-level MIRROR in lock-step with the watcher's normalized dir
+  // so the many off-limits `watchedDir` reads stay byte-identical.
+  onWatchedDirChanged: (dir) => {
+    watchedDir = dir;
+  },
+});
+
 function stopFolderWatch(): void {
-  // Project switch/close flush point (RC1-3): edits were pending a snapshot —
-  // take it now (fire-and-forget) instead of dropping the timer.
-  void flushAutoSnapshot();
-  // Cancel all sync timers when the watched folder changes (project switch/close).
-  autoSync.cancelAll();
-  if (folderChangeDebounce) {
-    clearTimeout(folderChangeDebounce);
-    folderChangeDebounce = null;
-  }
-  if (folderWatcher) {
-    folderWatcher.close();
-    folderWatcher = null;
-  }
-  watchedDir = null;
+  folderWatch.stop();
 }
 
 function startFolderWatch(dirPath: string): void {
-  // Normalise so autoSyncStates map keys are consistent (the export gate and all
-  // other callers must use the same key — see issue #3 fix note below).
-  const normalizedDir = path.resolve(dirPath);
-  if (watchedDir === normalizedDir && folderWatcher) return;
-  stopFolderWatch();
-  watchedDir = normalizedDir;
-  try {
-    folderWatcher = watch(dirPath, { recursive: false }, (_event, filename) => {
-      // fs.watch is noisy (fires on rename + change). Debounce so a single
-      // external save produces one renderer notification.
-      const name =
-        typeof filename === "string"
-          ? filename
-          : filename
-            ? Buffer.from(filename).toString()
-            : "";
-      // Git-internal writes are NOT content changes (RC1-3): the automatic
-      // snapshot itself mutates `.git`, and treating that as an edit would
-      // re-trigger preview reloads and re-arm the snapshot timer forever.
-      // (The watch is non-recursive, so `.git` is the only segment we see.)
-      if (name === ".git" || name.startsWith(".git/") || name.startsWith(".git\\")) {
-        return;
-      }
-      if (folderChangeDebounce) clearTimeout(folderChangeDebounce);
-      folderChangeDebounce = setTimeout(() => {
-        mainWindow?.webContents.send("fs:folderChanged", { filename: name });
-      }, 150);
-      // Edit signal: external editors and in-app saves both land here.
-      // Use normalizedDir (the resolved form) so the map key matches watchedDir.
-      scheduleAutoSnapshot(normalizedDir);
-      // Arm the sync debounce (strictly longer than snapshot — see scheduleAutoSync).
-      autoSync.schedule(normalizedDir);
-    });
-  } catch (e) {
-    console.error(`[watch] failed to watch ${dirPath}:`, e);
-    folderWatcher = null;
-    watchedDir = null;
-  }
+  folderWatch.start(dirPath);
 }
 
 // Renderer pushes its pending-save state here so the window `close` gate can
