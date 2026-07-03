@@ -15,11 +15,13 @@ export function recoveryDir(userDataDir: string): string {
 }
 
 // Sanitize a repo slug for use as a log filename: every char outside
-// [A-Za-z0-9_-] becomes '_', and a result with no alphanumeric char (empty or
-// all-separator) falls back to the literal "repo".
+// [A-Za-z0-9_-] becomes '_', and an EMPTY result falls back to the literal
+// "repo". Because the replace only substitutes (never removes) characters, the
+// only input that yields "" is the empty string — so "repo" fires solely for an
+// empty slug, matching the original `... || "repo"` in main.ts exactly. A
+// non-empty all-separator slug (e.g. "///" → "___", "-" → "-") is preserved.
 export function slugifyRepo(repoSlug: string): string {
-  const slug = repoSlug.replace(/[^a-zA-Z0-9_-]/g, "_");
-  return /[a-zA-Z0-9]/.test(slug) ? slug : "repo";
+  return repoSlug.replace(/[^a-zA-Z0-9_-]/g, "_") || "repo";
 }
 
 // The sync/recovery operation log lives under userData/logs/. One file per

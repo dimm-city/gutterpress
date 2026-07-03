@@ -41,9 +41,20 @@ describe("operationLogPath", () => {
     );
   });
 
-  test("all-illegal slug falls back to literal 'repo'", () => {
+  // Behavior-preservation guard: the original main.ts used
+  // `repoSlug.replace(/[^a-zA-Z0-9_-]/g, "_") || "repo"`, so a NON-EMPTY
+  // all-illegal slug sanitizes to underscores and is NOT replaced by "repo".
+  // These pin the true original semantics and fail against the regressed
+  // `/[a-zA-Z0-9]/.test(slug) ? slug : "repo"` variant.
+  test("non-empty all-illegal slug sanitizes to underscores (not 'repo')", () => {
     expect(operationLogPath(DIR, "///")).toBe(
-      path.join(DIR, "logs", "repo.log"),
+      path.join(DIR, "logs", "___.log"),
+    );
+  });
+
+  test("all-separator slug is preserved verbatim (not 'repo')", () => {
+    expect(operationLogPath(DIR, "-_-")).toBe(
+      path.join(DIR, "logs", "-_-.log"),
     );
   });
 });
@@ -61,7 +72,22 @@ describe("slugifyRepo", () => {
     expect(slugifyRepo("")).toBe("repo");
   });
 
-  test("all-illegal string falls back to 'repo'", () => {
-    expect(slugifyRepo("///")).toBe("repo");
+  // Behavior-preservation guards pinning the original `|| "repo"` semantics:
+  // "repo" fires ONLY for an empty result, so a non-empty all-separator/
+  // all-illegal input keeps its sanitized form and is NOT rewritten to "repo".
+  test("non-empty all-illegal string sanitizes to underscores (not 'repo')", () => {
+    expect(slugifyRepo("///")).toBe("___");
+  });
+
+  test("all-underscore string is preserved (not 'repo')", () => {
+    expect(slugifyRepo("___")).toBe("___");
+  });
+
+  test("single hyphen is preserved (not 'repo')", () => {
+    expect(slugifyRepo("-")).toBe("-");
+  });
+
+  test("mixed separators are preserved (not 'repo')", () => {
+    expect(slugifyRepo("-_-")).toBe("-_-");
   });
 });
