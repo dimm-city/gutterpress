@@ -25,6 +25,7 @@ import {
   mergeSettings,
   type AppSettings,
 } from "./settings-store";
+import { createPrefsStore } from "./prefs-store";
 import { registerWriteHooks } from "./server-bridge/write-hooks";
 import { registerWatchHooks } from "./server-bridge/watch-hooks";
 import { registerAppHooks } from "./server-bridge/app-hooks";
@@ -54,15 +55,11 @@ import {
   upsertRecentFolder,
   removeRecentFolder,
   toggleFavoriteFolder,
-  type RecentFolder,
-  type FavoriteFolder,
 } from "./recent-folders";
 import {
   readProjectState,
   writeProjectState,
   migrateLegacyProjectState,
-  type ProjectState,
-  type ProjectStateMap,
 } from "./project-state";
 import {
   electronTokenStore,
@@ -95,7 +92,6 @@ import type {
   ProjectCapabilities,
   ProjectPluginEntry,
   ProjectRemoteDiagnosis,
-  ProjectSource,
   ProjectStyle,
   RecommendedPlugin,
   RecoveryContext,
@@ -220,68 +216,22 @@ function loadLib(): Promise<LibModule> {
 
 let activePreview: PreviewHandle | null = null;
 
-interface ViewerPrefs {
-  lastProjectDir?: string;
-  /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
-  sidebarOpen?: boolean;
-  /**
-   * @deprecated (#43) Pre-per-project global page. Kept ONE version as a
-   * migration fallback (see migrateLegacyProjectState); new writes go to
-   * projectStates[dir].currentPage. Remove in a later release.
-   */
-  currentPage?: number;
-  /**
-   * @deprecated (#43) Pre-per-project global view mode. Kept ONE version as a
-   * migration fallback; new writes go to projectStates[dir].viewMode.
-   */
-  viewMode?: "single" | "two-column";
-  recentFolders?: RecentFolder[];
-  favorites?: FavoriteFolder[];
-  /**
-   * Per-project editor/preview state keyed by folder path (#43). Opening
-   * project B never overwrites project A's page/view/chapter state.
-   */
-  projectStates?: ProjectStateMap;
-  /** Root dirs scanned by app:discoverProjects (#27). Defaults applied below. */
-  projectSearchRoots?: string[];
-  /**
-   * Last classified source of the open project (#12). Cached so the UI can
-   * render without re-detecting on launch, but the renderer always re-classifies
-   * on folder open (a user may add/remove `.git` between sessions), so this is a
-   * hint, not the source of truth.
-   */
-  projectSource?: ProjectSource;
-  /** Global left panel open state + active tab, persisted across sessions. */
-  leftPanel?: {
-    open?: boolean;
-    activeTab?: "toc" | "files" | "media" | "projects" | "history";
-    width?: number;
-  };
-}
+// ──────────────────────────────────────────────────────────────────────────
+// Viewer prefs (#42/#43) — session/per-project state in viewer-prefs.json,
+// separate from durable user settings (below). The ViewerPrefs shape and the
+// prefsPath/readPrefs/writePrefs/existingDirectory read/write path live in
+// ./prefs-store (Phase 5b extraction; unit-tested in
+// tests/platform/prefs-store.test.ts) behind an injected-fs store factory.
+// main.ts instantiates the store with the live Electron userData dir +
+// node:fs/promises + the imported migrateLegacyProjectState and uses its
+// closures unchanged.
+// ──────────────────────────────────────────────────────────────────────────
 
-function prefsPath(): string {
-  return path.join(app.getPath("userData"), "viewer-prefs.json");
-}
-
-async function readPrefs(): Promise<ViewerPrefs> {
-  try {
-    const prefs = JSON.parse(await readFile(prefsPath(), "utf8")) as ViewerPrefs;
-    // #43 one-time migration: seed projectStates from the legacy top-level
-    // currentPage/viewMode so existing users don't lose their saved state.
-    const migrated = migrateLegacyProjectState(prefs);
-    if (migrated && !prefs.projectStates) {
-      prefs.projectStates = migrated;
-    }
-    return prefs;
-  } catch {
-    return {};
-  }
-}
-
-async function writePrefs(prefs: ViewerPrefs): Promise<void> {
-  await mkdir(app.getPath("userData"), { recursive: true });
-  await writeFile(prefsPath(), JSON.stringify(prefs, null, 2), "utf8");
-}
+const { readPrefs, writePrefs, existingDirectory } = createPrefsStore({
+  getUserDataDir: () => app.getPath("userData"),
+  fs: { readFile, writeFile, mkdir, stat },
+  migrateLegacyProjectState,
+});
 
 // ──────────────────────────────────────────────────────────────────────────
 // User settings (#45) — persisted, section-organised user preferences in a
@@ -298,15 +248,6 @@ const { readSettings, writeSettings } = createSettingsStore({
   getUserDataDir: () => app.getPath("userData"),
   fs: { readFile, writeFile, mkdir },
 });
-
-async function existingDirectory(dir: string | undefined): Promise<string | null> {
-  if (!dir) return null;
-  try {
-    return (await stat(dir)).isDirectory() ? dir : null;
-  } catch {
-    return null;
-  }
-}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Window management
