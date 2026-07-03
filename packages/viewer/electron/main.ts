@@ -19,8 +19,6 @@ import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, write
 import { basename } from "node:path";
 import * as fs from "node:fs";
 import { watch, type FSWatcher } from "node:fs";
-import { createServer } from "node:http";
-import { pathToFileURL } from "node:url";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
 import { registerWriteHooks } from "./server-bridge/write-hooks";
 import { registerWatchHooks } from "./server-bridge/watch-hooks";
@@ -119,6 +117,20 @@ import type {
 // build time; the suppression documents the tsc-only gap.
 // @ts-expect-error vite `?raw` string import — resolved by electron-vite, not tsc
 import splashHtml from "./splash.html?raw";
+import {
+  ExportCanceledError,
+  electronPdfRenderer,
+  getActiveExportSession,
+  initPdfExport,
+  sendExportProgress,
+  setActiveExportSession,
+  throwIfExportCanceled,
+  type ExportSession,
+} from "./pdf-export";
+import {
+  registerAppProtocol,
+  startSvelteKitServer,
+} from "./sveltekit-host";
 
 function appIconPath(): string {
   const packaged = path.resolve(process.resourcesPath ?? "", "build-resources/icon.png");
@@ -166,19 +178,6 @@ interface BuildResult {
   pdfPath?: string;
   fingerprintPath?: string;
 }
-interface ExportProgressEvent {
-  exportId: string;
-  state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
-  pages?: number;
-  message?: string;
-}
-interface ExportSession {
-  id: string;
-  canceled: boolean;
-  outPath: string;
-  tempOutPath: string;
-  win: BrowserWindow | null;
-}
 interface ManifestWithPath {
   manifest: { title?: string };
   manifestDir: string;
@@ -194,16 +193,6 @@ interface GitHubAuthProviderInstance {
 type LibModule = typeof import("@dimm-city/print-md");
 
 let libPromise: Promise<LibModule> | null = null;
-let activeExportSession: ExportSession | null = null;
-
-class ExportCanceledError extends Error {
-  code = "EXPORT_CANCELED";
-
-  constructor(message = "PDF export canceled") {
-    super(message);
-    this.name = "ExportCanceledError";
-  }
-}
 
 function loadLib(): Promise<LibModule> {
   if (!libPromise) {
@@ -213,139 +202,11 @@ function loadLib(): Promise<LibModule> {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// PDF renderer — uses Electron's OWN bundled Chromium (a hidden BrowserWindow +
-// webContents.printToPDF) instead of spawning an external Chromium via
-// puppeteer. The viewer already ships Chromium (it IS Electron), so this drops
-// the external-browser dependency for PDF export with zero added bytes and full
-// Paged.js fidelity (ADR 0002, Phase 4). Injected into lib.runBuild as the
-// `pdfRenderer` override; the lib still serves the staged HTML + assets on a
-// local HTTP server, so asset resolution is identical to the puppeteer path.
-//
-// Escape hatch: set PRINTMD_VIEWER_PUPPETEER=1 to fall back to the lib's default
-// puppeteer renderer (requires a system/bundled Chromium on PATH).
+// PDF export subsystem lives in electron/pdf-export.ts — it owns the single
+// active export session + the Electron-native PDF renderer. Wire its progress
+// sender to the live main window here (initPdfExport is called after mainWindow
+// is declared, in the hook-registration section below).
 // ──────────────────────────────────────────────────────────────────────────
-
-function sendExportProgress(event: ExportProgressEvent) {
-  mainWindow?.webContents.send("build:progress", event);
-}
-
-function requireActiveExportSession(): ExportSession {
-  if (!activeExportSession) {
-    throw new Error("No active export session");
-  }
-  return activeExportSession;
-}
-
-function throwIfExportCanceled(session: ExportSession) {
-  if (session.canceled) {
-    throw new ExportCanceledError();
-  }
-}
-
-async function electronPdfRenderer(input: {
-  url: string;
-  outPdf: string;
-  timeoutMs: number;
-}): Promise<void> {
-  const session = requireActiveExportSession();
-  throwIfExportCanceled(session);
-  const win = new BrowserWindow({
-    show: false,
-    // A hidden window is "occluded", so Chromium throttles its timers,
-    // requestAnimationFrame, and rendering to ~1 Hz — which makes Paged.js
-    // pagination (timer/rAF-driven) crawl, the #1 cause of slow PDF export.
-    // Disable background throttling and keep painting while hidden, and give the
-    // window a real size so layout/pagination run at full speed.
-    paintWhenInitiallyHidden: true,
-    width: 1280,
-    height: 1024,
-    webPreferences: {
-      sandbox: true,
-      contextIsolation: true,
-      javascript: true,
-      backgroundThrottling: false,
-    },
-  });
-  session.win = win;
-  try {
-    await win.loadURL(input.url);
-    throwIfExportCanceled(session);
-    const wc = win.webContents;
-
-    // Wait for web fonts to finish loading.
-    await wc.executeJavaScript("document.fonts.ready.then(() => true)");
-    throwIfExportCanceled(session);
-
-    // Poll until Paged.js signals completion (or the timeout elapses), emitting
-    // a per-page progress event so the UI can show "Rendering page N…" instead
-    // of an opaque spinner during the (inherently slow) Paged.js pagination of
-    // large books.
-    const deadline = Date.now() + input.timeoutMs;
-    let lastPages = -1;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const status = (await wc.executeJavaScript(`(() => ({
-        done: window.__PAGED_RENDERED__ === true,
-        pages: document.querySelectorAll('.pagedjs_page').length
-      }))()`)) as { done: boolean; pages: number };
-      if (status.pages !== lastPages) {
-        lastPages = status.pages;
-        sendExportProgress({
-          exportId: session.id,
-          state: "rendering",
-          pages: status.pages,
-        });
-      }
-      throwIfExportCanceled(session);
-      if (status.done) break;
-      if (Date.now() > deadline) break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-
-    // Pagination done — serializing a large PDF still takes time, so flag it.
-    throwIfExportCanceled(session);
-    sendExportProgress({
-      exportId: session.id,
-      state: "finalizing",
-      pages: lastPages,
-    });
-
-    // Measure the first rendered page (CSS px) to set the paper size.
-    const info = (await wc.executeJavaScript(`(() => {
-      const pages = document.querySelectorAll('.pagedjs_page');
-      const el = pages[0] || null;
-      const s = el ? getComputedStyle(el) : null;
-      const px = (v) => (v ? parseFloat(v) : 0);
-      return { count: pages.length, w: px(s && s.width), h: px(s && s.height) };
-    })()`)) as { count: number; w: number; h: number };
-
-    // printToPDF pageSize is in INCHES; CSS px → in is px / 96. Fall back to a
-    // US-Letter-ish book trim if measurement failed.
-    const widthIn = info.w > 0 ? info.w / 96 : 8.625;
-    const heightIn = info.h > 0 ? info.h / 96 : 11.25;
-
-    throwIfExportCanceled(session);
-    const data = await wc.printToPDF({
-      printBackground: true,
-      pageSize: { width: widthIn, height: heightIn },
-      margins: { top: 0, bottom: 0, left: 0, right: 0 },
-    });
-    throwIfExportCanceled(session);
-    await writeFile(input.outPdf, data);
-  } catch (error) {
-    if (session.canceled) {
-      throw new ExportCanceledError();
-    }
-    throw error;
-  } finally {
-    if (!win.isDestroyed()) {
-      win.destroy();
-    }
-    if (session.win === win) {
-      session.win = null;
-    }
-  }
-}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Preview server state
@@ -1127,70 +988,13 @@ function createWindow() {
 
 // ──────────────────────────────────────────────────────────────────────────
 // app:// protocol — serves the static SvelteKit SPA from build/
+//
+// The adapter-node HTTP bridge (startSvelteKitServer) and the app:// protocol
+// proxy (registerAppProtocol) live in electron/sveltekit-host.ts. The privileged-
+// scheme registration stays here so it runs at its original point (before
+// app.whenReady). main.ts calls startSvelteKitServer(slog) + registerAppProtocol()
+// from whenReady below.
 // ──────────────────────────────────────────────────────────────────────────
-
-// ── SvelteKit HTTP bridge (adapter-node) ─────────────────────────────────────
-// adapter-node emits a Node.js HTTP handler to build/handler.js. We start a
-// local HTTP server bound to 127.0.0.1 on an OS-assigned port, then forward
-// all app:// requests to it via fetch. This lets +server.ts routes run in the
-// Electron main process where they can import { dialog, shell } from 'electron'
-// directly, while the renderer stays PWA-clean (fetch('/api/...') only).
-let skServerPort: number | null = null;
-
-function getSvelteKitHandlerPath(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, "app.asar", "build", "handler.js")
-    : path.join(__dirname, "..", "..", "build", "handler.js");
-}
-
-async function startSvelteKitServer(): Promise<number> {
-  if (skServerPort) return skServerPort;
-  const handlerPath = getSvelteKitHandlerPath();
-  slog(`loading SvelteKit handler from ${handlerPath}`);
-  const { handler } = (await import(pathToFileURL(handlerPath).href)) as {
-    handler: Parameters<typeof createServer>[0];
-  };
-  const server = createServer(handler);
-  return new Promise<number>((resolve, reject) => {
-    server.listen(0, "127.0.0.1", () => {
-      const addr = server.address();
-      if (!addr || typeof addr === "string") {
-        reject(new Error("Failed to get SvelteKit server address"));
-        return;
-      }
-      skServerPort = addr.port;
-      slog(`SvelteKit server listening on 127.0.0.1:${skServerPort}`);
-      resolve(skServerPort);
-    });
-    server.on("error", reject);
-  });
-}
-
-
-function registerAppProtocol() {
-  protocol.handle("app", async (req) => {
-    if (skServerPort === null) {
-      return new Response("SvelteKit server not started", { status: 503 });
-    }
-    const url = new URL(req.url);
-    const targetUrl =
-      "http://127.0.0.1:" + skServerPort + url.pathname + url.search;
-    try {
-      const proxyReq = new Request(targetUrl, {
-        method: req.method,
-        headers: req.headers,
-        body:
-          req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
-        // @ts-expect-error — duplex is required for streaming POST bodies in Node 18+
-        duplex: "half",
-      });
-      return await fetch(proxyReq);
-    } catch (e) {
-      console.error(`[app://] proxy error for ${url.pathname}:`, e);
-      return new Response("Proxy error: " + String(e), { status: 502 });
-    }
-  });
-}
 
 // The `VAAPI version is too old` / `MESA-LOADER` lines in the launch log are
 // harmless Chromium GPU-probe noise, NOT the cause of slow launches — the
@@ -1236,6 +1040,11 @@ registerAppHooks({
   sendToRenderer: (channel: string, ...args: unknown[]) => {
     mainWindow?.webContents.send(channel, ...args);
   },
+});
+// Wire the PDF-export progress sender to the live main window (the export
+// subsystem itself lives in electron/pdf-export.ts).
+initPdfExport({
+  sendProgress: (event) => mainWindow?.webContents.send("build:progress", event),
 });
 // registerPrefsHooks is called after discoverScanDeps is initialized (below)
 
@@ -2139,11 +1948,12 @@ ipcMain.handle("api:stopPreview", async () => {
 });
 
 ipcMain.handle("api:cancelExport", async (_e, exportId: string) => {
-  if (!activeExportSession || activeExportSession.id !== exportId) {
+  const session = getActiveExportSession();
+  if (!session || session.id !== exportId) {
     return { canceled: false };
   }
-  activeExportSession.canceled = true;
-  const exportWin = activeExportSession.win;
+  session.canceled = true;
+  const exportWin = session.win;
   if (exportWin && !exportWin.isDestroyed()) {
     exportWin.destroy();
   }
@@ -2175,7 +1985,7 @@ ipcMain.handle(
     }
 
     const lib = await loadLib();
-    if (activeExportSession) {
+    if (getActiveExportSession()) {
       throw new Error("A PDF export is already in progress");
     }
     const requestedOutPath = args.out;
@@ -2267,7 +2077,7 @@ ipcMain.handle(
       tempOutPath,
       win: null,
     };
-    activeExportSession = exportSession;
+    setActiveExportSession(exportSession);
     sendExportProgress({ exportId: exportSession.id, state: "started" });
 
     try {
@@ -2341,7 +2151,7 @@ ipcMain.handle(
       });
       throw e;
     } finally {
-      activeExportSession = null;
+      setActiveExportSession(null);
       await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
     }
   }
@@ -2458,7 +2268,7 @@ app.whenReady().then(async () => {
   // adapter-node HTTP server and wire it to the app:// protocol.
   if (!process.env.VITE_DEV_SERVER_URL) {
     try {
-      await startSvelteKitServer();
+      await startSvelteKitServer(slog);
     } catch (err) {
       console.error("[sk-server] failed to start SvelteKit server:", err);
       // Non-fatal: registerAppProtocol will return 503 until skServerPort is set.
@@ -2546,13 +2356,14 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", async () => {
-  if (activeExportSession) {
-    activeExportSession.canceled = true;
-    if (activeExportSession.win && !activeExportSession.win.isDestroyed()) {
-      activeExportSession.win.destroy();
+  const exportSession = getActiveExportSession();
+  if (exportSession) {
+    exportSession.canceled = true;
+    if (exportSession.win && !exportSession.win.isDestroyed()) {
+      exportSession.win.destroy();
     }
-    await rm(activeExportSession.tempOutPath, { force: true }).catch(() => {});
-    activeExportSession = null;
+    await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
+    setActiveExportSession(null);
   }
   if (activePreview) {
     await activePreview.stop().catch(() => {});
