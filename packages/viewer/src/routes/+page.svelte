@@ -35,6 +35,7 @@
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
   import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
+  import { ZoomViewController } from "$lib/routes/zoom-view-controller.svelte";
   import { SyncController } from "$lib/routes/sync-controller.svelte";
   import { RecoveryUiController } from "$lib/routes/recovery-ui-controller.svelte";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
@@ -54,7 +55,7 @@
   } from "$lib/editor/mobile-layout";
   import { commandForSaveShortcut } from "$lib/editor/save-shortcuts";
   import { resolveGlobalShortcut, resolvePreviewNavCommand } from "$lib/routes/shortcuts";
-  import { clampSplitRatio, splitRatioFromDrag, splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
+  import { splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
   import { useSettings, _loadSettings } from "$lib/settings.svelte";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
@@ -136,6 +137,28 @@
     },
     onBeginEdit: () => queueMicrotask(() => pageEditInput?.focus()),
   });
+  // Preview layout FSM: owns zoom / view-mode / fit-width / split-pane-drag
+  // state + the intents that drive the host preview. Host coupling (client,
+  // persist sinks, DOM measurements) is injected so the component stays a thin
+  // composition root.
+  const zoomView = new ZoomViewController({
+    client: () => client,
+    zoom: () => zoom,
+    viewMode: () => viewMode,
+    isNarrow: () => isNarrow,
+    persistZoom: (value) => settings.set({ preview: { defaultZoom: value } }),
+    persistViewMode: (mode) => settings.set({ preview: { viewMode: mode } }),
+    saveViewerPrefs: (patch) => saveViewerPrefs(patch),
+    measureContainerWidth: () => {
+      const iframe = document.querySelector<HTMLIFrameElement>("iframe");
+      return iframe?.clientWidth ?? window.innerWidth;
+    },
+    measureWorkspaceRect: () => {
+      if (!workspaceEl) return null;
+      const rect = workspaceEl.getBoundingClientRect();
+      return { left: rect.left, width: rect.width };
+    },
+  });
 
   // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
   // outline drives the chapter-jump dropdown; activeOutlineIndex tracks the
@@ -186,7 +209,6 @@
     editorView = "editor";
     focusEditorWhenReady();
   }
-  let userSetViewMode = $state(false);
   let openError = $state<string | null>(null);
   // The folder a failed open was attempted on, so we can offer to adopt it.
   let failedOpenDir = $state<string | null>(null);
@@ -441,9 +463,7 @@
   // state now lives inside the buffer.
   let editorOpen = $state(false);
   let previewHidden = $state(false);
-  let splitPaneRatio = $state(0.42);
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
-  let draggingSplit = $state(false);
   let editorRef = $state<{
     focus: () => void;
     revealLine: (line: number) => void;
@@ -564,7 +584,7 @@
   );
   let splitGridColumns = $derived(
     editorPaneOpen && !isNarrow && !previewHidden
-      ? splitTemplateColumns(splitPaneRatio)
+      ? splitTemplateColumns(zoomView.splitPaneRatio)
       : "",
   );
   let previewCollapseGridColumns = $derived(
@@ -1075,13 +1095,13 @@
         const restoreMode = pendingRestoreViewMode;
         pendingRestorePage = null;
         pendingRestoreViewMode = null;
-        const mode = restoreMode ?? (userSetViewMode ? viewMode : auto);
+        const mode = restoreMode ?? (zoomView.userSetViewMode ? viewMode : auto);
         // Drive the whole settle sequence to completion, THEN reveal. The reveal
         // is gated on the zoom promise resolving — not a magic timer — so the
         // fade always uncovers a completely still layout. Reveal is in a finally
         // so the pages are never stranded invisible if a zoom call rejects.
         (async () => {
-          applyViewMode(mode, false);
+          zoomView.applyViewMode(mode, false);
           try {
             // "Fit to width" must ALWAYS measure-and-fit, never assume 100% fits.
             // A two-page spread (~1656px) overflows a 1400px pane at 100%,
@@ -1089,7 +1109,7 @@
             // applyFitWidthZoom() waits for both postMessage round-trips
             // (getPageDimensions + setZoom), i.e. until the JUMP has happened.
             if (zoom === "fit-width") {
-              await applyFitWidthZoom();
+              await zoomView.applyFitWidthZoom();
             } else {
               await client?.call("setZoom", [Number(zoom)]);
             }
@@ -1265,15 +1285,15 @@
           break;
         case "zoom-in":
           e.preventDefault();
-          stepZoom(0.25);
+          zoomView.stepZoom(0.25);
           break;
         case "zoom-out":
           e.preventDefault();
-          stepZoom(-0.25);
+          zoomView.stepZoom(-0.25);
           break;
         case "fit-width":
           e.preventDefault();
-          applyZoom("fit-width");
+          zoomView.applyZoom("fit-width");
           break;
         // UX-004: 'D' shortcut for debug removed — non-technical writers should
         // not accidentally trigger debug mode.
@@ -1290,11 +1310,11 @@
   onMount(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     function onResize() {
-      if (!previewUrl || userSetViewMode) return;
+      if (!previewUrl || zoomView.userSetViewMode) return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         const auto = window.innerWidth < 1280 ? "single" : "two-column";
-        applyViewMode(auto, false);
+        zoomView.applyViewMode(auto, false);
       }, 150);
     }
     window.addEventListener("resize", onResize);
@@ -1423,9 +1443,9 @@
         // derived viewMode reflects this project's last-used mode.
         settings.set({ preview: { viewMode: restoredViewMode } });
       }
-      userSetViewMode = !!restoredViewMode;
+      zoomView.userSetViewMode = !!restoredViewMode;
       if (typeof restoreState?.splitPaneRatio === "number") {
-        splitPaneRatio = clampSplitRatio(restoreState.splitPaneRatio);
+        zoomView.restoreSplitRatio(restoreState.splitPaneRatio);
       }
       // Loud signal for the #1 cause of wrong fonts/styles: shared asset dirs
       // (e.g. ../dc-design-guide/fonts) that don't resolve next to this project.
@@ -1839,51 +1859,8 @@
     });
   }
 
-  /** Apply fit-width by querying the page's rendered width from the iframe. */
-  async function applyFitWidthZoom() {
-    if (!client) return;
-    try {
-      const iframe = document.querySelector<HTMLIFrameElement>("iframe");
-      const containerWidth = iframe?.clientWidth ?? window.innerWidth;
-      const dims = await client.call<{ width: number; height: number } | null>("getPageDimensions");
-      const pageWidth = dims?.width ?? 0;
-      const scale = pageWidth > 0 && pageWidth > containerWidth
-        ? (containerWidth - 32) / pageWidth
-        : 1;
-      await client.call("setZoom", [scale]);
-    } catch {
-      await client.call("setZoom", [1]).catch(() => {});
-    }
-  }
-
-  function applyZoom(value: string) {
-    settings.set({ preview: { defaultZoom: value } });
-    if (!client) return;
-    if (value === "fit-width") {
-      applyFitWidthZoom();
-    } else {
-      client.call("setZoom", [Number(value)]).catch(() => {});
-    }
-  }
-
-  function stepZoom(delta: number) {
-    const current = zoom === "fit-width" ? 1 : parseFloat(zoom) || 1;
-    const next = Math.max(0.25, Math.min(4, current + delta));
-    applyZoom(String(Math.round(next * 100) / 100));
-  }
-
-  function applyViewMode(mode: "single" | "two-column", fromUser: boolean) {
-    // Settings store owns the durable default; ViewerPrefs keeps a per-project
-    // override so reopening a folder restores its last view mode.
-    settings.set({ preview: { viewMode: mode } });
-    if (fromUser) userSetViewMode = true;
-    saveViewerPrefs({ viewMode: mode });
-    client?.call("setViewMode", [mode]).catch(() => {});
-  }
-
-  function toggleViewMode() {
-    applyViewMode(viewMode === "single" ? "two-column" : "single", true);
-  }
+  // Zoom / view-mode intents (applyFitWidthZoom / applyZoom / stepZoom /
+  // applyViewMode / toggleViewMode) now live on `zoomView` (ZoomViewController).
 
   function toggleDebug() {
     debug = !debug;
@@ -1922,7 +1899,7 @@
       lastWidth = nextWidth;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        void applyFitWidthZoom();
+        void zoomView.applyFitWidthZoom();
       }, 80);
     });
     observer.observe(node);
@@ -1966,35 +1943,20 @@
     }
   }
 
+  // Split-pane drag ratio/state lives on `zoomView` (ZoomViewController); these
+  // thin handlers own only the DOM pointer-capture side effects.
   function startSplitDrag(e: PointerEvent) {
-    if (!workspaceEl || isNarrow) return;
-    draggingSplit = true;
+    if (!zoomView.beginSplitDrag(e.clientX)) return;
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    updateSplitFromPointer(e.clientX, false);
     e.preventDefault();
   }
 
-  function updateSplitFromPointer(pointerX: number, persist: boolean) {
-    if (!workspaceEl) return;
-    const rect = workspaceEl.getBoundingClientRect();
-    splitPaneRatio = splitRatioFromDrag({
-      containerLeft: rect.left,
-      containerWidth: rect.width,
-      pointerX,
-    });
-    if (persist) saveViewerPrefs({ splitPaneRatio });
-    if (zoom === "fit-width") applyFitWidthZoom();
-  }
-
   function moveSplitDrag(e: PointerEvent) {
-    if (!draggingSplit) return;
-    updateSplitFromPointer(e.clientX, false);
+    zoomView.moveSplitDrag(e.clientX);
   }
 
   function stopSplitDrag(e: PointerEvent) {
-    if (!draggingSplit) return;
-    draggingSplit = false;
-    updateSplitFromPointer(e.clientX, true);
+    if (!zoomView.endSplitDrag(e.clientX)) return;
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   }
 
@@ -2359,7 +2321,7 @@
         <button
           class="icon-text"
           class:active={viewMode === "single"}
-          onclick={() => applyViewMode("single", true)}
+          onclick={() => zoomView.applyViewMode("single", true)}
           disabled={!previewUrl}
           title="Show one page at a time"
           aria-label="Single page view"
@@ -2370,7 +2332,7 @@
         <button
           class="icon-text"
           class:active={viewMode === "two-column"}
-          onclick={() => applyViewMode("two-column", true)}
+          onclick={() => zoomView.applyViewMode("two-column", true)}
           disabled={!previewUrl}
           title="Show two pages side by side, like an open book"
           aria-label="Two pages side by side"
@@ -2393,7 +2355,7 @@
             aria-pressed={viewMode === "single"}
             class="menu-item"
             class:active={viewMode === "single"}
-            onclick={(e) => { applyViewMode("single", true); closeMenu(e); }}
+            onclick={(e) => { zoomView.applyViewMode("single", true); closeMenu(e); }}
             disabled={!previewUrl}
           >
             <Icon name="rectangle-vertical" /> Single page
@@ -2402,7 +2364,7 @@
             aria-pressed={viewMode === "two-column"}
             class="menu-item"
             class:active={viewMode === "two-column"}
-            onclick={(e) => { applyViewMode("two-column", true); closeMenu(e); }}
+            onclick={(e) => { zoomView.applyViewMode("two-column", true); closeMenu(e); }}
             disabled={!previewUrl}
           >
             <Icon name="columns-2" /> Two pages side by side
@@ -2426,7 +2388,7 @@
               aria-pressed={zoom === val}
               class="menu-item"
               class:active={zoom === val}
-              onclick={(e) => { applyZoom(val); closeMenu(e); }}
+              onclick={(e) => { zoomView.applyZoom(val); closeMenu(e); }}
               disabled={!previewUrl}
             >
               {label}
@@ -2663,7 +2625,7 @@
           <button
             type="button"
             class="splitter"
-            class:dragging={draggingSplit}
+            class:dragging={zoomView.draggingSplit}
             aria-label="Resize editor and preview panes"
             title="Resize editor and preview panes"
             onpointerdown={startSplitDrag}
