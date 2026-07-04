@@ -27,9 +27,9 @@
 
 import { describe, expect, test, beforeEach } from "bun:test";
 import * as fs from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { tmpdir } from "node:os";
+import { makeTempDir } from "../../../test-helpers/testkit";
 
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
@@ -55,10 +55,6 @@ import { recover } from "./recover-detached-head.ts";
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const AUTHOR = { name: "Test Author", email: "author@test.local" };
-
-async function makeTempDir(prefix: string): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), prefix));
-}
 
 /** Build a context pointing at a local (no remote) repo. */
 function makeLocalCtx(

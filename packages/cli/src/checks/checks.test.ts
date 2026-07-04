@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfig } from "../lib/manifest";
 import type { ResolvedConfig } from "../schema/manifest.types";
-import type { CheckContext, CheckResult, Check } from "./types";
+import type { CheckResult, Check } from "./types";
 import {
   registerCheck,
   getChecks,
@@ -23,6 +23,7 @@ import { runChecks } from "./runner";
 import { formatReport } from "./formatter";
 import { checkToolAvailability, reportMissingTools } from "./tool-check";
 import type { RunnerReport } from "./runner";
+import { makeCtx } from "../test-helpers/testkit";
 
 // Import all check modules so they self-register
 import "./pdf/index";
@@ -36,15 +37,6 @@ import "./heuristic/index";
 
 function makeConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
   return resolveConfig({}, { ...overrides } as any);
-}
-
-function makeCtx(partial: Partial<CheckContext> = {}): CheckContext {
-  return {
-    config: makeConfig(),
-    inputDir: "/tmp/test-input",
-    outputDir: "/tmp/test-output",
-    ...partial,
-  };
 }
 
 // ---------------------------------------------------------------------------

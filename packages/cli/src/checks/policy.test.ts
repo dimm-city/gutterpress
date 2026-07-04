@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfig } from "../lib/manifest";
 import type { ResolvedConfig } from "../schema/manifest.types";
-import type { Check, CheckContext } from "./types";
+import type { Check } from "./types";
 import {
   isCheckEnabled,
   finding,
@@ -29,6 +29,7 @@ import {
 import { getChecks, getCheckById, registerCheck } from "./registry";
 import { checkToolAvailability } from "./tool-check";
 import { runChecks } from "./runner";
+import { makeCtx } from "../test-helpers/testkit";
 
 // self-register all checks
 import "./pdf/index";
@@ -38,15 +39,6 @@ import "./heuristic/index";
 
 function makeConfig(): ResolvedConfig {
   return resolveConfig({}, {});
-}
-
-function makeCtx(partial: Partial<CheckContext> = {}): CheckContext {
-  return {
-    config: makeConfig(),
-    inputDir: "/tmp/test-input",
-    outputDir: "/tmp/test-output",
-    ...partial,
-  };
 }
 
 function fakeCheck(overrides: Partial<Check> = {}): Check {
