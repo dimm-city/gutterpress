@@ -66,6 +66,20 @@ describe("dialogBehavior action", () => {
     handle?.destroy?.();
   });
 
+  test("update() clears aria-labelledby when a later update omits it", () => {
+    const { dialog } = setup();
+    const handle = dialogBehavior(dialog, {
+      onClose: () => {},
+      labelledBy: "dlg-title",
+    });
+    expect(dialog.getAttribute("aria-labelledby")).toBe("dlg-title");
+    // A reactive update that no longer supplies labelledBy must clear the
+    // attribute, not leave it pointing at a stale/wrong label element.
+    handle?.update?.({ onClose: () => {} });
+    expect(dialog.hasAttribute("aria-labelledby")).toBe(false);
+    handle?.destroy?.();
+  });
+
   test("does not clobber an explicit tabindex", () => {
     const { dialog } = setup();
     dialog.setAttribute("tabindex", "0");

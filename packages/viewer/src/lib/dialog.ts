@@ -94,8 +94,12 @@ export function dialogBehavior(node: HTMLElement, options: DialogOptions) {
   return {
     update(next: DialogOptions) {
       opts = next;
+      // Keep aria-labelledby in sync with the option in BOTH directions: a
+      // later update that omits labelledBy must clear a previously-set value,
+      // or the dialog would point at a stale/wrong label element.
       if (opts.labelledBy)
         node.setAttribute("aria-labelledby", opts.labelledBy);
+      else node.removeAttribute("aria-labelledby");
     },
     destroy() {
       node.removeEventListener("keydown", onKeydown);

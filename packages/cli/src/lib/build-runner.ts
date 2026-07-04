@@ -25,18 +25,17 @@ import { getAssetPath } from "./embedded-assets";
 import { runLint } from "./lint-runner";
 import { executeAndReport } from "./validation-exec";
 import { log } from "../utils/logger";
+import { BuildError } from "./build-error";
 
 export type BuildFormat = "html" | "pdf" | "pdfx";
 export type PdfxFlavor = "x1a" | "x3";
 
-export class BuildError extends Error {
-  exitCode: number;
-  constructor(message: string, exitCode = 2) {
-    super(message);
-    this.name = "BuildError";
-    this.exitCode = exitCode;
-  }
-}
+// BuildError now lives in its own dependency-free module (./build-error) so lean
+// consumers like utils/file-utils.ts (used by the preview server) can import the
+// error type without dragging in this file's whole build-pipeline graph. It is
+// re-exported here so existing `import { BuildError } from "./build-runner"`
+// call sites (api, commands, tests) keep working unchanged.
+export { BuildError };
 
 export interface BuildRunnerOptions {
   inputDir: string;
