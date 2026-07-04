@@ -162,7 +162,6 @@
   let paneMode = $derived(settings.current.preview.paneMode);
   let debug = $state(false);
   let settingsOpen = $state(false);
-  let settingsBtn = $state<HTMLButtonElement | undefined>(undefined);
   let rendering = $state(false);
   let renderProgressPage = $state(0);
   let renderCompleteOverlay = $state(false);
@@ -236,13 +235,8 @@
   // its rune getters. Toast feedback is injected through an accessor seam.
   const updateController = new UpdateController(() => toast);
 
-  // UX-026: focus-restoration reference for the Help dialog
-  let helpBtn = $state<HTMLButtonElement | undefined>(undefined);
-  // Open Location modal
-  let openLocationOpen = $state(false);
   // "Open from GitHub" flow (#15)
   let githubOpen = $state(false);
-  let openBtn = $state<HTMLButtonElement | undefined>(undefined);
   // Advanced setup (#14): diagnostics + generic "Connect a Git server"
   let advancedSetupOpen = $state(false);
   let advancedSetupBtn = $state<HTMLButtonElement | undefined>(undefined);
@@ -397,21 +391,12 @@
     recovery.dismissOverlay();
   }
 
-  let versionHistoryOpen = $state(false);
-  let versionHistoryBtn = $state<HTMLButtonElement | undefined>(undefined);
   // The open folder is a book subfolder of a larger versioned folder: full
   // history features are available (scoped to the book by the host); the
   // dialog shows a quiet "shares history with its parent folder" hint.
   let projectSharesParentHistory = $state(false);
   // The book's path relative to that shared folder ("" for standalone projects).
   let projectSubPath = $state("");
-  let versionHistoryAvailable = $derived(
-    !!currentDir &&
-      sourceMode === "folder" &&
-      !!projectCapabilities &&
-      (projectCapabilities.canEnableVersionHistory ||
-        projectCapabilities.canViewHistory),
-  );
 
   // History was just enabled (#13): adopt the upgraded capabilities and persist
   // the re-classified source hint — same as what classifyProject does on open.
@@ -2811,7 +2796,6 @@
 
 <HelpDialog
   bind:open={helpOpen}
-  triggerEl={helpBtn}
   onCheckForUpdates={() => updateController.check()}
   checkingUpdates={updateController.checking}
   updateReadyVersion={updateController.readyVersion}
@@ -2819,7 +2803,6 @@
 />
 <SettingsDialog
   bind:open={settingsOpen}
-  triggerEl={settingsBtn}
   onViewModeChange={(mode) => { if (client && !rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
   onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
 />
