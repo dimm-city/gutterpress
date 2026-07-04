@@ -3,7 +3,7 @@
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
-  import { trapFocus } from "$lib/a11y";
+  import { dialogBehavior } from "$lib/dialog";
 
   let {
     open = $bindable(false),
@@ -22,16 +22,11 @@
   } = $props();
 
   const settings = useSettings();
-  let dialogEl = $state<HTMLDivElement | undefined>(undefined);
-
-  function onDialogMount(_el: HTMLElement) {
-    queueMicrotask(() => dialogEl?.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')?.focus());
-  }
 
   function close() {
+    // Focus restoration to `triggerEl` is handled by the dialogBehavior action.
     open = false;
     onClose?.();
-    triggerEl?.focus();
   }
 
   // ── Typed setters (one line per control, per the "one-line setting" goal) ──
@@ -42,14 +37,8 @@
   <div class="backdrop" onclick={close} role="presentation"></div>
 
   <div
-    bind:this={dialogEl}
     class="dialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="settings-title"
-    tabindex="-1"
-    onkeydown={(e) => trapFocus(e, dialogEl)}
-    use:onDialogMount
+    use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "settings-title" }}
   >
     <header class="dialog-header">
       <h2 id="settings-title">Settings</h2>
@@ -323,12 +312,6 @@
     </div>
   </div>
 {/if}
-
-<svelte:window
-  onkeydown={(e) => {
-    if (e.key === "Escape" && open) close();
-  }}
-/>
 
 <style>
   .backdrop {

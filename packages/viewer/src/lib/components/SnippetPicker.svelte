@@ -16,7 +16,7 @@
   import { api } from "$lib/api";
   import type { SnippetEntry } from "$lib/api";
   import { extractVariables, substituteVariables } from "$lib/editor/snippet-vars";
-  import { trapFocus } from "$lib/a11y";
+  import { dialogBehavior } from "$lib/dialog";
 
   let {
     open = $bindable(false),
@@ -87,8 +87,8 @@
   }
 
   function close() {
+    // Focus restoration to `triggerEl` is handled by the dialogBehavior action.
     open = false;
-    triggerEl?.focus();
   }
 
   async function choose(entry: SnippetEntry) {
@@ -165,11 +165,7 @@
   <div
     bind:this={dialogEl}
     class="dialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="snippet-picker-title"
-    tabindex="-1"
-    onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "snippet-picker-title" }}
   >
     <header class="dialog-header">
       <h2 id="snippet-picker-title">
@@ -252,12 +248,6 @@
     </div>
   </div>
 {/if}
-
-<svelte:window
-  onkeydown={(e) => {
-    if (e.key === "Escape" && open) close();
-  }}
-/>
 
 <style>
   .backdrop { position: fixed; inset: 0; background: var(--app-backdrop); z-index: 1000; }
