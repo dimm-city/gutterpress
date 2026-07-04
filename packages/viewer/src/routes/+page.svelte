@@ -10,7 +10,6 @@
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type {
     ProblemEntry,
-    ProjectCapabilities,
     ProjectClassification,
     RecoveryConfirmRequest,
     SnapshotEntry,
@@ -39,6 +38,7 @@
   import { PreviewEventController } from "$lib/routes/preview-event-controller";
   import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
   import { SyncController } from "$lib/routes/sync-controller.svelte";
+  import { ProjectSessionController } from "$lib/routes/project-session-controller.svelte";
   import { RecoveryUiController } from "$lib/routes/recovery-ui-controller.svelte";
   import { buildViewerStyles } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
@@ -80,11 +80,9 @@
   let currentUrl = $state<string | null>(null);
   let sourceMode = $state<"folder" | "url">("folder");
   let docTitle = $state<string | null>(null);
-  // Capabilities of the open project's source (#12): local-folder vs
-  // local-git-folder (with/without remote). Stored so forthcoming action
-  // buttons (#13/#25 — Save Snapshot, View History, Sync) can render against
-  // it. No new buttons yet; the data is simply available.
-  let projectCapabilities = $state<ProjectCapabilities | null>(null);
+  // Capabilities of the open project's source (#12) live on the
+  // ProjectSessionController (projectSession.projectCapabilities), alongside the
+  // classification wiring that populates them.
   // Folder name (basename) for the toolbar label; the full path is the tooltip.
   // Folder name for the toolbar label (#49): prefer the adapter-precomputed
   // FolderRef.displayName; fall back to the basename of the key when the folder
@@ -302,6 +300,21 @@
     onFilesChanged: () => onSyncFilesChanged(),
   });
 
+  // ── Project session capability state (#12) ───────────────────────────────────
+  // The classification wiring (source detection → capabilities → subPath /
+  // sharesParentHistory → prefs hint → history-refresh → sync gate) lives in the
+  // ProjectSessionController (Phase 5c). The component reset()s it and fires
+  // classify(dir) on folder open, applyReclassify()s after version history is
+  // enabled, and reads its rune getters. Host coupling injected (§8): the
+  // classify round-trip, the ViewerPrefs writer, and the two fan-out callbacks
+  // (History tab + SyncController).
+  const projectSession = new ProjectSessionController({
+    classifyProject: (dir) => api.app.classifyProject(dir),
+    setViewerPrefs: (prefs) => api.app.setViewerPrefs(prefs),
+    notifyHistoryRefresh: () => leftPanelRef?.notifyHistoryRefresh(),
+    refreshSyncDiag: (dir) => void syncController.refreshSyncDiag(dir),
+  });
+
   // ── Recovery UI state (transparent sync recovery) ────────────────────────────
   // The whole recovery UI state machine (RecoveryOverlay scrim, the blocked-
   // repair RecoveryGuidanceDialog, and the risky-repair RecoveryConfirmDialog)
@@ -430,20 +443,16 @@
     recovery.dismissOverlay();
   }
 
-  // The open folder is a book subfolder of a larger versioned folder: full
-  // history features are available (scoped to the book by the host); the
-  // dialog shows a quiet "shares history with its parent folder" hint.
-  let projectSharesParentHistory = $state(false);
-  // The book's path relative to that shared folder ("" for standalone projects).
-  let projectSubPath = $state("");
+  // The open folder is a book subfolder of a larger versioned folder (full
+  // history features are available, scoped to the book by the host) and the
+  // book's path relative to that shared folder both live on the
+  // ProjectSessionController (projectSession.projectSharesParentHistory /
+  // projectSession.projectSubPath), derived by its classification wiring.
 
   // History was just enabled (#13): adopt the upgraded capabilities and persist
   // the re-classified source hint — same as what classifyProject does on open.
   function onVersionHistoryEnabled(result: ProjectClassification) {
-    projectCapabilities = result.capabilities;
-    api.app
-      .setViewerPrefs({ projectSource: result.source } as Record<string, unknown>)
-      .catch(() => {});
+    projectSession.applyReclassify(result);
   }
 
   // A restore rewrote project files on disk (#13). The preview server's file
@@ -1358,36 +1367,10 @@
       // Classify the opened folder (#12) so capability-gated actions (#13/#25)
       // can render. Always re-detected on open (a user may add/remove `.git`
       // between sessions) and persisted as a hint. Fire-and-forget: a failure
-      // must never block the preview.
-      projectCapabilities = null;
-      projectSharesParentHistory = false;
-      projectSubPath = "";
+      // must never block the preview. Owned by the ProjectSessionController.
+      projectSession.reset();
       syncController.syncDiag = null;
-      api.app
-        .classifyProject(dir)
-        .then((result) => {
-          const typedResult = result as { source: { type: string; subPath?: string }; capabilities: ProjectCapabilities };
-          projectCapabilities = typedResult.capabilities;
-          projectSubPath =
-            typedResult.source.type === "local-git-folder" ? (typedResult.source.subPath ?? "") : "";
-          projectSharesParentHistory = projectSubPath !== "";
-          api.app
-            .setViewerPrefs({ projectSource: typedResult.source } as Record<string, unknown>)
-            .catch(() => {});
-          // Re-notify so the History tab can load now that canHistory is set.
-          // The earlier notifyHistoryRefresh() at folder-open time may have been
-          // a no-op because projectCapabilities was still null.
-          leftPanelRef?.notifyHistoryRefresh();
-          // Sync gate (#15 / ADR 0006 D4): the toolbar action appears only
-          // when the diagnosis says the project is actually syncable (HTTPS
-          // remote + a stored connection). Local reads only; fire-and-forget.
-          if (typedResult.capabilities.canSync) {
-            void syncController.refreshSyncDiag(dir);
-          }
-        })
-        .catch(() => {
-          projectCapabilities = null;
-        });
+      projectSession.classify(dir);
       docTitle = data.title ?? null;
       // Force iframe remount by nulling first; reset overlay for the new iframe.
       previewUrl = null;
@@ -2403,8 +2386,8 @@
       bind:activeTab={leftPanelTab}
       projectDir={currentDir}
       projectDisplayName={currentFolderDisplayName}
-      projectCapabilities={projectCapabilities}
-      projectSharesParentHistory={projectSharesParentHistory}
+      projectCapabilities={projectSession.projectCapabilities}
+      projectSharesParentHistory={projectSession.projectSharesParentHistory}
       editorFilePath={editorFilePath}
       sourceMode={sourceMode}
       outline={outline}
@@ -2633,7 +2616,7 @@
     projectDir={currentDir}
     sourceMode={sourceMode}
     canSync={!!(syncController.syncDiag?.canSync)}
-    canSnapshot={!!(projectCapabilities?.canSnapshot)}
+    canSnapshot={!!(projectSession.projectCapabilities?.canSnapshot)}
     savePhase={editorSavePhase}
     fileOpen={!!editorFilePath}
     {forceSaving}
@@ -2734,7 +2717,7 @@
 <ConflictChoicesDialog
   bind:open={syncController.conflictOpen}
   projectDir={sourceMode === "folder" ? currentDir : null}
-  bookSubPath={projectSubPath}
+  bookSubPath={projectSession.projectSubPath}
   files={syncController.conflictFiles}
   localId={syncController.conflictLocalId}
   remoteId={syncController.conflictRemoteId}
