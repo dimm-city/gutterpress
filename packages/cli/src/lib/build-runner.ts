@@ -1,4 +1,5 @@
 import path from "node:path";
+import os from "node:os";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";
@@ -592,6 +593,19 @@ export async function stagePaginationInput(
   return stagedHtml;
 }
 
+/**
+ * Create a unique scratch directory for a build's pagination staging under the
+ * OS temp dir (mirrors the mkdtemp pattern in lib/embedded-assets.ts). Staging
+ * must NOT be resolved against process.cwd(): runBuild is exported and called by
+ * the viewer host, so writing scratch dirs into cwd is a hidden side effect that
+ * pollutes the caller's directory and breaks concurrent builds (each build now
+ * gets its own isolated stage root). Callers must remove the returned directory
+ * in a finally block.
+ */
+async function createStageRoot(): Promise<string> {
+  return fsp.mkdtemp(path.join(os.tmpdir(), "print-md-stage-"));
+}
+
 export async function renderHtmlToPdf(
   inputHtml: string,
   outPdf: string,
@@ -761,19 +775,24 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
       );
       await shipRuntimePaginatedHtml(htmlFile, outDir);
     } else {
-      // Stage a working copy for the build-time pagination pass (assets + polyfill).
-      const htmlStage = path.resolve(".print-md-stage-html");
-      const stagedBook = await stagePaginationInput(
-        htmlFile,
-        outDir,
-        assetDirs,
-        htmlStage
-      );
+      // Stage a working copy for the build-time pagination pass (assets +
+      // polyfill) under the OS temp dir — never in the caller's cwd. Cleaned up
+      // in finally so it does not leak on the error path either.
+      const htmlStage = await createStageRoot();
+      try {
+        const stagedBook = await stagePaginationInput(
+          htmlFile,
+          outDir,
+          assetDirs,
+          htmlStage
+        );
 
-      log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
-      const paginated = await paginateToStaticHtml(stagedBook);
-      await finalizeStaticBook(paginated, htmlFile, outDir);
-      await fsp.rm(htmlStage, { recursive: true, force: true });
+        log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
+        const paginated = await paginateToStaticHtml(stagedBook);
+        await finalizeStaticBook(paginated, htmlFile, outDir);
+      } finally {
+        await fsp.rm(htmlStage, { recursive: true, force: true });
+      }
     }
 
     // Write a minimal index.html that redirects to book.html so static hosts
@@ -819,127 +838,133 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
 
   const pdfFile = opts.pdfFileOverride ?? path.join(outDir, config.output.filename);
 
-  // Stage build directory
-  const stage = path.resolve(".print-md-stage");
-  const stagedHtml = await stagePaginationInput(
-    htmlFile,
-    outDir,
-    assetDirs,
-    stage
-  );
-
-  const rawPdf = pdfxMode ? path.join(stage, "raw.pdf") : path.resolve(pdfFile);
-  log.info("Rendering HTML to PDF via Chromium+Paged.js");
-  await fsp.mkdir(path.dirname(path.resolve(pdfFile)), { recursive: true });
-  // PDF unification: the default renderer prints the PDF and, from the SAME
-  // pagination pass, serializes the static viewer book.html — so the on-screen
-  // pages and the PDF come from one paginated artifact. The PDF call itself is
-  // unchanged, so the PDF is pixel-identical to the pre-SSG pipeline. Injected
-  // renderers (e.g. the Electron viewer) print only.
-  const staticHtmlRaw = opts.pdfRenderer
-    ? undefined
-    : path.join(stage, "book-static-raw.html");
-  await renderHtmlToPdf(stagedHtml, rawPdf, opts.pdfRenderer, staticHtmlRaw);
-  if (staticHtmlRaw && fs.existsSync(staticHtmlRaw)) {
-    await finalizeStaticBook(
-      await fsp.readFile(staticHtmlRaw, "utf-8"),
+  // Stage build directory under the OS temp dir — never in the caller's cwd
+  // (runBuild is exported and driven by the viewer host). Cleaned up in finally
+  // so it does not leak on the success path OR any error/throw below.
+  const stage = await createStageRoot();
+  try {
+    const stagedHtml = await stagePaginationInput(
       htmlFile,
-      outDir
+      outDir,
+      assetDirs,
+      stage
     );
-    log.success(`Wrote static viewer: ${path.join(outDir, "book.html")}`);
-  }
 
-  if (!pdfxMode) {
-    // stampCreator writes /Creator (print-md) into the PDF's Info dict using
-    // pdf-lib (in-process, no system tool). The information is cosmetic — if it
-    // fails for any reason, keep the raw Chromium output as the final PDF rather
-    // than failing the build. `rawPdf` equals the final `pdfFile` when !pdfxMode.
-    try {
-      await stampCreator(rawPdf);
-    } catch (err) {
-      log.warn(
-        `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
+    const rawPdf = pdfxMode ? path.join(stage, "raw.pdf") : path.resolve(pdfFile);
+    log.info("Rendering HTML to PDF via Chromium+Paged.js");
+    await fsp.mkdir(path.dirname(path.resolve(pdfFile)), { recursive: true });
+    // PDF unification: the default renderer prints the PDF and, from the SAME
+    // pagination pass, serializes the static viewer book.html — so the on-screen
+    // pages and the PDF come from one paginated artifact. The PDF call itself is
+    // unchanged, so the PDF is pixel-identical to the pre-SSG pipeline. Injected
+    // renderers (e.g. the Electron viewer) print only.
+    const staticHtmlRaw = opts.pdfRenderer
+      ? undefined
+      : path.join(stage, "book-static-raw.html");
+    await renderHtmlToPdf(stagedHtml, rawPdf, opts.pdfRenderer, staticHtmlRaw);
+    if (staticHtmlRaw && fs.existsSync(staticHtmlRaw)) {
+      await finalizeStaticBook(
+        await fsp.readFile(staticHtmlRaw, "utf-8"),
+        htmlFile,
+        outDir
       );
-    }
-  }
-
-  let effectiveIccPath: string | null = null;
-  let shouldStripAnnotations: boolean | null = null;
-
-  if (pdfxMode) {
-    const icc = opts.iccPath ?? config.pdfx.icc;
-    const iccCandidates = path.isAbsolute(icc)
-      ? [icc]
-      : [path.resolve(manifestDir, icc), path.resolve(icc)];
-    effectiveIccPath = iccCandidates.find((candidate) => fs.existsSync(candidate)) ?? null;
-
-    if (!effectiveIccPath && !opts.iccPath && path.basename(icc) === "CGATS21_CRPC1.icc") {
-      effectiveIccPath = await getAssetPath("profiles/CGATS21_CRPC1.icc");
+      log.success(`Wrote static viewer: ${path.join(outDir, "book.html")}`);
     }
 
-    if (!effectiveIccPath) {
-      throw new BuildError(
-        `Missing ICC profile at ${icc}. Place the ICC profile or specify --icc <path>`,
-        2
+    if (!pdfxMode) {
+      // stampCreator writes /Creator (print-md) into the PDF's Info dict using
+      // pdf-lib (in-process, no system tool). The information is cosmetic — if it
+      // fails for any reason, keep the raw Chromium output as the final PDF rather
+      // than failing the build. `rawPdf` equals the final `pdfFile` when !pdfxMode.
+      try {
+        await stampCreator(rawPdf);
+      } catch (err) {
+        log.warn(
+          `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+
+    let effectiveIccPath: string | null = null;
+    let shouldStripAnnotations: boolean | null = null;
+
+    if (pdfxMode) {
+      const icc = opts.iccPath ?? config.pdfx.icc;
+      const iccCandidates = path.isAbsolute(icc)
+        ? [icc]
+        : [path.resolve(manifestDir, icc), path.resolve(icc)];
+      effectiveIccPath = iccCandidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+
+      if (!effectiveIccPath && !opts.iccPath && path.basename(icc) === "CGATS21_CRPC1.icc") {
+        effectiveIccPath = await getAssetPath("profiles/CGATS21_CRPC1.icc");
+      }
+
+      if (!effectiveIccPath) {
+        throw new BuildError(
+          `Missing ICC profile at ${icc}. Place the ICC profile or specify --icc <path>`,
+          2
+        );
+      }
+
+      const shouldStrip = opts.stripAnnotations ?? config.pdfx.stripAnnotations;
+      shouldStripAnnotations = shouldStrip;
+      if (shouldStrip) {
+        log.info("Stripping annotations for PDF/X compliance");
+        await stripAnnotations(rawPdf);
+      }
+
+      log.info(`Converting to CMYK PDF/X (${pdfxMode})`);
+      await convertToPdfxCmyk(rawPdf, path.resolve(pdfFile), {
+        iccPath: effectiveIccPath,
+        pdfx: pdfxMode,
+        title: config.title,
+        maxTac: config.ink.maxTac,
+      });
+    }
+
+    // 8. Post-build validation (pdfx only)
+    if (gates.postValidate) {
+      log.info("Post-build validation");
+      const result = await executeAndReport(
+        {
+          pdf: pdfFile,
+          phase: "post-build",
+          manifest: opts.manifestPath,
+        },
+        "text"
       );
+      if (!result.ok) {
+        throw new BuildError("Post-build validation failed", 1);
+      }
     }
 
-    const shouldStrip = opts.stripAnnotations ?? config.pdfx.stripAnnotations;
-    shouldStripAnnotations = shouldStrip;
-    if (shouldStrip) {
-      log.info("Stripping annotations for PDF/X compliance");
-      await stripAnnotations(rawPdf);
-    }
-
-    log.info(`Converting to CMYK PDF/X (${pdfxMode})`);
-    await convertToPdfxCmyk(rawPdf, path.resolve(pdfFile), {
-      iccPath: effectiveIccPath,
-      pdfx: pdfxMode,
-      title: config.title,
-      maxTac: config.ink.maxTac,
-    });
-  }
-
-  // 8. Post-build validation (pdfx only)
-  if (gates.postValidate) {
-    log.info("Post-build validation");
-    const result = await executeAndReport(
-      {
-        pdf: pdfFile,
-        phase: "post-build",
-        manifest: opts.manifestPath,
+    const fingerprintPath = await writeBuildFingerprint({
+      command: "build",
+      outputDir: outDir,
+      sourceDir: inputDir,
+      args: opts.rawArgs,
+      pdfx: {
+        requestedFlavor: pdfxMode ?? null,
+        resolvedFlavor: config.pdfx.flavor,
+        iccPath: effectiveIccPath,
+        stripAnnotations: shouldStripAnnotations,
       },
-      "text"
-    );
-    if (!result.ok) {
-      throw new BuildError("Post-build validation failed", 1);
-    }
+    });
+
+    log.success(`Wrote: ${pdfFile}`);
+    log.info(`Fingerprint: ${fingerprintPath}`);
+
+    // Close the pooled browser unless the caller wants it kept warm. No-op for the
+    // injected-renderer (Electron) path, which never used the pool.
+    if (!opts.keepBrowserAlive) await closeBrowser();
+
+    return {
+      outDir,
+      htmlPath: htmlFile,
+      pdfPath: pdfFile,
+      fingerprintPath,
+    };
+  } finally {
+    await fsp.rm(stage, { recursive: true, force: true });
   }
-
-  const fingerprintPath = await writeBuildFingerprint({
-    command: "build",
-    outputDir: outDir,
-    sourceDir: inputDir,
-    args: opts.rawArgs,
-    pdfx: {
-      requestedFlavor: pdfxMode ?? null,
-      resolvedFlavor: config.pdfx.flavor,
-      iccPath: effectiveIccPath,
-      stripAnnotations: shouldStripAnnotations,
-    },
-  });
-
-  log.success(`Wrote: ${pdfFile}`);
-  log.info(`Fingerprint: ${fingerprintPath}`);
-
-  // Close the pooled browser unless the caller wants it kept warm. No-op for the
-  // injected-renderer (Electron) path, which never used the pool.
-  if (!opts.keepBrowserAlive) await closeBrowser();
-
-  return {
-    outDir,
-    htmlPath: htmlFile,
-    pdfPath: pdfFile,
-    fingerprintPath,
-  };
 }
