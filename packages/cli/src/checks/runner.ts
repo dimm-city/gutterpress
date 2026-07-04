@@ -56,11 +56,15 @@ export async function runChecks(
   ctx: CheckContext,
   opts: RunnerOptions = {}
 ): Promise<RunnerReport> {
-  // Get all checks matching the filter
+  // Get all checks matching the filter. Track selectors that matched no
+  // registered check — a mistyped selector must surface as an error rather
+  // than silently resolving to nothing and reporting a false "PASSED".
+  const unmatchedSelectors: string[] = [];
   let checks: Check[];
   if (opts.only && opts.only.length > 0) {
-    const onlyIds = resolveCheckSelectors(opts.only);
-    checks = getChecks({ ids: onlyIds });
+    const { resolved, unmatched } = resolveCheckSelectors(opts.only);
+    checks = getChecks({ ids: resolved });
+    unmatchedSelectors.push(...unmatched);
   } else {
     checks = getChecks({
       category: opts.category,
@@ -70,8 +74,10 @@ export async function runChecks(
 
   // Apply skip filter
   if (opts.skip && opts.skip.length > 0) {
-    const skipSet = new Set(resolveCheckSelectors(opts.skip));
+    const { resolved, unmatched } = resolveCheckSelectors(opts.skip);
+    const skipSet = new Set(resolved);
     checks = checks.filter((c) => !skipSet.has(c.id));
+    unmatchedSelectors.push(...unmatched);
   }
 
   // Filter by manifest enable/disable
@@ -88,6 +94,16 @@ export async function runChecks(
 
   const allResults: CheckResult[] = [];
   const passed: string[] = [];
+
+  // Surface mistyped selectors as errors so a run that matched nothing can
+  // never be reported as a silent green.
+  for (const selector of unmatchedSelectors) {
+    allResults.push({
+      checkId: "selector.unmatched",
+      severity: "error",
+      message: `Unknown check selector "${selector}" matched no registered checks.`,
+    });
+  }
 
   for (const check of checks) {
     try {

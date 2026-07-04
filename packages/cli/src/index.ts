@@ -24,6 +24,7 @@ export { runChecks } from "./checks/runner.ts";
 export { checkToolAvailability, reportMissingTools } from "./checks/tool-check.ts";
 export type { CheckContext, CheckResult } from "./checks/types.ts";
 export { resolveCheckSelectors, getChecks, getCheckById } from "./checks/registry.ts";
+export type { ResolvedSelectors } from "./checks/registry.ts";
 export type { CheckCategory, CheckPhase } from "./checks/types.ts";
 export { loadManifest } from "./lib/manifest.ts";
 

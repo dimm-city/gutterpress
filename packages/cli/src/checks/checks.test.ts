@@ -12,7 +12,13 @@ import { join } from "node:path";
 import { resolveConfig } from "../lib/manifest";
 import type { ResolvedConfig } from "../schema/manifest.types";
 import type { CheckContext, CheckResult, Check } from "./types";
-import { registerCheck, getChecks, getCheckById, getAllCheckIds } from "./registry";
+import {
+  registerCheck,
+  getChecks,
+  getCheckById,
+  getAllCheckIds,
+  resolveCheckSelectors,
+} from "./registry";
 import { runChecks } from "./runner";
 import { formatReport } from "./formatter";
 import { checkToolAvailability, reportMissingTools } from "./tool-check";
@@ -294,6 +300,79 @@ describe("Check Runner", () => {
     });
     expect(report.summary.errors).toBe(1);
     expect(report.errors[0]!.message).toContain("intentional test error");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Selector resolution — a mistyped --only/--skip selector must NOT silently
+// resolve to nothing and produce a false "PASSED" (regression guard).
+// ---------------------------------------------------------------------------
+
+describe("resolveCheckSelectors reports unmatched selectors", () => {
+  test("valid selector resolves and reports no unmatched", () => {
+    const { resolved, unmatched } = resolveCheckSelectors([
+      "pdf.structure.qpdf",
+    ]);
+    expect(resolved).toEqual(["pdf.structure.qpdf"]);
+    expect(unmatched).toEqual([]);
+  });
+
+  test("wildcard selector resolves and reports no unmatched", () => {
+    const { resolved, unmatched } = resolveCheckSelectors([
+      "source.accessibility.*",
+    ]);
+    expect(resolved.slice().sort()).toEqual([
+      "source.accessibility.alt-text",
+      "source.accessibility.heading-order",
+    ]);
+    expect(unmatched).toEqual([]);
+  });
+
+  test("unknown selector is surfaced as unmatched", () => {
+    const { resolved, unmatched } = resolveCheckSelectors([
+      "pdf.print.typo",
+    ]);
+    expect(resolved).toEqual([]);
+    expect(unmatched).toEqual(["pdf.print.typo"]);
+  });
+
+  test("mix of valid and typo selectors keeps them separate", () => {
+    const { resolved, unmatched } = resolveCheckSelectors([
+      "pdf.structure.qpdf",
+      "does.not.exist",
+    ]);
+    expect(resolved).toEqual(["pdf.structure.qpdf"]);
+    expect(unmatched).toEqual(["does.not.exist"]);
+  });
+});
+
+describe("Runner surfaces unknown selectors instead of silent PASS", () => {
+  test("unknown --only selector produces an error, not a false green", async () => {
+    const ctx = makeCtx();
+    const report = await runChecks(ctx, { only: ["pdf.print.typo"] });
+    // Must NOT be a silent green: zero checks ran but the run must signal error.
+    expect(report.summary.errors).toBeGreaterThan(0);
+    expect(
+      report.errors.some((r) => r.message.includes("pdf.print.typo"))
+    ).toBe(true);
+  });
+
+  test("valid --only selector stays clean (happy path unchanged)", async () => {
+    const ctx = makeCtx();
+    const report = await runChecks(ctx, { only: ["pdf.structure.qpdf"] });
+    expect(report.summary.total).toBe(1);
+    expect(report.summary.errors).toBe(0);
+  });
+
+  test("unknown --skip selector is surfaced as an error", async () => {
+    const ctx = makeCtx();
+    const report = await runChecks(ctx, {
+      category: ["heuristic"],
+      skip: ["heuristic.whitespace.typo"],
+    });
+    expect(
+      report.errors.some((r) => r.message.includes("heuristic.whitespace.typo"))
+    ).toBe(true);
   });
 });
 

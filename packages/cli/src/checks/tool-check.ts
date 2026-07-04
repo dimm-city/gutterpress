@@ -27,12 +27,12 @@ export async function checkToolAvailability(
 ): Promise<ToolCheckResult> {
   // Get the same set of checks the runner would use (before tool filtering)
   let checks = opts.only?.length
-    ? getChecks({ ids: resolveCheckSelectors(opts.only) })
+    ? getChecks({ ids: resolveCheckSelectors(opts.only).resolved })
     : getChecks({ category: opts.category, phase: opts.phase });
 
   // Apply skip filter
   if (opts.skip?.length) {
-    const skipSet = new Set(resolveCheckSelectors(opts.skip));
+    const skipSet = new Set(resolveCheckSelectors(opts.skip).resolved);
     checks = checks.filter((c) => !skipSet.has(c.id));
   }
 
