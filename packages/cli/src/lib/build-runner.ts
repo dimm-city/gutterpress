@@ -112,7 +112,7 @@ interface MissingTool {
   installHint: string;
 }
 
-const INSTALL_HINTS: Record<string, string> = {
+const INSTALL_HINTS: Record<"gs" | "qpdf", string> = {
   gs: "  macOS:   brew install ghostscript\n  Ubuntu:  sudo apt install -y ghostscript\n  Windows: https://www.ghostscript.com/releases/gsdnld.html  (or: choco install ghostscript)",
   qpdf: "  macOS:   brew install qpdf\n  Ubuntu:  sudo apt install -y qpdf\n  Windows: choco install qpdf  (or: https://github.com/qpdf/qpdf/releases)",
 };
@@ -152,14 +152,14 @@ async function preflightBuildTools(
   //   - plain pdf  -> none (the /Creator stamp now uses pdf-lib, in-process)
   //   - pdfx       -> CMYK conversion, REQUIRED
   if (format === "pdfx" && !(await isToolAvailable("gs"))) {
-    missing.push({ name: "gs (Ghostscript)", installHint: INSTALL_HINTS.gs! });
+    missing.push({ name: "gs (Ghostscript)", installHint: INSTALL_HINTS.gs });
   }
 
   // qpdf — only when pdfx with stripAnnotations enabled (default true).
   if (format === "pdfx") {
     const stripAnnotations = opts.stripAnnotations ?? config.pdfx.stripAnnotations;
     if (stripAnnotations && !(await isToolAvailable("qpdf"))) {
-      missing.push({ name: "qpdf", installHint: INSTALL_HINTS.qpdf! });
+      missing.push({ name: "qpdf", installHint: INSTALL_HINTS.qpdf });
     }
   }
 
@@ -360,7 +360,23 @@ async function paginateAndCapture(
       timeout: timeoutMs,
       },
     )
-    .catch(() => {});
+    .catch((err: unknown) => {
+      // ONLY a wait timeout is tolerable: Paged.js never signaled
+      // __PAGED_RENDERED__ in time, so proceed with whatever rendered but warn
+      // (an unsignaled run can ship a blank/partial PDF). Any OTHER failure —
+      // page crash, execution-context loss, navigation teardown — is a real
+      // error and must propagate; masking it would silently emit broken output.
+      // puppeteer-core throws a TimeoutError (identified by name to avoid a
+      // runtime import of the class, keeping §2 lazy-loading intact).
+      if ((err as { name?: string } | undefined)?.name !== "TimeoutError") {
+        throw err;
+      }
+      log.warn(
+        `Pagination did not complete within ${Math.round(
+          timeoutMs / 1000
+        )}s — output may be incomplete.`
+      );
+    });
 }
 
 /** Default renderer: system Chromium via puppeteer-core (pooled + pre-warmable). */

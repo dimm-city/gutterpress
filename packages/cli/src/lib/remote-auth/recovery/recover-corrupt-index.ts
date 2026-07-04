@@ -63,12 +63,17 @@ export const recover: RecoverFn = async (ctx, error?) => {
     // We walk HEAD's commit tree to discover every tracked filepath, then reset
     // each one so the new index correctly reflects the last saved snapshot.
     const headRef = ctx.branch || "HEAD";
+    // Share ONE cache across the whole rebuild: the tree walk plus one
+    // resetIndex per tracked file would otherwise re-read the same loose/packed
+    // git objects repeatedly. Every other hot path in this layer passes a
+    // per-operation cache for exactly this reason (large-repo object reads).
+    const cache = {};
     const headOid = await git.resolveRef({ fs, dir: ctx.repoDir, ref: headRef });
-    const headCommit = await git.readCommit({ fs, dir: ctx.repoDir, oid: headOid });
+    const headCommit = await git.readCommit({ fs, dir: ctx.repoDir, cache, oid: headOid });
 
     const trackedPaths: string[] = [];
     async function collectTree(treeOid: string, prefix: string): Promise<void> {
-      const { tree } = await git.readTree({ fs, dir: ctx.repoDir, oid: treeOid });
+      const { tree } = await git.readTree({ fs, dir: ctx.repoDir, cache, oid: treeOid });
       for (const entry of tree) {
         const entryPath = prefix ? `${prefix}/${entry.path}` : entry.path;
         if (entry.type === "blob") {
@@ -81,7 +86,7 @@ export const recover: RecoverFn = async (ctx, error?) => {
     await collectTree(headCommit.commit.tree, "");
 
     for (const filepath of trackedPaths) {
-      await git.resetIndex({ fs, dir: ctx.repoDir, filepath, ref: headRef });
+      await git.resetIndex({ fs, dir: ctx.repoDir, cache, filepath, ref: headRef });
     }
 
     const guidance = makeManualGuidance(ctx, KIND, error, backupZipPath);

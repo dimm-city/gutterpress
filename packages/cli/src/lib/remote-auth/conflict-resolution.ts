@@ -248,7 +248,12 @@ async function applyPlan(params: {
       await writeFile(abs, w.content);
     }
     for (const d of deletes) {
-      await unlink(path.join(dir, d)).catch(() => {});
+      await unlink(path.join(dir, d)).catch((e: unknown) => {
+        // A file that's already gone is fine. Any OTHER failure means the
+        // delete didn't happen, so the merge result would silently keep content
+        // that should have been removed — surface it instead of swallowing.
+        if ((e as NodeJS.ErrnoException)?.code !== "ENOENT") throw e;
+      });
     }
     if (await hasPendingChanges(dir)) {
       await snapshotWorkingTreeUnlocked({

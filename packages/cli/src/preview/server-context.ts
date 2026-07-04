@@ -19,7 +19,7 @@ export interface ServerState {
   rebuildTimer: NodeJS.Timeout | null;
   /** Is currently rebuilding? (prevents overlapping builds) */
   isRebuilding: boolean;
-  /** Bun-native preview HTTP/WebSocket server instance */
+  /** node:http + `ws` preview HTTP/WebSocket server instance */
   previewServer: PreviewServer | null;
   /** Is server shutting down? (prevents multiple shutdown calls) */
   isShuttingDown: boolean;

@@ -481,6 +481,15 @@ export async function createPreviewServer(
 
   let stopped = false;
 
+  // Single fan-out helper: the three broadcast* methods only differ by payload.
+  const broadcast = (payload: Record<string, unknown>): void => {
+    if (stopped) return;
+    const message = JSON.stringify(payload);
+    for (const ws of clients) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(message);
+    }
+  };
+
   return {
     port: boundPort,
     async close() {
@@ -498,25 +507,13 @@ export async function createPreviewServer(
       });
     },
     broadcastReload() {
-      if (stopped) return;
-      const message = JSON.stringify({ type: 'full-reload' });
-      for (const ws of clients) {
-        if (ws.readyState === WebSocket.OPEN) ws.send(message);
-      }
+      broadcast({ type: 'full-reload' });
     },
     broadcastCssUpdate(stylesheetPath: string) {
-      if (stopped) return;
-      const message = JSON.stringify({ type: 'css-update', path: stylesheetPath });
-      for (const ws of clients) {
-        if (ws.readyState === WebSocket.OPEN) ws.send(message);
-      }
+      broadcast({ type: 'css-update', path: stylesheetPath });
     },
     broadcastContentUpdate(file: string) {
-      if (stopped) return;
-      const message = JSON.stringify({ type: 'content-update', file });
-      for (const ws of clients) {
-        if (ws.readyState === WebSocket.OPEN) ws.send(message);
-      }
+      broadcast({ type: 'content-update', file });
     },
   };
 }
