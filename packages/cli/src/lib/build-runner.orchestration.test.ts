@@ -10,6 +10,7 @@ import {
   BuildError,
   type PdfRenderInput,
 } from "./build-runner.ts";
+import { resolveChromiumExecutable } from "./chromium.ts";
 import { getAssetPath } from "./embedded-assets.ts";
 
 /**
@@ -18,11 +19,26 @@ import { getAssetPath } from "./embedded-assets.ts";
  * full HTML build path and the extracted pure ICC-resolution helper, so the
  * god-function -> stages+strategies refactor is provably behavior-preserving.
  *
- * The HTML path runs with NO Chromium (the CI/dev box here resolves none), so
- * it exercises the runtime-pagination fallback (shipRuntimePaginatedHtml) end
- * to end: markdown -> book.html + index.html + fingerprint, and the returned
- * BuildRunnerResult shape.
+ * The HTML build assertion exercises the runtime-pagination fallback
+ * (shipRuntimePaginatedHtml): markdown -> book.html + index.html + fingerprint,
+ * and the returned BuildRunnerResult shape. That fallback path is only taken
+ * when NO Chromium is resolvable, so — mirroring build-runner.render.test.ts's
+ * `chromium ? test : test.skip` gate, inverted — it runs only when Chromium is
+ * absent. When Chromium IS present (e.g. CI's Test job sets
+ * PUPPETEER_EXECUTABLE_PATH), runBuild paginates in Chromium instead; that path
+ * is covered by build-runner.render.test.ts, and launching a real browser here
+ * would both change the exercised code path and blow the test timeout.
+ * The ICC-resolver tests below are pure and always run.
  */
+
+const chromium = await resolveChromiumExecutable();
+const htmlFallbackTest = chromium ? test.skip : test;
+if (chromium) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[build-runner.orchestration.test] Chromium resolved — skipping the HTML runtime-pagination fallback assertion (the Chromium path is covered by build-runner.render.test.ts)."
+  );
+}
 
 const dirsToClean: string[] = [];
 
@@ -32,7 +48,7 @@ afterEach(async () => {
   }
 });
 
-test("runBuild (html) writes book.html + index.html + fingerprint and returns the right shape", async () => {
+htmlFallbackTest("runBuild (html) writes book.html + index.html + fingerprint and returns the right shape", async () => {
   const inputDir = await mkdtemp(join(tmpdir(), "pmd-orch-in-"));
   const outDir = await mkdtemp(join(tmpdir(), "pmd-orch-out-"));
   dirsToClean.push(inputDir, outDir);
@@ -73,7 +89,8 @@ test("runBuild (html) writes book.html + index.html + fingerprint and returns th
   // The fingerprint records the build command.
   const fp = JSON.parse(await readFile(result.fingerprintPath, "utf-8"));
   expect(fp.command).toBe("build");
-});
+}, 30_000); // A cold full build (markdown render + asset copy + fingerprint) can
+// sit near bun's default 5s timeout on a slow runner; give it comfortable head-room.
 
 // resolveIccProfile is the pure ICC-candidate resolver extracted from the pdfx
 // branch. It resolves relative paths against the manifest dir first, then cwd,
