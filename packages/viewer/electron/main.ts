@@ -36,6 +36,7 @@ import { registerDesktopHooks, registerDoctorHooks } from "./server-bridge/host-
 import { registerMediaHooks } from "./server-bridge/media-hooks";
 import { registerVcsHooks } from "./server-bridge/vcs-hooks";
 import { registerRemoteHooks } from "./server-bridge/remote-hooks";
+import { handleRemoteErrors } from "./server-bridge/friendly-errors";
 import { registerConflictPreviewHooks } from "./server-bridge/conflict-preview-hooks";
 import {
   writeRecovery as writeRecoveryStore,
@@ -1040,34 +1041,8 @@ function requireAbsoluteDir(channel: string, projectDir: unknown): string {
   return projectDir;
 }
 
-// The lib's own author-facing messages (and our argument-validation messages)
-// pass through to the renderer verbatim. Anything else is an unexpected
-// internal failure: it gets logged in full here and replaced with a terse,
-// author-safe message (no raw isomorphic-git internals, no full fs paths).
-const VCS_FRIENDLY_ERROR =
-  /no changes since the last snapshot|no version history yet|your work is safe|project files were not changed|requires an absolute project path|valid snapshot id|already inside a versioned project/i;
-
-async function handleVcsErrors<T>(
-  channel: string,
-  fn: () => Promise<T>,
-): Promise<T> {
-  try {
-    return await fn();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[${channel}] failed: ${msg}`);
-    if (e instanceof Error && e.stack) console.error(e.stack);
-    if (e instanceof Error && e.cause) console.error(`  cause: ${String(e.cause)}`);
-    if (VCS_FRIENDLY_ERROR.test(msg)) {
-      // Re-wrap so only the friendly message crosses the IPC boundary.
-      throw new Error(msg);
-    }
-    throw new Error(
-      `Version history could not complete the ${channel.replace("vcs:", "")} operation. See the app log for details.`,
-    );
-  }
-}
-
+// Error sanitization for vcs:* now lives in the shared server-bridge/friendly-errors
+// module (friendlyVcsError), consumed by the SvelteKit routes.
 // vcs:saveSnapshot, vcs:listSnapshots, vcs:listSnapshotsPage, vcs:restoreSnapshot — migrated to SvelteKit server routes (src/routes/api/vcs/*).
 
 // ── Managed GitHub integration (#15, ADR 0006) ───────────────────────────────
@@ -1088,41 +1063,10 @@ registerRemoteHooks({
   GITHUB_HOST,
 });
 
-// Error sanitization — same pattern as handleVcsErrors: the lib's own
-// author-friendly messages pass through verbatim; anything else is logged in
-// full here and replaced with a terse author-safe message. Token values never
-// appear in lib messages by construction (remote-auth redaction invariant).
-const REMOTE_FRIENDLY_ERROR =
-  /couldn't reach github|reconnect github|connect github|sign-?in|declined|expired|canceled|already has files|valid web url|https|repository couldn't be found|couldn't be downloaded|try again|in progress|access token|web address|couldn't reach|didn't accept|wasn't found|certificate|git server/i;
-
-// Strip credential-bearing URL userinfo ("https://user:token@host/…") from
-// any string headed for the log. Transport errors — and especially their raw
-// `.cause` — can echo the request URL verbatim, which may embed a token.
-function redactUrlCredentials(text: string): string {
-  return text.replace(/\/\/[^/\s:]+:[^@\s]+@/g, "//(redacted)@");
-}
-
-async function handleRemoteErrors<T>(
-  channel: string,
-  fn: () => Promise<T>,
-): Promise<T> {
-  try {
-    return await fn();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[${channel}] failed: ${redactUrlCredentials(msg)}`);
-    if (e instanceof Error && e.stack) console.error(redactUrlCredentials(e.stack));
-    if (e instanceof Error && e.cause) {
-      console.error(`  cause: ${redactUrlCredentials(String(e.cause))}`);
-    }
-    if (REMOTE_FRIENDLY_ERROR.test(msg)) {
-      throw new Error(msg);
-    }
-    throw new Error(
-      "The online repository operation could not be completed. See the app log for details.",
-    );
-  }
-}
+// Error sanitization (handleRemoteErrors: friendly lib messages pass through;
+// anything else is logged with credentials redacted and replaced with a terse
+// safe message) now lives in the shared server-bridge/friendly-errors module,
+// imported at the top of this file.
 
 // One device-flow connect at a time. `codePromise` resolves with the user code
 // (phase 1 of the two-phase invoke); `donePromise` resolves when the user

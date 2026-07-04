@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { isAbsolute } from 'node:path';
 import { getVcsHooks } from '../../../../../electron/server-bridge/vcs-hooks';
+import { friendlyVcsError } from '../../../../../electron/server-bridge/friendly-errors';
 
 // Local type — do NOT import from contract.ts or the lib (keeps SPA bundle clean).
 interface RestoreVersionResult {
@@ -11,21 +12,6 @@ interface RestoreVersionResult {
 
 interface LibModule {
   restoreVersionWithBackup: (opts: { projectDir: string; id: string }) => Promise<RestoreVersionResult>;
-}
-
-const VCS_FRIENDLY_ERROR =
-  /no changes since the last snapshot|no version history yet|your work is safe|project files were not changed|requires an absolute project path|valid snapshot id|already inside a versioned project/i;
-
-function friendlyError(e: unknown, op: string): never {
-  const msg = e instanceof Error ? e.message : String(e);
-  console.error(`[vcs/restore-snapshot] failed: ${msg}`);
-  if (e instanceof Error && (e as Error & { stack?: string }).stack) {
-    console.error((e as Error & { stack?: string }).stack);
-  }
-  if (VCS_FRIENDLY_ERROR.test(msg)) {
-    throw error(422, msg);
-  }
-  throw error(500, `Version history could not complete the ${op} operation. See the app log for details.`);
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -51,6 +37,7 @@ export const POST: RequestHandler = async ({ request }) => {
     return json(await lib.restoreVersionWithBackup({ projectDir, id }));
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e) throw e;
-    friendlyError(e, 'restoreSnapshot');
+    const { status, message } = friendlyVcsError(e, 'restoreSnapshot', 'vcs/restore-snapshot');
+    throw error(status, message);
   }
 };
