@@ -46,6 +46,8 @@ const check: Check = {
                 severity: "warning",
                 message: `Image TAC exceeds limit: ${tac.toFixed(1)}% (max ${maxTac}%)`,
                 file,
+                code: "image-tac-exceeded",
+                data: { tac, limit: maxTac },
               });
               break;
             }

@@ -12,6 +12,17 @@ export interface CheckResult {
   line?: number;
   column?: number;
   detail?: string;
+  /**
+   * Stable machine-readable identifier for the KIND of finding (e.g.
+   * "ink-coverage-exceeded", "rasterized-pages-detected"). Lets the report /
+   * summary layer branch on the finding without parsing `message` prose.
+   */
+  code?: string;
+  /**
+   * Structured payload for the finding (e.g. `{ maxTac, pages }`). The canonical
+   * source for summary numbers — `message`/`detail` are for humans only.
+   */
+  data?: Record<string, unknown>;
 }
 
 export interface CheckContext {
