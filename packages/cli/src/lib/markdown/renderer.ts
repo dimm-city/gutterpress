@@ -144,15 +144,12 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   // with `__esModule: true`). Bun's runtime auto-unwraps `{ default: fn }`
   // to the function in dev mode; the standalone-binary loader does not, so
   // the import surfaces as `{ default: fn }` and `md.use` blows up with
-  // "plugin.apply is not a function". Unwrap defensively.
-  const unwrap = <T>(plugin: T): T =>
-    hasDefaultExport(plugin) ? plugin.default : plugin;
-
-  md.use(unwrap(markdownItAttrs));
-  md.use(unwrap(markdownItFootnote));
-  md.use(unwrap(markdownItDeflist));
-  md.use(unwrap(markdownItSourceMap));
-  md.use(unwrap(markdownItPaged));
+  // "plugin.apply is not a function". Unwrap defensively via the shared helper.
+  md.use(unwrapPlugin(markdownItAttrs));
+  md.use(unwrapPlugin(markdownItFootnote));
+  md.use(unwrapPlugin(markdownItDeflist));
+  md.use(unwrapPlugin(markdownItSourceMap));
+  md.use(unwrapPlugin(markdownItPaged));
 
   // Image src normalization (token-level renderer rule).
   registerImageRule(md);

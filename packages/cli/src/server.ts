@@ -2,7 +2,7 @@
  * Preview server entry point.
  *
  * Loads config via lib/manifest, generates HTML via lib/markdown, and serves
- * the preview through a Bun-native HTTP+WebSocket server (see
+ * the preview through a node:http + `ws` HTTP+WebSocket server (see
  * `src/preview/http-server.ts`). Live reload is handled by broadcasting
  * `full-reload` over the HMR WebSocket whenever the file watcher fires.
  */
@@ -49,7 +49,7 @@ export interface StartPreviewServerOptions extends PreviewServerOptions {
 }
 
 /**
- * Start the preview server backed by a Bun-native HTTP/WebSocket server.
+ * Start the preview server backed by a node:http + `ws` HTTP/WebSocket server.
  *
  * Returns a handle the caller can use to introspect the URL or stop the server.
  * CLI callers can simply ignore the handle and rely on SIGINT/SIGTERM.
@@ -136,7 +136,7 @@ export async function startPreviewServer(
   }
 
   const host = options.host ?? '127.0.0.1';
-  // Read the actually-bound port (Bun resolves port:0 to a free port).
+  // Read the actually-bound port (listening on port 0 resolves to a free port).
   const boundPort = state.previewServer.port;
   return {
     url: `http://${host}:${boundPort}`,
