@@ -26,3 +26,17 @@ export function slugify(name: string, fallback = ""): string {
       .replace(/^-+|-+$/g, "") || fallback
   );
 }
+
+/**
+ * Prettify a slug / filename stem into a display name: `-`/`_` runs become
+ * spaces and the first character is upper-cased ("stat-block" → "Stat block",
+ * "my_cool-theme" → "My cool theme"). The rough inverse of {@link slugify} used
+ * to label themes, snippets and custom templates that carry only a slug id.
+ *
+ * One implementation, several historical call sites (theme manager, snippets,
+ * project templates) — bundle-safe pure string work, no deps.
+ */
+export function prettify(slug: string): string {
+  const spaced = slug.replace(/[-_]+/g, " ").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}

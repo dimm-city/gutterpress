@@ -39,7 +39,7 @@ import type { Node } from "yaml";
 
 import { getAssetPath } from "./embedded-assets.ts";
 import { loadManifestDoc, ensureSeq } from "./manifest-doc.ts";
-import { slugify } from "./slug.ts";
+import { slugify, prettify } from "./slug.ts";
 
 /** Folder (relative to the project root) themes are copied into on apply/import. */
 export const THEMES_DIR = "themes";
@@ -137,11 +137,6 @@ function themeInfo(
     kind,
     preview: meta.preview ?? null,
   };
-}
-
-function prettify(slug: string): string {
-  const spaced = slug.replace(/[-_]+/g, " ").trim();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 /** Slugify a theme name/url into a safe directory id (never empty — "theme"). */

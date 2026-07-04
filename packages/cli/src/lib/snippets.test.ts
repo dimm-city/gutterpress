@@ -100,6 +100,31 @@ test("saveSnippet slugifies the name into a safe .md filename", async () => {
   }
 });
 
+// Characterization: lock the observable slugify + prettify behaviour of the
+// snippet call site across unicode, diacritics, spaces and punctuation so the
+// slug/prettify consolidation is proven to change no user-visible filenames.
+test("saveSnippet slug/prettify: diacritics, spaces and punctuation", async () => {
+  const proj = await tmpProject();
+  try {
+    const entry = await saveSnippet(proj, "Café  Déjà — Vu!!", "x");
+    expect(entry.fileName).toBe("cafe-deja-vu.md");
+    // The prettified display name is derived from the slugged stem.
+    const [listed] = await listSnippets(proj);
+    expect(listed!.name).toBe("Cafe deja vu");
+  } finally {
+    await rm(proj, { recursive: true, force: true });
+  }
+});
+
+test("saveSnippet rejects a name with no usable characters (empty slug)", async () => {
+  const proj = await tmpProject();
+  try {
+    await expect(saveSnippet(proj, "!!!", "x")).rejects.toThrow();
+  } finally {
+    await rm(proj, { recursive: true, force: true });
+  }
+});
+
 test("deleteSnippet removes the file", async () => {
   const proj = await tmpProject();
   try {

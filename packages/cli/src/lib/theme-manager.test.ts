@@ -257,6 +257,19 @@ describe("theme-manager", () => {
       const themes = await listProjectThemes(dir);
       expect(themes.map((t) => t.id)).toContain("clean-book");
     });
+
+    // Characterization: a theme folder with no name in theme.json falls back to
+    // prettify(id). Locks the prettify behaviour so the shared-helper move keeps
+    // the same user-visible name.
+    test("names a theme by prettifying its id when theme.json has no name", async () => {
+      const dir = projectDir();
+      const themeDir = join(dir, THEMES_DIR, "my_neat-theme");
+      mkdirSync(themeDir, { recursive: true });
+      writeFileSync(join(themeDir, "theme.css"), ":root { --z: 3; }\n", "utf8");
+      const themes = await listProjectThemes(dir);
+      const found = themes.find((t) => t.id === "my_neat-theme");
+      expect(found?.name).toBe("My neat theme");
+    });
   });
 
   describe("path-traversal hardening (no-data-loss mandate)", () => {

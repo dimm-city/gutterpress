@@ -133,6 +133,43 @@ test("saveProjectAsTemplate re-tokenises the authors block, NOT a leading source
   }
 });
 
+// Characterization: lock the slug id + prettify label fallback of the template
+// call site so the slug/prettify consolidation changes no user-visible ids.
+test("saveProjectAsTemplate slugs the id across diacritics and punctuation", async () => {
+  const parent = await tmp("pmd-tplslug-src-");
+  const templatesRoot = await tmp("pmd-tplslug-dest-");
+  try {
+    const result = await scaffoldProject({
+      name: "Slug Src",
+      parentDir: parent,
+      versionHistory: "none",
+    });
+    const saved = await saveProjectAsTemplate({
+      projectDir: result.projectDir,
+      name: "Café  Déjà — Vu!!",
+      templatesRoot,
+    });
+    expect(saved.id).toBe("cafe-deja-vu");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+    await rm(templatesRoot, { recursive: true, force: true });
+  }
+});
+
+test("listCustomTemplates prettifies a bare folder id as its label fallback", async () => {
+  const root = await tmp("pmd-prettify-");
+  try {
+    // A template folder with no metadata sidecar → label falls back to prettify(id).
+    await mkdir(path.join(root, "my_cool-template"), { recursive: true });
+    const list = await listCustomTemplates(root);
+    expect(list.map((t) => ({ id: t.id, label: t.label }))).toEqual([
+      { id: "my_cool-template", label: "My cool template" },
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("listCustomTemplates returns saved templates and [] for an empty root", async () => {
   const root = await tmp("pmd-customlist-");
   try {

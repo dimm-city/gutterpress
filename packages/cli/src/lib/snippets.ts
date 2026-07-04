@@ -13,6 +13,8 @@
 import { readdir, readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 
+import { slugify, prettify } from "./slug.ts";
+
 /** Folder (relative to the project root) snippets live in. */
 export const SNIPPETS_DIR = "snippets";
 
@@ -60,22 +62,6 @@ export function substituteVariables(
   );
 }
 
-/** Prettify a filename stem into a display name ("stat-block" → "Stat block"). */
-function prettifyStem(stem: string): string {
-  const spaced = stem.replace(/[-_]+/g, " ").trim();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-}
-
-/** Slugify a snippet name into a safe `.md` filename stem. */
-function slugify(name: string): string {
-  return name
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 /** Resolve a snippet filename safely inside the project's snippets/ dir. */
 function resolveSnippetPath(projectDir: string, fileName: string): string {
   const dir = path.resolve(projectDir, SNIPPETS_DIR);
@@ -108,7 +94,7 @@ export async function listSnippets(projectDir: string): Promise<SnippetEntry[]> 
       continue;
     }
     entries.push({
-      name: prettifyStem(fileName.replace(/\.md$/i, "")),
+      name: prettify(fileName.replace(/\.md$/i, "")),
       fileName,
       variables: extractVariables(body),
     });
