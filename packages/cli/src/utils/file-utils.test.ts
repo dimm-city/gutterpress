@@ -174,6 +174,29 @@ describe('File Utilities', () => {
 
       await expect(copyDirectory(srcFile, destDir)).rejects.toThrow(/not a directory/);
     });
+
+    test('throws BuildError listing failures when a file cannot be copied', async () => {
+      const srcDir = path.join(testDir, 'source');
+      const destDir = path.join(testDir, 'dest');
+
+      // A source file whose destination is blocked by a same-named directory,
+      // so fs.copyFile fails (EISDIR) and copyDirectory aggregates the failure.
+      await mkdir(srcDir);
+      await writeFile(path.join(srcDir, 'conflict.txt'), 'content');
+      await mkdir(path.join(destDir, 'conflict.txt'));
+
+      let caught: unknown;
+      try {
+        await copyDirectory(srcDir, destDir);
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).name).toBe('BuildError');
+      expect((caught as Error).message).toMatch(/Failed to copy 1 file\(s\)/);
+      expect((caught as Error).message).toContain('conflict.txt');
+    });
   });
 
   describe('remove', () => {
