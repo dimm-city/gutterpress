@@ -4,6 +4,7 @@ import {
   type AutoSyncOrchestratorDeps,
   type SyncStatusPayload,
 } from "../../electron/auto-sync/orchestrator";
+import { mapRecoveryResultToEmit } from "../../electron/auto-sync/recovery-emit";
 
 type LibModule = typeof import("@dimm-city/print-md");
 
@@ -28,6 +29,10 @@ interface FakeLibOptions {
   canSync?: boolean;
   /** Called per syncProject invocation; returns the SyncOutcome (or a promise). */
   syncProject?: (projectDir: string) => unknown;
+  /** SyncErrorKind returned by classifyGitError (drives the recover() path). */
+  classifyGitError?: string;
+  /** RecoveryResult returned by lib.recover (the recover() path). */
+  recover?: () => unknown;
 }
 
 function makeHarness(opts: FakeLibOptions = {}): Harness {
@@ -49,6 +54,9 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
         : { status: "synced" };
       return r;
     },
+    inspectRepo: async () => ({}),
+    classifyGitError: () => opts.classifyGitError ?? "unknown",
+    recover: async () => (opts.recover ? opts.recover() : { status: "recovered", message: "ok" }),
   } as unknown as LibModule;
 
   const deps: AutoSyncOrchestratorDeps = {
@@ -213,6 +221,42 @@ test("a successful run emits syncing then synced with a fake-clock timestamp", a
   expect(done?.filesChanged).toBe(true);
   expect(done?.lastSyncAt).toBe(new Date(1_700_000_123_000).toISOString());
   expect(h.orch.getLastSyncAt(DIR)).toBe(new Date(1_700_000_123_000).toISOString());
+});
+
+test("the recover() path emits exactly what the shared mapper produces", async () => {
+  // Drive the error → classify → recover branch: syncProject throws, the error
+  // classifies to a known kind, and recover() returns a needs_user CONFLICT.
+  const recoveryResult = {
+    status: "needs_user",
+    message: "conflict",
+    guidance: { title: "t" },
+    files: [{ path: "a.md" }],
+  };
+  const h = makeHarness({
+    syncProject: () => {
+      throw new Error("push rejected");
+    },
+    classifyGitError: "non_fast_forward",
+    recover: () => recoveryResult,
+  });
+  h.setClock(1_700_000_777_000);
+  await h.orch.run(DIR);
+  await tick();
+
+  // The orchestrator maps needs_user-with-files to a conflict via the SHARED
+  // mapper (authlessNeedsUserAs="auth"). The emitted payload must match the
+  // mapper's output byte-for-byte.
+  const now = new Date(1_700_000_777_000).toISOString();
+  const expected = mapRecoveryResultToEmit(recoveryResult as never, {
+    projectDir: DIR,
+    lastSyncAt: now,
+    logFile: `/logs/${DIR.replace(/^\//, "")}.log`,
+    authlessNeedsUserAs: "auth",
+  });
+  const conflictEmit = h.emitted.find((e) => e.state === "conflict");
+  expect(conflictEmit).toEqual(expected.status);
+  // and the conflict latched (orchestrator follow-up on the "conflict" bucket).
+  expect(h.orch.getState(DIR)?.conflictLatched).toBe(true);
 });
 
 test("decideRunAgainAfterPreflight delegates the pure rule", () => {

@@ -8,37 +8,17 @@ import {
   splitOutPath,
   BuildError,
   openPath,
-  type BuildFormat,
-  type PdfxFlavor,
 } from "../index.ts";
+import {
+  parseFormat,
+  parsePdfxFlavor,
+  resolvePort,
+  UsageError,
+} from "../lib/cli-args.ts";
 
-export function resolvePort(raw: unknown): number {
-  if (raw === undefined || raw === "") return 3579;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0) {
-    log.error(`Invalid --port value: "${raw}". Expected a non-negative number (0 = OS-assigned).`);
-    process.exit(2);
-  }
-  return n;
-}
-
-function parseFormat(raw: unknown): BuildFormat {
-  if (raw === undefined || raw === "") return "html";
-  if (raw === "html" || raw === "pdf" || raw === "pdfx") return raw;
-  log.error(`Invalid --format value: "${raw}". Expected "html", "pdf", or "pdfx".`);
-  process.exit(2);
-}
-
-function parsePdfxFlavor(raw: unknown, format: BuildFormat): PdfxFlavor | undefined {
-  if (raw === undefined || raw === "") return undefined;
-  if (format !== "pdfx") {
-    log.error(`--pdfx-flavor is only valid with --format pdfx (got --format ${format}).`);
-    process.exit(2);
-  }
-  if (raw === "x1a" || raw === "x3") return raw;
-  log.error(`Invalid --pdfx-flavor value: "${raw}". Expected "x1a" or "x3".`);
-  process.exit(2);
-}
+// Re-exported so existing importers (and preview.test.ts) can keep resolving it
+// from this command module.
+export { resolvePort };
 
 export default defineCommand({
   meta: { name: "preview", description: "Live HTML preview with HMR (default), or one-shot build + open for --format pdf|pdfx" },
@@ -70,34 +50,35 @@ export default defineCommand({
       }
     }
 
-    const format = parseFormat(args.format);
     const openFlag = args.open !== "false";
 
-    if (format === "html") {
-      await startPreviewServer({
-        input: inputPath,
-        port: resolvePort(args.port),
-        host: (args.host as string | undefined) || "127.0.0.1",
-        noWatch: !!args["no-watch"],
-        verbose: !!args.verbose,
-        openBrowser: openFlag,
-        debug: !!args.debug,
-      });
-      return;
-    }
-
-    if (inputPath === undefined) {
-      log.error(`--format ${format} requires an input directory.`);
-      process.exit(2);
-    }
-
-    const pdfxFlavor = parsePdfxFlavor(args["pdfx-flavor"], format);
-    const { outDir, pdfFileOverride } = splitOutPath(
-      typeof args.out === "string" ? args.out : undefined,
-      format
-    );
-
     try {
+      const format = parseFormat(args.format, { default: "html" });
+
+      if (format === "html") {
+        await startPreviewServer({
+          input: inputPath,
+          port: resolvePort(args.port),
+          host: (args.host as string | undefined) || "127.0.0.1",
+          noWatch: !!args["no-watch"],
+          verbose: !!args.verbose,
+          openBrowser: openFlag,
+          debug: !!args.debug,
+        });
+        return;
+      }
+
+      if (inputPath === undefined) {
+        log.error(`--format ${format} requires an input directory.`);
+        process.exit(2);
+      }
+
+      const pdfxFlavor = parsePdfxFlavor(args["pdfx-flavor"], format);
+      const { outDir, pdfFileOverride } = splitOutPath(
+        typeof args.out === "string" ? args.out : undefined,
+        format
+      );
+
       const result = await runBuild({
         inputDir: inputPath,
         format,
@@ -118,7 +99,7 @@ export default defineCommand({
         await openPath(result.pdfPath);
       }
     } catch (error) {
-      if (error instanceof BuildError) {
+      if (error instanceof UsageError || error instanceof BuildError) {
         log.error(error.message);
         process.exit(error.exitCode);
       }

@@ -1,5 +1,5 @@
 import type { RunnerReport } from "./runner";
-import { log } from "../lib/logger";
+import { log } from "../utils/logger";
 
 export type OutputFormat = "text" | "json";
 

@@ -28,9 +28,9 @@
 
 import { describe, expect, test, beforeEach } from "bun:test";
 import * as fs from "node:fs";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import path from "node:path";
-import { tmpdir } from "node:os";
+import { makeTempDir } from "../../../test-helpers/testkit";
 
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
@@ -55,10 +55,6 @@ import { recover } from "./recover-missing-git-dir.ts";
 
 const AUTHOR = { name: "Test Author", email: "test@test.local" };
 const FIXED_NOW = new Date("2025-01-15T12:00:00.000Z").getTime();
-
-async function makeTempDir(prefix = "missing-git-test-"): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), prefix));
-}
 
 /** Remove .git from a directory (simulates the problem being recovered). */
 async function removeGitDir(dir: string): Promise<void> {

@@ -6,7 +6,7 @@
 
 import { promises as fs, type Dirent } from 'fs';
 import path from 'path';
-import { BuildError } from './errors.ts';
+import { BuildError } from '../lib/build-error.ts';
 
 /**
  * Read a file as UTF-8 text

@@ -8,9 +8,10 @@
 
 import { describe, expect, test, beforeEach } from "bun:test";
 import * as fs from "node:fs";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
+import { makeTempDir as freshTempDir } from "../../../test-helpers/testkit";
 
 import git from "isomorphic-git";
 
@@ -27,7 +28,7 @@ import type { RecoveryContext, FaultPoint } from "./types.ts";
 // ── Temp dir helpers ──────────────────────────────────────────────────────────
 
 async function makeTempDir(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "backup-test-"));
+  return freshTempDir("backup-test-");
 }
 
 /** Create a minimal git repo with some files. */

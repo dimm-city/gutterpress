@@ -12,6 +12,17 @@ export interface CheckResult {
   line?: number;
   column?: number;
   detail?: string;
+  /**
+   * Stable machine-readable identifier for the KIND of finding (e.g.
+   * "ink-coverage-exceeded", "rasterized-pages-detected"). Lets the report /
+   * summary layer branch on the finding without parsing `message` prose.
+   */
+  code?: string;
+  /**
+   * Structured payload for the finding (e.g. `{ maxTac, pages }`). The canonical
+   * source for summary numbers — `message`/`detail` are for humans only.
+   */
+  data?: Record<string, unknown>;
 }
 
 export interface CheckContext {
@@ -33,5 +44,13 @@ export interface Check {
   phase: CheckPhase;
   /** External CLI tools this check requires (e.g. ["qpdf", "pdfinfo"]) */
   requiredTools?: string[];
+  /**
+   * Declarative enable gate driven by config (beyond the generic
+   * `validate.checks[id]` enable/disable). Lets a check own a tool-specific
+   * config switch — e.g. `source.stylelint === false` — so the runner and
+   * tool-check never need per-check special cases. Returning `false` disables
+   * the check for enablement/tool-probing purposes.
+   */
+  enabledWhen?: (config: ResolvedConfig) => boolean;
   run(ctx: CheckContext): Promise<CheckResult[]>;
 }

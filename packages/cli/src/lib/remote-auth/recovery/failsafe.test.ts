@@ -21,9 +21,9 @@
 
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { tmpdir } from "node:os";
+import { makeTempDir as freshTempDir } from "../../../test-helpers/testkit";
 
 import git from "isomorphic-git";
 
@@ -39,7 +39,7 @@ import type {
 // ── Temp dir helpers ──────────────────────────────────────────────────────────
 
 async function makeTempDir(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "failsafe-test-"));
+  return freshTempDir("failsafe-test-");
 }
 
 /** Create a minimal git repo with at least one file so the zip is non-empty. */

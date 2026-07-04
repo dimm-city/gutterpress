@@ -21,41 +21,48 @@ const check: Check = {
     if (offending.length === 0) return [];
 
     const maxTac = offending[0]!.tac;
-    const results: CheckResult[] = [
+
+    // One finding = one result. The per-page breakdown that used to be emitted
+    // as many sibling rows now lives in `detail` (human-readable) and `data`
+    // (structured) so the summary layer never re-parses prose.
+    const detailLines = [
+      "Some pages may have issues with commercial print. Consider lightening dark backgrounds.",
+      ...offending
+        .slice(0, 5)
+        .map(
+          (page) =>
+            `  Page ${page.page}: C:${page.c.toFixed(1)}% M:${page.m.toFixed(1)}% Y:${page.y.toFixed(1)}% K:${page.k.toFixed(1)}% = ${page.tac.toFixed(1)}% TAC`
+        ),
+    ];
+    if (offending.length > 5) {
+      detailLines.push(
+        `  ...and ${offending.length - 5} more page(s) over ${ctx.config.ink.maxTac}% TAC`
+      );
+    }
+
+    return [
       {
         checkId: check.id,
         severity: "warning",
         message: `Total ink coverage too high on ${offending.length} page(s) (max ${maxTac.toFixed(1)}%, recommended <=${ctx.config.ink.maxTac}%)`,
         file: ctx.pdfPath,
-      },
-      {
-        checkId: check.id,
-        severity: "warning",
-        message:
-          "Some pages may have issues with commercial print. Consider lightening dark backgrounds.",
-        file: ctx.pdfPath,
+        detail: detailLines.join("\n"),
+        code: "ink-coverage-exceeded",
+        data: {
+          maxTac,
+          limit: ctx.config.ink.maxTac,
+          offendingCount: offending.length,
+          pages: offending.map((p) => ({
+            page: p.page,
+            c: p.c,
+            m: p.m,
+            y: p.y,
+            k: p.k,
+            tac: p.tac,
+          })),
+        },
       },
     ];
-
-    for (const page of offending.slice(0, 5)) {
-      results.push({
-        checkId: check.id,
-        severity: "warning",
-        message: `  Page ${page.page}: C:${page.c.toFixed(1)}% M:${page.m.toFixed(1)}% Y:${page.y.toFixed(1)}% K:${page.k.toFixed(1)}% = ${page.tac.toFixed(1)}% TAC`,
-        file: ctx.pdfPath,
-      });
-    }
-
-    if (offending.length > 5) {
-      results.push({
-        checkId: check.id,
-        severity: "warning",
-        message: `  ...and ${offending.length - 5} more page(s) over ${ctx.config.ink.maxTac}% TAC`,
-        file: ctx.pdfPath,
-      });
-    }
-
-    return results;
   },
 };
 

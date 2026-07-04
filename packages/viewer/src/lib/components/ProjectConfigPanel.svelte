@@ -48,13 +48,8 @@
     PluginValidationResult,
     RecommendedPlugin,
   } from "$lib/api";
-  import type { StyleToken } from "$lib/platform/contract";
   import type { ToastController } from "$lib/components/Toast.svelte";
-  import {
-    parseStyleTokens,
-    applyTokenUpdates,
-    type TokenUpdate,
-  } from "$lib/style-tokens";
+  import { DesignSectionController } from "$lib/routes/design-section-controller.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { keyOf, sampleSrcdoc } from "$lib/components/config/config-helpers";
   import DetailsSection from "$lib/components/config/DetailsSection.svelte";
@@ -108,14 +103,16 @@
   let stylesError = $state<string | null>(null);
   let stylesBusy = $state(false);
 
-  // (4) Design
-  let cssPath = $state<string | null>(null);
-  let cssName = $state("");
-  let tokens = $state<StyleToken[]>([]);
-  let designLoading = $state(false);
-  let designError = $state<string | null>(null);
-  let designSaveStatus = $state<"idle" | "saving" | "saved">("idle");
-  const originals = new Map<string, string>();
+  // (4) Design — extracted to a self-contained controller (state + debounced
+  //     token writer) with host calls injected; the panel just composes it.
+  const design = new DesignSectionController({
+    projectDir: () => projectDir,
+    listStyles: (dir) => api.project.listStyles(dir),
+    readFile: (path) => api.fs.readFile(path),
+    writeFile: (path, content) => api.fs.writeFile(path, content),
+    onError: (msg) => toast?.error?.(msg),
+    onEditRawCss: (path) => onEditRawCss?.(path),
+  });
 
   // (5) Plugins
   let plugins = $state<ProjectPluginEntry[]>([]);
@@ -125,13 +122,6 @@
   let pluginError = $state<string | null>(null);
   let pluginBusyRef = $state<string | null>(null);
   let npmName = $state("");
-
-  // ── Design-token derivations (client-side; parse helpers in $lib/style-tokens) ─
-  const colorTokens = $derived(tokens.filter((t) => t.kind === "color"));
-  const sizeTokens = $derived(tokens.filter((t) => t.kind === "length"));
-  const otherTokens = $derived(tokens.filter((t) => t.kind === "text"));
-  const isDirty = (t: StyleToken) => originals.has(t.name) && originals.get(t.name) !== t.value;
-  const anyDirty = $derived(tokens.some(isDirty));
 
   // ── Theme thumbnails ────────────────────────────────────────────────────────
 
@@ -158,7 +148,7 @@
     });
     return () => {
       cancelled = true;
-      flushPendingTokenWrites();
+      void design.flushPendingTokenWrites();
     };
   });
 
@@ -169,7 +159,7 @@
       loadDetails(),
       loadThemes(),
       loadStyles(),
-      loadDesign(),
+      design.loadDesign(),
       loadPlugins(),
     ]);
   }
@@ -178,7 +168,7 @@
   async function refresh(section: "themes" | "styles" | "design" | "plugins"): Promise<void> {
     if (section === "themes") await loadThemes();
     else if (section === "styles") await loadStyles();
-    else if (section === "design") await loadDesign();
+    else if (section === "design") await design.loadDesign();
     else await loadPlugins();
   }
 
@@ -362,109 +352,7 @@
     onEditRawCss?.(s.path);
   }
 
-  // ── (4) Design tokens ─────────────────────────────────────────────────────
-
-  async function loadDesign(): Promise<void> {
-    if (!projectDir) return;
-    designLoading = true;
-    designError = null;
-    tokens = [];
-    try {
-      const list = await api.project.listStyles(projectDir);
-      const active = list.find((x) => x.active) ?? list[0];
-      if (!active) {
-        cssPath = null;
-        cssName = "";
-        return;
-      }
-      cssPath = active.path;
-      cssName = active.displayName;
-      const css = await api.fs.readFile(active.path);
-      tokens = parseStyleTokens(css);
-      originals.clear();
-      for (const t of tokens) originals.set(t.name, t.value);
-      designSaveStatus = "idle";
-    } catch (e) {
-      designError = e instanceof Error ? e.message : String(e);
-    } finally {
-      designLoading = false;
-    }
-  }
-
-  // Debounced, serialized token writes. Edits coalesce into `tokenPending`
-  // (keyed by name — last value wins) behind a SINGLE debounce timer. A flush
-  // reads the CSS once, folds ALL pending mutations via `applyTokenUpdates`, and
-  // writes once, so two edits committed in the same tick can't clobber each
-  // other (a per-token read-modify-write did — the second write lost the first).
-  // `commitChain` serializes overlapping flushes, so an unmount flush can't race
-  // the debounce timer's flush onto a stale base string.
-  const tokenPending = new Map<string, string>();
-  let flushTimer: ReturnType<typeof setTimeout> | null = null;
-  let commitChain: Promise<void> = Promise.resolve();
-
-  function scheduleTokenWrite(name: string, value: string): void {
-    tokenPending.set(name, value);
-    designSaveStatus = "saving";
-    if (flushTimer) clearTimeout(flushTimer);
-    flushTimer = setTimeout(() => {
-      flushTimer = null;
-      void flushPendingTokenWrites();
-    }, 250);
-  }
-
-  function flushPendingTokenWrites(): Promise<void> {
-    if (flushTimer) {
-      clearTimeout(flushTimer);
-      flushTimer = null;
-    }
-    // Chain after any in-flight commit so each read-once/write-once pass sees
-    // the previous write's result instead of a stale snapshot.
-    commitChain = commitChain.then(commitPendingTokens);
-    return commitChain;
-  }
-
-  async function commitPendingTokens(): Promise<void> {
-    if (!cssPath || tokenPending.size === 0) return;
-    // Drain the coalesced edits into one batch, then read → fold → write once.
-    const updates: TokenUpdate[] = [...tokenPending.entries()].map(([name, value]) => ({ name, value }));
-    tokenPending.clear();
-    try {
-      const css = await api.fs.readFile(cssPath);
-      await api.fs.writeFile(cssPath, applyTokenUpdates(css, updates));
-      if (tokenPending.size === 0) designSaveStatus = "saved";
-    } catch (e) {
-      // Re-queue the failed batch (unless a newer edit already superseded it) so
-      // a later flush can retry, and surface the error.
-      for (const u of updates) if (!tokenPending.has(u.name)) tokenPending.set(u.name, u.value);
-      designSaveStatus = "idle";
-      toast?.error?.(`Couldn't save changes: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-
-  function setToken(t: StyleToken, value: string): void {
-    t.value = value;
-    tokens = tokens; // nudge reactivity (mutated element)
-    scheduleTokenWrite(t.name, value);
-  }
-
-  function resetToken(t: StyleToken): void {
-    const o = originals.get(t.name);
-    if (o !== undefined && o !== t.value) setToken(t, o);
-  }
-
-  function revertAllTokens(): void {
-    for (const t of tokens) resetToken(t);
-  }
-
-  function setLength(t: StyleToken, num: string): void {
-    const n = num.trim();
-    if (n === "") return;
-    setToken(t, `${n}${t.unit ?? ""}`);
-  }
-
-  function editRawCss(): void {
-    if (cssPath) onEditRawCss?.(cssPath);
-  }
+  // ── (4) Design tokens — see DesignSectionController (composed as `design`). ─
 
   // ── (5) Plugins ───────────────────────────────────────────────────────────
 
@@ -617,22 +505,22 @@
       />
 
       <DesignSection
-        {designSaveStatus}
-        {anyDirty}
-        {designLoading}
-        {designError}
-        {cssPath}
-        {cssName}
-        {tokens}
-        {colorTokens}
-        {sizeTokens}
-        {otherTokens}
-        {isDirty}
-        {setToken}
-        {resetToken}
-        {setLength}
-        {revertAllTokens}
-        {editRawCss}
+        designSaveStatus={design.designSaveStatus}
+        anyDirty={design.anyDirty}
+        designLoading={design.designLoading}
+        designError={design.designError}
+        cssPath={design.cssPath}
+        cssName={design.cssName}
+        tokens={design.tokens}
+        colorTokens={design.colorTokens}
+        sizeTokens={design.sizeTokens}
+        otherTokens={design.otherTokens}
+        isDirty={design.isDirty}
+        setToken={design.setToken}
+        resetToken={design.resetToken}
+        setLength={design.setLength}
+        revertAllTokens={design.revertAllTokens}
+        editRawCss={design.editRawCss}
       />
 
       <PluginsSection

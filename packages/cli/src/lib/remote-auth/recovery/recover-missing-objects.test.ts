@@ -28,9 +28,9 @@
 
 import { describe, expect, test, beforeEach } from "bun:test";
 import * as nodeFs from "node:fs";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { readFile, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
-import { tmpdir } from "node:os";
+import { makeTempDir as freshTempDir } from "../../../test-helpers/testkit";
 
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
@@ -94,7 +94,7 @@ function makePushSpy(): PushSpy {
 // ── Temp repo helpers ─────────────────────────────────────────────────────────
 
 async function makeTempDir(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "recover-missing-objects-test-"));
+  return freshTempDir("recover-missing-objects-test-");
 }
 
 const AUTHOR = { name: "Test Author", email: "test@test.local" };

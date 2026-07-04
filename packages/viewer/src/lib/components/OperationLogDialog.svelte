@@ -11,7 +11,7 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
-  import { trapFocus } from "$lib/a11y";
+  import { dialogBehavior } from "$lib/dialog";
 
   let {
     open = $bindable(false),
@@ -24,17 +24,15 @@
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
-  let dialogEl = $state<HTMLDivElement | undefined>(undefined);
   let logContent = $state<string>("");
   let loading = $state<boolean>(false);
   let error = $state<string>("");
 
-  function onDialogMount(_el: HTMLElement) {
+  function loadLog(_el: HTMLElement) {
     if (!logFilePath) return;
     loading = true;
     error = "";
     logContent = "";
-    queueMicrotask(() => dialogEl?.focus());
 
     let cancelled = false;
     (async () => {
@@ -58,8 +56,8 @@
   }
 
   function close() {
+    // Focus restoration to `triggerEl` is handled by the dialogBehavior action.
     open = false;
-    triggerEl?.focus();
   }
 
   async function copyLog() {
@@ -76,14 +74,9 @@
   <div class="backdrop" onclick={close} role="presentation"></div>
 
   <div
-    bind:this={dialogEl}
     class="dialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="log-title"
-    tabindex="-1"
-    onkeydown={(e) => trapFocus(e, dialogEl)}
-    use:onDialogMount
+    use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "log-title", focusContainer: true }}
+    use:loadLog
   >
     <header class="dialog-header">
       <h2 id="log-title">
@@ -120,12 +113,6 @@
     </footer>
   </div>
 {/if}
-
-<svelte:window
-  onkeydown={(e) => {
-    if (e.key === "Escape" && open) close();
-  }}
-/>
 
 <style>
   .backdrop {

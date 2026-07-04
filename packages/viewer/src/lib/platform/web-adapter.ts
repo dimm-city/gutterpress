@@ -31,7 +31,7 @@ import {
 // stays PWA-clean in the renderer bundle. NEVER import build-runner / index
 // (those drag puppeteer + node:fs). This is what lets the in-browser preview
 // (#33 Phase 2) render entirely client-side with no localhost server.
-import { assembleBookHtml } from "@dimm-city/print-md/render";
+import { assembleBookHtml, pagedjsPolyfillTagRegex } from "@dimm-city/print-md/render";
 import { IndexedDbWebStore } from "./web-store";
 import type { WebStore } from "./web-store";
 import { deepMergeSettings } from "../settings-merge";
@@ -793,14 +793,15 @@ export class WebAdapter implements Platform {
       title: input.displayName,
     });
 
-    // #33 Phase 4 (offline): rewrite the render core's CDN paged.js reference to
-    // the same-origin vendored copy so the preview/export works offline (the SW
-    // precaches /vendor/paged.polyfill.js). A blob: document inherits this page's
-    // origin, so the absolute path resolves same-origin. Match any unpkg pinned
-    // version so a future paged.js bump in the lib still rewrites cleanly.
+    // #33 Phase 4 (offline): the render core emits a stable, src-less polyfill
+    // MARKER slot (no network dependency); rewrite it to the same-origin vendored
+    // copy so the preview/export works offline (the SW precaches
+    // /vendor/paged.polyfill.js). A blob: document inherits this page's origin, so
+    // the absolute path resolves same-origin. Matching the marker (not a pinned
+    // CDN URL) keeps this rewrite robust across paged.js version bumps.
     html = html.replace(
-      /https:\/\/unpkg\.com\/pagedjs@[^/]+\/dist\/paged\.polyfill\.js/g,
-      VENDOR_PAGED_POLYFILL_URL,
+      pagedjsPolyfillTagRegex(),
+      `<script src="${VENDOR_PAGED_POLYFILL_URL}"></script>`,
     );
 
     // Inject the inlined project CSS just before </head> (after the assembler's

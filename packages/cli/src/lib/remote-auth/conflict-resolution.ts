@@ -14,6 +14,7 @@ import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import git from "isomorphic-git";
+import type { MergeDriverCallback } from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
 // WHY diff3: this is the SAME tiny (~100-line, zero-dependency) module
 // isomorphic-git's own default merge driver uses, so our "replicate the
@@ -31,6 +32,7 @@ import {
 } from "../source-provider.ts";
 import { resolveLogger, shortOid } from "./operation-log.ts";
 import { buildResolutionPlan } from "./resolution-plan.ts";
+import type { PlanWrite, ResolutionPlan } from "./resolution-plan.ts";
 import { isMergeConflictError, isPushRejected } from "./recovery/classify.ts";
 import {
   MSG_CONFLICT,
@@ -51,7 +53,12 @@ import {
   repoDirFor,
   resolveTransport,
 } from "./transport.ts";
-import type { GitCache, ResolveConflictsOptions, SyncOutcome } from "./sync-types.ts";
+import type {
+  GitCache,
+  RemoteTransport,
+  ResolveConflictsOptions,
+  SyncOutcome,
+} from "./sync-types.ts";
 
 /**
  * `chapter-01.md` → `chapter-01 (online copy).md` (next to the original).
@@ -154,6 +161,227 @@ function defaultDiff3(
   return { cleanMerge, mergedText };
 }
 
+type GitAuthor = { name: string; email: string };
+type ConflictOutcome = Extract<SyncOutcome, { status: "conflict" }>;
+
+/**
+ * Perform ONE honest two-parent merge of `theirs` into `branch` and sync the
+ * working tree to the result — the merge + checkout + conflict-mapping step run
+ * BOTH for the initial driver merge and the push-race recovery merge. On a
+ * merge conflict (an undecided file) the merge aborts untouched and this returns
+ * a `conflict` outcome carrying `theirs` as the new remoteId so the caller bails
+ * and the UI re-renders the choices screen; otherwise it checks out the merged
+ * ref and returns null. The only per-call differences — the custom
+ * `mergeDriver` and `allowUnrelatedHistories` — are optional params.
+ */
+async function commitHonestMerge(params: {
+  dir: string;
+  cache: GitCache;
+  branch: string;
+  theirs: string;
+  author: GitAuthor;
+  snapshotId: string | undefined;
+  allowUnrelatedHistories?: boolean;
+  mergeDriver?: MergeDriverCallback;
+}): Promise<ConflictOutcome | null> {
+  const { dir, cache, branch, theirs, author, snapshotId } = params;
+  try {
+    await git.merge({
+      fs,
+      dir,
+      cache,
+      ours: branch,
+      theirs,
+      author,
+      message: "Combined your changes with the online version",
+      allowUnrelatedHistories: params.allowUnrelatedHistories ?? false,
+      ...(params.mergeDriver ? { mergeDriver: params.mergeDriver } : {}),
+    });
+  } catch (e) {
+    if (isMergeConflictError(e)) {
+      return {
+        status: "conflict",
+        message: MSG_CONFLICT,
+        files: conflictFilesFrom(e.data),
+        localId: await git.resolveRef({ fs, dir, ref: branch }),
+        remoteId: theirs,
+        ...(snapshotId ? { snapshotId } : {}),
+      };
+    }
+    throw e;
+  }
+  // merge() moves the ref only — sync the working tree to the result.
+  await git.checkout({ fs, dir, cache, ref: branch, force: true });
+  return null;
+}
+
+/**
+ * Apply a built {@link ResolutionPlan} to the working tree and settle it into an
+ * honest two-parent merge (ADR 0006 D5) WITHOUT ever materializing conflict
+ * markers. Order: pre-merge equalization commit → driver merge + checkout →
+ * binary-safety byte fixes → post-merge restore commit. Returns a `conflict`
+ * outcome when an undecided file still conflicts (the merge aborts untouched);
+ * otherwise null once the merged result is on disk.
+ */
+async function applyPlan(params: {
+  dir: string;
+  cache: GitCache;
+  branch: string;
+  author: GitAuthor;
+  authorName?: string;
+  authorEmail?: string;
+  plan: ResolutionPlan;
+  remoteId: string;
+  allowUnrelatedHistories: boolean;
+  snapshotId: string | undefined;
+}): Promise<ConflictOutcome | null> {
+  const { dir, cache, branch, author, plan, remoteId, snapshotId } = params;
+
+  const applyChanges = async (
+    writes: PlanWrite[],
+    deletes: string[],
+    message: string,
+  ): Promise<void> => {
+    for (const w of writes) {
+      const abs = path.join(dir, w.path);
+      await mkdir(path.dirname(abs), { recursive: true });
+      await writeFile(abs, w.content);
+    }
+    for (const d of deletes) {
+      await unlink(path.join(dir, d)).catch(() => {});
+    }
+    if (await hasPendingChanges(dir)) {
+      await snapshotWorkingTreeUnlocked({
+        projectDir: dir,
+        message,
+        authorName: params.authorName,
+        authorEmail: params.authorEmail,
+      });
+    }
+  };
+
+  // Pre-merge step: "(online copy)" files + delete-conflict equalization,
+  // committed on the local side so the merge sees them.
+  await applyChanges(
+    plan.preWrites,
+    plan.preDeletes,
+    "Saved your choices for combining with the online version",
+  );
+
+  // The honest two-parent merge. The driver decides per-file; undecided files
+  // auto-merge exactly like a normal merge (diff3). If anything is STILL
+  // conflicted (an undecided file), the merge aborts untouched and the
+  // remaining files go back to the author.
+  const conflict = await commitHonestMerge({
+    dir,
+    cache,
+    branch,
+    theirs: remoteId,
+    author,
+    snapshotId,
+    allowUnrelatedHistories: params.allowUnrelatedHistories,
+    mergeDriver: ({ contents, path: filepath }) => {
+      const base = contents[0] ?? "";
+      const mine = contents[1] ?? "";
+      const theirs = contents[2] ?? "";
+      const choice = plan.driverChoice.get(filepath);
+      if (choice === "mine") return { cleanMerge: true, mergedText: mine };
+      if (choice === "theirs") return { cleanMerge: true, mergedText: theirs };
+      return defaultDiff3(base, mine, theirs);
+    },
+  });
+  if (conflict) return conflict;
+
+  // Binary safety: overwrite decided files with raw Uint8Array bytes from the
+  // chosen side's git object. For text files this is a no-op (same bytes); for
+  // binary files it corrects the UTF-8 corruption the string-based merge driver
+  // introduces. We write directly without a new commit — the bytes match the
+  // blob the merge commit already records (same oid), so the working tree stays
+  // consistent with HEAD.
+  for (const fix of plan.postBinaryFixes) {
+    const abs = path.join(dir, fix.path);
+    await mkdir(path.dirname(abs), { recursive: true });
+    await writeFile(abs, fix.content);
+  }
+
+  // Post-merge step: restore the author's chosen side for delete-involved files
+  // that had to be equalized the other way for the merge.
+  await applyChanges(plan.postWrites, plan.postDeletes, "Applied your chosen versions");
+  return null;
+}
+
+/**
+ * Push the merged result, with ONE recovery pass: if someone synced between the
+ * author's choices and this push, re-fetch the new online tip and either merge
+ * it in cleanly and push again (no author interaction) or hand back a FRESH
+ * conflict carrying the NEW tip — the UI re-renders the choices screen from a
+ * conflict outcome, so the author never sees a dead-end "try again" for a
+ * resolvable race. A push still rejected after the recovery merge, or a remote
+ * with nothing to fetch, surfaces the friendly race message with the work left
+ * safe on disk.
+ */
+async function pushWithRaceRecovery(params: {
+  dir: string;
+  cache: GitCache;
+  http: typeof httpNode;
+  branch: string;
+  transport: RemoteTransport;
+  author: GitAuthor;
+  snapshotId: string | undefined;
+}): Promise<SyncOutcome> {
+  const { dir, cache, http, branch, transport, author, snapshotId } = params;
+  const doPush = () =>
+    git.push({
+      fs,
+      http,
+      dir,
+      cache,
+      remote: transport.remote,
+      ref: branch,
+      ...onAuthFor(transport.credential),
+    });
+  try {
+    await doPush();
+  } catch (e) {
+    if (!isPushRejected(e)) throw e;
+    const newRemoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
+    if (!newRemoteTip) {
+      return {
+        status: "error",
+        message: MSG_RACE,
+        ...(snapshotId ? { snapshotId } : {}),
+      };
+    }
+    const conflict = await commitHonestMerge({
+      dir,
+      cache,
+      branch,
+      theirs: newRemoteTip,
+      author,
+      snapshotId,
+    });
+    if (conflict) return conflict;
+    try {
+      await doPush();
+    } catch (retryErr) {
+      if (isPushRejected(retryErr)) {
+        return {
+          status: "error",
+          message: MSG_RACE,
+          ...(snapshotId ? { snapshotId } : {}),
+        };
+      }
+      throw retryErr;
+    }
+  }
+  return {
+    status: "synced",
+    message: MSG_SYNCED_MERGED,
+    mergedRemoteChanges: true,
+    ...(snapshotId ? { snapshotId } : {}),
+  };
+}
+
 /**
  * Apply the author's per-file choices and sync the combined result
  * (ADR 0006 D5). The merge commit has TWO PARENTS — the local branch tip and
@@ -245,177 +473,40 @@ export async function resolveConflicts(
       // Build the per-file plan. "mine" is read from the CURRENT local tip
       // (not the stale localId) so edits made after the conflict was reported
       // count as the author's version. The decision table is a PURE function
-      // (resolution-plan.ts) with the two blob reads injected; sync.ts owns the
-      // git side-effects of applying the plan below.
-      const { driverChoice, preWrites, preDeletes, postWrites, postDeletes, postBinaryFixes } =
-        await buildResolutionPlan(options.resolutions, localTip, remoteId, {
-          readBlob: (oid, filepath) => tryReadBlob(dir, oid, filepath, cache),
-          uniqueOnlineCopyPath: (filepath, oids) =>
-            uniqueOnlineCopyPath(dir, filepath, oids, cache),
-        });
+      // (resolution-plan.ts) with the two blob reads injected; this module owns
+      // the git side-effects of applying the plan below.
+      const plan = await buildResolutionPlan(options.resolutions, localTip, remoteId, {
+        readBlob: (oid, filepath) => tryReadBlob(dir, oid, filepath, cache),
+        uniqueOnlineCopyPath: (filepath, oids) =>
+          uniqueOnlineCopyPath(dir, filepath, oids, cache),
+      });
 
-      const applyChanges = async (
-        writes: Array<{ path: string; content: Uint8Array }>,
-        deletes: string[],
-        message: string,
-      ): Promise<void> => {
-        for (const w of writes) {
-          const abs = path.join(dir, w.path);
-          await mkdir(path.dirname(abs), { recursive: true });
-          await writeFile(abs, w.content);
-        }
-        for (const d of deletes) {
-          await unlink(path.join(dir, d)).catch(() => {});
-        }
-        if (await hasPendingChanges(dir)) {
-          await snapshotWorkingTreeUnlocked({
-            projectDir: dir,
-            message,
-            authorName: options.authorName,
-            authorEmail: options.authorEmail,
-          });
-        }
-      };
+      // Apply the plan into an honest two-parent merge. Bails with a `conflict`
+      // outcome if an undecided file still conflicts (the merge aborts untouched).
+      const conflict = await applyPlan({
+        dir,
+        cache,
+        branch,
+        author,
+        authorName: options.authorName,
+        authorEmail: options.authorEmail,
+        plan,
+        remoteId,
+        allowUnrelatedHistories: options.allowUnrelatedHistories ?? false,
+        snapshotId,
+      });
+      if (conflict) return conflict;
 
-      // Pre-merge step: "(online copy)" files + delete-conflict equalization,
-      // committed on the local side so the merge sees them.
-      await applyChanges(
-        preWrites,
-        preDeletes,
-        "Saved your choices for combining with the online version",
-      );
-
-      // The honest two-parent merge. The driver decides per-file; undecided
-      // files auto-merge exactly like a normal merge (diff3). If anything is
-      // STILL conflicted (an undecided file), the merge aborts untouched and
-      // the remaining files go back to the author.
-      try {
-        await git.merge({
-          fs,
-          dir,
-          cache,
-          ours: branch,
-          theirs: remoteId,
-          author,
-          message: "Combined your changes with the online version",
-          allowUnrelatedHistories: options.allowUnrelatedHistories ?? false,
-          mergeDriver: ({ contents, path: filepath }) => {
-            const base = contents[0] ?? "";
-            const mine = contents[1] ?? "";
-            const theirs = contents[2] ?? "";
-            const choice = driverChoice.get(filepath);
-            if (choice === "mine") return { cleanMerge: true, mergedText: mine };
-            if (choice === "theirs") return { cleanMerge: true, mergedText: theirs };
-            return defaultDiff3(base, mine, theirs);
-          },
-        });
-      } catch (e) {
-        if (isMergeConflictError(e)) {
-          return {
-            status: "conflict",
-            message: MSG_CONFLICT,
-            files: conflictFilesFrom(e.data),
-            localId: await git.resolveRef({ fs, dir, ref: branch }),
-            remoteId,
-            ...(snapshotId ? { snapshotId } : {}),
-          };
-        }
-        throw e;
-      }
-      // merge() moves the ref only — sync the working tree to the result.
-      await git.checkout({ fs, dir, cache, ref: branch, force: true });
-
-      // Binary safety: overwrite decided files with raw Uint8Array bytes from
-      // the chosen side's git object (see postBinaryFixes comment above). For
-      // text files this is a no-op (same bytes). For binary files this
-      // corrects the UTF-8 corruption that the string-based merge driver
-      // introduces. We write directly without creating a new commit here —
-      // the bytes match the blob the merge commit already records (same oid),
-      // so the working tree stays consistent with HEAD.
-      for (const fix of postBinaryFixes) {
-        const abs = path.join(dir, fix.path);
-        await mkdir(path.dirname(abs), { recursive: true });
-        await writeFile(abs, fix.content);
-      }
-
-      // Post-merge step: restore the author's chosen side for delete-involved
-      // files that had to be equalized the other way for the merge.
-      await applyChanges(postWrites, postDeletes, "Applied your chosen versions");
-
-      // Push, with ONE recovery pass: if someone synced between the
-      // author's choices and this push, re-fetch the new online tip and
-      // either merge it in cleanly and push again (no author interaction
-      // needed) or hand back a FRESH conflict carrying the NEW tip — the UI
-      // re-renders the choices screen from a conflict outcome, so the author
-      // never sees a dead-end "try again" for a resolvable race.
-      const doPush = () =>
-        git.push({
-          fs,
-          http,
-          dir,
-          cache,
-          remote: transport.remote,
-          ref: branch,
-          ...onAuthFor(transport.credential),
-        });
-      try {
-        await doPush();
-      } catch (e) {
-        if (!isPushRejected(e)) throw e;
-        const newRemoteTip = await fetchRemoteTip(dir, branch, transport, http, cache);
-        if (!newRemoteTip) {
-          return {
-            status: "error",
-            message: MSG_RACE,
-            ...(snapshotId ? { snapshotId } : {}),
-          };
-        }
-        try {
-          await git.merge({
-            fs,
-            dir,
-            cache,
-            ours: branch,
-            theirs: newRemoteTip,
-            author,
-            message: "Combined your changes with the online version",
-          });
-        } catch (mergeErr) {
-          if (isMergeConflictError(mergeErr)) {
-            // Still conflicted against the NEW online tip: a fresh conflict
-            // outcome (new remoteId) so the next confirm targets reality.
-            return {
-              status: "conflict",
-              message: MSG_CONFLICT,
-              files: conflictFilesFrom(mergeErr.data),
-              localId: await git.resolveRef({ fs, dir, ref: branch }),
-              remoteId: newRemoteTip,
-              ...(snapshotId ? { snapshotId } : {}),
-            };
-          }
-          throw mergeErr;
-        }
-        await git.checkout({ fs, dir, cache, ref: branch, force: true });
-        try {
-          await doPush();
-        } catch (retryErr) {
-          if (isPushRejected(retryErr)) {
-            return {
-              status: "error",
-              message: MSG_RACE,
-              ...(snapshotId ? { snapshotId } : {}),
-            };
-          }
-          throw retryErr;
-        }
-      }
-
-      return {
-        status: "synced",
-        message: MSG_SYNCED_MERGED,
-        mergedRemoteChanges: true,
-        ...(snapshotId ? { snapshotId } : {}),
-      };
+      // Push the merged result, recovering from a mid-resolution race in one pass.
+      return await pushWithRaceRecovery({
+        dir,
+        cache,
+        http,
+        branch,
+        transport,
+        author,
+        snapshotId,
+      });
     } catch (e) {
       if (
         e instanceof Error &&

@@ -15,6 +15,7 @@
 import { PAGED_CSS } from "./markdown-it-paged.js";
 import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
+import { pagedjsPolyfillTag } from "../pagedjs-marker";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
@@ -101,7 +102,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   <title>${title}</title>
   ${styles.map(s => `<link rel="stylesheet" href="${s}">`).join('\n  ')}
   <style>\n${inlineCss}\n</style>
-  <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.js"></script>
+  ${pagedjsPolyfillTag()}
 </head>
 <body>
 ${bodyContent}

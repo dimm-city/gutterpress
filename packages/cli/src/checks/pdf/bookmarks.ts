@@ -1,5 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
+import { finding, inspectionFailed } from "../policy";
 import { loadPdf, getOutlineCount } from "../../lib/pdf-inspect";
 
 const check: Check = {
@@ -15,23 +16,19 @@ const check: Check = {
     const doc = await loadPdf(ctx.pdfPath);
     if (!doc) {
       return [
-        {
-          checkId: check.id,
-          severity: "warning",
-          message: "Could not inspect PDF for bookmarks.",
+        inspectionFailed(check.id, "Could not inspect PDF for bookmarks.", {
           file: ctx.pdfPath,
-        },
+        }),
       ];
     }
 
     if ((await getOutlineCount(doc)) === 0) {
       return [
-        {
-          checkId: check.id,
+        finding(check.id, {
           severity: "warning",
           message: "PDF does not contain bookmarks (outline tree).",
           file: ctx.pdfPath,
-        },
+        }),
       ];
     }
 

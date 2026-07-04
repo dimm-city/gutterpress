@@ -34,6 +34,7 @@ import { tmpdir } from "node:os";
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
 
+import { onAuthFor } from "../sync.ts";
 import { withBackupGate } from "./failsafe.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";
 import type { RecoverFn, RecoveryResult } from "./types.ts";
@@ -86,17 +87,9 @@ export const recover: RecoverFn = async (ctx, error?) => {
         url: remoteUrl,
         singleBranch: true,
         ...(ctx.branch ? { ref: ctx.branch } : {}),
-        ...(ctx.credential
-          ? {
-              onAuth: () => ({
-                username:
-                  ctx.credential!.kind === "github-oauth"
-                    ? "x-access-token"
-                    : ctx.credential!.username || ctx.credential!.token,
-                password: ctx.credential!.token,
-              }),
-            }
-          : {}),
+        // Credential → { username, password } via the ONE canonical mapping
+        // (transport.onAuthFor, re-exported by sync.ts).
+        ...onAuthFor(ctx.credential),
       });
 
       // ── Fault point: just before copying .git into project dir ────────────

@@ -114,9 +114,7 @@ packages/cli/src/
 │   └── lifecycle.ts        # Server lifecycle
 ├── utils/                  # Shared utilities
 │   ├── file-utils.ts       # File operations
-│   ├── logger.ts           # Preview logger
-│   ├── errors.ts           # Error definitions
-│   └── path-security.ts    # Path security
+│   └── logger.ts           # Leveled logger + command-facing log facade
 └── assets/                 # Static assets
     ├── manifest.schema.json # JSON schema
     └── preview/            # Embedded viewer chrome (Paged.js, pagedjs-interface)
@@ -498,7 +496,7 @@ export function resolveConfig(
 **Design Rationale**:
 - No separate validation step needed; YAML parsing + TypeScript types handle structure
 - Preset defaults ensure every field has a value even with empty manifests
-- Path security handled separately in `packages/cli/src/utils/path-security.ts`
+- Preview static-file serving performs its own path containment check (`resolveStaticPath` in `packages/cli/src/preview/http-server.ts`)
 
 ## Extension System
 

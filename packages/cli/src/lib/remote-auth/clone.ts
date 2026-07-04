@@ -23,6 +23,7 @@ import {
   type TokenStore,
 } from "./token-store.ts";
 import { OFFLINE_MESSAGE } from "./github-auth.ts";
+import { onAuthFor } from "./transport.ts";
 
 /** Coarse clone progress for host UIs. */
 export interface CloneProgressEvent {
@@ -227,22 +228,9 @@ export async function cloneRepository(
         singleBranch: true,
         ...(options.branch ? { ref: options.branch } : {}),
         ...(options.depth ? { depth: options.depth } : {}),
-        ...(credential
-          ? {
-              onAuth: () => ({
-                // GitHub accepts ANY username when the token is the password —
-                // "x-access-token" works for both OAuth (gho_) and the retired
-                // GitHub-App (ghu_) token kinds. Plain tokens use the stored
-                // username (or the token-as-username convention every
-                // smart-HTTPS forge accepts).
-                username:
-                  credential.kind === "github-oauth"
-                    ? "x-access-token"
-                    : credential.username || credential.token,
-                password: credential.token,
-              }),
-            }
-          : {}),
+        // Credential → { username, password } via the ONE canonical mapping
+        // (transport.onAuthFor); returns {} when there is no credential.
+        ...onAuthFor(credential),
         ...(onProgress
           ? {
               onProgress: (p: { phase: string; loaded: number; total?: number }) =>

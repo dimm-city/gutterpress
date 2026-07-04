@@ -52,24 +52,19 @@ const check: Check = {
     if (rasterizedPages.length === 0) return [];
     rasterizedPages.sort((a, b) => a - b);
 
+    // One finding = one result. The explanatory sentences that used to be
+    // emitted as sibling rows now live in `detail`; the page list is in `data`.
     return [
       {
         checkId: check.id,
         severity: "warning",
         message: `Possible rasterized pages detected: ${rasterizedPages.join(", ")}`,
         file: ctx.pdfPath,
-      },
-      {
-        checkId: check.id,
-        severity: "warning",
-        message:
-          "This may indicate CSS filters, blend modes, or transparency that forced flattening.",
-      },
-      {
-        checkId: check.id,
-        severity: "warning",
-        message:
+        detail:
+          "This may indicate CSS filters, blend modes, or transparency that forced flattening. " +
           "Text on these pages may not be selectable and quality may be reduced.",
+        code: "rasterized-pages-detected",
+        data: { pages: rasterizedPages },
       },
     ];
   },

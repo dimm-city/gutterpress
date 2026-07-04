@@ -5,27 +5,8 @@ import {
   runBuild,
   splitOutPath,
   BuildError,
-  type BuildFormat,
-  type PdfxFlavor,
 } from "../index.ts";
-
-function parseFormat(raw: unknown): BuildFormat {
-  if (raw === undefined || raw === "") return "pdf";
-  if (raw === "html" || raw === "pdf" || raw === "pdfx") return raw;
-  log.error(`Invalid --format value: "${raw}". Expected "html", "pdf", or "pdfx".`);
-  process.exit(2);
-}
-
-function parsePdfxFlavor(raw: unknown, format: BuildFormat): PdfxFlavor | undefined {
-  if (raw === undefined || raw === "") return undefined;
-  if (format !== "pdfx") {
-    log.error(`--pdfx-flavor is only valid with --format pdfx (got --format ${format}).`);
-    process.exit(2);
-  }
-  if (raw === "x1a" || raw === "x3") return raw;
-  log.error(`Invalid --pdfx-flavor value: "${raw}". Expected "x1a" or "x3".`);
-  process.exit(2);
-}
+import { parseFormat, parsePdfxFlavor, UsageError } from "../lib/cli-args.ts";
 
 export default defineCommand({
   meta: {
@@ -47,13 +28,13 @@ export default defineCommand({
     "skip-post-validate": { type: "boolean", description: "Skip post-build PDF/X validation" },
   },
   async run({ args }) {
-    const format = parseFormat(args.format);
-    const pdfxFlavor = parsePdfxFlavor(args["pdfx-flavor"], format);
-    const { outDir, pdfFileOverride } = splitOutPath(
-      typeof args.out === "string" ? args.out : undefined,
-      format
-    );
     try {
+      const format = parseFormat(args.format, { default: "pdf" });
+      const pdfxFlavor = parsePdfxFlavor(args["pdfx-flavor"], format);
+      const { outDir, pdfFileOverride } = splitOutPath(
+        typeof args.out === "string" ? args.out : undefined,
+        format
+      );
       await runBuild({
         inputDir: path.resolve((args.input as string | undefined) ?? "."),
         format,
@@ -70,7 +51,7 @@ export default defineCommand({
         rawArgs: args as Record<string, unknown>,
       });
     } catch (error) {
-      if (error instanceof BuildError) {
+      if (error instanceof UsageError || error instanceof BuildError) {
         log.error(error.message);
         process.exit(error.exitCode);
       }

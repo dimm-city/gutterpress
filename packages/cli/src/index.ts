@@ -13,7 +13,7 @@
 export * from "./api/index.ts";
 
 // ── CLI command helpers (used by packages/cli/src/commands/) ─────────────────
-export { log } from "./lib/logger.ts";
+export { log } from "./utils/logger.ts";
 export { runLint } from "./lib/lint-runner.ts";
 export { openPath } from "./lib/open-path.ts";
 export { executeAndReport, executeValidation } from "./lib/validation-exec.ts";
@@ -24,6 +24,7 @@ export { runChecks } from "./checks/runner.ts";
 export { checkToolAvailability, reportMissingTools } from "./checks/tool-check.ts";
 export type { CheckContext, CheckResult } from "./checks/types.ts";
 export { resolveCheckSelectors, getChecks, getCheckById } from "./checks/registry.ts";
+export type { ResolvedSelectors } from "./checks/registry.ts";
 export type { CheckCategory, CheckPhase } from "./checks/types.ts";
 export { loadManifest } from "./lib/manifest.ts";
 

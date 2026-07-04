@@ -1,6 +1,7 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { inspectImage, collectImageFiles } from "../../lib/image-inspect";
+import { RASTER_INSPECTABLE_EXTS } from "./extensions";
 
 // Map the reader's coarse color-space token to the human label used in the
 // allowed-list config (which historically mirrored ImageMagick's vocabulary).
@@ -21,7 +22,7 @@ const check: Check = {
     if (!allowed || allowed.length === 0) return [];
 
     const dirs = ctx.assetDirs ?? [ctx.inputDir];
-    const files = await collectImageFiles(dirs, ["png", "jpg", "jpeg", "tiff", "tif"]);
+    const files = await collectImageFiles(dirs, RASTER_INSPECTABLE_EXTS);
     if (files.length === 0) return [];
 
     const allowedLower = new Set(allowed.map((s) => s.toLowerCase()));

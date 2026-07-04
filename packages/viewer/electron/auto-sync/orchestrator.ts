@@ -28,6 +28,7 @@ import {
   type RecoveryResultStatus,
   type RunAgainDecision,
 } from "../recovery-bridge";
+import { mapRecoveryResultToEmit } from "./recovery-emit";
 import type {
   ConflictFile as ConflictFileInfo,
   RecoveryContext,
@@ -438,17 +439,24 @@ export class AutoSyncOrchestrator {
         state.inFlight = false;
       }
 
-      // Map RecoveryResult → emit.
-      switch (result.status) {
+      // Map RecoveryResult → emit via the ONE shared mapper (also used by the
+      // api:preview preflight). The mapper owns the payload SHAPE; the follow-up
+      // actions below (single-flight runAgain, retry timer, conflict latch) are
+      // the orchestrator's own invariants and stay here. `recovered` uses a
+      // fresher post-recover timestamp (matching the original code); every other
+      // branch uses the catch-time `now`.
+      if (result.status === "recovered") {
+        this.setLastSyncAt(dir, this.nowIso());
+      }
+      const em = mapRecoveryResultToEmit(result, {
+        projectDir: dir,
+        lastSyncAt: result.status === "recovered" ? (this.getLastSyncAt(dir) ?? now) : now,
+        logFile,
+        authlessNeedsUserAs: "auth",
+      });
+      switch (em.kind) {
         case "recovered": {
-          this.setLastSyncAt(dir, this.nowIso());
-          this.deps.emit({
-            state: "recovered",
-            projectDir: dir,
-            lastSyncAt: this.getLastSyncAt(dir) ?? now,
-            backupZipPath: result.backupZipPath,
-            logFile,
-          });
+          this.deps.emit(em.status);
           // Resume the single-flight follow-up path.
           if (state.runAgain) {
             state.runAgain = false;
@@ -458,54 +466,29 @@ export class AutoSyncOrchestrator {
         }
 
         case "retry_later": {
-          this.deps.emit({ state: "offline", projectDir: dir, lastSyncAt: now });
+          this.deps.emit(em.status);
           // Re-arm after the requested delay.
-          const delay = result.retryAfterMs ?? 60_000;
           const retryTimer = setTimeout(() => {
             if (this.states.has(dir)) void this.run(dir);
-          }, delay);
+          }, em.retryAfterMs ?? 60_000);
           if (typeof retryTimer.unref === "function") retryTimer.unref();
           break;
         }
 
-        case "needs_user": {
-          if (result.files && result.files.length > 0) {
-            // Surface as a conflict so the existing dialog handles it.
-            // Cancel the periodic timer consistent with the normal conflict path.
-            state.conflictLatched = true;
-            state.runAgain = false;
-            this.cancelTimer(dir);
-            this.deps.emit({
-              state: "conflict",
-              files: result.files as ConflictFileInfo[],
-              projectDir: dir,
-              lastSyncAt: now,
-              logFile,
-            });
-          } else {
-            // Auth / credential issue.
-            this.deps.emit({ state: "auth", projectDir: dir, lastSyncAt: now });
-          }
+        case "auth":
+          // Auth / credential issue — no latch, no follow-up.
+          this.deps.emit(em.status);
           break;
-        }
 
-        case "blocked":
-        case "failed_no_changes_made":
-        case "failed_backup_available": {
-          // Latch: do not churn on a structural failure the recovery subsystem
-          // says is blocked. Show guidance so the author knows what to do.
-          // Cancel the periodic timer consistent with the normal conflict path.
+        case "conflict":
+        case "error": {
+          // Latch: do not churn on a conflict or a structural failure the
+          // recovery subsystem says is blocked. Cancel the periodic timer
+          // consistent with the normal conflict path, then surface the status.
           state.conflictLatched = true;
           state.runAgain = false;
           this.cancelTimer(dir);
-          this.deps.emit({
-            state: "error",
-            projectDir: dir,
-            lastSyncAt: now,
-            guidance: result.guidance,
-            backupZipPath: "backupZipPath" in result ? result.backupZipPath : undefined,
-            logFile,
-          });
+          this.deps.emit(em.status);
           break;
         }
       }

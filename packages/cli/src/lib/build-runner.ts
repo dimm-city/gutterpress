@@ -1,4 +1,5 @@
 import path from "node:path";
+import os from "node:os";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";
@@ -12,29 +13,29 @@ import { requireChromiumExecutable, resolveChromiumExecutable } from "./chromium
 import { prewarmBrowser, getBrowser, closeBrowser } from "./browser-pool";
 import { isToolAvailable } from "./tool-probe";
 import { patchHtmlForPagedjs } from "./pagedjs";
+import { pagedjsPolyfillTagRegex } from "./pagedjs-marker";
 import {
   convertToPdfxCmyk,
   stampCreator,
   stripAnnotations,
 } from "./ghostscript";
-import { writeBuildFingerprint } from "./build-fingerprint";
+import { writeBuildFingerprint, type BuildFingerprintInput } from "./build-fingerprint";
 import { BOOK_HTML_FILENAME } from "./viewer";
 import { getAssetPath } from "./embedded-assets";
 import { runLint } from "./lint-runner";
 import { executeAndReport } from "./validation-exec";
-import { log } from "./logger";
+import { log } from "../utils/logger";
+import { BuildError } from "./build-error";
 
 export type BuildFormat = "html" | "pdf" | "pdfx";
 export type PdfxFlavor = "x1a" | "x3";
 
-export class BuildError extends Error {
-  exitCode: number;
-  constructor(message: string, exitCode = 2) {
-    super(message);
-    this.name = "BuildError";
-    this.exitCode = exitCode;
-  }
-}
+// BuildError now lives in its own dependency-free module (./build-error) so lean
+// consumers like utils/file-utils.ts (used by the preview server) can import the
+// error type without dragging in this file's whole build-pipeline graph. It is
+// re-exported here so existing `import { BuildError } from "./build-runner"`
+// call sites (api, commands, tests) keep working unchanged.
+export { BuildError };
 
 export interface BuildRunnerOptions {
   inputDir: string;
@@ -467,14 +468,12 @@ export async function paginateToStaticHtml(stagedHtml: string): Promise<string> 
  */
 export function stripPaginationRuntime(html: string): string {
   let out = html;
-  // (a) Paged.js polyfill <script src=....paged.polyfill.js> (CDN or vendored).
-  //     Match the polyfill FILENAME specifically — a bare "paged" substring also
-  //     matches the navigation scripts (pagedjs-interface.js / pagedjs-bridge.js),
-  //     which must survive.
-  out = out.replace(
-    /<script\b[^>]*\bsrc=["'][^"']*paged\.polyfill[^"']*["'][^>]*>\s*<\/script>/gi,
-    ""
-  );
+  // (a) The Paged.js polyfill <script> slot — identified by the stable
+  //     `data-pagedjs-polyfill` marker OR (post-staging) its `paged.polyfill`
+  //     src. The shared matcher deliberately never matches a bare "pagedjs"
+  //     substring, so the navigation scripts (pagedjs-interface.js /
+  //     pagedjs-bridge.js) survive.
+  out = out.replace(pagedjsPolyfillTagRegex(), "");
   // (b) The inline BreakInsideAvoidHandler block (identified by its class name);
   //     it sets window.PagedConfig.* which is dead without the engine.
   out = out.replace(
@@ -550,7 +549,7 @@ export async function shipRuntimePaginatedHtml(
   );
   const bookSource = await fsp.readFile(htmlFile, "utf-8");
   const bookWithInterface = bookSource.replace(
-    /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
+    pagedjsPolyfillTagRegex(),
     '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="preview/scripts/pagedjs-bridge.js"></script>\n  <script src="vendor/paged.polyfill.js"></script>'
   );
   await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
@@ -592,6 +591,19 @@ export async function stagePaginationInput(
   return stagedHtml;
 }
 
+/**
+ * Create a unique scratch directory for a build's pagination staging under the
+ * OS temp dir (mirrors the mkdtemp pattern in lib/embedded-assets.ts). Staging
+ * must NOT be resolved against process.cwd(): runBuild is exported and called by
+ * the viewer host, so writing scratch dirs into cwd is a hidden side effect that
+ * pollutes the caller's directory and breaks concurrent builds (each build now
+ * gets its own isolated stage root). Callers must remove the returned directory
+ * in a finally block.
+ */
+async function createStageRoot(): Promise<string> {
+  return fsp.mkdtemp(path.join(os.tmpdir(), "print-md-stage-"));
+}
+
 export async function renderHtmlToPdf(
   inputHtml: string,
   outPdf: string,
@@ -615,11 +627,35 @@ export async function renderHtmlToPdf(
   }
 }
 
-export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerResult> {
+/**
+ * Everything the build stages + output strategies need, resolved once up front:
+ * the requested format, absolute input/output dirs, the manifest dir (for
+ * plugin + ICC resolution), the merged config, and the lint/validate gates.
+ * Assembled by {@link resolveBuildContext}; consumed by {@link runQualityGates},
+ * {@link renderBook}, and the {@link OutputStrategy} implementations.
+ */
+interface BuildContext {
+  opts: BuildRunnerOptions;
+  format: BuildFormat;
+  inputDir: string;
+  outDir: string;
+  manifestDir: string;
+  config: ReturnType<typeof resolveConfig>;
+  gates: Gates;
+}
+
+/**
+ * Stage 1 — load the manifest, merge CLI overrides into the resolved config,
+ * pick the output dir, and compute the lint/validate gates. Pure planning: no
+ * filesystem writes, no browser, no logging beyond computeGates' own
+ * flags-ignored notice. Everything downstream reads from the returned context.
+ */
+async function resolveBuildContext(
+  opts: BuildRunnerOptions
+): Promise<BuildContext> {
   const { format } = opts;
   const inputDir = path.resolve(opts.inputDir);
 
-  // 1. Load manifest + resolve config
   const { manifest, manifestDir } = await loadManifestWithPath(
     opts.manifestPath ?? inputDir
   );
@@ -643,35 +679,19 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
   );
 
   const outDir = opts.outDir ?? path.resolve(config.output.dir);
-
-  // 2. Compute lint/validate gates
   const gates = computeGates(format, opts, config);
 
-  log.info(`Build (${format}): ${inputDir} -> ${outDir}`);
-  await fsp.mkdir(outDir, { recursive: true });
+  return { opts, format, inputDir, outDir, manifestDir, config, gates };
+}
 
-  // 2.5. Pre-flight tool check.
-  //
-  // Without this we'd discover missing tools deep in the pipeline (30-90s in
-  // for a real book) when ENOENT bubbles up from a child_process spawn. A 50ms
-  // probe at the top gives an actionable error immediately. The stamp-PDF case
-  // (gs for !pdfxMode) is best-effort downstream — we only WARN here so the
-  // missing-gs user can still save a plain PDF.
-  if (format !== "html") {
-    await preflightBuildTools(format, opts, config);
-  }
+/**
+ * Stage 2 — run the CSS lint + pre-build validation gates. Each is skipped
+ * unless its gate is on (see {@link computeGates}); a failing gate throws a
+ * BuildError with the gate's historic exit code (lint=2, pre-validate=1).
+ */
+async function runQualityGates(ctx: BuildContext): Promise<void> {
+  const { gates, opts, inputDir } = ctx;
 
-  // 2.6. Pre-warm the headless browser NOW (fire-and-forget) so the ~1–2s
-  // Chromium cold start overlaps with lint + validation + markdown render +
-  // asset staging below, instead of sitting on the critical path at pagination
-  // time. Only when this build will actually paginate in Chromium: a PDF/PDFX
-  // build with no injected renderer, or an HTML build with a browser available.
-  const willPaginateInChromium =
-    (format !== "html" && !opts.pdfRenderer) ||
-    (format === "html" && !!(await resolveChromiumExecutable()));
-  if (willPaginateInChromium) prewarmBrowser(RENDER_TIMEOUT_MS);
-
-  // 3. Lint
   if (gates.lint) {
     log.info("Lint: CSS print-safety");
     const lintResult = await runLint({
@@ -682,7 +702,6 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
     }
   }
 
-  // 4. Pre-build validation
   if (gates.preValidate) {
     log.info("Pre-build validation");
     const result = await executeAndReport(
@@ -697,8 +716,17 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
       throw new BuildError("Pre-build validation failed", 1);
     }
   }
+}
 
-  // 5. Markdown -> book.html
+/**
+ * Stage 3 — load configured plugins, render the markdown chapters to
+ * `outDir/book.html`, and copy user asset directories. Returns the path to the
+ * rendered book.html both output strategies then paginate. This is the shared
+ * pre-format work; the per-format tails live in the strategies.
+ */
+async function renderBook(ctx: BuildContext): Promise<string> {
+  const { config, manifestDir, inputDir, outDir } = ctx;
+
   if (config.source.files && config.source.files.length > 0) {
     log.info(`Using specified files (${config.source.files.length} total)`);
   } else {
@@ -725,7 +753,6 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
   });
   log.success(`Wrote ${htmlFile}`);
 
-  // 6. Copy user assets
   const assetDirs = config.source.assets;
   if (assetDirs.length > 0) {
     log.info("Copying assets");
@@ -742,14 +769,101 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
     });
   }
 
-  // === HTML format =======================================================
-  // Pre-paginate at BUILD time (static-site-generator model): run Paged.js once
-  // in headless Chromium, serialize the fully-fragmented DOM, and ship that
-  // static HTML so the browser renders pages with NO runtime pagination JS. This
-  // inverts today's model (shipping the polyfill so the browser re-paginates on
-  // every load). The navigation toolbar scripts are kept — they only scroll
-  // between already-laid-out pages; they do not modify the DOM to render pages.
-  if (format === "html") {
+  return htmlFile;
+}
+
+/**
+ * Resolve the effective ICC profile for a PDF/X build (extracted from the pdfx
+ * branch so it is unit-testable in isolation). Relative paths are tried against
+ * the manifest dir first, then cwd. As a convenience the unspecified default
+ * profile (`CGATS21_CRPC1.icc`, no explicit `--icc`) falls back to the embedded
+ * copy shipped in the binary. Throws BuildError(exitCode 2) if nothing resolves.
+ */
+export async function resolveIccProfile(
+  icc: string,
+  manifestDir: string,
+  explicitIccPath: string | undefined
+): Promise<string> {
+  const iccCandidates = path.isAbsolute(icc)
+    ? [icc]
+    : [path.resolve(manifestDir, icc), path.resolve(icc)];
+  let effectiveIccPath =
+    iccCandidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+
+  if (
+    !effectiveIccPath &&
+    !explicitIccPath &&
+    path.basename(icc) === "CGATS21_CRPC1.icc"
+  ) {
+    effectiveIccPath = await getAssetPath("profiles/CGATS21_CRPC1.icc");
+  }
+
+  if (!effectiveIccPath) {
+    throw new BuildError(
+      `Missing ICC profile at ${icc}. Place the ICC profile or specify --icc <path>`,
+      2
+    );
+  }
+
+  return effectiveIccPath;
+}
+
+/**
+ * The shared build tail every output strategy ends with: write the build
+ * fingerprint, log `Wrote:` + the fingerprint path, then close the pooled
+ * browser unless the caller wants it kept warm (a preview/watch server does).
+ * De-duplicates the identical closing sequence the HTML and PDF branches used
+ * to inline. `wroteMessage` and the fingerprint/paths differ per format, so
+ * they are passed in.
+ */
+async function finalizeBuild(
+  ctx: BuildContext,
+  fingerprint: BuildFingerprintInput,
+  wroteMessage: string,
+  paths: { htmlPath: string; pdfPath: string | null }
+): Promise<BuildRunnerResult> {
+  const fingerprintPath = await writeBuildFingerprint(fingerprint);
+  log.success(wroteMessage);
+  log.info(`Fingerprint: ${fingerprintPath}`);
+  // Close the pooled browser unless the caller (e.g. a preview server) wants it
+  // kept warm for the next rebuild. No-op if nothing was launched (including the
+  // injected-renderer path, which never used the pool).
+  if (!ctx.opts.keepBrowserAlive) await closeBrowser();
+  return {
+    outDir: ctx.outDir,
+    htmlPath: paths.htmlPath,
+    pdfPath: paths.pdfPath,
+    fingerprintPath,
+  };
+}
+
+/**
+ * A per-format output strategy owns the tail of the build: paginate the rendered
+ * book.html into the shippable artifact for its format, then finalize (write the
+ * fingerprint + close the browser). {@link runBuild} picks one from the format
+ * and hands it the resolved context + the rendered book.
+ */
+interface OutputStrategy {
+  finish(ctx: BuildContext, htmlFile: string): Promise<BuildRunnerResult>;
+}
+
+/**
+ * `--format html` — Pre-paginate at BUILD time (static-site-generator model):
+ * run Paged.js once in headless Chromium, serialize the fully-fragmented DOM,
+ * and ship that static HTML so the browser renders pages with NO runtime
+ * pagination JS. This inverts the pre-SSG model (shipping the polyfill so the
+ * browser re-paginates on every load). The navigation toolbar scripts are kept
+ * — they only scroll between already-laid-out pages; they do not paginate. With
+ * no Chromium at build we fall back to shipping the runtime-pagination polyfill.
+ */
+class HtmlOutput implements OutputStrategy {
+  async finish(
+    ctx: BuildContext,
+    htmlFile: string
+  ): Promise<BuildRunnerResult> {
+    const { outDir, inputDir, config, opts } = ctx;
+    const assetDirs = config.source.assets;
+
     const chromium = await resolveChromiumExecutable();
     if (!chromium) {
       // No headless browser at build → fall back to runtime pagination so the
@@ -761,19 +875,24 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
       );
       await shipRuntimePaginatedHtml(htmlFile, outDir);
     } else {
-      // Stage a working copy for the build-time pagination pass (assets + polyfill).
-      const htmlStage = path.resolve(".print-md-stage-html");
-      const stagedBook = await stagePaginationInput(
-        htmlFile,
-        outDir,
-        assetDirs,
-        htmlStage
-      );
+      // Stage a working copy for the build-time pagination pass (assets +
+      // polyfill) under the OS temp dir — never in the caller's cwd. Cleaned up
+      // in finally so it does not leak on the error path either.
+      const htmlStage = await createStageRoot();
+      try {
+        const stagedBook = await stagePaginationInput(
+          htmlFile,
+          outDir,
+          assetDirs,
+          htmlStage
+        );
 
-      log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
-      const paginated = await paginateToStaticHtml(stagedBook);
-      await finalizeStaticBook(paginated, htmlFile, outDir);
-      await fsp.rm(htmlStage, { recursive: true, force: true });
+        log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
+        const paginated = await paginateToStaticHtml(stagedBook);
+        await finalizeStaticBook(paginated, htmlFile, outDir);
+      } finally {
+        await fsp.rm(htmlStage, { recursive: true, force: true });
+      }
     }
 
     // Write a minimal index.html that redirects to book.html so static hosts
@@ -788,158 +907,197 @@ export async function runBuild(opts: BuildRunnerOptions): Promise<BuildRunnerRes
       );
     }
 
-    const fingerprintPath = await writeBuildFingerprint({
-      command: "build",
-      outputDir: outDir,
-      sourceDir: inputDir,
-      args: opts.rawArgs,
-      pdfx: {
-        requestedFlavor: null,
-        resolvedFlavor: config.pdfx.flavor,
-        iccPath: null,
-        stripAnnotations: null,
-      },
-    });
-    log.success(`Wrote: ${path.join(outDir, "book.html")}`);
-    log.info(`Fingerprint: ${fingerprintPath}`);
-    // Close the pooled browser unless the caller (e.g. a preview server) wants
-    // it kept warm for the next rebuild. No-op if nothing was launched.
-    if (!opts.keepBrowserAlive) await closeBrowser();
-    return {
-      outDir,
-      htmlPath: htmlFile,
-      pdfPath: null,
-      fingerprintPath,
-    };
-  }
-
-  // === PDF / PDFX format =================================================
-  const pdfxMode: PdfxFlavor | undefined =
-    format === "pdfx" ? (opts.pdfxFlavor ?? config.pdfx.flavor) : undefined;
-
-  const pdfFile = opts.pdfFileOverride ?? path.join(outDir, config.output.filename);
-
-  // Stage build directory
-  const stage = path.resolve(".print-md-stage");
-  const stagedHtml = await stagePaginationInput(
-    htmlFile,
-    outDir,
-    assetDirs,
-    stage
-  );
-
-  const rawPdf = pdfxMode ? path.join(stage, "raw.pdf") : path.resolve(pdfFile);
-  log.info("Rendering HTML to PDF via Chromium+Paged.js");
-  await fsp.mkdir(path.dirname(path.resolve(pdfFile)), { recursive: true });
-  // PDF unification: the default renderer prints the PDF and, from the SAME
-  // pagination pass, serializes the static viewer book.html — so the on-screen
-  // pages and the PDF come from one paginated artifact. The PDF call itself is
-  // unchanged, so the PDF is pixel-identical to the pre-SSG pipeline. Injected
-  // renderers (e.g. the Electron viewer) print only.
-  const staticHtmlRaw = opts.pdfRenderer
-    ? undefined
-    : path.join(stage, "book-static-raw.html");
-  await renderHtmlToPdf(stagedHtml, rawPdf, opts.pdfRenderer, staticHtmlRaw);
-  if (staticHtmlRaw && fs.existsSync(staticHtmlRaw)) {
-    await finalizeStaticBook(
-      await fsp.readFile(staticHtmlRaw, "utf-8"),
-      htmlFile,
-      outDir
-    );
-    log.success(`Wrote static viewer: ${path.join(outDir, "book.html")}`);
-  }
-
-  if (!pdfxMode) {
-    // stampCreator writes /Creator (print-md) into the PDF's Info dict using
-    // pdf-lib (in-process, no system tool). The information is cosmetic — if it
-    // fails for any reason, keep the raw Chromium output as the final PDF rather
-    // than failing the build. `rawPdf` equals the final `pdfFile` when !pdfxMode.
-    try {
-      await stampCreator(rawPdf);
-    } catch (err) {
-      log.warn(
-        `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
-      );
-    }
-  }
-
-  let effectiveIccPath: string | null = null;
-  let shouldStripAnnotations: boolean | null = null;
-
-  if (pdfxMode) {
-    const icc = opts.iccPath ?? config.pdfx.icc;
-    const iccCandidates = path.isAbsolute(icc)
-      ? [icc]
-      : [path.resolve(manifestDir, icc), path.resolve(icc)];
-    effectiveIccPath = iccCandidates.find((candidate) => fs.existsSync(candidate)) ?? null;
-
-    if (!effectiveIccPath && !opts.iccPath && path.basename(icc) === "CGATS21_CRPC1.icc") {
-      effectiveIccPath = await getAssetPath("profiles/CGATS21_CRPC1.icc");
-    }
-
-    if (!effectiveIccPath) {
-      throw new BuildError(
-        `Missing ICC profile at ${icc}. Place the ICC profile or specify --icc <path>`,
-        2
-      );
-    }
-
-    const shouldStrip = opts.stripAnnotations ?? config.pdfx.stripAnnotations;
-    shouldStripAnnotations = shouldStrip;
-    if (shouldStrip) {
-      log.info("Stripping annotations for PDF/X compliance");
-      await stripAnnotations(rawPdf);
-    }
-
-    log.info(`Converting to CMYK PDF/X (${pdfxMode})`);
-    await convertToPdfxCmyk(rawPdf, path.resolve(pdfFile), {
-      iccPath: effectiveIccPath,
-      pdfx: pdfxMode,
-      title: config.title,
-      maxTac: config.ink.maxTac,
-    });
-  }
-
-  // 8. Post-build validation (pdfx only)
-  if (gates.postValidate) {
-    log.info("Post-build validation");
-    const result = await executeAndReport(
+    return finalizeBuild(
+      ctx,
       {
-        pdf: pdfFile,
-        phase: "post-build",
-        manifest: opts.manifestPath,
+        command: "build",
+        outputDir: outDir,
+        sourceDir: inputDir,
+        args: opts.rawArgs,
+        pdfx: {
+          requestedFlavor: null,
+          resolvedFlavor: config.pdfx.flavor,
+          iccPath: null,
+          stripAnnotations: null,
+        },
       },
-      "text"
+      `Wrote: ${path.join(outDir, "book.html")}`,
+      { htmlPath: htmlFile, pdfPath: null }
     );
-    if (!result.ok) {
-      throw new BuildError("Post-build validation failed", 1);
+  }
+}
+
+/**
+ * `--format pdf` / `--format pdfx` — stage the rendered book, render it to PDF
+ * via Chromium+Paged.js (or an injected renderer), then for plain pdf stamp
+ * /Creator and for pdfx resolve the ICC, optionally strip annotations, and
+ * convert to CMYK PDF/X. Runs post-build validation for pdfx, then finalizes.
+ * The staging scratch dir is removed in a finally so it never leaks.
+ */
+class PdfOutput implements OutputStrategy {
+  async finish(
+    ctx: BuildContext,
+    htmlFile: string
+  ): Promise<BuildRunnerResult> {
+    const { outDir, inputDir, config, opts, format, manifestDir, gates } = ctx;
+    const assetDirs = config.source.assets;
+
+    const pdfxMode: PdfxFlavor | undefined =
+      format === "pdfx" ? (opts.pdfxFlavor ?? config.pdfx.flavor) : undefined;
+
+    const pdfFile =
+      opts.pdfFileOverride ?? path.join(outDir, config.output.filename);
+
+    // Stage build directory under the OS temp dir — never in the caller's cwd
+    // (runBuild is exported and driven by the viewer host). Cleaned up in finally
+    // so it does not leak on the success path OR any error/throw below.
+    const stage = await createStageRoot();
+    try {
+      const stagedHtml = await stagePaginationInput(
+        htmlFile,
+        outDir,
+        assetDirs,
+        stage
+      );
+
+      const rawPdf = pdfxMode
+        ? path.join(stage, "raw.pdf")
+        : path.resolve(pdfFile);
+      log.info("Rendering HTML to PDF via Chromium+Paged.js");
+      await fsp.mkdir(path.dirname(path.resolve(pdfFile)), { recursive: true });
+      // PDF unification: the default renderer prints the PDF and, from the SAME
+      // pagination pass, serializes the static viewer book.html — so the on-screen
+      // pages and the PDF come from one paginated artifact. The PDF call itself is
+      // unchanged, so the PDF is pixel-identical to the pre-SSG pipeline. Injected
+      // renderers (e.g. the Electron viewer) print only.
+      const staticHtmlRaw = opts.pdfRenderer
+        ? undefined
+        : path.join(stage, "book-static-raw.html");
+      await renderHtmlToPdf(stagedHtml, rawPdf, opts.pdfRenderer, staticHtmlRaw);
+      if (staticHtmlRaw && fs.existsSync(staticHtmlRaw)) {
+        await finalizeStaticBook(
+          await fsp.readFile(staticHtmlRaw, "utf-8"),
+          htmlFile,
+          outDir
+        );
+        log.success(`Wrote static viewer: ${path.join(outDir, "book.html")}`);
+      }
+
+      if (!pdfxMode) {
+        // stampCreator writes /Creator (print-md) into the PDF's Info dict using
+        // pdf-lib (in-process, no system tool). The information is cosmetic — if it
+        // fails for any reason, keep the raw Chromium output as the final PDF rather
+        // than failing the build. `rawPdf` equals the final `pdfFile` when !pdfxMode.
+        try {
+          await stampCreator(rawPdf);
+        } catch (err) {
+          log.warn(
+            `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+      }
+
+      let effectiveIccPath: string | null = null;
+      let shouldStripAnnotations: boolean | null = null;
+
+      if (pdfxMode) {
+        const icc = opts.iccPath ?? config.pdfx.icc;
+        effectiveIccPath = await resolveIccProfile(icc, manifestDir, opts.iccPath);
+
+        const shouldStrip = opts.stripAnnotations ?? config.pdfx.stripAnnotations;
+        shouldStripAnnotations = shouldStrip;
+        if (shouldStrip) {
+          log.info("Stripping annotations for PDF/X compliance");
+          await stripAnnotations(rawPdf);
+        }
+
+        log.info(`Converting to CMYK PDF/X (${pdfxMode})`);
+        await convertToPdfxCmyk(rawPdf, path.resolve(pdfFile), {
+          iccPath: effectiveIccPath,
+          pdfx: pdfxMode,
+          title: config.title,
+          maxTac: config.ink.maxTac,
+        });
+      }
+
+      // Post-build validation (pdfx only)
+      if (gates.postValidate) {
+        log.info("Post-build validation");
+        const result = await executeAndReport(
+          {
+            pdf: pdfFile,
+            phase: "post-build",
+            manifest: opts.manifestPath,
+          },
+          "text"
+        );
+        if (!result.ok) {
+          throw new BuildError("Post-build validation failed", 1);
+        }
+      }
+
+      return await finalizeBuild(
+        ctx,
+        {
+          command: "build",
+          outputDir: outDir,
+          sourceDir: inputDir,
+          args: opts.rawArgs,
+          pdfx: {
+            requestedFlavor: pdfxMode ?? null,
+            resolvedFlavor: config.pdfx.flavor,
+            iccPath: effectiveIccPath,
+            stripAnnotations: shouldStripAnnotations,
+          },
+        },
+        `Wrote: ${pdfFile}`,
+        { htmlPath: htmlFile, pdfPath: pdfFile }
+      );
+    } finally {
+      await fsp.rm(stage, { recursive: true, force: true });
     }
   }
+}
 
-  const fingerprintPath = await writeBuildFingerprint({
-    command: "build",
-    outputDir: outDir,
-    sourceDir: inputDir,
-    args: opts.rawArgs,
-    pdfx: {
-      requestedFlavor: pdfxMode ?? null,
-      resolvedFlavor: config.pdfx.flavor,
-      iccPath: effectiveIccPath,
-      stripAnnotations: shouldStripAnnotations,
-    },
-  });
+/**
+ * Orchestrate a build: resolve the context, mkdir the output, preflight tools
+ * (non-html), pre-warm the browser when this build will paginate in Chromium,
+ * run the quality gates, render the book, then hand off to the per-format output
+ * strategy for pagination + finalize. The heavy lifting lives in the named
+ * stages + strategies above; this reads as the pipeline it is.
+ */
+export async function runBuild(
+  opts: BuildRunnerOptions
+): Promise<BuildRunnerResult> {
+  const ctx = await resolveBuildContext(opts);
 
-  log.success(`Wrote: ${pdfFile}`);
-  log.info(`Fingerprint: ${fingerprintPath}`);
+  log.info(`Build (${ctx.format}): ${ctx.inputDir} -> ${ctx.outDir}`);
+  await fsp.mkdir(ctx.outDir, { recursive: true });
 
-  // Close the pooled browser unless the caller wants it kept warm. No-op for the
-  // injected-renderer (Electron) path, which never used the pool.
-  if (!opts.keepBrowserAlive) await closeBrowser();
+  // Pre-flight tool check.
+  //
+  // Without this we'd discover missing tools deep in the pipeline (30-90s in
+  // for a real book) when ENOENT bubbles up from a child_process spawn. A 50ms
+  // probe at the top gives an actionable error immediately.
+  if (ctx.format !== "html") {
+    await preflightBuildTools(ctx.format, opts, ctx.config);
+  }
 
-  return {
-    outDir,
-    htmlPath: htmlFile,
-    pdfPath: pdfFile,
-    fingerprintPath,
-  };
+  // Pre-warm the headless browser NOW (fire-and-forget) so the ~1–2s Chromium
+  // cold start overlaps with lint + validation + markdown render + asset staging
+  // below, instead of sitting on the critical path at pagination time. Only when
+  // this build will actually paginate in Chromium: a PDF/PDFX build with no
+  // injected renderer, or an HTML build with a browser available.
+  const willPaginateInChromium =
+    (ctx.format !== "html" && !opts.pdfRenderer) ||
+    (ctx.format === "html" && !!(await resolveChromiumExecutable()));
+  if (willPaginateInChromium) prewarmBrowser(RENDER_TIMEOUT_MS);
+
+  await runQualityGates(ctx);
+
+  const htmlFile = await renderBook(ctx);
+
+  const strategy: OutputStrategy =
+    ctx.format === "html" ? new HtmlOutput() : new PdfOutput();
+  return strategy.finish(ctx, htmlFile);
 }

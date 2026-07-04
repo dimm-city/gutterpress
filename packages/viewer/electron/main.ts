@@ -12,7 +12,6 @@ import {
   session,
   shell,
 } from "electron";
-import { randomUUID } from "node:crypto";
 import path from "node:path";
 import os from "node:os";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -36,6 +35,7 @@ import { registerDesktopHooks, registerDoctorHooks } from "./server-bridge/host-
 import { registerMediaHooks } from "./server-bridge/media-hooks";
 import { registerVcsHooks } from "./server-bridge/vcs-hooks";
 import { registerRemoteHooks } from "./server-bridge/remote-hooks";
+import { handleRemoteErrors } from "./server-bridge/friendly-errors";
 import { registerConflictPreviewHooks } from "./server-bridge/conflict-preview-hooks";
 import {
   writeRecovery as writeRecoveryStore,
@@ -79,6 +79,11 @@ import {
   AutoSyncOrchestrator,
   type SyncStatusPayload,
 } from "./auto-sync/orchestrator";
+import { mapRecoveryResultToEmit } from "./auto-sync/recovery-emit";
+import {
+  ExportController,
+  type ExportBuildArgs,
+} from "./export/controller";
 import { AutoSnapshotScheduler } from "./auto-snapshot/scheduler";
 import { FolderWatcher } from "./folder-watch/watcher";
 import type {
@@ -110,7 +115,6 @@ import type {
   SystemDiagnostics,
   ThemeInfo,
   TokenStore as RecoveryTokenStore,
-  ConflictFile as ConflictFileInfo,
   ConflictResolution as ConflictResolutionChoice,
 } from "@dimm-city/print-md";
 // The splash markup ships as a string baked into the main bundle (electron-vite
@@ -468,6 +472,26 @@ const autoSync = new AutoSyncOrchestrator({
  *  10-min snapshot debounce (that coupling delayed the open pull ~10.5 min and
  *  hid incoming teammate changes until the user happened to edit something). */
 const AUTO_SYNC_OPEN_DELAY_MS = 4_000;
+
+/** Detach a timer from the event loop so it never blocks app quit. */
+function unref(t: NodeJS.Timeout): void {
+  if (typeof t.unref === "function") t.unref();
+}
+
+/**
+ * Arm a one-shot auto-sync for `dir` after `delayMs`, but only fire it if `dir`
+ * is STILL the watched project when the timer expires (a project switch cancels
+ * the stale run). The timer is unref'd so it never blocks quit. Folds the
+ * copy-pasted "setTimeout → run if still watching → unref" idiom used across the
+ * preview open/preflight paths into one helper.
+ */
+function scheduleWatchedSync(dir: string, delayMs: number): void {
+  unref(
+    setTimeout(() => {
+      if (watchedDir === dir) void autoSync.run(dir);
+    }, delayMs),
+  );
+}
 
 const folderWatch = new FolderWatcher({
   watch: (dir, options, cb) => watch(dir, options, cb),
@@ -1040,34 +1064,8 @@ function requireAbsoluteDir(channel: string, projectDir: unknown): string {
   return projectDir;
 }
 
-// The lib's own author-facing messages (and our argument-validation messages)
-// pass through to the renderer verbatim. Anything else is an unexpected
-// internal failure: it gets logged in full here and replaced with a terse,
-// author-safe message (no raw isomorphic-git internals, no full fs paths).
-const VCS_FRIENDLY_ERROR =
-  /no changes since the last snapshot|no version history yet|your work is safe|project files were not changed|requires an absolute project path|valid snapshot id|already inside a versioned project/i;
-
-async function handleVcsErrors<T>(
-  channel: string,
-  fn: () => Promise<T>,
-): Promise<T> {
-  try {
-    return await fn();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[${channel}] failed: ${msg}`);
-    if (e instanceof Error && e.stack) console.error(e.stack);
-    if (e instanceof Error && e.cause) console.error(`  cause: ${String(e.cause)}`);
-    if (VCS_FRIENDLY_ERROR.test(msg)) {
-      // Re-wrap so only the friendly message crosses the IPC boundary.
-      throw new Error(msg);
-    }
-    throw new Error(
-      `Version history could not complete the ${channel.replace("vcs:", "")} operation. See the app log for details.`,
-    );
-  }
-}
-
+// Error sanitization for vcs:* now lives in the shared server-bridge/friendly-errors
+// module (friendlyVcsError), consumed by the SvelteKit routes.
 // vcs:saveSnapshot, vcs:listSnapshots, vcs:listSnapshotsPage, vcs:restoreSnapshot — migrated to SvelteKit server routes (src/routes/api/vcs/*).
 
 // ── Managed GitHub integration (#15, ADR 0006) ───────────────────────────────
@@ -1088,41 +1086,10 @@ registerRemoteHooks({
   GITHUB_HOST,
 });
 
-// Error sanitization — same pattern as handleVcsErrors: the lib's own
-// author-friendly messages pass through verbatim; anything else is logged in
-// full here and replaced with a terse author-safe message. Token values never
-// appear in lib messages by construction (remote-auth redaction invariant).
-const REMOTE_FRIENDLY_ERROR =
-  /couldn't reach github|reconnect github|connect github|sign-?in|declined|expired|canceled|already has files|valid web url|https|repository couldn't be found|couldn't be downloaded|try again|in progress|access token|web address|couldn't reach|didn't accept|wasn't found|certificate|git server/i;
-
-// Strip credential-bearing URL userinfo ("https://user:token@host/…") from
-// any string headed for the log. Transport errors — and especially their raw
-// `.cause` — can echo the request URL verbatim, which may embed a token.
-function redactUrlCredentials(text: string): string {
-  return text.replace(/\/\/[^/\s:]+:[^@\s]+@/g, "//(redacted)@");
-}
-
-async function handleRemoteErrors<T>(
-  channel: string,
-  fn: () => Promise<T>,
-): Promise<T> {
-  try {
-    return await fn();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[${channel}] failed: ${redactUrlCredentials(msg)}`);
-    if (e instanceof Error && e.stack) console.error(redactUrlCredentials(e.stack));
-    if (e instanceof Error && e.cause) {
-      console.error(`  cause: ${redactUrlCredentials(String(e.cause))}`);
-    }
-    if (REMOTE_FRIENDLY_ERROR.test(msg)) {
-      throw new Error(msg);
-    }
-    throw new Error(
-      "The online repository operation could not be completed. See the app log for details.",
-    );
-  }
-}
+// Error sanitization (handleRemoteErrors: friendly lib messages pass through;
+// anything else is logged with credentials redacted and replaced with a terse
+// safe message) now lives in the shared server-bridge/friendly-errors module,
+// imported at the top of this file.
 
 // One device-flow connect at a time. `codePromise` resolves with the user code
 // (phase 1 of the two-phase invoke); `donePromise` resolves when the user
@@ -1565,10 +1532,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       if (kind === null) {
         // Healthy repo — release lock and schedule the normal initial sync.
         syncState.inFlight = false;
-        const t = setTimeout(() => {
-          if (watchedDir === openedDir) void autoSync.run(openedDir);
-        }, AUTO_SYNC_OPEN_DELAY_MS);
-        if (typeof (t as NodeJS.Timeout).unref === "function") (t as NodeJS.Timeout).unref();
+        scheduleWatchedSync(openedDir, AUTO_SYNC_OPEN_DELAY_MS);
         return;
       }
 
@@ -1613,14 +1577,19 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       // post-chain decision is the one place that may actually re-run it.
       const pendingRunAgain = syncState.runAgain;
 
-      if (result.status === "recovered") {
-        emitSyncStatus({
-          state: "recovered",
-          projectDir: openedDir,
-          lastSyncAt: now,
-          backupZipPath: result.backupZipPath,
-          logFile: preflightLogFile,
-        });
+      // Map recover()'s result → emit payload via the ONE shared mapper (also
+      // used by AutoSyncOrchestrator.run). The preflight surfaces an authless
+      // needs_user as a generic error (its historical else-branch), hence
+      // authlessNeedsUserAs: "error". The follow-up (resume / retry timer /
+      // conflict-latch) is the preflight's own and stays here.
+      const em = mapRecoveryResultToEmit(result, {
+        projectDir: openedDir,
+        lastSyncAt: now,
+        logFile: preflightLogFile,
+        authlessNeedsUserAs: "error",
+      });
+      if (em.kind === "recovered") {
+        emitSyncStatus(em.status);
         // The repo is healthy again: clear any conflict-latch and RESUME sync so
         // the fix isn't left paused. If a trigger was already queued while we held
         // the lock, decideRunAgainAfterPreflight below will run it ("run") — so
@@ -1631,51 +1600,26 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
           plog.info("resume", "recovered — scheduling deferred sync", {
             reason: "no queued trigger",
           });
-          const t = setTimeout(() => {
-            if (watchedDir === openedDir) void autoSync.run(openedDir);
-          }, AUTO_SYNC_OPEN_DELAY_MS);
-          if (typeof (t as NodeJS.Timeout).unref === "function") (t as NodeJS.Timeout).unref();
+          scheduleWatchedSync(openedDir, AUTO_SYNC_OPEN_DELAY_MS);
         } else {
           plog.info("resume", "recovered — honoring queued trigger", {
             reason: "runAgain pending",
           });
         }
-      } else if (result.status === "retry_later") {
-        emitSyncStatus({ state: "offline", projectDir: openedDir, lastSyncAt: now });
+      } else if (em.kind === "retry_later") {
+        emitSyncStatus(em.status);
         // Honor the handler's requested delay (same idiom as the mid-sync
         // retry_later arm) instead of waiting for the generic periodic timer —
         // e.g. a fresh-but-not-stale lock asks to be re-checked as soon as it
         // ages past the threshold, not minutes later.
-        const delay = result.retryAfterMs ?? 60_000;
-        const retryTimer = setTimeout(() => {
-          if (watchedDir === openedDir) void autoSync.run(openedDir);
-        }, delay);
-        if (typeof retryTimer.unref === "function") retryTimer.unref();
-      } else if (result.status === "needs_user" && result.files && result.files.length > 0) {
-        // Conflict-latch: stop the periodic timer to avoid churning.
-        syncState.conflictLatched = true;
-        syncState.runAgain = false;
-        autoSync.cancelTimer(openedDir);
-        emitSyncStatus({
-          state: "conflict",
-          files: result.files as ConflictFileInfo[],
-          projectDir: openedDir,
-          lastSyncAt: now,
-          logFile: preflightLogFile,
-        });
+        scheduleWatchedSync(openedDir, em.retryAfterMs ?? 60_000);
       } else {
-        // blocked / failed / needs_user (auth) — latch and show guidance.
+        // conflict OR error (blocked / failed / needs_user without files) —
+        // latch, stop the periodic timer to avoid churning, and surface.
         syncState.conflictLatched = true;
         syncState.runAgain = false;
         autoSync.cancelTimer(openedDir);
-        emitSyncStatus({
-          state: "error",
-          projectDir: openedDir,
-          lastSyncAt: now,
-          guidance: "guidance" in result ? result.guidance : undefined,
-          backupZipPath: "backupZipPath" in result ? result.backupZipPath : undefined,
-          logFile: preflightLogFile,
-        });
+        emitSyncStatus(em.status);
       }
 
       // Honour (or intentionally suppress) the pending auto-sync trigger now that
@@ -1695,10 +1639,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
       syncState.inFlight = false;
       console.warn("[preflight] recovery failed (non-fatal):", err);
       plog?.error("preflight", "recovery failed (non-fatal)", { error: String(err) });
-      const t = setTimeout(() => {
-        if (watchedDir === openedDir) void autoSync.run(openedDir);
-      }, AUTO_SYNC_OPEN_DELAY_MS);
-      if (typeof (t as NodeJS.Timeout).unref === "function") (t as NodeJS.Timeout).unref();
+      scheduleWatchedSync(openedDir, AUTO_SYNC_OPEN_DELAY_MS);
     }
   })();
   // NOTE: the initialSyncTimer that used to be here has been moved inside the
@@ -1735,202 +1676,33 @@ ipcMain.handle("api:cancelExport", async (_e, exportId: string) => {
   return { canceled: true };
 });
 
-ipcMain.handle(
-  "api:build",
-  async (
-    _e,
-    args: {
-      input: string;
-      format?: "pdf" | "html" | "pdfx";
-      out?: string;
-      title?: string;
-      pdfxFlavor?: string;
-      icc?: string;
-      manifest?: string;
-      stripAnnotations?: boolean;
-      skipLint?: boolean;
-      skipPreValidate?: boolean;
-      skipPostValidate?: boolean;
-    }
-  ) => {
-    if (!args?.input) throw new Error("Missing 'input'");
-    const format = args.format ?? "pdf";
-    if (format === "pdfx" && !args.icc) {
-      throw new Error("PDF/X format requires 'icc' (ICC profile path)");
-    }
+// The api:build export pipeline lives in electron/export/controller.ts as an
+// injected-deps class (unit-tested in tests/platform/export-controller.test.ts).
+// main.ts wires the live host touch-points and keeps a thin delegating handler.
+const exportController = new ExportController({
+  loadLib,
+  tokenStore: electronTokenStore,
+  emit: emitSyncStatus,
+  isOnline: () => net.isOnline(),
+  now: Date.now,
+  usePuppeteer: () => !!process.env.PRINTMD_VIEWER_PUPPETEER,
+  pdfRenderer: electronPdfRenderer,
+  sync: {
+    getState: (dir) => autoSync.getState(dir),
+    getOrCreateState: (dir) => autoSync.getOrCreateState(dir),
+    cancelTimer: (dir) => autoSync.cancelTimer(dir),
+    setLastSyncAt: (dir, iso) => autoSync.setLastSyncAt(dir, iso),
+  },
+  getActiveExportSession,
+  setActiveExportSession,
+  sendProgress: sendExportProgress,
+  throwIfCanceled: throwIfExportCanceled,
+  isExportCanceledError: (e) => e instanceof ExportCanceledError,
+  rename: (from, to) => rename(from, to),
+  rm: (p) => rm(p, { force: true }),
+});
 
-    const lib = await loadLib();
-    if (getActiveExportSession()) {
-      throw new Error("A PDF export is already in progress");
-    }
-    const requestedOutPath = args.out;
-    if (!requestedOutPath) {
-      throw new Error("Missing 'out' for PDF export");
-    }
-
-    // ── PDF-export safety gate (transparent-sync plan §5.3) ──────────────────
-    // Before building, check the open project's sync state and act accordingly:
-    //   synced / up-to-date  → proceed immediately.
-    //   dirty + online       → sync first (so the PDF includes teammate changes).
-    //   offline              → proceed but warn (renderer receives a message).
-    //   conflict-latched     → block and return a typed error (author must resolve).
-    // Only runs when the exported dir is the currently open project and auto-sync
-    // is configured (canSync + credential). Local-only projects skip the gate.
-    // path.resolve() normalises the export dir to match the autoSyncStates key,
-    // which is always normalised at assignment time in startFolderWatch.
-    const exportDir = path.resolve(args.input);
-    // Use exportDir (already path.resolve'd) as the canonical key into
-    // autoSyncStates so both the hard-block read and the mid-gate conflict write
-    // (autoSync.getOrCreateState(exportDir) below) use the same key — regardless
-    // of whether exportDir happens to equal watchedDir.
-    const exportSyncState = autoSync.getState(exportDir);
-    if (exportSyncState?.conflictLatched) {
-      // Hard block: the author MUST resolve before a PDF can be trusted.
-      const err = new Error(
-        "Cannot save a PDF while there are unresolved changes from two places. " +
-        "Resolve the conflict first, then try again.",
-      );
-      (err as Error & { code?: string }).code = "SYNC_CONFLICT";
-      throw err;
-    }
-    // Attempt a pre-export sync when online + canSync. Its only hard effect is
-    // the conflict BLOCK below (a PDF must not be built over an unresolved
-    // conflict); every other outcome is soft — the PDF uses local content,
-    // which is always valid and fully snapshotted. Gate errors are non-fatal.
-    try {
-      const exportSource = await lib.detectProjectSource(exportDir);
-      if (exportSource.type === "local-git-folder") {
-        // Credential-aware gate (ADR 0006 D4) — NOT capabilitiesFor().canSync,
-        // which is hasRemote-only and would attempt a pre-export syncProject
-        // (returning auth) for SSH or uncredentialed-HTTPS projects on every export.
-        const exportDiag = await lib.diagnoseProjectRemote(exportDir, {
-          tokenStore: electronTokenStore,
-        });
-        if (exportDiag.canSync && net.isOnline()) {
-          const syncOutcome = await lib.syncProject({
-            projectDir: exportDir,
-            tokenStore: electronTokenStore,
-          });
-          if (syncOutcome.status === "conflict") {
-            // A conflict surfaced mid-export-gate: latch and block.
-            const state = autoSync.getOrCreateState(exportDir);
-            state.conflictLatched = true;
-            autoSync.cancelTimer(exportDir);
-            const gateConflictAt = new Date().toISOString();
-            autoSync.setLastSyncAt(exportDir, gateConflictAt);
-            emitSyncStatus({
-              state: "conflict",
-              files: syncOutcome.files,
-              projectDir: exportDir,
-              lastSyncAt: gateConflictAt,
-            });
-            const conflictErr = new Error(
-              "Changes happened in two places. Resolve the conflict first, then save the PDF.",
-            );
-            (conflictErr as Error & { code?: string }).code = "SYNC_CONFLICT";
-            throw conflictErr;
-          }
-          // synced / up-to-date / offline / auth / error → export proceeds with
-          // local content (the ambient pill already reflects the sync state).
-        }
-      }
-    } catch (gateErr) {
-      // Re-throw conflict blocks; swallow all other gate errors (non-fatal for export).
-      const blockErr = preExportSyncGateBlockError(gateErr);
-      if (blockErr) throw blockErr;
-      const msg = gateErr instanceof Error ? gateErr.message : String(gateErr);
-      console.warn(`[api:build] pre-export sync gate failed (non-fatal): ${msg}`);
-    }
-    // ── end PDF-export safety gate ────────────────────────────────────────────
-
-    const tempOutPath = `${requestedOutPath}.print-md.tmp.pdf`;
-    const { outDir, pdfFileOverride } = lib.splitOutPath(tempOutPath, format);
-    const exportSession: ExportSession = {
-      id: randomUUID(),
-      canceled: false,
-      outPath: requestedOutPath,
-      tempOutPath,
-      win: null,
-    };
-    setActiveExportSession(exportSession);
-    sendExportProgress({ exportId: exportSession.id, state: "started" });
-
-    try {
-      const result = await lib.runBuild({
-        inputDir: args.input,
-        format,
-        outDir,
-        pdfFileOverride,
-        title: args.title,
-        pdfxFlavor: args.pdfxFlavor as any,
-        iccPath: args.icc,
-        manifestPath: args.manifest,
-        stripAnnotations: args.stripAnnotations,
-        skipLint: args.skipLint,
-        skipPreValidate: args.skipPreValidate,
-        skipPostValidate: args.skipPostValidate,
-        // Render with Electron's own Chromium unless explicitly opted out.
-        pdfRenderer: process.env.PRINTMD_VIEWER_PUPPETEER
-          ? undefined
-          : electronPdfRenderer,
-        rawArgs: { input: args.input, format, out: args.out },
-      });
-      throwIfExportCanceled(exportSession);
-      await rename(exportSession.tempOutPath, exportSession.outPath);
-      sendExportProgress({
-        exportId: exportSession.id,
-        state: "success",
-        message: exportSession.outPath,
-      });
-      return {
-        exportId: exportSession.id,
-        outDir: result.outDir,
-        htmlPath: result.htmlPath,
-        pdfPath: exportSession.outPath,
-        fingerprintPath: result.fingerprintPath,
-      };
-    } catch (e: unknown) {
-      if (exportSession.canceled || e instanceof ExportCanceledError) {
-        sendExportProgress({ exportId: exportSession.id, state: "canceled" });
-        const err = new Error("PDF export canceled");
-        (err as Error & { code?: string }).code = "EXPORT_CANCELED";
-        throw err;
-      }
-      // BuildError carries actionable multi-line text from the lib's
-      // preflightBuildTools / requireChromiumExecutable — preserve it.
-      if (e instanceof lib.BuildError) {
-        const err = new Error(e.message);
-        (err as Error & { code?: string }).code = "BUILD_ERROR";
-        throw err;
-      }
-      // Generic spawn ENOENT: wrap with a friendlier message identifying
-      // the missing tool. (Preflight should have caught this earlier, but
-      // some downstream tools — e.g. when a tool exists but errors out —
-      // can still surface raw ENOENT here.)
-      if (e instanceof Error && (e as Error & { code?: string }).code === "ENOENT") {
-        const syscall = (e as Error & { syscall?: string }).syscall ?? "";
-        const path = (e as Error & { path?: string }).path ?? "";
-        const tool = path || syscall.replace(/^spawn /, "");
-        const err = new Error(
-          `Required system tool not found: ${tool}\n\n` +
-          `Install it and re-run. See User Guide Chapter 8 (examples/print-md-user-guide/08-system-setup.md) for per-platform instructions.\n\n` +
-          `Underlying error: ${e.message}`
-        );
-        (err as Error & { code?: string }).code = "TOOL_MISSING";
-        throw err;
-      }
-      sendExportProgress({
-        exportId: exportSession.id,
-        state: "error",
-        message: e instanceof Error ? e.message : String(e),
-      });
-      throw e;
-    } finally {
-      setActiveExportSession(null);
-      await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
-    }
-  }
-);
+ipcMain.handle("api:build", (_e, args: ExportBuildArgs) => exportController.build(args));
 
 // ──────────────────────────────────────────────────────────────────────────
 // Auto-updater wiring (electron-updater — full-app updates from GitHub)

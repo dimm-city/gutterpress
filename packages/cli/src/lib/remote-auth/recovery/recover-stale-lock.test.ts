@@ -24,9 +24,9 @@
 
 import { describe, expect, test, beforeEach } from "bun:test";
 import * as fs from "node:fs";
-import { mkdtemp, writeFile, utimes } from "node:fs/promises";
+import { writeFile, utimes } from "node:fs/promises";
 import path from "node:path";
-import { tmpdir } from "node:os";
+import { makeTempDir as freshTempDir } from "../../../test-helpers/testkit";
 
 import git from "isomorphic-git";
 
@@ -52,7 +52,7 @@ const STALE_LOCK_AGE_MS = 10 * 60_000; // 10 min → should be recoverable
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function makeTempDir(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "stale-lock-test-"));
+  return freshTempDir("stale-lock-test-");
 }
 
 /** Create a minimal git repo with one committed file. */

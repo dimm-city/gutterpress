@@ -167,26 +167,33 @@ export {
   providerFor,
   restoreVersionWithBackup,
   isNoChangesError,
+  AUTO_SNAPSHOT_MESSAGE,
+  RESTORE_BACKUP_MESSAGE,
+  HISTORY_PAGE_LIMIT,
+} from "../lib/source-provider.ts";
+
+export type {
+  ListHistoryOptions,
+  HistoryPage,
+} from "../lib/source-provider.ts";
+
+// ── Host-timer cadence policy (auto-snapshot / auto-sync delays) ──────────────
+export {
   autoSnapshotDelayMs,
   autoSyncDelayMs,
   isGitInternalPath,
-  AUTO_SNAPSHOT_MESSAGE,
-  RESTORE_BACKUP_MESSAGE,
   AUTO_SNAPSHOT_MIN_MINUTES,
   AUTO_SNAPSHOT_MAX_MINUTES,
   AUTO_SNAPSHOT_DEFAULT_MINUTES,
   AUTO_SYNC_MIN_MINUTES,
   AUTO_SYNC_MAX_MINUTES,
   AUTO_SYNC_DEFAULT_MINUTES,
-  HISTORY_PAGE_LIMIT,
-} from "../lib/source-provider.ts";
+} from "../lib/host-policy.ts";
 
 export type {
   AutoSnapshotPolicy,
   AutoSyncPolicy,
-  ListHistoryOptions,
-  HistoryPage,
-} from "../lib/source-provider.ts";
+} from "../lib/host-policy.ts";
 
 // ── Remote Git: auth, discovery, clone (#15 / ADR 0006) ──────────────────────
 export {

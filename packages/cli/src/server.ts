@@ -9,7 +9,7 @@
 
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { info, warn } from './utils/logger';
+import { info, warn, setLogLevel } from './utils/logger';
 import type { PreviewServerOptions } from './types';
 import {
   validateInputPath,
@@ -57,6 +57,13 @@ export interface StartPreviewServerOptions extends PreviewServerOptions {
 export async function startPreviewServer(
   options: StartPreviewServerOptions
 ): Promise<PreviewServerHandle> {
+  // Honor --verbose/--debug (threaded in from the preview command): raise the
+  // shared log level so the leveled debug() lines in the preview internals
+  // actually emit. Without this, every debug() call is permanently suppressed.
+  if (options.verbose || options.debug) {
+    setLogLevel('DEBUG');
+  }
+
   // Stage 1: Validate and initialize. Empty input is a deliberate "no
   // directory picked yet" mode: the server boots with a placeholder page,
   // and the viewer desktop app (packages/viewer) shows its own folder picker.

@@ -23,6 +23,7 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 
 import type { ProjectTemplateId } from "./project-scaffold.ts";
+import { slugify, prettify } from "./slug.ts";
 
 /** The built-in templates shipped as embedded assets. */
 export const BUILT_IN_TEMPLATE_IDS = [
@@ -76,21 +77,6 @@ export async function listBuiltInTemplates(): Promise<TemplateInfo[]> {
     description: BUILT_IN_META[id].description,
     kind: "builtin" as const,
   }));
-}
-
-/** Slugify a template name into a safe directory id. */
-function slugify(name: string): string {
-  return name
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function prettify(slug: string): string {
-  const spaced = slug.replace(/[-_]+/g, " ").trim();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 /** Directory entries we never copy into a template (build output, git, etc.). */

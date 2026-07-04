@@ -302,7 +302,7 @@ function parseTiff(b: Buffer): ImageInfo | null {
 
 export async function collectImageFiles(
   dirs: string[],
-  exts: string[]
+  exts: readonly string[]
 ): Promise<string[]> {
   const { glob } = await import("glob");
   const pattern = `**/*.{${exts.join(",")}}`;

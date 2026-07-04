@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
+import { finding, inspectionFailed } from "../policy";
 
 const check: Check = {
   id: "heuristic.chunking.section-density",
@@ -33,13 +34,14 @@ const check: Check = {
           // Heading starts new section
           if (/^#{1,6}\s/.test(line)) {
             if (paragraphCount > maxParas) {
-              results.push({
-                checkId: check.id,
-                severity: "info",
-                message: `Section has ${paragraphCount} paragraphs (max recommended: ${maxParas})`,
-                file,
-                line: currentSectionStart + 1,
-              });
+              results.push(
+                finding(check.id, {
+                  severity: "info",
+                  message: `Section has ${paragraphCount} paragraphs (max recommended: ${maxParas})`,
+                  file,
+                  line: currentSectionStart + 1,
+                })
+              );
             }
             currentSectionStart = i;
             paragraphCount = 0;
@@ -58,16 +60,21 @@ const check: Check = {
 
         // Check last section
         if (paragraphCount > maxParas) {
-          results.push({
-            checkId: check.id,
-            severity: "info",
-            message: `Section has ${paragraphCount} paragraphs (max recommended: ${maxParas})`,
-            file,
-            line: currentSectionStart + 1,
-          });
+          results.push(
+            finding(check.id, {
+              severity: "info",
+              message: `Section has ${paragraphCount} paragraphs (max recommended: ${maxParas})`,
+              file,
+              line: currentSectionStart + 1,
+            })
+          );
         }
       } catch {
-        // File read error
+        results.push(
+          inspectionFailed(check.id, `Could not read source file: ${file}`, {
+            file,
+          })
+        );
       }
     }
 

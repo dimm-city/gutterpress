@@ -23,20 +23,24 @@ const check: Check = {
           severity: "warning",
           message: "No fonts detected (unexpected).",
           file: ctx.pdfPath,
+          code: "no-fonts",
         },
       ];
     }
 
     const notEmbedded = fonts.filter((f) => !f.embedded);
     if (notEmbedded.length > 0) {
+      const names = notEmbedded.map((f) => f.name);
       return [
         {
           checkId: check.id,
           severity: "error",
-          message: `Not all fonts are embedded (${notEmbedded
-            .map((f) => f.name)
-            .join(", ")}). Check @font-face and Chromium output.`,
+          message: `Not all fonts are embedded (${names.join(
+            ", "
+          )}). Check @font-face and Chromium output.`,
           file: ctx.pdfPath,
+          code: "fonts-not-embedded",
+          data: { fonts: names },
         },
       ];
     }

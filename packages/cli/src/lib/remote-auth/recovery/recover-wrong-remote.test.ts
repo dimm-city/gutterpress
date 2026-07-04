@@ -33,9 +33,9 @@
 
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { tmpdir } from "node:os";
+import { makeTempDir } from "../../../test-helpers/testkit";
 
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
@@ -70,10 +70,6 @@ const UNEXPECTED_CONFIRM_GATE: ConfirmationGate = {
 const APPROVE_GATE: ConfirmationGate = {
   confirmRepair: async () => true,
 };
-
-async function makeTempDir(prefix = "wrong-remote-test-"): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), prefix));
-}
 
 /**
  * Push-spy wrapper around httpNode. Records every receive-pack (push) request.

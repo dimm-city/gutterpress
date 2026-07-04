@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
+import { finding, inspectionFailed } from "../policy";
 
 const check: Check = {
   id: "source.links.local-refs",
@@ -32,17 +33,22 @@ const check: Check = {
 
           for (const ref of extractLocalRefs(line)) {
             if (localRefExists(ref, file)) continue;
-            results.push({
-              checkId: check.id,
-              severity: "error",
-              message: `Local reference not found: ${ref}`,
-              file,
-              line: i + 1,
-            });
+            results.push(
+              finding(check.id, {
+                severity: "error",
+                message: `Local reference not found: ${ref}`,
+                file,
+                line: i + 1,
+              })
+            );
           }
         }
       } catch {
-        // Skip unreadable files
+        results.push(
+          inspectionFailed(check.id, `Could not read source file: ${file}`, {
+            file,
+          })
+        );
       }
     }
 

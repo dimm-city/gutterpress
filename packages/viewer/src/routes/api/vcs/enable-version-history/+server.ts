@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { isAbsolute } from 'node:path';
 import { gitIdentityArgs } from '$lib/server/settings';
 import { getVcsHooks } from '../../../../../electron/server-bridge/vcs-hooks';
+import { friendlyVcsError } from '../../../../../electron/server-bridge/friendly-errors';
 
 // Local type — do NOT import from contract.ts or the lib (keeps SPA bundle clean).
 interface LibModule {
@@ -11,21 +12,6 @@ interface LibModule {
     initVersionHistory: (opts: { projectDir: string; initialMessage?: string; authorName?: string; authorEmail?: string }) => Promise<unknown>;
   };
   capabilitiesFor: (source: unknown) => unknown;
-}
-
-const VCS_FRIENDLY_ERROR =
-  /no changes since the last snapshot|no version history yet|your work is safe|project files were not changed|requires an absolute project path|valid snapshot id|already inside a versioned project/i;
-
-function friendlyError(e: unknown, op: string): never {
-  const msg = e instanceof Error ? e.message : String(e);
-  console.error(`[vcs/enable-version-history] failed: ${msg}`);
-  if (e instanceof Error && (e as Error & { stack?: string }).stack) {
-    console.error((e as Error & { stack?: string }).stack);
-  }
-  if (VCS_FRIENDLY_ERROR.test(msg)) {
-    throw error(422, msg);
-  }
-  throw error(500, `Version history could not complete the ${op} operation. See the app log for details.`);
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -50,6 +36,7 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ source: upgraded, capabilities: lib.capabilitiesFor(upgraded) });
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e) throw e; // rethrow SvelteKit errors
-    friendlyError(e, 'enableVersionHistory');
+    const { status, message } = friendlyVcsError(e, 'enableVersionHistory', 'vcs/enable-version-history');
+    throw error(status, message);
   }
 };

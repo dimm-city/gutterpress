@@ -10,7 +10,6 @@
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type {
     ProblemEntry,
-    ProjectCapabilities,
     ProjectClassification,
     RecoveryConfirmRequest,
     SnapshotEntry,
@@ -35,9 +34,13 @@
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
   import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
+  import { ZoomViewController } from "$lib/routes/zoom-view-controller.svelte";
+  import { PreviewEventController } from "$lib/routes/preview-event-controller";
+  import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
   import { SyncController } from "$lib/routes/sync-controller.svelte";
+  import { ProjectSessionController } from "$lib/routes/project-session-controller.svelte";
   import { RecoveryUiController } from "$lib/routes/recovery-ui-controller.svelte";
-  import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
+  import { buildViewerStyles } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import { basenameOf, joinPath } from "$lib/platform/paths";
@@ -54,7 +57,7 @@
   } from "$lib/editor/mobile-layout";
   import { commandForSaveShortcut } from "$lib/editor/save-shortcuts";
   import { resolveGlobalShortcut, resolvePreviewNavCommand } from "$lib/routes/shortcuts";
-  import { clampSplitRatio, splitRatioFromDrag, splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
+  import { splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
   import { useSettings, _loadSettings } from "$lib/settings.svelte";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
@@ -77,11 +80,9 @@
   let currentUrl = $state<string | null>(null);
   let sourceMode = $state<"folder" | "url">("folder");
   let docTitle = $state<string | null>(null);
-  // Capabilities of the open project's source (#12): local-folder vs
-  // local-git-folder (with/without remote). Stored so forthcoming action
-  // buttons (#13/#25 — Save Snapshot, View History, Sync) can render against
-  // it. No new buttons yet; the data is simply available.
-  let projectCapabilities = $state<ProjectCapabilities | null>(null);
+  // Capabilities of the open project's source (#12) live on the
+  // ProjectSessionController (projectSession.projectCapabilities), alongside the
+  // classification wiring that populates them.
   // Folder name (basename) for the toolbar label; the full path is the tooltip.
   // Folder name for the toolbar label (#49): prefer the adapter-precomputed
   // FolderRef.displayName; fall back to the basename of the key when the folder
@@ -136,15 +137,52 @@
     },
     onBeginEdit: () => queueMicrotask(() => pageEditInput?.focus()),
   });
+  // Preview layout FSM: owns zoom / view-mode / fit-width / split-pane-drag
+  // state + the intents that drive the host preview. Host coupling (client,
+  // persist sinks, DOM measurements) is injected so the component stays a thin
+  // composition root.
+  const zoomView = new ZoomViewController({
+    client: () => client,
+    zoom: () => zoom,
+    viewMode: () => viewMode,
+    isNarrow: () => isNarrow,
+    persistZoom: (value) => settings.set({ preview: { defaultZoom: value } }),
+    persistViewMode: (mode) => settings.set({ preview: { viewMode: mode } }),
+    saveViewerPrefs: (patch) => saveViewerPrefs(patch),
+    measureContainerWidth: () => {
+      const iframe = document.querySelector<HTMLIFrameElement>("iframe");
+      return iframe?.clientWidth ?? window.innerWidth;
+    },
+    measureWorkspaceRect: () => {
+      if (!workspaceEl) return null;
+      const rect = workspaceEl.getBoundingClientRect();
+      return { left: rect.left, width: rect.width };
+    },
+  });
 
   // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
   // outline drives the chapter-jump dropdown; activeOutlineIndex tracks the
   // heading the reader is currently within (updated from sourceLineChanged).
   let outline = $state<OutlineEntry[]>([]);
   let activeOutlineIndex = $state(0);
-  // Timestamp guard: while the preview is being driven from the editor side,
-  // ignore the sourceLineChanged it emits so the two panes don't feed back.
-  let suppressPreviewSyncUntil = 0;
+  // Editor↔preview scroll/anchor timing machine: owns the echo-suppression
+  // window (the timestamp guard that stops the preview's own sourceLineChanged
+  // from bouncing back into the editor), the cross-chapter reveal poll loop, and
+  // the editor→preview anchor follow. Clock + scheduler are injected so the
+  // whole state machine is deterministic under fake timers in its unit test.
+  const editorSync = new EditorPreviewSyncController({
+    client: () => client,
+    rendering: () => rendering,
+    currentDir: () => currentDir,
+    editorChapter: () => editorChapter,
+    hasEditorRef: () => !!editorRef,
+    selectEditorFile: (path) => selectEditorFile(path),
+    revealEditorLine: (line) => editorRef?.revealLine(line),
+    syncPageAfterScroll: (page) =>
+      pageNav.syncPageState({ currentPage: page, totalPages: pageNav.totalPages }),
+    now: () => Date.now(),
+    schedule: (fn, ms) => setTimeout(fn, ms),
+  });
   // ── User settings (#45) ────────────────────────────────────────────────
   // bgColor, viewMode and zoom are sourced from the persisted settings store
   // (their old inline defaults #5a5a5a / two-column / fit-width now live in
@@ -162,7 +200,6 @@
   let paneMode = $derived(settings.current.preview.paneMode);
   let debug = $state(false);
   let settingsOpen = $state(false);
-  let settingsBtn = $state<HTMLButtonElement | undefined>(undefined);
   let rendering = $state(false);
   let renderProgressPage = $state(0);
   let renderCompleteOverlay = $state(false);
@@ -187,7 +224,6 @@
     editorView = "editor";
     focusEditorWhenReady();
   }
-  let userSetViewMode = $state(false);
   let openError = $state<string | null>(null);
   // The folder a failed open was attempted on, so we can offer to adopt it.
   let failedOpenDir = $state<string | null>(null);
@@ -236,13 +272,8 @@
   // its rune getters. Toast feedback is injected through an accessor seam.
   const updateController = new UpdateController(() => toast);
 
-  // UX-026: focus-restoration reference for the Help dialog
-  let helpBtn = $state<HTMLButtonElement | undefined>(undefined);
-  // Open Location modal
-  let openLocationOpen = $state(false);
   // "Open from GitHub" flow (#15)
   let githubOpen = $state(false);
-  let openBtn = $state<HTMLButtonElement | undefined>(undefined);
   // Advanced setup (#14): diagnostics + generic "Connect a Git server"
   let advancedSetupOpen = $state(false);
   let advancedSetupBtn = $state<HTMLButtonElement | undefined>(undefined);
@@ -267,6 +298,21 @@
     onSyncCompleted: (mergedRemoteChanges, filesChanged) =>
       onSyncCompleted(mergedRemoteChanges, filesChanged),
     onFilesChanged: () => onSyncFilesChanged(),
+  });
+
+  // ── Project session capability state (#12) ───────────────────────────────────
+  // The classification wiring (source detection → capabilities → subPath /
+  // sharesParentHistory → prefs hint → history-refresh → sync gate) lives in the
+  // ProjectSessionController (Phase 5c). The component reset()s it and fires
+  // classify(dir) on folder open, applyReclassify()s after version history is
+  // enabled, and reads its rune getters. Host coupling injected (§8): the
+  // classify round-trip, the ViewerPrefs writer, and the two fan-out callbacks
+  // (History tab + SyncController).
+  const projectSession = new ProjectSessionController({
+    classifyProject: (dir) => api.app.classifyProject(dir),
+    setViewerPrefs: (prefs) => api.app.setViewerPrefs(prefs),
+    notifyHistoryRefresh: () => leftPanelRef?.notifyHistoryRefresh(),
+    refreshSyncDiag: (dir) => void syncController.refreshSyncDiag(dir),
   });
 
   // ── Recovery UI state (transparent sync recovery) ────────────────────────────
@@ -397,29 +443,16 @@
     recovery.dismissOverlay();
   }
 
-  let versionHistoryOpen = $state(false);
-  let versionHistoryBtn = $state<HTMLButtonElement | undefined>(undefined);
-  // The open folder is a book subfolder of a larger versioned folder: full
-  // history features are available (scoped to the book by the host); the
-  // dialog shows a quiet "shares history with its parent folder" hint.
-  let projectSharesParentHistory = $state(false);
-  // The book's path relative to that shared folder ("" for standalone projects).
-  let projectSubPath = $state("");
-  let versionHistoryAvailable = $derived(
-    !!currentDir &&
-      sourceMode === "folder" &&
-      !!projectCapabilities &&
-      (projectCapabilities.canEnableVersionHistory ||
-        projectCapabilities.canViewHistory),
-  );
+  // The open folder is a book subfolder of a larger versioned folder (full
+  // history features are available, scoped to the book by the host) and the
+  // book's path relative to that shared folder both live on the
+  // ProjectSessionController (projectSession.projectSharesParentHistory /
+  // projectSession.projectSubPath), derived by its classification wiring.
 
   // History was just enabled (#13): adopt the upgraded capabilities and persist
   // the re-classified source hint — same as what classifyProject does on open.
   function onVersionHistoryEnabled(result: ProjectClassification) {
-    projectCapabilities = result.capabilities;
-    api.app
-      .setViewerPrefs({ projectSource: result.source } as Record<string, unknown>)
-      .catch(() => {});
+    projectSession.applyReclassify(result);
   }
 
   // A restore rewrote project files on disk (#13). The preview server's file
@@ -456,9 +489,7 @@
   // state now lives inside the buffer.
   let editorOpen = $state(false);
   let previewHidden = $state(false);
-  let splitPaneRatio = $state(0.42);
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
-  let draggingSplit = $state(false);
   let editorRef = $state<{
     focus: () => void;
     revealLine: (line: number) => void;
@@ -579,7 +610,7 @@
   );
   let splitGridColumns = $derived(
     editorPaneOpen && !isNarrow && !previewHidden
-      ? splitTemplateColumns(splitPaneRatio)
+      ? splitTemplateColumns(zoomView.splitPaneRatio)
       : "",
   );
   let previewCollapseGridColumns = $derived(
@@ -961,7 +992,7 @@
     }
     const rel = p.file ?? p.filePath.split(/[\\/]/).pop() ?? p.filePath;
     if (p.line) {
-      followChapterInEditor(rel, p.line);
+      editorSync.followChapterInEditor(rel, p.line);
     } else {
       selectEditorFile(p.filePath);
     }
@@ -1063,115 +1094,62 @@
   });
 
   // ----------------------------------------------------------------
+  // Preview-frame event router. Owns the post-render settle sequence (view-mode
+  // auto-selection, the fit-width-vs-numeric-zoom reveal race, page restore,
+  // outline rebuild, re-lint, splash dismissal) + the preview→editor
+  // sourceLineChanged follow. Host coupling is injected so the ordering that
+  // prevents the visible page JUMP is unit-tested in isolation. Composes
+  // pageNav + zoomView rather than duplicating their logic.
+  const previewEvents = new PreviewEventController({
+    client: () => client,
+    pageNav,
+    zoomView,
+    editorSync: {
+      suppressPreviewSyncUntil: () => editorSync.suppressPreviewSyncUntil,
+      editorPaneOpen: () => editorPaneOpen,
+      editorChapter: () => editorChapter,
+      currentDir: () => currentDir,
+      bufferDirty: () => !!buffer?.isDirty,
+      updateActiveOutline: (line) => updateActiveOutline(line),
+      revealEditorLine: (line) => editorRef?.revealLine(line),
+      followChapterInEditor: (chapter, line) => editorSync.followChapterInEditor(chapter, line),
+    },
+    zoom: () => zoom,
+    viewMode: () => viewMode,
+    bgColor: () => bgColor,
+    setRendering: (v) => (rendering = v),
+    getRendering: () => rendering,
+    setRenderProgressPage: (v) => (renderProgressPage = v),
+    getRenderProgressPage: () => renderProgressPage,
+    setRenderCompleteOverlay: (v) => (renderCompleteOverlay = v),
+    resetOutline: () => {
+      outline = [];
+      activeOutlineIndex = 0;
+    },
+    consumePendingRestore: () => {
+      const restore = { page: pendingRestorePage, viewMode: pendingRestoreViewMode };
+      pendingRestorePage = null;
+      pendingRestoreViewMode = null;
+      return restore;
+    },
+    refreshOutline: () => refreshOutline(),
+    refreshProblems: () => refreshProblems(),
+    revealSettledPages: () => revealSettledPages(),
+    toastSuccess: (message) => toast?.success(message),
+    splashStatus: (status, progress, sub) =>
+      api.app.splashStatus(status, progress, sub).catch(() => {}),
+    rendererReady: () => api.app.rendererReady().catch(() => {}),
+    viewportWidth: () => window.innerWidth,
+    now: () => Date.now(),
+    scheduleMicrotask: (fn) => queueMicrotask(fn),
+  });
+
   // Subscribe to PreviewClient events when a client is created by PreviewFrame.
   // Hooked via onClientReady callback on the PreviewFrame component (imperative,
   // not $effect). Cleanup is handled when the client is replaced (PreviewFrame
   // remounts on previewUrl change via {#key previewUrl}).
   function onClientReady(c: PreviewClient) {
-    c.on((e) => {
-      if (e.name === "renderingComplete") {
-        const n = e.detail.totalPages ?? 0;
-        pageNav.totalPages = n;
-        renderProgressPage = n;
-        rendering = false;
-        // Keep the overlay up while the post-render layout settles. The pages
-        // stay invisible (iframe opacity 0) through the view-mode switch AND the
-        // async zoom round-trips; only once the zoom is actually applied do we
-        // cross-fade — see the revealSettledPages() call at the end of the
-        // settle sequence below. This is what prevents the visible page JUMP:
-        // we never reveal before the layout has stopped moving.
-        renderCompleteOverlay = true;
-        // Inject canvas styles now that Paged.js is done
-        client?.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
-        client?.injectStyles("debug", DEBUG_STYLES);
-        // Set initial view mode (auto if user hasn't chosen)
-        const auto = window.innerWidth < 1280 ? "single" : "two-column";
-        const restorePage = pendingRestorePage;
-        const restoreMode = pendingRestoreViewMode;
-        pendingRestorePage = null;
-        pendingRestoreViewMode = null;
-        const mode = restoreMode ?? (userSetViewMode ? viewMode : auto);
-        // Drive the whole settle sequence to completion, THEN reveal. The reveal
-        // is gated on the zoom promise resolving — not a magic timer — so the
-        // fade always uncovers a completely still layout. Reveal is in a finally
-        // so the pages are never stranded invisible if a zoom call rejects.
-        (async () => {
-          applyViewMode(mode, false);
-          try {
-            // "Fit to width" must ALWAYS measure-and-fit, never assume 100% fits.
-            // A two-page spread (~1656px) overflows a 1400px pane at 100%,
-            // clipping the right page — so fit even on wide screens. Awaiting
-            // applyFitWidthZoom() waits for both postMessage round-trips
-            // (getPageDimensions + setZoom), i.e. until the JUMP has happened.
-            if (zoom === "fit-width") {
-              await applyFitWidthZoom();
-            } else {
-              await client?.call("setZoom", [Number(zoom)]);
-            }
-          } catch {
-            // Zoom failed — still reveal below so pages aren't stranded hidden.
-          } finally {
-            revealSettledPages();
-          }
-        })();
-        if (restorePage && restorePage > 1) {
-          queueMicrotask(() => pageNav.restoreProjectPage(restorePage));
-        }
-        // UX-011: improved success toast copy
-        toast?.success(`Your book is ready — ${n} ${n === 1 ? 'page' : 'pages'}`);
-        // Build the chapter-jump outline from the freshly rendered DOM.
-        refreshOutline();
-        // Re-lint the project on every rebuild so the Problems panel tracks
-        // the author's edits (#28).
-        refreshProblems();
-        // First project render done → dismiss the splash and reveal the window.
-        api.app.splashStatus("Ready", 100).catch(() => {});
-        api.app.rendererReady().catch(() => {});
-      } else if (e.name === "sourceLineChanged") {
-        // Preview→editor sync: the reader scrolled. Follow in the editor and
-        // update the active outline entry — but not while the editor itself is
-        // driving the preview (echo guard).
-        const line = e.detail.sourceLine;
-        const chap = e.detail.chapter;
-        if (typeof line === "number") {
-          updateActiveOutline(line);
-          if (Date.now() >= suppressPreviewSyncUntil && editorPaneOpen) {
-            if (chap === editorChapter) {
-              editorRef?.revealLine(line);
-            } else if (chap && currentDir && !buffer?.isDirty) {
-              // Scrolled into a DIFFERENT chapter: follow it by opening that
-              // chapter's file, then reveal the line once it has loaded. Skipped
-              // when there are unsaved edits so it never yanks the file away mid-
-              // edit. This is what makes the editor track the whole book, not
-              // just the one open chapter (the "sporadic" complaint).
-              followChapterInEditor(chap, line);
-            }
-          }
-        }
-      } else if (e.name === "pageChanged") {
-        if (rendering) {
-          renderProgressPage = e.detail.totalPages ?? renderProgressPage;
-          pageNav.totalPages = e.detail.totalPages ?? pageNav.totalPages;
-          // Live splash sub-status during the (potentially multi-second) render.
-          const pg = e.detail.totalPages ?? renderProgressPage;
-          if (pg) api.app.splashStatus(undefined, undefined, `Laying out page ${pg}`).catch(() => {});
-        } else {
-          pageNav.syncPageState(e.detail);
-        }
-      } else if (e.name === "ready") {
-        rendering = true;
-        // New render starting — overlay covers the layout shuffle; fades out on renderingComplete.
-        renderProgressPage = 0;
-        outline = [];
-        activeOutlineIndex = 0;
-        api.app.splashStatus("Rendering pages…", 70).catch(() => {});
-        client?.call<number>("getTotalPages").then((n) => {
-          if (n > 0) {
-            pageNav.totalPages = n;
-          }
-        }).catch(() => {});
-      }
-    });
+    previewEvents.subscribe(c);
   }
 
   // ----------------------------------------------------------------
@@ -1280,15 +1258,15 @@
           break;
         case "zoom-in":
           e.preventDefault();
-          stepZoom(0.25);
+          zoomView.stepZoom(0.25);
           break;
         case "zoom-out":
           e.preventDefault();
-          stepZoom(-0.25);
+          zoomView.stepZoom(-0.25);
           break;
         case "fit-width":
           e.preventDefault();
-          applyZoom("fit-width");
+          zoomView.applyZoom("fit-width");
           break;
         // UX-004: 'D' shortcut for debug removed — non-technical writers should
         // not accidentally trigger debug mode.
@@ -1305,11 +1283,11 @@
   onMount(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     function onResize() {
-      if (!previewUrl || userSetViewMode) return;
+      if (!previewUrl || zoomView.userSetViewMode) return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         const auto = window.innerWidth < 1280 ? "single" : "two-column";
-        applyViewMode(auto, false);
+        zoomView.applyViewMode(auto, false);
       }, 150);
     }
     window.addEventListener("resize", onResize);
@@ -1389,36 +1367,10 @@
       // Classify the opened folder (#12) so capability-gated actions (#13/#25)
       // can render. Always re-detected on open (a user may add/remove `.git`
       // between sessions) and persisted as a hint. Fire-and-forget: a failure
-      // must never block the preview.
-      projectCapabilities = null;
-      projectSharesParentHistory = false;
-      projectSubPath = "";
+      // must never block the preview. Owned by the ProjectSessionController.
+      projectSession.reset();
       syncController.syncDiag = null;
-      api.app
-        .classifyProject(dir)
-        .then((result) => {
-          const typedResult = result as { source: { type: string; subPath?: string }; capabilities: ProjectCapabilities };
-          projectCapabilities = typedResult.capabilities;
-          projectSubPath =
-            typedResult.source.type === "local-git-folder" ? (typedResult.source.subPath ?? "") : "";
-          projectSharesParentHistory = projectSubPath !== "";
-          api.app
-            .setViewerPrefs({ projectSource: typedResult.source } as Record<string, unknown>)
-            .catch(() => {});
-          // Re-notify so the History tab can load now that canHistory is set.
-          // The earlier notifyHistoryRefresh() at folder-open time may have been
-          // a no-op because projectCapabilities was still null.
-          leftPanelRef?.notifyHistoryRefresh();
-          // Sync gate (#15 / ADR 0006 D4): the toolbar action appears only
-          // when the diagnosis says the project is actually syncable (HTTPS
-          // remote + a stored connection). Local reads only; fire-and-forget.
-          if (typedResult.capabilities.canSync) {
-            void syncController.refreshSyncDiag(dir);
-          }
-        })
-        .catch(() => {
-          projectCapabilities = null;
-        });
+      projectSession.classify(dir);
       docTitle = data.title ?? null;
       // Force iframe remount by nulling first; reset overlay for the new iframe.
       previewUrl = null;
@@ -1438,9 +1390,9 @@
         // derived viewMode reflects this project's last-used mode.
         settings.set({ preview: { viewMode: restoredViewMode } });
       }
-      userSetViewMode = !!restoredViewMode;
+      zoomView.userSetViewMode = !!restoredViewMode;
       if (typeof restoreState?.splitPaneRatio === "number") {
-        splitPaneRatio = clampSplitRatio(restoreState.splitPaneRatio);
+        zoomView.restoreSplitRatio(restoreState.splitPaneRatio);
       }
       // Loud signal for the #1 cause of wrong fonts/styles: shared asset dirs
       // (e.g. ../dc-design-guide/fonts) that don't resolve next to this project.
@@ -1760,84 +1712,17 @@
     // scroll-driven follow, so a cross-chapter jump must move the editor here
     // explicitly — otherwise the preview lands on the new chapter while the
     // editor is left on the old file (they desync).
-    suppressPreviewSyncUntil = Date.now() + 400;
+    editorSync.suppressFor(400);
     if (entry.sourceLine != null && editorPaneOpen) {
       if (entry.chapter === editorChapter) {
         editorRef?.revealLine(entry.sourceLine);
       } else if (entry.chapter && currentDir && !buffer?.isDirty) {
-        followChapterInEditor(entry.chapter, entry.sourceLine);
+        editorSync.followChapterInEditor(entry.chapter, entry.sourceLine);
       }
     }
     client
       .scrollTo(target, { block: "start" })
       .then((res) => {
-        if (res?.page) pageNav.syncPageState({ currentPage: res.page, totalPages: pageNav.totalPages });
-      })
-      .catch(() => {});
-  }
-
-  // Cross-chapter follow (preview→editor): open the scrolled chapter's file and
-  // reveal the line once the buffer has actually swapped to it. Polls editorChapter
-  // (the file load is async) rather than guessing at timing, with a ~2s cap.
-  let crossChapterReveal:
-    | { chapter: string; line: number; tries: number; nudges: number }
-    | null = null;
-  function followChapterInEditor(chapter: string, line: number) {
-    if (!currentDir) return;
-    const dir = currentDir.replace(/[\\/]+$/, "");
-    crossChapterReveal = { chapter, line, tries: 0, nudges: 0 };
-    // Join with the directory's own separator: on Windows currentDir uses
-    // backslashes, and a mixed-separator path still LOADS (Win32 accepts it)
-    // but never string-equals the host-native paths from listDir — so the
-    // FileTree active highlight silently desyncs after a cross-chapter jump.
-    const sep = dir.includes("\\") ? "\\" : "/";
-    selectEditorFile(`${dir}${sep}${chapter.replaceAll("/", sep)}`);
-    pumpCrossChapterReveal();
-  }
-  function pumpCrossChapterReveal() {
-    const r = crossChapterReveal;
-    if (!r) return;
-    if (editorChapter === r.chapter && editorRef) {
-      // The file load swaps the editor doc and resets scroll to the TOP, and
-      // that reset can land AFTER our first reveal — so re-issue the reveal a
-      // few times (~250ms) so the last one wins. Without this the editor sat at
-      // the top of the newly-opened chapter instead of the synced line.
-      suppressPreviewSyncUntil = Date.now() + 300;
-      editorRef.revealLine(r.line);
-      if (++r.nudges >= 5) {
-        crossChapterReveal = null;
-        return;
-      }
-      setTimeout(pumpCrossChapterReveal, 50);
-      return;
-    }
-    // Still waiting for the async file load to swap the buffer to this chapter.
-    if (r.tries++ > 40) {
-      crossChapterReveal = null;
-      return;
-    }
-    setTimeout(pumpCrossChapterReveal, 50);
-  }
-
-  // Editor→preview: the caret moved or the editor scrolled. Drive the preview to
-  // the matching source line WITHIN the open chapter; guard the echo so the
-  // preview's resulting sourceLineChanged doesn't bounce back into the editor.
-  function onEditorAnchorLine(line: number, origin: "scroll" | "caret") {
-    if (!client || rendering) return;
-    suppressPreviewSyncUntil = Date.now() + 400;
-    // Scroll-driven anchors are the editor's TOP visible line → anchor the
-    // preview block to the TOP so the panes agree. Caret-driven anchors carry
-    // no viewport position (the caret sits anywhere), so CENTER the target —
-    // top-anchoring it disagreed with the editor by the caret's distance from
-    // the editor top (QA finding RC1-5).
-    client
-      .scrollTo(
-        { line, chapter: editorChapter },
-        { block: origin === "caret" ? "center" : "start" },
-      )
-      .then((res) => {
-        // scrollTo suppresses the book's scroll-driven pageChanged, so reflect
-        // the new page in the toolbar from the command's own return value.
         if (res?.page) pageNav.syncPageState({ currentPage: res.page, totalPages: pageNav.totalPages });
       })
       .catch(() => {});
@@ -1854,51 +1739,8 @@
     });
   }
 
-  /** Apply fit-width by querying the page's rendered width from the iframe. */
-  async function applyFitWidthZoom() {
-    if (!client) return;
-    try {
-      const iframe = document.querySelector<HTMLIFrameElement>("iframe");
-      const containerWidth = iframe?.clientWidth ?? window.innerWidth;
-      const dims = await client.call<{ width: number; height: number } | null>("getPageDimensions");
-      const pageWidth = dims?.width ?? 0;
-      const scale = pageWidth > 0 && pageWidth > containerWidth
-        ? (containerWidth - 32) / pageWidth
-        : 1;
-      await client.call("setZoom", [scale]);
-    } catch {
-      await client.call("setZoom", [1]).catch(() => {});
-    }
-  }
-
-  function applyZoom(value: string) {
-    settings.set({ preview: { defaultZoom: value } });
-    if (!client) return;
-    if (value === "fit-width") {
-      applyFitWidthZoom();
-    } else {
-      client.call("setZoom", [Number(value)]).catch(() => {});
-    }
-  }
-
-  function stepZoom(delta: number) {
-    const current = zoom === "fit-width" ? 1 : parseFloat(zoom) || 1;
-    const next = Math.max(0.25, Math.min(4, current + delta));
-    applyZoom(String(Math.round(next * 100) / 100));
-  }
-
-  function applyViewMode(mode: "single" | "two-column", fromUser: boolean) {
-    // Settings store owns the durable default; ViewerPrefs keeps a per-project
-    // override so reopening a folder restores its last view mode.
-    settings.set({ preview: { viewMode: mode } });
-    if (fromUser) userSetViewMode = true;
-    saveViewerPrefs({ viewMode: mode });
-    client?.call("setViewMode", [mode]).catch(() => {});
-  }
-
-  function toggleViewMode() {
-    applyViewMode(viewMode === "single" ? "two-column" : "single", true);
-  }
+  // Zoom / view-mode intents (applyFitWidthZoom / applyZoom / stepZoom /
+  // applyViewMode / toggleViewMode) now live on `zoomView` (ZoomViewController).
 
   function toggleDebug() {
     debug = !debug;
@@ -1937,7 +1779,7 @@
       lastWidth = nextWidth;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        void applyFitWidthZoom();
+        void zoomView.applyFitWidthZoom();
       }, 80);
     });
     observer.observe(node);
@@ -1981,35 +1823,20 @@
     }
   }
 
+  // Split-pane drag ratio/state lives on `zoomView` (ZoomViewController); these
+  // thin handlers own only the DOM pointer-capture side effects.
   function startSplitDrag(e: PointerEvent) {
-    if (!workspaceEl || isNarrow) return;
-    draggingSplit = true;
+    if (!zoomView.beginSplitDrag(e.clientX)) return;
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    updateSplitFromPointer(e.clientX, false);
     e.preventDefault();
   }
 
-  function updateSplitFromPointer(pointerX: number, persist: boolean) {
-    if (!workspaceEl) return;
-    const rect = workspaceEl.getBoundingClientRect();
-    splitPaneRatio = splitRatioFromDrag({
-      containerLeft: rect.left,
-      containerWidth: rect.width,
-      pointerX,
-    });
-    if (persist) saveViewerPrefs({ splitPaneRatio });
-    if (zoom === "fit-width") applyFitWidthZoom();
-  }
-
   function moveSplitDrag(e: PointerEvent) {
-    if (!draggingSplit) return;
-    updateSplitFromPointer(e.clientX, false);
+    zoomView.moveSplitDrag(e.clientX);
   }
 
   function stopSplitDrag(e: PointerEvent) {
-    if (!draggingSplit) return;
-    draggingSplit = false;
-    updateSplitFromPointer(e.clientX, true);
+    if (!zoomView.endSplitDrag(e.clientX)) return;
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   }
 
@@ -2374,7 +2201,7 @@
         <button
           class="icon-text"
           class:active={viewMode === "single"}
-          onclick={() => applyViewMode("single", true)}
+          onclick={() => zoomView.applyViewMode("single", true)}
           disabled={!previewUrl}
           title="Show one page at a time"
           aria-label="Single page view"
@@ -2385,7 +2212,7 @@
         <button
           class="icon-text"
           class:active={viewMode === "two-column"}
-          onclick={() => applyViewMode("two-column", true)}
+          onclick={() => zoomView.applyViewMode("two-column", true)}
           disabled={!previewUrl}
           title="Show two pages side by side, like an open book"
           aria-label="Two pages side by side"
@@ -2408,7 +2235,7 @@
             aria-pressed={viewMode === "single"}
             class="menu-item"
             class:active={viewMode === "single"}
-            onclick={(e) => { applyViewMode("single", true); closeMenu(e); }}
+            onclick={(e) => { zoomView.applyViewMode("single", true); closeMenu(e); }}
             disabled={!previewUrl}
           >
             <Icon name="rectangle-vertical" /> Single page
@@ -2417,7 +2244,7 @@
             aria-pressed={viewMode === "two-column"}
             class="menu-item"
             class:active={viewMode === "two-column"}
-            onclick={(e) => { applyViewMode("two-column", true); closeMenu(e); }}
+            onclick={(e) => { zoomView.applyViewMode("two-column", true); closeMenu(e); }}
             disabled={!previewUrl}
           >
             <Icon name="columns-2" /> Two pages side by side
@@ -2441,7 +2268,7 @@
               aria-pressed={zoom === val}
               class="menu-item"
               class:active={zoom === val}
-              onclick={(e) => { applyZoom(val); closeMenu(e); }}
+              onclick={(e) => { zoomView.applyZoom(val); closeMenu(e); }}
               disabled={!previewUrl}
             >
               {label}
@@ -2559,8 +2386,8 @@
       bind:activeTab={leftPanelTab}
       projectDir={currentDir}
       projectDisplayName={currentFolderDisplayName}
-      projectCapabilities={projectCapabilities}
-      projectSharesParentHistory={projectSharesParentHistory}
+      projectCapabilities={projectSession.projectCapabilities}
+      projectSharesParentHistory={projectSession.projectSharesParentHistory}
       editorFilePath={editorFilePath}
       sourceMode={sourceMode}
       outline={outline}
@@ -2659,7 +2486,7 @@
                 filePath={editorFilePath}
                 content={editorContent}
                 onChange={onEditorChange}
-                onAnchorLine={onEditorAnchorLine}
+                onAnchorLine={(line, origin) => editorSync.onEditorAnchorLine(line, origin)}
               />
               {/key}
             {:else if editorModuleFailed}
@@ -2678,7 +2505,7 @@
           <button
             type="button"
             class="splitter"
-            class:dragging={draggingSplit}
+            class:dragging={zoomView.draggingSplit}
             aria-label="Resize editor and preview panes"
             title="Resize editor and preview panes"
             onpointerdown={startSplitDrag}
@@ -2789,7 +2616,7 @@
     projectDir={currentDir}
     sourceMode={sourceMode}
     canSync={!!(syncController.syncDiag?.canSync)}
-    canSnapshot={!!(projectCapabilities?.canSnapshot)}
+    canSnapshot={!!(projectSession.projectCapabilities?.canSnapshot)}
     savePhase={editorSavePhase}
     fileOpen={!!editorFilePath}
     {forceSaving}
@@ -2811,7 +2638,6 @@
 
 <HelpDialog
   bind:open={helpOpen}
-  triggerEl={helpBtn}
   onCheckForUpdates={() => updateController.check()}
   checkingUpdates={updateController.checking}
   updateReadyVersion={updateController.readyVersion}
@@ -2819,7 +2645,6 @@
 />
 <SettingsDialog
   bind:open={settingsOpen}
-  triggerEl={settingsBtn}
   onViewModeChange={(mode) => { if (client && !rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
   onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
 />
@@ -2892,7 +2717,7 @@
 <ConflictChoicesDialog
   bind:open={syncController.conflictOpen}
   projectDir={sourceMode === "folder" ? currentDir : null}
-  bookSubPath={projectSubPath}
+  bookSubPath={projectSession.projectSubPath}
   files={syncController.conflictFiles}
   localId={syncController.conflictLocalId}
   remoteId={syncController.conflictRemoteId}

@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import { isAbsolute, basename } from 'node:path';
 import { gitIdentityArgs } from '$lib/server/settings';
 import { getVcsHooks } from '../../../../../electron/server-bridge/vcs-hooks';
+import { friendlyVcsError } from '../../../../../electron/server-bridge/friendly-errors';
 import type { RequestHandler } from './$types';
 
 interface SnapshotEntry {
@@ -16,21 +17,6 @@ interface LibModule {
   providerFor: (source: unknown) => {
     snapshot: (opts: { projectDir: string; message: string; logFile?: string; authorName?: string; authorEmail?: string }) => Promise<SnapshotEntry>;
   };
-}
-
-const VCS_FRIENDLY_ERROR =
-  /no changes since the last snapshot|no version history yet|your work is safe|project files were not changed|requires an absolute project path|valid snapshot id|already inside a versioned project/i;
-
-function friendlyError(e: unknown, op: string): never {
-  const msg = e instanceof Error ? e.message : String(e);
-  console.error(`[vcs/save-snapshot] failed: ${msg}`);
-  if (e instanceof Error && (e as Error & { stack?: string }).stack) {
-    console.error((e as Error & { stack?: string }).stack);
-  }
-  if (VCS_FRIENDLY_ERROR.test(msg)) {
-    throw error(422, msg);
-  }
-  throw error(500, `Version history could not complete the ${op} operation. See the app log for details.`);
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -58,6 +44,7 @@ export const POST: RequestHandler = async ({ request }) => {
     );
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e) throw e;
-    friendlyError(e, 'saveSnapshot');
+    const { status, message } = friendlyVcsError(e, 'saveSnapshot', 'vcs/save-snapshot');
+    throw error(status, message);
   }
 };

@@ -19,6 +19,7 @@ import { resolveAssetDestName } from '../lib/assets';
 import { BOOK_HTML_FILENAME } from '../lib/viewer';
 import type { ServerState } from './server-context';
 import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
+import { pagedjsPolyfillTagRegex } from '../lib/pagedjs-marker';
 import { getAssetPath } from '../lib/embedded-assets';
 
 /**
@@ -175,7 +176,7 @@ export async function generateAndWriteHtml(
     '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
     + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
   let output = html.replace(
-    /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
+    pagedjsPolyfillTagRegex(),
     iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
   );
 
@@ -223,7 +224,7 @@ export async function renderChapterPreviewHtml(
     '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
     + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
   let out = html.replace(
-    /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
+    pagedjsPolyfillTagRegex(),
     iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
   );
   if (/<\/head>/i.test(out)) {

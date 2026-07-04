@@ -816,6 +816,38 @@ describe("resolveConflicts", () => {
       await h.cleanup();
     }
   });
+
+  test("recovery merges the racer cleanly but the retry push STILL races → friendly race message, work safe", async () => {
+    const { h, conflict } = await conflictSetup();
+    try {
+      // A racer commits a NON-conflicting file before EVERY push attempt: the
+      // resolution push is rejected, the single recovery pass fetches the new
+      // tip and merges it cleanly, but the retry push is rejected too. The one
+      // recovery pass is exhausted, so the author gets the friendly race
+      // message — never a dead-end — and the entry snapshot keeps the work safe.
+      let n = 0;
+      const httpClient = racingHttpClient(async () => {
+        n++;
+        await serverCommit(h.serverDir, { [`racer-${n}.md`]: `racer ${n}\n` }, `racer ${n}`);
+      }, 10);
+
+      const outcome = await resolveConflicts({
+        projectDir: h.projectDir,
+        resolutions: [{ path: "chapter-01.md", choice: "mine" }],
+        localId: conflict.localId,
+        remoteId: conflict.remoteId,
+        httpClient,
+      });
+      expect(outcome.status).toBe("error");
+      if (outcome.status !== "error") throw new Error("unreachable");
+      expect(outcome.message).toContain("at the same moment");
+      // The work is not lost or left dirty; the merged racer changes landed
+      // locally even though the push could not.
+      expect(await isClean(h.projectDir)).toBe(true);
+    } finally {
+      await h.cleanup();
+    }
+  });
 });
 
 // ── Opening a subfolder syncs the WHOLE enclosing repo (no per-book scoping) ──

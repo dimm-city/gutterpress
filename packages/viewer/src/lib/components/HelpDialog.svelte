@@ -2,7 +2,7 @@
   import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import Icon from "$lib/components/Icon.svelte";
-  import { trapFocus } from "$lib/a11y";
+  import { dialogBehavior } from "$lib/dialog";
 
   interface ToolStatus {
     name: string;
@@ -46,7 +46,6 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
   let copied = $state(false);
-  let dialogEl = $state<HTMLDivElement | undefined>(undefined);
 
   async function load() {
     loading = true;
@@ -64,15 +63,14 @@
     }
   }
 
-  function onDialogMount(_el: HTMLElement) {
-    queueMicrotask(() => dialogEl?.querySelector<HTMLElement>('button:not([disabled]), [href], input:not([disabled])')?.focus());
+  function loadOnOpen(_el: HTMLElement) {
     if (!data && !loading) load();
   }
 
   function close() {
+    // Focus restoration to `triggerEl` is handled by the dialogBehavior action.
     open = false;
     onClose?.();
-    triggerEl?.focus();
   }
 
   function osLabel(os: string) {
@@ -138,7 +136,7 @@
 {#if open}
   <div class="backdrop" onclick={close} role="presentation"></div>
 
-  <div bind:this={dialogEl} class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1" onkeydown={(e) => trapFocus(e, dialogEl)} use:onDialogMount>
+  <div class="dialog" use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "help-title" }} use:loadOnOpen>
     <header class="dialog-header">
       <div class="dialog-title-group">
         <h2 id="help-title">About Print MD</h2>
@@ -294,12 +292,6 @@
     </div>
   </div>
 {/if}
-
-<svelte:window
-  onkeydown={(e) => {
-    if (e.key === "Escape" && open) close();
-  }}
-/>
 
 <style>
   .backdrop {

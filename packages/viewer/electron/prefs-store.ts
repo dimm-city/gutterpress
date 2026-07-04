@@ -60,8 +60,8 @@ export interface ViewerPrefs {
 export interface PrefsStoreDeps {
   getUserDataDir(): string;
   fs: {
-    readFile(p: string, enc: string): Promise<string>;
-    writeFile(p: string, data: string, enc: string): Promise<void>;
+    readFile(p: string, enc: BufferEncoding): Promise<string>;
+    writeFile(p: string, data: string, enc: BufferEncoding): Promise<void>;
     mkdir(p: string, opts: unknown): Promise<unknown>;
     stat(p: string): Promise<{ isDirectory(): boolean }>;
   };

@@ -1,5 +1,6 @@
 import { getChecks, resolveCheckSelectors } from "./registry";
-import { log } from "../lib/logger";
+import { isCheckEnabled } from "./policy";
+import { log } from "../utils/logger";
 import { isToolAvailable } from "../lib/tool-probe";
 import type { ResolvedConfig } from "../schema/manifest.types";
 import type { CheckCategory, CheckPhase } from "./types";
@@ -25,32 +26,26 @@ export async function checkToolAvailability(
   config: ResolvedConfig,
   opts: RunnerOptions = {}
 ): Promise<ToolCheckResult> {
-  // Get the same set of checks the runner would use (before tool filtering)
+  // Get the same set of checks the runner would use (before tool filtering).
+  // Unmatched (mistyped) selectors are deliberately NOT surfaced here: this
+  // function is always paired with runChecks (see validation-exec.ts), which
+  // owns selector validation and emits a `selector.unmatched` error for every
+  // typo in `only`/`skip`. Re-reporting them here would double-warn; a typo can
+  // never produce a silent green because the runner's error fails the report.
   let checks = opts.only?.length
-    ? getChecks({ ids: resolveCheckSelectors(opts.only) })
+    ? getChecks({ ids: resolveCheckSelectors(opts.only).resolved })
     : getChecks({ category: opts.category, phase: opts.phase });
 
   // Apply skip filter
   if (opts.skip?.length) {
-    const skipSet = new Set(resolveCheckSelectors(opts.skip));
+    const skipSet = new Set(resolveCheckSelectors(opts.skip).resolved);
     checks = checks.filter((c) => !skipSet.has(c.id));
   }
 
-  // Filter out checks disabled in manifest
-  checks = checks.filter((c) => {
-    const entry = config.validate.checks[c.id];
-    if (entry === false) return false;
-    if (typeof entry === "object" && entry.enabled === false) return false;
-    return true;
-  });
-
-  // Also filter out source checks disabled via their tool-specific config.
-  // (markdownlint & htmlhint no longer declare requiredTools — they run
-  // in-process — so they're handled by the requiredTools gate below.)
-  checks = checks.filter((c) => {
-    if (c.id === "source.stylelint" && config.validate.source.stylelint === false) return false;
-    return true;
-  });
+  // Filter out disabled checks using the SAME enable logic the runner uses
+  // (manifest disable + each check's declarative `enabledWhen` gate) so tool
+  // probing can never drift from execution.
+  checks = checks.filter((c) => isCheckEnabled(c, config));
 
   // Build tool → check IDs mapping (only for checks that declare requiredTools)
   const toolToChecks = new Map<string, string[]>();

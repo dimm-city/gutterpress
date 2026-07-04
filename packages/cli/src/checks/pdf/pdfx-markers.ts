@@ -1,5 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
+import { finding, inspectionFailed } from "../policy";
 import { execCapture } from "../../lib/exec";
 import {
   getPdfxOutputIntentIssues,
@@ -28,29 +29,30 @@ const check: Check = {
 
       if (!objects) {
         return [
-          {
-            checkId: check.id,
-            severity: "error",
-            message: "Unable to parse qpdf JSON output for PDF/X checks.",
-            file: ctx.pdfPath,
-          },
+          inspectionFailed(
+            check.id,
+            "Unable to parse qpdf JSON output for PDF/X checks.",
+            { file: ctx.pdfPath }
+          ),
         ];
       }
 
-      return getPdfxOutputIntentIssues(objects).map((message) => ({
-        checkId: check.id,
-        severity: "error" as const,
-        message,
-        file: ctx.pdfPath,
-      }));
-    } catch {
-      return [
-        {
-          checkId: check.id,
+      return getPdfxOutputIntentIssues(objects).map((message) =>
+        finding(check.id, {
           severity: "error",
-          message: "Failed to inspect PDF objects with qpdf for PDF/X markers.",
+          message,
           file: ctx.pdfPath,
-        },
+        })
+      );
+    } catch {
+      // A thrown qpdf (missing tool / non-zero exit) is an INSPECTION failure,
+      // not a PDF/X non-conformance — surface it as a warning, not a hard error.
+      return [
+        inspectionFailed(
+          check.id,
+          "Failed to inspect PDF objects with qpdf for PDF/X markers.",
+          { file: ctx.pdfPath }
+        ),
       ];
     }
   },
