@@ -48,7 +48,11 @@ test("assembleBookHtml (pure, in-memory readText) === renderChapters (node, on d
     // Sanity: the assembled HTML carries the rendered markdown + the paged runtime.
     expect(pureHtml).toContain(">Intro</h1>");
     expect(pureHtml).toContain("<strong>world</strong>");
-    expect(pureHtml).toContain("paged.polyfill.js");
+    // Core emits the stable polyfill MARKER, never a live CDN URL — the
+    // un-rewritten book.html must have no network dependency.
+    expect(pureHtml).toContain("data-pagedjs-polyfill");
+    expect(pureHtml).not.toMatch(/https?:\/\//);
+    expect(pureHtml).not.toMatch(/unpkg/);
     expect(pureHtml).toContain('<link rel="stylesheet" href="css/print.css">');
   } finally {
     await rm(dir, { recursive: true, force: true });

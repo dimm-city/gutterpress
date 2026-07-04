@@ -10,6 +10,7 @@ import {
   shipRuntimePaginatedHtml,
   stagePaginationInput,
 } from "./build-runner.ts";
+import { pagedjsPolyfillTag } from "./pagedjs-marker.ts";
 
 // The break-inside handler block is injected by patchHtmlForPagedjs and ends up
 // in the serialized DOM; stripPaginationRuntime must remove it (and the polyfill
@@ -45,6 +46,52 @@ test("stripPaginationRuntime removes a CDN polyfill script tag too", () => {
   const html =
     '<head><script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.js"></script></head>';
   expect(stripPaginationRuntime(html)).not.toMatch(/script/);
+});
+
+// The strip/replace passes must key on the stable marker, NOT the pagedjs
+// version. Prove it: emit the core polyfill slot at a spread of versions (as if
+// the single PAGEDJS_VERSION constant were bumped) and confirm the rewriters
+// still strip AND the navigation scripts survive at every version.
+test("stripPaginationRuntime is version-agnostic (marker, not URL, drives the match)", () => {
+  for (const version of ["0.4.3", "0.5.0", "1.0.0", "42.7.9"]) {
+    const html =
+      "<!DOCTYPE html><html><head>" +
+      `${pagedjsPolyfillTag(version)}` +
+      '<script src="preview/scripts/pagedjs-interface.js"></script>' +
+      '</head><body><div class="pagedjs_page">hi</div></body></html>';
+    const out = stripPaginationRuntime(html);
+    // The polyfill slot is gone at every version...
+    expect(out).not.toMatch(/data-pagedjs-polyfill/);
+    // ...while the navigation script (also contains "pagedjs") survives...
+    expect(out).toMatch(/pagedjs-interface\.js/);
+    // ...and the paginated page DOM is untouched.
+    expect(out).toMatch(/class="pagedjs_page"/);
+  }
+});
+
+// The runtime fallback likewise rewrites the marker slot regardless of version.
+test("shipRuntimePaginatedHtml rewrites the marker slot at any version", async () => {
+  for (const version of ["0.4.3", "9.9.9"]) {
+    const dir = await mkdtemp(join(tmpdir(), "pmd-fallback-ver-"));
+    try {
+      const htmlFile = join(dir, "book.html");
+      await writeFile(
+        htmlFile,
+        "<!DOCTYPE html><html><head>\n" +
+          `${pagedjsPolyfillTag(version)}\n` +
+          "</head><body><p>hello</p></body></html>",
+        "utf-8"
+      );
+      await shipRuntimePaginatedHtml(htmlFile, dir);
+      const result = await readFile(htmlFile, "utf-8");
+      // The marker slot was replaced with the vendored polyfill + nav scripts.
+      expect(result).not.toMatch(/data-pagedjs-polyfill/);
+      expect(result).toMatch(/vendor\/paged\.polyfill\.js/);
+      expect(result).toMatch(/preview\/scripts\/pagedjs-interface\.js/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
 });
 
 test("injectNavigationScripts inserts both toolbar scripts before </head>", () => {

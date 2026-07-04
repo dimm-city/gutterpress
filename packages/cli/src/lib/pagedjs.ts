@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { pagedjsPolyfillTagRegex } from "./pagedjs-marker";
 
 /**
  * Inline script that polyfills Paged.js's missing break-inside: avoid support.
@@ -136,10 +137,10 @@ export async function patchHtmlForPagedjs(
       patched = inject + "\n" + patched;
     }
   } else {
-    // Paged.js already present — replace the polyfill tag with handler +
-    // local vendor copy so PagedConfig.before is set before execution.
-    const pagedScriptRegex = /<script[^>]*src=["'][^"']*paged[^"']*["'][^>]*><\/script>/i;
-    const match = patched.match(pagedScriptRegex);
+    // Paged.js already present — replace the polyfill slot (stable marker, or a
+    // legacy paged.polyfill src) with handler + local vendor copy so
+    // PagedConfig.before is set before execution.
+    const match = patched.match(pagedjsPolyfillTagRegex());
 
     if (match) {
       const inject = `${BREAK_INSIDE_HANDLER}\n<script src="${vendorPath.replace(/\\/g, "/")}"></script>`;

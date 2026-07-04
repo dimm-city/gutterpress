@@ -13,6 +13,7 @@ import { requireChromiumExecutable, resolveChromiumExecutable } from "./chromium
 import { prewarmBrowser, getBrowser, closeBrowser } from "./browser-pool";
 import { isToolAvailable } from "./tool-probe";
 import { patchHtmlForPagedjs } from "./pagedjs";
+import { pagedjsPolyfillTagRegex } from "./pagedjs-marker";
 import {
   convertToPdfxCmyk,
   stampCreator,
@@ -468,14 +469,12 @@ export async function paginateToStaticHtml(stagedHtml: string): Promise<string> 
  */
 export function stripPaginationRuntime(html: string): string {
   let out = html;
-  // (a) Paged.js polyfill <script src=....paged.polyfill.js> (CDN or vendored).
-  //     Match the polyfill FILENAME specifically — a bare "paged" substring also
-  //     matches the navigation scripts (pagedjs-interface.js / pagedjs-bridge.js),
-  //     which must survive.
-  out = out.replace(
-    /<script\b[^>]*\bsrc=["'][^"']*paged\.polyfill[^"']*["'][^>]*>\s*<\/script>/gi,
-    ""
-  );
+  // (a) The Paged.js polyfill <script> slot — identified by the stable
+  //     `data-pagedjs-polyfill` marker OR (post-staging) its `paged.polyfill`
+  //     src. The shared matcher deliberately never matches a bare "pagedjs"
+  //     substring, so the navigation scripts (pagedjs-interface.js /
+  //     pagedjs-bridge.js) survive.
+  out = out.replace(pagedjsPolyfillTagRegex(), "");
   // (b) The inline BreakInsideAvoidHandler block (identified by its class name);
   //     it sets window.PagedConfig.* which is dead without the engine.
   out = out.replace(
@@ -551,7 +550,7 @@ export async function shipRuntimePaginatedHtml(
   );
   const bookSource = await fsp.readFile(htmlFile, "utf-8");
   const bookWithInterface = bookSource.replace(
-    /<script[^>]*src="[^"]*pagedjs[^"]*"[^>]*><\/script>/i,
+    pagedjsPolyfillTagRegex(),
     '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="preview/scripts/pagedjs-bridge.js"></script>\n  <script src="vendor/paged.polyfill.js"></script>'
   );
   await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");

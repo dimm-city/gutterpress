@@ -27,3 +27,14 @@ export type {
 } from "./lib/markdown/renderer";
 
 export { PAGED_CSS } from "./lib/markdown/markdown-it-paged.js";
+
+// The stable Paged.js polyfill marker + matcher (pure, node-free). The viewer's
+// WebAdapter value-imports these to rewrite the assembler's polyfill slot to its
+// own same-origin vendored copy — version-agnostically, via the marker rather
+// than a pinned CDN URL.
+export {
+  PAGEDJS_VERSION,
+  PAGEDJS_POLYFILL_MARKER,
+  pagedjsPolyfillTag,
+  pagedjsPolyfillTagRegex,
+} from "./lib/pagedjs-marker";
