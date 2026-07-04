@@ -44,11 +44,20 @@ async function launchBrowser(timeoutMs: number): Promise<Browser> {
  */
 export function prewarmBrowser(timeoutMs: number): void {
   if (browserPromise) return;
-  browserPromise = launchBrowser(timeoutMs);
-  // Suppress unhandled-rejection if nothing awaits before a failure; real
-  // awaiters (getBrowser) still observe the rejection. Reset so we can retry.
-  browserPromise.catch(() => {
-    browserPromise = null;
+  const p = launchBrowser(timeoutMs);
+  browserPromise = p;
+  p.then((browser) => {
+    // If a long-lived preview/watch server's pooled Chromium crashes or is
+    // otherwise disconnected, drop it so the next getBrowser() relaunches
+    // instead of handing out — and awaiting — a dead instance forever. Guard on
+    // identity so a stale handler can't clear a newer browser.
+    browser.on("disconnected", () => {
+      if (browserPromise === p) browserPromise = null;
+    });
+  }).catch(() => {
+    // Suppress unhandled-rejection if nothing awaits before a failure; real
+    // awaiters (getBrowser) still observe the rejection. Reset so we can retry.
+    if (browserPromise === p) browserPromise = null;
   });
 }
 

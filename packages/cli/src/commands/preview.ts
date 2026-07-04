@@ -28,7 +28,7 @@ export default defineCommand({
     port: { type: "string", description: "Port number (default: 3579, html only)" },
     host: { type: "string", description: "Bind host (default: 127.0.0.1). Pass 0.0.0.0 to expose on the LAN." },
     "no-watch": { type: "boolean", description: "Disable file watching (html only)" },
-    open: { type: "string", description: "Automatically open browser/viewer (default: true)" },
+    open: { type: "boolean", default: true, description: "Automatically open browser/viewer (default: true; use --no-open to skip)" },
     verbose: { type: "boolean", description: "Enable verbose output" },
     debug: { type: "boolean", description: "Debug mode (preserve temporary files)" },
     out: { type: "string", description: "Output directory (pdf|pdfx only)" },
@@ -50,7 +50,7 @@ export default defineCommand({
       }
     }
 
-    const openFlag = args.open !== "false";
+    const openFlag = args.open;
 
     try {
       const format = parseFormat(args.format, { default: "html" });
