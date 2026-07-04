@@ -37,6 +37,7 @@
   import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
   import { ZoomViewController } from "$lib/routes/zoom-view-controller.svelte";
   import { PreviewEventController } from "$lib/routes/preview-event-controller";
+  import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
   import { SyncController } from "$lib/routes/sync-controller.svelte";
   import { RecoveryUiController } from "$lib/routes/recovery-ui-controller.svelte";
   import { buildViewerStyles } from "$lib/iframe-styles";
@@ -166,9 +167,24 @@
   // heading the reader is currently within (updated from sourceLineChanged).
   let outline = $state<OutlineEntry[]>([]);
   let activeOutlineIndex = $state(0);
-  // Timestamp guard: while the preview is being driven from the editor side,
-  // ignore the sourceLineChanged it emits so the two panes don't feed back.
-  let suppressPreviewSyncUntil = 0;
+  // Editor↔preview scroll/anchor timing machine: owns the echo-suppression
+  // window (the timestamp guard that stops the preview's own sourceLineChanged
+  // from bouncing back into the editor), the cross-chapter reveal poll loop, and
+  // the editor→preview anchor follow. Clock + scheduler are injected so the
+  // whole state machine is deterministic under fake timers in its unit test.
+  const editorSync = new EditorPreviewSyncController({
+    client: () => client,
+    rendering: () => rendering,
+    currentDir: () => currentDir,
+    editorChapter: () => editorChapter,
+    hasEditorRef: () => !!editorRef,
+    selectEditorFile: (path) => selectEditorFile(path),
+    revealEditorLine: (line) => editorRef?.revealLine(line),
+    syncPageAfterScroll: (page) =>
+      pageNav.syncPageState({ currentPage: page, totalPages: pageNav.totalPages }),
+    now: () => Date.now(),
+    schedule: (fn, ms) => setTimeout(fn, ms),
+  });
   // ── User settings (#45) ────────────────────────────────────────────────
   // bgColor, viewMode and zoom are sourced from the persisted settings store
   // (their old inline defaults #5a5a5a / two-column / fit-width now live in
@@ -967,7 +983,7 @@
     }
     const rel = p.file ?? p.filePath.split(/[\\/]/).pop() ?? p.filePath;
     if (p.line) {
-      followChapterInEditor(rel, p.line);
+      editorSync.followChapterInEditor(rel, p.line);
     } else {
       selectEditorFile(p.filePath);
     }
@@ -1080,14 +1096,14 @@
     pageNav,
     zoomView,
     editorSync: {
-      suppressPreviewSyncUntil: () => suppressPreviewSyncUntil,
+      suppressPreviewSyncUntil: () => editorSync.suppressPreviewSyncUntil,
       editorPaneOpen: () => editorPaneOpen,
       editorChapter: () => editorChapter,
       currentDir: () => currentDir,
       bufferDirty: () => !!buffer?.isDirty,
       updateActiveOutline: (line) => updateActiveOutline(line),
       revealEditorLine: (line) => editorRef?.revealLine(line),
-      followChapterInEditor: (chapter, line) => followChapterInEditor(chapter, line),
+      followChapterInEditor: (chapter, line) => editorSync.followChapterInEditor(chapter, line),
     },
     zoom: () => zoom,
     viewMode: () => viewMode,
@@ -1713,84 +1729,17 @@
     // scroll-driven follow, so a cross-chapter jump must move the editor here
     // explicitly — otherwise the preview lands on the new chapter while the
     // editor is left on the old file (they desync).
-    suppressPreviewSyncUntil = Date.now() + 400;
+    editorSync.suppressFor(400);
     if (entry.sourceLine != null && editorPaneOpen) {
       if (entry.chapter === editorChapter) {
         editorRef?.revealLine(entry.sourceLine);
       } else if (entry.chapter && currentDir && !buffer?.isDirty) {
-        followChapterInEditor(entry.chapter, entry.sourceLine);
+        editorSync.followChapterInEditor(entry.chapter, entry.sourceLine);
       }
     }
     client
       .scrollTo(target, { block: "start" })
       .then((res) => {
-        if (res?.page) pageNav.syncPageState({ currentPage: res.page, totalPages: pageNav.totalPages });
-      })
-      .catch(() => {});
-  }
-
-  // Cross-chapter follow (preview→editor): open the scrolled chapter's file and
-  // reveal the line once the buffer has actually swapped to it. Polls editorChapter
-  // (the file load is async) rather than guessing at timing, with a ~2s cap.
-  let crossChapterReveal:
-    | { chapter: string; line: number; tries: number; nudges: number }
-    | null = null;
-  function followChapterInEditor(chapter: string, line: number) {
-    if (!currentDir) return;
-    const dir = currentDir.replace(/[\\/]+$/, "");
-    crossChapterReveal = { chapter, line, tries: 0, nudges: 0 };
-    // Join with the directory's own separator: on Windows currentDir uses
-    // backslashes, and a mixed-separator path still LOADS (Win32 accepts it)
-    // but never string-equals the host-native paths from listDir — so the
-    // FileTree active highlight silently desyncs after a cross-chapter jump.
-    const sep = dir.includes("\\") ? "\\" : "/";
-    selectEditorFile(`${dir}${sep}${chapter.replaceAll("/", sep)}`);
-    pumpCrossChapterReveal();
-  }
-  function pumpCrossChapterReveal() {
-    const r = crossChapterReveal;
-    if (!r) return;
-    if (editorChapter === r.chapter && editorRef) {
-      // The file load swaps the editor doc and resets scroll to the TOP, and
-      // that reset can land AFTER our first reveal — so re-issue the reveal a
-      // few times (~250ms) so the last one wins. Without this the editor sat at
-      // the top of the newly-opened chapter instead of the synced line.
-      suppressPreviewSyncUntil = Date.now() + 300;
-      editorRef.revealLine(r.line);
-      if (++r.nudges >= 5) {
-        crossChapterReveal = null;
-        return;
-      }
-      setTimeout(pumpCrossChapterReveal, 50);
-      return;
-    }
-    // Still waiting for the async file load to swap the buffer to this chapter.
-    if (r.tries++ > 40) {
-      crossChapterReveal = null;
-      return;
-    }
-    setTimeout(pumpCrossChapterReveal, 50);
-  }
-
-  // Editor→preview: the caret moved or the editor scrolled. Drive the preview to
-  // the matching source line WITHIN the open chapter; guard the echo so the
-  // preview's resulting sourceLineChanged doesn't bounce back into the editor.
-  function onEditorAnchorLine(line: number, origin: "scroll" | "caret") {
-    if (!client || rendering) return;
-    suppressPreviewSyncUntil = Date.now() + 400;
-    // Scroll-driven anchors are the editor's TOP visible line → anchor the
-    // preview block to the TOP so the panes agree. Caret-driven anchors carry
-    // no viewport position (the caret sits anywhere), so CENTER the target —
-    // top-anchoring it disagreed with the editor by the caret's distance from
-    // the editor top (QA finding RC1-5).
-    client
-      .scrollTo(
-        { line, chapter: editorChapter },
-        { block: origin === "caret" ? "center" : "start" },
-      )
-      .then((res) => {
-        // scrollTo suppresses the book's scroll-driven pageChanged, so reflect
-        // the new page in the toolbar from the command's own return value.
         if (res?.page) pageNav.syncPageState({ currentPage: res.page, totalPages: pageNav.totalPages });
       })
       .catch(() => {});
@@ -2554,7 +2503,7 @@
                 filePath={editorFilePath}
                 content={editorContent}
                 onChange={onEditorChange}
-                onAnchorLine={onEditorAnchorLine}
+                onAnchorLine={(line, origin) => editorSync.onEditorAnchorLine(line, origin)}
               />
               {/key}
             {:else if editorModuleFailed}
