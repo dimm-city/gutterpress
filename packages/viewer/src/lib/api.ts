@@ -31,7 +31,67 @@ async function get<T>(url: string): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-// ── Local type declarations (mirrors from contract.ts — no import to keep SPA clean) ─
+// ── Contract DTOs — the single source of truth ───────────────────────────────
+//
+// These were previously RE-DECLARED here, and one copy had already drifted
+// (`ProjectRemoteDiagnosis.classification` was `any` instead of the typed
+// `ProjectSource`). They are now imported type-only from `./platform/contract`
+// (which itself sources them from `shared-types.ts` / the lib), so the api
+// client and the host/renderer contract can never disagree again. `import type`
+// is fully erased at build, so the SPA still never value-imports the lib
+// (§8 / ADR 0004 renderer purity). Re-exported so existing `$lib/api` type
+// consumers keep resolving.
+export type {
+  PluginKind,
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
+  ProjectStyle,
+  FileWriteResult,
+  FileStat,
+  RecoveryEntry,
+  ConflictKind,
+  ConflictPreview,
+  SnapshotEntry,
+  RemoteConnection,
+  RemoteRepository,
+  RemoteBranch,
+  RepoBook,
+  RemoteAccessResult,
+  ProjectRemoteDiagnosis,
+  ConnectGenericHostArgs,
+  HostConnectionInfo,
+  SyncOutcome,
+} from './platform/contract';
+
+import type {
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
+  ProjectStyle,
+  FileWriteResult,
+  FileStat,
+  RecoveryEntry,
+  ConflictKind,
+  ConflictPreview,
+  SnapshotEntry,
+  RemoteConnection,
+  RemoteRepository,
+  RemoteBranch,
+  RepoBook,
+  RemoteAccessResult,
+  ProjectRemoteDiagnosis,
+  ConnectGenericHostArgs,
+  HostConnectionInfo,
+  SyncOutcome,
+  ProjectClassification,
+} from './platform/contract';
+
+// ── Genuinely api-local shapes (no canonical twin in the contract) ───────────
 
 export interface TemplateInfo {
   id: string;
@@ -47,54 +107,6 @@ export interface SnippetEntry {
   variables: string[];
 }
 
-// ── Plugin manager types ────────────────────────────────────────────────────
-
-export type PluginKind = 'local' | 'npm';
-
-export interface ProjectPluginEntry {
-  ref: string;
-  kind: PluginKind;
-  enabled: boolean;
-}
-
-export interface PluginValidationResult {
-  ref: string;
-  kind: PluginKind;
-  enabled: boolean;
-  ok: boolean;
-  error?: string;
-}
-
-export interface RecommendedPlugin {
-  name: string;
-  label?: string;
-  description: string;
-  builtin?: boolean;
-}
-
-// ── Theme manager types ─────────────────────────────────────────────────────
-
-export interface ThemeInfo {
-  id: string;
-  name: string;
-  author?: string;
-  description: string;
-  kind: 'builtin' | 'project';
-  preview?: string | null;
-}
-
-export type ApplyThemeTarget =
-  | { kind: 'builtin'; id: string }
-  | { kind: 'project'; id: string };
-
-// ── Style resolver type ─────────────────────────────────────────────────────
-
-export interface ProjectStyle {
-  path: string;
-  displayName: string;
-  active: boolean;
-}
-
 // ── Project configuration view (#PCV) — author-facing manifest subset ──────
 // Declared locally (mirrors the lib's `ProjectConfigFields`) so the SPA bundle
 // stays free of value imports from `@dimm-city/print-md` (§8 renderer purity).
@@ -108,16 +120,6 @@ export interface ProjectConfigFields {
   sourceFiles?: string[] | null;
 }
 
-export interface FileWriteResult {
-  mtimeMs: number;
-}
-
-export interface FileStat {
-  mtimeMs: number;
-  size: number;
-  exists: boolean;
-}
-
 export interface DirEntry {
   name: string;
   path: string;
@@ -128,133 +130,6 @@ export interface ProjectFileEntry {
   md: string[];
   css: string[];
 }
-
-export interface RecoveryEntry {
-  filePath: string;
-  recoveryPath: string;
-  savedAt: number;
-  baseMtimeMs: number;
-}
-
-export type ConflictKind = 'both-edited' | 'you-deleted' | 'online-deleted';
-
-export interface ConflictPreview {
-  mine: string;
-  theirs: string;
-  kind: ConflictKind;
-  isBinary: boolean;
-}
-
-export interface SnapshotEntry {
-  id: string;
-  message: string;
-  timestamp: number;
-  author?: string;
-}
-
-/** Mirrors contract.ts ProjectClassification — defined locally to keep SPA bundle clean. */
-export interface VcsProjectClassification {
-  source: unknown;
-  capabilities: unknown;
-}
-
-// ── Remote connection types (#15, #14) ─────────────────────────────────────────
-// Mirrors contract.ts / preload.ts shapes — defined locally so the SPA never
-// value-imports the lib or the Electron-side modules (§8 / ADR 0004).
-
-export interface RemoteConnection {
-  connected: boolean;
-  username?: string;
-  label?: string;
-}
-
-export interface RemoteRepository {
-  owner: string;
-  name: string;
-  fullName: string;
-  private: boolean;
-  defaultBranch: string;
-  htmlUrl: string;
-}
-
-export interface RemoteBranch {
-  name: string;
-}
-
-export interface RepoBook {
-  path: string;
-  name: string;
-}
-
-export type RemoteAccessResult =
-  | { ok: true; defaultBranch?: string; refCount: number }
-  | {
-      ok: false;
-      reason: 'auth' | 'not-found' | 'unreachable' | 'ssh-unsupported' | 'tls' | 'unknown';
-      message: string;
-    };
-
-export interface ProjectRemoteDiagnosis {
-  classification: any;
-  remoteUrl?: string;
-  remoteHost?: string;
-  remoteProtocol: 'https' | 'ssh' | 'none';
-  branch?: string;
-  credentialPresent: boolean;
-  provider:
-    | 'github'
-    | 'gitea'
-    | 'forgejo'
-    | 'gitlab'
-    | 'bitbucket'
-    | 'azure'
-    | 'generic'
-    | null;
-  tokenSettingsUrl: string | null;
-  canSync: boolean;
-  guidance:
-    | 'local-only'
-    | 'connect-github-to-sync'
-    | 'https-connect-server'
-    | 'ready-to-sync'
-    | 'ssh-use-own-tools';
-}
-
-export interface ConnectGenericHostArgs {
-  host: string;
-  username?: string;
-  token: string;
-  repoUrl?: string;
-}
-
-export interface HostConnectionInfo {
-  host: string;
-  kind: 'github-oauth' | 'token';
-  username?: string;
-  label?: string;
-  createdAt: number;
-}
-
-export type SyncOutcome =
-  | {
-      status: 'synced';
-      message: string;
-      snapshotId?: string;
-      mergedRemoteChanges: boolean;
-      filesChanged?: boolean;
-    }
-  | { status: 'up-to-date'; message: string; snapshotId?: string; filesChanged?: boolean }
-  | {
-      status: 'conflict';
-      message: string;
-      files: Array<{ path: string; kind: 'both-edited' | 'you-deleted' | 'online-deleted' }>;
-      localId: string;
-      remoteId: string;
-      snapshotId?: string;
-    }
-  | { status: 'auth'; message: string; snapshotId?: string; filesChanged?: boolean }
-  | { status: 'offline'; message: string; snapshotId?: string; filesChanged?: boolean }
-  | { status: 'error'; message: string; snapshotId?: string; filesChanged?: boolean };
 
 /** Typed API client for all server routes under src/routes/api/. */
 export const api = {
@@ -524,7 +399,7 @@ export const api = {
 
   vcs: {
     enableVersionHistory: (projectDir: string) =>
-      post<VcsProjectClassification>('/api/vcs/enable-version-history', { projectDir }),
+      post<ProjectClassification>('/api/vcs/enable-version-history', { projectDir }),
     listSnapshotsPage: (projectDir: string, options?: { limit?: number; before?: string }) =>
       post<{ entries: SnapshotEntry[]; hasMore: boolean }>('/api/vcs/list-snapshots-page', { projectDir, ...options }),
     restoreSnapshot: (projectDir: string, id: string) =>
