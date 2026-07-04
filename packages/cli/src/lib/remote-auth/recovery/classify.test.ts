@@ -4,8 +4,38 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { classifyGitError, classifyFromHealth } from "./classify.ts";
+import { classifyGitError, classifyFromHealth, isMergeConflictError } from "./classify.ts";
 import type { RepoHealth } from "./types.ts";
+
+// ── isMergeConflictError — the ONE decoder (also used by sync.ts and by
+//    recover-unrelated-histories.ts, which must NOT keep its own copy) ─────────
+
+describe("isMergeConflictError", () => {
+  test("true only for code === 'MergeConflictError' and narrows the payload", () => {
+    const err = {
+      code: "MergeConflictError",
+      data: {
+        filepaths: ["manifest.yaml"],
+        bothModified: ["manifest.yaml"],
+        deleteByUs: [],
+        deleteByTheirs: [],
+      },
+    };
+    expect(isMergeConflictError(err)).toBe(true);
+    if (isMergeConflictError(err)) {
+      // Type guard narrows .data — recover-unrelated-histories relies on this
+      // instead of an inline cast.
+      expect(err.data.filepaths).toContain("manifest.yaml");
+    }
+  });
+
+  test("false for any other error code or shape", () => {
+    expect(isMergeConflictError({ code: "PushRejectedError" })).toBe(false);
+    expect(isMergeConflictError(new Error("merge conflict"))).toBe(false);
+    expect(isMergeConflictError(undefined)).toBe(false);
+    expect(isMergeConflictError(null)).toBe(false);
+  });
+});
 
 // ── Health helpers ────────────────────────────────────────────────────────────
 

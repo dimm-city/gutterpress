@@ -49,6 +49,10 @@ import httpNode from "isomorphic-git/http/node";
 import { gitAuthor } from "../../source-provider.ts";
 import { conflictFilesFrom, onAuthFor } from "../sync.ts";
 import { resolveLogger, shortOid } from "../operation-log.ts";
+// The single MergeConflictError decoder lives in classify.ts (there must be
+// exactly ONE decoder — see its header); this handler consumes it rather than
+// keeping a parallel copy + inline .data cast.
+import { isMergeConflictError } from "./classify.ts";
 import { withBackupGate } from "./failsafe.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";
 import type { ManualGuidance, RecoverFn, RecoveryResult } from "./types.ts";
@@ -58,13 +62,6 @@ const fs = fsSync;
 const KIND = "unrelated_histories" as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Detect a MergeConflictError thrown by isomorphic-git's merge().
- */
-function isMergeConflictError(e: unknown): boolean {
-  return (e as { code?: string })?.code === "MergeConflictError";
-}
 
 /**
  * Guidance for the blocked paths (no remote configured / remote ref missing):
@@ -221,16 +218,8 @@ export const recover: RecoverFn = async (ctx, error?) => {
         if (!isMergeConflictError(mergeErr)) throw mergeErr;
 
         // ── 3. File conflicts — surface to the user ───────────────────────
-        const conflictFiles = conflictFilesFrom(
-          (mergeErr as {
-            data: {
-              filepaths: string[];
-              bothModified: string[];
-              deleteByUs: string[];
-              deleteByTheirs: string[];
-            };
-          }).data,
-        );
+        // The shared guard narrows mergeErr.data — no inline cast needed.
+        const conflictFiles = conflictFilesFrom(mergeErr.data);
         logger.warn("merge", "merge conflict — surfacing to user", {
           files: conflictFiles.map((f) => f.path),
         });
