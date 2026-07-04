@@ -360,11 +360,17 @@ async function paginateAndCapture(
       timeout: timeoutMs,
       },
     )
-    .catch(() => {
-      // Paged.js never signaled __PAGED_RENDERED__ within the timeout. Proceed
-      // with whatever rendered so we still emit output, but don't swallow it
-      // silently — an unsignaled run can ship a blank/partial PDF, and the user
-      // deserves a breadcrumb when the result looks wrong.
+    .catch((err: unknown) => {
+      // ONLY a wait timeout is tolerable: Paged.js never signaled
+      // __PAGED_RENDERED__ in time, so proceed with whatever rendered but warn
+      // (an unsignaled run can ship a blank/partial PDF). Any OTHER failure —
+      // page crash, execution-context loss, navigation teardown — is a real
+      // error and must propagate; masking it would silently emit broken output.
+      // puppeteer-core throws a TimeoutError (identified by name to avoid a
+      // runtime import of the class, keeping §2 lazy-loading intact).
+      if ((err as { name?: string } | undefined)?.name !== "TimeoutError") {
+        throw err;
+      }
       log.warn(
         `Pagination did not complete within ${Math.round(
           timeoutMs / 1000
