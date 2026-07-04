@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
+import { finding, inspectionFailed } from "../policy";
 
 const FONT_FACE_PATTERN = /@font-face\s*\{[^}]*src:\s*([^;]+)/g;
 const URL_PATTERN = /url\(\s*['"]?([^'")\s]+)['"]?\s*\)/g;
@@ -46,17 +47,22 @@ const check: Check = {
             const fontPath = resolve(cssDir, cleanUrl);
 
             if (!existsSync(fontPath)) {
-              results.push({
-                checkId: check.id,
-                severity: "error",
-                message: `Font file not found: ${cleanUrl}`,
-                file: cssFile,
-              });
+              results.push(
+                finding(check.id, {
+                  severity: "error",
+                  message: `Font file not found: ${cleanUrl}`,
+                  file: cssFile,
+                })
+              );
             }
           }
         }
       } catch {
-        // File read error
+        results.push(
+          inspectionFailed(check.id, `Could not read CSS file: ${cssFile}`, {
+            file: cssFile,
+          })
+        );
       }
     }
 

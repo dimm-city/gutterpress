@@ -44,5 +44,13 @@ export interface Check {
   phase: CheckPhase;
   /** External CLI tools this check requires (e.g. ["qpdf", "pdfinfo"]) */
   requiredTools?: string[];
+  /**
+   * Declarative enable gate driven by config (beyond the generic
+   * `validate.checks[id]` enable/disable). Lets a check own a tool-specific
+   * config switch — e.g. `source.stylelint === false` — so the runner and
+   * tool-check never need per-check special cases. Returning `false` disables
+   * the check for enablement/tool-probing purposes.
+   */
+  enabledWhen?: (config: ResolvedConfig) => boolean;
   run(ctx: CheckContext): Promise<CheckResult[]>;
 }

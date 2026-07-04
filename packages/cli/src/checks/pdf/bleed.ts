@@ -1,5 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
+import { finding, inspectionFailed } from "../policy";
 import { readPdfBytes } from "../../lib/pdf-parse";
 
 /** Extract the first `/Box [x0 y0 x1 y1]` array from raw PDF bytes. */
@@ -31,12 +32,9 @@ const check: Check = {
     const bytes = await readPdfBytes(ctx.pdfPath).catch(() => "");
     if (!bytes) {
       return [
-        {
-          checkId: check.id,
-          severity: "warning",
-          message: "Could not inspect PDF for bleed boxes.",
+        inspectionFailed(check.id, "Could not inspect PDF for bleed boxes.", {
           file: ctx.pdfPath,
-        },
+        }),
       ];
     }
 
@@ -46,24 +44,20 @@ const check: Check = {
 
     if (!media) {
       return [
-        {
-          checkId: check.id,
-          severity: "warning",
-          message: "Could not parse MediaBox from PDF.",
+        inspectionFailed(check.id, "Could not parse MediaBox from PDF.", {
           file: ctx.pdfPath,
-        },
+        }),
       ];
     }
 
     if (!trim && !bleed) {
       return [
-        {
-          checkId: check.id,
+        finding(check.id, {
           severity: "warning",
           message:
             "No TrimBox or BleedBox found. Bleed area cannot be verified.",
           file: ctx.pdfPath,
-        },
+        }),
       ];
     }
 
@@ -73,12 +67,11 @@ const check: Check = {
       const bleedSize = ctx.config.validate.pdf.bleedSize;
       if (mediaW - trimW < bleedSize * 2 * 0.9) {
         return [
-          {
-            checkId: check.id,
+          finding(check.id, {
             severity: "warning",
             message: `Bleed area appears insufficient. Expected at least ${bleedSize}pt on each side.`,
             file: ctx.pdfPath,
-          },
+          }),
         ];
       }
     }

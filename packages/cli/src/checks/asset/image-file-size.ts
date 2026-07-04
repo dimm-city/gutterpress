@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
+import { finding, inspectionFailed } from "../policy";
 import { collectImageFiles } from "../../lib/image-inspect";
 import { ALL_IMAGE_EXTS } from "./extensions";
 
@@ -26,15 +27,20 @@ const check: Check = {
         if (info.size > maxSize) {
           const sizeMb = (info.size / 1_000_000).toFixed(1);
           const maxMb = (maxSize / 1_000_000).toFixed(1);
-          results.push({
-            checkId: check.id,
-            severity: "warning",
-            message: `Image file too large: ${sizeMb}MB (max ${maxMb}MB)`,
-            file,
-          });
+          results.push(
+            finding(check.id, {
+              severity: "warning",
+              message: `Image file too large: ${sizeMb}MB (max ${maxMb}MB)`,
+              file,
+            })
+          );
         }
       } catch {
-        // File stat error, skip
+        results.push(
+          inspectionFailed(check.id, `Could not stat image file: ${file}`, {
+            file,
+          })
+        );
       }
     }
 

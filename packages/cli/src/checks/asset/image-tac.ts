@@ -1,5 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
+import { finding, inspectionFailed } from "../policy";
 import { execCapture } from "../../lib/exec";
 import { collectImageFiles } from "../../lib/image-inspect";
 import { RASTER_INSPECTABLE_EXTS } from "./extensions";
@@ -41,20 +42,29 @@ const check: Check = {
           ) {
             const tac = (nums[0]! + nums[1]! + nums[2]! + nums[3]!) * 100;
             if (tac > maxTac) {
-              results.push({
-                checkId: check.id,
-                severity: "warning",
-                message: `Image TAC exceeds limit: ${tac.toFixed(1)}% (max ${maxTac}%)`,
-                file,
-                code: "image-tac-exceeded",
-                data: { tac, limit: maxTac },
-              });
+              results.push(
+                finding(check.id, {
+                  severity: "warning",
+                  message: `Image TAC exceeds limit: ${tac.toFixed(1)}% (max ${maxTac}%)`,
+                  file,
+                  code: "image-tac-exceeded",
+                  data: { tac, limit: maxTac },
+                })
+              );
               break;
             }
           }
         }
       } catch {
-        // gs not available or failed
+        // gs was probed as available (requiredTools gate) but failed on this
+        // image — an inspection failure, surfaced rather than silently dropped.
+        results.push(
+          inspectionFailed(
+            check.id,
+            `Could not inspect image ink coverage: ${file}`,
+            { file }
+          )
+        );
       }
     }
 

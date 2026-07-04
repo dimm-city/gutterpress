@@ -1,5 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
+import { finding, inspectionFailed } from "../policy";
 import { execCapture } from "../../lib/exec";
 import {
   getPdfxMetadataIssues,
@@ -29,29 +30,31 @@ const check: Check = {
       const objects = parseQpdfObjectsJson(stdout);
       if (!objects) {
         return [
-          {
-            checkId: check.id,
-            severity: "error",
-            message: "Unable to parse qpdf JSON output for PDF/X metadata checks.",
-            file: ctx.pdfPath,
-          },
+          inspectionFailed(
+            check.id,
+            "Unable to parse qpdf JSON output for PDF/X metadata checks.",
+            { file: ctx.pdfPath }
+          ),
         ];
       }
 
-      return getPdfxMetadataIssues(objects, ctx.config.pdfx.flavor).map((message) => ({
-        checkId: check.id,
-        severity: "error" as const,
-        message,
-        file: ctx.pdfPath,
-      }));
+      return getPdfxMetadataIssues(objects, ctx.config.pdfx.flavor).map(
+        (message) =>
+          finding(check.id, {
+            severity: "error",
+            message,
+            file: ctx.pdfPath,
+          })
+      );
     } catch {
+      // A thrown qpdf (missing tool / non-zero exit) is an INSPECTION failure,
+      // not a PDF/X non-conformance — surface it as a warning, not a hard error.
       return [
-        {
-          checkId: check.id,
-          severity: "error",
-          message: "Failed to inspect PDF objects with qpdf for PDF/X metadata.",
-          file: ctx.pdfPath,
-        },
+        inspectionFailed(
+          check.id,
+          "Failed to inspect PDF objects with qpdf for PDF/X metadata.",
+          { file: ctx.pdfPath }
+        ),
       ];
     }
   },

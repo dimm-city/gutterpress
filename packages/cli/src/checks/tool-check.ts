@@ -1,4 +1,5 @@
 import { getChecks, resolveCheckSelectors } from "./registry";
+import { isCheckEnabled } from "./policy";
 import { log } from "../utils/logger";
 import { isToolAvailable } from "../lib/tool-probe";
 import type { ResolvedConfig } from "../schema/manifest.types";
@@ -36,21 +37,10 @@ export async function checkToolAvailability(
     checks = checks.filter((c) => !skipSet.has(c.id));
   }
 
-  // Filter out checks disabled in manifest
-  checks = checks.filter((c) => {
-    const entry = config.validate.checks[c.id];
-    if (entry === false) return false;
-    if (typeof entry === "object" && entry.enabled === false) return false;
-    return true;
-  });
-
-  // Also filter out source checks disabled via their tool-specific config.
-  // (markdownlint & htmlhint no longer declare requiredTools — they run
-  // in-process — so they're handled by the requiredTools gate below.)
-  checks = checks.filter((c) => {
-    if (c.id === "source.stylelint" && config.validate.source.stylelint === false) return false;
-    return true;
-  });
+  // Filter out disabled checks using the SAME enable logic the runner uses
+  // (manifest disable + each check's declarative `enabledWhen` gate) so tool
+  // probing can never drift from execution.
+  checks = checks.filter((c) => isCheckEnabled(c, config));
 
   // Build tool → check IDs mapping (only for checks that declare requiredTools)
   const toolToChecks = new Map<string, string[]>();

@@ -1,5 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
+import { inspectionFailed } from "../policy";
 import { loadPdf, isLoadable } from "../../lib/pdf-inspect";
 
 const check: Check = {
@@ -17,12 +18,11 @@ const check: Check = {
     const doc = await loadPdf(ctx.pdfPath);
     if (!doc || !(await isLoadable(doc))) {
       return [
-        {
-          checkId: check.id,
-          severity: "warning",
-          message: "PDF could not be fully parsed — possible structural issues.",
-          file: ctx.pdfPath,
-        },
+        inspectionFailed(
+          check.id,
+          "PDF could not be fully parsed — possible structural issues.",
+          { file: ctx.pdfPath }
+        ),
       ];
     }
     return [];

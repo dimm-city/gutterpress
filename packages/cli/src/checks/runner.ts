@@ -7,6 +7,7 @@ import type {
   CheckSeverity,
 } from "./types";
 import { getChecks, resolveCheckSelectors } from "./registry";
+import { isCheckEnabled } from "./policy";
 import type { ResolvedConfig } from "../schema/manifest.types";
 
 export interface RunnerOptions {
@@ -31,16 +32,6 @@ export interface RunnerReport {
     infos: number;
     passed: number;
   };
-}
-
-function isCheckEnabled(
-  checkId: string,
-  config: ResolvedConfig
-): boolean {
-  const entry = config.validate.checks[checkId];
-  if (entry === false) return false;
-  if (typeof entry === "object" && entry.enabled === false) return false;
-  return true;
 }
 
 function getCheckSeverityOverride(
@@ -84,7 +75,7 @@ export async function runChecks(
   if (ctx.config.validate.enabled === false) {
     return emptyReport();
   }
-  checks = checks.filter((c) => isCheckEnabled(c.id, ctx.config));
+  checks = checks.filter((c) => isCheckEnabled(c, ctx.config));
 
   // Filter out checks skipped due to missing tools
   if (opts.skipMissingTools && opts.skipMissingTools.length > 0) {
