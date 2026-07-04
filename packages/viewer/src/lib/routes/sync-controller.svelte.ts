@@ -156,7 +156,10 @@ export class SyncController {
         this.deps.toast()?.info?.("You appear to be offline. Try again when connected.");
       } else {
         if (outcome.filesChanged) this.deps.onFilesChanged();
-        // Generic error state — surface the message if available.
+        // Generic error state. Deliberately a friendly fixed string, NOT
+        // outcome.message: that field carries raw git/network error text that is
+        // unhelpful (and often alarming) to the non-technical authors this app
+        // targets. Details remain available via the advanced Sync surface.
         this.deps.toast()?.error("Sync failed. Check your connection and try again.");
       }
     } catch (e) {
