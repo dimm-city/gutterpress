@@ -13,6 +13,7 @@ import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { startPreviewServer, type PreviewServerHandle } from './server';
+import { getLogLevel, debug, reset as resetLogLevel } from './utils/logger';
 
 let handle: PreviewServerHandle | null = null;
 let tempDir: string;
@@ -28,6 +29,9 @@ afterEach(async () => {
     handle = null;
   }
   await rm(tempDir, { recursive: true, force: true });
+  // Verbose tests below raise the shared log level — restore the default so
+  // subsequent suites see INFO.
+  resetLogLevel();
 });
 
 describe('startPreviewServer handle', () => {
@@ -108,6 +112,35 @@ describe('startPreviewServer handle', () => {
     } finally {
       process.exit = originalExit;
     }
+  });
+
+  test('verbose:true raises the log level to DEBUG so debug() lines emit', async () => {
+    resetLogLevel();
+    expect(getLogLevel()).toBe('INFO');
+
+    handle = await startPreviewServer({
+      input: tempDir,
+      port: 0,
+      host: '127.0.0.1',
+      verbose: true,
+      noWatch: true,
+      openBrowser: false,
+      installSignalHandlers: false,
+    });
+
+    expect(getLogLevel()).toBe('DEBUG');
+
+    const messages: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      messages.push(args.join(' '));
+    };
+    try {
+      debug('verbose-wired debug line');
+    } finally {
+      console.log = originalLog;
+    }
+    expect(messages.some((m) => m.includes('verbose-wired debug line'))).toBe(true);
   });
 
   test('no-input mode: server boots without an input directory', async () => {

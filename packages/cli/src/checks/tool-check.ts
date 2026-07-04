@@ -1,5 +1,5 @@
 import { getChecks, resolveCheckSelectors } from "./registry";
-import { log } from "../lib/logger";
+import { log } from "../utils/logger";
 import { isToolAvailable } from "../lib/tool-probe";
 import type { ResolvedConfig } from "../schema/manifest.types";
 import type { CheckCategory, CheckPhase } from "./types";

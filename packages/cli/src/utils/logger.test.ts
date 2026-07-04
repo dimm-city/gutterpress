@@ -11,6 +11,7 @@ import {
   info,
   warn,
   error,
+  success,
   silence,
   reset,
   type LogLevel,
@@ -158,6 +159,46 @@ describe('Logger', () => {
       expect(logMessages.length).toBe(0);
       // ERROR still shows (silence sets level to ERROR, not above it)
       // This is by design for testing - errors should always be visible
+    });
+  });
+
+  describe('success helper', () => {
+    test('emits a success message to console.log', () => {
+      success('made a thing');
+
+      expect(logMessages.some((msg) => msg.includes('made a thing'))).toBe(true);
+      expect(errorMessages.length).toBe(0);
+    });
+  });
+
+  describe('log facade (command call-sites)', () => {
+    test('exposes info/warn/error/success methods', () => {
+      expect(typeof log.info).toBe('function');
+      expect(typeof log.warn).toBe('function');
+      expect(typeof log.error).toBe('function');
+      expect(typeof log.success).toBe('function');
+    });
+
+    test('routes info/success to console.log, warn to console.warn, error to console.error', () => {
+      const warnMessages: string[] = [];
+      const originalWarn = console.warn;
+      console.warn = (...args: unknown[]) => {
+        warnMessages.push(args.join(' '));
+      };
+      try {
+        log.info('facade info');
+        log.warn('facade warn');
+        log.success('facade ok');
+        log.error('facade error');
+      } finally {
+        console.warn = originalWarn;
+      }
+
+      expect(logMessages.some((m) => m.includes('facade info'))).toBe(true);
+      expect(warnMessages.some((m) => m.includes('facade warn'))).toBe(true);
+      expect(logMessages.some((m) => m.includes('facade ok'))).toBe(true);
+      expect(errorMessages.some((m) => m.includes('facade error'))).toBe(true);
+      expect(logMessages.some((m) => m.includes('facade error'))).toBe(false);
     });
   });
 

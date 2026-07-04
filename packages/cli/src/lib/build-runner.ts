@@ -22,7 +22,7 @@ import { BOOK_HTML_FILENAME } from "./viewer";
 import { getAssetPath } from "./embedded-assets";
 import { runLint } from "./lint-runner";
 import { executeAndReport } from "./validation-exec";
-import { log } from "./logger";
+import { log } from "../utils/logger";
 
 export type BuildFormat = "html" | "pdf" | "pdfx";
 export type PdfxFlavor = "x1a" | "x3";

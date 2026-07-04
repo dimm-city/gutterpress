@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
-import { log } from "./logger";
+import { log } from "../utils/logger";
 import { BOOK_HTML_FILENAME } from "./viewer";
 import { formatReport, type OutputFormat } from "../checks/formatter";
 import { runChecks, type RunnerOptions, type RunnerReport } from "../checks/runner";

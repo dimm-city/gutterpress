@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
-import { log } from "./logger";
+import { log } from "../utils/logger";
 import { checkCss, ruleRiskyProps } from "./printsafe";
 
 export interface LintRunnerOptions {
