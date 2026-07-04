@@ -1,0 +1,117 @@
+// ──────────────────────────────────────────────────────────────────────────
+// Viewer prefs (viewer-prefs.json) — session/per-project state persisted
+// separately from durable user settings (app-settings.json, ./settings-store).
+// Holds the last open project, sidebar/panel state, recent/favorite folders,
+// per-project editor/preview state, and the legacy top-level page/mode fields
+// kept ONE version as a migration fallback (#43).
+//
+// Phase 5b: extracted (behavior-identical) from electron/main.ts. The
+// ViewerPrefs shape + the prefsPath/readPrefs/writePrefs/existingDirectory
+// read/write path live here behind an injected-fs store factory so they can be
+// unit-tested with fakes (tests/platform/prefs-store). main.ts instantiates the
+// store with the live Electron userData dir + node:fs/promises and the imported
+// migrateLegacyProjectState, and uses the returned closures unchanged.
+// ──────────────────────────────────────────────────────────────────────────
+
+import path from "node:path";
+import type { ProjectStateMap } from "./project-state";
+import type { RecentFolder, FavoriteFolder } from "./recent-folders";
+import type { ProjectSource } from "@dimm-city/print-md";
+
+export interface ViewerPrefs {
+  lastProjectDir?: string;
+  /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
+  sidebarOpen?: boolean;
+  /**
+   * @deprecated (#43) Pre-per-project global page. Kept ONE version as a
+   * migration fallback (see migrateLegacyProjectState); new writes go to
+   * projectStates[dir].currentPage. Remove in a later release.
+   */
+  currentPage?: number;
+  /**
+   * @deprecated (#43) Pre-per-project global view mode. Kept ONE version as a
+   * migration fallback; new writes go to projectStates[dir].viewMode.
+   */
+  viewMode?: "single" | "two-column";
+  recentFolders?: RecentFolder[];
+  favorites?: FavoriteFolder[];
+  /**
+   * Per-project editor/preview state keyed by folder path (#43). Opening
+   * project B never overwrites project A's page/view/chapter state.
+   */
+  projectStates?: ProjectStateMap;
+  /** Root dirs scanned by app:discoverProjects (#27). Defaults applied below. */
+  projectSearchRoots?: string[];
+  /**
+   * Last classified source of the open project (#12). Cached so the UI can
+   * render without re-detecting on launch, but the renderer always re-classifies
+   * on folder open (a user may add/remove `.git` between sessions), so this is a
+   * hint, not the source of truth.
+   */
+  projectSource?: ProjectSource;
+  /** Global left panel open state + active tab, persisted across sessions. */
+  leftPanel?: {
+    open?: boolean;
+    activeTab?: "toc" | "files" | "media" | "projects" | "history";
+    width?: number;
+  };
+}
+
+export interface PrefsStoreDeps {
+  getUserDataDir(): string;
+  fs: {
+    readFile(p: string, enc: string): Promise<string>;
+    writeFile(p: string, data: string, enc: string): Promise<void>;
+    mkdir(p: string, opts: unknown): Promise<unknown>;
+    stat(p: string): Promise<{ isDirectory(): boolean }>;
+  };
+  migrateLegacyProjectState: (
+    prefs: ViewerPrefs,
+  ) => ProjectStateMap | null | undefined;
+}
+
+export function createPrefsStore(deps: PrefsStoreDeps): {
+  readPrefs(): Promise<ViewerPrefs>;
+  writePrefs(p: ViewerPrefs): Promise<void>;
+  prefsPath(): string;
+  existingDirectory(dir: string | undefined): Promise<string | null>;
+} {
+  function prefsPath(): string {
+    return path.join(deps.getUserDataDir(), "viewer-prefs.json");
+  }
+
+  async function readPrefs(): Promise<ViewerPrefs> {
+    try {
+      const prefs = JSON.parse(
+        await deps.fs.readFile(prefsPath(), "utf8"),
+      ) as ViewerPrefs;
+      // #43 one-time migration: seed projectStates from the legacy top-level
+      // currentPage/viewMode so existing users don't lose their saved state.
+      const migrated = deps.migrateLegacyProjectState(prefs);
+      if (migrated && !prefs.projectStates) {
+        prefs.projectStates = migrated;
+      }
+      return prefs;
+    } catch {
+      return {};
+    }
+  }
+
+  async function writePrefs(prefs: ViewerPrefs): Promise<void> {
+    await deps.fs.mkdir(deps.getUserDataDir(), { recursive: true });
+    await deps.fs.writeFile(prefsPath(), JSON.stringify(prefs, null, 2), "utf8");
+  }
+
+  async function existingDirectory(
+    dir: string | undefined,
+  ): Promise<string | null> {
+    if (!dir) return null;
+    try {
+      return (await deps.fs.stat(dir)).isDirectory() ? dir : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return { readPrefs, writePrefs, prefsPath, existingDirectory };
+}

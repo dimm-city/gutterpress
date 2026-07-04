@@ -6,7 +6,9 @@ const root = path.resolve(import.meta.dir, "../..");
 const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
 
 test("ProjectConfigPanel theme thumbnails always render a non-blank fallback", () => {
-  const src = read("src/lib/components/ProjectConfigPanel.svelte");
+  // The theme grid + thumbnail markup was extracted into the AppearanceSection
+  // child when ProjectConfigPanel was split into a composition root + sections.
+  const src = read("src/lib/components/config/AppearanceSection.svelte");
   expect(src).toContain("theme-fallback-title");
   expect(src).toContain("Theme preview loading");
   expect(src).not.toContain("thumb-placeholder\" aria-hidden=\"true\"");

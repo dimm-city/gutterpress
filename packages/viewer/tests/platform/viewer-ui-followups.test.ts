@@ -44,9 +44,10 @@ test("files tab no longer has configure project button and embedded panels own t
 test("bottom status uses save icons, slower autosave default, and compact mobile rules", () => {
   const status = read("src/lib/components/StatusBar.svelte");
   const contract = read("src/lib/platform/contract.ts");
-  const main = read("electron/main.ts");
+  // DEFAULT_SETTINGS moved to electron/settings-store.ts (Phase 5b extraction).
+  const settingsStore = read("electron/settings-store.ts");
   expect(contract).toContain("autoSaveDelay: 2500");
-  expect(main).toContain("autoSaveDelay: 2500");
+  expect(settingsStore).toContain("autoSaveDelay: 2500");
   expect(status).toContain("saveStateIcon");
   expect(status).toContain("pending changes");
   expect(status).toContain("@media screen and (max-width: 820px)");

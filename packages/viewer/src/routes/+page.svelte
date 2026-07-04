@@ -9,14 +9,10 @@
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type {
-    ConflictFileInfo,
-    ManualGuidanceInfo,
     ProblemEntry,
     ProjectCapabilities,
     ProjectClassification,
-    ProjectRemoteDiagnosis,
     RecoveryConfirmRequest,
-    RecoveryProgressInfo,
     SnapshotEntry,
   } from "$lib/platform/contract";
   import { problemCounts } from "$lib/problems";
@@ -37,9 +33,13 @@
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewTarget } from "$lib/preview-client";
+  import { activeOutlineIndexForLine } from "$lib/routes/outline";
+  import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
+  import { SyncController } from "$lib/routes/sync-controller.svelte";
+  import { RecoveryUiController } from "$lib/routes/recovery-ui-controller.svelte";
   import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
-  import { api, type SyncOutcome } from "$lib/api";
+  import { api } from "$lib/api";
   import { basenameOf, joinPath } from "$lib/platform/paths";
   import { shouldReconcileAfterSync } from "$lib/sync-status";
   import { onMount } from "svelte";
@@ -53,36 +53,18 @@
     keyboardOffset,
   } from "$lib/editor/mobile-layout";
   import { commandForSaveShortcut } from "$lib/editor/save-shortcuts";
+  import { resolveGlobalShortcut, resolvePreviewNavCommand } from "$lib/routes/shortcuts";
   import { clampSplitRatio, splitRatioFromDrag, splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
   import { useSettings, _loadSettings } from "$lib/settings.svelte";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
-
-  type DiagnosticsTool = {
-    name: string;
-    found: boolean;
-    usedBy: Array<{ feature: string; severity: "required" | "optional" }>;
-  };
-  type UrlPreviewBlockedEvent = {
-    url: string;
-    reason: string;
-  };
-  type PageState = {
-    currentPage?: number;
-    totalPages?: number;
-  };
-  // Per-project editor/preview state (#43), keyed by folder path in the main
-  // process. currentPage/viewMode are live; the rest are dead schema for the
-  // forthcoming in-app editor (#38) / chapter list (#42).
-  type PersistedProjectState = {
-    currentPage?: number;
-    viewMode?: "single" | "two-column";
-    lastChapter?: string;
-    sidebarOpen?: boolean;
-    cursorLine?: number;
-    editorScroll?: number;
-    splitPaneRatio?: number;
-  };
+  import { friendlyFolderError, friendlyPdfError } from "$lib/errors";
+  import { UpdateController } from "$lib/update/update-controller.svelte";
+  import type {
+    DiagnosticsTool,
+    UrlPreviewBlockedEvent,
+    PersistedProjectState,
+  } from "$lib/routes/page-types";
 
   // Per-screen state
   let previewUrl = $state<string | null>(null);
@@ -138,11 +120,22 @@
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
-  let currentPage = $state(1);
-  let totalPages = $state(0);
-  let pageEditing = $state(false);
-  let pageEditValue = $state("1");
   let pageEditInput = $state<HTMLInputElement | undefined>(undefined);
+  // Page-navigation FSM (Phase 5): owns currentPage/totalPages/pageEditing/
+  // pageEditValue/restoringSavedState + the host-driven navigation intents.
+  // Host coupling is injected so the component stays a thin composition root.
+  const pageNav = new PageNavController({
+    client: () => client,
+    isRendering: () => rendering,
+    viewMode: () => viewMode,
+    savePrefs: (patch) => saveViewerPrefs(patch),
+    savePageDirect: (page) => {
+      if (currentDir) {
+        api.app.setViewerProjectState(currentDir, { currentPage: page }).catch(() => {});
+      }
+    },
+    onBeginEdit: () => queueMicrotask(() => pageEditInput?.focus()),
+  });
 
   // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
   // outline drives the chapter-jump dropdown; activeOutlineIndex tracks the
@@ -177,7 +170,6 @@
   let lastProjectChecked = $state(false);
   let pendingRestorePage = $state<number | null>(null);
   let pendingRestoreViewMode = $state<"single" | "two-column" | null>(null);
-  let restoringSavedState = $state(false);
 
   // Toast controller (populated by Toast.svelte via bind:api)
   let toast = $state<ToastController | null>(null);
@@ -238,13 +230,11 @@
   let urlPreviewError = $state<string | null>(null);
 
   // ── Auto-update state ──────────────────────────────────────────────────
-  /** Non-null when a staged bundle is ready to apply (restart to update). */
-  let updateReadyVersion = $state<string | null>(null);
-  /** Non-null when a check found an update but it hasn't been downloaded yet. */
-  let updateAvailableVersion = $state<string | null>(null);
-  let updateBannerDismissed = $state(false);
-  let checkingUpdates = $state(false);
-  let downloadingUpdate = $state(false);
+  // The whole update FSM (banner version state, check/download/apply intents,
+  // and the mount-time status peek + event subscription) lives in the
+  // UpdateController (Phase 5); the view drives it via intent methods and reads
+  // its rune getters. Toast feedback is injected through an accessor seam.
+  const updateController = new UpdateController(() => toast);
 
   // UX-026: focus-restoration reference for the Help dialog
   let helpBtn = $state<HTMLButtonElement | undefined>(undefined);
@@ -260,42 +250,33 @@
   let newProjectOpen = $state(false);
   let newProjectWizardRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
   let newProjectBtn = $state<HTMLButtonElement | undefined>(undefined);
-  let syncDiag = $state<ProjectRemoteDiagnosis | null>(null);
-  // Manual force-save / force-sync state for the status bar action buttons.
+  // Manual force-save state for the status bar action button.
   let forceSaving = $state(false);
-  let forceSyncing = $state(false);
-  // ConflictChoicesDialog (#transparent-sync §6.1): opened by the ambient
-  // SyncStatusPill when the auto-sync orchestrator reports a conflict.
-  let conflictOpen = $state(false);
-  let conflictFiles = $state<ConflictFileInfo[]>([]);
-  let conflictLocalId = $state<string | null>(null);
-  let conflictRemoteId = $state<string | null>(null);
+  // Sync-outcome routing + conflict/diagnosis state (Phase 5b). Owns the
+  // syncDiag / forceSyncing runes and the ConflictChoicesDialog state
+  // (#transparent-sync §6.1: opened by the ambient SyncStatusPill when the
+  // auto-sync orchestrator reports a conflict). Host coupling injected so the
+  // routing is unit-testable and PWA-clean (§8). onSyncCompleted /
+  // onSyncFilesChanged stay component methods (they touch toast +
+  // leftPanelRef.notifyHistoryRefresh + buffer).
+  const syncController = new SyncController({
+    syncChanges: (dir) => api.remote.syncChanges(dir),
+    diagnose: (dir) => api.remote.diagnoseProjectRemote(dir),
+    currentDir: () => currentDir,
+    toast: () => toast,
+    onSyncCompleted: (mergedRemoteChanges, filesChanged) =>
+      onSyncCompleted(mergedRemoteChanges, filesChanged),
+    onFilesChanged: () => onSyncFilesChanged(),
+  });
 
   // ── Recovery UI state (transparent sync recovery) ────────────────────────────
-  // RecoveryOverlay: shown during automated repair (non-blocking scrim over preview pane).
-  let recoveryOverlayVisible = $state(false);
-  let recoveryOverlayPhase = $state<RecoveryProgressInfo["phase"]>("checking");
-  let recoveryOverlayState = $state<"recovering" | "recovered">("recovering");
-  let recoveryBackupZipPath = $state<string | undefined>(undefined);
-  let recoveryLogFilePath = $state<string | null>(null);
-  // RecoveryGuidanceDialog: shown when repair is blocked / classifiable error.
-  let recoveryGuidanceOpen = $state(false);
-  let recoveryGuidance = $state<ManualGuidanceInfo | undefined>(undefined);
-  let recoveryGuidanceBackupPath = $state<string | null>(null);
-  let recoveryGuidanceLogPath = $state<string | null>(null);
-  // RecoveryConfirmDialog: shown when host needs author approval for a risky repair.
-  let recoveryConfirmOpen = $state(false);
-  let recoveryConfirmRequest = $state<RecoveryConfirmRequest | undefined>(undefined);
-
-  async function refreshSyncDiag(dir: string) {
-    try {
-      const diag = await api.remote.diagnoseProjectRemote(dir);
-      // Project may have changed while the diagnosis was in flight.
-      if (currentDir === dir) syncDiag = diag;
-    } catch {
-      syncDiag = null;
-    }
-  }
+  // The whole recovery UI state machine (RecoveryOverlay scrim, the blocked-
+  // repair RecoveryGuidanceDialog, and the risky-repair RecoveryConfirmDialog)
+  // lives in the RecoveryUiController (Phase 5b). The two onMount subscriptions
+  // below keep the DOM/host glue (project-scope filter + reconcile) and delegate
+  // the transitions to recovery.applyStatus / recovery.applyConfirm; the template
+  // reads its rune getters and binds its open flags.
+  const recovery = new RecoveryUiController();
 
   function onSyncFilesChanged() {
     buffer?.reconcileExternalChange().catch(() => {});
@@ -323,7 +304,7 @@
   // The single Reconnect action (ADR 0006 D7): route to the matching connect
   // flow — GitHub's device flow, or Advanced Setup for every other server.
   function onSyncReconnect() {
-    if (syncDiag?.provider === "github") githubOpen = true;
+    if (syncController.syncDiag?.provider === "github") githubOpen = true;
     else advancedSetupOpen = true;
   }
 
@@ -331,7 +312,7 @@
   // action key — NOT always-reconnect (the exact bug this fixes). Each branch
   // targets the flow the error kind actually calls for.
   function onRecoveryGuidancePrimary() {
-    switch (recoveryGuidance?.recommendedActionKey) {
+    switch (recovery.recoveryGuidance?.recommendedActionKey) {
       case "reconnect":
         onSyncReconnect();
         break;
@@ -340,19 +321,19 @@
         break;
       case "sync":
         // Retry the sync; handleForceSync also routes conflicts to the chooser.
-        void handleForceSync();
+        void syncController.handleForceSync();
         break;
       case "resolve_conflict":
         // Re-run the sync so the conflict chooser opens with fresh file IDs
         // (handleForceSync sets conflictOpen on a "conflict" outcome).
-        void handleForceSync();
+        void syncController.handleForceSync();
         break;
       case "restore_repo":
         // Re-run the sync/recovery path: the orchestrator re-classifies the repo
         // state and dispatches the matching recovery handler (e.g. the
         // interrupted-rebase / interrupted-cherry-pick abort), which re-prompts
         // for confirmation before the backup + repair.
-        void handleForceSync();
+        void syncController.handleForceSync();
         break;
       default:
         // Forward-compat safety net for an unrecognized key: do nothing (the
@@ -363,58 +344,13 @@
     }
   }
 
-  /**
-   * Called by the ambient SyncStatusPill when the auto-sync orchestrator emits
-   * a conflict state (§6.1). Opens the ConflictChoicesDialog immediately with
-   * the file list from the status event, then fetches the conflict IDs
-   * (localId/remoteId) via syncChanges — the only path that returns a
-   * SyncOutcome carrying those IDs. The confirm button stays disabled until the
-   * IDs arrive (ConflictChoicesDialog guards on !localId || !remoteId).
-   */
-  function onPillConflict(files: ConflictFileInfo[]) {
-    if (!currentDir) return;
-    conflictFiles = files;
-    conflictLocalId = null;
-    conflictRemoteId = null;
-    conflictOpen = true;
-    // The SyncStatus payload does not carry localId/remoteId — those are only
-    // in the SyncOutcome returned by syncChanges (contract.ts lines 527-528).
-    // Fetch them now so ConflictChoicesDialog.confirm() can call resolveSyncConflicts.
-    const dir = currentDir;
-    api.remote
-      .syncChanges(dir)
-      .then((outcome: SyncOutcome) => {
-        // Discard if the user switched projects or already closed the dialog.
-        if (currentDir !== dir || !conflictOpen) return;
-        if (outcome.status === "conflict") {
-          conflictFiles = outcome.files;
-          conflictLocalId = outcome.localId;
-          conflictRemoteId = outcome.remoteId;
-        } else if (outcome.status === "synced") {
-          // Conflict resolved on its own (race between pill event + sync call).
-          conflictOpen = false;
-          onSyncCompleted(outcome.mergedRemoteChanges, outcome.filesChanged === true);
-        } else if (outcome.status === "up-to-date") {
-          conflictOpen = false;
-          onSyncCompleted(false, outcome.filesChanged === true);
-        }
-        // auth/offline/error: leave the dialog open so the user can still
-        // "Decide later"; the confirm button remains disabled.
-      })
-      .catch(() => {
-        // Network/host error: leave the dialog open at the file list view.
-        // The confirm button stays disabled; the History panel's advanced Sync
-        // surface remains available as a fallback.
-      });
-  }
-
   // Completes the D7 Reconnect journey: a connect dialog closing may mean a
   // new credential was just stored — re-check syncability so the Sync
   // button and the dialog's auth state reflect it without a project reload.
   // Called by onClosed on both GitHubDialog and AdvancedSetupDialog.
   function onConnectDialogClosed() {
     if (currentDir && sourceMode === "folder") {
-      void refreshSyncDiag(currentDir);
+      void syncController.refreshSyncDiag(currentDir);
     }
   }
 
@@ -434,36 +370,7 @@
       if (shouldReconcileAfterSync(status)) {
         onSyncFilesChanged();
       }
-
-      if (status.state === "recovering") {
-        // Automated repair in progress — show the non-dismissable overlay.
-        recoveryOverlayVisible = true;
-        recoveryOverlayState = "recovering";
-        recoveryOverlayPhase = status.recovery?.phase ?? "checking";
-        recoveryBackupZipPath = status.backupZipPath;
-        recoveryLogFilePath = status.logFile ?? null;
-        // Close guidance dialog if a new recovery attempt starts.
-        recoveryGuidanceOpen = false;
-      } else if (status.state === "recovered") {
-        // Repair completed — transition overlay to success state; it auto-dismisses.
-        recoveryOverlayVisible = true;
-        recoveryOverlayState = "recovered";
-        recoveryBackupZipPath = status.backupZipPath ?? recoveryBackupZipPath;
-        recoveryLogFilePath = status.logFile ?? recoveryLogFilePath;
-      } else if (status.state === "error" && status.guidance) {
-        // Classified failure that needs manual guidance — hide overlay, open dialog.
-        recoveryOverlayVisible = false;
-        recoveryGuidance = status.guidance;
-        recoveryGuidanceBackupPath = status.backupZipPath ?? null;
-        recoveryGuidanceLogPath = status.logFile ?? null;
-        recoveryGuidanceOpen = true;
-      } else {
-        // Any other state (synced/up-to-date/offline/auth/conflict/idle) — if the
-        // overlay was showing (e.g. from a previous recovery cycle), hide it.
-        if (status.state !== "syncing") {
-          recoveryOverlayVisible = false;
-        }
-      }
+      recovery.applyStatus(status);
     });
     return () => off?.();
   });
@@ -475,8 +382,7 @@
   onMount(() => {
     if (!isDesktop()) return;
     const off = getPlatform().onRecoveryConfirm((req: RecoveryConfirmRequest) => {
-      recoveryConfirmRequest = req;
-      recoveryConfirmOpen = true;
+      recovery.applyConfirm(req);
     });
     return () => off?.();
   });
@@ -488,7 +394,7 @@
 
   /** Called when the RecoveryOverlay auto-dismiss or Done button fires. */
   function onRecoveryOverlayDone() {
-    recoveryOverlayVisible = false;
+    recovery.dismissOverlay();
   }
 
   let versionHistoryOpen = $state(false);
@@ -1165,7 +1071,7 @@
     c.on((e) => {
       if (e.name === "renderingComplete") {
         const n = e.detail.totalPages ?? 0;
-        totalPages = n;
+        pageNav.totalPages = n;
         renderProgressPage = n;
         rendering = false;
         // Keep the overlay up while the post-render layout settles. The pages
@@ -1209,7 +1115,7 @@
           }
         })();
         if (restorePage && restorePage > 1) {
-          queueMicrotask(() => restoreProjectPage(restorePage));
+          queueMicrotask(() => pageNav.restoreProjectPage(restorePage));
         }
         // UX-011: improved success toast copy
         toast?.success(`Your book is ready — ${n} ${n === 1 ? 'page' : 'pages'}`);
@@ -1245,12 +1151,12 @@
       } else if (e.name === "pageChanged") {
         if (rendering) {
           renderProgressPage = e.detail.totalPages ?? renderProgressPage;
-          totalPages = e.detail.totalPages ?? totalPages;
+          pageNav.totalPages = e.detail.totalPages ?? pageNav.totalPages;
           // Live splash sub-status during the (potentially multi-second) render.
           const pg = e.detail.totalPages ?? renderProgressPage;
           if (pg) api.app.splashStatus(undefined, undefined, `Laying out page ${pg}`).catch(() => {});
         } else {
-          syncPageState(e.detail);
+          pageNav.syncPageState(e.detail);
         }
       } else if (e.name === "ready") {
         rendering = true;
@@ -1261,7 +1167,7 @@
         api.app.splashStatus("Rendering pages…", 70).catch(() => {});
         client?.call<number>("getTotalPages").then((n) => {
           if (n > 0) {
-            totalPages = n;
+            pageNav.totalPages = n;
           }
         }).catch(() => {});
       }
@@ -1274,69 +1180,36 @@
 
   // Surface the restart banner if an update was already downloaded (this
   // session's background check, or a prior session that never restarted),
-  // then subscribe to future events.
-  onMount(() => {
-    if (!isDesktop()) return;
-    const platform = getPlatform();
-
-    // Peek at current status so we can surface a banner immediately if an
-    // update was found or downloaded during a previous run.
-    platform.updater.getStatus()
-      .then((status: { stagedVersion: string | null; availableVersion: string | null }) => {
-        if (status.stagedVersion) {
-          updateReadyVersion = status.stagedVersion;
-          updateBannerDismissed = false;
-        } else if (status.availableVersion) {
-          updateAvailableVersion = status.availableVersion;
-          updateBannerDismissed = false;
-        }
-      })
-      .catch(() => {});
-
-    // Subscribe to future events from main.
-    // Events fire for BOTH the silent background launch/focus check and the
-    // manual "Check for updates" button. React to "available" (show the
-    // Download banner) and "staged" (show the restart banner) live.
-    // "uptodate"/"error" are intentionally silent — surfacing them here would
-    // toast on every launch and would double-toast during a manual check
-    // (which drives its own feedback from the IPC return value in
-    // checkForUpdates()).
-    const off = platform.updater.onEvent((event: { type: string; version?: string }) => {
-      if (event.type === "available") {
-        updateAvailableVersion = event.version ?? null;
-        updateBannerDismissed = false;
-      } else if (event.type === "staged") {
-        updateReadyVersion = event.version ?? null;
-        updateAvailableVersion = null;
-        updateBannerDismissed = false;
-      }
-    });
-
-    return () => off?.();
-  });
+  // then subscribe to future events. Owned by the UpdateController.
+  onMount(() => updateController.init());
 
   // ----------------------------------------------------------------
   // Global keyboard shortcuts (available without a loaded document)
   // ----------------------------------------------------------------
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
+      const command = resolveGlobalShortcut({
+        ctrlOrMeta: e.ctrlKey || e.metaKey,
+        shift: e.shiftKey,
+        key: e.key,
+      });
       // Cmd/Ctrl+, opens the Settings panel (toggles closed if already open).
-      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+      if (command === "settings") {
         e.preventDefault();
         settingsOpen = !settingsOpen;
       }
       // Cmd/Ctrl+E toggles the in-app editor (#38) when a folder is open.
-      if ((e.ctrlKey || e.metaKey) && (e.key === "e" || e.key === "E")) {
+      if (command === "toggle-editor") {
         e.preventDefault();
         toggleEditor();
       }
       // Cmd/Ctrl+\ toggles the left panel
-      if ((e.ctrlKey || e.metaKey) && e.key === "\\") {
+      if (command === "toggle-left-panel") {
         e.preventDefault();
         toggleLeftPanel();
       }
       // Cmd/Ctrl+Shift+S opens the snippet picker (#29) when a project is open.
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "s" || e.key === "S")) {
+      if (command === "snippet") {
         e.preventDefault();
         openSnippetPicker();
         return;
@@ -1375,49 +1248,47 @@
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (t?.isContentEditable || t?.closest?.(".cm-editor")) return;
 
-      // Cmd/Ctrl+Shift+E explicitly exports PDF. Plain Cmd/Ctrl+S is handled by
-      // the global shortcut above as "save source edits" when an editor file is
-      // open, so it never surprises writers by opening PDF export.
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'e' || e.key === 'E')) {
-        e.preventDefault();
-        if (canSavePdf) savePdf();
-        return;
-      }
+      const command = resolvePreviewNavCommand({
+        ctrlOrMeta: e.ctrlKey || e.metaKey,
+        shift: e.shiftKey,
+        key: e.key,
+      });
 
-      switch (e.key) {
-        case "ArrowRight":
-        case "PageDown":
+      switch (command) {
+        // Cmd/Ctrl+Shift+E explicitly exports PDF. Plain Cmd/Ctrl+S is handled by
+        // the global shortcut above as "save source edits" when an editor file is
+        // open, so it never surprises writers by opening PDF export.
+        case "export-pdf":
           e.preventDefault();
-          nextPage();
-          break;
-        case "ArrowLeft":
-        case "PageUp":
+          if (canSavePdf) savePdf();
+          return;
+        case "next":
           e.preventDefault();
-          prevPage();
+          pageNav.nextPage();
           break;
-        case "Home":
+        case "prev":
           e.preventDefault();
-          firstPage();
+          pageNav.prevPage();
           break;
-        case "End":
+        case "first":
           e.preventDefault();
-          lastPage();
+          pageNav.firstPage();
           break;
-        case "+":
-        case "=":
+        case "last":
+          e.preventDefault();
+          pageNav.lastPage();
+          break;
+        case "zoom-in":
           e.preventDefault();
           stepZoom(0.25);
           break;
-        case "-":
+        case "zoom-out":
           e.preventDefault();
           stepZoom(-0.25);
           break;
-        case "f":
-        case "F":
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            applyZoom("fit-width");
-          }
+        case "fit-width":
+          e.preventDefault();
+          applyZoom("fit-width");
           break;
         // UX-004: 'D' shortcut for debug removed — non-technical writers should
         // not accidentally trigger debug mode.
@@ -1451,46 +1322,6 @@
   // ----------------------------------------------------------------
   // Actions
   // ----------------------------------------------------------------
-
-  function friendlyFolderError(msg: string): string {
-    if (/manifest|print-md\.yaml|No such file/i.test(msg)) {
-      return "This doesn't look like a print-md project — we couldn't find a print-md.yaml file. Make sure you're opening the right folder.";
-    }
-    if (/ENOENT|not found/i.test(msg)) {
-      return "The folder couldn't be read. Check that it exists and you have permission to open it.";
-    }
-    if (/permission|EACCES/i.test(msg)) {
-      return "Permission denied. Check that you have access to this folder.";
-    }
-    return "Something went wrong opening this folder. Try again, or choose a different folder.";
-  }
-
-  function friendlyPdfError(e: unknown): string {
-    const msg = e instanceof Error ? e.message : String(e);
-    const code = (e as any)?.code ?? "";
-    if (code === "EXPORT_CANCELED") {
-      return "";
-    }
-    if (code === "BUILD_ERROR") {
-      const firstLine = msg.split("\n")[0]?.trim() ?? msg;
-      return `PDF generation failed: ${firstLine}. Open Help (?) for setup details.`;
-    }
-    if (code === "TOOL_MISSING") {
-      const match = msg.match(/Required system tool not found: ([^\n]+)/);
-      const tool = match?.[1]?.trim() ?? "a required tool";
-      return `PDF export needs "${tool}" installed. Open Help (?) → System tools to see how to install it.`;
-    }
-    if (/chrome|chromium|browser/i.test(msg)) {
-      return "PDF export needs a browser (Chrome or Edge) installed. Open Help (?) for setup details.";
-    }
-    if (/ENOENT|not found/i.test(msg)) {
-      return "Could not find a required program. Open Help (?) → System tools to check what needs to be installed.";
-    }
-    if (/permission|EACCES/i.test(msg)) {
-      return "Permission denied saving the PDF. Try saving to a different folder (like your Desktop).";
-    }
-    return "PDF export failed. Open Help (?) → System tools to check for issues.";
-  }
 
   async function startFolderPreview(
     dir: string,
@@ -1562,7 +1393,7 @@
       projectCapabilities = null;
       projectSharesParentHistory = false;
       projectSubPath = "";
-      syncDiag = null;
+      syncController.syncDiag = null;
       api.app
         .classifyProject(dir)
         .then((result) => {
@@ -1582,7 +1413,7 @@
           // when the diagnosis says the project is actually syncable (HTTPS
           // remote + a stored connection). Local reads only; fire-and-forget.
           if (typedResult.capabilities.canSync) {
-            void refreshSyncDiag(dir);
+            void syncController.refreshSyncDiag(dir);
           }
         })
         .catch(() => {
@@ -1595,8 +1426,8 @@
       previewUrl = data.url;
       rendering = true;
       renderProgressPage = 0;
-      totalPages = 0;
-      currentPage = 1;
+      pageNav.totalPages = 0;
+      pageNav.currentPage = 1;
       const restoredViewMode = restoreState?.viewMode;
       pendingRestoreViewMode = restoredViewMode ?? null;
       pendingRestorePage = restoreState?.currentPage && restoreState.currentPage > 1
@@ -1699,8 +1530,8 @@
       previewUrl = url;
       rendering = false;
       renderProgressPage = 0;
-      totalPages = 0;
-      currentPage = 1;
+      pageNav.totalPages = 0;
+      pageNav.currentPage = 1;
     });
   }
 
@@ -1744,9 +1575,9 @@
     rendering = false;
     renderProgressPage = 0;
     renderCompleteOverlay = false;
-    totalPages = 0;
-    currentPage = 1;
-    pageEditing = false;
+    pageNav.totalPages = 0;
+    pageNav.currentPage = 1;
+    pageNav.pageEditing = false;
     editorOpen = false;
     previewHidden = false;
     buffer?.reset();
@@ -1879,70 +1710,16 @@
     await getPlatform().cancelExport(exportController.activeExportId).catch(() => {});
   }
 
-  function syncPageState(state: PageState | undefined) {
-    if (!state) return;
-    currentPage = state.currentPage ?? currentPage;
-    totalPages = state.totalPages ?? totalPages;
-    if (!pageEditing) pageEditValue = String(currentPage);
-    saveViewerPrefs({ currentPage });
-  }
-
+  // Page-navigation intents (syncPageState / restoreProjectPage /
+  // runPageCommand / gotoPage / begin|cancel|commitPageEdit /
+  // first|prev|next|lastPage) now live on `pageNav` (PageNavController).
   function saveViewerPrefs(patch: Partial<PersistedProjectState>) {
-    if (!currentDir || sourceMode !== "folder" || rendering || restoringSavedState) return;
+    if (!currentDir || sourceMode !== "folder" || rendering || pageNav.restoringSavedState) return;
     // Per-project state (#43): write to the folder-keyed bucket so this never
     // overwrites another project's saved page/view. The main process also
     // updates lastProjectDir, so reopening lands on this project.
     api.app.setViewerProjectState(currentDir, patch as Record<string, unknown>).catch(() => {});
   }
-
-  function restoreProjectPage(page: number) {
-    if (!client || rendering) return;
-    restoringSavedState = true;
-    client.call<PageState>("goToPage", [page])
-      .then((state) => {
-        currentPage = state.currentPage ?? currentPage;
-        totalPages = state.totalPages ?? totalPages;
-        if (!pageEditing) pageEditValue = String(currentPage);
-        if (currentDir) {
-          api.app.setViewerProjectState(currentDir, { currentPage }).catch(() => {});
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        restoringSavedState = false;
-      });
-  }
-
-  function runPageCommand(cmd: string, args: unknown[] = []) {
-    if (!client || rendering) return;
-    client.call<PageState>(cmd, args).then(syncPageState).catch(() => {});
-  }
-
-  function gotoPage(n: number) {
-    runPageCommand("goToPage", [n]);
-  }
-  function beginPageEdit() {
-    if (rendering) return;
-    pageEditing = true;
-    pageEditValue = String(currentPage);
-    queueMicrotask(() => pageEditInput?.focus());
-  }
-  function cancelPageEdit() {
-    pageEditing = false;
-    pageEditValue = String(currentPage);
-  }
-  function commitPageEdit() {
-    const next = Number(pageEditValue);
-    if (Number.isFinite(next)) {
-      const clamped = Math.max(1, Math.min(totalPages || 1, Math.round(next)));
-      gotoPage(clamped);
-    }
-    pageEditing = false;
-  }
-  function firstPage() { runPageCommand("firstPage"); }
-  function prevPage() { runPageCommand("prevPage", [viewMode]); }
-  function nextPage() { runPageCommand("nextPage", [viewMode]); }
-  function lastPage() { runPageCommand("lastPage"); }
 
   // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
   function refreshOutline() {
@@ -1962,13 +1739,7 @@
   // the dropdown's current-chapter label + highlight).
   function updateActiveOutline(line: number) {
     if (outline.length === 0) return;
-    let idx = 0;
-    for (let i = 0; i < outline.length; i++) {
-      const sl = outline[i].sourceLine;
-      if (sl != null && sl <= line) idx = i;
-      else if (sl != null && sl > line) break;
-    }
-    activeOutlineIndex = idx;
+    activeOutlineIndex = activeOutlineIndexForLine(outline, line);
   }
 
   // Jump the preview (and, if open, the editor) to a heading.
@@ -2000,7 +1771,7 @@
     client
       .scrollTo(target, { block: "start" })
       .then((res) => {
-        if (res?.page) syncPageState({ currentPage: res.page, totalPages });
+        if (res?.page) pageNav.syncPageState({ currentPage: res.page, totalPages: pageNav.totalPages });
       })
       .catch(() => {});
   }
@@ -2067,7 +1838,7 @@
       .then((res) => {
         // scrollTo suppresses the book's scroll-driven pageChanged, so reflect
         // the new page in the toolbar from the command's own return value.
-        if (res?.page) syncPageState({ currentPage: res.page, totalPages });
+        if (res?.page) pageNav.syncPageState({ currentPage: res.page, totalPages: pageNav.totalPages });
       })
       .catch(() => {});
   }
@@ -2351,77 +2122,6 @@
     };
   });
 
-  // ── Auto-update actions ────────────────────────────────────────────────
-
-  async function checkForUpdates() {
-    if (!isDesktop()) return;
-    checkingUpdates = true;
-    toast?.info("Checking for updates…");
-    try {
-      const status: {
-        phase: string;
-        stagedVersion: string | null;
-        availableVersion: string | null;
-        error: string | null;
-      } = await getPlatform().updater.check();
-      if (status.stagedVersion) {
-        // An update was already downloaded + staged — the banner appears; no toast.
-        updateReadyVersion = status.stagedVersion;
-        updateBannerDismissed = false;
-      } else if (status.phase === "available") {
-        // Found, not downloaded yet — the Download banner appears; tell the
-        // author explicitly so a manual check reads as "found something" and
-        // not "nothing happened" (M1: downloads are consented, never silent).
-        updateAvailableVersion = status.availableVersion;
-        updateBannerDismissed = false;
-        toast?.info(`Update available (v${status.availableVersion}) — use the banner to download it.`);
-      } else if (status.phase === "error") {
-        toast?.error(status.error ?? "Update check failed.");
-      } else {
-        toast?.info("You're up to date.");
-      }
-    } catch (e) {
-      toast?.error(e instanceof Error ? e.message : "Update check failed.");
-    } finally {
-      checkingUpdates = false;
-    }
-  }
-
-  async function downloadUpdate() {
-    if (!isDesktop()) return;
-    downloadingUpdate = true;
-    try {
-      const status: { phase: string; stagedVersion: string | null; error: string | null } =
-        await getPlatform().updater.download();
-      if (status.stagedVersion) {
-        updateReadyVersion = status.stagedVersion;
-        updateAvailableVersion = null;
-      } else if (status.phase === "error") {
-        toast?.error(status.error ?? "Update download failed.");
-      }
-    } catch (e) {
-      toast?.error(e instanceof Error ? e.message : "Update download failed.");
-    } finally {
-      downloadingUpdate = false;
-    }
-  }
-
-  async function applyUpdate() {
-    if (!isDesktop()) return;
-    try {
-      const result = await getPlatform().updater.applyNow();
-      // On success main quits, installs the update, and relaunches — this
-      // code never runs. A resolved { applied: false } means the staged
-      // update vanished (state drift); say so instead of silently no-oping.
-      if (!result.applied) {
-        updateReadyVersion = null;
-        toast?.error("The update could not be applied — try checking for updates again.");
-      }
-    } catch (e) {
-      toast?.error(e instanceof Error ? e.message : "Could not apply update.");
-    }
-  }
-
   /**
    * RC3-2: Cancel the in-progress render. Optimistically hides the overlay
    * immediately (<100ms) so the UI feels responsive, then tears down the
@@ -2456,46 +2156,6 @@
     }
   }
 
-  /**
-   * Trigger an immediate sync for the open project.
-   * Reuses the same api.remote.syncChanges() path the auto-orchestrator uses.
-   * Only callable when the project canSync (guarded in StatusBar via showForceSync).
-   */
-  async function handleForceSync() {
-    const dir = currentDir;
-    if (!dir || forceSyncing) return;
-    forceSyncing = true;
-    try {
-      const outcome = await api.remote.syncChanges(dir);
-      if (currentDir !== dir) return; // Project switched mid-sync.
-      if (outcome.status === "conflict") {
-        // Route through the existing conflict dialog path.
-        conflictFiles = outcome.files;
-        conflictLocalId = outcome.localId;
-        conflictRemoteId = outcome.remoteId;
-        conflictOpen = true;
-      } else if (outcome.status === "synced") {
-        onSyncCompleted(outcome.mergedRemoteChanges, outcome.filesChanged === true);
-      } else if (outcome.status === "up-to-date") {
-        if (outcome.filesChanged) onSyncCompleted(false, true);
-        else toast?.info("Already up to date — no changes to sync.");
-      } else if (outcome.status === "auth") {
-        if (outcome.filesChanged) onSyncFilesChanged();
-        toast?.error("Not connected. Use Connect in the sidebar to set up syncing.");
-      } else if (outcome.status === "offline") {
-        if (outcome.filesChanged) onSyncFilesChanged();
-        toast?.info("You appear to be offline. Try again when connected.");
-      } else {
-        if (outcome.filesChanged) onSyncFilesChanged();
-        // Generic error state — surface the message if available.
-        toast?.error("Sync failed. Check your connection and try again.");
-      }
-    } catch (e) {
-      toast?.error(`Sync failed: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      if (currentDir === dir) forceSyncing = false;
-    }
-  }
 </script>
 
 <Toast bind:api={toast} />
@@ -2536,18 +2196,18 @@
 {/if}
 
 <div class="app-root">
-{#if (updateReadyVersion || updateAvailableVersion) && !updateBannerDismissed}
+{#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
-    {#if updateReadyVersion}
-      <span class="update-banner-msg">Update ready (v{updateReadyVersion})</span>
-      <button class="update-apply" onclick={applyUpdate}>Restart &amp; update</button>
+    {#if updateController.readyVersion}
+      <span class="update-banner-msg">Update ready (v{updateController.readyVersion})</span>
+      <button class="update-apply" onclick={() => updateController.applyNow()}>Restart &amp; update</button>
     {:else}
-      <span class="update-banner-msg">Update available (v{updateAvailableVersion})</span>
-      <button class="update-apply" onclick={downloadUpdate} disabled={downloadingUpdate}>
-        {downloadingUpdate ? "Downloading…" : "Download"}
+      <span class="update-banner-msg">Update available (v{updateController.availableVersion})</span>
+      <button class="update-apply" onclick={() => updateController.download()} disabled={updateController.downloading}>
+        {updateController.downloading ? "Downloading…" : "Download"}
       </button>
     {/if}
-    <button class="update-later" onclick={() => (updateBannerDismissed = true)}>Later</button>
+    <button class="update-later" onclick={() => updateController.dismissBanner()}>Later</button>
   </div>
 {/if}
 
@@ -2593,41 +2253,41 @@
            scrolls/swipes for page navigation). -->
       {#if previewUrl && !isNarrow}
         <section class="center">
-          <button class="icon-btn" onclick={firstPage} disabled={rendering} title="First page (Home)" aria-label="First page">
+          <button class="icon-btn" onclick={() => pageNav.firstPage()} disabled={rendering} title="First page (Home)" aria-label="First page">
             <Icon name="chevrons-left" />
           </button>
-          <button class="icon-btn" onclick={prevPage} disabled={rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
+          <button class="icon-btn" onclick={() => pageNav.prevPage()} disabled={rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
             <Icon name="chevron-left" />
           </button>
-          {#if pageEditing}
+          {#if pageNav.pageEditing}
             <input
               bind:this={pageEditInput}
               type="number"
               class="page-input"
               min="1"
-              max={totalPages || 1}
-              bind:value={pageEditValue}
-              onblur={commitPageEdit}
+              max={pageNav.totalPages || 1}
+              bind:value={pageNav.pageEditValue}
+              onblur={() => pageNav.commitPageEdit()}
               onkeydown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  commitPageEdit();
+                  pageNav.commitPageEdit();
                 } else if (e.key === "Escape") {
                   e.preventDefault();
-                  cancelPageEdit();
+                  pageNav.cancelPageEdit();
                 }
               }}
               aria-label="Go to page"
             />
           {:else}
-            <button class="page-pill" onclick={beginPageEdit} disabled={rendering} aria-label="Edit current page">
-              <span class="pill-word">Page&nbsp;</span>{currentPage} / {totalPages || "—"}
+            <button class="page-pill" onclick={() => pageNav.beginPageEdit()} disabled={rendering} aria-label="Edit current page">
+              <span class="pill-word">Page&nbsp;</span>{pageNav.currentPage} / {pageNav.totalPages || "—"}
             </button>
           {/if}
-          <button class="icon-btn" onclick={nextPage} disabled={rendering} title="Next page (Right/PageDown)" aria-label="Next page">
+          <button class="icon-btn" onclick={() => pageNav.nextPage()} disabled={rendering} title="Next page (Right/PageDown)" aria-label="Next page">
             <Icon name="chevron-right" />
           </button>
-          <button class="icon-btn" onclick={lastPage} disabled={rendering} title="Last page (End)" aria-label="Last page">
+          <button class="icon-btn" onclick={() => pageNav.lastPage()} disabled={rendering} title="Last page (End)" aria-label="Last page">
             <Icon name="chevrons-right" />
           </button>
         </section>
@@ -3068,14 +2728,14 @@
              Non-dismissable during repair; auto-dismisses after ~1.8s on success.
              Hard rule (memory: never hide cross-origin preview iframe): scrim is
              translucent (var(--app-overlay) + backdrop-filter:blur), never opaque. -->
-        {#key recoveryOverlayState}
+        {#key recovery.recoveryOverlayState}
         <RecoveryOverlay
-          visible={recoveryOverlayVisible}
-          phase={recoveryOverlayPhase}
-          recoveryState={recoveryOverlayState}
-          backupZipPath={recoveryBackupZipPath}
-          logFilePath={recoveryLogFilePath}
-          onShowBackup={recoveryBackupZipPath ? () => showBackupInFolder(recoveryBackupZipPath!) : undefined}
+          visible={recovery.recoveryOverlayVisible}
+          phase={recovery.recoveryOverlayPhase}
+          recoveryState={recovery.recoveryOverlayState}
+          backupZipPath={recovery.recoveryBackupZipPath}
+          logFilePath={recovery.recoveryLogFilePath}
+          onShowBackup={recovery.recoveryBackupZipPath ? () => showBackupInFolder(recovery.recoveryBackupZipPath!) : undefined}
           onDone={onRecoveryOverlayDone}
         />
         {/key}
@@ -3128,21 +2788,21 @@
   <StatusBar
     projectDir={currentDir}
     sourceMode={sourceMode}
-    canSync={!!(syncDiag?.canSync)}
+    canSync={!!(syncController.syncDiag?.canSync)}
     canSnapshot={!!(projectCapabilities?.canSnapshot)}
     savePhase={editorSavePhase}
     fileOpen={!!editorFilePath}
     {forceSaving}
-    {forceSyncing}
+    forceSyncing={syncController.forceSyncing}
     {problems}
     problemsLoading={problemsLoading}
     bind:problemsOpen={problemsOpen}
     onProblemSelect={openProblem}
     onReconnect={onSyncReconnect}
-    onConflict={onPillConflict}
+    onConflict={(files) => syncController.onPillConflict(files)}
     onShowLog={showProjectLog}
     onForceSave={handleForceSave}
-    onForceSync={handleForceSync}
+    onForceSync={() => syncController.handleForceSync()}
     onOpenSettings={() => (settingsOpen = true)}
     onOpenHelp={() => (helpOpen = true)}
   />
@@ -3152,10 +2812,10 @@
 <HelpDialog
   bind:open={helpOpen}
   triggerEl={helpBtn}
-  onCheckForUpdates={checkForUpdates}
-  {checkingUpdates}
-  {updateReadyVersion}
-  {updateAvailableVersion}
+  onCheckForUpdates={() => updateController.check()}
+  checkingUpdates={updateController.checking}
+  updateReadyVersion={updateController.readyVersion}
+  updateAvailableVersion={updateController.availableVersion}
 />
 <SettingsDialog
   bind:open={settingsOpen}
@@ -3230,17 +2890,15 @@
      Plain-language "Keep my version / Use the online version / Keep both"
      with "Keep both" as the highlighted lossless default. -->
 <ConflictChoicesDialog
-  bind:open={conflictOpen}
+  bind:open={syncController.conflictOpen}
   projectDir={sourceMode === "folder" ? currentDir : null}
   bookSubPath={projectSubPath}
-  files={conflictFiles}
-  localId={conflictLocalId}
-  remoteId={conflictRemoteId}
+  files={syncController.conflictFiles}
+  localId={syncController.conflictLocalId}
+  remoteId={syncController.conflictRemoteId}
   onResolved={(mergedRemoteChanges) => {
     onSyncCompleted(mergedRemoteChanges);
-    conflictFiles = [];
-    conflictLocalId = null;
-    conflictRemoteId = null;
+    syncController.clearConflict();
   }}
   onReconnect={onSyncReconnect}
 />
@@ -3250,8 +2908,8 @@
      medium/high-risk repair. Always answers the gate (approved or rejected) via
      getPlatform().respondRecoveryConfirm so the host is never left hanging. -->
 <RecoveryConfirmDialog
-  bind:open={recoveryConfirmOpen}
-  request={recoveryConfirmRequest}
+  bind:open={recovery.recoveryConfirmOpen}
+  request={recovery.recoveryConfirmRequest}
   onShowBackup={(path) => showBackupInFolder(path)}
 />
 
@@ -3259,10 +2917,10 @@
      with a classified error. Plain-language guidance + recommended next step +
      optional safe-steps list. No Git jargon. -->
 <RecoveryGuidanceDialog
-  bind:open={recoveryGuidanceOpen}
-  guidance={recoveryGuidance}
-  backupZipPath={recoveryGuidanceBackupPath}
-  logFilePath={recoveryGuidanceLogPath}
+  bind:open={recovery.recoveryGuidanceOpen}
+  guidance={recovery.recoveryGuidance}
+  backupZipPath={recovery.recoveryGuidanceBackupPath}
+  logFilePath={recovery.recoveryGuidanceLogPath}
   onShowBackup={(path) => showBackupInFolder(path)}
   onPrimary={onRecoveryGuidancePrimary}
 />

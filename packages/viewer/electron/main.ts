@@ -18,10 +18,15 @@ import os from "node:os";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import * as fs from "node:fs";
-import { watch, type FSWatcher } from "node:fs";
-import { createServer } from "node:http";
-import { pathToFileURL } from "node:url";
+import { watch } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
+import {
+  createSettingsStore,
+  mergeSettings,
+  type AppSettings,
+} from "./settings-store";
+import { createPrefsStore } from "./prefs-store";
 import { registerWriteHooks } from "./server-bridge/write-hooks";
 import { registerWatchHooks } from "./server-bridge/watch-hooks";
 import { registerAppHooks } from "./server-bridge/app-hooks";
@@ -51,15 +56,11 @@ import {
   upsertRecentFolder,
   removeRecentFolder,
   toggleFavoriteFolder,
-  type RecentFolder,
-  type FavoriteFolder,
 } from "./recent-folders";
 import {
   readProjectState,
   writeProjectState,
   migrateLegacyProjectState,
-  type ProjectState,
-  type ProjectStateMap,
 } from "./project-state";
 import {
   electronTokenStore,
@@ -78,6 +79,8 @@ import {
   AutoSyncOrchestrator,
   type SyncStatusPayload,
 } from "./auto-sync/orchestrator";
+import { AutoSnapshotScheduler } from "./auto-snapshot/scheduler";
+import { FolderWatcher } from "./folder-watch/watcher";
 import type {
   AdoptFolderOptions,
   ApplyThemeTarget,
@@ -92,7 +95,6 @@ import type {
   ProjectCapabilities,
   ProjectPluginEntry,
   ProjectRemoteDiagnosis,
-  ProjectSource,
   ProjectStyle,
   RecommendedPlugin,
   RecoveryContext,
@@ -119,10 +121,35 @@ import type {
 // build time; the suppression documents the tsc-only gap.
 // @ts-expect-error vite `?raw` string import — resolved by electron-vite, not tsc
 import splashHtml from "./splash.html?raw";
+import { recoveryDir as recoveryDirImpl, operationLogPath as operationLogPathImpl } from "./recovery-paths";
+import {
+  ExportCanceledError,
+  electronPdfRenderer,
+  getActiveExportSession,
+  initPdfExport,
+  sendExportProgress,
+  setActiveExportSession,
+  throwIfExportCanceled,
+  type ExportSession,
+} from "./pdf-export";
+import {
+  registerAppProtocol,
+  startSvelteKitServer,
+} from "./sveltekit-host";
+
+// Module directory, ESM-safe. We do NOT rely on electron-vite's injected
+// `__dirname` shim (`const __dirname = import.meta.dirname`): after main.ts was
+// split into sibling modules the shim stopped covering main.ts's own scope,
+// throwing `__dirname is not defined` inside createSplashWindow → appIconPath and
+// aborting startup before any window opened. `fileURLToPath(import.meta.url)` is
+// the canonical, bundler-independent replacement (import.meta.url is always
+// defined in the ESM main bundle; import.meta.dirname is not). Resolves to
+// out/main/ at runtime.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 function appIconPath(): string {
   const packaged = path.resolve(process.resourcesPath ?? "", "build-resources/icon.png");
-  const dev = path.resolve(__dirname, "../../build-resources/icon.png");
+  const dev = path.resolve(HERE, "../../build-resources/icon.png");
   return fs.existsSync(packaged) ? packaged : dev;
 }
 
@@ -136,9 +163,6 @@ function slog(msg: string): void {
   console.log(`[startup +${Date.now() - __startupT0}ms] ${msg}`);
 }
 slog("main.js evaluated");
-
-// __dirname/__filename are injected by electron-vite for the ESM main bundle
-// (resolves to out/main/ at runtime).
 
 // ──────────────────────────────────────────────────────────────────────────
 // Lib loader
@@ -166,19 +190,6 @@ interface BuildResult {
   pdfPath?: string;
   fingerprintPath?: string;
 }
-interface ExportProgressEvent {
-  exportId: string;
-  state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
-  pages?: number;
-  message?: string;
-}
-interface ExportSession {
-  id: string;
-  canceled: boolean;
-  outPath: string;
-  tempOutPath: string;
-  win: BrowserWindow | null;
-}
 interface ManifestWithPath {
   manifest: { title?: string };
   manifestDir: string;
@@ -194,16 +205,6 @@ interface GitHubAuthProviderInstance {
 type LibModule = typeof import("@dimm-city/print-md");
 
 let libPromise: Promise<LibModule> | null = null;
-let activeExportSession: ExportSession | null = null;
-
-class ExportCanceledError extends Error {
-  code = "EXPORT_CANCELED";
-
-  constructor(message = "PDF export canceled") {
-    super(message);
-    this.name = "ExportCanceledError";
-  }
-}
 
 function loadLib(): Promise<LibModule> {
   if (!libPromise) {
@@ -213,139 +214,11 @@ function loadLib(): Promise<LibModule> {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// PDF renderer — uses Electron's OWN bundled Chromium (a hidden BrowserWindow +
-// webContents.printToPDF) instead of spawning an external Chromium via
-// puppeteer. The viewer already ships Chromium (it IS Electron), so this drops
-// the external-browser dependency for PDF export with zero added bytes and full
-// Paged.js fidelity (ADR 0002, Phase 4). Injected into lib.runBuild as the
-// `pdfRenderer` override; the lib still serves the staged HTML + assets on a
-// local HTTP server, so asset resolution is identical to the puppeteer path.
-//
-// Escape hatch: set PRINTMD_VIEWER_PUPPETEER=1 to fall back to the lib's default
-// puppeteer renderer (requires a system/bundled Chromium on PATH).
+// PDF export subsystem lives in electron/pdf-export.ts — it owns the single
+// active export session + the Electron-native PDF renderer. Wire its progress
+// sender to the live main window here (initPdfExport is called after mainWindow
+// is declared, in the hook-registration section below).
 // ──────────────────────────────────────────────────────────────────────────
-
-function sendExportProgress(event: ExportProgressEvent) {
-  mainWindow?.webContents.send("build:progress", event);
-}
-
-function requireActiveExportSession(): ExportSession {
-  if (!activeExportSession) {
-    throw new Error("No active export session");
-  }
-  return activeExportSession;
-}
-
-function throwIfExportCanceled(session: ExportSession) {
-  if (session.canceled) {
-    throw new ExportCanceledError();
-  }
-}
-
-async function electronPdfRenderer(input: {
-  url: string;
-  outPdf: string;
-  timeoutMs: number;
-}): Promise<void> {
-  const session = requireActiveExportSession();
-  throwIfExportCanceled(session);
-  const win = new BrowserWindow({
-    show: false,
-    // A hidden window is "occluded", so Chromium throttles its timers,
-    // requestAnimationFrame, and rendering to ~1 Hz — which makes Paged.js
-    // pagination (timer/rAF-driven) crawl, the #1 cause of slow PDF export.
-    // Disable background throttling and keep painting while hidden, and give the
-    // window a real size so layout/pagination run at full speed.
-    paintWhenInitiallyHidden: true,
-    width: 1280,
-    height: 1024,
-    webPreferences: {
-      sandbox: true,
-      contextIsolation: true,
-      javascript: true,
-      backgroundThrottling: false,
-    },
-  });
-  session.win = win;
-  try {
-    await win.loadURL(input.url);
-    throwIfExportCanceled(session);
-    const wc = win.webContents;
-
-    // Wait for web fonts to finish loading.
-    await wc.executeJavaScript("document.fonts.ready.then(() => true)");
-    throwIfExportCanceled(session);
-
-    // Poll until Paged.js signals completion (or the timeout elapses), emitting
-    // a per-page progress event so the UI can show "Rendering page N…" instead
-    // of an opaque spinner during the (inherently slow) Paged.js pagination of
-    // large books.
-    const deadline = Date.now() + input.timeoutMs;
-    let lastPages = -1;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const status = (await wc.executeJavaScript(`(() => ({
-        done: window.__PAGED_RENDERED__ === true,
-        pages: document.querySelectorAll('.pagedjs_page').length
-      }))()`)) as { done: boolean; pages: number };
-      if (status.pages !== lastPages) {
-        lastPages = status.pages;
-        sendExportProgress({
-          exportId: session.id,
-          state: "rendering",
-          pages: status.pages,
-        });
-      }
-      throwIfExportCanceled(session);
-      if (status.done) break;
-      if (Date.now() > deadline) break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-
-    // Pagination done — serializing a large PDF still takes time, so flag it.
-    throwIfExportCanceled(session);
-    sendExportProgress({
-      exportId: session.id,
-      state: "finalizing",
-      pages: lastPages,
-    });
-
-    // Measure the first rendered page (CSS px) to set the paper size.
-    const info = (await wc.executeJavaScript(`(() => {
-      const pages = document.querySelectorAll('.pagedjs_page');
-      const el = pages[0] || null;
-      const s = el ? getComputedStyle(el) : null;
-      const px = (v) => (v ? parseFloat(v) : 0);
-      return { count: pages.length, w: px(s && s.width), h: px(s && s.height) };
-    })()`)) as { count: number; w: number; h: number };
-
-    // printToPDF pageSize is in INCHES; CSS px → in is px / 96. Fall back to a
-    // US-Letter-ish book trim if measurement failed.
-    const widthIn = info.w > 0 ? info.w / 96 : 8.625;
-    const heightIn = info.h > 0 ? info.h / 96 : 11.25;
-
-    throwIfExportCanceled(session);
-    const data = await wc.printToPDF({
-      printBackground: true,
-      pageSize: { width: widthIn, height: heightIn },
-      margins: { top: 0, bottom: 0, left: 0, right: 0 },
-    });
-    throwIfExportCanceled(session);
-    await writeFile(input.outPdf, data);
-  } catch (error) {
-    if (session.canceled) {
-      throw new ExportCanceledError();
-    }
-    throw error;
-  } finally {
-    if (!win.isDestroyed()) {
-      win.destroy();
-    }
-    if (session.win === win) {
-      session.win = null;
-    }
-  }
-}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Preview server state
@@ -353,204 +226,38 @@ async function electronPdfRenderer(input: {
 
 let activePreview: PreviewHandle | null = null;
 
-interface ViewerPrefs {
-  lastProjectDir?: string;
-  /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
-  sidebarOpen?: boolean;
-  /**
-   * @deprecated (#43) Pre-per-project global page. Kept ONE version as a
-   * migration fallback (see migrateLegacyProjectState); new writes go to
-   * projectStates[dir].currentPage. Remove in a later release.
-   */
-  currentPage?: number;
-  /**
-   * @deprecated (#43) Pre-per-project global view mode. Kept ONE version as a
-   * migration fallback; new writes go to projectStates[dir].viewMode.
-   */
-  viewMode?: "single" | "two-column";
-  recentFolders?: RecentFolder[];
-  favorites?: FavoriteFolder[];
-  /**
-   * Per-project editor/preview state keyed by folder path (#43). Opening
-   * project B never overwrites project A's page/view/chapter state.
-   */
-  projectStates?: ProjectStateMap;
-  /** Root dirs scanned by app:discoverProjects (#27). Defaults applied below. */
-  projectSearchRoots?: string[];
-  /**
-   * Last classified source of the open project (#12). Cached so the UI can
-   * render without re-detecting on launch, but the renderer always re-classifies
-   * on folder open (a user may add/remove `.git` between sessions), so this is a
-   * hint, not the source of truth.
-   */
-  projectSource?: ProjectSource;
-  /** Global left panel open state + active tab, persisted across sessions. */
-  leftPanel?: {
-    open?: boolean;
-    activeTab?: "toc" | "files" | "media" | "projects" | "history";
-    width?: number;
-  };
-}
+// ──────────────────────────────────────────────────────────────────────────
+// Viewer prefs (#42/#43) — session/per-project state in viewer-prefs.json,
+// separate from durable user settings (below). The ViewerPrefs shape and the
+// prefsPath/readPrefs/writePrefs/existingDirectory read/write path live in
+// ./prefs-store (Phase 5b extraction; unit-tested in
+// tests/platform/prefs-store.test.ts) behind an injected-fs store factory.
+// main.ts instantiates the store with the live Electron userData dir +
+// node:fs/promises + the imported migrateLegacyProjectState and uses its
+// closures unchanged.
+// ──────────────────────────────────────────────────────────────────────────
 
-function prefsPath(): string {
-  return path.join(app.getPath("userData"), "viewer-prefs.json");
-}
-
-async function readPrefs(): Promise<ViewerPrefs> {
-  try {
-    const prefs = JSON.parse(await readFile(prefsPath(), "utf8")) as ViewerPrefs;
-    // #43 one-time migration: seed projectStates from the legacy top-level
-    // currentPage/viewMode so existing users don't lose their saved state.
-    const migrated = migrateLegacyProjectState(prefs);
-    if (migrated && !prefs.projectStates) {
-      prefs.projectStates = migrated;
-    }
-    return prefs;
-  } catch {
-    return {};
-  }
-}
-
-async function writePrefs(prefs: ViewerPrefs): Promise<void> {
-  await mkdir(app.getPath("userData"), { recursive: true });
-  await writeFile(prefsPath(), JSON.stringify(prefs, null, 2), "utf8");
-}
+const { readPrefs, writePrefs, existingDirectory } = createPrefsStore({
+  getUserDataDir: () => app.getPath("userData"),
+  fs: { readFile, writeFile, mkdir, stat },
+  migrateLegacyProjectState,
+});
 
 // ──────────────────────────────────────────────────────────────────────────
 // User settings (#45) — persisted, section-organised user preferences in a
 // SEPARATE file from viewer-prefs.json so session/per-project state and durable
-// user settings don't collide. Shape mirrors AppSettings in
-// src/lib/platform/contract.ts (kept in sync manually).
+// user settings don't collide. The AppSettings shape, DEFAULT_SETTINGS, the
+// pure mergeSettings helpers, and the injected-fs store factory live in
+// ./settings-store (Phase 5b extraction; unit-tested in
+// tests/platform/settings-store.test.ts). main.ts instantiates the store with
+// the live Electron userData dir + node:fs/promises and uses its read/write
+// closures unchanged.
 // ──────────────────────────────────────────────────────────────────────────
 
-interface AppSettings {
-  editor: {
-    fontFamily: string;
-    fontSize: number;
-    lineHeight: number;
-    spellCheckLanguage: string;
-    autoSaveDelay: number;
-    crashRecovery: boolean;
-  };
-  appearance: {
-    theme: "light" | "dark" | "system";
-    previewBg: string;
-  };
-  preview: {
-    defaultZoom: string;
-    viewMode: "single" | "two-column";
-    paneMode: "edit" | "view";
-  };
-  versionHistory: {
-    /** Save automatic snapshots after edits settle (RC1-3). Default ON. */
-    autoSnapshot: boolean;
-    /** Minutes of quiet after the last edit before a snapshot fires. */
-    autoSnapshotMinutes: number;
-    /**
-     * Automatically sync to the remote when a remote is configured (transparent-
-     * sync plan §6). Defaults ON for projects with canSync; local-only projects
-     * are never auto-synced regardless of this setting.
-     */
-    autoSync: boolean;
-    /** Periodic safety-sync cadence in minutes (clamped to [1, 1440]). */
-    autoSyncMinutes: number;
-  };
-  gitIdentity: {
-    authorName: string;
-    authorEmail: string;
-  };
-  advanced: {
-    fileWatcherInterval: number;
-    logLevel: "error" | "warn" | "info" | "debug";
-  };
-}
-
-const DEFAULT_SETTINGS: AppSettings = {
-  editor: {
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    fontSize: 14,
-    lineHeight: 1.6,
-    spellCheckLanguage: "en-US",
-    autoSaveDelay: 2500,
-    crashRecovery: true,
-  },
-  appearance: {
-    theme: "system",
-    previewBg: "#5a5a5a",
-  },
-  preview: {
-    defaultZoom: "fit-width",
-    viewMode: "two-column",
-    // Keep in sync with the renderer's canonical DEFAULT_SETTINGS (contract.ts).
-    paneMode: "view",
-  },
-  versionHistory: {
-    autoSnapshot: true,
-    autoSnapshotMinutes: 10,
-    autoSync: true,      // transparent-sync plan §6: ON by default when canSync
-    autoSyncMinutes: 2,  // ~2 min periodic safety cadence
-  },
-  gitIdentity: {
-    authorName: "",
-    authorEmail: "",
-  },
-  advanced: {
-    fileWatcherInterval: 300,
-    logLevel: "warn",
-  },
-};
-
-type DeepPartialSettings = {
-  [K in keyof AppSettings]?: Partial<AppSettings[K]>;
-};
-
-function settingsPath(): string {
-  return path.join(app.getPath("userData"), "app-settings.json");
-}
-
-function mergeSettingsSection<K extends keyof AppSettings>(
-  target: AppSettings,
-  base: AppSettings,
-  key: K,
-  value: DeepPartialSettings[K],
-): void {
-  if (value && typeof value === "object") {
-    target[key] = { ...base[key], ...value } as AppSettings[K];
-  }
-}
-
-function mergeSettings(base: AppSettings, patch: DeepPartialSettings): AppSettings {
-  const out: AppSettings = { ...base };
-  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
-    mergeSettingsSection(out, base, key, patch[key]);
-  }
-  return out;
-}
-
-async function readSettings(): Promise<AppSettings> {
-  try {
-    const stored = JSON.parse(
-      await readFile(settingsPath(), "utf8"),
-    ) as DeepPartialSettings;
-    return mergeSettings(DEFAULT_SETTINGS, stored);
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
-}
-
-async function writeSettings(settings: AppSettings): Promise<void> {
-  await mkdir(app.getPath("userData"), { recursive: true });
-  await writeFile(settingsPath(), JSON.stringify(settings, null, 2), "utf8");
-}
-
-async function existingDirectory(dir: string | undefined): Promise<string | null> {
-  if (!dir) return null;
-  try {
-    return (await stat(dir)).isDirectory() ? dir : null;
-  } catch {
-    return null;
-  }
-}
+const { readSettings, writeSettings } = createSettingsStore({
+  getUserDataDir: () => app.getPath("userData"),
+  fs: { readFile, writeFile, mkdir },
+});
 
 // ──────────────────────────────────────────────────────────────────────────
 // Window management
@@ -646,26 +353,23 @@ function showMainWindowAndCloseSplash(): void {
 }
 
 // ── Unsaved-changes infrastructure (#44) ────────────────────────────────────
-// The recovery sidecar store lives under userData/recovery/.
-function recoveryDir(): string {
-  return path.join(app.getPath("userData"), "recovery");
-}
-
-// ── Operation log path ──────────────────────────────────────────────────────
-// The sync/recovery operation log lives under userData/logs/. One file per
-// project slug so logs from different projects don't interleave. The file is
-// appended to (not truncated) so a user can see history across sessions.
-function operationLogPath(repoSlug: string): string {
-  const slug = repoSlug.replace(/[^a-zA-Z0-9_-]/g, "_") || "repo";
-  return path.join(app.getPath("userData"), "logs", `${slug}.log`);
-}
+// The recovery sidecar store lives under userData/recovery/; the sync/recovery
+// operation log lives under userData/logs/. The pure path/slug builders live in
+// ./recovery-paths; these thin wrappers bind them to the live userData dir.
+const recoveryDir = (): string => recoveryDirImpl(app.getPath("userData"));
+const operationLogPath = (repoSlug: string): string =>
+  operationLogPathImpl(app.getPath("userData"), repoSlug);
 
 // A single shallow folder watcher for the open project. fs.watch is coarse and
 // fires multiple times per save, so changes are debounced before notifying the
 // renderer. Only one project is open at a time, so a single watcher suffices.
-let folderWatcher: FSWatcher | null = null;
+// The watcher/debounce/normalized-dir state + control logic lives in the
+// FolderWatcher class (electron/folder-watch/watcher.ts; unit-tested in
+// tests/platform/folder-watcher.test.ts) behind injected deps. main.ts keeps
+// thin startFolderWatch/stopFolderWatch delegators (below) and a module-level
+// MIRROR of `watchedDir` (updated ONLY via the watcher's onWatchedDirChanged)
+// SOLELY so the many off-limits reads stay byte-identical.
 let watchedDir: string | null = null;
-let folderChangeDebounce: ReturnType<typeof setTimeout> | null = null;
 
 // ── Automatic snapshots (RC1-3) ──────────────────────────────────────────────
 // Host-side debounced auto-snapshot: every edit signal (fs:writeFile inside the
@@ -680,74 +384,33 @@ let folderChangeDebounce: ReturnType<typeof setTimeout> | null = null;
 // sync/restore, and its no-empty-snapshot guard turns a clean-tree fire into
 // the expected `isNoChangesError` rejection, swallowed below. Silent on success
 // (the history dialog reloads its list on open).
-let autoSnapshotPending: { dir: string; timer: NodeJS.Timeout } | null = null;
+// The single scheduler instance (electron/auto-snapshot/scheduler.ts) owns the
+// pending timer + policy + the run/flush/cancel control logic — unit-tested in
+// tests/platform/auto-snapshot-scheduler.test.ts. main.ts wires the injected
+// deps below, keeps thin delegators (scheduleAutoSnapshot/flushAutoSnapshot/
+// cancelAutoSnapshotTimer) for its call sites, and keeps a module-level MIRROR
+// of the pending state (updated ONLY via onPendingChanged) SOLELY so createWindow's
+// `autoSnapshotPending !== null` read stays byte-identical without reaching into
+// the scheduler.
+let autoSnapshotPending: { dir: string } | null = null;
+
+const autoSnapshot = new AutoSnapshotScheduler({
+  loadLib,
+  readSettings,
+  getWatchedDir: () => watchedDir,
+  operationLogPath,
+  onPendingChanged: (dir) => {
+    autoSnapshotPending = dir === null ? null : { dir };
+  },
+});
 
 function cancelAutoSnapshotTimer(): void {
-  if (autoSnapshotPending) {
-    clearTimeout(autoSnapshotPending.timer);
-    autoSnapshotPending = null;
-  }
-}
-
-async function runAutoSnapshot(dir: string): Promise<void> {
-  try {
-    const lib = await loadLib();
-    // Re-check the live policy: the user may have toggled auto-snapshots off
-    // while this timer was already armed.
-    const settings = await readSettings();
-    if (lib.autoSnapshotDelayMs(settings.versionHistory) === null) return;
-    const source = await lib.detectProjectSource(dir);
-    if (source.type !== "local-git-folder") return;
-    // Never AUTO-snapshot a folder that lives inside a LARGER repo (subPath
-    // set): a silent automatic commit would land in — and sweep unrelated files
-    // from — the ENCLOSING repository (e.g. opening a folder that happens to sit
-    // inside another git repo). Explicit user snapshots and multi-book remote
-    // sync still work via the version-history UI; only the AUTOMATIC commit is
-    // suppressed here.
-    if (source.subPath !== "") {
-      console.info(`[auto-snapshot] skipped: ${dir} is a subfolder of an enclosing repo (${source.repoRoot})`);
-      return;
-    }
-    await lib.providerFor(source).snapshot({
-      projectDir: dir,
-      message: lib.AUTO_SNAPSHOT_MESSAGE,
-      // Record the snapshot in the project's operation log so the bottom-bar
-      // "Version history" affordance shows it (local-git projects have no
-      // remote/sync, but they DO snapshot — those snapshots must be logged).
-      logFile: operationLogPath(path.basename(dir)),
-    });
-  } catch (e) {
-    const lib = await loadLib().catch(() => null);
-    if (lib?.isNoChangesError(e)) return; // clean tree — expected, not an error
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[auto-snapshot] failed for ${dir}: ${msg}`);
-    if (e instanceof Error && e.stack) console.error(e.stack);
-  }
+  autoSnapshot.cancel();
 }
 
 /** Arm/reset the debounce timer after an edit signal in `dir`. */
 function scheduleAutoSnapshot(dir: string): void {
-  void (async () => {
-    try {
-      // Read settings + lib policy on every arm so changes apply live.
-      const [lib, settings] = await Promise.all([loadLib(), readSettings()]);
-      // Project may have switched while the awaits above yielded — arming a
-      // timer for the OLD directory would fire a stray snapshot there.
-      if (watchedDir !== dir) return;
-      const delayMs = lib.autoSnapshotDelayMs(settings.versionHistory);
-      cancelAutoSnapshotTimer();
-      if (delayMs === null) return; // automatic snapshots disabled
-      const timer = setTimeout(() => {
-        autoSnapshotPending = null;
-        void runAutoSnapshot(dir);
-      }, delayMs);
-      // Never keep the app alive for a pending snapshot alone.
-      if (typeof timer.unref === "function") timer.unref();
-      autoSnapshotPending = { dir, timer };
-    } catch (e) {
-      console.warn("[auto-snapshot] scheduling failed (non-fatal):", e);
-    }
-  })();
+  autoSnapshot.schedule(dir);
 }
 
 /**
@@ -755,10 +418,7 @@ function scheduleAutoSnapshot(dir: string): void {
  * Returns the in-flight snapshot promise, or `undefined` when nothing pends.
  */
 function flushAutoSnapshot(): Promise<void> | undefined {
-  if (!autoSnapshotPending) return undefined;
-  const dir = autoSnapshotPending.dir;
-  cancelAutoSnapshotTimer();
-  return runAutoSnapshot(dir);
+  return autoSnapshot.flush();
 }
 
 // ── Automatic sync orchestrator (transparent-sync plan §4.1/§4.2/§5.3) ────────
@@ -809,62 +469,38 @@ const autoSync = new AutoSyncOrchestrator({
  *  hid incoming teammate changes until the user happened to edit something). */
 const AUTO_SYNC_OPEN_DELAY_MS = 4_000;
 
+const folderWatch = new FolderWatcher({
+  watch: (dir, options, cb) => watch(dir, options, cb),
+  resolve: (p) => path.resolve(p),
+  onFolderChanged: (name) =>
+    mainWindow?.webContents.send("fs:folderChanged", { filename: name }),
+  onEditSignal: (dir) => {
+    // Edit signal: external editors and in-app saves both land here. Use the
+    // normalized dir (the resolved form) so the map key matches watchedDir.
+    scheduleAutoSnapshot(dir);
+    // Arm the sync debounce (strictly longer than snapshot — see scheduleAutoSync).
+    autoSync.schedule(dir);
+  },
+  onStop: () => {
+    // Project switch/close flush point (RC1-3): edits were pending a snapshot —
+    // take it now (fire-and-forget) instead of dropping the timer.
+    void flushAutoSnapshot();
+    // Cancel all sync timers when the watched folder changes (project switch/close).
+    autoSync.cancelAll();
+  },
+  // Keep the module-level MIRROR in lock-step with the watcher's normalized dir
+  // so the many off-limits `watchedDir` reads stay byte-identical.
+  onWatchedDirChanged: (dir) => {
+    watchedDir = dir;
+  },
+});
+
 function stopFolderWatch(): void {
-  // Project switch/close flush point (RC1-3): edits were pending a snapshot —
-  // take it now (fire-and-forget) instead of dropping the timer.
-  void flushAutoSnapshot();
-  // Cancel all sync timers when the watched folder changes (project switch/close).
-  autoSync.cancelAll();
-  if (folderChangeDebounce) {
-    clearTimeout(folderChangeDebounce);
-    folderChangeDebounce = null;
-  }
-  if (folderWatcher) {
-    folderWatcher.close();
-    folderWatcher = null;
-  }
-  watchedDir = null;
+  folderWatch.stop();
 }
 
 function startFolderWatch(dirPath: string): void {
-  // Normalise so autoSyncStates map keys are consistent (the export gate and all
-  // other callers must use the same key — see issue #3 fix note below).
-  const normalizedDir = path.resolve(dirPath);
-  if (watchedDir === normalizedDir && folderWatcher) return;
-  stopFolderWatch();
-  watchedDir = normalizedDir;
-  try {
-    folderWatcher = watch(dirPath, { recursive: false }, (_event, filename) => {
-      // fs.watch is noisy (fires on rename + change). Debounce so a single
-      // external save produces one renderer notification.
-      const name =
-        typeof filename === "string"
-          ? filename
-          : filename
-            ? Buffer.from(filename).toString()
-            : "";
-      // Git-internal writes are NOT content changes (RC1-3): the automatic
-      // snapshot itself mutates `.git`, and treating that as an edit would
-      // re-trigger preview reloads and re-arm the snapshot timer forever.
-      // (The watch is non-recursive, so `.git` is the only segment we see.)
-      if (name === ".git" || name.startsWith(".git/") || name.startsWith(".git\\")) {
-        return;
-      }
-      if (folderChangeDebounce) clearTimeout(folderChangeDebounce);
-      folderChangeDebounce = setTimeout(() => {
-        mainWindow?.webContents.send("fs:folderChanged", { filename: name });
-      }, 150);
-      // Edit signal: external editors and in-app saves both land here.
-      // Use normalizedDir (the resolved form) so the map key matches watchedDir.
-      scheduleAutoSnapshot(normalizedDir);
-      // Arm the sync debounce (strictly longer than snapshot — see scheduleAutoSync).
-      autoSync.schedule(normalizedDir);
-    });
-  } catch (e) {
-    console.error(`[watch] failed to watch ${dirPath}:`, e);
-    folderWatcher = null;
-    watchedDir = null;
-  }
+  folderWatch.start(dirPath);
 }
 
 // Renderer pushes its pending-save state here so the window `close` gate can
@@ -936,7 +572,7 @@ function createWindow() {
     // the splash (with a fallback timeout so the splash can never strand the user).
     show: false,
     webPreferences: {
-      preload: path.resolve(__dirname, "../preload/preload.js"),
+      preload: path.resolve(HERE, "../preload/preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -1127,70 +763,13 @@ function createWindow() {
 
 // ──────────────────────────────────────────────────────────────────────────
 // app:// protocol — serves the static SvelteKit SPA from build/
+//
+// The adapter-node HTTP bridge (startSvelteKitServer) and the app:// protocol
+// proxy (registerAppProtocol) live in electron/sveltekit-host.ts. The privileged-
+// scheme registration stays here so it runs at its original point (before
+// app.whenReady). main.ts calls startSvelteKitServer(slog) + registerAppProtocol()
+// from whenReady below.
 // ──────────────────────────────────────────────────────────────────────────
-
-// ── SvelteKit HTTP bridge (adapter-node) ─────────────────────────────────────
-// adapter-node emits a Node.js HTTP handler to build/handler.js. We start a
-// local HTTP server bound to 127.0.0.1 on an OS-assigned port, then forward
-// all app:// requests to it via fetch. This lets +server.ts routes run in the
-// Electron main process where they can import { dialog, shell } from 'electron'
-// directly, while the renderer stays PWA-clean (fetch('/api/...') only).
-let skServerPort: number | null = null;
-
-function getSvelteKitHandlerPath(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, "app.asar", "build", "handler.js")
-    : path.join(__dirname, "..", "..", "build", "handler.js");
-}
-
-async function startSvelteKitServer(): Promise<number> {
-  if (skServerPort) return skServerPort;
-  const handlerPath = getSvelteKitHandlerPath();
-  slog(`loading SvelteKit handler from ${handlerPath}`);
-  const { handler } = (await import(pathToFileURL(handlerPath).href)) as {
-    handler: Parameters<typeof createServer>[0];
-  };
-  const server = createServer(handler);
-  return new Promise<number>((resolve, reject) => {
-    server.listen(0, "127.0.0.1", () => {
-      const addr = server.address();
-      if (!addr || typeof addr === "string") {
-        reject(new Error("Failed to get SvelteKit server address"));
-        return;
-      }
-      skServerPort = addr.port;
-      slog(`SvelteKit server listening on 127.0.0.1:${skServerPort}`);
-      resolve(skServerPort);
-    });
-    server.on("error", reject);
-  });
-}
-
-
-function registerAppProtocol() {
-  protocol.handle("app", async (req) => {
-    if (skServerPort === null) {
-      return new Response("SvelteKit server not started", { status: 503 });
-    }
-    const url = new URL(req.url);
-    const targetUrl =
-      "http://127.0.0.1:" + skServerPort + url.pathname + url.search;
-    try {
-      const proxyReq = new Request(targetUrl, {
-        method: req.method,
-        headers: req.headers,
-        body:
-          req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
-        // @ts-expect-error — duplex is required for streaming POST bodies in Node 18+
-        duplex: "half",
-      });
-      return await fetch(proxyReq);
-    } catch (e) {
-      console.error(`[app://] proxy error for ${url.pathname}:`, e);
-      return new Response("Proxy error: " + String(e), { status: 502 });
-    }
-  });
-}
 
 // The `VAAPI version is too old` / `MESA-LOADER` lines in the launch log are
 // harmless Chromium GPU-probe noise, NOT the cause of slow launches — the
@@ -1236,6 +815,11 @@ registerAppHooks({
   sendToRenderer: (channel: string, ...args: unknown[]) => {
     mainWindow?.webContents.send(channel, ...args);
   },
+});
+// Wire the PDF-export progress sender to the live main window (the export
+// subsystem itself lives in electron/pdf-export.ts).
+initPdfExport({
+  sendProgress: (event) => mainWindow?.webContents.send("build:progress", event),
 });
 // registerPrefsHooks is called after discoverScanDeps is initialized (below)
 
@@ -2139,11 +1723,12 @@ ipcMain.handle("api:stopPreview", async () => {
 });
 
 ipcMain.handle("api:cancelExport", async (_e, exportId: string) => {
-  if (!activeExportSession || activeExportSession.id !== exportId) {
+  const session = getActiveExportSession();
+  if (!session || session.id !== exportId) {
     return { canceled: false };
   }
-  activeExportSession.canceled = true;
-  const exportWin = activeExportSession.win;
+  session.canceled = true;
+  const exportWin = session.win;
   if (exportWin && !exportWin.isDestroyed()) {
     exportWin.destroy();
   }
@@ -2175,7 +1760,7 @@ ipcMain.handle(
     }
 
     const lib = await loadLib();
-    if (activeExportSession) {
+    if (getActiveExportSession()) {
       throw new Error("A PDF export is already in progress");
     }
     const requestedOutPath = args.out;
@@ -2267,7 +1852,7 @@ ipcMain.handle(
       tempOutPath,
       win: null,
     };
-    activeExportSession = exportSession;
+    setActiveExportSession(exportSession);
     sendExportProgress({ exportId: exportSession.id, state: "started" });
 
     try {
@@ -2341,7 +1926,7 @@ ipcMain.handle(
       });
       throw e;
     } finally {
-      activeExportSession = null;
+      setActiveExportSession(null);
       await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
     }
   }
@@ -2458,7 +2043,7 @@ app.whenReady().then(async () => {
   // adapter-node HTTP server and wire it to the app:// protocol.
   if (!process.env.VITE_DEV_SERVER_URL) {
     try {
-      await startSvelteKitServer();
+      await startSvelteKitServer(slog);
     } catch (err) {
       console.error("[sk-server] failed to start SvelteKit server:", err);
       // Non-fatal: registerAppProtocol will return 503 until skServerPort is set.
@@ -2546,13 +2131,14 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", async () => {
-  if (activeExportSession) {
-    activeExportSession.canceled = true;
-    if (activeExportSession.win && !activeExportSession.win.isDestroyed()) {
-      activeExportSession.win.destroy();
+  const exportSession = getActiveExportSession();
+  if (exportSession) {
+    exportSession.canceled = true;
+    if (exportSession.win && !exportSession.win.isDestroyed()) {
+      exportSession.win.destroy();
     }
-    await rm(activeExportSession.tempOutPath, { force: true }).catch(() => {});
-    activeExportSession = null;
+    await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
+    setActiveExportSession(null);
   }
   if (activePreview) {
     await activePreview.stop().catch(() => {});
