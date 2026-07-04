@@ -26,7 +26,12 @@ export async function checkToolAvailability(
   config: ResolvedConfig,
   opts: RunnerOptions = {}
 ): Promise<ToolCheckResult> {
-  // Get the same set of checks the runner would use (before tool filtering)
+  // Get the same set of checks the runner would use (before tool filtering).
+  // Unmatched (mistyped) selectors are deliberately NOT surfaced here: this
+  // function is always paired with runChecks (see validation-exec.ts), which
+  // owns selector validation and emits a `selector.unmatched` error for every
+  // typo in `only`/`skip`. Re-reporting them here would double-warn; a typo can
+  // never produce a silent green because the runner's error fails the report.
   let checks = opts.only?.length
     ? getChecks({ ids: resolveCheckSelectors(opts.only).resolved })
     : getChecks({ category: opts.category, phase: opts.phase });

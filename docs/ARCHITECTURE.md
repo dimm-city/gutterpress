@@ -114,8 +114,7 @@ packages/cli/src/
 │   └── lifecycle.ts        # Server lifecycle
 ├── utils/                  # Shared utilities
 │   ├── file-utils.ts       # File operations
-│   ├── logger.ts           # Preview logger
-│   └── errors.ts           # Error definitions
+│   └── logger.ts           # Leveled logger + command-facing log facade
 └── assets/                 # Static assets
     ├── manifest.schema.json # JSON schema
     └── preview/            # Embedded viewer chrome (Paged.js, pagedjs-interface)
