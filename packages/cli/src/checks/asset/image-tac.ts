@@ -1,6 +1,8 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { execCapture } from "../../lib/exec";
+import { collectImageFiles } from "../../lib/image-inspect";
+import { RASTER_INSPECTABLE_EXTS } from "./extensions";
 
 const check: Check = {
   id: "asset.image.tac-raster",
@@ -13,7 +15,8 @@ const check: Check = {
     const maxTac = ctx.config.ink.maxTac;
     if (!maxTac) return [];
 
-    const files = await collectImageFiles(ctx);
+    const dirs = ctx.assetDirs ?? [ctx.inputDir];
+    const files = await collectImageFiles(dirs, RASTER_INSPECTABLE_EXTS);
     if (files.length === 0) return [];
 
     const results: CheckResult[] = [];
@@ -56,22 +59,6 @@ const check: Check = {
     return results;
   },
 };
-
-async function collectImageFiles(ctx: CheckContext): Promise<string[]> {
-  const { glob } = await import("glob");
-  const dirs = ctx.assetDirs ?? [ctx.inputDir];
-  const files: string[] = [];
-
-  for (const dir of dirs) {
-    const matches = await glob("**/*.{png,jpg,jpeg,tiff,tif}", {
-      cwd: dir,
-      absolute: true,
-    });
-    files.push(...matches);
-  }
-
-  return files;
-}
 
 registerCheck(check);
 export default check;

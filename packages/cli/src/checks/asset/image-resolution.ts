@@ -1,6 +1,7 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { inspectImage, collectImageFiles } from "../../lib/image-inspect";
+import { RASTER_INSPECTABLE_EXTS } from "./extensions";
 
 const check: Check = {
   id: "asset.image.resolution",
@@ -13,7 +14,7 @@ const check: Check = {
     if (!minDpi) return [];
 
     const dirs = ctx.assetDirs ?? [ctx.inputDir];
-    const files = await collectImageFiles(dirs, ["png", "jpg", "jpeg", "tiff", "tif"]);
+    const files = await collectImageFiles(dirs, RASTER_INSPECTABLE_EXTS);
     if (files.length === 0) return [];
 
     const results: CheckResult[] = [];

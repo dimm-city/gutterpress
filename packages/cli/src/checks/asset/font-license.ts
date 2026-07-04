@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
+import { FONT_EXTS } from "./extensions";
 
 const LICENSE_NAMES = [
   "LICENSE",
@@ -29,7 +30,7 @@ const check: Check = {
     // Find directories that contain font files
     const fontDirs = new Set<string>();
     for (const dir of dirs) {
-      const matches = await glob("**/*.{woff,woff2,otf,ttf,eot}", {
+      const matches = await glob(`**/*.{${FONT_EXTS.join(",")}}`, {
         cwd: dir,
         absolute: true,
       });

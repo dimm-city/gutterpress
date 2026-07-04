@@ -1,6 +1,8 @@
 import { stat } from "node:fs/promises";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
+import { collectImageFiles } from "../../lib/image-inspect";
+import { ALL_IMAGE_EXTS } from "./extensions";
 
 const check: Check = {
   id: "asset.image.file-size",
@@ -12,7 +14,8 @@ const check: Check = {
     const maxSize = ctx.config.validate.assets.maxImageSize;
     if (!maxSize) return [];
 
-    const files = await collectImageFiles(ctx);
+    const dirs = ctx.assetDirs ?? [ctx.inputDir];
+    const files = await collectImageFiles(dirs, ALL_IMAGE_EXTS);
     if (files.length === 0) return [];
 
     const results: CheckResult[] = [];
@@ -38,22 +41,6 @@ const check: Check = {
     return results;
   },
 };
-
-async function collectImageFiles(ctx: CheckContext): Promise<string[]> {
-  const { glob } = await import("glob");
-  const dirs = ctx.assetDirs ?? [ctx.inputDir];
-  const files: string[] = [];
-
-  for (const dir of dirs) {
-    const matches = await glob("**/*.{png,jpg,jpeg,tiff,tif,webp,svg,gif}", {
-      cwd: dir,
-      absolute: true,
-    });
-    files.push(...matches);
-  }
-
-  return files;
-}
 
 registerCheck(check);
 export default check;

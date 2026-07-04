@@ -12,6 +12,8 @@ const check: Check = {
     if (ctx.config.validate.assets.allowAlpha) return [];
 
     const dirs = ctx.assetDirs ?? [ctx.inputDir];
+    // Deliberate subset of RASTER_INSPECTABLE_EXTS: JPEG cannot carry an alpha
+    // channel, so only the alpha-capable inspectable formats are scanned here.
     const files = await collectImageFiles(dirs, ["png", "tiff", "tif"]);
     if (files.length === 0) return [];
 
