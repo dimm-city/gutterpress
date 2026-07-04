@@ -165,7 +165,14 @@ describe("Check Registry", () => {
   });
 
   test("total registered check count", () => {
-    const all = getAllCheckIds();
+    // Count built-in checks only. `bun test` runs the CLI test files in one
+    // shared process (no --isolate), so other files that register throwaway
+    // `test.*` checks into the module-level registry can be present here
+    // depending on file execution order (this surfaced as a CI-only failure
+    // when the pdf-inspect fixture tests ran and shifted ordering). Built-in
+    // checks are namespaced by category (pdf/source/asset/heuristic) and never
+    // start with `test.`, so excluding those makes the count deterministic.
+    const all = getAllCheckIds().filter((id) => !id.startsWith("test."));
     // 15 pdf + 6 source + 8 asset + 4 heuristic = 33
     // (source.callout-validation removed with ::: container syntax, 2026-05-17)
     expect(all.length).toBe(33);
