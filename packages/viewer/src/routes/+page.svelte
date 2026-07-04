@@ -36,9 +36,10 @@
   import { activeOutlineIndexForLine } from "$lib/routes/outline";
   import { PageNavController } from "$lib/routes/page-nav-controller.svelte";
   import { ZoomViewController } from "$lib/routes/zoom-view-controller.svelte";
+  import { PreviewEventController } from "$lib/routes/preview-event-controller";
   import { SyncController } from "$lib/routes/sync-controller.svelte";
   import { RecoveryUiController } from "$lib/routes/recovery-ui-controller.svelte";
-  import { buildViewerStyles, DEBUG_STYLES } from "$lib/iframe-styles";
+  import { buildViewerStyles } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import { basenameOf, joinPath } from "$lib/platform/paths";
@@ -1068,115 +1069,62 @@
   });
 
   // ----------------------------------------------------------------
+  // Preview-frame event router. Owns the post-render settle sequence (view-mode
+  // auto-selection, the fit-width-vs-numeric-zoom reveal race, page restore,
+  // outline rebuild, re-lint, splash dismissal) + the preview→editor
+  // sourceLineChanged follow. Host coupling is injected so the ordering that
+  // prevents the visible page JUMP is unit-tested in isolation. Composes
+  // pageNav + zoomView rather than duplicating their logic.
+  const previewEvents = new PreviewEventController({
+    client: () => client,
+    pageNav,
+    zoomView,
+    editorSync: {
+      suppressPreviewSyncUntil: () => suppressPreviewSyncUntil,
+      editorPaneOpen: () => editorPaneOpen,
+      editorChapter: () => editorChapter,
+      currentDir: () => currentDir,
+      bufferDirty: () => !!buffer?.isDirty,
+      updateActiveOutline: (line) => updateActiveOutline(line),
+      revealEditorLine: (line) => editorRef?.revealLine(line),
+      followChapterInEditor: (chapter, line) => followChapterInEditor(chapter, line),
+    },
+    zoom: () => zoom,
+    viewMode: () => viewMode,
+    bgColor: () => bgColor,
+    setRendering: (v) => (rendering = v),
+    getRendering: () => rendering,
+    setRenderProgressPage: (v) => (renderProgressPage = v),
+    getRenderProgressPage: () => renderProgressPage,
+    setRenderCompleteOverlay: (v) => (renderCompleteOverlay = v),
+    resetOutline: () => {
+      outline = [];
+      activeOutlineIndex = 0;
+    },
+    consumePendingRestore: () => {
+      const restore = { page: pendingRestorePage, viewMode: pendingRestoreViewMode };
+      pendingRestorePage = null;
+      pendingRestoreViewMode = null;
+      return restore;
+    },
+    refreshOutline: () => refreshOutline(),
+    refreshProblems: () => refreshProblems(),
+    revealSettledPages: () => revealSettledPages(),
+    toastSuccess: (message) => toast?.success(message),
+    splashStatus: (status, progress, sub) =>
+      api.app.splashStatus(status, progress, sub).catch(() => {}),
+    rendererReady: () => api.app.rendererReady().catch(() => {}),
+    viewportWidth: () => window.innerWidth,
+    now: () => Date.now(),
+    scheduleMicrotask: (fn) => queueMicrotask(fn),
+  });
+
   // Subscribe to PreviewClient events when a client is created by PreviewFrame.
   // Hooked via onClientReady callback on the PreviewFrame component (imperative,
   // not $effect). Cleanup is handled when the client is replaced (PreviewFrame
   // remounts on previewUrl change via {#key previewUrl}).
   function onClientReady(c: PreviewClient) {
-    c.on((e) => {
-      if (e.name === "renderingComplete") {
-        const n = e.detail.totalPages ?? 0;
-        pageNav.totalPages = n;
-        renderProgressPage = n;
-        rendering = false;
-        // Keep the overlay up while the post-render layout settles. The pages
-        // stay invisible (iframe opacity 0) through the view-mode switch AND the
-        // async zoom round-trips; only once the zoom is actually applied do we
-        // cross-fade — see the revealSettledPages() call at the end of the
-        // settle sequence below. This is what prevents the visible page JUMP:
-        // we never reveal before the layout has stopped moving.
-        renderCompleteOverlay = true;
-        // Inject canvas styles now that Paged.js is done
-        client?.injectStyles("viewer-canvas", buildViewerStyles(bgColor));
-        client?.injectStyles("debug", DEBUG_STYLES);
-        // Set initial view mode (auto if user hasn't chosen)
-        const auto = window.innerWidth < 1280 ? "single" : "two-column";
-        const restorePage = pendingRestorePage;
-        const restoreMode = pendingRestoreViewMode;
-        pendingRestorePage = null;
-        pendingRestoreViewMode = null;
-        const mode = restoreMode ?? (zoomView.userSetViewMode ? viewMode : auto);
-        // Drive the whole settle sequence to completion, THEN reveal. The reveal
-        // is gated on the zoom promise resolving — not a magic timer — so the
-        // fade always uncovers a completely still layout. Reveal is in a finally
-        // so the pages are never stranded invisible if a zoom call rejects.
-        (async () => {
-          zoomView.applyViewMode(mode, false);
-          try {
-            // "Fit to width" must ALWAYS measure-and-fit, never assume 100% fits.
-            // A two-page spread (~1656px) overflows a 1400px pane at 100%,
-            // clipping the right page — so fit even on wide screens. Awaiting
-            // applyFitWidthZoom() waits for both postMessage round-trips
-            // (getPageDimensions + setZoom), i.e. until the JUMP has happened.
-            if (zoom === "fit-width") {
-              await zoomView.applyFitWidthZoom();
-            } else {
-              await client?.call("setZoom", [Number(zoom)]);
-            }
-          } catch {
-            // Zoom failed — still reveal below so pages aren't stranded hidden.
-          } finally {
-            revealSettledPages();
-          }
-        })();
-        if (restorePage && restorePage > 1) {
-          queueMicrotask(() => pageNav.restoreProjectPage(restorePage));
-        }
-        // UX-011: improved success toast copy
-        toast?.success(`Your book is ready — ${n} ${n === 1 ? 'page' : 'pages'}`);
-        // Build the chapter-jump outline from the freshly rendered DOM.
-        refreshOutline();
-        // Re-lint the project on every rebuild so the Problems panel tracks
-        // the author's edits (#28).
-        refreshProblems();
-        // First project render done → dismiss the splash and reveal the window.
-        api.app.splashStatus("Ready", 100).catch(() => {});
-        api.app.rendererReady().catch(() => {});
-      } else if (e.name === "sourceLineChanged") {
-        // Preview→editor sync: the reader scrolled. Follow in the editor and
-        // update the active outline entry — but not while the editor itself is
-        // driving the preview (echo guard).
-        const line = e.detail.sourceLine;
-        const chap = e.detail.chapter;
-        if (typeof line === "number") {
-          updateActiveOutline(line);
-          if (Date.now() >= suppressPreviewSyncUntil && editorPaneOpen) {
-            if (chap === editorChapter) {
-              editorRef?.revealLine(line);
-            } else if (chap && currentDir && !buffer?.isDirty) {
-              // Scrolled into a DIFFERENT chapter: follow it by opening that
-              // chapter's file, then reveal the line once it has loaded. Skipped
-              // when there are unsaved edits so it never yanks the file away mid-
-              // edit. This is what makes the editor track the whole book, not
-              // just the one open chapter (the "sporadic" complaint).
-              followChapterInEditor(chap, line);
-            }
-          }
-        }
-      } else if (e.name === "pageChanged") {
-        if (rendering) {
-          renderProgressPage = e.detail.totalPages ?? renderProgressPage;
-          pageNav.totalPages = e.detail.totalPages ?? pageNav.totalPages;
-          // Live splash sub-status during the (potentially multi-second) render.
-          const pg = e.detail.totalPages ?? renderProgressPage;
-          if (pg) api.app.splashStatus(undefined, undefined, `Laying out page ${pg}`).catch(() => {});
-        } else {
-          pageNav.syncPageState(e.detail);
-        }
-      } else if (e.name === "ready") {
-        rendering = true;
-        // New render starting — overlay covers the layout shuffle; fades out on renderingComplete.
-        renderProgressPage = 0;
-        outline = [];
-        activeOutlineIndex = 0;
-        api.app.splashStatus("Rendering pages…", 70).catch(() => {});
-        client?.call<number>("getTotalPages").then((n) => {
-          if (n > 0) {
-            pageNav.totalPages = n;
-          }
-        }).catch(() => {});
-      }
-    });
+    previewEvents.subscribe(c);
   }
 
   // ----------------------------------------------------------------
