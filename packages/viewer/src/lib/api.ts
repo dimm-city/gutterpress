@@ -437,7 +437,7 @@ export const api = {
     listRemoteBranches: (owner: string, repo: string) =>
       post<RemoteBranch[]>('/api/remote/list-branches', { owner, repo }),
 
-    /** Book folders (print-md.yaml/.yml) inside a repository branch. */
+    /** Book folders (manifest.yaml/.yml) inside a repository branch. */
     listRepoBooks: (owner: string, repo: string, branch: string) =>
       post<RepoBook[]>('/api/remote/list-repo-books', { owner, repo, branch }),
 

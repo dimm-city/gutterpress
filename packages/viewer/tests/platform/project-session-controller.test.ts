@@ -4,7 +4,6 @@ import {
   resolveActiveBookDir,
   type ProjectBookEntry,
 } from "../../src/lib/routes/project-session-controller.svelte";
-import type { ProjectClassification } from "../../src/lib/platform/contract";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests. The production compiler replaces $state; the class only
@@ -286,21 +285,6 @@ test("classify: a rejected classification clears capabilities (never blocks prev
   expect(h.ctrl.projectCapabilities).toBeNull();
   expect(h.setViewerPrefs.calls.length).toBe(0);
   expect(h.notifyHistoryRefresh.calls.length).toBe(0);
-});
-
-test("applyReclassify adopts upgraded capabilities + persists source, leaving subPath untouched", () => {
-  const h = makeHarness();
-  h.ctrl.projectSubPath = "books/one";
-  const caps = makeCaps({ canViewHistory: true, canSnapshot: true });
-  const source = { type: "local-git-folder", subPath: "books/one" } as unknown;
-  const result = { source, capabilities: caps } as unknown as ProjectClassification;
-
-  h.ctrl.applyReclassify(result);
-
-  expect(h.ctrl.projectCapabilities).toEqual(caps as never);
-  expect(h.setViewerPrefs.calls).toEqual([[{ projectSource: source }]]);
-  // Reclassify is a capability upgrade only — subPath is not recomputed here.
-  expect(h.ctrl.projectSubPath).toBe("books/one");
 });
 
 // ── resolveActiveBookDir (pure) — C1 book-selection rules ────────────────────

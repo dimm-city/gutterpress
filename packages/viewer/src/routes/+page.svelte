@@ -302,8 +302,8 @@
   // The classification wiring (source detection → capabilities → subPath →
   // prefs hint → history-refresh → sync gate) lives in the
   // ProjectSessionController (Phase 5c). The component reset()s it and fires
-  // classify(dir) on folder open, applyReclassify()s after version history is
-  // enabled, and reads its rune getters. Host coupling injected (§8): the
+  // classify(dir) on folder open, and reads its rune getters. Host coupling
+  // injected (§8): the
   // classify round-trip, the ViewerPrefs writer, and the two fan-out callbacks
   // (History tab + SyncController).
   const projectSession = new ProjectSessionController({
