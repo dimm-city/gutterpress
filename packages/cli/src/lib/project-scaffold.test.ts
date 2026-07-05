@@ -173,6 +173,39 @@ test("provider snapshot + restore round-trips the working tree", async () => {
   }
 });
 
+test("scaffoldProject inside an already-versioned folder reports a friendly notice, not a raw error", async () => {
+  const parent = await tmpParent();
+  try {
+    // Make `parent` itself an enclosing repo (as if it were an existing
+    // multi-book project) before scaffolding a new book inside it.
+    await providerFor({ type: "local-folder", path: parent }).initVersionHistory({
+      projectDir: parent,
+    });
+
+    const result = await scaffoldProject({
+      name: "Second Book",
+      parentDir: parent,
+      // default versionHistory: local-git
+    });
+
+    // The new book still scaffolds successfully — just without its own repo.
+    expect(result.versionHistory).toBe("none");
+    expect(result.versionHistoryError).toContain(path.basename(parent));
+    expect(result.versionHistoryError).toContain("shared version history");
+    expect(result.versionHistoryError).not.toMatch(/won't create a separate history/i);
+
+    // No nested .git was created inside the new book's folder.
+    const source = await detectProjectSource(result.projectDir);
+    expect(source.type).toBe("local-git-folder");
+    if (source.type === "local-git-folder") {
+      expect(source.repoRoot).toBe(parent);
+      expect(source.subPath).toBe("second-book");
+    }
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("adoptFolder: uses existing markdown + scaffolds manifest/book.css in place", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-"));
   await writeFile(path.join(dir, "intro.md"), "# Intro\n\nHello.", "utf8");

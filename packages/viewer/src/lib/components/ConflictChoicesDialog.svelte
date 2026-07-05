@@ -29,7 +29,6 @@
   let {
     open = $bindable(false),
     projectDir,
-    bookSubPath = "",
     files = [],
     localId,
     remoteId,
@@ -41,7 +40,6 @@
   }: {
     open?: boolean;
     projectDir: string | null;
-    bookSubPath?: string;
     files?: ConflictFileInfo[];
     localId?: string | null;
     remoteId?: string | null;
@@ -75,21 +73,10 @@
     queueMicrotask(() => dialogEl?.focus());
   }
 
-  function isOutsideBook(filePath: string): boolean {
-    return !!bookSubPath && !filePath.startsWith(bookSubPath + "/");
-  }
-
-  function displayPath(filePath: string): string {
-    return bookSubPath && filePath.startsWith(bookSubPath + "/")
-      ? filePath.slice(bookSubPath.length + 1)
-      : filePath;
-  }
-
-  /** Human-readable label for the file, falling back to the display path. */
+  /** Human-readable label for the file, falling back to the repo-relative path. */
   function fileLabel(filePath: string): string {
-    const display = displayPath(filePath);
     // Try to make a chapter-like label from the filename.
-    const name = basenameOf(display);
+    const name = basenameOf(filePath);
     // Strip extension and de-kebab for a readable label ("03-chapter.md" → "03 chapter").
     return name
       .replace(/\.[^.]+$/, "")
@@ -264,13 +251,6 @@
           </button>
         </div>
 
-        {#if bookSubPath && files.some((f) => isOutsideBook(f.path))}
-          <p class="hint">
-            Some files below are outside this book but part of the same shared
-            folder — everything in it saves together.
-          </p>
-        {/if}
-
         <!-- svelte-ignore a11y_no_redundant_roles -->
         <ul class="file-list" role="list" aria-label="Files with differences">
           {#each files as file (file.path)}
@@ -279,7 +259,7 @@
             <li class="file-item">
               <div class="file-info">
                 <span class="file-label">{label}</span>
-                <span class="file-path">{displayPath(file.path)}{isOutsideBook(file.path) ? " · shared folder" : ""}</span>
+                <span class="file-path">{file.path}</span>
                 <span class="file-explain">{kindExplanation(file.kind)}{binary ? " Binary file — no preview available." : ""}</span>
               </div>
 
@@ -486,12 +466,6 @@
     font-size: 13px;
     line-height: 1.55;
     color: var(--app-text-secondary);
-  }
-  .hint {
-    font-size: 12px;
-    color: var(--app-text-faint);
-    margin: 0 0 12px;
-    line-height: 1.5;
   }
 
   /* "Not sure? Keep both" banner — the recommended-lossless affordance (§6.1). */

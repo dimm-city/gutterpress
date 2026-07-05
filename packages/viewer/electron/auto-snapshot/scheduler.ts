@@ -135,16 +135,6 @@ export class AutoSnapshotScheduler {
       if (lib.autoSnapshotDelayMs(settings.versionHistory as VersionHistorySettings) === null) return;
       const source = await lib.detectProjectSource(dir);
       if (source.type !== "local-git-folder") return;
-      // Never AUTO-snapshot a folder that lives inside a LARGER repo (subPath
-      // set): a silent automatic commit would land in — and sweep unrelated files
-      // from — the ENCLOSING repository (e.g. opening a folder that happens to sit
-      // inside another git repo). Explicit user snapshots and multi-book remote
-      // sync still work via the version-history UI; only the AUTOMATIC commit is
-      // suppressed here.
-      if (source.subPath !== "") {
-        console.info(`[auto-snapshot] skipped: ${dir} is a subfolder of an enclosing repo (${source.repoRoot})`);
-        return;
-      }
       await lib.providerFor(source).snapshot({
         projectDir: dir,
         message: lib.AUTO_SNAPSHOT_MESSAGE,

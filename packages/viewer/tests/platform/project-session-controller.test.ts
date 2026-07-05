@@ -83,7 +83,6 @@ test("reset clears all capability session state", () => {
   const { ctrl } = makeHarness();
   ctrl.projectCapabilities = makeCaps();
   ctrl.projectSubPath = "books/one";
-  ctrl.projectSharesParentHistory = true;
   ctrl.repoRoot = "/repo";
   ctrl.books = [{ path: "/repo/one", title: "one", subPath: "one" }];
   ctrl.activeBookDir = "/repo/one";
@@ -92,13 +91,12 @@ test("reset clears all capability session state", () => {
 
   expect(ctrl.projectCapabilities).toBeNull();
   expect(ctrl.projectSubPath).toBe("");
-  expect(ctrl.projectSharesParentHistory).toBe(false);
   expect(ctrl.repoRoot).toBeNull();
   expect(ctrl.books).toEqual([]);
   expect(ctrl.activeBookDir).toBeNull();
 });
 
-test("classify: local-git-folder subfolder populates subPath + sharesParentHistory + persists source", async () => {
+test("classify: local-git-folder subfolder populates subPath + persists source", async () => {
   const h = makeHarness();
   const source = { type: "local-git-folder", subPath: "books/one" };
   const caps = makeCaps({ canSync: false });
@@ -110,14 +108,13 @@ test("classify: local-git-folder subfolder populates subPath + sharesParentHisto
   expect(h.classify.calls).toEqual([["/proj"]]);
   expect(h.ctrl.projectCapabilities).toEqual(caps);
   expect(h.ctrl.projectSubPath).toBe("books/one");
-  expect(h.ctrl.projectSharesParentHistory).toBe(true);
   expect(h.setViewerPrefs.calls).toEqual([[{ projectSource: source }]]);
   expect(h.notifyHistoryRefresh.calls.length).toBe(1);
   // canSync false → no diagnosis refresh.
   expect(h.refreshSyncDiag.calls.length).toBe(0);
 });
 
-test("classify: local-git-folder repo root (no subPath) → sharesParentHistory false", async () => {
+test("classify: local-git-folder repo root has an empty subPath", async () => {
   const h = makeHarness();
   h.classify.next = { source: { type: "local-git-folder" }, capabilities: makeCaps() };
 
@@ -125,7 +122,6 @@ test("classify: local-git-folder repo root (no subPath) → sharesParentHistory 
   await flush();
 
   expect(h.ctrl.projectSubPath).toBe("");
-  expect(h.ctrl.projectSharesParentHistory).toBe(false);
 });
 
 test("classify: local-folder → subPath stays empty regardless of any subPath field", async () => {
@@ -139,7 +135,6 @@ test("classify: local-folder → subPath stays empty regardless of any subPath f
   await flush();
 
   expect(h.ctrl.projectSubPath).toBe("");
-  expect(h.ctrl.projectSharesParentHistory).toBe(false);
 });
 
 test("classify: no repoRoot in the result → repoRoot/books/activeBookDir stay empty, picked dir active", async () => {
@@ -304,7 +299,7 @@ test("applyReclassify adopts upgraded capabilities + persists source, leaving su
 
   expect(h.ctrl.projectCapabilities).toEqual(caps as never);
   expect(h.setViewerPrefs.calls).toEqual([[{ projectSource: source }]]);
-  // Reclassify is a capability upgrade only — subPath/shares are not recomputed here.
+  // Reclassify is a capability upgrade only — subPath is not recomputed here.
   expect(h.ctrl.projectSubPath).toBe("books/one");
 });
 

@@ -7,13 +7,13 @@
  * `reset()`s this state and awaits `classify(dir)` (C2: awaited so a picked
  * folder that isn't itself a book can retarget before any content surface
  * opens — see the C2 note below), whose chain never rejects and
- * populates `projectCapabilities`, derives `projectSubPath` /
- * `projectSharesParentHistory` (a book opened inside a larger versioned folder),
- * persists the re-detected source hint via ViewerPrefs, re-notifies the History
- * tab, and — only when the project is actually syncable — refreshes the remote
+ * populates `projectCapabilities`, derives `projectSubPath` (a book's path
+ * relative to its repo root; "" when the book IS the repo root), persists the
+ * re-detected source hint via ViewerPrefs, re-notifies the History tab, and —
+ * only when the project is actually syncable — refreshes the remote
  * diagnosis. `applyReclassify()` adopts the upgraded capabilities after version
  * history is enabled (#13). The template reads the public rune getters
- * (`projectCapabilities` / `projectSubPath` / `projectSharesParentHistory`).
+ * (`projectCapabilities` / `projectSubPath`).
  *
  * Single-owner discipline mirrors `SyncController`
  * (`sync-controller.svelte.ts`) and `PageNavController`
@@ -109,8 +109,6 @@ export class ProjectSessionController {
   projectCapabilities = $state<ProjectCapabilities | null>(null);
   /** The book's path relative to its shared repo ("" for standalone projects). */
   projectSubPath = $state("");
-  /** True when the open folder is a book subfolder of a larger versioned folder. */
-  projectSharesParentHistory = $state(false);
   /** Root of the repo the open folder belongs to; null when there is no repo. */
   repoRoot = $state<string | null>(null);
   /** Books (manifest-containing folders) found inside `repoRoot`; [] when there is no repo. */
@@ -130,7 +128,6 @@ export class ProjectSessionController {
    */
   reset(): void {
     this.projectCapabilities = null;
-    this.projectSharesParentHistory = false;
     this.projectSubPath = "";
     this.repoRoot = null;
     this.books = [];
@@ -158,7 +155,6 @@ export class ProjectSessionController {
         this.projectCapabilities = typedResult.capabilities;
         this.projectSubPath =
           typedResult.source.type === "local-git-folder" ? (typedResult.source.subPath ?? "") : "";
-        this.projectSharesParentHistory = this.projectSubPath !== "";
         this.repoRoot = typedResult.repoRoot ?? null;
         this.books = typedResult.books ?? [];
         this.activeBookDir = resolveActiveBookDir(dir, typedResult.repoRoot, this.books);
@@ -183,7 +179,7 @@ export class ProjectSessionController {
   /**
    * History was just enabled (#13): adopt the upgraded capabilities and persist
    * the re-classified source hint — the same shape classifyProject produces on
-   * open. A capability upgrade only; subPath/shares are not recomputed here.
+   * open. A capability upgrade only; subPath is not recomputed here.
    */
   applyReclassify(result: ProjectClassification): void {
     this.projectCapabilities = result.capabilities;

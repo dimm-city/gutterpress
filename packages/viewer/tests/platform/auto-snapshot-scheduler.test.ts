@@ -53,8 +53,6 @@ class FakeClock {
 interface FakeLibOptions {
   autoSnapshotDelayMs?: number | null;
   sourceType?: string;
-  subPath?: string;
-  repoRoot?: string;
   /** Called per provider.snapshot(); may throw/reject to exercise error paths. */
   snapshot?: (args: unknown) => unknown;
   isNoChangesError?: (e: unknown) => boolean;
@@ -86,8 +84,8 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     autoSnapshotDelayMs: () => delay,
     detectProjectSource: async () => ({
       type: opts.sourceType ?? "local-git-folder",
-      subPath: opts.subPath ?? "",
-      repoRoot: opts.repoRoot ?? DIR,
+      subPath: "",
+      repoRoot: DIR,
     }),
     providerFor: () => ({
       snapshot: async (args: unknown) => {
@@ -128,13 +126,6 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
 
 test("(a) run() does not snapshot a non local-git-folder project", async () => {
   const h = makeHarness({ sourceType: "local-folder" });
-  await h.sched.run(DIR);
-  await settle();
-  expect(h.snapshotCalls.length).toBe(0);
-});
-
-test("(b) run() skips a folder nested inside an enclosing repo (subPath set)", async () => {
-  const h = makeHarness({ subPath: "chapters", repoRoot: "/repo" });
   await h.sched.run(DIR);
   await settle();
   expect(h.snapshotCalls.length).toBe(0);

@@ -299,8 +299,8 @@
   });
 
   // ── Project session capability state (#12) ───────────────────────────────────
-  // The classification wiring (source detection → capabilities → subPath /
-  // sharesParentHistory → prefs hint → history-refresh → sync gate) lives in the
+  // The classification wiring (source detection → capabilities → subPath →
+  // prefs hint → history-refresh → sync gate) lives in the
   // ProjectSessionController (Phase 5c). The component reset()s it and fires
   // classify(dir) on folder open, applyReclassify()s after version history is
   // enabled, and reads its rune getters. Host coupling injected (§8): the
@@ -450,12 +450,6 @@
   function onRecoveryOverlayDone() {
     recovery.dismissOverlay();
   }
-
-  // The open folder is a book subfolder of a larger versioned folder (full
-  // history features are available, scoped to the book by the host) and the
-  // book's path relative to that shared folder both live on the
-  // ProjectSessionController (projectSession.projectSharesParentHistory /
-  // projectSession.projectSubPath), derived by its classification wiring.
 
   // Official setup guide for first-time writers (MVP "Download starter template").
   const SETUP_GUIDE_URL =
@@ -1328,7 +1322,7 @@
       if (
         projectSession.repoRoot &&
         projectSession.repoRoot !== previousRepoRoot &&
-        (targetDir !== dir || projectSession.projectSharesParentHistory)
+        (targetDir !== dir || dir !== projectSession.repoRoot)
       ) {
         toast?.info(
           `This book is part of ${basenameOf(projectSession.repoRoot)} — opened the whole project.`,
@@ -2739,7 +2733,6 @@
 <ConflictChoicesDialog
   bind:open={syncController.conflictOpen}
   projectDir={sourceMode === "folder" ? currentDir : null}
-  bookSubPath={projectSession.projectSubPath}
   files={syncController.conflictFiles}
   localId={syncController.conflictLocalId}
   remoteId={syncController.conflictRemoteId}
