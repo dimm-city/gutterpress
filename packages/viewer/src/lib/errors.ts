@@ -22,7 +22,7 @@ export function friendlyHostError(msg: string): string {
  */
 export function friendlyFolderError(msg: string): string {
   if (/manifest|print-md\.yaml|No such file/i.test(msg)) {
-    return "This doesn't look like a print-md project — we couldn't find a print-md.yaml file. Make sure you're opening the right folder.";
+    return "This doesn't look like a print-md project — we couldn't find a manifest.yaml file. Make sure you're opening the right folder.";
   }
   if (/ENOENT|not found/i.test(msg)) {
     return "The folder couldn't be read. Check that it exists and you have permission to open it.";

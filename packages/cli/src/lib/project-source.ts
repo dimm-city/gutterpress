@@ -139,9 +139,14 @@ export function parseHeadBranch(headText: string): string | undefined {
  * (the folder's own `.git` is the `local-git-folder` case, not this).
  * Returns the nearest enclosing repo root, or `undefined` when none exists.
  *
- * Stops at the user's home directory (a repo above `~` is OS/system tooling,
- * not the author's project) and at the filesystem root. Pure `node:fs` stats —
- * no git involvement — so the walk costs one `stat` per ancestor.
+ * Stops at the user's home directory — a repo AT or ABOVE `~` is OS/system
+ * tooling (e.g. a dotfiles repo), not the author's project, and must never
+ * become the `repoRoot` for a bare folder the author opens under home (that
+ * would scope snapshot/restore/sync to the entire home directory). The home
+ * check runs BEFORE the `.git` probe on each ancestor so home itself is never
+ * treated as an enclosing repo, even if it happens to have a `.git` dir.
+ * Pure `node:fs` stats — no git involvement — so the walk costs one `stat`
+ * per ancestor.
  */
 export async function findEnclosingRepoDir(
   folderPath: string,
@@ -153,8 +158,8 @@ export async function findEnclosingRepoDir(
     const parent = path.dirname(dir);
     if (parent === dir) return undefined; // filesystem root reached
     dir = parent;
+    if (dir === home) return undefined; // never treat home as an enclosing repo
     if (await isDirectory(path.join(dir, ".git"))) return dir;
-    if (dir === home) return undefined; // never scan above the user's home
   }
   return undefined;
 }

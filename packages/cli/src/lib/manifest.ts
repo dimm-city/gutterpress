@@ -6,6 +6,14 @@ import type { PrintMdManifest, ResolvedConfig, PluginConfig, ResolvedPluginConfi
 import { DTRPG_PRESET, PRESETS } from "./presets";
 
 /**
+ * The manifest file names print-md recognizes, in lookup-preference order.
+ * Single source of truth — any code that needs to find/match a manifest file
+ * (project scanning, GitHub repo book discovery, …) should consume this
+ * instead of hardcoding the names.
+ */
+export const MANIFEST_FILENAMES = ["manifest.yaml", "manifest.yml"] as const;
+
+/**
  * Load manifest.yaml from a given path or CWD.
  * Returns an empty object if the file doesn't exist.
  */
@@ -26,15 +34,8 @@ export async function loadManifestWithPath(
   pathOrDir?: string
 ): Promise<{ manifest: PrintMdManifest; manifestDir: string }> {
   const candidates = pathOrDir
-    ? [
-        resolve(pathOrDir),
-        resolve(pathOrDir, "manifest.yaml"),
-        resolve(pathOrDir, "manifest.yml"),
-      ]
-    : [
-        resolve("manifest.yaml"),
-        resolve("manifest.yml"),
-      ];
+    ? [resolve(pathOrDir), ...MANIFEST_FILENAMES.map((name) => resolve(pathOrDir, name))]
+    : MANIFEST_FILENAMES.map((name) => resolve(name));
 
   for (const p of candidates) {
     if (existsSync(p) && statSync(p).isFile()) {

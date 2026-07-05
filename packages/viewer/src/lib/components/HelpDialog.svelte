@@ -159,7 +159,7 @@
         <section class="getting-started">
           <h3>Getting Started</h3>
           <ol class="steps">
-            <li><strong>Open your project folder</strong> — click <em>Open</em> in the toolbar and choose the folder that contains your <code>print-md.yaml</code> file.</li>
+            <li><strong>Open your project folder</strong> — click <em>Open</em> in the toolbar and choose the folder that contains your <code>manifest.yaml</code> file.</li>
             <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Use <em>Single / Two-page</em> to switch between one page and two pages side by side.</li>
             <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. Your changes auto-save, and {modKey}+S or the editor save button saves immediately.</li>
             <li><strong>Keep a history of your work</strong> — click the sync/status pill to open the project activity view, then save named snapshots or restore earlier work.</li>

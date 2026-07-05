@@ -35,6 +35,7 @@ export type { PreviewServerOptions } from "../types";
 export {
   loadManifestWithPath,
   resolveConfig,
+  MANIFEST_FILENAMES,
 } from "../lib/manifest";
 
 export type {

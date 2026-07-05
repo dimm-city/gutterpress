@@ -1,6 +1,7 @@
-import { test, expect } from "bun:test";
+import { test, expect, spyOn } from "bun:test";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import os from "node:os";
 import path from "node:path";
 import {
   detectProjectSource,
@@ -286,6 +287,31 @@ test("a truly plain folder (no .git ANYWHERE) still returns local-folder", async
     expect(source).toEqual({ type: "local-folder", path: dir });
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── Home directory must never become an enclosing repo ──────────────────────
+//
+// Some users keep a dotfiles-style `.git` repo directly at `$HOME`. A bare
+// folder opened anywhere under home must NOT be classified as living inside
+// that repo — treating home as `repoRoot` would scope snapshot/restore/sync
+// to the user's entire home directory.
+
+test("home directory itself is never treated as an enclosing repo", async () => {
+  const home = await tempDir();
+  const homedirSpy = spyOn(os, "homedir").mockReturnValue(home);
+  try {
+    await mkdir(path.join(home, ".git"), { recursive: true });
+    const child = path.join(home, "some-book");
+    await mkdir(child, { recursive: true });
+
+    expect(await findEnclosingRepoDir(child)).toBeUndefined();
+
+    const source = await detectProjectSource(child);
+    expect(source).toEqual({ type: "local-folder", path: child });
+  } finally {
+    homedirSpy.mockRestore();
+    await rm(home, { recursive: true, force: true });
   }
 });
 
