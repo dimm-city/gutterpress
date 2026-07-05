@@ -556,14 +556,7 @@ describe("mis-ordered markers, implicit wrapping, and warnings", () => {
 });
 
 describe("chapter label propagation to child @page elements", () => {
-  // NOTE (surprising / locked-as-is): the module-level doc comment above
-  // `chapterLabel` says the label is "propagated to every child @page", but
-  // the implementation clears `chapterLabel` after stamping it on the FIRST
-  // @page (see the `if (chapterLabel) { ... chapterLabel = ''; }` block in
-  // `openPage`). Only the first page in a chapter actually receives
-  // `data-chapter-label` and the `.chapter-opener` element. This test locks
-  // the REAL behavior, not the comment's claim.
-  test("only the first @page in a chapter gets data-chapter-label + .chapter-opener", () => {
+  test("every @page in a chapter gets data-chapter-label, but only the first gets .chapter-opener", () => {
     const { html } = renderPaged(
       "@chapter C.01\n@page\nP1\n@page\nP2\n@page\nP3\n"
     );
@@ -572,10 +565,16 @@ describe("chapter label propagation to child @page elements", () => {
         '<div class="page" data-chapter-label="C.01">' +
         '<div class="chapter-opener" data-chapter-label="C.01">C.01</div>\n<p>P1</p>\n' +
         "</div>" +
-        '<div class="page"><p>P2</p>\n</div>' +
-        '<div class="page"><p>P3</p>\n</div>' +
+        '<div class="page" data-chapter-label="C.01"><p>P2</p>\n</div>' +
+        '<div class="page" data-chapter-label="C.01"><p>P3</p>\n</div>' +
         "</div>"
     );
+  });
+
+  test("a multi-page chapter still exposes the label on page 2 without repeating the opener", () => {
+    const { html } = renderPaged("@chapter C.01\n@page\nP1\n@page\nP2\n");
+    expect(html).toContain('<div class="page" data-chapter-label="C.01"><p>P2</p>\n</div>');
+    expect(html.match(/chapter-opener/g) || []).toHaveLength(1);
   });
 
   test("a chapter with no name propagates nothing (no data-chapter-label, no opener)", () => {
@@ -603,7 +602,7 @@ describe("chapter label propagation to child @page elements", () => {
         '<div class="page" data-chapter-label="B">' +
         '<div class="chapter-opener" data-chapter-label="B">B</div>\n<p>P2</p>\n' +
         "</div>" +
-        '<div class="page"><p>P3</p>\n</div>' +
+        '<div class="page" data-chapter-label="B"><p>P3</p>\n</div>' +
         "</div>"
     );
   });
