@@ -218,9 +218,10 @@ function plugin(md, pluginOptions = {}) {
     if (!state.env.__layoutMarkersUsed) return;
 
     const out = [];
+    setDepth(state.env, 0);
+
     let chapterOpen = false;
-    let spreadOpen = false;
-    let pageOpen = false;
+    let spreadOpen = false;    let pageOpen = false;
     let sectionOpen = false;
     let currentSectionMeta = null;
 
