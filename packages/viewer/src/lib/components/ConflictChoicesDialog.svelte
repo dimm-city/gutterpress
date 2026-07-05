@@ -248,8 +248,8 @@
       {#if phase !== "error"}
         <p class="lede">
           You and a teammate changed some of the same files. A snapshot of
-          your work was saved automatically — you can always recover either
-          version from View History. Choose what to do with each file below.
+          your work was saved automatically before combining. Choose what to
+          do with each file below.
         </p>
 
         <!-- "Not sure?" affordance — recommended lossless default (§6.1) -->

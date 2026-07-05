@@ -10,9 +10,7 @@
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type {
     ProblemEntry,
-    ProjectClassification,
     RecoveryConfirmRequest,
-    SnapshotEntry,
   } from "$lib/platform/contract";
   import { problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
@@ -449,28 +447,6 @@
   // ProjectSessionController (projectSession.projectSharesParentHistory /
   // projectSession.projectSubPath), derived by its classification wiring.
 
-  // History was just enabled (#13): adopt the upgraded capabilities and persist
-  // the re-classified source hint — same as what classifyProject does on open.
-  function onVersionHistoryEnabled(result: ProjectClassification) {
-    projectSession.applyReclassify(result);
-  }
-
-  // A restore rewrote project files on disk (#13). The preview server's file
-  // watcher re-renders on its own; the editor buffer reconciles via the folder
-  // watcher (#44). Confirm in the toast and refresh history so the new backup
-  // entry is visible immediately.
-  function onVersionRestored() {
-    toast?.success("Project restored — the preview will refresh in a moment.");
-    leftPanelRef?.notifyHistoryRefresh();
-  }
-
-  // A snapshot was saved (#13) — same toast pattern as onVersionRestored, so
-  // version-history feedback is consistent (the dialog itself shows no notice).
-  // Bump the key so the History tab list updates without requiring a tab switch.
-  function onVersionSnapshotSaved() {
-    toast?.success("Snapshot saved.");
-    leftPanelRef?.notifyHistoryRefresh();
-  }
   // Official setup guide for first-time writers (MVP "Download starter template").
   const SETUP_GUIDE_URL =
     "https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/01-getting-started.md";
@@ -2387,7 +2363,6 @@
       projectDir={currentDir}
       projectDisplayName={currentFolderDisplayName}
       projectCapabilities={projectSession.projectCapabilities}
-      projectSharesParentHistory={projectSession.projectSharesParentHistory}
       editorFilePath={editorFilePath}
       sourceMode={sourceMode}
       outline={outline}
@@ -2408,9 +2383,6 @@
       onOpenUrl={openUrl}
       onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
       onNewProject={() => newProjectWizardRef?.show()}
-      onVersionHistoryEnabled={onVersionHistoryEnabled}
-      onSnapshotSaved={(entry) => onVersionSnapshotSaved()}
-      onVersionRestored={onVersionRestored}
       onSyncReconnect={onSyncReconnect}
       onPanelStateChange={persistLeftPanelPrefs}
     />
