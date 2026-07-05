@@ -1417,16 +1417,32 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
     /* not a manifest project — keep dir basename */
   }
 
+  // Normalize so the map key and watchedDir comparison use the same canonical form.
+  const openedDir = path.resolve(activePreview.inputPath);
+  // C2 (book switcher): the viewer always opens an actual book folder (never a
+  // bare multi-book repo root — the renderer retargets to a resolved book
+  // before calling here), so `openedDir` is the active book. Detected once and
+  // reused below (recents + the local-status/preflight blocks) instead of each
+  // re-deriving it.
+  const source = await lib.detectProjectSource(openedDir);
+
   const existingPrefs = await readPrefs();
   await writePrefs({
     ...existingPrefs,
     lastProjectDir: activePreview.inputPath,
     // Single source of truth for recents: every successful preview start
-    // (modal, toolbar, or auto-reopen) upserts the folder here.
+    // (modal, toolbar, or auto-reopen) upserts the folder here. Repo-backed
+    // projects are "a project is its git repo" (CLAUDE.md) — the entry keys on
+    // the repo root, with `lastActiveBook` remembering which book was open so
+    // reopening restores it instead of falling back to the alphabetically
+    // first book.
     recentFolders: upsertRecentFolder(existingPrefs.recentFolders, {
-      path: activePreview.inputPath,
+      path: source.type === "local-git-folder" ? source.repoRoot : openedDir,
       title,
       openedAt: new Date().toISOString(),
+      ...(source.type === "local-git-folder" && source.subPath !== ""
+        ? { lastActiveBook: openedDir }
+        : {}),
     }),
   });
 
@@ -1436,8 +1452,6 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   // initial sync. If no edits have happened the project may already be clean, and
   // syncProject will return "up-to-date" quickly — still worth running once on
   // open to pull any teammate changes that arrived since last session.
-  // Normalize so the map key and watchedDir comparison use the same canonical form.
-  const openedDir = path.resolve(activePreview.inputPath);
   // Start the periodic safety-sync interval now (idempotent) so incoming changes
   // pull even in a view-only session with no edits — it must NOT wait for the
   // first file change. Then do a PROMPT initial pull a few seconds after open
@@ -1453,7 +1467,6 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   // their status from runAutoSync and ignore this branch.
   void (async () => {
     try {
-      const source = await lib.detectProjectSource(openedDir);
       if (source.type !== "local-git-folder") return;
       const diag = await lib.diagnoseProjectRemote(openedDir, {
         tokenStore: electronTokenStore,
@@ -1517,7 +1530,6 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
     let plog: ReturnType<typeof lib.resolveLogger> | undefined;
 
     try {
-      const source = await lib.detectProjectSource(openedDir);
       if (source.type !== "local-git-folder") {
         // Not a git project — release immediately and let the normal initial sync proceed.
         syncState.inFlight = false;

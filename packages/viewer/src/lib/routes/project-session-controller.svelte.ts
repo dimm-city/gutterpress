@@ -4,7 +4,9 @@
  * `+page.svelte`.
  *
  * Centralises the `#12` classification wiring: on folder open the component
- * `reset()`s this state and fires `classify(dir)`, whose fire-and-forget chain
+ * `reset()`s this state and awaits `classify(dir)` (C2: awaited so a picked
+ * folder that isn't itself a book can retarget before any content surface
+ * opens — see the C2 note below), whose chain never rejects and
  * populates `projectCapabilities`, derives `projectSubPath` /
  * `projectSharesParentHistory` (a book opened inside a larger versioned folder),
  * persists the re-detected source hint via ViewerPrefs, re-notifies the History
@@ -32,12 +34,18 @@
  * behaviour-preservingly is a separate item. This controller extracts the
  * cohesive, self-contained classification slice.
  *
- * C1 (repo-root sessions) adds `repoRoot` / `books` / `activeBookDir`: when the
- * classified source is a `local-git-folder`, the host also returns the list of
- * books (manifest-containing folders) found inside that repo. `activeBookDir`
- * is derived from that list by {@link resolveActiveBookDir} — no redirect or
- * retargeting happens yet (C2 wires editor/preview/build/watch to it); this
- * stage only lands the state.
+ * C1 (repo-root sessions) added `repoRoot` / `books` / `activeBookDir`: when
+ * the classified source is a `local-git-folder`, the host also returns the
+ * list of books (manifest-containing folders) found inside that repo.
+ * `activeBookDir` is derived from that list by {@link resolveActiveBookDir}.
+ *
+ * C2 (book switcher) makes `+page.svelte` `await` {@link classify} BEFORE
+ * starting the preview/editor/watch pipeline, so a picked folder that isn't
+ * itself a book (e.g. a bare multi-book repo root) retargets to
+ * `activeBookDir` before any content surface opens. Switching books reuses
+ * the same open path at the sibling book's folder — a full re-classify, not a
+ * second code path — so `repoRoot`/`books`/capabilities end up identical
+ * (same repo), matching the "session identity pinned to repoRoot" design.
  */
 
 import type { ProjectCapabilities, ProjectClassification } from "../platform/contract";
@@ -131,11 +139,14 @@ export class ProjectSessionController {
 
   /**
    * Classify the opened folder (#12) so capability-gated actions (#13/#25) can
-   * render. Fire-and-forget: a failure must never block the preview — it only
-   * clears the capabilities.
+   * render, and (C2) resolve which book is active before any content pipeline
+   * targets a folder. Returns the settled promise so a caller that needs the
+   * resolved `activeBookDir` before opening the preview/editor/watch pipeline
+   * (the folder picked may not itself be a book) can await it; a failure must
+   * never block the preview — it only clears the capabilities.
    */
-  classify(dir: string): void {
-    this.deps
+  classify(dir: string): Promise<void> {
+    return this.deps
       .classifyProject(dir)
       .then((result) => {
         const typedResult = result as {

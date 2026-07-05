@@ -23,6 +23,8 @@
     title: string;
     openedAt: string;
     exists: boolean;
+    /** C2: absolute folder of the last-active book, for a repo-backed entry. */
+    lastActiveBook?: string;
   };
   type FavoriteFolder = { key: string; displayName: string; title: string; exists: boolean };
   type DiscoveredProject = { path: string; title: string };
@@ -86,6 +88,7 @@
         title: r.title,
         openedAt: (r as { openedAt?: string }).openedAt ?? '',
         exists: r.exists,
+        lastActiveBook: r.lastActiveBook,
       }));
       favorites = rawF.map((f) => ({
         key: f.path,
@@ -382,6 +385,10 @@
             {#each filteredRecents as recent, i}
               {@const rowIndex = filteredFavorites.length + i}
               {@const favorited = isFavorited(recent.key)}
+              <!-- C2: `key` (repo root for repo-backed entries) is the identity
+                   used for favorite/remove; `openPath` — the last-active book
+                   when recorded, else `key` — is what actually opens. -->
+              {@const openPath = recent.lastActiveBook ?? recent.key}
               <li class="list-item">
                 <div
                   class="list-row"
@@ -389,8 +396,8 @@
                   tabindex={recent.exists ? 0 : -1}
                   role="button"
                   aria-disabled={!recent.exists}
-                  onclick={() => recent.exists && openRow(recent.key)}
-                  onkeydown={(e) => onListKeydown(e, rowIndex, recent.key)}
+                  onclick={() => recent.exists && openRow(openPath)}
+                  onkeydown={(e) => onListKeydown(e, rowIndex, openPath)}
                   title={recent.exists ? recent.key : `${recent.key} (folder not found)`}
                 >
                   <span class="row-icon" aria-hidden="true"><Icon name="folder" size={13} /></span>

@@ -226,6 +226,50 @@ test("classify: multiple books, bare repo root picked → first book alphabetica
   expect(h.ctrl.activeBookDir).toBe("/repo/alpha");
 });
 
+// ── C2 (book switcher) ───────────────────────────────────────────────────────
+
+test("classify returns a promise that resolves once the classification settles", async () => {
+  const h = makeHarness();
+  h.classify.next = { source: { type: "local-folder" }, capabilities: makeCaps() };
+
+  const result = h.ctrl.classify("/proj");
+  expect(result).toBeInstanceOf(Promise);
+  await result;
+
+  // Settled synchronously with the internal state, not just "eventually" —
+  // +page.svelte awaits this before retargeting the content pipeline.
+  expect(h.ctrl.activeBookDir).toBe("/proj");
+});
+
+test("classify: switching to a sibling book (re-classify at its path) keeps repoRoot/books identical", async () => {
+  const h = makeHarness();
+  const books: ProjectBookEntry[] = [
+    { path: "/repo/alpha", title: "alpha", subPath: "alpha" },
+    { path: "/repo/beta", title: "beta", subPath: "beta" },
+  ];
+  h.classify.next = {
+    source: { type: "local-git-folder" },
+    capabilities: makeCaps(),
+    repoRoot: "/repo",
+    books,
+  };
+
+  await h.ctrl.classify("/repo/alpha");
+  expect(h.ctrl.activeBookDir).toBe("/repo/alpha");
+  const repoRootAfterFirstOpen = h.ctrl.repoRoot;
+
+  // BookSwitcher.onSelect re-opens at the sibling book's folder — a full
+  // reset()+classify(), same as any other folder open.
+  h.ctrl.reset();
+  await h.ctrl.classify("/repo/beta");
+
+  expect(h.ctrl.activeBookDir).toBe("/repo/beta");
+  // Session identity (repoRoot) is unchanged — same repo, per the C2 design
+  // note ("session identity pinned to repoRoot").
+  expect(h.ctrl.repoRoot).toBe(repoRootAfterFirstOpen);
+  expect(h.ctrl.books).toEqual(books);
+});
+
 test("classify: canSync capability triggers a scoped diagnosis refresh", async () => {
   const h = makeHarness();
   h.classify.next = { source: { type: "local-git-folder" }, capabilities: makeCaps({ canSync: true }) };

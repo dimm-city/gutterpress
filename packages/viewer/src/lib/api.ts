@@ -206,8 +206,13 @@ export const api = {
     setSettings: (settings: Record<string, unknown>) => post<{ ok: boolean }>('/api/app/settings', settings),
     /** Get the OS native dark/light theme preference. */
     getNativeTheme: () => get<{ shouldUseDarkColors: boolean }>('/api/app/native-theme'),
-    /** Get the recent folders list (with exists flag). */
-    getRecentFolders: () => get<Array<{ path: string; title: string; exists: boolean }>>('/api/app/recent-folders'),
+    /** Get the recent folders list (with exists flag). `lastActiveBook` (C2) is
+     *  the absolute folder of the book that was active when a repo-backed
+     *  entry was recorded — absent for standalone (non-git) entries. */
+    getRecentFolders: () =>
+      get<Array<{ path: string; title: string; exists: boolean; lastActiveBook?: string }>>(
+        '/api/app/recent-folders',
+      ),
     /** Get the favorites list (with exists flag). */
     getFavorites: () => get<Array<{ path: string; title: string; exists: boolean }>>('/api/app/favorites'),
     /** Toggle a folder in the favorites list. */

@@ -11,6 +11,15 @@ export interface RecentFolder {
   path: string;
   title: string;
   openedAt: string; // ISO-8601
+  /**
+   * C2 (book switcher): for a repo-backed project, `path` is the REPO ROOT
+   * (the git-scoped project unit), and this is the absolute folder of the book
+   * that was actually active when the entry was recorded — so reopening
+   * restores that book instead of falling back to the alphabetically-first one.
+   * Absent for a standalone (non-git) project, where `path` already IS the
+   * opened folder.
+   */
+  lastActiveBook?: string;
 }
 
 export interface FavoriteFolder {

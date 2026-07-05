@@ -86,3 +86,29 @@ test("editor top saved/configure overlay is removed", () => {
   expect(src).not.toContain("save-status saved");
   expect(src).not.toContain("Configure</button>");
 });
+
+test("C2: a folder open classifies BEFORE the content pipeline opens, so a bare multi-book repo root retargets to the resolved book", () => {
+  const src = read("src/routes/+page.svelte");
+  const classifyIdx = src.indexOf("await projectSession.classify(dir)");
+  const startPreviewIdx = src.indexOf("await platform.startPreview(");
+  expect(classifyIdx).toBeGreaterThan(-1);
+  expect(startPreviewIdx).toBeGreaterThan(-1);
+  expect(classifyIdx).toBeLessThan(startPreviewIdx);
+  expect(src).toContain("const targetDir = projectSession.activeBookDir ?? dir;");
+  expect(src).toContain("input: { key: targetDir, displayName: targetDisplayName }");
+});
+
+test("C2: the book switcher is wired into the status bar and gated on books.length > 1", () => {
+  const status = read("src/lib/components/StatusBar.svelte");
+  expect(status).toContain('import BookSwitcher from "$lib/components/BookSwitcher.svelte"');
+  expect(status).toContain("books.length > 1");
+  const page = read("src/routes/+page.svelte");
+  expect(page).toContain("books={projectSession.books}");
+  expect(page).toContain("onSwitchBook={(path) => void switchBook(path)}");
+});
+
+test("C2: recents for a repo-backed project key on the repo root, remembering the last active book", () => {
+  const main = read("electron/main.ts");
+  expect(main).toContain('path: source.type === "local-git-folder" ? source.repoRoot : openedDir');
+  expect(main).toContain("lastActiveBook: openedDir");
+});
