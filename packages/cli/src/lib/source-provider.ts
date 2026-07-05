@@ -324,6 +324,47 @@ export async function hasPendingChanges(
 }
 
 /**
+ * True when the INDEX (STAGE) is byte-identical to the tip commit's tree.
+ * Deliberately NOT used on the hot sync-check path (that's `hasPendingChanges`
+ * / `listWorkdirChanges`, WORKDIR-vs-STAGE only, per the sync-simplicity
+ * mandate) — this reads the TREE walker, which is only safe here because it
+ * runs solely on the rare stale-staging-marker recovery path, at most once per
+ * crash, never on every sync check.
+ */
+async function stageMatchesHead(dir: string, cache: GitCache): Promise<boolean> {
+  let headOid: string;
+  try {
+    headOid = await git.resolveRef({ fs, dir, ref: "HEAD" });
+  } catch {
+    return false; // no commit yet — nothing for the stage to "match"
+  }
+  let differs = false;
+  await git.walk({
+    fs,
+    dir,
+    cache,
+    trees: [git.TREE({ ref: headOid }), git.STAGE()],
+    map: async (filepath, [tree, stage]) => {
+      if (differs || filepath === ".") return differs ? null : undefined;
+      const [tType, sType] = await Promise.all([
+        tree ? tree.type() : Promise.resolve(undefined),
+        stage ? stage.type() : Promise.resolve(undefined),
+      ]);
+      if (tType === "tree" || sType === "tree") return; // recurse
+      if (!tType !== !sType) {
+        differs = true; // present on only one side
+        return null;
+      }
+      if (!tType || !sType) return; // both absent
+      const [tOid, sOid] = await Promise.all([tree!.oid(), stage!.oid()]);
+      if (tOid !== sOid) differs = true;
+      return null;
+    },
+  });
+  return !differs;
+}
+
+/**
  * `local-folder` provider: no version history. `initVersionHistory` is the one
  * op that "upgrades" the folder to a `local-git-folder`; the read/restore verbs
  * reject (a plain folder has no history). After init the caller should
@@ -556,11 +597,36 @@ export async function snapshotWorkingTreeUnlocked(
   const staleStaging = fs.existsSync(stagingMarker);
   // ONE walk decides both "anything to save?" and what to stage.
   const changes = await listWorkdirChanges(dir, cache);
-  if (changes.adds.length === 0 && changes.removes.length === 0 && !staleStaging) {
+  const workdirClean = changes.adds.length === 0 && changes.removes.length === 0;
+  if (workdirClean && !staleStaging) {
     logger.debug("snapshot", "no changes — skipping");
     throw new Error(
       "No changes since the last snapshot — there is nothing new to save.",
     );
+  }
+  // A stale marker with a clean WORKDIR↔STAGE walk is ambiguous: either (a)
+  // the marker outlived a commit that actually succeeded (crash landed
+  // between `git.commit` returning and the `fs.rmSync` below), in which case
+  // the index already equals HEAD and committing again would create a
+  // duplicate, empty "Snapshot" entry (isomorphic-git has no empty-commit
+  // guard) — or (b) the crash landed between staging and commit, in which
+  // case the index holds real staged work that HEAD doesn't have yet (the
+  // case the marker exists to recover, handled below). STAGE-vs-TREE(HEAD)
+  // is the only way to tell them apart; it's safe to read here because this
+  // branch only runs on the rare marker-recovery path, never the hot
+  // sync-check path (which stays WORKDIR/STAGE-only per the sync-simplicity
+  // mandate).
+  if (workdirClean && staleStaging && (await stageMatchesHead(dir, cache))) {
+    logger.debug("snapshot", "stale marker outlived a completed commit — clearing, not recommitting");
+    fs.rmSync(stagingMarker, { force: true });
+    const [head] = await git.log({ fs, dir, cache, depth: 1 });
+    // stageMatchesHead only returns true when HEAD exists, so `head` is defined.
+    return {
+      id: head!.oid,
+      message: head!.commit.message.trim(),
+      timestamp: head!.commit.author.timestamp * 1000,
+      author: head!.commit.author.name,
+    };
   }
   logger.info("snapshot", "committing", {
     adds: changes.adds.length,
