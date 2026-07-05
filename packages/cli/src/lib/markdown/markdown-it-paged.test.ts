@@ -193,9 +193,18 @@ describe("marker grammar (parsed via rendered output + warnings)", () => {
       // parsing, so a space inside an unquoted class=... value does not
       // extend the value — it starts a new bare token, which then wins the
       // "single bare token" name-detection rule.
-      const { html } = renderPaged("@page class=foo bar\nHi\n");
+      const { html, env } = renderPaged("@page class=foo bar\nHi\n");
       expect(classList(html)).toEqual(["page", "foo"]);
       expect(attr(html, "data-page")).toBe("bar");
+      expect(env.layoutWarnings).toEqual([
+        {
+          line: 1,
+          type: "ambiguous_marker_token",
+          message:
+            "A bare marker token after a key=value attribute is being interpreted as the marker name. Use comma-separated classes (class=a,b) or .class shorthand instead.",
+          marker: { kind: "page", name: "bar", attrs: { class: "foo" }, __line: 1 },
+        },
+      ]);
     });
 
     test(".class token and class=... key both contribute, dot-token first", () => {

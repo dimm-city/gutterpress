@@ -42,7 +42,7 @@ function escapeAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function parseMarkerLine(line) {
+function parseMarkerLine(line, env, lineNumber) {
   const trimmed = line.trim();
   if (!trimmed.startsWith('@')) return null;
 
@@ -110,9 +110,14 @@ function parseMarkerLine(line) {
 
   const attrs = {};
   const classes = [];
+  let sawExplicitAttr = false;
+  let hasAmbiguousBareToken = false;
 
   for (let idx = 0; idx < body.length; idx++) {
-    if (idx === nameIndex) continue;
+    if (idx === nameIndex) {
+      if (sawExplicitAttr && isBareToken(body[idx])) hasAmbiguousBareToken = true;
+      continue;
+    }
 
     const t = body[idx];
 
@@ -130,6 +135,7 @@ function parseMarkerLine(line) {
 
     const eq = t.indexOf('=');
     if (eq > 0) {
+      sawExplicitAttr = true;
       const key = t.slice(0, eq).trim();
       const val = t.slice(eq + 1).trim();
       if (!key) continue;
@@ -145,10 +151,22 @@ function parseMarkerLine(line) {
       continue;
     }
 
+    if (sawExplicitAttr && isBareToken(t)) hasAmbiguousBareToken = true;
     classes.push(t);
   }
 
   if (classes.length) attrs.class = classes.join(' ');
+
+  if (hasAmbiguousBareToken && env) {
+    warn(
+      env,
+      lineNumber,
+      'ambiguous_marker_token',
+      'A bare marker token after a key=value attribute is being interpreted as the marker name. Use comma-separated classes (class=a,b) or .class shorthand instead.',
+      { kind, name, attrs, __line: lineNumber }
+    );
+  }
+
   return { kind, name, attrs };
 }
 
@@ -196,7 +214,7 @@ function plugin(md, pluginOptions = {}) {
     const max = state.eMarks[startLine];
     const line = state.src.slice(pos, max);
 
-    const parsed = parseMarkerLine(line);
+    const parsed = parseMarkerLine(line, state.env, startLine + 1);
     if (!parsed) return false;
     if (silent) return true;
 
