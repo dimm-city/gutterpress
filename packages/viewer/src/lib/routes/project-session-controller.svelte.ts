@@ -31,12 +31,58 @@
  * interleaved with buffer/leftPanel/pageNav side effects, so moving them
  * behaviour-preservingly is a separate item. This controller extracts the
  * cohesive, self-contained classification slice.
+ *
+ * C1 (repo-root sessions) adds `repoRoot` / `books` / `activeBookDir`: when the
+ * classified source is a `local-git-folder`, the host also returns the list of
+ * books (manifest-containing folders) found inside that repo. `activeBookDir`
+ * is derived from that list by {@link resolveActiveBookDir} — no redirect or
+ * retargeting happens yet (C2 wires editor/preview/build/watch to it); this
+ * stage only lands the state.
  */
 
 import type { ProjectCapabilities, ProjectClassification } from "../platform/contract";
 
+/** A book (manifest-containing folder) found inside a classified project's repo. */
+export interface ProjectBookEntry {
+  /** Absolute path to the book folder. */
+  path: string;
+  /** Display title — the folder's basename (background-scan convention). */
+  title: string;
+  /** Book's path relative to the repo root, forward-slash form; "" at the repo root. */
+  subPath: string;
+}
+
 /** Loosely-typed host classify result — the api layer returns `unknown` fields. */
-export type ClassifyResult = { source: unknown; capabilities: unknown };
+export type ClassifyResult = {
+  source: unknown;
+  capabilities: unknown;
+  repoRoot?: string;
+  books?: ProjectBookEntry[];
+};
+
+/**
+ * Resolve which book is "active" after opening `pickedDir` inside a repo whose
+ * books (already sorted by `subPath`) are `books`. Mirrors the C1 design
+ * decisions:
+ *  - No repo, or the repo has no books at all: the picked folder stays active
+ *    (today's single-folder behaviour, unchanged — no redirect).
+ *  - Exactly one book in the repo: that book is always active, regardless of
+ *    which folder was picked (a single-book repo, including a book living at
+ *    the repo root, behaves identically to opening it directly today).
+ *  - Multiple books: if the picked folder IS one of them, it stays active;
+ *    otherwise (the bare repo root was picked) the first book alphabetically
+ *    by `subPath` is active until the user switches (#C2).
+ */
+export function resolveActiveBookDir(
+  pickedDir: string,
+  repoRoot: string | undefined,
+  books: ProjectBookEntry[],
+): string {
+  if (!repoRoot || books.length === 0) return pickedDir;
+  if (books.length === 1) return books[0]!.path;
+  const picked = books.find((b) => b.path === pickedDir);
+  return picked ? picked.path : books[0]!.path;
+}
 
 export interface ProjectSessionDeps {
   /** Host round-trip: classify a project folder (source type + capabilities). */
@@ -57,6 +103,12 @@ export class ProjectSessionController {
   projectSubPath = $state("");
   /** True when the open folder is a book subfolder of a larger versioned folder. */
   projectSharesParentHistory = $state(false);
+  /** Root of the repo the open folder belongs to; null when there is no repo. */
+  repoRoot = $state<string | null>(null);
+  /** Books (manifest-containing folders) found inside `repoRoot`; [] when there is no repo. */
+  books = $state<ProjectBookEntry[]>([]);
+  /** The book the session currently targets, per {@link resolveActiveBookDir}. */
+  activeBookDir = $state<string | null>(null);
 
   private deps: ProjectSessionDeps;
 
@@ -72,6 +124,9 @@ export class ProjectSessionController {
     this.projectCapabilities = null;
     this.projectSharesParentHistory = false;
     this.projectSubPath = "";
+    this.repoRoot = null;
+    this.books = [];
+    this.activeBookDir = null;
   }
 
   /**
@@ -86,11 +141,16 @@ export class ProjectSessionController {
         const typedResult = result as {
           source: { type: string; subPath?: string };
           capabilities: ProjectCapabilities;
+          repoRoot?: string;
+          books?: ProjectBookEntry[];
         };
         this.projectCapabilities = typedResult.capabilities;
         this.projectSubPath =
           typedResult.source.type === "local-git-folder" ? (typedResult.source.subPath ?? "") : "";
         this.projectSharesParentHistory = this.projectSubPath !== "";
+        this.repoRoot = typedResult.repoRoot ?? null;
+        this.books = typedResult.books ?? [];
+        this.activeBookDir = resolveActiveBookDir(dir, typedResult.repoRoot, this.books);
         this.deps
           .setViewerPrefs({ projectSource: typedResult.source } as Record<string, unknown>)
           .catch(() => {});

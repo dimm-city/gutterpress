@@ -217,9 +217,14 @@ export const api = {
     removeRecent: (path: string) => post<{ ok: boolean }>('/api/app/recent/remove', { path }),
     /** Discover print-md projects under the configured search roots. */
     discoverProjects: () => post<unknown[]>('/api/app/discover-projects', {}),
-    /** Classify a project folder (source type + capabilities). */
+    /** Classify a project folder (source type + capabilities + repo book list). */
     classifyProject: (projectDir: string) =>
-      post<{ source: unknown; capabilities: unknown }>('/api/app/classify-project', { projectDir }),
+      post<{
+        source: unknown;
+        capabilities: unknown;
+        repoRoot?: string;
+        books?: Array<{ path: string; title: string; subPath: string }>;
+      }>('/api/app/classify-project', { projectDir }),
     /** Scaffold a new project from a template. */
     createProject: (opts: Record<string, unknown>) => post<unknown>('/api/app/create-project', opts),
     /** Adopt an existing folder as a print-md project. */

@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import { ProjectSessionController } from "../../src/lib/routes/project-session-controller.svelte";
+import {
+  ProjectSessionController,
+  resolveActiveBookDir,
+  type ProjectBookEntry,
+} from "../../src/lib/routes/project-session-controller.svelte";
 import type { ProjectClassification } from "../../src/lib/platform/contract";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
@@ -20,7 +24,12 @@ const spy = <A extends unknown[] = unknown[]>(): Spy<A> => {
   return fn;
 };
 
-type ClassifyResult = { source: unknown; capabilities: unknown };
+type ClassifyResult = {
+  source: unknown;
+  capabilities: unknown;
+  repoRoot?: string;
+  books?: ProjectBookEntry[];
+};
 
 interface Harness {
   ctrl: ProjectSessionController;
@@ -75,12 +84,18 @@ test("reset clears all capability session state", () => {
   ctrl.projectCapabilities = makeCaps();
   ctrl.projectSubPath = "books/one";
   ctrl.projectSharesParentHistory = true;
+  ctrl.repoRoot = "/repo";
+  ctrl.books = [{ path: "/repo/one", title: "one", subPath: "one" }];
+  ctrl.activeBookDir = "/repo/one";
 
   ctrl.reset();
 
   expect(ctrl.projectCapabilities).toBeNull();
   expect(ctrl.projectSubPath).toBe("");
   expect(ctrl.projectSharesParentHistory).toBe(false);
+  expect(ctrl.repoRoot).toBeNull();
+  expect(ctrl.books).toEqual([]);
+  expect(ctrl.activeBookDir).toBeNull();
 });
 
 test("classify: local-git-folder subfolder populates subPath + sharesParentHistory + persists source", async () => {
@@ -127,6 +142,90 @@ test("classify: local-folder → subPath stays empty regardless of any subPath f
   expect(h.ctrl.projectSharesParentHistory).toBe(false);
 });
 
+test("classify: no repoRoot in the result → repoRoot/books/activeBookDir stay empty, picked dir active", async () => {
+  const h = makeHarness();
+  h.classify.next = { source: { type: "local-folder" }, capabilities: makeCaps() };
+
+  h.ctrl.classify("/proj");
+  await flush();
+
+  expect(h.ctrl.repoRoot).toBeNull();
+  expect(h.ctrl.books).toEqual([]);
+  expect(h.ctrl.activeBookDir).toBe("/proj");
+});
+
+test("classify: repoRoot with zero books behaves as today (no redirect)", async () => {
+  const h = makeHarness();
+  h.classify.next = {
+    source: { type: "local-git-folder" },
+    capabilities: makeCaps(),
+    repoRoot: "/repo",
+    books: [],
+  };
+
+  h.ctrl.classify("/repo");
+  await flush();
+
+  expect(h.ctrl.repoRoot).toBe("/repo");
+  expect(h.ctrl.books).toEqual([]);
+  expect(h.ctrl.activeBookDir).toBe("/repo");
+});
+
+test("classify: single book in the repo is always active", async () => {
+  const h = makeHarness();
+  const books: ProjectBookEntry[] = [{ path: "/repo/one", title: "one", subPath: "one" }];
+  h.classify.next = {
+    source: { type: "local-git-folder" },
+    capabilities: makeCaps(),
+    repoRoot: "/repo",
+    books,
+  };
+
+  h.ctrl.classify("/repo");
+  await flush();
+
+  expect(h.ctrl.books).toEqual(books);
+  expect(h.ctrl.activeBookDir).toBe("/repo/one");
+});
+
+test("classify: multiple books, picked folder IS a book → that book stays active", async () => {
+  const h = makeHarness();
+  const books: ProjectBookEntry[] = [
+    { path: "/repo/alpha", title: "alpha", subPath: "alpha" },
+    { path: "/repo/beta", title: "beta", subPath: "beta" },
+  ];
+  h.classify.next = {
+    source: { type: "local-git-folder" },
+    capabilities: makeCaps(),
+    repoRoot: "/repo",
+    books,
+  };
+
+  h.ctrl.classify("/repo/beta");
+  await flush();
+
+  expect(h.ctrl.activeBookDir).toBe("/repo/beta");
+});
+
+test("classify: multiple books, bare repo root picked → first book alphabetically is active", async () => {
+  const h = makeHarness();
+  const books: ProjectBookEntry[] = [
+    { path: "/repo/alpha", title: "alpha", subPath: "alpha" },
+    { path: "/repo/beta", title: "beta", subPath: "beta" },
+  ];
+  h.classify.next = {
+    source: { type: "local-git-folder" },
+    capabilities: makeCaps(),
+    repoRoot: "/repo",
+    books,
+  };
+
+  h.ctrl.classify("/repo");
+  await flush();
+
+  expect(h.ctrl.activeBookDir).toBe("/repo/alpha");
+});
+
 test("classify: canSync capability triggers a scoped diagnosis refresh", async () => {
   const h = makeHarness();
   h.classify.next = { source: { type: "local-git-folder" }, capabilities: makeCaps({ canSync: true }) };
@@ -163,4 +262,40 @@ test("applyReclassify adopts upgraded capabilities + persists source, leaving su
   expect(h.setViewerPrefs.calls).toEqual([[{ projectSource: source }]]);
   // Reclassify is a capability upgrade only — subPath/shares are not recomputed here.
   expect(h.ctrl.projectSubPath).toBe("books/one");
+});
+
+// ── resolveActiveBookDir (pure) — C1 book-selection rules ────────────────────
+
+test("resolveActiveBookDir: no repoRoot → picked dir active (no repo at all)", () => {
+  expect(resolveActiveBookDir("/proj", undefined, [])).toBe("/proj");
+});
+
+test("resolveActiveBookDir: repoRoot but zero books → picked dir active (no redirect)", () => {
+  expect(resolveActiveBookDir("/repo", "/repo", [])).toBe("/repo");
+});
+
+test("resolveActiveBookDir: exactly one book → that book is active, even if a different dir was picked", () => {
+  const books: ProjectBookEntry[] = [{ path: "/repo/only", title: "only", subPath: "" }];
+  expect(resolveActiveBookDir("/repo", "/repo", books)).toBe("/repo/only");
+  expect(resolveActiveBookDir("/repo/assets", "/repo", books)).toBe("/repo/only");
+});
+
+test("resolveActiveBookDir: multiple books, picked folder is one of them → stays active", () => {
+  const books: ProjectBookEntry[] = [
+    { path: "/repo/alpha", title: "alpha", subPath: "alpha" },
+    { path: "/repo/beta", title: "beta", subPath: "beta" },
+  ];
+  expect(resolveActiveBookDir("/repo/beta", "/repo", books)).toBe("/repo/beta");
+});
+
+test("resolveActiveBookDir: multiple books, bare repo root picked → first alphabetically by subPath", () => {
+  const books: ProjectBookEntry[] = [
+    { path: "/repo/zeta", title: "zeta", subPath: "zeta" },
+    { path: "/repo/alpha", title: "alpha", subPath: "alpha" },
+  ];
+  expect(resolveActiveBookDir("/repo", "/repo", books)).toBe("/repo/zeta");
+  // Order in the array is respected (caller/server sorts by subPath); the
+  // function itself does not re-sort.
+  const sorted: ProjectBookEntry[] = [...books].sort((a, b) => (a.subPath < b.subPath ? -1 : 1));
+  expect(resolveActiveBookDir("/repo", "/repo", sorted)).toBe("/repo/alpha");
 });
