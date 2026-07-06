@@ -175,6 +175,41 @@ describe("buildRecoveryContext — branch, credential, slug", () => {
     }
   });
 
+  test("a diagnose failure falls back to the locally classified source, sanitized (never null)", async () => {
+    // The defensive catch around diagnoseProjectRemote must not throw away
+    // the classification this function already resolved — that would force
+    // inspectRepo to re-walk parent dirs (the exact #87 redundancy). The
+    // fallback must also never carry a credential embedded in the remote
+    // URL (D7), since the diagnose sanitization didn't run.
+    const root = await tempDir();
+    try {
+      const repo = path.join(root, "diag-throws");
+      await mkdir(repo, { recursive: true });
+      await makeGitDir(repo, "main", "https://x-token:sekret123@example.com/me/book.git");
+
+      const diagMod = await import("../diagnose.ts");
+      mock.module("../diagnose.ts", () => ({
+        ...diagMod,
+        diagnoseProjectRemote: async () => {
+          throw new Error("injected diagnose failure");
+        },
+      }));
+      try {
+        const ctx = await buildRecoveryContext({ projectDir: repo, confirmation: GATE });
+        expect(ctx.source?.type).toBe("local-git-folder");
+        expect(JSON.stringify(ctx.source)).not.toContain("sekret123");
+        if (ctx.source?.type === "local-git-folder") {
+          expect(ctx.source.remoteUrl).toBe("https://example.com/me/book.git");
+        }
+      } finally {
+        // Restore the real module for the remaining tests.
+        mock.module("../diagnose.ts", () => ({ ...diagMod }));
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("threads authorName, logFile, and the host's confirmation gate through", async () => {
     const root = await tempDir();
     try {

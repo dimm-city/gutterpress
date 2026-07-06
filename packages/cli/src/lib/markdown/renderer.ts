@@ -179,6 +179,10 @@ export function applyPlugins(md: MarkdownIt, plugins: LoadedPlugin[]): void {
       const errorMsg = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to apply plugin "${name}": ${errorMsg}`);
     }
+    // Level-gated ON PURPOSE (was an unconditional console.log): this line
+    // fires on EVERY render — each preview rebuild, and the browser render
+    // path too — so default output stays quiet. `--verbose` (DEBUG level)
+    // restores the confirmation line.
     if (metadata?.name) {
       debug(`Loaded plugin: ${metadata.name} v${metadata.version ?? "?"}`);
     } else {

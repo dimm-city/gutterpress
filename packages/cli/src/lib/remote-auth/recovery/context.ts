@@ -20,10 +20,20 @@
 
 import path from "node:path";
 
-import { detectProjectSource } from "../../project-source.ts";
+import { detectProjectSource, type ProjectSource } from "../../project-source.ts";
 import { diagnoseProjectRemote } from "../diagnose.ts";
-import type { HostCredential, TokenStore } from "../token-store.ts";
+import {
+  extractUrlCredential,
+  type HostCredential,
+  type TokenStore,
+} from "../token-store.ts";
 import type { ConfirmationGate, RecoveryContext } from "./types.ts";
+
+/** Strip any credential embedded in a classification's remote URL (D7). */
+function sanitizeSource(source: ProjectSource | null): ProjectSource | null {
+  if (!source || source.type !== "local-git-folder" || !source.remoteUrl) return source;
+  return { ...source, remoteUrl: extractUrlCredential(source.remoteUrl).cleanUrl };
+}
 
 export interface BuildRecoveryContextOptions {
   /** The directory the user opened (may be a subfolder of its repo). */
@@ -74,9 +84,11 @@ export async function buildRecoveryContext(
     projectDir,
     repoDir,
     // Stored SANITIZED (diagnose strips credentials embedded in the remote
-    // URL — D7); null records that classification failed, so consumers
-    // (inspectRepo) conservatively re-classify.
-    source: diag?.classification ?? null,
+    // URL — D7). If the defensive diagnose catch above fired, fall back to
+    // the source classified at the top of this function (sanitized the same
+    // way) — a diagnose failure must not force consumers (inspectRepo) to
+    // re-walk parent dirs. null only when classification itself failed.
+    source: diag?.classification ?? sanitizeSource(source),
     branch,
     remoteUrl,
     repoSlug,

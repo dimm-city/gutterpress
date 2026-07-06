@@ -257,10 +257,19 @@ export async function mirrorChanges(
     // throws EISDIR on a directory, which previously aborted the entire
     // rebuild and froze the live preview. The contained file gets its own
     // event and is mirrored on its own; skip the directory itself.
-    if (existsSync(changedPath) && statSync(changedPath).isFile()) {
-      await fsp.mkdir(path.dirname(dest.destPath), { recursive: true });
-      await fsp.copyFile(changedPath, dest.destPath);
-      debug(`Updated: ${dest.relativePath}`);
+    //
+    // The whole probe+copy is also fallible AS A UNIT: editors that save via
+    // temp-file + rename can delete the file between the stat and the copy.
+    // A failed mirror must not abort the rebuild — the re-render below reads
+    // from inputPath (the source of truth), so the preview still updates.
+    try {
+      if (existsSync(changedPath) && statSync(changedPath).isFile()) {
+        await fsp.mkdir(path.dirname(dest.destPath), { recursive: true });
+        await fsp.copyFile(changedPath, dest.destPath);
+        debug(`Updated: ${dest.relativePath}`);
+      }
+    } catch (err) {
+      debug(`Mirror skipped for ${dest.relativePath}: ${err}`);
     }
     dests.push({
       relativePath: dest.relativePath,

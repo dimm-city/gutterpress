@@ -239,6 +239,33 @@ describe('mirrorChanges', () => {
     expect(await Bun.file(join(tempDir, 'themes')).exists()).toBe(false);
   });
 
+  test('a failing copy is skipped without aborting the rest of the mirror', async () => {
+    // Editors that save via temp-file + rename can delete a file between the
+    // stat probe and the copy. Simulate a deterministic copy failure (dest is
+    // a directory → EISDIR): mirrorChanges must resolve, keep the entry, and
+    // still mirror the other changed files in the same window.
+    const { mkdir } = await import('fs/promises');
+    await writeFile(join(testDir, 'broken.md'), '# broken');
+    await writeFile(join(testDir, 'ok.md'), '# ok');
+    await mkdir(join(tempDir, 'broken.md'), { recursive: true });
+
+    const dests = await mirrorChanges(
+      [
+        [join(testDir, 'broken.md'), 'change'],
+        [join(testDir, 'ok.md'), 'change'],
+      ],
+      testDir,
+      tempDir,
+      []
+    );
+
+    expect(dests).toEqual([
+      { relativePath: 'broken.md', ext: '.md', event: 'change' },
+      { relativePath: 'ok.md', ext: '.md', event: 'change' },
+    ]);
+    expect(await Bun.file(join(tempDir, 'ok.md')).text()).toBe('# ok');
+  });
+
   test('a change outside every watch root is dropped', async () => {
     const outside = await mkdtemp(join(tmpdir(), 'print-md-test-outside-'));
     try {
