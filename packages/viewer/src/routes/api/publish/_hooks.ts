@@ -36,12 +36,23 @@ export interface LibPublishProviderInfo {
   };
 }
 
+/**
+ * The dependency bag the publish routes hand to the lib. Typed (not
+ * `unknown`) because the token store is security-sensitive — forgetting to
+ * pass it must fail the build, not the runtime.
+ */
+export interface PublishRouteDeps {
+  tokenStore: TokenStore;
+  /** Progress-line sink for long runs (butler/swa output). */
+  onProgress?: (line: string) => void;
+}
+
 export interface PublishLibModule {
   listPublishProviders?(): LibPublishProviderInfo[];
   publishProviderFor?(id: string): { info: LibPublishProviderInfo };
   publishConnectionStatus?(
     info: LibPublishProviderInfo,
-    deps: unknown,
+    deps: PublishRouteDeps,
   ): Promise<{ connected: boolean; source?: 'env' | 'store' }>;
   connectPublishProvider?(
     options: {
@@ -49,7 +60,7 @@ export interface PublishLibModule {
       providerId: string;
       token: string;
     },
-    deps: unknown,
+    deps: PublishRouteDeps,
   ): Promise<{ connected: boolean; providerId: string }>;
   readPublishSettings?(
     projectDir: string,
@@ -66,7 +77,7 @@ export interface PublishLibModule {
       artifactPath?: string;
       dryRun?: boolean;
     },
-    deps: unknown,
+    deps: PublishRouteDeps,
   ): Promise<{
     ok: boolean;
     providerId: string;

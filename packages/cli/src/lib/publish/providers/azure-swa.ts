@@ -48,7 +48,7 @@ async function resolveSwaCommand(req: PublishRequest): Promise<string | null> {
   const explicit = env.SWA_CLI_PATH?.trim();
   if (explicit) return explicit;
   const run = req.deps.runCommand ?? defaultCommandRunner;
-  return (await commandExists("swa", run)) ? "swa" : null;
+  return (await commandExists("swa", run, req.deps.env)) ? "swa" : null;
 }
 
 const SWA_INSTALL_HINT =

@@ -67,7 +67,7 @@ export async function ensureButler(deps: PublishDeps): Promise<string> {
     return explicit;
   }
 
-  if (await commandExists("butler", runCommand)) return "butler";
+  if (await commandExists("butler", runCommand, deps.env)) return "butler";
 
   const cacheDir = path.join(
     deps.configDir ?? defaultConfigDir(),

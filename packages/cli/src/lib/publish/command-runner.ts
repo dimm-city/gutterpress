@@ -87,16 +87,21 @@ export const defaultCommandRunner: CommandRunner = (
   });
 };
 
-/** True when `cmd` resolves to an executable on the current PATH. */
+/**
+ * True when `cmd` resolves to an executable on the PATH. `env` (typically
+ * {@link PublishDeps.env}) is forwarded to the probe so a host-injected PATH
+ * influences resolution the same way it will influence the eventual spawn.
+ */
 export async function commandExists(
   cmd: string,
   runCommand: CommandRunner = defaultCommandRunner,
+  env?: Record<string, string | undefined>,
 ): Promise<boolean> {
   // where.exe, not where: PowerShell aliases bare `where` to Where-Object
   // (same choice as lib/tool-probe.ts).
   const probe = process.platform === "win32" ? "where.exe" : "which";
   try {
-    const result = await runCommand(probe, [cmd]);
+    const result = await runCommand(probe, [cmd], env ? { env } : undefined);
     return result.code === 0 && result.stdout.trim().length > 0;
   } catch {
     return false;
