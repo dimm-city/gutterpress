@@ -238,77 +238,120 @@ function plugin(md, pluginOptions = {}) {
     alt: ['paragraph', 'reference', 'blockquote', 'list'],
   });
 
+  // Innermost-first close order for layout scopes. Scopes nest
+  // chapter → spread → page → section in well-formed documents, and every
+  // close cascade (including the EOF drain) closes kinds in this fixed
+  // order. Mis-ordered documents can open a scope while a "more inner" kind
+  // is still open (e.g. @page before @chapter); closing by kind rank — not
+  // by push order — is what keeps those documents rendering exactly as the
+  // hand-ordered close helpers historically did.
+  const SCOPE_CLOSE_ORDER = ['section', 'page', 'spread', 'chapter'];
+
   md.core.ruler.after('block', 'layout_transform', function (state) {
     if (!state.env.__layoutMarkersUsed) return;
 
     const out = [];
     setDepth(state.env, 0);
 
-    let chapterOpen = false;
-    let spreadOpen = false;
-    let pageOpen = false;
-    let sectionOpen = false;
-    let currentSectionMeta = null;
+    /**
+     * @typedef {'chapter'|'spread'|'page'|'section'} ScopeKind
+     */
+    /**
+     * One open layout scope. At most one frame per kind is open at a time.
+     *
+     * @typedef {Object} Frame
+     * @property {ScopeKind} kind
+     * @property {string} [label]
+     *   chapter: label propagated to every child @page as
+     *   data-chapter-label. This lets CSS reach the chapter label from any
+     *   descendant page via attr(data-chapter-label) — e.g. to render a
+     *   chapter-opener badge on the page where the content actually lives,
+     *   rather than on the chapter wrapper (which paged.js may split into
+     *   an empty leading sheet).
+     * @property {string} [counterClass]
+     *   chapter: counter class inherited by child @page directives. When an
+     *   @chapter declares ch="N" (or a .chapter-N class), every @page opened
+     *   within that chapter automatically gets the same .chapter-N class.
+     *   This lets CSS rules like `.page.chapter-3 { counter-reset: chapter 3 }`
+     *   in page-rules.css match every page in the chapter, because Paged.js
+     *   needs the class on every page wrapper (it clones content per page).
+     *   Authors don't hand-apply .chapter-N anywhere.
+     * @property {boolean} [openerEmitted]
+     *   chapter: whether the one-time .chapter-opener element has been
+     *   injected yet (it belongs to the FIRST @page of the chapter only).
+     * @property {boolean} [noPagesYet]
+     *   spread: no @page has opened since this spread started (drives the
+     *   spread_without_pages warning).
+     * @property {boolean} [sawAnyPage]
+     *   spread: at least one @page opened inside this spread (suppresses the
+     *   spread_eof_close warning).
+     * @property {{name: string|null, attrs: Object}} [meta]
+     *   section: name/attrs snapshot that @continue clones for the
+     *   continuation section.
+     */
 
-    let spreadStartedWithNoPagesYet = false;
-    let sawAnyPageInsideCurrentSpread = false;
+    /**
+     * Explicit stack of open scope frames. open() pushes; close(kind) drains
+     * every kind nested inside `kind` (innermost first, per
+     * SCOPE_CLOSE_ORDER) and then `kind` itself, emitting the close tokens —
+     * and is a no-op when `kind` isn't open, which makes every close
+     * idempotent. For well-formed nesting this is plain LIFO; for
+     * mis-ordered documents the rank order preserves the historical
+     * emission exactly.
+     */
+    const stack = {
+      /** @type {Frame[]} */
+      frames: [],
 
-    // Chapter counter context inherited by child @page directives.
-    // When an @chapter declares ch="N" (or a .chapter-N class), every @page
-    // opened within that chapter automatically gets the same .chapter-N
-    // class. This lets CSS rules like `.page.chapter-3 { counter-reset:
-    // chapter 3 }` in page-rules.css match every page in the chapter,
-    // because Paged.js needs the class on every page wrapper (it clones
-    // content per page). Authors don't hand-apply .chapter-N anywhere.
-    let chapterCounterClass = '';
+      /** @param {ScopeKind} kind @returns {Frame|null} */
+      get(kind) {
+        return this.frames.find((f) => f.kind === kind) || null;
+      },
 
-    // Chapter label propagated to every child @page as data-chapter-label.
-    // This lets CSS reach the chapter label from any descendant page via
-    // attr(data-chapter-label) — e.g. to render a chapter-opener badge as
-    // a ::before pseudo on the page where the content actually lives,
-    // rather than on the chapter wrapper (which paged.js may split into
-    // an empty leading sheet).
-    let chapterLabel = '';
-    let chapterOpenerEmitted = false;
+      /** @param {ScopeKind} kind */
+      has(kind) {
+        return this.frames.some((f) => f.kind === kind);
+      },
 
-    function closeOpenScopes() {
-      closeSection();
-      closePage();
-      closeSpread();
-    }
+      /**
+       * Push a frame and emit its open token.
+       * @param {Frame} frame
+       * @param {import('markdown-it/lib/token')} openToken
+       */
+      open(frame, openToken) {
+        out.push(openToken);
+        this.frames.push(frame);
+      },
 
-    function closeChapter() {
-      if (!chapterOpen) return;
-      closeOpenScopes();
-      out.push(new state.Token('layout_chapter_close', 'div', -1));
-      chapterOpen = false;
-      chapterCounterClass = '';
-      chapterLabel = '';
-      chapterOpenerEmitted = false;
-    }
+      /** Pop the frame of `kind` (wherever it sits) and emit its close token. */
+      _pop(kind) {
+        const at = this.frames.findIndex((f) => f.kind === kind);
+        if (at === -1) return;
+        this.frames.splice(at, 1);
+        out.push(new state.Token(`layout_${kind}_close`, 'div', -1));
+      },
 
-    function closeSection() {
-      if (!sectionOpen) return;
-      out.push(new state.Token('layout_section_close', 'div', -1));
-      sectionOpen = false;
-      currentSectionMeta = null;
-    }
+      /**
+       * Close `kind` and everything nested inside it, innermost first.
+       * No-op when `kind` isn't open — inner scopes are NOT drained in that
+       * case (e.g. closing 'page' while only a section is open leaves the
+       * section alone), matching the historical close helpers.
+       * @param {ScopeKind} kind
+       */
+      close(kind) {
+        if (!this.has(kind)) return;
+        for (const inner of SCOPE_CLOSE_ORDER) {
+          if (inner === kind) break;
+          this._pop(inner);
+        }
+        this._pop(kind);
+      },
 
-    function closePage() {
-      if (!pageOpen) return;
-      closeSection();
-      out.push(new state.Token('layout_page_close', 'div', -1));
-      pageOpen = false;
-    }
-
-    function closeSpread() {
-      if (!spreadOpen) return;
-      closePage();
-      out.push(new state.Token('layout_spread_close', 'div', -1));
-      spreadOpen = false;
-      spreadStartedWithNoPagesYet = false;
-      sawAnyPageInsideCurrentSpread = false;
-    }
+      /** The EOF drain: close every open scope, innermost kind first. */
+      closeAll() {
+        for (const kind of SCOPE_CLOSE_ORDER) this._pop(kind);
+      },
+    };
 
     function openChapter(meta) {
       const t = new state.Token('layout_chapter_open', 'div', 1);
@@ -319,40 +362,39 @@ function plugin(md, pluginOptions = {}) {
       // the chapter's badge / opener UI; standard markdown-it-paged treats it
       // as opaque metadata.
       attachDataAttrs(t, 'chapter', meta.name, meta.attrs || {});
-      out.push(t);
-      chapterOpen = true;
-      // Track the label so we can propagate it to child @page elements (see
-      // openPage). Paged.js may split the chapter across multiple sheets;
-      // having data-chapter-label on each child page lets CSS render the
-      // chapter badge on the page where content actually lives.
-      chapterLabel = meta.name || '';
-      chapterOpenerEmitted = false;
       // Resolve chapter counter class: explicit `.chapter-N` in the class
       // list takes priority over the `ch="N"` attribute.
       const explicit = (classes.match(/(?:^|\s)(chapter-\d+)(?=\s|$)/) || [])[1] || '';
       const fromAttr = meta.attrs?.ch ? `chapter-${meta.attrs.ch}` : '';
-      chapterCounterClass = explicit || fromAttr;
+      stack.open(
+        {
+          kind: 'chapter',
+          label: meta.name || '',
+          counterClass: explicit || fromAttr,
+          openerEmitted: false,
+        },
+        t
+      );
     }
 
     function openSpread(meta) {
       const t = new state.Token('layout_spread_open', 'div', 1);
       addClasses(t, 'spread', meta.attrs && meta.attrs.class ? meta.attrs.class : '');
       attachDataAttrs(t, 'spread', meta.name, meta.attrs || {});
-      out.push(t);
-      spreadOpen = true;
-      spreadStartedWithNoPagesYet = true;
-      sawAnyPageInsideCurrentSpread = false;
+      stack.open({ kind: 'spread', noPagesYet: true, sawAnyPage: false }, t);
     }
 
     function openPage(meta) {
+      const chapter = stack.get('chapter');
       const t = new state.Token('layout_page_open', 'div', 1);
       const explicit = (meta.attrs && meta.attrs.class) ? meta.attrs.class : '';
       // Auto-inherit the open chapter's counter class so .page.chapter-N
       // selectors in page-rules.css match every page in the chapter without
       // the author repeating .chapter-N on every @page directive.
+      const counterClass = chapter ? chapter.counterClass : '';
       const tokens = explicit ? explicit.split(/\s+/) : [];
-      const merged = (chapterCounterClass && !tokens.includes(chapterCounterClass))
-        ? (explicit ? `${explicit} ${chapterCounterClass}` : chapterCounterClass)
+      const merged = (counterClass && !tokens.includes(counterClass))
+        ? (explicit ? `${explicit} ${counterClass}` : counterClass)
         : explicit;
       addClasses(t, 'page', merged);
       attachDataAttrs(t, 'page', meta.name, meta.attrs || {});
@@ -360,9 +402,9 @@ function plugin(md, pluginOptions = {}) {
       // page via attribute selector (paged.js may split the chapter wrapper
       // into an empty leading sheet, but the child page stays with its
       // content).
-      if (chapterLabel) t.attrSet('data-chapter-label', chapterLabel);
-      out.push(t);
-      pageOpen = true;
+      const label = chapter ? chapter.label : '';
+      if (label) t.attrSet('data-chapter-label', label);
+      stack.open({ kind: 'page' }, t);
 
       // Inject a structural chapter-opener element as the page's first
       // child when the chapter has a label AND this is the first @page in
@@ -378,16 +420,17 @@ function plugin(md, pluginOptions = {}) {
       // mechanism that survives pagination and is reusable across
       // projects (any project styling `.chapter-opener` gets the same
       // markup).
-      if (chapterLabel && !chapterOpenerEmitted) {
+      if (label && !chapter.openerEmitted) {
         const opener = new state.Token('html_block', '', 0);
-        opener.content = `<div class="chapter-opener" data-chapter-label="${escapeAttr(chapterLabel)}">${escapeHtml(chapterLabel)}</div>\n`;
+        opener.content = `<div class="chapter-opener" data-chapter-label="${escapeAttr(label)}">${escapeHtml(label)}</div>\n`;
         out.push(opener);
-        chapterOpenerEmitted = true;
+        chapter.openerEmitted = true;
       }
 
-      if (spreadOpen) {
-        sawAnyPageInsideCurrentSpread = true;
-        spreadStartedWithNoPagesYet = false;
+      const spread = stack.get('spread');
+      if (spread) {
+        spread.sawAnyPage = true;
+        spread.noPagesYet = false;
       } else if (options.preferPagesInSpreads) {
         warn(state.env, meta.__line || 0, 'page_outside_spread', '@page used outside of a spread; allowed, but spreads are recommended for deliberate grouping.', meta);
       }
@@ -397,12 +440,13 @@ function plugin(md, pluginOptions = {}) {
       const t = new state.Token('layout_section_open', 'div', 1);
       addClasses(t, 'section', meta.attrs && meta.attrs.class ? meta.attrs.class : '');
       attachDataAttrs(t, 'section', meta.name, meta.attrs || {});
-      out.push(t);
-      sectionOpen = true;
-      currentSectionMeta = {
-        name: meta.name || null,
-        attrs: { ...(meta.attrs || {}) },
-      };
+      stack.open(
+        {
+          kind: 'section',
+          meta: { name: meta.name || null, attrs: { ...(meta.attrs || {}) } },
+        },
+        t
+      );
     }
 
     for (let i = 0; i < state.tokens.length; i++) {
@@ -418,30 +462,30 @@ function plugin(md, pluginOptions = {}) {
       const line = meta.__line || 0;
 
       if (kind === 'chapter') {
-        closeChapter();
+        stack.close('chapter');
         openChapter(meta);
         continue;
       }
 
       if (kind === 'spread') {
-        if (spreadOpen) {
+        if (stack.has('spread')) {
           warn(state.env, line, 'nested_spread', '@spread encountered while another spread is open; closing the previous spread automatically.', meta);
         }
-        closeSpread();
+        stack.close('spread');
         openSpread(meta);
         continue;
       }
 
       if (kind === 'page') {
-        closePage();
+        stack.close('page');
         openPage(meta);
         continue;
       }
 
       if (kind === 'section') {
-        closeSection();
+        stack.close('section');
 
-        if (!pageOpen) {
+        if (!stack.has('page')) {
           if (options.implicitPage) {
             warn(state.env, line, 'implicit_page', '@section used without an open @page; creating an implicit page wrapper (data-page="auto").', meta);
             openPage({ name: 'auto', attrs: {}, __line: line });
@@ -450,7 +494,8 @@ function plugin(md, pluginOptions = {}) {
           }
         }
 
-        if (spreadOpen && spreadStartedWithNoPagesYet) {
+        const spread = stack.get('spread');
+        if (spread && spread.noPagesYet) {
           warn(
             state.env,
             line,
@@ -465,20 +510,21 @@ function plugin(md, pluginOptions = {}) {
       }
 
       if (kind === 'continue') {
-        if (!sectionOpen || !currentSectionMeta) {
+        const section = stack.get('section');
+        if (!section || !section.meta) {
           warn(state.env, line, 'continue_without_section', '@continue used without an open @section; ignoring marker.', meta);
           continue;
         }
 
         const contMeta = {
-          name: currentSectionMeta.name,
-          attrs: { ...(currentSectionMeta.attrs || {}) },
+          name: section.meta.name,
+          attrs: { ...(section.meta.attrs || {}) },
         };
         const cls = (contMeta.attrs.class || '').split(/\s+/).filter(Boolean);
         if (!cls.includes('pmd-continued')) cls.push('pmd-continued');
         contMeta.attrs.class = cls.join(' ');
 
-        closeSection();
+        stack.close('section');
         openSection(contMeta);
         continue;
       }
@@ -500,7 +546,7 @@ function plugin(md, pluginOptions = {}) {
       }
 
       if (kind === 'end-section') {
-        closeSection();
+        stack.close('section');
         continue;
       }
     }
@@ -509,15 +555,12 @@ function plugin(md, pluginOptions = {}) {
     // HTML. print-md renders chapter files one at a time and concatenates the
     // output (src/lib/markdown/index.ts); if any scope leaks across that
     // boundary, the next file's content parses as nested inside the previous
-    // file's last unclosed wrapper.
-    //
-    // We must close ALL four scope kinds explicitly here. closeChapter()
-    // cascades through inner scopes via closeOpenScopes(), but only when
-    // chapterOpen is true — files that use @page without an enclosing
-    // @chapter (e.g. front-matter pages) would otherwise leak an open
-    // .page wrapper across the file boundary. Each close* function is
-    // idempotent, so calling them all in innermost→outermost order is safe.
-    if (spreadOpen && !sawAnyPageInsideCurrentSpread) {
+    // file's last unclosed wrapper. closeAll() drains every open frame,
+    // innermost kind first, so files that use @page without an enclosing
+    // @chapter (e.g. front-matter pages) can't leak an open .page wrapper
+    // across the file boundary.
+    const eofSpread = stack.get('spread');
+    if (eofSpread && !eofSpread.sawAnyPage) {
       warn(
         state.env,
         0,
@@ -527,10 +570,7 @@ function plugin(md, pluginOptions = {}) {
       );
     }
 
-    closeSection();
-    closePage();
-    closeSpread();
-    closeChapter();
+    stack.closeAll();
     state.tokens = out;
   });
 
