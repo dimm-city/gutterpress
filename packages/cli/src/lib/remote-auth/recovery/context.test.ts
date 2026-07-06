@@ -8,12 +8,13 @@
  * then zip the entire home directory.
  */
 
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import * as projectSource from "../../project-source.ts";
+import { detectProjectSource, type ProjectSource } from "../../project-source.ts";
+import { diagnoseProjectRemote } from "../diagnose.ts";
 import type { HostCredential, TokenStore } from "../token-store.ts";
 import type { ConfirmationGate } from "./types.ts";
 import { buildRecoveryContext } from "./context.ts";
@@ -141,35 +142,40 @@ describe("buildRecoveryContext — branch, credential, slug", () => {
   test("classifies the project folder exactly ONCE and threads it (context → diagnose → inspect)", async () => {
     // Guard against the #87 hot-path regression: building a context used to
     // classify the same folder 2-3× (context, diagnoseProjectRemote, and again
-    // in inspectRepo), each walking parent dirs with stats.
+    // in inspectRepo), each walking parent dirs with stats. Uses the classify/
+    // diagnose injection seams — NEVER mock.module, which leaks the mock into
+    // other test files (broke recover-wrong-remote in CI).
     const root = await tempDir();
     try {
       const repo = path.join(root, "one-classify");
       await mkdir(repo, { recursive: true });
       await makeGitDir(repo, "main", "https://example.com/me/book.git");
 
-      const real = projectSource.detectProjectSource;
-      let calls = 0;
-      mock.module("../../project-source.ts", () => ({
-        ...projectSource,
-        detectProjectSource: async (p: string) => {
-          calls++;
-          return real(p);
+      let classifyCalls = 0;
+      let sourceSeenByDiagnose: ProjectSource | undefined;
+      const ctx = await buildRecoveryContext({
+        projectDir: repo,
+        confirmation: GATE,
+        classify: async (p) => {
+          classifyCalls++;
+          return detectProjectSource(p);
         },
-      }));
-      try {
-        const ctx = await buildRecoveryContext({ projectDir: repo, confirmation: GATE });
-        expect(calls).toBe(1);
-        expect(ctx.source?.type).toBe("local-git-folder");
+        diagnose: async (p, opts) => {
+          // Record the threading: diagnose must receive the pre-classified
+          // source (its own ghost-dir test proves it then skips re-classifying).
+          sourceSeenByDiagnose = opts?.source;
+          return diagnoseProjectRemote(p, opts);
+        },
+      });
 
-        // The preflight probe reuses the threaded classification too.
-        const health = await inspectRepo(ctx);
-        expect(health.hasGitDir).toBe(true);
-        expect(calls).toBe(1);
-      } finally {
-        // Restore the real module for the remaining tests.
-        mock.module("../../project-source.ts", () => ({ ...projectSource }));
-      }
+      expect(classifyCalls).toBe(1);
+      expect(sourceSeenByDiagnose?.type).toBe("local-git-folder");
+      expect(ctx.source?.type).toBe("local-git-folder");
+
+      // The preflight probe reuses the threaded classification too (the
+      // fabricated-source test in inspect.test.ts proves it is honored).
+      const health = await inspectRepo(ctx);
+      expect(health.hasGitDir).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -187,23 +193,18 @@ describe("buildRecoveryContext — branch, credential, slug", () => {
       await mkdir(repo, { recursive: true });
       await makeGitDir(repo, "main", "https://x-token:sekret123@example.com/me/book.git");
 
-      const diagMod = await import("../diagnose.ts");
-      mock.module("../diagnose.ts", () => ({
-        ...diagMod,
-        diagnoseProjectRemote: async () => {
+      const ctx = await buildRecoveryContext({
+        projectDir: repo,
+        confirmation: GATE,
+        diagnose: async () => {
           throw new Error("injected diagnose failure");
         },
-      }));
-      try {
-        const ctx = await buildRecoveryContext({ projectDir: repo, confirmation: GATE });
-        expect(ctx.source?.type).toBe("local-git-folder");
-        expect(JSON.stringify(ctx.source)).not.toContain("sekret123");
-        if (ctx.source?.type === "local-git-folder") {
-          expect(ctx.source.remoteUrl).toBe("https://example.com/me/book.git");
-        }
-      } finally {
-        // Restore the real module for the remaining tests.
-        mock.module("../diagnose.ts", () => ({ ...diagMod }));
+      });
+
+      expect(ctx.source?.type).toBe("local-git-folder");
+      expect(JSON.stringify(ctx.source)).not.toContain("sekret123");
+      if (ctx.source?.type === "local-git-folder") {
+        expect(ctx.source.remoteUrl).toBe("https://example.com/me/book.git");
       }
     } finally {
       await rm(root, { recursive: true, force: true });

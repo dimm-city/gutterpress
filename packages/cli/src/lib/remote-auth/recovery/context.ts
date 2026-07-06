@@ -46,6 +46,14 @@ export interface BuildRecoveryContextOptions {
   authorName?: string;
   /** Operation-log file shared with the sync path. */
   logFile?: string;
+  /**
+   * Classification override (tests only — omit in production). Injected the
+   * same way as RecoveryContext's `now`/`faults`: bun's mock.module leaks
+   * across test files, so cross-cutting modules are never module-mocked.
+   */
+  classify?: typeof detectProjectSource;
+  /** Diagnosis override (tests only — omit in production). See `classify`. */
+  diagnose?: typeof diagnoseProjectRemote;
 }
 
 /** Resolve everything a recovery handler needs from a project directory. */
@@ -53,15 +61,17 @@ export async function buildRecoveryContext(
   options: BuildRecoveryContextOptions,
 ): Promise<RecoveryContext> {
   const { projectDir, confirmation, tokenStore, authorName, logFile } = options;
+  const classify = options.classify ?? detectProjectSource;
+  const diagnose = options.diagnose ?? diagnoseProjectRemote;
 
   // Classified ONCE here, then threaded into diagnoseProjectRemote below and
   // stored on the context for inspectRepo — the recovery path never re-walks
   // parent dirs to re-classify the same folder (#87).
-  const source = await detectProjectSource(projectDir).catch(() => null);
+  const source = await classify(projectDir).catch(() => null);
   const gitSource = source && source.type === "local-git-folder" ? source : null;
   const repoDir = gitSource ? gitSource.repoRoot || gitSource.path : projectDir;
 
-  const diag = await diagnoseProjectRemote(projectDir, {
+  const diag = await diagnose(projectDir, {
     tokenStore,
     ...(source ? { source } : {}),
   }).catch(() => null);
